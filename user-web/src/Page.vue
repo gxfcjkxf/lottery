@@ -15,6 +15,7 @@ import {
   type SelectionModel,
 } from "./selection";
 import { isValidWholeAmount } from "./withdrawal";
+import WalletSummary from "./WalletSummary.vue";
 import {
   createAuthClient,
   type AuthChallenge,
@@ -34,6 +35,7 @@ import {
 } from "./auth";
 
 const route = useRoute();
+const walletBrandCode = import.meta.env.VITE_BRAND_CODE || undefined;
 const router = useRouter();
 const savedLanguage = localStorage.getItem("luma-language") as Language | null;
 const locale = ref<Language>(savedLanguage || "en");
@@ -2170,9 +2172,7 @@ watch(
               :disabled="busy || !readDraft()"
               @click="placeDemoOrder"
             >
-              {{
-                busy ? (locale === "en" ? "Saving…" : "保存中…") : t.confirm
-              }}
+              {{ busy ? (locale === "en" ? "Saving…" : "保存中…") : t.confirm }}
               <span>→</span></button
             ><button
               class="button button-quiet full-button"
@@ -2297,125 +2297,13 @@ watch(
           </div>
         </section>
 
-        <section v-else-if="route.path === '/wallet'" class="page-section">
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">YOUR POINTS</div>
-              <h1>{{ t.wallet }}</h1>
-              <p>{{ t.walletNote }}</p>
-            </div>
-            <RouterLink to="/wallet/ledger" class="button button-secondary"
-              >{{ t.ledger }} →</RouterLink
-            >
-          </div>
-          <div class="wallet-grid">
-            <div class="wallet-card wallet-primary">
-              <div class="wallet-card-head">
-                <span>{{ t.balance }}</span
-                ><span>◈</span>
-              </div>
-              <strong>{{ displayPoints("12840") }} <small>pts</small></strong>
-              <p>{{ t.walletNote }}</p>
-              <div class="wallet-split">
-                <span
-                  >{{ locale === "en" ? "Available" : "可用" }}
-                  <b>12,840</b></span
-                ><span>{{ locale === "en" ? "Frozen" : "冻结" }} <b>0</b></span>
-              </div>
-            </div>
-            <div class="wallet-card">
-              <div class="eyebrow">WITHDRAWABLE PREVIEW</div>
-              <strong>{{ displayPoints("8200") }} <small>pts</small></strong>
-              <p>{{ t.source }}</p>
-              <RouterLink to="/withdraw" class="button button-dark"
-                >{{ t.withdraw }} →</RouterLink
-              >
-            </div>
-          </div>
-          <div class="quick-links">
-            <RouterLink to="/recharge" class="quick-link"
-              ><span class="quick-icon">＋</span
-              ><span
-                ><strong>{{ t.recharge }}</strong
-                ><small>{{ t.manual }}</small></span
-              ><span>↗</span></RouterLink
-            ><RouterLink to="/withdraw" class="quick-link"
-              ><span class="quick-icon">↗</span
-              ><span
-                ><strong>{{ t.withdraw }}</strong
-                ><small>{{ t.eligible }}</small></span
-              ><span>↗</span></RouterLink
-            ><RouterLink to="/wallet/ledger" class="quick-link"
-              ><span class="quick-icon">▤</span
-              ><span
-                ><strong>{{ t.ledger }}</strong
-                ><small>{{
-                  locale === "en"
-                    ? "See sample points activity"
-                    : "查看示例积分明细"
-                }}</small></span
-              ><span>↗</span></RouterLink
-            >
-          </div>
-        </section>
-
         <section
-          v-else-if="route.path === '/wallet/ledger'"
+          v-else-if="
+            route.path === '/wallet' || route.path === '/wallet/ledger'
+          "
           class="page-section"
         >
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">DEMO ACCOUNT · {{ t.demo }}</div>
-              <h1>{{ t.ledger }}</h1>
-              <p>{{ t.walletNote }}</p>
-            </div>
-            <RouterLink to="/wallet" class="back-link"
-              >← {{ t.wallet }}</RouterLink
-            >
-          </div>
-          <div class="ledger-list">
-            <div
-              v-for="entry in [
-                {
-                  name: 'Welcome points (sample)',
-                  type: 'Reward',
-                  amount: '+12,000',
-                  after: '12,840',
-                  time: 'Oct 01, 2026',
-                },
-                {
-                  name: 'Demo game entry',
-                  type: 'Play',
-                  amount: '−20',
-                  after: '840',
-                  time: 'Oct 02, 2026',
-                },
-                {
-                  name: 'Sample play reward',
-                  type: 'Reward',
-                  amount: '+860',
-                  after: '860',
-                  time: 'Oct 03, 2026',
-                },
-              ]"
-              :key="entry.name"
-              class="ledger-row"
-            >
-              <div class="ledger-icon">
-                {{ entry.type === "Play" ? "↗" : "✳" }}
-              </div>
-              <div class="ledger-info">
-                <strong>{{ entry.name }}</strong
-                ><span>{{ entry.type }} · {{ entry.time }}</span>
-              </div>
-              <strong :class="entry.amount.startsWith('+') ? 'positive' : ''"
-                >{{ entry.amount }} <small>pts</small></strong
-              >
-              <div class="ledger-after">
-                <span>After</span><strong>{{ entry.after }}</strong>
-              </div>
-            </div>
-          </div>
+          <WalletSummary :brand-code="walletBrandCode" :locale="locale" />
         </section>
 
         <section
@@ -2659,10 +2547,7 @@ watch(
                 }}
               </p>
               <a href="mailto:support@example.invalid" class="text-link"
-                >{{
-                  locale === "en" ? "Contact support" : "联系支持团队"
-                }}
-                ↗</a
+                >{{ locale === "en" ? "Contact support" : "联系支持团队" }} ↗</a
               >
             </div>
             <div class="faq-list">
@@ -2730,7 +2615,16 @@ watch(
       </main>
 
       <footer v-if="!isAuth" class="page-footer">
-        <span>© 2026 {{ brandName }} · {{ t.demo }}</span>
+        <span
+          >© 2026 {{ brandName }} ·
+          {{
+            route.path.startsWith("/wallet")
+              ? locale === "en"
+                ? "Live wallet · games remain demo"
+                : "真实钱包 · 游戏仍为演示"
+              : t.demo
+          }}</span
+        >
         <nav>
           <RouterLink to="/help">{{ t.help }}</RouterLink
           ><RouterLink to="/help">{{

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import AccessManagement from "./AccessManagement.vue";
 import MemberProvision from "./MemberProvision.vue";
 import AuthSettings from "./AuthSettings.vue";
+import FinanceManagement from "./FinanceManagement.vue";
 import {
   previewCorrection,
   resolveWithdrawal,
@@ -605,7 +606,7 @@ const ledger = [
         ><span><b>northstar</b><small>OPERATIONS CONSOLE</small></span></a
       >
       <div class="demo-chip">
-        <span class="pulse"></span>资金与游戏为演示
+        <span class="pulse"></span>游戏与提现为演示
         <span class="demo-chip-end">·</span>
       </div>
       <div class="brand-switch-wrap">
@@ -707,6 +708,7 @@ const ledger = [
             v-if="
               page !== '用户和成员' &&
               page !== '审计日志' &&
+              page !== '资金与账本' &&
               page !== '账号与权限'
             "
             class="prototype-badge"
@@ -738,6 +740,7 @@ const ledger = [
           showDemoNotice &&
           page !== '用户和成员' &&
           page !== '审计日志' &&
+          page !== '资金与账本' &&
           page !== '账号与权限'
         "
         class="demo-banner"
@@ -746,7 +749,7 @@ const ledger = [
         ><span
           ><b>交互演示 · 非生产环境</b
           ><span class="banner-copy">
-            积分、玩法审核、域名主题仍为虚构演示，不会写入后台。账号、成员和认证设置已接入真实
+            玩法审核、提现、域名主题仍为虚构演示，不会写入后台。账号、成员、积分账本和认证设置已接入真实
             API。</span
           ></span
         ><button aria-label="关闭说明" @click="showDemoNotice = false">
@@ -1148,7 +1151,7 @@ const ledger = [
             <div class="eyebrow">MEMBERS / LIVE DIRECTORY</div>
             <h1>用户和成员</h1>
             <p>
-              此页显示真实成员；账号权限和认证设置也已接入，资金与游戏页面仍为原型。
+              此页显示真实成员；账号权限、积分账本和认证设置也已接入，投注与提现仍为原型。
             </p>
           </div>
           <span v-if="account" class="live-pill"
@@ -2081,236 +2084,30 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '资金与账本'" class="page-content">
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">POINTS / LEDGER & REVIEWS</div>
-            <h1>资金与账本</h1>
-            <p>积分账本为追加记录；审核动作需要理由（仅演示）</p>
-          </div>
+        <FinanceManagement
+          v-if="account && selectedBrandId"
+          :key="selectedBrandId"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
+        <div v-else class="panel directory-state">
+          <h1>资金与账本</h1>
+          <p>
+            {{
+              account
+                ? "请先选择真实后台品牌。"
+                : "请先登录后台账号，才能查看和操作真实积分。"
+            }}
+          </p>
           <button
-            class="button button-secondary"
-            @click="toast('人工调整需创建独立调整流水（演示入口）')"
+            v-if="!account"
+            class="button button-primary"
+            @click="go('用户和成员')"
           >
-            ＋ 创建调整流水
+            进入管理员登录
           </button>
         </div>
-        <div class="money-cards">
-          <article class="panel money-card">
-            <span>积分余额汇总 <i>ⓘ</i></span
-            ><b>8,428,640 <small>分</small></b
-            ><small>3,284 个品牌成员账户</small>
-          </article>
-          <article class="panel money-card">
-            <span>今日充值</span><b>124,800 <small>分</small></b
-            ><small class="positive">↑ 8.2% 较昨日</small>
-          </article>
-          <article class="panel money-card">
-            <span>待审提现 <i class="count-pill">3</i></span
-            ><b>4,170 <small>分</small></b
-            ><button class="inline-link" @click="ledgerTab = '提现审核'">
-              查看待审核 →
-            </button>
-          </article>
-          <article class="panel money-card">
-            <span>账本对账状态</span><b class="balance-ok"><i>✓</i> 一致</b
-            ><small>最近检查 10-05 10:32</small>
-          </article>
-        </div>
-        <article class="panel finance-panel">
-          <div class="table-toolbar">
-            <div class="filter-tabs">
-              <button
-                v-for="t in ['账本流水', '充值审核', '提现审核']"
-                :key="t"
-                :class="{ selected: ledgerTab === t }"
-                @click="ledgerTab = t"
-              >
-                {{ t }} <span v-if="t === '提现审核'">3</span>
-              </button>
-            </div>
-            <button
-              class="button button-secondary"
-              @click="toast('流水报表导出完成（演示）')"
-            >
-              导出流水 ↓
-            </button>
-          </div>
-          <template v-if="ledgerTab === '提现审核'"
-            ><div class="withdraw-note">
-              提现积分冻结至审核结束。批准、驳回均要求填写原因；审核结果仅在当前演示会话中生效。
-            </div>
-            <div class="withdraw-list">
-              <div v-for="w in withdrawals" :key="w.id" class="withdraw-row">
-                <div class="withdraw-person">
-                  <i>{{ w.user[0] }}</i
-                  ><span
-                    ><b>{{ w.user }}</b
-                    ><small class="mono"
-                      >{{ w.id }} · {{ w.submitted }}</small
-                    ></span
-                  >
-                </div>
-                <div>
-                  <small>申请积分</small
-                  ><b class="withdraw-amount"
-                    >{{ w.points }} <small>分</small></b
-                  >
-                </div>
-                <div>
-                  <small>积分来源</small><b>{{ w.source }}</b>
-                </div>
-                <span
-                  class="badge"
-                  :class="
-                    w.status === '待审核'
-                      ? 'badge-warn'
-                      : w.status.startsWith('已通过')
-                        ? 'badge-success'
-                        : 'badge-neutral'
-                  "
-                  >{{ w.status }}</span
-                >
-                <div v-if="w.status === '待审核'" class="withdraw-actions">
-                  <button
-                    class="button button-secondary"
-                    @click="reviewTarget = w"
-                  >
-                    审核
-                  </button>
-                </div>
-                <div v-else class="withdraw-actions">
-                  <button
-                    class="text-button"
-                    @click="toast(`审核原因：${w.reason}`)"
-                  >
-                    查看原因
-                  </button>
-                </div>
-              </div>
-            </div></template
-          ><template v-else-if="ledgerTab === '账本流水'"
-            ><div class="toolbar-controls ledger-filters">
-              <input
-                class="field search-field"
-                placeholder="用户 / 来源 ID / Request ID"
-                v-model="search"
-              /><select class="field">
-                <option>全部业务类型</option>
-                <option>投注扣减</option>
-                <option>人工充值</option></select
-              ><button class="button button-secondary">筛选</button>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>业务 / 来源</th>
-                    <th>变动前可用</th>
-                    <th>变动</th>
-                    <th>变动后可用</th>
-                    <th>操作人 / 请求 ID</th>
-                    <th>时间</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="entry in ledger.filter(
-                      (item) =>
-                        !search ||
-                        `${item.id} ${item.source} ${item.type}`
-                          .toLowerCase()
-                          .includes(search.toLowerCase()),
-                    )"
-                    :key="entry.id"
-                  >
-                    <td>
-                      <b>{{ entry.type }}</b
-                      ><small class="cell-sub"
-                        >{{ entry.source }} ·
-                        <span class="mono">{{ entry.id }}</span></small
-                      >
-                    </td>
-                    <td class="amount">{{ entry.before }}</td>
-                    <td
-                      class="amount"
-                      :class="entry.change.startsWith('+') ? 'positive' : ''"
-                    >
-                      {{ entry.change }}
-                    </td>
-                    <td class="amount">{{ entry.after }}</td>
-                    <td>
-                      {{ entry.actor
-                      }}<small class="cell-sub mono"
-                        >REQ-DEMO-{{ entry.id.slice(-4) }}</small
-                      >
-                    </td>
-                    <td>{{ entry.time }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="panel-foot">
-              显示积分为整数字符串格式；明细中的变动前/后含显示、可用、冻结及提现积分
-              <span>只读演示</span>
-            </div></template
-          ><template v-else
-            ><div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>充值单</th>
-                    <th>成员</th>
-                    <th>充值积分</th>
-                    <th>凭证 / 备注</th>
-                    <th>申请时间</th>
-                    <th>状态</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="r in [
-                      {
-                        id: 'RC-2601043',
-                        user: 'Mia W.',
-                        amount: '2,000',
-                        proof: '已上传凭证',
-                        time: '10-05 09:12',
-                        status: '待确认',
-                      },
-                      {
-                        id: 'RC-2601041',
-                        user: 'Lin Q.',
-                        amount: '2,000',
-                        proof: '银行转账 · 尾号 4821',
-                        time: '10-04 18:41',
-                        status: '待确认',
-                      },
-                    ]"
-                    :key="r.id"
-                  >
-                    <td class="mono">{{ r.id }}</td>
-                    <td>{{ r.user }}</td>
-                    <td class="amount">{{ r.amount }} 分</td>
-                    <td>{{ r.proof }}</td>
-                    <td>{{ r.time }}</td>
-                    <td>
-                      <span class="badge badge-warn">{{ r.status }}</span>
-                    </td>
-                    <td>
-                      <button
-                        class="text-button"
-                        @click="toast(`${r.id} 已确认并写入演示账本`)"
-                      >
-                        核实入账 →
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div></template
-          >
-        </article>
       </section>
 
       <section v-else-if="page === '佣金和奖励'" class="page-content">
@@ -2652,14 +2449,16 @@ const ledger = [
         <span>Aurora Operations Console <b>·</b> Prototype v0.1</span
         ><span>{{
           page === "用户和成员" && account
-            ? "成员创建与管理为真实操作；资金与游戏仍为演示。"
+            ? "成员创建与管理为真实操作；投注与提现仍为演示。"
             : page === "审计日志" && account
-              ? "审计日志为真实后台数据；资金与游戏仍为演示。"
+              ? "审计日志为真实后台数据；投注与提现仍为演示。"
               : page === "账号与权限" && account
-                ? "账号与角色变更为真实操作；资金与游戏仍为演示。"
+                ? "账号与角色变更为真实操作；投注与提现仍为演示。"
                 : page === "品牌和域名" && account
-                  ? "认证设置为真实配置；域名、主题与资金仍为演示。"
-                  : "此页业务数据为演示；账号、成员和认证设置已接入后台。"
+                  ? "认证设置为真实配置；域名、主题与提现仍为演示。"
+                  : page === "资金与账本" && account
+                    ? "人工充值、冻结、调整与账本为真实操作；提现尚未接入。"
+                    : "此页业务数据为演示；账号、成员、积分和认证设置已接入后台。"
         }}</span>
       </footer>
       <div

@@ -341,4 +341,5 @@ func registerAdminRoutes(mux *http.ServeMux, d Dependencies) {
 		respond(w, r, 200, map[string]any{"items": items})
 	})
 	registerAdminManagementRoutes(handle, d)
+	registerPointAdminRoutes(handle, d)
 }

@@ -142,10 +142,10 @@
 `point_accounts`
 
 - `id`, `brand_id`, `brand_member_id`
-- `available_total`, `frozen_total`, `withdrawal_total`
-- `recharge_points`, `winning_points`, `gift_points`
 - `version`, `updated_at`
 - unique `(brand_id, brand_member_id)`
+
+S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, points)`，3 种来源 × 4 种状态共 12 行。显示/可用/冻结/提现汇总与来源可用余额由这 12 行派生，不再持有多份冗余余额。每次记账先锁账户行，完整 12 桶必须存在，version 与追加账本版本一致。
 
 `point_ledger_entries`
 
@@ -156,6 +156,8 @@
 - `reason_code`, `operator_id`, `idempotency_key`, `created_at`
 - append-only；同一业务动作 unique 幂等键
 
+实际字段为 member_id、entry_type、reference_type/reference_id、operation_key、version、request_hash、actor_type/actor_id、request_id、reason、reversal_of、source_allocation；每个 before/delta/after 快照为完整 12 桶十进制字符串 JSONB。`(brand_id, account_id, version)` 唯一，补偿引用强制同品牌同账户，原流水最多一笔全额补偿。账本和余额不能分开提交。
+
 ### 充值与提现
 
 `recharge_orders`
@@ -163,7 +165,7 @@
 - `id`, `brand_id`, `brand_member_id`, `points`, `status`
 - `proof_reference`, `remark`, `created_by`, `confirmed_by`, `confirmed_at`
 
-第一期由后台人工创建并确认；确认时写入充值积分和账本。
+第一期由后台人工创建并确认；确认时写入充值积分和账本。实际字段为 member_id、account_id、points、state（pending/confirmed/cancelled）、proof_reference、remark、created_by、confirmed_by、version、created_at、confirmed_at、ledger_entry_id。金额不可通过确认操作修改；确认必须匹配 pending 版本并原子完成账本、余额和审计。当前没有支付或文件上传，凭证仅可选文本引用。
 
 `withdrawal_orders`
 

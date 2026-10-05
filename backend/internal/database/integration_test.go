@@ -127,7 +127,7 @@ func TestBrandForeignKeysAndAppendOnly(t *testing.T) {
 		t.Fatal("audit deleted")
 	}
 	entry := ids.New()
-	if _, err := p.Exec(ctx, `INSERT INTO point_ledger_entries(id,brand_id,account_id,entry_type,reference_type,operation_key,before_snapshot,delta_snapshot,after_snapshot,reason,request_id) VALUES($1,$2,$3,'recharge','test','op-1','{}','{}','{}','test','req')`, entry, a, account); err != nil {
+	if _, err := p.Exec(ctx, `INSERT INTO point_ledger_entries(id,brand_id,account_id,member_id,version,request_hash,actor_type,entry_type,reference_type,operation_key,before_snapshot,delta_snapshot,after_snapshot,reason,request_id) VALUES($1,$2,$3,$4,1,repeat('a',64),'system','recharge','test','op-1','{}','{}','{}','test','req')`, entry, a, account, member); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.Exec(ctx, "UPDATE point_ledger_entries SET reason='tamper' WHERE id=$1", entry); err == nil {

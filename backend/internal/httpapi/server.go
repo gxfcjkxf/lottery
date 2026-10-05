@@ -79,6 +79,7 @@ func New(d Dependencies) http.Handler {
 	registerAuthRoutes(mux, d)
 	registerAdminRoutes(mux, d)
 	registerTelegramRoutes(mux, d)
+	registerPointRoutes(mux, d)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { failure(w, r, 404, "NOT_FOUND", "接口不存在") })
 	return middleware(d.Logger, d.TrustedProxies, mux)
 }

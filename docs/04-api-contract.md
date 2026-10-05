@@ -184,7 +184,41 @@
 
 认证配置保存立即生效，只允许上述三个公开登录字段，不修改条款文本/版本；version 对应品牌 config_version。Client ID 使用十进制字符串，非空必须是无前导零的正安全整数（≤9007199254740991），启用 Telegram 时不得为空。公开 ID 不是秘密凭证；真实外部应用授权仍需独立验收。
 
-### 期次和开奖
+### S3-a 已接入积分账本与人工财务
+
+积分参数/响应一律是 canonical 十进制字符串，禁止 JSON number、浮点、指数、正号或多余前导零；正金额范围 1–9223372036854775807。余额和所有 12 桶的合计不得超过 int64 上限，源/状态桶最终不得为负。积分不过期。
+
+| 方法 | 路径 | 授权/请求 |
+|---|---|---|
+| GET | /wallet | 当前品牌已登录成员的真实 Wallet |
+| GET | /wallet/ledger | 本人当前品牌追加账本；limit/offset 分页 |
+| GET | /admin/wallets/{memberID} | `wallet.view.brand/platform`；必须指定 X-Brand-ID |
+| GET | /admin/wallets/{memberID}/ledger | 同上；倒序分页 |
+| GET | /admin/wallets/{memberID}/reconciliation | 同上；根据完整账本重建并检查余额，不改写数据 |
+| GET | /admin/recharges | `recharge.view.brand/platform`；可选 member_id 与分页 |
+| POST | /admin/recharges | `recharge.write.brand`；member_id、points、reason，可选 proof_reference/remark |
+| POST | /admin/recharges/{id}/confirm | 同上；version、reason；pending → confirmed 且事务内入账 |
+| POST | /admin/wallets/{memberID}/freeze | `wallet.freeze.brand`；points、reason；默认来源顺序转至 manual_frozen |
+| POST | /admin/wallets/{memberID}/unfreeze | 同上；entry_id、reason；仅原人工冻结整笔原路返还 |
+| POST | /admin/wallets/{memberID}/adjust | `wallet.adjust.brand`；source、delta、reason；仅调整指定来源 available 桶 |
+
+用户接口同时支持既有 `/api/v1/b/{brandCode}` 入口，后台全部要求有效品牌 UUID。首次运营创建但未同意条款的成员不能通过钱包认证。财务写入只开放品牌范围；目前超级管理员只读，即使误配品牌写权限仍拒绝（其资金管理权限的最终业务范围待确认）。系统冻结、投注扣款、派奖和通用冲正只提供后端事务原语，不开放客户端万能余额变更接口。
+
+Wallet 含 account_id、brand_id、member_id、version 与 display_points、available_points、frozen_points、withdrawal_points、recharge_points、winning_points、gift_points、manual_frozen_points、system_frozen_points。后三种来源字段是各来源的**可用**余额，不能当作额外的一份积分；by_source 才是完整矩阵：
+
+~~~json
+{"recharge":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"},"winning":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"},"gift":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"}}
+~~~
+
+显示积分=可用+人工冻结+系统冻结，不包括提现中。Entry 含 id、品牌/账户/成员 ID、version、entry_type、业务引用、operation_key、before_snapshot、delta_snapshot、after_snapshot（全部 12 桶）、source_allocation、reason、actor_type/actor_id、request_id、created_at、可选 reversal_of。delta 允许负数字符串。退款/冲正必须关联原记录、使用原分配的精确反向变动，原流水不可覆盖；同一原流水最多一笔全额补偿。
+
+充值单创建返回 201 pending，不增加余额；确认返回 confirmed、ledger_entry_id、audit_log_id。版本冲突或新操作键重复确认返回 409，不二次到账；同一幂等键原请求重放原成功结果。凭证引用可选，不提供文件上传或真实支付；备注可选，创建和确认原因都必填（1–500 UTF-8 字节）。单人可创建并确认。
+
+Reconciliation 返回 consistent、account_id、member_id、version、entry_count、expected/actual（完整矩阵）、issues。关键查询走主库；对账在共享账户锁内扫描版本链，写入在账户排他锁内校验上一条 after 与当前余额。没有账本却有余额、缺失桶或不一致时停止新增记账，返回 `POINTS_RECONCILIATION_REQUIRED`，不能用人工调整绕过损坏。对账异常的专门修复流程、可配置运营积分上限和大规模异步对账仍待后续实现；当前只执行 int64 技术上限。
+
+错误：400 `POINTS_INPUT_INVALID`/`POINTS_LIMIT_EXCEEDED`；404 `POINTS_RECORD_NOT_FOUND`；409 `POINTS_INSUFFICIENT`/`POINTS_OPERATION_CONFLICT`/`POINTS_RECONCILIATION_REQUIRED`。资金写入复用持久化幂等与新权限重查，业务单、桶余额、追加账本、账户版本和审计共同提交或回滚。
+
+### 期次和开奖（后续实现）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
