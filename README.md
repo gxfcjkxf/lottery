@@ -58,7 +58,11 @@ go run ./cmd/platform create-admin --username platform_reader --super
 
 共享密码重置会影响全部品牌。按已确认规则，操作者须对该用户每个已加入品牌都有重置权限；仅有一个品牌权限时不得修改多品牌用户的全局密码。超级管理员始终不能修改用户。
 
-管理端账号/角色、运营新增成员、认证配置、积分账本和人工充值/冻结/调整已接入真实 API。角色按品牌隔离，授予权限不得超出操作者的目标品牌权限；账号角色/状态/密码变更撤销目标会话。运营新增成员必须由本人首次登录确认条款。用户钱包与流水展示真实余额；后台也已接入独立玩法模拟 API：`POST /api/v1/admin/rule-simulations`，需显式品牌上下文和 `rule.simulate.brand` 或 `rule.simulate.platform` 权限。它只计算并审计，不投注、不改积分、不创建订单，也不发布或审批玩法。玩法版本生命周期、用户投注/提现和业务订单仍未接入真实业务流程；接口边界见 [API 契约](docs/04-api-contract.md)，实现范围见 [实施记录](docs/implementation-progress.md)。
+管理端账号/角色、运营新增成员、认证配置、积分账本和人工充值/冻结/调整已接入真实 API。角色按品牌隔离，授予权限不得超出操作者的目标品牌权限；账号角色/状态/密码变更撤销目标会话。运营新增成员必须由本人首次登录确认条款。用户钱包与流水展示真实余额；后台也已接入独立玩法模拟 API：`POST /api/v1/admin/rule-simulations`，需显式品牌上下文和 `rule.simulate.brand` 或 `rule.simulate.platform` 权限。它只计算并审计，不投注、不改积分、不创建订单，也不发布或审批玩法。
+
+S4-b 已接入彩种/玩法创建、规则草稿、持久化用例验证、送审、独立审核及旧定义克隆。目录读取需 `game.view.brand` 或 `game.view.platform`、创建需 `game.write.brand`；规则读取需 `rule.view.brand` 或 `rule.view.platform`，写入、验证、送审、审核分别需 `rule.write.brand`、`rule.validate.brand`、`rule.submit.brand`、`rule.review.brand`。这些工作流的全部超级管理员写入均拒绝；创建者及所有草稿编辑者不能审核。验证报告保留完整输入、输出、定义 hash 和警告，批准须确认警告；`version` 乐观锁与历史 `version_no` 不同。立即模式审核通过即生效，下期模式每玩法仅一个待生效版本，由内部实际开期事务激活；无公开强制激活接口，S4-c 自动期次调度尚未完成。旧定义克隆仅支持 active/expired/rolled_back，新草稿定义不可改写且须重新验证审核。后台六个模板不是完整 DSL 编辑器；版本工作流不动积分。用户投注/提现与业务订单仍待后续接入；详细边界见 [玩法规则引擎](docs/03-rule-engine.md)、[API 契约](docs/04-api-contract.md)，阶段验收见 [实施记录](docs/implementation-progress.md)。
+
+后台新建规则草稿默认选择立即生效（`immediate`）；创建、更新及克隆 API 仍必须显式发送 `effect_mode`，后端没有默认值。
 
 Telegram 使用当前 OIDC 登录与一次性 nonce；品牌 `auth_config` 中设置 `telegram_enabled` 和 `telegram_client_id` 后，还需在 Telegram 配置允许的域名。未提供真实应用配置时默认关闭，不能用任意 Telegram 用户名冒充授权。验证码通过 `auth_config.captcha_enabled` 开启，是基本图形挑战，并不替代 WAF 和反自动化服务。
 
@@ -86,14 +90,39 @@ TEST_DATABASE_URL=postgres://lottery:lottery_local@localhost:5432/lottery_test?s
 
 从 backend 目录运行上述命令。测试在目标数据库中创建独立随机 schema，结束后删除该 schema；禁止使用生产数据库。未配置 TEST_DATABASE_URL 时集成测试会显示 SKIP，不能据此宣称数据库验收通过。具备 C 编译工具链的环境还应运行 go test -race ./...；CI 使用 Linux 完成该检查。
 
-浏览器回归（先启动已迁移、已 seed 的开发 API）：
+浏览器回归：每个 Playwright project 必须使用各自独立的临时测试 PostgreSQL 与 API，分别迁移、seed 并创建测试管理员；不要指向开发共用库或生产环境。先安装浏览器：
 
 ~~~sh
 pnpm exec playwright install chromium
-pnpm test:e2e
 ~~~
 
-测试会自动启动两个前端，验证 PC/移动视口、真实注册/登录/会话恢复、品牌隔离与原型选号/取消流程。后台成员及角色/账号回归要求 `TEST_ADMIN_USERNAME` 和 `TEST_ADMIN_PASSWORD`，指向事先由 `create-admin --brand aurora` 创建的隔离测试账号；认证配置回归还要求 `TEST_HARBOR_ADMIN_USERNAME` 和 `TEST_HARBOR_ADMIN_PASSWORD`，由 `create-admin --brand harbor` 创建。Harbor 桌面用例开启验证码后恢复原值，移动用例只检查真实编辑器读取与布局，避免跨项目版本竞争。未提供凭证时对应组明确 SKIP，不能宣称全部验收通过。不要使用客户或生产凭证。已有 Chrome 可通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定可执行文件。CI 在临时独立数据库中显式创建测试管理员；浏览器创建成员/角色/账号和状态修改会持久化到测试库，但演示订单不操作真实账本。
+启动 desktop 专属测试 API 后运行：
+
+~~~sh
+pnpm test:e2e --project=desktop --workers=2
+~~~
+
+再切换到 mobile 专属的另一套临时数据库/API 后运行（本地顺序运行，避免前端/API 端口冲突）：
+
+~~~sh
+pnpm test:e2e --project=mobile --workers=2
+~~~
+
+例如本地可分别使用 PostgreSQL 55440（desktop）与 55441（mobile），各自的 API 必须实际连接对应测试库，不能只换浏览器 project。不要在 5 分钟内让两个 project 共用同一数据库/API：真实认证限流为每 IP 30 次/5 分钟，合跑会触发 429。不得通过关闭认证限流、清除限流记录或伪造 forwarded IP 绕过；CI 使用 `project: [desktop, mobile]` 矩阵，每个 job 自带独立 PostgreSQL/API，执行 `pnpm test:e2e --project=${{ matrix.project }} --workers=2`。
+
+测试会自动启动两个前端，验证 PC/移动视口、真实注册/登录/会话恢复、品牌隔离、规则创建→验证→送审→独立审核→立即生效及原型选号/取消流程。每套临时测试库都需配置以下凭证：
+
+- `TEST_ADMIN_USERNAME` / `TEST_ADMIN_PASSWORD`：事先由 `create-admin --brand aurora` 创建的隔离测试管理员，供后台成员、角色/账号和财务回归使用。
+- `TEST_HARBOR_ADMIN_USERNAME` / `TEST_HARBOR_ADMIN_PASSWORD`：由 `create-admin --brand harbor` 创建，供 Harbor 配置与规则创建等回归使用。
+- `TEST_RULE_REVIEWER_USERNAME` / `TEST_RULE_REVIEWER_PASSWORD`：另用 `create-admin --brand harbor` 创建的独立审核账号，必须不同于 Harbor 规则创建者，不能用同账号完成创建和审核。
+
+例如在 backend 目录、连接当前 project 的临时测试库并安全注入 `BOOTSTRAP_ADMIN_PASSWORD` 后创建审核账号（密码不写入命令参数）：
+
+~~~sh
+go run ./cmd/platform create-admin --username "$TEST_RULE_REVIEWER_USERNAME" --brand harbor
+~~~
+
+将该账号密码配置为 `TEST_RULE_REVIEWER_PASSWORD`，完成引导后清除引导密码环境变量。Harbor 桌面认证配置用例开启验证码后恢复原值，移动用例检查真实编辑器读取与布局；项目隔离仍不可省略。未提供凭证时对应组明确 SKIP，不能宣称全部验收通过。不要使用客户或生产凭证。已有 Chrome 可通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定可执行文件。浏览器会经真实公开 API 写入合成测试成员、角色/账号、配置、规则版本和审核记录，部分财务用例也会写真实测试账本；所有写入仅允许落到当前 project 的临时测试库，不是生产业务。原型演示订单本身不操作账本。
 
 ## 开发与测试方式
 

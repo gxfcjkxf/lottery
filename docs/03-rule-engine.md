@@ -140,13 +140,13 @@
 
 ## 6. 规则生命周期
 
-`draft → pending_review → approved → active → expired/rolled_back`
+立即模式：`draft → pending_review → active → expired/rolled_back`；下期模式：`draft → pending_review → approved → active → expired/rolled_back`。审核驳回进入 `rejected`。
 
-- 创建者不能审核自己的规则。
-- 品牌管理员审核本品牌规则；平台超级管理员只查看。
+- 创建者及所有成功更新过该版本草稿的编辑者均不能审核（通过或驳回）。
+- 具有对应权限的品牌管理员处理本品牌规则；平台超级管理员只查看，全部彩种/玩法版本工作流写入均拒绝。
 - 生效模式：立即生效或下期生效。
-- 新版本只影响新投注；历史订单保存旧版本。
-- 回滚是发布新版本指向旧定义，不删除历史版本。
+- S4-b 已保存版本历史和开期版本绑定；用户投注与历史订单绑定仍是后续阶段契约。
+- 回滚通过克隆旧定义创建新草稿，重新验证和审核，不删除历史或直接切换旧版本。
 
 ## 7. 配置校验与模拟
 
@@ -161,9 +161,11 @@
 
 后台必须能模拟指定选号和开奖结果，并展示每个条件节点、命中奖级和最终积分。
 
+上述为完整设计目标；S4-b 的静态证明有明确边界，只阻断可证明的矛盾/不可达并提示已发现的重叠，不宣称任意复合条件完整覆盖（见 §9）。
+
 ## 8. S4-a 可执行 DSL v1（实际实现）
 
-前面的概念字段是完整平台设计；本节为可直接交给实现方和 API 使用的计算结构。生命周期版本、取消和生效字段随后保存于业务版本记录，不能把 `effective`、`cancellation` 或代码字符串直接塞入计算 Definition。
+前面的概念字段是完整平台设计；本节为可直接交给实现方和 API 使用的计算结构。生命周期版本与生效信息已由 S4-b 业务版本记录保存，取消业务仍待后续实现，不能把 `effective`、`cancellation` 或代码字符串直接塞入计算 Definition。
 
 计算入口 `SimulateContext(ctx, SimulationInput)`；当前仅模拟，不扣款、不创建订单、不发布规则。请求含 definition、selection、draw、multiplier（规范正整数字符串）。定义采用闭合 JSON schema，所有深度拒绝重复键、未知字段；无脚本、eval 或动态程序执行。
 
@@ -205,4 +207,36 @@
 
 每个条件深度最多 8、节点最多 128；一次模拟解释节点总量最多 200000。号码池最多 10000，号码值 0–1000000、每组数量最多 10、数字长度 1–10。跨组不重复可行性使用集合约束，数字位置不重复使用二分图匹配，不能穷举无解排列。执行检查请求取消，组合工作量另有上界。HTTP 请求沿用后台 16 KiB 上限。
 
-模拟返回风险提示；奖级重叠、商业赔率合理性和完整可达性仍需案例覆盖及品牌管理员审核。S4-a 不是规则发布或完整运营编辑器验收，历史版本绑定、审核、下期生效、期次和开奖在 S4 后续子阶段继续。
+模拟返回风险提示；商业赔率合理性、任意复合条件的完整可达性和覆盖率仍需案例覆盖及品牌管理员审核。独立 S4-a 模拟不发布规则；S4-b 的已保存版本验证和审核见下节，自动期次调度、开奖和投注结算仍待后续阶段。
+
+## 9. S4-b 已保存规则版本与验证审核（实际实现）
+
+### 品牌目录、权限与版本
+
+彩种保存合法 Model 与时区，玩法归属该彩种和品牌；草稿只能使用通过 DSL 校验且与所属彩种一致的完整 Model（不只比较模型枚举）。三类模型枚举为 `X_PLUS_Y`、`M_SELECT_N`、`DIGITS_0_9`。请求与响应见 [API 契约 S4-b](04-api-contract.md#s4-b-已接入彩种玩法与规则版本工作流)。
+
+- 彩种/玩法目录读取：`game.view.brand` 或 `game.view.platform`；创建：仅 `game.write.brand`。
+- 规则读取：`rule.view.brand` 或 `rule.view.platform`；创建/修改/克隆：`rule.write.brand`；验证：`rule.validate.brand`；送审：`rule.submit.brand`；审核通过/驳回：`rule.review.brand`。
+- 权限精确匹配，不互相隐含；平台读取也必须选择品牌。没有平台写入权限路径，超级管理员即使误配品牌写权限，所有上述写入仍拒绝。独立模拟的 `rule.simulate.platform` 不授予版本工作流写入权。
+
+每个玩法的 `version_no` 是创建时分配、永不修改的历史序号；`version` 是记录乐观锁版本，更新、验证和状态变更都会递增。后续请求使用最新返回的 `version`，不能拿 `version_no` 作为锁版本。仅 `draft` 可修改 Definition 和生效模式；保存草稿会清除旧验证报告。送审后 Definition、生效模式和验证证据不可改写，数据库也禁止删除历史及改写审核证据。
+
+### 验证报告与审核隔离
+
+验证针对已保存的 Definition，接受 1–32 个用例。每例有非空、去空白后唯一的 name（最多 120 UTF-8 字节）、selection、draw、正整数 multiplier，以及必填的 expected_bet_points、expected_prize_points、expected_won。预期积分是规范非负整数字符串；不要求发送模型不适用的空选号/开奖字段。整个用例集共享最多 200000 个解释节点的执行预算。
+
+报告包含 `passed`、`definition_hash`、`cases`、`warnings`、`findings`。hash 是确定性序列化的类型化 Definition 的 SHA-256（不是任意原始 JSON 的字节摘要）。每个 case 保存完整原始 `input`（含 selection、draw、multiplier 和全部预期值）、预期/实际 bet/prize/won、`matched` 与完整 `simulation` 输出及各条件 Trace；积分精确比较，不转浮点。案例结果不符时验证请求仍成功保存报告，但 `passed=false`；非法输入或超执行预算则请求失败。
+
+静态检查只做有界证明：可证明的同一标量 AND 约束矛盾、模型不变量导致的不可达奖级产生阻断 `TIER_UNREACHABLE`；重复条件或同一标量区间可证明相交产生非阻断 `TIER_OVERLAP` 警告。案例不符产生阻断 `CASE_MISMATCH`。这不是任意复合条件全覆盖或商业赔率安全证明；报告始终保留样例不能证明完整覆盖的风险提示。
+
+送审与审核都要求报告通过且 hash 等于当前定义 hash。创建者与所有成功更新草稿的编辑者记录在不可改写的 contributors 中，均不能通过或驳回自己的版本（只改生效模式的更新也计入）；仅执行验证不自动成为贡献者。审核通过遇到 warnings 必须显式 `warnings_acknowledged=true`，原因和确认记录进入审计；驳回不要求确认警告。当前通用风险提示意味着通过审核需要确认。审核驳回是终态，不提供就地改回草稿的路径。
+
+### 生效、队列与旧定义克隆
+
+后台新建草稿默认选择 `immediate`，但这只是前端默认：创建、更新及 clone 请求始终必须显式发送 `effect_mode`，后端不推断默认值。`effect_mode=immediate` 在审核通过的同一事务直接激活并替换玩法 active 引用，不另调用 publish。`next_period` 审核通过后为 `approved`，绑定该彩种已实际开启序号的下一序号；每个玩法最多一个 approved 待生效版本。存在该队列时，后续通过审核（包括立即模式）返回 409 `RULE_STATE_CONFLICT`，不能覆盖队列。
+
+下期激活只由内部 `Store.OpenPeriod` 执行：与审核共用彩种行锁，根据 PostgreSQL `clock_timestamp()` 要求 `bet_start_at <= now < bet_end_at` 且 `bet_end_at <= draw_at`，实际开期时激活符合序号的 approved 版本，并不可变地保存该期各玩法的有效版本引用。不能伪造未来开期时间提前激活，也没有公开 activate-now 捷径。S4-c 自动计划生成、调度与完整期次/开奖业务尚未完成；有内部事务入口不表示后台已支持自动开期。
+
+仅 `active`、`expired`、`rolled_back` 可作为 clone 来源。clone 保存 `source_version_id`，生成新的 `version_no` 和无验证报告的 draft，必须重新验证、送审、由非贡献者审核。源克隆的 Definition 即使在 draft 也不可改写；可在草稿阶段调整生效模式。普通新版本替换旧 active 时旧版变为 expired；来源克隆版本生效时被替换的旧 active 标记 rolled_back。历史版本、审核证据和开期绑定均不删除。
+
+后台已接入上述真实 API，但编辑控件只覆盖特别号命中、三位数字直选、数字特征、排除号码、特别号属性、M 选 N 全中六个模板，不是完整 DSL 运营编辑器。无法无损还原的定义保留只读，不用模板猜测覆盖。上述版本、验证、审核和激活动作均不创建投注订单、不改变积分、不派奖。

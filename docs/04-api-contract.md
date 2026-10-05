@@ -7,7 +7,7 @@
 - 所有接口返回 JSON；时间使用 UTC ISO-8601；积分使用十进制整数字符串。
 - 认证：支持 `Authorization: Bearer <access_token>`；浏览器默认使用 HttpOnly、SameSite=Strict Cookie，不在 Web Storage 保存令牌。
 - 请求追踪：X-Request-ID 必填或由网关生成。
-- 所有有副作用的 POST/PATCH 必须支持 Idempotency-Key；当前键格式为 8–128 个 ASCII 字母、数字、`_ : . -`。
+- 所有有副作用的 POST/PUT/PATCH 必须支持 Idempotency-Key；当前键格式为 8–128 个 ASCII 字母、数字、`_ : . -`。
 - 品牌后台请求使用 X-Brand-ID；服务端必须校验操作者是否拥有该品牌权限。
 - 不接受客户端传入的 brand_id 作为唯一授权依据；品牌必须由域名、令牌和权限共同确定。
 
@@ -304,19 +304,86 @@ RepairPreview 含 account_id、member_id、version（观察到的账户版本）
 
 主要错误（均为 `{success:false,error:{code,message},request_id}`）：400 `RULE_INVALID`（规则、选号或开奖结果无效）、`RULE_EXECUTION_LIMIT`、`RULE_POINTS_OVERFLOW`；400 `REQUEST_INVALID`/`IDEMPOTENCY_KEY_INVALID`；401 `AUTH_SESSION_REVOKED`；403 `PERMISSION_DENIED`/`CSRF_REJECTED`；409 `IDEMPOTENCY_CONFLICT`；415 `CONTENT_TYPE_INVALID`；503 `SERVICE_UNAVAILABLE`。管理端调用使用 [`rule-simulation-api.ts`](../admin-web/src/rule-simulation-api.ts) 与规则模拟器页面；调用方可通过响应 HTTP status 和 `error.code` 区分错误。
 
-### 玩法和配置（完整版本生命周期：后续实现）
+### S4-b 已接入：彩种、玩法与规则版本工作流
 
-下面的规则版本草稿、校验工作流、送审、审核、发布、生效和回滚仍是后续 API 契约，不由上述已接入的独立模拟端点实现。
+以下路径以 `/api/v1` 为前缀。全部要求有效管理会话和 `X-Brand-ID` UUID，平台查看也必须选品牌。权限精确匹配，写入/验证/审核权限不隐含读取权限；仅有 `.platform` 查看权限不能写。全部彩种和规则工作流写入拒绝超级管理员，即使误配品牌写权限；独立模拟的 `rule.simulate.platform` 不改变此边界。
 
-| 方法 | 路径 | 说明 |
+| 方法 | 路径 | 精确授权 / 请求 |
 |---|---|---|
-| POST | /admin/rule-versions | 创建草稿 |
-| POST | /admin/rule-versions/{id}/validate | （后续）校验已保存草稿并模拟 |
-| POST | /admin/rule-versions/{id}/submit-review | 提交审核 |
-| POST | /admin/rule-versions/{id}/approve | 品牌管理员审核通过 |
-| POST | /admin/rule-versions/{id}/reject | 驳回并记录原因 |
-| POST | /admin/rule-versions/{id}/publish | 立即或下期生效 |
-| POST | /admin/rule-versions/{id}/rollback | 创建回滚版本 |
+| GET | /admin/games | `game.view.brand` 或 `game.view.platform`；分页 |
+| POST | /admin/games | `game.write.brand`；code、name、model、timezone、reason |
+| GET | /admin/games/{id}/plays | `game.view.brand` 或 `game.view.platform`；分页 |
+| POST | /admin/games/{id}/plays | `game.write.brand`；code、name、reason |
+| GET | /admin/plays/{id}/rule-versions | `rule.view.brand` 或 `rule.view.platform`；分页，version_no 倒序 |
+| GET | /admin/rule-versions/{id} | `rule.view.brand` 或 `rule.view.platform`；完整版本及验证报告 |
+| POST | /admin/rule-versions | `rule.write.brand`；play_id、definition、effect_mode、reason |
+| PUT | /admin/rule-versions/{id} | `rule.write.brand`；version、完整 definition、effect_mode、reason；仅 draft |
+| POST | /admin/rule-versions/{id}/validate | `rule.validate.brand`；version、cases、reason；仅 draft |
+| POST | /admin/rule-versions/{id}/submit-review | `rule.submit.brand`；version、reason |
+| POST | /admin/rule-versions/{id}/approve | `rule.review.brand`；version、reason、warnings_acknowledged |
+| POST | /admin/rule-versions/{id}/reject | `rule.review.brand`；version、reason；不要求确认警告 |
+| POST | /admin/rule-versions/{id}/clone | `rule.write.brand`；effect_mode、reason；旧定义克隆为新草稿 |
+
+写请求要求 `application/json`、`Idempotency-Key`，正文上限 16 KiB；携带 Cookie 的请求必须带与 Host 同源的 Origin（CSRF 校验）。未知字段、畸形/尾随 JSON 拒绝；Definition 各层闭合且拒绝重复字段。模型不适用的空字段可省略，不要求发送所有空选号/开奖组。完整计算 DSL 见 [03-rule-engine.md §8](03-rule-engine.md#8-s4-a-可执行-dsl-v1-实际实现)，工作流与激活边界见该文档 §9。
+
+所有写入都有非空 reason，最多 500 UTF-8 字节；彩种/玩法 code 匹配 `^[a-z][a-z0-9_]{0,47}$`，name 非空且最多 120 UTF-8 字节。timezone 必须是服务端可加载的时区；model 为合法三类 Model。创建或修改规则的 Definition 必须合法且完整 Model 与所属彩种一致；effect_mode 只能为 `immediate` 或 `next_period`。列表支持 limit（1–100，默认 50）及 offset（0–1000000），分别返回 `{games,limit,offset}`、`{plays,limit,offset}`、`{versions,limit,offset}`。
+
+成功使用标准 `{success,data,request_id}`：创建彩种、玩法、草稿及 clone 返回 201，其余成功返回 200。Game 含 id、brand_id、code、name、model、timezone、status、version、started_sequence；Play 含 id、brand_id、game_id、code、name、status、active_version_id、version。规则 Version 含 id、brand_id、game_id、play_id、version_no、version、definition、definition_hash、status、effect_mode、created_by、reviewed_by、review_comment、created_at、updated_at，以及可选 effective_at、effective_period_id、effective_sequence、source_version_id、validation、audit_log_id。
+
+`version_no` 是每玩法不可变的历史序号；请求中的 `version` 是正整数记录乐观锁，不是 version_no。更新、验证、送审和审核成功后返回新的 version，下一动作须使用它。仅 draft 可更新，更新清除旧 validation；非 draft 的 Definition、生效模式、验证证据不可改写。历史记录不可删除，rejected 不支持原地恢复草稿。
+
+#### 已保存定义的用例验证
+
+validate 不从正文接受新 Definition，只执行目标草稿当前已保存的定义。请求形状如下（示例 selection/draw 对应上节特别号玩法）：
+
+~~~json
+{
+  "version": 1,
+  "reason": "核对特别号命中与倍率",
+  "cases": [{
+    "name": "特别号命中",
+    "selection": { "special": [7, 19] },
+    "draw": { "regular": [1, 2, 3, 4, 5, 6], "special": [7] },
+    "multiplier": "2",
+    "expected_bet_points": "4",
+    "expected_prize_points": "70",
+    "expected_won": true
+  }]
+}
+~~~
+
+cases 必须有 1–32 项；name 非空、去空白后唯一、最多 120 UTF-8 字节。selection/draw 必须符合模型及玩法模式，multiplier 为规范正整数字符串。三个 expected 字段都必填；预期积分是规范非负整数字符串，中奖状态为 JSON boolean。整个用例集共享最多 200000 个解释节点的预算。
+
+验证返回 Version，`data.validation` 保存完整 `ValidationReport`：passed、definition_hash、cases、warnings、findings。每例包含 name、完整原始 input（selection、draw、multiplier 和三个预期值）、expected_bet_points、actual_bet_points、expected_prize_points、actual_prize_points、expected_won、actual_won、matched、simulation；每项 finding 含 code、message、blocking。simulation 含规范选号、计算输出、完整奖级及条件 Trace；raw/capped 字段沿用上节精确 RatString 格式，可为 `n/d`，不是整数金额。案例预期不符仍返回 200 并保存 `passed=false`；非法请求、计算溢出或超预算才是错误响应。
+
+definition_hash 是确定性类型化 Definition JSON 的 SHA-256，不是请求原始字节 hash。静态检查仅对可证明的标量约束矛盾/模型不变量不可达产生阻断 `TIER_UNREACHABLE`；案例不符为阻断 `CASE_MISMATCH`；重复或同标量可证明相交的条件为非阻断 `TIER_OVERLAP`。报告保留样例不能证明完整覆盖及商业赔率合理性的风险提示，不声称任意复合条件全覆盖。完整 input/output 与报告持久化供审核人查看，送审后证据不可改写。
+
+#### 送审、审核、生效与克隆
+
+submit-review 只允许 draft，要求 validation.passed=true 且报告 definition_hash 与当前定义一致，成功变为 pending_review。创建者及所有成功更新过草稿的编辑者（contributors，含仅改生效模式者）均不能 approve 或 reject；只执行验证不自动加入 contributors。通过与驳回都要求当前有效验证报告。存在 warnings 时通过必须显式 `warnings_acknowledged=true`；通用风险提示始终存在，不能绕过确认。reject 记录原因并进入 rejected，不要求 warnings_acknowledged。
+
+后台新建草稿默认选择 `immediate`；后端没有默认生效模式，创建、PUT 更新及 clone 必须显式发送 `effect_mode`（仅 `immediate` / `next_period`），遗漏或空值拒绝。通过时 `immediate` 在同一事务直接成为 active 并替换玩法有效版本，没有独立 publish 步骤；`next_period` 成为 approved，绑定彩种下一实际开期序号。每玩法最多一个 approved 队列项；已有待生效项时后续 approve（包括 immediate）返回 409 `RULE_STATE_CONFLICT`，不覆盖它。
+
+下期激活仅由内部 `Store.OpenPeriod` 在彩种行锁下执行，与审核串行化：使用 PostgreSQL `clock_timestamp()` 检查实际窗口 `bet_start_at <= now < bet_end_at`、`bet_end_at <= draw_at`，开期时激活满足序号的 approved 版本并保存不可变 period_rule_versions。无公开 activate-now 路由；S4-c 自动期次生成/调度、完整开奖与投注结算尚未完成，上面的未来期次 API 仍未接入。
+
+clone 仅接受 active/expired/rolled_back 来源，返回新的 draft、version_no、source_version_id，不直接激活旧版本。新草稿定义继承源定义且不可修改，draft 阶段可修改生效模式，但必须重新验证、送审、由非贡献者审核。普通版本替换时旧 active 标记 expired；来源克隆版本生效时被替换的旧 active 标记 rolled_back。不删除历史、不改变积分、不创建投注订单或派奖。
+
+#### 审计、幂等与错误
+
+成功查询追加 `rule.workflow.view` 审计。成功写入在同一事务追加 `game.create`、`play.create`、`rule.draft.create/update/validate`、`rule.review.submit/approve/reject` 或 `rule.rollback.draft`，包含操作者、原因、请求 ID 与变更摘要；规则版本写响应含 audit_log_id，彩种/玩法写响应以 request_id 追踪审计。内部开期激活写 system actor 的 `rule.period.activate`。版本、报告、审核、审计与幂等结果共同提交或回滚；同键同请求重放不重复执行/审计，同键不同正文返回 409 `IDEMPOTENCY_CONFLICT`。最终业务失败可缓存，修改正文（包括刷新后的 version）必须用新键；瞬时/存储失败返回 503，不封存为最终结果。写事务重查当前权限和管理会话。
+
+实际业务错误：400 `RULE_INVALID`、`RULE_EXECUTION_LIMIT`、`RULE_POINTS_OVERFLOW`；404 `RESOURCE_NOT_FOUND`；409 `RULE_VERSION_CONFLICT`（乐观版本或目录编号冲突）、`RULE_STATE_CONFLICT`（状态不符、队列已有项、修改源克隆定义等）、`RULE_VALIDATION_REQUIRED`（报告无效或批准未确认警告）；403 `PERMISSION_DENIED`（含贡献者审核及超级管理员写入）。通用解析、CSRF、认证、幂等与 503 错误沿用 S4-a 约定。
+
+管理端六个模板只覆盖特别号命中、三位数字直选、数字特征、排除号码、特别号属性、M 选 N 全中；并非完整 DSL 运营编辑器。不能无损还原的定义在页面只读，不能用模板覆盖原规则。
+
+### 玩法版本的旧设计路径（未实现）
+
+以下保留为未来 API 设计，不是已注册路由，也不能作为绕过审核的调用方式。当前立即/下期生效使用上述 approve 与内部 OpenPeriod，回滚草稿使用 clone。
+
+| 方法 | 路径 | 未来契约边界 |
+|---|---|---|
+| POST | /admin/rule-versions/{id}/publish | 未实现；不是当前审批后的必调步骤 |
+| POST | /admin/rule-versions/{id}/rollback | 未实现；当前使用 clone 创建需重新验证审核的草稿 |
 
 ### 资金、用户和代理
 

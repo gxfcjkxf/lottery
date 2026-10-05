@@ -6,6 +6,7 @@ import AuthSettings from "./AuthSettings.vue";
 import FinanceManagement from "./FinanceManagement.vue";
 import BalanceRepair from "./BalanceRepair.vue";
 import RuleSimulator from "./RuleSimulator.vue";
+import RuleVersions from "./RuleVersions.vue";
 import {
   previewCorrection,
   resolveWithdrawal,
@@ -751,7 +752,7 @@ const ledger = [
         ><span
           ><b>交互演示 · 非生产环境</b
           ><span class="banner-copy">
-            玩法审核、提现、域名主题仍为虚构演示，不会写入后台。账号、成员、积分账本和认证设置已接入真实
+            提现、域名主题及标为“演示”的页面不会写入后台。账号、成员、积分账本、认证设置和规则版本流程已接入真实
             API。</span
           ></span
         ><button aria-label="关闭说明" @click="showDemoNotice = false">
@@ -1453,6 +1454,13 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '规则配置'" class="page-content">
+        <RuleVersions
+          v-if="account && selectedBrandId"
+          :key="`rule-versions-${selectedBrandId}`"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
         <RuleSimulator
           v-if="account && selectedBrandId"
           :key="`rule-simulator-${selectedBrandId}`"
@@ -1464,340 +1472,356 @@ const ledger = [
           <h2>真实规则模拟</h2>
           <p>请先登录后台并选择品牌；下面的规则审核向导仍为演示。</p>
         </div>
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">GAMES / RULE WORKBENCH</div>
-            <h1>规则配置</h1>
-            <p>创建、模拟并提交不可变规则版本供品牌管理员审核</p>
+        <details class="demo-rule-workbench">
+          <summary>旧规则向导演示（不会保存、发布或审核真实规则）</summary>
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow">GAMES / RULE WORKBENCH</div>
+              <h1>规则配置</h1>
+              <p>创建、模拟并提交不可变规则版本供品牌管理员审核</p>
+            </div>
+            <button
+              class="button button-secondary"
+              @click="toast('已打开规则版本列表（演示）')"
+            >
+              版本历史 ↗
+            </button>
           </div>
-          <button
-            class="button button-secondary"
-            @click="toast('已打开规则版本列表（演示）')"
-          >
-            版本历史 ↗
-          </button>
-        </div>
-        <div class="rule-layout">
-          <article class="panel rule-editor">
-            <div class="rule-top">
-              <div>
-                <span class="badge badge-neutral">草稿 · v13</span>
-                <h2>星彩 6+1 · 特别号命中</h2>
-                <p>适用品牌：{{ brand }} <span>·</span> 生效方式：下一期期次</p>
-              </div>
-              <button
-                class="save-status"
-                @click="toast('草稿保存在本次页面会话中')"
-              >
-                ● 自动保存演示
-              </button>
-            </div>
-            <div v-if="isMobile" class="mobile-readonly">
-              ⌁ 移动端规则编辑为只读，可查看模拟并进行审核操作。
-            </div>
-            <div class="stepper">
-              <button
-                v-for="i in 8"
-                :key="i"
-                :class="{ done: i < ruleStep, active: i === ruleStep }"
-                @click="ruleStep = i"
-              >
-                <span>{{ i < ruleStep ? "✓" : i }}</span
-                ><small>{{
-                  [
-                    "彩种模型",
-                    "号码配置",
-                    "选号规则",
-                    "中奖条件",
-                    "奖级赔率",
-                    "限额取消",
-                    "测试案例",
-                    "模拟结果",
-                  ][i - 1]
-                }}</small>
-              </button>
-            </div>
-            <fieldset :disabled="isMobile" class="rule-fieldset">
-              <template v-if="ruleStep === 1"
-                ><div class="form-section">
-                  <h3>1. 选择彩种模型</h3>
-                  <p>模型确定号码池结构和基本校验方式。</p>
-                  <div class="model-options">
-                    <button class="model-option selected" @click.prevent>
-                      <b>X + Y</b><small>普通号码与特别号码分别选择</small
-                      ><span>当前模型</span></button
-                    ><button class="model-option" @click.prevent>
-                      <b>M 选 N</b><small>从号码池中选取指定数量</small></button
-                    ><button class="model-option" @click.prevent>
-                      <b>0–9 数字位</b><small>按位置选择有序数字</small>
-                    </button>
-                  </div>
-                </div>
-                <div class="form-grid">
-                  <label>彩种名称<input class="field" value="星彩 6+1" /></label
-                  ><label
-                    >玩法名称<input class="field" value="特别号命中"
-                  /></label></div
-              ></template>
-              <template v-else-if="ruleStep === 2"
-                ><div class="form-section">
-                  <h3>2. 配置号码池和位数</h3>
-                  <p>设置合法取值、重复规则及普通 / 特别号码数量。</p>
-                </div>
-                <div class="form-grid">
-                  <label
-                    >普通号码范围<input class="field" value="1 – 49" /></label
-                  ><label>普通号码个数<input class="field" value="6" /></label
-                  ><label
-                    >特别号码范围<input class="field" value="1 – 10" /></label
-                  ><label>特别号码个数<input class="field" value="1" /></label>
-                </div>
-                <label class="check-row"
-                  ><input type="checkbox" checked /> 不允许号码重复</label
-                ></template
-              >
-              <template v-else-if="ruleStep === 3"
-                ><div class="form-section">
-                  <h3>3. 配置选号与组合方式</h3>
-                  <p>设置排除、复式展开、号码属性和倍投规则。</p>
-                </div>
-                <div class="form-grid">
-                  <label
-                    >选号方式<select class="field">
-                      <option>手动选号 / 复式</option>
-                      <option>单式选号</option>
-                    </select></label
-                  ><label
-                    >单注积分<input
-                      class="field"
-                      v-model="ruleDraft.unitPoints"
-                      inputmode="numeric" /></label
-                  ><label>倍数下限<input class="field" value="1" /></label
-                  ><label>倍数上限<input class="field" value="100" /></label>
-                </div>
-                <label class="check-row"
-                  ><input type="checkbox" checked /> 支持排除号码　　<input
-                    type="checkbox"
-                    checked
-                  />
-                  支持奇偶属性</label
-                ></template
-              >
-              <template v-else-if="ruleStep === 4"
-                ><div class="form-section">
-                  <h3>4. 配置中奖条件和结果特征</h3>
-                  <p>仅允许使用规则组件，不执行自定义脚本。</p>
-                </div>
-                <div class="condition-row">
-                  <span class="condition-index">01</span
-                  ><select class="field">
-                    <option>特别号码命中</option></select
-                  ><select class="field">
-                    <option>等于</option>
-                    <option>包含</option></select
-                  ><span class="condition-value">特别号码</span
-                  ><button class="more-action" @click.prevent>···</button>
-                </div>
-                <button class="button button-secondary" @click.prevent>
-                  ＋ 添加条件组件
-                </button></template
-              >
-              <template v-else-if="ruleStep === 5"
-                ><div class="form-section">
-                  <h3>5. 配置奖级、赔率和舍入</h3>
-                  <p>奖级优先级、排他性、封顶值和舍入策略。</p>
-                </div>
-                <div class="tier-row">
-                  <b>特别号命中</b><span>倍率</span
-                  ><input class="field" value="40" /><label
-                    ><input type="checkbox" checked /> 排他</label
-                  ><input class="field" value="封顶 50,000" />
-                </div>
-                <div class="tier-row">
-                  <b>普通号命中</b><span>倍率</span
-                  ><input class="field" value="2" /><label
-                    ><input type="checkbox" /> 排他</label
-                  ><input class="field" value="不封顶" />
-                </div>
-                <div class="rounding-note">
-                  舍入规则 <b>四舍五入 · 整数积分</b>
-                </div></template
-              >
-              <template v-else-if="ruleStep === 6"
-                ><div class="form-section">
-                  <h3>6. 设置限额与取消规则</h3>
-                  <p>提供用户、单注和单期期次边界。</p>
-                </div>
-                <div class="form-grid">
-                  <label>单注最低<input class="field" value="1" /></label
-                  ><label>单注最高<input class="field" value="10,000" /></label
-                  ><label
-                    >每人每期限额<input class="field" value="50,000" /></label
-                  ><label
-                    >截止前取消<select class="field">
-                      <option>允许，原路返还</option>
-                      <option>不允许</option>
-                    </select></label
-                  >
-                </div></template
-              >
-              <template v-else-if="ruleStep === 7"
-                ><div class="form-section">
-                  <h3>7. 输入测试选号和开奖结果</h3>
+          <div class="rule-layout">
+            <article class="panel rule-editor">
+              <div class="rule-top">
+                <div>
+                  <span class="badge badge-neutral">草稿 · v13</span>
+                  <h2>星彩 6+1 · 特别号命中</h2>
                   <p>
-                    本地原型模拟，不是真实规则引擎；不会创建注单或写入数据。
+                    适用品牌：{{ brand }} <span>·</span> 生效方式：下一期期次
                   </p>
                 </div>
-                <div class="form-grid">
-                  <label
-                    >测试选号（空格分隔）<input
-                      class="field"
-                      v-model="ruleDraft.testSelection" /></label
-                  ><label
-                    >测试开奖结果<input
-                      class="field"
-                      v-model="ruleDraft.testResult" /></label
-                  ><label
-                    >倍数<input
-                      class="field"
-                      v-model="ruleDraft.multiplier"
-                      inputmode="numeric" /></label
-                  ><label
-                    >单注积分（整数）<input
-                      class="field"
-                      v-model="ruleDraft.unitPoints"
-                      inputmode="numeric"
-                  /></label>
-                </div>
-                <button class="button button-primary" @click.prevent="simulate">
-                  ▷ 运行模拟
-                </button></template
-              >
-              <template v-else
-                ><div class="simulation-result">
-                  <div class="simulation-head">
-                    <span class="success-check">✓</span
-                    ><span
-                      ><b>规则模拟完成 · 本地原型</b
-                      ><small
-                        >不是实际规则引擎；结果不会写入注单或账本。</small
-                      ></span
-                    >
-                  </div>
-                  <div class="sim-stats">
-                    <div><small>规则校验</small><b>通过</b></div>
-                    <div>
-                      <small>展开组合数</small
-                      ><b>{{ simulation.combinations }}</b>
-                    </div>
-                    <div>
-                      <small>命中说明</small><b>{{ simulation.matches }} 项</b>
-                    </div>
-                    <div>
-                      <small>预计积分</small
-                      ><b>{{ simulation.points }} <small>分</small></b>
-                    </div>
-                  </div>
-                  <div class="simulation-explain">
-                    <b>条件节点</b><span>✓ 号码范围与重复检查</span
-                    ><span>✓ {{ simulation.explanation }}</span
-                    ><span>✓ 封顶后积分与整数舍入</span>
-                  </div>
-                </div></template
-              >
-            </fieldset>
-            <div class="rule-actions">
-              <button
-                class="button button-secondary"
-                @click="ruleStep = Math.max(1, ruleStep - 1)"
-              >
-                ← 上一步</button
-              ><span>步骤 {{ ruleStep }} / 8</span>
-              <div>
                 <button
-                  class="button button-secondary"
-                  @click="toast('规则草稿已暂存（当前页面演示）')"
+                  class="save-status"
+                  @click="toast('草稿保存在本次页面会话中')"
                 >
-                  保存草稿</button
-                ><button
-                  v-if="ruleStep < 8"
-                  class="button button-primary"
-                  @click="ruleStep++"
-                >
-                  下一步 →</button
-                ><button
-                  v-else
-                  class="button button-primary"
-                  :disabled="ruleDraft.status === 'pending_review'"
-                  @click="submitRule"
-                >
-                  提交审核 →
+                  ● 自动保存演示
                 </button>
               </div>
-            </div>
-          </article>
-          <aside class="rule-side">
-            <article class="panel approval-card">
-              <div class="side-card-icon">✓</div>
-              <h3>审核与发布</h3>
-              <p>规则创建者不能审核自己的版本。审核通过后还需单独确认发布。</p>
-              <div class="approval-line">
-                <span class="avatar-small">林</span
-                ><span
-                  ><b>创建人：林岚</b
-                  ><small>{{
-                    ruleDraft.status === "draft" ? "当前操作者" : "已提交审核"
-                  }}</small></span
-                >
+              <div v-if="isMobile" class="mobile-readonly">
+                ⌁ 移动端规则编辑为只读，可查看模拟并进行审核操作。
               </div>
-              <div class="approval-line">
-                <span class="avatar-small reviewer">周</span
-                ><span
-                  ><b>审核人：周宁</b
-                  ><small>{{
-                    ruleDraft.status === "pending_review"
-                      ? "待审核 · 与创建者不同"
-                      : "待分配审核"
-                  }}</small></span
+              <div class="stepper">
+                <button
+                  v-for="i in 8"
+                  :key="i"
+                  :class="{ done: i < ruleStep, active: i === ruleStep }"
+                  @click="ruleStep = i"
                 >
+                  <span>{{ i < ruleStep ? "✓" : i }}</span
+                  ><small>{{
+                    [
+                      "彩种模型",
+                      "号码配置",
+                      "选号规则",
+                      "中奖条件",
+                      "奖级赔率",
+                      "限额取消",
+                      "测试案例",
+                      "模拟结果",
+                    ][i - 1]
+                  }}</small>
+                </button>
               </div>
-              <template v-if="ruleDraft.status === 'pending_review'"
+              <fieldset :disabled="isMobile" class="rule-fieldset">
+                <template v-if="ruleStep === 1"
+                  ><div class="form-section">
+                    <h3>1. 选择彩种模型</h3>
+                    <p>模型确定号码池结构和基本校验方式。</p>
+                    <div class="model-options">
+                      <button class="model-option selected" @click.prevent>
+                        <b>X + Y</b><small>普通号码与特别号码分别选择</small
+                        ><span>当前模型</span></button
+                      ><button class="model-option" @click.prevent>
+                        <b>M 选 N</b
+                        ><small>从号码池中选取指定数量</small></button
+                      ><button class="model-option" @click.prevent>
+                        <b>0–9 数字位</b><small>按位置选择有序数字</small>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="form-grid">
+                    <label
+                      >彩种名称<input class="field" value="星彩 6+1" /></label
+                    ><label
+                      >玩法名称<input class="field" value="特别号命中"
+                    /></label></div
+                ></template>
+                <template v-else-if="ruleStep === 2"
+                  ><div class="form-section">
+                    <h3>2. 配置号码池和位数</h3>
+                    <p>设置合法取值、重复规则及普通 / 特别号码数量。</p>
+                  </div>
+                  <div class="form-grid">
+                    <label
+                      >普通号码范围<input class="field" value="1 – 49" /></label
+                    ><label>普通号码个数<input class="field" value="6" /></label
+                    ><label
+                      >特别号码范围<input class="field" value="1 – 10" /></label
+                    ><label
+                      >特别号码个数<input class="field" value="1"
+                    /></label>
+                  </div>
+                  <label class="check-row"
+                    ><input type="checkbox" checked /> 不允许号码重复</label
+                  ></template
+                >
+                <template v-else-if="ruleStep === 3"
+                  ><div class="form-section">
+                    <h3>3. 配置选号与组合方式</h3>
+                    <p>设置排除、复式展开、号码属性和倍投规则。</p>
+                  </div>
+                  <div class="form-grid">
+                    <label
+                      >选号方式<select class="field">
+                        <option>手动选号 / 复式</option>
+                        <option>单式选号</option>
+                      </select></label
+                    ><label
+                      >单注积分<input
+                        class="field"
+                        v-model="ruleDraft.unitPoints"
+                        inputmode="numeric" /></label
+                    ><label>倍数下限<input class="field" value="1" /></label
+                    ><label>倍数上限<input class="field" value="100" /></label>
+                  </div>
+                  <label class="check-row"
+                    ><input type="checkbox" checked /> 支持排除号码　　<input
+                      type="checkbox"
+                      checked
+                    />
+                    支持奇偶属性</label
+                  ></template
+                >
+                <template v-else-if="ruleStep === 4"
+                  ><div class="form-section">
+                    <h3>4. 配置中奖条件和结果特征</h3>
+                    <p>仅允许使用规则组件，不执行自定义脚本。</p>
+                  </div>
+                  <div class="condition-row">
+                    <span class="condition-index">01</span
+                    ><select class="field">
+                      <option>特别号码命中</option></select
+                    ><select class="field">
+                      <option>等于</option>
+                      <option>包含</option></select
+                    ><span class="condition-value">特别号码</span
+                    ><button class="more-action" @click.prevent>···</button>
+                  </div>
+                  <button class="button button-secondary" @click.prevent>
+                    ＋ 添加条件组件
+                  </button></template
+                >
+                <template v-else-if="ruleStep === 5"
+                  ><div class="form-section">
+                    <h3>5. 配置奖级、赔率和舍入</h3>
+                    <p>奖级优先级、排他性、封顶值和舍入策略。</p>
+                  </div>
+                  <div class="tier-row">
+                    <b>特别号命中</b><span>倍率</span
+                    ><input class="field" value="40" /><label
+                      ><input type="checkbox" checked /> 排他</label
+                    ><input class="field" value="封顶 50,000" />
+                  </div>
+                  <div class="tier-row">
+                    <b>普通号命中</b><span>倍率</span
+                    ><input class="field" value="2" /><label
+                      ><input type="checkbox" /> 排他</label
+                    ><input class="field" value="不封顶" />
+                  </div>
+                  <div class="rounding-note">
+                    舍入规则 <b>四舍五入 · 整数积分</b>
+                  </div></template
+                >
+                <template v-else-if="ruleStep === 6"
+                  ><div class="form-section">
+                    <h3>6. 设置限额与取消规则</h3>
+                    <p>提供用户、单注和单期期次边界。</p>
+                  </div>
+                  <div class="form-grid">
+                    <label>单注最低<input class="field" value="1" /></label
+                    ><label
+                      >单注最高<input class="field" value="10,000" /></label
+                    ><label
+                      >每人每期限额<input class="field" value="50,000" /></label
+                    ><label
+                      >截止前取消<select class="field">
+                        <option>允许，原路返还</option>
+                        <option>不允许</option>
+                      </select></label
+                    >
+                  </div></template
+                >
+                <template v-else-if="ruleStep === 7"
+                  ><div class="form-section">
+                    <h3>7. 输入测试选号和开奖结果</h3>
+                    <p>
+                      本地原型模拟，不是真实规则引擎；不会创建注单或写入数据。
+                    </p>
+                  </div>
+                  <div class="form-grid">
+                    <label
+                      >测试选号（空格分隔）<input
+                        class="field"
+                        v-model="ruleDraft.testSelection" /></label
+                    ><label
+                      >测试开奖结果<input
+                        class="field"
+                        v-model="ruleDraft.testResult" /></label
+                    ><label
+                      >倍数<input
+                        class="field"
+                        v-model="ruleDraft.multiplier"
+                        inputmode="numeric" /></label
+                    ><label
+                      >单注积分（整数）<input
+                        class="field"
+                        v-model="ruleDraft.unitPoints"
+                        inputmode="numeric"
+                    /></label>
+                  </div>
+                  <button
+                    class="button button-primary"
+                    @click.prevent="simulate"
+                  >
+                    ▷ 运行模拟
+                  </button></template
+                >
+                <template v-else
+                  ><div class="simulation-result">
+                    <div class="simulation-head">
+                      <span class="success-check">✓</span
+                      ><span
+                        ><b>规则模拟完成 · 本地原型</b
+                        ><small
+                          >不是实际规则引擎；结果不会写入注单或账本。</small
+                        ></span
+                      >
+                    </div>
+                    <div class="sim-stats">
+                      <div><small>规则校验</small><b>通过</b></div>
+                      <div>
+                        <small>展开组合数</small
+                        ><b>{{ simulation.combinations }}</b>
+                      </div>
+                      <div>
+                        <small>命中说明</small
+                        ><b>{{ simulation.matches }} 项</b>
+                      </div>
+                      <div>
+                        <small>预计积分</small
+                        ><b>{{ simulation.points }} <small>分</small></b>
+                      </div>
+                    </div>
+                    <div class="simulation-explain">
+                      <b>条件节点</b><span>✓ 号码范围与重复检查</span
+                      ><span>✓ {{ simulation.explanation }}</span
+                      ><span>✓ 封顶后积分与整数舍入</span>
+                    </div>
+                  </div></template
+                >
+              </fieldset>
+              <div class="rule-actions">
+                <button
+                  class="button button-secondary"
+                  @click="ruleStep = Math.max(1, ruleStep - 1)"
+                >
+                  ← 上一步</button
+                ><span>步骤 {{ ruleStep }} / 8</span>
+                <div>
+                  <button
+                    class="button button-secondary"
+                    @click="toast('规则草稿已暂存（当前页面演示）')"
+                  >
+                    保存草稿</button
+                  ><button
+                    v-if="ruleStep < 8"
+                    class="button button-primary"
+                    @click="ruleStep++"
+                  >
+                    下一步 →</button
+                  ><button
+                    v-else
+                    class="button button-primary"
+                    :disabled="ruleDraft.status === 'pending_review'"
+                    @click="submitRule"
+                  >
+                    提交审核 →
+                  </button>
+                </div>
+              </div>
+            </article>
+            <aside class="rule-side">
+              <article class="panel approval-card">
+                <div class="side-card-icon">✓</div>
+                <h3>审核与发布</h3>
+                <p>
+                  规则创建者不能审核自己的版本。审核通过后还需单独确认发布。
+                </p>
+                <div class="approval-line">
+                  <span class="avatar-small">林</span
+                  ><span
+                    ><b>创建人：林岚</b
+                    ><small>{{
+                      ruleDraft.status === "draft" ? "当前操作者" : "已提交审核"
+                    }}</small></span
+                  >
+                </div>
+                <div class="approval-line">
+                  <span class="avatar-small reviewer">周</span
+                  ><span
+                    ><b>审核人：周宁</b
+                    ><small>{{
+                      ruleDraft.status === "pending_review"
+                        ? "待审核 · 与创建者不同"
+                        : "待分配审核"
+                    }}</small></span
+                  >
+                </div>
+                <template v-if="ruleDraft.status === 'pending_review'"
+                  ><button
+                    class="button button-primary full-button"
+                    @click="decisionRule('approve')"
+                  >
+                    ✓ 审核通过</button
+                  ><button
+                    class="button button-secondary full-button"
+                    @click="decisionRule('reject')"
+                  >
+                    驳回并填写意见
+                  </button></template
                 ><button
+                  v-if="ruleDraft.status === 'approved'"
                   class="button button-primary full-button"
-                  @click="decisionRule('approve')"
+                  @click="toast('已创建待确认发布版本；演示不会改变实际配置')"
                 >
-                  ✓ 审核通过</button
-                ><button
-                  class="button button-secondary full-button"
-                  @click="decisionRule('reject')"
+                  确认发布（演示）
+                </button>
+                <div class="approval-note">
+                  ⓘ 发布后新版本仅作用于新注单，历史订单继续使用原版本。
+                </div>
+              </article>
+              <article class="panel version-card">
+                <h3>版本信息</h3>
+                <div><span>当前生效版本</span><b>v12</b></div>
+                <div><span>新建草稿</span><b>v13</b></div>
+                <div><span>生效方式</span><b>下一期期次</b></div>
+                <button
+                  class="text-button"
+                  @click="toast('查看版本差异（演示）')"
                 >
-                  驳回并填写意见
-                </button></template
-              ><button
-                v-if="ruleDraft.status === 'approved'"
-                class="button button-primary full-button"
-                @click="toast('已创建待确认发布版本；演示不会改变实际配置')"
-              >
-                确认发布（演示）
-              </button>
-              <div class="approval-note">
-                ⓘ 发布后新版本仅作用于新注单，历史订单继续使用原版本。
-              </div>
-            </article>
-            <article class="panel version-card">
-              <h3>版本信息</h3>
-              <div><span>当前生效版本</span><b>v12</b></div>
-              <div><span>新建草稿</span><b>v13</b></div>
-              <div><span>生效方式</span><b>下一期期次</b></div>
-              <button
-                class="text-button"
-                @click="toast('查看版本差异（演示）')"
-              >
-                对比版本差异 →
-              </button>
-            </article>
-          </aside>
-        </div>
+                  对比版本差异 →
+                </button>
+              </article>
+            </aside>
+          </div>
+        </details>
       </section>
 
       <section v-else-if="page === '期次和开奖'" class="page-content">

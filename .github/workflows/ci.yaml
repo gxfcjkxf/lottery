@@ -40,6 +40,10 @@ jobs:
       - run: pnpm build
   browser:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [desktop, mobile]
     services:
       postgres:
         image: postgres:17.5-alpine
@@ -59,6 +63,8 @@ jobs:
       TEST_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
       TEST_HARBOR_ADMIN_USERNAME: ci_harbor_operator
       TEST_HARBOR_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_RULE_REVIEWER_USERNAME: ci_rule_reviewer
+      TEST_RULE_REVIEWER_PASSWORD: ci-isolated-test-only-password-2026
       BOOTSTRAP_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
     steps:
       - uses: actions/checkout@v4
@@ -81,11 +87,13 @@ jobs:
           ./bin/platform generate-auth-key .local/auth.key
           ./bin/platform create-admin --username ci_test_operator --brand aurora
           ./bin/platform create-admin --username ci_harbor_operator --brand harbor
+          ./bin/platform create-admin --username ci_rule_reviewer --brand harbor
           ./bin/platform serve > ../api-test.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
-      - run: pnpm test:e2e
+      # Each viewport gets an independent PostgreSQL service; preserve real auth limits.
+      - run: pnpm test:e2e --project=${{ matrix.project }} --workers=2
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: browser-failure-traces
+          name: browser-failure-traces-${{ matrix.project }}
           path: test-results/

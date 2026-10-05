@@ -11,10 +11,14 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
+	"github.com/gxfcjkxf/lottery/backend/internal/rulebook"
 	"github.com/jackc/pgx/v5"
 )
 
 func managementAllowed(a access.Account, resource, action, brand string) bool {
+	if resource == "game" || (resource == "rule" && action != "simulate") {
+		return rulebook.Allowed(a, brand, resource, action)
+	}
 	if resource == "user" {
 		return access.Authorize(a, resource, action, access.ScopeBrand, brand)
 	}
