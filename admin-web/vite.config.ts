@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     port: 5174,
-    proxy: { '/api': { target: 'http://localhost:8080', changeOrigin: true } },
+    proxy: { '/api': { target: 'http://localhost:8080', changeOrigin: false } },
   },
   test: { environment: 'node', include: ['src/**/*.test.ts'] },
 })

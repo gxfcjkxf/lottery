@@ -4,12 +4,14 @@
 
 - Base URL：/api/v1。
 - 用户端品牌由访问域名解析；管理端必须显式提供品牌上下文。
-- 所有接口返回 JSON；时间使用 UTC ISO-8601；积分使用整数。
-- 认证：Authorization: Bearer <access_token>。
+- 所有接口返回 JSON；时间使用 UTC ISO-8601；积分使用十进制整数字符串。
+- 认证：支持 `Authorization: Bearer <access_token>`；浏览器默认使用 HttpOnly、SameSite=Strict Cookie，不在 Web Storage 保存令牌。
 - 请求追踪：X-Request-ID 必填或由网关生成。
-- 所有有副作用的 POST 必须支持 Idempotency-Key。
+- 所有有副作用的 POST/PATCH 必须支持 Idempotency-Key；当前键格式为 8–128 个 ASCII 字母、数字、`_ : . -`。
 - 品牌后台请求使用 X-Brand-ID；服务端必须校验操作者是否拥有该品牌权限。
 - 不接受客户端传入的 brand_id 作为唯一授权依据；品牌必须由域名、令牌和权限共同确定。
+
+本文件同时包含已实现接口与后续阶段设计；当前接入范围以 [实施与验收记录](implementation-progress.md) 为准，不得将接口规格表视为全部已实现。
 
 ## 2. 响应格式
 
@@ -48,10 +50,38 @@
 | POST | /auth/login | 用户名/手机号 + 密码登录 |
 | POST | /auth/telegram | Telegram 授权登录 |
 | POST | /auth/logout | 当前会话失效 |
+| GET | /auth/challenge | 品牌启用验证码时返回一次性图形挑战 |
+| GET | /auth/telegram/challenge | 品牌启用 Telegram 时返回一次性 OIDC nonce |
 | GET | /me | 当前全局身份和品牌资料 |
 | PATCH | /me/profile | 只允许补充首次未填写的用户名或手机号 |
 
 注册请求必须包含 privacy_policy_version 和 service_terms_version。
+
+### S2-a 已接入认证约定
+
+- 用户路径同时支持 `/api/v1/...` 和平台入口 `/api/v1/b/{brandCode}/...`。路径品牌仅在已配置的平台入口可选；普通品牌域名不能借此访问另一品牌。
+- 用户 Cookie 名为 `lottery_user_<无连字符品牌UUID>`，管理 Cookie 名为 `lottery_admin`；二者互不授予权限。用户会话 24 小时，管理会话 12 小时，无刷新端点。
+- 所有变更请求要求 `application/json`。携带任何 Cookie 的变更请求须带同 Host 的 `Origin`；无 Cookie 的非浏览器 Bearer 客户端可不带 Origin。未知 JSON 字段、超过 16 KiB、尾随对象均拒绝。
+- 注册须提供 username 或 phone 至少一项；用户端表单择一填写，API 允许同时提供两者。用户名为 3–32 个字符、首字符为字母，后续允许字母、数字和下划线，并规范为小写。手机号使用明确的 E.164 `+` 国家码。密码为 10–128 UTF-8 字节。
+- 注册/首次加入品牌的政策版本必须匹配 `/context` 当前值，不允许客户端省略或提交历史版本。`dev-1` 仅为开发占位版本。
+- 注册返回 201；登录返回 200，数据包括 `user`、`member`、`access_token`、`token_type`、`expires_at`。令牌仅供非浏览器客户端使用，浏览器使用响应 Cookie。
+- 已有全局账号首次在另一品牌登录时返回 409 `BRAND_JOIN_REQUIRED`；用户接受该品牌条款后重新提交新的幂等操作，创建不同成员资料但共用全局凭证。
+- `PATCH /me/profile` 仅补填从未填写的 username/phone，返回 `audit_log_id`；客户端随后 GET `/me`。已填写字段不可修改。
+- 验证码请求字段为 `captcha_id`、`captcha_answer`；错误答案或错误密码均消耗挑战，五分钟过期，跨品牌不能使用。
+- Telegram 请求字段为 `id_token`、`challenge_id`、`nonce`、两项政策版本；可通过 `bind: true` 将验证身份绑定到当前已登录全局账号。禁止换绑/解绑，不接收任意用户名作为授权证据。真实应用配置未提供时默认关闭。
+- 认证限流持久化到主库，多实例共享；初始每 IP 30 次、每标识账号 10 次/5 分钟。同一幂等操作重放不重复计数。代理 IP 仅信任显式配置的代理网段。
+- 幂等摘要使用 HMAC，最终响应加密保存。相同键同内容重放原结果；同键不同内容返回 409。会话已撤销/过期后重放登录响应不会让旧会话恢复有效。
+
+注册示例：
+
+~~~json
+{
+  "username": "demo_member",
+  "password": "example-not-a-production-password",
+  "privacy_policy_version": "dev-1",
+  "service_terms_version": "dev-1"
+}
+~~~
 
 ### 游戏和投注
 
@@ -100,6 +130,28 @@
 
 ## 4. 管理端接口
 
+### S2-a 已接入管理账号与成员操作
+
+| 方法 | 路径 | 授权/行为 |
+|---|---|---|
+| POST | /admin/auth/login | 管理账号密码认证，独立 Cookie |
+| POST | /admin/auth/logout | 撤销当前管理会话 |
+| GET | /admin/me | 当前管理账号、品牌范围、多个角色去重后的权限 |
+| GET | /admin/brands | 仅列出已授权品牌，平台查看权限可跨品牌 |
+| GET | /admin/users | `user.view.brand` 或 `user.view.platform` |
+| PATCH | /admin/users/{id} | `user.write.brand`；status、notes、reason |
+| POST | /admin/users/{id}/kick | `user.kick.brand`；reason 必填，仅撤销该品牌成员会话 |
+| POST | /admin/users/{id}/reset-password | `user.password_reset.brand`；password、reason，修改全局密码并撤销该用户全部品牌会话 |
+| GET | /admin/audit | `audit.view.brand` 或 `audit.view.platform` |
+
+上述 `{id}` 是品牌成员 UUID，不是全局用户 UUID。品牌操作必须传 `X-Brand-ID`，且服务端校验角色与品牌范围。平台查看权限可不带品牌头查询所有品牌；超级管理员不能修改用户、重置密码或踢人，即使误配相应角色也拒绝。
+
+成员状态值为 `normal`、`frozen`、`disabled`、`expired`、`cancelled`（注销）。冻结仍可登录/查询；禁用、过期、注销后会话验证失败。备注最大 2000 字节，原因必填且不超过 500 字节。修改和踢人返回 `audit_log_id`。查询支持 `limit`（1–100，默认 50）和 `offset`（0–1000000），响应 `{items: [...]}`。成功查询和修改都有审计记录，密码/令牌不进入明文审计。
+
+共享密码安全保护：当前默认要求管理员对该用户所有已加入品牌均拥有 `user.password_reset.brand`，不满足返回 403 `CREDENTIAL_SCOPE_REQUIRED`，不改密码、不撤销会话。此跨品牌权限规则已向用户提出确认，未确认前保留限制；不能仅凭当前品牌的重置权限接管其他品牌身份。超级管理员仍不能重置用户密码。
+
+管理账号当前由显式 CLI 引导，无内置密码。角色/权限编辑、管理账号管理、后台新增用户、拒绝访问专项安全审计仍属于 S2 后续工作。
+
 ### 期次和开奖
 
 | 方法 | 路径 | 说明 |
@@ -132,9 +184,6 @@
 |---|---|---|
 | POST | /admin/recharges | 创建人工充值单 |
 | POST | /admin/recharges/{id}/confirm | 单人确认入账 |
-| POST | /admin/users/{id}/freeze | 品牌内冻结 |
-| POST | /admin/users/{id}/unfreeze | 解冻 |
-| POST | /admin/users/{id}/kick | 使在线会话失效 |
 | POST | /admin/withdrawals/{id}/approve | 审核通过 |
 | POST | /admin/withdrawals/{id}/reject | 驳回并填写理由 |
 | POST | /admin/withdrawals/{id}/cancel | 取消处理 |
@@ -179,4 +228,3 @@
 - 外部开奖源请求可以重试；人工开奖和结果纠正不得自动重试。
 - 结算失败由运营人员手动触发重试；异常注单不进入普通重试。
 - 从库延迟时，写操作返回主库结果，前端在短时间内使用主库粘滞读取。
-

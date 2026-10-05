@@ -4,18 +4,29 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
+	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
+	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
+	"github.com/gxfcjkxf/lottery/backend/internal/telegramauth"
 	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
 	"log/slog"
+	"net"
 	"net/http"
 	"regexp"
 	"time"
 )
 
 type Dependencies struct {
-	Brands tenant.Resolver
-	Ready  func(context.Context) error
-	Logger *slog.Logger
+	Brands         tenant.Resolver
+	Ready          func(context.Context) error
+	Logger         *slog.Logger
+	Identity       *identity.Store
+	Mutations      *mutation.Engine
+	SecureCookies  bool
+	Admins         adminsys.Store
+	Telegram       telegramauth.Verifier
+	TrustedProxies []*net.IPNet
 }
 type requestKey struct{}
 type envelope struct {
@@ -53,12 +64,23 @@ func New(d Dependencies) http.Handler {
 			failure(w, r, 503, "SERVICE_UNAVAILABLE", "暂时无法加载品牌")
 			return
 		}
-		respond(w, r, 200, map[string]any{"brand": brand, "available_locales": []string{"en", "zh-CN"}, "features": map[string]bool{"pwa": true, "real_payments": false}, "terms": map[string]string{"privacy_policy_version": "dev-1", "service_terms_version": "dev-1"}})
+		cfg := identity.Settings{Privacy: "dev-1", Terms: "dev-1"}
+		if d.Identity != nil {
+			cfg, err = d.Identity.Settings(r.Context(), brand.ID)
+			if err != nil {
+				failure(w, r, 503, "SERVICE_UNAVAILABLE", "暂时无法加载配置")
+				return
+			}
+		}
+		respond(w, r, 200, map[string]any{"brand": brand, "available_locales": []string{"en", "zh-CN"}, "features": map[string]bool{"pwa": true, "real_payments": false}, "auth": map[string]any{"captcha_enabled": cfg.CaptchaEnabled, "telegram_enabled": cfg.TelegramEnabled, "telegram_client_id": cfg.TelegramClientID}, "terms": map[string]string{"privacy_policy_version": cfg.Privacy, "service_terms_version": cfg.Terms}})
 	}
 	mux.HandleFunc("GET /api/v1/context", contextHandler)
 	mux.HandleFunc("GET /api/v1/b/{brandCode}/context", contextHandler)
+	registerAuthRoutes(mux, d)
+	registerAdminRoutes(mux, d)
+	registerTelegramRoutes(mux, d)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { failure(w, r, 404, "NOT_FOUND", "接口不存在") })
-	return middleware(d.Logger, mux)
+	return middleware(d.Logger, d.TrustedProxies, mux)
 }
 func respond(w http.ResponseWriter, r *http.Request, status int, data any) {
 	write(w, status, envelope{Success: true, Data: data, RequestID: requestID(r)})
@@ -72,7 +94,7 @@ func write(w http.ResponseWriter, status int, data envelope) {
 	_ = json.NewEncoder(w).Encode(data)
 }
 func requestID(r *http.Request) string { id, _ := r.Context().Value(requestKey{}).(string); return id }
-func middleware(logger *slog.Logger, next http.Handler) http.Handler {
+func middleware(logger *slog.Logger, trusted []*net.IPNet, next http.Handler) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -82,6 +104,7 @@ func middleware(logger *slog.Logger, next http.Handler) http.Handler {
 			id = ids.New()
 		}
 		r = r.WithContext(context.WithValue(r.Context(), requestKey{}, id))
+		r = r.WithContext(context.WithValue(r.Context(), clientIPKey{}, clientIP(r, trusted)))
 		w.Header().Set("X-Request-ID", id)
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")

@@ -53,6 +53,11 @@ jobs:
       APP_ENV: test
       DATABASE_URL: postgres://lottery_test:local_test_password@localhost:5432/lottery_test?sslmode=disable
       HTTP_ADDR: 127.0.0.1:8080
+      AUTH_KEY_FILE: .local/auth.key
+      # These credentials exist only in this ephemeral CI PostgreSQL database.
+      TEST_ADMIN_USERNAME: ci_test_operator
+      TEST_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      BOOTSTRAP_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -71,6 +76,8 @@ jobs:
           go build -o bin/platform ./cmd/platform
           ./bin/platform migrate
           ./bin/platform seed
+          ./bin/platform generate-auth-key .local/auth.key
+          ./bin/platform create-admin --username ci_test_operator --brand aurora
           ./bin/platform serve > ../api-test.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
       - run: pnpm test:e2e

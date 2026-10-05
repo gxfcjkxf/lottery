@@ -3,9 +3,13 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
 	"github.com/gxfcjkxf/lottery/backend/internal/config"
 	"github.com/gxfcjkxf/lottery/backend/internal/database"
 	"github.com/gxfcjkxf/lottery/backend/internal/httpapi"
+	"github.com/gxfcjkxf/lottery/backend/internal/identity"
+	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
+	"github.com/gxfcjkxf/lottery/backend/internal/telegramauth"
 	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
 	"log/slog"
 	"net/http"
@@ -24,6 +28,9 @@ func main() {
 	}
 }
 func run(logger *slog.Logger) error {
+	if len(os.Args) == 3 && os.Args[1] == "generate-auth-key" {
+		return generateKey(os.Args[2])
+	}
 	c, err := config.Load()
 	if err != nil {
 		return err
@@ -44,11 +51,25 @@ func run(logger *slog.Logger) error {
 		return database.Migrate(ctx, pools.Primary)
 	case "seed":
 		return database.Seed(ctx, pools.Primary, c.Environment)
+	case "create-admin":
+		return createAdmin(ctx, pools.Primary)
 	case "serve":
 	default:
-		return errors.New("usage: platform serve|migrate|seed")
+		return errors.New("usage: platform serve|migrate|seed|create-admin|generate-auth-key <file>")
 	}
-	server := &http.Server{Addr: c.HTTPAddr, Handler: httpapi.New(httpapi.Dependencies{Brands: tenant.Store{DB: pools.Primary}, Ready: pools.Primary.Ping, Logger: logger}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 16}
+	key, err := loadKey(c)
+	if err != nil {
+		return err
+	}
+	engine, err := mutation.New(pools.Primary, key)
+	if err != nil {
+		return err
+	}
+	users, err := identity.New(pools.Primary)
+	if err != nil {
+		return err
+	}
+	server := &http.Server{Addr: c.HTTPAddr, Handler: httpapi.New(httpapi.Dependencies{Brands: tenant.Store{DB: pools.Primary}, Ready: pools.Primary.Ping, Logger: logger, Identity: users, Mutations: engine, Admins: adminsys.Store{DB: pools.Primary}, SecureCookies: c.Environment == "production", Telegram: telegramauth.Verifier{Keys: telegramauth.NewRemoteKeys()}, TrustedProxies: c.TrustedProxies}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 16}
 	stopped := make(chan struct{})
 	go func() {
 		select {

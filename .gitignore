@@ -12,3 +12,4 @@ backend/platform
 test-results/
 playwright-report/
 .tools/
+.local/

@@ -1,0 +1,257 @@
+.directory-page {
+  padding-bottom: 28px;
+}
+.auth-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);
+  gap: 28px;
+  padding: 24px;
+  max-width: 760px;
+}
+.auth-copy h2 {
+  font-size: 18px;
+  margin: 8px 0;
+}
+.auth-copy p,
+.directory-state span {
+  font-size: 11px;
+  color: #818998;
+  line-height: 1.7;
+}
+.auth-form {
+  display: grid;
+  gap: 12px;
+}
+.auth-form .field {
+  height: 38px;
+  font-size: 12px;
+}
+.auth-form .button {
+  height: 38px;
+  font-size: 11px;
+}
+.form-error,
+.directory-error {
+  margin: 0;
+  color: #b75d58;
+  font-size: 11px;
+}
+.directory-error {
+  margin: 0 0 12px;
+  border: 1px solid #f1d9d5;
+  border-radius: 6px;
+  background: #fff7f5;
+  padding: 10px 12px;
+}
+.directory-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 20px;
+  color: #6f7785;
+  font-size: 11px;
+}
+.directory-state b {
+  color: #3d4350;
+}
+.directory-state span {
+  flex: 1 1 280px;
+}
+.directory-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 12px 15px;
+  background: white;
+  border: 1px solid #eaecf0;
+  border-radius: 7px;
+}
+.directory-toolbar > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.directory-toolbar span,
+.directory-toolbar small {
+  font-size: 9px;
+  color: #939aa8;
+}
+.directory-toolbar b {
+  font-size: 12px;
+  color: #424958;
+}
+.directory-toolbar small {
+  font-family: monospace;
+}
+.member-directory-table {
+  min-width: 1000px;
+}
+.member-directory-table .member-cell {
+  min-width: 165px;
+}
+.member-directory-table .member-cell small {
+  max-width: 175px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.member-notes {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.member-tag {
+  display: inline-block;
+  margin: 2px;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: #f2f3f8;
+  color: #737b89;
+  font-size: 8px;
+}
+.member-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.member-actions button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.filter-tabs > .selected {
+  display: flex;
+  align-items: center;
+  color: #4d5dc9;
+  font-size: 9px;
+  font-weight: 600;
+}
+.filter-tabs > .selected span {
+  margin-left: 4px;
+  color: #979eab;
+  font-weight: 400;
+}
+.brand-dropdown p {
+  padding: 8px 10px;
+  font-size: 9px;
+  color: #9097a4;
+}
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.demo-chip {
+  white-space: nowrap;
+}
+.profile .dots {
+  font-size: 9px;
+  color: #6d7584;
+}
+@media (max-width: 700px) {
+  .auth-panel {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 16px;
+  }
+  .auth-copy h2 {
+    font-size: 16px;
+  }
+  .auth-copy p {
+    font-size: 10px;
+  }
+  .directory-toolbar {
+    align-items: flex-start;
+  }
+  .directory-toolbar > div {
+    gap: 5px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .directory-page .page-heading {
+    align-items: center;
+  }
+  .directory-page .live-pill {
+    font-size: 8px;
+    flex: none;
+  }
+  .directory-state {
+    padding: 15px;
+  }
+  .member-actions {
+    gap: 6px;
+  }
+  .member-actions button {
+    font-size: 8px;
+  }
+  .member-directory-table {
+    min-width: 1040px;
+  }
+}
+.directory-brand-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid #e9ebef;
+  border-radius: 6px;
+  background: #fff;
+  color: #78808e;
+  font-size: 9px;
+}
+.directory-brand-bar select {
+  height: 28px;
+  min-width: 180px;
+  padding: 0 8px;
+  border: 1px solid #e5e7ed;
+  border-radius: 5px;
+  background: #fff;
+  color: #454b59;
+  font-size: 10px;
+}
+.directory-brand-bar small {
+  margin-left: auto;
+  color: #9aa1ad;
+  font-family: monospace;
+}
+.impact-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  color: #686f7c;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.impact-confirm input {
+  margin: 2px 0 0;
+  accent-color: #5969df;
+}
+@media (max-width: 700px) {
+  .directory-brand-bar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 6px;
+  }
+  .directory-brand-bar select {
+    flex: 1;
+    min-width: 140px;
+  }
+  .directory-brand-bar small {
+    flex-basis: 100%;
+    margin-left: 0;
+    overflow-wrap: anywhere;
+  }
+}
+.prototype-badge {
+  border-radius: 10px;
+  background: #fff3e7;
+  color: #a87636;
+  padding: 4px 7px;
+  font-size: 8px;
+  font-weight: 700;
+  white-space: nowrap;
+}

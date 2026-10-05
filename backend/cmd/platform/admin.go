@@ -1,0 +1,82 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"github.com/gxfcjkxf/lottery/backend/internal/audit"
+	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
+	"github.com/gxfcjkxf/lottery/backend/internal/ids"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"os"
+	"regexp"
+	"strings"
+)
+
+// Bootstrap credentials come from the environment, not argv/history or defaults.
+func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
+	flags := flag.NewFlagSet("create-admin", flag.ContinueOnError)
+	username := flags.String("username", "", "new administrative username")
+	brand := flags.String("brand", "", "brand code for brand operator")
+	super := flags.Bool("super", false, "platform read-only user administration")
+	if err := flags.Parse(os.Args[2:]); err != nil {
+		return err
+	}
+	*username = strings.ToLower(strings.TrimSpace(*username))
+	if !regexp.MustCompile(`^[a-z][a-z0-9_]{2,31}$`).MatchString(*username) {
+		return errors.New("invalid admin username")
+	}
+	password := os.Getenv("BOOTSTRAP_ADMIN_PASSWORD")
+	if len(password) < 16 || len(password) > 128 {
+		return errors.New("BOOTSTRAP_ADMIN_PASSWORD must contain 16-128 bytes")
+	}
+	hash, err := authcrypto.HashPassword(password)
+	if err != nil {
+		return err
+	}
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var brandID string
+	if !*super {
+		if *brand == "" {
+			return errors.New("--brand required for a brand operator")
+		}
+		if err = tx.QueryRow(ctx, "SELECT id::text FROM brands WHERE code=$1", *brand).Scan(&brandID); err != nil {
+			return errors.New("brand not found")
+		}
+	}
+	admin, role := ids.New(), ids.New()
+	if _, err = tx.Exec(ctx, "INSERT INTO admin_accounts(id,username,password_hash,is_super_admin) VALUES($1,$2,$3,$4)", admin, *username, hash, *super); err != nil {
+		return errors.New("cannot create admin; account may already exist")
+	}
+	if _, err = tx.Exec(ctx, "INSERT INTO roles(id,code,name) VALUES($1,$2,$3)", role, "bootstrap_"+role, "Bootstrap administrator"); err != nil {
+		return err
+	}
+	permissions := []string{"user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "audit.view.brand", "brand.view.brand"}
+	if *super {
+		permissions = []string{"user.view.platform", "audit.view.platform", "brand.view.platform"}
+	}
+	for _, permission := range permissions {
+		if _, err = tx.Exec(ctx, "INSERT INTO permissions(key) VALUES($1) ON CONFLICT DO NOTHING", permission); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, "INSERT INTO role_permissions(role_id,permission_key) VALUES($1,$2)", role, permission); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.Exec(ctx, "INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)", admin, role); err != nil {
+		return err
+	}
+	if brandID != "" {
+		if _, err = tx.Exec(ctx, "INSERT INTO admin_brand_scopes(account_id,brand_id) VALUES($1,$2)", admin, brandID); err != nil {
+			return err
+		}
+	}
+	if _, err = audit.Append(ctx, tx, audit.Record{BrandID: brandID, ActorType: "system", Action: "admin.bootstrap", ResourceType: "admin", ResourceID: admin, Reason: "explicit server-owner bootstrap", RequestID: ids.New(), After: map[string]any{"super_admin": *super}}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}

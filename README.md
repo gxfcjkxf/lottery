@@ -17,6 +17,9 @@ set -a
 source .env
 set +a
 pnpm install --frozen-lockfile
+cd backend
+go run ./cmd/platform generate-auth-key .local/auth.key
+cd ..
 make migrate
 make seed
 make api
@@ -38,6 +41,24 @@ pnpm dev:admin
 - 平台路径品牌：http://localhost:8080/api/v1/b/harbor/context
 
 本地种子提供 Aurora、Harbor 两个品牌。Aurora 绑定 localhost，Harbor 绑定 harbor.localhost；平台入口 localhost 可以通过 /api/v1/b/{brandCode} 解析品牌。种子命令不创建内置密码，且在 production 环境拒绝执行。
+
+认证密钥只生成一次，保存在 `backend/.local/auth.key`（文件权限 0600，Git 忽略）。`.env` 中的 `AUTH_KEY_FILE` 相对 backend 工作目录解析。也可从密钥管理器注入 base64 格式 32 字节 `AUTH_KEY`；多实例必须共享同一密钥。密钥用于加密幂等响应及请求摘要，不能丢失或直接替换，否则已有幂等记录无法解密。生产环境开启 Secure Cookie，需 HTTPS 与保留原始 Host 的可信反向代理。
+
+认证服务要求 `DB_MAX_CONNS >= 4`，预留连接供独立的限流/挑战事务，避免认证并发耗尽连接而互相等待。反向代理部署时设置 `TRUSTED_PROXY_CIDRS`，只信任实际代理网段；默认忽略转发 IP，始终不信任转发 Host。初始限流是每 IP 30 次、每账号 10 次/5 分钟，生产部署须根据 NAT、代理和流量规划调整，不是 500 次/秒投注限额。
+
+后台没有默认密码。由服务器拥有者显式创建账号：先从密钥管理器注入 `BOOTSTRAP_ADMIN_PASSWORD`（16–128 字节；不要放在命令参数、仓库或日志中），再从 backend 执行：
+
+~~~sh
+go run ./cmd/platform create-admin --username operator --brand aurora
+# 平台账号可跨品牌查看用户，但不能修改用户或踢人。
+go run ./cmd/platform create-admin --username platform_reader --super
+~~~
+
+创建后清除引导密码环境变量。用户与品牌凭证全局共享，品牌成员资料及会话按品牌隔离。用户注册和新品牌加入必须接受该品牌当前条款；开发 `dev-1` 政策是占位文本，不是生产条款。客户端使用 HttpOnly、SameSite=Strict Cookie；API 同时支持 Bearer 认证。浏览器不保存访问令牌。变更请求必须带 JSON Content-Type 和 Idempotency-Key；使用 Cookie 的请求还必须带匹配 Host 的 Origin。
+
+共享密码重置会影响全部品牌。当前安全保护要求操作者对该用户每个已加入品牌都有重置权限；仅有一个品牌权限时不得修改多品牌用户的全局密码。此规则仍待业务确认，不会提前放宽。超级管理员始终不能修改用户。
+
+Telegram 使用当前 OIDC 登录与一次性 nonce；品牌 `auth_config` 中设置 `telegram_enabled` 和 `telegram_client_id` 后，还需在 Telegram 配置允许的域名。未提供真实应用配置时默认关闭，不能用任意 Telegram 用户名冒充授权。验证码通过 `auth_config.captcha_enabled` 开启，是基本图形挑战，并不替代 WAF 和反自动化服务。
 
 迁移执行器在事务中获取 advisory lock，并保存 SQL checksum；已应用迁移不可修改。重复执行 migrate/seed 是幂等的。服务启动不自动迁移，部署时应先执行迁移命令。
 
@@ -70,7 +91,7 @@ pnpm exec playwright install chromium
 pnpm test:e2e
 ~~~
 
-测试会自动启动两个前端，验证 PC/移动视口、真实品牌上下文、品牌隔离与原型选号/取消流程。已有 Chrome 可通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定可执行文件。CI 使用独立数据库运行这些测试；浏览器测试中的演示订单不会操作真实账本。
+测试会自动启动两个前端，验证 PC/移动视口、真实注册/登录/会话恢复、品牌隔离与原型选号/取消流程。后台成员操作回归还要求 `TEST_ADMIN_USERNAME` 和 `TEST_ADMIN_PASSWORD`，指向事先由 `create-admin --brand aurora` 创建的隔离测试账号；未提供时该组明确 SKIP，不能宣称全部浏览器验收通过。不要使用客户或生产凭证。已有 Chrome 可通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定可执行文件。CI 在临时独立数据库中显式创建测试管理员；浏览器注册/状态修改会持久化到测试库，但演示订单不操作真实账本。
 
 ## 开发与测试方式
 
