@@ -8,6 +8,7 @@ import BalanceRepair from "./BalanceRepair.vue";
 import RuleSimulator from "./RuleSimulator.vue";
 import RuleVersions from "./RuleVersions.vue";
 import PeriodSchedules from "./PeriodSchedules.vue";
+import DrawManagement from "./DrawManagement.vue";
 import {
   previewCorrection,
   resolveWithdrawal,
@@ -1844,6 +1845,13 @@ const ledger = [
             进入管理员登录
           </button>
         </div>
+        <DrawManagement
+          v-if="account && selectedBrandId"
+          :key="`draws-${selectedBrandId}`"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
         <details class="demo-rule-workbench">
           <summary>
             旧开奖工作台演示（不会开奖、纠正结果或结算真实注单）

@@ -12,6 +12,59 @@ import (
 
 type adapterFunc func(context.Context, Source, Request) (Candidate, error)
 
+func TestResolveClaimGuardStopsFallbackWithoutErasingEvidence(t *testing.T) {
+	var fetched, guarded int
+	stop := errors.New("manual selection superseded claim")
+	r := DefaultResolver(time.Second)
+	r.Adapters["api"] = adapterFunc(func(context.Context, Source, Request) (Candidate, error) {
+		fetched++
+		return Candidate{}, ErrNoData
+	})
+	r.BeforeAttempt = func(context.Context, Source) error {
+		guarded++
+		if guarded == 2 {
+			return stop
+		}
+		return nil
+	}
+	out, err := r.Resolve(context.Background(), Request{PeriodNo: "p1", Model: feedDigitsModel()}, []Source{
+		{ID: "primary", Type: "api", Priority: 1, Enabled: true},
+		{ID: "backup", Type: "api", Priority: 2, Enabled: true},
+	})
+	if !errors.Is(err, stop) || fetched != 1 || guarded != 2 || len(out.Attempts) != 1 || out.Attempts[0].SourceID != "primary" {
+		t.Fatalf("claim guard: calls=%d guarded=%d result=%+v err=%v", fetched, guarded, out, err)
+	}
+}
+
+func TestResolvePeriodCandidateCheckFallsBackAndStopsInfrastructureErrors(t *testing.T) {
+	for _, infrastructure := range []bool{false, true} {
+		calls := 0
+		r := DefaultResolver(time.Second)
+		r.Adapters["api"] = adapterFunc(func(context.Context, Source, Request) (Candidate, error) {
+			calls++
+			return candidate("p1", rules.Draw{Digits: []int{1, 2, 3}}), nil
+		})
+		broken := errors.New("primary clock unavailable")
+		r.CandidateCheck = func(context.Context, Candidate) error {
+			if infrastructure {
+				return broken
+			}
+			if calls == 1 {
+				return ErrInvalid
+			}
+			return nil
+		}
+		out, err := r.Resolve(context.Background(), Request{PeriodNo: "p1", Model: feedDigitsModel()}, []Source{{ID: "primary", Type: "api", Priority: 1, Enabled: true}, {ID: "backup", Type: "api", Priority: 2, Enabled: true}})
+		if infrastructure {
+			if !errors.Is(err, broken) || calls != 1 || len(out.Attempts) != 1 || out.Attempts[0].Code != "candidate_check_error" {
+				t.Fatalf("infrastructure=%+v %v calls=%d", out, err, calls)
+			}
+		} else if err != nil || calls != 2 || out.SourceID != "backup" || out.Attempts[0].Status != "abnormal" {
+			t.Fatalf("fallback=%+v %v calls=%d", out, err, calls)
+		}
+	}
+}
+
 func (f adapterFunc) Fetch(ctx context.Context, source Source, request Request) (Candidate, error) {
 	return f(ctx, source, request)
 }
@@ -180,7 +233,7 @@ func TestResolveHonorsParentCancellationWithoutFallback(t *testing.T) {
 		{ID: "one", Type: "api", Priority: 1, Enabled: true},
 		{ID: "two", Type: "api", Priority: 2, Enabled: true},
 	})
-	if !errors.Is(err, context.Canceled) || calls != 1 || len(got.Attempts) != 0 {
+	if !errors.Is(err, context.Canceled) || calls != 1 || len(got.Attempts) != 1 || got.Attempts[0].Code != "cancelled" {
 		t.Fatalf("Resolve() = %+v, %v, calls=%d", got, err, calls)
 	}
 }

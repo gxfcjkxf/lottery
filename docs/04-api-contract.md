@@ -265,15 +265,33 @@ GET/PUT schedule 成功的 data 均为 `{id,brand_id,game_id,revision,spec,game_
 
 `period.sequence` 是创建序号；只有 worker 实际转入 `betting` 时，`games.started_sequence` 才递增，用于规则下期激活。worker 以主数据库时钟驱动：pending 到点且彩种 active 时进入 betting；若投注窗口已过则转 `judged_cancelled`；betting 到 bet_end 转 closed，closed 到 draw_at 转 waiting_draw。彩种暂停时不开放投注，窗口过期后取消 pending。状态更新受数据库转移约束并写审计。当前投注与订单尚未接入，所以不存在需要退款的历史订单。
 
+### S4-c2 已接入：来源与人工结果
+
+下列路由以 `/api/v1` 为前缀，要求管理会话、X-Brand-ID；写入沿用 Idempotency-Key、Cookie 同源 Origin、16 KiB 闭合 JSON、非空 reason 和事务内权限重查。超级管理员只读，精确读取权限不由写权限推导。
+
+| 方法 | 路径 | 精确权限 / 正文 |
+|---|---|---|
+| GET | `/admin/games/{id}/draw-sources` | draw_source.view.brand 或 .platform |
+| PUT | `/admin/games/{id}/draw-sources` | draw_source.write.brand；`{version,sources,reason}` |
+| GET | `/admin/periods/{id}/draw` | draw.view.brand 或 .platform；limit/offset |
+| POST | `/admin/periods/{id}/manual-draw` | draw.manual_create.brand；`{version,period_no,result,drawn_at,reason}` |
+
+Sources GET/PUT data 为 `{id,brand_id,game_id,revision,game_version,created_at,sources}`；尚无配置返回 404。version 是当前彩种版本，不是 revision。sources 可为空，最多 16 项 api/dom；来源 ID 为 UUID，类型和归属创建后不可变。优先级 1–10000 且唯一，禁用项也校验。name 最多 120 UTF-8 字节；endpoint 最多 2048 字节，限 HTTPS、公共 DNS 名、默认/443 端口，禁 IP/内网保留域/userinfo/query/fragment。DOM selector 非空且最多 500 字节，API selector 必须为空。credential_ref 是非敏感引用，最长 120 ASCII 字符，匹配 `^[a-zA-Z][a-zA-Z0-9_.:/-]{0,119}$`，不是实际凭据。校验不访问网络或 DNS；未来真实适配器须另验证 DNS、重定向及目的 IP。
+
+人工 version 是期次业务版本；result 为匹配彩种的 regular/special/digits 数组，drawn_at 接受 RFC3339。只允许 waiting_draw，或已有外部结果但尚未结算的 drawn；禁止覆盖人工结果、settling/settled。校验期次号、数量、范围、重复约束和与上一期相同的结果；上一期按 draw_at 而非创建序号查找。时间不得早于本期计划 draw_at 或晚于当前主库时间。成功 201 并转 drawn/version+1，结果、当前指针、审计和幂等响应同事务；覆盖外部结果保留旧行及 corrected_from_id。不结算、不派奖、不改积分。
+
+DrawResult 含 id/brand_id/game_id/period_id/source_id/kind/result/result_hash/drawn_at/created_at，人工另含 created_by，覆盖时另含 corrected_from_id。时间返回 UTC RFC3339Nano（分数秒位数可变）。GET draw 返回 `{current,history,attempts,limit,offset}`；current 可为 null，不受分页影响；history/attempts 分别按同一 offset/limit 分页，默认 50、最多 100，读取使用一致性快照。AttemptBatch 含 source_set_id、observed_period_version、status、attempts（每条 source_id/status/code）和创建时间。
+
+worker 当前调用 API/DOM 无网络 stub，只产生 no_data 尝试证据，不代表第三方接口已接入。人工优先，旧在途结果记 discarded。错误：400 DRAW_INVALID；409 DRAW_ABNORMAL/DRAW_VERSION_CONFLICT/DRAW_STATE_CONFLICT；404 DRAW_NOT_FOUND；403 PERMISSION_DENIED；摘要冲突为 409 IDEMPOTENCY_CONFLICT。UI 还分别需要 game.view、period.view 目录权限。
+
 ### 期次和开奖（后续实现）
 
-当前仅日历与期次路由已接入。`drawfeed` 是纯 resolver/候选校验模块，api/dom adapter 仍是无网络 stub；尚无来源数据库配置、持久化人工开奖结果或人工开奖 API。下表开奖相关路由是后续设计，不是已注册端点（S4-c2）。
+来源与人工结果按上节接入；下表其余纠正、结算路由仍是未来设计，尚未注册。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | /admin/periods/{id}/close | 截止投注 |
 | POST | /admin/periods/{id}/cancel | 期次投注取消/判定取消并退款 |
-| POST | /admin/periods/{id}/manual-draw | 人工开奖 |
 | POST | /admin/draw-results/{id}/confirm | 确认外部/人工结果 |
 | POST | /admin/draw-results/{id}/correct | 纠正结果并建立回溯任务 |
 | POST | /admin/periods/{id}/settle | 触发期次结算 |
@@ -388,7 +406,7 @@ submit-review 只允许 draft，要求 validation.passed=true 且报告 definiti
 
 后台新建草稿默认选择 `immediate`；后端没有默认生效模式，创建、PUT 更新及 clone 必须显式发送 `effect_mode`（仅 `immediate` / `next_period`），遗漏或空值拒绝。通过时 `immediate` 在同一事务直接成为 active 并替换玩法有效版本，没有独立 publish 步骤；`next_period` 成为 approved，绑定彩种下一实际开期序号。每玩法最多一个 approved 队列项；已有待生效项时后续 approve（包括 immediate）返回 409 `RULE_STATE_CONFLICT`，不覆盖它。
 
-下期激活仅由内部开期事务在彩种行锁下执行，与审核串行化：使用 PostgreSQL `clock_timestamp()` 检查实际窗口 `bet_start_at <= now < bet_end_at`、`bet_end_at <= draw_at`，开期时激活满足序号的 approved 版本并保存不可变 period_rule_versions。S4-c1 日历、期次生成和状态 worker 已接入；没有公开强制 activate-now 路由。完整开奖与投注结算仍待后续阶段实现；上面的开奖相关未来 API 尚未注册。
+下期激活仅由内部开期事务在彩种行锁下执行，与审核串行化：使用 PostgreSQL `clock_timestamp()` 检查实际窗口 `bet_start_at <= now < bet_end_at`、`bet_end_at <= draw_at`，开期时激活满足序号的 approved 版本并保存不可变 period_rule_versions。S4-c1 日历、期次生成和状态 worker，以及 S4-c2 来源配置与人工结果已接入；没有公开强制 activate-now 路由。投注、结算与已结算结果纠正仍待 S5，未来 API 表不代表已注册。
 
 clone 仅接受 active/expired/rolled_back 来源，返回新的 draft、version_no、source_version_id，不直接激活旧版本。新草稿定义继承源定义且不可修改，draft 阶段可修改生效模式，但必须重新验证、送审、由非贡献者审核。普通版本替换时旧 active 标记 expired；来源克隆版本生效时被替换的旧 active 标记 rolled_back。不删除历史、不改变积分、不创建投注订单或派奖。
 

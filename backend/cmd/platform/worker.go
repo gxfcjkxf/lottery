@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/gxfcjkxf/lottery/backend/internal/drawfeed"
 	"github.com/gxfcjkxf/lottery/backend/internal/rulebook"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
@@ -10,6 +11,12 @@ import (
 
 func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger) error {
 	store := rulebook.Store{DB: db}
+	// Draw I/O has its own bounded loop; slow future adapters must not delay the
+	// one-second period clock. Exactly one collector loop lives per worker.
+	drawCtx, stopDraw := context.WithCancel(ctx)
+	drawDone := make(chan struct{})
+	go func() { defer close(drawDone); runDrawWorker(drawCtx, store, logger) }()
+	defer func() { stopDraw(); <-drawDone }()
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	fill := time.NewTicker(time.Minute)
@@ -40,6 +47,27 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 				logger.Error("period transition failed", "error", e, "committed_transitions", n)
 			} else if n > 0 {
 				logger.Info("period transitions committed", "count", n)
+			}
+		}
+	}
+}
+
+func runDrawWorker(ctx context.Context, store rulebook.Store, logger *slog.Logger) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	resolver := drawfeed.DefaultResolver(5 * time.Second)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run, cancel := context.WithTimeout(ctx, 10*time.Second)
+			n, err := store.CollectDraws(run, resolver)
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				logger.Error("draw collection failed", "error", err, "committed_results", n)
+			} else if n > 0 {
+				logger.Info("draw results locked", "count", n)
 			}
 		}
 	}

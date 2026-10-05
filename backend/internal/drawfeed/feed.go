@@ -69,6 +69,12 @@ type Adapter interface {
 type Resolver struct {
 	Adapters map[string]Adapter
 	Timeout  time.Duration
+	// BeforeAttempt lets a persisted claim stop fallback after manual selection
+	// or configuration replacement. It runs before each enabled external source.
+	BeforeAttempt func(context.Context, Source) error
+	// CandidateCheck adds persisted-period checks (for example primary-clock
+	// bounds). Invalid/abnormal results fall back; infrastructure errors stop.
+	CandidateCheck func(context.Context, Candidate) error
 }
 
 // StubAdapter explicitly represents an API or DOM source that is not
@@ -173,6 +179,11 @@ func (r Resolver) Resolve(ctx context.Context, request Request, sources []Source
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
+		if r.BeforeAttempt != nil {
+			if err := r.BeforeAttempt(ctx, source); err != nil {
+				return result, err
+			}
+		}
 		adapter := r.Adapters[source.Type]
 		if adapter == nil {
 			result.Attempts = append(result.Attempts, Attempt{SourceID: source.ID, Status: "error", Code: "adapter_unavailable"})
@@ -184,6 +195,7 @@ func (r Resolver) Resolve(ctx context.Context, request Request, sources []Source
 		attemptErr := attemptCtx.Err()
 		cancel()
 		if err := ctx.Err(); err != nil {
+			result.Attempts = append(result.Attempts, Attempt{SourceID: source.ID, Status: "error", Code: "cancelled"})
 			return result, err
 		}
 		if errors.Is(attemptErr, context.DeadlineExceeded) {
@@ -192,6 +204,7 @@ func (r Resolver) Resolve(ctx context.Context, request Request, sources []Source
 			continue
 		}
 		if errors.Is(attemptErr, context.Canceled) {
+			result.Attempts = append(result.Attempts, Attempt{SourceID: source.ID, Status: "error", Code: "cancelled"})
 			return result, context.Canceled
 		}
 		if fetchErr != nil {
@@ -204,6 +217,20 @@ func (r Resolver) Resolve(ctx context.Context, request Request, sources []Source
 			result.Attempts = append(result.Attempts, Attempt{SourceID: source.ID, Status: "abnormal", Code: "invalid_candidate"})
 			lastErr = ErrAbnormal
 			continue
+		}
+		if r.CandidateCheck != nil {
+			if err := r.CandidateCheck(ctx, candidate); err != nil {
+				if errors.Is(err, ErrInvalid) || errors.Is(err, ErrAbnormal) {
+					result.Attempts = append(result.Attempts, Attempt{SourceID: source.ID, Status: "abnormal", Code: "invalid_candidate"})
+					lastErr = ErrAbnormal
+					continue
+				}
+				result.Attempts = append(result.Attempts, Attempt{SourceID: source.ID, Status: "error", Code: "candidate_check_error"})
+				return result, err
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return result, err
 		}
 		candidate.DrawnAt = candidate.DrawnAt.UTC()
 		result.Candidate = candidate

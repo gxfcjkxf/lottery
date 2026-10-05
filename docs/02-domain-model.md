@@ -79,7 +79,7 @@ S3-b 已实现 `brand_point_policies`：brand_id 主键，version 与 max_balanc
 `games`
 
 - `id`, `brand_id`, `code`, `name`, `status`, `model`, `timezone`
-- `version`, `started_sequence`, `schedule_id`
+- `version`, `started_sequence`, `schedule_id`, `draw_source_set_id`
 
 `game_schedules` 保存不可变的日历定义修订：`id`, `brand_id`, `game_id`, `revision`, `spec`, `created_by`, `created_at`；同一彩种的 revision 唯一。修改日历会新增修订并更新 `games.schedule_id`，不会改写旧修订。
 
@@ -114,14 +114,19 @@ Period `sequence` 是期次创建顺序；`games.started_sequence` 只在实际�
 `draw_sources`
 
 - `id`, `brand_id`, `game_id`, `type`: api/dom/manual
-- `priority`, `endpoint_config`, `credential_ref`, `enabled`
+- S4-c2 中仅保存不可变身份，同一彩种最多一个 manual 来源。不删除身份，不允许变更类型或所属品牌/彩种。
+
+`draw_source_sets`：完整配置的不可变修订，含 id/brand_id/game_id/revision/sources JSONB/created_by/created_at；sources 含 id/name/type/priority/enabled/endpoint/selector/credential_ref。修改新增修订并更新 games.draw_source_set_id；移除来源只影响新修订，不删除历史。
 
 `draw_results`
 
 - `id`, `brand_id`, `game_id`, `period_id`, `source_id`
-- `result_json` JSONB, `result_hash`, `drawn_at`
-- `status`: received/validated/abnormal/confirmed/locked/corrected
-- `validation_json`, `raw_reference`, `created_by`
+- S4-c2 实际字段：kind api/dom/manual、result JSONB、result_hash、drawn_at、created_at、created_by（系统为空）、corrected_from_id（人工在结算前覆盖外部结果时引用旧行）。只追加；当前结果由 periods.draw_result_id 决定，不根据创建时间猜测。
+- JSONB 使用 regular/special/digits 三个数组；哈希基于规范化结果，非有序号码组排序，数字位置保留顺序。
+
+`draw_attempt_batches`：id/brand_id/game_id/period_id/source_set_id/observed_period_version/status/attempts/created_at；status 为 accepted/no_data/failed/discarded。attempts 仅含 source_id/status/code，不保存密钥、原始响应或底层错误文本。配置替换或人工生效后的旧采集记 discarded，不改变当前结果。复合外键限制同品牌、彩种、期次。
+
+periods 另含 draw_result_id、draw_claim_token/draw_claim_until 和 draw_next_poll_at。租约仅是采集元数据，不增加业务 version；drawn/settling/settled 必须存在结果指针。结果和采集证据不可改写或删除。已结算结果纠正及回溯属于 S5，不能改写旧行实现。
 
 同一期只能有一个锁定结果；纠正时保留旧结果并建立 `corrected_from_id`。
 
