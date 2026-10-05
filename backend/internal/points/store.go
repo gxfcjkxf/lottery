@@ -354,6 +354,13 @@ func (s Store) Post(ctx context.Context, tx pgx.Tx, c Change) (Entry, error) {
 	if err != nil {
 		return Entry{}, err
 	}
+	policy, err := s.LockedPolicy(ctx, tx, c.BrandID)
+	if err != nil {
+		return Entry{}, err
+	}
+	if err = policy.CheckBalance(before, after, c.ReversalOf != ""); err != nil {
+		return Entry{}, err
+	}
 	if c.ReversalOf != "" {
 		original, e := s.Entry(ctx, tx, c.BrandID, c.MemberID, c.ReversalOf)
 		if e != nil {

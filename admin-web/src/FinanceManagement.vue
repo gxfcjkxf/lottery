@@ -19,6 +19,8 @@ import {
   type WalletSource,
   type WalletState,
 } from "./finance-api";
+import PointPolicySettings from "./PointPolicySettings.vue";
+import { canViewPointPolicy } from "./point-policy-api";
 
 const props = defineProps<{
   account: AdminAccount & Partial<FinanceAccount>;
@@ -66,6 +68,7 @@ const rechargeForm = ref({
   reason: "",
 });
 const rechargeReasonById = ref<Record<string, string>>({});
+const cancelReasonById = ref<Record<string, string>>({});
 const freezeForm = ref({ points: "", reason: "" });
 const unfreezeReason = ref("");
 const adjustForm = ref({
@@ -75,6 +78,7 @@ const adjustForm = ref({
 });
 const rechargeKeyFor = createBodyKeyTracker();
 const confirmKeyFor = createBodyKeyTracker();
+const cancelKeyFor = createBodyKeyTracker();
 const freezeKeyFor = createBodyKeyTracker();
 const unfreezeKeyFor = createBodyKeyTracker();
 const adjustKeyFor = createBodyKeyTracker();
@@ -94,6 +98,9 @@ const writeAdjust = computed(() =>
   canWriteFinance(props.account, props.brandId, "wallet.adjust.brand"),
 );
 const canSearch = computed(() => viewWallet.value || viewRecharges.value);
+const canViewPolicy = computed(() =>
+  canViewPointPolicy(props.account, props.brandId),
+);
 const walletBucketRows = computed(() =>
   wallet.value
     ? sources.flatMap((source) =>
@@ -433,6 +440,23 @@ async function confirmRecharge(recharge: Recharge) {
     () => confirmKeyFor.clear(),
   );
 }
+async function cancelRecharge(recharge: Recharge) {
+  const reason = cancelReasonById.value[recharge.id]?.trim() ?? "";
+  if (recharge.state !== "pending" || !reason) return;
+  const body = { version: recharge.version, reason };
+  await mutate(
+    () =>
+      api.cancelRecharge(
+        props.brandId,
+        recharge.id,
+        body,
+        cancelKeyFor({ brand_id: props.brandId, id: recharge.id, ...body }),
+      ),
+    "充值单已取消。",
+    () => cancelKeyFor.clear(),
+  );
+  if (!error.value) cancelReasonById.value[recharge.id] = "";
+}
 async function freezePoints() {
   if (
     !loadedMemberId.value ||
@@ -534,6 +558,12 @@ function sourceSnapshotValue(
     <div class="server-note">
       页面权限仅用于显示操作入口，服务端权限校验始终为最终依据。超级管理员在此只读。
     </div>
+    <PointPolicySettings
+      v-if="canViewPolicy"
+      :account="account"
+      :brand-id="brandId"
+      @session-invalid="emit('session-invalid')"
+    />
     <form
       v-if="canSearch || writeRecharge || writeFreeze || writeAdjust"
       class="lookup"
@@ -844,6 +874,20 @@ function sourceSnapshotValue(
           @click="confirmRecharge(recharge)"
         >
           确认并入账
+        </button>
+        <label v-if="writeRecharge && recharge.state === 'pending'"
+          >取消原因<input
+            v-model.trim="cancelReasonById[recharge.id]"
+            required
+            maxlength="500" /></label
+        ><button
+          v-if="writeRecharge && recharge.state === 'pending'"
+          type="button"
+          class="secondary small-button"
+          :disabled="mutating || !cancelReasonById[recharge.id]?.trim()"
+          @click="cancelRecharge(recharge)"
+        >
+          取消充值单
         </button>
       </article>
       <footer class="pager">

@@ -64,6 +64,8 @@
 
 ### 品牌配置
 
+S3-b 已实现 `brand_point_policies`：brand_id 主键，version 与 max_balance_points/max_recharge_points/max_adjustment_points（nullable bigint，正值或不限）。现存品牌迁移初始化，新品牌数据库触发器初始化；版本独立于认证配置，修改在同事务内审计。
+
 `config_versions`
 
 - `id`, `scope_type`, `scope_id`, `config_key`, `config_value` JSONB
@@ -158,6 +160,13 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 
 实际字段为 member_id、entry_type、reference_type/reference_id、operation_key、version、request_hash、actor_type/actor_id、request_id、reason、reversal_of、source_allocation；每个 before/delta/after 快照为完整 12 桶十进制字符串 JSONB。`(brand_id, account_id, version)` 唯一，补偿引用强制同品牌同账户，原流水最多一笔全额补偿。账本和余额不能分开提交。
 
+`point_balance_repairs`（S3-b）
+
+- id、brand_id、account_id、member_id，复合外键与账户品牌/成员一致。
+- version 为恢复后的账本版本；before_snapshot 包含实测原账户版本和存在的分项，after_snapshot 包含原账本重建的版本及完整矩阵。
+- reason、actor_id、request_id、created_at；追加后不可修改/删除，品牌/成员/时间索引用于分页查询。
+- 只修复余额投影，不改变经济账本；完整性无法证明时禁止重建。真实积分增减仍通过追加账本实现。
+
 ### 充值与提现
 
 `recharge_orders`
@@ -165,7 +174,7 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 - `id`, `brand_id`, `brand_member_id`, `points`, `status`
 - `proof_reference`, `remark`, `created_by`, `confirmed_by`, `confirmed_at`
 
-第一期由后台人工创建并确认；确认时写入充值积分和账本。实际字段为 member_id、account_id、points、state（pending/confirmed/cancelled）、proof_reference、remark、created_by、confirmed_by、version、created_at、confirmed_at、ledger_entry_id。金额不可通过确认操作修改；确认必须匹配 pending 版本并原子完成账本、余额和审计。当前没有支付或文件上传，凭证仅可选文本引用。
+第一期由后台人工创建并确认；确认时写入充值积分和账本。实际字段为 member_id、account_id、points、state（pending/confirmed/cancelled）、proof_reference、remark、created_by、confirmed_by、version、created_at、confirmed_at、ledger_entry_id。金额不可通过确认操作修改；确认必须匹配 pending 版本并原子完成账本、余额和审计。S3-b 支持待确认单按原版本取消，仅改状态、递增版本并审计，不产生余额/流水；取消与确认竞争只有一个成功。当前没有支付或文件上传，凭证仅可选文本引用。
 
 `withdrawal_orders`
 

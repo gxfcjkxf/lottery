@@ -4,6 +4,7 @@ import AccessManagement from "./AccessManagement.vue";
 import MemberProvision from "./MemberProvision.vue";
 import AuthSettings from "./AuthSettings.vue";
 import FinanceManagement from "./FinanceManagement.vue";
+import BalanceRepair from "./BalanceRepair.vue";
 import {
   previewCorrection,
   resolveWithdrawal,
@@ -2087,6 +2088,13 @@ const ledger = [
         <FinanceManagement
           v-if="account && selectedBrandId"
           :key="selectedBrandId"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
+        <BalanceRepair
+          v-if="account && selectedBrandId"
+          :key="`repair-${selectedBrandId}`"
           :account="account"
           :brand-id="selectedBrandId"
           @session-invalid="clearAdminData"

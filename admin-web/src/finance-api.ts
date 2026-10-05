@@ -315,6 +315,18 @@ export function createFinanceApi(fetcher: FetchLike = fetch) {
         { method: "POST", body, idempotencyKey },
       );
     },
+    cancelRecharge(
+      brandId: string,
+      rechargeId: string,
+      body: { version: number; reason: string },
+      idempotencyKey: string,
+    ) {
+      return request<unknown>(
+        brandId,
+        `/recharges/${encodeURIComponent(rechargeId)}/cancel`,
+        { method: "POST", body, idempotencyKey },
+      );
+    },
     freezeWallet(
       brandId: string,
       memberId: string,

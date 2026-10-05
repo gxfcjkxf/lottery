@@ -23,6 +23,8 @@ func pointResult(data any, err error) (mutation.Result, error) {
 		return mutation.Fail(400, "POINTS_INPUT_INVALID", "积分或操作资料不正确"), nil
 	case errors.Is(err, points.ErrOverflow):
 		return mutation.Fail(400, "POINTS_LIMIT_EXCEEDED", "积分超出整数上限"), nil
+	case errors.Is(err, points.ErrPolicyLimit):
+		return mutation.Fail(409, "POINTS_POLICY_LIMIT_EXCEEDED", "超出当前品牌积分限额"), nil
 	case errors.Is(err, points.ErrInsufficient):
 		return mutation.Fail(409, "POINTS_INSUFFICIENT", "对应来源或状态积分不足"), nil
 	case errors.Is(err, points.ErrConflict):
@@ -103,6 +105,7 @@ func pointAdminActor(w http.ResponseWriter, r *http.Request, d Dependencies, res
 	return a, brand, true
 }
 func registerPointAdminRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
+	registerPointSafetyRoutes(handle, d)
 	s := points.Store{DB: d.Admins.DB}
 	f := finance.Service{DB: d.Admins.DB, Points: s}
 	for _, suffix := range []string{"", "/ledger", "/reconciliation"} {
@@ -326,6 +329,15 @@ func registerPointAdminRoutes(handle func(string, string, http.HandlerFunc), d D
 				}
 				if err != nil {
 					return pointResult(nil, err)
+				}
+				if kind == "adjust" {
+					policy, e := s.LockedPolicy(ctx, tx, brand)
+					if e != nil {
+						return pointResult(nil, e)
+					}
+					if e = policy.CheckAdjustment(delta); e != nil {
+						return pointResult(nil, e)
+					}
 				}
 				entry, err := s.Post(ctx, tx, points.Change{BrandID: brand, MemberID: member, EntryType: kind, ReferenceType: "manual", ReferenceID: member, OperationKey: key, Reason: reason, ActorType: m.ActorType, ActorID: m.ActorID, RequestID: m.RequestID, IP: m.IP, Delta: delta, Allocation: allocation, ReversalOf: reversal})
 				return pointResult(entry, err)

@@ -214,9 +214,33 @@ Wallet 含 account_id、brand_id、member_id、version 与 display_points、avai
 
 充值单创建返回 201 pending，不增加余额；确认返回 confirmed、ledger_entry_id、audit_log_id。版本冲突或新操作键重复确认返回 409，不二次到账；同一幂等键原请求重放原成功结果。凭证引用可选，不提供文件上传或真实支付；备注可选，创建和确认原因都必填（1–500 UTF-8 字节）。单人可创建并确认。
 
-Reconciliation 返回 consistent、account_id、member_id、version、entry_count、expected/actual（完整矩阵）、issues。关键查询走主库；对账在共享账户锁内扫描版本链，写入在账户排他锁内校验上一条 after 与当前余额。没有账本却有余额、缺失桶或不一致时停止新增记账，返回 `POINTS_RECONCILIATION_REQUIRED`，不能用人工调整绕过损坏。对账异常的专门修复流程、可配置运营积分上限和大规模异步对账仍待后续实现；当前只执行 int64 技术上限。
+Reconciliation 返回 consistent、account_id、member_id、version、entry_count、expected/actual（完整矩阵）、issues。关键查询走主库；对账在共享账户锁内扫描版本链，写入在账户排他锁内校验上一条 after 与当前余额。没有账本却有余额、缺失桶或不一致时停止新增记账，返回 `POINTS_RECONCILIATION_REQUIRED`，不能用人工调整绕过损坏。S3-b 提供下述明确修复流程与品牌限额；大规模异步对账仍待后续实现。
 
 错误：400 `POINTS_INPUT_INVALID`/`POINTS_LIMIT_EXCEEDED`；404 `POINTS_RECORD_NOT_FOUND`；409 `POINTS_INSUFFICIENT`/`POINTS_OPERATION_CONFLICT`/`POINTS_RECONCILIATION_REQUIRED`。资金写入复用持久化幂等与新权限重查，业务单、桶余额、追加账本、账户版本和审计共同提交或回滚。
+
+### S3-b 品牌积分限额、充值取消与差错修复
+
+| 方法 | 路径 | 授权/请求 |
+|---|---|---|
+| GET | /admin/point-policy | `point_policy.view.brand/platform`；X-Brand-ID 必填 |
+| PUT | /admin/point-policy | `point_policy.write.brand`；version、三个完整限额字段、reason 必填 |
+| POST | /admin/recharges/{id}/cancel | `recharge.write.brand`；version、reason；仅 pending → cancelled，不产生积分 |
+| GET | /admin/wallets/{memberID}/repair-preview | `wallet.view.brand/platform`；只读完整账本重建与差错预览 |
+| POST | /admin/wallets/{memberID}/repair | `wallet.repair.brand`；version、token、reason，不接受新余额 |
+| GET | /admin/wallets/{memberID}/repairs | `wallet.view.brand/platform`；limit/offset，追加修复记录查询 |
+
+Policy 返回 brand_id、version、max_balance_points、max_recharge_points、max_adjustment_points，以及保存后的 audit_log_id。三个限额均为规范正整数字符串或显式 null（不限），默认 null；PUT 是完整替换，漏字段、未知字段和重复键拒绝，不以漏键隐式清空限制。配置仅针对本品牌，版本比较、成功审计与幂等共同提交，立即生效。
+
+- 余额上限针对每个品牌成员全部 12 个分项合计；只限制净增加的非冲正记账。降低上限不会扣已有余额或阻止扣款、状态迁移和原路退款；所有路径仍受非负和 int64 安全上限约束。
+- 单笔充值上限在创建和确认时都检查最新配置；确认时若配置已降低，失败后充值保持 pending、余额不变。取消仍允许。
+- 单次调整上限针对人工调整绝对金额，正负调整都检查，不替代来源余额不足校验。
+- 超限返回 409 `POINTS_POLICY_LIMIT_EXCEEDED`；版本/状态/修复预览冲突返回 409 `POINTS_OPERATION_CONFLICT`。失败不创建半笔资金记录。不同幂等键的重复取消/确认均不能再次改变状态。
+
+RepairPreview 含 account_id、member_id、version（观察到的账户版本）、ledger_version、actual（实际存在的来源/状态分项，缺失不补零）、expected（原账本完整重建矩阵）、consistent、repairable、issues、token。预览验证完整版本链、请求摘要、前后快照、来源分配和冲正引用；账本无法证明完整时拒绝修复。token 绑定品牌、账户、全部观察值及原流水摘要。提交修复在账户排他锁内重新计算；余额、版本或流水变化则拒绝，要求重新预览，不允许使用过时结果。
+
+差错修复仅重建账本的余额投影及账户版本，不属于充值/派奖/调账，因此不伪造经济流水、不覆盖或删除旧流水。修复会追加不可改写的 point_balance_repairs（含完整实测前快照、重建后快照、原因、操作人、请求和时间）及审计，并与余额恢复同事务提交；缺失分项可按完整原账本补建。真实经济金额修正仍须使用追加调整/冲正流水。无差错时不可重复修复，账本自身损坏则停写并调查；后续专门离线恢复流程不得靠自填金额替代。
+
+管理页面提供品牌限额编辑、待确认充值取消、差错会员预览/明确确认和修复记录查询，权限独立。当前超级管理员资金写入的临时边界与 S3-a 相同，业务最终范围仍待确认。
 
 ### 期次和开奖（后续实现）
 

@@ -68,6 +68,12 @@ describe("finance API client", () => {
       { version: 4, reason: "verified" },
       "confirm-key",
     );
+    await api.cancelRecharge(
+      "b",
+      "r/1",
+      { version: 4, reason: "duplicate request" },
+      "cancel-key",
+    );
     await api.freezeWallet(
       "b",
       "m",
@@ -90,6 +96,7 @@ describe("finance API client", () => {
     expect(calls.map(([url]) => url)).toEqual([
       "/api/v1/admin/recharges",
       "/api/v1/admin/recharges/r%2F1/confirm",
+      "/api/v1/admin/recharges/r%2F1/cancel",
       "/api/v1/admin/wallets/m/freeze",
       "/api/v1/admin/wallets/m/unfreeze",
       "/api/v1/admin/wallets/m/adjust",
@@ -99,10 +106,14 @@ describe("finance API client", () => {
       points: "90071992547409931234",
       reason: "receipt",
     });
-    expect(JSON.parse(String(calls[4][1]?.body))).toEqual({
+    expect(JSON.parse(String(calls[5][1]?.body))).toEqual({
       source: "winning",
       delta: "-5",
       reason: "correction",
+    });
+    expect(JSON.parse(String(calls[2][1]?.body))).toEqual({
+      version: 4,
+      reason: "duplicate request",
     });
     for (const [, init] of calls) {
       expect(init?.method).toBe("POST");
@@ -115,6 +126,9 @@ describe("finance API client", () => {
     }
     expect((calls[0][1]?.headers as Headers).get("Idempotency-Key")).toBe(
       "recharge-key",
+    );
+    expect((calls[2][1]?.headers as Headers).get("Idempotency-Key")).toBe(
+      "cancel-key",
     );
   });
 

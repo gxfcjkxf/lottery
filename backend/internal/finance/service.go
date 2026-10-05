@@ -5,6 +5,7 @@ package finance
 import (
 	"context"
 	"errors"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -51,6 +52,13 @@ func (s Service) CreateRecharge(ctx context.Context, tx pgx.Tx, brand, member st
 	if err != nil || tx == nil || !financeUUIDPattern.MatchString(brand) || !financeUUIDPattern.MatchString(member) || amount <= 0 || !validText(proof, 500) || !validText(remark, 2000) {
 		return Recharge{}, points.ErrInvalid
 	}
+	policy, err := s.Points.LockedPolicy(ctx, tx, brand)
+	if err != nil {
+		return Recharge{}, err
+	}
+	if err = policy.CheckRecharge(amount); err != nil {
+		return Recharge{}, err
+	}
 	var accountID string
 	err = tx.QueryRow(ctx, `SELECT pa.id::text FROM brand_members bm JOIN point_accounts pa ON pa.brand_id=bm.brand_id AND pa.brand_member_id=bm.id
 		WHERE bm.brand_id=$1 AND bm.id=$2`, brand, member).Scan(&accountID)
@@ -90,11 +98,21 @@ func (s Service) ConfirmRecharge(ctx context.Context, tx pgx.Tx, brand, id strin
 	if record.State != "pending" || record.Version != version {
 		return Recharge{}, points.ErrConflict
 	}
-	before := rechargeSnapshot(record)
+	if version == math.MaxInt64 {
+		return Recharge{}, points.ErrOverflow
+	}
 	amount, err := parseAmount(record.Points)
 	if err != nil {
 		return Recharge{}, err
 	}
+	policy, err := s.Points.LockedPolicy(ctx, tx, brand)
+	if err != nil {
+		return Recharge{}, err
+	}
+	if err = policy.CheckRecharge(amount); err != nil {
+		return Recharge{}, err
+	}
+	before := rechargeSnapshot(record)
 	var delta points.Balance
 	delta[0][0] = amount
 	entry, err := s.Points.Post(ctx, tx, points.Change{
@@ -127,21 +145,71 @@ func (s Service) ConfirmRecharge(ctx context.Context, tx pgx.Tx, brand, id strin
 	return record, nil
 }
 
+// CancelRecharge transitions a pending recharge to cancelled without posting
+// any points. The row lock serializes cancellation against confirmation.
+func (s Service) CancelRecharge(ctx context.Context, tx pgx.Tx, brand, id string, version int64, reason string, meta points.Metadata) (Recharge, error) {
+	reason, err := validReason(reason)
+	if err != nil || tx == nil || !financeUUIDPattern.MatchString(brand) || !financeUUIDPattern.MatchString(id) || version < 1 {
+		return Recharge{}, points.ErrInvalid
+	}
+	record, err := scanRecharge(tx.QueryRow(ctx, `SELECT id::text,brand_id::text,member_id::text,account_id::text,points,state,proof_reference,remark,created_by::text,
+		COALESCE(confirmed_by::text,''),version,created_at,confirmed_at,COALESCE(ledger_entry_id::text,'')
+		FROM recharge_orders WHERE brand_id=$1 AND id=$2 FOR UPDATE`, brand, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Recharge{}, points.ErrNotFound
+	}
+	if err != nil {
+		return Recharge{}, err
+	}
+	if record.State != "pending" || record.Version != version {
+		return Recharge{}, points.ErrConflict
+	}
+	if version == math.MaxInt64 {
+		return Recharge{}, points.ErrOverflow
+	}
+	before := rechargeSnapshot(record)
+	command, err := tx.Exec(ctx, `UPDATE recharge_orders SET state='cancelled',version=version+1
+		WHERE brand_id=$1 AND id=$2 AND state='pending' AND version=$3`, brand, id, version)
+	if err != nil {
+		return Recharge{}, err
+	}
+	if command.RowsAffected() != 1 {
+		return Recharge{}, points.ErrConflict
+	}
+	record.State, record.Version = "cancelled", version+1
+	auditID, err := audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: meta.ActorType, ActorID: meta.ActorID, Action: "finance.recharge.cancel", ResourceType: "recharge_order", ResourceID: record.ID, Reason: reason, RequestID: meta.RequestID, IP: meta.IP, Before: before, After: rechargeSnapshot(record)})
+	if err != nil {
+		return Recharge{}, err
+	}
+	record.AuditLogID = auditID
+	return record, nil
+}
+
 func (s Service) ListRecharges(ctx context.Context, brand, member string, limit, offset int) ([]Recharge, error) {
-	if !financeUUIDPattern.MatchString(brand) || !financeUUIDPattern.MatchString(member) || limit < 1 || limit > 100 || offset < 0 {
+	if !financeUUIDPattern.MatchString(brand) || (member != "" && !financeUUIDPattern.MatchString(member)) || limit < 1 || limit > 100 || offset < 0 || offset > 1_000_000 {
 		return nil, points.ErrInvalid
 	}
-	var exists bool
-	err := s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$2)`, brand, member).Scan(&exists)
-	if err != nil {
-		return nil, err
+	if member != "" {
+		var exists bool
+		err := s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$2)`, brand, member).Scan(&exists)
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			return nil, points.ErrNotFound
+		}
 	}
-	if !exists {
-		return nil, points.ErrNotFound
-	}
-	rows, err := s.DB.Query(ctx, `SELECT id::text,brand_id::text,member_id::text,account_id::text,points,state,proof_reference,remark,created_by::text,
+	query := `SELECT id::text,brand_id::text,member_id::text,account_id::text,points,state,proof_reference,remark,created_by::text,
 		COALESCE(confirmed_by::text,''),version,created_at,confirmed_at,COALESCE(ledger_entry_id::text,'')
-		FROM recharge_orders WHERE brand_id=$1 AND member_id=$2 ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4`, brand, member, limit, offset)
+		FROM recharge_orders WHERE brand_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`
+	args := []any{brand, limit, offset}
+	if member != "" {
+		query = `SELECT id::text,brand_id::text,member_id::text,account_id::text,points,state,proof_reference,remark,created_by::text,
+			COALESCE(confirmed_by::text,''),version,created_at,confirmed_at,COALESCE(ledger_entry_id::text,'')
+			FROM recharge_orders WHERE brand_id=$1 AND member_id=$2 ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4`
+		args = []any{brand, member, limit, offset}
+	}
+	rows, err := s.DB.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
