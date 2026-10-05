@@ -5,6 +5,7 @@ import MemberProvision from "./MemberProvision.vue";
 import AuthSettings from "./AuthSettings.vue";
 import FinanceManagement from "./FinanceManagement.vue";
 import BalanceRepair from "./BalanceRepair.vue";
+import RuleSimulator from "./RuleSimulator.vue";
 import {
   previewCorrection,
   resolveWithdrawal,
@@ -1452,6 +1453,17 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '规则配置'" class="page-content">
+        <RuleSimulator
+          v-if="account && selectedBrandId"
+          :key="`rule-simulator-${selectedBrandId}`"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
+        <div v-else class="panel directory-state">
+          <h2>真实规则模拟</h2>
+          <p>请先登录后台并选择品牌；下面的规则审核向导仍为演示。</p>
+        </div>
         <div class="page-heading">
           <div>
             <div class="eyebrow">GAMES / RULE WORKBENCH</div>

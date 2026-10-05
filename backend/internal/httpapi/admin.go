@@ -104,6 +104,7 @@ func registerAdminRoutes(mux *http.ServeMux, d Dependencies) {
 			fn(w, r.WithContext(ctx))
 		})
 	}
+	registerRuleSimulationRoutes(handle, d)
 	handle("POST", "/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		b, ok := resolveBrand(w, r, d)
 		if !ok {

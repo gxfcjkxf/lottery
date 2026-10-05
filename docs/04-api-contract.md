@@ -256,12 +256,62 @@ RepairPreview 含 account_id、member_id、version（观察到的账户版本）
 | POST | /admin/settlements/{id}/retry | 仅允许重试可重试失败，不重试异常注单 |
 | GET | /admin/periods/{id}/timeline | 状态、开奖、结算和审计时间线 |
 
-### 玩法和配置
+### S4-a 已接入：后台玩法模拟（仅计算）
+
+| 方法 | 路径 | 授权/请求 |
+|---|---|---|
+| POST | `/api/v1/admin/rule-simulations` | `rule.simulate.brand`（目标品牌角色）或 `rule.simulate.platform`（平台角色）；必须传 `X-Brand-ID` |
+
+此端点要求有效管理会话（`lottery_admin` Cookie 或 Bearer 管理令牌），并在服务器按所选品牌重查会话和权限。平台权限也必须显式选择目标品牌；`brand_id` 不放在请求正文中。前端使用 same-origin 凭证并发送 `X-Brand-ID`、`Idempotency-Key`。若使用 Cookie，变更请求必须有与 Host 同源的 `Origin`；不可信来源返回 403 `CSRF_REJECTED`。请求需为 `application/json`，最大 16 KiB；未知字段、畸形/尾随 JSON 或超限返回 400 `REQUEST_INVALID`。玩法 Definition 的各层 schema 闭合，未知字段和重复键拒绝；完整 DSL 和边界见 [玩法规则引擎 S4-a DSL](03-rule-engine.md#8-s4-a-可执行-dsl-v1-实际实现)。
+
+请求 JSON 的外层结构与类型如下；积分金额和倍数是规范十进制字符串，赔率是精确十进制字符串，不是 JSON number：
+
+~~~json
+{
+  "definition": {
+    "schema_version": 1,
+    "model": {
+      "model": "X_PLUS_Y",
+      "regular_pool": { "min": 1, "max": 49, "values": [], "allow_repeat": false },
+      "special_pool": { "min": 1, "max": 49, "values": [], "allow_repeat": false },
+      "regular_count": 6, "special_count": 1, "pool_size": 0, "total_count": 0, "length": 0,
+      "allow_repeat": false, "ordered": false
+    },
+    "selection": { "mode": "numbers", "regular_count": 0, "special_count": 1, "exclude_count": 0, "attribute_groups": [], "feature_choices": {} },
+    "number_attributes": {},
+    "unit_points": "1",
+    "prize_tiers": [{ "code": "SPECIAL_MATCH", "condition": { "op": "equals", "field": "special_match", "value": 1 }, "odds": "35", "exclusive": true, "cap_points": null }],
+    "mixed_tier_policy": "max_all", "cap_points": null,
+    "rounding": "half_up", "rounding_scope": "order",
+    "limits": { "max_combinations": 100, "max_multiplier": "1000", "max_bet_points": null }
+  },
+  "selection": { "regular": [], "special": [7, 19], "digits": [], "exclude": [], "attributes": {}, "features": {} },
+  "draw": { "regular": [1, 2, 3, 4, 5, 6], "special": [7], "digits": [] },
+  "multiplier": "2"
+}
+~~~
+
+`definition` 使用 `rules.Definition` 的 schema-v1 结构；号码模型、投注选择、奖级和 DSL 条件字段以 [03-rule-engine.md](03-rule-engine.md) 为准。`selection` 接受 regular/special/digits/exclude/attributes/features 六类字段，但不要求发送不适用的空字段；由 selection mode 和 model 要求的选号组必须提供并通过校验，其他组可省略（或保持空值）。`draw` 同理，只需提供当前 model 要求的开奖结果组，其他组可省略或为空。倍数为正整数字符串且不得超过 definition 的 max_multiplier。
+
+成功返回 HTTP 200，标准 `{success,data,request_id}` envelope；`data` 是完整模拟结果，不含 `audit_log_id`：
+
+- 顶层：`won`、`normalized`、`combination_count`、`multiplier`、`bet_points`、`prize_points`、`raw_prize_points`、`capped_prize_points`、`lines`、`warnings`。所有积分/精度字段均为 JSON 字符串：`multiplier`、`bet_points`、`prize_points` 是规范整数金额；`raw_prize_points`、`capped_prize_points` 是 `math/big.Rat.RatString` 精确值，可能为 `"n/d"`，分母为 1 时为整数文本。
+- `lines[]` 含展开后的 `selection`、整数舍入后的 `points` 及每个奖级的 `hits[]`；每个 hit 含 `code`、`exclusive`、`matched`、`selected`、`raw_points`、`capped_points`、`points`、`trace`。`raw_points` 与 `capped_points` 同为 RatString 精确有理数（可为 `"n/d"`）；hit 的 `points` 是整数舍入值字符串。Trace 返回实际值、匹配结果和所有子节点；all/any 不短路隐藏解释。
+
+成功计算在同一事务追加 `rule.simulate` 审计，资源类型为 `rule_simulation`；审计记录规则定义 SHA-256 摘要及组合数、投注积分、派奖积分、是否中奖，不记录完整请求正文。相同幂等请求重放返回原结果而不重复审计。幂等键为 8–128 个 ASCII 字母/数字或 `_ : . -`；同键不同正文返回 409 `IDEMPOTENCY_CONFLICT`。计算产生的最终 4xx 结果会按幂等键保存；改动输入后应使用新键。瞬时/存储错误返回 503 `SERVICE_UNAVAILABLE`，不作为成功结果重放。
+
+该接口只运行模拟：不创建注单/订单、不扣款或写任何积分桶/账本、不派奖、不发布玩法，也不提交审核或批准规则。审计是模拟操作记录，不代表规则版本生命周期动作。它不会证明商业赔率安全、所有组合的完整可达性或实际开奖正确性。
+
+主要错误（均为 `{success:false,error:{code,message},request_id}`）：400 `RULE_INVALID`（规则、选号或开奖结果无效）、`RULE_EXECUTION_LIMIT`、`RULE_POINTS_OVERFLOW`；400 `REQUEST_INVALID`/`IDEMPOTENCY_KEY_INVALID`；401 `AUTH_SESSION_REVOKED`；403 `PERMISSION_DENIED`/`CSRF_REJECTED`；409 `IDEMPOTENCY_CONFLICT`；415 `CONTENT_TYPE_INVALID`；503 `SERVICE_UNAVAILABLE`。管理端调用使用 [`rule-simulation-api.ts`](../admin-web/src/rule-simulation-api.ts) 与规则模拟器页面；调用方可通过响应 HTTP status 和 `error.code` 区分错误。
+
+### 玩法和配置（完整版本生命周期：后续实现）
+
+下面的规则版本草稿、校验工作流、送审、审核、发布、生效和回滚仍是后续 API 契约，不由上述已接入的独立模拟端点实现。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | /admin/rule-versions | 创建草稿 |
-| POST | /admin/rule-versions/{id}/validate | 校验和模拟 |
+| POST | /admin/rule-versions/{id}/validate | （后续）校验已保存草稿并模拟 |
 | POST | /admin/rule-versions/{id}/submit-review | 提交审核 |
 | POST | /admin/rule-versions/{id}/approve | 品牌管理员审核通过 |
 | POST | /admin/rule-versions/{id}/reject | 驳回并记录原因 |

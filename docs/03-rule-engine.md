@@ -121,7 +121,7 @@
 - 结算输入：规则版本、注单规范化内容、开奖结果、开奖结果特征、倍数。
 - 输出：是否中奖、命中奖级、基础积分、封顶后积分、四舍五入后积分、解释明细。
 - 大多数玩法一个奖级；多个奖级由 `exclusive` 配置决定。
-- 排他奖级按 priority 选择一个；非排他奖级累加。
+- 排他奖级按封顶后的中奖金额选择一个，金额相同按定义中的稳定顺序选择；不能用 priority 选择较低金额。非排他奖级累加。该口径以用户原始要求为准，修正早先 priority 文案。
 - 四舍五入精度和封顶值读取规则配置；积分最终必须是整数。
 - 中奖积分写入可用积分中的 `winning_points` 来源。
 
@@ -160,3 +160,49 @@
 - 至少一组测试选号 + 测试开奖结果 + 预期结算结果。
 
 后台必须能模拟指定选号和开奖结果，并展示每个条件节点、命中奖级和最终积分。
+
+## 8. S4-a 可执行 DSL v1（实际实现）
+
+前面的概念字段是完整平台设计；本节为可直接交给实现方和 API 使用的计算结构。生命周期版本、取消和生效字段随后保存于业务版本记录，不能把 `effective`、`cancellation` 或代码字符串直接塞入计算 Definition。
+
+计算入口 `SimulateContext(ctx, SimulationInput)`；当前仅模拟，不扣款、不创建订单、不发布规则。请求含 definition、selection、draw、multiplier（规范正整数字符串）。定义采用闭合 JSON schema，所有深度拒绝重复键、未知字段；无脚本、eval 或动态程序执行。
+
+### 定义字段
+
+- schema_version：固定 1。
+- model：本文件三类 Model 对象；X+Y 支持两独立池、重复和有序设置。M 选 N 的两池必须是同一组 M 个号码，普通/特别号之间也不重复；不同池用 X+Y。数字 N 位的 ordered 必须为 true，0~9 是隐含范围，普通/特别池为空。
+- selection：mode 为 numbers/exclude/attributes/features。numbers 的 regular_count/special_count 是**玩法投注数量**，可小于完整开奖数量，例如只买特别号设置 0+1。数字选号为每个位置的候选数组，支持复式、重复数字与开头的零。
+- number_attributes：`{组代码:{属性代码:[号码...]}}`，同一号码可同时对应多个属性。attributes 模式指定 attribute_groups，选号每组可选多值；展开后每组一个值。features 模式指定 feature_choices（允许值字典），每组候选按笛卡尔积展开。
+- unit_points、limits.max_multiplier、可选 cap_points、limits.max_bet_points：规范整数字符串；unit/max_multiplier 必须大于零，cap/max_bet 为正值或 null。
+- limits.max_combinations：1–10000。普通无序选号按组合展开，有序按排列，允许重复时支持重复组合/排列；M 选 N 过滤普通/特别跨组重复，数字禁止重复时过滤非法单线。没有合法单线拒绝。
+- prize_tiers：1–32 个唯一代码的奖级，每项含 condition、odds（正十进制字符串，最多六位小数）、exclusive、cap_points（正整数或 null）。赔率不是浮点数。
+- rounding 固定 half_up；rounding_scope 必须显式为 order/line/tier，分别在整注汇总、每个组合、每个奖级执行整数四舍五入。无推断默认值，规则审核必须查看该字段。
+- 金额比较使用该舍入层级下的实际精确值；order/line 不提前按奖级舍入。整数 points 仅为独立舍入展示，不能取代 raw/capped 值进行奖级选择。
+- 全排他奖级选择金额最高者；全非排他累加。混合时 mixed_tier_policy 必须显式选择 max_all（有排他命中则全部命中取最高）或 max_exclusive_plus_additive（排他中取最高，再加非排他）；不存在未声明的混合规则。
+
+### 条件结构与字段
+
+逻辑节点 all/any 含 1–32 个 children，not 恰好一个 child；不得附加叶节点参数。叶节点只允许 equals（value）、in（values）、between（min/max，含端点）、selected（selection_key），且只能使用该运算所需参数。selected 对照展开后用户 features 的单一选择值。
+
+| 字段 | 值与适用范围 |
+|---|---|
+| regular_match / special_match | 投注与开奖普通/特别号码的多重集交集数量，重复按实际次数匹配；不含 target/position |
+| position_match | N 位数字逐位相同的数量；不含 target/position |
+| excluded_match | 被排除的号码在指定开奖结果部分中出现的次数 |
+| draw_sum / draw_odd_count / draw_even_count | 指定部分和值、奇数个数、偶数个数 |
+| draw_unique_count / draw_all_same / draw_first_last_same | 不同号码个数；全部相同/首尾相同取 0 或 1 |
+| draw_span / draw_consecutive | 最大值减最小值；排序后相邻数差为 1 的邻接对数，不将重复号码算为连续 |
+| draw_digit / draw_parity | 指定数字位置的值 / 奇偶（偶=0、奇=1）；target=digits、position 从 0 开始 |
+| attribute_match | 指定部分中命中属性的号码次数；attribute_group 与字面属性值或 `$selection`，每个开奖结果位置最多计一次 |
+
+开奖结果部分 target 为 all/regular/special/digits；必须符合模型。属性字面值可用于普通号码玩法；`$selection` 仅使用该玩法允许用户选择的属性组。叶节点会检查字段值域，明显不可达的比较被拒绝；这不等于已经证明所有复合条件无矛盾。
+
+### 输出、精度与防滥用
+
+输出含 normalized、combination_count、bet_points、prize_points、won、lines、warnings。每个组合含全部奖级的 matched/selected、精确 raw_points/capped_points、整数 points 和完整条件 Trace；非短路展示所有条件。顶层 raw_prize_points/capped_prize_points 解释最终汇总和封顶。
+
+中间值使用任意精度有理数，展示的中间整数也是字符串，不提前把大金额转为 int64。最终投注额与派奖必须在 int64 范围；总封顶在最终整数溢出检查前生效。order 模式下各组合独立舍入的展示值不能替代整注的精确汇总；中奖条件命中但舍入为零仍保持 won=true。
+
+每个条件深度最多 8、节点最多 128；一次模拟解释节点总量最多 200000。号码池最多 10000，号码值 0–1000000、每组数量最多 10、数字长度 1–10。跨组不重复可行性使用集合约束，数字位置不重复使用二分图匹配，不能穷举无解排列。执行检查请求取消，组合工作量另有上界。HTTP 请求沿用后台 16 KiB 上限。
+
+模拟返回风险提示；奖级重叠、商业赔率合理性和完整可达性仍需案例覆盖及品牌管理员审核。S4-a 不是规则发布或完整运营编辑器验收，历史版本绑定、审核、下期生效、期次和开奖在 S4 后续子阶段继续。

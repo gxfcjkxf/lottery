@@ -1,7 +1,13 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap");
-
 :root {
-  font-family: "DM Sans", "Noto Sans SC", sans-serif;
+  /* Local fallbacks keep first render independent of third-party font servers. */
+  font-family:
+    "DM Sans",
+    "Noto Sans SC",
+    system-ui,
+    -apple-system,
+    "PingFang SC",
+    "Microsoft YaHei",
+    sans-serif;
   color: #252a36;
   background: #f7f8fa;
   font-synthesis: none;
