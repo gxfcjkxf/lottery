@@ -1,0 +1,38 @@
+name: lottery
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    environment:
+      POSTGRES_DB: lottery
+      POSTGRES_USER: lottery
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lottery_local}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lottery -d lottery"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7.4-alpine
+    ports: ["127.0.0.1:6379:6379"]
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: ["redis-data:/data"]
+  nats:
+    image: nats:2.10-alpine
+    ports: ["127.0.0.1:4222:4222", "127.0.0.1:8222:8222"]
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    volumes: ["nats-data:/data"]
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    environment:
+      MINIO_ROOT_USER: lottery_local
+      MINIO_ROOT_PASSWORD: lottery_local_storage
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    command: ["server", "/data", "--console-address", ":9001"]
+    volumes: ["object-data:/data"]
+volumes:
+  postgres-data:
+  redis-data:
+  nats-data:
+  object-data:

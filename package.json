@@ -1,0 +1,17 @@
+{
+  "name": "lottery-platform",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.19.0",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev:user": "pnpm --filter @lottery/user-web dev",
+    "dev:admin": "pnpm --filter @lottery/admin-web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test && pnpm test:static",
+    "test:static": "node --test tests/static/*.test.mjs",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": { "@playwright/test": "1.62.1" }
+}

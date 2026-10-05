@@ -1,0 +1,11 @@
+{
+  "name": "Aurora 管理端演示原型",
+  "short_name": "Aurora Admin",
+  "description": "静态交互演示，不连接真实业务数据",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f8fa",
+  "theme_color": "#f7f8fa",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

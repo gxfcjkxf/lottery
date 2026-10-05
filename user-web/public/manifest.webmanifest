@@ -1,0 +1,12 @@
+{
+  "name": "Luma Play",
+  "short_name": "Luma",
+  "description": "Luma Play user portal prototype",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7f3",
+  "theme_color": "#20594c",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
