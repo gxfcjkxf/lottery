@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // Schedule validation must also work in minimal runtime images.
 )
 
 func main() {
@@ -53,9 +54,11 @@ func run(logger *slog.Logger) error {
 		return database.Seed(ctx, pools.Primary, c.Environment)
 	case "create-admin":
 		return createAdmin(ctx, pools.Primary)
+	case "worker":
+		return runPeriodWorker(ctx, pools.Primary, logger)
 	case "serve":
 	default:
-		return errors.New("usage: platform serve|migrate|seed|create-admin|generate-auth-key <file>")
+		return errors.New("usage: platform serve|worker|migrate|seed|create-admin|generate-auth-key <file>")
 	}
 	key, err := loadKey(c)
 	if err != nil {

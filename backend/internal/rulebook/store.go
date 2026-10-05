@@ -80,15 +80,18 @@ type Version struct {
 	AuditLogID        string                  `json:"audit_log_id,omitempty"`
 }
 type Period struct {
-	ID         string    `json:"id"`
-	BrandID    string    `json:"brand_id"`
-	GameID     string    `json:"game_id"`
-	PeriodNo   string    `json:"period_no"`
-	Sequence   int64     `json:"sequence"`
-	BetStartAt time.Time `json:"bet_start_at"`
-	BetEndAt   time.Time `json:"bet_end_at"`
-	DrawAt     time.Time `json:"draw_at"`
-	Status     string    `json:"status"`
+	ID          string    `json:"id"`
+	BrandID     string    `json:"brand_id"`
+	GameID      string    `json:"game_id"`
+	PeriodNo    string    `json:"period_no"`
+	Sequence    int64     `json:"sequence"`
+	BetStartAt  time.Time `json:"bet_start_at"`
+	BetEndAt    time.Time `json:"bet_end_at"`
+	DrawAt      time.Time `json:"draw_at"`
+	Status      string    `json:"status"`
+	Version     int64     `json:"version"`
+	ScheduleID  string    `json:"schedule_id,omitempty"`
+	StateReason string    `json:"state_reason"`
 }
 
 func Allowed(a access.Account, brand, resource, action string) bool {
@@ -600,54 +603,69 @@ func (s Store) OpenPeriod(ctx context.Context, tx pgx.Tx, brand, game, no string
 	if exists {
 		return out, ErrState
 	}
-	out = Period{ID: ids.New(), BrandID: brand, GameID: game, PeriodNo: no, Sequence: g.StartedSequence + 1, BetStartAt: start, BetEndAt: end, DrawAt: draw, Status: "betting"}
+	var seq int64
+	if e = tx.QueryRow(ctx, `SELECT coalesce(max(sequence),0) FROM periods WHERE brand_id=$1 AND game_id=$2`, brand, game).Scan(&seq); e != nil {
+		return out, e
+	}
+	if seq == math.MaxInt64 {
+		return out, ErrVersion
+	}
+	out = Period{ID: ids.New(), BrandID: brand, GameID: game, PeriodNo: no, Sequence: seq + 1, BetStartAt: start, BetEndAt: end, DrawAt: draw, Status: "betting", Version: 1}
 	if _, e = tx.Exec(ctx, `INSERT INTO periods(id,brand_id,game_id,period_no,sequence,bet_start_at,bet_end_at,draw_at,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'betting')`, out.ID, brand, game, no, out.Sequence, start, end, draw); e != nil {
 		return out, e
 	}
+	return out, bindOpening(ctx, tx, g, out)
+}
+
+// The activation ordinal counts actual openings, not reservations in a generated
+// calendar. Skipped pending periods must not activate next-period rules.
+func bindOpening(ctx context.Context, tx pgx.Tx, g Game, out Period) error {
+	brand, game := g.BrandID, g.ID
+	ordinal := g.StartedSequence + 1
 	rows, e := tx.Query(ctx, `SELECT id::text FROM play_definitions WHERE brand_id=$1 AND game_id=$2 ORDER BY id FOR UPDATE`, brand, game)
 	if e != nil {
-		return out, e
+		return e
 	}
 	plays := []string{}
 	for rows.Next() {
 		var id string
 		if e = rows.Scan(&id); e != nil {
 			rows.Close()
-			return out, e
+			return e
 		}
 		plays = append(plays, id)
 	}
 	e = rows.Err()
 	rows.Close()
 	if e != nil {
-		return out, e
+		return e
 	}
 	for _, play := range plays {
 		p, e := scanPlay(tx.QueryRow(ctx, `SELECT `+playFields+` FROM play_definitions WHERE id=$1`, play))
 		if e != nil {
-			return out, e
+			return e
 		}
-		v, e := scanVersion(tx.QueryRow(ctx, `SELECT `+versionFields+` FROM rule_versions WHERE brand_id=$1 AND play_id=$2 AND status='approved' AND effective_sequence<=$3 FOR UPDATE`, brand, play, out.Sequence))
+		v, e := scanVersion(tx.QueryRow(ctx, `SELECT `+versionFields+` FROM rule_versions WHERE brand_id=$1 AND play_id=$2 AND status='approved' AND effective_sequence<=$3 FOR UPDATE`, brand, play, ordinal))
 		if errors.Is(e, ErrNotFound) {
 			continue
 		}
 		if e != nil {
-			return out, e
+			return e
 		}
 		before := snapshot(v)
 		v, e = activate(ctx, tx, brand, p, v, out.ID)
 		if e != nil {
-			return out, e
+			return e
 		}
 		after := snapshot(v)
 		after["previous_active_version_id"] = p.ActiveVersionID
 		if _, e = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "system", Action: "rule.period.activate", ResourceType: "rule_version", ResourceID: v.ID, Reason: "new betting period opened", RequestID: out.ID, Before: before, After: after}); e != nil {
-			return out, e
+			return e
 		}
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO period_rule_versions(brand_id,game_id,period_id,play_id,rule_version_id) SELECT brand_id,game_id,$3,id,active_version_id FROM play_definitions WHERE brand_id=$1 AND game_id=$2 AND active_version_id IS NOT NULL`, brand, game, out.ID); e != nil {
-		return out, e
+		return e
 	}
-	_, e = tx.Exec(ctx, `UPDATE games SET started_sequence=$2,version=version+1 WHERE id=$1`, game, out.Sequence)
-	return out, e
+	_, e = tx.Exec(ctx, `UPDATE games SET started_sequence=$2,version=version+1 WHERE id=$1`, game, ordinal)
+	return e
 }

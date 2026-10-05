@@ -89,6 +89,7 @@ jobs:
           ./bin/platform create-admin --username ci_harbor_operator --brand harbor
           ./bin/platform create-admin --username ci_rule_reviewer --brand harbor
           ./bin/platform serve > ../api-test.log 2>&1 &
+          ./bin/platform worker > ../worker-test.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
       # Each viewport gets an independent PostgreSQL service; preserve real auth limits.
       - run: pnpm test:e2e --project=${{ matrix.project }} --workers=2

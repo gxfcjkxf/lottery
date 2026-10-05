@@ -25,7 +25,14 @@ make seed
 make api
 ~~~
 
-分别在另两个终端启动：
+期次调度需要额外启动一个共享同一主数据库的 worker；API 不会自动启动它：
+
+~~~sh
+cd backend
+go run ./cmd/platform worker
+~~~
+
+分别在另两个终端启动前端：
 
 ~~~sh
 pnpm dev:user
@@ -60,7 +67,7 @@ go run ./cmd/platform create-admin --username platform_reader --super
 
 管理端账号/角色、运营新增成员、认证配置、积分账本和人工充值/冻结/调整已接入真实 API。角色按品牌隔离，授予权限不得超出操作者的目标品牌权限；账号角色/状态/密码变更撤销目标会话。运营新增成员必须由本人首次登录确认条款。用户钱包与流水展示真实余额；后台也已接入独立玩法模拟 API：`POST /api/v1/admin/rule-simulations`，需显式品牌上下文和 `rule.simulate.brand` 或 `rule.simulate.platform` 权限。它只计算并审计，不投注、不改积分、不创建订单，也不发布或审批玩法。
 
-S4-b 已接入彩种/玩法创建、规则草稿、持久化用例验证、送审、独立审核及旧定义克隆。目录读取需 `game.view.brand` 或 `game.view.platform`、创建需 `game.write.brand`；规则读取需 `rule.view.brand` 或 `rule.view.platform`，写入、验证、送审、审核分别需 `rule.write.brand`、`rule.validate.brand`、`rule.submit.brand`、`rule.review.brand`。这些工作流的全部超级管理员写入均拒绝；创建者及所有草稿编辑者不能审核。验证报告保留完整输入、输出、定义 hash 和警告，批准须确认警告；`version` 乐观锁与历史 `version_no` 不同。立即模式审核通过即生效，下期模式每玩法仅一个待生效版本，由内部实际开期事务激活；无公开强制激活接口，S4-c 自动期次调度尚未完成。旧定义克隆仅支持 active/expired/rolled_back，新草稿定义不可改写且须重新验证审核。后台六个模板不是完整 DSL 编辑器；版本工作流不动积分。用户投注/提现与业务订单仍待后续接入；详细边界见 [玩法规则引擎](docs/03-rule-engine.md)、[API 契约](docs/04-api-contract.md)，阶段验收见 [实施记录](docs/implementation-progress.md)。
+S4-b 已接入彩种/玩法创建、规则草稿、持久化用例验证、送审、独立审核及旧定义克隆。目录读取需 `game.view.brand` 或 `game.view.platform`、创建需 `game.write.brand`；规则读取需 `rule.view.brand` 或 `rule.view.platform`，写入、验证、送审、审核分别需 `rule.write.brand`、`rule.validate.brand`、`rule.submit.brand`、`rule.review.brand`。这些工作流的全部超级管理员写入均拒绝；创建者及所有草稿编辑者不能审核。验证报告保留完整输入、输出、定义 hash 和警告，批准须确认警告；`version` 乐观锁与历史 `version_no` 不同。立即模式审核通过即生效，下期模式每玩法仅一个待生效版本，由内部实际开期事务激活。S4-c1 已接入不可变日历修订、期次生成与可选调度 worker；旧定义克隆仅支持 active/expired/rolled_back，新草稿定义不可改写且须重新验证审核。后台六个模板不是完整 DSL 编辑器；版本工作流不动积分。用户投注/提现与业务订单仍待后续接入；详细边界见 [玩法规则引擎](docs/03-rule-engine.md)、[API 契约](docs/04-api-contract.md)，阶段验收见 [实施记录](docs/implementation-progress.md)。
 
 后台新建规则草稿默认选择立即生效（`immediate`）；创建、更新及克隆 API 仍必须显式发送 `effect_mode`，后端没有默认值。
 
@@ -101,6 +108,10 @@ pnpm exec playwright install chromium
 ~~~sh
 pnpm test:e2e --project=desktop --workers=2
 ~~~
+
+浏览器回归还需启动 `go run ./cmd/platform worker`，并确保测试 API 与 worker 指向该 project 的同一个临时测试库。
+
+连续重跑也应使用新的临时测试库，或等待真实限流窗口结束；不要关闭限流、清理限流记录或复用客户/生产数据来让测试通过。
 
 再切换到 mobile 专属的另一套临时数据库/API 后运行（本地顺序运行，避免前端/API 端口冲突）：
 

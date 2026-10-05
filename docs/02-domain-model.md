@@ -78,8 +78,10 @@ S3-b 已实现 `brand_point_policies`：brand_id 主键，version 与 max_balanc
 
 `games`
 
-- `id`, `brand_id`, `code`, `name`, `status`
-- `model_type`, `timezone`, `config_version`
+- `id`, `brand_id`, `code`, `name`, `status`, `model`, `timezone`
+- `version`, `started_sequence`, `schedule_id`
+
+`game_schedules` 保存不可变的日历定义修订：`id`, `brand_id`, `game_id`, `revision`, `spec`, `created_by`, `created_at`；同一彩种的 revision 唯一。修改日历会新增修订并更新 `games.schedule_id`，不会改写旧修订。
 
 `play_definitions`
 
@@ -98,12 +100,16 @@ S3-b 已实现 `brand_point_policies`：brand_id 主键，version 与 max_balanc
 
 `periods`
 
-- `id`, `brand_id`, `game_id`, `period_no`
+- `id`, `brand_id`, `game_id`, `period_no`, `sequence`
 - `bet_start_at`, `bet_end_at`, `draw_at`
+- `schedule_id`：创建期次时采用的不可变日历修订快照
 - `status`: pending/betting/closed/waiting_draw/drawn/settling/settled/bet_cancelled/judged_cancelled
-- `rule_version_id`, `schedule_version_id`
-- `pause_reason`, `cancel_reason`
+- `version`, `state_reason`, `created_at`
 - unique `(brand_id, game_id, period_no)`
+
+日历按 IANA timezone 中的民用时间展开为 UTC 期次，`period_no` 也使用 UTC instant。支持 daily 或 interval、weekday、显式 pause/holiday dates、holiday skip/normal policy 和投注窗口。展开范围最多 7 天且最多 10,000 个 slot。DST 不存在的本地时间跳过，重复时间取较早 UTC 实例。Interval 基线锚定本地午夜，busy window 在 `[start,end)` 内用窗口起点重新锚定；窗口不能跨午夜，结束时间必须早于 `24:00`。因窗口右边界不包含，结束设为 `23:59:59` 时该秒的 slot 已在窗口之外；`24:00` 当前不接受。日期列表是显式配置，不按国家推断节假日。
+
+Period `sequence` 是期次创建顺序；`games.started_sequence` 只在实际成功开出投注窗口时递增。因此规则的“下期”绑定实际开期序号，不由预生成期次数决定。漏过完整投注窗口的 pending 期次转为 `judged_cancelled`，不会补开，也不会递增实际开期序号。投注订单尚未接入，因此该转换当前不涉及订单退款。
 
 `draw_sources`
 

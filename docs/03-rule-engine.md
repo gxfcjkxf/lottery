@@ -235,7 +235,7 @@
 
 后台新建草稿默认选择 `immediate`，但这只是前端默认：创建、更新及 clone 请求始终必须显式发送 `effect_mode`，后端不推断默认值。`effect_mode=immediate` 在审核通过的同一事务直接激活并替换玩法 active 引用，不另调用 publish。`next_period` 审核通过后为 `approved`，绑定该彩种已实际开启序号的下一序号；每个玩法最多一个 approved 待生效版本。存在该队列时，后续通过审核（包括立即模式）返回 409 `RULE_STATE_CONFLICT`，不能覆盖队列。
 
-下期激活只由内部 `Store.OpenPeriod` 执行：与审核共用彩种行锁，根据 PostgreSQL `clock_timestamp()` 要求 `bet_start_at <= now < bet_end_at` 且 `bet_end_at <= draw_at`，实际开期时激活符合序号的 approved 版本，并不可变地保存该期各玩法的有效版本引用。不能伪造未来开期时间提前激活，也没有公开 activate-now 捷径。S4-c 自动计划生成、调度与完整期次/开奖业务尚未完成；有内部事务入口不表示后台已支持自动开期。
+下期激活由内部 `Store.OpenPeriod` 或 S4-c1 worker 对已保留 pending 期次的实际开期事务执行，两条路径共用版本绑定逻辑与彩种行锁。根据 PostgreSQL `clock_timestamp()` 要求 `bet_start_at <= now < bet_end_at`，实际开期时激活符合序号的 approved 版本，并不可变地保存该期各玩法的有效版本引用。`effective_sequence` 对应实际成功开期计数 `games.started_sequence`，不是预生成期次的创建序号；错过完整窗口的 pending 期次不会推进该计数或激活规则。不能伪造未来开期时间提前激活，也没有公开 activate-now 捷径。S4-c1 已接入日历生成及开期/截止/待开奖调度；开奖结果、投注与结算仍待后续实现。
 
 仅 `active`、`expired`、`rolled_back` 可作为 clone 来源。clone 保存 `source_version_id`，生成新的 `version_no` 和无验证报告的 draft，必须重新验证、送审、由非贡献者审核。源克隆的 Definition 即使在 draft 也不可改写；可在草稿阶段调整生效模式。普通新版本替换旧 active 时旧版变为 expired；来源克隆版本生效时被替换的旧 active 标记 rolled_back。历史版本、审核证据和开期绑定均不删除。
 

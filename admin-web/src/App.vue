@@ -7,6 +7,7 @@ import FinanceManagement from "./FinanceManagement.vue";
 import BalanceRepair from "./BalanceRepair.vue";
 import RuleSimulator from "./RuleSimulator.vue";
 import RuleVersions from "./RuleVersions.vue";
+import PeriodSchedules from "./PeriodSchedules.vue";
 import {
   previewCorrection,
   resolveWithdrawal,
@@ -753,7 +754,7 @@ const ledger = [
           ><b>交互演示 · 非生产环境</b
           ><span class="banner-copy">
             提现、域名主题及标为“演示”的页面不会写入后台。账号、成员、积分账本、认证设置和规则版本流程已接入真实
-            API。</span
+            API。期次计划与生成也已接入；人工开奖和结算仍为演示。</span
           ></span
         ><button aria-label="关闭说明" @click="showDemoNotice = false">
           ×
@@ -1825,169 +1826,199 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '期次和开奖'" class="page-content">
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">DRAW / PERIOD CONTROL</div>
-            <h1>期次和开奖</h1>
-            <p>查看期次时间线、来源校验与开奖操作</p>
-          </div>
-          <div class="heading-actions">
-            <button class="button button-secondary" @click="manualOpen = true">
-              ＋ 人工开奖</button
-            ><button
-              class="button button-primary"
-              @click="toast('已生成下一期草稿（演示）')"
-            >
-              ⟳ 生成期次
-            </button>
-          </div>
+        <PeriodSchedules
+          v-if="account && selectedBrandId"
+          :key="`periods-${selectedBrandId}`"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
+        <div v-else class="panel directory-state">
+          <h1>真实期次计划</h1>
+          <p>请先登录后台账号并选择品牌，才能保存计划、生成和查询期次。</p>
+          <button
+            v-if="!account"
+            class="button button-primary"
+            @click="go('用户和成员')"
+          >
+            进入管理员登录
+          </button>
         </div>
-        <div class="period-summary">
-          <div class="panel period-main">
-            <div class="period-title">
-              <div>
-                <span class="badge badge-success">投注中</span>
-                <h2>星彩 6+1 <small>20261005032</small></h2>
-              </div>
-              <button class="text-button" @click="toast('已复制期次编号')">
-                复制编号 ⧉
-              </button>
+        <details class="demo-rule-workbench">
+          <summary>
+            旧开奖工作台演示（不会开奖、纠正结果或结算真实注单）
+          </summary>
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow">DRAW / PERIOD CONTROL</div>
+              <h1>期次和开奖</h1>
+              <p>查看期次时间线、来源校验与开奖操作</p>
             </div>
-            <div class="timeline">
-              <div class="timeline-stage complete">
-                <i>✓</i
-                ><span><b>投注开始</b><small>10-05 08:00:00</small></span>
-              </div>
-              <div class="timeline-connector active"></div>
-              <div class="timeline-stage current">
-                <i>2</i
-                ><span
-                  ><b>投注截止</b
-                  ><small>10-05 11:00:00 · 18 分钟后</small></span
-                >
-              </div>
-              <div class="timeline-connector"></div>
-              <div class="timeline-stage">
-                <i>3</i
-                ><span><b>开奖时间</b><small>10-05 11:10:00</small></span>
-              </div>
-              <div class="timeline-connector"></div>
-              <div class="timeline-stage">
-                <i>4</i><span><b>结算完成</b><small>等待开奖</small></span>
-              </div>
-            </div>
-            <div class="period-kpis">
-              <div>
-                <small>投注订单</small><b>1,284 <small>笔</small></b>
-              </div>
-              <div>
-                <small>投注积分</small><b>28,450 <small>分</small></b>
-              </div>
-              <div>
-                <small>关联规则</small><b>v12 <small>· 6+1</small></b>
-              </div>
-              <div>
-                <small>品牌时区</small><b>UTC+08:00 <small>· 新加坡</small></b>
-              </div>
-            </div>
-          </div>
-          <aside class="panel source-health">
-            <div class="panel-header">
-              <div>
-                <h2>开奖来源</h2>
-                <p>优先级与最近检查时间</p>
-              </div>
-              <button
-                class="text-button"
-                @click="toast('来源切换记录（演示）')"
-              >
-                切换记录
-              </button>
-            </div>
-            <div class="source-row">
-              <span class="source-mark">1</span
-              ><span><b>主来源 · API</b><small>上次校验 10:32:18</small></span
-              ><span class="badge badge-success">健康</span>
-            </div>
-            <div class="source-row">
-              <span class="source-mark source-alt">2</span
-              ><span><b>备用来源 · API</b><small>上次校验 10:31:54</small></span
-              ><span class="badge badge-success">健康</span>
-            </div>
-            <div class="source-row">
-              <span class="source-mark source-manual">M</span
-              ><span
-                ><b>人工录入</b><small>单人操作，必须记录审计原因</small></span
-              ><button class="text-button" @click="manualOpen = true">
-                录入
-              </button>
-            </div>
-          </aside>
-        </div>
-        <div class="result-layout">
-          <article class="panel result-card">
-            <div class="panel-header">
-              <div>
-                <h2>当前开奖结果</h2>
-                <p>上一期 · 20261005031</p>
-              </div>
-              <span class="badge badge-success">已确认</span>
-            </div>
-            <div class="result-balls">
-              <span v-for="n in ['07', '18', '29', '33', '41']" :key="n">{{
-                n
-              }}</span
-              ><i>+</i><span class="special-ball">06</span>
-            </div>
-            <div class="result-meta">
-              <span>来源：主开奖源</span
-              ><span>校验项：号码范围 ✓　重复校验 ✓　签名 ✓</span
-              ><span>确认时间：10-05 08:10:14</span>
-            </div>
-            <div class="result-actions">
+            <div class="heading-actions">
               <button
                 class="button button-secondary"
-                @click="correctionOpen = true"
+                @click="manualOpen = true"
               >
-                ↻ 纠正开奖结果</button
+                ＋ 人工开奖</button
               ><button
                 class="button button-primary"
-                @click="toast('结算任务已加入队列（演示）')"
+                @click="toast('已生成下一期草稿（演示）')"
               >
-                确认并结算 →
+                ⟳ 生成期次
               </button>
             </div>
-          </article>
-          <article class="panel timeline-card">
-            <h2>状态时间线</h2>
-            <div class="audit-timeline">
-              <div>
-                <i class="event-green">✓</i
-                ><span
-                  ><b>开奖结果已确认</b><small>周宁 · 10-05 08:10</small></span
-                >
+          </div>
+          <div class="period-summary">
+            <div class="panel period-main">
+              <div class="period-title">
+                <div>
+                  <span class="badge badge-success">投注中</span>
+                  <h2>星彩 6+1 <small>20261005032</small></h2>
+                </div>
+                <button class="text-button" @click="toast('已复制期次编号')">
+                  复制编号 ⧉
+                </button>
               </div>
-              <div>
-                <i>↻</i
-                ><span
-                  ><b>来源结果通过校验</b
-                  ><small>系统演示 · 10-05 08:09</small></span
-                >
+              <div class="timeline">
+                <div class="timeline-stage complete">
+                  <i>✓</i
+                  ><span><b>投注开始</b><small>10-05 08:00:00</small></span>
+                </div>
+                <div class="timeline-connector active"></div>
+                <div class="timeline-stage current">
+                  <i>2</i
+                  ><span
+                    ><b>投注截止</b
+                    ><small>10-05 11:00:00 · 18 分钟后</small></span
+                  >
+                </div>
+                <div class="timeline-connector"></div>
+                <div class="timeline-stage">
+                  <i>3</i
+                  ><span><b>开奖时间</b><small>10-05 11:10:00</small></span>
+                </div>
+                <div class="timeline-connector"></div>
+                <div class="timeline-stage">
+                  <i>4</i><span><b>结算完成</b><small>等待开奖</small></span>
+                </div>
               </div>
-              <div>
-                <i>◷</i
-                ><span
-                  ><b>期次投注已截止</b
-                  ><small>系统演示 · 10-05 08:00</small></span
-                >
+              <div class="period-kpis">
+                <div>
+                  <small>投注订单</small><b>1,284 <small>笔</small></b>
+                </div>
+                <div>
+                  <small>投注积分</small><b>28,450 <small>分</small></b>
+                </div>
+                <div>
+                  <small>关联规则</small><b>v12 <small>· 6+1</small></b>
+                </div>
+                <div>
+                  <small>品牌时区</small
+                  ><b>UTC+08:00 <small>· 新加坡</small></b>
+                </div>
               </div>
             </div>
-          </article>
-        </div>
-        <div class="danger-note">
-          ⚠
-          人工开奖和结果纠正均属于高风险演示操作。确认前必须查看影响范围并填写原因。
-        </div>
+            <aside class="panel source-health">
+              <div class="panel-header">
+                <div>
+                  <h2>开奖来源</h2>
+                  <p>优先级与最近检查时间</p>
+                </div>
+                <button
+                  class="text-button"
+                  @click="toast('来源切换记录（演示）')"
+                >
+                  切换记录
+                </button>
+              </div>
+              <div class="source-row">
+                <span class="source-mark">1</span
+                ><span><b>主来源 · API</b><small>上次校验 10:32:18</small></span
+                ><span class="badge badge-success">健康</span>
+              </div>
+              <div class="source-row">
+                <span class="source-mark source-alt">2</span
+                ><span
+                  ><b>备用来源 · API</b><small>上次校验 10:31:54</small></span
+                ><span class="badge badge-success">健康</span>
+              </div>
+              <div class="source-row">
+                <span class="source-mark source-manual">M</span
+                ><span
+                  ><b>人工录入</b
+                  ><small>单人操作，必须记录审计原因</small></span
+                ><button class="text-button" @click="manualOpen = true">
+                  录入
+                </button>
+              </div>
+            </aside>
+          </div>
+          <div class="result-layout">
+            <article class="panel result-card">
+              <div class="panel-header">
+                <div>
+                  <h2>当前开奖结果</h2>
+                  <p>上一期 · 20261005031</p>
+                </div>
+                <span class="badge badge-success">已确认</span>
+              </div>
+              <div class="result-balls">
+                <span v-for="n in ['07', '18', '29', '33', '41']" :key="n">{{
+                  n
+                }}</span
+                ><i>+</i><span class="special-ball">06</span>
+              </div>
+              <div class="result-meta">
+                <span>来源：主开奖源</span
+                ><span>校验项：号码范围 ✓　重复校验 ✓　签名 ✓</span
+                ><span>确认时间：10-05 08:10:14</span>
+              </div>
+              <div class="result-actions">
+                <button
+                  class="button button-secondary"
+                  @click="correctionOpen = true"
+                >
+                  ↻ 纠正开奖结果</button
+                ><button
+                  class="button button-primary"
+                  @click="toast('结算任务已加入队列（演示）')"
+                >
+                  确认并结算 →
+                </button>
+              </div>
+            </article>
+            <article class="panel timeline-card">
+              <h2>状态时间线</h2>
+              <div class="audit-timeline">
+                <div>
+                  <i class="event-green">✓</i
+                  ><span
+                    ><b>开奖结果已确认</b
+                    ><small>周宁 · 10-05 08:10</small></span
+                  >
+                </div>
+                <div>
+                  <i>↻</i
+                  ><span
+                    ><b>来源结果通过校验</b
+                    ><small>系统演示 · 10-05 08:09</small></span
+                  >
+                </div>
+                <div>
+                  <i>◷</i
+                  ><span
+                    ><b>期次投注已截止</b
+                    ><small>系统演示 · 10-05 08:00</small></span
+                  >
+                </div>
+              </div>
+            </article>
+          </div>
+          <div class="danger-note">
+            ⚠
+            人工开奖和结果纠正均属于高风险演示操作。确认前必须查看影响范围并填写原因。
+          </div>
+        </details>
       </section>
 
       <section v-else-if="page === '注单和异常'" class="page-content">
@@ -2502,7 +2533,7 @@ const ledger = [
                   ? "认证设置为真实配置；域名、主题与提现仍为演示。"
                   : page === "资金与账本" && account
                     ? "人工充值、冻结、调整与账本为真实操作；提现尚未接入。"
-                    : "此页业务数据为演示；账号、成员、积分和认证设置已接入后台。"
+                    : "标为演示的功能不写入后台；账号、积分、规则版本和期次计划已接入真实 API。"
         }}</span>
       </footer>
       <div

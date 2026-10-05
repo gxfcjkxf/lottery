@@ -242,11 +242,35 @@ RepairPreview 含 account_id、member_id、version（观察到的账户版本）
 
 管理页面提供品牌限额编辑、待确认充值取消、差错会员预览/明确确认和修复记录查询，权限独立。当前超级管理员资金写入的临时边界与 S3-a 相同，业务最终范围仍待确认。
 
+### S4-c1 已接入：日历、期次生成与状态调度
+
+以下管理路由以 `/api/v1` 为前缀，均要求有效管理会话和 `X-Brand-ID`。读取权限精确为 `schedule.view.brand` / `period.view.brand`，或平台 scope 的 `schedule.view.platform` / `period.view.platform`。平台 scope 同样要求角色中存在精确权限；S4-c1 bootstrap 仅将这两项平台读取权限授予超级管理员默认角色，`is_super_admin` 标记本身不授予读取权限。写入分别要求 `schedule.write.brand` 与 `period.generate.brand`；超级管理员写入拒绝。写请求要求非空 `reason`、`Idempotency-Key` 和标准管理写请求校验。
+
+| 方法 | 路径 | 授权 / 用途 |
+|---|---|---|
+| GET | `/admin/games/{id}/schedule` | `schedule.view.brand` 或 `.platform`；读取当前修订 |
+| PUT | `/admin/games/{id}/schedule` | `schedule.write.brand`；乐观锁更新并创建新修订 |
+| POST | `/admin/games/{id}/periods/generate` | `period.generate.brand`；按当前日历保留期次 |
+| GET | `/admin/games/{id}/periods` | `period.view.brand` 或 `.platform`；分页查询 |
+
+日历 PUT 请求为 `{version,spec,reason}`；`version` 是彩种乐观锁版本，`spec.timezone` 必须等于彩种 timezone。Spec 支持 `mode` 为 `daily` 或 `interval`，`daily_draw_times`、`interval_seconds`、最多 128 个不重叠 `busy_windows`、`bet_open_before_seconds`、`bet_close_before_seconds`、`weekdays`（0 周日至 6 周六）、`pause_dates`、`holiday_dates` 和 `holiday_policy`（`skip` / `normal`）。Daily 与窗口时间为 `HH:MM:SS`；busy window 只能是同日且 `start < end`，不支持跨午夜，`24:00` 不接受。窗口为半开 `[start,end)`，所以结束设为 `23:59:59` 时该秒的 slot 不在窗口内。interval 为 30–86400 秒。IANA 时区由服务端 tzdata 加载；DST gap 跳过，fold 取较早 UTC 实例。Interval 每个本地日的基线锚定午夜；busy window 在 `[start,end)` 替换基线并锚定窗口起点，end 回到基线。节假日只按显式日期配置，不做国家或地区自动查询。
+
+模式字段互斥：daily 要求非空且不重复的 daily_draw_times、interval_seconds=0、busy_windows 为空；interval 要求 daily_draw_times 为空。投注开放提前秒数为 1–86400，截止提前秒数为 0 至开放提前秒数减 1；`bet_start_at=draw_at-open_before`，`bet_end_at=draw_at-close_before`。weekdays 必须至少选一天；日期列表使用有效且不重复的 YYYY-MM-DD。保存创建新修订，不改写任何已经生成的期次。
+
+GET/PUT schedule 成功的 data 均为 `{id,brand_id,game_id,revision,spec,game_version,created_at}`；game_version 是读取/保存时的当前彩种版本，开期也会改变它，调用方遇到版本冲突应重新读取。尚未配置日历与不存在彩种均返回 404。Period 返回 `{id,brand_id,game_id,period_no,sequence,bet_start_at,bet_end_at,draw_at,status,version,state_reason}`，有日历快照时另含 schedule_id。管理界面选取彩种另需独立的 game.view.brand / game.view.platform 权限，不能由排期写权限推导目录读权限。
+
+生成请求为 `{from,to,reason}`，from/to 是带时区的 RFC3339 时间；期次时刻与 `period_no` 均按 UTC instant 保存/生成。时间窗最长 7 天、展开最多 10,000 个 slot，且不得指定已过去的 to 或超过当前数据库时间 7 天的边界。响应 `data` 含 `created`、`existing` 汇总计数和至多 100 条 `periods`；计数可高于返回数组长度。已有相同期次窗口计入 existing 并保留原 schedule 快照；同一期次号时间窗口不同返回 409 `PERIOD_STATE_CONFLICT`，不覆盖旧期次。生成只创建仍有投注窗口的 pending 期次。列表响应为 `{periods,limit,offset}`，limit 1–100（默认 50）、offset 0–1,000,000，按 bet_start_at 倒序分页。
+
+彩种版本不匹配返回 409 `SCHEDULE_VERSION_CONFLICT`；无权限返回 403 `PERMISSION_DENIED`；缺失彩种/资源返回 404 `RESOURCE_NOT_FOUND`。其余错误码保持通用管理 API 约定，日历或范围无效为 400 `SCHEDULE_INVALID`。
+
+`period.sequence` 是创建序号；只有 worker 实际转入 `betting` 时，`games.started_sequence` 才递增，用于规则下期激活。worker 以主数据库时钟驱动：pending 到点且彩种 active 时进入 betting；若投注窗口已过则转 `judged_cancelled`；betting 到 bet_end 转 closed，closed 到 draw_at 转 waiting_draw。彩种暂停时不开放投注，窗口过期后取消 pending。状态更新受数据库转移约束并写审计。当前投注与订单尚未接入，所以不存在需要退款的历史订单。
+
 ### 期次和开奖（后续实现）
+
+当前仅日历与期次路由已接入。`drawfeed` 是纯 resolver/候选校验模块，api/dom adapter 仍是无网络 stub；尚无来源数据库配置、持久化人工开奖结果或人工开奖 API。下表开奖相关路由是后续设计，不是已注册端点（S4-c2）。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | /admin/periods/generate | 按计划幂等生成期次 |
 | POST | /admin/periods/{id}/close | 截止投注 |
 | POST | /admin/periods/{id}/cancel | 期次投注取消/判定取消并退款 |
 | POST | /admin/periods/{id}/manual-draw | 人工开奖 |
@@ -364,7 +388,7 @@ submit-review 只允许 draft，要求 validation.passed=true 且报告 definiti
 
 后台新建草稿默认选择 `immediate`；后端没有默认生效模式，创建、PUT 更新及 clone 必须显式发送 `effect_mode`（仅 `immediate` / `next_period`），遗漏或空值拒绝。通过时 `immediate` 在同一事务直接成为 active 并替换玩法有效版本，没有独立 publish 步骤；`next_period` 成为 approved，绑定彩种下一实际开期序号。每玩法最多一个 approved 队列项；已有待生效项时后续 approve（包括 immediate）返回 409 `RULE_STATE_CONFLICT`，不覆盖它。
 
-下期激活仅由内部 `Store.OpenPeriod` 在彩种行锁下执行，与审核串行化：使用 PostgreSQL `clock_timestamp()` 检查实际窗口 `bet_start_at <= now < bet_end_at`、`bet_end_at <= draw_at`，开期时激活满足序号的 approved 版本并保存不可变 period_rule_versions。无公开 activate-now 路由；S4-c 自动期次生成/调度、完整开奖与投注结算尚未完成，上面的未来期次 API 仍未接入。
+下期激活仅由内部开期事务在彩种行锁下执行，与审核串行化：使用 PostgreSQL `clock_timestamp()` 检查实际窗口 `bet_start_at <= now < bet_end_at`、`bet_end_at <= draw_at`，开期时激活满足序号的 approved 版本并保存不可变 period_rule_versions。S4-c1 日历、期次生成和状态 worker 已接入；没有公开强制 activate-now 路由。完整开奖与投注结算仍待后续阶段实现；上面的开奖相关未来 API 尚未注册。
 
 clone 仅接受 active/expired/rolled_back 来源，返回新的 draft、version_no、source_version_id，不直接激活旧版本。新草稿定义继承源定义且不可修改，draft 阶段可修改生效模式，但必须重新验证、送审、由非贡献者审核。普通版本替换时旧 active 标记 expired；来源克隆版本生效时被替换的旧 active 标记 rolled_back。不删除历史、不改变积分、不创建投注订单或派奖。
 

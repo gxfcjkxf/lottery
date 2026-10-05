@@ -100,6 +100,16 @@ user-web / admin-web
 
 ## 6. 异步任务
 
+### S4-c1 期次 worker
+
+`go run ./cmd/platform worker` 是与 HTTP API 分开的可选进程，使用相同配置连接主 PostgreSQL；API 不会隐式启动 worker。`cmd/platform` 内嵌 tzdata，精简镜像也可加载 IANA 时区。worker 每秒执行 Tick，每轮最多挑选 25 个待处理彩种、每彩种最多锁定处理 100 条到期 periods；每个彩种一个事务，锁顺序为 game → period → play。多个实例可共享同一主库运行，行锁和状态转移避免重复开期。Tick 使用 PostgreSQL 主库时钟；只有实际开期才递增 `started_sequence`。漏过投注窗口的 pending 期次判定取消，不补开。每分钟 FillCalendar 为 active 且有日历的彩种保留未来 24 小时期次；相同时间窗复用既有记录及原 schedule 快照。
+
+单个彩种失败会累积为本轮错误并记录日志，其他彩种继续处理。worker 只保留日历并推进期次状态，不执行支付、投注、结算或外部网络请求。API 与 worker 都必须连接同一主库；本地浏览器回归也要为 API 和 worker 配置同一 project 的临时测试库。
+
+### 开奖 feed 当前边界
+
+`drawfeed` 目前只是纯校验与有序 resolver：验证候选结果与期次/玩法模型相符、拒绝与上一结果相同的结果，并为 api/dom 类型提供无网络 stub。它没有 API/DOM 抓取实现、没有数据库 source 配置或持久化人工开奖结果；没有人工开奖 API，也未接入期次 worker。后续 S4-c2 再接入这些能力。当前 resolver 不会抓取、保存或确认开奖结果。
+
 事件至少包括：
 
 - `period.created`
@@ -142,4 +152,3 @@ user-web / admin-web
 - 队列消费者变慢或重复消费。
 
 验收还需确定 P95/P99 延迟、峰值持续时间、可用性、恢复时间和数据恢复点目标。
-
