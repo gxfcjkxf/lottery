@@ -237,6 +237,8 @@
 
 下期激活由内部 `Store.OpenPeriod` 或 S4-c1 worker 对已保留 pending 期次的实际开期事务执行，两条路径共用版本绑定逻辑与彩种行锁。根据 PostgreSQL `clock_timestamp()` 要求 `bet_start_at <= now < bet_end_at`，实际开期时激活符合序号的 approved 版本，并不可变地保存该期各玩法的有效版本引用。`effective_sequence` 对应实际成功开期计数 `games.started_sequence`，不是预生成期次的创建序号；错过完整窗口的 pending 期次不会推进该计数或激活规则。不能伪造未来开期时间提前激活，也没有公开 activate-now 捷径。S4-c1 已接入日历生成及开期/截止/待开奖调度；开奖结果、投注与结算仍待后续实现。
 
+S5-a1 投注语义补充：`period_rule_versions` 保存开期时的审计引用；立即批准的新规则适用于已开放期次之后的新投注。提交确认时必须携带当前 `rule_version_id` 和品牌/彩种投注策略版本，过时确认拒绝且不扣分。每张注单保存自己的定义和 hash，不能因同一期后来调整赔率而改变已有注单。下期模式仍只在下一次实际开期激活。`rules.PrepareBet` 只规范选号、展开复式、计算整数下注积分和预算，不传入虚构开奖号码、不预先判断中奖。
+
 仅 `active`、`expired`、`rolled_back` 可作为 clone 来源。clone 保存 `source_version_id`，生成新的 `version_no` 和无验证报告的 draft，必须重新验证、送审、由非贡献者审核。源克隆的 Definition 即使在 draft 也不可改写；可在草稿阶段调整生效模式。普通新版本替换旧 active 时旧版变为 expired；来源克隆版本生效时被替换的旧 active 标记 rolled_back。历史版本、审核证据和开期绑定均不删除。
 
 S4-d 后台保留六个快捷模板，同时提供通用可视化编辑器，覆盖当前 schema-v1 的三种模型、全部选号方式、属性/特征字典、嵌套 all/any/not 与叶条件、1–32 个奖级、两种混合策略、封顶和舍入。非模板定义自动进入通用模式，不用模板猜测覆盖；模板切换只有能无损还原时才允许。模型来自当前彩种；未读目录时可明确输入一致模型，由服务器核对，不能借此改写彩种。回滚来源草稿的定义仍锁定。

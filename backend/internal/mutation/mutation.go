@@ -110,6 +110,20 @@ type sealedResponse struct {
 // and commits the final result together with the business state. Transient DB errors
 // aren't cached. Sensitive response bodies are AEAD-encrypted, never plaintext.
 func (e *Engine) Execute(ctx context.Context, brand, actor, operation, key, fingerprint string, run func(context.Context, pgx.Tx) (Result, error)) (Result, error) {
+	return e.execute(ctx, brand, actor, operation, key, fingerprint, nil, run)
+}
+
+// ExecuteChecked validates a caller's current session under transactional locks
+// before looking up a cached response. Revoked credentials cannot replay data.
+// check must be repeatable: it runs before and after waiting for the operation
+// lock, so a naturally expired session cannot replay after a long lock wait.
+func (e *Engine) ExecuteChecked(ctx context.Context, brand, actor, operation, key, fingerprint string, check func(context.Context, pgx.Tx) error, run func(context.Context, pgx.Tx) (Result, error)) (Result, error) {
+	if check == nil {
+		return Result{}, errors.New("checked mutation requires authorization check")
+	}
+	return e.execute(ctx, brand, actor, operation, key, fingerprint, check, run)
+}
+func (e *Engine) execute(ctx context.Context, brand, actor, operation, key, fingerprint string, check func(context.Context, pgx.Tx) error, run func(context.Context, pgx.Tx) (Result, error)) (Result, error) {
 	if !validKey(key) {
 		return Fail(400, "IDEMPOTENCY_KEY_INVALID", "需要 8 至 128 字符的 Idempotency-Key"), nil
 	}
@@ -126,11 +140,21 @@ func (e *Engine) Execute(ctx context.Context, brand, actor, operation, key, fing
 		return Result{}, err
 	}
 	defer tx.Rollback(ctx)
+	if check != nil {
+		if err = check(ctx, tx); err != nil {
+			return Result{}, err
+		}
+	}
 	actorID := actorUUID(actor)
 	aad, _ := json.Marshal([]string{"lottery-idempotency-v1", brand, actorID, operation, key, fingerprint})
 	lock := sha256.Sum256([]byte(brand + ":" + actorID + ":" + operation + ":" + key))
 	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", int64(binary.BigEndian.Uint64(lock[:8]))); err != nil {
 		return Result{}, err
+	}
+	if check != nil {
+		if err = check(ctx, tx); err != nil {
+			return Result{}, err
+		}
 	}
 	var storedHash string
 	var sealed []byte

@@ -104,16 +104,29 @@
 {
   "period_id": "019...",
   "play_id": "019...",
-  "rule_version": 3,
+  "rule_version_id": "0199a000-0000-7000-8000-000000000003",
   "selection": {
     "regular": [1, 2, 3, 4, 5, 6],
     "special": [7]
   },
-  "multiplier": 2
+  "multiplier": "2",
+  "policy_versions": { "brand": 1, "game": 1 }
 }
 ~~~
 
 服务端不得信任客户端提供的注数、赔率、总积分或规则计算结果；这些字段只能由服务端重新计算。
+
+S5-a1 已注册上述 POST bet-previews、POST/GET bet-orders、GET 单笔、POST cancel（含 `/b/{brandCode}` 等价路径）。彩种用户目录/当前期次、用户开奖列表和结算明细尚未接入；接口表不代表全部已实现。用户只能查询/取消自己在当前品牌的订单，不能从 body 或品牌头切换会员身份。规则引用为 UUID，不接受旧示例的历史序号 `rule_version`。
+
+Preview 与 Place 均使用 `{period_id,play_id,rule_version_id,selection,multiplier,policy_versions}`。Preview 可以不带 policy_versions，并返回当前版本；Place 必须带确认过的两个版本。金额和倍数为十进制字符串，禁止 Number 计算。Preview 返回 normalized、expanded_bets、combination_count、unit_points、multiplier、bet_points，以及 period、definition_hash、policy、policy_versions；它不预留积分或期次额度，也不判断中奖。实际提交重新检查全部配置、窗口、余额和额度。
+
+Place 成功返回 201 Order，包含不可变定义/策略快照、两种选号、展开注单、总积分、原扣款分配和 debit_entry_id。客户端使用每个确认意图独立的 Idempotency-Key，网络重试保留同键和完全相同请求体；同键异体 409，同内容不同键可以合法重复购买。订单、余额、账本、审计与 outbox 在同一事务提交。会话在事务内以及等待幂等锁后重新认证；自然过期或超过截止时间的余额锁等待不产生扣款。响应缓存为当时结果，客户端应另刷新钱包和订单状态。
+
+Cancel 请求 `{version,reason}`（带幂等键）。用户取消按订单保存的 user_cancel_allowed，要求数据库时间早于 draw_at、无已锁定结果，期次为 betting/closed/waiting_draw；因此投注截止后、开奖前仍可取消。账户冻结/品牌暂停不禁止此类退款。当前仅取消未结算 placed；品牌运营可用独立 cancel 权限取消未结算订单，不受用户开关或时间窗限制。退款引用原 debit，恢复每种来源的 available，不允许改金额。已结算订单回溯、异常标记、整期判定取消仍待后续。
+
+管理接口新增 GET/PUT `/admin/bet-policy`、GET/PUT `/admin/games/{id}/bet-policy`（写 body `{version,config,reason}`）；GET `/admin/bet-orders`（可选 member_id、limit、offset）、GET 单笔、POST 单笔 cancel（`{version,reason}`）。查询需 bet_policy.view 或 bet.view 的显式品牌/平台权限；写需 bet_policy.write.brand 或 bet.cancel.brand，超级管理员仅查看。管理员读取和修改均记录审计。整数配置与继承结构见领域模型。
+
+业务错误：400 BET_INPUT_INVALID；403 BET_OPERATION_DENIED；404 BET_RESOURCE_NOT_FOUND；409 BET_VERSION_CONFLICT / BET_PERIOD_CLOSED / BET_LIMIT_EXCEEDED / BET_STATE_CONFLICT。积分不足、上限和损坏映射现有 POINTS_* 错误；幂等键格式/异体映射 IDEMPOTENCY_*；失效会话 401 AUTH_SESSION_REVOKED，临时数据库错误 503 且不缓存。
 
 ### 积分、充值和提现
 

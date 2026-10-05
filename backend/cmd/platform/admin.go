@@ -64,11 +64,13 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 		permissions = append(permissions, "game.view.platform", "rule.view.platform")
 		permissions = append(permissions, "schedule.view.platform", "period.view.platform")
 		permissions = append(permissions, "draw_source.view.platform", "draw.view.platform")
+		permissions = append(permissions, "bet.view.platform", "bet_policy.view.platform")
 	} else {
 		permissions = append(permissions, "rule.simulate.brand")
 		permissions = append(permissions, "game.view.brand", "game.write.brand", "rule.view.brand", "rule.write.brand", "rule.validate.brand", "rule.submit.brand", "rule.review.brand")
 		permissions = append(permissions, "schedule.view.brand", "schedule.write.brand", "period.view.brand", "period.generate.brand")
 		permissions = append(permissions, "draw_source.view.brand", "draw_source.write.brand", "draw.view.brand", "draw.manual_create.brand")
+		permissions = append(permissions, "bet.view.brand", "bet.cancel.brand", "bet_policy.view.brand", "bet_policy.write.brand")
 	}
 	for _, permission := range permissions {
 		if _, err = tx.Exec(ctx, "INSERT INTO permissions(key) VALUES($1) ON CONFLICT DO NOTHING", permission); err != nil {

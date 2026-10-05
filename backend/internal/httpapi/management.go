@@ -16,7 +16,7 @@ import (
 )
 
 func managementAllowed(a access.Account, resource, action, brand string) bool {
-	if resource == "game" || resource == "schedule" || resource == "period" || resource == "draw" || resource == "draw_source" || (resource == "rule" && action != "simulate") {
+	if resource == "bet" || resource == "bet_policy" || resource == "game" || resource == "schedule" || resource == "period" || resource == "draw" || resource == "draw_source" || (resource == "rule" && action != "simulate") {
 		return rulebook.Allowed(a, brand, resource, action)
 	}
 	if resource == "user" {

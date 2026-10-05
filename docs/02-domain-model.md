@@ -109,7 +109,7 @@ S3-b 已实现 `brand_point_policies`：brand_id 主键，version 与 max_balanc
 
 日历按 IANA timezone 中的民用时间展开为 UTC 期次，`period_no` 也使用 UTC instant。支持 daily 或 interval、weekday、显式 pause/holiday dates、holiday skip/normal policy 和投注窗口。展开范围最多 7 天且最多 10,000 个 slot。DST 不存在的本地时间跳过，重复时间取较早 UTC 实例。Interval 基线锚定本地午夜，busy window 在 `[start,end)` 内用窗口起点重新锚定；窗口不能跨午夜，结束时间必须早于 `24:00`。因窗口右边界不包含，结束设为 `23:59:59` 时该秒的 slot 已在窗口之外；`24:00` 当前不接受。日期列表是显式配置，不按国家推断节假日。
 
-Period `sequence` 是期次创建顺序；`games.started_sequence` 只在实际成功开出投注窗口时递增。因此规则的“下期”绑定实际开期序号，不由预生成期次数决定。漏过完整投注窗口的 pending 期次转为 `judged_cancelled`，不会补开，也不会递增实际开期序号。投注订单尚未接入，因此该转换当前不涉及订单退款。
+Period `sequence` 是期次创建顺序；`games.started_sequence` 只在实际成功开出投注窗口时递增。因此规则的“下期”绑定实际开期序号，不由预生成期次数决定。漏过完整投注窗口的 pending 期次转为 `judged_cancelled`，不会补开，也不会递增实际开期序号。pending 不接受投注，因此该转换不涉及订单退款；已投注期次的整体取消和退款仍待后续实现。
 
 `draw_sources`
 
@@ -140,8 +140,16 @@ periods 另含 draw_result_id、draw_claim_token/draw_claim_until 和 draw_next_
 - `selection_raw` JSONB, `selection_normalized` JSONB, `expanded_bets` JSONB
 - `unit_points`, `combination_count`, `multiplier`, `total_points`
 - `deduction_allocation` JSONB
-- `idempotency_key`, `placed_at`, `cancelled_at`, `settled_at`
-- unique `(brand_id, brand_member_id, idempotency_key)`
+- S5-a1 实际幂等字段为 `client_key`，unique `(brand_id, brand_member_id, client_key)`；同时保留 `version`、`placed_at`、`cancelled_at`、`cancel_reason`。
+- `account_id`、`debit_entry_id`、`refund_entry_id` 通过品牌/账户复合外键关联账本。
+- `definition_snapshot`、`definition_hash`、`policy_snapshot`、`brand_policy_version`、`game_policy_version` 保存每单确认时的规则/限额快照；开期引用只保留开期审计，不覆盖每单规则。
+- 号码、复式展开、积分、来源分配、快照和身份不可改写或删除；取消必须关联原借记的全额原路退款账本，递增版本。当前可执行 placed → bet_cancelled；异常标记、判定取消和结算状态的业务入口尚未实现，`settled_at` 尚未落表。
+
+`brand_bet_policies`：brand_id、version、config JSONB、updated_at。Config 包含 min_bet_points（默认 1）、max_bet_points / max_period_points / max_user_period_points（默认 null，无上限）、user_cancel_allowed（默认 false）。积分为规范整数字符串。
+
+`game_bet_policies`：brand_id、game_id、version、config JSONB、updated_at。各限额配置 mode 为 inherit / value / unlimited，value 带正整数 points；最小投注不允许 unlimited。取消开关 null 表示继承。彩种覆盖品牌默认，包含设置更大值或 unlimited，不是额外品牌硬上限；规则自身 limits 仍独立校验。品牌修改必须保持所有彩种继承后的最小投注不超过任何生效限额。
+
+当前期次/用户期次限额统计实际尚未退款的下注积分；这不是提现或佣金的“有效流水”。全额退款释放额度。全局期次限额启用时，按期次加事务锁串行化准入和退款；未设置该限额时不持有全局期次互斥锁。单用户余额仍按账户串行记账。
 
 `settlements`
 

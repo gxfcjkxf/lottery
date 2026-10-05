@@ -346,4 +346,5 @@ func registerAdminRoutes(mux *http.ServeMux, d Dependencies) {
 	})
 	registerAdminManagementRoutes(handle, d)
 	registerPointAdminRoutes(handle, d)
+	registerBetAdminRoutes(handle, d)
 }
