@@ -146,6 +146,21 @@ func (s *Store) Settings(ctx context.Context, brand string) (Settings, error) {
 	}
 	return cfg, err
 }
+func (s *Store) ReadAuthSettings(ctx context.Context, brand string) (AuthSettingsRecord, error) {
+	var raw []byte
+	var record AuthSettingsRecord
+	err := s.DB.QueryRow(ctx, "SELECT config_version,auth_config FROM brands WHERE id=$1", brand).Scan(&record.Version, &raw)
+	if err == nil {
+		var cfg Settings
+		err = json.Unmarshal(raw, &cfg)
+		record.CaptchaEnabled = cfg.CaptchaEnabled
+		record.TelegramEnabled = cfg.TelegramEnabled
+		record.TelegramClientID = cfg.TelegramClientID
+		record.PrivacyPolicyVersion = cfg.Privacy
+		record.ServiceTermsVersion = cfg.Terms
+	}
+	return record, err
+}
 func settings(ctx context.Context, tx pgx.Tx, brand string) (Settings, error) {
 	var raw []byte
 	var cfg Settings
@@ -225,10 +240,26 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 	return result, err
 }
 func (s *Store) join(ctx context.Context, tx pgx.Tx, brand, user, privacy, terms string, meta Metadata) (Member, error) {
+	return s.createMember(ctx, tx, brand, user, privacy, terms, meta, memberCreateOptions{joinMethod: "domain", termsAccepted: true})
+}
+
+type memberCreateOptions struct {
+	joinMethod    string
+	createdBy     string
+	displayName   string
+	notes         string
+	termsAccepted bool
+}
+
+func (s *Store) createMember(ctx context.Context, tx pgx.Tx, brand, user, privacy, terms string, meta Metadata, opts memberCreateOptions) (Member, error) {
 	var m Member
 	m.ID = ids.New()
 	m.BrandID = brand
-	err := tx.QueryRow(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,join_domain,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain',$4,$5,$6) RETURNING status,display_name,joined_at`, m.ID, brand, user, meta.Domain, privacy, terms).Scan(&m.Status, &m.DisplayName, &m.JoinedAt)
+	err := tx.QueryRow(ctx, `INSERT INTO brand_members
+		(id,brand_id,global_user_id,join_method,join_domain,privacy_policy_version,service_terms_version,
+		 terms_accepted,accepted_at,created_by,display_name,notes)
+		VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,$8,CASE WHEN $8 THEN now() ELSE NULL END,NULLIF($9,'')::uuid,$10,$11)
+		RETURNING status,display_name,joined_at`, m.ID, brand, user, opts.joinMethod, meta.Domain, privacy, terms, opts.termsAccepted, opts.createdBy, opts.displayName, opts.notes).Scan(&m.Status, &m.DisplayName, &m.JoinedAt)
 	if err != nil {
 		return m, err
 	}
@@ -239,6 +270,29 @@ func (s *Store) join(ctx context.Context, tx pgx.Tx, brand, user, privacy, terms
 	_, err = tx.Exec(ctx, `INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,source,state FROM unnest(ARRAY['recharge','winning','gift']) AS source CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) AS state`, brand, account)
 	return m, err
 }
+
+// acceptPendingMember records the end user's current consent; administrative
+// provisioning deliberately never calls this helper.
+func acceptPendingMember(ctx context.Context, tx pgx.Tx, brand, user string, m *Member, cfg Settings, privacy, terms string, meta Metadata) (bool, error) {
+	var accepted bool
+	if err := tx.QueryRow(ctx, `SELECT terms_accepted FROM brand_members WHERE id=$1 AND brand_id=$2`, m.ID, brand).Scan(&accepted); err != nil {
+		return false, err
+	}
+	if accepted {
+		return true, nil
+	}
+	if !accept(cfg, privacy, terms) {
+		return false, nil
+	}
+	if _, err := tx.Exec(ctx, `UPDATE brand_members SET terms_accepted=true,accepted_at=now(),privacy_policy_version=$2,service_terms_version=$3 WHERE id=$1`, m.ID, cfg.Privacy, cfg.Terms); err != nil {
+		return false, err
+	}
+	if _, err := audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "user", ActorID: user, Action: "member.terms_accept", ResourceType: "member", ResourceID: m.ID, RequestID: meta.RequestID, IP: meta.IP, Before: map[string]bool{"terms_accepted": false}, After: map[string]any{"terms_accepted": true, "privacy_policy_version": cfg.Privacy, "service_terms_version": cfg.Terms}}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Store) Login(ctx context.Context, tx pgx.Tx, brand string, in LoginInput, meta Metadata) (mutation.Result, error) {
 	cfg, err := settings(ctx, tx, brand)
 	if err != nil {
@@ -273,6 +327,13 @@ func (s *Store) Login(ctx context.Context, tx pgx.Tx, brand string, in LoginInpu
 	if err != nil {
 		return mutation.Result{}, err
 	}
+	accepted, err := acceptPendingMember(ctx, tx, brand, u.ID, &m, cfg, in.Privacy, in.Terms, meta)
+	if err != nil {
+		return mutation.Result{}, err
+	}
+	if !accepted {
+		return mutation.Fail(409, "BRAND_JOIN_REQUIRED", "请接受当前品牌条款后加入"), nil
+	}
 	if m.Status != "normal" && m.Status != "frozen" {
 		return mutation.Fail(403, "MEMBER_DISABLED", "当前品牌账号不可登录"), nil
 	}
@@ -285,7 +346,7 @@ func (s *Store) Authenticate(ctx context.Context, brand, token string) (Session,
 	}
 	err := s.DB.QueryRow(ctx, `SELECT s.id::text,u.id::text,coalesce(u.username,''),coalesce(u.phone,''),coalesce(u.telegram_user_id,''),u.status,m.id::text,m.brand_id::text,m.status,m.display_name,m.joined_at
  FROM sessions s JOIN global_users u ON u.id=s.user_id JOIN brand_members m ON m.id=s.member_id AND m.brand_id=s.brand_id JOIN brands b ON b.id=m.brand_id
- WHERE s.token_hash=$1 AND s.brand_id=$2 AND s.admin_id IS NULL AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active' AND m.status IN ('normal','frozen') AND b.status<>'disabled'`, tokenHash(token), brand).Scan(&v.ID, &v.User.ID, &v.User.Username, &v.User.Phone, &v.User.TelegramID, &v.User.Status, &v.Member.ID, &v.Member.BrandID, &v.Member.Status, &v.Member.DisplayName, &v.Member.JoinedAt)
+ WHERE s.token_hash=$1 AND s.brand_id=$2 AND s.admin_id IS NULL AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active' AND m.status IN ('normal','frozen') AND m.terms_accepted=true AND b.status<>'disabled'`, tokenHash(token), brand).Scan(&v.ID, &v.User.ID, &v.User.Username, &v.User.Phone, &v.User.TelegramID, &v.User.Status, &v.Member.ID, &v.Member.BrandID, &v.Member.Status, &v.Member.DisplayName, &v.Member.JoinedAt)
 	if err == pgx.ErrNoRows {
 		return v, ErrSession
 	}

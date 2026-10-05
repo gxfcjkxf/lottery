@@ -27,6 +27,9 @@ type Permission struct {
 
 // Role contains grants only; roles have no implicit hierarchy.
 type Role struct {
+	// Empty denotes a server-owned legacy/platform role. A brand-owned role's
+	// grants never authorize a different brand, even for multi-brand accounts.
+	BrandID     string
 	Permissions []Permission
 }
 
@@ -38,6 +41,7 @@ type Account struct {
 	SuperAdmin bool
 	Roles      []Role
 	BrandIDs   []string
+	Version    int64
 }
 
 // UnionPermissions returns the distinct explicit permissions across roles in
@@ -84,6 +88,9 @@ func Authorize(account Account, resource, action string, scope Scope, brandID st
 		return false
 	}
 	for _, role := range account.Roles {
+		if role.BrandID != "" && (scope != ScopeBrand || role.BrandID != brandID) {
+			continue
+		}
 		for _, permission := range role.Permissions {
 			if permission.Resource == resource && permission.Action == action && permission.Scope == scope {
 				return true

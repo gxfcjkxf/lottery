@@ -56,7 +56,9 @@ go run ./cmd/platform create-admin --username platform_reader --super
 
 创建后清除引导密码环境变量。用户与品牌凭证全局共享，品牌成员资料及会话按品牌隔离。用户注册和新品牌加入必须接受该品牌当前条款；开发 `dev-1` 政策是占位文本，不是生产条款。客户端使用 HttpOnly、SameSite=Strict Cookie；API 同时支持 Bearer 认证。浏览器不保存访问令牌。变更请求必须带 JSON Content-Type 和 Idempotency-Key；使用 Cookie 的请求还必须带匹配 Host 的 Origin。
 
-共享密码重置会影响全部品牌。当前安全保护要求操作者对该用户每个已加入品牌都有重置权限；仅有一个品牌权限时不得修改多品牌用户的全局密码。此规则仍待业务确认，不会提前放宽。超级管理员始终不能修改用户。
+共享密码重置会影响全部品牌。按已确认规则，操作者须对该用户每个已加入品牌都有重置权限；仅有一个品牌权限时不得修改多品牌用户的全局密码。超级管理员始终不能修改用户。
+
+管理端账号/角色、运营新增成员和认证配置已接入真实 API。角色按品牌隔离，授予权限不得超出操作者的目标品牌权限；账号角色/状态/密码变更撤销目标会话。运营新增成员必须由本人首次登录确认条款。资金、规则和业务订单仍为原型，详见 [实施记录](docs/implementation-progress.md)。
 
 Telegram 使用当前 OIDC 登录与一次性 nonce；品牌 `auth_config` 中设置 `telegram_enabled` 和 `telegram_client_id` 后，还需在 Telegram 配置允许的域名。未提供真实应用配置时默认关闭，不能用任意 Telegram 用户名冒充授权。验证码通过 `auth_config.captcha_enabled` 开启，是基本图形挑战，并不替代 WAF 和反自动化服务。
 
@@ -91,7 +93,7 @@ pnpm exec playwright install chromium
 pnpm test:e2e
 ~~~
 
-测试会自动启动两个前端，验证 PC/移动视口、真实注册/登录/会话恢复、品牌隔离与原型选号/取消流程。后台成员操作回归还要求 `TEST_ADMIN_USERNAME` 和 `TEST_ADMIN_PASSWORD`，指向事先由 `create-admin --brand aurora` 创建的隔离测试账号；未提供时该组明确 SKIP，不能宣称全部浏览器验收通过。不要使用客户或生产凭证。已有 Chrome 可通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定可执行文件。CI 在临时独立数据库中显式创建测试管理员；浏览器注册/状态修改会持久化到测试库，但演示订单不操作真实账本。
+测试会自动启动两个前端，验证 PC/移动视口、真实注册/登录/会话恢复、品牌隔离与原型选号/取消流程。后台成员及角色/账号回归要求 `TEST_ADMIN_USERNAME` 和 `TEST_ADMIN_PASSWORD`，指向事先由 `create-admin --brand aurora` 创建的隔离测试账号；认证配置回归还要求 `TEST_HARBOR_ADMIN_USERNAME` 和 `TEST_HARBOR_ADMIN_PASSWORD`，由 `create-admin --brand harbor` 创建。Harbor 桌面用例开启验证码后恢复原值，移动用例只检查真实编辑器读取与布局，避免跨项目版本竞争。未提供凭证时对应组明确 SKIP，不能宣称全部验收通过。不要使用客户或生产凭证。已有 Chrome 可通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定可执行文件。CI 在临时独立数据库中显式创建测试管理员；浏览器创建成员/角色/账号和状态修改会持久化到测试库，但演示订单不操作真实账本。
 
 ## 开发与测试方式
 

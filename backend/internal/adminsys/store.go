@@ -46,10 +46,39 @@ type Member struct {
 
 // Account loads an active admin's exact role permissions and brand scopes.
 func (s Store) Account(ctx context.Context, accountID string) (access.Account, error) {
+	return loadAccount(ctx, s.DB, accountID)
+}
+
+type accountQuery interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+// This shared/exclusive gate serializes management revocations against
+// administrative writes. It is not used for the high-throughput betting path.
+const adminAccessLock int64 = 0x6c6f747461636c
+
+func (s Store) LockAdminAccess(ctx context.Context, tx pgx.Tx, id string, exclusive bool) (access.Account, error) {
+	query := "SELECT pg_advisory_xact_lock_shared($1)"
+	if exclusive {
+		query = "SELECT pg_advisory_xact_lock($1)"
+	}
+	if _, err := tx.Exec(ctx, query, adminAccessLock); err != nil {
+		return access.Account{}, err
+	}
+	return loadAccount(ctx, tx, id)
+}
+
+func ManagementAllowed(a access.Account, resource, action, brand string) bool {
+	return access.Authorize(a, resource, action, access.ScopeBrand, brand) ||
+		access.Authorize(a, resource, action, access.ScopePlatform, "")
+}
+
+func loadAccount(ctx context.Context, q accountQuery, accountID string) (access.Account, error) {
 	var account access.Account
 	var status string
-	err := s.DB.QueryRow(ctx, `SELECT id::text,status,is_super_admin FROM admin_accounts WHERE id=$1`, accountID).
-		Scan(&account.ID, &status, &account.SuperAdmin)
+	err := q.QueryRow(ctx, `SELECT id::text,status,is_super_admin,version FROM admin_accounts WHERE id=$1`, accountID).
+		Scan(&account.ID, &status, &account.SuperAdmin, &account.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return access.Account{}, ErrNotFound
 	}
@@ -61,20 +90,20 @@ func (s Store) Account(ctx context.Context, accountID string) (access.Account, e
 	}
 	account.Type = access.AccountAdmin
 
-	rows, err := s.DB.Query(ctx, `SELECT r.id::text,p.key
+	rows, err := q.Query(ctx, `SELECT r.id::text,coalesce(r.brand_id::text,''),p.key
 		FROM admin_account_roles ar
 		JOIN roles r ON r.id=ar.role_id
 		JOIN role_permissions rp ON rp.role_id=r.id
 		JOIN permissions p ON p.key=rp.permission_key
-		WHERE ar.account_id=$1
+		WHERE ar.account_id=$1 AND r.status='active'
 		ORDER BY r.id,p.key`, accountID)
 	if err != nil {
 		return access.Account{}, err
 	}
 	roles := make(map[string]*access.Role)
 	for rows.Next() {
-		var roleID, key string
-		if err := rows.Scan(&roleID, &key); err != nil {
+		var roleID, brand, key string
+		if err := rows.Scan(&roleID, &brand, &key); err != nil {
 			rows.Close()
 			return access.Account{}, err
 		}
@@ -84,7 +113,7 @@ func (s Store) Account(ctx context.Context, accountID string) (access.Account, e
 		}
 		role := roles[roleID]
 		if role == nil {
-			role = &access.Role{}
+			role = &access.Role{BrandID: brand}
 			roles[roleID] = role
 		}
 		role.Permissions = append(role.Permissions, access.Permission{Resource: resource, Action: action, Scope: scope})
@@ -103,7 +132,7 @@ func (s Store) Account(ctx context.Context, accountID string) (access.Account, e
 		account.Roles = append(account.Roles, *roles[roleID])
 	}
 
-	rows, err = s.DB.Query(ctx, `SELECT brand_id::text FROM admin_brand_scopes WHERE account_id=$1 ORDER BY brand_id`, accountID)
+	rows, err = q.Query(ctx, `SELECT brand_id::text FROM admin_brand_scopes WHERE account_id=$1 ORDER BY brand_id`, accountID)
 	if err != nil {
 		return access.Account{}, err
 	}

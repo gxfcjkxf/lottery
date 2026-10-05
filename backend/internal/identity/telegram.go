@@ -85,6 +85,13 @@ func (s *Store) Telegram(ctx context.Context, tx pgx.Tx, brand string, claims te
 	if err != nil {
 		return mutation.Result{}, err
 	}
+	accepted, err := acceptPendingMember(ctx, tx, brand, u.ID, &m, cfg, in.Privacy, in.Terms, meta)
+	if err != nil {
+		return mutation.Result{}, err
+	}
+	if !accepted {
+		return mutation.Fail(409, "BRAND_JOIN_REQUIRED", "请接受当前品牌条款后加入"), nil
+	}
 	if m.Status != "normal" && m.Status != "frozen" {
 		return mutation.Fail(403, "MEMBER_DISABLED", "当前品牌账号不可用"), nil
 	}

@@ -57,6 +57,8 @@ jobs:
       # These credentials exist only in this ephemeral CI PostgreSQL database.
       TEST_ADMIN_USERNAME: ci_test_operator
       TEST_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_HARBOR_ADMIN_USERNAME: ci_harbor_operator
+      TEST_HARBOR_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
       BOOTSTRAP_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
     steps:
       - uses: actions/checkout@v4
@@ -78,6 +80,7 @@ jobs:
           ./bin/platform seed
           ./bin/platform generate-auth-key .local/auth.key
           ./bin/platform create-admin --username ci_test_operator --brand aurora
+          ./bin/platform create-admin --username ci_harbor_operator --brand harbor
           ./bin/platform serve > ../api-test.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
       - run: pnpm test:e2e

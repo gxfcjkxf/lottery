@@ -52,12 +52,12 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 	if _, err = tx.Exec(ctx, "INSERT INTO admin_accounts(id,username,password_hash,is_super_admin) VALUES($1,$2,$3,$4)", admin, *username, hash, *super); err != nil {
 		return errors.New("cannot create admin; account may already exist")
 	}
-	if _, err = tx.Exec(ctx, "INSERT INTO roles(id,code,name) VALUES($1,$2,$3)", role, "bootstrap_"+role, "Bootstrap administrator"); err != nil {
+	if _, err = tx.Exec(ctx, "INSERT INTO roles(id,brand_id,code,name,is_bootstrap) VALUES($1,NULLIF($2,'')::uuid,$3,$4,true)", role, brandID, "bootstrap_"+role, "Bootstrap administrator"); err != nil {
 		return err
 	}
-	permissions := []string{"user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "audit.view.brand", "brand.view.brand"}
+	permissions := []string{"user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "audit.view.brand", "brand.view.brand", "user.create.brand", "role.view.brand", "role.write.brand", "admin.view.brand", "admin.write.brand", "auth_config.view.brand", "auth_config.write.brand"}
 	if *super {
-		permissions = []string{"user.view.platform", "audit.view.platform", "brand.view.platform"}
+		permissions = []string{"user.view.platform", "audit.view.platform", "brand.view.platform", "role.view.platform", "role.write.platform", "admin.view.platform", "admin.write.platform", "auth_config.view.platform", "auth_config.write.platform"}
 	}
 	for _, permission := range permissions {
 		if _, err = tx.Exec(ctx, "INSERT INTO permissions(key) VALUES($1) ON CONFLICT DO NOTHING", permission); err != nil {
@@ -67,13 +67,13 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 			return err
 		}
 	}
-	if _, err = tx.Exec(ctx, "INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)", admin, role); err != nil {
-		return err
-	}
 	if brandID != "" {
 		if _, err = tx.Exec(ctx, "INSERT INTO admin_brand_scopes(account_id,brand_id) VALUES($1,$2)", admin, brandID); err != nil {
 			return err
 		}
+	}
+	if _, err = tx.Exec(ctx, "INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)", admin, role); err != nil {
+		return err
 	}
 	if _, err = audit.Append(ctx, tx, audit.Record{BrandID: brandID, ActorType: "system", Action: "admin.bootstrap", ResourceType: "admin", ResourceID: admin, Reason: "explicit server-owner bootstrap", RequestID: ids.New(), After: map[string]any{"super_admin": *super}}); err != nil {
 		return err

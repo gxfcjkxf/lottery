@@ -47,6 +47,7 @@
 - `display_name`, `notes`, `profile_snapshot` JSONB
 - `join_method`: domain/agent_code/referral_code/operator
 - `join_domain`, `agent_id`, `referral_id`, `joined_at`, `created_by`
+- `terms_accepted`, `accepted_at`, `privacy_policy_version`, `service_terms_version`；运营新增成员在本人首次确认前为 false/NULL，不可由运营代同意。
 - unique `(brand_id, global_user_id)`
 
 归属字段在加入时写快照；后续代理关系修改不能影响历史注单。
@@ -58,6 +59,8 @@
 - 权限键格式：`resource.action.scope`
 - 账号最终权限为角色权限并集去重。
 - `admin_brand_scopes` 限制品牌范围；平台范围权限不自动授予写权限。
+- 角色含 `brand_id`（平台角色为 NULL）、`status`、`version`、`is_bootstrap`，普通账号有 version。
+- 品牌角色的 `(brand_id, code)` 唯一，brand_id/code 创建后不可修改；管理员必须先拥有对应品牌范围才可绑定角色，绑定期间不可移除该范围。权限必须在品牌作用域内计算，不能把其他品牌角色并集当作本品牌授权。
 
 ### 品牌配置
 

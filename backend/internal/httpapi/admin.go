@@ -159,7 +159,7 @@ func registerAdminRoutes(mux *http.ServeMux, d Dependencies) {
 		if !adminReadAudit(w, r, d, account, "", "admin.me") {
 			return
 		}
-		respond(w, r, 200, map[string]any{"account": map[string]any{"id": account.ID, "super_admin": account.SuperAdmin, "brand_ids": brands, "permissions": permissionNames(account)}})
+		respond(w, r, 200, map[string]any{"account": map[string]any{"id": account.ID, "super_admin": account.SuperAdmin, "brand_ids": brands, "permissions": permissionNames(account), "version": account.Version, "permissions_by_brand": permissionsByBrand(account), "platform_permissions": platformPermissions(account)}})
 	})
 	handle("GET", "/brands", func(w http.ResponseWriter, r *http.Request) {
 		a, ok := adminAccount(w, r, d)
@@ -212,6 +212,10 @@ func registerAdminRoutes(mux *http.ServeMux, d Dependencies) {
 		}
 		items, err := d.Admins.ListMembers(r.Context(), a, brand, limit, offset)
 		if err != nil {
+			if errors.Is(err, adminsys.ErrDenied) {
+				rejectAdmin(w, r, d, a, brand, "user.view")
+				return
+			}
 			result, e := adminResult("", err)
 			outputMutation(w, r, result, e)
 			return
@@ -254,32 +258,35 @@ func registerAdminRoutes(mux *http.ServeMux, d Dependencies) {
 				return
 			}
 			if !access.Authorize(a, "user", operation, access.ScopeBrand, brand) {
-				failure(w, r, 403, "PERMISSION_DENIED", "无操作权限")
+				rejectAdmin(w, r, d, a, brand, "user."+operation)
 				return
 			}
 			encoded, _ := json.Marshal(in)
 			result, err := d.Mutations.Execute(r.Context(), brand, a.ID, "admin.user."+operation, r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(id+":"+string(encoded)), func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-				fresh, err := d.Identity.AdminAuthenticate(ctx, requestToken(r, adminCookie))
-				if err != nil || fresh != a.ID {
+				fresh, err := freshAdmin(ctx, tx, r, d, a, false)
+				if errors.Is(err, identity.ErrSession) || errors.Is(err, adminsys.ErrDenied) {
 					return mutation.Fail(401, "AUTH_SESSION_REVOKED", "请重新登录"), nil
+				}
+				if err != nil {
+					return mutation.Result{}, err
 				}
 				var auditID string
 				switch operation {
 				case "write":
-					auditID, err = d.Admins.ChangeMember(ctx, tx, a, brand, id, in.Status, in.Notes, in.Reason, requestID(r), meta(r).IP)
+					auditID, err = d.Admins.ChangeMember(ctx, tx, fresh, brand, id, in.Status, in.Notes, in.Reason, requestID(r), meta(r).IP)
 				case "kick":
-					auditID, err = d.Admins.Kick(ctx, tx, a, brand, id, in.Reason, requestID(r), meta(r).IP)
+					auditID, err = d.Admins.Kick(ctx, tx, fresh, brand, id, in.Reason, requestID(r), meta(r).IP)
 				case "password_reset":
 					var hash string
 					hash, err = d.Identity.PasswordHash(ctx, in.Password)
 					if err != nil {
 						return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 10-128 字节"), nil
 					}
-					auditID, err = d.Admins.ResetPassword(ctx, tx, a, brand, id, hash, in.Reason, requestID(r), meta(r).IP)
+					auditID, err = d.Admins.ResetPassword(ctx, tx, fresh, brand, id, hash, in.Reason, requestID(r), meta(r).IP)
 				}
 				return adminResult(auditID, err)
 			})
-			outputMutation(w, r, result, err)
+			finishAdminMutation(w, r, d, a, brand, "user."+operation, result, err)
 		})
 	}
 	handle("GET", "/audit", func(w http.ResponseWriter, r *http.Request) {
@@ -290,7 +297,7 @@ func registerAdminRoutes(mux *http.ServeMux, d Dependencies) {
 		brand := r.Header.Get("X-Brand-ID")
 		platform := access.Authorize(a, "audit", "view", access.ScopePlatform, "")
 		if (brand != "" && !uuidPattern.MatchString(brand)) || (!platform && !access.Authorize(a, "audit", "view", access.ScopeBrand, brand)) {
-			failure(w, r, 403, "PERMISSION_DENIED", "无审计查询权限")
+			rejectAdmin(w, r, d, a, brand, "audit.view")
 			return
 		}
 		limit, offset, ok := pageParams(r)
@@ -333,4 +340,5 @@ func registerAdminRoutes(mux *http.ServeMux, d Dependencies) {
 		}
 		respond(w, r, 200, map[string]any{"items": items})
 	})
+	registerAdminManagementRoutes(handle, d)
 }

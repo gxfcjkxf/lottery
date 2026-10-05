@@ -10,6 +10,9 @@ export interface AdminAccount {
   super_admin: boolean;
   brand_ids: string[];
   permissions: string[];
+  permissions_by_brand?: Record<string, string[]>;
+  platform_permissions?: string[];
+  version?: number;
 }
 
 export interface AdminBrand {

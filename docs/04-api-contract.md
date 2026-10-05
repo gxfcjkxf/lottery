@@ -148,9 +148,41 @@
 
 成员状态值为 `normal`、`frozen`、`disabled`、`expired`、`cancelled`（注销）。冻结仍可登录/查询；禁用、过期、注销后会话验证失败。备注最大 2000 字节，原因必填且不超过 500 字节。修改和踢人返回 `audit_log_id`。查询支持 `limit`（1–100，默认 50）和 `offset`（0–1000000），响应 `{items: [...]}`。成功查询和修改都有审计记录，密码/令牌不进入明文审计。
 
-共享密码安全保护：当前默认要求管理员对该用户所有已加入品牌均拥有 `user.password_reset.brand`，不满足返回 403 `CREDENTIAL_SCOPE_REQUIRED`，不改密码、不撤销会话。此跨品牌权限规则已向用户提出确认，未确认前保留限制；不能仅凭当前品牌的重置权限接管其他品牌身份。超级管理员仍不能重置用户密码。
+共享密码安全保护（用户已确认）：要求管理员对该用户所有已加入品牌均拥有 `user.password_reset.brand`，不满足返回 403 `CREDENTIAL_SCOPE_REQUIRED`，不改密码、不撤销会话。不能仅凭当前品牌的重置权限接管其他品牌身份。超级管理员仍不能重置用户密码。
 
-管理账号当前由显式 CLI 引导，无内置密码。角色/权限编辑、管理账号管理、后台新增用户、拒绝访问专项安全审计仍属于 S2 后续工作。
+### S2-b 已接入账号、角色与认证配置
+
+下表均要求有效的 `X-Brand-ID` UUID，即使操作者拥有平台权限也必须明确选择目标品牌。权限为精确的 `resource.action.scope`，不隐式授予查询权或通配权。
+
+| 方法 | 路径 | 授权/请求 |
+|---|---|---|
+| GET | /admin/permissions | `role.view.brand/platform`；返回登记的品牌权限键 `{items}` |
+| GET | /admin/roles | `role.view.brand/platform`；分页 `{items}` |
+| POST | /admin/roles | `role.write.brand/platform`；code、name、permissions、reason；status 默认 active |
+| PATCH | /admin/roles/{id} | 同上；version、name、status、permissions、reason；code 不可修改 |
+| GET | /admin/accounts | `admin.view.brand/platform`；分页 `{items}` |
+| POST | /admin/accounts | `admin.write.brand/platform`；username、password、role_ids、reason；创建普通 active 账号 |
+| PATCH | /admin/accounts/{id} | 同上；version、status、role_ids、reason；username 不可修改 |
+| POST | /admin/accounts/{id}/reset-password | 同上；version、password、reason；撤销目标账号全部会话 |
+| POST | /admin/users | 仅 `user.create.brand` 且非超级管理员；username/phone 至少一个、password、可选 display_name/notes、reason |
+| GET | /admin/auth-settings | `auth_config.view.brand/platform`；当前 version、认证设置和只读条款版本 |
+| PATCH | /admin/auth-settings | `auth_config.write.brand/platform`；version、captcha_enabled、telegram_enabled、telegram_client_id、reason |
+
+管理写入沿用持久化幂等、审计和 JSON 严格解析；查询分页与成员列表一致。Role 响应包含 id、brand_id、code、name、status、version、is_bootstrap、permissions；Admin 响应包含 id、username、status、version、super_admin、brand_ids、role_ids、role_codes。成功写入返回 audit_log_id。版本冲突或唯一键冲突返回 409 `VERSION_CONFLICT`；认证配置版本冲突为 `CONFIG_VERSION_CONFLICT`。
+
+安全边界：
+
+- 角色绑定单个品牌；角色归属和 code 在数据库层不可迁移。品牌角色不能把权限传播给同一管理员所属的其他品牌。平台角色由服务器端维护，不在品牌角色编辑器创建。
+- 品牌操作者只能授予自己在目标品牌已拥有的权限，包括分配已有角色；也不能修改旧权限超出自身的角色，或通过状态修改/重置密码接管更高权限管理员。平台对应 write 权限可管理品牌角色和普通账号，但仍不能编辑自身账号、自身所用角色、引导角色或超级管理员账号。
+- 品牌管理员只能管理单品牌目标管理账号；多品牌账号由具有平台管理权限的操作者管理。跨品牌/平台角色的目标账号不能被局部品牌权限接管。普通 API 不创建超级管理员，不修改账号品牌范围；显式服务器 CLI 引导无默认密码。
+- 管理账号密码 16–128 字节；username 匹配 `[a-z][a-z0-9_]{2,31}`，role code 匹配 `[a-z][a-z0-9_]{2,47}`，角色名最多 120 UTF-8 字节；原因 1–500 字节，权限/角色数组最多 100 项，去重后处理。
+- `/admin/me` 的 `permissions_by_brand` 与 `platform_permissions` 是授权显示的权威字段；旧 `permissions` 仅为兼容的扁平并集，不能用它推导任意品牌可写。
+- 写事务在权限读写锁内重查当前角色和会话：普通业务管理写取共享锁，角色/账号权限变更取排他锁。此锁不用于用户投注，不能由此推导业务吞吐。权限变更后会话实时读取最新权限；账号角色/状态/密码变更同时撤销目标会话。
+- 已认证但无权限的请求写独立 `access.denied` 审计，不记录请求正文、密码、令牌或无权访问对象内容；业务回滚后拒绝审计仍保留。
+
+运营新增用户只创建全局新身份、当前品牌成员与零积分账户；全局用户名/手机号已存在时返回 409 `IDENTITY_EXISTS`，不得覆盖/关联旧身份。`join_method=operator`，`terms_accepted=false`，不签发会话、不产生资金流水。用户首次登录须本人确认当前条款，再记录实际同意时间。
+
+认证配置保存立即生效，只允许上述三个公开登录字段，不修改条款文本/版本；version 对应品牌 config_version。Client ID 使用十进制字符串，非空必须是无前导零的正安全整数（≤9007199254740991），启用 Telegram 时不得为空。公开 ID 不是秘密凭证；真实外部应用授权仍需独立验收。
 
 ### 期次和开奖
 

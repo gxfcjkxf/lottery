@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import AccessManagement from "./AccessManagement.vue";
+import MemberProvision from "./MemberProvision.vue";
+import AuthSettings from "./AuthSettings.vue";
 import {
   previewCorrection,
   resolveWithdrawal,
@@ -150,24 +153,33 @@ const toast = (text: string) => {
     if (notice.value === text) notice.value = "";
   }, 3200);
 };
-const hasPermission = (permission: string) =>
-  Boolean(account.value?.permissions.includes(permission));
+const hasPermission = (permission: string) => {
+  if (!account.value) return false;
+  const grants =
+    account.value.permissions_by_brand?.[selectedBrandId.value] ??
+    (account.value.permissions_by_brand ? [] : account.value.permissions);
+  return grants.includes(permission);
+};
 const canEditUsers = computed(() =>
   Boolean(
     account.value &&
-      !account.value.super_admin &&
-      hasPermission("user.write.brand"),
+    !account.value.super_admin &&
+    hasPermission("user.write.brand"),
   ),
 );
 const canKickUsers = computed(() =>
   Boolean(
     account.value &&
-      !account.value.super_admin &&
-      hasPermission("user.kick.brand"),
+    !account.value.super_admin &&
+    hasPermission("user.kick.brand"),
   ),
 );
 const canResetPasswords = computed(() =>
-  Boolean(account.value && hasPermission("user.password_reset.brand")),
+  Boolean(
+    account.value &&
+    !account.value.super_admin &&
+    hasPermission("user.password_reset.brand"),
+  ),
 );
 const statusLabel: Record<MemberStatus, string> = {
   normal: "正常",
@@ -593,7 +605,7 @@ const ledger = [
         ><span><b>northstar</b><small>OPERATIONS CONSOLE</small></span></a
       >
       <div class="demo-chip">
-        <span class="pulse"></span>其余页面为演示
+        <span class="pulse"></span>资金与游戏为演示
         <span class="demo-chip-end">·</span>
       </div>
       <div class="brand-switch-wrap">
@@ -692,7 +704,11 @@ const ledger = [
           <span>运营控制台</span><span class="crumb-slash">/</span
           ><b>{{ page }}</b
           ><span
-            v-if="page !== '用户和成员' && page !== '审计日志'"
+            v-if="
+              page !== '用户和成员' &&
+              page !== '审计日志' &&
+              page !== '账号与权限'
+            "
             class="prototype-badge"
             >演示原型</span
           >
@@ -718,14 +734,20 @@ const ledger = [
         </div>
       </header>
       <div
-        v-if="showDemoNotice && page !== '用户和成员' && page !== '审计日志'"
+        v-if="
+          showDemoNotice &&
+          page !== '用户和成员' &&
+          page !== '审计日志' &&
+          page !== '账号与权限'
+        "
         class="demo-banner"
       >
         <span class="banner-icon">ⓘ</span
         ><span
           ><b>交互演示 · 非生产环境</b
           ><span class="banner-copy">
-            积分、审核和配置均为虚构演示内容，不会写入后台。用户和成员页使用真实登录数据。</span
+            积分、玩法审核、域名主题仍为虚构演示，不会写入后台。账号、成员和认证设置已接入真实
+            API。</span
           ></span
         ><button aria-label="关闭说明" @click="showDemoNotice = false">
           ×
@@ -1001,6 +1023,13 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '品牌和域名'" class="page-content">
+        <AuthSettings
+          v-if="account && selectedBrandId"
+          :key="selectedBrandId"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
         <div class="page-heading">
           <div>
             <div class="eyebrow">PLATFORM / BRAND CONFIG</div>
@@ -1118,7 +1147,9 @@ const ledger = [
           <div>
             <div class="eyebrow">MEMBERS / LIVE DIRECTORY</div>
             <h1>用户和成员</h1>
-            <p>此页显示已授权品牌中的真实成员；其他控制台页面仍为交互原型。</p>
+            <p>
+              此页显示真实成员；账号权限和认证设置也已接入，资金与游戏页面仍为原型。
+            </p>
           </div>
           <span v-if="account" class="live-pill"
             >已登录 · {{ account.id }}</span
@@ -1172,6 +1203,13 @@ const ledger = [
             </button>
           </div>
           <template v-else>
+            <MemberProvision
+              :key="selectedBrandId"
+              :account="account"
+              :brand-id="selectedBrandId"
+              @created="loadMembers"
+              @session-invalid="clearAdminData"
+            />
             <div class="directory-toolbar">
               <div>
                 <span>当前真实品牌</span><b>{{ brand }}</b
@@ -1838,7 +1876,8 @@ const ledger = [
             </div>
             <div class="source-row">
               <span class="source-mark source-manual">M</span
-              ><span><b>人工录入</b><small>单人操作，必须记录审计原因</small></span
+              ><span
+                ><b>人工录入</b><small>单人操作，必须记录审计原因</small></span
               ><button class="text-button" @click="manualOpen = true">
                 录入
               </button>
@@ -2512,176 +2551,30 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '账号与权限'" class="page-content">
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">SECURITY / ACCESS CONTROL</div>
-            <h1>账号与权限</h1>
-            <p>后台成员、角色能力与品牌数据范围</p>
-          </div>
+        <AccessManagement
+          v-if="account && selectedBrandId"
+          :key="selectedBrandId"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
+        <div v-else class="panel directory-state">
+          <h1>账号与权限</h1>
+          <p>
+            {{
+              account
+                ? "请先选择真实后台品牌。"
+                : "请先登录后台账号，才能管理真实角色和权限。"
+            }}
+          </p>
           <button
+            v-if="!account"
             class="button button-primary"
-            @click="toast('邀请管理员为演示入口')"
+            @click="go('用户和成员')"
           >
-            ＋ 邀请管理员
+            进入管理员登录
           </button>
         </div>
-        <div class="permission-note">
-          ▣
-          权限遵循最小授权原则；品牌范围限制数据访问，平台范围权限不会自动赋予写操作能力。
-        </div>
-        <article class="panel">
-          <div class="table-toolbar">
-            <div class="filter-tabs">
-              <button class="selected">后台账号 <span>18</span></button
-              ><button @click="toast('权限矩阵已切换（演示）')">
-                角色权限矩阵</button
-              ><button @click="toast('品牌范围已切换（演示）')">
-                品牌范围
-              </button>
-            </div>
-            <button
-              class="button button-secondary"
-              @click="toast('权限矩阵导出（演示）')"
-            >
-              导出权限矩阵 ↓
-            </button>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>账号</th>
-                  <th>角色</th>
-                  <th>品牌范围</th>
-                  <th>关键权限</th>
-                  <th>最近登录</th>
-                  <th>状态</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="a in [
-                    {
-                      name: '林岚',
-                      account: 'lin.lan@northstar.demo',
-                      role: '平台运营',
-                      scope: '平台只读 · Aurora',
-                      rights: '用户查询、期次操作',
-                      last: '10-05 09:14',
-                      status: '正常',
-                    },
-                    {
-                      name: '周宁',
-                      account: 'ning.zhou@northstar.demo',
-                      role: '品牌管理员',
-                      scope: 'Aurora · Harbor',
-                      rights: '规则审核、提现审核',
-                      last: '10-05 08:52',
-                      status: '正常',
-                    },
-                    {
-                      name: '陈浩',
-                      account: 'hao.chen@northstar.demo',
-                      role: '财务审核',
-                      scope: 'Aurora',
-                      rights: '充值确认、提现审核',
-                      last: '10-04 19:08',
-                      status: '正常',
-                    },
-                    {
-                      name: '系统演示',
-                      account: 'demo.readonly@northstar.demo',
-                      role: '只读审计员',
-                      scope: '全部品牌只读',
-                      rights: '报表查看、审计查询',
-                      last: '10-03 12:40',
-                      status: '正常',
-                    },
-                  ]"
-                  :key="a.account"
-                >
-                  <td>
-                    <span class="member-cell"
-                      ><i>{{ a.name[0] }}</i
-                      ><span
-                        ><b>{{ a.name }}</b
-                        ><small>{{ a.account }}</small></span
-                      ></span
-                    >
-                  </td>
-                  <td>
-                    <span class="role-chip">{{ a.role }}</span>
-                  </td>
-                  <td>{{ a.scope }}</td>
-                  <td>{{ a.rights }}</td>
-                  <td>{{ a.last }}</td>
-                  <td>
-                    <span class="badge badge-success">{{ a.status }}</span>
-                  </td>
-                  <td>
-                    <button
-                      class="text-button"
-                      @click="toast(`${a.name} 权限详情（演示）`)"
-                    >
-                      配置 →
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </article>
-        <article class="panel roles-panel">
-          <div class="panel-header">
-            <div>
-              <h2>角色模板</h2>
-              <p>权限按资源、动作和作用范围拆分</p>
-            </div>
-            <button class="text-button" @click="toast('创建角色模板（演示）')">
-              管理角色 →
-            </button>
-          </div>
-          <div class="role-cards">
-            <div
-              v-for="r in [
-                {
-                  name: '平台超级管理员',
-                  count: '2 个账号',
-                  desc: '平台范围读取与高风险配置审批',
-                  color: 'violet',
-                },
-                {
-                  name: '品牌管理员',
-                  count: '4 个账号',
-                  desc: '品牌配置、规则审核和用户管理',
-                  color: 'blue',
-                },
-                {
-                  name: '财务审核',
-                  count: '3 个账号',
-                  desc: '充值确认、提现审核与账本查询',
-                  color: 'mint',
-                },
-                {
-                  name: '只读审计员',
-                  count: '2 个账号',
-                  desc: '跨品牌只读报表与审计查询',
-                  color: 'amber',
-                },
-              ]"
-              :key="r.name"
-              class="role-card"
-            >
-              <i :class="r.color">♧</i
-              ><span
-                ><b>{{ r.name }}</b
-                ><small>{{ r.desc }}</small
-                ><em>{{ r.count }}</em></span
-              ><button @click="toast(`${r.name} 权限（演示）`)">›</button>
-            </div>
-          </div>
-        </article>
       </section>
 
       <section v-else class="page-content">
@@ -2759,10 +2652,14 @@ const ledger = [
         <span>Aurora Operations Console <b>·</b> Prototype v0.1</span
         ><span>{{
           page === "用户和成员" && account
-            ? "成员目录为真实后台数据；其他操作数据为演示。"
+            ? "成员创建与管理为真实操作；资金与游戏仍为演示。"
             : page === "审计日志" && account
-              ? "审计日志为真实后台数据；其他操作数据为演示。"
-              : "所有积分和操作均为虚构演示数据"
+              ? "审计日志为真实后台数据；资金与游戏仍为演示。"
+              : page === "账号与权限" && account
+                ? "账号与角色变更为真实操作；资金与游戏仍为演示。"
+                : page === "品牌和域名" && account
+                  ? "认证设置为真实配置；域名、主题与资金仍为演示。"
+                  : "此页业务数据为演示；账号、成员和认证设置已接入后台。"
         }}</span>
       </footer>
       <div

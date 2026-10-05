@@ -21,7 +21,7 @@ test('admin shell distinguishes live context from demo data', async ({ page }) =
   await page.goto('http://localhost:5174')
   await expect(page.locator('.context-strip')).toContainText('Aurora · aurora')
   await expect(page.getByRole('heading', { name: /早上好，林岚/ })).toBeVisible()
-  await expect(page.locator('.banner-copy')).toContainText('积分、审核和配置均为虚构演示内容，不会写入后台。')
+  await expect(page.locator('.banner-copy')).toContainText('积分、玩法审核、域名主题仍为虚构演示，不会写入后台。')
   await noHorizontalOverflow(page)
   expect(errors).toEqual([])
 })
