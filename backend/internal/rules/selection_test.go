@@ -6,6 +6,17 @@ import (
 	"testing"
 )
 
+func TestRepeatPoolCanFormTwoPositionsFromOneCandidate(t *testing.T) {
+	d := Definition{SchemaVersion: 1, Model: Model{Type: "X_PLUS_Y", RegularPool: Pool{Min: 7, Max: 7, AllowRepeat: true}, RegularCount: 2}, Selection: SelectionRule{Mode: "numbers", RegularCount: 2}, UnitPoints: 1, PrizeTiers: []Tier{{Code: "EXACT", Condition: Condition{Op: "equals", Field: "regular_match", Value: intPointer(2)}, Odds: "10", Exclusive: true}}, Rounding: "half_up", RoundingScope: "order", Limits: Limits{MaxCombinations: 100, MaxMultiplier: 1000}}
+	for _, ordered := range []bool{false, true} {
+		d.Model.Ordered = ordered
+		out, e := Simulate(SimulationInput{Definition: d, Selection: Selection{Regular: []int{7}}, Draw: Draw{Regular: []int{7, 7}}, Multiplier: 1})
+		if e != nil || out.CombinationCount != 1 || out.PrizePoints != 10 {
+			t.Fatalf("ordered=%v result=%+v err=%v", ordered, out, e)
+		}
+	}
+}
+
 func TestValidateModelAndDrawAcrossAllModelKinds(t *testing.T) {
 	tests := []struct {
 		name  string

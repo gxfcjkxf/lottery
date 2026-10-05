@@ -61,7 +61,7 @@ export interface RuleSelectionDefinition {
 }
 
 export interface RuleCondition {
-  op: "all" | "any" | "equals" | "in" | "between" | "selected";
+  op: "all" | "any" | "not" | "equals" | "in" | "between" | "selected";
   field?: SafeConditionField;
   target?: "all" | "regular" | "special" | "digits";
   position?: number;
@@ -90,7 +90,7 @@ export interface RuleDefinition {
   number_attributes: Record<string, Record<string, number[]>>;
   unit_points: string;
   prize_tiers: RuleTier[];
-  mixed_tier_policy: "max_all";
+  mixed_tier_policy: "" | "max_all" | "max_exclusive_plus_additive";
   cap_points: string | null;
   rounding: "half_up";
   rounding_scope: "order" | "line" | "tier";

@@ -581,7 +581,7 @@ export function buildDrawResult(
     "普通号码",
     model.regular_count,
     allowedPoolValues(model.regular_pool),
-    model.allow_repeat && model.regular_pool.allow_repeat,
+    model.regular_pool.allow_repeat,
   );
   const special = parseNumberList(
     specialInput,

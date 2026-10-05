@@ -416,7 +416,7 @@ clone 仅接受 active/expired/rolled_back 来源，返回新的 draft、version
 
 实际业务错误：400 `RULE_INVALID`、`RULE_EXECUTION_LIMIT`、`RULE_POINTS_OVERFLOW`；404 `RESOURCE_NOT_FOUND`；409 `RULE_VERSION_CONFLICT`（乐观版本或目录编号冲突）、`RULE_STATE_CONFLICT`（状态不符、队列已有项、修改源克隆定义等）、`RULE_VALIDATION_REQUIRED`（报告无效或批准未确认警告）；403 `PERMISSION_DENIED`（含贡献者审核及超级管理员写入）。通用解析、CSRF、认证、幂等与 503 错误沿用 S4-a 约定。
 
-管理端六个模板只覆盖特别号命中、三位数字直选、数字特征、排除号码、特别号属性、M 选 N 全中；并非完整 DSL 运营编辑器。不能无损还原的定义在页面只读，不能用模板覆盖原规则。
+S4-d 管理端六个快捷模板与通用可视化编辑器并存；通用模式覆盖当前 schema-v1 所有定义/条件字段与最多 32 组独立验证用例，调用本节相同 API，没有跳过验证或审核的新入口。不能无损还原的定义自动使用通用模式，普通草稿可编辑，来源回滚草稿仍不可改写。前端保存原定义语义、阻断未解析输入，并检查整个请求 16 KiB 上限；最终模型一致性、可达性、版本/权限/报告 hash 仍由后端判断。
 
 ### 玩法版本的旧设计路径（未实现）
 

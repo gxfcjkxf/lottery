@@ -1,11 +1,23 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import RuleDefinitionEditor from "./RuleDefinitionEditor.vue";
+import RuleModelEditor from "./RuleModelEditor.vue";
+import RuleCasesEditor from "./RuleCasesEditor.vue";
+import {
+  defaultRuleDefinition,
+  normalizeEditorDefinition,
+  validateEditorDefinition,
+  validateEditorModel,
+} from "./rule-editor";
+import { defaultRuleCase, validateRuleCases } from "./rule-cases-editor";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import {
   buildRuleSimulationRequest,
   RULE_TEMPLATE_LABELS,
   type RuleSimulationForm,
   type RuleTemplate,
+  type RuleDefinition,
+  type RuleModel,
 } from "./rule-simulation-api";
 import {
   buildRuleValidationCase,
@@ -26,6 +38,7 @@ import {
   type RuleValidationReport,
   type RuleVersion,
   type RuleVersionStatus,
+  type RuleValidationCase,
 } from "./rule-versions-api";
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
@@ -51,6 +64,20 @@ const newDraft = ref(false);
 const supported = ref(true);
 const template = ref<RuleTemplate>("special");
 const form = ref<RuleSimulationForm>(defaultRuleVersionForm("special"));
+const initialModel = () =>
+  buildRuleSimulationRequest("special", defaultRuleVersionForm("special"))
+    .definition.model;
+const editorMode = ref<"template" | "advanced">("template");
+const advancedDefinition = ref<RuleDefinition>(
+  defaultRuleDefinition(initialModel()),
+);
+const advancedValid = ref(true);
+const advancedModelValid = ref(true);
+const advancedCases = ref<RuleValidationCase[]>([]);
+const casesValid = ref(true);
+const customGame = ref(false);
+const customGameModel = ref<RuleModel>(initialModel());
+const customGameValid = ref(true);
 const effectMode = ref<RuleEffectMode>("immediate");
 const draftReason = ref("");
 const expected = ref({ name: "", bet: "", prize: "", won: false });
@@ -114,17 +141,19 @@ const cloneAllowed = computed(
     selected.value !== null &&
     canCloneRuleVersion(props.account, props.brandId, selected.value),
 );
-const editable = computed(
-  () => newDraft.value || (isDraft.value && supported.value),
-);
+const editable = computed(() => newDraft.value || isDraft.value);
 const dirty = computed(() => {
   if (!selected.value) return false;
   try {
     return (
       effectMode.value !== selected.value.effect_mode ||
       ruleDefinitionSignature(
-        buildRuleSimulationRequest(template.value, form.value).definition,
-      ) !== ruleDefinitionSignature(selected.value.definition)
+        editorMode.value === "advanced"
+          ? advancedDefinition.value
+          : buildRuleSimulationRequest(template.value, form.value).definition,
+      ) !== ruleDefinitionSignature(selected.value.definition) ||
+      (editorMode.value === "advanced" &&
+        (!advancedValid.value || !advancedModelValid.value))
     );
   } catch {
     return true;
@@ -135,6 +164,7 @@ const readyToSubmit = computed(
     isDraft.value &&
     !dirty.value &&
     !validationInputsChanged.value &&
+    (editorMode.value !== "advanced" || casesValid.value) &&
     selected.value?.validation?.passed === true,
 );
 const reviewAllowed = computed(
@@ -162,6 +192,15 @@ function scope(lane: string): string {
       selected.value?.id,
       template.value,
       form.value,
+      editorMode.value,
+      advancedDefinition.value,
+      advancedCases.value,
+      advancedValid.value,
+      advancedModelValid.value,
+      casesValid.value,
+      customGame.value,
+      customGameModel.value,
+      customGameValid.value,
       effectMode.value,
       draftReason.value,
       expected.value,
@@ -190,6 +229,12 @@ function resetEditor() {
     supported.value = true;
     template.value = "special";
     form.value = defaultRuleVersionForm("special");
+    editorMode.value = "template";
+    advancedDefinition.value = defaultRuleDefinition(initialModel());
+    advancedCases.value = [];
+    advancedValid.value = true;
+    advancedModelValid.value = true;
+    casesValid.value = true;
     effectMode.value = "immediate";
     draftReason.value = "";
     expected.value = { name: "", bet: "", prize: "", won: false };
@@ -281,8 +326,15 @@ async function chooseGame(id: string) {
 }
 async function choosePlay(id: string, direct = false) {
   if (direct) {
-    gameId.value = "";
-    plays.value = [];
+    // A newly created/catalogued play has an authoritative game association.
+    // Preserve that model for custom drafts instead of falling back to 6+1.
+    const known = plays.value.find((item) => item.id === id.trim());
+    if (known && games.value.some((item) => item.id === known.game_id))
+      gameId.value = known.game_id;
+    else {
+      gameId.value = "";
+      plays.value = [];
+    }
     guard.invalidate("plays");
     loadingPlays.value = false;
   }
@@ -300,6 +352,21 @@ function chooseVersion(record: RuleVersion, preserveInputs = false) {
     newDraft.value = false;
     const restored = restoreRuleVersionTemplate(record.definition);
     supported.value = restored !== null;
+    editorMode.value =
+      !restored || (preserveInputs && editorMode.value === "advanced")
+        ? "advanced"
+        : "template";
+    advancedDefinition.value = normalizeEditorDefinition(record.definition);
+    if (!preserveInputs) {
+      const storedCases =
+        record.validation?.cases.flatMap((item) =>
+          item.input ? [item.input] : [],
+        ) ?? [];
+      advancedCases.value = storedCases.length
+        ? (JSON.parse(JSON.stringify(storedCases)) as RuleValidationCase[])
+        : [defaultRuleCase(advancedDefinition.value)];
+      casesValid.value = true;
+    }
     if (!preserveInputs && restored) {
       template.value = restored.template;
       form.value = restored.form;
@@ -357,12 +424,62 @@ function startDraft() {
         ([value]) => !model || ruleTemplateModel(value) === model,
       )?.[0] ?? "special";
     form.value = defaultRuleVersionForm(template.value);
+    const templateDefinition = buildRuleSimulationRequest(
+      template.value,
+      form.value,
+    ).definition;
+    advancedDefinition.value = defaultRuleDefinition(
+      selectedGame.value?.model ?? templateDefinition.model,
+    );
+    advancedCases.value = [defaultRuleCase(advancedDefinition.value)];
+    editorMode.value =
+      ruleDefinitionSignature(
+        defaultRuleDefinition(templateDefinition.model),
+      ) === ruleDefinitionSignature(advancedDefinition.value)
+        ? "template"
+        : "advanced";
   });
   error.value = "";
   notice.value = "";
 }
 function changeTemplate() {
   form.value = defaultRuleVersionForm(template.value);
+}
+function changeEditorMode(mode: "template" | "advanced") {
+  if (
+    busy.value ||
+    definitionLocked.value ||
+    !rights.value.rulesWrite ||
+    mode === editorMode.value
+  )
+    return;
+  try {
+    if (mode === "advanced") {
+      advancedDefinition.value = normalizeEditorDefinition(
+        buildRuleSimulationRequest(template.value, form.value).definition,
+      );
+      const storedCases =
+        selected.value?.validation?.cases.flatMap((item) =>
+          item.input ? [item.input] : [],
+        ) ?? [];
+      advancedCases.value = storedCases.length
+        ? (JSON.parse(JSON.stringify(storedCases)) as RuleValidationCase[])
+        : [defaultRuleCase(advancedDefinition.value)];
+    } else {
+      const restored = restoreRuleVersionTemplate(advancedDefinition.value);
+      if (!restored)
+        throw new Error(
+          "当前通用定义不能无损还原为快捷模板，请继续使用通用编辑器；不会覆盖已有条件。",
+        );
+      template.value = restored.template;
+      form.value = restored.form;
+    }
+    editorMode.value = mode;
+    validationInputsChanged.value = true;
+    validationDisplay.value = null;
+  } catch (cause) {
+    showError(cause);
+  }
 }
 
 async function mutate<T extends { brand_id: string; id: string }>(
@@ -375,6 +492,12 @@ async function mutate<T extends { brand_id: string; id: string }>(
   message: string,
 ) {
   if (busy.value || !permitted()) return;
+  if (new TextEncoder().encode(JSON.stringify(body)).length > 16 * 1024) {
+    showError(
+      new Error("请求超过 16 KiB 上限，请缩减本次规则或验证用例；未发送请求。"),
+    );
+    return;
+  }
   const ticket = guard.capture("write", scope("write"));
   const brandId = props.brandId;
   activeWrite = ticket;
@@ -415,10 +538,15 @@ async function createGame() {
     if (!input.code.trim() || !input.name.trim())
       throw new Error("请填写彩种代码和名称。");
     new Intl.DateTimeFormat("en", { timeZone: input.timezone.trim() });
-    const model = buildRuleSimulationRequest(
-      input.template,
-      defaultRuleVersionForm(input.template),
-    ).definition.model;
+    const model = customGame.value
+      ? customGameModel.value
+      : buildRuleSimulationRequest(
+          input.template,
+          defaultRuleVersionForm(input.template),
+        ).definition.model;
+    if (customGame.value && !customGameValid.value)
+      throw new Error("自定义彩种有未解析或无效输入，请先修正。");
+    validateEditorModel(model);
     const body = {
       code: input.code.trim(),
       name: input.name.trim(),
@@ -497,7 +625,15 @@ async function persistDraft() {
       return;
     const definition = selected.value?.source_version_id
       ? selected.value.definition
-      : buildRuleSimulationRequest(template.value, form.value).definition;
+      : editorMode.value === "advanced"
+        ? advancedDefinition.value
+        : buildRuleSimulationRequest(template.value, form.value).definition;
+    if (
+      editorMode.value === "advanced" &&
+      (!advancedValid.value || !advancedModelValid.value)
+    )
+      throw new Error("规则有未解析或无效输入，请先修正。");
+    validateEditorDefinition(definition);
     if (
       selectedGame.value &&
       selectedGame.value.model.model !== definition.model.model
@@ -517,7 +653,7 @@ async function persistDraft() {
         body,
         () => rights.value.rulesWrite && newDraft.value,
         (brand, key) => api.createRuleVersion(brand, body, key),
-        (result) => applyVersion(result),
+        (result) => applyVersion(result, editorMode.value === "advanced"),
         "草稿已保存，尚未提交审核",
       );
     } else if (record?.status === "draft") {
@@ -539,16 +675,26 @@ async function persistDraft() {
 async function validateDraft() {
   try {
     const record = selected.value;
-    if (!record || !isDraft.value || !supported.value) return;
+    if (!record || !isDraft.value) return;
     if (dirty.value)
       throw new Error("规则配置已修改，请先保存草稿，再验证保存的定义。");
     const body = {
       version: record.version,
-      cases: [
-        buildRuleValidationCase(template.value, form.value, expected.value),
-      ],
+      cases:
+        editorMode.value === "advanced"
+          ? advancedCases.value
+          : [
+              buildRuleValidationCase(
+                template.value,
+                form.value,
+                expected.value,
+              ),
+            ],
       reason: reason(draftReason.value),
     };
+    if (editorMode.value === "advanced" && !casesValid.value)
+      throw new Error("验证用例有未解析或无效输入，请先修正。");
+    validateRuleCases(record.definition, body.cases);
     await mutate(
       "validate",
       record.id,
@@ -642,7 +788,7 @@ async function cloneVersion() {
 }
 
 watch(
-  [template, form, effectMode, expected],
+  [template, form, effectMode, expected, advancedDefinition, advancedCases],
   () => {
     if (hydrating) return;
     guard.invalidate("write");
@@ -673,6 +819,9 @@ watch(
       timezone: "UTC",
       reason: "",
     };
+    customGame.value = false;
+    customGameModel.value = initialModel();
+    customGameValid.value = true;
     playCreate.value = { gameId: "", code: "", name: "", reason: "" };
     error.value = "";
     notice.value = "";
@@ -830,14 +979,20 @@ watch(
 
     <div v-if="rights.gamesWrite" class="catalog-grid">
       <details class="card">
-        <summary>创建彩种（由模板确定模型）</summary>
+        <summary>创建彩种（模板或自定义号码模型）</summary>
         <form @submit.prevent="createGame">
           <fieldset :disabled="busy" class="form-grid">
             <label>代码<input v-model.trim="gameCreate.code" required /></label
             ><label
               >名称<input v-model.trim="gameCreate.name" required
             /></label>
-            <label
+            <label class="check wide"
+              ><input
+                v-model="customGame"
+                type="checkbox"
+              />自定义彩种号码模型（任意合法数量与号码池）</label
+            >
+            <label v-if="!customGame"
               >模型模板<select v-model="gameCreate.template">
                 <option
                   v-for="[value, label] in templates"
@@ -848,6 +1003,14 @@ watch(
                 </option>
               </select></label
             >
+            <RuleModelEditor
+              v-if="customGame"
+              :key="brandId"
+              class="wide"
+              v-model="customGameModel"
+              :disabled="busy"
+              @validity="customGameValid = $event"
+            />
             <label
               >IANA 时区<input
                 v-model.trim="gameCreate.timezone"
@@ -860,7 +1023,13 @@ watch(
                 required
                 rows="2"
               /></label
-            ><button class="wide" type="submit">创建彩种</button>
+            ><button
+              class="wide"
+              type="submit"
+              :disabled="customGame && !customGameValid"
+            >
+              创建彩种
+            </button>
           </fieldset>
         </form>
       </details>
@@ -916,8 +1085,16 @@ watch(
         <summary>已保存规则定义（只读 JSON）</summary>
         <pre>{{ pretty(selected.definition) }}</pre>
       </details>
+      <details v-if="!isDraft" class="saved-rule-summary">
+        <summary>已保存规则可视化摘要（只读）</summary>
+        <RuleDefinitionEditor
+          :key="`${selected.id}:${selected.version}:readonly`"
+          :model-value="normalizeEditorDefinition(selected.definition)"
+          :disabled="true"
+        />
+      </details>
       <p v-if="isDraft && !supported" class="notice">
-        当前定义无法由这六个模板完整还原，保留只读显示。请通过支持该定义的管理工具修改；此处不会用模板覆盖原定义。
+        当前定义使用通用可视化编辑器完整保留。普通草稿可以编辑；回滚草稿定义保持锁定，不会用快捷模板覆盖原定义。
       </p>
       <p v-if="isDraft && selected.source_version_id" class="notice">
         这是回滚草稿，定义必须与来源版本完全相同，只允许调整生效方式。仍需重新验证，并由未参与创建或编辑的其他管理员审核。
@@ -947,8 +1124,41 @@ watch(
 
     <section v-if="editable" class="card editor">
       <h3>3 · {{ newDraft ? "新建草稿" : "草稿配置与验证" }}</h3>
+      <label
+        >编辑方式<select
+          :value="editorMode"
+          :disabled="busy || !rights.rulesWrite || definitionLocked"
+          @change="
+            changeEditorMode(
+              ($event.target as HTMLSelectElement).value as
+                'template' | 'advanced',
+            )
+          "
+        >
+          <option value="template">六个快捷模板</option>
+          <option value="advanced">通用可视化编辑器</option>
+        </select></label
+      >
       <form @submit.prevent="persistDraft">
+        <template v-if="editorMode === 'advanced' && newDraft && !selectedGame">
+          <p class="notice">
+            未读取目标彩种模型。请明确配置与目标彩种完全一致的模型；服务器会核对，不会修改彩种。
+          </p>
+          <RuleModelEditor
+            v-model="advancedDefinition.model"
+            :disabled="busy || !rights.rulesWrite"
+            @validity="advancedModelValid = $event"
+          />
+        </template>
+        <RuleDefinitionEditor
+          v-if="editorMode === 'advanced'"
+          :key="`${selected?.id ?? 'new'}:${selected?.version ?? 0}:definition`"
+          v-model="advancedDefinition"
+          :disabled="busy || !rights.rulesWrite || definitionLocked"
+          @validity="advancedValid = $event"
+        />
         <fieldset
+          v-else
           :disabled="busy || !rights.rulesWrite || definitionLocked"
           class="form-grid"
         >
@@ -1007,8 +1217,9 @@ watch(
           </select></label
         >
         <p class="hint">
-          积分和倍率使用整数字符串；赔率精确计算。组合上限 10000，倍率上限
-          1000。生效方式以服务端审批和期次绑定结果为准。
+          积分和倍率使用整数字符串，赔率精确计算。快捷模板倍率上限
+          1000；通用编辑器可配置倍率、组合和封顶。定义与审核结果以服务端为准，单次请求最多
+          16 KiB。
         </p>
         <label v-if="rights.rulesWrite && !definitionLocked"
           >保存原因<textarea
@@ -1021,14 +1232,43 @@ watch(
         <button
           v-if="rights.rulesWrite && !definitionLocked"
           type="submit"
-          :disabled="busy"
+          :disabled="
+            busy ||
+            (editorMode === 'advanced' &&
+              (!advancedValid || !advancedModelValid))
+          "
         >
           {{ newDraft ? "保存新草稿" : "保存草稿修改" }}
         </button>
       </form>
 
       <form @submit.prevent="validateDraft">
+        <template v-if="editorMode === 'advanced'">
+          <RuleCasesEditor
+            :key="`${selected?.id ?? 'new'}:${selected?.version ?? 0}:cases`"
+            v-model="advancedCases"
+            :definition="advancedDefinition"
+            :disabled="busy || (!rights.validate && !rights.rulesWrite)"
+            @validity="casesValid = $event"
+          />
+          <label v-if="rights.validate && selected"
+            >验证原因<textarea
+              v-model="draftReason"
+              required
+              rows="2"
+              :disabled="busy"
+            />
+          </label>
+          <button
+            v-if="rights.validate && selected"
+            type="submit"
+            :disabled="busy || dirty || !isDraft || !casesValid"
+          >
+            验证已保存草稿并保存报告
+          </button>
+        </template>
         <fieldset
+          v-else
           :disabled="busy || (!rights.validate && !rights.rulesWrite)"
           class="form-grid"
         >

@@ -58,7 +58,7 @@ test("persisted rules validate, forbid self-review, and activate after a distinc
     panel.getByRole("heading", { name: "彩种、玩法与规则审批", exact: true }),
   ).toBeVisible();
   const game = panel.locator("details").filter({
-    has: page.getByText("创建彩种（由模板确定模型）", { exact: true }),
+    has: page.getByText("创建彩种（模板或自定义号码模型）", { exact: true }),
   });
   await game.locator("summary").click();
   await game.getByLabel("代码", { exact: true }).fill(code);

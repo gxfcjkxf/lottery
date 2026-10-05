@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { reactive } from "vue";
+import { ruleDefinitionSignature } from "./rule-versions-api";
 import {
   defaultRuleDefinition,
   editorDefinitionBytes,
@@ -51,6 +53,37 @@ const digits: RuleModel = {
 
 const validDefinition = (): RuleDefinition => defaultRuleDefinition(xPlusY);
 
+it("hydrates reactive server definitions without changing leaf identity or rule semantics", () => {
+  const source = defaultRuleDefinition(digits);
+  const original = ruleDefinitionSignature(source);
+  const model = reactive(digits);
+  expect(() => defaultRuleDefinition(model)).not.toThrow();
+  const hydrated = normalizeEditorDefinition(reactive(source));
+  expect(ruleDefinitionSignature(hydrated)).toBe(original);
+  expect(Object.hasOwn(hydrated.prize_tiers[0].condition, "children")).toBe(
+    false,
+  );
+});
+
+it("accepts Go-absent nullable condition parameters without rewriting the draft", () => {
+  const source = defaultRuleDefinition(digits);
+  const leaf = source.prize_tiers[0].condition as unknown as Record<
+    string,
+    unknown
+  >;
+  leaf.values = null;
+  leaf.min = null;
+  leaf.max = null;
+  leaf.position = null;
+  leaf.target = "";
+  leaf.selection_key = "";
+  const before = JSON.stringify(source);
+  expect(() => validateEditorDefinition(source)).not.toThrow();
+  expect(JSON.stringify(source)).toBe(before);
+  leaf.values = [];
+  expect(() => validateEditorDefinition(source)).toThrow();
+});
+
 describe("rule editor defaults and model validation", () => {
   it("builds valid full-count definitions for all three models without mutating the model", () => {
     for (const model of [xPlusY, mSelectN, digits]) {
@@ -65,7 +98,9 @@ describe("rule editor defaults and model validation", () => {
       expect(model).toEqual(before);
     }
     expect(defaultRuleDefinition(digits).prize_tiers[0].condition).toEqual({
-      op: "equals", field: "position_match", value: 3,
+      op: "equals",
+      field: "position_match",
+      value: 3,
     });
   });
 
@@ -77,16 +112,28 @@ describe("rule editor defaults and model validation", () => {
     const definition = defaultRuleDefinition(model);
     expect(definition.selection.regular_count).toBe(0);
     expect(definition.prize_tiers[0].condition).toEqual({
-      op: "equals", field: "special_match", value: 1,
+      op: "equals",
+      field: "special_match",
+      value: 1,
     });
   });
 
   it("enforces M-select-N shared pools, N1+N2<M, and disallows repeats", () => {
     validateEditorModel(mSelectN);
-    const unequal: RuleModel = { ...mSelectN, special_pool: { ...mSelectN.special_pool, max: 8 } };
+    const unequal: RuleModel = {
+      ...mSelectN,
+      special_pool: { ...mSelectN.special_pool, max: 8 },
+    };
     expect(() => validateEditorModel(unequal)).toThrow(/相同的 M 个号码/);
-    expect(() => validateEditorModel({ ...mSelectN, total_count: 7 })).toThrow(/0 < N1\+N2=N < M/);
-    expect(() => validateEditorModel({ ...mSelectN, regular_pool: { ...mSelectN.regular_pool, allow_repeat: true } })).toThrow();
+    expect(() => validateEditorModel({ ...mSelectN, total_count: 7 })).toThrow(
+      /0 < N1\+N2=N < M/,
+    );
+    expect(() =>
+      validateEditorModel({
+        ...mSelectN,
+        regular_pool: { ...mSelectN.regular_pool, allow_repeat: true },
+      }),
+    ).toThrow();
   });
 
   it("accepts the backend M=49, N=7 (6+1) model example", () => {
@@ -102,13 +149,19 @@ describe("rule editor defaults and model validation", () => {
       allow_repeat: false,
       ordered: false,
     };
-    expect(() => validateEditorDefinition(defaultRuleDefinition(backendExample))).not.toThrow();
+    expect(() =>
+      validateEditorDefinition(defaultRuleDefinition(backendExample)),
+    ).not.toThrow();
   });
 
   it("checks digit length, ordering, and repeat configuration", () => {
     validateEditorModel(digits);
-    expect(() => validateEditorModel({ ...digits, ordered: false })).toThrow(/有序数字/);
-    expect(() => validateEditorModel({ ...digits, length: 11 })).toThrow(/有序数字/);
+    expect(() => validateEditorModel({ ...digits, ordered: false })).toThrow(
+      /有序数字/,
+    );
+    expect(() => validateEditorModel({ ...digits, length: 11 })).toThrow(
+      /有序数字/,
+    );
   });
 });
 
@@ -127,19 +180,57 @@ describe("definition validation", () => {
     expect(() => validateEditorDefinition(numbers)).toThrow(/必须显式选择/);
 
     const excluded = validDefinition();
-    excluded.selection = { mode: "exclude", regular_count: 0, special_count: 0, exclude_count: 2, attribute_groups: [], feature_choices: {} };
-    excluded.prize_tiers[0].condition = { op: "equals", field: "excluded_match", target: "all", value: 1 };
+    excluded.selection = {
+      mode: "exclude",
+      regular_count: 0,
+      special_count: 0,
+      exclude_count: 2,
+      attribute_groups: [],
+      feature_choices: {},
+    };
+    excluded.prize_tiers[0].condition = {
+      op: "equals",
+      field: "excluded_match",
+      target: "all",
+      value: 1,
+    };
     expect(() => validateEditorDefinition(excluded)).not.toThrow();
 
     const attributes = validDefinition();
     attributes.number_attributes = { Zone: { North: [1, 2] } };
-    attributes.selection = { mode: "attributes", regular_count: 0, special_count: 0, exclude_count: 0, attribute_groups: ["Zone"], feature_choices: {} };
-    attributes.prize_tiers[0].condition = { op: "equals", field: "attribute_match", target: "regular", attribute_group: "Zone", attribute_value: "$selection", value: 1 };
+    attributes.selection = {
+      mode: "attributes",
+      regular_count: 0,
+      special_count: 0,
+      exclude_count: 0,
+      attribute_groups: ["Zone"],
+      feature_choices: {},
+    };
+    attributes.prize_tiers[0].condition = {
+      op: "equals",
+      field: "attribute_match",
+      target: "regular",
+      attribute_group: "Zone",
+      attribute_value: "$selection",
+      value: 1,
+    };
     expect(() => validateEditorDefinition(attributes)).not.toThrow();
 
     const features = validDefinition();
-    features.selection = { mode: "features", regular_count: 0, special_count: 0, exclude_count: 0, attribute_groups: [], feature_choices: { Sum: [4, 7] } };
-    features.prize_tiers[0].condition = { op: "selected", field: "draw_sum", target: "regular", selection_key: "Sum" };
+    features.selection = {
+      mode: "features",
+      regular_count: 0,
+      special_count: 0,
+      exclude_count: 0,
+      attribute_groups: [],
+      feature_choices: { Sum: [4, 7] },
+    };
+    features.prize_tiers[0].condition = {
+      op: "selected",
+      field: "draw_sum",
+      target: "regular",
+      selection_key: "Sum",
+    };
     expect(() => validateEditorDefinition(features)).not.toThrow();
   });
 
@@ -147,19 +238,30 @@ describe("definition validation", () => {
     const definition = validDefinition();
     definition.prize_tiers[0].condition = {
       op: "not",
-      children: [{ op: "any", children: [
-        { op: "equals", field: "regular_match", value: 0 },
-        { op: "between", field: "regular_match", min: 2, max: 5 },
-      ] }],
+      children: [
+        {
+          op: "any",
+          children: [
+            { op: "equals", field: "regular_match", value: 0 },
+            { op: "between", field: "regular_match", min: 2, max: 5 },
+          ],
+        },
+      ],
     };
     expect(() => validateEditorDefinition(definition)).not.toThrow();
 
     const tooDeep = validDefinition();
-    const root: RuleDefinition["prize_tiers"][number]["condition"] = { op: "not", children: [] };
+    const root: RuleDefinition["prize_tiers"][number]["condition"] = {
+      op: "not",
+      children: [],
+    };
     tooDeep.prize_tiers[0].condition = root;
     let node = root;
     for (let i = 1; i < 8; i++) {
-      const child: RuleDefinition["prize_tiers"][number]["condition"] = { op: "not", children: [] };
+      const child: RuleDefinition["prize_tiers"][number]["condition"] = {
+        op: "not",
+        children: [],
+      };
       node.children = [child];
       node = child;
     }
@@ -169,7 +271,14 @@ describe("definition validation", () => {
     const tooManyNodes = validDefinition();
     tooManyNodes.prize_tiers[0].condition = {
       op: "all",
-      children: Array.from({ length: 32 }, () => ({ op: "all" as const, children: Array.from({ length: 4 }, () => ({ op: "equals" as const, field: "regular_match" as const, value: 1 })) })),
+      children: Array.from({ length: 32 }, () => ({
+        op: "all" as const,
+        children: Array.from({ length: 4 }, () => ({
+          op: "equals" as const,
+          field: "regular_match" as const,
+          value: 1,
+        })),
+      })),
     };
     expect(() => validateEditorDefinition(tooManyNodes)).toThrow(/128 个节点/);
 
@@ -178,14 +287,23 @@ describe("definition validation", () => {
     another.code = "SECOND";
     perTier.prize_tiers[0].condition = tooManyNodes.prize_tiers[0].condition;
     expect(() => validateEditorDefinition(perTier)).toThrow(/128 个节点/);
-    perTier.prize_tiers[0].condition = { op: "equals", field: "regular_match", value: 1 };
-    perTier.prize_tiers.push({ ...another, condition: { op: "equals", field: "regular_match", value: 1 } });
+    perTier.prize_tiers[0].condition = {
+      op: "equals",
+      field: "regular_match",
+      value: 1,
+    };
+    perTier.prize_tiers.push({
+      ...another,
+      condition: { op: "equals", field: "regular_match", value: 1 },
+    });
     expect(() => validateEditorDefinition(perTier)).not.toThrow();
   });
 
   it("rejects unknown condition parameters, duplicates, and invalid targets", () => {
     const unknown = validDefinition();
-    (unknown.prize_tiers[0].condition as unknown as Record<string, unknown>).script = "x";
+    (
+      unknown.prize_tiers[0].condition as unknown as Record<string, unknown>
+    ).script = "x";
     expect(() => validateEditorDefinition(unknown)).toThrow(/未知字段/);
 
     const duplicate = validDefinition();
@@ -193,33 +311,53 @@ describe("definition validation", () => {
     expect(() => validateEditorDefinition(duplicate)).toThrow(/重复/);
 
     const target = validDefinition();
-    target.prize_tiers[0].condition = { op: "equals", field: "draw_sum", target: "digits", value: 1 };
+    target.prize_tiers[0].condition = {
+      op: "equals",
+      field: "draw_sum",
+      target: "digits",
+      value: 1,
+    };
     expect(() => validateEditorDefinition(target)).toThrow(/digits 开奖范围/);
   });
 
   it("enforces bounded tiers, attribute groups, labels, values, and feature choices", () => {
     const tiers = validDefinition();
     tiers.prize_tiers = Array.from({ length: 33 }, (_, i) => ({
-      ...structuredClone(tiers.prize_tiers[0]), code: `TIER_${i}`,
+      ...structuredClone(tiers.prize_tiers[0]),
+      code: `TIER_${i}`,
     }));
     expect(() => validateEditorDefinition(tiers)).toThrow(/奖级数量/);
 
     const groups = validDefinition();
-    groups.number_attributes = Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`G${i}`, { A: [1] }]));
+    groups.number_attributes = Object.fromEntries(
+      Array.from({ length: 17 }, (_, i) => [`G${i}`, { A: [1] }]),
+    );
     expect(() => validateEditorDefinition(groups)).toThrow(/最多 16 个/);
 
     const labels = validDefinition();
-    labels.number_attributes = { Group: Object.fromEntries(Array.from({ length: 33 }, (_, i) => [`L${i}`, [1]])) };
+    labels.number_attributes = {
+      Group: Object.fromEntries(
+        Array.from({ length: 33 }, (_, i) => [`L${i}`, [1]]),
+      ),
+    };
     expect(() => validateEditorDefinition(labels)).toThrow(/1–32 个标签/);
 
     const members = validDefinition();
-    members.number_attributes = { Group: { Label: Array.from({ length: 10_001 }, (_, i) => i) } };
+    members.number_attributes = {
+      Group: { Label: Array.from({ length: 10_001 }, (_, i) => i) },
+    };
     expect(() => validateEditorDefinition(members)).toThrow(/1–10000/);
 
     const features = validDefinition();
     features.selection = {
-      mode: "features", regular_count: 0, special_count: 0, exclude_count: 0,
-      attribute_groups: [], feature_choices: Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`F${i}`, [1]])),
+      mode: "features",
+      regular_count: 0,
+      special_count: 0,
+      exclude_count: 0,
+      attribute_groups: [],
+      feature_choices: Object.fromEntries(
+        Array.from({ length: 17 }, (_, i) => [`F${i}`, [1]]),
+      ),
     };
     expect(() => validateEditorDefinition(features)).toThrow(/1–16 个特征/);
   });
@@ -238,7 +376,9 @@ describe("definition validation", () => {
     expect(() => validateEditorPoints("01")).toThrow(/规范/);
     expect(() => validateEditorPoints("0")).toThrow(/大于零/);
     expect(() => validateEditorPoints("0", true)).not.toThrow();
-    expect(() => validateEditorPoints("9223372036854775808", true)).toThrow(/int64/);
+    expect(() => validateEditorPoints("9223372036854775808", true)).toThrow(
+      /int64/,
+    );
   });
 });
 
@@ -260,16 +400,30 @@ describe("editor helpers", () => {
     definition.model.regular_pool.max = undefined as unknown as number;
     definition.model.regular_pool.values = null as unknown as number[];
     definition.selection.attribute_groups = null as unknown as string[];
-    definition.selection.feature_choices = null as unknown as Record<string, number[]>;
-    definition.number_attributes = null as unknown as RuleDefinition["number_attributes"];
+    definition.selection.feature_choices = null as unknown as Record<
+      string,
+      number[]
+    >;
+    definition.number_attributes =
+      null as unknown as RuleDefinition["number_attributes"];
     definition.prize_tiers[0].condition = {
-      op: "in", field: "regular_match", values: [1, 3], children: [],
+      op: "in",
+      field: "regular_match",
+      values: [1, 3],
+      children: [],
     };
     definition.prize_tiers[0].odds = "12.340001";
     definition.mixed_tier_policy = "max_exclusive_plus_additive";
-    const originalCondition = structuredClone(definition.prize_tiers[0].condition);
+    const originalCondition = structuredClone(
+      definition.prize_tiers[0].condition,
+    );
     const hydrated = normalizeEditorDefinition(definition);
-    expect(hydrated.model.regular_pool).toEqual({ min: 0, max: 0, values: [], allow_repeat: false });
+    expect(hydrated.model.regular_pool).toEqual({
+      min: 0,
+      max: 0,
+      values: [],
+      allow_repeat: false,
+    });
     expect(hydrated.selection.attribute_groups).toEqual([]);
     expect(hydrated.selection.feature_choices).toEqual({});
     expect(hydrated.number_attributes).toEqual({});
@@ -281,6 +435,8 @@ describe("editor helpers", () => {
 
   it("reports UTF-8 JSON bytes", () => {
     const definition = validDefinition();
-    expect(editorDefinitionBytes(definition)).toBe(new TextEncoder().encode(JSON.stringify(definition)).length);
+    expect(editorDefinitionBytes(definition)).toBe(
+      new TextEncoder().encode(JSON.stringify(definition)).length,
+    );
   });
 });

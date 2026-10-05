@@ -374,7 +374,7 @@ func normalizeCandidates(values []int, count int, pool Pool, allowedValues []int
 		seen[value] = struct{}{}
 		result = append(result, value)
 	}
-	if len(result) < count || !pool.AllowRepeat && len(result) < count {
+	if !pool.AllowRepeat && len(result) < count {
 		return nil, ErrInvalid
 	}
 	if !ordered {
