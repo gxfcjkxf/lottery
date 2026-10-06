@@ -149,4 +149,18 @@ test("manual recharge, freeze, original-source unfreeze and adjustment reconcile
     path: info.outputPath("wallet-summary.png"),
     fullPage: true,
   });
+  await expect.poll(async () => {
+    const response = await user.request.get("http://localhost:5173/api/v1/notifications?limit=20&offset=0");
+    expect(response.status()).toBe(200);
+    const body = await response.json();
+    return body.data.items.filter((item: {event_type:string}) => item.event_type === "recharge.confirmed").length;
+  }).toBe(1);
+  await user.goto("http://localhost:5173/notifications");
+  const inbox = user.locator(".notifications-panel");
+  await expect(inbox.getByRole("heading", {name:"Recharge confirmed",exact:true})).toBeVisible();
+  await expect(inbox.locator(".notification-card")).toHaveCount(2);
+  await expect(inbox).toContainText("100 points");
+  await expect(inbox).not.toContainText("browser recharge confirm");
+  expect(await user.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await user.screenshot({path: info.outputPath("notifications-recharge.png"),fullPage:true});
 });

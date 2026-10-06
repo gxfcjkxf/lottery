@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
+	"github.com/gxfcjkxf/lottery/backend/internal/events"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/jackc/pgx/v5"
@@ -142,6 +143,10 @@ func (s Service) ConfirmRecharge(ctx context.Context, tx pgx.Tx, brand, id strin
 		return Recharge{}, err
 	}
 	record.AuditLogID = auditID
+	amountText := record.Points
+	if err = events.Append(ctx, tx, brand, "recharge.confirmed", record.ID, record.MemberID, &amountText); err != nil {
+		return Recharge{}, err
+	}
 	return record, nil
 }
 

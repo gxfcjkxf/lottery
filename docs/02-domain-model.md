@@ -253,8 +253,11 @@ S6-a 当前只实现提现规则配置，不建此订单表或产生提现积分
 
 `notifications`
 
-- `id`, `brand_id`, `brand_member_id`, `channel`, `template_key`, `payload` JSONB
-- `status`: pending/sent/failed, `attempt_count`, `last_error`, `sent_at`
+- S6-b 当前实现为站内信：`id`, `brand_id`, `member_id`, `event_id`, `event_type`, `template_key`, `template_version`, `payload` JSONB、`created_at`、`read_at`。
+- `(brand_id,member_id)` 外键绑定品牌成员，`(event_id,member_id)` 唯一；内容与来源不可改写/删除，只允许首次填写已读时间。payload 仅含业务资源编号及规范整数字符串积分（入品牌通知为 null），不含人员、凭证、内部理由或支付证明。
+- `notification_deliveries` 单独保存此消费者的 `event_id`, `brand_id`, `status` pending/sent/failed、`attempt_count`, `last_error`, `next_attempt_at`, `sent_at`；与 outbox 关联。不占用未来消息发布器的 `published_at`。
+- 站内落库、消费者去重确认和 sent 状态同事务；失败回滚消息后持久化安全错误码/退避时间。失败重试必须由有品牌权限的运营人员填写理由，和审计同事务。
+- 邮件/短信/Telegram、运营可编辑模板、中奖/提现通知为后续功能，不能把当前站内 sent 状态解释成外部发送成功。
 
 ## 3. 必备索引
 

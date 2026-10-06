@@ -504,6 +504,27 @@ S4-d 管理端六个快捷模板与通用可视化编辑器并存；通用模式
 
 所有管理端动作必须做权限检查并写审计日志；返回结果应包含 audit_log_id 或可追踪 request ID。
 
+## 4.1 S6-b 已实现的站内通知
+
+用户路径同时支持 `/api/v1` 和 `/api/v1/b/{brandCode}`；账户从实际品牌会话解析，禁止客户端指定目标会员。读取和写入均走主库。
+
+| 方法 | 路径 | 当前契约 |
+|---|---|---|
+| GET | /notifications?limit=20&offset=0 | 当前会员消息页与一致快照未读总数 |
+| POST | /notifications/read | `{ids:[UUID...]}`，1–100 个不重复、已观察到的消息编号，整批归属校验 |
+| GET | /admin/notification-deliveries | 品牌内投递状态分页；显式 `notification.view.brand/platform` 与查询审计 |
+| POST | /admin/notification-deliveries/{event_id}/retry | `{attempt_count:整数,reason:非空文本}`；仅 failed 状态，显式 `notification.retry.brand`，超管禁止 |
+
+列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version:1,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。当前事件/模板固定为 `member.joined`、`recharge.confirmed`、`bet.order.placed/cancelled/judged_cancelled/abnormal`；除入品牌通知外积分是规范正 int64 字符串。
+
+已读回执 `{brand_id,member_id,ids,changed,unread_count}`，ids 顺序等于请求。重复读不改原读时间；任一消息不属于账户或不存在则整批 404、不做部分写入。当前 UI 明确为“本页标为已读”，只处理本次已加载编号；新到消息不会被无界 UPDATE 误吞。其他页可分页继续处理。
+
+两个 POST 都需要幂等键、可信 Origin/JSON；等待幂等锁前后重查会话/权限，撤权或退出后不能重放旧成功。客户端冻结原 ids/context/key，丢失或畸形成功回执视为未知结果；只读刷新不解除未知意图。确定拒绝可重载后发起新操作。
+
+投递列表只公开运行状态、次数、安全错误码及时间，不公开原始事件/内部业务材料。正常数据库错误自动退避 2/4/8/16 秒后第 5 次失败终止；无效业务事件立即 failed，不确认消费。人工重试保留累计次数和旧错误，成功后清除最后错误。人工重试及查询可由 request ID/审计追溯。
+
+尚未接入开奖受众/中奖/提现事件、外部渠道及后台投递查询 UI；不得伪造这些通知或把开奖结果展示当作中奖证据。
+
 ## 5. 错误码
 
 至少定义以下稳定错误码：
@@ -528,6 +549,9 @@ S4-d 管理端六个快捷模板与通用可视化编辑器并存；通用模式
 - RESULT_INVALID
 - SETTLEMENT_NOT_RETRYABLE
 - LEDGER_CONFLICT
+- NOTIFICATION_INPUT_INVALID
+- NOTIFICATION_NOT_FOUND
+- NOTIFICATION_STATE_CONFLICT
 
 ## 6. 事务、幂等和重试
 

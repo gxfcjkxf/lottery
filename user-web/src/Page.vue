@@ -18,6 +18,7 @@ import { isValidWholeAmount } from "./withdrawal";
 import WalletSummary from "./WalletSummary.vue";
 import BettingPanel from "./BettingPanel.vue";
 import DrawResultsPanel from "./DrawResultsPanel.vue";
+import NotificationsPanel from "./NotificationsPanel.vue";
 import {
   createAuthClient,
   type AuthChallenge,
@@ -64,6 +65,7 @@ const authError = ref("");
 const identifier = ref("");
 const password = ref("");
 const authProfile = ref<AuthProfile | null>(null);
+const notificationUnreadCount = ref<string | null>(null);
 const profileLoading = ref(false);
 const profileSaving = ref(false);
 const profileUsername = ref("");
@@ -987,7 +989,7 @@ onMounted(async () => {
         ? `${t.value.offline} · ${error.message}`
         : t.value.offline;
   }
-  if (route.path === "/account") void loadProfile();
+  if (route.path === "/account" || route.path === "/notifications") void loadProfile();
   tickTimer = setInterval(() => tick.value++, 1000);
 });
 watch(locale, () => {
@@ -1001,7 +1003,7 @@ watch(locale, () => {
 watch(
   () => route.path,
   (path) => {
-    if (path === "/account") void loadProfile();
+    if (path === "/account" || path === "/notifications") void loadProfile();
     if (path === "/login" || path === "/register") {
       if (authConfigurationLoaded.value) void refreshCaptcha();
       else void loadAuthFeatures();
@@ -1039,9 +1041,9 @@ watch(
           ><span class="nav-icon" aria-hidden="true">{{ item.icon }}</span
           >{{ item.label
           }}<span
-            v-if="item.to === '/notifications'"
+            v-if="item.to === '/notifications' && notificationUnreadCount !== null && notificationUnreadCount !== '0'"
             class="nav-dot"
-            aria-label="1 unread notification"
+            :aria-label="locale === 'en' ? `${notificationUnreadCount} unread notifications` : `${notificationUnreadCount} 条未读消息`"
           ></span
         ></RouterLink>
       </nav>
@@ -2392,78 +2394,13 @@ watch(
           :brand-code="walletBrandCode"
         />
 
-        <section
+        <NotificationsPanel
           v-else-if="route.path === '/notifications'"
-          class="page-section"
-        >
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">YOUR INBOX</div>
-              <h1>{{ t.notifications }}</h1>
-              <p>{{ t.notificationHelp }}</p>
-            </div>
-            <button
-              class="button button-secondary"
-              @click="
-                notice =
-                  locale === 'en'
-                    ? 'Sample notifications marked as read.'
-                    : '示例消息已标记为已读。'
-              "
-            >
-              {{ locale === "en" ? "Mark all read" : "全部已读" }}
-            </button>
-          </div>
-          <div class="notification-list">
-            <article class="notification-card">
-              <span class="notification-marker"></span>
-              <div>
-                <div class="notification-meta">
-                  {{ locale === "en" ? "WELCOME · OCT 01" : "欢迎 · 10月1日" }}
-                  <span>NEW</span>
-                </div>
-                <h3>
-                  {{
-                    locale === "en"
-                      ? "Welcome to Luma Play"
-                      : "欢迎来到 Luma Play"
-                  }}
-                </h3>
-                <p>
-                  {{
-                    locale === "en"
-                      ? "Your demo experience is ready. Explore the games and see how a pick works."
-                      : "演示体验已准备就绪。浏览彩种，了解选号流程。"
-                  }}
-                </p>
-                <RouterLink to="/help" class="text-link"
-                  >{{ t.help }} →</RouterLink
-                >
-              </div>
-            </article>
-            <article class="notification-card read-card">
-              <span class="notification-marker"></span>
-              <div>
-                <div class="notification-meta">
-                  {{
-                    locale === "en"
-                      ? "PLAY WELL · OCT 02"
-                      : "理性娱乐 · 10月2日"
-                  }}
-                </div>
-                <h3>
-                  {{
-                    locale === "en" ? "Keep your play balanced" : "保持理性参与"
-                  }}
-                </h3>
-                <p>{{ t.announcementBody }}</p>
-                <RouterLink to="/help" class="text-link"
-                  >{{ t.help }} →</RouterLink
-                >
-              </div>
-            </article>
-          </div>
-        </section>
+          :locale="locale"
+          :brand-code="walletBrandCode"
+          @unread-count="notificationUnreadCount = $event"
+          @auth-expired="authProfile = null"
+        />
 
         <section v-else-if="route.path === '/help'" class="page-section">
           <div class="page-heading">
@@ -2574,7 +2511,9 @@ watch(
             {{
               locale === "en" ? "Live public draw records" : "真实公开开奖记录"
             }} </template
-          ><template v-else>
+          ><template v-else-if="route.path === '/notifications'">
+            · {{ locale === "en" ? "Live in-app inbox" : "真实站内消息" }}
+          </template><template v-else>
             ·
             {{
               route.path.startsWith("/wallet")
