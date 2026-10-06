@@ -28,7 +28,9 @@ export function composeDocument(fragments, routes) {
   function append(source,path,alias){
     const method=source.method.toLowerCase();if(!["get","post","put","patch","delete"].includes(method))throw new Error(`Invalid method ${source.method}`);
     const opId=source.operationId+(alias?"ByBrand":"");if(!opId||ids.has(opId))throw new Error(`Duplicate/missing operationId ${opId}`);ids.add(opId);
-    if(!source.summary||!source.tag||!source.auth||!source.data)throw new Error(`Incomplete operation ${source.operationId}`);
+    const hasData=Object.hasOwn(source,"data"),hasSuccessContent=Object.hasOwn(source,"successContent");
+    if(!source.summary||!source.tag||!source.auth||hasData===hasSuccessContent||hasData&&source.data===undefined)throw new Error(`Incomplete or conflicting success declaration ${source.operationId}`);
+    if(hasSuccessContent&&(!source.successContent||typeof source.successContent!=="object"||Array.isArray(source.successContent)||Object.keys(source.successContent).length===0||Object.entries(source.successContent).some(([mediaType,media])=>!mediaType||!media||typeof media!=="object"||Array.isArray(media)||!media.schema||typeof media.schema!=="object"||Array.isArray(media.schema))))throw new Error(`Invalid successContent ${source.operationId}`);
     tags.add(source.tag);const params=[...(source.parameters??[])];
     for(const match of path.matchAll(/\{([^}]+)\}/g)){const name=match[1];if(!params.some(p=>p.in==="path"&&p.name===name))params.push({name,in:"path",required:true,schema:name==="brandCode"?{type:"string"}:ref("UUID")})}
     params.push({name:"X-Request-ID",in:"header",required:false,schema:{type:"string",pattern:"^[a-zA-Z0-9_.:-]{1,80}$"},description:"Accepted correlation syntax; invalid or missing identifiers are replaced by the server."});
@@ -39,8 +41,12 @@ export function composeDocument(fragments, routes) {
     const paramKeys=new Set();for(const p of params){const key=`${p.in}:${p.name.toLowerCase()}`;if(paramKeys.has(key))throw new Error(`Duplicate parameter ${opId} ${key}`);paramKeys.add(key)}
     const security=source.auth==="public"?[]:source.auth==="admin"?[{adminBearer:[]},{adminCookie:[]}]:[{userBearer:[]}];
     const status=String(source.successStatus??200),responses={};
-    responses[status]={description:"Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",headers:responseHeaders,content:{"application/json":{schema:success(source.data)}}};
-    for(const code of [400,401,403,404,409,415,429,500,503])responses[code]={description:({400:"Invalid input",401:"Session unavailable",403:"Permission/scope/origin rejected",404:"Resource or route unavailable",409:"Version/state/idempotency conflict",415:"JSON content type required",429:"Persistent authentication or admission rate limit",500:"Internal error",503:"Service or storage unavailable"})[code],headers:responseHeaders,content:{"application/json":{schema:ref("ErrorResponse")}}};
+    responses[status]={description:source.successDescription??"Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",headers:{...responseHeaders,...(source.successHeaders??{})},content:hasSuccessContent?source.successContent:{"application/json":{schema:success(source.data)}}};
+    const errorDescriptions={400:"Invalid input",401:"Session unavailable",403:"Permission/scope/origin rejected",404:"Resource or route unavailable",409:"Version/state/idempotency conflict",413:"Requested export exceeds its size or group limit",415:"JSON content type required",429:"Persistent authentication or admission rate limit",500:"Internal error",503:"Service or storage unavailable"};
+    for(const code of [...new Set([400,401,403,404,409,415,429,500,503,...(source.additionalErrorStatuses??[])])]){
+      if(!errorDescriptions[code])throw new Error(`Invalid additional error status ${code} for ${opId}`);
+      responses[code]={description:errorDescriptions[code],headers:responseHeaders,content:{"application/json":{schema:ref("ErrorResponse")}}};
+    }
     const op={operationId:opId,summary:source.summary,tags:[source.tag],description:source.description??"",security,parameters:params,responses,"x-implemented":true,"x-permissions":source.permissions??[],"x-idempotent-operation":Boolean(source.idempotency)};
     if(source.requestBody)op.requestBody={required:true,description:"Exactly one JSON object, at most16KiB; unknown fields rejected where documented. JSON Schema cannot represent duplicate-member rejection; see handler contract.",content:{"application/json":{schema:source.requestBody}}};
     if(method!=="get"&&!source.requestBody)throw new Error(`Missing request schema ${opId}`);

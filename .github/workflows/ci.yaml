@@ -39,6 +39,8 @@ jobs:
         working-directory: backend
       - run: go test -race -count=1 ./...
         working-directory: backend
+      - run: go test -tags reportlimit -count=1 ./internal/reporting -run '^TestReportExportActualDatabaseGroupBoundary$'
+        working-directory: backend
       - run: go build ./cmd/platform
         working-directory: backend
   frontend:
@@ -84,6 +86,10 @@ jobs:
       TEST_PLATFORM_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
       TEST_COMPLIANCE_ADMIN_USERNAME: ci_compliance_operator
       TEST_COMPLIANCE_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_EXPORT_ADMIN_USERNAME: ci_export_operator
+      TEST_EXPORT_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_EXPORT_PLATFORM_USERNAME: ci_export_platform
+      TEST_EXPORT_PLATFORM_PASSWORD: ci-isolated-test-only-password-2026
       BOOTSTRAP_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
     steps:
       - uses: actions/checkout@v4
@@ -109,6 +115,8 @@ jobs:
           ./bin/platform create-admin --username ci_rule_reviewer --brand harbor
           ./bin/platform create-admin --username ci_platform_operator --super
           ./bin/platform create-admin --username ci_compliance_operator --brand harbor
+          ./bin/platform create-admin --username ci_export_operator --brand harbor
+          ./bin/platform create-admin --username ci_export_platform --super
           ./bin/platform serve > ../api-test.log 2>&1 &
           ./bin/platform worker > ../worker-test.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready

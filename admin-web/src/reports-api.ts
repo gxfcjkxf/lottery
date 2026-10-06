@@ -284,19 +284,13 @@ export function reportsPermissions(
   account: AdminAccount,
   brandId: string,
 ): { betting: boolean; ledger: boolean } {
-  const scoped = UUID_RE.test(account.id) && UUID_RE.test(brandId) &&
-    (account.super_admin || account.brand_ids.some((id) => id.toLowerCase() === brandId.toLowerCase()));
-  const brand = new Set(account.permissions_by_brand === undefined
-    ? account.permissions ?? []
-    : account.permissions_by_brand[brandId] ?? []);
+  const scoped = UUID_RE.test(account.id) && UUID_RE.test(brandId);
+  const inBrand = (account.brand_ids ?? []).some((id) => id.toLowerCase() === brandId.toLowerCase());
+  const brand = new Set(account.permissions_by_brand?.[brandId] ?? []);
   const platform = new Set(account.platform_permissions ?? []);
   return {
-    betting: scoped && (account.super_admin
-      ? platform.has("report_betting.view.platform")
-      : brand.has("report_betting.view.brand")),
-    ledger: scoped && (account.super_admin
-      ? platform.has("report_ledger.view.platform")
-      : brand.has("report_ledger.view.brand")),
+    betting: scoped && (platform.has("report_betting.view.platform") || inBrand && brand.has("report_betting.view.brand")),
+    ledger: scoped && (platform.has("report_ledger.view.platform") || inBrand && brand.has("report_ledger.view.brand")),
   };
 }
 

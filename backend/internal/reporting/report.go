@@ -8,6 +8,7 @@ import (
 	"errors"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"math/big"
 	"regexp"
 	"strings"
 	"time"
@@ -15,9 +16,17 @@ import (
 
 var ErrInvalid = errors.New("invalid report query")
 var ErrNotFound = errors.New("report scope not found")
+var ErrExportTooLarge = errors.New("report export exceeds group limit")
+
+const ExportGroupLimit = 10000
+
 var uuid = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 type Service struct{ DB *pgxpool.Pool }
+
+type rowQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
 
 // PostgreSQL stores timestamps on a microsecond grid. Ceil both half-open
 // bounds instead of letting the driver truncate sub-microsecond input: for a
@@ -150,14 +159,28 @@ const scopedBrand = `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1),
 
 func reportTail(agg string, extra string) string {
 	return `, grouped AS (SELECT key,label,` + agg + ` AS totals FROM base GROUP BY key,label),
- page AS (SELECT key,label,totals FROM grouped ORDER BY key LIMIT $6 OFFSET $7)
+ page AS (SELECT key,label,totals FROM grouped ORDER BY key COLLATE "C" LIMIT $6 OFFSET $7)
  SELECT statement_timestamp(),scope.timezone,validity.valid,(SELECT ` + agg + ` FROM base),
- COALESCE((SELECT jsonb_agg(to_jsonb(page) ORDER BY key) FROM page),'[]'::jsonb),
+ COALESCE((SELECT jsonb_agg(to_jsonb(page) ORDER BY key COLLATE "C") FROM page),'[]'::jsonb),
  (SELECT count(*)::text FROM grouped)` + extra + ` FROM scope CROSS JOIN validity`
 }
 func (s Service) Betting(ctx context.Context, brand string, q Query) (Report[BettingTotals], error) {
+	if s.DB == nil {
+		return Report[BettingTotals]{BrandID: brand, Query: q, Items: []Group[BettingTotals]{}}, ErrInvalid
+	}
+	return s.betting(ctx, s.DB, brand, q, q.Limit, q.Offset, false)
+}
+
+func (s Service) BettingExport(ctx context.Context, tx pgx.Tx, brand string, q Query) (Report[BettingTotals], error) {
+	if tx == nil || q.Offset != 0 {
+		return Report[BettingTotals]{BrandID: brand, Query: q, Items: []Group[BettingTotals]{}}, ErrInvalid
+	}
+	return s.betting(ctx, tx, brand, q, ExportGroupLimit+1, 0, true)
+}
+
+func (s Service) betting(ctx context.Context, runner rowQuerier, brand string, q Query, limit, offset int, exporting bool) (Report[BettingTotals], error) {
 	out := Report[BettingTotals]{BrandID: brand, Query: q, Items: []Group[BettingTotals]{}}
-	if !uuid.MatchString(brand) || q.Validate("betting") != nil {
+	if runner == nil || !uuid.MatchString(brand) || q.Validate("betting") != nil {
 		return out, ErrInvalid
 	}
 	group, label := `to_char(o.placed_at AT TIME ZONE b.timezone,'YYYY-MM-DD')`, `to_char(o.placed_at AT TIME ZONE b.timezone,'YYYY-MM-DD')`
@@ -177,12 +200,15 @@ func (s Service) Betting(ctx context.Context, brand string, q Query) (Report[Bet
  base AS (SELECT facts.*,coalesce(finalized,false) AND NOT correction_open AS final FROM facts)` + reportTail(aggregateJSON(betAggregates), "")
 	var valid bool
 	var summary, rows []byte
-	e := s.DB.QueryRow(ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.GameID, q.MemberID, q.Limit, q.Offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups)
+	e := runner.QueryRow(ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.GameID, q.MemberID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups)
 	if errors.Is(e, pgx.ErrNoRows) || e == nil && !valid {
 		return out, ErrNotFound
 	}
 	if e != nil {
 		return out, e
+	}
+	if exporting && groupCountExceeds(out.TotalGroups, ExportGroupLimit) {
+		return out, ErrExportTooLarge
 	}
 	if e = json.Unmarshal(summary, &out.Summary); e == nil {
 		e = json.Unmarshal(rows, &out.Items)
@@ -190,8 +216,22 @@ func (s Service) Betting(ctx context.Context, brand string, q Query) (Report[Bet
 	return out, e
 }
 func (s Service) Ledger(ctx context.Context, brand string, q Query) (LedgerReport, error) {
+	if s.DB == nil {
+		return LedgerReport{Report: Report[LedgerTotals]{BrandID: brand, Query: q, Items: []Group[LedgerTotals]{}}}, ErrInvalid
+	}
+	return s.ledger(ctx, s.DB, brand, q, q.Limit, q.Offset, false)
+}
+
+func (s Service) LedgerExport(ctx context.Context, tx pgx.Tx, brand string, q Query) (LedgerReport, error) {
+	if tx == nil || q.Offset != 0 {
+		return LedgerReport{Report: Report[LedgerTotals]{BrandID: brand, Query: q, Items: []Group[LedgerTotals]{}}}, ErrInvalid
+	}
+	return s.ledger(ctx, tx, brand, q, ExportGroupLimit+1, 0, true)
+}
+
+func (s Service) ledger(ctx context.Context, runner rowQuerier, brand string, q Query, limit, offset int, exporting bool) (LedgerReport, error) {
 	out := LedgerReport{Report: Report[LedgerTotals]{BrandID: brand, Query: q, Items: []Group[LedgerTotals]{}}}
-	if !uuid.MatchString(brand) || q.Validate("ledger") != nil {
+	if runner == nil || !uuid.MatchString(brand) || q.Validate("ledger") != nil {
 		return out, ErrInvalid
 	}
 	group := `to_char(l.created_at AT TIME ZONE b.timezone,'YYYY-MM-DD')`
@@ -209,12 +249,15 @@ func (s Service) Ledger(ctx context.Context, brand string, q Query) (LedgerRepor
  'total_points',coalesce(sum(points::numeric),0)::text) AS totals FROM point_buckets WHERE brand_id=$1 AND account_id IN(SELECT id FROM accounts))` + reportTail(aggregateJSON(ledgerAggregates), `,(SELECT totals FROM balances)`)
 	var valid bool
 	var summary, rows, balances []byte
-	e := s.DB.QueryRow(ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.GameID, q.MemberID, q.Limit, q.Offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups, &balances)
+	e := runner.QueryRow(ctx, sql, brand, databaseBound(q.From), databaseBound(q.To), q.GameID, q.MemberID, limit, offset).Scan(&out.SnapshotAt, &out.Timezone, &valid, &summary, &rows, &out.TotalGroups, &balances)
 	if errors.Is(e, pgx.ErrNoRows) || e == nil && !valid {
 		return out, ErrNotFound
 	}
 	if e != nil {
 		return out, e
+	}
+	if exporting && groupCountExceeds(out.TotalGroups, ExportGroupLimit) {
+		return out, ErrExportTooLarge
 	}
 	if e = json.Unmarshal(summary, &out.Summary); e == nil {
 		e = json.Unmarshal(rows, &out.Items)
@@ -223,4 +266,9 @@ func (s Service) Ledger(ctx context.Context, brand string, q Query) (LedgerRepor
 		e = json.Unmarshal(balances, &out.Balances)
 	}
 	return out, e
+}
+
+func groupCountExceeds(count string, limit int64) bool {
+	n, ok := new(big.Int).SetString(count, 10)
+	return !ok || n.Cmp(big.NewInt(limit)) > 0
 }

@@ -2,13 +2,16 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { createReportsApi, reportsPermissions } from "./reports-api";
+import { createReportExportApi, reportExportPermissions } from "./report-export-api";
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 
 const PAGE_SIZE = 20;
 const api = createReportsApi();
+const exportApi = createReportExportApi();
 const permissions = computed(() => reportsPermissions(props.account, props.brandId));
+const exportPermissions = computed(() => reportExportPermissions(props.account, props.brandId));
 const activeReport = ref<"betting" | "ledger">("betting");
 const bettingGroup = ref<"day" | "game" | "member">("day");
 const ledgerGroup = ref<"day" | "entry_type">("day");
@@ -22,9 +25,15 @@ const bettingError = ref("");
 const ledgerError = ref("");
 const bettingBusy = ref(false);
 const ledgerBusy = ref(false);
+const bettingExportBusy = ref(false);
+const ledgerExportBusy = ref(false);
+const bettingExportError = ref("");
+const ledgerExportError = ref("");
 const bettingOffset = ref(0);
 const ledgerOffset = ref(0);
 let requestTicket = 0;
+let exportGeneration = 0;
+const exportTickets = { betting: 0, ledger: 0 };
 let alive = true;
 type ReportFilters = { from: string; to: string; memberId: string | null; gameId: string | null };
 type ReportGroups = { betting: "day" | "game" | "member"; ledger: "day" | "entry_type" };
@@ -158,6 +167,52 @@ async function refreshReports() {
   await loadReports({ betting: bettingOffset.value, ledger: ledgerOffset.value }, committedQuery.value.filters, committedQuery.value.groups);
 }
 
+async function exportReport(kind: "betting" | "ledger") {
+  const committed = committedQuery.value;
+  const allowed = kind === "betting" ? exportPermissions.value.betting : exportPermissions.value.ledger;
+  if (!allowed || !committed || !alive) return;
+  const scope = scopeKey.value;
+  const generation = exportGeneration;
+  const exportTicket = ++exportTickets[kind];
+  const exportKind = activeReport.value;
+  const busy = kind === "betting" ? bettingExportBusy : ledgerExportBusy;
+  const error = kind === "betting" ? bettingExportError : ledgerExportError;
+  busy.value = true;
+  error.value = "";
+  try {
+    const filters = committed.filters;
+    const query = {
+      from: filters.from, to: filters.to,
+      group_by: kind === "betting" ? committed.groups.betting : committed.groups.ledger,
+      ...(kind === "betting" && filters.gameId ? { game_id: filters.gameId } : {}),
+      ...(filters.memberId ? { member_id: filters.memberId } : {}),
+    };
+    const result = kind === "betting"
+      ? await exportApi.betting(props.brandId, query)
+      : await exportApi.ledger(props.brandId, query);
+    if (!alive || exportGeneration !== generation || scopeKey.value !== scope || committedQuery.value !== committed || activeReport.value !== exportKind || exportKind !== kind) return;
+    const blob = new Blob([result.bytes], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = result.filename;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch (cause) {
+    if (!alive || exportGeneration !== generation || scopeKey.value !== scope || committedQuery.value !== committed || activeReport.value !== exportKind) return;
+    if (cause instanceof AdminApiError && cause.status === 401) {
+      requestTicket++;
+      clearResults();
+      committedQuery.value = null;
+      setErrorForPermission();
+      emit("session-invalid");
+    }
+    error.value = errorText(cause);
+  } finally {
+    if (exportTickets[kind] === exportTicket) busy.value = false;
+  }
+}
+
 function committedFilters(result: NonNullable<typeof bettingResult.value> | NonNullable<typeof ledgerResult.value>) {
   return { from: result.query.from, to: result.query.to, memberId: result.query.member_id, gameId: result.query.game_id };
 }
@@ -234,19 +289,35 @@ function setErrorForPermission() {
 }
 
 watch(scopeKey, (next) => {
+  exportGeneration++;
+  exportTickets.betting++;
+  exportTickets.ledger++;
   requestTicket++;
   committedScope = next;
   committedQuery.value = null;
   clearResults();
   bettingBusy.value = false;
   ledgerBusy.value = false;
+  bettingExportBusy.value = false;
+  ledgerExportBusy.value = false;
+  bettingExportError.value = "";
+  ledgerExportError.value = "";
   setErrorForPermission();
+}, { flush: "sync" });
+watch(activeReport, () => {
+  exportGeneration++;
+  exportTickets.betting++;
+  exportTickets.ledger++;
+  bettingExportBusy.value = false;
+  ledgerExportBusy.value = false;
+  bettingExportError.value = "";
+  ledgerExportError.value = "";
 }, { flush: "sync" });
 onMounted(() => {
   setPreset(7);
   setErrorForPermission();
 });
-onBeforeUnmount(() => { alive = false; requestTicket++; });
+onBeforeUnmount(() => { alive = false; exportGeneration++; exportTickets.betting++; exportTickets.ledger++; requestTicket++; });
 </script>
 
 <template>
@@ -279,11 +350,12 @@ onBeforeUnmount(() => { alive = false; requestTicket++; });
       <div class="reports-actions"><button class="reports-button primary" type="button" :disabled="bettingBusy || ledgerBusy" @click="queryReports">查询报表</button></div>
     </section>
 
-    <p v-if="props.account.super_admin" class="reports-note">超级管理员的报表权限为只读；仍须获得对应品牌级或平台级查看授权。</p>
-    <p class="reports-pending" role="note">提现实际发生额、佣金、奖励、不可变日结及导出尚未实现；本页不展示占位数据。</p>
+    <p v-if="props.account.super_admin" class="reports-note">超级管理员仍须分别获得对应品牌级或平台级查看与导出授权。</p>
+    <p class="reports-pending" role="note">报表汇总是当前投影结果，不代表财务关账。用 Excel 查看 CSV 时，请将数值列作为文本导入，以免超过 15 位的整数被舍入。</p>
 
     <section v-show="activeReport === 'betting'" class="reports-panel" aria-labelledby="betting-title">
-      <div class="reports-section-heading"><div><h3 id="betting-title">投注报表</h3><p>投注按注单提交时间落入半开区间 [from, to)。</p></div><span v-if="bettingBusy" class="reports-state">读取中…</span></div>
+      <div class="reports-section-heading"><div><h3 id="betting-title">投注报表</h3><p>投注按注单提交时间落入半开区间 [from, to)。</p></div><div class="reports-export-actions"><span v-if="bettingBusy" class="reports-state">读取中…</span><button class="reports-button secondary" type="button" :disabled="!exportPermissions.betting || !committedQuery || bettingExportBusy" @click="exportReport('betting')">{{ bettingExportBusy ? '导出中…' : '导出全部分组 CSV' }}</button></div></div>
+      <p v-if="bettingExportError" class="reports-error" role="alert">{{ bettingExportError }}</p>
       <p v-if="bettingError" class="reports-error" role="alert">{{ bettingError }}</p>
       <template v-if="bettingResult">
         <div class="reports-context"><span>品牌 {{ bettingResult.brand_id }}</span><span>快照 {{ formatDate(bettingResult.snapshot_at) }}</span><span>时区 {{ bettingResult.timezone }}</span><span>区间 [{{ formatDate(bettingResult.query.from) }}, {{ formatDate(bettingResult.query.to) }})</span><span>分组 {{ bettingResult.query.group_by }}</span><span>会员 {{ bettingResult.query.member_id ?? '全部' }}</span><span>彩种 {{ bettingResult.query.game_id ?? '全部' }}</span></div>
@@ -298,7 +370,8 @@ onBeforeUnmount(() => { alive = false; requestTicket++; });
     </section>
 
     <section v-show="activeReport === 'ledger'" class="reports-panel" aria-labelledby="ledger-title">
-      <div class="reports-section-heading"><div><h3 id="ledger-title">账本报表</h3><p>账本按实际创建及入账时间落入半开区间 [from, to)。</p></div><span v-if="ledgerBusy" class="reports-state">读取中…</span></div>
+      <div class="reports-section-heading"><div><h3 id="ledger-title">账本报表</h3><p>账本按实际创建及入账时间落入半开区间 [from, to)。</p></div><div class="reports-export-actions"><span v-if="ledgerBusy" class="reports-state">读取中…</span><button class="reports-button secondary" type="button" :disabled="!exportPermissions.ledger || !committedQuery || ledgerExportBusy" @click="exportReport('ledger')">{{ ledgerExportBusy ? '导出中…' : '导出全部分组 CSV' }}</button></div></div>
+      <p v-if="ledgerExportError" class="reports-error" role="alert">{{ ledgerExportError }}</p>
       <p v-if="ledgerError" class="reports-error" role="alert">{{ ledgerError }}</p>
       <template v-if="ledgerResult">
         <div class="reports-context"><span>品牌 {{ ledgerResult.brand_id }}</span><span>快照 {{ formatDate(ledgerResult.snapshot_at) }}</span><span>时区 {{ ledgerResult.timezone }}</span><span>区间 [{{ formatDate(ledgerResult.query.from) }}, {{ formatDate(ledgerResult.query.to) }})</span><span>分组 {{ ledgerResult.query.group_by }}</span><span>会员 {{ ledgerResult.query.member_id ?? '全部' }}</span></div>
@@ -317,5 +390,6 @@ onBeforeUnmount(() => { alive = false; requestTicket++; });
 
 <style scoped>
 .reports-management{display:grid;gap:16px;color:#172033;min-width:0}.reports-heading,.reports-section-heading,.reports-actions,.reports-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px}.reports-heading h2{margin:2px 0 0;font-size:1.25rem}.reports-eyebrow{margin:0;color:#68758a;font-size:.78rem}.reports-tabs,.reports-presets,.reports-actions{display:flex;gap:8px;flex-wrap:wrap}.reports-tabs button{border:1px solid #cbd3df;border-radius:8px;background:#fff;padding:9px 14px;color:inherit;font:inherit;cursor:pointer}.reports-tabs button[aria-pressed=true]{background:#254a83;border-color:#254a83;color:#fff}.reports-panel{display:grid;gap:14px;min-width:0;border:1px solid #d9e0ea;border-radius:12px;padding:16px;background:#fff}.reports-filters{background:#f8fafc}.reports-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.reports-filter-grid label{display:grid;gap:6px;min-width:0;font-size:.88rem}.reports-filter-grid input,.reports-filter-grid select{box-sizing:border-box;width:100%;min-width:0;border:1px solid #cbd3df;border-radius:8px;padding:9px 10px;background:#fff;font:inherit}.reports-button{min-height:40px;border:1px solid #c5ceda;border-radius:8px;padding:8px 12px;font:inherit;cursor:pointer;background:#fff;color:inherit}.reports-button.primary{background:#254a83;border-color:#254a83;color:#fff}.reports-button:disabled{opacity:.5;cursor:not-allowed}.reports-section-heading h3{margin:0}.reports-section-heading p,.reports-definition,.reports-note,.reports-pending,.reports-state{margin:4px 0 0;color:#667085;font-size:.88rem}.reports-definition{line-height:1.55}.reports-context{display:flex;flex-wrap:wrap;gap:6px 14px;color:#475467;font-size:.82rem;overflow-wrap:anywhere}.reports-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}.reports-summary>div{display:grid;gap:5px;min-width:0;border:1px solid #e5eaf0;border-radius:9px;padding:10px}.reports-summary span{color:#667085;font-size:.8rem}.reports-summary strong{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.reports-balance{display:grid;gap:8px;border-top:1px solid #e8ecf2;padding-top:12px}.reports-balance h4{margin:0}.reports-table-wrap{width:100%;overflow-x:auto;border:1px solid #e2e7ef;border-radius:9px}.reports-table{width:100%;min-width:730px;border-collapse:collapse;font-variant-numeric:tabular-nums}.reports-table th,.reports-table td{height:46px;box-sizing:border-box;padding:8px 10px;border-bottom:1px solid #edf0f4;text-align:left;white-space:nowrap}.reports-table th{position:sticky;top:0;background:#f7f9fc;color:#475467;font-size:.82rem}.reports-table tr:last-child td{border-bottom:0}.reports-pagination{justify-content:flex-end;flex-wrap:wrap}.reports-pagination span{margin-right:auto;color:#667085;font-size:.86rem}.reports-error{margin:0;border-radius:8px;padding:10px 12px;background:#fff0ee;color:#a32e1a}.reports-note,.reports-pending{margin:0}.reports-pending{border-left:3px solid #d8a62c;padding:8px 10px;background:#fff9eb}.reports-cards{display:none}.reports-key{overflow-wrap:anywhere;color:#667085;font-size:.8rem}.reports-cards article{border:1px solid #e2e7ef;border-radius:9px;padding:12px}.reports-cards h4{margin:0}.reports-cards dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 0}.reports-cards dl div{min-width:0}.reports-cards dt{color:#667085;font-size:.78rem}.reports-cards dd{margin:3px 0 0;font-weight:550;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.reports-export-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 @media(max-width:700px){.reports-management{gap:12px}.reports-heading{align-items:flex-start}.reports-panel{padding:12px}.reports-filter-grid{grid-template-columns:minmax(0,1fr)}.reports-actions .reports-button{width:100%}.reports-table-wrap{display:none}.reports-cards{display:grid;gap:9px}.reports-pagination{justify-content:center}.reports-pagination span{flex-basis:100%;text-align:center}.reports-pagination .reports-button{flex:1;min-width:0}.reports-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.reports-section-heading{align-items:flex-start}.reports-context{display:grid;gap:4px}}
 </style>

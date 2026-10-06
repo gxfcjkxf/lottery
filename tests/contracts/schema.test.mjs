@@ -17,7 +17,7 @@ const validate=schema=>ajv.compile({$ref:`urn:lottery:implemented-api#/component
 test("every component and operation body is a compilable JSON Schema",()=>{
   for(const name of Object.keys(doc.components.schemas))validate(name);
   for(const item of Object.values(doc.paths))for(const operation of Object.values(item)){
-    const schemas=[operation.requestBody?.content?.["application/json"]?.schema,...Object.values(operation.responses).map(r=>r.content?.["application/json"]?.schema)].filter(Boolean);
+    const schemas=[operation.requestBody?.content?.["application/json"]?.schema,...Object.values(operation.responses).flatMap(r=>Object.values(r.content??{}).map(media=>media.schema))].filter(Boolean);
     for(const schema of schemas)ajv.compile({...schema,components:doc.components});
   }
 });

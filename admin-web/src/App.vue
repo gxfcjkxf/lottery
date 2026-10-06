@@ -361,12 +361,15 @@ const onBrandOperationChanged = (change: { accountId: string }) => {
 };
 const onBrandCreated = () => { if (account.value) void loadBrands(); };
 const logout = async () => {
+  const key = createIdempotencyKey();
+  // Invalidate mounted views and their pending downloads immediately. A slow
+  // server revocation must not keep an old authenticated view alive locally.
+  clearAdminData();
   try {
-    await api.logout(createIdempotencyKey());
+    await api.logout(key);
   } catch (error) {
     authError.value = apiErrorText(error);
   }
-  clearAdminData();
   toast("已退出管理员账号");
 };
 const selectBrand = async (brandId: string) => {

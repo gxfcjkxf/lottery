@@ -121,7 +121,7 @@ export const schemas = {
 
 const admin = (method, path, operationId, summary, tag, data, permission, extra = {}) => ({
   method, path: `/api/v1/admin${path}`, operationId, summary, tag, auth: "admin", brandHeader: true,
-  permissions: adminReadPermissions(permission), data, ...extra,
+  permissions: adminReadPermissions(permission), ...(data === undefined ? {} : { data }), ...extra,
 });
 const write = (method, path, operationId, summary, tag, body, data, permission, extra = {}) => ({
   ...admin(method, path, operationId, summary, tag, data, permission, extra), requestBody: ref(body), idempotency: true,
@@ -158,6 +158,38 @@ export const operations = [
 
   admin("GET", "/reports/betting", "getBettingReport", "Read a snapshot-consistent betting report", "reporting", ref("FinanceBettingReport"), "report_betting.view.brand", { parameters: [query("from", ref("DateTime"), true), query("to", ref("DateTime"), true), query("group_by", str({ enum: ["day", "game", "member"] }), true), ...reportPageParameters, query("game_id", ref("UUID")), query("member_id", ref("UUID"))], description: "Read-only report. from/to are RFC3339 timestamps defining a half-open range of at most 93 days. Unknown, repeated, or inapplicable filters are rejected. The report is audited; it does not expose member names, recharge proof, or ledger payloads." }),
   admin("GET", "/reports/ledger", "getLedgerReport", "Read a snapshot-consistent ledger report", "reporting", ref("FinanceLedgerReport"), "report_ledger.view.brand", { parameters: [query("from", ref("DateTime"), true), query("to", ref("DateTime"), true), query("group_by", str({ enum: ["day", "entry_type"] }), true), ...reportPageParameters, query("member_id", ref("UUID"))], description: "Read-only report. from/to are RFC3339 timestamps defining a half-open range of at most 93 days. game_id is not accepted; unknown, repeated, or inapplicable filters are rejected. The report is audited and excludes ledger reasons, proof references, and source allocations." }),
+
+  ...["betting", "ledger"].map((kind) => {
+    const queryParameters = [
+      query("from", ref("DateTime"), true, "RFC3339 start of the half-open report interval."),
+      query("to", ref("DateTime"), true, "RFC3339 end of the half-open report interval; no more than 93 days after from."),
+      query("group_by", str({ enum: kind === "betting" ? ["day", "game", "member"] : ["day", "entry_type"] }), true),
+      ...(kind === "betting" ? [query("game_id", ref("UUID"))] : []),
+      query("member_id", ref("UUID")),
+    ];
+    const headers = {
+      "Content-Type": { description: "UTF-8 CSV response.", schema: { type: "string", const: "text/csv; charset=utf-8" } },
+      "Content-Disposition": { description: "Attachment filename includes the report kind, brand ID, and UTC snapshot time.", schema: { type: "string", pattern: '^attachment; filename="lottery-(betting|ledger)-[0-9a-f-]{36}-[0-9]{8}T[0-9]{6}Z[.]csv"$' } },
+      "Content-Length": { description: "Exact response body length in bytes.", schema: { type: "string", pattern: "^(0|[1-9][0-9]*)$" } },
+      "X-Content-Type-Options": { description: "Prevents MIME sniffing.", schema: { type: "string", const: "nosniff" } },
+      "X-Report-Brand-ID": { description: "UUID of the selected brand.", schema: ref("UUID") },
+      "X-Report-Kind": { description: "Exported report kind.", schema: { type: "string", const: kind } },
+      "X-Report-Snapshot-At": { description: "UTC timestamp for the single SQL statement snapshot.", schema: ref("DateTime") },
+      "X-Report-Group-Count": { description: "Exact number of groups included; exports above 10000 groups fail without a truncated file.", schema: { type: "string", pattern: "^(0|[1-9][0-9]*)$" } },
+      "X-Report-SHA256": { description: "Lowercase SHA-256 digest of the complete CSV response body.", schema: { type: "string", pattern: "^[0-9a-f]{64}$" } },
+      "X-Report-Format-Version": { description: "CSV format version.", schema: { type: "string", const: "1" } },
+      "X-Report-Audit-ID": { description: "Committed audit record for this export.", schema: ref("UUID") },
+    };
+    return admin("GET", `/reports/${kind}/export`, `export${kind[0].toUpperCase()}${kind.slice(1)}Report`, `Export a complete ${kind} report as CSV`, "reporting", undefined, `report_${kind}.view.brand`, {
+      parameters: queryParameters,
+      permissions: [`report_${kind}.view.brand`, `report_${kind}.export.brand`, `report_${kind}.view.platform`, `report_${kind}.export.platform`],
+      additionalErrorStatuses: [413],
+      successContent: { "text/csv": { schema: { type: "string", format: "binary", description: "Complete UTF-8 CSV byte stream with a BOM and LF record endings. Exact integer cells are preserved as decimal text; spreadsheet applications must import them as TEXT to avoid rounding." } } },
+      successDescription: "Complete CSV file. The report data is read from one SQL statement snapshot. The response is capped at 10000 groups and 4 MiB; exceeding either bound returns JSON 413 and never a truncated file. The audit record is committed before any response bytes are written.",
+      successHeaders: headers,
+      description: `Requires (report_${kind}.view.brand OR report_${kind}.view.platform) AND (report_${kind}.export.brand OR report_${kind}.export.platform). Each brand-scoped grant must match the selected brand membership; platform-scoped grants are evaluated at platform scope. Authorization is revalidated during the export. Accepts only from, to, group_by${kind === "betting" ? ", game_id" : ""}, and member_id; limit and offset pagination are not accepted. from/to define a half-open RFC3339 interval of at most 93 days. The CSV is audited and contains no truncation.`,
+    });
+  }),
 
   admin("GET", "/agent-policy", "getAgentPolicy", "Get brand agent policy", "agency", ref("FinanceAgentPolicy"), "agent_policy.view.brand", { description: "Agent policies configure hierarchy and ratio settings only. The agency service does not calculate, accrue, or pay commissions, or change wallets." }),
   write("PUT", "/agent-policy", "updateAgentPolicy", "Replace brand agent policy", "agency", "FinanceAgentPolicyInput", ref("FinanceAgentPolicy"), "agent_policy.write.brand", { description: "Versioned policy replacement with reason. Agent configuration only; it does not calculate or pay commissions. Super-admin accounts are forbidden from this write." }),
