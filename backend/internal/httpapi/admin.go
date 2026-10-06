@@ -111,6 +111,7 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 	registerBrandPresentationRoutes(handle, d)
 	registerBrandDomainRoutes(handle, d)
 	registerBrandCreationRoutes(handle, d)
+	registerComplianceRoutes(handle, d)
 	registerPeriodRoutes(handle, d)
 	RegisterDrawRoutes(handle, d)
 	handle("POST", "/auth/login", func(w http.ResponseWriter, r *http.Request) {

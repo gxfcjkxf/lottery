@@ -580,7 +580,7 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 
 正文必须恰好包含 `{code,name,default_locale,timezone,reason}` 五个字符串，拒绝重复、未知、缺失或null字段。code为小写字母开头的1–48位小写字母/数字/下划线；name非空、UTF-8≤120字节；reason非空、≤500字节；名称和原因拒绝首尾空白及控制字符。语言仅en/zh-CN，timezone须为有效命名时区、非Local、≤80字节且无首尾空白/控制字符。服务端随二进制提供时区数据，不依赖主机安装。
 
-201返回 `{id,code,name,status:"paused",default_locale,timezone,version:1,created_at,audit_log_id}`。品牌、六项初始配置、不可变创建证据、审计与加密幂等回执同事务提交；不自动建立管理员范围、会员、域名、游戏或积分。结算mode=null，代理配置disabled。编号已被其他请求占用返回409 `BRAND_CODE_CONFLICT`，同键异体409 `IDEMPOTENCY_CONFLICT`；模型解析错误400 `REQUEST_INVALID`，服务语义错误400 `BRAND_CREATE_INPUT_INVALID`，无权限403 `PERMISSION_DENIED`。
+201返回 `{id,code,name,status:"paused",default_locale,timezone,version:1,created_at,audit_log_id}`。品牌、七项初始配置、不可变创建证据、审计与加密幂等回执同事务提交；不自动建立管理员范围、会员、域名、游戏或积分。结算mode=null，代理配置disabled、合规检查全关闭。编号已被其他请求占用返回409 `BRAND_CODE_CONFLICT`，同键异体409 `IDEMPOTENCY_CONFLICT`；模型解析错误400 `REQUEST_INVALID`，服务语义错误400 `BRAND_CREATE_INPUT_INVALID`，无权限403 `PERMISSION_DENIED`。
 
 平台幂等分区以账号/操作/键唯一，不伪造品牌UUID；加密绑定分区、正文摘要与操作。锁前后均检查当前会话和权限，撤销后不能重放旧成功。缓存回执是首次创建状态，品牌后来恢复或改配置后仍返回该快照；必须独立查询当前状态。未知提交结果只允许原正文/键重试。
 
@@ -650,6 +650,26 @@ API当前不写积分、不生成佣金/奖励记录，不修改加入归属或�
 - 已存在品牌成员携带非空加入码时返回409 `JOIN_ATTRIBUTION_FIXED`，不能换归属；重新正常登录需用户去掉编码并提交新操作。未接受品牌条款不能入品牌，运营新增成员仍需本人首次同意。运营新增可选上述编码，但join_method仍operator，快照记录code_kind及来源；不代同意、不改全局身份。
 - 加入码不自动晋升代理，不覆盖旧成员或旧注单；停用编码仅阻止新的归属建立。会员初始归属与新注单的提交时代理政策/路径/配置版本由数据库保存不可改写快照；历史缺失只标legacy，不补造代理/佣金事实。此阶段无资金入账、奖励或佣金任务。
 - 错误：`JOIN_CODE_INPUT_INVALID`400、`JOIN_CODE_NOT_FOUND`404、`JOIN_CODE_DENIED`403、`JOIN_CODE_VERSION_CONFLICT`409、`JOIN_CODE_STATE_CONFLICT`409、存储失败503。Code读写与原请求确认分开，断网/畸形回执保留原正文/键，单纯GET不能替代原回执；换品牌/会话及迟到回调隔离。
+
+## 4.8 合规配置与显式伪检查
+
+管理路由在 `/api/v1/admin`，均须真实会话和X-Brand-ID。读分别需compliance_policy.view.brand/platform、compliance_check.view.brand/platform；写compliance_policy.write.brand，检查compliance_check.run.brand，超级管理员不能写或运行，仅显式平台权限读取。配置和检查是独立权限，不复用用户、资金或规则权限。
+
+| 方法 | 路径 | 合同 |
+|---|---|---|
+| GET | /compliance-policy | `{brand_id,version,config,updated_at,audit_log_id?}`；不接受查询参数 |
+| PUT | /compliance-policy | `{version,config,reason}`完整替换；200下一版及audit_log_id |
+| GET | /compliance-policy/history | `{brand_id,items:[{id,brand_id,version,config,changed_by:null或UUID,reason,audit_log_id:null或UUID,created_at}],limit,offset,total_count}` |
+| POST | /compliance-checks | `{version,operation,reason}`；201不可变决策快照，不接受用户敏感资料 |
+| GET | /compliance-checks | `{brand_id,operation:null或筛选值,items:Decision[],limit,offset,total_count}` |
+
+config必须包含五键 `{age_enabled:boolean,minimum_age:null或18..120整数,region_enabled:boolean,allowed_countries:有序唯一字符串数组,identity_enabled:boolean}`。年龄开关开启时年龄必填，地区开关开启时名单非空；名单最多250项，每项两位大写ASCII字母并严格升序。它们是工程配置限制，不是年龄/国家法律结论或已获授权市场清单。默认false/null/false/[]/false。拒绝未知/缺失/重复/null错误字段、控制字符和原因首尾空白；原因非空UTF-8≤500字节。版本独立于品牌共享版本。
+
+Decision字段 `{id,brand_id,policy_version,config,operation,decision,checks,adapter_mode:"stub",created_by,reason,audit_log_id,created_at}`。operation为registration/betting/withdrawal，仅检查场景标签，不启动相关业务。checks严格按age/region/identity排序，各含check/enabled/decision/reason_code；关闭allow/CHECK_DISABLED，开启review/ADAPTER_NOT_CONFIGURED，整体全关闭才allow。deny/freeze为接口扩展枚举，当前不会生成这两个结果或执行冻结；allow不代表用户验证完成，review不创建审核队列。
+
+查询默认limit20、1..100，offset0..1000000；历史仅接受分页，检查列表另可operation筛选，拒绝未知/重复/空参数，total_count为精确字符串。配置和决策与审计、历史、加密幂等回执同事务；检查锁定当前政策版本，改版后新检查需新版本，旧键则重放原决策快照。未知写只允许原正文/键重试，撤权/会话变化/品牌停用后不得用旧缓存绕过；停用品牌可只读。配置错误400 COMPLIANCE_INPUT_INVALID、缺失404 COMPLIANCE_NOT_FOUND、版本409 COMPLIANCE_VERSION_CONFLICT、状态409 COMPLIANCE_STATE_CONFLICT，正文解析失败仍400 REQUEST_INVALID。
+
+本阶段统一接口只提供显式管理检查，尚未接入注册/投注/提现拦截、真实证件/年龄/地区验证或责任博彩。运营不能据启用开关或一条allow记录宣称平台已满足生产合规。
 
 ## 5. 错误码
 

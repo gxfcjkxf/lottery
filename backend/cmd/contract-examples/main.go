@@ -13,6 +13,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/brandops"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandregistry"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandskin"
+	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
@@ -25,6 +26,13 @@ import (
 func main() {
 	const id = "11111111-1111-4111-8111-111111111111"
 	now := time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
+	complianceConfig := compliance.DefaultConfig()
+	complianceConfig.IdentityEnabled = true
+	complianceResult, complianceChecks, err := compliance.Evaluate(complianceConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+	complianceDecision := compliance.Decision{ID: id, BrandID: id, PolicyVersion: 2, Config: complianceConfig, Operation: "betting", Decision: complianceResult, Checks: complianceChecks, AdapterMode: "stub", CreatedBy: id, Reason: "explicit stub check", AuditLogID: id, CreatedAt: now}
 	match := 1
 	in := rules.SimulationInput{
 		Definition: rules.Definition{SchemaVersion: 1, Model: rules.Model{Type: "X_PLUS_Y", RegularPool: rules.Pool{Min: 1, Max: 49}, SpecialPool: rules.Pool{Min: 1, Max: 49}, RegularCount: 6, SpecialCount: 1}, Selection: rules.SelectionRule{Mode: "numbers", SpecialCount: 1}, UnitPoints: 1, PrizeTiers: []rules.Tier{{Code: "SPECIAL_MATCH", Condition: rules.Condition{Op: "equals", Field: "special_match", Value: &match}, Odds: "35", Exclusive: true}}, Rounding: "half_up", RoundingScope: "order", Limits: rules.Limits{MaxCombinations: 100, MaxMultiplier: 10}},
@@ -108,6 +116,13 @@ func main() {
 		"AdminBrandPresentationRevision":   brandskin.Revision{ID: id, BrandID: id, Version: 2, Config: presentationConfig, Effective: presentationEffective, ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now},
 		"AdminBrandOperation":              brandops.Record{BrandID: id, Version: 2, Name: "Example", Status: "paused", UpdatedAt: now, AuditLogID: id},
 		"AdminBrandCreationInput":          brandregistry.Input{Code: "example_brand", Name: "Example", DefaultLocale: "en", Timezone: "UTC", Reason: "explicit creation"},
+		"ComplianceConfig":                 complianceConfig,
+		"CompliancePolicyInput":            compliance.Input{Version: 1, Config: complianceConfig, Reason: "configure future check"},
+		"CompliancePolicy":                 compliance.Policy{BrandID: id, Version: 2, Config: complianceConfig, UpdatedAt: now, AuditLogID: id},
+		"ComplianceCheckInput":             compliance.CheckInput{Version: 2, Operation: "betting", Reason: "explicit stub check"},
+		"ComplianceDecision":               complianceDecision,
+		"ComplianceHistoryPage":            compliance.HistoryPage{BrandID: id, Items: []compliance.Revision{{ID: id, BrandID: id, Version: 1, Config: compliance.DefaultConfig(), Reason: "Initial disabled", CreatedAt: now}}, Limit: 20, Offset: 0, TotalCount: "1"},
+		"ComplianceDecisionPage":           compliance.DecisionPage{BrandID: id, Items: []compliance.Decision{complianceDecision}, Limit: 20, Offset: 0, TotalCount: "1"},
 		"AdminBrandCreationReceipt":        brandregistry.Receipt{ID: id, Code: "example_brand", Name: "Example", DefaultLocale: "en", Timezone: "UTC", Status: "paused", Version: 1, CreatedAt: now, AuditLogID: id},
 		"AdminBrandOperationRevision":      brandops.Revision{ID: id, BrandID: id, Version: 2, PreviousStatus: "active", Status: "paused", ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now},
 		"FinanceAgentCreateInput":          agentInput, "FinanceWithdrawalGameConfig": gameWithdrawal,

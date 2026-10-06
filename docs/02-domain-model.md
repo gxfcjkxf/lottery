@@ -35,7 +35,7 @@
 - `config_version`
 - `created_at`, `updated_at`
 
-新建品牌使用平台权限 `brand.create.platform`，初始 `paused/config_version=1`。现有INSERT触发器初始化积分、投注、提现、结算、代理和展示六项配置；结算mode保持NULL，代理disabled，不建立域名、管理员范围、会员、游戏或积分账户。
+新建品牌使用平台权限 `brand.create.platform`，初始 `paused/config_version=1`。现有INSERT触发器初始化积分、投注、提现、结算、代理、展示和合规七项配置；结算mode保持NULL，代理disabled、合规检查全关闭，不建立域名、管理员范围、会员、游戏或积分账户。
 
 `brand_creation_records` 保存 `brand_id,code,name,default_locale,timezone,status,version,created_by,reason,audit_log_id,created_at` 初始证据，品牌唯一且不可更新/删除。写入必须匹配实际初始品牌和同事务 `brand.create` 审计。后续品牌配置修改不改写创建记录，不将创建时暂停/v1当成最新状态。
 
@@ -89,6 +89,14 @@ S3-b 已实现 `brand_point_policies`：brand_id 主键，version 与 max_balanc
 - `effective_at`, `effective_period_id`, `created_by`, `approved_by`
 
 配置查找顺序：平台 → 品牌 → 彩种 → 玩法。最终读取结果必须带配置版本。
+
+### 合规配置与显式检查
+
+`brand_compliance_policies` 保存 `brand_id,version,config,updated_at`，版本独立于品牌共享版本。config恰好age_enabled/minimum_age/region_enabled/allowed_countries/identity_enabled五键；初始false/null/false/[]/false。`compliance_policy_revisions` 保存每版config、changed_by、reason、audit_log_id、created_at；初始v1为系统记录、人员/审计为NULL，后续必须有匹配同事务审计，不可更新/删除。配置修改+1且必须有对应历史，数据库延迟约束禁止只更新投影。
+
+`compliance_decisions` 保存id、brand_id、policy_version、config快照、operation、decision、三项checks、adapter_mode、created_by、reason、audit_log_id、created_at。关联同品牌政策版本，检查与审计相符且不可改写。当前adapter_mode固定stub：关闭项allow/CHECK_DISABLED，开启项review/ADAPTER_NOT_CONFIGURED，整体有开启项才review。allow不是用户已验证，review不创建队列，保留的deny/freeze枚举不表示实际用户禁用或资金冻结。
+
+查询按品牌和可选operation分页，数量为规范非负整数字符串；单响应在只读RepeatableRead事务中读取计数/记录。此阶段没有用户资料、证件、生日、IP归属或真实验证结果，也不调用注册/投注/提现业务链；这些需另接统一适配器与服务器闸门。
 
 ### 彩种、玩法和规则
 

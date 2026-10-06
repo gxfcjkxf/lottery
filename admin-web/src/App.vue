@@ -11,6 +11,8 @@ import MemberProvision from "./MemberProvision.vue";
 import AuthSettings from "./AuthSettings.vue";
 import BrandOperation from "./BrandOperation.vue";
 import BrandPresentation from "./BrandPresentation.vue";
+import CompliancePolicy from "./CompliancePolicy.vue";
+import { clearAllPendingComplianceIntents } from "./compliance-state";
 const BrandDomains = defineAsyncComponent(() => import("./BrandDomains.vue"));
 const BrandCreation = defineAsyncComponent(() => import("./BrandCreation.vue"));
 import {clearAllPendingBrandDomainsWrites} from "./brand-domains-state";
@@ -74,7 +76,8 @@ type Page =
   | "报表和对账"
   | "账号与权限"
   | "审计日志"
-  | "通知投递";
+  | "通知投递"
+  | "风控与合规";
 const nav: { name: Page; icon: string; group: string }[] = [
   { name: "工作台", icon: "▦", group: "概览" },
   { name: "品牌和域名", icon: "◇", group: "平台" },
@@ -90,6 +93,7 @@ const nav: { name: Page; icon: string; group: string }[] = [
   { name: "账号与权限", icon: "♧", group: "管理" },
   { name: "审计日志", icon: "≡", group: "管理" },
   { name: "通知投递", icon: "♧", group: "管理" },
+  { name: "风控与合规", icon: "⚖", group: "管理" },
 ];
 const page = ref<Page>("工作台");
 const demoBrand = ref("Aurora");
@@ -266,6 +270,7 @@ const apiErrorText = (error: unknown) =>
   error instanceof Error ? error.message : "请求失败，请重试";
 const clearAdminData = () => {
 	clearAllPendingPresentationWrites();
+	clearAllPendingComplianceIntents();
 	clearAllPendingBrandDomainsWrites();
 	clearAllPendingBrandCreationWrites();
 	presentationReadGeneration+=1;presentationSkin.value=null;
@@ -307,6 +312,7 @@ const restoreAdminSession = async () => {
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
       clearAllPendingPresentationWrites();
+      clearAllPendingComplianceIntents();
     }
     account.value = result.account;
     await loadBrands();
@@ -336,6 +342,7 @@ const login = async () => {
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
       clearAllPendingPresentationWrites();
+      clearAllPendingComplianceIntents();
     }
     account.value = result.account;
     selectedBrandId.value = "";
@@ -763,7 +770,7 @@ const ledger = [
           ><b>{{ page }}</b
           ><span
             v-if="
-              !(account && page === '品牌和域名') &&
+              !(account && (page === '品牌和域名' || page === '风控与合规')) &&
               page !== '用户和成员' &&
               page !== '审计日志' &&
               page !== '通知投递' &&
@@ -800,7 +807,7 @@ const ledger = [
       <div
         v-if="
           showDemoNotice &&
-          !(account && page === '品牌和域名') &&
+          !(account && (page === '品牌和域名' || page === '风控与合规')) &&
           page !== '用户和成员' &&
           page !== '审计日志' &&
           page !== '通知投递' &&
@@ -1095,6 +1102,10 @@ const ledger = [
         </div>
       </section>
 
+      <section v-else-if="page === '风控与合规'" class="page-content">
+        <CompliancePolicy v-if="account && selectedBrandId" :key="'compliance:' + account.id + ':' + selectedBrandId" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+        <article v-else class="panel directory-state"><h2>选择品牌</h2><p>{{ account ? "请先选择真实品牌。" : "请先登录后台账号并选择真实品牌。" }}</p></article>
+      </section>
       <section v-else-if="page === '品牌和域名'" class="page-content">
         <AuthSettings
           v-if="account && selectedBrandId"
