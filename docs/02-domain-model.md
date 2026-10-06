@@ -232,6 +232,10 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 - reason、actor_id、request_id、created_at；追加后不可修改/删除，品牌/成员/时间索引用于分页查询。
 - 只修复余额投影，不改变经济账本；完整性无法证明时禁止重建。真实积分增减仍通过追加账本实现。
 
+### 品牌钱包批量对账
+
+0038的`point_reconciliation_jobs`保存品牌、状态、版本、固定target_count、创建人员/原因/时间、首次开始/完成时间、创建审计、最近失败指针、内部creation_xid及轮转调度时间。targets保存同品牌账户/成员、状态、尝试次数及下次检查时间；只允许创建事务捕获，不晚加或重开已检查目标。results保存不可变outcome/preview/checked_at/audit_log_id，failures和retries保存追加的失败尝试及人工恢复证据。结果completed表示全部检查完成，不表示全部钱包一致，也不修改余额或经济账本。完整字段、查询和故障边界见[批量对账交接](13-wallet-reconciliation.md)。
+
 ### 充值与提现
 
 `recharge_orders`

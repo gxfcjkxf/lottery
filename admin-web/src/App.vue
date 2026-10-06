@@ -33,6 +33,8 @@ const SettlementManagement = defineAsyncComponent(() => import("./SettlementMana
 const CorrectionManagement = defineAsyncComponent(() => import("./CorrectionManagement.vue"));
 const NotificationDeliveries = defineAsyncComponent(() => import("./NotificationDeliveries.vue"));
 const NotificationTemplates = defineAsyncComponent(() => import("./NotificationTemplates.vue"));
+const ReconciliationManagement = defineAsyncComponent(() => import("./ReconciliationManagement.vue"));
+import {clearPendingReconciliationWrites} from "./reconciliation-state";
 const ReportsManagement = defineAsyncComponent(() => import("./ReportsManagement.vue"));
 const AgentManagement = defineAsyncComponent(() => import("./AgentManagement.vue"));
 const JoinCodeManagement = defineAsyncComponent(() => import("./JoinCodeManagement.vue"));
@@ -74,6 +76,7 @@ type Page =
   | "期次和开奖"
   | "注单和异常"
   | "资金与账本"
+  | "批量对账"
   | "佣金和奖励"
   | "报表和对账"
   | "账号与权限"
@@ -91,6 +94,7 @@ const nav: { name: Page; icon: string; group: string }[] = [
   { name: "期次和开奖", icon: "◷", group: "运营" },
   { name: "注单和异常", icon: "▤", group: "运营" },
   { name: "资金与账本", icon: "◈", group: "资金" },
+  { name: "批量对账", icon: "≋", group: "资金" },
   { name: "佣金和奖励", icon: "↗", group: "资金" },
   { name: "报表和对账", icon: "▥", group: "管理" },
   { name: "账号与权限", icon: "♧", group: "管理" },
@@ -283,6 +287,7 @@ const clearAdminData = () => {
   clearAllPendingJoinCodeWrites();
   clearAllPendingDeliveryRetries();
   clearAllPendingTemplateWrites();
+  clearPendingReconciliationWrites();
   clearAllPendingBrandOperationWrites();
   correctionSettlementPeriod.value = null;
   account.value = null;
@@ -319,6 +324,7 @@ const restoreAdminSession = async () => {
       clearAllPendingPresentationWrites();
       clearAllPendingComplianceIntents();
       clearAllPendingTemplateWrites();
+      clearPendingReconciliationWrites();
     }
     account.value = result.account;
     await loadBrands();
@@ -350,6 +356,7 @@ const login = async () => {
       clearAllPendingPresentationWrites();
       clearAllPendingComplianceIntents();
       clearAllPendingTemplateWrites();
+      clearPendingReconciliationWrites();
     }
     account.value = result.account;
     selectedBrandId.value = "";
@@ -788,6 +795,7 @@ const ledger = [
               page !== '报表和对账' &&
               page !== '代理树' &&
               page !== '资金与账本' &&
+              page !== '批量对账' &&
               page !== '账号与权限' &&
               page !== '加入码'
             "
@@ -2105,6 +2113,12 @@ const ledger = [
             前往登录
           </button>
         </div>
+      </section>
+
+      <section v-else-if="page === '批量对账'" class="page-content">
+        <ReconciliationManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
+          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+        <div v-else class="panel directory-state">请登录并选择有钱包查看权限的品牌。</div>
       </section>
 
       <section v-else-if="page === '资金与账本'" class="page-content">

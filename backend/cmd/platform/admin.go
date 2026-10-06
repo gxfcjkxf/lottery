@@ -61,6 +61,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 	permissions = append(permissions, "brand_domains.view.brand", "brand_domains.write.brand")
 	permissions = append(permissions, "report_betting.export.brand", "report_ledger.export.brand")
 	permissions = append(permissions, "notification_template.view.brand", "notification_template.write.brand")
+	permissions = append(permissions, "wallet.reconcile.brand")
 	permissions = append(permissions, "compliance_policy.view.brand", "compliance_policy.write.brand", "compliance_check.view.brand", "compliance_check.run.brand")
 	if *super {
 		permissions = []string{"user.view.platform", "audit.view.platform", "brand.view.platform", "role.view.platform", "role.write.platform", "admin.view.platform", "admin.write.platform", "auth_config.view.platform", "auth_config.write.platform", "wallet.view.platform", "recharge.view.platform", "point_policy.view.platform"}

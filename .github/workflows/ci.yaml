@@ -1,6 +1,61 @@
 name: check
 on: [push, pull_request]
 jobs:
+  reconciliation-browser:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [desktop, mobile]
+    services:
+      postgres:
+        image: postgres:17.5-alpine
+        env:
+          POSTGRES_DB: lottery_reconciliation_browser
+          POSTGRES_USER: lottery_test
+          POSTGRES_PASSWORD: local_test_password
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U lottery_test -d lottery_reconciliation_browser" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgres://lottery_test:local_test_password@localhost:5432/lottery_reconciliation_browser?sslmode=disable
+      HTTP_ADDR: 127.0.0.1:8080
+      AUTH_KEY_FILE: .local/auth.key
+      RECONCILIATION_FIXTURE_CONFIRM: owned_synthetic_database
+      TEST_RECONCILIATION_ADMIN_USERNAME: ci_reconciliation_operator
+      TEST_RECONCILIATION_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      BOOTSTRAP_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Start dedicated reconciliation fixture and API
+        working-directory: backend
+        run: |
+          go test -tags browserfixture ./cmd/reconciliation-fixture
+          go build -o bin/platform ./cmd/platform
+          ./bin/platform migrate
+          ./bin/platform seed
+          ./bin/platform generate-auth-key .local/auth.key
+          ./bin/platform create-admin --username ci_reconciliation_operator --brand harbor
+          go run -tags browserfixture ./cmd/reconciliation-fixture
+          ./bin/platform serve > ../reconciliation-api.log 2>&1 &
+          ./bin/platform worker > ../reconciliation-worker.log 2>&1 &
+          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
+      - run: pnpm exec playwright test tests/browser/reconciliation.spec.ts --project=${{ matrix.project }} --workers=1
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: reconciliation-browser-failure-${{ matrix.project }}
+          path: test-results/
   api-contract:
     runs-on: ubuntu-latest
     steps:

@@ -5,6 +5,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
 	"github.com/gxfcjkxf/lottery/backend/internal/drawfeed"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
+	"github.com/gxfcjkxf/lottery/backend/internal/reconciliation"
 	"github.com/gxfcjkxf/lottery/backend/internal/rulebook"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
@@ -38,6 +39,13 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 	inboxDone := make(chan struct{})
 	go func() { defer close(inboxDone); runNotificationWorker(inboxCtx, notification.Service{DB: db}, logger) }()
 	defer func() { stopInbox(); <-inboxDone }()
+	reconcileCtx, stopReconcile := context.WithCancel(ctx)
+	reconcileDone := make(chan struct{})
+	go func() {
+		defer close(reconcileDone)
+		runReconciliationWorker(reconcileCtx, reconciliation.Service{DB: db}, logger)
+	}()
+	defer func() { stopReconcile(); <-reconcileDone }()
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	fill := time.NewTicker(time.Minute)
@@ -68,6 +76,24 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 				logger.Error("period transition failed", "error", e, "committed_transitions", n)
 			} else if n > 0 {
 				logger.Info("period transitions committed", "count", n)
+			}
+		}
+	}
+}
+
+func runReconciliationWorker(ctx context.Context, service reconciliation.Service, logger *slog.Logger) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run, cancel := context.WithTimeout(ctx, 10*time.Second)
+			n, e := service.Process(run, 20)
+			cancel()
+			if e != nil && ctx.Err() == nil {
+				logger.Error("wallet reconciliation processing failed", "committed_steps", n)
 			}
 		}
 	}

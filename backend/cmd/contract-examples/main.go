@@ -17,6 +17,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
+	"github.com/gxfcjkxf/lottery/backend/internal/reconciliation"
 	"github.com/gxfcjkxf/lottery/backend/internal/reporting"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
@@ -26,6 +27,11 @@ import (
 func main() {
 	const id = "11111111-1111-4111-8111-111111111111"
 	now := time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
+	startedAt := now.Add(time.Minute)
+	checkedAt := now.Add(2 * time.Minute)
+	consistent := "consistent"
+	consistentFilter := "consistent"
+	reconciliationAuditID := id
 	noticeContent := notification.Content{En: notification.Copy{Title: "Credit recorded", Body: "Credit: {points}."}, ZhCN: notification.Copy{Title: "积分入账记录", Body: "入账：{points} 积分。"}}
 	if err := notification.ValidateContent("recharge.confirmed", noticeContent); err != nil {
 		log.Fatal(err)
@@ -97,6 +103,32 @@ func main() {
 	after := points.Balance{}
 	after[0][0] = 92
 	entry := points.Entry{ID: id, BrandID: id, AccountID: id, MemberID: id, EntryType: "bet", ReferenceType: "order", ReferenceID: id, OperationKey: "contract-example", Reason: "contract example", ActorType: "user", ActorID: id, RequestID: "contract-example", Version: 2, Before: before, Delta: delta, After: after, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 8}}, CreatedAt: now}
+	reconciliationJob := reconciliation.Job{
+		ID: id, BrandID: id, State: "running", Version: 1,
+		TargetCount: "2", CheckedCount: "1", ConsistentCount: "1", RepairableCount: "0", CorruptCount: "0", FailedCount: "0", PendingCount: "1",
+		CreatedBy: id, Reason: "monthly wallet observation", CreatedAt: now, StartedAt: &startedAt,
+		CanRetry: false, CreationAuditLogID: id,
+	}
+	preview := points.RepairPreview{
+		AccountID: id, MemberID: id, Version: 0, LedgerVersion: 0,
+		Actual: map[string]map[string]points.Amount{
+			"recharge": {"available": 11},
+			"gift":     {"manual_frozen": 0},
+		},
+		Expected: points.Balance{}, Consistent: true, Issues: []string{}, Token: "contract-preview",
+	}
+	reconciliationCheckedTarget := reconciliation.Target{
+		ID: "22222222-2222-4222-8222-222222222222", BrandID: id, JobID: id, AccountID: id, MemberID: id,
+		State: "checked", Outcome: &consistent, Preview: &preview, AttemptCount: 1, CheckedAt: &checkedAt, AuditLogID: &reconciliationAuditID,
+	}
+	reconciliationPendingTarget := reconciliation.Target{
+		ID: "33333333-3333-4333-8333-333333333333", BrandID: id, JobID: id, AccountID: id, MemberID: id,
+		State: "pending",
+	}
+	reconciliationTargets := reconciliation.TargetPage{
+		BrandID: id, JobID: id, Items: []reconciliation.Target{reconciliationCheckedTarget, reconciliationPendingTarget},
+		TotalCount: "2", Limit: 20, Offset: 0, Outcome: &consistentFilter,
+	}
 	presentationConfig := brandskin.Config{}
 	presentationEffective, err := brandskin.Resolve("Example", presentationConfig)
 	if err != nil {
@@ -138,10 +170,14 @@ func main() {
 		"IdentityUser":   identity.User{ID: id, Status: "normal"},
 		"IdentityMember": identity.Member{ID: id, BrandID: id, Status: "normal", JoinedAt: now},
 		"FinanceBalance": before, "FinanceDeltaBalance": delta, "FinanceEntry": entry,
-		"FinanceWallet":         points.Wallet{AccountID: id, BrandID: id, MemberID: id, Version: 2, DisplayPoints: 92, AvailablePoints: 92, RechargePoints: 92, BySource: after},
-		"FinanceReportBalances": reporting.Balances{AccountCount: "2", AvailablePoints: "18000000000000000000", FrozenPoints: "0", WithdrawalPoints: "0", TotalPoints: "18000000000000000000"},
-		"FinanceLedgerTotals":   reporting.LedgerTotals{EntryCount: "2", NetPoints: "-18000000000000000000", RechargePoints: "0", PrizeCreditPoints: "0", PrizeReversalPoints: "18000000000000000000", RefundPoints: "0"},
-		"LotteryRuleDefinition": in.Definition, "LotterySimulationInput": in, "LotterySimulationResult": out,
+		"FinanceReconciliationJob":        reconciliationJob,
+		"FinanceReconciliationJobPage":    reconciliation.JobPage{BrandID: id, Items: []reconciliation.Job{reconciliationJob}, TotalCount: "1", Limit: 20, Offset: 0},
+		"FinanceReconciliationTarget":     reconciliationCheckedTarget,
+		"FinanceReconciliationTargetPage": reconciliationTargets,
+		"FinanceWallet":                   points.Wallet{AccountID: id, BrandID: id, MemberID: id, Version: 2, DisplayPoints: 92, AvailablePoints: 92, RechargePoints: 92, BySource: after},
+		"FinanceReportBalances":           reporting.Balances{AccountCount: "2", AvailablePoints: "18000000000000000000", FrozenPoints: "0", WithdrawalPoints: "0", TotalPoints: "18000000000000000000"},
+		"FinanceLedgerTotals":             reporting.LedgerTotals{EntryCount: "2", NetPoints: "-18000000000000000000", RechargePoints: "0", PrizeCreditPoints: "0", PrizeReversalPoints: "18000000000000000000", RefundPoints: "0"},
+		"LotteryRuleDefinition":           in.Definition, "LotterySimulationInput": in, "LotterySimulationResult": out,
 		"LotterySimulationInputSparse": sparse,
 		"LotteryRuleSelection":         in.Selection, "LotteryRuleDraw": in.Draw,
 		"LotteryRuleTier": in.Definition.PrizeTiers[0], "LotteryRuleCondition": in.Definition.PrizeTiers[0].Condition,

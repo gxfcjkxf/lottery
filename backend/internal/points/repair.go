@@ -201,6 +201,13 @@ func (s Store) PreviewRepair(ctx context.Context, brand, member string) (RepairP
 	return out, tx.Commit(ctx)
 }
 
+// PreviewRepairTx only inspects the wallet under its shared account lock. The
+// caller owns the transaction and must never treat this historical observation
+// as authorization to repair a subsequently changed account.
+func (s Store) PreviewRepairTx(ctx context.Context, tx pgx.Tx, brand, member string) (RepairPreview, error) {
+	return s.repairPreview(ctx, tx, brand, member, false)
+}
+
 // RepairBalance restores only ledger-derived buckets, under the same exclusive
 // account lock as Post. No caller-supplied amount and no business ledger mutation.
 func (s Store) RepairBalance(ctx context.Context, tx pgx.Tx, brand, member string, version int64, token, reason string, meta Metadata) (RepairRecord, error) {

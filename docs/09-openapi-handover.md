@@ -20,6 +20,8 @@ PUT 必须提供当前共享版本、全部 16 个配置键和操作原因。可
 
 ## 接入约束
 
+钱包批量对账使用GET/POST `/api/v1/admin/reconciliations`、GET `/{id}`和`/{id}/targets`、POST `/{id}/retry`。查看接受明确品牌或平台wallet.view权限，创建/重试还需当前品牌wallet.reconcile授权且超管只读；所有查询使用主库并提交审计后返回。结果只诊断，观察快照不授权自动修复；原创建/重试回执与当前状态分开，详细生命周期、字段和资源上限见[对账交接](13-wallet-reconciliation.md)。
+
 六个不可变历史GET可采用物理从库，授权和查询审计仍以主库为准。成功响应中的`X-Read-Source`、`X-Read-Reason`及条件性的`X-Read-Replica`仅用于诊断，不是客户端选择器；原JSON结构、权限、品牌范围和分页不变。完整名单、WAL屏障、连接方式及回退说明见[复制与读路由手册](10-replication-and-recovery.md)。资金、投注、会话、当前配置及其他查询不进入该白名单。
 
 站内模板配置使用GET `/api/v1/admin/notification-templates`、GET `/{key}/history`和PUT `/{key}`，需要独立模板权限；版本是每品牌每事件的安全整数，不是品牌配置版本。用户消息content为生成时的双语源文案，只有旧v1允许null；模板更新不改旧通知，也不改变业务积分。服务端及用户端拒绝未知占位符和私密变量，详见 [模板合同](12-notification-templates.md)。
