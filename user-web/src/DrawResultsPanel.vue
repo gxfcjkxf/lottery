@@ -326,6 +326,9 @@ function changeTab(tab: "results" | "history") {
 }
 
 function setPeriod(value: string) {
+  // Enter and the subsequent blur/change can submit the same filter. Do not
+  // restart a live read for an unchanged value (Refresh is the explicit retry).
+  if (value === periodInput.value && !invalidInitialPeriod.value) return;
   periodInput.value = value;
   invalidInitialPeriod.value = false;
   pageOffset.value = 0;

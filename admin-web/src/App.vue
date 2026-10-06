@@ -21,6 +21,8 @@ const SettlementManagement = defineAsyncComponent(() => import("./SettlementMana
 const CorrectionManagement = defineAsyncComponent(() => import("./CorrectionManagement.vue"));
 const NotificationDeliveries = defineAsyncComponent(() => import("./NotificationDeliveries.vue"));
 const ReportsManagement = defineAsyncComponent(() => import("./ReportsManagement.vue"));
+const AgentManagement = defineAsyncComponent(() => import("./AgentManagement.vue"));
+import { clearAllPendingAgentWrites } from "./agents-state";
 import { clearAllPendingDeliveryRetries } from "./notification-delivery-state";
 const RuleVersions = defineAsyncComponent(() => import("./RuleVersions.vue"));
 const WithdrawalPolicySettings = defineAsyncComponent(
@@ -223,6 +225,7 @@ const statusClass = (status: MemberStatus) =>
 const apiErrorText = (error: unknown) =>
   error instanceof Error ? error.message : "请求失败，请重试";
 const clearAdminData = () => {
+  clearAllPendingAgentWrites();
   clearAllPendingDeliveryRetries();
   correctionSettlementPeriod.value = null;
   account.value = null;
@@ -693,6 +696,7 @@ const ledger = [
               page !== '审计日志' &&
               page !== '通知投递' &&
               page !== '报表和对账' &&
+              page !== '代理树' &&
               page !== '资金与账本' &&
               page !== '账号与权限'
             "
@@ -727,6 +731,7 @@ const ledger = [
           page !== '审计日志' &&
           page !== '通知投递' &&
           page !== '报表和对账' &&
+          page !== '代理树' &&
           page !== '资金与账本' &&
           page !== '注单和异常' &&
           page !== '账号与权限'
@@ -1362,79 +1367,11 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '代理树'" class="page-content">
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">MEMBERS / AGENT NETWORK</div>
-            <h1>代理树</h1>
-            <p>品牌内代理关系与团队表现</p>
-          </div>
-          <button
-            class="button button-primary"
-            @click="toast('创建代理为演示入口')"
-          >
-            ＋ 新建代理
-          </button>
-        </div>
-        <div class="agent-summary">
-          <div class="panel agent-tree">
-            <div class="panel-header">
-              <div>
-                <h2>团队关系</h2>
-                <p>共 384 位代理 · 点击展开下级</p>
-              </div>
-              <button class="text-button" @click="toast('已切换为紧凑视图')">
-                ⊞ 紧凑视图
-              </button>
-            </div>
-            <div class="tree-root">
-              <div class="tree-node platform-node">
-                <i>NS</i
-                ><span><b>Aurora 平台</b><small>24,861 位成员</small></span
-                ><span class="node-level">平台</span>
-              </div>
-              <div class="tree-branch">
-                <div class="tree-node">
-                  <i class="agent-indigo">周</i
-                  ><span
-                    ><b>周宁 · 星河-01</b
-                    ><small>直属 86 人 · 团队 1,842 人</small></span
-                  ><button @click="toast('代理详情（演示）')">⌄</button>
-                </div>
-                <div class="tree-node">
-                  <i class="agent-teal">陈</i
-                  ><span
-                    ><b>陈浩 · 海风-03</b
-                    ><small>直属 42 人 · 团队 956 人</small></span
-                  ><button @click="toast('代理详情（演示）')">⌄</button>
-                </div>
-                <div class="tree-node">
-                  <i class="agent-orange">林</i
-                  ><span
-                    ><b>林美 · 晨光-12</b
-                    ><small>直属 28 人 · 团队 408 人</small></span
-                  ><button @click="toast('代理详情（演示）')">⌄</button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="agent-side">
-            <article class="panel agent-kpi">
-              <div class="eyebrow">本周期 · 演示</div>
-              <h2>佣金概况</h2>
-              <strong>18,420 <small>分</small></strong>
-              <p>较上周期 <span class="trend">↗ 8.4%</span></p>
-              <button class="button button-secondary" @click="go('佣金和奖励')">
-                查看佣金明细 →
-              </button>
-            </article>
-            <article class="panel agent-alert">
-              <span>ⓘ</span>
-              <div>
-                <b>代理层级提示</b>
-                <p>当前品牌最多支持 5 级代理，请在演示配置中查看层级策略。</p>
-              </div>
-            </article>
-          </div>
+        <AgentManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
+          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+        <div v-else class="panel directory-state"><h1>代理管理</h1>
+          <p>{{ account ? '请先选择真实后台品牌。' : '请先登录后台账号查看代理配置。' }}</p>
+          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">进入管理员登录</button>
         </div>
       </section>
 
@@ -2365,6 +2302,8 @@ const ledger = [
         ><span>{{
           page === "用户和成员" && account
             ? "成员创建与管理为真实操作；投注已接入，提现仍为演示。"
+            : page === "代理树" && account
+              ? "真实代理配置与历史记录；佣金计算和派发尚未接入。"
             : page === "报表和对账" && account
               ? "真实注单结果及账本流水；汇总余额不是完整逐账户对账证明。"
             : page === "通知投递" && account

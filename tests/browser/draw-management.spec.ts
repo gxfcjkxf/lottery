@@ -551,6 +551,7 @@ test("source revisions, worker attempt evidence and manual draw persist in the r
         /\/games\/[^/]+\/periods$/.test(pathname),
     );
     expect(resultReads.length).toBeGreaterThan(0);
+    expect(resultReads.length, "one filter operation must not flood public reads").toBeLessThan(50);
     expect(resultReads.every(({ method }) => method === "GET")).toBe(true);
   } finally {
     await publicPage.close();

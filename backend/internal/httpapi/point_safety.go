@@ -11,6 +11,7 @@ import (
 )
 
 func registerPointSafetyRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
+	registerAgentAdminRoutes(handle, d)
 	registerWithdrawalPolicyRoutes(handle, d)
 	registerNotificationAdminRoutes(handle, d)
 	s := points.Store{DB: d.Admins.DB}

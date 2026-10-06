@@ -49,6 +49,7 @@ func ledgerKey(d Dependencies, r *http.Request, a access.Account, member, kind s
 	return kind + ":" + d.Mutations.Fingerprint(a.ID+":"+member+":"+r.Header.Get("Idempotency-Key"))
 }
 func registerPointRoutes(mux *http.ServeMux, d Dependencies) {
+	registerAgentUserRoutes(mux, d)
 	for _, prefix := range []string{"/api/v1", "/api/v1/b/{brandCode}"} {
 		for _, path := range []string{"/wallet", "/wallet/ledger"} {
 			mux.HandleFunc("GET "+prefix+path, func(w http.ResponseWriter, r *http.Request) {

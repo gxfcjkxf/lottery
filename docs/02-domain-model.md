@@ -225,6 +225,10 @@ S6-a 当前只实现提现规则配置，不建此订单表或产生提现积分
 
 ### 代理、佣金和奖励
 
+S6-e 实表为 `brand_agent_policies`、`agent_nodes`、`agent_config_revisions`。节点使用member_id/parent_id/depth作为下列设计字段的实际命名，path为UUID[]；同品牌成员唯一，身份/父级/路径不可改写，最多32级工程上限。配置存JSONB：品牌enabled/max_depth/ratio_cap/mode/cycle，节点ratio/nullable mode/status/can_create_children。比值为0–1精确规范字符串，最多6位小数；继承模式读取最近节点覆盖，周期仍品牌级。每次更新递增版本并保留实际操作者/理由/审计证明；不存在现金或积分佣金余额。初始disabled/比值上限0，没有自动开启财务工作流。
+
+父/子/品牌配置更新先取得品牌代理政策独占锁，服务和数据库均拒绝新超限及会破坏既有下级的降限；不靠前端判断或自动缩放。用户只改自己直属active下级的比值/模式，所有祖先须active；can_create_children不是绕过后台晋升流程的授权。加入归属快照、用户晋升/重新挂接和财务计算仍未接入，不能用当前代理树为旧注单补造归属。
+
 `agent_nodes`
 
 - `id`, `brand_id`, `brand_member_id`, `parent_agent_id`, `level`, `path`

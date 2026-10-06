@@ -19,6 +19,8 @@ import WalletSummary from "./WalletSummary.vue";
 import BettingPanel from "./BettingPanel.vue";
 import DrawResultsPanel from "./DrawResultsPanel.vue";
 import NotificationsPanel from "./NotificationsPanel.vue";
+import AgentPanel from "./AgentPanel.vue";
+import { clearAllAgentUpdates } from "./agent-state";
 import {
   createAuthClient,
   type AuthChallenge,
@@ -299,6 +301,7 @@ const nav = computed(() => [
   { to: "/wallet", label: t.value.wallet, icon: "◈" },
   { to: "/results", label: t.value.results, icon: "◷" },
   { to: "/notifications", label: t.value.notifications, icon: "◌" },
+  { to: "/agent", label: locale.value === "en" ? "Agent settings" : "代理设置", icon: "⌘" },
   { to: "/help", label: t.value.help, icon: "?" },
 ]);
 const isAuth = computed(() => ["/login", "/register"].includes(route.path));
@@ -923,6 +926,7 @@ async function logout() {
   profileError.value = "";
   try {
     await authApi.logout();
+    clearAllAgentUpdates();
     authProfile.value = null;
     await router.push("/login");
   } catch (error) {
@@ -2401,6 +2405,9 @@ watch(
           @unread-count="notificationUnreadCount = $event"
           @auth-expired="authProfile = null"
         />
+
+        <AgentPanel v-else-if="route.path === '/agent'" :brand-code="walletBrandCode" :locale="locale"
+          @auth-expired="authProfile = null" />
 
         <section v-else-if="route.path === '/help'" class="page-section">
           <div class="page-heading">

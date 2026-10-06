@@ -570,6 +570,42 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 
 暂不实现提现/佣金/奖励报表、代理分组、不可变日月结、导出及大规模异步全链对账；这些随真实业务模块与S7接入，不能据此宣称EPIC-11整体完成。
 
+## 4.5 S6-e 代理身份、层级与配置（不计算佣金）
+
+后台权限分别为 `agent.view.brand/platform`、`agent.write.brand`、`agent_policy.view.brand/platform`、`agent_policy.write.brand`；超级管理员只能显式平台读取。默认政策 `{enabled:false,max_depth:5,ratio_cap:"0",mode:"loss",cycle:"monthly"}` 仅提供初始配置，不代表已选择生产佣金方案；enabled 只启用代理配置管理，绝不启用派发。
+
+| 方法 | 后台路径 | 合同 |
+|---|---|---|
+| GET/PUT | /admin/agent-policy | 读取政策；PUT `{version,config,reason}` |
+| GET | /admin/agent-policy/history | 品牌政策不可改写历史 |
+| GET | /admin/agents/tree | 只分页根节点或 `parent_id=UUID` 的直属节点，不无界加载整树 |
+| GET | /admin/agents/{id} | 节点和当前继承模式 |
+| POST | /admin/agents | `{policy_version,member_id,parent_id,parent_version,config,reason}`，201 |
+| PUT | /admin/agents/{id} | `{version,policy_version,parent_version,config,reason}`，200 |
+| GET | /admin/agents/{id}/history | 节点不可改写配置历史 |
+
+政策返回 `{brand_id,version,config:{enabled,max_depth,ratio_cap,mode,cycle},updated_at,audit_log_id?}`。max_depth 1–32是配置/工程安全界限；ratio_cap 是0–1最多6位规范小数字符串，0.1=10%，不接受多余末尾0、正号、数字型JSON。mode loss/turnover（输赢/流水）、cycle weekly/monthly；周期仅保存设置，尚不生成周/月结任务。
+
+节点返回 `{id,brand_id,member_id,parent_id,depth,path,version,config:{ratio,mode,status,can_create_children},effective_mode,mode_source_agent_id,policy_version,parent_version,created_by,created_at,updated_at,audit_log_id?}`。parent_id/parent_version 根为显式null，子为UUID/正版本；path为根到自身UUID数组。mode为null（最近祖先或品牌继承）/loss/turnover；effective_mode与来源是读取时或首次回执时的派生信息，不是不可变财务基数。status active/disabled，发展下级标志只控制新增，不等同所有财务权限。每品牌会员最多一个代理节点，父/成员/路径不可直接重写；新增须正常品牌成员、启用政策、活跃祖先且直接父级允许发展。
+
+新比例不超过直接父级和品牌上限、层级不超过政策。降低父比值、品牌上限或最大层级若会使已有节点超限则409，不自动改下级。所有写入先锁品牌代理政策，再检查版本/节点；互斥独立于投注账本锁。SQL同样约束路径、身份、父子上限、版本+1、不可改写历史与匹配审计，不能用绕过服务的普通UPDATE提交无历史的新配置。
+
+树返回 `{brand_id,parent_id,items:Node[],limit,offset,total_count:string}`；不存在或外品牌父级404，分页limit默认20/1–100、offset默认0/最大1000000，未知或重复参数拒绝。历史返回 `{brand_id,agent_id,items:[{id,brand_id,agent_id,version,config,actor_type,actor_id,reason,created_at,audit_log_id}],limit,offset,total_count}`；政策agent_id为null、初始系统记录actor_id/audit为null；后续写入及节点创建均须实际审计。后台查询可审计，用户端不暴露历史理由。
+
+用户路径同时支持 `/api/v1` 与 `/api/v1/b/{brandCode}`：
+
+| 方法 | 用户路径 | 范围 |
+|---|---|---|
+| GET | /agent/me | 自己的品牌成员对应节点，无代理404 |
+| GET | /agent/children | 仅自己的直属节点，只有分页参数，拒绝任意parent_id |
+| PUT | /agent/children/{id}/config | `{version,policy_version,parent_version,ratio,mode,reason}`，只改直属下级比例/模式 |
+
+用户写入必须全局账号active、品牌成员normal、政策启用、自身和祖先代理active、目标是active直属下级；不能改自己的比值、兄弟/孙级、状态、发展标志、成员或父级，也不提供用户自行晋升/创建代理接口。会话/权限在幂等锁前后重新检查，停用/撤权后即使旧成功缓存也403/401；品牌从实际用户域名/路径会话解析，不信任伪造X-Brand-ID。
+
+所有PUT/POST需要幂等键、理由、匹配版本；同键不同内容409，缓存保存首次回执而非实时派生状态。SDK不先GET改写请求；未知结果保留原正文/键，GET不是确认，匹配回执后再独立读取。错误或不匹配的200仍属未知，不因为“收到200”丢掉原键。页内内存按账号/品牌/目标保存，退出清除，迟到回调不能清除新登录后的替代请求。
+
+API当前不写积分、不生成佣金/奖励记录，不修改加入归属或历史注单。代理码/推荐码加入、用户晋升、重新挂接及注单归属快照仍待后续；佣金差额/独立分配、周期边界、实际计算与发放尚未启用，不把可配置树当作完整代理运营平台。
+
 ## 5. 错误码
 
 至少定义以下稳定错误码：

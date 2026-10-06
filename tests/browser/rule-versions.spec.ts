@@ -1,4 +1,5 @@
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import { rememberAdminSession, restoreAdminSession } from "./support/admin-session";
 
 const harbor = "0199a000-0000-7000-8000-000000000002";
 async function login(
@@ -7,7 +8,9 @@ async function login(
   username: string,
   password: string,
 ) {
+  const restored = await restoreAdminSession(page.context(), username, harbor);
   await page.goto("http://localhost:5174");
+  if (!restored) {
   if (info.project.name === "mobile")
     await page.locator(".mobile-nav button").nth(1).click();
   else
@@ -20,9 +23,11 @@ async function login(
   await page
     .getByRole("button", { name: "登录并加载真实成员", exact: true })
     .click();
+  }
   await page
     .getByLabel("选择真实后台品牌", { exact: true })
     .selectOption(harbor);
+  rememberAdminSession(username, await page.context().cookies("http://localhost:5174/api/v1/admin/me"));
   if (info.project.name === "mobile") {
     await page.locator(".mobile-nav button").last().click();
     await page
