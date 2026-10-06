@@ -72,7 +72,52 @@ describe("notification presentation", () => {
     expect(reversedZh.body).toContain("不代表当前钱包余额");
     expect(reversedZh.body).toContain("单独事件");
     expect(reversedZh.body).toContain("此记录会保留");
+    expect(wonEn.protectedNote).toBeNull();
+    expect(reversedEn.protectedNote).toBeNull();
   });
+
+  it("renders snapshot copy by locale and replaces every supported placeholder exactly", () => {
+    const snapshot = {
+      en: { title: "Credit {points} ({points})", body: "Added {points}; again {points}; reference {resource_id}." },
+      "zh-CN": { title: "到账 {points}（{points}）", body: "已到账 {points}；再次 {points}；编号 {resource_id}。" },
+    };
+    const custom = {
+      ...item("recharge.confirmed", 2),
+      content: snapshot,
+      payload: { resource_id: "44444444-4444-4444-8444-444444444444", points: "9223372036854775807" },
+    };
+
+    expect(renderNotification(custom, "en")).toMatchObject({
+      title: "Credit 9,223,372,036,854,775,807 (9,223,372,036,854,775,807)",
+      body: "Added 9,223,372,036,854,775,807; again 9,223,372,036,854,775,807; reference 44444444-4444-4444-8444-444444444444.",
+      protectedNote: null,
+    });
+    expect(renderNotification(custom, "zh")).toMatchObject({
+      title: "到账 9,223,372,036,854,775,807（9,223,372,036,854,775,807）",
+      body: "已到账 9,223,372,036,854,775,807；再次 9,223,372,036,854,775,807；编号 44444444-4444-4444-8444-444444444444。",
+    });
+  });
+
+  it.each(["bet.order.won", "bet.order.prize_reversed"] as const)(
+    "adds a fixed protected historical note beside snapshot copy for %s",
+    (event) => {
+      const snapshot = {
+        en: { title: "Operator title", body: "Operator copy: {points}." },
+        "zh-CN": { title: "自定义标题", body: "自定义内容：{points}。" },
+      };
+      const custom = { ...item(event, 2), content: snapshot };
+      const renderedEn = renderNotification(custom, "en");
+      const renderedZh = renderNotification(custom, "zh");
+      const legacyEn = renderNotification(item(event), "en");
+      const legacyZh = renderNotification(item(event), "zh");
+      expect(renderedEn.body).toBe("Operator copy: 900,719,925,474,099,312,345.");
+      expect(renderedEn.protectedNote).toBe(legacyEn.body);
+      expect(renderedZh.body).toBe("自定义内容：900,719,925,474,099,312,345。");
+      expect(renderedZh.protectedNote).toBe(legacyZh.body);
+      expect(renderedEn.protectedNote).toContain("not your current wallet balance");
+      expect(renderedZh.protectedNote).toContain("不代表当前钱包余额");
+    },
+  );
 
   it.each(["zh", "en"] as const)("renders exact points and business references in %s", (locale) => {
     const withPoints = events.filter((event) => event !== "member.joined");
@@ -91,6 +136,7 @@ describe("notification presentation", () => {
     expect(() => renderNotification(item("member.joined", 2), "en")).toThrow(RangeError);
     expect(() => renderNotification(item("admin.internal"), "zh")).toThrow(RangeError);
     expect(() => renderNotification({ ...item("member.joined"), template_key: "bet.order.placed" }, "en")).toThrow(RangeError);
+    expect(() => renderNotification({ ...item("member.joined", 2), content: null }, "en")).toThrow(RangeError);
   });
 
   it("formats large integer strings without numeric precision loss", () => {

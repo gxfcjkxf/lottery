@@ -12,6 +12,27 @@ const dateTime = ref("DateTime");
 const reason = ref("Reason");
 const amount = ref("NonnegativeInt64String");
 const positiveAmount = ref("PositiveInt64String");
+const notificationTemplateKeys = [
+  "bet.order.abnormal", "bet.order.cancelled", "bet.order.judged_cancelled", "bet.order.placed",
+  "bet.order.prize_reversed", "bet.order.won", "member.joined", "recharge.confirmed",
+];
+const notificationTemplateKey = { type: "string", enum: notificationTemplateKeys };
+const notificationTemplateVersion = {
+  type: "integer", minimum: 1, maximum: 9007199254740991,
+  description: "Positive version no greater than 9007199254740991, so it is exactly representable as a JSON/JavaScript integer.",
+};
+const notificationTemplateCopy = obj({
+  title: { type: "string", minLength: 1, maxLength: 120, pattern: String.raw`^(?:(?![{}])[^\u0000-\u001F<>]|\{(?:points|resource_id)\})+$`, description: "Schema limits this to 1–120 Unicode characters and rejects angle brackets, C0 controls, unmatched braces, and unsupported placeholders. The handler additionally requires trimmed valid UTF-8, limits the value to 120 UTF-8 bytes, and rejects case-insensitive https?:, javascript:, data:, and www. substrings." },
+  body: { type: "string", minLength: 1, maxLength: 1200, pattern: String.raw`^(?:(?![{}])[^\u0000-\u0008\u000B\u000C\u000E-\u001F<>]|\{(?:points|resource_id)\})+$`, description: "Schema limits this to 1–1200 Unicode characters and rejects angle brackets, disallowed C0 controls, unmatched braces, and unsupported placeholders; LF and tab are allowed. The handler additionally requires trimmed valid UTF-8, limits the value to 1200 UTF-8 bytes, and rejects case-insensitive https?:, javascript:, data:, and www. substrings." },
+});
+const notificationTemplateContent = obj({
+  en: ref("LotteryNotificationTemplateCopy"),
+  "zh-CN": ref("LotteryNotificationTemplateCopy"),
+}, ["en", "zh-CN"]);
+notificationTemplateContent.description = "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; seven event templates require {points} in each language body, while member.joined forbids {points} in either body or title. Placeholder presence and UTF-8 byte limits are enforced by the handler.";
+const notificationTemplatePairRules = notificationTemplateKeys.map((key) => ({
+  properties: { event_type: { const: key }, template_key: { const: key } },
+}));
 
 const pageQuery = [
   { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
@@ -159,7 +180,24 @@ const SettlementJob = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: 
 const SettlementPreview = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: uuid, order_id: uuid, order_version: int, order_status: str, period_version: int, period_status: str, draw_result_id: uuid, definition_hash: str, draw_hash: str, draw: ref("LotteryRuleDraw"), outcome: str, error_code: nullable(str), calculation: nullable(obj({ won: bool, combination_count: int, multiplier: amount, bet_points: amount, prize_points: amount, raw_prize_points: str, capped_prize_points: str })), created_by: uuid, created_at: dateTime, reason, audit_log_id: uuid, current: bool, applied: bool });
 const Correction = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: uuid, previous_draw_result_id: uuid, draw_result_id: uuid, result: ref("LotteryRuleDraw"), period_version: int, previous_job_id: nullable(uuid), new_job_id: nullable(uuid), policy_version: nullable(int), mode: nullable(str), state: str, version: int, target_count: int, created_by: uuid, reason, created_at: dateTime, completed_at: nullable(dateTime), last_error_code: nullable(str), pending_count: int, reversed_count: int, unchanged_count: int, excluded_count: int, failed_count: int, reverse_points: amount, reversed_points: amount, can_retry: bool, new_job_state: nullable(str), new_job_version: nullable(int), new_job_error_code: nullable(str) });
 const CancelJob = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: uuid, period_version: int, mode: str, cause: str, state: str, version: int, reason, created_by: uuid, created_at: dateTime, completed_at: nullable(dateTime), last_error_code: str, total_count: int, pending_count: int, refunded_count: int, already_refunded_count: int, failed_count: int });
-const Notification = obj({ id: uuid, brand_id: uuid, member_id: uuid, event_type: str, template_key: str, template_version: { type: "integer", enum: [1] }, payload: obj({ resource_id: uuid, points: nullable(amount) }), created_at: dateTime, read_at: nullable(dateTime) });
+const Notification = {
+  ...obj({
+    id: uuid, brand_id: uuid, member_id: uuid,
+    event_type: { type: "string", enum: notificationTemplateKeys },
+    template_key: notificationTemplateKey,
+    template_version: notificationTemplateVersion,
+    content: nullable(ref("LotteryNotificationTemplateContent")),
+    payload: obj({ resource_id: uuid, points: nullable(amount) }), created_at: dateTime, read_at: nullable(dateTime),
+  }),
+  allOf: [
+    { oneOf: notificationTemplatePairRules },
+    { oneOf: [
+      { properties: { template_version: { const: 1 }, content: nullable(ref("LotteryNotificationTemplateContent")) } },
+      { properties: { template_version: { minimum: 2 }, content: ref("LotteryNotificationTemplateContent") } },
+    ] },
+  ],
+  description: "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy version 1 rows may have null content; version 2 and later always include their copied content. Updating a template never rewrites existing notifications.",
+};
 
 export const schemas = {
   LotteryRuleCondition: RuleCondition, LotteryRulePool: RulePool, LotteryRuleModel: RuleModel,
@@ -183,6 +221,37 @@ export const schemas = {
   LotteryBetException: BetException, LotteryBetJudgment: BetJudgment,
   LotterySettlementContext: SettlementContext, LotterySettlementTarget: SettlementTarget,
   LotteryCorrectionTarget: CorrectionTarget, LotteryNotificationDelivery: NotificationDelivery,
+  LotteryNotificationTemplateCopy: notificationTemplateCopy,
+  LotteryNotificationTemplateContent: notificationTemplateContent,
+  LotteryNotificationTemplate: {
+    ...obj({
+    brand_id: uuid, key: notificationTemplateKey, version: notificationTemplateVersion,
+    content: ref("LotteryNotificationTemplateContent"), updated_at: dateTime,
+    audit_log_id: nullable(uuid),
+    }),
+    allOf: [{ oneOf: [
+      { properties: { version: { const: 1 }, audit_log_id: { type: "null" } } },
+      { properties: { version: { minimum: 2 }, audit_log_id: uuid } },
+    ] }],
+    description: "Version 1 has no audit log ID; versions 2 and later have a non-null audit log ID.",
+  },
+  LotteryNotificationTemplateRevision: {
+    ...obj({
+    id: uuid, brand_id: uuid, key: notificationTemplateKey, version: notificationTemplateVersion,
+    content: ref("LotteryNotificationTemplateContent"), changed_by: nullable(uuid), reason,
+    audit_log_id: nullable(uuid), created_at: dateTime,
+    }),
+    allOf: [{ oneOf: [
+      { properties: { version: { const: 1 }, changed_by: { type: "null" }, audit_log_id: { type: "null" } } },
+      { properties: { version: { minimum: 2 }, changed_by: uuid, audit_log_id: uuid } },
+    ] }],
+    description: "Version 1 has null changed_by and audit_log_id; versions 2 and later have both IDs non-null.",
+  },
+  LotteryNotificationTemplateUpdateInput: obj({
+    version: notificationTemplateVersion, content: ref("LotteryNotificationTemplateContent"), reason,
+  }),
+  LotteryNotificationTemplatesPage: obj({ items: arr(ref("LotteryNotificationTemplate")) }),
+  LotteryNotificationTemplateHistoryPage: obj({ items: arr(ref("LotteryNotificationTemplateRevision")) }),
   LotteryPointAllocation: Allocation,
   LotterySettlementJob: SettlementJob, LotterySettlementPreview: SettlementPreview,
   LotteryCorrection: Correction, LotteryPeriodCancellation: CancelJob, LotteryNotification: Notification,
@@ -245,7 +314,10 @@ export const operations = [
   admin("GET", "/corrections/{id}/targets", "adminListDrawCorrectionTargets", "List correction targets", ref("LotteryCorrectionTargetsPage"), "draw.view", { parameters: pageQuery }),
   admin("POST", "/corrections/{id}/retry", "adminRetryDrawCorrection", "Retry failed correction work", ref("LotteryCorrection"), "draw.correction_retry", { ...mutation(obj({ version: int, reason }, ["version", "reason"])), description: "Retry also requires settlement.run; SUPER_ADMIN cannot perform brand writes." }),
   admin("GET", "/notification-deliveries", "adminListNotificationDeliveries", "List in-app notification delivery records", ref("LotteryNotificationDeliveriesPage"), "notification.view", { tag: "notification", parameters: pageQuery }),
-  admin("POST", "/notification-deliveries/{id}/retry", "adminRetryNotificationDelivery", "Retry in-app notification materialization", ref("LotteryNotificationDelivery"), "notification.retry", { ...mutation(obj({ attempt_count: int, reason }, ["attempt_count", "reason"])), tag: "notification", description: "Retries the in-app notification delivery only; templates are fixed and versioned by the service. Request data cannot edit templates or payload content." }),
+  admin("POST", "/notification-deliveries/{id}/retry", "adminRetryNotificationDelivery", "Retry in-app notification materialization", ref("LotteryNotificationDelivery"), "notification.retry", { ...mutation(obj({ attempt_count: int, reason }, ["attempt_count", "reason"])), tag: "notification", description: "Retries in-app materialization only. A not-yet-created message snapshots the current brand template at materialization; existing messages are unchanged. Retry input cannot edit templates or event facts." }),
+  admin("GET", "/notification-templates", "adminListNotificationTemplates", "List the selected brand's notification templates", ref("LotteryNotificationTemplatesPage"), "notification_template.view", { tag: "notification", description: "Requires notification_template.view.brand with membership in the selected brand, or an explicit notification_template.view.platform grant independent of membership. Super-admin status alone is not authorization. The list accepts no query parameters. Invalid selected brand returns REQUEST_INVALID; other failures use the generic JSON error envelope." }),
+  admin("GET", "/notification-templates/{key}/history", "adminListNotificationTemplateHistory", "List revisions of a notification template", ref("LotteryNotificationTemplateHistoryPage"), "notification_template.view", { tag: "notification", parameters: [{ name: "key", in: "path", required: true, schema: notificationTemplateKey }, { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } }, { name: "offset", in: "query", schema: { type: "integer", minimum: 0, maximum: 1000000, default: 0 } }], description: "Requires brand view permission with selected-brand membership, or explicit platform view permission independent of membership. limit is 1–100 and offset is 0–1000000. Invalid key or pagination returns NOTIFICATION_TEMPLATE_INPUT_INVALID; a missing brand template returns NOTIFICATION_TEMPLATE_NOT_FOUND. Revision actor and audit IDs are null only for version 1." }),
+  admin("PUT", "/notification-templates/{key}", "adminUpdateNotificationTemplate", "Replace a notification template", ref("LotteryNotificationTemplate"), "notification_template.write", { ...mutation(ref("LotteryNotificationTemplateUpdateInput")), tag: "notification", parameters: [{ name: "key", in: "path", required: true, schema: notificationTemplateKey }], description: "Requires notification_template.write.brand; SUPER_ADMIN cannot write. Disabled brands are read-only. Invalid key, content, version, or reason returns NOTIFICATION_TEMPLATE_INPUT_INVALID; a missing template returns NOTIFICATION_TEMPLATE_NOT_FOUND; stale version returns NOTIFICATION_TEMPLATE_VERSION_CONFLICT; disabled brand returns NOTIFICATION_TEMPLATE_STATE_CONFLICT. Unknown-result retries must reuse the same idempotency key and exact body; a reused key with a different path key or body fingerprint conflicts. Validation, permission rechecks, template revision, and audit are atomic. Updating configuration does not create notifications or alter prior content snapshots." }),
 
   op("GET", "/api/v1/games", "listBetCatalogGames", "List games available for betting", "betting", "public", ref("LotteryCatalogGamesPage"), { parameters: pageQuery }),
   op("GET", "/api/v1/games/{id}", "getBetGameCatalog", "Get game catalog and current betting context", "betting", "public", ref("LotteryGameCatalog")),
@@ -259,7 +331,7 @@ export const operations = [
   op("GET", "/api/v1/bet-orders", "listMyBetOrders", "List the current member's bet orders", "betting", "user", ref("LotteryBetOrderItems"), { parameters: pageQuery }),
   op("GET", "/api/v1/bet-orders/{id}", "getMyBetOrder", "Get one of the current member's bet orders", "betting", "user", ref("LotteryBetOrder")),
   op("POST", "/api/v1/bet-orders/{id}/cancel", "cancelMyBetOrder", "Request cancellation of a bet order", "betting", "user", ref("LotteryBetOrder"), { ...mutation(obj({ version: int, reason }, ["version", "reason"])), description: "Cancellation is subject to period state and the effective policy; idempotency is enforced by the mutation engine." }),
-  op("GET", "/api/v1/notifications", "listMyNotifications", "List current member's in-app notifications", "notification", "user", ref("LotteryNotificationPage"), { parameters: pageQuery, description: "Notifications use fixed template_key/template_version 1 and the service-owned payload shape. Templates and payload content are not editable through this API." }),
+  op("GET", "/api/v1/notifications", "listMyNotifications", "List current member's in-app notifications", "notification", "user", ref("LotteryNotificationPage"), { parameters: pageQuery, description: "Notifications expose immutable content snapshots and their template versions. Legacy version 1 content can be null; later versions include copied content. Templates and payload content are not editable through this API." }),
   op("POST", "/api/v1/notifications/read", "markMyNotificationsRead", "Mark notifications as read", "notification", "user", ref("LotteryNotificationReadReceipt"), mutation(obj({ ids: { type: "array", minItems: 1, maxItems: 100, uniqueItems: true, items: uuid } }, ["ids"]))),
 ];
 

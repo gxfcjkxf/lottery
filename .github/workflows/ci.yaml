@@ -90,6 +90,8 @@ jobs:
       TEST_EXPORT_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
       TEST_EXPORT_PLATFORM_USERNAME: ci_export_platform
       TEST_EXPORT_PLATFORM_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_TEMPLATE_ADMIN_USERNAME: ci_template_operator
+      TEST_TEMPLATE_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
       BOOTSTRAP_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
     steps:
       - uses: actions/checkout@v4
@@ -117,6 +119,7 @@ jobs:
           ./bin/platform create-admin --username ci_compliance_operator --brand harbor
           ./bin/platform create-admin --username ci_export_operator --brand harbor
           ./bin/platform create-admin --username ci_export_platform --super
+          ./bin/platform create-admin --username ci_template_operator --brand harbor
           ./bin/platform serve > ../api-test.log 2>&1 &
           ./bin/platform worker > ../worker-test.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready

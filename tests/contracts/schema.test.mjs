@@ -4,21 +4,27 @@ import {readFileSync} from "node:fs";
 import {spawnSync} from "node:child_process";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+import {operations as lotteryOperations,schemas as lotterySchemas} from "../../docs/openapi/lottery.mjs";
 
 const doc=JSON.parse(readFileSync(new URL("../../docs/openapi.json",import.meta.url),"utf8"));
 const ajv=new Ajv2020({strict:false,allErrors:true});
 addFormats(ajv);
 // OpenAPI annotates integers as int64; exact financial integers use strings.
 ajv.addFormat("int64", {type:"number",validate:Number.isInteger});
-const root={$id:"urn:lottery:implemented-api",components:doc.components};
+const components={...doc.components,schemas:{...doc.components.schemas,...lotterySchemas}};
+const root={$id:"urn:lottery:implemented-api",components};
 ajv.addSchema(root);
 const validate=schema=>ajv.compile({$ref:`urn:lottery:implemented-api#/components/schemas/${schema}`});
 
 test("every component and operation body is a compilable JSON Schema",()=>{
-  for(const name of Object.keys(doc.components.schemas))validate(name);
-  for(const item of Object.values(doc.paths))for(const operation of Object.values(item)){
-    const schemas=[operation.requestBody?.content?.["application/json"]?.schema,...Object.values(operation.responses).flatMap(r=>Object.values(r.content??{}).map(media=>media.schema))].filter(Boolean);
-    for(const schema of schemas)ajv.compile({...schema,components:doc.components});
+  for(const name of Object.keys(components.schemas))validate(name);
+  const bodies=[];
+  for(const item of Object.values(doc.paths))for(const operation of Object.values(item))bodies.push(operation);
+  for(const operation of lotteryOperations)bodies.push(operation);
+  for(const operation of bodies){
+    const schemas=[operation.requestBody?.content?.["application/json"]?.schema,...Object.values(operation.responses??{}).flatMap(r=>Object.values(r.content??{}).map(media=>media.schema))].filter(Boolean);
+    if(operation.requestBody&&!operation.requestBody.content)schemas.push(operation.requestBody);
+    for(const schema of schemas)ajv.compile({...schema,components});
   }
 });
 test("actual Go DTO serialization and rule-engine outputs satisfy contracts",()=>{
@@ -27,7 +33,7 @@ test("actual Go DTO serialization and rule-engine outputs satisfy contracts",()=
   const examples=JSON.parse(result.stdout);
   assert.ok(Object.keys(examples).length>=15);
   for(const [name,value] of Object.entries(examples)){
-    const check=validate(name.replace(/Sparse$/, ""));assert.ok(check(value),`${name}: ${JSON.stringify(check.errors)}`);
+    const check=validate(name.replace(/Sparse$|Snapshot$/, ""));assert.ok(check(value),`${name}: ${JSON.stringify(check.errors)}`);
   }
   assert.equal(examples.LotterySimulationResult.bet_points,"8");
   assert.equal(examples.LotterySimulationResult.prize_points,"70");

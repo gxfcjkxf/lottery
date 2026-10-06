@@ -10,13 +10,19 @@ export type NotificationEventType =
   | "bet.order.won"
   | "bet.order.prize_reversed";
 
+export interface NotificationTemplateContent {
+  en: { title: string; body: string };
+  "zh-CN": { title: string; body: string };
+}
+
 export interface NotificationItem {
   id: string;
   brand_id: string;
   member_id: string;
   event_type: NotificationEventType;
   template_key: NotificationEventType;
-  template_version: 1;
+  template_version: number;
+  content: NotificationTemplateContent | null;
   payload: { resource_id: string; points: string | null };
   created_at: string;
   read_at: string | null;
@@ -63,7 +69,9 @@ const ISO_DATE_TIME =
 const POSITIVE_INT64 = /^(?:[1-9]\d*)$/;
 const NONNEGATIVE_INT64 = /^(?:0|[1-9]\d*)$/;
 const MAX_INT64 = "9223372036854775807";
+const MAX_SAFE_INTEGER = 9007199254740991;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9_:.-]{8,128}$/;
+const TEMPLATE_PLACEHOLDERS = new Set(["points", "resource_id"]);
 const EVENT_TYPES = new Set<NotificationEventType>([
   "member.joined",
   "recharge.confirmed",
@@ -145,6 +153,64 @@ function dateTime(value: unknown, label: string): string {
   return value;
 }
 
+function exactKeys(value: Record<string, unknown>, keys: string[], label: string): void {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+    malformed(`${label} must contain exactly ${keys.join(", ")}`);
+  }
+}
+
+function safeTemplateText(
+  value: unknown,
+  label: string,
+  maxLength: number,
+  byteLength: boolean,
+  allowLineBreaks: boolean,
+): string {
+  if (typeof value !== "string" || value.trim() !== value || value.length === 0) {
+    return malformed(`${label} must be a nonempty trimmed string`);
+  }
+  const length = byteLength ? new TextEncoder().encode(value).length : [...value].length;
+  if (length > maxLength) return malformed(`${label} is too long`);
+  if (/[<>\uD800-\uDFFF]|https?:|javascript:|data:|www\./iu.test(value)) {
+    return malformed(`${label} contains disallowed markup or a URL`);
+  }
+  const controls = allowLineBreaks ? /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/ : /[\u0000-\u001f\u007f-\u009f]/;
+  if (controls.test(value)) return malformed(`${label} contains a control character`);
+  // Reject lone UTF-16 surrogates instead of silently replacing them during UTF-8 sizing.
+  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(value)) {
+    return malformed(`${label} contains invalid Unicode`);
+  }
+  const withoutPlaceholders = value.replace(/\{(points|resource_id)\}/g, "");
+  if (/[{}]/.test(withoutPlaceholders)) return malformed(`${label} contains an unsupported placeholder`);
+  for (const match of value.matchAll(/\{([^{}]*)\}/g)) {
+    if (!TEMPLATE_PLACEHOLDERS.has(match[1])) return malformed(`${label} contains an unsupported placeholder`);
+  }
+  return value;
+}
+
+function parseTemplateContent(value: unknown, eventType: NotificationEventType): NotificationTemplateContent {
+  const content = object(value, "notification.content");
+  exactKeys(content, ["en", "zh-CN"], "notification.content");
+  const parsed = {} as NotificationTemplateContent;
+  for (const locale of ["en", "zh-CN"] as const) {
+    const localized = object(content[locale], `notification.content.${locale}`);
+    exactKeys(localized, ["title", "body"], `notification.content.${locale}`);
+    const title = safeTemplateText(localized.title, `notification.content.${locale}.title`, 120, true, false);
+    const body = safeTemplateText(localized.body, `notification.content.${locale}.body`, 1200, true, true);
+    if (eventType === "member.joined") {
+      if (title.includes("{points}") || body.includes("{points}")) {
+        return malformed("member.joined content cannot use {points}");
+      }
+    } else if (!body.includes("{points}")) {
+      return malformed(`${eventType} content body must use {points}`);
+    }
+    parsed[locale] = { title, body };
+  }
+  return parsed;
+}
+
 function inputUuid(value: unknown, label: string): string {
   if (typeof value !== "string" || !UUID.test(value)) {
     throw new NotificationApiError(`${label} must be a UUID`, 0, "invalid_parameter");
@@ -164,8 +230,20 @@ function parseNotification(value: unknown): NotificationItem {
   if (item.template_key !== eventType) {
     return malformed("notification.template_key must match event_type");
   }
-  if (item.template_version !== 1) {
-    return malformed("notification.template_version must be 1");
+  if (
+    typeof item.template_version !== "number" ||
+    !Number.isSafeInteger(item.template_version) ||
+    item.template_version < 1 ||
+    item.template_version > MAX_SAFE_INTEGER
+  ) {
+    return malformed("notification.template_version must be a positive safe integer");
+  }
+  const templateVersion = item.template_version;
+  const content = item.content === undefined || item.content === null
+    ? null
+    : parseTemplateContent(item.content, eventType);
+  if (content === null && templateVersion !== 1) {
+    return malformed("notification.content is required for template versions above 1");
   }
   const payload = object(item.payload, "notification.payload");
   const resourceId = uuid(payload.resource_id, "notification.payload.resource_id");
@@ -184,7 +262,8 @@ function parseNotification(value: unknown): NotificationItem {
     member_id: memberId,
     event_type: eventType,
     template_key: eventType,
-    template_version: 1,
+    template_version: templateVersion,
+    content,
     payload: { resource_id: resourceId, points },
     created_at: dateTime(item.created_at, "notification.created_at"),
     read_at:

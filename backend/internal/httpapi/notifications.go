@@ -100,6 +100,7 @@ func registerNotificationRoutes(mux routeRegistrar, d Dependencies) {
 	}
 }
 func registerNotificationAdminRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
+	registerNotificationTemplateRoutes(handle, d)
 	s := notification.Service{DB: d.Admins.DB}
 	handle("GET", "/notification-deliveries", func(w http.ResponseWriter, r *http.Request) {
 		a, brand, ok := pointAdminActor(w, r, d, "notification", "view", false)

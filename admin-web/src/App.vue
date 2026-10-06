@@ -32,12 +32,14 @@ import PeriodCancellation from "./PeriodCancellation.vue";
 const SettlementManagement = defineAsyncComponent(() => import("./SettlementManagement.vue"));
 const CorrectionManagement = defineAsyncComponent(() => import("./CorrectionManagement.vue"));
 const NotificationDeliveries = defineAsyncComponent(() => import("./NotificationDeliveries.vue"));
+const NotificationTemplates = defineAsyncComponent(() => import("./NotificationTemplates.vue"));
 const ReportsManagement = defineAsyncComponent(() => import("./ReportsManagement.vue"));
 const AgentManagement = defineAsyncComponent(() => import("./AgentManagement.vue"));
 const JoinCodeManagement = defineAsyncComponent(() => import("./JoinCodeManagement.vue"));
 import { clearAllPendingAgentWrites } from "./agents-state";
 import { clearAllPendingJoinCodeWrites } from "./join-codes-state";
 import { clearAllPendingDeliveryRetries } from "./notification-delivery-state";
+import { clearAllPendingTemplateWrites } from "./notification-templates-state";
 import { clearAllPendingBrandOperationWrites } from "./brand-operation-state";
 const RuleVersions = defineAsyncComponent(() => import("./RuleVersions.vue"));
 const WithdrawalPolicySettings = defineAsyncComponent(
@@ -77,6 +79,7 @@ type Page =
   | "账号与权限"
   | "审计日志"
   | "通知投递"
+  | "通知模板"
   | "风控与合规";
 const nav: { name: Page; icon: string; group: string }[] = [
   { name: "工作台", icon: "▦", group: "概览" },
@@ -93,6 +96,7 @@ const nav: { name: Page; icon: string; group: string }[] = [
   { name: "账号与权限", icon: "♧", group: "管理" },
   { name: "审计日志", icon: "≡", group: "管理" },
   { name: "通知投递", icon: "♧", group: "管理" },
+  { name: "通知模板", icon: "♧", group: "管理" },
   { name: "风控与合规", icon: "⚖", group: "管理" },
 ];
 const page = ref<Page>("工作台");
@@ -278,6 +282,7 @@ const clearAdminData = () => {
   clearAllPendingAgentWrites();
   clearAllPendingJoinCodeWrites();
   clearAllPendingDeliveryRetries();
+  clearAllPendingTemplateWrites();
   clearAllPendingBrandOperationWrites();
   correctionSettlementPeriod.value = null;
   account.value = null;
@@ -313,6 +318,7 @@ const restoreAdminSession = async () => {
       clearAllPendingBrandOperationWrites();
       clearAllPendingPresentationWrites();
       clearAllPendingComplianceIntents();
+      clearAllPendingTemplateWrites();
     }
     account.value = result.account;
     await loadBrands();
@@ -343,6 +349,7 @@ const login = async () => {
       clearAllPendingBrandOperationWrites();
       clearAllPendingPresentationWrites();
       clearAllPendingComplianceIntents();
+      clearAllPendingTemplateWrites();
     }
     account.value = result.account;
     selectedBrandId.value = "";
@@ -777,6 +784,7 @@ const ledger = [
               page !== '用户和成员' &&
               page !== '审计日志' &&
               page !== '通知投递' &&
+              page !== '通知模板' &&
               page !== '报表和对账' &&
               page !== '代理树' &&
               page !== '资金与账本' &&
@@ -814,6 +822,7 @@ const ledger = [
           page !== '用户和成员' &&
           page !== '审计日志' &&
           page !== '通知投递' &&
+          page !== '通知模板' &&
           page !== '报表和对账' &&
           page !== '代理树' &&
           page !== '资金与账本' &&
@@ -2281,6 +2290,15 @@ const ledger = [
         </article>
       </section>
 
+      <section v-else-if="page === '通知模板'" class="page-content">
+        <NotificationTemplates v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
+          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+        <div v-else class="panel directory-state"><h1>通知模板</h1>
+          <p>{{ account ? '请先选择真实后台品牌。' : '请先登录后台账号，才能配置站内通知模板。' }}</p>
+          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">进入管理员登录</button>
+        </div>
+      </section>
+
       <section v-else-if="page === '报表和对账'" class="page-content">
         <ReportsManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
@@ -2408,6 +2426,8 @@ const ledger = [
               ? "真实注单结果及账本流水；汇总余额不是完整逐账户对账证明。"
             : page === "通知投递" && account
               ? "真实站内通知投递记录；外部发送渠道尚未接入。"
+            : page === "通知模板" && account
+              ? "真实版本化站内通知模板；已生成消息保留原文案，不触发新通知或资金变化。"
             : page === "审计日志" && account
               ? "审计日志为真实后台数据；投注已接入，提现仍为演示。"
               : page === "账号与权限" && account

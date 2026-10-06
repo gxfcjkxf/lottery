@@ -295,12 +295,13 @@ S6-e 实表为 `brand_agent_policies`、`agent_nodes`、`agent_config_revisions`
 
 `notifications`
 
-- S6-b/S6-c 当前实现为站内信：`id`, `brand_id`, `member_id`, `event_id`, `event_type`, `template_key`, `template_version`, `payload` JSONB、`created_at`、`read_at`。
+- 当前站内信：`id`, `brand_id`, `member_id`, `event_id`, `event_type`, `template_key`, `template_version`, `content`与`payload` JSONB、`created_at`、`read_at`。content是落库时复制的双语模板源文案，与同品牌/key/version修订外键关联；迁移前v1消息保持null及固定旧文案，原字段不改写。
 - `(brand_id,member_id)` 外键绑定品牌成员，`(event_id,member_id)` 唯一；内容与来源不可改写/删除，只允许首次填写已读时间。payload 仅含业务资源编号及规范整数字符串积分（入品牌通知为 null），不含人员、凭证、内部理由或支付证明。
 - `notification_deliveries` 单独保存此消费者的 `event_id`, `brand_id`, `status` pending/sent/failed、`attempt_count`, `last_error`, `next_attempt_at`, `sent_at`；与 outbox 关联。不占用未来消息发布器的 `published_at`。
 - 站内落库、消费者去重确认和 sent 状态同事务；失败回滚消息后持久化安全错误码/退避时间。失败重试必须由有品牌权限的运营人员填写理由，和审计同事务。
 - S6-c 正额派奖和全额奖金冲正 outbox 引用原 calculation/job/ledger/correction，不复用下注金额；验证不可变目标/账本归属而非当前注单投影。旧消息保留、新代次独立记录，零额/失败不生成奖金消息。0025 不补造历史消息。
-- 邮件/短信/Telegram、运营可编辑模板、开奖受众/提现通知为后续功能，不能把当前站内 sent 状态解释成外部发送成功。
+- `notification_templates` 按品牌/key保存独立version、content、updated_at；`notification_template_revisions`保留操作者、原因、审计与完整双语旧内容。更新必须对应同事务修订，初始v1为系统，随后版本不可覆盖；新品牌自动初始化八份默认模板及历史，不生成业务消息。复制模板与更新用行共享/独占锁串行，见 [模板合同](12-notification-templates.md)。
+- 邮件/短信/Telegram、开奖受众/提现通知为后续功能，不能把当前站内 sent 状态解释成外部发送成功。
 
 ## 3. 必备索引
 

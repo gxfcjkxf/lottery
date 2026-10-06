@@ -537,7 +537,7 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 | GET | /admin/notification-deliveries | 品牌内投递状态分页；显式 `notification.view.brand/platform` 与查询审计 |
 | POST | /admin/notification-deliveries/{event_id}/retry | `{attempt_count:整数,reason:非空文本}`；仅 failed 状态，显式 `notification.retry.brand`，超管禁止 |
 
-列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version:1,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。当前事件/模板固定为 `member.joined`、`recharge.confirmed`、`bet.order.placed/cancelled/judged_cancelled/abnormal/won/prize_reversed`；除入品牌通知外积分是规范正 int64 字符串。
+列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version,content,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。template_version为正安全整数，content为不可变双语源文案；仅迁移前v1消息为null。八种当前事件不变，除入品牌通知外积分是规范正 int64 字符串。用户不能编辑快照或业务事实，详见 [模板与旧消息合同](12-notification-templates.md)。
 
 `won` 仅在实际正额中奖入账事务中生成，points 是实派奖金额而非下注金额；待批准的核算、零额及未中奖不生成此消息。`prize_reversed` 仅在实际全额冲回旧 prize 的事务生成，points 为原正额奖金；来源不足、回滚和零额不会生成。resource_id 都是注单 ID；私有 outbox 另保存 calculation/ledger/job/correction 引用，消费者校验同品牌同会员不可变目标与账本，而非注单当前 won 状态。延迟消费在更正后仍能验证旧入账，原通知不会删除/覆盖；新代次再中奖是新的独立消息。双语文案明确历史入账/冲正事实不代表当前钱包余额或最终中奖状态。不制造迁移前的历史奖金通知。
 
@@ -549,7 +549,7 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 
 管理投递列表数据 `{items:[{event_id,brand_id,status,attempt_count,last_error,next_attempt_at,sent_at}]}`；status 为 pending/sent/failed，sent_at 仅 sent 非空。重试回执仍为首次 pending、次数不变，保留 last_error；累计次数和只读最新状态可以已推进，不能把缓存回执当作已投递。S6-c 后台铃铛和“通知投递”菜单接入查询、分页及失败项原因/二次确认/同键恢复；未知意图按账号＋品牌保存在页内内存，刷新列表/切换页面不解除，退出或会话失效清除，不写浏览器持久存储。
 
-尚未接入开奖受众/提现事件、外部渠道及运营模板编辑；不得伪造这些通知或把开奖结果展示当作中奖证据。
+S7-l 新增后台GET `/notification-templates`、GET `/notification-templates/{key}/history`及PUT `/notification-templates/{key}`，独立查看/品牌修改权限、乐观锁、不可变历史、审计和原键重放。消费者落库时复制当前模板，不覆盖已有消息；完整字段、错误与生效时点见 [通知模板合同](12-notification-templates.md)。尚未接入开奖受众/提现事件及外部渠道；不得伪造这些通知或把开奖结果展示当作中奖证据。
 
 ## 4.4 S6-d 真实运营报表
 

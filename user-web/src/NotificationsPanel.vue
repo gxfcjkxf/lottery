@@ -87,6 +87,7 @@ function presentation(item: NotificationItem) {
       createdAt: item.created_at,
       points: null,
       reference: null,
+      protectedNote: null,
     };
   }
 }
@@ -292,6 +293,9 @@ onBeforeUnmount(() => {
           </div>
           <h3>{{ presentation(item).title }}</h3>
           <p>{{ presentation(item).body }}</p>
+          <p v-if="presentation(item).protectedNote" class="notification-protected-note">
+            {{ presentation(item).protectedNote }}
+          </p>
           <p v-if="presentation(item).reference" class="notification-reference">
             {{ text("Reference", "业务编号") }}: {{ presentation(item).reference }}
           </p>
@@ -368,6 +372,7 @@ onBeforeUnmount(() => {
   color: #9b4b3f;
 }
 .notifications-content {
+  white-space: pre-wrap;
   min-width: 0;
   overflow-wrap: anywhere;
 }

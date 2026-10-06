@@ -38,7 +38,8 @@ type Item struct {
 	MemberID        string     `json:"member_id"`
 	EventType       string     `json:"event_type"`
 	TemplateKey     string     `json:"template_key"`
-	TemplateVersion int        `json:"template_version"`
+	TemplateVersion int64      `json:"template_version"`
+	Content         *Content   `json:"content"`
 	Payload         Payload    `json:"payload"`
 	CreatedAt       time.Time  `json:"created_at"`
 	ReadAt          *time.Time `json:"read_at"`
@@ -72,7 +73,7 @@ func list(ctx context.Context, q rowQuery, brand, member string, limit, offset i
 	err := q.QueryRow(ctx, `SELECT
  (SELECT count(*)::text FROM notifications WHERE brand_id=$1 AND member_id=$2 AND read_at IS NULL),
  COALESCE((SELECT jsonb_agg(to_jsonb(n) ORDER BY created_at DESC,id DESC) FROM
- (SELECT id::text,brand_id::text,member_id::text,event_type,template_key,template_version,payload,created_at,read_at
+ (SELECT id::text,brand_id::text,member_id::text,event_type,template_key,template_version,content,payload,created_at,read_at
  FROM notifications WHERE brand_id=$1 AND member_id=$2 ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4) n),'[]'::jsonb)`, brand, member, limit, offset).Scan(&out.UnreadCount, &raw)
 	if err == nil {
 		err = json.Unmarshal(raw, &out.Items)
@@ -173,11 +174,24 @@ func (s Service) processOne(ctx context.Context) (bool, error) {
 	}
 	member, payload, err := validateEvent(ctx, tx, brand, kind, aggregate, raw)
 	if err == nil {
-		encoded, e := json.Marshal(payload)
+		// Copy the currently committed template under a shared row lock. An
+		// operator edit cannot change materialized messages or race this copy.
+		template, e := s.TemplateTx(ctx, tx, brand, kind, true)
 		err = e
 		if err == nil {
-			_, err = tx.Exec(ctx, `INSERT INTO notifications(id,brand_id,member_id,event_id,event_type,template_key,template_version,payload)
-   VALUES($1,$2,$3,$4,$5,$5,1,$6) ON CONFLICT(event_id,member_id) DO NOTHING`, ids.New(), brand, member, id, kind, encoded)
+			err = ValidateContent(kind, template.Content)
+		}
+		encoded, e := json.Marshal(payload)
+		if err == nil {
+			err = e
+		}
+		if err == nil {
+			content, e := json.Marshal(template.Content)
+			err = e
+			if err == nil {
+				_, err = tx.Exec(ctx, `INSERT INTO notifications(id,brand_id,member_id,event_id,event_type,template_key,template_version,payload,content)
+   VALUES($1,$2,$3,$4,$5,$5,$6,$7,$8) ON CONFLICT(event_id,member_id) DO NOTHING`, ids.New(), brand, member, id, kind, template.Version, encoded, content)
+			}
 		}
 	}
 	if err == nil {

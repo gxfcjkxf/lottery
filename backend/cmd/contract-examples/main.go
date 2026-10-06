@@ -26,6 +26,12 @@ import (
 func main() {
 	const id = "11111111-1111-4111-8111-111111111111"
 	now := time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
+	noticeContent := notification.Content{En: notification.Copy{Title: "Credit recorded", Body: "Credit: {points}."}, ZhCN: notification.Copy{Title: "积分入账记录", Body: "入账：{points} 积分。"}}
+	if err := notification.ValidateContent("recharge.confirmed", noticeContent); err != nil {
+		log.Fatal(err)
+	}
+	noticePoints := "9223372036854775807"
+	noticeAuditID := id
 	complianceConfig := compliance.DefaultConfig()
 	complianceConfig.IdentityEnabled = true
 	complianceResult, complianceChecks, err := compliance.Evaluate(complianceConfig)
@@ -139,7 +145,10 @@ func main() {
 		"LotterySimulationInputSparse": sparse,
 		"LotteryRuleSelection":         in.Selection, "LotteryRuleDraw": in.Draw,
 		"LotteryRuleTier": in.Definition.PrizeTiers[0], "LotteryRuleCondition": in.Definition.PrizeTiers[0].Condition,
-		"LotteryNotification": notification.Item{ID: id, BrandID: id, MemberID: id, EventType: "bet.placed", TemplateKey: "bet.placed", TemplateVersion: 1, Payload: notification.Payload{ResourceID: id}, CreatedAt: now},
+		"LotteryNotification":                 notification.Item{ID: id, BrandID: id, MemberID: id, EventType: "member.joined", TemplateKey: "member.joined", TemplateVersion: 1, Payload: notification.Payload{ResourceID: id}, CreatedAt: now},
+		"LotteryNotificationSnapshot":         notification.Item{ID: id, BrandID: id, MemberID: id, EventType: "recharge.confirmed", TemplateKey: "recharge.confirmed", TemplateVersion: 2, Content: &noticeContent, Payload: notification.Payload{ResourceID: id, Points: &noticePoints}, CreatedAt: now},
+		"LotteryNotificationTemplate":         notification.Template{BrandID: id, Key: "recharge.confirmed", Version: 2, Content: noticeContent, UpdatedAt: now, AuditLogID: &noticeAuditID},
+		"LotteryNotificationTemplateRevision": notification.Revision{ID: id, BrandID: id, Key: "recharge.confirmed", Version: 2, Content: noticeContent, ChangedBy: &noticeAuditID, Reason: "contract example", AuditLogID: &noticeAuditID, CreatedAt: now},
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(values); err != nil {
 		log.Fatal(err)

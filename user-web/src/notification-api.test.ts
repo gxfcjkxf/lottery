@@ -18,6 +18,7 @@ const joined: NotificationItem = {
   event_type: "member.joined",
   template_key: "member.joined",
   template_version: 1,
+  content: null,
   payload: { resource_id: memberId, points: null },
   created_at: createdAt,
   read_at: null,
@@ -61,6 +62,15 @@ describe("user notification API", () => {
     expect(headers.get("Accept")).toBe("application/json");
     expect(headers.get("Authorization")).toBeNull();
     expect(headers.get("Cookie")).toBeNull();
+  });
+
+  it("normalizes omitted content on legacy v1 rows to null", async () => {
+    const legacyRow: Record<string, unknown> = { ...joined };
+    delete legacyRow.content;
+    const api = createNotificationApi({
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(ok(page({ items: [legacyRow] }))),
+    });
+    await expect(api.list()).resolves.toMatchObject({ items: [{ template_version: 1, content: null }] });
   });
 
   it("uses unprefixed paths, requested pagination and no payload-provided links or HTML", async () => {
@@ -137,6 +147,106 @@ describe("user notification API", () => {
     for (let index = 0; index < 6; index++) {
       await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
     }
+  });
+
+  it("accepts immutable bilingual snapshots and preserves template versions as safe integers", async () => {
+    const custom = {
+      ...joined,
+      event_type: "recharge.confirmed",
+      template_key: "recharge.confirmed",
+      template_version: 9007199254740991,
+      content: {
+        en: { title: "  Earned {points}  ".trim(), body: "Added {points} points; total {points}. Ref {resource_id}." },
+        "zh-CN": { title: "到账 {points}", body: "已到账 {points} 积分，再次核对 {points}。编号 {resource_id}。" },
+      },
+      payload: { resource_id: resourceId, points: "9223372036854775807" },
+    };
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(ok(page({ items: [{ ...custom, template_version: 2 }] })))
+      .mockResolvedValueOnce(ok(page({ items: [custom] })));
+    const api = createNotificationApi({ fetch: fetcher });
+
+    await expect(api.list()).resolves.toMatchObject({
+      items: [{ template_version: 2, content: custom.content }],
+    });
+    await expect(api.list()).resolves.toMatchObject({
+      items: [{ template_version: 9007199254740991, content: custom.content }],
+    });
+  });
+
+  it("fails closed on missing snapshots for new versions and malformed snapshot content", async () => {
+    const item = {
+      ...joined,
+      event_type: "recharge.confirmed",
+      template_key: "recharge.confirmed",
+      payload: { resource_id: resourceId, points: "1" },
+      template_version: 2,
+      content: {
+        en: { title: "Credit", body: "Credit: {points}." },
+        "zh-CN": { title: "到账", body: "到账：{points}。" },
+      },
+    };
+    const invalidItems: unknown[] = [
+      { ...item, content: undefined },
+      { ...item, content: null },
+      { ...item, template_version: 0 },
+      { ...item, template_version: 1.5 },
+      { ...item, template_version: 9007199254740992 },
+      { ...item, content: { ...item.content, private: "secret" } },
+      { ...item, content: { ...item.content, en: { ...item.content.en, html: "private" } } },
+      { ...item, content: { ...item.content, en: { title: "Credit", body: "Credit {points} <script>alert(1)</script>" } } },
+      { ...item, content: { ...item.content, en: { title: "Credit", body: "Credit {points} https://example.test" } } },
+      { ...item, content: { ...item.content, en: { title: "Credit", body: "Credit {points} javascript:alert(1)" } } },
+      { ...item, content: { ...item.content, en: { title: "Credit", body: "Credit {points} data:text/html" } } },
+      { ...item, content: { ...item.content, en: { title: "Credit", body: "Credit {points} www.example.test" } } },
+      { ...item, content: { ...item.content, en: { title: "Credit", body: "Credit {missing}. {points}" } } },
+      { ...item, content: { ...item.content, en: { title: "Credit", body: "Credit {{points}}" } } },
+      { ...item, content: { ...item.content, en: { title: " Credit", body: "Credit {points}" } } },
+      { ...item, content: { ...item.content, en: { title: "Credit", body: "Credit only." } } },
+      { ...item, content: { ...item.content, "zh-CN": { title: "到账" } } },
+    ];
+    const invalidCount = invalidItems.length;
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => {
+      const invalid = invalidItems.shift();
+      return ok(page({ items: [invalid] }));
+    });
+    const api = createNotificationApi({ fetch: fetcher });
+    for (let index = 0; index < invalidCount; index++) {
+      await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
+    }
+  });
+
+  it("accepts canonical snapshot length limits, while rejecting excess UTF-8 bytes and joined points", async () => {
+    const base = {
+      ...joined,
+      event_type: "recharge.confirmed",
+      template_key: "recharge.confirmed",
+      payload: { resource_id: resourceId, points: "1" },
+      template_version: 2,
+    };
+    const content = {
+      en: { title: "T".repeat(120), body: `${"界".repeat(399)}{points}` },
+      "zh-CN": { title: "标题", body: "积分 {points}" },
+    };
+    content.en.body = `${"x".repeat(1192)}{points}`;
+    const joinedWithContent = {
+      ...joined,
+      template_version: 2,
+      content: {
+        en: { title: "Welcome", body: "Welcome aboard." },
+        "zh-CN": { title: "欢迎", body: "欢迎加入。" },
+      },
+    };
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(ok(page({ items: [{ ...base, content }] })))
+      .mockResolvedValueOnce(ok(page({ items: [{ ...base, content: { ...content, en: { ...content.en, body: `${"x".repeat(1193)}{points}` } } }] })))
+      .mockResolvedValueOnce(ok(page({ items: [{ ...base, content: { ...content, en: { ...content.en, title: "界".repeat(41) } } }] })))
+      .mockResolvedValueOnce(ok(page({ items: [{ ...joinedWithContent, content: { ...joinedWithContent.content, en: { title: "Welcome {points}", body: "Welcome aboard." } } }] })));
+    const api = createNotificationApi({ fetch: fetcher });
+    await expect(api.list()).resolves.toMatchObject({ items: [{ content }] });
+    await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
+    await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
+    await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
   });
 
   it("enforces backend page bounds, page size and minimum unread count", async () => {

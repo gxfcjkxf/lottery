@@ -1,9 +1,11 @@
 import type { Language } from "../../shared/src/brand";
+import type { NotificationTemplateContent } from "./notification-api";
 
 export type NotificationPresentationItem = {
   event_type: string;
   template_key: string;
   template_version: number;
+  content?: NotificationTemplateContent | null;
   payload: { resource_id: string; points: string | null };
   created_at: string;
 };
@@ -14,6 +16,7 @@ export type NotificationPresentation = {
   createdAt: string;
   points: string | null;
   reference: string | null;
+  protectedNote: string | null;
 };
 
 const copy = {
@@ -93,7 +96,7 @@ export function renderNotification(
   item: NotificationPresentationItem,
   locale: Language,
 ): NotificationPresentation {
-  if (item.template_version !== 1) {
+  if (!Number.isSafeInteger(item.template_version) || item.template_version < 1) {
     throw new RangeError(`Unsupported notification template version: ${item.template_version}`);
   }
   if (item.template_key !== item.event_type) {
@@ -107,9 +110,25 @@ export function renderNotification(
   const points = item.payload.points === null
     ? null
     : formatIntegerString(item.payload.points, locale);
-  const body = item.payload.points !== null
-    ? known.body.replace("{points}", points ?? item.payload.points)
-    : known.body;
+  const snapshot = item.content ?? null;
+  if (snapshot === null && item.template_version !== 1) {
+    throw new RangeError(`Missing notification template snapshot for version: ${item.template_version}`);
+  }
+  const source = snapshot
+    ? snapshot[locale === "zh" ? "zh-CN" : "en"]
+    : known;
+  const replacePlaceholders = (value: string) => value
+    .replaceAll("{points}", points ?? "")
+    .replaceAll("{resource_id}", item.payload.resource_id);
+  const title = snapshot ? replacePlaceholders(source.title) : source.title;
+  const body = snapshot
+    ? replacePlaceholders(source.body)
+    : item.payload.points !== null
+      ? known.body.replaceAll("{points}", points ?? item.payload.points)
+      : known.body;
+  const protectedNote = snapshot && (item.event_type === "bet.order.won" || item.event_type === "bet.order.prize_reversed")
+    ? known.body.replaceAll("{points}", points ?? "")
+    : null;
   const date = new Date(item.created_at);
   const createdAt = Number.isNaN(date.getTime())
     ? item.created_at
@@ -119,9 +138,11 @@ export function renderNotification(
       }).format(date);
   return {
     ...known,
+    title,
     body,
     createdAt,
     points,
     reference: item.event_type === "member.joined" ? null : item.payload.resource_id,
+    protectedNote,
   };
 }
