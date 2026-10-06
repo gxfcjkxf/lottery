@@ -1194,6 +1194,7 @@ onUnmounted(() => {
         >{{ zh ? "状态" : "Status" }} ·
         {{ detailsStatus(placedOrder.status) }}</strong
       ><span>{{ zh ? "期次" : "Period" }} {{ placedOrder.period_id }}</span
+      ><span v-if="placedOrder.settled_at">{{ zh ? "中奖积分" : "Prize points" }} {{ exactAmount(placedOrder.prize_points ?? '0') }} · {{ zh ? "已入账" : "Applied" }}</span
       ><span>{{ zh ? "玩法" : "Play" }} {{ placedOrder.play_id }}</span
       ><span
         >{{ zh ? "总积分" : "Total points" }}

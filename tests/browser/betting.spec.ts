@@ -558,6 +558,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     process.env.TEST_RULE_REVIEWER_USERNAME!,
     process.env.TEST_RULE_REVIEWER_PASSWORD!,
   );
+  const reviewerCookies = (await context.cookies(`${adminBase}/me`)).filter(cookie => cookie.name === "lottery_admin");
 
   const digitsCode = `e2e_digits_${unique()}`;
   const xyCode = `e2e_xy_${unique()}`;
@@ -2573,6 +2574,87 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     expect(finalPreviewHistory.items.map(v=>v.id)).toContain(sessionEndedPreviewId);
     expect(finalPreviewHistory.items.every(v=>v.applied===false)).toBe(true);
     expect(await api<Wallet>(page.request,`${publicBase}/wallet`,"GET",userToken)).toEqual(previewWallet);
+
+    // S5-c2: reuse the genuine independent reviewer session after the creator's
+    // real logout. No additional login and no manufactured business response.
+    await context.addCookies(reviewerCookies);
+    await adminPage.reload();
+    await adminPage.getByLabel("选择真实后台品牌",{exact:true}).selectOption(brandId);
+    await periodPage();
+    const settlement=adminPage.locator(".settlement-management");
+    await expect(settlement).toContainText("未配置");
+    await settlement.getByLabel("新模式",{exact:true}).selectOption("manual");
+    await settlement.getByLabel("操作原因（UTF-8 不超过 500 字节）",{exact:true}).fill(`S5-c2 ${info.project.name}: explicit isolated manual mode`);
+    await settlement.getByRole("button",{name:"核对配置变更",exact:true}).click();
+    await settlement.locator(".sm-confirm").getByRole("checkbox").check();
+    await settlement.getByRole("button",{name:"确认提交结算操作",exact:true}).click();
+    await expect(settlement).toContainText("服务器已确认写入");
+    await settlement.getByLabel("期次 ID",{exact:true}).fill(previewPeriodId);
+    await expect(settlement).toContainText(previewDraw.id);
+    await expect(settlement.getByRole("button",{name:"核对并启动新结算任务",exact:true})).toBeDisabled();
+    await settlement.getByLabel("启动原因（UTF-8 不超过 500 字节）",{exact:true}).fill(`S5-c2 ${info.project.name}: purchased snapshot batch`);
+    const settleRequests:Array<{key:string;body:string|null}>=[];
+    const settleRoute=`**/periods/${previewPeriodId}/settle`;
+    let settlementId="";
+    await adminPage.route(settleRoute,async route=>{
+      if(route.request().method()!=="POST"){await route.continue();return;}
+      settleRequests.push({key:route.request().headers()["idempotency-key"]!,body:route.request().postData()});
+      const response=await route.fetch();expect(response.status(),await response.text()).toBe(201);
+      settlementId=(await response.json()).data.id;
+      if(settleRequests.length===1)await route.abort("failed");else await route.fulfill({response});
+    });
+    await settlement.getByRole("button",{name:"核对并启动新结算任务",exact:true}).click();
+    await settlement.locator(".sm-confirm").getByRole("checkbox").check();
+    await settlement.getByRole("button",{name:"确认提交结算操作",exact:true}).click();
+    await expect(settlement.locator(".sm-pending")).toContainText("写入结果未知");
+    await expect.poll(async()=> (await api<{state:string}>(page.request,`${adminBase}/settlement-jobs/${settlementId}`,"GET",reviewer)).state,{timeout:10_000}).toBe("awaiting_approval");
+    await settlement.getByRole("button",{name:"重新读取",exact:true}).click();
+    await expect(settlement).toContainText(settlementId);
+    await expect(settlement.locator(".sm-pending")).toContainText("写入结果未知");
+    expect(await api<Wallet>(page.request,`${publicBase}/wallet`,"GET",userToken)).toEqual(previewWallet);
+    await settlement.getByRole("button",{name:"使用原请求和幂等键重试",exact:true}).click();
+    await expect(settlement.locator(".sm-pending")).toHaveCount(0);
+    await expect(settlement).toContainText("全部可结算目标已完成核算，仍未入账");
+    expect(settleRequests).toHaveLength(2);expect(settleRequests[0]).toEqual(settleRequests[1]);
+    await adminPage.unroute(settleRoute);
+    const actualJob=(await api<{settlement:{id:string,state:string,prize_points:string,paid_points:string,ready_count:number}}>(page.request,`${adminBase}/periods/${previewPeriodId}/settlement`,"GET",reviewer)).settlement;
+    expect(actualJob).toMatchObject({id:settlementId,state:"awaiting_approval",prize_points:"8",paid_points:"0",ready_count:1});
+    const approvalRoute=`**/settlement-jobs/${settlementId}/approve`;
+    const jobRoute=`**/settlement-jobs/${settlementId}`;
+    await adminPage.route(approvalRoute,async route=>{
+      const response=await route.fetch();expect(response.status(),await response.text()).toBe(200);
+      await adminPage.route(jobRoute,r=>r.abort("failed"));
+      await route.fulfill({response});
+    });
+    await settlement.getByLabel("运营批准原因（UTF-8 不超过 500 字节）",{exact:true}).fill(`S5-c2 ${info.project.name}: approve verified integer winnings`);
+    await settlement.getByRole("button",{name:"核对并批准，允许 worker 入账",exact:true}).click();
+    await settlement.locator(".sm-confirm").getByRole("checkbox").check();
+    await settlement.getByRole("button",{name:"确认提交结算操作",exact:true}).click();
+    await expect(settlement).toContainText("服务器已确认写入，但后续读取失败");
+    await expect(settlement.locator(".sm-pending")).toHaveCount(0);
+    await adminPage.unroute(approvalRoute);await adminPage.unroute(jobRoute);
+    await expect.poll(async()=> (await api<{state:string}>(page.request,`${adminBase}/settlement-jobs/${settlementId}`,"GET",reviewer)).state,{timeout:10_000}).toBe("completed");
+    await settlement.getByRole("button",{name:"重新读取",exact:true}).click();
+    await expect(settlement).toContainText("服务器任务已完成，且全部目标均已入账或排除");
+    await expect(settlement).toContainText("已入账积分");
+    const paidWallet=await api<Wallet>(page.request,`${publicBase}/wallet`,"GET",userToken);
+    expect(BigInt(paidWallet.available_points)).toBe(BigInt(previewWallet.available_points)+8n);
+    expect(paidWallet.by_source.recharge).toEqual(previewWallet.by_source.recharge);
+    expect(paidWallet.by_source.gift).toEqual(previewWallet.by_source.gift);
+    expect(BigInt(paidWallet.by_source.winning.available)).toBe(BigInt(previewWallet.by_source.winning.available)+8n);
+    const paidOrder=await api<AdminBetOrder>(page.request,`${adminBase}/bet-orders/${previewOrder.id}`,"GET",reviewer);
+    expect(paidOrder).toMatchObject({status:"won",prize_points:"8",version:previewOrder.version+1});
+    const paidLedger=await api<{items:LedgerEntry[]}>(page.request,`${adminBase}/wallets/${memberId}/ledger?limit=100`,"GET",reviewer);
+    const prizes=paidLedger.items.filter(v=>v.entry_type==="prize"&&v.reference_id===paidOrder.settlement_calculation_id);
+    expect(prizes).toHaveLength(1);expect(prizes[0].id).toBe(paidOrder.payout_entry_id);
+    expect(prizes[0].before_snapshot).toEqual(previewWallet.by_source);
+    expect(prizes[0].after_snapshot).toEqual(paidWallet.by_source);
+    expect((await api<Period>(page.request,`${adminBase}/periods/${previewPeriodId}`,"GET",reviewer)).status).toBe("settled");
+    expect(await adminPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    await settlement.screenshot({path:info.outputPath("s5-c2-real-settlement-panel.png")});
+    await adminPage.screenshot({path:info.outputPath("s5-c2-real-settlement-page.png"),fullPage:true});
+    await page.goto(`${harborSite}/orders/${previewOrder.id}`);
+    await expect(page.getByTestId("order-detail")).toContainText("Prize points 8");
   } finally {
     await adminPage.close();
   }

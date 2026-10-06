@@ -272,3 +272,13 @@ S6-a 当前只实现提现规则配置，不建此订单表或产生提现积分
 - 提现：`(brand_id, brand_member_id, status)`。
 - 审计：`(brand_id, resource_type, resource_id, created_at)`。
 - 报表大表按时间分区；是否按品牌分区由压测决定。
+
+## S5-c2 已实现的正式结算持久化
+
+0022 新增 `brand_settlement_policies`（初始 null）及不可改写 `settlement_policy_history`。显式选择模式后才允许启动；历史政策通过品牌/版本复合键被任务引用。0023 追加派奖证据守卫，以整份 12 桶精确 delta、前后快照算术、账本上一版本/当前账户版本、实际余额桶和 points.prize 审计校验非零派奖；不完整 JSON/SQL NULL 一律拒绝。
+
+`settlement_jobs` 保存期次、当前 draw_result_id、启动后期次版本、政策版本/模式和创建人，普通结算每期最多一个。`settlement_targets` 固定当时全部注单，pending/ready/paid/excluded/failed，已排除和已应用不得重开。`settlement_calculations` 保存逐单购买快照版本/hash、结果 hash、完整精确 Simulation、中奖标记/整数金额，禁止修改/删除；`settlement_failures` 保存失败阶段、观察到的任务版本和安全错误码，不写敏感数据库错误。
+
+注单扩展 settlement_calculation_id、payout_entry_id、prize_points、settled_at；非结算状态这些字段为空/0。placed→won/lost 仅在 paying、期次结果匹配、有效计算及（非零时）中奖账本证据齐备时允许。账本只增加 winning.available、记录全部 12 桶前/后值；零额不建流水。人工异常与系统异常共用不可改写异常证据，source/system job_id/error_code 与 manual marked_by 互斥。
+
+worker 一事务一个目标或阶段转换；锁序 game→独占 period→job→wallet→order，不批量持有多会员钱包。取消/人工异常先 period→job，再 wallet/order，排除未入账目标并增加任务版本。SQL 延迟约束要求任务/目标计数及终态和期次一起提交；无任务不能直接推进 settling，未入账目标不能提前 settled。原取消/判定证据守卫继续保留。结果纠正的版本代次和派奖冲正另行设计，不覆盖旧计算或绕过终态守卫。

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
+	"github.com/gxfcjkxf/lottery/backend/internal/betting"
 	"github.com/gxfcjkxf/lottery/backend/internal/drawfeed"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
@@ -280,8 +281,24 @@ func TestManualDrawValidatesPeriodResultAndPreviousChronologicalDraw(t *testing.
 		if _, err := s.ManualDraw(ctx, tx, brand, a, settling.ID, settling.Version, settling.PeriodNo, digitDraw(4, 5, 6), now.Add(-time.Minute), "prepare settling period", points.Metadata{}); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `UPDATE periods SET status='settling',version=version+1,state_reason='settlement started' WHERE id=$1`, settling.ID)
-		return err
+		return nil
+	})
+	settler := a
+	settler.Roles[0].Permissions = append(settler.Roles[0].Permissions, access.Permission{Resource: "settlement_policy", Action: "write", Scope: access.ScopeBrand}, access.Permission{Resource: "settlement", Action: "run", Scope: access.ScopeBrand})
+	bs := betting.Service{DB: s.DB}
+	mode := "manual"
+	meta := points.Metadata{ActorType: "admin", ActorID: a.ID, RequestID: ids.New()}
+	transact(t, s.DB, func(tx pgx.Tx) error {
+		policy, e := bs.SaveSettlementPolicy(ctx, tx, brand, settler, betting.SettlementPolicyInput{Version: 1, Mode: &mode, Reason: "explicit draw test settlement"}, meta)
+		if e != nil {
+			return e
+		}
+		c, e := bs.PeriodSettlementContext(ctx, brand, settling.ID)
+		if e != nil {
+			return e
+		}
+		_, e = bs.StartSettlement(ctx, tx, brand, settler, settling.ID, betting.SettlementStartInput{Version: c.PeriodVersion, PolicyVersion: policy.Version, DrawResultID: *c.DrawResultID, Reason: "actual settlement admission"}, meta)
+		return e
 	})
 	tx, err = s.DB.Begin(ctx)
 	if err != nil {

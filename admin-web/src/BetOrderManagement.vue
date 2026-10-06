@@ -102,6 +102,9 @@ const amountRows = computed(() => {
     ["组合数", String(order.combination_count)],
     ["倍数", order.multiplier],
     ["总扣款", order.total_points],
+    ["已结算中奖积分", order.settled_at ? (order.prize_points ?? "0") : "未结算"],
+    ["结算核算 ID", order.settlement_calculation_id ?? "—"],
+    ["派奖账本 ID", order.payout_entry_id ?? "—"],
   ];
 });
 const preview = computed(() =>
@@ -115,6 +118,8 @@ function statusName(status: string) {
       abnormal: "异常注单",
       bet_cancelled: "投注取消",
       judged_cancelled: "判定取消",
+      won: "已中奖",
+      lost: "未中奖",
     }[status] ?? status
   );
 }
@@ -1001,7 +1006,7 @@ onUnmounted(() => {
                   ><b>{{ exception.order_version }}</b>
                 </div>
                 <div>
-                  <small>标记者 ID</small><b>{{ exception.marked_by }}</b>
+                  <small>标记来源 / 标记者</small><b>{{ exception.source === 'system' ? `系统核算 · ${exception.error_code}` : exception.marked_by }}</b>
                 </div>
                 <div>
                   <small>记录时间</small><b>{{ exception.created_at }}</b>

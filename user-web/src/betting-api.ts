@@ -110,6 +110,10 @@ export interface BetOrder {
   placed_at: string;
   cancelled_at?: string;
   cancel_reason?: string;
+  settlement_calculation_id?: string | null;
+  payout_entry_id?: string | null;
+  prize_points?: string;
+  settled_at?: string | null;
 }
 export interface BettingApiErrorEnvelope {
   code?: string;

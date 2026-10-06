@@ -114,9 +114,17 @@ func TestJudgmentPreservesDrawSnapshotAndRejectsSettlingPeriod(t *testing.T) {
 	if e != nil || history.Current == nil || history.Current.ID != draw.ID {
 		t.Fatal("individual judgment changed draw history")
 	}
-	if _, e = f.db.Exec(ctx, `UPDATE periods SET status='settling',version=version+1,state_reason='simulate actual settlement admission' WHERE id=$1`, p.ID); e != nil {
+	settler := settlementActor(f)
+	mode := "manual"
+	policy := setSettlementMode(t, f, settler, 1, &mode)
+	c, e := f.service.PeriodSettlementContext(ctx, f.brand, p.ID)
+	if e != nil {
 		t.Fatal(e)
 	}
+	bettingTx(t, f.db, func(tx pgx.Tx) error {
+		_, e := f.service.StartSettlement(ctx, tx, f.brand, settler, p.ID, SettlementStartInput{Version: c.PeriodVersion, PolicyVersion: policy.Version, DrawResultID: *c.DrawResultID, Reason: "actual settlement admission prevents direct judgment"}, policyMeta(settler.ID))
+		return e
+	})
 	tx, e = f.db.Begin(ctx)
 	if e != nil {
 		t.Fatal(e)

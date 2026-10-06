@@ -75,6 +75,10 @@ export interface AdminBetOrder {
   placed_at: string;
   cancelled_at?: string | null;
   cancel_reason?: string;
+  settlement_calculation_id?: string | null;
+  payout_entry_id?: string | null;
+  prize_points?: string;
+  settled_at?: string | null;
 }
 export interface BetException {
   id: string;
@@ -82,6 +86,9 @@ export interface BetException {
   order_id: string;
   order_version: number;
   marked_by: string;
+  source?: "manual" | "system";
+  job_id?: string | null;
+  error_code?: string | null;
   reason: string;
   created_at: string;
 }
@@ -486,7 +493,7 @@ export function createBetManagementApi(fetcher: typeof fetch = fetch) {
             nonempty(v.exception.brand_id) &&
             nonempty(v.exception.order_id) &&
             Number.isSafeInteger(v.exception.order_version) &&
-            nonempty(v.exception.marked_by) &&
+            (nonempty(v.exception.marked_by) || (v.exception.marked_by === "" && v.exception.source === "system" && nonempty(v.exception.job_id) && nonempty(v.exception.error_code))) &&
             typeof v.exception.reason === "string" &&
             nonempty(v.exception.created_at))
         )

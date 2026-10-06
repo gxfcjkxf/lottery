@@ -114,10 +114,10 @@ test("schedule revisions and generated periods persist without activating future
   });
   await generation
     .getByLabel("开始（彩种本地时间）", { exact: true })
-    .fill(new Date(draw.valueOf() - 3600 * 1000).toISOString().slice(0, 19));
+    .fill(new Date(draw.valueOf() - 3600 * 1000).toISOString().slice(0, 19).replace(/:00$/, ""));
   await generation
     .getByLabel("结束（彩种本地时间）", { exact: true })
-    .fill(new Date(draw.valueOf() + 3600 * 1000).toISOString().slice(0, 19));
+    .fill(new Date(draw.valueOf() + 3600 * 1000).toISOString().slice(0, 19).replace(/:00$/, ""));
   await generation
     .getByLabel("操作原因（必填）", { exact: true })
     .fill("future period reservation");

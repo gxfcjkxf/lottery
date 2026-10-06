@@ -20,16 +20,26 @@ type Exception struct {
 	OrderID      string    `json:"order_id"`
 	OrderVersion int64     `json:"order_version"`
 	MarkedBy     string    `json:"marked_by"`
+	Source       string    `json:"source"`
+	JobID        *string   `json:"job_id"`
+	ErrorCode    *string   `json:"error_code"`
 	Reason       string    `json:"reason"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
 func (s Service) Exception(ctx context.Context, brand, id string) (*Exception, error) {
-	if _, err := s.Order(ctx, brand, "", id); err != nil {
+	if !validIDs(brand, id) {
+		return nil, ErrInvalid
+	}
+	var exists bool
+	if err := s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM bet_orders WHERE brand_id=$1 AND id=$2)`, brand, id).Scan(&exists); err != nil {
 		return nil, err
 	}
+	if !exists {
+		return nil, ErrNotFound
+	}
 	var out Exception
-	err := s.DB.QueryRow(ctx, `SELECT id::text,brand_id::text,order_id::text,order_version,marked_by::text,reason,created_at FROM bet_order_exceptions WHERE brand_id=$1 AND order_id=$2`, brand, id).Scan(&out.ID, &out.BrandID, &out.OrderID, &out.OrderVersion, &out.MarkedBy, &out.Reason, &out.CreatedAt)
+	err := s.DB.QueryRow(ctx, `SELECT id::text,brand_id::text,order_id::text,order_version,coalesce(marked_by::text,''),reason,created_at,source,job_id::text,error_code FROM bet_order_exceptions WHERE brand_id=$1 AND order_id=$2`, brand, id).Scan(&out.ID, &out.BrandID, &out.OrderID, &out.OrderVersion, &out.MarkedBy, &out.Reason, &out.CreatedAt, &out.Source, &out.JobID, &out.ErrorCode)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -58,6 +68,10 @@ func (s Service) MarkAbnormal(ctx context.Context, tx pgx.Tx, brand string, a ac
 	if _, _, _, err = s.lockPeriod(ctx, tx, brand, o.PeriodID); err != nil {
 		return o, err
 	}
+	settlement, err := lockSettlementJob(ctx, tx, brand, o.PeriodID)
+	if err != nil {
+		return o, err
+	}
 	o, err = scanOrder(tx.QueryRow(ctx, `SELECT `+orderFields+` FROM bet_orders WHERE brand_id=$1 AND id=$2 FOR UPDATE`, brand, id))
 	if err != nil {
 		return o, err
@@ -78,6 +92,9 @@ func (s Service) MarkAbnormal(ctx context.Context, tx pgx.Tx, brand string, a ac
 		return o, err
 	}
 	if err = appendEvent(ctx, tx, o, "bet.order.abnormal"); err != nil {
+		return o, err
+	}
+	if err = excludeSettlementTarget(ctx, tx, settlement, o.ID); err != nil {
 		return o, err
 	}
 	_, err = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: a.ID, Action: "bet.mark_abnormal", ResourceType: "bet_order", ResourceID: o.ID, Reason: reason, RequestID: meta.RequestID, IP: meta.IP, Before: map[string]any{"version": version, "status": "placed"}, After: map[string]any{"version": o.Version, "status": o.Status, "exception_id": evidenceID}})

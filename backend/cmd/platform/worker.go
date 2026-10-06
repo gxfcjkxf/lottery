@@ -23,6 +23,10 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 	refundDone := make(chan struct{})
 	go func() { defer close(refundDone); runCancellationWorker(refundCtx, betting.Service{DB: db}, logger) }()
 	defer func() { stopRefund(); <-refundDone }()
+	settleCtx, stopSettle := context.WithCancel(ctx)
+	settleDone := make(chan struct{})
+	go func() { defer close(settleDone); runSettlementWorker(settleCtx, betting.Service{DB: db}, logger) }()
+	defer func() { stopSettle(); <-settleDone }()
 	inboxCtx, stopInbox := context.WithCancel(ctx)
 	inboxDone := make(chan struct{})
 	go func() { defer close(inboxDone); runNotificationWorker(inboxCtx, notification.Service{DB: db}, logger) }()
@@ -57,6 +61,24 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 				logger.Error("period transition failed", "error", e, "committed_transitions", n)
 			} else if n > 0 {
 				logger.Info("period transitions committed", "count", n)
+			}
+		}
+	}
+}
+
+func runSettlementWorker(ctx context.Context, service betting.Service, logger *slog.Logger) {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			run, cancel := context.WithTimeout(ctx, 10*time.Second)
+			n, e := service.ProcessSettlements(run, 20)
+			cancel()
+			if e != nil && ctx.Err() == nil {
+				logger.Error("settlement processing failed", "error", e, "committed_steps", n)
 			}
 		}
 	}

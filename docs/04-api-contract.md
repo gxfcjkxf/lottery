@@ -346,7 +346,7 @@ worker 当前调用 API/DOM 无网络 stub，只产生 no_data 尝试证据，�
 
 ### 期次和开奖（后续实现）
 
-来源与人工结果按上节接入；下表其余纠正、结算路由仍是未来设计，尚未注册。S5-c1 的核算预览使用独立路径，不冒充正式 settle 或 retry。
+来源与人工结果按上节接入；下表纠正/重开仍是未来设计。S5-c1 核算预览不入账；S5-c2 正式 settle、审批与 retry 的已实现合同见 4.2，旧 `/settlements/{id}/retry` 设计路径未注册。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -581,3 +581,27 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 - 外部开奖源请求可以重试；人工开奖和结果纠正不得自动重试。
 - 结算失败由运营人员手动触发重试；异常注单不进入普通重试。
 - 从库延迟时，写操作返回主库结果，前端在短时间内使用主库粘滞读取。
+
+## 4.2 S5-c2 正式期次结算与整数积分派奖
+
+均在 `/api/v1/admin`，要求真实后台会话、X-Brand-ID；读 `settlement.view.brand/platform`，模式读 `settlement_policy.view.brand/platform`。写分别要求 `settlement.run.brand`、`settlement.approve.brand`、`settlement.retry.brand`、`settlement_policy.write.brand`，超管禁止全部写。所有写带可信 Origin、幂等键、必填 reason（UTF-8 ≤500 字节），事务/幂等锁前后重新验证权限与会话，未知/重复字段拒绝。
+
+| 方法 | 路径 | 合同 |
+|---|---|---|
+| GET | /settlement-policy | `{brand_id,version,mode,updated_at}`；初始 v1、mode=null，不启用 |
+| PUT | /settlement-policy | `{version,mode:null\|automatic\|manual,reason}`；200，扁平下一版本政策及 audit_log_id；mode 字段不得省略 |
+| GET | /periods/{id}/settlement-context | 品牌/彩种/期次、期次版本/状态、draw_result_id、当前政策版本/模式、can_start |
+| POST | /periods/{id}/settle | `{version,policy_version,draw_result_id,reason}`；201 Job，要求 drawn、当前结果/政策和非空模式，原子锁定目标并转 settling |
+| GET | /periods/{id}/settlement | `{settlement:Job\|null}`，原始期次不存在返回 404 |
+| GET | /settlement-jobs/{id} | 实时 Job；不能以首次幂等写回执代表 worker 当前状态 |
+| POST | /settlement-jobs/{id}/approve | `{version,reason}`；manual 的 awaiting_approval→paying，200 Job |
+| POST | /settlement-jobs/{id}/retry | `{version,reason}`；仅 failed 重新进入保存的 processing/paying 阶段，200 Job；不重新核算 excluded 异常 |
+| GET | /settlement-jobs/{id}/targets?limit=20&offset=0 | `{brand_id,job_id,items,limit,offset,has_more}`，1..100，offset≤1000000 |
+
+Job 包含 `id,brand_id,game_id,period_id,draw_result_id,period_version,policy_version,mode,state,version,target_count,created_by,approved_by,reason,created_at,completed_at,last_error_code,pending_count,ready_count,paid_count,excluded_count,failed_count,prize_points,paid_points,can_retry`。nullable 字段明确返回 null。状态 processing→automatic paying / manual awaiting_approval；人工批准后 paying→completed，处理中任一目标存储/账本失败→failed。各状态计数之和等于目标数。金额汇总使用任意精度非负十进制字符串，单注金额为 int64 十进制字符串，禁止 Number/浮点汇总。
+
+Target 包含 `order_id,member_id,state,version,calculation_id,order_version,order_status,won,prize_points,payout_entry_id,error_code`。paid 代表结算已应用，不保证有非零账本；未中奖或零额中奖不创建零金额流水。异常/已取消为 excluded；已计算后被取消的计算证据仍保留，但不计入应付/已付汇总。未入账注单取消/人工标异常排除目标并增加任务版本，旧审批请求 409。
+
+每单核算保存购买时版本及完整精确计算。中奖仅增加 winning.available，同事务写账本前/后值、注单 won/lost、目标 paid、审计和 Outbox；稳定 operation_key 为 `settlement-payout:<calculation_id>`。全部 paid/excluded 才提交 Job completed 和期次 settled。系统核算异常写 `source=system,marked_by="",job_id,error_code`，人工异常仍为 source=manual；不把操作者伪装成系统异常的人工标记者。失败历史不可改写，worker 重启不自动重试失败。阶段转换/期次收尾失败也记录 job failed（失败证据 order_id=null）；若积分已入账，保留 paid/paid_points，人工重试仅收尾，不重新派奖。
+
+写幂等回执保存首次响应：启动回执 processing/v1、批准回执 paying/下一版可能早于当前服务器进度。同键异体 409；客户端验证匹配后必须 GET 读取实时结果。配置不会自动启动任务，也不改变已启动任务快照。仍不支持已派奖退款、已结算结果纠正/冲正或重开；不得把普通取消/重试当冲正接口。

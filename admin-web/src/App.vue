@@ -17,6 +17,7 @@ import DrawManagement from "./DrawManagement.vue";
 import BetOrderManagement from "./BetOrderManagement.vue";
 import BetPolicySettings from "./BetPolicySettings.vue";
 import PeriodCancellation from "./PeriodCancellation.vue";
+import SettlementManagement from "./SettlementManagement.vue";
 const RuleVersions = defineAsyncComponent(() => import("./RuleVersions.vue"));
 const WithdrawalPolicySettings = defineAsyncComponent(
   () => import("./WithdrawalPolicySettings.vue"),
@@ -724,7 +725,7 @@ const ledger = [
           ><b>交互演示 · 非生产环境</b
           ><span class="banner-copy">
             提现、域名主题及标为“演示”的页面不会写入后台。账号、成员、积分账本、认证设置和规则版本流程已接入真实
-            API。投注、期次计划和人工开奖也已接入；结算仍待实现。</span
+            API。投注、期次计划和人工开奖也已接入；整数积分结算须显式配置和启动，结果纠正回溯仍待实现。</span
           ></span
         ><button aria-label="关闭说明" @click="showDemoNotice = false">
           ×
@@ -1796,6 +1797,13 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '期次和开奖'" class="page-content">
+        <SettlementManagement
+          v-if="account && selectedBrandId"
+          :key="`settlement-${account.id}`"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
         <PeriodCancellation
           v-if="account && selectedBrandId"
           :key="`period-cancel-${account.id}`"

@@ -20,8 +20,14 @@ func previewActor(f bettingFixture) access.Account {
 	return a
 }
 func drawnFixtureOrder(t *testing.T) (bettingFixture, Order) {
+	return drawnFixtureSelectedOrder(t, nil)
+}
+func drawnFixtureSelectedOrder(t *testing.T, selection *rules.Selection) (bettingFixture, Order) {
 	t.Helper()
 	f := newBettingFixtureWithWindow(t, storeTestBrand, 2*time.Second, 2100*time.Millisecond)
+	if selection != nil {
+		f.input.Selection = *selection
+	}
 	ctx := context.Background()
 	fundBettingWallet(t, f, 100)
 	o, e := placeBettingOrder(t, f, f.input, "settlement-preview-order")

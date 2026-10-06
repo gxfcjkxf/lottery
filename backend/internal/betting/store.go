@@ -198,11 +198,11 @@ func (s Service) Preview(ctx context.Context, tx pgx.Tx, brand string, v identit
 	return quote(c, in, q), nil
 }
 
-const orderFields = `id::text,brand_id::text,global_user_id::text,brand_member_id::text,account_id::text,game_id::text,period_id::text,play_id::text,rule_version_id::text,definition_hash,definition_snapshot,status,version,selection_raw,selection_normalized,expanded_bets,unit_points,combination_count,multiplier,total_points,deduction_allocation,policy_snapshot,brand_policy_version,game_policy_version,debit_entry_id::text,coalesce(refund_entry_id::text,''),client_key,placed_at,cancelled_at,cancel_reason`
+const orderFields = `id::text,brand_id::text,global_user_id::text,brand_member_id::text,account_id::text,game_id::text,period_id::text,play_id::text,rule_version_id::text,definition_hash,definition_snapshot,status,version,selection_raw,selection_normalized,expanded_bets,unit_points,combination_count,multiplier,total_points,deduction_allocation,policy_snapshot,brand_policy_version,game_policy_version,debit_entry_id::text,coalesce(refund_entry_id::text,''),client_key,placed_at,cancelled_at,cancel_reason,settlement_calculation_id::text,payout_entry_id::text,prize_points,settled_at`
 
 func scanOrder(row pgx.Row) (o Order, e error) {
 	var def, raw, norm, expanded, alloc, policy []byte
-	e = row.Scan(&o.ID, &o.BrandID, &o.UserID, &o.MemberID, &o.AccountID, &o.GameID, &o.PeriodID, &o.PlayID, &o.RuleVersionID, &o.DefinitionHash, &def, &o.Status, &o.Version, &raw, &norm, &expanded, &o.UnitPoints, &o.CombinationCount, &o.Multiplier, &o.TotalPoints, &alloc, &policy, &o.PolicyVersions.Brand, &o.PolicyVersions.Game, &o.DebitEntryID, &o.RefundEntryID, &o.ClientKey, &o.PlacedAt, &o.CancelledAt, &o.CancelReason)
+	e = row.Scan(&o.ID, &o.BrandID, &o.UserID, &o.MemberID, &o.AccountID, &o.GameID, &o.PeriodID, &o.PlayID, &o.RuleVersionID, &o.DefinitionHash, &def, &o.Status, &o.Version, &raw, &norm, &expanded, &o.UnitPoints, &o.CombinationCount, &o.Multiplier, &o.TotalPoints, &alloc, &policy, &o.PolicyVersions.Brand, &o.PolicyVersions.Game, &o.DebitEntryID, &o.RefundEntryID, &o.ClientKey, &o.PlacedAt, &o.CancelledAt, &o.CancelReason, &o.SettlementCalculationID, &o.PayoutEntryID, &o.PrizePoints, &o.SettledAt)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return o, ErrNotFound
 	}
@@ -423,6 +423,10 @@ func (s Service) cancel(ctx context.Context, tx pgx.Tx, brand, member, id string
 	if e != nil {
 		return o, e
 	}
+	settlement, e := lockSettlementJob(ctx, tx, brand, o.PeriodID)
+	if e != nil {
+		return o, e
+	}
 	current, _, e := s.LockedPolicy(ctx, tx, brand, o.GameID)
 	if e != nil {
 		return o, e
@@ -462,7 +466,11 @@ func (s Service) cancel(ctx context.Context, tx pgx.Tx, brand, member, id string
 			return o, ErrClosed
 		}
 	}
-	return s.refundLocked(ctx, tx, o, "bet_cancelled", reason, meta)
+	o, e = s.refundLocked(ctx, tx, o, "bet_cancelled", reason, meta)
+	if e == nil {
+		e = excludeSettlementTarget(ctx, tx, settlement, o.ID)
+	}
+	return o, e
 }
 
 // Caller holds game/period, account and order locks. Both cancellation paths
