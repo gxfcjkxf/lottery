@@ -77,7 +77,7 @@ async function goToPeriods(page: Page, projectName: string) {
 }
 
 test("real Harbor winning settlement can be corrected, reversed, and manually resettled", async ({ page, context }, info) => {
-  test.setTimeout(45_000);
+  test.setTimeout(65_000);
   page.setDefaultTimeout(8_000);
   const pageErrors:string[]=[];
   page.on("pageerror",e=>pageErrors.push(e.message));
@@ -336,6 +336,47 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   await expect(deliveries.locator(".status-sent").first()).toBeVisible();
   expect(await adminPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await deliveries.screenshot({path:info.outputPath("s6-c-deliveries.png")});
+
+  if(info.project.name==="mobile") {
+    await adminPage.locator(".mobile-nav button").nth(4).click();
+    await adminPage.locator(".mobile-more-menu").getByRole("button",{name:/报表和对账/}).click();
+  } else await adminPage.locator(".side-nav").getByRole("button",{name:/报表和对账/}).click();
+  const reports=adminPage.locator(".reports-management");
+  await expect(reports.getByRole("heading",{name:"运营报表",exact:true})).toBeVisible();
+  const reportWindow=await adminPage.evaluate(()=>{
+    const format=(d:Date)=>{const p=(n:number)=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`};
+    return {from:format(new Date(Date.now()-3600000)),to:format(new Date(Date.now()+3600000))};
+  });
+  await reports.getByLabel("报表开始时间",{exact:true}).fill(reportWindow.from);
+  await reports.getByLabel("报表结束时间",{exact:true}).fill(reportWindow.to);
+  await reports.getByLabel("会员筛选 UUID",{exact:true}).fill(memberId);
+  await reports.getByLabel("彩种筛选 UUID",{exact:true}).fill(game.id);
+  await reports.getByLabel("投注分组",{exact:true}).selectOption("game");
+  await reports.getByRole("button",{name:"查询报表",exact:true}).click();
+  const betReport=reports.locator(".reports-panel").filter({has:adminPage.getByRole("heading",{name:"投注报表",exact:true})});
+  await expect(betReport.locator(".reports-summary>div").filter({hasText:"当前最终代次奖金"}).locator("strong")).toHaveText("0");
+  await expect(betReport.locator(".reports-summary>div").filter({hasText:"注单数"}).locator("strong")).toHaveText("1");
+  await expect(betReport.locator(".reports-summary>div").filter({hasText:"已结算投注"}).locator("strong")).toHaveText("1");
+  await expect(betReport.locator(".reports-context")).toContainText(game.id);
+  expect(await adminPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await betReport.screenshot({path:info.outputPath("s6-d-betting-report.png")});
+  // Draft changes do not silently alter the displayed cohort or a read-only refresh.
+  await reports.getByLabel("彩种筛选 UUID",{exact:true}).fill(brandId);
+  await reports.getByRole("button",{name:"只读刷新报表",exact:true}).click();
+  await expect(betReport.locator(".reports-context")).toContainText(game.id);
+  await reports.getByLabel("彩种筛选 UUID",{exact:true}).fill(game.id);
+  await reports.getByRole("button",{name:"账本报表",exact:true}).click();
+  await reports.getByLabel("账本分组",{exact:true}).selectOption("entry_type");
+  await reports.getByRole("button",{name:"查询报表",exact:true}).click();
+  const ledgerReport=reports.locator(".reports-panel").filter({has:adminPage.getByRole("heading",{name:"账本报表",exact:true})});
+  for(const [label,value] of [["派奖入账","10"],["派奖冲正","10"],["净变动","99"]]) {
+    await expect(ledgerReport.locator(".reports-summary>div").filter({has:adminPage.locator("span").filter({hasText:new RegExp(`^${label}$`)})}).locator("strong")).toHaveText(value);
+  }
+  await expect(ledgerReport.locator(".reports-balance")).toContainText("99");
+  expect(await adminPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await ledgerReport.screenshot({path:info.outputPath("s6-d-ledger-report.png")});
+  expect(await publicApi<Wallet>(page.request,"/wallet",userToken)).toEqual(finalWallet);
+  expect(await api<{items:LedgerEntry[]}>(page.request,`/wallets/${memberId}/ledger?limit=100`,"GET",creator)).toEqual(ledgerAfter);
   expect(pageErrors).toEqual([]);
   // Drain the host-preserving real fetch callback before fixture teardown. The
   // user shell can refresh /me concurrently when another tab restores a session.

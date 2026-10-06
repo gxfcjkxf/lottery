@@ -20,6 +20,7 @@ import PeriodCancellation from "./PeriodCancellation.vue";
 const SettlementManagement = defineAsyncComponent(() => import("./SettlementManagement.vue"));
 const CorrectionManagement = defineAsyncComponent(() => import("./CorrectionManagement.vue"));
 const NotificationDeliveries = defineAsyncComponent(() => import("./NotificationDeliveries.vue"));
+const ReportsManagement = defineAsyncComponent(() => import("./ReportsManagement.vue"));
 import { clearAllPendingDeliveryRetries } from "./notification-delivery-state";
 const RuleVersions = defineAsyncComponent(() => import("./RuleVersions.vue"));
 const WithdrawalPolicySettings = defineAsyncComponent(
@@ -691,6 +692,7 @@ const ledger = [
               page !== '用户和成员' &&
               page !== '审计日志' &&
               page !== '通知投递' &&
+              page !== '报表和对账' &&
               page !== '资金与账本' &&
               page !== '账号与权限'
             "
@@ -724,6 +726,7 @@ const ledger = [
           page !== '用户和成员' &&
           page !== '审计日志' &&
           page !== '通知投递' &&
+          page !== '报表和对账' &&
           page !== '资金与账本' &&
           page !== '注单和异常' &&
           page !== '账号与权限'
@@ -2242,97 +2245,11 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '报表和对账'" class="page-content">
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">ANALYTICS / RECONCILIATION</div>
-            <h1>报表和对账</h1>
-            <p>运营指标与账本差异检查 · 当前为静态演示快照</p>
-          </div>
-          <div class="heading-actions">
-            <select v-model="selectedRange" class="field">
-              <option>今日</option>
-              <option>近 7 天</option>
-              <option>近 30 天</option></select
-            ><button
-              class="button button-secondary"
-              @click="toast('报表文件导出完成（演示）')"
-            >
-              导出报表 ↓
-            </button>
-          </div>
-        </div>
-        <div class="metric-strip report-metrics">
-          <div>
-            <small>投注积分</small><b>892,460</b><span>↑ 12.4% 较上周期</span>
-          </div>
-          <div>
-            <small>派彩积分</small><b>648,220</b><span>派彩率 72.6%</span>
-          </div>
-          <div>
-            <small>充值积分</small><b>284,800</b><span>1,248 笔充值</span>
-          </div>
-          <div><small>提现积分</small><b>146,420</b><span>差异 0 分</span></div>
-        </div>
-        <div class="reports-grid">
-          <article class="panel report-chart">
-            <div class="panel-header">
-              <div>
-                <h2>投注与派彩趋势</h2>
-                <p>按日聚合 · 单位：积分</p>
-              </div>
-              <div class="legend">
-                <i></i>投注 <i class="legend-purple"></i>派彩
-              </div>
-            </div>
-            <div class="chart report-bars">
-              <div
-                class="bar-group"
-                v-for="(n, i) in [62, 76, 57, 86, 70, 94, 79]"
-                :key="i"
-              >
-                <div class="bars">
-                  <i :style="{ height: `${n}%` }"></i
-                  ><b :style="{ height: `${n * 0.68}%` }"></b>
-                </div>
-                <small>{{
-                  [
-                    "09/29",
-                    "09/30",
-                    "10/01",
-                    "10/02",
-                    "10/03",
-                    "10/04",
-                    "10/05",
-                  ][i]
-                }}</small>
-              </div>
-            </div>
-          </article>
-          <article class="panel reconcile-card">
-            <div class="panel-header">
-              <div>
-                <h2>账本对账</h2>
-                <p>最近一次检查</p>
-              </div>
-              <span class="badge badge-success">一致</span>
-            </div>
-            <div class="reconcile-amount">0 <small>分差异</small></div>
-            <div class="reconcile-line">
-              <span>积分账户余额</span><b>8,428,640</b>
-            </div>
-            <div class="reconcile-line">
-              <span>账本汇总余额</span><b>8,428,640</b>
-            </div>
-            <div class="reconcile-line">
-              <span>检查时间</span><b>10-05 10:32:18</b>
-            </div>
-            <button
-              class="button button-secondary full-button"
-              @click="toast('对账任务完成：未发现差异（演示）')"
-            >
-              ↻ 重新运行对账
-            </button>
-          </article>
+        <ReportsManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
+          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+        <div v-else class="panel directory-state"><h1>报表和对账</h1>
+          <p>{{ account ? '请先选择真实后台品牌。' : '请先登录后台账号，才能查看真实运营报表。' }}</p>
+          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">进入管理员登录</button>
         </div>
       </section>
 
@@ -2448,6 +2365,8 @@ const ledger = [
         ><span>{{
           page === "用户和成员" && account
             ? "成员创建与管理为真实操作；投注已接入，提现仍为演示。"
+            : page === "报表和对账" && account
+              ? "真实注单结果及账本流水；汇总余额不是完整逐账户对账证明。"
             : page === "通知投递" && account
               ? "真实站内通知投递记录；外部发送渠道尚未接入。"
             : page === "审计日志" && account

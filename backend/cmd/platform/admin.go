@@ -67,6 +67,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 		permissions = append(permissions, "bet.view.platform", "bet_policy.view.platform")
 		permissions = append(permissions, "withdrawal_policy.view.platform")
 		permissions = append(permissions, "notification.view.platform")
+		permissions = append(permissions, "report_betting.view.platform", "report_ledger.view.platform")
 		permissions = append(permissions, "settlement.view.platform")
 		permissions = append(permissions, "settlement_policy.view.platform")
 	} else {
@@ -79,6 +80,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 		permissions = append(permissions, "bet.judge_cancel.brand")
 		permissions = append(permissions, "withdrawal_policy.view.brand", "withdrawal_policy.write.brand")
 		permissions = append(permissions, "notification.view.brand", "notification.retry.brand")
+		permissions = append(permissions, "report_betting.view.brand", "report_ledger.view.brand")
 		permissions = append(permissions, "settlement.view.brand", "settlement.preview.brand")
 		permissions = append(permissions, "settlement.run.brand", "settlement.approve.brand", "settlement.retry.brand", "settlement_policy.view.brand", "settlement_policy.write.brand")
 		permissions = append(permissions, "draw.correct.brand", "draw.correction_retry.brand")

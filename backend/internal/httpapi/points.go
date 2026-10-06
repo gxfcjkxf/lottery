@@ -105,6 +105,7 @@ func pointAdminActor(w http.ResponseWriter, r *http.Request, d Dependencies, res
 	return a, brand, true
 }
 func registerPointAdminRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
+	registerReportAdminRoutes(handle, d)
 	registerPointSafetyRoutes(handle, d)
 	s := points.Store{DB: d.Admins.DB}
 	f := finance.Service{DB: d.Admins.DB, Points: s}

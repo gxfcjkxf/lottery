@@ -549,6 +549,27 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 
 尚未接入开奖受众/提现事件、外部渠道及运营模板编辑；不得伪造这些通知或把开奖结果展示当作中奖证据。
 
+## 4.4 S6-d 真实运营报表
+
+仅后台 GET，走主库；权限分离为 `report_betting.view.brand/platform`、`report_ledger.view.brand/platform`，平台范围仅超级管理员且须显式授予。新权限只自动补给对应服务器引导角色，自定义角色不扩权。成功查询写审计；审计失败返回503，不输出半份报表。
+
+| 方法 | 路径 | 分组与筛选 |
+|---|---|---|
+| GET | /admin/reports/betting | group_by=day/game/member，可选 game_id/member_id |
+| GET | /admin/reports/ledger | group_by=day/entry_type，可选 member_id；拒绝 game_id |
+
+两者必须传 RFC3339 `from/to`，半开区间 `[from,to)`，to>from 且不超过93天；limit 默认20、范围1–100，offset 默认0、最大1000000。未知/重复参数、空UUID或不适用分组均400；品牌内无此会员/彩种404，不能静默扩大范围。积分/计数聚合为规范十进制字符串，允许超过单账户int64；net_points 可以为负，其他金额/计数非负。
+
+公共返回 `{brand_id,snapshot_at,timezone,query:{from,to,group_by,limit,offset,game_id,member_id},summary,items:[{key,label,totals}],total_groups}`。query中无筛选的UUID为null；snapshot_at是数据库语句时间，timezone是品牌分组时区。每个响应的汇总/分组/分页总数来自同一SQL语句快照；两个端点是独立快照，不宣称跨端点原子月结。day键按品牌时区，game键为彩种UUID、label为当前彩种名；member仅UUID，无用户私密资料。分页按key稳定排序，不输出伪增长或利润率。
+
+投注 totals 字段：`order_count,stake_points,placed_count,won_count,lost_count,abnormal_count,cancelled_count,refund_points,settled_stake_points,unfinalized_stake_points,abnormal_stake_points,current_prize_points,correction_open_count`。时间按原注单 placed_at（不是结算时间）；取消包括投注取消/判定取消，退款取有原refund引用的全额投注。最终投注/奖金仅计 period已结算、当前job已完成且注单计算属于此代次、没有未完成更正的won/lost；更正中旧已付不冒充最终结果。未完成投注包含placed及非最终won/lost，不含取消/异常。金额分区：总投注=已最终结算投注+未完成投注+异常投注+已退回投注。correction_open_count是涉及未完成更正的注单数，不是期次数。更正可更新旧时间区间的实时统计，不等于不可变日/月结凭证；这里不是提现/代理有效流水资格算法。
+
+账本 totals 字段：`entry_count,net_points,recharge_points,prize_credit_points,prize_reversal_points,refund_points`。时间按实际ledger.created_at，net为全部12桶delta之和；冻结/解冻状态转移净值0，prize/prize_reversal正负分别保留，不能累计历史paid代次替代净变动。另返回 `balances:{account_count,available_points,frozen_points,withdrawal_points,total_points}`，是同语句快照的当前品牌/会员桶汇总，不受from/to限制，也不是全链对账“一致”证明。完整单会员对账仍使用钱包reconciliation接口。
+
+客户端校验品牌、回显筛选、精确整数及金额/状态分区；日期按精确纳秒时间值比较，允许等价UTC/时区或尾零格式，拒绝真实边界变化。服务端按PostgreSQL微秒网格将两个边界向上取整，保持原半开区间语义；不让驱动截断纳秒改变结果。旧结果在新筛选请求发起时清除，失败/401/跨品牌切换不能保留旧数据冒充新范围。草稿不改变已显示范围，只读刷新使用已提交条件。
+
+暂不实现提现/佣金/奖励报表、代理分组、不可变日月结、导出及大规模异步全链对账；这些随真实业务模块与S7接入，不能据此宣称EPIC-11整体完成。
+
 ## 5. 错误码
 
 至少定义以下稳定错误码：
