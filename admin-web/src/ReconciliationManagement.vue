@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { useAdminI18n } from "./i18n";
+import type { LocalizedMessage } from "@lottery/shared";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import {
   createReconciliationApi, reconciliationPermissions,
@@ -15,6 +17,7 @@ const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const PAGE_SIZE = 20;
 const api = createReconciliationApi();
+const { t, message } = useAdminI18n();
 const rights = computed(() => reconciliationPermissions(props.account, props.brandId));
 const jobs = ref<ReconciliationJob[]>([]), jobTotal = ref("0"), offset = ref(0);
 const job = ref<ReconciliationJob | null>(null), receipt = ref<ReconciliationJob | null>(null);
@@ -24,7 +27,7 @@ const reason = ref(""), retryReason = ref("");
 const review = ref<PendingReconciliationWrite | null>(null), confirmed = ref(false);
 const pendingCreate = ref<PendingReconciliationWrite | null>(null), pendingRetries = ref<PendingReconciliationWrite[]>([]);
 const loading = ref(false), detailLoading = ref(false), targetLoading = ref(false), writing = ref(false);
-const listError = ref(""), detailError = ref(""), targetError = ref(""), writeError = ref(""), notice = ref("");
+const listError = ref<string | LocalizedMessage>(""), detailError = ref<string | LocalizedMessage>(""), targetError = ref<string | LocalizedMessage>(""), writeError = ref<string | LocalizedMessage>(""), notice = ref<string | LocalizedMessage>("");
 let alive = true, listTicket = 0, detailTicket = 0, targetTicket = 0, writeTicket = 0;
 
 const permissionScope = computed(() => JSON.stringify([props.account.id, props.account.super_admin, props.account.brand_ids,
@@ -71,7 +74,7 @@ async function loadList(next = offset.value) {
     if (job.value && !page.items.some((item) => item.id === job.value?.id)) void loadJob(job.value.id);
     return true;
   } catch (problem) {
-    if (current(ticket, "list", captured, generation)) listError.value = message(problem);
+    if (current(ticket, "list", captured, generation)) listError.value = readFailure(problem);
     return false;
   } finally { if (current(ticket, "list", captured, generation)) loading.value = false; }
 }
@@ -85,7 +88,7 @@ async function loadTargets(next = 0) {
     if (!current(ticket, "targets", captured, generation) || !job.value || job.value.id !== id) return false;
     targets.value = page.items; targetTotal.value = page.total_count; targetOffset.value = page.offset; return true;
   } catch (problem) {
-    if (current(ticket, "targets", captured, generation) && job.value?.id === id) targetError.value = message(problem);
+    if (current(ticket, "targets", captured, generation) && job.value?.id === id) targetError.value = readFailure(problem);
     return false;
   } finally { if (current(ticket, "targets", captured, generation)) targetLoading.value = false; }
 }
@@ -97,13 +100,13 @@ async function loadJob(id: string) {
     if (!current(ticket, "detail", captured, generation)) return false;
     job.value = value; refreshPending(); await loadTargets(0); return true;
   } catch (problem) {
-    if (current(ticket, "detail", captured, generation)) detailError.value = message(problem);
+    if (current(ticket, "detail", captured, generation)) detailError.value = readFailure(problem);
     return false;
   } finally { if (current(ticket, "detail", captured, generation)) detailLoading.value = false; }
 }
-function message(problem: unknown): string {
-  if (problem instanceof AdminApiError && problem.status === 0) return "网络或响应不可用，当前状态尚未读取。可稍后重新读取。";
-  return problem instanceof Error ? problem.message : "请求失败。";
+function readFailure(problem: unknown): string | LocalizedMessage {
+  if (problem instanceof AdminApiError && problem.status === 0) return message("网络或响应不可用，当前状态尚未读取。可稍后重新读取。", "The network or response is unavailable; the current state has not been read. Reload it later.");
+  return problem instanceof Error ? problem.message : message("请求失败。", "Request failed.");
 }
 function validReasonText(value: string): boolean {
   if (value.trim() !== value || value.length === 0 || new TextEncoder().encode(value).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
@@ -151,7 +154,7 @@ async function submit(intent: PendingReconciliationWrite) {
       : await api.retry(intent.brandId, intent.jobId!, intent.body as { version: number; reason: string }, intent.key, previous);
     if (!currentWrite(ticket, capturedPermission, generation)) return;
     clearPendingReconciliationWrite(intent, intent.key);
-    receipt.value = result; notice.value = "服务器已确认原始回执。正在独立读取当前任务状态。"; refreshPending();
+    receipt.value = result; notice.value = message("服务器已确认原始回执。正在独立读取当前任务状态。", "The server confirmed the original receipt. Reading the current job state independently."); refreshPending();
     // Receipt is immutable evidence of this request; current state is a separate read.
     job.value = result;
     await Promise.all([loadJob(result.id), loadList(offset.value)]);
@@ -163,12 +166,13 @@ async function submit(intent: PendingReconciliationWrite) {
     const failure = classifyReconciliationWriteFailure(problem instanceof AdminApiError ? problem.status : undefined);
     if (failure === "unknown") {
       if (currentWrite(ticket, capturedPermission, generation)) {
-        setPendingReconciliationWrite(intent, intent); refreshPending(); writeError.value = "写入结果未知。原请求体和幂等键已保留；只读读取不能确认或清除此操作。请显式重试同一请求。";
+        setPendingReconciliationWrite(intent, intent); refreshPending(); writeError.value = message("写入结果未知。原请求体和幂等键已保留；只读读取不能确认或清除此操作。请显式重试同一请求。", "The write result is unknown. The original body and idempotency key are retained; read-only requests cannot confirm or clear this operation. Explicitly replay the same request.");
       }
     } else {
       if (currentWrite(ticket, capturedPermission, generation)) {
         clearPendingReconciliationWrite(intent, intent.key); refreshPending();
-        writeError.value = `服务器明确拒绝此请求。${message(problem)} 请读取最新状态后再创建新请求。`;
+        const detail = problem instanceof Error ? problem.message : "";
+        writeError.value = message("服务器明确拒绝此请求。{detail} 请读取最新状态后再创建新请求。", "The server rejected this request. {detail} Read the latest state before creating another request.", { detail });
       }
     }
   } finally { if (currentWrite(ticket, capturedPermission, generation)) writing.value = false; }
@@ -182,7 +186,10 @@ function selectJob(id: string) { receipt.value = null; void loadJob(id); }
 function setOutcome(value: string) { outcomeFilter.value = value as ReconciliationOutcome | ""; void loadTargets(0); }
 function pageList(delta: number) { if (!loading.value) void loadList(Math.max(0, offset.value + delta * PAGE_SIZE)); }
 function pageTargets(delta: number) { if (!targetLoading.value) void loadTargets(Math.max(0, targetOffset.value + delta * PAGE_SIZE)); }
-function statusLabel(value: string) { return ({ pending: "待处理", running: "执行中", completed: "已完成", failed: "失败", checked: "已检查", consistent: "一致", repairable: "可修复", corrupt: "异常" } as Record<string, string>)[value] ?? value; }
+function statusLabel(value: string) {
+  const labels: Record<string, [string, string]> = { pending: ["待处理", "Pending"], running: ["执行中", "Running"], completed: ["已完成", "Completed"], failed: ["失败", "Failed"], checked: ["已检查", "Checked"], consistent: ["一致", "Consistent"], repairable: ["可修复", "Repairable"], corrupt: ["异常", "Corrupt"] };
+  return Object.prototype.hasOwnProperty.call(labels, value) ? t(...labels[value]) : value;
+}
 function short(value: string) { return `${value.slice(0, 8)}…${value.slice(-4)}`; }
 function json(value: unknown) { return JSON.stringify(value, null, 2); }
 function onOutcomeChange(event: Event) { setOutcome((event.target as HTMLSelectElement).value); }
@@ -196,73 +203,73 @@ onBeforeUnmount(() => { alive = false; listTicket++; detailTicket++; targetTicke
 <template>
   <main class="recon" aria-labelledby="recon-title">
     <header class="recon-head">
-      <div><p class="eyebrow">WALLET CONTROL</p><h1 id="recon-title">余额对账任务</h1><p class="sub">按任务提交时的账户范围记录历史观察结果；不会自动修复钱包或声称资金操作成功。</p></div>
-      <button class="quiet" :disabled="loading || !rights.view" @click="loadList(offset)">刷新任务</button>
+      <div><p class="eyebrow">WALLET CONTROL</p><h1 id="recon-title">{{ t("余额对账任务", "Wallet reconciliation jobs") }}</h1><p class="sub">{{ t("按任务提交时的账户范围记录历史观察结果；不会自动修复钱包或声称资金操作成功。", "Record historical observations for the account scope captured at submission. This does not automatically repair wallets or confirm financial operations.") }}</p></div>
+      <button class="quiet" :disabled="loading || !rights.view" @click="loadList(offset)">{{ t("刷新任务", "Refresh jobs") }}</button>
     </header>
-    <p v-if="notice" class="notice" role="status">{{ notice }}</p>
-    <p v-if="writeError" class="error write-error" role="alert">{{ writeError }}</p>
+    <p v-if="notice" class="notice" role="status">{{ t(notice) }}</p>
+    <p v-if="writeError" class="error write-error" role="alert">{{ t(writeError) }}</p>
 
-    <section v-if="!rights.view" class="panel muted-panel">当前账号没有查看此品牌钱包对账的权限。</section>
+    <section v-if="!rights.view" class="panel muted-panel">{{ t("当前账号没有查看此品牌钱包对账的权限。", "This account cannot view wallet reconciliation for this brand.") }}</section>
 
     <template v-else>
       <section v-if="receipt" class="panel receipt-panel" role="status">
-        <div class="section-title"><div><h2>服务器已确认请求回执</h2><p>这是该次写入返回的原始回执；当前任务状态会通过独立只读读取更新。</p></div><span class="tag">回执 v{{ receipt.version }}</span></div>
-        <p>任务 {{ receipt.id }} · {{ statusLabel(receipt.state) }} · 范围 {{ receipt.target_count }} 个账户 · 待处理 {{ receipt.pending_count }}</p>
+        <div class="section-title"><div><h2>{{ t("服务器已确认请求回执", "Server-confirmed request receipt") }}</h2><p>{{ t("这是该次写入返回的原始回执；当前任务状态会通过独立只读读取更新。", "This is the original receipt returned by this write. Current job state is updated through separate read-only requests.") }}</p></div><span class="tag">{{ t("回执 v", "Receipt v") }}{{ receipt.version }}</span></div>
+        <p>{{ t("任务", "Job") }} {{ receipt.id }} · {{ statusLabel(receipt.state) }} {{ t("· 范围", "· Scope") }} {{ receipt.target_count }} {{ t("个账户 · 待处理", "accounts · Pending") }} {{ receipt.pending_count }}</p>
       </section>
       <section class="panel create-panel">
-        <div class="section-title"><div><h2>提交当前品牌检查</h2><p>任务范围在创建时捕获；最多 100,000 个账户。超限或已有活动任务时，服务器不会创建任务。</p></div><span class="tag">只读检查</span></div>
-        <label class="field">操作原因<textarea v-model="reason" aria-label="操作原因" aria-describedby="recon-reason-count" maxlength="500" rows="2" placeholder="说明为什么需要检查"></textarea><small id="recon-reason-count">{{ reasonByteLength }} / 500 bytes</small></label>
-        <div class="actions"><button class="primary" :disabled="!canCreate" @click="beginReview(selectedForCreate())">检查并确认提交</button><span v-if="!rights.run" class="sub">此账号只能查看。</span></div>
+        <div class="section-title"><div><h2>{{ t("提交当前品牌检查", "Submit current-brand check") }}</h2><p>{{ t("任务范围在创建时捕获；最多 100,000 个账户。超限或已有活动任务时，服务器不会创建任务。", "The account scope is captured at creation, with a maximum of 100,000 accounts. The server does not create a job if this limit is exceeded or another job is active.") }}</p></div><span class="tag">{{ t("只读检查", "Read-only check") }}</span></div>
+        <label class="field">{{ t("操作原因", "Reason for operation") }}<textarea v-model="reason" :aria-label="t('操作原因', 'Reason for operation')" aria-describedby="recon-reason-count" maxlength="500" rows="2" :placeholder="t('说明为什么需要检查', 'Explain why the check is needed')"></textarea><small id="recon-reason-count">{{ reasonByteLength }} / 500 bytes</small></label>
+        <div class="actions"><button class="primary" :disabled="!canCreate" @click="beginReview(selectedForCreate())">{{ t("检查并确认提交", "Review and confirm submission") }}</button><span v-if="!rights.run" class="sub">{{ t("此账号只能查看。", "This account has read-only access.") }}</span></div>
       </section>
 
       <section v-if="pendingCreate || pendingRetries.length" class="panel pending-panel" aria-live="polite">
-        <div class="section-title"><div><h2>尚未确定的写入</h2><p>即使任务列表或详情不可用，冻结的请求仍可从此处恢复。</p></div><span class="tag warning">{{ writing ? "正在发送，等待回执" : "结果未知 / 待重放" }}</span></div>
-        <article v-if="pendingCreate" class="pending-item"><b>创建当前品牌任务</b><code>{{ pendingCreate.key }}</code><p>原因：{{ pendingCreate.body.reason }}</p><button class="primary" :disabled="writing" @click="confirmRecovery(pendingCreate)">确认并重放原创建请求</button></article>
-        <article v-for="intent in pendingRetries" :key="intent.key" class="pending-item"><b>重试任务 {{ short(intent.jobId!) }}</b><code>{{ intent.key }}</code><p>版本 v{{ retryVersion(intent) }} · {{ intent.body.reason }}</p><button class="primary" :disabled="writing" @click="confirmRecovery(intent)">确认并重放原重试请求</button></article>
+        <div class="section-title"><div><h2>{{ t("尚未确定的写入", "Unconfirmed writes") }}</h2><p>{{ t("即使任务列表或详情不可用，冻结的请求仍可从此处恢复。", "Frozen requests can be recovered here even when the job list or details are unavailable.") }}</p></div><span class="tag warning">{{ writing ? t("正在发送，等待回执", "Sending; awaiting receipt") : t("结果未知 / 待重放", "Unknown outcome / replay required") }}</span></div>
+        <article v-if="pendingCreate" class="pending-item"><b>{{ t("创建当前品牌任务", "Create current-brand job") }}</b><code>{{ pendingCreate.key }}</code><p>{{ t("原因：", "Reason:") }}{{ pendingCreate.body.reason }}</p><button class="primary" :disabled="writing" @click="confirmRecovery(pendingCreate)">{{ t("确认并重放原创建请求", "Confirm and replay original creation") }}</button></article>
+        <article v-for="intent in pendingRetries" :key="intent.key" class="pending-item"><b>{{ t("重试任务", "Retry job") }} {{ short(intent.jobId!) }}</b><code>{{ intent.key }}</code><p>{{ t("版本 v", "Version v") }}{{ retryVersion(intent) }} · {{ intent.body.reason }}</p><button class="primary" :disabled="writing" @click="confirmRecovery(intent)">{{ t("确认并重放原重试请求", "Confirm and replay original retry") }}</button></article>
       </section>
 
       <div class="columns">
         <section class="panel jobs-panel">
-          <div class="section-title"><div><h2>任务记录</h2><p>{{ jobTotal }} 条记录</p></div><span v-if="loading" class="tag">读取中</span></div>
-          <p v-if="listError" class="error" role="alert">{{ listError }}</p>
-          <div v-if="!loading && !listError && jobs.length === 0" class="empty">暂无对账任务。</div>
+          <div class="section-title"><div><h2>{{ t("任务记录", "Job records") }}</h2><p>{{ jobTotal }} {{ t("条记录", "records") }}</p></div><span v-if="loading" class="tag">{{ t("读取中", "Loading") }}</span></div>
+          <p v-if="listError" class="error" role="alert">{{ t(listError) }}</p>
+          <div v-if="!loading && !listError && jobs.length === 0" class="empty">{{ t("暂无对账任务。", "No reconciliation jobs.") }}</div>
           <div v-for="item in jobs" :key="item.id" class="job-row" :class="{ selected: job?.id === item.id }">
-            <button class="job-select" :aria-label="`查看对账任务 ${item.id}`" @click="selectJob(item.id)"><span class="job-title">{{ short(item.id) }} <i :class="['state', item.state]">{{ statusLabel(item.state) }}</i></span><span class="sub">{{ item.created_at }} · v{{ item.version }}</span><span class="sub">{{ item.checked_count }} / {{ item.target_count }} 已检查 · {{ item.pending_count }} 待处理</span></button>
+            <button class="job-select" :aria-label="t('查看对账任务 {id}', 'View reconciliation job {id}', { id: item.id })" @click="selectJob(item.id)"><span class="job-title">{{ short(item.id) }} <i :class="['state', item.state]">{{ statusLabel(item.state) }}</i></span><span class="sub">{{ item.created_at }} · v{{ item.version }}</span><span class="sub">{{ item.checked_count }} / {{ item.target_count }} {{ t("已检查 ·", "checked ·") }} {{ item.pending_count }} {{ t("待处理", "Pending") }}</span></button>
           </div>
-          <div class="pager"><button class="quiet" :disabled="loading || offset <= 0" @click="pageList(-1)">上一页</button><span>{{ Math.floor(offset / PAGE_SIZE) + 1 }} / {{ totalJobPages }}</span><button class="quiet" :disabled="loading || offset + PAGE_SIZE >= Number(jobTotal)" @click="pageList(1)">下一页</button></div>
+          <div class="pager"><button class="quiet" :disabled="loading || offset <= 0" @click="pageList(-1)">{{ t("上一页", "Previous") }}</button><span>{{ Math.floor(offset / PAGE_SIZE) + 1 }} / {{ totalJobPages }}</span><button class="quiet" :disabled="loading || offset + PAGE_SIZE >= Number(jobTotal)" @click="pageList(1)">{{ t("下一页", "Next") }}</button></div>
         </section>
 
         <section class="panel detail-panel">
           <template v-if="job || detailLoading || detailError">
-            <div class="section-title"><div><h2>任务详情</h2><p v-if="job">{{ job.id }}</p></div><span v-if="detailLoading" class="tag">读取中</span></div>
-            <p v-if="detailError" class="error" role="alert">当前任务状态读取失败：{{ detailError }}</p>
+            <div class="section-title"><div><h2>{{ t("任务详情", "Job details") }}</h2><p v-if="job">{{ job.id }}</p></div><span v-if="detailLoading" class="tag">{{ t("读取中", "Loading") }}</span></div>
+            <p v-if="detailError" class="error" role="alert">{{ t("当前任务状态读取失败：", "Could not read the current job state:") }}{{ t(detailError) }}</p>
             <template v-if="job">
-              <div class="stats"><div><b>{{ job.target_count }}</b><span>范围账户</span></div><div><b>{{ job.checked_count }}</b><span>已检查</span></div><div><b>{{ job.pending_count }}</b><span>待处理</span></div><div><b>{{ job.failed_count }}</b><span>检查失败</span></div></div>
-              <div class="metrics"><span>一致 <b>{{ job.consistent_count }}</b></span><span>可修复 <b>{{ job.repairable_count }}</b></span><span>异常 <b>{{ job.corrupt_count }}</b></span></div>
-              <dl class="facts"><dt>状态 / 版本</dt><dd>{{ statusLabel(job.state) }} · v{{ job.version }}</dd><dt>提交人</dt><dd>{{ job.created_by }}</dd><dt>创建时间</dt><dd>{{ job.created_at }}</dd><dt>开始时间</dt><dd>{{ job.started_at ?? "尚未开始" }}</dd><dt>完成时间</dt><dd>{{ job.completed_at ?? "尚未完成" }}</dd><dt>原因</dt><dd>{{ job.reason }}</dd><dt>创建审计记录</dt><dd>{{ job.creation_audit_log_id }}</dd><dt>最近错误</dt><dd>{{ job.last_error_code ?? "无" }}</dd></dl>
-              <div v-if="job.state === 'failed' && job.can_retry" class="retry-box"><h3>重试失败任务</h3><p>已检查账户保留原观察结果；失败账户重置为待处理。提交使用当前已读版本 v{{ job.version }}。</p><label class="field">重试原因<textarea v-model="retryReason" maxlength="500" rows="2"></textarea></label><button class="primary" :disabled="!canRetry" @click="beginReview(selectedForRetry())">检查并确认重试</button></div>
-              <div class="targets-head"><div><h3>账户检查结果</h3><p>{{ targetTotal }} 条{{ outcomeFilter ? ` · ${statusLabel(outcomeFilter)}` : "" }}</p></div><label>结果筛选<select aria-label="结果筛选" :value="outcomeFilter" @change="onOutcomeChange"><option value="">全部</option><option value="pending">待处理</option><option value="failed">检查失败</option><option value="consistent">一致</option><option value="repairable">可修复</option><option value="corrupt">异常</option></select></label></div>
-              <p v-if="targetError" class="error" role="alert">{{ targetError }}</p><p v-if="targetLoading" class="sub">正在读取账户结果…</p>
-              <div v-if="!targetLoading && !targetError && targets.length === 0" class="empty">此筛选下没有账户记录。</div>
+              <div class="stats"><div><b>{{ job.target_count }}</b><span>{{ t("范围账户", "Accounts in scope") }}</span></div><div><b>{{ job.checked_count }}</b><span>{{ t("已检查", "Checked") }}</span></div><div><b>{{ job.pending_count }}</b><span>{{ t("待处理", "Pending") }}</span></div><div><b>{{ job.failed_count }}</b><span>{{ t("检查失败", "Check failed") }}</span></div></div>
+              <div class="metrics"><span>{{ t("一致", "Consistent") }} <b>{{ job.consistent_count }}</b></span><span>{{ t("可修复", "Repairable") }} <b>{{ job.repairable_count }}</b></span><span>{{ t("异常", "Corrupt") }} <b>{{ job.corrupt_count }}</b></span></div>
+              <dl class="facts"><dt>{{ t("状态 / 版本", "State / version") }}</dt><dd>{{ statusLabel(job.state) }} · v{{ job.version }}</dd><dt>{{ t("提交人", "Submitted by") }}</dt><dd>{{ job.created_by }}</dd><dt>{{ t("创建时间", "Created at") }}</dt><dd>{{ job.created_at }}</dd><dt>{{ t("开始时间", "Started at") }}</dt><dd>{{ job.started_at ?? t("尚未开始", "Not started") }}</dd><dt>{{ t("完成时间", "Completed at") }}</dt><dd>{{ job.completed_at ?? t("尚未完成", "Not completed") }}</dd><dt>{{ t("原因", "Reason") }}</dt><dd>{{ job.reason }}</dd><dt>{{ t("创建审计记录", "Creation audit record") }}</dt><dd>{{ job.creation_audit_log_id }}</dd><dt>{{ t("最近错误", "Last error") }}</dt><dd>{{ job.last_error_code ?? t("无", "None") }}</dd></dl>
+              <div v-if="job.state === 'failed' && job.can_retry" class="retry-box"><h3>{{ t("重试失败任务", "Retry failed job") }}</h3><p>{{ t("已检查账户保留原观察结果；失败账户重置为待处理。提交使用当前已读版本 v", "Checked accounts retain their original observations. Failed accounts are reset to pending. Submit with the current read version v") }}{{ job.version }}。</p><label class="field">{{ t("重试原因", "Retry reason") }}<textarea v-model="retryReason" maxlength="500" rows="2"></textarea></label><button class="primary" :disabled="!canRetry" @click="beginReview(selectedForRetry())">{{ t("检查并确认重试", "Review and confirm retry") }}</button></div>
+              <div class="targets-head"><div><h3>{{ t("账户检查结果", "Account check results") }}</h3><p>{{ targetTotal }} {{ t("条", "records") }}{{ outcomeFilter ? ` · ${statusLabel(outcomeFilter)}` : "" }}</p></div><label>{{ t("结果筛选", "Filter results") }}<select :aria-label="t('结果筛选', 'Filter results')" :value="outcomeFilter" @change="onOutcomeChange"><option value="">{{ t("全部", "All") }}</option><option value="pending">{{ t("待处理", "Pending") }}</option><option value="failed">{{ t("检查失败", "Check failed") }}</option><option value="consistent">{{ t("一致", "Consistent") }}</option><option value="repairable">{{ t("可修复", "Repairable") }}</option><option value="corrupt">{{ t("异常", "Corrupt") }}</option></select></label></div>
+              <p v-if="targetError" class="error" role="alert">{{ t(targetError) }}</p><p v-if="targetLoading" class="sub">{{ t("正在读取账户结果…", "Loading account results…") }}</p>
+              <div v-if="!targetLoading && !targetError && targets.length === 0" class="empty">{{ t("此筛选下没有账户记录。", "No accounts match this filter.") }}</div>
               <article v-for="item in targets" :key="item.id" class="target-card">
-                <div class="target-title"><span><b>{{ item.member_id }}</b><small>账户 {{ item.account_id }}</small></span><i :class="['state', item.outcome ?? item.state]">{{ statusLabel(item.outcome ?? item.state) }}</i></div>
-                <p class="sub">尝试 {{ item.attempt_count }} 次 · {{ item.checked_at ?? "未检查" }} · {{ item.error_code ?? "无错误" }}</p>
-                <details v-if="item.preview"><summary>查看此任务保存的只读余额观察快照</summary><p class="sub">这是任务检查时观察到的历史数据。需要处理差异时，请前往「资金与账本」中的「余额差错处理」，重新获取实时预览后单独确认。</p><div class="preview-grid"><div><h4>观察到的余额（稀疏实际值）</h4><pre>{{ json(item.preview.actual) }}</pre></div><div><h4>流水期望余额</h4><pre>{{ json(item.preview.expected) }}</pre></div></div><p>钱包版本 {{ item.preview.version }} · 流水版本 {{ item.preview.ledger_version }} · {{ item.preview.consistent ? "一致" : item.preview.repairable ? "可修复" : "存在异常" }}</p><ul v-if="item.preview.issues.length"><li v-for="issue in item.preview.issues" :key="issue">{{ issue }}</li></ul></details>
+                <div class="target-title"><span><b>{{ item.member_id }}</b><small>{{ t("账户", "Account") }} {{ item.account_id }}</small></span><i :class="['state', item.outcome ?? item.state]">{{ statusLabel(item.outcome ?? item.state) }}</i></div>
+                <p class="sub">{{ t("尝试", "Attempts") }} {{ item.attempt_count }} {{ t("次 ·", "·") }} {{ item.checked_at ?? t("未检查", "Not checked") }} · {{ item.error_code ?? t("无错误", "No error") }}</p>
+                <details v-if="item.preview"><summary>{{ t("查看此任务保存的只读余额观察快照", "View this job’s saved read-only balance snapshot") }}</summary><p class="sub">{{ t("这是任务检查时观察到的历史数据。需要处理差异时，请前往「资金与账本」中的「余额差错处理」，重新获取实时预览后单独确认。", "This is historical data observed when the job checked the account. To handle a difference, open Balance repair in Funds and ledger, obtain a fresh preview, and confirm separately.") }}</p><div class="preview-grid"><div><h4>{{ t("观察到的余额（稀疏实际值）", "Observed balance (sparse actual values)") }}</h4><pre>{{ json(item.preview.actual) }}</pre></div><div><h4>{{ t("流水期望余额", "Expected ledger balance") }}</h4><pre>{{ json(item.preview.expected) }}</pre></div></div><p>{{ t("钱包版本", "Wallet version") }} {{ item.preview.version }} {{ t("· 流水版本", "· Ledger version") }} {{ item.preview.ledger_version }} · {{ item.preview.consistent ? t("一致", "Consistent") : item.preview.repairable ? t("可修复", "Repairable") : t("存在异常", "Corrupt") }}</p><ul v-if="item.preview.issues.length"><li v-for="issue in item.preview.issues" :key="issue">{{ issue }}</li></ul></details>
               </article>
-              <div class="pager"><button class="quiet" :disabled="targetLoading || targetOffset <= 0" @click="pageTargets(-1)">上一页</button><span>{{ Math.floor(targetOffset / PAGE_SIZE) + 1 }} / {{ totalTargetPages }}</span><button class="quiet" :disabled="targetLoading || targetOffset + PAGE_SIZE >= Number(targetTotal)" @click="pageTargets(1)">下一页</button></div>
+              <div class="pager"><button class="quiet" :disabled="targetLoading || targetOffset <= 0" @click="pageTargets(-1)">{{ t("上一页", "Previous") }}</button><span>{{ Math.floor(targetOffset / PAGE_SIZE) + 1 }} / {{ totalTargetPages }}</span><button class="quiet" :disabled="targetLoading || targetOffset + PAGE_SIZE >= Number(targetTotal)" @click="pageTargets(1)">{{ t("下一页", "Next") }}</button></div>
             </template>
           </template>
-          <div v-else class="empty detail-empty">选择一个任务查看保存的只读检查结果。</div>
+          <div v-else class="empty detail-empty">{{ t("选择一个任务查看保存的只读检查结果。", "Select a job to view its saved read-only check results.") }}</div>
         </section>
       </div>
     </template>
 
     <div v-if="review" class="scrim" role="presentation" @click.self="review = null; confirmed = false">
       <section class="confirm panel" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-        <h2 id="confirm-title">确认唯一操作员提交</h2><p>请核对冻结的请求内容。点击确认后只发送一次该操作；若结果未知，只能使用同一请求体和幂等键重放。</p>
-        <dl class="facts"><dt>操作</dt><dd>{{ review.operation === "create" ? "创建对账任务" : `重试任务 ${review.jobId}` }}</dd><dt>原因</dt><dd>{{ review.body.reason }}</dd><dt>版本</dt><dd>{{ "version" in review.body ? `v${review.body.version}` : "新任务 v1" }}</dd><dt>幂等键</dt><dd><code>{{ review.key }}</code></dd></dl>
-        <label class="confirm-check"><input v-model="confirmed" type="checkbox">我已核对范围与原因，确认由我提交此请求。</label>
-        <div class="actions"><button class="quiet" @click="review = null; confirmed = false">返回</button><button class="primary" :disabled="!confirmed || writing" @click="confirmWrite">确认并提交</button></div>
+        <h2 id="confirm-title">{{ t("确认唯一操作员提交", "Confirm single-operator submission") }}</h2><p>{{ t("请核对冻结的请求内容。点击确认后只发送一次该操作；若结果未知，只能使用同一请求体和幂等键重放。", "Check the frozen request. Confirmation sends this operation once. If the outcome is unknown, replay only the same body and idempotency key.") }}</p>
+        <dl class="facts"><dt>{{ t("操作", "Operation") }}</dt><dd>{{ review.operation === "create" ? t("创建对账任务", "Create reconciliation job") : t("重试任务 {id}", "Retry job {id}", { id: review.jobId! }) }}</dd><dt>{{ t("原因", "Reason") }}</dt><dd>{{ review.body.reason }}</dd><dt>{{ t("版本", "Version") }}</dt><dd>{{ "version" in review.body ? `v${review.body.version}` : t("新任务 v1", "New job v1") }}</dd><dt>{{ t("幂等键", "Idempotency key") }}</dt><dd><code>{{ review.key }}</code></dd></dl>
+        <label class="confirm-check"><input v-model="confirmed" type="checkbox">{{ t("我已核对范围与原因，确认由我提交此请求。", "I have checked the scope and reason and confirm that I am submitting this request.") }}</label>
+        <div class="actions"><button class="quiet" @click="review = null; confirmed = false">{{ t("返回", "Back") }}</button><button class="primary" :disabled="!confirmed || writing" @click="confirmWrite">{{ t("确认并提交", "Confirm and submit") }}</button></div>
       </section>
     </div>
   </main>
@@ -274,4 +281,7 @@ onBeforeUnmount(() => { alive = false; listTicket++; detailTicket++; targetTicke
 @media(max-width:420px){.recon{padding:12px}.recon-head{gap:6px}.recon-head .quiet{padding:8px;font-size:10px}.pending-item{grid-template-columns:minmax(0,1fr)}.pending-item code,.pending-item p,.pending-item button{grid-column:1}.facts{grid-template-columns:minmax(88px,.4fr) minmax(0,1fr);gap:8px}.pager{gap:6px}.pager button{padding:8px}}
 .notice,.write-error{position:static;max-width:100%;z-index:auto;right:auto;bottom:auto;margin-bottom:16px}
 .recon .field{height:auto;border:0;background:transparent;padding:0;font-size:12px}
+.recon .state,.recon .tag{flex-shrink:0}
+.target-title>span{flex:1;min-width:0}
+@media(max-width:760px){.section-title{flex-wrap:wrap}}
 </style>

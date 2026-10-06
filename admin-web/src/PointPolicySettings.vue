@@ -12,6 +12,8 @@ import {
   type UpdatePointPolicyBody,
 } from "./point-policy-api";
 import { AdminApiError } from "./admin-api";
+import { useAdminI18n } from "./i18n";
+import type { LocalizedMessage } from "@lottery/shared";
 
 const props = defineProps<{
   account: AdminAccount & Partial<PointPolicyAccount>;
@@ -19,6 +21,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createPointPolicyApi();
+const { t, message } = useAdminI18n();
 const policy = ref<PointPolicy | null>(null);
 const draft = ref({
   max_balance_points: "",
@@ -28,8 +31,8 @@ const draft = ref({
 });
 const loading = ref(false);
 const saving = ref(false);
-const error = ref("");
-const notice = ref("");
+const error = ref<string | LocalizedMessage>("");
+const notice = ref<string | LocalizedMessage>("");
 const keyForBody = createPointPolicyKeyTracker();
 let requestGeneration = 0;
 const canView = computed(() =>
@@ -79,7 +82,7 @@ async function loadPolicy() {
     const result = await api.getPointPolicy(brandId);
     if (!current(generation, brandId)) return;
     if (result.brand_id !== brandId) {
-      error.value = "策略响应与当前品牌不匹配，请重新读取。";
+      error.value = message("策略响应与当前品牌不匹配，请重新读取。", "The policy response does not match the current brand. Reload the policy.");
       policy.value = null;
       return;
     }
@@ -93,12 +96,11 @@ async function loadPolicy() {
     policy.value = null;
     if (cause instanceof AdminApiError && cause.status === 401)
       emit("session-invalid");
-    error.value =
-      cause instanceof AdminApiError && cause.status === 409
-        ? `${cause.message}；策略版本已变化，请刷新后重试。`
-        : cause instanceof Error
-          ? cause.message
-          : "读取积分策略失败。";
+    error.value = cause instanceof AdminApiError && cause.status === 409
+      ? cause.message
+        ? message("{serverError}；策略版本已变化，请刷新后重试。", "{serverError} The policy version changed. Refresh and try again.", { serverError: cause.message })
+        : message("策略版本已变化，请刷新后重试。", "The policy version changed. Refresh and try again.")
+      : cause instanceof Error ? cause.message : message("读取积分策略失败。", "Failed to load the points policy.");
   } finally {
     if (current(generation, brandId)) loading.value = false;
   }
@@ -124,7 +126,7 @@ async function savePolicy() {
     const result = await api.updatePointPolicy(brandId, body, idempotencyKey);
     if (!current(generation, brandId)) return;
     if (result.brand_id !== brandId) {
-      error.value = "保存响应与当前品牌不匹配；请重新读取确认结果。";
+      error.value = message("保存响应与当前品牌不匹配；请重新读取确认结果。", "The save response does not match the current brand. Reload to confirm the result.");
       return;
     }
     policy.value = result;
@@ -132,17 +134,16 @@ async function savePolicy() {
     draft.value.max_recharge_points = result.max_recharge_points ?? "";
     draft.value.max_adjustment_points = result.max_adjustment_points ?? "";
     draft.value.reason = "";
-    notice.value = "积分策略已保存并立即生效。";
+    notice.value = message("积分策略已保存并立即生效。", "Points policy saved and applied immediately.");
   } catch (cause) {
     if (!current(generation, brandId)) return;
     if (cause instanceof AdminApiError && cause.status === 401)
       emit("session-invalid");
-    error.value =
-      cause instanceof AdminApiError && cause.status === 409
-        ? `${cause.message}；版本冲突，未覆盖当前表单。请刷新后再处理。`
-        : cause instanceof Error
-          ? cause.message
-          : "保存积分策略失败，当前策略未更新。";
+    error.value = cause instanceof AdminApiError && cause.status === 409
+      ? cause.message
+        ? message("{serverError}；版本冲突，未覆盖当前表单。请刷新后再处理。", "{serverError} Version conflict. The current form was not overwritten. Refresh before continuing.", { serverError: cause.message })
+        : message("版本冲突，未覆盖当前表单。请刷新后再处理。", "Version conflict. The current form was not overwritten. Refresh before continuing.")
+      : cause instanceof Error ? cause.message : message("保存积分策略失败，当前策略未更新。", "Failed to save the points policy. The current policy was not changed.");
   } finally {
     if (current(generation, brandId)) saving.value = false;
   }
@@ -173,35 +174,35 @@ watch(
   <section class="point-policy-settings">
     <header class="policy-head">
       <div>
-        <p class="eyebrow">POINT POLICY</p>
-        <h2>积分限额策略</h2>
-        <p>仅设置积分余额、充值和调整限额；不会直接编辑会员余额。</p>
+        <p class="eyebrow">{{ t("POINT POLICY", "POINT POLICY") }}</p>
+        <h2>{{ t("积分限额策略", "Points policy settings") }}</h2>
+        <p>{{ t("仅设置积分余额、充值和调整限额；不会直接编辑会员余额。", "Set limits for point balances, recharges, and adjustments; this does not directly edit member balances.") }}</p>
       </div>
-      <span class="brand-tag">品牌 · {{ brandId || "未选择" }}</span>
+      <span class="brand-tag">{{ t("品牌 · {brand}", "Brand · {brand}", { brand: brandId || t("未选择", "Not selected") }) }}</span>
     </header>
 
     <p class="server-note">
-      页面权限仅控制操作入口；服务端授权与版本校验始终有效。限额留空表示不限。
+      {{ t("页面权限仅控制操作入口；服务端授权与版本校验始终有效。限额留空表示不限。", "Page permissions control access to the controls only; server authorization and version checks always apply. Leave a limit blank for no limit.") }}
     </p>
     <p v-if="!canView" class="callout">
-      当前账号缺少 point_policy.view 权限，无法读取此品牌策略。
+      {{ t("当前账号缺少 point_policy.view 权限，无法读取此品牌策略。", "This account lacks the point_policy.view permission and cannot read this brand's policy.") }}
     </p>
     <template v-else>
       <div v-if="error" class="notice error" role="alert">
-        {{ error }}
+        {{ t(error) }}
         <button type="button" :disabled="loading || saving" @click="loadPolicy">
-          重新读取
+          {{ t("重新读取", "Reload") }}
         </button>
       </div>
-      <p v-if="notice" class="notice success" role="status">{{ notice }}</p>
+      <p v-if="notice" class="notice success" role="status">{{ t(notice) }}</p>
       <div v-if="loading && !policy" class="callout" role="status">
-        正在读取当前品牌策略…
+        {{ t("正在读取当前品牌策略…", "Loading the current brand policy…") }}
       </div>
       <section v-if="policy" class="policy-card">
         <div class="card-head">
           <div>
-            <h3>当前策略</h3>
-            <p>版本 {{ policy.version }} · {{ policy.brand_id }}</p>
+            <h3>{{ t("当前策略", "Current policy") }}</h3>
+            <p>{{ t("版本 {version} · {brand}", "Version {version} · {brand}", { version: policy.version, brand: policy.brand_id }) }}</p>
           </div>
           <button
             type="button"
@@ -209,30 +210,30 @@ watch(
             :disabled="loading || saving"
             @click="loadPolicy"
           >
-            刷新
+            {{ t("刷新", "Refresh") }}
           </button>
         </div>
         <dl class="current-limits">
           <div>
-            <dt>余额上限</dt>
-            <dd>{{ policy.max_balance_points ?? "不限" }}</dd>
+            <dt>{{ t("余额上限", "Balance limit") }}</dt>
+            <dd>{{ policy.max_balance_points ?? t("不限", "No limit") }}</dd>
           </div>
           <div>
-            <dt>单笔充值上限</dt>
-            <dd>{{ policy.max_recharge_points ?? "不限" }}</dd>
+            <dt>{{ t("单笔充值上限", "Per-recharge limit") }}</dt>
+            <dd>{{ policy.max_recharge_points ?? t("不限", "No limit") }}</dd>
           </div>
           <div>
-            <dt>单次调整上限</dt>
-            <dd>{{ policy.max_adjustment_points ?? "不限" }}</dd>
+            <dt>{{ t("单次调整上限", "Per-adjustment limit") }}</dt>
+            <dd>{{ policy.max_adjustment_points ?? t("不限", "No limit") }}</dd>
           </div>
         </dl>
         <p v-if="policy.audit_log_id" class="audit-id">
-          审计记录：{{ policy.audit_log_id }}
+          {{ t("审计记录：{id}", "Audit record: {id}", { id: policy.audit_log_id }) }}
         </p>
       </section>
 
       <p v-if="!canWrite && policy" class="callout">
-        当前账号仅有读取权限；无法修改积分策略。
+        {{ t("当前账号仅有读取权限；无法修改积分策略。", "This account has read-only access and cannot change the points policy.") }}
       </p>
       <form
         v-if="canWrite && policy"
@@ -241,40 +242,40 @@ watch(
       >
         <div class="card-head">
           <div>
-            <h3>编辑限额</h3>
-            <p>提交时使用当前版本执行并发校验；保存后立即生效。</p>
+            <h3>{{ t("编辑限额", "Edit limits") }}</h3>
+            <p>{{ t("提交时使用当前版本执行并发校验；保存后立即生效。", "The current version is checked when submitted; changes take effect immediately after saving.") }}</p>
           </div>
         </div>
         <label
-          >余额上限（正整数；留空表示不限）
+          >{{ t("余额上限（正整数；留空表示不限）", "Balance limit (positive integer; blank means no limit)") }}
           <input
             v-model.trim="draft.max_balance_points"
             inputmode="numeric"
             autocomplete="off"
-            placeholder="不限"
+            :placeholder="t('不限', 'No limit')"
           />
-          <small>只能输入规范正整数，不接受 0、小数、正负号或前导零。</small>
+          <small>{{ t("只能输入规范正整数，不接受 0、小数、正负号或前导零。", "Enter a canonical positive integer. Zero, decimals, signs, and leading zeros are not accepted.") }}</small>
         </label>
         <label
-          >单笔充值上限（正整数；留空表示不限）
+          >{{ t("单笔充值上限（正整数；留空表示不限）", "Per-recharge limit (positive integer; blank means no limit)") }}
           <input
             v-model.trim="draft.max_recharge_points"
             inputmode="numeric"
             autocomplete="off"
-            placeholder="不限"
+            :placeholder="t('不限', 'No limit')"
           />
         </label>
         <label
-          >单次调整上限（正整数；留空表示不限）
+          >{{ t("单次调整上限（正整数；留空表示不限）", "Per-adjustment limit (positive integer; blank means no limit)") }}
           <input
             v-model.trim="draft.max_adjustment_points"
             inputmode="numeric"
             autocomplete="off"
-            placeholder="不限"
+            :placeholder="t('不限', 'No limit')"
           />
         </label>
         <label
-          >变更原因（必填）
+          >{{ t("变更原因（必填）", "Reason for change (required)") }}
           <textarea
             v-model.trim="draft.reason"
             rows="3"
@@ -283,10 +284,10 @@ watch(
           />
         </label>
         <p v-if="!validLimits" class="field-error" role="alert">
-          限额必须是规范的正整数，或留空表示不限。
+          {{ t("限额必须是规范的正整数，或留空表示不限。", "Each limit must be a canonical positive integer, or blank for no limit.") }}
         </p>
         <button class="primary" type="submit" :disabled="!canSave">
-          {{ saving ? "保存中…" : "保存策略" }}
+          {{ saving ? t("保存中…", "Saving…") : t("保存策略", "Save policy") }}
         </button>
       </form>
     </template>

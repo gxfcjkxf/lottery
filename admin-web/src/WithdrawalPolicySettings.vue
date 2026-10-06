@@ -6,6 +6,8 @@ import {
   type AdminAccount,
 } from "./admin-api";
 import { createRuleVersionsApi, type GameRecord } from "./rule-versions-api";
+import { useAdminI18n } from "./i18n";
+import type { LocalizedMessage } from "@lottery/shared";
 import {
   createWithdrawalPolicyApi,
   isValidTurnoverMultiple,
@@ -47,6 +49,11 @@ type BrandDraft = Omit<BrandWithdrawalConfig, "max_points"> & {
   reason: string;
 };
 type GameDraft = { turnover_multiple: string; reason: string };
+class LocalizedPolicyError extends Error {
+  constructor(readonly copy: LocalizedMessage) {
+    super();
+  }
+}
 
 const DEFAULT_BRAND_WITHDRAWAL_CONFIG: BrandWithdrawalConfig = {
   enabled: false,
@@ -61,6 +68,7 @@ const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createWithdrawalPolicyApi();
 const gameApi = createRuleVersionsApi();
+const { t, message } = useAdminI18n();
 const rights = computed(() =>
   withdrawalPolicyPermissions(props.account, props.brandId),
 );
@@ -82,8 +90,8 @@ const loadingBrandHistory = ref(false);
 const loadingGameHistory = ref(false);
 const saving = ref<Lane | "">("");
 const reconciling = ref(false);
-const error = ref("");
-const notice = ref("");
+const error = ref<string | LocalizedMessage>("");
+const notice = ref<string | LocalizedMessage>("");
 const confirmation = ref<FrozenMutation | null>(null);
 const uncertain = ref<FrozenMutation | null>(null);
 let generation = 0;
@@ -160,8 +168,12 @@ function sessionExpired(cause: unknown) {
   }
   return false;
 }
-function explain(cause: unknown, fallback: string) {
+function explain(cause: unknown, fallback: LocalizedMessage) {
+  if (cause instanceof LocalizedPolicyError) return cause.copy;
   return cause instanceof Error && cause.message ? cause.message : fallback;
+}
+function displayMessage(value: string | LocalizedMessage) {
+  return typeof value === "string" ? value : t(value);
 }
 function clearVisibleData() {
   brandPolicy.value = null;
@@ -276,7 +288,7 @@ async function loadBrand(preserveDraft = false) {
     const item = await api.getBrandPolicy(brandId);
     if (!current(ticket, brandId, actorId) || read !== brandRead) return;
     if (item.brand_id !== brandId)
-      throw new Error("品牌策略响应与当前品牌不匹配。");
+      throw new LocalizedPolicyError(message("品牌策略响应与当前品牌不匹配。", "The brand policy response does not match the selected brand."));
     brandPolicy.value = item;
     if (
       !getPendingPolicyWrite(contextKey(actorId, brandId, "brand")) &&
@@ -287,7 +299,7 @@ async function loadBrand(preserveDraft = false) {
     if (!current(ticket, brandId, actorId) || read !== brandRead) return;
     brandPolicy.value = null;
     sessionExpired(cause);
-    error.value = explain(cause, "读取品牌提现策略失败。");
+    error.value = explain(cause, message("读取品牌提现策略失败。", "Failed to load the brand withdrawal policy."));
   } finally {
     if (current(ticket, brandId, actorId) && read === brandRead)
       loadingBrand.value = false;
@@ -330,7 +342,7 @@ async function loadGame(id = gameId.value, preserveDraft = false) {
     )
       return;
     if (item.brand_id !== brandId || item.game_id !== normalizedId)
-      throw new Error("彩种策略响应与当前品牌或彩种不匹配。");
+      throw new LocalizedPolicyError(message("彩种策略响应与当前品牌或彩种不匹配。", "The game policy response does not match the selected brand or game."));
     gamePolicy.value = item;
     if (
       !getPendingPolicyWrite(
@@ -348,7 +360,7 @@ async function loadGame(id = gameId.value, preserveDraft = false) {
       return;
     gamePolicy.value = null;
     sessionExpired(cause);
-    error.value = explain(cause, "读取彩种提现策略失败。");
+    error.value = explain(cause, message("读取彩种提现策略失败。", "Failed to load the game withdrawal policy."));
   } finally {
     if (
       current(ticket, brandId, actorId) &&
@@ -383,7 +395,7 @@ async function loadGames() {
       return;
     games.value = [];
     sessionExpired(cause);
-    error.value = explain(cause, "读取彩种目录失败。");
+    error.value = explain(cause, message("读取彩种目录失败。", "Failed to load the game catalog."));
   } finally {
     if (sameContext(ticket, brandId, actorId) && read === gamesRead)
       loadingGames.value = false;
@@ -425,7 +437,7 @@ async function loadHistory(lane: Lane, offset: number) {
             : item.game_id !== selectedGameId),
       )
     )
-      throw new Error("策略历史响应与当前范围不匹配。");
+      throw new LocalizedPolicyError(message("策略历史响应与当前范围不匹配。", "The policy history response does not match the selected scope."));
     if (lane === "brand") {
       brandHistory.value = page;
       brandHistoryOffset.value = offset;
@@ -443,7 +455,7 @@ async function loadHistory(lane: Lane, offset: number) {
     )
       return;
     sessionExpired(cause);
-    error.value = explain(cause, "读取策略历史失败。");
+    error.value = explain(cause, message("读取策略历史失败。", "Failed to load policy history."));
   } finally {
     if (current(ticket, brandId, actorId)) {
       if (lane === "brand" && read === brandHistoryRead)
@@ -524,7 +536,7 @@ async function confirmAndSubmit() {
     return;
   if (policyBodyFingerprint(mutation.body) !== mutation.fingerprint) {
     confirmation.value = null;
-    error.value = "待提交内容与已核对内容不一致，请重新核对。";
+    error.value = message("待提交内容与已核对内容不一致，请重新核对。", "The pending content differs from the reviewed content. Review it again.");
     return;
   }
   confirmation.value = null;
@@ -575,8 +587,7 @@ async function submitMutation(mutation: FrozenMutation) {
       (mutation.lane === "game" &&
         (item as GameWithdrawalPolicy).game_id !== mutation.gameId)
     ) {
-      error.value =
-        "保存响应与当前范围不匹配；写请求已获得响应，请重新读取确认状态。";
+      error.value = message("保存响应与当前范围不匹配；写请求已获得响应，请重新读取确认状态。", "The save response does not match the current scope. The write request received a response; reload to confirm the current state.");
       uncertain.value = null;
       return;
     }
@@ -593,7 +604,7 @@ async function submitMutation(mutation: FrozenMutation) {
       gameHistory.value = null;
       void loadHistory("game", 0);
     }
-    notice.value = "配置已保存。此页面只保存策略，不代表提现功能已上线。";
+    notice.value = message("配置已保存。此页面只保存策略，不代表提现功能已上线。", "Settings saved. This page only saves policies; it does not mean withdrawals are available.");
   } catch (cause) {
     const status = cause instanceof AdminApiError ? cause.status : 0;
     const outcome = classifyPolicyWriteFailure(status);
@@ -615,21 +626,19 @@ async function submitMutation(mutation: FrozenMutation) {
       if (mutation.lane === "brand") await loadBrand(true);
       else await loadGame(mutation.gameId, true);
       if (sameContext(ticket, mutation.brandId, mutation.actorId)) {
-        error.value =
-          "版本冲突：已读取当前配置。请核对新版本后重新发起确认；原请求未自动重放。";
+        error.value = message("版本冲突：已读取当前配置。请核对新版本后重新发起确认；原请求未自动重放。", "Version conflict: the current settings were loaded. Review the new version and start a new confirmation; the original request was not replayed.");
         reconciling.value = false;
       }
     } else if (outcome === "uncertain") {
       setPendingPolicyWrite(registryKey, mutation);
       uncertain.value = mutation;
-      error.value =
-        "服务器结果尚未确认。相同配置可能已提交；读取到相同值不能证明是本次请求提交。请使用原请求重试（复用原幂等键），或只读核对后仍保留待确认状态。";
+      error.value = message("服务器结果尚未确认。相同配置可能已提交；读取到相同值不能证明是本次请求提交。请使用原请求重试（复用原幂等键），或只读核对后仍保留待确认状态。", "The server outcome is unconfirmed. The same settings may have been saved, but reading the same values does not prove this request caused it. Retry the original request with its original idempotency key, or perform a read-only check while keeping the request unconfirmed.");
     } else {
       clearPendingPolicyWrite(registryKey);
       uncertain.value = null;
       error.value = explain(
         cause,
-        "保存提现策略失败；旧请求意图已解除。请修正后重新确认。",
+        message("保存提现策略失败；旧请求意图已解除。请修正后重新确认。", "Failed to save the withdrawal policy. The previous request intent was cleared; correct the settings and review them again."),
       );
     }
   } finally {
@@ -664,8 +673,7 @@ async function reconcileUncertain() {
       ),
     )
   ) {
-    error.value =
-      "已重新读取当前版本；由于读取结果不含本次请求凭据，原写入仍待确认，可用同一幂等键重试。";
+    error.value = message("已重新读取当前版本；由于读取结果不含本次请求凭据，原写入仍待确认，可用同一幂等键重试。", "The current version was reloaded. Because the read does not include proof of this request, the original write remains unconfirmed; retry with the same idempotency key.");
   }
   reconciling.value = false;
 }
@@ -683,9 +691,14 @@ function historyNext(lane: Lane) {
 function formatSources(sources: WithdrawalSource[]) {
   return sources
     .map(
-      (source) => ({ recharge: "充值", winning: "中奖", gift: "赠送" })[source],
+      (source) =>
+        ({
+          recharge: t("充值", "Recharge"),
+          winning: t("中奖", "Winnings"),
+          gift: t("赠送", "Gift"),
+        })[source],
     )
-    .join("、");
+    .join(t("、", ", "));
 }
 function configJson(config: unknown) {
   return JSON.stringify(config, null, 2);
@@ -757,30 +770,28 @@ onUnmounted(() => {
   <section class="withdrawal-policy" data-testid="withdrawal-policy-settings">
     <header class="policy-header">
       <div>
-        <p class="eyebrow">提现策略</p>
-        <h2>品牌与彩种提现配置</h2>
-        <p>本阶段仅保存配置；提现申请、冻结出款和流水资格判定尚未接入。</p>
+        <p class="eyebrow">{{ t("提现策略", "Withdrawal policy") }}</p>
+        <h2>{{ t("品牌与彩种提现配置", "Withdrawal policy settings") }}</h2>
+        <p>{{ t("本阶段仅保存配置；提现申请、冻结出款和流水资格判定尚未接入。", "This stage only saves settings. Withdrawal requests, payout holds, and turnover eligibility checks are not connected.") }}</p>
       </div>
-      <span class="brand-pill">品牌 · {{ brandId || "未选择" }}</span>
+      <span class="brand-pill">{{ t("品牌", "Brand") }} · {{ brandId || t("未选择", "Not selected") }}</span>
     </header>
 
     <p class="callout warning" role="note">
-      保存配置不代表提现已开通。流水倍数 N
-      的基数与跨彩种合并算法仍待确认；当前页面不会生成提现订单、计算金额或判定资格。N=0
-      的业务含义尚未确认。
+      {{ t("保存配置不代表提现已开通。流水倍数 N 的基数与跨彩种合并算法仍待确认；当前页面不会生成提现订单、计算金额或判定资格。N=0 的业务含义尚未确认。", "Saving settings does not enable withdrawals. The turnover multiple N basis and cross-game aggregation algorithm remain undecided. This page does not create withdrawal orders, calculate amounts, or determine eligibility. The business meaning of N=0 is unresolved.") }}
     </p>
     <p v-if="account.super_admin" class="callout">
-      超级管理员仅可按显式读取权限查看，不能保存配置。
+      {{ t("超级管理员仅可按显式读取权限查看，不能保存配置。", "Super administrators may view settings only when explicitly granted read access; they cannot save settings.") }}
     </p>
     <p v-if="!rights.view" class="callout" role="status">
-      当前账号没有提现策略读取权限；不会请求策略或历史数据。写权限不会隐含读取权限。
+      {{ t("当前账号没有提现策略读取权限；不会请求策略或历史数据。写权限不会隐含读取权限。", "This account cannot read withdrawal policies. Policy or history data will not be requested. Write permission does not imply read permission.") }}
     </p>
 
     <section v-if="!rights.view && rights.gameView" class="policy-card">
       <div class="card-heading">
         <div>
-          <h3>彩种目录</h3>
-          <p>目录读取权限独立于策略读取权限。</p>
+          <h3>{{ t("彩种目录", "Game catalog") }}</h3>
+          <p>{{ t("目录读取权限独立于策略读取权限。", "Catalog read permission is separate from policy read permission.") }}</p>
         </div>
         <button
           class="secondary"
@@ -788,11 +799,11 @@ onUnmounted(() => {
           :disabled="loadingGames"
           @click="loadGames"
         >
-          {{ loadingGames ? "读取中…" : "读取彩种目录" }}
+          {{ loadingGames ? t("读取中…", "Loading…") : t("读取彩种目录", "Load game catalog") }}
         </button>
       </div>
-      <p v-if="loadingGames" class="muted" role="status">正在读取彩种目录…</p>
-      <p v-else-if="!games.length" class="muted">彩种目录为空，或尚未读取。</p>
+      <p v-if="loadingGames" class="muted" role="status">{{ t("正在读取彩种目录…", "Loading game catalog…") }}</p>
+      <p v-else-if="!games.length" class="muted">{{ t("彩种目录为空，或尚未读取。", "The game catalog is empty or has not been loaded.") }}</p>
       <ul v-else class="catalog-list">
         <li v-for="game in games" :key="game.id">
           {{ game.name }} · {{ game.id }}
@@ -802,12 +813,12 @@ onUnmounted(() => {
 
     <template v-if="rights.view">
       <div v-if="error" class="message error" role="alert">
-        <span>{{ error }}</span>
+        <span>{{ displayMessage(error) }}</span>
       </div>
-      <p v-if="notice" class="message success" role="status">{{ notice }}</p>
+      <p v-if="notice" class="message success" role="status">{{ displayMessage(notice) }}</p>
       <div v-if="pendingInContext" class="message warning" role="alert">
         <span
-          >此范围有写入结果待确认。配置已冻结；相同内容不代表已证明本次请求成功。待确认意图仅保存在当前页面会话内。</span
+          >{{ t("此范围有写入结果待确认。配置已冻结；相同内容不代表已证明本次请求成功。待确认意图仅保存在当前页面会话内。", "A write in this scope has an unconfirmed outcome. The settings are frozen; matching values do not prove this request succeeded. The pending intent is held only for the current page session.") }}</span
         >
         <button
           class="primary"
@@ -815,7 +826,7 @@ onUnmounted(() => {
           :disabled="!!saving || !canWrite"
           @click="retryUncertain"
         >
-          使用原请求重试
+          {{ t("使用原请求重试", "Retry original request") }}
         </button>
         <button
           class="secondary"
@@ -823,16 +834,16 @@ onUnmounted(() => {
           :disabled="!!saving || reconciling"
           @click="reconcileUncertain"
         >
-          只读核对
+          {{ t("只读核对", "Read-only check") }}
         </button>
       </div>
       <section class="policy-card">
         <div class="card-heading">
           <div>
-            <h3>品牌默认配置</h3>
+            <h3>{{ t("品牌默认配置", "Brand default settings") }}</h3>
             <p v-if="brandPolicy">
-              已保存版本 {{ brandPolicy.version }} ·
-              {{ brandPolicy.brand_id }} · 更新于 {{ brandPolicy.updated_at }}
+              {{ t("已保存版本", "Saved version") }} {{ brandPolicy.version }} ·
+              {{ brandPolicy.brand_id }} · {{ t("更新于", "Updated") }} {{ brandPolicy.updated_at }}
             </p>
           </div>
           <button
@@ -841,52 +852,52 @@ onUnmounted(() => {
             :disabled="loadingBrand || !!saving || !!pendingInContext"
             @click="() => loadBrand()"
           >
-            {{ loadingBrand ? "读取中…" : "刷新品牌配置" }}
+            {{ loadingBrand ? t("读取中…", "Loading…") : t("刷新品牌配置", "Refresh brand settings") }}
           </button>
         </div>
         <p v-if="loadingBrand && !brandPolicy" class="muted" role="status">
-          正在读取品牌配置…
+          {{ t("正在读取品牌配置…", "Loading brand settings…") }}
         </p>
         <p v-else-if="!brandPolicy && !error" class="muted">
-          尚无可显示的已保存品牌配置。
+          {{ t("尚无可显示的已保存品牌配置。", "There are no saved brand settings to display.") }}
         </p>
         <template v-if="brandPolicy">
           <dl class="saved-summary">
             <div>
-              <dt>状态</dt>
+              <dt>{{ t("状态", "Status") }}</dt>
               <dd>
-                {{ brandPolicy.config.enabled ? "启用配置" : "停用配置" }}
+                {{ brandPolicy.config.enabled ? t("启用配置", "Enabled") : t("停用配置", "Disabled") }}
               </dd>
             </div>
             <div>
-              <dt>提现积分范围</dt>
+              <dt>{{ t("提现积分范围", "Withdrawal points range") }}</dt>
               <dd>
-                {{ brandPolicy.config.min_points }} 至
-                {{ brandPolicy.config.max_points ?? "无上限" }}
+                {{ brandPolicy.config.min_points }} {{ t("至", "to") }}
+                {{ brandPolicy.config.max_points ?? t("无上限", "No limit") }}
               </dd>
             </div>
             <div>
-              <dt>允许来源</dt>
+              <dt>{{ t("允许来源", "Allowed sources") }}</dt>
               <dd>{{ formatSources(brandPolicy.config.allowed_sources) }}</dd>
             </div>
             <div>
-              <dt>审核模式</dt>
+              <dt>{{ t("审核模式", "Review mode") }}</dt>
               <dd>
                 {{
                   brandPolicy.config.review_mode === "manual"
-                    ? "人工审核"
-                    : "自动审核"
+                    ? t("人工审核", "Manual review")
+                    : t("自动审核", "Automatic review")
                 }}
               </dd>
             </div>
             <div>
-              <dt>已保存流水倍数 N</dt>
+              <dt>{{ t("已保存流水倍数 N", "Saved turnover multiple N") }}</dt>
               <dd>{{ brandPolicy.config.turnover_multiple }}</dd>
             </div>
           </dl>
           <form class="editor-grid" @submit.prevent="requestBrandConfirmation">
             <label for="withdraw-brand-enabled"
-              >品牌：启用提现配置<input
+              >{{ t("品牌：启用提现配置", "Brand: enable withdrawal settings") }}<input
                 id="withdraw-brand-enabled"
                 v-model="brandDraft.enabled"
                 type="checkbox"
@@ -898,7 +909,7 @@ onUnmounted(() => {
                 "
             /></label>
             <label for="withdraw-brand-min"
-              >品牌：最低提现积分<input
+              >{{ t("品牌：最低提现积分", "Brand: minimum withdrawal points") }}<input
                 id="withdraw-brand-min"
                 v-model.trim="brandDraft.min_points"
                 inputmode="numeric"
@@ -911,12 +922,12 @@ onUnmounted(() => {
                 "
             /></label>
             <label for="withdraw-brand-max"
-              >品牌：最高提现积分（留空表示无上限）<input
+              >{{ t("品牌：最高提现积分（留空表示无上限）", "Brand: maximum withdrawal points (leave blank for no limit)") }}<input
                 id="withdraw-brand-max"
                 v-model.trim="brandDraft.max_points_input"
                 inputmode="numeric"
                 autocomplete="off"
-                placeholder="无上限"
+                :placeholder="t('无上限', 'No limit')"
                 :disabled="
                   !canWrite ||
                   !!pendingInContext ||
@@ -925,7 +936,7 @@ onUnmounted(() => {
                 "
             /></label>
             <fieldset class="source-field wide">
-              <legend>品牌：允许提现来源（至少选择一项）</legend>
+              <legend>{{ t("品牌：允许提现来源（至少选择一项）", "Brand: allowed withdrawal sources (select at least one)") }}</legend>
               <label for="withdraw-source-recharge"
                 ><input
                   id="withdraw-source-recharge"
@@ -938,7 +949,7 @@ onUnmounted(() => {
                     !!confirmation ||
                     reconciling
                   "
-                />充值</label
+                />{{ t("充值", "Recharge") }}</label
               >
               <label for="withdraw-source-winning"
                 ><input
@@ -952,7 +963,7 @@ onUnmounted(() => {
                     !!confirmation ||
                     reconciling
                   "
-                />中奖</label
+                />{{ t("中奖", "Winnings") }}</label
               >
               <label for="withdraw-source-gift"
                 ><input
@@ -966,11 +977,11 @@ onUnmounted(() => {
                     !!confirmation ||
                     reconciling
                   "
-                />赠送</label
+                />{{ t("赠送", "Gift") }}</label
               >
             </fieldset>
             <label for="withdraw-brand-review"
-              >品牌：审核方式<select
+              >{{ t("品牌：审核方式", "Brand: review mode") }}<select
                 id="withdraw-brand-review"
                 v-model="brandDraft.review_mode"
                 :disabled="
@@ -980,17 +991,17 @@ onUnmounted(() => {
                   reconciling
                 "
               >
-                <option value="manual">人工审核</option>
-                <option value="automatic">自动审核</option>
+                <option value="manual">{{ t("人工审核", "Manual review") }}</option>
+                <option value="automatic">{{ t("自动审核", "Automatic review") }}</option>
               </select></label
             >
             <label for="withdraw-brand-multiple"
-              >品牌：默认流水倍数 N<input
+              >{{ t("品牌：默认流水倍数 N", "Brand: default turnover multiple N") }}<input
                 id="withdraw-brand-multiple"
                 v-model.trim="brandDraft.turnover_multiple"
                 inputmode="decimal"
                 autocomplete="off"
-                placeholder="例如 1.25"
+                :placeholder="t('例如 1.25', 'For example, 1.25')"
                 :disabled="
                   !canWrite ||
                   !!pendingInContext ||
@@ -999,7 +1010,7 @@ onUnmounted(() => {
                 "
             /></label>
             <label class="wide" for="withdraw-brand-reason"
-              >品牌：变更原因（必填，最多 500 UTF-8 字节）<textarea
+              >{{ t("品牌：变更原因（必填，最多 500 UTF-8 字节）", "Brand: reason for change (required, up to 500 UTF-8 bytes)") }}<textarea
                 id="withdraw-brand-reason"
                 v-model="brandDraft.reason"
                 rows="3"
@@ -1012,23 +1023,21 @@ onUnmounted(() => {
               />
             </label>
             <p v-if="!brandInputsValid" class="field-error wide" role="alert">
-              积分范围须为正的 int64
-              整数字符串且最低值不高于最高值；来源至少一项且不能重复；N 须为 0
-              至 1,000,000 的规范十进制字符串，最多 6 位小数且无末尾零。
+              {{ t("积分范围须为正的 int64 整数字符串且最低值不高于最高值；来源至少一项且不能重复；N 须为 0 至 1,000,000 的规范十进制字符串，最多 6 位小数且无末尾零。", "Points must be positive int64 integer strings, with the minimum no greater than the maximum. Select at least one unique source. N must be a canonical decimal string from 0 to 1,000,000, with at most 6 decimal places and no trailing zeros.") }}
             </p>
             <p
               v-if="brandDraft.reason && !reasonValid(brandDraft.reason)"
               class="field-error wide"
               role="alert"
             >
-              原因须非空且最多 500 UTF-8 字节。
+              {{ t("原因须非空且最多 500 UTF-8 字节。", "Enter a reason of up to 500 UTF-8 bytes.") }}
             </p>
             <p v-if="!canWrite" class="muted wide">
-              当前账号仅可查看品牌配置。
+              {{ t("当前账号仅可查看品牌配置。", "This account can only view brand settings.") }}
             </p>
             <div v-if="canWrite" class="wide action-row">
               <button class="primary" type="submit" :disabled="!brandCanSave">
-                核对品牌配置并继续
+                {{ t("核对品牌配置并继续", "Review brand settings and continue") }}
               </button>
             </div>
           </form>
@@ -1038,15 +1047,15 @@ onUnmounted(() => {
       <section class="policy-card">
         <div class="card-heading">
           <div>
-            <h3>彩种流水倍数覆盖</h3>
-            <p>彩种仅可指定 N 或留空继承；有效值与来源来自服务端记录。</p>
+            <h3>{{ t("彩种流水倍数覆盖", "Game turnover multiple override") }}</h3>
+            <p>{{ t("彩种仅可指定 N 或留空继承；有效值与来源来自服务端记录。", "A game can specify N or leave it blank to inherit. The effective value and source come from the server record.") }}</p>
           </div>
         </div>
         <div class="game-picker">
           <label v-if="rights.gameView" for="withdraw-game-select"
-            >选择彩种<select
+            >{{ t("选择彩种", "Select a game") }}<select
               id="withdraw-game-select"
-              aria-label="选择彩种"
+          :aria-label="t('选择彩种', 'Select game')"
               :value="gameId"
               :disabled="
                 loadingGames || !!saving || !!pendingInContext || !!confirmation
@@ -1055,7 +1064,7 @@ onUnmounted(() => {
                 changeSelectedGame(($event.target as HTMLSelectElement).value)
               "
             >
-              <option value="">请选择彩种</option>
+              <option value="">{{ t("请选择彩种", "Select a game") }}</option>
               <option
                 v-if="
                   gamePolicy &&
@@ -1064,7 +1073,7 @@ onUnmounted(() => {
                 "
                 :value="gameId"
               >
-                直接查询 · {{ gameId }}
+                {{ t("直接查询", "Direct lookup") }} · {{ gameId }}
               </option>
               <option v-for="game in games" :key="game.id" :value="game.id">
                 {{ game.name }} · {{ game.id }}
@@ -1078,15 +1087,15 @@ onUnmounted(() => {
             :disabled="loadingGames || !!saving"
             @click="loadGames"
           >
-            {{ loadingGames ? "读取目录中…" : "刷新彩种目录" }}
+            {{ loadingGames ? t("读取目录中…", "Loading catalog…") : t("刷新彩种目录", "Refresh game catalog") }}
           </button>
           <span
             v-if="rights.gameView && !games.length && !loadingGames"
             class="muted"
-            >彩种目录为空，或尚未读取。</span
+            >{{ t("彩种目录为空，或尚未读取。", "The game catalog is empty or has not been loaded.") }}</span
           >
           <span v-if="!rights.gameView" class="muted"
-            >无彩种目录读取权限；可通过 ID 直接查询，不会因此读取目录。</span
+            >{{ t("无彩种目录读取权限；可通过 ID 直接查询，不会因此读取目录。", "No permission to read the game catalog. You can look up a game by ID without loading the catalog.") }}</span
           >
         </div>
         <form
@@ -1094,11 +1103,11 @@ onUnmounted(() => {
           @submit.prevent="changeSelectedGame(directGameId)"
         >
           <label for="withdraw-game-id"
-            >彩种：直接输入 ID<input
+            >{{ t("彩种：直接输入 ID", "Game: enter ID directly") }}<input
               id="withdraw-game-id"
               v-model.trim="directGameId"
               autocomplete="off"
-              placeholder="彩种 ID，可输入 UUID"
+              :placeholder="t('彩种 ID，可输入 UUID', 'Game ID; UUID accepted')"
               :disabled="!!saving || !!pendingInContext || !!confirmation"
           /></label>
           <button
@@ -1112,56 +1121,56 @@ onUnmounted(() => {
               !!confirmation
             "
           >
-            {{ loadingGame ? "读取中…" : "读取此彩种策略" }}
+            {{ loadingGame ? t("读取中…", "Loading…") : t("读取此彩种策略", "Load this game policy") }}
           </button>
         </form>
         <p v-if="loadingGame && !gamePolicy" class="muted" role="status">
-          正在读取彩种策略…
+          {{ t("正在读取彩种策略…", "Loading game policy…") }}
         </p>
         <p v-else-if="gameId && !gamePolicy && !error" class="muted">
-          尚无可显示的已保存彩种策略。
+          {{ t("尚无可显示的已保存彩种策略。", "There are no saved game settings to display.") }}
         </p>
         <template v-if="gamePolicy">
           <dl class="saved-summary">
             <div>
-              <dt>已保存彩种</dt>
+              <dt>{{ t("已保存彩种", "Saved game") }}</dt>
               <dd>{{ gamePolicy.game_id }}</dd>
             </div>
             <div>
-              <dt>彩种配置版本</dt>
+              <dt>{{ t("彩种配置版本", "Game settings version") }}</dt>
               <dd>{{ gamePolicy.version }}</dd>
             </div>
             <div>
-              <dt>已保存有效 N</dt>
+              <dt>{{ t("已保存有效 N", "Saved effective N") }}</dt>
               <dd>{{ gamePolicy.effective.turnover_multiple }}</dd>
             </div>
             <div>
-              <dt>有效值来源</dt>
+              <dt>{{ t("有效值来源", "Effective value source") }}</dt>
               <dd>
                 {{
                   gamePolicy.effective.source === "brand"
-                    ? "品牌默认"
-                    : "彩种覆盖"
+                    ? t("品牌默认", "Brand default")
+                    : t("彩种覆盖", "Game override")
                 }}
               </dd>
             </div>
             <div>
-              <dt>品牌配置版本</dt>
+              <dt>{{ t("品牌配置版本", "Brand settings version") }}</dt>
               <dd>{{ gamePolicy.effective.brand_version }}</dd>
             </div>
             <div>
-              <dt>彩种配置版本</dt>
+              <dt>{{ t("彩种配置版本", "Game settings version") }}</dt>
               <dd>{{ gamePolicy.effective.game_version }}</dd>
             </div>
           </dl>
           <form class="editor-grid" @submit.prevent="requestGameConfirmation">
             <label class="wide" for="withdraw-game-multiple"
-              >彩种：流水倍数 N（留空继承品牌默认；0 表示明确覆盖为零）<input
+              >{{ t("彩种：流水倍数 N（留空继承品牌默认；0 表示明确覆盖为零）", "Game: turnover multiple N (leave blank to inherit brand default; 0 explicitly overrides with zero)") }}<input
                 id="withdraw-game-multiple"
                 v-model.trim="gameDraft.turnover_multiple"
                 inputmode="decimal"
                 autocomplete="off"
-                placeholder="继承品牌默认"
+                :placeholder="t('继承品牌默认', 'Inherit brand default')"
                 :disabled="
                   !canWrite ||
                   !!pendingInContext ||
@@ -1170,11 +1179,10 @@ onUnmounted(() => {
                 "
             /></label>
             <p v-if="!gameInputValid" class="field-error wide" role="alert">
-              N 须为 0 至 1,000,000 的规范十进制字符串，最多 6
-              位小数且无末尾零；留空表示继承。
+              {{ t("N 须为 0 至 1,000,000 的规范十进制字符串，最多 6 位小数且无末尾零；留空表示继承。", "N must be a canonical decimal string from 0 to 1,000,000, with at most 6 decimal places and no trailing zeros. Leave blank to inherit.") }}
             </p>
             <label class="wide" for="withdraw-game-reason"
-              >彩种：变更原因（必填，最多 500 UTF-8 字节）<textarea
+              >{{ t("彩种：变更原因（必填，最多 500 UTF-8 字节）", "Game: reason for change (required, up to 500 UTF-8 bytes)") }}<textarea
                 id="withdraw-game-reason"
                 v-model="gameDraft.reason"
                 rows="3"
@@ -1187,19 +1195,19 @@ onUnmounted(() => {
               />
             </label>
             <p v-if="!canWrite" class="muted wide">
-              当前账号仅可查看彩种配置。
+              {{ t("当前账号仅可查看彩种配置。", "This account can only view game settings.") }}
             </p>
             <div v-if="canWrite" class="wide action-row">
               <button class="primary" type="submit" :disabled="!gameCanSave">
-                核对彩种配置并继续
+                {{ t("核对彩种配置并继续", "Review game settings and continue") }}
               </button>
             </div>
           </form>
           <section class="history-panel">
             <div class="card-heading">
               <div>
-                <h4>彩种不可变历史</h4>
-                <p>仅查看本彩种版本记录。</p>
+              <h4>{{ t("彩种不可变历史", "Immutable game history") }}</h4>
+                <p>{{ t("仅查看本彩种版本记录。", "Showing revisions for this game only.") }}</p>
               </div>
               <button
                 class="secondary"
@@ -1207,7 +1215,7 @@ onUnmounted(() => {
                 :disabled="loadingGameHistory"
                 @click="loadHistory('game', 0)"
               >
-                {{ loadingGameHistory ? "读取中…" : "读取彩种历史" }}
+                {{ loadingGameHistory ? t("读取中…", "Loading…") : t("读取彩种历史", "Load game history") }}
               </button>
             </div>
             <p
@@ -1215,19 +1223,19 @@ onUnmounted(() => {
               class="muted"
               role="status"
             >
-              正在读取彩种历史…
+              {{ t("正在读取彩种历史…", "Loading game history…") }}
             </p>
             <p
               v-else-if="gameHistory && !gameHistory.items.length"
               class="muted"
             >
-              此页没有历史记录。
+              {{ t("此页没有历史记录。", "There are no history entries on this page.") }}
             </p>
             <ol v-if="gameHistory?.items.length" class="history-list">
               <li v-for="item in gameHistory.items" :key="item.id">
-                <h5>版本 {{ item.version }} · {{ item.created_at }}</h5>
+                <h5>{{ t("版本", "Version") }} {{ item.version }} · {{ item.created_at }}</h5>
                 <p>
-                  操作人：{{ item.changed_by || "系统" }} · 原因：{{
+                  {{ t("操作人：", "Changed by: ") }}{{ item.changed_by || t("系统", "System") }} · {{ t("原因：", "Reason: ") }}{{
                     item.reason
                   }}
                 </p>
@@ -1241,17 +1249,17 @@ onUnmounted(() => {
                 :disabled="gameHistoryOffset === 0 || loadingGameHistory"
                 @click="historyPrevious('game')"
               >
-                上一页</button
+                {{ t("上一页", "Previous") }}</button
               ><span
-                >偏移 {{ gameHistoryOffset }} · 每页
-                {{ gameHistory.limit }} 条</span
+                >{{ t("偏移", "Offset") }} {{ gameHistoryOffset }} · {{ t("每页", "per page") }}
+                {{ gameHistory.limit }} {{ t("条", "items") }}</span
               ><button
                 class="secondary"
                 type="button"
                 :disabled="gameHistory.items.length < 50 || loadingGameHistory"
                 @click="historyNext('game')"
               >
-                下一页
+                {{ t("下一页", "Next") }}
               </button>
             </div>
           </section>
@@ -1261,8 +1269,8 @@ onUnmounted(() => {
       <section class="policy-card history-panel">
         <div class="card-heading">
           <div>
-            <h3>品牌不可变历史</h3>
-            <p>仅查看当前品牌的版本记录。</p>
+            <h3>{{ t("品牌不可变历史", "Immutable brand history") }}</h3>
+            <p>{{ t("仅查看当前品牌的版本记录。", "Showing revisions for the current brand only.") }}</p>
           </div>
           <button
             class="secondary"
@@ -1270,7 +1278,7 @@ onUnmounted(() => {
             :disabled="loadingBrandHistory"
             @click="loadHistory('brand', 0)"
           >
-            {{ loadingBrandHistory ? "读取中…" : "读取品牌历史" }}
+            {{ loadingBrandHistory ? t("读取中…", "Loading…") : t("读取品牌历史", "Load brand history") }}
           </button>
         </div>
         <p
@@ -1278,16 +1286,16 @@ onUnmounted(() => {
           class="muted"
           role="status"
         >
-          正在读取品牌历史…
+          {{ t("正在读取品牌历史…", "Loading brand history…") }}
         </p>
         <p v-else-if="brandHistory && !brandHistory.items.length" class="muted">
-          此页没有历史记录。
+          {{ t("此页没有历史记录。", "There are no history entries on this page.") }}
         </p>
         <ol v-if="brandHistory?.items.length" class="history-list">
           <li v-for="item in brandHistory.items" :key="item.id">
-            <h5>版本 {{ item.version }} · {{ item.created_at }}</h5>
+            <h5>{{ t("版本", "Version") }} {{ item.version }} · {{ item.created_at }}</h5>
             <p>
-              操作人：{{ item.changed_by || "系统" }} · 原因：{{ item.reason }}
+              {{ t("操作人：", "Changed by: ") }}{{ item.changed_by || t("系统", "System") }} · {{ t("原因：", "Reason: ") }}{{ item.reason }}
             </p>
             <pre>{{ configJson(item.config) }}</pre>
           </li>
@@ -1299,17 +1307,17 @@ onUnmounted(() => {
             :disabled="brandHistoryOffset === 0 || loadingBrandHistory"
             @click="historyPrevious('brand')"
           >
-            上一页</button
+            {{ t("上一页", "Previous") }}</button
           ><span
-            >偏移 {{ brandHistoryOffset }} · 每页
-            {{ brandHistory.limit }} 条</span
+            >{{ t("偏移", "Offset") }} {{ brandHistoryOffset }} · {{ t("每页", "per page") }}
+            {{ brandHistory.limit }} {{ t("条", "items") }}</span
           ><button
             class="secondary"
             type="button"
             :disabled="brandHistory.items.length < 50 || loadingBrandHistory"
             @click="historyNext('brand')"
           >
-            下一页
+            {{ t("下一页", "Next") }}
           </button>
         </div>
       </section>
@@ -1320,30 +1328,30 @@ onUnmounted(() => {
       class="confirmation-panel"
       aria-labelledby="withdraw-confirm-title"
     >
-      <h3 id="withdraw-confirm-title">请核对将要保存的配置</h3>
+      <h3 id="withdraw-confirm-title">{{ t("请核对将要保存的配置", "Review the settings to be saved") }}</h3>
       <p>
-        范围：{{
+        {{ t("范围：", "Scope: ") }}{{
           confirmation.lane === "brand"
-            ? `品牌 ${confirmation.brandId}`
-            : `彩种 ${confirmation.gameId}`
+            ? `${t("品牌", "Brand")} ${confirmation.brandId}`
+            : `${t("彩种", "Game")} ${confirmation.gameId}`
         }}
-        · 版本 {{ confirmation.body.version }}
+        · {{ t("版本", "Version") }} {{ confirmation.body.version }}
       </p>
-      <p>原因：{{ confirmation.body.reason }}</p>
+      <p>{{ t("原因：", "Reason: ") }}{{ confirmation.body.reason }}</p>
       <pre>{{ configJson(confirmation.body.config) }}</pre>
       <p class="muted">
-        幂等键：<code>{{ confirmation.key }}</code>
+        {{ t("幂等键：", "Idempotency key: ") }}<code>{{ confirmation.key }}</code>
       </p>
       <div class="action-row">
         <button class="secondary" type="button" @click="cancelConfirmation">
-          返回编辑</button
+          {{ t("返回编辑", "Back to editing") }}</button
         ><button
           class="primary"
           type="button"
           :disabled="!!saving"
           @click="confirmAndSubmit"
         >
-          {{ saving ? "提交中…" : "确认并提交冻结请求" }}
+          {{ saving ? t("提交中…", "Submitting…") : t("确认并提交冻结请求", "Confirm and submit frozen request") }}
         </button>
       </div>
     </section>

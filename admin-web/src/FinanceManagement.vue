@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import type { LocalizedMessage } from "@lottery/shared";
 import type { AdminAccount } from "./admin-api";
 import {
   canViewRecharges,
@@ -21,12 +22,14 @@ import {
 } from "./finance-api";
 import PointPolicySettings from "./PointPolicySettings.vue";
 import { canViewPointPolicy } from "./point-policy-api";
+import { useAdminI18n } from "./i18n";
 
 const props = defineProps<{
   account: AdminAccount & Partial<FinanceAccount>;
   brandId: string;
 }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
+const { t, message } = useAdminI18n();
 const PAGE_SIZE = 50;
 const api = createFinanceApi();
 const sources: WalletSource[] = ["recharge", "winning", "gift"];
@@ -36,17 +39,22 @@ const states: WalletState[] = [
   "system_frozen",
   "withdrawal",
 ];
-const sourceNames: Record<WalletSource, string> = {
-  recharge: "充值",
-  winning: "中奖",
-  gift: "赠送",
-};
-const stateNames: Record<WalletState, string> = {
-  available: "可用",
-  manual_frozen: "人工冻结",
-  system_frozen: "系统冻结",
-  withdrawal: "提现中",
-};
+function sourceName(source: WalletSource) {
+  return source === "recharge"
+    ? t("充值", "Recharge")
+    : source === "winning"
+      ? t("中奖", "Winnings")
+      : source === "gift" ? t("赠送", "Gift") : source;
+}
+function stateName(state: WalletState) {
+  return state === "available"
+    ? t("可用", "Available")
+    : state === "manual_frozen"
+      ? t("人工冻结", "Manually frozen")
+      : state === "system_frozen"
+        ? t("系统冻结", "System frozen")
+        : state === "withdrawal" ? t("提现中", "Withdrawal pending") : state;
+}
 const memberId = ref("");
 const loadedMemberId = ref("");
 const wallet = ref<Wallet | null>(null);
@@ -57,10 +65,10 @@ const ledgerOffset = ref(0);
 const rechargeOffset = ref(0);
 const loading = ref(false);
 const mutating = ref(false);
-const error = ref("");
-const walletError = ref("");
-const rechargeError = ref("");
-const notice = ref("");
+const error = ref<string | LocalizedMessage>("");
+const walletError = ref<string | LocalizedMessage>("");
+const rechargeError = ref<string | LocalizedMessage>("");
+const notice = ref<string | LocalizedMessage>("");
 const rechargeForm = ref({
   points: "",
   proof_reference: "",
@@ -144,17 +152,25 @@ const unfreezeCandidates = computed(() =>
 const hasNextLedger = computed(() => entries.value.length === PAGE_SIZE);
 const hasNextRecharge = computed(() => recharges.value.length === PAGE_SIZE);
 
-function messageFor(cause: unknown): string {
+function messageFor(cause: unknown): string | LocalizedMessage {
   if (cause instanceof FinanceApiError) {
-    const message =
-      cause.status === 403
-        ? `${cause.message}（服务端权限校验仍为最终依据。）`
-        : cause.message;
-    return cause.status === 409
-      ? `${message}；数据版本已变化，请刷新后重试。`
-      : message;
+    if (cause.status === 409)
+      return message(
+        "{serverError}；数据版本已变化，请刷新后重试。",
+        "{serverError} The data version changed; refresh and try again.",
+        { serverError: cause.message },
+      );
+    if (cause.status === 403)
+      return message(
+        "{serverError}（服务端权限校验仍为最终依据。）",
+        "{serverError} Server authorization remains authoritative.",
+        { serverError: cause.message },
+      );
+    return cause.message;
   }
-  return cause instanceof Error ? cause.message : "请求失败，请重试。";
+  return cause instanceof Error
+    ? cause.message
+    : message("请求失败，请重试。", "Request failed. Please try again.");
 }
 function handleFailure(
   cause: unknown,
@@ -212,7 +228,11 @@ async function reloadData() {
           if (!isCurrent()) return;
           if (value.brand_id === requestBrandId && value.member_id === targetId)
             wallet.value = value;
-          else walletError.value = "钱包响应与当前品牌或会员不匹配。";
+          else
+            walletError.value = message(
+              "钱包响应与当前品牌或会员不匹配。",
+              "The wallet response does not match the current brand or member.",
+            );
         })
         .catch((cause: unknown) => {
           if (isCurrent()) handleFailure(cause, "wallet");
@@ -231,7 +251,11 @@ async function reloadData() {
             )
           )
             entries.value = result.items;
-          else walletError.value = "流水响应与当前品牌或会员不匹配。";
+          else
+            walletError.value = message(
+              "流水响应与当前品牌或会员不匹配。",
+              "The ledger response does not match the current brand or member.",
+            );
         })
         .catch((cause: unknown) => {
           if (isCurrent()) handleFailure(cause, "wallet");
@@ -266,7 +290,11 @@ async function reloadData() {
             )
           )
             recharges.value = result.items;
-          else rechargeError.value = "充值单响应与当前品牌或会员不匹配。";
+          else
+            rechargeError.value = message(
+              "充值单响应与当前品牌或会员不匹配。",
+              "The recharge response does not match the current brand or member.",
+            );
         })
         .catch((cause: unknown) => {
           if (isCurrent()) handleFailure(cause, "recharge");
@@ -365,7 +393,7 @@ async function moveRechargePage(direction: -1 | 1) {
 }
 async function mutate(
   action: () => Promise<unknown>,
-  successText: string,
+  successText: string | LocalizedMessage,
   clearKey: () => void,
 ) {
   if (mutating.value) return;
@@ -413,7 +441,7 @@ async function createRecharge() {
         body,
         rechargeKeyFor({ brand_id: props.brandId, ...body }),
       ),
-    "充值单已创建；实际入账须确认后完成。",
+    message("充值单已创建；实际入账须确认后完成。", "Recharge created. Confirm it to complete the credit."),
     () => rechargeKeyFor.clear(),
   );
   if (!error.value)
@@ -436,7 +464,7 @@ async function confirmRecharge(recharge: Recharge) {
         body,
         confirmKeyFor({ brand_id: props.brandId, id: recharge.id, ...body }),
       ),
-    "充值单已确认，正在读取最新钱包状态。",
+    message("充值单已确认，正在读取最新钱包状态。", "Recharge confirmed. Loading the latest wallet state."),
     () => confirmKeyFor.clear(),
   );
 }
@@ -452,7 +480,7 @@ async function cancelRecharge(recharge: Recharge) {
         body,
         cancelKeyFor({ brand_id: props.brandId, id: recharge.id, ...body }),
       ),
-    "充值单已取消。",
+    message("充值单已取消。", "Recharge cancelled."),
     () => cancelKeyFor.clear(),
   );
   if (!error.value) cancelReasonById.value[recharge.id] = "";
@@ -480,7 +508,7 @@ async function freezePoints() {
           ...body,
         }),
       ),
-    "人工冻结请求已成功，正在读取最新账本。",
+    message("人工冻结请求已成功，正在读取最新账本。", "Manual freeze request succeeded. Loading the latest ledger."),
     () => freezeKeyFor.clear(),
   );
   if (!error.value) freezeForm.value = { points: "", reason: "" };
@@ -500,7 +528,7 @@ async function unfreeze(entry: LedgerEntry) {
           ...body,
         }),
       ),
-    "整笔原路解冻请求已成功，正在读取最新账本。",
+    message("整笔原路解冻请求已成功，正在读取最新账本。", "Full reversal unfreeze request succeeded. Loading the latest ledger."),
     () => unfreezeKeyFor.clear(),
   );
   if (!error.value) unfreezeReason.value = "";
@@ -529,7 +557,7 @@ async function adjustPoints() {
           ...body,
         }),
       ),
-    "积分调整请求已成功，正在读取最新账本。",
+    message("积分调整请求已成功，正在读取最新账本。", "Points adjustment succeeded. Loading the latest ledger."),
     () => adjustKeyFor.clear(),
   );
   if (!error.value)
@@ -549,14 +577,14 @@ function sourceSnapshotValue(
   <section class="finance-management">
     <header class="page-head">
       <div>
-        <p class="eyebrow">FINANCE OPERATIONS</p>
-        <h1>钱包与财务</h1>
-        <p>账本金额以整数点数读取；所有变更由服务端授权、校验并记录审计。</p>
+        <p class="eyebrow">{{ t("财务操作", "FINANCE OPERATIONS") }}</p>
+        <h1>{{ t("钱包与财务", "Funds and ledger") }}</h1>
+        <p>{{ t("账本金额以整数点数读取；所有变更由服务端授权、校验并记录审计。", "Ledger amounts are read as whole points. The server authorizes, validates, and audits every change.") }}</p>
       </div>
-      <span class="brand-tag">品牌 · {{ brandId || "未选择" }}</span>
+      <span class="brand-tag">{{ t("品牌 · ", "Brand · ") }}{{ brandId || t("未选择", "Not selected") }}</span>
     </header>
     <div class="server-note">
-      页面权限仅用于显示操作入口，服务端权限校验始终为最终依据。超级管理员在此只读。
+      {{ t("页面权限仅用于显示操作入口，服务端权限校验始终为最终依据。超级管理员在此只读。", "Page permissions only control which actions are shown; server-side authorization is authoritative. Super administrators have read-only access here.") }}
     </div>
     <PointPolicySettings
       v-if="canViewPolicy"
@@ -570,42 +598,42 @@ function sourceSnapshotValue(
       @submit.prevent="inspectMember"
     >
       <label
-        >会员 UUID<input
+        >{{ t("会员 UUID", "Member ID") }}<input
           v-model.trim="memberId"
           required
           autocomplete="off"
-          placeholder="输入当前品牌的 member_id" /></label
+          :placeholder="t('输入当前品牌的 member_id', 'Enter the member_id for this brand')" /></label
       ><button class="primary" :disabled="loading || !memberId.trim()">
-        {{ loading ? "读取中…" : "查询会员" }}
+        {{ loading ? t("读取中…", "Loading…") : t("查询会员", "Load wallet") }}
       </button>
     </form>
     <p
       v-if="!canSearch && !(writeRecharge || writeFreeze || writeAdjust)"
       class="callout"
     >
-      当前账号没有此品牌的钱包或充值查看权限。
+      {{ t("当前账号没有此品牌的钱包或充值查看权限。", "This account cannot view wallets or recharges for this brand.") }}
     </p>
     <p v-if="error" class="notice error" role="alert">
-      {{ error }}
+      {{ t(error) }}
       <button
         type="button"
         @click="loadedMemberId ? reloadData() : loadRechargeQueue()"
-      >
-        刷新
+        >
+        {{ t("刷新", "Refresh") }}
       </button>
     </p>
-    <p v-if="notice" class="notice success" role="status">{{ notice }}</p>
+    <p v-if="notice" class="notice success" role="status">{{ t(notice) }}</p>
     <p v-if="walletError" class="notice error" role="alert">
-      {{ walletError }}
-      <button type="button" @click="reloadData">刷新钱包</button>
+      {{ t(walletError) }}
+      <button type="button" @click="reloadData">{{ t("刷新钱包", "Refresh wallet") }}</button>
     </p>
     <p v-if="rechargeError" class="notice error" role="alert">
-      {{ rechargeError }}
+      {{ t(rechargeError) }}
       <button
         type="button"
         @click="loadedMemberId ? reloadData() : loadRechargeQueue()"
       >
-        刷新充值单
+        {{ t("刷新充值单", "Refresh recharges") }}
       </button>
     </p>
 
@@ -613,9 +641,9 @@ function sourceSnapshotValue(
       <section v-if="viewWallet && wallet" class="panel wallet-panel">
         <div class="panel-title">
           <div>
-            <h2>会员钱包</h2>
+            <h2>{{ t("会员钱包", "Member wallet") }}</h2>
             <p>
-              {{ wallet.member_id }} · 账户 {{ wallet.account_id }} · 版本
+              {{ t("会员 ID", "Member ID") }} {{ wallet.member_id }} · {{ t("账户", "Account") }} {{ wallet.account_id }} · {{ t("版本", "Version") }}
               {{ wallet.version }}
             </p>
           </div>
@@ -625,24 +653,24 @@ function sourceSnapshotValue(
             :disabled="loading"
             @click="reloadData"
           >
-            刷新
+            {{ t("刷新", "Refresh") }}
           </button>
         </div>
         <div class="totals">
           <article class="total prominent">
-            <span>显示积分</span
+            <span>{{ t("显示积分", "Displayed points") }}</span
             ><strong>{{ formatIntegerAmount(wallet.display_points) }}</strong>
           </article>
           <article class="total">
-            <span>可用</span
+            <span>{{ t("可用", "Available") }}</span
             ><strong>{{ formatIntegerAmount(wallet.available_points) }}</strong>
           </article>
           <article class="total">
-            <span>冻结</span
+            <span>{{ t("冻结", "Frozen") }}</span
             ><strong>{{ formatIntegerAmount(wallet.frozen_points) }}</strong>
           </article>
           <article class="total">
-            <span>提现中</span
+            <span>{{ t("提现中", "Withdrawal pending") }}</span
             ><strong>{{
               formatIntegerAmount(wallet.withdrawal_points)
             }}</strong>
@@ -650,39 +678,39 @@ function sourceSnapshotValue(
         </div>
         <div class="bucket-table">
           <div class="table-head">
-            <span>来源</span><span>状态</span><span>积分</span>
+            <span>{{ t("来源", "Source") }}</span><span>{{ t("状态", "State") }}</span><span>{{ t("积分", "Points") }}</span>
           </div>
           <div
             v-for="bucket in walletBucketRows"
             :key="`${bucket.source}-${bucket.state}`"
             class="bucket-row"
           >
-            <b>{{ sourceNames[bucket.source] }}</b
-            ><span>{{ stateNames[bucket.state] }}</span
+            <b>{{ sourceName(bucket.source) }}</b
+            ><span>{{ stateName(bucket.state) }}</span
             ><strong>{{ formatIntegerAmount(bucket.value) }}</strong>
           </div>
         </div>
       </section>
       <p v-else-if="viewWallet && !wallet && !walletError" class="callout">
-        正在读取会员钱包…
+        {{ t("正在读取会员钱包…", "Loading member wallet…") }}
       </p>
       <p v-else-if="!viewWallet" class="callout">
-        缺少 wallet.view 权限；不会请求或展示该会员钱包、流水与对账。
+        {{ t("缺少 wallet.view 权限；不会请求或展示该会员钱包、流水与对账。", "Missing wallet.view permission. This member's wallet, ledger, and reconciliation will not be requested or shown.") }}
       </p>
 
       <section v-if="viewWallet && reconciliation" class="panel">
         <div class="panel-title">
           <div>
-            <h2>账本对账</h2>
+            <h2>{{ t("账本对账", "Ledger reconciliation") }}</h2>
             <p>
-              版本 {{ reconciliation.version }} ·
-              {{ reconciliation.entry_count }} 条流水
+              {{ t("版本", "Version") }} {{ reconciliation.version }} ·
+              {{ t("{count} 条流水", "{count} ledger entries", { count: String(reconciliation.entry_count) }) }}
             </p>
           </div>
           <span
             class="status"
             :class="reconciliation.consistent ? 'good' : 'bad'"
-            >{{ reconciliation.consistent ? "一致" : "存在差异" }}</span
+            >{{ reconciliation.consistent ? t("一致", "Consistent") : t("存在差异", "Discrepancies found") }}</span
           >
         </div>
         <ul v-if="reconciliation.issues.length" class="issues">
@@ -692,14 +720,14 @@ function sourceSnapshotValue(
         </ul>
         <div class="recon-table">
           <div class="table-head">
-            <span>来源 / 状态</span><span>期望</span><span>实际</span>
+            <span>{{ t("来源 / 状态", "Source / state") }}</span><span>{{ t("期望", "Expected") }}</span><span>{{ t("实际", "Actual") }}</span>
           </div>
           <div
             v-for="row in reconciliationRows"
             :key="`${row.source}-${row.state}`"
             class="recon-row"
           >
-            <b>{{ sourceNames[row.source] }} · {{ stateNames[row.state] }}</b
+            <b>{{ sourceName(row.source) }} · {{ stateName(row.state) }}</b
             ><span>{{ formatIntegerAmount(row.expected) }}</span
             ><span>{{ formatIntegerAmount(row.actual) }}</span>
           </div>
@@ -709,40 +737,40 @@ function sourceSnapshotValue(
       <section v-if="viewWallet" class="panel">
         <div class="panel-title">
           <div>
-            <h2>钱包流水</h2>
-            <p>每笔展示全部 12 桶变更前、变动额与变更后金额。</p>
+            <h2>{{ t("钱包流水", "Wallet ledger") }}</h2>
+            <p>{{ t("每笔展示全部 12 桶变更前、变动额与变更后金额。", "Each entry shows the before, change, and after amounts for all 12 buckets.") }}</p>
           </div>
         </div>
-        <p v-if="!entries.length" class="muted">当前页没有流水。</p>
+        <p v-if="!entries.length" class="muted">{{ t("当前页没有流水。", "No ledger entries on this page.") }}</p>
         <article v-for="entry in entries" :key="entry.id" class="ledger-entry">
           <div class="entry-head">
             <div>
               <b>{{ entry.entry_type }}</b
-              ><small>{{ entry.created_at }} · 版本 {{ entry.version }}</small>
+              ><small>{{ entry.created_at }} · {{ t("版本", "Version") }} {{ entry.version }}</small>
             </div>
             <code>{{ entry.id }}</code>
           </div>
           <p class="reason-text">{{ entry.reason }}</p>
           <p v-if="entry.source_allocation.length" class="allocation">
-            分摊：{{
+            {{ t("分摊：", "Allocation: ") }}{{
               entry.source_allocation
                 .map(
                   (item) =>
-                    `${sourceNames[item.source]} / ${stateNames[item.state]} ${formatIntegerAmount(item.points)}`,
+                    `${sourceName(item.source)} / ${stateName(item.state)} ${formatIntegerAmount(item.points)}`,
                 )
                 .join(" · ")
             }}
           </p>
           <div class="snapshot-grid">
-            <span class="snapshot-heading">积分桶</span
-            ><span class="snapshot-heading">变更前</span
-            ><span class="snapshot-heading">变动</span
-            ><span class="snapshot-heading">变更后</span
+          <span class="snapshot-heading">{{ t("积分桶", "Points bucket") }}</span
+            ><span class="snapshot-heading">{{ t("变更前", "Before") }}</span
+            ><span class="snapshot-heading">{{ t("变动", "Change") }}</span
+            ><span class="snapshot-heading">{{ t("变更后", "After") }}</span
             ><template v-for="source in sources" :key="`${entry.id}-${source}`"
               ><template
                 v-for="state in states"
                 :key="`${entry.id}-${source}-${state}`"
-                ><b>{{ sourceNames[source] }} · {{ stateNames[state] }}</b
+                ><b>{{ sourceName(source) }} · {{ stateName(state) }}</b
                 ><span>{{
                   sourceSnapshotValue(entry, "before_snapshot", source, state)
                 }}</span
@@ -756,15 +784,15 @@ function sourceSnapshotValue(
             >
           </div>
           <details>
-            <summary>审计与引用信息</summary>
+            <summary>{{ t("审计与引用信息", "Audit and reference details") }}</summary>
             <p>
-              引用：{{ entry.reference_type }} / {{ entry.reference_id
-              }}<br />操作键：{{ entry.operation_key }}<br />操作者：{{
+              {{ t("引用：", "Reference: ") }}{{ entry.reference_type }} / {{ entry.reference_id
+              }}<br />{{ t("操作键：", "Operation key: ") }}{{ entry.operation_key }}<br />{{ t("操作者：", "Actor: ") }}{{
                 entry.actor_type
               }}
-              / {{ entry.actor_id }}<br />请求：{{ entry.request_id
+              / {{ entry.actor_id }}<br />{{ t("请求：", "Request: ") }}{{ entry.request_id
               }}<span v-if="entry.reversal_of"
-                ><br />冲正原流水：{{ entry.reversal_of }}</span
+                ><br />{{ t("冲正原流水：", "Reversed ledger entry: ") }}{{ entry.reversal_of }}</span
               >
             </p>
           </details>
@@ -776,7 +804,7 @@ function sourceSnapshotValue(
             class="unfreeze-row"
           >
             <label
-              >整笔原路解冻原因<input
+              >{{ t("整笔原路解冻原因", "Reason for full reversal unfreeze") }}<input
                 v-model.trim="unfreezeReason"
                 required
                 maxlength="500" /></label
@@ -786,25 +814,25 @@ function sourceSnapshotValue(
               :disabled="mutating || !unfreezeReason.trim()"
               @click="unfreeze(entry)"
             >
-              整笔原路解冻
+              {{ t("整笔原路解冻", "Unfreeze entire original amount") }}
             </button>
           </div>
         </article>
         <footer class="pager">
-          <span>第 {{ ledgerOffset / PAGE_SIZE + 1 }} 页</span>
+          <span>{{ t("第 {page} 页", "Page {page}", { page: String(ledgerOffset / PAGE_SIZE + 1) }) }}</span>
           <div>
             <button
               type="button"
               :disabled="ledgerOffset === 0 || loading"
               @click="moveLedgerPage(-1)"
             >
-              上一页</button
+              {{ t("上一页", "Previous") }}</button
             ><button
               type="button"
               :disabled="!hasNextLedger || loading"
               @click="moveLedgerPage(1)"
             >
-              下一页
+              {{ t("下一页", "Next") }}
             </button>
           </div>
         </footer>
@@ -814,10 +842,10 @@ function sourceSnapshotValue(
     <section v-if="viewRecharges" class="panel">
       <div class="panel-title">
         <div>
-          <h2>充值单</h2>
+          <h2>{{ t("充值单", "Recharges") }}</h2>
           <p>
-            {{ loadedMemberId ? `会员 ${loadedMemberId}` : "当前品牌充值单" }} ·
-            每页 50 条
+            {{ loadedMemberId ? `${t("会员", "Member")} ${loadedMemberId}` : t("当前品牌充值单", "Brand recharges") }} ·
+            {{ t("每页 {count} 条", "{count} per page", { count: "50" }) }}
           </p>
         </div>
         <button
@@ -827,10 +855,10 @@ function sourceSnapshotValue(
           :disabled="loading"
           @click="loadRechargeQueue"
         >
-          刷新列表
+          {{ t("刷新列表", "Refresh list") }}
         </button>
       </div>
-      <p v-if="!recharges.length" class="muted">当前页没有充值单。</p>
+      <p v-if="!recharges.length" class="muted">{{ t("当前页没有充值单。", "No recharges on this page.") }}</p>
       <article
         v-for="recharge in recharges"
         :key="recharge.id"
@@ -838,31 +866,31 @@ function sourceSnapshotValue(
       >
         <div class="recharge-head">
           <div>
-            <b>{{ formatIntegerAmount(recharge.points) }} 分</b
+            <b>{{ formatIntegerAmount(recharge.points) }} {{ t("分", "points") }}</b
             ><small>{{ recharge.member_id }} · {{ recharge.created_at }}</small>
           </div>
           <span class="status" :class="recharge.state">{{
             recharge.state === "pending"
-              ? "待确认"
+              ? t("待确认", "Pending")
               : recharge.state === "confirmed"
-                ? "已确认"
-                : "已取消"
+                ? t("已确认", "Confirmed")
+                : t("已取消", "Cancelled")
           }}</span>
         </div>
         <p v-if="recharge.proof_reference">
-          凭证：{{ recharge.proof_reference }}
+          {{ t("凭证：", "Proof: ") }}{{ recharge.proof_reference }}
         </p>
-        <p v-if="recharge.remark">备注：{{ recharge.remark }}</p>
+        <p v-if="recharge.remark">{{ t("备注：", "Remark: ") }}{{ recharge.remark }}</p>
         <p>
-          创建人 {{ recharge.created_by
+          {{ t("创建人", "Created by") }} {{ recharge.created_by
           }}<span v-if="recharge.confirmed_by">
-            · 确认人 {{ recharge.confirmed_by }}</span
+            · {{ t("确认人", "Confirmed by") }} {{ recharge.confirmed_by }}</span
           ><span v-if="recharge.ledger_entry_id">
-            · 流水 {{ recharge.ledger_entry_id }}</span
+            · {{ t("流水", "Ledger entry") }} {{ recharge.ledger_entry_id }}</span
           >
         </p>
         <label v-if="writeRecharge && recharge.state === 'pending'"
-          >确认原因<input
+          >{{ t("确认原因", "Confirmation reason") }}<input
             v-model.trim="rechargeReasonById[recharge.id]"
             required
             maxlength="500" /></label
@@ -873,10 +901,10 @@ function sourceSnapshotValue(
           :disabled="mutating || !rechargeReasonById[recharge.id]?.trim()"
           @click="confirmRecharge(recharge)"
         >
-          确认并入账
+          {{ t("确认并入账", "Confirm and credit") }}
         </button>
         <label v-if="writeRecharge && recharge.state === 'pending'"
-          >取消原因<input
+          >{{ t("取消原因", "Cancellation reason") }}<input
             v-model.trim="cancelReasonById[recharge.id]"
             required
             maxlength="500" /></label
@@ -887,24 +915,24 @@ function sourceSnapshotValue(
           :disabled="mutating || !cancelReasonById[recharge.id]?.trim()"
           @click="cancelRecharge(recharge)"
         >
-          取消充值单
+          {{ t("取消充值单", "Cancel recharge") }}
         </button>
       </article>
       <footer class="pager">
-        <span>第 {{ rechargeOffset / PAGE_SIZE + 1 }} 页</span>
+        <span>{{ t("第 {page} 页", "Page {page}", { page: String(rechargeOffset / PAGE_SIZE + 1) }) }}</span>
         <div>
           <button
             type="button"
             :disabled="rechargeOffset === 0 || loading"
             @click="moveRechargePage(-1)"
           >
-            上一页</button
+            {{ t("上一页", "Previous") }}</button
           ><button
             type="button"
             :disabled="!hasNextRecharge || loading"
             @click="moveRechargePage(1)"
           >
-            下一页
+            {{ t("下一页", "Next") }}
           </button>
         </div>
       </footer>
@@ -913,27 +941,27 @@ function sourceSnapshotValue(
     <section v-if="writeRecharge && loadedMemberId" class="panel form-panel">
       <div class="panel-title">
         <div>
-          <h2>创建充值单</h2>
-          <p>这里只创建待确认充值单；确认后服务端才执行真实入账。</p>
+          <h2>{{ t("创建充值单", "Create recharge") }}</h2>
+          <p>{{ t("这里只创建待确认充值单；确认后服务端才执行真实入账。", "This creates a pending recharge only. The server credits it after confirmation.") }}</p>
         </div>
       </div>
       <form class="form-grid" @submit.prevent="createRecharge">
         <label
-          >充值积分（正整数）<input
+          >{{ t("充值积分（正整数）", "Recharge points (positive whole number)") }}<input
             v-model.trim="rechargeForm.points"
             inputmode="numeric"
             required
-          /><small>大额金额按十进制字符串提交，不经浮点数转换。</small></label
+          /><small>{{ t("大额金额按十进制字符串提交，不经浮点数转换。", "Large amounts are submitted as decimal strings without floating-point conversion.") }}</small></label
         ><label
-          >凭证编号（可选）<input
+          >{{ t("凭证编号（可选）", "Proof reference (optional)") }}<input
             v-model.trim="rechargeForm.proof_reference"
             maxlength="200" /></label
         ><label class="wide"
-          >备注（可选）<input
+          >{{ t("备注（可选）", "Remark (optional)") }}<input
             v-model.trim="rechargeForm.remark"
             maxlength="500" /></label
         ><label class="wide"
-          >原因<input
+          >{{ t("原因", "Reason") }}<input
             v-model.trim="rechargeForm.reason"
             required
             maxlength="500" /></label
@@ -945,7 +973,7 @@ function sourceSnapshotValue(
             !rechargeForm.reason.trim()
           "
         >
-          创建待确认充值单
+          {{ t("创建待确认充值单", "Create pending recharge") }}
         </button>
       </form>
     </section>
@@ -961,17 +989,17 @@ function sourceSnapshotValue(
       >
         <div class="panel-title">
           <div>
-            <h2>人工冻结</h2>
-            <p>只冻结指定积分；系统冻结和投注冻结不提供操作入口。</p>
+            <h2>{{ t("人工冻结", "Manual freeze") }}</h2>
+            <p>{{ t("只冻结指定积分；系统冻结和投注冻结不提供操作入口。", "Freeze only the specified points. System freezes and betting freezes cannot be changed here.") }}</p>
           </div>
         </div>
         <label
-          >冻结积分（正整数）<input
+          >{{ t("冻结积分（正整数）", "Points to freeze (positive whole number)") }}<input
             v-model.trim="freezeForm.points"
             inputmode="numeric"
             required /></label
         ><label
-          >原因<input
+          >{{ t("原因", "Reason") }}<input
             v-model.trim="freezeForm.reason"
             required
             maxlength="500" /></label
@@ -983,7 +1011,7 @@ function sourceSnapshotValue(
             !freezeForm.reason.trim()
           "
         >
-          冻结积分
+          {{ t("冻结积分", "Freeze points") }}
         </button>
       </form>
       <form
@@ -993,24 +1021,24 @@ function sourceSnapshotValue(
       >
         <div class="panel-title">
           <div>
-            <h2>来源积分调整</h2>
-            <p>只允许充值、中奖或赠送来源；没有通用冲正或系统冻结入口。</p>
+            <h2>{{ t("来源积分调整", "Adjust points by source") }}</h2>
+            <p>{{ t("只允许充值、中奖或赠送来源；没有通用冲正或系统冻结入口。", "Only Recharge, Winnings, or Gift sources can be adjusted. There is no general reversal or system-freeze action.") }}</p>
           </div>
         </div>
         <label
-          >积分来源<select v-model="adjustForm.source">
-            <option value="recharge">充值</option>
-            <option value="winning">中奖</option>
-            <option value="gift">赠送</option>
+          >{{ t("积分来源", "Points source") }}<select v-model="adjustForm.source">
+            <option value="recharge">{{ t("充值", "Recharge") }}</option>
+            <option value="winning">{{ t("中奖", "Winnings") }}</option>
+            <option value="gift">{{ t("赠送", "Gift") }}</option>
           </select></label
         ><label
-          >调整额（非零有符号整数）<input
+          >{{ t("调整额（非零有符号整数）", "Adjustment (nonzero signed whole number)") }}<input
             v-model.trim="adjustForm.delta"
             inputmode="text"
             required
-            placeholder="例如 250 或 -30" /></label
+            :placeholder="t('例如 250 或 -30', 'For example, 250 or -30')" /></label
         ><label
-          >原因<input
+          >{{ t("原因", "Reason") }}<input
             v-model.trim="adjustForm.reason"
             required
             maxlength="500" /></label
@@ -1022,7 +1050,7 @@ function sourceSnapshotValue(
             !adjustForm.reason.trim()
           "
         >
-          提交来源调整
+          {{ t("提交来源调整", "Submit source adjustment") }}
         </button>
       </form>
     </section>
@@ -1030,7 +1058,7 @@ function sourceSnapshotValue(
       v-if="loadedMemberId && !(writeRecharge || writeFreeze || writeAdjust)"
       class="callout"
     >
-      当前账号在此品牌只有财务查看权限；不会显示写操作。
+      {{ t("当前账号在此品牌只有财务查看权限；不会显示写操作。", "This account has read-only finance access for this brand; write actions are hidden.") }}
     </p>
   </section>
 </template>
