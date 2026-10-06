@@ -89,7 +89,7 @@ func adminResult(auditID string, err error) (mutation.Result, error) {
 	}
 	return mutation.OK(200, map[string]string{"audit_log_id": auditID}), nil
 }
-func registerAdminRoutes(mux *http.ServeMux, d Dependencies) {
+func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 	handle := func(method, path string, fn http.HandlerFunc) {
 		mux.HandleFunc(method+" /api/v1/admin"+path, func(w http.ResponseWriter, r *http.Request) {
 			if d.Identity == nil || d.Mutations == nil || d.Admins.DB == nil {

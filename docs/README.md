@@ -20,6 +20,7 @@
 - [06-architecture.md](06-architecture.md)：技术架构、部署、高并发和运维。
 - [07-security-risk-compliance.md](07-security-risk-compliance.md)：权限、审计、风控和合规接口边界。
 - [08-acceptance-and-open-items.md](08-acceptance-and-open-items.md)：验收标准、测试场景和未决事项。
+- [09-openapi-handover.md](09-openapi-handover.md)：已实现接口的 OpenAPI、接入限制、生成和 CI 契约检查。
 - [09-implementation-backlog.md](09-implementation-backlog.md)：按依赖拆分的第一阶段开发任务。
 
 ## 第一阶段实现顺序

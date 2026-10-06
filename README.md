@@ -2,6 +2,8 @@
 
 多品牌彩票运营平台。实现依据位于 [docs/README.md](docs/README.md)，阶段验收与当前覆盖范围位于 [docs/implementation-progress.md](docs/implementation-progress.md)。
 
+第三方接入请使用 [已实现 OpenAPI](docs/openapi.json) 与 [接口交接说明](docs/09-openapi-handover.md)。运行 `pnpm api:generate` 更新，`pnpm api:check` 和 `pnpm test:contracts` 检查实际路由及代表性数据模型；完整业务设计中的未来接口不代表已经可调用。
+
 ## 开发环境
 
 - Go 1.26+、Node 24+、pnpm 11.19.0。

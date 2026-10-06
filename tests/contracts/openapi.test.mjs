@@ -1,0 +1,14 @@
+import {test} from "node:test";
+import assert from "node:assert/strict";
+import {assertCoverage,assertReferences,composeDocument,documentedRoutes} from "../../scripts/openapi-lib.mjs";
+const operation={method:"POST",path:"/api/v1/me/action",operationId:"performAction",summary:"Submit action",tag:"identity",auth:"user",idempotency:true,requestBody:{$ref:"#/components/schemas/EmptyObject"},data:{$ref:"#/components/schemas/EmptyObject"}};
+const routes=[{method:"POST",path:"/api/v1/me/action"},{method:"POST",path:"/api/v1/b/{brandCode}/me/action"}];
+test("expands canonical user operations and keeps exact registered coverage",()=>{const doc=composeDocument([{schemas:{},operations:[operation]}],routes);assert.equal(documentedRoutes(doc).length,2);assert.equal(doc.paths["/api/v1/b/{brandCode}/me/action"].post.operationId,"performActionByBrand");assert.ok(doc.paths["/api/v1/me/action"].post.parameters.some(p=>p.name==="Idempotency-Key"&&p.required));assert.ok(doc.paths["/api/v1/me/action"].post.parameters.some(p=>p.name==="Origin"&&!p.required));assert.deepEqual(doc.paths["/api/v1/me/action"].post.security,[{userBearer:[]}])});
+test("rejects missing/invented operations rather than silently documenting future APIs",()=>{const doc=composeDocument([{schemas:{},operations:[operation]}],routes);assert.throws(()=>assertCoverage(doc,[...routes,{method:"POST",path:"/api/v1/withdrawals"}]),/Missing/);assert.throws(()=>assertCoverage(doc,routes.slice(0,1)),/Unregistered/)});
+test("rejects duplicate schema/operation ids and unresolved/external refs",()=>{assert.throws(()=>composeDocument([{schemas:{UUID:{}},operations:[]}],[]),/Duplicate schema/);assert.throws(()=>composeDocument([{schemas:{},operations:[operation,operation]}],routes),/Duplicate/);assert.throws(()=>assertReferences({schema:{$ref:"#/components/schemas/Missing"}}),/Unresolved/);assert.throws(()=>assertReferences({schema:{$ref:"https://untrusted.example/schema"}}),/External/)});
+test("does not add mutable brand authorization to global admin auth",()=>{const op={...operation,path:"/api/v1/admin/auth/logout",auth:"admin",operationId:"logoutAdmin",brandHeader:false};const doc=composeDocument([{schemas:{},operations:[op]}],[{method:"POST",path:op.path}]);assert.ok(!doc.paths[op.path].post.parameters.some(p=>p.name==="X-Brand-ID"));assert.deepEqual(doc.paths[op.path].post.security,[{adminBearer:[]},{adminCookie:[]}])});
+test("fails duplicate headers and invalid authentication declarations",()=>{
+  const op={...operation,path:"/api/v1/admin/action",auth:"admin",brandHeader:true,parameters:[{name:"X-Brand-ID",in:"header",schema:{type:"string"}}]};
+  assert.throws(()=>composeDocument([{schemas:{},operations:[op]}],[{method:"POST",path:op.path}]),/Duplicate parameter/);
+  assert.throws(()=>composeDocument([{schemas:{},operations:[{...operation,auth:"unknown"}]}],routes),/Invalid auth/);
+});

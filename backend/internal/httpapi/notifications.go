@@ -30,7 +30,7 @@ func notificationResult(out any, err error) (mutation.Result, error) {
 		return mutation.OK(200, out), nil
 	}
 }
-func registerNotificationRoutes(mux *http.ServeMux, d Dependencies) {
+func registerNotificationRoutes(mux routeRegistrar, d Dependencies) {
 	s := notification.Service{DB: d.Admins.DB}
 	for _, prefix := range []string{"/api/v1", "/api/v1/b/{brandCode}"} {
 		handle := func(method, path string, fn http.HandlerFunc) {

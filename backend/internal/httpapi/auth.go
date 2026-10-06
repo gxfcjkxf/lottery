@@ -115,7 +115,7 @@ func issueCookie(w http.ResponseWriter, r *http.Request, name, token string, exp
 	}
 	http.SetCookie(w, &http.Cookie{Name: name, Value: token, Path: "/api/v1", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, Expires: expires, MaxAge: age})
 }
-func registerAuthRoutes(mux *http.ServeMux, d Dependencies) {
+func registerAuthRoutes(mux routeRegistrar, d Dependencies) {
 	for _, prefix := range []string{"/api/v1", "/api/v1/b/{brandCode}"} {
 		handle := func(method, path string, fn http.HandlerFunc) {
 			mux.HandleFunc(method+" "+prefix+path, func(w http.ResponseWriter, r *http.Request) {

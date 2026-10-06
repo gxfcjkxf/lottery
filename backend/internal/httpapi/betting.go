@@ -116,7 +116,7 @@ func checkedBetWrite(w http.ResponseWriter, r *http.Request, d Dependencies, bra
 	outputMutation(w, r, result, err)
 }
 
-func registerBetRoutes(mux *http.ServeMux, d Dependencies) {
+func registerBetRoutes(mux routeRegistrar, d Dependencies) {
 	for _, prefix := range []string{"/api/v1", "/api/v1/b/{brandCode}"} {
 		handle := func(method, path string, fn http.HandlerFunc) {
 			mux.HandleFunc(method+" "+prefix+path, func(w http.ResponseWriter, r *http.Request) {

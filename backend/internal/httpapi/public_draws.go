@@ -22,7 +22,7 @@ func publicDrawFilter(w http.ResponseWriter, r *http.Request) (betting.PublicDra
 	}
 	return betting.PublicDrawFilter{GameID: r.URL.Query().Get("game_id"), PeriodNo: r.URL.Query().Get("period_no"), Limit: limit, Offset: offset}, true
 }
-func registerPublicDrawRoutes(mux *http.ServeMux, d Dependencies) {
+func registerPublicDrawRoutes(mux routeRegistrar, d Dependencies) {
 	for _, prefix := range []string{"/api/v1", "/api/v1/b/{brandCode}"} {
 		handle := func(path string, fn http.HandlerFunc) {
 			mux.HandleFunc("GET "+prefix+path, func(w http.ResponseWriter, r *http.Request) {

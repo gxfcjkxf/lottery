@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func registerTelegramRoutes(mux *http.ServeMux, d Dependencies) {
+func registerTelegramRoutes(mux routeRegistrar, d Dependencies) {
 	for _, prefix := range []string{"/api/v1", "/api/v1/b/{brandCode}"} {
 		mux.HandleFunc("GET "+prefix+"/auth/telegram/challenge", func(w http.ResponseWriter, r *http.Request) {
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)

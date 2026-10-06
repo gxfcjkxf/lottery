@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func registerBetCatalogRoutes(mux *http.ServeMux, d Dependencies) {
+func registerBetCatalogRoutes(mux routeRegistrar, d Dependencies) {
 	for _, prefix := range []string{"/api/v1", "/api/v1/b/{brandCode}"} {
 		handle := func(path string, fn http.HandlerFunc) {
 			mux.HandleFunc("GET "+prefix+path, func(w http.ResponseWriter, r *http.Request) {

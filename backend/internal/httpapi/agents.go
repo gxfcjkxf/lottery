@@ -208,7 +208,7 @@ func registerAgentAdminRoutes(handle func(string, string, http.HandlerFunc), d D
 		})
 	})
 }
-func registerAgentUserRoutes(mux *http.ServeMux, d Dependencies) {
+func registerAgentUserRoutes(mux routeRegistrar, d Dependencies) {
 	s := agency.Service{DB: d.Admins.DB}
 	for _, prefix := range []string{"/api/v1", "/api/v1/b/{brandCode}"} {
 		mux.HandleFunc("GET "+prefix+"/agent/me", func(w http.ResponseWriter, r *http.Request) {

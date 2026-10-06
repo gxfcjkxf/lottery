@@ -211,7 +211,7 @@ func registerJoinCodeAdmin(handle func(string, string, http.HandlerFunc), d Depe
 	})
 }
 
-func registerJoinCodeUser(mux *http.ServeMux, d Dependencies) {
+func registerJoinCodeUser(mux routeRegistrar, d Dependencies) {
 	readDB := d.Admins.DB
 	if readDB == nil && d.Identity != nil {
 		readDB = d.Identity.DB

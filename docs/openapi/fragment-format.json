@@ -1,0 +1,21 @@
+{
+  "description": "Developer fragment format; not an OpenAPI document. Builders merge schemas and operations into docs/openapi.json. Use authoritative handlers/model DTOs. Canonical user paths automatically expand into platform /b/{brandCode} aliases.",
+  "operationFields": {
+    "method": "GET|POST|PUT|PATCH",
+    "path": "Full canonical path, e.g. /api/v1/admin/join-codes; user domain path /api/v1/me (do not add /b aliases).",
+    "operationId": "Unique lowerCamelCase identifier",
+    "summary": "Concise description",
+    "tag": "identity|administration|finance|games|betting|settlement|notification|agency|reporting|system",
+    "auth": "public|user|admin|session",
+    "idempotency": "true for mutations using engine; false for read-only POST simulations",
+    "requestBody": "JSON schema object or local $ref; omitted for GET",
+    "data": "Success data JSON schema object or local $ref; must reflect actual emitted DTO",
+    "successStatus": "200 or 201; defaults200",
+    "parameters": "OpenAPI query/header parameter objects. Path variables are filled by builder. Do not add shared Idempotency-Key/Origin/X-Request-ID headers.",
+    "brandHeader": "true when admin operation actually requires X-Brand-ID; false for admin auth/me/brands/logout global operations",
+    "permissions": "Array of authoritative grant keys, descriptive only; use description for any/all or special super-admin restrictions",
+    "description": "Semantics, actual safety constraints, and remaining stubs, not future capabilities"
+  },
+  "sharedSchemas": ["UUID", "DateTime", "Int64String", "NonnegativeInt64String", "PositiveInt64String", "PositiveInteger", "Reason", "EmptyObject", "ErrorResponse", "ArbitraryJSON"],
+  "fragmentModule": "Export const schemas = {...}; export const operations = [{...}]. Prefix domain-specific schema names to prevent collisions; local refs #/components/schemas/Name. No bare unknown object for concrete inputs/DTOs. True opaque AST/JSONB may use ArbitraryJSON with explanation. Required keys from actual JSON emission; optional input not made falsely mandatory. Nullable anyOf(ref,null) or type:[string,null] per OAS3.1.1. Bodies closed when server rejects unknown fields. Do not publish secrets, code from licenses, or actual credentials. No runtime HTTP or filesystem mutations."
+}

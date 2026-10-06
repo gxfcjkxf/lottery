@@ -43,7 +43,10 @@ type apiError struct {
 var requestPattern = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,80}$`)
 
 func New(d Dependencies) http.Handler {
-	mux := http.NewServeMux()
+	return middleware(d.Logger, d.TrustedProxies, buildRouter(d))
+}
+func buildRouter(d Dependencies) *routeMux {
+	mux := newRouteMux()
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) { respond(w, r, 200, map[string]string{"status": "alive"}) })
 	mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -85,7 +88,7 @@ func New(d Dependencies) http.Handler {
 	registerPublicDrawRoutes(mux, d)
 	registerNotificationRoutes(mux, d)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { failure(w, r, 404, "NOT_FOUND", "接口不存在") })
-	return middleware(d.Logger, d.TrustedProxies, mux)
+	return mux
 }
 func respond(w http.ResponseWriter, r *http.Request, status int, data any) {
 	write(w, status, envelope{Success: true, Data: data, RequestID: requestID(r)})
