@@ -18,6 +18,9 @@ import BetOrderManagement from "./BetOrderManagement.vue";
 import BetPolicySettings from "./BetPolicySettings.vue";
 import PeriodCancellation from "./PeriodCancellation.vue";
 const RuleVersions = defineAsyncComponent(() => import("./RuleVersions.vue"));
+const WithdrawalPolicySettings = defineAsyncComponent(
+  () => import("./WithdrawalPolicySettings.vue"),
+);
 import {
   previewCorrection,
   resolveWithdrawal,
@@ -2039,6 +2042,13 @@ const ledger = [
         <BalanceRepair
           v-if="account && selectedBrandId"
           :key="`repair-${selectedBrandId}`"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
+        <WithdrawalPolicySettings
+          v-if="account && selectedBrandId"
+          :key="`withdrawal-policy-${selectedBrandId}`"
           :account="account"
           :brand-id="selectedBrandId"
           @session-invalid="clearAdminData"

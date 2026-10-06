@@ -11,6 +11,7 @@ import (
 )
 
 func registerPointSafetyRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
+	registerWithdrawalPolicyRoutes(handle, d)
 	s := points.Store{DB: d.Admins.DB}
 	f := finance.Service{DB: d.Admins.DB, Points: s}
 	handle("GET", "/point-policy", func(w http.ResponseWriter, r *http.Request) {

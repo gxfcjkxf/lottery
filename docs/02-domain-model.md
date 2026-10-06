@@ -213,6 +213,12 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 - `reject_reason`, `process_result`, `created_at`, `reviewed_at`, `completed_at`
 - 同一品牌用户的 reviewing/processing 状态只能有一条，使用部分唯一索引或等价锁。
 
+S6-a 当前只实现提现规则配置，不建此订单表或产生提现积分。`brand_withdrawal_policies` 保存 brand_id/version/config/updated_at；config 为 enabled、min_points、max_points（null 无上限）、allowed_sources（充值/中奖/赠送的非空唯一列表）、review_mode（manual/automatic）、turnover_multiple（N）。初始 disabled、下限 1、上限 null、三来源、manual、N="1"。
+
+`game_withdrawal_policies` 按 brand_id/game_id 保存独立 version/config/updated_at，只覆盖 N；null 继承品牌，"0" 是明确配置零，不与继承混淆。有效值返回 source 和双方版本，来自已保存主库一致快照。N 为 0–1000000 的规范十进制字符串，最多六位小数，不带符号/指数/多余前导或末尾零；积分仍为 int64 整数字符串，不使用浮点。
+
+`withdrawal_policy_revisions`：id、brand_id、game_id（品牌级 null）、version、config、changed_by、reason、created_at；范围/版本唯一（null 范围也唯一）。初始系统记录，后续必须有后台账号。历史不可修改/删除；数据库延迟约束禁止孤立下一版本或无对应历史修改当前配置，审计失败整体回滚。`0017` 为旧及新品牌/彩种初始化配置和历史，不改旧账本或已应用迁移。门槛基数、跨彩种 N 合并、N=0 语义仍待确认，不得把配置当资格结论。
+
 ### 代理、佣金和奖励
 
 `agent_nodes`

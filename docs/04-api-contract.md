@@ -155,6 +155,8 @@ GET `/admin/bet-orders/{id}/judgment` 需显式 bet.view.brand / bet.view.platfo
 
 ### 积分、充值和提现（业务接口）
 
+S6-a 只接入后台提现规则；下表的用户提现申请/详情/状态仍未注册，启用配置不会使它们可用。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | /wallet | 显示、可用、冻结、提现和来源积分 |
@@ -165,6 +167,20 @@ GET `/admin/bet-orders/{id}/judgment` 需显式 bet.view.brand / bet.view.platfo
 | GET | /withdrawals/{withdrawalId} | 提现详情和状态变化 |
 
 提现提交必须在事务中完成：校验资格 → 锁定账户 → 计算来源分配 → 转入提现积分 → 写流水 → 创建申请。
+
+### S6-a 已接入：提现规则与不可变版本
+
+管理 GET/PUT `/admin/withdrawal-policy` 与 `/admin/games/{id}/withdrawal-policy`，以及两者追加 `/history` 的 GET。读取需 withdrawal_policy.view.brand 或 view.platform，修改仅 withdrawal_policy.write.brand，超管只读；game.view 独立，仅影响读取彩种目录，不由规则读写权推导。
+
+`BrandWithdrawalPolicy={brand_id,version,config:{enabled,min_points,max_points,allowed_sources,review_mode,turnover_multiple},updated_at,audit_log_id?}`。初始 enabled=false、min_points="1"、max_points=null、allowed_sources=["recharge","winning","gift"]、review_mode="manual"、N="1"。上下限正 int64 字符串，上限不低于下限；来源非空、合法、不重复，审核配置 manual/automatic，但本阶段不执行审核。
+
+`GameWithdrawalPolicy={brand_id,game_id,version,config:{turnover_multiple:string|null},effective:{turnover_multiple:string,source:"brand"|"game",brand_version,game_version},updated_at,audit_log_id?}`。null 继承，显式值（含 "0"）覆盖品牌。N 仅允许 0–1000000、最多六位小数的规范字符串，禁止符号/指数/多余前导零和小数末尾零；0 的业务意义待确定，保存它不代表免流水。
+
+PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提供；未知/重复字段、缺省或 null 标量拒绝。原因非空、最多 500 UTF-8 字节；响应 200、配置版本加一、审计引用。版本是对应配置版本，不是彩种业务版本。需要原 Idempotency-Key、X-Brand-ID 及同源 Cookie/Origin；同键同正文重放原回执，同键异体 409。权限/会话在等待幂等锁前后复验，撤权或变为超管不能重放旧回执；临时错误不缓存。
+
+历史 limit 1–100（默认 50）、offset 0–1000000（默认 0），返回 `{items:PolicyRevision[],limit,offset}`，范围内按 version 降序。`PolicyRevision={id,brand_id,game_id,version,config,changed_by,reason,created_at}`；品牌级 game_id=""，初始系统 changed_by=""，后续为后台账号。配置、不可变历史及审计原子提交，不变更钱包/账本/订单；GET 记录后台读取审计。
+
+错误：400 WITHDRAWAL_POLICY_INPUT_INVALID / REQUEST_INVALID；403 PERMISSION_DENIED；404 WITHDRAWAL_POLICY_NOT_FOUND；409 WITHDRAWAL_POLICY_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT；401 AUTH_SESSION_REVOKED；503 SERVICE_UNAVAILABLE。门槛基数、跨彩种流水和 N=0 规则待明确，没有资格/申请/冻结/出款路由。
 
 ## 4. 管理端接口
 
