@@ -22,6 +22,7 @@
 - [08-acceptance-and-open-items.md](08-acceptance-and-open-items.md)：验收标准、测试场景和未决事项。
 - [09-openapi-handover.md](09-openapi-handover.md)：已实现接口的 OpenAPI、接入限制、生成和 CI 契约检查。
 - [09-implementation-backlog.md](09-implementation-backlog.md)：按依赖拆分的第一阶段开发任务。
+- [10-replication-and-recovery.md](10-replication-and-recovery.md)：隔离复制、手动提升与备份恢复命令、证据和生产验收边界。
 
 ## 第一阶段实现顺序
 

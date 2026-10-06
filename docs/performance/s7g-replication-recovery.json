@@ -1,0 +1,883 @@
+{
+  "application_endpoint_failover_verified": false,
+  "arch": "arm64",
+  "auth_keys_restored": false,
+  "baseline": {
+    "tables": {
+      "admin_account_roles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "admin_accounts": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "admin_brand_scopes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "agent_config_revisions": {
+        "rows": 2,
+        "sha256": "af54f720ab3f1fb1849df1f2cc92a77bd4238225e273258236fb89b59a73de6f"
+      },
+      "agent_nodes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "audit_logs": {
+        "rows": 2,
+        "sha256": "ae39575a93a846af3376e967ae9d1e169ac7f051c2f6ff093b194f376426c553"
+      },
+      "auth_challenges": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "auth_rate_limits": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_order_exceptions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_order_judgments": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_agent_policies": {
+        "rows": 2,
+        "sha256": "c3b4176099141fde48a1ec946fa87a7a5c8b31c308c3d5981d6036bafb79cd66"
+      },
+      "brand_bet_policies": {
+        "rows": 2,
+        "sha256": "806341acfb482f9ea1f121f13da0749d0fe015d39f96529644c7907e02da72e7"
+      },
+      "brand_domain_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_domains": {
+        "rows": 3,
+        "sha256": "97f6dde1b829f92fb622d69b3f24b0e756d76ed0801df63bafeadaf57d3af984"
+      },
+      "brand_members": {
+        "rows": 1,
+        "sha256": "053c14105753fcc25fe70ec46754f922f4583cc631e795570c51a5a921977dc1"
+      },
+      "brand_operation_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_point_policies": {
+        "rows": 2,
+        "sha256": "4e75a099b1ff81ce0e582ccbe94b88249d86f8432cc3c0e9cdee6d1827c6729b"
+      },
+      "brand_presentation_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_presentations": {
+        "rows": 2,
+        "sha256": "7afd007582b58f655355df3f6a0417d14ea3513a74a89df5488bedc5fda2cbbd"
+      },
+      "brand_settlement_policies": {
+        "rows": 2,
+        "sha256": "6528088e04d0f0540bc8b1c640b97bf515bd00e7681eec6c7591ecdd464f56a0"
+      },
+      "brand_withdrawal_policies": {
+        "rows": 2,
+        "sha256": "593f4329edf87e8a331e213a095f862eb47c6450a836d0b9d89f0ef5c93918ba"
+      },
+      "brands": {
+        "rows": 2,
+        "sha256": "d08ee0c961849e66a7237a25d294d9b12ede94e8b3fc570b703cb77f490c1e62"
+      },
+      "consumed_events": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_attempt_batches": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_correction_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_correction_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_corrections": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_results": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_source_sets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_sources": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_bet_policies": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_schedules": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_withdrawal_policies": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "games": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "global_users": {
+        "rows": 1,
+        "sha256": "283beffedb38b3fc4555ea5749c36c89577cf08f3352c5da653b6a024d6789ec"
+      },
+      "idempotency_requests": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "join_code_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "join_codes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notification_deliveries": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notifications": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "outbox_events": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellation_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellation_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_rule_versions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "periods": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "permissions": {
+        "rows": 99,
+        "sha256": "1f9d7d3f471161dad1b16306e013c3cd39d808a9180d21e92f67bf8c15001e26"
+      },
+      "platform_domains": {
+        "rows": 2,
+        "sha256": "5789d6ce837abf1b55077de05958ad894e3c948241a7865ab625b52c24166ff1"
+      },
+      "play_definitions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_accounts": {
+        "rows": 1,
+        "sha256": "de14baa43644cbd95dc5cae5213b770591ed418580a1f716abd8a277f3580a5a"
+      },
+      "point_balance_repairs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_buckets": {
+        "rows": 12,
+        "sha256": "300de1b57009909d2743b9a2c23f5b1326b147508676f9bf7cc89f67cabe89c6"
+      },
+      "point_ledger_entries": {
+        "rows": 2,
+        "sha256": "ff6295f7d64a85f6f421041d0524426829cbcf26fdc1e049b0f9ee585aa0c3c3"
+      },
+      "recharge_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "role_permissions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "roles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "rule_version_contributors": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "rule_versions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "schema_migrations": {
+        "rows": 32,
+        "sha256": "aa31b4048b1f26d84011eb8f28af577002255b26648a0abc60e278e4f985ce08"
+      },
+      "sessions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_calculations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_jobs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_policy_history": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_previews": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_policy_revisions": {
+        "rows": 2,
+        "sha256": "ff704c2b2b0b0776d7d16ad543054fecdf50acc5b9000075c8e75562aa2b947f"
+      }
+    },
+    "row_count": 173,
+    "migration_count": 32,
+    "sha256": "a3f536a8613c35d9a87c4076d8950b1195aef1f86d110f5aebd75b0948ee3973"
+  },
+  "evidence": {
+    "replicas": 2,
+    "streaming_replicas": 2,
+    "replica_read_only_rejects": 2,
+    "replica_digest_matches": 2,
+    "initial_primary_writable": true,
+    "primary_stopped_before_promotion": true,
+    "promoted_writable": true,
+    "promoted_digest_matches": true,
+    "promoted_extra_write_visible": true,
+    "remaining_replica_reattached": true,
+    "remaining_replica_digest_matches": true,
+    "restored_digest_matches": true,
+    "restored_immutable_guards_verified": true,
+    "backup_sha256": "68d21bd47c5ab621c22c15658c13e627d3a4d22ca089c1c51934be657d1744e0",
+    "backup_bytes": 383073,
+    "baseline_table_count": 68,
+    "restored_table_count": 68,
+    "baseline_row_count": 173,
+    "restored_row_count": 173,
+    "migration_count": 32,
+    "restore_migration_count": 32,
+    "expected_migration_count": 32,
+    "original_database_untouched": true,
+    "automatic_failover_verified": false,
+    "production_disaster_recovery_accepted": false,
+    "replica_catchup_seconds": 0.0976775,
+    "promotion_seconds": 0.108785167,
+    "restore_seconds": 0.773782875
+  },
+  "go_version": "go1.27.1",
+  "logical_cpus": 10,
+  "original_digest_after": "b07ee84bb442099a1d2b89e611bf00c7b799c1b2a836b3a5455803ea7978653a",
+  "original_digest_before": "b07ee84bb442099a1d2b89e611bf00c7b799c1b2a836b3a5455803ea7978653a",
+  "os": "darwin",
+  "owned_nodes_stopped": true,
+  "pitr_verified": false,
+  "postgres_version": "postgres (PostgreSQL) 17.11 (Postgres.app)",
+  "promoted": {
+    "tables": {
+      "admin_account_roles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "admin_accounts": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "admin_brand_scopes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "agent_config_revisions": {
+        "rows": 2,
+        "sha256": "af54f720ab3f1fb1849df1f2cc92a77bd4238225e273258236fb89b59a73de6f"
+      },
+      "agent_nodes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "audit_logs": {
+        "rows": 3,
+        "sha256": "dfea12dfb1a497bf0921f1f8fa194fe3e3844bb780c915945c498beb21d106c9"
+      },
+      "auth_challenges": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "auth_rate_limits": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_order_exceptions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_order_judgments": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_agent_policies": {
+        "rows": 2,
+        "sha256": "c3b4176099141fde48a1ec946fa87a7a5c8b31c308c3d5981d6036bafb79cd66"
+      },
+      "brand_bet_policies": {
+        "rows": 2,
+        "sha256": "806341acfb482f9ea1f121f13da0749d0fe015d39f96529644c7907e02da72e7"
+      },
+      "brand_domain_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_domains": {
+        "rows": 3,
+        "sha256": "97f6dde1b829f92fb622d69b3f24b0e756d76ed0801df63bafeadaf57d3af984"
+      },
+      "brand_members": {
+        "rows": 1,
+        "sha256": "053c14105753fcc25fe70ec46754f922f4583cc631e795570c51a5a921977dc1"
+      },
+      "brand_operation_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_point_policies": {
+        "rows": 2,
+        "sha256": "4e75a099b1ff81ce0e582ccbe94b88249d86f8432cc3c0e9cdee6d1827c6729b"
+      },
+      "brand_presentation_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_presentations": {
+        "rows": 2,
+        "sha256": "7afd007582b58f655355df3f6a0417d14ea3513a74a89df5488bedc5fda2cbbd"
+      },
+      "brand_settlement_policies": {
+        "rows": 2,
+        "sha256": "6528088e04d0f0540bc8b1c640b97bf515bd00e7681eec6c7591ecdd464f56a0"
+      },
+      "brand_withdrawal_policies": {
+        "rows": 2,
+        "sha256": "593f4329edf87e8a331e213a095f862eb47c6450a836d0b9d89f0ef5c93918ba"
+      },
+      "brands": {
+        "rows": 2,
+        "sha256": "d08ee0c961849e66a7237a25d294d9b12ede94e8b3fc570b703cb77f490c1e62"
+      },
+      "consumed_events": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_attempt_batches": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_correction_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_correction_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_corrections": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_results": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_source_sets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_sources": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_bet_policies": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_schedules": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_withdrawal_policies": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "games": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "global_users": {
+        "rows": 1,
+        "sha256": "283beffedb38b3fc4555ea5749c36c89577cf08f3352c5da653b6a024d6789ec"
+      },
+      "idempotency_requests": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "join_code_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "join_codes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notification_deliveries": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notifications": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "outbox_events": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellation_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellation_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_rule_versions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "periods": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "permissions": {
+        "rows": 99,
+        "sha256": "1f9d7d3f471161dad1b16306e013c3cd39d808a9180d21e92f67bf8c15001e26"
+      },
+      "platform_domains": {
+        "rows": 2,
+        "sha256": "5789d6ce837abf1b55077de05958ad894e3c948241a7865ab625b52c24166ff1"
+      },
+      "play_definitions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_accounts": {
+        "rows": 1,
+        "sha256": "e92a0a3416347d182c31729231a92a8b04531d2f27eae4d0ac174b99e190dd0c"
+      },
+      "point_balance_repairs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_buckets": {
+        "rows": 12,
+        "sha256": "0d71c63b01157b28ca0016a89474bc313a54da36a48658ac6b89d551eb4d7e36"
+      },
+      "point_ledger_entries": {
+        "rows": 3,
+        "sha256": "10b42693a6ab5b0901cfe63f45e6c1c11668fb7a2af06f0a6b3a94e1868ed653"
+      },
+      "recharge_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "role_permissions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "roles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "rule_version_contributors": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "rule_versions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "schema_migrations": {
+        "rows": 32,
+        "sha256": "aa31b4048b1f26d84011eb8f28af577002255b26648a0abc60e278e4f985ce08"
+      },
+      "sessions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_calculations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_jobs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_policy_history": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_previews": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_policy_revisions": {
+        "rows": 2,
+        "sha256": "ff704c2b2b0b0776d7d16ad543054fecdf50acc5b9000075c8e75562aa2b947f"
+      }
+    },
+    "row_count": 175,
+    "migration_count": 32,
+    "sha256": "b20cd2c933f5817142b3325c7c9172420457a9831c5722ef2f4c33a768dbddd4"
+  },
+  "recorded_at_utc": "2026-10-06T16:49:42.079246Z",
+  "restored": {
+    "tables": {
+      "admin_account_roles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "admin_accounts": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "admin_brand_scopes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "agent_config_revisions": {
+        "rows": 2,
+        "sha256": "af54f720ab3f1fb1849df1f2cc92a77bd4238225e273258236fb89b59a73de6f"
+      },
+      "agent_nodes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "audit_logs": {
+        "rows": 2,
+        "sha256": "ae39575a93a846af3376e967ae9d1e169ac7f051c2f6ff093b194f376426c553"
+      },
+      "auth_challenges": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "auth_rate_limits": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_order_exceptions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_order_judgments": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_agent_policies": {
+        "rows": 2,
+        "sha256": "c3b4176099141fde48a1ec946fa87a7a5c8b31c308c3d5981d6036bafb79cd66"
+      },
+      "brand_bet_policies": {
+        "rows": 2,
+        "sha256": "806341acfb482f9ea1f121f13da0749d0fe015d39f96529644c7907e02da72e7"
+      },
+      "brand_domain_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_domains": {
+        "rows": 3,
+        "sha256": "97f6dde1b829f92fb622d69b3f24b0e756d76ed0801df63bafeadaf57d3af984"
+      },
+      "brand_members": {
+        "rows": 1,
+        "sha256": "053c14105753fcc25fe70ec46754f922f4583cc631e795570c51a5a921977dc1"
+      },
+      "brand_operation_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_point_policies": {
+        "rows": 2,
+        "sha256": "4e75a099b1ff81ce0e582ccbe94b88249d86f8432cc3c0e9cdee6d1827c6729b"
+      },
+      "brand_presentation_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_presentations": {
+        "rows": 2,
+        "sha256": "7afd007582b58f655355df3f6a0417d14ea3513a74a89df5488bedc5fda2cbbd"
+      },
+      "brand_settlement_policies": {
+        "rows": 2,
+        "sha256": "6528088e04d0f0540bc8b1c640b97bf515bd00e7681eec6c7591ecdd464f56a0"
+      },
+      "brand_withdrawal_policies": {
+        "rows": 2,
+        "sha256": "593f4329edf87e8a331e213a095f862eb47c6450a836d0b9d89f0ef5c93918ba"
+      },
+      "brands": {
+        "rows": 2,
+        "sha256": "d08ee0c961849e66a7237a25d294d9b12ede94e8b3fc570b703cb77f490c1e62"
+      },
+      "consumed_events": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_attempt_batches": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_correction_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_correction_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_corrections": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_results": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_source_sets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_sources": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_bet_policies": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_schedules": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_withdrawal_policies": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "games": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "global_users": {
+        "rows": 1,
+        "sha256": "283beffedb38b3fc4555ea5749c36c89577cf08f3352c5da653b6a024d6789ec"
+      },
+      "idempotency_requests": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "join_code_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "join_codes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notification_deliveries": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notifications": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "outbox_events": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellation_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellation_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_rule_versions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "periods": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "permissions": {
+        "rows": 99,
+        "sha256": "1f9d7d3f471161dad1b16306e013c3cd39d808a9180d21e92f67bf8c15001e26"
+      },
+      "platform_domains": {
+        "rows": 2,
+        "sha256": "5789d6ce837abf1b55077de05958ad894e3c948241a7865ab625b52c24166ff1"
+      },
+      "play_definitions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_accounts": {
+        "rows": 1,
+        "sha256": "de14baa43644cbd95dc5cae5213b770591ed418580a1f716abd8a277f3580a5a"
+      },
+      "point_balance_repairs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_buckets": {
+        "rows": 12,
+        "sha256": "300de1b57009909d2743b9a2c23f5b1326b147508676f9bf7cc89f67cabe89c6"
+      },
+      "point_ledger_entries": {
+        "rows": 2,
+        "sha256": "ff6295f7d64a85f6f421041d0524426829cbcf26fdc1e049b0f9ee585aa0c3c3"
+      },
+      "recharge_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "role_permissions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "roles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "rule_version_contributors": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "rule_versions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "schema_migrations": {
+        "rows": 32,
+        "sha256": "aa31b4048b1f26d84011eb8f28af577002255b26648a0abc60e278e4f985ce08"
+      },
+      "sessions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_calculations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_jobs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_policy_history": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_previews": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_policy_revisions": {
+        "rows": 2,
+        "sha256": "ff704c2b2b0b0776d7d16ad543054fecdf50acc5b9000075c8e75562aa2b947f"
+      }
+    },
+    "row_count": 173,
+    "migration_count": 32,
+    "sha256": "a3f536a8613c35d9a87c4076d8950b1195aef1f86d110f5aebd75b0948ee3973"
+  },
+  "schema_version": 1,
+  "scope": "isolated loopback PostgreSQL physical replication, manual fenced promotion, logical public-schema snapshot restoration; synthetic ledger/audit; no automatic endpoint failover, secrets backup or WAL archive/PITR"
+}
