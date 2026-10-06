@@ -33,6 +33,7 @@ function policy(overrides: Partial<SettlementPolicy> = {}): SettlementPolicy {
 
 function job(overrides: Partial<SettlementJob> = {}): SettlementJob {
   return {
+    generation:1,previous_job_id:null,correction_id:null,current:true,
     id: jobId,
     brand_id: brand,
     game_id: game,

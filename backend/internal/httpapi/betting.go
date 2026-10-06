@@ -280,6 +280,9 @@ func betAdminActor(w http.ResponseWriter, r *http.Request, d Dependencies, resou
 }
 
 func betAdminWrite(w http.ResponseWriter, r *http.Request, d Dependencies, a access.Account, brand, resource, action, operation, id string, body any, run func(context.Context, pgx.Tx, access.Account) (mutation.Result, error)) {
+	betAdminWriteExtra(w, r, d, a, brand, resource, action, operation, id, body, nil, run)
+}
+func betAdminWriteExtra(w http.ResponseWriter, r *http.Request, d Dependencies, a access.Account, brand, resource, action, operation, id string, body any, extra func(access.Account) bool, run func(context.Context, pgx.Tx, access.Account) (mutation.Result, error)) {
 	encoded, err := json.Marshal(body)
 	if err != nil {
 		failure(w, r, 400, "REQUEST_INVALID", "请求格式不正确")
@@ -295,7 +298,7 @@ func betAdminWrite(w http.ResponseWriter, r *http.Request, d Dependencies, a acc
 		if e != nil {
 			return e
 		}
-		if fresh.SuperAdmin || !access.Authorize(fresh, resource, action, access.ScopeBrand, brand) {
+		if fresh.SuperAdmin || !access.Authorize(fresh, resource, action, access.ScopeBrand, brand) || (extra != nil && !extra(fresh)) {
 			return betting.ErrDenied
 		}
 		return nil
@@ -320,6 +323,7 @@ func registerBetAdminRoutes(handle func(string, string, http.HandlerFunc), d Dep
 	registerBetJudgmentRoutes(handle, d)
 	registerSettlementPreviewRoutes(handle, d)
 	registerSettlementJobRoutes(handle, d)
+	registerCorrectionRoutes(handle, d)
 	s := betService(d)
 	handle("GET", "/bet-policy", func(w http.ResponseWriter, r *http.Request) {
 		a, brand, ok := betAdminActor(w, r, d, "bet_policy", "view", false)

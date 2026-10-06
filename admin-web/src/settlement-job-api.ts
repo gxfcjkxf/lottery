@@ -52,6 +52,10 @@ export interface SettlementJobActionBody {
 }
 
 export interface SettlementJob {
+  generation: number;
+  previous_job_id: string | null;
+  correction_id: string | null;
+  current: boolean;
   id: string;
   brand_id: string;
   game_id: string;
@@ -208,7 +212,10 @@ function validJob(value: unknown, brandId: string, expected?: { jobId?: string; 
     (expected?.mode !== undefined && value.mode !== expected.mode) ||
     !(value.mode === "automatic" || value.mode === "manual") ||
     !["processing", "awaiting_approval", "paying", "failed", "completed"].includes(String(value.state)) ||
-    !positiveVersion(value.version) || !nonnegativeInt(value.target_count) || !validUuid(value.created_by) ||
+    !positiveVersion(value.version) || !positiveVersion(value.generation) || typeof value.current !== "boolean" ||
+    !(value.previous_job_id === null || validUuid(value.previous_job_id)) || !(value.correction_id === null || validUuid(value.correction_id)) ||
+    (value.generation === 1 ? value.previous_job_id !== null || value.correction_id !== null : value.previous_job_id === null || value.correction_id === null) ||
+    !nonnegativeInt(value.target_count) || !validUuid(value.created_by) ||
     (expected?.accountId !== undefined && !sameUuid(value.created_by, expected.accountId)) ||
     !(value.approved_by === null || validUuid(value.approved_by)) || !nonempty(value.reason) ||
     !validIsoDateTime(value.created_at) || !(value.completed_at === null || validIsoDateTime(value.completed_at)) ||
@@ -217,7 +224,7 @@ function validJob(value: unknown, brandId: string, expected?: { jobId?: string; 
     !nonnegativeInt(value.excluded_count) || !nonnegativeInt(value.failed_count) ||
     !validAggregate(value.prize_points) || !validAggregate(value.paid_points) || typeof value.can_retry !== "boolean") return false;
   if (value.pending_count + value.ready_count + value.paid_count + value.excluded_count + value.failed_count !== value.target_count ||
-      value.can_retry !== (value.state === "failed") || (value.last_error_code !== null) !== (value.state === "failed") ||
+      value.can_retry !== (value.state === "failed" && value.current) || (value.last_error_code !== null) !== (value.state === "failed") ||
       (value.completed_at !== null) !== (value.state === "completed") || BigInt(value.paid_points) > BigInt(value.prize_points)) return false;
   if (["awaiting_approval", "paying", "completed"].includes(String(value.state)) && (value.pending_count !== 0 || value.failed_count !== 0)) return false;
   if (value.state === "completed" && value.ready_count !== 0) return false;

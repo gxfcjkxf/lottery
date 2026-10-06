@@ -346,7 +346,7 @@ worker 当前调用 API/DOM 无网络 stub，只产生 no_data 尝试证据，�
 
 ### 期次和开奖（后续实现）
 
-来源与人工结果按上节接入；下表纠正/重开仍是未来设计。S5-c1 核算预览不入账；S5-c2 正式 settle、审批与 retry 的已实现合同见 4.2，旧 `/settlements/{id}/retry` 设计路径未注册。
+来源与人工结果按上节接入；S5-c3 更正及回溯合同见 4.3，重开仍未实现。S5-c1 核算预览不入账；S5-c2 正式 settle、审批与 retry 见 4.2，旧 `/settlements/{id}/retry` 设计路径未注册。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -466,7 +466,7 @@ submit-review 只允许 draft，要求 validation.passed=true 且报告 definiti
 
 后台新建草稿默认选择 `immediate`；后端没有默认生效模式，创建、PUT 更新及 clone 必须显式发送 `effect_mode`（仅 `immediate` / `next_period`），遗漏或空值拒绝。通过时 `immediate` 在同一事务直接成为 active 并替换玩法有效版本，没有独立 publish 步骤；`next_period` 成为 approved，绑定彩种下一实际开期序号。每玩法最多一个 approved 队列项；已有待生效项时后续 approve（包括 immediate）返回 409 `RULE_STATE_CONFLICT`，不覆盖它。
 
-下期激活仅由内部开期事务在彩种行锁下执行，与审核串行化：使用 PostgreSQL `clock_timestamp()` 检查实际窗口 `bet_start_at <= now < bet_end_at`、`bet_end_at <= draw_at`，开期时激活满足序号的 approved 版本并保存不可变 period_rule_versions。S4-c1 日历、期次生成和状态 worker，以及 S4-c2 来源配置与人工结果已接入；没有公开强制 activate-now 路由。投注、结算与已结算结果纠正仍待 S5，未来 API 表不代表已注册。
+下期激活仅由内部开期事务在彩种行锁下执行，与审核串行化：使用 PostgreSQL `clock_timestamp()` 检查实际窗口 `bet_start_at <= now < bet_end_at`、`bet_end_at <= draw_at`，开期时激活满足序号的 approved 版本并保存不可变 period_rule_versions。S4-c1 日历、期次生成和状态 worker，以及 S4-c2 来源配置与人工结果已接入；没有公开强制 activate-now 路由。投注、结算与已结算结果纠正已按 S5 合同接入，见对应章节；其余未来 API 表不代表已注册。
 
 clone 仅接受 active/expired/rolled_back 来源，返回新的 draft、version_no、source_version_id，不直接激活旧版本。新草稿定义继承源定义且不可修改，draft 阶段可修改生效模式，但必须重新验证、送审、由非贡献者审核。普通版本替换时旧 active 标记 expired；来源克隆版本生效时被替换的旧 active 标记 rolled_back。不删除历史、不改变积分、不创建投注订单或派奖。
 
@@ -604,4 +604,29 @@ Target 包含 `order_id,member_id,state,version,calculation_id,order_version,ord
 
 每单核算保存购买时版本及完整精确计算。中奖仅增加 winning.available，同事务写账本前/后值、注单 won/lost、目标 paid、审计和 Outbox；稳定 operation_key 为 `settlement-payout:<calculation_id>`。全部 paid/excluded 才提交 Job completed 和期次 settled。系统核算异常写 `source=system,marked_by="",job_id,error_code`，人工异常仍为 source=manual；不把操作者伪装成系统异常的人工标记者。失败历史不可改写，worker 重启不自动重试失败。阶段转换/期次收尾失败也记录 job failed（失败证据 order_id=null）；若积分已入账，保留 paid/paid_points，人工重试仅收尾，不重新派奖。
 
-写幂等回执保存首次响应：启动回执 processing/v1、批准回执 paying/下一版可能早于当前服务器进度。同键异体 409；客户端验证匹配后必须 GET 读取实时结果。配置不会自动启动任务，也不改变已启动任务快照。仍不支持已派奖退款、已结算结果纠正/冲正或重开；不得把普通取消/重试当冲正接口。
+写幂等回执保存首次响应：启动回执 processing/v1、批准回执 paying/下一版可能早于当前服务器进度。同键异体 409；客户端验证匹配后必须 GET 读取实时结果。配置不会自动启动任务，也不改变已启动任务快照。S5-c3 更正/冲正使用下节专用路径；普通取消/重试仍不能撤回已派奖订单。重开未实现。
+
+## 4.3 S5-c3 结果更正、冲正及重新结算
+
+路径在 `/api/v1/admin`，读 `draw.view.brand/platform`，写 `draw.correct.brand` / `draw.correction_retry.brand`；有原结算代次时另需 `settlement.run.brand`。两项权限在幂等锁前后重新验证，包括缓存回执；超管只读。写带可信 Origin、幂等键、必填 UTF-8≤500字节原因，拒绝重复/未知/缺失字段。result 必须显式含 regular/special/digits 三个整数数组，非适用组为 []。
+
+| 方法 | 路径 | 合同 |
+|---|---|---|
+| GET | /periods/{id}/correction-context | 品牌/彩种/期次、版本/状态、当前结果及模型、当前 job ID/version、当前策略/模式、requires_resettlement、can_correct |
+| POST | /draw-results/{id}/correct | `{version:期次版本,policy_version:number\|null,result:{regular:[],special:[],digits:[]},reason}`，201 Correction；URL 必须是本期当前结果 |
+| GET | /periods/{id}/corrections?limit=20&offset=0 | `{brand_id,period_id,items,limit,offset,has_more}`，每页1..100、offset≤1000000 |
+| GET | /corrections/{id} | 实时 Correction，与首次缓存回执区别 |
+| GET | /corrections/{id}/targets?limit=20&offset=0 | 品牌、更正 ID、逐单原状态/金额/旧核算与账本 ID、冲正 ID/重置版本、状态/错误码及分页 |
+| POST | /corrections/{id}/retry | `{version:更正版本,reason}`，200 原始下一版 reversing 回执；只恢复 failed 冲正阶段，不重新冲正已完成目标 |
+
+无原 job 的 drawn 期次仅更正结果：policy_version 必须 null，不要求启用派奖，不创建结算任务或改钱包，原子返回 completed/v1。已有 settling/settled job 则要求显式配置非空模式、匹配政策版本；返回 reversing/v1，冻结旧代次，保存目标快照，并把期次置/保留 settling。取消期次不通过更正复活注单。禁止无变化更正，按模型验证数量/范围/重复/上一期异常，普通/特别无序号码规范排序，数字位序保持。新记录保留实际 drawn_at，created_at 表示更正时间；corrected_from_id 引用旧结果，旧记录不可覆盖。
+
+Correction 含 `id,brand_id,game_id,period_id,previous_draw_result_id,draw_result_id,result,period_version,previous_job_id,new_job_id,policy_version,mode,state,version,target_count,created_by,reason,created_at,completed_at,last_error_code,pending_count,reversed_count,unchanged_count,excluded_count,failed_count,reverse_points,reversed_points,can_retry,new_job_state,new_job_version,new_job_error_code`。状态 reversing→resettling→completed；冲正/发布失败→failed，只人工重试。new_job_* 为实时关联状态：新结算失败在正常结算 retry 路径处理，不把整个更正重新执行。所有计数总和等于 target_count；汇总非负整数字符串可超 int64，逐单仍为 int64 字符串。
+
+Target 含 `order_id,member_id,state,version,old_order_version,old_order_status,old_calculation_id,old_payout_entry_id,old_prize_points,reversal_entry_id,reset_order_version,error_code`。状态 pending/reversed/unchanged/excluded/failed。旧 won/lost 全额撤回已发中奖积分后，当前注单 projection 重置 placed 并增加版本；旧未应用 placed 为 unchanged，不撤 stake；人工/系统异常及已取消 excluded，不重新核算。旧规则/选号/扣款/来源分配不变，stake 只扣一次。正额冲正 entry_type=prize_reversal、reference_type=draw_correction、reference_id=更正ID、reversal_of=原prize、operation_key=`draw-correction:<id>:<order_id>`，只扣 winning.available，全12桶前后值与审计同事务；零奖/lost 无零金额冲正流水。
+
+全部 reversed/unchanged/excluded 后，才发布新 current draw 并创建下一 generation（原 generation+1）job，使用更正启动时的政策/模式快照。新 job 沿用普通核算/批准/派奖流程，完成后更正及期次才完成。Job 增加 `generation,previous_job_id,correction_id,current`；旧 job/计算/目标/账本不改写，历史 paid_points 是曾入账金额，不代表当前余额。只有 current=true 可计算、批准、重试；新任务 ID 指针决定当前代次，不根据时间或最大 ID 猜测。
+
+原中奖可用不足、被使用或冻结时停止并记 `WINNING_AVAILABLE_INSUFFICIENT`，不扣充值/赠送、不自动解冻、不产生负余额/欠款。失败可能已有其他目标完成冲正；原结果仍是当前，直到全部成功才发布新结果。运营处理后按原目标继续，不重做已冲回记录；失败历史及错误码可查。未来欠款/追偿业务规则仍未决，不据本实现擅自上线。
+
+POST 回执保存首次结果，SDK 不在写方法内重新取上下文/改写回执；未收到回执时始终用冻结的旧 draw ID、正文、键重试，即使 worker 已推进。匹配回执确认后再 GET 实时数据，后读失败保持“已确认”。审计/旧证据留存；现有投注通知不因更正被删除（原投注事实仍有效）。后续佣金、奖励、财务报表和中奖通知接入时必须按 generation/current 与补偿事件增加对应回溯，不能累计所有历史代次冒充净值。

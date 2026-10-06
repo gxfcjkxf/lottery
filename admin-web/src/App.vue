@@ -17,7 +17,8 @@ import DrawManagement from "./DrawManagement.vue";
 import BetOrderManagement from "./BetOrderManagement.vue";
 import BetPolicySettings from "./BetPolicySettings.vue";
 import PeriodCancellation from "./PeriodCancellation.vue";
-import SettlementManagement from "./SettlementManagement.vue";
+const SettlementManagement = defineAsyncComponent(() => import("./SettlementManagement.vue"));
+const CorrectionManagement = defineAsyncComponent(() => import("./CorrectionManagement.vue"));
 const RuleVersions = defineAsyncComponent(() => import("./RuleVersions.vue"));
 const WithdrawalPolicySettings = defineAsyncComponent(
   () => import("./WithdrawalPolicySettings.vue"),
@@ -85,6 +86,7 @@ const loginBusy = ref(false);
 const loginIdempotencyKey = ref(createIdempotencyKey());
 const adminBrands = ref<AdminBrand[]>([]);
 const selectedBrandId = ref("");
+const correctionSettlementPeriod = ref<{brandId:string;periodId:string;nonce:number}|null>(null);
 const brand = computed(
   () =>
     adminBrands.value.find((item) => item.id === selectedBrandId.value)?.name ??
@@ -216,6 +218,7 @@ const statusClass = (status: MemberStatus) =>
 const apiErrorText = (error: unknown) =>
   error instanceof Error ? error.message : "请求失败，请重试";
 const clearAdminData = () => {
+  correctionSettlementPeriod.value = null;
   account.value = null;
   adminBrands.value = [];
   selectedBrandId.value = "";
@@ -1797,11 +1800,20 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '期次和开奖'" class="page-content">
-        <SettlementManagement
+        <CorrectionManagement
           v-if="account && selectedBrandId"
-          :key="`settlement-${account.id}`"
+          :key="`correction-${account.id}`"
           :account="account"
           :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+          @open-settlement="periodId => { correctionSettlementPeriod = { brandId:selectedBrandId,periodId,nonce:(correctionSettlementPeriod?.nonce ?? 0)+1 }; }"
+        />
+        <SettlementManagement
+          v-if="account && selectedBrandId"
+          :key="`settlement-${account.id}-${correctionSettlementPeriod?.nonce ?? 0}`"
+          :account="account"
+          :brand-id="selectedBrandId"
+          :initial-period-id="correctionSettlementPeriod?.brandId === selectedBrandId ? correctionSettlementPeriod.periodId : undefined"
           @session-invalid="clearAdminData"
         />
         <PeriodCancellation

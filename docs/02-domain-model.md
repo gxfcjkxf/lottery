@@ -282,3 +282,13 @@ S6-a 当前只实现提现规则配置，不建此订单表或产生提现积分
 注单扩展 settlement_calculation_id、payout_entry_id、prize_points、settled_at；非结算状态这些字段为空/0。placed→won/lost 仅在 paying、期次结果匹配、有效计算及（非零时）中奖账本证据齐备时允许。账本只增加 winning.available、记录全部 12 桶前/后值；零额不建流水。人工异常与系统异常共用不可改写异常证据，source/system job_id/error_code 与 manual marked_by 互斥。
 
 worker 一事务一个目标或阶段转换；锁序 game→独占 period→job→wallet→order，不批量持有多会员钱包。取消/人工异常先 period→job，再 wallet/order，排除未入账目标并增加任务版本。SQL 延迟约束要求任务/目标计数及终态和期次一起提交；无任务不能直接推进 settling，未入账目标不能提前 settled。原取消/判定证据守卫继续保留。结果纠正的版本代次和派奖冲正另行设计，不覆盖旧计算或绕过终态守卫。
+
+## S5-c3 结果更正及结算代次
+
+0024 把普通每期唯一 job 扩展为 `(brand_id,period_id,generation)` 唯一；generation1 的 lineage 为空，新代次必须关联 previous_job_id/correction_id。periods.current_settlement_job_id/current_correction_id 作为当前投影指针，迁移只回填元数据、不增加旧业务版本或改钱包。原 job/目标/计算保留，普通已应用终态不能重新打开；更正专用证据只允许当前注单 projection 在准确旧版本下 won/lost→placed，原 stake/debit 不动。
+
+draw_corrections 保存旧/新结果、旧 job、启动后的期次版本、政策/模式、创建人/原因和阶段。draw_correction_targets 保存当时各注单的旧状态/版本、旧 calculation/prize/ledger，以及实际 reversal/reset 证据；终态不可改写。draw_correction_failures 保存失败观察版本/错误码/目标，可为空目标的发布失败亦留存。一个期次最多一个未完成更正；全部旧目标处理完才允许新 job、结果指针和更正 resettling 同事务提交，新 job completed 则更正 completed 与期次 settled 同事务。
+
+冲正 worker 每目标独立事务：game共享→period独占→correction→wallet→order；发布阶段从头用 game独占→period→correction，避免共享锁升级。普通 worker/批准/重试检查 current 指针和活动更正，历史代次不会继续计算/派奖，迟到失败也不能写入新代次。SQL 保留原期次取消/判定证据限制，新增更正审计、完整 reversal、金额/来源、实际余额及 current 代次守卫；NULL 证据按拒绝处理。
+
+只反向 winning.available 的原 prize，保留原 source_allocation/reversal_of/全桶前后值；余额不足冻结停止。模型结果、原实际开奖时间保留，旧结果和已计算金额不可重写；无 job 的 drawn 可只更正结果，不自动启用派奖。报表与后续代理/奖励模块必须以当前代次/补偿事实计算净值，不能把每个历史 paid 当新收入。

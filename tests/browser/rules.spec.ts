@@ -1,14 +1,18 @@
 import { test, expect } from "@playwright/test";
+import { restoreAdminSession } from "./support/admin-session";
 const harbor = "0199a000-0000-7000-8000-000000000002";
 test("six operator templates use the real rule engine without financial mutation", async ({
   page,
+  context,
 }, info) => {
   test.skip(
     !process.env.TEST_HARBOR_ADMIN_USERNAME ||
       !process.env.TEST_HARBOR_ADMIN_PASSWORD,
     "Provide isolated Harbor administrator credentials",
   );
+  const restored=await restoreAdminSession(context,process.env.TEST_HARBOR_ADMIN_USERNAME!,harbor);
   await page.goto("http://localhost:5174");
+  if(!restored){
   if (info.project.name === "mobile")
     await page.locator(".mobile-nav button").nth(1).click();
   else
@@ -25,6 +29,7 @@ test("six operator templates use the real rule engine without financial mutation
   await page
     .getByRole("button", { name: "登录并加载真实成员", exact: true })
     .click();
+  }
   await page
     .getByLabel("选择真实后台品牌", { exact: true })
     .selectOption(harbor);

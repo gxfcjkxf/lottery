@@ -27,6 +27,13 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 	settleDone := make(chan struct{})
 	go func() { defer close(settleDone); runSettlementWorker(settleCtx, betting.Service{DB: db}, logger) }()
 	defer func() { stopSettle(); <-settleDone }()
+	correctionCtx, stopCorrection := context.WithCancel(ctx)
+	correctionDone := make(chan struct{})
+	go func() {
+		defer close(correctionDone)
+		runCorrectionWorker(correctionCtx, betting.Service{DB: db}, logger)
+	}()
+	defer func() { stopCorrection(); <-correctionDone }()
 	inboxCtx, stopInbox := context.WithCancel(ctx)
 	inboxDone := make(chan struct{})
 	go func() { defer close(inboxDone); runNotificationWorker(inboxCtx, notification.Service{DB: db}, logger) }()
@@ -66,6 +73,23 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 	}
 }
 
+func runCorrectionWorker(ctx context.Context, service betting.Service, logger *slog.Logger) {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			run, cancel := context.WithTimeout(ctx, 10*time.Second)
+			n, e := service.ProcessCorrections(run, 20)
+			cancel()
+			if e != nil && ctx.Err() == nil {
+				logger.Error("draw correction processing failed", "error", e, "committed_steps", n)
+			}
+		}
+	}
+}
 func runSettlementWorker(ctx context.Context, service betting.Service, logger *slog.Logger) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()

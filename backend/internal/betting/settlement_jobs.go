@@ -74,6 +74,10 @@ type SettlementJob struct {
 	PaidPoints    string     `json:"paid_points"`
 	CanRetry      bool       `json:"can_retry"`
 	ResumeState   *string    `json:"-"`
+	Generation    int64      `json:"generation"`
+	PreviousJobID *string    `json:"previous_job_id"`
+	CorrectionID  *string    `json:"correction_id"`
+	Current       bool       `json:"current"`
 }
 type SettlementTarget struct {
 	OrderID       string         `json:"order_id"`
@@ -97,12 +101,13 @@ type SettlementTargets struct {
 	HasMore bool               `json:"has_more"`
 }
 
-const settlementJobFields = `j.id::text,j.brand_id::text,j.game_id::text,j.period_id::text,j.draw_result_id::text,j.period_version,j.policy_version,j.mode,j.state,j.version,j.target_count,j.created_by::text,j.approved_by::text,j.reason,j.created_at,j.completed_at,j.last_error_code,j.resume_state`
+const currentSettlementJob = `(EXISTS(SELECT 1 FROM periods p WHERE p.id=j.period_id AND p.current_settlement_job_id=j.id) AND NOT EXISTS(SELECT 1 FROM draw_corrections dc WHERE dc.previous_job_id=j.id AND dc.state<>'completed'))`
+const settlementJobFields = `j.id::text,j.brand_id::text,j.game_id::text,j.period_id::text,j.draw_result_id::text,j.period_version,j.policy_version,j.mode,j.state,j.version,j.target_count,j.created_by::text,j.approved_by::text,j.reason,j.created_at,j.completed_at,j.last_error_code,j.resume_state,j.generation,j.previous_job_id::text,j.correction_id::text,` + currentSettlementJob
 const settlementJobCounts = `,(SELECT count(*) FROM settlement_targets t WHERE t.job_id=j.id AND t.state='pending'),(SELECT count(*) FROM settlement_targets t WHERE t.job_id=j.id AND t.state='ready'),(SELECT count(*) FROM settlement_targets t WHERE t.job_id=j.id AND t.state='paid'),(SELECT count(*) FROM settlement_targets t WHERE t.job_id=j.id AND t.state='excluded'),(SELECT count(*) FROM settlement_targets t WHERE t.job_id=j.id AND t.state='failed'),coalesce((SELECT sum(c.prize_points)::text FROM settlement_targets t JOIN settlement_calculations c ON c.id=t.calculation_id WHERE t.job_id=j.id AND t.state IN ('ready','paid','failed')),'0'),coalesce((SELECT sum(c.prize_points)::text FROM settlement_targets t JOIN settlement_calculations c ON c.id=t.calculation_id WHERE t.job_id=j.id AND t.state='paid'),'0')`
 
 func scanSettlementJob(row pgx.Row, counts bool) (SettlementJob, error) {
 	var j SettlementJob
-	dest := []any{&j.ID, &j.BrandID, &j.GameID, &j.PeriodID, &j.DrawResultID, &j.PeriodVersion, &j.PolicyVersion, &j.Mode, &j.State, &j.Version, &j.TargetCount, &j.CreatedBy, &j.ApprovedBy, &j.Reason, &j.CreatedAt, &j.CompletedAt, &j.LastErrorCode, &j.ResumeState}
+	dest := []any{&j.ID, &j.BrandID, &j.GameID, &j.PeriodID, &j.DrawResultID, &j.PeriodVersion, &j.PolicyVersion, &j.Mode, &j.State, &j.Version, &j.TargetCount, &j.CreatedBy, &j.ApprovedBy, &j.Reason, &j.CreatedAt, &j.CompletedAt, &j.LastErrorCode, &j.ResumeState, &j.Generation, &j.PreviousJobID, &j.CorrectionID, &j.Current}
 	if counts {
 		dest = append(dest, &j.PendingCount, &j.ReadyCount, &j.PaidCount, &j.ExcludedCount, &j.FailedCount, &j.PrizePoints, &j.PaidPoints)
 	}
@@ -110,7 +115,7 @@ func scanSettlementJob(row pgx.Row, counts bool) (SettlementJob, error) {
 	if errors.Is(e, pgx.ErrNoRows) {
 		e = ErrNotFound
 	}
-	j.CanRetry = j.State == "failed"
+	j.CanRetry = j.State == "failed" && j.Current
 	return j, e
 }
 func (s Service) SettlementPolicy(ctx context.Context, brand string) (SettlementPolicy, error) {
@@ -181,7 +186,7 @@ func (s Service) PeriodSettlementJob(ctx context.Context, brand, period string) 
 	if _, e := s.PeriodSettlementContext(ctx, brand, period); e != nil {
 		return nil, e
 	}
-	j, e := scanSettlementJob(s.DB.QueryRow(ctx, `SELECT `+settlementJobFields+settlementJobCounts+` FROM settlement_jobs j WHERE brand_id=$1 AND period_id=$2`, brand, period), true)
+	j, e := scanSettlementJob(s.DB.QueryRow(ctx, `SELECT `+settlementJobFields+settlementJobCounts+` FROM settlement_jobs j WHERE brand_id=$1 AND period_id=$2 AND j.id=(SELECT current_settlement_job_id FROM periods WHERE brand_id=$1 AND id=$2)`, brand, period), true)
 	if errors.Is(e, ErrNotFound) {
 		return nil, nil
 	}
@@ -260,7 +265,7 @@ func (s Service) StartSettlement(ctx context.Context, tx pgx.Tx, brand string, a
 	if e != nil {
 		return out, e
 	}
-	_, e = tx.Exec(ctx, `UPDATE periods SET status='settling',version=version+1,state_reason=$3 WHERE brand_id=$1 AND id=$2`, brand, period, strings.TrimSpace(in.Reason))
+	_, e = tx.Exec(ctx, `UPDATE periods SET status='settling',version=version+1,state_reason=$3,current_settlement_job_id=$4 WHERE brand_id=$1 AND id=$2`, brand, period, strings.TrimSpace(in.Reason), id)
 	if e != nil {
 		return out, e
 	}
@@ -275,7 +280,7 @@ func (s Service) StartSettlement(ctx context.Context, tx pgx.Tx, brand string, a
 	return out, e
 }
 func lockSettlementJob(ctx context.Context, tx pgx.Tx, brand, period string) (*SettlementJob, error) {
-	j, e := scanSettlementJob(tx.QueryRow(ctx, `SELECT `+settlementJobFields+` FROM settlement_jobs j WHERE brand_id=$1 AND period_id=$2 FOR UPDATE`, brand, period), false)
+	j, e := scanSettlementJob(tx.QueryRow(ctx, `SELECT `+settlementJobFields+` FROM settlement_jobs j WHERE brand_id=$1 AND period_id=$2 AND `+currentSettlementJob+` FOR UPDATE`, brand, period), false)
 	if errors.Is(e, ErrNotFound) {
 		return nil, nil
 	}
@@ -318,8 +323,8 @@ func (s Service) ActOnSettlement(ctx context.Context, tx pgx.Tx, brand string, a
 	if e != nil {
 		return j, e
 	}
-	if locked == nil {
-		return j, ErrNotFound
+	if locked == nil || locked.ID != id || !locked.Current {
+		return j, ErrState
 	}
 	j = *locked
 	if j.Version != in.Version || j.Version == math.MaxInt64 {

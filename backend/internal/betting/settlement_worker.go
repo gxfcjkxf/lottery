@@ -29,7 +29,7 @@ func (s Service) ProcessSettlements(ctx context.Context, limit int) (int, error)
 	n := 0
 	var failures error
 	for n < limit {
-		rows, e := s.DB.Query(ctx, `SELECT id::text,brand_id::text,period_id::text FROM settlement_jobs WHERE state IN ('processing','paying') ORDER BY created_at,id LIMIT $1`, limit)
+		rows, e := s.DB.Query(ctx, `SELECT j.id::text,j.brand_id::text,j.period_id::text FROM settlement_jobs j WHERE j.state IN ('processing','paying') AND `+currentSettlementJob+` ORDER BY j.created_at,j.id LIMIT $1`, limit)
 		if e != nil {
 			return n, errors.Join(failures, e)
 		}
@@ -109,6 +109,9 @@ func (s Service) processSettlement(ctx context.Context, id, brand, period string
 	if e != nil {
 		return false, nil, e
 	}
+	if !j.Current {
+		return false, nil, nil
+	}
 	defer func() {
 		if failure != nil {
 			if err != nil {
@@ -145,6 +148,9 @@ func (s Service) processSettlement(ctx context.Context, id, brand, period string
 			_, err = tx.Exec(ctx, `UPDATE settlement_jobs SET state='completed',completed_at=clock_timestamp(),version=version+1 WHERE id=$1`, id)
 			if err == nil {
 				_, err = tx.Exec(ctx, `UPDATE periods SET status='settled',version=version+1,state_reason='all settlement targets terminal' WHERE id=$1`, period)
+			}
+			if err == nil {
+				err = completeChildCorrection(ctx, tx, j)
 			}
 			j.State = "completed"
 			j.Version++
@@ -343,7 +349,7 @@ func (s Service) recordSettlementFailure(ctx context.Context, f settlementFailur
 	if e != nil {
 		return e
 	}
-	if j == nil || j.Version != f.Job.Version || j.State != f.Job.State {
+	if j == nil || j.ID != f.Job.ID || !j.Current || j.Version != f.Job.Version || j.State != f.Job.State {
 		return nil
 	}
 	code := settlementFailureCode(f.Cause)

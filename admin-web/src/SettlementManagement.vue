@@ -77,7 +77,7 @@ const canStart = computed(() => Boolean(
   context.value.policy_version === policy.value?.version && context.value.draw_result_id &&
   !pendingWrite.value && !writing.value && !contextBusy.value,
 ));
-const currentJobIsTerminal = computed(() => Boolean(job.value && isSettlementJobTerminal(job.value)));
+const currentJobIsTerminal = computed(() => Boolean(job.value?.current && isSettlementJobTerminal(job.value)));
 
 function isCurrent(lane: ReturnType<typeof createSettlementJobRequestLane>, ticket: number, capturedScope: string, permitted = rights.value.view) {
   return alive && lane.isCurrent(ticket) && scope.value === capturedScope && permitted;
@@ -279,7 +279,7 @@ function review(operation: "policy" | "start" | "approve" | "retry") {
     };
   } else {
     if (!job.value || job.value.version < 1) return;
-    if (operation === "approve" && !(rights.value.approve && canWrite.value && job.value.state === "awaiting_approval")) return;
+    if (operation === "approve" && !(rights.value.approve && canWrite.value && job.value.current && job.value.state === "awaiting_approval")) return;
     if (operation === "retry" && !(rights.value.retry && canWrite.value && job.value.state === "failed" && job.value.can_retry)) return;
     reviewBody.value = { version: job.value.version, reason: cleanReason };
   }
@@ -551,10 +551,13 @@ onBeforeUnmount(() => {
       <div v-if="rights.view && selectedJob" class="sm-panel">
         <div class="sm-section-title"><h3>结算任务</h3><span class="sm-badge" :class="selectedJob.state === 'completed' ? 'ready' : selectedJob.state === 'failed' ? 'blocked' : 'pending'">{{ jobStateLabel(selectedJob.state) }}</span></div>
         <p v-if="jobBusy" class="sm-note">正在重新读取任务…</p>
-        <p v-if="selectedJob.mode === 'manual' && selectedJob.state === 'awaiting_approval'" class="sm-warning compact">全部可结算目标已完成核算，仍未入账。品牌运营必须明确批准后 worker 才会逐单入账。</p>
-        <p v-if="selectedJob.state === 'completed' && !currentJobIsTerminal" class="sm-warning compact">服务器任务标记为完成，但 paid + excluded 与目标总数不符；不显示为结算完成。</p>
+        <p v-if="!selectedJob.current" class="sm-warning compact">这是历史代次或已被更正流程冻结的代次。显示其原始状态与历史入账金额，不代表当前资金或当前结算完成；此代次不可继续计算、批准或重试。</p>
+        <p v-if="selectedJob.current && selectedJob.mode === 'manual' && selectedJob.state === 'awaiting_approval'" class="sm-warning compact">全部可结算目标已完成核算，仍未入账。品牌运营必须明确批准后 worker 才会逐单入账。</p>
+        <p v-if="selectedJob.current && selectedJob.state === 'completed' && !currentJobIsTerminal" class="sm-warning compact">服务器任务标记为完成，但 paid + excluded 与目标总数不符；不显示为结算完成。</p>
         <p v-if="selectedJob.state === 'failed'" class="sm-warning compact">任务失败不会自动重试。异常或已取消目标为 excluded，不会自动重试；只有服务器 can_retry 为 true 时才能人工重试。</p>
         <dl class="sm-facts">
+          <div><dt>结算代次 / 是否当前</dt><dd>第 {{ selectedJob.generation }} 代 · {{ selectedJob.current ? '当前' : '历史 / 更正冻结' }}</dd></div>
+          <div><dt>上一代任务 / 更正任务</dt><dd class="sm-break">{{ selectedJob.previous_job_id ?? '—' }} / {{ selectedJob.correction_id ?? '—' }}</dd></div>
           <div><dt>任务 ID</dt><dd class="sm-break">{{ selectedJob.id }}</dd></div>
           <div><dt>品牌 / 彩种 / 期次</dt><dd class="sm-break">{{ selectedJob.brand_id }} · {{ selectedJob.game_id }} · {{ selectedJob.period_id }}</dd></div>
           <div><dt>服务器任务版本 / 模式</dt><dd>v{{ selectedJob.version }} · {{ selectedJob.mode }}</dd></div>
@@ -569,7 +572,7 @@ onBeforeUnmount(() => {
           <div><dt>原因 / 最后错误码</dt><dd class="sm-break">{{ selectedJob.reason }} / {{ selectedJob.last_error_code ?? "—" }}</dd></div>
         </dl>
         <p v-if="selectedJob.state === 'completed' && currentJobIsTerminal" class="sm-success">服务器任务已完成，且全部目标均已入账或排除。这里只代表积分结算任务完成。</p>
-        <div v-if="canWrite && ((selectedJob.state === 'awaiting_approval' && rights.approve) || (selectedJob.state === 'failed' && selectedJob.can_retry && rights.retry))" class="sm-form">
+        <div v-if="canWrite && selectedJob.current && ((selectedJob.state === 'awaiting_approval' && rights.approve) || (selectedJob.state === 'failed' && selectedJob.can_retry && rights.retry))" class="sm-form">
           <label>{{ selectedJob.state === 'awaiting_approval' ? '运营批准原因' : '人工重试原因' }}（UTF-8 不超过 500 字节）<textarea v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" placeholder="记录本次人工操作依据" /></label>
           <small>{{ reasonBytes }} / 500 字节</small>
           <button v-if="selectedJob.state === 'awaiting_approval' && rights.approve" class="sm-primary" type="button" :disabled="writing || Boolean(pendingWrite) || !validSettlementReason(reason)" @click="review('approve')">核对并批准，允许 worker 入账</button>
