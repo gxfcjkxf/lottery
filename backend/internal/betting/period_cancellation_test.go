@@ -63,6 +63,7 @@ func TestParallelPeriodWorkersAndIndividualCancelNeverDoubleRefund(t *testing.T)
 
 func TestDrawnPeriodInvalidResultCancellationPreservesLockedEvidence(t *testing.T) {
 	f := newBettingFixture(t, storeTestBrand)
+	finishUnusedBettingPeriod(t, f)
 	fundBettingWallet(t, f, 10)
 	ctx := context.Background()
 	actor := periodCancelActor(f)

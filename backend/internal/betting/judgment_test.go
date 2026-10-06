@@ -57,6 +57,7 @@ func TestJudgmentDatabaseRejectsOrphanEvidenceAndUnwitnessedRefund(t *testing.T)
 
 func TestJudgmentPreservesDrawSnapshotAndRejectsSettlingPeriod(t *testing.T) {
 	f := newBettingFixture(t, storeTestBrand)
+	finishUnusedBettingPeriod(t, f)
 	fundBettingWallet(t, f, 10)
 	ctx := context.Background()
 	actor := judgeActor(f)

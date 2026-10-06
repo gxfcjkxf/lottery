@@ -442,6 +442,7 @@ func TestTickExpiredPendingDoesNotAdvanceActivationSequence(t *testing.T) {
 		return err
 	})
 	now := databaseNow(t, s)
+	prior := waitingDrawPeriod(t, s, g, "unfinished-before-expired", 100, now.Add(-3*time.Hour), "waiting_draw")
 	period := insertPendingPeriod(t, s, g, "expired-before-open", 101, now.Add(-2*time.Hour), now.Add(-time.Hour), now.Add(-30*time.Minute), "")
 	_, err := s.Tick(context.Background())
 	if err != nil {
@@ -450,6 +451,19 @@ func TestTickExpiredPendingDoesNotAdvanceActivationSequence(t *testing.T) {
 	closed, err := scanPeriod(s.DB.QueryRow(context.Background(), `SELECT `+periodFields+` FROM periods WHERE id=$1`, period.ID))
 	if err != nil || closed.Status != "judged_cancelled" || closed.Version != 2 {
 		t.Fatalf("expired pending period=%+v, err=%v", closed, err)
+	}
+	if !closed.BetStartAt.Equal(period.BetStartAt) || !closed.BetEndAt.Equal(period.BetEndAt) || !closed.DrawAt.Equal(period.DrawAt) {
+		t.Fatalf("expired opening window was shifted: before=%+v after=%+v", period, closed)
+	}
+	if n := concurrencyCount(t, s, `SELECT count(*) FROM period_cancellations WHERE period_id=$1`, period.ID); n != 0 {
+		t.Fatalf("unused skipped period created %d refund tasks", n)
+	}
+	if n := concurrencyCount(t, s, `SELECT count(*) FROM period_rule_versions WHERE period_id=$1`, period.ID); n != 0 {
+		t.Fatalf("expired reservation received %d rule snapshots", n)
+	}
+	unchanged, err := scanPeriod(s.DB.QueryRow(context.Background(), `SELECT `+periodFields+` FROM periods WHERE id=$1`, prior.ID))
+	if err != nil || unchanged.Status != prior.Status || unchanged.Version != prior.Version {
+		t.Fatalf("skipping expired window changed unsettled prior: got=%+v err=%v", unchanged, err)
 	}
 	current, err := s.GetVersion(context.Background(), brand, pending.ID)
 	if err != nil || current.Status != "approved" {
@@ -465,20 +479,28 @@ func TestTickExpiredPendingDoesNotAdvanceActivationSequence(t *testing.T) {
 }
 
 func TestTickClosesThenWaitsForDrawAndPauseStillCloses(t *testing.T) {
-	s, _, _, g, _, _ := fixture(t)
+	s, creator, _, g, _, _ := fixture(t)
+	// These are independent lifecycle scenarios. A second game lets the paused
+	// case retain an open period without overlapping an unsettled prior period.
+	var pausedGame Game
+	transact(t, s.DB, func(tx pgx.Tx) error {
+		var err error
+		pausedGame, err = s.CreateGame(context.Background(), tx, brand, creator, "paused_close", "Paused close", g.Model, g.Timezone, "create paused closing scenario", points.Metadata{})
+		return err
+	})
 	now := databaseNow(t, s)
 	closed := insertPendingPeriod(t, s, g, "draw-already-past", 1, now.Add(-2*time.Hour), now.Add(-time.Hour), now.Add(-30*time.Minute), "")
 	if _, err := s.DB.Exec(context.Background(), `UPDATE periods SET status='betting',version=version+1 WHERE id=$1`, closed.ID); err != nil {
 		t.Fatal(err)
 	}
-	paused := insertPendingPeriod(t, s, g, "paused-betting", 2, now.Add(-2*time.Hour), now.Add(-time.Minute), now.Add(time.Hour), "")
+	paused := insertPendingPeriod(t, s, pausedGame, "paused-betting", 1, now.Add(-2*time.Hour), now.Add(-time.Minute), now.Add(time.Hour), "")
 	if _, err := s.DB.Exec(context.Background(), `UPDATE periods SET status='betting',version=version+1 WHERE id=$1`, paused.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.DB.Exec(context.Background(), `UPDATE games SET status='paused' WHERE id=$1`, g.ID); err != nil {
+	if _, err := s.DB.Exec(context.Background(), `UPDATE games SET status='paused' WHERE id=$1`, pausedGame.ID); err != nil {
 		t.Fatal(err)
 	}
-	pending := insertPendingPeriod(t, s, g, "paused-pending", 3, now.Add(-time.Minute), now.Add(time.Hour), now.Add(2*time.Hour), "")
+	pending := insertPendingPeriod(t, s, pausedGame, "paused-pending", 2, now.Add(-time.Minute), now.Add(time.Hour), now.Add(2*time.Hour), "")
 	if _, err := s.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}

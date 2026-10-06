@@ -317,7 +317,9 @@ GET/PUT schedule 成功的 data 均为 `{id,brand_id,game_id,revision,spec,game_
 
 彩种版本不匹配返回 409 `SCHEDULE_VERSION_CONFLICT`；无权限返回 403 `PERMISSION_DENIED`；缺失彩种/资源返回 404 `RESOURCE_NOT_FOUND`。其余错误码保持通用管理 API 约定，日历或范围无效为 400 `SCHEDULE_INVALID`。
 
-`period.sequence` 是创建序号；只有 worker 实际转入 `betting` 时，`games.started_sequence` 才递增，用于规则下期激活。worker 以主数据库时钟驱动：pending 到点且彩种 active 时进入 betting；若投注窗口已过则转 `judged_cancelled`；betting 到 bet_end 转 closed，closed 到 draw_at 转 waiting_draw。彩种暂停时不开放投注，窗口过期后取消 pending。状态更新受数据库转移约束并写审计。pending 尚无注单；已有投注的期次必须用下述整期取消任务，不允许直接 SQL 改为取消而遗漏退款。
+`period.sequence` 是创建序号；只有 worker 实际转入 `betting` 时，`games.started_sequence` 才递增，用于规则下期激活。worker 以主数据库时钟驱动：pending 到点、彩种 active 且该彩种上期结算或全额退款已完成时进入 betting；否则保持 pending。若投注窗口已过则转 `judged_cancelled`，不延长窗口、不增加实际开期序号、不激活下期规则；betting 到 bet_end 转 closed，closed 到 draw_at 转 waiting_draw。彩种暂停时不开放投注，窗口过期后取消 pending。状态更新受数据库转移约束并写审计。pending 尚无注单；已有投注的期次必须用下述整期取消任务，不允许直接 SQL 改为取消而遗漏退款。
+
+同品牌、同彩种的未完成旧期阻止下一期开启；仅关闭投注、已有开奖结果、计算完成、等待审核或已批准但未完成派奖均不放行。取消期次须其退款任务 completed；自动跳过且无任何注单的未开放期次无需退款。顺序依据计划开奖时间，不以创建序号误判未来日历为上一期；已开始的未完成期次始终阻止重叠开放。内部OpenPeriod返回领域ErrState，定时Tick保持pending；用户预览与新投注最终检查使用现有409 BET_PERIOD_CLOSED，不扣积分。已成功订单的原键重放仍读取原回执，不算新投注。不同品牌或彩种独立处理。
 
 S5-a4 实际整期取消接口：GET `/admin/periods/{id}` 返回当前 Period（包括真实状态、期次 version）；GET `/admin/periods/{id}/cancellation` 返回 `{cancellation:null|Cancellation}`。均需显式 period.view.brand / period.view.platform，并记录读取审计。POST `/admin/periods/{id}/cancel` 需 period.cancel.brand，body `{version,mode,cause,reason}`，version 是期次版本；mode 为 bet_cancelled / judged_cancelled，cause 为 operator_cancel / no_result / invalid_result。合法组合和状态见领域模型；单人操作，原因非空且不超过 500 UTF-8 字节。有待退款目标返回 202 processing，无目标返回 200 completed。
 

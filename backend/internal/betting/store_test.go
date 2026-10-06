@@ -376,6 +376,7 @@ func TestExpiredPeriodDoesNotCreateOrderOrLedgerEntry(t *testing.T) {
 
 func openShortBettingPeriod(t *testing.T, f *bettingFixture, duration time.Duration) {
 	t.Helper()
+	finishUnusedBettingPeriod(t, *f)
 	ctx := context.Background()
 	rs := rulebook.Store{DB: f.db}
 	now := time.Now().UTC()

@@ -11,6 +11,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
+	"github.com/gxfcjkxf/lottery/backend/internal/periodgate"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/jackc/pgx/v5"
@@ -609,6 +610,12 @@ func (s Store) OpenPeriod(ctx context.Context, tx pgx.Tx, brand, game, no string
 	}
 	if seq == math.MaxInt64 {
 		return out, ErrVersion
+	}
+	if e = periodgate.Check(ctx, tx, brand, game, seq+1, draw); e != nil {
+		if errors.Is(e, periodgate.ErrBlocked) {
+			return out, ErrState
+		}
+		return out, e
 	}
 	out = Period{ID: ids.New(), BrandID: brand, GameID: game, PeriodNo: no, Sequence: seq + 1, BetStartAt: start, BetEndAt: end, DrawAt: draw, Status: "betting", Version: 1}
 	if _, e = tx.Exec(ctx, `INSERT INTO periods(id,brand_id,game_id,period_no,sequence,bet_start_at,bet_end_at,draw_at,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'betting')`, out.ID, brand, game, no, out.Sequence, start, end, draw); e != nil {

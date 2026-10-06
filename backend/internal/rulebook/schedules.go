@@ -11,6 +11,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
+	"github.com/gxfcjkxf/lottery/backend/internal/periodgate"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/schedule"
 	"github.com/jackc/pgx/v5"
@@ -300,6 +301,11 @@ func tickGame(ctx context.Context, tx pgx.Tx, brand, game string) (int, error) {
 			}
 			if g.Status != "active" {
 				continue
+			}
+			if e = periodgate.Check(ctx, tx, brand, game, p.Sequence, p.DrawAt); errors.Is(e, periodgate.ErrBlocked) {
+				continue
+			} else if e != nil {
+				return n, e
 			}
 			if g.StartedSequence == math.MaxInt64 || g.Version == math.MaxInt64 {
 				return n, ErrVersion

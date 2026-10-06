@@ -16,6 +16,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
+	"github.com/gxfcjkxf/lottery/backend/internal/periodgate"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/jackc/pgx/v5"
@@ -165,11 +166,19 @@ func eligibility(ctx context.Context, tx pgx.Tx, brand string, v identity.Sessio
 }
 func checkWindow(ctx context.Context, tx pgx.Tx, p Period) error {
 	var now time.Time
-	if e := tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
+	var brand string
+	var sequence int64
+	if e := tx.QueryRow(ctx, `SELECT clock_timestamp(),brand_id::text,sequence FROM periods WHERE id=$1`, p.ID).Scan(&now, &brand, &sequence); e != nil {
 		return e
 	}
 	if p.Status != "betting" || now.Before(p.BetStartAt) || !now.Before(p.BetEndAt) || p.DrawResultID != "" {
 		return ErrClosed
+	}
+	if e := periodgate.Check(ctx, tx, brand, p.GameID, sequence, p.DrawAt); e != nil {
+		if errors.Is(e, periodgate.ErrBlocked) {
+			return ErrClosed
+		}
+		return e
 	}
 	return nil
 }

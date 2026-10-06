@@ -110,6 +110,10 @@ S3-b 已实现 `brand_point_policies`：brand_id 主键，version 与 max_balanc
 
 ### 期次与开奖
 
+同品牌、同彩种的下一期实际开放，以旧期业务终结为前提。旧期`settled`表示结算目标全部终结（含按既定规则排除的异常注单）；旧期取消则要求`period_cancellations.state=completed`，不能仅看期次取消状态。自动跳过的未开放期次没有注单、没有退款任务，也可视为终结。未来pending按计划开奖时间判定先后，不以创建序号阻塞较早期次；其他已经开始但未完成的期次仍阻止重叠。
+
+门禁共享实现为`internal/periodgate`，从主库读取期次、取消任务和注单。在彩种行锁下检查：内部开期与Tick独占，投注预览和最终扣分共享；旧期修正的独占锁同样与投注串行化。门禁不改变历史状态或积分。pending因旧期未完成而延迟时，原投注窗口不变；窗口已过由Tick判定取消，不开期、不激活下期规则。现有SQL历史约束继续生效，此门禁不是人工直接SQL改写业务状态的授权。
+
 `periods`
 
 - `id`, `brand_id`, `game_id`, `period_no`, `sequence`
