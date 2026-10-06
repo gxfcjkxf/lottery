@@ -9,6 +9,8 @@ import RuleSimulator from "./RuleSimulator.vue";
 import RuleVersions from "./RuleVersions.vue";
 import PeriodSchedules from "./PeriodSchedules.vue";
 import DrawManagement from "./DrawManagement.vue";
+import BetOrderManagement from "./BetOrderManagement.vue";
+import BetPolicySettings from "./BetPolicySettings.vue";
 import {
   previewCorrection,
   resolveWithdrawal,
@@ -169,22 +171,22 @@ const hasPermission = (permission: string) => {
 const canEditUsers = computed(() =>
   Boolean(
     account.value &&
-    !account.value.super_admin &&
-    hasPermission("user.write.brand"),
+      !account.value.super_admin &&
+      hasPermission("user.write.brand"),
   ),
 );
 const canKickUsers = computed(() =>
   Boolean(
     account.value &&
-    !account.value.super_admin &&
-    hasPermission("user.kick.brand"),
+      !account.value.super_admin &&
+      hasPermission("user.kick.brand"),
   ),
 );
 const canResetPasswords = computed(() =>
   Boolean(
     account.value &&
-    !account.value.super_admin &&
-    hasPermission("user.password_reset.brand"),
+      !account.value.super_admin &&
+      hasPermission("user.password_reset.brand"),
   ),
 );
 const statusLabel: Record<MemberStatus, string> = {
@@ -523,52 +525,8 @@ const confirmManual = () => {
   manualOpen.value = false;
   manualReason.value = "";
 };
-const queryTab = ref("全部");
 const ledgerTab = ref("账本流水");
 const selectedRange = ref("近 7 天");
-
-const orders = [
-  {
-    id: "BO-61048219",
-    member: "Lin Q.",
-    game: "星彩 6+1",
-    period: "20261005032",
-    picks: "07, 18, 29, 33, 41 + 06",
-    amount: "15",
-    status: "待开奖",
-    time: "10-05 10:26",
-  },
-  {
-    id: "BO-61048196",
-    member: "Mia W.",
-    game: "幸运三位",
-    period: "20261005031",
-    picks: "百位 2 · 十位 7 · 个位 1",
-    amount: "8",
-    status: "异常注单",
-    time: "10-05 10:18",
-  },
-  {
-    id: "BO-61047982",
-    member: "Ari L.",
-    game: "星彩 6+1",
-    period: "20261005032",
-    picks: "03, 12, 21, 28, 39 + 02",
-    amount: "25",
-    status: "待开奖",
-    time: "10-05 09:52",
-  },
-  {
-    id: "BO-61047212",
-    member: "J. Tan",
-    game: "幸运三位",
-    period: "20261005030",
-    picks: "百位 4 · 十位 4 · 个位 9",
-    amount: "12",
-    status: "已中奖",
-    time: "10-05 08:03",
-  },
-];
 const ledger = [
   {
     id: "LE-883140",
@@ -611,7 +569,7 @@ const ledger = [
         ><span><b>northstar</b><small>OPERATIONS CONSOLE</small></span></a
       >
       <div class="demo-chip">
-        <span class="pulse"></span>游戏与提现为演示
+        <span class="pulse"></span>非生产环境 · 提现为演示
         <span class="demo-chip-end">·</span>
       </div>
       <div class="brand-switch-wrap">
@@ -746,6 +704,7 @@ const ledger = [
           page !== '用户和成员' &&
           page !== '审计日志' &&
           page !== '资金与账本' &&
+          page !== '注单和异常' &&
           page !== '账号与权限'
         "
         class="demo-banner"
@@ -755,7 +714,7 @@ const ledger = [
           ><b>交互演示 · 非生产环境</b
           ><span class="banner-copy">
             提现、域名主题及标为“演示”的页面不会写入后台。账号、成员、积分账本、认证设置和规则版本流程已接入真实
-            API。期次计划与生成也已接入；人工开奖和结算仍为演示。</span
+            API。投注、期次计划和人工开奖也已接入；结算仍待实现。</span
           ></span
         ><button aria-label="关闭说明" @click="showDemoNotice = false">
           ×
@@ -2030,133 +1989,29 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '注单和异常'" class="page-content">
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">ORDERS / MONITORING</div>
-            <h1>注单和异常</h1>
-            <p>筛选品牌注单，检查异常并查看结算状态</p>
-          </div>
-          <button
-            class="button button-secondary"
-            @click="toast('已导出当前筛选（演示）')"
-          >
-            导出 ↓
+        <BetPolicySettings
+          v-if="account && selectedBrandId"
+          :key="`bet-policy-${account.id}`"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
+        <BetOrderManagement
+          v-if="account && selectedBrandId"
+          :key="`bet-orders-${account.id}`"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
+        <div v-else-if="account" class="panel directory-state">
+          请选择一个有权访问的品牌以查看注单。
+        </div>
+        <div v-else class="panel directory-state">
+          请先登录后台账号。投注策略和注单均从真实 API 读取，不使用演示数据。
+          <button class="button button-secondary" @click="go('用户和成员')">
+            前往登录
           </button>
         </div>
-        <div class="metric-strip">
-          <div>
-            <small>今日注单</small><b>18,642</b><span>总投注 128,450 分</span>
-          </div>
-          <div><small>待开奖</small><b>1,284</b><span>关联 8 个期次</span></div>
-          <div>
-            <small>异常注单</small><b class="danger-number">2</b
-            ><span>需人工检查</span>
-          </div>
-          <div>
-            <small>结算失败</small><b>0</b
-            ><span class="live-text">● 无失败任务</span>
-          </div>
-        </div>
-        <article class="panel">
-          <div class="table-toolbar">
-            <div class="filter-tabs">
-              <button
-                v-for="t in [
-                  '全部',
-                  '待开奖',
-                  '已中奖',
-                  '未中奖',
-                  '异常注单',
-                  '已取消',
-                ]"
-                :key="t"
-                :class="{ selected: queryTab === t }"
-                @click="queryTab = t"
-              >
-                {{ t }} <span v-if="t === '异常注单'">2</span>
-              </button>
-            </div>
-          </div>
-          <div class="toolbar-controls order-filters">
-            <input
-              class="field search-field"
-              placeholder="注单号 / 用户 ID"
-              v-model="search"
-            /><select class="field">
-              <option>全部彩种</option>
-              <option>星彩 6+1</option>
-              <option>幸运三位</option></select
-            ><select class="field">
-              <option>最近 7 天</option>
-              <option>今天</option></select
-            ><button class="button button-secondary">⌕ 筛选</button>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>注单号 / 用户</th>
-                  <th>彩种 / 期次</th>
-                  <th>选号快照</th>
-                  <th>投注积分</th>
-                  <th>状态</th>
-                  <th>下单时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="o in orders.filter(
-                    (item) =>
-                      (!search ||
-                        `${item.id} ${item.member}`
-                          .toLowerCase()
-                          .includes(search.toLowerCase())) &&
-                      (queryTab === '全部' || item.status === queryTab),
-                  )"
-                  :key="o.id"
-                >
-                  <td>
-                    <b class="mono">{{ o.id }}</b
-                    ><small class="cell-sub">{{ o.member }}</small>
-                  </td>
-                  <td>
-                    {{ o.game
-                    }}<small class="cell-sub mono">{{ o.period }}</small>
-                  </td>
-                  <td class="selection-cell">{{ o.picks }}</td>
-                  <td class="amount">{{ o.amount }} <small>分</small></td>
-                  <td>
-                    <span
-                      class="badge"
-                      :class="
-                        o.status === '异常注单'
-                          ? 'badge-danger'
-                          : o.status === '已中奖'
-                            ? 'badge-success'
-                            : 'badge-neutral'
-                      "
-                      >{{ o.status }}</span
-                    >
-                  </td>
-                  <td>{{ o.time }}</td>
-                  <td>
-                    <button
-                      class="text-button"
-                      @click="toast(`${o.id} 详情已打开（演示）`)"
-                    >
-                      {{ o.status === "异常注单" ? "检查" : "详情" }} →
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="panel-foot">
-            注单保留原始选号和规则版本快照，历史订单不可修改
-            <span>共 18,642 条</span>
-          </div>
-        </article>
       </section>
 
       <section v-else-if="page === '资金与账本'" class="page-content">
@@ -2532,11 +2387,11 @@ const ledger = [
         <span>Aurora Operations Console <b>·</b> Prototype v0.1</span
         ><span>{{
           page === "用户和成员" && account
-            ? "成员创建与管理为真实操作；投注与提现仍为演示。"
+            ? "成员创建与管理为真实操作；投注已接入，提现仍为演示。"
             : page === "审计日志" && account
-              ? "审计日志为真实后台数据；投注与提现仍为演示。"
+              ? "审计日志为真实后台数据；投注已接入，提现仍为演示。"
               : page === "账号与权限" && account
-                ? "账号与角色变更为真实操作；投注与提现仍为演示。"
+                ? "账号与角色变更为真实操作；投注已接入，提现仍为演示。"
                 : page === "品牌和域名" && account
                   ? "认证设置为真实配置；域名、主题与提现仍为演示。"
                   : page === "资金与账本" && account

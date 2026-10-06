@@ -339,6 +339,77 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	if wallet.Display != 500 || wallet.Gift != 500 {
 		t.Fatalf("cancel failed to restore wallet: %+v", wallet)
 	}
+
+	// The administrative exception workflow uses the same real order fixture,
+	// but separate permissions and a fresh idempotent placement.
+	second := betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-order-exception-002", body)
+	mustStatus(t, second, 201)
+	var exceptionOrder betting.Order
+	decodeBetData(t, second, &exceptionOrder)
+	path := "/api/v1/admin/bet-orders/" + exceptionOrder.ID
+	markBody := map[string]any{"version": exceptionOrder.Version, "reason": "verified manual abnormal evidence"}
+	denied := f.call("POST", path+"/abnormal", "exception-no-grant", f.token, managedBrand, markBody)
+	mustStatus(t, denied, 403)
+	for _, permission := range []string{"bet.view.brand", "bet.mark_abnormal.brand", "bet.cancel.brand"} {
+		if _, err := f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) SELECT role_id,$2 FROM admin_account_roles WHERE account_id=$1 ON CONFLICT DO NOTHING`, f.root, permission); err != nil {
+			t.Fatal(err)
+		}
+	}
+	evidenceResponse := f.call("GET", path+"/exception", "", f.token, managedBrand, nil)
+	mustStatus(t, evidenceResponse, 200)
+	var evidence struct {
+		Exception *betting.Exception `json:"exception"`
+	}
+	managedData(t, evidenceResponse, &evidence)
+	if evidence.Exception != nil {
+		t.Fatal("new order already had exception evidence")
+	}
+	mark := f.call("POST", path+"/abnormal", "exception-mark-idempotent", f.token, managedBrand, markBody)
+	mustStatus(t, mark, 200)
+	var marked betting.Order
+	managedData(t, mark, &marked)
+	if marked.Status != "abnormal" || marked.Version != 2 || marked.RefundEntryID != "" {
+		t.Fatalf("bad marked order %+v", marked)
+	}
+	replayedMark := f.call("POST", path+"/abnormal", "exception-mark-idempotent", f.token, managedBrand, markBody)
+	mustStatus(t, replayedMark, 200)
+	var replayed betting.Order
+	managedData(t, replayedMark, &replayed)
+	if mustJSON(t, replayed) != mustJSON(t, marked) {
+		t.Fatal("exception retry changed response")
+	}
+	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id IN (SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key='bet.mark_abnormal.brand'`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, f.call("POST", path+"/abnormal", "exception-mark-idempotent", f.token, managedBrand, markBody), 403)
+	if _, err := f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) SELECT role_id,'bet.mark_abnormal.brand' FROM admin_account_roles WHERE account_id=$1 ON CONFLICT DO NOTHING`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, f.call("POST", path+"/abnormal", "exception-mark-idempotent", f.token, managedBrand, markBody), 403)
+	mustStatus(t, f.call("GET", path+"/exception", "", f.token, managedBrand, nil), 200)
+	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, betRequestWithKey(h, "POST", "/api/v1/bet-orders/"+marked.ID+"/cancel", f.userToken, "", "exception-user-cancel", mustJSON(t, map[string]any{"version": 2, "reason": "user cannot refund abnormal"})), 409)
+	evidenceResponse = f.call("GET", path+"/exception", "", f.token, managedBrand, nil)
+	mustStatus(t, evidenceResponse, 200)
+	managedData(t, evidenceResponse, &evidence)
+	if evidence.Exception == nil || evidence.Exception.OrderID != marked.ID || evidence.Exception.MarkedBy != f.root || evidence.Exception.Reason != markBody["reason"] {
+		t.Fatalf("exception read mismatch %+v", evidence)
+	}
+	walletResult, err = (points.Store{DB: f.pool}).Read(ctx, managedBrand, f.memberID)
+	if err != nil || walletResult.GiftPoints != 492 {
+		t.Fatalf("marking exception altered balance %+v %v", walletResult, err)
+	}
+	adminCancel := f.call("POST", path+"/cancel", "exception-operator-cancel", f.token, managedBrand, map[string]any{"version": 2, "reason": "refund abnormal stake"})
+	mustStatus(t, adminCancel, 200)
+	walletResult, err = (points.Store{DB: f.pool}).Read(ctx, managedBrand, f.memberID)
+	if err != nil || walletResult.GiftPoints != 500 {
+		t.Fatalf("operator did not restore original source %+v %v", walletResult, err)
+	}
 }
 
 func TestBettingHTTPAdminPolicyPermissionsAndSuperReadonly(t *testing.T) {

@@ -127,9 +127,11 @@ Preview 与 Place 均使用 `{period_id,play_id,rule_version_id,selection,multip
 
 Place 成功返回 201 Order，包含不可变定义/策略快照、两种选号、展开注单、总积分、原扣款分配和 debit_entry_id。客户端使用每个确认意图独立的 Idempotency-Key，网络重试保留同键和完全相同请求体；同键异体 409，同内容不同键可以合法重复购买。订单、余额、账本、审计与 outbox 在同一事务提交。会话在事务内以及等待幂等锁后重新认证；自然过期或超过截止时间的余额锁等待不产生扣款。响应缓存为当时结果，客户端应另刷新钱包和订单状态。
 
-Cancel 请求 `{version,reason}`（带幂等键）。用户取消按订单保存的 user_cancel_allowed，要求数据库时间早于 draw_at、无已锁定结果，期次为 betting/closed/waiting_draw；因此投注截止后、开奖前仍可取消。账户冻结/品牌暂停不禁止此类退款。当前仅取消未结算 placed；品牌运营可用独立 cancel 权限取消未结算订单，不受用户开关或时间窗限制。退款引用原 debit，恢复每种来源的 available，不允许改金额。已结算订单回溯、异常标记、整期判定取消仍待后续。
+Cancel 请求 `{version,reason}`（带幂等键）。用户取消按订单保存的 user_cancel_allowed，要求数据库时间早于 draw_at、无已锁定结果，期次为 betting/closed/waiting_draw；因此投注截止后、开奖前仍可取消。账户冻结/品牌暂停不禁止此类退款。用户仅取消未结算 placed；品牌运营可用独立 cancel 权限取消 placed/abnormal，不受用户开关或时间窗限制。退款引用原 debit，恢复每种来源的 available，不允许改金额。已结算订单回溯、整期判定取消仍待后续。
 
 管理接口新增 GET/PUT `/admin/bet-policy`、GET/PUT `/admin/games/{id}/bet-policy`（写 body `{version,config,reason}`）；GET `/admin/bet-orders`（可选 member_id、limit、offset）、GET 单笔、POST 单笔 cancel（`{version,reason}`）。查询需 bet_policy.view 或 bet.view 的显式品牌/平台权限；写需 bet_policy.write.brand 或 bet.cancel.brand，超级管理员仅查看。管理员读取和修改均记录审计。整数配置与继承结构见领域模型。
+
+S5-a3 新增 GET `/admin/bet-orders/{id}/exception`（bet.view.brand / bet.view.platform），返回 `{exception:null}` 或 `{exception:{id,brand_id,order_id,order_version,marked_by,reason,created_at}}`。不属于当前品牌的注单返回 404；读取会审计。POST `/admin/bet-orders/{id}/abnormal` 需独立 `bet.mark_abnormal.brand`，带幂等键和 `{version,reason}`；仅 placed 可标记，返回新 Order（abnormal，version + 1）。证据、状态、审计和 outbox 同事务提交，不改余额或扣款快照；相同请求重放不追加证据。即使是同键缓存重试，也重新检查当前权限/会话；超级管理员不能标记。确定 409 后读取新版本再确认，网络/5xx 不确定时保留原 body/键重试。后台页面在具备读取权限时显示真实策略、50 条分页注单、原始快照与异常证据；写权限不隐含读取权限。
 
 业务错误：400 BET_INPUT_INVALID；403 BET_OPERATION_DENIED；404 BET_RESOURCE_NOT_FOUND；409 BET_VERSION_CONFLICT / BET_PERIOD_CLOSED / BET_LIMIT_EXCEEDED / BET_STATE_CONFLICT。积分不足、上限和损坏映射现有 POINTS_* 错误；幂等键格式/异体映射 IDEMPOTENCY_*；失效会话 401 AUTH_SESSION_REVOKED，临时数据库错误 503 且不缓存。
 

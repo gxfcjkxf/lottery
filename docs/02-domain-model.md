@@ -143,7 +143,9 @@ periods 另含 draw_result_id、draw_claim_token/draw_claim_until 和 draw_next_
 - S5-a1 实际幂等字段为 `client_key`，unique `(brand_id, brand_member_id, client_key)`；同时保留 `version`、`placed_at`、`cancelled_at`、`cancel_reason`。
 - `account_id`、`debit_entry_id`、`refund_entry_id` 通过品牌/账户复合外键关联账本。
 - `definition_snapshot`、`definition_hash`、`policy_snapshot`、`brand_policy_version`、`game_policy_version` 保存每单确认时的规则/限额快照；开期引用只保留开期审计，不覆盖每单规则。
-- 号码、复式展开、积分、来源分配、快照和身份不可改写或删除；取消必须关联原借记的全额原路退款账本，递增版本。当前可执行 placed → bet_cancelled；异常标记、判定取消和结算状态的业务入口尚未实现，`settled_at` 尚未落表。
+- 号码、复式展开、积分、来源分配、快照和身份不可改写或删除；取消必须关联原借记的全额原路退款账本，递增版本。当前可执行 placed → abnormal、placed/abnormal → bet_cancelled（异常仅允许运营取消）；判定取消和结算状态的业务入口尚未实现，`settled_at` 尚未落表。
+
+`bet_order_exceptions`（0013）：id、brand_id、order_id（唯一）、order_version、marked_by、reason、created_at。人工标记只追加证据和递增注单版本，不退款、不派奖、不释放尚未退款的额度；原因非空且最多 500 UTF-8 字节。异常注单不进入普通结算或重试，不能解除异常或改写证据，但可以由具备取消权限的品牌运营全额原路退款。数据库触发器禁止单独无证据变状态或提交孤立证据；取消后原异常证据仍保留。
 
 `brand_bet_policies`：brand_id、version、config JSONB、updated_at。Config 包含 min_bet_points（默认 1）、max_bet_points / max_period_points / max_user_period_points（默认 null，无上限）、user_cancel_allowed（默认 false）。积分为规范整数字符串。
 

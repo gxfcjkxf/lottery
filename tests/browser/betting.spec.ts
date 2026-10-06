@@ -5,6 +5,13 @@ import {
   type Page,
   type Route,
 } from "@playwright/test";
+import type {
+  AdminBetOrder,
+  BetException,
+  BrandBetPolicy,
+  GameBetPolicy,
+} from "../../admin-web/src/bet-management-api";
+import type { LedgerEntry, Wallet } from "../../admin-web/src/finance-api";
 
 const brandId = "0199a000-0000-7000-8000-000000000002";
 const apiOrigin = "http://localhost:5173";
@@ -537,6 +544,13 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     process.env.TEST_HARBOR_ADMIN_USERNAME!,
     process.env.TEST_HARBOR_ADMIN_PASSWORD!,
   );
+  // Preserve the genuine server-issued creator session before the separate
+  // reviewer login replaces the context's admin cookie. Reuse it for the UI,
+  // rather than performing another password login under real rate limits.
+  const adminCookies = (await context.cookies(`${adminBase}/me`)).filter(
+    (cookie) => cookie.name === "lottery_admin",
+  );
+  expect(adminCookies).toHaveLength(1);
   const reviewer = await adminToken(
     page.request,
     process.env.TEST_RULE_REVIEWER_USERNAME!,
@@ -867,13 +881,29 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
   const quote = selectionPage.getByTestId("bet-quote");
   await expect(quote).toContainText("Combinations 8");
   await expect(quote).toContainText("Total points 16");
-  expect(await page.evaluate(() => document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await page.screenshot({path:info.outputPath("betting-selection.png"),fullPage:true});
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth + 1,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath("betting-selection.png"),
+    fullPage: true,
+  });
   await quote.getByTestId("review-bet").click();
   await expect(page.getByTestId("bet-confirmation")).toBeVisible();
-  await expect(page.getByTestId("selection-summary")).toContainText("Position 3");
-  expect(await page.evaluate(() => document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await page.screenshot({path:info.outputPath("betting-confirmation.png"),fullPage:true});
+  await expect(page.getByTestId("selection-summary")).toContainText(
+    "Position 3",
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth + 1,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath("betting-confirmation.png"),
+    fullPage: true,
+  });
   const confirm = page.waitForResponse(
     (response) =>
       response.url().endsWith("/api/v1/bet-orders") &&
@@ -1067,6 +1097,8 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
   );
   expect(debit).toBeTruthy();
   expect(refund).toBeTruthy();
+  if (!debit || !refund)
+    throw new Error("Missing original user debit or refund ledger evidence");
   expect(debit.reference_id).toBe(placed.id);
   expect(refund.reference_id).toBe(placed.id);
   expect(refund.reversal_of).toBe(debit.id);
@@ -1086,9 +1118,598 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     userToken,
   );
   expect(memberLedger.items.map((entry) => entry.id)).toContain(refund.id);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth + 1,
+    ),
+  ).toBe(true);
   await expect(orderDetail.locator(".wallet-balance")).toContainText("100");
-  await page.screenshot({path:info.outputPath("betting-refunded.png"),fullPage:true});
+  await page.screenshot({
+    path: info.outputPath("betting-refunded.png"),
+    fullPage: true,
+  });
+
+  // S5-a3 reuses this member, rule, period and exact selection after the user's
+  // refund. A 24-point second stake exceeds the 16-point brand default but fits
+  // the 32-point game override. Both viewport projects use the same brand cap,
+  // which still permits the other project's original 16-point user flow.
+  test.setTimeout(240_000);
+  // API setup left the reviewer admin cookie in this shared browser context.
+  // Clear only that cookie so the new page actually logs in as the Harbor creator;
+  // the fixture's bearer tokens and member cookies remain usable.
+  await context.clearCookies({ name: "lottery_admin" });
+  const adminPage = await context.newPage();
+  adminPage.setDefaultTimeout(10_000);
+  const showS5AdminPage = async () => {
+    if (info.project.name === "mobile") {
+      await adminPage
+        .locator(".mobile-nav")
+        .getByRole("button", { name: /更多/ })
+        .click();
+      await adminPage
+        .getByRole("navigation", { name: "全部管理页面", exact: true })
+        .getByRole("button", { name: /注单和异常/ })
+        .click();
+    } else {
+      await adminPage
+        .locator(".side-nav")
+        .getByRole("button", { name: /注单和异常/ })
+        .click();
+    }
+    await expect(adminPage.getByTestId("bet-policy-settings")).toBeVisible();
+    await expect(adminPage.getByTestId("bet-order-management")).toBeVisible();
+  };
+  const captureS5Admin = async (name: string) => {
+    expect(
+      await adminPage.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    ).toBe(true);
+    await adminPage.screenshot({ path: info.outputPath(name), fullPage: true });
+  };
+  try {
+    await context.addCookies(adminCookies);
+    await adminPage.goto("http://localhost:5174");
+    await adminPage
+      .getByLabel("选择真实后台品牌", { exact: true })
+      .selectOption(brandId);
+    await showS5AdminPage();
+
+    const policyPanel = adminPage.getByTestId("bet-policy-settings");
+    const brandCap = policyPanel.getByLabel("品牌：单注上限积分（留空不限）", {
+      exact: true,
+    });
+    await expect(brandCap).toBeEnabled();
+    await policyPanel
+      .getByLabel("品牌：最低单注积分", { exact: true })
+      .fill("1");
+    await brandCap.fill("16");
+    await policyPanel
+      .getByLabel("品牌：单期上限积分（留空不限）", { exact: true })
+      .fill("");
+    await policyPanel
+      .getByLabel("品牌：单用户单期上限积分（留空不限）", { exact: true })
+      .fill("");
+    await policyPanel
+      .getByLabel("品牌：变更原因（必填，最多 500 UTF-8 字节）", {
+        exact: true,
+      })
+      .fill(`S5-a3 ${info.project.name}: persist brand single-bet default`);
+    let savedBrand: BrandBetPolicy | undefined;
+    // The two real viewport fixtures may concurrently advance this shared brand
+    // version. Only a definitive version conflict permits a new UI confirmation.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const save = policyPanel.getByRole("button", {
+        name: "保存品牌策略",
+        exact: true,
+      });
+      await expect(save).toBeEnabled();
+      const pendingSave = adminPage.waitForResponse(
+        (response) =>
+          response.url().endsWith("/api/v1/admin/bet-policy") &&
+          response.request().method() === "PUT",
+      );
+      await save.click();
+      const response = await pendingSave;
+      const result = await response.json();
+      if (response.status() === 409) {
+        expect(result.error?.code).toBe("BET_VERSION_CONFLICT");
+        continue;
+      }
+      expect(response.status(), JSON.stringify(result)).toBe(200);
+      expect(result.success).toBe(true);
+      expect(response.request().postDataJSON().config.max_bet_points).toBe(
+        "16",
+      );
+      savedBrand = (result as Envelope<BrandBetPolicy>).data;
+      break;
+    }
+    if (!savedBrand)
+      throw new Error(
+        "S5-a3 brand policy still conflicted after three confirmations",
+      );
+    expect(savedBrand.config.max_bet_points).toBe("16");
+    const persistedBrand = await api<BrandBetPolicy>(
+      page.request,
+      `${adminBase}/bet-policy`,
+      "GET",
+      admin,
+    );
+    expect(persistedBrand.config.max_bet_points).toBe("16");
+    expect(persistedBrand.version).toBeGreaterThanOrEqual(savedBrand.version);
+
+    await adminPage.reload();
+    await adminPage
+      .getByLabel("选择真实后台品牌", { exact: true })
+      .selectOption(brandId);
+    await showS5AdminPage();
+    await expect(brandCap).toHaveValue("16");
+    await policyPanel
+      .getByLabel("游戏：彩种 ID", { exact: true })
+      .fill(digits.id);
+    await policyPanel
+      .getByRole("button", { name: "读取彩种策略", exact: true })
+      .click();
+    await expect(policyPanel.locator(".policy-version")).toContainText(
+      digits.id,
+    );
+    await policyPanel
+      .getByLabel("游戏：单注上限积分", { exact: true })
+      .selectOption("value");
+    await policyPanel
+      .getByLabel("游戏：单注上限积分数值", { exact: true })
+      .fill("32");
+    await policyPanel
+      .getByLabel("游戏：变更原因（必填，最多 500 UTF-8 字节）", {
+        exact: true,
+      })
+      .fill(
+        `S5-a3 ${info.project.name}: game override takes priority over brand default`,
+      );
+    const gameSave = adminPage.waitForResponse(
+      (response) =>
+        response
+          .url()
+          .endsWith(`/api/v1/admin/games/${digits.id}/bet-policy`) &&
+        response.request().method() === "PUT",
+    );
+    await policyPanel
+      .getByRole("button", { name: "保存彩种策略", exact: true })
+      .click();
+    const gameSavedResponse = await gameSave;
+    const gameSavedEnvelope =
+      (await gameSavedResponse.json()) as Envelope<GameBetPolicy>;
+    expect(gameSavedResponse.status(), JSON.stringify(gameSavedEnvelope)).toBe(
+      200,
+    );
+    expect(gameSavedEnvelope.success).toBe(true);
+    const savedGame = gameSavedEnvelope.data;
+    expect(savedGame.config.max_bet_points).toEqual({
+      mode: "value",
+      points: "32",
+    });
+    expect(BigInt(savedGame.config.max_bet_points.points!)).toBeGreaterThan(
+      BigInt(persistedBrand.config.max_bet_points!),
+    );
+    const persistedGame = await api<GameBetPolicy>(
+      page.request,
+      `${adminBase}/games/${digits.id}/bet-policy`,
+      "GET",
+      admin,
+    );
+    expect(persistedGame.version).toBe(savedGame.version);
+    expect(persistedGame.config).toEqual(savedGame.config);
+    await captureS5Admin("s5-a3-admin-policy.png");
+
+    const secondInput = {
+      period_id: placed.period_id,
+      play_id: placed.play_id,
+      rule_version_id: placed.rule_version_id,
+      selection: placed.selection_raw,
+      multiplier: "3",
+    };
+    // Catalog selection can advance between overlapping generated windows. Use
+    // the period captured by the real placed order, not the fixture's first row.
+    let secondOrder: AdminBetOrder | undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const secondPreview = await api<{
+        actor_context: string;
+        bet_points: string;
+        combination_count: number;
+        policy: { max_bet_points: string | null };
+        policy_versions: { brand: number; game: number };
+      }>(
+        page.request,
+        `${publicBase}/bet-previews`,
+        "POST",
+        userToken,
+        secondInput,
+      );
+      expect(secondPreview.bet_points).toBe("24");
+      expect(secondPreview.combination_count).toBe(placed.combination_count);
+      expect(secondPreview.policy.max_bet_points).toBe("32");
+      expect(secondPreview.policy_versions.brand).toBeGreaterThanOrEqual(
+        savedBrand.version,
+      );
+      expect(secondPreview.policy_versions.game).toBe(savedGame.version);
+      // Use the latest real quote's actor context and both policy versions.
+      const response = await page.request.post(`${publicBase}/bet-orders`, {
+        headers: {
+          Authorization: `Bearer ${userToken}`,
+          "X-Brand-ID": brandId,
+          Origin: apiOrigin,
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        data: {
+          ...secondInput,
+          actor_context: secondPreview.actor_context,
+          policy_versions: secondPreview.policy_versions,
+        },
+      });
+      const result = await response.json();
+      if (response.status() === 409) {
+        expect(result.error?.code).toBe("BET_VERSION_CONFLICT");
+        continue;
+      }
+      expect(response.status(), JSON.stringify(result)).toBe(201);
+      expect(result.success).toBe(true);
+      secondOrder = (result as Envelope<AdminBetOrder>).data;
+      expect(secondOrder.policy_versions).toEqual(
+        secondPreview.policy_versions,
+      );
+      break;
+    }
+    if (!secondOrder)
+      throw new Error(
+        "S5-a3 second placement still conflicted after three fresh quotes",
+      );
+    expect(secondOrder.id).not.toBe(placed.id);
+    expect(secondOrder.status).toBe("placed");
+    expect(secondOrder.game_id).toBe(digits.id);
+    expect(secondOrder.period_id).toBe(placed.period_id);
+    expect(secondOrder.total_points).toBe("24");
+    expect(BigInt(secondOrder.total_points)).toBeGreaterThan(
+      BigInt(persistedBrand.config.max_bet_points!),
+    );
+    expect(secondOrder.policy_snapshot.max_bet_points).toBe("32");
+    expect(secondOrder.selection_raw).toEqual(placed.selection_raw);
+    const secondWallet = await api<Wallet>(
+      page.request,
+      `${publicBase}/wallet`,
+      "GET",
+      userToken,
+    );
+    expect(secondWallet.available_points).toBe("76");
+    expect(secondWallet.display_points).toBe("76");
+    const secondLedger = await api<{ items: LedgerEntry[] }>(
+      page.request,
+      `${adminBase}/wallets/${memberId}/ledger?limit=100`,
+      "GET",
+      admin,
+    );
+    expect(secondLedger.items).toHaveLength(ledgerAfter.items.length + 1);
+    const secondDebit = secondLedger.items.find(
+      (entry) => entry.id === secondOrder!.debit_entry_id,
+    );
+    if (!secondDebit)
+      throw new Error("Missing S5-a3 original debit ledger entry");
+    expect(secondDebit.reference_id).toBe(secondOrder.id);
+    expect(secondDebit.before_snapshot).toEqual(refund.after_snapshot);
+    expect(secondDebit.delta_snapshot.recharge.available).toBe("-24");
+    expect(secondDebit.after_snapshot.recharge.available).toBe("76");
+    expect(secondDebit.source_allocation).toEqual(
+      secondOrder.deduction_allocation,
+    );
+
+    const ordersPanel = adminPage.getByTestId("bet-order-management");
+    await ordersPanel
+      .getByLabel("直接查询注单 UUID", { exact: true })
+      .fill(secondOrder.id);
+    await ordersPanel
+      .getByRole("button", { name: "查询", exact: true })
+      .click();
+    await expect(ordersPanel.locator(".order-row")).toHaveCount(1);
+    const adminDetail = ordersPanel.getByRole("region", {
+      name: "注单详情",
+      exact: true,
+    });
+    await expect(adminDetail).toContainText(secondOrder.id);
+    await expect(adminDetail.locator(".amounts")).toContainText("3 倍");
+    await expect(
+      adminDetail.getByRole("button", { name: "标记为异常", exact: true }),
+    ).toBeVisible();
+    await expect(adminDetail.locator(".evidence")).toContainText(
+      "当前注单没有异常标记记录",
+    );
+
+    const abnormalReason = `S5-a3 ${info.project.name}: real uncertain abnormal write`;
+    const abnormalRoute = `**/api/v1/admin/bet-orders/${secondOrder.id}/abnormal`;
+    const abnormalRequests: Array<{ key: string; body: string | null }> = [];
+    let resolveAbnormalCommit!: (value: {
+      status: number;
+      order: AdminBetOrder;
+    }) => void;
+    const abnormalCommit = new Promise<{
+      status: number;
+      order: AdminBetOrder;
+    }>((resolve) => {
+      resolveAbnormalCommit = resolve;
+    });
+    await adminPage.route(abnormalRoute, async (route) => {
+      const request = route.request();
+      const headers = await request.allHeaders();
+      abnormalRequests.push({
+        key: headers["idempotency-key"],
+        body: request.postData(),
+      });
+      if (abnormalRequests.length === 1) {
+        // Commit against the real API before dropping only the browser response.
+        const committedResponse = await route.fetch();
+        const result =
+          (await committedResponse.json()) as Envelope<AdminBetOrder>;
+        resolveAbnormalCommit({
+          status: committedResponse.status(),
+          order: result.data,
+        });
+        await route.abort("failed");
+      } else {
+        await route.continue();
+      }
+    });
+    await adminDetail
+      .getByRole("button", { name: "标记为异常", exact: true })
+      .click();
+    const abnormalDialog = adminPage.getByRole("dialog", {
+      name: "确认标记异常",
+      exact: true,
+    });
+    await abnormalDialog
+      .getByLabel("操作原因（必填，UTF-8 最多 500 字节）", { exact: true })
+      .fill(abnormalReason);
+    await abnormalDialog
+      .getByRole("button", { name: "检查并确认", exact: true })
+      .click();
+    await expect(abnormalDialog.getByRole("textbox")).toBeDisabled();
+    await captureS5Admin("s5-a3-admin-abnormal-confirmation.png");
+    await abnormalDialog
+      .getByRole("button", { name: "确认并提交", exact: true })
+      .click();
+    const abnormalOnce = await abnormalCommit;
+    expect(abnormalOnce.status).toBe(200);
+    expect(abnormalOnce.order.id).toBe(secondOrder.id);
+    expect(abnormalOnce.order.status).toBe("abnormal");
+    expect(abnormalOnce.order.version).toBe(secondOrder.version + 1);
+    expect(abnormalRequests).toHaveLength(1);
+    expect(abnormalRequests[0].key).toBeTruthy();
+    expect(JSON.parse(abnormalRequests[0].body!)).toEqual({
+      version: secondOrder.version,
+      reason: abnormalReason,
+    });
+    await expect(adminDetail.getByRole("alert")).toContainText(
+      "请求结果尚未确定",
+    );
+    await expect(
+      adminDetail.getByRole("button", { name: "标记为异常", exact: true }),
+    ).toHaveCount(0);
+    const committedEvidence = await api<{ exception: BetException | null }>(
+      page.request,
+      `${adminBase}/bet-orders/${secondOrder.id}/exception`,
+      "GET",
+      admin,
+    );
+    expect(committedEvidence.exception).toMatchObject({
+      brand_id: brandId,
+      order_id: secondOrder.id,
+      order_version: secondOrder.version + 1,
+      reason: abnormalReason,
+    });
+    expect(committedEvidence.exception?.id).toBeTruthy();
+    expect(
+      await api<Wallet>(page.request, `${publicBase}/wallet`, "GET", userToken),
+    ).toEqual(secondWallet);
+    expect(
+      await api<{ items: LedgerEntry[] }>(
+        page.request,
+        `${adminBase}/wallets/${memberId}/ledger?limit=100`,
+        "GET",
+        admin,
+      ),
+    ).toEqual(secondLedger);
+    await captureS5Admin("s5-a3-admin-abnormal-uncertain.png");
+
+    const abnormalRetry = adminPage.waitForResponse(
+      (response) =>
+        response
+          .url()
+          .endsWith(`/api/v1/admin/bet-orders/${secondOrder!.id}/abnormal`) &&
+        response.request().method() === "POST",
+    );
+    await adminDetail
+      .getByRole("button", { name: "使用相同请求编号重试", exact: true })
+      .click();
+    const abnormalRetryResponse = await abnormalRetry;
+    expect(abnormalRetryResponse.status()).toBe(200);
+    expect(abnormalRequests).toHaveLength(2);
+    expect(abnormalRequests[1]).toEqual(abnormalRequests[0]);
+    expect(
+      ((await abnormalRetryResponse.json()) as Envelope<AdminBetOrder>).data,
+    ).toEqual(abnormalOnce.order);
+    await adminPage.unroute(abnormalRoute);
+    await expect(adminDetail.locator(".evidence")).toContainText(
+      committedEvidence.exception!.id,
+    );
+    await expect(adminDetail.locator(".evidence")).toContainText(
+      abnormalReason,
+    );
+    await expect(adminDetail.locator(".detail-top")).toContainText("异常注单");
+    expect(
+      await api<{ exception: BetException | null }>(
+        page.request,
+        `${adminBase}/bet-orders/${secondOrder.id}/exception`,
+        "GET",
+        admin,
+      ),
+    ).toEqual(committedEvidence);
+    expect(
+      await api<Wallet>(page.request, `${publicBase}/wallet`, "GET", userToken),
+    ).toEqual(secondWallet);
+    expect(
+      await api<{ items: LedgerEntry[] }>(
+        page.request,
+        `${adminBase}/wallets/${memberId}/ledger?limit=100`,
+        "GET",
+        admin,
+      ),
+    ).toEqual(secondLedger);
+
+    await adminDetail
+      .getByRole("button", { name: "管理员取消并退款", exact: true })
+      .click();
+    const cancelDialog = adminPage.getByRole("dialog", {
+      name: "确认管理员取消",
+      exact: true,
+    });
+    const adminCancelReason = `S5-a3 ${info.project.name}: refund abnormal order to original source`;
+    await cancelDialog
+      .getByLabel("操作原因（必填，UTF-8 最多 500 字节）", { exact: true })
+      .fill(adminCancelReason);
+    await cancelDialog
+      .getByRole("button", { name: "检查并确认", exact: true })
+      .click();
+    const adminCancel = adminPage.waitForResponse(
+      (response) =>
+        response
+          .url()
+          .endsWith(`/api/v1/admin/bet-orders/${secondOrder!.id}/cancel`) &&
+        response.request().method() === "POST",
+    );
+    await cancelDialog
+      .getByRole("button", { name: "确认并提交", exact: true })
+      .click();
+    const adminCancelResponse = await adminCancel;
+    const adminCancelEnvelope =
+      (await adminCancelResponse.json()) as Envelope<AdminBetOrder>;
+    expect(
+      adminCancelResponse.status(),
+      JSON.stringify(adminCancelEnvelope),
+    ).toBe(200);
+    expect(adminCancelEnvelope.success).toBe(true);
+    expect(adminCancelResponse.request().postDataJSON()).toEqual({
+      version: abnormalOnce.order.version,
+      reason: adminCancelReason,
+    });
+    const adminCancelled = adminCancelEnvelope.data;
+    expect(adminCancelled.id).toBe(secondOrder.id);
+    expect(adminCancelled.status).toBe("bet_cancelled");
+    expect(adminCancelled.version).toBe(secondOrder.version + 2);
+    expect(adminCancelled.refund_entry_id).toBeTruthy();
+    for (const field of [
+      "selection_raw",
+      "selection_normalized",
+      "expanded_bets",
+      "definition_snapshot",
+      "definition_hash",
+      "total_points",
+      "policy_snapshot",
+      "policy_versions",
+      "deduction_allocation",
+      "debit_entry_id",
+    ] as const) {
+      expect(adminCancelled[field], `immutable ${field}`).toEqual(
+        secondOrder[field],
+      );
+    }
+    const adminRefundLedger = await api<{ items: LedgerEntry[] }>(
+      page.request,
+      `${adminBase}/wallets/${memberId}/ledger?limit=100`,
+      "GET",
+      admin,
+    );
+    expect(adminRefundLedger.items).toHaveLength(secondLedger.items.length + 1);
+    const adminRefund = adminRefundLedger.items.find(
+      (entry) => entry.id === adminCancelled.refund_entry_id,
+    );
+    if (!adminRefund)
+      throw new Error("Missing S5-a3 administrator refund ledger entry");
+    expect(adminRefund.entry_type).toBe("refund");
+    expect(adminRefund.actor_type).toBe("admin");
+    expect(adminRefund.reason).toBe(adminCancelReason);
+    expect(adminRefund.reference_id).toBe(secondOrder.id);
+    expect(adminRefund.reversal_of).toBe(secondDebit.id);
+    expect(adminRefund.source_allocation).toEqual(
+      secondDebit.source_allocation,
+    );
+    expect(adminRefund.before_snapshot).toEqual(secondDebit.after_snapshot);
+    expect(adminRefund.delta_snapshot.recharge.available).toBe("24");
+    expect(adminRefund.after_snapshot).toEqual(secondDebit.before_snapshot);
+    expect(adminRefund.after_snapshot).toEqual(refund.after_snapshot);
+    expect(
+      adminRefundLedger.items.filter(
+        (entry) =>
+          entry.reference_id === secondOrder!.id && entry.entry_type === "bet",
+      ),
+    ).toHaveLength(1);
+    expect(
+      adminRefundLedger.items.filter(
+        (entry) =>
+          entry.reference_id === secondOrder!.id &&
+          entry.entry_type === "refund",
+      ),
+    ).toHaveLength(1);
+    for (const entry of secondLedger.items)
+      expect(
+        adminRefundLedger.items.find((item) => item.id === entry.id),
+      ).toEqual(entry);
+    const adminRefundWallet = await api<Wallet>(
+      page.request,
+      `${publicBase}/wallet`,
+      "GET",
+      userToken,
+    );
+    expect(adminRefundWallet.available_points).toBe(
+      walletAfter.available_points,
+    );
+    expect(adminRefundWallet.display_points).toBe(walletBefore.display_points);
+    expect(adminRefundWallet.by_source).toEqual(secondDebit.before_snapshot);
+    expect(
+      await api<{ exception: BetException | null }>(
+        page.request,
+        `${adminBase}/bet-orders/${secondOrder.id}/exception`,
+        "GET",
+        admin,
+      ),
+    ).toEqual(committedEvidence);
+    await expect(adminDetail).toContainText(adminRefund.id);
+    await expect(adminDetail.locator(".detail-top")).toContainText("投注取消");
+    await expect(
+      adminDetail.getByRole("button", {
+        name: "管理员取消并退款",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await captureS5Admin("s5-a3-admin-refunded.png");
+
+    // This Harbor-only account cannot select Aurora. A UUID outside this real
+    // Harbor fixture must return 404 and clear the previously visible detail.
+    const foreignOrderId = crypto.randomUUID();
+    await ordersPanel
+      .getByLabel("直接查询注单 UUID", { exact: true })
+      .fill(foreignOrderId);
+    const missingOrder = adminPage.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/v1/admin/bet-orders/${foreignOrderId}`) &&
+        response.request().method() === "GET",
+    );
+    await ordersPanel
+      .getByRole("button", { name: "查询", exact: true })
+      .click();
+    expect((await missingOrder).status()).toBe(404);
+    await expect(adminDetail).toHaveCount(0);
+    await expect(ordersPanel.locator(".order-row")).toHaveCount(0);
+    await expect(ordersPanel.getByRole("alert")).toBeVisible();
+  } finally {
+    await adminPage.close();
+  }
 });
 
 function featurePlayId(
