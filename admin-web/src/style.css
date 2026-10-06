@@ -387,6 +387,32 @@ button {
   align-items: center;
   gap: 17px;
 }
+.admin-language {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.admin-language select {
+  max-width: 106px;
+  padding: 5px;
+  border: 1px solid #d9dee7;
+  border-radius: 6px;
+  color: #454b59;
+  background: white;
+}
+.admin-locale-coverage {
+  margin: 10px 0;
+  padding: 8px 12px;
+  color: #526177;
+  background: #eef2f8;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+html[lang="en"] .mobile-nav button { white-space: normal; line-height: 1.2; }
+html[lang="en"] .breadcrumbs { min-width: 0; flex-wrap: wrap; overflow-wrap: anywhere; }
 .search-box {
   width: 242px;
   height: 31px;
@@ -2814,6 +2840,9 @@ tbody tr:hover {
   .top-actions {
     gap: 11px;
   }
+  .admin-language > span { display: none; }
+  .admin-language select { max-width: 84px; font-size: 11px; }
+  .top-actions .search-box { display: none; }
   .search-box {
     width: auto;
     max-width: 155px;

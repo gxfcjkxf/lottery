@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import type { BrandPresentationConfig, BrandPresentationEffective, BrandPresentationLocale } from "./brand-presentation-api";
+import { useAdminI18n } from "./i18n";
+
+const { t } = useAdminI18n();
 
 const props = defineProps<{
   config: BrandPresentationConfig;
@@ -89,112 +92,112 @@ function isLocalizedInherited(locale: BrandPresentationLocale, field: LocalizedF
 <template>
   <div class="presentation-fields" :aria-disabled="disabled">
     <fieldset class="field-group">
-      <legend>身份</legend>
+      <legend>{{ t("身份", "Identity") }}</legend>
       <label class="field">
-        <span>展示名称</span>
-        <input :value="config.display_name ?? ''" :placeholder="effective.display_name" :disabled="disabled || config.display_name === null" type="text" aria-label="展示名称" @input="updateField('display_name', textValue($event))">
+        <span>{{ t("展示名称", "Display name") }}</span>
+        <input :value="config.display_name ?? ''" :placeholder="effective.display_name" :disabled="disabled || config.display_name === null" type="text" :aria-label="t('展示名称', 'Display name')" @input="updateField('display_name', textValue($event))">
       </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.display_name === null" :disabled="disabled" aria-label="展示名称继承默认" @change="setInherited('display_name', $event)"><span>继承默认</span></label>
+      <label class="inherit-toggle"><input type="checkbox" :checked="config.display_name === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('展示名称', 'Display name') })" @change="setInherited('display_name', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
 
       <label class="field">
-        <span>标志文字</span>
-        <input :value="config.logo_text ?? ''" :placeholder="effective.logo_text" :disabled="disabled || config.logo_text === null" type="text" aria-label="标志文字" @input="updateField('logo_text', textValue($event))">
+        <span>{{ t("标志文字", "Logo text") }}</span>
+        <input :value="config.logo_text ?? ''" :placeholder="effective.logo_text" :disabled="disabled || config.logo_text === null" type="text" :aria-label="t('标志文字', 'Logo text')" @input="updateField('logo_text', textValue($event))">
       </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.logo_text === null" :disabled="disabled" aria-label="标志文字继承默认" @change="setInherited('logo_text', $event)"><span>继承默认</span></label>
+      <label class="inherit-toggle"><input type="checkbox" :checked="config.logo_text === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('标志文字', 'Logo text') })" @change="setInherited('logo_text', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
 
       <label class="field">
-        <span>Logo地址</span>
-        <input :value="config.logo_url ?? ''" :placeholder="effective.logo_url ?? '未设置'" :disabled="disabled || config.logo_url === null" type="text" inputmode="url" autocomplete="off" aria-label="Logo地址" @input="updateField('logo_url', textValue($event))">
+        <span>{{ t("Logo地址", "Logo URL") }}</span>
+        <input :value="config.logo_url ?? ''" :placeholder="effective.logo_url ?? t('未设置', 'Not set')" :disabled="disabled || config.logo_url === null" type="text" inputmode="url" autocomplete="off" :aria-label="t('Logo地址', 'Logo URL')" @input="updateField('logo_url', textValue($event))">
       </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.logo_url === null" :disabled="disabled" aria-label="Logo地址继承默认" @change="setInherited('logo_url', $event)"><span>继承默认</span></label>
+      <label class="inherit-toggle"><input type="checkbox" :checked="config.logo_url === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('Logo地址', 'Logo URL') })" @change="setInherited('logo_url', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
 
       <label class="field">
-        <span>favicon地址</span>
-        <input :value="config.favicon_url ?? ''" :placeholder="effective.favicon_url ?? '未设置'" :disabled="disabled || config.favicon_url === null" type="text" inputmode="url" autocomplete="off" aria-label="favicon地址" @input="updateField('favicon_url', textValue($event))">
+        <span>{{ t("favicon地址", "Favicon URL") }}</span>
+        <input :value="config.favicon_url ?? ''" :placeholder="effective.favicon_url ?? t('未设置', 'Not set')" :disabled="disabled || config.favicon_url === null" type="text" inputmode="url" autocomplete="off" :aria-label="t('favicon地址', 'Favicon URL')" @input="updateField('favicon_url', textValue($event))">
       </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.favicon_url === null" :disabled="disabled" aria-label="favicon地址继承默认" @change="setInherited('favicon_url', $event)"><span>继承默认</span></label>
+      <label class="inherit-toggle"><input type="checkbox" :checked="config.favicon_url === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('favicon地址', 'Favicon URL') })" @change="setInherited('favicon_url', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
     </fieldset>
 
     <fieldset class="field-group">
-      <legend>颜色</legend>
+      <legend>{{ t("颜色", "Colors") }}</legend>
       <div v-for="item in [
-        { key: 'primary_color', label: '主色' },
-        { key: 'accent_color', label: '辅助色' },
-        { key: 'success_color', label: '成功色' },
-        { key: 'warning_color', label: '警告色' },
-        { key: 'danger_color', label: '错误色' },
+        { key: 'primary_color', label: t('主色', 'Primary color') },
+        { key: 'accent_color', label: t('辅助色', 'Accent color') },
+        { key: 'success_color', label: t('成功色', 'Success color') },
+        { key: 'warning_color', label: t('警告色', 'Warning color') },
+        { key: 'danger_color', label: t('错误色', 'Error color') },
       ]" :key="item.key" class="field color-field">
         <span>{{ item.label }}</span>
         <input :value="(config[item.key as keyof BrandPresentationConfig] as string | null) ?? effective[item.key as keyof BrandPresentationEffective] as string" :disabled="disabled || config[item.key as keyof BrandPresentationConfig] === null" type="color" :aria-label="item.label" @input="updateField(item.key as NullableScalar, textValue($event))">
         <span class="color-value">{{ config[item.key as keyof BrandPresentationConfig] ?? effective[item.key as keyof BrandPresentationEffective] }}</span>
-        <label class="inherit-toggle"><input type="checkbox" :checked="config[item.key as keyof BrandPresentationConfig] === null" :disabled="disabled" :aria-label="`${item.label}继承默认`" @change="setInherited(item.key as NullableScalar, $event)"><span>继承默认</span></label>
+        <label class="inherit-toggle"><input type="checkbox" :checked="config[item.key as keyof BrandPresentationConfig] === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: item.label })" @change="setInherited(item.key as NullableScalar, $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
       </div>
     </fieldset>
 
     <fieldset class="field-group">
-      <legend>样式</legend>
+      <legend>{{ t("样式", "Style") }}</legend>
       <label class="field">
-        <span>字体预设</span>
-        <select :value="config.font_family ?? ''" :disabled="disabled || config.font_family === null" aria-label="字体预设" @change="updateField('font_family', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['font_family'])">
-          <option value="">继承默认（{{ effective.font_family }}）</option><option value="system">系统</option><option value="serif">衬线</option><option value="mono">等宽</option>
+        <span>{{ t("字体预设", "Font preset") }}</span>
+        <select :value="config.font_family ?? ''" :disabled="disabled || config.font_family === null" :aria-label="t('字体预设', 'Font preset')" @change="updateField('font_family', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['font_family'])">
+          <option value="">{{ t("继承默认", "Inherit default") }}（{{ effective.font_family }}）</option><option value="system">{{ t("系统", "System") }}</option><option value="serif">{{ t("衬线", "Serif") }}</option><option value="mono">{{ t("等宽", "Monospace") }}</option>
         </select>
       </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.font_family === null" :disabled="disabled" aria-label="字体预设继承默认" @change="setInherited('font_family', $event)"><span>继承默认</span></label>
+      <label class="inherit-toggle"><input type="checkbox" :checked="config.font_family === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('字体预设', 'Font preset') })" @change="setInherited('font_family', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
 
       <label class="field">
-        <span>字号预设</span>
-        <select :value="config.font_scale ?? ''" :disabled="disabled || config.font_scale === null" aria-label="字号预设" @change="updateField('font_scale', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['font_scale'])">
-          <option value="">继承默认（{{ effective.font_scale }}）</option><option value="compact">紧凑</option><option value="standard">标准</option><option value="large">大号</option>
+        <span>{{ t("字号预设", "Font size preset") }}</span>
+        <select :value="config.font_scale ?? ''" :disabled="disabled || config.font_scale === null" :aria-label="t('字号预设', 'Font size preset')" @change="updateField('font_scale', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['font_scale'])">
+          <option value="">{{ t("继承默认", "Inherit default") }}（{{ effective.font_scale }}）</option><option value="compact">{{ t("紧凑", "Compact") }}</option><option value="standard">{{ t("标准", "Standard") }}</option><option value="large">{{ t("大号", "Large") }}</option>
         </select>
       </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.font_scale === null" :disabled="disabled" aria-label="字号预设继承默认" @change="setInherited('font_scale', $event)"><span>继承默认</span></label>
+      <label class="inherit-toggle"><input type="checkbox" :checked="config.font_scale === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('字号预设', 'Font size preset') })" @change="setInherited('font_scale', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
 
       <label class="field">
-        <span>圆角预设</span>
-        <select :value="config.radius ?? ''" :disabled="disabled || config.radius === null" aria-label="圆角预设" @change="updateField('radius', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['radius'])">
-          <option value="">继承默认（{{ effective.radius }}）</option><option value="square">直角</option><option value="soft">柔和</option><option value="round">圆润</option>
+        <span>{{ t("圆角预设", "Corner radius preset") }}</span>
+        <select :value="config.radius ?? ''" :disabled="disabled || config.radius === null" :aria-label="t('圆角预设', 'Corner radius preset')" @change="updateField('radius', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['radius'])">
+          <option value="">{{ t("继承默认", "Inherit default") }}（{{ effective.radius }}）</option><option value="square">{{ t("直角", "Square") }}</option><option value="soft">{{ t("柔和", "Soft") }}</option><option value="round">{{ t("圆润", "Rounded") }}</option>
         </select>
       </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.radius === null" :disabled="disabled" aria-label="圆角预设继承默认" @change="setInherited('radius', $event)"><span>继承默认</span></label>
+      <label class="inherit-toggle"><input type="checkbox" :checked="config.radius === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('圆角预设', 'Corner radius preset') })" @change="setInherited('radius', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
 
       <label class="field">
-        <span>阴影预设</span>
-        <select :value="config.shadow ?? ''" :disabled="disabled || config.shadow === null" aria-label="阴影预设" @change="updateField('shadow', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['shadow'])">
-          <option value="">继承默认（{{ effective.shadow }}）</option><option value="none">无</option><option value="subtle">轻微</option><option value="lifted">明显</option>
+        <span>{{ t("阴影预设", "Shadow preset") }}</span>
+        <select :value="config.shadow ?? ''" :disabled="disabled || config.shadow === null" :aria-label="t('阴影预设', 'Shadow preset')" @change="updateField('shadow', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['shadow'])">
+          <option value="">{{ t("继承默认", "Inherit default") }}（{{ effective.shadow }}）</option><option value="none">{{ t("无", "None") }}</option><option value="subtle">{{ t("轻微", "Subtle") }}</option><option value="lifted">{{ t("明显", "Prominent") }}</option>
         </select>
       </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.shadow === null" :disabled="disabled" aria-label="阴影预设继承默认" @change="setInherited('shadow', $event)"><span>继承默认</span></label>
+      <label class="inherit-toggle"><input type="checkbox" :checked="config.shadow === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('阴影预设', 'Shadow preset') })" @change="setInherited('shadow', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
     </fieldset>
 
     <fieldset class="field-group">
-      <legend>语言</legend>
+      <legend>{{ t("语言", "Language") }}</legend>
       <label class="field">
-        <span>默认语言</span>
-        <select :value="config.default_locale ?? ''" :disabled="disabled || config.default_locale === null" aria-label="默认语言" @change="updateField('default_locale', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['default_locale'])">
-          <option value="">继承默认（{{ effective.default_locale }}）</option><option value="en">English</option><option value="zh-CN">简体中文</option>
+        <span>{{ t("默认语言", "Default language") }}</span>
+        <select :value="config.default_locale ?? ''" :disabled="disabled || config.default_locale === null" :aria-label="t('默认语言', 'Default language')" @change="updateField('default_locale', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['default_locale'])">
+          <option value="">{{ t("继承默认", "Inherit default") }}（{{ effective.default_locale }}）</option><option value="en">English</option><option value="zh-CN">简体中文</option>
         </select>
       </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.default_locale === null" :disabled="disabled" aria-label="默认语言继承默认" @change="setInherited('default_locale', $event)"><span>继承默认</span></label>
+      <label class="inherit-toggle"><input type="checkbox" :checked="config.default_locale === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('默认语言', 'Default language') })" @change="setInherited('default_locale', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
 
       <div class="locale-field">
-        <span>可用语言</span>
-        <label class="inherit-toggle"><input type="checkbox" :checked="config.available_locales === null" :disabled="disabled" aria-label="可用语言继承默认" @change="setAvailableLocalesInherited($event)"><span>继承默认</span></label>
+        <span>{{ t("可用语言", "Available languages") }}</span>
+        <label class="inherit-toggle"><input type="checkbox" :checked="config.available_locales === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('可用语言', 'Available languages') })" @change="setAvailableLocalesInherited($event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
         <div class="locale-options" :aria-disabled="disabled || config.available_locales === null">
-          <label class="choice"><input type="checkbox" :checked="(config.available_locales ?? effective.available_locales).includes('en')" :disabled="disabled || config.available_locales === null" aria-label="启用English" @change="setLocaleEnabled('en', $event)"><span>English</span></label>
-          <label class="choice"><input type="checkbox" :checked="(config.available_locales ?? effective.available_locales).includes('zh-CN')" :disabled="disabled || config.available_locales === null" aria-label="启用简体中文" @change="setLocaleEnabled('zh-CN', $event)"><span>简体中文</span></label>
+          <label class="choice"><input type="checkbox" :checked="(config.available_locales ?? effective.available_locales).includes('en')" :disabled="disabled || config.available_locales === null" :aria-label="t('启用{locale}', 'Enable {locale}', { locale: 'English' })" @change="setLocaleEnabled('en', $event)"><span>English</span></label>
+          <label class="choice"><input type="checkbox" :checked="(config.available_locales ?? effective.available_locales).includes('zh-CN')" :disabled="disabled || config.available_locales === null" :aria-label="t('启用{locale}', 'Enable {locale}', { locale: t('简体中文', 'Simplified Chinese') })" @change="setLocaleEnabled('zh-CN', $event)"><span>简体中文</span></label>
         </div>
       </div>
     </fieldset>
 
     <fieldset class="field-group copy-group">
-      <legend>文案</legend>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.content === null" :disabled="disabled" aria-label="文案继承默认" @change="setContentInherited($event)"><span>文案继承默认</span></label>
+      <legend>{{ t("文案", "Copy") }}</legend>
+      <label class="inherit-toggle"><input type="checkbox" :checked="config.content === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('文案', 'Copy') })" @change="setContentInherited($event)"><span>{{ t("文案继承默认", "Inherit default copy") }}</span></label>
       <template v-for="locale in (['en', 'zh-CN'] as const)" :key="locale">
         <template v-for="field in (['tagline', 'announcement'] as const)" :key="`${locale}-${field}`">
           <label class="field localized-field">
-            <span>{{ locale === 'en' ? '英文' : '中文' }}{{ field === 'tagline' ? '标语' : '公告' }}</span>
-            <textarea :value="config.content?.[locale][field] ?? ''" :placeholder="effective.content[locale][field]" :disabled="disabled || config.content === null || config.content[locale][field] === null" :aria-label="`${locale === 'en' ? '英文' : '中文'}${field === 'tagline' ? '标语' : '公告'}`" rows="3" @input="setLocalizedValue(locale, field, textValue($event))" />
-            <label class="inherit-toggle"><input type="checkbox" :checked="isLocalizedInherited(locale, field)" :disabled="disabled || config.content === null" :aria-label="`${locale === 'en' ? '英文' : '中文'}${field === 'tagline' ? '标语' : '公告'}继承默认`" @change="setLocalizedInherited(locale, field, $event)"><span>继承默认</span></label>
+            <span>{{ t('{locale}{field}', '{locale} {field}', { locale: locale === 'en' ? t('英文', 'English') : t('中文', 'Chinese'), field: field === 'tagline' ? t('标语', 'tagline') : t('公告', 'announcement') }) }}</span>
+            <textarea :value="config.content?.[locale][field] ?? ''" :placeholder="effective.content[locale][field]" :disabled="disabled || config.content === null || config.content[locale][field] === null" :aria-label="t('{locale}{field}', '{locale} {field}', { locale: locale === 'en' ? t('英文', 'English') : t('中文', 'Chinese'), field: field === 'tagline' ? t('标语', 'tagline') : t('公告', 'announcement') })" rows="3" @input="setLocalizedValue(locale, field, textValue($event))" />
+            <label class="inherit-toggle"><input type="checkbox" :checked="isLocalizedInherited(locale, field)" :disabled="disabled || config.content === null" :aria-label="t('{label}继承默认', '{label} inherit default', { label: t('{locale}{field}', '{locale} {field}', { locale: locale === 'en' ? t('英文', 'English') : t('中文', 'Chinese'), field: field === 'tagline' ? t('标语', 'tagline') : t('公告', 'announcement') }) })" @change="setLocalizedInherited(locale, field, $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
           </label>
         </template>
       </template>

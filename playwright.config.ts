@@ -6,6 +6,9 @@ export default defineConfig({
   timeout: 30_000,
   retries: process.env.CI ? 1 : 0,
   use: {
+    // Existing Chinese scenarios explicitly select their UI language. Production
+    // defaults and the language-switch scenarios remain independently tested.
+    storageState: { cookies: [], origins: [{ origin: 'http://localhost:5174', localStorage: [{ name: 'lottery.admin.locale', value: 'zh-CN' }] }] },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     launchOptions: {

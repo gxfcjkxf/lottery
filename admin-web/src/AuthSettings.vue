@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { useAdminI18n } from "./i18n";
+import type { LocalizedMessage } from "@lottery/shared";
 import {
   canManage,
   canWrite,
@@ -16,6 +18,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createManagementApi();
+const { t, message } = useAdminI18n();
 const keyForBody = createBodyKeyTracker();
 const settings = ref<SettingsRecord | null>(null);
 const captcha = ref(false);
@@ -24,8 +27,8 @@ const telegramClientId = ref("");
 const reason = ref("");
 const loading = ref(false);
 const saving = ref(false);
-const error = ref("");
-const notice = ref("");
+const error = ref<string | LocalizedMessage>("");
+const notice = ref<string | LocalizedMessage>("");
 const allowed = computed(() =>
   canManage(props.account, props.brandId, "auth_config"),
 );
@@ -42,9 +45,12 @@ const telegramIdValid = computed(
 function showError(cause: unknown) {
   if (cause instanceof AdminApiError && cause.status === 401)
     emit("session-invalid");
-  error.value = cause instanceof Error ? cause.message : "请求失败";
-  if (cause instanceof AdminApiError && cause.status === 409)
-    error.value += "；配置版本已变化，请刷新后重试。";
+  const serverError = cause instanceof Error ? cause.message : null;
+  error.value = cause instanceof AdminApiError && cause.status === 409
+    ? serverError
+      ? message("{serverError}；配置版本已变化，请刷新后重试。", "{serverError} The configuration version changed; refresh and try again.", { serverError })
+      : message("配置版本已变化，请刷新后重试。", "The configuration version changed; refresh and try again.")
+    : serverError ?? message("请求失败", "Request failed");
 }
 async function reload() {
   if (!allowed.value || !props.brandId) return;
@@ -101,7 +107,7 @@ async function save() {
     captcha.value = updated.captcha_enabled;
     telegram.value = updated.telegram_enabled;
     telegramClientId.value = updated.telegram_client_id;
-    notice.value = "配置已保存并立即生效。";
+    notice.value = message("配置已保存并立即生效。", "Settings saved and applied immediately.");
     reason.value = "";
     await reload();
   } catch (cause) {
@@ -116,73 +122,71 @@ async function save() {
   <section class="auth-settings">
     <header>
       <div>
-        <p class="eyebrow">AUTHENTICATION</p>
-        <h1>认证设置</h1>
-        <p>配置当前品牌的登录验证选项。</p>
+        <p class="eyebrow">{{ t("AUTHENTICATION", "AUTHENTICATION") }}</p>
+        <h1>{{ t("认证设置", "Authentication settings") }}</h1>
+        <p>{{ t("配置当前品牌的登录验证选项。", "Configure sign-in verification options for the current brand.") }}</p>
       </div>
-      <span class="brand">品牌 · {{ brandId || "未选择" }}</span>
+      <span class="brand">{{ t("品牌", "Brand") }} · {{ brandId || t("未选择", "None selected") }}</span>
     </header>
     <p v-if="!allowed" class="feedback">
       {{
         writable
-          ? "当前账号有认证配置写权限，但缺少 view 权限，无法读取版本并安全保存。"
-          : "当前账号没有此品牌的认证配置查看权限。"
+          ? t("当前账号有认证配置写权限，但缺少 view 权限，无法读取版本并安全保存。", "This account can modify authentication settings but lacks view permission, so settings cannot be loaded and safely saved.")
+          : t("当前账号没有此品牌的认证配置查看权限。", "This account cannot view authentication settings for this brand.")
       }}
     </p>
     <template v-else>
       <div v-if="loading && !settings" class="card hint">
-        正在读取当前品牌认证配置…
+        {{ t("正在读取当前品牌认证配置…", "Loading authentication settings for the current brand…") }}
       </div>
       <form v-else-if="settings" class="card form" @submit.prevent="save">
         <div class="section-title">
           <div>
-            <h2>登录安全</h2>
-            <p>保存后设置立即生效；变更会写入审计记录。</p>
+            <h2>{{ t("登录安全", "Sign-in security") }}</h2>
+            <p>{{ t("保存后设置立即生效；变更会写入审计记录。", "Settings take effect immediately after saving; changes are recorded in the audit log.") }}</p>
           </div>
-          <span class="version">配置版本 {{ settings.version }}</span>
+          <span class="version">{{ t("配置版本", "Configuration version") }} {{ settings.version }}</span>
         </div>
         <label class="toggle-row"
           ><span
-            ><b>启用验证码</b><small>要求登录流程执行验证码校验。</small></span
+            ><b>{{ t("启用验证码", "Enable CAPTCHA") }}</b><small>{{ t("要求登录流程执行验证码校验。", "Require CAPTCHA verification during sign-in.") }}</small></span
           ><input v-model="captcha" type="checkbox" :disabled="!writable"
         /></label>
         <label class="toggle-row"
           ><span
-            ><b>启用 Telegram 登录</b
-            ><small>默认关闭；启用时必须填写有效的公开 Client ID。</small></span
+            ><b>{{ t("启用 Telegram 登录", "Enable Telegram sign-in") }}</b
+            ><small>{{ t("默认关闭；启用时必须填写有效的公开 Client ID。", "Off by default; a valid public Client ID is required when enabled.") }}</small></span
           ><input v-model="telegram" type="checkbox" :disabled="!writable"
         /></label>
         <label
-          >Telegram Client ID<input
+          >{{ t("Telegram Client ID", "Telegram Client ID") }}<input
             v-model.trim="telegramClientId"
             inputmode="numeric"
             autocomplete="off"
             :aria-invalid="!telegramIdValid"
             :readonly="!writable"
           /><small
-            >仅接受正的安全整数。此设置只填写公开应用 ID；真实应用授权还需要在
-            Telegram 外部完成配置。</small
+            >{{ t("仅接受正的安全整数。此设置只填写公开应用 ID；真实应用授权还需要在 Telegram 外部完成配置。", "Enter a positive safe integer. This setting accepts only the public app ID; actual app authorization must also be configured in Telegram.") }}</small
           ><span v-if="!telegramIdValid" class="field-error"
-            >Client ID
-            非空时必须是无前导零的正整数安全值；开启登录时必填。</span
+            >{{ t("Client ID 非空时必须是无前导零的正整数安全值；开启登录时必填。", "When provided, Client ID must be a positive safe integer without leading zeros; it is required when sign-in is enabled.") }}</span
           ></label
         >
         <div class="legal">
-          <h3>法律文本版本（只读）</h3>
+          <h3>{{ t("法律文本版本（只读）", "Legal document versions (read-only)") }}</h3>
           <dl>
             <div>
-              <dt>隐私政策版本</dt>
-              <dd>{{ settings.privacy_policy_version || "未设置" }}</dd>
+              <dt>{{ t("隐私政策版本", "Privacy policy version") }}</dt>
+              <dd>{{ settings.privacy_policy_version || t("未设置", "Not set") }}</dd>
             </div>
             <div>
-              <dt>服务条款版本</dt>
-              <dd>{{ settings.service_terms_version || "未设置" }}</dd>
+              <dt>{{ t("服务条款版本", "Terms of service version") }}</dt>
+              <dd>{{ settings.service_terms_version || t("未设置", "Not set") }}</dd>
             </div>
           </dl>
-          <p>此页不会修改版本号或法律文本内容。</p>
+          <p>{{ t("此页不会修改版本号或法律文本内容。", "This page does not modify version numbers or legal document content.") }}</p>
         </div>
         <label v-if="writable"
-          >变更原因<textarea
+          >{{ t("变更原因", "Reason for change") }}<textarea
             v-model.trim="reason"
             required
             rows="2"
@@ -196,26 +200,26 @@ async function save() {
             :disabled="loading || saving"
             @click="reload"
           >
-            重新读取</button
+            {{ t("重新读取", "Reload") }}</button
           ><button
             v-if="writable"
             class="primary"
             :disabled="saving || !reason.trim() || !telegramIdValid"
           >
-            {{ saving ? "保存中…" : "保存并立即生效" }}
+            {{ saving ? t("保存中…", "Saving…") : t("保存并立即生效", "Save and apply") }}
           </button>
         </div>
         <p v-if="settings.audit_log_id" class="audit">
-          最近一次审计记录：{{ settings.audit_log_id }}
+          {{ t("最近一次审计记录", "Most recent audit record") }}: {{ settings.audit_log_id }}
         </p>
       </form>
       <p v-if="error" class="feedback error" role="alert">
-        {{ error }} <button type="button" @click="reload">刷新配置</button>
+        {{ t(error) }} <button type="button" @click="reload">{{ t("刷新配置", "Refresh settings") }}</button>
       </p>
       <p v-if="notice" class="feedback success" role="status">
-        {{ notice
+        {{ t(notice)
         }}<span v-if="settings?.audit_log_id"
-          >审计记录：{{ settings.audit_log_id }}</span
+          >{{ t("审计记录", "Audit record") }}: {{ settings.audit_log_id }}</span
         >
       </p>
     </template>

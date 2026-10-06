@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { useAdminI18n } from "./i18n";
+import type { LocalizedMessage } from "@lottery/shared";
 import {
   assignableRoles as getAssignableRoles,
   canEditAccountScope,
@@ -26,6 +28,7 @@ const emit = defineEmits<{
   (event: "created", saved: AdminRecord): void;
 }>();
 const api = createManagementApi();
+const { t, message } = useAdminI18n();
 const section = ref<"roles" | "accounts">(
   canManage(props.account, props.brandId, "role") ||
     canWrite(props.account, props.brandId, "role")
@@ -36,12 +39,12 @@ const roles = ref<RoleRecord[]>([]);
 const accounts = ref<AdminRecord[]>([]);
 const registeredPermissions = ref<string[]>([]);
 const roleCatalogLoaded = ref(false);
-const roleCatalogMessage = ref("");
+const roleCatalogMessage = ref<string | LocalizedMessage>("");
 const offset = ref(0);
 const busy = ref(false);
 const loading = ref(false);
-const error = ref("");
-const notice = ref("");
+const error = ref<string | LocalizedMessage>("");
+const notice = ref<string | LocalizedMessage>("");
 const roleForm = ref({
   id: "",
   version: 0,
@@ -133,15 +136,18 @@ const rolePermissionDisplay = (target: AdminRecord) =>
   );
 const accountPermissionDisplay = (target: AdminRecord) =>
   roleCatalogLoaded.value
-    ? rolePermissionDisplay(target).join(" · ") || "无权限"
-    : "无法计算：缺少角色查看权限";
+    ? rolePermissionDisplay(target).join(" · ") || t("无权限", "No permissions")
+    : t("无法计算：缺少角色查看权限", "Cannot calculate: role view permission is missing");
 
 function handleError(cause: unknown) {
   if (cause instanceof AdminApiError && cause.status === 401)
     emit("session-invalid");
-  error.value = cause instanceof Error ? cause.message : "请求失败";
-  if (cause instanceof AdminApiError && cause.status === 409)
-    error.value += "；数据版本已变化，请刷新后重试。";
+  const serverError = cause instanceof Error ? cause.message : null;
+  error.value = cause instanceof AdminApiError && cause.status === 409
+    ? serverError
+      ? message("{serverError}；数据版本已变化，请刷新后重试。", "{serverError} The data version changed; refresh and try again.", { serverError })
+      : message("数据版本已变化，请刷新后重试。", "The data version changed; refresh and try again.")
+    : serverError ?? message("请求失败", "Request failed");
 }
 async function load() {
   const requestBrandId = props.brandId;
@@ -171,16 +177,20 @@ async function load() {
         roleCatalogMessage.value = "";
       } catch (cause) {
         if (props.brandId !== requestBrandId) return;
-        roleCatalogMessage.value =
-          "角色或权限目录读取失败；有写权限仍可依据内置权限键创建角色。";
+        roleCatalogMessage.value = message(
+          "角色或权限目录读取失败；有写权限仍可依据内置权限键创建角色。",
+          "Could not load the role or permission catalog. With write permission, you can still create roles using built-in permission keys.",
+        );
         handleError(cause);
       }
     } else {
       roles.value = [];
       registeredPermissions.value = [];
       roleCatalogLoaded.value = false;
-      roleCatalogMessage.value =
-        "缺少 role.view 权限，无法读取角色与服务端权限目录；平台写权限可创建角色，但这里只能显示内置权限键。";
+      roleCatalogMessage.value = message(
+        "缺少 role.view 权限，无法读取角色与服务端权限目录；平台写权限可创建角色，但这里只能显示内置权限键。",
+        "Missing role.view permission: the role and server permission catalogs cannot be loaded. Platform write permission allows role creation, but only built-in permission keys are shown here.",
+      );
     }
   }
   if (section.value === "accounts") {
@@ -208,16 +218,20 @@ async function load() {
           .catch((cause: unknown) => {
             if (props.brandId !== requestBrandId) return;
             roleCatalogLoaded.value = false;
-            roleCatalogMessage.value =
-              "角色目录读取失败；账号仍可查看，但角色并集无法计算，依赖角色目录的账号变更不可用。";
+            roleCatalogMessage.value = message(
+              "角色目录读取失败；账号仍可查看，但角色并集无法计算，依赖角色目录的账号变更不可用。",
+              "Could not load the role catalog. Accounts remain viewable, but role permissions cannot be calculated and account changes that depend on the catalog are unavailable.",
+            );
             handleError(cause);
           }),
       );
     } else {
       roles.value = [];
       roleCatalogLoaded.value = false;
-      roleCatalogMessage.value =
-        "缺少 role.view 权限；账号目录仍可查看，但角色并集无法计算，角色分配、创建账号和角色/状态变更不可用；密码重置仍按账号写权限处理。";
+      roleCatalogMessage.value = message(
+        "缺少 role.view 权限；账号目录仍可查看，但角色并集无法计算，角色分配、创建账号和角色/状态变更不可用；密码重置仍按账号写权限处理。",
+        "Missing role.view permission. The account list remains viewable, but role permissions cannot be calculated; role assignment, account creation, and role/status changes are unavailable. Password resets still follow account write permission.",
+      );
     }
     await Promise.all(tasks);
   }
@@ -325,7 +339,9 @@ async function saveRole() {
         roleKeyFor(body),
       );
     roleKeyFor.clear();
-    notice.value = form.id ? "角色已保存。" : "角色已创建。";
+    notice.value = form.id
+      ? message("角色已保存。", "Role saved.")
+      : message("角色已创建。", "Role created.");
     newRole();
     await load();
   } catch (cause) {
@@ -401,7 +417,7 @@ async function saveAccount() {
         accountKeyFor(body),
       );
       emit("created", saved);
-      notice.value = "管理员账号已创建。";
+      notice.value = message("管理员账号已创建。", "Administrator account created.");
     } else if (form.reset) {
       await api.resetAccountPassword(
         props.brandId,
@@ -409,7 +425,7 @@ async function saveAccount() {
         body as { version: number; password: string; reason: string },
         accountKeyFor(body),
       );
-      notice.value = "密码重置已提交。";
+      notice.value = message("密码重置已提交。", "Password reset submitted.");
     } else {
       await api.updateAccount(
         props.brandId,
@@ -422,7 +438,7 @@ async function saveAccount() {
         },
         accountKeyFor(body),
       );
-      notice.value = "管理员账号已更新。";
+      notice.value = message("管理员账号已更新。", "Administrator account updated.");
     }
     accountKeyFor.clear();
     newAccount();
@@ -443,11 +459,11 @@ function changePage(direction: -1 | 1) {
   <section class="access-page">
     <header class="heading">
       <div>
-        <p class="eyebrow">ACCESS CONTROL</p>
-        <h1>账号与权限</h1>
-        <p>管理当前品牌的角色权限和后台管理员。</p>
+        <p class="eyebrow">{{ t("ACCESS CONTROL", "ACCESS CONTROL") }}</p>
+        <h1>{{ t("账号与权限", "Accounts and permissions") }}</h1>
+        <p>{{ t("管理当前品牌的角色权限和后台管理员。", "Manage roles, permissions, and administrator accounts for the current brand.") }}</p>
       </div>
-      <span class="brand-tag">品牌范围 · {{ brandId || "未选择" }}</span>
+      <span class="brand-tag">{{ t("品牌范围", "Brand scope") }} · {{ brandId || t("未选择", "None selected") }}</span>
     </header>
     <div class="tabs" role="tablist">
       <button
@@ -456,38 +472,38 @@ function changePage(direction: -1 | 1) {
         :disabled="!(canRoles || writeRoles)"
         @click="section = 'roles'"
       >
-        角色权限</button
+        {{ t("角色权限", "Roles and permissions") }}</button
       ><button
         role="tab"
         :aria-selected="section === 'accounts'"
         :disabled="!(canAccounts || writeAccounts)"
         @click="section = 'accounts'"
       >
-        管理员账号
+        {{ t("管理员账号", "Administrator accounts") }}
       </button>
     </div>
     <p
       v-if="!(canRoles || writeRoles || canAccounts || writeAccounts)"
       class="callout"
     >
-      当前账号没有此品牌的角色或管理员查看、写入权限。
+      {{ t("当前账号没有此品牌的角色或管理员查看、写入权限。", "This account cannot view or modify roles or administrators for this brand.") }}
     </p>
     <p v-if="error" class="message error" role="alert">
-      {{ error }} <button type="button" @click="load">刷新</button>
+      {{ t(error) }} <button type="button" @click="load">{{ t("刷新", "Refresh") }}</button>
     </p>
-    <p v-if="notice" class="message success" role="status">{{ notice }}</p>
+    <p v-if="notice" class="message success" role="status">{{ t(notice) }}</p>
 
     <template v-if="section === 'roles' && (canRoles || writeRoles)">
       <div class="columns">
         <form v-if="writeRoles" class="panel form" @submit.prevent="saveRole">
           <div class="panel-title">
             <div>
-              <h2>{{ roleForm.id ? "编辑角色" : "新建角色" }}</h2>
+              <h2>{{ roleForm.id ? t("编辑角色", "Edit role") : t("新建角色", "Create role") }}</h2>
               <p>
                 {{
                   hasPlatformWrite(account, "role")
-                    ? "平台角色写权限可登记品牌权限键。无查看权限时仅显示系统内置权限键。"
-                    : "仅可授予当前品牌账号已拥有的登记权限。"
+                    ? t("平台角色写权限可登记品牌权限键。无查看权限时仅显示系统内置权限键。", "Platform role write permission can register brand permission keys. Without view permission, only built-in permission keys are shown.")
+                    : t("仅可授予当前品牌账号已拥有的登记权限。", "You can grant only registered permissions already held by an account in this brand.")
                 }}
               </p>
             </div>
@@ -497,23 +513,23 @@ function changePage(direction: -1 | 1) {
               class="text-button"
               @click="newRole"
             >
-              取消
+              {{ t("取消", "Cancel") }}
             </button>
           </div>
           <label v-if="!roleForm.id"
-            >角色代码（最多 48 字符）<input
+            >{{ t("角色代码（最多 48 字符）", "Role code (up to 48 characters)") }}<input
               v-model.trim="roleForm.code"
               required
               maxlength="48"
               autocomplete="off" /></label
           ><label
-            >显示名称（最多 120 字节）<input
+            >{{ t("显示名称（最多 120 字节）", "Display name (up to 120 bytes)") }}<input
               v-model.trim="roleForm.name"
               required
-            /><small>{{ roleNameBytes }} / 120 字节</small></label
+            /><small>{{ roleNameBytes }} / 120 {{ t("字节", "bytes") }}</small></label
           >
           <fieldset class="permissions">
-            <legend>品牌权限</legend>
+            <legend>{{ t("品牌权限", "Brand permissions") }}</legend>
             <label
               v-for="permission in roleChoices"
               :key="permission"
@@ -525,16 +541,16 @@ function changePage(direction: -1 | 1) {
               />{{ permission }}</label
             >
             <p v-if="!roleChoices.length" class="muted">
-              没有可登记的授权权限。
+              {{ t("没有可登记的授权权限。", "There are no grantable registered permissions.") }}
             </p>
           </fieldset>
           <label v-if="roleForm.id"
-            >状态<select v-model="roleForm.status">
-              <option value="active">启用</option>
-              <option value="disabled">停用</option>
+            >{{ t("状态", "Status") }}<select v-model="roleForm.status">
+              <option value="active">{{ t("启用", "Active") }}</option>
+              <option value="disabled">{{ t("停用", "Disabled") }}</option>
             </select></label
           ><label
-            >变更原因<textarea
+            >{{ t("变更原因", "Reason for change") }}<textarea
               v-model.trim="roleForm.reason"
               required
               rows="2"
@@ -551,14 +567,14 @@ function changePage(direction: -1 | 1) {
               (!roleForm.id && !roleForm.code.trim())
             "
           >
-            {{ busy ? "保存中…" : roleForm.id ? "保存角色" : "创建角色" }}
+            {{ busy ? t("保存中…", "Saving…") : roleForm.id ? t("保存角色", "Save role") : t("创建角色", "Create role") }}
           </button>
         </form>
         <div v-if="canRoles" class="panel listing">
           <div class="panel-title">
             <div>
-              <h2>品牌角色</h2>
-              <p>每页 50 条；bootstrap 角色只读。</p>
+              <h2>{{ t("品牌角色", "Brand roles") }}</h2>
+              <p>{{ t("每页 50 条；bootstrap 角色只读。", "50 per page; bootstrap roles are read-only.") }}</p>
             </div>
             <button
               v-if="writeRoles"
@@ -566,11 +582,11 @@ function changePage(direction: -1 | 1) {
               type="button"
               @click="newRole"
             >
-              新建角色
+              {{ t("新建角色", "Create role") }}
             </button>
           </div>
-          <p v-if="loading" class="muted">正在读取…</p>
-          <p v-else-if="!roles.length" class="muted">暂无角色。</p>
+          <p v-if="loading" class="muted">{{ t("正在读取…", "Loading…") }}</p>
+          <p v-else-if="!roles.length" class="muted">{{ t("暂无角色。", "No roles yet.") }}</p>
           <article v-for="role in roles" :key="role.id" class="record">
             <div class="record-top">
               <div>
@@ -579,24 +595,24 @@ function changePage(direction: -1 | 1) {
               </div>
               <span class="pill" :class="role.status">{{
                 role.is_bootstrap
-                  ? "系统只读"
+                  ? t("系统只读", "System read-only")
                   : role.status === "active"
-                    ? "启用"
-                    : "停用"
+                    ? t("启用", "Active")
+                    : t("停用", "Disabled")
               }}</span>
             </div>
             <p class="permission-summary">
               {{
                 role.permissions.length
                   ? role.permissions.join(" · ")
-                  : "无权限"
+                  : t("无权限", "No permissions")
               }}
             </p>
             <div class="record-bottom">
               <small
-                >版本 {{ role.version
+                >{{ t("版本", "Version") }} {{ role.version
                 }}<span v-if="role.audit_log_id">
-                  · 审计 {{ role.audit_log_id }}</span
+                  · {{ t("审计", "Audit") }} {{ role.audit_log_id }}</span
                 ></small
               ><button
                 v-if="editableRole(role)"
@@ -604,31 +620,30 @@ function changePage(direction: -1 | 1) {
                 type="button"
                 @click="editRole(role)"
               >
-                编辑</button
-              ><span v-else class="muted">只读</span>
+                {{ t("编辑", "Edit") }}</button
+              ><span v-else class="muted">{{ t("只读", "Read-only") }}</span>
             </div>
           </article>
           <footer class="pager">
-            <span>第 {{ offset / 50 + 1 }} 页</span>
+            <span>{{ t("第 {page} 页", "Page {page}", { page: offset / 50 + 1 }) }}</span>
             <div>
               <button
                 :disabled="offset === 0 || loading"
                 @click="changePage(-1)"
               >
-                上一页</button
+                {{ t("上一页", "Previous") }}</button
               ><button
                 :disabled="!pageHasNext || loading"
                 @click="changePage(1)"
               >
-                下一页
+                {{ t("下一页", "Next") }}
               </button>
             </div>
           </footer>
         </div>
         <p v-else class="callout">
           {{
-            roleCatalogMessage ||
-            "缺少 role.view 权限；角色列表与完整权限目录不可读取。"
+            t(roleCatalogMessage || message("缺少 role.view 权限；角色列表与完整权限目录不可读取。", "Missing role.view permission: the role list and full permission catalog cannot be loaded."))
           }}
         </p>
       </div>
@@ -649,12 +664,12 @@ function changePage(direction: -1 | 1) {
                 {{
                   accountForm.id
                     ? accountForm.reset
-                      ? "重置管理员密码"
-                      : "变更管理员"
-                    : "创建管理员"
+                      ? t("重置管理员密码", "Reset administrator password")
+                      : t("变更管理员", "Edit administrator")
+                    : t("创建管理员", "Create administrator")
                 }}
               </h2>
-              <p>新账号仅限当前品牌，不支持创建超级管理员。</p>
+              <p>{{ t("新账号仅限当前品牌，不支持创建超级管理员。", "New accounts are limited to this brand; super administrators cannot be created here.") }}</p>
             </div>
             <button
               v-if="accountForm.id"
@@ -662,48 +677,48 @@ function changePage(direction: -1 | 1) {
               type="button"
               @click="newAccount"
             >
-              取消
+              {{ t("取消", "Cancel") }}
             </button>
           </div>
           <template v-if="!accountForm.id"
             ><label
-              >用户名（最多 32 字符）<input
+              >{{ t("用户名（最多 32 字符）", "Username (up to 32 characters)") }}<input
                 v-model.trim="accountForm.username"
                 required
                 maxlength="32"
                 autocomplete="username" /></label
             ><label
-              >初始密码（16–128 字节）<input
+              >{{ t("初始密码（16–128 字节）", "Initial password (16–128 bytes)") }}<input
                 v-model="accountForm.password"
                 type="password"
                 required
                 autocomplete="new-password"
-              /><small>{{ accountPasswordBytes }} 字节</small></label
+              /><small>{{ accountPasswordBytes }} {{ t("字节", "bytes") }}</small></label
             ></template
           >
           <template v-else-if="accountForm.reset"
             ><label
-              >新密码（16–128 字节）<input
+              >{{ t("新密码（16–128 字节）", "New password (16–128 bytes)") }}<input
                 v-model="accountForm.password"
                 type="password"
                 required
                 autocomplete="new-password"
-              /><small>{{ accountPasswordBytes }} 字节</small></label
+              /><small>{{ accountPasswordBytes }} {{ t("字节", "bytes") }}</small></label
             ></template
           >
           <template v-else
             ><p class="readonly">
-              账号：<b>{{ accountForm.username }}</b>
+              {{ t("账号", "Account") }}: <b>{{ accountForm.username }}</b>
             </p>
             <label
-              >状态<select v-model="accountForm.status">
-                <option value="active">启用</option>
-                <option value="disabled">停用</option>
+              >{{ t("状态", "Status") }}<select v-model="accountForm.status">
+                <option value="active">{{ t("启用", "Active") }}</option>
+                <option value="disabled">{{ t("停用", "Disabled") }}</option>
               </select></label
             ></template
           >
           <fieldset v-if="!accountForm.reset" class="permissions">
-            <legend>品牌角色（可多选）</legend>
+            <legend>{{ t("品牌角色（可多选）", "Brand roles (multiple selection)") }}</legend>
             <label v-for="role in assignableRoles" :key="role.id" class="check"
               ><input
                 v-model="accountForm.role_ids"
@@ -712,22 +727,22 @@ function changePage(direction: -1 | 1) {
               />{{ role.name }} <code>{{ role.code }}</code></label
             >
             <p v-if="!assignableRoles.length" class="muted">
-              没有当前账号可安全分配的启用角色。
+              {{ t("没有当前账号可安全分配的启用角色。", "There are no active roles this account can safely assign.") }}
             </p>
           </fieldset>
           <div v-if="!accountForm.reset" class="union">
-            <b>所选角色权限并集</b
+            <b>{{ t("所选角色权限并集", "Combined permissions of selected roles") }}</b
             ><span>{{
               selectedRolePermissionUnion.length
                 ? selectedRolePermissionUnion.join(" · ")
-                : "无权限"
+                : t("无权限", "No permissions")
             }}</span
             ><small
-              >权限按角色合并并去重计算；账号不可获得当前操作者尚未拥有的权限。</small
+              >{{ t("权限按角色合并并去重计算；账号不可获得当前操作者尚未拥有的权限。", "Permissions are combined across roles and deduplicated. An account cannot receive permissions the current operator does not have.") }}</small
             >
           </div>
           <label
-            >变更原因<textarea
+            >{{ t("变更原因", "Reason for change") }}<textarea
               v-model.trim="accountForm.reason"
               required
               rows="2"
@@ -744,12 +759,12 @@ function changePage(direction: -1 | 1) {
           >
             {{
               busy
-                ? "提交中…"
+                ? t("提交中…", "Submitting…")
                 : accountForm.id
                   ? accountForm.reset
-                    ? "重置密码"
-                    : "保存变更"
-                  : "创建管理员"
+                    ? t("重置密码", "Reset password")
+                    : t("保存变更", "Save changes")
+                  : t("创建管理员", "Create administrator")
             }}
           </button>
         </form>
@@ -758,19 +773,17 @@ function changePage(direction: -1 | 1) {
           class="callout"
         >
           {{
-            roleCatalogMessage ||
-            "缺少 role.view 权限；管理员目录是否可读取取决于 admin.view，角色并集无法计算。依赖角色目录的创建和变更暂不可用。"
+            t(roleCatalogMessage || message("缺少 role.view 权限；管理员目录是否可读取取决于 admin.view，角色并集无法计算。依赖角色目录的创建和变更暂不可用。", "Missing role.view permission: the administrator list depends on admin.view, combined role permissions cannot be calculated, and changes that depend on the role catalog are unavailable."))
           }}
         </p>
         <p v-if="writeAccounts && !canAccounts" class="callout">
-          当前账号有管理员写权限但没有
-          admin.view，无法读取管理员目录；此处只可创建新账号，不能选择或查看现有账号。
+          {{ t("当前账号有管理员写权限但没有 admin.view，无法读取管理员目录；此处只可创建新账号，不能选择或查看现有账号。", "This account has administrator write permission but lacks admin.view, so the administrator list cannot be loaded. You can create a new account here, but cannot select or view existing accounts.") }}
         </p>
         <div v-if="canAccounts" class="panel listing">
           <div class="panel-title">
             <div>
-              <h2>品牌管理员</h2>
-              <p>本人和超级管理员只读；跨品牌账号由平台管理员权限控制。</p>
+              <h2>{{ t("品牌管理员", "Brand administrators") }}</h2>
+              <p>{{ t("本人和超级管理员只读；跨品牌账号由平台管理员权限控制。", "Your own account and super administrators are read-only; cross-brand accounts are controlled by platform administrator permissions.") }}</p>
             </div>
             <button
               v-if="writeAccounts && roleCatalogLoaded"
@@ -778,11 +791,11 @@ function changePage(direction: -1 | 1) {
               type="button"
               @click="newAccount"
             >
-              新建管理员
+              {{ t("新建管理员", "Create administrator") }}
             </button>
           </div>
-          <p v-if="loading" class="muted">正在读取…</p>
-          <p v-else-if="!accounts.length" class="muted">暂无管理员。</p>
+          <p v-if="loading" class="muted">{{ t("正在读取…", "Loading…") }}</p>
+          <p v-else-if="!accounts.length" class="muted">{{ t("暂无管理员。", "No administrators yet.") }}</p>
           <article v-for="target in accounts" :key="target.id" class="record">
             <div class="record-top">
               <div>
@@ -790,19 +803,19 @@ function changePage(direction: -1 | 1) {
                 ><code>{{ target.id }}</code>
               </div>
               <span class="pill" :class="target.status">{{
-                target.super_admin ? "超级管理员" : target.status
+                target.super_admin ? t("超级管理员", "Super administrator") : target.status === "active" ? t("启用", "Active") : t("停用", "Disabled")
               }}</span>
             </div>
             <p class="permission-summary">
-              角色：{{ target.role_codes.join(" · ") || "未分配" }}
+              {{ t("角色", "Roles") }}: {{ target.role_codes.join(" · ") || t("未分配", "Unassigned") }}
             </p>
             <p class="permission-summary">
-              权限并集：{{ accountPermissionDisplay(target) }}
+              {{ t("权限并集", "Combined permissions") }}: {{ accountPermissionDisplay(target) }}
             </p>
             <div class="record-bottom">
               <small
-                >版本 {{ target.version }} ·
-                {{ target.brand_ids.length }} 个品牌</small
+                >{{ t("版本", "Version") }} {{ target.version }} ·
+                {{ t("{count} 个品牌", "{count} brands", { count: target.brand_ids.length }) }}</small
               >
               <div v-if="writeAccounts" class="inline-actions">
                 <button
@@ -811,43 +824,42 @@ function changePage(direction: -1 | 1) {
                   type="button"
                   @click="editAccount(target)"
                 >
-                  编辑</button
+                  {{ t("编辑", "Edit") }}</button
                 ><button
                   v-if="canResetTarget(target)"
                   class="text-button"
                   type="button"
                   @click="editAccount(target, true)"
                 >
-                  重置密码</button
+                  {{ t("重置密码", "Reset password") }}</button
                 ><span
                   v-if="!editableAccount(target) && !canResetTarget(target)"
                   class="muted"
-                  >只读</span
+                  >{{ t("只读", "Read-only") }}</span
                 >
               </div>
-              <span v-else class="muted">只读</span>
+              <span v-else class="muted">{{ t("只读", "Read-only") }}</span>
             </div>
           </article>
           <footer class="pager">
-            <span>第 {{ offset / 50 + 1 }} 页</span>
+            <span>{{ t("第 {page} 页", "Page {page}", { page: offset / 50 + 1 }) }}</span>
             <div>
               <button
                 :disabled="offset === 0 || loading"
                 @click="changePage(-1)"
               >
-                上一页</button
+                {{ t("上一页", "Previous") }}</button
               ><button
                 :disabled="!pageHasNext || loading"
                 @click="changePage(1)"
               >
-                下一页
+                {{ t("下一页", "Next") }}
               </button>
             </div>
           </footer>
         </div>
         <p v-else class="callout">
-          缺少 admin.view 权限；管理员目录不可读取。具备写权限时仍需 role.view
-          权限才能安全分配角色。
+          {{ t("缺少 admin.view 权限；管理员目录不可读取。具备写权限时仍需 role.view 权限才能安全分配角色。", "Missing admin.view permission: the administrator list cannot be loaded. Even with write permission, role.view is required to assign roles safely.") }}
         </p>
       </div>
     </template>

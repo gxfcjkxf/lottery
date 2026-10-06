@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
+import { useAdminI18n } from "./i18n";
+import type { LocalizedMessage } from "@lottery/shared";
 import {
   brandOperationPermissions,
   createBrandOperationApi,
@@ -10,7 +12,6 @@ import {
 } from "./brand-operation-api";
 import {
   brandOperationSessionGeneration,
-  brandOperationCompletionMessage,
   classifyBrandOperationFailure,
   clearPendingBrandOperationWrite,
   createBrandOperationRequestGuard,
@@ -27,6 +28,7 @@ const emit = defineEmits<{
 }>();
 
 const api = createBrandOperationApi();
+const { t, message } = useAdminI18n();
 const recordGuard = createBrandOperationRequestGuard();
 const historyGuard = createBrandOperationRequestGuard();
 const writeGuard = createBrandOperationRequestGuard();
@@ -41,8 +43,8 @@ const pending = ref<PendingBrandOperationWrite | null>(null);
 const busy = ref(false);
 const loading = ref(false);
 const historyLoading = ref(false);
-const error = ref("");
-const notice = ref("");
+const error = ref<string | LocalizedMessage>("");
+const notice = ref<string | LocalizedMessage>("");
 const conflictReloaded = ref(false);
 
 const readonlyBrand = computed(() => props.brandStatus === "disabled" || record.value?.status === "disabled");
@@ -51,7 +53,7 @@ const conflictedWrite = computed(() => pending.value?.phase === "conflict");
 const reviewing = computed(() => pending.value?.phase === "review");
 const canWrite = computed(() => permissions.value.write && !readonlyBrand.value && !unknownWrite.value && !conflictedWrite.value);
 const reasonBytes = computed(() => new TextEncoder().encode(reason.value).length);
-const statusText = (value: string) => value === "active" ? "运行中" : value === "paused" ? "已暂停" : value === "disabled" ? "已停用" : value;
+const statusText = (value: string) => value === "active" ? t("运行中", "Active") : value === "paused" ? t("已暂停", "Paused") : value === "disabled" ? t("已停用", "Disabled") : value;
 const statusStyle = (value: string) => value === "active" ? "is-active" : value === "paused" ? "is-paused" : "is-disabled";
 const timeText = (value: string) => {
   const date = new Date(value);
@@ -77,7 +79,7 @@ async function reloadCurrent(): Promise<boolean> {
     return true;
   } catch (cause) {
     if (recordGuard.isCurrent(token) && epoch === brandOperationSessionGeneration() && props.account.id === accountId && props.brandId === brandId) {
-      error.value = errorText(cause, "读取品牌状态失败。");
+      error.value = errorText(cause, message("读取品牌状态失败。", "Failed to load brand status."));
       handleSessionError(cause, accountId, brandId, epoch, recordGuard, token);
     }
     return false;
@@ -100,7 +102,7 @@ async function reloadHistory(nextOffset = offset.value): Promise<void> {
     hasMore.value = page.items.length === page.limit;
   } catch (cause) {
     if (historyGuard.isCurrent(token) && epoch === brandOperationSessionGeneration() && props.account.id === accountId && props.brandId === brandId) {
-      error.value = errorText(cause, "读取操作记录失败。");
+      error.value = errorText(cause, message("读取操作记录失败。", "Failed to load operation history."));
       handleSessionError(cause, accountId, brandId, epoch, historyGuard, token);
     }
   } finally {
@@ -108,7 +110,7 @@ async function reloadHistory(nextOffset = offset.value): Promise<void> {
   }
 }
 
-function errorText(cause: unknown, fallback: string): string {
+function errorText(cause: unknown, fallback: LocalizedMessage): string | LocalizedMessage {
   return cause instanceof Error ? cause.message : fallback;
 }
 
@@ -123,8 +125,8 @@ function reviewChange(): void {
   error.value = "";
   notice.value = "";
   if (!record.value || !canWrite.value) return;
-  if (targetStatus.value === record.value.status) { error.value = "目标状态与当前状态相同。"; return; }
-  if (!reason.value.trim() || reasonBytes.value > 500) { error.value = "请填写操作原因（最多 500 字节）。"; return; }
+  if (targetStatus.value === record.value.status) { error.value = message("目标状态与当前状态相同。", "The target status is the same as the current status."); return; }
+  if (!reason.value.trim() || reasonBytes.value > 500) { error.value = message("请填写操作原因（最多 500 字节）。", "Enter a reason for the change (up to 500 bytes)."); return; }
   const intent: PendingBrandOperationWrite = {
     accountId: props.account.id,
     brandId: props.brandId,
@@ -141,7 +143,7 @@ function cancelReview(): void {
   clearPendingBrandOperationWrite({ accountId: pending.value.accountId, brandId: pending.value.brandId }, pending.value.key);
   pending.value = null;
   conflictReloaded.value = false;
-  notice.value = "已放弃旧请求；请基于最新版本重新核对。";
+  notice.value = message("已放弃旧请求；请基于最新版本重新核对。", "The previous request was discarded. Review the change against the latest version.");
 }
 
 async function sendFrozenIntent(retry: boolean): Promise<void> {
@@ -161,10 +163,12 @@ async function sendFrozenIntent(retry: boolean): Promise<void> {
     if (props.account.id === intent.accountId && props.brandId === intent.brandId) pending.value = null;
     emit("changed", { accountId: intent.accountId, brandId: intent.brandId, status: receipt.status as BrandOperationTargetStatus, version: receipt.version });
     if (writeGuard.isCurrent(token) && props.account.id === intent.accountId && props.brandId === intent.brandId) {
-      notice.value = "变更回执已核验，正在独立读取最新状态…";
+      notice.value = message("变更回执已核验，正在独立读取最新状态…", "The change receipt was verified. Reading the latest status independently…");
       const liveStateRead = await reloadCurrent();
       await reloadHistory(0);
-      if (writeGuard.isCurrent(token)) notice.value = brandOperationCompletionMessage(liveStateRead);
+      if (writeGuard.isCurrent(token)) notice.value = liveStateRead
+        ? message("变更回执已核验；当前状态已独立重新读取。", "The change receipt was verified and the current status was reloaded independently.")
+        : message("变更回执已核验，但读取最新状态失败。当前显示可能不是最新状态，请重新读取。", "The change receipt was verified, but the latest status could not be loaded. The displayed status may be outdated; reload it.");
     }
   } catch (cause) {
     if (epoch !== brandOperationSessionGeneration()) return;
@@ -173,17 +177,17 @@ async function sendFrozenIntent(retry: boolean): Promise<void> {
     if (classification === "unknown") {
       updatePendingBrandOperationPhase({ accountId: intent.accountId, brandId: intent.brandId }, intent.key, "unknown");
       if (props.account.id === intent.accountId && props.brandId === intent.brandId) pending.value = getPendingBrandOperationWrite({ accountId: intent.accountId, brandId: intent.brandId });
-      if (writeGuard.isCurrent(token)) error.value = "提交结果未知。表单与原键已冻结；请使用原键重试，不要创建新请求。";
+      if (writeGuard.isCurrent(token)) error.value = message("提交结果未知。表单与原键已冻结；请使用原键重试，不要创建新请求。", "The submission result is unknown. The form and original key are frozen; retry with the original key and do not create a new request.");
     } else if (classification === "conflict") {
       updatePendingBrandOperationPhase({ accountId: intent.accountId, brandId: intent.brandId }, intent.key, "conflict");
       if (props.account.id === intent.accountId && props.brandId === intent.brandId) pending.value = getPendingBrandOperationWrite({ accountId: intent.accountId, brandId: intent.brandId });
       conflictReloaded.value = false;
-      if (writeGuard.isCurrent(token)) error.value = "版本或状态冲突。已冻结旧请求，正在重新读取；不得自动换键重试。";
+      if (writeGuard.isCurrent(token)) error.value = message("版本或状态冲突。已冻结旧请求，正在重新读取；不得自动换键重试。", "Version or status conflict. The previous request is frozen and the latest state is being reloaded; it cannot be retried with a new key automatically.");
       if (props.account.id === intent.accountId && props.brandId === intent.brandId) await reloadCurrent();
     } else {
       clearPendingBrandOperationWrite({ accountId: intent.accountId, brandId: intent.brandId }, intent.key);
       if (props.account.id === intent.accountId && props.brandId === intent.brandId) pending.value = null;
-      if (writeGuard.isCurrent(token)) error.value = errorText(cause, "变更被服务器拒绝；读取最新状态后可重新核对。");
+      if (writeGuard.isCurrent(token)) error.value = errorText(cause, message("变更被服务器拒绝；读取最新状态后可重新核对。", "The server rejected the change. Reload the latest status before reviewing it again."));
       handleSessionError(cause, intent.accountId, intent.brandId, epoch, writeGuard, token);
     }
   } finally {
@@ -220,79 +224,79 @@ onUnmounted(() => {
   <section class="brand-operation" aria-labelledby="brand-operation-heading">
     <header class="brand-operation__header">
       <div>
-        <div class="brand-operation__eyebrow">BRAND / OPERATION</div>
-        <h2 id="brand-operation-heading">品牌运行状态</h2>
-        <p>暂停仅阻止新投注；登录仍可用，已有订单、退款、开奖和结算继续。提现功能尚未完整实现。</p>
+        <div class="brand-operation__eyebrow">{{ t("BRAND / OPERATION", "BRAND / OPERATION") }}</div>
+        <h2 id="brand-operation-heading">{{ t("品牌运行状态", "Brand operation status") }}</h2>
+        <p>{{ t("暂停仅阻止新投注；登录仍可用，已有订单、退款、开奖和结算继续。提现功能尚未完整实现。", "Pausing only blocks new bets. Sign-in remains available, and existing orders, refunds, draws, and settlement continue. Withdrawals are not fully implemented yet.") }}</p>
       </div>
-      <button class="brand-operation__secondary" type="button" :disabled="loading" @click="reloadCurrent">重新读取状态</button>
+      <button class="brand-operation__secondary" type="button" :disabled="loading" @click="reloadCurrent">{{ t("重新读取状态", "Reload status") }}</button>
     </header>
 
-    <p v-if="!permissions.view" class="brand-operation__notice" role="status">当前账号没有此品牌运行状态的查看权限。</p>
+    <p v-if="!permissions.view" class="brand-operation__notice" role="status">{{ t("当前账号没有此品牌运行状态的查看权限。", "This account cannot view operation status for this brand.") }}</p>
     <template v-else>
       <div class="brand-operation__current" aria-live="polite">
-        <div><span>当前状态</span><strong class="brand-operation__status" :class="statusStyle(record?.status ?? '')">{{ record ? statusText(record.status) : loading ? "读取中" : "不可用" }}</strong></div>
-        <div><span>当前版本</span><strong>{{ record?.version ?? "—" }}</strong></div>
-        <div class="brand-operation__current-name"><span>品牌</span><strong>{{ record?.name ?? "—" }}</strong></div>
+        <div><span>{{ t("当前状态", "Current status") }}</span><strong class="brand-operation__status" :class="statusStyle(record?.status ?? '')">{{ record ? statusText(record.status) : loading ? t("读取中", "Loading") : t("不可用", "Unavailable") }}</strong></div>
+        <div><span>{{ t("当前版本", "Current version") }}</span><strong>{{ record?.version ?? "—" }}</strong></div>
+        <div class="brand-operation__current-name"><span>{{ t("品牌", "Brand") }}</span><strong>{{ record?.name ?? "—" }}</strong></div>
       </div>
 
-      <p class="brand-operation__muted">运行状态与认证设置共享配置版本；其他配置修改后，请重新读取并核对。</p>
-      <p v-if="readonlyBrand" class="brand-operation__warning" role="status">该品牌已停用，运行状态变更为只读。</p>
-      <p v-if="unknownWrite" class="brand-operation__warning" role="alert">提交结果未知：请求内容及幂等键已冻结。刷新状态或记录不会解除冻结。</p>
-      <p v-else-if="conflictedWrite" class="brand-operation__warning" role="alert">旧请求已因冲突冻结。先读取最新版本，再明确放弃旧请求；系统不会自动生成新键。</p>
+      <p class="brand-operation__muted">{{ t("运行状态与认证设置共享配置版本；其他配置修改后，请重新读取并核对。", "Operation status shares a configuration version with authentication settings. After changing other settings, reload and review before proceeding.") }}</p>
+      <p v-if="readonlyBrand" class="brand-operation__warning" role="status">{{ t("该品牌已停用，运行状态变更为只读。", "This brand is disabled, so operation status is read-only.") }}</p>
+      <p v-if="unknownWrite" class="brand-operation__warning" role="alert">{{ t("提交结果未知：请求内容及幂等键已冻结。刷新状态或记录不会解除冻结。", "The submission result is unknown. The request and idempotency key are frozen; reloading status or history will not unfreeze them.") }}</p>
+      <p v-else-if="conflictedWrite" class="brand-operation__warning" role="alert">{{ t("旧请求已因冲突冻结。先读取最新版本，再明确放弃旧请求；系统不会自动生成新键。", "The previous request is frozen due to a conflict. Load the latest version, then explicitly discard the old request; a new key will not be generated automatically.") }}</p>
 
       <form class="brand-operation__form" @submit.prevent="reviewChange">
         <label class="brand-operation__field" for="brand-operation-target">
-          <span>目标状态</span>
-          <select id="brand-operation-target" v-model="targetStatus" aria-label="目标状态" :disabled="!canWrite || busy || reviewing">
-            <option value="active">运行中</option>
-            <option value="paused">已暂停</option>
+          <span>{{ t("目标状态", "Target status") }}</span>
+          <select id="brand-operation-target" v-model="targetStatus" :aria-label="t('目标状态', 'Target status')" :disabled="!canWrite || busy || reviewing">
+            <option value="active">{{ t("运行中", "Active") }}</option>
+            <option value="paused">{{ t("已暂停", "Paused") }}</option>
           </select>
         </label>
         <label class="brand-operation__field" for="brand-operation-reason">
-          <span>操作原因</span>
-          <textarea id="brand-operation-reason" v-model="reason" rows="3" maxlength="500" aria-label="操作原因" :disabled="!canWrite || busy || reviewing" aria-describedby="brand-operation-reason-count" />
-          <small id="brand-operation-reason-count">{{ reasonBytes }} / 500 字节（UTF-8）</small>
+          <span>{{ t("操作原因", "Reason for operation") }}</span>
+          <textarea id="brand-operation-reason" v-model="reason" rows="3" maxlength="500" :aria-label="t('操作原因', 'Reason for operation')" :disabled="!canWrite || busy || reviewing" aria-describedby="brand-operation-reason-count" />
+          <small id="brand-operation-reason-count">{{ reasonBytes }} / 500 {{ t("字节（UTF-8）", "bytes (UTF-8)") }}</small>
         </label>
-        <button class="brand-operation__primary" type="submit" :disabled="!canWrite || !record || busy || reviewing || !reason.trim() || reasonBytes > 500">核对状态变更</button>
+        <button class="brand-operation__primary" type="submit" :disabled="!canWrite || !record || busy || reviewing || !reason.trim() || reasonBytes > 500">{{ t("核对状态变更", "Review status change") }}</button>
       </form>
 
-      <div v-if="reviewing && pending" class="brand-operation__review" role="region" aria-label="确认状态变更">
-        <p>将从版本 {{ pending.body.version }} 变更为“{{ statusText(pending.body.status) }}”。原因：{{ pending.body.reason }}</p>
+      <div v-if="reviewing && pending" class="brand-operation__review" role="region" :aria-label="t('确认状态变更', 'Confirm status change')">
+        <p>{{ t("将从版本 {version} 变更为“{status}”。原因：{reason}", "Change from version {version} to ‘{status}’. Reason: {reason}", { version: pending.body.version, status: statusText(pending.body.status), reason: pending.body.reason }) }}</p>
         <div class="brand-operation__actions">
-          <button class="brand-operation__primary" type="button" :disabled="busy" @click="sendFrozenIntent(false)">确认提交</button>
-          <button class="brand-operation__secondary" type="button" :disabled="busy" @click="cancelReview">取消确认</button>
+          <button class="brand-operation__primary" type="button" :disabled="busy" @click="sendFrozenIntent(false)">{{ t("确认提交", "Confirm submission") }}</button>
+          <button class="brand-operation__secondary" type="button" :disabled="busy" @click="cancelReview">{{ t("取消确认", "Cancel confirmation") }}</button>
         </div>
       </div>
 
       <div v-if="unknownWrite && pending" class="brand-operation__review">
-        <p>原请求：版本 {{ pending.body.version }} → {{ statusText(pending.body.status) }}；{{ pending.body.reason }}</p>
-        <button class="brand-operation__primary" type="button" :disabled="busy" @click="sendFrozenIntent(true)">使用原键重试</button>
+        <p>{{ t("原请求：版本 {version} → {status}；{reason}", "Original request: version {version} → {status}; {reason}", { version: pending.body.version, status: statusText(pending.body.status), reason: pending.body.reason }) }}</p>
+        <button class="brand-operation__primary" type="button" :disabled="busy" @click="sendFrozenIntent(true)">{{ t("使用原键重试", "Retry with original key") }}</button>
       </div>
       <div v-if="conflictedWrite" class="brand-operation__actions">
-        <button class="brand-operation__secondary" type="button" :disabled="loading" @click="reloadCurrent">重新读取最新状态</button>
-        <button v-if="conflictReloaded" class="brand-operation__secondary" type="button" @click="cancelReview">放弃旧请求并返回编辑</button>
+        <button class="brand-operation__secondary" type="button" :disabled="loading" @click="reloadCurrent">{{ t("重新读取最新状态", "Reload latest status") }}</button>
+        <button v-if="conflictReloaded" class="brand-operation__secondary" type="button" @click="cancelReview">{{ t("放弃旧请求并返回编辑", "Discard old request and return to editing") }}</button>
       </div>
-      <p v-if="error" class="brand-operation__error" role="alert">{{ error }}</p>
-      <p v-if="notice" class="brand-operation__notice" role="status">{{ notice }}</p>
+      <p v-if="error" class="brand-operation__error" role="alert">{{ t(error) }}</p>
+      <p v-if="notice" class="brand-operation__notice" role="status">{{ t(notice) }}</p>
 
       <section class="brand-operation__history" aria-labelledby="brand-operation-history-heading">
         <div class="brand-operation__history-head">
-          <h3 id="brand-operation-history-heading">操作记录</h3>
-          <button class="brand-operation__secondary" type="button" :disabled="historyLoading" @click="reloadHistory(0)">刷新记录</button>
+          <h3 id="brand-operation-history-heading">{{ t("操作记录", "Operation history") }}</h3>
+          <button class="brand-operation__secondary" type="button" :disabled="historyLoading" @click="reloadHistory(0)">{{ t("刷新记录", "Refresh history") }}</button>
         </div>
-        <p v-if="historyLoading && !rows.length" class="brand-operation__muted">正在读取记录…</p>
-        <p v-else-if="!rows.length" class="brand-operation__muted">暂无运行状态变更记录。</p>
+        <p v-if="historyLoading && !rows.length" class="brand-operation__muted">{{ t("正在读取记录…", "Loading history…") }}</p>
+        <p v-else-if="!rows.length" class="brand-operation__muted">{{ t("暂无运行状态变更记录。", "No operation status changes yet.") }}</p>
         <ol v-else class="brand-operation__history-list">
           <li v-for="item in rows" :key="item.id">
             <div class="brand-operation__history-title"><strong>v{{ item.version }} · {{ statusText(item.previous_status) }} → {{ statusText(item.status) }}</strong><time :datetime="item.created_at">{{ timeText(item.created_at) }}</time></div>
             <p>{{ item.reason }}</p>
-            <small>操作人 {{ item.changed_by }} · 审计 {{ item.audit_log_id }}</small>
+            <small>{{ t("操作人", "Changed by") }} {{ item.changed_by }} · {{ t("审计", "Audit") }} {{ item.audit_log_id }}</small>
           </li>
         </ol>
         <div class="brand-operation__pagination">
-          <button class="brand-operation__secondary" type="button" :disabled="offset === 0 || historyLoading" @click="reloadHistory(Math.max(0, offset - 20))">较新记录</button>
+          <button class="brand-operation__secondary" type="button" :disabled="offset === 0 || historyLoading" @click="reloadHistory(Math.max(0, offset - 20))">{{ t("较新记录", "Newer") }}</button>
           <span>{{ offset + 1 }}–{{ offset + rows.length }}</span>
-          <button class="brand-operation__secondary" type="button" :disabled="!hasMore || historyLoading" @click="reloadHistory(offset + 20)">较旧记录</button>
+          <button class="brand-operation__secondary" type="button" :disabled="!hasMore || historyLoading" @click="reloadHistory(offset + 20)">{{ t("较旧记录", "Older") }}</button>
         </div>
       </section>
     </template>

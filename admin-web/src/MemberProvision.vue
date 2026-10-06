@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { useAdminI18n } from "./i18n";
+import type { LocalizedMessage } from "@lottery/shared";
 import {
   createBodyKeyTracker,
   createManagementApi,
@@ -18,6 +20,7 @@ const emit = defineEmits<{
   (event: "created", saved: CreatedMember): void;
 }>();
 const api = createManagementApi();
+const { t, message } = useAdminI18n();
 const keyForBody = createBodyKeyTracker();
 const username = ref("");
 const phone = ref("");
@@ -26,7 +29,7 @@ const displayName = ref("");
 const notes = ref("");
 const reason = ref("");
 const busy = ref(false);
-const error = ref("");
+const error = ref<string | LocalizedMessage>("");
 const saved = ref<CreatedMember | null>(null);
 const passwordBytes = computed(
   () => new TextEncoder().encode(password.value).length,
@@ -80,9 +83,12 @@ async function submit() {
   } catch (cause) {
     if (cause instanceof AdminApiError && cause.status === 401)
       emit("session-invalid");
-    error.value = cause instanceof Error ? cause.message : "创建失败";
-    if (cause instanceof AdminApiError && cause.status === 409)
-      error.value += "；该身份已存在或发生冲突，请核对后再提交。";
+    const serverError = cause instanceof Error ? cause.message : null;
+    error.value = cause instanceof AdminApiError && cause.status === 409
+      ? serverError
+        ? message("{serverError}；该身份已存在或发生冲突，请核对后再提交。", "{serverError} This identity already exists or a conflict occurred. Review the details before submitting again.", { serverError })
+        : message("该身份已存在或发生冲突，请核对后再提交。", "This identity already exists or a conflict occurred. Review the details before submitting again.")
+      : serverError ?? message("创建失败", "Creation failed");
   } finally {
     busy.value = false;
   }
@@ -93,26 +99,26 @@ async function submit() {
   <section class="provision">
     <header>
       <div>
-        <p class="eyebrow">MEMBER PROVISIONING</p>
-        <h1>新建品牌成员</h1>
-        <p>建立全局新身份与当前品牌成员关系。</p>
+        <p class="eyebrow">{{ t("MEMBER PROVISIONING", "MEMBER PROVISIONING") }}</p>
+        <h1>{{ t("新建品牌成员", "Create brand member") }}</h1>
+        <p>{{ t("建立全局新身份与当前品牌成员关系。", "Create a new global identity and associate it with the current brand.") }}</p>
       </div>
-      <span class="brand">品牌 · {{ brandId || "未选择" }}</span>
+      <span class="brand">{{ t("品牌", "Brand") }} · {{ brandId || t("未选择", "None selected") }}</span>
     </header>
-    <p v-if="!allowed" class="notice">当前账号没有此品牌的成员创建权限。</p>
+    <p v-if="!allowed" class="notice">{{ t("当前账号没有此品牌的成员创建权限。", "This account cannot create members for this brand.") }}</p>
     <template v-else>
       <div class="layout">
         <form class="card form" @submit.prevent="submit">
-          <h2>成员资料</h2>
+          <h2>{{ t("成员资料", "Member details") }}</h2>
           <p class="hint">
-            所有资料写入后台真实接口。服务端拒绝已存在的身份，不会覆盖或关联旧账号。
+            {{ t("所有资料写入后台真实接口。服务端拒绝已存在的身份，不会覆盖或关联旧账号。", "All details are submitted to the live backend. The server rejects existing identities and will not overwrite or link an existing account.") }}
           </p>
           <label
-            >用户名 <span>可选</span
+            >{{ t("用户名", "Username") }} <span>{{ t("可选", "Optional") }}</span
             ><input v-model.trim="username" maxlength="32" autocomplete="off"
           /></label>
           <label
-            >手机号 <span>可选</span
+            >{{ t("手机号", "Phone number") }} <span>{{ t("可选", "Optional") }}</span
             ><input
               v-model.trim="phone"
               maxlength="32"
@@ -120,29 +126,29 @@ async function submit() {
               autocomplete="off"
           /></label>
           <label
-            >初始密码 <b class="required">必填 · 10–128 字节</b
+            >{{ t("初始密码", "Initial password") }} <b class="required">{{ t("必填 · 10–128 字节", "Required · 10–128 bytes") }}</b
             ><input
               v-model="password"
               type="password"
               required
               autocomplete="new-password"
             /><small
-              >当前长度：{{
+              >{{ t("当前长度：", "Current length:") }} {{
                 passwordBytes
               }}
-              字节；密码只在提交期间保存在页面内存。</small
+              {{ t("字节；密码只在提交期间保存在页面内存。", "bytes; the password is held in page memory only while submitting.") }}</small
             ></label
           >
           <label
-            >显示名称 <span>可选</span
+            >{{ t("显示名称", "Display name") }} <span>{{ t("可选", "Optional") }}</span
             ><input v-model.trim="displayName" maxlength="120"
           /></label>
           <label
-            >内部备注 <span>可选</span
+            >{{ t("内部备注", "Internal notes") }} <span>{{ t("可选", "Optional") }}</span
             ><textarea v-model.trim="notes" rows="3" maxlength="1000" />
           </label>
           <label
-            >创建原因 <b class="required">必填</b
+            >{{ t("创建原因", "Creation reason") }} <b class="required">{{ t("必填", "Required") }}</b
             ><textarea
               v-model.trim="reason"
               required
@@ -159,36 +165,35 @@ async function submit() {
               passwordBytes > 128
             "
           >
-            {{ busy ? "正在创建…" : "创建成员" }}
+            {{ busy ? t("正在创建…", "Creating…") : t("创建成员", "Create member") }}
           </button>
         </form>
         <aside class="card facts">
-          <h2>创建后的状态</h2>
+          <h2>{{ t("创建后的状态", "After creation") }}</h2>
           <ul>
-            <li>仅创建一个全局新用户身份和当前品牌成员。</li>
-            <li>新成员余额为零，不会创建资金流水。</li>
-            <li>不会登录或签发会话。</li>
-            <li>运营人员不能代替用户接受条款。</li>
+            <li>{{ t("仅创建一个全局新用户身份和当前品牌成员。", "Creates one new global user identity and a member record for the current brand.") }}</li>
+            <li>{{ t("新成员余额为零，不会创建资金流水。", "The new member starts with a zero balance; no financial transaction is created.") }}</li>
+            <li>{{ t("不会登录或签发会话。", "Does not sign in the user or issue a session.") }}</li>
+            <li>{{ t("运营人员不能代替用户接受条款。", "Staff cannot accept terms on the user's behalf.") }}</li>
           </ul>
           <div class="consent">
-            <b>首次登录时由本人确认</b>
+            <b>{{ t("首次登录时由本人确认", "The user confirms on first sign-in") }}</b>
             <p>
-              用户首次登录后须自行阅读并接受当时有效的服务条款和隐私政策，才可继续使用。
+              {{ t("用户首次登录后须自行阅读并接受当时有效的服务条款和隐私政策，才可继续使用。", "After signing in for the first time, the user must read and accept the current terms of service and privacy policy to continue.") }}
             </p>
           </div>
           <p class="hint">
-            若提交响应丢失，请使用同一内容重试以沿用幂等键。编辑任一字段后会生成新键；已存在身份会由服务端以
-            409 拒绝。
+            {{ t("若提交响应丢失，请使用同一内容重试以沿用幂等键。编辑任一字段后会生成新键；已存在身份会由服务端以 409 拒绝。", "If the submission response is lost, retry with the same details to reuse the idempotency key. Editing any field creates a new key; the server rejects existing identities with 409.") }}
           </p>
         </aside>
       </div>
-      <p v-if="error" class="feedback error" role="alert">{{ error }}</p>
+      <p v-if="error" class="feedback error" role="alert">{{ t(error) }}</p>
       <div v-if="saved" class="feedback success" role="status">
-        <b>成员已创建</b
+        <b>{{ t("成员已创建", "Member created") }}</b
         ><span
-          >成员 ID：{{ saved.member_id }} · 用户 ID：{{ saved.user_id }}</span
-        ><span>品牌：{{ saved.brand_id }} · 条款已接受：否</span
-        ><span>审计记录：{{ saved.audit_log_id }}</span>
+          >{{ t("成员 ID", "Member ID") }}: {{ saved.member_id }} · {{ t("用户 ID", "User ID") }}: {{ saved.user_id }}</span
+        ><span>{{ t("品牌", "Brand") }}: {{ saved.brand_id }} · {{ t("条款已接受", "Terms accepted") }}: {{ t("否", "No") }}</span
+        ><span>{{ t("审计记录", "Audit record") }}: {{ saved.audit_log_id }}</span>
       </div>
     </template>
   </section>
