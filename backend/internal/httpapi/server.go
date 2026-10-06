@@ -75,7 +75,11 @@ func buildRouter(d Dependencies) *routeMux {
 				return
 			}
 		}
-		respond(w, r, 200, map[string]any{"brand": brand, "available_locales": []string{"en", "zh-CN"}, "features": map[string]bool{"pwa": true, "real_payments": false}, "auth": map[string]any{"captcha_enabled": cfg.CaptchaEnabled, "telegram_enabled": cfg.TelegramEnabled, "telegram_client_id": cfg.TelegramClientID}, "terms": map[string]string{"privacy_policy_version": cfg.Privacy, "service_terms_version": cfg.Terms}})
+		locales := brand.AvailableLocales
+		if locales == nil {
+			locales = []string{"en", "zh-CN"}
+		}
+		respond(w, r, 200, map[string]any{"brand": brand, "available_locales": locales, "features": map[string]bool{"pwa": true, "real_payments": false}, "auth": map[string]any{"captcha_enabled": cfg.CaptchaEnabled, "telegram_enabled": cfg.TelegramEnabled, "telegram_client_id": cfg.TelegramClientID}, "terms": map[string]string{"privacy_policy_version": cfg.Privacy, "service_terms_version": cfg.Terms}})
 	}
 	mux.HandleFunc("GET /api/v1/context", contextHandler)
 	mux.HandleFunc("GET /api/v1/b/{brandCode}/context", contextHandler)

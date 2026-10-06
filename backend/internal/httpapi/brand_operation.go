@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -52,7 +53,11 @@ func brandOperationResult(out any, err error) (mutation.Result, error) {
 }
 func brandOperationPage(r *http.Request) (int, int, bool) {
 	limit, offset := 20, 0
-	for key, values := range r.URL.Query() {
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return 0, 0, false
+	}
+	for key, values := range query {
 		if len(values) != 1 || (key != "limit" && key != "offset") || values[0] == "" {
 			return 0, 0, false
 		}

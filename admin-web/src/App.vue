@@ -10,6 +10,11 @@ import AccessManagement from "./AccessManagement.vue";
 import MemberProvision from "./MemberProvision.vue";
 import AuthSettings from "./AuthSettings.vue";
 import BrandOperation from "./BrandOperation.vue";
+import BrandPresentation from "./BrandPresentation.vue";
+import {watch} from "vue";
+import {buildBrandCssTokens,defaultBrand,safeBrandAssetUrl,applyBrandPresentation,type BrandTheme} from "@lottery/shared";
+import {createBrandPresentationApi,brandPresentationPermissions,type BrandPresentationRecord} from "./brand-presentation-api";
+import {clearAllPendingPresentationWrites} from "./brand-presentation-state";
 import FinanceManagement from "./FinanceManagement.vue";
 import BalanceRepair from "./BalanceRepair.vue";
 import RuleSimulator from "./RuleSimulator.vue";
@@ -107,6 +112,18 @@ const brand = computed(
     demoBrand.value,
 );
 const selectedBrand = computed(() => adminBrands.value.find((item) => item.id === selectedBrandId.value) ?? null);
+const presentationApi=createBrandPresentationApi();
+const presentationSkin=ref<{accountId:string;record:BrandPresentationRecord}|null>(null);
+let presentationReadGeneration=0;
+const skin=computed(()=>presentationSkin.value?.accountId===account.value?.id&&presentationSkin.value?.record.brand_id===selectedBrandId.value?presentationSkin.value.record.effective:null);
+function skinTheme():BrandTheme|null{const e=skin.value;return e?{...defaultBrand,name:e.display_name,logoText:e.logo_text,logoUrl:e.logo_url??undefined,faviconUrl:e.favicon_url??undefined,primary:e.primary_color,accent:e.accent_color,success:e.success_color,warning:e.warning_color,danger:e.danger_color,fontFamily:e.font_family,fontScale:e.font_scale,radius:e.radius,shadow:e.shadow}:null}
+const skinStyle=computed(()=>{const theme=skinTheme();return theme?{...buildBrandCssTokens(theme),fontFamily:"var(--font-family)",fontSize:"calc(13px * var(--brand-font-scale-factor, 1))"}:{}});
+const skinLogo=computed(()=>safeBrandAssetUrl(skin.value?.logo_url));
+const failedSkinLogo=ref<string|null>(null);
+watch(skinLogo,()=>{failedSkinLogo.value=null});
+function skinLogoError(event:Event){if(event.target instanceof HTMLImageElement&&event.target.getAttribute('src')===skinLogo.value)failedSkinLogo.value=skinLogo.value}
+function acceptPresentation(value:{accountId:string;record:BrandPresentationRecord}){if(account.value?.id!==value.accountId||selectedBrandId.value!==value.record.brand_id)return;if(presentationSkin.value?.accountId===value.accountId&&presentationSkin.value.record.brand_id===value.record.brand_id&&presentationSkin.value.record.version>value.record.version)return;presentationSkin.value=value;const theme=skinTheme();if(theme)applyBrandPresentation({brand:theme,paused:value.record.status==='paused',availableLanguages:value.record.effective.available_locales},document.querySelector<HTMLElement>('.app-shell')??document.documentElement)}
+watch(()=>[account.value?.id,selectedBrandId.value],()=>{const generation=++presentationReadGeneration;presentationSkin.value=null;document.querySelector('link[rel="icon"][data-brand-favicon]')?.remove();const current=account.value,id=selectedBrandId.value;if(!current||!id||!brandPresentationPermissions(current,id).view)return;void presentationApi.get(id).then(record=>{if(generation===presentationReadGeneration&&account.value?.id===current.id&&selectedBrandId.value===id)acceptPresentation({accountId:current.id,record})}).catch(cause=>{if(generation===presentationReadGeneration&&account.value?.id===current.id&&selectedBrandId.value===id&&cause instanceof AdminApiError&&cause.status===401)clearAdminData()})});
 const members = ref<Member[]>([]);
 const membersLoading = ref(false);
 const membersError = ref("");
@@ -244,6 +261,8 @@ const statusClass = (status: MemberStatus) =>
 const apiErrorText = (error: unknown) =>
   error instanceof Error ? error.message : "请求失败，请重试";
 const clearAdminData = () => {
+	clearAllPendingPresentationWrites();
+	presentationReadGeneration+=1;presentationSkin.value=null;
   adminBrandLoadGeneration += 1;
   clearAllPendingAgentWrites();
   clearAllPendingJoinCodeWrites();
@@ -280,6 +299,7 @@ const restoreAdminSession = async () => {
       adminBrandLoadGeneration += 1;
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
+      clearAllPendingPresentationWrites();
     }
     account.value = result.account;
     await loadBrands();
@@ -307,6 +327,7 @@ const login = async () => {
       adminBrandLoadGeneration += 1;
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
+      clearAllPendingPresentationWrites();
     }
     account.value = result.account;
     selectedBrandId.value = "";
@@ -625,11 +646,12 @@ const ledger = [
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :style="skinStyle">
     <aside class="sidebar">
       <a class="brand-lockup" href="#" @click.prevent="go('工作台')"
-        ><span class="brand-mark">N</span
-        ><span><b>northstar</b><small>OPERATIONS CONSOLE</small></span></a
+        ><img v-if="skinLogo&&failedSkinLogo!==skinLogo" class="presentation-logo" :src="skinLogo" :alt="skin?.logo_text" crossorigin="anonymous" referrerpolicy="no-referrer" @error="skinLogoError"/>
+        <span v-else class="brand-mark">{{skin?.logo_text??'N'}}</span>
+        <span><b>{{skin?.display_name??'northstar'}}</b><small>OPERATIONS CONSOLE</small></span></a
       >
       <div class="demo-chip">
         <span class="pulse"></span>非生产环境 · 提现为演示
@@ -784,7 +806,7 @@ const ledger = [
         ><span
           ><b>交互演示 · 非生产环境</b
           ><span class="banner-copy">
-            控制台包含已接入流程与原型。提现、佣金管理、域名/主题管理及新建品牌尚未实现；各页面会标出真实接口与演示边界。</span
+            控制台包含已接入流程与原型。提现、佣金管理、域名管理及新建品牌尚未实现；各页面会标出真实接口与演示边界。</span
           ></span
         ><button aria-label="关闭说明" @click="showDemoNotice = false">
           ×
@@ -1072,10 +1094,10 @@ const ledger = [
             <div>
               <div class="eyebrow">PLATFORM / BRAND CONFIG</div>
               <h1>品牌和域名</h1>
-              <p>真实品牌列表与运行状态；域名、主题和新建品牌暂未实现</p>
+              <p>真实品牌列表、运行状态与展示配置；域名和新建品牌暂未实现</p>
             </div>
           </div>
-          <BrandOperation
+        <BrandOperation
             v-if="selectedBrandId"
             :key="`${account.id}:${selectedBrandId}`"
             :account="account"
@@ -1088,12 +1110,13 @@ const ledger = [
             <h2>选择一个品牌</h2>
             <p>选择下方真实品牌后，可查看其运行状态与操作记录。</p>
           </article>
+          <BrandPresentation v-if="selectedBrandId" :key="`${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" @loaded="acceptPresentation"/>
           <article class="panel brand-operation-brands">
             <div class="panel-header">
               <div><h2>真实品牌</h2><p>来自管理员品牌接口</p></div>
               <button class="button button-secondary" @click="loadBrands">刷新列表</button>
             </div>
-            <p class="brand-operation-unavailable">域名管理、主题管理和新建品牌尚未实现；本页不会显示演示数据或提供虚假的配置操作。</p>
+            <p class="brand-operation-unavailable">域名管理和新建品牌尚未实现；展示配置仅支持固定预设与中英文文案，不支持任意 CSS、HTML 或上传素材。</p>
             <p v-if="authLoading" class="directory-state">正在读取品牌…</p>
             <p v-else-if="authError" class="directory-state" role="alert">{{ authError }}</p>
             <p v-else-if="!adminBrands.length" class="directory-state">当前账号未返回可管理品牌。</p>
@@ -2360,7 +2383,7 @@ const ledger = [
               : page === "账号与权限" && account
                 ? "账号与角色变更为真实操作；投注已接入，提现仍为演示。"
                 : page === "品牌和域名" && account
-                  ? "认证设置为真实配置；域名、主题与提现仍为演示。"
+                  ? "认证及品牌展示设置为真实配置；域名与提现仍为演示。"
                   : page === "资金与账本" && account
                     ? "人工充值、冻结、调整与账本为真实操作；提现尚未接入。"
                     : "标为演示的功能不写入后台；账号、积分、规则版本和期次计划已接入真实 API。"

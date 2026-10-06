@@ -770,13 +770,13 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
   await expect(
     catalog
       .getByTestId("catalog-game")
-      .filter({ hasText: "E2E positional digits" }),
+      .filter({ hasText: digitsCode }),
   ).toBeVisible();
   await expect(
-    catalog.getByTestId("catalog-game").filter({ hasText: "E2E X plus Y" }),
+    catalog.getByTestId("catalog-game").filter({ hasText: xyCode }),
   ).toBeVisible();
   await expect(
-    catalog.getByTestId("catalog-game").filter({ hasText: "E2E M select N" }),
+    catalog.getByTestId("catalog-game").filter({ hasText: mnCode }),
   ).toBeVisible();
   // The server computes this quote normally; delay only delivery while the user changes intent.
   await page.goto(`${harborSite}/games/${digits.id}/bet`);
@@ -862,7 +862,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
   await page.goto(`${harborSite}/games`);
   const digitsCard = page
     .getByTestId("catalog-game")
-    .filter({ hasText: "E2E positional digits" });
+    .filter({ hasText: digitsCode });
   await digitsCard.getByRole("link", { name: /View game/ }).click();
   const detail = page.getByTestId("game-detail");
   await expect(detail).toContainText("betting");

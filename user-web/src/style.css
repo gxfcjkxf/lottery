@@ -1,6 +1,28 @@
 #app {
   min-height: 100vh;
 }
+:root {
+  --primary: #20594c;
+  --primary-dark: #19463b;
+  --green: var(--success);
+  --brand-primary: var(--primary);
+  --accent: #d9ef9b;
+  --brand-accent: var(--accent);
+  --success: #287b59;
+  --brand-success: var(--success);
+  --warning: #a96d20;
+  --brand-warning: var(--warning);
+  --danger: #bc4b43;
+  --brand-danger: var(--danger);
+  --font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-scale: 16px;
+  --radius: 16px;
+  --shadow: 0 18px 55px rgba(28, 54, 44, .08);
+}
+.app-frame {
+  font-family: var(--font-family);
+  font-size: var(--font-scale);
+}
 .app-frame {
   min-height: 100vh;
 }
@@ -15,6 +37,7 @@
   display: flex;
   flex-direction: column;
 }
+.drawer-close { display: none; }
 .brand {
   display: inline-flex;
   align-items: center;
@@ -22,7 +45,7 @@
   width: fit-content;
   color: var(--ink);
   text-decoration: none;
-  font-family: Manrope, sans-serif;
+  font-family: var(--font-family);
   font-size: 17px;
   font-weight: 800;
   letter-spacing: -0.6px;
@@ -30,21 +53,42 @@
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 39px;
+  width: auto;
+  min-width: 39px;
+  max-width: 220px;
   height: 39px;
-  border-radius: 13px 13px 13px 4px;
+  padding: 0 7px;
+  border-radius: var(--radius);
   background: var(--brand-primary);
   color: white;
   font-size: 25px;
   line-height: 1;
-  font-family: Georgia, serif;
+  font-family: var(--font-family);
   font-style: italic;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.brand-mark img {
+  display: block;
+  width: auto;
+  max-width: min(160px, 48vw);
+  height: auto;
+  max-height: 32px;
+  object-fit: contain;
+}
+.brand-mark-text {
+  width: 60px;
+  max-width: 60px;
+  min-height: 39px;
+  height: auto;
+  padding: 3px 4px;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.1;
 }
 .brand small {
   display: block;
-  font:
-    600 8px "DM Sans",
-    sans-serif;
+  font: 600 8px var(--font-family);
   letter-spacing: 2.3px;
   color: #8e9991;
   margin-top: 2px;
@@ -189,10 +233,13 @@
 }
 .connection-pill.connected i,
 .footer-online i {
-  background: #58a878;
+  background: var(--success);
 }
 .connection-pill.offline i {
-  background: #c86d60;
+  background: var(--danger);
+}
+.connection-pill.checking i {
+  background: var(--warning);
 }
 .language-button,
 .icon-button {
@@ -311,7 +358,7 @@
 }
 .button-dark:hover,
 .button-primary:hover {
-  background: #164538;
+  background: var(--primary-dark);
 }
 .button-primary {
   background: var(--brand-primary);
@@ -323,11 +370,34 @@
   color: #48564d;
 }
 .button-secondary:hover {
-  background: #f6f8f5;
+  background: color-mix(in srgb, var(--accent) 35%, white);
 }
 .button-quiet {
   background: transparent;
   color: #69766e;
+}
+.button,
+.language-button,
+.icon-button,
+.game-card,
+.mini-panel,
+.wallet-card,
+.detail-card,
+.result-card,
+.detail-panel,
+.confirmation-card,
+.announcement,
+.hero {
+  border-radius: var(--radius);
+}
+.game-card,
+.mini-panel,
+.wallet-card,
+.detail-card,
+.result-card,
+.detail-panel,
+.confirmation-card {
+  box-shadow: var(--shadow);
 }
 .hero-note {
   margin-top: 18px;
@@ -492,7 +562,7 @@
 }
 .game-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 11px 28px rgba(39, 63, 48, 0.07);
+  box-shadow: var(--shadow);
 }
 .game-card.peach {
   background: #fffdfa;
@@ -2221,6 +2291,18 @@
   }
 }
 @media (max-width: 620px) {
+  .drawer-close {
+    display: block;
+    align-self: flex-end;
+    width: 44px;
+    min-height: 44px;
+    margin-bottom: 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fff;
+    color: var(--primary);
+    font-size: 24px;
+  }
   .sidebar {
     width: min(280px, 82vw);
     align-items: stretch;
@@ -2659,6 +2741,12 @@
   .form-subtitle {
     margin-bottom: 17px;
   }
+}
+.app-frame :is(button, input, select, textarea, a, p, span, small, strong, em, label, h1, h2, h3, h4, li, dt, dd) {
+  font-family: var(--font-family);
+}
+.app-frame .digit-summary span {
+  font-family: ui-monospace, monospace;
 }
 @media (prefers-reduced-motion: reduce) {
   *,

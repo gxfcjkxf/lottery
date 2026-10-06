@@ -4,6 +4,7 @@ import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   createApiClient,
   defaultBrand,
+  applyBrandPresentation,
   formatPoints,
   type Language,
 } from "@lottery/shared";
@@ -45,8 +46,9 @@ import {
 const route = useRoute();
 const walletBrandCode = import.meta.env.VITE_BRAND_CODE || undefined;
 const router = useRouter();
-const savedLanguage = localStorage.getItem("luma-language") as Language | null;
-const locale = ref<Language>(savedLanguage || "en");
+const savedLanguage = localStorage.getItem("luma-language");
+const validSavedLanguage = savedLanguage === "en" || savedLanguage === "zh" ? savedLanguage : null;
+const locale = ref<Language>(validSavedLanguage || "en");
 const api = createApiClient({
   brandCode: import.meta.env.VITE_BRAND_CODE || undefined,
 });
@@ -56,6 +58,12 @@ const authApi = createAuthClient({
 const connection = ref<"checking" | "connected" | "offline">("checking");
 const connectionMessage = ref("Checking service");
 const brandName = ref(defaultBrand.name);
+const brandLogoText = ref(defaultBrand.logoText);
+const brandLogoUrl = ref<string | null>(null);
+const brandLogoFailed = ref(false);
+const availableLanguages = ref<Language[]>([]);
+const contextLoaded = ref(false);
+const brandContent = ref(defaultBrand.content!);
 const brandPaused = ref(false);
 const mobileMenu = ref(false);
 const notice = ref("");
@@ -138,7 +146,9 @@ const withdrawAmount = ref("");
 const withdrawSubmitted = ref(false);
 const excluding = ref(false);
 let tickTimer: ReturnType<typeof setInterval> | undefined;
+let pageGeneration = 0;
 onUnmounted(() => {
+  pageGeneration++;
   if (tickTimer) clearInterval(tickTimer);
 });
 
@@ -314,6 +324,11 @@ const copy = {
   },
 };
 const t = computed(() => copy[locale.value]);
+const localizedBrandContent = computed(() => brandContent.value[locale.value] ?? { tagline: "", announcement: "" });
+const displayTagline = computed(() => localizedBrandContent.value.tagline);
+const displayAnnouncement = computed(() => localizedBrandContent.value.announcement);
+const displayLogoUrl = computed(() => brandLogoFailed.value ? null : brandLogoUrl.value);
+const longLogoText = computed(() => Array.from(brandLogoText.value).length > 3);
 function encodeBase64(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = "";
@@ -1073,27 +1088,32 @@ function orderNumbers(order: {
 }
 
 onMounted(async () => {
+  const generation = ++pageGeneration;
   try {
     const context = await api.getContext();
+    if (generation !== pageGeneration) return;
     connection.value = "connected";
     connectionMessage.value = t.value.online;
     if (context?.brand?.name) brandName.value = context.brand.name;
+    brandLogoText.value = context.brand.logoText || context.brand.name;
+    brandLogoUrl.value = context.brand.logoUrl ?? null;
+    brandLogoFailed.value = false;
+    brandContent.value = {
+      en: context.brand.content?.en ?? { tagline: "", announcement: "" },
+      zh: context.brand.content?.zh ?? { tagline: "", announcement: "" },
+    };
+    availableLanguages.value = context.brand.languages;
+    contextLoaded.value = true;
     brandPaused.value = context.paused;
     if (context.terms) termsVersions.value = context.terms;
+    locale.value = validSavedLanguage && context.brand.languages.includes(validSavedLanguage)
+      ? validSavedLanguage
+      : context.brand.defaultLanguage;
+    applyBrandPresentation(context);
     await loadAuthFeatures();
-    if (!savedLanguage && context?.brand?.defaultLanguage)
-      locale.value = context.brand.defaultLanguage;
-    if (context?.brand?.primary)
-      document.documentElement.style.setProperty(
-        "--brand-primary",
-        context.brand.primary,
-      );
-    if (context?.brand?.accent)
-      document.documentElement.style.setProperty(
-        "--brand-accent",
-        context.brand.accent,
-      );
+    if (generation !== pageGeneration) return;
   } catch (error) {
+    if (generation !== pageGeneration) return;
     connection.value = "offline";
     connectionMessage.value =
       error instanceof Error
@@ -1140,10 +1160,12 @@ watch(
       v-if="!isAuth"
       class="sidebar"
       :class="{ 'sidebar-open': mobileMenu }"
+      @keydown.esc="mobileMenu = false"
     >
+      <button class="drawer-close" type="button" aria-label="Close navigation" @click="mobileMenu = false">×</button>
       <RouterLink to="/" class="brand" @click="mobileMenu = false"
-        ><span class="brand-mark">l</span
-        ><span>{{ brandName }}<small>PLAY WELL</small></span></RouterLink
+        ><span class="brand-mark" :class="{ 'brand-mark-text': !displayLogoUrl && longLogoText }"><img v-if="displayLogoUrl" :src="displayLogoUrl" :alt="brandLogoText" crossorigin="anonymous" referrerpolicy="no-referrer" @error="brandLogoFailed = true" /><template v-else>{{ brandLogoText }}</template></span
+        ><span>{{ brandName }}</span></RouterLink
       >
       <div class="nav-label">MENU</div>
       <nav aria-label="Main navigation" class="side-nav">
@@ -1219,6 +1241,7 @@ watch(
             }}</span></span
           >
           <button
+            v-if="contextLoaded && availableLanguages.length > 1"
             class="language-button"
             :aria-label="
               locale === 'en' ? 'Switch to Chinese' : 'Switch to English'
@@ -1283,12 +1306,12 @@ watch(
         >
           <div class="auth-visual">
             <RouterLink to="/" class="brand brand-light"
-              ><span class="brand-mark">l</span
-              ><span>{{ brandName }}<small>PLAY WELL</small></span></RouterLink
+            ><span class="brand-mark" :class="{ 'brand-mark-text': !displayLogoUrl && longLogoText }"><img v-if="displayLogoUrl" :src="displayLogoUrl" :alt="brandLogoText" crossorigin="anonymous" referrerpolicy="no-referrer" @error="brandLogoFailed = true" /><template v-else>{{ brandLogoText }}</template></span
+              ><span>{{ brandName }}</span></RouterLink
             >
             <div class="auth-copy">
               <div class="eyebrow">A MOMENT FOR YOU</div>
-              <h1>{{ t.welcome }}</h1>
+              <h1>{{ displayTagline }}</h1>
               <p>{{ t.subtitle }}</p>
             </div>
             <div class="auth-orbit orbit-one"></div>
@@ -1820,13 +1843,13 @@ watch(
               <div class="eyebrow">
                 <span class="eyebrow-dot"></span> YOUR DAILY MOMENT
               </div>
-              <h1>{{ t.welcome }}</h1>
+              <h1>{{ displayTagline }}</h1>
               <p>{{ t.subtitle }}</p>
               <RouterLink to="/games" class="button button-dark"
                 >{{ t.play }} <span>↗</span></RouterLink
               >
-              <div class="hero-note">
-                <span class="tiny-spark">✳</span> {{ t.announcementBody }}
+              <div v-if="displayAnnouncement" class="hero-note">
+                <span v-if="displayAnnouncement" class="tiny-spark">✳</span><template v-if="displayAnnouncement">{{ displayAnnouncement }}</template>
               </div>
             </div>
             <div class="hero-art" aria-hidden="true">
@@ -1860,12 +1883,11 @@ watch(
               @auth-expired="authProfile = null"
             />
           </section>
-          <section class="announcement">
+          <section v-if="displayAnnouncement" class="announcement">
             <div class="announcement-icon">✳</div>
             <div>
-              <div class="eyebrow">A NOTE FROM LUMA</div>
-              <h3>{{ t.announcement }}</h3>
-              <p>{{ t.announcementBody }}</p>
+              <div class="eyebrow">{{ locale === 'en' ? 'ANNOUNCEMENT' : '公告' }}</div>
+              <h3>{{ displayAnnouncement }}</h3>
             </div>
             <RouterLink
               to="/help"

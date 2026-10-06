@@ -10,11 +10,13 @@ import (
 
 	"github.com/gxfcjkxf/lottery/backend/internal/agency"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandops"
+	"github.com/gxfcjkxf/lottery/backend/internal/brandskin"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/reporting"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
+	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
 	"github.com/gxfcjkxf/lottery/backend/internal/withdrawal"
 )
 
@@ -78,10 +80,27 @@ func main() {
 	after := points.Balance{}
 	after[0][0] = 92
 	entry := points.Entry{ID: id, BrandID: id, AccountID: id, MemberID: id, EntryType: "bet", ReferenceType: "order", ReferenceID: id, OperationKey: "contract-example", Reason: "contract example", ActorType: "user", ActorID: id, RequestID: "contract-example", Version: 2, Before: before, Delta: delta, After: after, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 8}}, CreatedAt: now}
+	presentationConfig := brandskin.Config{}
+	presentationEffective, err := brandskin.Resolve("Example", presentationConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+	presentation := brandskin.Record{BrandID: id, Version: 2, Status: "active", BaseName: "Example", Config: presentationConfig, Effective: presentationEffective, UpdatedAt: now, AuditLogID: id}
+	publicTheme, err := json.Marshal(presentationEffective)
+	if err != nil {
+		log.Fatal(err)
+	}
 	values := map[string]any{
-		"AdminBrandOperation":         brandops.Record{BrandID: id, Version: 2, Name: "Example", Status: "paused", UpdatedAt: now, AuditLogID: id},
-		"AdminBrandOperationRevision": brandops.Revision{ID: id, BrandID: id, Version: 2, PreviousStatus: "active", Status: "paused", ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now},
-		"FinanceAgentCreateInput":     agentInput, "FinanceWithdrawalGameConfig": gameWithdrawal,
+		"IdentityContextBrand":             tenant.Brand{ID: id, Code: "example", Name: presentationEffective.DisplayName, Status: "active", DefaultLocale: presentationEffective.DefaultLocale, Timezone: "Asia/Manila", Theme: publicTheme, ConfigVersion: 2},
+		"AdminBrandPresentationConfig":     presentationConfig,
+		"AdminBrandPresentationEffective":  presentationEffective,
+		"AdminBrandPresentationRecord":     presentation,
+		"AdminBrandPresentationReceipt":    presentation,
+		"AdminBrandPresentationPutRequest": brandskin.Input{Version: 1, Config: presentationConfig, Reason: "contract example"},
+		"AdminBrandPresentationRevision":   brandskin.Revision{ID: id, BrandID: id, Version: 2, Config: presentationConfig, Effective: presentationEffective, ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now},
+		"AdminBrandOperation":              brandops.Record{BrandID: id, Version: 2, Name: "Example", Status: "paused", UpdatedAt: now, AuditLogID: id},
+		"AdminBrandOperationRevision":      brandops.Revision{ID: id, BrandID: id, Version: 2, PreviousStatus: "active", Status: "paused", ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now},
+		"FinanceAgentCreateInput":          agentInput, "FinanceWithdrawalGameConfig": gameWithdrawal,
 		"IdentityUser":   identity.User{ID: id, Status: "normal"},
 		"IdentityMember": identity.Member{ID: id, BrandID: id, Status: "normal", JoinedAt: now},
 		"FinanceBalance": before, "FinanceDeltaBalance": delta, "FinanceEntry": entry,

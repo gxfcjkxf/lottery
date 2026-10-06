@@ -9,6 +9,8 @@ const obj = (properties, required = [], extra = {}) => ({
 const string = (extra = {}) => ({ type: "string", ...extra });
 const integer = (extra = {}) => ({ type: "integer", format: "int64", ...extra });
 const array = (items, extra = {}) => ({ type: "array", items, ...extra });
+const nullable = (schema) => ({ anyOf: [schema, { type: "null" }] });
+const utf8String = (maxBytes, extra = {}) => string({ maxLength: maxBytes, "x-maxUtf8Bytes": maxBytes, description: `Maximum ${maxBytes} UTF-8 bytes.`, ...extra });
 const joinCode = string({ pattern: "^\\s*(?:[A-Fa-f0-9]{24})?\\s*$", description: "Empty or whitespace-only values mean not supplied; otherwise the server trims, uppercases, and requires exactly 24 hexadecimal characters." });
 const mutuallyExclusiveNonemptyJoinCodes = () => ({
   allOf: [
@@ -108,11 +110,11 @@ export const schemas = {
   IdentityAuditResult: auditResult,
   IdentityContextBrand: obj({
     id: ref("UUID"), code: string(), name: string(), status: string(), default_locale: string(), timezone: string(),
-    theme: ref("ArbitraryJSON"), config_version: integer(),
+    theme: ref("AdminBrandPresentationEffective"), config_version: integer({ minimum: 1 }),
   }, ["id", "code", "name", "status", "default_locale", "timezone", "theme", "config_version"]),
   IdentityContext: obj({
     brand: ref("IdentityContextBrand"),
-    available_locales: array(string()),
+    available_locales: array(string({ enum: ["en", "zh-CN"] }), { minItems: 1, uniqueItems: true }),
     features: obj({ pwa: { type: "boolean" }, real_payments: { type: "boolean" } }, ["pwa", "real_payments"]),
     auth: obj({ captcha_enabled: { type: "boolean" }, telegram_enabled: { type: "boolean" }, telegram_client_id: string() }, ["captcha_enabled", "telegram_enabled"]),
     terms: obj({ privacy_policy_version: string(), service_terms_version: string() }, ["privacy_policy_version", "service_terms_version"]),
@@ -196,6 +198,49 @@ export const schemas = {
     status: string({ enum: ["active", "paused"] }), changed_by: ref("UUID"), reason: ref("Reason"), audit_log_id: ref("UUID"), created_at: ref("DateTime"),
   }, ["id", "brand_id", "version", "previous_status", "status", "changed_by", "reason", "audit_log_id", "created_at"]),
   AdminBrandOperationHistory: obj({ items: array(ref("AdminBrandOperationRevision")), limit: integer({ minimum: 1, maximum: 100 }), offset: integer({ minimum: 0 }) }, ["items", "limit", "offset"]),
+  AdminBrandPresentationLocaleText: obj({ tagline: nullable(utf8String(160)), announcement: nullable(utf8String(2000, { description: "Maximum 2000 UTF-8 bytes; rendered as plain text, never as markup." })) }, ["tagline", "announcement"]),
+  AdminBrandPresentationContent: obj({ en: ref("AdminBrandPresentationLocaleText"), "zh-CN": ref("AdminBrandPresentationLocaleText") }, ["en", "zh-CN"]),
+  AdminBrandPresentationConfig: obj({
+    display_name: nullable(utf8String(80)),
+    logo_text: nullable(utf8String(32)),
+    logo_url: nullable(utf8String(512, { description: "Maximum 512 UTF-8 bytes. Allowed assets end in .png, .jpg, .jpeg, .webp, or .ico; SVG is not accepted. Use either HTTPS with a syntactically valid DNS hostname (not an IP address, localhost, or a local hostname), with no port, user info, query, or fragment, or a /icons/ or /brand-assets/ relative path without query or fragment. The server validates hostname syntax but does not resolve DNS or guarantee a public IP. Values may not have surrounding whitespace, backslashes, percent signs, CR/LF/tab, or a '..' sequence." })),
+    favicon_url: nullable(utf8String(512, { description: "Maximum 512 UTF-8 bytes. Allowed assets end in .png, .jpg, .jpeg, .webp, or .ico; SVG is not accepted. Use either HTTPS with a syntactically valid DNS hostname (not an IP address, localhost, or a local hostname), with no port, user info, query, or fragment, or a /icons/ or /brand-assets/ relative path without query or fragment. The server validates hostname syntax but does not resolve DNS or guarantee a public IP. Values may not have surrounding whitespace, backslashes, percent signs, CR/LF/tab, or a '..' sequence." })),
+    primary_color: nullable(string({ pattern: "^#[A-Fa-f0-9]{6}$" })),
+    accent_color: nullable(string({ pattern: "^#[A-Fa-f0-9]{6}$" })),
+    success_color: nullable(string({ pattern: "^#[A-Fa-f0-9]{6}$" })),
+    warning_color: nullable(string({ pattern: "^#[A-Fa-f0-9]{6}$" })),
+    danger_color: nullable(string({ pattern: "^#[A-Fa-f0-9]{6}$" })),
+    font_family: nullable(string({ enum: ["system", "serif", "mono"] })),
+    font_scale: nullable(string({ enum: ["compact", "standard", "large"] })),
+    radius: nullable(string({ enum: ["square", "soft", "round"] })),
+    shadow: nullable(string({ enum: ["none", "subtle", "lifted"] })),
+    default_locale: nullable(string({ enum: ["en", "zh-CN"] })),
+    available_locales: nullable(array(string({ enum: ["en", "zh-CN"] }), { minItems: 1, uniqueItems: true })),
+    content: nullable(ref("AdminBrandPresentationContent")),
+  }, ["display_name", "logo_text", "logo_url", "favicon_url", "primary_color", "accent_color", "success_color", "warning_color", "danger_color", "font_family", "font_scale", "radius", "shadow", "default_locale", "available_locales", "content"], { description: "Every key is required. Null means inherit the brand's base value. The server rejects unknown keys, malformed URLs, invalid enum values, and strings exceeding their stated UTF-8 byte limits." }),
+  AdminBrandPresentationEffective: obj({
+    display_name: string(), logo_text: string(), logo_url: nullable(string()), favicon_url: nullable(string()),
+    primary_color: string({ pattern: "^#[A-Fa-f0-9]{6}$" }), accent_color: string({ pattern: "^#[A-Fa-f0-9]{6}$" }),
+    success_color: string({ pattern: "^#[A-Fa-f0-9]{6}$" }), warning_color: string({ pattern: "^#[A-Fa-f0-9]{6}$" }), danger_color: string({ pattern: "^#[A-Fa-f0-9]{6}$" }),
+    font_family: string({ enum: ["system", "serif", "mono"] }), font_scale: string({ enum: ["compact", "standard", "large"] }),
+    radius: string({ enum: ["square", "soft", "round"] }), shadow: string({ enum: ["none", "subtle", "lifted"] }),
+    default_locale: string({ enum: ["en", "zh-CN"] }), available_locales: array(string({ enum: ["en", "zh-CN"] }), { minItems: 1, uniqueItems: true }),
+    content: obj({ en: obj({ tagline: string(), announcement: string() }, ["tagline", "announcement"]), "zh-CN": obj({ tagline: string(), announcement: string() }, ["tagline", "announcement"]) }, ["en", "zh-CN"]),
+  }, ["display_name", "logo_text", "logo_url", "favicon_url", "primary_color", "accent_color", "success_color", "warning_color", "danger_color", "font_family", "font_scale", "radius", "shadow", "default_locale", "available_locales", "content"], { description: "Fully resolved values: all fields except logo_url and favicon_url are non-null. Content always contains both supported locales with non-null tagline and announcement strings." }),
+  AdminBrandPresentationRecord: obj({
+    brand_id: ref("UUID"), version: integer({ minimum: 1 }), status: string({ enum: ["active", "paused", "disabled"] }), base_name: string(),
+    config: ref("AdminBrandPresentationConfig"), effective: ref("AdminBrandPresentationEffective"), updated_at: ref("DateTime"), audit_log_id: ref("UUID"),
+  }, ["brand_id", "version", "status", "base_name", "config", "effective", "updated_at"]),
+  AdminBrandPresentationReceipt: obj({
+    brand_id: ref("UUID"), version: integer({ minimum: 1 }), status: string({ enum: ["active", "paused", "disabled"] }), base_name: string(),
+    config: ref("AdminBrandPresentationConfig"), effective: ref("AdminBrandPresentationEffective"), updated_at: ref("DateTime"), audit_log_id: ref("UUID"),
+  }, ["brand_id", "version", "status", "base_name", "config", "effective", "updated_at", "audit_log_id"]),
+  AdminBrandPresentationPutRequest: obj({ version: integer({ minimum: 1 }), config: ref("AdminBrandPresentationConfig"), reason: ref("Reason") }, ["version", "config", "reason"]),
+  AdminBrandPresentationRevision: obj({
+    id: ref("UUID"), brand_id: ref("UUID"), version: integer({ minimum: 1 }), config: ref("AdminBrandPresentationConfig"), effective: ref("AdminBrandPresentationEffective"),
+    changed_by: ref("UUID"), reason: ref("Reason"), audit_log_id: ref("UUID"), created_at: ref("DateTime"),
+  }, ["id", "brand_id", "version", "config", "effective", "changed_by", "reason", "audit_log_id", "created_at"]),
+  AdminBrandPresentationHistory: obj({ items: array(ref("AdminBrandPresentationRevision")), limit: integer({ minimum: 1, maximum: 100 }), offset: integer({ minimum: 0, maximum: 1000000 }) }, ["items", "limit", "offset"]),
 };
 
 const op = (method, path, operationId, summary, tag, auth, idempotency, data, extra = {}) => ({
@@ -241,4 +286,7 @@ export const operations = [
   op("GET", "/api/v1/admin/brand-operation", "getAdminBrandOperation", "Get the selected brand's operating status", "administration", "admin", false, ref("AdminBrandOperation"), { brandHeader: true, permissions: ["brand_operation.view.brand", "brand_operation.view.platform"], description: "Requires an explicit brand_operation.view.brand grant for the selected brand or brand_operation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. The selected brand is identified only by X-Brand-ID." }),
   op("PATCH", "/api/v1/admin/brand-operation", "updateAdminBrandOperation", "Pause or resume the selected brand", "administration", "admin", true, ref("AdminBrandOperation"), { requestBody: ref("AdminBrandOperationUpdateRequest"), brandHeader: true, permissions: ["brand_operation.write.brand", "brand_operation.write.platform"], description: "Requires an explicit brand_operation.write.brand grant for the selected brand or brand_operation.write.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Idempotent replay returns the original successful receipt (200), which may describe an older version after later writes; issue GET to retrieve current state. Version conflicts return 409 CONFIG_VERSION_CONFLICT; brand operation shares the configuration version with brand and authentication configuration updates. The selected brand is identified only by X-Brand-ID." }),
   op("GET", "/api/v1/admin/brand-operation/history", "listAdminBrandOperationHistory", "List operating-status revisions for the selected brand", "administration", "admin", false, ref("AdminBrandOperationHistory"), { brandHeader: true, parameters: [{ name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }, description: "Page size (default 20; maximum 100)." }, { name: "offset", in: "query", required: false, schema: { type: "integer", minimum: 0, maximum: 1000000, default: 0 }, description: "Number of revisions to skip (maximum 1000000)." }], permissions: ["brand_operation.view.brand", "brand_operation.view.platform"], description: "Requires an explicit brand_operation.view.brand grant for the selected brand or brand_operation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Returns newest revisions first for the brand selected by X-Brand-ID; there is no brand-ID path alias. Unknown or repeated query parameters are rejected." }),
+  op("GET", "/api/v1/admin/brand-presentation", "getAdminBrandPresentation", "Get brand presentation configuration", "administration", "admin", false, ref("AdminBrandPresentationRecord"), { brandHeader: true, permissions: ["brand_presentation.view.brand", "brand_presentation.view.platform"], description: "Requires an explicit brand_presentation.view.brand grant for the selected brand or brand_presentation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Returns the stored nullable overrides and the fully resolved effective configuration for the brand selected only by X-Brand-ID. Disabled brands are read-only; no brand-ID path alias is accepted." }),
+  op("PUT", "/api/v1/admin/brand-presentation", "updateAdminBrandPresentation", "Update brand presentation configuration", "administration", "admin", true, ref("AdminBrandPresentationReceipt"), { requestBody: ref("AdminBrandPresentationPutRequest"), brandHeader: true, permissions: ["brand_presentation.write.brand", "brand_presentation.write.platform"], description: "Requires an explicit brand_presentation.write.brand grant for the selected brand or brand_presentation.write.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. The request config is validated as a whole and must match version, which shares brands.config_version and may advance for other brand/auth changes; a successful update returns version before+1 and the matching submitted config. Version conflicts return 409 BRAND_PRESENTATION_VERSION_CONFLICT. A same-key cached replay returns the original receipt, which may be older than current state; issue GET after replay or an uncertain acknowledgment. Disabled brands are read-only. Authorization and the disabled-brand check apply on replay too." }),
+  op("GET", "/api/v1/admin/brand-presentation/history", "listAdminBrandPresentationHistory", "List brand presentation revisions", "administration", "admin", false, ref("AdminBrandPresentationHistory"), { brandHeader: true, parameters: [{ name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }, description: "Page size (default 20; maximum 100)." }, { name: "offset", in: "query", required: false, schema: { type: "integer", minimum: 0, maximum: 1000000, default: 0 }, description: "Number of revisions to skip (maximum 1000000)." }], permissions: ["brand_presentation.view.brand", "brand_presentation.view.platform"], description: "Requires an explicit brand_presentation.view.brand grant for the selected brand or brand_presentation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Returns newest presentation revisions first for the brand selected only by X-Brand-ID. Versions may have gaps because the version is shared with other brand/auth configuration. Unknown or repeated query parameters are rejected; no brand-ID path alias is accepted." }),
 ];
