@@ -19,6 +19,8 @@ import BetPolicySettings from "./BetPolicySettings.vue";
 import PeriodCancellation from "./PeriodCancellation.vue";
 const SettlementManagement = defineAsyncComponent(() => import("./SettlementManagement.vue"));
 const CorrectionManagement = defineAsyncComponent(() => import("./CorrectionManagement.vue"));
+const NotificationDeliveries = defineAsyncComponent(() => import("./NotificationDeliveries.vue"));
+import { clearAllPendingDeliveryRetries } from "./notification-delivery-state";
 const RuleVersions = defineAsyncComponent(() => import("./RuleVersions.vue"));
 const WithdrawalPolicySettings = defineAsyncComponent(
   () => import("./WithdrawalPolicySettings.vue"),
@@ -54,7 +56,8 @@ type Page =
   | "佣金和奖励"
   | "报表和对账"
   | "账号与权限"
-  | "审计日志";
+  | "审计日志"
+  | "通知投递";
 const nav: { name: Page; icon: string; group: string }[] = [
   { name: "工作台", icon: "▦", group: "概览" },
   { name: "品牌和域名", icon: "◇", group: "平台" },
@@ -68,6 +71,7 @@ const nav: { name: Page; icon: string; group: string }[] = [
   { name: "报表和对账", icon: "▥", group: "管理" },
   { name: "账号与权限", icon: "♧", group: "管理" },
   { name: "审计日志", icon: "≡", group: "管理" },
+  { name: "通知投递", icon: "♧", group: "管理" },
 ];
 const page = ref<Page>("工作台");
 const demoBrand = ref("Aurora");
@@ -218,6 +222,7 @@ const statusClass = (status: MemberStatus) =>
 const apiErrorText = (error: unknown) =>
   error instanceof Error ? error.message : "请求失败，请重试";
 const clearAdminData = () => {
+  clearAllPendingDeliveryRetries();
   correctionSettlementPeriod.value = null;
   account.value = null;
   adminBrands.value = [];
@@ -685,6 +690,7 @@ const ledger = [
             v-if="
               page !== '用户和成员' &&
               page !== '审计日志' &&
+              page !== '通知投递' &&
               page !== '资金与账本' &&
               page !== '账号与权限'
             "
@@ -703,9 +709,9 @@ const ledger = [
           ><button
             class="icon-button"
             aria-label="通知"
-            @click="toast('当前没有新的演示通知')"
+            @click="go('通知投递')"
           >
-            ♧<i class="notification-dot"></i></button
+            ♧</button
           ><span class="top-divider"></span
           ><button class="help-button" @click="toast('帮助中心为演示入口')">
             帮助中心 ↗
@@ -717,6 +723,7 @@ const ledger = [
           showDemoNotice &&
           page !== '用户和成员' &&
           page !== '审计日志' &&
+          page !== '通知投递' &&
           page !== '资金与账本' &&
           page !== '注单和异常' &&
           page !== '账号与权限'
@@ -2356,6 +2363,15 @@ const ledger = [
         </div>
       </section>
 
+      <section v-else-if="page === '通知投递'" class="page-content">
+        <NotificationDeliveries v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
+          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+        <div v-else class="panel directory-state"><h1>通知投递</h1>
+          <p>{{ account ? '请先选择真实后台品牌。' : '请先登录后台账号，才能查看真实投递记录。' }}</p>
+          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">进入管理员登录</button>
+        </div>
+      </section>
+
       <section v-else class="page-content">
         <div class="page-heading">
           <div>
@@ -2432,6 +2448,8 @@ const ledger = [
         ><span>{{
           page === "用户和成员" && account
             ? "成员创建与管理为真实操作；投注已接入，提现仍为演示。"
+            : page === "通知投递" && account
+              ? "真实站内通知投递记录；外部发送渠道尚未接入。"
             : page === "审计日志" && account
               ? "审计日志为真实后台数据；投注已接入，提现仍为演示。"
               : page === "账号与权限" && account

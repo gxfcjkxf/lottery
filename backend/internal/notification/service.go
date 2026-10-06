@@ -225,13 +225,18 @@ func positive(v *string) bool {
 }
 func validateEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate string, raw []byte) (string, Payload, error) {
 	var in struct {
-		MemberID   string  `json:"member_id"`
-		ResourceID string  `json:"resource_id"`
-		OrderID    string  `json:"order_id"`
-		Points     *string `json:"points"`
-		Status     string  `json:"status"`
-		Version    int64   `json:"version"`
-		PeriodID   string  `json:"period_id"`
+		MemberID              string  `json:"member_id"`
+		ResourceID            string  `json:"resource_id"`
+		OrderID               string  `json:"order_id"`
+		Points                *string `json:"points"`
+		Status                string  `json:"status"`
+		Version               int64   `json:"version"`
+		PeriodID              string  `json:"period_id"`
+		CalculationID         string  `json:"calculation_id"`
+		PayoutEntryID         string  `json:"payout_entry_id"`
+		JobID                 string  `json:"job_id"`
+		CorrectionID          string  `json:"correction_id"`
+		OriginalPayoutEntryID string  `json:"original_payout_entry_id"`
 	}
 	if json.Unmarshal(raw, &in) != nil || !uuid.MatchString(brand) || !uuid.MatchString(in.MemberID) || !uuid.MatchString(aggregate) {
 		return "", Payload{}, ErrInvalid
@@ -256,6 +261,46 @@ func validateEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate string
 		}
 		var ok bool
 		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM recharge_orders WHERE brand_id=$1 AND id=$2 AND member_id=$3 AND state='confirmed' AND points=$4::bigint)`, brand, aggregate, in.MemberID, *in.Points).Scan(&ok)
+		if err != nil {
+			return "", p, err
+		}
+		if !ok {
+			return "", p, ErrInvalid
+		}
+	case "bet.order.won", "bet.order.prize_reversed":
+		if in.OrderID != aggregate || !positive(in.Points) || !uuid.MatchString(in.CalculationID) || !uuid.MatchString(in.PayoutEntryID) || !uuid.MatchString(in.JobID) || !uuid.MatchString(in.PeriodID) {
+			return "", p, ErrInvalid
+		}
+		var ok bool
+		var err error
+		if kind == "bet.order.won" {
+			if in.CorrectionID != "" || in.OriginalPayoutEntryID != "" {
+				return "", p, ErrInvalid
+			}
+			err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM settlement_calculations c
+ JOIN bet_orders o ON o.id=c.order_id AND o.brand_id=c.brand_id
+ JOIN settlement_targets t ON t.job_id=c.job_id AND t.order_id=c.order_id AND t.calculation_id=c.id AND t.state='paid'
+ JOIN point_ledger_entries l ON l.id=t.payout_entry_id AND l.brand_id=c.brand_id AND l.member_id=o.brand_member_id
+ WHERE c.brand_id=$1 AND c.order_id=$2 AND o.brand_member_id=$3 AND c.prize_points=$4::text::bigint AND c.won
+ AND c.id=$5 AND l.id=$6 AND c.job_id=$7 AND c.period_id=$8
+ AND l.entry_type='prize' AND l.reference_type='settlement_calculation' AND l.reference_id=c.id AND l.reversal_of IS NULL
+ AND l.delta_snapshot->'winning'->>'available'=$4::text)`, brand, aggregate, in.MemberID, *in.Points, in.CalculationID, in.PayoutEntryID, in.JobID, in.PeriodID).Scan(&ok)
+		} else {
+			if !uuid.MatchString(in.CorrectionID) || !uuid.MatchString(in.OriginalPayoutEntryID) {
+				return "", p, ErrInvalid
+			}
+			err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM draw_correction_targets t
+ JOIN draw_corrections d ON d.id=t.correction_id AND d.brand_id=t.brand_id
+ JOIN bet_orders o ON o.id=t.order_id AND o.brand_id=t.brand_id
+ JOIN point_ledger_entries l ON l.id=t.reversal_entry_id AND l.brand_id=t.brand_id AND l.member_id=o.brand_member_id
+ JOIN point_ledger_entries original ON original.id=t.old_payout_entry_id AND original.brand_id=t.brand_id AND original.member_id=o.brand_member_id
+ WHERE t.brand_id=$1 AND t.order_id=$2 AND o.brand_member_id=$3 AND t.old_prize_points=$4::text::bigint AND t.state='reversed'
+ AND t.old_calculation_id=$5 AND l.id=$6 AND d.previous_job_id=$7 AND d.period_id=$8 AND d.id=$9 AND original.id=$10
+ AND l.entry_type='prize_reversal' AND l.reference_type='draw_correction' AND l.reference_id=d.id AND l.reversal_of=original.id
+ AND original.entry_type='prize' AND original.reference_type='settlement_calculation' AND original.reference_id=t.old_calculation_id
+ AND original.delta_snapshot->'winning'->>'available'=$4::text
+ AND l.delta_snapshot->'winning'->>'available'=('-'||$4::text))`, brand, aggregate, in.MemberID, *in.Points, in.CalculationID, in.PayoutEntryID, in.JobID, in.PeriodID, in.CorrectionID, in.OriginalPayoutEntryID).Scan(&ok)
+		}
 		if err != nil {
 			return "", p, err
 		}

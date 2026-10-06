@@ -6,7 +6,9 @@ export type NotificationEventType =
   | "bet.order.placed"
   | "bet.order.cancelled"
   | "bet.order.judged_cancelled"
-  | "bet.order.abnormal";
+  | "bet.order.abnormal"
+  | "bet.order.won"
+  | "bet.order.prize_reversed";
 
 export interface NotificationItem {
   id: string;
@@ -69,6 +71,8 @@ const EVENT_TYPES = new Set<NotificationEventType>([
   "bet.order.cancelled",
   "bet.order.judged_cancelled",
   "bet.order.abnormal",
+  "bet.order.won",
+  "bet.order.prize_reversed",
 ]);
 
 function malformed(message: string): never {

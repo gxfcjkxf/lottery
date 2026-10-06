@@ -102,6 +102,43 @@ describe("user notification API", () => {
     }
   });
 
+  it("parses historical prize events with UUID order references and positive canonical int64 strings", async () => {
+    const won = {
+      ...joined,
+      event_type: "bet.order.won",
+      template_key: "bet.order.won",
+      payload: { resource_id: resourceId, points: "9223372036854775807" },
+    };
+    const reversed = {
+      ...joined,
+      id: "cd333333-3333-4333-8333-333333333333",
+      event_type: "bet.order.prize_reversed",
+      template_key: "bet.order.prize_reversed",
+      payload: { resource_id: resourceId, points: "9007199254740993" },
+    };
+    const invalidItems = [
+      { ...won, template_version: 2 },
+      { ...won, payload: { ...won.payload, resource_id: "order-42" } },
+      { ...won, payload: { ...won.payload, points: 0 } },
+      { ...won, payload: { ...won.payload, points: "0" } },
+      { ...won, payload: { ...won.payload, points: "01" } },
+      { ...won, payload: { ...won.payload, points: "9223372036854775808" } },
+    ];
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(ok(page({ items: [won, reversed] })))
+      .mockImplementation(async () => ok(page({ items: [invalidItems.shift()] })));
+    const api = createNotificationApi({ fetch: fetcher });
+
+    const parsed = await api.list();
+    expect(parsed.items.map(({ event_type, payload }) => [event_type, payload])).toEqual([
+      ["bet.order.won", { resource_id: resourceId, points: "9223372036854775807" }],
+      ["bet.order.prize_reversed", { resource_id: resourceId, points: "9007199254740993" }],
+    ]);
+    for (let index = 0; index < 6; index++) {
+      await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
+    }
+  });
+
   it("enforces backend page bounds, page size and minimum unread count", async () => {
     const fetcher = vi
       .fn<typeof fetch>()

@@ -522,9 +522,9 @@ S4-d 管理端六个快捷模板与通用可视化编辑器并存；通用模式
 
 GET 保留历史证据，current 是该计算的注单/期次版本与当前指针仍相同，不是已结算或可支付保证。幂等成功缓存中的 current 可能是历史值，客户端拿到直接匹配回执后必须重新 GET 当前记录；GET 失败显示“已保存但读取失败”，不能把已收到有效回执降为未知。丢失回执才保留精确 body/context/key；读到同样历史不能解除未知意图。
 
-正式整期结算、派奖、结算任务失败重试与已结算结果回溯仍未实现；这些不是本预览接口的隐式后续动作。
+正式整期结算、派奖、结算任务失败重试与已结算结果回溯已通过专用合同接入；这些不是本预览接口的隐式后续动作。
 
-## 4.2 S6-b 已实现的站内通知
+## 4.2 S6-b/S6-c 已实现的站内通知
 
 用户路径同时支持 `/api/v1` 和 `/api/v1/b/{brandCode}`；账户从实际品牌会话解析，禁止客户端指定目标会员。读取和写入均走主库。
 
@@ -535,7 +535,9 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 | GET | /admin/notification-deliveries | 品牌内投递状态分页；显式 `notification.view.brand/platform` 与查询审计 |
 | POST | /admin/notification-deliveries/{event_id}/retry | `{attempt_count:整数,reason:非空文本}`；仅 failed 状态，显式 `notification.retry.brand`，超管禁止 |
 
-列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version:1,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。当前事件/模板固定为 `member.joined`、`recharge.confirmed`、`bet.order.placed/cancelled/judged_cancelled/abnormal`；除入品牌通知外积分是规范正 int64 字符串。
+列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version:1,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。当前事件/模板固定为 `member.joined`、`recharge.confirmed`、`bet.order.placed/cancelled/judged_cancelled/abnormal/won/prize_reversed`；除入品牌通知外积分是规范正 int64 字符串。
+
+`won` 仅在实际正额中奖入账事务中生成，points 是实派奖金额而非下注金额；待批准的核算、零额及未中奖不生成此消息。`prize_reversed` 仅在实际全额冲回旧 prize 的事务生成，points 为原正额奖金；来源不足、回滚和零额不会生成。resource_id 都是注单 ID；私有 outbox 另保存 calculation/ledger/job/correction 引用，消费者校验同品牌同会员不可变目标与账本，而非注单当前 won 状态。延迟消费在更正后仍能验证旧入账，原通知不会删除/覆盖；新代次再中奖是新的独立消息。双语文案明确历史入账/冲正事实不代表当前钱包余额或最终中奖状态。不制造迁移前的历史奖金通知。
 
 已读回执 `{brand_id,member_id,ids,changed,unread_count}`，ids 顺序等于请求。重复读不改原读时间；任一消息不属于账户或不存在则整批 404、不做部分写入。当前 UI 明确为“本页标为已读”，只处理本次已加载编号；新到消息不会被无界 UPDATE 误吞。其他页可分页继续处理。
 
@@ -543,7 +545,9 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 
 投递列表只公开运行状态、次数、安全错误码及时间，不公开原始事件/内部业务材料。正常数据库错误自动退避 2/4/8/16 秒后第 5 次失败终止；无效业务事件立即 failed，不确认消费。人工重试保留累计次数和旧错误，成功后清除最后错误。人工重试及查询可由 request ID/审计追溯。
 
-尚未接入开奖受众/中奖/提现事件、外部渠道及后台投递查询 UI；不得伪造这些通知或把开奖结果展示当作中奖证据。
+管理投递列表数据 `{items:[{event_id,brand_id,status,attempt_count,last_error,next_attempt_at,sent_at}]}`；status 为 pending/sent/failed，sent_at 仅 sent 非空。重试回执仍为首次 pending、次数不变，保留 last_error；累计次数和只读最新状态可以已推进，不能把缓存回执当作已投递。S6-c 后台铃铛和“通知投递”菜单接入查询、分页及失败项原因/二次确认/同键恢复；未知意图按账号＋品牌保存在页内内存，刷新列表/切换页面不解除，退出或会话失效清除，不写浏览器持久存储。
+
+尚未接入开奖受众/提现事件、外部渠道及运营模板编辑；不得伪造这些通知或把开奖结果展示当作中奖证据。
 
 ## 5. 错误码
 

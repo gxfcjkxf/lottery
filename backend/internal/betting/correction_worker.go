@@ -163,6 +163,15 @@ func (s Service) reverseCorrectionTarget(ctx context.Context, id, brand, period 
 		if err = appendEvent(ctx, tx, o, "bet.order.settlement_reversed"); err != nil {
 			return
 		}
+		if t.OldPrizePoints > 0 {
+			if t.OldCalculationID == nil || c.PreviousJobID == nil {
+				return false, failure, points.ErrCorrupt
+			}
+			err = appendPrizeEvent(ctx, tx, o, "bet.order.prize_reversed", *t.OldCalculationID, entryID, *c.PreviousJobID, c.ID, *t.OldPayoutEntryID, t.OldPrizePoints)
+			if err != nil {
+				return
+			}
+		}
 		_, err = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "system", Action: "draw.correction.reverse", ResourceType: "bet_order", ResourceID: o.ID, Reason: "original prize reversed before new calculation", RequestID: "correction:" + id, Before: map[string]any{"version": before.Version, "status": before.Status, "calculation_id": before.SettlementCalculationID, "payout_entry_id": before.PayoutEntryID, "prize_points": before.PrizePoints}, After: map[string]any{"correction_id": id, "version": o.Version, "status": o.Status, "reversal_entry_id": entryID}})
 	} else {
 		return false, failure, ErrVersion

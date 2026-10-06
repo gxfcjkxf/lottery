@@ -42,6 +42,14 @@ const copy = {
       title: "Order needs review",
       body: "Your order needs manual review. Points involved: {points}.",
     },
+    "bet.order.won": {
+      title: "Prize credit recorded",
+      body: "Historical record: {points} points were credited as this order's prize. This records the credit, not your current wallet balance or a guaranteed final outcome. Any correction will appear as a separate prize event; this record is retained.",
+    },
+    "bet.order.prize_reversed": {
+      title: "Prize reversal recorded",
+      body: "Historical record: the full original prize amount of {points} points for this order was reversed. This records the reversal, not your current wallet balance. Any later prize correction will appear as a separate event; this record is retained.",
+    },
   },
   zh: {
     "member.joined": { title: "欢迎", body: "您的会员账户已准备就绪，欢迎加入。" },
@@ -58,6 +66,14 @@ const copy = {
     "bet.order.abnormal": {
       title: "注单待人工处理",
       body: "您的注单需要人工处理，涉及积分：{points}。",
+    },
+    "bet.order.won": {
+      title: "派奖入账记录",
+      body: "历史记录：此注单的 {points} 积分奖金已记入账本。此记录仅表示该笔入账，不代表当前钱包余额，也不保证最终结果。任何更正都会作为单独的奖金事件记录；此记录会保留。",
+    },
+    "bet.order.prize_reversed": {
+      title: "奖金冲正记录",
+      body: "历史记录：此注单原奖金全额 {points} 积分已冲回。此记录仅表示该笔冲正，不代表当前钱包余额。之后如有奖金更正，会作为单独事件记录；此记录会保留。",
     },
   },
 } as const;

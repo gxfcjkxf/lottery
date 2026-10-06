@@ -300,4 +300,44 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   const dimensions = await adminPage.evaluate(() => ({ documentWidth: document.documentElement.scrollWidth, viewportWidth: document.documentElement.clientWidth }));
   expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth);
   await adminPage.screenshot({ path: info.outputPath("s5-c3-correction.png"), fullPage: true });
+
+  // The inbox records actual wallet postings, not calculation previews or the
+  // current order projection (which is now lost with zero winning balance).
+  type Message = {id:string;event_type:string;payload:{resource_id:string;points:string|null}};
+  await expect.poll(async()=>{
+    const inbox=await publicApi<{items:Message[]}>(page.request,"/notifications?limit=100",userToken);
+    return inbox.items.filter(n=>["bet.order.won","bet.order.prize_reversed"].includes(n.event_type)).length;
+  }).toBe(2);
+  const inboxFacts=await publicApi<{items:Message[]}>(page.request,"/notifications?limit=100",userToken);
+  const prizeFacts=inboxFacts.items.filter(n=>["bet.order.won","bet.order.prize_reversed"].includes(n.event_type));
+  expect(prizeFacts.map(n=>n.event_type).sort()).toEqual(["bet.order.prize_reversed","bet.order.won"]);
+  for(const fact of prizeFacts) expect(fact.payload).toEqual({resource_id:order.id,points:"10"});
+
+  const userCookies=(await context.cookies(publicBase)).filter(c=>c.name===`lottery_user_${brandId.replaceAll("-","")}`);
+  expect(userCookies).toHaveLength(1);
+  await context.addCookies(userCookies.map(c=>({...c,domain:"harbor.localhost"})));
+  await page.route("http://harbor.localhost:5173/api/**",async route=>{
+    const response=await route.fetch({url:route.request().url().replace("harbor.localhost","localhost"),headers:{...(await route.request().allHeaders()),host:"harbor.localhost:5173"}});
+    await route.fulfill({response});
+  });
+  await page.goto("http://harbor.localhost:5173/notifications");
+  const inboxPanel=page.locator(".notifications-panel");
+  await expect(inboxPanel.getByRole("heading",{name:"Prize credit recorded",exact:true})).toBeVisible();
+  await expect(inboxPanel.getByRole("heading",{name:"Prize reversal recorded",exact:true})).toBeVisible();
+  await expect(inboxPanel).toContainText("not your current wallet balance");
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await inboxPanel.screenshot({path:info.outputPath("s6-c-prize-inbox.png")});
+
+  await adminPage.getByRole("button",{name:"通知",exact:true}).click();
+  const deliveries=adminPage.locator(".notification-deliveries");
+  await expect(deliveries.getByRole("heading",{name:"通知投递记录",exact:true})).toBeVisible();
+  await expect(deliveries.locator(".status-sent").first()).toBeVisible();
+  await deliveries.getByRole("button",{name:"只读刷新通知投递记录",exact:true}).click();
+  await expect(deliveries.locator(".status-sent").first()).toBeVisible();
+  expect(await adminPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await deliveries.screenshot({path:info.outputPath("s6-c-deliveries.png")});
+  expect(pageErrors).toEqual([]);
+  // Drain the host-preserving real fetch callback before fixture teardown. The
+  // user shell can refresh /me concurrently when another tab restores a session.
+  await page.unrouteAll({behavior:"wait"});
 });

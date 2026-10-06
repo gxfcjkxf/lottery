@@ -12,6 +12,8 @@ const events = [
   "bet.order.cancelled",
   "bet.order.judged_cancelled",
   "bet.order.abnormal",
+  "bet.order.won",
+  "bet.order.prize_reversed",
 ];
 
 function item(event_type: string, template_version = 1): NotificationPresentationItem {
@@ -42,6 +44,34 @@ describe("notification presentation", () => {
     const chinese = renderNotification(item("bet.order.abnormal"), "zh");
     expect(english.body).not.toMatch(/win|payout|prize/i);
     expect(chinese.body).not.toMatch(/中奖|派奖/);
+  });
+
+  it("presents prize credits and reversals as retained historical ledger events", () => {
+    const wonEn = renderNotification(item("bet.order.won"), "en");
+    const reversedEn = renderNotification(item("bet.order.prize_reversed"), "en");
+    expect(wonEn.body).toContain("Historical record");
+    expect(wonEn.body).toContain("were credited");
+    expect(wonEn.body).toContain("not your current wallet balance");
+    expect(wonEn.body).toContain("or a guaranteed final outcome");
+    expect(wonEn.body).toContain("separate prize event");
+    expect(wonEn.body).toContain("this record is retained");
+    expect(reversedEn.body).toContain("full original prize amount");
+    expect(reversedEn.body).toContain("not your current wallet balance");
+    expect(reversedEn.body).toContain("separate event");
+    expect(reversedEn.body).toContain("this record is retained");
+
+    const wonZh = renderNotification(item("bet.order.won"), "zh");
+    const reversedZh = renderNotification(item("bet.order.prize_reversed"), "zh");
+    expect(wonZh.body).toContain("历史记录");
+    expect(wonZh.body).toContain("不代表当前钱包余额");
+    expect(wonZh.body).toContain("不保证最终结果");
+    expect(wonZh.body).toContain("单独的奖金事件");
+    expect(wonZh.body).toContain("此记录会保留");
+    expect(reversedZh.body).toContain("原奖金全额");
+    expect(reversedZh.body).toContain("已冲回");
+    expect(reversedZh.body).toContain("不代表当前钱包余额");
+    expect(reversedZh.body).toContain("单独事件");
+    expect(reversedZh.body).toContain("此记录会保留");
   });
 
   it.each(["zh", "en"] as const)("renders exact points and business references in %s", (locale) => {

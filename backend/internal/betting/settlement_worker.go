@@ -288,6 +288,9 @@ func (s Service) processSettlement(ctx context.Context, id, brand, period string
 		if err == nil {
 			err = appendEvent(ctx, tx, o, "bet.order.settled")
 		}
+		if err == nil && prize > 0 {
+			err = appendPrizeEvent(ctx, tx, o, "bet.order.won", calc, entryID, j.ID, "", "", prize)
+		}
 		if err == nil {
 			_, err = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "system", Action: "settlement.payout", ResourceType: "bet_order", ResourceID: o.ID, Reason: "integer winning points applied", RequestID: "settlement:" + j.ID, After: map[string]any{"job_id": j.ID, "calculation_id": calc, "prize_points": prize, "payout_entry_id": entryID, "status": status}})
 		}
