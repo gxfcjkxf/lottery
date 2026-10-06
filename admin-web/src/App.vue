@@ -11,6 +11,7 @@ import PeriodSchedules from "./PeriodSchedules.vue";
 import DrawManagement from "./DrawManagement.vue";
 import BetOrderManagement from "./BetOrderManagement.vue";
 import BetPolicySettings from "./BetPolicySettings.vue";
+import PeriodCancellation from "./PeriodCancellation.vue";
 import {
   previewCorrection,
   resolveWithdrawal,
@@ -1786,6 +1787,13 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '期次和开奖'" class="page-content">
+        <PeriodCancellation
+          v-if="account && selectedBrandId"
+          :key="`period-cancel-${account.id}`"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
         <PeriodSchedules
           v-if="account && selectedBrandId"
           :key="`periods-${selectedBrandId}`"

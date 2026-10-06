@@ -444,7 +444,6 @@ func (s Service) cancel(ctx context.Context, tx pgx.Tx, brand, member, id string
 	if o.Status != "placed" && !(admin && o.Status == "abnormal") {
 		return o, ErrState
 	}
-	beforeStatus := o.Status
 	if !admin {
 		if session == nil {
 			return o, ErrDenied
@@ -463,6 +462,21 @@ func (s Service) cancel(ctx context.Context, tx pgx.Tx, brand, member, id string
 			return o, ErrClosed
 		}
 	}
+	return s.refundLocked(ctx, tx, o, "bet_cancelled", reason, meta)
+}
+
+// Caller holds game/period, account and order locks. Both cancellation paths
+// share the exact original debit reversal and immutable refund evidence.
+func (s Service) refundLocked(ctx context.Context, tx pgx.Tx, o Order, status, reason string, meta points.Metadata) (Order, error) {
+	if (o.Status != "placed" && o.Status != "abnormal") || (status != "bet_cancelled" && status != "judged_cancelled") {
+		return o, ErrState
+	}
+	if o.Version == math.MaxInt64 {
+		return o, ErrVersion
+	}
+	beforeStatus, version := o.Status, o.Version
+	brand := o.BrandID
+	ps := points.Store{DB: s.DB}
 	original, e := ps.Entry(ctx, tx, brand, o.MemberID, o.DebitEntryID)
 	if e != nil {
 		return o, e
@@ -475,13 +489,17 @@ func (s Service) cancel(ctx context.Context, tx pgx.Tx, brand, member, id string
 	if e != nil {
 		return o, e
 	}
-	o, e = scanOrder(tx.QueryRow(ctx, `UPDATE bet_orders SET status='bet_cancelled',version=version+1,refund_entry_id=$3,cancelled_at=clock_timestamp(),cancel_reason=$4 WHERE brand_id=$1 AND id=$2 RETURNING `+orderFields, brand, o.ID, refund.ID, strings.TrimSpace(reason)))
+	o, e = scanOrder(tx.QueryRow(ctx, `UPDATE bet_orders SET status=$5,version=version+1,refund_entry_id=$3,cancelled_at=clock_timestamp(),cancel_reason=$4 WHERE brand_id=$1 AND id=$2 RETURNING `+orderFields, brand, o.ID, refund.ID, strings.TrimSpace(reason), status))
 	if e != nil {
 		return o, e
 	}
-	if e = appendEvent(ctx, tx, o, "bet.order.cancelled"); e != nil {
+	event, action := "bet.order.cancelled", "bet.cancel"
+	if status == "judged_cancelled" {
+		event, action = "bet.order.judged_cancelled", "bet.judge_cancel"
+	}
+	if e = appendEvent(ctx, tx, o, event); e != nil {
 		return o, e
 	}
-	_, e = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: meta.ActorType, ActorID: meta.ActorID, Action: "bet.cancel", ResourceType: "bet_order", ResourceID: o.ID, Reason: strings.TrimSpace(reason), RequestID: meta.RequestID, IP: meta.IP, Before: map[string]any{"version": version, "status": beforeStatus}, After: map[string]any{"version": o.Version, "status": o.Status, "refund_entry_id": refund.ID}})
+	_, e = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: meta.ActorType, ActorID: meta.ActorID, Action: action, ResourceType: "bet_order", ResourceID: o.ID, Reason: strings.TrimSpace(reason), RequestID: meta.RequestID, IP: meta.IP, Before: map[string]any{"version": version, "status": beforeStatus}, After: map[string]any{"version": o.Version, "status": o.Status, "refund_entry_id": refund.ID}})
 	return o, e
 }

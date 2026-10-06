@@ -105,6 +105,12 @@ func scanPeriod(row pgx.Row) (p Period, e error) {
 	}
 	return
 }
+func (s Store) Period(ctx context.Context, brand, id string) (Period, error) {
+	if !uuidPattern.MatchString(brand) || !uuidPattern.MatchString(id) {
+		return Period{}, ErrInvalid
+	}
+	return scanPeriod(s.DB.QueryRow(ctx, `SELECT `+periodFields+` FROM periods WHERE brand_id=$1 AND id=$2`, brand, id))
+}
 func (s Store) Periods(ctx context.Context, brand, game string, limit, offset int) ([]Period, error) {
 	out := []Period{}
 	if !uuidPattern.MatchString(brand) || !uuidPattern.MatchString(game) || limit < 1 || limit > 100 || offset < 0 {

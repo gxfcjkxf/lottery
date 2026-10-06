@@ -127,7 +127,7 @@ Preview 与 Place 均使用 `{period_id,play_id,rule_version_id,selection,multip
 
 Place 成功返回 201 Order，包含不可变定义/策略快照、两种选号、展开注单、总积分、原扣款分配和 debit_entry_id。客户端使用每个确认意图独立的 Idempotency-Key，网络重试保留同键和完全相同请求体；同键异体 409，同内容不同键可以合法重复购买。订单、余额、账本、审计与 outbox 在同一事务提交。会话在事务内以及等待幂等锁后重新认证；自然过期或超过截止时间的余额锁等待不产生扣款。响应缓存为当时结果，客户端应另刷新钱包和订单状态。
 
-Cancel 请求 `{version,reason}`（带幂等键）。用户取消按订单保存的 user_cancel_allowed，要求数据库时间早于 draw_at、无已锁定结果，期次为 betting/closed/waiting_draw；因此投注截止后、开奖前仍可取消。账户冻结/品牌暂停不禁止此类退款。用户仅取消未结算 placed；品牌运营可用独立 cancel 权限取消 placed/abnormal，不受用户开关或时间窗限制。退款引用原 debit，恢复每种来源的 available，不允许改金额。已结算订单回溯、整期判定取消仍待后续。
+Cancel 请求 `{version,reason}`（带幂等键）。用户取消按订单保存的 user_cancel_allowed，要求数据库时间早于 draw_at、无已锁定结果，期次为 betting/closed/waiting_draw；因此投注截止后、开奖前仍可取消。账户冻结/品牌暂停不禁止此类退款。用户仅取消未结算 placed；品牌运营可用独立 cancel 权限取消 placed/abnormal，不受用户开关或时间窗限制。退款引用原 debit，恢复每种来源的 available，不允许改金额。整期判定取消已接入任务式退款；单独注单判定取消、已结算订单回溯仍待后续。
 
 管理接口新增 GET/PUT `/admin/bet-policy`、GET/PUT `/admin/games/{id}/bet-policy`（写 body `{version,config,reason}`）；GET `/admin/bet-orders`（可选 member_id、limit、offset）、GET 单笔、POST 单笔 cancel（`{version,reason}`）。查询需 bet_policy.view 或 bet.view 的显式品牌/平台权限；写需 bet_policy.write.brand 或 bet.cancel.brand，超级管理员仅查看。管理员读取和修改均记录审计。整数配置与继承结构见领域模型。
 
@@ -283,7 +283,13 @@ GET/PUT schedule 成功的 data 均为 `{id,brand_id,game_id,revision,spec,game_
 
 彩种版本不匹配返回 409 `SCHEDULE_VERSION_CONFLICT`；无权限返回 403 `PERMISSION_DENIED`；缺失彩种/资源返回 404 `RESOURCE_NOT_FOUND`。其余错误码保持通用管理 API 约定，日历或范围无效为 400 `SCHEDULE_INVALID`。
 
-`period.sequence` 是创建序号；只有 worker 实际转入 `betting` 时，`games.started_sequence` 才递增，用于规则下期激活。worker 以主数据库时钟驱动：pending 到点且彩种 active 时进入 betting；若投注窗口已过则转 `judged_cancelled`；betting 到 bet_end 转 closed，closed 到 draw_at 转 waiting_draw。彩种暂停时不开放投注，窗口过期后取消 pending。状态更新受数据库转移约束并写审计。当前投注与订单尚未接入，所以不存在需要退款的历史订单。
+`period.sequence` 是创建序号；只有 worker 实际转入 `betting` 时，`games.started_sequence` 才递增，用于规则下期激活。worker 以主数据库时钟驱动：pending 到点且彩种 active 时进入 betting；若投注窗口已过则转 `judged_cancelled`；betting 到 bet_end 转 closed，closed 到 draw_at 转 waiting_draw。彩种暂停时不开放投注，窗口过期后取消 pending。状态更新受数据库转移约束并写审计。pending 尚无注单；已有投注的期次必须用下述整期取消任务，不允许直接 SQL 改为取消而遗漏退款。
+
+S5-a4 实际整期取消接口：GET `/admin/periods/{id}` 返回当前 Period（包括真实状态、期次 version）；GET `/admin/periods/{id}/cancellation` 返回 `{cancellation:null|Cancellation}`。均需显式 period.view.brand / period.view.platform，并记录读取审计。POST `/admin/periods/{id}/cancel` 需 period.cancel.brand，body `{version,mode,cause,reason}`，version 是期次版本；mode 为 bet_cancelled / judged_cancelled，cause 为 operator_cancel / no_result / invalid_result。合法组合和状态见领域模型；单人操作，原因非空且不超过 500 UTF-8 字节。有待退款目标返回 202 processing，无目标返回 200 completed。
+
+Cancellation 包含 id/brand_id/game_id/period_id/period_version、mode/cause、state/version、reason/created_by/created_at/completed_at/last_error_code，以及 total_count/pending_count/refunded_count/already_refunded_count/failed_count。摘要的 version 是独立任务版本。期次关闭和目标集合同事务落库，清除开奖采集租约，保留已有开奖结果与尝试历史；之后不得投注或提交新结果。每个目标退款、注单状态、账本、审计及事件单独原子提交；全部目标完成后任务才 completed。中断可恢复，业务或交易失败暂停为 failed，不自动重试失败任务。POST `/admin/periods/{id}/cancellation/retry` 需 period.cancel_retry.brand，body `{version,reason}` 使用任务版本，返回 202；仅失败任务可人工恢复，不撤销之前成功退款。读写权独立，超管只读。
+
+上述写入需幂等键；缓存重放仍重验会话和权限。202 重放是起始快照，必须另 GET 摘要获取最新进度。400 PERIOD_CANCEL_INPUT_INVALID、404 PERIOD_CANCEL_NOT_FOUND、409 PERIOD_CANCEL_VERSION_CONFLICT / PERIOD_CANCEL_STATE_CONFLICT；权限/会话/幂等错误沿用公共错误。worker 错误码只公开结构化类别，不公开底层 SQL、连接字符串或栈。
 
 ### S4-c2 已接入：来源与人工结果
 

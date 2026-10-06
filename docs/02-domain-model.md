@@ -109,7 +109,7 @@ S3-b 已实现 `brand_point_policies`：brand_id 主键，version 与 max_balanc
 
 日历按 IANA timezone 中的民用时间展开为 UTC 期次，`period_no` 也使用 UTC instant。支持 daily 或 interval、weekday、显式 pause/holiday dates、holiday skip/normal policy 和投注窗口。展开范围最多 7 天且最多 10,000 个 slot。DST 不存在的本地时间跳过，重复时间取较早 UTC 实例。Interval 基线锚定本地午夜，busy window 在 `[start,end)` 内用窗口起点重新锚定；窗口不能跨午夜，结束时间必须早于 `24:00`。因窗口右边界不包含，结束设为 `23:59:59` 时该秒的 slot 已在窗口之外；`24:00` 当前不接受。日期列表是显式配置，不按国家推断节假日。
 
-Period `sequence` 是期次创建顺序；`games.started_sequence` 只在实际成功开出投注窗口时递增。因此规则的“下期”绑定实际开期序号，不由预生成期次数决定。漏过完整投注窗口的 pending 期次转为 `judged_cancelled`，不会补开，也不会递增实际开期序号。pending 不接受投注，因此该转换不涉及订单退款；已投注期次的整体取消和退款仍待后续实现。
+Period `sequence` 是期次创建顺序；`games.started_sequence` 只在实际成功开出投注窗口时递增。因此规则的“下期”绑定实际开期序号，不由预生成期次数决定。漏过完整投注窗口的 pending 期次转为 `judged_cancelled`，不会补开，也不会递增实际开期序号。pending 不接受投注，因此该自动转换不涉及订单退款。S5-a4 运营整期取消使用持久化任务，立即关闭期次，逐笔原来源退款；任务 completed 才代表处理全部完成。
 
 `draw_sources`
 
@@ -143,7 +143,7 @@ periods 另含 draw_result_id、draw_claim_token/draw_claim_until 和 draw_next_
 - S5-a1 实际幂等字段为 `client_key`，unique `(brand_id, brand_member_id, client_key)`；同时保留 `version`、`placed_at`、`cancelled_at`、`cancel_reason`。
 - `account_id`、`debit_entry_id`、`refund_entry_id` 通过品牌/账户复合外键关联账本。
 - `definition_snapshot`、`definition_hash`、`policy_snapshot`、`brand_policy_version`、`game_policy_version` 保存每单确认时的规则/限额快照；开期引用只保留开期审计，不覆盖每单规则。
-- 号码、复式展开、积分、来源分配、快照和身份不可改写或删除；取消必须关联原借记的全额原路退款账本，递增版本。当前可执行 placed → abnormal、placed/abnormal → bet_cancelled（异常仅允许运营取消）；判定取消和结算状态的业务入口尚未实现，`settled_at` 尚未落表。
+- 号码、复式展开、积分、来源分配、快照和身份不可改写或删除；取消必须关联原借记的全额原路退款账本，递增版本。当前可执行 placed → abnormal、placed/abnormal → bet_cancelled（异常仅允许运营取消），整期判定取消任务也可将目标转为 judged_cancelled；单独注单的判定取消入口和结算仍待后续，`settled_at` 尚未落表。
 
 `bet_order_exceptions`（0013）：id、brand_id、order_id（唯一）、order_version、marked_by、reason、created_at。人工标记只追加证据和递增注单版本，不退款、不派奖、不释放尚未退款的额度；原因非空且最多 500 UTF-8 字节。异常注单不进入普通结算或重试，不能解除异常或改写证据，但可以由具备取消权限的品牌运营全额原路退款。数据库触发器禁止单独无证据变状态或提交孤立证据；取消后原异常证据仍保留。
 
@@ -152,6 +152,10 @@ periods 另含 draw_result_id、draw_claim_token/draw_claim_until 和 draw_next_
 `game_bet_policies`：brand_id、game_id、version、config JSONB、updated_at。各限额配置 mode 为 inherit / value / unlimited，value 带正整数 points；最小投注不允许 unlimited。取消开关 null 表示继承。彩种覆盖品牌默认，包含设置更大值或 unlimited，不是额外品牌硬上限；规则自身 limits 仍独立校验。品牌修改必须保持所有彩种继承后的最小投注不超过任何生效限额。
 
 当前期次/用户期次限额统计实际尚未退款的下注积分；这不是提现或佣金的“有效流水”。全额退款释放额度。全局期次限额启用时，按期次加事务锁串行化准入和退款；未设置该限额时不持有全局期次互斥锁。单用户余额仍按账户串行记账。
+
+`period_cancellations`（0014）：id、brand_id、game_id、period_id（品牌内唯一）、period_version（取消后的期次版本）、draw_result_id（保留原指针）、mode、cause、state、version（独立任务版本）、target_count、reason、created_by、created_at、completed_at、last_error_code。state 为 processing/failed/completed；投注取消仅 betting + operator_cancel，判定取消使用 no_result 或 invalid_result；有锁定结果时不能声称 no_result，drawn 仅允许 invalid_result。settling/settled 不接受此操作。
+
+`period_cancellation_targets`：取消任务、品牌、期次、注单的不可变复合身份，state（pending/refunded/already_refunded/failed）、version、refund_entry_id、error_code。起始目标是该期全部 placed/abnormal，原本已取消的不纳入；开始后其他入口已退款的目标核实后标 already_refunded，不重复入账。`period_cancellation_failures` 追加保存失败目标、观察到的任务版本、错误码和时间，不能改写/删除。任务状态与提交后的目标进度有数据库延迟约束；目标未处理完不得宣称 completed。摘要计数从同一查询快照派生，任务版本与期次版本不可混用。
 
 `settlements`
 

@@ -104,6 +104,10 @@ user-web / admin-web
 
 `go run ./cmd/platform worker` 是与 HTTP API 分开的可选进程，使用相同配置连接主 PostgreSQL；API 不会隐式启动 worker。`cmd/platform` 内嵌 tzdata，精简镜像也可加载 IANA 时区。worker 每秒执行 Tick，每轮最多挑选 25 个待处理彩种、每彩种最多锁定处理 100 条到期 periods；每个彩种一个事务，锁顺序为 game → period → play。多个实例可共享同一主库运行，行锁和状态转移避免重复开期。Tick 使用 PostgreSQL 主库时钟；只有实际开期才递增 `started_sequence`。漏过投注窗口的 pending 期次判定取消，不补开。每分钟 FillCalendar 为 active 且有日历的彩种保留未来 24 小时期次；相同时间窗复用既有记录及原 schedule 快照。
 
+S5-a4 整期取消先按 game → period 排他锁序，与在途下注/开期/结果提交串行化。关闭期次和完整退款目标同一事务提交，旧开奖结果/尝试不删除，采集租约清除。独立退款循环每秒运行一次，每轮至多处理 20 个目标（服务硬上限 100），不阻塞期次时钟或采集循环；每个目标独立事务，按 game/period 共享锁 → cancellation task → target → account → order 处理，一次只持有一个钱包。
+
+多 worker 通过任务行 `FOR UPDATE SKIP LOCKED` 协调；已由另一路取消的目标验证既有原借记冲正，不重复退款。中断留下 pending，后续 worker 可恢复；交易/业务失败回滚本笔后追加不可变失败记录并暂停任务，只有显式人工重试才重新开放 failed 目标。父任务和目标状态的延迟约束防止虚假完成，成功过的目标不会重做。HTTP 202 只代表取消已受理，客户端必须读取主库摘要确认 completed；大量目标的最终退款延迟与目标吞吐量仍需压测，不把有界循环当作 500 次/秒负载证明。
+
 单个彩种失败会累积为本轮错误并记录日志，其他彩种继续处理。期次循环保留日历并推进状态，独立开奖循环按下节处理来源；均不执行支付、投注或结算。当前适配器不发起外部网络请求。API 与 worker 都必须连接同一主库；本地浏览器回归也要为 API 和 worker 配置同一 project 的临时测试库。
 
 ### 开奖 feed 当前边界

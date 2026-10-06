@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/gxfcjkxf/lottery/backend/internal/betting"
 	"github.com/gxfcjkxf/lottery/backend/internal/drawfeed"
 	"github.com/gxfcjkxf/lottery/backend/internal/rulebook"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,6 +18,10 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 	drawDone := make(chan struct{})
 	go func() { defer close(drawDone); runDrawWorker(drawCtx, store, logger) }()
 	defer func() { stopDraw(); <-drawDone }()
+	refundCtx, stopRefund := context.WithCancel(ctx)
+	refundDone := make(chan struct{})
+	go func() { defer close(refundDone); runCancellationWorker(refundCtx, betting.Service{DB: db}, logger) }()
+	defer func() { stopRefund(); <-refundDone }()
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	fill := time.NewTicker(time.Minute)
@@ -47,6 +52,26 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 				logger.Error("period transition failed", "error", e, "committed_transitions", n)
 			} else if n > 0 {
 				logger.Info("period transitions committed", "count", n)
+			}
+		}
+	}
+}
+
+func runCancellationWorker(ctx context.Context, service betting.Service, logger *slog.Logger) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run, cancel := context.WithTimeout(ctx, 10*time.Second)
+			n, err := service.ProcessCancellations(run, 20)
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				logger.Error("period refunds failed", "error", err, "committed_targets", n)
+			} else if n > 0 {
+				logger.Info("period refunds committed", "targets", n)
 			}
 		}
 	}

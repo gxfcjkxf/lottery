@@ -12,6 +12,8 @@ import type {
   GameBetPolicy,
 } from "../../admin-web/src/bet-management-api";
 import type { LedgerEntry, Wallet } from "../../admin-web/src/finance-api";
+import type { Cancellation } from "../../admin-web/src/period-cancellation-api";
+import type { Period } from "../../admin-web/src/period-schedules-api";
 
 const brandId = "0199a000-0000-7000-8000-000000000002";
 const apiOrigin = "http://localhost:5173";
@@ -1707,6 +1709,341 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     await expect(adminDetail).toHaveCount(0);
     await expect(ordersPanel.locator(".order-row")).toHaveCount(0);
     await expect(ordersPanel.getByRole("alert")).toBeVisible();
+
+    // S5-a4 places two genuine orders against the captured open period, then
+    // cancels that whole period and verifies every source refund.
+    expect(adminRefundWallet.available_points).toBe("100");
+    const cancellationOrders: AdminBetOrder[] = [];
+    for (const multiplier of ["1", "2"] as const) {
+      const input = { ...secondInput, multiplier };
+      const quote = await api<{
+        actor_context: string;
+        bet_points: string;
+        policy_versions: { brand: number; game: number };
+      }>(page.request, `${publicBase}/bet-previews`, "POST", userToken, input);
+      expect(quote.bet_points).toBe(multiplier === "1" ? "8" : "16");
+      const placeResponse = await page.request.post(
+        `${publicBase}/bet-orders`,
+        {
+          headers: {
+            Authorization: `Bearer ${userToken}`,
+            "X-Brand-ID": brandId,
+            Origin: apiOrigin,
+            "Idempotency-Key": crypto.randomUUID(),
+          },
+          data: {
+            ...input,
+            actor_context: quote.actor_context,
+            policy_versions: quote.policy_versions,
+          },
+        },
+      );
+      const placeText = await placeResponse.text();
+      expect(placeResponse.status(), placeText).toBe(201);
+      const order = (JSON.parse(placeText) as Envelope<AdminBetOrder>).data;
+      expect(order.status).toBe("placed");
+      expect(order.period_id).toBe(placed.period_id);
+      expect([placed.id, secondOrder.id]).not.toContain(order.id);
+      expect(order.total_points).toBe(multiplier === "1" ? "8" : "16");
+      cancellationOrders.push(order);
+    }
+    const cancellationWallet = await api<Wallet>(
+      page.request,
+      `${publicBase}/wallet`,
+      "GET",
+      userToken,
+    );
+    expect(cancellationWallet.available_points).toBe("76");
+    const oldPeriodInput = { ...secondInput, multiplier: "1" };
+    const oldPeriodQuote = await api<{
+      actor_context: string;
+      policy_versions: { brand: number; game: number };
+    }>(
+      page.request,
+      `${publicBase}/bet-previews`,
+      "POST",
+      userToken,
+      oldPeriodInput,
+    );
+    const cancellationLedgerBefore = await api<{ items: LedgerEntry[] }>(
+      page.request,
+      `${adminBase}/wallets/${memberId}/ledger?limit=100`,
+      "GET",
+      admin,
+    );
+    expect(cancellationLedgerBefore.items).toHaveLength(
+      adminRefundLedger.items.length + 2,
+    );
+
+    const periodBefore = await api<Period>(
+      page.request,
+      `${adminBase}/periods/${placed.period_id}`,
+      "GET",
+      admin,
+    );
+    expect(periodBefore.id).toBe(placed.period_id);
+    expect(["betting", "closed"]).toContain(periodBefore.status);
+    const periodPage = async () => {
+      if (info.project.name === "mobile") {
+        await adminPage.locator(".mobile-nav button").nth(2).click();
+      } else {
+        await adminPage
+          .locator(".side-nav")
+          .getByRole("button", { name: /期次和开奖/ })
+          .click();
+      }
+      const panel = adminPage.getByTestId("period-cancellation");
+      await expect(panel).toBeVisible();
+      return panel;
+    };
+    const cancellationPanel = await periodPage();
+    const readPeriod = async (panel: typeof cancellationPanel) => {
+      await panel
+        .getByLabel("期次 UUID", { exact: true })
+        .fill(placed.period_id);
+      await panel
+        .getByRole("button", { name: "读取期次详情", exact: true })
+        .click();
+      await expect(
+        panel.getByLabel("期次 version", { exact: true }),
+      ).toHaveValue(String(periodBefore.version));
+    };
+    await readPeriod(cancellationPanel);
+    await cancellationPanel
+      .getByRole("button", { name: "读取取消摘要", exact: true })
+      .click();
+    await expect(cancellationPanel).toContainText("该期次没有取消任务");
+    await cancellationPanel
+      .getByLabel("取消模式", { exact: true })
+      .selectOption("judged_cancelled");
+    await cancellationPanel
+      .getByLabel("取消原因", { exact: true })
+      .selectOption("no_result");
+    const periodCancelReason = `S5-a4 ${info.project.name}: cancel the real period and refund both orders`;
+    await cancellationPanel
+      .getByLabel("操作原因（UTF-8 不超过 500 字节）", { exact: true })
+      .fill(periodCancelReason);
+    await cancellationPanel
+      .getByRole("button", { name: "检查并确认影响", exact: true })
+      .click();
+
+    const periodCancelRoute = `**/api/v1/admin/periods/${placed.period_id}/cancel`;
+    const periodCancelRequests: Array<{ key: string; body: string | null }> =
+      [];
+    let resolvePeriodCancelCommit!: (value: {
+      status: number;
+      cancellation: Cancellation;
+    }) => void;
+    const periodCancelCommit = new Promise<{
+      status: number;
+      cancellation: Cancellation;
+    }>((resolve) => {
+      resolvePeriodCancelCommit = resolve;
+    });
+    await adminPage.route(periodCancelRoute, async (route) => {
+      const request = route.request();
+      periodCancelRequests.push({
+        key: (await request.allHeaders())["idempotency-key"],
+        body: request.postData(),
+      });
+      if (periodCancelRequests.length === 1) {
+        const committed = await route.fetch();
+        const result = (await committed.json()) as Envelope<Cancellation>;
+        resolvePeriodCancelCommit({
+          status: committed.status(),
+          cancellation: result.data,
+        });
+        await route.abort("failed");
+      } else {
+        await route.continue();
+      }
+    });
+    await cancellationPanel
+      .getByRole("button", { name: "确认取消期次", exact: true })
+      .click();
+    const cancelCommittedOnce = await periodCancelCommit;
+    expect(cancelCommittedOnce.status).toBe(202);
+    expect(cancelCommittedOnce.cancellation.state).toBe("processing");
+    expect(periodCancelRequests).toHaveLength(1);
+    expect(JSON.parse(periodCancelRequests[0].body!)).toEqual({
+      version: periodBefore.version,
+      mode: "judged_cancelled",
+      cause: "no_result",
+      reason: periodCancelReason,
+    });
+    await expect(cancellationPanel).toContainText("有一项写入结果待确认");
+    await expect(
+      cancellationPanel.getByRole("button", {
+        name: "使用原请求重试",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      cancellationPanel.getByLabel("期次 UUID", { exact: true }),
+    ).toBeDisabled();
+
+    await adminPage.reload();
+    await adminPage
+      .getByLabel("选择真实后台品牌", { exact: true })
+      .selectOption(brandId);
+    const restoredPanel = await periodPage();
+    await expect(restoredPanel).toContainText("有一项写入结果待确认");
+    await expect(
+      restoredPanel.getByLabel("期次 UUID", { exact: true }),
+    ).toHaveValue(placed.period_id);
+    await expect(
+      restoredPanel.getByLabel("期次 UUID", { exact: true }),
+    ).toBeDisabled();
+    const retryCancel = adminPage.waitForResponse(
+      (response) =>
+        response
+          .url()
+          .endsWith(`/api/v1/admin/periods/${placed.period_id}/cancel`) &&
+        response.request().method() === "POST",
+    );
+    await restoredPanel
+      .getByRole("button", { name: "使用原请求重试", exact: true })
+      .click();
+    const retryResponse = await retryCancel;
+    const retryText = await retryResponse.text();
+    expect(retryResponse.status(), retryText).toBe(202);
+    expect(periodCancelRequests).toHaveLength(2);
+    expect(periodCancelRequests[1]).toEqual(periodCancelRequests[0]);
+    expect((JSON.parse(retryText) as Envelope<Cancellation>).data).toEqual(
+      cancelCommittedOnce.cancellation,
+    );
+    await adminPage.unroute(periodCancelRoute);
+
+    const cancellationSummary = adminPage.getByTestId("period-cancellation");
+    await expect(cancellationSummary.locator(".state")).toHaveText("已完成", {
+      timeout: 70_000,
+    });
+    await cancellationSummary
+      .getByRole("button", { name: "读取取消摘要", exact: true })
+      .click();
+    const completed = await api<{ cancellation: Cancellation }>(
+      page.request,
+      `${adminBase}/periods/${placed.period_id}/cancellation`,
+      "GET",
+      admin,
+    );
+    expect(completed.cancellation).toMatchObject({
+      id: cancelCommittedOnce.cancellation.id,
+      state: "completed",
+      total_count: 2,
+      refunded_count: 2,
+      pending_count: 0,
+      already_refunded_count: 0,
+      failed_count: 0,
+    });
+    expect(periodCancelRequests).toHaveLength(2);
+    const periodAfter = await api<Period>(
+      page.request,
+      `${adminBase}/periods/${placed.period_id}`,
+      "GET",
+      admin,
+    );
+    expect(periodAfter.status).toBe("judged_cancelled");
+    expect(periodAfter.version).toBe(periodBefore.version + 1);
+
+    const cancelledOrders: AdminBetOrder[] = [];
+    for (const order of cancellationOrders) {
+      const currentOrder = await api<AdminBetOrder>(
+        page.request,
+        `${adminBase}/bet-orders/${order.id}`,
+        "GET",
+        admin,
+      );
+      expect(currentOrder.status).toBe("judged_cancelled");
+      expect(currentOrder.refund_entry_id).toBeTruthy();
+      cancelledOrders.push(currentOrder);
+    }
+    const cancellationWalletAfter = await api<Wallet>(
+      page.request,
+      `${publicBase}/wallet`,
+      "GET",
+      userToken,
+    );
+    expect(cancellationWalletAfter.available_points).toBe("100");
+    expect(cancellationWalletAfter.display_points).toBe("100");
+    expect(cancellationWalletAfter.by_source).toEqual(
+      adminRefundWallet.by_source,
+    );
+    const cancellationLedgerAfter = await api<{ items: LedgerEntry[] }>(
+      page.request,
+      `${adminBase}/wallets/${memberId}/ledger?limit=100`,
+      "GET",
+      admin,
+    );
+    expect(cancellationLedgerAfter.items).toHaveLength(
+      cancellationLedgerBefore.items.length + 2,
+    );
+    for (const oldEntry of cancellationLedgerBefore.items)
+      expect(
+        cancellationLedgerAfter.items.find((entry) => entry.id === oldEntry.id),
+      ).toEqual(oldEntry);
+    for (const order of cancelledOrders) {
+      const debit = cancellationLedgerBefore.items.find(
+        (entry) => entry.id === order.debit_entry_id,
+      );
+      const refund = cancellationLedgerAfter.items.find(
+        (entry) => entry.id === order.refund_entry_id,
+      );
+      expect(debit).toBeTruthy();
+      expect(refund).toMatchObject({
+        entry_type: "refund",
+        reference_id: order.id,
+        reversal_of: order.debit_entry_id,
+      });
+      expect(refund!.source_allocation).toEqual(debit!.source_allocation);
+      expect(refund!.delta_snapshot.recharge.available).toBe(
+        order.total_points,
+      );
+      expect(BigInt(refund!.after_snapshot.recharge.available)).toBe(
+        BigInt(refund!.before_snapshot.recharge.available) +
+          BigInt(order.total_points),
+      );
+      expect(
+        cancellationLedgerAfter.items.filter(
+          (entry) =>
+            entry.entry_type === "refund" && entry.reference_id === order.id,
+        ),
+      ).toHaveLength(1);
+    }
+    // Multiple outstanding bets are refunded against the current wallet, not
+    // against each debit's historical snapshot. Verify the actual version chain.
+    const targetIds = new Set(cancelledOrders.map((order) => order.id));
+    const taskRefunds = cancellationLedgerAfter.items
+      .filter(
+        (entry) =>
+          entry.entry_type === "refund" && targetIds.has(entry.reference_id),
+      )
+      .sort((a, b) => a.version - b.version);
+    expect(taskRefunds).toHaveLength(2);
+    expect(taskRefunds[0].before_snapshot).toEqual(
+      cancellationWallet.by_source,
+    );
+    expect(taskRefunds[1].before_snapshot).toEqual(
+      taskRefunds[0].after_snapshot,
+    );
+    expect(taskRefunds[1].after_snapshot).toEqual(adminRefundWallet.by_source);
+    const oldPeriodBet = await page.request.post(`${publicBase}/bet-orders`, {
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+        "X-Brand-ID": brandId,
+        Origin: apiOrigin,
+        "Idempotency-Key": crypto.randomUUID(),
+      },
+      data: {
+        ...oldPeriodInput,
+        actor_context: oldPeriodQuote.actor_context,
+        policy_versions: oldPeriodQuote.policy_versions,
+      },
+    });
+    const oldPeriodBetText = await oldPeriodBet.text();
+    expect(oldPeriodBet.status(), oldPeriodBetText).toBe(409);
+    await expect(cancellationSummary.locator(".counts")).toContainText("2");
+    await captureS5Admin("s5-a4-period-cancelled.png");
   } finally {
     await adminPage.close();
   }

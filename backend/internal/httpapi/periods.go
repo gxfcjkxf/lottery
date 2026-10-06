@@ -32,7 +32,24 @@ func periodResult(status int, out any, err error) (mutation.Result, error) {
 	return rulebookResult(status, out, err)
 }
 func registerPeriodRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
+	registerPeriodCancellationRoutes(handle, d)
 	s := rulebook.Store{DB: d.Admins.DB}
+	handle("GET", "/periods/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a, brand, ok := managementActor(w, r, d, "period", "view")
+		if !ok {
+			return
+		}
+		id, ok := ruleID(w, r, "id")
+		if !ok {
+			return
+		}
+		out, err := s.Period(r.Context(), brand, id)
+		if err == nil && !adminReadAudit(w, r, d, a, brand, "period.view") {
+			return
+		}
+		result, e := periodResult(200, out, err)
+		outputMutation(w, r, result, e)
+	})
 	handle("GET", "/games/{id}/schedule", func(w http.ResponseWriter, r *http.Request) {
 		a, b, ok := managementActor(w, r, d, "schedule", "view")
 		if !ok {

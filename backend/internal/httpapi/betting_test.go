@@ -410,6 +410,83 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	if err != nil || walletResult.GiftPoints != 500 {
 		t.Fatalf("operator did not restore original source %+v %v", walletResult, err)
 	}
+
+	third := betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-order-period-cancel-003", body)
+	mustStatus(t, third, 201)
+	var periodOrder betting.Order
+	decodeBetData(t, third, &periodOrder)
+	periodPath := "/api/v1/admin/periods/" + periodID
+	var periodVersion int64
+	if err = f.pool.QueryRow(ctx, `SELECT version FROM periods WHERE id=$1`, periodID).Scan(&periodVersion); err != nil {
+		t.Fatal(err)
+	}
+	periodBody := map[string]any{"version": periodVersion, "mode": "judged_cancelled", "cause": "no_result", "reason": "missing draw period judgment"}
+	mustStatus(t, f.call("POST", periodPath+"/cancel", "period-missing-grant", f.token, managedBrand, periodBody), 403)
+	for _, permission := range []string{"period.view.brand", "period.cancel.brand", "period.cancel_retry.brand"} {
+		if _, err = f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) SELECT role_id,$2 FROM admin_account_roles WHERE account_id=$1 ON CONFLICT DO NOTHING`, f.root, permission); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustStatus(t, f.call("POST", periodPath+"/cancel", "period-bad-cause", f.token, managedBrand, map[string]any{"version": periodVersion, "mode": "bet_cancelled", "cause": "no_result", "reason": "bad mode/cause"}), 400)
+	periodCancel := f.call("POST", periodPath+"/cancel", "period-cancel-idempotent", f.token, managedBrand, periodBody)
+	mustStatus(t, periodCancel, 202)
+	var cancellation betting.Cancellation
+	managedData(t, periodCancel, &cancellation)
+	if cancellation.State != "processing" || cancellation.TotalCount != 1 || cancellation.PendingCount != 1 {
+		t.Fatalf("wrong captured period targets %+v", cancellation)
+	}
+	repeatPeriod := f.call("POST", periodPath+"/cancel", "period-cancel-idempotent", f.token, managedBrand, periodBody)
+	mustStatus(t, repeatPeriod, 202)
+	var repeatCancellation betting.Cancellation
+	managedData(t, repeatPeriod, &repeatCancellation)
+	if repeatCancellation.ID != cancellation.ID {
+		t.Fatal("duplicate cancellation task")
+	}
+	if _, err = f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id IN (SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key='period.cancel.brand'`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, f.call("POST", periodPath+"/cancel", "period-cancel-idempotent", f.token, managedBrand, periodBody), 403)
+	if _, err = f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) SELECT role_id,'period.cancel.brand' FROM admin_account_roles WHERE account_id=$1 ON CONFLICT DO NOTHING`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, f.call("POST", periodPath+"/cancel", "period-cancel-idempotent", f.token, managedBrand, periodBody), 403)
+	mustStatus(t, f.call("GET", periodPath+"/cancellation", "", f.token, managedBrand, nil), 200)
+	if _, err = f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "closed-period-cannot-bet", body), 409)
+	n, err := (betting.Service{DB: f.pool}).ProcessCancellations(ctx, 5)
+	if err != nil || n != 1 {
+		t.Fatalf("worker target refund %d %v", n, err)
+	}
+	result := f.call("GET", periodPath+"/cancellation", "", f.token, managedBrand, nil)
+	mustStatus(t, result, 200)
+	var summary struct {
+		Cancellation *betting.Cancellation `json:"cancellation"`
+	}
+	managedData(t, result, &summary)
+	if summary.Cancellation == nil || summary.Cancellation.State != "completed" || summary.Cancellation.RefundedCount != 1 {
+		t.Fatalf("missing live completion %+v", summary)
+	}
+	mustStatus(t, f.call("POST", periodPath+"/cancellation/retry", "period-completed-retry-denied", f.token, managedBrand, map[string]any{"version": summary.Cancellation.Version, "reason": "already complete"}), 409)
+	periodDetail := f.call("GET", periodPath, "", f.token, managedBrand, nil)
+	mustStatus(t, periodDetail, 200)
+	var closedPeriod rulebook.Period
+	managedData(t, periodDetail, &closedPeriod)
+	if closedPeriod.Status != "judged_cancelled" || closedPeriod.Version != periodVersion+1 {
+		t.Fatalf("direct period not current %+v", closedPeriod)
+	}
+	final, err := (betting.Service{DB: f.pool}).Order(ctx, managedBrand, f.memberID, periodOrder.ID)
+	if err != nil || final.Status != "judged_cancelled" || final.RefundEntryID == "" {
+		t.Fatalf("missing judged refund %+v %v", final, err)
+	}
+	walletResult, err = (points.Store{DB: f.pool}).Read(ctx, managedBrand, f.memberID)
+	if err != nil || walletResult.GiftPoints != 500 {
+		t.Fatalf("period refund not restored %+v %v", walletResult, err)
+	}
 }
 
 func TestBettingHTTPAdminPolicyPermissionsAndSuperReadonly(t *testing.T) {

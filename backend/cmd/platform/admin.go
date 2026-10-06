@@ -68,7 +68,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 	} else {
 		permissions = append(permissions, "rule.simulate.brand")
 		permissions = append(permissions, "game.view.brand", "game.write.brand", "rule.view.brand", "rule.write.brand", "rule.validate.brand", "rule.submit.brand", "rule.review.brand")
-		permissions = append(permissions, "schedule.view.brand", "schedule.write.brand", "period.view.brand", "period.generate.brand")
+		permissions = append(permissions, "schedule.view.brand", "schedule.write.brand", "period.view.brand", "period.generate.brand", "period.cancel.brand", "period.cancel_retry.brand")
 		permissions = append(permissions, "draw_source.view.brand", "draw_source.write.brand", "draw.view.brand", "draw.manual_create.brand")
 		permissions = append(permissions, "bet.view.brand", "bet.cancel.brand", "bet_policy.view.brand", "bet_policy.write.brand")
 		permissions = append(permissions, "bet.mark_abnormal.brand")
