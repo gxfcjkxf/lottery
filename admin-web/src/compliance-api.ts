@@ -17,6 +17,15 @@ export interface ComplianceHistoryPage { brand_id: string; items: CompliancePoli
 export interface ComplianceCheck { check: "age" | "region" | "identity"; enabled: boolean; decision: (typeof CHECK_DECISIONS)[number]; reason_code: (typeof CHECK_REASONS)[number] }
 export interface ComplianceDecision { id: string; brand_id: string; policy_version: number; config: ComplianceConfig; operation: ComplianceOperation; decision: (typeof CHECK_DECISIONS)[number]; checks: ComplianceCheck[]; adapter_mode: "stub"; created_by: string; reason: string; audit_log_id: string; created_at: string }
 export interface ComplianceChecksPage { brand_id: string; operation: ComplianceOperation | null; items: ComplianceDecision[]; limit: number; offset: number; total_count: string }
+export type ComplianceGateOperation = "registration" | "betting";
+export type ComplianceGateAction = "register" | "join" | "operator_join" | "bet_preview" | "bet_place";
+export interface ComplianceGateRecord {
+  id: string; brand_id: string; policy_version: number; config: ComplianceConfig; operation: ComplianceGateOperation;
+  action: ComplianceGateAction; decision: "review"; checks: ComplianceCheck[]; adapter_mode: "stub";
+  actor_type: "anonymous" | "user" | "admin"; actor_id: string | null; member_id: string | null;
+  request_id: string; audit_log_id: string; created_at: string;
+}
+export interface ComplianceGatesPage { brand_id: string; operation: ComplianceGateOperation | null; items: ComplianceGateRecord[]; limit: number; offset: number; total_count: string }
 export interface CompliancePolicyPutBody { version: number; config: ComplianceConfig; reason: string }
 export interface ComplianceCheckBody { version: number; operation: ComplianceOperation; reason: string }
 export interface CompliancePolicyApi {
@@ -25,6 +34,7 @@ export interface CompliancePolicyApi {
   put(brandId: string, body: CompliancePolicyPutBody, key: string): Promise<CompliancePolicy>;
   run(brandId: string, body: ComplianceCheckBody, key: string): Promise<ComplianceDecision>;
   decisions(brandId: string, limit?: number, offset?: number, operation?: ComplianceOperation): Promise<ComplianceChecksPage>;
+  gates(brandId: string, limit?: number, offset?: number, operation?: ComplianceGateOperation): Promise<ComplianceGatesPage>;
 }
 
 export function compliancePermissions(account: AdminAccount, brandId: string): { viewPolicy: boolean; writePolicy: boolean; viewChecks: boolean; runCheck: boolean } {
@@ -84,6 +94,24 @@ function validDecision(value: unknown, brandId: string): value is ComplianceDeci
   const checksValid = value.checks.every((item, i) => record(item) && exact(item, ["check", "enabled", "decision", "reason_code"]) && item.check === CHECKS_ORDER[i] && item.enabled === expectedEnabled[i] && item.decision === (expectedEnabled[i] ? "review" : "allow") && item.reason_code === (expectedEnabled[i] ? "ADAPTER_NOT_CONFIGURED" : "CHECK_DISABLED"));
   return checksValid && value.decision === (expectedEnabled.some(Boolean) ? "review" : "allow");
 }
+function validGateRecord(value: unknown, brandId: string): value is ComplianceGateRecord {
+  const fields = ["id", "brand_id", "policy_version", "config", "operation", "action", "decision", "checks", "adapter_mode", "actor_type", "actor_id", "member_id", "request_id", "audit_log_id", "created_at"];
+  if (!record(value) || !exact(value, fields) || !uuid(value.id) || value.brand_id !== brandId || !version(value.policy_version) || !validComplianceConfig(value.config)) return false;
+  if (!(value.operation === "registration" || value.operation === "betting") || value.decision !== "review" || value.adapter_mode !== "stub" || !uuid(value.audit_log_id) || !timestamp(value.created_at)) return false;
+  if (typeof value.request_id !== "string" || value.request_id.length < 1 || value.request_id.length > 80 || /\p{Cc}/u.test(value.request_id)) return false;
+  const config = value.config as ComplianceConfig;
+  const enabled = [config.age_enabled, config.region_enabled, config.identity_enabled];
+  if (!enabled.some(Boolean) || !Array.isArray(value.checks) || value.checks.length !== 3) return false;
+  const checksValid = value.checks.every((item, i) => record(item) && exact(item, ["check", "enabled", "decision", "reason_code"]) && item.check === CHECKS_ORDER[i] && item.enabled === enabled[i] && item.decision === (enabled[i] ? "review" : "allow") && item.reason_code === (enabled[i] ? "ADAPTER_NOT_CONFIGURED" : "CHECK_DISABLED"));
+  if (!checksValid) return false;
+  if (value.operation === "registration") {
+    if (value.action === "register") return value.actor_type === "anonymous" && value.actor_id === null && value.member_id === null;
+    if (value.action === "join") return value.actor_type === "user" && uuid(value.actor_id) && (value.member_id === null || uuid(value.member_id));
+    if (value.action === "operator_join") return value.actor_type === "admin" && uuid(value.actor_id) && value.member_id === null;
+    return false;
+  }
+  return (value.action === "bet_preview" || value.action === "bet_place") && value.actor_type === "user" && uuid(value.actor_id) && uuid(value.member_id);
+}
 function invalid(write: boolean): never { throw new AdminApiError("合规接口响应格式无效。", write ? 0 : 502, "INVALID_RESPONSE"); }
 function input(): never { throw new AdminApiError("合规请求参数无效。", 400, "INVALID_INPUT"); }
 type Envelope = { success?: unknown; data?: unknown; error?: unknown };
@@ -134,6 +162,13 @@ export function createCompliancePolicyApi(fetchImpl: typeof fetch = fetch): Comp
       const data = await request(`${CHECKS}?${query}`, brandId);
       if (!record(data) || !exact(data, ["brand_id", "operation", "items", "limit", "offset", "total_count"]) || data.brand_id !== brandId || data.operation !== (operation ?? null) || data.limit !== limit || data.offset !== offset || !validCount(data.total_count) || !Array.isArray(data.items) || data.items.length > limit || !data.items.every((item) => validDecision(item, brandId))) invalid(false);
       return data as unknown as ComplianceChecksPage;
+    },
+    async gates(brandId, limit = 20, offset = 0, operation) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000 || operation !== undefined && operation !== "registration" && operation !== "betting") input();
+      const query = new URLSearchParams({ limit: String(limit), offset: String(offset) }); if (operation) query.set("operation", operation);
+      const data = await request(`/api/v1/admin/compliance-gates?${query}`, brandId);
+      if (!record(data) || !exact(data, ["brand_id", "operation", "items", "limit", "offset", "total_count"]) || data.brand_id !== brandId || data.operation !== (operation ?? null) || data.limit !== limit || data.offset !== offset || !validCount(data.total_count) || !Array.isArray(data.items) || data.items.length > limit || !data.items.every((item) => validGateRecord(item, brandId))) invalid(false);
+      return data as unknown as ComplianceGatesPage;
     },
   };
 }

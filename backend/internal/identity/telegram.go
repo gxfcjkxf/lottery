@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/attribution"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
+	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/gxfcjkxf/lottery/backend/internal/telegramauth"
@@ -66,6 +67,9 @@ func (s *Store) Telegram(ctx context.Context, tx pgx.Tx, brand string, claims te
 		if !accept(cfg, in.Privacy, in.Terms) {
 			return mutation.Fail(409, "TERMS_REQUIRED", "请先接受当前品牌条款"), nil
 		}
+		if result, err, blocked := complianceAdmission(ctx, tx, brand, "register", "anonymous", "", "", meta); blocked {
+			return result, err
+		}
 		u = User{ID: ids.New(), TelegramID: claims.ID, Status: "active"}
 		if _, err = tx.Exec(ctx, "INSERT INTO global_users(id,telegram_user_id) VALUES($1,$2)", u.ID, claims.ID); err != nil {
 			return mutation.Result{}, err
@@ -94,6 +98,9 @@ func (s *Store) Telegram(ctx context.Context, tx pgx.Tx, brand string, claims te
 		}
 	}
 	if err != nil {
+		if result, ok := compliance.Rejection(err); ok {
+			return result, nil
+		}
 		if errors.Is(attribution.DatabaseError(err), attribution.ErrUnavailable) {
 			return mutation.Fail(400, "JOIN_CODE_UNAVAILABLE", "加入码不可用，请核对当前品牌、编码及有效期"), nil
 		}
@@ -101,6 +108,9 @@ func (s *Store) Telegram(ctx context.Context, tx pgx.Tx, brand string, claims te
 	}
 	accepted, err := acceptPendingMember(ctx, tx, brand, u.ID, &m, cfg, in.Privacy, in.Terms, meta)
 	if err != nil {
+		if result, ok := compliance.Rejection(err); ok {
+			return result, nil
+		}
 		return mutation.Result{}, err
 	}
 	if !accepted {

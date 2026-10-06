@@ -53,3 +53,14 @@ test("admin logout uses admin authentication and unavailable payout operations a
   assert.deepEqual(doc.paths["/api/v1/admin/auth/logout"].post.security,[{adminBearer:[]},{adminCookie:[]}]);
   assert.ok(!doc.paths["/api/v1/withdrawals"]);assert.ok(!doc.paths["/api/v1/admin/commissions/pay"]);
 });
+test("compliance admission records cannot claim anonymous users or disabled-check reviews",()=>{
+  const id="11111111-1111-4111-8111-111111111111";
+  const config={age_enabled:false,minimum_age:null,region_enabled:false,allowed_countries:[],identity_enabled:true};
+  const row={id,brand_id:id,policy_version:2,config,operation:"registration",action:"register",decision:"review",checks:[{check:"age",enabled:false,decision:"allow",reason_code:"CHECK_DISABLED"},{check:"region",enabled:false,decision:"allow",reason_code:"CHECK_DISABLED"},{check:"identity",enabled:true,decision:"review",reason_code:"ADAPTER_NOT_CONFIGURED"}],adapter_mode:"stub",actor_type:"anonymous",actor_id:null,member_id:null,request_id:id,audit_log_id:id,created_at:"2026-10-07T00:00:00Z"};
+  const check=validate("ComplianceGateRecord");assert.ok(check(row),JSON.stringify(check.errors));
+  assert.ok(!check({...row,actor_id:id}));assert.ok(!check({...row,operation:"betting",action:"bet_place"}));
+  assert.ok(!check({...row,config:{...config,identity_enabled:false}}));assert.ok(!check({...row,password:"not-an-admission-field"}));
+  assert.ok(check({...row,actor_type:"admin",actor_id:id,action:"operator_join"}));
+  assert.ok(check({...row,actor_type:"user",actor_id:id,member_id:id,operation:"betting",action:"bet_place"}));
+  assert.ok(!check({...row,actor_type:"user",actor_id:id,operation:"betting",action:"bet_place"}));
+});

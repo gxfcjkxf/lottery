@@ -1,6 +1,6 @@
 // Package compliance contains pure models and evaluation for explicitly
-// configured compliance checks. It does not collect personal data or enforce
-// checks in live user or money movement flows.
+// configured compliance checks and business admission gates. It does not
+// collect personal data or implement real verification and money movement.
 package compliance
 
 import (

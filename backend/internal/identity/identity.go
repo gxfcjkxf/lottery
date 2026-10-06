@@ -8,6 +8,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/attribution"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
+	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/events"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
@@ -233,6 +234,9 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 	if err != nil {
 		return mutation.Result{}, err
 	}
+	if result, err, blocked := complianceAdmission(ctx, tx, brand, "register", "anonymous", "", "", meta); blocked {
+		return result, err
+	}
 	u := User{ID: ids.New(), Username: in.Username, Phone: in.Phone, Status: "active"}
 	_, err = tx.Exec(ctx, `INSERT INTO global_users(id,username,phone,password_hash,username_set_at,phone_set_at) VALUES($1,NULLIF($2,''),NULLIF($3,''),$4,CASE WHEN $2<>'' THEN now() END,CASE WHEN $3<>'' THEN now() END)`, u.ID, u.Username, u.Phone, hash)
 	if unique(err) {
@@ -275,6 +279,13 @@ type memberCreateOptions struct {
 
 func (s *Store) createMember(ctx context.Context, tx pgx.Tx, brand, user, privacy, terms string, meta Metadata, opts memberCreateOptions) (Member, error) {
 	var m Member
+	actorType, actor, action := "user", user, "join"
+	if opts.createdBy != "" {
+		actorType, actor, action = "admin", opts.createdBy, "operator_join"
+	}
+	if err := compliance.AssessTx(ctx, tx, brand, action, compliance.GateSubject{ActorType: actorType, ActorID: actor, RequestID: meta.RequestID, IP: meta.IP}); err != nil {
+		return m, err
+	}
 	m.ID = ids.New()
 	m.BrandID = brand
 	selected := json.RawMessage(`{}`)
@@ -312,6 +323,9 @@ func acceptPendingMember(ctx context.Context, tx pgx.Tx, brand, user string, m *
 	}
 	if !accept(cfg, privacy, terms) {
 		return false, nil
+	}
+	if err := compliance.AssessTx(ctx, tx, brand, "join", compliance.GateSubject{ActorType: "user", ActorID: user, MemberID: m.ID, RequestID: meta.RequestID, IP: meta.IP}); err != nil {
+		return false, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE brand_members SET terms_accepted=true,accepted_at=now(),privacy_policy_version=$2,service_terms_version=$3 WHERE id=$1`, m.ID, cfg.Privacy, cfg.Terms); err != nil {
 		return false, err
@@ -361,6 +375,9 @@ func (s *Store) Login(ctx context.Context, tx pgx.Tx, brand string, in LoginInpu
 		m, err = s.joinCode(ctx, tx, brand, u.ID, in.Privacy, in.Terms, kind, code, meta)
 	}
 	if err != nil {
+		if result, ok := compliance.Rejection(err); ok {
+			return result, nil
+		}
 		if errors.Is(attribution.DatabaseError(err), attribution.ErrUnavailable) {
 			return mutation.Fail(400, "JOIN_CODE_UNAVAILABLE", "加入码不可用，请核对当前品牌、编码及有效期"), nil
 		}
@@ -368,6 +385,9 @@ func (s *Store) Login(ctx context.Context, tx pgx.Tx, brand string, in LoginInpu
 	}
 	accepted, err := acceptPendingMember(ctx, tx, brand, u.ID, &m, cfg, in.Privacy, in.Terms, meta)
 	if err != nil {
+		if result, ok := compliance.Rejection(err); ok {
+			return result, nil
+		}
 		return mutation.Result{}, err
 	}
 	if !accepted {

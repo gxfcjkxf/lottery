@@ -92,6 +92,24 @@ func complianceWrite(w http.ResponseWriter, r *http.Request, d Dependencies, a a
 }
 func registerComplianceRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
 	s := compliance.Service{DB: d.Admins.DB}
+	handle("GET", "/compliance-gates", func(w http.ResponseWriter, r *http.Request) {
+		a, brand, ok := complianceActor(w, r, d, "compliance_check", "view")
+		if !ok {
+			return
+		}
+		limit, offset, filters, ok := joinCodePage(r, "operation")
+		operation := filters["operation"]
+		if !ok || operation != "" && operation != "registration" && operation != "betting" {
+			failure(w, r, 400, "REQUEST_INVALID", "分页或业务类型不正确")
+			return
+		}
+		out, e := s.Gates(r.Context(), brand, operation, limit, offset)
+		if e == nil && !adminReadAudit(w, r, d, a, brand, "compliance_gate.view") {
+			return
+		}
+		result, e := complianceResult(out, e)
+		outputMutation(w, r, result, e)
+	})
 	handle("GET", "/compliance-policy", func(w http.ResponseWriter, r *http.Request) {
 		a, brand, ok := complianceActor(w, r, d, "compliance_policy", "view")
 		if !ok {

@@ -12,6 +12,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/attribution"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
+	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/jackc/pgx/v5"
@@ -157,6 +158,9 @@ func (s *Store) OperatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 		notes: in.Notes, termsAccepted: false, codeKind: kind, code: code,
 	})
 	if err != nil {
+		if result, ok := compliance.Rejection(err); ok {
+			return result, nil
+		}
 		if errors.Is(attribution.DatabaseError(err), attribution.ErrUnavailable) {
 			return mutation.Fail(400, "JOIN_CODE_UNAVAILABLE", "加入码不可用，请核对当前品牌、编码及有效期"), nil
 		}

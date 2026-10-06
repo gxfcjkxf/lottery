@@ -14,6 +14,7 @@ import (
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
+	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/periodgate"
@@ -185,7 +186,7 @@ func checkWindow(ctx context.Context, tx pgx.Tx, p Period) error {
 func quote(c contextRecord, in Input, q rules.BetQuote) Quote {
 	return Quote{BetQuote: q, PeriodID: in.PeriodID, PlayID: in.PlayID, RuleVersionID: c.RuleID, DefinitionHash: c.Hash, Policy: c.Policy, PolicyVersions: c.Versions, Period: c.Period}
 }
-func (s Service) Preview(ctx context.Context, tx pgx.Tx, brand string, v identity.Session, in Input) (Quote, error) {
+func (s Service) Preview(ctx context.Context, tx pgx.Tx, brand string, v identity.Session, in Input, metadata ...points.Metadata) (Quote, error) {
 	var out Quote
 	if tx == nil {
 		return out, ErrInvalid
@@ -212,6 +213,18 @@ func (s Service) Preview(ctx context.Context, tx pgx.Tx, brand string, v identit
 	}
 	// Preview is a non-reserving estimate. Place checks quotas and balance again
 	// under the account/quota locks before accepting any financial mutation.
+	if len(metadata) > 1 {
+		return out, ErrInvalid
+	}
+	requestID, ip := "", ""
+	if len(metadata) == 1 {
+		requestID, ip = metadata[0].RequestID, metadata[0].IP
+	} else {
+		requestID = ids.New()
+	}
+	if e = compliance.AssessTx(ctx, tx, brand, "bet_preview", compliance.GateSubject{ActorType: "user", ActorID: v.User.ID, MemberID: v.Member.ID, RequestID: requestID, IP: ip}); e != nil {
+		return out, e
+	}
 	return quote(c, in, q), nil
 }
 
@@ -371,6 +384,9 @@ func (s Service) Place(ctx context.Context, tx pgx.Tx, brand string, v identity.
 		return o, e
 	}
 	if e = checkQuotas(ctx, tx, brand, v.Member.ID, in.PeriodID, c.Policy, q.BetPoints); e != nil {
+		return o, e
+	}
+	if e = compliance.AssessTx(ctx, tx, brand, "bet_place", compliance.GateSubject{ActorType: "user", ActorID: v.User.ID, MemberID: v.Member.ID, RequestID: meta.RequestID, IP: meta.IP}); e != nil {
 		return o, e
 	}
 	alloc, e := wallet.BySource.Allocate(q.BetPoints, "available")

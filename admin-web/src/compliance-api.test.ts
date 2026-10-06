@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AdminApiError, type AdminAccount } from "./admin-api";
-import { compliancePermissions, createCompliancePolicyApi, validComplianceConfig, validComplianceReason, type ComplianceConfig, type ComplianceDecision, type CompliancePolicy } from "./compliance-api";
+import { compliancePermissions, createCompliancePolicyApi, validComplianceConfig, validComplianceReason, type ComplianceConfig, type ComplianceDecision, type ComplianceGateRecord, type CompliancePolicy } from "./compliance-api";
 
 const brand = "00000000-0000-4000-8000-000000000001", other = "00000000-0000-4000-8000-000000000002", actor = "00000000-0000-4000-8000-000000000003", audit = "00000000-0000-4000-8000-000000000004";
 const config: ComplianceConfig = { age_enabled: false, minimum_age: null, region_enabled: false, allowed_countries: [], identity_enabled: false };
@@ -11,6 +11,12 @@ function decision(overrides: Partial<ComplianceDecision> = {}): ComplianceDecisi
   { check: "region", enabled: false, decision: "allow", reason_code: "CHECK_DISABLED" },
   { check: "identity", enabled: false, decision: "allow", reason_code: "CHECK_DISABLED" },
 ], adapter_mode: "stub", created_by: actor, reason: "Explicit test", audit_log_id: audit, created_at: at, ...overrides }; }
+const gatedConfig: ComplianceConfig = { ...config, identity_enabled: true };
+function gate(overrides: Partial<ComplianceGateRecord> = {}): ComplianceGateRecord { return { id: actor, brand_id: brand, policy_version: 2, config: gatedConfig, operation: "registration", action: "register", decision: "review", checks: [
+  { check: "age", enabled: false, decision: "allow", reason_code: "CHECK_DISABLED" },
+  { check: "region", enabled: false, decision: "allow", reason_code: "CHECK_DISABLED" },
+  { check: "identity", enabled: true, decision: "review", reason_code: "ADAPTER_NOT_CONFIGURED" },
+], adapter_mode: "stub", actor_type: "anonymous", actor_id: null, member_id: null, request_id: "request-123", audit_log_id: audit, created_at: at, ...overrides }; }
 function response(data: unknown, status = 200): Response { return new Response(JSON.stringify({ success: true, data }), { status, headers: { "Content-Type": "application/json" } }); }
 function account(overrides: Partial<AdminAccount> = {}): AdminAccount { return { id: actor, super_admin: false, brand_ids: [brand], permissions: [], ...overrides }; }
 
@@ -96,5 +102,36 @@ describe("compliance API contracts", () => {
     ]) await expect(historyResult(bad)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     const later = { ...revision, version: 2, changed_by: actor, audit_log_id: audit };
     await expect(historyResult(later)).resolves.toMatchObject({ items: [later] });
+  });
+
+  it("reads strictly scoped live gate history with exact operation filters and validates each rejection receipt", async () => {
+    const item = gate(), fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ brand_id: brand, operation: "registration", items: [item], limit: 10, offset: 20, total_count: "21" }));
+    await expect(createCompliancePolicyApi(fetcher).gates(brand, 10, 20, "registration")).resolves.toMatchObject({ brand_id: brand, operation: "registration", items: [item], limit: 10, offset: 20, total_count: "21" });
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe("/api/v1/admin/compliance-gates?limit=10&offset=20&operation=registration");
+    expect(init?.method).toBe("GET"); expect(init?.credentials).toBe("same-origin"); expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
+    const page = (row: unknown, brandId = brand, operation: "registration" | "betting" | null = null) => createCompliancePolicyApi(vi.fn<typeof fetch>().mockResolvedValue(response({ brand_id: brandId, operation, items: [row], limit: 20, offset: 0, total_count: "1" }))).gates(brand);
+    const betting = gate({ operation: "betting", action: "bet_preview", actor_type: "user", actor_id: actor, member_id: other });
+    await expect(createCompliancePolicyApi(vi.fn<typeof fetch>().mockResolvedValue(response({ brand_id: brand, operation: "betting", items: [betting], limit: 20, offset: 0, total_count: "1" }))).gates(brand, 20, 0, "betting")).resolves.toMatchObject({ items: [betting] });
+    for (const validActor of [
+      gate({ action: "join", actor_type: "user", actor_id: actor }),
+      gate({ action: "join", actor_type: "user", actor_id: actor, member_id: other }),
+      gate({ action: "operator_join", actor_type: "admin", actor_id: actor }),
+    ]) await expect(page(validActor)).resolves.toMatchObject({ items: [validActor] });
+
+    for (const malformed of [
+      { ...item, private_field: "must not pass" },
+      { ...item, brand_id: other },
+      { ...item, action: "bet_place" },
+      { ...item, actor_id: actor },
+      { ...item, request_id: "r".repeat(81) },
+      { ...item, decision: "allow" },
+      { ...item, checks: [item.checks[1], item.checks[0], item.checks[2]] },
+      { ...item, config },
+    ]) await expect(page(malformed)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    await expect(createCompliancePolicyApi(vi.fn<typeof fetch>().mockResolvedValue(response({ brand_id: other, operation: null, items: [], limit: 20, offset: 0, total_count: "0" }))).gates(brand)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    await expect(createCompliancePolicyApi(vi.fn<typeof fetch>().mockResolvedValue(response({ brand_id: brand, operation: null, items: [], limit: 20, offset: 0, total_count: "01" }))).gates(brand)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    await expect(createCompliancePolicyApi(vi.fn<typeof fetch>().mockResolvedValue(response({ brand_id: brand, operation: null, items: [], limit: 20, offset: 0, total_count: "0" }))).gates(brand, 20, 0, "registration")).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    await expect(createCompliancePolicyApi(vi.fn<typeof fetch>()).gates(brand, 20, 0, "withdrawal" as never)).rejects.toMatchObject({ status: 400, code: "INVALID_INPUT" });
   });
 });

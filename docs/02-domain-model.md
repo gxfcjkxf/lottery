@@ -96,7 +96,11 @@ S3-b 已实现 `brand_point_policies`：brand_id 主键，version 与 max_balanc
 
 `compliance_decisions` 保存id、brand_id、policy_version、config快照、operation、decision、三项checks、adapter_mode、created_by、reason、audit_log_id、created_at。关联同品牌政策版本，检查与审计相符且不可改写。当前adapter_mode固定stub：关闭项allow/CHECK_DISABLED，开启项review/ADAPTER_NOT_CONFIGURED，整体有开启项才review。allow不是用户已验证，review不创建队列，保留的deny/freeze枚举不表示实际用户禁用或资金冻结。
 
-查询按品牌和可选operation分页，数量为规范非负整数字符串；单响应在只读RepeatableRead事务中读取计数/记录。此阶段没有用户资料、证件、生日、IP归属或真实验证结果，也不调用注册/投注/提现业务链；这些需另接统一适配器与服务器闸门。
+查询按品牌和可选operation分页，数量为规范非负整数字符串；单响应在只读RepeatableRead事务中读取计数/记录。管理员显式检查不启动业务；真实准入另接下述拒绝记录，不收集证件、生日、IP归属或真实验证结果。
+
+`compliance_gate_rejections` 保存真实新业务拒绝的id/brand_id/policy_version/config/operation/action/decision/checks/adapter_mode/actor_type/actor_id/member_id/request_id/audit_log_id/created_at，关联不可变政策修订；与显式管理检查分表。action为register/join/operator_join/bet_preview/bet_place，operation仅registration/betting。anonymous注册人员/会员均NULL，运营新增为实际admin且会员NULL，首次入品牌为已存在user（待确认会员可有member_id），投注必须有同品牌user/member配对。决策固定review、至少一检查开启，配置/检查和匹配审计不可改写；不保存用户名、密码、证件、原请求键或IP到该DTO。
+
+业务检查在事务中FOR SHARE锁政策，配置启用更新等待已用旧政策的事务结束；启用完成后的新业务不能依据旧预览或前端声明绕过。拒绝先回滚业务，再保存历史政策版本的证据及幂等回执；记录时允许当前政策已变化，但必须匹配检查时的不可变修订，不伪装为新版本。全部关闭的检查跳过，不产生拒绝记录，也不表示实际验证通过。投注预览没有幂等键，每次观察可有独立拒绝记录；普通写入同键重放不重复证据。
 
 ### 彩种、玩法和规则
 

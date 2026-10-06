@@ -20,7 +20,7 @@ PUT 必须提供当前共享版本、全部 16 个配置键和操作原因。可
 
 ## 接入约束
 
-合规配置GET/PUT `/api/v1/admin/compliance-policy`、历史GET `/compliance-policy/history`及显式检查POST/GET `/compliance-checks` 已注册。政策输入五键全量替换，版本独立；检查采用当前版本和操作标签，返回带审计的stub快照，开启项仍review/ADAPTER_NOT_CONFIGURED。不代表真实验证、业务闸门或资金冻结已实现。权限及完整范围见 [安全边界](07-security-risk-compliance.md)，集成方不能把allow/CHECK_DISABLED作为验证通过凭证。
+合规配置GET/PUT `/api/v1/admin/compliance-policy`、历史GET `/compliance-policy/history`、显式检查POST/GET `/compliance-checks`及真实业务拒绝GET `/compliance-gates` 已注册。政策五键全量替换，版本独立；任一检查开启但未接真实适配器时，新注册/首次入品牌/运营新增及投注预览/提交被409 COMPLIANCE_REVIEW_REQUIRED拒绝，不建身份/扣分/建单。拒绝证据与加密负回执同事务，原键重放不重复证据。显式管理模拟不是实际业务检查；默认关闭仅跳过，不证明验证完成。提现、真实验证、复核与资金冻结未实现，边界见 [安全说明](07-security-risk-compliance.md)。
 
 用户与管理员令牌不能互换。非浏览器客户端可以使用 Bearer；管理员浏览器 Cookie 名称为 `lottery_admin`，用户 Cookie 名称随品牌 UUID 变化，见安全方案的说明。生成客户端通常使用 Bearer；网页客户端继续使用既有 HttpOnly Cookie 流程，不把令牌存入本地存储。
 

@@ -24,9 +24,17 @@ type Failure struct {
 	Message string `json:"message"`
 }
 type Result struct {
-	Status int             `json:"status"`
-	Data   json.RawMessage `json:"data,omitempty"`
-	Error  *Failure        `json:"error,omitempty"`
+	Status           int                                 `json:"status"`
+	Data             json.RawMessage                     `json:"data,omitempty"`
+	Error            *Failure                            `json:"error,omitempty"`
+	rejectedEvidence func(context.Context, pgx.Tx) error `json:"-"`
+}
+
+// WithRejectedEvidence attaches transaction-local evidence to a rejected
+// result. The callback is private result metadata and is never serialized.
+func WithRejectedEvidence(result Result, appendEvidence func(context.Context, pgx.Tx) error) Result {
+	result.rejectedEvidence = appendEvidence
+	return result
 }
 
 func OK(status int, data any) Result {
@@ -196,8 +204,16 @@ func (e *Engine) execute(ctx context.Context, brand, actor, operation, key, fing
 	if err != nil {
 		return Result{}, err
 	}
+	if result.rejectedEvidence != nil && (result.Status < 400 || result.Status > 599 || result.Error == nil) {
+		return Result{}, errors.New("rejected evidence callback requires a 400-599 rejection result with an error")
+	}
 	if result.Status >= 400 {
 		if _, err = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT business"); err != nil {
+			return Result{}, err
+		}
+	}
+	if result.rejectedEvidence != nil {
+		if err = result.rejectedEvidence(ctx, tx); err != nil {
 			return Result{}, err
 		}
 	}

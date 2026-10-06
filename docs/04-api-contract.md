@@ -662,6 +662,7 @@ API当前不写积分、不生成佣金/奖励记录，不修改加入归属或�
 | GET | /compliance-policy/history | `{brand_id,items:[{id,brand_id,version,config,changed_by:null或UUID,reason,audit_log_id:null或UUID,created_at}],limit,offset,total_count}` |
 | POST | /compliance-checks | `{version,operation,reason}`；201不可变决策快照，不接受用户敏感资料 |
 | GET | /compliance-checks | `{brand_id,operation:null或筛选值,items:Decision[],limit,offset,total_count}` |
+| GET | /compliance-gates | `{brand_id,operation:null或registration/betting,items:GateRecord[],limit,offset,total_count}`；真实业务准入拒绝，使用compliance_check.view.brand/platform |
 
 config必须包含五键 `{age_enabled:boolean,minimum_age:null或18..120整数,region_enabled:boolean,allowed_countries:有序唯一字符串数组,identity_enabled:boolean}`。年龄开关开启时年龄必填，地区开关开启时名单非空；名单最多250项，每项两位大写ASCII字母并严格升序。它们是工程配置限制，不是年龄/国家法律结论或已获授权市场清单。默认false/null/false/[]/false。拒绝未知/缺失/重复/null错误字段、控制字符和原因首尾空白；原因非空UTF-8≤500字节。版本独立于品牌共享版本。
 
@@ -669,7 +670,13 @@ Decision字段 `{id,brand_id,policy_version,config,operation,decision,checks,ada
 
 查询默认limit20、1..100，offset0..1000000；历史仅接受分页，检查列表另可operation筛选，拒绝未知/重复/空参数，total_count为精确字符串。配置和决策与审计、历史、加密幂等回执同事务；检查锁定当前政策版本，改版后新检查需新版本，旧键则重放原决策快照。未知写只允许原正文/键重试，撤权/会话变化/品牌停用后不得用旧缓存绕过；停用品牌可只读。配置错误400 COMPLIANCE_INPUT_INVALID、缺失404 COMPLIANCE_NOT_FOUND、版本409 COMPLIANCE_VERSION_CONFLICT、状态409 COMPLIANCE_STATE_CONFLICT，正文解析失败仍400 REQUEST_INVALID。
 
-本阶段统一接口只提供显式管理检查，尚未接入注册/投注/提现拦截、真实证件/年龄/地区验证或责任博彩。运营不能据启用开关或一条allow记录宣称平台已满足生产合规。
+真实业务准入使用同一品牌政策：任一检查开启而真实适配器未配置时，新注册、首次入品牌（密码/Telegram）、运营新增成员、待确认成员首次接受条款，以及投注预览和最终新提交均409 COMPLIANCE_REVIEW_REQUIRED。既有已接受条款会员的登录、查询、绑定、取消/退款和已有业务处理不因该开关被拦截；原有账号状态、条款、品牌暂停、期次和权限检查仍执行。旧预览不授予最终下注许可，提交重新检查当前政策；客户端不能发送identity_verified、年龄或地区等声明绕过。
+
+GateRecord含 `{id,brand_id,policy_version,config,operation,action,decision:"review",checks,adapter_mode:"stub",actor_type,actor_id:null或UUID,member_id:null或UUID,request_id,audit_log_id,created_at}`。action register/join/operator_join/bet_preview/bet_place，人员/会员的组合见领域模型。按同品牌及可选registration/betting过滤，拒绝其他/空/重复参数；计数和记录同快照。该列表不混入显式管理模拟记录，不含用户名、凭证、证件、原幂等键或IP。
+
+普通写拒绝由服务端私有事务回调在ROLLBACK TO SAVEPOINT business之后保存证据，再与加密负回执共同提交；回调不属于JSON协议。证据失败整事务回滚、返回503，不缓存不完整拒绝。首次拒绝的原键在政策关闭后仍重放原409，要发起新的业务意图须新键；旧成功写原键只恢复历史结果，不产生新业务，仍遵守原会话/权限检查。投注预览不是幂等写，每次观察独立记录；若记录失败返回503而不是无证据409。默认关闭不生成拒绝记录，不构成验证通过。
+
+提现尚未实现，不伪造提现闸门；真实证件/年龄/地区服务、复核队列、资金冻结及完整责任博彩继续待验收。运营不能据启用开关或一条allow记录宣称平台已满足生产合规。
 
 ## 5. 错误码
 

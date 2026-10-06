@@ -33,6 +33,7 @@ func main() {
 		log.Fatal(err)
 	}
 	complianceDecision := compliance.Decision{ID: id, BrandID: id, PolicyVersion: 2, Config: complianceConfig, Operation: "betting", Decision: complianceResult, Checks: complianceChecks, AdapterMode: "stub", CreatedBy: id, Reason: "explicit stub check", AuditLogID: id, CreatedAt: now}
+	gateRecord := compliance.GateRecord{ID: id, BrandID: id, PolicyVersion: 2, Config: complianceConfig, Operation: "registration", Action: "register", Decision: complianceResult, Checks: complianceChecks, AdapterMode: "stub", ActorType: "anonymous", RequestID: id, AuditLogID: id, CreatedAt: now}
 	match := 1
 	in := rules.SimulationInput{
 		Definition: rules.Definition{SchemaVersion: 1, Model: rules.Model{Type: "X_PLUS_Y", RegularPool: rules.Pool{Min: 1, Max: 49}, SpecialPool: rules.Pool{Min: 1, Max: 49}, RegularCount: 6, SpecialCount: 1}, Selection: rules.SelectionRule{Mode: "numbers", SpecialCount: 1}, UnitPoints: 1, PrizeTiers: []rules.Tier{{Code: "SPECIAL_MATCH", Condition: rules.Condition{Op: "equals", Field: "special_match", Value: &match}, Odds: "35", Exclusive: true}}, Rounding: "half_up", RoundingScope: "order", Limits: rules.Limits{MaxCombinations: 100, MaxMultiplier: 10}},
@@ -117,6 +118,8 @@ func main() {
 		"AdminBrandOperation":              brandops.Record{BrandID: id, Version: 2, Name: "Example", Status: "paused", UpdatedAt: now, AuditLogID: id},
 		"AdminBrandCreationInput":          brandregistry.Input{Code: "example_brand", Name: "Example", DefaultLocale: "en", Timezone: "UTC", Reason: "explicit creation"},
 		"ComplianceConfig":                 complianceConfig,
+		"ComplianceGateRecord":             gateRecord,
+		"ComplianceGatesPage":              compliance.GatePage{BrandID: id, Items: []compliance.GateRecord{gateRecord}, Limit: 20, Offset: 0, TotalCount: "1"},
 		"CompliancePolicyInput":            compliance.Input{Version: 1, Config: complianceConfig, Reason: "configure future check"},
 		"CompliancePolicy":                 compliance.Policy{BrandID: id, Version: 2, Config: complianceConfig, UpdatedAt: now, AuditLogID: id},
 		"ComplianceCheckInput":             compliance.CheckInput{Version: 2, Operation: "betting", Reason: "explicit stub check"},

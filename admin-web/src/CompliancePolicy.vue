@@ -1,23 +1,24 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
-import { compliancePermissions, createCompliancePolicyApi, validComplianceConfig, validComplianceReason, type ComplianceConfig, type ComplianceDecision, type ComplianceOperation, type CompliancePolicy, type CompliancePolicyRevision } from "./compliance-api";
+import { compliancePermissions, createCompliancePolicyApi, validComplianceConfig, validComplianceReason, type ComplianceConfig, type ComplianceDecision, type ComplianceGateRecord, type ComplianceOperation, type CompliancePolicy, type CompliancePolicyRevision } from "./compliance-api";
 import { classifyComplianceFailure, clearPendingComplianceIntent, complianceSessionGeneration, createComplianceRequestGuard, getPendingComplianceIntent, setPendingComplianceIntent, updatePendingCompliancePhase, type PendingComplianceCheck, type PendingComplianceIntent, type PendingPolicyWrite } from "./compliance-state";
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createCompliancePolicyApi();
-const policyGuard = createComplianceRequestGuard(), historyGuard = createComplianceRequestGuard(), decisionsGuard = createComplianceRequestGuard(), writeGuard = createComplianceRequestGuard();
+const policyGuard = createComplianceRequestGuard(), historyGuard = createComplianceRequestGuard(), decisionsGuard = createComplianceRequestGuard(), gatesGuard = createComplianceRequestGuard(), writeGuard = createComplianceRequestGuard();
 const rights = computed(() => compliancePermissions(props.account, props.brandId));
 const scope = () => ({ accountId: props.account.id, brandId: props.brandId });
 const policy = ref<CompliancePolicy | null>(null), draft = ref<ComplianceConfig | null>(null), reason = ref("");
 const history = ref<CompliancePolicyRevision[]>([]), historyOffset = ref(0), historyTotal = ref("0");
 const decisions = ref<ComplianceDecision[]>([]), decisionOffset = ref(0), decisionTotal = ref("0");
+const gates = ref<ComplianceGateRecord[]>([]), gateOffset = ref(0), gateTotal = ref("0");
 const operation = ref<ComplianceOperation>("registration"), checkReason = ref("");
 const pendingPolicy = ref<PendingPolicyWrite | null>(null), pendingCheck = ref<PendingComplianceCheck | null>(null);
-const loadingPolicy = ref(false), loadingHistory = ref(false), loadingDecisions = ref(false), busy = ref(false);
+const loadingPolicy = ref(false), loadingHistory = ref(false), loadingDecisions = ref(false), loadingGates = ref(false), busy = ref(false);
 const conflictPolicyRead = ref(false);
-const policyError = ref(""), historyError = ref(""), decisionsError = ref(""), actionError = ref(""), notice = ref("");
+const policyError = ref(""), historyError = ref(""), decisionsError = ref(""), gatesError = ref(""), actionError = ref(""), notice = ref("");
 const reasonBytes = computed(() => new TextEncoder().encode(reason.value).length), checkReasonBytes = computed(() => new TextEncoder().encode(checkReason.value).length);
 const policyEditable = computed(() => rights.value.writePolicy && Boolean(policy.value) && !pendingPolicy.value && !busy.value);
 const checkEditable = computed(() => rights.value.runCheck && Boolean(policy.value) && !pendingCheck.value && !busy.value);
@@ -42,6 +43,12 @@ async function readDecisions(offset = decisionOffset.value) {
   try { const value = await api.decisions(brandId, 20, offset); if (!current(decisionsGuard, token, accountId, brandId, epoch)) return; decisions.value = value.items; decisionOffset.value = value.offset; decisionTotal.value = value.total_count; }
   catch (cause) { if (current(decisionsGuard, token, accountId, brandId, epoch)) { decisionsError.value = cause instanceof Error ? cause.message : "读取检查记录失败"; sessionInvalid(cause, decisionsGuard, token, accountId, brandId, epoch); } }
   finally { if (current(decisionsGuard, token, accountId, brandId, epoch)) loadingDecisions.value = false; }
+}
+async function readGates(offset = gateOffset.value) {
+  const { accountId, brandId } = scope(), epoch = complianceSessionGeneration(), token = gatesGuard.begin(); loadingGates.value = true; gatesError.value = "";
+  try { const value = await api.gates(brandId, 20, offset); if (!current(gatesGuard, token, accountId, brandId, epoch)) return; gates.value = value.items; gateOffset.value = value.offset; gateTotal.value = value.total_count; }
+  catch (cause) { if (current(gatesGuard, token, accountId, brandId, epoch)) { gatesError.value = cause instanceof Error ? cause.message : "读取业务闸门记录失败"; sessionInvalid(cause, gatesGuard, token, accountId, brandId, epoch); } }
+  finally { if (current(gatesGuard, token, accountId, brandId, epoch)) loadingGates.value = false; }
 }
 function preparePolicy() {
   actionError.value = ""; notice.value = "";
@@ -90,23 +97,24 @@ async function send(kind: "policy" | "check", retry = false) {
   } finally { if (current(writeGuard, token, intent.accountId, intent.brandId, epoch)) busy.value = false; }
 }
 watch(() => [props.account.id, props.brandId], () => {
-  policyGuard.invalidate(); historyGuard.invalidate(); decisionsGuard.invalidate(); writeGuard.invalidate();
-  policy.value = null; history.value = []; decisions.value = []; historyOffset.value = 0; decisionOffset.value = 0; conflictPolicyRead.value = false;
-  policyError.value = ""; historyError.value = ""; decisionsError.value = ""; actionError.value = ""; notice.value = ""; loadingPolicy.value = false; loadingHistory.value = false; loadingDecisions.value = false; busy.value = false;
+  policyGuard.invalidate(); historyGuard.invalidate(); decisionsGuard.invalidate(); gatesGuard.invalidate(); writeGuard.invalidate();
+  policy.value = null; history.value = []; decisions.value = []; gates.value = []; historyOffset.value = 0; decisionOffset.value = 0; gateOffset.value = 0; conflictPolicyRead.value = false;
+  policyError.value = ""; historyError.value = ""; decisionsError.value = ""; gatesError.value = ""; actionError.value = ""; notice.value = ""; loadingPolicy.value = false; loadingHistory.value = false; loadingDecisions.value = false; loadingGates.value = false; busy.value = false;
   pendingPolicy.value = getPendingComplianceIntent(scope(), "policy") as PendingPolicyWrite | null; pendingCheck.value = getPendingComplianceIntent(scope(), "check") as PendingComplianceCheck | null;
   draft.value = pendingPolicy.value ? clone(pendingPolicy.value.body.config) : null;
   reason.value = pendingPolicy.value?.body.reason ?? "";
   checkReason.value = pendingCheck.value?.body.reason ?? "";
   if (rights.value.viewPolicy) { void readPolicy(); void readHistory(0); }
   if (rights.value.viewChecks) void readDecisions(0);
+  if (rights.value.viewChecks) void readGates(0);
 }, { immediate: true });
-onUnmounted(() => { live = false; policyGuard.invalidate(); historyGuard.invalidate(); decisionsGuard.invalidate(); writeGuard.invalidate(); });
+onUnmounted(() => { live = false; policyGuard.invalidate(); historyGuard.invalidate(); decisionsGuard.invalidate(); gatesGuard.invalidate(); writeGuard.invalidate(); });
 </script>
 
 <template>
   <section class="compliance" aria-labelledby="compliance-title">
-    <header><div><small>RISK / COMPLIANCE</small><h1 id="compliance-title">风控与合规</h1><p>本页范围仅包括品牌合规政策与明确标注的伪适配器检查；尚不包括用户注册或投注闸门。</p></div><button type="button" :disabled="loadingPolicy || !rights.viewPolicy" @click="readPolicy">重新读取政策</button></header>
-    <aside class="warning" role="alert"><b>伪适配器检查；未接入注册/投注/提现拦截；不能据此上线。</b><p>没有真实年龄、IP地区或身份验证。启用项只会得到“需要复核”的 stub 决定；不会启动真实工作流，不会冻结资金，也没有复核队列。请勿输入用户证件或其他个人信息。国家代码语法不证明该地区合法。</p></aside>
+    <header><div><small>RISK / COMPLIANCE</small><h1 id="compliance-title">风控与合规</h1><p>包含品牌政策、管理员显式运行的 stub 检查，以及真实新业务请求的服务端闸门拒绝记录。</p></div><button type="button" :disabled="loadingPolicy || !rights.viewPolicy" @click="readPolicy">重新读取政策</button></header>
+    <aside class="warning" role="alert"><b>真实注册/首次加入品牌及投注预览/提交已执行服务端检查；启用但适配器未配置时会拒绝新业务。</b><p>若三项配置全关闭，检查会跳过，并不代表用户已通过验证。这不代表真实验证/KYC；提现尚未实现；没有人工复核队列，也不会冻结资金。闸门拒绝历史与管理员显式运行的 stub 决定是两类记录。管理员 stub 决定不等于真实业务请求检查。请勿输入用户证件或其他个人信息。国家代码语法不证明该地区合法。</p></aside>
     <div class="columns">
       <section class="card"><h2>品牌政策</h2><p v-if="!rights.viewPolicy" role="status">当前账号没有此品牌政策查看权限。</p><template v-else>
         <p v-if="policy">品牌 {{ policy.brand_id }} · v{{ policy.version }} · 更新于 {{ policy.updated_at }}</p><p v-if="loadingPolicy" role="status">读取政策中…</p><p v-if="policyError" class="error" role="alert">{{ policyError }}</p>
@@ -121,7 +129,7 @@ onUnmounted(() => { live = false; policyGuard.invalidate(); historyGuard.invalid
         </form>
         <div v-if="pendingPolicy" class="intent"><b>政策意图：{{ pendingPolicy.phase === 'unknown' ? '结果未知，已冻结' : pendingPolicy.phase === 'conflict' ? '版本或品牌状态冲突；当前页面只读' : '等待确认' }}</b><p>品牌 {{ pendingPolicy.brandId }} · 意图版本 {{ pendingPolicy.body.version }} · 当前版本 {{ policy?.version ?? '未读取' }} · {{ pendingPolicy.body.reason }}</p><pre>{{ JSON.stringify(pendingPolicy.body.config, null, 2) }}</pre><div class="actions"><button v-if="pendingPolicy.phase === 'review'" :disabled="busy" @click="send('policy')">确认并提交政策</button><button v-if="pendingPolicy.phase === 'unknown'" :disabled="busy" @click="send('policy', true)">用原键重试</button><button v-if="pendingPolicy.phase === 'review'" :disabled="busy" @click="cancel('policy')">取消确认</button><button v-if="pendingPolicy.phase === 'conflict'" :disabled="busy || !conflictPolicyRead" @click="cancel('policy')">放弃旧政策意图并使用已读取版本</button></div></div>
       </template></section>
-      <section class="card"><h2>显式运行伪适配器检查</h2><p v-if="!rights.viewChecks && !rights.runCheck && !pendingCheck" role="status">当前账号没有检查权限。</p><template v-else>
+      <section class="card"><h2>管理员显式运行的 stub 检查</h2><p v-if="!rights.viewChecks && !rights.runCheck && !pendingCheck" role="status">当前账号没有检查权限。</p><template v-else>
         <p v-if="!rights.viewChecks && rights.runCheck" role="status">可运行经确认的 stub 检查，但没有读取历史记录的权限。</p><p v-else>只有点击确认后才创建检查记录。决策仅反映当前 stub 规则。</p>
         <form v-if="rights.runCheck" @submit.prevent="prepareCheck"><label>操作类型<select v-model="operation" :disabled="!checkEditable"><option value="registration">注册</option><option value="betting">投注</option><option value="withdrawal">提现</option></select></label><label>检查原因<textarea aria-label="检查原因" v-model="checkReason" rows="3" maxlength="500" :disabled="!checkEditable"></textarea><small>{{ checkReasonBytes }} / 500 UTF-8字节</small></label><button type="submit" :disabled="!checkEditable">核对伪检查</button></form>
         <div v-if="pendingCheck" class="intent"><b>检查意图：{{ pendingCheck.phase === 'unknown' ? '结果未知，已冻结' : pendingCheck.phase === 'conflict' ? '版本或品牌状态冲突' : '等待确认' }}</b><p>{{ pendingCheck.brandId }} · 意图版本 {{ pendingCheck.body.version }} · 当前版本 {{ policy?.version ?? '未读取' }} · {{ pendingCheck.body.operation }} · {{ pendingCheck.body.reason }}</p><div class="actions"><button v-if="pendingCheck.phase === 'review'" :disabled="busy" @click="send('check')">确认并运行 stub 检查</button><button v-if="pendingCheck.phase === 'unknown'" :disabled="busy" @click="send('check', true)">用原键重试</button><button v-if="pendingCheck.phase === 'review'" :disabled="busy" @click="cancel('check')">取消确认</button><button v-if="pendingCheck.phase === 'conflict'" :disabled="busy || !conflictPolicyRead" @click="cancel('check')">放弃旧检查意图</button></div></div>
@@ -131,6 +139,7 @@ onUnmounted(() => { live = false; policyGuard.invalidate(); historyGuard.invalid
     <div class="columns records">
       <section class="card"><header><h2>政策历史</h2><button :disabled="loadingHistory || !rights.viewPolicy" @click="readHistory(0)">刷新</button></header><p v-if="historyError" class="error" role="alert">{{ historyError }}</p><p v-if="loadingHistory" role="status">读取政策历史中…</p><p v-else-if="rights.viewPolicy && !history.length">暂无记录。</p><article v-for="row in history" :key="row.id"><b>v{{ row.version }}</b><time>{{ row.created_at }}</time><p>{{ row.reason }}</p><small>操作人 {{ row.changed_by ?? '系统' }} · 审计 {{ row.audit_log_id ?? '无' }}</small><details><summary>政策快照</summary><pre>{{ JSON.stringify(row.config, null, 2) }}</pre></details></article><div class="actions"><button :disabled="historyOffset < 20 || loadingHistory" @click="readHistory(Math.max(0, historyOffset - 20))">较新记录</button><span>{{ historyOffset + 1 }}–{{ historyOffset + history.length }} / {{ historyTotal }}</span><button :disabled="historyOffset + history.length >= Number(historyTotal) || loadingHistory" @click="readHistory(historyOffset + 20)">较旧记录</button></div></section>
       <section class="card"><header><h2>检查记录</h2><button :disabled="loadingDecisions || !rights.viewChecks" @click="readDecisions(0)">刷新</button></header><p v-if="!rights.viewChecks" role="status">当前账号没有检查记录查看权限。</p><template v-else><p v-if="decisionsError" class="error" role="alert">{{ decisionsError }}</p><p v-if="loadingDecisions" role="status">读取检查记录中…</p><p v-else-if="!decisions.length">暂无记录。</p><article v-for="item in decisions" :key="item.id"><b>{{ item.operation }} · {{ item.decision }} · v{{ item.policy_version }}</b><time>{{ item.created_at }}</time><p>{{ item.reason }} · adapter={{ item.adapter_mode }}</p><ul><li v-for="check in item.checks" :key="check.check">{{ check.check }}：{{ check.enabled ? check.decision : '关闭' }}（{{ check.reason_code }}）</li></ul><small>创建人 {{ item.created_by }} · 审计 {{ item.audit_log_id }}</small></article><div class="actions"><button :disabled="decisionOffset < 20 || loadingDecisions" @click="readDecisions(Math.max(0, decisionOffset - 20))">较新记录</button><span>{{ decisionOffset + 1 }}–{{ decisionOffset + decisions.length }} / {{ decisionTotal }}</span><button :disabled="decisionOffset + decisions.length >= Number(decisionTotal) || loadingDecisions" @click="readDecisions(decisionOffset + 20)">较旧记录</button></div></template></section>
+      <section class="card"><header><h2>真实业务闸门拒绝记录</h2><button :disabled="loadingGates || !rights.viewChecks" @click="readGates(0)">刷新</button></header><p v-if="!rights.viewChecks" role="status">当前账号没有检查记录查看权限。</p><template v-else><p>仅显示当前品牌的真实注册/首次入品牌与投注业务请求拒绝记录；不包含个人资料。</p><p v-if="gatesError" class="error" role="alert">{{ gatesError }}</p><p v-if="loadingGates" role="status">读取闸门记录中…</p><p v-else-if="!gates.length">暂无记录。</p><article v-for="item in gates" :key="item.id"><b>{{ item.operation }} · {{ item.action }} · {{ item.decision }} · v{{ item.policy_version }}</b><time>{{ item.created_at }}</time><ul><li v-for="check in item.checks" :key="check.check">{{ check.check }}：{{ check.enabled ? check.decision : '关闭' }}（{{ check.reason_code }}）</li></ul></article><div class="actions"><button :disabled="gateOffset < 20 || loadingGates" @click="readGates(Math.max(0, gateOffset - 20))">较新记录</button><span>{{ gateOffset + 1 }}–{{ gateOffset + gates.length }} / {{ gateTotal }}</span><button :disabled="gateOffset + gates.length >= Number(gateTotal) || loadingGates" @click="readGates(gateOffset + 20)">较旧记录</button></div></template></section>
     </div>
   </section>
 </template>

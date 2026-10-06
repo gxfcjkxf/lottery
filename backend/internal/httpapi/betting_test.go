@@ -13,6 +13,7 @@ import (
 
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
+	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
@@ -295,6 +296,45 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	if order.ID == "" || order.Status != "placed" || order.Total != 8 {
 		t.Fatalf("unexpected placed order: %+v", order)
 	}
+	// The confirmation was issued while disabled. Enabling an unconfigured
+	// check must still reject the actual next Place, not just hide the UI.
+	grantCompliance(t, f.managementHTTP)
+	complianceConfig := compliance.DefaultConfig()
+	complianceConfig.IdentityEnabled = true
+	mustStatus(t, f.call("PUT", "/api/v1/admin/compliance-policy", "bet-compliance-enable", f.token, managedBrand, compliance.Input{Version: 1, Config: complianceConfig, Reason: "Require real adapter before new bets"}), 200)
+	walletBefore, err := (points.Store{DB: f.pool}).Read(ctx, managedBrand, f.memberID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockedPreview := betRequest(h, "POST", "/api/v1/bet-previews", f.userToken, "", body)
+	mustStatus(t, blockedPreview, 409)
+	blockedPlace := betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-compliance-reject", body)
+	mustStatus(t, blockedPlace, 409)
+	if !bytes.Contains(blockedPlace.Body.Bytes(), []byte("COMPLIANCE_REVIEW_REQUIRED")) {
+		t.Fatal("missing compliance error")
+	}
+	mustStatus(t, betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-compliance-reject", body), 409)
+	walletAfter, err := (points.Store{DB: f.pool}).Read(ctx, managedBrand, f.memberID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mustJSON(t, walletBefore) != mustJSON(t, walletAfter) {
+		t.Fatal("rejected admission changed wallet")
+	}
+	var orderCount, gateCount int
+	if err = f.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM bet_orders),(SELECT count(*) FROM compliance_gate_rejections WHERE brand_id=$1)`, managedBrand).Scan(&orderCount, &gateCount); err != nil || orderCount != 1 || gateCount != 2 {
+		t.Fatal("partial business or duplicate gate evidence", orderCount, gateCount, err)
+	}
+	var gatePage compliance.GatePage
+	gateList := f.call("GET", "/api/v1/admin/compliance-gates?operation=betting", "", f.token, managedBrand, nil)
+	mustStatus(t, gateList, 200)
+	managedData(t, gateList, &gatePage)
+	if gatePage.TotalCount != "2" || len(gatePage.Items) != 2 || gatePage.Items[0].Action != "bet_place" {
+		t.Fatal(gatePage)
+	}
+	in["identity_verified"] = true
+	mustStatus(t, betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-compliance-spoof", mustJSON(t, in)), 400)
+	delete(in, "identity_verified")
 	repeat := betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-order-place-001", body)
 	mustStatus(t, repeat, 201)
 	var repeated struct {
@@ -339,6 +379,10 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	if wallet.Display != 500 || wallet.Gift != 500 {
 		t.Fatalf("cancel failed to restore wallet: %+v", wallet)
 	}
+	// Replays recover historical failures, not a new admission decision. A new
+	// business intent requires a new key after an operator changes the policy.
+	mustStatus(t, f.call("PUT", "/api/v1/admin/compliance-policy", "bet-compliance-disable", f.token, managedBrand, compliance.Input{Version: 2, Config: compliance.DefaultConfig(), Reason: "Restore disabled test configuration"}), 200)
+	mustStatus(t, betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-compliance-reject", body), 409)
 
 	// The administrative exception workflow uses the same real order fixture,
 	// but separate permissions and a fresh idempotent placement.

@@ -11,6 +11,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
+	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
@@ -21,6 +22,9 @@ import (
 func betService(d Dependencies) betting.Service { return betting.Service{DB: d.Admins.DB} }
 
 func betError(data any, err error) (mutation.Result, error) {
+	if result, ok := compliance.Rejection(err); ok {
+		return result, nil
+	}
 	switch {
 	case err == nil:
 		return mutation.OK(200, data), nil
@@ -158,8 +162,28 @@ func registerBetRoutes(mux routeRegistrar, d Dependencies) {
 				failure(w, r, 503, "SERVICE_UNAVAILABLE", "暂时无法验证登录状态")
 				return
 			}
-			quote, err := betService(d).Preview(r.Context(), tx, brand.ID, session, in)
+			quote, err := betService(d).Preview(r.Context(), tx, brand.ID, session, in, points.Metadata{RequestID: requestID(r), IP: meta(r).IP})
 			if err != nil {
+				var blocked *compliance.Blocked
+				if errors.As(err, &blocked) {
+					if e := tx.Rollback(r.Context()); e != nil {
+						failure(w, r, 503, "SERVICE_UNAVAILABLE", "暂时无法记录合规检查")
+						return
+					}
+					proof, e := d.Admins.DB.Begin(r.Context())
+					if e != nil {
+						failure(w, r, 503, "SERVICE_UNAVAILABLE", "暂时无法记录合规检查")
+						return
+					}
+					defer proof.Rollback(r.Context())
+					if e = blocked.Persist(r.Context(), proof); e == nil {
+						e = proof.Commit(r.Context())
+					}
+					if e != nil {
+						failure(w, r, 503, "SERVICE_UNAVAILABLE", "暂时无法记录合规检查")
+						return
+					}
+				}
 				result, e := betError(nil, err)
 				outputMutation(w, r, result, e)
 				return
