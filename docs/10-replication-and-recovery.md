@@ -51,7 +51,38 @@ CGO_ENABLED=0 go test -tags recovery -buildvcs=false ./internal/recovery \
 
 replica_catchup_seconds从主库新增测试流水到两台从库全部表摘要匹配，包含本地提交和摘要查询成本，不是持续复制延迟指标。promotion_seconds仅为已关闭旧主库后的手动提升及恢复状态确认，不包含检测故障、应用重连或端点切换。restore_seconds包含创建恢复节点、恢复和首次完整摘要检查；这些小数据、同机测量不应设置为生产RTO或RPO。
 
-自动主库切换、统一写端点、多读节点路由、真实复制延迟告警、WAL归档/PITR、离机加密备份、保留/轮换、角色权限与认证密钥恢复、负载下故障、网络分区和客户环境仍需继续实施及演练。目前HTTP业务读写仍使用主库；配置中的单个Replica连接入口不能被称为已经完成一主多从应用路由。
+应用历史查询现已支持下述多读节点路由；资金和当前业务读写仍使用主库。自动主库切换、统一写端点、真实复制延迟告警、WAL归档/PITR、离机加密备份、保留/轮换、角色权限与认证密钥恢复、负载下故障、网络分区和客户环境仍需继续实施及演练。
+
+## 应用历史读路由
+
+服务端仅允许以下六个管理端GET读取从库：`/audit`、`/notification-templates/{key}/history`、`/compliance-policy/history`、`/brand-presentation/history`、`/brand-domains/history`、`/brand-operation/history`，共同前缀为`/api/v1/admin`。其他接口不受读节点配置影响，包括余额、积分流水、报表、提现政策、投注、期次、会话、权限和当前配置。客户端不能通过请求头或查询参数选择节点。
+
+`DATABASE_READ_URLS`是最多八个非空、不重复PostgreSQL连接串的JSON数组；不配置或`[]`表示所有查询使用主库。旧`DATABASE_READ_URL`仍支持单节点，两变量不得同时非空；使用旧变量时删去或清空示例中的`DATABASE_READ_URLS=[]`。配置语法错误使启动失败，但可选从库暂时离线不会阻止主库API或worker启动。每台节点各有最多`DB_MAX_CONNS`连接，部署方需按API实例数和读节点数核算总连接预算；完整认证变更服务仍要求至少四条主库连接。
+
+读节点必须是同一物理复制集群、同一数据库、UTF8编码及相同的有效schema查找路径，使用直接节点地址或固定整个会话到同一节点的连接池。schema路径不匹配时回退主库，不能将同库其他schema的同名表当成业务历史。禁止事务池、语句池、每查询重新选节点的代理、逻辑复制以及未经隔离的双主。生产连接另需正确TLS、网络隔离及最小权限；应用不会创建复制用户、授予监控权限、修改数据库只读设置或提升从库。
+
+每次历史查询先在主库重新验证管理员会话、品牌权限并持有现有共享ACL锁，再采样`pg_current_wal_insert_lsn()`及集群标识、数据库、时间线。使用插入位置而非写出位置，即使数据库异步提交也不能漏掉已插入但尚未写出的提交记录。轮询从库时同时检查仍在恢复、未暂停回放、两类控制记录的时间线匹配、已回放位置不小于主库采样位置。无法核验、未知时间线或尚未追上时宁可回退主库。检查通过后在同一条已持有的物理连接上开启只读repeatable read事务，再查询历史；不能先建立旧快照，再等待回放追上。提交记录回放后只对新快照可见的机制见[PostgreSQL热备说明](https://www.postgresql.org/docs/17/hot-standby.html)。
+
+单节点获取连接及探测限100毫秒，总选择预算750毫秒；从库数据查询限两秒。查询失败或超时丢弃全部缓冲结果，回退主库执行一次无副作用的数据查询，不重试审计或任何变更。主库探测采用savepoint，监控权限不足不会让正常回退继承失败事务。部署账号需具有所使用的`pg_control_system`、`pg_control_checkpoint`、`pg_control_recovery`及WAL/恢复查询函数权限，由运维显式按最小权限配置；不足时只影响从库分流，不能为了分流授予应用超级用户。
+
+数据返回前再次验证主库授权、追加并提交主库查询审计。主库授权、审计或提交失败时不释放历史数据；从库不能承担主库失联后的授权或写审计。成功响应提供`X-Read-Source: primary|replica`、固定词汇的`X-Read-Reason`，从库响应还包含从1开始的`X-Read-Replica`配置索引；不暴露DSN、节点地址、密钥或内部异常。历史查询中的品牌运行、展示、域名审计分别使用`brand_operation.history`、`brand_presentation.history`、`brand_domains.history`，当前读取仍使用原`*.view`。
+
+该屏障确保包含采样位置之前已提交并回放的历史，不声称响应时刻与主库完全同步，也不提供故障切换或分布式事务。合规历史计数与页面在同一SQL快照中读取，即使回退主库read committed事务也不出现计数和页面来自不同语句快照的问题。控制函数含义见[系统信息函数](https://www.postgresql.org/docs/17/functions-info.html)和[WAL及恢复函数](https://www.postgresql.org/docs/17/functions-admin.html)。
+
+## 读路由复现
+
+使用本手册相同的PostgreSQL工具、隔离确认、原库只读地址和四个空闲端口；为每轮新建空目录和全新的报告路径。从backend执行：
+
+```sh
+export LOTTERY_RECOVERY_ROOT="$(mktemp -d /tmp/lottery-history-routing.XXXXXX)"
+export LOTTERY_RECOVERY_REPORT='/absolute/test-output/fresh-history-routing.json'
+CGO_ENABLED=0 go test -tags recovery -buildvcs=false ./internal/recovery \
+  -run '^TestPhysicalHistoryReadRouting$' -count=1 -v
+```
+
+演练只启动拥有的一主两从及一个无关集群；结束时停止这些节点并保留数据、日志和报告。原开发库仅作前后只读摘要，不暂停或修改原开发服务。固定字段报告不保存登录令牌、请求正文、数据库连接串或客户资料；真实高可用和生产容量验收仍独立进行。
+
+本次[实体读路由证据](performance/s7m-history-read-routing.json)包含六类历史的七次成功HTTP请求、两台从库索引、主库新行的回放及暂停/离线/报错/超时回退；权限撤销、会话撤销、监控权限不足和审计失败均通过。原库前后完整public摘要相同，四台拥有的节点全部停止。这是合成数据的功能演练，不代表负载下复制延迟或生产高可用验收。
 
 ## 生产恢复前必须确认
 

@@ -125,17 +125,36 @@ func (s Service) Update(ctx context.Context, tx pgx.Tx, brand string, a access.A
 	return after, nil
 }
 func (s Service) History(ctx context.Context, brand string, limit, offset int) ([]Revision, error) {
-	if s.DB == nil || !uuidPattern.MatchString(brand) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
+	if s.DB == nil {
+		return nil, ErrInvalid
+	}
+	tx, e := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if e != nil {
+		return nil, e
+	}
+	defer tx.Rollback(ctx)
+	out, e := s.HistoryTx(ctx, tx, brand, limit, offset)
+	if e != nil {
+		return nil, e
+	}
+	if e = tx.Commit(ctx); e != nil {
+		return nil, e
+	}
+	return out, nil
+}
+
+func (s Service) HistoryTx(ctx context.Context, tx pgx.Tx, brand string, limit, offset int) ([]Revision, error) {
+	if tx == nil || !uuidPattern.MatchString(brand) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
 		return nil, ErrInvalid
 	}
 	var exists bool
-	if e := s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM brand_presentations WHERE brand_id=$1)`, brand).Scan(&exists); e != nil {
+	if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM brand_presentations WHERE brand_id=$1)`, brand).Scan(&exists); e != nil {
 		return nil, e
 	}
 	if !exists {
 		return nil, ErrNotFound
 	}
-	rows, e := s.DB.Query(ctx, `SELECT id::text,brand_id::text,version,config,effective,changed_by::text,reason,audit_log_id::text,created_at FROM brand_presentation_revisions WHERE brand_id=$1 ORDER BY version DESC LIMIT $2 OFFSET $3`, brand, limit, offset)
+	rows, e := tx.Query(ctx, `SELECT id::text,brand_id::text,version,config,effective,changed_by::text,reason,audit_log_id::text,created_at FROM brand_presentation_revisions WHERE brand_id=$1 ORDER BY version DESC LIMIT $2 OFFSET $3`, brand, limit, offset)
 	if e != nil {
 		return nil, e
 	}

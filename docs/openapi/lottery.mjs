@@ -1,3 +1,4 @@
+import { addHistoryReadHeaders } from "./history-reads.mjs";
 const ref = (name) => ({ $ref: `#/components/schemas/${name}` });
 const arr = (items) => ({ type: "array", items });
 const obj = (properties, required = Object.keys(properties), extra = false) => ({
@@ -369,3 +370,5 @@ Object.assign(schemas, {
   LotteryNotificationPage: obj({ brand_id: uuid, member_id: uuid, items: arr(ref("LotteryNotification")), unread_count: amount, limit: int, offset: int }),
   LotteryNotificationReadReceipt: obj({ brand_id: uuid, member_id: uuid, ids: arr(uuid), changed: int, unread_count: amount }),
 });
+
+addHistoryReadHeaders(operations);

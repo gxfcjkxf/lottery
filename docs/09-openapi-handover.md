@@ -20,6 +20,8 @@ PUT 必须提供当前共享版本、全部 16 个配置键和操作原因。可
 
 ## 接入约束
 
+六个不可变历史GET可采用物理从库，授权和查询审计仍以主库为准。成功响应中的`X-Read-Source`、`X-Read-Reason`及条件性的`X-Read-Replica`仅用于诊断，不是客户端选择器；原JSON结构、权限、品牌范围和分页不变。完整名单、WAL屏障、连接方式及回退说明见[复制与读路由手册](10-replication-and-recovery.md)。资金、投注、会话、当前配置及其他查询不进入该白名单。
+
 站内模板配置使用GET `/api/v1/admin/notification-templates`、GET `/{key}/history`和PUT `/{key}`，需要独立模板权限；版本是每品牌每事件的安全整数，不是品牌配置版本。用户消息content为生成时的双语源文案，只有旧v1允许null；模板更新不改旧通知，也不改变业务积分。服务端及用户端拒绝未知占位符和私密变量，详见 [模板合同](12-notification-templates.md)。
 
 合规配置GET/PUT `/api/v1/admin/compliance-policy`、历史GET `/compliance-policy/history`、显式检查POST/GET `/compliance-checks`及真实业务拒绝GET `/compliance-gates` 已注册。政策五键全量替换，版本独立；任一检查开启但未接真实适配器时，新注册/首次入品牌/运营新增及投注预览/提交被409 COMPLIANCE_REVIEW_REQUIRED拒绝，不建身份/扣分/建单。拒绝证据与加密负回执同事务，原键重放不重复证据。显式管理模拟不是实际业务检查；默认关闭仅跳过，不证明验证完成。提现、真实验证、复核与资金冻结未实现，边界见 [安全说明](07-security-risk-compliance.md)。

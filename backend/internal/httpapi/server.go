@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
+	"github.com/gxfcjkxf/lottery/backend/internal/database"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
@@ -27,6 +28,7 @@ type Dependencies struct {
 	Admins         adminsys.Store
 	Telegram       telegramauth.Verifier
 	TrustedProxies []*net.IPNet
+	HistoryReads   *database.HistoryRouter
 }
 type requestKey struct{}
 type envelope struct {

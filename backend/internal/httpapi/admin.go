@@ -335,40 +335,34 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 			failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
 			return
 		}
-		rows, err := d.Admins.DB.Query(r.Context(), `SELECT id::text,action,actor_type,coalesce(actor_id::text,''),resource_type,coalesce(resource_id::text,''),reason,request_id,created_at,coalesce(ip_address,''),coalesce(before_json,'null'::jsonb),coalesce(after_json,'null'::jsonb) FROM audit_logs WHERE ($1='' OR brand_id=NULLIF($1,'')::uuid) ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`, brand, limit, offset)
-		if err != nil {
-			failure(w, r, 503, "SERVICE_UNAVAILABLE", "审计查询失败")
-			return
-		}
-		defer rows.Close()
-		items := []map[string]any{}
-		for rows.Next() {
-			var id, action, actorType, actorID, resource, resourceID, reason, req, ip string
-			var when time.Time
-			var before, after json.RawMessage
-			if err = rows.Scan(&id, &action, &actorType, &actorID, &resource, &resourceID, &reason, &req, &when, &ip, &before, &after); err != nil {
-				failure(w, r, 503, "SERVICE_UNAVAILABLE", "审计查询失败")
-				return
+		out, err := auditedHistoryRecord(w, r, d, a, func(fresh access.Account) bool {
+			return access.Authorize(fresh, "audit", "view", access.ScopePlatform, "") || access.Authorize(fresh, "audit", "view", access.ScopeBrand, brand)
+		}, audit.Record{BrandID: brand, Action: "audit.view", ResourceType: "audit"}, func(tx pgx.Tx) (any, error) {
+			rows, err := tx.Query(r.Context(), `SELECT id::text,action,actor_type,coalesce(actor_id::text,''),resource_type,coalesce(resource_id::text,''),reason,request_id,created_at,coalesce(ip_address,''),coalesce(before_json,'null'::jsonb),coalesce(after_json,'null'::jsonb) FROM audit_logs WHERE ($1='' OR brand_id=NULLIF($1,'')::uuid) ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`, brand, limit, offset)
+			if err != nil {
+				return nil, err
 			}
-			items = append(items, map[string]any{"id": id, "action": action, "actor_type": actorType, "actor_id": actorID, "resource_type": resource, "resource_id": resourceID, "reason": reason, "request_id": req, "created_at": when, "ip_address": ip, "before_json": before, "after_json": after})
-		}
-		if rows.Err() != nil {
-			failure(w, r, 503, "SERVICE_UNAVAILABLE", "审计查询失败")
-			return
-		}
-		tx, err := d.Admins.DB.Begin(r.Context())
-		if err == nil {
-			defer tx.Rollback(r.Context())
-			_, err = audit.Append(r.Context(), tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: a.ID, Action: "audit.view", ResourceType: "audit", RequestID: requestID(r), IP: meta(r).IP})
-			if err == nil {
-				err = tx.Commit(r.Context())
+			defer rows.Close()
+			items := []map[string]any{}
+			for rows.Next() {
+				var id, action, actorType, actorID, resource, resourceID, reason, req, ip string
+				var when time.Time
+				var before, after json.RawMessage
+				if err = rows.Scan(&id, &action, &actorType, &actorID, &resource, &resourceID, &reason, &req, &when, &ip, &before, &after); err != nil {
+					return nil, err
+				}
+				items = append(items, map[string]any{"id": id, "action": action, "actor_type": actorType, "actor_id": actorID, "resource_type": resource, "resource_id": resourceID, "reason": reason, "request_id": req, "created_at": when, "ip_address": ip, "before_json": before, "after_json": after})
 			}
+			return map[string]any{"items": items}, rows.Err()
+		})
+		if historyFailure(w, r, err) {
+			return
 		}
 		if err != nil {
-			failure(w, r, 503, "SERVICE_UNAVAILABLE", "审计记录失败")
+			failure(w, r, 503, "SERVICE_UNAVAILABLE", "审计查询或记录失败")
 			return
 		}
-		respond(w, r, 200, map[string]any{"items": items})
+		respond(w, r, 200, out)
 	})
 	registerAdminManagementRoutes(handle, d)
 	registerPointAdminRoutes(handle, d)

@@ -70,9 +70,18 @@ func registerBrandDomainRoutes(handle func(string, string, http.HandlerFunc), d 
 					failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
 					return
 				}
-				rows, err := s.History(r.Context(), b, limit, offset)
-				e = err
-				out = map[string]any{"items": rows, "limit": limit, "offset": offset}
+				out, e = auditedHistory(w, r, d, a, b, "brand_domains.history", func(fresh access.Account) bool {
+					return branddomains.Allowed(fresh, b, "view")
+				}, func(tx pgx.Tx) (any, error) {
+					rows, err := s.HistoryTx(r.Context(), tx, b, limit, offset)
+					return map[string]any{"items": rows, "limit": limit, "offset": offset}, err
+				})
+				if historyFailure(w, r, e) {
+					return
+				}
+				result, err := domainResult(out, e, 200)
+				outputMutation(w, r, result, err)
+				return
 			} else {
 				if r.URL.RawQuery != "" {
 					failure(w, r, 400, "REQUEST_INVALID", "此接口不接受查询参数")

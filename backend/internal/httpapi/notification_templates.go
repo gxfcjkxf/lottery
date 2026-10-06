@@ -64,6 +64,15 @@ func templateFresh(ctx context.Context, tx pgx.Tx, r *http.Request, d Dependenci
 	return fresh, nil
 }
 func templateRead(w http.ResponseWriter, r *http.Request, d Dependencies, a access.Account, brand, action string, query map[string]any, run func(pgx.Tx) (any, error)) {
+	if action == "notification.template.history" {
+		out, e := auditedHistoryRecord(w, r, d, a, func(fresh access.Account) bool { return notification.AllowedTemplate(fresh, brand, "view") }, audit.Record{BrandID: brand, Action: action, ResourceType: "notification_template", ResourceID: brand, After: query}, run)
+		if historyFailure(w, r, e) {
+			return
+		}
+		result, e := templateResult(out, e)
+		outputMutation(w, r, result, e)
+		return
+	}
 	tx, e := d.Admins.DB.Begin(r.Context())
 	if e != nil {
 		outputMutation(w, r, mutation.Result{}, e)

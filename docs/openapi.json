@@ -1062,7 +1062,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Brand-scoped compliance configuration and explicit administrative stub checks only. Separate explicit administrative simulations from actual registration/join/betting rejection gates. No real verification or withdrawal flow. Independent policy version, immutable audited history and decisions, checked encrypted idempotency. Super administrators may read only with explicit platform grants; writes and runs denied. Disabled brands readonly. All-disabled means checks skipped, not a verified user; enabled means review/ADAPTER_NOT_CONFIGURED.",
+        "description": "Brand-scoped compliance configuration and explicit administrative stub checks only. Separate explicit administrative simulations from actual registration/join/betting rejection gates. No real verification or withdrawal flow. Independent policy version, immutable audited history and decisions, checked encrypted idempotency. Super administrators may read only with explicit platform grants; writes and runs denied. Disabled brands readonly. All-disabled means checks skipped, not a verified user; enabled means review/ADAPTER_NOT_CONFIGURED. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -1131,6 +1131,37 @@
                 "schema": {
                   "type": "string",
                   "const": "no-store"
+                }
+              },
+              "X-Read-Source": {
+                "description": "Data source, after fresh primary authorization and successful primary audit commit. Not a client routing control.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "primary",
+                    "replica"
+                  ]
+                }
+              },
+              "X-Read-Reason": {
+                "description": "Fixed routing diagnostic; does not disclose connection details.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "not_configured",
+                    "primary_only",
+                    "fence_unavailable",
+                    "no_eligible_replica",
+                    "replica_query_failed",
+                    "wal_fenced"
+                  ]
+                }
+              },
+              "X-Read-Replica": {
+                "description": "Present only for replica data: one-based index in server-configured read nodes. Not an address or a user-supplied selector.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-8]$"
                 }
               }
             },
@@ -11713,7 +11744,7 @@
         "tags": [
           "administration"
         ],
-        "description": "An admin with audit.view.platform may omit X-Brand-ID for all brands; otherwise a valid authorized brand and audit.view.brand are required. The response reflects the SQL projection actually emitted: items only, with before_json and after_json as arbitrary JSON values (including null). The read itself is appended to the audit log.",
+        "description": "An admin with audit.view.platform may omit X-Brand-ID for all brands; otherwise a valid authorized brand and audit.view.brand are required. The response reflects the SQL projection actually emitted: items only, with before_json and after_json as arbitrary JSON values (including null). The read itself is appended to the audit log. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -11782,6 +11813,37 @@
                 "schema": {
                   "type": "string",
                   "const": "no-store"
+                }
+              },
+              "X-Read-Source": {
+                "description": "Data source, after fresh primary authorization and successful primary audit commit. Not a client routing control.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "primary",
+                    "replica"
+                  ]
+                }
+              },
+              "X-Read-Reason": {
+                "description": "Fixed routing diagnostic; does not disclose connection details.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "not_configured",
+                    "primary_only",
+                    "fence_unavailable",
+                    "no_eligible_replica",
+                    "replica_query_failed",
+                    "wal_fenced"
+                  ]
+                }
+              },
+              "X-Read-Replica": {
+                "description": "Present only for replica data: one-based index in server-configured read nodes. Not an address or a user-supplied selector.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-8]$"
                 }
               }
             },
@@ -16093,7 +16155,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Requires an explicit brand_operation.view.brand grant for the selected brand or brand_operation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Returns newest revisions first for the brand selected by X-Brand-ID; there is no brand-ID path alias. Unknown or repeated query parameters are rejected.",
+        "description": "Requires an explicit brand_operation.view.brand grant for the selected brand or brand_operation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Returns newest revisions first for the brand selected by X-Brand-ID; there is no brand-ID path alias. Unknown or repeated query parameters are rejected. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -16162,6 +16224,37 @@
                 "schema": {
                   "type": "string",
                   "const": "no-store"
+                }
+              },
+              "X-Read-Source": {
+                "description": "Data source, after fresh primary authorization and successful primary audit commit. Not a client routing control.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "primary",
+                    "replica"
+                  ]
+                }
+              },
+              "X-Read-Reason": {
+                "description": "Fixed routing diagnostic; does not disclose connection details.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "not_configured",
+                    "primary_only",
+                    "fence_unavailable",
+                    "no_eligible_replica",
+                    "replica_query_failed",
+                    "wal_fenced"
+                  ]
+                }
+              },
+              "X-Read-Replica": {
+                "description": "Present only for replica data: one-based index in server-configured read nodes. Not an address or a user-supplied selector.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-8]$"
                 }
               }
             },
@@ -17439,7 +17532,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Requires an explicit brand_domains.view.brand grant for the selected brand or brand_domains.view.platform grant. Super-admin status alone grants no access. Returns newest revisions first for the brand selected only by X-Brand-ID. Before and after domain snapshots are sorted by domain then id; each may have zero or one primary. Versions may have gaps because config_version is shared. Unknown or repeated query parameters are rejected.",
+        "description": "Requires an explicit brand_domains.view.brand grant for the selected brand or brand_domains.view.platform grant. Super-admin status alone grants no access. Returns newest revisions first for the brand selected only by X-Brand-ID. Before and after domain snapshots are sorted by domain then id; each may have zero or one primary. Versions may have gaps because config_version is shared. Unknown or repeated query parameters are rejected. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -17508,6 +17601,37 @@
                 "schema": {
                   "type": "string",
                   "const": "no-store"
+                }
+              },
+              "X-Read-Source": {
+                "description": "Data source, after fresh primary authorization and successful primary audit commit. Not a client routing control.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "primary",
+                    "replica"
+                  ]
+                }
+              },
+              "X-Read-Reason": {
+                "description": "Fixed routing diagnostic; does not disclose connection details.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "not_configured",
+                    "primary_only",
+                    "fence_unavailable",
+                    "no_eligible_replica",
+                    "replica_query_failed",
+                    "wal_fenced"
+                  ]
+                }
+              },
+              "X-Read-Replica": {
+                "description": "Present only for replica data: one-based index in server-configured read nodes. Not an address or a user-supplied selector.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-8]$"
                 }
               }
             },
@@ -18433,7 +18557,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Requires an explicit brand_presentation.view.brand grant for the selected brand or brand_presentation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Returns newest presentation revisions first for the brand selected only by X-Brand-ID. Versions may have gaps because the version is shared with other brand/auth configuration. Unknown or repeated query parameters are rejected; no brand-ID path alias is accepted.",
+        "description": "Requires an explicit brand_presentation.view.brand grant for the selected brand or brand_presentation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Returns newest presentation revisions first for the brand selected only by X-Brand-ID. Versions may have gaps because the version is shared with other brand/auth configuration. Unknown or repeated query parameters are rejected; no brand-ID path alias is accepted. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -18502,6 +18626,37 @@
                 "schema": {
                   "type": "string",
                   "const": "no-store"
+                }
+              },
+              "X-Read-Source": {
+                "description": "Data source, after fresh primary authorization and successful primary audit commit. Not a client routing control.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "primary",
+                    "replica"
+                  ]
+                }
+              },
+              "X-Read-Reason": {
+                "description": "Fixed routing diagnostic; does not disclose connection details.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "not_configured",
+                    "primary_only",
+                    "fence_unavailable",
+                    "no_eligible_replica",
+                    "replica_query_failed",
+                    "wal_fenced"
+                  ]
+                }
+              },
+              "X-Read-Replica": {
+                "description": "Present only for replica data: one-based index in server-configured read nodes. Not an address or a user-supplied selector.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-8]$"
                 }
               }
             },
@@ -57118,7 +57273,7 @@
         "tags": [
           "notification"
         ],
-        "description": "Requires brand view permission with selected-brand membership, or explicit platform view permission independent of membership. limit is 1–100 and offset is 0–1000000. Invalid key or pagination returns NOTIFICATION_TEMPLATE_INPUT_INVALID; a missing brand template returns NOTIFICATION_TEMPLATE_NOT_FOUND. Revision actor and audit IDs are null only for version 1.",
+        "description": "Requires brand view permission with selected-brand membership, or explicit platform view permission independent of membership. limit is 1–100 and offset is 0–1000000. Invalid key or pagination returns NOTIFICATION_TEMPLATE_INPUT_INVALID; a missing brand template returns NOTIFICATION_TEMPLATE_NOT_FOUND. Revision actor and audit IDs are null only for version 1. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -57201,6 +57356,37 @@
                 "schema": {
                   "type": "string",
                   "const": "no-store"
+                }
+              },
+              "X-Read-Source": {
+                "description": "Data source, after fresh primary authorization and successful primary audit commit. Not a client routing control.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "primary",
+                    "replica"
+                  ]
+                }
+              },
+              "X-Read-Reason": {
+                "description": "Fixed routing diagnostic; does not disclose connection details.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "not_configured",
+                    "primary_only",
+                    "fence_unavailable",
+                    "no_eligible_replica",
+                    "replica_query_failed",
+                    "wal_fenced"
+                  ]
+                }
+              },
+              "X-Read-Replica": {
+                "description": "Present only for replica data: one-based index in server-configured read nodes. Not an address or a user-supplied selector.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-8]$"
                 }
               }
             },

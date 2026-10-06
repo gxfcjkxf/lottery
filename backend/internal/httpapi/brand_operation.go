@@ -93,9 +93,18 @@ func registerBrandOperationRoutes(handle func(string, string, http.HandlerFunc),
 					failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
 					return
 				}
-				items, e := s.History(r.Context(), b, limit, offset)
-				err = e
-				out = map[string]any{"items": items, "limit": limit, "offset": offset}
+				out, err = auditedHistory(w, r, d, a, b, "brand_operation.history", func(fresh access.Account) bool {
+					return brandops.Allowed(fresh, b, "view")
+				}, func(tx pgx.Tx) (any, error) {
+					items, e := s.HistoryTx(r.Context(), tx, b, limit, offset)
+					return map[string]any{"items": items, "limit": limit, "offset": offset}, e
+				})
+				if historyFailure(w, r, err) {
+					return
+				}
+				result, e := brandOperationResult(out, err)
+				outputMutation(w, r, result, e)
+				return
 			} else {
 				if r.URL.RawQuery != "" {
 					failure(w, r, 400, "REQUEST_INVALID", "此接口不接受查询参数")

@@ -202,36 +202,44 @@ func (s Service) History(ctx context.Context, brand string, limit, offset int) (
 		return out, e
 	}
 	defer tx.Rollback(ctx)
-	if _, e = scanPolicy(tx.QueryRow(ctx, policySQL, brand)); e != nil {
-		return out, e
-	}
-	if e = tx.QueryRow(ctx, `SELECT count(*)::text FROM compliance_policy_revisions WHERE brand_id=$1`, brand).Scan(&out.TotalCount); e != nil {
-		return out, e
-	}
-	rows, e := tx.Query(ctx, `SELECT id::text,brand_id::text,version,config,changed_by::text,reason,audit_log_id::text,created_at FROM compliance_policy_revisions WHERE brand_id=$1 ORDER BY version DESC LIMIT $2 OFFSET $3`, brand, limit, offset)
-	if e != nil {
-		return out, e
-	}
-	for rows.Next() {
-		var v Revision
-		var raw []byte
-		if e = rows.Scan(&v.ID, &v.BrandID, &v.Version, &raw, &v.ChangedBy, &v.Reason, &v.AuditLogID, &v.CreatedAt); e != nil {
-			rows.Close()
-			return out, e
-		}
-		if e = json.Unmarshal(raw, &v.Config); e != nil {
-			rows.Close()
-			return out, e
-		}
-		v.CreatedAt = v.CreatedAt.UTC()
-		out.Items = append(out.Items, v)
-	}
-	e = rows.Err()
-	rows.Close()
+	out, e = s.HistoryTx(ctx, tx, brand, limit, offset)
 	if e != nil {
 		return out, e
 	}
 	return out, tx.Commit(ctx)
+}
+
+func (s Service) HistoryTx(ctx context.Context, tx pgx.Tx, brand string, limit, offset int) (HistoryPage, error) {
+	out := HistoryPage{BrandID: brand, Items: []Revision{}, Limit: limit, Offset: offset}
+	if tx == nil || !validPage(brand, limit, offset) {
+		return out, ErrInvalid
+	}
+	if _, e := scanPolicy(tx.QueryRow(ctx, policySQL, brand)); e != nil {
+		return out, e
+	}
+	var raw []byte
+	e := tx.QueryRow(ctx, `WITH total AS (
+		SELECT count(*)::text AS total_count FROM compliance_policy_revisions WHERE brand_id=$1
+	), page AS (
+		SELECT id,brand_id,version,config,changed_by,reason,audit_log_id,created_at
+		FROM compliance_policy_revisions WHERE brand_id=$1 ORDER BY version DESC LIMIT $2 OFFSET $3
+	)
+	SELECT total.total_count,
+		COALESCE(jsonb_agg(jsonb_build_object(
+			'id',page.id::text,'brand_id',page.brand_id::text,'version',page.version,'config',page.config,
+			'changed_by',page.changed_by::text,'reason',page.reason,'audit_log_id',page.audit_log_id::text,'created_at',page.created_at
+		) ORDER BY page.version DESC) FILTER (WHERE page.id IS NOT NULL),'[]'::jsonb)
+	FROM total LEFT JOIN page ON true GROUP BY total.total_count`, brand, limit, offset).Scan(&out.TotalCount, &raw)
+	if e != nil {
+		return out, e
+	}
+	if e = json.Unmarshal(raw, &out.Items); e != nil {
+		return out, e
+	}
+	for i := range out.Items {
+		out.Items[i].CreatedAt = out.Items[i].CreatedAt.UTC()
+	}
+	return out, nil
 }
 func (s Service) Decisions(ctx context.Context, brand, operation string, limit, offset int) (DecisionPage, error) {
 	out := DecisionPage{BrandID: brand, Items: []Decision{}, Limit: limit, Offset: offset}

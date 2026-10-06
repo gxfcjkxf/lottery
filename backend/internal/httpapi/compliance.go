@@ -136,8 +136,12 @@ func registerComplianceRoutes(handle func(string, string, http.HandlerFunc), d D
 			failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
 			return
 		}
-		out, e := s.History(r.Context(), brand, limit, offset)
-		if e == nil && !adminReadAudit(w, r, d, a, brand, "compliance_policy.history.view") {
+		out, e := auditedHistory(w, r, d, a, brand, "compliance_policy.history.view", func(fresh access.Account) bool {
+			return compliance.Allowed(fresh, brand, "compliance_policy", "view")
+		}, func(tx pgx.Tx) (any, error) {
+			return s.HistoryTx(r.Context(), tx, brand, limit, offset)
+		})
+		if historyFailure(w, r, e) {
 			return
 		}
 		result, e := complianceResult(out, e)

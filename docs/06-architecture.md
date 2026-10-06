@@ -104,6 +104,10 @@ user-web / admin-web
 
 ## 6. 异步任务
 
+### 应用主从读取边界
+
+六类不可变管理历史GET已接入最多八个物理从库的轮询路由。主库重新验证授权后采样WAL插入位置；从库须通过集群、数据库、schema路径、编码、时间线及回放位置检查，再在同一连接建立只读查询快照。延迟、离线、权限不足或查询失败时回退主库；数据返回前提交主库审计。当前配置、会话、权限、余额、账本、报表、投注、期次和所有写入仍走主库，不以从库承担主库失联后的授权或资金可用性。配置、超时、响应诊断和复现方法见[复制与读路由手册](10-replication-and-recovery.md)。自动提升、主库端点切换、PITR和生产高可用仍需独立交付。
+
 ### S4-c1 期次 worker
 
 `go run ./cmd/platform worker` 是与 HTTP API 分开的可选进程，使用相同配置连接主 PostgreSQL；API 不会隐式启动 worker。`cmd/platform` 内嵌 tzdata，精简镜像也可加载 IANA 时区。worker 每秒执行 Tick，每轮最多挑选 25 个待处理彩种、每彩种最多锁定处理 100 条到期 periods；每个彩种一个事务，锁顺序为 game → period → play。多个实例可共享同一主库运行，行锁和状态转移避免重复开期。Tick 使用 PostgreSQL 主库时钟；只有实际开期才递增 `started_sequence`。漏过投注窗口的 pending 期次判定取消，不补开。每分钟 FillCalendar 为 active 且有日历的彩种保留未来 24 小时期次；相同时间窗复用既有记录及原 schedule 快照。
