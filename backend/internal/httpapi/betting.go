@@ -317,6 +317,7 @@ func bettingMeta(r *http.Request, a access.Account) points.Metadata {
 
 func registerBetAdminRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
 	registerBetExceptionRoutes(handle, d)
+	registerBetJudgmentRoutes(handle, d)
 	s := betService(d)
 	handle("GET", "/bet-policy", func(w http.ResponseWriter, r *http.Request) {
 		a, brand, ok := betAdminActor(w, r, d, "bet_policy", "view", false)

@@ -1,17 +1,23 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  onMounted,
+  onUnmounted,
+  ref,
+} from "vue";
 import AccessManagement from "./AccessManagement.vue";
 import MemberProvision from "./MemberProvision.vue";
 import AuthSettings from "./AuthSettings.vue";
 import FinanceManagement from "./FinanceManagement.vue";
 import BalanceRepair from "./BalanceRepair.vue";
 import RuleSimulator from "./RuleSimulator.vue";
-import RuleVersions from "./RuleVersions.vue";
 import PeriodSchedules from "./PeriodSchedules.vue";
 import DrawManagement from "./DrawManagement.vue";
 import BetOrderManagement from "./BetOrderManagement.vue";
 import BetPolicySettings from "./BetPolicySettings.vue";
 import PeriodCancellation from "./PeriodCancellation.vue";
+const RuleVersions = defineAsyncComponent(() => import("./RuleVersions.vue"));
 import {
   previewCorrection,
   resolveWithdrawal,

@@ -84,14 +84,12 @@ describe("bet management API", () => {
     ]) {
       await expect(
         createBetManagementApi(
-          vi
-            .fn<typeof fetch>()
-            .mockResolvedValue(
-              ok({
-                ...gamePolicy,
-                config: { ...gamePolicy.config, min_bet_points: invalid },
-              }),
-            ),
+          vi.fn<typeof fetch>().mockResolvedValue(
+            ok({
+              ...gamePolicy,
+              config: { ...gamePolicy.config, min_bet_points: invalid },
+            }),
+          ),
         ).getGamePolicy(brand, "game-1"),
       ).rejects.toMatchObject({ status: 502 });
     }
@@ -205,6 +203,97 @@ describe("bet management API", () => {
     ]);
   });
 
+  it("reads judgments and posts judge-cancel with the caller idempotency key", async () => {
+    const judgment = {
+      id: "judgment-1",
+      brand_id: brand,
+      game_id: order.game_id,
+      period_id: order.period_id,
+      order_id: order.id,
+      order_version: 2,
+      cause: "no_result",
+      draw_result_id: "",
+      judged_by: "admin-1",
+      reason: "draw not published",
+      created_at: "2026-10-06T00:00:00Z",
+      refund_entry_id: "refund-1",
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(ok(order))
+      .mockResolvedValueOnce(ok({ judgment }))
+      .mockResolvedValueOnce(ok({ judgment: null }));
+    const api = createBetManagementApi(fetcher);
+    expect(
+      await api.judgeCancelOrder(
+        brand,
+        order.id,
+        { version: 2, reason: "draw not published", cause: "no_result" },
+        "judge-key",
+      ),
+    ).toEqual(order);
+    expect(await api.getJudgment(brand, order.id)).toEqual({ judgment });
+    expect(await api.getJudgment(brand, "order-2")).toEqual({ judgment: null });
+    expect(
+      fetcher.mock.calls.map(([url, init]) => [
+        url,
+        init?.method,
+        init?.body && JSON.parse(String(init.body)),
+        new Headers(init?.headers).get("Idempotency-Key"),
+      ]),
+    ).toEqual([
+      [
+        "/api/v1/admin/bet-orders/order-1/judge-cancel",
+        "POST",
+        { version: 2, reason: "draw not published", cause: "no_result" },
+        "judge-key",
+      ],
+      ["/api/v1/admin/bet-orders/order-1/judgment", "GET", undefined, null],
+      ["/api/v1/admin/bet-orders/order-2/judgment", "GET", undefined, null],
+    ]);
+  });
+
+  it("rejects malformed or cross-order judgment DTOs as retryable 502 responses", async () => {
+    const valid = {
+      id: "judgment-1",
+      brand_id: brand,
+      game_id: order.game_id,
+      period_id: order.period_id,
+      order_id: order.id,
+      order_version: 2,
+      cause: "invalid_result",
+      draw_result_id: "result-1",
+      judged_by: "admin-1",
+      reason: "invalid draw",
+      created_at: "2026-10-06T00:00:00Z",
+      refund_entry_id: "refund-1",
+    };
+    for (const judgment of [
+      { ...valid, cause: "unknown" },
+      { ...valid, order_version: 0 },
+      { ...valid, refund_entry_id: "" },
+      { ...valid, order_id: "other-order" },
+      { ...valid, brand_id: "other-brand" },
+    ])
+      await expect(
+        createBetManagementApi(
+          vi.fn<typeof fetch>().mockResolvedValue(ok({ judgment })),
+        ).getJudgment(brand, order.id),
+      ).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    await expect(
+      createBetManagementApi(
+        vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(ok({ ...order, id: "other-order" })),
+      ).judgeCancelOrder(
+        brand,
+        order.id,
+        { version: 2, reason: "x", cause: "no_result" },
+        "retry",
+      ),
+    ).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+  });
+
   it("retains arbitrarily large point strings and validates signed-int64 canonical input", () => {
     expect(isPositivePoints("9223372036854775807")).toBe(true);
     expect(isPositivePoints("9223372036854775808")).toBe(false);
@@ -287,6 +376,7 @@ describe("bet management API", () => {
       permissions_by_brand: {
         [brand]: [
           "bet.cancel.brand",
+          "bet.judge_cancel.brand",
           "bet.mark_abnormal.brand",
           "bet_policy.write.brand",
         ],
@@ -297,12 +387,36 @@ describe("bet management API", () => {
       policyWrite: true,
       ordersView: true,
       cancel: true,
+      judgeCancel: true,
       markAbnormal: true,
       gameView: true,
     });
     expect(
       betManagementPermissions({ ...account, super_admin: true }, brand),
-    ).toMatchObject({ policyWrite: false, cancel: false, markAbnormal: false });
+    ).toMatchObject({
+      policyWrite: false,
+      cancel: false,
+      judgeCancel: false,
+      markAbnormal: false,
+    });
+    expect(
+      betManagementPermissions(
+        {
+          ...account,
+          permissions_by_brand: { [brand]: ["bet.judge_cancel.brand"] },
+          platform_permissions: [],
+        },
+        brand,
+      ),
+    ).toEqual({
+      policyView: false,
+      policyWrite: false,
+      ordersView: false,
+      cancel: false,
+      judgeCancel: true,
+      markAbnormal: false,
+      gameView: false,
+    });
     expect(
       betManagementPermissions(
         {

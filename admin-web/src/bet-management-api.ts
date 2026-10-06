@@ -85,15 +85,33 @@ export interface BetException {
   reason: string;
   created_at: string;
 }
+export interface Judgment {
+  id: string;
+  brand_id: string;
+  game_id: string;
+  period_id: string;
+  order_id: string;
+  order_version: number;
+  cause: "no_result" | "invalid_result";
+  draw_result_id: string;
+  judged_by: string;
+  reason: string;
+  created_at: string;
+  refund_entry_id: string;
+}
 export interface ActionBody {
   version: number;
   reason: string;
+}
+export interface JudgeCancelBody extends ActionBody {
+  cause: "no_result" | "invalid_result";
 }
 export interface BetManagementPermissions {
   policyView: boolean;
   policyWrite: boolean;
   ordersView: boolean;
   cancel: boolean;
+  judgeCancel: boolean;
   markAbnormal: boolean;
   gameView: boolean;
 }
@@ -120,6 +138,7 @@ export function betManagementPermissions(
     policyWrite: write("bet_policy.write.brand"),
     ordersView: view("bet"),
     cancel: write("bet.cancel.brand"),
+    judgeCancel: write("bet.judge_cancel.brand"),
     markAbnormal: write("bet.mark_abnormal.brand"),
     gameView: view("game"),
   };
@@ -409,6 +428,49 @@ export function createBetManagementApi(fetcher: typeof fetch = fetch) {
         `${BASE}/bet-orders/${encodeURIComponent(id)}/abnormal`,
         { method: "POST", body, key },
       );
+    },
+    async judgeCancelOrder(
+      brandId: string,
+      id: string,
+      body: JudgeCancelBody,
+      key: string,
+    ) {
+      const result = await readOrder(
+        brandId,
+        `${BASE}/bet-orders/${encodeURIComponent(id)}/judge-cancel`,
+        { method: "POST", body, key },
+      );
+      if (result.id !== id || result.brand_id !== brandId) invalidResponse();
+      return result;
+    },
+    async getJudgment(brandId: string, id: string) {
+      const v = await request<unknown>(
+        brandId,
+        `${BASE}/bet-orders/${encodeURIComponent(id)}/judgment`,
+      );
+      if (!isRecord(v)) invalidResponse();
+      if (v.judgment === null) return v as { judgment: null };
+      const j = v.judgment;
+      if (
+        !isRecord(j) ||
+        !nonempty(j.id) ||
+        j.brand_id !== brandId ||
+        !nonempty(j.game_id) ||
+        !nonempty(j.period_id) ||
+        j.order_id !== id ||
+        !Number.isSafeInteger(j.order_version) ||
+        Number(j.order_version) < 2 ||
+        (j.cause !== "no_result" && j.cause !== "invalid_result") ||
+        typeof j.draw_result_id !== "string" ||
+        !nonempty(j.judged_by) ||
+        typeof j.reason !== "string" ||
+        !j.reason.trim() ||
+        new TextEncoder().encode(j.reason).length > 500 ||
+        !nonempty(j.created_at) ||
+        !nonempty(j.refund_entry_id)
+      )
+        invalidResponse();
+      return v as { judgment: Judgment | null };
     },
     async getException(brandId: string, id: string) {
       const v = await request<unknown>(

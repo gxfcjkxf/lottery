@@ -8,6 +8,8 @@ import {
   type ActionBody,
   type AdminBetOrder,
   type BetException,
+  type JudgeCancelBody,
+  type Judgment,
 } from "./bet-management-api";
 import {
   BET_COMBINATION_PREVIEW_LIMIT,
@@ -15,6 +17,7 @@ import {
   combinationPreview,
   createFrozenBetMutationStore,
   freezeBetMutation,
+  hasMatchingJudgmentWitness,
   isUuid,
   reasonByteLength,
   settleBetMutationFailure,
@@ -26,7 +29,8 @@ const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createBetManagementApi();
 const keyFor = createBetMutationKeyTracker();
-const frozenOperations = createFrozenBetMutationStore<ActionBody>();
+type BetOrderActionBody = ActionBody | JudgeCancelBody;
+const frozenOperations = createFrozenBetMutationStore<BetOrderActionBody>();
 const rights = computed(() =>
   betManagementPermissions(props.account, props.brandId),
 );
@@ -50,6 +54,8 @@ const hasNext = ref(false);
 const selectedOrderId = ref("");
 const selectedOrder = ref<AdminBetOrder | null>(null);
 const exception = ref<BetException | null>(null);
+const judgment = ref<Judgment | null>(null);
+const judgmentRead = ref(false);
 const listBusy = ref(false);
 const detailBusy = ref(false);
 const writeBusy = ref(false);
@@ -60,12 +66,13 @@ const conflictNotice = ref("");
 const notice = ref("");
 const directLookup = ref(false);
 const intent = ref<{
-  action: "cancel" | "mark-abnormal";
-  body: ActionBody;
+  action: "cancel" | "mark-abnormal" | "judge-cancel";
+  body: BetOrderActionBody;
 } | null>(null);
 const confirmed = ref(false);
 const reason = ref("");
-const pending = ref<FrozenBetMutation<ActionBody> | null>(null);
+const judgmentCause = ref<"no_result" | "invalid_result">("no_result");
+const pending = ref<FrozenBetMutation<BetOrderActionBody> | null>(null);
 const pendingUnknown = ref(false);
 const readGeneration = ref(0);
 const detailGeneration = ref(0);
@@ -75,6 +82,11 @@ let live = true;
 const canCancelSelected = computed(
   () =>
     rights.value.cancel &&
+    ["placed", "abnormal"].includes(selectedOrder.value?.status ?? ""),
+);
+const canJudgeCancelSelected = computed(
+  () =>
+    rights.value.judgeCancel &&
     ["placed", "abnormal"].includes(selectedOrder.value?.status ?? ""),
 );
 const canMarkSelected = computed(
@@ -118,6 +130,8 @@ function clearVisibleData() {
   orders.value = [];
   selectedOrder.value = null;
   exception.value = null;
+  judgment.value = null;
+  judgmentRead.value = false;
   selectedOrderId.value = "";
   offset.value = 0;
   hasNext.value = false;
@@ -136,10 +150,10 @@ function clearVisibleData() {
   pending.value = null;
   pendingUnknown.value = false;
 }
-function rememberFrozen(operation: FrozenBetMutation<ActionBody>) {
+function rememberFrozen(operation: FrozenBetMutation<BetOrderActionBody>) {
   frozenOperations.remember(props.account.id, operation);
 }
-function forgetFrozen(operation: FrozenBetMutation<ActionBody>) {
+function forgetFrozen(operation: FrozenBetMutation<BetOrderActionBody>) {
   frozenOperations.forget(props.account.id, operation);
 }
 function findFrozen(orderId: string) {
@@ -180,6 +194,15 @@ function checkOrder(
   )
     throw new Error("响应注单与当前品牌、成员或注单编号不匹配，请重新读取。");
 }
+function syncVisibleOrder(order: AdminBetOrder) {
+  orders.value = orders.value.map((item) =>
+    item.id === order.id &&
+    item.brand_id === order.brand_id &&
+    item.version <= order.version
+      ? order
+      : item,
+  );
+}
 function onReadError(cause: unknown, lane: "list" | "detail") {
   if (cause instanceof AdminApiError && cause.status === 401) {
     resetSession();
@@ -192,6 +215,8 @@ function onReadError(cause: unknown, lane: "list" | "detail") {
   ) {
     selectedOrder.value = null;
     exception.value = null;
+    judgment.value = null;
+    judgmentRead.value = false;
     detailError.value = "注单不存在或已不可见，请刷新列表。";
     return;
   }
@@ -275,6 +300,8 @@ async function lookupOrder() {
   selectedOrderId.value = "";
   selectedOrder.value = null;
   exception.value = null;
+  judgment.value = null;
+  judgmentRead.value = false;
   try {
     const order = await api.getOrder(brandId, id);
     if (
@@ -322,17 +349,25 @@ async function loadSelectedDetail() {
       return;
     checkOrder(order, brandId, id);
     selectedOrder.value = order;
+    syncVisibleOrder(order);
     const frozen = findFrozen(id);
     if (frozen) {
       pending.value = frozen;
       pendingUnknown.value = true;
-      intent.value = { action: frozen.action, body: frozen.body as ActionBody };
+      intent.value = { action: frozen.action, body: frozen.body };
       confirmed.value = true;
       reason.value = frozen.body.reason;
+      if (frozen.action === "judge-cancel")
+        judgmentCause.value = (frozen.body as JudgeCancelBody).cause;
     }
     exception.value = null;
+    judgment.value = null;
+    judgmentRead.value = false;
     // Exception evidence uses the same explicit bet.view authorization as order detail.
-    const evidence = await api.getException(brandId, id);
+    const [evidence, judgmentEvidence] = await Promise.all([
+      api.getException(brandId, id),
+      api.getJudgment(brandId, id),
+    ]);
     if (
       !contextCurrent(snapshot, generation, "detail") ||
       selectedOrderId.value !== id ||
@@ -347,7 +382,14 @@ async function loadSelectedDetail() {
         throw new Error("异常记录与当前品牌或注单不匹配，请重新读取。");
       exception.value = evidence.exception;
     }
-    reconcilePending(order, evidence.exception);
+    if (judgmentEvidence.judgment) {
+      const record = judgmentEvidence.judgment;
+      if (record.brand_id !== brandId || record.order_id !== id)
+        throw new Error("判定记录与当前品牌或注单不匹配，请重新读取。");
+      judgment.value = record;
+    }
+    judgmentRead.value = true;
+    reconcilePending(order, evidence.exception, judgmentEvidence.judgment);
   } catch (cause) {
     if (
       contextCurrent(snapshot, generation, "detail") &&
@@ -374,6 +416,8 @@ watch(selectedOrderId, (id) => {
   writeBusy.value = false;
   selectedOrder.value = null;
   exception.value = null;
+  judgment.value = null;
+  judgmentRead.value = false;
   detailError.value = "";
   writeError.value = "";
   conflictNotice.value = "";
@@ -385,25 +429,40 @@ watch(selectedOrderId, (id) => {
   if (id) void loadSelectedDetail();
 });
 
-function beginIntent(action: "cancel" | "mark-abnormal") {
+function beginIntent(action: "cancel" | "mark-abnormal" | "judge-cancel") {
   const order = selectedOrder.value;
   if (!order || pendingUnknown.value) return;
   if (action === "cancel" && !canCancelSelected.value) return;
   if (action === "mark-abnormal" && !canMarkSelected.value) return;
+  if (action === "judge-cancel" && !canJudgeCancelSelected.value) return;
   pendingUnknown.value = false;
   pending.value = null;
   reason.value = "";
+  judgmentCause.value = "no_result";
   writeError.value = "";
   conflictNotice.value = "";
   confirmed.value = false;
-  intent.value = { action, body: { version: order.version, reason: "" } };
+  intent.value = {
+    action,
+    body:
+      action === "judge-cancel"
+        ? { version: order.version, reason: "", cause: judgmentCause.value }
+        : { version: order.version, reason: "" },
+  };
 }
 function freezeIntent() {
   if (!intent.value || !selectedOrder.value || !validBetReason(reason.value))
     return;
   intent.value = {
     ...intent.value,
-    body: { version: selectedOrder.value.version, reason: reason.value.trim() },
+    body:
+      intent.value.action === "judge-cancel"
+        ? {
+            version: selectedOrder.value.version,
+            reason: reason.value.trim(),
+            cause: judgmentCause.value,
+          }
+        : { version: selectedOrder.value.version, reason: reason.value.trim() },
   };
   const scope = {
     brandId: props.brandId,
@@ -423,15 +482,23 @@ function freezeIntent() {
 }
 function isExpectedMutation(
   order: AdminBetOrder,
-  operation: FrozenBetMutation<ActionBody>,
+  operation: FrozenBetMutation<BetOrderActionBody>,
 ) {
   return operation.action === "cancel"
     ? order.status === "bet_cancelled" &&
         order.version > operation.body.version &&
         Boolean(order.refund_entry_id)
-    : order.status === "abnormal" && order.version > operation.body.version;
+    : operation.action === "mark-abnormal"
+      ? order.status === "abnormal" && order.version > operation.body.version
+      : order.status === "judged_cancelled" &&
+        order.version === operation.body.version + 1 &&
+        Boolean(order.refund_entry_id);
 }
-function reconcilePending(order: AdminBetOrder, evidence: BetException | null) {
+function reconcilePending(
+  order: AdminBetOrder,
+  evidence: BetException | null,
+  judgmentEvidence: Judgment | null,
+) {
   const operation = pending.value;
   if (
     !operation ||
@@ -440,13 +507,20 @@ function reconcilePending(order: AdminBetOrder, evidence: BetException | null) {
   )
     return;
   const evidenceMatches =
-    operation.action !== "mark-abnormal" ||
-    Boolean(
-      evidence &&
-        evidence.order_id === order.id &&
-        evidence.brand_id === order.brand_id &&
-        evidence.reason === operation.body.reason,
-    );
+    operation.action === "mark-abnormal"
+      ? Boolean(
+          evidence &&
+            evidence.order_id === order.id &&
+            evidence.brand_id === order.brand_id &&
+            evidence.reason === operation.body.reason,
+        )
+      : operation.action !== "judge-cancel" ||
+        hasMatchingJudgmentWitness(
+          order,
+          operation,
+          judgmentEvidence,
+          props.account.id,
+        );
   if (isExpectedMutation(order, operation) && evidenceMatches) {
     pending.value = null;
     forgetFrozen(operation);
@@ -457,10 +531,12 @@ function reconcilePending(order: AdminBetOrder, evidence: BetException | null) {
     notice.value =
       operation.action === "cancel"
         ? "已从后台读取到取消及退款结果。"
-        : "已从后台读取到异常标记记录。";
+        : operation.action === "mark-abnormal"
+          ? "已从后台读取到异常标记记录。"
+          : "已从后台读取到判定取消结果。";
   }
 }
-async function runMutation(operation: FrozenBetMutation<ActionBody>) {
+async function runMutation(operation: FrozenBetMutation<BetOrderActionBody>) {
   if (
     operation.brandId !== props.brandId ||
     operation.orderId !== selectedOrderId.value
@@ -469,7 +545,9 @@ async function runMutation(operation: FrozenBetMutation<ActionBody>) {
   const permitted =
     operation.action === "cancel"
       ? rights.value.cancel
-      : rights.value.markAbnormal;
+      : operation.action === "mark-abnormal"
+        ? rights.value.markAbnormal
+        : rights.value.judgeCancel;
   if (!rights.value.ordersView || !permitted) return;
   const generation = ++writeGeneration.value;
   const snapshot = context.value;
@@ -486,12 +564,19 @@ async function runMutation(operation: FrozenBetMutation<ActionBody>) {
             operation.body,
             operation.idempotencyKey,
           )
-        : await api.markAbnormal(
-            operation.brandId,
-            operation.orderId,
-            operation.body,
-            operation.idempotencyKey,
-          );
+        : operation.action === "mark-abnormal"
+          ? await api.markAbnormal(
+              operation.brandId,
+              operation.orderId,
+              operation.body,
+              operation.idempotencyKey,
+            )
+          : await api.judgeCancelOrder(
+              operation.brandId,
+              operation.orderId,
+              operation.body as JudgeCancelBody,
+              operation.idempotencyKey,
+            );
     if (
       !contextCurrent(snapshot, generation, "write") ||
       !rights.value.ordersView
@@ -518,6 +603,7 @@ async function runMutation(operation: FrozenBetMutation<ActionBody>) {
       );
     }
     selectedOrder.value = response;
+    syncVisibleOrder(response);
     pending.value = null;
     forgetFrozen(operation);
     pendingUnknown.value = false;
@@ -527,7 +613,9 @@ async function runMutation(operation: FrozenBetMutation<ActionBody>) {
     notice.value =
       operation.action === "cancel"
         ? "后台已确认取消，退款记录已生成。"
-        : "后台已确认注单标记为异常。";
+        : operation.action === "mark-abnormal"
+          ? "后台已确认注单标记为异常。"
+          : "后台已确认判定取消；请查看判定记录或整期判定说明。";
     await loadSelectedDetail();
     if (!directLookup.value) void loadOrders(offset.value);
   } catch (cause) {
@@ -567,7 +655,7 @@ async function runMutation(operation: FrozenBetMutation<ActionBody>) {
       if (contextCurrent(snapshot, generation, "write")) {
         conflictNotice.value =
           selectedOrder.value && !detailError.value
-            ? "注单版本已变化，旧请求已丢弃。已重新读取当前注单；请检查新版本后重新填写原因并确认。"
+            ? "操作因版本、状态或判定依据冲突被拒绝，旧请求已丢弃。已重新读取当前注单；请核对后重新填写原因并确认。"
             : "注单版本冲突已确认，重新读取未成功。请刷新注单后再发起新确认。";
       }
       return;
@@ -911,8 +999,59 @@ onUnmounted(() => {
             <p v-else class="muted">当前注单没有异常标记记录。</p>
           </section>
 
+          <section class="subsection judgment-evidence">
+            <h3>判定取消记录</h3>
+            <template v-if="judgment">
+              <div class="facts">
+                <div>
+                  <small>判定记录 ID</small><b>{{ judgment.id }}</b>
+                </div>
+                <div>
+                  <small>判定时注单版本</small
+                  ><b>{{ judgment.order_version }}</b>
+                </div>
+                <div>
+                  <small>判定原因类型</small
+                  ><b>{{
+                    judgment.cause === "no_result" ? "未出结果" : "结果无效"
+                  }}</b>
+                </div>
+                <div>
+                  <small>判定操作者 ID</small><b>{{ judgment.judged_by }}</b>
+                </div>
+                <div>
+                  <small>判定时间</small><b>{{ judgment.created_at }}</b>
+                </div>
+                <div>
+                  <small>开奖结果引用</small
+                  ><b>{{ judgment.draw_result_id || "无" }}</b>
+                </div>
+                <div>
+                  <small>退款账本引用</small
+                  ><b>{{ judgment.refund_entry_id }}</b>
+                </div>
+              </div>
+              <p class="reason-box">{{ judgment.reason }}</p>
+            </template>
+            <p
+              v-else-if="
+                judgmentRead && selectedOrder.status === 'judged_cancelled'
+              "
+              class="muted"
+            >
+              没有单独判定记录；整期判定取消流程可能不会为每注生成此记录。
+            </p>
+            <p v-else-if="judgmentRead" class="muted">
+              当前注单没有单独判定取消记录。
+            </p>
+            <p v-else class="muted">正在读取判定记录…</p>
+          </section>
+
           <div
-            v-if="(rights.cancel || rights.markAbnormal) && !pendingUnknown"
+            v-if="
+              (rights.cancel || rights.markAbnormal || rights.judgeCancel) &&
+              !pendingUnknown
+            "
             class="actions"
           >
             <button
@@ -928,6 +1067,13 @@ onUnmounted(() => {
               @click="beginIntent('cancel')"
             >
               管理员取消并退款
+            </button>
+            <button
+              v-if="canJudgeCancelSelected"
+              class="danger-button"
+              @click="beginIntent('judge-cancel')"
+            >
+              判定取消
             </button>
             <span
               v-if="selectedOrder.status === 'abnormal' && rights.markAbnormal"
@@ -966,7 +1112,9 @@ onUnmounted(() => {
               v-if="
                 pending.action === 'cancel'
                   ? rights.cancel
-                  : rights.markAbnormal
+                  : pending.action === 'mark-abnormal'
+                    ? rights.markAbnormal
+                    : rights.judgeCancel
               "
               class="danger-button"
               :disabled="writeBusy"
@@ -996,12 +1144,18 @@ onUnmounted(() => {
               {{
                 intent.action === "cancel"
                   ? "REFUNDING CANCELLATION"
-                  : "ABNORMAL REVIEW"
+                  : intent.action === "mark-abnormal"
+                    ? "ABNORMAL REVIEW"
+                    : "JUDGMENT CANCELLATION"
               }}
             </div>
             <h2 id="bet-action-title">
               {{
-                intent.action === "cancel" ? "确认管理员取消" : "确认标记异常"
+                intent.action === "cancel"
+                  ? "确认管理员取消"
+                  : intent.action === "mark-abnormal"
+                    ? "确认标记异常"
+                    : "确认判定取消"
               }}
             </h2>
           </div>
@@ -1010,8 +1164,11 @@ onUnmounted(() => {
         <p v-if="intent.action === 'cancel'" class="warning">
           管理员取消会将原始扣款积分按来源分配全额退回。该操作适用于待开奖或异常注单，会生成退款账本记录。
         </p>
-        <p v-else class="warning">
+        <p v-else-if="intent.action === 'mark-abnormal'" class="warning">
           标记异常只记录异常证据，不退款。注单状态必须仍为待开奖。
+        </p>
+        <p v-else class="warning">
+          判定取消会依据开奖结果情况取消注单并生成退款记录；这不是付款或重新结算。服务器会检查该注单及期次是否允许判定。
         </p>
         <div v-if="selectedOrder" class="confirm-facts">
           <p>
@@ -1024,6 +1181,20 @@ onUnmounted(() => {
             当前状态：<b>{{ statusName(selectedOrder.status) }}</b>
           </p>
         </div>
+        <label v-if="intent.action === 'judge-cancel'" class="reason-label">
+          判定原因类型
+          <select
+            v-model="judgmentCause"
+            aria-label="判定取消原因"
+            :disabled="confirmed || writeBusy"
+          >
+            <option value="no_result">未出开奖结果</option>
+            <option value="invalid_result">开奖结果无效</option>
+          </select>
+        </label>
+        <p v-if="intent.action === 'judge-cancel'" class="muted">
+          “未出开奖结果”要求当前没有锁定结果；若存在外部候选结果但经人工认定无效，请选择“开奖结果无效”。
+        </p>
         <label class="reason-label"
           >操作原因（必填，UTF-8 最多 500 字节）
           <textarea
@@ -1047,7 +1218,11 @@ onUnmounted(() => {
           <label class="confirm-check"
             ><input v-model="confirmed" type="checkbox" />
             我已核对注单、版本、原因及{{
-              intent.action === "cancel" ? "退款影响" : "异常标记"
+              intent.action === "cancel"
+                ? "退款影响"
+                : intent.action === "mark-abnormal"
+                  ? "异常标记"
+                  : "判定依据和退款影响"
             }}。</label
           ></template
         >
@@ -1133,6 +1308,7 @@ label {
   font-size: 12px;
 }
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid #dfe2e9;
@@ -1202,10 +1378,9 @@ small {
 }
 .order-row {
   display: grid;
-  grid-template-columns: minmax(190px, 1.4fr) minmax(140px, 1fr) minmax(
-      100px,
-      0.6fr
-    ) auto minmax(145px, 0.9fr);
+  grid-template-columns:
+    minmax(190px, 1.4fr) minmax(140px, 1fr) minmax(100px, 0.6fr)
+    auto minmax(145px, 0.9fr);
   gap: 12px;
   align-items: center;
   text-align: left;

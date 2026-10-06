@@ -2044,6 +2044,423 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     expect(oldPeriodBet.status(), oldPeriodBetText).toBe(409);
     await expect(cancellationSummary.locator(".counts")).toContainText("2");
     await captureS5Admin("s5-a4-period-cancelled.png");
+
+    // S5-a5 judges one genuine XY order using the currently published numbers
+    // play, then proves the lost-response retry reuses its exact request.
+    const xyCatalog = await api<{
+      game: { id: string };
+      plays: Array<{
+        id: string;
+        definition: { selection: { mode: string } };
+        rule_version_id: string;
+      }>;
+      period: { id: string; status: string } | null;
+      policy_versions: { brand: number; game: number };
+    }>(page.request, `${publicBase}/games/${xy.id}`, "GET", userToken);
+    expect(xyCatalog.game.id).toBe(xy.id);
+    expect(xyCatalog.period).toBeTruthy();
+    expect(xyCatalog.period!.status).toBe("betting");
+    const xyNumbersPlay = xyCatalog.plays.find(
+      (play) =>
+        play.id === featurePlayId(xy.published, "numbers") &&
+        play.definition.selection.mode === "numbers",
+    );
+    expect(xyNumbersPlay).toBeTruthy();
+    const singlePeriodBefore = await api<Period>(
+      page.request,
+      `${adminBase}/periods/${xyCatalog.period!.id}`,
+      "GET",
+      admin,
+    );
+    expect(singlePeriodBefore).toMatchObject({
+      id: xyCatalog.period!.id,
+      status: "betting",
+    });
+    const singleInput = {
+      period_id: xyCatalog.period!.id,
+      play_id: xyNumbersPlay!.id,
+      rule_version_id: xyNumbersPlay!.rule_version_id,
+      selection: xyRule.validationCase.selection,
+      multiplier: "3",
+    };
+    const singleQuote = await api<{
+      actor_context: string;
+      unit_points: string;
+      bet_points: string;
+      policy_versions: { brand: number; game: number };
+      period_id: string;
+      play_id: string;
+      rule_version_id: string;
+    }>(
+      page.request,
+      `${publicBase}/bet-previews`,
+      "POST",
+      userToken,
+      singleInput,
+    );
+    expect(singleQuote.unit_points).toMatch(/^\d+$/);
+    expect(singleQuote.bet_points).toMatch(/^\d+$/);
+    expect(BigInt(singleQuote.bet_points)).toBe(
+      BigInt(singleQuote.unit_points) * 3n,
+    );
+    expect(singleQuote.period_id).toBe(singlePeriodBefore.id);
+    expect(singleQuote.play_id).toBe(xyNumbersPlay!.id);
+    expect(singleQuote.rule_version_id).toBe(xyNumbersPlay!.rule_version_id);
+    expect(singleQuote.policy_versions).toEqual(xyCatalog.policy_versions);
+    const singleWalletBefore = await api<Wallet>(
+      page.request,
+      `${publicBase}/wallet`,
+      "GET",
+      userToken,
+    );
+    expect(singleWalletBefore.available_points).toBe("100");
+    const singlePlaceResponse = await page.request.post(
+      `${publicBase}/bet-orders`,
+      {
+        headers: {
+          Authorization: `Bearer ${userToken}`,
+          "X-Brand-ID": brandId,
+          Origin: apiOrigin,
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        data: {
+          ...singleInput,
+          actor_context: singleQuote.actor_context,
+          policy_versions: singleQuote.policy_versions,
+        },
+      },
+    );
+    const singlePlaceText = await singlePlaceResponse.text();
+    expect(singlePlaceResponse.status(), singlePlaceText).toBe(201);
+    const singleOrder = (JSON.parse(singlePlaceText) as Envelope<AdminBetOrder>)
+      .data;
+    expect(singleOrder.status).toBe("placed");
+    expect(singleOrder.period_id).toBe(singlePeriodBefore.id);
+    expect(singleOrder.unit_points).toBe(singleQuote.unit_points);
+    expect(singleOrder.total_points).toBe(singleQuote.bet_points);
+    expect(singleOrder.policy_versions).toEqual(singleQuote.policy_versions);
+    expect(singleOrder.selection_raw).toEqual(singleInput.selection);
+    const singleDebitWallet = await api<Wallet>(
+      page.request,
+      `${publicBase}/wallet`,
+      "GET",
+      userToken,
+    );
+    expect(BigInt(singleDebitWallet.available_points)).toBe(
+      BigInt(singleWalletBefore.available_points) -
+        BigInt(singleQuote.bet_points),
+    );
+    const singleLedgerBefore = await api<{ items: LedgerEntry[] }>(
+      page.request,
+      `${adminBase}/wallets/${memberId}/ledger?limit=100`,
+      "GET",
+      admin,
+    );
+    expect(singleLedgerBefore.items).toHaveLength(
+      cancellationLedgerAfter.items.length + 1,
+    );
+    const singleDebit = singleLedgerBefore.items.find(
+      (entry) => entry.id === singleOrder.debit_entry_id,
+    );
+    expect(singleDebit).toMatchObject({
+      entry_type: "bet",
+      reference_id: singleOrder.id,
+    });
+    expect(singleDebit!.delta_snapshot.recharge.available).toBe(
+      `-${singleQuote.bet_points}`,
+    );
+
+    await showS5AdminPage();
+    const singleOrdersPanel = adminPage.getByTestId("bet-order-management");
+    await singleOrdersPanel
+      .getByLabel("直接查询注单 UUID", { exact: true })
+      .fill(singleOrder.id);
+    await singleOrdersPanel
+      .getByRole("button", { name: "查询", exact: true })
+      .click();
+    const singleDetail = singleOrdersPanel.locator(".detail-panel");
+    await expect(singleDetail).toBeVisible();
+    await expect(singleDetail).toContainText(singleOrder.id);
+    await expect(singleDetail).toContainText(singleOrder.rule_version_id);
+    await expect(singleDetail).toContainText(singleOrder.total_points);
+    await expect(
+      singleDetail.getByRole("button", { name: "判定取消", exact: true }),
+    ).toBeVisible();
+    await singleDetail
+      .getByRole("button", { name: "判定取消", exact: true })
+      .click();
+    const singleDialog = adminPage.getByRole("dialog");
+    await expect(
+      singleDialog.getByRole("heading", { name: "确认判定取消", exact: true }),
+    ).toBeVisible();
+    await singleDialog
+      .getByLabel("判定取消原因", { exact: true })
+      .selectOption("no_result");
+    const singleReason = `S5-a5 ${info.project.name}: no result for the real XY period`;
+    await singleDialog
+      .getByLabel("操作原因（必填，UTF-8 最多 500 字节）", { exact: true })
+      .fill(singleReason);
+    expect(new TextEncoder().encode(singleReason).length).toBeLessThanOrEqual(
+      500,
+    );
+    await singleDialog
+      .getByRole("button", { name: "检查并确认", exact: true })
+      .click();
+    await expect(
+      singleDialog.getByLabel("判定取消原因", { exact: true }),
+    ).toBeDisabled();
+    await expect(
+      singleDialog.getByLabel("操作原因（必填，UTF-8 最多 500 字节）", {
+        exact: true,
+      }),
+    ).toBeDisabled();
+    await expect(singleDialog).toContainText(singleReason);
+    const confirmSingleJudge = singleDialog.getByRole("button", {
+      name: "确认并提交",
+      exact: true,
+    });
+    const singleJudgeRoute = `**/api/v1/admin/bet-orders/${singleOrder.id}/judge-cancel`;
+    const singleJudgeRequests: Array<{
+      key: string | undefined;
+      body: string | null;
+    }> = [];
+    let resolveSingleJudgeCommit!: (value: {
+      status: number;
+      order: AdminBetOrder;
+    }) => void;
+    const singleJudgeCommit = new Promise<{
+      status: number;
+      order: AdminBetOrder;
+    }>((resolve) => {
+      resolveSingleJudgeCommit = resolve;
+    });
+    await adminPage.route(singleJudgeRoute, async (route) => {
+      const request = route.request();
+      singleJudgeRequests.push({
+        key: (await request.allHeaders())["idempotency-key"],
+        body: request.postData(),
+      });
+      if (singleJudgeRequests.length === 1) {
+        const committed = await route.fetch();
+        const result = (await committed.json()) as Envelope<AdminBetOrder>;
+        resolveSingleJudgeCommit({
+          status: committed.status(),
+          order: result.data,
+        });
+        await route.abort("failed");
+      } else {
+        await route.continue();
+      }
+    });
+    await confirmSingleJudge.click();
+    const singleJudgeCommitted = await singleJudgeCommit;
+    expect(singleJudgeCommitted.status).toBe(200);
+    expect(singleJudgeCommitted.order.status).toBe("judged_cancelled");
+    expect(singleJudgeCommitted.order.version).toBe(singleOrder.version + 1);
+    expect(singleJudgeRequests).toHaveLength(1);
+    const expectedSingleJudgeBody = {
+      version: singleOrder.version,
+      reason: singleReason,
+      cause: "no_result",
+    };
+    expect(singleJudgeRequests[0].body).toBe(
+      JSON.stringify(expectedSingleJudgeBody),
+    );
+    await expect(singleDetail.getByRole("alert")).toContainText(
+      "请求结果尚未确定",
+    );
+    const retrySingleJudge = singleOrdersPanel.getByRole("button", {
+      name: "使用相同请求编号重试",
+      exact: true,
+    });
+    await expect(retrySingleJudge).toBeVisible();
+    const retrySingleJudgeResponse = adminPage.waitForResponse(
+      (response) =>
+        response
+          .url()
+          .endsWith(
+            `/api/v1/admin/bet-orders/${singleOrder.id}/judge-cancel`,
+          ) && response.request().method() === "POST",
+    );
+    await retrySingleJudge.click();
+    const singleRetryResponse = await retrySingleJudgeResponse;
+    const singleRetryText = await singleRetryResponse.text();
+    expect(singleRetryResponse.status(), singleRetryText).toBe(200);
+    expect(singleJudgeRequests).toHaveLength(2);
+    expect(singleJudgeRequests[1]).toEqual(singleJudgeRequests[0]);
+    expect(singleJudgeRequests[1].body).toBe(
+      JSON.stringify(expectedSingleJudgeBody),
+    );
+    const singleRetryOrder = (
+      JSON.parse(singleRetryText) as Envelope<AdminBetOrder>
+    ).data;
+    expect(singleRetryOrder).toEqual(singleJudgeCommitted.order);
+    await adminPage.unroute(singleJudgeRoute);
+
+    const singleJudgmentResult = await api<{
+      judgment: {
+        id: string;
+        cause: string;
+        order_version: number;
+        judged_by: string;
+        refund_entry_id: string;
+        draw_result_id: string;
+        reason: string;
+      } | null;
+    }>(
+      page.request,
+      `${adminBase}/bet-orders/${singleOrder.id}/judgment`,
+      "GET",
+      admin,
+    );
+    expect(singleJudgmentResult.judgment).toMatchObject({
+      cause: "no_result",
+      order_version: singleOrder.version + 1,
+      judged_by: expect.any(String),
+      refund_entry_id: expect.any(String),
+      draw_result_id: "",
+      reason: singleReason,
+    });
+    const singleJudgment = singleJudgmentResult.judgment!;
+    const singleOrderAfter = await api<AdminBetOrder>(
+      page.request,
+      `${adminBase}/bet-orders/${singleOrder.id}`,
+      "GET",
+      admin,
+    );
+    expect(singleOrderAfter.status).toBe("judged_cancelled");
+    expect(singleOrderAfter.version).toBe(singleOrder.version + 1);
+    expect(singleOrderAfter.refund_entry_id).toBe(
+      singleJudgment.refund_entry_id,
+    );
+    for (const field of [
+      "id",
+      "brand_id",
+      "global_user_id",
+      "brand_member_id",
+      "account_id",
+      "game_id",
+      "period_id",
+      "play_id",
+      "rule_version_id",
+      "definition_hash",
+      "definition_snapshot",
+      "selection_raw",
+      "selection_normalized",
+      "expanded_bets",
+      "unit_points",
+      "combination_count",
+      "multiplier",
+      "total_points",
+      "deduction_allocation",
+      "policy_snapshot",
+      "policy_versions",
+      "debit_entry_id",
+      "client_key",
+      "placed_at",
+    ] as const)
+      expect(singleOrderAfter[field]).toEqual(singleOrder[field]);
+    const judgmentSection = singleDetail.locator("section.subsection").filter({
+      has: adminPage.getByRole("heading", {
+        name: "判定取消记录",
+        exact: true,
+      }),
+    });
+    await expect(judgmentSection).toBeVisible();
+    await expect(judgmentSection).toContainText(singleJudgment.id);
+    await expect(judgmentSection).toContainText(singleJudgment.judged_by);
+    await expect(judgmentSection).toContainText(singleJudgment.refund_entry_id);
+    await expect(
+      adminPage.locator(".order-row").filter({ hasText: singleOrder.id }),
+    ).toContainText("判定取消");
+    await expect(
+      singleDetail.getByRole("button", { name: "判定取消", exact: true }),
+    ).toHaveCount(0);
+    const singlePeriodAfter = await api<Period>(
+      page.request,
+      `${adminBase}/periods/${singlePeriodBefore.id}`,
+      "GET",
+      admin,
+    );
+    expect(singlePeriodAfter).toEqual(singlePeriodBefore);
+    expect(singlePeriodAfter.status).toBe("betting");
+    const singleWalletAfter = await api<Wallet>(
+      page.request,
+      `${publicBase}/wallet`,
+      "GET",
+      userToken,
+    );
+    expect(singleWalletAfter.available_points).toBe("100");
+    expect(singleWalletAfter.display_points).toBe(
+      singleWalletBefore.display_points,
+    );
+    expect(BigInt(singleWalletAfter.available_points)).toBe(
+      BigInt(singleDebitWallet.available_points) +
+        BigInt(singleQuote.bet_points),
+    );
+    expect(singleWalletAfter.by_source).toEqual(singleWalletBefore.by_source);
+    const singleLedgerAfter = await api<{ items: LedgerEntry[] }>(
+      page.request,
+      `${adminBase}/wallets/${memberId}/ledger?limit=100`,
+      "GET",
+      admin,
+    );
+    expect(singleLedgerAfter.items).toHaveLength(
+      singleLedgerBefore.items.length + 1,
+    );
+    for (const oldEntry of singleLedgerBefore.items)
+      expect(
+        singleLedgerAfter.items.find((entry) => entry.id === oldEntry.id),
+      ).toEqual(oldEntry);
+    const singleRefund = singleLedgerAfter.items.find(
+      (entry) => entry.id === singleJudgment.refund_entry_id,
+    );
+    expect(singleRefund).toMatchObject({
+      entry_type: "refund",
+      reference_id: singleOrder.id,
+      reversal_of: singleDebit!.id,
+      source_allocation: singleDebit!.source_allocation,
+    });
+    expect(singleRefund!.source_allocation).toEqual(
+      singleDebit!.source_allocation,
+    );
+    expect(singleDebit!.before_snapshot).toEqual(singleWalletBefore.by_source);
+    expect(singleDebit!.after_snapshot).toEqual(singleDebitWallet.by_source);
+    expect(singleRefund!.before_snapshot).toEqual(singleDebitWallet.by_source);
+    expect(singleRefund!.after_snapshot).toEqual(singleWalletAfter.by_source);
+    expect(singleDebit!.version).toBe(singleWalletBefore.version + 1);
+    expect(singleDebit!.version).toBe(singleDebitWallet.version);
+    expect(singleRefund!.version).toBe(singleDebit!.version + 1);
+    expect(singleWalletAfter.version).toBe(singleRefund!.version);
+    for (const source of ["recharge", "winning", "gift"] as const)
+      for (const state of [
+        "available",
+        "manual_frozen",
+        "system_frozen",
+        "withdrawal",
+      ] as const) {
+        const allocated = singleDebit!.source_allocation
+          .filter((part) => part.source === source && part.state === state)
+          .reduce((sum, part) => sum + BigInt(part.points), 0n);
+        const before = BigInt(singleRefund!.before_snapshot[source][state]);
+        const debitDelta = BigInt(singleDebit!.delta_snapshot[source][state]);
+        const refundDelta = BigInt(singleRefund!.delta_snapshot[source][state]);
+        expect(debitDelta).toBe(-allocated);
+        expect(refundDelta).toBe(allocated);
+        expect(BigInt(singleRefund!.after_snapshot[source][state])).toBe(
+          before + allocated,
+        );
+      }
+    expect(
+      singleLedgerAfter.items.filter(
+        (entry) =>
+          entry.entry_type === "refund" &&
+          entry.reference_id === singleOrder.id,
+      ),
+    ).toHaveLength(1);
+    await expect(judgmentSection).toContainText("未出结果");
+    await expect(judgmentSection).toContainText(singleReason);
+    await captureS5Admin("s5-a5-single-judgment.png");
   } finally {
     await adminPage.close();
   }

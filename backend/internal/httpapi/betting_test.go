@@ -411,7 +411,54 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 		t.Fatalf("operator did not restore original source %+v %v", walletResult, err)
 	}
 
-	third := betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-order-period-cancel-003", body)
+	judgePlace := betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-single-judgment-003", body)
+	mustStatus(t, judgePlace, 201)
+	var judgeOrder betting.Order
+	decodeBetData(t, judgePlace, &judgeOrder)
+	judgePath := "/api/v1/admin/bet-orders/" + judgeOrder.ID
+	judgeBody := map[string]any{"version": judgeOrder.Version, "cause": "no_result", "reason": "HTTP single-order judgment evidence"}
+	mustStatus(t, f.call("POST", judgePath+"/judge-cancel", "single-judge-no-grant", f.token, managedBrand, judgeBody), 403)
+	if _, err = f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) SELECT role_id,'bet.judge_cancel.brand' FROM admin_account_roles WHERE account_id=$1 ON CONFLICT DO NOTHING`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, f.call("GET", judgePath+"/judgment", "", f.token, managedBrand, nil), 200)
+	judgedResult := f.call("POST", judgePath+"/judge-cancel", "single-judge-idempotent", f.token, managedBrand, judgeBody)
+	mustStatus(t, judgedResult, 200)
+	var judgedOrder betting.Order
+	managedData(t, judgedResult, &judgedOrder)
+	if judgedOrder.Status != "judged_cancelled" || judgedOrder.Version != 2 || judgedOrder.RefundEntryID == "" {
+		t.Fatalf("bad single judgment %+v", judgedOrder)
+	}
+	mustStatus(t, f.call("POST", judgePath+"/judge-cancel", "single-judge-idempotent", f.token, managedBrand, judgeBody), 200)
+	judgmentRead := f.call("GET", judgePath+"/judgment", "", f.token, managedBrand, nil)
+	mustStatus(t, judgmentRead, 200)
+	var judgment struct {
+		Judgment *betting.Judgment `json:"judgment"`
+	}
+	managedData(t, judgmentRead, &judgment)
+	if judgment.Judgment == nil || judgment.Judgment.OrderVersion != 2 || judgment.Judgment.Cause != "no_result" || judgment.Judgment.JudgedBy != f.root || judgment.Judgment.RefundEntryID != judgedOrder.RefundEntryID {
+		t.Fatalf("missing HTTP witness %+v", judgment)
+	}
+	if _, err = f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id IN (SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key='bet.judge_cancel.brand'`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, f.call("POST", judgePath+"/judge-cancel", "single-judge-idempotent", f.token, managedBrand, judgeBody), 403)
+	if _, err = f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) SELECT role_id,'bet.judge_cancel.brand' FROM admin_account_roles WHERE account_id=$1 ON CONFLICT DO NOTHING`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, f.call("POST", judgePath+"/judge-cancel", "single-judge-idempotent", f.token, managedBrand, judgeBody), 403)
+	mustStatus(t, f.call("GET", judgePath+"/judgment", "", f.token, managedBrand, nil), 200)
+	if _, err = f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	walletResult, err = (points.Store{DB: f.pool}).Read(ctx, managedBrand, f.memberID)
+	if err != nil || walletResult.GiftPoints != 500 {
+		t.Fatalf("single judgment repeated money %+v %v", walletResult, err)
+	}
+	third := betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-order-period-cancel-004", body)
 	mustStatus(t, third, 201)
 	var periodOrder betting.Order
 	decodeBetData(t, third, &periodOrder)

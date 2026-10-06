@@ -1,3 +1,4 @@
+import type { AdminBetOrder, Judgment } from "./bet-management-api";
 export const BET_ORDER_PAGE_SIZE = 50;
 export const BET_COMBINATION_PREVIEW_LIMIT = 20;
 export const BET_REASON_MAX_UTF8_BYTES = 500;
@@ -31,9 +32,40 @@ export function combinationPreview<T>(items: T[]) {
 export interface FrozenBetMutation<TBody> {
   readonly orderId: string;
   readonly brandId: string;
-  readonly action: "cancel" | "mark-abnormal";
+  readonly action: "cancel" | "mark-abnormal" | "judge-cancel";
   readonly body: Readonly<TBody>;
   readonly idempotencyKey: string;
+}
+
+export function hasMatchingJudgmentWitness(
+  order: Pick<
+    AdminBetOrder,
+    "id" | "brand_id" | "version" | "status" | "refund_entry_id"
+  >,
+  operation: FrozenBetMutation<{
+    version: number;
+    reason: string;
+    cause?: string;
+  }>,
+  evidence: Judgment | null,
+  actorId: string,
+): boolean {
+  return (
+    operation.action === "judge-cancel" &&
+    order.status === "judged_cancelled" &&
+    order.id === operation.orderId &&
+    order.brand_id === operation.brandId &&
+    order.version === operation.body.version + 1 &&
+    Boolean(order.refund_entry_id) &&
+    evidence !== null &&
+    evidence.brand_id === order.brand_id &&
+    evidence.order_id === order.id &&
+    evidence.order_version === order.version &&
+    evidence.judged_by === actorId &&
+    evidence.refund_entry_id === order.refund_entry_id &&
+    evidence.reason === operation.body.reason &&
+    evidence.cause === operation.body.cause
+  );
 }
 
 export type BetMutationFailure = "unknown" | "conflict" | "rejected";
@@ -72,7 +104,11 @@ export function createFrozenBetMutationStore<TBody extends object>() {
       );
     },
     find(actorId: string, brandId: string, orderId: string) {
-      for (const action of ["cancel", "mark-abnormal"] as const) {
+      for (const action of [
+        "cancel",
+        "mark-abnormal",
+        "judge-cancel",
+      ] as const) {
         const entry = entries.get(key(actorId, brandId, orderId, action));
         if (entry) return entry;
       }
