@@ -136,6 +136,16 @@ export const schemas = {
   }, ["id", "super_admin", "brand_ids", "permissions", "version", "permissions_by_brand", "platform_permissions"]) }, ["account"]),
   AdminBrand: obj({ id: ref("UUID"), code: string(), name: string(), status: string() }, ["id", "code", "name", "status"]),
   AdminBrandList: obj({ items: array(ref("AdminBrand")) }, ["items"]),
+  AdminBrandCreationInput: obj({
+    code: string({pattern:"^[a-z][a-z0-9_]{0,47}$",minLength:1,maxLength:48}),
+    name: utf8String(120,{description:"Nonempty, no surrounding whitespace or Unicode control characters; maximum 120 UTF-8 bytes."}),
+    default_locale: string({enum:["en","zh-CN"]}),
+    timezone: utf8String(80,{description:"Valid named IANA timezone or UTC; no empty/Local/surrounding whitespace/control characters."}),
+    reason: utf8String(500,{description:"Nonempty, no surrounding whitespace or Unicode control characters; maximum 500 UTF-8 bytes."}),
+  },["code","name","default_locale","timezone","reason"],{description:"All five keys are required. Unknown, duplicate and null fields rejected. No input status, brand id, initial money or administrator fields."}),
+  AdminBrandCreationReceipt: obj({
+    id:ref("UUID"),code:string(),name:string(),status:string({const:"paused"}),default_locale:string({enum:["en","zh-CN"]}),timezone:string(),version:integer({const:1}),created_at:ref("DateTime"),audit_log_id:ref("UUID"),
+  },["id","code","name","status","default_locale","timezone","version","created_at","audit_log_id"],{description:"Immutable creation snapshot, not current status/version after subsequent configuration or resume. No auto account/scope/domain/game/fund creation."}),
   AdminMember: obj({
     id: ref("UUID"), global_user_id: ref("UUID"), username: string(), phone: string(), display_name: string(), notes: string(),
     status: string({ enum: ["normal", "frozen", "disabled", "expired", "cancelled"] }), joined_at: ref("DateTime"), brand_id: ref("UUID"), tags: array(string()),
@@ -258,6 +268,7 @@ const op = (method, path, operationId, summary, tag, auth, idempotency, data, ex
 });
 
 export const operations = [
+  {method:"POST",path:"/api/v1/admin/brands",operationId:"createBrand",summary:"Create an initially paused brand",tag:"administration",auth:"admin",idempotency:true,brandHeader:false,permissions:["brand.create.platform"],requestBody:ref("AdminBrandCreationInput"),data:ref("AdminBrandCreationReceipt"),successStatus:201,description:"Global checked mutation independent of a selected brand. X-Brand-ID and query parameters rejected. Explicit platform permission, not super flag or brand grant alone. Code uniqueness, six initial policy/presentation rows, immutable audited creation and encrypted platform idempotency are atomic. Existing configured platform entry permits administration even without an active brand. Replays recheck session/permission and return the same creation snapshot; no automatic scope grants, admins, domains, money or settlement enablement."},
   op("GET", "/health/live", "healthLive", "Check process liveness", "system", "public", false, ref("IdentityHealth"), { description: "Returns alive while the HTTP process is serving." }),
   op("GET", "/health/ready", "healthReady", "Check service readiness", "system", "public", false, ref("IdentityHealth"), { description: "Checks the configured readiness dependency with a two-second timeout; unavailable readiness returns 503." }),
   op("GET", "/api/v1/context", "getPublicContext", "Get the current brand and public configuration", "identity", "public", false, ref("IdentityContext"), { description: "Resolves the brand from the request host or generated platform brand path. Includes current authentication switches and policy versions; no secrets are returned." }),

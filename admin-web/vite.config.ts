@@ -7,5 +7,14 @@ export default defineConfig({
     port: 5174,
     proxy: { '/api': { target: 'http://localhost:8080', changeOrigin: false } },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('/node_modules/vue/') || id.includes('/node_modules/@vue/')) return 'vue-vendor'
+        },
+      },
+    },
+  },
   test: { environment: 'node', include: ['src/**/*.test.ts'] },
 })

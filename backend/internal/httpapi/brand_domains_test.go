@@ -71,8 +71,14 @@ func TestDomainHTTPCheckedReplayAndRealAuthority(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	// The disabled brand's own public entry is closed before admin dispatch.
-	mustStatus(t, f.call("POST", domainPath, "domain-create-0001", f.token, managedBrand, in), 404)
+	// This host is also an explicitly configured platform entry. Administration
+	// remains reachable even when its associated public brand is disabled, but
+	// the selected disabled brand's write/replay is still refused.
+	mustStatus(t, f.call("POST", domainPath, "domain-create-0001", f.token, managedBrand, in), 409)
+	public := httptest.NewRequest("GET", "http://localhost/api/v1/context", nil)
+	publicResponse := httptest.NewRecorder()
+	f.http.ServeHTTP(publicResponse, public)
+	mustStatus(t, publicResponse, 404)
 	// A separate configured entry can still enforce the selected brand's
 	// read-only state instead of replaying its old success receipt.
 	encoded, _ := json.Marshal(in)

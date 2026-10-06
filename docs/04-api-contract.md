@@ -3,7 +3,7 @@
 ## 1. 基础约定
 
 - Base URL：/api/v1。
-- 用户端品牌由访问域名解析；管理端必须显式提供品牌上下文。
+- 用户端品牌由访问域名解析；管理端品牌操作必须显式提供品牌上下文。平台品牌列表、品牌创建和管理认证不以选中品牌作为输入。
 - 所有接口返回 JSON；时间使用 UTC ISO-8601；积分使用十进制整数字符串。
 - 认证：支持 `Authorization: Bearer <access_token>`；浏览器默认使用 HttpOnly、SameSite=Strict Cookie，不在 Web Storage 保存令牌。
 - 请求追踪：X-Request-ID 必填或由网关生成。
@@ -573,6 +573,20 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 暂不实现提现/佣金/奖励报表、代理分组、不可变日月结、导出及大规模异步全链对账；这些随真实业务模块与S7接入，不能据此宣称EPIC-11整体完成。
 
 ## 4.7 品牌运行状态
+
+### 平台品牌创建
+
+`POST /api/v1/admin/brands` 要求当前有效管理会话、精确 `brand.create.platform` 权限及 `Idempotency-Key`；禁止非空 `X-Brand-ID` 和任何查询参数。不因 `super_admin` 标记或品牌角色中的同名权限而放行。该接口不是用户、资金或规则写权限的替代品。
+
+正文必须恰好包含 `{code,name,default_locale,timezone,reason}` 五个字符串，拒绝重复、未知、缺失或null字段。code为小写字母开头的1–48位小写字母/数字/下划线；name非空、UTF-8≤120字节；reason非空、≤500字节；名称和原因拒绝首尾空白及控制字符。语言仅en/zh-CN，timezone须为有效命名时区、非Local、≤80字节且无首尾空白/控制字符。服务端随二进制提供时区数据，不依赖主机安装。
+
+201返回 `{id,code,name,status:"paused",default_locale,timezone,version:1,created_at,audit_log_id}`。品牌、六项初始配置、不可变创建证据、审计与加密幂等回执同事务提交；不自动建立管理员范围、会员、域名、游戏或积分。结算mode=null，代理配置disabled。编号已被其他请求占用返回409 `BRAND_CODE_CONFLICT`，同键异体409 `IDEMPOTENCY_CONFLICT`；模型解析错误400 `REQUEST_INVALID`，服务语义错误400 `BRAND_CREATE_INPUT_INVALID`，无权限403 `PERMISSION_DENIED`。
+
+平台幂等分区以账号/操作/键唯一，不伪造品牌UUID；加密绑定分区、正文摘要与操作。锁前后均检查当前会话和权限，撤销后不能重放旧成功。缓存回执是首次创建状态，品牌后来恢复或改配置后仍返回该快照；必须独立查询当前状态。未知提交结果只允许原正文/键重试。
+
+实际Host属于启用的 `platform_domains` 时，即使没有可用公开用户品牌，也可管理登录/退出、恢复会话、读取品牌列表及创建。管理入口仍需先被服务器拥有者配置，未知Host或伪造转发Host不获得访问。用户端保持原有解析，裸 `/api/v1/context` 不会自动切到新品牌；平台 `/b/{brandCode}` 仍按原规则解析。
+
+### 品牌运行状态接口
 
 路径均在 `/api/v1/admin`，必须通过 `X-Brand-ID` 指定品牌。读取需 `brand_operation.view.brand/platform`，写入需 `brand_operation.write.brand/platform`，品牌权限还要求对应品牌范围。超级管理员不自动获得授权；显式平台写权限可以管理不同品牌的运行状态，不授予用户、积分或其他业务写权限。
 

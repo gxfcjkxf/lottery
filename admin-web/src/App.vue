@@ -12,7 +12,9 @@ import AuthSettings from "./AuthSettings.vue";
 import BrandOperation from "./BrandOperation.vue";
 import BrandPresentation from "./BrandPresentation.vue";
 const BrandDomains = defineAsyncComponent(() => import("./BrandDomains.vue"));
+const BrandCreation = defineAsyncComponent(() => import("./BrandCreation.vue"));
 import {clearAllPendingBrandDomainsWrites} from "./brand-domains-state";
+import { clearAllPendingBrandCreationWrites } from "./brand-creation-state";
 import {watch} from "vue";
 import {buildBrandCssTokens,defaultBrand,safeBrandAssetUrl,applyBrandPresentation,type BrandTheme} from "@lottery/shared";
 import {createBrandPresentationApi,brandPresentationPermissions,type BrandPresentationRecord} from "./brand-presentation-api";
@@ -265,6 +267,7 @@ const apiErrorText = (error: unknown) =>
 const clearAdminData = () => {
 	clearAllPendingPresentationWrites();
 	clearAllPendingBrandDomainsWrites();
+	clearAllPendingBrandCreationWrites();
 	presentationReadGeneration+=1;presentationSkin.value=null;
   adminBrandLoadGeneration += 1;
   clearAllPendingAgentWrites();
@@ -298,8 +301,9 @@ const restoreAdminSession = async () => {
   authLoading.value = true;
   try {
     const result = await api.me();
-    if (account.value && account.value.id !== result.account.id) {
+    if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
+      clearAllPendingBrandCreationWrites();
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
       clearAllPendingPresentationWrites();
@@ -326,8 +330,9 @@ const login = async () => {
     );
     loginPassword.value = "";
     const result = await api.me();
-    if (account.value && account.value.id !== result.account.id) {
+    if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
+      clearAllPendingBrandCreationWrites();
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
       clearAllPendingPresentationWrites();
@@ -347,6 +352,7 @@ const login = async () => {
 const onBrandOperationChanged = (change: { accountId: string }) => {
   if (account.value?.id === change.accountId) void loadBrands();
 };
+const onBrandCreated = () => { if (account.value) void loadBrands(); };
 const logout = async () => {
   try {
     await api.logout(createIdempotencyKey());
@@ -757,6 +763,7 @@ const ledger = [
           ><b>{{ page }}</b
           ><span
             v-if="
+              !(account && page === '品牌和域名') &&
               page !== '用户和成员' &&
               page !== '审计日志' &&
               page !== '通知投递' &&
@@ -793,6 +800,7 @@ const ledger = [
       <div
         v-if="
           showDemoNotice &&
+          !(account && page === '品牌和域名') &&
           page !== '用户和成员' &&
           page !== '审计日志' &&
           page !== '通知投递' &&
@@ -809,7 +817,7 @@ const ledger = [
         ><span
           ><b>交互演示 · 非生产环境</b
           ><span class="banner-copy">
-            控制台包含已接入流程与原型。提现、佣金管理及新建品牌尚未实现；各页面会标出真实接口与演示边界。</span
+            控制台包含已接入流程与原型。提现、佣金管理尚未实现；各页面会标出真实接口与演示边界。</span
           ></span
         ><button aria-label="关闭说明" @click="showDemoNotice = false">
           ×
@@ -827,6 +835,9 @@ const ledger = [
         ><template v-else-if="contextState === 'loading'"
           ><b>后端品牌上下文</b
           ><span>正在读取 GET /api/v1/context</span></template
+        ><template v-else-if="account && !authLoading && !authError"
+          ><b>平台品牌上下文</b
+          ><span>当前入口没有可用的公开用户品牌上下文；后台管理认证独立，不受影响。请选择需要管理的品牌。</span></template
         ><template v-else
           ><b>后端品牌上下文未连接</b
           ><span
@@ -1097,10 +1108,11 @@ const ledger = [
             <div>
               <div class="eyebrow">PLATFORM / BRAND CONFIG</div>
               <h1>品牌和域名</h1>
-              <p>真实品牌列表、运行状态、展示与域名绑定；新建品牌暂未实现</p>
+              <p>真实品牌列表、运行状态、展示与域名绑定</p>
             </div>
           </div>
-        <BrandOperation
+          <BrandCreation v-if="account" :key="`create:${account.id}`" :account="account" @session-invalid="clearAdminData" @created="onBrandCreated" />
+          <BrandOperation
             v-if="selectedBrandId"
             :key="`${account.id}:${selectedBrandId}`"
             :account="account"
@@ -1120,7 +1132,7 @@ const ledger = [
               <div><h2>真实品牌</h2><p>来自管理员品牌接口</p></div>
               <button class="button button-secondary" @click="loadBrands">刷新列表</button>
             </div>
-            <p class="brand-operation-unavailable">新建品牌尚未实现。域名绑定不配置 DNS、证书或重定向；展示仅支持固定预设与中英文文案，不支持任意 CSS、HTML 或上传素材。</p>
+            <p class="brand-operation-unavailable">域名绑定不配置 DNS、证书或重定向；展示仅支持固定预设与中英文文案，不支持任意 CSS、HTML 或上传素材。</p>
             <p v-if="authLoading" class="directory-state">正在读取品牌…</p>
             <p v-else-if="authError" class="directory-state" role="alert">{{ authError }}</p>
             <p v-else-if="!adminBrands.length" class="directory-state">当前账号未返回可管理品牌。</p>

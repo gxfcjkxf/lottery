@@ -29,6 +29,14 @@ type Resolver interface {
 }
 type Store struct{ DB *pgxpool.Pool }
 
+// PlatformEntry admits only explicitly configured platform hosts; it grants no
+// account or brand permission and does not expose public user brand context.
+func (s Store) PlatformEntry(ctx context.Context, host string) (bool, error) {
+	var allowed bool
+	err := s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM platform_domains WHERE domain=$1 AND enabled)`, NormalizeHost(host)).Scan(&allowed)
+	return allowed, err
+}
+
 // Host is the request authority. Forwarded host headers are never trusted.
 func NormalizeHost(raw string) string {
 	if h, _, err := net.SplitHostPort(raw); err == nil {

@@ -9,6 +9,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
+	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
 	"github.com/jackc/pgx/v5"
 	"net/http"
 	"strconv"
@@ -96,7 +97,7 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 				failure(w, r, 503, "AUTH_UNAVAILABLE", "后台尚未配置")
 				return
 			}
-			if _, ok := resolveBrand(w, r, d); !ok {
+			if _, ok := resolveAdminEntry(w, r, d); !ok {
 				return
 			}
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -109,10 +110,11 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 	registerBrandOperationRoutes(handle, d)
 	registerBrandPresentationRoutes(handle, d)
 	registerBrandDomainRoutes(handle, d)
+	registerBrandCreationRoutes(handle, d)
 	registerPeriodRoutes(handle, d)
 	RegisterDrawRoutes(handle, d)
 	handle("POST", "/auth/login", func(w http.ResponseWriter, r *http.Request) {
-		b, ok := resolveBrand(w, r, d)
+		b, ok := resolveAdminEntry(w, r, d)
 		if !ok {
 			return
 		}
@@ -121,7 +123,7 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 			return
 		}
 		encoded, _ := json.Marshal(in)
-		result, err := d.Mutations.Execute(r.Context(), b.ID, "admin-anonymous", "admin.login", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(string(encoded)), func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
+		run := func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
 			allowed, err := d.Identity.AllowAttempt(ctx, d.Mutations, b.ID, "admin:"+in.Identifier, meta(r))
 			if err != nil {
 				return mutation.Result{}, err
@@ -130,7 +132,17 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 				return mutation.Fail(429, "AUTH_RATE_LIMITED", "尝试次数过多"), nil
 			}
 			return d.Identity.AdminLogin(ctx, tx, b.ID, in, meta(r))
-		})
+		}
+		var result mutation.Result
+		var err error
+		if b.ID == "" {
+			result, err = d.Mutations.ExecuteChecked(r.Context(), "", "admin-anonymous", "admin.login", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(string(encoded)), func(ctx context.Context, tx pgx.Tx) error { return checkPlatformAdminEntry(ctx, tx, r) }, run)
+		} else {
+			result, err = d.Mutations.Execute(r.Context(), b.ID, "admin-anonymous", "admin.login", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(string(encoded)), run)
+		}
+		if errors.Is(err, tenant.ErrNotFound) {
+			result, err = mutation.Fail(404, "BRAND_NOT_FOUND", "平台管理入口已停用"), nil
+		}
 		if err == nil && result.Error == nil {
 			var auth identity.AdminAuthentication
 			if json.Unmarshal(result.Data, &auth) == nil {
@@ -140,15 +152,25 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 		outputMutation(w, r, result, err)
 	})
 	handle("POST", "/auth/logout", func(w http.ResponseWriter, r *http.Request) {
-		b, _ := resolveBrand(w, r, d)
+		b, _ := resolveAdminEntry(w, r, d)
 		var in struct{}
 		if !decodeBody(w, r, &in) {
 			return
 		}
 		token := requestToken(r, adminCookie)
-		result, err := d.Mutations.Execute(r.Context(), b.ID, "admin-session:"+token, "admin.logout", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint("logout"), func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
+		run := func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
 			return d.Identity.AdminLogout(ctx, tx, b.ID, token, meta(r))
-		})
+		}
+		var result mutation.Result
+		var err error
+		if b.ID == "" {
+			result, err = d.Mutations.ExecuteChecked(r.Context(), "", "admin-session:"+token, "admin.logout", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint("logout"), func(ctx context.Context, tx pgx.Tx) error { return checkPlatformAdminEntry(ctx, tx, r) }, run)
+		} else {
+			result, err = d.Mutations.Execute(r.Context(), b.ID, "admin-session:"+token, "admin.logout", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint("logout"), run)
+		}
+		if errors.Is(err, tenant.ErrNotFound) {
+			result, err = mutation.Fail(404, "BRAND_NOT_FOUND", "平台管理入口已停用"), nil
+		}
 		if err == nil && result.Error == nil {
 			issueCookie(w, r, adminCookie, "", time.Unix(1, 0), d.SecureCookies)
 		}

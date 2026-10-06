@@ -11,6 +11,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/agency"
 	"github.com/gxfcjkxf/lottery/backend/internal/branddomains"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandops"
+	"github.com/gxfcjkxf/lottery/backend/internal/brandregistry"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandskin"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
@@ -106,6 +107,8 @@ func main() {
 		"AdminBrandPresentationPutRequest": brandskin.Input{Version: 1, Config: presentationConfig, Reason: "contract example"},
 		"AdminBrandPresentationRevision":   brandskin.Revision{ID: id, BrandID: id, Version: 2, Config: presentationConfig, Effective: presentationEffective, ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now},
 		"AdminBrandOperation":              brandops.Record{BrandID: id, Version: 2, Name: "Example", Status: "paused", UpdatedAt: now, AuditLogID: id},
+		"AdminBrandCreationInput":          brandregistry.Input{Code: "example_brand", Name: "Example", DefaultLocale: "en", Timezone: "UTC", Reason: "explicit creation"},
+		"AdminBrandCreationReceipt":        brandregistry.Receipt{ID: id, Code: "example_brand", Name: "Example", DefaultLocale: "en", Timezone: "UTC", Status: "paused", Version: 1, CreatedAt: now, AuditLogID: id},
 		"AdminBrandOperationRevision":      brandops.Revision{ID: id, BrandID: id, Version: 2, PreviousStatus: "active", Status: "paused", ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now},
 		"FinanceAgentCreateInput":          agentInput, "FinanceWithdrawalGameConfig": gameWithdrawal,
 		"IdentityUser":   identity.User{ID: id, Status: "normal"},

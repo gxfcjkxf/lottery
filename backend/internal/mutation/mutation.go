@@ -124,6 +124,9 @@ func (e *Engine) ExecuteChecked(ctx context.Context, brand, actor, operation, ke
 	return e.execute(ctx, brand, actor, operation, key, fingerprint, check, run)
 }
 func (e *Engine) execute(ctx context.Context, brand, actor, operation, key, fingerprint string, check func(context.Context, pgx.Tx) error, run func(context.Context, pgx.Tx) (Result, error)) (Result, error) {
+	if brand == "" && check == nil {
+		return Result{}, errors.New("platform mutations require checked authorization")
+	}
 	if !validKey(key) {
 		return Fail(400, "IDEMPOTENCY_KEY_INVALID", "需要 8 至 128 字符的 Idempotency-Key"), nil
 	}
@@ -158,7 +161,11 @@ func (e *Engine) execute(ctx context.Context, brand, actor, operation, key, fing
 	}
 	var storedHash string
 	var sealed []byte
-	err = tx.QueryRow(ctx, `SELECT request_hash,response FROM idempotency_requests WHERE brand_id=$1 AND actor_id=$2 AND operation=$3 AND key=$4`, brand, actorID, operation, key).Scan(&storedHash, &sealed)
+	if brand == "" {
+		err = tx.QueryRow(ctx, `SELECT request_hash,response FROM platform_idempotency_requests WHERE actor_id=$1 AND operation=$2 AND key=$3`, actorID, operation, key).Scan(&storedHash, &sealed)
+	} else {
+		err = tx.QueryRow(ctx, `SELECT request_hash,response FROM idempotency_requests WHERE brand_id=$1 AND actor_id=$2 AND operation=$3 AND key=$4`, brand, actorID, operation, key).Scan(&storedHash, &sealed)
+	}
 	if err == nil {
 		if storedHash != fingerprint {
 			return Fail(409, "IDEMPOTENCY_CONFLICT", "幂等键已用于不同请求"), nil
@@ -203,7 +210,12 @@ func (e *Engine) execute(ctx context.Context, brand, actor, operation, key, fing
 		return Result{}, err
 	}
 	encoded, _ := json.Marshal(sealedResponse{base64.RawStdEncoding.EncodeToString(blob)})
-	if _, err = tx.Exec(ctx, `INSERT INTO idempotency_requests(brand_id,actor_id,operation,key,request_hash,status_code,response) VALUES($1,$2,$3,$4,$5,$6,$7)`, brand, actorID, operation, key, fingerprint, result.Status, encoded); err != nil {
+	if brand == "" {
+		_, err = tx.Exec(ctx, `INSERT INTO platform_idempotency_requests(actor_id,operation,key,request_hash,status_code,response) VALUES($1,$2,$3,$4,$5,$6)`, actorID, operation, key, fingerprint, result.Status, encoded)
+	} else {
+		_, err = tx.Exec(ctx, `INSERT INTO idempotency_requests(brand_id,actor_id,operation,key,request_hash,status_code,response) VALUES($1,$2,$3,$4,$5,$6,$7)`, brand, actorID, operation, key, fingerprint, result.Status, encoded)
+	}
+	if err != nil {
 		return Result{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {

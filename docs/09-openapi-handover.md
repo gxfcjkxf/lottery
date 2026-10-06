@@ -6,11 +6,13 @@
 
 已实现接口包含健康检查、品牌上下文、用户认证、管理账号与权限、积分账本和人工充值、玩法与期次、投注、开奖、结算与更正、站内通知、报表、代理配置和加入码。用户标准路径与平台 `/b/{brandCode}` 路径分别列出，域名解析和品牌隔离仍由服务端执行。
 
+平台品牌创建使用POST `/api/v1/admin/brands`，需 `brand.create.platform`，不发送 `X-Brand-ID`。请求恰好为code/name/default_locale/timezone/reason；201返回固定暂停/v1的不可变初始快照及audit_log_id。未知结果以原正文/键重试，不能把旧创建回执当成当前状态；无自动管理员、会员、域名、彩种或积分。可信平台Host在无公开品牌时仍能管理登录/恢复会话及创建，用户裸品牌上下文仍保持404。具体模型和错误见 [API合同](04-api-contract.md)。
+
 品牌运行状态及展示配置也已接入真实接口。展示配置使用 `/api/v1/admin/brand-presentation` 的 GET/PUT，历史使用同路径 `/history` 的 GET；只以 `X-Brand-ID` 选择品牌，不接受品牌路径别名。读写分别要求明确的 `brand_presentation.view`/`write` 品牌或平台权限，超级管理员身份本身不绕过授权。历史按新到旧分页，版本可能因其他品牌配置变更而跳号。
 
 PUT 必须提供当前共享版本、全部 16 个配置键和操作原因。可空覆盖项必须显式传 `null`；`content` 非空时必须包含 `en`、`zh-CN` 及各自的 `tagline`、`announcement`。写回执包含原版本加一、提交配置和审计 ID；缓存重放仍重新验证当前权限和停用状态。版本及停用冲突分别返回 `BRAND_PRESENTATION_VERSION_CONFLICT`、`BRAND_PRESENTATION_STATE_CONFLICT`，不能据缓存回执覆盖当前读取。预设、素材和语言范围见 [05-ui-spec.md](05-ui-spec.md)。
 
-提现当前只有政策配置，没有申请、资格判定或出款接口。佣金与奖励实际发放、真实支付、真实外部开奖 API/DOM 适配器也不可调用。配置存在不代表财务流程已经实现。容量目标 500 次投注/秒不属于已验证能力。
+提现当前只有政策配置，没有申请、资格判定或出款接口。佣金与奖励实际发放、真实支付、真实外部开奖 API/DOM 适配器也不可调用。配置存在不代表财务流程已经实现。500次投注/秒只有受控本地基线证据，不代表完整生产容量验收。
 
 域名管理使用 `/api/v1/admin/brand-domains` 的GET/POST、`/{domainID}`的PATCH及`/history`的GET。创建要求完整 `version,domain,enabled,is_primary,reason`，更新只接受 `version,enabled,is_primary,reason`；主机名不可修改。写回执返回完整绑定列表、共享版本加一及审计ID；读取中的审计ID仅在当前共享版本来自域名变更时存在。读写要求显式的 `brand_domains.view/write.brand/platform` 权限，超级管理员身份不绕过授权。
 

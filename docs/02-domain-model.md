@@ -35,6 +35,10 @@
 - `config_version`
 - `created_at`, `updated_at`
 
+新建品牌使用平台权限 `brand.create.platform`，初始 `paused/config_version=1`。现有INSERT触发器初始化积分、投注、提现、结算、代理和展示六项配置；结算mode保持NULL，代理disabled，不建立域名、管理员范围、会员、游戏或积分账户。
+
+`brand_creation_records` 保存 `brand_id,code,name,default_locale,timezone,status,version,created_by,reason,audit_log_id,created_at` 初始证据，品牌唯一且不可更新/删除。写入必须匹配实际初始品牌和同事务 `brand.create` 审计。后续品牌配置修改不改写创建记录，不将创建时暂停/v1当成最新状态。
+
 `brand_domains`
 
 - `id`, `brand_id`, `domain`, `is_primary`, `status`
@@ -72,7 +76,7 @@ S6-f 使用现有 attribution_snapshot 保存不可改写的 schema_version/lega
 
 ### 品牌配置
 
-`brand_operation_revisions` 保存品牌运行状态变更：`id,brand_id,version,previous_status,status,changed_by,reason,audit_log_id,created_at`；品牌和版本唯一，历史不可修改或删除，写入须匹配实际品牌状态及同事务审计证据。只提供 active 与 paused 之间的切换，不提供禁用品牌、创建品牌或域名配置。
+`brand_operation_revisions` 保存品牌运行状态变更：`id,brand_id,version,previous_status,status,changed_by,reason,audit_log_id,created_at`；品牌和版本唯一，历史不可修改或删除，写入须匹配实际品牌状态及同事务审计证据。此模块只提供 active 与 paused 之间的切换，不提供禁用品牌；品牌创建和域名配置使用独立模块。
 
 运行状态沿用 `brands.config_version`，与认证配置共享版本和品牌行锁，因此历史版本可有间隔。暂停和恢复递增版本，保留名称、语言、主题、认证配置、成员和全部资金数据；初始化不补造人工操作或审计记录。
 
