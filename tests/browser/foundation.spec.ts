@@ -62,35 +62,32 @@ test("API brands remain isolated and spoofed brand header is ignored", async ({
   expect(missing.status()).toBe(404);
 });
 
-test("repeated positional digits survive demo confirmation and cancellation", async ({
+test("legacy demo game and stored demo orders cannot become real bets", async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "luma-demo-orders",
+      JSON.stringify([
+        { id: "DEMO-old", points: "123", status: "Placed (demo)" },
+      ]),
+    );
+  });
+  const invalidCatalog = page.waitForResponse((r) =>
+    r.url().endsWith("/api/v1/games/daily-3"),
+  );
   await page.goto("http://localhost:5173/games/daily-3/bet");
-  await page
-    .getByRole("button", { name: "Choose digit 1 for position 1", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Choose digit 2 for position 2", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Choose digit 1 for position 3", exact: true })
-    .click();
+  expect((await invalidCatalog).status()).toBe(400);
+  await expect(page.getByTestId("bet-selection-page")).toBeVisible();
+  await expect(page.getByRole("alert").first()).toBeVisible();
+  await expect(page.getByTestId("preview-button")).toHaveCount(0);
   await noHorizontalOverflow(page);
-  await page.getByRole("button", { name: /Review selection/ }).click();
-  await expect(page).toHaveURL(/\/bet\/confirm$/);
-  await expect(page.locator(".confirm-balls span")).toHaveText(["1", "2", "1"]);
-  await page.getByRole("button", { name: /Confirm picks/ }).click();
-  await expect(page).toHaveURL(/\/orders\/DEMO-/);
-  await page
-    .getByRole("button", { name: "Cancel demo order", exact: true })
-    .click();
-  await expect(
-    page.getByText("Cancelled (demo)", { exact: true }),
-  ).toBeVisible();
+  await page.goto("http://localhost:5173/orders");
+  await expect(page.getByText("DEMO-old", { exact: true })).toHaveCount(0);
   expect(
     await page.evaluate(
       () =>
         JSON.parse(localStorage.getItem("luma-demo-orders") || "[]")[0].points,
     ),
-  ).toBe("1");
+  ).toBe("123");
 });

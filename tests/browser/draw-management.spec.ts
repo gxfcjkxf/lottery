@@ -251,6 +251,12 @@ test("source revisions, worker attempt evidence and manual draw persist in the r
     .locator(".draw-management")
     .getByRole("combobox", { name: "彩种", exact: true })
     .selectOption(game.id);
+  // Calendar prefill can add a future period while this test runs. Select the
+  // actual manually drawn period rather than relying on newest-first defaults.
+  await page
+    .locator(".draw-management")
+    .getByRole("combobox", { name: "期数", exact: true })
+    .selectOption(period.id);
   await expect(page.locator(".draw-management .current-result")).toContainText(
     "1 2 1",
   );

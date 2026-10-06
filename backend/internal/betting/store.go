@@ -142,10 +142,13 @@ func eligibility(ctx context.Context, tx pgx.Tx, brand string, v identity.Sessio
 	if !validIDs(brand, v.User.ID, v.Member.ID, v.ID) || v.Member.BrandID != brand {
 		return ErrDenied
 	}
-	var ok bool
-	e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM brands b JOIN brand_members m ON m.brand_id=b.id JOIN global_users u ON u.id=m.global_user_id JOIN sessions s ON s.brand_id=b.id AND s.member_id=m.id AND s.user_id=u.id WHERE b.id=$1 AND m.id=$2 AND u.id=$3 AND u.status='active' AND m.terms_accepted=true AND m.status IN ('normal','frozen') AND b.status<>'disabled' AND s.id=$5 AND s.admin_id IS NULL AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND (NOT $4 OR (m.status='normal' AND b.status='active')))`, brand, v.Member.ID, v.User.ID, normal, v.ID).Scan(&ok)
+	var ok, sessionOK bool
+	e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM brands b JOIN brand_members m ON m.brand_id=b.id JOIN global_users u ON u.id=m.global_user_id WHERE b.id=$1 AND m.id=$2 AND u.id=$3 AND u.status='active' AND m.terms_accepted=true AND m.status IN ('normal','frozen') AND b.status<>'disabled' AND (NOT $4 OR (m.status='normal' AND b.status='active'))), EXISTS(SELECT 1 FROM sessions s WHERE s.id=$5 AND s.brand_id=$1 AND s.member_id=$2 AND s.user_id=$3 AND s.admin_id IS NULL AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp())`, brand, v.Member.ID, v.User.ID, normal, v.ID).Scan(&ok, &sessionOK)
 	if e != nil {
 		return e
+	}
+	if !sessionOK {
+		return identity.ErrSession
 	}
 	if !ok {
 		return ErrDenied

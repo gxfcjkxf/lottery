@@ -16,6 +16,7 @@ import {
 } from "./selection";
 import { isValidWholeAmount } from "./withdrawal";
 import WalletSummary from "./WalletSummary.vue";
+import BettingPanel from "./BettingPanel.vue";
 import {
   createAuthClient,
   type AuthChallenge,
@@ -299,6 +300,14 @@ const nav = computed(() => [
 ]);
 const isAuth = computed(() => ["/login", "/register"].includes(route.path));
 const activePage = computed(() => route.path);
+const isBettingRoute = computed(
+  () =>
+    route.path === "/games" ||
+    route.path.startsWith("/games/") ||
+    route.path === "/bet/confirm" ||
+    route.path === "/orders" ||
+    route.path.startsWith("/orders/"),
+);
 const gameId = computed(() => String(route.params.gameId || "classic-6"));
 interface GameConfig {
   id: string;
@@ -950,7 +959,6 @@ function orderNumbers(order: {
 }
 
 onMounted(async () => {
-  readOrders();
   try {
     const context = await api.getContext();
     connection.value = "connected";
@@ -1139,8 +1147,16 @@ watch(
           ><button @click="closeNotice" aria-label="Dismiss message">×</button>
         </div>
 
+        <BettingPanel
+          v-if="isBettingRoute"
+          :locale="locale"
+          :brand-code="walletBrandCode"
+          :auth="authProfile"
+          @auth-expired="authProfile = null"
+        />
+
         <section
-          v-if="route.path === '/login' || route.path === '/register'"
+          v-else-if="route.path === '/login' || route.path === '/register'"
           class="auth-layout"
         >
           <div class="auth-visual">
@@ -1625,11 +1641,11 @@ watch(
               </div>
               <h1>{{ t.welcome }}</h1>
               <p>{{ t.subtitle }}</p>
-              <RouterLink to="/games/classic-6" class="button button-dark"
+              <RouterLink to="/games" class="button button-dark"
                 >{{ t.play }} <span>↗</span></RouterLink
               >
               <div class="hero-note">
-                <span class="tiny-spark">✳</span> {{ t.noChanges }}
+                <span class="tiny-spark">✳</span> {{ t.announcementBody }}
               </div>
             </div>
             <div class="hero-art" aria-hidden="true">
@@ -1651,58 +1667,17 @@ watch(
                 <div class="eyebrow">A GOOD PLACE TO START</div>
                 <h2>{{ t.featured }}</h2>
               </div>
-              <RouterLink to="/games/classic-6" class="text-link"
+              <RouterLink to="/games" class="text-link"
                 >{{ t.viewAll }} <span>→</span></RouterLink
               >
             </div>
-            <div class="game-grid">
-              <article
-                v-for="(item, index) in games"
-                :key="item.id"
-                class="game-card"
-                :class="item.color"
-              >
-                <div class="game-card-top">
-                  <span class="game-type">{{ item.type }}</span
-                  ><span class="card-arrow">↗</span>
-                </div>
-                <div class="game-art" aria-hidden="true">
-                  <span
-                    v-for="(ball, ballIndex) in gameArtNumbers(item, index)"
-                    :key="ballIndex"
-                    class="mini-ball"
-                    :class="`mini-${ballIndex + 1}`"
-                    >{{ ball }}</span
-                  ><span class="game-art-spark">✳</span>
-                </div>
-                <h3>{{ item.name }}</h3>
-                <div class="game-meta">
-                  <span>{{
-                    item.kind === "digits"
-                      ? "3 digits · repeats allowed"
-                      : `${item.pick} + ${item.specialPick} special`
-                  }}</span
-                  ><span class="meta-dot"></span
-                  ><span
-                    >{{ item.unit }}
-                    {{ locale === "en" ? "pts / line" : "积分 / 注" }}</span
-                  >
-                </div>
-                <div class="game-card-bottom">
-                  <div>
-                    <small>{{ t.issue }}</small
-                    ><strong>{{ item.draw }}</strong>
-                  </div>
-                  <button
-                    class="round-link"
-                    @click="router.push(`/games/${item.id}`)"
-                    :aria-label="`${t.openGame}: ${item.name}`"
-                  >
-                    ↗
-                  </button>
-                </div>
-              </article>
-            </div>
+            <BettingPanel
+              :locale="locale"
+              :brand-code="walletBrandCode"
+              :auth="authProfile"
+              embedded-catalog
+              @auth-expired="authProfile = null"
+            />
           </section>
           <section class="announcement">
             <div class="announcement-icon">✳</div>
@@ -2547,7 +2522,10 @@ watch(
                 }}
               </p>
               <a href="mailto:support@example.invalid" class="text-link"
-                >{{ locale === "en" ? "Contact support" : "联系支持团队" }} ↗</a
+                >{{
+                  locale === "en" ? "Contact support" : "联系支持团队"
+                }}
+                ↗</a
               >
             </div>
             <div class="faq-list">
@@ -2616,14 +2594,24 @@ watch(
 
       <footer v-if="!isAuth" class="page-footer">
         <span
-          >© 2026 {{ brandName }} ·
-          {{
-            route.path.startsWith("/wallet")
-              ? locale === "en"
-                ? "Live wallet · games remain demo"
-                : "真实钱包 · 游戏仍为演示"
-              : t.demo
-          }}</span
+          >© 2026 {{ brandName
+          }}<template v-if="isBettingRoute">
+            ·
+            {{
+              locale === "en"
+                ? "Live betting · real wallet"
+                : "真实投注 · 实时钱包"
+            }}</template
+          ><template v-else>
+            ·
+            {{
+              route.path.startsWith("/wallet")
+                ? locale === "en"
+                  ? "Live wallet"
+                  : "实时钱包"
+                : t.demo
+            }}</template
+          ></span
         >
         <nav>
           <RouterLink to="/help">{{ t.help }}</RouterLink

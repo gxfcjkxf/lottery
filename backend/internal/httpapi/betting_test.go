@@ -270,6 +270,18 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	if quote.BetPoints != 8 {
 		t.Fatalf("preview stake=%d, want 8", quote.BetPoints)
 	}
+	var accountContext struct {
+		ActorContext string `json:"actor_context"`
+	}
+	decodeBetData(t, preview, &accountContext)
+	if len(accountContext.ActorContext) != 64 {
+		t.Fatal("missing signed confirmation context")
+	}
+	in["actor_context"] = accountContext.ActorContext
+	// A different valid member cannot spend from a confirmation issued to this
+	// user, even when cookies changed after the UI's last /me preflight.
+	swapped := betRequestWithKey(h, "POST", "/api/v1/bet-orders", secondAuth.AccessToken, "", "bet-swapped-account", mustJSON(t, in))
+	mustStatus(t, swapped, 403)
 
 	body := mustJSON(t, in)
 	place := betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-order-place-001", body)
@@ -293,7 +305,7 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 		t.Fatal("same-key placement returned a different order")
 	}
 	changedInput := map[string]any{"period_id": periodID, "play_id": play.ID, "rule_version_id": version.ID,
-		"selection": map[string]any{"special": []int{7, 19, 31}}, "multiplier": "2", "policy_versions": map[string]int64{"brand": 1, "game": 1}}
+		"selection": map[string]any{"special": []int{7, 19, 31}}, "multiplier": "2", "policy_versions": map[string]int64{"brand": 1, "game": 1}, "actor_context": accountContext.ActorContext}
 	changed := betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-order-place-001", mustJSON(t, changedInput))
 	mustStatus(t, changed, 409)
 

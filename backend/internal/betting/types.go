@@ -27,6 +27,7 @@ type Input struct {
 	Selection      rules.Selection `json:"selection"`
 	Multiplier     points.Amount   `json:"multiplier"`
 	PolicyVersions *PolicyVersions `json:"policy_versions,omitempty"`
+	ActorContext   string          `json:"actor_context,omitempty"`
 }
 type Order struct {
 	ID                  string              `json:"id"`

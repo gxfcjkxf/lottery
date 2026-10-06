@@ -92,7 +92,9 @@ jobs:
           ./bin/platform worker > ../worker-test.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
       # Each viewport gets an independent PostgreSQL service; preserve real auth limits.
-      - run: pnpm test:e2e --project=${{ matrix.project }} --workers=2
+      # Brand-level settings tests temporarily change the same Harbor config.
+      # Serialize UI cases; transaction concurrency is exercised by Go tests.
+      - run: pnpm test:e2e --project=${{ matrix.project }} --workers=1
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

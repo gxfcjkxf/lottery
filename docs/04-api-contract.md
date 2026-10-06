@@ -110,13 +110,18 @@
     "special": [7]
   },
   "multiplier": "2",
-  "policy_versions": { "brand": 1, "game": 1 }
+  "policy_versions": { "brand": 1, "game": 1 },
+  "actor_context": "从投注预览响应复制，不自行生成"
 }
 ~~~
 
 服务端不得信任客户端提供的注数、赔率、总积分或规则计算结果；这些字段只能由服务端重新计算。
 
-S5-a1 已注册上述 POST bet-previews、POST/GET bet-orders、GET 单笔、POST cancel（含 `/b/{brandCode}` 等价路径）。彩种用户目录/当前期次、用户开奖列表和结算明细尚未接入；接口表不代表全部已实现。用户只能查询/取消自己在当前品牌的订单，不能从 body 或品牌头切换会员身份。规则引用为 UUID，不接受旧示例的历史序号 `rule_version`。
+S5-a1 已注册上述 POST bet-previews、POST/GET bet-orders、GET 单笔、POST cancel（含 `/b/{brandCode}` 等价路径）；S5-a2 接入用户彩种目录/当前期次。用户开奖列表和结算明细尚未接入；接口表不代表全部已实现。用户只能查询/取消自己在当前品牌的订单，不能从 body 或品牌头切换会员身份。规则引用为 UUID，不接受旧示例的历史序号 `rule_version`。
+
+S5-a2 的 GET `/games` 为公开品牌目录，响应 `{items,limit,offset}`，只含 id/code/name/model/timezone/status，包含 active/paused 彩种。GET `/games/{id}` 返回 `{game,plays,period,server_time,brand_status,policy,policy_versions}`；plays 仅含当前 active 玩法的 id/game_id/code/name/rule_version_id/definition_hash/definition，不暴露草稿、贡献者、审核者或开奖源信息。GET `/games/{id}/plays` 返回 `{items}`，GET `/games/{id}/periods/current` 返回 `{period,server_time,brand_status}`。没有玩法返回空数组，没有期次返回 null；本期优先实际开放窗口，再选最近未来 pending，最后选最近进行中/完成期次。pending 不代表可投注。公开目录在主库只读 repeatable-read 事务读取一致快照，不持有行锁、不预留额度，提交时仍重新校验。
+
+预览响应新增 `actor_context`：服务端 HMAC 绑定品牌、全局用户及品牌会员，不是登录凭据或钱包选择参数。Place 必须原样携带；在幂等锁前后、当前会话的事务认证内验证，缺失/伪造/切换到另一会员返回 403 `BET_CONFIRMATION_ACCOUNT_CHANGED`，不扣分也不保留幂等业务记录。同一会员正常重新登录仍可重放原操作；客户端必须同时拥有有效会话。它堵住另一标签页切换账户时，旧确认可能扣新账户的窗口；单独的客户端 `/me` 检查不能代替该服务端约束。Preview 请求可以不带此字段，响应以当前会话签发的值为准。
 
 Preview 与 Place 均使用 `{period_id,play_id,rule_version_id,selection,multiplier,policy_versions}`。Preview 可以不带 policy_versions，并返回当前版本；Place 必须带确认过的两个版本。金额和倍数为十进制字符串，禁止 Number 计算。Preview 返回 normalized、expanded_bets、combination_count、unit_points、multiplier、bet_points，以及 period、definition_hash、policy、policy_versions；它不预留积分或期次额度，也不判断中奖。实际提交重新检查全部配置、窗口、余额和额度。
 

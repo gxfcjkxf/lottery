@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -23,6 +24,8 @@ func betError(data any, err error) (mutation.Result, error) {
 	switch {
 	case err == nil:
 		return mutation.OK(200, data), nil
+	case errors.Is(err, identity.ErrSession):
+		return mutation.Fail(401, "AUTH_SESSION_REVOKED", "登录状态已过期，请重新登录"), nil
 	case errors.Is(err, betting.ErrInvalid):
 		return mutation.Fail(400, "BET_INPUT_INVALID", "投注请求或配置不正确"), nil
 	case errors.Is(err, betting.ErrDenied):
@@ -73,7 +76,10 @@ func currentBetSession(w http.ResponseWriter, r *http.Request, d Dependencies, b
 	return session, true
 }
 
-func checkedBetWrite(w http.ResponseWriter, r *http.Request, d Dependencies, brand, operation, resourceID string, body any, initial identity.Session, run func(context.Context, pgx.Tx, identity.Session) (mutation.Result, error)) {
+func betActorContext(d Dependencies, brand string, v identity.Session) string {
+	return d.Mutations.Fingerprint("lottery-bet-actor-v1:" + brand + ":" + v.User.ID + ":" + v.Member.ID)
+}
+func checkedBetWrite(w http.ResponseWriter, r *http.Request, d Dependencies, brand, operation, resourceID, expectedContext string, body any, initial identity.Session, run func(context.Context, pgx.Tx, identity.Session) (mutation.Result, error)) {
 	encoded, err := json.Marshal(body)
 	if err != nil {
 		failure(w, r, 400, "REQUEST_INVALID", "请求格式不正确")
@@ -89,6 +95,9 @@ func checkedBetWrite(w http.ResponseWriter, r *http.Request, d Dependencies, bra
 				return identity.ErrSession
 			}
 			if err == nil {
+				if operation == "bet.order.place" && subtle.ConstantTimeCompare([]byte(expectedContext), []byte(betActorContext(d, brand, fresh))) != 1 {
+					return betting.ErrDenied
+				}
 				freshSession = fresh
 			}
 			return err
@@ -98,6 +107,10 @@ func checkedBetWrite(w http.ResponseWriter, r *http.Request, d Dependencies, bra
 		})
 	if errors.Is(err, identity.ErrSession) {
 		failure(w, r, 401, "AUTH_SESSION_REVOKED", "登录状态已变化，请重新登录")
+		return
+	}
+	if errors.Is(err, betting.ErrDenied) {
+		failure(w, r, 403, "BET_CONFIRMATION_ACCOUNT_CHANGED", "确认账户已变化，请重新获取投注预览")
 		return
 	}
 	outputMutation(w, r, result, err)
@@ -149,7 +162,10 @@ func registerBetRoutes(mux *http.ServeMux, d Dependencies) {
 				outputMutation(w, r, result, e)
 				return
 			}
-			respond(w, r, 200, quote)
+			respond(w, r, 200, struct {
+				betting.Quote
+				ActorContext string `json:"actor_context"`
+			}{quote, betActorContext(d, brand.ID, session)})
 		})
 		handle("POST", "/bet-orders", func(w http.ResponseWriter, r *http.Request) {
 			if bettingUnavailable(w, r, d) {
@@ -167,7 +183,7 @@ func registerBetRoutes(mux *http.ServeMux, d Dependencies) {
 			if !ok {
 				return
 			}
-			checkedBetWrite(w, r, d, brand.ID, "bet.order.place", "", in, session, func(ctx context.Context, tx pgx.Tx, fresh identity.Session) (mutation.Result, error) {
+			checkedBetWrite(w, r, d, brand.ID, "bet.order.place", "", in.ActorContext, in, session, func(ctx context.Context, tx pgx.Tx, fresh identity.Session) (mutation.Result, error) {
 				out, err := betService(d).Place(ctx, tx, brand.ID, fresh, in, r.Header.Get("Idempotency-Key"), points.Metadata{ActorType: "user", ActorID: fresh.User.ID, RequestID: requestID(r), IP: meta(r).IP})
 				result, e := betError(out, err)
 				if err == nil {
@@ -242,7 +258,7 @@ func registerBetRoutes(mux *http.ServeMux, d Dependencies) {
 			if !ok {
 				return
 			}
-			checkedBetWrite(w, r, d, brand.ID, "bet.order.cancel", id, in, session, func(ctx context.Context, tx pgx.Tx, fresh identity.Session) (mutation.Result, error) {
+			checkedBetWrite(w, r, d, brand.ID, "bet.order.cancel", id, "", in, session, func(ctx context.Context, tx pgx.Tx, fresh identity.Session) (mutation.Result, error) {
 				out, err := betService(d).Cancel(ctx, tx, brand.ID, fresh, id, in.Version, in.Reason, points.Metadata{ActorType: "user", ActorID: fresh.User.ID, RequestID: requestID(r), IP: meta(r).IP})
 				result, e := betError(out, err)
 				return result, e

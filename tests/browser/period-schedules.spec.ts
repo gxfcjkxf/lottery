@@ -287,7 +287,10 @@ test("running worker opens, closes and advances a real period using the database
     .poll(status, { timeout: 7000, intervals: [250, 500, 1000] })
     .toBe("betting");
   await expect
-    .poll(status, { timeout: 15_000, intervals: [500, 1000] })
+    .poll(status, {
+      timeout: Math.max(5000, draw.valueOf() - Date.now() + 5000),
+      intervals: [250, 500],
+    })
     .toBe("waiting_draw");
   const catalog = await page.request.get(
     "http://localhost:5174/api/v1/admin/games?limit=100",

@@ -562,8 +562,8 @@ func TestPlaceRejectsSessionExpiredDuringWalletWait(t *testing.T) {
 	if err := blocker.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-result; !errors.Is(err, ErrDenied) {
-		t.Fatalf("place after session expiry error=%v, want ErrDenied", err)
+	if err := <-result; !errors.Is(err, identity.ErrSession) {
+		t.Fatalf("place after session expiry error=%v, want ErrSession", err)
 	}
 	if wallet := walletBySource(t, f); wallet[0][0] != 10 {
 		t.Fatalf("expired-session wait debited wallet: %+v", wallet)
@@ -651,8 +651,8 @@ func TestCancelRejectsSessionExpiredDuringWalletWaitWithoutRefund(t *testing.T) 
 	if err = blocker.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err = <-result; !errors.Is(err, ErrDenied) {
-		t.Fatalf("cancel after session expiry error=%v, want ErrDenied", err)
+	if err = <-result; !errors.Is(err, identity.ErrSession) {
+		t.Fatalf("cancel after session expiry error=%v, want ErrSession", err)
 	}
 	if got := walletBySource(t, f); got != debitBalance {
 		t.Fatalf("expired-session cancel refunded wallet: before=%+v after=%+v", debitBalance, got)
