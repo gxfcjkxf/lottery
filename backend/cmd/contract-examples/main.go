@@ -186,6 +186,9 @@ func main() {
 		"LotteryNotificationTemplate":         notification.Template{BrandID: id, Key: "recharge.confirmed", Version: 2, Content: noticeContent, UpdatedAt: now, AuditLogID: &noticeAuditID},
 		"LotteryNotificationTemplateRevision": notification.Revision{ID: id, BrandID: id, Key: "recharge.confirmed", Version: 2, Content: noticeContent, ChangedBy: &noticeAuditID, Reason: "contract example", AuditLogID: &noticeAuditID, CreatedAt: now},
 	}
+	for key, value := range workbenchExamples() {
+		values[key] = value
+	}
 	if err := json.NewEncoder(os.Stdout).Encode(values); err != nil {
 		log.Fatal(err)
 	}

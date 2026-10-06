@@ -33,8 +33,13 @@ test("actual Go DTO serialization and rule-engine outputs satisfy contracts",()=
   const examples=JSON.parse(result.stdout);
   assert.ok(Object.keys(examples).length>=15);
   for(const [name,value] of Object.entries(examples)){
-    const check=validate(name.replace(/Sparse$|Snapshot$/, ""));assert.ok(check(value),`${name}: ${JSON.stringify(check.errors)}`);
+    const schemaName=name==="AdminWorkbench"?"AdminWorkbenchSnapshot":name.replace(/Sparse$|Snapshot$/, "");
+    const check=validate(schemaName);assert.ok(check(value),`${name} (${schemaName}): ${JSON.stringify(check.errors)}`);
   }
+  assert.equal(examples.AdminWorkbench.withdrawals.status,"not_implemented");
+  assert.equal(examples.AdminWorkbench.withdrawals.data,null);
+  assert.equal(examples.AdminWorkbench.commissions.data,null);
+  assert.equal(examples.AdminWorkbench.rewards.data,null);
   assert.equal(examples.LotterySimulationResult.bet_points,"8");
   assert.equal(examples.LotterySimulationResult.prize_points,"70");
 });

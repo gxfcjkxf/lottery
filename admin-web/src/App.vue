@@ -29,6 +29,7 @@ import DrawManagement from "./DrawManagement.vue";
 import BetOrderManagement from "./BetOrderManagement.vue";
 import BetPolicySettings from "./BetPolicySettings.vue";
 import PeriodCancellation from "./PeriodCancellation.vue";
+import OperationsWorkbench from "./OperationsWorkbench.vue";
 const SettlementManagement = defineAsyncComponent(() => import("./SettlementManagement.vue"));
 const CorrectionManagement = defineAsyncComponent(() => import("./CorrectionManagement.vue"));
 const NotificationDeliveries = defineAsyncComponent(() => import("./NotificationDeliveries.vue"));
@@ -82,6 +83,7 @@ const englishUi: Record<string, string> = {
   "后端品牌上下文未连接": "Backend brand context unavailable", "暂不可用；该接口仅用于只读配置状态，不影响管理员认证和真实用户目录。": "is unavailable. This read-only endpoint reports configuration and does not affect admin authentication or the live user directory.",
   "只读接口 GET /api/v1/context": "Read-only endpoint GET /api/v1/context", "配置版本": "Config version", "真实后台品牌": "Live admin brand", "选择真实后台品牌": "Select live admin brand", "请选择品牌": "Select a brand",
   "早上好，林岚": "Good morning, Lin Lan", "这是今天的运营概况，所有数据均为交互演示。": "Here is today's operations overview. All data is interactive demo data.", "刷新概览": "Refresh overview",
+  "运营工作台": "Operations workbench", "请先登录后台账号查看运营工作台。": "Sign in to view the operations workbench.", "请先选择真实后台品牌查看运营工作台。": "Select a live admin brand to view the operations workbench.",
   "进行中期次": "Open periods", "期": "periods", "投注开放中": "Betting open", "期即将截止": "periods closing soon", "今日投注量": "Today's betting volume", "分": "points", "较昨日同期": "vs. same time yesterday",
   "待处理事项": "Pending tasks", "项": "items", "提现": "Withdrawals", "异常注单": "Flagged orders", "待开奖": "Awaiting draw", "账本对账差异": "Ledger reconciliation variance", "最近检查 10:32": "Last checked 10:32", "一切正常": "All clear",
   "期次监控": "Period monitor", "当前品牌 · 实时状态演示": "Current brand · live status demo", "全部期次": "All periods", "注单": "Orders", "等待开奖": "Awaiting draw", "剩余时间": "Time remaining", "投注中": "Betting open", "即将截止": "Closing soon", "待录入结果": "Awaiting result entry",
@@ -307,6 +309,10 @@ const go = (target: Page) => {
   page.value = target;
   notice.value = "";
   mobileMore.value = false;
+};
+const navigateWorkbench = (destination: string) => {
+  const target = nav.find((item) => item.name === destination);
+  if (target) go(target.name);
 };
 const toast = (text: string | ReturnType<typeof message>, english?: string) => {
   const next = typeof text === 'string' ? message(text, english ?? shellCopy(text) ?? text) : text;
@@ -726,7 +732,6 @@ const confirmManual = () => {
   manualReason.value = "";
 };
 const ledgerTab = ref("账本流水");
-const selectedRange = ref("近 7 天");
 const ledger = [
   {
     id: "LE-883140",
@@ -769,7 +774,7 @@ const ledger = [
         <span v-else class="brand-mark">{{skin?.logo_text??'N'}}</span>
         <span><b>{{skin?.display_name??'northstar'}}</b><small>OPERATIONS CONSOLE</small></span></a
       >
-      <div class="demo-chip">
+      <div v-if="page !== '工作台'" class="demo-chip">
         <span class="pulse"></span>{{ ui("非生产环境 · 提现为演示") }} <span class="demo-chip-end">·</span>
       </div>
       <div class="brand-switch-wrap">
@@ -822,7 +827,7 @@ const ledger = [
           >
             <span class="nav-icon">{{ item.icon }}</span
             ><span>{{ ui(item.name) }}</span
-            ><span v-if="item.name === '期次和开奖'" class="nav-count">2</span>
+            >
           </button></template
         >
       </nav>
@@ -869,6 +874,7 @@ const ledger = [
           ><span
             v-if="
               !(account && (page === '品牌和域名' || page === '风控与合规')) &&
+              page !== '工作台' &&
               page !== '用户和成员' &&
               page !== '审计日志' &&
               page !== '通知投递' &&
@@ -915,6 +921,7 @@ const ledger = [
         v-if="
           showDemoNotice &&
           !(account && (page === '品牌和域名' || page === '风控与合规')) &&
+          page !== '工作台' &&
           page !== '用户和成员' &&
           page !== '审计日志' &&
           page !== '通知投递' &&
@@ -976,232 +983,23 @@ const ledger = [
       <div v-if="notice" class="toast" role="status">✓ &nbsp;{{ t(notice) }}</div>
 
       <section v-if="page === '工作台'" class="page-content">
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">
-              MONDAY, OCTOBER 5, 2026 <span>·</span> {{ brand.split("·")[0] }}
-            </div>
-            <h1>{{ ui("早上好，林岚") }} <span class="wave">✳</span></h1>
-            <p>{{ ui("这是今天的运营概况，所有数据均为交互演示。") }}</p>
-          </div>
-          <button
-            class="button button-secondary"
-            @click="toast('概览已刷新（演示数据保持不变）')"
-          >
-            ↻ <span>{{ ui("刷新概览") }}</span>
-          </button>
-        </div>
-        <div class="stats-grid">
-          <article class="stat-card">
-            <div class="stat-top">
-              <span class="stat-label">{{ ui("进行中期次") }}</span
-              ><span class="stat-icon blue">◷</span>
-            </div>
-            <div class="stat-value">08 <small>{{ ui("期") }}</small></div>
-            <div class="stat-foot">
-              <span class="status-dot green-dot"></span>{{ ui("投注开放中") }} <span class="foot-muted">{{ ui("· 2 期即将截止") }}</span>
-            </div>
-          </article>
-          <article class="stat-card">
-            <div class="stat-top">
-              <span class="stat-label">{{ ui("今日投注量") }}</span
-              ><span class="stat-icon violet">▤</span>
-            </div>
-            <div class="stat-value">128,450<small> {{ ui("分") }}</small></div>
-            <div class="stat-foot trend">
-              ↗ 12.8% <span class="foot-muted">{{ ui("较昨日同期") }}</span>
-            </div>
-          </article>
-          <article class="stat-card">
-            <div class="stat-top">
-              <span class="stat-label">{{ ui("待处理事项") }}</span
-              ><span class="stat-icon amber">◉</span>
-            </div>
-            <div class="stat-value">14<small> {{ ui("项") }}</small></div>
-            <div class="stat-foot">
-              <span class="foot-muted">{{ ui("提现") }} </span><b>3</b
-              ><span class="foot-muted">　{{ ui("异常注单") }} </span><b>2</b
-              ><span class="foot-muted">　{{ ui("待开奖") }} </span><b>9</b>
-            </div>
-          </article>
-          <article class="stat-card">
-            <div class="stat-top">
-              <span class="stat-label">{{ ui("账本对账差异") }}</span
-              ><span class="stat-icon rose">≋</span>
-            </div>
-            <div class="stat-value">0<small> {{ ui("分") }}</small></div>
-            <div class="stat-foot">
-              <span class="status-dot green-dot"></span>{{ ui("最近检查 10:32") }} <span class="foot-muted">{{ ui("· 一切正常") }}</span>
-            </div>
-          </article>
-        </div>
-        <div class="dashboard-grid">
-          <article class="panel periods-panel">
-            <div class="panel-header">
-              <div>
-                <h2>{{ ui("期次监控") }}</h2>
-                <p>{{ ui("当前品牌 · 实时状态演示") }}</p>
-              </div>
-              <button class="text-button" @click="go('期次和开奖')"> {{ ui("全部期次") }} <span>→</span>
-              </button>
-            </div>
-            <div
-              class="monitor-row"
-              v-for="(p, i) in [
-                {
-                  game: '星彩 6+1',
-                  period: '20261005032',
-                  remain: '00:18:42',
-                  orders: '1,284',
-                  state: '投注中',
-                },
-                {
-                  game: '幸运三位',
-                  period: '20261005031',
-                  remain: '00:06:18',
-                  orders: '846',
-                  state: '即将截止',
-                },
-                {
-                  game: '星彩 6+1',
-                  period: '20261005031',
-                  remain: '待录入结果',
-                  orders: '1,106',
-                  state: '待开奖',
-                },
-              ]"
-              :key="p.period + i"
-            >
-              <div class="game-avatar" :class="i === 1 ? 'mint' : ''">
-                {{ i === 1 ? "3D" : "6+" }}
-              </div>
-              <div class="monitor-game">
-                <b>{{ p.game }}</b
-                ><small>{{ p.period }}</small>
-              </div>
-              <div class="monitor-orders">
-                <b>{{ p.orders }}</b
-                ><small>{{ ui("注单") }}</small>
-              </div>
-              <div class="monitor-timer" :class="{ warn: i === 1 }">
-                <b>{{ p.remain }}</b
-                ><small>{{ i === 2 ? ui("等待开奖") : ui("剩余时间") }}</small>
-              </div>
-              <span
-                class="badge"
-                :class="
-                  i === 2
-                    ? 'badge-neutral'
-                    : i === 1
-                      ? 'badge-warn'
-                      : 'badge-success'
-                "
-                >{{ p.state }}</span
-              >
-            </div>
-          </article>
-          <article class="panel action-panel">
-            <div class="panel-header">
-              <div>
-                <h2>{{ ui("待处理") }}</h2>
-                <p>{{ ui("需要你关注的事项") }}</p>
-              </div>
-              <span class="count-pill">14</span>
-            </div>
-            <button class="task-row" @click="go('资金与账本')">
-              <span class="task-icon task-amber">↓</span
-              ><span class="task-copy"
-                ><b>{{ ui("提现申请待审核") }}</b><small>{{ ui("3 笔申请 · 最近 09:42") }}</small></span
-              ><span class="task-arrow">›</span></button
-            ><button class="task-row" @click="go('注单和异常')">
-              <span class="task-icon task-rose">!</span
-              ><span class="task-copy"
-                ><b>{{ ui("异常注单待处理") }}</b><small>{{ ui("2 笔订单需要核查") }}</small></span
-              ><span class="task-arrow">›</span></button
-            ><button class="task-row" @click="go('期次和开奖')">
-              <span class="task-icon task-blue">◷</span
-              ><span class="task-copy"
-                ><b>{{ ui("期次等待开奖") }}</b><small>{{ ui("9 期期待结果确认") }}</small></span
-              ><span class="task-arrow">›</span>
-            </button>
-          </article>
-        </div>
-        <div class="lower-grid">
-          <article class="panel volume-panel">
-            <div class="panel-header">
-              <div>
-                <h2>{{ ui("投注趋势") }}</h2>
-                <p>{{ ui("每日总投注积分") }}</p>
-              </div>
-              <select v-model="selectedRange" :aria-label="ui('趋势时间范围')">
-                <option value="近 7 天">{{ ui("近 7 天") }}</option>
-                <option value="近 30 天">{{ ui("近 30 天") }}</option>
-              </select>
-            </div>
-            <div class="chart">
-              <div class="chart-y">
-                <span>160k</span><span>120k</span><span>80k</span
-                ><span>40k</span><span>0</span>
-              </div>
-              <div class="chart-plot">
-                <div class="chart-gridline" v-for="i in 5" :key="i"></div>
-                <svg
-                  viewBox="0 0 700 176"
-                  preserveAspectRatio="none"
-                  role="img"
-                  :aria-label="ui('近七日投注量趋势')"
-                >
-                  <defs>
-                    <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0" stop-color="#6c7cf4" stop-opacity=".2" />
-                      <stop offset="1" stop-color="#6c7cf4" stop-opacity="0" />
-                    </linearGradient>
-                  </defs>
-                  <path
-                    d="M0 133 C45 125 64 107 104 114 S168 127 207 91 S275 102 311 74 S375 82 415 64 S485 80 520 40 S588 59 622 24 S672 40 700 11 L700 176 L0 176Z"
-                    fill="url(#area)"
-                  />
-                  <path
-                    d="M0 133 C45 125 64 107 104 114 S168 127 207 91 S275 102 311 74 S375 82 415 64 S485 80 520 40 S588 59 622 24 S672 40 700 11"
-                    fill="none"
-                    stroke="#6979ef"
-                    stroke-width="2.5"
-                    vector-effect="non-scaling-stroke"
-                  />
-                </svg>
-                <div class="chart-x">
-                  <span>09/29</span><span>09/30</span><span>10/01</span
-                  ><span>10/02</span><span>10/03</span><span>10/04</span
-                  ><span>10/05</span>
-                </div>
-              </div>
-            </div>
-          </article>
-          <article class="panel source-panel">
-            <div class="panel-header">
-              <div>
-                <h2>{{ ui("开奖源健康") }}</h2>
-                <p>{{ ui("数据源连接状态演示") }}</p>
-              </div>
-              <span class="live-pill"><i></i>{{ ui("正常") }}</span>
-            </div>
-            <div class="source-row">
-              <span class="source-mark">A</span
-              ><span><b>{{ ui("主开奖源") }}</b><small>api.drawsource.example</small></span
-              ><span class="source-latency">142 ms</span
-              ><span class="status-dot green-dot"></span>
-            </div>
-            <div class="source-row">
-              <span class="source-mark source-alt">B</span
-              ><span
-                ><b>{{ ui("备用开奖源") }}</b><small>backup.results.example</small></span
-              ><span class="source-latency">208 ms</span
-              ><span class="status-dot green-dot"></span>
-            </div>
-            <div class="source-foot"> {{ ui("最近检查") }} <b>10:32:18</b><span>·</span>{{ ui("连续可用") }} <b>99.98%</b>
-            </div>
-          </article>
-        </div>
+        <OperationsWorkbench
+          v-if="account && selectedBrandId"
+          :key="account.id + ':' + selectedBrandId"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+          @navigate="navigateWorkbench"
+        />
+        <article v-else class="panel directory-state">
+          <h1>{{ ui("运营工作台") }}</h1>
+          <p v-if="authLoading">{{ ui("正在检查管理员登录状态…") }}</p>
+          <template v-else-if="!account">
+            <p>{{ ui("请先登录后台账号查看运营工作台。") }}</p>
+            <button class="button button-primary" @click="go('用户和成员')">{{ ui("进入管理员登录") }}</button>
+          </template>
+          <p v-else>{{ adminBrands.length ? ui("请先选择真实后台品牌查看运营工作台。") : ui("当前账号未返回可管理品牌。") }}</p>
+        </article>
       </section>
 
       <section v-else-if="page === '风控与合规'" class="page-content">
@@ -2405,7 +2203,7 @@ const ledger = [
         <div v-if="!account" class="panel directory-state"> {{ ui("演示日志不会显示为真实后台记录。") }} </div>
       </section>
 
-      <footer v-if="page !== '加入码'" class="page-footer">
+      <footer v-if="page !== '加入码' && page !== '工作台'" class="page-footer">
         <span>Aurora Operations Console <b>·</b> Prototype v0.1</span
         ><span>{{
           page === "用户和成员" && account
