@@ -68,6 +68,10 @@ S6-f 使用现有 attribution_snapshot 保存不可改写的 schema_version/lega
 
 ### 品牌配置
 
+`brand_operation_revisions` 保存品牌运行状态变更：`id,brand_id,version,previous_status,status,changed_by,reason,audit_log_id,created_at`；品牌和版本唯一，历史不可修改或删除，写入须匹配实际品牌状态及同事务审计证据。只提供 active 与 paused 之间的切换，不提供禁用品牌、创建品牌或域名配置。
+
+运行状态沿用 `brands.config_version`，与认证配置共享版本和品牌行锁，因此历史版本可有间隔。暂停和恢复递增版本，保留名称、语言、主题、认证配置、成员和全部资金数据；初始化不补造人工操作或审计记录。
+
 S3-b 已实现 `brand_point_policies`：brand_id 主键，version 与 max_balance_points/max_recharge_points/max_adjustment_points（nullable bigint，正值或不限）。现存品牌迁移初始化，新品牌数据库触发器初始化；版本独立于认证配置，修改在同事务内审计。
 
 `config_versions`

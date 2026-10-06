@@ -9,6 +9,7 @@ import {
 import AccessManagement from "./AccessManagement.vue";
 import MemberProvision from "./MemberProvision.vue";
 import AuthSettings from "./AuthSettings.vue";
+import BrandOperation from "./BrandOperation.vue";
 import FinanceManagement from "./FinanceManagement.vue";
 import BalanceRepair from "./BalanceRepair.vue";
 import RuleSimulator from "./RuleSimulator.vue";
@@ -26,6 +27,7 @@ const JoinCodeManagement = defineAsyncComponent(() => import("./JoinCodeManageme
 import { clearAllPendingAgentWrites } from "./agents-state";
 import { clearAllPendingJoinCodeWrites } from "./join-codes-state";
 import { clearAllPendingDeliveryRetries } from "./notification-delivery-state";
+import { clearAllPendingBrandOperationWrites } from "./brand-operation-state";
 const RuleVersions = defineAsyncComponent(() => import("./RuleVersions.vue"));
 const WithdrawalPolicySettings = defineAsyncComponent(
   () => import("./WithdrawalPolicySettings.vue"),
@@ -97,12 +99,14 @@ const loginBusy = ref(false);
 const loginIdempotencyKey = ref(createIdempotencyKey());
 const adminBrands = ref<AdminBrand[]>([]);
 const selectedBrandId = ref("");
+let adminBrandLoadGeneration = 0;
 const correctionSettlementPeriod = ref<{brandId:string;periodId:string;nonce:number}|null>(null);
 const brand = computed(
   () =>
     adminBrands.value.find((item) => item.id === selectedBrandId.value)?.name ??
     demoBrand.value,
 );
+const selectedBrand = computed(() => adminBrands.value.find((item) => item.id === selectedBrandId.value) ?? null);
 const members = ref<Member[]>([]);
 const membersLoading = ref(false);
 const membersError = ref("");
@@ -240,9 +244,11 @@ const statusClass = (status: MemberStatus) =>
 const apiErrorText = (error: unknown) =>
   error instanceof Error ? error.message : "请求失败，请重试";
 const clearAdminData = () => {
+  adminBrandLoadGeneration += 1;
   clearAllPendingAgentWrites();
   clearAllPendingJoinCodeWrites();
   clearAllPendingDeliveryRetries();
+  clearAllPendingBrandOperationWrites();
   correctionSettlementPeriod.value = null;
   account.value = null;
   adminBrands.value = [];
@@ -250,12 +256,17 @@ const clearAdminData = () => {
   members.value = [];
   auditRecords.value = [];
 };
-const loadAdminResources = async () => {
+const loadBrands = async () => {
+  const requestedAccountId = account.value?.id;
+  const generation = ++adminBrandLoadGeneration;
+  if (!requestedAccountId) return;
   authError.value = "";
   try {
     const result = await api.brands();
+    if (generation !== adminBrandLoadGeneration || account.value?.id !== requestedAccountId) return;
     adminBrands.value = result.items;
   } catch (error) {
+    if (generation !== adminBrandLoadGeneration || account.value?.id !== requestedAccountId) return;
     if (error instanceof AdminApiError && error.status === 401)
       clearAdminData();
     authError.value = apiErrorText(error);
@@ -265,9 +276,13 @@ const restoreAdminSession = async () => {
   authLoading.value = true;
   try {
     const result = await api.me();
-    if (account.value && account.value.id !== result.account.id) clearAllPendingJoinCodeWrites();
+    if (account.value && account.value.id !== result.account.id) {
+      adminBrandLoadGeneration += 1;
+      clearAllPendingJoinCodeWrites();
+      clearAllPendingBrandOperationWrites();
+    }
     account.value = result.account;
-    await loadAdminResources();
+    await loadBrands();
   } catch (error) {
     clearAdminData();
     if (!(error instanceof AdminApiError && error.status === 401))
@@ -288,11 +303,15 @@ const login = async () => {
     );
     loginPassword.value = "";
     const result = await api.me();
-    if (account.value && account.value.id !== result.account.id) clearAllPendingJoinCodeWrites();
+    if (account.value && account.value.id !== result.account.id) {
+      adminBrandLoadGeneration += 1;
+      clearAllPendingJoinCodeWrites();
+      clearAllPendingBrandOperationWrites();
+    }
     account.value = result.account;
     selectedBrandId.value = "";
     loginIdempotencyKey.value = createIdempotencyKey();
-    await loadAdminResources();
+    await loadBrands();
     toast("已登录管理员账号");
   } catch (error) {
     clearAdminData();
@@ -300,6 +319,9 @@ const login = async () => {
   } finally {
     loginBusy.value = false;
   }
+};
+const onBrandOperationChanged = (change: { accountId: string }) => {
+  if (account.value?.id === change.accountId) void loadBrands();
 };
 const logout = async () => {
   try {
@@ -762,8 +784,7 @@ const ledger = [
         ><span
           ><b>交互演示 · 非生产环境</b
           ><span class="banner-copy">
-            提现、域名主题及标为“演示”的页面不会写入后台。账号、成员、积分账本、认证设置和规则版本流程已接入真实
-            API。投注、期次计划和人工开奖也已接入；整数积分结算须显式配置和启动，结果纠正回溯仍待实现。</span
+            控制台包含已接入流程与原型。提现、佣金管理、域名/主题管理及新建品牌尚未实现；各页面会标出真实接口与演示边界。</span
           ></span
         ><button aria-label="关闭说明" @click="showDemoNotice = false">
           ×
@@ -1046,113 +1067,110 @@ const ledger = [
           :brand-id="selectedBrandId"
           @session-invalid="clearAdminData"
         />
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">PLATFORM / BRAND CONFIG</div>
-            <h1>品牌和域名</h1>
-            <p>管理品牌主题、域名及生效版本</p>
+        <template v-if="account">
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow">PLATFORM / BRAND CONFIG</div>
+              <h1>品牌和域名</h1>
+              <p>真实品牌列表与运行状态；域名、主题和新建品牌暂未实现</p>
+            </div>
           </div>
-          <button
-            class="button button-primary"
-            @click="toast('新建品牌为演示入口')"
-          >
-            ＋ 新建品牌
-          </button>
-        </div>
-        <article class="panel">
-          <div class="table-toolbar">
-            <div class="filter-tabs">
-              <button class="selected">全部品牌 <span>3</span></button
-              ><button>运行中</button><button>已暂停</button>
+          <BrandOperation
+            v-if="selectedBrandId"
+            :key="`${account.id}:${selectedBrandId}`"
+            :account="account"
+            :brand-id="selectedBrandId"
+            :brand-status="selectedBrand?.status"
+            @session-invalid="clearAdminData"
+            @changed="onBrandOperationChanged"
+          />
+          <article v-else class="panel brand-operation-empty">
+            <h2>选择一个品牌</h2>
+            <p>选择下方真实品牌后，可查看其运行状态与操作记录。</p>
+          </article>
+          <article class="panel brand-operation-brands">
+            <div class="panel-header">
+              <div><h2>真实品牌</h2><p>来自管理员品牌接口</p></div>
+              <button class="button button-secondary" @click="loadBrands">刷新列表</button>
+            </div>
+            <p class="brand-operation-unavailable">域名管理、主题管理和新建品牌尚未实现；本页不会显示演示数据或提供虚假的配置操作。</p>
+            <p v-if="authLoading" class="directory-state">正在读取品牌…</p>
+            <p v-else-if="authError" class="directory-state" role="alert">{{ authError }}</p>
+            <p v-else-if="!adminBrands.length" class="directory-state">当前账号未返回可管理品牌。</p>
+            <ul v-else class="brand-operation-list">
+              <li v-for="item in adminBrands" :key="item.id">
+                <div class="brand-operation-list__identity">
+                  <span class="brand-operation-list__mark" aria-hidden="true">{{ item.name.slice(0, 1) || "品" }}</span>
+                  <span><strong>{{ item.name }}</strong><small>{{ item.code }} · {{ item.id }}</small></span>
+                </div>
+                <span class="badge" :class="item.status === 'active' ? 'badge-success' : 'badge-neutral'">{{ item.status === 'active' ? '运行中' : item.status === 'paused' ? '已暂停' : item.status === 'disabled' ? '已停用' : item.status }}</span>
+                <button class="text-button" type="button" :aria-pressed="selectedBrandId === item.id" @click="selectBrand(item.id)">{{ selectedBrandId === item.id ? "当前品牌" : "查看运行状态 →" }}</button>
+              </li>
+            </ul>
+          </article>
+        </template>
+        <template v-else>
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow">PLATFORM / BRAND CONFIG</div>
+              <h1>品牌和域名</h1>
+              <p>管理品牌主题、域名及生效版本</p>
             </div>
             <button
-              class="button button-secondary"
-              @click="toast('配置导出成功（演示）')"
+              class="button button-primary"
+              @click="toast('新建品牌为演示入口')"
             >
-              导出配置 ↓
+              ＋ 新建品牌
             </button>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>品牌</th>
-                  <th>主域名</th>
-                  <th>状态</th>
-                  <th>默认语言</th>
-                  <th>时区</th>
-                  <th>配置版本</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="b in [
-                    {
-                      name: 'Aurora',
-                      domain: 'aurora.demo',
-                      state: '运行中',
-                      locale: '简体中文',
-                      tz: 'Asia/Singapore',
-                      version: 'v12',
-                    },
-                    {
-                      name: 'Harbor · 月湾',
-                      domain: 'harbor.demo',
-                      state: '运行中',
-                      locale: 'English',
-                      tz: 'Asia/Kuala_Lumpur',
-                      version: 'v8',
-                    },
-                    {
-                      name: 'Harbor Secondary · 晴野',
-                      domain: 'sunfield.demo',
-                      state: '已暂停',
-                      locale: '繁體中文',
-                      tz: 'Asia/Taipei',
-                      version: 'v4',
-                    },
-                  ]"
-                  :key="b.name"
-                >
-                  <td>
-                    <span class="table-brand"
-                      ><i>{{ b.name[0] }}</i
-                      ><b>{{ b.name }}</b></span
-                    >
-                  </td>
-                  <td class="mono">{{ b.domain }}</td>
-                  <td>
-                    <span
-                      class="badge"
-                      :class="
-                        b.state === '运行中' ? 'badge-success' : 'badge-neutral'
-                      "
-                      >{{ b.state }}</span
-                    >
-                  </td>
-                  <td>{{ b.locale }}</td>
-                  <td>{{ b.tz }}</td>
-                  <td>
-                    <span class="version-tag">{{ b.version }}</span>
-                  </td>
-                  <td>
-                    <button
-                      class="text-button"
-                      @click="toast(`打开 ${b.name} 配置（演示）`)"
-                    >
-                      管理 →
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="panel-foot">
-            平台默认 → 品牌覆盖　·　配置发布后清理缓存并返回新版本号
-            <span>数据仅用于演示</span>
-          </div>
-        </article>
+          <article class="panel">
+            <div class="table-toolbar">
+              <div class="filter-tabs">
+                <button class="selected">全部品牌 <span>3</span></button
+                ><button>运行中</button><button>已暂停</button>
+              </div>
+              <button
+                class="button button-secondary"
+                @click="toast('配置导出成功（演示）')"
+              >
+                导出配置 ↓
+              </button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>品牌</th>
+                    <th>主域名</th>
+                    <th>状态</th>
+                    <th>默认语言</th>
+                    <th>时区</th>
+                    <th>配置版本</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="b in [
+                      { name: 'Aurora', domain: 'aurora.demo', state: '运行中', locale: '简体中文', tz: 'Asia/Singapore', version: 'v12' },
+                      { name: 'Harbor · 月湾', domain: 'harbor.demo', state: '运行中', locale: 'English', tz: 'Asia/Kuala_Lumpur', version: 'v8' },
+                      { name: 'Harbor Secondary · 晴野', domain: 'sunfield.demo', state: '已暂停', locale: '繁體中文', tz: 'Asia/Taipei', version: 'v4' },
+                    ]"
+                    :key="b.name"
+                  >
+                    <td><span class="table-brand"><i>{{ b.name[0] }}</i><b>{{ b.name }}</b></span></td>
+                    <td class="mono">{{ b.domain }}</td>
+                    <td><span class="badge" :class="b.state === '运行中' ? 'badge-success' : 'badge-neutral'">{{ b.state }}</span></td>
+                    <td>{{ b.locale }}</td><td>{{ b.tz }}</td>
+                    <td><span class="version-tag">{{ b.version }}</span></td>
+                    <td><button class="text-button" @click="toast(`打开 ${b.name} 配置（演示）`)">管理 →</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="panel-foot">平台默认 → 品牌覆盖　·　配置发布后清理缓存并返回新版本号<span>数据仅用于演示</span></div>
+          </article>
+        </template>
       </section>
 
       <section
@@ -2767,3 +2785,19 @@ const ledger = [
     </div>
   </div>
 </template>
+
+<style scoped>
+.brand-operation-empty { margin: 14px 0; padding: 18px; }
+.brand-operation-empty h2 { margin: 0 0 6px; }
+.brand-operation-empty p { margin: 0; color: #718096; }
+.brand-operation-brands { min-width: 0; margin-top: 16px; padding: 18px; }
+.brand-operation-unavailable { padding: 10px 12px; border-radius: 8px; background: #f3f6fa; color: #5f6d80; line-height: 1.5; }
+.brand-operation-list { margin: 0; padding: 0; list-style: none; }
+.brand-operation-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; min-width: 0; padding: 13px 0; border-top: 1px solid #e9edf2; }
+.brand-operation-list__identity { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.brand-operation-list__identity > span:last-child { display: grid; gap: 4px; min-width: 0; }
+.brand-operation-list__identity strong, .brand-operation-list__identity small { overflow-wrap: anywhere; }
+.brand-operation-list__identity small { color: #718096; font-size: 12px; }
+.brand-operation-list__mark { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border-radius: 10px; background: #edf3ff; color: #315fbd; font-weight: 700; }
+@media (max-width: 700px) { .brand-operation-list li { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; } .brand-operation-list li > .text-button { grid-column: 1 / -1; justify-self: start; } }
+</style>

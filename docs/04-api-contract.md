@@ -133,7 +133,7 @@ Cancel 请求 `{version,reason}`（带幂等键）。用户取消按订单保存
 
 S5-a3 新增 GET `/admin/bet-orders/{id}/exception`（bet.view.brand / bet.view.platform），返回 `{exception:null}` 或 `{exception:{id,brand_id,order_id,order_version,marked_by,reason,created_at}}`。不属于当前品牌的注单返回 404；读取会审计。POST `/admin/bet-orders/{id}/abnormal` 需独立 `bet.mark_abnormal.brand`，带幂等键和 `{version,reason}`；仅 placed 可标记，返回新 Order（abnormal，version + 1）。证据、状态、审计和 outbox 同事务提交，不改余额或扣款快照；相同请求重放不追加证据。即使是同键缓存重试，也重新检查当前权限/会话；超级管理员不能标记。确定 409 后读取新版本再确认，网络/5xx 不确定时保留原 body/键重试。后台页面在具备读取权限时显示真实策略、50 条分页注单、原始快照与异常证据；写权限不隐含读取权限。
 
-业务错误：400 BET_INPUT_INVALID；403 BET_OPERATION_DENIED；404 BET_RESOURCE_NOT_FOUND；409 BET_VERSION_CONFLICT / BET_PERIOD_CLOSED / BET_LIMIT_EXCEEDED / BET_STATE_CONFLICT。积分不足、上限和损坏映射现有 POINTS_* 错误；幂等键格式/异体映射 IDEMPOTENCY_*；失效会话 401 AUTH_SESSION_REVOKED，临时数据库错误 503 且不缓存。
+业务错误：400 BET_INPUT_INVALID；403 BRAND_PAUSED（新投注或预览遇到品牌暂停）/ BET_OPERATION_DENIED；404 BET_RESOURCE_NOT_FOUND；409 BET_VERSION_CONFLICT / BET_PERIOD_CLOSED / BET_LIMIT_EXCEEDED / BET_STATE_CONFLICT。积分不足、上限和损坏映射现有 POINTS_* 错误；幂等键格式/异体映射 IDEMPOTENCY_*；失效会话 401 AUTH_SESSION_REVOKED，临时数据库错误 503 且不缓存。
 
 S5-a5：POST `/admin/bet-orders/{id}/judge-cancel` 需独立 `bet.judge_cancel.brand`，body `{version,cause,reason}` 与幂等键；cause 为 no_result/invalid_result，仅 placed/abnormal 单可执行，返回 200 新 Order（judged_cancelled、version + 1、refund_entry_id）。期次 settling/settled、已有结果却使用 no_result 或已取消的单被拒绝；不改变期次或其他单。退款、判定证据、状态、审计及 outbox 同事务。重复请求仍验证权限/会话，超管只读。
 
@@ -569,6 +569,22 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 客户端校验品牌、回显筛选、精确整数及金额/状态分区；日期按精确纳秒时间值比较，允许等价UTC/时区或尾零格式，拒绝真实边界变化。服务端按PostgreSQL微秒网格将两个边界向上取整，保持原半开区间语义；不让驱动截断纳秒改变结果。旧结果在新筛选请求发起时清除，失败/401/跨品牌切换不能保留旧数据冒充新范围。草稿不改变已显示范围，只读刷新使用已提交条件。
 
 暂不实现提现/佣金/奖励报表、代理分组、不可变日月结、导出及大规模异步全链对账；这些随真实业务模块与S7接入，不能据此宣称EPIC-11整体完成。
+
+## 4.7 品牌运行状态
+
+路径均在 `/api/v1/admin`，必须通过 `X-Brand-ID` 指定品牌。读取需 `brand_operation.view.brand/platform`，写入需 `brand_operation.write.brand/platform`，品牌权限还要求对应品牌范围。超级管理员不自动获得授权；显式平台写权限可以管理不同品牌的运行状态，不授予用户、积分或其他业务写权限。
+
+| 方法 | 路径 | 合同 |
+|---|---|---|
+| GET | /brand-operation | `{brand_id,version,name,status,updated_at,audit_log_id?}`；返回真实品牌当前状态与共享配置版本 |
+| PATCH | /brand-operation | `{version,status,reason}`，status 仅 active/paused；200 返回原操作回执及 audit_log_id；必须有幂等键 |
+| GET | /brand-operation/history | `{items:[{id,brand_id,version,previous_status,status,changed_by,reason,audit_log_id,created_at}],limit,offset}`；默认20，limit1..100，offset0..1000000 |
+
+变更立即生效，不要求双人审批。提交前后及原键缓存重放均重新验证当前管理会话和权限。请求拒绝未知、缺失、重复和 null 字段；原因必须为非空白 UTF-8 且不超过500字节。查询拒绝未知、重复或空分页参数；当前状态 GET 和 PATCH 不接受查询参数。
+
+运行状态版本与认证配置共享，因此验证码或 Telegram 配置变化也可能造成版本冲突。PATCH 在品牌行独占锁下检查版本和状态，状态、版本、审计及历史同事务提交；已有持有品牌共享锁的用户操作先完成，暂停成功之后的新投注不得扣分。暂停不撤销登录会话，不自动取消订单、期次或阻止原路退款和已有开奖结果结算，不代表尚未实现的提现出款已经可用。
+
+同状态重复操作或禁用品牌的切换返回409 BRAND_OPERATION_STATE_CONFLICT；无效输入400 BRAND_OPERATION_INPUT_INVALID；旧版本409 BRAND_OPERATION_VERSION_CONFLICT；无权限403 PERMISSION_DENIED。未知结果始终用原正文与原键重试。历史成功回执可能早于最新状态，核对回执后须独立 GET；不得把旧的暂停回执当成品牌现在仍暂停。
 
 ## 4.5 S6-e 代理身份、层级与配置（不计算佣金）
 

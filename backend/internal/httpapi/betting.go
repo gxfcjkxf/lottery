@@ -28,6 +28,8 @@ func betError(data any, err error) (mutation.Result, error) {
 		return mutation.Fail(401, "AUTH_SESSION_REVOKED", "登录状态已过期，请重新登录"), nil
 	case errors.Is(err, betting.ErrInvalid):
 		return mutation.Fail(400, "BET_INPUT_INVALID", "投注请求或配置不正确"), nil
+	case errors.Is(err, betting.ErrBrandPaused):
+		return mutation.Fail(403, "BRAND_PAUSED", "品牌已暂停新投注；已有订单仍继续处理"), nil
 	case errors.Is(err, betting.ErrDenied):
 		return mutation.Fail(403, "BET_OPERATION_DENIED", "无权执行此投注操作"), nil
 	case errors.Is(err, betting.ErrNotFound):

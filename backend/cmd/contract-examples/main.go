@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/agency"
+	"github.com/gxfcjkxf/lottery/backend/internal/brandops"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
@@ -78,7 +79,9 @@ func main() {
 	after[0][0] = 92
 	entry := points.Entry{ID: id, BrandID: id, AccountID: id, MemberID: id, EntryType: "bet", ReferenceType: "order", ReferenceID: id, OperationKey: "contract-example", Reason: "contract example", ActorType: "user", ActorID: id, RequestID: "contract-example", Version: 2, Before: before, Delta: delta, After: after, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 8}}, CreatedAt: now}
 	values := map[string]any{
-		"FinanceAgentCreateInput": agentInput, "FinanceWithdrawalGameConfig": gameWithdrawal,
+		"AdminBrandOperation":         brandops.Record{BrandID: id, Version: 2, Name: "Example", Status: "paused", UpdatedAt: now, AuditLogID: id},
+		"AdminBrandOperationRevision": brandops.Revision{ID: id, BrandID: id, Version: 2, PreviousStatus: "active", Status: "paused", ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now},
+		"FinanceAgentCreateInput":     agentInput, "FinanceWithdrawalGameConfig": gameWithdrawal,
 		"IdentityUser":   identity.User{ID: id, Status: "normal"},
 		"IdentityMember": identity.Member{ID: id, BrandID: id, Status: "normal", JoinedAt: now},
 		"FinanceBalance": before, "FinanceDeltaBalance": delta, "FinanceEntry": entry,

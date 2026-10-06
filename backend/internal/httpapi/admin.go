@@ -106,6 +106,7 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 	}
 	registerRuleSimulationRoutes(handle, d)
 	registerRuleBookRoutes(handle, d)
+	registerBrandOperationRoutes(handle, d)
 	registerPeriodRoutes(handle, d)
 	RegisterDrawRoutes(handle, d)
 	handle("POST", "/auth/login", func(w http.ResponseWriter, r *http.Request) {

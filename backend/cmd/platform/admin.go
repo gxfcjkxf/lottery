@@ -56,8 +56,10 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 		return err
 	}
 	permissions := []string{"user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "audit.view.brand", "brand.view.brand", "user.create.brand", "role.view.brand", "role.write.brand", "admin.view.brand", "admin.write.brand", "auth_config.view.brand", "auth_config.write.brand", "wallet.view.brand", "wallet.freeze.brand", "wallet.adjust.brand", "recharge.view.brand", "recharge.write.brand", "point_policy.view.brand", "point_policy.write.brand", "wallet.repair.brand", "join_code.view.brand", "join_code.write.brand"}
+	permissions = append(permissions, "brand_operation.view.brand", "brand_operation.write.brand")
 	if *super {
 		permissions = []string{"user.view.platform", "audit.view.platform", "brand.view.platform", "role.view.platform", "role.write.platform", "admin.view.platform", "admin.write.platform", "auth_config.view.platform", "auth_config.write.platform", "wallet.view.platform", "recharge.view.platform", "point_policy.view.platform"}
+		permissions = append(permissions, "brand_operation.view.platform", "brand_operation.write.platform")
 	}
 	if *super {
 		permissions = append(permissions, "rule.simulate.platform")
