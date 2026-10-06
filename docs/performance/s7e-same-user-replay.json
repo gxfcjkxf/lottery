@@ -1,0 +1,660 @@
+{
+  "acknowledgments_within_scheduled_window_per_second": 500,
+  "arch": "arm64",
+  "brands": 1,
+  "cutoff_seconds_from_fixture_creation": 0,
+  "database_after": {
+    "timestampUTC": "2026-10-06T15:27:51.692067Z",
+    "counters": {
+      "xactCommit": 307665,
+      "xactRollback": 11859,
+      "blksHit": 127508342,
+      "blksRead": 12902,
+      "deadlocks": 0
+    },
+    "totalConnections": 21,
+    "activeConnections": 0,
+    "lockWaiters": 0,
+    "connectionWaitsByWaitEventType": {
+      "Client": 21
+    },
+    "queues": {
+      "draw_corrections": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "notification_deliveries": {
+        "pending": 8,
+        "retry": 0,
+        "sent": 992,
+        "failed": 0,
+        "completed": 0
+      },
+      "period_cancellations": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "settlement_jobs": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      }
+    },
+    "replication": {
+      "available": false,
+      "replicas": []
+    }
+  },
+  "database_before": {
+    "timestampUTC": "2026-10-06T15:27:41.677221Z",
+    "counters": {
+      "xactCommit": 296362,
+      "xactRollback": 8067,
+      "blksHit": 125616218,
+      "blksRead": 12632,
+      "deadlocks": 0
+    },
+    "totalConnections": 22,
+    "activeConnections": 0,
+    "lockWaiters": 0,
+    "connectionWaitsByWaitEventType": {
+      "Client": 22
+    },
+    "queues": {
+      "draw_corrections": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "notification_deliveries": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "period_cancellations": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "settlement_jobs": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      }
+    },
+    "replication": {
+      "available": false,
+      "replicas": []
+    }
+  },
+  "database_delta": {
+    "xactCommit": 11303,
+    "xactRollback": 3792,
+    "blksHit": 1892124,
+    "blksRead": 270,
+    "deadlocks": 0,
+    "counterResetDetected": false,
+    "sharedCacheHitRatio": 0.9998573235806074
+  },
+  "database_samples": [
+    {
+      "timestampUTC": "2026-10-06T15:27:42.688238Z",
+      "counters": {
+        "xactCommit": 297230,
+        "xactRollback": 8350,
+        "blksHit": 125669378,
+        "blksRead": 12672,
+        "deadlocks": 0
+      },
+      "totalConnections": 22,
+      "activeConnections": 1,
+      "lockWaiters": 0,
+      "connectionWaitsByWaitEventType": {
+        "Client": 21
+      },
+      "queues": {
+        "draw_corrections": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "notification_deliveries": {
+          "pending": 8,
+          "retry": 0,
+          "sent": 92,
+          "failed": 0,
+          "completed": 0
+        },
+        "period_cancellations": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "settlement_jobs": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        }
+      },
+      "replication": {
+        "available": false,
+        "replicas": []
+      }
+    },
+    {
+      "timestampUTC": "2026-10-06T15:27:43.688029Z",
+      "counters": {
+        "xactCommit": 298097,
+        "xactRollback": 8649,
+        "blksHit": 125729733,
+        "blksRead": 12672,
+        "deadlocks": 0
+      },
+      "totalConnections": 22,
+      "activeConnections": 1,
+      "lockWaiters": 0,
+      "connectionWaitsByWaitEventType": {
+        "Client": 21
+      },
+      "queues": {
+        "draw_corrections": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "notification_deliveries": {
+          "pending": 9,
+          "retry": 0,
+          "sent": 191,
+          "failed": 0,
+          "completed": 0
+        },
+        "period_cancellations": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "settlement_jobs": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        }
+      },
+      "replication": {
+        "available": false,
+        "replicas": []
+      }
+    },
+    {
+      "timestampUTC": "2026-10-06T15:27:44.688079Z",
+      "counters": {
+        "xactCommit": 299088,
+        "xactRollback": 8979,
+        "blksHit": 125814995,
+        "blksRead": 12672,
+        "deadlocks": 0
+      },
+      "totalConnections": 22,
+      "activeConnections": 0,
+      "lockWaiters": 0,
+      "connectionWaitsByWaitEventType": {
+        "Client": 21
+      },
+      "queues": {
+        "draw_corrections": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "notification_deliveries": {
+          "pending": 9,
+          "retry": 0,
+          "sent": 291,
+          "failed": 0,
+          "completed": 0
+        },
+        "period_cancellations": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "settlement_jobs": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        }
+      },
+      "replication": {
+        "available": false,
+        "replicas": []
+      }
+    },
+    {
+      "timestampUTC": "2026-10-06T15:27:45.688083Z",
+      "counters": {
+        "xactCommit": 300271,
+        "xactRollback": 9375,
+        "blksHit": 125953021,
+        "blksRead": 12672,
+        "deadlocks": 0
+      },
+      "totalConnections": 22,
+      "activeConnections": 2,
+      "lockWaiters": 0,
+      "connectionWaitsByWaitEventType": {
+        "Client": 21
+      },
+      "queues": {
+        "draw_corrections": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "notification_deliveries": {
+          "pending": 9,
+          "retry": 0,
+          "sent": 391,
+          "failed": 0,
+          "completed": 0
+        },
+        "period_cancellations": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "settlement_jobs": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        }
+      },
+      "replication": {
+        "available": false,
+        "replicas": []
+      }
+    },
+    {
+      "timestampUTC": "2026-10-06T15:27:46.688134Z",
+      "counters": {
+        "xactCommit": 301215,
+        "xactRollback": 9695,
+        "blksHit": 126058522,
+        "blksRead": 12672,
+        "deadlocks": 0
+      },
+      "totalConnections": 22,
+      "activeConnections": 0,
+      "lockWaiters": 0,
+      "connectionWaitsByWaitEventType": {
+        "Client": 21
+      },
+      "queues": {
+        "draw_corrections": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "notification_deliveries": {
+          "pending": 9,
+          "retry": 0,
+          "sent": 491,
+          "failed": 0,
+          "completed": 0
+        },
+        "period_cancellations": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "settlement_jobs": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        }
+      },
+      "replication": {
+        "available": false,
+        "replicas": []
+      }
+    },
+    {
+      "timestampUTC": "2026-10-06T15:27:47.688151Z",
+      "counters": {
+        "xactCommit": 302493,
+        "xactRollback": 10128,
+        "blksHit": 126248579,
+        "blksRead": 12672,
+        "deadlocks": 0
+      },
+      "totalConnections": 22,
+      "activeConnections": 0,
+      "lockWaiters": 0,
+      "connectionWaitsByWaitEventType": {
+        "Client": 22
+      },
+      "queues": {
+        "draw_corrections": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "notification_deliveries": {
+          "pending": 9,
+          "retry": 0,
+          "sent": 591,
+          "failed": 0,
+          "completed": 0
+        },
+        "period_cancellations": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "settlement_jobs": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        }
+      },
+      "replication": {
+        "available": false,
+        "replicas": []
+      }
+    },
+    {
+      "timestampUTC": "2026-10-06T15:27:48.688203Z",
+      "counters": {
+        "xactCommit": 303749,
+        "xactRollback": 10550,
+        "blksHit": 126466289,
+        "blksRead": 12672,
+        "deadlocks": 0
+      },
+      "totalConnections": 22,
+      "activeConnections": 0,
+      "lockWaiters": 0,
+      "connectionWaitsByWaitEventType": {
+        "Client": 21
+      },
+      "queues": {
+        "draw_corrections": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "notification_deliveries": {
+          "pending": 9,
+          "retry": 0,
+          "sent": 691,
+          "failed": 0,
+          "completed": 0
+        },
+        "period_cancellations": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "settlement_jobs": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        }
+      },
+      "replication": {
+        "available": false,
+        "replicas": []
+      }
+    },
+    {
+      "timestampUTC": "2026-10-06T15:27:49.688241Z",
+      "counters": {
+        "xactCommit": 304882,
+        "xactRollback": 10934,
+        "blksHit": 126688950,
+        "blksRead": 12672,
+        "deadlocks": 0
+      },
+      "totalConnections": 22,
+      "activeConnections": 0,
+      "lockWaiters": 0,
+      "connectionWaitsByWaitEventType": {
+        "Client": 21
+      },
+      "queues": {
+        "draw_corrections": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "notification_deliveries": {
+          "pending": 9,
+          "retry": 0,
+          "sent": 791,
+          "failed": 0,
+          "completed": 0
+        },
+        "period_cancellations": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "settlement_jobs": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        }
+      },
+      "replication": {
+        "available": false,
+        "replicas": []
+      }
+    },
+    {
+      "timestampUTC": "2026-10-06T15:27:50.688239Z",
+      "counters": {
+        "xactCommit": 305864,
+        "xactRollback": 11265,
+        "blksHit": 126952919,
+        "blksRead": 12672,
+        "deadlocks": 0
+      },
+      "totalConnections": 22,
+      "activeConnections": 0,
+      "lockWaiters": 0,
+      "connectionWaitsByWaitEventType": {
+        "Client": 21
+      },
+      "queues": {
+        "draw_corrections": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "notification_deliveries": {
+          "pending": 9,
+          "retry": 0,
+          "sent": 891,
+          "failed": 0,
+          "completed": 0
+        },
+        "period_cancellations": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        },
+        "settlement_jobs": {
+          "pending": 0,
+          "retry": 0,
+          "sent": 0,
+          "failed": 0,
+          "completed": 0
+        }
+      },
+      "replication": {
+        "available": false,
+        "replicas": []
+      }
+    }
+  ],
+  "database_version": "17.5",
+  "duplicate_group": 5,
+  "earliest_period_cutoff_utc": "2026-10-06T16:27:41.637805Z",
+  "failed_or_dropped": 0,
+  "failure_rate_including_dropped": 0,
+  "go_api_and_driver_cpu_percent_one_core": 47.024167219088135,
+  "go_api_and_driver_cpu_seconds": 4.702971,
+  "go_gc_count_delta": 157,
+  "go_heap_alloc_after": 4858160,
+  "go_heap_alloc_before": 71020848,
+  "go_total_alloc_delta": 492742936,
+  "go_version": "go1.27.1",
+  "integrity": {
+    "orders": 1000,
+    "debits": 1000,
+    "stake_points": 1000,
+    "debit_points": 1000,
+    "balance_points": 99000,
+    "bad_order_links": 0,
+    "bad_account_balances": 0,
+    "late_orders": 0,
+    "known_unique_receipts": 1000,
+    "unknown_committed_orders": 0
+  },
+  "load_started_at_utc": "2026-10-06T15:27:41.687773Z",
+  "logical_cpus": 10,
+  "new_order_tps_over_wall": 99.98821429919117,
+  "notification_worker_enabled": true,
+  "notification_worker_errors": 0,
+  "os": "darwin",
+  "plan": {
+    "rate": 500,
+    "duration": 10000000000,
+    "max_in_flight": 500,
+    "request_timeout": 10000000000
+  },
+  "pool_max_connections": 20,
+  "postgres_cpu_after_pid_count": 22,
+  "postgres_cpu_before_pid_count": 23,
+  "postgres_cpu_shared_pid_count": 21,
+  "postgres_visible_shared_backend_cpu_seconds": 2.85,
+  "production_capacity_accepted": false,
+  "replica_and_redis_capacity_verified": false,
+  "report": {
+    "planned": 5000,
+    "started": 5000,
+    "completed": 5000,
+    "dropped": 0,
+    "backpressure_dropped": 0,
+    "succeeded": 5000,
+    "status_counts": {
+      "201": 5000
+    },
+    "code_counts": {
+      "": 5000
+    },
+    "error_counts": {},
+    "service_latency": {
+      "count": 5000,
+      "p50_ms": 1.490291,
+      "p95_ms": 4.802625,
+      "p99_ms": 5.507875
+    },
+    "start_lag": {
+      "count": 5000,
+      "p50_ms": 0.066917,
+      "p95_ms": 0.136584,
+      "p99_ms": 0.182625
+    },
+    "end_to_end": {
+      "count": 5000,
+      "p50_ms": 1.554417,
+      "p95_ms": 4.907042,
+      "p99_ms": 5.595417
+    },
+    "peak_in_flight": 10,
+    "successes_during_scheduled_interval": 5000,
+    "successes_after_scheduled_interval": 0,
+    "wall_time": 10000023125,
+    "completion_throughput_per_second": 499.9988437526738,
+    "planned_arrival_rate_per_second": 500,
+    "started_arrival_rate_per_second": 500,
+    "drop_rate": 0,
+    "backpressure_drop_rate": 0,
+    "failure_rate": 0
+  },
+  "sample_errors": 0,
+  "scheduled_seconds": 10,
+  "schema_version": 1,
+  "scope": "isolated TCP HTTP API + real PostgreSQL transactions; preauthenticated synthetic sessions; no TLS/proxy or production logging",
+  "server_drain_seconds": 0.000159208,
+  "users": 1,
+  "wall_including_server_drain_seconds": 10.001178709
+}

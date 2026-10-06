@@ -158,3 +158,24 @@ S6-b 站内通知由独立的 PostgreSQL worker 循环消费已提交 outbox（�
 - 队列消费者变慢或重复消费。
 
 验收还需确定 P95/P99 延迟、峰值持续时间、可用性、恢复时间和数据恢复点目标。
+
+### 可复现的受控投注负载
+
+`backend/internal/capacity` 提供固定到达速率、受限在途数量的开放式压测驱动；请求完成不会决定下一次发起时间。在途已满时记录压测端丢弃，而非无限创建协程。时延同时保存执行、计划发起延迟与从计划时间起算的端到端分位数；到达速率、回执完成速率和实际新增注单速率分别报告，重复回执不计为新投注。
+
+容量入口位于 `capacity` 构建标签下，仅支持Linux/macOS。测试必须确认专用回环PostgreSQL，拒绝原开发库55432；每轮另建并清理自己的随机schema。500个合成会员/真实会话预先生成，测试积分经账本服务入账，真实规则须独立审核；下注、会话检查、幂等、扣分、审计及默认每100ms/100条通知消费者均使用现有服务。登录/注册压力、TLS/代理/生产日志成本和真实PWA终端不在这条基线里。不能把合成会话数等同于500台真实在线设备。
+
+先在独立测试数据库验证基础fixture，再从`backend`执行；报告路径必须新建，不能覆盖既有证据：
+
+```sh
+export TEST_DATABASE_URL='postgres://lottery_test@127.0.0.1:55529/postgres?sslmode=disable'
+export LOTTERY_CAPACITY_CONFIRM_ISOLATED=yes
+CGO_ENABLED=0 go test -tags capacity ./internal/httpapi -run '^TestCapacityFixtureSmoke$' -count=1
+LOTTERY_CAPACITY_USERS=500 LOTTERY_CAPACITY_RATE=500 LOTTERY_CAPACITY_SECONDS=30 \
+LOTTERY_CAPACITY_REPORT='/absolute/test-output/fresh-run.json' \
+CGO_ENABLED=0 go test -tags capacity ./internal/httpapi -run '^TestBettingCapacity$' -count=1 -v
+```
+
+专用数据库及输出目录必须由操作人先创建；示例端口不是既存服务承诺，禁止指定客户生产库。`LOTTERY_CAPACITY_POOL`默认20、在途上限默认500；`BRANDS=2`用完整变量名`LOTTERY_CAPACITY_BRANDS`启用两个品牌。单用户重试使用`LOTTERY_CAPACITY_USERS=1`及`LOTTERY_CAPACITY_DUPLICATE_GROUP=5`，每五个请求保留同一账号/正文/键。`LOTTERY_CAPACITY_CUTOFF_SECONDS=6`在创建期次六秒后截止，应配合足够长的测试窗口；准备阶段已过截止会明确失败，不偷偷延长业务时间。通知消费者默认启用，`LOTTERY_CAPACITY_NOTIFICATIONS=off`只适用于明确标注的不带消费者对照。
+
+每轮在真实HTTP处理器停止后核对已提交账本：注单与扣分笔数/积分相符，每笔引用在同品牌/会员/账户，账户余额与全部流水守恒，重复意图不多建订单，期次窗口外没有注单。读取数据库连接/锁等待、持久队列、事务及块缓存计数；计数重置时标记并禁止使用原窗口命中率。复制未配置或延迟NULL明确不可用，不填成0。PostgreSQL块缓存命中率不是Redis命中率；数据库CPU仅统计前后可见的同一批客户端进程累计CPU，不覆盖WAL/检查点/新退出进程；Go CPU包含同进程API、驱动和通知消费者，不能冒充独立API实例CPU。
