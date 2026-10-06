@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/agency"
+	"github.com/gxfcjkxf/lottery/backend/internal/branddomains"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandops"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandskin"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
@@ -91,6 +92,12 @@ func main() {
 		log.Fatal(err)
 	}
 	values := map[string]any{
+		"AdminBrandDomain":                 branddomains.Domain{ID: id, Domain: "brand.example.test", Enabled: true, Primary: true},
+		"AdminBrandDomainRecord":           branddomains.Record{BrandID: id, Version: 2, Status: "active", Domains: []branddomains.Domain{{ID: id, Domain: "brand.example.test", Enabled: true, Primary: true}}, UpdatedAt: now},
+		"AdminBrandDomainReceipt":          branddomains.Record{BrandID: id, Version: 2, Status: "active", Domains: []branddomains.Domain{{ID: id, Domain: "brand.example.test", Enabled: true, Primary: true}}, UpdatedAt: now, AuditLogID: id},
+		"AdminBrandDomainCreateRequest":    branddomains.Input{Version: 1, Domain: "brand.example.test", Enabled: true, Primary: true, Reason: "contract example"},
+		"AdminBrandDomainUpdateRequest":    branddomains.Input{Version: 1, Enabled: true, Primary: true, Reason: "contract example"},
+		"AdminBrandDomainRevision":         branddomains.Revision{ID: id, BrandID: id, Version: 2, ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now, BeforeDomains: []branddomains.Domain{}, Domains: []branddomains.Domain{{ID: id, Domain: "brand.example.test", Enabled: true, Primary: true}}},
 		"IdentityContextBrand":             tenant.Brand{ID: id, Code: "example", Name: presentationEffective.DisplayName, Status: "active", DefaultLocale: presentationEffective.DefaultLocale, Timezone: "Asia/Manila", Theme: publicTheme, ConfigVersion: 2},
 		"AdminBrandPresentationConfig":     presentationConfig,
 		"AdminBrandPresentationEffective":  presentationEffective,

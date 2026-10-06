@@ -34,7 +34,7 @@ test("admin shell distinguishes live context from demo data", async ({
     page.getByRole("heading", { name: /早上好，林岚/ }),
   ).toBeVisible();
   await expect(page.locator(".banner-copy")).toContainText(
-    "提现、佣金管理、域名管理及新建品牌尚未实现",
+    "提现、佣金管理及新建品牌尚未实现",
   );
   await expect(page.locator(".banner-copy")).toContainText(
     "各页面会标出真实接口与演示边界",

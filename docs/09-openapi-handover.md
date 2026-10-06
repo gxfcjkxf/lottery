@@ -12,6 +12,10 @@ PUT 必须提供当前共享版本、全部 16 个配置键和操作原因。可
 
 提现当前只有政策配置，没有申请、资格判定或出款接口。佣金与奖励实际发放、真实支付、真实外部开奖 API/DOM 适配器也不可调用。配置存在不代表财务流程已经实现。容量目标 500 次投注/秒不属于已验证能力。
 
+域名管理使用 `/api/v1/admin/brand-domains` 的GET/POST、`/{domainID}`的PATCH及`/history`的GET。创建要求完整 `version,domain,enabled,is_primary,reason`，更新只接受 `version,enabled,is_primary,reason`；主机名不可修改。写回执返回完整绑定列表、共享版本加一及审计ID；读取中的审计ID仅在当前共享版本来自域名变更时存在。读写要求显式的 `brand_domains.view/write.brand/platform` 权限，超级管理员身份不绕过授权。
+
+错误包括 `BRAND_DOMAIN_INPUT_INVALID`、`BRAND_DOMAIN_NOT_FOUND`、`BRAND_DOMAIN_VERSION_CONFLICT`、`BRAND_DOMAIN_STATE_CONFLICT`及`BRAND_DOMAIN_CONFLICT`；禁用绑定继续占用全局主机名。请求的Host必须先属于可用管理入口，当前入口被关闭时可能先返回404，不据此认为旧成功回执可重放。域名绑定不验证所有权、不操作DNS/TLS/重定向；客户部署方需另行验证，详见 [05-ui-spec.md](05-ui-spec.md)。
+
 ## 接入约束
 
 用户与管理员令牌不能互换。非浏览器客户端可以使用 Bearer；管理员浏览器 Cookie 名称为 `lottery_admin`，用户 Cookie 名称随品牌 UUID 变化，见安全方案的说明。生成客户端通常使用 Bearer；网页客户端继续使用既有 HttpOnly Cookie 流程，不把令牌存入本地存储。

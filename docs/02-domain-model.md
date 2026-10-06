@@ -40,6 +40,10 @@
 - `id`, `brand_id`, `domain`, `is_primary`, `status`
 - 全局唯一 `domain`
 
+域名管理沿用实际表的 `enabled` 布尔字段表示启用/禁用，不新增第二套状态列。绑定的编号、品牌和主机名不可修改或删除；禁用也继续保留全局归属。最多100条绑定/品牌（含禁用），平台入口的主机名同样不能被新增品牌绑定占用。原localhost/IP绑定保持原值且可调整启停/主域名标志；新绑定仅接受规范的小写ASCII多标签DNS形式主机名。
+
+`brand_domain_revisions` 保存 `id,brand_id,version,changed_by,reason,audit_log_id,created_at,before_domains,domains`，前后绑定数组各含 `id,domain,enabled,is_primary` 并按域名/编号排序。操作沿用品牌共享版本和品牌行锁，主域名切换自动将旧主域名降为普通绑定，不禁用旧域名。绑定更新与不可改写审计历史在同一事务提交；版本与品牌唯一，历史不可更新或删除。数据库更新/删除约束保护绑定身份与更新历史；初始化的直接插入不补造人工审核记录，运营新增必须经过受审计服务。
+
 `brand_members`
 
 - `id`, `brand_id`, `global_user_id`
