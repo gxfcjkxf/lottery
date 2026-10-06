@@ -21,6 +21,7 @@ import { createAuthClient, type AuthProfile } from "../../shared/src/auth";
 import BetSelection from "./BetSelection.vue";
 import SelectionSummary from "./SelectionSummary.vue";
 import { createWalletApi } from "./wallet-api";
+import DrawResultsPanel from "./DrawResultsPanel.vue";
 
 const props = defineProps<{
   locale: Language;
@@ -859,6 +860,13 @@ onUnmounted(() => {
             : "No playable options are available."
         }}
       </p>
+      <DrawResultsPanel
+        :key="`${props.brandCode ?? ''}:${currentGame.id}`"
+        :locale="props.locale"
+        :brand-code="props.brandCode"
+        :game-id="currentGame.id"
+        compact
+      />
     </template>
   </section>
 

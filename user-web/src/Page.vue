@@ -17,6 +17,7 @@ import {
 import { isValidWholeAmount } from "./withdrawal";
 import WalletSummary from "./WalletSummary.vue";
 import BettingPanel from "./BettingPanel.vue";
+import DrawResultsPanel from "./DrawResultsPanel.vue";
 import {
   createAuthClient,
   type AuthChallenge,
@@ -2385,45 +2386,11 @@ watch(
           </div>
         </section>
 
-        <section v-else-if="route.path === '/results'" class="page-section">
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">DRAW ARCHIVE</div>
-              <h1>{{ t.resultTitle }}</h1>
-              <p>{{ t.resultInfo }}</p>
-            </div>
-            <select class="filter-select" aria-label="Filter results">
-              <option>{{ t.games }}</option>
-              <option>Classic 6/49</option>
-              <option>Lucky 5/35</option>
-              <option>Daily 3</option>
-            </select>
-          </div>
-          <div class="results-grid">
-            <article v-for="item in games" :key="item.id" class="result-card">
-              <div class="result-head">
-                <div>
-                  <span class="tiny-label">{{ item.name }}</span>
-                  <h3>{{ item.draw }}</h3>
-                </div>
-                <span class="result-tag">{{
-                  locale === "en" ? "SAMPLE" : "示例"
-                }}</span>
-              </div>
-              <div class="result-balls">
-                <span v-for="num in item.drawResult.split(' · ')" :key="num">{{
-                  num
-                }}</span>
-              </div>
-              <div class="result-foot">
-                <span>{{ t.demo }}</span
-                ><RouterLink :to="`/games/${item.id}`"
-                  >{{ t.openGame }} →</RouterLink
-                >
-              </div>
-            </article>
-          </div>
-        </section>
+        <DrawResultsPanel
+          v-else-if="route.path === '/results'"
+          :locale="locale"
+          :brand-code="walletBrandCode"
+        />
 
         <section
           v-else-if="route.path === '/notifications'"
@@ -2602,6 +2569,11 @@ watch(
                 ? "Live betting · real wallet"
                 : "真实投注 · 实时钱包"
             }}</template
+          ><template v-else-if="route.path === '/results'">
+            ·
+            {{
+              locale === "en" ? "Live public draw records" : "真实公开开奖记录"
+            }} </template
           ><template v-else>
             ·
             {{

@@ -120,6 +120,8 @@ Period `sequence` 是期次创建顺序；`games.started_sequence` 只在实际�
 
 `draw_results`
 
+S5-b 的公开投影只读取各期当前 `periods.draw_result_id`，不直接公开此内部表或全部纠正历史。公开字段为结果编号、公开彩种/期次、regular/special/digits 数组、实际开奖时间和人工/外部分类；来源/人员/抓取/纠正链均不公开。取消期次保留当前号码但显式取消，没有结果保持 null。历史查询只显示已开始窗口，以主库时间判断；`0016` 增加品牌/彩种下按计划开奖时间排序的索引，不修改既有业务数据或迁移。
+
 - `id`, `brand_id`, `game_id`, `period_id`, `source_id`
 - S4-c2 实际字段：kind api/dom/manual、result JSONB、result_hash、drawn_at、created_at、created_by（系统为空）、corrected_from_id（人工在结算前覆盖外部结果时引用旧行）。只追加；当前结果由 periods.draw_result_id 决定，不根据创建时间猜测。
 - JSONB 使用 regular/special/digits 三个数组；哈希基于规范化结果，非有序号码组排序，数字位置保留顺序。

@@ -117,7 +117,7 @@
 
 服务端不得信任客户端提供的注数、赔率、总积分或规则计算结果；这些字段只能由服务端重新计算。
 
-S5-a1 已注册上述 POST bet-previews、POST/GET bet-orders、GET 单笔、POST cancel（含 `/b/{brandCode}` 等价路径）；S5-a2 接入用户彩种目录/当前期次。用户开奖列表和结算明细尚未接入；接口表不代表全部已实现。用户只能查询/取消自己在当前品牌的订单，不能从 body 或品牌头切换会员身份。规则引用为 UUID，不接受旧示例的历史序号 `rule_version`。
+S5-a1 已注册上述 POST bet-previews、POST/GET bet-orders、GET 单笔、POST cancel（含 `/b/{brandCode}` 等价路径）；S5-a2 接入用户彩种目录/当前期次，S5-b 接入公开开奖和历史期次。结算明细尚未接入；接口表不代表全部已实现。用户只能查询/取消自己在当前品牌的订单，不能从 body 或品牌头切换会员身份。规则引用为 UUID，不接受旧示例的历史序号 `rule_version`。
 
 S5-a2 的 GET `/games` 为公开品牌目录，响应 `{items,limit,offset}`，只含 id/code/name/model/timezone/status，包含 active/paused 彩种。GET `/games/{id}` 返回 `{game,plays,period,server_time,brand_status,policy,policy_versions}`；plays 仅含当前 active 玩法的 id/game_id/code/name/rule_version_id/definition_hash/definition，不暴露草稿、贡献者、审核者或开奖源信息。GET `/games/{id}/plays` 返回 `{items}`，GET `/games/{id}/periods/current` 返回 `{period,server_time,brand_status}`。没有玩法返回空数组，没有期次返回 null；本期优先实际开放窗口，再选最近未来 pending，最后选最近进行中/完成期次。pending 不代表可投注。公开目录在主库只读 repeatable-read 事务读取一致快照，不持有行锁、不预留额度，提交时仍重新校验。
 
@@ -139,7 +139,21 @@ S5-a5：POST `/admin/bet-orders/{id}/judge-cancel` 需独立 `bet.judge_cancel.b
 
 GET `/admin/bet-orders/{id}/judgment` 需显式 bet.view.brand / bet.view.platform，返回 `{judgment:null|Judgment}`；Judgment 包含 id、brand_id、game_id、period_id、order_id、order_version（结果版本）、cause、draw_result_id（无结果时空字符串）、judged_by、reason、created_at、refund_entry_id。普通单或整期任务取消的单可返回 null，不表示证据丢失。只有匹配原单/品牌、操作者、提交版本 + 1、原因类型/说明和退款引用的单注证据，才可核实未知的单注判定意图；不能用整期取消或其他人的结果替代本次回执。
 
-### 积分、充值和提现
+### S5-b 已接入：公开开奖结果与已开始期次
+
+无需登录的 GET `/draw-results`、GET `/draw-results/{id}`、GET `/games/{id}/periods` 均有 `/b/{brandCode}` 等价路径。品牌由已绑定 Host 或平台路径解析，不采信用户品牌头；仅 active/paused 品牌和 active/paused 彩种可读，跨品牌 UUID、禁用品牌和已替换结果 ID 返回 404。
+
+列表参数：limit 1–100（默认 50）、offset 0–1000000（默认 0）；period_no 为可选精确期号，非空白且最多 80 UTF-8 字节、不做模糊搜索或数字转换。开奖列表另支持 game_id UUID；历史列表由路径确定彩种。上述参数重复返回 400。排序为计划 draw_at 降序、sequence 降序、期次 id 降序；has_more 通过多读一行确定，没有全表计数或无限返回。
+
+`PublicDrawResult = {id,game:CatalogGame,period:Period,result:{regular:number[],special:number[],digits:number[]},drawn_at,origin:"manual"|"external"}`。不适用号码组为 [] 而不是 null；零、重复和位置顺序保持原始记录。game/period 为上节的公开字段，不含品牌后台人员、来源 ID/地址/认证、抓取原文、内部 claim、结果 hash 或纠正链。origin 只区分人工/外部，不公开具体采集源。
+
+- 开奖列表返回 `{items:PublicDrawResult[],limit,offset,has_more,server_time,brand_status}`，仅发布当前 `period.draw_result_id`，状态为 drawn/settling/settled/bet_cancelled/judged_cancelled。被替换旧记录仍保留在管理员历史中，不作为公开最新结果。
+- 单笔返回 `{item:PublicDrawResult,server_time,brand_status}`，同样要求仍被当前期次引用；结果详情重新读取，不将列表旧快照当作确认。
+- 历史列表返回 `{game:CatalogGame,items:[{period:Period,draw:PublicDrawResult|null}],limit,offset,has_more,server_time,brand_status}`；仅显示 `bet_start_at <= server_time` 的已开始期次，包括进行中、等待开奖和取消，尚未开始的未来预留期次不列入。没有结果为 null，不制造号码。
+
+取消期次仍可显示保留的号码及取消状态，但必须标明仅作记录、不能视为有效中奖或派奖结果。读取在主库只读 repeatable-read 事务内完成，不写审计、账本、订单、锁定结果或状态。查询校验/不存在复用 BET_INPUT_INVALID / BET_RESOURCE_NOT_FOUND；未配置服务返回 503 DRAWS_UNAVAILABLE，存储错误返回 503 SERVICE_UNAVAILABLE。该 API 不执行结算或派发积分。
+
+### 积分、充值和提现（业务接口）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|

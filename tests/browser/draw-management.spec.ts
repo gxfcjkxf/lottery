@@ -4,7 +4,7 @@ const harbor = "0199a000-0000-7000-8000-000000000002";
 test("source revisions, worker attempt evidence and manual draw persist in the real database", async ({
   page,
 }, info) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   page.setDefaultTimeout(10_000);
   test.skip(
     !process.env.TEST_HARBOR_ADMIN_USERNAME ||
@@ -195,7 +195,7 @@ test("source revisions, worker attempt evidence and manual draw persist in the r
     attempts.attempts.map((a: { source_id: string }) => a.source_id),
   ).toEqual(second.sources.map((s: { id: string }) => s.id));
   await panel.getByRole("button", { name: "刷新期数", exact: true }).click();
-  await panel.getByLabel(/数字位置/).fill("1,2,1");
+  await panel.getByLabel(/数字位置/).fill("0,1,0");
   await panel.getByLabel(/开奖时间/).fill(drawAt.toISOString());
   await panel
     .getByLabel("操作原因（必填）", { exact: true })
@@ -258,7 +258,7 @@ test("source revisions, worker attempt evidence and manual draw persist in the r
     .getByRole("combobox", { name: "期数", exact: true })
     .selectOption(period.id);
   await expect(page.locator(".draw-management .current-result")).toContainText(
-    "1 2 1",
+    "0 1 0",
   );
   expect(
     await page.evaluate(
@@ -269,4 +269,290 @@ test("source revisions, worker attempt evidence and manual draw persist in the r
     path: info.outputPath("draw-management.png"),
     fullPage: true,
   });
+
+  // Public reads expose the chosen result, not source configuration or actors.
+  const publicBase = "http://localhost:5173/api/v1/b/harbor";
+  const publicResult = await page.request.get(
+    `${publicBase}/draw-results?game_id=${game.id}&period_no=${encodeURIComponent(period.period_no)}`,
+  );
+  expect(publicResult.status(), await publicResult.text()).toBe(200);
+  const published = (await publicResult.json()).data;
+  expect(published.items).toHaveLength(1);
+  expect(published.items[0]).toMatchObject({
+    id: result.id,
+    game: { id: game.id },
+    period: { id: period.id, status: "drawn", draw_result_id: result.id },
+    result: { regular: [], special: [], digits: [0, 1, 0] },
+    origin: "manual",
+  });
+  for (const privateField of [
+    "source_id",
+    "created_by",
+    "corrected_from_id",
+    "credential_ref",
+    "endpoint",
+    "claim",
+    "source_set_id",
+    "result_hash",
+  ])
+    expect(await publicResult.text()).not.toContain(privateField);
+  expect(
+    (
+      await page.request.get(
+        `http://localhost:5173/api/v1/b/aurora/draw-results/${result.id}`,
+        { headers: { "X-Brand-ID": harbor } },
+      )
+    ).status(),
+  ).toBe(404);
+
+  const publicPage = await page.context().newPage();
+  const publicApiRequests: { method: string; pathname: string }[] = [];
+  publicPage.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/v1/")) {
+      publicApiRequests.push({
+        method: request.method(),
+        pathname: url.pathname,
+      });
+    }
+  });
+  try {
+    await publicPage.addInitScript(() =>
+      localStorage.setItem("luma-language", "en"),
+    );
+    await publicPage.goto(
+      `http://harbor.localhost:5173/results?game_id=${game.id}`,
+    );
+    const resultsPanel = publicPage.locator(
+      ".draw-results:not(.draw-results--compact)",
+    );
+    const resultCard = resultsPanel
+      .locator(".dr-card")
+      .filter({ hasText: period.period_no });
+    await expect(resultCard).toBeVisible();
+    await expect(publicPage.locator(".page-footer")).toContainText(
+      "Live public draw records",
+    );
+    await expect(resultCard.locator(".dr-digit-positions .dr-ball")).toHaveText(
+      ["0", "1", "0"],
+    );
+    const currentResultRead = publicPage.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().endsWith(`/draw-results/${result.id}`),
+    );
+    await resultCard.locator("button.dr-card-main").click();
+    const currentResultResponse = await currentResultRead;
+    expect(
+      currentResultResponse.status(),
+      await currentResultResponse.text(),
+    ).toBe(200);
+    expect((await currentResultResponse.json()).data.item.id).toBe(result.id);
+    const detailPanel = resultsPanel.locator(".dr-detail");
+    await expect(detailPanel.locator(".dr-detail-id code")).toHaveText(
+      result.id,
+    );
+    await expect(
+      detailPanel.locator(".dr-digit-positions .dr-ball"),
+    ).toHaveText(["0", "1", "0"]);
+    await expect(resultsPanel).not.toContainText("SAMPLE");
+    await resultsPanel
+      .getByLabel("Exact period", { exact: true })
+      .fill("unknown-exact-period");
+    await resultsPanel
+      .getByLabel("Exact period", { exact: true })
+      .press("Enter");
+    await expect(
+      resultsPanel.getByText("No matching draw results.", { exact: true }),
+    ).toBeVisible();
+    await expect(resultsPanel.locator(".dr-card")).toHaveCount(0);
+    await expect(detailPanel).toHaveCount(0);
+    await resultsPanel
+      .getByLabel("Exact period", { exact: true })
+      .fill(period.period_no);
+    await resultsPanel
+      .getByLabel("Exact period", { exact: true })
+      .press("Enter");
+    await expect(resultCard).toBeVisible();
+
+    // Retain the chosen numbers but mark the entire cancelled period explicitly.
+    const cancellation = await page.request.post(
+      `${base}/periods/${period.id}/cancel`,
+      {
+        headers: { ...headers, "Idempotency-Key": crypto.randomUUID() },
+        data: {
+          version: locked.version,
+          mode: "judged_cancelled",
+          cause: "invalid_result",
+          reason: "public archive must retain invalidated-result warning",
+        },
+      },
+    );
+    expect(cancellation.status(), await cancellation.text()).toBe(200);
+    expect((await cancellation.json()).data).toMatchObject({
+      state: "completed",
+      total_count: 0,
+    });
+    await resultsPanel
+      .getByRole("button", { name: "Refresh", exact: true })
+      .click();
+    await expect(resultCard).toContainText("not a valid outcome or payout");
+    await expect(resultCard.locator(".dr-digit-positions .dr-ball")).toHaveText(
+      ["0", "1", "0"],
+    );
+    expect(
+      await publicPage.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await publicPage.screenshot({
+      path: info.outputPath("public-draw-cancelled.png"),
+      fullPage: true,
+    });
+
+    // Actual persisted periods provide enough history to test the next page.
+    // All these future draws have already-started betting windows; future-only
+    // reservations are still excluded by the public API.
+    const currentGame = await page.request.get(`${base}/games?limit=100`, {
+      headers,
+    });
+    expect(currentGame.status(), await currentGame.text()).toBe(200);
+    const currentVersion = (await currentGame.json()).data.games.find(
+      (item: { id: string }) => item.id === game.id,
+    ).version;
+    const paginationSchedule = await page.request.put(
+      `${base}/games/${game.id}/schedule`,
+      {
+        headers: { ...headers, "Idempotency-Key": crypto.randomUUID() },
+        data: {
+          version: currentVersion,
+          reason: "real started-window archive pagination",
+          spec: {
+            timezone: "UTC",
+            mode: "interval",
+            daily_draw_times: [],
+            interval_seconds: 60,
+            busy_windows: [],
+            bet_open_before_seconds: 7200,
+            bet_close_before_seconds: 5,
+            weekdays: [0, 1, 2, 3, 4, 5, 6],
+            pause_dates: [],
+            holiday_dates: [],
+            holiday_policy: "normal",
+          },
+        },
+      },
+    );
+    expect(paginationSchedule.status(), await paginationSchedule.text()).toBe(
+      200,
+    );
+    const start = new Date(Date.now() + 60_000);
+    const historyGeneration = await page.request.post(
+      `${base}/games/${game.id}/periods/generate`,
+      {
+        headers: { ...headers, "Idempotency-Key": crypto.randomUUID() },
+        data: {
+          from: start.toISOString(),
+          to: new Date(start.valueOf() + 60 * 60_000).toISOString(),
+          reason: "reserve actual started periods for public history",
+        },
+      },
+    );
+    expect(historyGeneration.status(), await historyGeneration.text()).toBe(
+      200,
+    );
+    expect((await historyGeneration.json()).data.created).toBeGreaterThan(50);
+    await resultsPanel.getByLabel("Exact period", { exact: true }).fill("");
+    await resultsPanel
+      .getByLabel("Exact period", { exact: true })
+      .press("Enter");
+    await resultsPanel
+      .getByRole("tab", { name: "History", exact: true })
+      .click();
+    await expect(resultsPanel.locator(".dr-history-card")).toHaveCount(50);
+    const firstPagePeriods = await resultsPanel
+      .locator(".dr-history-card .dr-period")
+      .allTextContents();
+    const nextHistory = publicPage.waitForResponse(
+      (r) =>
+        r.url().includes(`/games/${game.id}/periods?`) &&
+        r.url().includes("offset=50"),
+    );
+    await resultsPanel
+      .getByRole("button", { name: "Next", exact: true })
+      .click();
+    const nextResponse = await nextHistory;
+    expect(nextResponse.status(), await nextResponse.text()).toBe(200);
+    await expect(
+      resultsPanel.locator(".dr-history-card").first(),
+    ).toBeVisible();
+    const secondPagePeriods = await resultsPanel
+      .locator(".dr-history-card .dr-period")
+      .allTextContents();
+    expect(secondPagePeriods.length).toBeGreaterThan(0);
+    expect(
+      secondPagePeriods.every((number) => !firstPagePeriods.includes(number)),
+    ).toBe(true);
+    await expect(
+      resultsPanel.getByRole("button", { name: "Previous", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      resultsPanel.getByRole("button", { name: "Next", exact: true }),
+    ).toBeDisabled();
+    expect(
+      await publicPage.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await publicPage.screenshot({
+      path: info.outputPath("public-period-history.png"),
+      fullPage: true,
+    });
+
+    // A lost read must not retain numbers from the previous filter or page.
+    await publicPage.route("**/api/v1/draw-results?**", (route) =>
+      route.abort("failed"),
+    );
+    await resultsPanel
+      .getByRole("tab", { name: "Results", exact: true })
+      .click();
+    await expect(
+      resultsPanel
+        .getByRole("alert")
+        .filter({ hasText: "Network request failed" }),
+    ).toBeVisible();
+    await expect(resultsPanel.locator(".dr-card")).toHaveCount(0);
+    await publicPage.unroute("**/api/v1/draw-results?**");
+    await resultsPanel
+      .getByRole("button", { name: "Retry", exact: true })
+      .click();
+    await expect(resultCard).toBeVisible();
+    await publicPage.goto(`http://harbor.localhost:5173/games/${game.id}`);
+    const compact = publicPage.locator(".draw-results--compact");
+    await expect(compact).toContainText(period.period_no);
+    await expect(compact.locator(".dr-digit-positions .dr-ball")).toHaveText([
+      "0",
+      "1",
+      "0",
+    ]);
+    await expect(compact).toContainText("not a valid outcome or payout");
+    expect(
+      await publicPage.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await publicPage.screenshot({
+      path: info.outputPath("public-draw-game-detail.png"),
+      fullPage: true,
+    });
+    const resultReads = publicApiRequests.filter(
+      ({ pathname }) =>
+        /\/draw-results(?:\/[^/]+)?$/.test(pathname) ||
+        /\/games\/[^/]+\/periods$/.test(pathname),
+    );
+    expect(resultReads.length).toBeGreaterThan(0);
+    expect(resultReads.every(({ method }) => method === "GET")).toBe(true);
+  } finally {
+    await publicPage.close();
+  }
 });
