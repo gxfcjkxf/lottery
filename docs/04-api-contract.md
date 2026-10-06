@@ -606,6 +606,19 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 
 API当前不写积分、不生成佣金/奖励记录，不修改加入归属或历史注单。代理码/推荐码加入、用户晋升、重新挂接及注单归属快照仍待后续；佣金差额/独立分配、周期边界、实际计算与发放尚未启用，不把可配置树当作完整代理运营平台。
 
+### 4.6 S6-f 加入码与归属（已接入）
+
+- 后台 GET/POST `/api/v1/admin/join-codes`、GET/PUT `/join-codes/{id}`、GET `/join-codes/{id}/history`；独立 `join_code.view.brand/platform` 与 `join_code.write.brand`，超管只读。所有写入有幂等、原因、版本、不可改写历史与审计。
+- Code DTO：`{id,brand_id,kind:"agent"|"referral",code,owner_member_id,agent_id:null|UUID,status:"active"|"disabled",starts_at:null|RFC3339,expires_at:null|RFC3339,version,usable:boolean,created_at,updated_at,audit_log_id?}`。code为服务器生成的24位大写十六进制字符串；身份/文本/类型/会员/代理不可换绑，需创建新码再停用旧码。usable仅为查询时状态，提交仍重新验证。
+- POST body：`{kind,owner_member_id,agent_id:null|UUID,starts_at:null|RFC3339,expires_at:null|RFC3339,reason}`；agent必须属于同品牌owner会员，referral的agent_id必须null；初始active、version1，成功201。PUT body：`{version,status,starts_at,expires_at,reason}`，成功200和version+1。日期允许显式null，起止均有值时要求start<expire；精度最多微秒，开始含/到期不含。回执日期按同一微秒时刻匹配，允许等价时区和尾零表示，不能按毫秒抹去真实差异；写回执必须含有效audit_log_id，GET可省略。
+- 列表 query仅 `kind`/`owner_member_id`/`limit`/`offset`，前两项可省；响应 `{brand_id,kind:null|kind,owner_member_id:null|UUID,items,limit,offset,total_count:string}`。分页默认20、limit1–100、offset0–1000000；未知/重复筛选拒绝。
+- 历史响应 `{brand_id,code_id,items:[{id,brand_id,code_id,version,status,starts_at,expires_at,actor_id,reason,audit_log_id,created_at}],limit,offset,total_count:string}`；仅limit/offset分页。
+- 用户 GET `/me/join-codes?limit&offset` 返回自身会员的Code分页 `{brand_id,member_id,items,limit,offset,total_count:string}`，不公开其他人的编码、审核理由或管理员资料。GET `/me/attribution` 返回 `{brand_id,member_id,join_method,joined_at,code_id:null|UUID,source_code:null|string,legacy:boolean}`，不公开上级配置和私人树。
+- register/login首次加入及telegram首入增加可选 `agent_code` 或 `referral_code`，互斥；空字段等同未选，非空规范为去首尾空白并大写。编码必须属于当前品牌、在有效期内且启用；来源会员/全局身份正常，agent还须品牌代理政策及全部祖先启用。无效/外品牌/禁用/过期均统一 `JOIN_CODE_UNAVAILABLE`，不泄露来源身份。
+- 已存在品牌成员携带非空加入码时返回409 `JOIN_ATTRIBUTION_FIXED`，不能换归属；重新正常登录需用户去掉编码并提交新操作。未接受品牌条款不能入品牌，运营新增成员仍需本人首次同意。运营新增可选上述编码，但join_method仍operator，快照记录code_kind及来源；不代同意、不改全局身份。
+- 加入码不自动晋升代理，不覆盖旧成员或旧注单；停用编码仅阻止新的归属建立。会员初始归属与新注单的提交时代理政策/路径/配置版本由数据库保存不可改写快照；历史缺失只标legacy，不补造代理/佣金事实。此阶段无资金入账、奖励或佣金任务。
+- 错误：`JOIN_CODE_INPUT_INVALID`400、`JOIN_CODE_NOT_FOUND`404、`JOIN_CODE_DENIED`403、`JOIN_CODE_VERSION_CONFLICT`409、`JOIN_CODE_STATE_CONFLICT`409、存储失败503。Code读写与原请求确认分开，断网/畸形回执保留原正文/键，单纯GET不能替代原回执；换品牌/会话及迟到回调隔离。
+
 ## 5. 错误码
 
 至少定义以下稳定错误码：

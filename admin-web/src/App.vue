@@ -22,7 +22,9 @@ const CorrectionManagement = defineAsyncComponent(() => import("./CorrectionMana
 const NotificationDeliveries = defineAsyncComponent(() => import("./NotificationDeliveries.vue"));
 const ReportsManagement = defineAsyncComponent(() => import("./ReportsManagement.vue"));
 const AgentManagement = defineAsyncComponent(() => import("./AgentManagement.vue"));
+const JoinCodeManagement = defineAsyncComponent(() => import("./JoinCodeManagement.vue"));
 import { clearAllPendingAgentWrites } from "./agents-state";
+import { clearAllPendingJoinCodeWrites } from "./join-codes-state";
 import { clearAllPendingDeliveryRetries } from "./notification-delivery-state";
 const RuleVersions = defineAsyncComponent(() => import("./RuleVersions.vue"));
 const WithdrawalPolicySettings = defineAsyncComponent(
@@ -52,6 +54,7 @@ type Page =
   | "品牌和域名"
   | "用户和成员"
   | "代理树"
+  | "加入码"
   | "规则配置"
   | "期次和开奖"
   | "注单和异常"
@@ -66,6 +69,7 @@ const nav: { name: Page; icon: string; group: string }[] = [
   { name: "品牌和域名", icon: "◇", group: "平台" },
   { name: "用户和成员", icon: "♙", group: "平台" },
   { name: "代理树", icon: "⌘", group: "平台" },
+  { name: "加入码", icon: "⌁", group: "平台" },
   { name: "规则配置", icon: "⌗", group: "运营" },
   { name: "期次和开奖", icon: "◷", group: "运营" },
   { name: "注单和异常", icon: "▤", group: "运营" },
@@ -167,6 +171,17 @@ onMounted(() => {
 });
 onUnmounted(() => window.removeEventListener("resize", updateMobile));
 const groups = computed(() => [...new Set(nav.map((item) => item.group))]);
+const canViewJoinCodes = computed(() => {
+  if (!account.value || !selectedBrandId.value) return false;
+  if (account.value.super_admin)
+    return (account.value.platform_permissions ?? []).includes("join_code.view.platform");
+  if (!account.value.brand_ids.includes(selectedBrandId.value)) return false;
+  const permissions = account.value.permissions_by_brand === undefined
+    ? account.value.permissions ?? []
+    : account.value.permissions_by_brand[selectedBrandId.value] ?? [];
+  return permissions.includes("join_code.view.brand");
+});
+const visibleNav = computed(() => nav.filter((item) => item.name !== "加入码" || canViewJoinCodes.value));
 const currentIcon = computed(
   () => nav.find((item) => item.name === page.value)?.icon ?? "▦",
 );
@@ -226,6 +241,7 @@ const apiErrorText = (error: unknown) =>
   error instanceof Error ? error.message : "请求失败，请重试";
 const clearAdminData = () => {
   clearAllPendingAgentWrites();
+  clearAllPendingJoinCodeWrites();
   clearAllPendingDeliveryRetries();
   correctionSettlementPeriod.value = null;
   account.value = null;
@@ -249,6 +265,7 @@ const restoreAdminSession = async () => {
   authLoading.value = true;
   try {
     const result = await api.me();
+    if (account.value && account.value.id !== result.account.id) clearAllPendingJoinCodeWrites();
     account.value = result.account;
     await loadAdminResources();
   } catch (error) {
@@ -271,6 +288,7 @@ const login = async () => {
     );
     loginPassword.value = "";
     const result = await api.me();
+    if (account.value && account.value.id !== result.account.id) clearAllPendingJoinCodeWrites();
     account.value = result.account;
     selectedBrandId.value = "";
     loginIdempotencyKey.value = createIdempotencyKey();
@@ -637,7 +655,7 @@ const ledger = [
         <template v-for="group in groups" :key="group"
           ><p class="nav-heading">{{ group }}</p>
           <button
-            v-for="item in nav.filter((entry) => entry.group === group)"
+            v-for="item in visibleNav.filter((entry) => entry.group === group)"
             :key="item.name"
             class="nav-item"
             :class="{ active: page === item.name }"
@@ -698,7 +716,8 @@ const ledger = [
               page !== '报表和对账' &&
               page !== '代理树' &&
               page !== '资金与账本' &&
-              page !== '账号与权限'
+              page !== '账号与权限' &&
+              page !== '加入码'
             "
             class="prototype-badge"
             >演示原型</span
@@ -734,7 +753,8 @@ const ledger = [
           page !== '代理树' &&
           page !== '资金与账本' &&
           page !== '注单和异常' &&
-          page !== '账号与权限'
+          page !== '账号与权限' &&
+          page !== '加入码'
         "
         class="demo-banner"
       >
@@ -1371,6 +1391,15 @@ const ledger = [
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
         <div v-else class="panel directory-state"><h1>代理管理</h1>
           <p>{{ account ? '请先选择真实后台品牌。' : '请先登录后台账号查看代理配置。' }}</p>
+          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">进入管理员登录</button>
+        </div>
+      </section>
+
+      <section v-else-if="page === '加入码'" class="page-content">
+        <JoinCodeManagement v-if="account && selectedBrandId && canViewJoinCodes" :key="account.id + ':' + selectedBrandId"
+          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+        <div v-else class="panel directory-state"><h1>加入码管理</h1>
+          <p>{{ !account ? '请先登录后台账号。' : !selectedBrandId ? '请先选择真实后台品牌。' : '当前账号没有此品牌的加入码查看权限。' }}</p>
           <button v-if="!account" class="button button-primary" @click="go('用户和成员')">进入管理员登录</button>
         </div>
       </section>
@@ -2297,7 +2326,7 @@ const ledger = [
         </div>
       </section>
 
-      <footer class="page-footer">
+      <footer v-if="page !== '加入码'" class="page-footer">
         <span>Aurora Operations Console <b>·</b> Prototype v0.1</span
         ><span>{{
           page === "用户和成员" && account
@@ -2517,7 +2546,7 @@ const ledger = [
           ><button aria-label="关闭导航" @click="mobileMore = false">×</button>
         </div>
         <button
-          v-for="item in nav.filter(
+          v-for="item in visibleNav.filter(
             (entry) =>
               !(
                 ['工作台', '用户和成员', '期次和开奖', '资金与账本'] as Page[]

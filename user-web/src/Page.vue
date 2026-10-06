@@ -20,14 +20,17 @@ import BettingPanel from "./BettingPanel.vue";
 import DrawResultsPanel from "./DrawResultsPanel.vue";
 import NotificationsPanel from "./NotificationsPanel.vue";
 import AgentPanel from "./AgentPanel.vue";
+import JoinCodesPanel from "./JoinCodesPanel.vue";
 import { clearAllAgentUpdates } from "./agent-state";
 import {
   createAuthClient,
+  normalizeJoinCodeFields,
   type AuthChallenge,
   type AuthFeatures,
   type TelegramChallenge,
 } from "../../shared/src/auth";
 import {
+  ApiError,
   authErrorMessage,
   discardAccessToken,
   isBrandJoinRequired,
@@ -62,6 +65,15 @@ const privacyAgreed = ref(false);
 const serviceTermsAgreed = ref(false);
 const joinTermsAgreed = ref(false);
 const joinTermsPrompt = ref(false);
+const joinAttributionFixed = ref(false);
+const joinSource = ref<"none" | "agent" | "referral">("none");
+const joinCode = ref("");
+const pendingBrandJoin = ref<{
+  identifier: string;
+  password: string;
+  source: "none" | "agent" | "referral";
+  fields: { agent_code?: string; referral_code?: string };
+} | null>(null);
 const authBusy = ref(false);
 const authError = ref("");
 const identifier = ref("");
@@ -206,6 +218,15 @@ const copy = {
     expiry: "Draw status",
     ruleVersion: "Rules version 1.2",
     notificationHelp: "Notifications are sample content in this prototype.",
+    invites: "Join codes",
+    joinSourceLabel: "Optional join source",
+    joinSourceNone: "No code",
+    joinSourceAgent: "Agent code",
+    joinSourceReferral: "Referral code",
+    joinCodeLabel: "24-character code",
+    joinSourceRequired: "Enter a 24-character hexadecimal code, or choose no code.",
+    joinSourceReview: "Join source to apply",
+    joinSourceNoCode: "No code selected",
   },
   zh: {
     home: "首页",
@@ -281,6 +302,15 @@ const copy = {
     expiry: "期次状态",
     ruleVersion: "规则版本 1.2",
     notificationHelp: "此原型中的通知为示例内容。",
+    invites: "加入码",
+    joinSourceLabel: "可选加入来源",
+    joinSourceNone: "不使用代码",
+    joinSourceAgent: "代理码",
+    joinSourceReferral: "推荐码",
+    joinCodeLabel: "24 位代码",
+    joinSourceRequired: "请输入 24 位十六进制代码，或选择不使用代码。",
+    joinSourceReview: "将使用的加入来源",
+    joinSourceNoCode: "未选择代码",
   },
 };
 const t = computed(() => copy[locale.value]);
@@ -302,6 +332,7 @@ const nav = computed(() => [
   { to: "/results", label: t.value.results, icon: "◷" },
   { to: "/notifications", label: t.value.notifications, icon: "◌" },
   { to: "/agent", label: locale.value === "en" ? "Agent settings" : "代理设置", icon: "⌘" },
+  { to: "/invites", label: t.value.invites, icon: "⌁" },
   { to: "/help", label: t.value.help, icon: "?" },
 ]);
 const isAuth = computed(() => ["/login", "/register"].includes(route.path));
@@ -705,6 +736,19 @@ function captchaInput() {
       }
     : {};
 }
+function captureJoinChoice() {
+  if (joinSource.value === "none") return { source: "none" as const, fields: {} };
+  const field = joinSource.value === "agent" ? "agent_code" : "referral_code";
+  try {
+    const fields = normalizeJoinCodeFields({ [field]: joinCode.value });
+    if (!fields.agent_code && !fields.referral_code) {
+      throw new TypeError(t.value.joinSourceRequired);
+    }
+    return { source: joinSource.value, fields };
+  } catch {
+    throw new TypeError(t.value.joinSourceRequired);
+  }
+}
 function passwordError() {
   const bytes = passwordByteLength(password.value);
   if (bytes < 10 || bytes > 128)
@@ -715,6 +759,14 @@ function passwordError() {
 }
 function handleAuthError(error: unknown) {
   if (isBrandJoinRequired(error)) {
+    joinAttributionFixed.value = false;
+    const pending = pendingBrandJoin.value;
+    if (pending) {
+      identifier.value = pending.identifier;
+      password.value = pending.password;
+      joinSource.value = pending.source;
+      joinCode.value = pending.fields.agent_code || pending.fields.referral_code || "";
+    }
     joinTermsPrompt.value = true;
     joinTermsAgreed.value = false;
     authError.value =
@@ -728,11 +780,17 @@ function handleAuthError(error: unknown) {
 async function finishAuth(
   session: import("../../shared/src/auth").AuthSession,
 ) {
+  pendingBrandJoin.value = null;
+  joinTermsPrompt.value = false;
+  joinAttributionFixed.value = false;
+  password.value = "";
   authProfile.value = discardAccessToken(session);
   await router.push("/account");
 }
 async function authSubmit() {
+  if (joinTermsPrompt.value) return;
   authError.value = "";
+  joinAttributionFixed.value = false;
   joinTermsPrompt.value = false;
   if (!authConfigurationLoaded.value) {
     authError.value =
@@ -771,6 +829,20 @@ async function authSubmit() {
         : "请输入用户名或手机号。";
     return;
   }
+  let choice: ReturnType<typeof captureJoinChoice>;
+  try {
+    choice = captureJoinChoice();
+  } catch (error) {
+    authError.value = error instanceof Error ? error.message : t.value.joinSourceRequired;
+    return;
+  }
+  if (route.path === "/login") {
+    pendingBrandJoin.value = {
+      identifier: normalized.identifier,
+      password: password.value,
+      ...choice,
+    };
+  }
   authBusy.value = true;
   try {
     const session =
@@ -778,6 +850,7 @@ async function authSubmit() {
         ? await authApi.register({
             ...authTerms(),
             ...captchaInput(),
+            ...choice.fields,
             password: password.value,
             ...(normalized.phone
               ? { phone: normalized.phone }
@@ -790,7 +863,8 @@ async function authSubmit() {
           });
     await finishAuth(session);
   } catch (error) {
-    handleAuthError(error);
+    if (isBrandJoinRequired(error) && route.path === "/login") handleAuthError(error);
+    else authError.value = authErrorMessage(error);
     await refreshCaptcha();
   } finally {
     authBusy.value = false;
@@ -812,24 +886,55 @@ async function acceptBrandTermsAndLogin() {
         : "请加载新的验证码图片并输入验证码。";
     return;
   }
+  const pending = pendingBrandJoin.value;
+  if (!pending) {
+    authError.value =
+      locale.value === "en"
+        ? "Please sign in again before joining this brand."
+        : "请重新登录后再加入此品牌。";
+    joinTermsPrompt.value = false;
+    return;
+  }
   authError.value = "";
   authBusy.value = true;
   try {
-    const normalized = normalizeIdentifier(identifier.value);
     const session = await authApi.login({
-      identifier: normalized.identifier,
-      password: password.value,
+      identifier: pending.identifier,
+      password: pending.password,
       ...authTerms(),
       ...captchaInput(),
+      ...pending.fields,
     });
     joinTermsPrompt.value = false;
     await finishAuth(session);
   } catch (error) {
-    handleAuthError(error);
+    if (
+      error instanceof ApiError &&
+      error.code?.toUpperCase() === "JOIN_ATTRIBUTION_FIXED"
+    ) {
+      joinAttributionFixed.value = true;
+      authError.value =
+        locale.value === "en"
+          ? "This membership already has a fixed join source. Cancel this attempt to start a new sign-in without a code; its existing attribution will remain unchanged."
+          : "此会员已有固定加入来源。取消本次操作后可不使用代码重新登录；现有归属不会更改。";
+    } else if (isBrandJoinRequired(error)) {
+      handleAuthError(error);
+    } else {
+      authError.value = authErrorMessage(error);
+    }
     await refreshCaptcha();
   } finally {
     authBusy.value = false;
   }
+}
+function cancelBrandJoin(): void {
+  pendingBrandJoin.value = null;
+  joinTermsPrompt.value = false;
+  joinTermsAgreed.value = false;
+  joinAttributionFixed.value = false;
+  joinSource.value = "none";
+  joinCode.value = "";
+  authError.value = "";
 }
 async function startTelegramAuth() {
   if (!telegramReady.value || authBusy.value) return;
@@ -843,6 +948,7 @@ async function startTelegramAuth() {
   authBusy.value = true;
   authError.value = "";
   try {
+    const choice = captureJoinChoice();
     const challenge = telegramChallenge.value!;
     const idToken = await requestTelegramIdToken(
       authConfiguration.value.telegram_client_id!,
@@ -853,6 +959,7 @@ async function startTelegramAuth() {
       challenge_id: challenge.id,
       nonce: challenge.nonce,
       ...authTerms(),
+      ...choice.fields,
     });
     await finishAuth(session);
   } catch (error) {
@@ -1007,6 +1114,14 @@ watch(locale, () => {
 watch(
   () => route.path,
   (path) => {
+    if (path !== "/login") {
+      pendingBrandJoin.value = null;
+      joinTermsPrompt.value = false;
+      joinTermsAgreed.value = false;
+      joinAttributionFixed.value = false;
+      joinSource.value = "none";
+      joinCode.value = "";
+    }
     if (path === "/account" || path === "/notifications") void loadProfile();
     if (path === "/login" || path === "/register") {
       if (authConfigurationLoaded.value) void refreshCaptcha();
@@ -1209,6 +1324,7 @@ watch(
                   v-model="identifier"
                   required
                   autocomplete="username"
+                  :readonly="joinTermsPrompt"
                   :placeholder="
                     locale === 'en'
                       ? 'Username or +65 8123 4567'
@@ -1222,10 +1338,34 @@ watch(
                   required
                   type="password"
                   autocomplete="current-password"
+                  :readonly="joinTermsPrompt"
                   minlength="10"
                   maxlength="128"
                   placeholder="••••••••••"
               /></label>
+              <div class="join-code-choice">
+                <label
+                  >{{ t.joinSourceLabel }}
+                  <select v-model="joinSource" :disabled="joinTermsPrompt">
+                    <option value="none">{{ t.joinSourceNone }}</option>
+                    <option value="agent">{{ t.joinSourceAgent }}</option>
+                    <option value="referral">{{ t.joinSourceReferral }}</option>
+                  </select>
+                </label>
+                <label v-if="joinSource !== 'none'">
+                  {{ t.joinCodeLabel }}
+                  <input
+                    v-model="joinCode"
+                    :readonly="joinTermsPrompt"
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    spellcheck="false"
+                    maxlength="64"
+                    inputmode="text"
+                    placeholder="A1B2C3D4E5F607182930ABCD"
+                  />
+                </label>
+              </div>
               <div v-if="authConfiguration.captcha_enabled" class="captcha-box">
                 <div class="captcha-heading">
                   <strong>{{
@@ -1324,6 +1464,11 @@ watch(
                       : "此账户已存在。加入当前品牌需同意以下条款："
                   }}
                 </p>
+                <div class="join-source-review">
+                  <strong>{{ t.joinSourceReview }}</strong>
+                  <span v-if="pendingBrandJoin?.source === 'none'">{{ t.joinSourceNoCode }}</span>
+                  <span v-else>{{ pendingBrandJoin?.source === 'agent' ? t.joinSourceAgent : t.joinSourceReferral }} · {{ pendingBrandJoin?.fields.agent_code || pendingBrandJoin?.fields.referral_code }}</span>
+                </div>
                 <label class="check-row"
                   ><input v-model="joinTermsAgreed" type="checkbox" />{{
                     locale === "en" ? "I accept the" : "我已阅读并同意"
@@ -1354,6 +1499,23 @@ watch(
                 {{ authError }}
               </p>
               <button
+                v-if="route.path === '/login' && joinTermsPrompt"
+                type="button"
+                class="button button-secondary full-button"
+                :disabled="authBusy"
+                @click="cancelBrandJoin"
+              >
+                {{
+                  joinAttributionFixed
+                    ? locale === "en"
+                      ? "Cancel and choose no code"
+                      : "取消并选择不使用代码"
+                    : locale === "en"
+                      ? "Cancel and clear join choice"
+                      : "取消并清除加入来源"
+                }}
+              </button>
+              <button
                 v-if="!authConfigurationLoaded"
                 type="button"
                 class="button button-secondary full-button"
@@ -1371,6 +1533,7 @@ watch(
                 }}
               </button>
               <button
+                v-if="!joinTermsPrompt"
                 class="button button-primary full-button"
                 type="submit"
                 :disabled="authBusy || !captchaReady"
@@ -1388,7 +1551,7 @@ watch(
                 v-if="telegramReady"
                 class="button button-secondary full-button"
                 type="button"
-                :disabled="authBusy || !privacyAgreed || !serviceTermsAgreed"
+                :disabled="authBusy || !privacyAgreed || !serviceTermsAgreed || joinTermsPrompt"
                 @click="startTelegramAuth"
               >
                 {{
@@ -1463,6 +1626,17 @@ watch(
               </p>
             </form>
           </div>
+        </section>
+
+        <section
+          v-else-if="route.path === '/invites'"
+          class="page-section"
+        >
+          <JoinCodesPanel
+            :locale="locale"
+            :brand-name="brandName"
+            :brand-code="walletBrandCode"
+          />
         </section>
 
         <section
@@ -2545,3 +2719,39 @@ watch(
     </div>
   </div>
 </template>
+
+<style scoped>
+.join-code-choice {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+.join-code-choice label {
+  display: grid;
+  gap: 7px;
+  color: #596a5e;
+  font-size: 9px;
+  font-weight: 600;
+}
+.join-code-choice select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #e3e9e2;
+  border-radius: 9px;
+  background: #fff;
+  color: #35483b;
+  font-size: 11px;
+}
+.join-source-review {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 12px;
+  padding: 10px;
+  border-radius: 9px;
+  background: #eef3eb;
+  color: #425c4a;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+</style>

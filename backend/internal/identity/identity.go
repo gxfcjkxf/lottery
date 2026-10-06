@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/gxfcjkxf/lottery/backend/internal/attribution"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
 	"github.com/gxfcjkxf/lottery/backend/internal/events"
@@ -65,6 +66,8 @@ type Authentication struct {
 	ExpiresAt   time.Time `json:"expires_at"`
 }
 type RegisterInput struct {
+	AgentCode     string `json:"agent_code,omitempty"`
+	ReferralCode  string `json:"referral_code,omitempty"`
 	CaptchaID     string `json:"captcha_id,omitempty"`
 	CaptchaAnswer string `json:"captcha_answer,omitempty"`
 	Username      string `json:"username"`
@@ -74,6 +77,8 @@ type RegisterInput struct {
 	Terms         string `json:"service_terms_version"`
 }
 type LoginInput struct {
+	AgentCode     string `json:"agent_code,omitempty"`
+	ReferralCode  string `json:"referral_code,omitempty"`
 	CaptchaID     string `json:"captcha_id,omitempty"`
 	CaptchaAnswer string `json:"captcha_answer,omitempty"`
 	Identifier    string `json:"identifier"`
@@ -191,6 +196,10 @@ func (s *Store) issue(ctx context.Context, tx pgx.Tx, v View, meta Metadata, act
 	return mutation.OK(200, Authentication{View: v, AccessToken: token, TokenType: "Bearer", ExpiresAt: expiry}), nil
 }
 func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in RegisterInput, meta Metadata) (mutation.Result, error) {
+	kind, code, joinErr := attribution.Normalize(in.AgentCode, in.ReferralCode)
+	if joinErr != nil {
+		return mutation.Fail(400, "JOIN_CODE_INPUT_INVALID", "加入码格式不正确，且代理码与推荐码不能同时使用"), nil
+	}
 	var err error
 	if in.Username != "" {
 		in.Username, err = normalizeUsername(in.Username)
@@ -232,8 +241,11 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 	if err != nil {
 		return mutation.Result{}, err
 	}
-	m, err := s.join(ctx, tx, brand, u.ID, in.Privacy, in.Terms, meta)
+	m, err := s.joinCode(ctx, tx, brand, u.ID, in.Privacy, in.Terms, kind, code, meta)
 	if err != nil {
+		if errors.Is(attribution.DatabaseError(err), attribution.ErrUnavailable) {
+			return mutation.Fail(400, "JOIN_CODE_UNAVAILABLE", "加入码不可用，请核对当前品牌、编码及有效期"), nil
+		}
 		return mutation.Result{}, err
 	}
 	result, err := s.issue(ctx, tx, View{u, m}, meta, "user.register")
@@ -243,8 +255,17 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 func (s *Store) join(ctx context.Context, tx pgx.Tx, brand, user, privacy, terms string, meta Metadata) (Member, error) {
 	return s.createMember(ctx, tx, brand, user, privacy, terms, meta, memberCreateOptions{joinMethod: "domain", termsAccepted: true})
 }
+func (s *Store) joinCode(ctx context.Context, tx pgx.Tx, brand, user, privacy, terms, kind, code string, meta Metadata) (Member, error) {
+	method := "domain"
+	if kind != "" {
+		method = kind + "_code"
+	}
+	return s.createMember(ctx, tx, brand, user, privacy, terms, meta, memberCreateOptions{joinMethod: method, termsAccepted: true, codeKind: kind, code: code})
+}
 
 type memberCreateOptions struct {
+	codeKind      string
+	code          string
 	joinMethod    string
 	createdBy     string
 	displayName   string
@@ -256,11 +277,15 @@ func (s *Store) createMember(ctx context.Context, tx pgx.Tx, brand, user, privac
 	var m Member
 	m.ID = ids.New()
 	m.BrandID = brand
+	selected := json.RawMessage(`{}`)
+	if opts.codeKind != "" {
+		selected, _ = json.Marshal(map[string]string{"kind": opts.codeKind, "code": opts.code})
+	}
 	err := tx.QueryRow(ctx, `INSERT INTO brand_members
 		(id,brand_id,global_user_id,join_method,join_domain,privacy_policy_version,service_terms_version,
-		 terms_accepted,accepted_at,created_by,display_name,notes)
-		VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,$8,CASE WHEN $8 THEN now() ELSE NULL END,NULLIF($9,'')::uuid,$10,$11)
-		RETURNING status,display_name,joined_at`, m.ID, brand, user, opts.joinMethod, meta.Domain, privacy, terms, opts.termsAccepted, opts.createdBy, opts.displayName, opts.notes).Scan(&m.Status, &m.DisplayName, &m.JoinedAt)
+		 terms_accepted,accepted_at,created_by,display_name,notes,attribution_snapshot)
+		VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,$8,CASE WHEN $8 THEN now() ELSE NULL END,NULLIF($9,'')::uuid,$10,$11,$12)
+		RETURNING status,display_name,joined_at`, m.ID, brand, user, opts.joinMethod, meta.Domain, privacy, terms, opts.termsAccepted, opts.createdBy, opts.displayName, opts.notes, selected).Scan(&m.Status, &m.DisplayName, &m.JoinedAt)
 	if err != nil {
 		return m, err
 	}
@@ -298,6 +323,10 @@ func acceptPendingMember(ctx context.Context, tx pgx.Tx, brand, user string, m *
 }
 
 func (s *Store) Login(ctx context.Context, tx pgx.Tx, brand string, in LoginInput, meta Metadata) (mutation.Result, error) {
+	kind, code, joinErr := attribution.Normalize(in.AgentCode, in.ReferralCode)
+	if joinErr != nil {
+		return mutation.Fail(400, "JOIN_CODE_INPUT_INVALID", "加入码格式不正确，且代理码与推荐码不能同时使用"), nil
+	}
 	cfg, err := settings(ctx, tx, brand)
 	if err != nil {
 		return mutation.Result{}, err
@@ -322,13 +351,19 @@ func (s *Store) Login(ctx context.Context, tx pgx.Tx, brand string, in LoginInpu
 	}
 	var m Member
 	err = tx.QueryRow(ctx, `SELECT id::text,brand_id::text,status,display_name,joined_at FROM brand_members WHERE brand_id=$1 AND global_user_id=$2 FOR UPDATE`, brand, u.ID).Scan(&m.ID, &m.BrandID, &m.Status, &m.DisplayName, &m.JoinedAt)
+	if err == nil && kind != "" {
+		return mutation.Fail(409, "JOIN_ATTRIBUTION_FIXED", "当前品牌成员已存在，加入归属不能更改；请去掉编码再正常登录"), nil
+	}
 	if err == pgx.ErrNoRows {
 		if !accept(cfg, in.Privacy, in.Terms) {
 			return mutation.Fail(409, "BRAND_JOIN_REQUIRED", "请接受当前品牌条款后加入"), nil
 		}
-		m, err = s.join(ctx, tx, brand, u.ID, in.Privacy, in.Terms, meta)
+		m, err = s.joinCode(ctx, tx, brand, u.ID, in.Privacy, in.Terms, kind, code, meta)
 	}
 	if err != nil {
+		if errors.Is(attribution.DatabaseError(err), attribution.ErrUnavailable) {
+			return mutation.Fail(400, "JOIN_CODE_UNAVAILABLE", "加入码不可用，请核对当前品牌、编码及有效期"), nil
+		}
 		return mutation.Result{}, err
 	}
 	accepted, err := acceptPendingMember(ctx, tx, brand, u.ID, &m, cfg, in.Privacy, in.Terms, meta)

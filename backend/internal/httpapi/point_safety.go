@@ -11,6 +11,7 @@ import (
 )
 
 func registerPointSafetyRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
+	registerJoinCodeAdmin(handle, d)
 	registerAgentAdminRoutes(handle, d)
 	registerWithdrawalPolicyRoutes(handle, d)
 	registerNotificationAdminRoutes(handle, d)

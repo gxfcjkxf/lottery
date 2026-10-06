@@ -27,6 +27,7 @@ const router = createRouter({
     { path: "/withdraw", component: Page },
     { path: "/notifications", component: Page },
     { path: "/agent", component: Page },
+    { path: "/invites", component: Page },
     { path: "/help", component: Page },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],

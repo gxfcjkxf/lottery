@@ -2,6 +2,8 @@ package identity
 
 import (
 	"context"
+	"errors"
+	"github.com/gxfcjkxf/lottery/backend/internal/attribution"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
@@ -10,15 +12,21 @@ import (
 )
 
 type TelegramInput struct {
-	IDToken     string `json:"id_token"`
-	ChallengeID string `json:"challenge_id"`
-	Nonce       string `json:"nonce"`
-	Privacy     string `json:"privacy_policy_version"`
-	Terms       string `json:"service_terms_version"`
-	Bind        bool   `json:"bind,omitempty"`
+	AgentCode    string `json:"agent_code,omitempty"`
+	ReferralCode string `json:"referral_code,omitempty"`
+	IDToken      string `json:"id_token"`
+	ChallengeID  string `json:"challenge_id"`
+	Nonce        string `json:"nonce"`
+	Privacy      string `json:"privacy_policy_version"`
+	Terms        string `json:"service_terms_version"`
+	Bind         bool   `json:"bind,omitempty"`
 }
 
 func (s *Store) Telegram(ctx context.Context, tx pgx.Tx, brand string, claims telegramauth.Claims, in TelegramInput, bindUser string, meta Metadata) (mutation.Result, error) {
+	kind, code, joinErr := attribution.Normalize(in.AgentCode, in.ReferralCode)
+	if joinErr != nil {
+		return mutation.Fail(400, "JOIN_CODE_INPUT_INVALID", "加入码格式不正确，且代理码与推荐码不能同时使用"), nil
+	}
 	cfg, err := settings(ctx, tx, brand)
 	if err != nil {
 		return mutation.Result{}, err
@@ -68,11 +76,14 @@ func (s *Store) Telegram(ctx context.Context, tx pgx.Tx, brand string, claims te
 	}
 	var m Member
 	err = tx.QueryRow(ctx, `SELECT id::text,brand_id::text,status,display_name,joined_at FROM brand_members WHERE brand_id=$1 AND global_user_id=$2 FOR UPDATE`, brand, u.ID).Scan(&m.ID, &m.BrandID, &m.Status, &m.DisplayName, &m.JoinedAt)
+	if err == nil && kind != "" {
+		return mutation.Fail(409, "JOIN_ATTRIBUTION_FIXED", "当前品牌成员已存在，加入归属不能更改；请去掉编码再正常登录"), nil
+	}
 	if err == pgx.ErrNoRows {
 		if !accept(cfg, in.Privacy, in.Terms) {
 			return mutation.Fail(409, "BRAND_JOIN_REQUIRED", "请接受当前品牌条款后加入"), nil
 		}
-		m, err = s.join(ctx, tx, brand, u.ID, in.Privacy, in.Terms, meta)
+		m, err = s.joinCode(ctx, tx, brand, u.ID, in.Privacy, in.Terms, kind, code, meta)
 		if err == nil {
 			runes := []rune(claims.Name)
 			if len(runes) > 80 {
@@ -83,6 +94,9 @@ func (s *Store) Telegram(ctx context.Context, tx pgx.Tx, brand string, claims te
 		}
 	}
 	if err != nil {
+		if errors.Is(attribution.DatabaseError(err), attribution.ErrUnavailable) {
+			return mutation.Fail(400, "JOIN_CODE_UNAVAILABLE", "加入码不可用，请核对当前品牌、编码及有效期"), nil
+		}
 		return mutation.Result{}, err
 	}
 	accepted, err := acceptPendingMember(ctx, tx, brand, u.ID, &m, cfg, in.Privacy, in.Terms, meta)

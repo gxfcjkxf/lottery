@@ -38,6 +38,8 @@ export interface RegisterInput extends AuthTerms {
   username?: string;
   phone?: string;
   password: string;
+  agent_code?: string;
+  referral_code?: string;
   captcha_id?: string;
   captcha_answer?: string;
 }
@@ -47,6 +49,8 @@ export interface LoginInput {
   password: string;
   privacy_policy_version?: string;
   service_terms_version?: string;
+  agent_code?: string;
+  referral_code?: string;
   captcha_id?: string;
   captcha_answer?: string;
 }
@@ -73,6 +77,8 @@ export interface TelegramLoginInput extends AuthTerms {
   id_token: string;
   challenge_id: string;
   nonce: string;
+  agent_code?: string;
+  referral_code?: string;
 }
 
 export interface ProfileInput {
@@ -104,10 +110,16 @@ export function createAuthClient(options: ApiClientOptions = {}) {
     getChallenge: () => api.request<AuthChallenge>(`${base}/auth/challenge`),
     getTelegramChallenge: () =>
       api.request<TelegramChallenge>(`${base}/auth/telegram/challenge`),
-    register: (input: RegisterInput) =>
-      api.request<AuthSession>(`${base}/auth/register`, jsonRequest(input)),
-    login: (input: LoginInput) =>
-      api.request<AuthSession>(`${base}/auth/login`, jsonRequest(input)),
+    register: async (input: RegisterInput) =>
+      api.request<AuthSession>(
+        `${base}/auth/register`,
+        jsonRequest(withNormalizedJoinCodes(input)),
+      ),
+    login: async (input: LoginInput) =>
+      api.request<AuthSession>(
+        `${base}/auth/login`,
+        jsonRequest(withNormalizedJoinCodes(input)),
+      ),
     logout: () => api.request<unknown>(`${base}/auth/logout`, jsonRequest({})),
     me: () => api.request<AuthProfile>(`${base}/me`),
     updateProfile: (input: ProfileInput) =>
@@ -115,9 +127,40 @@ export function createAuthClient(options: ApiClientOptions = {}) {
         `${base}/me/profile`,
         jsonRequest(input, "PATCH"),
       ),
-    telegram: (input: TelegramLoginInput) =>
-      api.request<AuthSession>(`${base}/auth/telegram`, jsonRequest(input)),
+    telegram: async (input: TelegramLoginInput) =>
+      api.request<AuthSession>(
+        `${base}/auth/telegram`,
+        jsonRequest(withNormalizedJoinCodes(input)),
+      ),
   };
+}
+
+export function normalizeJoinCodeFields(input: {
+  agent_code?: string;
+  referral_code?: string;
+}): { agent_code?: string; referral_code?: string } {
+  const agentCode = input.agent_code?.trim().toUpperCase() ?? "";
+  const referralCode = input.referral_code?.trim().toUpperCase() ?? "";
+  if (agentCode && referralCode) {
+    throw new TypeError("Choose either an agent code or a referral code");
+  }
+  for (const code of [agentCode, referralCode]) {
+    if (code && !/^[0-9A-F]{24}$/.test(code)) {
+      throw new TypeError("Join code must contain exactly 24 hexadecimal characters");
+    }
+  }
+  return {
+    ...(agentCode ? { agent_code: agentCode } : {}),
+    ...(referralCode ? { referral_code: referralCode } : {}),
+  };
+}
+
+function withNormalizedJoinCodes<T extends { agent_code?: string; referral_code?: string }>(
+  input: T,
+): Omit<T, "agent_code" | "referral_code"> &
+  ReturnType<typeof normalizeJoinCodeFields> {
+  const { agent_code: _agentCode, referral_code: _referralCode, ...fields } = input;
+  return { ...fields, ...normalizeJoinCodeFields(input) };
 }
 
 function jsonRequest(body: unknown, method = "POST"): RequestInit {

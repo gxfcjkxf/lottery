@@ -94,6 +94,7 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   const reviewer = await login(page.request, process.env.TEST_RULE_REVIEWER_USERNAME!, process.env.TEST_RULE_REVIEWER_PASSWORD!);
   const reviewerCookies = (await context.cookies(`${adminBase}/me`)).filter(cookie => cookie.name === "lottery_admin");
   expect(reviewerCookies).toHaveLength(1);
+  rememberAdminSession(process.env.TEST_RULE_REVIEWER_USERNAME!, reviewerCookies);
 
   const authContext = await publicApi<{ auth?: { captcha_enabled?: boolean } }>(page.request, "/context");
   const username = `corr_${unique()}`;
@@ -219,7 +220,13 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   await adminPage.route(correctRoute, async (route: Route) => {
     if (route.request().method() !== "POST") { await route.continue(); return; }
     correctionRequests.push({ key: route.request().headers()["idempotency-key"] ?? "", body: route.request().postData() });
-    const response = await route.fetch();
+    // Forward the real request directly to the local API, preserving browser
+    // Host/Origin/Cookie. Avoid a second connection through the dev proxy after
+    // intentionally aborting the first browser response.
+    const response = await route.fetch({
+      url: route.request().url().replace("http://localhost:5174", "http://127.0.0.1:8080"),
+      headers: { ...(await route.request().allHeaders()), host: "localhost:5174" },
+    });
     expect(response.status(), await response.text()).toBe(201);
     const envelope = await response.json() as Envelope<Record<string, unknown>>;
     expect(envelope.success).toBe(true);

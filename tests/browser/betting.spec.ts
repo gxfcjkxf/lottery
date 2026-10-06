@@ -766,7 +766,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
 
   // Exercise each published model and each supported selection editor through server quotes.
   const catalog = page.getByTestId("games-catalog");
-  await page.goto(`${harborSite}/games`);
+  await page.goto(`${harborSite}/games`, { waitUntil: "domcontentloaded" });
   await expect(
     catalog
       .getByTestId("catalog-game")

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/gxfcjkxf/lottery/backend/internal/attribution"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
@@ -17,12 +18,14 @@ import (
 )
 
 type OperatorInput struct {
-	Username    string `json:"username"`
-	Phone       string `json:"phone"`
-	Password    string `json:"password"`
-	DisplayName string `json:"display_name"`
-	Notes       string `json:"notes"`
-	Reason      string `json:"reason"`
+	AgentCode    string `json:"agent_code,omitempty"`
+	ReferralCode string `json:"referral_code,omitempty"`
+	Username     string `json:"username"`
+	Phone        string `json:"phone"`
+	Password     string `json:"password"`
+	DisplayName  string `json:"display_name"`
+	Notes        string `json:"notes"`
+	Reason       string `json:"reason"`
 }
 
 type AuthSettingsRecord struct {
@@ -81,6 +84,10 @@ func validTelegramClientID(value string, enabled bool) bool {
 // OperatorCreate provisions a new global identity and a pending-consent member.
 // Existing global identities are intentionally never reused or modified.
 func (s *Store) OperatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID string, in OperatorInput, meta Metadata) (mutation.Result, error) {
+	kind, code, joinErr := attribution.Normalize(in.AgentCode, in.ReferralCode)
+	if joinErr != nil {
+		return mutation.Fail(400, "JOIN_CODE_INPUT_INVALID", "加入码格式不正确，且代理码与推荐码不能同时使用"), nil
+	}
 	reason, ok := validTrimmedText(in.Reason, 500, false)
 	if !ok {
 		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "操作原因须为 1 至 500 字节有效文本"), nil
@@ -147,9 +154,12 @@ func (s *Store) OperatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 	}
 	member, err := s.createMember(ctx, tx, brand, userID, cfg.Privacy, cfg.Terms, meta, memberCreateOptions{
 		joinMethod: "operator", createdBy: operatorID, displayName: in.DisplayName,
-		notes: in.Notes, termsAccepted: false,
+		notes: in.Notes, termsAccepted: false, codeKind: kind, code: code,
 	})
 	if err != nil {
+		if errors.Is(attribution.DatabaseError(err), attribution.ErrUnavailable) {
+			return mutation.Fail(400, "JOIN_CODE_UNAVAILABLE", "加入码不可用，请核对当前品牌、编码及有效期"), nil
+		}
 		return mutation.Result{}, err
 	}
 	auditID, err := audit.Append(ctx, tx, audit.Record{

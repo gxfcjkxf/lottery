@@ -55,7 +55,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 	if _, err = tx.Exec(ctx, "INSERT INTO roles(id,brand_id,code,name,is_bootstrap) VALUES($1,NULLIF($2,'')::uuid,$3,$4,true)", role, brandID, "bootstrap_"+role, "Bootstrap administrator"); err != nil {
 		return err
 	}
-	permissions := []string{"user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "audit.view.brand", "brand.view.brand", "user.create.brand", "role.view.brand", "role.write.brand", "admin.view.brand", "admin.write.brand", "auth_config.view.brand", "auth_config.write.brand", "wallet.view.brand", "wallet.freeze.brand", "wallet.adjust.brand", "recharge.view.brand", "recharge.write.brand", "point_policy.view.brand", "point_policy.write.brand", "wallet.repair.brand"}
+	permissions := []string{"user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "audit.view.brand", "brand.view.brand", "user.create.brand", "role.view.brand", "role.write.brand", "admin.view.brand", "admin.write.brand", "auth_config.view.brand", "auth_config.write.brand", "wallet.view.brand", "wallet.freeze.brand", "wallet.adjust.brand", "recharge.view.brand", "recharge.write.brand", "point_policy.view.brand", "point_policy.write.brand", "wallet.repair.brand", "join_code.view.brand", "join_code.write.brand"}
 	if *super {
 		permissions = []string{"user.view.platform", "audit.view.platform", "brand.view.platform", "role.view.platform", "role.write.platform", "admin.view.platform", "admin.write.platform", "auth_config.view.platform", "auth_config.write.platform", "wallet.view.platform", "recharge.view.platform", "point_policy.view.platform"}
 	}
@@ -66,6 +66,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 		permissions = append(permissions, "draw_source.view.platform", "draw.view.platform")
 		permissions = append(permissions, "bet.view.platform", "bet_policy.view.platform")
 		permissions = append(permissions, "withdrawal_policy.view.platform")
+		permissions = append(permissions, "join_code.view.platform")
 		permissions = append(permissions, "notification.view.platform")
 		permissions = append(permissions, "report_betting.view.platform", "report_ledger.view.platform")
 		permissions = append(permissions, "agent.view.platform", "agent_policy.view.platform")

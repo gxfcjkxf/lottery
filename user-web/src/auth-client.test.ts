@@ -128,6 +128,31 @@ describe("auth client", () => {
     });
   });
 
+  it("preserves JOIN_ATTRIBUTION_FIXED as a distinct conflict without classifying it as brand-join-required", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: "JOIN_ATTRIBUTION_FIXED",
+            message: "This membership already has a join source.",
+          },
+        }),
+        { status: 409 },
+      ),
+    );
+    const client = createAuthClient({ fetcher });
+
+    await expect(
+      client.login({ identifier: "member", password: "long-password", referral_code: "A1B2C3D4E5F607182930ABCD" }),
+    ).rejects.toSatisfy((error) => {
+      expect(isBrandJoinRequired(error)).toBe(false);
+      expect(error).toMatchObject({ status: 409, code: "JOIN_ATTRIBUTION_FIXED" });
+      return true;
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("loads branded challenge SVG and reports captcha settings from context.auth", async () => {
     const payloads = [
       {
@@ -200,6 +225,79 @@ describe("auth client", () => {
       identifier: "lucky_lee",
     });
     expect(passwordByteLength("é")).toBe(2);
+  });
+
+  it("forwards one normalized explicit join code on register, confirmed login, and Telegram", async () => {
+    const session = {
+      access_token: "token",
+      token_type: "Bearer",
+      expires_at: "2026-10-07T00:00:00Z",
+      user: { id: "u1", status: "active" },
+      member: {
+        id: "m1",
+        brand_id: "b1",
+        status: "active",
+        display_name: "member",
+        joined_at: "",
+      },
+    };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ success: true, data: session }), { status: 200 }),
+    );
+    const client = createAuthClient({ fetcher });
+
+    await client.register({
+      username: "member",
+      password: "long-password",
+      privacy_policy_version: "v1",
+      service_terms_version: "v1",
+      referral_code: "  a1b2c3d4e5f607182930abcd ",
+    });
+    await client.login({
+      identifier: "member",
+      password: "long-password",
+      agent_code: " d1b2c3d4e5f607182930abcd\n",
+    });
+    await client.telegram({
+      id_token: "signed.jwt",
+      challenge_id: "challenge",
+      nonce: "nonce",
+      privacy_policy_version: "v1",
+      service_terms_version: "v1",
+      referral_code: " e1b2c3d4e5f607182930abcd ",
+    });
+
+    const bodies = fetcher.mock.calls.map((call) => JSON.parse(String(call[1]?.body)));
+    expect(bodies[0]).toMatchObject({ referral_code: "A1B2C3D4E5F607182930ABCD" });
+    expect(bodies[0]).not.toHaveProperty("agent_code");
+    expect(bodies[1]).toMatchObject({ agent_code: "D1B2C3D4E5F607182930ABCD" });
+    expect(bodies[1]).not.toHaveProperty("referral_code");
+    expect(bodies[2]).toMatchObject({ referral_code: "E1B2C3D4E5F607182930ABCD" });
+  });
+
+  it("omits blank join codes and rejects invalid or mutually exclusive values before fetch", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ success: true, data: {} }), { status: 200 }),
+    );
+    const client = createAuthClient({ fetcher });
+    await client.login({ identifier: "member", password: "long-password", agent_code: "  " });
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).not.toHaveProperty("agent_code");
+
+    const invalidFetcher = vi.fn<typeof fetch>();
+    const invalidClient = createAuthClient({ fetcher: invalidFetcher });
+
+    await expect(
+      invalidClient.login({
+        identifier: "member",
+        password: "long-password",
+        agent_code: "A1B2C3D4E5F607182930ABCD",
+        referral_code: "B1B2C3D4E5F607182930ABCD",
+      }),
+    ).rejects.toThrow(/either an agent code or a referral code/i);
+    await expect(
+      invalidClient.login({ identifier: "member", password: "long-password", agent_code: "short" }),
+    ).rejects.toThrow(/24 hexadecimal/i);
+    expect(invalidFetcher).not.toHaveBeenCalled();
   });
 
   it("sends a Telegram OIDC token with the matching server challenge and explicit terms", async () => {
