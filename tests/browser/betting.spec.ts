@@ -2461,6 +2461,118 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     await expect(judgmentSection).toContainText("未出结果");
     await expect(judgmentSection).toContainText(singleReason);
     await captureS5Admin("s5-a5-single-judgment.png");
+
+    // S5-c1: use a real near-future period, place through the existing user
+    // session, let the worker close it, then record a genuine manual draw.
+    const previewRule = fixture("preview_digits", "DIGITS_0_9", "numbers");
+    const previewGame = await provisionGame(page.request,admin,reviewer,`e2e_preview_${unique()}`,"Settlement calculation fixture",modelFor("DIGITS_0_9"),[previewRule]);
+    const drawAt = new Date(Date.now()+15_000);drawAt.setUTCMilliseconds(0);
+    await api(page.request,`${adminBase}/games/${previewGame.id}/schedule`,"PUT",admin,{
+      version:previewGame.version,reason:"real short settlement preview window",spec:{timezone:"UTC",mode:"daily",daily_draw_times:[drawAt.toISOString().slice(11,19)],interval_seconds:0,busy_windows:[],bet_open_before_seconds:60,bet_close_before_seconds:5,pause_dates:[],weekdays:[0,1,2,3,4,5,6],holiday_dates:[],holiday_policy:"normal"},
+    });
+    const generatedPreview = await api<{periods:Period[]}>(page.request,`${adminBase}/games/${previewGame.id}/periods/generate`,"POST",admin,{from:new Date(Date.now()-1_000).toISOString(),to:new Date(Date.now()+60_000).toISOString(),reason:"reserve short draw period"});
+    expect(generatedPreview.periods).toHaveLength(1);
+    const previewPeriodId=generatedPreview.periods[0].id;
+    await expect.poll(async()=> (await api<Period>(page.request,`${adminBase}/periods/${previewPeriodId}`,"GET",admin)).status,{timeout:10_000}).toBe("betting");
+    const previewPlayId=previewGame.published[0].id;
+    const previewCatalog=await api<{plays:Array<{id:string,rule_version_id:string}>,policy_versions:{brand:number,game:number}}>(page.request,`${publicBase}/games/${previewGame.id}`,"GET",userToken);
+    const previewInput={period_id:previewPeriodId,play_id:previewPlayId,rule_version_id:previewCatalog.plays[0].rule_version_id,selection:previewRule.validationCase.selection,multiplier:"1",policy_versions:previewCatalog.policy_versions};
+    const realQuote=await api<{actor_context:string}>(page.request,`${publicBase}/bet-previews`,"POST",userToken,previewInput);
+    const previewOrder=await api<AdminBetOrder>(page.request,`${publicBase}/bet-orders`,"POST",userToken,{...previewInput,actor_context:realQuote.actor_context},201);
+    await expect.poll(async()=> (await api<Period>(page.request,`${adminBase}/periods/${previewPeriodId}`,"GET",admin)).status,{timeout:25_000}).toBe("waiting_draw");
+    const previewPeriodBefore=await api<Period>(page.request,`${adminBase}/periods/${previewPeriodId}`,"GET",admin);
+    const previewDraw=await api<{id:string}>(page.request,`${adminBase}/periods/${previewPeriodId}/manual-draw`,"POST",admin,{version:previewPeriodBefore.version,period_no:previewPeriodBefore.period_no,result:previewRule.validationCase.draw,drawn_at:drawAt.toISOString(),reason:"genuine manually entered preview result"},201);
+    const previewPeriodSnapshot=await api<Period>(page.request,`${adminBase}/periods/${previewPeriodId}`,"GET",admin);
+    const previewWallet=await api<Wallet>(page.request,`${publicBase}/wallet`,"GET",userToken);
+    const previewLedger=await api<{items:LedgerEntry[]}>(page.request,`${adminBase}/wallets/${memberId}/ledger?limit=100`,"GET",admin);
+    await singleOrdersPanel.getByLabel("直接查询注单 UUID",{exact:true}).fill(previewOrder.id);
+    await singleOrdersPanel.getByRole("button",{name:"查询",exact:true}).click();
+    const computation=singleOrdersPanel.locator(".settlement-preview");
+    await expect(computation).toContainText("不派奖、不改变注单或期次状态");
+    await expect(singleOrdersPanel).not.toContainText("后台已确认判定取消");
+    await expect(computation).toContainText(previewDraw.id);
+    const previewRequests:Array<{key:string;body:string|null}>=[];
+    const previewRoute=`**/bet-orders/${previewOrder.id}/settlement-previews`;
+    let committedPreviewId="";
+    await adminPage.route(previewRoute,async route=>{
+      if(route.request().method()!=="POST") {await route.continue();return;}
+      previewRequests.push({key:route.request().headers()["idempotency-key"]!,body:route.request().postData()});
+      const response=await route.fetch();expect(response.status(),await response.text()).toBe(201);
+      const record=(await response.json()).data;committedPreviewId=record.id;expect(record.applied).toBe(false);
+      if(previewRequests.length===1) await route.abort("failed");else await route.fulfill({response});
+    });
+    const previewReason=`S5-c1 ${info.project.name}: compute purchased snapshot only`;
+    await computation.getByLabel("核对原因（UTF-8 不超过 500 字节）",{exact:true}).fill(previewReason);
+    await computation.getByRole("button",{name:"核对本次预览",exact:true}).click();
+    const review=computation.locator(".sp-confirm");
+    await review.getByRole("checkbox").check();
+    await review.getByRole("button",{name:"确认保存只读预览",exact:true}).click();
+    await expect(computation.locator(".sp-pending")).toContainText("预览写入结果未知");
+    await computation.getByRole("button",{name:"重新读取",exact:true}).click();
+    await expect(computation).toContainText(committedPreviewId);
+    await expect(computation.locator(".sp-pending")).toContainText("预览写入结果未知");
+    await computation.getByRole("button",{name:"使用同一请求与幂等键重试",exact:true}).click();
+    await expect(computation).toContainText("预览已保存并重新读取为当前记录");
+    expect(previewRequests).toHaveLength(2);expect(previewRequests[0]).toEqual(previewRequests[1]);
+    await adminPage.unroute(previewRoute);
+    const previewHistory=await api<{items:Array<{id:string,outcome:string,applied:boolean,calculation:{prize_points:string},current:boolean}>}>(page.request,`${adminBase}/bet-orders/${previewOrder.id}/settlement-previews?limit=20&offset=0`,"GET",admin);
+    expect(previewHistory.items).toHaveLength(1);expect(previewHistory.items[0]).toMatchObject({id:committedPreviewId,outcome:"won",applied:false,current:true,calculation:{prize_points:"8"}});
+    await expect(computation).toContainText("命中");
+    await expect(computation).toContainText("WIN");
+    expect(await api<Wallet>(page.request,`${publicBase}/wallet`,"GET",userToken)).toEqual(previewWallet);
+    expect(await api<{items:LedgerEntry[]}>(page.request,`${adminBase}/wallets/${memberId}/ledger?limit=100`,"GET",admin)).toEqual(previewLedger);
+    expect(await api<Period>(page.request,`${adminBase}/periods/${previewPeriodId}`,"GET",admin)).toEqual(previewPeriodSnapshot);
+    expect((await api<AdminBetOrder>(page.request,`${adminBase}/bet-orders/${previewOrder.id}`,"GET",admin))).toEqual(previewOrder);
+    await captureS5Admin("s5-c1-real-settlement-preview.png");
+    await computation.screenshot({path:info.outputPath("s5-c1-calculation-panel.png")});
+
+    // A valid POST receipt stays definitive when a subsequent readonly GET
+    // loses its response. This is a network abort, not a fake business result.
+    let acknowledgedId="";
+    const postReceiptReason=`S5-c1 ${info.project.name}: acknowledgement precedes read outage`;
+    await adminPage.route(previewRoute,async route=>{
+      if(route.request().method()!=="POST") {await route.continue();return;}
+      const response=await route.fetch();expect(response.status()).toBe(201);
+      acknowledgedId=(await response.json()).data.id;
+      await adminPage.route(`**/settlement-previews/${acknowledgedId}`,r=>r.abort("failed"));
+      await route.fulfill({response});
+    });
+    await computation.getByLabel("核对原因（UTF-8 不超过 500 字节）",{exact:true}).fill(postReceiptReason);
+    await computation.getByRole("button",{name:"核对本次预览",exact:true}).click();
+    await computation.locator(".sp-confirm").getByRole("checkbox").check();
+    await computation.locator(".sp-confirm").getByRole("button",{name:"确认保存只读预览",exact:true}).click();
+    await expect(computation).toContainText("预览已由服务端确认保存，但后续读取失败");
+    await expect(computation.locator(".sp-pending")).toHaveCount(0);
+    await adminPage.unroute(previewRoute);
+    await adminPage.unroute(`**/settlement-previews/${acknowledgedId}`);
+    await computation.getByRole("button",{name:"重新读取",exact:true}).click();
+    await expect(computation).toContainText(acknowledgedId);
+    await expect(computation.locator(".sp-pending")).toHaveCount(0);
+
+    // A third independently confirmed computation is committed first, then
+    // its real administrator session is revoked before the follow-up GETs.
+    let sessionEndedPreviewId="";
+    await adminPage.route(previewRoute,async route=>{
+      if(route.request().method()!=="POST") {await route.continue();return;}
+      const response=await route.fetch();expect(response.status()).toBe(201);
+      sessionEndedPreviewId=(await response.json()).data.id;
+      const logout=await adminPage.request.post("http://localhost:5174/api/v1/admin/auth/logout",{headers:{Authorization:`Bearer ${admin}`,Origin:"http://localhost:5174","Idempotency-Key":crypto.randomUUID()},data:{}});
+      expect(logout.status(),await logout.text()).toBe(200);
+      await route.fulfill({response});
+    });
+    await computation.getByLabel("核对原因（UTF-8 不超过 500 字节）",{exact:true}).fill(`S5-c1 ${info.project.name}: acknowledgement precedes real logout`);
+    await computation.getByRole("button",{name:"核对本次预览",exact:true}).click();
+    await computation.locator(".sp-confirm").getByRole("checkbox").check();
+    await computation.locator(".sp-confirm").getByRole("button",{name:"确认保存只读预览",exact:true}).click();
+    await expect(adminPage.getByTestId("bet-order-management")).toHaveCount(0);
+    await expect(adminPage.getByRole("button",{name:"退出登录",exact:true})).toHaveCount(0);
+    await adminPage.unroute(previewRoute);
+    const finalPreviewHistory=await api<{items:Array<{id:string,applied:boolean}>}>(page.request,`${adminBase}/bet-orders/${previewOrder.id}/settlement-previews?limit=20&offset=0`,"GET",reviewer);
+    expect(finalPreviewHistory.items).toHaveLength(3);
+    expect(new Set(finalPreviewHistory.items.map(v=>v.id)).size).toBe(3);
+    expect(finalPreviewHistory.items.map(v=>v.id)).toContain(sessionEndedPreviewId);
+    expect(finalPreviewHistory.items.every(v=>v.applied===false)).toBe(true);
+    expect(await api<Wallet>(page.request,`${publicBase}/wallet`,"GET",userToken)).toEqual(previewWallet);
   } finally {
     await adminPage.close();
   }

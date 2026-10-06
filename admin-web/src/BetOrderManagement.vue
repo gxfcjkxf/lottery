@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import SettlementPreview from "./SettlementPreview.vue";
 import {
   betManagementPermissions,
   createBetManagementApi,
@@ -328,6 +329,9 @@ async function lookupOrder() {
 async function loadSelectedDetail() {
   const id = selectedOrderId.value;
   if (!id || !rights.value.ordersView || !props.brandId) return;
+  // A receipt for the previously selected order must not label this order as
+  // cancelled/refunded. Unknown intents are independently retained by scope.
+  if (selectedOrder.value?.id !== id) notice.value = "";
   detailGeneration.value++;
   const generation = detailGeneration.value;
   const snapshot = context.value;
@@ -407,6 +411,7 @@ async function loadSelectedDetail() {
 
 function selectOrder(id: string) {
   // The watcher clears any old intent and errors before fetching the new selection.
+  if (selectedOrderId.value !== id) notice.value = "";
   selectedOrderId.value = id;
 }
 watch(selectedOrderId, (id) => {
@@ -871,6 +876,14 @@ onUnmounted(() => {
               >
             </div>
           </div>
+
+          <SettlementPreview
+            :key="`${brandId}:${selectedOrder.id}:${selectedOrder.version}`"
+            :account="account"
+            :brand-id="brandId"
+            :order="selectedOrder"
+            @session-invalid="resetSession"
+          />
 
           <section class="subsection">
             <h3>规则与奖级赔率快照</h3>

@@ -48,7 +48,10 @@ test("admin directory writes a real brand member and kick revokes its session", 
   const row = page
     .locator(".member-directory-table tbody tr")
     .filter({ hasText: name });
-  await expect(row).toBeVisible();
+  // The authenticated directory GET has a 10s service deadline. On a cold
+  // local compile a successful response can arrive just beyond Playwright's
+  // default 5s assertion window; wait for the actual row, never a fixed sleep.
+  await expect(row).toBeVisible({ timeout: 10_000 });
   await row.getByRole("button", { name: "编辑", exact: true }).click();
   const dialog = page
     .getByRole("dialog")

@@ -346,7 +346,7 @@ worker 当前调用 API/DOM 无网络 stub，只产生 no_data 尝试证据，�
 
 ### 期次和开奖（后续实现）
 
-来源与人工结果按上节接入；下表其余纠正、结算路由仍是未来设计，尚未注册。
+来源与人工结果按上节接入；下表其余纠正、结算路由仍是未来设计，尚未注册。S5-c1 的核算预览使用独立路径，不冒充正式 settle 或 retry。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -504,7 +504,27 @@ S4-d 管理端六个快捷模板与通用可视化编辑器并存；通用模式
 
 所有管理端动作必须做权限检查并写审计日志；返回结果应包含 audit_log_id 或可追踪 request ID。
 
-## 4.1 S6-b 已实现的站内通知
+## 4.1 S5-c1 已实现的真实注单核算预览
+
+| 方法 | 管理路径 | 当前行为 |
+|---|---|---|
+| GET | /bet-orders/{id}/settlement-context | 当前订单/期次版本、状态、旧规则 hash、当前开奖结果及 hash，可预览标志 |
+| POST | /bet-orders/{id}/settlement-previews | `{version,period_version,draw_result_id,reason}`，创建不可变证据，成功 201；必须显式闭合字段、可信 Origin 和幂等键 |
+| GET | /bet-orders/{id}/settlement-previews?limit=20&offset=0 | 本品牌注单历史，items/limit/offset/has_more |
+| GET | /settlement-previews/{id} | 历史概要和实时派生 current |
+| GET | /settlement-previews/{id}/lines?limit=20&offset=0 | 逐注选号/命中奖级/排他选择/精确金额/条件 trace 分页，附 total |
+
+所有路径均位于 `/api/v1/admin` 并要求 X-Brand-ID。读取独立 `settlement.view.brand/platform` 权限，品牌执行 `settlement.preview.brand`；超管禁止创建，即使误授写权限。POST 在幂等锁前后验证会话和权限，退出、撤权不能复用缓存。用户客户端和前端不能指定规则、金额、开奖结果正文或操作者；只引用已经锁定的结果 ID。
+
+当前仅 drawn 期次可创建预览。当前注单/期次版本或结果 ID 不符返回 409；同键异体 409。明确金融状态为 `applied:false`，不修改注单或期次、不写账本、不通知中奖。outcome 为 won/lost 时附 `calculation:{won,combination_count,multiplier,bet_points,prize_points,raw_prize_points,capped_prize_points}`；积分 int64 字符串，中间金额为非负规范有理数字符串。abnormal/excluded 的 calculation=null，保留 error_code，不能拿部分计算结果派奖。
+
+核心重新验证原定义 hash、PrepareBet 的规范选号与全部复式/金额、充值→中奖→赠送分配以及原 debit 的账户/会员/引用/12 桶 before/delta/after。已有人工异常和已取消订单直接 excluded，不重新运行普通中奖计算。存储错误/超时整事务回滚返回 503；只在运营再次明确发请求时重试，无后台自动预览任务。
+
+GET 保留历史证据，current 是该计算的注单/期次版本与当前指针仍相同，不是已结算或可支付保证。幂等成功缓存中的 current 可能是历史值，客户端拿到直接匹配回执后必须重新 GET 当前记录；GET 失败显示“已保存但读取失败”，不能把已收到有效回执降为未知。丢失回执才保留精确 body/context/key；读到同样历史不能解除未知意图。
+
+正式整期结算、派奖、结算任务失败重试与已结算结果回溯仍未实现；这些不是本预览接口的隐式后续动作。
+
+## 4.2 S6-b 已实现的站内通知
 
 用户路径同时支持 `/api/v1` 和 `/api/v1/b/{brandCode}`；账户从实际品牌会话解析，禁止客户端指定目标会员。读取和写入均走主库。
 

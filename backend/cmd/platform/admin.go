@@ -67,6 +67,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 		permissions = append(permissions, "bet.view.platform", "bet_policy.view.platform")
 		permissions = append(permissions, "withdrawal_policy.view.platform")
 		permissions = append(permissions, "notification.view.platform")
+		permissions = append(permissions, "settlement.view.platform")
 	} else {
 		permissions = append(permissions, "rule.simulate.brand")
 		permissions = append(permissions, "game.view.brand", "game.write.brand", "rule.view.brand", "rule.write.brand", "rule.validate.brand", "rule.submit.brand", "rule.review.brand")
@@ -77,6 +78,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 		permissions = append(permissions, "bet.judge_cancel.brand")
 		permissions = append(permissions, "withdrawal_policy.view.brand", "withdrawal_policy.write.brand")
 		permissions = append(permissions, "notification.view.brand", "notification.retry.brand")
+		permissions = append(permissions, "settlement.view.brand", "settlement.preview.brand")
 	}
 	for _, permission := range permissions {
 		if _, err = tx.Exec(ctx, "INSERT INTO permissions(key) VALUES($1) ON CONFLICT DO NOTHING", permission); err != nil {

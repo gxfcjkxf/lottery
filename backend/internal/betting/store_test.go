@@ -81,6 +81,10 @@ func bettingDefinition() rules.Definition {
 }
 
 func newBettingFixture(t *testing.T, brand string) bettingFixture {
+	return newBettingFixtureWithWindow(t, brand, time.Hour, 2*time.Hour)
+}
+
+func newBettingFixtureWithWindow(t *testing.T, brand string, betWindow, drawWindow time.Duration) bettingFixture {
 	t.Helper()
 	db := testdb.New(t)
 	ctx := context.Background()
@@ -168,7 +172,7 @@ func newBettingFixture(t *testing.T, brand string) bettingFixture {
 	now := time.Now().UTC()
 	bettingTx(t, db, func(tx pgx.Tx) error {
 		var e error
-		f.period, e = rs.OpenPeriod(ctx, tx, brand, f.game.ID, "bet-"+creatorID[:8], now.Add(-time.Minute), now.Add(time.Hour), now.Add(2*time.Hour))
+		f.period, e = rs.OpenPeriod(ctx, tx, brand, f.game.ID, "bet-"+creatorID[:8], now.Add(-time.Minute), now.Add(betWindow), now.Add(drawWindow))
 		return e
 	})
 	policyVersions := readBettingPolicyVersions(t, f.service, brand, f.game.ID)

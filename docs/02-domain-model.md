@@ -168,6 +168,10 @@ periods 另含 draw_result_id、draw_claim_token/draw_claim_until 和 draw_next_
 - `gross_points`, `capped_points`, `rounded_points`
 - `error_code`, `retry_count`, `reversal_id`
 
+S5-c1 的 `settlement_previews` 是正式结算之前的不可改写核算证据，不是上表 settlements，也不执行派奖或状态迁移。字段包含品牌/彩种/期次/注单/开奖结果、两种业务版本与状态快照、规则和开奖 hash、号码、outcome（won/lost/abnormal/excluded）、安全异常码、完整 calculation JSONB、创建者/原因/审计/时间。结果概要中的 `applied` 固定 false；`current` 根据当前注单/期次版本和结果指针派生，只表示观察依据未变，不表示有派奖资格或已经结算。
+
+核算使用注单保存的规则、选号、复式展开、倍数和扣款分配，并与原借记账本逐桶快照比对。当前玩法后来生效的新赔率不参与旧单计算。异常快照的整注计算置空，不保存部分奖金；人工异常或已取消订单只写 excluded 核对证据、不运行普通引擎。预览不自动把实际订单改成异常，正式结算模块仍需接入该分类事务。数据库要求创建时订单/期次/结果快照与审核证据一致，不可删除或编辑；明细按页读取，旧依据变化后仅作为历史记录保留。
+
 ### 账户与账本
 
 `point_accounts`

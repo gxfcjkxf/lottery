@@ -214,7 +214,7 @@ func scanOrder(row pgx.Row) (o Order, e error) {
 		dest any
 	}{{def, &o.Definition}, {raw, &o.SelectionRaw}, {norm, &o.SelectionNormalized}, {expanded, &o.Expanded}, {alloc, &o.Allocation}, {policy, &o.Policy}} {
 		if e = json.Unmarshal(item.raw, item.dest); e != nil {
-			return o, e
+			return o, errors.Join(ErrSnapshot, e)
 		}
 	}
 	o.PlacedAt = o.PlacedAt.UTC()

@@ -17,6 +17,7 @@ var (
 	ErrClosed   = errors.New("betting period not accepting this operation")
 	ErrLimit    = errors.New("betting limit exceeded")
 	ErrState    = errors.New("bet order state conflict")
+	ErrSnapshot = errors.New("stored betting snapshot malformed")
 )
 
 type Service struct{ DB *pgxpool.Pool }
