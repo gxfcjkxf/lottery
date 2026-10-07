@@ -39,12 +39,14 @@ const ReconciliationManagement = defineAsyncComponent(() => import("./Reconcilia
 import {clearPendingReconciliationWrites} from "./reconciliation-state";
 const ReportsManagement = defineAsyncComponent(() => import("./ReportsManagement.vue"));
 const AgentManagement = defineAsyncComponent(() => import("./AgentManagement.vue"));
+const CommissionPolicySettings = defineAsyncComponent(() => import("./CommissionPolicySettings.vue"));
 const JoinCodeManagement = defineAsyncComponent(() => import("./JoinCodeManagement.vue"));
 import { clearAllPendingAgentWrites } from "./agents-state";
 import { clearAllPendingJoinCodeWrites } from "./join-codes-state";
 import { clearAllPendingDeliveryRetries } from "./notification-delivery-state";
 import { clearAllPendingTemplateWrites } from "./notification-templates-state";
 import { clearAllPendingBrandOperationWrites } from "./brand-operation-state";
+import { clearAllPendingCommissionWrites } from "./commission-policy-state";
 import { useAdminI18n } from "./i18n";
 const RuleVersions = defineAsyncComponent(() => import("./RuleVersions.vue"));
 const WithdrawalPolicySettings = defineAsyncComponent(
@@ -70,7 +72,7 @@ import {
 
 const { t, message, locale, availableLocales, setLocale, configure, resetBrand } = useAdminI18n();
 const englishUi: Record<string, string> = {
-  "控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金管理尚未实现。": "The console combines connected workflows and prototypes. Withdrawal status is connected; eligibility rules are pending and real payments are unavailable. Commission management is not implemented.",
+  "控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金财务策略设置已接入，周期批次和派发尚未实现。": "The console combines connected workflows and prototypes. Withdrawal status is connected; eligibility rules are pending and real payments are unavailable. Commission financial policy settings are connected; cycle batches and payouts are not implemented.",
   "此页显示真实成员；账号权限、积分账本、认证设置和投注已接入。": "This page shows live members. Account permissions, the points ledger, authentication settings, and betting are connected.",
   "成员创建与管理为真实操作；投注已接入。": "Member creation and management are live operations. Betting is connected.",
   "审计日志为真实后台数据；投注已接入，提现状态接口已接入，资格规则待配置且无真实支付。": "Audit logs are live admin data; betting and withdrawal status are connected, while eligibility rules are pending and real payments are unavailable.",
@@ -373,6 +375,7 @@ const statusClass = (status: MemberStatus) =>
 const apiErrorText = (error: unknown) =>
   error instanceof Error ? message(error.message, error.message) : message("请求失败，请重试", "Request failed. Please try again.");
 const clearAdminData = () => {
+	clearAllPendingCommissionWrites();
 	clearAllPendingPresentationWrites();
 	clearAllPendingComplianceIntents();
 	clearAllPendingBrandDomainsWrites();
@@ -894,7 +897,7 @@ const ledger = [
         <span class="banner-icon">ⓘ</span
         ><span
           ><b>{{ ui("交互演示 · 非生产环境") }}</b
-          ><span class="banner-copy"> {{ ui("控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金管理尚未实现。") }}</span
+          ><span class="banner-copy"> {{ ui("控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金财务策略设置已接入，周期批次和派发尚未实现。") }}</span
           ></span
         ><button :aria-label="ui('关闭说明')" @click="showDemoNotice = false">
           ×
@@ -1287,6 +1290,8 @@ const ledger = [
 
       <section v-else-if="page === '代理树'" class="page-content">
         <AgentManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
+          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+        <CommissionPolicySettings v-if="account && selectedBrandId" :key="`commission-policy:${account.id}:${selectedBrandId}`"
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
         <div v-else class="panel directory-state"><h1>{{ ui("代理管理") }}</h1>
           <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号查看代理配置。") }}</p>

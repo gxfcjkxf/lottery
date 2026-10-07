@@ -11,6 +11,7 @@ import {composeDocument} from "../../scripts/openapi-lib.mjs";
 import * as workbench from "../../scripts/openapi-workbench.mjs";
 import * as withdrawals from "../../scripts/openapi-withdrawal-orders.mjs";
 import * as withdrawalReports from "../../scripts/openapi-withdrawal-reports.mjs";
+import * as commissionPolicies from "../../scripts/openapi-commission-policies.mjs";
 
 const root=new URL("../../",import.meta.url);
 const go=process.env.LOTTERY_GO_BIN??"go";
@@ -41,6 +42,7 @@ test("reconciliation contract documents exactly the five registered admin routes
     workbench,
     withdrawals,
     withdrawalReports,
+    commissionPolicies,
   ],JSON.parse(result.stdout));
   for(const route of expectedRoutes){
     assert.ok(actual.has(route),`backend route missing: ${route}`);

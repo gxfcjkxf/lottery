@@ -56,6 +56,11 @@ func (s Service) LockPolicy(ctx context.Context, tx pgx.Tx, brand string) (Polic
 	if tx == nil || !idsValid(brand) {
 		return Policy{}, ErrInvalid
 	}
+	// Match financial-policy edits and betting: financial -> agency -> wallet.
+	var financialBrand string
+	if err := tx.QueryRow(ctx, `SELECT brand_id::text FROM brand_commission_policies WHERE brand_id=$1 FOR SHARE`, brand).Scan(&financialBrand); err != nil {
+		return Policy{}, err
+	}
 	return scanPolicy(tx.QueryRow(ctx, `SELECT brand_id::text,version,config,updated_at FROM brand_agent_policies WHERE brand_id=$1 FOR UPDATE`, brand))
 }
 
@@ -169,6 +174,13 @@ func (s Service) SavePolicy(ctx context.Context, tx pgx.Tx, brand string, a acce
 	}
 	if p.Version != in.Version || p.Version == math.MaxInt64 {
 		return p, ErrVersion
+	}
+	var financialConflict bool
+	if e = tx.QueryRow(ctx, `SELECT config->'enabled'='true'::jsonb AND (NOT $2::boolean OR config->'calendar'->>'cycle' IS DISTINCT FROM $3::text) FROM brand_commission_policies WHERE brand_id=$1`, brand, in.Config.Enabled, in.Config.Cycle).Scan(&financialConflict); e != nil {
+		return p, e
+	}
+	if financialConflict {
+		return p, ErrState
 	}
 	cap, _ := RatioMicros(in.Config.RatioCap)
 	var exceeds bool

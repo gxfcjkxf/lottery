@@ -14,6 +14,7 @@ import (
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
+	"github.com/gxfcjkxf/lottery/backend/internal/commission"
 	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
@@ -362,6 +363,12 @@ func (s Service) Place(ctx context.Context, tx pgx.Tx, brand string, v identity.
 	if e = lockQuota(ctx, tx, in.PeriodID, c.Policy); e != nil {
 		return o, e
 	}
+	if _, e = commission.LockBetPolicies(ctx, tx, brand); e != nil {
+		return o, e
+	}
+	if e = lockWithdrawalSnapshotPolicies(ctx, tx, brand, c.GameID); e != nil {
+		return o, e
+	}
 	ps := points.Store{DB: s.DB}
 	wallet, e := ps.LockedSnapshot(ctx, tx, brand, v.Member.ID)
 	if e != nil {
@@ -373,9 +380,6 @@ func (s Service) Place(ctx context.Context, tx pgx.Tx, brand string, v identity.
 	if cached, e := existingOrder(ctx, tx, brand, v.Member.ID, key, in); e == nil {
 		return cached, nil
 	} else if !errors.Is(e, ErrNotFound) {
-		return o, e
-	}
-	if e = lockWithdrawalSnapshotPolicies(ctx, tx, brand, c.GameID); e != nil {
 		return o, e
 	}
 	if e = checkWindow(ctx, tx, c.Period); e != nil {

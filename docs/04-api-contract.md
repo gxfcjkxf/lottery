@@ -796,3 +796,7 @@ Target 含 `order_id,member_id,state,version,old_order_version,old_order_status,
 原中奖可用不足、被使用或冻结时停止并记 `WINNING_AVAILABLE_INSUFFICIENT`，不扣充值/赠送、不自动解冻、不产生负余额/欠款。失败可能已有其他目标完成冲正；原结果仍是当前，直到全部成功才发布新结果。运营处理后按原目标继续，不重做已冲回记录；失败历史及错误码可查。未来欠款/追偿业务规则仍未决，不据本实现擅自上线。
 
 POST 回执保存首次结果，SDK 不在写方法内重新取上下文/改写回执；未收到回执时始终用冻结的旧 draw ID、正文、键重试，即使 worker 已推进。匹配回执确认后再 GET 实时数据，后读失败保持“已确认”。审计/旧证据留存；现有投注通知不因更正被删除（原投注事实仍有效）。后续佣金、奖励、财务报表和中奖通知接入时必须按 generation/current 与补偿事件增加对应回溯，不能累计所有历史代次冒充净值。
+
+## 佣金金融政策当前接口
+
+0047注册GET/PUT `/api/v1/admin/commission-policy`及GET `/api/v1/admin/commission-policy/history`。读取要求commission_policy.view.brand/platform，写入要求commission_policy.write.brand且超级管理员不能写；初始化管理员包含对应范围的显式授权。版本、config、reason完整替换，幂等回执前重验实际会话和权限，审计/修订/政策一起提交。启用须显式日历并匹配已启用代理政策周期；历史NULL不补造授权。封闭字段、错误、分页和私有投注快照详见[金融政策合同](16-commission-policy-snapshot.md)及生成OpenAPI。这里不是设计中的commission-rules、批次或派发接口，尚无这些注册路由。

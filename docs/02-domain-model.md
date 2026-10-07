@@ -64,6 +64,8 @@ S6-f 使用现有 attribution_snapshot 保存不可改写的 schema_version/lega
 
 新 bet_orders.attribution_snapshot 保存会员原归属、提交时品牌代理政策及沿路径节点配置/版本、captured_at；旧注单仅显式legacy，不补造财务规则。commission_policy仍null，不能据配置快照直接派佣金。私有路径和比例不进入普通用户注单DTO或公开归属接口，取消/结算/更正不能改写此字段。
 
+0047新增独立私有`commission_rule_snapshot`，不覆盖旧`attribution_snapshot`。新注单由服务端捕获金融政策/品牌代理政策/每个沿途节点的配置、版本及不可变修订编号、代理会员、父级、深度、有效模式和placed_at；旧行NULL原样保留。读证据校验对应历史修订、创建时间和原归属，不读取今天的比例重建；原归属中的commission_policy继续null，不能把两个字段混用。结构及调用见[佣金金融政策与投注快照](16-commission-policy-snapshot.md)。
+
 ### 后台账号与权限
 
 `admin_accounts`, `roles`, `permissions`, `admin_account_roles`, `role_permissions`, `admin_brand_scopes`
