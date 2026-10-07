@@ -16,6 +16,8 @@ const positiveAmount = ref("PositiveInt64String");
 const notificationTemplateKeys = [
   "bet.order.abnormal", "bet.order.cancelled", "bet.order.judged_cancelled", "bet.order.placed",
   "bet.order.prize_reversed", "bet.order.won", "member.joined", "recharge.confirmed",
+  "withdrawal.order.cancelled", "withdrawal.order.failed", "withdrawal.order.paid",
+  "withdrawal.order.processing", "withdrawal.order.rejected", "withdrawal.order.reviewing",
 ];
 const notificationTemplateKey = { type: "string", enum: notificationTemplateKeys };
 const notificationTemplateVersion = {
@@ -30,7 +32,7 @@ const notificationTemplateContent = obj({
   en: ref("LotteryNotificationTemplateCopy"),
   "zh-CN": ref("LotteryNotificationTemplateCopy"),
 }, ["en", "zh-CN"]);
-notificationTemplateContent.description = "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; seven event templates require {points} in each language body, while member.joined forbids {points} in either body or title. Placeholder presence and UTF-8 byte limits are enforced by the handler.";
+notificationTemplateContent.description = "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; thirteen event templates require {points} in each language body, while member.joined forbids {points} in either body or title. Placeholder presence and UTF-8 byte limits are enforced by the handler. Withdrawal events describe historical internal points states, never proof of an external transfer.";
 const notificationTemplatePairRules = notificationTemplateKeys.map((key) => ({
   properties: { event_type: { const: key }, template_key: { const: key } },
 }));
@@ -177,6 +179,16 @@ const SettlementContext = obj({ brand_id: uuid, game_id: uuid, period_id: uuid, 
 const SettlementTarget = obj({ order_id: uuid, member_id: uuid, state: str, version: int, calculation_id: nullable(uuid), order_version: int, order_status: str, won: nullable(bool), prize_points: nullable(amount), payout_entry_id: nullable(uuid), error_code: nullable(str) });
 const CorrectionTarget = obj({ order_id: uuid, member_id: uuid, state: str, version: int, old_order_version: int, old_order_status: str, old_calculation_id: nullable(uuid), old_payout_entry_id: nullable(uuid), old_prize_points: amount, reversal_entry_id: nullable(uuid), reset_order_version: nullable(int), error_code: nullable(str) });
 const NotificationDelivery = obj({ event_id: uuid, brand_id: uuid, status: str, attempt_count: int, last_error: nullable(str), next_attempt_at: dateTime, sent_at: nullable(dateTime) });
+const withdrawalNotificationKeys = notificationTemplateKeys.filter(key => key.startsWith("withdrawal.order."));
+const int64Upper = "9223372036854775807";
+const positiveInt64Alternatives = ["[1-9][0-9]{0,17}", int64Upper];
+for (let i = 0; i < int64Upper.length; i++) {
+  const floor = i === 0 ? 1 : 0, ceiling = Number(int64Upper[i]) - 1;
+  if (ceiling < floor) continue;
+  const digit = ceiling === floor ? String(floor) : `[${floor}-${ceiling}]`;
+  positiveInt64Alternatives.push(int64Upper.slice(0, i) + digit + `[0-9]{${int64Upper.length - i - 1}}`);
+}
+const withdrawalNotificationPoints = { type:"string", pattern:`^(?:${positiveInt64Alternatives.join("|")})$`, description:"Canonical positive int64 points; at most 9223372036854775807." };
 const SettlementJob = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: uuid, draw_result_id: uuid, period_version: int, policy_version: int, mode: str, state: str, version: int, target_count: int, created_by: uuid, approved_by: nullable(uuid), reason, created_at: dateTime, completed_at: nullable(dateTime), last_error_code: nullable(str), pending_count: int, ready_count: int, paid_count: int, excluded_count: int, failed_count: int, prize_points: amount, paid_points: amount, can_retry: bool, generation: int, previous_job_id: nullable(uuid), correction_id: nullable(uuid), current: bool });
 const SettlementPreview = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: uuid, order_id: uuid, order_version: int, order_status: str, period_version: int, period_status: str, draw_result_id: uuid, definition_hash: str, draw_hash: str, draw: ref("LotteryRuleDraw"), outcome: str, error_code: nullable(str), calculation: nullable(obj({ won: bool, combination_count: int, multiplier: amount, bet_points: amount, prize_points: amount, raw_prize_points: str, capped_prize_points: str })), created_by: uuid, created_at: dateTime, reason, audit_log_id: uuid, current: bool, applied: bool });
 const Correction = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: uuid, previous_draw_result_id: uuid, draw_result_id: uuid, result: ref("LotteryRuleDraw"), period_version: int, previous_job_id: nullable(uuid), new_job_id: nullable(uuid), policy_version: nullable(int), mode: nullable(str), state: str, version: int, target_count: int, created_by: uuid, reason, created_at: dateTime, completed_at: nullable(dateTime), last_error_code: nullable(str), pending_count: int, reversed_count: int, unchanged_count: int, excluded_count: int, failed_count: int, reverse_points: amount, reversed_points: amount, can_retry: bool, new_job_state: nullable(str), new_job_version: nullable(int), new_job_error_code: nullable(str) });
@@ -192,12 +204,13 @@ const Notification = {
   }),
   allOf: [
     { oneOf: notificationTemplatePairRules },
+    { if:{properties:{event_type:{enum:withdrawalNotificationKeys}}}, then:{properties:{content:ref("LotteryNotificationTemplateContent"),payload:obj({resource_id:uuid,points:withdrawalNotificationPoints})}} },
     { oneOf: [
       { properties: { template_version: { const: 1 }, content: nullable(ref("LotteryNotificationTemplateContent")) } },
       { properties: { template_version: { minimum: 2 }, content: ref("LotteryNotificationTemplateContent") } },
     ] },
   ],
-  description: "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy version 1 rows may have null content; version 2 and later always include their copied content. Updating a template never rewrites existing notifications.",
+  description: "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy non-withdrawal version 1 rows may have null content; withdrawal events and version 2 and later always include their copied content. Withdrawal points are positive int64 and their rendered historical/internal-transfer disclaimer cannot be removed by template editing. Updating a template never rewrites existing notifications.",
 };
 
 export const schemas = {

@@ -4,7 +4,7 @@
 
 `GET /api/v1/admin/workbench`要求后台认证和UUID格式的`X-Brand-ID`，不接受查询参数，固定读取主库并在响应前提交审计。数据包含`brand_id,snapshot_at,timezone,day_from`以及13个区块：brand、periods、orders、today_bets、settlement、recharges、ledger、balances、reconciliation、sources、withdrawals、commissions、rewards。
 
-前10区块分别使用brand、period、bet、report_betting、settlement、recharge、report_ledger、report_ledger、wallet、draw_source的显式view权限；有权限返回`ready`及对象，无权限返回`forbidden`及null。后三项当前固定`not_implemented`及null。至少有一个可查看资源才允许请求，平台身份本身不授权。今日数据窗口为品牌时区午夜到快照时间的半开区间，今日投注用placed_at，账本用created_at；余额及待处理状态为当前汇总，对账显示最新历史任务及检查结果，不等于当前所有余额状态。所有计数及积分为规范十进制整数字符串，net_points允许负值。来源状态固定stub，不证明上游健康。查询或审计失败为503，不返回零值或部分数据；其他状态和精确字段以OpenAPI为准。
+前10区块分别使用brand、period、bet、report_betting、settlement、recharge、report_ledger、report_ledger、wallet、draw_source的显式view权限；有权限返回`ready`及对象，无权限返回`forbidden`及null。withdrawals使用独立withdrawal.view.brand/platform权限，返回当前reviewing_count/reviewing_points/processing_count/processing_points四个非负整数字符串；未授权不查询提现表。仅commissions、rewards固定`not_implemented`及null。至少有一个可查看资源才允许请求，平台身份本身不授权。今日数据窗口为品牌时区午夜到快照时间的半开区间，今日投注用placed_at，账本用created_at；余额及待处理状态为当前汇总，提现订单积分不代表资格、实际出款或利润；对账显示最新历史任务及检查结果，不等于当前所有余额状态。所有计数及积分为规范十进制整数字符串，net_points允许负值。来源状态固定stub，不证明上游健康。查询或审计失败为503，不返回零值或部分数据；其他状态和精确字段以OpenAPI为准。
 
 ## 1. 基础约定
 
@@ -555,7 +555,7 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 | GET | /admin/notification-deliveries | 品牌内投递状态分页；显式 `notification.view.brand/platform` 与查询审计 |
 | POST | /admin/notification-deliveries/{event_id}/retry | `{attempt_count:整数,reason:非空文本}`；仅 failed 状态，显式 `notification.retry.brand`，超管禁止 |
 
-列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version,content,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。template_version为正安全整数，content为不可变双语源文案；仅迁移前v1消息为null。八种当前事件不变，除入品牌通知外积分是规范正 int64 字符串。用户不能编辑快照或业务事实，详见 [模板与旧消息合同](12-notification-templates.md)。
+列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version,content,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。template_version为正安全整数，content为不可变双语源文案；仅旧非提现v1消息可为null。原八种事件加六种withdrawal.order状态事件，共十四种；除入品牌通知外积分是规范正 int64 字符串。用户不能编辑快照或业务事实，详见 [模板与旧消息合同](12-notification-templates.md)。
 
 `won` 仅在实际正额中奖入账事务中生成，points 是实派奖金额而非下注金额；待批准的核算、零额及未中奖不生成此消息。`prize_reversed` 仅在实际全额冲回旧 prize 的事务生成，points 为原正额奖金；来源不足、回滚和零额不会生成。resource_id 都是注单 ID；私有 outbox 另保存 calculation/ledger/job/correction 引用，消费者校验同品牌同会员不可变目标与账本，而非注单当前 won 状态。延迟消费在更正后仍能验证旧入账，原通知不会删除/覆盖；新代次再中奖是新的独立消息。双语文案明确历史入账/冲正事实不代表当前钱包余额或最终中奖状态。不制造迁移前的历史奖金通知。
 
@@ -567,7 +567,17 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 
 管理投递列表数据 `{items:[{event_id,brand_id,status,attempt_count,last_error,next_attempt_at,sent_at}]}`；status 为 pending/sent/failed，sent_at 仅 sent 非空。重试回执仍为首次 pending、次数不变，保留 last_error；累计次数和只读最新状态可以已推进，不能把缓存回执当作已投递。S6-c 后台铃铛和“通知投递”菜单接入查询、分页及失败项原因/二次确认/同键恢复；未知意图按账号＋品牌保存在页内内存，刷新列表/切换页面不解除，退出或会话失效清除，不写浏览器持久存储。
 
-S7-l 新增后台GET `/notification-templates`、GET `/notification-templates/{key}/history`及PUT `/notification-templates/{key}`，独立查看/品牌修改权限、乐观锁、不可变历史、审计和原键重放。消费者落库时复制当前模板，不覆盖已有消息；完整字段、错误与生效时点见 [通知模板合同](12-notification-templates.md)。尚未接入开奖受众/提现事件及外部渠道；不得伪造这些通知或把开奖结果展示当作中奖证据。
+S7-l 新增后台GET `/notification-templates`、GET `/notification-templates/{key}/history`及PUT `/notification-templates/{key}`，独立查看/品牌修改权限、乐观锁、不可变历史、审计和原键重放。消费者落库时复制当前模板，不覆盖已有消息；完整字段、错误与生效时点见 [通知模板合同](12-notification-templates.md)。0040接入新提现状态事件，依据不可变状态历史而非当前状态验证；原键重放不重复入队，通知写入失败使同事务资金处理回滚。尚未接入开奖受众及外部渠道，不把内部paid事件当作银行或虚拟币转账证据。
+
+### 提现申请报表与完整导出
+
+GET `/api/v1/admin/reports/withdrawal`和`/export`使用后台会话、X-Brand-ID与主库。查看需明确report_withdrawal.view.brand/platform；导出同时要求对应view及独立export授权。0041只注册权限，不自动分配角色。查询在READ COMMITTED事务中复核持久授权、读取一条SQL一致快照、再次校验会话并提交审计后返回，超管身份不隐含授权。
+
+from/to为RFC3339时间、半开区间[from,to)，最多93天，按申请created_at筛选。group_by为day/member/state，day按品牌IANA时区分组；可选member_id，禁止game_id。JSON列表另支持limit默认20、1..100与offset默认0、0..1000000，未知/重复参数拒绝。响应data为 `{brand_id,snapshot_at,timezone,query,summary,items,total_groups}`，query完整回显且game_id=null；summary覆盖完整筛选而非当前页，items为key/label/totals。即使分页越过末页，summary也不必为零。
+
+Totals含order_count/requested_points，以及reviewing、processing、paid、rejected、failed、cancelled各自的_count/_points，共14个非负规范整数字符串，汇总可超过int64。此为申请时间范围内订单的当前状态投影，不是不可变日月结账、出款时间报表或外部转账记录；之后状态变化会改变同一范围的分布。
+
+导出不接受limit/offset，完整筛选超过10000组或4MiB返回413，不截断。UTF-8 BOM CSV固定列依次为record_type/brand_id/snapshot_at/timezone/from/to/group_by/member_id/key/label及上述14个Totals字段；summary与每条group都回显会员筛选，无game_id。响应为CSV字节而非JSON，提供X-Report-Brand-ID/Kind/Snapshot-At/Group-Count/SHA256/Format-Version/Audit-ID及下载文件名。客户端校验完整摘要、范围、列和组汇总后下载，积分列按文本导入。范围内无会员返回经审计的404，不输出半份CSV；查询或审计失败503。
 
 ## 4.4 S6-d 真实运营报表
 

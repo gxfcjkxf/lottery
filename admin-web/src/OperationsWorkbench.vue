@@ -33,7 +33,7 @@ const sections = computed(() => [
   { key: "balances", title: t("余额", "Balances"), fields: [["account_count", "账户数", "Accounts"], ["available_points", "可用积分", "Available points"], ["frozen_points", "冻结积分", "Frozen points"], ["withdrawal_points", "提现中积分", "Withdrawal points"], ["total_points", "总积分", "Total points"]] },
   { key: "reconciliation", title: t("账本对账", "Ledger reconciliation"), fields: [] },
   { key: "sources", title: t("开奖来源", "Draw sources"), fields: [["adapter_state", "适配器状态", "Adapter state"], ["configured_games", "已配置彩种", "Configured games"], ["enabled_api_sources", "启用 API 来源", "Enabled API sources"], ["enabled_dom_sources", "启用 DOM 来源", "Enabled DOM sources"], ["attempts_today", "今日尝试", "Attempts today"], ["failed_today", "今日失败", "Failed today"], ["no_data_today", "今日无数据", "No data today"], ["last_attempt_at", "最近尝试", "Last attempt"]] },
-  { key: "withdrawals", title: t("提现", "Withdrawals"), fields: [] },
+  { key: "withdrawals", title: t("提现", "Withdrawals"), fields: [["reviewing_count", "待审核笔数", "Awaiting review"], ["reviewing_points", "待审核积分", "Awaiting review (points)"], ["processing_count", "提现中笔数", "Processing count"], ["processing_points", "提现中积分", "Processing points"]], note: t("仅统计当前待审核和提现中订单及其订单积分；不代表资格审核、实际支付或利润。", "Counts only current reviewing and processing orders and their order points; this does not indicate eligibility, actual payment, or profit.") },
   { key: "commissions", title: t("佣金", "Commissions"), fields: [] },
   { key: "rewards", title: t("奖励", "Rewards"), fields: [] },
 ] as const);
@@ -100,7 +100,7 @@ function jobField(field: string): unknown {
   return job && typeof job === "object" && field in job ? (job as Record<string, unknown>)[field] : "";
 }
 function destination(key: string): string | null {
-  const routes: Record<string, string> = { periods: "期次和开奖", orders: "注单和异常", today_bets: "报表和对账", settlement: "期次和开奖", recharges: "资金与账本", ledger: "资金与账本", balances: "资金与账本", reconciliation: "批量对账", sources: "期次和开奖" };
+  const routes: Record<string, string> = { periods: "期次和开奖", orders: "注单和异常", today_bets: "报表和对账", settlement: "期次和开奖", recharges: "资金与账本", ledger: "资金与账本", balances: "资金与账本", withdrawals: "资金与账本", reconciliation: "批量对账", sources: "期次和开奖" };
   return routes[key] ?? null;
 }
 function canNavigate(key: string): boolean {

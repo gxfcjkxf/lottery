@@ -35,6 +35,7 @@ const balances = obj({ account_count: count, available_points: amount, frozen_po
 const reconciliationJob = obj({ id: uuid, state: { type: "string", enum: ["pending", "running", "completed", "failed"] }, created_at: dateTime, completed_at: nullable(dateTime), target_count: count, checked_count: count, repairable_count: count, corrupt_count: count, failed_count: count });
 const reconciliation = obj({ latest_job: nullable(ref("AdminWorkbenchReconciliationJob")) });
 const sources = obj({ adapter_state: { type: "string", const: "stub" }, configured_games: count, enabled_api_sources: count, enabled_dom_sources: count, attempts_today: count, failed_today: count, no_data_today: count, last_attempt_at: nullable(dateTime) });
+const withdrawals = obj({ reviewing_count: count, reviewing_points: amount, processing_count: count, processing_points: amount });
 const unavailable = status => ({
   type: "object", properties: { status: { const: status }, data: { type: "null" } },
   required: ["status", "data"], additionalProperties: false,
@@ -52,6 +53,7 @@ export const schemas = {
   AdminWorkbenchReconciliationJob: reconciliationJob,
   AdminWorkbenchReconciliation: reconciliation,
   AdminWorkbenchSources: sources,
+  AdminWorkbenchWithdrawals: withdrawals,
   AdminWorkbenchSnapshot: obj({
     brand_id: uuid, snapshot_at: dateTime, timezone: str, day_from: dateTime,
     brand: ref("AdminWorkbenchBrandSection"), periods: ref("AdminWorkbenchPeriodsSection"),
@@ -72,15 +74,15 @@ export const schemas = {
   AdminWorkbenchBalancesSection: section("balances", "report_ledger", ref("AdminWorkbenchBalances")),
   AdminWorkbenchReconciliationSection: section("reconciliation", "wallet", ref("AdminWorkbenchReconciliation")),
   AdminWorkbenchSourcesSection: section("sources", "draw_source", ref("AdminWorkbenchSources")),
-  AdminWorkbenchWithdrawalsSection: unavailable("not_implemented"),
+  AdminWorkbenchWithdrawalsSection: section("withdrawals", "withdrawal", ref("AdminWorkbenchWithdrawals")),
   AdminWorkbenchCommissionsSection: unavailable("not_implemented"),
   AdminWorkbenchRewardsSection: unavailable("not_implemented"),
 };
 
-const permissions = ["brand.view.brand", "period.view.brand", "bet.view.brand", "report_betting.view.brand", "settlement.view.brand", "recharge.view.brand", "report_ledger.view.brand", "wallet.view.brand", "draw_source.view.brand", "brand.view.platform", "period.view.platform", "bet.view.platform", "report_betting.view.platform", "settlement.view.platform", "recharge.view.platform", "report_ledger.view.platform", "wallet.view.platform", "draw_source.view.platform"];
+const permissions = ["brand.view.brand", "period.view.brand", "bet.view.brand", "report_betting.view.brand", "settlement.view.brand", "recharge.view.brand", "report_ledger.view.brand", "wallet.view.brand", "draw_source.view.brand", "withdrawal.view.brand", "brand.view.platform", "period.view.platform", "bet.view.platform", "report_betting.view.platform", "settlement.view.platform", "recharge.view.platform", "report_ledger.view.platform", "wallet.view.platform", "draw_source.view.platform", "withdrawal.view.platform"];
 export const operations = [{
   method: "GET", path: "/api/v1/admin/workbench", operationId: "adminGetWorkbench",
   summary: "Read the selected brand's operations workbench", tag: "workbench", auth: "admin",
   data: ref("AdminWorkbenchSnapshot"), brandHeader: true, permissions,
-  description: "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Unsupported withdrawals, commissions, and rewards always return not_implemented with null data; their counts are not reported as zero. Aggregate counts and amounts are exact decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
+  description: "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Withdrawals reports only current reviewing and processing order counts and order points; it does not infer eligibility, actual payment, or profit. Commissions and rewards remain not_implemented with null data. Aggregate counts and amounts are exact decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
 }];

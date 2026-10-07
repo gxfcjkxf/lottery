@@ -29,6 +29,22 @@ func TestReportQueryBoundsAndGroups(t *testing.T) {
 	if q.Validate("ledger") != ErrInvalid {
 		t.Fatal("ledger silently accepted a game filter")
 	}
+	q.GameID = nil
+	for _, group := range []string{"day", "member", "state"} {
+		q.GroupBy = group
+		if q.Validate("withdrawal") != nil {
+			t.Fatal("withdrawal group rejected", group)
+		}
+	}
+	q.GroupBy = "game"
+	if q.Validate("withdrawal") != ErrInvalid {
+		t.Fatal("withdrawal accepted unsupported group")
+	}
+	q.GroupBy = "state"
+	q.GameID = &g
+	if q.Validate("withdrawal") != ErrInvalid {
+		t.Fatal("withdrawal accepted game filter")
+	}
 }
 func TestLedgerReportLargeAggregatesTransfersAndOutsideWindowBalances(t *testing.T) {
 	db := testdb.New(t)

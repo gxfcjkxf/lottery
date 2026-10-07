@@ -23,7 +23,7 @@ import (
 
 func safeFixtureURL(raw, environment, confirmation string) error {
 	u, err := url.Parse(raw)
-	if err != nil || environment != "test" || confirmation != "owned_synthetic_database" || u.Scheme != "postgres" && u.Scheme != "postgresql" || u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost" || u.Port() != "55432" && u.Port() != "5432" || u.Path != "/lottery_withdrawal_ui_s8" || u.Fragment != "" || u.User == nil || u.User.Username() != "lottery_test" {
+	if err != nil || environment != "test" || confirmation != "owned_synthetic_database" || u.Scheme != "postgres" && u.Scheme != "postgresql" || u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost" || u.Port() != "55432" && u.Port() != "5432" || u.Path != "/lottery_withdrawal_ui_s8" && u.Path != "/lottery_withdrawal_ui_s8_followup" && u.Path != "/lottery_withdrawal_ui_s8_verified" || u.Fragment != "" || u.User == nil || u.User.Username() != "lottery_test" {
 		return errors.New("explicit owned synthetic withdrawal database required")
 	}
 	q, err := url.ParseQuery(u.RawQuery)

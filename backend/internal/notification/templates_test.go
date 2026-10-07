@@ -30,6 +30,12 @@ var expectedTemplateKeys = []string{
 	"bet.order.won",
 	"member.joined",
 	"recharge.confirmed",
+	"withdrawal.order.cancelled",
+	"withdrawal.order.failed",
+	"withdrawal.order.paid",
+	"withdrawal.order.processing",
+	"withdrawal.order.rejected",
+	"withdrawal.order.reviewing",
 }
 
 //go:embed template_defaults.json

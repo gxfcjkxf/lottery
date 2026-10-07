@@ -34,12 +34,13 @@ export interface WorkbenchSources {
   adapter_state: "stub"; configured_games: string; enabled_api_sources: string; enabled_dom_sources: string;
   attempts_today: string; failed_today: string; no_data_today: string; last_attempt_at: string | null;
 }
+export interface WorkbenchWithdrawals { reviewing_count: string; reviewing_points: string; processing_count: string; processing_points: string }
 export interface WorkbenchSnapshot {
   brand_id: string; snapshot_at: string; timezone: string; day_from: string;
   brand: Section<WorkbenchBrand>; periods: Section<WorkbenchPeriods>; orders: Section<WorkbenchOrders>;
   today_bets: Section<WorkbenchTodayBets>; settlement: Section<WorkbenchSettlement>; recharges: Section<WorkbenchRecharges>;
   ledger: Section<WorkbenchLedger>; balances: Section<WorkbenchBalances>; reconciliation: Section<WorkbenchReconciliation>;
-  sources: Section<WorkbenchSources>; withdrawals: Section<Record<string, never>>;
+  sources: Section<WorkbenchSources>; withdrawals: Section<WorkbenchWithdrawals>;
   commissions: Section<Record<string, never>>; rewards: Section<Record<string, never>>;
 }
 
@@ -55,18 +56,20 @@ const SECTION_KEYS: Record<SectionName, string[]> = {
   balances: ["account_count", "available_points", "frozen_points", "withdrawal_points", "total_points"],
   reconciliation: ["latest_job"],
   sources: ["adapter_state", "configured_games", "enabled_api_sources", "enabled_dom_sources", "attempts_today", "failed_today", "no_data_today", "last_attempt_at"],
-  withdrawals: [], commissions: [], rewards: [],
+  withdrawals: ["reviewing_count", "reviewing_points", "processing_count", "processing_points"], commissions: [], rewards: [],
 };
 const COUNTS: Partial<Record<SectionName, string[]>> = {
   periods: SECTION_KEYS.periods, orders: SECTION_KEYS.orders,
   today_bets: ["order_count", "cancelled_count", "abnormal_count"],
   settlement: SECTION_KEYS.settlement, recharges: ["pending_count"], ledger: ["entry_count"],
   balances: ["account_count"], sources: ["configured_games", "enabled_api_sources", "enabled_dom_sources", "attempts_today", "failed_today", "no_data_today"],
+  withdrawals: ["reviewing_count", "processing_count"],
 };
 const POINTS: Partial<Record<SectionName, string[]>> = {
   today_bets: ["stake_points"], recharges: ["pending_points"],
   ledger: ["recharge_points", "prize_credit_points", "prize_reversal_points", "refund_points"],
   balances: ["available_points", "frozen_points", "withdrawal_points", "total_points"],
+  withdrawals: ["reviewing_points", "processing_points"],
 };
 const SECTION_ORDER = Object.keys(SECTION_KEYS) as SectionName[];
 
@@ -121,12 +124,12 @@ export function validWorkbenchSnapshot(value: unknown, brandId: string): value i
   for (const name of SECTION_ORDER) {
     const section = value[name];
     if (!record(section) || !exactKeys(section, ["status", "data"]) || !STATUSES.includes(section.status as SectionStatus)) return false;
-    const fixedUnimplemented = ["withdrawals", "commissions", "rewards"].includes(name);
+    const fixedUnimplemented = ["commissions", "rewards"].includes(name);
     if (fixedUnimplemented && (section.status !== "not_implemented" || section.data !== null)) return false;
     if (!fixedUnimplemented && section.status === "not_implemented") return false;
     if (section.status !== "ready") {
       if (section.data !== null) return false;
-      if (["withdrawals", "commissions", "rewards"].includes(name) && section.status !== "not_implemented") return false;
+      if (["commissions", "rewards"].includes(name) && section.status !== "not_implemented") return false;
       continue;
     }
     if (!record(section.data) || !exactKeys(section.data, SECTION_KEYS[name])) return false;
@@ -143,7 +146,7 @@ export function validWorkbenchSnapshot(value: unknown, brandId: string): value i
     for (const key of COUNTS[name] ?? []) if (!uint(data[key])) return false;
     for (const key of POINTS[name] ?? []) if (!uint(data[key])) return false;
     if (name === "ledger" && !sint(data.net_points)) return false;
-    if (["withdrawals", "commissions", "rewards"].includes(name) && Object.keys(data).length !== 0) return false;
+    if (["commissions", "rewards"].includes(name) && Object.keys(data).length !== 0) return false;
   }
   const ready = (name: SectionName) => (value[name] as Section<unknown>).status === "ready" ? (value[name] as Section<Record<string, string>>).data : null;
   const bets = ready("today_bets"), sources = ready("sources");
@@ -163,7 +166,7 @@ export function workbenchPermissions(account: AdminAccount, brandId: string): Re
     brand: allowed("brand"), periods: allowed("period"), orders: allowed("bet"),
     today_bets: allowed("report_betting"), settlement: allowed("settlement"), recharges: allowed("recharge"),
     ledger: allowed("report_ledger"), balances: allowed("report_ledger"), reconciliation: allowed("wallet"), sources: allowed("draw_source"),
-    withdrawals: allowed("wallet"), commissions: allowed("wallet"), rewards: allowed("wallet"),
+    withdrawals: allowed("withdrawal"), commissions: allowed("wallet"), rewards: allowed("wallet"),
   };
 }
 

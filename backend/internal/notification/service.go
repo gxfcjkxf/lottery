@@ -238,6 +238,9 @@ func positive(v *string) bool {
 	return e == nil && n > 0 && strconv.FormatInt(n, 10) == *v
 }
 func validateEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate string, raw []byte) (string, Payload, error) {
+	if strings.HasPrefix(kind, "withdrawal.order.") {
+		return validateWithdrawalEvent(ctx, tx, brand, kind, aggregate, raw)
+	}
 	var in struct {
 		MemberID              string  `json:"member_id"`
 		ResourceID            string  `json:"resource_id"`

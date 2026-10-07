@@ -30,7 +30,7 @@ func workbenchExamples() map[string]any {
 		Balances:       workbenchReady(workbench.Balances{AccountCount: "12", AvailablePoints: "9000000000000000000", FrozenPoints: "100", WithdrawalPoints: "50", TotalPoints: "9000000000000000150"}),
 		Reconciliation: workbenchReady(workbench.Reconciliation{LatestJob: &workbench.ReconciliationJob{ID: id, State: "completed", CreatedAt: snapshotAt.Add(-2 * time.Hour), CompletedAt: &completedAt, TargetCount: "12", CheckedCount: "12", RepairableCount: "0", CorruptCount: "0", FailedCount: "0"}}),
 		Sources:        workbenchReady(workbench.Sources{AdapterState: "stub", ConfiguredGames: "2", EnabledAPISources: "1", EnabledDOMSources: "0", AttemptsToday: "3", FailedToday: "1", NoDataToday: "0", LastAttemptAt: &lastAttemptAt}),
-		Withdrawals:    workbench.Section[struct{}]{Status: "not_implemented"},
+		Withdrawals:    workbenchReady(workbench.Withdrawals{ReviewingCount: "1", ReviewingPoints: "50", ProcessingCount: "2", ProcessingPoints: "9000000000000000000"}),
 		Commissions:    workbench.Section[struct{}]{Status: "not_implemented"},
 		Rewards:        workbench.Section[struct{}]{Status: "not_implemented"},
 	}

@@ -1,9 +1,9 @@
 import type { Language } from "../../shared/src/brand";
-import type { NotificationTemplateContent } from "./notification-api";
+import type { NotificationEventType, NotificationTemplateContent } from "./notification-api";
 
 export type NotificationPresentationItem = {
-  event_type: string;
-  template_key: string;
+  event_type: NotificationEventType;
+  template_key: NotificationEventType;
   template_version: number;
   content?: NotificationTemplateContent | null;
   payload: { resource_id: string; points: string | null };
@@ -53,6 +53,12 @@ const copy = {
       title: "Prize reversal recorded",
       body: "Historical record: the full original prize amount of {points} points for this order was reversed. This records the reversal, not your current wallet balance. Any later prize correction will appear as a separate event; this record is retained.",
     },
+    "withdrawal.order.reviewing": { title: "Withdrawal status recorded", body: "Historical withdrawal status: reviewing. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state." },
+    "withdrawal.order.processing": { title: "Withdrawal status recorded", body: "Historical withdrawal status: processing. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state." },
+    "withdrawal.order.paid": { title: "Withdrawal status recorded", body: "Historical withdrawal status: paid. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state." },
+    "withdrawal.order.rejected": { title: "Withdrawal status recorded", body: "Historical withdrawal status: rejected. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state." },
+    "withdrawal.order.failed": { title: "Withdrawal status recorded", body: "Historical withdrawal status: failed. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state." },
+    "withdrawal.order.cancelled": { title: "Withdrawal status recorded", body: "Historical withdrawal status: cancelled. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state." },
   },
   zh: {
     "member.joined": { title: "欢迎", body: "您的会员账户已准备就绪，欢迎加入。" },
@@ -78,6 +84,12 @@ const copy = {
       title: "奖金冲正记录",
       body: "历史记录：此注单原奖金全额 {points} 积分已冲回。此记录仅表示该笔冲正，不代表当前钱包余额。之后如有奖金更正，会作为单独事件记录；此记录会保留。",
     },
+    "withdrawal.order.reviewing": { title: "提现状态记录", body: "历史提现状态：审核中，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。" },
+    "withdrawal.order.processing": { title: "提现状态记录", body: "历史提现状态：提现中，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。" },
+    "withdrawal.order.paid": { title: "提现状态记录", body: "历史提现状态：已提现，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。" },
+    "withdrawal.order.rejected": { title: "提现状态记录", body: "历史提现状态：已驳回，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。" },
+    "withdrawal.order.failed": { title: "提现状态记录", body: "历史提现状态：失败，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。" },
+    "withdrawal.order.cancelled": { title: "提现状态记录", body: "历史提现状态：已取消，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。" },
   },
 } as const;
 
@@ -111,6 +123,10 @@ export function renderNotification(
     ? null
     : formatIntegerString(item.payload.points, locale);
   const snapshot = item.content ?? null;
+  const withdrawalEvent = item.event_type.startsWith("withdrawal.order.");
+  if (withdrawalEvent && snapshot === null) {
+    throw new RangeError("Withdrawal notifications require an immutable content snapshot");
+  }
   if (snapshot === null && item.template_version !== 1) {
     throw new RangeError(`Missing notification template snapshot for version: ${item.template_version}`);
   }
@@ -126,7 +142,7 @@ export function renderNotification(
     : item.payload.points !== null
       ? known.body.replaceAll("{points}", points ?? item.payload.points)
       : known.body;
-  const protectedNote = snapshot && (item.event_type === "bet.order.won" || item.event_type === "bet.order.prize_reversed")
+  const protectedNote = withdrawalEvent || (snapshot && (item.event_type === "bet.order.won" || item.event_type === "bet.order.prize_reversed"))
     ? known.body.replaceAll("{points}", points ?? "")
     : null;
   const date = new Date(item.created_at);

@@ -216,7 +216,7 @@ onBeforeUnmount(() => { alive = false; listTicket++; historyTicket++; writeTicke
             <option value="" disabled>选择通知事件</option>
             <option v-for="key in notificationTemplateKeys" :key="key" :value="key">{{ formatKey(key) }}</option>
           </select>
-          <p class="nt-hint">事件事实由系统生成。奖项发放和冲正事实备注保持只读。</p>
+          <p class="nt-hint">支持14种通知事件：会员、充值、注单、奖项及提现状态。事件事实由系统生成；奖项发放、冲正及所有提现事件的双语历史说明保持只读。提现通知仅记录内部积分状态，不代表银行或虚拟币转账。</p>
         </nav>
 
         <div v-if="(record && draft && selectedKey) || pending" class="nt-workspace">

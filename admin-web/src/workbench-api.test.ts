@@ -20,7 +20,7 @@ function snapshot(patch: Partial<WorkbenchSnapshot> = {}): WorkbenchSnapshot {
     balances: ready({ account_count: "10", available_points: "11", frozen_points: "12", withdrawal_points: "13", total_points: "36" }),
     reconciliation: ready({ latest_job: { id: jobId, state: "completed", created_at: "2026-10-07T09:00:00Z", completed_at: stamp, target_count: "2", checked_count: "2", repairable_count: "1", corrupt_count: "0", failed_count: "0" } }),
     sources: ready({ adapter_state: "stub", configured_games: "1", enabled_api_sources: "2", enabled_dom_sources: "0", attempts_today: "3", failed_today: "1", no_data_today: "1", last_attempt_at: "2026-10-07T09:30:00Z" }),
-    withdrawals: { status: "not_implemented", data: null }, commissions: { status: "not_implemented", data: null }, rewards: { status: "not_implemented", data: null },
+    withdrawals: ready({ reviewing_count: "2", reviewing_points: "500", processing_count: "1", processing_points: "900719925474099312345" }), commissions: { status: "not_implemented", data: null }, rewards: { status: "not_implemented", data: null },
     ...patch,
   };
 }
@@ -77,13 +77,17 @@ describe("workbench SDK", () => {
     await expect(createWorkbenchApi(vi.fn<typeof fetch>().mockResolvedValue(response(data))).get(legacyBrand)).resolves.toEqual(data);
   });
 
-  it("enforces section status and data nullability, including the final three unimplemented sections", () => {
+  it("enforces section status and data nullability, keeping only commissions and rewards unimplemented", () => {
     const value = snapshot();
     expect(validWorkbenchSnapshot({ ...value, balances: { status: "forbidden", data: null } }, brand)).toBe(true);
     expect(validWorkbenchSnapshot({ ...value, balances: { status: "forbidden", data: value.balances.data } }, brand)).toBe(false);
     expect(validWorkbenchSnapshot({ ...value, balances: { status: "not_implemented", data: null } }, brand)).toBe(false);
     expect(validWorkbenchSnapshot({ ...value, sources: { status: "ready", data: { ...value.sources.data!, adapter_state: "healthy" } } }, brand)).toBe(false);
-    expect(validWorkbenchSnapshot({ ...value, withdrawals: { status: "forbidden", data: null } }, brand)).toBe(false);
+    expect(validWorkbenchSnapshot({ ...value, withdrawals: { status: "forbidden", data: null } }, brand)).toBe(true);
+    expect(validWorkbenchSnapshot({ ...value, withdrawals: { status: "not_implemented", data: null } }, brand)).toBe(false);
+    for (const invalid of ["01", "-1", "1e3"]) {
+      expect(validWorkbenchSnapshot({ ...value, withdrawals: { status: "ready", data: { ...value.withdrawals.data!, reviewing_points: invalid } } }, brand)).toBe(false);
+    }
     expect(validWorkbenchSnapshot({ ...value, rewards: { status: "ready", data: {} } }, brand)).toBe(false);
   });
 
@@ -111,10 +115,13 @@ describe("workbench SDK", () => {
   });
 
   it("derives links only from effective brand or platform view grants", () => {
-    expect(workbenchPermissions(account(), brand)).toMatchObject({ periods: true, orders: true, today_bets: false, settlement: false, balances: false, ledger: false });
+    expect(workbenchPermissions(account(), brand)).toMatchObject({ periods: true, orders: true, today_bets: false, settlement: false, balances: false, ledger: false, withdrawals: false });
     const scoped = workbenchPermissions(account({ permissions_by_brand: { [brand]: ["report_betting.view.brand", "settlement.view.brand", "report_ledger.view.brand"] } }), brand);
     expect(scoped).toMatchObject({ orders: false, today_bets: true, settlement: true, balances: true, ledger: true });
     expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["report_ledger.view.platform"] }), brand).balances).toBe(true);
+    expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["withdrawal.view.brand"] } }), brand).withdrawals).toBe(true);
+    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["withdrawal.view.platform"] }), brand).withdrawals).toBe(true);
+    expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["wallet.view.brand"] }, platform_permissions: [] }), brand).withdrawals).toBe(false);
     expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: [] }, platform_permissions: [] }), brand).orders).toBe(false);
   });
 

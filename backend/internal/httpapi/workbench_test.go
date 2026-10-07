@@ -22,7 +22,7 @@ func TestWorkbenchHTTPFreshAuthorizationAndScope(t *testing.T) {
 	mustStatus(t, r, 200)
 	var out workbench.Snapshot
 	managedData(t, r, &out)
-	if out.Brand.Status != "ready" || out.Brand.Data == nil || out.Ledger.Status != "forbidden" || out.Ledger.Data != nil || out.Withdrawals.Status != "not_implemented" || out.Withdrawals.Data != nil {
+	if out.Brand.Status != "ready" || out.Brand.Data == nil || out.Ledger.Status != "forbidden" || out.Ledger.Data != nil || out.Withdrawals.Status != "forbidden" || out.Withdrawals.Data != nil {
 		t.Fatalf("incorrect section authorization: %+v", out)
 	}
 	mustStatus(t, f.call("GET", workbenchPath, "", f.token, pointsBrandB, nil), 403)
@@ -75,6 +75,47 @@ func TestWorkbenchHTTPRealRechargeFreezeAndNoBusinessWrites(t *testing.T) {
 	var audits int
 	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE action='workbench.view'`).Scan(&audits); err != nil || audits != 3 {
 		t.Fatalf("successful reads must be audited: %d (%v)", audits, err)
+	}
+}
+
+func TestWorkbenchHTTPRealWithdrawalQueueRequiresIndependentViewGrant(t *testing.T) {
+	f := pointsFixture(t)
+	configureWithdrawalHTTP(t, f)
+	f.http = withdrawalHTTP(t, f, withdrawalHTTPChecker{})
+	order := withdrawalHTTPCreate(t, f, "workbench-withdrawal-queue")
+
+	if _, err := f.pool.Exec(context.Background(), `DELETE FROM role_permissions WHERE permission_key='withdrawal.view.brand' AND role_id IN(SELECT role_id FROM admin_account_roles WHERE account_id=$1)`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	r := f.call("GET", workbenchPath, "", f.token, managedBrand, nil)
+	mustStatus(t, r, 200)
+	var out workbench.Snapshot
+	managedData(t, r, &out)
+	if out.Withdrawals.Status != "forbidden" || out.Withdrawals.Data != nil {
+		t.Fatalf("withdrawal workflow grants must not imply queue read: %+v", out.Withdrawals)
+	}
+
+	grantReportPermission(t, f.managementHTTP, "withdrawal.view.brand")
+	r = f.call("GET", workbenchPath, "", f.token, managedBrand, nil)
+	mustStatus(t, r, 200)
+	managedData(t, r, &out)
+	if out.Withdrawals.Status != "ready" || out.Withdrawals.Data == nil || out.Withdrawals.Data.ReviewingCount != "1" || out.Withdrawals.Data.ReviewingPoints != "50" || out.Withdrawals.Data.ProcessingCount != "0" || out.Withdrawals.Data.ProcessingPoints != "0" {
+		t.Fatalf("review queue did not reflect persisted order %s: %+v", order.ID, out.Withdrawals)
+	}
+
+	mustStatus(t, f.call("POST", "/api/v1/admin/withdrawals/"+order.ID+"/approve", "workbench-withdrawal-approve", f.token, managedBrand, map[string]any{"version": 1, "reason": "move into processing"}), 200)
+	r = f.call("GET", workbenchPath, "", f.token, managedBrand, nil)
+	mustStatus(t, r, 200)
+	managedData(t, r, &out)
+	if out.Withdrawals.Data == nil || out.Withdrawals.Data.ReviewingCount != "0" || out.Withdrawals.Data.ReviewingPoints != "0" || out.Withdrawals.Data.ProcessingCount != "1" || out.Withdrawals.Data.ProcessingPoints != "50" {
+		t.Fatalf("processing queue did not reflect persisted transition: %+v", out.Withdrawals)
+	}
+	mustStatus(t, f.call("POST", "/api/v1/admin/withdrawals/"+order.ID+"/fail", "workbench-withdrawal-fail", f.token, managedBrand, map[string]any{"version": 2, "reason": "terminal test state"}), 200)
+	r = f.call("GET", workbenchPath, "", f.token, managedBrand, nil)
+	mustStatus(t, r, 200)
+	managedData(t, r, &out)
+	if out.Withdrawals.Data == nil || out.Withdrawals.Data.ReviewingCount != "0" || out.Withdrawals.Data.ReviewingPoints != "0" || out.Withdrawals.Data.ProcessingCount != "0" || out.Withdrawals.Data.ProcessingPoints != "0" {
+		t.Fatalf("terminal withdrawal must not be included in in-progress totals: %+v", out.Withdrawals)
 	}
 }
 

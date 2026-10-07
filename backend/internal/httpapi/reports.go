@@ -58,6 +58,7 @@ func reportQuery(r *http.Request, kind string) (reporting.Query, error) {
 	return out, out.Validate(kind)
 }
 func registerReportAdminRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
+	registerWithdrawalReportRoutes(handle, d)
 	registerReportExportRoutes(handle, d)
 	s := reporting.Service{DB: d.Admins.DB}
 	for _, kind := range []string{"betting", "ledger"} {

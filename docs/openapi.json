@@ -45,6 +45,10 @@
       "description": "Implemented reporting interfaces."
     },
     {
+      "name": "reports",
+      "description": "Implemented reports interfaces."
+    },
+    {
       "name": "system",
       "description": "Implemented system interfaces."
     },
@@ -59043,7 +59047,13 @@
                 "bet.order.prize_reversed",
                 "bet.order.won",
                 "member.joined",
-                "recharge.confirmed"
+                "recharge.confirmed",
+                "withdrawal.order.cancelled",
+                "withdrawal.order.failed",
+                "withdrawal.order.paid",
+                "withdrawal.order.processing",
+                "withdrawal.order.rejected",
+                "withdrawal.order.reviewing"
               ]
             }
           },
@@ -59426,7 +59436,13 @@
                 "bet.order.prize_reversed",
                 "bet.order.won",
                 "member.joined",
-                "recharge.confirmed"
+                "recharge.confirmed",
+                "withdrawal.order.cancelled",
+                "withdrawal.order.failed",
+                "withdrawal.order.paid",
+                "withdrawal.order.processing",
+                "withdrawal.order.rejected",
+                "withdrawal.order.reviewing"
               ]
             }
           },
@@ -74777,6 +74793,773 @@
         }
       }
     },
+    "/api/v1/admin/reports/withdrawal": {
+      "get": {
+        "operationId": "adminGetWithdrawalReport",
+        "summary": "Read withdrawal application report",
+        "tags": [
+          "reports"
+        ],
+        "description": "Read-only withdrawal application report. Filters withdrawal_orders.created_at in half-open [from,to), groups days using the brand IANA timezone and reports the current state projection from one SQL statement. State changes after request creation are reflected in past request cohorts. It is not immutable closeout, payout time, or external transfer data. Strict parsing rejects game_id, unknown/duplicate/empty query parameters. Super-admin status does not grant report access. Primary-database Read Committed transaction locks and rechecks current admin session/roles before and after the query; audit commits before any response data.",
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateTime"
+            },
+            "description": "RFC3339 application-created-at lower bound, inclusive."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateTime"
+            },
+            "description": "RFC3339 application-created-at upper bound, exclusive; at most 93 days after from."
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "member",
+                "state"
+              ]
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000,
+              "default": 0
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "X-Brand-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            },
+            "description": "Selected brand; server revalidates current administrative scope and permission."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "request_id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WithdrawalReport"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [
+          "report_withdrawal.view.brand",
+          "report_withdrawal.view.platform"
+        ],
+        "x-idempotent-operation": false
+      }
+    },
+    "/api/v1/admin/reports/withdrawal/export": {
+      "get": {
+        "operationId": "adminExportWithdrawalReport",
+        "summary": "Export withdrawal application report CSV",
+        "tags": [
+          "reports"
+        ],
+        "description": "Read-only withdrawal application report. Filters withdrawal_orders.created_at in half-open [from,to), groups days using the brand IANA timezone and reports the current state projection from one SQL statement. State changes after request creation are reflected in past request cohorts. It is not immutable closeout, payout time, or external transfer data. Strict parsing rejects game_id, unknown/duplicate/empty query parameters. Super-admin status does not grant report access. Primary-database Read Committed transaction locks and rechecks current admin session/roles before and after the query; audit commits before any response data. Export has no pagination parameters and is rejected above 10000 groups or 4MiB. CSV columns are record_type, brand_id, snapshot_at, timezone, from, to, group_by, member_id, key, label, order_count, requested_points, reviewing_count, reviewing_points, processing_count, processing_points, paid_count, paid_points, rejected_count, rejected_points, failed_count, failed_points, cancelled_count, cancelled_points. It includes a BOM, formula-injection neutralization and SHA-256 audit metadata; game_id is not present.",
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateTime"
+            },
+            "description": "RFC3339 application-created-at lower bound, inclusive."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateTime"
+            },
+            "description": "RFC3339 application-created-at upper bound, exclusive; at most 93 days after from."
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "member",
+                "state"
+              ]
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "X-Brand-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            },
+            "description": "Selected brand; server revalidates current administrative scope and permission."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete UTF-8 CSV after its audit record commits.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Content-Disposition": {
+                "description": "Complete CSV download filename.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Report-Brand-ID": {
+                "description": "Selected report brand.",
+                "schema": {
+                  "$ref": "#/components/schemas/UUID"
+                }
+              },
+              "X-Report-Kind": {
+                "description": "Report identifier.",
+                "schema": {
+                  "type": "string",
+                  "const": "withdrawal"
+                }
+              },
+              "X-Report-Snapshot-At": {
+                "description": "Database snapshot timestamp.",
+                "schema": {
+                  "$ref": "#/components/schemas/DateTime"
+                }
+              },
+              "X-Report-Group-Count": {
+                "description": "Complete number of groups in the export.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)$",
+                  "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+                }
+              },
+              "X-Report-SHA256": {
+                "description": "SHA-256 digest of the response body.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              },
+              "X-Report-Format-Version": {
+                "description": "CSV layout version.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              },
+              "X-Report-Audit-ID": {
+                "description": "Committed export audit record ID.",
+                "schema": {
+                  "$ref": "#/components/schemas/UUID"
+                }
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [
+          "report_withdrawal.view.brand",
+          "report_withdrawal.view.platform",
+          "report_withdrawal.export.brand",
+          "report_withdrawal.export.platform"
+        ],
+        "x-idempotent-operation": false
+      }
+    },
     "/api/v1/admin/workbench": {
       "get": {
         "operationId": "adminGetWorkbench",
@@ -74784,7 +75567,7 @@
         "tags": [
           "workbench"
         ],
-        "description": "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Unsupported withdrawals, commissions, and rewards always return not_implemented with null data; their counts are not reported as zero. Aggregate counts and amounts are exact decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
+        "description": "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Withdrawals reports only current reviewing and processing order counts and order points; it does not infer eligibility, actual payment, or profit. Commissions and rewards remain not_implemented with null data. Aggregate counts and amounts are exact decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
         "security": [
           {
             "adminBearer": []
@@ -75094,6 +75877,7 @@
           "report_ledger.view.brand",
           "wallet.view.brand",
           "draw_source.view.brand",
+          "withdrawal.view.brand",
           "brand.view.platform",
           "period.view.platform",
           "bet.view.platform",
@@ -75102,7 +75886,8 @@
           "recharge.view.platform",
           "report_ledger.view.platform",
           "wallet.view.platform",
-          "draw_source.view.platform"
+          "draw_source.view.platform",
+          "withdrawal.view.platform"
         ],
         "x-idempotent-operation": false
       }
@@ -84685,7 +85470,7 @@
           "zh-CN"
         ],
         "additionalProperties": false,
-        "description": "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; seven event templates require {points} in each language body, while member.joined forbids {points} in either body or title. Placeholder presence and UTF-8 byte limits are enforced by the handler."
+        "description": "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; thirteen event templates require {points} in each language body, while member.joined forbids {points} in either body or title. Placeholder presence and UTF-8 byte limits are enforced by the handler. Withdrawal events describe historical internal points states, never proof of an external transfer."
       },
       "LotteryNotificationTemplate": {
         "type": "object",
@@ -84703,7 +85488,13 @@
               "bet.order.prize_reversed",
               "bet.order.won",
               "member.joined",
-              "recharge.confirmed"
+              "recharge.confirmed",
+              "withdrawal.order.cancelled",
+              "withdrawal.order.failed",
+              "withdrawal.order.paid",
+              "withdrawal.order.processing",
+              "withdrawal.order.rejected",
+              "withdrawal.order.reviewing"
             ]
           },
           "version": {
@@ -84785,7 +85576,13 @@
               "bet.order.prize_reversed",
               "bet.order.won",
               "member.joined",
-              "recharge.confirmed"
+              "recharge.confirmed",
+              "withdrawal.order.cancelled",
+              "withdrawal.order.failed",
+              "withdrawal.order.paid",
+              "withdrawal.order.processing",
+              "withdrawal.order.rejected",
+              "withdrawal.order.reviewing"
             ]
           },
           "version": {
@@ -85553,7 +86350,13 @@
               "bet.order.prize_reversed",
               "bet.order.won",
               "member.joined",
-              "recharge.confirmed"
+              "recharge.confirmed",
+              "withdrawal.order.cancelled",
+              "withdrawal.order.failed",
+              "withdrawal.order.paid",
+              "withdrawal.order.processing",
+              "withdrawal.order.rejected",
+              "withdrawal.order.reviewing"
             ]
           },
           "template_key": {
@@ -85566,7 +86369,13 @@
               "bet.order.prize_reversed",
               "bet.order.won",
               "member.joined",
-              "recharge.confirmed"
+              "recharge.confirmed",
+              "withdrawal.order.cancelled",
+              "withdrawal.order.failed",
+              "withdrawal.order.paid",
+              "withdrawal.order.processing",
+              "withdrawal.order.rejected",
+              "withdrawal.order.reviewing"
             ]
           },
           "template_version": {
@@ -85717,8 +86526,109 @@
                     "const": "recharge.confirmed"
                   }
                 }
+              },
+              {
+                "properties": {
+                  "event_type": {
+                    "const": "withdrawal.order.cancelled"
+                  },
+                  "template_key": {
+                    "const": "withdrawal.order.cancelled"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "event_type": {
+                    "const": "withdrawal.order.failed"
+                  },
+                  "template_key": {
+                    "const": "withdrawal.order.failed"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "event_type": {
+                    "const": "withdrawal.order.paid"
+                  },
+                  "template_key": {
+                    "const": "withdrawal.order.paid"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "event_type": {
+                    "const": "withdrawal.order.processing"
+                  },
+                  "template_key": {
+                    "const": "withdrawal.order.processing"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "event_type": {
+                    "const": "withdrawal.order.rejected"
+                  },
+                  "template_key": {
+                    "const": "withdrawal.order.rejected"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "event_type": {
+                    "const": "withdrawal.order.reviewing"
+                  },
+                  "template_key": {
+                    "const": "withdrawal.order.reviewing"
+                  }
+                }
               }
             ]
+          },
+          {
+            "if": {
+              "properties": {
+                "event_type": {
+                  "enum": [
+                    "withdrawal.order.cancelled",
+                    "withdrawal.order.failed",
+                    "withdrawal.order.paid",
+                    "withdrawal.order.processing",
+                    "withdrawal.order.rejected",
+                    "withdrawal.order.reviewing"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "content": {
+                  "$ref": "#/components/schemas/LotteryNotificationTemplateContent"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "resource_id": {
+                      "$ref": "#/components/schemas/UUID"
+                    },
+                    "points": {
+                      "type": "string",
+                      "pattern": "^(?:[1-9][0-9]{0,17}|9223372036854775807|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6][0-9]{0})$",
+                      "description": "Canonical positive int64 points; at most 9223372036854775807."
+                    }
+                  },
+                  "required": [
+                    "resource_id",
+                    "points"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           },
           {
             "oneOf": [
@@ -85752,7 +86662,7 @@
             ]
           }
         ],
-        "description": "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy version 1 rows may have null content; version 2 and later always include their copied content. Updating a template never rewrites existing notifications."
+        "description": "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy non-withdrawal version 1 rows may have null content; withdrawal events and version 2 and later always include their copied content. Withdrawal points are positive int64 and their rendered historical/internal-transfer disclaimer cannot be removed by template editing. Updating a template never rewrites existing notifications."
       },
       "LotteryAdminGamesPage": {
         "type": "object",
@@ -87004,6 +87914,211 @@
         ],
         "additionalProperties": false
       },
+      "WithdrawalReportTotals": {
+        "type": "object",
+        "properties": {
+          "order_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "requested_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "reviewing_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "reviewing_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "processing_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "processing_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "paid_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "paid_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "rejected_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "rejected_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "failed_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "failed_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "cancelled_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          },
+          "cancelled_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          }
+        },
+        "required": [
+          "order_count",
+          "requested_points",
+          "reviewing_count",
+          "reviewing_points",
+          "processing_count",
+          "processing_points",
+          "paid_count",
+          "paid_points",
+          "rejected_count",
+          "rejected_points",
+          "failed_count",
+          "failed_points",
+          "cancelled_count",
+          "cancelled_points"
+        ],
+        "additionalProperties": false,
+        "description": "Current withdrawal_orders.state projection for orders created in the requested half-open [from,to) interval. It is not immutable closeout data, a payout-occurrence measure, or external transfer evidence."
+      },
+      "WithdrawalReportGroup": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/WithdrawalReportTotals"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "totals"
+        ],
+        "additionalProperties": false
+      },
+      "WithdrawalReport": {
+        "type": "object",
+        "properties": {
+          "brand_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "snapshot_at": {
+            "$ref": "#/components/schemas/DateTime"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "query": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "$ref": "#/components/schemas/DateTime"
+              },
+              "to": {
+                "$ref": "#/components/schemas/DateTime"
+              },
+              "group_by": {
+                "type": "string",
+                "enum": [
+                  "day",
+                  "member",
+                  "state"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "game_id": {
+                "type": "null"
+              },
+              "member_id": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/UUID"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "group_by",
+              "limit",
+              "offset",
+              "game_id",
+              "member_id"
+            ],
+            "additionalProperties": false,
+            "description": "Echoed normalized query. game_id is always null because withdrawals have no lottery game."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/WithdrawalReportTotals"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WithdrawalReportGroup"
+            },
+            "maxItems": 100
+          },
+          "total_groups": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          }
+        },
+        "required": [
+          "brand_id",
+          "snapshot_at",
+          "timezone",
+          "query",
+          "summary",
+          "items",
+          "total_groups"
+        ],
+        "additionalProperties": false
+      },
       "AdminWorkbenchBrand": {
         "type": "object",
         "properties": {
@@ -87414,6 +88529,38 @@
           "failed_today",
           "no_data_today",
           "last_attempt_at"
+        ],
+        "additionalProperties": false
+      },
+      "AdminWorkbenchWithdrawals": {
+        "type": "object",
+        "properties": {
+          "reviewing_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "reviewing_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "processing_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "processing_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          }
+        },
+        "required": [
+          "reviewing_count",
+          "reviewing_points",
+          "processing_count",
+          "processing_points"
         ],
         "additionalProperties": false
       },
@@ -88267,17 +89414,78 @@
         "type": "object",
         "properties": {
           "status": {
-            "const": "not_implemented"
+            "type": "string",
+            "enum": [
+              "ready",
+              "forbidden"
+            ]
           },
           "data": {
-            "type": "null"
+            "anyOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AdminWorkbenchWithdrawals"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ],
+                "description": "Present only when status is ready."
+              },
+              {
+                "type": "null",
+                "description": "Required when status is forbidden or not_implemented."
+              }
+            ]
           }
         },
         "required": [
           "status",
           "data"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "withdrawals requires CanView resource \"withdrawal\" for the exact selected brand or an explicit withdrawal.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "ready"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "data": {
+                  "$ref": "#/components/schemas/AdminWorkbenchWithdrawals"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "forbidden"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "data": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
       },
       "AdminWorkbenchCommissionsSection": {
         "type": "object",

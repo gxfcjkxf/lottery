@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import {checkWithdrawalObservability} from './withdrawal-observability'
 
 const userOrigin = process.env.TEST_WITHDRAWAL_USER_ORIGIN ?? 'http://localhost:5173'
 const adminOrigin = process.env.TEST_WITHDRAWAL_ADMIN_ORIGIN ?? 'http://localhost:5174'
@@ -96,17 +97,5 @@ test('closed user admission and exact administrative receipt recovery preserve s
   await adminPanel.getByRole('button',{name:'Refresh',exact:true}).click()
   await expect(adminPanel.locator('tbody')).toContainText(info.project.name==='mobile' ? 'Withdrawn' : 'Failed')
   await adminPanel.screenshot({path:info.outputPath('withdrawal-admin.png')})
-  await page.goto(`${userOrigin}/withdraw`)
-  await expect(userPanel).toContainText(info.project.name==='mobile' ? 'Paid' : 'Failed')
-  const wallet=await responseData(await page.request.get(`${userOrigin}/api/v1/wallet`))
-  expect(wallet.withdrawal_points).toBe('0')
-  expect(wallet.by_source.recharge.available).toBe(info.project.name==='mobile' ? '60' : '100')
-  expect(wallet.by_source.winning.available).toBe(info.project.name==='mobile' ? '35' : '60')
-  expect(wallet.by_source.gift.available).toBe(info.project.name==='mobile' ? '25' : '40')
-  const dimensions=await page.evaluate(()=>({width:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth,visible:visualViewport?.width}))
-  expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.width+1)
-  expect(dimensions.visible).toBe(page.viewportSize()!.width)
-  await userPanel.screenshot({path:info.outputPath('withdrawal-user.png')})
-  expect(errors).toEqual([])
-  expect(await context.cookies()).toEqual(expect.arrayContaining([expect.objectContaining({httpOnly:true,sameSite:'Strict'})]))
+  await checkWithdrawalObservability(page,context,info,order,{userOrigin,adminOrigin},errors,info.project.name==='mobile'?'0':'1')
 })

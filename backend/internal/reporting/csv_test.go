@@ -97,3 +97,28 @@ func TestCSVExportFailsClosedBeforeHugeOrMalformedContent(t *testing.T) {
 		t.Fatal("malformed group count accepted")
 	}
 }
+
+func TestWithdrawalCSVIsExactFormulaSafeAndContainsNoGameFilter(t *testing.T) {
+	at := time.Date(2026, 10, 7, 0, 0, 0, 123456000, time.UTC)
+	member := "0199a000-0000-7000-8000-000000000007"
+	totals := WithdrawalTotals{OrderCount: "1", RequestedPoints: "18000000000000000000", ReviewingCount: "1", ReviewingPoints: "18000000000000000000", ProcessingCount: "0", ProcessingPoints: "0", PaidCount: "0", PaidPoints: "0", RejectedCount: "0", RejectedPoints: "0", FailedCount: "0", FailedPoints: "0", CancelledCount: "0", CancelledPoints: "0"}
+	r := WithdrawalReport{BrandID: testBrand, SnapshotAt: at, Timezone: "Asia/Singapore", Query: Query{From: at.Add(-time.Hour), To: at.Add(time.Hour), GroupBy: "day", Limit: 20, MemberID: &member}, Summary: totals, TotalGroups: "1", Items: []Group[WithdrawalTotals]{{Key: "2026-10-07", Label: "=SUM(A1:A2)", Totals: totals}}}
+	body, err := WithdrawalCSV(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(body), "\xef\xbb\xbf") || strings.Contains(string(body), "game_id") {
+		t.Fatal("BOM missing or game filter leaked")
+	}
+	rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(body), "\xef\xbb\xbf"))).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 || len(rows[0]) != 24 || rows[1][0] != "summary" || rows[1][7] != member || rows[2][0] != "group" || rows[2][7] != member || rows[2][9] != "'=SUM(A1:A2)" || rows[2][11] != "18000000000000000000" {
+		t.Fatal(rows)
+	}
+	r.Query.Offset = 20
+	if _, err = WithdrawalCSV(r); err == nil {
+		t.Fatal("paginated export accepted")
+	}
+}

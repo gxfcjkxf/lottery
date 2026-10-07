@@ -50,7 +50,13 @@ describe("notification templates API", () => {
     expect(init?.credentials).toBe("same-origin");
     expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
     expect(new Headers(init?.headers).get("Accept")).toBe("application/json");
-    expect(notificationTemplateKeys).toHaveLength(8);
+    expect(notificationTemplateKeys).toHaveLength(14);
+    expect(notificationTemplateKeys).toEqual([
+      "member.joined", "recharge.confirmed", "bet.order.placed", "bet.order.cancelled",
+      "bet.order.judged_cancelled", "bet.order.abnormal", "bet.order.won", "bet.order.prize_reversed",
+      "withdrawal.order.reviewing", "withdrawal.order.processing", "withdrawal.order.paid",
+      "withdrawal.order.rejected", "withdrawal.order.failed", "withdrawal.order.cancelled",
+    ]);
     await expect(createNotificationTemplatesApi(vi.fn<typeof fetch>().mockResolvedValue(response({ items: [template({ brand_id: accountId })] }))).list(brand))
       .rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     await expect(createNotificationTemplatesApi(vi.fn<typeof fetch>().mockResolvedValue(response({ items: [template(), template()] }))).list(brand))
@@ -104,6 +110,7 @@ describe("notification templates API", () => {
       { ...content, en: { title: "<b>bad</b>", body: content.en.body } },
       { ...content, en: { title: "Visit www.example.com", body: content.en.body } },
       { ...content, en: { title: "title", body: "{unknown} {points}" } },
+      { ...content, en: { title: "title", body: "{reason} {points}" } },
       { ...content, en: { title: "title", body: "{points" } },
       { ...content, en: { title: "title", body: "missing points" } },
       { ...content, en: { title: "title", body: `x${"x".repeat(1198)}\u0001` } },
@@ -120,6 +127,37 @@ describe("notification templates API", () => {
     await expect(api.put("member.joined", brand, { version: 1, content: joined, reason: "reason" }, "template-key-001"))
       .rejects.toMatchObject({ status: 400, code: "INVALID_INPUT" });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("accepts all six withdrawal templates but rejects unsupported event keys and reason placeholders", async () => {
+    const withdrawalContent: NotificationTemplateContent = {
+      en: { title: "Withdrawal status recorded", body: "Historical status: {points}." },
+      "zh-CN": { title: "提现状态记录", body: "历史状态：{points} 积分。" },
+    };
+    const withdrawalKeys = [
+      "withdrawal.order.reviewing", "withdrawal.order.processing", "withdrawal.order.paid",
+      "withdrawal.order.rejected", "withdrawal.order.failed", "withdrawal.order.cancelled",
+    ] as const;
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+      const key = String(input).split("/").at(-1) as typeof withdrawalKeys[number];
+      return response(template({ key, version: 2, content: withdrawalContent, audit_log_id: auditId }));
+    });
+    const api = createNotificationTemplatesApi(fetchImpl);
+    for (const [index, key] of withdrawalKeys.entries()) {
+      await expect(api.put(key, brand, {
+        version: 1, content: withdrawalContent, reason: "wording review",
+      }, `template-key-00${index + 1}`)).resolves.toMatchObject({ key, version: 2 });
+      expect(fetchImpl.mock.calls[index][0]).toBe(`/api/v1/admin/notification-templates/${key}`);
+    }
+    await expect(api.put("withdrawal.order.legacy" as never, brand, {
+      version: 1, content: withdrawalContent, reason: "wording review",
+    }, "template-key-007")).rejects.toMatchObject({ status: 400, code: "INVALID_INPUT" });
+    await expect(api.put("withdrawal.order.reviewing", brand, {
+      version: 1,
+      content: { ...withdrawalContent, en: { title: "Status", body: "Historical {reason} {points}." } },
+      reason: "wording review",
+    }, "template-key-008")).rejects.toMatchObject({ status: 400, code: "INVALID_INPUT" });
+    expect(fetchImpl).toHaveBeenCalledTimes(6);
   });
 
   it("preserves backend conflict and permission error codes", async () => {

@@ -149,6 +149,47 @@ describe("user notification API", () => {
     }
   });
 
+  it("accepts six withdrawal snapshot events with positive int64 points and rejects missing or private facts", async () => {
+    const states = ["reviewing", "processing", "paid", "rejected", "failed", "cancelled"] as const;
+    const events = states.map((state, index) => ({
+      ...joined,
+      id: `00000000-0000-4000-8000-00000000000${index + 1}`,
+      event_type: `withdrawal.order.${state}`,
+      template_key: `withdrawal.order.${state}`,
+      template_version: 2,
+      content: {
+        en: { title: "Withdrawal status recorded", body: `Historical withdrawal status: ${state}. Points involved: {points}.` },
+        "zh-CN": { title: "提现状态记录", body: `历史提现状态：${state}，涉及 {points} 积分。` },
+      },
+      payload: { resource_id: resourceId, points: "9223372036854775807" },
+    }));
+    const invalid = [
+      { ...events[0], content: null },
+      { ...events[1], content: undefined },
+      { ...events[2], template_version: 1, content: null },
+      { ...events[2], payload: { resource_id: resourceId, points: "0" } },
+      { ...events[3], payload: { resource_id: resourceId, points: "9223372036854775808" } },
+      { ...events[4], payload: { resource_id: resourceId, points: "1", reason: "private" } },
+      { ...events[5], payload: { resource_id: resourceId, points: "1", bank_account: "private" } },
+      { ...events[0], event_type: "withdrawal.order.unknown", template_key: "withdrawal.order.unknown" },
+    ];
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(ok(page({ items: events })))
+      .mockImplementation(async () => ok(page({ items: [invalid.shift()] })));
+    const api = createNotificationApi({ fetch: fetcher });
+
+    await expect(api.list()).resolves.toMatchObject({
+      items: states.map((state) => ({
+        event_type: `withdrawal.order.${state}`,
+        template_key: `withdrawal.order.${state}`,
+        payload: { resource_id: resourceId, points: "9223372036854775807" },
+      })),
+    });
+    for (let index = 0; index < 8; index++) {
+      await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
+    }
+  });
+
   it("accepts immutable bilingual snapshots and preserves template versions as safe integers", async () => {
     const custom = {
       ...joined,

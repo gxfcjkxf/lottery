@@ -6,6 +6,7 @@ import { composeDocument,documentedRoutes } from "./openapi-lib.mjs";
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const modules=await Promise.all(["identity","finance","lottery"].map(name=>import(new URL(`../docs/openapi/${name}.mjs`,import.meta.url))));
 modules.push(await import("./openapi-withdrawal-orders.mjs"));
+modules.push(await import("./openapi-withdrawal-reports.mjs"));
 modules.push(await import("./openapi-workbench.mjs"));
 const result=spawnSync(process.env.LOTTERY_GO_BIN??"go",["run","-buildvcs=false","./cmd/route-inventory"],{cwd:resolve(root,"backend"),encoding:"utf8",env:{...process.env,CGO_ENABLED:"0"},maxBuffer:8*1024*1024});
 if(result.error||result.status!==0)throw new Error(`Cannot inspect real routes: ${result.error?.message??result.stderr}`);

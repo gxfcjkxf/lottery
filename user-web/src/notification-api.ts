@@ -8,7 +8,13 @@ export type NotificationEventType =
   | "bet.order.judged_cancelled"
   | "bet.order.abnormal"
   | "bet.order.won"
-  | "bet.order.prize_reversed";
+  | "bet.order.prize_reversed"
+  | "withdrawal.order.reviewing"
+  | "withdrawal.order.processing"
+  | "withdrawal.order.paid"
+  | "withdrawal.order.rejected"
+  | "withdrawal.order.failed"
+  | "withdrawal.order.cancelled";
 
 export interface NotificationTemplateContent {
   en: { title: string; body: string };
@@ -81,6 +87,20 @@ const EVENT_TYPES = new Set<NotificationEventType>([
   "bet.order.abnormal",
   "bet.order.won",
   "bet.order.prize_reversed",
+  "withdrawal.order.reviewing",
+  "withdrawal.order.processing",
+  "withdrawal.order.paid",
+  "withdrawal.order.rejected",
+  "withdrawal.order.failed",
+  "withdrawal.order.cancelled",
+]);
+const WITHDRAWAL_EVENT_TYPES = new Set<NotificationEventType>([
+  "withdrawal.order.reviewing",
+  "withdrawal.order.processing",
+  "withdrawal.order.paid",
+  "withdrawal.order.rejected",
+  "withdrawal.order.failed",
+  "withdrawal.order.cancelled",
 ]);
 
 function malformed(message: string): never {
@@ -242,10 +262,14 @@ function parseNotification(value: unknown): NotificationItem {
   const content = item.content === undefined || item.content === null
     ? null
     : parseTemplateContent(item.content, eventType);
+  if (content === null && WITHDRAWAL_EVENT_TYPES.has(eventType)) {
+    return malformed("withdrawal notifications require an immutable content snapshot");
+  }
   if (content === null && templateVersion !== 1) {
     return malformed("notification.content is required for template versions above 1");
   }
   const payload = object(item.payload, "notification.payload");
+  exactKeys(payload, ["resource_id", "points"], "notification.payload");
   const resourceId = uuid(payload.resource_id, "notification.payload.resource_id");
   let points: string | null;
   if (eventType === "member.joined") {

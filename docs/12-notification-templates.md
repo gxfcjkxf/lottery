@@ -1,6 +1,6 @@
 # 站内通知模板配置和历史消息合同
 
-品牌运营人员可维护现有八类站内通知的中英文标题和正文。发布模板不创建通知、不修改积分；消费者在真实业务事件落库后生成消息，并保存当时模板版本和文案。本文供第三方接入配置、重试和消息展示，不包含外部渠道或尚未实现的提现事件。
+品牌运营人员可维护十四类站内通知的中英文标题和正文，包含六种提现状态。发布模板不创建通知、不修改积分；消费者在真实业务事件落库后生成消息，并保存当时模板版本和文案。本文供第三方接入配置、重试和消息展示，不包含外部渠道或真实支付。
 
 ## 配置接口和权限
 
@@ -8,7 +8,7 @@
 
 | 方法 | 路径 | 响应 |
 |---|---|---|
-| GET | /api/v1/admin/notification-templates | items包含当前品牌八个模板 |
+| GET | /api/v1/admin/notification-templates | items包含当前品牌十四个模板 |
 | GET | /api/v1/admin/notification-templates/{key}/history | items为按version降序的不可变修订 |
 | PUT | /api/v1/admin/notification-templates/{key} | 原提交产生的Template回执 |
 
@@ -16,15 +16,15 @@
 
 查看要求notification_template.view.brand和当前品牌范围，或明确的notification_template.view.platform，不要求平台授权账号伪造品牌成员身份。写入只接受非超级管理员的notification_template.write.brand；超级管理员只能依明确权限读取。每次读写均在共享授权锁下重新校验，成功读取和修订可审计；停用品牌仍可读但不能修改或重放写回执。暂停品牌允许配置和已有业务通知继续处理。
 
-0037迁移只给服务器引导角色补对应权限，不给自定义角色扩权。每个品牌自动初始化八个v1模板及系统修订；新品牌仍不自动获得管理员、用户、域名、积分或新业务事件。PostgreSQL数据库必须使用UTF8编码；不能用SQL_ASCII来验证中文约束。部署前检查SHOW server_encoding，创建数据库时明确指定UTF8。
+0037迁移初始化原八个模板，0040为既有品牌追加六个提现v1模板及系统修订，保留原配置、历史、消息和积分记录；不补造迁移前的提现通知。新品牌自动初始化十四个模板，但不自动获得管理员、用户、域名、积分或业务事件。权限仍沿用原独立授权，不给自定义角色扩权。PostgreSQL数据库必须使用UTF8编码；不能用SQL_ASCII验证中文约束。部署前检查SHOW server_encoding，创建数据库时明确指定UTF8。
 
 ## 模板标识和内容
 
-key只接受：member.joined、recharge.confirmed、bet.order.placed、bet.order.cancelled、bet.order.judged_cancelled、bet.order.abnormal、bet.order.won、bet.order.prize_reversed。
+key只接受：member.joined、recharge.confirmed、bet.order.placed、bet.order.cancelled、bet.order.judged_cancelled、bet.order.abnormal、bet.order.won、bet.order.prize_reversed，以及withdrawal.order.reviewing/processing/paid/rejected/failed/cancelled。
 
 content恰好为en和zh-CN，每种语言恰好为title和body。两种语言均必填，不自动翻译或复用另一语言文案。标题1–120 UTF-8字节，正文1–1200字节，须非空、无首尾空白；标题禁止控制字符，正文只允许中间的换行和制表符。不接受HTML尖括号、外部地址标记https?:、javascript:、data:、www.；客户不能通过模板发布富文本或链接。
 
-插值仅支持字面占位符{points}和{resource_id}，不执行脚本、表达式或任意对象访问。未知、未闭合或嵌套花括号拒绝。欢迎通知标题和正文均不能引用points；其他七类的两种语言正文各须包含points。重复引用允许，不同语言的标题可独立选用合法占位符。用户名、手机号、后台人员、证明、内部原因、密码和令牌都不是模板变量。
+插值仅支持字面占位符{points}和{resource_id}，不执行脚本、表达式或任意对象访问。未知、未闭合或嵌套花括号拒绝。欢迎通知标题和正文均不能引用points；其他十三类的两种语言正文各须包含points。重复引用允许，不同语言的标题可独立选用合法占位符。用户名、手机号、后台人员、证明、内部原因、密码和令牌都不是模板变量。
 
 Template为brand_id、key、version、content、updated_at、audit_log_id；初始版本1的审计ID为null，后续版本必须为非空UUID。每个品牌、每类事件独立递增版本，版本最大9007199254740991，不能把品牌共享配置版本当成模板版本。当前达到上限不可继续更新。
 
@@ -36,9 +36,13 @@ Revision为id、brand_id、key、version、content、changed_by、reason、audit
 
 消费者持有模板行共享锁并复制content和version；配置更新与复制串行。消息内容、消费确认、sent状态仍在同一事务。消息关联同品牌同key的不可变修订；新插入必须复制当前配置，失败不能保留半条消息或错误的消费确认。重复消费不改写已有消息，包括原来的旧版消息。
 
-用户Item增加content（双语模板源文案或null），template_version改为正安全整数。旧版v1消息保持原字段与read_at，content为null，客户端继续固定v1文案；兼容旧接口缺失content仅限v1。版本大于1必须有完整快照，不能从当前模板配置补写旧消息。
+用户Item增加content（双语模板源文案或null），template_version改为正安全整数。旧非提现v1消息保持原字段与read_at，content为null，客户端继续固定v1文案；兼容旧接口缺失content仅限这类旧消息。所有提现消息及版本大于1必须有完整快照，不能从当前模板配置补写旧消息。
 
 用户端按快照的语言插值并作为纯文本显示；积分用精确整数字符串分组，不转换浮点。派奖和冲正消息另外显示不可编辑的系统事实说明，明确实际历史入账或全额冲正，不表示当前钱包余额或保证最终中奖。旧消息保留，更正的新代次另记，模板不会改变实际账本金额。
+
+每次新提现状态变化与资金、审计和outbox在同一事务提交；未提交、资格拒绝及原请求重放不产生新消息。数据库要求每个新状态版本有唯一且匹配的事件，事件事实不可改写或删除。消费者校验同品牌、同会员、金额、历史状态版本与审计引用；当前订单已paid或失败时，仍能验证更早的reviewing/processing历史。用户载荷仅resource_id（提现订单ID）和正整数points，不含审核原因、后台账号、来源分配或资格证据。
+
+全部提现消息固定追加不可编辑的双语历史说明：记录的是内部积分状态，不代表当前状态、当前余额或真实外部转账；最新状态须查询提现订单。paid不证明银行、法币或虚拟币出款。模板编辑不能删除这项系统说明，消息与状态历史均保留。
 
 ## 原回执和未知请求
 
@@ -52,4 +56,4 @@ PUT成功返回原版本加一、提交的双语文案、提交时间和审计ID
 
 ## 尚未包含的功能
 
-本模块不接邮件、短信或Telegram发送，不添加开奖受众、提现、佣金或奖励事件，不替代真实身份与地区验证。运营可编辑的是现有站内文案，不代表完整通知渠道、财务或整个平台已完成。外部凭据、保留年限和对应新事件要按后续真实业务模块单独实现和验收。
+本模块不接邮件、短信或Telegram发送，不添加开奖受众、佣金或奖励事件，不替代真实身份与地区验证。提现正式流水资格仍待确认，默认新申请拒绝；站内消息不启用资格或支付。运营可编辑的是现有站内文案，不代表完整通知渠道、财务或整个平台已完成。外部凭据、保留年限和对应新事件要按后续真实业务模块单独实现和验收。

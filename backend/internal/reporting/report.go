@@ -66,6 +66,10 @@ func (q Query) Validate(kind string) error {
 		if q.GameID != nil || (q.GroupBy != "day" && q.GroupBy != "entry_type") {
 			return ErrInvalid
 		}
+	} else if kind == "withdrawal" {
+		if q.GameID != nil || (q.GroupBy != "day" && q.GroupBy != "member" && q.GroupBy != "state") {
+			return ErrInvalid
+		}
 	} else {
 		return ErrInvalid
 	}

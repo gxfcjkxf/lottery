@@ -20,9 +20,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// OrderService is the internal financial workflow. It has no default eligibility
-// adapter and is not registered as an HTTP application endpoint. Session/CSRF
-// validation remains the responsibility of the eventual transport layer.
+// OrderService owns the financial workflow, with no default eligibility adapter.
+// The HTTP transport separately authenticates sessions and same-origin intents.
 type OrderService struct {
 	DB          *pgxpool.Pool
 	Points      points.Store
@@ -132,6 +131,7 @@ func orderEvidence(ctx context.Context, tx pgx.Tx, o *Order, from, reason string
 	_, err = tx.Exec(ctx, `INSERT INTO withdrawal_order_transitions(id,brand_id,order_id,version,from_state,to_state,reason,actor_type,actor_id,audit_log_id,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,'')::uuid,$10,$11)`, ids.New(), o.BrandID, o.ID, o.Version, from, o.State, reason, meta.ActorType, meta.ActorID, id, o.UpdatedAt)
 	if err == nil {
 		o.AuditLogID = id
+		err = appendOrderEvent(ctx, tx, *o)
 	}
 	return err
 }

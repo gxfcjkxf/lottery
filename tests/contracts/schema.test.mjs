@@ -20,6 +20,7 @@ const exampleSchemaNames={
   WithdrawalOrderPageExample:"WithdrawalOrderPage",
   WithdrawalHistoryExample:"WithdrawalHistory",
   WithdrawalAvailabilityExample:"WithdrawalAvailability",
+  WithdrawalReportExample:"WithdrawalReport",
 };
 
 test("every component and operation body is a compilable JSON Schema",()=>{
@@ -42,8 +43,8 @@ test("actual Go DTO serialization and rule-engine outputs satisfy contracts",()=
     const schemaName=exampleSchemaNames[name]??(name==="AdminWorkbench"?"AdminWorkbenchSnapshot":name.replace(/Sparse$|Snapshot$/, ""));
     const check=validate(schemaName);assert.ok(check(value),`${name} (${schemaName}): ${JSON.stringify(check.errors)}`);
   }
-  assert.equal(examples.AdminWorkbench.withdrawals.status,"not_implemented");
-  assert.equal(examples.AdminWorkbench.withdrawals.data,null);
+  assert.equal(examples.AdminWorkbench.withdrawals.status,"ready");
+  assert.equal(examples.AdminWorkbench.withdrawals.data.processing_points,"9000000000000000000");
   assert.equal(examples.AdminWorkbench.commissions.data,null);
   assert.equal(examples.AdminWorkbench.rewards.data,null);
   assert.equal(examples.LotterySimulationResult.bet_points,"8");

@@ -65,6 +65,12 @@ type Balances struct {
 	WithdrawalPoints string `json:"withdrawal_points"`
 	TotalPoints      string `json:"total_points"`
 }
+type Withdrawals struct {
+	ReviewingCount   string `json:"reviewing_count"`
+	ReviewingPoints  string `json:"reviewing_points"`
+	ProcessingCount  string `json:"processing_count"`
+	ProcessingPoints string `json:"processing_points"`
+}
 type ReconciliationJob struct {
 	ID              string     `json:"id"`
 	State           string     `json:"state"`
@@ -104,7 +110,7 @@ type Snapshot struct {
 	Balances       Section[Balances]       `json:"balances"`
 	Reconciliation Section[Reconciliation] `json:"reconciliation"`
 	Sources        Section[Sources]        `json:"sources"`
-	Withdrawals    Section[struct{}]       `json:"withdrawals"`
+	Withdrawals    Section[Withdrawals]    `json:"withdrawals"`
 	Commissions    Section[struct{}]       `json:"commissions"`
 	Rewards        Section[struct{}]       `json:"rewards"`
 }
@@ -113,7 +119,7 @@ func CanView(a access.Account, brand, resource string) bool {
 	return access.Authorize(a, resource, "view", access.ScopeBrand, brand) || access.Authorize(a, resource, "view", access.ScopePlatform, "")
 }
 func Allowed(a access.Account, brand string) bool {
-	for _, resource := range []string{"brand", "period", "bet", "report_betting", "settlement", "recharge", "report_ledger", "wallet", "draw_source"} {
+	for _, resource := range []string{"brand", "period", "bet", "report_betting", "settlement", "recharge", "report_ledger", "wallet", "draw_source", "withdrawal"} {
 		if CanView(a, brand, resource) {
 			return true
 		}

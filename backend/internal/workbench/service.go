@@ -80,7 +80,13 @@ func (Service) ReadTx(ctx context.Context, tx pgx.Tx, a access.Account, brand st
  'failed_today',count(*) FILTER(WHERE created_at>=s.day_from AND created_at<s.snapshot_at AND status='failed')::text,
  'no_data_today',count(*) FILTER(WHERE created_at>=s.day_from AND created_at<s.snapshot_at AND status='no_data')::text,
  'last_attempt_at',max(created_at)) FROM draw_attempt_batches WHERE brand_id=s.id`)
-	for _, name := range []string{"withdrawals", "commissions", "rewards"} {
+	add("withdrawals", "withdrawal", `SELECT jsonb_build_object(
+ 'reviewing_count',count(*) FILTER(WHERE state='reviewing')::text,
+ 'reviewing_points',coalesce(sum(points::numeric) FILTER(WHERE state='reviewing'),0)::text,
+ 'processing_count',count(*) FILTER(WHERE state='processing')::text,
+ 'processing_points',coalesce(sum(points::numeric) FILTER(WHERE state='processing'),0)::text)
+ FROM withdrawal_orders WHERE brand_id=s.id AND state IN('reviewing','processing')`)
+	for _, name := range []string{"commissions", "rewards"} {
 		fields = append(fields, "'"+name+"',jsonb_build_object('status','not_implemented','data',NULL)")
 	}
 	query := `WITH s AS MATERIALIZED(SELECT id,name,code,status,timezone,statement_timestamp() snapshot_at,

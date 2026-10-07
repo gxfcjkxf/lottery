@@ -42,8 +42,23 @@ func TestExplicitPermissionsAndNullSections(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if out.Brand.Status != "ready" || out.Brand.Data.Name != "Aurora" || out.Orders.Status != "forbidden" || out.Orders.Data != nil || out.Ledger.Data != nil || out.Withdrawals.Status != "not_implemented" || out.Withdrawals.Data != nil {
+	if out.Brand.Status != "ready" || out.Brand.Data.Name != "Aurora" || out.Orders.Status != "forbidden" || out.Orders.Data != nil || out.Ledger.Data != nil || out.Withdrawals.Status != "forbidden" || out.Withdrawals.Data != nil {
 		t.Fatal(out)
+	}
+	out, e = snapshot(t, db, actor("withdrawal"), brandA)
+	if e != nil || out.Withdrawals.Status != "ready" || out.Withdrawals.Data == nil || out.Withdrawals.Data.ReviewingCount != "0" || out.Withdrawals.Data.ProcessingPoints != "0" || out.Brand.Status != "forbidden" {
+		t.Fatalf("withdrawal grant must be independent and return real zero totals: %+v, %v", out, e)
+	}
+	platformWithdrawal := access.Account{Type: access.AccountAdmin, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "withdrawal", Action: "view", Scope: access.ScopePlatform}}}}}
+	out, e = snapshot(t, db, platformWithdrawal, brandB)
+	if e != nil || out.Withdrawals.Status != "ready" || out.Withdrawals.Data == nil || out.Withdrawals.Data.ProcessingCount != "0" || out.Brand.Status != "forbidden" {
+		t.Fatalf("explicit platform withdrawal grant must authorize only that section: %+v, %v", out, e)
+	}
+	superWithBrandOnly := actor("brand")
+	superWithBrandOnly.SuperAdmin = true
+	out, e = snapshot(t, db, superWithBrandOnly, brandA)
+	if e != nil || out.Brand.Status != "ready" || out.Withdrawals.Status != "forbidden" || out.Withdrawals.Data != nil {
+		t.Fatalf("super-admin identity must not imply withdrawal access: %+v, %v", out, e)
 	}
 	raw, e := json.Marshal(out)
 	if e != nil {
@@ -69,6 +84,21 @@ func TestExplicitPermissionsAndNullSections(t *testing.T) {
 	a = access.Account{Type: access.AccountAdmin, SuperAdmin: true, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "brand", Action: "view", Scope: access.ScopePlatform}}}}}
 	if out, e = snapshot(t, db, a, brandB); e != nil || out.Brand.Data.Name != "Harbor" {
 		t.Fatal(out, e)
+	}
+}
+
+func TestForbiddenWithdrawalsTableIsNotRead(t *testing.T) {
+	db := testdb.New(t)
+	ctx := context.Background()
+	if _, err := db.Exec(ctx, `ALTER TABLE withdrawal_orders RENAME TO workbench_hidden_withdrawal_orders`); err != nil {
+		t.Fatal(err)
+	}
+	out, err := snapshot(t, db, actor("brand"), brandA)
+	if err != nil || out.Withdrawals.Status != "forbidden" || out.Withdrawals.Data != nil {
+		t.Fatalf("unauthorized withdrawal section must not query its table: %+v, %v", out.Withdrawals, err)
+	}
+	if _, err = snapshot(t, db, actor("withdrawal"), brandA); err == nil {
+		t.Fatal("a broken authorized withdrawal query must fail, not report zero")
 	}
 }
 func TestFullEmptySnapshotIsActualZeroNotUnavailable(t *testing.T) {

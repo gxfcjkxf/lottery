@@ -4,6 +4,7 @@ import {
   renderNotification,
   type NotificationPresentationItem,
 } from "./notification-presentation";
+import type { NotificationEventType } from "./notification-api";
 
 const events = [
   "member.joined",
@@ -14,13 +15,27 @@ const events = [
   "bet.order.abnormal",
   "bet.order.won",
   "bet.order.prize_reversed",
-];
+  "withdrawal.order.reviewing",
+  "withdrawal.order.processing",
+  "withdrawal.order.paid",
+  "withdrawal.order.rejected",
+  "withdrawal.order.failed",
+  "withdrawal.order.cancelled",
+] as const;
 
-function item(event_type: string, template_version = 1): NotificationPresentationItem {
+function item(event_type: NotificationEventType, template_version = 1): NotificationPresentationItem {
+  const withdrawalState = event_type.startsWith("withdrawal.order.") ? event_type.slice("withdrawal.order.".length) : null;
+  const withdrawalChinese: Record<string, string> = {
+    reviewing: "审核中", processing: "提现中", paid: "已提现", rejected: "已驳回", failed: "失败", cancelled: "已取消",
+  };
   return {
     event_type,
     template_key: event_type,
     template_version,
+    ...(withdrawalState ? { content: {
+      en: { title: "Withdrawal status recorded", body: `Historical withdrawal status: ${withdrawalState}. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state.` },
+      "zh-CN": { title: "提现状态记录", body: `历史提现状态：${withdrawalChinese[withdrawalState]}，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。` },
+    } } : {}),
     payload: {
       resource_id: "business-reference-42",
       points: event_type === "member.joined" ? null : "900719925474099312345",
@@ -74,6 +89,34 @@ describe("notification presentation", () => {
     expect(reversedZh.body).toContain("此记录会保留");
     expect(wonEn.protectedNote).toBeNull();
     expect(reversedEn.protectedNote).toBeNull();
+  });
+
+  it.each([
+    ["withdrawal.order.reviewing", "reviewing", "审核中"],
+    ["withdrawal.order.processing", "processing", "提现中"],
+    ["withdrawal.order.paid", "paid", "已提现"],
+    ["withdrawal.order.rejected", "rejected", "已驳回"],
+    ["withdrawal.order.failed", "failed", "失败"],
+    ["withdrawal.order.cancelled", "cancelled", "已取消"],
+  ] as const)("keeps protected bilingual historical context for %s snapshots", (event, state, stateZh) => {
+    const snapshot = {
+      en: { title: "Operator title", body: "Operator copy: {points}." },
+      "zh-CN": { title: "运营标题", body: "运营内容：{points}。" },
+    };
+    const custom = { ...item(event, 2), content: snapshot };
+    const renderedEn = renderNotification(custom, "en");
+    const renderedZh = renderNotification(custom, "zh");
+
+    expect(renderedEn.body).toBe("Operator copy: 900,719,925,474,099,312,345.");
+    expect(renderedEn.protectedNote).toContain(`Historical withdrawal status: ${state}.`);
+    expect(renderedEn.protectedNote).toContain("not proof of an external transfer");
+    expect(renderedEn.protectedNote).toContain("Check the withdrawal order for its current state.");
+    expect(renderedZh.body).toBe("运营内容：900,719,925,474,099,312,345。");
+    expect(renderedZh.protectedNote).toContain(`历史提现状态：${stateZh}`);
+    expect(renderedZh.protectedNote).toContain("不证明外部转账");
+    expect(renderedZh.protectedNote).toContain("请查询提现订单的最新状态");
+    expect(renderedEn.protectedNote).not.toMatch(/bank|crypto|virtual currency|payment|transfer succeeded/i);
+    expect(() => renderNotification({ ...item(event), content: null }, "en")).toThrow(/require an immutable content snapshot/);
   });
 
   it("renders snapshot copy by locale and replaces every supported placeholder exactly", () => {
@@ -134,7 +177,7 @@ describe("notification presentation", () => {
 
   it("rejects unknown versions, template keys, and unsupported events", () => {
     expect(() => renderNotification(item("member.joined", 2), "en")).toThrow(RangeError);
-    expect(() => renderNotification(item("admin.internal"), "zh")).toThrow(RangeError);
+    expect(() => renderNotification(item("admin.internal" as NotificationEventType), "zh")).toThrow(RangeError);
     expect(() => renderNotification({ ...item("member.joined"), template_key: "bet.order.placed" }, "en")).toThrow(RangeError);
     expect(() => renderNotification({ ...item("member.joined", 2), content: null }, "en")).toThrow(RangeError);
   });
