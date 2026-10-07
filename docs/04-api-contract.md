@@ -560,7 +560,7 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 | GET | /admin/notification-deliveries | 品牌内投递状态分页；显式 `notification.view.brand/platform` 与查询审计 |
 | POST | /admin/notification-deliveries/{event_id}/retry | `{attempt_count:整数,reason:非空文本}`；仅 failed 状态，显式 `notification.retry.brand`，超管禁止 |
 
-列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version,content,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。template_version为正安全整数，content为不可变双语源文案；仅旧非提现v1消息可为null。原八种事件加六种withdrawal.order状态事件，共十四种；除入品牌通知外积分是规范正 int64 字符串。用户不能编辑快照或业务事实，详见 [模板与旧消息合同](12-notification-templates.md)。
+列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version,content,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。template_version为正安全整数，content为不可变双语源文案；仅旧非提现/佣金v1消息可为null。原八种事件、六种withdrawal.order状态事件及两种commission事件，共十六种；入品牌积分为null，佣金修正为规范带符号非零int64字符串，其余为规范正int64字符串。用户不能编辑快照或业务事实，详见 [模板与旧消息合同](12-notification-templates.md)及[佣金通知](18-commission-adjustments.md)。
 
 `won` 仅在实际正额中奖入账事务中生成，points 是实派奖金额而非下注金额；待批准的核算、零额及未中奖不生成此消息。`prize_reversed` 仅在实际全额冲回旧 prize 的事务生成，points 为原正额奖金；来源不足、回滚和零额不会生成。resource_id 都是注单 ID；私有 outbox 另保存 calculation/ledger/job/correction 引用，消费者校验同品牌同会员不可变目标与账本，而非注单当前 won 状态。延迟消费在更正后仍能验证旧入账，原通知不会删除/覆盖；新代次再中奖是新的独立消息。双语文案明确历史入账/冲正事实不代表当前钱包余额或最终中奖状态。不制造迁移前的历史奖金通知。
 
@@ -806,3 +806,5 @@ POST 回执保存首次结果，SDK 不在写方法内重新取上下文/改写�
 0049注册GET `/api/v1/admin/commission-discovery`及POST `/{id}/retry`，复用commission.view品牌/平台读权及品牌commission.retry写权。列表只含操作状态及引用，不泄露快照；retry仅处理failed且重验版本、权限与品牌状态，原键返回原pending回执。系统自动登记周期的创建者为空，creation_actor_type为system；人工及历史周期为admin。旧0048回执可缺少新增来源字段，不改写旧回执。完整队列调度与边界合同见[周期核算](17-commission-cycles.md)。
 
 0050注册GET/PUT `/api/v1/admin/commission-payment-policy`、GET `/commission-payments`、GET `/{id}`、POST `/{id}/approve`及POST `/{id}/retry`。读取使用commission.view品牌或平台；策略写入、批准及重试分别要求品牌commission_payment_policy.write、commission_payment.approve、commission_payment.retry加查看权。品牌派发开关默认false；全人工等待单人审核，全自动在开关启用后由系统处理。每目标正额实际写入佣金available和完整账本，零额仅审计。混合模式或已有正额入账的更正均blocked，不能以重试绕过。原键返回原回执，当前状态另读；具体字段、状态、锁及待补偿边界见[派发合同](17-commission-cycles.md)和OpenAPI。
+
+0051追加GET `/api/v1/admin/commission-payments/{id}/targets`及GET/POST `/api/v1/admin/commission-payment-targets/{id}/adjustments`，写入为独立commission_adjustment.write品牌权限、version/points/reason闭合正文、确认账号及幂等键；成功201。只接受当前已paid且证据有效的目标，精确差额记入佣金available，原派发总额不修改。0052仅为实际完成的入账/修正生成不可变通知，完整状态、字段和错误见[人工修正合同](18-commission-adjustments.md)。

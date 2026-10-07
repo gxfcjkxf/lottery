@@ -149,6 +149,39 @@ describe("user notification API", () => {
     }
   });
 
+  it("accepts signed nonzero commission adjustment points but rejects noncanonical values", async () => {
+    const adjusted = {
+      ...joined,
+      event_type: "commission.adjusted",
+      template_key: "commission.adjusted",
+      template_version: 2,
+      content: {
+        en: { title: "Commission adjustment recorded", body: "Historical adjustment: {points}." },
+        "zh-CN": { title: "佣金调整记录", body: "历史调整：{points}。" },
+      },
+      payload: { resource_id: resourceId, points: "-9223372036854775808" },
+    };
+    const invalid = ["0", "-0", "+1", "01", "-01", "9223372036854775808", "-9223372036854775809"];
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(ok(page({ items: [adjusted] })))
+      .mockImplementation(async () => ok(page({ items: [{ ...adjusted, payload: { ...adjusted.payload, points: invalid.shift() } }] })));
+    const api = createNotificationApi({ fetch: fetcher });
+    await expect(api.list()).resolves.toMatchObject({ items: [{ payload: { points: "-9223372036854775808" } }] });
+    for (let index = 0; index < 7; index++) {
+      await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
+    }
+  });
+
+  it("never treats commission messages as legacy snapshotless v1 records", async () => {
+    const variants = ["commission.paid", "commission.adjusted"].flatMap(event => [null, undefined].map(content => ({
+      ...joined, event_type: event, template_key: event, template_version: 1, content,
+      payload: { resource_id: resourceId, points: event === "commission.paid" ? "1" : "-1" },
+    })));
+    const fetcher = vi.fn<typeof fetch>(async () => ok(page({ items: [variants.shift()] })));
+    const api = createNotificationApi({ fetch: fetcher });
+    for (let i = 0; i < 4; i++) await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
+  });
+
   it("accepts six withdrawal snapshot events with positive int64 points and rejects missing or private facts", async () => {
     const states = ["reviewing", "processing", "paid", "rejected", "failed", "cancelled"] as const;
     const events = states.map((state, index) => ({

@@ -14,6 +14,10 @@ test('commission UI CI isolates viewports and advances real owned workflows with
   assert.match(job,/go test -count=1 -tags browserfixture \.\/cmd\/commission-fixture/);
   assert.match(job,/\.\/bin\/commission-fixture init/);
   assert.match(job,/commission-cycles\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0/);
+  assert.match(job,/commission-payments\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0/);
+  assert.match(job,/commission-adjustments\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0/);
+  assert.ok(job.indexOf('test tests/browser/commission-cycles.spec.ts') < job.indexOf('test tests/browser/commission-payments.spec.ts'));
+  assert.ok(job.indexOf('test tests/browser/commission-payments.spec.ts') < job.indexOf('test tests/browser/commission-adjustments.spec.ts'));
   assert.doesNotMatch(job,/\.\/bin\/platform worker\s*>/);
   const fixture=readFileSync(new URL('../../backend/cmd/commission-fixture/main.go',import.meta.url),'utf8');
   assert.match(fixture,/\/\/go:build browserfixture/);

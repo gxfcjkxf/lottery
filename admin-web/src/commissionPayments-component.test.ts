@@ -39,10 +39,16 @@ function compileComponent(): Component {
   const descriptor = parseVue(source, {filename: "CommissionPaymentsManagement.vue"}).descriptor;
   const compiled = compileVueScript(descriptor, {id: "commission-payments-component-test", inlineTemplate: true}).content;
   const javascript = transpileScript(compiled);
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commissionPayments-api": PaymentApi, "./commissionPayments-state": PaymentState };
+  // Child behavior has its own real component tests and browser workflow;
+  // isolate these payout control tests from the child's additional reads.
+  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commissionPayments-api": PaymentApi, "./commissionPayments-state": PaymentState,
+    "./CommissionAdjustmentsManagement.vue": { default: { render: () => null } } };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) => {
     if (!(specifier in modules)) throw new Error(`Unmapped test import: ${specifier}`);
     return `const {${bindings.replace(/\s+as\s+/g, ": ")}} = __modules[${JSON.stringify(specifier)}];`;
+  }).replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, binding: string, specifier: string) => {
+    if (!(specifier in modules)) throw new Error(`Unmapped test import: ${specifier}`);
+    return `const ${binding} = __modules[${JSON.stringify(specifier)}].default;`;
   }).replace(/export\s+default\s+/, "return ");
   return new Function("__modules", body)(modules) as Component;
 }

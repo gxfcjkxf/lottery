@@ -53,6 +53,8 @@ const copy = {
       title: "Prize reversal recorded",
       body: "Historical record: the full original prize amount of {points} points for this order was reversed. This records the reversal, not your current wallet balance. Any later prize correction will appear as a separate event; this record is retained.",
     },
+    "commission.paid": { title: "Commission credit recorded", body: "Historical record: {points} points were credited to your commission wallet. This records a past credit, not new income or an external payment forecast. Check your current wallet balance; this record is retained." },
+    "commission.adjusted": { title: "Commission adjustment recorded", body: "Historical record: a commission adjustment of {points} points was recorded. This records a past adjustment, not new income or an external payment forecast. Check your current wallet balance; this record is retained." },
     "withdrawal.order.reviewing": { title: "Withdrawal status recorded", body: "Historical withdrawal status: reviewing. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state." },
     "withdrawal.order.processing": { title: "Withdrawal status recorded", body: "Historical withdrawal status: processing. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state." },
     "withdrawal.order.paid": { title: "Withdrawal status recorded", body: "Historical withdrawal status: paid. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state." },
@@ -84,6 +86,8 @@ const copy = {
       title: "奖金冲正记录",
       body: "历史记录：此注单原奖金全额 {points} 积分已冲回。此记录仅表示该笔冲正，不代表当前钱包余额。之后如有奖金更正，会作为单独事件记录；此记录会保留。",
     },
+    "commission.paid": { title: "佣金入账记录", body: "历史记录：{points} 积分曾记入佣金钱包。此记录表示过去的入账，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。" },
+    "commission.adjusted": { title: "佣金调整记录", body: "历史记录：曾调整 {points} 积分。此记录表示过去的调整，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。" },
     "withdrawal.order.reviewing": { title: "提现状态记录", body: "历史提现状态：审核中，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。" },
     "withdrawal.order.processing": { title: "提现状态记录", body: "历史提现状态：提现中，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。" },
     "withdrawal.order.paid": { title: "提现状态记录", body: "历史提现状态：已提现，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。" },
@@ -124,8 +128,9 @@ export function renderNotification(
     : formatIntegerString(item.payload.points, locale);
   const snapshot = item.content ?? null;
   const withdrawalEvent = item.event_type.startsWith("withdrawal.order.");
-  if (withdrawalEvent && snapshot === null) {
-    throw new RangeError("Withdrawal notifications require an immutable content snapshot");
+  const commissionEvent = item.event_type === "commission.paid" || item.event_type === "commission.adjusted";
+  if ((withdrawalEvent || commissionEvent) && snapshot === null) {
+    throw new RangeError("Withdrawal and commission notifications require an immutable content snapshot");
   }
   if (snapshot === null && item.template_version !== 1) {
     throw new RangeError(`Missing notification template snapshot for version: ${item.template_version}`);
@@ -142,7 +147,7 @@ export function renderNotification(
     : item.payload.points !== null
       ? known.body.replaceAll("{points}", points ?? item.payload.points)
       : known.body;
-  const protectedNote = withdrawalEvent || (snapshot && (item.event_type === "bet.order.won" || item.event_type === "bet.order.prize_reversed"))
+  const protectedNote = withdrawalEvent || commissionEvent || (snapshot && (item.event_type === "bet.order.won" || item.event_type === "bet.order.prize_reversed"))
     ? known.body.replaceAll("{points}", points ?? "")
     : null;
   const date = new Date(item.created_at);

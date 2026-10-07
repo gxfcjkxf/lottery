@@ -50,10 +50,11 @@ describe("notification templates API", () => {
     expect(init?.credentials).toBe("same-origin");
     expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
     expect(new Headers(init?.headers).get("Accept")).toBe("application/json");
-    expect(notificationTemplateKeys).toHaveLength(14);
+    expect(notificationTemplateKeys).toHaveLength(16);
     expect(notificationTemplateKeys).toEqual([
       "member.joined", "recharge.confirmed", "bet.order.placed", "bet.order.cancelled",
       "bet.order.judged_cancelled", "bet.order.abnormal", "bet.order.won", "bet.order.prize_reversed",
+      "commission.adjusted", "commission.paid",
       "withdrawal.order.reviewing", "withdrawal.order.processing", "withdrawal.order.paid",
       "withdrawal.order.rejected", "withdrawal.order.failed", "withdrawal.order.cancelled",
     ]);
@@ -158,6 +159,24 @@ describe("notification templates API", () => {
       reason: "wording review",
     }, "template-key-008")).rejects.toMatchObject({ status: 400, code: "INVALID_INPUT" });
     expect(fetchImpl).toHaveBeenCalledTimes(6);
+  });
+
+  it("accepts both commission templates while keeping their fixed facts outside editable copy", async () => {
+    const commissionContent: NotificationTemplateContent = {
+      en: { title: "Custom commission wording", body: "Recorded {points} points for {resource_id}." },
+      "zh-CN": { title: "自定义佣金文案", body: "记录 {points} 积分，编号 {resource_id}。" },
+    };
+    const keys = ["commission.adjusted", "commission.paid"] as const;
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+      const key = String(input).split("/").at(-1) as typeof keys[number];
+      return response(template({ key, version: 2, content: commissionContent, audit_log_id: auditId }));
+    });
+    const api = createNotificationTemplatesApi(fetchImpl);
+    for (const [index, key] of keys.entries()) {
+      await expect(api.put(key, brand, { version: 1, content: commissionContent, reason: "copy review" }, `commission-template-00${index + 1}`))
+        .resolves.toMatchObject({ key, content: commissionContent });
+    }
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("preserves backend conflict and permission error codes", async () => {

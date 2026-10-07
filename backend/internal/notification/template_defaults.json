@@ -79,6 +79,26 @@
       "body": "历史记录：此注单原奖金全额 {points} 积分已冲回。此记录仅表示该笔冲正，不代表当前钱包余额。之后如有奖金更正，会作为单独事件记录；此记录会保留。"
     }
   },
+  "commission.paid": {
+    "en": {
+      "title": "Commission credit recorded",
+      "body": "Historical record: {points} points were credited to your commission wallet. This records a past credit, not new income or an external payment forecast. Check your current wallet balance; this record is retained."
+    },
+    "zh-CN": {
+      "title": "佣金入账记录",
+      "body": "历史记录：{points} 积分曾记入佣金钱包。此记录表示过去的入账，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。"
+    }
+  },
+  "commission.adjusted": {
+    "en": {
+      "title": "Commission adjustment recorded",
+      "body": "Historical record: a commission adjustment of {points} points was recorded. This records a past adjustment, not new income or an external payment forecast. Check your current wallet balance; this record is retained."
+    },
+    "zh-CN": {
+      "title": "佣金调整记录",
+      "body": "历史记录：曾调整 {points} 积分。此记录表示过去的调整，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。"
+    }
+  },
   "withdrawal.order.reviewing": {
     "en": {
       "title": "Withdrawal status recorded",

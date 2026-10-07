@@ -103,6 +103,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 		permissions = append(permissions, "commission_policy.view.brand", "commission_policy.write.brand")
 		permissions = append(permissions, "commission.view.brand", "commission.run.brand", "commission.retry.brand")
 		permissions = append(permissions, "commission_payment.approve.brand", "commission_payment.retry.brand", "commission_payment_policy.write.brand")
+		permissions = append(permissions, "commission_adjustment.write.brand")
 		permissions = append(permissions, "settlement.view.brand", "settlement.preview.brand")
 		permissions = append(permissions, "settlement.run.brand", "settlement.approve.brand", "settlement.retry.brand", "settlement_policy.view.brand", "settlement_policy.write.brand")
 		permissions = append(permissions, "draw.correct.brand", "draw.correction_retry.brand")

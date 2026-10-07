@@ -9,6 +9,8 @@ export type NotificationEventType =
   | "bet.order.abnormal"
   | "bet.order.won"
   | "bet.order.prize_reversed"
+  | "commission.paid"
+  | "commission.adjusted"
   | "withdrawal.order.reviewing"
   | "withdrawal.order.processing"
   | "withdrawal.order.paid"
@@ -74,7 +76,9 @@ const ISO_DATE_TIME =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/;
 const POSITIVE_INT64 = /^(?:[1-9]\d*)$/;
 const NONNEGATIVE_INT64 = /^(?:0|[1-9]\d*)$/;
+const SIGNED_NONZERO_INT64 = /^(?:[1-9]\d*|-[1-9]\d*)$/;
 const MAX_INT64 = "9223372036854775807";
+const MAX_NEGATIVE_INT64 = "9223372036854775808";
 const MAX_SAFE_INTEGER = 9007199254740991;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9_:.-]{8,128}$/;
 const TEMPLATE_PLACEHOLDERS = new Set(["points", "resource_id"]);
@@ -87,6 +91,8 @@ const EVENT_TYPES = new Set<NotificationEventType>([
   "bet.order.abnormal",
   "bet.order.won",
   "bet.order.prize_reversed",
+  "commission.paid",
+  "commission.adjusted",
   "withdrawal.order.reviewing",
   "withdrawal.order.processing",
   "withdrawal.order.paid",
@@ -262,8 +268,8 @@ function parseNotification(value: unknown): NotificationItem {
   const content = item.content === undefined || item.content === null
     ? null
     : parseTemplateContent(item.content, eventType);
-  if (content === null && WITHDRAWAL_EVENT_TYPES.has(eventType)) {
-    return malformed("withdrawal notifications require an immutable content snapshot");
+  if (content === null && (WITHDRAWAL_EVENT_TYPES.has(eventType) || eventType.startsWith("commission."))) {
+    return malformed("withdrawal and commission notifications require an immutable content snapshot");
   }
   if (content === null && templateVersion !== 1) {
     return malformed("notification.content is required for template versions above 1");
@@ -278,7 +284,19 @@ function parseNotification(value: unknown): NotificationItem {
     }
     points = null;
   } else {
-    points = int64(payload.points, "notification.payload.points", true);
+    if (eventType === "commission.adjusted") {
+      if (typeof payload.points !== "string" || !SIGNED_NONZERO_INT64.test(payload.points)) {
+        return malformed("commission.adjusted points must be a canonical signed nonzero int64 string");
+      }
+      const digits = payload.points.startsWith("-") ? payload.points.slice(1) : payload.points;
+      const limit = payload.points.startsWith("-") ? MAX_NEGATIVE_INT64 : MAX_INT64;
+      if (digits.length > limit.length || (digits.length === limit.length && digits > limit)) {
+        return malformed("commission.adjusted points exceed int64 range");
+      }
+      points = payload.points;
+    } else {
+      points = int64(payload.points, "notification.payload.points", true);
+    }
   }
   return {
     id,

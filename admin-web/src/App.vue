@@ -43,6 +43,7 @@ const CommissionPolicySettings = defineAsyncComponent(() => import("./Commission
 const CommissionCyclesManagement = defineAsyncComponent(() => import("./CommissionCyclesManagement.vue"));
 const CommissionPaymentsManagement = defineAsyncComponent(() => import("./CommissionPaymentsManagement.vue"));
 import { clearAllPendingCommissionCycleWrites } from "./commission-cycles-state";
+import { clearAllPendingCommissionAdjustments } from "./commission-adjustments-state";
 import { clearAllCommissionPaymentIntents, hideCommissionPaymentIntentsForScope } from "./commissionPayments-state";
 const JoinCodeManagement = defineAsyncComponent(() => import("./JoinCodeManagement.vue"));
 import { clearAllPendingAgentWrites } from "./agents-state";
@@ -388,6 +389,7 @@ const statusClass = (status: MemberStatus) =>
 const apiErrorText = (error: unknown) =>
   error instanceof Error ? message(error.message, error.message) : message("请求失败，请重试", "Request failed. Please try again.");
 const clearAdminData = () => {
+	clearAllPendingCommissionAdjustments();
 	clearAllPendingCommissionCycleWrites();
 	clearAllCommissionPaymentIntents();
 	clearAllPendingCommissionWrites();
@@ -433,6 +435,7 @@ const restoreAdminSession = async () => {
     if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
       clearAllPendingCommissionCycleWrites();
+      clearAllPendingCommissionAdjustments();
       clearAllCommissionPaymentIntents();
       clearAllPendingBrandCreationWrites();
       clearAllPendingJoinCodeWrites();
@@ -467,6 +470,7 @@ const login = async () => {
     if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
       clearAllPendingCommissionCycleWrites();
+      clearAllPendingCommissionAdjustments();
       clearAllCommissionPaymentIntents();
       clearAllPendingBrandCreationWrites();
       clearAllPendingJoinCodeWrites();

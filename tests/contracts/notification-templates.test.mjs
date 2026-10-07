@@ -19,6 +19,7 @@ const notificationKeys=[
   "bet.order.judged_cancelled","bet.order.abnormal","bet.order.won","bet.order.prize_reversed",
   "withdrawal.order.reviewing","withdrawal.order.processing","withdrawal.order.paid",
   "withdrawal.order.rejected","withdrawal.order.failed","withdrawal.order.cancelled",
+  "commission.paid","commission.adjusted",
 ];
 const content=(title="Notice",body="Update {points} points.")=>({
   en:{title,body},"zh-CN":{title:"通知",body:"更新 {points} 积分。"},
@@ -56,7 +57,7 @@ test("all notification template components compile and routes match the implemen
   assert.deepEqual(schemas.LotteryNotificationTemplate.properties.key.enum,[...notificationKeys].sort());
 });
 
-test("the fixture has exactly the immutable eight legacy and six withdrawal defaults",()=>{
+test("the fixture preserves the immutable fourteen previous defaults and adds two commission defaults",()=>{
   assert.deepEqual(Object.keys(defaults).sort(),[...notificationKeys].sort());
   const legacy={
     "member.joined":{en:{title:"Welcome",body:"Your membership is ready. Welcome aboard."},"zh-CN":{title:"欢迎",body:"您的会员账户已准备就绪，欢迎加入。"}},
@@ -105,7 +106,7 @@ test("notification snapshots pair event and template keys and allow null content
   assert.ok(!check({...row,event_type:"bet.order.placed"}));
   assert.ok(!check({...row,template_key:"private.template"}));
   assert.ok(!check({...row,template_version:2}));
-  assert.ok(check({...row,event_type:"recharge.confirmed",template_key:"recharge.confirmed",template_version:2,content:content("Recharge","Added {points} points.")}));
+  assert.ok(check({...row,event_type:"recharge.confirmed",template_key:"recharge.confirmed",template_version:2,content:content("Recharge","Added {points} points."),payload:{resource_id:id,points:"1"}}));
   assert.ok(!check({...row,event_type:"recharge.confirmed",template_key:"recharge.confirmed",template_version:2,content:null}));
   assert.ok(!check({...row,content:{...content("Welcome","Ready."),private_key:"secret"}}));
 });
@@ -130,6 +131,22 @@ test("withdrawal snapshots cover six historical states with positive int64 paylo
   assert.ok(!check(unknown));
 });
 
+test("commission notifications expose only resource and signed point facts",()=>{
+  const check=validate("LotteryNotification");
+  const paid={id,brand_id:id,member_id:id,event_type:"commission.paid",template_key:"commission.paid",template_version:2,content:content("Commission credit recorded","Historical credit: {points}."),payload:{resource_id:id,points:"9223372036854775807"},created_at:"2026-10-07T00:00:00Z",read_at:null};
+  assert.ok(check(paid),JSON.stringify(check.errors));
+  assert.ok(!check({...paid,payload:{...paid.payload,points:"-1"}}));
+  assert.ok(!check({...paid,payload:{...paid.payload,ledger_entry_id:id}}));
+  const adjusted={...paid,event_type:"commission.adjusted",template_key:"commission.adjusted",content:content("Commission adjustment recorded","Historical adjustment: {points}."),payload:{resource_id:id,points:"-9223372036854775808"}};
+  assert.ok(check(adjusted),JSON.stringify(check.errors));
+  assert.ok(check({...adjusted,payload:{...adjusted.payload,points:"9223372036854775807"}}));
+  for(const points of ["0","-0","+1","01","-01","9223372036854775808","-9223372036854775809"]){
+    assert.ok(!check({...adjusted,payload:{...adjusted.payload,points}}),`accepted invalid signed amount ${points}`);
+  }
+  assert.ok(!check({...adjusted,payload:{...adjusted.payload,created_by:id}}));
+  for (const row of [paid, adjusted]) assert.ok(!check({...row,template_version:1,content:null}), `${row.event_type} is never a legacy snapshotless record`);
+});
+
 test("template copy schemas reject unknown placeholders and private fields",()=>{
   const check=validate("LotteryNotificationTemplateContent");
   const good=content();
@@ -141,7 +158,7 @@ test("template copy schemas reject unknown placeholders and private fields",()=>
 
   const joined={en:{title:"Welcome",body:"Membership ready."},"zh-CN":{title:"欢迎",body:"会员已就绪。"}};
   assert.ok(check(joined),JSON.stringify(check.errors));
-  assert.match(schemas.LotteryNotificationTemplateContent.description,/thirteen event templates require \{points\} in each language body/);
+  assert.match(schemas.LotteryNotificationTemplateContent.description,/fifteen event templates require \{points\} in each language body/);
   assert.match(schemas.LotteryNotificationTemplateCopy.properties.title.description,/120 UTF-8 bytes/);
   assert.match(schemas.LotteryNotificationTemplateCopy.properties.body.description,/1200 UTF-8 bytes/);
 });

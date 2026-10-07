@@ -30,6 +30,8 @@ var templateKeys = [...]string{
 	"bet.order.placed",
 	"bet.order.prize_reversed",
 	"bet.order.won",
+	"commission.adjusted",
+	"commission.paid",
 	"member.joined",
 	"recharge.confirmed",
 	"withdrawal.order.cancelled",

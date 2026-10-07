@@ -12,8 +12,9 @@ import * as commissionPolicies from "../../scripts/openapi-commission-policies.m
 import * as commissionCycles from "../../scripts/openapi-commission-cycles.mjs";
 import * as commissionDiscovery from "../../scripts/openapi-commission-discovery.mjs";
 import * as commissionPayments from "../../scripts/openapi-commission-payments.mjs";
+import * as commissionAdjustments from "../../scripts/openapi-commission-adjustments.mjs";
 
-const modules=[identity,finance,lottery,withdrawals,withdrawalReports,workbench,commissionPolicies,commissionCycles,commissionDiscovery,commissionPayments];
+const modules=[identity,finance,lottery,withdrawals,withdrawalReports,workbench,commissionPolicies,commissionCycles,commissionDiscovery,commissionPayments,commissionAdjustments];
 const go=process.env.LOTTERY_GO_BIN??"go";
 const operation={method:"POST",path:"/api/v1/me/action",operationId:"performAction",summary:"Submit action",tag:"identity",auth:"user",idempotency:true,requestBody:{$ref:"#/components/schemas/EmptyObject"},data:{$ref:"#/components/schemas/EmptyObject"}};
 const routes=[{method:"POST",path:"/api/v1/me/action"},{method:"POST",path:"/api/v1/b/{brandCode}/me/action"}];
@@ -37,6 +38,9 @@ test("composes the explicit API module list against real registered routes, incl
     "GET /api/v1/admin/commission-payment-policy",
     "GET /api/v1/admin/commission-payments",
     "GET /api/v1/admin/commission-payments/{id}",
+    "GET /api/v1/admin/commission-payments/{id}/targets",
+    "GET /api/v1/admin/commission-payment-targets/{id}/adjustments",
+    "POST /api/v1/admin/commission-payment-targets/{id}/adjustments",
     "POST /api/v1/admin/commission-payments/{id}/approve",
     "POST /api/v1/admin/commission-payments/{id}/retry",
     "PUT /api/v1/admin/commission-payment-policy",

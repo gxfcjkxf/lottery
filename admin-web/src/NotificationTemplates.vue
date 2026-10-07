@@ -44,6 +44,17 @@ const reasonValid = computed(() => reason.value.trim() === reason.value && reaso
   new TextEncoder().encode(reason.value).length <= 500);
 const reasonByteLength = computed(() => new TextEncoder().encode(reason.value).length);
 const contentValid = computed(() => Boolean(draft.value && selectedKey.value && validNotificationTemplateContent(draft.value, selectedKey.value)));
+const commissionFacts = computed(() => {
+  if (selectedKey.value === "commission.paid") return [
+    "Historical record: commission points were credited. Check the current wallet; this is not a new income forecast or an external payment.",
+    "历史记录：佣金积分曾入账。请查看当前钱包；本记录不是新收入预测或外部付款承诺。",
+  ] as const;
+  if (selectedKey.value === "commission.adjusted") return [
+    "Historical record: a signed commission adjustment was recorded. Check the current wallet; this is not a new income forecast or an external payment.",
+    "历史记录：曾记录一笔带正负方向的佣金调整。请查看当前钱包；本记录不是新收入预测或外部付款承诺。",
+  ] as const;
+  return null;
+});
 const canEdit = computed(() => rights.value.view && rights.value.write && !props.account.super_admin && Boolean(record.value) &&
   Boolean(draft.value) && !pending.value && !writing.value && !loading.value);
 const canReview = computed(() => canEdit.value && contentValid.value && reasonValid.value && !historyLoading.value);
@@ -216,7 +227,7 @@ onBeforeUnmount(() => { alive = false; listTicket++; historyTicket++; writeTicke
             <option value="" disabled>选择通知事件</option>
             <option v-for="key in notificationTemplateKeys" :key="key" :value="key">{{ formatKey(key) }}</option>
           </select>
-          <p class="nt-hint">支持14种通知事件：会员、充值、注单、奖项及提现状态。事件事实由系统生成；奖项发放、冲正及所有提现事件的双语历史说明保持只读。提现通知仅记录内部积分状态，不代表银行或虚拟币转账。</p>
+          <p class="nt-hint">支持16种通知事件：会员、充值、注单、奖项、佣金及提现状态。事件事实由系统生成；奖项发放、冲正、佣金和提现事件的双语历史说明保持只读。提现通知仅记录内部积分状态，不代表银行或虚拟币转账。</p>
         </nav>
 
         <div v-if="(record && draft && selectedKey) || pending" class="nt-workspace">
@@ -242,7 +253,9 @@ onBeforeUnmount(() => { alive = false; listTicket++; historyTicket++; writeTicke
                 </div>
               </fieldset>
             </div>
-            <div class="nt-facts-note"><strong>系统事实说明</strong><p>中奖金额、奖项发放和冲正事实不在模板中编辑；只可使用允许的通知占位符。</p></div>
+            <div v-if="commissionFacts" class="nt-facts-note" data-testid="commission-facts-note"><strong>不可编辑的佣金历史事实 / Fixed commission history</strong>
+              <p v-for="fact in commissionFacts" :key="fact">{{ fact }}</p></div>
+            <div v-else class="nt-facts-note"><strong>系统事实说明</strong><p>中奖金额、奖项发放和冲正事实不在模板中编辑；只可使用允许的通知占位符。</p></div>
             <p v-if="draft && !contentValid" class="nt-message nt-error" role="alert">标题或正文格式无效：请检查字节上限、首尾空白、占位符；不接受 HTML、外部地址或控制字符。</p>
             <div v-if="rights.write && !props.account.super_admin" class="nt-reason">
               <label for="nt-reason">修改原因（最多 500 UTF-8 字节）</label>

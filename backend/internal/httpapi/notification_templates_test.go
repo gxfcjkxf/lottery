@@ -37,7 +37,7 @@ func TestNotificationTemplateHTTPCheckedReplayValidationAndAudit(t *testing.T) {
 	path := base + "/recharge.confirmed"
 	mustStatus(t, f.call("GET", base, "", f.token, managedBrand, nil), 403)
 	grantReportPermission(t, f, "notification_template.view.brand")
-	if rows := templateHTTPList(t, f); len(rows) != 14 {
+	if rows := templateHTTPList(t, f); len(rows) != 16 {
 		t.Fatal(len(rows))
 	}
 	for _, q := range []string{"?unexpected=1", "?limit=20"} {

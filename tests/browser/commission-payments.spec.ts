@@ -59,7 +59,7 @@ test('real payout opt-in credits automatic C and preserves lost manual approval 
   await panel.getByTestId('commission-payment-approve').click();await confirm(page);
   await expect(panel.getByRole('button',{name:'使用原请求重试',exact:true})).toBeVisible();
   expect((await get<Payment>(`/commission-payments/${manual.id}`)).state).toBe('paid');
-  await panel.getByRole('button',{name:'刷新',exact:true}).click();
+  await panel.locator('.cp-heading').getByRole('button',{name:'刷新',exact:true}).click();
   await expect(panel.getByRole('button',{name:'使用原请求重试',exact:true})).toBeVisible();
   await navigate(page,info.project.name,'佣金和奖励|Commissions.*rewards');
   await navigate(page,info.project.name,'佣金派发|Commission payouts');panel=page.locator('.commission-payments');

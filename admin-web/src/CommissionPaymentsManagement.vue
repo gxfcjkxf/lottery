@@ -2,6 +2,7 @@
 import { computed, onUnmounted, ref, watch } from "vue";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import { useAdminI18n } from "./i18n";
+import CommissionAdjustmentsManagement from "./CommissionAdjustmentsManagement.vue";
 import {
   commissionPaymentPermissions, createCommissionPaymentsApi,
   type CommissionPayment, type CommissionPaymentPage, type CommissionPaymentPolicy,
@@ -278,6 +279,11 @@ onUnmounted(() => { alive = false; generation++; policyTicket++; listTicket++; d
         <div v-if="detail.paid_count !== '0' && detail.state === 'failed'" class="cp-callout" role="note">{{ t("已有部分目标入账。重试会由后端续跑未完成目标，已入账目标保留且不会重复入账。", "Some targets are already credited. The backend resumes only unfinished targets; credited targets remain accounted for and are not credited again.") }}</div>
         <label class="cp-reason">{{ t("审批 / 重试原因", "Approval / retry reason") }}<textarea data-testid="commission-payment-action-reason" v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(unknownIntent) || conflict" /></label>
         <div class="cp-actions"><button v-if="detail.state === 'awaiting_approval'" data-testid="commission-payment-approve" class="button button-primary" type="button" :disabled="!canApprove" @click="openReview('approve')">{{ t("审核并批准派发", "Review and approve payout") }}</button><button v-if="detail.state === 'failed'" data-testid="commission-payment-retry" class="button button-primary" type="button" :disabled="!canRetry" @click="openReview('retry')">{{ t("审核并重试", "Review and retry") }}</button><button class="button" type="button" :disabled="loadingList || loadingDetail" @click="reloadAll()">{{ t("刷新策略及记录", "Refresh policy and record") }}</button></div>
+        <CommissionAdjustmentsManagement v-if="!detailError"
+          :key="`commission-adjustments:${account.id}:${brandId}:${detail.id}`"
+          :account="account" :brand-id="brandId" :payment-id="detail.id"
+          :payment-state="detail.state" :brand-status="brandStatus"
+          @session-invalid="emit('session-invalid')" />
       </section>
       <div v-if="notice" class="cp-success" role="status">{{ notice }}</div>
       <div v-if="writeError" class="cp-error" role="alert">{{ writeError }}<button v-if="unknownIntent && rights.view" class="button" type="button" :disabled="writing || (unknownIntent.operation === 'policy' ? !rights.policyWrite : unknownIntent.operation === 'approve' ? !rights.approve : !rights.retry)" @click="retryUnknown">{{ writing ? t("正在重试…", "Retrying…") : t("使用原请求重试", "Retry original request") }}</button><button v-if="conflict" class="button" type="button" :disabled="conflictReloading" @click="reloadConflict">{{ t("刷新并重新审核", "Refresh and review again") }}</button></div>

@@ -41,7 +41,7 @@ func TestWithdrawalMigrationPreservesExistingCopyHistoryAndInbox(t *testing.T) {
 	if _, err = s.Process(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
-	fingerprint := `SELECT jsonb_build_object('templates',(SELECT jsonb_agg(to_jsonb(t) ORDER BY brand_id,template_key) FROM notification_templates t WHERE template_key NOT LIKE 'withdrawal.order.%'),'revisions',(SELECT jsonb_agg(to_jsonb(r) ORDER BY brand_id,template_key,version) FROM notification_template_revisions r WHERE template_key NOT LIKE 'withdrawal.order.%'),'inbox',(SELECT jsonb_agg(to_jsonb(n) ORDER BY id) FROM notifications n),'events',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM outbox_events e),'deliveries',(SELECT jsonb_agg(to_jsonb(d) ORDER BY event_id) FROM notification_deliveries d),'orders',(SELECT count(*) FROM withdrawal_orders),'ledger',(SELECT count(*) FROM point_ledger_entries))::text`
+	fingerprint := `SELECT jsonb_build_object('templates',(SELECT jsonb_agg(to_jsonb(t) ORDER BY brand_id,template_key) FROM notification_templates t WHERE template_key NOT LIKE 'withdrawal.order.%' AND template_key NOT LIKE 'commission.%'),'revisions',(SELECT jsonb_agg(to_jsonb(r) ORDER BY brand_id,template_key,version) FROM notification_template_revisions r WHERE template_key NOT LIKE 'withdrawal.order.%' AND template_key NOT LIKE 'commission.%'),'inbox',(SELECT jsonb_agg(to_jsonb(n) ORDER BY id) FROM notifications n),'events',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM outbox_events e),'deliveries',(SELECT jsonb_agg(to_jsonb(d) ORDER BY event_id) FROM notification_deliveries d),'orders',(SELECT count(*) FROM withdrawal_orders),'ledger',(SELECT count(*) FROM point_ledger_entries))::text`
 	var before, after string
 	if err = db.QueryRow(ctx, fingerprint).Scan(&before); err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestWithdrawalMigrationPreservesExistingCopyHistoryAndInbox(t *testing.T) {
 		t.Fatal("upgrade rewrote existing facts", err)
 	}
 	templates, err := s.Templates(ctx, brand)
-	if err != nil || len(templates) != 14 {
+	if err != nil || len(templates) != 16 {
 		t.Fatal(len(templates), err)
 	}
 	var count int
@@ -67,7 +67,7 @@ func TestWithdrawalMigrationPreservesExistingCopyHistoryAndInbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	templates, err = s.Templates(ctx, newBrand)
-	if err != nil || len(templates) != 14 {
+	if err != nil || len(templates) != 16 {
 		t.Fatal("new brand defaults", len(templates), err)
 	}
 }

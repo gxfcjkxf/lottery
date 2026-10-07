@@ -15,6 +15,8 @@ const events = [
   "bet.order.abnormal",
   "bet.order.won",
   "bet.order.prize_reversed",
+  "commission.paid",
+  "commission.adjusted",
   "withdrawal.order.reviewing",
   "withdrawal.order.processing",
   "withdrawal.order.paid",
@@ -35,6 +37,10 @@ function item(event_type: NotificationEventType, template_version = 1): Notifica
     ...(withdrawalState ? { content: {
       en: { title: "Withdrawal status recorded", body: `Historical withdrawal status: ${withdrawalState}. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state.` },
       "zh-CN": { title: "提现状态记录", body: `历史提现状态：${withdrawalChinese[withdrawalState]}，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。` },
+    } } : {}),
+    ...(event_type.startsWith("commission.") ? { content: {
+      en: { title: "Commission historical record", body: "Historical commission record: {points}." },
+      "zh-CN": { title: "佣金历史记录", body: "历史佣金记录：{points}。" },
     } } : {}),
     payload: {
       resource_id: "business-reference-42",
@@ -89,6 +95,28 @@ describe("notification presentation", () => {
     expect(reversedZh.body).toContain("此记录会保留");
     expect(wonEn.protectedNote).toBeNull();
     expect(reversedEn.protectedNote).toBeNull();
+  });
+
+  it.each(["commission.paid", "commission.adjusted"] as const)("keeps a fixed historical wallet disclaimer for %s", (event) => {
+    const snapshot = {
+      en: { title: "Operator title", body: "Operator copy: {points}." },
+      "zh-CN": { title: "运营标题", body: "运营内容：{points}。" },
+    };
+    const custom = { ...item(event, 2), content: snapshot };
+    const en = renderNotification(custom, "en");
+    const zh = renderNotification(custom, "zh");
+    expect(en.body).toBe("Operator copy: 900,719,925,474,099,312,345.");
+    expect(en.protectedNote).toContain("Historical record");
+    expect(en.protectedNote).toContain("not new income or an external payment forecast");
+    expect(en.protectedNote).toContain("Check your current wallet balance");
+    expect(zh.body).toBe("运营内容：900,719,925,474,099,312,345。");
+    expect(zh.protectedNote).toContain("历史记录");
+    expect(zh.protectedNote).toContain("不是新收入预测或外部付款承诺");
+    expect(zh.protectedNote).toContain("请查看当前钱包余额");
+  });
+
+  it.each(["commission.paid", "commission.adjusted"] as const)("rejects missing historical snapshots even for v1 %s", (event) => {
+    expect(() => renderNotification({ ...item(event), content: null }, "en")).toThrow(/immutable content snapshot/);
   });
 
   it.each([
