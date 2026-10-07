@@ -26,6 +26,7 @@
 - [14-commission-facts.md](14-commission-facts.md)：最终结算事实、计佣基数和内部锁约束；不代表已实现佣金计提与派发。
 - [15-four-source-ledger.md](15-four-source-ledger.md)：四来源16桶、旧流水与幂等摘要兼容、原路退款、提现来源和协调升级要求。
 - [16-commission-policy-snapshot.md](16-commission-policy-snapshot.md)：品牌金融政策、不可变修订、私有投注快照和已确认的周期收尾/汇总规则；周期派发继续待实现。
+- [17-commission-cycles.md](17-commission-cycles.md)：真实周期清单、待结清、分页核算、一次取整及相关更正代次历史；核算完成不等于派发。
 
 ## 第一阶段实现顺序
 

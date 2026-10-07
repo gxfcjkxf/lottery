@@ -246,7 +246,7 @@ async function submit(mutation: FrozenMutation) {
     uncertain.value = null;
     applyDraft(saved.config);
     history.value = null;
-    notice.value = t("策略已保存。更改仅适用于新投注；周期批次和派发工作进程尚未实现。", "Policy saved. Changes apply to new bets only; cycle batches and the payout worker are not implemented yet.");
+    notice.value = t("策略已保存。更改仅适用于新投注；周期核算已接入，审核和派发尚未实现。", "Policy saved. Changes apply to new bets only; cycle calculations are connected, while approval and payout are not implemented yet.");
     void loadHistory(0);
   } catch (cause) {
     const status = cause instanceof AdminApiError ? cause.status : 0;
@@ -384,7 +384,7 @@ onUnmounted(() => {
     </header>
 
     <div class="commission-policy-notice" role="note">
-      {{ t("策略已接入；周期批次和派发工作进程尚未实现。自动派发模式目前只是策略设置，不代表自动派发已运行。", "The policy is implemented; cycle batches and the payout worker are not yet implemented. Automatic payout is currently a setting and does not mean automatic payouts are running.") }}
+      {{ t("策略与周期核算已接入；审核和派发尚未实现。自动派发模式目前只是策略设置，不代表自动派发已运行。", "Policy settings and cycle calculations are connected; approval and payouts are not implemented yet. Automatic payout is currently a setting and does not mean automatic payouts are running.") }}
     </div>
 
     <p v-if="!rights.view" class="directory-state">
@@ -463,7 +463,7 @@ onUnmounted(() => {
             <option value="automatic">{{ t("自动（仅保存策略）", "Automatic (policy setting only)") }}</option>
           </select>
         </label>
-        <p class="commission-policy-help">{{ t("选择自动模式不会启动派发；周期批次和派发工作进程尚未实现。", "Selecting automatic does not start payouts; cycle batches and the payout worker are not yet implemented.") }}</p>
+        <p class="commission-policy-help">{{ t("选择自动模式不会启动派发；周期核算已接入，审核和派发尚未实现。", "Selecting automatic does not start payouts; cycle calculations are connected, while approval and payout are not implemented yet.") }}</p>
         <label class="commission-policy-field">{{ t("操作原因", "Reason for change") }}
           <textarea v-model="draft.reason" rows="3" maxlength="500" :disabled="!rights.write || Boolean(uncertain) || conflict" />
         </label>

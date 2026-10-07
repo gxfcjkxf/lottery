@@ -16,6 +16,7 @@ func registerPointSafetyRoutes(handle func(string, string, http.HandlerFunc), d 
 	registerAgentAdminRoutes(handle, d)
 	registerWithdrawalPolicyRoutes(handle, d)
 	registerCommissionPolicyRoutes(handle, d)
+	registerCommissionCycleRoutes(handle, d)
 	registerNotificationAdminRoutes(handle, d)
 	s := points.Store{DB: d.Admins.DB}
 	f := finance.Service{DB: d.Admins.DB, Points: s}

@@ -23,7 +23,9 @@ test('real commission financial policy retains the original unknown receipt and 
   const writes:Array<{body:string|null;key:string|undefined}>=[];
   let changedAgency=false;
   try{
-    await call('/agent-policy','PUT',{version:agency.version,config:{...agency.config,enabled:true,cycle:'weekly'},reason:'owned browser commission policy test prerequisite'});changedAgency=true;
+    if(!agency.config.enabled||agency.config.cycle!=='weekly'){
+      await call('/agent-policy','PUT',{version:agency.version,config:{...agency.config,enabled:true,cycle:'weekly'},reason:'owned browser commission policy test prerequisite'});changedAgency=true;
+    }
     await page.goto(origin);
     await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);
     if(info.project.name==='mobile'){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:/代理树|Agent tree/}).click();}

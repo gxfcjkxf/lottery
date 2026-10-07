@@ -799,4 +799,6 @@ POST 回执保存首次结果，SDK 不在写方法内重新取上下文/改写�
 
 ## 佣金金融政策当前接口
 
-0047注册GET/PUT `/api/v1/admin/commission-policy`及GET `/api/v1/admin/commission-policy/history`。读取要求commission_policy.view.brand/platform，写入要求commission_policy.write.brand且超级管理员不能写；初始化管理员包含对应范围的显式授权。版本、config、reason完整替换，幂等回执前重验实际会话和权限，审计/修订/政策一起提交。启用须显式日历并匹配已启用代理政策周期；历史NULL不补造授权。封闭字段、错误、分页和私有投注快照详见[金融政策合同](16-commission-policy-snapshot.md)及生成OpenAPI。这里不是设计中的commission-rules、批次或派发接口，尚无这些注册路由。
+0047注册GET/PUT `/api/v1/admin/commission-policy`及GET `/api/v1/admin/commission-policy/history`。读取要求commission_policy.view.brand/platform，写入要求commission_policy.write.brand且超级管理员不能写；初始化管理员包含对应范围的显式授权。版本、config、reason完整替换，幂等回执前重验实际会话和权限，审计/修订/政策一起提交。启用须显式日历并匹配已启用代理政策周期；历史NULL不补造授权。封闭字段、错误、分页和私有投注快照详见[金融政策合同](16-commission-policy-snapshot.md)及生成OpenAPI。这里不是设计中的commission-rules或派发接口。
+
+0048注册GET/POST `/api/v1/admin/commission-cycles`、GET `/{id}`、GET `/{id}/earnings`、POST `/{id}/retry`、GET `/{id}/runs`和GET `/{id}/runs/{runID}/calculations`。读取要求commission.view.brand/platform；登记/重试分别要求commission.run.brand/commission.retry.brand及品牌查看权，平台超级管理员不能写。写入须原始正文/幂等键匹配并重新授权；ready只是核算结果，须结合evidence_current阅读，不能当成批准或积分入账。完整字段、分页、封闭窗口、历史代次及失败规则见[周期核算合同](17-commission-cycles.md)。尚无审核或派发路由。

@@ -11,7 +11,7 @@ test('commission policy routes expose exact permission scopes and frozen-write c
   assert.ok(op.put.parameters.some(p => p.name === 'Idempotency-Key' && p.required));
   assert.match(op.put.description, /before cached receipt replay/);
   assert.match(op.put.description, /legacy NULL is not backfilled/);
-  assert.ok(!Object.keys(doc.paths).some(p => /commission.*(?:payout|batch)/.test(p)));
+  assert.ok(!Object.keys(doc.paths).some(p => /commission.*(?:payout|approve)/.test(p)));
   assert.deepEqual(schemas.CommissionPolicyInput.required, ['version', 'config', 'reason']);
 });
 test('commission calendar contract rejects incomplete and mixed cycle shapes', () => {

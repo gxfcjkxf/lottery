@@ -66,6 +66,8 @@ S6-f 使用现有 attribution_snapshot 保存不可改写的 schema_version/lega
 
 0047新增独立私有`commission_rule_snapshot`，不覆盖旧`attribution_snapshot`。新注单由服务端捕获金融政策/品牌代理政策/每个沿途节点的配置、版本及不可变修订编号、代理会员、父级、深度、有效模式和placed_at；旧行NULL原样保留。读证据校验对应历史修订、创建时间和原归属，不读取今天的比例重建；原归属中的commission_policy继续null，不能把两个字段混用。结构及调用见[佣金金融政策与投注快照](16-commission-policy-snapshot.md)。
 
+0048新增`commission_cycles`、`commission_cycle_targets`、`commission_runs`、`commission_cycle_steps`、`commission_calculations`、`commission_allocations`和`commission_earnings`。按品牌及闭合UTC窗口登记清单，按不可变运行代次保存每注证据、精确差额和每代理周期整数结果；受影响周期的`evidence_epoch`变化时废弃旧代次但保留历史。核算表不修改钱包、不代表已派发，字段和状态见[佣金周期核算](17-commission-cycles.md)。
+
 ### 后台账号与权限
 
 `admin_accounts`, `roles`, `permissions`, `admin_account_roles`, `role_permissions`, `admin_brand_scopes`
