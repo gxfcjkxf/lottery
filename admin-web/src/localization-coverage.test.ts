@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 
-const translatedComponents = ['App', 'AccessManagement', 'AuthSettings', 'MemberProvision', 'BrandOperation', 'BrandPresentation', 'PresentationFields', 'FinanceManagement', 'PointPolicySettings', 'WithdrawalPolicySettings', 'CommissionPolicySettings', 'BalanceRepair', 'ReconciliationManagement']
+const translatedComponents = ['App', 'AccessManagement', 'AuthSettings', 'MemberProvision', 'BrandOperation', 'BrandPresentation', 'PresentationFields', 'FinanceManagement', 'PointPolicySettings', 'WithdrawalPolicySettings', 'CommissionPolicySettings', 'CommissionCyclesManagement', 'BalanceRepair', 'ReconciliationManagement']
 const han = /\p{Script=Han}/u
 interface Node { type: number; tag?: string; arg?: { content?: string }; exp?: { content?: string }; content?: string | Node; name?: string; value?: { content: string }; children?: Node[]; props?: Node[] }
 

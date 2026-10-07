@@ -40,6 +40,8 @@ import {clearPendingReconciliationWrites} from "./reconciliation-state";
 const ReportsManagement = defineAsyncComponent(() => import("./ReportsManagement.vue"));
 const AgentManagement = defineAsyncComponent(() => import("./AgentManagement.vue"));
 const CommissionPolicySettings = defineAsyncComponent(() => import("./CommissionPolicySettings.vue"));
+const CommissionCyclesManagement = defineAsyncComponent(() => import("./CommissionCyclesManagement.vue"));
+import { clearAllPendingCommissionCycleWrites } from "./commission-cycles-state";
 const JoinCodeManagement = defineAsyncComponent(() => import("./JoinCodeManagement.vue"));
 import { clearAllPendingAgentWrites } from "./agents-state";
 import { clearAllPendingJoinCodeWrites } from "./join-codes-state";
@@ -72,6 +74,7 @@ import {
 
 const { t, message, locale, availableLocales, setLocale, configure, resetBrand } = useAdminI18n();
 const englishUi: Record<string, string> = {
+  "请先登录后台账号查看佣金周期。": "Sign in to view commission cycles.",
   "控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金策略和周期核算已接入，审核和派发尚未实现。": "The console combines connected workflows and prototypes. Withdrawal status is connected; eligibility rules are pending and real payments are unavailable. Commission policy settings and cycle calculations are connected; approval and payouts are not implemented.",
   "此页显示真实成员；账号权限、积分账本、认证设置和投注已接入。": "This page shows live members. Account permissions, the points ledger, authentication settings, and betting are connected.",
   "成员创建与管理为真实操作；投注已接入。": "Member creation and management are live operations. Betting is connected.",
@@ -115,7 +118,7 @@ const englishUi: Record<string, string> = {
   "彩种模型": "Game model", "号码配置": "Number setup", "选号规则": "Selection rules", "中奖条件": "Winning conditions", "奖级赔率": "Prize tiers & odds", "限额取消": "Limits & cancellation", "测试案例": "Test cases", "模拟结果": "Simulation results", "选择彩种模型": "Choose a game model", "模型确定号码池结构和基本校验方式。": "The model defines the number pool and basic validation.", "普通号码与特别号码分别选择": "Choose regular and special numbers separately", "当前模型": "Current model", "从号码池中选取指定数量": "Choose a set number from the pool", "按位置选择有序数字": "Choose ordered digits by position", "彩种名称": "Game name", "玩法名称": "Play type", "配置号码池和位数": "Configure number pool and digits", "设置合法取值、重复规则及普通 / 特别号码数量。": "Set valid values, duplicate rules, and regular/special number counts.", "普通号码范围": "Regular number range", "普通号码个数": "Regular number count", "特别号码范围": "Special number range", "特别号码个数": "Special number count", "不允许号码重复": "Numbers cannot repeat", "配置选号与组合方式": "Configure selection and combinations", "设置排除、复式展开、号码属性和倍投规则。": "Set exclusions, combination expansion, number properties, and multipliers.", "选号方式": "Selection method", "手动选号 / 复式": "Manual / multiple selection", "单式选号": "Single selection", "单注积分": "Points per bet", "倍数下限": "Minimum multiplier", "倍数上限": "Maximum multiplier", "支持排除号码": "Allow number exclusions", "支持奇偶属性": "Allow odd/even properties", "配置中奖条件和结果特征": "Configure winning conditions and result properties", "仅允许使用规则组件，不执行自定义脚本。": "Only rule components are allowed; custom scripts are not executed.", "等于": "Equals", "包含": "Contains", "＋ 添加条件组件": "+ Add condition", "配置奖级、赔率和舍入": "Configure prize tiers, odds, and rounding", "奖级优先级、排他性、封顶值和舍入策略。": "Set tier priority, exclusivity, caps, and rounding.", "倍率": "Multiplier", "排他": "Exclusive", "封顶 50,000": "Cap 50,000", "不封顶": "No cap", "舍入规则": "Rounding rule", "四舍五入 · 整数积分": "Round half up · whole points", "设置限额与取消规则": "Set limits and cancellation rules", "提供用户、单注和单期期次边界。": "Set user, per-bet, and per-period limits.", "单注最低": "Minimum per bet", "单注最高": "Maximum per bet", "每人每期限额": "Per-user period limit", "截止前取消": "Cancel before cutoff", "允许，原路返还": "Allowed; refund to source", "不允许": "Not allowed", "输入测试选号和开奖结果": "Enter test selection and draw result", "本地原型模拟，不是真实规则引擎；不会创建注单或写入数据。": "Local prototype simulation, not the live rules engine. No orders or data are created.", "测试选号（空格分隔）": "Test selection (space-separated)", "测试开奖结果": "Test draw result", "倍数": "Multiplier", "单注积分（整数）": "Points per bet (integer)", "运行模拟": "Run simulation", "规则模拟完成 · 本地原型": "Rule simulation complete · local prototype", "不是实际规则引擎；结果不会写入注单或账本。": "This is not the live rules engine; results are not written to orders or the ledger.", "规则校验": "Rule validation", "通过": "Passed", "展开组合数": "Expanded combinations", "命中说明": "Match details", "预计积分": "Estimated points", "条件节点": "Condition nodes", "号码范围与重复检查": "Number range and duplicate checks", "封顶后积分与整数舍入": "Capped points and integer rounding", "上一步": "Previous step", "步骤": "Step", "保存草稿": "Save draft", "下一步": "Next", "提交审核": "Submit for review", "审核与发布": "Review & publish", "规则创建者不能审核自己的版本。审核通过后还需单独确认发布。": "Rule creators cannot review their own versions. Approval must be followed by a separate publish confirmation.", "创建人：林岚": "Creator: Lin Lan", "当前操作者": "Current operator", "已提交审核": "Submitted for review", "审核人：周宁": "Reviewer: Zhou Ning", "待审核 · 与创建者不同": "Awaiting review · separate from creator", "待分配审核": "Reviewer not assigned", "审核通过": "Approve", "驳回并填写意见": "Reject and add comments", "确认发布（演示）": "Confirm publish (demo)", "发布后新版本仅作用于新注单，历史订单继续使用原版本。": "The new version applies only to future orders; historical orders retain their original version.", "版本信息": "Version info", "当前生效版本": "Current version", "新建草稿": "New draft", "生效方式": "Activation", "对比版本差异 →": "Compare versions →",
   "真实期次计划": "Live period plan", "请先登录后台账号并选择品牌，才能保存计划、生成和查询期次。": "Sign in and select a brand to save plans, generate, and view periods.", "旧开奖工作台演示（不会开奖、纠正结果或结算真实注单）": "Legacy draw workspace demo (does not draw, correct results, or settle live orders)", "查看期次时间线、来源校验与开奖操作": "View period timeline, source checks, and draw actions", "人工开奖": "Manual draw", "生成期次": "Generate period", "复制期次编号": "Copy period ID", "投注开始": "Betting opens", "投注截止": "Betting closes", "开奖时间": "Draw time", "结算完成": "Settlement complete", "投注订单": "Bet orders", "投注积分": "Bet points", "关联规则": "Linked rule", "品牌时区": "Brand time zone", "优先级与最近检查时间": "Priority and last check", "切换记录": "Change history", "主来源 · API": "Primary source · API", "备用来源 · API": "Backup source · API", "上次校验": "Last checked", "健康": "Healthy", "单人操作，必须记录审计原因": "Single operator; an audit reason is required", "录入": "Enter result", "当前开奖结果": "Current draw result", "上一期": "Previous period", "已确认": "Confirmed", "来源：主开奖源": "Source: primary draw source", "校验项：号码范围 ✓　重复校验 ✓　签名 ✓": "Checks: number range ✓ duplicates ✓ signature ✓", "确认时间": "Confirmed at", "确认并结算 →": "Confirm and settle →", "状态时间线": "Status timeline", "开奖结果已确认": "Draw result confirmed", "来源结果通过校验": "Source result passed validation", "期次投注已截止": "Period betting closed", "人工开奖和结果纠正均属于高风险演示操作。确认前必须查看影响范围并填写原因。": "Manual draws and result corrections are high-risk demos. Review the impact and enter a reason before confirming.",
   "周期规则、试算与记录调整概览": "Overview of cycle rules, estimates, and record adjustments", "新建佣金规则": "Create commission rule", "本周期预计佣金": "Estimated commission this cycle", "待结算记录": "Records awaiting settlement", "覆盖 142 位代理": "Covers 142 agents", "已结算佣金": "Settled commission", "本月累计 · 演示数据": "Month to date · demo data", "佣金规则版本": "Commission rule versions", "修改会创建新版本，已结算历史记录保留原始金额": "Changes create a new version; settled history retains original amounts", "版本历史 →": "Version history →", "只计算有效输钱注单 · 品牌范围": "Counts eligible losing orders only · brand scope", "输赢模式": "Win/loss model", "比例": "Rate", "周期": "Cycle", "每周": "Weekly", "每月": "Monthly", "生效中 · v4": "Active · v4", "生效中 · v2": "Active · v2", "详情 →": "Details →", "基于有效投注流水 · 品牌范围": "Based on eligible betting turnover · brand scope", "流水模式": "Turnover model", "近期佣金记录": "Recent commission records", "人工修正会建立独立 adjustment 记录": "Manual corrections create a separate adjustment record", "导出 ↓": "Export ↓", "代理": "Agent", "模式": "Model", "计算基数": "Calculation base", "佣金积分": "Commission points", "待结算": "Pending settlement", "已结算": "Settled",
-  "真实代理配置与历史记录；佣金计算和派发尚未接入。": "Live agent settings and history; commission calculation and payout are not connected.", "真实注单结果及账本流水；汇总余额不是完整逐账户对账证明。": "Live order results and ledger entries; aggregate balances are not a complete account-by-account reconciliation.", "真实站内通知投递记录；外部发送渠道尚未接入。": "Live in-app notification delivery records; external channels are not connected.", "真实版本化站内通知模板；已生成消息保留原文案，不触发新通知或资金变化。": "Live versioned in-app notification templates; generated messages retain their original copy and do not send notifications or change funds.", "审计日志为真实后台数据；投注已接入，提现仍为演示。": "Audit logs are live admin data; betting is connected while withdrawals remain a demo.", "账号与角色变更为真实操作；投注已接入，提现仍为演示。": "Account and role changes are live operations; betting is connected while withdrawals remain a demo.", "认证、品牌展示及域名绑定为真实配置；提现仍为演示。": "Authentication, brand presentation, and domain binding are live settings; withdrawals remain a demo.", "人工充值、冻结、调整与账本为真实操作；提现尚未接入。": "Manual deposits, freezes, adjustments, and ledger actions are live; withdrawals are not connected.", "标为演示的功能不写入后台；账号、积分、规则版本和期次计划已接入真实 API。": "Features marked as demos do not write to admin systems. Accounts, points, rule versions, and period plans use the live API.",
+  "真实代理配置与历史记录；佣金核算已接入，审核和派发尚未实现。": "Live agent settings and history; commission calculations are connected, but approval and payouts are not implemented.", "真实注单结果及账本流水；汇总余额不是完整逐账户对账证明。": "Live order results and ledger entries; aggregate balances are not a complete account-by-account reconciliation.", "真实站内通知投递记录；外部发送渠道尚未接入。": "Live in-app notification delivery records; external channels are not connected.", "真实版本化站内通知模板；已生成消息保留原文案，不触发新通知或资金变化。": "Live versioned in-app notification templates; generated messages retain their original copy and do not send notifications or change funds.", "审计日志为真实后台数据；投注已接入，提现仍为演示。": "Audit logs are live admin data; betting is connected while withdrawals remain a demo.", "账号与角色变更为真实操作；投注已接入，提现仍为演示。": "Account and role changes are live operations; betting is connected while withdrawals remain a demo.", "认证、品牌展示及域名绑定为真实配置；提现仍为演示。": "Authentication, brand presentation, and domain binding are live settings; withdrawals remain a demo.", "人工充值、冻结、调整与账本为真实操作；提现尚未接入。": "Manual deposits, freezes, adjustments, and ledger actions are live; withdrawals are not connected.", "标为演示的功能不写入后台；账号、积分、规则版本和期次计划已接入真实 API。": "Features marked as demos do not write to admin systems. Accounts, points, rule versions, and period plans use the live API.",
   "加入码": "Join codes", "冻结": "Frozen", "已过期": "Expired", "已注销": "Cancelled", "待审核": "Awaiting review", "已通过": "Approved", "已驳回": "Rejected",
   "已登录管理员账号": "Signed in as admin", "已退出管理员账号": "Signed out of admin", "成员资料已更新": "Member details updated", "该成员的品牌会话已踢出": "The member's brand session was revoked", "全局密码已重置，所有品牌会话已撤销": "Global password reset; sessions revoked across all brands", "审核失败": "Review failed", "提交失败": "Submission failed", "纠正原因必填": "Correction reason is required", "人工开奖原因必填": "Manual draw reason is required", "人工结果已锁定本期（演示）": "Manual result locked for this period (demo)",
   "帮助中心为演示入口": "Help center is a demo entry point", "概览已刷新（演示数据保持不变）": "Overview refreshed (demo data is unchanged)", "配置导出成功（演示）": "Config exported (demo)", "规则草稿已暂存（当前页面演示）": "Rule draft saved temporarily (page demo)", "查看版本差异（演示）": "View version differences (demo)", "来源切换记录（演示）": "View source change history (demo)", "结算任务已加入队列（演示）": "Settlement task added to queue (demo)", "新建佣金规则草稿（演示）": "Create commission rule draft (demo)", "佣金版本历史（演示）": "Commission version history (demo)", "佣金规则详情（演示）": "Commission rule details (demo)", "记录报表导出完成（演示）": "Record report exported (demo)", "已打开规则版本列表（演示）": "Rule version list opened (demo)", "已生成下一期草稿（演示）": "Next period draft generated (demo)", "已复制期次编号": "Period ID copied", "已创建待确认发布版本；演示不会改变实际配置": "Publish version created for confirmation; demo does not change live settings", "规则已提交给周宁审核（演示）": "Rule submitted to Zhou Ning for review (demo)", "审核通过；待发布确认（演示）": "Review approved; awaiting publish confirmation (demo)", "规则已驳回（演示）": "Rule rejected (demo)",
@@ -375,6 +378,7 @@ const statusClass = (status: MemberStatus) =>
 const apiErrorText = (error: unknown) =>
   error instanceof Error ? message(error.message, error.message) : message("请求失败，请重试", "Request failed. Please try again.");
 const clearAdminData = () => {
+	clearAllPendingCommissionCycleWrites();
 	clearAllPendingCommissionWrites();
 	clearAllPendingPresentationWrites();
 	clearAllPendingComplianceIntents();
@@ -417,6 +421,7 @@ const restoreAdminSession = async () => {
     const result = await api.me();
     if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
+      clearAllPendingCommissionCycleWrites();
       clearAllPendingBrandCreationWrites();
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
@@ -449,6 +454,7 @@ const login = async () => {
     const result = await api.me();
     if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
+      clearAllPendingCommissionCycleWrites();
       clearAllPendingBrandCreationWrites();
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
@@ -1927,135 +1933,12 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '佣金和奖励'" class="page-content">
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">AGENTS / COMMISSION & REWARDS</div>
-            <h1>{{ ui("佣金和奖励") }}</h1>
-            <p>{{ ui("周期规则、试算与记录调整概览") }}</p>
-          </div>
-          <button
-            class="button button-primary"
-            @click="toast('新建佣金规则草稿（演示）')"
-          > {{ ui("＋ 新建佣金规则") }} </button>
+        <CommissionCyclesManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
+          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+        <div v-else class="panel directory-state">
+          <h1>{{ ui("佣金和奖励") }}</h1>
+          <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号查看佣金周期。") }}</p>
         </div>
-        <div class="money-cards commission-cards">
-          <article class="panel money-card">
-            <span>{{ ui("本周期预计佣金") }}</span><b>18,420 <small>{{ ui("分") }}</small></b
-            ><small>{{ ui("周结算 · 10/01 – 10/07") }}</small>
-          </article>
-          <article class="panel money-card">
-            <span>{{ ui("待结算记录") }}</span><b>1,284 <small>{{ ui("条") }}</small></b
-            ><small>{{ ui("覆盖 142 位代理") }}</small>
-          </article>
-          <article class="panel money-card">
-            <span>{{ ui("已结算佣金") }}</span><b>86,230 <small>{{ ui("分") }}</small></b
-            ><small>{{ ui("本月累计 · 演示数据") }}</small>
-          </article>
-        </div>
-        <article class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>{{ ui("佣金规则版本") }}</h2>
-              <p>{{ ui("修改会创建新版本，已结算历史记录保留原始金额") }}</p>
-            </div>
-            <button class="text-button" @click="toast('佣金版本历史（演示）')"> {{ ui("版本历史 →") }} </button>
-          </div>
-          <div class="rule-table-row">
-            <span
-              ><b>{{ ui("输赢佣金 · 星河代理组") }}</b
-              ><small>{{ ui("只计算有效输钱注单 · 品牌范围") }}</small></span
-            ><span>{{ ui("输赢模式") }}</span><span>{{ ui("比例") }} <b>8.00%</b></span
-            ><span>{{ ui("周期") }} <b>{{ ui("每周") }}</b></span
-            ><span><span class="badge badge-success">{{ ui("生效中 · v4") }}</span></span
-            ><button class="text-button" @click="toast('佣金规则详情（演示）')"> {{ ui("详情 →") }} </button>
-          </div>
-          <div class="rule-table-row">
-            <span
-              ><b>{{ ui("流水佣金 · 海风代理组") }}</b
-              ><small>{{ ui("基于有效投注流水 · 品牌范围") }}</small></span
-            ><span>{{ ui("流水模式") }}</span><span>{{ ui("比例") }} <b>1.20%</b></span
-            ><span>{{ ui("周期") }} <b>{{ ui("每月") }}</b></span
-            ><span><span class="badge badge-success">{{ ui("生效中 · v2") }}</span></span
-            ><button class="text-button" @click="toast('佣金规则详情（演示）')"> {{ ui("详情 →") }} </button>
-          </div>
-        </article>
-        <article class="panel commission-records">
-          <div class="panel-header">
-            <div>
-              <h2>{{ ui("近期佣金记录") }}</h2>
-              <p>{{ ui("人工修正会建立独立 adjustment 记录") }}</p>
-            </div>
-            <button
-              class="button button-secondary"
-              @click="toast('记录报表导出完成（演示）')"
-            > {{ ui("导出 ↓") }} </button>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>{{ ui("代理") }}</th>
-                  <th>{{ ui("周期") }}</th>
-                  <th>{{ ui("模式") }}</th>
-                  <th>{{ ui("计算基数") }}</th>
-                  <th>{{ ui("比例") }}</th>
-                  <th>{{ ui("佣金积分") }}</th>
-                  <th>{{ ui("状态") }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="r in [
-                    {
-                      name: '周宁 · 星河-01',
-                      period: '09/28 – 10/04',
-                      mode: '输赢',
-                      base: '84,200',
-                      ratio: '8.00%',
-                      points: '6,736',
-                      status: '待结算',
-                    },
-                    {
-                      name: '陈浩 · 海风-03',
-                      period: '09/28 – 10/04',
-                      mode: '流水',
-                      base: '342,800',
-                      ratio: '1.20%',
-                      points: '4,113',
-                      status: '待结算',
-                    },
-                    {
-                      name: '林美 · 晨光-12',
-                      period: '09/21 – 09/27',
-                      mode: '输赢',
-                      base: '48,200',
-                      ratio: '6.00%',
-                      points: '2,892',
-                      status: '已结算',
-                    },
-                  ]"
-                  :key="r.name"
-                >
-                  <td>{{ r.name }}</td>
-                  <td>{{ r.period }}</td>
-                  <td>{{ r.mode }}</td>
-                  <td class="amount">{{ r.base }}</td>
-                  <td>{{ r.ratio }}</td>
-                  <td class="amount">{{ r.points }} {{ ui("分") }}</td>
-                  <td>
-                    <span
-                      class="badge"
-                      :class="
-                        r.status === '已结算' ? 'badge-success' : 'badge-warn'
-                      "
-                      >{{ r.status }}</span
-                    >
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </article>
       </section>
 
       <section v-else-if="page === '通知模板'" class="page-content">
@@ -2177,7 +2060,7 @@ const ledger = [
           page === "用户和成员" && account
               ? ui("成员创建与管理为真实操作；投注已接入。")
             : page === "代理树" && account
-              ? ui("真实代理配置与历史记录；佣金计算和派发尚未接入。")
+              ? ui("真实代理配置与历史记录；佣金核算已接入，审核和派发尚未实现。")
             : page === "报表和对账" && account
               ? ui("真实注单结果及账本流水；汇总余额不是完整逐账户对账证明。")
             : page === "通知投递" && account
