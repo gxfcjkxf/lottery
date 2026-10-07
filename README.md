@@ -137,7 +137,7 @@ TEST_DATABASE_URL=postgres://lottery:lottery_local@localhost:5432/lottery_test?s
 
 从 backend 目录运行上述命令。测试在目标数据库中创建独立随机 schema，结束后删除该 schema；禁止使用生产数据库。未配置 TEST_DATABASE_URL 时集成测试会显示 SKIP，不能据此宣称数据库验收通过。具备 C 编译工具链的环境还应运行 go test -race ./...；CI 使用 Linux 完成该检查。
 
-浏览器回归：每个 Playwright project 必须使用各自独立的临时测试 PostgreSQL 与 API，分别迁移、seed 并创建测试管理员；不要指向开发共用库或生产环境。先安装浏览器：
+浏览器回归：每个Playwright视口及分片必须使用独立的临时测试PostgreSQL与API/worker，分别迁移、seed并创建测试管理员；不要指向开发共用库或生产环境。先安装浏览器：
 
 ~~~sh
 pnpm exec playwright install chromium
@@ -146,7 +146,7 @@ pnpm exec playwright install chromium
 启动 desktop 专属测试 API 后运行：
 
 ~~~sh
-pnpm test:e2e --project=desktop --workers=2
+pnpm test:e2e --project=desktop --shard=1/2 --workers=1
 ~~~
 
 浏览器回归还需启动 `go run ./cmd/platform worker`，并确保测试 API 与 worker 指向该 project 的同一个临时测试库。
@@ -156,16 +156,20 @@ pnpm test:e2e --project=desktop --workers=2
 再切换到 mobile 专属的另一套临时数据库/API 后运行（本地顺序运行，避免前端/API 端口冲突）：
 
 ~~~sh
-pnpm test:e2e --project=mobile --workers=2
+pnpm test:e2e --project=mobile --shard=1/2 --workers=1
 ~~~
 
-例如本地可分别使用 PostgreSQL 55440（desktop）与 55441（mobile），各自的 API 必须实际连接对应测试库，不能只换浏览器 project。不要在 5 分钟内让两个 project 共用同一数据库/API：真实认证限流为每 IP 30 次/5 分钟，合跑会触发 429。不得通过关闭认证限流、清除限流记录或伪造 forwarded IP 绕过；CI 使用 `project: [desktop, mobile]` 矩阵，每个 job 自带独立 PostgreSQL/API，执行 `pnpm test:e2e --project=${{ matrix.project }} --workers=2`。
+上述命令分别运行各视口的第1分片；还须运行 `--shard=2/2` 才覆盖全部普通浏览器场景。每个视口、每个分片都需要独立的临时测试数据库与API/worker，不能只换project或shard参数后复用同一库。真实认证限流为每IP 30次、每账号10次/5分钟；同库合跑和失败后反复登录可能触发429。不得关闭认证限流、清除限流记录或伪造forwarded IP绕过。CI使用 `project: [desktop, mobile]` 和 `shard: [1, 2]` 矩阵，每个job自带独立PostgreSQL/API，执行 `pnpm test:e2e --project=${{ matrix.project }} --shard=${{ matrix.shard }}/2 --workers=1`；同一品牌配置写入场景在每个分片内串行执行。
 
 测试会自动启动两个前端，验证 PC/移动视口、真实注册/登录/会话恢复、品牌隔离、规则创建→验证→送审→独立审核→立即生效及原型选号/取消流程。每套临时测试库都需配置以下凭证：
 
 - `TEST_ADMIN_USERNAME` / `TEST_ADMIN_PASSWORD`：事先由 `create-admin --brand aurora` 创建的隔离测试管理员，供后台成员、角色/账号和财务回归使用。
 - `TEST_HARBOR_ADMIN_USERNAME` / `TEST_HARBOR_ADMIN_PASSWORD`：由 `create-admin --brand harbor` 创建，供 Harbor 配置与规则创建等回归使用。
 - `TEST_RULE_REVIEWER_USERNAME` / `TEST_RULE_REVIEWER_PASSWORD`：另用 `create-admin --brand harbor` 创建的独立审核账号，必须不同于 Harbor 规则创建者，不能用同账号完成创建和审核。
+- `TEST_PLATFORM_ADMIN_USERNAME` / `TEST_PLATFORM_ADMIN_PASSWORD`：由 `create-admin --super` 创建的独立平台测试账号，供品牌创建回归使用。
+- `TEST_COMPLIANCE_ADMIN_USERNAME` / `TEST_COMPLIANCE_ADMIN_PASSWORD`：由 `create-admin --brand harbor` 创建的独立管理员，供合规配置回归使用。
+- `TEST_EXPORT_ADMIN_USERNAME` / `TEST_EXPORT_ADMIN_PASSWORD` 和 `TEST_EXPORT_PLATFORM_USERNAME` / `TEST_EXPORT_PLATFORM_PASSWORD`：分别独立创建Harbor与平台管理员，供导出权限和隔离回归使用。
+- `TEST_TEMPLATE_ADMIN_USERNAME` / `TEST_TEMPLATE_ADMIN_PASSWORD`：由 `create-admin --brand harbor` 创建的独立管理员，供模板发布及历史消息回归使用。
 
 例如在 backend 目录、连接当前 project 的临时测试库并安全注入 `BOOTSTRAP_ADMIN_PASSWORD` 后创建审核账号（密码不写入命令参数）：
 

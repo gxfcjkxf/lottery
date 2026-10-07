@@ -67,7 +67,7 @@ test("operator creates real member; user personally accepts current brand terms"
     .getByRole("button", { name: "创建成员", exact: true })
     .click();
   await expect(provision.getByRole("status")).toContainText("成员已创建");
-  await expect(provision.getByRole("status")).toContainText("条款已接受：否");
+  await expect(provision.getByRole("status")).toContainText("条款已接受: 否");
   await expect(provision.getByLabel(/初始密码/)).toHaveValue("");
   await fits(page);
   const user = await context.newPage();

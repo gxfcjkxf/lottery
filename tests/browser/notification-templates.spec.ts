@@ -1,4 +1,5 @@
 import {test,expect,type Page,type APIRequestContext} from "@playwright/test";
+import { rememberAdminSession, restoreAdminSession } from "./support/admin-session";
 const brand="0199a000-0000-7000-8000-000000000002",admin="http://localhost:5174/api/v1/admin",origin="http://localhost:5174";
 const userBase="http://localhost:5173/api/v1/b/harbor";
 const username=process.env.TEST_TEMPLATE_ADMIN_USERNAME,password=process.env.TEST_TEMPLATE_ADMIN_PASSWORD;
@@ -37,7 +38,12 @@ async function navigateTemplates(page:Page,project:string){
 test("real bilingual template publication survives lost receipt and preserves historical user messages",async({page,context},info)=>{
  test.skip(!username||!password,"Provide isolated template administrator credentials");
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
- await unwrap(await page.request.post(admin+"/auth/login",{headers:{Origin:origin,"Idempotency-Key":key()},data:{identifier:username,password}}));
+ const restored=await restoreAdminSession(context,username!,brand,origin);
+ if(!restored)await unwrap(await page.request.post(admin+"/auth/login",{headers:{Origin:origin,"Idempotency-Key":key()},data:{identifier:username,password}}));
+ const identity=await page.request.get(admin+"/me",{headers:{"X-Brand-ID":brand}});
+ const identityData=await unwrap<{account:{id:string;brand_ids:string[]}}>(identity);
+ expect(identityData.account.brand_ids).toContain(brand);
+ rememberAdminSession(username!,await context.cookies(admin+"/me"),origin,identityData.account.id);
  const original=await read(page),prior=await register(page);
  await expect.poll(async()=> (await inbox(page,prior.access_token)).items.length).toBe(1);
  const oldMessage=(await inbox(page,prior.access_token)).items[0]!;

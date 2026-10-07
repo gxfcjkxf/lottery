@@ -1,0 +1,15 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const workflow = readFileSync(new URL('../../.github/workflows/ci.yaml', import.meta.url), 'utf8');
+const job = /^  browser:\n([\s\S]*)$/m.exec(workflow)?.[1];
+test('general browser CI covers two isolated shards for each viewport without bypassing auth limits', () => {
+  assert.ok(job);
+  assert.match(job, /project: \[desktop, mobile\]/);
+  assert.match(job, /shard: \[1, 2\]/);
+  assert.match(job, /services:\n      postgres:/);
+  assert.match(job, /APP_ENV: test/);
+  assert.match(job, /pnpm test:e2e --project=\$\{\{ matrix\.project \}\} --shard=\$\{\{ matrix\.shard \}\}\/2 --workers=1/);
+  assert.match(job, /name: browser-failure-traces-\$\{\{ matrix\.project \}\}-\$\{\{ matrix\.shard \}\}/);
+  assert.doesNotMatch(job, /continue-on-error|DELETE FROM auth_rate_limits|TRUNCATE|X-Forwarded-For|disable.*limit/i);
+});

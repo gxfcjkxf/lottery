@@ -98,7 +98,13 @@ func TestCatalogHasExplicitEmptyAndUpcomingPeriodStates(t *testing.T) {
 	if err != nil || out.Period != nil || out.Plays == nil || len(out.Plays) != 0 {
 		t.Fatalf("empty catalog=%+v err=%v", out, err)
 	}
-	now := time.Now().UTC()
+	// Use the database clock's precision so the exact ordering assertion is
+	// stable when PostgreSQL round-trips timestamptz at microsecond resolution.
+	var now time.Time
+	if err := f.db.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
+		t.Fatal(err)
+	}
+	now = now.UTC()
 	for i, offset := range []time.Duration{2 * time.Hour, time.Hour} {
 		if _, err = f.db.Exec(ctx, `INSERT INTO periods(id,brand_id,game_id,period_no,sequence,bet_start_at,bet_end_at,draw_at,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'pending')`, ids.New(), f.brand, game.ID, ids.New(), i+1, now.Add(offset), now.Add(offset+time.Minute), now.Add(offset+2*time.Minute)); err != nil {
 			t.Fatal(err)

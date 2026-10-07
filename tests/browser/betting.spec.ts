@@ -406,6 +406,12 @@ async function scheduleOpenWindow(
   game: { id: string; version: number },
 ) {
   const now = Date.now();
+  // One explicit daily draw gives this long financial scenario a real open
+  // window without omitting an earlier interval boundary. The worker may fill
+  // the calendar concurrently; a late earlier reservation must never bypass
+  // the prior-period settlement/refund gate merely to make this fixture pass.
+  const draw = new Date(now + 600_000);
+  draw.setUTCMilliseconds(0);
   const schedule = await api<{ id: string }>(
     request,
     `${adminBase}/games/${game.id}/schedule`,
@@ -416,9 +422,9 @@ async function scheduleOpenWindow(
       reason: "reserve near-future genuine betting window",
       spec: {
         timezone: "UTC",
-        mode: "interval",
-        daily_draw_times: [],
-        interval_seconds: 300,
+        mode: "daily",
+        daily_draw_times: [draw.toISOString().slice(11, 19)],
+        interval_seconds: 0,
         busy_windows: [],
         bet_open_before_seconds: 900,
         bet_close_before_seconds: 60,
@@ -434,11 +440,13 @@ async function scheduleOpenWindow(
     created: number;
     periods: Array<{ id: string; status: string }>;
   }>(request, `${adminBase}/games/${game.id}/periods/generate`, "POST", admin, {
-    from: new Date(now + 120_000).toISOString(),
+    from: new Date(now).toISOString(),
     to: new Date(now + 600_000).toISOString(),
-    reason: "generate real near-future interval draws",
+    reason: "generate the explicit real daily draw",
   });
-  expect(generated.created).toBeGreaterThan(0);
+  // FillCalendar may reserve the same immutable period first; created can be
+  // zero, but the real generated result must still contain this single draw.
+  expect(generated.periods).toHaveLength(1);
   return generated.periods[0];
 }
 

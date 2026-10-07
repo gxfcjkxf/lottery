@@ -304,6 +304,7 @@ func TestManagementRoleAdminBrandSecurityCASAndDedup(t *testing.T) {
 	if !errors.Is(err, ErrDenied) {
 		t.Fatalf("editing own assigned role error=%v, want denied", err)
 	}
+	_ = tx.Rollback(ctx)
 
 	// A manager may grant only registered brand permissions that they hold.
 	tx = beginManagementTx(t, f.pool)
@@ -311,11 +312,13 @@ func TestManagementRoleAdminBrandSecurityCASAndDedup(t *testing.T) {
 	if !errors.Is(err, ErrDenied) {
 		t.Fatalf("granting an unheld permission error=%v, want denied", err)
 	}
+	_ = tx.Rollback(ctx)
 	tx = beginManagementTx(t, f.pool)
 	_, err = f.store.WriteRole(ctx, tx, f.actor, managementBrandA, "", RoleInput{Code: "platform_role", Name: "Platform role", Status: "active", Permissions: []string{"admin.write.platform"}, Reason: "scope check"}, meta)
 	if !errors.Is(err, ErrInvalid) {
 		t.Fatalf("granting platform permission error=%v, want invalid", err)
 	}
+	_ = tx.Rollback(ctx)
 
 	tx = beginManagementTx(t, f.pool)
 	role, err := f.store.WriteRole(ctx, tx, f.actor, managementBrandA, "", RoleInput{Code: "limited_role", Name: "Limited role", Status: "active", Permissions: []string{"user.view.brand"}, Reason: "create role"}, meta)
@@ -331,6 +334,7 @@ func TestManagementRoleAdminBrandSecurityCASAndDedup(t *testing.T) {
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("duplicate role code error=%v, want conflict", err)
 	}
+	_ = tx.Rollback(ctx)
 
 	tx = beginManagementTx(t, f.pool)
 	created, err := f.store.CreateAdmin(ctx, tx, f.actor, managementBrandA,
@@ -361,11 +365,16 @@ func TestManagementRoleAdminBrandSecurityCASAndDedup(t *testing.T) {
 	if !errors.Is(err, ErrDenied) {
 		t.Fatalf("editing multi-brand account error=%v, want denied", err)
 	}
+	_ = tx.Rollback(ctx)
 
 	tx = beginManagementTx(t, f.pool)
 	_, err = f.store.UpdateAdmin(ctx, tx, f.actor, managementBrandA, f.actor.ID, AdminInput{Version: 1, RoleIDs: []string{role.ID}, Status: "active", Reason: "self edit"}, meta)
 	if !errors.Is(err, ErrDenied) {
 		t.Fatalf("editing own account error=%v, want denied", err)
+	}
+	_ = tx.Rollback(ctx)
+	if acquired := f.pool.Stat().AcquiredConns(); acquired != 0 {
+		t.Fatalf("completed management transactions retained %d pool connections", acquired)
 	}
 }
 
@@ -462,10 +471,12 @@ func TestManagementRoleUpdateAndAdminDisableRevokeSessions(t *testing.T) {
 	if err := f.pool.QueryRow(ctx, `SELECT revoked_at IS NOT NULL FROM sessions WHERE id=$1`, accountID).Scan(&revoked); err != nil || !revoked {
 		t.Fatalf("account update did not revoke session: revoked=%v err=%v", revoked, err)
 	}
-	if _, err := f.store.UpdateAdmin(ctx, beginManagementTx(t, f.pool), f.actor, managementBrandA, admin.ID,
+	staleAdminTx := beginManagementTx(t, f.pool)
+	if _, err := f.store.UpdateAdmin(ctx, staleAdminTx, f.actor, managementBrandA, admin.ID,
 		AdminInput{Version: targetVersion, RoleIDs: []string{role.ID}, Status: "active", Reason: "stale update"}, meta); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale account update error=%v, want conflict", err)
 	}
+	_ = staleAdminTx.Rollback(ctx)
 	var actions int
 	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE resource_id=$1 AND action='admin.update'`, admin.ID).Scan(&actions); err != nil || actions != 1 {
 		t.Fatalf("admin update audit entries=%d err=%v, want 1", actions, err)
@@ -484,9 +495,11 @@ func TestPlatformManagementAndBootstrapProtection(t *testing.T) {
 	if _, err := f.pool.Exec(ctx, `INSERT INTO roles(id,brand_id,code,name,is_bootstrap) VALUES($1,$2,'bootstrap_keeper','Bootstrap',true)`, bootstrapID, managementBrandA); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.store.WriteRole(ctx, beginManagementTx(t, f.pool), f.actor, managementBrandA, bootstrapID, RoleInput{Version: 1, Name: "Changed", Status: "disabled", Reason: "attempt bootstrap edit"}, meta); !errors.Is(err, ErrDenied) {
+	bootstrapTx := beginManagementTx(t, f.pool)
+	if _, err := f.store.WriteRole(ctx, bootstrapTx, f.actor, managementBrandA, bootstrapID, RoleInput{Version: 1, Name: "Changed", Status: "disabled", Reason: "attempt bootstrap edit"}, meta); !errors.Is(err, ErrDenied) {
 		t.Fatalf("editing bootstrap role error=%v, want denied", err)
 	}
+	_ = bootstrapTx.Rollback(ctx)
 
 	tx := beginManagementTx(t, f.pool)
 	role, err := f.store.WriteRole(ctx, tx, f.actor, managementBrandA, "", RoleInput{Code: "platform_created", Name: "Platform-created brand role", Permissions: []string{"user.view.brand"}, Reason: "platform role create"}, meta)

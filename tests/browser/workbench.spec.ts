@@ -30,8 +30,23 @@ test('workbench displays real scoped financial data, explicit gaps, and clears s
   await expect(metric('Balances', 'Total points')).toHaveText(data.balances.data.total_points)
   await expect(metric('Balances', 'Available points')).toHaveText(data.balances.data.available_points)
   await expect(metric('Ledger', 'Net points')).toHaveText(data.ledger.data.net_points)
-  for (const name of ['Withdrawals', 'Commissions', 'Rewards']) {
-    await expect(card(name)).toContainText('Not implemented')
+  const withdrawals = data.withdrawals
+  await expect(card('Withdrawals').locator('.badge')).toHaveText(withdrawals.status === 'ready' ? 'Ready' : 'Unavailable')
+  if (withdrawals.status === 'ready') {
+    await expect(metric('Withdrawals', 'Awaiting review')).toHaveText(withdrawals.data.reviewing_count)
+    await expect(metric('Withdrawals', 'Awaiting review (points)')).toHaveText(withdrawals.data.reviewing_points)
+    await expect(metric('Withdrawals', 'Processing count')).toHaveText(withdrawals.data.processing_count)
+    await expect(metric('Withdrawals', 'Processing points')).toHaveText(withdrawals.data.processing_points)
+    await expect(card('Withdrawals')).toContainText('does not indicate eligibility, actual payment, or profit')
+  } else {
+    expect(withdrawals.status).toBe('forbidden')
+    expect(withdrawals.data).toBeNull()
+    await expect(card('Withdrawals')).toContainText('Your account cannot view')
+    await expect(card('Withdrawals').locator('dd')).toHaveCount(0)
+  }
+  for (const name of ['Commissions', 'Rewards']) {
+    expect(data[name.toLowerCase()]).toEqual({ status: 'not_implemented', data: null })
+    await expect(card(name).locator('.badge')).toHaveText('Not implemented')
     await expect(card(name).locator('dd')).toHaveCount(0)
   }
   await expect(card('Draw sources')).toContainText(data.sources.status === 'forbidden' ? 'Your account cannot view' : 'does not indicate upstream health')

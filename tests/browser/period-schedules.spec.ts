@@ -1,6 +1,29 @@
-import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import { test, expect, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
+import { rememberAdminSession, restoreAdminSession } from "./support/admin-session";
 
 const harbor = "0199a000-0000-7000-8000-000000000002";
+const adminOrigin = "http://localhost:5174";
+async function signIn(page: Page, context: BrowserContext, info: TestInfo) {
+  const username = process.env.TEST_HARBOR_ADMIN_USERNAME!;
+  const restored = await restoreAdminSession(context, username, harbor, adminOrigin);
+  await page.goto(adminOrigin);
+  if (info.project.name === "mobile")
+    await page.locator(".mobile-nav button").nth(1).click();
+  else
+    await page.locator(".side-nav").getByRole("button", { name: /用户和成员/ }).click();
+  if (!restored) {
+    await page.getByLabel("账号", { exact: true }).fill(username);
+    await page.getByLabel("密码", { exact: true }).fill(process.env.TEST_HARBOR_ADMIN_PASSWORD!);
+    await page.getByRole("button", { name: "登录并加载真实成员", exact: true }).click();
+  }
+  await page.getByLabel("选择真实后台品牌", { exact: true }).selectOption(harbor);
+  const me = await page.request.get(`${adminOrigin}/api/v1/admin/me`, { headers: { "X-Brand-ID": harbor } });
+  const meBody = await me.text();
+  expect(me.status(), meBody).toBe(200);
+  const account = JSON.parse(meBody).data.account;
+  expect(account.brand_ids).toContain(harbor);
+  rememberAdminSession(username, await context.cookies(`${adminOrigin}/api/v1/admin/me`), adminOrigin, account.id);
+}
 async function showPeriods(page: Page, info: TestInfo) {
   if (info.project.name === "mobile") {
     await page
@@ -14,33 +37,14 @@ async function showPeriods(page: Page, info: TestInfo) {
       .click();
 }
 test("schedule revisions and generated periods persist without activating future windows", async ({
-  page,
+  page, context,
 }, info) => {
   test.skip(
     !process.env.TEST_HARBOR_ADMIN_USERNAME ||
       !process.env.TEST_HARBOR_ADMIN_PASSWORD,
     "Provide isolated brand-admin credentials",
   );
-  await page.goto("http://localhost:5174");
-  if (info.project.name === "mobile")
-    await page.locator(".mobile-nav button").nth(1).click();
-  else
-    await page
-      .locator(".side-nav")
-      .getByRole("button", { name: /用户和成员/ })
-      .click();
-  await page
-    .getByLabel("账号", { exact: true })
-    .fill(process.env.TEST_HARBOR_ADMIN_USERNAME!);
-  await page
-    .getByLabel("密码", { exact: true })
-    .fill(process.env.TEST_HARBOR_ADMIN_PASSWORD!);
-  await page
-    .getByRole("button", { name: "登录并加载真实成员", exact: true })
-    .click();
-  await page
-    .getByLabel("选择真实后台品牌", { exact: true })
-    .selectOption(harbor);
+  await signIn(page, context, info);
   const code = `schedule_${crypto.randomUUID().replaceAll("-", "").slice(0, 10)}`;
   const created = await page.request.post(
     "http://localhost:5174/api/v1/admin/games",
@@ -192,33 +196,14 @@ test("schedule revisions and generated periods persist without activating future
 });
 
 test("running worker opens, closes and advances a real period using the database clock", async ({
-  page,
+  page, context,
 }, info) => {
   test.skip(
     !process.env.TEST_HARBOR_ADMIN_USERNAME ||
       !process.env.TEST_HARBOR_ADMIN_PASSWORD,
     "Provide isolated brand-admin credentials and run platform worker",
   );
-  await page.goto("http://localhost:5174");
-  if (info.project.name === "mobile")
-    await page.locator(".mobile-nav button").nth(1).click();
-  else
-    await page
-      .locator(".side-nav")
-      .getByRole("button", { name: /用户和成员/ })
-      .click();
-  await page
-    .getByLabel("账号", { exact: true })
-    .fill(process.env.TEST_HARBOR_ADMIN_USERNAME!);
-  await page
-    .getByLabel("密码", { exact: true })
-    .fill(process.env.TEST_HARBOR_ADMIN_PASSWORD!);
-  await page
-    .getByRole("button", { name: "登录并加载真实成员", exact: true })
-    .click();
-  await page
-    .getByLabel("选择真实后台品牌", { exact: true })
-    .selectOption(harbor);
+  await signIn(page, context, info);
   const headers = { "X-Brand-ID": harbor, Origin: "http://localhost:5174" };
   const post = async (path: string, data: unknown) =>
     page.request.post(`http://localhost:5174/api/v1/admin${path}`, {
