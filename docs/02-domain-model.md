@@ -214,6 +214,8 @@ S5-c1 的 `settlement_previews` 是正式结算之前的不可改写核算证据
 
 S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, points)`，3 种来源 × 4 种状态共 12 行。显示/可用/冻结/提现汇总与来源可用余额由这 12 行派生，不再持有多份冗余余额。每次记账先锁账户行，完整 12 桶必须存在，version 与追加账本版本一致。
 
+新增佣金积分已获业务确认，目标模型为充值/中奖/赠送/佣金四来源 × 四状态共16桶；当前代码和数据库尚未升级，不把设计当作已支持的API字段。升级必须保留旧12桶历史、摘要和审计，验证零佣金旧记录兼容、新16桶守卫、原来源退款和提现周期；投注扣款及门槛口径待OPEN-112确认。
+
 `point_ledger_entries`
 
 - `id`, `brand_id`, `brand_member_id`, `account_id`
