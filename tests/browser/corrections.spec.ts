@@ -6,7 +6,10 @@ import { rememberAdminSession } from "./support/admin-session";
 import { formatDateTimeLocal } from "./support/datetime-local";
 
 const brandId = "0199a000-0000-7000-8000-000000000002";
-const origin = "http://localhost:5173";
+const origin = process.env.TEST_PUBLIC_ORIGIN ?? "http://localhost:5173";
+const adminOrigin = process.env.TEST_ADMIN_ORIGIN ?? "http://localhost:5174";
+const apiOrigin = process.env.TEST_API_ORIGIN ?? "http://127.0.0.1:8080";
+const harborOrigin = process.env.TEST_USER_ORIGIN ?? "http://harbor.localhost:5173";
 const adminBase = `${origin}/api/v1/admin`;
 const publicBase = `${origin}/api/v1/b/harbor`;
 const key = () => crypto.randomUUID();
@@ -91,11 +94,11 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   const creator = await login(page.request, process.env.TEST_HARBOR_ADMIN_USERNAME!, process.env.TEST_HARBOR_ADMIN_PASSWORD!);
   const creatorCookies = (await context.cookies(`${adminBase}/me`)).filter(cookie => cookie.name === "lottery_admin");
   expect(creatorCookies).toHaveLength(1);
-  rememberAdminSession(process.env.TEST_HARBOR_ADMIN_USERNAME!,creatorCookies);
+  rememberAdminSession(process.env.TEST_HARBOR_ADMIN_USERNAME!,creatorCookies,adminOrigin);
   const reviewer = await login(page.request, process.env.TEST_RULE_REVIEWER_USERNAME!, process.env.TEST_RULE_REVIEWER_PASSWORD!);
   const reviewerCookies = (await context.cookies(`${adminBase}/me`)).filter(cookie => cookie.name === "lottery_admin");
   expect(reviewerCookies).toHaveLength(1);
-  rememberAdminSession(process.env.TEST_RULE_REVIEWER_USERNAME!, reviewerCookies);
+  rememberAdminSession(process.env.TEST_RULE_REVIEWER_USERNAME!, reviewerCookies,adminOrigin);
 
   const authContext = await publicApi<{ auth?: { captcha_enabled?: boolean } }>(page.request, "/context");
   const username = `corr_${unique()}`;
@@ -204,7 +207,8 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   const adminPage = await context.newPage();
   adminPage.on("pageerror",e=>pageErrors.push(e.message));
   adminPage.setDefaultTimeout(8_000);
-  await adminPage.goto("http://localhost:5174");
+  await adminPage.goto(adminOrigin);
+  await adminPage.getByTestId("admin-language").selectOption("zh-CN");
   await adminPage.getByLabel("选择真实后台品牌", { exact: true }).selectOption(brandId);
   await goToPeriods(adminPage, info.project.name);
   const correction = adminPage.locator(".correction-management");
@@ -225,8 +229,8 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
     // Host/Origin/Cookie. Avoid a second connection through the dev proxy after
     // intentionally aborting the first browser response.
     const response = await route.fetch({
-      url: route.request().url().replace("http://localhost:5174", "http://127.0.0.1:8080"),
-      headers: { ...(await route.request().allHeaders()), host: "localhost:5174" },
+      url: route.request().url().replace(adminOrigin, apiOrigin),
+      headers: { ...(await route.request().allHeaders()), host: new URL(adminOrigin).host },
     });
     expect(response.status(), await response.text()).toBe(201);
     const envelope = await response.json() as Envelope<Record<string, unknown>>;
@@ -360,11 +364,11 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   const userCookies=(await context.cookies(publicBase)).filter(c=>c.name===`lottery_user_${brandId.replaceAll("-","")}`);
   expect(userCookies).toHaveLength(1);
   await context.addCookies(userCookies.map(c=>({...c,domain:"harbor.localhost"})));
-  await page.route("http://harbor.localhost:5173/api/**",async route=>{
-    const response=await route.fetch({url:route.request().url().replace("harbor.localhost","localhost"),headers:{...(await route.request().allHeaders()),host:"harbor.localhost:5173"}});
+  await page.route(`${harborOrigin}/api/**`,async route=>{
+    const response=await route.fetch({url:route.request().url().replace("harbor.localhost","localhost"),headers:{...(await route.request().allHeaders()),host:new URL(harborOrigin).host}});
     await route.fulfill({response});
   });
-  await page.goto("http://harbor.localhost:5173/notifications");
+  await page.goto(`${harborOrigin}/notifications`);
   const inboxPanel=page.locator(".notifications-panel");
   await expect(inboxPanel.getByRole("heading",{name:"Prize credit recorded",exact:true})).toBeVisible();
   await expect(inboxPanel.getByRole("heading",{name:"Prize reversal recorded",exact:true})).toBeVisible();

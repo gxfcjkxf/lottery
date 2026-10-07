@@ -566,7 +566,7 @@ onBeforeUnmount(() => {
         <p v-if="selectedJob.current && selectedJob.state === 'completed' && !currentJobIsTerminal" class="sm-warning compact">{{ t("服务器任务标记为完成，但 paid + excluded 与目标总数不符；不显示为结算完成。", "The server marks the job complete, but paid + excluded does not match the target count. It is not shown as settlement complete.") }}</p>
         <p v-if="selectedJob.state === 'failed'" class="sm-warning compact">{{ t("任务失败不会自动重试。异常或已取消目标为 excluded，不会自动重试；只有服务器 can_retry 为 true 时才能人工重试。", "Failed jobs are not retried automatically. Abnormal or cancelled targets are excluded and are not retried. Manual retry is available only when the server sets can_retry to true.") }}</p>
         <dl class="sm-facts">
-          <div><dt>{{ t("结算代次 / 是否当前", "Settlement generation / current") }}</dt><dd>{{ t("第", "Generation") }} {{ selectedJob.generation }} · {{ selectedJob.current ? t('当前', 'Current') : t('历史 / 更正冻结', 'Historical / frozen by correction') }}</dd></div>
+          <div><dt>{{ t("结算代次 / 是否当前", "Settlement generation / current") }}</dt><dd>{{ t(`第 ${selectedJob.generation} 代`, `Generation ${selectedJob.generation}`) }} · {{ selectedJob.current ? t('当前', 'Current') : t('历史 / 更正冻结', 'Historical / frozen by correction') }}</dd></div>
           <div><dt>{{ t("上一代任务 / 更正任务", "Previous job / correction") }}</dt><dd class="sm-break">{{ selectedJob.previous_job_id ?? '—' }} / {{ selectedJob.correction_id ?? '—' }}</dd></div>
           <div><dt>{{ t("任务 ID", "Job ID") }}</dt><dd class="sm-break">{{ selectedJob.id }}</dd></div>
           <div><dt>{{ t("品牌 / 彩种 / 期次", "Brand / game / period") }}</dt><dd class="sm-break">{{ selectedJob.brand_id }} · {{ selectedJob.game_id }} · {{ selectedJob.period_id }}</dd></div>

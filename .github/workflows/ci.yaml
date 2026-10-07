@@ -39,7 +39,9 @@ jobs:
           node-version: 24
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Prepare and verify Chromium
+        timeout-minutes: 7
+        run: node scripts/prepare-ci-browser.mjs
       - name: Create owned real commission workflows and start API
         working-directory: backend
         run: |
@@ -96,7 +98,9 @@ jobs:
           node-version: 24
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Prepare and verify Chromium
+        timeout-minutes: 7
+        run: node scripts/prepare-ci-browser.mjs
       - name: Start owned withdrawal fixture API and notification worker
         working-directory: backend
         run: |
@@ -153,7 +157,9 @@ jobs:
           node-version: 24
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Prepare and verify Chromium
+        timeout-minutes: 7
+        run: node scripts/prepare-ci-browser.mjs
       - name: Migrate isolated database and create real qualification fixture
         working-directory: backend
         run: |
@@ -208,7 +214,9 @@ jobs:
           node-version: 24
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Prepare and verify Chromium
+        timeout-minutes: 7
+        run: node scripts/prepare-ci-browser.mjs
       - name: Start dedicated reconciliation fixture and API
         working-directory: backend
         run: |
@@ -337,7 +345,9 @@ jobs:
           node-version: 24
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Prepare and verify Chromium
+        timeout-minutes: 7
+        run: node scripts/prepare-ci-browser.mjs
       - name: Start isolated test API
         working-directory: backend
         run: |
