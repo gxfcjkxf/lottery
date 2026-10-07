@@ -238,15 +238,51 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   await expect(correction.locator(".cm-pending")).toContainText("写入结果未知");
   await correction.getByRole("button", { name: "只读刷新", exact: true }).click();
   await expect(correction.locator(".cm-pending")).toContainText("写入结果未知");
-  await correction.getByRole("button", { name: "原样重试同一请求", exact: true }).click();
-  await expect(correction.locator(".cm-pending")).toHaveCount(0);
+  const correctionId = correctionReceipt!.id as string;
+  await expect(correction.getByRole("region", { name: "更正详情", exact: true })).toContainText(correctionId);
+  await expect(correction.getByRole("status")).toContainText("存在结果未知的写入。");
+
+  // Receipt acknowledgement precedes follow-up reads. Hold a real detail
+  // response to prove the intent clears while refresh remains disabled, then
+  // await the real history response rather than racing a still-busy button.
+  let releaseDetail!: () => void;
+  let detailReached!: (status: number) => void;
+  const heldDetail = new Promise<void>(resolve => { releaseDetail = resolve; });
+  const detailResponseReached = new Promise<number>(resolve => { detailReached = resolve; });
+  const detailRoute = `**/api/v1/admin/corrections/${correctionId}`;
+  await adminPage.route(detailRoute, async route => {
+    const response = await route.fetch();
+    detailReached(response.status());
+    await heldDetail;
+    await route.fulfill({ response });
+  }, { times: 1 });
+  // The overall 65-second test deadline bounds this observation. A read is not
+  // required to finish within the locator's shorter click deadline.
+  const historyAfterReceipt = adminPage.waitForResponse(response =>
+    response.request().method() === "GET" &&
+    new URL(response.url()).pathname === `/api/v1/admin/periods/${periodId}/corrections`,
+    { timeout: 0 },
+  );
+  try {
+    await correction.getByRole("button", { name: "原样重试同一请求", exact: true }).click();
+    await expect(correction.locator(".cm-pending")).toHaveCount(0);
+    expect(await detailResponseReached).toBe(200);
+    await expect(correction.getByRole("button", { name: "只读刷新", exact: true })).toBeDisabled();
+  } finally {
+    releaseDetail();
+  }
+  const refreshedHistory = await historyAfterReceipt;
+  expect(refreshedHistory.status()).toBe(200);
+  expect(await refreshedHistory.finished()).toBeNull();
+  await expect(correction.getByRole("status")).toContainText("更正已确认，并已读取最新服务器状态。");
+  await expect(correction.getByRole("button", { name: "只读刷新", exact: true })).toBeEnabled();
+  await adminPage.unroute(detailRoute);
   expect(correctionRequests).toHaveLength(2);
   expect(correctionRequests[0]).toEqual(correctionRequests[1]);
   await adminPage.unroute(correctRoute);
   expect(correctionReceipt).toMatchObject({ previous_job_id: originalJob.id, result: { regular: [], special: [], digits: [1, 2, 2] }, state: "reversing" });
   expect(correctionReceipt!.previous_draw_result_id).toBe(draw.id);
   expect(correctionReceipt!.draw_result_id).not.toBe(draw.id);
-  const correctionId = correctionReceipt!.id as string;
   type CorrectionData={id:string;state:string;new_job_id:string|null;new_job_state:string|null};
   await expect.poll(async () => (await api<CorrectionData>(page.request, `/corrections/${correctionId}`, "GET", creator)).new_job_state, { timeout: 10_000 }).toBe("awaiting_approval");
   const correctionData=await api<CorrectionData>(page.request,`/corrections/${correctionId}`,"GET",creator);

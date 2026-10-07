@@ -146,7 +146,7 @@ pnpm exec playwright install chromium
 启动 desktop 专属测试 API 后运行：
 
 ~~~sh
-pnpm test:e2e --project=desktop --shard=1/2 --workers=1
+pnpm test:e2e --project=desktop --shard=1/2 --workers=1 --retries=0
 ~~~
 
 浏览器回归还需启动 `go run ./cmd/platform worker`，并确保测试 API 与 worker 指向该 project 的同一个临时测试库。
@@ -156,10 +156,10 @@ pnpm test:e2e --project=desktop --shard=1/2 --workers=1
 再切换到 mobile 专属的另一套临时数据库/API 后运行（本地顺序运行，避免前端/API 端口冲突）：
 
 ~~~sh
-pnpm test:e2e --project=mobile --shard=1/2 --workers=1
+pnpm test:e2e --project=mobile --shard=1/2 --workers=1 --retries=0
 ~~~
 
-上述命令分别运行各视口的第1分片；还须运行 `--shard=2/2` 才覆盖全部普通浏览器场景。每个视口、每个分片都需要独立的临时测试数据库与API/worker，不能只换project或shard参数后复用同一库。真实认证限流为每IP 30次、每账号10次/5分钟；同库合跑和失败后反复登录可能触发429。不得关闭认证限流、清除限流记录或伪造forwarded IP绕过。CI使用 `project: [desktop, mobile]` 和 `shard: [1, 2]` 矩阵，每个job自带独立PostgreSQL/API，执行 `pnpm test:e2e --project=${{ matrix.project }} --shard=${{ matrix.shard }}/2 --workers=1`；同一品牌配置写入场景在每个分片内串行执行。
+上述命令分别运行各视口的第1分片；还须运行 `--shard=2/2` 才覆盖全部普通浏览器场景。每个视口、每个分片都需要独立的临时测试数据库与API/worker，不能只换project或shard参数后复用同一库。真实认证限流为每IP 30次、每账号10次/5分钟；同库合跑和失败后反复登录可能触发429。不得关闭认证限流、清除限流记录或伪造forwarded IP绕过。CI使用 `project: [desktop, mobile]` 和 `shard: [1, 2]` 矩阵，每个job自带独立PostgreSQL/API，执行 `pnpm test:e2e --project=${{ matrix.project }} --shard=${{ matrix.shard }}/2 --workers=1 --retries=0`；同一品牌配置写入场景在每个分片内串行执行。首轮失败必须修复并使用新测试库复验，不能据自动重试后的绿色结果宣称首轮稳定。
 
 测试会自动启动两个前端，验证 PC/移动视口、真实注册/登录/会话恢复、品牌隔离、规则创建→验证→送审→独立审核→立即生效及原型选号/取消流程。每套临时测试库都需配置以下凭证：
 

@@ -12,6 +12,13 @@ const platformPassword = process.env.TEST_EXPORT_PLATFORM_PASSWORD;
 
 type ExportFixture = { memberId: string; headers: Record<string, string> };
 
+function formatDateTimeLocal(timestamp: number): string {
+  const date = new Date(timestamp);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const minuteValue = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return date.getSeconds() === 0 ? minuteValue : `${minuteValue}:${pad(date.getSeconds())}`;
+}
+
 async function signIn(page: Page, identifier = username, secret = password) {
   test.skip(!identifier || !secret, "Provide isolated report export administrator credentials");
   const response = await page.request.post(`${adminBase}/auth/login`, {
@@ -62,16 +69,30 @@ async function queryLedger(panel: ReturnType<Page["locator"]>, memberId: string)
   await panel.getByRole("button", { name: "账本报表", exact: true }).click();
   await panel.getByLabel("会员筛选 UUID", { exact: true }).fill(memberId);
   await panel.getByLabel("账本分组", { exact: true }).selectOption("entry_type");
-  const to = await panel.evaluate(() => {
-    const d = new Date(Date.now() + 60 * 60 * 1000), p = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-  });
+  // Keep the bound in the browser's local timezone, not the Node worker's.
+  const upperBound = await panel.evaluate(() => Date.now() + 60 * 60 * 1000);
+  const to = await panel.page().evaluate(formatDateTimeLocal, upperBound);
   await panel.getByLabel("报表结束时间", { exact: true }).fill(to);
   await panel.getByRole("button", { name: "查询报表", exact: true }).click();
   const ledger = panel.getByRole("region", { name: "账本报表", exact: true });
   await expect(ledger.locator(".reports-summary").first()).toBeVisible();
   return ledger;
 }
+
+test("datetime-local report bounds omit only zero seconds", async ({ page }) => {
+  // A scratch control checks the browser parser deterministically without
+  // changing any report, clock, authentication or persisted financial data.
+  await page.setContent('<label>Report bound<input type="datetime-local" step="1"></label>');
+  const input = page.getByLabel("Report bound", { exact: true });
+  for (const seconds of [0, 1]) {
+    const timestamp = await page.evaluate(value => new Date(2026, 9, 7, 4, 15, value).getTime(), seconds);
+    const value = await page.evaluate(formatDateTimeLocal, timestamp);
+    expect(value).toBe(seconds === 0 ? "2026-10-07T04:15" : "2026-10-07T04:15:01");
+    await input.fill(value);
+    await expect(input).toHaveValue(value);
+    expect(await input.evaluate(element => (element as HTMLInputElement).valueAsNumber)).toBe(Date.UTC(2026, 9, 7, 4, 15, seconds));
+  }
+});
 
 function parseFixtureCsv(bytes: Buffer): string[][] {
   expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);

@@ -240,7 +240,7 @@ jobs:
       # Each viewport/shard gets an independent PostgreSQL service; preserve real auth limits.
       # Brand-level settings tests temporarily change the same Harbor config.
       # Serialize UI cases; transaction concurrency is exercised by Go tests.
-      - run: pnpm test:e2e --project=${{ matrix.project }} --shard=${{ matrix.shard }}/2 --workers=1
+      - run: pnpm test:e2e --project=${{ matrix.project }} --shard=${{ matrix.shard }}/2 --workers=1 --retries=0
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
