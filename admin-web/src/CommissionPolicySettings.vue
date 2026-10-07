@@ -246,7 +246,7 @@ async function submit(mutation: FrozenMutation) {
     uncertain.value = null;
     applyDraft(saved.config);
     history.value = null;
-    notice.value = t("策略已保存。更改仅适用于新投注；周期核算已接入，审核和派发尚未实现。", "Policy saved. Changes apply to new bets only; cycle calculations are connected, while approval and payout are not implemented yet.");
+    notice.value = t("策略已保存。此佣金政策只影响新投注；真实派发的运行开关在独立后台管理，默认关闭。", "Policy saved. This commission policy applies to new bets; the live payout switch is managed in the separate console and is disabled by default.");
     void loadHistory(0);
   } catch (cause) {
     const status = cause instanceof AdminApiError ? cause.status : 0;
@@ -384,7 +384,7 @@ onUnmounted(() => {
     </header>
 
     <div class="commission-policy-notice" role="note">
-      {{ t("策略与周期核算已接入；审核和派发尚未实现。自动派发模式目前只是策略设置，不代表自动派发已运行。", "Policy settings and cycle calculations are connected; approval and payouts are not implemented yet. Automatic payout is currently a setting and does not mean automatic payouts are running.") }}
+      {{ t("此处是投注时佣金经济政策。真实派发由独立后台的默认关闭运行开关控制；开启该开关可能处理现存的 ready 周期。", "These are bet-time commission rules. Live payouts are controlled by the separate console's default-off runtime switch; enabling it may process existing ready cycles.") }}
     </div>
 
     <p v-if="!rights.view" class="directory-state">
@@ -463,7 +463,7 @@ onUnmounted(() => {
             <option value="automatic">{{ t("自动（仅保存策略）", "Automatic (policy setting only)") }}</option>
           </select>
         </label>
-        <p class="commission-policy-help">{{ t("选择自动模式不会启动派发；周期核算已接入，审核和派发尚未实现。", "Selecting automatic does not start payouts; cycle calculations are connected, while approval and payout are not implemented yet.") }}</p>
+        <p class="commission-policy-help">{{ t("自动模式是投注时的经济政策；它本身不会启动派发。派发运行开关在独立后台，开启后历史 ready 周期也可能实际入账。", "Automatic mode is a bet-time economic rule; it does not start payouts by itself. The separate payout runtime switch may credit historical ready cycles when enabled.") }}</p>
         <label class="commission-policy-field">{{ t("操作原因", "Reason for change") }}
           <textarea v-model="draft.reason" rows="3" maxlength="500" :disabled="!rights.write || Boolean(uncertain) || conflict" />
         </label>

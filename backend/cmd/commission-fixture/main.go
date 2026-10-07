@@ -50,6 +50,12 @@ const (
 	fixtureDBBF  = "/lottery_commission_ui_mobile_s16_final"
 	fixtureDBAD  = "/lottery_commission_ui_desktop_s16_distinct"
 	fixtureDBBD  = "/lottery_commission_ui_mobile_s16_distinct"
+	fixtureDBAP  = "/lottery_commission_payment_desktop_s17"
+	fixtureDBBP  = "/lottery_commission_payment_mobile_s17"
+	fixtureDBAPV = "/lottery_commission_payment_desktop_s17_verified"
+	fixtureDBBPV = "/lottery_commission_payment_mobile_s17_verified"
+	fixtureDBAPA = "/lottery_commission_payment_desktop_s17_actor"
+	fixtureDBBPA = "/lottery_commission_payment_mobile_s17_actor"
 )
 
 func safeFixtureURL(raw, environment, confirmation, adminPassword, userPassword string, requirePasswords bool) error {
@@ -58,7 +64,7 @@ func safeFixtureURL(raw, environment, confirmation, adminPassword, userPassword 
 		(u.Scheme != "postgres" && u.Scheme != "postgresql") ||
 		(u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") ||
 		(u.Port() != "5432" && u.Port() != "55432") ||
-		(u.Path != fixtureDBA && u.Path != fixtureDBB && u.Path != fixtureDBAV && u.Path != fixtureDBBV && u.Path != fixtureDBAF && u.Path != fixtureDBBF && u.Path != fixtureDBAD && u.Path != fixtureDBBD) || u.RawPath != "" || u.Fragment != "" || u.Opaque != "" ||
+		(u.Path != fixtureDBA && u.Path != fixtureDBB && u.Path != fixtureDBAV && u.Path != fixtureDBBV && u.Path != fixtureDBAF && u.Path != fixtureDBBF && u.Path != fixtureDBAD && u.Path != fixtureDBBD && u.Path != fixtureDBAP && u.Path != fixtureDBBP && u.Path != fixtureDBAPV && u.Path != fixtureDBBPV && u.Path != fixtureDBAPA && u.Path != fixtureDBBPA) || u.RawPath != "" || u.Fragment != "" || u.Opaque != "" ||
 		u.User == nil || u.User.Username() != "lottery_test" || len(adminPassword) < 16 && requirePasswords || len(userPassword) < 16 && requirePasswords {
 		return errors.New("explicit owned synthetic commission database required")
 	}
@@ -102,13 +108,13 @@ func main() {
 func run() error {
 	command := "init"
 	if len(os.Args) > 2 {
-		return errors.New("usage: commission-fixture [init|advance|discover|verify]")
+		return errors.New("usage: commission-fixture [init|advance|discover|pay|verify]")
 	}
 	if len(os.Args) == 2 {
 		command = os.Args[1]
 	}
-	if command != "init" && command != "advance" && command != "discover" && command != "verify" {
-		return errors.New("usage: commission-fixture [init|advance|discover|verify]")
+	if command != "init" && command != "advance" && command != "discover" && command != "pay" && command != "verify" {
+		return errors.New("usage: commission-fixture [init|advance|discover|pay|verify]")
 	}
 	dsn := os.Getenv("DATABASE_URL")
 	if err := safeFixtureURL(dsn, os.Getenv("APP_ENV"), os.Getenv("COMMISSION_FIXTURE_CONFIRM"),
@@ -146,6 +152,12 @@ func run() error {
 		return err
 	}
 	switch command {
+	case "pay":
+		processed, e := (commission.Service{DB: db}).ProcessPayments(ctx, 100)
+		if e != nil {
+			return errors.New("commission payment worker failed")
+		}
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{"processed": processed})
 	case "advance":
 		if err = advanceCycles(ctx, commission.Service{DB: db}); err != nil {
 			return errors.New("commission cycle worker failed")
@@ -171,7 +183,7 @@ func initialize(ctx context.Context, db *pgxpool.Pool, adminPassword, userPasswo
 	var out fixtureOutput
 	out.BrandID = fixtureBrand
 	var latest string
-	if err := db.QueryRow(ctx, `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1`).Scan(&latest); err != nil || latest != "0049_commission_discovery.up.sql" {
+	if err := db.QueryRow(ctx, `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1`).Scan(&latest); err != nil || latest != "0050_commission_payments.up.sql" {
 		return out, errors.New("commission fixture requires the latest migration")
 	}
 	var brandOK bool
@@ -213,6 +225,7 @@ func initialize(ctx context.Context, db *pgxpool.Pool, adminPassword, userPasswo
 		"settlement_policy.write.brand", "settlement.run.brand", "settlement.approve.brand", "wallet.view.brand", "wallet.adjust.brand", "brand.view.brand",
 		"agent_policy.write.brand", "agent.write.brand", "join_code.write.brand", "commission_policy.write.brand",
 		"commission.view.brand", "commission.run.brand", "commission.retry.brand",
+		"commission_payment.approve.brand", "commission_payment.retry.brand", "commission_payment_policy.write.brand",
 	}
 	if err = addScopedRole(ctx, tx, adminID, fixtureBrand, "commission_fixture_admin", "Commission fixture operator", adminPerms); err != nil {
 		return out, errors.New("fixture operator permissions failed")
@@ -422,12 +435,16 @@ func runPeriod(ctx context.Context, db *pgxpool.Pool, admin access.Account, game
 	boundary := betEnd.Add(-time.Second).Truncate(time.Second)
 	weekday := int(boundary.Weekday())
 	calendar := commission.Calendar{Timezone: "UTC", Cycle: "weekly", BoundaryTime: boundary.Format("15:04:05"), Weekday: &weekday}
+	payoutMode := commission.PayoutManual
+	if phase == "auto" {
+		payoutMode = commission.PayoutAutomatic
+	}
 	policy, err := finance.Policy(ctx, fixtureBrand)
 	if err != nil {
 		return result, diagnostic("period.commission_policy_read", "FIXTURE_COMMISSION_POLICY_READ_FAILED")
 	}
 	if err = inTx(ctx, db, func(tx pgx.Tx) error {
-		_, e := finance.Update(ctx, tx, fixtureBrand, admin, commission.PolicyInput{Version: policy.Version, Config: commission.PolicyConfig{Enabled: true, Calendar: &calendar, PayoutMode: commission.PayoutManual}, Reason: "set owned fixture weekly boundary from actual period"}, points.Metadata{ActorType: "admin", ActorID: admin.ID, RequestID: ids.New()})
+		_, e := finance.Update(ctx, tx, fixtureBrand, admin, commission.PolicyInput{Version: policy.Version, Config: commission.PolicyConfig{Enabled: true, Calendar: &calendar, PayoutMode: payoutMode}, Reason: "set owned fixture weekly boundary and payout mode before actual bets"}, points.Metadata{ActorType: "admin", ActorID: admin.ID, RequestID: ids.New()})
 		return e
 	}); err != nil {
 		return result, diagnostic("period.commission_policy_update", "FIXTURE_COMMISSION_POLICY_UPDATE_FAILED")
@@ -763,7 +780,7 @@ func requireFixtureAdmin(ctx context.Context, db *pgxpool.Pool) (string, error) 
 
 func requireLatestMigration(ctx context.Context, db *pgxpool.Pool) error {
 	var latest string
-	if err := db.QueryRow(ctx, `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1`).Scan(&latest); err != nil || latest != "0049_commission_discovery.up.sql" {
+	if err := db.QueryRow(ctx, `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1`).Scan(&latest); err != nil || latest != "0050_commission_payments.up.sql" {
 		return errors.New("owned commission fixture requires the latest migration")
 	}
 	return nil
@@ -866,6 +883,10 @@ func validateInitOut(ctx context.Context, db *pgxpool.Pool, out fixtureOutput) e
 	 (SELECT coalesce(sum(e.points),0) FROM commission_earnings e WHERE e.cycle_id=c.id AND e.run_id=c.current_run_id AND e.agent_id=$2)
 	 FROM commission_cycles c WHERE c.id=$1`, out.ReadyCycleID, out.RootAgentID).Scan(&phaseATargets, &phaseAEarningCount, &phaseAEarningPoints); err != nil || phaseATargets != 2 || phaseAEarningCount != 1 || phaseAEarningPoints != 1 {
 		return errors.New("phase A expected two real losing wagers and one half-up commission point")
+	}
+	var automaticOrders int
+	if err = db.QueryRow(ctx, `SELECT count(*) FROM commission_calculations WHERE cycle_id=$1 AND reason='eligible' AND rule_snapshot->'financial_policy'->'config'->>'payout_mode'='automatic'`, out.ReadyCycleID).Scan(&automaticOrders); err != nil || automaticOrders != 2 {
+		return errors.New("phase A must capture automatic payout mode in both original bets")
 	}
 	var windowAFrom, windowATo, windowBFrom, windowBTo, windowCFrom, windowCTo time.Time
 	if err = db.QueryRow(ctx, `SELECT window_from,window_to FROM commission_cycles WHERE id=$1`, out.ReadyCycleID).Scan(&windowAFrom, &windowATo); err != nil {

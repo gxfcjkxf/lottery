@@ -41,7 +41,9 @@ const ReportsManagement = defineAsyncComponent(() => import("./ReportsManagement
 const AgentManagement = defineAsyncComponent(() => import("./AgentManagement.vue"));
 const CommissionPolicySettings = defineAsyncComponent(() => import("./CommissionPolicySettings.vue"));
 const CommissionCyclesManagement = defineAsyncComponent(() => import("./CommissionCyclesManagement.vue"));
+const CommissionPaymentsManagement = defineAsyncComponent(() => import("./CommissionPaymentsManagement.vue"));
 import { clearAllPendingCommissionCycleWrites } from "./commission-cycles-state";
+import { clearAllCommissionPaymentIntents, hideCommissionPaymentIntentsForScope } from "./commissionPayments-state";
 const JoinCodeManagement = defineAsyncComponent(() => import("./JoinCodeManagement.vue"));
 import { clearAllPendingAgentWrites } from "./agents-state";
 import { clearAllPendingJoinCodeWrites } from "./join-codes-state";
@@ -75,7 +77,7 @@ import {
 const { t, message, locale, availableLocales, setLocale, configure, resetBrand } = useAdminI18n();
 const englishUi: Record<string, string> = {
   "请先登录后台账号查看佣金周期。": "Sign in to view commission cycles.",
-  "控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金策略和周期核算已接入，审核和派发尚未实现。": "The console combines connected workflows and prototypes. Withdrawal status is connected; eligibility rules are pending and real payments are unavailable. Commission policy settings and cycle calculations are connected; approval and payouts are not implemented.",
+  "控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金核算与独立派发后台已接入，真实派发策略默认关闭。": "The console combines connected workflows and prototypes. Withdrawal status is connected; eligibility rules are pending and real payments are unavailable. Commission calculations and the separate payout console are connected; live payout policy is disabled by default.",
   "此页显示真实成员；账号权限、积分账本、认证设置和投注已接入。": "This page shows live members. Account permissions, the points ledger, authentication settings, and betting are connected.",
   "成员创建与管理为真实操作；投注已接入。": "Member creation and management are live operations. Betting is connected.",
   "审计日志为真实后台数据；投注已接入，提现状态接口已接入，资格规则待配置且无真实支付。": "Audit logs are live admin data; betting and withdrawal status are connected, while eligibility rules are pending and real payments are unavailable.",
@@ -104,7 +106,8 @@ const englishUi: Record<string, string> = {
   "请先选择真实品牌。": "Select a live brand first.", "请先登录后台账号并选择真实品牌。": "Sign in to the admin account and select a live brand.",
   "品牌和域名": "Brands & domains", "真实品牌列表、运行状态、展示与域名绑定": "Live brands, operating status, presentation, and domain binding", "选择一个品牌": "Choose a brand", "选择下方真实品牌后，可查看其运行状态与操作记录。": "Select a live brand below to view its status and activity.", "来自管理员品牌接口": "From the admin brands API", "刷新列表": "Refresh list", "正在读取品牌…": "Loading brands…", "当前账号未返回可管理品牌。": "This account has no manageable brands.", "运行中": "Running", "已暂停": "Paused", "已停用": "Disabled", "当前品牌": "Current brand", "查看运行状态 →": "View status →",
   "管理员登录": "Admin sign in", "使用后台管理员账号登录。": "Sign in with an admin account.", "账号": "Account", "密码": "Password", "登录中…": "Signing in…", "登录并加载真实成员": "Sign in and load members", "请选择真实品牌": "Select a live brand", "成员请求不会使用后端默认品牌。请从侧栏品牌选择器中选择一个有权访问的品牌。": "Member requests never use the backend's default brand. Choose an accessible brand from the sidebar selector.", "进入管理员登录": "Go to admin sign in", "正在检查管理员登录状态…": "Checking admin sign-in…", "已登录": "Signed in", "当前真实品牌": "Current live brand", "读取中…": "Loading…", "刷新成员": "Refresh members", "品牌成员": "Brand members", "条本页": "on this page", "搜索用户名 / 手机号 / ID": "Search username / phone / ID", "搜索成员": "Search members", "正在读取品牌成员…": "Loading brand members…", "该品牌当前没有可显示的成员。": "This brand has no members to display.", "成员": "Member", "成员 ID": "Member ID", "手机号": "Phone", "状态": "Status", "加入时间": "Joined", "备注": "Notes", "标签": "Tags", "操作": "Actions", "编辑": "Edit", "踢出": "Remove", "重置密码": "Reset password", "上一页": "Previous", "下一页": "Next", "每页最多": "Up to", "条": "records",
-  "代理管理": "Agent management", "代理树": "Agent tree", "加入码管理": "Join code management", "规则配置": "Rule configuration", "期次和开奖": "Periods & draws", "注单和异常": "Orders & exceptions", "资金与账本": "Funds & ledger", "批量对账": "Bulk reconciliation", "佣金和奖励": "Commissions & rewards", "报表和对账": "Reports & reconciliation", "账号与权限": "Accounts and permissions", "审计日志": "Audit log", "通知投递": "Notification delivery", "通知模板": "Notification templates", "风控与合规": "Risk & compliance", "工作台": "Dashboard", "用户和成员": "Users and members",
+  "代理管理": "Agent management", "代理树": "Agent tree", "加入码管理": "Join code management", "规则配置": "Rule configuration", "期次和开奖": "Periods & draws", "注单和异常": "Orders & exceptions", "资金与账本": "Funds & ledger", "批量对账": "Bulk reconciliation", "佣金和奖励": "Commissions & rewards", "佣金派发": "Commission payouts", "报表和对账": "Reports & reconciliation", "账号与权限": "Accounts and permissions", "审计日志": "Audit log", "通知投递": "Notification delivery", "通知模板": "Notification templates", "风控与合规": "Risk & compliance", "工作台": "Dashboard", "用户和成员": "Users and members",
+  "请先登录后台账号查看真实佣金派发记录。": "Sign in to view live commission payout records.",
   "刷新日志": "Refresh log", "按选中品牌读取真实后台日志。": "Load live admin logs for the selected brand.", "未登录：以下是静态演示样例，不是后台记录。": "Signed out: these are static examples, not admin records.", "请先从侧栏选择品牌；审计请求始终携带明确的 X-Brand-ID。": "Select a brand in the sidebar. Audit requests always include an explicit X-Brand-ID.", "正在读取审计日志…": "Loading audit log…", "所选品牌没有可显示的审计记录。": "No audit records are available for this brand.", "资源": "Resource", "操作人": "Actor", "原因": "Reason", "时间": "Time", "演示日志不会显示为真实后台记录。": "Demo logs are not shown as live admin records.",
   "关闭": "Close", "取消": "Cancel", "必填": "Required", "保存中…": "Saving…", "保存到后台": "Save to admin", "处理中…": "Processing…", "确认踢出": "Confirm removal", "确认重置全局密码": "Confirm global password reset", "编辑成员状态和备注": "Edit member status and notes", "踢出品牌会话": "Revoke brand session", "重置全局密码": "Reset global password", "这会调用后台踢出接口，撤销该用户在当前品牌的会话。": "This calls the admin removal API and revokes this user's session for the current brand.", "新密码": "New password", "重置原因": "Reset reason", "我确认此重置影响该全局账号在所有品牌的密码和会话。": "I understand this resets the global account password and sessions across all brands.",
   "全部管理页面": "All admin pages", "关闭导航": "Close navigation", "移动端主导航": "Mobile main navigation", "用户": "Users", "期次": "Periods", "审核": "Review", "更多": "More",
@@ -169,6 +172,7 @@ type Page =
   | "资金与账本"
   | "批量对账"
   | "佣金和奖励"
+  | "佣金派发"
   | "报表和对账"
   | "账号与权限"
   | "审计日志"
@@ -187,6 +191,7 @@ const nav: { name: Page; icon: string; group: string }[] = [
   { name: "资金与账本", icon: "◈", group: "资金" },
   { name: "批量对账", icon: "≋", group: "资金" },
   { name: "佣金和奖励", icon: "↗", group: "资金" },
+  { name: "佣金派发", icon: "⇧", group: "资金" },
   { name: "报表和对账", icon: "▥", group: "管理" },
   { name: "账号与权限", icon: "♧", group: "管理" },
   { name: "审计日志", icon: "≡", group: "管理" },
@@ -227,6 +232,11 @@ watch(skin, (presentation) => {
   if (presentation) configure(presentation.default_locale, presentation.available_locales);
   else resetBrand();
 }, { immediate: true });
+watch(() => [account.value?.id, selectedBrandId.value, JSON.stringify(account.value?.permissions_by_brand ?? account.value?.permissions ?? []), JSON.stringify(account.value?.platform_permissions ?? [])] as const,
+  (next, previous) => {
+    if (previous[0] && previous[1] && previous[0] === next[0] && (previous[1] !== next[1] || previous[2] !== next[2] || previous[3] !== next[3]))
+      hideCommissionPaymentIntentsForScope(previous[0], previous[1]);
+  });
 function skinTheme():BrandTheme|null{const e=skin.value;return e?{...defaultBrand,name:e.display_name,logoText:e.logo_text,logoUrl:e.logo_url??undefined,faviconUrl:e.favicon_url??undefined,primary:e.primary_color,accent:e.accent_color,success:e.success_color,warning:e.warning_color,danger:e.danger_color,fontFamily:e.font_family,fontScale:e.font_scale,radius:e.radius,shadow:e.shadow}:null}
 const skinStyle=computed(()=>{const theme=skinTheme();return theme?{...buildBrandCssTokens(theme),fontFamily:"var(--font-family)",fontSize:"calc(13px * var(--brand-font-scale-factor, 1))"}:{}});
 const skinLogo=computed(()=>safeBrandAssetUrl(skin.value?.logo_url));
@@ -379,6 +389,7 @@ const apiErrorText = (error: unknown) =>
   error instanceof Error ? message(error.message, error.message) : message("请求失败，请重试", "Request failed. Please try again.");
 const clearAdminData = () => {
 	clearAllPendingCommissionCycleWrites();
+	clearAllCommissionPaymentIntents();
 	clearAllPendingCommissionWrites();
 	clearAllPendingPresentationWrites();
 	clearAllPendingComplianceIntents();
@@ -422,6 +433,7 @@ const restoreAdminSession = async () => {
     if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
       clearAllPendingCommissionCycleWrites();
+      clearAllCommissionPaymentIntents();
       clearAllPendingBrandCreationWrites();
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
@@ -455,6 +467,7 @@ const login = async () => {
     if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
       clearAllPendingCommissionCycleWrites();
+      clearAllCommissionPaymentIntents();
       clearAllPendingBrandCreationWrites();
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
@@ -903,7 +916,7 @@ const ledger = [
         <span class="banner-icon">ⓘ</span
         ><span
           ><b>{{ ui("交互演示 · 非生产环境") }}</b
-          ><span class="banner-copy"> {{ ui("控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金策略和周期核算已接入，审核和派发尚未实现。") }}</span
+          ><span class="banner-copy"> {{ ui("控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金核算与独立派发后台已接入，真实派发策略默认关闭。") }}</span
           ></span
         ><button :aria-label="ui('关闭说明')" @click="showDemoNotice = false">
           ×
@@ -1941,6 +1954,14 @@ const ledger = [
         </div>
       </section>
 
+      <section v-else-if="page === '佣金派发'" class="page-content">
+        <CommissionPaymentsManagement v-if="account && selectedBrandId" :key="`commission-payments:${account.id}:${selectedBrandId}`"
+          :account="account" :brand-id="selectedBrandId" :brand-status="selectedBrand?.status" @session-invalid="clearAdminData" />
+        <div v-else class="panel directory-state"><h1>{{ ui("佣金派发") }}</h1>
+          <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号查看真实佣金派发记录。") }}</p>
+        </div>
+      </section>
+
       <section v-else-if="page === '通知模板'" class="page-content">
         <NotificationTemplates v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
@@ -2060,7 +2081,7 @@ const ledger = [
           page === "用户和成员" && account
               ? ui("成员创建与管理为真实操作；投注已接入。")
             : page === "代理树" && account
-              ? ui("真实代理配置与历史记录；佣金核算已接入，审核和派发尚未实现。")
+              ? t("真实代理配置与历史记录；佣金核算和独立派发后台已接入，派发运行开关默认关闭。", "Live agent settings and history; commission calculations and the separate payout console are connected, with its runtime switch off by default.")
             : page === "报表和对账" && account
               ? ui("真实注单结果及账本流水；汇总余额不是完整逐账户对账证明。")
             : page === "通知投递" && account

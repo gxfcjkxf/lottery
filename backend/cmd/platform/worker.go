@@ -90,6 +90,10 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 }
 
 func runCommissionWorker(ctx context.Context, service commission.Service, logger *slog.Logger) {
+	paymentCtx, stopPayment := context.WithCancel(ctx)
+	paymentDone := make(chan struct{})
+	go func() { defer close(paymentDone); runCommissionPaymentWorker(paymentCtx, service, logger) }()
+	defer func() { stopPayment(); <-paymentDone }()
 	discoveryCtx, stopDiscovery := context.WithCancel(ctx)
 	discoveryDone := make(chan struct{})
 	go func() {
@@ -109,6 +113,24 @@ func runCommissionWorker(ctx context.Context, service commission.Service, logger
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("commission cycle processing failed", "committed_steps", n)
+			}
+		}
+	}
+}
+
+func runCommissionPaymentWorker(ctx context.Context, service commission.Service, logger *slog.Logger) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run, cancel := context.WithTimeout(ctx, 10*time.Second)
+			n, err := service.ProcessPayments(run, 20)
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				logger.Error("commission payment processing failed", "committed_steps", n)
 			}
 		}
 	}

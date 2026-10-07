@@ -13,7 +13,9 @@ test('commission cycle APIs are exact, primary, audited and do not advertise pay
   assert.deepEqual(doc.paths['/api/v1/admin/commission-cycles/{id}/retry'].post['x-permissions'], ['commission.retry.brand']);
   assert.deepEqual(doc.components.schemas.CommissionCycle.properties.state.enum, ['enumerating','waiting','calculating','summarizing','ready','failed']);
   assert.match(doc.components.schemas.CommissionCycle.description, /not paid points/);
-  assert.ok(!Object.keys(doc.paths).some(p => /commission.*(?:payout|approve)/.test(p)));
+  const cyclePaths = Object.entries(doc.paths).filter(([p]) => /^\/api\/v1\/admin\/commission-cycles(?:\/|$)/.test(p));
+  assert.ok(!cyclePaths.some(([p]) => /(?:payout|approve)/.test(p)));
+  assert.ok(!cyclePaths.some(([, path]) => Object.values(path).some(operation => (operation['x-permissions'] ?? []).some(permission => permission.startsWith('commission_payment')))));
 });
 test('financial cycle DTOs preserve exact/null fields and omit private witness data', () => {
   const s = doc.components.schemas;

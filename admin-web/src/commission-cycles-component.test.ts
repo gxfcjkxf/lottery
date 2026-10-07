@@ -121,7 +121,7 @@ describe("CommissionCyclesManagement", () => {
     expect(buttonTexts(mounted.container).some((label) => /确认审核|确认派发|Approve commission|Pay out/i.test(label))).toBe(false);
     const cycleRow = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes(cycleId));
     (cycleRow!.props.onClick as () => void)(); await flush();
-    expect(textOf(mounted.container)).toContain("核算就绪（未派发）");
+    expect(textOf(mounted.container)).toContain("核算就绪");
     const secondRun = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes(runB));
     (secondRun!.props.onClick as () => void)(); await flush();
     expect(reads.calculations).toHaveBeenCalledWith(brandA, cycleId, runB, 20, 0);

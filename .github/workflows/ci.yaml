@@ -53,6 +53,7 @@ jobs:
       # The test advances real workers explicitly between lost/replayed
       # receipts. No always-running worker races the unregistered anchor.
       - run: pnpm exec playwright test tests/browser/commission-cycles.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
+      - run: pnpm exec playwright test tests/browser/commission-payments.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

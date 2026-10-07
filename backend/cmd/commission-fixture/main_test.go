@@ -27,7 +27,11 @@ func TestFixtureGuardAcceptsOnlyNamedLocalSyntheticDatabases(t *testing.T) {
 	if err := safeFixtureURL(second, "test", fixtureAck, validAdminPass, validUserPass, true); err != nil {
 		t.Fatalf("second explicitly owned local database rejected: %v", err)
 	}
-	for _, dsn := range []string{verifiedDesktopDSN, verifiedMobileDSN, finalDesktopDSN, finalMobileDSN} {
+	for _, dsn := range []string{verifiedDesktopDSN, verifiedMobileDSN, finalDesktopDSN, finalMobileDSN,
+		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_payment_desktop_s17?sslmode=disable",
+		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_payment_mobile_s17?sslmode=disable",
+		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_payment_desktop_s17_verified?sslmode=disable",
+		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_payment_mobile_s17_verified?sslmode=disable"} {
 		if err := safeFixtureURL(dsn, "test", fixtureAck, validAdminPass, validUserPass, true); err != nil {
 			t.Errorf("fresh verification database rejected: %v", err)
 		}

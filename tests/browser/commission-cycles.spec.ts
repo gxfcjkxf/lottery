@@ -10,7 +10,7 @@ test.describe.configure({mode:'serial'});
 type Cycle={id:string;state:string;version:number;current_run_id:string|null;current_generation:string|null;total_points:string;reason:string};
 type Discovery={id:string;state:string;version:number;cycle_id:string|null};
 type Run={id:string;generation:string;state:string;calculated_count:string};
-async function data<T>(response:APIResponse,status=200):Promise<T>{const body=await response.text();expect(response.status(),body).toBe(status);const envelope=JSON.parse(body);expect(envelope.success).toBe(true);return envelope.data as T;}
+async function data<T>(response:Pick<APIResponse,'text'|'status'>,status=200):Promise<T>{const body=await response.text();expect(response.status(),body).toBe(status);const envelope=JSON.parse(body);expect(envelope.success).toBe(true);return envelope.data as T;}
 function command(name:'advance'|'discover'|'verify'){
   const value=execFileSync(fixture!,[name],{env:process.env,encoding:'utf8',timeout:30_000});
   return JSON.parse(value) as Record<string,unknown>;
@@ -46,7 +46,7 @@ test('real commission cycles retain unknown requests, retry real failures and pr
   let panel=await navigate(page,info.project.name,'佣金和奖励|Commissions.*rewards');
   await expect(panel.getByRole('heading',{name:'佣金周期核算',exact:true})).toBeVisible();
   await panel.locator(`[data-cycle-id="${ready.id}"]`).click();
-  await expect(panel.locator('.detail')).toContainText('核算就绪（未派发）');
+  await expect(panel.locator('.detail')).toContainText('核算就绪');
   await expect(panel.locator('.data-row')).toContainText('3/5');
   await expect(panel.locator('.calc-row')).toHaveCount(2);
   await expect(panel.getByRole('button',{name:/批准佣金|派发积分|Approve commission|Pay out points/})).toHaveCount(0);
@@ -82,9 +82,11 @@ test('real commission cycles retain unknown requests, retry real failures and pr
   await panel.locator(`[data-cycle-id="${failed.id}"]`).click();
   const cycleRetry=panel.locator('.detail .retry-box');
   await cycleRetry.getByLabel('重试原因',{exact:true}).fill('Recover genuine calculation failure');
-  await cycleRetry.getByRole('button',{name:'检查并确认重试',exact:true}).click();await confirm(page);
+  await cycleRetry.getByRole('button',{name:'检查并确认重试',exact:true}).click();
+  const retryCommitted=page.waitForResponse(r=>r.request().method()==='POST'&&r.url()===`${admin}/commission-cycles/${failed.id}/retry`);
+  await confirm(page);await data<Cycle>(await retryCommitted);
   command('advance');await panel.getByRole('button',{name:'刷新',exact:true}).click();
-  await expect(panel.locator('.detail')).toContainText('核算就绪（未派发）');
+  await expect(panel.locator('.detail')).toContainText('核算就绪');
   const corrected=await get<Cycle>(`/commission-cycles/${failed.id}`);expect(corrected.state).toBe('ready');expect(corrected.current_generation).toBe('2');
   const runs=await get<{items:Run[]}>(`/commission-cycles/${failed.id}/runs?limit=100&offset=0`);
   expect(runs.items).toHaveLength(2);const old=runs.items.find(r=>r.state==='abandoned')!;
@@ -94,7 +96,12 @@ test('real commission cycles retain unknown requests, retry real failures and pr
   await panel.locator(`[data-discovery-id="${discovery.id}"] .discovery-select`).click();
   const discoveryRetry=panel.locator('.discoveries .retry-box');
   await discoveryRetry.getByLabel('重试原因',{exact:true}).fill('Link real discovered order after storage recovery');
-  await discoveryRetry.getByRole('button',{name:'检查并确认重试发现记录',exact:true}).click();await confirm(page);
+  await discoveryRetry.getByRole('button',{name:'检查并确认重试发现记录',exact:true}).click();
+  // The fixture worker only processes committed pending records. A click does
+  // not wait for the async HTTP transaction; running it immediately raced the
+  // retry commit on CI and legitimately found no eligible work.
+  const discoveryRetryCommitted=page.waitForResponse(r=>r.request().method()==='POST'&&r.url()===`${admin}/commission-discovery/${discovery.id}/retry`);
+  await confirm(page);await data<Discovery>(await discoveryRetryCommitted);
   command('discover');await panel.getByRole('button',{name:'刷新',exact:true}).click();
   await expect(panel.locator(`[data-discovery-id="${discovery.id}"]`)).toContainText('已登记');
   const linked=(await get<{items:Discovery[]}>('/commission-discovery?limit=100&offset=0')).items.find(d=>d.id===discovery.id)!;
@@ -106,7 +113,7 @@ test('real commission cycles retain unknown requests, retry real failures and pr
   await page.screenshot({path:info.outputPath('commission-cycles-viewport.png')});
   await page.getByTestId('admin-language').selectOption('en');
   await expect(panel.getByRole('heading',{name:'Commission cycle calculations',exact:true})).toBeVisible();
-  await expect(panel).toContainText('Calculated (not paid)');expect(writes).toHaveLength(2);
+  await expect(panel).toContainText('Calculated');expect(writes).toHaveLength(2);
   expect(errors).toEqual([]);
 });
 
@@ -128,6 +135,6 @@ test('current commission management renders exact completed evidence without fin
   await panel.screenshot({path:info.outputPath('commission-cycles-current-panel.png')});
   await page.screenshot({path:info.outputPath('commission-cycles-current-viewport.png')});
   await page.getByTestId('admin-language').selectOption('en');
-  await expect(panel).toContainText('Calculated (not paid)');
+  await expect(panel).toContainText('Calculated');
   expect(writes).toEqual([]);expect(command('verify').economic_fingerprint).toBe(before.economic_fingerprint);
 });

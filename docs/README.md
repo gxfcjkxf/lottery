@@ -23,10 +23,10 @@
 - [09-openapi-handover.md](09-openapi-handover.md)：已实现接口的 OpenAPI、接入限制、生成和 CI 契约检查。
 - [09-implementation-backlog.md](09-implementation-backlog.md)：按依赖拆分的第一阶段开发任务。
 - [10-replication-and-recovery.md](10-replication-and-recovery.md)：隔离复制、手动提升与备份恢复命令、证据和生产验收边界。
-- [14-commission-facts.md](14-commission-facts.md)：最终结算事实、计佣基数和内部锁约束；不代表已实现佣金计提与派发。
+- [14-commission-facts.md](14-commission-facts.md)：最终结算事实、计佣基数和内部锁约束；内部事实本身不授权佣金派发。
 - [15-four-source-ledger.md](15-four-source-ledger.md)：四来源16桶、旧流水与幂等摘要兼容、原路退款、提现来源和协调升级要求。
-- [16-commission-policy-snapshot.md](16-commission-policy-snapshot.md)：品牌金融政策、不可变修订、私有投注快照和已确认的周期收尾/汇总规则；周期派发继续待实现。
-- [17-commission-cycles.md](17-commission-cycles.md)：真实周期清单、待结清、分页核算、一次取整及相关更正代次历史；核算完成不等于派发。
+- [16-commission-policy-snapshot.md](16-commission-policy-snapshot.md)：品牌金融政策、不可变修订、私有投注快照和已确认的周期收尾/汇总规则。
+- [17-commission-cycles.md](17-commission-cycles.md)：真实周期发现、待结清、分页核算、代次历史、独立派发开关、单人审核及实际佣金来源入账；更正补偿仍待实现。
 
 ## 第一阶段实现顺序
 
