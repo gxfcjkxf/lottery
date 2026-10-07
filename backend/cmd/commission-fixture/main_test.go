@@ -35,7 +35,9 @@ func TestFixtureGuardAcceptsOnlyNamedLocalSyntheticDatabases(t *testing.T) {
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_adjustment_desktop_s18?sslmode=disable",
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_adjustment_mobile_s18?sslmode=disable",
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_adjustment_desktop_s18_verified?sslmode=disable",
-		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_adjustment_mobile_s18_verified?sslmode=disable"} {
+		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_adjustment_mobile_s18_verified?sslmode=disable",
+		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_report_desktop_s19?sslmode=disable",
+		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_report_mobile_s19?sslmode=disable"} {
 		if err := safeFixtureURL(dsn, "test", fixtureAck, validAdminPass, validUserPass, true); err != nil {
 			t.Errorf("fresh verification database rejected: %v", err)
 		}

@@ -28,6 +28,7 @@
 - [16-commission-policy-snapshot.md](16-commission-policy-snapshot.md)：品牌金融政策、不可变修订、私有投注快照和已确认的周期收尾/汇总规则。
 - [17-commission-cycles.md](17-commission-cycles.md)：真实周期发现、待结清、分页核算、代次历史、独立派发开关、单人审核及实际佣金来源入账；更正补偿仍待实现。
 - [18-commission-adjustments.md](18-commission-adjustments.md)：已派发目标的独立人工差额修正、不可变证据、PC/移动确认与真实佣金入账通知；不解锁结果更正待处理任务。
+- [19-commission-posting-reports.md](19-commission-posting-reports.md)：实际佣金账本的入账时间统计、品牌/代理/会员/周期筛选、精确净变动及完整CSV审计导出；不是未派发收益或封存日月报。
 
 ## 第一阶段实现顺序
 

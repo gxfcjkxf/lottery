@@ -3,7 +3,7 @@
   "info": {
     "title": "Lottery Platform Implemented API",
     "version": "0.1.0",
-    "description": "Current implemented API only. Target 500 betting requests/s is not verified capacity. Withdrawal order workflows are implemented; withdrawal eligibility remains unavailable when no checker is configured, commission/reward payout and real payment remain unavailable, and external draw API/DOM adapters remain stubbed. Browser user sessions use brand-named HttpOnly cookies; bearer tokens are supported for nonbrowser clients. Preserve Host through a trusted reverse proxy; a brand path cannot override a dedicated brand domain. See repository docs/04-api-contract.md and implementation-progress.md for business invariants and accepted scope."
+    "description": "Current implemented API only. Target 500 betting requests/s is not verified production capacity. Withdrawal order workflows and configured turnover eligibility are implemented. Commission cycles, audited point payouts, adjustments and posting reports are implemented; payout policies default off. Draw-correction commission compensation, mixed payout-mode handling and rewards remain incomplete. Real payment is not connected, and external draw API/DOM adapters remain stubbed. Browser user sessions use brand-named HttpOnly cookies; bearer tokens are supported for nonbrowser clients. Preserve Host through a trusted reverse proxy; a brand path cannot override a dedicated brand domain. See repository docs/04-api-contract.md and implementation-progress.md for business invariants and accepted scope."
   },
   "servers": [
     {
@@ -76174,6 +76174,843 @@
         "x-idempotent-operation": false
       }
     },
+    "/api/v1/admin/reports/commission": {
+      "get": {
+        "operationId": "adminGetCommissionReport",
+        "summary": "Read commission posting report",
+        "tags": [
+          "reports"
+        ],
+        "description": "Read-only immutable commission business-ledger posting report. It includes true paid-target and true adjustment postings exactly once, and retains past credit postings after later cycle blocking or correction. It is not a bet/cycle-period cohort, current wallet balance, forecast, or verified current earnings. It does not invent an allocation of rounded cycle points per lottery. Days use the selected brand IANA timezone; keys are YYYY-MM-DD for day and UUIDs for agent/cycle, with label equal to key. Strict parsing rejects unknown, duplicate, empty, and unsupported parameters. Primary-database Read Committed transaction rechecks current admin session/roles after the query and commits its audit before any response data. Super-admin status does not grant report access.",
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateTime"
+            },
+            "description": "RFC3339 ledger-posting-time lower bound, inclusive."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateTime"
+            },
+            "description": "RFC3339 ledger-posting-time upper bound, exclusive; at most 93 days after from."
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "agent",
+                "cycle"
+              ]
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "cycle_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000,
+              "default": 0
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "X-Brand-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            },
+            "description": "Selected brand; server revalidates current administrative scope and permission."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "request_id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CommissionReport"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [
+          "report_commission.view.brand",
+          "report_commission.view.platform"
+        ],
+        "x-idempotent-operation": false
+      }
+    },
+    "/api/v1/admin/reports/commission.csv": {
+      "get": {
+        "operationId": "adminExportCommissionReportCSV",
+        "summary": "Export commission posting report CSV",
+        "tags": [
+          "reports"
+        ],
+        "description": "Read-only immutable commission business-ledger posting report. It includes true paid-target and true adjustment postings exactly once, and retains past credit postings after later cycle blocking or correction. It is not a bet/cycle-period cohort, current wallet balance, forecast, or verified current earnings. It does not invent an allocation of rounded cycle points per lottery. Days use the selected brand IANA timezone; keys are YYYY-MM-DD for day and UUIDs for agent/cycle, with label equal to key. Strict parsing rejects unknown, duplicate, empty, and unsupported parameters. Primary-database Read Committed transaction rechecks current admin session/roles after the query and commits its audit before any response data. Super-admin status does not grant report access. Export has no pagination parameters and fails above 10000 groups or 4MiB. CSV columns, in order: record_type, brand_id, snapshot_at, timezone, from, to, group_by, agent_id, member_id, cycle_id, key, label, entry_count, paid_entry_count, paid_points, adjustment_entry_count, adjustment_credit_points, adjustment_debit_points, net_points. It includes a UTF-8 BOM and formula-injection neutralization; negative net_points cells are apostrophe-prefixed for spreadsheet safety. A zero-group export contains its summary row and no group rows.",
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateTime"
+            },
+            "description": "RFC3339 ledger-posting-time lower bound, inclusive."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateTime"
+            },
+            "description": "RFC3339 ledger-posting-time upper bound, exclusive; at most 93 days after from."
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "agent",
+                "cycle"
+              ]
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "cycle_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "X-Brand-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            },
+            "description": "Selected brand; server revalidates current administrative scope and permission."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete UTF-8 CSV after its audit record commits.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Content-Disposition": {
+                "description": "Complete CSV download filename.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Report-Brand-ID": {
+                "description": "Selected report brand.",
+                "schema": {
+                  "$ref": "#/components/schemas/UUID"
+                }
+              },
+              "X-Report-Kind": {
+                "description": "Report identifier.",
+                "schema": {
+                  "type": "string",
+                  "const": "commission"
+                }
+              },
+              "X-Report-Snapshot-At": {
+                "description": "Database snapshot timestamp.",
+                "schema": {
+                  "$ref": "#/components/schemas/DateTime"
+                }
+              },
+              "X-Report-Timezone": {
+                "description": "Brand IANA timezone used for day grouping.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Report-Group-Count": {
+                "description": "Complete number of exported groups.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)$",
+                  "description": "Exact nonnegative decimal integer string; never convert to a JavaScript Number."
+                }
+              },
+              "X-Report-Byte-Count": {
+                "description": "Exact response body byte count.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)$"
+                }
+              },
+              "X-Report-SHA256": {
+                "description": "SHA-256 digest of response body bytes including UTF-8 BOM.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              },
+              "X-Report-Format-Version": {
+                "description": "CSV layout version.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              },
+              "X-Report-Audit-ID": {
+                "description": "Committed export audit record ID.",
+                "schema": {
+                  "$ref": "#/components/schemas/UUID"
+                }
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Requested export exceeds its size or group limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [
+          "report_commission.view.brand",
+          "report_commission.view.platform",
+          "report_commission.export.brand",
+          "report_commission.export.platform"
+        ],
+        "x-idempotent-operation": false
+      }
+    },
     "/api/v1/admin/workbench": {
       "get": {
         "operationId": "adminGetWorkbench",
@@ -96427,6 +97264,187 @@
             "type": "string",
             "pattern": "^(0|[1-9][0-9]*)$",
             "description": "Exact nonnegative decimal integer string. Aggregates may exceed int64; never convert to JavaScript Number."
+          }
+        },
+        "required": [
+          "brand_id",
+          "snapshot_at",
+          "timezone",
+          "query",
+          "summary",
+          "items",
+          "total_groups"
+        ],
+        "additionalProperties": false
+      },
+      "CommissionReportTotals": {
+        "type": "object",
+        "properties": {
+          "entry_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string; never convert to a JavaScript Number."
+          },
+          "paid_entry_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string; never convert to a JavaScript Number."
+          },
+          "paid_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string; never convert to a JavaScript Number."
+          },
+          "adjustment_entry_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string; never convert to a JavaScript Number."
+          },
+          "adjustment_credit_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string; never convert to a JavaScript Number."
+          },
+          "adjustment_debit_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string; never convert to a JavaScript Number."
+          },
+          "net_points": {
+            "type": "string",
+            "pattern": "^(0|-?[1-9][0-9]*)$",
+            "description": "Exact signed decimal integer string; only net_points may be negative."
+          }
+        },
+        "required": [
+          "entry_count",
+          "paid_entry_count",
+          "paid_points",
+          "adjustment_entry_count",
+          "adjustment_credit_points",
+          "adjustment_debit_points",
+          "net_points"
+        ],
+        "additionalProperties": false,
+        "description": "Immutable commission ledger postings by posting time, not bet/cycle cohort, current wallet, forecast, or verified current earnings. entry_count = paid_entry_count + adjustment_entry_count; net_points = paid_points + adjustment_credit_points - adjustment_debit_points. A period may contain a debit whose credit occurred earlier, so net_points may be negative."
+      },
+      "CommissionReportGroup": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/CommissionReportTotals"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "totals"
+        ],
+        "additionalProperties": false
+      },
+      "CommissionReport": {
+        "type": "object",
+        "properties": {
+          "brand_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "snapshot_at": {
+            "$ref": "#/components/schemas/DateTime"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "query": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "$ref": "#/components/schemas/DateTime"
+              },
+              "to": {
+                "$ref": "#/components/schemas/DateTime"
+              },
+              "group_by": {
+                "type": "string",
+                "enum": [
+                  "day",
+                  "agent",
+                  "cycle"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "agent_id": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/UUID"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "member_id": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/UUID"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cycle_id": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/UUID"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "group_by",
+              "limit",
+              "offset",
+              "agent_id",
+              "member_id",
+              "cycle_id"
+            ],
+            "additionalProperties": false,
+            "description": "Echoed normalized query. from is inclusive and to exclusive; maximum interval 93 days. IDs are validated within the selected brand. JSON report pagination defaults to limit 20 and offset 0."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CommissionReportTotals"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommissionReportGroup"
+            },
+            "maxItems": 100
+          },
+          "total_groups": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string; never convert to a JavaScript Number."
           }
         },
         "required": [

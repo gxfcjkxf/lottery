@@ -222,6 +222,8 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 
 0046已实现充值/中奖/赠送/佣金四来源 × 四状态共16桶；佣金使用稳定下标3，赠送保留2。当前钱包增加commission_points，历史12桶只在读取/比较时以佣金零值规范化，不改持久记录。佣金可投注，扣款按充值→中奖→佣金→赠送；可用佣金不计入提现门槛基数，佣金支付的有效投注计入流水。旧12桶历史、请求摘要、回执和审计保持；新16桶与旧原来源退款/提现兼容见[四来源账本合同](15-four-source-ledger.md)。0048/0049接入周期核算和发现，0050接入审核及真实佣金来源派发，详细结构见[周期与派发合同](17-commission-cycles.md)。0051/0052追加独立修正头、不可变差额记录及对应历史通知，见[人工修正合同](18-commission-adjustments.md)；原核算/派发积分不因净额修正改写。
 
+0053[佣金账本报表](19-commission-posting-reports.md)不新增应付或改变金融投影。统计真实paid目标和修正ledger，原受益代理/会员/周期绑定保留，正负修正独立合并；按created_at入账窗口分组，任意精度字符串的净变动可为负，但目标净额与余额仍非负。读取/CSV仅产生对应查询或导出审计，不改业务账本。
+
 `point_ledger_entries`
 
 - `id`, `brand_id`, `brand_member_id`, `account_id`

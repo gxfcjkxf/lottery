@@ -7,6 +7,7 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const modules=await Promise.all(["identity","finance","lottery"].map(name=>import(new URL(`../docs/openapi/${name}.mjs`,import.meta.url))));
 modules.push(await import("./openapi-withdrawal-orders.mjs"));
 modules.push(await import("./openapi-withdrawal-reports.mjs"));
+modules.push(await import("./openapi-commission-reports.mjs"));
 modules.push(await import("./openapi-workbench.mjs"));
 modules.push(await import("./openapi-commission-policies.mjs"));
 modules.push(await import("./openapi-commission-cycles.mjs"));

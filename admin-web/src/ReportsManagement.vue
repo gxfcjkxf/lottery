@@ -4,6 +4,7 @@ import { AdminApiError, type AdminAccount } from "./admin-api";
 import { createReportsApi, reportsPermissions } from "./reports-api";
 import { createReportExportApi, reportExportPermissions } from "./report-export-api";
 import WithdrawalReport from "./WithdrawalReport.vue";
+import CommissionReport from "./CommissionReport.vue";
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
@@ -387,6 +388,7 @@ onBeforeUnmount(() => { alive = false; exportGeneration++; exportTickets.betting
       <p v-else-if="!ledgerBusy && !ledgerError && permissions.ledger" class="reports-note">设置筛选条件后查询账本报表。</p>
     </section>
     <WithdrawalReport :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />
+    <CommissionReport :key="`commission-report:${props.account.id}:${props.brandId}`" :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />
   </section>
 </template>
 

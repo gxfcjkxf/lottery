@@ -61,6 +61,8 @@ const (
 	fixtureDBBA  = "/lottery_commission_adjustment_mobile_s18"
 	fixtureDBAAV = "/lottery_commission_adjustment_desktop_s18_verified"
 	fixtureDBBAV = "/lottery_commission_adjustment_mobile_s18_verified"
+	fixtureDBAR  = "/lottery_commission_report_desktop_s19"
+	fixtureDBBR  = "/lottery_commission_report_mobile_s19"
 )
 
 func safeFixtureURL(raw, environment, confirmation, adminPassword, userPassword string, requirePasswords bool) error {
@@ -69,7 +71,7 @@ func safeFixtureURL(raw, environment, confirmation, adminPassword, userPassword 
 		(u.Scheme != "postgres" && u.Scheme != "postgresql") ||
 		(u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") ||
 		(u.Port() != "5432" && u.Port() != "55432") ||
-		(u.Path != fixtureDBA && u.Path != fixtureDBB && u.Path != fixtureDBAV && u.Path != fixtureDBBV && u.Path != fixtureDBAF && u.Path != fixtureDBBF && u.Path != fixtureDBAD && u.Path != fixtureDBBD && u.Path != fixtureDBAP && u.Path != fixtureDBBP && u.Path != fixtureDBAPV && u.Path != fixtureDBBPV && u.Path != fixtureDBAPA && u.Path != fixtureDBBPA && u.Path != fixtureDBAA && u.Path != fixtureDBBA && u.Path != fixtureDBAAV && u.Path != fixtureDBBAV) || u.RawPath != "" || u.Fragment != "" || u.Opaque != "" ||
+		(u.Path != fixtureDBA && u.Path != fixtureDBB && u.Path != fixtureDBAV && u.Path != fixtureDBBV && u.Path != fixtureDBAF && u.Path != fixtureDBBF && u.Path != fixtureDBAD && u.Path != fixtureDBBD && u.Path != fixtureDBAP && u.Path != fixtureDBBP && u.Path != fixtureDBAPV && u.Path != fixtureDBBPV && u.Path != fixtureDBAPA && u.Path != fixtureDBBPA && u.Path != fixtureDBAA && u.Path != fixtureDBBA && u.Path != fixtureDBAAV && u.Path != fixtureDBBAV && u.Path != fixtureDBAR && u.Path != fixtureDBBR) || u.RawPath != "" || u.Fragment != "" || u.Opaque != "" ||
 		u.User == nil || u.User.Username() != "lottery_test" || len(adminPassword) < 16 && requirePasswords || len(userPassword) < 16 && requirePasswords {
 		return errors.New("explicit owned synthetic commission database required")
 	}
@@ -194,7 +196,7 @@ func initialize(ctx context.Context, db *pgxpool.Pool, adminPassword, userPasswo
 	var out fixtureOutput
 	out.BrandID = fixtureBrand
 	var latest string
-	if err := db.QueryRow(ctx, `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1`).Scan(&latest); err != nil || latest != "0052_commission_notifications.up.sql" {
+	if err := db.QueryRow(ctx, `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1`).Scan(&latest); err != nil || latest != "0053_commission_reports.up.sql" {
 		return out, errors.New("commission fixture requires the latest migration")
 	}
 	var brandOK bool
@@ -237,6 +239,7 @@ func initialize(ctx context.Context, db *pgxpool.Pool, adminPassword, userPasswo
 		"agent_policy.write.brand", "agent.write.brand", "join_code.write.brand", "commission_policy.write.brand",
 		"commission.view.brand", "commission.run.brand", "commission.retry.brand",
 		"commission_payment.approve.brand", "commission_payment.retry.brand", "commission_payment_policy.write.brand", "commission_adjustment.write.brand",
+		"report_commission.view.brand", "report_commission.export.brand",
 	}
 	if err = addScopedRole(ctx, tx, adminID, fixtureBrand, "commission_fixture_admin", "Commission fixture operator", adminPerms); err != nil {
 		return out, errors.New("fixture operator permissions failed")
@@ -791,7 +794,7 @@ func requireFixtureAdmin(ctx context.Context, db *pgxpool.Pool) (string, error) 
 
 func requireLatestMigration(ctx context.Context, db *pgxpool.Pool) error {
 	var latest string
-	if err := db.QueryRow(ctx, `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1`).Scan(&latest); err != nil || latest != "0052_commission_notifications.up.sql" {
+	if err := db.QueryRow(ctx, `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1`).Scan(&latest); err != nil || latest != "0053_commission_reports.up.sql" {
 		return errors.New("owned commission fixture requires the latest migration")
 	}
 	return nil

@@ -50,5 +50,17 @@ func TestBootstrapCommissionPolicyPermissionsAreExplicitAndScoped(t *testing.T) 
 				t.Fatalf("%s grants = %v", tc.username, got)
 			}
 		}
+		var reportGrants []string
+		err = db.QueryRow(ctx, `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),'{}') FROM role_permissions rp JOIN admin_account_roles ar ON ar.role_id=rp.role_id JOIN admin_accounts a ON a.id=ar.account_id WHERE a.username=$1 AND permission_key LIKE 'report_commission.%'`, tc.username).Scan(&reportGrants)
+		if err != nil {
+			t.Fatal(err)
+		}
+		scope := "brand"
+		if tc.username == "commission_platform_test" {
+			scope = "platform"
+		}
+		if len(reportGrants) != 2 || reportGrants[0] != "report_commission.export."+scope || reportGrants[1] != "report_commission.view."+scope {
+			t.Fatalf("%s report grants=%v", tc.username, reportGrants)
+		}
 	}
 }

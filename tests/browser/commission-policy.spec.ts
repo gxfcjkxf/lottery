@@ -19,6 +19,14 @@ test('real commission financial policy retains the original unknown receipt and 
   const call=async<T>(path:string,method:'GET'|'PUT',body?:unknown)=>data<T>(await page.request.fetch(`${api}${path}`,{method,headers:{...h,...(body===undefined?{}:{'Content-Type':'application/json','Idempotency-Key':uid()})},...(body===undefined?{}:{data:body})}),`${method} ${path}`);
   const original=await call<Policy>('/commission-policy','GET');
   expect(original.config.enabled,'test must not take over a running financial policy').toBe(false);
+  const postingWindow=new URLSearchParams({from:new Date(Date.now()-86_400_000).toISOString(),to:new Date(Date.now()+86_400_000).toISOString(),group_by:'entry_type',limit:'100',offset:'0'});
+  const readFinancial=async()=>{
+    const ledger=await call<{summary:unknown;balances:unknown;items:unknown;total_groups:string}>(`/reports/ledger?${postingWindow}`,'GET');
+    return {summary:ledger.summary,balances:ledger.balances,items:ledger.items,total_groups:ledger.total_groups};
+  };
+  const originalFinancial=await readFinancial();
+  const originalPayoutGate=await call<{enabled:boolean;version:number}>('/commission-payment-policy','GET');
+  expect(originalPayoutGate.enabled,'policy configuration must not implicitly enable actual payouts').toBe(false);
   const agency=await call<{version:number;config:{enabled:boolean;max_depth:number;ratio_cap:string;mode:string;cycle:string}}>('/agent-policy','GET');
   const writes:Array<{body:string|null;key:string|undefined}>=[];
   let changedAgency=false;
@@ -32,7 +40,9 @@ test('real commission financial policy retains the original unknown receipt and 
     else await page.locator('.side-nav').getByRole('button',{name:/代理树|Agent tree/}).click();
     const panel=page.locator('.commission-policy-panel');
     await expect(panel.getByRole('heading',{name:'佣金财务策略',exact:true})).toBeVisible();
-    await expect(panel.locator('.commission-policy-notice')).toContainText('尚未实现');
+    await expect(panel.locator('.commission-policy-notice')).toContainText('独立后台');
+    await expect(panel.locator('.commission-policy-notice')).toContainText('默认关闭运行开关');
+    await expect(panel.locator('.commission-policy-notice')).toContainText('可能处理现存的 ready 周期');
     await panel.getByLabel('启用佣金策略',{exact:true}).check();
     await panel.getByRole('button',{name:'明确配置日历',exact:true}).click();
     await panel.getByLabel('时区（IANA）',{exact:true}).fill('UTC');
@@ -67,6 +77,8 @@ test('real commission financial policy retains the original unknown receipt and 
     await expect(panel.getByRole('heading',{name:'Commission financial policy',exact:true})).toBeVisible();
     await expect(panel.getByLabel('Timezone (IANA)',{exact:true})).toHaveValue('UTC');
     await expect(panel.getByRole('combobox',{name:'Payout mode',exact:true})).toHaveValue('automatic');
+    expect(await call('/commission-payment-policy','GET')).toMatchObject(originalPayoutGate);
+    expect(await readFinancial()).toEqual(originalFinancial);
     expect(writes).toHaveLength(2);
   }finally{
     await page.unrouteAll({behavior:'wait'});
