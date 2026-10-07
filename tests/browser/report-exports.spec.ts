@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
+import { formatDateTimeLocal } from "./support/datetime-local";
 
 const harbor = "0199a000-0000-7000-8000-000000000002";
 const adminBase = "http://localhost:5174/api/v1/admin";
@@ -11,13 +12,6 @@ const platformUsername = process.env.TEST_EXPORT_PLATFORM_USERNAME;
 const platformPassword = process.env.TEST_EXPORT_PLATFORM_PASSWORD;
 
 type ExportFixture = { memberId: string; headers: Record<string, string> };
-
-function formatDateTimeLocal(timestamp: number): string {
-  const date = new Date(timestamp);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  const minuteValue = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-  return date.getSeconds() === 0 ? minuteValue : `${minuteValue}:${pad(date.getSeconds())}`;
-}
 
 async function signIn(page: Page, identifier = username, secret = password) {
   test.skip(!identifier || !secret, "Provide isolated report export administrator credentials");
@@ -84,10 +78,10 @@ test("datetime-local report bounds omit only zero seconds", async ({ page }) => 
   // changing any report, clock, authentication or persisted financial data.
   await page.setContent('<label>Report bound<input type="datetime-local" step="1"></label>');
   const input = page.getByLabel("Report bound", { exact: true });
-  for (const seconds of [0, 1]) {
+  for (const seconds of [0, 1, 59]) {
     const timestamp = await page.evaluate(value => new Date(2026, 9, 7, 4, 15, value).getTime(), seconds);
     const value = await page.evaluate(formatDateTimeLocal, timestamp);
-    expect(value).toBe(seconds === 0 ? "2026-10-07T04:15" : "2026-10-07T04:15:01");
+    expect(value).toBe(seconds === 0 ? "2026-10-07T04:15" : `2026-10-07T04:15:${String(seconds).padStart(2,"0")}`);
     await input.fill(value);
     await expect(input).toHaveValue(value);
     expect(await input.evaluate(element => (element as HTMLInputElement).valueAsNumber)).toBe(Date.UTC(2026, 9, 7, 4, 15, seconds));

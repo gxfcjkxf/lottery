@@ -3,6 +3,7 @@ import type { Wallet, LedgerEntry } from "../../admin-web/src/finance-api";
 import type { Period } from "../../admin-web/src/period-schedules-api";
 import type { SettlementJob, SettlementTarget } from "../../admin-web/src/settlement-job-api";
 import { rememberAdminSession } from "./support/admin-session";
+import { formatDateTimeLocal } from "./support/datetime-local";
 
 const brandId = "0199a000-0000-7000-8000-000000000002";
 const origin = "http://localhost:5173";
@@ -386,10 +387,8 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   } else await adminPage.locator(".side-nav").getByRole("button",{name:/报表和对账/}).click();
   const reports=adminPage.locator(".reports-management");
   await expect(reports.getByRole("heading",{name:"运营报表",exact:true})).toBeVisible();
-  const reportWindow=await adminPage.evaluate(()=>{
-    const format=(d:Date)=>{const p=(n:number)=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`};
-    return {from:format(new Date(Date.now()-3600000)),to:format(new Date(Date.now()+3600000))};
-  });
+  const reportNow=await adminPage.evaluate(()=>Date.now());
+  const reportWindow={from:await adminPage.evaluate(formatDateTimeLocal,reportNow-3600000),to:await adminPage.evaluate(formatDateTimeLocal,reportNow+3600000)};
   await reports.getByLabel("报表开始时间",{exact:true}).fill(reportWindow.from);
   await reports.getByLabel("报表结束时间",{exact:true}).fill(reportWindow.to);
   await reports.getByLabel("会员筛选 UUID",{exact:true}).fill(memberId);
