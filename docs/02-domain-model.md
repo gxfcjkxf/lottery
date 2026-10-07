@@ -253,7 +253,11 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 - `reject_reason`, `process_result`, `created_at`, `reviewed_at`, `completed_at`
 - 同一品牌用户的 reviewing/processing 状态只能有一条，使用部分唯一索引或等价锁。
 
-S6-a 当前只实现提现规则配置，不建此订单表或产生提现积分。`brand_withdrawal_policies` 保存 brand_id/version/config/updated_at；config 为 enabled、min_points、max_points（null 无上限）、allowed_sources（充值/中奖/赠送的非空唯一列表）、review_mode（manual/automatic）、turnover_multiple（N）。初始 disabled、下限 1、上限 null、三来源、manual、N="1"。
+提现规则配置和内部资金状态机分开接入，HTTP申请与页面尚未开放。`brand_withdrawal_policies` 保存 brand_id/version/config/updated_at；config 为 enabled、min_points、max_points（null 无上限）、allowed_sources（充值/中奖/赠送的非空唯一列表）、review_mode（manual/automatic）、turnover_multiple（N）。初始 disabled、下限 1、上限 null、三来源、manual、N="1"。
+
+0039新增`withdrawal_orders`，实际字段使用member_id/account_id/state；请求金额、原始来源分配、资格证据、政策快照、提交时间和reserve_version不可改写。reviewing/processing按品牌会员唯一；reserve_entry_id证明available→withdrawal，paid_entry_id证明仅消耗withdrawal，release_entry_id必须是原reserve的全额反向流水，不能换来源。取消/驳回/失败不删除原记录。`withdrawal_order_transitions`保存每次状态、版本、操作者、理由和审计，投影必须有连续完整历史；`withdrawal_operation_receipts`保存原始回执和请求摘要，相同键重放返回原提交/操作状态，而非后来状态，改变正文拒绝。
+
+`withdrawal_turnover_cycles`仅在paid后更新，cutoff_at为该申请提交时间，cutoff_version为该申请占用积分的账本序号，不使用审核或出款时间，不清除投注事实。后续资格器同时得到上次成功截止时间/序号、当前锁定钱包版本及申请截止时间，避免并发事务时间重叠造成流水漏计或重复计。失败、取消和驳回不移动截止点。内部OrderService要求服务端资格适配器；默认nil安全拒绝且不占用积分。来源分配必须显式提供并精确合计，不默认为提现引入投注扣款优先级；正式申请分配/资格计算待业务口径确认后接入。启用但未接入的合规检查仍拒绝申请，测试资格适配器不能绕过它。automatic审核只推进到processing并记录系统审计，不自动标记paid或执行外部支付。
 
 `game_withdrawal_policies` 按 brand_id/game_id 保存独立 version/config/updated_at，只覆盖 N；null 继承品牌，"0" 是明确配置零，不与继承混淆。有效值返回 source 和双方版本，来自已保存主库一致快照。N 为 0–1000000 的规范十进制字符串，最多六位小数，不带符号/指数/多余前导或末尾零；积分仍为 int64 整数字符串，不使用浮点。
 
