@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
-import { hasPendingWithdrawalIntent, isWithdrawalAllocation, retainWithdrawalIntent, type CreateWithdrawalBody, type WithdrawalAllocation, type WithdrawalAvailability, type WithdrawalHistory, type WithdrawalOrder, type WithdrawalSource } from "@lottery/shared";
+import { hasPendingWithdrawalIntent, isWithdrawalAllocation, retainWithdrawalIntent, type CreateWithdrawalBody, type WithdrawalAllocation, type WithdrawalAvailability, type WithdrawalHistory, type WithdrawalOrder, type WithdrawalQualification, type WithdrawalSource } from "@lottery/shared";
 import { createWithdrawalOrdersApi, WithdrawalUnknownIntentError } from "./withdrawal-orders-api";
 import { formatIntegerAmount } from "./wallet-api";
 
@@ -13,6 +13,9 @@ const emit = defineEmits<{ (event: "auth-expired"): void; (event: "context-chang
 
 const api = computed(() => createWithdrawalOrdersApi({ brandCode: props.brandCode }));
 const availability = ref<WithdrawalAvailability | null>(null);
+const qualification = ref<WithdrawalQualification | null>(null);
+const qualificationLoading = ref(false);
+const qualificationError = ref("");
 const orders = ref<WithdrawalOrder[]>([]);
 const history = ref<WithdrawalHistory | null>(null);
 const allocations = ref<Record<WithdrawalSource, string>>({ recharge: "", winning: "", gift: "" });
@@ -35,14 +38,14 @@ let historyController: AbortController | null = null;
 let disposed = false;
 const sources: WithdrawalSource[] = ["recharge", "winning", "gift"];
 const labels = computed(() => props.locale === "en"
-  ? { title: "Withdrawal requests", intro: "Submit a points withdrawal request and review its status.", refresh: "Refresh", loading: "Loading…", signIn: "Sign in to view withdrawal requests.", min: "Minimum", max: "Maximum", amount: "Points to withdraw", available: "Available source allocation", submit: "Submit request", unavailable: "Withdrawal requests are currently unavailable.", noEligibility: "Withdrawal eligibility has not been configured for this account.", disabled: "Withdrawals are disabled for this brand.", restricted: "This account cannot submit a withdrawal request.", source: { recharge: "Recharge", winning: "Winnings", gift: "Gift" }, orders: "Your requests", empty: "No withdrawal requests yet.", history: "History", close: "Close history", date: "Created", reason: "Reason", status: "Status", receipt: "Request submitted", refreshAfter: "The receipt shows the original submitted state. Refresh separately to see later changes.", replay: "Replay the same request", unknown: "The outcome is unknown. You can explicitly replay the exact same request for this account.", accountChanged: "The account confirmation changed. Refresh availability before starting a new request.", sourceSum: "Source allocations must add up exactly to the requested points.", invalidAmount: "Enter a positive whole number within the server limits.", realPayments: "No external payment is made by this request.", states: { reviewing: "Reviewing", processing: "Processing", paid: "Paid", rejected: "Rejected", failed: "Failed", cancelled: "Cancelled" } }
-  : { title: "提现申请", intro: "提交积分提现申请并查看处理状态。", refresh: "刷新", loading: "正在加载…", signIn: "请登录以查看提现申请。", min: "最低金额", max: "最高金额", amount: "提现积分", available: "可用来源分配", submit: "提交申请", unavailable: "当前无法提交提现申请。", noEligibility: "此账户尚未配置提现资格。", disabled: "此品牌已停用提现。", restricted: "此账户无法提交提现申请。", source: { recharge: "充值", winning: "中奖", gift: "赠送" }, orders: "我的申请", empty: "暂无提现申请。", history: "历史记录", close: "关闭记录", date: "创建时间", reason: "原因", status: "状态", receipt: "申请已提交", refreshAfter: "此回执显示提交时的原始状态。请单独刷新以查看后续变化。", replay: "使用相同申请重试", unknown: "提交结果未知。你可以明确选择为此账户重放完全相同的申请。", accountChanged: "账户确认信息已变化。请先刷新资格，再开始新申请。", sourceSum: "各来源分配总额必须与申请积分完全一致。", invalidAmount: "请输入服务器金额限制内的正整数。", realPayments: "此申请不会触发外部付款。", states: { reviewing: "审核中", processing: "提现中", paid: "已提现", rejected: "已驳回", failed: "失败", cancelled: "已取消" } });
+  ? { title: "Withdrawal requests", intro: "Submit a points withdrawal request and review its status.", refresh: "Refresh", loading: "Loading…", signIn: "Sign in to view withdrawal requests.", min: "Minimum", max: "Maximum", amount: "Points to withdraw", available: "Available source allocation", submit: "Submit request", unavailable: "Withdrawal requests are currently unavailable.", noEligibility: "Withdrawal eligibility has not been configured for this account.", disabled: "Withdrawals are disabled for this brand.", restricted: "This account cannot submit a withdrawal request.", qualification: "Read-only turnover snapshot", basePoints: "Base points", validPoints: "Valid turnover", validOrders: "Valid orders", credit: "Turnover credit", meetsTurnover: "Turnover requirement met", missesTurnover: "Turnover requirement not met", qualificationUnavailable: "Turnover qualification could not be loaded. Refresh before starting a new request.", qualificationNote: "This read-only snapshot is not authorization, a reservation, signed approval, or an external payment.", source: { recharge: "Recharge", winning: "Winnings", gift: "Gift" }, orders: "Your requests", empty: "No withdrawal requests yet.", history: "History", close: "Close history", date: "Created", reason: "Reason", status: "Status", receipt: "Request submitted", refreshAfter: "The receipt shows the original submitted state. Refresh separately to see later changes.", replay: "Replay the same request", unknown: "The outcome is unknown. You can explicitly replay the exact same request for this account.", accountChanged: "The account confirmation changed. Refresh availability before starting a new request.", sourceSum: "Source allocations must add up exactly to the requested points.", invalidAmount: "Enter a positive whole number within the server limits.", realPayments: "No external payment is made by this request.", states: { reviewing: "Reviewing", processing: "Processing", paid: "Paid", rejected: "Rejected", failed: "Failed", cancelled: "Cancelled" } }
+  : { title: "提现申请", intro: "提交积分提现申请并查看处理状态。", refresh: "刷新", loading: "正在加载…", signIn: "请登录以查看提现申请。", min: "最低金额", max: "最高金额", amount: "提现积分", available: "可用来源分配", submit: "提交申请", unavailable: "当前无法提交提现申请。", noEligibility: "此账户尚未配置提现资格。", disabled: "此品牌已停用提现。", restricted: "此账户无法提交提现申请。", qualification: "只读流水快照", basePoints: "基础积分", validPoints: "有效流水", validOrders: "有效订单", credit: "流水计入", meetsTurnover: "已满足流水要求", missesTurnover: "未满足流水要求", qualificationUnavailable: "无法加载流水资格。开始新申请前请刷新。", qualificationNote: "此只读快照不代表授权、预留、签字批准或外部付款。", source: { recharge: "充值", winning: "中奖", gift: "赠送" }, orders: "我的申请", empty: "暂无提现申请。", history: "历史记录", close: "关闭记录", date: "创建时间", reason: "原因", status: "状态", receipt: "申请已提交", refreshAfter: "此回执显示提交时的原始状态。请单独刷新以查看后续变化。", replay: "使用相同申请重试", unknown: "提交结果未知。你可以明确选择为此账户重放完全相同的申请。", accountChanged: "账户确认信息已变化。请先刷新资格，再开始新申请。", sourceSum: "各来源分配总额必须与申请积分完全一致。", invalidAmount: "请输入服务器金额限制内的正整数。", realPayments: "此申请不会触发外部付款。", states: { reviewing: "审核中", processing: "提现中", paid: "已提现", rejected: "已驳回", failed: "失败", cancelled: "已取消" } });
 const total = computed(() => {
   try { return sources.reduce((sum, source) => sum + BigInt(allocations.value[source].trim() || "0"), 0n); } catch { return -1n; }
 });
 const validSubmission = computed(() => {
   const current = availability.value;
-  if (!current?.can_apply || total.value <= 0n || total.value > 9223372036854775807n || uncertain.value) return false;
+  if (!current?.can_apply || !qualification.value?.meets_turnover || qualificationLoading.value || total.value <= 0n || total.value > 9223372036854775807n || uncertain.value) return false;
   const amount = total.value;
   if (amount < BigInt(current.min_points) || (current.max_points !== null && amount > BigInt(current.max_points))) return false;
   return sources.every((source) => {
@@ -62,17 +65,20 @@ async function load() {
   controller = new AbortController();
   const requestScope = scopeKey.value;
   const changedScope = lastScope !== requestScope;
+  qualification.value = null;
+  qualificationLoading.value = false;
+  qualificationError.value = "";
   uncertain.value = retainWithdrawalIntent(uncertain.value, requestScope);
   if (changedScope) {
     uncertain.value = null;
     availability.value = null;
+    orders.value = [];
     allocations.value = { recharge: "", winning: "", gift: "" };
     submitting.value = false;
     receipt.value = null;
   }
   lastScope = requestScope;
   if (changedScope) availability.value = null;
-  orders.value = [];
   historyController?.abort();
   historyGeneration++;
   history.value = null;
@@ -87,10 +93,42 @@ async function load() {
     if (snapshot.member_id !== props.member.id || snapshot.brand_id !== props.member.brand_id || page.brand_id !== props.member.brand_id || page.items.some((item) => item.member_id !== props.member!.id || item.brand_id !== props.member!.brand_id)) throw new Error("The server returned withdrawal data for a different account.");
     availability.value = snapshot;
     orders.value = page.items;
+    loading.value = false;
+    if (snapshot.can_apply) {
+      qualificationLoading.value = true;
+      try {
+        const preview = await api.value.qualification(controller.signal);
+        if (disposed || requestGeneration !== generation || requestScope !== scopeKey.value) return;
+        if (preview.member_id !== props.member.id || preview.brand_id !== props.member.brand_id) {
+          availability.value = null;
+          orders.value = [];
+          qualification.value = null;
+          qualificationError.value = "";
+          emit("context-changed");
+          return;
+        }
+        qualification.value = preview;
+      } catch (cause) {
+        if (disposed || requestGeneration !== generation || requestScope !== scopeKey.value || (cause instanceof DOMException && cause.name === "AbortError")) return;
+        qualification.value = null;
+        qualificationError.value = cause instanceof Error ? cause.message : labels.value.qualificationUnavailable;
+        if (cause && typeof cause === "object" && "status" in cause && Number((cause as { status?: number }).status) === 401) {
+          qualification.value = null;
+          emit("auth-expired");
+        }
+      } finally {
+        if (!disposed && requestGeneration === generation && requestScope === scopeKey.value) qualificationLoading.value = false;
+      }
+    }
   } catch (cause) {
     if (disposed || requestGeneration !== generation || requestScope !== scopeKey.value || (cause instanceof DOMException && cause.name === "AbortError")) return;
     availability.value = null;
-    if (cause && typeof cause === "object" && "status" in cause && Number((cause as { status?: number }).status) === 401) emit("auth-expired");
+    qualification.value = null;
+    qualificationLoading.value = false;
+    if (cause && typeof cause === "object" && "status" in cause && Number((cause as { status?: number }).status) === 401) {
+      qualification.value = null;
+      emit("auth-expired");
+    }
     error.value = cause instanceof Error ? cause.message : "Request failed";
   } finally {
     if (!disposed && requestGeneration === generation && requestScope === scopeKey.value) loading.value = false;
@@ -127,6 +165,7 @@ async function submit(replay = false) {
     if (disposed || currentScope !== scopeKey.value) return;
     if (order.member_id !== props.member?.id || order.brand_id !== props.member?.brand_id) throw new WithdrawalUnknownIntentError("The server returned a receipt for a different account.");
     uncertain.value = null;
+    qualification.value = null;
     receipt.value = order;
     allocations.value = { recharge: "", winning: "", gift: "" };
   } catch (cause) {
@@ -138,8 +177,16 @@ async function submit(replay = false) {
       uncertain.value = intent;
       error.value = labels.value.accountChanged;
       emit("context-changed");
-    } else error.value = cause instanceof Error ? cause.message : "Request failed";
-    if (cause && typeof cause === "object" && "status" in cause && Number((cause as { status?: number }).status) === 401) emit("auth-expired");
+    } else {
+      const code = cause && typeof cause === "object" && "code" in cause ? String((cause as { code?: string }).code ?? "") : "";
+      const status = cause && typeof cause === "object" && "status" in cause ? Number((cause as { status?: number }).status) : 0;
+      if (status === 409 && /INELIGIBLE|TURNOVER.*EVIDENCE|EVIDENCE.*TURNOVER/i.test(code)) qualification.value = null;
+      error.value = cause instanceof Error ? cause.message : "Request failed";
+    }
+    if (cause && typeof cause === "object" && "status" in cause && Number((cause as { status?: number }).status) === 401) {
+      qualification.value = null;
+      emit("auth-expired");
+    }
   } finally {
     if (currentScope === scopeKey.value) submitting.value = false;
   }
@@ -154,7 +201,10 @@ async function loadHistory(order: WithdrawalOrder) {
     if (!disposed && requestGeneration === historyGeneration && result.order_id === order.id && result.brand_id === order.brand_id) history.value = result;
   } catch (cause) {
     if (!disposed && requestGeneration === historyGeneration && !(cause instanceof DOMException && cause.name === "AbortError")) {
-      if (cause && typeof cause === "object" && "status" in cause && Number((cause as { status?: number }).status) === 401) emit("auth-expired");
+      if (cause && typeof cause === "object" && "status" in cause && Number((cause as { status?: number }).status) === 401) {
+        qualification.value = null;
+        emit("auth-expired");
+      }
       error.value = cause instanceof Error ? cause.message : "Request failed";
     }
   }
@@ -179,6 +229,21 @@ onUnmounted(() => { disposed = true; generation++; historyGeneration++; controll
         <p v-else-if="availability.reason_code === 'WITHDRAWAL_DISABLED'" class="muted" role="status">{{ labels.disabled }}</p>
         <p v-else-if="availability.reason_code === 'WITHDRAWAL_ACCOUNT_RESTRICTED'" class="muted" role="status">{{ labels.restricted }}</p>
         <p class="muted">{{ labels.realPayments }}</p>
+        <div v-if="availability.can_apply" class="qualification-snapshot" aria-live="polite">
+          <h2>{{ labels.qualification }}</h2>
+          <p v-if="qualificationLoading" class="muted" role="status">{{ labels.loading }}</p>
+          <p v-else-if="qualificationError" class="muted" role="status">{{ labels.qualificationUnavailable }}</p>
+          <template v-else-if="qualification">
+            <dl>
+              <div><dt>{{ labels.basePoints }}</dt><dd>{{ qualification.base_points }} pts</dd></div>
+              <div><dt>{{ labels.validPoints }}</dt><dd>{{ qualification.valid_points }} pts</dd></div>
+              <div><dt>{{ labels.validOrders }}</dt><dd>{{ qualification.valid_order_count }}</dd></div>
+              <div><dt>{{ labels.credit }}</dt><dd>{{ qualification.credit_numerator }} / {{ qualification.credit_denominator }} pts</dd></div>
+            </dl>
+            <p class="muted" role="status">{{ qualification.meets_turnover ? labels.meetsTurnover : labels.missesTurnover }}</p>
+            <p class="muted">{{ labels.qualificationNote }}</p>
+          </template>
+        </div>
         <form @submit.prevent="submit()">
           <fieldset class="withdrawal-allocation" :disabled="!availability.can_apply || submitting || Boolean(uncertain)"><legend>{{ labels.available }}</legend>
             <label v-for="source in sources.filter((entry) => availability!.allowed_sources.includes(entry))" :key="source" class="field-label">{{ sourceName(source) }}<input v-model="allocations[source]" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="0" :disabled="Boolean(uncertain) || submitting" /></label>
@@ -193,5 +258,6 @@ onUnmounted(() => { disposed = true; generation++; historyGeneration++; controll
 </template>
 
 <style scoped>
+.qualification-snapshot{border-top:1px solid var(--line,#d9dedc);margin-top:14px;padding-top:12px}.qualification-snapshot h2{font-size:1rem}.qualification-snapshot dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:8px 16px;margin:0}.qualification-snapshot dl>div{min-width:0}.qualification-snapshot dt{color:var(--muted,#66716d);font-size:.85rem}.qualification-snapshot dd{margin:3px 0 0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 .withdrawal-allocation{border:1px solid var(--line,#d9dedc);border-radius:12px;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px;margin:16px 0}.withdrawal-allocation legend{padding:0 6px;font-weight:650}.withdrawal-allocation input{display:block;width:100%;margin-top:6px}.withdrawal-order{display:grid;grid-template-columns:1fr auto;gap:8px;padding:14px 0;border-bottom:1px solid var(--line,#d9dedc)}.withdrawal-order>div:first-child{display:flex;justify-content:space-between;gap:12px}.withdrawal-order small,.withdrawal-history small{color:var(--muted,#66716d)}.withdrawal-order>.text-button{justify-self:start}.withdrawal-history{grid-column:1/-1;padding:10px;background:var(--surface-soft,#f5f7f6);border-radius:8px}.withdrawal-history>div{display:grid;padding:8px 0}.withdrawal-page .auth-error{margin:10px 0}
 </style>

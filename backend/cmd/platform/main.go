@@ -11,6 +11,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/gxfcjkxf/lottery/backend/internal/telegramauth"
 	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
+	"github.com/gxfcjkxf/lottery/backend/internal/withdrawal"
 	"log/slog"
 	"net/http"
 	"os"
@@ -72,7 +73,7 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: c.HTTPAddr, Handler: httpapi.New(httpapi.Dependencies{Brands: tenant.Store{DB: pools.Primary}, Ready: pools.Primary.Ping, Logger: logger, Identity: users, Mutations: engine, Admins: adminsys.Store{DB: pools.Primary}, SecureCookies: c.Environment == "production", Telegram: telegramauth.Verifier{Keys: telegramauth.NewRemoteKeys()}, TrustedProxies: c.TrustedProxies, HistoryReads: database.NewHistoryRouter(pools.Replicas)}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 16}
+	server := &http.Server{Addr: c.HTTPAddr, Handler: httpapi.New(httpapi.Dependencies{Brands: tenant.Store{DB: pools.Primary}, Ready: pools.Primary.Ping, Logger: logger, Identity: users, Mutations: engine, Admins: adminsys.Store{DB: pools.Primary}, WithdrawalEligibility: withdrawal.TurnoverChecker{}, SecureCookies: c.Environment == "production", Telegram: telegramauth.Verifier{Keys: telegramauth.NewRemoteKeys()}, TrustedProxies: c.TrustedProxies, HistoryReads: database.NewHistoryRouter(pools.Replicas)}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 16}
 	stopped := make(chan struct{})
 	go func() {
 		select {

@@ -48,6 +48,10 @@ func withdrawalOrderResult(out any, err error) (mutation.Result, error) {
 		return mutation.Fail(409, "WITHDRAWAL_ACTIVE_ORDER", "同一品牌已有一笔进行中的提现申请"), nil
 	case errors.Is(err, withdrawal.ErrEligibilityNotConfigured):
 		return mutation.Fail(409, "WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED", "提现资格口径尚未配置，暂不接受申请；积分未占用"), nil
+	case errors.Is(err, withdrawal.ErrTurnoverBusy):
+		return mutation.Fail(503, "WITHDRAWAL_TURNOVER_BUSY", "相关期次正在结算或更正，请稍后重试；积分未占用"), nil
+	case errors.Is(err, withdrawal.ErrTurnoverEvidence):
+		return mutation.Fail(409, "WITHDRAWAL_TURNOVER_EVIDENCE_INVALID", "历史流水证据不完整，暂不能申请，请联系运营人员；积分未占用"), nil
 	case errors.Is(err, withdrawal.ErrIneligible):
 		return mutation.Fail(409, "WITHDRAWAL_INELIGIBLE", "当前配置或资格检查不允许提现，积分未占用"), nil
 	default:
@@ -145,7 +149,7 @@ func registerWithdrawalUserRoutes(mux routeRegistrar, d Dependencies) {
 				fn(w, r.WithContext(ctx))
 			})
 		}
-		for _, path := range []string{"/withdrawal-availability", "/withdrawals", "/withdrawals/{id}", "/withdrawals/{id}/history"} {
+		for _, path := range []string{"/withdrawal-availability", "/withdrawal-qualification", "/withdrawals", "/withdrawals/{id}", "/withdrawals/{id}/history"} {
 			handle("GET", path, func(w http.ResponseWriter, r *http.Request) {
 				if withdrawalOrdersUnavailable(w, r, d) {
 					return
@@ -164,6 +168,10 @@ func registerWithdrawalUserRoutes(mux routeRegistrar, d Dependencies) {
 				} else if !withdrawalNoQuery(w, r) {
 					return
 				}
+				if path == "/withdrawal-qualification" && (r.ContentLength != 0 || len(r.TransferEncoding) != 0) {
+					failure(w, r, 400, "REQUEST_INVALID", "资格预览不接受请求正文")
+					return
+				}
 				id := strings.ToLower(r.PathValue("id"))
 				if strings.Contains(path, "{id}") && !uuidPattern.MatchString(id) {
 					failure(w, r, 400, "REQUEST_INVALID", "提现编号不正确")
@@ -175,6 +183,8 @@ func registerWithdrawalUserRoutes(mux routeRegistrar, d Dependencies) {
 						v, e := s.AvailabilityTx(r.Context(), tx, brand.ID, session.Member.ID)
 						v.ActorContext = withdrawalActorContext(d, brand.ID, session)
 						return v, e
+					case "/withdrawal-qualification":
+						return s.QualificationTx(r.Context(), tx, brand.ID, session.Member.ID)
 					case "/withdrawals":
 						v, e := s.ListViewTx(r.Context(), tx, brand.ID, session.Member.ID, q.State, q.Limit, q.Offset)
 						for i := range v.Items {
@@ -225,6 +235,11 @@ func registerWithdrawalUserRoutes(mux routeRegistrar, d Dependencies) {
 				return nil
 			}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
 				o, e := s.Create(ctx, tx, brand.ID, fresh.Member.ID, withdrawal.OrderInput{Points: in.Points, SourceAllocation: in.SourceAllocation, ClientKey: r.Header.Get("Idempotency-Key")}, points.Metadata{ActorType: "user", ActorID: fresh.User.ID, RequestID: requestID(r), IP: meta(r).IP})
+				// A transient period lock conflict must abort the engine transaction,
+				// not become a cached terminal 503 under this request's original key.
+				if errors.Is(e, withdrawal.ErrTurnoverBusy) {
+					return mutation.Result{}, e
+				}
 				if e != nil {
 					return withdrawalOrderResult(nil, e)
 				}
@@ -235,7 +250,7 @@ func registerWithdrawalUserRoutes(mux routeRegistrar, d Dependencies) {
 				}
 				return mutation.OK(201, withdrawal.ToUserOrderView(withdrawal.ToOrderView(o))), nil
 			})
-			if errors.Is(err, identity.ErrSession) || errors.Is(err, errWithdrawalActor) {
+			if errors.Is(err, identity.ErrSession) || errors.Is(err, errWithdrawalActor) || errors.Is(err, withdrawal.ErrTurnoverBusy) {
 				result, err = withdrawalOrderResult(nil, err)
 			}
 			outputMutation(w, r, result, err)

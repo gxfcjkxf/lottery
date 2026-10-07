@@ -81,6 +81,15 @@ export const schemas = {
     min_points: positiveAmount, max_points: nullable(positiveAmount), allowed_sources: { type: "array", items: sources, minItems: 1, maxItems: 3, uniqueItems: true },
     real_payments: { type: "boolean", const: false }, actor_context: { type: "string", pattern: "^[0-9a-f]{64}$" },
   }),
+  WithdrawalQualification: obj({
+    brand_id: uuid, member_id: uuid, account_id: uuid, base_points: amount,
+    valid_points: { type: "string", pattern: "^(0|[1-9][0-9]*)$", maxLength: 16384 },
+    valid_order_count: { type: "string", pattern: "^(0|[1-9][0-9]*)$", maxLength: 16384 },
+    credit_numerator: { type: "string", pattern: "^(0|[1-9][0-9]*)$", maxLength: 16384 },
+    credit_denominator: { type: "string", pattern: "^[1-9][0-9]*$", maxLength: 16384 },
+    meets_turnover: { type: "boolean" }, cycle_from_at: nullable(dateTime),
+    cycle_from_version: amount, cutoff_at: dateTime, cutoff_version: amount,
+  }),
   WithdrawalCreateRequest: obj({
     points: positiveAmount,
     source_allocation: { type: "array", items: ref("WithdrawalSourceAllocation"), minItems: 1, maxItems: 3 },
@@ -93,6 +102,9 @@ export const operations = [
   user("GET", "/withdrawal-availability", "getWithdrawalAvailability", "Get withdrawal availability", ref("WithdrawalAvailability"), {
     description: "Returns current policy and eligibility availability for the authenticated member, plus an opaque actor_context token bound to the actual global user and brand member. The token must be sent unchanged when creating an order; it is not a client-selected identity.",
   }),
+  user("GET", "/withdrawal-qualification", "getWithdrawalQualification", "Preview the authenticated member's turnover condition", ref("WithdrawalQualification"), {
+    description: "Primary-only, current authenticated member, with no query parameters or request body. Shared wallet locking and NOWAIT period locks produce a readonly exact summary; no points, orders, successful cycles or idempotency receipts are changed. The credit is a fraction, not rounded points. meets_turnover equals credit_numerator >= base_points * credit_denominator; cycle_from_version <= cutoff_version, and cycle_from_at is null exactly when cycle_from_version is zero. This preview is not permission, funds availability, a reservation or a submission token. POST independently rechecks its own current wallet/turnover/policy/compliance/session. Incomplete evidence returns 409 WITHDRAWAL_TURNOVER_EVIDENCE_INVALID, contention returns retryable 503 WITHDRAWAL_TURNOVER_BUSY. Raw snapshots, rule IDs and internal digests are excluded.",
+  }),
   user("GET", "/withdrawals", "listWithdrawalOrders", "List the authenticated member's withdrawal orders", ref("WithdrawalOrderPage"), {
     parameters: [...pagination, { name: "state", in: "query", required: false, schema: state }],
     description: "Accepts only limit, offset, and state query parameters. Unknown, duplicate, or empty query parameters are rejected. User decision reasons are shown only for rejection, failure, or cancellation.",
@@ -100,7 +112,7 @@ export const operations = [
   user("POST", "/withdrawals", "createWithdrawalOrder", "Create a withdrawal order", ref("WithdrawalOrder"), {
     ...mutation(ref("WithdrawalCreateRequest"), 201),
     parameters: [{ name: "X-Withdrawal-Actor-Context", in: "header", required: true, schema: { type: "string", pattern: "^[0-9a-f]{64}$" }, description: "Exact actor_context value returned by withdrawal-availability. Binds this intent to the same global user and brand member even if the session cookie changes. Missing or changed value returns 403 WITHDRAWAL_CONFIRMATION_ACCOUNT_CHANGED. Checked for new requests and cached idempotent replays." }],
-    description: "Body contains only points and source_allocation; client_key and qualification claims are not accepted. Revalidates the actual brand member and current identity on both new writes and cached receipt replays. Missing or changed X-Withdrawal-Actor-Context returns 403 WITHDRAWAL_CONFIRMATION_ACCOUNT_CHANGED. Eligibility-not-configured returns 409 WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED before reserving points. When qualification is configured and passes, manual review creates a reviewing v1 order; saved automatic review mode advances it to processing v2. Neither path marks the order paid or completed. Idempotent retries reuse the same key and body.",
+    description: "Body contains only points and source_allocation; client_key, preview results and qualification claims are not accepted. Revalidates the actual brand member and current identity on both new writes and cached receipt replays. Missing or changed X-Withdrawal-Actor-Context returns 403 WITHDRAWAL_CONFIRMATION_ACCOUNT_CHANGED. The platform configures the real bet-snapshot turnover checker; an explicit nil dependency remains closed with 409 WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED. The brand policy must be explicitly enabled. Fresh qualification is recalculated under the wallet lock; an earlier preview cannot authorize it. Missing historical evidence returns 409 WITHDRAWAL_TURNOVER_EVIDENCE_INVALID; period contention returns 503 WITHDRAWAL_TURNOVER_BUSY without reserving points or caching a terminal receipt, so the original key/body can retry once the period stabilizes. Manual review creates reviewing v1; saved automatic review advances to processing v2. Neither marks paid nor executes an external payment. Idempotent retries preserve the original key and body.",
   }),
   user("GET", "/withdrawals/{id}", "getWithdrawalOrder", "Get a withdrawal order", ref("WithdrawalOrder"), {
     description: "No query parameters. Reads only the authenticated member's order and redacts decision_reason except for rejection, failure, or cancellation.",

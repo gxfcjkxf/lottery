@@ -21,7 +21,8 @@ var (
 )
 
 // TurnoverChecker reads only authoritative, final settlement facts. It must be
-// called in the application transaction while the member's wallet is locked.
+// called in the transaction while the member's wallet is locked (exclusive for
+// an application, shared for the non-mutating qualification preview).
 // Policy, identity, compliance and available-source checks remain OrderService
 // responsibilities. This checker never moves points or changes cycle cutoffs.
 type TurnoverChecker struct{}

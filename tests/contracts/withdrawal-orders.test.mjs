@@ -53,10 +53,27 @@ test("user routes bind create to availability context and keep request bodies mi
   assert.deepEqual(Object.keys(schemas.WithdrawalCreateRequest.properties),["points","source_allocation"]);
   assert.match(availability.description,/actual global user and brand member/);
   assert.match(create.description,/WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED/);
-  assert.match(create.description,/before reserving points/);
-  assert.match(create.description,/automatic review mode advances it to processing v2/);
-  assert.match(create.description,/Neither path marks the order paid or completed/);
+  assert.match(create.description,/explicit nil dependency remains closed/);
+  assert.match(create.description,/saved automatic review advances to processing v2/);
+  assert.match(create.description,/Neither marks paid nor executes an external payment/);
   assert.deepEqual(paths["/api/v1/b/{brandCode}/withdrawals"].post.operationId,"createWithdrawalOrderByBrand");
+});
+
+test("readonly turnover preview is member-scoped, exact, closed and never a submission ticket",()=>{
+  const preview=paths["/api/v1/withdrawal-qualification"].get;
+  assert.deepEqual(preview.security,[{userBearer:[]}]);
+  assert.ok(!preview.requestBody);
+  assert.ok(!(preview.parameters??[]).some(p=>p.in==="query"));
+  assert.equal(paths["/api/v1/b/{brandCode}/withdrawal-qualification"].get.operationId,"getWithdrawalQualificationByBrand");
+  assert.deepEqual(Object.keys(schemas.WithdrawalQualification.properties),["brand_id","member_id","account_id","base_points","valid_points","valid_order_count","credit_numerator","credit_denominator","meets_turnover","cycle_from_at","cycle_from_version","cutoff_at","cutoff_version"]);
+  assert.equal(schemas.WithdrawalQualification.additionalProperties,false);
+  assert.equal(schemas.WithdrawalQualification.properties.credit_denominator.pattern,"^[1-9][0-9]*$");
+  assert.match(preview.description,/Primary-only/);
+  assert.match(preview.description,/POST independently rechecks/);
+  assert.match(preview.description,/WITHDRAWAL_TURNOVER_BUSY/);
+  assert.match(preview.description,/WITHDRAWAL_TURNOVER_EVIDENCE_INVALID/);
+  assert.match(preview.description,/no points, orders, successful cycles or idempotency receipts are changed/i);
+  assert.ok(!JSON.stringify(schemas.WithdrawalQualification).match(/rule_snapshot|rule_revision|actor_context|order_snapshot_digest|eligibility_evidence/));
 });
 
 test("admin read and write scopes, statuses, and action bodies are exact",()=>{

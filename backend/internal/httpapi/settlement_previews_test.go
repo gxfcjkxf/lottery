@@ -16,6 +16,10 @@ import (
 )
 
 func settlementHTTPFixture(t *testing.T) (pointsHTTPFixture, betting.Order) {
+	return settlementHTTPFixtureBeforeBet(t, nil)
+}
+
+func settlementHTTPFixtureBeforeBet(t *testing.T, beforeBet func(pointsHTTPFixture)) (pointsHTTPFixture, betting.Order) {
 	t.Helper()
 	f := pointsFixture(t)
 	ctx := context.Background()
@@ -85,6 +89,9 @@ func settlementHTTPFixture(t *testing.T) (pointsHTTPFixture, betting.Order) {
 	})
 	recharge := pointRecharge(t, f, "100", "real preview test funding", "preview-fund-create")
 	mustStatus(t, f.call("POST", "/api/v1/admin/recharges/"+recharge.ID+"/confirm", "preview-fund-confirm", f.token, managedBrand, map[string]any{"version": 1, "reason": "verified"}), 200)
+	if beforeBet != nil {
+		beforeBet(f)
+	}
 	mutate(func(tx pgx.Tx) error {
 		now := time.Now().UTC()
 		var e error

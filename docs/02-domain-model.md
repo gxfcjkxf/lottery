@@ -253,15 +253,15 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 - `reject_reason`, `process_result`, `created_at`, `reviewed_at`, `completed_at`
 - 同一品牌用户的 reviewing/processing 状态只能有一条，使用部分唯一索引或等价锁。
 
-提现规则、内部资金状态机及HTTP申请/查询/运营处理与页面已经接入；真实流水资格器已实现并通过内部事务测试，平台命令仍未配置该资格器，默认拒绝新申请且不占用积分。`brand_withdrawal_policies` 保存 brand_id/version/config/updated_at；config 为 enabled、min_points、max_points（null 无上限）、allowed_sources（充值/中奖/赠送的非空唯一列表）、review_mode（manual/automatic）、turnover_multiple（N）。初始 disabled、下限 1、上限 null、三来源、manual、N="1"。
+提现规则、资金状态机、HTTP申请/查询/运营处理与页面已接入；平台命令配置真实TurnoverChecker，品牌初始政策仍关闭，不自动启用。显式nil依赖仍安全拒绝。`brand_withdrawal_policies` 保存 brand_id/version/config/updated_at；config 为 enabled、min_points、max_points（null 无上限）、allowed_sources（充值/中奖/赠送的非空唯一列表）、review_mode（manual/automatic）、turnover_multiple（N）。初始 disabled、下限1、上限null、三来源、manual、N="1"。
 
 0039新增`withdrawal_orders`，实际字段使用member_id/account_id/state；请求金额、原始来源分配、资格证据、政策快照、提交时间和reserve_version不可改写。reviewing/processing按品牌会员唯一；reserve_entry_id证明available→withdrawal，paid_entry_id证明仅消耗withdrawal，release_entry_id必须是原reserve的全额反向流水，不能换来源。取消/驳回/失败不删除原记录。`withdrawal_order_transitions`保存每次状态、版本、操作者、理由和审计，投影必须有连续完整历史；`withdrawal_operation_receipts`保存原始回执和请求摘要，相同键重放返回原提交/操作状态，而非后来状态，改变正文拒绝。
 
-`withdrawal_turnover_cycles`仅在paid后更新，cutoff_at为该申请提交时间，cutoff_version为该申请占用积分的账本序号，不使用审核或出款时间，不清除投注事实。真实资格器使用该钱包的严格账本序号区间：`上次成功reserve_version < 投注借记version <= 本次占用前wallet.version`；时间用于展示和审计，不凭可能重叠的事务时间代替序号过滤。失败、取消和驳回不移动截止点；申请后、成功处理前发生的投注属于下一成功周期。内部OrderService要求服务端资格适配器；平台默认nil安全拒绝且不占用积分。来源分配必须显式提供并精确合计，不默认为提现引入投注扣款优先级；正式平台接入及资格预览仍待验收。启用但未接入的合规检查仍拒绝申请，资格适配器不能绕过它。automatic审核只推进到processing并记录系统审计，不自动标记paid或执行外部支付。
+`withdrawal_turnover_cycles`仅在paid后更新，cutoff_at为申请提交时间，cutoff_version为申请占用积分的账本序号，不使用审核或出款时间，不清除投注事实。资格器使用严格区间：`上次成功reserve_version < 投注借记version <= 本次占用前wallet.version`；时间用于展示/审计，不代替序号过滤。失败、取消和驳回不移动截止点；申请后、成功前的投注属于下一成功周期。平台配置真实适配器，显式nil仍安全拒绝。来源分配必须显式提供、精确合计，不引入隐含扣款优先级；预览仅流水摘要，申请另行重新校验。启用但未接入的合规检查仍拒绝，资格适配器不能绕过它。automatic审核只推进到processing并记录系统审计，不自动标记paid或执行外部支付。
 
 `game_withdrawal_policies` 按 brand_id/game_id 保存独立 version/config/updated_at，只覆盖 N；null 继承品牌，不允许新配置为 "0"，也不能把旧零值静默当作继承或 1。有效值返回 source 和双方版本，来自已保存主库一致快照。新配置 N 大于 0 且不超过 1000000，采用最多六位小数的规范十进制字符串，不带符号/指数/多余前导或末尾零；积分仍为 int64 整数字符串，不使用浮点。旧配置历史保持原值可查询，现存零值须由授权管理员显式修正后使用。
 
-门槛基数使用申请提交时、占用前锁定钱包中的全部可用充值＋赠送余额，不是申请来源金额或累计本金；不包含中奖、冻结和已占用提现积分。OrderService已将服务端计算值传给资格器，并以eligibility_evidence.turnover_base_snapshot保存recharge_available、gift_available、points及wallet_version的不可变快照，四项均为精确十进制字符串。此保留键由服务端覆盖，资格适配器不能伪造；包含快照后的完整证据按PostgreSQL实际JSONB文本大小限制16KiB，超限在占用前拒绝。旧订单与回执不补造或重算基数；公开订单DTO和事件仍不暴露资格证据。默认nil资格器仍未接入正式流水算法。
+门槛基数使用申请提交时、占用前锁定钱包中的全部可用充值＋赠送余额，不是申请来源金额或累计本金；不包含中奖、冻结和已占用提现积分。OrderService将服务端计算值传给资格器，并以eligibility_evidence.turnover_base_snapshot保存recharge_available、gift_available、points及wallet_version的不可变快照，四项为精确十进制字符串。保留键由服务端覆盖，适配器不能伪造；完整证据按PostgreSQL实际JSONB文本限制16KiB，超限在占用前拒绝。旧订单与回执不补造或重算基数；公开订单DTO和事件仍不暴露资格证据。
 
 `withdrawal_policy_revisions`：id、brand_id、game_id（品牌级 null）、version、config、changed_by、reason、created_at；范围/版本唯一（null 范围也唯一）。初始系统记录，后续必须有后台账号。历史不可修改/删除；数据库延迟约束禁止孤立下一版本或无对应历史修改当前配置，审计失败整体回滚。`0017` 为旧及新品牌/彩种初始化配置和历史，不改旧账本或已应用迁移。
 
@@ -269,7 +269,7 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 
 `withdrawal.TurnoverChecker`在已锁钱包的申请事务中查询当前最终有效注单，只计won/lost、无退款、期次settled、当前结算任务completed、对应目标paid及核算/开奖/派奖引用一致的记录；未完成、取消、判定取消、异常及正在更正的期次不贡献额度。逐笔使用快照中的N，不使用当前N，也不按提现允许来源筛掉中奖或赠送来源的投注。缺少或非法历史快照/最终核算证据返回ErrTurnoverEvidence，不静默略过后放行，基数为0时亦如此。
 
-资格器按期次ID排序取得FOR SHARE NOWAIT锁，阻止读后提交前的新更正；因结算按期次→钱包加锁，持有钱包的资格器不可阻塞等待期次。冲突返回ErrTurnoverBusy，申请整体回滚且不占用积分。精确折算使用big.Rat，累计有效投注金额使用big.Int，不逐笔舍入。私有资格证据turnover_qualification保存算法版本、有效单数/金额、约分信用额度分子/分母、周期序号边界及绑定原注单/规则/账本/结算代次的SHA256摘要；完整证据仍受16KiB限制，摘要不是余额或替代原始业务记录。0043固定三个新函数的查找路径；0044追加修复0042的校验函数路径，不改变0042校验语义、数据或已应用迁移校验和。平台启动入口和资格预览仍未接入，不据内部测试宣称正式提现已开放。
+资格器按期次ID排序取得FOR SHARE NOWAIT锁，阻止读后提交前的新更正；因结算按期次→钱包加锁，持钱包的资格器不可阻塞等待期次。冲突返回ErrTurnoverBusy，申请整体回滚且不占用积分，不缓存临时503回执。精确折算使用big.Rat，累计有效金额使用big.Int，不逐笔舍入。私有turnover_qualification保存算法版本、有效单数/金额、分数、周期序号和绑定原事实/结算代次的SHA256摘要；证据受16KiB限制，摘要不替代余额或原记录。0043/0044固定函数查找路径，不改既有迁移校验和。只读预览用钱包共享锁，十三字段摘要无原始规则ID/摘要，按会话会员限定，读取后再次复核会话；申请仍用排他钱包锁重新计算，预览不是授权。平台入口已接入，品牌须显式启用，第一期只完成内部积分流程。
 
 ### 代理、佣金和奖励
 

@@ -57,6 +57,62 @@ jobs:
         with:
           name: withdrawal-browser-failure-traces
           path: test-results/
+  qualification-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17.5-alpine
+        env:
+          POSTGRES_DB: lottery_withdrawal_qualification_s9
+          POSTGRES_USER: lottery_test
+          POSTGRES_PASSWORD: local_test_password
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U lottery_test -d lottery_withdrawal_qualification_s9" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgres://lottery_test:local_test_password@localhost:5432/lottery_withdrawal_qualification_s9?sslmode=disable
+      HTTP_ADDR: 127.0.0.1:8080
+      AUTH_KEY_FILE: .local/auth.key
+      WITHDRAWAL_QUAL_FIXTURE_CONFIRM: owned_synthetic_database
+      WITHDRAWAL_QUAL_FIXTURE_ADMIN_PASSWORD: ci-qualification-fixture-admin-2026
+      WITHDRAWAL_QUAL_FIXTURE_USER_PASSWORD: ci-qualification-fixture-user-2026
+      TEST_QUAL_ADMIN_USERNAME: qual_admin
+      TEST_QUAL_ADMIN_PASSWORD: ci-qualification-fixture-admin-2026
+      TEST_QUAL_USER_PASSWORD: ci-qualification-fixture-user-2026
+      TEST_QUAL_USER_ORIGIN: http://localhost:5173
+      TEST_QUAL_ADMIN_ORIGIN: http://localhost:5174
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Migrate isolated database and create real qualification fixture
+        working-directory: backend
+        run: |
+          go test -tags browserfixture ./cmd/qualification-fixture
+          go build -o bin/platform ./cmd/platform
+          ./bin/platform migrate
+          ./bin/platform seed
+          ./bin/platform generate-auth-key .local/auth.key
+          go run -tags browserfixture ./cmd/qualification-fixture
+          ./bin/platform serve > ../qualification-api.log 2>&1 &
+          ./bin/platform worker > ../qualification-worker.log 2>&1 &
+          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
+      - run: pnpm exec playwright test tests/browser/withdrawal-qualification.spec.ts --project=desktop --workers=1 --retries=0
+      - run: pnpm exec playwright test tests/browser/withdrawal-qualification.spec.ts --project=mobile --workers=1 --retries=0
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: qualification-browser-failure-traces
+          path: test-results/
   reconciliation-browser:
     runs-on: ubuntu-latest
     strategy:

@@ -1,7 +1,7 @@
-import {expect,type Page,type BrowserContext,type TestInfo} from '@playwright/test'
+import {expect,type Page,type BrowserContext,type TestInfo,type APIResponse,type Response} from '@playwright/test'
 import {createHash} from 'node:crypto'
 const brand='0199a000-0000-7000-8000-000000000001'
-export async function responseData(response: Awaited<ReturnType<Page['request']['get']>>, status=200) {
+export async function responseData(response: APIResponse | Response, status=200) {
   expect(response.status()).toBe(status)
   const envelope=await response.json()
   expect(envelope.success).toBe(true)

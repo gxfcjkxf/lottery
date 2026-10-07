@@ -4,12 +4,14 @@ import {
   isWithdrawalHistory,
   isWithdrawalOrder,
   isWithdrawalPage,
+  isWithdrawalQualification,
   validateWithdrawalBody,
   type CreateWithdrawalBody,
   type WithdrawalAvailability,
   type WithdrawalHistory,
   type WithdrawalOrder,
   type WithdrawalPage,
+  type WithdrawalQualification,
 } from "@lottery/shared";
 
 export { ApiError as WithdrawalApiError };
@@ -38,6 +40,12 @@ export function createWithdrawalOrdersApi(options: {
     availability(signal?: AbortSignal): Promise<WithdrawalAvailability> {
       return request("/withdrawal-availability", signal).then((data) => {
         if (!isWithdrawalAvailability(data)) throw new Error("Invalid server response");
+        return data;
+      });
+    },
+    qualification(signal?: AbortSignal): Promise<WithdrawalQualification> {
+      return request("/withdrawal-qualification", signal).then((data) => {
+        if (!isWithdrawalQualification(data)) throw new Error("Invalid server response");
         return data;
       });
     },

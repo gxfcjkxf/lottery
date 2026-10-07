@@ -778,7 +778,7 @@ onUnmounted(() => {
     </header>
 
     <p class="callout warning" role="note">
-      {{ t("已确认提现流水口径：每笔有效投注按投注时 N 折算达标额度（投注额 ÷ N），跨彩种精确累加后与占用前全部可用充值＋赠送余额比较。充值、中奖、赠送来源均计入，每笔只计一次。N 必须大于 0，修改仅影响新投注；旧零值历史仍可读，不可新设。投注快照与内部资格计算已实现；平台入口与资格预览仍待接入，保存配置不会启用提现。", "Confirmed turnover rule: divide each valid stake by its bet-time N, sum the exact credits across games, and compare with all available recharge plus gift points before reservation. Recharge-, winnings-, and gift-funded stakes count, once per bet. N must be positive; changes affect only new bets. Legacy zero history remains readable, but new zero values are prohibited. Bet snapshots and internal qualification are implemented; platform wiring and the qualification preview are still pending. Saving settings does not enable withdrawals.") }}
+      {{ t("已确认提现流水口径：每笔有效投注按投注时 N 折算达标额度（投注额 ÷ N），跨彩种精确累加后与占用前全部可用充值＋赠送余额比较。充值、中奖、赠送来源均计入，每笔只计一次。N 必须大于 0，修改仅影响新投注；旧零值历史仍可读，不可新设。平台资格入口与只读预览已接入，品牌仍须明确启用；预览不是授权，申请时会重新检查流水、余额和合规。", "Confirmed turnover rule: divide each valid stake by its bet-time N, sum exact credits across games, and compare with all available recharge plus gift points before reservation. Recharge-, winnings-, and gift-funded stakes count once per bet. N must be positive; changes affect new bets only. Legacy zero history remains readable, but new zero values are prohibited. The platform eligibility checker and read-only preview are connected; the brand must explicitly enable withdrawals. A preview is not authorization: application rechecks turnover, funds, and compliance.") }}
     </p>
     <p v-if="account.super_admin" class="callout">
       {{ t("超级管理员仅可按显式读取权限查看，不能保存配置。", "Super administrators may view settings only when explicitly granted read access; they cannot save settings.") }}

@@ -161,7 +161,7 @@ GET `/admin/bet-orders/{id}/judgment` 需显式 bet.view.brand / bet.view.platfo
 
 ### 积分、充值和提现（业务接口）
 
-后台提现规则、资金状态机、用户申请/查询及运营审核接口已经注册，用户与管理页面已接入。OPEN-109口径已确认，投注时N快照及真实流水内部资格器已实现；平台命令仍默认不配置资格器，申请返回409 WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED且不占用积分。正式入口接入、资格预览及双端实际申请验收待后续。启用政策不能绕过此门禁，请求不能传入“合格”布尔值、N快照或资格证据。第一期只记录内部积分处理，不接外部支付。
+后台提现规则、资金状态机、用户申请/查询及运营审核接口和页面已接入。平台命令配置真实TurnoverChecker，品牌政策初始仍关闭，须明确启用；显式nil依赖的服务仍返回409 WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED，不占用积分。启用政策不等于已达流水或符合合规/余额条件，请求不能传入“合格”布尔值、N快照或资格证据。第一期仅内部积分处理，不接外部支付。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -169,7 +169,8 @@ GET `/admin/bet-orders/{id}/judgment` 需显式 bet.view.brand / bet.view.platfo
 | GET | /wallet/ledger | 分页账本，支持来源/业务类型筛选 |
 | GET | /recharges | 用户充值记录 |
 | GET | /withdrawal-availability | 当前账号的入口状态与确认上下文；不是正式流水资格证明 |
-| POST | /withdrawals | 提交提现申请；当前默认资格器未配置时安全拒绝 |
+| GET | /withdrawal-qualification | 本人当前流水条件的只读精确快照，不是提交授权 |
+| POST | /withdrawals | 提交申请并重新检查实际资格；未配置依赖时安全拒绝 |
 | GET | /withdrawals | 提现列表 |
 | GET | /withdrawals/{withdrawalId} | 提现详情和状态变化 |
 | GET | /withdrawals/{withdrawalId}/history | 不可变状态历史 |
@@ -177,6 +178,10 @@ GET `/admin/bet-orders/{id}/judgment` 需显式 bet.view.brand / bet.view.platfo
 上述提现用户接口都有 `/b/{brandCode}` 等价路径，只允许当前会话品牌会员读取自己的记录，不接受member_id查询或客户端品牌覆盖。POST正文恰好为 `{points,source_allocation}`；金额为正int64十进制字符串，来源分配为1至3项 `{source,state:"available",points}`，按recharge/winning/gift排序、来源唯一且精确合计。没有隐含的提现来源扣除优先级。必须发送Idempotency-Key、同源Origin以及从GET入口取得的X-Withdrawal-Actor-Context；上下文绑定品牌、全局用户和品牌会员，换账号后不能重放旧确认。
 
 GET入口返回 `{brand_id,member_id,policy_enabled,eligibility_configured,can_apply,reason_code,min_points,max_points,allowed_sources,real_payments:false,actor_context}`。can_apply只表示入口条件具备，实际申请仍需事务内的资格、合规、状态、额度和余额检查；未配置资格不是“剩余流水0”。列表只接受limit1..100（默认20）、offset0..1000000（默认0）及六种state之一；返回 `{brand_id,items,limit,offset,has_more}`。其他提现用户接口不接受查询参数。
+
+GET `/withdrawal-qualification`及品牌路径不接受查询参数或正文，只从主库读取当前会话会员，钱包共享锁与期次NOWAIT锁保持到读取事务结束。十三字段为`brand_id,member_id,account_id,base_points,valid_points,valid_order_count,credit_numerator,credit_denominator,meets_turnover,cycle_from_at,cycle_from_version,cutoff_at,cutoff_version`。金额/序号为精确字符串，累计金额/分数可超过int64；分母必须为正，`meets_turnover`恰为分子≥基数×分母，周期序号≤当前截止序号。只表示流水条件，不表示余额足够、合规允许、已有申请不存在或出款授权；POST不接受此结果作为凭证，重新检查当时的钱包与流水。没有原始N快照、规则ID或内部摘要；读取后再次复核会话，失效时不返回数据。
+
+期次锁冲突返回503 `WITHDRAWAL_TURNOVER_BUSY`，业务事务回滚且不缓存此临时失败，可用原键/正文重试；不能先将503包装成终态结果提交给幂等引擎。历史证据缺失/非法返回409 `WITHDRAWAL_TURNOVER_EVIDENCE_INVALID`且无占用。客户端对丢失回执、503或未知结果继续保留原意图，读取最新流水条件不能确认该写入；即使最新条件不达标，也必须能显式重放已提交的原请求。
 
 管理端GET `/admin/withdrawals`、`/{id}`、`/{id}/history`需明确withdrawal.view.brand或view.platform，X-Brand-ID必填；列表另支持member_id。POST `/{id}/{approve|reject|cancel|fail|mark-paid}`正文恰好为 `{version,reason}`，reason非空且最多500 UTF-8字节，分别要求对应withdrawal动作的品牌权限，其中mark-paid对应mark_paid。超管不能执行这些写操作。读取在主库复核会话/权限并提交审计后才返回；写入及原键重放同样复核当前授权，钱包等待后再次检查会话有效期。
 
@@ -198,7 +203,7 @@ PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提�
 
 历史 limit 1–100（默认 50）、offset 0–1000000（默认 0），返回 `{items:PolicyRevision[],limit,offset}`，范围内按 version 降序。`PolicyRevision={id,brand_id,game_id,version,config,changed_by,reason,created_at}`；品牌级 game_id=""，初始系统 changed_by=""，后续为后台账号。配置、不可变历史及审计原子提交，不变更钱包/账本/订单；GET 记录后台读取审计。
 
-错误：400 WITHDRAWAL_POLICY_INPUT_INVALID / REQUEST_INVALID；403 PERMISSION_DENIED；404 WITHDRAWAL_POLICY_NOT_FOUND；409 WITHDRAWAL_POLICY_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT；401 AUTH_SESSION_REVOKED；503 SERVICE_UNAVAILABLE。门槛基数使用申请提交、占用前当前品牌全部可用充值＋赠送余额；内部流程已在锁定钱包后计算并保存服务端快照，不接受客户端提供基数，也不在公开订单DTO中新增该内部证据。所有来源的有效投注按各笔投注时N快照折算后精确累加，N必须大于0，修改只影响新投注；私有N快照、最终流水查询及内部资格器已实现，平台正式入口仍未配置该资格器。不得由客户端提交达标额度或替代服务端判断；没有外部出款。
+错误：400 WITHDRAWAL_POLICY_INPUT_INVALID / REQUEST_INVALID；403 PERMISSION_DENIED；404 WITHDRAWAL_POLICY_NOT_FOUND；409 WITHDRAWAL_POLICY_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT；401 AUTH_SESSION_REVOKED；503 SERVICE_UNAVAILABLE。基数为申请占用前全部可用充值＋赠送余额，服务端锁钱包并保存快照；公开订单不暴露内部证据。所有来源有效投注按原N快照精确折算，N必须大于0，修改只影响新投注。平台已配置真实资格器；客户端不能提交达标额度代替判断，品牌默认关闭且没有外部出款。
 
 ## 4. 管理端接口
 
