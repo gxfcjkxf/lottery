@@ -244,7 +244,11 @@ func (s OrderService) Create(ctx context.Context, tx pgx.Tx, brand, member strin
 		return empty, err
 	}
 	cutoff = cutoff.UTC()
-	check := EligibilityInput{BrandID: brand, MemberID: member, Policy: policy, Wallet: wallet, Points: in.Points, SourceAllocation: in.SourceAllocation, CycleFromAt: cycleAt, CycleFromVersion: cycleVersion, CutoffAt: cutoff, CutoffVersion: wallet.Version}
+	base, err := turnoverBaseSnapshot(wallet)
+	if err != nil {
+		return empty, err
+	}
+	check := EligibilityInput{BrandID: brand, MemberID: member, Policy: policy, Wallet: wallet, TurnoverBase: base, Points: in.Points, SourceAllocation: in.SourceAllocation, CycleFromAt: cycleAt, CycleFromVersion: cycleVersion, CutoffAt: cutoff, CutoffVersion: wallet.Version}
 	qualification, err := s.Eligibility.Check(ctx, tx, check)
 	if err != nil {
 		return empty, err
@@ -256,7 +260,27 @@ func (s OrderService) Create(ctx context.Context, tx pgx.Tx, brand, member strin
 	if len(qualification.Evidence) > 16384 || json.Unmarshal(qualification.Evidence, &evidence) != nil || evidence == nil || len(evidence) == 0 {
 		return empty, ErrInvalid
 	}
-	out := Order{ID: ids.New(), BrandID: brand, MemberID: member, AccountID: wallet.AccountID, Points: in.Points, State: "reviewing", Version: 1, SourceAllocation: in.SourceAllocation, PolicySnapshot: policy, EligibilityEvidence: qualification.Evidence, CycleFromAt: cycleAt, CycleFromVersion: cycleVersion, CreatedAt: cutoff, UpdatedAt: cutoff}
+	// Preserve checker evidence, but the reserved basis key always comes from
+	// the service's pre-reservation snapshot, never the checker or browser.
+	baseRaw, err := json.Marshal(base)
+	if err != nil {
+		return empty, err
+	}
+	evidence["turnover_base_snapshot"] = baseRaw
+	qualificationRaw, err := json.Marshal(evidence)
+	if err != nil || len(qualificationRaw) > 16384 {
+		return empty, ErrInvalid
+	}
+	// PostgreSQL's canonical JSONB rendering adds whitespace. Enforce the same
+	// persisted limit before any reservation, including the new snapshot bytes.
+	var evidenceBytes int
+	if err = tx.QueryRow(ctx, `SELECT octet_length($1::jsonb::text)`, qualificationRaw).Scan(&evidenceBytes); err != nil {
+		return empty, err
+	}
+	if evidenceBytes > 16384 {
+		return empty, ErrInvalid
+	}
+	out := Order{ID: ids.New(), BrandID: brand, MemberID: member, AccountID: wallet.AccountID, Points: in.Points, State: "reviewing", Version: 1, SourceAllocation: in.SourceAllocation, PolicySnapshot: policy, EligibilityEvidence: qualificationRaw, CycleFromAt: cycleAt, CycleFromVersion: cycleVersion, CreatedAt: cutoff, UpdatedAt: cutoff}
 	entry, err := s.Points.Post(ctx, tx, points.Change{BrandID: brand, MemberID: member, EntryType: "withdrawal_reserve", ReferenceType: "withdrawal", ReferenceID: out.ID, OperationKey: "withdrawal-reserve:" + out.ID, Reason: "withdrawal application", ActorType: meta.ActorType, ActorID: meta.ActorID, RequestID: meta.RequestID, IP: meta.IP, Delta: delta, Allocation: out.SourceAllocation})
 	if err != nil {
 		return empty, err

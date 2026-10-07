@@ -261,7 +261,9 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 
 `game_withdrawal_policies` 按 brand_id/game_id 保存独立 version/config/updated_at，只覆盖 N；null 继承品牌，"0" 是明确配置零，不与继承混淆。有效值返回 source 和双方版本，来自已保存主库一致快照。N 为 0–1000000 的规范十进制字符串，最多六位小数，不带符号/指数/多余前导或末尾零；积分仍为 int64 整数字符串，不使用浮点。
 
-`withdrawal_policy_revisions`：id、brand_id、game_id（品牌级 null）、version、config、changed_by、reason、created_at；范围/版本唯一（null 范围也唯一）。初始系统记录，后续必须有后台账号。历史不可修改/删除；数据库延迟约束禁止孤立下一版本或无对应历史修改当前配置，审计失败整体回滚。`0017` 为旧及新品牌/彩种初始化配置和历史，不改旧账本或已应用迁移。门槛基数、跨彩种 N 合并、N=0 语义仍待确认，不得把配置当资格结论。
+门槛基数使用申请提交时、占用前锁定钱包中的全部可用充值＋赠送余额，不是申请来源金额或累计本金；不包含中奖、冻结和已占用提现积分。OrderService已将服务端计算值传给资格器，并以eligibility_evidence.turnover_base_snapshot保存recharge_available、gift_available、points及wallet_version的不可变快照，四项均为精确十进制字符串。此保留键由服务端覆盖，资格适配器不能伪造；包含快照后的完整证据按PostgreSQL实际JSONB文本大小限制16KiB，超限在占用前拒绝。旧订单与回执不补造或重算基数；公开订单DTO和事件仍不暴露资格证据。默认nil资格器仍未接入正式流水算法。
+
+`withdrawal_policy_revisions`：id、brand_id、game_id（品牌级 null）、version、config、changed_by、reason、created_at；范围/版本唯一（null 范围也唯一）。初始系统记录，后续必须有后台账号。历史不可修改/删除；数据库延迟约束禁止孤立下一版本或无对应历史修改当前配置，审计失败整体回滚。`0017` 为旧及新品牌/彩种初始化配置和历史，不改旧账本或已应用迁移。跨彩种 N 合并、N=0 语义等仍待确认，不得把配置当资格结论。
 
 ### 代理、佣金和奖励
 

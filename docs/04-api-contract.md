@@ -198,7 +198,7 @@ PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提�
 
 历史 limit 1–100（默认 50）、offset 0–1000000（默认 0），返回 `{items:PolicyRevision[],limit,offset}`，范围内按 version 降序。`PolicyRevision={id,brand_id,game_id,version,config,changed_by,reason,created_at}`；品牌级 game_id=""，初始系统 changed_by=""，后续为后台账号。配置、不可变历史及审计原子提交，不变更钱包/账本/订单；GET 记录后台读取审计。
 
-错误：400 WITHDRAWAL_POLICY_INPUT_INVALID / REQUEST_INVALID；403 PERMISSION_DENIED；404 WITHDRAWAL_POLICY_NOT_FOUND；409 WITHDRAWAL_POLICY_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT；401 AUTH_SESSION_REVOKED；503 SERVICE_UNAVAILABLE。门槛基数、跨彩种流水和N=0规则待明确；申请与内部积分处理接口已接入，不提供正式资格算法或外部出款。
+错误：400 WITHDRAWAL_POLICY_INPUT_INVALID / REQUEST_INVALID；403 PERMISSION_DENIED；404 WITHDRAWAL_POLICY_NOT_FOUND；409 WITHDRAWAL_POLICY_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT；401 AUTH_SESSION_REVOKED；503 SERVICE_UNAVAILABLE。门槛基数使用申请提交、占用前当前品牌全部可用充值＋赠送余额；内部流程已在锁定钱包后计算并保存服务端快照，不接受客户端提供基数，也不在公开订单DTO中新增该内部证据。跨彩种流水和N=0等规则仍待明确；申请与内部积分处理接口已接入，不提供正式资格算法或外部出款。
 
 ## 4. 管理端接口
 

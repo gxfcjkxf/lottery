@@ -177,7 +177,7 @@ func TestWithdrawalHTTPApplicationApprovalPaidAndOriginalReceipts(t *testing.T) 
 	history := f.call("GET", "/api/v1/withdrawals/"+order.ID+"/history", "", f.userToken, managedBrand, nil)
 	mustStatus(t, history, 200)
 	for _, response := range []*httptest.ResponseRecorder{created, live, history, f.call("GET", "/api/v1/withdrawals", "", f.userToken, managedBrand, nil)} {
-		for _, secret := range []string{"private_internal_note", "eligibility_evidence", "policy_snapshot", "actor_id", "client_key", "internal confidential", "internal-only"} {
+		for _, secret := range []string{"private_internal_note", "eligibility_evidence", "turnover_base_snapshot", "policy_snapshot", "actor_id", "client_key", "internal confidential", "internal-only"} {
 			if strings.Contains(response.Body.String(), secret) {
 				t.Fatalf("user response leaked %q: %s", secret, response.Body.String())
 			}

@@ -64,6 +64,7 @@ type EligibilityInput struct {
 	MemberID         string
 	Policy           BrandPolicy
 	Wallet           points.Wallet
+	TurnoverBase     TurnoverBaseSnapshot
 	Points           points.Amount
 	SourceAllocation []points.Allocation
 	CycleFromAt      *time.Time
