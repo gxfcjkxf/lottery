@@ -928,6 +928,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
   const placeRoute = "**/api/v1/bet-orders";
   await page.route(placeRoute, async (route) => {
     const request = route.request();
+    if (request.method() !== "POST") return route.continue();
     placeRequests.push({
       key: (await request.allHeaders())["idempotency-key"],
       body: request.postDataJSON(),
@@ -963,7 +964,9 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
   expect(retryResponse.status()).toBe(201);
   expect(placeRequests).toHaveLength(2);
   expect(placeRequests[1]).toEqual(placeRequests[0]);
-  await page.unroute(placeRoute);
+  // Keep this narrowly scoped route installed until page teardown. Removing
+  // interception immediately after the receipt can strand simultaneous
+  // background order/wallet reads before their route callbacks run.
   const placedText = await placedResponse.text();
   expect(placedResponse.status(), placedText).toBe(201);
   const placedEnvelope = JSON.parse(placedText) as Envelope<
@@ -1024,6 +1027,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
   );
   await page.route(cancelRoute, async (route) => {
     const request = route.request();
+    if (request.method() !== "POST") return route.continue();
     cancelRequests.push({
       key: (await request.allHeaders())["idempotency-key"],
       body: request.postDataJSON(),
@@ -1061,7 +1065,8 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
   const cancelledResponse = await retryCancel;
   expect(cancelRequests).toHaveLength(2);
   expect(cancelRequests[1]).toEqual(cancelRequests[0]);
-  await page.unroute(cancelRoute);
+  // The cancellation receipt also triggers follow-up reads. Page teardown
+  // removes the route after the full audited cancellation flow has finished.
   const cancelledText = await cancelledResponse.text();
   expect(cancelledResponse.status(), cancelledText).toBe(200);
   const cancelled = (JSON.parse(cancelledText) as Envelope<Record<string, any>>)
