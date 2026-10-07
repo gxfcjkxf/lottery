@@ -18,12 +18,12 @@ func TestRegisteredRoutesInventoryUsesRealRouter(t *testing.T) {
 			t.Fatal(r)
 		}
 	}
-	for _, key := range []string{"GET /health/ready", "POST /api/v1/auth/register", "POST /api/v1/b/{brandCode}/bet-orders", "POST /api/v1/admin/join-codes", "GET /api/v1/admin/reports/ledger"} {
+	for _, key := range []string{"GET /health/ready", "POST /api/v1/auth/register", "POST /api/v1/b/{brandCode}/bet-orders", "POST /api/v1/admin/join-codes", "GET /api/v1/admin/reports/ledger", "POST /api/v1/withdrawals", "GET /api/v1/b/{brandCode}/withdrawal-availability", "POST /api/v1/admin/withdrawals/{id}/mark-paid"} {
 		if !seen[key] {
 			t.Fatal("missing", key)
 		}
 	}
-	for _, key := range []string{"POST /api/v1/withdrawals", "POST /api/v1/admin/commissions/pay", "GET /"} {
+	for _, key := range []string{"POST /api/v1/admin/commissions/pay", "GET /"} {
 		if seen[key] {
 			t.Fatal("unimplemented operation exposed", key)
 		}

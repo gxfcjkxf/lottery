@@ -12,7 +12,7 @@
 
 PUT 必须提供当前共享版本、全部 16 个配置键和操作原因。可空覆盖项必须显式传 `null`；`content` 非空时必须包含 `en`、`zh-CN` 及各自的 `tagline`、`announcement`。写回执包含原版本加一、提交配置和审计 ID；缓存重放仍重新验证当前权限和停用状态。版本及停用冲突分别返回 `BRAND_PRESENTATION_VERSION_CONFLICT`、`BRAND_PRESENTATION_STATE_CONFLICT`，不能据缓存回执覆盖当前读取。预设、素材和语言范围见 [05-ui-spec.md](05-ui-spec.md)。
 
-提现当前只有政策配置，没有申请、资格判定或出款接口。佣金与奖励实际发放、真实支付、真实外部开奖 API/DOM 适配器也不可调用。配置存在不代表财务流程已经实现。500次投注/秒只有受控本地基线证据，不代表完整生产容量验收。
+提现政策、用户申请/查询和运营审核/内部积分处理接口已注册，具体字段、确认上下文与幂等语义见[API合同](04-api-contract.md)。正式流水资格器默认未配置，POST申请返回409且不占用积分；资格合成适配器只存在于隔离测试中，不能通过HTTP或生产环境变量开启。mark-paid只记录内部积分成功，不执行法币或虚拟币转账。佣金与奖励实际发放、真实支付、真实外部开奖API/DOM适配器不可调用。500次投注/秒只有受控本地基线证据，不代表完整生产容量验收。
 
 域名管理使用 `/api/v1/admin/brand-domains` 的GET/POST、`/{domainID}`的PATCH及`/history`的GET。创建要求完整 `version,domain,enabled,is_primary,reason`，更新只接受 `version,enabled,is_primary,reason`；主机名不可修改。写回执返回完整绑定列表、共享版本加一及审计ID；读取中的审计ID仅在当前共享版本来自域名变更时存在。读写要求显式的 `brand_domains.view/write.brand/platform` 权限，超级管理员身份不绕过授权。
 
@@ -26,7 +26,7 @@ PUT 必须提供当前共享版本、全部 16 个配置键和操作原因。可
 
 站内模板配置使用GET `/api/v1/admin/notification-templates`、GET `/{key}/history`和PUT `/{key}`，需要独立模板权限；版本是每品牌每事件的安全整数，不是品牌配置版本。用户消息content为生成时的双语源文案，只有旧v1允许null；模板更新不改旧通知，也不改变业务积分。服务端及用户端拒绝未知占位符和私密变量，详见 [模板合同](12-notification-templates.md)。
 
-合规配置GET/PUT `/api/v1/admin/compliance-policy`、历史GET `/compliance-policy/history`、显式检查POST/GET `/compliance-checks`及真实业务拒绝GET `/compliance-gates` 已注册。政策五键全量替换，版本独立；任一检查开启但未接真实适配器时，新注册/首次入品牌/运营新增及投注预览/提交被409 COMPLIANCE_REVIEW_REQUIRED拒绝，不建身份/扣分/建单。拒绝证据与加密负回执同事务，原键重放不重复证据。显式管理模拟不是实际业务检查；默认关闭仅跳过，不证明验证完成。提现、真实验证、复核与资金冻结未实现，边界见 [安全说明](07-security-risk-compliance.md)。
+合规配置GET/PUT `/api/v1/admin/compliance-policy`、历史GET `/compliance-policy/history`、显式检查POST/GET `/compliance-checks`及真实业务拒绝GET `/compliance-gates` 已注册。政策五键全量替换，版本独立；任一检查开启但未接真实适配器时，新注册/首次入品牌/运营新增及投注预览/提交被409 COMPLIANCE_REVIEW_REQUIRED拒绝，不建身份/扣分/建单。拒绝证据与加密负回执同事务，原键重放不重复证据。提现状态机亦拒绝启用而未接入的合规检查。显式管理模拟不是实际业务检查；默认关闭仅跳过，不证明验证完成。真实验证、复核与合规资金冻结未实现，边界见 [安全说明](07-security-risk-compliance.md)。
 
 用户与管理员令牌不能互换。非浏览器客户端可以使用 Bearer；管理员浏览器 Cookie 名称为 `lottery_admin`，用户 Cookie 名称随品牌 UUID 变化，见安全方案的说明。生成客户端通常使用 Bearer；网页客户端继续使用既有 HttpOnly Cookie 流程，不把令牌存入本地存储。
 

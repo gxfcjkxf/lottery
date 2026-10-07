@@ -11,6 +11,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/gxfcjkxf/lottery/backend/internal/telegramauth"
 	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
+	"github.com/gxfcjkxf/lottery/backend/internal/withdrawal"
 	"log/slog"
 	"net"
 	"net/http"
@@ -29,6 +30,9 @@ type Dependencies struct {
 	Telegram       telegramauth.Verifier
 	TrustedProxies []*net.IPNet
 	HistoryReads   *database.HistoryRouter
+	// Server-owned adapter boundary. Production leaves this nil until the
+	// qualification policy is confirmed; requests cannot configure a checker.
+	WithdrawalEligibility withdrawal.EligibilityChecker
 }
 type requestKey struct{}
 type envelope struct {

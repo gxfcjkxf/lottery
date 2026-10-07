@@ -161,18 +161,30 @@ GET `/admin/bet-orders/{id}/judgment` 需显式 bet.view.brand / bet.view.platfo
 
 ### 积分、充值和提现（业务接口）
 
-后台提现规则和内部资金状态机已接入；下表的用户提现申请/详情/状态仍未注册，启用配置不会使它们可用。内部OrderService的服务端资格接口默认未配置，不能由请求传入“合格”布尔值替代；待OPEN-109确认后再接入正式资格器、HTTP认证/Origin门禁及页面。
+后台提现规则、资金状态机、用户申请/查询及运营审核接口已经注册，用户与管理页面已接入。正式流水资格算法仍待OPEN-109确认；平台命令默认不配置资格器，申请返回409 WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED且不占用积分。启用政策不能绕过此门禁，请求不能传入“合格”布尔值或资格证据。第一期只记录内部积分处理，不接外部支付。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | /wallet | 显示、可用、冻结、提现和来源积分 |
 | GET | /wallet/ledger | 分页账本，支持来源/业务类型筛选 |
 | GET | /recharges | 用户充值记录 |
-| POST | /withdrawals | 提交提现申请 |
+| GET | /withdrawal-availability | 当前账号的入口状态与确认上下文；不是正式流水资格证明 |
+| POST | /withdrawals | 提交提现申请；当前默认资格器未配置时安全拒绝 |
 | GET | /withdrawals | 提现列表 |
 | GET | /withdrawals/{withdrawalId} | 提现详情和状态变化 |
+| GET | /withdrawals/{withdrawalId}/history | 不可变状态历史 |
 
-提现提交必须在事务中完成：校验资格 → 锁定账户 → 计算来源分配 → 转入提现积分 → 写流水 → 创建申请。
+上述提现用户接口都有 `/b/{brandCode}` 等价路径，只允许当前会话品牌会员读取自己的记录，不接受member_id查询或客户端品牌覆盖。POST正文恰好为 `{points,source_allocation}`；金额为正int64十进制字符串，来源分配为1至3项 `{source,state:"available",points}`，按recharge/winning/gift排序、来源唯一且精确合计。没有隐含的提现来源扣除优先级。必须发送Idempotency-Key、同源Origin以及从GET入口取得的X-Withdrawal-Actor-Context；上下文绑定品牌、全局用户和品牌会员，换账号后不能重放旧确认。
+
+GET入口返回 `{brand_id,member_id,policy_enabled,eligibility_configured,can_apply,reason_code,min_points,max_points,allowed_sources,real_payments:false,actor_context}`。can_apply只表示入口条件具备，实际申请仍需事务内的资格、合规、状态、额度和余额检查；未配置资格不是“剩余流水0”。列表只接受limit1..100（默认20）、offset0..1000000（默认0）及六种state之一；返回 `{brand_id,items,limit,offset,has_more}`。其他提现用户接口不接受查询参数。
+
+管理端GET `/admin/withdrawals`、`/{id}`、`/{id}/history`需明确withdrawal.view.brand或view.platform，X-Brand-ID必填；列表另支持member_id。POST `/{id}/{approve|reject|cancel|fail|mark-paid}`正文恰好为 `{version,reason}`，reason非空且最多500 UTF-8字节，分别要求对应withdrawal动作的品牌权限，其中mark-paid对应mark_paid。超管不能执行这些写操作。读取在主库复核会话/权限并提交审计后才返回；写入及原键重放同样复核当前授权，钱包等待后再次检查会话有效期。
+
+申请201、管理操作200返回原操作快照；查询返回当前状态，两者不能混用。reviewing/v1审核通过后为processing/v2，mark-paid后为paid/v3；automatic审核可直接返回processing/v2，不自动出款。驳回、取消或失败全额反向原reserve流水，来源不变；paid只消耗提现预留并移动成功周期截止点。未知写响应、畸形回执或网络失败只允许原正文/原键显式重放，刷新查询不能确认或丢弃未知意图。
+
+OrderView字段为 `id,brand_id,member_id,account_id,points,state,version,source_allocation,reserve_entry_id,release_entry_id,paid_entry_id,cycle_from_at,cycle_from_version,reserve_version,created_at,updated_at,reviewed_at,completed_at,decision_reason,audit_log_id`。未产生的release/paid引用及时间为null；账本序号为精确十进制字符串。HistoryView为 `{brand_id,order_id,items}`，每项含id/version/from_state/to_state/reason/actor_type/created_at/audit_log_id，初始from_state为""。两端均不返回原始资格证据、政策快照、后台账号ID或原幂等键；用户只显示驳回/失败/取消理由，其他内部原因为空。
+
+领域错误另包括400 WITHDRAWAL_INPUT_INVALID、403 WITHDRAWAL_CONFIRMATION_ACCOUNT_CHANGED/PERMISSION_DENIED、404 WITHDRAWAL_NOT_FOUND、409 WITHDRAWAL_VERSION_CONFLICT/WITHDRAWAL_STATE_CONFLICT/WITHDRAWAL_ACTIVE_ORDER/WITHDRAWAL_INELIGIBLE；会话、Origin、幂等冲突、合规及余额错误复用既有约定。资格缺失或拒绝不会产生资金占用。
 
 ### S6-a 已接入：提现规则与不可变版本
 
@@ -186,7 +198,7 @@ PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提�
 
 历史 limit 1–100（默认 50）、offset 0–1000000（默认 0），返回 `{items:PolicyRevision[],limit,offset}`，范围内按 version 降序。`PolicyRevision={id,brand_id,game_id,version,config,changed_by,reason,created_at}`；品牌级 game_id=""，初始系统 changed_by=""，后续为后台账号。配置、不可变历史及审计原子提交，不变更钱包/账本/订单；GET 记录后台读取审计。
 
-错误：400 WITHDRAWAL_POLICY_INPUT_INVALID / REQUEST_INVALID；403 PERMISSION_DENIED；404 WITHDRAWAL_POLICY_NOT_FOUND；409 WITHDRAWAL_POLICY_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT；401 AUTH_SESSION_REVOKED；503 SERVICE_UNAVAILABLE。门槛基数、跨彩种流水和 N=0 规则待明确，没有资格/申请/冻结/出款路由。
+错误：400 WITHDRAWAL_POLICY_INPUT_INVALID / REQUEST_INVALID；403 PERMISSION_DENIED；404 WITHDRAWAL_POLICY_NOT_FOUND；409 WITHDRAWAL_POLICY_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT；401 AUTH_SESSION_REVOKED；503 SERVICE_UNAVAILABLE。门槛基数、跨彩种流水和N=0规则待明确；申请与内部积分处理接口已接入，不提供正式资格算法或外部出款。
 
 ## 4. 管理端接口
 

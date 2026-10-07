@@ -189,6 +189,9 @@ func main() {
 	for key, value := range workbenchExamples() {
 		values[key] = value
 	}
+	for key, value := range withdrawalExamples() {
+		values[key] = value
+	}
 	if err := json.NewEncoder(os.Stdout).Encode(values); err != nil {
 		log.Fatal(err)
 	}

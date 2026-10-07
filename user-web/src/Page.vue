@@ -15,7 +15,7 @@ import {
   type SelectionDraft,
   type SelectionModel,
 } from "./selection";
-import { isValidWholeAmount } from "./withdrawal";
+import WithdrawalPanel from "./WithdrawalPanel.vue";
 import WalletSummary from "./WalletSummary.vue";
 import BettingPanel from "./BettingPanel.vue";
 import DrawResultsPanel from "./DrawResultsPanel.vue";
@@ -142,8 +142,6 @@ const telegramReady = computed(() => {
     Date.parse(telegramChallenge.value?.expires_at ?? "") > Date.now()
   );
 });
-const withdrawAmount = ref("");
-const withdrawSubmitted = ref(false);
 const excluding = ref(false);
 let tickTimer: ReturnType<typeof setInterval> | undefined;
 let pageGeneration = 0;
@@ -200,9 +198,6 @@ const copy = {
     demoAccount: "Demo account",
     walletNote: "Sample figures only · not connected to a real wallet",
     withdraw: "Withdrawal request",
-    eligible: "Eligibility preview",
-    progress: "Play-through progress",
-    source: "Eligible points only",
     amount: "Amount",
     submit: "Preview request",
     requestSaved: "Preview saved locally. No withdrawal was submitted.",
@@ -284,11 +279,8 @@ const copy = {
     demoAccount: "演示账户",
     walletNote: "仅供演示 · 未连接真实钱包",
     withdraw: "提现申请",
-    eligible: "资格预览",
-    progress: "流水进度",
-    source: "仅限符合条件的积分",
     amount: "金额",
-    submit: "预览申请",
+    submit: "提交预览",
     requestSaved: "预览已保存在本机，没有提交提现。",
     ledger: "积分明细",
     recharge: "充值",
@@ -661,18 +653,6 @@ function cancelOrder(id: string) {
     saveOrders();
     notice.value = t.value.cancelled;
   }
-}
-function submitWithdrawal() {
-  const raw = withdrawAmount.value.trim();
-  if (!isValidWholeAmount(raw, 8200n)) {
-    notice.value =
-      locale.value === "en"
-        ? "Enter a whole number from 1 to 8,200."
-        : "请输入 1 至 8,200 之间的整数。";
-    return;
-  }
-  withdrawSubmitted.value = true;
-  notice.value = t.value.requestSaved;
 }
 function authTerms() {
   return { ...termsVersions.value };
@@ -1120,7 +1100,7 @@ onMounted(async () => {
         ? `${t.value.offline} · ${error.message}`
         : t.value.offline;
   }
-  if (route.path === "/account" || route.path === "/notifications") void loadProfile();
+  if (route.path === "/account" || route.path === "/notifications" || route.path === "/withdraw") void loadProfile();
   tickTimer = setInterval(() => tick.value++, 1000);
 });
 watch(locale, () => {
@@ -1142,7 +1122,7 @@ watch(
       joinSource.value = "none";
       joinCode.value = "";
     }
-    if (path === "/account" || path === "/notifications") void loadProfile();
+    if (path === "/account" || path === "/notifications" || path === "/withdraw") void loadProfile();
     if (path === "/login" || path === "/register") {
       if (authConfigurationLoaded.value) void refreshCaptcha();
       else void loadAuthFeatures();
@@ -2523,70 +2503,15 @@ watch(
           </div>
         </section>
 
-        <section
+        <WithdrawalPanel
           v-else-if="route.path === '/withdraw'"
-          class="page-section narrow-page"
-        >
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">POINTS · DEMO</div>
-              <h1>{{ t.withdraw }}</h1>
-              <p>{{ t.walletNote }}</p>
-            </div>
-          </div>
-          <div class="detail-panel">
-            <div class="eligibility">
-              <div>
-                <span class="tiny-label">{{ t.eligible }}</span
-                ><strong>8,200 pts</strong>
-              </div>
-              <span class="status-chip"
-                ><i></i
-                >{{ locale === "en" ? "Preview only" : "仅供预览" }}</span
-              >
-            </div>
-            <div class="progress-label">
-              <span>{{ t.progress }}</span
-              ><strong>68%</strong>
-            </div>
-            <div class="progress-track"><span style="width: 68%"></span></div>
-            <p class="muted">
-              {{ t.source }} ·
-              {{
-                locale === "en"
-                  ? "Sample qualification: 6,800 / 10,000 pts"
-                  : "示例进度：6,800 / 10,000 积分"
-              }}
-            </p>
-            <div class="demo-callout">
-              <span>ⓘ</span>
-              <p>{{ t.noChanges }}</p>
-            </div>
-            <form @submit.prevent="submitWithdrawal">
-              <label class="field-label"
-                >{{ t.amount }}
-                <div class="amount-input">
-                  <input
-                    v-model="withdrawAmount"
-                    type="number"
-                    min="1"
-                    max="8200"
-                    step="1"
-                    inputmode="numeric"
-                    placeholder="0"
-                    required
-                  /><span>pts</span>
-                </div></label
-              >
-              <p v-if="withdrawSubmitted" class="success-note" role="status">
-                {{ t.requestSaved }}
-              </p>
-              <button class="button button-primary full-button" type="submit">
-                {{ t.submit }} <span>→</span>
-              </button>
-            </form>
-          </div>
-        </section>
+          :key="`${authProfile?.member.brand_id ?? 'signed-out'}:${authProfile?.member.id ?? 'signed-out'}`"
+          :locale="locale"
+          :brand-code="walletBrandCode"
+          :member="authProfile?.member ?? null"
+          @auth-expired="authProfile = null"
+          @context-changed="loadProfile"
+        />
 
         <DrawResultsPanel
           v-else-if="route.path === '/results'"

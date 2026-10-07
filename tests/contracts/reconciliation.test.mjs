@@ -8,6 +8,8 @@ import {operations as identityOperations,schemas as identitySchemas} from "../..
 import {operations,schemas} from "../../docs/openapi/finance.mjs";
 import {operations as lotteryOperations,schemas as lotterySchemas} from "../../docs/openapi/lottery.mjs";
 import {composeDocument} from "../../scripts/openapi-lib.mjs";
+import * as workbench from "../../scripts/openapi-workbench.mjs";
+import * as withdrawals from "../../scripts/openapi-withdrawal-orders.mjs";
 
 const root=new URL("../../",import.meta.url);
 const go=process.env.LOTTERY_GO_BIN??"go";
@@ -35,6 +37,8 @@ test("reconciliation contract documents exactly the five registered admin routes
     {schemas:identitySchemas,operations:identityOperations},
     {schemas,operations},
     {schemas:lotterySchemas,operations:lotteryOperations},
+    workbench,
+    withdrawals,
   ],JSON.parse(result.stdout));
   for(const route of expectedRoutes){
     assert.ok(actual.has(route),`backend route missing: ${route}`);

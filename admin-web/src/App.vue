@@ -22,6 +22,7 @@ import {buildBrandCssTokens,defaultBrand,safeBrandAssetUrl,applyBrandPresentatio
 import {createBrandPresentationApi,brandPresentationPermissions,type BrandPresentationRecord} from "./brand-presentation-api";
 import {clearAllPendingPresentationWrites} from "./brand-presentation-state";
 const FinanceManagement = defineAsyncComponent(() => import("./FinanceManagement.vue"));
+const WithdrawalManagement = defineAsyncComponent(() => import("./WithdrawalManagement.vue"));
 import BalanceRepair from "./BalanceRepair.vue";
 const RuleSimulator = defineAsyncComponent(() => import("./RuleSimulator.vue"));
 import PeriodSchedules from "./PeriodSchedules.vue";
@@ -51,7 +52,6 @@ const WithdrawalPolicySettings = defineAsyncComponent(
 );
 import {
   previewCorrection,
-  resolveWithdrawal,
   reviewRule,
   simulateRule,
   submitRuleForReview,
@@ -70,14 +70,21 @@ import {
 
 const { t, message, locale, availableLocales, setLocale, configure, resetBrand } = useAdminI18n();
 const englishUi: Record<string, string> = {
-  "非生产环境 · 提现为演示": "Non-production · withdrawals are a demo",
+  "控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金管理尚未实现。": "The console combines connected workflows and prototypes. Withdrawal status is connected; eligibility rules are pending and real payments are unavailable. Commission management is not implemented.",
+  "此页显示真实成员；账号权限、积分账本、认证设置和投注已接入。": "This page shows live members. Account permissions, the points ledger, authentication settings, and betting are connected.",
+  "成员创建与管理为真实操作；投注已接入。": "Member creation and management are live operations. Betting is connected.",
+  "审计日志为真实后台数据；投注已接入，提现状态接口已接入，资格规则待配置且无真实支付。": "Audit logs are live admin data; betting and withdrawal status are connected, while eligibility rules are pending and real payments are unavailable.",
+  "账号与角色变更为真实操作；投注已接入，提现状态接口已接入，资格规则待配置且无真实支付。": "Account and role changes are live operations; betting and withdrawal status are connected, while eligibility rules are pending and real payments are unavailable.",
+  "认证、品牌展示及域名绑定为真实配置；提现状态接口已接入，资格规则待配置且无真实支付。": "Authentication, brand presentation, and domain binding are live settings; withdrawal status is connected, while eligibility rules are pending and real payments are unavailable.",
+  "人工充值、冻结、调整与账本为真实操作；提现状态接口已接入，资格规则待配置且无真实支付。": "Manual deposits, freezes, adjustments, and ledger actions are live; withdrawal status is connected, while eligibility rules are pending and real payments are unavailable.",
+  "真实提现状态接口；资格规则待配置，无真实支付": "Live withdrawal status API; eligibility rules are pending, with no real payments",
   "切换品牌": "Switch brand", "真实品牌": "Live brand", "演示品牌": "Demo brand", "选择品牌": "Select a brand",
   "没有可访问的品牌": "No accessible brands", "仅原型演示": "Prototype demo only", "主导航": "Main navigation",
   "概览": "Overview", "平台": "Platform", "运营": "Operations", "资金": "Finance", "管理": "Management",
   "帮助与反馈": "Help & feedback", "未登录": "Not signed in", "超级管理员": "Super administrator", "管理员": "Administrator", "原型演示": "Prototype demo",
   "退出登录": "Sign out", "账号菜单": "Account menu", "退出": "Sign out", "运营控制台": "Operations console", "演示原型": "Prototype demo",
   "搜索用户、注单、期次": "Search users, orders, periods", "搜索": "Search", "通知": "Notifications", "帮助中心": "Help center", "关闭说明": "Dismiss notice",
-  "交互演示 · 非生产环境": "Interactive demo · non-production", "控制台包含已接入流程与原型。提现、佣金管理尚未实现；各页面会标出真实接口与演示边界。": "The console combines connected workflows and prototypes. Withdrawals and commission management are not implemented; each page identifies live APIs and demo boundaries.",
+  "交互演示 · 非生产环境": "Interactive demo · non-production",
   "后端品牌上下文": "Backend brand context", "正在读取 GET /api/v1/context": "Reading GET /api/v1/context", "平台品牌上下文": "Platform brand context",
   "当前入口没有可用的公开用户品牌上下文；后台管理认证独立，不受影响。请选择需要管理的品牌。": "No public user brand context is available at this entry point. Admin authentication is independent. Select a brand to manage.",
   "后端品牌上下文未连接": "Backend brand context unavailable", "暂不可用；该接口仅用于只读配置状态，不影响管理员认证和真实用户目录。": "is unavailable. This read-only endpoint reports configuration and does not affect admin authentication or the live user directory.",
@@ -618,57 +625,6 @@ const changeMemberPage = async (direction: -1 | 1) => {
   memberOffset.value = Math.max(0, memberOffset.value + direction * 100);
   await loadMembers();
 };
-const withdrawals = ref([
-  {
-    id: "WD-2601048",
-    user: "Lin Q.",
-    points: "3,200",
-    source: "充值 2,000 · 赢分 1,200",
-    submitted: "10-05 09:42",
-    status: "待审核",
-    reason: "",
-  },
-  {
-    id: "WD-2601044",
-    user: "Ari L.",
-    points: "850",
-    source: "赢分 850",
-    submitted: "10-05 08:56",
-    status: "待审核",
-    reason: "",
-  },
-  {
-    id: "WD-2601039",
-    user: "J. Tan",
-    points: "120",
-    source: "充值 120",
-    submitted: "10-04 21:17",
-    status: "待审核",
-    reason: "",
-  },
-]);
-const reviewTarget = ref<(typeof withdrawals.value)[number] | null>(null);
-const reviewReason = ref("");
-const finishWithdrawal = (decision: "approved" | "rejected") => {
-  if (!reviewTarget.value) return;
-  try {
-    const result = resolveWithdrawal(
-      reviewTarget.value.id,
-      decision,
-      reviewReason.value,
-    );
-    reviewTarget.value.status =
-      decision === "approved" ? "已通过（演示）" : "已驳回（演示）";
-    reviewTarget.value.reason = result.reason;
-    toast(
-      `${reviewTarget.value.id}：${result.status === "approved" ? "已通过" : "已驳回"}（仅本次演示）`,
-    );
-    reviewTarget.value = null;
-    reviewReason.value = "";
-  } catch (error) {
-    toast(error instanceof Error ? error.message : "审核失败");
-  }
-};
 const ruleDraft = ref<RuleDraft>({
   creator: "林岚",
   reviewer: "",
@@ -775,7 +731,7 @@ const ledger = [
         <span><b>{{skin?.display_name??'northstar'}}</b><small>OPERATIONS CONSOLE</small></span></a
       >
       <div v-if="page !== '工作台'" class="demo-chip">
-        <span class="pulse"></span>{{ ui("非生产环境 · 提现为演示") }} <span class="demo-chip-end">·</span>
+        <span class="pulse"></span>{{ ui("真实提现状态接口；资格规则待配置，无真实支付") }} <span class="demo-chip-end">·</span>
       </div>
       <div class="brand-switch-wrap">
         <button
@@ -938,7 +894,7 @@ const ledger = [
         <span class="banner-icon">ⓘ</span
         ><span
           ><b>{{ ui("交互演示 · 非生产环境") }}</b
-          ><span class="banner-copy"> {{ ui("控制台包含已接入流程与原型。提现、佣金管理尚未实现；各页面会标出真实接口与演示边界。") }}</span
+          ><span class="banner-copy"> {{ ui("控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金管理尚未实现。") }}</span
           ></span
         ><button :aria-label="ui('关闭说明')" @click="showDemoNotice = false">
           ×
@@ -1127,7 +1083,7 @@ const ledger = [
           <div>
             <div class="eyebrow">MEMBERS / LIVE DIRECTORY</div>
             <h1>{{ ui("用户和成员") }}</h1>
-            <p> {{ ui("此页显示真实成员；账号权限、积分账本、认证设置和投注已接入，提现仍为原型。") }} </p>
+            <p> {{ ui("此页显示真实成员；账号权限、积分账本、认证设置和投注已接入。") }} </p>
           </div>
           <span v-if="account" class="live-pill"
             >{{ ui("已登录 ·") }} {{ account.id }}</span
@@ -1920,6 +1876,13 @@ const ledger = [
       </section>
 
       <section v-else-if="page === '资金与账本'" class="page-content">
+        <WithdrawalManagement
+          v-if="account && selectedBrandId"
+          :key="`withdrawals:${account.id}:${selectedBrandId}`"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
         <FinanceManagement
           v-if="account && selectedBrandId"
           :key="selectedBrandId"
@@ -2207,7 +2170,7 @@ const ledger = [
         <span>Aurora Operations Console <b>·</b> Prototype v0.1</span
         ><span>{{
           page === "用户和成员" && account
-            ? ui("成员创建与管理为真实操作；投注已接入，提现仍为演示。")
+              ? ui("成员创建与管理为真实操作；投注已接入。")
             : page === "代理树" && account
               ? ui("真实代理配置与历史记录；佣金计算和派发尚未接入。")
             : page === "报表和对账" && account
@@ -2217,13 +2180,13 @@ const ledger = [
             : page === "通知模板" && account
               ? ui("真实版本化站内通知模板；已生成消息保留原文案，不触发新通知或资金变化。")
             : page === "审计日志" && account
-              ? ui("审计日志为真实后台数据；投注已接入，提现仍为演示。")
+              ? ui("审计日志为真实后台数据；投注已接入，提现状态接口已接入，资格规则待配置且无真实支付。")
               : page === "账号与权限" && account
-                ? ui("账号与角色变更为真实操作；投注已接入，提现仍为演示。")
+                ? ui("账号与角色变更为真实操作；投注已接入，提现状态接口已接入，资格规则待配置且无真实支付。")
                 : page === "品牌和域名" && account
-                  ? ui("认证、品牌展示及域名绑定为真实配置；提现仍为演示。")
+                  ? ui("认证、品牌展示及域名绑定为真实配置；提现状态接口已接入，资格规则待配置且无真实支付。")
                   : page === "资金与账本" && account
-                    ? ui("人工充值、冻结、调整与账本为真实操作；提现尚未接入。")
+                    ? ui("人工充值、冻结、调整与账本为真实操作；提现状态接口已接入，资格规则待配置且无真实支付。")
                     : ui("标为演示的功能不写入后台；账号、积分、规则版本和期次计划已接入真实 API。")
         }}</span>
       </footer>
@@ -2462,60 +2425,6 @@ const ledger = [
       </button>
     </nav>
 
-    <div
-      v-if="reviewTarget"
-      class="modal-backdrop"
-      @click.self="reviewTarget = null"
-    >
-      <section
-        class="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="withdraw-title"
-      >
-        <div class="modal-heading">
-          <div>
-            <span class="eyebrow">WITHDRAWAL REVIEW · DEMO</span>
-            <h2 id="withdraw-title">{{ ui("审核提现申请") }}</h2>
-          </div>
-          <button class="modal-close" @click="reviewTarget = null">×</button>
-        </div>
-        <div class="modal-summary">
-          <div>
-            <small>{{ ui("申请编号") }}</small><b class="mono">{{ reviewTarget.id }}</b>
-          </div>
-          <div>
-            <small>{{ ui("申请人") }}</small><b>{{ reviewTarget.user }}</b>
-          </div>
-          <div>
-            <small>{{ ui("申请积分") }}</small><b>{{ reviewTarget.points }} {{ ui("分") }}</b>
-          </div>
-          <div>
-            <small>{{ ui("积分来源") }}</small><b>{{ reviewTarget.source }}</b>
-          </div>
-        </div>
-        <label class="modal-label"
-          >{{ ui("审核意见 / 原因") }} <span>{{ ui("必填") }}</span
-          ><textarea
-            v-model="reviewReason"
-            :placeholder="ui('说明来源核验结论或驳回原因')"
-            rows="3"
-          ></textarea>
-        </label>
-        <p class="modal-hint"> {{ ui("批准仅表示演示状态转为处理中；不会向外部付款或修改真实账本。") }} </p>
-        <div class="modal-actions">
-          <button class="button button-secondary" @click="reviewTarget = null"> {{ ui("取消") }}</button
-          ><button
-            class="button button-danger"
-            @click="finishWithdrawal('rejected')"
-          > {{ ui("驳回申请") }}</button
-          ><button
-            class="button button-primary"
-            @click="finishWithdrawal('approved')"
-          > {{ ui("通过审核") }} </button>
-        </div>
-      </section>
-    </div>
     <div
       v-if="correctionOpen"
       class="modal-backdrop"

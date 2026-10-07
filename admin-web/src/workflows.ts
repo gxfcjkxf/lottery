@@ -40,8 +40,3 @@ export function previewCorrection(oldResult: string, newResult: string, affected
   const reasonRequired = oldResult.trim() !== newResult.trim()
   return { oldResult, newResult, affectedOrders: String(affectedOrders), estimatedSettlements: String(affectedOrders), reasonRequired }
 }
-
-export function resolveWithdrawal(id: string, decision: 'approved' | 'rejected', reason: string) {
-  if (!reason.trim()) throw new Error('审核原因必填')
-  return { id, status: decision, reason: reason.trim() }
-}

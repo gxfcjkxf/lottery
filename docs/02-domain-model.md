@@ -253,7 +253,7 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 - `reject_reason`, `process_result`, `created_at`, `reviewed_at`, `completed_at`
 - 同一品牌用户的 reviewing/processing 状态只能有一条，使用部分唯一索引或等价锁。
 
-提现规则配置和内部资金状态机分开接入，HTTP申请与页面尚未开放。`brand_withdrawal_policies` 保存 brand_id/version/config/updated_at；config 为 enabled、min_points、max_points（null 无上限）、allowed_sources（充值/中奖/赠送的非空唯一列表）、review_mode（manual/automatic）、turnover_multiple（N）。初始 disabled、下限 1、上限 null、三来源、manual、N="1"。
+提现规则、内部资金状态机及HTTP申请/查询/运营处理与页面已经接入；正式流水资格器仍未配置，默认拒绝新申请且不占用积分。`brand_withdrawal_policies` 保存 brand_id/version/config/updated_at；config 为 enabled、min_points、max_points（null 无上限）、allowed_sources（充值/中奖/赠送的非空唯一列表）、review_mode（manual/automatic）、turnover_multiple（N）。初始 disabled、下限 1、上限 null、三来源、manual、N="1"。
 
 0039新增`withdrawal_orders`，实际字段使用member_id/account_id/state；请求金额、原始来源分配、资格证据、政策快照、提交时间和reserve_version不可改写。reviewing/processing按品牌会员唯一；reserve_entry_id证明available→withdrawal，paid_entry_id证明仅消耗withdrawal，release_entry_id必须是原reserve的全额反向流水，不能换来源。取消/驳回/失败不删除原记录。`withdrawal_order_transitions`保存每次状态、版本、操作者、理由和审计，投影必须有连续完整历史；`withdrawal_operation_receipts`保存原始回执和请求摘要，相同键重放返回原提交/操作状态，而非后来状态，改变正文拒绝。
 

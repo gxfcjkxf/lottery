@@ -49,6 +49,7 @@ func ledgerKey(d Dependencies, r *http.Request, a access.Account, member, kind s
 	return kind + ":" + d.Mutations.Fingerprint(a.ID+":"+member+":"+r.Header.Get("Idempotency-Key"))
 }
 func registerPointRoutes(mux routeRegistrar, d Dependencies) {
+	registerWithdrawalUserRoutes(mux, d)
 	registerAgentUserRoutes(mux, d)
 	registerJoinCodeUser(mux, d)
 	for _, prefix := range []string{"/api/v1", "/api/v1/b/{brandCode}"} {
@@ -107,6 +108,7 @@ func pointAdminActor(w http.ResponseWriter, r *http.Request, d Dependencies, res
 	return a, brand, true
 }
 func registerPointAdminRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
+	registerWithdrawalOrderAdminRoutes(handle, d)
 	registerWorkbenchRoutes(handle, d)
 	registerReportAdminRoutes(handle, d)
 	registerPointSafetyRoutes(handle, d)

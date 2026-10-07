@@ -110,7 +110,7 @@ test("brand point policy persists; pending recharge cancellation does not credit
     fullPage: true,
   });
 
-  // Configuration is real, but this phase must not activate withdrawal orders.
+  // Configuration alone must not authorize a user application or occupy points.
   const base = "http://localhost:5174/api/v1/admin";
   const headers = { Origin: "http://localhost:5174", "X-Brand-ID": harbor };
   const walletBefore = await page.request.get(`${base}/wallets/${member}`, {
@@ -308,10 +308,11 @@ test("brand point policy persists; pending recharge cancellation does not credit
         Origin: "http://localhost:5173",
         "Idempotency-Key": crypto.randomUUID(),
       },
-      data: { points: "10" },
+      data: { points: "10", source_allocation: [{source:"recharge",state:"available",points:"10"}] },
     },
   );
-  expect(noSubmission.status()).toBe(404);
+  // The route now exists, but an administrator cookie is not a member session.
+  expect(noSubmission.status()).toBe(401);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth + 1,

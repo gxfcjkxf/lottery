@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { previewCorrection, resolveWithdrawal, reviewRule, simulateRule, submitRuleForReview, type RuleDraft } from './workflows'
+import { previewCorrection, reviewRule, simulateRule, submitRuleForReview, type RuleDraft } from './workflows'
 
 const rule: RuleDraft = { creator: '林岚', reviewer: '', status: 'draft', testSelection: '07 18 29', testResult: '07 12 29', unitPoints: '2', multiplier: '3' }
 
@@ -26,9 +26,5 @@ describe('demo admin workflows', () => {
   })
   it('previews correction impact before a reasoned correction', () => {
     expect(previewCorrection('07 18', '07 19', 126)).toMatchObject({ affectedOrders: '126', estimatedSettlements: '126', reasonRequired: true })
-  })
-  it('requires a reason to resolve a withdrawal review', () => {
-    expect(() => resolveWithdrawal('WD-2401', 'rejected', '  ')).toThrow(/原因必填/)
-    expect(resolveWithdrawal('WD-2401', 'rejected', '资料不完整').status).toBe('rejected')
   })
 })

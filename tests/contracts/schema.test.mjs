@@ -15,6 +15,12 @@ const components={...doc.components,schemas:{...doc.components.schemas,...lotter
 const root={$id:"urn:lottery:implemented-api",components};
 ajv.addSchema(root);
 const validate=schema=>ajv.compile({$ref:`urn:lottery:implemented-api#/components/schemas/${schema}`});
+const exampleSchemaNames={
+  WithdrawalOrderExample:"WithdrawalOrder",
+  WithdrawalOrderPageExample:"WithdrawalOrderPage",
+  WithdrawalHistoryExample:"WithdrawalHistory",
+  WithdrawalAvailabilityExample:"WithdrawalAvailability",
+};
 
 test("every component and operation body is a compilable JSON Schema",()=>{
   for(const name of Object.keys(components.schemas))validate(name);
@@ -33,7 +39,7 @@ test("actual Go DTO serialization and rule-engine outputs satisfy contracts",()=
   const examples=JSON.parse(result.stdout);
   assert.ok(Object.keys(examples).length>=15);
   for(const [name,value] of Object.entries(examples)){
-    const schemaName=name==="AdminWorkbench"?"AdminWorkbenchSnapshot":name.replace(/Sparse$|Snapshot$/, "");
+    const schemaName=exampleSchemaNames[name]??(name==="AdminWorkbench"?"AdminWorkbenchSnapshot":name.replace(/Sparse$|Snapshot$/, ""));
     const check=validate(schemaName);assert.ok(check(value),`${name} (${schemaName}): ${JSON.stringify(check.errors)}`);
   }
   assert.equal(examples.AdminWorkbench.withdrawals.status,"not_implemented");
@@ -42,6 +48,8 @@ test("actual Go DTO serialization and rule-engine outputs satisfy contracts",()=
   assert.equal(examples.AdminWorkbench.rewards.data,null);
   assert.equal(examples.LotterySimulationResult.bet_points,"8");
   assert.equal(examples.LotterySimulationResult.prize_points,"70");
+  assert.equal(examples.WithdrawalAvailabilityExample.real_payments,false);
+  assert.match(examples.WithdrawalAvailabilityExample.actor_context,/^[0-9a-f]{64}$/);
 });
 test("financial syntax stays exact, negative deltas differ from balances, and requests are closed",()=>{
   assert.ok(validate("Int64String")("-8"));assert.ok(!validate("Int64String")("-0"));
@@ -60,9 +68,16 @@ test("full-replacement finance requests require explicit nullable fields",()=>{
   assert.ok(validate("FinanceWithdrawalGameConfig")({turnover_multiple:null}));
   assert.ok(!validate("FinanceWithdrawalGameConfig")({}));
 });
-test("admin logout uses admin authentication and unavailable payout operations are absent",()=>{
+test("admin logout uses admin authentication while unsupported payout operations remain absent",()=>{
   assert.deepEqual(doc.paths["/api/v1/admin/auth/logout"].post.security,[{adminBearer:[]},{adminCookie:[]}]);
-  assert.ok(!doc.paths["/api/v1/withdrawals"]);assert.ok(!doc.paths["/api/v1/admin/commissions/pay"]);
+  const create=doc.paths["/api/v1/withdrawals"].post;
+  assert.ok(create.parameters.some(p=>p.name==="X-Withdrawal-Actor-Context"&&p.required));
+  const body=doc.components.schemas.WithdrawalCreateRequest;
+  assert.deepEqual(body.required,["points","source_allocation"]);
+  assert.equal(body.additionalProperties,false);
+  assert.ok(create.responses["409"].description);
+  assert.match(create.description,/WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED/);
+  assert.ok(!doc.paths["/api/v1/admin/commissions/pay"]);
 });
 test("compliance admission records cannot claim anonymous users or disabled-check reviews",()=>{
   const id="11111111-1111-4111-8111-111111111111";
