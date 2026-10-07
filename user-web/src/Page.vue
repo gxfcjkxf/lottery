@@ -17,6 +17,7 @@ import {
 } from "./selection";
 import WithdrawalPanel from "./WithdrawalPanel.vue";
 import WalletSummary from "./WalletSummary.vue";
+import RechargePanel from "./RechargePanel.vue";
 import BettingPanel from "./BettingPanel.vue";
 import DrawResultsPanel from "./DrawResultsPanel.vue";
 import NotificationsPanel from "./NotificationsPanel.vue";
@@ -87,6 +88,7 @@ const authError = ref("");
 const identifier = ref("");
 const password = ref("");
 const authProfile = ref<AuthProfile | null>(null);
+let profileReadGeneration = 0;
 const notificationUnreadCount = ref<string | null>(null);
 const profileLoading = ref(false);
 const profileSaving = ref(false);
@@ -965,15 +967,19 @@ async function startTelegramAuth() {
   }
 }
 async function loadProfile() {
+  const requestGeneration = ++profileReadGeneration;
+  const mountedGeneration = pageGeneration;
   profileLoading.value = true;
   profileError.value = "";
   profileNotice.value = "";
   try {
     const profile = await authApi.me();
+    if (requestGeneration !== profileReadGeneration || mountedGeneration !== pageGeneration) return;
     authProfile.value = profile;
     profileUsername.value = profile.user.username ?? "";
     profilePhone.value = profile.user.phone ?? "";
   } catch (error) {
+    if (requestGeneration !== profileReadGeneration || mountedGeneration !== pageGeneration) return;
     authProfile.value = null;
     if (error instanceof Error && "status" in error && error.status === 401)
       profileError.value =
@@ -982,8 +988,16 @@ async function loadProfile() {
           : "请登录以查看账户。";
     else profileError.value = authErrorMessage(error);
   } finally {
-    profileLoading.value = false;
+    if (requestGeneration === profileReadGeneration && mountedGeneration === pageGeneration) profileLoading.value = false;
   }
+}
+function expireRechargeProfile() {
+  // Do not let an earlier profile GET remount an invalidated recharge scope.
+  profileReadGeneration++;
+  authProfile.value = null;
+  profileLoading.value = false;
+  profileUsername.value = "";
+  profilePhone.value = "";
 }
 async function saveProfile() {
   profileError.value = "";
@@ -1100,7 +1114,7 @@ onMounted(async () => {
         ? `${t.value.offline} · ${error.message}`
         : t.value.offline;
   }
-  if (route.path === "/account" || route.path === "/notifications" || route.path === "/withdraw") void loadProfile();
+  if (route.path === "/account" || route.path === "/notifications" || route.path === "/withdraw" || route.path === "/recharge") void loadProfile();
   tickTimer = setInterval(() => tick.value++, 1000);
 });
 watch(locale, () => {
@@ -1122,7 +1136,7 @@ watch(
       joinSource.value = "none";
       joinCode.value = "";
     }
-    if (path === "/account" || path === "/notifications" || path === "/withdraw") void loadProfile();
+    if (path === "/account" || path === "/notifications" || path === "/withdraw" || path === "/recharge") void loadProfile();
     if (path === "/login" || path === "/register") {
       if (authConfigurationLoaded.value) void refreshCaptcha();
       else void loadAuthFeatures();
@@ -2464,44 +2478,15 @@ watch(
           <WalletSummary :brand-code="walletBrandCode" :locale="locale" />
         </section>
 
-        <section
+        <RechargePanel
           v-else-if="route.path === '/recharge'"
-          class="page-section narrow-page"
-        >
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">POINTS · DEMO</div>
-              <h1>{{ t.recharge }}</h1>
-              <p>{{ t.manual }}</p>
-            </div>
-          </div>
-          <div class="detail-panel">
-            <div class="demo-callout">
-              <span>ⓘ</span>
-              <p>{{ t.noChanges }}</p>
-            </div>
-            <h2>{{ locale === "en" ? "Request a top-up" : "提交充值申请" }}</h2>
-            <p class="muted">
-              {{
-                locale === "en"
-                  ? "A team member would review the payment reference in a live service."
-                  : "正式服务中将由工作人员核对付款凭证。"
-              }}
-            </p>
-            <label class="field-label"
-              >{{ t.amount
-              }}<input type="number" min="1" placeholder="100" /></label
-            ><label class="field-label"
-              >{{ locale === "en" ? "Payment reference" : "付款凭证编号"
-              }}<input placeholder="e.g. receipt reference" /></label
-            ><button
-              class="button button-primary full-button"
-              @click="notice = t.requestSaved"
-            >
-              {{ t.submit }} <span>→</span>
-            </button>
-          </div>
-        </section>
+          :key="`${authProfile?.member.brand_id ?? 'signed-out'}:${authProfile?.member.id ?? 'signed-out'}`"
+          :locale="locale"
+          :brand-code="walletBrandCode"
+          :member="authProfile?.member ?? null"
+          @auth-expired="expireRechargeProfile"
+          @sign-in="router.push('/login')"
+        />
 
         <WithdrawalPanel
           v-else-if="route.path === '/withdraw'"

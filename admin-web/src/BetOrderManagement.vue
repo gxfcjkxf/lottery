@@ -887,8 +887,8 @@ onUnmounted(() => {
               ><b
                 >{{ row[1]
                 }}<template v-if="row[0] === '单注积分' || row[0] === '总扣款'">
-                  {{ t("分", "points") }}</template
-                ><template v-else-if="row[0] === '倍数'"> {{ t("倍", "x") }}</template></b
+                  {{ ' ' + t("分", "points") }}</template
+                ><template v-else-if="row[0] === '倍数'">{{ ' ' + t("倍", "x") }}</template></b
               >
             </div>
           </div>

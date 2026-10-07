@@ -2,8 +2,8 @@ import { test, expect, type APIRequestContext, type BrowserContext, type Locator
 import { restoreAdminSession } from "./support/admin-session";
 
 const harbor = "0199a000-0000-7000-8000-000000000002";
-const adminOrigin = "http://localhost:5174";
-const apiOrigin = "http://127.0.0.1:8080";
+const adminOrigin = process.env.TEST_ADMIN_ORIGIN ?? "http://localhost:5174";
+const apiOrigin = process.env.TEST_API_ORIGIN ?? "http://127.0.0.1:8080";
 const admin = `${adminOrigin}/api/v1/admin`;
 const unique = () => crypto.randomUUID();
 
@@ -40,7 +40,7 @@ async function readData<T>(response: Awaited<ReturnType<APIRequestContext["get"]
 async function ensureAdmin(context: BrowserContext, page: Page): Promise<void> {
   const username = process.env.TEST_HARBOR_ADMIN_USERNAME!;
   const password = process.env.TEST_HARBOR_ADMIN_PASSWORD!;
-  if (await restoreAdminSession(context, username, harbor)) return;
+  if (await restoreAdminSession(context, username, harbor, adminOrigin)) return;
   const response = await page.request.post(`${admin}/auth/login`, {
     headers: { Origin: adminOrigin, "X-Brand-ID": harbor, "Idempotency-Key": unique() },
     data: { identifier: username, password },
@@ -142,6 +142,7 @@ async function assertHostDoesNotResolve(page: Page, host: string): Promise<void>
 
 async function openBrandSettings(page: Page, projectName: string) {
   await page.goto(adminOrigin);
+  await page.getByTestId("admin-language").selectOption("zh-CN");
   await page.getByLabel("选择真实后台品牌", { exact: true }).selectOption(harbor);
   if (projectName === "mobile") {
     await page.locator(".mobile-nav button").nth(4).click();
@@ -149,11 +150,13 @@ async function openBrandSettings(page: Page, projectName: string) {
   } else {
     await page.locator(".side-nav").getByRole("button", { name: /品牌和域名/ }).click();
   }
+  await page.getByTestId("admin-language").selectOption("en");
   await expect(page.locator(".brand-domains").getByRole("heading", { name: "Brand domains", exact: true })).toBeVisible();
   return page.locator(".brand-domains");
 }
 
 async function leaveAndReturn(page: Page, projectName: string): Promise<void> {
+  await page.getByTestId("admin-language").selectOption("zh-CN");
   if (projectName === "mobile") await page.locator(".mobile-nav button").nth(1).click();
   else await page.locator(".side-nav").getByRole("button", { name: /用户和成员/ }).click();
   await expect(page.getByRole("heading", { name: "用户和成员", exact: true })).toBeVisible();
@@ -161,6 +164,7 @@ async function leaveAndReturn(page: Page, projectName: string): Promise<void> {
     await page.locator(".mobile-nav button").last().click();
     await page.locator(".mobile-more-menu").getByRole("button", { name: /品牌和域名/ }).click();
   } else await page.locator(".side-nav").getByRole("button", { name: /品牌和域名/ }).click();
+  await page.getByTestId("admin-language").selectOption("en");
 }
 
 async function editFromUI(page: Page, panel: Locator, hostname: string, values: { enabled: boolean; primary: boolean; reason: string }): Promise<void> {
@@ -218,7 +222,7 @@ test("Harbor domain writes preserve the frozen intent, primary binding, resoluti
     const originalURL = new URL(request.url());
     writes.push({ method: request.method(), url: request.url(), body: request.postData(), key: headers["idempotency-key"] });
     expect(headers.origin).toBe(adminOrigin);
-    expect(originalURL.host).toBe("localhost:5174");
+    expect(originalURL.host).toBe(new URL(adminOrigin).host);
     expect(headers.cookie, "the authenticated Harbor admin cookie must accompany the write").toBeTruthy();
     expect(headers["x-brand-id"]).toBe(harbor);
     const response = await route.fetch({

@@ -168,12 +168,21 @@ GET `/admin/bet-orders/{id}/judgment` 需显式 bet.view.brand / bet.view.platfo
 | GET | /wallet | 显示、可用、冻结、提现和来源积分 |
 | GET | /wallet/ledger | 分页账本，支持来源/业务类型筛选 |
 | GET | /recharges | 用户充值记录 |
+| GET | /recharges/{id} | 本人当前品牌充值记录详情；不返回后台私有字段 |
 | GET | /withdrawal-availability | 当前账号的入口状态与确认上下文；不是正式流水资格证明 |
 | GET | /withdrawal-qualification | 本人当前流水条件的只读精确快照，不是提交授权 |
 | POST | /withdrawals | 提交申请并重新检查实际资格；未配置依赖时安全拒绝 |
 | GET | /withdrawals | 提现列表 |
 | GET | /withdrawals/{withdrawalId} | 提现详情和状态变化 |
 | GET | /withdrawals/{withdrawalId}/history | 不可变状态历史 |
+
+充值用户查询已实现两条主库 GET，完整路径为 `/api/v1/recharges`、`/api/v1/recharges/{id}`，并有 `/api/v1/b/{brandCode}` 等价入口。只能读取当前已认证品牌会员的记录；没有用户创建、凭证上传、支付、确认或取消接口，不接受正文或客户端 member_id。暂停品牌、冻结会员仍可按现有认证规则查询；禁用品牌/会员、全局禁用、协议未接受以及失效会话不能绕过认证。
+
+列表只接受 state、limit、offset。state 为 pending/confirmed/cancelled，省略表示全部；limit 默认20、范围1–100，offset 默认0、范围0–1000000。未知、重复、空参数、空问号、带符号或前导零的分页数字返回400。详情只接受 UUID 路径编号，不接受查询参数或正文；不存在或其他会员/品牌的编号统一404，不透露归属。
+
+单条记录严格为 `{id,brand_id,member_id,points,state,version,created_at,confirmed_at,ledger_entry_id}`。points/version 是正 int64 十进制字符串，不经浮点数转换；时间为 UTC RFC3339。仅 confirmed 有非空 confirmed_at 和 ledger_entry_id，其余状态显式返回 null。列表严格为 `{brand_id,member_id,snapshot_at,state,items,limit,offset,total_count}`，全部状态的 state 为 null，空 items 为数组，总数为精确非负字符串。创建时间降序、UUID降序排列；页、总数和查询时间来自单条SQL的同一快照。翻页是新的当前状态查询，不承诺跨页冻结历史快照。
+
+用户投影不包含 account_id、proof_reference、remark、created_by/confirmed_by、操作理由、内部审计ID或完整账本。confirmed 表示曾经人工确认并记入平台积分，不是外部付款凭证或当前余额。成功查询与合法404提交脱敏 `finance.recharge.user.view/detail` 审计，其他人的编号不写入资源ID。审计写入等待后再次按实际时钟复核会话，提交后才释放DTO；失效返回401，审计/存储故障返回503且不返回数据。查询不改变订单、余额或积分流水。复用0006表及现有会员/时间索引，无新增迁移。
 
 上述提现用户接口都有 `/b/{brandCode}` 等价路径，只允许当前会话品牌会员读取自己的记录，不接受member_id查询或客户端品牌覆盖。POST正文恰好为 `{points,source_allocation}`；金额为正int64十进制字符串，来源分配为1至4项 `{source,state:"available",points}`，按recharge/winning/gift/commission排序、来源唯一且精确合计。没有隐含的提现来源扣除优先级。必须发送Idempotency-Key、同源Origin以及从GET入口取得的X-Withdrawal-Actor-Context；上下文绑定品牌、全局用户和品牌会员，换账号后不能重放旧确认。
 
