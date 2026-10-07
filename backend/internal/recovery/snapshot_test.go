@@ -61,6 +61,14 @@ func TestStoredValidationSurvivesEmptyRestoreSearchPath(t *testing.T) {
 	if err = tx.QueryRow(ctx, query).Scan(&valid); err != nil || !valid {
 		t.Fatalf("legitimate policy rejected under pg_restore search_path: valid=%v err=%v", valid, err)
 	}
+	query = `SELECT ` + pgx.Identifier{schema, "valid_positive_withdrawal_multiple"}.Sanitize() + `('"0.000001"'::jsonb)`
+	if err = tx.QueryRow(ctx, query).Scan(&valid); err != nil || !valid {
+		t.Fatalf("positive withdrawal N rejected under restore path: valid=%v err=%v", valid, err)
+	}
+	query = `SELECT ` + pgx.Identifier{schema, "valid_positive_withdrawal_multiple"}.Sanitize() + `('"0"'::jsonb)`
+	if err = tx.QueryRow(ctx, query).Scan(&valid); err != nil || valid {
+		t.Fatalf("zero withdrawal N accepted under restore path: valid=%v err=%v", valid, err)
+	}
 	var unpinned int
 	if err = tx.QueryRow(ctx, `SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND NOT EXISTS(SELECT 1 FROM unnest(p.proconfig) c WHERE c LIKE 'search_path=%')`, schema).Scan(&unpinned); err != nil || unpinned != 0 {
 		t.Fatalf("schema functions without pinned path=%d err=%v", unpinned, err)
@@ -82,6 +90,7 @@ func TestStoredValidatorIgnoresCallerTemporaryShadow(t *testing.T) {
 	for _, query := range []string{
 		`CREATE TEMP TABLE recovery_shadow_marker(n integer)`,
 		`CREATE FUNCTION pg_temp.valid_agent_ratio(v text) RETURNS boolean LANGUAGE sql IMMUTABLE AS 'SELECT false'`,
+		`CREATE FUNCTION pg_temp.valid_withdrawal_multiple(v jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE AS 'SELECT false'`,
 		`SET LOCAL search_path = pg_temp, ` + pgx.Identifier{schema}.Sanitize() + `, pg_catalog`,
 	} {
 		if _, err = tx.Exec(ctx, query); err != nil {
@@ -92,5 +101,9 @@ func TestStoredValidatorIgnoresCallerTemporaryShadow(t *testing.T) {
 	query := `SELECT ` + pgx.Identifier{schema, "valid_agent_config"}.Sanitize() + `('{"enabled":false,"max_depth":5,"ratio_cap":"0","mode":"loss","cycle":"monthly"}'::jsonb,true)`
 	if err = tx.QueryRow(ctx, query).Scan(&valid); err != nil || !valid {
 		t.Fatalf("caller shadow changed stored validator: valid=%v err=%v", valid, err)
+	}
+	query = `SELECT ` + pgx.Identifier{schema, "valid_positive_withdrawal_multiple"}.Sanitize() + `('"2.5"'::jsonb)`
+	if err = tx.QueryRow(ctx, query).Scan(&valid); err != nil || !valid {
+		t.Fatalf("caller shadow changed positive withdrawal validator: valid=%v err=%v", valid, err)
 	}
 }

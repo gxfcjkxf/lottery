@@ -375,6 +375,9 @@ func (s Service) Place(ctx context.Context, tx pgx.Tx, brand string, v identity.
 	} else if !errors.Is(e, ErrNotFound) {
 		return o, e
 	}
+	if e = lockWithdrawalSnapshotPolicies(ctx, tx, brand, c.GameID); e != nil {
+		return o, e
+	}
 	if e = checkWindow(ctx, tx, c.Period); e != nil {
 		return o, e
 	}

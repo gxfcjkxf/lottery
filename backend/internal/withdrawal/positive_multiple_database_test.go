@@ -76,6 +76,17 @@ ALTER TABLE withdrawal_policy_revisions DROP CONSTRAINT withdrawal_revision_posi
 	if _, err = s.DB.Exec(ctx, string(body)); err != nil {
 		t.Fatalf("positive N migration must not overwrite or reject existing zero history: %v", err)
 	}
+	// Replaying 0042's CREATE OR REPLACE in this simulated upgrade also clears
+	// function settings. Apply the append-only restore-path repair next, just as
+	// an existing 0042 installation upgrades, rather than leaving a test-only
+	// unpinned validator behind.
+	body, err = migrations.Files.ReadFile("0044_pin_positive_withdrawal_validator.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.DB.Exec(ctx, string(body)); err != nil {
+		t.Fatal(err)
+	}
 	var after string
 	if err = s.DB.QueryRow(ctx, `SELECT jsonb_agg(to_jsonb(r) ORDER BY id)::text FROM withdrawal_policy_revisions r`).Scan(&after); err != nil || before != after {
 		t.Fatalf("migration modified historical policies: err=%v", err)

@@ -161,7 +161,7 @@ GET `/admin/bet-orders/{id}/judgment` 需显式 bet.view.brand / bet.view.platfo
 
 ### 积分、充值和提现（业务接口）
 
-后台提现规则、资金状态机、用户申请/查询及运营审核接口已经注册，用户与管理页面已接入。正式流水资格算法仍待OPEN-109确认；平台命令默认不配置资格器，申请返回409 WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED且不占用积分。启用政策不能绕过此门禁，请求不能传入“合格”布尔值或资格证据。第一期只记录内部积分处理，不接外部支付。
+后台提现规则、资金状态机、用户申请/查询及运营审核接口已经注册，用户与管理页面已接入。OPEN-109口径已确认，投注时N快照及真实流水内部资格器已实现；平台命令仍默认不配置资格器，申请返回409 WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED且不占用积分。正式入口接入、资格预览及双端实际申请验收待后续。启用政策不能绕过此门禁，请求不能传入“合格”布尔值、N快照或资格证据。第一期只记录内部积分处理，不接外部支付。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -198,7 +198,7 @@ PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提�
 
 历史 limit 1–100（默认 50）、offset 0–1000000（默认 0），返回 `{items:PolicyRevision[],limit,offset}`，范围内按 version 降序。`PolicyRevision={id,brand_id,game_id,version,config,changed_by,reason,created_at}`；品牌级 game_id=""，初始系统 changed_by=""，后续为后台账号。配置、不可变历史及审计原子提交，不变更钱包/账本/订单；GET 记录后台读取审计。
 
-错误：400 WITHDRAWAL_POLICY_INPUT_INVALID / REQUEST_INVALID；403 PERMISSION_DENIED；404 WITHDRAWAL_POLICY_NOT_FOUND；409 WITHDRAWAL_POLICY_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT；401 AUTH_SESSION_REVOKED；503 SERVICE_UNAVAILABLE。门槛基数使用申请提交、占用前当前品牌全部可用充值＋赠送余额；内部流程已在锁定钱包后计算并保存服务端快照，不接受客户端提供基数，也不在公开订单DTO中新增该内部证据。流水口径已确认：所有来源的有效投注按各笔投注时 N 快照折算后精确累加，N 必须大于 0，配置修改只影响新投注。申请与内部积分处理接口已接入，但正式流水查询和资格器仍未接入，不提供外部出款；不得由客户端提交达标额度或替代服务端判断。
+错误：400 WITHDRAWAL_POLICY_INPUT_INVALID / REQUEST_INVALID；403 PERMISSION_DENIED；404 WITHDRAWAL_POLICY_NOT_FOUND；409 WITHDRAWAL_POLICY_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT；401 AUTH_SESSION_REVOKED；503 SERVICE_UNAVAILABLE。门槛基数使用申请提交、占用前当前品牌全部可用充值＋赠送余额；内部流程已在锁定钱包后计算并保存服务端快照，不接受客户端提供基数，也不在公开订单DTO中新增该内部证据。所有来源的有效投注按各笔投注时N快照折算后精确累加，N必须大于0，修改只影响新投注；私有N快照、最终流水查询及内部资格器已实现，平台正式入口仍未配置该资格器。不得由客户端提交达标额度或替代服务端判断；没有外部出款。
 
 ## 4. 管理端接口
 

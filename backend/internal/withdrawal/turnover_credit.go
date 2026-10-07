@@ -35,29 +35,33 @@ func calculateTurnoverCredit(base points.Amount, contributions []TurnoverContrib
 		return TurnoverCreditResult{}, ErrTurnoverCreditInvalid
 	}
 
-	// Validate and parse every input before calculating, so a met prefix cannot
-	// hide a later invalid contribution.
-	multiples := make([]*big.Rat, len(contributions))
-	for i, contribution := range contributions {
-		if contribution.ValidPoints < 0 || !ValidMultiple(contribution.Multiple) {
-			return TurnoverCreditResult{}, ErrTurnoverCreditInvalid
-		}
-		multiple, ok := new(big.Rat).SetString(contribution.Multiple)
-		if !ok || multiple.Sign() <= 0 {
-			return TurnoverCreditResult{}, ErrTurnoverCreditInvalid
-		}
-		multiples[i] = multiple
-	}
-
 	credit := new(big.Rat)
-	for i, contribution := range contributions {
-		validPoints := new(big.Rat).SetInt64(int64(contribution.ValidPoints))
-		credit.Add(credit, new(big.Rat).Quo(validPoints, multiples[i]))
+	for _, contribution := range contributions {
+		// Never stop at a met prefix: every remaining term must still validate.
+		if err := addTurnoverCredit(credit, contribution); err != nil {
+			return TurnoverCreditResult{}, err
+		}
 	}
+	return turnoverCreditResult(base, credit), nil
+}
+
+func addTurnoverCredit(credit *big.Rat, contribution TurnoverContribution) error {
+	if contribution.ValidPoints < 0 || !ValidMultiple(contribution.Multiple) {
+		return ErrTurnoverCreditInvalid
+	}
+	multiple, ok := new(big.Rat).SetString(contribution.Multiple)
+	if !ok || multiple.Sign() <= 0 {
+		return ErrTurnoverCreditInvalid
+	}
+	credit.Add(credit, new(big.Rat).Quo(new(big.Rat).SetInt64(int64(contribution.ValidPoints)), multiple))
+	return nil
+}
+
+func turnoverCreditResult(base points.Amount, credit *big.Rat) TurnoverCreditResult {
 	threshold := new(big.Rat).SetInt64(int64(base))
 	return TurnoverCreditResult{
 		Numerator:      credit.Num().String(),
 		Denominator:    credit.Denom().String(),
 		MeetsThreshold: credit.Cmp(threshold) >= 0,
-	}, nil
+	}
 }
