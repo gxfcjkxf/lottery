@@ -179,6 +179,22 @@ func (s Service) SavePolicy(ctx context.Context, tx pgx.Tx, brand string, a acce
 	if exceeds {
 		return p, ErrLimit
 	}
+	if in.Config.Mode != p.Config.Mode {
+		var mismatched bool
+		e = tx.QueryRow(ctx, `SELECT EXISTS(
+ SELECT 1 FROM agent_nodes child JOIN agent_nodes parent
+  ON parent.brand_id=child.brand_id AND parent.id=child.parent_id
+ WHERE child.brand_id=$1
+  AND agent_effective_mode_for_path(child.brand_id,child.path,NULL,NULL,$2)
+      IS DISTINCT FROM agent_effective_mode_for_path(parent.brand_id,parent.path,NULL,NULL,$2)
+ )`, brand, in.Config.Mode).Scan(&mismatched)
+		if e != nil {
+			return p, e
+		}
+		if mismatched {
+			return p, ErrLimit
+		}
+	}
 	old, _ := json.Marshal(p.Config)
 	next, _ := json.Marshal(in.Config)
 	if bytesEqual(old, next) {
@@ -244,6 +260,23 @@ func (s Service) Create(ctx context.Context, tx pgx.Tx, brand string, a access.A
 		if !ok || !par.Config.CanCreateChildren {
 			return Node{}, ErrState
 		}
+		if in.Config.Mode != nil && *in.Config.Mode != par.EffectiveMode {
+			return Node{}, ErrInvalid
+		}
+		var mismatched bool
+		e = tx.QueryRow(ctx, `SELECT EXISTS(
+ SELECT 1 FROM agent_nodes child JOIN agent_nodes parent
+  ON parent.brand_id=child.brand_id AND parent.id=child.parent_id
+ WHERE child.brand_id=$1 AND child.id=ANY($2::uuid[])
+  AND agent_effective_mode_for_path(child.brand_id,child.path,NULL,NULL,$3)
+      IS DISTINCT FROM agent_effective_mode_for_path(parent.brand_id,parent.path,NULL,NULL,$3)
+ )`, brand, par.Path, p.Config.Mode).Scan(&mismatched)
+		if e != nil {
+			return Node{}, e
+		}
+		if mismatched {
+			return Node{}, ErrLimit
+		}
 		depth = par.Depth + 1
 		path = append(append([]string{}, par.Path...), id)
 		ceiling, _ = RatioMicros(par.Config.Ratio)
@@ -300,6 +333,25 @@ func (s Service) update(ctx context.Context, tx pgx.Tx, brand, id string, in Upd
 			return n, e
 		}
 		ceiling, _ = RatioMicros(par.Config.Ratio)
+		if in.Config.Mode != nil && *in.Config.Mode != par.EffectiveMode {
+			return n, ErrInvalid
+		}
+	}
+	var mismatchedModes bool
+	e = tx.QueryRow(ctx, `SELECT EXISTS(
+ SELECT 1 FROM agent_nodes child
+ LEFT JOIN agent_nodes parent ON parent.brand_id=child.brand_id AND parent.id=child.parent_id
+ WHERE child.brand_id=$1
+  AND (child.path @> ARRAY[$2::uuid] OR child.id=ANY($5::uuid[]))
+  AND child.parent_id IS NOT NULL
+  AND agent_effective_mode_for_path(child.brand_id,child.path,$2,$3::jsonb,$4)
+      IS DISTINCT FROM agent_effective_mode_for_path(parent.brand_id,parent.path,$2,$3::jsonb,$4)
+	 )`, brand, id, mustJSON(in.Config), p.Config.Mode, n.Path).Scan(&mismatchedModes)
+	if e != nil {
+		return n, e
+	}
+	if mismatchedModes {
+		return n, ErrLimit
 	}
 	r, _ := RatioMicros(in.Config.Ratio)
 	var exceeds bool
@@ -326,6 +378,11 @@ func (s Service) update(ctx context.Context, tx pgx.Tx, brand, id string, in Upd
 	out, e := node(ctx, tx, brand, id)
 	out.AuditLogID = log
 	return out, e
+}
+
+func mustJSON(v any) []byte {
+	b, _ := json.Marshal(v)
+	return b
 }
 func (s Service) Update(ctx context.Context, tx pgx.Tx, brand string, a access.Account, id string, in UpdateInput, m points.Metadata) (Node, error) {
 	if tx == nil || !idsValid(brand, a.ID, id) || in.Version < 1 || in.PolicyVersion < 1 || !in.Config.Valid() || !validReason(in.Reason) {

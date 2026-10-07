@@ -1,8 +1,17 @@
 import type {
+  AgentMode,
   CreateAgentBody,
   SaveAgentPolicyBody,
   UpdateAgentBody,
 } from "./agents-api";
+
+export function allowedChildModes(parentEffectiveMode: AgentMode | null | undefined): AgentMode[] {
+  return parentEffectiveMode ? [parentEffectiveMode] : [];
+}
+
+export function parentModeVerified(parentId: string | null, ready: boolean): boolean {
+  return parentId === null || ready;
+}
 
 export type AgentWriteBody = SaveAgentPolicyBody | CreateAgentBody | UpdateAgentBody;
 export type AgentWriteOperation = "policy" | "create" | "update";

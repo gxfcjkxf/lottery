@@ -13,6 +13,7 @@ test("real agent policy tree and direct-child configuration retain audited idemp
   const adminCall=async(path:string,method:"GET"|"POST"|"PUT",body?:unknown,status=200)=>{
     const r=await page.request.fetch(`${admin}${path}`,{method,headers:{...headers,...(method==="GET"?{}:{"Idempotency-Key":uid()})},...(body===undefined?{}:{data:body})});expect(r.status(),await r.text()).toBe(status);return(await r.json()).data;
   };
+  const optionValues=async(select:ReturnType<typeof page.getByLabel>)=>select.locator("option").evaluateAll(options=>options.filter(option=>!(option as HTMLOptionElement).disabled).map(option=>(option as HTMLOptionElement).value));
   const register=await page.request.post(`${pub}/auth/register`,{headers:{Origin:origin,"Idempotency-Key":uid()},data:{username:`agency_${uid().replaceAll("-","").slice(0,12)}`,password:"agent-test-only-password-2026",privacy_policy_version:"dev-1",service_terms_version:"dev-1"}});
   expect(register.status(),await register.text()).toBe(201);const user=(await register.json()).data,member=user.member.id;
   const before=await adminCall(`/wallets/${member}`,"GET");const beforeLedger=await adminCall(`/wallets/${member}/ledger`,"GET");
@@ -21,6 +22,7 @@ test("real agent policy tree and direct-child configuration retain audited idemp
   if(info.project.name==="mobile"){await page.locator(".mobile-nav button").nth(4).click();await page.locator(".mobile-more-menu").getByRole("button",{name:/代理树/}).click()}
   else await page.locator(".side-nav").getByRole("button",{name:/代理树/}).click();
   const panel=page.locator(".agent-management");await expect(panel.getByRole("heading",{name:"代理管理",exact:true})).toBeVisible();
+  await panel.getByRole("button",{name:"新建代理",exact:true}).click();expect(await optionValues(panel.getByLabel("代理模式",{exact:true}))).toEqual(["","loss","turnover"]);
   await panel.getByLabel("代理管理启用",{exact:true}).check();await panel.getByLabel("代理最大层级",{exact:true}).fill("3");
   const cycle=await panel.getByLabel("佣金周期",{exact:true}).inputValue()==="weekly"?"monthly":"weekly";
   await panel.getByLabel("品牌比例上限",{exact:true}).fill("0.1");await panel.getByLabel("品牌佣金模式",{exact:true}).selectOption("loss");await panel.getByLabel("佣金周期",{exact:true}).selectOption(cycle);
@@ -35,12 +37,15 @@ test("real agent policy tree and direct-child configuration retain audited idemp
   const childMember=await adminCall("/users","POST",{username:`agency_child_${uid().replaceAll("-","").slice(0,12)}`,password:"agent-child-test-password-2026",reason:"isolated direct child fixture"},201);
   const child=await adminCall("/agents","POST",{policy_version:policy.version,member_id:childMember.member_id,parent_id:root.id,parent_version:root.version,config:{ratio:"0.04",mode:null,status:"active",can_create_children:false},reason:"real direct child fixture"},201);
   await panel.getByRole("button",{name:"查询",exact:true}).first().click();await expect(panel.locator(".am-node").filter({hasText:member})).toBeVisible();
+  await panel.locator(".am-node").filter({hasText:member}).getByRole("button",{name:"详情",exact:true}).click();await expect(panel.getByRole("heading",{name:"代理详情与配置",exact:true})).toBeVisible();expect(await optionValues(panel.getByLabel("代理模式",{exact:true}))).toEqual(["","loss","turnover"]);await panel.getByRole("button",{name:"关闭详情",exact:true}).click();
   await panel.locator(".am-node").filter({hasText:member}).getByRole("button",{name:"下级",exact:true}).click();await expect(panel.locator(".am-node").filter({hasText:child.member_id})).toBeVisible();
+  await panel.locator(".am-node").filter({hasText:child.member_id}).getByRole("button",{name:"详情",exact:true}).click();await expect(panel.getByRole("heading",{name:"代理详情与配置",exact:true})).toBeVisible();await expect.poll(()=>optionValues(panel.getByLabel("代理模式",{exact:true}))).toEqual(["","loss"]);await panel.getByRole("button",{name:"关闭详情",exact:true}).click();
+  await panel.getByRole("button",{name:"新建代理",exact:true}).click();expect(await optionValues(panel.getByLabel("代理模式",{exact:true}))).toEqual(["","loss"]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await panel.screenshot({path:info.outputPath("s6-e-admin-agents.png")});
   const userCookies=(await context.cookies(pub)).filter(c=>c.name===`lottery_user_${brand.replaceAll("-","")}`);expect(userCookies).toHaveLength(1);await context.addCookies(userCookies.map(c=>({...c,domain:"harbor.localhost"})));
   const userPage=await context.newPage();userPage.on("pageerror",e=>errors.push(e.message));
   await userPage.route("http://harbor.localhost:5173/api/**",async route=>{const r=await route.fetch({url:route.request().url().replace("harbor.localhost","localhost"),headers:{...(await route.request().allHeaders()),host:"harbor.localhost:5173"}});await route.fulfill({response:r})});
-  await userPage.goto("http://harbor.localhost:5173/agent");const agent=userPage.locator(".agent-panel");await expect(agent).toContainText(child.member_id);
+  await userPage.goto("http://harbor.localhost:5173/agent");const agent=userPage.locator(".agent-panel");await expect(agent).toContainText(child.member_id);expect(await optionValues(agent.getByLabel("Mode",{exact:true}))).toEqual(["Inherit","loss"]);
   await agent.getByLabel("Ratio fraction",{exact:true}).fill("0.03");await agent.getByLabel("Review reason",{exact:true}).fill("User adjusts only the direct child ratio");
   const childWrites:Array<{body:string|null,key:string|undefined}>=[];
   await userPage.route(`**/agent/children/${child.id}/config`,async route=>{childWrites.push({body:route.request().postData(),key:route.request().headers()["idempotency-key"]});const r=await route.fetch({url:route.request().url().replace("harbor.localhost","localhost"),headers:{...(await route.request().allHeaders()),host:"harbor.localhost:5173"}});expect(r.status(),await r.text()).toBe(200);if(childWrites.length===1)await route.abort("failed");else await route.fulfill({response:r})});

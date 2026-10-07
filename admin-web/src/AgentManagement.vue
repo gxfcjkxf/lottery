@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import { agentsPermissions, createAgentsApi, type AgentNode, type AgentPolicy, type CreateAgentBody, type NodeConfig, type PolicyConfig, type Revision, type SaveAgentPolicyBody, type UpdateAgentBody } from "./agents-api";
-import { classifyAgentFailure, clearAllPendingAgentWrites, clearPendingAgentWrite, freezeAgentBody, getPendingAgentWrite, setPendingAgentWrite, type AgentWriteOperation, type AgentWriteBody, type PendingAgentWrite } from "./agents-state";
+import { allowedChildModes, classifyAgentFailure, clearAllPendingAgentWrites, clearPendingAgentWrite, freezeAgentBody, getPendingAgentWrite, parentModeVerified, setPendingAgentWrite, type AgentWriteOperation, type AgentWriteBody, type PendingAgentWrite } from "./agents-state";
 
 type Mode = "loss" | "turnover";
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
@@ -32,6 +32,8 @@ const offset = ref(0);
 const parentId = ref<string | null>(null);
 const parentNode = ref<AgentNode | null>(null);
 const selected = ref<AgentNode | null>(null);
+const selectedParentMode = ref<Mode | null>(null);
+const selectedParentReady = ref(false);
 const form = ref({ member_id: "", ratio: "0", mode: "" as "" | Mode, status: "active" as "active" | "disabled", can_create_children: false, reason: "" });
 const history = ref<Revision[]>([]);
 const policyHistory = ref<Revision[]>([]);
@@ -53,6 +55,8 @@ const pageSize = 20;
 const ratioValid = (s: string) => /^(?:0|1|0\.(?=.{1,6}$)0*[1-9](?:[0-9]*[1-9])?)$/.test(s);
 const policyRatioValid = computed(() => ratioValid(policyDraft.value.ratio_cap));
 const nodeRatioValid = computed(() => ratioValid(form.value.ratio));
+const nodeParentMode = computed<Mode | null | undefined>(() => selected.value ? (selected.value.parent_id ? (selectedParentReady.value ? selectedParentMode.value ?? undefined : undefined) : policy.value?.config.mode) : (parentNode.value ? parentNode.value.effective_mode : parentId.value ? undefined : null));
+const allowedModes = computed(() => selected.value?.parent_id === null || (!selected.value && !parentId.value) ? ["loss", "turnover"] as Mode[] : allowedChildModes(nodeParentMode.value));
 const sameScope = (g: number, brand: string, account: string) => g === generation && brand === props.brandId && account === props.account.id;
 function currentWrite(ticket: number, accountId: string, brandId: string, permissions: string, operation: AgentWriteOperation) {
   return !disposed && ticket === writeGeneration && props.account.id === accountId && props.brandId === brandId &&
@@ -92,11 +96,26 @@ async function selectNode(n: AgentNode) {
   try {
     const detail = await api.node(b, n.id);
     if (!sameScope(g, b, a)) return;
-    selected.value = detail; form.value = { member_id: detail.member_id, ratio: detail.config.ratio, mode: detail.config.mode ?? "", status: detail.config.status, can_create_children: detail.config.can_create_children, reason: "" };
+    if (detail.id !== n.id || detail.brand_id !== b) throw new Error("代理详情响应与当前代理或品牌不匹配。");
+    selected.value = detail;
+    form.value = { member_id: detail.member_id, ratio: detail.config.ratio, mode: detail.config.mode ?? "", status: detail.config.status, can_create_children: detail.config.can_create_children, reason: "" };
+    selectedParentReady.value = !detail.parent_id; selectedParentMode.value = null;
     history.value = []; showNodeHistory.value = false; restoreIntent();
+    if (detail.parent_id) {
+      try {
+        const parent = await api.node(b, detail.parent_id);
+        if (!sameScope(g, b, a) || selected.value?.id !== detail.id) return;
+        if (parent.brand_id !== b || parent.id !== detail.parent_id) throw new Error("父级代理响应与当前品牌或关系不匹配。");
+        selectedParentMode.value = parent.effective_mode; selectedParentReady.value = true;
+      } catch (cause) {
+        if (!sameScope(g, b, a) || selected.value?.id !== detail.id) return;
+        selectedParentMode.value = null; selectedParentReady.value = false;
+        handleError(cause);
+      }
+    }
   } catch (cause) { if (sameScope(g, b, a)) handleError(cause); }
 }
-function closeDetail() { selected.value = null; form.value = { member_id: "", ratio: "0", mode: "", status: "active", can_create_children: false, reason: "" }; restoreIntent(); }
+function closeDetail() { selected.value = null; selectedParentMode.value = null; selectedParentReady.value = false; form.value = { member_id: "", ratio: "0", mode: "", status: "active", can_create_children: false, reason: "" }; restoreIntent(); }
 function startCreate() { closeDetail(); }
 async function openChildren(n: AgentNode) { parentId.value = n.id; offset.value = 0; closeDetail(); await loadTree(); }
 async function goBack() {
@@ -143,6 +162,9 @@ function preparePolicy() {
 }
 function prepareNode() {
   if (!policy.value || !canWriteAgents.value || !nodeRatioValid.value || !form.value.reason.trim()) return;
+  const parentIdForWrite = selected.value?.parent_id ?? parentNode.value?.id ?? null;
+  if (!parentModeVerified(parentIdForWrite, selected.value ? selectedParentReady.value : Boolean(parentNode.value) || !parentId.value)) { error.value = "父级生效模式尚未验证，当前不能创建或提交此代理变更。请重新读取父级或代理详情。"; return; }
+  if (form.value.mode && !allowedModes.value.includes(form.value.mode)) { error.value = "代理模式必须沿用父级生效模式或与其保持一致；请先读取父级模式。"; return; }
   const config: NodeConfig = { ratio: form.value.ratio, mode: form.value.mode || null, status: form.value.status, can_create_children: form.value.can_create_children };
   if (selected.value) {
     const n = selected.value;
@@ -244,16 +266,17 @@ watch(() => [props.brandId, props.account.id, permissionSignature.value] as cons
           <article v-for="node in nodes" :key="node.id" class="am-node"><div class="am-node-main"><strong>{{ node.member_id }}</strong><span>代理 ID <code>{{ node.id }}</code></span><span>层级 {{ node.depth }} · 比例 {{ node.config.ratio }} · {{ node.config.status === "active" ? "启用" : "停用" }}</span><small>有效模式：{{ node.effective_mode === "loss" ? "输赢" : "流水" }} · 路径 {{ node.path.join(" › ") }}</small></div><div class="am-actions"><button type="button" class="am-secondary" @click="selectNode(node)">详情</button><button type="button" class="am-secondary" @click="openChildren(node)">下级</button></div></article>
           <p v-if="!loading && nodes.length === 0" class="am-note">此范围暂无代理。</p></div><div class="am-pager"><button type="button" class="am-secondary" :disabled="loading || offset === 0" @click="changePage(-1)">上一页</button><span>{{ total === "0" ? 0 : offset + 1 }}–{{ Math.min(offset + pageSize, Number(total)) }} / {{ total }}</span><button type="button" class="am-secondary" :disabled="loading || offset + pageSize >= Number(total)" @click="changePage(1)">下一页</button></div>
       </section><p v-else class="am-note">当前账号没有代理树查看权限。</p>
-      <section v-if="canWriteAgents && policy && canViewAgents && !selected" class="am-card"><h3>{{ parentId ? "创建直属代理" : "创建根代理" }}</h3><p v-if="parentNode" class="am-note">父级 {{ parentNode.id }} · 版本 {{ parentNode.version }} · 层级 {{ parentNode.depth }} · 上限由服务端校验。</p><form class="am-form" @submit.prevent="prepareNode">
+      <section v-if="canWriteAgents && policy && canViewAgents && !selected" class="am-card"><h3>{{ parentId ? "创建直属代理" : "创建根代理" }}</h3><p v-if="parentNode" class="am-note">父级 {{ parentNode.id }} · 版本 {{ parentNode.version }} · 层级 {{ parentNode.depth }} · 上限由服务端校验。新代理须与父级生效模式一致。</p><p v-else-if="parentId" class="am-note">父级模式尚未读取；目前只能选择继承。</p><form class="am-form" @submit.prevent="prepareNode">
         <label>代理会员 UUID<input v-model.trim="form.member_id" autocomplete="off" required aria-label="代理会员 UUID"></label><label>代理比例<input v-model.trim="form.ratio" inputmode="decimal" autocomplete="off" required aria-label="代理比例"><small>原始分数；服务器校验父级和品牌上限。</small></label>
-        <label>代理模式<select v-model="form.mode" aria-label="代理模式"><option value="">继承</option><option value="loss">输赢</option><option value="turnover">流水</option></select></label><label>代理状态<select v-model="form.status" aria-label="代理状态"><option value="active">启用</option><option value="disabled">停用</option></select></label><label class="am-check"><input v-model="form.can_create_children" type="checkbox" aria-label="允许发展下级">允许发展下级</label><label>代理变更原因<textarea v-model.trim="form.reason" rows="3" maxlength="500" required aria-label="代理变更原因"></textarea></label>
-        <p v-if="!nodeRatioValid" class="am-field-error">请输入规范比例：0、1，或不带末尾零的最多 6 位小数。</p><button class="am-primary" type="submit" :disabled="writing || !nodeRatioValid || !form.member_id.trim() || !form.reason.trim()">核对并创建</button></form></section>
+        <label>代理模式<select v-model="form.mode" aria-label="代理模式"><option value="">继承</option><option v-for="mode in allowedModes" :key="mode" :value="mode">{{ mode === "loss" ? "输赢" : "流水" }}</option></select></label><label>代理状态<select v-model="form.status" aria-label="代理状态"><option value="active">启用</option><option value="disabled">停用</option></select></label><label class="am-check"><input v-model="form.can_create_children" type="checkbox" aria-label="允许发展下级">允许发展下级</label><label>代理变更原因<textarea v-model.trim="form.reason" rows="3" maxlength="500" required aria-label="代理变更原因"></textarea></label>
+        <p v-if="!nodeRatioValid" class="am-field-error">请输入规范比例：0、1，或不带末尾零的最多 6 位小数。</p><button class="am-primary" type="submit" :disabled="writing || !nodeRatioValid || !form.member_id.trim() || !form.reason.trim() || (Boolean(parentId) && !parentNode)">核对并创建</button></form></section>
       <section v-if="canViewAgents && selected" class="am-card"><div class="am-card-head"><div><h3>代理详情与配置</h3><p><code>{{ selected.id }}</code> · 成员 {{ selected.member_id }} · 版本 {{ selected.version }}</p></div><button type="button" class="am-secondary" @click="closeDetail">关闭详情</button></div>
         <p class="am-note">父级关系不可更改。当前父级：{{ selected.parent_id ?? "根代理" }}。有效模式：{{ selected.effective_mode === "loss" ? "输赢" : "流水" }}{{ selected.mode_source_agent_id ? " · 来源 " + selected.mode_source_agent_id : " · 品牌默认" }}。</p>
+        <p v-if="selected.parent_id && !selectedParentReady" class="am-message is-error" role="status">父级生效模式尚未验证，暂不能提交新的代理变更；请重新读取代理详情。</p>
         <dl v-if="!canWriteAgents" class="am-facts"><div><dt>代理比例</dt><dd>{{ selected.config.ratio }}</dd></div><div><dt>代理模式</dt><dd>{{ selected.config.mode ?? "继承" }}</dd></div><div><dt>代理状态</dt><dd>{{ selected.config.status }}</dd></div><div><dt>允许发展下级</dt><dd>{{ selected.config.can_create_children ? "是" : "否" }}</dd></div><div><dt>层级</dt><dd>{{ selected.depth }}</dd></div></dl>
         <form v-if="canWriteAgents" class="am-form" @submit.prevent="prepareNode">
-          <label>代理会员 UUID<input :value="form.member_id" readonly aria-label="代理会员 UUID"></label><label>代理比例<input v-model.trim="form.ratio" inputmode="decimal" autocomplete="off" required aria-label="代理比例"></label><label>代理模式<select v-model="form.mode" aria-label="代理模式"><option value="">继承</option><option value="loss">输赢</option><option value="turnover">流水</option></select></label><label>代理状态<select v-model="form.status" aria-label="代理状态"><option value="active">启用</option><option value="disabled">停用</option></select></label><label class="am-check"><input v-model="form.can_create_children" type="checkbox" aria-label="允许发展下级">允许发展下级</label><label>代理变更原因<textarea v-model.trim="form.reason" rows="3" maxlength="500" required aria-label="代理变更原因"></textarea></label>
-          <p v-if="!nodeRatioValid" class="am-field-error">请输入规范比例：0、1，或不带末尾零的最多 6 位小数。</p><div class="am-actions"><button class="am-primary" type="submit" :disabled="writing || !nodeRatioValid || !form.reason.trim()">核对并保存</button><button type="button" class="am-secondary" @click="loadNodeHistory">查看变更历史</button></div></form>
+          <label>代理会员 UUID<input :value="form.member_id" readonly aria-label="代理会员 UUID"></label><label>代理比例<input v-model.trim="form.ratio" inputmode="decimal" autocomplete="off" required aria-label="代理比例"></label><label>代理模式<select v-model="form.mode" aria-label="代理模式"><option value="">继承</option><option v-for="mode in allowedModes" :key="mode" :value="mode">{{ mode === "loss" ? "输赢" : "流水" }}</option><option v-if="form.mode && !allowedModes.includes(form.mode)" :value="form.mode" disabled>历史模式（仅查看）：{{ form.mode === "loss" ? "输赢" : "流水" }}</option></select><small>下级必须与父级生效模式一致；沿用即继承该模式。</small></label><label>代理状态<select v-model="form.status" aria-label="代理状态"><option value="active">启用</option><option value="disabled">停用</option></select></label><label class="am-check"><input v-model="form.can_create_children" type="checkbox" aria-label="允许发展下级">允许发展下级</label><label>代理变更原因<textarea v-model.trim="form.reason" rows="3" maxlength="500" required aria-label="代理变更原因"></textarea></label>
+          <p v-if="!nodeRatioValid" class="am-field-error">请输入规范比例：0、1，或不带末尾零的最多 6 位小数。</p><div class="am-actions"><button class="am-primary" type="submit" :disabled="writing || !nodeRatioValid || !form.reason.trim() || (Boolean(selected.parent_id) && !selectedParentReady)">核对并保存</button><button type="button" class="am-secondary" @click="loadNodeHistory">查看变更历史</button></div></form>
         <button v-if="!canWriteAgents" type="button" class="am-secondary" @click="loadNodeHistory">查看变更历史</button>
         <div v-if="showNodeHistory" class="am-history"><h4>代理变更历史</h4><article v-for="item in history" :key="item.version + ':' + item.created_at" class="am-revision"><strong>版本 {{ item.version }} · {{ item.actor_type }}</strong><span>{{ item.created_at }} · {{ item.actor_id ?? "系统" }}</span><code>{{ configText(item.config) }}</code><span>原因：{{ item.reason }}</span><span v-if="item.audit_log_id">审计 {{ item.audit_log_id }}</span></article></div>
       </section>

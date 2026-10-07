@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { AgentNode } from "./agent-api";
 import {
+  allowedChildModes,
   cacheAgentUpdateReceipt,
   clearAgentUpdateScope,
   clearAllAgentUpdates,
@@ -22,6 +23,12 @@ const intent = (overrides: Partial<Parameters<typeof rememberAgentUpdate>[0]> = 
 afterEach(clearAllAgentUpdates);
 
 describe("in-memory agent update state", () => {
+  it("allows a child only inheritance or its parent’s effective mode", () => {
+    expect(allowedChildModes("loss")).toEqual(["loss"]);
+    expect(allowedChildModes("turnover")).toEqual(["turnover"]);
+    expect(allowedChildModes(null)).toEqual([]);
+    expect(allowedChildModes(undefined)).toEqual([]);
+  });
   it("retains the first exact body and key for an identity across remounts", () => {
     const first = rememberAgentUpdate(intent());
     const remounted = getPendingAgentUpdate(first.brandId, first.memberId, first.childId);

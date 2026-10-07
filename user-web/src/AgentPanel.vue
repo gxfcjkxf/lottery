@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { Language } from "../../shared/src/brand";
 import { createAuthClient } from "../../shared/src/auth";
 import { AgentApiError, createAgentApi, type AgentChildUpdate, type AgentMode, type AgentNode, type AgentNodePage } from "./agent-api";
-import { cacheAgentUpdateReceipt, clearAgentUpdateReceipt, clearAgentUpdateScope, clearPendingAgentUpdate, getPendingAgentUpdate, getPendingAgentUpdatesForScope, rememberAgentUpdate, type AgentUpdateIntent } from "./agent-state";
+import { allowedChildModes, cacheAgentUpdateReceipt, clearAgentUpdateReceipt, clearAgentUpdateScope, clearPendingAgentUpdate, getPendingAgentUpdate, getPendingAgentUpdatesForScope, rememberAgentUpdate, type AgentMode as ChildMode, type AgentUpdateIntent } from "./agent-state";
 
 const props = defineProps<{ brandCode?: string; locale: Language }>();
 const emit = defineEmits<{ "auth-expired": [] }>();
@@ -44,6 +44,8 @@ function setDraft(child: AgentNode) {
 }
 function modeLabel(mode: AgentMode): string { return mode === "loss" ? text("Loss", "输赢（仅有效输钱）") : text("Turnover", "流水"); }
 function modeDisplay(mode: AgentMode | null): string { return mode === null ? text("Use inherited mode", "沿用上级模式") : modeLabel(mode); }
+function allowedModes(child: AgentNode): ChildMode[] { return allowedChildModes(self.value?.effective_mode); }
+function modeAllowed(child: AgentNode, mode: AgentMode | null): boolean { return mode === null || allowedModes(child).includes(mode); }
 
 function clearView() {
   self.value = null;
@@ -146,8 +148,8 @@ async function load(options: { preserveError?: boolean } = {}) {
 function review(child: AgentNode) {
   if (loading.value || writing.value || pendingFor(child)) return;
   const draft = setDraft(child);
-  if (!draft.reason.trim() || draft.ratio !== child.config.ratio && !/^(?:0|1|0\.[0-9]{0,5}[1-9])$/.test(draft.ratio) || (draft.mode !== null && draft.mode !== "loss" && draft.mode !== "turnover")) {
-    error.value = text("Enter a canonical ratio fraction and a review reason.", "请输入规范比例小数和审核原因。");
+  if (!draft.reason.trim() || draft.ratio !== child.config.ratio && !/^(?:0|1|0\.[0-9]{0,5}[1-9])$/.test(draft.ratio) || !modeAllowed(child, draft.mode)) {
+    error.value = text("Choose inherited mode or your effective mode, and enter a canonical ratio fraction and review reason.", "模式只能沿用本级生效模式或选择与本级相同的显式模式，并请输入规范比例小数和审核原因。");
     return;
   }
   confirmed.value = { childId: child.id, ratio: draft.ratio, mode: draft.mode, reason: draft.reason };
@@ -199,7 +201,7 @@ function confirmUpdate() {
   const selection = confirmed.value;
   const me = self.value;
   const child = children.value.find((item) => item.id === selection?.childId);
-  if (!selection || !me || !child || writing.value || loading.value || pendingFor(child)) return;
+  if (!selection || !me || !child || writing.value || loading.value || pendingFor(child) || !modeAllowed(child, selection.mode)) return;
   const body: AgentChildUpdate = {
     version: child.version,
     policy_version: child.policy_version,
@@ -305,7 +307,7 @@ onBeforeUnmount(() => {
         <template v-else>
           <div class="agent-editor">
             <label class="agent-field"><span>{{ text("Ratio fraction", "比例小数") }}</span><input v-model="setDraft(child).ratio" :aria-label="text('Ratio fraction', '比例小数')" inputmode="decimal" autocomplete="off" placeholder="0.1" :disabled="loading || writing || child.config.status !== 'active'"><small>{{ text("For example, 0.1 means 10%. Use 0, 1, or up to six decimals without trailing zeros.", "例如 0.1 表示 10%。可填 0、1，或最多六位且末尾不为零的小数。") }}</small></label>
-            <label class="agent-field"><span>{{ text("Mode", "模式") }}</span><select v-model="setDraft(child).mode" :aria-label="text('Mode', '模式')" :disabled="loading || writing || child.config.status !== 'active'"><option :value="null">{{ text("Inherit", "沿用上级") }}</option><option value="loss">{{ text("Loss", "输赢（仅有效输钱）") }}</option><option value="turnover">{{ text("Turnover", "流水") }}</option></select></label>
+            <label class="agent-field"><span>{{ text("Mode", "模式") }}</span><select v-model="setDraft(child).mode" :aria-label="text('Mode', '模式')" :disabled="loading || writing || child.config.status !== 'active'"><option :value="null">{{ text("Inherit", "沿用上级") }}</option><option v-for="mode in allowedModes(child)" :key="mode" :value="mode">{{ modeLabel(mode) }}</option><option v-if="setDraft(child).mode !== null && !modeAllowed(child, setDraft(child).mode)" :value="setDraft(child).mode" disabled>{{ text("Legacy mode (read only)", "历史模式（仅查看）") }} · {{ modeLabel(setDraft(child).mode!) }}</option></select><small>{{ text("A child must use this agent’s effective mode; inheritance follows it.", "下级必须与本级生效模式一致；选择沿用时将继承该模式。") }}</small></label>
             <label class="agent-field agent-reason"><span>{{ text("Review reason", "审核原因") }}</span><textarea v-model="setDraft(child).reason" :aria-label="text('Review reason', '审核原因')" rows="2" maxlength="500" :disabled="loading || writing || child.config.status !== 'active'" :placeholder="text('Why is this change being made?', '请说明本次调整原因')" /></label>
           </div>
           <p v-if="child.config.status !== 'active'" class="agent-muted">{{ text("This child is not active, so its settings cannot be changed.", "此下级当前未启用，不能修改设置。") }}</p>

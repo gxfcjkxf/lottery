@@ -30974,7 +30974,7 @@
         "tags": [
           "agency"
         ],
-        "description": "Versioned policy replacement with reason. Agent configuration only; it does not calculate or pay commissions. Super-admin accounts are forbidden from this write.",
+        "description": "Versioned policy replacement with reason. Mode changes that would split an existing ancestor chain are rejected. Agent configuration only; it does not calculate or pay commissions. Super-admin accounts are forbidden from this write.",
         "security": [
           {
             "adminBearer": []
@@ -32657,7 +32657,7 @@
         "tags": [
           "agency"
         ],
-        "description": "Requires current node, policy, and applicable parent versions. Agent configuration only; no commission accrual or payment. Super-admin accounts are forbidden from this write.",
+        "description": "Requires current node, policy, and applicable parent versions. Child effective mode must equal parent; changes that split descendants are rejected. Agent configuration only; no commission accrual or payment. Super-admin accounts are forbidden from this write.",
         "security": [
           {
             "adminBearer": []
@@ -33008,7 +33008,7 @@
         "tags": [
           "agency"
         ],
-        "description": "Requires the current policy version and, when parent_id is supplied, parent_version. Ratio, depth, parent permissions, and policy constraints are checked. Configuration only; no commission accrual or payment. Super-admin accounts are forbidden from this write.",
+        "description": "Requires the current policy version and, when parent_id is supplied, parent_version. Ratio, depth, parent permissions, and policy constraints are checked. A child must inherit or explicitly repeat its parent effective mode; mixed ancestor modes are rejected. Configuration only; no commission accrual or payment. Super-admin accounts are forbidden from this write.",
         "security": [
           {
             "adminBearer": []
@@ -34607,7 +34607,7 @@
         "tags": [
           "agency"
         ],
-        "description": "Authenticated agent may update only an authorized direct child. The request is version-checked and does not calculate or pay commissions or change wallets.",
+        "description": "Authenticated agent may update only an authorized direct child. Mode must be null for inheritance or equal the parent effective mode. The request is version-checked and does not calculate or pay commissions or change wallets.",
         "security": [
           {
             "userBearer": []
@@ -34944,7 +34944,7 @@
         "tags": [
           "agency"
         ],
-        "description": "Authenticated agent may update only an authorized direct child. The request is version-checked and does not calculate or pay commissions or change wallets.",
+        "description": "Authenticated agent may update only an authorized direct child. Mode must be null for inheritance or equal the parent effective mode. The request is version-checked and does not calculate or pay commissions or change wallets.",
         "security": [
           {
             "userBearer": []

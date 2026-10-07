@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { reactive } from "vue";
 import type { PendingAgentWrite } from "./agents-state";
 import {
+  allowedChildModes,
   classifyAgentFailure,
   clearAllPendingAgentWrites,
   clearPendingAgentWrite,
   freezeAgentBody,
   getPendingAgentWrite,
+  parentModeVerified,
   scopeKey,
   setPendingAgentWrite,
 } from "./agents-state";
@@ -39,6 +41,17 @@ afterEach(() => {
 });
 
 describe("page-session agent write state", () => {
+  it("allows child inheritance or the parent effective mode only", () => {
+    expect(allowedChildModes("loss")).toEqual(["loss"]);
+    expect(allowedChildModes("turnover")).toEqual(["turnover"]);
+    expect(allowedChildModes(null)).toEqual([]);
+    expect(allowedChildModes(undefined)).toEqual([]);
+  });
+  it("blocks a new child write until an existing parent mode is verified", () => {
+    expect(parentModeVerified(null, false)).toBe(true);
+    expect(parentModeVerified(agentId, false)).toBe(false);
+    expect(parentModeVerified(agentId, true)).toBe(true);
+  });
   it("freezes a detached Vue reactive body snapshot without changing the source", () => {
     const form = reactive({
       version: 4,

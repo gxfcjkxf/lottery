@@ -653,7 +653,7 @@ S7-k 接入 GET `/api/v1/admin/reports/betting/export` 与 `/api/v1/admin/report
 
 节点返回 `{id,brand_id,member_id,parent_id,depth,path,version,config:{ratio,mode,status,can_create_children},effective_mode,mode_source_agent_id,policy_version,parent_version,created_by,created_at,updated_at,audit_log_id?}`。parent_id/parent_version 根为显式null，子为UUID/正版本；path为根到自身UUID数组。mode为null（最近祖先或品牌继承）/loss/turnover；effective_mode与来源是读取时或首次回执时的派生信息，不是不可变财务基数。status active/disabled，发展下级标志只控制新增，不等同所有财务权限。每品牌会员最多一个代理节点，父/成员/路径不可直接重写；新增须正常品牌成员、启用政策、活跃祖先且直接父级允许发展。
 
-新比例不超过直接父级和品牌上限、层级不超过政策。降低父比值、品牌上限或最大层级若会使已有节点超限则409，不自动改下级。所有写入先锁品牌代理政策，再检查版本/节点；互斥独立于投注账本锁。SQL同样约束路径、身份、父子上限、版本+1、不可改写历史与匹配审计，不能用绕过服务的普通UPDATE提交无历史的新配置。
+新比例不超过直接父级和品牌上限、层级不超过政策。根节点可覆盖品牌默认模式；子级只能继承或显式使用与父级相同的有效模式，不同模式返回400 AGENT_INPUT_INVALID。父级/品牌模式变更若使现存路径混合则409 AGENT_LIMIT_CONFLICT。0045保持旧混合配置与历史原值，相关新写入安全拒绝，不自动覆盖或迁移历史。降低父比值、品牌上限或最大层级若会使已有节点超限则409，不自动改下级。所有写入先锁品牌代理政策，再检查版本/节点；互斥独立于投注账本锁。SQL同样约束路径、身份、父子上限、版本+1、不可改写历史与匹配审计，不能用绕过服务的普通UPDATE提交无历史的新配置。
 
 树返回 `{brand_id,parent_id,items:Node[],limit,offset,total_count:string}`；不存在或外品牌父级404，分页limit默认20/1–100、offset默认0/最大1000000，未知或重复参数拒绝。历史返回 `{brand_id,agent_id,items:[{id,brand_id,agent_id,version,config,actor_type,actor_id,reason,created_at,audit_log_id}],limit,offset,total_count}`；政策agent_id为null、初始系统记录actor_id/audit为null；后续写入及节点创建均须实际审计。后台查询可审计，用户端不暴露历史理由。
 

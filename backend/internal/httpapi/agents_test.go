@@ -188,15 +188,26 @@ func TestAgentPublicCanOnlyUpdateDirectChildAndRechecksSession(t *testing.T) {
 	}
 	var child agentNode
 	managedData(t, childResp, &child)
-	body := map[string]any{"version": 1, "policy_version": 2, "parent_version": 1, "ratio": "0.03", "mode": "turnover", "reason": "direct child adjustment"}
 	path := "/api/v1/agent/children/" + child.ID + "/config"
+	wrong := map[string]any{"version": 1, "policy_version": 2, "parent_version": 1, "ratio": "0.03", "mode": "turnover", "reason": "reject mode differing from parent"}
+	var beforeRevisions, afterRevisions int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM agent_config_revisions WHERE agent_id=$1`, child.ID).Scan(&beforeRevisions); err != nil {
+		t.Fatal(err)
+	}
+	if denied := pointsCall(f.managementHTTP, "PUT", path, "agent-user-wrong-mode-001", f.userToken, managedBrand, "", wrong); denied.Code != 400 {
+		t.Fatalf("mixed child mode accepted: %d %s", denied.Code, denied.Body.String())
+	}
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM agent_config_revisions WHERE agent_id=$1`, child.ID).Scan(&afterRevisions); err != nil || afterRevisions != beforeRevisions {
+		t.Fatal("rejected child mode wrote a revision", beforeRevisions, afterRevisions, err)
+	}
+	body := map[string]any{"version": 1, "policy_version": 2, "parent_version": 1, "ratio": "0.03", "mode": "loss", "reason": "direct child adjustment"}
 	updated := pointsCall(f.managementHTTP, "PUT", path, "agent-user-child-config-001", f.userToken, managedBrand, "", body)
 	if updated.Code != 200 {
 		t.Fatal(updated.Code, updated.Body.String())
 	}
 	var got agentNode
 	managedData(t, updated, &got)
-	if got.Config.Ratio != "0.03" || got.Config.Mode == nil || *got.Config.Mode != "turnover" || got.Config.Status != "active" || !got.Config.CanCreateChildren {
+	if got.Config.Ratio != "0.03" || got.Config.Mode == nil || *got.Config.Mode != "loss" || got.EffectiveMode != root.EffectiveMode || got.Config.Status != "active" || !got.Config.CanCreateChildren {
 		t.Fatalf("unexpected user child update: %+v", got)
 	}
 	closedFields := map[string]any{"version": 2, "policy_version": 2, "parent_version": 1, "ratio": "0.03", "mode": "turnover", "status": "disabled", "reason": "attempt status change"}

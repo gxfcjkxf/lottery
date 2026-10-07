@@ -1,6 +1,12 @@
 import type { AgentChildUpdate } from "./agent-api";
 import type { AgentNode } from "./agent-api";
 
+export type AgentMode = "loss" | "turnover";
+
+export function allowedChildModes(parentEffectiveMode: AgentMode | null | undefined): AgentMode[] {
+  return parentEffectiveMode ? [parentEffectiveMode] : [];
+}
+
 export interface AgentUpdateIntent {
   brandId: string;
   memberId: string;

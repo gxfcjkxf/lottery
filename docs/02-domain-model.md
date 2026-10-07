@@ -214,7 +214,7 @@ S5-c1 的 `settlement_previews` 是正式结算之前的不可改写核算证据
 
 S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, points)`，3 种来源 × 4 种状态共 12 行。显示/可用/冻结/提现汇总与来源可用余额由这 12 行派生，不再持有多份冗余余额。每次记账先锁账户行，完整 12 桶必须存在，version 与追加账本版本一致。
 
-新增佣金积分已获业务确认，目标模型为充值/中奖/赠送/佣金四来源 × 四状态共16桶；当前代码和数据库尚未升级，不把设计当作已支持的API字段。升级必须保留旧12桶历史、摘要和审计，验证零佣金旧记录兼容、新16桶守卫、原来源退款和提现周期；投注扣款及门槛口径待OPEN-112确认。
+新增佣金积分已获业务确认，目标模型为充值/中奖/赠送/佣金四来源 × 四状态共16桶；当前代码和数据库尚未升级，不把设计当作已支持的API字段。佣金可投注，扣款按充值→中奖→佣金→赠送；可用佣金不计入提现门槛基数，佣金支付的有效投注计入流水。升级必须保留旧12桶历史、请求摘要、回执和审计，验证零佣金旧记录兼容、新16桶守卫、原来源退款和提现周期，不能改写旧流水后重新计算摘要。
 
 `point_ledger_entries`
 
@@ -263,7 +263,7 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 
 `game_withdrawal_policies` 按 brand_id/game_id 保存独立 version/config/updated_at，只覆盖 N；null 继承品牌，不允许新配置为 "0"，也不能把旧零值静默当作继承或 1。有效值返回 source 和双方版本，来自已保存主库一致快照。新配置 N 大于 0 且不超过 1000000，采用最多六位小数的规范十进制字符串，不带符号/指数/多余前导或末尾零；积分仍为 int64 整数字符串，不使用浮点。旧配置历史保持原值可查询，现存零值须由授权管理员显式修正后使用。
 
-门槛基数使用申请提交时、占用前锁定钱包中的全部可用充值＋赠送余额，不是申请来源金额或累计本金；不包含中奖、冻结和已占用提现积分。OrderService将服务端计算值传给资格器，并以eligibility_evidence.turnover_base_snapshot保存recharge_available、gift_available、points及wallet_version的不可变快照，四项为精确十进制字符串。保留键由服务端覆盖，适配器不能伪造；完整证据按PostgreSQL实际JSONB文本限制16KiB，超限在占用前拒绝。旧订单与回执不补造或重算基数；公开订单DTO和事件仍不暴露资格证据。
+门槛基数使用申请提交时、占用前锁定钱包中的全部可用充值＋赠送余额，不是申请来源金额或累计本金；不包含中奖、佣金、冻结和已占用提现积分。OrderService将服务端计算值传给资格器，并以eligibility_evidence.turnover_base_snapshot保存recharge_available、gift_available、points及wallet_version的不可变快照，四项为精确十进制字符串。保留键由服务端覆盖，适配器不能伪造；完整证据按PostgreSQL实际JSONB文本限制16KiB，超限在占用前拒绝。旧订单与回执不补造或重算基数；公开订单DTO和事件仍不暴露资格证据。
 
 `withdrawal_policy_revisions`：id、brand_id、game_id（品牌级 null）、version、config、changed_by、reason、created_at；范围/版本唯一（null 范围也唯一）。初始系统记录，后续必须有后台账号。历史不可修改/删除；数据库延迟约束禁止孤立下一版本或无对应历史修改当前配置，审计失败整体回滚。`0017` 为旧及新品牌/彩种初始化配置和历史，不改旧账本或已应用迁移。
 
@@ -275,9 +275,9 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 
 ### 代理、佣金和奖励
 
-S6-e 实表为 `brand_agent_policies`、`agent_nodes`、`agent_config_revisions`。节点使用member_id/parent_id/depth作为下列设计字段的实际命名，path为UUID[]；同品牌成员唯一，身份/父级/路径不可改写，最多32级工程上限。配置存JSONB：品牌enabled/max_depth/ratio_cap/mode/cycle，节点ratio/nullable mode/status/can_create_children。比值为0–1精确规范字符串，最多6位小数；继承模式读取最近节点覆盖，周期仍品牌级。每次更新递增版本并保留实际操作者/理由/审计证明；不存在现金或积分佣金余额。初始disabled/比值上限0，没有自动开启财务工作流。
+S6-e 实表为 `brand_agent_policies`、`agent_nodes`、`agent_config_revisions`。节点使用member_id/parent_id/depth作为下列设计字段的实际命名，path为UUID[]；同品牌成员唯一，身份/父级/路径不可改写，最多32级工程上限。配置存JSONB：品牌enabled/max_depth/ratio_cap/mode/cycle，节点ratio/nullable mode/status/can_create_children。比值为0–1精确规范字符串，最多6位小数；根节点可覆盖品牌默认模式；下级只能继承或显式重复上级有效模式，整条代理路径不得混用模式。周期仍品牌级。每次更新递增版本并保留实际操作者/理由/审计证明；不存在现金或积分佣金余额。初始disabled/比值上限0，没有自动开启财务工作流。
 
-父/子/品牌配置更新先取得品牌代理政策独占锁，服务和数据库均拒绝新超限及会破坏既有下级的降限；不靠前端判断或自动缩放。用户只改自己直属active下级的比值/模式，所有祖先须active；can_create_children不是绕过后台晋升流程的授权。S6-f保存加入及新注单归属快照；用户晋升/重新挂接和财务计算仍待后续，不能用当前代理树为旧注单补造归属。
+父/子/品牌配置更新先取得品牌代理政策独占锁，服务和数据库均拒绝新超限及会破坏既有下级的降限；不靠前端判断或自动缩放。0045新增模式守卫，服务与数据库同时拒绝子级不同模式、破坏后代一致性的父级变更和破坏树的品牌默认变更，均使用品牌政策互斥锁。迁移不改写旧混合路径、修订或注单快照；相关新写入安全拒绝，须授权管理员显式修正配置。用户只改自己直属active下级的比值及沿用/重复上级模式，所有祖先须active；can_create_children不是绕过后台晋升流程的授权。S6-f保存加入及新注单归属快照；用户晋升/重新挂接和财务计算仍待后续，不能用当前代理树为旧注单补造归属。
 
 `join_codes`保存同品牌唯一24位随机大写十六进制编码、不可改写kind/owner_member_id/agent_id和创建人、status、starts_at/expires_at、递增version与时间；agent码须节点属于同会员，referral码不得挂代理。有效范围当前品牌，开始含/到期不含。`join_code_revisions`保存每版本生命周期、真实操作者/理由/审计，历史不可修改或删除；当前版本须有匹配审计历史，原编码不回收复用。编码管理不写积分、不生成佣金/奖励任务。
 
@@ -297,7 +297,7 @@ S6-e 实表为 `brand_agent_policies`、`agent_nodes`、`agent_config_revisions`
 `commission_records`
 
 - `id`, `brand_id`, `agent_id`, `user_member_id`, `order_id`, `period_id`
-- `rule_version_id`, `cycle_start`, `cycle_end`
+- `rule_version_id`, `cycle_start`, `cycle_end`；周期由投注时间确定，使用规则快照中的时区与边界，区间开始含、结束不含，迟结算不迁移至结算时的周期。
 - `base_points`, `ratio`, `calculated_points`, `adjusted_points`
 - `status`: pending/settled/voided/adjusted
 - 不允许最终金额小于 0；人工修正创建独立 adjustment 记录。
