@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { createRuleVersionsApi, type GameRecord } from "./rule-versions-api";
+import { useAdminI18n } from "./i18n";
 import {
   createBetManagementApi,
   createBetMutationKeyTracker,
@@ -47,6 +48,23 @@ type FrozenMutation = {
 };
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
+const { t } = useAdminI18n();
+const ui = (zh: string, en: string = zh) => t(zh, en);
+const labels: Record<string, string> = {
+  "投注策略": "Betting policy", "品牌与彩种投注限额": "Brand and game betting limits",
+  "最低单注积分": "Minimum points per bet", "单注上限积分": "Maximum points per bet",
+  "单期上限积分": "Maximum points per period", "单用户单期上限积分": "Maximum points per user per period",
+};
+const textEn: Record<string, string> = {
+  "品牌策略响应与当前品牌不匹配。": "The brand-policy response does not match the current brand.", "读取品牌投注策略失败。": "Failed to load brand betting policy.",
+  "彩种策略响应与当前品牌或彩种不匹配。": "The game-policy response does not match the current brand or game.", "读取彩种投注策略失败。": "Failed to load game betting policy.",
+  "读取彩种目录失败。": "Failed to load the game catalog.", "保存响应与当前策略不匹配，请重新读取确认结果。": "The save response does not match the current policy. Reload to confirm the result.",
+  "投注策略已保存并生效。": "Betting policy saved and applied.",
+  "策略版本已变化。已尝试读取最新版本；请核对后再次提交，当前未保存的输入已保留。": "The policy version changed. The latest version was reloaded; review it before submitting again. Your unsaved input has been preserved.",
+  "保存结果尚未确认。请按原请求重试，或刷新读取以核对版本；重试会复用原请求内容和幂等键。": "The save result is unconfirmed. Retry the original request or reload to check the version; a retry reuses the original request body and idempotency key.",
+  "保存投注策略失败。": "Failed to save betting policy.", "正在读取最新版本；表单输入会保留。": "Loading the latest version; form input will be preserved.",
+};
+const display = (value: string) => ui(value, textEn[value] ?? labels[value] ?? value);
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createBetManagementApi();
 const ruleBook = createRuleVersionsApi();
@@ -559,27 +577,27 @@ onUnmounted(() => {
   <section class="bet-policy-settings" data-testid="bet-policy-settings">
     <header class="policy-header">
       <div>
-        <p class="eyebrow">投注策略</p>
-        <h2>品牌与彩种投注限额</h2>
-        <p>彩种设置覆盖品牌默认值；单注、单期和单用户单期上限分别生效。</p>
+        <p class="eyebrow">{{ display("投注策略") }}</p>
+        <h2>{{ display("品牌与彩种投注限额") }}</h2>
+        <p>{{ t("彩种设置覆盖品牌默认值；单注、单期和单用户单期上限分别生效。", "Game settings override brand defaults. Per-bet, per-period, and per-user per-period limits apply independently.") }}</p>
       </div>
-      <span class="brand-pill">品牌 · {{ brandId || "未选择" }}</span>
+      <span class="brand-pill">{{ t("品牌 · ", "Brand · ") }}{{ brandId || t("未选择", "Not selected") }}</span>
     </header>
 
     <p v-if="account.super_admin" class="callout">
-      超级管理员仅可按显式权限查看，不能修改投注策略。
+      {{ t("超级管理员仅可按显式权限查看，不能修改投注策略。", "Super administrators may view only with explicit permission and cannot modify betting policies.") }}
     </p>
     <p class="callout">
-      所有积分均按整数字符串处理。品牌限额留空表示不限；彩种可继承、指定数值或设为不限。
+      {{ t("所有积分均按整数字符串处理。品牌限额留空表示不限；彩种可继承、指定数值或设为不限。", "Points are handled as integer strings. Blank brand limits mean unlimited; games can inherit, set a value, or be unlimited.") }}
     </p>
     <p v-if="!rights.policyView" class="callout" role="status">
-      当前账号缺少品牌投注策略读取权限。
+      {{ t("当前账号缺少品牌投注策略读取权限。", "This account lacks permission to view brand betting policies.") }}
     </p>
     <section v-if="!rights.policyView && rights.gameView" class="policy-card">
       <div class="card-heading">
         <div>
-          <h3>彩种目录</h3>
-          <p>仅展示当前账号获准查看的彩种目录，不读取彩种投注策略。</p>
+          <h3>{{ t("彩种目录", "Game catalog") }}</h3>
+          <p>{{ t("仅展示当前账号获准查看的彩种目录，不读取彩种投注策略。", "Shows only the game catalog this account is allowed to view; game betting policies are not loaded here.") }}</p>
         </div>
         <button
           class="secondary"
@@ -587,13 +605,13 @@ onUnmounted(() => {
           :disabled="loadingGames"
           @click="loadGames"
         >
-          {{ loadingGames ? "读取中…" : "刷新彩种目录" }}
+          {{ loadingGames ? t("读取中…", "Loading…") : t("刷新彩种目录", "Refresh game catalog") }}
         </button>
       </div>
       <p v-if="loadingGames && !games.length" class="muted" role="status">
-        正在读取彩种目录…
+        {{ t("正在读取彩种目录…", "Loading game catalog…") }}
       </p>
-      <p v-else-if="!games.length" class="muted">彩种目录为空，或尚未读取。</p>
+      <p v-else-if="!games.length" class="muted">{{ t("彩种目录为空，或尚未读取。", "The game catalog is empty or has not been loaded.") }}</p>
       <ul v-else class="catalog-list">
         <li v-for="game in games" :key="game.id">
           {{ game.name }} · {{ game.id }}
@@ -602,20 +620,20 @@ onUnmounted(() => {
     </section>
     <template v-if="rights.policyView">
       <div v-if="error" class="message error" role="alert">
-        <span>{{ error }}</span>
+        <span>{{ display(error) }}</span>
         <button
           v-if="!uncertain"
           type="button"
           class="secondary"
           @click="() => loadBrand()"
         >
-          重新读取品牌策略
+          {{ t("重新读取品牌策略", "Reload brand policy") }}
         </button>
       </div>
-      <p v-if="notice" class="message success" role="status">{{ notice }}</p>
+      <p v-if="notice" class="message success" role="status">{{ display(notice) }}</p>
       <div v-if="uncertain" class="message warning" role="alert">
         <span
-          >有一项写入结果待确认。表单已冻结，不能编辑或创建新的写入请求。</span
+          >{{ t("有一项写入结果待确认。表单已冻结，不能编辑或创建新的写入请求。", "A write result is pending confirmation. The form is frozen; you cannot edit it or create another write request.") }}</span
         >
         <button
           type="button"
@@ -623,7 +641,7 @@ onUnmounted(() => {
           :disabled="!!saving"
           @click="retryUncertain"
         >
-          使用原请求重试
+          {{ t("使用原请求重试", "Retry original request") }}
         </button>
         <button
           type="button"
@@ -631,16 +649,16 @@ onUnmounted(() => {
           :disabled="!!saving"
           @click="reconcile"
         >
-          重新读取核对
+          {{ t("重新读取核对", "Reload and reconcile") }}
         </button>
       </div>
 
       <section class="policy-card">
         <div class="card-heading">
           <div>
-            <h3>品牌默认策略</h3>
+            <h3>{{ t("品牌默认策略", "Brand default policy") }}</h3>
             <p v-if="brandPolicy">
-              版本 {{ brandPolicy.version }} · {{ brandPolicy.brand_id }}
+              {{ t("版本", "Version") }} {{ brandPolicy.version }} · {{ brandPolicy.brand_id }}
             </p>
           </div>
           <button
@@ -649,14 +667,14 @@ onUnmounted(() => {
             :disabled="loadingBrand || !!saving || !!uncertain"
             @click="() => loadBrand()"
           >
-            {{ loadingBrand ? "读取中…" : "刷新" }}
+            {{ loadingBrand ? t("读取中…", "Loading…") : t("刷新", "Refresh") }}
           </button>
         </div>
         <p v-if="loadingBrand && !brandPolicy" class="muted" role="status">
-          正在读取品牌策略…
+          {{ t("正在读取品牌策略…", "Loading brand policy…") }}
         </p>
         <p v-else-if="!brandPolicy && !error" class="muted">
-          尚无可显示的品牌策略。
+          {{ t("尚无可显示的品牌策略。", "No brand policy is available to display.") }}
         </p>
         <form
           v-if="brandPolicy"
@@ -664,34 +682,34 @@ onUnmounted(() => {
           @submit.prevent="saveBrand"
         >
           <label
-            >品牌：最低单注积分<input
+            >{{ t("品牌：最低单注积分", "Brand: minimum points per bet") }}<input
               v-model.trim="brandDraft.min_bet_points"
               inputmode="numeric"
               autocomplete="off"
               :disabled="!canWrite || !!uncertain || reconciling"
           /></label>
           <label
-            >品牌：单注上限积分（留空不限）<input
+            >{{ t("品牌：单注上限积分（留空不限）", "Brand: maximum points per bet (blank for unlimited)") }}<input
               v-model.trim="brandDraft.max_bet_points"
               inputmode="numeric"
               autocomplete="off"
-              placeholder="不限"
+              :placeholder="t('不限', 'Unlimited')"
               :disabled="!canWrite || !!uncertain || reconciling"
           /></label>
           <label
-            >品牌：单期上限积分（留空不限）<input
+            >{{ t("品牌：单期上限积分（留空不限）", "Brand: maximum points per period (blank for unlimited)") }}<input
               v-model.trim="brandDraft.max_period_points"
               inputmode="numeric"
               autocomplete="off"
-              placeholder="不限"
+              :placeholder="t('不限', 'Unlimited')"
               :disabled="!canWrite || !!uncertain || reconciling"
           /></label>
           <label
-            >品牌：单用户单期上限积分（留空不限）<input
+            >{{ t("品牌：单用户单期上限积分（留空不限）", "Brand: maximum points per user per period (blank for unlimited)") }}<input
               v-model.trim="brandDraft.max_user_period_points"
               inputmode="numeric"
               autocomplete="off"
-              placeholder="不限"
+              :placeholder="t('不限', 'Unlimited')"
               :disabled="!canWrite || !!uncertain || reconciling"
           /></label>
           <label class="check-label"
@@ -699,10 +717,10 @@ onUnmounted(() => {
               v-model="brandDraft.user_cancel_allowed"
               type="checkbox"
               :disabled="!canWrite || !!uncertain || reconciling"
-            />品牌：允许用户撤销投注</label
+            />{{ t("品牌：允许用户撤销投注", "Brand: allow users to cancel bets") }}</label
           >
           <label class="wide"
-            >品牌：变更原因（必填，最多 500 UTF-8 字节）<textarea
+            >{{ t("品牌：变更原因（必填，最多 500 UTF-8 字节）", "Brand: change reason (required, up to 500 UTF-8 bytes)") }}<textarea
               v-model="brandDraft.reason"
               rows="3"
               maxlength="500"
@@ -710,21 +728,21 @@ onUnmounted(() => {
             />
           </label>
           <p v-if="!brandInputsValid" class="field-error wide" role="alert">
-            请填写正整数；最低单注积分不得高于任一有限上限。
+            {{ t("请填写正整数；最低单注积分不得高于任一有限上限。", "Enter positive whole numbers. The minimum per bet cannot exceed any finite limit.") }}
           </p>
           <p
             v-if="!reasonValid(brandDraft.reason) && brandDraft.reason"
             class="field-error wide"
             role="alert"
           >
-            原因必须非空，且不超过 500 UTF-8 字节。
+            {{ t("原因必须非空，且不超过 500 UTF-8 字节。", "The reason is required and must be no longer than 500 UTF-8 bytes.") }}
           </p>
           <p v-if="brandPolicy && !canWrite" class="muted wide">
-            当前账号仅有读取权限，无法修改品牌策略。
+            {{ t("当前账号仅有读取权限，无法修改品牌策略。", "This account has view-only access and cannot modify the brand policy.") }}
           </p>
           <div v-if="canWrite" class="wide action-row">
             <button class="primary" type="submit" :disabled="!brandCanSave">
-              {{ saving === "brand" ? "保存中…" : "保存品牌策略" }}
+              {{ saving === "brand" ? t("保存中…", "Saving…") : t("保存品牌策略", "Save brand policy") }}
             </button>
           </div>
         </form>
@@ -733,16 +751,15 @@ onUnmounted(() => {
       <section class="policy-card game-card">
         <div class="card-heading">
           <div>
-            <h3>彩种策略覆盖</h3>
+            <h3>{{ t("彩种策略覆盖", "Game policy overrides") }}</h3>
             <p>
-              可用彩种目录仅在具备彩种读取权限时显示；也可输入彩种 ID
-              直接读取策略。
+              {{ t("可用彩种目录仅在具备彩种读取权限时显示；也可输入彩种 ID 直接读取策略。", "The game catalog appears only with game-view permission. You can also enter a game ID to load its policy directly.") }}
             </p>
           </div>
         </div>
         <div class="game-picker">
           <label v-if="rights.gameView"
-            >选择彩种
+            >{{ t("选择彩种", "Select a game") }}
             <select
               :value="gameId"
               :disabled="loadingGames || !!saving || !!uncertain"
@@ -750,7 +767,7 @@ onUnmounted(() => {
                 changeSelectedGame(($event.target as HTMLSelectElement).value)
               "
             >
-              <option value="">请选择彩种</option>
+              <option value="">{{ t("请选择彩种", "Select a game") }}</option>
               <option v-for="game in games" :key="game.id" :value="game.id">
                 {{ game.name }} · {{ game.id }}
               </option>
@@ -763,16 +780,16 @@ onUnmounted(() => {
             :disabled="loadingGames || !!saving || !!uncertain"
             @click="loadGames"
           >
-            {{ loadingGames ? "读取目录中…" : "刷新彩种目录" }}
+            {{ loadingGames ? t("读取目录中…", "Loading catalog…") : t("刷新彩种目录", "Refresh game catalog") }}
           </button>
           <p
             v-if="rights.gameView && !games.length && !loadingGames"
             class="muted"
           >
-            彩种目录为空，或尚未读取。
+            {{ t("彩种目录为空，或尚未读取。", "The game catalog is empty or has not been loaded.") }}
           </p>
           <p v-if="!rights.gameView" class="muted">
-            当前账号没有彩种目录读取权限；可以用下方 ID 直接读取策略。
+            {{ t("当前账号没有彩种目录读取权限；可以用下方 ID 直接读取策略。", "This account cannot view the game catalog; use the ID below to load a policy directly.") }}
           </p>
         </div>
         <form
@@ -780,10 +797,10 @@ onUnmounted(() => {
           @submit.prevent="changeSelectedGame(directGameId.trim())"
         >
           <label
-            >游戏：彩种 ID<input
+            >{{ t("游戏：彩种 ID", "Game ID") }}<input
               v-model.trim="directGameId"
               autocomplete="off"
-              placeholder="输入彩种 ID"
+              :placeholder="t('输入彩种 ID', 'Enter game ID')"
               :disabled="!!saving || !!uncertain"
           /></label>
           <button
@@ -793,14 +810,14 @@ onUnmounted(() => {
               !directGameId.trim() || loadingGame || !!saving || !!uncertain
             "
           >
-            {{ loadingGame ? "读取中…" : "读取彩种策略" }}
+            {{ loadingGame ? t("读取中…", "Loading…") : t("读取彩种策略", "Load game policy") }}
           </button>
         </form>
         <p v-if="loadingGame && !gamePolicy" class="muted" role="status">
-          正在读取彩种策略…
+          {{ t("正在读取彩种策略…", "Loading game policy…") }}
         </p>
         <p v-else-if="gameId && !gamePolicy && !error" class="muted">
-          未读取到此彩种策略。
+          {{ t("未读取到此彩种策略。", "No policy was found for this game.") }}
         </p>
         <form
           v-if="gamePolicy"
@@ -808,7 +825,7 @@ onUnmounted(() => {
           @submit.prevent="saveGame"
         >
           <p class="policy-version wide">
-            游戏：{{ gamePolicy.game_id }} · 版本 {{ gamePolicy.version }}
+            {{ t("游戏：", "Game: ") }}{{ gamePolicy.game_id }} · {{ t("版本", "Version") }} {{ gamePolicy.version }}
           </p>
           <template
             v-for="field in [
@@ -828,9 +845,9 @@ onUnmounted(() => {
             :key="field.key"
           >
             <label
-              >游戏：{{ field.label }}
+              >{{ t("游戏：", "Game: ") }}{{ display(field.label) }}
               <select
-                :aria-label="`游戏：${field.label}`"
+                :aria-label="`${t('游戏：', 'Game: ')}${display(field.label)}`"
                 v-model="
                   gameDraft[
                     field.key as keyof Pick<
@@ -844,9 +861,9 @@ onUnmounted(() => {
                 "
                 :disabled="!canWrite || !!uncertain || reconciling"
               >
-                <option value="inherit">继承品牌默认</option>
-                <option value="value">指定数值</option>
-                <option v-if="!field.minimum" value="unlimited">不限</option>
+                <option value="inherit">{{ t("继承品牌默认", "Inherit brand default") }}</option>
+                <option value="value">{{ t("指定数值", "Set a value") }}</option>
+                <option v-if="!field.minimum" value="unlimited">{{ t("不限", "Unlimited") }}</option>
               </select>
             </label>
             <label
@@ -861,9 +878,9 @@ onUnmounted(() => {
                   >
                 ].mode === 'value'
               "
-              >游戏：{{ field.label }}数值
+              >{{ t("游戏：", "Game: ") }}{{ display(field.label) }}{{ t("数值", "value") }}
               <input
-                :aria-label="`游戏：${field.label}数值`"
+                :aria-label="`${t('游戏：', 'Game: ')}${display(field.label)}${t('数值', 'value')}`"
                 v-model.trim="
                   gameDraft[
                     field.key as keyof Pick<
@@ -882,17 +899,17 @@ onUnmounted(() => {
             </label>
           </template>
           <label
-            >游戏：用户撤销权限<select
+            >{{ t("游戏：用户撤销权限", "Game: user cancellation") }}<select
               v-model="gameDraft.user_cancel_allowed"
               :disabled="!canWrite || !!uncertain || reconciling"
             >
-              <option value="inherit">继承品牌默认</option>
-              <option value="allow">允许</option>
-              <option value="deny">禁止</option>
+              <option value="inherit">{{ t("继承品牌默认", "Inherit brand default") }}</option>
+              <option value="allow">{{ t("允许", "Allow") }}</option>
+              <option value="deny">{{ t("禁止", "Deny") }}</option>
             </select></label
           >
           <label class="wide"
-            >游戏：变更原因（必填，最多 500 UTF-8 字节）<textarea
+            >{{ t("游戏：变更原因（必填，最多 500 UTF-8 字节）", "Game: change reason (required, up to 500 UTF-8 bytes)") }}<textarea
               v-model="gameDraft.reason"
               rows="3"
               maxlength="500"
@@ -900,14 +917,14 @@ onUnmounted(() => {
             />
           </label>
           <p v-if="!gameInputsValid" class="field-error wide" role="alert">
-            覆盖值必须为正整数；生效后的最低单注积分不得高于任一有限上限。
+            {{ t("覆盖值必须为正整数；生效后的最低单注积分不得高于任一有限上限。", "Override values must be positive whole numbers. The effective minimum per bet cannot exceed any finite limit.") }}
           </p>
           <p v-if="gamePolicy && !canWrite" class="muted wide">
-            当前账号仅有读取权限，无法修改彩种策略。
+            {{ t("当前账号仅有读取权限，无法修改彩种策略。", "This account has view-only access and cannot modify the game policy.") }}
           </p>
           <div v-if="canWrite" class="wide action-row">
             <button class="primary" type="submit" :disabled="!gameCanSave">
-              {{ saving === "game" ? "保存中…" : "保存彩种策略" }}
+              {{ saving === "game" ? t("保存中…", "Saving…") : t("保存彩种策略", "Save game policy") }}
             </button>
           </div>
         </form>

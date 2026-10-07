@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import type { LocalizedMessage } from "@lottery/shared";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useAdminI18n } from "./i18n";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import SettlementPreview from "./SettlementPreview.vue";
 import {
@@ -28,6 +30,7 @@ import {
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
+const { t, message: localized } = useAdminI18n();
 const api = createBetManagementApi();
 const keyFor = createBetMutationKeyTracker();
 type BetOrderActionBody = ActionBody | JudgeCancelBody;
@@ -60,11 +63,11 @@ const judgmentRead = ref(false);
 const listBusy = ref(false);
 const detailBusy = ref(false);
 const writeBusy = ref(false);
-const listError = ref("");
-const detailError = ref("");
-const writeError = ref("");
-const conflictNotice = ref("");
-const notice = ref("");
+const listError = ref<string | LocalizedMessage>("");
+const detailError = ref<string | LocalizedMessage>("");
+const writeError = ref<string | LocalizedMessage>("");
+const conflictNotice = ref<string | LocalizedMessage>("");
+const notice = ref<string | LocalizedMessage>("");
 const directLookup = ref(false);
 const intent = ref<{
   action: "cancel" | "mark-abnormal" | "judge-cancel";
@@ -102,7 +105,7 @@ const amountRows = computed(() => {
     ["组合数", String(order.combination_count)],
     ["倍数", order.multiplier],
     ["总扣款", order.total_points],
-    ["已结算中奖积分", order.settled_at ? (order.prize_points ?? "0") : "未结算"],
+    ["已结算中奖积分", order.settled_at ? (order.prize_points ?? "0") : t("未结算", "Not settled")],
     ["结算核算 ID", order.settlement_calculation_id ?? "—"],
     ["派奖账本 ID", order.payout_entry_id ?? "—"],
   ];
@@ -114,12 +117,12 @@ const preview = computed(() =>
 function statusName(status: string) {
   return (
     {
-      placed: "待开奖",
-      abnormal: "异常注单",
-      bet_cancelled: "投注取消",
-      judged_cancelled: "判定取消",
-      won: "已中奖",
-      lost: "未中奖",
+      placed: t("待开奖", "Awaiting draw"),
+      abnormal: t("异常注单", "Abnormal order"),
+      bet_cancelled: t("投注取消", "Betting cancelled"),
+      judged_cancelled: t("判定取消", "Judgment cancelled"),
+      won: t("已中奖", "Won"),
+      lost: t("未中奖", "Lost"),
     }[status] ?? status
   );
 }
@@ -128,6 +131,14 @@ function statusClass(status: string) {
   if (status === "won") return "success";
   if (status === "placed") return "waiting";
   return "neutral";
+}
+function amountLabel(label: string) {
+  const english: Record<string, string> = {
+    "单注积分": "Points per bet", "组合数": "Combination count", "倍数": "Multiplier",
+    "总扣款": "Total debit", "已结算中奖积分": "Settled winnings",
+    "结算核算 ID": "Settlement calculation ID", "派奖账本 ID": "Payout ledger ID",
+  };
+  return english[label] ? t(label, english[label]) : label;
 }
 function stringify(value: unknown) {
   return JSON.stringify(value ?? null, null, 2);
@@ -198,7 +209,7 @@ function checkOrder(
     (orderId && order.id !== orderId) ||
     (memberId && order.brand_member_id !== memberId)
   )
-    throw new Error("响应注单与当前品牌、成员或注单编号不匹配，请重新读取。");
+    throw new Error(t("响应注单与当前品牌、成员或注单编号不匹配，请重新读取。", "The order response does not match the current brand, member, or order ID. Reload and try again."));
 }
 function syncVisibleOrder(order: AdminBetOrder) {
   orders.value = orders.value.map((item) =>
@@ -223,10 +234,10 @@ function onReadError(cause: unknown, lane: "list" | "detail") {
     exception.value = null;
     judgment.value = null;
     judgmentRead.value = false;
-    detailError.value = "注单不存在或已不可见，请刷新列表。";
+    detailError.value = localized("注单不存在或已不可见，请刷新列表。", "The order does not exist or is no longer visible. Refresh the list.");
     return;
   }
-  const message = cause instanceof Error ? cause.message : "请求失败，请重试。";
+  const message = cause instanceof Error ? cause.message : localized("请求失败，请重试。", "Request failed. Please try again.");
   if (lane === "list") listError.value = message;
   else detailError.value = message;
 }
@@ -234,7 +245,7 @@ function onReadError(cause: unknown, lane: "list" | "detail") {
 async function loadOrders(nextOffset = 0) {
   const memberId = memberQuery.value.trim();
   if (memberId && !isUuid(memberId)) {
-    listError.value = "成员编号必须是有效 UUID。";
+    listError.value = localized("成员编号必须是有效 UUID。", "Member ID must be a valid UUID.");
     return;
   }
   readGeneration.value++;
@@ -293,7 +304,7 @@ async function lookupOrder() {
     return;
   }
   if (!isUuid(id)) {
-    listError.value = "注单编号必须是有效 UUID。";
+    listError.value = localized("注单编号必须是有效 UUID。", "Order ID must be a valid UUID.");
     return;
   }
   readGeneration.value++;
@@ -388,13 +399,13 @@ async function loadSelectedDetail() {
         evidence.exception.brand_id !== brandId ||
         evidence.exception.order_id !== id
       )
-        throw new Error("异常记录与当前品牌或注单不匹配，请重新读取。");
+        throw new Error(t("异常记录与当前品牌或注单不匹配，请重新读取。", "The abnormal record does not match the current brand or order. Reload and try again."));
       exception.value = evidence.exception;
     }
     if (judgmentEvidence.judgment) {
       const record = judgmentEvidence.judgment;
       if (record.brand_id !== brandId || record.order_id !== id)
-        throw new Error("判定记录与当前品牌或注单不匹配，请重新读取。");
+        throw new Error(t("判定记录与当前品牌或注单不匹配，请重新读取。", "The judgment record does not match the current brand or order. Reload and try again."));
       judgment.value = record;
     }
     judgmentRead.value = true;
@@ -540,10 +551,10 @@ function reconcilePending(
     reason.value = "";
     notice.value =
       operation.action === "cancel"
-        ? "已从后台读取到取消及退款结果。"
+        ? localized("已从后台读取到取消及退款结果。", "Cancellation and refund result loaded from the server.")
         : operation.action === "mark-abnormal"
-          ? "已从后台读取到异常标记记录。"
-          : "已从后台读取到判定取消结果。";
+          ? localized("已从后台读取到异常标记记录。", "Abnormal marker record loaded from the server.")
+          : localized("已从后台读取到判定取消结果。", "Judgment cancellation result loaded from the server.");
   }
 }
 async function runMutation(operation: FrozenBetMutation<BetOrderActionBody>) {
@@ -599,7 +610,7 @@ async function runMutation(operation: FrozenBetMutation<BetOrderActionBody>) {
       rememberFrozen(operation);
       pendingUnknown.value = true;
       throw new AdminApiError(
-        "后台响应与当前注单不匹配，操作结果尚未确定。",
+        t("后台响应与当前注单不匹配，操作结果尚未确定。", "The server response does not match the current order; the action outcome is unknown."),
         502,
         "INVALID_RESPONSE",
       );
@@ -609,7 +620,7 @@ async function runMutation(operation: FrozenBetMutation<BetOrderActionBody>) {
       rememberFrozen(operation);
       pendingUnknown.value = true;
       throw new Error(
-        "后台返回的状态未确认此操作。请读取注单并使用相同请求重试。",
+        t("后台返回的状态未确认此操作。请读取注单并使用相同请求重试。", "The returned state does not confirm this action. Read the order and retry using the same request."),
       );
     }
     selectedOrder.value = response;
@@ -622,10 +633,10 @@ async function runMutation(operation: FrozenBetMutation<BetOrderActionBody>) {
     reason.value = "";
     notice.value =
       operation.action === "cancel"
-        ? "后台已确认取消，退款记录已生成。"
+        ? localized("后台已确认取消，退款记录已生成。", "The server confirmed cancellation and created a refund record.")
         : operation.action === "mark-abnormal"
-          ? "后台已确认注单标记为异常。"
-          : "后台已确认判定取消；请查看判定记录或整期判定说明。";
+          ? localized("后台已确认注单标记为异常。", "The server confirmed that the order was marked abnormal.")
+          : localized("后台已确认判定取消；请查看判定记录或整期判定说明。", "The server confirmed judgment cancellation. Review the judgment record or period-wide judgment details.");
     await loadSelectedDetail();
     if (!directLookup.value) void loadOrders(offset.value);
   } catch (cause) {
@@ -639,7 +650,7 @@ async function runMutation(operation: FrozenBetMutation<BetOrderActionBody>) {
       rememberFrozen(operation);
       pendingUnknown.value = true;
       writeError.value =
-        "请求结果尚未确定。原因和版本已锁定；读取后台状态后，可用同一请求编号重试。";
+        localized("请求结果尚未确定。原因和版本已锁定；读取后台状态后，可用同一请求编号重试。", "The request outcome is unknown. Reason and version are locked; after reading server state, retry with the same request ID.");
       return;
     }
     if (cause instanceof AdminApiError && cause.status === 401) {
@@ -657,7 +668,7 @@ async function runMutation(operation: FrozenBetMutation<BetOrderActionBody>) {
     if (cause instanceof AdminApiError && cause.status === 404) {
       selectedOrder.value = null;
       exception.value = null;
-      detailError.value = "注单不存在或已不可见，请刷新列表。";
+      detailError.value = localized("注单不存在或已不可见，请刷新列表。", "The order does not exist or is no longer visible. Refresh the list.");
       return;
     }
     if (failure === "conflict") {
@@ -665,13 +676,13 @@ async function runMutation(operation: FrozenBetMutation<BetOrderActionBody>) {
       if (contextCurrent(snapshot, generation, "write")) {
         conflictNotice.value =
           selectedOrder.value && !detailError.value
-            ? "操作因版本、状态或判定依据冲突被拒绝，旧请求已丢弃。已重新读取当前注单；请核对后重新填写原因并确认。"
-            : "注单版本冲突已确认，重新读取未成功。请刷新注单后再发起新确认。";
+            ? localized("操作因版本、状态或判定依据冲突被拒绝，旧请求已丢弃。已重新读取当前注单；请核对后重新填写原因并确认。", "The action was rejected because of a version, state, or judgment conflict. The old request was discarded and the current order reloaded; review it, re-enter the reason, and confirm again.")
+            : localized("注单版本冲突已确认，重新读取未成功。请刷新注单后再发起新确认。", "The order version conflict is confirmed, but reloading failed. Refresh the order before starting a new confirmation.");
       }
       return;
     }
     writeError.value =
-      cause instanceof Error ? cause.message : "操作失败，请重试。";
+      cause instanceof Error ? cause.message : localized("操作失败，请重试。", "Action failed. Please try again.");
   } finally {
     if (contextCurrent(snapshot, generation, "write")) writeBusy.value = false;
   }
@@ -727,33 +738,33 @@ onUnmounted(() => {
     <header class="heading">
       <div>
         <div class="eyebrow">ORDERS / REVIEW</div>
-        <h1>注单管理</h1>
-        <p>查看不可变投注快照；管理员取消会按原扣款分配退款。</p>
+        <h1>{{ t("注单管理", "Bet order management") }}</h1>
+        <p>{{ t("查看不可变投注快照；管理员取消会按原扣款分配退款。", "Review immutable bet snapshots. Admin cancellation refunds the original deduction allocation.") }}</p>
       </div>
       <button
         class="secondary"
         :disabled="listBusy || !rights.ordersView"
         @click="loadOrders(offset)"
       >
-        刷新
+        {{ t("刷新", "Refresh") }}
       </button>
     </header>
 
     <p v-if="!rights.ordersView" class="notice">
-      当前账号没有此品牌的注单查看权限。
+      {{ t("当前账号没有此品牌的注单查看权限。", "This account cannot view bet orders for this brand.") }}
     </p>
     <template v-else>
       <form class="search panel" @submit.prevent="lookupOrder">
         <label
-          >成员 UUID（可选）
+          >{{ t("成员 UUID（可选）", "Member UUID (optional)") }}
           <input
             v-model="memberQuery"
             autocomplete="off"
-            placeholder="按品牌成员筛选"
+            :placeholder="t('按品牌成员筛选', 'Filter by brand member')"
           />
         </label>
         <label
-          >直接查询注单 UUID
+          >{{ t("直接查询注单 UUID", "Look up bet order by UUID") }}
           <input
             v-model="orderQuery"
             autocomplete="off"
@@ -761,23 +772,23 @@ onUnmounted(() => {
           />
         </label>
         <button class="primary" type="submit" :disabled="listBusy">
-          {{ listBusy ? "读取中…" : "查询" }}
+          {{ listBusy ? t("读取中…", "Loading…") : t("查询", "Search") }}
         </button>
       </form>
-      <p v-if="listError" class="error" role="alert">{{ listError }}</p>
+      <p v-if="listError" class="error" role="alert">{{ t(listError) }}</p>
 
-      <section class="panel list-panel" aria-label="注单列表">
+      <section class="panel list-panel" :aria-label="t('注单列表', 'Bet order list')">
         <div class="section-heading">
           <div>
-            <h2>注单</h2>
-            <p>每页最多 {{ BET_ORDER_PAGE_SIZE }} 条，按下单时间倒序。</p>
+            <h2>{{ t("注单", "Orders") }}</h2>
+            <p>{{ t("每页最多", "Up to") }} {{ BET_ORDER_PAGE_SIZE }} {{ t("条，按下单时间倒序。", "per page, newest orders first.") }}</p>
           </div>
           <span class="muted">{{
-            directLookup ? "直接查询结果" : `偏移 ${offset}`
+            directLookup ? t("直接查询结果", "Direct lookup result") : `${t("偏移", "Offset")} ${offset}`
           }}</span>
         </div>
-        <div v-if="listBusy && !orders.length" class="empty">正在读取注单…</div>
-        <div v-else-if="!orders.length" class="empty">没有符合条件的注单。</div>
+        <div v-if="listBusy && !orders.length" class="empty">{{ t("正在读取注单…", "Loading bet orders…") }}</div>
+        <div v-else-if="!orders.length" class="empty">{{ t("没有符合条件的注单。", "No matching bet orders.") }}</div>
         <div v-else class="order-list">
           <button
             v-for="order in orders"
@@ -788,12 +799,12 @@ onUnmounted(() => {
           >
             <span class="row-id"
               ><b>{{ order.id }}</b
-              ><small>成员 {{ order.brand_member_id }}</small></span
+              ><small>{{ t("成员", "Member") }} {{ order.brand_member_id }}</small></span
             >
             <span class="row-period"
               >{{ order.game_id }}<small>{{ order.period_id }}</small></span
             >
-            <span class="row-amount">{{ order.total_points }} 分</span>
+            <span class="row-amount">{{ order.total_points }} {{ t("分", "points") }}</span>
             <span class="badge" :class="statusClass(order.status)">{{
               statusName(order.status)
             }}</span>
@@ -806,15 +817,15 @@ onUnmounted(() => {
             :disabled="listBusy || offset === 0"
             @click="loadOrders(Math.max(0, offset - BET_ORDER_PAGE_SIZE))"
           >
-            上一页
+            {{ t("上一页", "Previous") }}
           </button>
-          <span>{{ Math.floor(offset / BET_ORDER_PAGE_SIZE) + 1 }} 页</span>
+          <span>{{ Math.floor(offset / BET_ORDER_PAGE_SIZE) + 1 }} {{ t("页", "page") }}</span>
           <button
             class="secondary"
             :disabled="listBusy || !hasNext"
             @click="loadOrders(offset + BET_ORDER_PAGE_SIZE)"
           >
-            下一页
+            {{ t("下一页", "Next") }}
           </button>
         </footer>
       </section>
@@ -822,62 +833,62 @@ onUnmounted(() => {
       <section
         v-if="selectedOrderId"
         class="panel detail-panel"
-        aria-label="注单详情"
+        :aria-label="t('注单详情', 'Bet order details')"
       >
         <div class="section-heading">
           <div>
-            <h2>注单详情</h2>
+            <h2>{{ t("注单详情", "Bet order details") }}</h2>
             <p class="mono">{{ selectedOrderId }}</p>
           </div>
-          <button class="text-button" @click="selectOrder('')">关闭</button>
+          <button class="text-button" @click="selectOrder('')">{{ t("关闭", "Close") }}</button>
         </div>
-        <p v-if="detailBusy" class="empty">正在读取详情…</p>
-        <p v-if="detailError" class="error" role="alert">{{ detailError }}</p>
+        <p v-if="detailBusy" class="empty">{{ t("正在读取详情…", "Loading details…") }}</p>
+        <p v-if="detailError" class="error" role="alert">{{ t(detailError) }}</p>
         <template v-if="selectedOrder">
           <div class="detail-top">
             <span class="badge" :class="statusClass(selectedOrder.status)">{{
               statusName(selectedOrder.status)
             }}</span>
-            <span>版本 {{ selectedOrder.version }}</span>
+            <span>{{ t("版本", "Version") }} {{ selectedOrder.version }}</span>
             <time>{{ selectedOrder.placed_at }}</time>
           </div>
           <div class="facts">
             <div>
-              <small>品牌</small><b>{{ selectedOrder.brand_id }}</b>
+              <small>{{ t("品牌", "Brand") }}</small><b>{{ selectedOrder.brand_id }}</b>
             </div>
             <div>
-              <small>成员 ID</small><b>{{ selectedOrder.brand_member_id }}</b>
+              <small>{{ t("成员 ID", "Member ID") }}</small><b>{{ selectedOrder.brand_member_id }}</b>
             </div>
             <div>
-              <small>全局用户 ID</small
+              <small>{{ t("全局用户 ID", "Global user ID") }}</small
               ><b>{{ selectedOrder.global_user_id }}</b>
             </div>
             <div>
-              <small>彩种 ID / 期次 ID</small
+              <small>{{ t("彩种 ID / 期次 ID", "Game ID / period ID") }}</small
               ><b
                 >{{ selectedOrder.game_id }} / {{ selectedOrder.period_id }}</b
               >
             </div>
             <div>
-              <small>玩法 ID</small><b>{{ selectedOrder.play_id }}</b>
+              <small>{{ t("玩法 ID", "Play ID") }}</small><b>{{ selectedOrder.play_id }}</b>
             </div>
             <div>
-              <small>规则版本 ID</small
+              <small>{{ t("规则版本 ID", "Rule version ID") }}</small
               ><b>{{ selectedOrder.rule_version_id }}</b>
             </div>
             <div>
-              <small>规则快照哈希</small
+              <small>{{ t("规则快照哈希", "Rule snapshot hash") }}</small
               ><b>{{ selectedOrder.definition_hash }}</b>
             </div>
           </div>
           <div class="amounts">
             <div v-for="row in amountRows" :key="row[0]">
-              <small>{{ row[0] }}</small
+              <small>{{ amountLabel(row[0]) }}</small
               ><b
                 >{{ row[1]
                 }}<template v-if="row[0] === '单注积分' || row[0] === '总扣款'">
-                  分</template
-                ><template v-else-if="row[0] === '倍数'"> 倍</template></b
+                  {{ t("分", "points") }}</template
+                ><template v-else-if="row[0] === '倍数'"> {{ t("倍", "x") }}</template></b
               >
             </div>
           </div>
@@ -891,7 +902,7 @@ onUnmounted(() => {
           />
 
           <section class="subsection">
-            <h3>规则与奖级赔率快照</h3>
+            <h3>{{ t("规则与奖级赔率快照", "Rule and prize tier odds snapshot") }}</h3>
             <div
               class="tiers"
               v-if="selectedOrder.definition_snapshot.prize_tiers?.length"
@@ -901,153 +912,153 @@ onUnmounted(() => {
                 :key="tier.code"
               >
                 <b>{{ tier.code }}</b
-                ><span>赔率 {{ tier.odds }}</span
-                ><span>{{ tier.exclusive ? "互斥" : "可叠加" }}</span
+                ><span>{{ t("赔率", "Odds") }} {{ tier.odds }}</span
+                ><span>{{ tier.exclusive ? t("互斥", "Exclusive") : t("可叠加", "Stackable") }}</span
                 ><span v-if="tier.cap_points"
-                  >封顶 {{ tier.cap_points }} 分</span
+                  >{{ t("封顶", "Cap") }} {{ tier.cap_points }} {{ t("分", "points") }}</span
                 >
               </div>
             </div>
-            <p v-else class="muted">快照中没有奖级赔率。</p>
+            <p v-else class="muted">{{ t("快照中没有奖级赔率。", "No prize tier odds in this snapshot.") }}</p>
             <details>
-              <summary>查看完整规则定义</summary>
+              <summary>{{ t("查看完整规则定义", "View full rule definition") }}</summary>
               <pre>{{ stringify(selectedOrder.definition_snapshot) }}</pre>
             </details>
           </section>
 
           <section class="subsection">
-            <h3>选号快照</h3>
+            <h3>{{ t("选号快照", "Selection snapshot") }}</h3>
             <div class="selection-grid">
               <div>
-                <h4>原始选号</h4>
+                <h4>{{ t("原始选号", "Original selection") }}</h4>
                 <pre>{{ stringify(selectedOrder.selection_raw) }}</pre>
               </div>
               <div>
-                <h4>标准化选号</h4>
+                <h4>{{ t("标准化选号", "Normalized selection") }}</h4>
                 <pre>{{ stringify(selectedOrder.selection_normalized) }}</pre>
               </div>
             </div>
           </section>
           <section class="subsection">
-            <h3>展开组合（最多预览 {{ BET_COMBINATION_PREVIEW_LIMIT }} 条）</h3>
+            <h3>{{ t("展开组合（最多预览", "Expanded combinations (preview up to") }} {{ BET_COMBINATION_PREVIEW_LIMIT }} {{ t("条）", ")") }}</h3>
             <pre>{{ stringify(preview.items) }}</pre>
             <p class="muted">
-              共 {{ preview.total }} 组<template v-if="preview.remaining"
-                >，其余 {{ preview.remaining }} 组不在页面展开。</template
+              {{ t("共", "Total") }} {{ preview.total }} {{ t("组", "combinations") }}<template v-if="preview.remaining"
+                >，{{ t("其余", "the remaining") }} {{ preview.remaining }} {{ t("组不在页面展开。", "combinations are not expanded here.") }}</template
               >
             </p>
           </section>
 
           <section class="subsection">
-            <h3>扣款与退款证据</h3>
+            <h3>{{ t("扣款与退款证据", "Debit and refund evidence") }}</h3>
             <div class="facts">
               <div>
-                <small>扣款账本条目</small
+                <small>{{ t("扣款账本条目", "Debit ledger entry") }}</small
                 ><b>{{ selectedOrder.debit_entry_id }}</b>
               </div>
               <div>
-                <small>退款账本条目</small
-                ><b>{{ selectedOrder.refund_entry_id || "无" }}</b>
+                <small>{{ t("退款账本条目", "Refund ledger entry") }}</small
+                ><b>{{ selectedOrder.refund_entry_id || t("无", "None") }}</b>
               </div>
               <div>
-                <small>取消时间</small
-                ><b>{{ selectedOrder.cancelled_at || "无" }}</b>
+                <small>{{ t("取消时间", "Cancelled at") }}</small
+                ><b>{{ selectedOrder.cancelled_at || t("无", "None") }}</b>
               </div>
               <div>
-                <small>取消原因</small
-                ><b>{{ selectedOrder.cancel_reason || "无" }}</b>
+                <small>{{ t("取消原因", "Cancellation reason") }}</small
+                ><b>{{ selectedOrder.cancel_reason || t("无", "None") }}</b>
               </div>
             </div>
             <div class="allocation">
-              <b>原始扣款来源分配</b>
+              <b>{{ t("原始扣款来源分配", "Original debit allocation by source") }}</b>
               <p
                 v-for="(entry, index) in selectedOrder.deduction_allocation"
                 :key="`${entry.source}-${entry.state}-${index}`"
               >
-                {{ entry.source }} · {{ entry.state }}：{{ entry.points }} 分
+                {{ entry.source }} · {{ entry.state }}: {{ entry.points }} {{ t("分", "points") }}
               </p>
             </div>
           </section>
           <section class="subsection">
-            <h3>策略版本</h3>
+            <h3>{{ t("策略版本", "Policy versions") }}</h3>
             <div class="facts">
               <div>
-                <small>品牌策略版本</small
+                <small>{{ t("品牌策略版本", "Brand policy version") }}</small
                 ><b>{{ selectedOrder.policy_versions.brand }}</b>
               </div>
               <div>
-                <small>彩种策略版本</small
+                <small>{{ t("彩种策略版本", "Game policy version") }}</small
                 ><b>{{ selectedOrder.policy_versions.game }}</b>
               </div>
               <div>
-                <small>用户可自行取消</small
+                <small>{{ t("用户可自行取消", "User may cancel") }}</small
                 ><b>{{
                   selectedOrder.policy_snapshot.user_cancel_allowed
-                    ? "是"
-                    : "否"
+                    ? t("是", "Yes")
+                    : t("否", "No")
                 }}</b>
               </div>
             </div>
             <details>
-              <summary>查看策略快照</summary>
+              <summary>{{ t("查看策略快照", "View policy snapshot") }}</summary>
               <pre>{{ stringify(selectedOrder.policy_snapshot) }}</pre>
             </details>
           </section>
 
           <section class="subsection evidence">
-            <h3>异常标记证据</h3>
-            <p v-if="detailBusy" class="muted" aria-live="polite">正在读取异常标记记录…</p>
+            <h3>{{ t("异常标记证据", "Abnormal marker evidence") }}</h3>
+            <p v-if="detailBusy" class="muted" aria-live="polite">{{ t("正在读取异常标记记录…", "Loading abnormal marker records…") }}</p>
             <template v-else-if="exception"
               ><div class="facts">
                 <div>
-                  <small>异常记录 ID</small><b>{{ exception.id }}</b>
+                  <small>{{ t("异常记录 ID", "Abnormal record ID") }}</small><b>{{ exception.id }}</b>
                 </div>
                 <div>
-                  <small>记录时注单版本</small
+                  <small>{{ t("记录时注单版本", "Order version when recorded") }}</small
                   ><b>{{ exception.order_version }}</b>
                 </div>
                 <div>
-                  <small>标记来源 / 标记者</small><b>{{ exception.source === 'system' ? `系统核算 · ${exception.error_code}` : exception.marked_by }}</b>
+                  <small>{{ t("标记来源 / 标记者", "Marker source / actor") }}</small><b>{{ exception.source === 'system' ? `${t('系统核算', 'System validation')} · ${exception.error_code}` : exception.marked_by }}</b>
                 </div>
                 <div>
-                  <small>记录时间</small><b>{{ exception.created_at }}</b>
+                  <small>{{ t("记录时间", "Recorded at") }}</small><b>{{ exception.created_at }}</b>
                 </div>
               </div>
               <p class="reason-box">{{ exception.reason }}</p></template
             >
-            <p v-else class="muted">当前注单没有异常标记记录。</p>
+            <p v-else class="muted">{{ t("当前注单没有异常标记记录。", "No abnormal marker record for this order.") }}</p>
           </section>
 
           <section class="subsection judgment-evidence">
-            <h3>判定取消记录</h3>
-            <p v-if="detailBusy" class="muted" aria-live="polite">正在读取判定取消记录…</p>
+            <h3>{{ t("判定取消记录", "Judgment cancellation record") }}</h3>
+            <p v-if="detailBusy" class="muted" aria-live="polite">{{ t("正在读取判定取消记录…", "Loading judgment cancellation records…") }}</p>
             <template v-else-if="judgment">
               <div class="facts">
                 <div>
-                  <small>判定记录 ID</small><b>{{ judgment.id }}</b>
+                  <small>{{ t("判定记录 ID", "Judgment record ID") }}</small><b>{{ judgment.id }}</b>
                 </div>
                 <div>
-                  <small>判定时注单版本</small
+                  <small>{{ t("判定时注单版本", "Order version at judgment") }}</small
                   ><b>{{ judgment.order_version }}</b>
                 </div>
                 <div>
-                  <small>判定原因类型</small
+                  <small>{{ t("判定原因类型", "Judgment cause") }}</small
                   ><b>{{
-                    judgment.cause === "no_result" ? "未出结果" : "结果无效"
+                    judgment.cause === "no_result" ? t("未出结果", "No result") : t("结果无效", "Invalid result")
                   }}</b>
                 </div>
                 <div>
-                  <small>判定操作者 ID</small><b>{{ judgment.judged_by }}</b>
+                  <small>{{ t("判定操作者 ID", "Judged by account ID") }}</small><b>{{ judgment.judged_by }}</b>
                 </div>
                 <div>
-                  <small>判定时间</small><b>{{ judgment.created_at }}</b>
+                  <small>{{ t("判定时间", "Judged at") }}</small><b>{{ judgment.created_at }}</b>
                 </div>
                 <div>
-                  <small>开奖结果引用</small
-                  ><b>{{ judgment.draw_result_id || "无" }}</b>
+                  <small>{{ t("开奖结果引用", "Draw result reference") }}</small
+                  ><b>{{ judgment.draw_result_id || t("无", "None") }}</b>
                 </div>
                 <div>
-                  <small>退款账本引用</small
+                  <small>{{ t("退款账本引用", "Refund ledger reference") }}</small
                   ><b>{{ judgment.refund_entry_id }}</b>
                 </div>
               </div>
@@ -1059,12 +1070,12 @@ onUnmounted(() => {
               "
               class="muted"
             >
-              没有单独判定记录；整期判定取消流程可能不会为每注生成此记录。
+              {{ t("没有单独判定记录；整期判定取消流程可能不会为每注生成此记录。", "No individual judgment record exists. Period-wide judgment cancellation may not create one for every order.") }}
             </p>
             <p v-else-if="judgmentRead" class="muted">
-              当前注单没有单独判定取消记录。
+              {{ t("当前注单没有单独判定取消记录。", "No individual judgment cancellation record for this order.") }}
             </p>
-            <p v-else class="muted">正在读取判定记录…</p>
+            <p v-else class="muted">{{ t("正在读取判定记录…", "Loading judgment record…") }}</p>
           </section>
 
           <div
@@ -1079,38 +1090,38 @@ onUnmounted(() => {
               class="secondary"
               @click="beginIntent('mark-abnormal')"
             >
-              标记为异常
+              {{ t("标记为异常", "Mark abnormal") }}
             </button>
             <button
               v-if="canCancelSelected"
               class="danger-button"
               @click="beginIntent('cancel')"
             >
-              管理员取消并退款
+              {{ t("管理员取消并退款", "Cancel and refund") }}
             </button>
             <button
               v-if="canJudgeCancelSelected"
               class="danger-button"
               @click="beginIntent('judge-cancel')"
             >
-              判定取消
+              {{ t("判定取消", "Judge cancellation") }}
             </button>
             <span
               v-if="selectedOrder.status === 'abnormal' && rights.markAbnormal"
               class="muted"
-              >已标记异常；取消仍可单独处理。</span
+              >{{ t("已标记异常；取消仍可单独处理。", "Marked abnormal; cancellation can still be handled separately.") }}</span
             >
             <span
               v-if="!['placed', 'abnormal'].includes(selectedOrder.status)"
               class="muted"
-              >此状态只读，投注、规则、赔率与积分均不可编辑。</span
+              >{{ t("此状态只读，投注、规则、赔率与积分均不可编辑。", "This status is read-only; bets, rules, odds, and points cannot be edited.") }}</span
             >
           </div>
-          <p v-if="notice" class="success-note" role="status">{{ notice }}</p>
+          <p v-if="notice" class="success-note" role="status">{{ t(notice) }}</p>
           <p v-if="conflictNotice" class="conflict-note" role="status">
-            {{ conflictNotice }}
+            {{ t(conflictNotice) }}
           </p>
-          <p v-if="writeError" class="error" role="alert">{{ writeError }}</p>
+          <p v-if="writeError" class="error" role="alert">{{ t(writeError) }}</p>
           <div
             v-if="
               pendingUnknown &&
@@ -1120,13 +1131,13 @@ onUnmounted(() => {
             "
             class="reconcile-box"
           >
-            <p>有一项结果未确定的操作。请求正文和编号保持锁定。</p>
+            <p>{{ t("有一项结果未确定的操作。请求正文和编号保持锁定。", "An action has an unresolved outcome. Its request body and identifier remain locked.") }}</p>
             <button
               class="secondary"
               :disabled="detailBusy"
               @click="reconcileFrozen"
             >
-              读取后台状态
+              {{ t("读取后台状态", "Read server state") }}
             </button>
             <button
               v-if="
@@ -1140,7 +1151,7 @@ onUnmounted(() => {
               :disabled="writeBusy"
               @click="retryFrozen"
             >
-              {{ writeBusy ? "重试中…" : "使用相同请求编号重试" }}
+              {{ writeBusy ? t("重试中…", "Retrying…") : t("使用相同请求编号重试", "Retry with the same request ID") }}
             </button>
           </div>
         </template>
@@ -1172,102 +1183,102 @@ onUnmounted(() => {
             <h2 id="bet-action-title">
               {{
                 intent.action === "cancel"
-                  ? "确认管理员取消"
+                  ? t("确认管理员取消", "Confirm admin cancellation")
                   : intent.action === "mark-abnormal"
-                    ? "确认标记异常"
-                    : "确认判定取消"
+                    ? t("确认标记异常", "Confirm abnormal marking")
+                    : t("确认判定取消", "Confirm judgment cancellation")
               }}
             </h2>
           </div>
-          <button class="text-button" @click="closeIntent">关闭</button>
+          <button class="text-button" @click="closeIntent">{{ t("关闭", "Close") }}</button>
         </div>
         <p v-if="intent.action === 'cancel'" class="warning">
-          管理员取消会将原始扣款积分按来源分配全额退回。该操作适用于待开奖或异常注单，会生成退款账本记录。
+          {{ t("管理员取消会将原始扣款积分按来源分配全额退回。该操作适用于待开奖或异常注单，会生成退款账本记录。", "Admin cancellation refunds the full original deduction by source. It applies to awaiting-draw or abnormal orders and creates a refund ledger entry.") }}
         </p>
         <p v-else-if="intent.action === 'mark-abnormal'" class="warning">
-          标记异常只记录异常证据，不退款。注单状态必须仍为待开奖。
+          {{ t("标记异常只记录异常证据，不退款。注单状态必须仍为待开奖。", "Marking abnormal records evidence only and does not issue a refund. The order must still be awaiting draw.") }}
         </p>
         <p v-else class="warning">
-          判定取消会依据开奖结果情况取消注单并生成退款记录；这不是付款或重新结算。服务器会检查该注单及期次是否允许判定。
+          {{ t("判定取消会依据开奖结果情况取消注单并生成退款记录；这不是付款或重新结算。服务器会检查该注单及期次是否允许判定。", "Judgment cancellation cancels the order based on the draw result and creates a refund record. It is not a payout or resettlement. The server verifies that the order and period allow judgment.") }}
         </p>
         <div v-if="selectedOrder" class="confirm-facts">
           <p>
-            注单：<b>{{ selectedOrder.id }}</b>
+            {{ t("注单：", "Order: ") }}<b>{{ selectedOrder.id }}</b>
           </p>
           <p>
-            提交版本：<b>{{ selectedOrder.version }}</b>
+            {{ t("提交版本：", "Submission version: ") }}<b>{{ selectedOrder.version }}</b>
           </p>
           <p>
-            当前状态：<b>{{ statusName(selectedOrder.status) }}</b>
+            {{ t("当前状态：", "Current status: ") }}<b>{{ statusName(selectedOrder.status) }}</b>
           </p>
         </div>
         <label v-if="intent.action === 'judge-cancel'" class="reason-label">
-          判定原因类型
+          {{ t("判定原因类型", "Judgment cause") }}
           <select
             v-model="judgmentCause"
-            aria-label="判定取消原因"
+            :aria-label="t('判定取消原因', 'Judgment cancellation cause')"
             :disabled="confirmed || writeBusy"
           >
-            <option value="no_result">未出开奖结果</option>
-            <option value="invalid_result">开奖结果无效</option>
+            <option value="no_result">{{ t("未出开奖结果", "No draw result") }}</option>
+            <option value="invalid_result">{{ t("开奖结果无效", "Invalid draw result") }}</option>
           </select>
         </label>
         <p v-if="intent.action === 'judge-cancel'" class="muted">
-          “未出开奖结果”要求当前没有锁定结果；若存在外部候选结果但经人工认定无效，请选择“开奖结果无效”。
+          {{ t("“未出开奖结果”要求当前没有锁定结果；若存在外部候选结果但经人工认定无效，请选择“开奖结果无效”。", "Use “No draw result” only when no result is locked. If an external candidate exists but has been confirmed invalid, choose “Invalid draw result”.") }}
         </p>
         <label class="reason-label"
-          >操作原因（必填，UTF-8 最多 500 字节）
+          >{{ t("操作原因（必填，UTF-8 最多 500 字节）", "Reason (required, up to 500 UTF-8 bytes)") }}
           <textarea
             v-model="reason"
             :disabled="confirmed || writeBusy"
             rows="4"
             maxlength="5000"
-            placeholder="填写可审计的操作原因"
+            :placeholder="t('填写可审计的操作原因', 'Enter an auditable reason for this action')"
           ></textarea>
         </label>
         <p class="byte-count" :class="{ over: reasonBytes > 500 }">
-          {{ reasonBytes }} / 500 字节
+          {{ reasonBytes }} / {{ t("500 字节", "500 bytes") }}
         </p>
         <template v-if="confirmed"
           ><div class="confirm-facts">
-            <p>固定请求正文：{{ stringify(pending?.body) }}</p>
+            <p>{{ t("固定请求正文：", "Frozen request body: ") }}{{ stringify(pending?.body) }}</p>
             <p>
-              请求编号：<b>{{ pending?.idempotencyKey }}</b>
+              {{ t("请求编号：", "Request ID: ") }}<b>{{ pending?.idempotencyKey }}</b>
             </p>
           </div>
           <label class="confirm-check"
             ><input v-model="confirmed" type="checkbox" />
-            我已核对注单、版本、原因及{{
+            {{ t("我已核对注单、版本、原因及", "I reviewed the order, version, reason, and ") }}{{
               intent.action === "cancel"
-                ? "退款影响"
+                ? t("退款影响", "refund impact")
                 : intent.action === "mark-abnormal"
-                  ? "异常标记"
-                  : "判定依据和退款影响"
+                  ? t("异常标记", "abnormal marker")
+                  : t("判定依据和退款影响", "judgment basis and refund impact")
             }}。</label
           ></template
         >
-        <p v-if="writeError" class="error" role="alert">{{ writeError }}</p>
+        <p v-if="writeError" class="error" role="alert">{{ t(writeError) }}</p>
         <div class="dialog-actions">
           <button
             class="secondary"
             :disabled="writeBusy || pendingUnknown"
             @click="closeIntent"
           >
-            返回</button
+            {{ t("返回", "Back") }}</button
           ><button
             v-if="!confirmed"
             class="primary"
             :disabled="!validBetReason(reason) || writeBusy"
             @click="freezeIntent"
           >
-            检查并确认</button
+            {{ t("检查并确认", "Review and confirm") }}</button
           ><button
             v-else
             class="danger-button"
             :disabled="!confirmed || writeBusy || !pending"
             @click="submitConfirmed"
           >
-            {{ writeBusy ? "提交中…" : "确认并提交" }}
+            {{ writeBusy ? t("提交中…", "Submitting…") : t("确认并提交", "Confirm and submit") }}
           </button>
         </div>
       </section>

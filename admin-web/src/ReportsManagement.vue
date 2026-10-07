@@ -5,6 +5,95 @@ import { createReportsApi, reportsPermissions } from "./reports-api";
 import { createReportExportApi, reportExportPermissions } from "./report-export-api";
 import WithdrawalReport from "./WithdrawalReport.vue";
 import CommissionReport from "./CommissionReport.vue";
+import { useAdminI18n } from "./i18n";
+
+const { t, locale } = useAdminI18n();
+const englishUi: Record<string, string> = {
+  "只读统计 · 按品牌隔离": "Read-only statistics · Brand scoped",
+  "运营报表": "Operational reports",
+  "只读刷新报表": "Refresh reports (read only)",
+  "报表类型": "Report type",
+  "投注报表": "Betting report",
+  "账本报表": "Ledger report",
+  "报表筛选": "Report filters",
+  "时间范围快捷选项": "Quick date ranges",
+  "今天（设备时区）": "Today (device timezone)",
+  "近 7 天": "Last 7 days",
+  "近 30 天": "Last 30 days",
+  "报表开始时间": "Report start time",
+  "报表结束时间": "Report end time",
+  "会员筛选 UUID": "Member UUID filter",
+  "彩种筛选 UUID": "Game UUID filter",
+  "可留空": "Optional",
+  "投注分组": "Betting grouping",
+  "账本分组": "Ledger grouping",
+  "按天": "By day",
+  "按彩种": "By game",
+  "按会员": "By member",
+  "按账本类型": "By ledger entry type",
+  "时间按本机时区输入，并以显式 UTC RFC3339 发送；修改筛选草稿不会改变当前已显示结果，点击查询后才会提交。": "Enter times in the device timezone; requests use explicit UTC RFC3339. Editing draft filters does not change displayed results until you query.",
+  "查询报表": "Query reports",
+  "超级管理员仍须分别获得对应品牌级或平台级查看与导出授权。": "Super administrators still need separate brand or platform view and export permissions.",
+  "报表汇总是当前投影结果，不代表财务关账。用 Excel 查看 CSV 时，请将数值列作为文本导入，以免超过 15 位的整数被舍入。": "Report totals are current projections, not closed financial accounts. Import CSV numeric columns as text in Excel to avoid rounding integers longer than 15 digits.",
+  "投注按注单提交时间落入半开区间 [from, to)。": "Bets are selected by submission time in the half-open interval [from, to).",
+  "账本按实际创建及入账时间落入半开区间 [from, to)。": "Ledger entries are selected by actual creation and posting time in the half-open interval [from, to).",
+  "读取中…": "Loading…",
+  "导出中…": "Exporting…",
+  "导出全部分组 CSV": "Export all groups as CSV",
+  "品牌": "Brand",
+  "快照": "Snapshot",
+  "时区": "Timezone",
+  "区间 [": "Interval [",
+  "分组": "Group",
+  "会员": "Member",
+  "彩种": "Game",
+  "全部": "All",
+  "标签": "Label",
+  "已结算仅计入期间已完成且无待处理更正的最终结算；未结算含已放置、部分派奖及待处理更正，不含异常和取消。当前最终代次奖金仅计入当前最终代次，不是历史累计派奖。历史更正会重算旧注单 cohort。": "Settled amounts include final settlements without pending corrections. Unsettled includes placed bets, partial payouts and pending corrections, excluding abnormal and cancelled bets. Prizes reflect the current final generation, not historical cumulative payouts. Corrections recompute the original bet cohort.",
+  "账本统计按实际入账时间，不按注单创建时间。派奖入账、派奖冲正和净变动分开显示；全部来源状态的账本 delta 求和为净变动（新记录16桶，旧完整记录12桶），冻结与解冻转移的净变动为零。下方余额为快照时品牌/会员当前余额，不受查询时间范围限制；不代表全账本已完成对账。": "Ledger statistics use posting time, not bet creation time. Prize credits, reversals and net changes are separate. Net change sums all source/state deltas (16 buckets for new entries, 12 for complete legacy entries); freeze/unfreeze transfers have zero net change. Balances below are current brand/member balances at the snapshot, independent of the date range, not proof of full reconciliation.",
+  "当前余额快照（范围外）": "Current balance snapshot (outside date range)",
+  "此页没有分组记录。": "No groups on this page.",
+  "第": "Items",
+  "项，共": "of",
+  "组": "groups",
+  "上一页": "Previous",
+  "下一页": "Next",
+  "设置筛选条件后查询投注报表。": "Set filters and query the betting report.",
+  "设置筛选条件后查询账本报表。": "Set filters and query the ledger report.",
+  "注单数": "Bet orders",
+  "投注积分": "Stake points",
+  "已放置": "Placed",
+  "已中奖": "Won",
+  "已未中奖": "Lost",
+  "异常": "Abnormal",
+  "已取消": "Cancelled",
+  "退款积分": "Refund points",
+  "已结算投注": "Settled stakes",
+  "未结算投注": "Unsettled stakes",
+  "异常投注": "Abnormal stakes",
+  "当前最终代次奖金": "Current final-generation prizes",
+  "未完成更正数": "Open corrections",
+  "账本笔数": "Ledger entries",
+  "净变动": "Net change",
+  "充值入账": "Recharge credits",
+  "派奖入账": "Prize credits",
+  "派奖冲正": "Prize reversals",
+  "退款": "Refunds",
+  "账户数": "Accounts",
+  "可用积分": "Available points",
+  "冻结积分": "Frozen points",
+  "提现中积分": "Withdrawal-pending points",
+  "当前积分合计": "Current total points",
+  "读取失败，请重试。": "Read failed. Please try again.",
+  "请选择有效的报表开始时间和结束时间。": "Choose valid report start and end times.",
+  "报表结束时间必须晚于开始时间。": "The report end must be later than the start.",
+  "查询时间范围不能超过 93 天。": "The report window cannot exceed 93 days.",
+  "会员筛选 UUID 格式无效。": "The member filter UUID is invalid.",
+  "彩种筛选 UUID 格式无效。": "The game filter UUID is invalid.",
+  "缺少 report_betting.view.brand 或 report_betting.view.platform 查看权限。": "Requires report_betting.view.brand or report_betting.view.platform permission.",
+  "缺少 report_ledger.view.brand 或 report_ledger.view.platform 查看权限。": "Requires report_ledger.view.brand or report_ledger.view.platform permission.",
+};
+function ui(value: string) { return t(value, englishUi[value] ?? value); }
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
@@ -244,7 +333,7 @@ function formatInteger(value: string): string {
 }
 function formatDate(value: string): string {
   const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleString() : value;
+  return Number.isFinite(date.getTime()) ? date.toLocaleString(locale.value === "en" ? "en-US" : "zh-CN") : value;
 }
 function hasNext(total: string, offset: number, count: number): boolean {
   try { return BigInt(offset) + BigInt(count) < BigInt(total); } catch { return false; }
@@ -283,7 +372,7 @@ function labelFor(key: string): string {
     prize_credit_points: "派奖入账", prize_reversal_points: "派奖冲正", available_points: "可用积分", frozen_points: "冻结积分",
     withdrawal_points: "提现中积分", total_points: "当前积分合计",
   };
-  return labels[key] ?? key;
+  return ui(labels[key] ?? key);
 }
 function setErrorForPermission() {
   if (!permissions.value.betting) bettingError.value = "缺少 report_betting.view.brand 或 report_betting.view.platform 查看权限。";
@@ -325,67 +414,67 @@ onBeforeUnmount(() => { alive = false; exportGeneration++; exportTickets.betting
 <template>
   <section class="reports-management" aria-labelledby="reports-title">
     <header class="reports-heading">
-      <div><p class="reports-eyebrow">只读统计 · 按品牌隔离</p><h2 id="reports-title">运营报表</h2></div>
-      <button class="reports-button secondary" type="button" :disabled="bettingBusy || ledgerBusy" @click="refreshReports">只读刷新报表</button>
+      <div><p class="reports-eyebrow">{{ ui("只读统计 · 按品牌隔离") }}</p><h2 id="reports-title">{{ ui("运营报表") }}</h2></div>
+      <button class="reports-button secondary" type="button" :disabled="bettingBusy || ledgerBusy" @click="refreshReports">{{ ui("只读刷新报表") }}</button>
     </header>
 
-    <nav class="reports-tabs" aria-label="报表类型">
-      <button type="button" :aria-pressed="activeReport === 'betting'" @click="activeReport = 'betting'">投注报表</button>
-      <button type="button" :aria-pressed="activeReport === 'ledger'" @click="activeReport = 'ledger'">账本报表</button>
+    <nav class="reports-tabs" :aria-label="ui('报表类型')">
+      <button type="button" :aria-pressed="activeReport === 'betting'" @click="activeReport = 'betting'">{{ ui("投注报表") }}</button>
+      <button type="button" :aria-pressed="activeReport === 'ledger'" @click="activeReport = 'ledger'">{{ ui("账本报表") }}</button>
     </nav>
 
-    <section class="reports-panel reports-filters" aria-label="报表筛选">
-      <div class="reports-presets" aria-label="时间范围快捷选项">
-        <button class="reports-button secondary" type="button" @click="setPreset(0)">今天（设备时区）</button>
-        <button class="reports-button secondary" type="button" @click="setPreset(7)">近 7 天</button>
-        <button class="reports-button secondary" type="button" @click="setPreset(30)">近 30 天</button>
+    <section class="reports-panel reports-filters" :aria-label="ui('报表筛选')">
+      <div class="reports-presets" :aria-label="ui('时间范围快捷选项')">
+        <button class="reports-button secondary" type="button" @click="setPreset(0)">{{ ui("今天（设备时区）") }}</button>
+        <button class="reports-button secondary" type="button" @click="setPreset(7)">{{ ui("近 7 天") }}</button>
+        <button class="reports-button secondary" type="button" @click="setPreset(30)">{{ ui("近 30 天") }}</button>
       </div>
       <div class="reports-filter-grid">
-        <label>报表开始时间<input v-model="fromDraft" type="datetime-local" step="1" /></label>
-        <label>报表结束时间<input v-model="toDraft" type="datetime-local" step="1" /></label>
-        <label>会员筛选 UUID<input v-model.trim="memberDraft" type="text" inputmode="text" autocomplete="off" placeholder="可留空" /></label>
-        <label v-if="activeReport === 'betting'">彩种筛选 UUID<input v-model.trim="gameDraft" type="text" inputmode="text" autocomplete="off" placeholder="可留空" /></label>
-        <label v-if="activeReport === 'betting'">投注分组<select v-model="bettingGroup" aria-label="投注分组"><option value="day">按天</option><option value="game">按彩种</option><option value="member">按会员</option></select></label>
-        <label v-else>账本分组<select v-model="ledgerGroup" aria-label="账本分组"><option value="day">按天</option><option value="entry_type">按账本类型</option></select></label>
+        <label>{{ ui("报表开始时间") }}<input v-model="fromDraft" type="datetime-local" step="1" /></label>
+        <label>{{ ui("报表结束时间") }}<input v-model="toDraft" type="datetime-local" step="1" /></label>
+        <label>{{ ui("会员筛选 UUID") }}<input v-model.trim="memberDraft" type="text" inputmode="text" autocomplete="off" :placeholder="ui('可留空')" /></label>
+        <label v-if="activeReport === 'betting'">{{ ui("彩种筛选 UUID") }}<input v-model.trim="gameDraft" type="text" inputmode="text" autocomplete="off" :placeholder="ui('可留空')" /></label>
+        <label v-if="activeReport === 'betting'">{{ ui("投注分组") }}<select v-model="bettingGroup" :aria-label="ui('投注分组')"><option value="day">{{ ui("按天") }}</option><option value="game">{{ ui("按彩种") }}</option><option value="member">{{ ui("按会员") }}</option></select></label>
+        <label v-else>{{ ui("账本分组") }}<select v-model="ledgerGroup" :aria-label="ui('账本分组')"><option value="day">{{ ui("按天") }}</option><option value="entry_type">{{ ui("按账本类型") }}</option></select></label>
       </div>
-      <p class="reports-note">时间按本机时区输入，并以显式 UTC RFC3339 发送；修改筛选草稿不会改变当前已显示结果，点击查询后才会提交。</p>
-      <div class="reports-actions"><button class="reports-button primary" type="button" :disabled="bettingBusy || ledgerBusy" @click="queryReports">查询报表</button></div>
+      <p class="reports-note">{{ ui("时间按本机时区输入，并以显式 UTC RFC3339 发送；修改筛选草稿不会改变当前已显示结果，点击查询后才会提交。") }}</p>
+      <div class="reports-actions"><button class="reports-button primary" type="button" :disabled="bettingBusy || ledgerBusy" @click="queryReports">{{ ui("查询报表") }}</button></div>
     </section>
 
-    <p v-if="props.account.super_admin" class="reports-note">超级管理员仍须分别获得对应品牌级或平台级查看与导出授权。</p>
-    <p class="reports-pending" role="note">报表汇总是当前投影结果，不代表财务关账。用 Excel 查看 CSV 时，请将数值列作为文本导入，以免超过 15 位的整数被舍入。</p>
+    <p v-if="props.account.super_admin" class="reports-note">{{ ui("超级管理员仍须分别获得对应品牌级或平台级查看与导出授权。") }}</p>
+    <p class="reports-pending" role="note">{{ ui("报表汇总是当前投影结果，不代表财务关账。用 Excel 查看 CSV 时，请将数值列作为文本导入，以免超过 15 位的整数被舍入。") }}</p>
 
     <section v-show="activeReport === 'betting'" class="reports-panel" aria-labelledby="betting-title">
-      <div class="reports-section-heading"><div><h3 id="betting-title">投注报表</h3><p>投注按注单提交时间落入半开区间 [from, to)。</p></div><div class="reports-export-actions"><span v-if="bettingBusy" class="reports-state">读取中…</span><button class="reports-button secondary" type="button" :disabled="!exportPermissions.betting || !committedQuery || bettingExportBusy" @click="exportReport('betting')">{{ bettingExportBusy ? '导出中…' : '导出全部分组 CSV' }}</button></div></div>
-      <p v-if="bettingExportError" class="reports-error" role="alert">{{ bettingExportError }}</p>
-      <p v-if="bettingError" class="reports-error" role="alert">{{ bettingError }}</p>
+      <div class="reports-section-heading"><div><h3 id="betting-title">{{ ui("投注报表") }}</h3><p>{{ ui("投注按注单提交时间落入半开区间 [from, to)。") }}</p></div><div class="reports-export-actions"><span v-if="bettingBusy" class="reports-state">{{ ui("读取中…") }}</span><button class="reports-button secondary" type="button" :disabled="!exportPermissions.betting || !committedQuery || bettingExportBusy" @click="exportReport('betting')">{{ ui(bettingExportBusy ? '导出中…' : '导出全部分组 CSV') }}</button></div></div>
+      <p v-if="bettingExportError" class="reports-error" role="alert">{{ ui(bettingExportError) }}</p>
+      <p v-if="bettingError" class="reports-error" role="alert">{{ ui(bettingError) }}</p>
       <template v-if="bettingResult">
-        <div class="reports-context"><span>品牌 {{ bettingResult.brand_id }}</span><span>快照 {{ formatDate(bettingResult.snapshot_at) }}</span><span>时区 {{ bettingResult.timezone }}</span><span>区间 [{{ formatDate(bettingResult.query.from) }}, {{ formatDate(bettingResult.query.to) }})</span><span>分组 {{ bettingResult.query.group_by }}</span><span>会员 {{ bettingResult.query.member_id ?? '全部' }}</span><span>彩种 {{ bettingResult.query.game_id ?? '全部' }}</span></div>
-        <p class="reports-definition">已结算仅计入期间已完成且无待处理更正的最终结算；未结算含已放置、部分派奖及待处理更正，不含异常和取消。当前最终代次奖金仅计入当前最终代次，不是历史累计派奖。历史更正会重算旧注单 cohort。</p>
-        <div class="reports-summary"><div v-for="metric in bettingMetrics(bettingResult.summary)" :key="metric[0]"><span>{{ metric[0] }}</span><strong>{{ formatInteger(metric[1]) }}</strong></div></div>
-        <div v-if="bettingResult.items.length" class="reports-table-wrap"><table class="reports-table"><thead><tr><th>分组</th><th>标签</th><th v-for="metric in bettingMetrics(bettingResult.items[0].totals)" :key="metric[0]">{{ metric[0] }}</th></tr></thead><tbody><tr v-for="item in bettingResult.items" :key="item.key"><td>{{ item.key }}</td><td>{{ item.label }}</td><td v-for="metric in bettingMetrics(item.totals)" :key="metric[0]">{{ formatInteger(metric[1]) }}</td></tr></tbody></table></div>
+        <div class="reports-context"><span>{{ ui("品牌") }} {{ bettingResult.brand_id }}</span><span>{{ ui("快照") }} {{ formatDate(bettingResult.snapshot_at) }}</span><span>{{ ui("时区") }} {{ bettingResult.timezone }}</span><span>{{ ui("区间 [") }}{{ formatDate(bettingResult.query.from) }}, {{ formatDate(bettingResult.query.to) }})</span><span>{{ ui("分组") }} {{ bettingResult.query.group_by }}</span><span>{{ ui("会员") }} {{ bettingResult.query.member_id ?? ui('全部') }}</span><span>{{ ui("彩种") }} {{ bettingResult.query.game_id ?? ui('全部') }}</span></div>
+        <p class="reports-definition">{{ ui("已结算仅计入期间已完成且无待处理更正的最终结算；未结算含已放置、部分派奖及待处理更正，不含异常和取消。当前最终代次奖金仅计入当前最终代次，不是历史累计派奖。历史更正会重算旧注单 cohort。") }}</p>
+        <div class="reports-summary"><div v-for="metric in bettingMetrics(bettingResult.summary)" :key="metric[0]"><span>{{ ui(metric[0]) }}</span><strong>{{ formatInteger(metric[1]) }}</strong></div></div>
+        <div v-if="bettingResult.items.length" class="reports-table-wrap"><table class="reports-table"><thead><tr><th>{{ ui("分组") }}</th><th>{{ ui("标签") }}</th><th v-for="metric in bettingMetrics(bettingResult.items[0].totals)" :key="metric[0]">{{ ui(metric[0]) }}</th></tr></thead><tbody><tr v-for="item in bettingResult.items" :key="item.key"><td>{{ item.key }}</td><td>{{ item.label }}</td><td v-for="metric in bettingMetrics(item.totals)" :key="metric[0]">{{ formatInteger(metric[1]) }}</td></tr></tbody></table></div>
         <div v-if="bettingResult.items.length" class="reports-cards"><article v-for="item in bettingResult.items" :key="item.key"><h4>{{ item.label }}</h4><p class="reports-key">{{ item.key }}</p><dl><div v-for="[key, value] in rowValues(item.totals)" :key="key"><dt>{{ labelFor(key) }}</dt><dd>{{ formatInteger(value) }}</dd></div></dl></article></div>
-        <p v-if="!bettingResult.items.length" class="reports-note">此页没有分组记录。</p>
-        <div class="reports-pagination"><span>第 {{ bettingOffset + 1 }}–{{ bettingOffset + bettingResult.items.length }} 项，共 {{ formatInteger(bettingResult.total_groups) }} 组</span><button class="reports-button secondary" type="button" :disabled="bettingOffset === 0 || bettingBusy || ledgerBusy" @click="pageReport('betting', -1)">上一页</button><button class="reports-button secondary" type="button" :disabled="!hasNext(bettingResult.total_groups, bettingOffset, bettingResult.items.length) || bettingBusy || ledgerBusy" @click="pageReport('betting', 1)">下一页</button></div>
+        <p v-if="!bettingResult.items.length" class="reports-note">{{ ui("此页没有分组记录。") }}</p>
+        <div class="reports-pagination"><span>{{ ui("第") }} {{ bettingOffset + 1 }}–{{ bettingOffset + bettingResult.items.length }} {{ ui("项，共") }} {{ formatInteger(bettingResult.total_groups) }} {{ ui("组") }}</span><button class="reports-button secondary" type="button" :disabled="bettingOffset === 0 || bettingBusy || ledgerBusy" @click="pageReport('betting', -1)">{{ ui("上一页") }}</button><button class="reports-button secondary" type="button" :disabled="!hasNext(bettingResult.total_groups, bettingOffset, bettingResult.items.length) || bettingBusy || ledgerBusy" @click="pageReport('betting', 1)">{{ ui("下一页") }}</button></div>
       </template>
-      <p v-else-if="!bettingBusy && !bettingError && permissions.betting" class="reports-note">设置筛选条件后查询投注报表。</p>
+      <p v-else-if="!bettingBusy && !bettingError && permissions.betting" class="reports-note">{{ ui("设置筛选条件后查询投注报表。") }}</p>
     </section>
 
     <section v-show="activeReport === 'ledger'" class="reports-panel" aria-labelledby="ledger-title">
-      <div class="reports-section-heading"><div><h3 id="ledger-title">账本报表</h3><p>账本按实际创建及入账时间落入半开区间 [from, to)。</p></div><div class="reports-export-actions"><span v-if="ledgerBusy" class="reports-state">读取中…</span><button class="reports-button secondary" type="button" :disabled="!exportPermissions.ledger || !committedQuery || ledgerExportBusy" @click="exportReport('ledger')">{{ ledgerExportBusy ? '导出中…' : '导出全部分组 CSV' }}</button></div></div>
-      <p v-if="ledgerExportError" class="reports-error" role="alert">{{ ledgerExportError }}</p>
-      <p v-if="ledgerError" class="reports-error" role="alert">{{ ledgerError }}</p>
+      <div class="reports-section-heading"><div><h3 id="ledger-title">{{ ui("账本报表") }}</h3><p>{{ ui("账本按实际创建及入账时间落入半开区间 [from, to)。") }}</p></div><div class="reports-export-actions"><span v-if="ledgerBusy" class="reports-state">{{ ui("读取中…") }}</span><button class="reports-button secondary" type="button" :disabled="!exportPermissions.ledger || !committedQuery || ledgerExportBusy" @click="exportReport('ledger')">{{ ui(ledgerExportBusy ? '导出中…' : '导出全部分组 CSV') }}</button></div></div>
+      <p v-if="ledgerExportError" class="reports-error" role="alert">{{ ui(ledgerExportError) }}</p>
+      <p v-if="ledgerError" class="reports-error" role="alert">{{ ui(ledgerError) }}</p>
       <template v-if="ledgerResult">
-        <div class="reports-context"><span>品牌 {{ ledgerResult.brand_id }}</span><span>快照 {{ formatDate(ledgerResult.snapshot_at) }}</span><span>时区 {{ ledgerResult.timezone }}</span><span>区间 [{{ formatDate(ledgerResult.query.from) }}, {{ formatDate(ledgerResult.query.to) }})</span><span>分组 {{ ledgerResult.query.group_by }}</span><span>会员 {{ ledgerResult.query.member_id ?? '全部' }}</span></div>
-        <p class="reports-definition">账本统计按实际入账时间，不按注单创建时间。派奖入账、派奖冲正和净变动分开显示；全部来源状态的账本 delta 求和为净变动（新记录16桶，旧完整记录12桶），冻结与解冻转移的净变动为零。下方余额为快照时品牌/会员当前余额，不受查询时间范围限制；不代表全账本已完成对账。</p>
-        <div class="reports-summary"><div v-for="metric in ledgerMetrics(ledgerResult.summary)" :key="metric[0]"><span>{{ metric[0] }}</span><strong>{{ formatInteger(metric[1]) }}</strong></div></div>
-        <div class="reports-balance"><h4>当前余额快照（范围外）</h4><div class="reports-summary"> <div v-for="metric in balanceMetrics(ledgerResult)" :key="metric[0]"><span>{{ metric[0] }}</span><strong>{{ formatInteger(metric[1]) }}</strong></div></div></div>
-        <div v-if="ledgerResult.items.length" class="reports-table-wrap"><table class="reports-table"><thead><tr><th>分组</th><th>标签</th><th v-for="metric in ledgerMetrics(ledgerResult.items[0].totals)" :key="metric[0]">{{ metric[0] }}</th></tr></thead><tbody><tr v-for="item in ledgerResult.items" :key="item.key"><td>{{ item.key }}</td><td>{{ item.label }}</td><td v-for="metric in ledgerMetrics(item.totals)" :key="metric[0]">{{ formatInteger(metric[1]) }}</td></tr></tbody></table></div>
+        <div class="reports-context"><span>{{ ui("品牌") }} {{ ledgerResult.brand_id }}</span><span>{{ ui("快照") }} {{ formatDate(ledgerResult.snapshot_at) }}</span><span>{{ ui("时区") }} {{ ledgerResult.timezone }}</span><span>{{ ui("区间 [") }}{{ formatDate(ledgerResult.query.from) }}, {{ formatDate(ledgerResult.query.to) }})</span><span>{{ ui("分组") }} {{ ledgerResult.query.group_by }}</span><span>{{ ui("会员") }} {{ ledgerResult.query.member_id ?? ui('全部') }}</span></div>
+        <p class="reports-definition">{{ ui("账本统计按实际入账时间，不按注单创建时间。派奖入账、派奖冲正和净变动分开显示；全部来源状态的账本 delta 求和为净变动（新记录16桶，旧完整记录12桶），冻结与解冻转移的净变动为零。下方余额为快照时品牌/会员当前余额，不受查询时间范围限制；不代表全账本已完成对账。") }}</p>
+        <div class="reports-summary"><div v-for="metric in ledgerMetrics(ledgerResult.summary)" :key="metric[0]"><span>{{ ui(metric[0]) }}</span><strong>{{ formatInteger(metric[1]) }}</strong></div></div>
+        <div class="reports-balance"><h4>{{ ui("当前余额快照（范围外）") }}</h4><div class="reports-summary"> <div v-for="metric in balanceMetrics(ledgerResult)" :key="metric[0]"><span>{{ ui(metric[0]) }}</span><strong>{{ formatInteger(metric[1]) }}</strong></div></div></div>
+        <div v-if="ledgerResult.items.length" class="reports-table-wrap"><table class="reports-table"><thead><tr><th>{{ ui("分组") }}</th><th>{{ ui("标签") }}</th><th v-for="metric in ledgerMetrics(ledgerResult.items[0].totals)" :key="metric[0]">{{ ui(metric[0]) }}</th></tr></thead><tbody><tr v-for="item in ledgerResult.items" :key="item.key"><td>{{ item.key }}</td><td>{{ item.label }}</td><td v-for="metric in ledgerMetrics(item.totals)" :key="metric[0]">{{ formatInteger(metric[1]) }}</td></tr></tbody></table></div>
         <div v-if="ledgerResult.items.length" class="reports-cards"><article v-for="item in ledgerResult.items" :key="item.key"><h4>{{ item.label }}</h4><p class="reports-key">{{ item.key }}</p><dl><div v-for="[key, value] in rowValues(item.totals)" :key="key"><dt>{{ labelFor(key) }}</dt><dd>{{ formatInteger(value) }}</dd></div></dl></article></div>
-        <p v-if="!ledgerResult.items.length" class="reports-note">此页没有分组记录。</p>
-        <div class="reports-pagination"><span>第 {{ ledgerOffset + 1 }}–{{ ledgerOffset + ledgerResult.items.length }} 项，共 {{ formatInteger(ledgerResult.total_groups) }} 组</span><button class="reports-button secondary" type="button" :disabled="ledgerOffset === 0 || bettingBusy || ledgerBusy" @click="pageReport('ledger', -1)">上一页</button><button class="reports-button secondary" type="button" :disabled="!hasNext(ledgerResult.total_groups, ledgerOffset, ledgerResult.items.length) || bettingBusy || ledgerBusy" @click="pageReport('ledger', 1)">下一页</button></div>
+        <p v-if="!ledgerResult.items.length" class="reports-note">{{ ui("此页没有分组记录。") }}</p>
+        <div class="reports-pagination"><span>{{ ui("第") }} {{ ledgerOffset + 1 }}–{{ ledgerOffset + ledgerResult.items.length }} {{ ui("项，共") }} {{ formatInteger(ledgerResult.total_groups) }} {{ ui("组") }}</span><button class="reports-button secondary" type="button" :disabled="ledgerOffset === 0 || bettingBusy || ledgerBusy" @click="pageReport('ledger', -1)">{{ ui("上一页") }}</button><button class="reports-button secondary" type="button" :disabled="!hasNext(ledgerResult.total_groups, ledgerOffset, ledgerResult.items.length) || bettingBusy || ledgerBusy" @click="pageReport('ledger', 1)">{{ ui("下一页") }}</button></div>
       </template>
-      <p v-else-if="!ledgerBusy && !ledgerError && permissions.ledger" class="reports-note">设置筛选条件后查询账本报表。</p>
+      <p v-else-if="!ledgerBusy && !ledgerError && permissions.ledger" class="reports-note">{{ ui("设置筛选条件后查询账本报表。") }}</p>
     </section>
     <WithdrawalReport :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />
     <CommissionReport :key="`commission-report:${props.account.id}:${props.brandId}`" :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />

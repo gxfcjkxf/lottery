@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import type { LocalizedMessage } from "@lottery/shared";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useAdminI18n } from "./i18n";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import {
   buildGeneratePeriodsBody,
@@ -18,6 +20,7 @@ import {
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
+const { t, message: localized } = useAdminI18n();
 const api = createPeriodSchedulesApi();
 const guard = createPeriodScheduleRequestGuard();
 const keyFor = createPeriodScheduleKeyTracker();
@@ -33,8 +36,8 @@ const loadingSchedule = ref(false);
 const loadingPeriods = ref(false);
 const savingSchedule = ref(false);
 const generating = ref(false);
-const error = ref("");
-const notice = ref("");
+const error = ref<string | LocalizedMessage>("");
+const notice = ref<string | LocalizedMessage>("");
 const scheduleReason = ref("");
 const generation = ref({ from: "", to: "", reason: "" });
 const periods = ref<Period[]>([]);
@@ -83,11 +86,11 @@ function current(ticket: ReturnType<typeof guard.capture>, permitted: boolean) {
 function showError(cause: unknown) {
   if (cause instanceof AdminApiError && cause.status === 401)
     emit("session-invalid");
-  error.value = cause instanceof Error ? cause.message : "请求失败，请重试。";
+  error.value = cause instanceof Error ? cause.message : localized("请求失败，请重试。", "Request failed. Please try again.");
 }
 function checkBrand<T extends { brand_id: string }>(record: T): T {
   if (record.brand_id !== props.brandId)
-    throw new Error("服务端返回记录的品牌与当前品牌不匹配，请重新读取。");
+    throw new Error(t("服务端返回记录的品牌与当前品牌不匹配，请重新读取。", "The returned record belongs to a different brand. Reload and try again."));
   return record;
 }
 function resetEditor() {
@@ -168,7 +171,7 @@ async function loadSchedule() {
     if (result) {
       checkBrand(result);
       if (result.game_id !== game.id)
-        throw new Error("排期响应的彩种与当前选择不匹配，请重新读取。");
+        throw new Error(t("排期响应的彩种与当前选择不匹配，请重新读取。", "The schedule response does not match the selected game. Reload and try again."));
       schedule.value = result;
       games.value = games.value.map((item) =>
         item.id === game.id ? { ...item, version: result.game_version } : item,
@@ -209,7 +212,7 @@ async function loadPeriods(offset = pageOffset.value) {
     if (!current(ticket, rights.value.periodView)) return;
     result.periods.forEach(checkBrand);
     if (result.periods.some((period) => period.game_id !== game.id))
-      throw new Error("期数响应包含其他彩种记录，请重新读取。");
+      throw new Error(t("期数响应包含其他彩种记录，请重新读取。", "The period response contains records for another game. Reload and try again."));
     periods.value = result.periods;
     pageOffset.value = result.offset;
   } catch (cause) {
@@ -225,7 +228,7 @@ async function loadPeriods(offset = pageOffset.value) {
 function splitCsv(value: string, label: string): string[] {
   const entries = value.split(",").map((item) => item.trim()).filter(Boolean);
   if (entries.some((item) => item.includes(" ")))
-    throw new Error(`${label}请用逗号分隔，不要在单项中加入空格。`);
+    throw new Error(`${label}${t("请用逗号分隔，不要在单项中加入空格。", " must be comma-separated; individual values cannot contain spaces.")}`);
   return entries;
 }
 
@@ -263,7 +266,7 @@ async function saveSchedule() {
     if (!current(ticket, rights.value.scheduleWrite)) return;
     checkBrand(result);
     if (result.game_id !== game.id)
-      throw new Error("保存响应的彩种与当前选择不匹配，请重新读取确认。");
+      throw new Error(t("保存响应的彩种与当前选择不匹配，请重新读取确认。", "The save response does not match the selected game. Reload to confirm the current state."));
     activeScheduleWrite = null;
     savingSchedule.value = false;
     schedule.value = result;
@@ -275,7 +278,7 @@ async function saveSchedule() {
     pauseDates.value = spec.value.pause_dates.join(", ");
     holidayDates.value = spec.value.holiday_dates.join(", ");
     scheduleReason.value = "";
-    notice.value = `已保存为不可变排期修订版 ${result.revision}。`;
+    notice.value = localized("已保存为不可变排期修订版 {revision}.", "Saved as immutable schedule revision {revision}.", { revision: result.revision });
   } catch (cause) {
     if (current(ticket, rights.value.scheduleWrite)) showError(cause);
   } finally {
@@ -314,11 +317,11 @@ async function generatePeriods() {
     if (!current(ticket, rights.value.periodGenerate)) return;
     result.periods.forEach(checkBrand);
     if (result.periods.some((period) => period.game_id !== game.id))
-      throw new Error("生成响应包含其他彩种记录，请重新读取确认。");
+      throw new Error(t("生成响应包含其他彩种记录，请重新读取确认。", "The generation response contains records for another game. Reload to confirm the current state."));
     activeGenerateWrite = null;
     generating.value = false;
     generatedTotals.value = { created: result.created, existing: result.existing };
-    notice.value = "生成请求已完成，统计来自服务端真实结果。";
+    notice.value = localized("生成请求已完成，统计来自服务端真实结果。", "Period generation completed; counts reflect the actual server response.");
     generation.value.reason = "";
     pageOffset.value = 0;
     if (rights.value.periodView) await loadPeriods(0);
@@ -337,15 +340,15 @@ function addBusyWindow() {
 }
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
-    pending: "待开始",
-    betting: "投注中",
-    closed: "已截止",
-    waiting_draw: "待开奖",
-    drawn: "已开奖",
-    settling: "结算中",
-    settled: "已结算",
-    bet_cancelled: "投注取消",
-    judged_cancelled: "判定取消",
+    pending: t("待开始", "Pending"),
+    betting: t("投注中", "Betting open"),
+    closed: t("已截止", "Closed"),
+    waiting_draw: t("待开奖", "Awaiting draw"),
+    drawn: t("已开奖", "Drawn"),
+    settling: t("结算中", "Settling"),
+    settled: t("已结算", "Settled"),
+    bet_cancelled: t("投注取消", "Betting cancelled"),
+    judged_cancelled: t("判定取消", "Judgment cancelled"),
   };
   return labels[status] ?? status;
 }
@@ -422,130 +425,130 @@ onUnmounted(() => guard.invalidate());
     <header class="page-head">
       <div>
         <p class="eyebrow">PERIOD SCHEDULES</p>
-        <h2>开奖排期与期数</h2>
-        <p>排期按修订版保存；已生成的期数不可在此编辑。</p>
+        <h2>{{ t("开奖排期与期数", "Draw schedules and periods") }}</h2>
+        <p>{{ t("排期按修订版保存；已生成的期数不可在此编辑。", "Schedules are saved as revisions; generated periods cannot be edited here.") }}</p>
       </div>
-      <span class="brand-tag">品牌 · {{ brandId || "未选择" }}</span>
+      <span class="brand-tag">{{ t("品牌", "Brand") }} · {{ brandId || t("未选择", "Not selected") }}</span>
     </header>
-    <p class="server-note">管理操作由服务端权限和版本校验保护。此页面不提供手动激活入口。</p>
+    <p class="server-note">{{ t("管理操作由服务端权限和版本校验保护。此页面不提供手动激活入口。", "Management actions require server authorization and version checks. This page has no manual activation action.") }}</p>
 
-    <p v-if="!canSeeAnything" class="callout">当前账号没有此品牌的排期或期数查看权限。</p>
+    <p v-if="!canSeeAnything" class="callout">{{ t("当前账号没有此品牌的排期或期数查看权限。", "This account cannot view schedules or periods for this brand.") }}</p>
     <template v-else>
       <div v-if="error" class="notice error" role="alert">
-        {{ error }}
-        <button type="button" :disabled="loadingGames || loadingSchedule || loadingPeriods" @click="loadGames()">重新读取</button>
+        {{ t(error) }}
+        <button type="button" :disabled="loadingGames || loadingSchedule || loadingPeriods" @click="loadGames()">{{ t("重新读取", "Reload") }}</button>
       </div>
-      <p v-if="notice" class="notice success" role="status">{{ notice }}</p>
-      <p v-if="!rights.gameCatalogView" class="callout">当前账号缺少 game.view.brand / game.view.platform 彩种目录查看权限；排期和期数读写不会替代目录权限。</p>
-      <div v-else-if="loadingGames && !games.length" class="callout" role="status">正在读取彩种…</div>
+      <p v-if="notice" class="notice success" role="status">{{ t(notice) }}</p>
+      <p v-if="!rights.gameCatalogView" class="callout">{{ t("当前账号缺少 game.view.brand / game.view.platform 彩种目录查看权限；排期和期数读写不会替代目录权限。", "This account lacks game.view.brand / game.view.platform permission to view the game catalog; schedule and period access does not grant catalog access.") }}</p>
+      <div v-else-if="loadingGames && !games.length" class="callout" role="status">{{ t("正在读取彩种…", "Loading games…") }}</div>
       <div v-if="rights.gameCatalogView && games.length" class="game-picker">
-        <label for="period-game">彩种</label>
+        <label for="period-game">{{ t("彩种", "Game") }}</label>
         <select id="period-game" v-model="gameId">
           <option v-for="game in games" :key="game.id" :value="game.id">{{ game.name }} · {{ game.code }}</option>
         </select>
-        <span v-if="selectedGame" class="muted">时区 {{ selectedGame.timezone }} · 彩种版本 {{ selectedGame.version }}</span>
-        <span class="catalog-actions"><button type="button" class="secondary" :disabled="loadingGames || catalogOffset === 0" @click="loadGames(Math.max(0, catalogOffset - catalogLimit))">上一页彩种</button><span class="muted">目录偏移 {{ catalogOffset }}</span><button type="button" class="secondary" :disabled="loadingGames || !catalogHasNext" @click="loadGames(catalogOffset + catalogLimit, true)">下一页彩种</button><button type="button" class="secondary" :disabled="loadingGames" @click="loadGames(0)">刷新彩种</button></span>
+        <span v-if="selectedGame" class="muted">{{ t("时区", "Timezone") }} {{ selectedGame.timezone }} · {{ t("彩种版本", "Game version") }} {{ selectedGame.version }}</span>
+        <span class="catalog-actions"><button type="button" class="secondary" :disabled="loadingGames || catalogOffset === 0" @click="loadGames(Math.max(0, catalogOffset - catalogLimit))">{{ t("上一页彩种", "Previous games") }}</button><span class="muted">{{ t("目录偏移", "Catalog offset") }} {{ catalogOffset }}</span><button type="button" class="secondary" :disabled="loadingGames || !catalogHasNext" @click="loadGames(catalogOffset + catalogLimit, true)">{{ t("下一页彩种", "Next games") }}</button><button type="button" class="secondary" :disabled="loadingGames" @click="loadGames(0)">{{ t("刷新彩种", "Refresh games") }}</button></span>
       </div>
-      <p v-if="rights.gameCatalogView && !games.length && !loadingGames" class="callout">此目录页没有彩种记录。可以使用刷新或翻页重新读取。</p>
+      <p v-if="rights.gameCatalogView && !games.length && !loadingGames" class="callout">{{ t("此目录页没有彩种记录。可以使用刷新或翻页重新读取。", "No games on this catalog page. Refresh or change pages to reload the catalog.") }}</p>
 
       <template v-if="selectedGame">
         <section v-if="rights.scheduleView || rights.scheduleWrite" class="panel">
           <div class="section-head">
             <div>
-              <h3>排期配置</h3>
-              <p v-if="schedule">当前修订版 {{ schedule.revision }} · 记录 {{ schedule.id }} · 彩种版本证据 {{ schedule.game_version }}</p>
-              <p v-else-if="rights.scheduleView">尚无已保存排期；以下为基于彩种时区的初始草稿。</p>
-              <p v-else>当前账号没有读取已保存排期的权限；下方表单不能预填现有配置。</p>
+              <h3>{{ t("排期配置", "Schedule configuration") }}</h3>
+              <p v-if="schedule">{{ t("当前修订版", "Current revision") }} {{ schedule.revision }} · {{ t("记录", "Record") }} {{ schedule.id }} · {{ t("彩种版本证据", "Game version evidence") }} {{ schedule.game_version }}</p>
+              <p v-else-if="rights.scheduleView">{{ t("尚无已保存排期；以下为基于彩种时区的初始草稿。", "No saved schedule exists; this initial draft uses the game's timezone.") }}</p>
+              <p v-else>{{ t("当前账号没有读取已保存排期的权限；下方表单不能预填现有配置。", "This account cannot read the saved schedule, so the form cannot be prefilled with the current configuration.") }}</p>
             </div>
-            <button type="button" class="secondary" :disabled="loadingSchedule" @click="loadSchedule">{{ loadingSchedule ? "读取中…" : "重新读取排期" }}</button>
+            <button type="button" class="secondary" :disabled="loadingSchedule" @click="loadSchedule">{{ loadingSchedule ? t("读取中…", "Loading…") : t("重新读取排期", "Reload schedule") }}</button>
           </div>
-          <div v-if="loadingSchedule && !schedule" class="callout">正在读取排期…</div>
-          <div v-if="!rights.scheduleView" class="callout">当前账号可以保存排期，但不能读取现有配置；提交会创建一个新的不可变修订版。请确认下方全部字段。</div>
+          <div v-if="loadingSchedule && !schedule" class="callout">{{ t("正在读取排期…", "Loading schedule…") }}</div>
+          <div v-if="!rights.scheduleView" class="callout">{{ t("当前账号可以保存排期，但不能读取现有配置；提交会创建一个新的不可变修订版。请确认下方全部字段。", "This account can save a schedule but cannot read the existing configuration. Submitting creates an immutable revision; review every field below.") }}</div>
           <div class="form-grid">
-            <label>彩种时区（IANA）
+            <label>{{ t("彩种时区（IANA）", "Game timezone (IANA)") }}
               <input v-model="spec.timezone" readonly aria-readonly="true">
             </label>
-            <label>排期模式
+            <label>{{ t("排期模式", "Schedule mode") }}
               <select v-model="spec.mode" :disabled="!rights.scheduleWrite || loadingSchedule">
-                <option value="daily">每日固定时间</option>
-                <option value="interval">固定间隔</option>
+                <option value="daily">{{ t("每日固定时间", "Daily fixed times") }}</option>
+                <option value="interval">{{ t("固定间隔", "Fixed interval") }}</option>
               </select>
             </label>
-            <label v-if="spec.mode === 'daily'" class="wide">每日开奖时间（HH:MM:SS，以逗号分隔）
+            <label v-if="spec.mode === 'daily'" class="wide">{{ t("每日开奖时间（HH:MM:SS，以逗号分隔）", "Daily draw times (HH:MM:SS, comma-separated)") }}
               <input v-model="drawTimes" :disabled="!rights.scheduleWrite || loadingSchedule" placeholder="12:00:00, 19:00:00">
             </label>
-            <label v-else>基准间隔（秒）
+            <label v-else>{{ t("基准间隔（秒）", "Base interval (seconds)") }}
               <input v-model.number="spec.interval_seconds" type="number" min="30" max="86400" step="1" :disabled="!rights.scheduleWrite || loadingSchedule">
             </label>
-            <label>投注开放提前秒数
+            <label>{{ t("投注开放提前秒数", "Seconds before draw to open betting") }}
               <input v-model.number="spec.bet_open_before_seconds" type="number" min="1" max="86400" step="1" :disabled="!rights.scheduleWrite || loadingSchedule">
             </label>
-            <label>投注截止提前秒数
+            <label>{{ t("投注截止提前秒数", "Seconds before draw to close betting") }}
               <input v-model.number="spec.bet_close_before_seconds" type="number" min="0" :max="spec.bet_open_before_seconds - 1" step="1" :disabled="!rights.scheduleWrite || loadingSchedule">
             </label>
-            <label class="wide">开奖星期（0 周日至 6 周六）</label>
+            <label class="wide">{{ t("开奖星期（0 周日至 6 周六）", "Draw weekdays (0 Sunday to 6 Saturday)") }}</label>
             <div class="weekday-list wide">
-              <label v-for="day in [{n:0,l:'周日'},{n:1,l:'周一'},{n:2,l:'周二'},{n:3,l:'周三'},{n:4,l:'周四'},{n:5,l:'周五'},{n:6,l:'周六'}]" :key="day.n" class="check-label">
+              <label v-for="day in [{n:0,l:t('周日','Sun')},{n:1,l:t('周一','Mon')},{n:2,l:t('周二','Tue')},{n:3,l:t('周三','Wed')},{n:4,l:t('周四','Thu')},{n:5,l:t('周五','Fri')},{n:6,l:t('周六','Sat')}]" :key="day.n" class="check-label">
                 <input v-model="spec.weekdays" type="checkbox" :value="day.n" :disabled="!rights.scheduleWrite || loadingSchedule">{{ day.l }}
               </label>
             </div>
-            <label>暂停日期（YYYY-MM-DD，逗号分隔）
+            <label>{{ t("暂停日期（YYYY-MM-DD，逗号分隔）", "Paused dates (YYYY-MM-DD, comma-separated)") }}
               <input v-model="pauseDates" :disabled="!rights.scheduleWrite || loadingSchedule" placeholder="2026-12-25">
             </label>
-            <label>节假日日期（YYYY-MM-DD，逗号分隔）
+            <label>{{ t("节假日日期（YYYY-MM-DD，逗号分隔）", "Holiday dates (YYYY-MM-DD, comma-separated)") }}
               <input v-model="holidayDates" :disabled="!rights.scheduleWrite || loadingSchedule" placeholder="2026-10-01">
             </label>
-            <label>节假日策略
+            <label>{{ t("节假日策略", "Holiday policy") }}
               <select v-model="spec.holiday_policy" :disabled="!rights.scheduleWrite || loadingSchedule">
-                <option value="skip">跳过开奖</option>
-                <option value="normal">照常开奖</option>
+                <option value="skip">{{ t("跳过开奖", "Skip draw") }}</option>
+                <option value="normal">{{ t("照常开奖", "Draw as scheduled") }}</option>
               </select>
             </label>
           </div>
           <div v-if="spec.mode === 'interval'" class="subpanel">
-            <div class="section-head"><div><h4>繁忙时段</h4><p>各时段覆盖基准间隔；开始须早于结束，时段不能重叠，最多 128 行。</p></div><button v-if="rights.scheduleWrite" type="button" class="secondary" :disabled="loadingSchedule || spec.busy_windows.length >= 128" @click="addBusyWindow">添加时段</button></div>
-            <p v-if="!spec.busy_windows.length" class="muted">未配置繁忙时段。</p>
+            <div class="section-head"><div><h4>{{ t("繁忙时段", "Busy windows") }}</h4><p>{{ t("各时段覆盖基准间隔；开始须早于结束，时段不能重叠，最多 128 行。", "Each window overrides the base interval. Start must precede end, windows cannot overlap, and at most 128 rows are allowed.") }}</p></div><button v-if="rights.scheduleWrite" type="button" class="secondary" :disabled="loadingSchedule || spec.busy_windows.length >= 128" @click="addBusyWindow">{{ t("添加时段", "Add window") }}</button></div>
+            <p v-if="!spec.busy_windows.length" class="muted">{{ t("未配置繁忙时段。", "No busy windows configured.") }}</p>
             <div v-for="(window, index) in spec.busy_windows" :key="index" class="busy-row">
-              <label>开始<input v-model="window.start" type="time" step="1" :disabled="!rights.scheduleWrite || loadingSchedule"></label>
-              <label>结束<input v-model="window.end" type="time" step="1" :disabled="!rights.scheduleWrite || loadingSchedule"></label>
-              <label>间隔（秒）<input v-model.number="window.interval_seconds" type="number" min="1" step="1" :disabled="!rights.scheduleWrite || loadingSchedule"></label>
-              <button v-if="rights.scheduleWrite" type="button" class="danger-link" :disabled="loadingSchedule" @click="spec.busy_windows.splice(index, 1)">移除</button>
+              <label>{{ t("开始", "Start") }}<input v-model="window.start" type="time" step="1" :disabled="!rights.scheduleWrite || loadingSchedule"></label>
+              <label>{{ t("结束", "End") }}<input v-model="window.end" type="time" step="1" :disabled="!rights.scheduleWrite || loadingSchedule"></label>
+              <label>{{ t("间隔（秒）", "Interval (seconds)") }}<input v-model.number="window.interval_seconds" type="number" min="1" step="1" :disabled="!rights.scheduleWrite || loadingSchedule"></label>
+              <button v-if="rights.scheduleWrite" type="button" class="danger-link" :disabled="loadingSchedule" @click="spec.busy_windows.splice(index, 1)">{{ t("移除", "Remove") }}</button>
             </div>
           </div>
           <div v-if="rights.scheduleWrite" class="save-row">
-            <label class="reason-field">操作原因（必填）<input v-model="scheduleReason" :disabled="savingSchedule" maxlength="500" placeholder="说明本次排期调整"></label>
-            <button type="button" :disabled="savingSchedule || loadingSchedule || !scheduleReason.trim()" @click="saveSchedule">{{ savingSchedule ? "保存中…" : "保存新修订版" }}</button>
+            <label class="reason-field">{{ t("操作原因（必填）", "Reason (required)") }}<input v-model="scheduleReason" :disabled="savingSchedule" maxlength="500" :placeholder="t('说明本次排期调整', 'Describe this schedule change')"></label>
+            <button type="button" :disabled="savingSchedule || loadingSchedule || !scheduleReason.trim()" @click="saveSchedule">{{ savingSchedule ? t("保存中…", "Saving…") : t("保存新修订版", "Save new revision") }}</button>
           </div>
         </section>
 
         <section v-if="rights.periodGenerate" class="panel">
-          <div class="section-head"><div><h3>生成期数</h3><p>输入按 {{ selectedGame.timezone }} 解读；提交时转换为 UTC。范围最多 7 天，已存在期数由服务端统计。</p></div></div>
+          <div class="section-head"><div><h3>{{ t("生成期数", "Generate periods") }}</h3><p>{{ t("输入按", "Input uses") }} {{ selectedGame.timezone }}{{ t("解读；提交时转换为 UTC。范围最多 7 天，已存在期数由服务端统计。", "; it is converted to UTC on submission. The range is limited to 7 days; existing periods are counted by the server.") }}</p></div></div>
           <div class="form-grid generate-grid">
-            <label>开始（彩种本地时间）<input v-model="generation.from" type="datetime-local" step="1"></label>
-            <label>结束（彩种本地时间）<input v-model="generation.to" type="datetime-local" step="1"></label>
-            <label class="wide">操作原因（必填）<input v-model="generation.reason" maxlength="500" placeholder="说明本次期数生成"></label>
+            <label>{{ t("开始（彩种本地时间）", "Start (game local time)") }}<input v-model="generation.from" type="datetime-local" step="1"></label>
+            <label>{{ t("结束（彩种本地时间）", "End (game local time)") }}<input v-model="generation.to" type="datetime-local" step="1"></label>
+            <label class="wide">{{ t("操作原因（必填）", "Reason (required)") }}<input v-model="generation.reason" maxlength="500" :placeholder="t('说明本次期数生成', 'Describe this period generation')"></label>
           </div>
-          <div class="save-row"><button type="button" :disabled="generating || !generation.reason.trim() || !generation.from || !generation.to" @click="generatePeriods">{{ generating ? "生成中…" : "生成期数" }}</button><span v-if="generatedTotals" class="muted">服务端结果：新建 {{ generatedTotals.created }} · 已存在 {{ generatedTotals.existing }}</span></div>
+          <div class="save-row"><button type="button" :disabled="generating || !generation.reason.trim() || !generation.from || !generation.to" @click="generatePeriods">{{ generating ? t("生成中…", "Generating…") : t("生成期数", "Generate periods") }}</button><span v-if="generatedTotals" class="muted">{{ t("服务端结果：新建", "Server result: created") }} {{ generatedTotals.created }} · {{ t("已存在", "already existed") }} {{ generatedTotals.existing }}</span></div>
         </section>
 
         <section v-if="rights.periodView" class="panel">
-          <div class="section-head"><div><h3>期数记录</h3><p>只读分页历史；以下列表是独立读取的记录页，不代表单次生成响应中的全部记录。</p></div><button type="button" class="secondary" :disabled="loadingPeriods" @click="loadPeriods(pageOffset)">{{ loadingPeriods ? "读取中…" : "刷新" }}</button></div>
-          <div v-if="loadingPeriods && !periods.length" class="callout" role="status">正在读取期数…</div>
-          <div v-else-if="!periods.length" class="callout">此页没有期数记录。</div>
+          <div class="section-head"><div><h3>{{ t("期数记录", "Period records") }}</h3><p>{{ t("只读分页历史；以下列表是独立读取的记录页，不代表单次生成响应中的全部记录。", "Read-only paginated history. This independently loaded page does not represent every record returned by a generation request.") }}</p></div><button type="button" class="secondary" :disabled="loadingPeriods" @click="loadPeriods(pageOffset)">{{ loadingPeriods ? t("读取中…", "Loading…") : t("刷新", "Refresh") }}</button></div>
+          <div v-if="loadingPeriods && !periods.length" class="callout" role="status">{{ t("正在读取期数…", "Loading periods…") }}</div>
+          <div v-else-if="!periods.length" class="callout">{{ t("此页没有期数记录。", "No period records on this page.") }}</div>
           <div v-else class="period-list">
             <article v-for="period in periods" :key="period.id" class="period-card">
               <div class="period-title"><strong>{{ period.period_no }}</strong><span class="status-chip">{{ statusLabel(period.status) }}</span></div>
               <dl>
-                <div><dt>序号 / 版本</dt><dd>{{ period.sequence }} / {{ period.version }}</dd></div>
-                <div><dt>投注开始</dt><dd>{{ displayTime(period.bet_start_at) }}</dd></div>
-                <div><dt>投注截止</dt><dd>{{ displayTime(period.bet_end_at) }}</dd></div>
-                <div><dt>开奖时间</dt><dd>{{ displayTime(period.draw_at) }}</dd></div>
-                <div><dt>排期记录</dt><dd>{{ period.schedule_id || "—" }}</dd></div>
-                <div><dt>状态原因</dt><dd>{{ period.state_reason || "—" }}</dd></div>
+                <div><dt>{{ t("序号 / 版本", "Sequence / version") }}</dt><dd>{{ period.sequence }} / {{ period.version }}</dd></div>
+                <div><dt>{{ t("投注开始", "Betting starts") }}</dt><dd>{{ displayTime(period.bet_start_at) }}</dd></div>
+                <div><dt>{{ t("投注截止", "Betting closes") }}</dt><dd>{{ displayTime(period.bet_end_at) }}</dd></div>
+                <div><dt>{{ t("开奖时间", "Draw time") }}</dt><dd>{{ displayTime(period.draw_at) }}</dd></div>
+                <div><dt>{{ t("排期记录", "Schedule record") }}</dt><dd>{{ period.schedule_id || "—" }}</dd></div>
+                <div><dt>{{ t("状态原因", "Status reason") }}</dt><dd>{{ period.state_reason || "—" }}</dd></div>
               </dl>
             </article>
           </div>
-          <div class="pagination"><span>显示 {{ periods.length }} 条 · 偏移 {{ pageOffset }}</span><div><button type="button" class="secondary" :disabled="pageOffset === 0 || loadingPeriods" @click="movePage(-1)">上一页</button><button type="button" class="secondary" :disabled="periods.length < pageSize || loadingPeriods" @click="movePage(1)">下一页</button></div></div>
+          <div class="pagination"><span>{{ t("显示", "Showing") }} {{ periods.length }} {{ t("条", "items") }} · {{ t("偏移", "Offset") }} {{ pageOffset }}</span><div><button type="button" class="secondary" :disabled="pageOffset === 0 || loadingPeriods" @click="movePage(-1)">{{ t("上一页", "Previous") }}</button><button type="button" class="secondary" :disabled="periods.length < pageSize || loadingPeriods" @click="movePage(1)">{{ t("下一页", "Next") }}</button></div></div>
         </section>
       </template>
     </template>

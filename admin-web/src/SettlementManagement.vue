@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import type { LocalizedMessage } from "@lottery/shared";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useAdminI18n } from "./i18n";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import { createSettlementJobApi, settlementJobPermissions } from "./settlement-job-api";
 import {
@@ -21,6 +23,7 @@ const props = defineProps<{
   initialPeriodId?: string;
 }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
+const { t, message: localized } = useAdminI18n();
 
 const api = createSettlementJobApi();
 const rights = computed(() => settlementJobPermissions(props.account, props.brandId));
@@ -44,8 +47,8 @@ const contextBusy = ref(false);
 const jobBusy = ref(false);
 const targetsBusy = ref(false);
 const writing = ref(false);
-const error = ref("");
-const notice = ref("");
+const error = ref<string | LocalizedMessage>("");
+const notice = ref<string | LocalizedMessage>("");
 const reason = ref("");
 const policyMode = ref<"automatic" | "manual" | "">("");
 const reviewMode = ref<"policy" | "start" | "approve" | "retry" | "">("");
@@ -125,7 +128,7 @@ function handleError(problem: unknown) {
     invalidateSession();
     return;
   }
-  error.value = problem instanceof Error ? problem.message : "请求失败，请重试。";
+  error.value = problem instanceof Error ? problem.message : localized("请求失败，请重试。", "Request failed. Please try again.");
 }
 function checkPolicy(value: Policy) {
   if (value.brand_id !== props.brandId) throw new Error("品牌结算配置与当前品牌不匹配。");
@@ -191,10 +194,10 @@ async function readPeriodState(keepJob = true, allowDuringWrite = false): Promis
       if (nextJob) void readJob(nextJob.id, capturedScope, allowDuringWrite);
     }
     if (nextContext.mode === null || nextContext.policy_version === 0)
-      notice.value = "当前期次没有有效的结算配置，禁止启动；配置仅影响之后新启动的任务。";
+      notice.value = localized("当前期次没有有效的结算配置，禁止启动；配置仅影响之后新启动的任务。", "This period has no valid settlement configuration, so it cannot be started. Policy changes apply only to newly started jobs.");
     else if (!nextContext.can_start)
-      notice.value = "服务器当前不允许启动该期次的结算任务。";
-    else notice.value = "已读取服务器期次上下文和任务状态。";
+      notice.value = localized("服务器当前不允许启动该期次的结算任务。", "The server currently does not allow a settlement job to start for this period.");
+    else notice.value = localized("已读取服务器期次上下文和任务状态。", "Period context and job state loaded from the server.");
     return true;
   } catch (problem) {
     if (isCurrent(contextLane, contextTicket, capturedScope) && isCurrent(jobLane, jobTicket, capturedScope)) {
@@ -257,7 +260,7 @@ async function refreshAll() {
   if (writing.value) return;
   if (rights.value.policyView && !(await readPolicy())) return;
   if (periodId.value) await readPeriodState();
-  if (pendingWrite.value) notice.value = "存在结果未知的写入；普通读取不能证明写入是否成功。原请求仍保留，请使用原请求重试。";
+  if (pendingWrite.value) notice.value = localized("存在结果未知的写入；普通读取不能证明写入是否成功。原请求仍保留，请使用原请求重试。", "A write outcome is unknown. A normal read cannot prove whether it succeeded. The original request is retained; retry that request.");
 }
 
 function review(operation: "policy" | "start" | "approve" | "retry") {
@@ -268,7 +271,7 @@ function review(operation: "policy" | "start" | "approve" | "retry") {
     reviewBody.value = { version: policy.value.version, mode: policyMode.value || null, reason: cleanReason };
   } else if (operation === "start") {
     if (!canStart.value || !context.value || !policy.value || !context.value.draw_result_id) {
-      error.value = "期次上下文、已配置的品牌模式和服务器 can_start 均为启动必需条件。";
+      error.value = localized("期次上下文、已配置的品牌模式和服务器 can_start 均为启动必需条件。", "Starting requires period context, a configured brand mode, and server can_start approval.");
       return;
     }
     reviewBody.value = {
@@ -313,7 +316,7 @@ function checkPolicyReceipt(result: PolicyReceipt, intent: WriteIntent) {
   checkPolicy(result);
   const body = intent.body as PolicyBody;
   if (!result.audit_log_id || result.version <= body.version || result.mode !== body.mode)
-    throw new Error("品牌配置响应无法与已提交请求核对；将保留原请求供原样重试。");
+    throw new Error(t("品牌配置响应无法与已提交请求核对；将保留原请求供原样重试。", "Brand policy response does not match the submitted request; the original request is retained for an exact retry."));
 }
 function checkStartReceipt(result: Job, intent: WriteIntent) {
   const body = intent.body as StartBody;
@@ -324,14 +327,14 @@ function checkStartReceipt(result: Job, intent: WriteIntent) {
     periodVersion: body.version + 1, policyVersion: body.policy_version,
     drawResultId: body.draw_result_id, mode: expectedMode,
     reason: body.reason, accountId: intent.accountId,
-  })) throw new Error("启动响应与原账号、品牌、期次、配置版本或请求内容不匹配。");
+  })) throw new Error(t("启动响应与原账号、品牌、期次、配置版本或请求内容不匹配。", "Start response does not match the original account, brand, period, policy version, or request body."));
 }
 function checkJobMutationReceipt(result: Job, intent: WriteIntent) {
   checkJob(result);
   if (result.id !== intent.resourceId || result.version <= (intent.body as JobBody).version)
-    throw new Error("任务写入响应没有匹配原任务和递增后的服务器任务版本。");
+    throw new Error(t("任务写入响应没有匹配原任务和递增后的服务器任务版本。", "Job write response does not match the original job and incremented server version."));
   if (intent.operation === "approve" && result.approved_by !== intent.accountId)
-    throw new Error("批准回执没有匹配本次操作者。");
+    throw new Error(t("批准回执没有匹配本次操作者。", "Approval receipt does not match the current operator."));
 }
 
 async function submitPending() {
@@ -347,7 +350,7 @@ async function submitPending() {
   if (!allowed) return;
   writing.value = true;
   error.value = "";
-  notice.value = unknownWrite.value ? "正在使用原请求体和幂等键重试…" : "正在提交已核对的结算操作…";
+  notice.value = unknownWrite.value ? localized("正在使用原请求体和幂等键重试…", "Retrying with the original request body and idempotency key…") : localized("正在提交已核对的结算操作…", "Submitting the reviewed settlement action…");
   invalidateReads();
   const ticket = writeLane.begin();
   const capturedScope = scope.value;
@@ -372,7 +375,7 @@ async function submitPending() {
       frozenSettlementJobWrites.remember(intent);
       pendingWrite.value = intent;
       unknownWrite.value = true;
-      notice.value = "写入结果未知。原请求体和幂等键已保留；读取到相同状态不能证明本次写入成功，只能原样重试。";
+      notice.value = localized("写入结果未知。原请求体和幂等键已保留；读取到相同状态不能证明本次写入成功，只能原样重试。", "The write outcome is unknown. The original request body and idempotency key are retained. Seeing the same state in a read does not prove this write succeeded; retry the exact request.");
     } else {
       frozenSettlementJobWrites.forget(intent);
       pendingWrite.value = null;
@@ -380,8 +383,8 @@ async function submitPending() {
       reviewBody.value = null;
       reviewMode.value = "";
       notice.value = failure === "conflict"
-        ? "服务器报告版本冲突。已清除旧请求；请重新读取并重新核对后再提交。"
-        : "服务器明确拒绝了请求。请检查权限及原因后重新读取。";
+        ? localized("服务器报告版本冲突。已清除旧请求；请重新读取并重新核对后再提交。", "The server reported a version conflict. The old request was cleared; reload and review again before submitting.")
+        : localized("服务器明确拒绝了请求。请检查权限及原因后重新读取。", "The server rejected the request. Check permissions and reason, then reload.");
     }
     handleError(problem);
     writing.value = false;
@@ -397,7 +400,7 @@ async function submitPending() {
     frozenSettlementJobWrites.remember(intent);
     pendingWrite.value = intent;
     unknownWrite.value = true;
-    notice.value = "已收到响应但无法确认它匹配原操作。原请求仍被保留，仅可原样重试。";
+      notice.value = localized("已收到响应但无法确认它匹配原操作。原请求仍被保留，仅可原样重试。", "A response arrived, but it could not be matched to the original action. The original request is retained and can only be retried unchanged.");
     handleError(problem);
     writing.value = false;
     return;
@@ -417,23 +420,23 @@ async function submitPending() {
       policyMode.value = confirmed.mode ?? "";
       // Updating policy never starts or retries an existing period job.
       const policyReadOk = await readPolicy(true);
-      if (!policyReadOk) throw new Error("结算配置已保存，但读取当前品牌配置失败。");
+      if (!policyReadOk) throw new Error(t("结算配置已保存，但读取当前品牌配置失败。", "Settlement policy was saved, but the current brand policy could not be reloaded."));
       const readOk = periodId.value ? await readPeriodState(true, true) : true;
-      if (!readOk) throw new Error("结算配置已保存，但读取期次上下文失败。");
+      if (!readOk) throw new Error(t("结算配置已保存，但读取期次上下文失败。", "Settlement policy was saved, but period context could not be reloaded."));
     } else {
       const directJob = receipt as Job;
       job.value = directJob;
       clearTargets();
       const policyReadOk = rights.value.policyView ? await readPolicy(true) : true;
-      if (!policyReadOk) throw new Error("结算操作已确认，但读取品牌配置失败。");
+      if (!policyReadOk) throw new Error(t("结算操作已确认，但读取品牌配置失败。", "Settlement action was confirmed, but brand policy could not be reloaded."));
       const periodReadOk = await readPeriodState(true, true);
-      if (!periodReadOk) throw new Error("结算操作已确认，但读取期次上下文失败。");
+      if (!periodReadOk) throw new Error(t("结算操作已确认，但读取期次上下文失败。", "Settlement action was confirmed, but period context could not be reloaded."));
       if (directJob.id && !(await readJob(directJob.id, capturedScope, true)))
-        throw new Error("结算操作已确认，但读取服务器任务失败。");
+        throw new Error(t("结算操作已确认，但读取服务器任务失败。", "Settlement action was confirmed, but the server job could not be reloaded."));
     }
     if (isCurrent(writeLane, ticket, capturedScope, true)) {
       reason.value = "";
-      notice.value = "服务器已确认写入。任务状态以重新读取的服务器任务版本为准；worker 可能继续异步处理。";
+      notice.value = localized("服务器已确认写入。任务状态以重新读取的服务器任务版本为准；worker 可能继续异步处理。", "The server confirmed the write. Use the reloaded server job version as the current state; the worker may continue processing asynchronously.");
     }
   } catch (problem) {
     if (isCurrent(writeLane, ticket, capturedScope, true)) {
@@ -442,8 +445,8 @@ async function submitPending() {
         return;
       }
       clearReadData();
-      error.value = problem instanceof Error ? problem.message : "重新读取失败。";
-      notice.value = "服务器已确认写入，但后续读取失败。此操作不再视为未知，也不会自动重放；请手动重新读取。";
+      error.value = problem instanceof Error ? problem.message : localized("重新读取失败。", "Reload failed.");
+      notice.value = localized("服务器已确认写入，但后续读取失败。此操作不再视为未知，也不会自动重放；请手动重新读取。", "The server confirmed the write, but the follow-up read failed. The action is confirmed and will not be replayed automatically; reload manually.");
     }
   } finally {
     if (isCurrent(writeLane, ticket, capturedScope, true)) writing.value = false;
@@ -458,12 +461,19 @@ function cancelReview() {
 }
 function formatPoints(value: string | null | undefined) { return formatSettlementPoints(value); }
 function jobStateLabel(state: Job["state"]) {
-  return ({ processing: "处理中", awaiting_approval: "待运营批准", paying: "逐单入账中", failed: "失败", completed: "完成" })[state];
+  return ({ processing: t("处理中", "Processing"), awaiting_approval: t("待运营批准", "Awaiting approval"), paying: t("逐单入账中", "Posting payouts"), failed: t("失败", "Failed"), completed: t("完成", "Completed") })[state];
 }
 function targetStateLabel(state: string) {
-  return ({ pending: "待处理", ready: "已核算待入账", paid: "已入账", excluded: "已排除", failed: "失败" } as Record<string, string>)[state] ?? state;
+  return ({ pending: t("待处理", "Pending"), ready: t("已核算待入账", "Calculated, awaiting posting"), paid: t("已入账", "Posted"), excluded: t("已排除", "Excluded"), failed: t("失败", "Failed") } as Record<string, string>)[state] ?? state;
 }
-function outcomeText(won: boolean | null) { return won === null ? "—" : won ? "命中" : "未命中"; }
+function outcomeText(won: boolean | null) { return won === null ? "—" : won ? t("命中", "Won") : t("未命中", "Lost"); }
+function settlementModeLabel(mode: string | null) {
+  return mode === "automatic" ? t("自动", "Automatic") : mode === "manual" ? t("手动", "Manual") : t("未配置", "Not configured");
+}
+function orderStateLabel(state: string) {
+  const labels: Record<string, string> = { placed: t("待开奖", "Awaiting draw"), abnormal: t("异常注单", "Abnormal order"), bet_cancelled: t("投注取消", "Betting cancelled"), judged_cancelled: t("判定取消", "Judgment cancelled"), won: t("已中奖", "Won"), lost: t("未中奖", "Lost") };
+  return labels[state] ?? state;
+}
 
 watch(() => props.initialPeriodId, (value) => {
   if (value !== undefined && value !== periodId.value) periodId.value = value;
@@ -488,126 +498,126 @@ onBeforeUnmount(() => {
 <template>
   <section class="settlement-management" aria-labelledby="settlement-management-title">
     <header class="sm-heading">
-      <div><p class="sm-eyebrow">品牌结算 · 真实积分</p><h2 id="settlement-management-title">结算配置与任务</h2></div>
-      <button v-if="rights.view || rights.policyView" class="sm-secondary" type="button" :disabled="policyBusy || contextBusy || jobBusy || writing" @click="refreshAll">重新读取</button>
+      <div><p class="sm-eyebrow">{{ t("品牌结算 · 真实积分", "Brand settlement · Real points") }}</p><h2 id="settlement-management-title">{{ t("结算配置与任务", "Settlement policy and jobs") }}</h2></div>
+      <button v-if="rights.view || rights.policyView" class="sm-secondary" type="button" :disabled="policyBusy || contextBusy || jobBusy || writing" @click="refreshAll">{{ t("重新读取", "Reload") }}</button>
     </header>
-    <p class="sm-warning" role="note"><strong>这是真实积分结算，仅测试环境；不得把计算完成当派奖完成。</strong>自动模式由系统逐单积分入账；手动模式需品牌运营明确批准后才入账。初期不进行真实法币或币支付。</p>
-    <p v-if="!rights.view && !rights.policyView" class="sm-note">当前账号没有查看结算配置或任务的权限。</p>
+    <p class="sm-warning" role="note"><strong>{{ t("这是真实积分结算，仅测试环境；不得把计算完成当派奖完成。", "This settles real points in a test environment. Calculation completion does not mean payouts are complete.") }}</strong>{{ t("自动模式由系统逐单积分入账；手动模式需品牌运营明确批准后才入账。初期不进行真实法币或币支付。", "Automatic mode posts points per order. Manual mode posts only after explicit brand operator approval. No fiat or cryptocurrency payments are made.") }}</p>
+    <p v-if="!rights.view && !rights.policyView" class="sm-note">{{ t("当前账号没有查看结算配置或任务的权限。", "This account cannot view settlement policies or jobs.") }}</p>
     <template v-else>
       <div class="sm-period-select">
-        <label>期次 ID
-          <input v-model.trim="periodId" type="text" placeholder="输入期次 UUID；可由期次页传入" :disabled="writing || Boolean(pendingWrite)" />
+        <label>{{ t("期次 ID", "Period ID") }}
+          <input v-model.trim="periodId" type="text" :placeholder="t('输入期次 UUID；可由期次页传入', 'Enter period UUID or open this page from a period')" :disabled="writing || Boolean(pendingWrite)" />
         </label>
       </div>
-      <p v-if="error" class="sm-message error" role="alert">{{ error }}</p>
-      <p v-if="notice" class="sm-message" role="status">{{ notice }}</p>
+      <p v-if="error" class="sm-message error" role="alert">{{ t(error) }}</p>
+      <p v-if="notice" class="sm-message" role="status">{{ t(notice) }}</p>
       <div v-if="pendingWrite && (rights.view || rights.policyView)" class="sm-pending">
-        <strong>{{ unknownWrite ? "写入结果未知" : "写入待确认" }} · {{ pendingWrite.operation }}</strong>
-        <p>已保留原请求体和幂等键。不得通过读取当前状态推断该操作成功；请使用同一操作、请求体和幂等键重试。</p>
-        <button class="sm-primary" type="button" :disabled="writing || !canWrite" @click="submitPending">{{ writing ? "按原请求提交中…" : "使用原请求和幂等键重试" }}</button>
+        <strong>{{ unknownWrite ? t("写入结果未知", "Write outcome unknown") : t("写入待确认", "Write awaiting confirmation") }} · {{ pendingWrite.operation === 'policy' ? t('结算配置', 'Policy update') : pendingWrite.operation === 'start' ? t('启动结算', 'Start settlement') : pendingWrite.operation === 'approve' ? t('批准派奖', 'Approve payout') : t('人工重试', 'Manual retry') }}</strong>
+        <p>{{ t("已保留原请求体和幂等键。不得通过读取当前状态推断该操作成功；请使用同一操作、请求体和幂等键重试。", "The original request body and idempotency key are retained. A read of current state cannot prove this action succeeded; retry using the same action, body, and key.") }}</p>
+        <button class="sm-primary" type="button" :disabled="writing || !canWrite" @click="submitPending">{{ writing ? t("按原请求提交中…", "Retrying original request…") : t("使用原请求和幂等键重试", "Retry with original request and key") }}</button>
       </div>
 
       <div v-if="rights.policyView" class="sm-panel">
-        <div class="sm-section-title"><h3>品牌结算模式</h3><span v-if="policy" class="sm-badge" :class="policyConfigured ? 'ready' : 'blocked'">{{ policy.mode ?? "未配置" }} · v{{ policy.version }}</span></div>
-        <p class="sm-note">未配置（mode 为 null）时禁止启动任务。修改模式只影响之后新启动的任务，不会启动已有期次的旧开奖任务。</p>
-        <p v-if="policyBusy" class="sm-note">正在读取品牌配置…</p>
+        <div class="sm-section-title"><h3>{{ t("品牌结算模式", "Brand settlement mode") }}</h3><span v-if="policy" class="sm-badge" :class="policyConfigured ? 'ready' : 'blocked'">{{ settlementModeLabel(policy.mode) }} · v{{ policy.version }}</span></div>
+        <p class="sm-note">{{ t("未配置（mode 为 null）时禁止启动任务。修改模式只影响之后新启动的任务，不会启动已有期次的旧开奖任务。", "Jobs cannot start when mode is null. A mode change affects only jobs started afterward; it does not start jobs for existing periods.") }}</p>
+        <p v-if="policyBusy" class="sm-note">{{ t("正在读取品牌配置…", "Loading brand policy…") }}</p>
         <dl v-if="policy" class="sm-facts">
-          <div><dt>品牌</dt><dd class="sm-break">{{ policy.brand_id }}</dd></div>
-          <div><dt>当前模式</dt><dd>{{ policy.mode ?? "未配置" }}</dd></div>
-          <div><dt>配置版本 / 更新时间</dt><dd>v{{ policy.version }} · {{ policy.updated_at }}</dd></div>
+          <div><dt>{{ t("品牌", "Brand") }}</dt><dd class="sm-break">{{ policy.brand_id }}</dd></div>
+          <div><dt>{{ t("当前模式", "Current mode") }}</dt><dd>{{ settlementModeLabel(policy.mode) }}</dd></div>
+          <div><dt>{{ t("配置版本 / 更新时间", "Policy version / updated at") }}</dt><dd>v{{ policy.version }} · {{ policy.updated_at }}</dd></div>
         </dl>
-        <p v-if="!rights.policyWrite" class="sm-note">当前账号可查看配置，没有修改权限。</p>
+        <p v-if="!rights.policyWrite" class="sm-note">{{ t("当前账号可查看配置，没有修改权限。", "This account can view the policy but cannot change it.") }}</p>
         <div v-else-if="policy && canWrite" class="sm-form">
-          <label>新模式
-            <select v-model="policyMode" aria-label="新模式" :disabled="writing || Boolean(pendingWrite)">
-              <option value="">未配置（禁止新启动）</option><option value="automatic">自动逐单入账</option><option value="manual">手动批准后入账</option>
+          <label>{{ t("新模式", "New mode") }}
+            <select v-model="policyMode" :aria-label="t('新模式', 'New mode')" :disabled="writing || Boolean(pendingWrite)">
+              <option value="">{{ t("未配置（禁止新启动）", "Not configured (cannot start jobs)") }}</option><option value="automatic">{{ t("自动逐单入账", "Automatic per-order posting") }}</option><option value="manual">{{ t("手动批准后入账", "Manual approval before posting") }}</option>
             </select>
           </label>
-          <label>操作原因（UTF-8 不超过 500 字节）<textarea v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" placeholder="说明品牌结算模式变更原因" /></label>
-          <small>{{ reasonBytes }} / 500 字节</small>
-          <button class="sm-primary" type="button" :disabled="!policy || writing || Boolean(pendingWrite) || !validSettlementReason(reason)" @click="review('policy')">核对配置变更</button>
+          <label>{{ t("操作原因（UTF-8 不超过 500 字节）", "Reason (up to 500 UTF-8 bytes)") }}<textarea v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" :placeholder="t('说明品牌结算模式变更原因', 'Describe why the brand settlement mode is changing')" /></label>
+          <small>{{ reasonBytes }} / {{ t("500 字节", "500 bytes") }}</small>
+          <button class="sm-primary" type="button" :disabled="!policy || writing || Boolean(pendingWrite) || !validSettlementReason(reason)" @click="review('policy')">{{ t("核对配置变更", "Review policy change") }}</button>
         </div>
       </div>
 
       <div v-if="rights.view && periodId" class="sm-panel">
-        <div class="sm-section-title"><h3>期次结算上下文</h3><span v-if="context" class="sm-badge" :class="canStart ? 'ready' : 'blocked'">{{ context.can_start ? "服务器允许启动" : "暂不可启动" }}</span></div>
-        <p v-if="contextBusy" class="sm-note">正在读取期次上下文…</p>
+        <div class="sm-section-title"><h3>{{ t("期次结算上下文", "Period settlement context") }}</h3><span v-if="context" class="sm-badge" :class="canStart ? 'ready' : 'blocked'">{{ context.can_start ? t("服务器允许启动", "Server allows start") : t("暂不可启动", "Cannot start yet") }}</span></div>
+        <p v-if="contextBusy" class="sm-note">{{ t("正在读取期次上下文…", "Loading period context…") }}</p>
         <dl v-if="context" class="sm-facts">
-          <div><dt>品牌 / 彩种 / 期次</dt><dd class="sm-break">{{ context.brand_id }} · {{ context.game_id }} · {{ context.period_id }}</dd></div>
-          <div><dt>期次版本 / 状态</dt><dd>v{{ context.period_version }} · {{ context.period_status }}</dd></div>
-          <div><dt>开奖记录 ID</dt><dd class="sm-break">{{ context.draw_result_id ?? "—" }}</dd></div>
-          <div><dt>应用的策略版本 / 模式</dt><dd>v{{ context.policy_version }} · {{ context.mode ?? "未配置" }}</dd></div>
+          <div><dt>{{ t("品牌 / 彩种 / 期次", "Brand / game / period") }}</dt><dd class="sm-break">{{ context.brand_id }} · {{ context.game_id }} · {{ context.period_id }}</dd></div>
+          <div><dt>{{ t("期次版本 / 状态", "Period version / status") }}</dt><dd>v{{ context.period_version }} · {{ context.period_status }}</dd></div>
+          <div><dt>{{ t("开奖记录 ID", "Draw result ID") }}</dt><dd class="sm-break">{{ context.draw_result_id ?? "—" }}</dd></div>
+          <div><dt>{{ t("应用的策略版本 / 模式", "Applied policy version / mode") }}</dt><dd>v{{ context.policy_version }} · {{ settlementModeLabel(context.mode) }}</dd></div>
         </dl>
-        <p v-if="context && (!context.mode || context.policy_version === 0)" class="sm-warning compact">品牌结算模式尚未配置；禁止启动。修改配置不会自动启动任何期次。</p>
-        <p v-else-if="context && policy && (context.policy_version !== policy.version || context.mode !== policy.mode)" class="sm-warning compact">期次上下文策略与当前品牌配置版本不同，请重新读取服务器上下文。</p>
-        <p v-if="rights.view && !rights.run" class="sm-note">当前账号仅可查看期次上下文和任务，没有启动权限。</p>
+        <p v-if="context && (!context.mode || context.policy_version === 0)" class="sm-warning compact">{{ t("品牌结算模式尚未配置；禁止启动。修改配置不会自动启动任何期次。", "Brand settlement mode is not configured; starting is blocked. Changing the policy does not automatically start any period.") }}</p>
+        <p v-else-if="context && policy && (context.policy_version !== policy.version || context.mode !== policy.mode)" class="sm-warning compact">{{ t("期次上下文策略与当前品牌配置版本不同，请重新读取服务器上下文。", "The period context policy differs from the current brand policy version. Reload server context.") }}</p>
+        <p v-if="rights.view && !rights.run" class="sm-note">{{ t("当前账号仅可查看期次上下文和任务，没有启动权限。", "This account can view period context and jobs but cannot start a job.") }}</p>
         <div v-if="rights.run && canWrite && context" class="sm-form">
-          <label>启动原因（UTF-8 不超过 500 字节）<textarea v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" placeholder="说明启动本期结算的依据" /></label>
-          <small>{{ reasonBytes }} / 500 字节</small>
-          <button class="sm-primary" type="button" :disabled="!canStart || !validSettlementReason(reason)" @click="review('start')">核对并启动新结算任务</button>
+          <label>{{ t("启动原因（UTF-8 不超过 500 字节）", "Start reason (up to 500 UTF-8 bytes)") }}<textarea v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" :placeholder="t('说明启动本期结算的依据', 'Describe why settlement is starting for this period')" /></label>
+          <small>{{ reasonBytes }} / {{ t("500 字节", "500 bytes") }}</small>
+          <button class="sm-primary" type="button" :disabled="!canStart || !validSettlementReason(reason)" @click="review('start')">{{ t("核对并启动新结算任务", "Review and start new settlement job") }}</button>
         </div>
       </div>
 
       <div v-if="rights.view && selectedJob" class="sm-panel">
-        <div class="sm-section-title"><h3>结算任务</h3><span class="sm-badge" :class="selectedJob.state === 'completed' ? 'ready' : selectedJob.state === 'failed' ? 'blocked' : 'pending'">{{ jobStateLabel(selectedJob.state) }}</span></div>
-        <p v-if="jobBusy" class="sm-note">正在重新读取任务…</p>
-        <p v-if="!selectedJob.current" class="sm-warning compact">这是历史代次或已被更正流程冻结的代次。显示其原始状态与历史入账金额，不代表当前资金或当前结算完成；此代次不可继续计算、批准或重试。</p>
-        <p v-if="selectedJob.current && selectedJob.mode === 'manual' && selectedJob.state === 'awaiting_approval'" class="sm-warning compact">全部可结算目标已完成核算，仍未入账。品牌运营必须明确批准后 worker 才会逐单入账。</p>
-        <p v-if="selectedJob.current && selectedJob.state === 'completed' && !currentJobIsTerminal" class="sm-warning compact">服务器任务标记为完成，但 paid + excluded 与目标总数不符；不显示为结算完成。</p>
-        <p v-if="selectedJob.state === 'failed'" class="sm-warning compact">任务失败不会自动重试。异常或已取消目标为 excluded，不会自动重试；只有服务器 can_retry 为 true 时才能人工重试。</p>
+        <div class="sm-section-title"><h3>{{ t("结算任务", "Settlement job") }}</h3><span class="sm-badge" :class="selectedJob.state === 'completed' ? 'ready' : selectedJob.state === 'failed' ? 'blocked' : 'pending'">{{ jobStateLabel(selectedJob.state) }}</span></div>
+        <p v-if="jobBusy" class="sm-note">{{ t("正在重新读取任务…", "Reloading job…") }}</p>
+        <p v-if="!selectedJob.current" class="sm-warning compact">{{ t("这是历史代次或已被更正流程冻结的代次。显示其原始状态与历史入账金额，不代表当前资金或当前结算完成；此代次不可继续计算、批准或重试。", "This is a historical generation or one frozen by correction. Its original state and posted amount are historical and do not represent current funds or current settlement completion. This generation cannot be calculated, approved, or retried.") }}</p>
+        <p v-if="selectedJob.current && selectedJob.mode === 'manual' && selectedJob.state === 'awaiting_approval'" class="sm-warning compact">{{ t("全部可结算目标已完成核算，仍未入账。品牌运营必须明确批准后 worker 才会逐单入账。", "All eligible targets have been calculated but not posted. A brand operator must explicitly approve before the worker posts payouts per order.") }}</p>
+        <p v-if="selectedJob.current && selectedJob.state === 'completed' && !currentJobIsTerminal" class="sm-warning compact">{{ t("服务器任务标记为完成，但 paid + excluded 与目标总数不符；不显示为结算完成。", "The server marks the job complete, but paid + excluded does not match the target count. It is not shown as settlement complete.") }}</p>
+        <p v-if="selectedJob.state === 'failed'" class="sm-warning compact">{{ t("任务失败不会自动重试。异常或已取消目标为 excluded，不会自动重试；只有服务器 can_retry 为 true 时才能人工重试。", "Failed jobs are not retried automatically. Abnormal or cancelled targets are excluded and are not retried. Manual retry is available only when the server sets can_retry to true.") }}</p>
         <dl class="sm-facts">
-          <div><dt>结算代次 / 是否当前</dt><dd>第 {{ selectedJob.generation }} 代 · {{ selectedJob.current ? '当前' : '历史 / 更正冻结' }}</dd></div>
-          <div><dt>上一代任务 / 更正任务</dt><dd class="sm-break">{{ selectedJob.previous_job_id ?? '—' }} / {{ selectedJob.correction_id ?? '—' }}</dd></div>
-          <div><dt>任务 ID</dt><dd class="sm-break">{{ selectedJob.id }}</dd></div>
-          <div><dt>品牌 / 彩种 / 期次</dt><dd class="sm-break">{{ selectedJob.brand_id }} · {{ selectedJob.game_id }} · {{ selectedJob.period_id }}</dd></div>
-          <div><dt>服务器任务版本 / 模式</dt><dd>v{{ selectedJob.version }} · {{ selectedJob.mode }}</dd></div>
-          <div><dt>期次版本 / 配置版本 / 开奖记录</dt><dd class="sm-break">期次 v{{ selectedJob.period_version }} · 配置 v{{ selectedJob.policy_version }} · {{ selectedJob.draw_result_id }}</dd></div>
-          <div><dt>目标总数</dt><dd>{{ selectedJob.target_count }}</dd></div>
-          <div><dt>待处理 / 待入账 / 已入账</dt><dd>{{ selectedJob.pending_count }} / {{ selectedJob.ready_count }} / {{ selectedJob.paid_count }}</dd></div>
-          <div><dt>已排除 / 失败</dt><dd>{{ selectedJob.excluded_count }} / {{ selectedJob.failed_count }}</dd></div>
-          <div><dt>计算积分总额（不是已入账）</dt><dd>{{ formatPoints(selectedJob.prize_points) }}</dd></div>
-          <div><dt>已入账积分</dt><dd>{{ formatPoints(selectedJob.paid_points) }}</dd></div>
-          <div><dt>创建人 / 批准人</dt><dd class="sm-break">{{ selectedJob.created_by }} / {{ selectedJob.approved_by ?? "—" }}</dd></div>
-          <div><dt>创建时间 / 完成时间</dt><dd class="sm-break">{{ selectedJob.created_at }} / {{ selectedJob.completed_at ?? "—" }}</dd></div>
-          <div><dt>原因 / 最后错误码</dt><dd class="sm-break">{{ selectedJob.reason }} / {{ selectedJob.last_error_code ?? "—" }}</dd></div>
+          <div><dt>{{ t("结算代次 / 是否当前", "Settlement generation / current") }}</dt><dd>{{ t("第", "Generation") }} {{ selectedJob.generation }} · {{ selectedJob.current ? t('当前', 'Current') : t('历史 / 更正冻结', 'Historical / frozen by correction') }}</dd></div>
+          <div><dt>{{ t("上一代任务 / 更正任务", "Previous job / correction") }}</dt><dd class="sm-break">{{ selectedJob.previous_job_id ?? '—' }} / {{ selectedJob.correction_id ?? '—' }}</dd></div>
+          <div><dt>{{ t("任务 ID", "Job ID") }}</dt><dd class="sm-break">{{ selectedJob.id }}</dd></div>
+          <div><dt>{{ t("品牌 / 彩种 / 期次", "Brand / game / period") }}</dt><dd class="sm-break">{{ selectedJob.brand_id }} · {{ selectedJob.game_id }} · {{ selectedJob.period_id }}</dd></div>
+          <div><dt>{{ t("服务器任务版本 / 模式", "Server job version / mode") }}</dt><dd>v{{ selectedJob.version }} · {{ settlementModeLabel(selectedJob.mode) }}</dd></div>
+          <div><dt>{{ t("期次版本 / 配置版本 / 开奖记录", "Period version / policy version / draw record") }}</dt><dd class="sm-break">{{ t("期次 v", "Period v") }}{{ selectedJob.period_version }} · {{ t("配置 v", "Policy v") }}{{ selectedJob.policy_version }} · {{ selectedJob.draw_result_id }}</dd></div>
+          <div><dt>{{ t("目标总数", "Total targets") }}</dt><dd>{{ selectedJob.target_count }}</dd></div>
+          <div><dt>{{ t("待处理 / 待入账 / 已入账", "Pending / ready / paid") }}</dt><dd>{{ selectedJob.pending_count }} / {{ selectedJob.ready_count }} / {{ selectedJob.paid_count }}</dd></div>
+          <div><dt>{{ t("已排除 / 失败", "Excluded / failed") }}</dt><dd>{{ selectedJob.excluded_count }} / {{ selectedJob.failed_count }}</dd></div>
+          <div><dt>{{ t("计算积分总额（不是已入账）", "Calculated points (not posted)") }}</dt><dd>{{ formatPoints(selectedJob.prize_points) }}</dd></div>
+          <div><dt>{{ t("已入账积分", "Points posted") }}</dt><dd>{{ formatPoints(selectedJob.paid_points) }}</dd></div>
+          <div><dt>{{ t("创建人 / 批准人", "Created by / approved by") }}</dt><dd class="sm-break">{{ selectedJob.created_by }} / {{ selectedJob.approved_by ?? "—" }}</dd></div>
+          <div><dt>{{ t("创建时间 / 完成时间", "Created / completed at") }}</dt><dd class="sm-break">{{ selectedJob.created_at }} / {{ selectedJob.completed_at ?? "—" }}</dd></div>
+          <div><dt>{{ t("原因 / 最后错误码", "Reason / last error code") }}</dt><dd class="sm-break">{{ selectedJob.reason }} / {{ selectedJob.last_error_code ?? "—" }}</dd></div>
         </dl>
-        <p v-if="selectedJob.state === 'completed' && currentJobIsTerminal" class="sm-success">服务器任务已完成，且全部目标均已入账或排除。这里只代表积分结算任务完成。</p>
+        <p v-if="selectedJob.state === 'completed' && currentJobIsTerminal" class="sm-success">{{ t("服务器任务已完成，且全部目标均已入账或排除。这里只代表积分结算任务完成。", "The server job is complete and every target is paid or excluded. This confirms completion of the points settlement job only.") }}</p>
         <div v-if="canWrite && selectedJob.current && ((selectedJob.state === 'awaiting_approval' && rights.approve) || (selectedJob.state === 'failed' && selectedJob.can_retry && rights.retry))" class="sm-form">
-          <label>{{ selectedJob.state === 'awaiting_approval' ? '运营批准原因' : '人工重试原因' }}（UTF-8 不超过 500 字节）<textarea v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" placeholder="记录本次人工操作依据" /></label>
-          <small>{{ reasonBytes }} / 500 字节</small>
-          <button v-if="selectedJob.state === 'awaiting_approval' && rights.approve" class="sm-primary" type="button" :disabled="writing || Boolean(pendingWrite) || !validSettlementReason(reason)" @click="review('approve')">核对并批准，允许 worker 入账</button>
-          <button v-if="selectedJob.state === 'failed' && selectedJob.can_retry && rights.retry" class="sm-primary" type="button" :disabled="writing || Boolean(pendingWrite) || !validSettlementReason(reason)" @click="review('retry')">核对并人工重试失败目标</button>
+          <label>{{ selectedJob.state === 'awaiting_approval' ? t('运营批准原因', 'Operator approval reason') : t('人工重试原因', 'Manual retry reason') }}{{ t("（UTF-8 不超过 500 字节）", " (up to 500 UTF-8 bytes)") }}<textarea v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" :placeholder="t('记录本次人工操作依据', 'Record the basis for this manual action')" /></label>
+          <small>{{ reasonBytes }} / {{ t("500 字节", "500 bytes") }}</small>
+          <button v-if="selectedJob.state === 'awaiting_approval' && rights.approve" class="sm-primary" type="button" :disabled="writing || Boolean(pendingWrite) || !validSettlementReason(reason)" @click="review('approve')">{{ t("核对并批准，允许 worker 入账", "Review and approve worker payouts") }}</button>
+          <button v-if="selectedJob.state === 'failed' && selectedJob.can_retry && rights.retry" class="sm-primary" type="button" :disabled="writing || Boolean(pendingWrite) || !validSettlementReason(reason)" @click="review('retry')">{{ t("核对并人工重试失败目标", "Review and manually retry failed targets") }}</button>
         </div>
 
-        <div class="sm-target-heading"><h4>逐单目标</h4><span>每页 {{ SETTLEMENT_JOB_PAGE_SIZE }} 条</span></div>
-        <p v-if="targetsBusy" class="sm-note">正在读取结算目标…</p>
+        <div class="sm-target-heading"><h4>{{ t("逐单目标", "Per-order targets") }}</h4><span>{{ t("每页", "Per page") }} {{ SETTLEMENT_JOB_PAGE_SIZE }} {{ t("条", "items") }}</span></div>
+        <p v-if="targetsBusy" class="sm-note">{{ t("正在读取结算目标…", "Loading settlement targets…") }}</p>
         <div v-if="targetPage?.items.length" class="sm-targets">
           <article v-for="target in targetPage.items" :key="target.order_id" class="sm-target">
             <div class="sm-target-title"><strong>{{ targetStateLabel(target.state) }}</strong><span>{{ outcomeText(target.won) }}</span></div>
             <dl class="sm-facts compact-facts">
-              <div><dt>注单 / 会员</dt><dd class="sm-break">{{ target.order_id }} / {{ target.member_id }}</dd></div>
-              <div><dt>目标版本 / 注单版本 / 状态</dt><dd>v{{ target.version }} / v{{ target.order_version }} / {{ target.order_status }}</dd></div>
-              <div><dt>核算 ID / 积分</dt><dd class="sm-break">{{ target.calculation_id ?? "—" }} / {{ formatPoints(target.prize_points) }}</dd></div>
-              <div><dt>入账记录 / 错误码</dt><dd class="sm-break">{{ target.payout_entry_id ?? "—" }} / {{ target.error_code ?? "—" }}</dd></div>
+              <div><dt>{{ t("注单 / 会员", "Order / member") }}</dt><dd class="sm-break">{{ target.order_id }} / {{ target.member_id }}</dd></div>
+              <div><dt>{{ t("目标版本 / 注单版本 / 状态", "Target version / order version / status") }}</dt><dd>v{{ target.version }} / v{{ target.order_version }} / {{ orderStateLabel(target.order_status) }}</dd></div>
+              <div><dt>{{ t("核算 ID / 积分", "Calculation ID / points") }}</dt><dd class="sm-break">{{ target.calculation_id ?? "—" }} / {{ formatPoints(target.prize_points) }}</dd></div>
+              <div><dt>{{ t("入账记录 / 错误码", "Payout entry / error code") }}</dt><dd class="sm-break">{{ target.payout_entry_id ?? "—" }} / {{ target.error_code ?? "—" }}</dd></div>
             </dl>
           </article>
         </div>
-        <p v-else-if="targetPage && !targetsBusy" class="sm-note">此页没有结算目标。</p>
+        <p v-else-if="targetPage && !targetsBusy" class="sm-note">{{ t("此页没有结算目标。", "No settlement targets on this page.") }}</p>
         <div v-if="targetPage" class="sm-pagination">
-          <button class="sm-secondary" type="button" :disabled="targetOffset <= 0 || targetsBusy || writing || Boolean(pendingWrite)" @click="readTargets(selectedJob.id, Math.max(0, targetOffset - SETTLEMENT_JOB_PAGE_SIZE))">上一页</button>
-          <span>偏移 {{ targetPage.offset }} · {{ targetPage.items.length }} 条</span>
-          <button class="sm-secondary" type="button" :disabled="!targetPage.has_more || targetsBusy || writing || Boolean(pendingWrite)" @click="readTargets(selectedJob.id, targetOffset + SETTLEMENT_JOB_PAGE_SIZE)">下一页</button>
+          <button class="sm-secondary" type="button" :disabled="targetOffset <= 0 || targetsBusy || writing || Boolean(pendingWrite)" @click="readTargets(selectedJob.id, Math.max(0, targetOffset - SETTLEMENT_JOB_PAGE_SIZE))">{{ t("上一页", "Previous") }}</button>
+          <span>{{ t("偏移", "Offset") }} {{ targetPage.offset }} · {{ targetPage.items.length }} {{ t("条", "items") }}</span>
+          <button class="sm-secondary" type="button" :disabled="!targetPage.has_more || targetsBusy || writing || Boolean(pendingWrite)" @click="readTargets(selectedJob.id, targetOffset + SETTLEMENT_JOB_PAGE_SIZE)">{{ t("下一页", "Next") }}</button>
         </div>
       </div>
 
       <div v-if="reviewMode && reviewBody && !pendingWrite" class="sm-confirm">
-        <strong>请确认结算操作</strong>
-        <p v-if="reviewMode === 'policy'">将把品牌模式设为 {{ (reviewBody as PolicyBody).mode ?? '未配置' }}，配置版本基于 v{{ reviewBody.version }}。不会自动启动任何已有期次。</p>
-        <p v-else-if="reviewMode === 'start'">将使用服务器期次版本 v{{ (reviewBody as StartBody).version }}、策略版本 v{{ (reviewBody as StartBody).policy_version }} 和开奖记录 {{ (reviewBody as StartBody).draw_result_id }} 创建任务。</p>
-        <p v-else>任务 {{ selectedJob?.id }}，服务器任务版本 v{{ reviewBody.version }}；操作：{{ reviewMode === 'approve' ? '批准手动任务入账' : '人工重试' }}。</p>
-        <p>原因：{{ reviewBody.reason }}</p>
-        <label class="sm-check"><input v-model="reviewConfirmed" type="checkbox" />我已核对品牌、期次、服务器版本、操作模式和原因，确认提交</label>
-        <div class="sm-review-actions"><button class="sm-secondary" type="button" :disabled="writing" @click="cancelReview">返回修改</button><button class="sm-primary" type="button" :disabled="!reviewConfirmed || writing || !canWrite" @click="beginWrite">{{ writing ? "提交中…" : "确认提交结算操作" }}</button></div>
+        <strong>{{ t("请确认结算操作", "Confirm settlement action") }}</strong>
+        <p v-if="reviewMode === 'policy'">{{ t("将把品牌模式设为", "Set brand mode to") }} {{ settlementModeLabel((reviewBody as PolicyBody).mode) }}{{ t("，配置版本基于 v", "; policy version based on v") }}{{ reviewBody.version }}{{ t("。不会自动启动任何已有期次。", ". Existing periods will not start automatically.") }}</p>
+        <p v-else-if="reviewMode === 'start'">{{ t("将使用服务器期次版本 v", "Create a job using server period version v") }}{{ (reviewBody as StartBody).version }}{{ t("、策略版本 v", ", policy version v") }}{{ (reviewBody as StartBody).policy_version }} {{ t("和开奖记录", "and draw record") }} {{ (reviewBody as StartBody).draw_result_id }}{{ t("创建任务。", " .") }}</p>
+        <p v-else>{{ t("任务", "Job") }} {{ selectedJob?.id }}{{ t("，服务器任务版本 v", ", server job version v") }}{{ reviewBody.version }}{{ t("；操作：", "; action: ") }}{{ reviewMode === 'approve' ? t('批准手动任务入账', 'Approve manual payouts') : t('人工重试', 'Manual retry') }}。</p>
+        <p>{{ t("原因：", "Reason: ") }}{{ reviewBody.reason }}</p>
+        <label class="sm-check"><input v-model="reviewConfirmed" type="checkbox" />{{ t("我已核对品牌、期次、服务器版本、操作模式和原因，确认提交", "I reviewed the brand, period, server version, action mode, and reason, and confirm submission") }}</label>
+        <div class="sm-review-actions"><button class="sm-secondary" type="button" :disabled="writing" @click="cancelReview">{{ t("返回修改", "Back to edit") }}</button><button class="sm-primary" type="button" :disabled="!reviewConfirmed || writing || !canWrite" @click="beginWrite">{{ writing ? t("提交中…", "Submitting…") : t("确认提交结算操作", "Confirm settlement action") }}</button></div>
       </div>
     </template>
   </section>

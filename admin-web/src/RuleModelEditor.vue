@@ -2,6 +2,47 @@
 import { computed, ref, watch } from "vue";
 import type { RuleModel, RuleModelName, RulePool } from "./rule-simulation-api";
 import { parseEditorNumbers, validateEditorModel } from "./rule-editor";
+import { useAdminI18n } from "./i18n";
+const { t } = useAdminI18n();
+const ui = (zh: string, en: string = zh) => t(zh, en);
+const errorEnglish: Record<string, string> = {
+  "号码模型无效": "Invalid number model.", "请输入 0–1000000 的规范整数": "Enter a canonical whole number from 0 to 1,000,000.",
+  "切换到号码列表前，请将号码范围调整到 10000 个以内": "Reduce the number range to 10,000 or fewer before switching to an explicit list.",
+  "号码列表须非空、不重复，每个号码不超过 1000000": "The number list must be non-empty and unique, with each number at most 1,000,000.", "号码列表无效": "Invalid number list.",
+  "彩种模型格式无效。": "Invalid game model format.", "彩种模型类型无效。": "Invalid game model type.",
+  "号码范围必须在 0–1,000,000 内且最小值不大于最大值。": "The number range must be between 0 and 1,000,000, with minimum no greater than maximum.",
+  "重复设置无效。": "Invalid repeat setting.", "号码列表最多 10,000 个。": "The number list can contain at most 10,000 entries.",
+  "不能同时设置范围和号码列表。": "A range and an explicit number list cannot both be set.", "号码必须唯一且在 0–1,000,000 内。": "Numbers must be unique and between 0 and 1,000,000.",
+  "号码池大小必须为 1–10,000。": "Pool size must be between 1 and 10,000.", "模型的重复或有序设置无效。": "Invalid model repeat or ordering setting.",
+  "号码池不能为空。": "The number pool cannot be empty.", "号码数量超过不重复号码池容量。": "The number count exceeds the capacity of the no-repeat pool.",
+  "M 选 N 的普通池和特别池必须是相同的 M 个号码。": "For M-choose-N, the regular and special pools must contain the same M numbers.",
+  "X+Y 模型数量或专属字段无效。": "Invalid X+Y model counts or model-specific fields.",
+  "M 选 N 必须满足 0 < N1+N2=N < M，且普通、特别号码均不重复。": "M-choose-N requires 0 < N1+N2=N < M, with no repeats in either regular or special numbers.",
+  "0–9 数字模型要求 1–10 位有序数字，普通和特别号码池为空。": "The 0–9 digit model requires 1–10 ordered positions and empty regular and special pools.",
+};
+function uiError(value: string) {
+  if (errorEnglish[value]) return ui(value, errorEnglish[value]);
+  const poolMatch = value.match(/^(普通号码池|特别号码池)(.*)$/);
+  if (poolMatch) {
+    const label = poolMatch[1] === "普通号码池" ? "Regular number pool" : "Special number pool";
+    const suffix = poolMatch[2]!;
+    const suffixes: Record<string, string> = {
+      "格式无效。": " has an invalid format.",
+      "重复设置无效。": " has an invalid repeat setting.",
+      "号码列表最多 10,000 个。": " can contain at most 10,000 numbers.",
+      "不能同时设置范围和号码列表。": " cannot have both a range and an explicit list.",
+      "号码必须唯一且在 0–1,000,000 内。": " numbers must be unique and between 0 and 1,000,000.",
+      "号码池大小必须为 1–10,000。": " size must be between 1 and 10,000.",
+      "号码范围必须在 0–1,000,000 内且最小值不大于最大值。": " range must be between 0 and 1,000,000, with minimum no greater than maximum.",
+    };
+    if (suffix.startsWith("包含未知字段：")) return ui(value, `${label} contains an unknown field: ${suffix.slice(7, -1)}.`);
+    if (suffix.startsWith("数量必须为 ")) return ui(value, `${label} count must be ${suffix.slice(6, -1)}.`);
+    return ui(value, suffixes[suffix] ? `${label}${suffixes[suffix]}` : value);
+  }
+  const field = value.match(/^(regular_count|special_count|pool_size|total_count|length)必须为 (.+) 的整数。$/);
+  if (field) return ui(value, `${field[1]} must be a whole number between ${field[2]!.replace(" 的整数", "")}.`);
+  return ui(value, value);
+}
 const props = defineProps<{ modelValue: RuleModel; disabled?: boolean }>();
 const emit = defineEmits<{
   (e: "update:modelValue", model: RuleModel): void;
@@ -159,17 +200,16 @@ const poolKeys = computed(
 </script>
 <template>
   <fieldset :disabled="disabled" class="model-editor">
-    <legend>自定义彩种号码模型</legend>
+    <legend>{{ t("自定义彩种号码模型", "Custom game number model") }}</legend>
     <p class="hint">
-      彩种创建后模型不可改写。M 是号码池大小，N1 为普通号、N2 为特别号；数字型 N
-      是位数。
+      {{ t("彩种创建后模型不可改写。M 是号码池大小，N1 为普通号、N2 为特别号；数字型 N 是位数。", "The model cannot be changed after the game is created. M is the pool size; N1 is the regular count and N2 the special count. For digit models, N is the number of positions.") }}
     </p>
-    <p v-if="problem" class="error" role="alert">{{ problem }}</p>
+    <p v-if="problem" class="error" role="alert">{{ uiError(problem) }}</p>
     <p v-for="(message, key) in errors" :key="key" class="error" role="alert">
-      {{ message }}
+      {{ uiError(message) }}
     </p>
     <label
-      >号码模型<select
+      >{{ t("号码模型", "Number model") }}<select
         :value="model.model"
         @change="
           changeType(
@@ -177,14 +217,14 @@ const poolKeys = computed(
           )
         "
       >
-        <option value="X_PLUS_Y">普通号 X + 特别号 Y（独立号码池）</option>
-        <option value="M_SELECT_N">M 选 N1 + N2（共享池，不重复）</option>
-        <option value="DIGITS_0_9">0–9 数字，N 个有序位置</option>
+        <option value="X_PLUS_Y">{{ t("普通号 X + 特别号 Y（独立号码池）", "X regular + Y special (separate pools)") }}</option>
+        <option value="M_SELECT_N">{{ t("M 选 N1 + N2（共享池，不重复）", "Choose N1 + N2 from M (shared pool, no repeats)") }}</option>
+        <option value="DIGITS_0_9">{{ t("0–9 数字，N 个有序位置", "Digits 0–9, N ordered positions") }}</option>
       </select></label
     >
     <template v-if="model.model === 'DIGITS_0_9'">
       <label
-        >数字位数 N（1–10）<input
+        >{{ t("数字位数 N（1–10）", "Number of digit positions N (1–10)") }}<input
           :value="value('length', model.length)"
           inputmode="numeric"
           @input="
@@ -206,13 +246,13 @@ const poolKeys = computed(
               m.allow_repeat = ($event.target as HTMLInputElement).checked;
             })
           "
-        />允许重复数字，例如 121、111</label
+        />{{ t("允许重复数字，例如 121、111", "Allow repeated digits, e.g. 121 or 111") }}</label
       >
     </template>
     <template v-else>
       <div class="grid">
         <label
-          >普通开奖数量 X / N1（0–10）<input
+          >{{ t("普通开奖数量 X / N1（0–10）", "Regular draw count X / N1 (0–10)") }}<input
             :value="value('regular-count', model.regular_count)"
             inputmode="numeric"
             @input="
@@ -225,7 +265,7 @@ const poolKeys = computed(
               )
             " /></label
         ><label
-          >特别开奖数量 Y / N2（0–10）<input
+          >{{ t("特别开奖数量 Y / N2（0–10）", "Special draw count Y / N2 (0–10)") }}<input
             :value="value('special-count', model.special_count)"
             inputmode="numeric"
             @input="
@@ -240,9 +280,7 @@ const poolKeys = computed(
         /></label>
       </div>
       <p v-if="model.model === 'M_SELECT_N'" class="hint">
-        号码池 M = {{ model.pool_size }}，总开奖 N =
-        {{ model.total_count }}；必须 0 &lt; N &lt;
-        M，普通号与特别号之间也不重复。
+        {{ ui(`号码池 M = ${model.pool_size}，总开奖 N = ${model.total_count}；必须 0 < N < M，普通号与特别号之间也不重复。`, `Pool size M = ${model.pool_size}; total draw count N = ${model.total_count}. Require 0 < N < M, with no repeats between regular and special numbers.`) }}
       </p>
       <label class="check"
         ><input
@@ -253,32 +291,32 @@ const poolKeys = computed(
               m.ordered = ($event.target as HTMLInputElement).checked;
             })
           "
-        />普通 / 特别号码各自有序</label
+        />{{ t("普通 / 特别号码各自有序", "Regular and special numbers are each ordered") }}</label
       >
       <fieldset v-for="key in poolKeys" :key="key" class="pool">
         <legend>
           {{
             model.model === "M_SELECT_N"
-              ? "共享号码池"
+              ? t("共享号码池", "Shared number pool")
               : key === "regular"
-                ? "普通号码池"
-                : "特别号码池"
+                ? t("普通号码池", "Regular number pool")
+                : t("特别号码池", "Special number pool")
           }}
         </legend>
         <label
-          >号码池定义方式<select
+          >{{ t("号码池定义方式", "Pool definition") }}<select
             :value="poolModes[key]"
             @change="
               changePoolMode(key, ($event.target as HTMLSelectElement).value)
             "
           >
-            <option value="range">连续范围</option>
-            <option value="values">明确号码列表</option>
+            <option value="range">{{ t("连续范围", "Continuous range") }}</option>
+            <option value="values">{{ t("明确号码列表", "Explicit number list") }}</option>
           </select></label
         >
         <div v-if="poolModes[key] === 'range'" class="grid">
           <label
-            >最小号码<input
+            >{{ t("最小号码", "Minimum number") }}<input
               :value="value(`${key}-min`, model[`${key}_pool`].min)"
               inputmode="numeric"
               @input="
@@ -292,7 +330,7 @@ const poolKeys = computed(
               "
           /></label>
           <label
-            >最大号码<input
+            >{{ t("最大号码", "Maximum number") }}<input
               :value="value(`${key}-max`, model[`${key}_pool`].max)"
               inputmode="numeric"
               @input="
@@ -307,7 +345,7 @@ const poolKeys = computed(
           /></label>
         </div>
         <label v-else
-          >允许的号码（逗号分隔）<textarea
+          >{{ t("允许的号码（逗号分隔）", "Allowed numbers (comma-separated)") }}<textarea
             :value="
               drafts[`${key}-values`] ?? model[`${key}_pool`].values.join(',')
             "
@@ -326,7 +364,7 @@ const poolKeys = computed(
                 ).checked;
               })
             "
-          />该号码池允许重复号码</label
+          />{{ t("该号码池允许重复号码", "Allow repeated numbers in this pool") }}</label
         >
       </fieldset>
     </template>

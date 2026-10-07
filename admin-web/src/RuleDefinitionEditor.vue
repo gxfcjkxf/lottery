@@ -7,6 +7,45 @@ import type {
   RuleSelectionDefinition,
 } from "./rule-simulation-api";
 import { parseEditorNumbers, validateEditorDefinition } from "./rule-editor";
+import { useAdminI18n } from "./i18n";
+const { t } = useAdminI18n();
+const ui = (zh: string, en: string = zh) => t(zh, en);
+const errorEnglish: Record<string, string> = {
+  "规则定义无效": "Invalid rule definition.", "请输入规范非负整数（最大 20000000）": "Enter a canonical non-negative integer (maximum 20,000,000).",
+  "代码须以字母开头，最多 48 个字母、数字或下划线": "Codes must start with a letter and contain at most 48 letters, digits, or underscores.",
+  "代码已存在": "This code already exists.", "该属性组仍被选号或条件引用，请先移除引用": "This attribute group is still referenced by selections or conditions. Remove those references first.",
+  "该属性值仍被条件引用，请先修改条件": "This attribute value is still referenced by a condition. Update the condition first.",
+  "该特征仍被条件引用，请先调整条件": "This feature is still referenced by a condition. Update the condition first.",
+  "号码列表不能为空。": "The number list cannot be empty.", "号码列表无效": "Invalid number list.",
+  "积分必须是规范的非负整数字符串，不得含小数、符号或前导零。": "Points must be a canonical non-negative integer string with no decimal, sign, or leading zero.",
+  "号码输入上限必须为 0–10,000 的整数。": "The number input limit must be a whole number from 0 to 10,000.",
+  "投注方式格式无效。": "Invalid selection mode format.", "投注数量或排除数量超出模型范围。": "Selection or exclusion count is outside the model range.",
+  "特征选项格式无效。": "Invalid feature-choice format.", "号码属性格式无效。": "Invalid number-attribute format.",
+  "号码属性组最多 16 个。": "There can be at most 16 number-attribute groups.",
+  "数字模型的开奖范围必须为 all 或 digits。": "For a digit model, the draw target must be all or digits.",
+  "非数字模型不能使用 digits 开奖范围。": "Non-digit models cannot use the digits draw target.",
+  "条件必须指定有效的开奖范围。": "The condition must specify a valid draw target.", "条件字段无效。": "Invalid condition field.",
+  "条件运算符无效。": "Invalid condition operator.", "叶条件不能包含子条件。": "Leaf conditions cannot contain child conditions.",
+  "条件嵌套深度不能超过 8。": "Condition nesting cannot exceed 8 levels.", "每个奖级条件最多 128 个节点。": "Each prize-tier condition can contain at most 128 nodes.",
+  "规则定义格式无效。": "Invalid rule definition format.", "schema_version 必须为 1。": "schema_version must be 1.",
+  "rounding 必须为 half_up。": "rounding must be half_up.", "限额格式无效。": "Invalid limit format.",
+  "混合奖级策略无效。": "Invalid mixed-tier policy.", "奖级格式无效。": "Invalid prize-tier format.",
+  "同时存在排他和非排他奖级时必须显式选择 mixed_tier_policy。": "Choose mixed_tier_policy explicitly when exclusive and additive tiers are both present.",
+  "赔率必须为正的精确十进制字符串，最多 10 位整数和 6 位小数。": "Odds must be a positive exact decimal string with at most 10 integer digits and 6 decimal places.",
+};
+const errorText = (value: string) => {
+  const duplicate = value.match(/^号码 (\d+) 重复。$/);
+  if (duplicate) return ui(value, `Number ${duplicate[1]} is duplicated.`);
+  const tooMany = value.match(/^号码数量不能超过 (\d+) 个。$/);
+  if (tooMany) return ui(value, `Number list cannot exceed ${tooMany[1]} items.`);
+  const labelError = value.match(/^(号码|属性组|属性) (.+?)(格式无效。|含不属于模型号码池的号码。|不存在或重复。)$/);
+  if (labelError) {
+    const prefix = labelError[1] === "号码" ? "Number attribute" : labelError[1] === "属性组" ? "Attribute group" : "Attribute";
+    const suffix: Record<string, string> = { "格式无效。": "has an invalid format.", "含不属于模型号码池的号码。": "contains numbers outside the model pools.", "不存在或重复。": "does not exist or is duplicated." };
+    return ui(value, `${prefix} ${labelError[2]} ${suffix[labelError[3]!]}`);
+  }
+  return ui(value, errorEnglish[value] ?? value);
+};
 
 const props = defineProps<{ modelValue: RuleDefinition; disabled?: boolean }>();
 const emit = defineEmits<{
@@ -373,21 +412,21 @@ function nodeCount(c: RuleCondition): number {
 <template>
   <div class="definition-editor">
     <p class="hint">
-      彩种模型固定为
+      {{ t("彩种模型固定为", "The game model is fixed as") }}
       {{
         definition.model.model
-      }}；保存不会直接发布规则。修改选号方式后请检查全部奖级条件，并重新验证。
+      }}{{ t("；保存不会直接发布规则。修改选号方式后请检查全部奖级条件，并重新验证。", ". Saving does not publish the rule. After changing selection, review all prize-tier conditions and validate again.") }}
     </p>
     <p v-if="structuralError" role="alert" class="error">
-      {{ structuralError }}（服务端验证仍是最终依据）
+      {{ errorText(structuralError) }}{{ t("（服务端验证仍是最终依据）", " (server validation remains authoritative)") }}
     </p>
     <p v-for="(message, key) in errors" :key="key" role="alert" class="error">
-      {{ message }}
+      {{ errorText(message) }}
     </p>
     <fieldset :disabled="disabled" class="grid">
-      <legend>积分、限额与舍入</legend>
+      <legend>{{ t("积分、限额与舍入", "Points, limits, and rounding") }}</legend>
       <label
-        >单位积分<input
+        >{{ t("单位积分", "Unit points") }}<input
           :value="definition.unit_points"
           inputmode="numeric"
           @input="
@@ -397,7 +436,7 @@ function nodeCount(c: RuleCondition): number {
           "
       /></label>
       <label
-        >中奖总封顶（空白不限）<input
+        >{{ t("中奖总封顶（空白不限）", "Total prize cap (blank for unlimited)") }}<input
           :value="definition.cap_points ?? ''"
           inputmode="numeric"
           @input="
@@ -407,7 +446,7 @@ function nodeCount(c: RuleCondition): number {
           "
       /></label>
       <label
-        >单注投注限额（空白不限）<input
+        >{{ t("单注投注限额（空白不限）", "Per-bet limit (blank for unlimited)") }}<input
           :value="definition.limits.max_bet_points ?? ''"
           inputmode="numeric"
           @input="
@@ -418,7 +457,7 @@ function nodeCount(c: RuleCondition): number {
           "
       /></label>
       <label
-        >最大倍投<input
+        >{{ t("最大倍投", "Maximum multiplier") }}<input
           :value="definition.limits.max_multiplier"
           inputmode="numeric"
           @input="
@@ -430,7 +469,7 @@ function nodeCount(c: RuleCondition): number {
           "
       /></label>
       <label
-        >最大组合数（1–10000）<input
+        >{{ t("最大组合数（1–10000）", "Maximum combinations (1–10,000)") }}<input
           :value="definition.limits.max_combinations"
           inputmode="numeric"
           @change="
@@ -444,7 +483,7 @@ function nodeCount(c: RuleCondition): number {
           "
       /></label>
       <label
-        >舍入层级<select
+        >{{ t("舍入层级", "Rounding scope") }}<select
           :value="definition.rounding_scope"
           @change="
             update((d) => {
@@ -453,13 +492,13 @@ function nodeCount(c: RuleCondition): number {
             })
           "
         >
-          <option value="order">整注汇总四舍五入</option>
-          <option value="line">每组合四舍五入</option>
-          <option value="tier">每奖级四舍五入</option>
+          <option value="order">{{ t("整注汇总四舍五入", "Round after summing the order") }}</option>
+          <option value="line">{{ t("每组合四舍五入", "Round each combination") }}</option>
+          <option value="tier">{{ t("每奖级四舍五入", "Round each prize tier") }}</option>
         </select></label
       >
       <label class="wide"
-        >混合排他/累加策略<select
+        >{{ t("混合排他/累加策略", "Mixed exclusive/additive policy") }}<select
           :value="definition.mixed_tier_policy"
           @change="
             update((d) => {
@@ -468,20 +507,20 @@ function nodeCount(c: RuleCondition): number {
             })
           "
         >
-          <option value="">仅同类奖级（混合时必须选择策略）</option>
+          <option value="">{{ t("仅同类奖级（混合时必须选择策略）", "Same-type tiers only (choose a policy for mixed tiers)") }}</option>
           <option value="max_all">
-            命中排他奖级时，从全部命中奖级取最高金额
+            {{ t("命中排他奖级时，从全部命中奖级取最高金额", "If an exclusive tier wins, use the highest amount among all winning tiers") }}
           </option>
           <option value="max_exclusive_plus_additive">
-            最高排他金额，加上所有累加奖级
+            {{ t("最高排他金额，加上所有累加奖级", "Add all additive tiers to the highest exclusive amount") }}
           </option>
         </select></label
       >
     </fieldset>
     <fieldset :disabled="disabled" class="grid">
-      <legend>玩法选号方式</legend>
+      <legend>{{ t("玩法选号方式", "Play selection mode") }}</legend>
       <label class="wide"
-        >选号方式<select
+        >{{ t("选号方式", "Selection mode") }}<select
           :value="definition.selection.mode"
           @change="
             setSelectionMode(
@@ -490,10 +529,10 @@ function nodeCount(c: RuleCondition): number {
             )
           "
         >
-          <option value="numbers">号码 / 数字位置</option>
-          <option value="exclude">排除号码</option>
-          <option value="attributes">号码附加属性</option>
-          <option value="features">开奖结果特征</option>
+          <option value="numbers">{{ t("号码 / 数字位置", "Numbers / digit positions") }}</option>
+          <option value="exclude">{{ t("排除号码", "Excluded numbers") }}</option>
+          <option value="attributes">{{ t("号码附加属性", "Number attributes") }}</option>
+          <option value="features">{{ t("开奖结果特征", "Draw features") }}</option>
         </select></label
       >
       <template
@@ -503,7 +542,7 @@ function nodeCount(c: RuleCondition): number {
         "
       >
         <label
-          >单线普通选号数<input
+          >{{ t("单线普通选号数", "Regular picks per line") }}<input
             :value="definition.selection.regular_count"
             inputmode="numeric"
             @change="
@@ -517,7 +556,7 @@ function nodeCount(c: RuleCondition): number {
             "
         /></label>
         <label
-          >单线特别选号数<input
+          >{{ t("单线特别选号数", "Special picks per line") }}<input
             :value="definition.selection.special_count"
             inputmode="numeric"
             @change="
@@ -532,7 +571,7 @@ function nodeCount(c: RuleCondition): number {
         /></label>
       </template>
       <label v-if="definition.selection.mode === 'exclude'"
-        >排除号码数量<input
+        >{{ t("排除号码数量", "Excluded number count") }}<input
           :value="definition.selection.exclude_count"
           inputmode="numeric"
           @change="
@@ -546,7 +585,7 @@ function nodeCount(c: RuleCondition): number {
           "
       /></label>
       <div v-if="definition.selection.mode === 'attributes'" class="wide">
-        <p>用户可选择的属性组（至少一个）</p>
+        <p>{{ t("用户可选择的属性组（至少一个）", "Attribute groups users can select (at least one)") }}</p>
         <label
           v-for="group in Object.keys(definition.number_attributes)"
           :key="group"
@@ -570,7 +609,7 @@ function nodeCount(c: RuleCondition): number {
           class="grid row"
         >
           <label
-            >特征代码<input
+            >{{ t("特征代码", "Feature key") }}<input
               :value="key"
               @change="
                 renameFeature(
@@ -580,7 +619,7 @@ function nodeCount(c: RuleCondition): number {
               "
           /></label>
           <label
-            >可选特征值（逗号分隔）<input
+            >{{ t("可选特征值（逗号分隔）", "Allowed feature values (comma-separated)") }}<input
               :value="csvText(`feature-values:${key}`, values)"
               @input="
                 csv(
@@ -594,7 +633,7 @@ function nodeCount(c: RuleCondition): number {
               "
           /></label>
           <button type="button" @click="removeFeature(String(key))">
-            删除特征
+            {{ t("删除特征", "Remove feature") }}
           </button>
         </article>
         <button
@@ -604,12 +643,12 @@ function nodeCount(c: RuleCondition): number {
           "
           @click="addFeature"
         >
-          新增特征
+          {{ t("新增特征", "Add feature") }}
         </button>
       </div>
     </fieldset>
     <fieldset :disabled="disabled">
-      <legend>号码附加属性（可多组、多值重叠）</legend>
+      <legend>{{ t("号码附加属性（可多组、多值重叠）", "Number attributes (multiple groups and overlapping values are allowed)") }}</legend>
       <article
         v-for="(labels, group) in definition.number_attributes"
         :key="group"
@@ -617,7 +656,7 @@ function nodeCount(c: RuleCondition): number {
       >
         <div class="grid">
           <label
-            >属性组代码<input
+            >{{ t("属性组代码", "Attribute group key") }}<input
               :value="group"
               @change="
                 renameGroup(
@@ -626,12 +665,12 @@ function nodeCount(c: RuleCondition): number {
                 )
               " /></label
           ><button type="button" @click="removeGroup(String(group))">
-            删除属性组
+            {{ t("删除属性组", "Remove attribute group") }}
           </button>
         </div>
         <div v-for="(numbers, label) in labels" :key="label" class="grid row">
           <label
-            >属性值代码<input
+            >{{ t("属性值代码", "Attribute value key") }}<input
               :value="label"
               @change="
                 renameLabel(
@@ -642,7 +681,7 @@ function nodeCount(c: RuleCondition): number {
               "
           /></label>
           <label
-            >属性对应号码（逗号分隔）<input
+            >{{ t("属性对应号码（逗号分隔）", "Numbers for this attribute (comma-separated)") }}<input
               :value="csvText(`attribute:${group}:${label}`, numbers)"
               @input="
                 csv(
@@ -659,7 +698,7 @@ function nodeCount(c: RuleCondition): number {
             :disabled="Object.keys(labels).length <= 1"
             @click="removeLabel(String(group), String(label))"
           >
-            删除属性值
+            {{ t("删除属性值", "Remove attribute value") }}
           </button>
         </div>
         <button
@@ -667,7 +706,7 @@ function nodeCount(c: RuleCondition): number {
           :disabled="Object.keys(labels).length >= 32"
           @click="addLabel(String(group))"
         >
-          新增属性值
+          {{ t("新增属性值", "Add attribute value") }}
         </button>
       </article>
       <button
@@ -675,20 +714,20 @@ function nodeCount(c: RuleCondition): number {
         :disabled="Object.keys(definition.number_attributes).length >= 16"
         @click="addGroup"
       >
-        新增属性组
+        {{ t("新增属性组", "Add attribute group") }}
       </button>
     </fieldset>
     <fieldset :disabled="disabled">
-      <legend>奖级与中奖条件 · {{ definition.prize_tiers.length }} 个</legend>
+      <legend>{{ ui(`奖级与中奖条件 · ${definition.prize_tiers.length} 个`, `Prize tiers and win conditions · ${definition.prize_tiers.length}`) }}</legend>
       <article
         v-for="(tier, index) in definition.prize_tiers"
         :key="tierKeys[index]"
         class="tier-editor"
       >
-        <h4>奖级 {{ index + 1 }} · {{ tier.code }}</h4>
+        <h4>{{ ui(`奖级 ${index + 1}`, `Prize tier ${index + 1}`) }} · {{ tier.code }}</h4>
         <div class="grid">
           <label
-            >奖级代码<input
+            >{{ t("奖级代码", "Prize tier code") }}<input
               :value="tier.code"
               maxlength="48"
               @input="
@@ -700,7 +739,7 @@ function nodeCount(c: RuleCondition): number {
               "
           /></label>
           <label
-            >奖级赔率（最多六位小数）<input
+            >{{ t("奖级赔率（最多六位小数）", "Prize odds (up to six decimal places)") }}<input
               :value="tier.odds"
               inputmode="decimal"
               @input="
@@ -712,7 +751,7 @@ function nodeCount(c: RuleCondition): number {
               "
           /></label>
           <label
-            >奖级封顶（空白不限）<input
+            >{{ t("奖级封顶（空白不限）", "Prize cap (blank for unlimited)") }}<input
               :value="tier.cap_points ?? ''"
               inputmode="numeric"
               @input="
@@ -733,7 +772,7 @@ function nodeCount(c: RuleCondition): number {
                   ).checked;
                 })
               "
-            />排他奖级（按金额优先，不按排列顺序）</label
+            />{{ t("排他奖级（按金额优先，不按排列顺序）", "Exclusive tier (prioritized by amount, not list order)") }}</label
           >
         </div>
         <RuleConditionEditor
@@ -758,7 +797,7 @@ function nodeCount(c: RuleCondition): number {
           :disabled="definition.prize_tiers.length <= 1"
           @click="removeTier(index)"
         >
-          删除此奖级
+          {{ t("删除此奖级", "Remove this prize tier") }}
         </button>
       </article>
       <button
@@ -766,7 +805,7 @@ function nodeCount(c: RuleCondition): number {
         :disabled="definition.prize_tiers.length >= 32"
         @click="addTier"
       >
-        新增奖级
+        {{ t("新增奖级", "Add prize tier") }}
       </button>
     </fieldset>
   </div>

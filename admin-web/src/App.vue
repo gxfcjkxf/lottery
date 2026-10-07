@@ -78,14 +78,14 @@ import {
 const { t, message, locale, availableLocales, setLocale, configure, resetBrand } = useAdminI18n();
 const englishUi: Record<string, string> = {
   "请先登录后台账号查看佣金周期。": "Sign in to view commission cycles.",
-  "控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金核算与独立派发后台已接入，真实派发策略默认关闭。": "The console combines connected workflows and prototypes. Withdrawal status is connected; eligibility rules are pending and real payments are unavailable. Commission calculations and the separate payout console are connected; live payout policy is disabled by default.",
+  "控制台包含已接入流程与原型。提现资格与状态流程已接入，品牌策略默认关闭且不支持真实支付；佣金核算与独立派发后台已接入，真实派发策略默认关闭。": "The console combines connected workflows and prototypes. Withdrawal qualification and status are connected; brand policy is disabled by default and real payments are unavailable. Commission calculations and the separate payout console are connected; live payout policy is disabled by default.",
   "此页显示真实成员；账号权限、积分账本、认证设置和投注已接入。": "This page shows live members. Account permissions, the points ledger, authentication settings, and betting are connected.",
   "成员创建与管理为真实操作；投注已接入。": "Member creation and management are live operations. Betting is connected.",
-  "审计日志为真实后台数据；投注已接入，提现状态接口已接入，资格规则待配置且无真实支付。": "Audit logs are live admin data; betting and withdrawal status are connected, while eligibility rules are pending and real payments are unavailable.",
-  "账号与角色变更为真实操作；投注已接入，提现状态接口已接入，资格规则待配置且无真实支付。": "Account and role changes are live operations; betting and withdrawal status are connected, while eligibility rules are pending and real payments are unavailable.",
-  "认证、品牌展示及域名绑定为真实配置；提现状态接口已接入，资格规则待配置且无真实支付。": "Authentication, brand presentation, and domain binding are live settings; withdrawal status is connected, while eligibility rules are pending and real payments are unavailable.",
-  "人工充值、冻结、调整与账本为真实操作；提现状态接口已接入，资格规则待配置且无真实支付。": "Manual deposits, freezes, adjustments, and ledger actions are live; withdrawal status is connected, while eligibility rules are pending and real payments are unavailable.",
-  "真实提现状态接口；资格规则待配置，无真实支付": "Live withdrawal status API; eligibility rules are pending, with no real payments",
+  "审计日志为真实后台数据；投注已接入，提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。": "Audit logs are live admin data; betting and withdrawal qualification/status are connected; brand policy is disabled by default and real payments are unavailable.",
+  "账号与角色变更为真实操作；投注已接入，提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。": "Account and role changes are live operations; betting and withdrawal qualification/status are connected; brand policy is disabled by default and real payments are unavailable.",
+  "认证、品牌展示及域名绑定为真实配置；提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。": "Authentication, brand presentation, and domain binding are live settings; withdrawal qualification/status are connected; brand policy is disabled by default and real payments are unavailable.",
+  "人工充值、冻结、调整与账本为真实操作；提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。": "Manual deposits, freezes, adjustments, and ledger actions are live; withdrawal qualification/status are connected; brand policy is disabled by default and real payments are unavailable.",
+  "内部积分，未接入真实支付": "Internal points · No real payments",
   "切换品牌": "Switch brand", "真实品牌": "Live brand", "演示品牌": "Demo brand", "选择品牌": "Select a brand",
   "没有可访问的品牌": "No accessible brands", "仅原型演示": "Prototype demo only", "主导航": "Main navigation",
   "概览": "Overview", "平台": "Platform", "运营": "Operations", "资金": "Finance", "管理": "Management",
@@ -757,7 +757,7 @@ const ledger = [
         <span><b>{{skin?.display_name??'northstar'}}</b><small>OPERATIONS CONSOLE</small></span></a
       >
       <div v-if="page !== '工作台'" class="demo-chip">
-        <span class="pulse"></span>{{ ui("真实提现状态接口；资格规则待配置，无真实支付") }} <span class="demo-chip-end">·</span>
+        <span class="pulse"></span>{{ ui("内部积分，未接入真实支付") }} <span class="demo-chip-end">·</span>
       </div>
       <div class="brand-switch-wrap">
         <button
@@ -920,7 +920,7 @@ const ledger = [
         <span class="banner-icon">ⓘ</span
         ><span
           ><b>{{ ui("交互演示 · 非生产环境") }}</b
-          ><span class="banner-copy"> {{ ui("控制台包含已接入流程与原型。提现状态接口已接入，资格规则待配置且不支持真实支付；佣金核算与独立派发后台已接入，真实派发策略默认关闭。") }}</span
+          ><span class="banner-copy"> {{ ui("控制台包含已接入流程与原型。提现资格与状态流程已接入，品牌策略默认关闭且不支持真实支付；佣金核算与独立派发后台已接入，真实派发策略默认关闭。") }}</span
           ></span
         ><button :aria-label="ui('关闭说明')" @click="showDemoNotice = false">
           ×
@@ -2093,13 +2093,13 @@ const ledger = [
             : page === "通知模板" && account
               ? ui("真实版本化站内通知模板；已生成消息保留原文案，不触发新通知或资金变化。")
             : page === "审计日志" && account
-              ? ui("审计日志为真实后台数据；投注已接入，提现状态接口已接入，资格规则待配置且无真实支付。")
+              ? ui("审计日志为真实后台数据；投注已接入，提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。")
               : page === "账号与权限" && account
-                ? ui("账号与角色变更为真实操作；投注已接入，提现状态接口已接入，资格规则待配置且无真实支付。")
+                ? ui("账号与角色变更为真实操作；投注已接入，提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。")
                 : page === "品牌和域名" && account
-                  ? ui("认证、品牌展示及域名绑定为真实配置；提现状态接口已接入，资格规则待配置且无真实支付。")
+                  ? ui("认证、品牌展示及域名绑定为真实配置；提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。")
                   : page === "资金与账本" && account
-                    ? ui("人工充值、冻结、调整与账本为真实操作；提现状态接口已接入，资格规则待配置且无真实支付。")
+                    ? ui("人工充值、冻结、调整与账本为真实操作；提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。")
                     : ui("标为演示的功能不写入后台；账号、积分、规则版本和期次计划已接入真实 API。")
         }}</span>
       </footer>

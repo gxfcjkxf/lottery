@@ -1,8 +1,33 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from "vue";
 import type { RuleCondition, RuleDefinition } from "./rule-simulation-api";
+import { useAdminI18n } from "./i18n";
 
 defineOptions({ name: "RuleConditionEditor" });
+const { t } = useAdminI18n();
+const ui = (zh: string, en: string = zh) => t(zh, en);
+const fieldZh: Record<string, string> = {
+  regular_match: "普通号命中数量", special_match: "特别号命中数量", position_match: "逐位命中数量",
+  excluded_match: "被排除号码命中数量", draw_sum: "号码和值", draw_odd_count: "奇数个数",
+  draw_even_count: "偶数个数", draw_unique_count: "不同号码个数", draw_all_same: "全部号码相同",
+  draw_first_last_same: "首尾号码相同", draw_span: "号码跨度", draw_consecutive: "连续邻接对数",
+  draw_digit: "指定位置数字", draw_parity: "指定位置奇偶（偶 0 / 奇 1）", attribute_match: "属性命中次数",
+};
+const targetZh: Record<string, string> = { all: "全部开奖结果", regular: "普通号码", special: "特别号码", digits: "数字各位" };
+const fieldLabel = (field: string) => ui(fieldZh[field] ?? field, fieldLabels[field] ?? field);
+const targetLabel = (target: string) => ui(targetZh[target] ?? target, targetLabels[target] ?? target);
+const operatorLabel = (operator: string) => {
+  const zh: Record<string, string> = { equals: "等于", in: "属于列表", between: "范围内", selected: "用户已选择" };
+  const en: Record<string, string> = { equals: "Equals", in: "In list", between: "Between", selected: "Selected by user" };
+  return ui(zh[operator] ?? operator, en[operator] ?? operator);
+};
+const operatorErrorEnglish: Record<string, [string, string]> = {
+  "A value is required.": ["请输入比较值。", "A comparison value is required."],
+  "Enter a whole number from 0 to 20,000,000.": ["请输入 0–20,000,000 的整数。", "Enter a whole number from 0 to 20,000,000."],
+  "Enter 1–100 unique whole numbers from 0 to 20,000,000, separated by commas.": ["请输入 1–100 个以逗号分隔且不重复的整数，范围为 0–20,000,000。", "Enter 1–100 unique whole numbers from 0 to 20,000,000, separated by commas."],
+  "Both minimum and maximum are required.": ["最小值和最大值均为必填项。", "Both minimum and maximum are required."],
+  "Enter whole numbers from 0 to 20,000,000 for both bounds.": ["最小值和最大值都必须是 0–20,000,000 的整数。", "Enter whole numbers from 0 to 20,000,000 for both bounds."],
+};
 
 const props = withDefaults(
   defineProps<{
@@ -24,27 +49,27 @@ const MAX_DEPTH = 8;
 const MAX_NODES = 128;
 const MAX_VALUE = 20_000_000;
 const fieldLabels: Record<string, string> = {
-  regular_match: "普通号命中数量",
-  special_match: "特别号命中数量",
-  position_match: "逐位命中数量",
-  excluded_match: "被排除号码命中数量",
-  draw_sum: "号码和值",
-  draw_odd_count: "奇数个数",
-  draw_even_count: "偶数个数",
-  draw_unique_count: "不同号码个数",
-  draw_all_same: "全部号码相同",
-  draw_first_last_same: "首尾号码相同",
-  draw_span: "号码跨度",
-  draw_consecutive: "连续邻接对数",
-  draw_digit: "指定位置数字",
-  draw_parity: "指定位置奇偶（偶 0 / 奇 1）",
-  attribute_match: "属性命中次数",
+  regular_match: "Regular number matches",
+  special_match: "Special number matches",
+  position_match: "Position matches",
+  excluded_match: "Excluded number matches",
+  draw_sum: "Draw sum",
+  draw_odd_count: "Odd number count",
+  draw_even_count: "Even number count",
+  draw_unique_count: "Unique number count",
+  draw_all_same: "All numbers are the same",
+  draw_first_last_same: "First and last numbers match",
+  draw_span: "Number span",
+  draw_consecutive: "Adjacent consecutive pairs",
+  draw_digit: "Digit at position",
+  draw_parity: "Digit parity at position (even 0 / odd 1)",
+  attribute_match: "Attribute matches",
 };
 const targetLabels: Record<string, string> = {
-  all: "全部开奖结果",
-  regular: "普通号码",
-  special: "特别号码",
-  digits: "数字各位",
+  all: "All draw numbers",
+  regular: "Regular numbers",
+  special: "Special numbers",
+  digits: "Each digit",
 };
 const id = useId();
 const equalsDraft = ref("");
@@ -525,10 +550,10 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
     :disabled="disabled"
     :aria-describedby="numberError ? `${id}-number-error` : undefined"
   >
-    <legend>条件 · 第 {{ depth }} 层</legend>
+    <legend>{{ ui(`条件 · 第 ${depth} 层`, `Condition · level ${depth}`) }}</legend>
 
     <div class="condition-grid">
-      <label :for="`${id}-operator`">条件运算</label>
+      <label :for="`${id}-operator`">{{ t("条件运算", "Condition operator") }}</label>
       <select
         :id="`${id}-operator`"
         :value="modelValue.op"
@@ -545,7 +570,7 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
             depth >= MAX_DEPTH || (!isLogic && currentTreeNodes >= MAX_NODES)
           "
         >
-          全部成立 AND（all）
+          {{ t("全部成立 AND（all）", "All conditions AND (all)") }}
         </option>
         <option
           value="any"
@@ -553,7 +578,7 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
             depth >= MAX_DEPTH || (!isLogic && currentTreeNodes >= MAX_NODES)
           "
         >
-          任意成立 OR（any）
+          {{ t("任意成立 OR（any）", "Any condition OR (any)") }}
         </option>
         <option
           value="not"
@@ -561,25 +586,24 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
             depth >= MAX_DEPTH || (!isLogic && currentTreeNodes >= MAX_NODES)
           "
         >
-          取反 NOT（not）
+          {{ t("取反 NOT（not）", "Negate NOT (not)") }}
         </option>
         <option v-for="operator in operators" :key="operator" :value="operator">
-          {{ operator }}
+          {{ operatorLabel(operator) }}
         </option>
         <option
           v-if="!isLogic && !operators.includes(modelValue.op)"
           :value="modelValue.op"
         >
-          {{ modelValue.op }} (unavailable)
+          {{ modelValue.op }} {{ t("（不可用）", "(unavailable)") }}
         </option>
       </select>
       <p class="replacement-note">
-        切换叶条件运算会清除旧比较参数；逻辑组合保留子条件，切换 NOT
-        只保留一个子条件。请重新核对。
+        {{ t("切换叶条件运算会清除旧比较参数；逻辑组合保留子条件，切换 NOT 只保留一个子条件。请重新核对。", "Changing a leaf operator clears its comparison values. Logical operators keep child conditions; switching to NOT keeps only one child. Review the result.") }}
       </p>
 
       <template v-if="!isLogic">
-        <label :for="`${id}-field`">判断字段</label>
+        <label :for="`${id}-field`">{{ t("判断字段", "Field") }}</label>
         <select
           :id="`${id}-field`"
           :value="modelValue.field ?? ''"
@@ -592,15 +616,15 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
             v-if="modelValue.field && !fields.includes(modelValue.field)"
             :value="modelValue.field"
           >
-            {{ modelValue.field }} (unavailable for this definition)
+            {{ modelValue.field }} {{ t("（当前定义不可用）", "(unavailable for this definition)") }}
           </option>
           <option v-for="field in fields" :key="field" :value="field">
-            {{ fieldLabels[field] }}（{{ field }}）
+            {{ fieldLabel(field) }} ({{ field }})
           </option>
         </select>
 
         <template v-if="targets.length">
-          <label :for="`${id}-target`">开奖结果部分</label>
+          <label :for="`${id}-target`">{{ t("开奖结果部分", "Draw target") }}</label>
           <select
             :id="`${id}-target`"
             :value="modelValue.target ?? ''"
@@ -613,10 +637,10 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
               v-if="modelValue.target && !targets.includes(modelValue.target)"
               :value="modelValue.target"
             >
-              {{ modelValue.target }} (unavailable)
+              {{ modelValue.target }} {{ t("（不可用）", "(unavailable)") }}
             </option>
             <option v-for="target in targets" :key="target" :value="target">
-              {{ targetLabels[target] }}（{{ target }}）
+              {{ targetLabel(target) }} ({{ target }})
             </option>
           </select>
         </template>
@@ -627,7 +651,7 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
             modelValue.field === 'draw_parity'
           "
         >
-          <label :for="`${id}-position`">数字位置（从第 1 位开始）</label>
+          <label :for="`${id}-position`">{{ t("数字位置（从第 1 位开始）", "Digit position (starting at 1)") }}</label>
           <select
             :id="`${id}-position`"
             :value="
@@ -638,7 +662,7 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
             :disabled="disabled"
             @change="changePosition(($event.target as HTMLSelectElement).value)"
           >
-            <option value="" disabled>Select a position</option>
+            <option value="" disabled>{{ t("请选择位置", "Select a position") }}</option>
             <option
               v-for="position in definition.model.length"
               :key="position"
@@ -650,7 +674,7 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
         </template>
 
         <template v-if="modelValue.field === 'attribute_match'">
-          <label :for="`${id}-attribute-group`">属性组</label>
+          <label :for="`${id}-attribute-group`">{{ t("属性组", "Attribute group") }}</label>
           <select
             :id="`${id}-attribute-group`"
             :value="modelValue.attribute_group ?? ''"
@@ -659,7 +683,7 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
               changeAttributeGroup(($event.target as HTMLSelectElement).value)
             "
           >
-            <option value="" disabled>Select a configured group</option>
+            <option value="" disabled>{{ t("请选择已配置的属性组", "Select a configured group") }}</option>
             <option
               v-for="group in attributeGroups"
               :key="group"
@@ -674,11 +698,11 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
               "
               :value="modelValue.attribute_group"
             >
-              {{ modelValue.attribute_group }} (unavailable)
+              {{ modelValue.attribute_group }} {{ t("（不可用）", "(unavailable)") }}
             </option>
           </select>
           <label :for="`${id}-attribute-value`"
-            >属性值（$selection 表示用户所选值）</label
+            >{{ t("属性值（$selection 表示用户所选值）", "Attribute value ($selection means the user's selected value)") }}</label
           >
           <select
             :id="`${id}-attribute-value`"
@@ -688,7 +712,7 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
               changeAttributeValue(($event.target as HTMLSelectElement).value)
             "
           >
-            <option value="" disabled>Select a configured value</option>
+            <option value="" disabled>{{ t("请选择已配置的值", "Select a configured value") }}</option>
             <option
               v-for="value in attributeValues"
               :key="value"
@@ -703,13 +727,13 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
               "
               :value="modelValue.attribute_value"
             >
-              {{ modelValue.attribute_value }} (unavailable)
+              {{ modelValue.attribute_value }} {{ t("（不可用）", "(unavailable)") }}
             </option>
           </select>
         </template>
 
         <template v-if="modelValue.op === 'selected'">
-          <label :for="`${id}-selection-key`">用户所选特征代码</label>
+          <label :for="`${id}-selection-key`">{{ t("用户所选特征代码", "Selected feature key") }}</label>
           <select
             :id="`${id}-selection-key`"
             :value="modelValue.selection_key ?? ''"
@@ -718,7 +742,7 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
               changeSelectionKey(($event.target as HTMLSelectElement).value)
             "
           >
-            <option value="" disabled>Select a configured feature</option>
+            <option value="" disabled>{{ t("请选择已配置的特征", "Select a configured feature") }}</option>
             <option v-for="key in featureKeys" :key="key" :value="key">
               {{ key }}
             </option>
@@ -729,13 +753,13 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
               "
               :value="modelValue.selection_key"
             >
-              {{ modelValue.selection_key }} (unavailable)
+              {{ modelValue.selection_key }} {{ t("（不可用）", "(unavailable)") }}
             </option>
           </select>
         </template>
 
         <template v-if="modelValue.op === 'equals'">
-          <label :for="`${id}-value`">比较值（0–20000000）</label>
+          <label :for="`${id}-value`">{{ t("比较值（0–20000000）", "Comparison value (0–20,000,000)") }}</label>
           <input
             :id="`${id}-value`"
             :value="equalsDraft"
@@ -747,7 +771,7 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
           />
         </template>
         <template v-else-if="modelValue.op === 'in'">
-          <label :for="`${id}-values`">比较值集合（逗号分隔）</label>
+          <label :for="`${id}-values`">{{ t("比较值集合（逗号分隔）", "Comparison values (comma-separated)") }}</label>
           <input
             :id="`${id}-values`"
             :value="listDraft"
@@ -759,7 +783,7 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
           />
         </template>
         <template v-else-if="modelValue.op === 'between'">
-          <label :for="`${id}-min`">Minimum (0–20,000,000)</label>
+          <label :for="`${id}-min`">{{ t("最小值（0–20,000,000）", "Minimum (0–20,000,000)") }}</label>
           <input
             :id="`${id}-min`"
             :value="minDraft"
@@ -771,7 +795,7 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
               updateRange('min', ($event.target as HTMLInputElement).value)
             "
           />
-          <label :for="`${id}-max`">Maximum (0–20,000,000)</label>
+          <label :for="`${id}-max`">{{ t("最大值（0–20,000,000）", "Maximum (0–20,000,000)") }}</label>
           <input
             :id="`${id}-max`"
             :value="maxDraft"
@@ -793,21 +817,21 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
       class="field-error"
       role="alert"
     >
-      {{ numberError }}
+      {{ operatorErrorEnglish[numberError] ? ui(operatorErrorEnglish[numberError]![0], operatorErrorEnglish[numberError]![1]) : numberError }}
     </p>
 
     <template v-if="isLogic">
       <div class="children-heading">
-        <span>子条件 · {{ modelValue.children?.length ?? 0 }} / 32</span>
+        <span>{{ ui(`子条件 · ${modelValue.children?.length ?? 0} / 32`, `Child conditions · ${modelValue.children?.length ?? 0} / 32`) }}</span>
         <button type="button" :disabled="!canAddChild" @click="addChild">
-          新增子条件
+          {{ t("新增子条件", "Add child condition") }}
         </button>
       </div>
       <p v-if="depth >= 8" class="limit-note">
-        Maximum nesting depth (8) reached.
+        {{ t("已达到最大嵌套深度（8 层）。", "Maximum nesting depth (8) reached.") }}
       </p>
       <p v-else-if="currentTreeNodes >= 128" class="limit-note">
-        Maximum condition count (128) reached.
+        {{ t("已达到条件数量上限（128）。", "Maximum condition count (128) reached.") }}
       </p>
       <div
         v-for="(child, index) in modelValue.children ?? []"
@@ -815,13 +839,13 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
         class="child-condition"
       >
         <div class="child-heading">
-          <span>子条件 {{ index + 1 }}</span>
+          <span>{{ ui(`子条件 ${index + 1}`, `Child condition ${index + 1}`) }}</span>
           <button
             type="button"
             :disabled="!canRemoveChild"
             @click="removeChild(index)"
           >
-            删除子条件
+            {{ t("删除子条件", "Remove child condition") }}
           </button>
         </div>
         <RuleConditionEditor
@@ -841,7 +865,7 @@ watch(isValid, (valid) => emit("validity", valid), { immediate: true });
         />
       </div>
       <p v-if="modelValue.op === 'not'" class="limit-note">
-        Not requires exactly one child.
+        {{ t("NOT 运算必须且只能有一个子条件。", "NOT requires exactly one child.") }}
       </p>
     </template>
   </fieldset>

@@ -3,8 +3,10 @@ import { computed, onUnmounted, ref, watch } from "vue";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import { brandCreationPermission, createBrandCreationApi, type BrandCreationBody, type BrandCreationLocale, type CreatedBrandReceipt } from "./brand-creation-api";
 import { classifyBrandCreationFailure, clearAllPendingBrandCreationWrites, clearPendingBrandCreationWrite, createBrandCreationRequestGuard, getPendingBrandCreationWrite, retainPendingBrandCreationWrite, updatePendingBrandCreationPhase, type PendingBrandCreationWrite } from "./brand-creation-state";
+import { useAdminI18n } from "./i18n";
 
 const props = defineProps<{ account: AdminAccount }>();
+const { t } = useAdminI18n();
 const emit = defineEmits<{ (event: "session-invalid"): void; (event: "created", receipt: CreatedBrandReceipt): void }>();
 const api = createBrandCreationApi();
 const writeGuard = createBrandCreationRequestGuard();
@@ -29,6 +31,17 @@ onUnmounted(() => writeGuard.invalidate());
 
 function restoreDraft(body: Readonly<BrandCreationBody>): void {
   code.value = body.code; name.value = body.name; locale.value = body.default_locale; timezone.value = body.timezone; reason.value = body.reason;
+}
+function localizedText(value: string): string {
+  const messages: Record<string, [string, string]> = {
+    "当前账号已有待处理创建请求；请先处理该请求。": ["当前账号已有待处理创建请求；请先处理该请求。", "This account already has an unresolved creation request. Resolve it first."],
+    "已核验创建回执：该品牌创建时为暂停状态、版本 1。此回执是创建快照，不代表品牌当前状态。": ["已核验创建回执：该品牌创建时为暂停状态、版本 1。此回执是创建快照，不代表品牌当前状态。", "Creation receipt verified: the brand was created paused at version 1. This is a creation snapshot, not the brand's current status."],
+    "提交结果未知。请求内容及幂等键已冻结；重试将使用完全相同的请求。": ["提交结果未知。请求内容及幂等键已冻结；重试将使用完全相同的请求。", "The outcome is unknown. The request body and idempotency key are frozen; retry will use the exact same request."],
+    "创建请求发生冲突。旧请求已冻结。": ["创建请求发生冲突。旧请求已冻结。", "The creation request conflicted. The original request is frozen."],
+    "品牌创建失败。": ["品牌创建失败。", "Brand creation failed."],
+  };
+  const pair = messages[value];
+  return pair ? t(pair[0], pair[1]) : value;
 }
 
 function review(): void {
@@ -91,32 +104,32 @@ async function sendFrozenIntent(retry: boolean): Promise<void> {
 <template>
   <section class="brand-creation" aria-labelledby="brand-creation-title">
     <header class="brand-creation__header">
-      <div><div class="brand-creation__eyebrow">PLATFORM / BRAND</div><h2 id="brand-creation-title">新建品牌</h2>
-        <p>新品牌创建后固定为暂停状态，版本 1。</p></div>
+      <div><div class="brand-creation__eyebrow">PLATFORM / BRAND</div><h2 id="brand-creation-title">{{ t("新建品牌", "Create brand") }}</h2>
+        <p>{{ t("新品牌创建后固定为暂停状态，版本 1。", "New brands are created paused at version 1.") }}</p></div>
     </header>
-    <p class="brand-creation__policy" role="note">创建不会自动添加管理员或成员，也不会配置域名、游戏、资金或结算。创建后需分别完成授权和配置。</p>
-    <p v-if="!canCreate" class="brand-creation__notice" role="status">当前账号没有平台权限 brand.create.platform。</p>
+    <p class="brand-creation__policy" role="note">{{ t("创建不会自动添加管理员或成员，也不会配置域名、游戏、资金或结算。创建后需分别完成授权和配置。", "Creation does not add admins or members or configure domains, games, funds, or settlement. Complete access and configuration separately after creation.") }}</p>
+    <p v-if="!canCreate" class="brand-creation__notice" role="status">{{ t("当前账号没有平台权限 brand.create.platform。", "This account does not have the platform permission brand.create.platform.") }}</p>
     <template v-else>
-      <p v-if="pending?.phase === 'unknown'" class="brand-creation__warning" role="alert">提交结果未知：请求内容和幂等键已冻结。只能使用原请求重试。</p>
-      <p v-else-if="pending?.phase === 'conflict'" class="brand-creation__warning" role="alert">{{ error || "该请求发生冲突，原请求已冻结。" }}</p>
-      <p v-else-if="pending?.phase === 'review'" class="brand-creation__notice" role="status">请核对以下内容。确认后才会发送创建请求。</p>
+      <p v-if="pending?.phase === 'unknown'" class="brand-creation__warning" role="alert">{{ t("提交结果未知：请求内容和幂等键已冻结。只能使用原请求重试。", "The outcome is unknown. The request body and idempotency key are frozen; retry only the original request.") }}</p>
+      <p v-else-if="pending?.phase === 'conflict'" class="brand-creation__warning" role="alert">{{ localizedText(error || t("该请求发生冲突，原请求已冻结。", "This request conflicted and is frozen.")) }}</p>
+      <p v-else-if="pending?.phase === 'review'" class="brand-creation__notice" role="status">{{ t("请核对以下内容。确认后才会发送创建请求。", "Review the details below. The creation request is sent only after confirmation.") }}</p>
       <form v-if="!pending" class="brand-creation__form" @submit.prevent="review">
-        <label class="brand-creation__field" for="brand-create-code"><span>品牌代码</span><input id="brand-create-code" v-model="code" autocomplete="off" maxlength="48" :disabled="busy" aria-describedby="brand-create-code-help"><small id="brand-create-code-help">小写字母开头，仅小写字母、数字和下划线；不能自动转换大小写。</small></label>
-        <label class="brand-creation__field" for="brand-create-name"><span>品牌名称</span><input id="brand-create-name" v-model="name" maxlength="120" :disabled="busy"><small>{{ bytes(name) }} / 120 字节（UTF-8）</small></label>
-        <label class="brand-creation__field" for="brand-create-locale"><span>默认语言</span><select id="brand-create-locale" v-model="locale" :disabled="busy"><option value="en">English (en)</option><option value="zh-CN">简体中文 (zh-CN)</option></select></label>
-        <label class="brand-creation__field" for="brand-create-timezone"><span>时区</span><input id="brand-create-timezone" v-model="timezone" autocomplete="off" maxlength="80" :disabled="busy"><small>请输入有效的 IANA 时区，例如 Asia/Manila 或 UTC。</small></label>
-        <label class="brand-creation__field brand-creation__field--wide" for="brand-create-reason"><span>创建原因</span><textarea id="brand-create-reason" v-model="reason" rows="3" maxlength="500" :disabled="busy"></textarea><small>{{ bytes(reason) }} / 500 字节（UTF-8）；不得包含换行或控制字符</small></label>
-        <button class="brand-creation__primary" type="submit" :disabled="!validForm || busy">核对并继续</button>
+        <label class="brand-creation__field" for="brand-create-code"><span>{{ t("品牌代码", "Brand code") }}</span><input id="brand-create-code" v-model="code" autocomplete="off" maxlength="48" :disabled="busy" aria-describedby="brand-create-code-help"><small id="brand-create-code-help">{{ t("小写字母开头，仅小写字母、数字和下划线；不能自动转换大小写。", "Start with a lowercase letter; use only lowercase letters, digits, and underscores. Case is not auto-converted.") }}</small></label>
+        <label class="brand-creation__field" for="brand-create-name"><span>{{ t("品牌名称", "Brand name") }}</span><input id="brand-create-name" v-model="name" maxlength="120" :disabled="busy"><small>{{ bytes(name) }} {{ t("/ 120 字节（UTF-8）", "/ 120 UTF-8 bytes") }}</small></label>
+        <label class="brand-creation__field" for="brand-create-locale"><span>{{ t("默认语言", "Default locale") }}</span><select id="brand-create-locale" v-model="locale" :disabled="busy"><option value="en">English (en)</option><option value="zh-CN">{{ t("简体中文", "Simplified Chinese") }} (zh-CN)</option></select></label>
+        <label class="brand-creation__field" for="brand-create-timezone"><span>{{ t("时区", "Time zone") }}</span><input id="brand-create-timezone" v-model="timezone" autocomplete="off" maxlength="80" :disabled="busy"><small>{{ t("请输入有效的 IANA 时区，例如 Asia/Manila 或 UTC。", "Enter a valid IANA time zone, such as Asia/Manila or UTC.") }}</small></label>
+        <label class="brand-creation__field brand-creation__field--wide" for="brand-create-reason"><span>{{ t("创建原因", "Creation reason") }}</span><textarea id="brand-create-reason" v-model="reason" rows="3" maxlength="500" :disabled="busy"></textarea><small>{{ bytes(reason) }} {{ t("/ 500 字节（UTF-8）；不得包含换行或控制字符", "/ 500 UTF-8 bytes; line breaks and control characters are not allowed") }}</small></label>
+        <button class="brand-creation__primary" type="submit" :disabled="!validForm || busy">{{ t("核对并继续", "Review and continue") }}</button>
       </form>
-      <div v-else-if="pending.phase === 'review'" class="brand-creation__review" role="region" aria-label="核对品牌创建信息">
-        <dl><div><dt>品牌代码</dt><dd>{{ pending.body.code }}</dd></div><div><dt>品牌名称</dt><dd>{{ pending.body.name }}</dd></div><div><dt>默认语言</dt><dd>{{ pending.body.default_locale }}</dd></div><div><dt>时区</dt><dd>{{ pending.body.timezone }}</dd></div><div><dt>创建原因</dt><dd>{{ pending.body.reason }}</dd></div><div><dt>初始状态</dt><dd>暂停 · 版本 1</dd></div></dl>
-        <div class="brand-creation__actions"><button class="brand-creation__primary" type="button" :disabled="busy" @click="sendFrozenIntent(false)">确认创建品牌</button><button class="brand-creation__secondary" type="button" :disabled="busy" @click="cancelReview">返回修改</button></div>
+      <div v-else-if="pending.phase === 'review'" class="brand-creation__review" role="region" :aria-label="t('核对品牌创建信息', 'Review brand creation details')">
+        <dl><div><dt>{{ t("品牌代码", "Brand code") }}</dt><dd>{{ pending.body.code }}</dd></div><div><dt>{{ t("品牌名称", "Brand name") }}</dt><dd>{{ pending.body.name }}</dd></div><div><dt>{{ t("默认语言", "Default locale") }}</dt><dd>{{ pending.body.default_locale }}</dd></div><div><dt>{{ t("时区", "Time zone") }}</dt><dd>{{ pending.body.timezone }}</dd></div><div><dt>{{ t("创建原因", "Creation reason") }}</dt><dd>{{ pending.body.reason }}</dd></div><div><dt>{{ t("初始状态", "Initial status") }}</dt><dd>{{ t("暂停 · 版本 1", "Paused · version 1") }}</dd></div></dl>
+        <div class="brand-creation__actions"><button class="brand-creation__primary" type="button" :disabled="busy" @click="sendFrozenIntent(false)">{{ t("确认创建品牌", "Confirm brand creation") }}</button><button class="brand-creation__secondary" type="button" :disabled="busy" @click="cancelReview">{{ t("返回修改", "Back to edit") }}</button></div>
       </div>
-      <div v-else-if="pending.phase === 'unknown'" class="brand-creation__actions"><button class="brand-creation__primary" type="button" :disabled="busy" @click="sendFrozenIntent(true)">使用原请求重试</button></div>
-      <div v-else-if="pending.phase === 'conflict'" class="brand-creation__actions"><button class="brand-creation__secondary" type="button" :disabled="busy" @click="discardConflict">放弃冲突请求并重新填写</button></div>
+      <div v-else-if="pending.phase === 'unknown'" class="brand-creation__actions"><button class="brand-creation__primary" type="button" :disabled="busy" @click="sendFrozenIntent(true)">{{ t("使用原请求重试", "Retry original request") }}</button></div>
+      <div v-else-if="pending.phase === 'conflict'" class="brand-creation__actions"><button class="brand-creation__secondary" type="button" :disabled="busy" @click="discardConflict">{{ t("放弃冲突请求并重新填写", "Discard conflicted request and start over") }}</button></div>
     </template>
-    <p v-if="error && (!pending || pending.phase === 'review')" class="brand-creation__error" role="alert">{{ error }}</p>
-    <p v-if="notice" class="brand-creation__success" role="status">{{ notice }}</p>
+    <p v-if="error && (!pending || pending.phase === 'review')" class="brand-creation__error" role="alert">{{ localizedText(error) }}</p>
+    <p v-if="notice" class="brand-creation__success" role="status">{{ localizedText(notice) }}</p>
   </section>
 </template>
 

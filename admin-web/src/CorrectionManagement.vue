@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import type { LocalizedMessage } from "@lottery/shared";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useAdminI18n } from "./i18n";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import {
   correctionPermissions, createCorrectionApi,
@@ -29,6 +31,7 @@ const emit = defineEmits<{
   (event: "session-invalid"): void;
   (event: "open-settlement", periodId: string): void;
 }>();
+const { t, message: localized } = useAdminI18n();
 
 const api = createCorrectionApi();
 const rights = computed(() => correctionPermissions(props.account, props.brandId));
@@ -55,8 +58,8 @@ const historyBusy = ref(false);
 const detailBusy = ref(false);
 const targetsBusy = ref(false);
 const writing = ref(false);
-const error = ref("");
-const notice = ref("");
+const error = ref<string | LocalizedMessage>("");
+const notice = ref<string | LocalizedMessage>("");
 const reviewMode = ref<"correct" | "retry" | "">("");
 const reviewBody = ref<CorrectBody | RetryBody | null>(null);
 const reviewExpectedMode = ref<CorrectionMode>(null);
@@ -132,16 +135,16 @@ function invalidateSession() {
 }
 function handleError(problem: unknown) {
   if (problem instanceof AdminApiError && problem.status === 401) { invalidateSession(); return; }
-  error.value = problem instanceof Error ? problem.message : "请求失败，请重试。";
+  error.value = problem instanceof Error ? problem.message : localized("请求失败，请重试。", "Request failed. Please try again.");
 }
 function checkContext(value: Context) {
   if (value.brand_id !== props.brandId || value.period_id !== periodId.value)
-    throw new Error("更正上下文与当前品牌或期次不匹配，请重新读取。");
+    throw new Error(t("更正上下文与当前品牌或期次不匹配，请重新读取。", "Correction context does not match the current brand or period. Reload and try again."));
 }
 function checkCorrection(value: Correction) {
   if (value.brand_id !== props.brandId || value.period_id !== periodId.value)
-    throw new Error("更正记录与当前品牌或期次不匹配。");
-  if (!correctionCountsMatch(value)) throw new Error("服务器更正目标计数不一致，已停止显示该记录。");
+    throw new Error(t("更正记录与当前品牌或期次不匹配。", "Correction record does not match the current brand or period."));
+  if (!correctionCountsMatch(value)) throw new Error(t("服务器更正目标计数不一致，已停止显示该记录。", "Server correction target counts do not match; this record is hidden."));
 }
 function clearTargets() { targetsLane.invalidate(); targetsBusy.value = false; targetPage.value = null; targetOffset.value = 0; }
 
@@ -159,9 +162,9 @@ async function readContext() {
         digits: result.draw?.digits.join(", ") ?? "",
       };
     }
-    if (!result.can_correct) notice.value = "服务器当前不允许更正此期次。";
-    else if (result.current_job_id && (!result.mode || result.policy_version < 1)) notice.value = "当前存在结算任务，但结算模式或策略版本无效；禁止财务更正。";
-    else notice.value = "已读取服务器开奖、更正权限和当前结算任务。";
+    if (!result.can_correct) notice.value = localized("服务器当前不允许更正此期次。", "The server currently does not allow correction of this period.");
+    else if (result.current_job_id && (!result.mode || result.policy_version < 1)) notice.value = localized("当前存在结算任务，但结算模式或策略版本无效；禁止财务更正。", "A settlement job exists, but its mode or policy version is invalid. Financial correction is blocked.");
+    else notice.value = localized("已读取服务器开奖、更正权限和当前结算任务。", "Draw result, correction eligibility, and current settlement job loaded from the server.");
     return true;
   } catch (problem) {
     if (problem instanceof AdminApiError && problem.status === 401) { invalidateSession(); return false; }
@@ -208,7 +211,7 @@ async function readTargets(id = selected.value?.id, offset = targetOffset.value,
   try {
     const page = await api.targets(props.brandId, id, CORRECTION_PAGE_SIZE, offset);
     if (!isCurrent(targetsLane, ticket, capturedScope) || selected.value?.id !== id) return false;
-    if (page.brand_id !== props.brandId || page.correction_id !== id) throw new Error("目标列表与当前更正不匹配。");
+    if (page.brand_id !== props.brandId || page.correction_id !== id) throw new Error(t("目标列表与当前更正不匹配。", "Target list does not match the current correction."));
     targetPage.value = page; targetOffset.value = page.offset; return true;
   } catch (problem) {
     if (problem instanceof AdminApiError && problem.status === 401) { invalidateSession(); return false; }
@@ -223,7 +226,7 @@ async function refreshAll() {
   if (!ok) return;
   await readHistory(0);
   if (selected.value) await readCorrection(selected.value.id);
-  if (pendingWrite.value) notice.value = "存在结果未知的写入。只读刷新不会确认或清除它；只能使用原请求体和幂等键重试。";
+  if (pendingWrite.value) notice.value = localized("存在结果未知的写入。只读刷新不会确认或清除它；只能使用原请求体和幂等键重试。", "A write outcome is unknown. Read-only refresh cannot confirm or clear it; retry only with the original request body and idempotency key.");
 }
 
 function reviewCorrect() {
@@ -270,11 +273,11 @@ function validateReceipt(value: Correction, intent: WriteIntent) {
       brandId: intent.brandId, periodId: intent.periodId, previousDrawResultId: intent.expectedDrawResultId,
       periodVersion: body.version, policyVersion: body.policy_version, mode: intent.expectedMode,
       accountId: intent.accountId, reason: body.reason, result: body.result, financial: body.policy_version !== null,
-    })) throw new Error("更正回执与原账号、品牌、期次、开奖记录、递增版本、模式、原因或规范结果不匹配。");
+    })) throw new Error(t("更正回执与原账号、品牌、期次、开奖记录、递增版本、模式、原因或规范结果不匹配。", "Correction receipt does not match the original account, brand, period, draw record, incremented version, mode, reason, or canonical result."));
   } else {
     const body = intent.body as RetryBody;
     if (!intent.resourceId || !matchesCorrectionRetryReceipt(value, { id: intent.resourceId, version: body.version }))
-      throw new Error("重试回执未匹配原更正、冲正状态或递增后的版本。");
+      throw new Error(t("重试回执未匹配原更正、冲正状态或递增后的版本。", "Retry receipt does not match the original correction, reversal state, or incremented version."));
   }
 }
 async function submitPending() {
@@ -287,7 +290,7 @@ async function submitPending() {
   if ((intent.operation === "retry" || (intent.body as CorrectBody).policy_version != null) && !rights.value.settleRun) return;
   if (intent.operation === "correct" && (!intent.expectedDrawResultId || intent.expectedMode === undefined)) return;
   writing.value = true; error.value = "";
-  notice.value = unknownWrite.value ? "正在使用原请求体和幂等键重试…" : "正在提交已核对的更正操作…";
+  notice.value = unknownWrite.value ? localized("正在使用原请求体和幂等键重试…", "Retrying with the original request body and idempotency key…") : localized("正在提交已核对的更正操作…", "Submitting the reviewed correction…");
   invalidateReads(); const ticket = writeLane.begin(); const capturedScope = scope.value;
   let receipt: Correction;
   try {
@@ -303,10 +306,10 @@ async function submitPending() {
     const failure = correctionWriteFailure(status);
     if (failure === "unknown") {
       frozenCorrectionWrites.remember(intent); pendingWrite.value = intent; unknownWrite.value = true;
-      notice.value = "写入结果未知。原请求体和幂等键仍保留；只读状态不能证明操作已成功。";
+      notice.value = localized("写入结果未知。原请求体和幂等键仍保留；只读状态不能证明操作已成功。", "The write outcome is unknown. The original request body and idempotency key remain available; read-only state cannot prove that the action succeeded.");
     } else {
       frozenCorrectionWrites.forget(intent); pendingWrite.value = null; unknownWrite.value = false; cancelReview();
-      notice.value = failure === "conflict" ? "服务器报告版本冲突；请重新读取并重新核对。" : "服务器明确拒绝请求；请检查权限和操作原因。";
+      notice.value = failure === "conflict" ? localized("服务器报告版本冲突；请重新读取并重新核对。", "The server reported a version conflict. Reload and review again.") : localized("服务器明确拒绝请求；请检查权限和操作原因。", "The server rejected the request. Check permissions and the reason.");
     }
     handleError(problem); writing.value = false; return;
   }
@@ -314,34 +317,46 @@ async function submitPending() {
   try { validateReceipt(receipt, intent); }
   catch (problem) {
     frozenCorrectionWrites.remember(intent); pendingWrite.value = intent; unknownWrite.value = true;
-    notice.value = "收到的回执与原请求不匹配。原请求仍保留，只能使用相同请求体和幂等键重试。";
+    notice.value = localized("收到的回执与原请求不匹配。原请求仍保留，只能使用相同请求体和幂等键重试。", "The receipt does not match the original request. The original request is retained and can only be retried with the same body and idempotency key.");
     handleError(problem); writing.value = false; return;
   }
 
   // A validated receipt acknowledges the write before follow-up GETs. A GET failure never re-freezes it.
   frozenCorrectionWrites.forget(intent); pendingWrite.value = null; unknownWrite.value = false; cancelReview();
-  notice.value = "服务器已确认写入；正在读取最新服务器状态。";
+  notice.value = localized("服务器已确认写入；正在读取最新服务器状态。", "The server confirmed the write; loading the latest server state.");
   const correctionId = intent.operation === "correct" ? receipt.id : intent.resourceId!;
   try {
     const detailOk = await readCorrection(correctionId, capturedScope, true);
     if (!isCurrent(writeLane, ticket, capturedScope, true)) return;
     const historyOk = await readHistory(0, capturedScope, true);
     if (!isCurrent(writeLane, ticket, capturedScope, true)) return;
-    if (!detailOk || !historyOk) notice.value = "写入已确认；后续读取失败。写入保持已确认，不会要求重复提交。请只读刷新。";
-    else notice.value = "更正已确认，并已读取最新服务器状态。";
+    if (!detailOk || !historyOk) notice.value = localized("写入已确认；后续读取失败。写入保持已确认，不会要求重复提交。请只读刷新。", "The write is confirmed, but a follow-up read failed. It remains confirmed and must not be resubmitted. Refresh status only.");
+    else notice.value = localized("更正已确认，并已读取最新服务器状态。", "Correction confirmed; the latest server state has been loaded.");
   } finally { if (isCurrent(writeLane, ticket, capturedScope, true)) writing.value = false; }
 }
 
 function stateLabel(state: string) {
-  const labels: Record<string, string> = { reversing: "正在撤销旧账", resettling: "正在重算并结算", failed: "更正失败", completed: "更正完成" };
+  const labels: Record<string, string> = { reversing: t("正在撤销旧账", "Reversing old entries"), resettling: t("正在重算并结算", "Recalculating and settling"), failed: t("更正失败", "Correction failed"), completed: t("更正完成", "Correction completed") };
   return labels[state] ?? state;
 }
 function targetStateLabel(state: string) {
-  const labels: Record<string, string> = { pending: "待处理", reversed: "已撤销", unchanged: "无需撤销", excluded: "已排除", failed: "失败" };
+  const labels: Record<string, string> = { pending: t("待处理", "Pending"), reversed: t("已撤销", "Reversed"), unchanged: t("无需撤销", "No reversal needed"), excluded: t("已排除", "Excluded"), failed: t("失败", "Failed") };
   return labels[state] ?? state;
 }
+function periodStatusLabel(state: string) {
+  const labels: Record<string, string> = { pending: t("待开始", "Pending"), betting: t("投注中", "Betting open"), closed: t("已截止", "Closed"), waiting_draw: t("待开奖", "Awaiting draw"), drawn: t("已开奖", "Drawn"), settling: t("结算中", "Settling"), settled: t("已结算", "Settled"), bet_cancelled: t("投注取消", "Betting cancelled"), judged_cancelled: t("判定取消", "Judgment cancelled") };
+  return labels[state] ?? state;
+}
+function orderStatusLabel(state: string) {
+  const labels: Record<string, string> = { placed: t("待开奖", "Awaiting draw"), abnormal: t("异常注单", "Abnormal order"), bet_cancelled: t("投注取消", "Betting cancelled"), judged_cancelled: t("判定取消", "Judgment cancelled"), won: t("已中奖", "Won"), lost: t("未中奖", "Lost") };
+  return labels[state] ?? state;
+}
+function jobStateLabel(state: string | null) {
+  const labels: Record<string, string> = { processing: t("处理中", "Processing"), awaiting_approval: t("待运营批准", "Awaiting approval"), paying: t("逐单入账中", "Posting payouts"), failed: t("失败", "Failed"), completed: t("完成", "Completed") };
+  return state ? labels[state] ?? state : "—";
+}
 function modelDescription(model: NonNullable<Context["model"]>) {
-  return `${model.model}${model.ordered ? " · 顺序有意义" : " · 普通号码按升序规范化"}`;
+  return `${model.model}${model.ordered ? ` · ${t("顺序有意义", "order matters")}` : ` · ${t("普通号码按升序规范化", "regular numbers are normalized in ascending order")}`}`;
 }
 function selectCorrection(id: string) { if (id !== selected.value?.id) { cancelReview(); selected.value = null; clearTargets(); void readCorrection(id); } }
 
@@ -356,124 +371,124 @@ onBeforeUnmount(() => { alive = false; invalidateReads(); writeLane.invalidate()
 <template>
   <section class="correction-management" aria-labelledby="correction-management-title">
     <header class="cm-heading">
-      <div><p class="cm-eyebrow">开奖更正 · 账务冲正</p><h2 id="correction-management-title">开奖结果更正</h2></div>
-      <button v-if="rights.view" class="cm-secondary" type="button" :disabled="contextBusy || historyBusy || writing" @click="refreshAll">只读刷新</button>
+      <div><p class="cm-eyebrow">{{ t("开奖更正 · 账务冲正", "Draw correction · Financial reversal") }}</p><h2 id="correction-management-title">{{ t("开奖结果更正", "Draw result correction") }}</h2></div>
+      <button v-if="rights.view" class="cm-secondary" type="button" :disabled="contextBusy || historyBusy || writing" @click="refreshAll">{{ t("只读刷新", "Refresh status") }}</button>
     </header>
-    <p class="cm-warning" role="note"><strong>开奖结果更正不可撤回。</strong>有结算任务时，先按原账本全额冲正，再按新开奖结果重算。若可用中奖积分不足，冲正会安全停止：不会扣其他来源积分，也不会产生负债。</p>
-    <p v-if="!rights.view" class="cm-note">当前账号没有 draw.view.brand / draw.view.platform 查看权限。</p>
+    <p class="cm-warning" role="note"><strong>{{ t("开奖结果更正不可撤回。", "Draw corrections cannot be undone.") }}</strong>{{ t("有结算任务时，先按原账本全额冲正，再按新开奖结果重算。若可用中奖积分不足，冲正会安全停止：不会扣其他来源积分，也不会产生负债。", "When a settlement job exists, the original ledger entries are reversed in full before recalculation with the corrected result. Reversal stops safely if available winnings are insufficient; other point sources are not debited and no debt is created.") }}</p>
+    <p v-if="!rights.view" class="cm-note">{{ t("当前账号没有 draw.view.brand / draw.view.platform 查看权限。", "This account lacks draw.view.brand / draw.view.platform permission.") }}</p>
     <template v-else>
-      <div class="cm-period"><label for="correction-period-id">期次 UUID</label><input id="correction-period-id" v-model.trim="periodId" type="text" placeholder="输入期次 UUID" :disabled="writing || Boolean(pendingWrite)" /></div>
-      <p v-if="error" class="cm-message error" role="alert">{{ error }}</p>
-      <p v-if="notice" class="cm-message" role="status">{{ notice }}</p>
+      <div class="cm-period"><label for="correction-period-id">{{ t("期次 UUID", "Period UUID") }}</label><input id="correction-period-id" v-model.trim="periodId" type="text" :placeholder="t('输入期次 UUID', 'Enter period UUID')" :disabled="writing || Boolean(pendingWrite)" /></div>
+      <p v-if="error" class="cm-message error" role="alert">{{ t(error) }}</p>
+      <p v-if="notice" class="cm-message" role="status">{{ t(notice) }}</p>
       <div v-if="pendingWrite" class="cm-pending">
-        <strong>写入结果未知 · {{ pendingWrite.operation === 'correct' ? '开奖更正' : '重试冲正' }}</strong>
-        <p>原请求、账号、品牌、期次、目标及幂等键仅保存在本页内存。只读刷新不会确认或清除写入。</p>
-        <p class="cm-break">冻结的期次 {{ pendingWrite.periodId }} · 开奖记录 {{ pendingWrite.expectedDrawResultId ?? '—' }} · 模式 {{ pendingWrite.expectedMode ?? '无财务结算' }} · 请求版本 v{{ pendingWrite.body.version }}</p>
-        <button class="cm-primary" type="button" :disabled="writing || (pendingWrite.operation === 'correct' ? !rights.correct || ((pendingWrite.body as CorrectBody).policy_version !== null && !rights.settleRun) : !rights.retry || !rights.settleRun)" @click="submitPending">{{ writing ? '按原请求提交中…' : '原样重试同一请求' }}</button>
+        <strong>{{ t("写入结果未知", "Write outcome unknown") }} · {{ pendingWrite.operation === 'correct' ? t('开奖更正', 'Draw correction') : t('重试冲正', 'Retry reversal') }}</strong>
+        <p>{{ t("原请求、账号、品牌、期次、目标及幂等键仅保存在本页内存。只读刷新不会确认或清除写入。", "The original request, account, brand, period, targets, and idempotency key are held in this page's memory. A read-only refresh cannot confirm or clear the write.") }}</p>
+        <p class="cm-break">{{ t("冻结的期次", "Frozen period") }} {{ pendingWrite.periodId }} · {{ t("开奖记录", "Draw record") }} {{ pendingWrite.expectedDrawResultId ?? '—' }} · {{ t("模式", "Mode") }} {{ pendingWrite.expectedMode ?? t('无财务结算', 'No financial settlement') }} · {{ t("请求版本", "Request version") }} v{{ pendingWrite.body.version }}</p>
+        <button class="cm-primary" type="button" :disabled="writing || (pendingWrite.operation === 'correct' ? !rights.correct || ((pendingWrite.body as CorrectBody).policy_version !== null && !rights.settleRun) : !rights.retry || !rights.settleRun)" @click="submitPending">{{ writing ? t('按原请求提交中…', 'Retrying the original request…') : t('原样重试同一请求', 'Retry the exact same request') }}</button>
       </div>
 
       <section v-if="context" class="cm-panel" aria-labelledby="cm-context-title">
-        <div class="cm-section-title"><h3 id="cm-context-title">期次上下文</h3><span class="cm-badge" :class="context.can_correct ? 'ready' : 'blocked'">{{ context.can_correct ? '服务器允许更正' : '暂不可更正' }}</span></div>
-        <p v-if="contextBusy" class="cm-note">正在读取期次上下文…</p>
+        <div class="cm-section-title"><h3 id="cm-context-title">{{ t("期次上下文", "Period context") }}</h3><span class="cm-badge" :class="context.can_correct ? 'ready' : 'blocked'">{{ context.can_correct ? t('服务器允许更正', 'Correction allowed by server') : t('暂不可更正', 'Correction unavailable') }}</span></div>
+        <p v-if="contextBusy" class="cm-note">{{ t("正在读取期次上下文…", "Reading period context…") }}</p>
         <dl class="cm-facts">
-          <div><dt>品牌 / 彩种 / 期次</dt><dd class="cm-break">{{ context.brand_id }} · {{ context.game_id }} · {{ context.period_id }}</dd></div>
-          <div><dt>期次版本 / 状态</dt><dd>v{{ context.period_version }} · {{ context.period_status }}</dd></div>
-          <div><dt>当前开奖记录</dt><dd class="cm-break">{{ context.draw_result_id ?? '—' }}</dd></div>
-          <div><dt>号码模型</dt><dd>{{ modelDescription(context.model) }}</dd></div>
-          <div><dt>当前结算任务</dt><dd class="cm-break">{{ context.current_job_id ?? '无' }}<template v-if="context.current_job_id"> · v{{ context.current_job_version }}</template></dd></div>
-          <div><dt>结算策略 / 模式</dt><dd>v{{ context.policy_version }} · {{ context.mode ?? '未配置' }}</dd></div>
+          <div><dt>{{ t("品牌 / 彩种 / 期次", "Brand / game / period") }}</dt><dd class="cm-break">{{ context.brand_id }} · {{ context.game_id }} · {{ context.period_id }}</dd></div>
+          <div><dt>{{ t("期次版本 / 状态", "Period version / status") }}</dt><dd>v{{ context.period_version }} · {{ periodStatusLabel(context.period_status) }}</dd></div>
+          <div><dt>{{ t("当前开奖记录", "Current draw record") }}</dt><dd class="cm-break">{{ context.draw_result_id ?? '—' }}</dd></div>
+          <div><dt>{{ t("号码模型", "Number model") }}</dt><dd>{{ modelDescription(context.model) }}</dd></div>
+          <div><dt>{{ t("当前结算任务", "Current settlement job") }}</dt><dd class="cm-break">{{ context.current_job_id ?? t('无', 'None') }}<template v-if="context.current_job_id"> · v{{ context.current_job_version }}</template></dd></div>
+          <div><dt>{{ t("结算策略 / 模式", "Settlement policy / mode") }}</dt><dd>v{{ context.policy_version }} · {{ context.mode ?? t('未配置', 'Not configured') }}</dd></div>
         </dl>
-        <p v-if="context.current_job_id" class="cm-warning compact">此更正涉及财务：必须有有效结算模式、draw.correct.brand 和 settlement.run.brand。旧代次会冻结，旧账逐单冲正后才创建新结算任务。</p>
-        <p v-else class="cm-note">当前无结算任务；提交后只更正未结算结果，不会启动或创建结算任务。</p>
-        <p v-if="rights.correct && !rights.settleRun && context.current_job_id" class="cm-note">缺少 settlement.run.brand，不能提交财务更正。</p>
-        <p v-if="props.account.super_admin" class="cm-note">超级管理员可查看，但更正操作不提供写入。</p>
+        <p v-if="context.current_job_id" class="cm-warning compact">{{ t("此更正涉及财务：必须有有效结算模式、draw.correct.brand 和 settlement.run.brand。旧代次会冻结，旧账逐单冲正后才创建新结算任务。", "This correction affects finances and requires a valid settlement mode, draw.correct.brand, and settlement.run.brand. The old generation is frozen; a new job starts only after every old ledger entry is reversed.") }}</p>
+        <p v-else class="cm-note">{{ t("当前无结算任务；提交后只更正未结算结果，不会启动或创建结算任务。", "There is no settlement job. Submitting corrects only the unsettled result and will not start or create a settlement job.") }}</p>
+        <p v-if="rights.correct && !rights.settleRun && context.current_job_id" class="cm-note">{{ t("缺少 settlement.run.brand，不能提交财务更正。", "Missing settlement.run.brand; financial correction cannot be submitted.") }}</p>
+        <p v-if="props.account.super_admin" class="cm-note">{{ t("超级管理员可查看，但更正操作不提供写入。", "Super administrators may view this page, but cannot write corrections.") }}</p>
       </section>
 
       <section v-if="context && rights.correct && !props.account.super_admin" class="cm-panel" aria-labelledby="cm-edit-title">
-        <div class="cm-section-title"><h3 id="cm-edit-title">更正结果</h3><span class="cm-badge" :class="financial ? 'pending' : 'ready'">{{ financial ? '更正并重新结算' : '只更正未结算结果' }}</span></div>
+        <div class="cm-section-title"><h3 id="cm-edit-title">{{ t("更正结果", "Correct result") }}</h3><span class="cm-badge" :class="financial ? 'pending' : 'ready'">{{ financial ? t('更正并重新结算', 'Correct and settle again') : t('只更正未结算结果', 'Correct unsettled result only') }}</span></div>
         <dl class="cm-facts cm-results">
-          <div><dt>更正前</dt><dd class="cm-break">普通：{{ context.draw?.regular.join(', ') ?? '—' }}；特别：{{ context.draw?.special.join(', ') ?? '—' }}；数字：{{ context.draw?.digits.join(', ') ?? '—' }}</dd></div>
-          <div><dt>提交候选（规范化后）</dt><dd class="cm-break">普通：{{ parsedResult?.regular.join(', ') ?? '格式无效' }}；特别：{{ parsedResult?.special.join(', ') ?? '格式无效' }}；数字：{{ parsedResult?.digits.join(', ') ?? '格式无效' }}</dd></div>
+          <div><dt>{{ t("更正前", "Before correction") }}</dt><dd class="cm-break">{{ t("普通：", "Regular: ") }}{{ context.draw?.regular.join(', ') ?? '—' }}；{{ t("特别：", "Special: ") }}{{ context.draw?.special.join(', ') ?? '—' }}；{{ t("数字：", "Digits: ") }}{{ context.draw?.digits.join(', ') ?? '—' }}</dd></div>
+          <div><dt>{{ t("提交候选（规范化后）", "Submitted candidate (normalized)") }}</dt><dd class="cm-break">{{ t("普通：", "Regular: ") }}{{ parsedResult?.regular.join(', ') ?? t('格式无效', 'Invalid format') }}；{{ t("特别：", "Special: ") }}{{ parsedResult?.special.join(', ') ?? t('格式无效', 'Invalid format') }}；{{ t("数字：", "Digits: ") }}{{ parsedResult?.digits.join(', ') ?? t('格式无效', 'Invalid format') }}</dd></div>
         </dl>
         <div class="cm-form">
-          <label for="correction-regular">普通号码（逗号分隔）</label><input id="correction-regular" v-model="resultInput.regular" aria-label="普通号码（逗号分隔）" inputmode="numeric" autocomplete="off" placeholder="例如 3, 12, 28" :disabled="writing || Boolean(pendingWrite)" />
-          <label for="correction-special">特别号码（逗号分隔）</label><input id="correction-special" v-model="resultInput.special" aria-label="特别号码（逗号分隔）" inputmode="numeric" autocomplete="off" placeholder="例如 7" :disabled="writing || Boolean(pendingWrite)" />
-          <label for="correction-digits">数字结果（逗号分隔）</label><input id="correction-digits" v-model="resultInput.digits" aria-label="数字结果（逗号分隔）" inputmode="numeric" autocomplete="off" placeholder="例如 1, 2, 3, 4" :disabled="writing || Boolean(pendingWrite)" />
-          <p class="cm-note">普通及特别号码按模型规则处理；数字结果保持输入顺序。相同旧结果不能再次提交。</p>
-          <label for="correction-reason">操作原因（UTF-8 不超过 500 字节）</label><textarea id="correction-reason" v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" placeholder="说明更正依据" />
-          <small>{{ reasonBytes }} / 500 字节</small>
-          <button class="cm-primary" type="button" :disabled="!canCorrect" @click="reviewCorrect">{{ financial ? '核对并更正、重新结算' : '核对并只更正未结算结果' }}</button>
-          <p v-if="sameAsPrevious" class="cm-note">候选结果与当前开奖结果相同，无需更正。</p>
+          <label for="correction-regular">{{ t("普通号码（逗号分隔）", "Regular numbers (comma-separated)") }}</label><input id="correction-regular" v-model="resultInput.regular" :aria-label="t('普通号码（逗号分隔）', 'Regular numbers (comma-separated)')" inputmode="numeric" autocomplete="off" :placeholder="t('例如 3, 12, 28', 'e.g. 3, 12, 28')" :disabled="writing || Boolean(pendingWrite)" />
+          <label for="correction-special">{{ t("特别号码（逗号分隔）", "Special numbers (comma-separated)") }}</label><input id="correction-special" v-model="resultInput.special" :aria-label="t('特别号码（逗号分隔）', 'Special numbers (comma-separated)')" inputmode="numeric" autocomplete="off" :placeholder="t('例如 7', 'e.g. 7')" :disabled="writing || Boolean(pendingWrite)" />
+          <label for="correction-digits">{{ t("数字结果（逗号分隔）", "Digits (comma-separated)") }}</label><input id="correction-digits" v-model="resultInput.digits" :aria-label="t('数字结果（逗号分隔）', 'Digits (comma-separated)')" inputmode="numeric" autocomplete="off" :placeholder="t('例如 1, 2, 3, 4', 'e.g. 1, 2, 3, 4')" :disabled="writing || Boolean(pendingWrite)" />
+          <p class="cm-note">{{ t("普通及特别号码按模型规则处理；数字结果保持输入顺序。相同旧结果不能再次提交。", "Regular and special numbers follow the model rules; digit results retain input order. The current result cannot be submitted again as a correction.") }}</p>
+          <label for="correction-reason">{{ t("操作原因（UTF-8 不超过 500 字节）", "Reason (up to 500 UTF-8 bytes)") }}</label><textarea id="correction-reason" v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" :placeholder="t('说明更正依据', 'Describe the basis for this correction')" />
+          <small>{{ reasonBytes }} / {{ t("500 字节", "500 bytes") }}</small>
+          <button class="cm-primary" type="button" :disabled="!canCorrect" @click="reviewCorrect">{{ financial ? t('核对并更正、重新结算', 'Review, correct, and settle again') : t('核对并只更正未结算结果', 'Review and correct unsettled result only') }}</button>
+          <p v-if="sameAsPrevious" class="cm-note">{{ t("候选结果与当前开奖结果相同，无需更正。", "The candidate matches the current result; no correction is needed.") }}</p>
         </div>
       </section>
 
       <section v-if="rights.view && periodId" class="cm-panel" aria-labelledby="cm-history-title">
-        <div class="cm-section-title"><h3 id="cm-history-title">更正历史</h3><span>每页 {{ CORRECTION_PAGE_SIZE }} 条</span></div>
-        <p v-if="historyBusy" class="cm-note">正在读取更正历史…</p>
+        <div class="cm-section-title"><h3 id="cm-history-title">{{ t("更正历史", "Correction history") }}</h3><span>{{ t("每页", "Per page") }} {{ CORRECTION_PAGE_SIZE }}</span></div>
+        <p v-if="historyBusy" class="cm-note">{{ t("正在读取更正历史…", "Reading correction history…") }}</p>
         <div v-if="history?.items.length" class="cm-history-list">
           <button v-for="item in history.items" :key="item.id" class="cm-history-item" :class="{ active: selected?.id === item.id }" type="button" :disabled="writing || Boolean(pendingWrite)" @click="selectCorrection(item.id)">
-            <span><strong>{{ stateLabel(item.state) }}</strong><small>{{ item.created_at }}</small></span><span class="cm-break">{{ item.id }}</span><span>v{{ item.version }} · {{ item.target_count }} 个目标</span>
+            <span><strong>{{ stateLabel(item.state) }}</strong><small>{{ item.created_at }}</small></span><span class="cm-break">{{ item.id }}</span><span>v{{ item.version }} · {{ item.target_count }} {{ t("个目标", "targets") }}</span>
           </button>
         </div>
-        <p v-else-if="history && !historyBusy" class="cm-note">此期次还没有更正记录。</p>
+        <p v-else-if="history && !historyBusy" class="cm-note">{{ t("此期次还没有更正记录。", "There are no correction records for this period.") }}</p>
         <div v-if="history" class="cm-pagination">
-          <button class="cm-secondary" type="button" :disabled="historyOffset <= 0 || historyBusy || writing" @click="readHistory(Math.max(0, historyOffset - CORRECTION_PAGE_SIZE))">上一页</button>
-          <span>偏移 {{ history.offset }} · {{ history.items.length }} 条</span>
-          <button class="cm-secondary" type="button" :disabled="!history.has_more || historyBusy || writing" @click="readHistory(historyOffset + CORRECTION_PAGE_SIZE)">下一页</button>
+          <button class="cm-secondary" type="button" :disabled="historyOffset <= 0 || historyBusy || writing" @click="readHistory(Math.max(0, historyOffset - CORRECTION_PAGE_SIZE))">{{ t("上一页", "Previous") }}</button>
+          <span>{{ t("偏移", "Offset") }} {{ history.offset }} · {{ history.items.length }} {{ t("条", "items") }}</span>
+          <button class="cm-secondary" type="button" :disabled="!history.has_more || historyBusy || writing" @click="readHistory(historyOffset + CORRECTION_PAGE_SIZE)">{{ t("下一页", "Next") }}</button>
         </div>
       </section>
 
       <section v-if="selected" class="cm-panel" aria-labelledby="cm-detail-title">
-        <div class="cm-section-title"><h3 id="cm-detail-title">更正详情</h3><span class="cm-badge" :class="selected.state === 'completed' ? 'ready' : selected.state === 'failed' ? 'blocked' : 'pending'">{{ stateLabel(selected.state) }}</span></div>
-        <p v-if="detailBusy" class="cm-note">正在读取更正详情…</p>
+        <div class="cm-section-title"><h3 id="cm-detail-title">{{ t("更正详情", "Correction details") }}</h3><span class="cm-badge" :class="selected.state === 'completed' ? 'ready' : selected.state === 'failed' ? 'blocked' : 'pending'">{{ stateLabel(selected.state) }}</span></div>
+        <p v-if="detailBusy" class="cm-note">{{ t("正在读取更正详情…", "Reading correction details…") }}</p>
         <dl class="cm-facts">
-          <div><dt>更正 / 期次版本</dt><dd class="cm-break">{{ selected.id }} · v{{ selected.period_version }} (更正时版本)</dd></div>
-          <div><dt>旧 / 新开奖记录</dt><dd class="cm-break">{{ selected.previous_draw_result_id }} → {{ selected.draw_result_id }}</dd></div>
-          <div><dt>该更正保存的规范结果</dt><dd class="cm-break">普通：{{ selected.result.regular.join(', ') }}；特别：{{ selected.result.special.join(', ') }}；数字：{{ selected.result.digits.join(', ') }}</dd></div>
-          <div><dt>旧 / 新结算任务</dt><dd class="cm-break">{{ selected.previous_job_id ?? '—' }} → {{ selected.new_job_id ?? '—' }}</dd></div>
-          <div><dt>策略 / 模式</dt><dd>{{ selected.policy_version ?? '—' }} · {{ selected.mode ?? '无财务结算' }}</dd></div>
-          <div><dt>目标总数 / 状态计数</dt><dd>{{ selected.target_count }} · 待 {{ selected.pending_count }} / 已冲正 {{ selected.reversed_count }} / 无需冲正 {{ selected.unchanged_count }} / 排除 {{ selected.excluded_count }} / 失败 {{ selected.failed_count }}</dd></div>
-          <div><dt>原应冲正积分 / 实际冲正积分</dt><dd>{{ formatCorrectionPoints(selected.reverse_points) }} / {{ formatCorrectionPoints(selected.reversed_points) }}</dd></div>
-          <div><dt>操作者 / 创建时间 / 完成时间</dt><dd class="cm-break">{{ selected.created_by }} · {{ selected.created_at }} · {{ selected.completed_at ?? '—' }}</dd></div>
-          <div><dt>原因 / 最后错误码</dt><dd class="cm-break">{{ selected.reason }} · {{ selected.last_error_code ?? '—' }}</dd></div>
-          <div><dt>新任务状态 / 版本 / 错误码</dt><dd>{{ selected.new_job_state ?? '—' }} · {{ selected.new_job_version ?? '—' }} · {{ selected.new_job_error_code ?? '—' }}</dd></div>
+          <div><dt>{{ t("更正 / 期次版本", "Correction / period version") }}</dt><dd class="cm-break">{{ selected.id }} · v{{ selected.period_version }} ({{ t("更正时版本", "version at correction") }})</dd></div>
+          <div><dt>{{ t("旧 / 新开奖记录", "Previous / new draw record") }}</dt><dd class="cm-break">{{ selected.previous_draw_result_id }} → {{ selected.draw_result_id }}</dd></div>
+          <div><dt>{{ t("该更正保存的规范结果", "Canonical result saved by this correction") }}</dt><dd class="cm-break">{{ t("普通：", "Regular: ") }}{{ selected.result.regular.join(', ') }}；{{ t("特别：", "Special: ") }}{{ selected.result.special.join(', ') }}；{{ t("数字：", "Digits: ") }}{{ selected.result.digits.join(', ') }}</dd></div>
+          <div><dt>{{ t("旧 / 新结算任务", "Previous / new settlement job") }}</dt><dd class="cm-break">{{ selected.previous_job_id ?? '—' }} → {{ selected.new_job_id ?? '—' }}</dd></div>
+          <div><dt>{{ t("策略 / 模式", "Policy / mode") }}</dt><dd>{{ selected.policy_version ?? '—' }} · {{ selected.mode ?? t('无财务结算', 'No financial settlement') }}</dd></div>
+          <div><dt>{{ t("目标总数 / 状态计数", "Total targets / state counts") }}</dt><dd>{{ selected.target_count }} · {{ t("待", "Pending") }} {{ selected.pending_count }} / {{ t("已冲正", "Reversed") }} {{ selected.reversed_count }} / {{ t("无需冲正", "Unchanged") }} {{ selected.unchanged_count }} / {{ t("排除", "Excluded") }} {{ selected.excluded_count }} / {{ t("失败", "Failed") }} {{ selected.failed_count }}</dd></div>
+          <div><dt>{{ t("原应冲正积分 / 实际冲正积分", "Points due for reversal / points reversed") }}</dt><dd>{{ formatCorrectionPoints(selected.reverse_points) }} / {{ formatCorrectionPoints(selected.reversed_points) }}</dd></div>
+          <div><dt>{{ t("操作者 / 创建时间 / 完成时间", "Operator / created / completed") }}</dt><dd class="cm-break">{{ selected.created_by }} · {{ selected.created_at }} · {{ selected.completed_at ?? '—' }}</dd></div>
+          <div><dt>{{ t("原因 / 最后错误码", "Reason / last error code") }}</dt><dd class="cm-break">{{ selected.reason }} · {{ selected.last_error_code ?? '—' }}</dd></div>
+          <div><dt>{{ t("新任务状态 / 版本 / 错误码", "New job state / version / error code") }}</dt><dd>{{ jobStateLabel(selected.new_job_state) }} · {{ selected.new_job_version ?? '—' }} · {{ selected.new_job_error_code ?? '—' }}</dd></div>
         </dl>
-        <p v-if="selected.failed_count > 0" class="cm-warning compact">冲正失败会停止，不会自动重试。可用中奖积分不足时不会从其他积分来源扣款，也不会形成负债；原中奖账本只会有一次全额冲正。</p>
+        <p v-if="selected.failed_count > 0" class="cm-warning compact">{{ t("冲正失败会停止，不会自动重试。可用中奖积分不足时不会从其他积分来源扣款，也不会形成负债；原中奖账本只会有一次全额冲正。", "A failed reversal stops and is not retried automatically. If available winnings are insufficient, other point sources are not debited and no debt is created. The original winnings ledger is reversed in full only once.") }}</p>
         <div v-if="canRetry" class="cm-form">
-          <label for="correction-retry-reason">冲正失败重试原因（UTF-8 不超过 500 字节）</label><textarea id="correction-retry-reason" v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" placeholder="说明重试依据" />
-          <small>{{ reasonBytes }} / 500 字节</small>
-          <button class="cm-primary" type="button" :disabled="!canStartRetry" @click="reviewRetry">核对并重试失败冲正</button>
+          <label for="correction-retry-reason">{{ t("冲正失败重试原因（UTF-8 不超过 500 字节）", "Failed reversal retry reason (up to 500 UTF-8 bytes)") }}</label><textarea id="correction-retry-reason" v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" :placeholder="t('说明重试依据', 'Describe the basis for retrying')" />
+          <small>{{ reasonBytes }} / {{ t("500 字节", "500 bytes") }}</small>
+          <button class="cm-primary" type="button" :disabled="!canStartRetry" @click="reviewRetry">{{ t("核对并重试失败冲正", "Review and retry failed reversals") }}</button>
         </div>
-        <button v-if="selected.new_job_id" class="cm-secondary" type="button" @click="emit('open-settlement', selected.period_id)">打开新结算任务</button>
+        <button v-if="selected.new_job_id" class="cm-secondary" type="button" @click="emit('open-settlement', selected.period_id)">{{ t("打开新结算任务", "Open new settlement job") }}</button>
 
-        <div class="cm-target-heading"><h4>逐单冲正目标</h4><span>每页 {{ CORRECTION_PAGE_SIZE }} 条</span></div>
-        <p v-if="targetsBusy" class="cm-note">正在读取冲正目标…</p>
+        <div class="cm-target-heading"><h4>{{ t("逐单冲正目标", "Per-order reversal targets") }}</h4><span>{{ t("每页", "Per page") }} {{ CORRECTION_PAGE_SIZE }} {{ t("条", "items") }}</span></div>
+        <p v-if="targetsBusy" class="cm-note">{{ t("正在读取冲正目标…", "Loading reversal targets…") }}</p>
         <div v-if="targetPage?.items.length" class="cm-targets">
           <article v-for="target in targetPage.items" :key="target.order_id" class="cm-target">
             <div class="cm-target-title"><strong>{{ targetStateLabel(target.state) }}</strong><span>{{ target.error_code ?? '—' }}</span></div>
             <dl class="cm-facts compact-facts">
-              <div><dt>注单 / 会员</dt><dd class="cm-break">{{ target.order_id }} / {{ target.member_id }}</dd></div>
-              <div><dt>旧注单版本 / 状态</dt><dd>v{{ target.old_order_version }} / {{ target.old_order_status }}</dd></div>
-              <div><dt>旧核算 / 原派奖账本</dt><dd class="cm-break">{{ target.old_calculation_id ?? '—' }} / {{ target.old_payout_entry_id ?? '—' }}</dd></div>
-              <div><dt>原中奖积分 / 冲正账本 / 注单重置版本</dt><dd class="cm-break">{{ formatCorrectionPoints(target.old_prize_points) }} / {{ target.reversal_entry_id ?? '—' }} / {{ target.reset_order_version ?? '—' }}</dd></div>
+              <div><dt>{{ t("注单 / 会员", "Order / member") }}</dt><dd class="cm-break">{{ target.order_id }} / {{ target.member_id }}</dd></div>
+              <div><dt>{{ t("旧注单版本 / 状态", "Previous order version / status") }}</dt><dd>v{{ target.old_order_version }} / {{ orderStatusLabel(target.old_order_status) }}</dd></div>
+              <div><dt>{{ t("旧核算 / 原派奖账本", "Previous calculation / original payout ledger") }}</dt><dd class="cm-break">{{ target.old_calculation_id ?? '—' }} / {{ target.old_payout_entry_id ?? '—' }}</dd></div>
+              <div><dt>{{ t("原中奖积分 / 冲正账本 / 注单重置版本", "Original winnings / reversal ledger / reset order version") }}</dt><dd class="cm-break">{{ formatCorrectionPoints(target.old_prize_points) }} / {{ target.reversal_entry_id ?? '—' }} / {{ target.reset_order_version ?? '—' }}</dd></div>
             </dl>
           </article>
         </div>
-        <p v-else-if="targetPage && !targetsBusy" class="cm-note">此页没有冲正目标。</p>
+        <p v-else-if="targetPage && !targetsBusy" class="cm-note">{{ t("此页没有冲正目标。", "No reversal targets on this page.") }}</p>
         <div v-if="targetPage" class="cm-pagination">
-          <button class="cm-secondary" type="button" :disabled="targetOffset <= 0 || targetsBusy || writing" @click="readTargets(selected.id, Math.max(0, targetOffset - CORRECTION_PAGE_SIZE))">上一页</button>
-          <span>偏移 {{ targetPage.offset }} · {{ targetPage.items.length }} 条</span>
-          <button class="cm-secondary" type="button" :disabled="!targetPage.has_more || targetsBusy || writing" @click="readTargets(selected.id, targetOffset + CORRECTION_PAGE_SIZE)">下一页</button>
+          <button class="cm-secondary" type="button" :disabled="targetOffset <= 0 || targetsBusy || writing" @click="readTargets(selected.id, Math.max(0, targetOffset - CORRECTION_PAGE_SIZE))">{{ t("上一页", "Previous") }}</button>
+          <span>{{ t("偏移", "Offset") }} {{ targetPage.offset }} · {{ targetPage.items.length }} {{ t("条", "items") }}</span>
+          <button class="cm-secondary" type="button" :disabled="!targetPage.has_more || targetsBusy || writing" @click="readTargets(selected.id, targetOffset + CORRECTION_PAGE_SIZE)">{{ t("下一页", "Next") }}</button>
         </div>
       </section>
 
       <div v-if="reviewMode && reviewBody && !pendingWrite" class="cm-confirm">
-        <strong>再次确认不可撤回操作</strong>
-        <p v-if="reviewMode === 'correct'">{{ (reviewBody as CorrectBody).policy_version !== null ? '更正并重新结算' : '只更正未结算结果' }}。期次 v{{ reviewBody.version }}；策略 {{ (reviewBody as CorrectBody).policy_version ?? '无' }}；模式 {{ reviewExpectedMode ?? '无财务结算' }}。确认结果：普通 {{ (reviewBody as CorrectBody).result.regular.join(', ') }}；特别 {{ (reviewBody as CorrectBody).result.special.join(', ') }}；数字 {{ (reviewBody as CorrectBody).result.digits.join(', ') }}。</p>
-        <p v-else>重试更正 {{ selected?.id }}，使用冲正版本 v{{ reviewBody.version }}。</p>
-        <p>原因：{{ reviewBody.reason }}</p>
-        <label for="correction-confirmed" class="cm-check"><input id="correction-confirmed" v-model="reviewConfirmed" type="checkbox" />我已核对品牌、期次、版本、结果和原因，确认提交</label>
-        <div class="cm-review-actions"><button class="cm-secondary" type="button" :disabled="writing" @click="cancelReview">返回修改</button><button class="cm-primary" type="button" :disabled="!reviewConfirmed || writing || (reviewMode === 'correct' ? !rights.correct : !rights.retry || !rights.settleRun)" @click="beginWrite">{{ writing ? '提交中…' : '确认提交' }}</button></div>
+        <strong>{{ t("再次确认不可撤回操作", "Confirm this irreversible action") }}</strong>
+        <p v-if="reviewMode === 'correct'">{{ (reviewBody as CorrectBody).policy_version !== null ? t('更正并重新结算', 'Correct and settle again') : t('只更正未结算结果', 'Correct unsettled result only') }}{{ t("。期次 v", ". Period v") }}{{ reviewBody.version }}{{ t("；策略", "; policy") }} {{ (reviewBody as CorrectBody).policy_version ?? '—' }}{{ t("；模式", "; mode") }} {{ reviewExpectedMode ?? t('无财务结算', 'No financial settlement') }}{{ t("。确认结果：普通", ". Confirm result: regular") }} {{ (reviewBody as CorrectBody).result.regular.join(', ') }}{{ t("；特别", "; special") }} {{ (reviewBody as CorrectBody).result.special.join(', ') }}{{ t("；数字", "; digits") }} {{ (reviewBody as CorrectBody).result.digits.join(', ') }}。</p>
+        <p v-else>{{ t("重试更正", "Retry correction") }} {{ selected?.id }}{{ t("，使用冲正版本 v", " with reversal version v") }}{{ reviewBody.version }}。</p>
+        <p>{{ t("原因：", "Reason: ") }}{{ reviewBody.reason }}</p>
+        <label for="correction-confirmed" class="cm-check"><input id="correction-confirmed" v-model="reviewConfirmed" type="checkbox" />{{ t("我已核对品牌、期次、版本、结果和原因，确认提交", "I reviewed the brand, period, version, result, and reason, and confirm submission") }}</label>
+        <div class="cm-review-actions"><button class="cm-secondary" type="button" :disabled="writing" @click="cancelReview">{{ t("返回修改", "Back to edit") }}</button><button class="cm-primary" type="button" :disabled="!reviewConfirmed || writing || (reviewMode === 'correct' ? !rights.correct : !rights.retry || !rights.settleRun)" @click="beginWrite">{{ writing ? t('提交中…', 'Submitting…') : t('确认提交', 'Confirm submission') }}</button></div>
       </div>
     </template>
   </section>

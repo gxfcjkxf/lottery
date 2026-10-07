@@ -1,9 +1,12 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 
-const translatedComponents = ['App', 'AccessManagement', 'AuthSettings', 'MemberProvision', 'BrandOperation', 'BrandPresentation', 'PresentationFields', 'FinanceManagement', 'PointPolicySettings', 'WithdrawalPolicySettings', 'CommissionPolicySettings', 'CommissionCyclesManagement', 'CommissionPaymentsManagement', 'BalanceRepair', 'ReconciliationManagement']
+// Inventory every page and nested editor rather than maintaining a whitelist
+// that can silently leave new operational flows outside translation coverage.
+const translatedComponents = readdirSync(new URL('.', import.meta.url))
+  .filter(name => name.endsWith('.vue')).sort().map(name => name.slice(0, -4))
 const han = /\p{Script=Han}/u
 interface Node { type: number; tag?: string; arg?: { content?: string }; exp?: { content?: string }; content?: string | Node; name?: string; value?: { content: string }; children?: Node[]; props?: Node[] }
 
@@ -33,10 +36,13 @@ describe('declared bilingual administration pages', () => {
       ts.forEachChild(node, catalogVisit)
     }
     catalogVisit(script)
+    for (const [key, english] of catalog) {
+      if (!english.trim() || han.test(english)) problems.push(`Invalid English catalog value: ${key}`)
+    }
     function checkCopyCalls(text: string) {
       const expression = ts.createSourceFile('copy.ts', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
       function visitCall(node: ts.Node) {
-        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && ['t', 'ui', 'message'].includes(node.expression.text) && node.arguments[0] && ts.isStringLiteral(node.arguments[0]) && han.test(node.arguments[0].text) && node.arguments[0].text !== '简体中文') {
+        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && ['t', 'ui', 'message', 'localized'].includes(node.expression.text) && node.arguments[0] && ts.isStringLiteral(node.arguments[0]) && han.test(node.arguments[0].text) && node.arguments[0].text !== '简体中文') {
           const key = node.arguments[0].text
           const english = node.expression.text === 'ui' ? catalog.get(key) : node.arguments[1] && ts.isStringLiteral(node.arguments[1]) ? node.arguments[1].text : undefined
           if (!english?.trim() || han.test(english)) problems.push(`Missing English copy: ${key}`)

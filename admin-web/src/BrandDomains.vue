@@ -3,8 +3,10 @@ import { computed, onUnmounted, ref, watch } from "vue";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import { brandDomainsPermissions, createBrandDomainsApi, isCanonicalBrandDomain, type BrandDomain, type BrandDomainsHistoryItem, type BrandDomainsRecord } from "./brand-domains-api";
 import { brandDomainsSessionGeneration, classifyBrandDomainsFailure, clearAllPendingBrandDomainsWrites, clearBrandDomainsDraft, clearPendingBrandDomainsWrite, createBrandDomainsRequestGuard, getBrandDomainsDraft, getPendingBrandDomainsWrite, retainPendingBrandDomainsWrite, setBrandDomainsDraft, setPendingBrandDomainsWrite, type PendingBrandDomainsWrite } from "./brand-domains-state";
+import { useAdminI18n } from "./i18n";
 
 const props = defineProps<{ account: AdminAccount; brandId: string; brandStatus?: string }>();
+const { t } = useAdminI18n();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createBrandDomainsApi();
 const readGuard = createBrandDomainsRequestGuard(), historyGuard = createBrandDomainsRequestGuard(), writeGuard = createBrandDomainsRequestGuard();
@@ -23,8 +25,22 @@ const canEdit = computed(() => permissions.value.write && !readOnly.value && !pe
 const primaryWillDemote = computed(() => primary.value && Boolean(record.value?.domains.some((item) => item.is_primary && (operation.value === "add" || item.id !== domainId.value))));
 const domainBytes = computed(() => new TextEncoder().encode(domain.value).length), reasonBytes = computed(() => new TextEncoder().encode(reason.value).length);
 const isNewDomainValid = computed(() => operation.value === "edit" || isCanonicalBrandDomain(domain.value));
-const statusLabel = (value: string) => value === "active" ? "Active" : value === "paused" ? "Paused" : "Disabled";
+const statusLabel = (value: string) => value === "active" ? t("启用", "Active") : value === "paused" ? t("暂停", "Paused") : t("停用", "Disabled");
 const timeLabel = (value: string) => { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString(); };
+function localizedMessage(value: string): string {
+  const translations: Record<string, [string, string]> = {
+    "Enter a valid domain and a reason of 1–500 UTF-8 bytes.": ["请输入有效域名，并填写 1–500 个 UTF-8 字节的原因。", "Enter a valid domain and a reason of 1–500 UTF-8 bytes."],
+    "That domain is no longer in this brand. Reload the list.": ["该域名已不属于此品牌，请重新读取列表。", "That domain is no longer in this brand. Reload the list."],
+    "The frozen request was abandoned. Review the current list before starting a new change.": ["已放弃冻结请求。开始新变更前请先核对当前列表。", "The frozen request was abandoned. Review the current list before starting a new change."],
+    "The receipt was verified. Reloading the current list and history.": ["回执已核验，正在重新读取当前列表和历史。", "The receipt was verified. Reloading the current list and history."],
+    "The receipt was verified; the latest domain list was independently read.": ["回执已核验，并已独立读取最新域名列表。", "The receipt was verified; the latest domain list was independently read."],
+    "The receipt was verified, but reloading the latest list failed. Do not resubmit; reload before continuing.": ["回执已核验，但重新读取最新列表失败。请勿再次提交；继续前先重新读取。", "The receipt was verified, but reloading the latest list failed. Do not resubmit; reload before continuing."],
+    "The outcome is unknown. Retry only the exact frozen request with its existing key.": ["结果未知。只能使用现有幂等键重试完全相同的冻结请求。", "The outcome is unknown. Retry only the exact frozen request with its existing key."],
+    "The shared brand version changed. Read the latest list, then explicitly abandon this request before creating a new one.": ["品牌共享版本已变化。请读取最新列表，并明确放弃此请求后再创建新请求。", "The shared brand version changed. Read the latest list, then explicitly abandon this request before creating a new one."],
+  };
+  const pair = translations[value];
+  return pair ? t(pair[0], pair[1]) : value;
+}
 
 function restoreDraft(): void {
   const stored = getBrandDomainsDraft(scope()), intent = getPendingBrandDomainsWrite(scope());
@@ -155,46 +171,46 @@ onUnmounted(() => { readGuard.invalidate(); historyGuard.invalidate(); writeGuar
 
 <template>
   <section class="brand-domains" aria-labelledby="domains-title">
-    <header class="domains-header"><div><h2 id="domains-title">Brand domains</h2><p>Manage domain bindings for the selected brand. Domain changes do not configure DNS or TLS.</p></div><button type="button" class="button secondary" :disabled="!canEdit || (record?.domains.length ?? 100) >= 100" @click="startAdd">Add domain</button></header>
-    <p v-if="!permissions.view" class="callout">You do not have brand domain view access for this brand.</p>
+    <header class="domains-header"><div><h2 id="domains-title">{{ t("品牌域名", "Brand domains") }}</h2><p>{{ t("管理所选品牌的域名绑定。域名变更不会配置 DNS 或 TLS。", "Manage domain bindings for the selected brand. Domain changes do not configure DNS or TLS.") }}</p></div><button type="button" class="button secondary" :disabled="!canEdit || (record?.domains.length ?? 100) >= 100" @click="startAdd">{{ t("添加域名", "Add domain") }}</button></header>
+    <p v-if="!permissions.view" class="callout">{{ t("当前账号没有此品牌的域名查看权限。", "You do not have brand domain view access for this brand.") }}</p>
     <template v-else>
-      <p v-if="readOnly" class="callout">This brand is disabled. Domain changes are read-only. Admin access is available only through another active configured entry.</p>
-      <p v-else-if="record?.status === 'paused'" class="callout">This brand is paused. Domain changes remain available.</p>
-      <p class="callout">DNS and TLS certificates are not checked here. Disabling the domain currently used for admin access can make management unreachable until another configured entry is used.</p>
-      <div v-if="error" class="message error" role="alert">{{ error }}</div><div v-if="notice" class="message notice" role="status">{{ notice }}</div>
-      <div class="domains-toolbar"><span v-if="record">Version {{ record.version }} · {{ statusLabel(record.status) }} · {{ record.domains.length }}/100 bindings</span><button type="button" class="button secondary" :disabled="loading" @click="loadRecord">{{ loading ? "Loading…" : "Reload list" }}</button></div>
+      <p v-if="readOnly" class="callout">{{ t("此品牌已停用，域名变更为只读。只能通过另一条已配置且启用的入口访问管理后台。", "This brand is disabled, so domain changes are read-only. Admin access is available only through another active configured entry.") }}</p>
+      <p v-else-if="record?.status === 'paused'" class="callout">{{ t("此品牌已暂停，仍可修改域名。", "This brand is paused. Domain changes remain available.") }}</p>
+      <p class="callout">{{ t("此处不会检查 DNS 或 TLS 证书。停用当前管理入口使用的域名后，必须改用另一条已配置入口才能继续管理。", "DNS and TLS certificates are not checked here. Disabling the domain currently used for admin access can make management unreachable until another configured entry is used.") }}</p>
+      <div v-if="error" class="message error" role="alert">{{ localizedMessage(error) }}</div><div v-if="notice" class="message notice" role="status">{{ localizedMessage(notice) }}</div>
+      <div class="domains-toolbar"><span v-if="record">{{ t("版本", "Version") }} {{ record.version }} · {{ statusLabel(record.status) }} · {{ record.domains.length }}/100 {{ t("个绑定", "bindings") }}</span><button type="button" class="button secondary" :disabled="loading" @click="loadRecord">{{ loading ? t("读取中…", "Loading…") : t("重新读取", "Reload list") }}</button></div>
       <div v-if="record" class="domain-list">
         <article v-for="item in record.domains" :key="item.id" class="domain-row">
-          <div class="domain-main"><strong>{{ item.domain }}</strong><span class="badges"><span v-if="item.is_primary" class="badge primary-badge">Primary</span><span class="badge" :class="item.enabled ? 'enabled-badge' : 'disabled-badge'">{{ item.enabled ? "Enabled" : "Disabled" }}</span></span><small>Binding {{ item.id }}</small></div>
-          <button type="button" class="button secondary" :disabled="!canEdit" @click="editDomain(item)">Edit</button>
+          <div class="domain-main"><strong>{{ item.domain }}</strong><span class="badges"><span v-if="item.is_primary" class="badge primary-badge">{{ t("主域名", "Primary") }}</span><span class="badge" :class="item.enabled ? 'enabled-badge' : 'disabled-badge'">{{ item.enabled ? t("启用", "Enabled") : t("停用", "Disabled") }}</span></span><small>{{ t("绑定", "Binding") }} {{ item.id }}</small></div>
+          <button type="button" class="button secondary" :disabled="!canEdit" @click="editDomain(item)">{{ t("编辑", "Edit") }}</button>
         </article>
-        <p v-if="record.domains.length === 0" class="empty">No domain bindings yet.</p>
+        <p v-if="record.domains.length === 0" class="empty">{{ t("暂无域名绑定。", "No domain bindings yet.") }}</p>
       </div>
       <div v-if="pending" class="review-panel" aria-live="polite">
-        <h3>{{ pending.phase === 'unknown' ? 'Request outcome unknown' : pending.phase === 'conflict' ? 'Version conflict' : 'Review domain change' }}</h3>
-        <p>Frozen {{ pending.operation === 'add' ? 'add' : 'edit' }} request · shared version {{ pending.body.version }} · key {{ pending.key }}</p>
-        <p><strong>{{ pending.operation === 'add' ? (pending.body as any).domain : record?.domains.find(d => d.id === pending?.domainId)?.domain }}</strong> · {{ pending.body.enabled ? 'enabled' : 'disabled' }}{{ pending.body.is_primary ? ' · primary' : '' }}</p>
-        <p>Reason: {{ pending.body.reason }}</p>
-        <p v-if="pending.operation === 'edit' && !pending.body.enabled" class="warning">Disabling this entry may make management unreachable if it is the admin host. Use another active configured entry to regain access.</p>
-        <p v-if="pending.body.is_primary" class="warning">Setting this binding as primary will demote the current primary in the same transaction. Promotion does not redirect traffic or disable the old host.</p>
-        <div class="actions"><button v-if="pending.phase === 'review'" type="button" class="button primary" :disabled="busy || !permissions.write || readOnly" @click="send()">{{ busy ? "Submitting…" : "Confirm and submit" }}</button><button v-if="pending.phase === 'unknown'" type="button" class="button primary" :disabled="busy || !permissions.write || readOnly" @click="send(true)">Retry exact request</button><button v-if="pending.phase === 'conflict'" type="button" class="button secondary" :disabled="!conflictReloaded || busy" @click="abandon">Abandon frozen request</button><button v-if="pending.phase === 'review' || pending.phase === 'conflict' && conflictReloaded" type="button" class="button secondary" :disabled="busy" @click="abandon">Cancel</button></div>
-        <small v-if="pending.phase === 'conflict' && !conflictReloaded">Reload the latest state before abandoning this request.</small>
+        <h3>{{ pending.phase === 'unknown' ? t("请求结果未知", "Request outcome unknown") : pending.phase === 'conflict' ? t("版本冲突", "Version conflict") : t("核对域名变更", "Review domain change") }}</h3>
+        <p>{{ t("已冻结", "Frozen") }} {{ pending.operation === 'add' ? t("添加", "add") : t("编辑", "edit") }}{{ t("请求 · 共享版本", " request · shared version") }} {{ pending.body.version }} · {{ t("幂等键", "key") }} {{ pending.key }}</p>
+        <p><strong>{{ pending.operation === 'add' ? (pending.body as any).domain : record?.domains.find(d => d.id === pending?.domainId)?.domain }}</strong> · {{ pending.body.enabled ? t("启用", "enabled") : t("停用", "disabled") }}{{ pending.body.is_primary ? ` · ${t("主域名", "primary")}` : '' }}</p>
+        <p>{{ t("原因：", "Reason: ") }}{{ pending.body.reason }}</p>
+        <p v-if="pending.operation === 'edit' && !pending.body.enabled" class="warning">{{ t("停用此入口可能导致管理后台无法访问。若它是当前管理域名，请改用另一条已启用入口。", "Disabling this entry may make management unreachable if it is the admin host. Use another active configured entry to regain access.") }}</p>
+        <p v-if="pending.body.is_primary" class="warning">{{ t("将此绑定设为主域名会在同一事务中降级当前主域名。提升不会重定向流量，也不会停用旧主机。", "Setting this binding as primary will demote the current primary in the same transaction. Promotion does not redirect traffic or disable the old host.") }}</p>
+        <div class="actions"><button v-if="pending.phase === 'review'" type="button" class="button primary" :disabled="busy || !permissions.write || readOnly" @click="send()">{{ busy ? t("提交中…", "Submitting…") : t("确认并提交", "Confirm and submit") }}</button><button v-if="pending.phase === 'unknown'" type="button" class="button primary" :disabled="busy || !permissions.write || readOnly" @click="send(true)">{{ t("按原请求重试", "Retry exact request") }}</button><button v-if="pending.phase === 'conflict'" type="button" class="button secondary" :disabled="!conflictReloaded || busy" @click="abandon">{{ t("放弃冻结请求", "Abandon frozen request") }}</button><button v-if="pending.phase === 'review' || pending.phase === 'conflict' && conflictReloaded" type="button" class="button secondary" :disabled="busy" @click="abandon">{{ t("取消", "Cancel") }}</button></div>
+        <small v-if="pending.phase === 'conflict' && !conflictReloaded">{{ t("放弃此请求前，请先重新读取最新状态。", "Reload the latest state before abandoning this request.") }}</small>
       </div>
       <form v-else-if="canEdit && formOpen" class="domain-form" @submit.prevent="reviewChange">
-        <h3>{{ operation === 'add' ? 'Add a domain' : 'Edit binding' }}</h3>
-        <label v-if="operation === 'add'" class="field">Domain hostname<input v-model="domain" aria-label="Domain hostname" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="253" placeholder="play.example.com" :aria-invalid="domain.length > 0 && !isNewDomainValid" /><small>Use a lowercase dotted DNS hostname. URLs, IP addresses, wildcards, local names, and ports are not accepted.</small><small>{{ domainBytes }}/253 UTF-8 bytes</small></label>
-        <label v-else class="field">Domain hostname<input :value="domain" aria-label="Domain hostname" readonly /><small>Existing bindings cannot be renamed or reassigned.</small></label>
-        <label class="check"><input v-model="enabled" type="checkbox" @change="!enabled && primary ? togglePrimary(false) : persistDraft()" /> Enabled</label>
-        <p v-if="operation === 'edit' && !enabled" class="warning">Disabling this entry may make management unreachable if it is the admin host. Use another active configured entry to regain access.</p>
-        <label class="check"><input :checked="primary" type="checkbox" :disabled="!enabled" @change="togglePrimary(($event.target as HTMLInputElement).checked)" /> Primary domain</label>
-        <p v-if="primaryWillDemote" class="warning">The current primary domain will be demoted in the same transaction. Promotion does not redirect traffic or disable the old host.</p>
-        <label class="field">Reason<textarea v-model="reason" aria-label="Reason" rows="3" maxlength="500" placeholder="Why is this domain binding changing?" /><small>{{ reasonBytes }}/500 UTF-8 bytes</small></label>
-        <p v-if="(record?.domains.length ?? 0) >= 100 && operation === 'add'" class="warning">This brand has reached the 100 binding limit.</p>
-        <div class="actions"><button type="submit" class="button primary" :disabled="busy || !permissions.write || readOnly || (operation === 'add' && (!isNewDomainValid || domainBytes > 253)) || !reason.trim() || reasonBytes > 500 || (operation === 'add' && (record?.domains.length ?? 0) >= 100)">Review change</button><button type="button" class="button secondary" @click="resetForm()">Clear form</button></div>
+        <h3>{{ operation === 'add' ? t("添加域名", "Add a domain") : t("编辑绑定", "Edit binding") }}</h3>
+        <label v-if="operation === 'add'" class="field">{{ t("域名主机名", "Domain hostname") }}<input v-model="domain" :aria-label="t('域名主机名', 'Domain hostname')" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="253" placeholder="play.example.com" :aria-invalid="domain.length > 0 && !isNewDomainValid" /><small>{{ t("请输入小写的点分隔 DNS 主机名。不接受 URL、IP 地址、通配符、本地域名或端口。", "Use a lowercase dotted DNS hostname. URLs, IP addresses, wildcards, local names, and ports are not accepted.") }}</small><small>{{ domainBytes }}/253 {{ t("UTF-8 字节", "UTF-8 bytes") }}</small></label>
+        <label v-else class="field">{{ t("域名主机名", "Domain hostname") }}<input :value="domain" :aria-label="t('域名主机名', 'Domain hostname')" readonly /><small>{{ t("现有绑定不能重命名或重新分配。", "Existing bindings cannot be renamed or reassigned.") }}</small></label>
+        <label class="check"><input v-model="enabled" type="checkbox" @change="!enabled && primary ? togglePrimary(false) : persistDraft()" /> {{ t("启用", "Enabled") }}</label>
+        <p v-if="operation === 'edit' && !enabled" class="warning">{{ t("停用此入口可能导致管理后台无法访问。若它是当前管理域名，请改用另一条已启用入口。", "Disabling this entry may make management unreachable if it is the admin host. Use another active configured entry to regain access.") }}</p>
+        <label class="check"><input :checked="primary" type="checkbox" :disabled="!enabled" @change="togglePrimary(($event.target as HTMLInputElement).checked)" /> {{ t("主域名", "Primary domain") }}</label>
+        <p v-if="primaryWillDemote" class="warning">{{ t("当前主域名将在同一事务中降级。提升不会重定向流量，也不会停用旧主机。", "The current primary domain will be demoted in the same transaction. Promotion does not redirect traffic or disable the old host.") }}</p>
+        <label class="field">{{ t("原因", "Reason") }}<textarea v-model="reason" :aria-label="t('原因', 'Reason')" rows="3" maxlength="500" :placeholder="t('说明此次域名绑定变更的原因', 'Why is this domain binding changing?')" /><small>{{ reasonBytes }}/500 {{ t("UTF-8 字节", "UTF-8 bytes") }}</small></label>
+        <p v-if="(record?.domains.length ?? 0) >= 100 && operation === 'add'" class="warning">{{ t("此品牌已达到 100 个绑定的上限。", "This brand has reached the 100 binding limit.") }}</p>
+        <div class="actions"><button type="submit" class="button primary" :disabled="busy || !permissions.write || readOnly || (operation === 'add' && (!isNewDomainValid || domainBytes > 253)) || !reason.trim() || reasonBytes > 500 || (operation === 'add' && (record?.domains.length ?? 0) >= 100)">{{ t("核对变更", "Review change") }}</button><button type="button" class="button secondary" @click="resetForm()">{{ t("清空表单", "Clear form") }}</button></div>
       </form>
-      <section class="history" aria-labelledby="history-title"><div class="section-heading"><div><h3 id="history-title">Domain history</h3><p>Previous and resulting binding snapshots for each change.</p></div><button type="button" class="button secondary" :disabled="historyLoading" @click="loadHistory(0)">Refresh history</button></div>
-        <article v-for="item in rows" :key="item.id" class="history-row"><div class="history-meta"><strong>Version {{ item.version }}</strong><time :datetime="item.created_at">{{ timeLabel(item.created_at) }}</time></div><p>{{ item.reason }}</p><small>Actor {{ item.changed_by }} · Audit {{ item.audit_log_id }}</small><details><summary>Compare domain snapshots</summary><div class="snapshot-grid"><div><h4>Before</h4><ul><li v-for="d in item.before_domains" :key="d.id">{{ d.domain }} — {{ d.enabled ? 'enabled' : 'disabled' }}{{ d.is_primary ? ', primary' : '' }}</li><li v-if="!item.before_domains.length">No bindings</li></ul></div><div><h4>After</h4><ul><li v-for="d in item.domains" :key="d.id">{{ d.domain }} — {{ d.enabled ? 'enabled' : 'disabled' }}{{ d.is_primary ? ', primary' : '' }}</li><li v-if="!item.domains.length">No bindings</li></ul></div></div></details></article>
-        <p v-if="!historyLoading && rows.length === 0" class="empty">No domain changes recorded.</p><div class="pagination"><button type="button" class="button secondary" :disabled="historyLoading || offset === 0" @click="loadHistory(Math.max(0, offset - 20))">Previous</button><span>Offset {{ offset }}</span><button type="button" class="button secondary" :disabled="historyLoading || !hasMore" @click="loadHistory(offset + 20)">Next</button></div>
+      <section class="history" aria-labelledby="history-title"><div class="section-heading"><div><h3 id="history-title">{{ t("域名历史", "Domain history") }}</h3><p>{{ t("每次变更前后的绑定快照。", "Previous and resulting binding snapshots for each change.") }}</p></div><button type="button" class="button secondary" :disabled="historyLoading" @click="loadHistory(0)">{{ t("刷新历史", "Refresh history") }}</button></div>
+        <article v-for="item in rows" :key="item.id" class="history-row"><div class="history-meta"><strong>{{ t("版本", "Version") }} {{ item.version }}</strong><time :datetime="item.created_at">{{ timeLabel(item.created_at) }}</time></div><p>{{ item.reason }}</p><small>{{ t("操作人", "Actor") }} {{ item.changed_by }} · {{ t("审计记录", "Audit") }} {{ item.audit_log_id }}</small><details><summary>{{ t("比较域名快照", "Compare domain snapshots") }}</summary><div class="snapshot-grid"><div><h4>{{ t("变更前", "Before") }}</h4><ul><li v-for="d in item.before_domains" :key="d.id">{{ d.domain }} — {{ d.enabled ? t('启用', 'enabled') : t('停用', 'disabled') }}{{ d.is_primary ? `, ${t('主域名', 'primary')}` : '' }}</li><li v-if="!item.before_domains.length">{{ t("无绑定", "No bindings") }}</li></ul></div><div><h4>{{ t("变更后", "After") }}</h4><ul><li v-for="d in item.domains" :key="d.id">{{ d.domain }} — {{ d.enabled ? t('启用', 'enabled') : t('停用', 'disabled') }}{{ d.is_primary ? `, ${t('主域名', 'primary')}` : '' }}</li><li v-if="!item.domains.length">{{ t("无绑定", "No bindings") }}</li></ul></div></div></details></article>
+        <p v-if="!historyLoading && rows.length === 0" class="empty">{{ t("暂无域名变更记录。", "No domain changes recorded.") }}</p><div class="pagination"><button type="button" class="button secondary" :disabled="historyLoading || offset === 0" @click="loadHistory(Math.max(0, offset - 20))">{{ t("上一页", "Previous") }}</button><span>{{ t("偏移量", "Offset") }} {{ offset }}</span><button type="button" class="button secondary" :disabled="historyLoading || !hasMore" @click="loadHistory(offset + 20)">{{ t("下一页", "Next") }}</button></div>
       </section>
     </template>
   </section>

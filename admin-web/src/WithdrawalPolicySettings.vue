@@ -774,7 +774,7 @@ onUnmounted(() => {
       <div>
         <p class="eyebrow">{{ t("提现策略", "Withdrawal policy") }}</p>
         <h2>{{ t("品牌与彩种提现配置", "Withdrawal policy settings") }}</h2>
-        <p>{{ t("本阶段仅保存配置；提现申请、冻结出款和流水资格判定尚未接入。", "This stage only saves settings. Withdrawal requests, payout holds, and turnover eligibility checks are not connected.") }}</p>
+        <p>{{ t("本页面仅保存规则；申请、来源占用和流水资格由独立提现流程处理。品牌提现策略默认关闭，未接入真实支付。", "This page only saves rules. Applications, source holds, and turnover qualification are handled by the separate withdrawal workflow. Brand withdrawal policy is disabled by default; real payments are not connected.") }}</p>
       </div>
       <span class="brand-pill">{{ t("品牌", "Brand") }} · {{ brandId || t("未选择", "Not selected") }}</span>
     </header>

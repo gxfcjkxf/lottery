@@ -15,8 +15,10 @@ import {
   setPendingDeliveryRetry,
   type PendingDeliveryRetry,
 } from "./notification-delivery-state";
+import { useAdminI18n } from "./i18n";
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
+const { t } = useAdminI18n();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 
 const PAGE_SIZE = 20;
@@ -180,7 +182,9 @@ async function submitRetry(intent: PendingDeliveryRetry) {
     clearPendingDeliveryRetry(capturedScope, intent.key);
     if (isCurrentWrite(ticket, capturedScope, capturedPermissions)) {
       pending.value = getPendingDeliveryRetry(capturedScope);
-      notice.value = `服务器已接受重试；回执状态为“${statusLabel(accepted.status)}”。正在读取最新投递状态。`;
+      // Store the enum value, not a locale-rendered label, so later locale
+      // changes can re-render this notice without touching the frozen request.
+      notice.value = `retryAccepted:${accepted.status}`;
       const readOk = await readPage(offset.value, capturedScope, capturedPermissions);
       if (!isCurrentWrite(ticket, capturedScope, capturedPermissions)) return;
       if (!readOk) notice.value = "重试已由服务器确认，但后续状态读取失败。写入保持已确认，请使用只读刷新查看进度。";
@@ -227,8 +231,29 @@ function changePage(nextOffset: number) {
   void readPage(nextOffset);
 }
 function statusLabel(status: string) {
-  const labels: Record<string, string> = { pending: "待处理", sent: "已投递", failed: "失败" };
+  const labels: Record<string, string> = { pending: t("待处理", "Pending"), sent: t("已投递", "Sent"), failed: t("失败", "Failed") };
   return labels[status] ?? status;
+}
+function localizedNotice(value: string): string {
+  const accepted = /^retryAccepted:(pending|sent|failed)$/.exec(value);
+  if (accepted) {
+    const statusCopy: Record<string, [string, string]> = {
+      pending: ["待处理", "Pending"], sent: ["已投递", "Sent"], failed: ["失败", "Failed"],
+    };
+    const [zhStatus, enStatus] = statusCopy[accepted[1]!]!;
+    return t(`服务器已接受重试；回执状态为“${zhStatus}”。正在读取最新投递状态。`, `The server accepted the retry with receipt status “${enStatus}”. Loading the latest delivery status.`);
+  }
+  const translations: Record<string, [string, string]> = {
+    "正在使用原请求体和幂等键重试…": ["正在使用原请求体和幂等键重试…", "Retrying with the original request body and idempotency key…"],
+    "正在提交已核对的投递重试…": ["正在提交已核对的投递重试…", "Submitting the reviewed delivery retry…"],
+    "回执无法核对，写入结果未知。原请求体和幂等键仍保留。": ["回执无法核对，写入结果未知。原请求体和幂等键仍保留。", "The receipt could not be verified, so the write outcome is unknown. The original request body and idempotency key are retained."],
+    "重试已由服务器确认，但后续状态读取失败。写入保持已确认，请使用只读刷新查看进度。": ["重试已由服务器确认，但后续状态读取失败。写入保持已确认，请使用只读刷新查看进度。", "The server confirmed the retry, but the follow-up status read failed. The write remains confirmed; use read-only refresh to check progress."],
+    "重试已由服务器接受，并已读取最新投递状态。": ["重试已由服务器接受，并已读取最新投递状态。", "The server accepted the retry and the latest delivery status was read."],
+    "重试结果未知。原请求体和幂等键仍保留；只读刷新不能确认或清除此操作。": ["重试结果未知。原请求体和幂等键仍保留；只读刷新不能确认或清除此操作。", "The retry outcome is unknown. The original request body and idempotency key are retained; a read-only refresh cannot confirm or clear this operation."],
+    "服务器明确拒绝了这次重试。请读取最新状态并核实原因后，再创建新的重试请求。": ["服务器明确拒绝了这次重试。请读取最新状态并核实原因后，再创建新的重试请求。", "The server definitively rejected this retry. Read the latest status and verify the reason before creating a new retry request."],
+  };
+  const pair = translations[value];
+  return pair ? t(pair[0], pair[1]) : value;
 }
 function formatTime(value: string | null) {
   if (!value) return "—";
@@ -248,77 +273,77 @@ onBeforeUnmount(() => { alive = false; readTicket += 1; writeTicket += 1; });
 <template>
   <section class="notification-deliveries" aria-labelledby="nd-title">
     <header class="nd-heading">
-      <div><p class="nd-eyebrow">通知服务 · 投递审计</p><h2 id="nd-title">通知投递记录</h2></div>
-      <button v-if="rights.view" class="nd-button secondary" type="button" aria-label="只读刷新通知投递记录" :disabled="loading || writing" @click="readPage()">{{ loading ? "读取中…" : "刷新" }}</button>
+      <div><p class="nd-eyebrow">{{ t("通知服务 · 投递审计", "Notifications · Delivery audit") }}</p><h2 id="nd-title">{{ t("通知投递记录", "Notification deliveries") }}</h2></div>
+      <button v-if="rights.view" class="nd-button secondary" type="button" :aria-label="t('只读刷新通知投递记录', 'Refresh notification deliveries (read only)')" :disabled="loading || writing" @click="readPage()">{{ loading ? t("读取中…", "Loading…") : t("刷新", "Refresh") }}</button>
     </header>
 
-    <p v-if="!rights.view" class="nd-message" role="note">当前账号没有此品牌的通知投递查看权限。超级管理员仅在具备平台查看权限时可读取，且不能执行重试。</p>
+    <p v-if="!rights.view" class="nd-message" role="note">{{ t("当前账号没有此品牌的通知投递查看权限。超级管理员仅在具备平台查看权限时可读取，且不能执行重试。", "This account cannot view notification deliveries for this brand. Super admins can read them only with platform view access and cannot retry deliveries.") }}</p>
     <template v-else>
       <p v-if="error" class="nd-message error" role="alert">{{ error }}</p>
-      <p v-if="notice" class="nd-message" role="status">{{ notice }}</p>
+      <p v-if="notice" class="nd-message" role="status">{{ localizedNotice(notice) }}</p>
 
       <aside v-if="pending" class="nd-pending" aria-labelledby="nd-pending-title">
-        <strong id="nd-pending-title">重试结果未知</strong>
-        <p>该操作可能已被服务器接受。只读刷新不会确认或清除此请求；只能使用下列原请求体和幂等键重试。</p>
+        <strong id="nd-pending-title">{{ t("重试结果未知", "Retry outcome unknown") }}</strong>
+        <p>{{ t("服务器可能已接受此操作。只读刷新不会确认或清除此请求；只能使用下列原请求体和幂等键重试。", "The server may have accepted this operation. A read-only refresh will not confirm or clear it; retry only with the original request body and idempotency key below.") }}</p>
         <dl class="nd-facts">
-          <div><dt>品牌 / 事件</dt><dd class="nd-break">{{ pending.brandId }} / {{ pending.eventId }}</dd></div>
-          <div><dt>冻结尝试次数</dt><dd>{{ pending.body.attempt_count }}</dd></div>
-          <div><dt>冻结原因</dt><dd class="nd-break">{{ pending.body.reason }}</dd></div>
-          <div><dt>幂等键</dt><dd class="nd-break">{{ pending.key }}</dd></div>
+          <div><dt>{{ t("品牌 / 事件", "Brand / event") }}</dt><dd class="nd-break">{{ pending.brandId }} / {{ pending.eventId }}</dd></div>
+          <div><dt>{{ t("冻结尝试次数", "Frozen attempt count") }}</dt><dd>{{ pending.body.attempt_count }}</dd></div>
+          <div><dt>{{ t("冻结原因", "Frozen reason") }}</dt><dd class="nd-break">{{ pending.body.reason }}</dd></div>
+          <div><dt>{{ t("幂等键", "Idempotency key") }}</dt><dd class="nd-break">{{ pending.key }}</dd></div>
         </dl>
-        <button v-if="rights.retry && !props.account.super_admin" class="nd-button primary" type="button" :disabled="writing" @click="retryPending">{{ writing ? "按原请求提交中…" : "按原请求重试" }}</button>
-        <p v-else class="nd-note">当前账号不能重试此操作；请求意图仍保留在本页会话内存中。</p>
+        <button v-if="rights.retry && !props.account.super_admin" class="nd-button primary" type="button" :disabled="writing" @click="retryPending">{{ writing ? t("按原请求提交中…", "Submitting original request…") : t("按原请求重试", "Retry original request") }}</button>
+        <p v-else class="nd-note">{{ t("当前账号不能重试此操作；请求意图仍保留在本页会话内存中。", "This account cannot retry this operation; the request intent remains in this page's session memory.") }}</p>
       </aside>
 
-      <div class="nd-table-wrap" role="region" aria-label="通知投递记录表格" tabindex="0">
+      <div class="nd-table-wrap" role="region" :aria-label="t('通知投递记录表格', 'Notification delivery table')" tabindex="0">
         <table class="nd-table">
-          <thead><tr><th scope="col">状态</th><th scope="col">事件 ID</th><th scope="col">尝试次数</th><th scope="col">最后错误</th><th scope="col">下次尝试时间</th><th scope="col">投递时间</th><th v-if="rights.retry && !props.account.super_admin" scope="col">操作</th></tr></thead>
+          <thead><tr><th scope="col">{{ t("状态", "Status") }}</th><th scope="col">{{ t("事件 ID", "Event ID") }}</th><th scope="col">{{ t("尝试次数", "Attempts") }}</th><th scope="col">{{ t("最后错误", "Last error") }}</th><th scope="col">{{ t("下次尝试时间", "Next attempt") }}</th><th scope="col">{{ t("投递时间", "Delivered at") }}</th><th v-if="rights.retry && !props.account.super_admin" scope="col">{{ t("操作", "Actions") }}</th></tr></thead>
           <tbody>
             <tr v-for="delivery in items" :key="delivery.event_id">
-              <td data-label="状态"><span class="nd-status" :class="`status-${delivery.status}`">{{ statusLabel(delivery.status) }}</span></td>
-              <td data-label="事件 ID" class="nd-break nd-id">{{ delivery.event_id }}</td>
-              <td data-label="尝试次数">{{ delivery.attempt_count }}</td>
-              <td data-label="最后错误" class="nd-break">{{ delivery.last_error ?? "—" }}</td>
-              <td data-label="下次尝试时间">{{ formatTime(delivery.next_attempt_at) }}</td>
-              <td data-label="投递时间">{{ formatTime(delivery.sent_at) }}</td>
-              <td v-if="rights.retry && !props.account.super_admin" data-label="操作">
-                <button v-if="delivery.status === 'failed'" class="nd-button secondary" type="button" :aria-label="`核对重试事件 ${delivery.event_id}`" :disabled="!canReview || Boolean(pending)" @click="startReview(delivery)">核对重试</button>
-                <span v-else class="nd-note">仅失败记录可重试</span>
+              <td :data-label="t('状态', 'Status')"><span class="nd-status" :class="`status-${delivery.status}`">{{ statusLabel(delivery.status) }}</span></td>
+              <td :data-label="t('事件 ID', 'Event ID')" class="nd-break nd-id">{{ delivery.event_id }}</td>
+              <td :data-label="t('尝试次数', 'Attempts')">{{ delivery.attempt_count }}</td>
+              <td :data-label="t('最后错误', 'Last error')" class="nd-break">{{ delivery.last_error ?? "—" }}</td>
+              <td :data-label="t('下次尝试时间', 'Next attempt')">{{ formatTime(delivery.next_attempt_at) }}</td>
+              <td :data-label="t('投递时间', 'Delivered at')">{{ formatTime(delivery.sent_at) }}</td>
+              <td v-if="rights.retry && !props.account.super_admin" :data-label="t('操作', 'Actions')">
+                <button v-if="delivery.status === 'failed'" class="nd-button secondary" type="button" :aria-label="t(`核对重试事件 ${delivery.event_id}`, `Review retry for event ${delivery.event_id}`)" :disabled="!canReview || Boolean(pending)" @click="startReview(delivery)">{{ t("核对重试", "Review retry") }}</button>
+                <span v-else class="nd-note">{{ t("仅失败记录可重试", "Only failed deliveries can be retried") }}</span>
               </td>
             </tr>
-            <tr v-if="!items.length && !loading"><td class="nd-empty" :colspan="rights.retry && !props.account.super_admin ? 7 : 6">此页没有投递记录。</td></tr>
-            <tr v-if="loading && !items.length"><td class="nd-empty" :colspan="rights.retry && !props.account.super_admin ? 7 : 6">正在读取投递记录…</td></tr>
+            <tr v-if="!items.length && !loading"><td class="nd-empty" :colspan="rights.retry && !props.account.super_admin ? 7 : 6">{{ t("此页没有投递记录。", "No delivery records on this page.") }}</td></tr>
+            <tr v-if="loading && !items.length"><td class="nd-empty" :colspan="rights.retry && !props.account.super_admin ? 7 : 6">{{ t("正在读取投递记录…", "Loading notification deliveries…") }}</td></tr>
           </tbody>
         </table>
       </div>
 
-      <footer class="nd-pagination" aria-label="投递记录分页">
-        <button class="nd-button secondary" type="button" :disabled="offset === 0 || loading || writing" @click="changePage(Math.max(0, offset - PAGE_SIZE))">上一页</button>
-        <span>第 {{ Math.floor(offset / PAGE_SIZE) + 1 }} 页 · {{ items.length }} 条</span>
-        <button class="nd-button secondary" type="button" :disabled="!hasNext || loading || writing" @click="changePage(offset + PAGE_SIZE)">下一页</button>
+      <footer class="nd-pagination" :aria-label="t('投递记录分页', 'Delivery pagination')">
+        <button class="nd-button secondary" type="button" :disabled="offset === 0 || loading || writing" @click="changePage(Math.max(0, offset - PAGE_SIZE))">{{ t("上一页", "Previous") }}</button>
+        <span>{{ t("第", "Page") }} {{ Math.floor(offset / PAGE_SIZE) + 1 }} {{ t("页 ·", "·") }} {{ items.length }} {{ t("条", "records") }}</span>
+        <button class="nd-button secondary" type="button" :disabled="!hasNext || loading || writing" @click="changePage(offset + PAGE_SIZE)">{{ t("下一页", "Next") }}</button>
       </footer>
 
       <section v-if="review && !pending" class="nd-confirm" aria-labelledby="nd-confirm-title">
-        <strong id="nd-confirm-title">核对重试</strong>
-        <p>即将使用服务器当前失败记录的尝试次数执行一次人工重试。该请求不会自动再次发送。</p>
+        <strong id="nd-confirm-title">{{ t("核对重试", "Review retry") }}</strong>
+        <p>{{ t("即将使用服务器当前失败记录的尝试次数执行一次人工重试。该请求不会自动再次发送。", "One manual retry will use the attempt count on the server's current failed record. This request will not be sent again automatically.") }}</p>
         <dl class="nd-facts">
-          <div><dt>品牌 ID</dt><dd class="nd-break">{{ review.brandId }}</dd></div>
-          <div><dt>事件 ID</dt><dd class="nd-break">{{ review.eventId }}</dd></div>
-          <div><dt>原尝试次数（冻结）</dt><dd>{{ review.body.attempt_count }}</dd></div>
-          <div><dt>请求原因（冻结）</dt><dd class="nd-break">{{ review.body.reason }}</dd></div>
-          <div class="wide"><dt>幂等键（冻结）</dt><dd class="nd-break">{{ review.key }}</dd></div>
+          <div><dt>{{ t("品牌 ID", "Brand ID") }}</dt><dd class="nd-break">{{ review.brandId }}</dd></div>
+          <div><dt>{{ t("事件 ID", "Event ID") }}</dt><dd class="nd-break">{{ review.eventId }}</dd></div>
+          <div><dt>{{ t("原尝试次数（冻结）", "Original attempt count (frozen)") }}</dt><dd>{{ review.body.attempt_count }}</dd></div>
+          <div><dt>{{ t("请求原因（冻结）", "Request reason (frozen)") }}</dt><dd class="nd-break">{{ review.body.reason }}</dd></div>
+          <div class="wide"><dt>{{ t("幂等键（冻结）", "Idempotency key (frozen)") }}</dt><dd class="nd-break">{{ review.key }}</dd></div>
         </dl>
-        <label class="nd-check"><input v-model="confirmed" type="checkbox" aria-label="我已核对品牌、事件、尝试次数、原因和幂等键，并确认重试" />我已核对品牌、事件、尝试次数、原因和幂等键，确认提交</label>
+        <label class="nd-check"><input v-model="confirmed" type="checkbox" :aria-label="t('我已核对品牌、事件、尝试次数、原因和幂等键，并确认重试', 'I reviewed the brand, event, attempt count, reason, and idempotency key, and confirm the retry')" />{{ t("我已核对品牌、事件、尝试次数、原因和幂等键，确认提交", "I reviewed the brand, event, attempt count, reason, and idempotency key, and confirm submission") }}</label>
         <div class="nd-actions">
-          <button class="nd-button secondary" type="button" :disabled="writing" @click="clearReview">返回修改</button>
-          <button class="nd-button primary" type="button" :disabled="!confirmed || writing || !rights.retry || props.account.super_admin" @click="confirmReview">{{ writing ? "提交中…" : "确认重试" }}</button>
+          <button class="nd-button secondary" type="button" :disabled="writing" @click="clearReview">{{ t("返回修改", "Back to edit") }}</button>
+          <button class="nd-button primary" type="button" :disabled="!confirmed || writing || !rights.retry || props.account.super_admin" @click="confirmReview">{{ writing ? t("提交中…", "Submitting…") : t("确认重试", "Confirm retry") }}</button>
         </div>
       </section>
 
-      <section v-if="rights.retry && !props.account.super_admin && !pending" class="nd-retry-form" aria-label="失败通知人工重试原因">
-        <label for="nd-retry-reason">重试原因（最多 500 UTF-8 字节）</label>
-        <textarea id="nd-retry-reason" v-model="retryReason" rows="3" maxlength="500" :disabled="writing" placeholder="说明重试依据" />
-        <small>{{ reasonBytes }} / 500 字节。选择失败记录后，请核对冻结请求并再次确认。</small>
+      <section v-if="rights.retry && !props.account.super_admin && !pending" class="nd-retry-form" :aria-label="t('失败通知人工重试原因', 'Manual retry reason for failed notification')">
+        <label for="nd-retry-reason">{{ t("重试原因（最多 500 UTF-8 字节）", "Retry reason (up to 500 UTF-8 bytes)") }}</label>
+        <textarea id="nd-retry-reason" v-model="retryReason" rows="3" maxlength="500" :disabled="writing" :placeholder="t('说明重试依据', 'Explain the basis for retrying')" />
+        <small>{{ reasonBytes }} {{ t("/ 500 字节。选择失败记录后，请核对冻结请求并再次确认。", "/ 500 bytes. Select a failed delivery, review the frozen request, and confirm again.") }}</small>
       </section>
     </template>
   </section>

@@ -226,7 +226,7 @@ onUnmounted(() => {
       <div>
         <div class="brand-operation__eyebrow">{{ t("BRAND / OPERATION", "BRAND / OPERATION") }}</div>
         <h2 id="brand-operation-heading">{{ t("品牌运行状态", "Brand operation status") }}</h2>
-        <p>{{ t("暂停仅阻止新投注；登录仍可用，已有订单、退款、开奖和结算继续。提现功能尚未完整实现。", "Pausing only blocks new bets. Sign-in remains available, and existing orders, refunds, draws, and settlement continue. Withdrawals are not fully implemented yet.") }}</p>
+        <p>{{ t("暂停仅阻止新投注；登录仍可用，已有订单、退款、开奖和结算继续。提现按其独立策略和流程处理，未接入真实支付。", "Pausing only blocks new bets. Sign-in remains available, and existing orders, refunds, draws, and settlement continue. Withdrawals follow their separate policy and workflow; real payments are not connected.") }}</p>
       </div>
       <button class="brand-operation__secondary" type="button" :disabled="loading" @click="reloadCurrent">{{ t("重新读取状态", "Reload status") }}</button>
     </header>

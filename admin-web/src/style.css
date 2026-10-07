@@ -112,19 +112,22 @@ button {
   margin-top: 3px;
 }
 .demo-chip {
-  height: 25px;
+  min-height: 25px;
   border-radius: 6px;
   display: flex;
   align-items: center;
   gap: 7px;
   background: #f1f5f4;
   color: #48836b;
-  padding: 0 9px;
+  padding: 5px 9px;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.2px;
   margin: 0 8px 17px;
   width: max-content;
+  max-width: calc(100% - 16px);
+  overflow-wrap: anywhere;
+  box-sizing: border-box;
 }
 .pulse {
   width: 6px;

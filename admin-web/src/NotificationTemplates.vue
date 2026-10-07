@@ -11,8 +11,10 @@ import {
   getPendingNotificationTemplateWrite, notificationTemplateScopeKey, notificationTemplateSessionGeneration,
   setPendingNotificationTemplateWrite, type PendingNotificationTemplateWrite,
 } from "./notification-templates-state";
+import { useAdminI18n } from "./i18n";
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
+const { t } = useAdminI18n();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const PAGE_SIZE = 20;
 const SAMPLE_RESOURCE_ID = "00000000-0000-4000-8000-000000000099";
@@ -198,6 +200,19 @@ function time(value: string): string {
   const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 function formatKey(key: string): string { return key; }
+function localizedNotice(value: string): string {
+  const fixed: Record<string, [string, string]> = {
+    "核对这份冻结的中英文内容、当前版本和原因后确认保存。": ["核对这份冻结的中英文内容、当前版本和原因后确认保存。", "Review the frozen bilingual content, current version, and reason before confirming the save."],
+    "正在提交已核对的模板版本…": ["正在提交已核对的模板版本…", "Submitting the reviewed template version…"],
+    "写入结果未知。原请求正文和幂等键已保留；只读刷新不会确认或清除此请求。请显式按原请求重试。": ["写入结果未知。原请求正文和幂等键已保留；只读刷新不会确认或清除此请求。请显式按原请求重试。", "The write outcome is unknown. The original request body and idempotency key are retained; a read-only refresh will not confirm or clear this request. Explicitly retry the original request."],
+    "服务器拒绝了此版本；读取最新模板后重新核对并创建新请求。": ["服务器拒绝了此版本；读取最新模板后重新核对并创建新请求。", "The server rejected this version. Load the latest template, review it, and create a new request."],
+    "服务器明确拒绝了本次保存。": ["服务器明确拒绝了本次保存。", "The server definitively rejected this save."],
+  };
+  const pair = fixed[value];
+  if (pair) return t(pair[0], pair[1]);
+  const saved = /^已保存服务器确认的第 (\d+) 版。正在独立刷新修订历史。$/.exec(value);
+  return saved ? t(`已保存服务器确认的第 ${saved[1]} 版。正在独立刷新修订历史。`, `Server-confirmed version ${saved[1]} was saved. Refreshing revision history independently.`) : value;
+}
 
 watch(permissionScope, () => { resetScope(); if (rights.value.view) void readTemplates(); }, { flush: "sync" });
 watch(selectedKey, (next, previous) => {
@@ -212,100 +227,100 @@ onBeforeUnmount(() => { alive = false; listTicket++; historyTicket++; writeTicke
 <template>
   <section class="nt-page" aria-labelledby="nt-title">
     <header class="nt-heading">
-      <div><p class="nt-eyebrow">通知服务 · 模板与修订记录</p><h2 id="nt-title">通知模板</h2></div>
-      <button v-if="rights.view" class="nt-button" type="button" aria-label="只读刷新通知模板" :disabled="loading || writing" @click="readTemplates()">{{ loading ? "读取中…" : "刷新模板" }}</button>
+      <div><p class="nt-eyebrow">{{ t("通知服务 · 模板与修订记录", "Notifications · Templates and revisions") }}</p><h2 id="nt-title">{{ t("通知模板", "Notification templates") }}</h2></div>
+      <button v-if="rights.view" class="nt-button" type="button" :aria-label="t('只读刷新通知模板', 'Refresh templates (read only)')" :disabled="loading || writing" @click="readTemplates()">{{ loading ? t("读取中…", "Loading…") : t("刷新模板", "Refresh templates") }}</button>
     </header>
 
-    <p v-if="!rights.view" class="nt-message">当前账号没有此品牌的通知模板查看权限。查看权限和品牌成员范围分别核验。</p>
+    <p v-if="!rights.view" class="nt-message">{{ t("当前账号没有此品牌的通知模板查看权限。查看权限和品牌成员范围分别核验。", "This account cannot view notification templates for this brand. View permission and brand membership scope are checked separately.") }}</p>
     <template v-else>
       <p v-if="error" class="nt-message nt-error" role="alert">{{ error }}</p>
-      <p v-if="notice" class="nt-message" role="status">{{ notice }}</p>
+      <p v-if="notice" class="nt-message" role="status">{{ localizedNotice(notice) }}</p>
       <div class="nt-layout">
-        <nav class="nt-keys" aria-label="通知事件模板">
-          <label for="nt-key">通知事件</label>
+        <nav class="nt-keys" :aria-label="t('通知事件模板', 'Notification event templates')">
+          <label for="nt-key">{{ t("通知事件", "Notification event") }}</label>
           <select id="nt-key" :value="selectedKey" :disabled="writing" @change="selectKey(($event.target as HTMLSelectElement).value)">
-            <option value="" disabled>选择通知事件</option>
+            <option value="" disabled>{{ t("选择通知事件", "Select an event") }}</option>
             <option v-for="key in notificationTemplateKeys" :key="key" :value="key">{{ formatKey(key) }}</option>
           </select>
-          <p class="nt-hint">支持16种通知事件：会员、充值、注单、奖项、佣金及提现状态。事件事实由系统生成；奖项发放、冲正、佣金和提现事件的双语历史说明保持只读。提现通知仅记录内部积分状态，不代表银行或虚拟币转账。</p>
+          <p class="nt-hint">{{ t("支持16种通知事件：会员、充值、注单、奖项、佣金及提现状态。事件事实由系统生成；奖项发放、冲正、佣金和提现事件的双语历史说明保持只读。提现通知仅记录内部积分状态，不代表银行或虚拟币转账。", "Supports 16 events covering members, recharges, bets, prizes, commissions, and withdrawals. Event facts are system-generated; bilingual historical descriptions for prize, reversal, commission, and withdrawal events are read-only. Withdrawal notices record internal point status only and do not represent bank or cryptocurrency transfers.") }}</p>
         </nav>
 
         <div v-if="(record && draft && selectedKey) || pending" class="nt-workspace">
           <section v-if="record && draft" class="nt-card" aria-labelledby="nt-editor-title">
-            <div class="nt-card-heading"><div><h3 id="nt-editor-title">模板内容</h3><p>版本 {{ record.version }} · 更新于 {{ time(record.updated_at) }}</p></div>
-              <span v-if="receipt" class="nt-receipt">已确认保存 v{{ receipt.version }}</span>
+            <div class="nt-card-heading"><div><h3 id="nt-editor-title">{{ t("模板内容", "Template content") }}</h3><p>{{ t("版本", "Version") }} {{ record.version }} · {{ t("更新于", "Updated") }} {{ time(record.updated_at) }}</p></div>
+              <span v-if="receipt" class="nt-receipt">{{ t("已确认保存 v", "Confirmed saved v") }}{{ receipt.version }}</span>
             </div>
             <dl class="nt-audit">
-              <div><dt>品牌</dt><dd>{{ record.brand_id }}</dd></div>
-              <div><dt>当前版本审计 ID</dt><dd>{{ record.audit_log_id ?? "初始版本暂无审计 ID" }}</dd></div>
+              <div><dt>{{ t("品牌", "Brand") }}</dt><dd>{{ record.brand_id }}</dd></div>
+              <div><dt>{{ t("当前版本审计 ID", "Current version audit ID") }}</dt><dd>{{ record.audit_log_id ?? t("初始版本暂无审计 ID", "No audit ID for the initial version") }}</dd></div>
             </dl>
             <div class="nt-languages">
               <fieldset v-for="locale in (['en', 'zh-CN'] as const)" :key="locale" class="nt-locale" :disabled="!canEdit">
                 <legend>{{ locale === "en" ? "English" : "简体中文" }}</legend>
-                <label :for="`nt-title-${locale}`">标题（最多 120 UTF-8 字节）</label>
+                <label :for="`nt-title-${locale}`">{{ t("标题（最多 120 UTF-8 字节）", "Title (up to 120 UTF-8 bytes)") }}</label>
                 <input :id="`nt-title-${locale}`" v-model="draft[locale].title" maxlength="120" autocomplete="off" />
-                <label :for="`nt-body-${locale}`">正文（最多 1200 UTF-8 字节）</label>
+                <label :for="`nt-body-${locale}`">{{ t("正文（最多 1200 UTF-8 字节）", "Body (up to 1,200 UTF-8 bytes)") }}</label>
                 <textarea :id="`nt-body-${locale}`" v-model="draft[locale].body" rows="5" maxlength="1200" />
-                <small>{{ selectedKey === 'member.joined' ? '欢迎通知只能使用 {resource_id}，不能引用积分。' : '正文须包含 {points}，可使用 {resource_id}。' }} 预览使用固定示例，不是真实通知。</small>
-                <div class="nt-preview" aria-label="固定示例预览"><strong>固定示例预览 · 不是实际用户通知</strong>
+                <small>{{ selectedKey === 'member.joined' ? t('欢迎通知只能使用 {resource_id}，不能引用积分。', 'Welcome notices may use {resource_id} only; points are not available.') : t('正文须包含 {points}，可使用 {resource_id}。', 'The body must include {points}; {resource_id} is optional.') }} {{ t("预览使用固定示例，不是真实通知。", "The preview uses fixed sample data and is not a real notification.") }}</small>
+                <div class="nt-preview" :aria-label="t('固定示例预览', 'Fixed sample preview')"><strong>{{ t("固定示例预览 · 不是实际用户通知", "Fixed sample preview · not an actual user notification") }}</strong>
                   <p>{{ interpolate(draft[locale].title) }}</p><div>{{ interpolate(draft[locale].body) }}</div>
-                  <small>示例 points={{ SAMPLE_POINTS }} · resource_id={{ SAMPLE_RESOURCE_ID }}</small>
+                  <small>{{ t("示例", "Sample") }} points={{ SAMPLE_POINTS }} · resource_id={{ SAMPLE_RESOURCE_ID }}</small>
                 </div>
               </fieldset>
             </div>
-            <div v-if="commissionFacts" class="nt-facts-note" data-testid="commission-facts-note"><strong>不可编辑的佣金历史事实 / Fixed commission history</strong>
+            <div v-if="commissionFacts" class="nt-facts-note" data-testid="commission-facts-note"><strong>{{ t("不可编辑的佣金历史事实", "Fixed commission history (read only)") }}</strong>
               <p v-for="fact in commissionFacts" :key="fact">{{ fact }}</p></div>
-            <div v-else class="nt-facts-note"><strong>系统事实说明</strong><p>中奖金额、奖项发放和冲正事实不在模板中编辑；只可使用允许的通知占位符。</p></div>
-            <p v-if="draft && !contentValid" class="nt-message nt-error" role="alert">标题或正文格式无效：请检查字节上限、首尾空白、占位符；不接受 HTML、外部地址或控制字符。</p>
+            <div v-else class="nt-facts-note"><strong>{{ t("系统事实说明", "System facts") }}</strong><p>{{ t("中奖金额、奖项发放和冲正事实不在模板中编辑；只可使用允许的通知占位符。", "Winning amounts, prize awards, and reversal facts are not edited in templates; only supported notification placeholders may be used.") }}</p></div>
+            <p v-if="draft && !contentValid" class="nt-message nt-error" role="alert">{{ t("标题或正文格式无效：请检查字节上限、首尾空白、占位符；不接受 HTML、外部地址或控制字符。", "Invalid title or body: check byte limits, surrounding whitespace, and placeholders. HTML, external URLs, and control characters are not accepted.") }}</p>
             <div v-if="rights.write && !props.account.super_admin" class="nt-reason">
-              <label for="nt-reason">修改原因（最多 500 UTF-8 字节）</label>
-              <textarea id="nt-reason" v-model="reason" rows="2" :disabled="writing || Boolean(pending)" placeholder="说明此次修改的依据" />
-              <small>{{ reasonByteLength }} / 500 字节；首尾空白不会自动移除。</small>
-              <button class="nt-button nt-primary" type="button" :disabled="!canReview" @click="startReview">核对并继续</button>
+              <label for="nt-reason">{{ t("修改原因（最多 500 UTF-8 字节）", "Change reason (up to 500 UTF-8 bytes)") }}</label>
+              <textarea id="nt-reason" v-model="reason" rows="2" :disabled="writing || Boolean(pending)" :placeholder="t('说明此次修改的依据', 'Explain the basis for this change')" />
+              <small>{{ reasonByteLength }} {{ t("/ 500 字节；首尾空白不会自动移除。", "/ 500 bytes; surrounding whitespace is not trimmed automatically.") }}</small>
+              <button class="nt-button nt-primary" type="button" :disabled="!canReview" @click="startReview">{{ t("核对并继续", "Review and continue") }}</button>
             </div>
-            <p v-else class="nt-readonly">当前账号可查看此模板，但没有品牌模板修改权限。</p>
+            <p v-else class="nt-readonly">{{ t("当前账号可查看此模板，但没有品牌模板修改权限。", "This account can view this template but cannot edit brand templates.") }}</p>
           </section>
 
           <aside v-if="pending" class="nt-pending" aria-labelledby="nt-pending-title">
-            <h3 id="nt-pending-title">{{ writing ? '正在提交模板' : '保存结果未知' }}</h3>
-            <p>只读刷新不会确认或清除此请求。只有显式重试会再次提交完全相同的正文和幂等键。</p>
-            <dl class="nt-audit"><div><dt>事件 / 品牌</dt><dd>{{ pending.templateKey }} · {{ pending.brandId }}</dd></div>
-              <div><dt>原版本</dt><dd>{{ pending.body.version }}</dd></div><div><dt>原原因</dt><dd>{{ pending.body.reason }}</dd></div>
-              <div><dt>幂等键</dt><dd>{{ pending.key }}</dd></div></dl>
-            <button v-if="rights.write && !props.account.super_admin" class="nt-button nt-primary" type="button" :disabled="writing" @click="retryUnknown">{{ writing ? "按原请求提交中…" : "按原请求重试" }}</button>
-            <p v-else>当前账号不能重试；请求仍保留在本页会话内存中。</p>
+            <h3 id="nt-pending-title">{{ writing ? t("正在提交模板", "Submitting template") : t("保存结果未知", "Save outcome unknown") }}</h3>
+            <p>{{ t("只读刷新不会确认或清除此请求。只有显式重试会再次提交完全相同的正文和幂等键。", "A read-only refresh will not confirm or clear this request. Only an explicit retry resubmits the exact same body and idempotency key.") }}</p>
+            <dl class="nt-audit"><div><dt>{{ t("事件 / 品牌", "Event / brand") }}</dt><dd>{{ pending.templateKey }} · {{ pending.brandId }}</dd></div>
+              <div><dt>{{ t("原版本", "Original version") }}</dt><dd>{{ pending.body.version }}</dd></div><div><dt>{{ t("原原因", "Original reason") }}</dt><dd>{{ pending.body.reason }}</dd></div>
+              <div><dt>{{ t("幂等键", "Idempotency key") }}</dt><dd>{{ pending.key }}</dd></div></dl>
+            <button v-if="rights.write && !props.account.super_admin" class="nt-button nt-primary" type="button" :disabled="writing" @click="retryUnknown">{{ writing ? t("按原请求提交中…", "Submitting original request…") : t("按原请求重试", "Retry original request") }}</button>
+            <p v-else>{{ t("当前账号不能重试；请求仍保留在本页会话内存中。", "This account cannot retry; the request remains in this page's session memory.") }}</p>
           </aside>
 
           <section v-if="review && !pending" class="nt-confirm" aria-labelledby="nt-confirm-title">
-            <h3 id="nt-confirm-title">核对保存内容</h3>
-            <p>将为 {{ review.templateKey }} 提交版本 {{ review.body.version }} 的内容和原因。确认后会使用新幂等键发送一次。</p>
+            <h3 id="nt-confirm-title">{{ t("核对保存内容", "Review content to save") }}</h3>
+            <p>{{ t("将为", "Will submit content and reason for") }} {{ review.templateKey }} {{ t("提交版本", "as version") }} {{ review.body.version }}。{{ t("确认后会使用新幂等键发送一次。", "Confirmation sends it once with a new idempotency key.") }}</p>
             <div class="nt-review-locale" v-for="locale in (['en', 'zh-CN'] as const)" :key="locale">
               <strong>{{ locale === "en" ? "English" : "简体中文" }}</strong>
               <p>{{ review.body.content[locale].title }}</p><div>{{ review.body.content[locale].body }}</div>
             </div>
-            <p><strong>原因：</strong>{{ review.body.reason }}</p><p class="nt-break"><strong>幂等键：</strong>{{ review.key }}</p>
-            <label class="nt-check"><input v-model="confirmed" type="checkbox" />我已核对品牌、事件、版本、中英文内容和原因，并确认保存</label>
-            <div class="nt-actions"><button class="nt-button" type="button" :disabled="writing" @click="clearReview">返回修改</button>
-              <button class="nt-button nt-primary" type="button" :disabled="!confirmed || writing || !rights.write" @click="confirmSave">{{ writing ? "保存中…" : "确认保存" }}</button></div>
+            <p><strong>{{ t("原因：", "Reason: ") }}</strong>{{ review.body.reason }}</p><p class="nt-break"><strong>{{ t("幂等键：", "Idempotency key: ") }}</strong>{{ review.key }}</p>
+            <label class="nt-check"><input v-model="confirmed" type="checkbox" />{{ t("我已核对品牌、事件、版本、中英文内容和原因，并确认保存", "I reviewed the brand, event, version, bilingual content, and reason, and confirm saving") }}</label>
+            <div class="nt-actions"><button class="nt-button" type="button" :disabled="writing" @click="clearReview">{{ t("返回修改", "Back to edit") }}</button>
+              <button class="nt-button nt-primary" type="button" :disabled="!confirmed || writing || !rights.write" @click="confirmSave">{{ writing ? t("保存中…", "Saving…") : t("确认保存", "Confirm save") }}</button></div>
           </section>
 
           <section class="nt-card nt-history" aria-labelledby="nt-history-title">
-            <div class="nt-card-heading"><div><h3 id="nt-history-title">修订历史</h3><p>每页 {{ PAGE_SIZE }} 条 · 历史只读</p></div>
-              <button class="nt-button" type="button" :disabled="historyLoading || writing" @click="readHistory()">{{ historyLoading ? "读取中…" : "刷新历史" }}</button></div>
+            <div class="nt-card-heading"><div><h3 id="nt-history-title">{{ t("修订历史", "Revision history") }}</h3><p>{{ t("每页", "Per page") }} {{ PAGE_SIZE }} {{ t("条 · 历史只读", "records · read only") }}</p></div>
+              <button class="nt-button" type="button" :disabled="historyLoading || writing" @click="readHistory()">{{ historyLoading ? t("读取中…", "Loading…") : t("刷新历史", "Refresh history") }}</button></div>
             <ol class="nt-revisions"><li v-for="revision in history" :key="revision.id">
-              <div class="nt-card-heading"><strong>版本 {{ revision.version }}</strong><time>{{ time(revision.created_at) }}</time></div>
-              <p>修改者：{{ revision.changed_by ?? "系统初始化" }} · 审计 ID：{{ revision.audit_log_id ?? "无" }}</p>
-              <p>原因：{{ revision.reason }}</p>
-              <details><summary>查看保存内容</summary><div v-for="locale in (['en', 'zh-CN'] as const)" :key="locale" class="nt-review-locale">
+              <div class="nt-card-heading"><strong>{{ t("版本", "Version") }} {{ revision.version }}</strong><time>{{ time(revision.created_at) }}</time></div>
+              <p>{{ t("修改者：", "Changed by: ") }}{{ revision.changed_by ?? t("系统初始化", "System initialization") }} · {{ t("审计 ID：", "Audit ID: ") }}{{ revision.audit_log_id ?? t("无", "None") }}</p>
+              <p>{{ t("原因：", "Reason: ") }}{{ revision.reason }}</p>
+              <details><summary>{{ t("查看保存内容", "View saved content") }}</summary><div v-for="locale in (['en', 'zh-CN'] as const)" :key="locale" class="nt-review-locale">
                 <strong>{{ locale }}</strong><p>{{ revision.content[locale].title }}</p><div>{{ revision.content[locale].body }}</div></div></details>
-            </li><li v-if="!history.length && !historyLoading" class="nt-empty">暂无修订历史。</li>
-              <li v-if="historyLoading && !history.length" class="nt-empty">正在读取修订历史…</li></ol>
-            <footer class="nt-pagination"><button class="nt-button" type="button" :disabled="historyOffset === 0 || historyLoading || writing" @click="readHistory(Math.max(0, historyOffset - PAGE_SIZE))">上一页</button>
-              <span>偏移 {{ historyOffset }} · {{ history.length }} 条</span>
-              <button class="nt-button" type="button" :disabled="!historyHasNext || historyLoading || writing" @click="readHistory(historyOffset + PAGE_SIZE)">下一页</button></footer>
+            </li><li v-if="!history.length && !historyLoading" class="nt-empty">{{ t("暂无修订历史。", "No revision history.") }}</li>
+              <li v-if="historyLoading && !history.length" class="nt-empty">{{ t("正在读取修订历史…", "Loading revision history…") }}</li></ol>
+            <footer class="nt-pagination"><button class="nt-button" type="button" :disabled="historyOffset === 0 || historyLoading || writing" @click="readHistory(Math.max(0, historyOffset - PAGE_SIZE))">{{ t("上一页", "Previous") }}</button>
+              <span>{{ t("偏移", "Offset") }} {{ historyOffset }} · {{ history.length }} {{ t("条", "records") }}</span>
+              <button class="nt-button" type="button" :disabled="!historyHasNext || historyLoading || writing" @click="readHistory(historyOffset + PAGE_SIZE)">{{ t("下一页", "Next") }}</button></footer>
           </section>
         </div>
-        <p v-else class="nt-message">{{ loading ? "正在读取通知模板…" : "所选事件暂无模板记录。" }}</p>
+        <p v-else class="nt-message">{{ loading ? t("正在读取通知模板…", "Loading notification templates…") : t("所选事件暂无模板记录。", "No template record for the selected event.") }}</p>
       </div>
     </template>
   </section>
