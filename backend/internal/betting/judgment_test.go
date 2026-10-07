@@ -80,13 +80,32 @@ func TestJudgmentPreservesDrawSnapshotAndRejectsSettlingPeriod(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	time.Sleep(time.Until(p.DrawAt) + 30*time.Millisecond)
-	if _, e = rs.Tick(ctx); e != nil {
-		t.Fatal(e)
-	}
 	var version int64
-	if e = f.db.QueryRow(ctx, `SELECT version FROM periods WHERE id=$1`, p.ID).Scan(&version); e != nil {
-		t.Fatal(e)
+	deadline := time.Now().Add(3 * time.Second)
+	var status string
+	for {
+		var drawAt time.Time
+		if e = f.db.QueryRow(ctx, `SELECT status,version,draw_at FROM periods WHERE id=$1`, p.ID).Scan(&status, &version, &drawAt); e != nil {
+			t.Fatal(e)
+		}
+		if status == "waiting_draw" {
+			break
+		}
+		if status != "betting" && status != "closed" {
+			t.Fatalf("period reached unexpected state before manual draw: status=%q version=%d", status, version)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("period did not reach waiting_draw within bounded test window; actual state=%q version=%d draw_at=%s", status, version, drawAt)
+		}
+		if _, e = rs.Tick(ctx); e != nil {
+			t.Fatal(e)
+		}
+		if wait := time.Until(drawAt); wait > 0 {
+			if wait > 20*time.Millisecond {
+				wait = 20 * time.Millisecond
+			}
+			time.Sleep(wait)
+		}
 	}
 	var draw rulebook.DrawResult
 	bettingTx(t, f.db, func(tx pgx.Tx) error {

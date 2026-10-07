@@ -212,9 +212,9 @@ S5-c1 的 `settlement_previews` 是正式结算之前的不可改写核算证据
 - `version`, `updated_at`
 - unique `(brand_id, brand_member_id)`
 
-S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, points)`，3 种来源 × 4 种状态共 12 行。显示/可用/冻结/提现汇总与来源可用余额由这 12 行派生，不再持有多份冗余余额。每次记账先锁账户行，完整 12 桶必须存在，version 与追加账本版本一致。
+S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, points)`，0046扩展为4种来源 × 4种状态共16行。显示/可用/冻结/提现汇总与来源可用余额由这16行派生，不再持有多份冗余余额。每次记账先锁账户行，完整16桶必须存在，version 与追加账本版本一致。
 
-新增佣金积分已获业务确认，目标模型为充值/中奖/赠送/佣金四来源 × 四状态共16桶；当前代码和数据库尚未升级，不把设计当作已支持的API字段。佣金可投注，扣款按充值→中奖→佣金→赠送；可用佣金不计入提现门槛基数，佣金支付的有效投注计入流水。升级必须保留旧12桶历史、请求摘要、回执和审计，验证零佣金旧记录兼容、新16桶守卫、原来源退款和提现周期，不能改写旧流水后重新计算摘要。
+0046已实现充值/中奖/赠送/佣金四来源 × 四状态共16桶；佣金使用稳定下标3，赠送保留2。当前钱包增加commission_points，历史12桶只在读取/比较时以佣金零值规范化，不改持久记录。佣金可投注，扣款按充值→中奖→佣金→赠送；可用佣金不计入提现门槛基数，佣金支付的有效投注计入流水。旧12桶历史、请求摘要、回执和审计保持；新16桶与旧原来源退款/提现兼容见[四来源账本合同](15-four-source-ledger.md)。周期计佣与派发未接入。
 
 `point_ledger_entries`
 
@@ -225,7 +225,7 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 - `reason_code`, `operator_id`, `idempotency_key`, `created_at`
 - append-only；同一业务动作 unique 幂等键
 
-实际字段为 member_id、entry_type、reference_type/reference_id、operation_key、version、request_hash、actor_type/actor_id、request_id、reason、reversal_of、source_allocation；每个 before/delta/after 快照为完整 12 桶十进制字符串 JSONB。`(brand_id, account_id, version)` 唯一，补偿引用强制同品牌同账户，原流水最多一笔全额补偿。账本和余额不能分开提交。
+实际字段为 member_id、entry_type、reference_type/reference_id、operation_key、version、request_hash、actor_type/actor_id、request_id、reason、reversal_of、source_allocation；新before/delta/after快照为完整16桶十进制字符串JSONB，旧完整12桶历史保持。`(brand_id, account_id, version)` 唯一，补偿引用强制同品牌同账户，原流水最多一笔全额补偿。账本和余额不能分开提交。
 
 `point_balance_repairs`（S3-b）
 
@@ -255,7 +255,7 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 - `reject_reason`, `process_result`, `created_at`, `reviewed_at`, `completed_at`
 - 同一品牌用户的 reviewing/processing 状态只能有一条，使用部分唯一索引或等价锁。
 
-提现规则、资金状态机、HTTP申请/查询/运营处理与页面已接入；平台命令配置真实TurnoverChecker，品牌初始政策仍关闭，不自动启用。显式nil依赖仍安全拒绝。`brand_withdrawal_policies` 保存 brand_id/version/config/updated_at；config 为 enabled、min_points、max_points（null 无上限）、allowed_sources（充值/中奖/赠送的非空唯一列表）、review_mode（manual/automatic）、turnover_multiple（N）。初始 disabled、下限1、上限null、三来源、manual、N="1"。
+提现规则、资金状态机、HTTP申请/查询/运营处理与页面已接入；平台命令配置真实TurnoverChecker，品牌初始政策仍关闭，不自动启用。显式nil依赖仍安全拒绝。`brand_withdrawal_policies` 保存 brand_id/version/config/updated_at；config 为 enabled、min_points、max_points（null 无上限）、allowed_sources（充值/中奖/赠送/佣金的非空唯一列表）、review_mode（manual/automatic）、turnover_multiple（N）。初始 disabled、下限1、上限null、三来源、manual、N="1"。
 
 0039新增`withdrawal_orders`，实际字段使用member_id/account_id/state；请求金额、原始来源分配、资格证据、政策快照、提交时间和reserve_version不可改写。reviewing/processing按品牌会员唯一；reserve_entry_id证明available→withdrawal，paid_entry_id证明仅消耗withdrawal，release_entry_id必须是原reserve的全额反向流水，不能换来源。取消/驳回/失败不删除原记录。`withdrawal_order_transitions`保存每次状态、版本、操作者、理由和审计，投影必须有连续完整历史；`withdrawal_operation_receipts`保存原始回执和请求摘要，相同键重放返回原提交/操作状态，而非后来状态，改变正文拒绝。
 
@@ -335,11 +335,11 @@ S6-d 当前查询直接读取已有事实，无独立假统计表：原placed_at
 
 ## S5-c2 已实现的正式结算持久化
 
-0022 新增 `brand_settlement_policies`（初始 null）及不可改写 `settlement_policy_history`。显式选择模式后才允许启动；历史政策通过品牌/版本复合键被任务引用。0023 追加派奖证据守卫，以整份 12 桶精确 delta、前后快照算术、账本上一版本/当前账户版本、实际余额桶和 points.prize 审计校验非零派奖；不完整 JSON/SQL NULL 一律拒绝。
+0022 新增 `brand_settlement_policies`（初始 null）及不可改写 `settlement_policy_history`。显式选择模式后才允许启动；历史政策通过品牌/版本复合键被任务引用。0023 追加派奖证据守卫，原以整份12桶、0046扩展为16桶精确delta、前后快照算术、账本上一版本/当前账户版本、实际余额桶和 points.prize 审计校验非零派奖；不完整 JSON/SQL NULL 一律拒绝。
 
 `settlement_jobs` 保存期次、当前 draw_result_id、启动后期次版本、政策版本/模式和创建人，普通结算每期最多一个。`settlement_targets` 固定当时全部注单，pending/ready/paid/excluded/failed，已排除和已应用不得重开。`settlement_calculations` 保存逐单购买快照版本/hash、结果 hash、完整精确 Simulation、中奖标记/整数金额，禁止修改/删除；`settlement_failures` 保存失败阶段、观察到的任务版本和安全错误码，不写敏感数据库错误。
 
-注单扩展 settlement_calculation_id、payout_entry_id、prize_points、settled_at；非结算状态这些字段为空/0。placed→won/lost 仅在 paying、期次结果匹配、有效计算及（非零时）中奖账本证据齐备时允许。账本只增加 winning.available、记录全部 12 桶前/后值；零额不建流水。人工异常与系统异常共用不可改写异常证据，source/system job_id/error_code 与 manual marked_by 互斥。
+注单扩展 settlement_calculation_id、payout_entry_id、prize_points、settled_at；非结算状态这些字段为空/0。placed→won/lost 仅在 paying、期次结果匹配、有效计算及（非零时）中奖账本证据齐备时允许。账本只增加 winning.available、新记录全部16桶前/后值，旧12桶保留；零额不建流水。人工异常与系统异常共用不可改写异常证据，source/system job_id/error_code 与 manual marked_by 互斥。
 
 worker 一事务一个目标或阶段转换；锁序 game→独占 period→job→wallet→order，不批量持有多会员钱包。取消/人工异常先 period→job，再 wallet/order，排除未入账目标并增加任务版本。SQL 延迟约束要求任务/目标计数及终态和期次一起提交；无任务不能直接推进 settling，未入账目标不能提前 settled。原取消/判定证据守卫继续保留。结果纠正的版本代次和派奖冲正另行设计，不覆盖旧计算或绕过终态守卫。
 

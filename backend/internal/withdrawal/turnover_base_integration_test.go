@@ -26,6 +26,7 @@ func TestWithdrawalTurnoverBaseSnapshotsAllAvailableBeforeReservation(t *testing
 		{Source: "recharge", State: "available", Points: 100},
 		{Source: "winning", State: "available", Points: 90},
 		{Source: "gift", State: "available", Points: 80},
+		{Source: "commission", State: "available", Points: 70},
 	})
 	ctx := context.Background()
 	tx, err := f.db.Begin(ctx)
@@ -55,7 +56,7 @@ func TestWithdrawalTurnoverBaseSnapshotsAllAvailableBeforeReservation(t *testing
 		return EligibilityDecision{Allowed: true, Evidence: json.RawMessage(`{"test_adapter":true,"turnover_base_snapshot":{"points":"1"}}`)}, nil
 	})
 	order := createOrder(t, f, 30, "turnover-base-small-request", []points.Allocation{{Source: "recharge", State: "available", Points: 20}, {Source: "gift", State: "available", Points: 10}})
-	if observed.Wallet.BySource[0][0] != 60 || observed.Wallet.BySource[2][0] != 50 {
+	if observed.Wallet.BySource[0][0] != 60 || observed.Wallet.BySource[2][0] != 50 || observed.Wallet.BySource[3][0] != 70 {
 		t.Fatalf("checker observed a deducted or incorrect balance: %+v", observed.Wallet.BySource)
 	}
 	if observed.TurnoverBase.Points != 110 || observed.TurnoverBase.WalletVersion != observed.Wallet.Version {

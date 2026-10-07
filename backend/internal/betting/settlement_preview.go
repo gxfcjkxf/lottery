@@ -183,6 +183,23 @@ func equalJSON(a, b any) bool {
 	rb, e2 := json.Marshal(b)
 	return e1 == nil && e2 == nil && bytes.Equal(ra, rb)
 }
+
+func betAllocationPriorityIndex(source string) (int, error) {
+	index, err := points.SourceIndex(source)
+	if err != nil {
+		return -1, err
+	}
+	// Source indices remain R,W,G,C for stored balance matrices and legacy
+	// allocations. Bet debit priority inserts commission before gift.
+	if source == "commission" {
+		return 2, nil
+	}
+	if source == "gift" {
+		return 3, nil
+	}
+	return index, nil
+}
+
 func evaluateSettlementSnapshot(ctx context.Context, o Order, draw rules.Draw) (rules.Simulation, string, error) {
 	var out rules.Simulation
 	if e := ctx.Err(); e != nil {
@@ -204,11 +221,11 @@ func evaluateSettlementSnapshot(ctx context.Context, o Order, draw rules.Draw) (
 	total := new(big.Int)
 	last := -1
 	for _, a := range o.Allocation {
-		source, e := points.SourceIndex(a.Source)
-		if e != nil || source <= last || a.State != "available" || a.Points <= 0 {
+		priority, e := betAllocationPriorityIndex(a.Source)
+		if e != nil || priority <= last || a.State != "available" || a.Points <= 0 {
 			return out, "ALLOCATION_SNAPSHOT_INVALID", nil
 		}
-		last = source
+		last = priority
 		total.Add(total, big.NewInt(int64(a.Points)))
 	}
 	if len(o.Allocation) == 0 || total.Cmp(big.NewInt(int64(o.TotalPoints))) != 0 {

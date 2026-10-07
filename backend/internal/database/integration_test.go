@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/gxfcjkxf/lottery/backend/internal/database"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
+	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -126,11 +127,24 @@ func TestBrandForeignKeysAndAppendOnly(t *testing.T) {
 	if _, err := p.Exec(ctx, "DELETE FROM audit_logs WHERE id=$1", logID); err == nil {
 		t.Fatal("audit deleted")
 	}
-	entry := ids.New()
-	if _, err := p.Exec(ctx, `INSERT INTO point_ledger_entries(id,brand_id,account_id,member_id,version,request_hash,actor_type,entry_type,reference_type,operation_key,before_snapshot,delta_snapshot,after_snapshot,reason,request_id) VALUES($1,$2,$3,$4,1,repeat('a',64),'system','recharge','test','op-1','{}','{}','{}','test','req')`, entry, a, account, member); err != nil {
+	if _, err := p.Exec(ctx, `INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift']) s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) t`, a, account); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Exec(ctx, "UPDATE point_ledger_entries SET reason='tamper' WHERE id=$1", entry); err == nil {
+	tx, err := p.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	var delta points.Balance
+	delta[0][0] = 1
+	entry, err := (points.Store{DB: p}).Post(ctx, tx, points.Change{BrandID: a, MemberID: member, EntryType: "adjustment", ReferenceType: "test", OperationKey: "op-1", Reason: "test valid append-only ledger", ActorType: "system", RequestID: "req", Delta: delta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 1}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Exec(ctx, "UPDATE point_ledger_entries SET reason='tamper' WHERE id=$1", entry.ID); err == nil {
 		t.Fatal("ledger changed")
 	}
 }

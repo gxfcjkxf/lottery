@@ -32,7 +32,7 @@ const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const { t, message } = useAdminI18n();
 const PAGE_SIZE = 50;
 const api = createFinanceApi();
-const sources: WalletSource[] = ["recharge", "winning", "gift"];
+const sources: WalletSource[] = ["recharge", "winning", "gift", "commission"];
 const states: WalletState[] = [
   "available",
   "manual_frozen",
@@ -44,7 +44,7 @@ function sourceName(source: WalletSource) {
     ? t("充值", "Recharge")
     : source === "winning"
       ? t("中奖", "Winnings")
-      : source === "gift" ? t("赠送", "Gift") : source;
+      : source === "gift" ? t("赠送", "Gift") : source === "commission" ? t("佣金", "Commission") : source;
 }
 function stateName(state: WalletState) {
   return state === "available"
@@ -738,7 +738,7 @@ function sourceSnapshotValue(
         <div class="panel-title">
           <div>
             <h2>{{ t("钱包流水", "Wallet ledger") }}</h2>
-            <p>{{ t("每笔展示全部 12 桶变更前、变动额与变更后金额。", "Each entry shows the before, change, and after amounts for all 12 buckets.") }}</p>
+            <p>{{ t("每笔展示全部 16 桶变更前、变动额与变更后金额。", "Each entry shows the before, change, and after amounts for all 16 buckets.") }}</p>
           </div>
         </div>
         <p v-if="!entries.length" class="muted">{{ t("当前页没有流水。", "No ledger entries on this page.") }}</p>
@@ -1022,7 +1022,7 @@ function sourceSnapshotValue(
         <div class="panel-title">
           <div>
             <h2>{{ t("来源积分调整", "Adjust points by source") }}</h2>
-            <p>{{ t("只允许充值、中奖或赠送来源；没有通用冲正或系统冻结入口。", "Only Recharge, Winnings, or Gift sources can be adjusted. There is no general reversal or system-freeze action.") }}</p>
+            <p>{{ t("可调整充值、中奖、赠送或佣金来源；人工积分调整不代表周期佣金派发。没有通用冲正或系统冻结入口。", "Recharge, Winnings, Gift, or Commission sources can be adjusted. Manual point adjustments are not cycle commission payouts. There is no general reversal or system-freeze action.") }}</p>
           </div>
         </div>
         <label
@@ -1030,6 +1030,7 @@ function sourceSnapshotValue(
             <option value="recharge">{{ t("充值", "Recharge") }}</option>
             <option value="winning">{{ t("中奖", "Winnings") }}</option>
             <option value="gift">{{ t("赠送", "Gift") }}</option>
+            <option value="commission">{{ t("佣金", "Commission") }}</option>
           </select></label
         ><label
           >{{ t("调整额（非零有符号整数）", "Adjustment (nonzero signed whole number)") }}<input

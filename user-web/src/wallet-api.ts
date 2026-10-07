@@ -1,24 +1,8 @@
-export type WalletSource = "recharge" | "winning" | "gift";
-export type WalletState =
-  "available" | "manual_frozen" | "system_frozen" | "withdrawal";
-export type SourceBuckets = Record<WalletSource, Record<WalletState, string>>;
+import { isWalletDTO, normalizeLedgerSnapshots, type WalletDTO, type WalletSource, type WalletState, type SourceBuckets } from "@lottery/shared";
 
-export interface Wallet {
-  account_id: string;
-  brand_id: string;
-  member_id: string;
-  version: number;
-  display_points: string;
-  available_points: string;
-  frozen_points: string;
-  withdrawal_points: string;
-  recharge_points: string;
-  winning_points: string;
-  gift_points: string;
-  manual_frozen_points: string;
-  system_frozen_points: string;
-  by_source: SourceBuckets;
-}
+export type { WalletSource, WalletState, SourceBuckets };
+
+export type Wallet = WalletDTO;
 
 export interface SourceAllocation {
   source: WalletSource;
@@ -134,15 +118,22 @@ export function createWalletApi(
   }
 
   return {
-    wallet() {
-      return request<Wallet>("/wallet");
+    async wallet() {
+      const value = await request<unknown>("/wallet");
+      if (!isWalletDTO(value)) throw new WalletApiError("The server returned an invalid wallet response.", 502, "INVALID_RESPONSE");
+      return value;
     },
-    ledger(limit = 50, offset = 0) {
+    async ledger(limit = 50, offset = 0) {
       const query = new URLSearchParams({
         limit: String(limit),
         offset: String(offset),
       });
-      return request<{ items: LedgerEntry[] }>(`/wallet/ledger?${query}`);
+      const value = await request<unknown>(`/wallet/ledger?${query}`);
+      if (!value || typeof value !== "object" || Array.isArray(value) || !Array.isArray((value as { items?: unknown }).items))
+        throw new WalletApiError("The server returned an invalid wallet ledger response.", 502, "INVALID_RESPONSE");
+      const items = (value as { items: unknown[] }).items.map((entry) => normalizeLedgerSnapshots(entry) as LedgerEntry | null);
+      if (items.some((entry) => entry === null)) throw new WalletApiError("The server returned an invalid wallet ledger snapshot.", 502, "INVALID_RESPONSE");
+      return { items: items as LedgerEntry[] };
     },
   };
 }

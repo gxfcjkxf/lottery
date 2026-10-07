@@ -203,7 +203,7 @@ func newCapacityFixture(t *testing.T, userCount, brands int, poolSize int32) cap
 				{`INSERT INTO global_users(id,username)VALUES($1,$2)`, []any{user, "capacity_" + strings.ReplaceAll(user, "-", "")}},
 				{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,terms_accepted,privacy_policy_version,service_terms_version)VALUES($1,$2,$3,'domain',true,'dev-1','dev-1')`, []any{member, brandIDs[b], user}},
 				{`INSERT INTO point_accounts(id,brand_id,brand_member_id)VALUES($1,$2,$3)`, []any{account, brandIDs[b], member}},
-				{`INSERT INTO point_buckets(brand_id,account_id,source,state)SELECT $1,$2,s,state FROM unnest(ARRAY['recharge','winning','gift'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])state`, []any{brandIDs[b], account}},
+				{`INSERT INTO point_buckets(brand_id,account_id,source,state)SELECT $1,$2,s,state FROM unnest(ARRAY['recharge','winning','gift','commission'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])state ON CONFLICT DO NOTHING`, []any{brandIDs[b], account}},
 				{`INSERT INTO sessions(id,token_hash,user_id,member_id,brand_id,expires_at)VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '1 hour')`, []any{ids.New(), hex.EncodeToString(digest[:]), user, member, brandIDs[b]}},
 			} {
 				if _, e := tx.Exec(ctx, q.SQL, q.Args...); e != nil {

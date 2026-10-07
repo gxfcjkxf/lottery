@@ -1,4 +1,4 @@
-// Package points is the authoritative, transactional twelve-bucket ledger.
+// Package points is the authoritative, transactional sixteen-bucket ledger.
 package points
 
 import (
@@ -71,6 +71,7 @@ type Wallet struct {
 	RechargePoints     Amount  `json:"recharge_points"`
 	WinningPoints      Amount  `json:"winning_points"`
 	GiftPoints         Amount  `json:"gift_points"`
+	CommissionPoints   Amount  `json:"commission_points"`
 	ManualFrozenPoints Amount  `json:"manual_frozen_points"`
 	SystemFrozenPoints Amount  `json:"system_frozen_points"`
 	BySource           Balance `json:"by_source"`
@@ -95,11 +96,12 @@ func makeWallet(brand, member, account string, version int64, b Balance) (Wallet
 	w.RechargePoints = b[0][0]
 	w.WinningPoints = b[1][0]
 	w.GiftPoints = b[2][0]
+	w.CommissionPoints = b[3][0]
 	return w, nil
 }
 func loadBuckets(ctx context.Context, q query, brand, account string) (Balance, error) {
 	var b Balance
-	var seen [3][4]bool
+	var seen [4][4]bool
 	count := 0
 	rows, err := q.Query(ctx, `SELECT source,state,points FROM point_buckets WHERE brand_id=$1 AND account_id=$2`, brand, account)
 	if err != nil {
@@ -124,7 +126,7 @@ func loadBuckets(ctx context.Context, q query, brand, account string) (Balance, 
 	if err = rows.Err(); err != nil {
 		return b, err
 	}
-	if count != 12 {
+	if count != 16 {
 		return b, ErrCorrupt
 	}
 	if b.Validate() != nil {
@@ -211,12 +213,76 @@ func (s Store) Entry(ctx context.Context, tx pgx.Tx, brand, member, id string) (
 func changeHash(c Change) (string, error) {
 	c.RequestID = ""
 	c.IP = ""
-	raw, err := json.Marshal(c)
+	var raw []byte
+	var err error
+	if legacyChangeShape(c) {
+		legacy := legacyChange{
+			BrandID: c.BrandID, MemberID: c.MemberID, EntryType: c.EntryType,
+			ReferenceType: c.ReferenceType, ReferenceID: c.ReferenceID,
+			OperationKey: c.OperationKey, Reason: c.Reason, ActorType: c.ActorType,
+			ActorID: c.ActorID, RequestID: c.RequestID, IP: c.IP,
+			Delta:      legacyBalance{c.Delta[0], c.Delta[1], c.Delta[2]},
+			Allocation: c.Allocation, ReversalOf: c.ReversalOf,
+		}
+		raw, err = json.Marshal(legacy)
+	} else {
+		raw, err = json.Marshal(c)
+	}
 	if err != nil {
 		return "", err
 	}
 	h := sha256.Sum256(raw)
 	return hex.EncodeToString(h[:]), nil
+}
+
+// Historical request hashes used a typed three-source Change. Keep its field
+// ordering and JSON shape for immutable entries whose commission row is zero.
+type legacyBalance [3][4]Amount
+
+func (b legacyBalance) MarshalJSON() ([]byte, error) {
+	var out strings.Builder
+	out.WriteByte('{')
+	for source := 0; source < 3; source++ {
+		if source > 0 {
+			out.WriteByte(',')
+		}
+		name, _ := json.Marshal(sourceNames[source])
+		out.Write(name)
+		out.WriteString(":{")
+		for state, stateName := range stateNames {
+			if state > 0 {
+				out.WriteByte(',')
+			}
+			stateJSON, _ := json.Marshal(stateName)
+			out.Write(stateJSON)
+			out.WriteByte(':')
+			amountJSON, _ := b[source][state].MarshalJSON()
+			out.Write(amountJSON)
+		}
+		out.WriteByte('}')
+	}
+	out.WriteByte('}')
+	return []byte(out.String()), nil
+}
+
+// Keep this declaration in the exact order of Change's original fields.
+type legacyChange struct {
+	BrandID, MemberID, EntryType, ReferenceType, ReferenceID, OperationKey, Reason, ActorType, ActorID, RequestID, IP string
+	Delta                                                                                                             legacyBalance
+	Allocation                                                                                                        []Allocation
+	ReversalOf                                                                                                        string
+}
+
+func legacyChangeShape(c Change) bool {
+	if c.Delta[3] != ([4]Amount{}) {
+		return false
+	}
+	for _, allocation := range c.Allocation {
+		if allocation.Source == sourceNames[3] {
+			return false
+		}
+	}
+	return true
 }
 func validChange(c Change) bool {
 	if !uuidPattern.MatchString(c.BrandID) || !uuidPattern.MatchString(c.MemberID) || !operationPattern.MatchString(c.OperationKey) || !operationPattern.MatchString(c.EntryType) || !operationPattern.MatchString(c.ReferenceType) || len(c.Reason) == 0 || len(c.Reason) > 500 || !utf8.ValidString(c.Reason) || len(c.RequestID) == 0 || len(c.RequestID) > 80 {
@@ -246,10 +312,10 @@ func validChange(c Change) bool {
 	return changed
 }
 func allocationMatches(c Change) bool {
-	if len(c.Allocation) < 1 || len(c.Allocation) > 3 {
+	if len(c.Allocation) < 1 || len(c.Allocation) > 4 {
 		return false
 	}
-	var seen [3]bool
+	var seen [4]bool
 	for _, a := range c.Allocation {
 		si, e := SourceIndex(a.Source)
 		state, e2 := StateIndex(a.State)
@@ -400,9 +466,8 @@ func (s Store) Post(ctx context.Context, tx pgx.Tx, c Change) (Entry, error) {
 		}
 		return Entry{}, err
 	}
-	sources := []string{"recharge", "winning", "gift"}
 	states := []string{"available", "manual_frozen", "system_frozen", "withdrawal"}
-	for si, source := range sources {
+	for si, source := range sourceNames {
 		for ti, state := range states {
 			if c.Delta[si][ti] == 0 {
 				continue
@@ -469,6 +534,11 @@ func (s Store) Reconcile(ctx context.Context, brand, member string) (Reconciliat
 		out.EntryCount++
 		if e.Version != out.EntryCount || e.Before != out.Expected {
 			out.Issues = append(out.Issues, "ledger chain is discontinuous")
+		}
+		c := Change{BrandID: e.BrandID, MemberID: e.MemberID, EntryType: e.EntryType, ReferenceType: e.ReferenceType, ReferenceID: e.ReferenceID, OperationKey: e.OperationKey, Reason: e.Reason, ActorType: e.ActorType, ActorID: e.ActorID, RequestID: e.RequestID, ReversalOf: e.ReversalOf, Delta: e.Delta, Allocation: e.Allocation}
+		hash, hashErr := changeHash(c)
+		if hashErr != nil || hash != e.hash {
+			out.Issues = append(out.Issues, "ledger request hash mismatch")
 		}
 		next, e2 := out.Expected.Apply(e.Delta)
 		if e2 != nil {

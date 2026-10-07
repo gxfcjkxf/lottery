@@ -7,6 +7,7 @@ import {
 } from "./admin-api";
 import { createRuleVersionsApi, type GameRecord } from "./rule-versions-api";
 import { useAdminI18n } from "./i18n";
+import { WALLET_SOURCES } from "@lottery/shared";
 import type { LocalizedMessage } from "@lottery/shared";
 import {
   createWithdrawalPolicyApi,
@@ -207,7 +208,7 @@ function buildBrandConfig(): BrandWithdrawalConfig {
       brandDraft.value.max_points_input === ""
         ? null
         : brandDraft.value.max_points_input,
-    allowed_sources: [...brandDraft.value.allowed_sources],
+    allowed_sources: WALLET_SOURCES.filter((source) => brandDraft.value.allowed_sources.includes(source)),
     review_mode: brandDraft.value.review_mode,
     turnover_multiple: brandDraft.value.turnover_multiple,
   };
@@ -230,7 +231,7 @@ const brandInputsValid = computed(() => {
     config.allowed_sources.length > 0 &&
     new Set(config.allowed_sources).size === config.allowed_sources.length &&
     config.allowed_sources.every((source) =>
-      ["recharge", "winning", "gift"].includes(source),
+      (WALLET_SOURCES as readonly string[]).includes(source),
     ) &&
     isValidTurnoverMultiple(config.turnover_multiple)
   );
@@ -696,6 +697,7 @@ function formatSources(sources: WithdrawalSource[]) {
           recharge: t("充值", "Recharge"),
           winning: t("中奖", "Winnings"),
           gift: t("赠送", "Gift"),
+          commission: t("佣金", "Commission"),
         })[source],
     )
     .join(t("、", ", "));
@@ -778,7 +780,7 @@ onUnmounted(() => {
     </header>
 
     <p class="callout warning" role="note">
-      {{ t("已确认提现流水口径：每笔有效投注按投注时 N 折算达标额度（投注额 ÷ N），跨彩种精确累加后与占用前全部可用充值＋赠送余额比较。充值、中奖、赠送来源均计入，每笔只计一次。N 必须大于 0，修改仅影响新投注；旧零值历史仍可读，不可新设。平台资格入口与只读预览已接入，品牌仍须明确启用；预览不是授权，申请时会重新检查流水、余额和合规。", "Confirmed turnover rule: divide each valid stake by its bet-time N, sum exact credits across games, and compare with all available recharge plus gift points before reservation. Recharge-, winnings-, and gift-funded stakes count once per bet. N must be positive; changes affect new bets only. Legacy zero history remains readable, but new zero values are prohibited. The platform eligibility checker and read-only preview are connected; the brand must explicitly enable withdrawals. A preview is not authorization: application rechecks turnover, funds, and compliance.") }}
+      {{ t("已确认提现流水口径：每笔有效投注按投注时 N 折算达标额度（投注额 ÷ N），跨彩种精确累加后与占用前全部可用充值＋赠送余额比较。充值、中奖、赠送及佣金来源投注均计入，每笔只计一次；佣金不计入基础金额。N 必须大于 0，修改仅影响新投注；旧零值历史仍可读，不可新设。平台资格入口与只读预览已接入，品牌仍须明确启用；预览不是授权，申请时会重新检查流水、余额和合规。", "Confirmed turnover rule: divide each valid stake by its bet-time N, sum exact credits across games, and compare with all available recharge plus gift points before reservation. Recharge-, winnings-, gift-, and commission-funded stakes count once per valid bet; commission does not count toward the base amount. N must be positive; changes affect new bets only. Legacy zero history remains readable, but new zero values are prohibited. The platform eligibility checker and read-only preview are connected; the brand must explicitly enable withdrawals. A preview is not authorization: application rechecks turnover, funds, and compliance.") }}
     </p>
     <p v-if="account.super_admin" class="callout">
       {{ t("超级管理员仅可按显式读取权限查看，不能保存配置。", "Super administrators may view settings only when explicitly granted read access; they cannot save settings.") }}
@@ -978,6 +980,15 @@ onUnmounted(() => {
                     reconciling
                   "
                 />{{ t("赠送", "Gift") }}</label
+              >
+              <label for="withdraw-source-commission"
+                ><input
+                  id="withdraw-source-commission"
+                  v-model="brandDraft.allowed_sources"
+                  type="checkbox"
+                  value="commission"
+                  :disabled="!canWrite || !!pendingInContext || !!confirmation || reconciling"
+                />{{ t("佣金", "Commission") }}</label
               >
             </fieldset>
             <label for="withdraw-brand-review"

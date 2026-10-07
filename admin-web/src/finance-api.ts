@@ -1,28 +1,12 @@
 import { createIdempotencyKey } from "./admin-api";
+import { isWalletDTO, normalizeLedgerSnapshots, normalizeSourceBuckets, type WalletDTO, type WalletSource as SharedWalletSource, type WalletState as SharedWalletState, type SourceBuckets as SharedSourceBuckets } from "@lottery/shared";
 
 const BASE = "/api/v1/admin";
 
-export type WalletSource = "recharge" | "winning" | "gift";
-export type WalletState =
-  "available" | "manual_frozen" | "system_frozen" | "withdrawal";
-export type SourceBuckets = Record<WalletSource, Record<WalletState, string>>;
-
-export interface Wallet {
-  account_id: string;
-  brand_id: string;
-  member_id: string;
-  version: number;
-  display_points: string;
-  available_points: string;
-  frozen_points: string;
-  withdrawal_points: string;
-  recharge_points: string;
-  winning_points: string;
-  gift_points: string;
-  manual_frozen_points: string;
-  system_frozen_points: string;
-  by_source: SourceBuckets;
-}
+export type WalletSource = SharedWalletSource;
+export type WalletState = SharedWalletState;
+export type SourceBuckets = SharedSourceBuckets;
+export type Wallet = WalletDTO;
 
 export interface Recharge {
   id: string;
@@ -253,21 +237,35 @@ export function createFinanceApi(fetcher: FetchLike = fetch) {
         detail?.code,
       );
     }
-    return envelope.data;
+    const data = envelope.data;
+    if (data && typeof data === "object" && !Array.isArray(data) &&
+      ["before_snapshot", "delta_snapshot", "after_snapshot"].every((key) => Object.hasOwn(data, key))) {
+      const normalized = normalizeLedgerSnapshots(data);
+      if (!normalized) throw new FinanceApiError("The server returned an invalid wallet receipt snapshot.", 502, "INVALID_RESPONSE");
+      return normalized as T;
+    }
+    return data;
   }
 
   return {
-    wallet(brandId: string, memberId: string) {
-      return request<Wallet>(
+    async wallet(brandId: string, memberId: string) {
+      const value = await request<unknown>(
         brandId,
         `/wallets/${encodeURIComponent(memberId)}`,
       );
+      if (!isWalletDTO(value)) throw new FinanceApiError("The server returned an invalid wallet response.", 502, "INVALID_RESPONSE");
+      return value;
     },
-    ledger(brandId: string, memberId: string, limit = 50, offset = 0) {
-      return request<{ items: LedgerEntry[] }>(
+    async ledger(brandId: string, memberId: string, limit = 50, offset = 0) {
+      const value = await request<unknown>(
         brandId,
         `/wallets/${encodeURIComponent(memberId)}/ledger?limit=${limit}&offset=${offset}`,
       );
+      if (!value || typeof value !== "object" || Array.isArray(value) || !Array.isArray((value as { items?: unknown }).items))
+        throw new FinanceApiError("The server returned an invalid wallet ledger response.", 502, "INVALID_RESPONSE");
+      const items = (value as { items: unknown[] }).items.map((entry) => normalizeLedgerSnapshots(entry) as LedgerEntry | null);
+      if (items.some((entry) => entry === null)) throw new FinanceApiError("The server returned an invalid wallet ledger snapshot.", 502, "INVALID_RESPONSE");
+      return { items: items as LedgerEntry[] };
     },
     reconciliation(brandId: string, memberId: string) {
       return request<Reconciliation>(

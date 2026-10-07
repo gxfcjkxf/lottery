@@ -97,7 +97,7 @@ func TestOperatorCreatePendingConsentFlowAndGlobalUniqueness(t *testing.T) {
 		t.Fatalf("bad pending member: accepted=%v accepted_at=%v method=%q creator=%q name=%q notes=%q policy=%q/%q", termsAccepted, acceptedAt, joinMethod, createdBy, displayName, notes, privacy, terms)
 	}
 	var bucketCount, sessionCount int
-	if err = p.QueryRow(ctx, "SELECT count(*) FROM point_buckets pb JOIN point_accounts pa ON pa.id=pb.account_id WHERE pa.brand_member_id=$1", response.MemberID).Scan(&bucketCount); err != nil || bucketCount != 12 {
+	if err = p.QueryRow(ctx, "SELECT count(*) FROM point_buckets pb JOIN point_accounts pa ON pa.id=pb.account_id WHERE pa.brand_member_id=$1", response.MemberID).Scan(&bucketCount); err != nil || bucketCount != 16 {
 		t.Fatalf("buckets=%d err=%v", bucketCount, err)
 	}
 	if err = p.QueryRow(ctx, "SELECT count(*) FROM sessions WHERE user_id=$1", response.UserID).Scan(&sessionCount); err != nil || sessionCount != 0 {

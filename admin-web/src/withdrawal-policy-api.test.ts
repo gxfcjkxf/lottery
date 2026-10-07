@@ -149,6 +149,12 @@ describe("withdrawal policy API", () => {
     }
   });
 
+  it("accepts commission only as an explicit configured withdrawal source", async () => {
+    const withCommission = { ...brandConfig, allowed_sources: ["recharge", "winning", "gift", "commission"] };
+    const policy = { ...brandPolicy, config: withCommission };
+    await expect(createWithdrawalPolicyApi(vi.fn<typeof fetch>().mockResolvedValue(ok(policy))).getBrandPolicy(brand)).resolves.toEqual(policy);
+  });
+
   it("fetches scoped policies and history with same-origin credentials", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
@@ -306,6 +312,7 @@ describe("withdrawal policy API", () => {
       { ...brandConfig, allowed_sources: [] },
       { ...brandConfig, allowed_sources: ["gift", "gift"] },
       { ...brandConfig, allowed_sources: ["cash"] },
+      { ...brandConfig, allowed_sources: ["recharge", "winning", "gift", "commission", "cash"] },
       { ...brandConfig, review_mode: "automatic-ish" },
       { ...brandConfig, turnover_multiple: "0" },
       { ...brandConfig, turnover_multiple: "1000001" },

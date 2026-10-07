@@ -62,12 +62,12 @@ func validSavedMultiple(v string) bool {
 	return ok && n.Cmp(big.NewRat(1000000, 1)) <= 0
 }
 func validateSavedBrandConfig(c BrandConfig) error {
-	if c.MinPoints <= 0 || c.MaxPoints != nil && *c.MaxPoints < c.MinPoints || !validSavedMultiple(c.TurnoverMultiple) || (c.ReviewMode != "manual" && c.ReviewMode != "automatic") || len(c.AllowedSources) < 1 || len(c.AllowedSources) > 3 {
+	if c.MinPoints <= 0 || c.MaxPoints != nil && *c.MaxPoints < c.MinPoints || !validSavedMultiple(c.TurnoverMultiple) || (c.ReviewMode != "manual" && c.ReviewMode != "automatic") || len(c.AllowedSources) < 1 || len(c.AllowedSources) > 4 {
 		return ErrInvalid
 	}
 	seen := map[string]bool{}
 	for _, v := range c.AllowedSources {
-		if seen[v] || v != "recharge" && v != "winning" && v != "gift" {
+		if seen[v] || v != "recharge" && v != "winning" && v != "gift" && v != "commission" {
 			return ErrInvalid
 		}
 		seen[v] = true

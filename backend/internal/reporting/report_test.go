@@ -62,7 +62,7 @@ func TestLedgerReportLargeAggregatesTransfersAndOutsideWindowBalances(t *testing
 		if _, e := db.Exec(ctx, `INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, account, testBrand, m); e != nil {
 			t.Fatal(e)
 		}
-		if _, e := db.Exec(ctx, `INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,source,state FROM unnest(ARRAY['recharge','winning','gift']) source CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) state`, testBrand, account); e != nil {
+		if _, e := db.Exec(ctx, `INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,source,state FROM unnest(ARRAY['recharge','winning','gift','commission']) source CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) state ON CONFLICT DO NOTHING`, testBrand, account); e != nil {
 			t.Fatal(e)
 		}
 		tx, e := db.Begin(ctx)

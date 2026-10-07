@@ -52,10 +52,10 @@ func checkCapacityIntegrity(ctx context.Context, f capacityFixture, known map[st
 	var out capacityIntegrity
 	e := f.DB.QueryRow(ctx, `SELECT (SELECT count(*) FROM bet_orders),(SELECT count(*) FROM point_ledger_entries WHERE entry_type='bet'),
  coalesce((SELECT sum(total_points) FROM bet_orders),0),
- coalesce((SELECT -sum((delta_snapshot->'recharge'->>'available')::bigint+(delta_snapshot->'winning'->>'available')::bigint+(delta_snapshot->'gift'->>'available')::bigint) FROM point_ledger_entries WHERE entry_type='bet'),0),
+ coalesce((SELECT -sum((delta_snapshot->'recharge'->>'available')::bigint+(delta_snapshot->'winning'->>'available')::bigint+(delta_snapshot->'gift'->>'available')::bigint+(delta_snapshot->'commission'->>'available')::bigint) FROM point_ledger_entries WHERE entry_type='bet'),0),
  (SELECT sum(points) FROM point_buckets),
  (SELECT count(*) FROM bet_orders o LEFT JOIN point_ledger_entries l ON l.id=o.debit_entry_id WHERE l.id IS NULL OR l.brand_id<>o.brand_id OR l.account_id<>o.account_id OR l.member_id<>o.brand_member_id OR l.reference_type<>'bet_order' OR l.reference_id<>o.id OR l.entry_type<>'bet'),
- (SELECT count(*) FROM point_accounts a WHERE (SELECT coalesce(sum(points),0) FROM point_buckets b WHERE b.account_id=a.id)<>(SELECT coalesce(sum((l.delta_snapshot->'recharge'->>'available')::bigint+(l.delta_snapshot->'winning'->>'available')::bigint+(l.delta_snapshot->'gift'->>'available')::bigint),0) FROM point_ledger_entries l WHERE l.account_id=a.id))`).Scan(&out.Orders, &out.Debits, &out.StakePoints, &out.DebitPoints, &out.BalancePoints, &out.BadOrderLinks, &out.BadAccountBalances)
+ (SELECT count(*) FROM point_accounts a WHERE (SELECT coalesce(sum(points),0) FROM point_buckets b WHERE b.account_id=a.id)<>(SELECT coalesce(sum((l.delta_snapshot->'recharge'->>'available')::bigint+(l.delta_snapshot->'winning'->>'available')::bigint+(l.delta_snapshot->'gift'->>'available')::bigint+(l.delta_snapshot->'commission'->>'available')::bigint),0) FROM point_ledger_entries l WHERE l.account_id=a.id))`).Scan(&out.Orders, &out.Debits, &out.StakePoints, &out.DebitPoints, &out.BalancePoints, &out.BadOrderLinks, &out.BadAccountBalances)
 	if e != nil {
 		return out, e
 	}

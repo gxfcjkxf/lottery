@@ -16,12 +16,20 @@ const fail = (status: number) =>
     }),
     { status },
   );
+const wallet = {
+  account_id: "11111111-1111-4111-8111-111111111111",
+  brand_id: "22222222-2222-4222-8222-222222222222",
+  member_id: "33333333-3333-4333-8333-333333333333",
+  version: 1, display_points: "0", available_points: "0", frozen_points: "0", withdrawal_points: "0",
+  recharge_points: "0", winning_points: "0", gift_points: "0", commission_points: "0", manual_frozen_points: "0", system_frozen_points: "0",
+  by_source: Object.fromEntries(["recharge", "winning", "gift", "commission"].map((source) => [source, { available: "0", manual_frozen: "0", system_frozen: "0", withdrawal: "0" }])),
+};
 
 describe("user wallet API", () => {
   it("uses an optional brand prefix and same-origin cookie credentials without bearer headers", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockImplementation(async () => ok({ items: [] }));
+      .mockImplementation(async (input) => ok(String(input).endsWith("/wallet") ? wallet : { items: [] }));
     const api = createWalletApi({ brandCode: "north star", fetcher });
     await api.wallet();
     const [url, init] = fetcher.mock.calls[0];
@@ -35,7 +43,7 @@ describe("user wallet API", () => {
   it("uses unprefixed wallet paths when no brand code is configured", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockImplementation(async () => ok({ items: [] }));
+      .mockImplementation(async (input) => ok(String(input).includes("/wallet/ledger?") ? { items: [] } : wallet));
     const api = createWalletApi({ brandCode: "", fetcher });
     await api.wallet();
     await api.ledger(50, 100);
@@ -68,5 +76,20 @@ describe("user wallet API", () => {
     expect(formatIntegerAmount("-9007199254740993123456789")).toBe(
       "−9,007,199,254,740,993,123,456,789",
     );
+  });
+
+  it("normalizes legacy ledger snapshots without altering their source object", async () => {
+    const legacy = Object.fromEntries(["recharge", "winning", "gift"].map((source) => [source, { available: "1", manual_frozen: "0", system_frozen: "0", withdrawal: "0" }]));
+    const entry = { before_snapshot: legacy, delta_snapshot: legacy, after_snapshot: legacy };
+    const api = createWalletApi({ fetcher: vi.fn<typeof fetch>().mockResolvedValue(ok({ items: [entry] })) });
+    const result = await api.ledger();
+    expect(result.items[0]?.before_snapshot.commission.available).toBe("0");
+    expect(Object.keys(legacy)).toEqual(["recharge", "winning", "gift"]);
+  });
+
+  it("rejects current wallet payloads that omit commission", async () => {
+    const { commission_points: _commissionPoints, ...legacy } = wallet;
+    const api = createWalletApi({ fetcher: vi.fn<typeof fetch>().mockResolvedValue(ok(legacy)) });
+    await expect(api.wallet()).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
   });
 });

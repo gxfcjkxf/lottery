@@ -135,7 +135,7 @@ func run() error {
 			{`INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,$3)`, []any{user, username, userHash}},
 			{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version,terms_accepted) VALUES($1,$2,$3,'domain','dev-1','dev-1',true)`, []any{member, brand, user}},
 			{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{account, brand, member}},
-			{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])t`, []any{brand, account}},
+			{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift','commission'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])t ON CONFLICT DO NOTHING`, []any{brand, account}},
 		}
 		for _, q := range queries {
 			if _, err = tx.Exec(ctx, q.sql, q.args...); err != nil {

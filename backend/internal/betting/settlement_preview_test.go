@@ -14,6 +14,35 @@ import (
 	"time"
 )
 
+func TestBetAllocationPriorityAcceptsLegacyAndFourSourceSnapshots(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		sources []string
+		valid   bool
+	}{
+		{name: "legacy recharge winning gift", sources: []string{"recharge", "winning", "gift"}, valid: true},
+		{name: "four source debit priority", sources: []string{"recharge", "winning", "commission", "gift"}, valid: true},
+		{name: "old canonical four source order is not debit priority", sources: []string{"recharge", "winning", "gift", "commission"}},
+		{name: "commission before winning", sources: []string{"recharge", "commission", "winning"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			last := -1
+			valid := true
+			for _, source := range tc.sources {
+				index, err := betAllocationPriorityIndex(source)
+				if err != nil || index <= last {
+					valid = false
+					break
+				}
+				last = index
+			}
+			if valid != tc.valid {
+				t.Fatalf("priority validation=%v, want %v", valid, tc.valid)
+			}
+		})
+	}
+}
+
 func previewActor(f bettingFixture) access.Account {
 	a := judgeActor(f)
 	a.Roles[0].Permissions = append(a.Roles[0].Permissions, access.Permission{Resource: "settlement", Action: "preview", Scope: access.ScopeBrand})

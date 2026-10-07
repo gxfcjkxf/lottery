@@ -11,7 +11,7 @@ import (
 
 func TestTurnoverBaseUsesOnlyAvailableRechargeAndGift(t *testing.T) {
 	wallet := points.Wallet{Version: 19, RechargePoints: 1, GiftPoints: 1,
-		BySource: points.Balance{{100, 200, 300, 400}, {500, 600, 700, 800}, {50, 60, 70, 80}}}
+		BySource: points.Balance{{100, 200, 300, 400}, {500, 600, 700, 800}, {50, 60, 70, 80}, {900, 1000, 1100, 1200}}}
 	base, err := turnoverBaseSnapshot(wallet)
 	want := TurnoverBaseSnapshot{RechargeAvailable: 100, GiftAvailable: 50, Points: 150, WalletVersion: 19}
 	if err != nil || base != want {

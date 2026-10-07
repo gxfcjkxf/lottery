@@ -126,7 +126,7 @@ func eligibilityFund(t *testing.T, f bettingFixture, amounts ...points.Amount) {
 		var delta points.Balance
 		delta[i][0] = n
 		bettingTx(t, f.db, func(tx pgx.Tx) error {
-			_, err := (points.Store{DB: f.db}).Post(context.Background(), tx, points.Change{BrandID: f.brand, MemberID: f.member, EntryType: "adjustment", ReferenceType: "eligibility_test", OperationKey: "eligibility-fund:" + ids.New(), Reason: "explicit source funding", ActorType: "system", RequestID: ids.New(), Delta: delta, Allocation: []points.Allocation{{Source: []string{"recharge", "winning", "gift"}[i], State: "available", Points: n}}})
+			_, err := (points.Store{DB: f.db}).Post(context.Background(), tx, points.Change{BrandID: f.brand, MemberID: f.member, EntryType: "adjustment", ReferenceType: "eligibility_test", OperationKey: "eligibility-fund:" + ids.New(), Reason: "explicit source funding", ActorType: "system", RequestID: ids.New(), Delta: delta, Allocation: []points.Allocation{{Source: []string{"recharge", "winning", "gift", "commission"}[i], State: "available", Points: n}}})
 			return err
 		})
 	}
@@ -306,11 +306,24 @@ func TestRealWithdrawalTurnoverAcrossGamesSnapshotsAndSuccessCutoff(t *testing.T
 }
 
 func TestRealWithdrawalTurnoverCountsAllFundingSources(t *testing.T) {
-	for source, amounts := range map[string][]points.Amount{"recharge": {3, 0, 0}, "winning": {0, 2, 1}, "gift": {0, 0, 3}} {
+	for source, amounts := range map[string][]points.Amount{"recharge": {3, 0, 0, 0}, "winning": {0, 2, 1, 0}, "gift": {0, 0, 3, 0}, "commission": {0, 0, 0, 3}} {
 		t.Run(source, func(t *testing.T) {
 			f := newBettingFixtureWithWindow(t, storeTestBrand, 2*time.Second, 2100*time.Millisecond)
 			a := eligibilityAdmin(t, f)
 			eligibilityBrandPolicy(t, f, a, "1")
+			if source == "commission" {
+				service := withdrawal.Service{DB: f.db}
+				policy, err := service.BrandPolicy(context.Background(), f.brand)
+				if err != nil {
+					t.Fatal(err)
+				}
+				config := policy.Config
+				config.AllowedSources = []string{"commission"}
+				bettingTx(t, f.db, func(tx pgx.Tx) error {
+					_, err := service.UpdateBrand(context.Background(), tx, f.brand, a, withdrawal.BrandInput{Version: policy.Version, Config: config, Reason: "explicitly authorize commission withdrawal test"}, policyMeta(a.ID))
+					return err
+				})
+			}
 			eligibilityFund(t, f, amounts...)
 			x := f.input
 			x.Multiplier = 2
@@ -325,10 +338,26 @@ func TestRealWithdrawalTurnoverCountsAllFundingSources(t *testing.T) {
 			availableSource := "gift"
 			if source == "recharge" {
 				availableSource = "recharge"
+			} else if source == "commission" {
+				availableSource = "commission"
 			}
-			_, err = eligibilityCreate(t, f, withdrawal.OrderInput{Points: 1, ClientKey: "all-sources-withdraw-" + source, SourceAllocation: []points.Allocation{{Source: availableSource, State: "available", Points: 1}}})
+			withdrawalOrder, createErr := eligibilityCreate(t, f, withdrawal.OrderInput{Points: 1, ClientKey: "all-sources-withdraw-" + source, SourceAllocation: []points.Allocation{{Source: availableSource, State: "available", Points: 1}}})
+			err = createErr
 			if err != nil {
 				t.Fatal("valid source stake was not counted", err)
+			}
+			if source == "commission" {
+				var evidence struct {
+					Qualification struct {
+						Points string `json:"valid_points"`
+					} `json:"turnover_qualification"`
+					Base struct {
+						Points string `json:"points"`
+					} `json:"turnover_base_snapshot"`
+				}
+				if err = json.Unmarshal(withdrawalOrder.EligibilityEvidence, &evidence); err != nil || evidence.Qualification.Points != "2" || evidence.Base.Points != "0" {
+					t.Fatalf("commission stake must count for turnover while its balance stays outside the base: evidence=%s err=%v", withdrawalOrder.EligibilityEvidence, err)
+				}
 			}
 		})
 	}

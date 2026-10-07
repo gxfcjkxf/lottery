@@ -1,4 +1,6 @@
-export type WithdrawalSource = "recharge" | "winning" | "gift";
+import { WALLET_SOURCES, type WalletSource } from "./wallet";
+
+export type WithdrawalSource = WalletSource;
 export type WithdrawalState =
   | "reviewing"
   | "processing"
@@ -101,7 +103,7 @@ export interface WithdrawalActionBody {
 const MAX_INT64 = 9223372036854775807n;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATES: readonly WithdrawalState[] = ["reviewing", "processing", "paid", "rejected", "failed", "cancelled"];
-const SOURCES: readonly WithdrawalSource[] = ["recharge", "winning", "gift"];
+const SOURCES: readonly WithdrawalSource[] = WALLET_SOURCES;
 const ACTORS = ["user", "admin", "system"] as const;
 const ORDER_KEYS = ["id", "brand_id", "member_id", "account_id", "points", "state", "version", "source_allocation", "reserve_entry_id", "release_entry_id", "paid_entry_id", "cycle_from_at", "cycle_from_version", "reserve_version", "created_at", "updated_at", "reviewed_at", "completed_at", "decision_reason", "audit_log_id"] as const;
 
@@ -118,7 +120,7 @@ function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boo
   return keys.length === Object.keys(value).length && keys.every((key) => Object.hasOwn(value, key));
 }
 function validAllocation(value: unknown): value is WithdrawalAllocation[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 3 || value.some((item) =>
+  if (!Array.isArray(value) || value.length < 1 || value.length > SOURCES.length || value.some((item) =>
     !record(item) || !exactKeys(item, ["source", "state", "points"]) ||
     !SOURCES.includes(item.source as WithdrawalSource) || item.state !== "available" || !decimal(item.points) || BigInt(item.points) === 0n)) return false;
   const indexes = value.map((item) => SOURCES.indexOf((item as WithdrawalAllocation).source));
@@ -164,7 +166,7 @@ export function isWithdrawalAvailability(value: unknown): value is WithdrawalAva
       : reason === "WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED"
         ? value.can_apply === false && value.policy_enabled === true && value.eligibility_configured === false
         : reason === "WITHDRAWAL_ACCOUNT_RESTRICTED" && value.can_apply === false;
-  return typeof value.actor_context === "string" && /^[0-9a-f]{64}$/i.test(value.actor_context) && uuid(value.brand_id) && uuid(value.member_id) && typeof value.policy_enabled === "boolean" && typeof value.eligibility_configured === "boolean" && typeof value.can_apply === "boolean" && validReasons.includes(String(reason)) && decimal(value.min_points) && BigInt(value.min_points) > 0n && (value.max_points === null || decimal(value.max_points) && BigInt(value.max_points) >= BigInt(value.min_points)) && Array.isArray(sources) && sources.length >= 1 && sources.length <= 3 && sources.every((source) => SOURCES.includes(source as WithdrawalSource)) && new Set(sources).size === sources.length && value.real_payments === false && validReason;
+  return typeof value.actor_context === "string" && /^[0-9a-f]{64}$/i.test(value.actor_context) && uuid(value.brand_id) && uuid(value.member_id) && typeof value.policy_enabled === "boolean" && typeof value.eligibility_configured === "boolean" && typeof value.can_apply === "boolean" && validReasons.includes(String(reason)) && decimal(value.min_points) && BigInt(value.min_points) > 0n && (value.max_points === null || decimal(value.max_points) && BigInt(value.max_points) >= BigInt(value.min_points)) && Array.isArray(sources) && sources.length >= 1 && sources.length <= SOURCES.length && sources.every((source) => SOURCES.includes(source as WithdrawalSource)) && new Set(sources).size === sources.length && value.real_payments === false && validReason;
 }
 
 export function isWithdrawalPage(value: unknown): value is WithdrawalPage {

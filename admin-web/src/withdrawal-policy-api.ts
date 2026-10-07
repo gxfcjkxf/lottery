@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { WALLET_SOURCES, type WalletSource } from "@lottery/shared";
 
 const BASE = "/api/v1/admin";
 const MAX_INT64 = 9223372036854775807n;
@@ -8,7 +9,7 @@ const UUID =
 const DATE_TIME =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
-export type WithdrawalSource = "recharge" | "winning" | "gift";
+export type WithdrawalSource = WalletSource;
 export type WithdrawalReviewMode = "manual" | "automatic";
 
 export interface BrandWithdrawalConfig {
@@ -176,7 +177,7 @@ function validBrandConfig(
     !(value.max_points === null || isPositiveInt64(value.max_points)) ||
     !Array.isArray(value.allowed_sources) ||
     value.allowed_sources.length === 0 ||
-    value.allowed_sources.length > 3 ||
+    value.allowed_sources.length > WALLET_SOURCES.length ||
     typeof value.review_mode !== "string" ||
     !["manual", "automatic"].includes(value.review_mode) ||
     typeof value.turnover_multiple !== "string" ||
@@ -195,7 +196,7 @@ function validBrandConfig(
     sources.every(
       (source) =>
         typeof source === "string" &&
-        ["recharge", "winning", "gift"].includes(source),
+        (WALLET_SOURCES as readonly string[]).includes(source),
     ) && new Set(sources).size === sources.length
   );
 }

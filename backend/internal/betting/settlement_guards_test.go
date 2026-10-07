@@ -3,11 +3,13 @@ package betting
 import (
 	"context"
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/jackc/pgx/v5"
-	"testing"
-	"time"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestSettlementJobLossFinalizesWithoutZeroValueLedger(t *testing.T) {
@@ -58,14 +60,54 @@ func TestSettlementJobRejectsIncompletePrizeLedgerEvenWithMatchingReferences(t *
 	}
 	defer tx.Rollback(ctx)
 	entry := ids.New()
+	if _, e = tx.Exec(ctx, `SAVEPOINT malformed_prize_attempt`); e != nil {
+		t.Fatal(e)
+	}
+	_, e = tx.Exec(ctx, `INSERT INTO point_ledger_entries(id,brand_id,account_id,member_id,version,entry_type,reference_type,reference_id,operation_key,before_snapshot,delta_snapshot,after_snapshot,source_allocation,reason,actor_type,request_id,request_hash)
+ SELECT $1,brand_id,account_id,member_id,version+1,'prize','settlement_calculation',$2::uuid,'settlement-payout:'||$2::uuid::text,after_snapshot,'{}',after_snapshot,'[{"source":"winning","state":"available","points":"10"}]','test incomplete JSON','system','test-forged-prize',repeat('0',64) FROM point_ledger_entries WHERE id=$3`, entry, calc, o.DebitEntryID)
+	var pgerr *pgconn.PgError
+	if !errors.As(e, &pgerr) || pgerr.ConstraintName != "ledger_four_source_snapshot" {
+		t.Fatalf("malformed historical-width prize row should be rejected by the 16-bucket insert guard, got %v", e)
+	}
+	// Preserve the original matching-reference regression as well. In this
+	// owned test transaction only, bypass the strict snapshot INSERT guard long
+	// enough to create a malformed row with the exact settlement reference. The
+	// trigger is restored before attempting payout, and the transaction is
+	// always rolled back, so this is not a production weakening or committed
+	// evidence.
+	if _, rollbackErr := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT malformed_prize_attempt`); rollbackErr != nil {
+		t.Fatal(rollbackErr)
+	}
+	if _, e = tx.Exec(ctx, `SAVEPOINT malformed_prize_fixture`); e != nil {
+		t.Fatal(e)
+	}
+	// Temporarily suppress the deferred projection trigger too, so PostgreSQL
+	// has no queued trigger event preventing us from restoring the strict
+	// BEFORE trigger immediately after the synthetic INSERT. The entire tx is
+	// rolled back below; neither guard is disabled outside this test fixture.
+	if _, e = tx.Exec(ctx, `ALTER TABLE point_ledger_entries DISABLE TRIGGER ledger_four_source_projection`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = tx.Exec(ctx, `ALTER TABLE point_ledger_entries DISABLE TRIGGER ledger_four_source_snapshot`); e != nil {
+		t.Fatal(e)
+	}
 	_, e = tx.Exec(ctx, `INSERT INTO point_ledger_entries(id,brand_id,account_id,member_id,version,entry_type,reference_type,reference_id,operation_key,before_snapshot,delta_snapshot,after_snapshot,source_allocation,reason,actor_type,request_id,request_hash)
  SELECT $1,brand_id,account_id,member_id,version+1,'prize','settlement_calculation',$2::uuid,'settlement-payout:'||$2::uuid::text,after_snapshot,'{}',after_snapshot,'[{"source":"winning","state":"available","points":"10"}]','test incomplete JSON','system','test-forged-prize',repeat('0',64) FROM point_ledger_entries WHERE id=$3`, entry, calc, o.DebitEntryID)
 	if e != nil {
+		if _, rollbackErr := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT malformed_prize_fixture`); rollbackErr != nil {
+			t.Fatalf("malformed fixture insert failed (%v), then rollback failed: %v", e, rollbackErr)
+		}
+		t.Fatalf("could not install controlled matching-reference malformed row: %v", e)
+	}
+	if _, e = tx.Exec(ctx, `ALTER TABLE point_ledger_entries ENABLE TRIGGER ledger_four_source_snapshot`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = tx.Exec(ctx, `ALTER TABLE point_ledger_entries ENABLE TRIGGER ledger_four_source_projection`); e != nil {
 		t.Fatal(e)
 	}
 	_, e = tx.Exec(ctx, `UPDATE bet_orders SET status='won',version=version+1,settlement_calculation_id=$2,payout_entry_id=$3,prize_points=10,settled_at=clock_timestamp() WHERE id=$1`, o.ID, calc, entry)
-	if e == nil {
-		t.Fatal("accepted a prize reference without its winning delta or applied balance")
+	if !errors.As(e, &pgerr) || pgerr.Message != "incomplete settlement payout witness" {
+		t.Fatalf("matching malformed prize row should fail at the original payout witness guard, got %v", e)
 	}
 	_ = tx.Rollback(ctx)
 	if walletBySource(t, f)[1][0] != 0 {

@@ -69427,7 +69427,7 @@
         "tags": [
           "withdrawals"
         ],
-        "description": "Primary-only, current authenticated member, with no query parameters or request body. Shared wallet locking and NOWAIT period locks produce a readonly exact summary; no points, orders, successful cycles or idempotency receipts are changed. The credit is a fraction, not rounded points. meets_turnover equals credit_numerator >= base_points * credit_denominator; cycle_from_version <= cutoff_version, and cycle_from_at is null exactly when cycle_from_version is zero. This preview is not permission, funds availability, a reservation or a submission token. POST independently rechecks its own current wallet/turnover/policy/compliance/session. Incomplete evidence returns 409 WITHDRAWAL_TURNOVER_EVIDENCE_INVALID, contention returns retryable 503 WITHDRAWAL_TURNOVER_BUSY. Raw snapshots, rule IDs and internal digests are excluded.",
+        "description": "Primary-only, current authenticated member, with no query parameters or request body. Shared wallet locking and NOWAIT period locks produce a readonly exact summary; no points, orders, successful cycles or idempotency receipts are changed. Valid turnover includes valid bets funded by recharge, winning, gift, or commission sources. The base amount remains available recharge plus gift only; commission is not added to that base. The credit is a fraction, not rounded points. meets_turnover equals credit_numerator >= base_points * credit_denominator; cycle_from_version <= cutoff_version, and cycle_from_at is null exactly when cycle_from_version is zero. This preview is not permission, funds availability, a reservation or a submission token. POST independently rechecks its own current wallet/turnover/policy/compliance/session. Incomplete evidence returns 409 WITHDRAWAL_TURNOVER_EVIDENCE_INVALID, contention returns retryable 503 WITHDRAWAL_TURNOVER_BUSY. Raw snapshots, rule IDs and internal digests are excluded.",
         "security": [
           {
             "userBearer": []
@@ -69726,7 +69726,7 @@
         "tags": [
           "withdrawals"
         ],
-        "description": "Primary-only, current authenticated member, with no query parameters or request body. Shared wallet locking and NOWAIT period locks produce a readonly exact summary; no points, orders, successful cycles or idempotency receipts are changed. The credit is a fraction, not rounded points. meets_turnover equals credit_numerator >= base_points * credit_denominator; cycle_from_version <= cutoff_version, and cycle_from_at is null exactly when cycle_from_version is zero. This preview is not permission, funds availability, a reservation or a submission token. POST independently rechecks its own current wallet/turnover/policy/compliance/session. Incomplete evidence returns 409 WITHDRAWAL_TURNOVER_EVIDENCE_INVALID, contention returns retryable 503 WITHDRAWAL_TURNOVER_BUSY. Raw snapshots, rule IDs and internal digests are excluded.",
+        "description": "Primary-only, current authenticated member, with no query parameters or request body. Shared wallet locking and NOWAIT period locks produce a readonly exact summary; no points, orders, successful cycles or idempotency receipts are changed. Valid turnover includes valid bets funded by recharge, winning, gift, or commission sources. The base amount remains available recharge plus gift only; commission is not added to that base. The credit is a fraction, not rounded points. meets_turnover equals credit_numerator >= base_points * credit_denominator; cycle_from_version <= cutoff_version, and cycle_from_at is null exactly when cycle_from_version is zero. This preview is not permission, funds availability, a reservation or a submission token. POST independently rechecks its own current wallet/turnover/policy/compliance/session. Incomplete evidence returns 409 WITHDRAWAL_TURNOVER_EVIDENCE_INVALID, contention returns retryable 503 WITHDRAWAL_TURNOVER_BUSY. Raw snapshots, rule IDs and internal digests are excluded.",
         "security": [
           {
             "userBearer": []
@@ -80034,6 +80034,222 @@
               "withdrawal"
             ],
             "additionalProperties": false
+          },
+          "commission": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "manual_frozen": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "system_frozen": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "withdrawal": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              }
+            },
+            "required": [
+              "available",
+              "manual_frozen",
+              "system_frozen",
+              "withdrawal"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "recharge",
+          "winning",
+          "gift",
+          "commission"
+        ],
+        "additionalProperties": false
+      },
+      "FinanceDeltaBalance": {
+        "type": "object",
+        "properties": {
+          "recharge": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "$ref": "#/components/schemas/Int64String"
+              },
+              "manual_frozen": {
+                "$ref": "#/components/schemas/Int64String"
+              },
+              "system_frozen": {
+                "$ref": "#/components/schemas/Int64String"
+              },
+              "withdrawal": {
+                "$ref": "#/components/schemas/Int64String"
+              }
+            },
+            "required": [
+              "available",
+              "manual_frozen",
+              "system_frozen",
+              "withdrawal"
+            ],
+            "additionalProperties": false
+          },
+          "winning": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "$ref": "#/components/schemas/Int64String"
+              },
+              "manual_frozen": {
+                "$ref": "#/components/schemas/Int64String"
+              },
+              "system_frozen": {
+                "$ref": "#/components/schemas/Int64String"
+              },
+              "withdrawal": {
+                "$ref": "#/components/schemas/Int64String"
+              }
+            },
+            "required": [
+              "available",
+              "manual_frozen",
+              "system_frozen",
+              "withdrawal"
+            ],
+            "additionalProperties": false
+          },
+          "gift": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "$ref": "#/components/schemas/Int64String"
+              },
+              "manual_frozen": {
+                "$ref": "#/components/schemas/Int64String"
+              },
+              "system_frozen": {
+                "$ref": "#/components/schemas/Int64String"
+              },
+              "withdrawal": {
+                "$ref": "#/components/schemas/Int64String"
+              }
+            },
+            "required": [
+              "available",
+              "manual_frozen",
+              "system_frozen",
+              "withdrawal"
+            ],
+            "additionalProperties": false
+          },
+          "commission": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "$ref": "#/components/schemas/Int64String"
+              },
+              "manual_frozen": {
+                "$ref": "#/components/schemas/Int64String"
+              },
+              "system_frozen": {
+                "$ref": "#/components/schemas/Int64String"
+              },
+              "withdrawal": {
+                "$ref": "#/components/schemas/Int64String"
+              }
+            },
+            "required": [
+              "available",
+              "manual_frozen",
+              "system_frozen",
+              "withdrawal"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "recharge",
+          "winning",
+          "gift",
+          "commission"
+        ],
+        "additionalProperties": false
+      },
+      "FinanceLegacyBalance": {
+        "type": "object",
+        "properties": {
+          "recharge": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "manual_frozen": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "system_frozen": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "withdrawal": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              }
+            },
+            "required": [
+              "available",
+              "manual_frozen",
+              "system_frozen",
+              "withdrawal"
+            ],
+            "additionalProperties": false
+          },
+          "winning": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "manual_frozen": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "system_frozen": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "withdrawal": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              }
+            },
+            "required": [
+              "available",
+              "manual_frozen",
+              "system_frozen",
+              "withdrawal"
+            ],
+            "additionalProperties": false
+          },
+          "gift": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "manual_frozen": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "system_frozen": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "withdrawal": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              }
+            },
+            "required": [
+              "available",
+              "manual_frozen",
+              "system_frozen",
+              "withdrawal"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -80043,7 +80259,7 @@
         ],
         "additionalProperties": false
       },
-      "FinanceDeltaBalance": {
+      "FinanceLegacyDeltaBalance": {
         "type": "object",
         "properties": {
           "recharge": {
@@ -80126,6 +80342,26 @@
         ],
         "additionalProperties": false
       },
+      "FinanceLedgerBalance": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/FinanceBalance"
+          },
+          {
+            "$ref": "#/components/schemas/FinanceLegacyBalance"
+          }
+        ]
+      },
+      "FinanceLedgerDeltaBalance": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/FinanceDeltaBalance"
+          },
+          {
+            "$ref": "#/components/schemas/FinanceLegacyDeltaBalance"
+          }
+        ]
+      },
       "FinanceAllocation": {
         "type": "object",
         "properties": {
@@ -80134,7 +80370,8 @@
             "enum": [
               "recharge",
               "winning",
-              "gift"
+              "gift",
+              "commission"
             ]
           },
           "state": {
@@ -80193,6 +80430,10 @@
           "gift_points": {
             "$ref": "#/components/schemas/NonnegativeInt64String"
           },
+          "commission_points": {
+            "$ref": "#/components/schemas/NonnegativeInt64String",
+            "description": "Current commission-source balance in this wallet. Presence does not claim a commission accrual or financial payout worker."
+          },
           "manual_frozen_points": {
             "$ref": "#/components/schemas/NonnegativeInt64String"
           },
@@ -80215,6 +80456,7 @@
           "recharge_points",
           "winning_points",
           "gift_points",
+          "commission_points",
           "manual_frozen_points",
           "system_frozen_points",
           "by_source"
@@ -80291,13 +80533,13 @@
             "type": "integer"
           },
           "before_snapshot": {
-            "$ref": "#/components/schemas/FinanceBalance"
+            "$ref": "#/components/schemas/FinanceLedgerBalance"
           },
           "delta_snapshot": {
-            "$ref": "#/components/schemas/FinanceDeltaBalance"
+            "$ref": "#/components/schemas/FinanceLedgerDeltaBalance"
           },
           "after_snapshot": {
-            "$ref": "#/components/schemas/FinanceBalance"
+            "$ref": "#/components/schemas/FinanceLedgerBalance"
           },
           "source_allocation": {
             "type": "array",
@@ -80305,7 +80547,7 @@
               "$ref": "#/components/schemas/FinanceAllocation"
             },
             "minItems": 1,
-            "maxItems": 3
+            "maxItems": 4
           },
           "created_at": {
             "$ref": "#/components/schemas/DateTime"
@@ -80517,7 +80759,8 @@
             "enum": [
               "recharge",
               "winning",
-              "gift"
+              "gift",
+              "commission"
             ]
           },
           "delta": {
@@ -80754,6 +80997,27 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/NonnegativeInt64String"
             }
+          },
+          "commission": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "manual_frozen": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "system_frozen": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              },
+              "withdrawal": {
+                "$ref": "#/components/schemas/NonnegativeInt64String"
+              }
+            },
+            "required": [],
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NonnegativeInt64String"
+            }
           }
         },
         "required": [],
@@ -80839,7 +81103,7 @@
           "buckets": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/FinanceBalance"
+                "$ref": "#/components/schemas/FinanceLedgerBalance"
               },
               {
                 "$ref": "#/components/schemas/FinanceRepairActual"
@@ -81319,9 +81583,13 @@
               "enum": [
                 "recharge",
                 "winning",
-                "gift"
+                "gift",
+                "commission"
               ]
-            }
+            },
+            "minItems": 1,
+            "maxItems": 4,
+            "uniqueItems": true
           },
           "review_mode": {
             "type": "string",
@@ -81396,9 +81664,13 @@
               "enum": [
                 "recharge",
                 "winning",
-                "gift"
+                "gift",
+                "commission"
               ]
-            }
+            },
+            "minItems": 1,
+            "maxItems": 4,
+            "uniqueItems": true
           },
           "review_mode": {
             "type": "string",
@@ -88169,7 +88441,8 @@
             "enum": [
               "recharge",
               "winning",
-              "gift"
+              "gift",
+              "commission"
             ]
           },
           "state": {
@@ -88228,8 +88501,8 @@
               "$ref": "#/components/schemas/WithdrawalSourceAllocation"
             },
             "minItems": 1,
-            "maxItems": 3,
-            "description": "Only positive available allocations; sources are unique and sorted recharge, winning, gift, and their points sum exactly to the order points."
+            "maxItems": 4,
+            "description": "Only positive available allocations; sources are unique and sorted recharge, winning, gift, commission, and their points sum exactly to the order points."
           },
           "reserve_entry_id": {
             "$ref": "#/components/schemas/UUID"
@@ -88523,11 +88796,12 @@
               "enum": [
                 "recharge",
                 "winning",
-                "gift"
+                "gift",
+                "commission"
               ]
             },
             "minItems": 1,
-            "maxItems": 3,
+            "maxItems": 4,
             "uniqueItems": true
           },
           "real_payments": {
@@ -88641,8 +88915,8 @@
               "$ref": "#/components/schemas/WithdrawalSourceAllocation"
             },
             "minItems": 1,
-            "maxItems": 3,
-            "description": "Positive available allocations only. Sources must be unique, sorted recharge then winning then gift, and sum exactly to points."
+            "maxItems": 4,
+            "description": "Positive available allocations only. Sources must be unique, sorted recharge then winning then gift then commission, and sum exactly to points."
           }
         },
         "required": [

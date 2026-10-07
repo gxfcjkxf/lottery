@@ -12,7 +12,7 @@ const safeVersion = {
   description: "Positive version exactly representable as a JSON/JavaScript integer.",
 };
 const state = { type: "string", enum: ["reviewing", "processing", "paid", "rejected", "failed", "cancelled"] };
-const sources = { type: "string", enum: ["recharge", "winning", "gift"] };
+const sources = { type: "string", enum: ["recharge", "winning", "gift", "commission"] };
 const pagination = [
   { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }, description: "Page size (default 20; maximum 100)." },
   { name: "offset", in: "query", required: false, schema: { type: "integer", minimum: 0, maximum: 1000000, default: 0 }, description: "Number of records to skip (default 0; maximum 1000000)." },
@@ -38,13 +38,13 @@ const admin = (method, path, operationId, summary, data, permission, extra = {})
 const allocation = obj({ source: sources, state: { type: "string", const: "available" }, points: positiveAmount });
 const order = obj({
   id: uuid, brand_id: uuid, member_id: uuid, account_id: uuid, points: positiveAmount,
-  state, version: safeVersion, source_allocation: { type: "array", items: ref("WithdrawalSourceAllocation"), minItems: 1, maxItems: 3 },
+  state, version: safeVersion, source_allocation: { type: "array", items: ref("WithdrawalSourceAllocation"), minItems: 1, maxItems: 4 },
   reserve_entry_id: uuid, release_entry_id: nullable(uuid), paid_entry_id: nullable(uuid),
   cycle_from_at: nullable(dateTime), cycle_from_version: ref("NonnegativeInt64String"), reserve_version: ref("PositiveInt64String"),
   created_at: dateTime, updated_at: dateTime, reviewed_at: nullable(dateTime), completed_at: nullable(dateTime),
   decision_reason: { type: "string" }, audit_log_id: uuid,
 }, undefined);
-order.properties.source_allocation.description = "Only positive available allocations; sources are unique and sorted recharge, winning, gift, and their points sum exactly to the order points.";
+order.properties.source_allocation.description = "Only positive available allocations; sources are unique and sorted recharge, winning, gift, commission, and their points sum exactly to the order points.";
 order.description = "Sanitized order view. Policy snapshots, eligibility evidence, actor IDs, and client idempotency keys are never exposed. User reads redact decision_reason except for rejection, failure, or cancellation; administrator reads include the full reason.";
 
 const transition = obj({
@@ -78,7 +78,7 @@ export const schemas = {
     brand_id: uuid, member_id: uuid, policy_enabled: { type: "boolean" }, eligibility_configured: { type: "boolean" },
     can_apply: { type: "boolean" },
     reason_code: { type: "string", enum: ["AVAILABLE", "WITHDRAWAL_DISABLED", "WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED", "WITHDRAWAL_ACCOUNT_RESTRICTED"] },
-    min_points: positiveAmount, max_points: nullable(positiveAmount), allowed_sources: { type: "array", items: sources, minItems: 1, maxItems: 3, uniqueItems: true },
+    min_points: positiveAmount, max_points: nullable(positiveAmount), allowed_sources: { type: "array", items: sources, minItems: 1, maxItems: 4, uniqueItems: true },
     real_payments: { type: "boolean", const: false }, actor_context: { type: "string", pattern: "^[0-9a-f]{64}$" },
   }),
   WithdrawalQualification: obj({
@@ -92,18 +92,18 @@ export const schemas = {
   }),
   WithdrawalCreateRequest: obj({
     points: positiveAmount,
-    source_allocation: { type: "array", items: ref("WithdrawalSourceAllocation"), minItems: 1, maxItems: 3 },
+    source_allocation: { type: "array", items: ref("WithdrawalSourceAllocation"), minItems: 1, maxItems: 4 },
   }),
   WithdrawalActionRequest: obj({ version: safeVersion, reason: ref("Reason") }),
 };
-schemas.WithdrawalCreateRequest.properties.source_allocation.description = "Positive available allocations only. Sources must be unique, sorted recharge then winning then gift, and sum exactly to points.";
+schemas.WithdrawalCreateRequest.properties.source_allocation.description = "Positive available allocations only. Sources must be unique, sorted recharge then winning then gift then commission, and sum exactly to points.";
 
 export const operations = [
   user("GET", "/withdrawal-availability", "getWithdrawalAvailability", "Get withdrawal availability", ref("WithdrawalAvailability"), {
     description: "Returns current policy and eligibility availability for the authenticated member, plus an opaque actor_context token bound to the actual global user and brand member. The token must be sent unchanged when creating an order; it is not a client-selected identity.",
   }),
   user("GET", "/withdrawal-qualification", "getWithdrawalQualification", "Preview the authenticated member's turnover condition", ref("WithdrawalQualification"), {
-    description: "Primary-only, current authenticated member, with no query parameters or request body. Shared wallet locking and NOWAIT period locks produce a readonly exact summary; no points, orders, successful cycles or idempotency receipts are changed. The credit is a fraction, not rounded points. meets_turnover equals credit_numerator >= base_points * credit_denominator; cycle_from_version <= cutoff_version, and cycle_from_at is null exactly when cycle_from_version is zero. This preview is not permission, funds availability, a reservation or a submission token. POST independently rechecks its own current wallet/turnover/policy/compliance/session. Incomplete evidence returns 409 WITHDRAWAL_TURNOVER_EVIDENCE_INVALID, contention returns retryable 503 WITHDRAWAL_TURNOVER_BUSY. Raw snapshots, rule IDs and internal digests are excluded.",
+    description: "Primary-only, current authenticated member, with no query parameters or request body. Shared wallet locking and NOWAIT period locks produce a readonly exact summary; no points, orders, successful cycles or idempotency receipts are changed. Valid turnover includes valid bets funded by recharge, winning, gift, or commission sources. The base amount remains available recharge plus gift only; commission is not added to that base. The credit is a fraction, not rounded points. meets_turnover equals credit_numerator >= base_points * credit_denominator; cycle_from_version <= cutoff_version, and cycle_from_at is null exactly when cycle_from_version is zero. This preview is not permission, funds availability, a reservation or a submission token. POST independently rechecks its own current wallet/turnover/policy/compliance/session. Incomplete evidence returns 409 WITHDRAWAL_TURNOVER_EVIDENCE_INVALID, contention returns retryable 503 WITHDRAWAL_TURNOVER_BUSY. Raw snapshots, rule IDs and internal digests are excluded.",
   }),
   user("GET", "/withdrawals", "listWithdrawalOrders", "List the authenticated member's withdrawal orders", ref("WithdrawalOrderPage"), {
     parameters: [...pagination, { name: "state", in: "query", required: false, schema: state }],

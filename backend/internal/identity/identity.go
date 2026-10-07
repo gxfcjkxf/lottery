@@ -304,7 +304,7 @@ func (s *Store) createMember(ctx context.Context, tx pgx.Tx, brand, user, privac
 	if _, err = tx.Exec(ctx, `INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, account, brand, m.ID); err != nil {
 		return m, err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,source,state FROM unnest(ARRAY['recharge','winning','gift']) AS source CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) AS state`, brand, account)
+	_, err = tx.Exec(ctx, `INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,source,state FROM unnest(ARRAY['recharge','winning','gift','commission']) AS source CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) AS state ON CONFLICT DO NOTHING`, brand, account)
 	if err == nil {
 		err = events.Append(ctx, tx, brand, "member.joined", m.ID, m.ID, nil)
 	}

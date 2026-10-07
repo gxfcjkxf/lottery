@@ -36,7 +36,7 @@ const copy = computed(() =>
         version: "账本版本",
         memberWallet: "会员钱包",
         buckets: "来源与状态",
-        bucketsIntro: "逐项显示 12 个积分桶。",
+        bucketsIntro: "逐项显示 16 个积分桶。",
         ledger: "钱包流水",
         ledgerIntro: "展示每笔变动前、变动额及变动后各积分桶。",
         empty: "当前页没有钱包流水。",
@@ -47,7 +47,7 @@ const copy = computed(() =>
         page: (number: number) => `第 ${number} 页`,
         previous: "上一页",
         next: "下一页",
-        sources: { recharge: "充值", winning: "中奖", gift: "赠送" },
+        sources: { recharge: "充值", winning: "中奖", gift: "赠送", commission: "佣金" },
         states: {
           available: "可用",
           manual_frozen: "人工冻结",
@@ -76,7 +76,7 @@ const copy = computed(() =>
         version: "Ledger version",
         memberWallet: "Member wallet",
         buckets: "Sources and states",
-        bucketsIntro: "All 12 points buckets.",
+        bucketsIntro: "All 16 points buckets.",
         ledger: "Wallet ledger",
         ledgerIntro:
           "Each entry shows all buckets before, delta, and after the change.",
@@ -88,7 +88,7 @@ const copy = computed(() =>
         page: (number: number) => `Page ${number}`,
         previous: "Previous",
         next: "Next",
-        sources: { recharge: "Recharge", winning: "Winning", gift: "Gift" },
+        sources: { recharge: "Recharge", winning: "Winning", gift: "Gift", commission: "Commission" },
         states: {
           available: "Available",
           manual_frozen: "Manual freeze",
@@ -99,7 +99,7 @@ const copy = computed(() =>
       },
 );
 const PAGE_SIZE = 50;
-const sources: WalletSource[] = ["recharge", "winning", "gift"];
+const sources: WalletSource[] = ["recharge", "winning", "gift", "commission"];
 const states: WalletState[] = [
   "available",
   "manual_frozen",

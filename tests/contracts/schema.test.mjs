@@ -84,6 +84,19 @@ test("new withdrawal policy writes require positive N while legacy zero history 
   assert.ok(validate("FinanceWithdrawalBrandConfig")(brand));
   assert.ok(!validate("FinanceWithdrawalBrandWriteConfig")(brand));
   assert.ok(validate("FinanceWithdrawalBrandWriteConfig")({...brand,turnover_multiple:"1"}));
+  assert.ok(validate("FinanceWithdrawalBrandWriteConfig")({...brand,allowed_sources:["recharge","winning","gift","commission"],turnover_multiple:"1"}));
+});
+test("wallet is a strict four-source DTO while immutable ledger snapshots retain a legacy three-source shape",()=>{
+  const schemas=doc.components.schemas;
+  assert.deepEqual(Object.keys(schemas.FinanceBalance.properties),["recharge","winning","gift","commission"]);
+  assert.ok(schemas.FinanceWallet.required.includes("commission_points"));
+  assert.equal(schemas.FinanceBalance.additionalProperties,false);
+  assert.deepEqual(schemas.FinanceEntry.properties.before_snapshot,{$ref:"#/components/schemas/FinanceLedgerBalance"});
+  assert.deepEqual(schemas.FinanceEntry.properties.after_snapshot,{$ref:"#/components/schemas/FinanceLedgerBalance"});
+  assert.deepEqual(schemas.FinanceEntry.properties.delta_snapshot,{$ref:"#/components/schemas/FinanceLedgerDeltaBalance"});
+  assert.ok(schemas.FinanceLedgerBalance.anyOf.some((schema)=>schema.$ref==="#/components/schemas/FinanceLegacyBalance"));
+  assert.ok(schemas.FinanceLedgerDeltaBalance.anyOf.some((schema)=>schema.$ref==="#/components/schemas/FinanceLegacyDeltaBalance"));
+  assert.equal(schemas.FinanceEntry.properties.source_allocation.maxItems,4);
 });
 test("admin logout uses admin authentication while unsupported payout operations remain absent",()=>{
   assert.deepEqual(doc.paths["/api/v1/admin/auth/logout"].post.security,[{adminBearer:[]},{adminCookie:[]}]);

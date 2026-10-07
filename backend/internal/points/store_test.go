@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -28,11 +29,15 @@ func fixture(t *testing.T) (*pgxpool.Pool, Store, string) {
 		{`INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'test-only-opaque-hash')`, []any{user, "points_" + user}},
 		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, []any{member, testBrand, user}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{account, testBrand, member}},
-		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])t`, []any{testBrand, account}},
+		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift','commission'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])t ON CONFLICT(brand_id,account_id,source,state) DO NOTHING`, []any{testBrand, account}},
 	} {
 		if _, err := p.Exec(ctx, q.sql, q.args...); err != nil {
 			t.Fatal(err)
 		}
+	}
+	var bucketCount int
+	if err := p.QueryRow(ctx, `SELECT count(*) FROM point_buckets WHERE brand_id=$1 AND account_id=$2`, testBrand, account).Scan(&bucketCount); err != nil || bucketCount != 16 {
+		t.Fatalf("fixture bucket count=%d err=%v", bucketCount, err)
 	}
 	return p, Store{DB: p}, member
 }
@@ -59,7 +64,7 @@ func post(t *testing.T, p *pgxpool.Pool, s Store, c Change) Entry {
 func credit(t *testing.T, p *pgxpool.Pool, s Store, member string, source int, amount Amount) Entry {
 	var d Balance
 	d[source][0] = amount
-	return post(t, p, s, change(member, ids.New(), d, []Allocation{{Source: []string{"recharge", "winning", "gift"}[source], State: "available", Points: amount}}))
+	return post(t, p, s, change(member, ids.New(), d, []Allocation{{Source: sourceNames[source], State: "available", Points: amount}}))
 }
 func TestLedgerReconstructReplayAndExactRefund(t *testing.T) {
 	p, s, member := fixture(t)
@@ -128,6 +133,59 @@ func TestLedgerReconstructReplayAndExactRefund(t *testing.T) {
 		}
 	}
 }
+
+func TestCommissionDebitAndExactRefundAcrossDebitPriority(t *testing.T) {
+	p, s, member := fixture(t)
+	credit(t, p, s, member, 0, 2)
+	credit(t, p, s, member, 1, 3)
+	credit(t, p, s, member, 2, 5)
+	credit(t, p, s, member, 3, 7)
+	ctx := context.Background()
+	wallet, err := s.Read(ctx, testBrand, member)
+	if err != nil || wallet.CommissionPoints != 7 || wallet.AvailablePoints != 17 {
+		t.Fatalf("commission wallet=%+v err=%v", wallet, err)
+	}
+	allocations, err := wallet.BySource.Allocate(17, "available")
+	want := []Allocation{
+		{Source: "recharge", State: "available", Points: 2},
+		{Source: "winning", State: "available", Points: 3},
+		{Source: "commission", State: "available", Points: 7},
+		{Source: "gift", State: "available", Points: 5},
+	}
+	if err != nil || !reflect.DeepEqual(allocations, want) {
+		t.Fatalf("commission debit allocations=%+v err=%v want=%+v", allocations, err, want)
+	}
+	delta, err := AllocationDelta(allocations, "available", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	debit := change(member, "commission-debit-refund", delta, allocations)
+	debit.EntryType = "bet"
+	entry := post(t, p, s, debit)
+	if entry.After[3][0] != 0 {
+		t.Fatalf("commission debit left commission balance: %v", entry.After[3])
+	}
+	tx, err := p.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Reverse(ctx, tx, testBrand, member, entry.ID, "commission-debit-refund-reversal", "restore original source allocations", Metadata{ActorType: "system", RequestID: ids.New()}); err != nil {
+		tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := s.Read(ctx, testBrand, member)
+	if err != nil || restored.BySource != wallet.BySource || restored.CommissionPoints != 7 {
+		t.Fatalf("commission refund wallet=%+v err=%v", restored, err)
+	}
+	reconciled, err := s.Reconcile(ctx, testBrand, member)
+	if err != nil || !reconciled.Consistent {
+		t.Fatalf("commission refund reconciliation=%+v err=%v", reconciled, err)
+	}
+}
+
 func TestConcurrentDebitsNeverOverdraw(t *testing.T) {
 	p, s, member := fixture(t)
 	credit(t, p, s, member, 0, 100)
@@ -242,7 +300,7 @@ func TestOverflowMissingBucketAndOutOfBandChangeFailClosed(t *testing.T) {
 	if !errors.Is(err, ErrCorrupt) {
 		t.Fatal(err)
 	}
-	if _, err = p.Exec(ctx, `DELETE FROM point_buckets WHERE account_id=$1 AND source='gift' AND state='withdrawal'`, w.AccountID); err != nil {
+	if _, err = p.Exec(ctx, `DELETE FROM point_buckets WHERE account_id=$1 AND source='commission' AND state='withdrawal'`, w.AccountID); err != nil {
 		t.Fatal(err)
 	}
 	_, err = s.Read(ctx, testBrand, member)

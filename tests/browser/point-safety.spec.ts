@@ -146,6 +146,8 @@ test("brand point policy persists; pending recharge cancellation does not credit
     .fill("100");
   await wp.getByLabel("品牌：默认流水倍数 N", { exact: true }).fill("2.5");
   await wp.getByLabel("赠送", { exact: true }).uncheck();
+  await expect(wp.getByLabel("佣金", { exact: true })).not.toBeChecked();
+  await wp.getByLabel("佣金", { exact: true }).check();
   await wp
     .getByLabel(/^品牌：变更原因/)
     .fill("real withdrawal settings without eligibility execution");
@@ -203,7 +205,7 @@ test("brand point policy persists; pending recharge cancellation does not credit
       enabled: true,
       min_points: "10",
       max_points: "100",
-      allowed_sources: ["recharge", "winning"],
+      allowed_sources: ["recharge", "winning", "commission"],
       review_mode: "manual",
       turnover_multiple: "2.5",
     },

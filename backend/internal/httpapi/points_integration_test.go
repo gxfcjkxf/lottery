@@ -110,8 +110,8 @@ func TestPointsHTTPRechargeWalletFreezeAdjustAndIsolation(t *testing.T) {
 		t.Fatalf("initial wallet mismatch: %+v", wallet)
 	}
 	var bucketCount int
-	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM point_buckets WHERE brand_id=$1 AND account_id=$2`, managedBrand, wallet.AccountID).Scan(&bucketCount); err != nil || bucketCount != 12 {
-		t.Fatalf("wallet has %d buckets err=%v, want all 12", bucketCount, err)
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM point_buckets WHERE brand_id=$1 AND account_id=$2`, managedBrand, wallet.AccountID).Scan(&bucketCount); err != nil || bucketCount != 16 {
+		t.Fatalf("wallet has %d buckets err=%v, want all 16", bucketCount, err)
 	}
 
 	recharge := pointRecharge(t, f, "250", "verified offline payment", "points-recharge-create-001")

@@ -1,13 +1,14 @@
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import type { FinanceAccount, SourceBuckets, WalletSource, WalletState } from "./finance-api";
 import type { RepairPreview } from "./repair-api";
+import { normalizeSourceBuckets, WALLET_SOURCES } from "@lottery/shared";
 
 const BASE = "/api/v1/admin/reconciliations";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_CODE_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
 const MAX_PAGE_SIZE = 100;
 const MAX_OFFSET = 1_000_000;
-const SOURCES: readonly WalletSource[] = ["recharge", "winning", "gift"];
+const SOURCES: readonly WalletSource[] = WALLET_SOURCES;
 const STATES: readonly WalletState[] = ["available", "manual_frozen", "system_frozen", "withdrawal"];
 
 export type ReconciliationJobState = "pending" | "running" | "completed" | "failed";
@@ -93,22 +94,31 @@ function hasLoneSurrogate(value: string): boolean {
   }
   return false;
 }
-function validBuckets(value: unknown, sparse: boolean, allowNegative = sparse): boolean {
-  if (!isRecord(value) || (sparse ? Object.keys(value).some((key) => !(SOURCES as readonly string[]).includes(key)) : !exact(value, SOURCES))) return false;
-  return Object.entries(value).every(([source, buckets]) => (SOURCES as readonly string[]).includes(source) && isRecord(buckets) &&
-    (sparse ? Object.keys(buckets).every((key) => (STATES as readonly string[]).includes(key)) : exact(buckets, STATES)) &&
-    Object.values(buckets).every((amount) => int64(amount) && (allowNegative || !amount.startsWith("-"))));
+function normalizedBuckets(value: unknown, sparse: boolean, allowNegative = sparse): Record<string, Record<string, string>> | null {
+  const complete = normalizeSourceBuckets(value, allowNegative);
+  if (complete) return complete;
+  if (!sparse || !isRecord(value) || Object.keys(value).some((key) => !(SOURCES as readonly string[]).includes(key))) return null;
+  if (!Object.entries(value).every(([source, buckets]) => (SOURCES as readonly string[]).includes(source) && isRecord(buckets) &&
+    Object.keys(buckets).every((key) => (STATES as readonly string[]).includes(key)) &&
+    Object.values(buckets).every((amount) => int64(amount) && (allowNegative || !amount.startsWith("-"))))) return null;
+  return value as Record<string, Record<string, string>>;
 }
 function validPreview(value: unknown, target: { account_id: string; member_id: string }): value is RepairPreview {
   if (!isRecord(value) || !exact(value, ["account_id", "member_id", "version", "ledger_version", "actual", "expected", "repairable", "consistent", "issues", "token"]) ||
     !sameUuid(value.account_id, target.account_id) || !sameUuid(value.member_id, target.member_id) || !nonnegativeInt(value.version) || !nonnegativeInt(value.ledger_version) ||
-    !validBuckets(value.actual, true, true) || !validBuckets(value.expected, false, false) || typeof value.repairable !== "boolean" || typeof value.consistent !== "boolean" ||
+    typeof value.repairable !== "boolean" || typeof value.consistent !== "boolean" ||
     !Array.isArray(value.issues) || !value.issues.every((issue) => typeof issue === "string") ||
     typeof value.token !== "string" || !/^[0-9a-f]{64}$/.test(value.token) || (value.repairable && value.consistent)) return false;
+  const actual = normalizedBuckets(value.actual, true, true);
+  const expected = normalizedBuckets(value.expected, false, false);
+  if (!actual || !expected) return false;
+  value.actual = actual;
+  value.expected = expected;
   if(value.consistent){
-    if(value.issues.length!==0||value.version!==value.ledger_version||!validBuckets(value.actual,false,false))return false;
-    const actual=value.actual as Record<string,Record<string,string>>,expected=value.expected as Record<string,Record<string,string>>;
-    if(!SOURCES.every(source=>STATES.every(state=>actual[source][state]===expected[source][state])))return false;
+    const completeActual = normalizeSourceBuckets(actual, false);
+    const completeExpected = normalizeSourceBuckets(expected, false);
+    if(value.issues.length!==0||value.version!==value.ledger_version||!completeActual||!completeExpected)return false;
+    if(!SOURCES.every(source=>STATES.every(state=>completeActual[source][state]===completeExpected[source][state])))return false;
   }else if(value.issues.length===0)return false;
   return true;
 }

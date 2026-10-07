@@ -86,6 +86,7 @@ func (s Store) repairPreview(ctx context.Context, tx pgx.Tx, brand, member strin
 		return out, err
 	}
 	var actual Balance
+	var seen [4][4]bool
 	count := 0
 	for rows.Next() {
 		var source, state string
@@ -96,10 +97,11 @@ func (s Store) repairPreview(ctx context.Context, tx pgx.Tx, brand, member strin
 		}
 		si, e := SourceIndex(source)
 		ti, e2 := StateIndex(state)
-		if e != nil || e2 != nil {
+		if e != nil || e2 != nil || seen[si][ti] {
 			rows.Close()
 			return out, ErrCorrupt
 		}
+		seen[si][ti] = true
 		if out.Actual[source] == nil {
 			out.Actual[source] = map[string]Amount{}
 		}
@@ -167,7 +169,7 @@ func (s Store) repairPreview(ctx context.Context, tx pgx.Tx, brand, member strin
 	if !intact {
 		out.Issues = append(out.Issues, "ledger integrity cannot be proven")
 	}
-	if count != 12 {
+	if count != 16 {
 		out.Issues = append(out.Issues, "missing balance buckets")
 	}
 	if out.Version != out.LedgerVersion {
@@ -228,7 +230,7 @@ func (s Store) RepairBalance(ctx context.Context, tx pgx.Tx, brand, member strin
 		}
 		return RepairRecord{}, ErrCorrupt
 	}
-	for si, source := range []string{"recharge", "winning", "gift"} {
+	for si, source := range sourceNames {
 		for ti, state := range []string{"available", "manual_frozen", "system_frozen", "withdrawal"} {
 			_, err = tx.Exec(ctx, `INSERT INTO point_buckets(brand_id,account_id,source,state,points) VALUES($1,$2,$3,$4,$5) ON CONFLICT(brand_id,account_id,source,state) DO UPDATE SET points=EXCLUDED.points`, brand, out.AccountID, source, state, int64(out.Expected[si][ti]))
 			if err != nil {

@@ -55,7 +55,7 @@ func TestConcurrentDifferentMembersCannotExceedPeriodQuota(t *testing.T) {
 		{`INSERT INTO global_users(id,username) VALUES($1,$2)`, []any{other.user.User.ID, "quota_user_" + other.user.User.ID}},
 		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','test-1','test-1')`, []any{other.member, f.brand, other.user.User.ID}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{account, f.brand, other.member}},
-		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])t`, []any{f.brand, account}},
+		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift','commission'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])t ON CONFLICT DO NOTHING`, []any{f.brand, account}},
 		{`INSERT INTO sessions(id,token_hash,user_id,member_id,brand_id,expires_at) VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '1 hour')`, []any{other.user.ID, fmt.Sprintf("%x", hash), other.user.User.ID, other.member, f.brand}},
 	} {
 		if _, err := f.db.Exec(ctx, stmt.sql, stmt.args...); err != nil {

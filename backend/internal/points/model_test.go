@@ -1,6 +1,8 @@
 package points
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"math"
@@ -8,6 +10,63 @@ import (
 	"strings"
 	"testing"
 )
+
+type legacyHashBalance [3][4]Amount
+
+func (b legacyHashBalance) MarshalJSON() ([]byte, error) {
+	return (legacyBalance{b[0], b[1], b[2]}).MarshalJSON()
+}
+
+// This is the original typed Change field order used before commission.
+type legacyHashChange struct {
+	BrandID, MemberID, EntryType, ReferenceType, ReferenceID, OperationKey, Reason, ActorType, ActorID, RequestID, IP string
+	Delta                                                                                                             legacyHashBalance
+	Allocation                                                                                                        []Allocation
+	ReversalOf                                                                                                        string
+}
+
+func TestLegacyThreeSourceChangeHashGolden(t *testing.T) {
+	var delta Balance
+	delta[0][0], delta[1][2], delta[2][3] = 125, -7, 3
+	c := Change{
+		BrandID: "0199a000-0000-7000-8000-000000000001", MemberID: "0199a000-0000-7000-8000-000000000002",
+		EntryType: "adjustment", ReferenceType: "legacy", ReferenceID: "0199a000-0000-7000-8000-000000000003",
+		OperationKey: "legacy:key", Reason: "golden legacy hash", ActorType: "system", ActorID: "",
+		RequestID: "request-is-excluded", IP: "192.0.2.1", Delta: delta,
+		Allocation: []Allocation{{Source: "recharge", State: "available", Points: 125}, {Source: "winning", State: "system_frozen", Points: 7}, {Source: "gift", State: "withdrawal", Points: 3}},
+		ReversalOf: "",
+	}
+	legacy := legacyHashChange{
+		BrandID: c.BrandID, MemberID: c.MemberID, EntryType: c.EntryType, ReferenceType: c.ReferenceType,
+		ReferenceID: c.ReferenceID, OperationKey: c.OperationKey, Reason: c.Reason, ActorType: c.ActorType,
+		ActorID: c.ActorID, RequestID: "", IP: "",
+		Delta: legacyHashBalance{delta[0], delta[1], delta[2]}, Allocation: c.Allocation, ReversalOf: c.ReversalOf,
+	}
+	legacyJSON, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacySum := sha256.Sum256(legacyJSON)
+	want := hex.EncodeToString(legacySum[:])
+	if want != "9a912d7129ee841a7fcf201e2017dc4275144159ea800b5f6df8622e6302eab3" {
+		t.Fatalf("typed legacy golden hash changed: got=%s json=%s", want, legacyJSON)
+	}
+	got, err := changeHash(c)
+	if err != nil || got != want {
+		t.Fatalf("changeHash=%s err=%v want typed legacy hash %s", got, err, want)
+	}
+	c.Delta[3][0] = 1
+	changedHash, err := changeHash(c)
+	if err != nil || changedHash == want {
+		t.Fatalf("commission delta reused legacy hash: hash=%s err=%v", changedHash, err)
+	}
+	c.Delta[3][0] = 0
+	c.Allocation = append(c.Allocation, Allocation{Source: "commission", State: "available", Points: 1})
+	allocationHash, err := changeHash(c)
+	if err != nil || allocationHash == want {
+		t.Fatalf("commission allocation reused legacy hash: hash=%s err=%v", allocationHash, err)
+	}
+}
 
 func TestParseAmountCanonicalAndInt64Bounds(t *testing.T) {
 	cases := []struct {
@@ -60,7 +119,7 @@ func TestAmountJSONIsDecimalStringOnly(t *testing.T) {
 	}
 }
 
-func TestBalanceJSONRoundTripAndStrictTwelveBuckets(t *testing.T) {
+func TestBalanceJSONRoundTripAndStrictLegacyOrSixteenBuckets(t *testing.T) {
 	var balance Balance
 	for source := range balance {
 		for state := range balance[source] {
@@ -71,6 +130,10 @@ func TestBalanceJSONRoundTripAndStrictTwelveBuckets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	positions := []int{strings.Index(string(encoded), `"recharge":`), strings.Index(string(encoded), `"winning":`), strings.Index(string(encoded), `"gift":`), strings.Index(string(encoded), `"commission":`)}
+	if !(positions[0] >= 0 && positions[0] < positions[1] && positions[1] < positions[2] && positions[2] < positions[3]) {
+		t.Fatalf("balance JSON source order=%v JSON=%s", positions, encoded)
+	}
 	var decoded Balance
 	if err := json.Unmarshal(encoded, &decoded); err != nil {
 		t.Fatal(err)
@@ -80,6 +143,19 @@ func TestBalanceJSONRoundTripAndStrictTwelveBuckets(t *testing.T) {
 	}
 
 	valid := `{"recharge":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"},"winning":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"},"gift":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"}}`
+	legacy := valid
+	full := strings.TrimSuffix(valid, "}") + `,"commission":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"}}`
+	var legacyBalance Balance
+	if err := json.Unmarshal([]byte(legacy), &legacyBalance); err != nil {
+		t.Fatalf("exact legacy snapshot rejected: %v", err)
+	}
+	if legacyBalance[3] != ([4]Amount{}) {
+		t.Fatalf("legacy commission values=%v", legacyBalance[3])
+	}
+	canonical, err := json.Marshal(legacyBalance)
+	if err != nil || !strings.Contains(string(canonical), `"commission":`) {
+		t.Fatalf("legacy snapshot did not normalize to four sources: %s err=%v", canonical, err)
+	}
 	invalid := []struct {
 		name string
 		json string
@@ -91,6 +167,7 @@ func TestBalanceJSONRoundTripAndStrictTwelveBuckets(t *testing.T) {
 		{name: "number instead of string", json: strings.Replace(valid, `"available":"0"`, `"available":0`, 1)},
 		{name: "duplicate source", json: strings.TrimSuffix(valid, "}") + `,"gift":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"}}`},
 		{name: "duplicate state", json: strings.Replace(valid, `"available":"0"`, `"available":"0","available":"0"`, 1)},
+		{name: "incomplete four-source shape", json: strings.Replace(full, `,"gift":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"}`, "", 1)},
 		{name: "trailing value", json: valid + ` true`},
 		{name: "null root", json: `null`},
 	}
@@ -164,25 +241,26 @@ func TestBalanceTotalsAndIndexLookup(t *testing.T) {
 	balance[0][0], balance[0][1], balance[0][2], balance[0][3] = 100, 20, 30, 5
 	balance[1][0], balance[1][1], balance[1][2], balance[1][3] = 50, 7, 8, 10
 	balance[2][0], balance[2][1], balance[2][2], balance[2][3] = 40, 9, 6, 4
+	balance[3][0], balance[3][1], balance[3][2], balance[3][3] = 11, 2, 3, 4
 
 	available, err := balance.StateTotal(0)
-	if err != nil || available != 190 {
+	if err != nil || available != 201 {
 		t.Fatalf("available total=%d err=%v", available, err)
 	}
 	manualFrozen, err := balance.StateTotal(1)
-	if err != nil || manualFrozen != 36 {
+	if err != nil || manualFrozen != 38 {
 		t.Fatalf("manual frozen total=%d err=%v", manualFrozen, err)
 	}
 	systemFrozen, err := balance.StateTotal(2)
-	if err != nil || systemFrozen != 44 {
+	if err != nil || systemFrozen != 47 {
 		t.Fatalf("system frozen total=%d err=%v", systemFrozen, err)
 	}
 	withdrawal, err := balance.StateTotal(3)
-	if err != nil || withdrawal != 19 {
+	if err != nil || withdrawal != 23 {
 		t.Fatalf("withdrawal total=%d err=%v", withdrawal, err)
 	}
 	displayTotal := available + manualFrozen + systemFrozen
-	if displayTotal != 270 || displayTotal+withdrawal != 289 {
+	if displayTotal != 286 || displayTotal+withdrawal != 309 {
 		t.Fatalf("display total should combine available and both frozen buckets, excluding withdrawal: display=%d withdrawal=%d", displayTotal, withdrawal)
 	}
 	rechargeTotal, err := balance.SourceTotal(0)
@@ -192,7 +270,11 @@ func TestBalanceTotalsAndIndexLookup(t *testing.T) {
 	if _, err := balance.StateTotal(-1); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("invalid state index error=%v", err)
 	}
-	if _, err := balance.SourceTotal(3); !errors.Is(err, ErrInvalid) {
+	commissionTotal, err := balance.SourceTotal(3)
+	if err != nil || commissionTotal != 20 {
+		t.Fatalf("commission total=%d err=%v", commissionTotal, err)
+	}
+	if _, err := balance.SourceTotal(4); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("invalid source index error=%v", err)
 	}
 	if i, err := SourceIndex("winning"); err != nil || i != 1 {
@@ -220,7 +302,7 @@ func TestBalanceTotalsAndIndexLookup(t *testing.T) {
 
 func TestAllocateUsesSourcePriorityAndRequestedState(t *testing.T) {
 	var balance Balance
-	balance[0][0], balance[1][0], balance[2][0] = 5, 7, 9
+	balance[0][0], balance[1][0], balance[2][0], balance[3][0] = 5, 7, 9, 11
 	balance[0][1], balance[1][1], balance[2][1] = 100, 100, 100
 	balance[0][3] = 3
 	allocations, err := balance.Allocate(10, "available")
@@ -233,6 +315,17 @@ func TestAllocateUsesSourcePriorityAndRequestedState(t *testing.T) {
 	}
 	if balance[0][0] != 5 || balance[1][0] != 7 {
 		t.Fatal("Allocate mutated input balance")
+	}
+	balance[0][0], balance[1][0], balance[2][0], balance[3][0] = 5, 7, 9, 11
+	all, err := balance.Allocate(32, "available")
+	wantAll := []Allocation{
+		{Source: "recharge", State: "available", Points: 5},
+		{Source: "winning", State: "available", Points: 7},
+		{Source: "commission", State: "available", Points: 11},
+		{Source: "gift", State: "available", Points: 9},
+	}
+	if err != nil || !reflect.DeepEqual(all, wantAll) {
+		t.Fatalf("four-source debit allocation=%+v err=%v want=%+v", all, err, wantAll)
 	}
 	frozen, err := balance.Allocate(8, "manual_frozen")
 	if err != nil || len(frozen) != 1 || frozen[0] != (Allocation{Source: "recharge", State: "manual_frozen", Points: 8}) {
@@ -248,7 +341,7 @@ func TestAllocateUsesSourcePriorityAndRequestedState(t *testing.T) {
 	if _, err := balance.Allocate(1, "expired"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("unknown state allocation error=%v", err)
 	}
-	if _, err := balance.Allocate(22, "available"); !errors.Is(err, ErrInsufficient) {
+	if _, err := balance.Allocate(33, "available"); !errors.Is(err, ErrInsufficient) {
 		t.Fatalf("insufficient allocation error=%v", err)
 	}
 }
@@ -304,5 +397,95 @@ func TestNegateChecksMinInt64(t *testing.T) {
 	value[2][3] = Amount(math.MinInt64)
 	if _, err := Negate(value); !errors.Is(err, ErrOverflow) {
 		t.Fatalf("Negate(MinInt64) error=%v", err)
+	}
+}
+
+func TestFourSourceAllocationValidationBoundsAndCommission(t *testing.T) {
+	allocations := []Allocation{
+		{Source: "recharge", State: "available", Points: 1},
+		{Source: "winning", State: "available", Points: 2},
+		{Source: "gift", State: "available", Points: 3},
+		{Source: "commission", State: "available", Points: 4},
+	}
+	delta, err := AllocationDelta(allocations, "", "available")
+	if err != nil || delta[3][0] != 4 {
+		t.Fatalf("commission allocation delta=%v err=%v", delta, err)
+	}
+	commissionMove := []Allocation{{Source: "commission", State: "manual_frozen", Points: 6}}
+	move, err := AllocationDelta(commissionMove, "manual_frozen", "available")
+	if err != nil || move[3][1] != -6 || move[3][0] != 6 {
+		t.Fatalf("commission state transfer=%v err=%v", move, err)
+	}
+	c := Change{Delta: delta, Allocation: allocations}
+	if !allocationMatches(c) {
+		t.Fatalf("four-source allocation did not match delta: %+v", c)
+	}
+	c.Delta[3][0]++
+	if allocationMatches(c) {
+		t.Fatal("commission delta mismatch was accepted")
+	}
+	c.Delta = delta
+	c.Allocation = allocations[:3]
+	if allocationMatches(c) {
+		t.Fatal("commission delta without commission allocation was accepted")
+	}
+	tooMany := append(append([]Allocation{}, allocations...), Allocation{Source: "commission", State: "available", Points: 1})
+	if _, err := AllocationDelta(tooMany, "", "available"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("duplicate commission source error=%v", err)
+	}
+	var boundary Balance
+	boundary[3][0] = Amount(math.MaxInt64)
+	if err := boundary.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	boundary[0][0] = 1
+	if !errors.Is(boundary.Validate(), ErrOverflow) {
+		t.Fatal("four-source aggregate overflow was accepted")
+	}
+	overflowing := []Allocation{
+		{Source: "recharge", State: "available", Points: Amount(math.MaxInt64)},
+		{Source: "winning", State: "available", Points: 1},
+	}
+	if _, err := AllocationDelta(overflowing, "", "available"); !errors.Is(err, ErrOverflow) {
+		t.Fatalf("four-source allocation sum overflow error=%v", err)
+	}
+}
+
+func TestAllocateResolvesDebitPriorityToStableStorageIndices(t *testing.T) {
+	var balance Balance
+	balance[0][0], balance[1][0], balance[2][0], balance[3][0] = 2, 4, 3, 9
+	allocations, err := balance.Allocate(18, "available")
+	want := []Allocation{
+		{Source: "recharge", State: "available", Points: 2},
+		{Source: "winning", State: "available", Points: 4},
+		{Source: "commission", State: "available", Points: 9},
+		{Source: "gift", State: "available", Points: 3},
+	}
+	if err != nil || !reflect.DeepEqual(allocations, want) {
+		t.Fatalf("allocation=%+v err=%v want=%+v", allocations, err, want)
+	}
+	delta, err := AllocationDelta(allocations, "available", "")
+	if err != nil || delta[0][0] != -2 || delta[1][0] != -4 || delta[2][0] != -3 || delta[3][0] != -9 {
+		t.Fatalf("debit delta=%v err=%v", delta, err)
+	}
+	if !allocationMatches(Change{Delta: delta, Allocation: allocations}) {
+		t.Fatal("priority allocations did not match their original storage buckets")
+	}
+	swapped := append([]Allocation(nil), allocations...)
+	swapped[2].Source, swapped[3].Source = swapped[3].Source, swapped[2].Source
+	if allocationMatches(Change{Delta: delta, Allocation: swapped}) {
+		t.Fatal("gift and commission allocations could claim each other's bucket changes")
+	}
+}
+
+func TestWalletSummaryIncludesCommission(t *testing.T) {
+	var balance Balance
+	balance[3][0], balance[3][1], balance[3][2], balance[3][3] = 12, 3, 4, 5
+	wallet, err := makeWallet("brand", "member", "account", 7, balance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wallet.CommissionPoints != 12 || wallet.AvailablePoints != 12 || wallet.ManualFrozenPoints != 3 || wallet.SystemFrozenPoints != 4 || wallet.WithdrawalPoints != 5 || wallet.FrozenPoints != 7 || wallet.DisplayPoints != 19 {
+		t.Fatalf("commission wallet totals are inconsistent: %+v", wallet)
 	}
 }

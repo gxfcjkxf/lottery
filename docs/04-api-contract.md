@@ -175,7 +175,7 @@ GET `/admin/bet-orders/{id}/judgment` 需显式 bet.view.brand / bet.view.platfo
 | GET | /withdrawals/{withdrawalId} | 提现详情和状态变化 |
 | GET | /withdrawals/{withdrawalId}/history | 不可变状态历史 |
 
-上述提现用户接口都有 `/b/{brandCode}` 等价路径，只允许当前会话品牌会员读取自己的记录，不接受member_id查询或客户端品牌覆盖。POST正文恰好为 `{points,source_allocation}`；金额为正int64十进制字符串，来源分配为1至3项 `{source,state:"available",points}`，按recharge/winning/gift排序、来源唯一且精确合计。没有隐含的提现来源扣除优先级。必须发送Idempotency-Key、同源Origin以及从GET入口取得的X-Withdrawal-Actor-Context；上下文绑定品牌、全局用户和品牌会员，换账号后不能重放旧确认。
+上述提现用户接口都有 `/b/{brandCode}` 等价路径，只允许当前会话品牌会员读取自己的记录，不接受member_id查询或客户端品牌覆盖。POST正文恰好为 `{points,source_allocation}`；金额为正int64十进制字符串，来源分配为1至4项 `{source,state:"available",points}`，按recharge/winning/gift/commission排序、来源唯一且精确合计。没有隐含的提现来源扣除优先级。必须发送Idempotency-Key、同源Origin以及从GET入口取得的X-Withdrawal-Actor-Context；上下文绑定品牌、全局用户和品牌会员，换账号后不能重放旧确认。
 
 GET入口返回 `{brand_id,member_id,policy_enabled,eligibility_configured,can_apply,reason_code,min_points,max_points,allowed_sources,real_payments:false,actor_context}`。can_apply只表示入口条件具备，实际申请仍需事务内的资格、合规、状态、额度和余额检查；未配置资格不是“剩余流水0”。列表只接受limit1..100（默认20）、offset0..1000000（默认0）及六种state之一；返回 `{brand_id,items,limit,offset,has_more}`。其他提现用户接口不接受查询参数。
 
@@ -599,7 +599,7 @@ Totals含order_count/requested_points，以及reviewing、processing、paid、re
 
 投注 totals 字段：`order_count,stake_points,placed_count,won_count,lost_count,abnormal_count,cancelled_count,refund_points,settled_stake_points,unfinalized_stake_points,abnormal_stake_points,current_prize_points,correction_open_count`。时间按原注单 placed_at（不是结算时间）；取消包括投注取消/判定取消，退款取有原refund引用的全额投注。最终投注/奖金仅计 period已结算、当前job已完成且注单计算属于此代次、没有未完成更正的won/lost；更正中旧已付不冒充最终结果。未完成投注包含placed及非最终won/lost，不含取消/异常。金额分区：总投注=已最终结算投注+未完成投注+异常投注+已退回投注。correction_open_count是涉及未完成更正的注单数，不是期次数。更正可更新旧时间区间的实时统计，不等于不可变日/月结凭证；这里不是提现/代理有效流水资格算法。
 
-账本 totals 字段：`entry_count,net_points,recharge_points,prize_credit_points,prize_reversal_points,refund_points`。时间按实际ledger.created_at，net为全部12桶delta之和；冻结/解冻状态转移净值0，prize/prize_reversal正负分别保留，不能累计历史paid代次替代净变动。另返回 `balances:{account_count,available_points,frozen_points,withdrawal_points,total_points}`，是同语句快照的当前品牌/会员桶汇总，不受from/to限制，也不是全链对账“一致”证明。完整单会员对账仍使用钱包reconciliation接口。
+账本 totals 字段：`entry_count,net_points,recharge_points,prize_credit_points,prize_reversal_points,refund_points`。时间按实际ledger.created_at，net为全部来源状态的delta之和（新16桶、旧完整12桶）；冻结/解冻状态转移净值0，prize/prize_reversal正负分别保留，不能累计历史paid代次替代净变动。另返回 `balances:{account_count,available_points,frozen_points,withdrawal_points,total_points}`，是同语句快照的当前品牌/会员桶汇总，不受from/to限制，也不是全链对账“一致”证明。完整单会员对账仍使用钱包reconciliation接口。
 
 客户端校验品牌、回显筛选、精确整数及金额/状态分区；日期按精确纳秒时间值比较，允许等价UTC/时区或尾零格式，拒绝真实边界变化。服务端按PostgreSQL微秒网格将两个边界向上取整，保持原半开区间语义；不让驱动截断纳秒改变结果。旧结果在新筛选请求发起时清除，失败/401/跨品牌切换不能保留旧数据冒充新范围。草稿不改变已显示范围，只读刷新使用已提交条件。
 
@@ -789,7 +789,7 @@ Target 包含 `order_id,member_id,state,version,calculation_id,order_version,ord
 
 Correction 含 `id,brand_id,game_id,period_id,previous_draw_result_id,draw_result_id,result,period_version,previous_job_id,new_job_id,policy_version,mode,state,version,target_count,created_by,reason,created_at,completed_at,last_error_code,pending_count,reversed_count,unchanged_count,excluded_count,failed_count,reverse_points,reversed_points,can_retry,new_job_state,new_job_version,new_job_error_code`。状态 reversing→resettling→completed；冲正/发布失败→failed，只人工重试。new_job_* 为实时关联状态：新结算失败在正常结算 retry 路径处理，不把整个更正重新执行。所有计数总和等于 target_count；汇总非负整数字符串可超 int64，逐单仍为 int64 字符串。
 
-Target 含 `order_id,member_id,state,version,old_order_version,old_order_status,old_calculation_id,old_payout_entry_id,old_prize_points,reversal_entry_id,reset_order_version,error_code`。状态 pending/reversed/unchanged/excluded/failed。旧 won/lost 全额撤回已发中奖积分后，当前注单 projection 重置 placed 并增加版本；旧未应用 placed 为 unchanged，不撤 stake；人工/系统异常及已取消 excluded，不重新核算。旧规则/选号/扣款/来源分配不变，stake 只扣一次。正额冲正 entry_type=prize_reversal、reference_type=draw_correction、reference_id=更正ID、reversal_of=原prize、operation_key=`draw-correction:<id>:<order_id>`，只扣 winning.available，全12桶前后值与审计同事务；零奖/lost 无零金额冲正流水。
+Target 含 `order_id,member_id,state,version,old_order_version,old_order_status,old_calculation_id,old_payout_entry_id,old_prize_points,reversal_entry_id,reset_order_version,error_code`。状态 pending/reversed/unchanged/excluded/failed。旧 won/lost 全额撤回已发中奖积分后，当前注单 projection 重置 placed 并增加版本；旧未应用 placed 为 unchanged，不撤 stake；人工/系统异常及已取消 excluded，不重新核算。旧规则/选号/扣款/来源分配不变，stake 只扣一次。正额冲正 entry_type=prize_reversal、reference_type=draw_correction、reference_id=更正ID、reversal_of=原prize、operation_key=`draw-correction:<id>:<order_id>`，只扣 winning.available，新16桶前后值与审计同事务，旧12桶证据保留并仅在比较时规范化；零奖/lost 无零金额冲正流水。
 
 全部 reversed/unchanged/excluded 后，才发布新 current draw 并创建下一 generation（原 generation+1）job，使用更正启动时的政策/模式快照。新 job 沿用普通核算/批准/派奖流程，完成后更正及期次才完成。Job 增加 `generation,previous_job_id,correction_id,current`；旧 job/计算/目标/账本不改写，历史 paid_points 是曾入账金额，不代表当前余额。只有 current=true 可计算、批准、重试；新任务 ID 指针决定当前代次，不根据时间或最大 ID 猜测。
 

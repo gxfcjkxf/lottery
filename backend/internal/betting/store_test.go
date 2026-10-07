@@ -3,8 +3,10 @@ package betting
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -105,7 +107,7 @@ func newBettingFixtureWithWindow(t *testing.T, brand string, betWindow, drawWind
 	if _, err := db.Exec(ctx, `INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, accountID, brand, memberID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])t`, brand, accountID); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift','commission'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])t ON CONFLICT DO NOTHING`, brand, accountID); err != nil {
 		t.Fatal(err)
 	}
 	token, err := authcrypto.NewSessionToken()
@@ -205,7 +207,7 @@ func fundBettingWallet(t *testing.T, f bettingFixture, amounts ...points.Amount)
 	for i, amount := range amounts {
 		var delta points.Balance
 		delta[i][0] = amount
-		allocation := []points.Allocation{{Source: []string{"recharge", "winning", "gift"}[i], State: "available", Points: amount}}
+		allocation := []points.Allocation{{Source: []string{"recharge", "winning", "gift", "commission"}[i], State: "available", Points: amount}}
 		tx, err := f.db.Begin(ctx)
 		if err != nil {
 			t.Fatal(err)
@@ -289,6 +291,178 @@ func TestPlaceDeductsInSourceOrderAndCancelRestoresExactAllocation(t *testing.T)
 	var refEntry string
 	if err = f.db.QueryRow(context.Background(), `SELECT reversal_of::text FROM point_ledger_entries WHERE id=$1`, cancelled.RefundEntryID).Scan(&refEntry); err != nil || refEntry != order.DebitEntryID {
 		t.Fatalf("refund reversal=%q want debit=%q err=%v", refEntry, order.DebitEntryID, err)
+	}
+}
+
+func TestPlaceUsesFourSourcePriorityAndRefundsExactAllocation(t *testing.T) {
+	f := newBettingFixture(t, storeTestBrand)
+	fundBettingWallet(t, f, 10, 10, 10, 10)
+	setUserCancellation(t, f, true)
+	f.input.PolicyVersions = ptrPolicyVersions(readBettingPolicyVersions(t, f.service, f.brand, f.game.ID))
+	before := walletBySource(t, f)
+	in := f.input
+	in.Multiplier = 35
+	order, err := placeBettingOrder(t, f, in, "four-source-refund-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAllocation := []points.Allocation{{Source: "recharge", State: "available", Points: 10}, {Source: "winning", State: "available", Points: 10}, {Source: "commission", State: "available", Points: 10}, {Source: "gift", State: "available", Points: 5}}
+	if fmt.Sprint(order.Allocation) != fmt.Sprint(wantAllocation) {
+		t.Fatalf("allocation=%+v want %+v", order.Allocation, wantAllocation)
+	}
+	tx, err := f.db.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelled, err := f.service.Cancel(context.Background(), tx, f.brand, f.user, order.ID, order.Version, "refund all four source rows", points.Metadata{RequestID: ids.New()})
+	if err != nil {
+		_ = tx.Rollback(context.Background())
+		t.Fatal(err)
+	}
+	if err = tx.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if cancelled.RefundEntryID == "" || walletBySource(t, f) != before {
+		t.Fatalf("four-source refund did not restore exact wallet: order=%+v wallet=%+v want=%+v", cancelled, walletBySource(t, f), before)
+	}
+}
+
+// Test-only historical-shape construction: synthesize the exact pre-commission
+// 12-bucket snapshots from a real three-source wallet. Production code never
+// rewrites these records; only the two append-only guards are disabled here,
+// and are restored before the controlled transaction commits.
+func synthesizeLegacyThreeSourceLedger(t *testing.T, db *pgxpool.Pool, accountID string) {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	var schema string
+	if err = tx.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(schema, "test_") {
+		t.Fatalf("refusing historical-shape construction outside an owned test schema: %q", schema)
+	}
+	var nonzeroCommission int
+	zeroBucket := `{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"}`
+	if err = tx.QueryRow(ctx, `SELECT
+ (SELECT count(*) FROM point_buckets WHERE account_id=$1 AND source='commission' AND points<>0)+
+ (SELECT count(*) FROM point_ledger_entries l CROSS JOIN LATERAL (VALUES(l.before_snapshot),(l.delta_snapshot),(l.after_snapshot)) s(snapshot) WHERE l.account_id=$1 AND s.snapshot ? 'commission' AND s.snapshot->'commission' IS DISTINCT FROM $2::jsonb)+
+ (SELECT count(*) FROM audit_logs a JOIN point_ledger_entries l ON a.after_json->>'ledger_entry_id'=l.id::text WHERE l.account_id=$1 AND a.action='points.'||l.entry_type AND a.resource_type='point_account' AND a.resource_id=l.account_id AND ((a.before_json ? 'commission' AND a.before_json->'commission' IS DISTINCT FROM $2::jsonb) OR (a.after_json->'balance' ? 'commission' AND a.after_json->'balance'->'commission' IS DISTINCT FROM $2::jsonb)))`, accountID, zeroBucket).Scan(&nonzeroCommission); err != nil {
+		t.Fatal(err)
+	}
+	if nonzeroCommission != 0 {
+		t.Fatalf("refusing to remove commission keys from nonzero historical evidence (nonzero records=%d)", nonzeroCommission)
+	}
+	for _, stmt := range []string{`ALTER TABLE point_ledger_entries DISABLE TRIGGER ledger_immutable`, `ALTER TABLE audit_logs DISABLE TRIGGER audit_immutable`} {
+		if _, err = tx.Exec(ctx, stmt); err != nil {
+			t.Fatalf("construct historical three-source evidence (%s): %v", stmt, err)
+		}
+	}
+	for _, stmt := range []string{
+		`UPDATE point_ledger_entries SET before_snapshot=before_snapshot-'commission',delta_snapshot=delta_snapshot-'commission',after_snapshot=after_snapshot-'commission' WHERE account_id=$1`,
+		`UPDATE audit_logs a SET before_json=a.before_json-'commission',after_json=jsonb_set(a.after_json,'{balance}',(a.after_json->'balance')-'commission') FROM point_ledger_entries l WHERE l.account_id=$1 AND a.action='points.'||l.entry_type AND a.resource_type='point_account' AND a.resource_id=l.account_id AND a.after_json->>'ledger_entry_id'=l.id::text`,
+	} {
+		if _, err = tx.Exec(ctx, stmt, accountID); err != nil {
+			t.Fatalf("construct historical three-source evidence (%s): %v", stmt, err)
+		}
+	}
+	for _, stmt := range []string{`ALTER TABLE audit_logs ENABLE TRIGGER audit_immutable`, `ALTER TABLE point_ledger_entries ENABLE TRIGGER ledger_immutable`} {
+		if _, err = tx.Exec(ctx, stmt); err != nil {
+			t.Fatalf("restore append-only guard (%s): %v", stmt, err)
+		}
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLegacyTwelveBucketBetLedgerCanBeCancelledWithExactSixteenBucketRefund(t *testing.T) {
+	f := newBettingFixture(t, storeTestBrand)
+	fundBettingWallet(t, f, 10, 10, 10)
+	originalWallet := walletBySource(t, f)
+	setUserCancellation(t, f, true)
+	in := f.input
+	in.Multiplier = 25
+	in.PolicyVersions = ptrPolicyVersions(readBettingPolicyVersions(t, f.service, f.brand, f.game.ID))
+	order, err := placeBettingOrder(t, f, in, "legacy-three-source-cancel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	var accountID string
+	if err = f.db.QueryRow(ctx, `SELECT account_id::text FROM bet_orders WHERE id=$1`, order.ID).Scan(&accountID); err != nil {
+		t.Fatal(err)
+	}
+	var commissionRows, commissionTotal int
+	if err = f.db.QueryRow(ctx, `SELECT count(*),coalesce(sum(points),0) FROM point_buckets WHERE account_id=$1 AND source='commission'`, accountID).Scan(&commissionRows, &commissionTotal); err != nil || commissionRows != 4 || commissionTotal != 0 {
+		t.Fatalf("legacy fixture must have four zero commission buckets: rows=%d total=%d err=%v", commissionRows, commissionTotal, err)
+	}
+	synthesizeLegacyThreeSourceLedger(t, f.db, accountID)
+	var oldBefore, oldDelta, oldAfter, oldAllocation []byte
+	var oldHash string
+	if err = f.db.QueryRow(ctx, `SELECT before_snapshot,delta_snapshot,after_snapshot,source_allocation,request_hash FROM point_ledger_entries WHERE id=$1`, order.DebitEntryID).Scan(&oldBefore, &oldDelta, &oldAfter, &oldAllocation, &oldHash); err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range [][]byte{oldBefore, oldDelta, oldAfter} {
+		var snapshot map[string]json.RawMessage
+		if err = json.Unmarshal(raw, &snapshot); err != nil || len(snapshot) != 3 {
+			t.Fatalf("expected historical 12-bucket snapshot, keys=%d err=%v", len(snapshot), err)
+		}
+	}
+	var immutableOrderBefore []byte
+	if err = f.db.QueryRow(ctx, `SELECT jsonb_build_object('deduction_allocation',deduction_allocation,'policy_snapshot',policy_snapshot,'debit_entry_id',debit_entry_id,'definition_hash',definition_hash,'client_key',client_key) FROM bet_orders WHERE id=$1`, order.ID).Scan(&immutableOrderBefore); err != nil {
+		t.Fatal(err)
+	}
+	if rec, e := (points.Store{DB: f.db}).Reconcile(ctx, f.brand, f.member); e != nil || !rec.Consistent {
+		t.Fatalf("synthetic legacy-format history/hash must reconcile: %+v err=%v", rec, e)
+	}
+	tx, err := f.db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelled, err := f.service.Cancel(ctx, tx, f.brand, f.user, order.ID, order.Version, "legacy snapshot refund", points.Metadata{RequestID: ids.New()})
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if cancelled.RefundEntryID == "" || walletBySource(t, f) != originalWallet {
+		t.Fatalf("historical refund did not exactly restore all source rows: order=%+v wallet=%+v before=%+v", cancelled, walletBySource(t, f), originalWallet)
+	}
+	var gotBefore, gotDelta, gotAfter, gotAllocation []byte
+	var gotHash string
+	if err = f.db.QueryRow(ctx, `SELECT before_snapshot,delta_snapshot,after_snapshot,source_allocation,request_hash FROM point_ledger_entries WHERE id=$1`, order.DebitEntryID).Scan(&gotBefore, &gotDelta, &gotAfter, &gotAllocation, &gotHash); err != nil {
+		t.Fatal(err)
+	}
+	if string(gotBefore) != string(oldBefore) || string(gotDelta) != string(oldDelta) || string(gotAfter) != string(oldAfter) || string(gotAllocation) != string(oldAllocation) || gotHash != oldHash {
+		t.Fatal("business cancellation rewrote historical ledger evidence")
+	}
+	var orderLedgerCount int
+	if err = f.db.QueryRow(ctx, `SELECT count(*) FROM point_ledger_entries WHERE reference_type='bet_order' AND reference_id=$1`, order.ID).Scan(&orderLedgerCount); err != nil || orderLedgerCount != 2 {
+		t.Fatalf("expected exactly one debit and one refund record, count=%d err=%v", orderLedgerCount, err)
+	}
+	var immutableOrderAfter []byte
+	if err = f.db.QueryRow(ctx, `SELECT jsonb_build_object('deduction_allocation',deduction_allocation,'policy_snapshot',policy_snapshot,'debit_entry_id',debit_entry_id,'definition_hash',definition_hash,'client_key',client_key) FROM bet_orders WHERE id=$1`, order.ID).Scan(&immutableOrderAfter); err != nil || string(immutableOrderAfter) != string(immutableOrderBefore) {
+		t.Fatalf("cancellation rewrote original bet policy/allocation/hash: %s -> %s err=%v", immutableOrderBefore, immutableOrderAfter, err)
+	}
+	var refundBefore, refundDelta, refundAfter []byte
+	if err = f.db.QueryRow(ctx, `SELECT before_snapshot,delta_snapshot,after_snapshot FROM point_ledger_entries WHERE id=$1`, cancelled.RefundEntryID).Scan(&refundBefore, &refundDelta, &refundAfter); err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range [][]byte{refundBefore, refundDelta, refundAfter} {
+		var snapshot map[string]json.RawMessage
+		if err = json.Unmarshal(raw, &snapshot); err != nil || len(snapshot) != 4 {
+			t.Fatalf("refund must use new sixteen-bucket format: keys=%d err=%v", len(snapshot), err)
+		}
+	}
+	if rec, e := (points.Store{DB: f.db}).Reconcile(ctx, f.brand, f.member); e != nil || !rec.Consistent {
+		t.Fatalf("post-refund legacy/new chain must reconcile without rewriting old hashes: %+v err=%v", rec, e)
 	}
 }
 

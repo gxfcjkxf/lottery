@@ -82,7 +82,7 @@ describe("reconciliation SDK", () => {
 
   it("accepts zero-version historical previews with sparse actual buckets and nonnegative expected buckets", async () => {
     const member = "55555555-5555-4555-8555-555555555555";
-    const expected = Object.fromEntries(["recharge", "winning", "gift"].map((source) => [source,
+    const expected = Object.fromEntries(["recharge", "winning", "gift", "commission"].map((source) => [source,
       Object.fromEntries(["available", "manual_frozen", "system_frozen", "withdrawal"].map((state) => [state, "0"]))]));
     const preview = { account_id: accountId, member_id: member, version: 0, ledger_version: 0, actual: {}, expected,
       repairable: true, consistent: false, issues: ["missing balance buckets"], token: "a".repeat(64) };
@@ -98,6 +98,14 @@ describe("reconciliation SDK", () => {
     const signedActual = { ...preview, actual: { recharge: { available: "-1" } } };
     await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...page, items: [{ ...target, preview: signedActual }] })))
       .targets(brand, jobId)).resolves.toMatchObject({ items: [{ preview: signedActual }] });
+    const legacyBuckets = Object.fromEntries(["recharge", "winning", "gift"].map((source) => [source,
+      Object.fromEntries(["available", "manual_frozen", "system_frozen", "withdrawal"].map((state) => [state, "0"]))]));
+    const legacyPreview = { ...preview, actual: legacyBuckets, expected: legacyBuckets, consistent: true, repairable: false, issues: [] };
+    const legacyPage = { ...page, items: [{ ...target, outcome: "consistent", preview: legacyPreview }] };
+    const read = await createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(legacyPage))).targets(brand, jobId);
+    expect(read.items[0]?.preview?.actual).toHaveProperty("commission.available", "0");
+    expect(read.items[0]?.preview?.expected).toHaveProperty("commission.available", "0");
+    expect(Object.keys(legacyBuckets)).toEqual(["recharge", "winning", "gift"]);
   });
 
   it("validates running and completed job lifecycle counters and timestamps", async () => {

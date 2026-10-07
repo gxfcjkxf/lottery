@@ -28,8 +28,12 @@ test("withdrawal DTOs are closed and expose only the agreed fields",()=>{
   assert.deepEqual(schemas.WithdrawalAvailability.properties.min_points,{ $ref:"#/components/schemas/PositiveInt64String" });
   assert.deepEqual(schemas.WithdrawalAvailability.properties.max_points.anyOf[0],{ $ref:"#/components/schemas/PositiveInt64String" });
   assert.equal(schemas.WithdrawalAvailability.properties.allowed_sources.minItems,1);
-  assert.equal(schemas.WithdrawalAvailability.properties.allowed_sources.maxItems,3);
+  assert.equal(schemas.WithdrawalAvailability.properties.allowed_sources.maxItems,4);
+  assert.deepEqual(schemas.WithdrawalAvailability.properties.allowed_sources.items.enum,["recharge","winning","gift","commission"]);
   assert.equal(schemas.WithdrawalAvailability.properties.allowed_sources.uniqueItems,true);
+  assert.equal(schemas.WithdrawalOrder.properties.source_allocation.maxItems,4);
+  assert.equal(schemas.WithdrawalCreateRequest.properties.source_allocation.maxItems,4);
+  assert.match(schemas.WithdrawalCreateRequest.properties.source_allocation.description,/commission/);
   assert.equal(schemas.WithdrawalHistory.properties.items.maxItems,3);
   assert.equal(schemas.WithdrawalOrderPage.properties.limit.minimum,1);
   assert.equal(schemas.WithdrawalOrderPage.properties.limit.maximum,100);

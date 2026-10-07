@@ -83,7 +83,7 @@ type EligibilityChecker interface {
 }
 
 func ValidateOrderInput(in OrderInput) error {
-	if !validClientKey(in.ClientKey) || in.Points <= 0 || len(in.SourceAllocation) < 1 || len(in.SourceAllocation) > 3 {
+	if !validClientKey(in.ClientKey) || in.Points <= 0 || len(in.SourceAllocation) < 1 || len(in.SourceAllocation) > 4 {
 		return ErrInvalid
 	}
 

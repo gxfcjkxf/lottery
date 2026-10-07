@@ -101,7 +101,7 @@ func (c *CreateRequest) UnmarshalJSON(raw []byte) error {
 		return ErrInvalid
 	}
 	var items []json.RawMessage
-	if decodeField(f["source_allocation"], &items, false) != nil || len(items) < 1 || len(items) > 3 {
+	if decodeField(f["source_allocation"], &items, false) != nil || len(items) < 1 || len(items) > 4 {
 		return ErrInvalid
 	}
 	for _, item := range items {

@@ -22,6 +22,10 @@ func TestValidateOrderInput(t *testing.T) {
 	if err := ValidateOrderInput(valid); err != nil {
 		t.Fatalf("valid order input: %v", err)
 	}
+	fourSource := OrderInput{Points: 4, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 1}, {Source: "winning", State: "available", Points: 1}, {Source: "gift", State: "available", Points: 1}, {Source: "commission", State: "available", Points: 1}}, ClientKey: "client_123"}
+	if err := ValidateOrderInput(fourSource); err != nil {
+		t.Fatalf("canonical four-source order rejected: %v", err)
+	}
 
 	cases := map[string]OrderInput{
 		"missing key":         {Points: 17, SourceAllocation: valid.SourceAllocation},
@@ -32,7 +36,7 @@ func TestValidateOrderInput(t *testing.T) {
 		"zero amount":         {Points: 0, SourceAllocation: valid.SourceAllocation, ClientKey: "client_123"},
 		"negative amount":     {Points: -1, SourceAllocation: valid.SourceAllocation, ClientKey: "client_123"},
 		"empty allocation":    {Points: 1, ClientKey: "client_123"},
-		"too many":            {Points: 4, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 1}, {Source: "winning", State: "available", Points: 1}, {Source: "gift", State: "available", Points: 1}, {Source: "gift", State: "available", Points: 1}}, ClientKey: "client_123"},
+		"too many":            {Points: 5, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 1}, {Source: "winning", State: "available", Points: 1}, {Source: "gift", State: "available", Points: 1}, {Source: "commission", State: "available", Points: 1}, {Source: "commission", State: "available", Points: 1}}, ClientKey: "client_123"},
 		"wrong order":         {Points: 2, SourceAllocation: []points.Allocation{{Source: "winning", State: "available", Points: 1}, {Source: "recharge", State: "available", Points: 1}}, ClientKey: "client_123"},
 		"duplicate source":    {Points: 2, SourceAllocation: []points.Allocation{{Source: "recharge", State: "available", Points: 1}, {Source: "recharge", State: "available", Points: 1}}, ClientKey: "client_123"},
 		"unknown source":      {Points: 1, SourceAllocation: []points.Allocation{{Source: "bonus", State: "available", Points: 1}}, ClientKey: "client_123"},

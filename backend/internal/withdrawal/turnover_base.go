@@ -15,7 +15,7 @@ func turnoverBaseSnapshot(wallet points.Wallet) (TurnoverBaseSnapshot, error) {
 	if wallet.Version < 0 {
 		return TurnoverBaseSnapshot{}, points.ErrInvalid
 	}
-	// Validate all twelve buckets and their total before adding this subset.
+	// Validate all sixteen buckets and their total before adding this subset.
 	// Nonnegative, bounded totals make the subset sum safe without float math.
 	if err := wallet.BySource.Validate(); err != nil {
 		return TurnoverBaseSnapshot{}, err

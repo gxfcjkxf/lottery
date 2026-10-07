@@ -52,6 +52,18 @@ describe("withdrawal order SDK DTO validation", () => {
     expect(validateWithdrawalBody({ points: "2", source_allocation: [{ source: "recharge", state: "available", points: "1" }, { source: "recharge", state: "available", points: "1" }] })).toBe(false);
     expect(validateWithdrawalBody({ points: "3", source_allocation: [{ source: "recharge", state: "available", points: "2" }] })).toBe(false);
     expect(validateWithdrawalBody({ points: "9223372036854775808", source_allocation: [{ source: "recharge", state: "available", points: "9223372036854775808" }] })).toBe(false);
+    expect(validateWithdrawalBody({ points: "10", source_allocation: [
+      { source: "recharge", state: "available", points: "1" },
+      { source: "winning", state: "available", points: "2" },
+      { source: "gift", state: "available", points: "3" },
+      { source: "commission", state: "available", points: "4" },
+    ] })).toBe(true);
+    expect(validateWithdrawalBody({ points: "10", source_allocation: [
+      { source: "commission", state: "available", points: "4" },
+      { source: "gift", state: "available", points: "3" },
+      { source: "winning", state: "available", points: "2" },
+      { source: "recharge", state: "available", points: "1" },
+    ] })).toBe(false);
   });
 
   it("accepts unordered policy source lists but enforces consistent admission flags and actor context", () => {
@@ -61,6 +73,16 @@ describe("withdrawal order SDK DTO validation", () => {
     expect(isWithdrawalAvailability({ ...value, actor_context: undefined })).toBe(false);
     expect(isWithdrawalAvailability({ ...value, reason_code: "WITHDRAWAL_DISABLED", policy_enabled: true, can_apply: false })).toBe(false);
     expect(isWithdrawalAvailability({ ...value, reason_code: "WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED", eligibility_configured: false, can_apply: false })).toBe(true);
+    expect(isWithdrawalAvailability({ ...value, allowed_sources: ["recharge", "winning", "gift", "commission"] })).toBe(true);
+  });
+
+  it("keeps an unknown frozen request body byte-for-byte reusable when commission is added", () => {
+    const original = Object.freeze({ points: "7", source_allocation: Object.freeze([
+      Object.freeze({ source: "gift" as const, state: "available" as const, points: "7" }),
+    ]) });
+    const replayBody = original;
+    expect(replayBody).toBe(original);
+    expect(JSON.stringify(replayBody)).toBe('{"points":"7","source_allocation":[{"source":"gift","state":"available","points":"7"}]}');
   });
 
   it("validates actual history version chains, including the initial empty state and sanitized actor types", () => {

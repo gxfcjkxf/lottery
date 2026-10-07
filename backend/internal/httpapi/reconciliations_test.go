@@ -104,7 +104,7 @@ func TestReconciliationHTTPRetryReceiptSurvivesSecondWorkerPass(t *testing.T) {
 	if _, err := f.pool.Exec(ctx, `UPDATE point_buckets SET source='recharge' WHERE brand_id=$1 AND source='invalid-fixture-source' AND state='available'`, managedBrand); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.pool.Exec(ctx, `ALTER TABLE point_buckets ADD CONSTRAINT point_buckets_source_check CHECK(source IN ('recharge','winning','gift'))`); err != nil {
+	if _, err := f.pool.Exec(ctx, `ALTER TABLE point_buckets ADD CONSTRAINT point_buckets_source_check CHECK(source IN ('recharge','winning','gift','commission'))`); err != nil {
 		t.Fatal(err)
 	}
 	failedResp := f.call("GET", "/api/v1/admin/reconciliations/"+job.ID, "", f.token, managedBrand, nil)

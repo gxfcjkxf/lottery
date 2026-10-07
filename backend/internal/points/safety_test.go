@@ -25,12 +25,16 @@ func addSafetyMember(t *testing.T, p *pgxpool.Pool) string {
 		{"INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'test-only-hash')", []any{userID, "safety_" + strings.ReplaceAll(userID, "-", "")}},
 		{"INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')", []any{memberID, testBrand, userID}},
 		{"INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)", []any{accountID, testBrand, memberID}},
-		{"INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift']) s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) t", []any{testBrand, accountID}},
+		{"INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift','commission']) s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) t ON CONFLICT(brand_id,account_id,source,state) DO NOTHING", []any{testBrand, accountID}},
 	}
 	for _, q := range queries {
 		if _, err := p.Exec(ctx, q.sql, q.args...); err != nil {
 			t.Fatal(err)
 		}
+	}
+	var bucketCount int
+	if err := p.QueryRow(ctx, `SELECT count(*) FROM point_buckets WHERE brand_id=$1 AND account_id=$2`, testBrand, accountID).Scan(&bucketCount); err != nil || bucketCount != 16 {
+		t.Fatalf("fixture bucket count=%d err=%v", bucketCount, err)
 	}
 	return memberID
 }

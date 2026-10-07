@@ -24,7 +24,7 @@ func newExportMember(t *testing.T, ctx context.Context, db *pgxpool.Pool) string
 		{`INSERT INTO global_users(id,username) VALUES($1,$2)`, []any{user, "report_export_" + user}},
 		{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','dev-1','dev-1')`, []any{member, testBrand, user}},
 		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{account, testBrand, member}},
-		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,source,state FROM unnest(ARRAY['recharge','winning','gift']) source CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) state`, []any{testBrand, account}},
+		{`INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,source,state FROM unnest(ARRAY['recharge','winning','gift','commission']) source CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) state ON CONFLICT DO NOTHING`, []any{testBrand, account}},
 	} {
 		if _, err := db.Exec(ctx, stmt.sql, stmt.args...); err != nil {
 			t.Fatal(err)

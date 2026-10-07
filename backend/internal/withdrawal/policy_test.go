@@ -81,6 +81,22 @@ func TestConfigParsingIsExactClosedAndCanonical(t *testing.T) {
 	if e := json.Unmarshal([]byte(raw), &in); e != nil {
 		t.Fatal(e)
 	}
+	if got := DefaultBrandConfig().AllowedSources; strings.Join(got, ",") != "recharge,winning,gift" {
+		t.Fatalf("default authorization changed: %v", got)
+	}
+	commissionPolicy := strings.Replace(raw, `"recharge","winning","gift"`, `"commission"`, 1)
+	var commissionInput BrandInput
+	if e := json.Unmarshal([]byte(commissionPolicy), &commissionInput); e != nil || len(commissionInput.Config.AllowedSources) != 1 || commissionInput.Config.AllowedSources[0] != "commission" {
+		t.Fatalf("explicit commission authorization rejected: %+v err=%v", commissionInput, e)
+	}
+	fourSourcePolicy := strings.Replace(raw, `"recharge","winning","gift"`, `"recharge","winning","gift","commission"`, 1)
+	if e := json.Unmarshal([]byte(fourSourcePolicy), &commissionInput); e != nil || len(commissionInput.Config.AllowedSources) != 4 {
+		t.Fatalf("four-source authorization rejected: %+v err=%v", commissionInput, e)
+	}
+	fiveSourcePolicy := strings.Replace(fourSourcePolicy, `"commission"`, `"commission","extra"`, 1)
+	if json.Unmarshal([]byte(fiveSourcePolicy), &commissionInput) == nil {
+		t.Fatal("oversized allowed source policy accepted")
+	}
 	legacyBrandConfig := `{"enabled":false,"min_points":"1","max_points":null,"allowed_sources":["recharge","winning","gift"],"review_mode":"manual","turnover_multiple":"0"}`
 	var savedBrand BrandConfig
 	if e := json.Unmarshal([]byte(legacyBrandConfig), &savedBrand); e != nil || savedBrand.TurnoverMultiple != "0" {

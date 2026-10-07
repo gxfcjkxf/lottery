@@ -1,5 +1,6 @@
 import { AdminApiError } from "./admin-api";
 import type { SourceBuckets } from "./finance-api";
+import { normalizeSourceBuckets } from "@lottery/shared";
 export interface RepairPreview {
   account_id: string;
   member_id: string;
@@ -21,6 +22,14 @@ export interface RepairHistory {
   actor_id: string;
   request_id: string;
   created_at: string;
+}
+function normalizeHistoricalSnapshot(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const snapshot = value as Record<string, unknown>;
+  const normalized = normalizeSourceBuckets(snapshot.buckets);
+  if (normalized) return { ...snapshot, buckets: normalized };
+  const direct = normalizeSourceBuckets(value);
+  return direct ?? value;
 }
 export function createRepairApi(fetcher: typeof fetch = fetch) {
   async function request<T>(
@@ -57,8 +66,18 @@ export function createRepairApi(fetcher: typeof fetch = fetch) {
   return {
     preview: (brand: string, member: string) =>
       request<RepairPreview>(brand, member, "repair-preview"),
-    history: (brand: string, member: string) =>
-      request<{ items: RepairHistory[] }>(brand, member, "repairs"),
+    async history(brand: string, member: string) {
+      const result = await request<{ items: RepairHistory[] }>(brand, member, "repairs");
+      if (!result || !Array.isArray(result.items)) return result;
+      return {
+        ...result,
+        items: result.items.map((item) => ({
+          ...item,
+          before_snapshot: normalizeHistoricalSnapshot(item.before_snapshot),
+          after_snapshot: normalizeHistoricalSnapshot(item.after_snapshot),
+        })),
+      };
+    },
     repair: (
       brand: string,
       member: string,
