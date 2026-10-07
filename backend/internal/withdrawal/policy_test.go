@@ -58,20 +58,38 @@ func transact(t *testing.T, s Service, fn func(pgx.Tx) error) {
 }
 func str(v string) *string { return &v }
 func TestConfigParsingIsExactClosedAndCanonical(t *testing.T) {
-	for _, v := range []string{"0", "1", "2.5", "0.000001", "999999.999999", "1000000"} {
+	for _, v := range []string{"1", "2.5", "0.000001", "999999.999999", "1000000"} {
 		if !ValidMultiple(v) {
 			t.Errorf("valid N rejected %q", v)
 		}
 	}
-	for _, v := range []string{"", "01", "+1", "-1", "1.0", "1.50", ".1", "1.", "1e2", "0.0000001", "1000000.000001", " 2", "1/2"} {
+	for _, v := range []string{"", "0", "01", "+1", "-1", "1.0", "1.50", ".1", "1.", "1e2", "0.0000001", "1000000.000001", " 2", "1/2"} {
 		if ValidMultiple(v) {
 			t.Errorf("invalid N accepted %q", v)
 		}
+	}
+	zeroBrandConfig := DefaultBrandConfig()
+	zeroBrandConfig.TurnoverMultiple = "0"
+	if ValidateBrandConfig(zeroBrandConfig) == nil || ValidateGameConfig(GameConfig{TurnoverMultiple: str("0")}) == nil {
+		t.Fatal("new policy validation accepted zero N")
+	}
+	if ValidateGameConfig(GameConfig{}) != nil {
+		t.Fatal("blank game override must continue to inherit")
 	}
 	raw := `{"version":1,"config":{"enabled":false,"min_points":"1","max_points":null,"allowed_sources":["recharge","winning","gift"],"review_mode":"manual","turnover_multiple":"1"},"reason":"configured"}`
 	var in BrandInput
 	if e := json.Unmarshal([]byte(raw), &in); e != nil {
 		t.Fatal(e)
+	}
+	legacyBrandConfig := `{"enabled":false,"min_points":"1","max_points":null,"allowed_sources":["recharge","winning","gift"],"review_mode":"manual","turnover_multiple":"0"}`
+	var savedBrand BrandConfig
+	if e := json.Unmarshal([]byte(legacyBrandConfig), &savedBrand); e != nil || savedBrand.TurnoverMultiple != "0" {
+		t.Fatalf("legacy zero brand config must remain readable: %+v, %v", savedBrand, e)
+	}
+	legacyBrand := strings.Replace(raw, `"turnover_multiple":"1"`, `"turnover_multiple":"0"`, 1)
+	var rejectedBrand BrandInput
+	if json.Unmarshal([]byte(legacyBrand), &rejectedBrand) == nil {
+		t.Fatal("new brand write accepted zero N")
 	}
 	for _, bad := range []string{strings.Replace(raw, `"enabled":false`, `"enabled":null`, 1), strings.Replace(raw, `"max_points":null,`, "", 1), strings.Replace(raw, `"version":1`, `"version":1,"version":2`, 1), strings.Replace(raw, `"enabled":false`, `"enabled":false,"enabled":true`, 1), strings.Replace(raw, `"review_mode":"manual"`, `"review_mode":"manual","hidden":true`, 1), strings.Replace(raw, `"min_points":"1"`, `"min_points":1`, 1), strings.Replace(raw, `"allowed_sources":["recharge","winning","gift"]`, `"allowed_sources":["gift","gift"]`, 1), strings.Replace(raw, `"min_points":"1"`, `"min_points":"9223372036854775808"`, 1)} {
 		var got BrandInput
@@ -89,6 +107,13 @@ func TestConfigParsingIsExactClosedAndCanonical(t *testing.T) {
 		var c GameConfig
 		if e := json.Unmarshal([]byte(raw), &c); e != nil {
 			t.Fatal(raw, e)
+		}
+		if strings.Contains(raw, `"0"`) {
+			write := `{"version":1,"config":` + raw + `,"reason":"legacy"}`
+			var input GameInput
+			if json.Unmarshal([]byte(write), &input) == nil {
+				t.Fatal("new game policy write accepted zero N")
+			}
 		}
 	}
 }
@@ -120,10 +145,10 @@ func TestPoliciesInitializeResolveExactOverridesAndKeepImmutableHistory(t *testi
 	}
 	transact(t, s, func(tx pgx.Tx) error {
 		var e error
-		g, e = s.UpdateGame(ctx, tx, policyBrand, game, a, GameInput{Version: 1, Config: GameConfig{TurnoverMultiple: str("0")}, Reason: "explicit zero override"}, metadata(a.ID))
+		g, e = s.UpdateGame(ctx, tx, policyBrand, game, a, GameInput{Version: 1, Config: GameConfig{TurnoverMultiple: str("3")}, Reason: "explicit positive override"}, metadata(a.ID))
 		return e
 	})
-	if g.Effective.Source != "game" || g.Effective.TurnoverMultiple != "0" || g.Effective.BrandVersion != 2 || g.Version != 2 {
+	if g.Effective.Source != "game" || g.Effective.TurnoverMultiple != "3" || g.Effective.BrandVersion != 2 || g.Version != 2 {
 		t.Fatal(g)
 	}
 	c.TurnoverMultiple = "4.5"
@@ -133,7 +158,7 @@ func TestPoliciesInitializeResolveExactOverridesAndKeepImmutableHistory(t *testi
 		return e
 	})
 	g, e = s.GamePolicy(ctx, policyBrand, game)
-	if e != nil || g.Effective.TurnoverMultiple != "0" || g.Effective.BrandVersion != 3 {
+	if e != nil || g.Effective.TurnoverMultiple != "3" || g.Effective.BrandVersion != 3 {
 		t.Fatal(g, e)
 	}
 	transact(t, s, func(tx pgx.Tx) error {

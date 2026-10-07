@@ -996,7 +996,8 @@ onUnmounted(() => {
 
           <section class="subsection evidence">
             <h3>异常标记证据</h3>
-            <template v-if="exception"
+            <p v-if="detailBusy" class="muted" aria-live="polite">正在读取异常标记记录…</p>
+            <template v-else-if="exception"
               ><div class="facts">
                 <div>
                   <small>异常记录 ID</small><b>{{ exception.id }}</b>
@@ -1019,7 +1020,8 @@ onUnmounted(() => {
 
           <section class="subsection judgment-evidence">
             <h3>判定取消记录</h3>
-            <template v-if="judgment">
+            <p v-if="detailBusy" class="muted" aria-live="polite">正在读取判定取消记录…</p>
+            <template v-else-if="judgment">
               <div class="facts">
                 <div>
                   <small>判定记录 ID</small><b>{{ judgment.id }}</b>

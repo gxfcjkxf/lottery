@@ -95,11 +95,14 @@ export const schemas = {
 
   FinanceWithdrawalBrandConfig: object({ enabled: bool, min_points: ref("PositiveInt64String"), max_points: nullable(ref("PositiveInt64String")), allowed_sources: array(str({ enum: ["recharge", "winning", "gift"] })), review_mode: str({ enum: ["manual", "automatic"] }), turnover_multiple: str({ pattern: "^(0|[1-9][0-9]{0,6})([.][0-9]{0,5}[1-9])?$" }) }),
   FinanceWithdrawalGameConfig: object({ turnover_multiple: nullable(str({ pattern: "^(0|[1-9][0-9]{0,6})([.][0-9]{0,5}[1-9])?$" })) }),
+  FinanceWithdrawalPositiveMultiple: str({ pattern: "^(?!0$)(?:1000000|(?:0|[1-9][0-9]{0,5})(?:[.][0-9]{0,5}[1-9])?)$", description: "New policy writes require 0 < N <= 1000000, in canonical decimal notation with at most six fractional digits. Legacy zero-valued saved policies and immutable revisions remain readable without normalization." }),
+  FinanceWithdrawalBrandWriteConfig: object({ enabled: bool, min_points: ref("PositiveInt64String"), max_points: nullable(ref("PositiveInt64String")), allowed_sources: array(str({ enum: ["recharge", "winning", "gift"] })), review_mode: str({ enum: ["manual", "automatic"] }), turnover_multiple: ref("FinanceWithdrawalPositiveMultiple") }),
+  FinanceWithdrawalGameWriteConfig: object({ turnover_multiple: nullable(ref("FinanceWithdrawalPositiveMultiple")) }),
   FinanceWithdrawalBrandPolicy: object({ brand_id: ref("UUID"), version: int(), config: ref("FinanceWithdrawalBrandConfig"), updated_at: ref("DateTime"), audit_log_id: ref("UUID") }, ["brand_id", "version", "config", "updated_at"]),
   FinanceWithdrawalEffectiveMultiple: object({ turnover_multiple: str(), source: str({ enum: ["brand", "game"] }), brand_version: int(), game_version: int() }),
   FinanceWithdrawalGamePolicy: object({ brand_id: ref("UUID"), game_id: ref("UUID"), version: int(), config: ref("FinanceWithdrawalGameConfig"), effective: ref("FinanceWithdrawalEffectiveMultiple"), updated_at: ref("DateTime"), audit_log_id: ref("UUID") }, ["brand_id", "game_id", "version", "config", "effective", "updated_at"]),
-  FinanceWithdrawalBrandInput: object({ version: int({ minimum: 1 }), config: ref("FinanceWithdrawalBrandConfig"), reason: ref("Reason") }),
-  FinanceWithdrawalGameInput: object({ version: int({ minimum: 1 }), config: ref("FinanceWithdrawalGameConfig"), reason: ref("Reason") }),
+  FinanceWithdrawalBrandInput: object({ version: int({ minimum: 1 }), config: ref("FinanceWithdrawalBrandWriteConfig"), reason: ref("Reason") }),
+  FinanceWithdrawalGameInput: object({ version: int({ minimum: 1 }), config: ref("FinanceWithdrawalGameWriteConfig"), reason: ref("Reason") }),
   FinanceWithdrawalRevision: object({ id: ref("UUID"), brand_id: ref("UUID"), game_id: str(), version: int(), config: { oneOf: [ref("FinanceWithdrawalBrandConfig"), ref("FinanceWithdrawalGameConfig")] }, changed_by: str(), reason: str(), created_at: ref("DateTime") }),
   FinanceWithdrawalHistory: object({ items: array(ref("FinanceWithdrawalRevision")), limit: int(), offset: int() }),
 

@@ -1528,6 +1528,32 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     ).toEqual(secondLedger);
     await captureS5Admin("s5-a3-admin-abnormal-uncertain.png");
 
+    // Acknowledging the replay does not complete the subsequent order,
+    // exception and judgment reads. Hold real exception data to verify that
+    // the panel reports loading rather than inventing "no evidence".
+    let releaseException!: () => void;
+    let exceptionReached!: (status: number) => void;
+    const heldException = new Promise<void>(resolve => { releaseException = resolve; });
+    const exceptionResponseReached = new Promise<number>(resolve => { exceptionReached = resolve; });
+    const exceptionRoute = `**/api/v1/admin/bet-orders/${secondOrder.id}/exception`;
+    await adminPage.route(exceptionRoute, async route => {
+      const response = await route.fetch();
+      exceptionReached(response.status());
+      await heldException;
+      await route.fulfill({ response });
+    }, { times: 1 });
+    // The unchanged 150-second scenario deadline bounds these observations;
+    // a read need not finish within the shorter locator assertion timeout.
+    const exceptionAfterRetry = adminPage.waitForResponse(response =>
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === `/api/v1/admin/bet-orders/${secondOrder.id}/exception`,
+      { timeout: 0 },
+    );
+    const judgmentAfterRetry = adminPage.waitForResponse(response =>
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === `/api/v1/admin/bet-orders/${secondOrder.id}/judgment`,
+      { timeout: 0 },
+    );
     const abnormalRetry = adminPage.waitForResponse(
       (response) =>
         response
@@ -1535,9 +1561,17 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
           .endsWith(`/api/v1/admin/bet-orders/${secondOrder!.id}/abnormal`) &&
         response.request().method() === "POST",
     );
-    await adminDetail
-      .getByRole("button", { name: "使用相同请求编号重试", exact: true })
-      .click();
+    try {
+      await adminDetail
+        .getByRole("button", { name: "使用相同请求编号重试", exact: true })
+        .click();
+      expect(await exceptionResponseReached).toBe(200);
+      await expect(adminDetail.locator(".evidence")).toContainText("正在读取异常标记记录");
+      await expect(adminDetail.locator(".evidence")).not.toContainText("当前注单没有异常标记记录");
+      await expect(adminDetail.locator(".judgment-evidence")).toContainText("正在读取判定取消记录");
+    } finally {
+      releaseException();
+    }
     const abnormalRetryResponse = await abnormalRetry;
     expect(abnormalRetryResponse.status()).toBe(200);
     expect(abnormalRequests).toHaveLength(2);
@@ -1546,6 +1580,12 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
       ((await abnormalRetryResponse.json()) as Envelope<AdminBetOrder>).data,
     ).toEqual(abnormalOnce.order);
     await adminPage.unroute(abnormalRoute);
+    const [exceptionRead, judgmentRead] = await Promise.all([exceptionAfterRetry, judgmentAfterRetry]);
+    for (const response of [exceptionRead, judgmentRead]) {
+      expect(response.status()).toBe(200);
+      expect(await response.finished()).toBeNull();
+    }
+    await adminPage.unroute(exceptionRoute);
     await expect(adminDetail.locator(".evidence")).toContainText(
       committedEvidence.exception!.id,
     );

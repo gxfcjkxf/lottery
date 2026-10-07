@@ -778,7 +778,7 @@ onUnmounted(() => {
     </header>
 
     <p class="callout warning" role="note">
-      {{ t("保存配置不代表提现已开通。流水倍数 N 的基数与跨彩种合并算法仍待确认；当前页面不会生成提现订单、计算金额或判定资格。N=0 的业务含义尚未确认。", "Saving settings does not enable withdrawals. The turnover multiple N basis and cross-game aggregation algorithm remain undecided. This page does not create withdrawal orders, calculate amounts, or determine eligibility. The business meaning of N=0 is unresolved.") }}
+      {{ t("已确认提现流水口径：每笔有效投注按投注时 N 折算达标额度（投注额 ÷ N），跨彩种精确累加后与占用前全部可用充值＋赠送余额比较。充值、中奖、赠送来源均计入，每笔只计一次。N 必须大于 0，修改仅影响新投注；旧零值历史仍可读，不可新设。逐注单快照和正式资格器待接入，保存配置不会启用提现。", "Confirmed turnover rule: divide each valid stake by its bet-time N, sum the exact credits across games, and compare with all available recharge plus gift points before reservation. Recharge-, winnings-, and gift-funded stakes count, once per bet. N must be positive; changes affect only new bets. Legacy zero history remains readable, but new zero values are prohibited. Per-bet snapshots and the formal eligibility checker are not connected yet; saving settings does not enable withdrawals.") }}
     </p>
     <p v-if="account.super_admin" class="callout">
       {{ t("超级管理员仅可按显式读取权限查看，不能保存配置。", "Super administrators may view settings only when explicitly granted read access; they cannot save settings.") }}
@@ -1023,7 +1023,7 @@ onUnmounted(() => {
               />
             </label>
             <p v-if="!brandInputsValid" class="field-error wide" role="alert">
-              {{ t("积分范围须为正的 int64 整数字符串且最低值不高于最高值；来源至少一项且不能重复；N 须为 0 至 1,000,000 的规范十进制字符串，最多 6 位小数且无末尾零。", "Points must be positive int64 integer strings, with the minimum no greater than the maximum. Select at least one unique source. N must be a canonical decimal string from 0 to 1,000,000, with at most 6 decimal places and no trailing zeros.") }}
+              {{ t("积分范围须为正的 int64 整数字符串且最低值不高于最高值；来源至少一项且不能重复；N 须大于 0 且不超过 1,000,000，最多 6 位小数并使用规范十进制格式。", "Points must be positive int64 integer strings, with the minimum no greater than the maximum. Select at least one unique source. N must be greater than 0 and at most 1,000,000, with at most 6 decimal places in canonical decimal format.") }}
             </p>
             <p
               v-if="brandDraft.reason && !reasonValid(brandDraft.reason)"
@@ -1165,7 +1165,7 @@ onUnmounted(() => {
           </dl>
           <form class="editor-grid" @submit.prevent="requestGameConfirmation">
             <label class="wide" for="withdraw-game-multiple"
-              >{{ t("彩种：流水倍数 N（留空继承品牌默认；0 表示明确覆盖为零）", "Game: turnover multiple N (leave blank to inherit brand default; 0 explicitly overrides with zero)") }}<input
+              >{{ t("彩种：流水倍数 N（必须大于 0；留空继承品牌默认）", "Game: turnover multiple N (must be greater than 0; leave blank to inherit brand default)") }}<input
                 id="withdraw-game-multiple"
                 v-model.trim="gameDraft.turnover_multiple"
                 inputmode="decimal"
@@ -1179,7 +1179,7 @@ onUnmounted(() => {
                 "
             /></label>
             <p v-if="!gameInputValid" class="field-error wide" role="alert">
-              {{ t("N 须为 0 至 1,000,000 的规范十进制字符串，最多 6 位小数且无末尾零；留空表示继承。", "N must be a canonical decimal string from 0 to 1,000,000, with at most 6 decimal places and no trailing zeros. Leave blank to inherit.") }}
+              {{ t("N 须大于 0 且不超过 1,000,000，最多 6 位小数并使用规范十进制格式；留空表示继承。", "N must be greater than 0 and at most 1,000,000, with at most 6 decimal places in canonical decimal format. Leave blank to inherit.") }}
             </p>
             <label class="wide" for="withdraw-game-reason"
               >{{ t("彩种：变更原因（必填，最多 500 UTF-8 字节）", "Game: reason for change (required, up to 500 UTF-8 bytes)") }}<textarea

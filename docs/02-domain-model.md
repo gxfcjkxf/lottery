@@ -259,11 +259,13 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 
 `withdrawal_turnover_cycles`仅在paid后更新，cutoff_at为该申请提交时间，cutoff_version为该申请占用积分的账本序号，不使用审核或出款时间，不清除投注事实。后续资格器同时得到上次成功截止时间/序号、当前锁定钱包版本及申请截止时间，避免并发事务时间重叠造成流水漏计或重复计。失败、取消和驳回不移动截止点。内部OrderService要求服务端资格适配器；默认nil安全拒绝且不占用积分。来源分配必须显式提供并精确合计，不默认为提现引入投注扣款优先级；正式申请分配/资格计算待业务口径确认后接入。启用但未接入的合规检查仍拒绝申请，测试资格适配器不能绕过它。automatic审核只推进到processing并记录系统审计，不自动标记paid或执行外部支付。
 
-`game_withdrawal_policies` 按 brand_id/game_id 保存独立 version/config/updated_at，只覆盖 N；null 继承品牌，"0" 是明确配置零，不与继承混淆。有效值返回 source 和双方版本，来自已保存主库一致快照。N 为 0–1000000 的规范十进制字符串，最多六位小数，不带符号/指数/多余前导或末尾零；积分仍为 int64 整数字符串，不使用浮点。
+`game_withdrawal_policies` 按 brand_id/game_id 保存独立 version/config/updated_at，只覆盖 N；null 继承品牌，不允许新配置为 "0"，也不能把旧零值静默当作继承或 1。有效值返回 source 和双方版本，来自已保存主库一致快照。新配置 N 大于 0 且不超过 1000000，采用最多六位小数的规范十进制字符串，不带符号/指数/多余前导或末尾零；积分仍为 int64 整数字符串，不使用浮点。旧配置历史保持原值可查询，现存零值须由授权管理员显式修正后使用。
 
 门槛基数使用申请提交时、占用前锁定钱包中的全部可用充值＋赠送余额，不是申请来源金额或累计本金；不包含中奖、冻结和已占用提现积分。OrderService已将服务端计算值传给资格器，并以eligibility_evidence.turnover_base_snapshot保存recharge_available、gift_available、points及wallet_version的不可变快照，四项均为精确十进制字符串。此保留键由服务端覆盖，资格适配器不能伪造；包含快照后的完整证据按PostgreSQL实际JSONB文本大小限制16KiB，超限在占用前拒绝。旧订单与回执不补造或重算基数；公开订单DTO和事件仍不暴露资格证据。默认nil资格器仍未接入正式流水算法。
 
-`withdrawal_policy_revisions`：id、brand_id、game_id（品牌级 null）、version、config、changed_by、reason、created_at；范围/版本唯一（null 范围也唯一）。初始系统记录，后续必须有后台账号。历史不可修改/删除；数据库延迟约束禁止孤立下一版本或无对应历史修改当前配置，审计失败整体回滚。`0017` 为旧及新品牌/彩种初始化配置和历史，不改旧账本或已应用迁移。跨彩种 N 合并、N=0 语义等仍待确认，不得把配置当资格结论。
+`withdrawal_policy_revisions`：id、brand_id、game_id（品牌级 null）、version、config、changed_by、reason、created_at；范围/版本唯一（null 范围也唯一）。初始系统记录，后续必须有后台账号。历史不可修改/删除；数据库延迟约束禁止孤立下一版本或无对应历史修改当前配置，审计失败整体回滚。`0017` 为旧及新品牌/彩种初始化配置和历史，不改旧账本或已应用迁移。
+
+正式资格目标已确认：逐笔按有效投注金额除以投注时有效 N，精确累加后与服务端基数比较；充值、中奖、赠送来源均计入，取消、异常、无效及未完成投注排除。规则修改只影响新投注，必须保留每笔品牌/彩种版本、继承来源和有效 N 的不可变快照；缺少历史证据时不使用当前配置推测。算术工具不替代真实流水查询、周期过滤和权限检查，平台正式资格器仍未接入。
 
 ### 代理、佣金和奖励
 

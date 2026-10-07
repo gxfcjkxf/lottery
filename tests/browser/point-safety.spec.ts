@@ -226,14 +226,19 @@ test("brand point policy persists; pending recharge cancellation does not credit
   await wp.getByLabel(/^彩种：流水倍数 N/).fill("0");
   await wp
     .getByLabel(/^彩种：变更原因/)
-    .fill("zero override configuration, not an eligibility decision");
+    .fill("positive fractional override configuration");
+  await expect(
+    wp.getByRole("button", { name: "核对彩种配置并继续", exact: true }),
+  ).toBeDisabled();
+  await expect(effectiveN).toHaveText("2.5");
+  await wp.getByLabel(/^彩种：流水倍数 N/).fill("0.25");
   await wp
     .getByRole("button", { name: "核对彩种配置并继续", exact: true })
     .click();
   await confirmation
     .getByRole("button", { name: "确认并提交冻结请求", exact: true })
     .click();
-  await expect(effectiveN).toHaveText("0");
+  await expect(effectiveN).toHaveText("0.25");
   await expect(savedGame).toContainText("彩种覆盖");
   await wp.getByLabel("品牌：默认流水倍数 N", { exact: true }).fill("3.5");
   await wp
@@ -248,7 +253,7 @@ test("brand point policy persists; pending recharge cancellation does not credit
   await expect(
     wp.getByRole("status").filter({ hasText: "配置已保存" }),
   ).toBeVisible();
-  await expect(effectiveN).toHaveText("0");
+  await expect(effectiveN).toHaveText("0.25");
   await wp.getByLabel(/^彩种：流水倍数 N/).fill("");
   await wp
     .getByLabel(/^彩种：变更原因/)
@@ -282,7 +287,7 @@ test("brand point policy persists; pending recharge cancellation does not credit
     gameVersions.map((entry: { version: number }) => entry.version),
   ).toEqual([3, 2, 1]);
   expect(gameVersions[0].config.turnover_multiple).toBeNull();
-  expect(gameVersions[1].config.turnover_multiple).toBe("0");
+  expect(gameVersions[1].config.turnover_multiple).toBe("0.25");
   expect(gameVersions[1].changed_by).not.toBe("");
   await wp.getByRole("button", { name: "读取品牌历史", exact: true }).click();
   await expect(

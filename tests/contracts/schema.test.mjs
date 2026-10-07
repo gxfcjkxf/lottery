@@ -69,6 +69,22 @@ test("full-replacement finance requests require explicit nullable fields",()=>{
   assert.ok(validate("FinanceWithdrawalGameConfig")({turnover_multiple:null}));
   assert.ok(!validate("FinanceWithdrawalGameConfig")({}));
 });
+
+test("new withdrawal policy writes require positive N while legacy zero history stays readable",()=>{
+  const check=validate("FinanceWithdrawalPositiveMultiple");
+  for(const value of ["1","0.000001","0.25","2.5","999999.999999","1000000"])
+    assert.ok(check(value),`${value}: ${JSON.stringify(check.errors)}`);
+  for(const value of ["0","01","1.0","1e2","-1","0.0000001","1000000.000001","1000001"])
+    assert.ok(!check(value),`invalid new N accepted: ${value}`);
+  assert.ok(validate("FinanceWithdrawalGameConfig")({turnover_multiple:"0"}));
+  assert.ok(!validate("FinanceWithdrawalGameWriteConfig")({turnover_multiple:"0"}));
+  assert.ok(validate("FinanceWithdrawalGameWriteConfig")({turnover_multiple:null}));
+  assert.ok(validate("FinanceWithdrawalGameWriteConfig")({turnover_multiple:"0.000001"}));
+  const brand={enabled:false,min_points:"1",max_points:null,allowed_sources:["recharge","winning","gift"],review_mode:"manual",turnover_multiple:"0"};
+  assert.ok(validate("FinanceWithdrawalBrandConfig")(brand));
+  assert.ok(!validate("FinanceWithdrawalBrandWriteConfig")(brand));
+  assert.ok(validate("FinanceWithdrawalBrandWriteConfig")({...brand,turnover_multiple:"1"}));
+});
 test("admin logout uses admin authentication while unsupported payout operations remain absent",()=>{
   assert.deepEqual(doc.paths["/api/v1/admin/auth/logout"].post.security,[{adminBearer:[]},{adminCookie:[]}]);
   const create=doc.paths["/api/v1/withdrawals"].post;

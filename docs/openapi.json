@@ -80759,6 +80759,81 @@
         ],
         "additionalProperties": false
       },
+      "FinanceWithdrawalPositiveMultiple": {
+        "type": "string",
+        "pattern": "^(?!0$)(?:1000000|(?:0|[1-9][0-9]{0,5})(?:[.][0-9]{0,5}[1-9])?)$",
+        "description": "New policy writes require 0 < N <= 1000000, in canonical decimal notation with at most six fractional digits. Legacy zero-valued saved policies and immutable revisions remain readable without normalization."
+      },
+      "FinanceWithdrawalBrandWriteConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "min_points": {
+            "$ref": "#/components/schemas/PositiveInt64String"
+          },
+          "max_points": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PositiveInt64String"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allowed_sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "recharge",
+                "winning",
+                "gift"
+              ]
+            }
+          },
+          "review_mode": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "automatic"
+            ]
+          },
+          "turnover_multiple": {
+            "$ref": "#/components/schemas/FinanceWithdrawalPositiveMultiple"
+          }
+        },
+        "required": [
+          "enabled",
+          "min_points",
+          "max_points",
+          "allowed_sources",
+          "review_mode",
+          "turnover_multiple"
+        ],
+        "additionalProperties": false
+      },
+      "FinanceWithdrawalGameWriteConfig": {
+        "type": "object",
+        "properties": {
+          "turnover_multiple": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FinanceWithdrawalPositiveMultiple"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "turnover_multiple"
+        ],
+        "additionalProperties": false
+      },
       "FinanceWithdrawalBrandPolicy": {
         "type": "object",
         "properties": {
@@ -80857,7 +80932,7 @@
             "minimum": 1
           },
           "config": {
-            "$ref": "#/components/schemas/FinanceWithdrawalBrandConfig"
+            "$ref": "#/components/schemas/FinanceWithdrawalBrandWriteConfig"
           },
           "reason": {
             "$ref": "#/components/schemas/Reason"
@@ -80878,7 +80953,7 @@
             "minimum": 1
           },
           "config": {
-            "$ref": "#/components/schemas/FinanceWithdrawalGameConfig"
+            "$ref": "#/components/schemas/FinanceWithdrawalGameWriteConfig"
           },
           "reason": {
             "$ref": "#/components/schemas/Reason"

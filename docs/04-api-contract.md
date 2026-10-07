@@ -192,13 +192,13 @@ OrderView字段为 `id,brand_id,member_id,account_id,points,state,version,source
 
 `BrandWithdrawalPolicy={brand_id,version,config:{enabled,min_points,max_points,allowed_sources,review_mode,turnover_multiple},updated_at,audit_log_id?}`。初始 enabled=false、min_points="1"、max_points=null、allowed_sources=["recharge","winning","gift"]、review_mode="manual"、N="1"。上下限正 int64 字符串，上限不低于下限；来源非空、合法、不重复，审核配置 manual/automatic，但本阶段不执行审核。
 
-`GameWithdrawalPolicy={brand_id,game_id,version,config:{turnover_multiple:string|null},effective:{turnover_multiple:string,source:"brand"|"game",brand_version,game_version},updated_at,audit_log_id?}`。null 继承，显式值（含 "0"）覆盖品牌。N 仅允许 0–1000000、最多六位小数的规范字符串，禁止符号/指数/多余前导零和小数末尾零；0 的业务意义待确定，保存它不代表免流水。
+`GameWithdrawalPolicy={brand_id,game_id,version,config:{turnover_multiple:string|null},effective:{turnover_multiple:string,source:"brand"|"game",brand_version,game_version},updated_at,audit_log_id?}`。null 继承，显式正值覆盖品牌。新写入 N 必须大于 0 且不超过 1000000，最多六位小数，禁止符号/指数/多余前导零和小数末尾零。品牌及彩种写请求拒绝 "0"；已保存的旧零值及不可变历史仍原样可读，不自动转成继承或 1，需授权管理员显式修改当前配置。OpenAPI分开描述新写配置与兼容历史读取的配置。
 
 PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提供；未知/重复字段、缺省或 null 标量拒绝。原因非空、最多 500 UTF-8 字节；响应 200、配置版本加一、审计引用。版本是对应配置版本，不是彩种业务版本。需要原 Idempotency-Key、X-Brand-ID 及同源 Cookie/Origin；同键同正文重放原回执，同键异体 409。权限/会话在等待幂等锁前后复验，撤权或变为超管不能重放旧回执；临时错误不缓存。
 
 历史 limit 1–100（默认 50）、offset 0–1000000（默认 0），返回 `{items:PolicyRevision[],limit,offset}`，范围内按 version 降序。`PolicyRevision={id,brand_id,game_id,version,config,changed_by,reason,created_at}`；品牌级 game_id=""，初始系统 changed_by=""，后续为后台账号。配置、不可变历史及审计原子提交，不变更钱包/账本/订单；GET 记录后台读取审计。
 
-错误：400 WITHDRAWAL_POLICY_INPUT_INVALID / REQUEST_INVALID；403 PERMISSION_DENIED；404 WITHDRAWAL_POLICY_NOT_FOUND；409 WITHDRAWAL_POLICY_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT；401 AUTH_SESSION_REVOKED；503 SERVICE_UNAVAILABLE。门槛基数使用申请提交、占用前当前品牌全部可用充值＋赠送余额；内部流程已在锁定钱包后计算并保存服务端快照，不接受客户端提供基数，也不在公开订单DTO中新增该内部证据。跨彩种流水和N=0等规则仍待明确；申请与内部积分处理接口已接入，不提供正式资格算法或外部出款。
+错误：400 WITHDRAWAL_POLICY_INPUT_INVALID / REQUEST_INVALID；403 PERMISSION_DENIED；404 WITHDRAWAL_POLICY_NOT_FOUND；409 WITHDRAWAL_POLICY_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT；401 AUTH_SESSION_REVOKED；503 SERVICE_UNAVAILABLE。门槛基数使用申请提交、占用前当前品牌全部可用充值＋赠送余额；内部流程已在锁定钱包后计算并保存服务端快照，不接受客户端提供基数，也不在公开订单DTO中新增该内部证据。流水口径已确认：所有来源的有效投注按各笔投注时 N 快照折算后精确累加，N 必须大于 0，配置修改只影响新投注。申请与内部积分处理接口已接入，但正式流水查询和资格器仍未接入，不提供外部出款；不得由客户端提交达标额度或替代服务端判断。
 
 ## 4. 管理端接口
 

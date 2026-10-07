@@ -98,8 +98,8 @@ export function withdrawalPolicyPermissions(
   };
 }
 
-/** Decimal string in [0, 1,000,000], at most six decimals, with no redundant zeroes. */
-export function isValidTurnoverMultiple(value: string): boolean {
+/** Canonical decimal string in [0, 1,000,000], at most six decimals. */
+function isReadableTurnoverMultiple(value: string): boolean {
   if (value.length > 14) return false;
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(value)) return false;
   if (value.includes(".") && value.endsWith("0")) return false;
@@ -107,6 +107,11 @@ export function isValidTurnoverMultiple(value: string): boolean {
   const micros =
     BigInt(whole) * 1000000n + BigInt(fraction.padEnd(6, "0") || "0");
   return micros <= MAX_TURNOVER_MICROS;
+}
+
+/** New policy writes require a strictly positive canonical decimal multiple. */
+export function isValidTurnoverMultiple(value: string): boolean {
+  return isReadableTurnoverMultiple(value) && BigInt(value.replace(".", "")) > 0n;
 }
 
 type Envelope<T> = {
@@ -160,7 +165,10 @@ function isPositiveInt64(value: unknown): value is string {
   }
 }
 
-function validBrandConfig(value: unknown): value is BrandWithdrawalConfig {
+function validBrandConfig(
+  value: unknown,
+  allowSavedZero = false,
+): value is BrandWithdrawalConfig {
   if (!isRecord(value)) return false;
   if (
     typeof value.enabled !== "boolean" ||
@@ -172,7 +180,9 @@ function validBrandConfig(value: unknown): value is BrandWithdrawalConfig {
     typeof value.review_mode !== "string" ||
     !["manual", "automatic"].includes(value.review_mode) ||
     typeof value.turnover_multiple !== "string" ||
-    !isValidTurnoverMultiple(value.turnover_multiple)
+    !(allowSavedZero
+      ? isReadableTurnoverMultiple(value.turnover_multiple)
+      : isValidTurnoverMultiple(value.turnover_multiple))
   )
     return false;
   if (
@@ -190,12 +200,17 @@ function validBrandConfig(value: unknown): value is BrandWithdrawalConfig {
   );
 }
 
-function validGameConfig(value: unknown): value is GameWithdrawalConfig {
+function validGameConfig(
+  value: unknown,
+  allowSavedZero = false,
+): value is GameWithdrawalConfig {
   return (
     isRecord(value) &&
     (value.turnover_multiple === null ||
       (typeof value.turnover_multiple === "string" &&
-        isValidTurnoverMultiple(value.turnover_multiple)))
+        (allowSavedZero
+          ? isReadableTurnoverMultiple(value.turnover_multiple)
+          : isValidTurnoverMultiple(value.turnover_multiple))))
   );
 }
 
@@ -208,7 +223,7 @@ function validBrandPolicy(
     value.brand_id === brand &&
     isUuid(value.brand_id) &&
     isVersion(value.version) &&
-    validBrandConfig(value.config) &&
+    validBrandConfig(value.config, true) &&
     isDateTime(value.updated_at) &&
     (value.audit_log_id === undefined || isUuid(value.audit_log_id))
   );
@@ -242,10 +257,10 @@ function validGamePolicy(
     !isUuid(value.brand_id) ||
     !isUuid(value.game_id) ||
     !isVersion(value.version) ||
-    !validGameConfig(value.config) ||
+    !validGameConfig(value.config, true) ||
     !isRecord(value.effective) ||
     typeof value.effective.turnover_multiple !== "string" ||
-    !isValidTurnoverMultiple(value.effective.turnover_multiple) ||
+    !isReadableTurnoverMultiple(value.effective.turnover_multiple) ||
     !["brand", "game"].includes(String(value.effective.source)) ||
     !isVersion(value.effective.brand_version) ||
     !isVersion(value.effective.game_version) ||
@@ -279,8 +294,8 @@ function validRevision(
     !(game === "" || isUuid(value.game_id)) ||
     !isVersion(value.version) ||
     !(game === ""
-      ? validBrandConfig(value.config)
-      : validGameConfig(value.config)) ||
+      ? validBrandConfig(value.config, true)
+      : validGameConfig(value.config, true)) ||
     typeof value.changed_by !== "string" ||
     typeof value.reason !== "string" ||
     value.reason.trim().length === 0 ||

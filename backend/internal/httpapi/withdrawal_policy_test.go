@@ -54,11 +54,18 @@ func TestWithdrawalPolicyHTTPHistoryCheckedReplayAndNoFinancialMutation(t *testi
 	mustStatus(t, f.call("PUT", base, "withdraw-policy-stale-01", f.token, managedBrand, body), 409)
 	zero := "0"
 	gameBody := withdrawal.GameInput{Version: 1, Config: withdrawal.GameConfig{TurnoverMultiple: &zero}, Reason: "explicit game override"}
+	mustStatus(t, f.call("PUT", gameBase, "withdraw-game-zero-01", f.token, managedBrand, gameBody), 400)
+	zeroBrand := body
+	zeroBrand.Version = updated.Version
+	zeroBrand.Config.TurnoverMultiple = zero
+	mustStatus(t, f.call("PUT", base, "withdraw-brand-zero-01", f.token, managedBrand, zeroBrand), 400)
+	positive := "0.25"
+	gameBody.Config.TurnoverMultiple = &positive
 	r := f.call("PUT", gameBase, "withdraw-game-first-01", f.token, managedBrand, gameBody)
 	mustStatus(t, r, 200)
 	var gamePolicy withdrawal.GamePolicy
 	managedData(t, r, &gamePolicy)
-	if gamePolicy.Effective.Source != "game" || gamePolicy.Effective.TurnoverMultiple != "0" || gamePolicy.Effective.BrandVersion != 2 || gamePolicy.Version != 2 {
+	if gamePolicy.Effective.Source != "game" || gamePolicy.Effective.TurnoverMultiple != "0.25" || gamePolicy.Effective.BrandVersion != 2 || gamePolicy.Version != 2 {
 		t.Fatal(gamePolicy)
 	}
 	for _, path := range []string{base + "/history", gameBase + "/history"} {
