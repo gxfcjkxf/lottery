@@ -90,6 +90,13 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 }
 
 func runCommissionWorker(ctx context.Context, service commission.Service, logger *slog.Logger) {
+	discoveryCtx, stopDiscovery := context.WithCancel(ctx)
+	discoveryDone := make(chan struct{})
+	go func() {
+		defer close(discoveryDone)
+		runCommissionDiscoveryWorker(discoveryCtx, service, logger)
+	}()
+	defer func() { stopDiscovery(); <-discoveryDone }()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -102,6 +109,24 @@ func runCommissionWorker(ctx context.Context, service commission.Service, logger
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("commission cycle processing failed", "committed_steps", n)
+			}
+		}
+	}
+}
+
+func runCommissionDiscoveryWorker(ctx context.Context, service commission.Service, logger *slog.Logger) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run, cancel := context.WithTimeout(ctx, 5*time.Second)
+			n, err := service.ProcessDiscovery(run, 100)
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				logger.Error("commission discovery processing failed", "committed_records", n)
 			}
 		}
 	}

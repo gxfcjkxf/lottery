@@ -116,7 +116,8 @@ type Cycle struct {
 	CalculatedCount    string    `json:"calculated_count"`
 	EarningCount       string    `json:"earning_count"`
 	TotalPoints        string    `json:"total_points"`
-	CreatedBy          string    `json:"created_by"`
+	CreatedBy          *string   `json:"created_by"`
+	CreationActorType  string    `json:"creation_actor_type"`
 	Reason             string    `json:"reason"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`

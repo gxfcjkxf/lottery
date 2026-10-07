@@ -41,6 +41,11 @@ func newCommissionBatchFixture(t *testing.T) commissionBatchFixture {
 func newCommissionBatchFixtureWithWindow(t *testing.T, betWindow, drawWindow time.Duration) commissionBatchFixture {
 	t.Helper()
 	f := newBettingFixtureWithWindow(t, storeTestBrand, betWindow, drawWindow)
+	return newCommissionBatchFixtureFromBetting(t, f)
+}
+
+func newCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixture) commissionBatchFixture {
+	t.Helper()
 	ctx := context.Background()
 	adminID := f.version.CreatedBy
 	actor := access.Account{

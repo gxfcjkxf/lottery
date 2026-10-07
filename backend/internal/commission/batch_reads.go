@@ -17,7 +17,7 @@ const cycleReadJSON = `jsonb_build_object(
  'calculated_count',coalesce((SELECT count(*)::text FROM commission_calculations x WHERE x.brand_id=c.brand_id AND x.cycle_id=c.id AND x.run_id=r.id),'0'),
  'earning_count',coalesce((SELECT count(*)::text FROM commission_earnings x WHERE x.brand_id=c.brand_id AND x.cycle_id=c.id AND x.run_id=r.id),'0'),
  'total_points',coalesce((SELECT sum(x.points)::text FROM commission_earnings x WHERE x.brand_id=c.brand_id AND x.cycle_id=c.id AND x.run_id=r.id),'0'),
- 'created_by',c.created_by::text,'reason',c.reason,'created_at',c.created_at,'updated_at',c.updated_at,
+ 'created_by',c.created_by::text,'creation_actor_type',coalesce(to_jsonb(c)->>'creation_actor_type','admin'),'reason',c.reason,'created_at',c.created_at,'updated_at',c.updated_at,
  'last_error_code',c.last_error_code,'creation_audit_log_id',c.creation_audit_log_id::text)`
 
 const cycleCurrentRunJoin = ` LEFT JOIN commission_runs r ON r.brand_id=c.brand_id AND r.cycle_id=c.id AND r.id=c.current_run_id `

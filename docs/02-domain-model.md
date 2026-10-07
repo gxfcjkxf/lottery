@@ -68,6 +68,8 @@ S6-f 使用现有 attribution_snapshot 保存不可改写的 schema_version/lega
 
 0048新增`commission_cycles`、`commission_cycle_targets`、`commission_runs`、`commission_cycle_steps`、`commission_calculations`、`commission_allocations`和`commission_earnings`。按品牌及闭合UTC窗口登记清单，按不可变运行代次保存每注证据、精确差额和每代理周期整数结果；受影响周期的`evidence_epoch`变化时废弃旧代次但保留历史。核算表不修改钱包、不代表已派发，字段和状态见[佣金周期核算](17-commission-cycles.md)。
 
+0049新增`commission_discovery`操作队列，id对应真实注单；保存pending/registered/failed、版本、原窗口、下一检查时刻、周期及最后审计/错误码。只排入真实启用快照，已知窗口不可改变，关联周期不等于佣金入账。周期新增creation_actor_type；人工为admin及created_by，系统为system及NULL，历史创建者不变。
+
 ### 后台账号与权限
 
 `admin_accounts`, `roles`, `permissions`, `admin_account_roles`, `role_permissions`, `admin_brand_scopes`

@@ -89,6 +89,11 @@ func newBettingFixture(t *testing.T, brand string) bettingFixture {
 func newBettingFixtureWithWindow(t *testing.T, brand string, betWindow, drawWindow time.Duration) bettingFixture {
 	t.Helper()
 	db := testdb.New(t)
+	return newBettingFixtureWithDBWindow(t, db, brand, betWindow, drawWindow)
+}
+
+func newBettingFixtureWithDBWindow(t *testing.T, db *pgxpool.Pool, brand string, betWindow, drawWindow time.Duration) bettingFixture {
+	t.Helper()
 	ctx := context.Background()
 	f := bettingFixture{db: db, service: Service{DB: db}, brand: brand}
 	creatorID, reviewerID, userID, memberID := ids.New(), ids.New(), ids.New(), ids.New()

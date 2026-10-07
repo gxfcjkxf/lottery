@@ -26,4 +26,26 @@ test('financial cycle DTOs preserve exact/null fields and omit private witness d
   assert.equal(s.CommissionCalculation.properties.generation.anyOf[1].type,'null');
   assert.equal(s.CommissionCycle.properties.total_points.type,'string');
   assert.equal(s.CommissionExactAmount.properties.denominator.pattern,'^[1-9][0-9]*$');
+  assert.equal(s.CommissionCycle.properties.created_by.anyOf[1].type,'null');
+  assert.deepEqual(s.CommissionCycle.properties.creation_actor_type.enum,['admin','system']);
+  assert.ok(!s.CommissionCycle.required.includes('creation_actor_type'));
+});
+
+test('commission discovery exposes only the audited list and idempotent retry operations', () => {
+  const paths = Object.entries(doc.paths).filter(([path]) => path.includes('/commission-discovery'));
+  assert.deepEqual(paths.flatMap(([path, methods]) => Object.keys(methods).map(method => `${method.toUpperCase()} ${path}`)).sort(), [
+    'GET /api/v1/admin/commission-discovery',
+    'POST /api/v1/admin/commission-discovery/{id}/retry',
+  ]);
+  const list = doc.paths['/api/v1/admin/commission-discovery'].get;
+  const retry = doc.paths['/api/v1/admin/commission-discovery/{id}/retry'].post;
+  assert.deepEqual(list['x-permissions'], ['commission.view.brand', 'commission.view.platform']);
+  assert.deepEqual(retry['x-permissions'], ['commission.retry.brand']);
+  assert.equal(retry['x-idempotent-operation'], true);
+  const discovery = doc.components.schemas.CommissionDiscovery;
+  assert.equal(discovery.additionalProperties, false);
+  assert.deepEqual(discovery.properties.state.enum, ['pending', 'registered', 'failed']);
+  assert.equal(discovery.properties.cycle_id.anyOf[1].type, 'null');
+  assert.equal(discovery.properties.window_from.anyOf[1].type, 'null');
+  assert.ok(!Object.keys(doc.paths).some(path => /commission-discovery.*(?:payout|approve)/.test(path)));
 });

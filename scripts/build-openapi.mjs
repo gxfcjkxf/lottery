@@ -10,6 +10,7 @@ modules.push(await import("./openapi-withdrawal-reports.mjs"));
 modules.push(await import("./openapi-workbench.mjs"));
 modules.push(await import("./openapi-commission-policies.mjs"));
 modules.push(await import("./openapi-commission-cycles.mjs"));
+modules.push(await import("./openapi-commission-discovery.mjs"));
 const result=spawnSync(process.env.LOTTERY_GO_BIN??"go",["run","-buildvcs=false","./cmd/route-inventory"],{cwd:resolve(root,"backend"),encoding:"utf8",env:{...process.env,CGO_ENABLED:"0"},maxBuffer:8*1024*1024});
 if(result.error||result.status!==0)throw new Error(`Cannot inspect real routes: ${result.error?.message??result.stderr}`);
 const routes=JSON.parse(result.stdout),doc=composeDocument(modules,routes),text=JSON.stringify(doc,null,2)+"\n",destination=resolve(root,"docs/openapi.json");
