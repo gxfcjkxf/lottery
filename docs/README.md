@@ -23,6 +23,7 @@
 - [09-openapi-handover.md](09-openapi-handover.md)：已实现接口的 OpenAPI、接入限制、生成和 CI 契约检查。
 - [09-implementation-backlog.md](09-implementation-backlog.md)：按依赖拆分的第一阶段开发任务。
 - [10-replication-and-recovery.md](10-replication-and-recovery.md)：隔离复制、手动提升与备份恢复命令、证据和生产验收边界。
+- [14-commission-facts.md](14-commission-facts.md)：最终结算事实、计佣基数和内部锁约束；不代表已实现佣金计提与派发。
 
 ## 第一阶段实现顺序
 
