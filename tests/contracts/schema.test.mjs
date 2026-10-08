@@ -46,7 +46,8 @@ test("actual Go DTO serialization and rule-engine outputs satisfy contracts",()=
   assert.equal(examples.AdminWorkbench.withdrawals.status,"ready");
   assert.equal(examples.AdminWorkbench.withdrawals.data.processing_points,"9000000000000000000");
   assert.equal(examples.AdminWorkbench.commissions.data,null);
-  assert.equal(examples.AdminWorkbench.rewards.data,null);
+  assert.equal(examples.AdminWorkbench.rewards.status,"ready");
+  assert.deepEqual(examples.AdminWorkbench.rewards.data,{granted_count:"1",pending_count:"2",revoked_count:"3"});
   assert.equal(examples.LotterySimulationResult.bet_points,"8");
   assert.equal(examples.LotterySimulationResult.prize_points,"70");
   assert.equal(examples.WithdrawalAvailabilityExample.real_payments,false);

@@ -91,6 +91,13 @@ func workbenchRead(r *http.Request, d Dependencies, brand string) (workbench.Sna
 	if _, err = audit.Append(ctx, tx, record); err != nil {
 		return empty, err
 	}
+	final, err := freshAdmin(ctx, tx, r, d, access.Account{ID: id}, false)
+	if errors.Is(err, adminsys.ErrDenied) || errors.Is(err, identity.ErrSession) || err == nil && !workbench.Allowed(final, brand) {
+		return empty, identity.ErrSession
+	}
+	if err != nil {
+		return empty, err
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return empty, err
 	}

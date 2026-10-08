@@ -32,7 +32,7 @@ func workbenchExamples() map[string]any {
 		Sources:        workbenchReady(workbench.Sources{AdapterState: "stub", ConfiguredGames: "2", EnabledAPISources: "1", EnabledDOMSources: "0", AttemptsToday: "3", FailedToday: "1", NoDataToday: "0", LastAttemptAt: &lastAttemptAt}),
 		Withdrawals:    workbenchReady(workbench.Withdrawals{ReviewingCount: "1", ReviewingPoints: "50", ProcessingCount: "2", ProcessingPoints: "9000000000000000000"}),
 		Commissions:    workbench.Section[struct{}]{Status: "not_implemented"},
-		Rewards:        workbench.Section[struct{}]{Status: "not_implemented"},
+		Rewards:        workbench.Section[workbench.Rewards]{Status: "ready", Data: &workbench.Rewards{GrantedCount: "1", PendingCount: "2", RevokedCount: "3"}},
 	}
 	return map[string]any{"AdminWorkbench": snapshot}
 }

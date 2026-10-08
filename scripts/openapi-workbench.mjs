@@ -54,6 +54,7 @@ export const schemas = {
   AdminWorkbenchReconciliation: reconciliation,
   AdminWorkbenchSources: sources,
   AdminWorkbenchWithdrawals: withdrawals,
+  AdminWorkbenchRewards: obj({ granted_count: count, pending_count: count, revoked_count: count }),
   AdminWorkbenchSnapshot: obj({
     brand_id: uuid, snapshot_at: dateTime, timezone: str, day_from: dateTime,
     brand: ref("AdminWorkbenchBrandSection"), periods: ref("AdminWorkbenchPeriodsSection"),
@@ -76,13 +77,13 @@ export const schemas = {
   AdminWorkbenchSourcesSection: section("sources", "draw_source", ref("AdminWorkbenchSources")),
   AdminWorkbenchWithdrawalsSection: section("withdrawals", "withdrawal", ref("AdminWorkbenchWithdrawals")),
   AdminWorkbenchCommissionsSection: unavailable("not_implemented"),
-  AdminWorkbenchRewardsSection: unavailable("not_implemented"),
+  AdminWorkbenchRewardsSection: section("rewards", "reward", ref("AdminWorkbenchRewards")),
 };
 
 const permissions = ["brand.view.brand", "period.view.brand", "bet.view.brand", "report_betting.view.brand", "settlement.view.brand", "recharge.view.brand", "report_ledger.view.brand", "wallet.view.brand", "draw_source.view.brand", "withdrawal.view.brand", "brand.view.platform", "period.view.platform", "bet.view.platform", "report_betting.view.platform", "settlement.view.platform", "recharge.view.platform", "report_ledger.view.platform", "wallet.view.platform", "draw_source.view.platform", "withdrawal.view.platform"];
 export const operations = [{
   method: "GET", path: "/api/v1/admin/workbench", operationId: "adminGetWorkbench",
   summary: "Read the selected brand's operations workbench", tag: "workbench", auth: "admin",
-  data: ref("AdminWorkbenchSnapshot"), brandHeader: true, permissions,
-  description: "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Withdrawals reports only current reviewing and processing order counts and order points; it does not infer eligibility, actual payment, or profit. Commissions and rewards remain not_implemented with null data. Aggregate counts and amounts are exact decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
+  data: ref("AdminWorkbenchSnapshot"), brandHeader: true, permissions: [...permissions, "reward.view.brand", "reward.view.platform"],
+  description: "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Withdrawals reports only current reviewing and processing order counts and order points; it does not infer eligibility, actual payment, or profit. Rewards counts all current reward orders in granted, revocation_pending and revoked states; not today's postings, attempt counts, wallet balance or reserved funds. Only commissions remains not_implemented. Fresh authorization is rechecked after audit waits before releasing data. Aggregate counts and amounts are exact decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
 }];

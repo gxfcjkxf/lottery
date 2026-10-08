@@ -20,7 +20,7 @@ function snapshot(patch: Partial<WorkbenchSnapshot> = {}): WorkbenchSnapshot {
     balances: ready({ account_count: "10", available_points: "11", frozen_points: "12", withdrawal_points: "13", total_points: "36" }),
     reconciliation: ready({ latest_job: { id: jobId, state: "completed", created_at: "2026-10-07T09:00:00Z", completed_at: stamp, target_count: "2", checked_count: "2", repairable_count: "1", corrupt_count: "0", failed_count: "0" } }),
     sources: ready({ adapter_state: "stub", configured_games: "1", enabled_api_sources: "2", enabled_dom_sources: "0", attempts_today: "3", failed_today: "1", no_data_today: "1", last_attempt_at: "2026-10-07T09:30:00Z" }),
-    withdrawals: ready({ reviewing_count: "2", reviewing_points: "500", processing_count: "1", processing_points: "900719925474099312345" }), commissions: { status: "not_implemented", data: null }, rewards: { status: "not_implemented", data: null },
+    withdrawals: ready({ reviewing_count: "2", reviewing_points: "500", processing_count: "1", processing_points: "900719925474099312345" }), commissions: { status: "not_implemented", data: null }, rewards: ready({ granted_count: "1", pending_count: "2", revoked_count: "3" }),
     ...patch,
   };
 }
@@ -77,7 +77,7 @@ describe("workbench SDK", () => {
     await expect(createWorkbenchApi(vi.fn<typeof fetch>().mockResolvedValue(response(data))).get(legacyBrand)).resolves.toEqual(data);
   });
 
-  it("enforces section status and data nullability, keeping only commissions and rewards unimplemented", () => {
+  it("enforces section status and data nullability, keeping only commissions unimplemented", () => {
     const value = snapshot();
     expect(validWorkbenchSnapshot({ ...value, balances: { status: "forbidden", data: null } }, brand)).toBe(true);
     expect(validWorkbenchSnapshot({ ...value, balances: { status: "forbidden", data: value.balances.data } }, brand)).toBe(false);
@@ -89,6 +89,12 @@ describe("workbench SDK", () => {
       expect(validWorkbenchSnapshot({ ...value, withdrawals: { status: "ready", data: { ...value.withdrawals.data!, reviewing_points: invalid } } }, brand)).toBe(false);
     }
     expect(validWorkbenchSnapshot({ ...value, rewards: { status: "ready", data: {} } }, brand)).toBe(false);
+    expect(validWorkbenchSnapshot({ ...value, rewards: { status: "forbidden", data: null } }, brand)).toBe(true);
+    expect(validWorkbenchSnapshot({ ...value, rewards: { status: "not_implemented", data: null } }, brand)).toBe(false);
+    for (const invalid of ["01", "-1", 1, "1e3"]) {
+      expect(validWorkbenchSnapshot({ ...value, rewards: { status: "ready", data: { ...value.rewards.data!, pending_count: invalid } } }, brand)).toBe(false);
+    }
+    expect(validWorkbenchSnapshot({ ...value, rewards: { status: "ready", data: { ...value.rewards.data!, gift_points: "10" } } }, brand)).toBe(false);
   });
 
   it("validates latest job lifecycle, counters, and cross-field logical coherence", () => {
@@ -123,6 +129,9 @@ describe("workbench SDK", () => {
     expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["withdrawal.view.platform"] }), brand).withdrawals).toBe(true);
     expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["wallet.view.brand"] }, platform_permissions: [] }), brand).withdrawals).toBe(false);
     expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: [] }, platform_permissions: [] }), brand).orders).toBe(false);
+    expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["reward.view.brand"] } }), brand).rewards).toBe(true);
+    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["reward.view.platform"] }), brand).rewards).toBe(true);
+    expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["wallet.view.brand", "report_reward.view.brand"] } }), brand).rewards).toBe(false);
   });
 
   it("rejects invalid identifiers, malformed envelopes, preserves HTTP errors, and supports cancellation", async () => {

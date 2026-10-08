@@ -4,7 +4,7 @@
 
 `GET /api/v1/admin/workbench`要求后台认证和UUID格式的`X-Brand-ID`，不接受查询参数，固定读取主库并在响应前提交审计。数据包含`brand_id,snapshot_at,timezone,day_from`以及13个区块：brand、periods、orders、today_bets、settlement、recharges、ledger、balances、reconciliation、sources、withdrawals、commissions、rewards。
 
-前10区块分别使用brand、period、bet、report_betting、settlement、recharge、report_ledger、report_ledger、wallet、draw_source的显式view权限；有权限返回`ready`及对象，无权限返回`forbidden`及null。withdrawals使用独立withdrawal.view.brand/platform权限，返回当前reviewing_count/reviewing_points/processing_count/processing_points四个非负整数字符串；未授权不查询提现表。仅commissions、rewards固定`not_implemented`及null。至少有一个可查看资源才允许请求，平台身份本身不授权。今日数据窗口为品牌时区午夜到快照时间的半开区间，今日投注用placed_at，账本用created_at；余额及待处理状态为当前汇总，提现订单积分不代表资格、实际出款或利润；对账显示最新历史任务及检查结果，不等于当前所有余额状态。所有计数及积分为规范十进制整数字符串，net_points允许负值。来源状态固定stub，不证明上游健康。查询或审计失败为503，不返回零值或部分数据；其他状态和精确字段以OpenAPI为准。
+前10区块分别使用brand、period、bet、report_betting、settlement、recharge、report_ledger、report_ledger、wallet、draw_source的显式view权限；有权限返回`ready`及对象，无权限返回`forbidden`及null。withdrawals使用独立withdrawal.view.brand/platform权限，返回当前reviewing_count/reviewing_points/processing_count/processing_points四个非负整数字符串；未授权不查询提现表。rewards使用独立reward.view.brand/platform权限，返回全部当前订单的granted_count/pending_count/revoked_count，不是今日入账或余额；报表权限不推导该卡片授权。仅commissions固定`not_implemented`及null。至少有一个可查看资源才允许请求，平台身份本身不授权。今日数据窗口为品牌时区午夜到快照时间的半开区间，今日投注用placed_at，账本用created_at；余额及待处理状态为当前汇总，提现订单积分不代表资格、实际出款或利润；对账显示最新历史任务及检查结果，不等于当前所有余额状态。所有计数及积分为规范十进制整数字符串，net_points允许负值。来源状态固定stub，不证明上游健康。查询或审计失败为503，不返回零值或部分数据；审计等待后会话过期为401且不释放数据。奖励独立报表及CSV另见[奖励报表合同](21-reward-reports.md)，其他精确字段以OpenAPI为准。
 
 ## 1. 基础约定
 

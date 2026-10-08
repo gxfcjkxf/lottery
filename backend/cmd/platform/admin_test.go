@@ -93,3 +93,32 @@ func TestBootstrapRewardPermissionsAreExplicitAndScoped(t *testing.T) {
 		}
 	}
 }
+
+func TestBootstrapRewardReportRightsAreExplicitAndScoped(t *testing.T) {
+	db := testdb.New(t)
+	ctx := context.Background()
+	before := os.Args
+	t.Cleanup(func() { os.Args = before })
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-reward-report-owned-test-password-2026")
+	for _, tc := range []struct {
+		name  string
+		args  []string
+		scope string
+	}{
+		{"reward_report_brand_bootstrap", []string{"--brand", "harbor"}, "brand"},
+		{"reward_report_platform_bootstrap", []string{"--super"}, "platform"},
+	} {
+		os.Args = append([]string{"platform", "create-admin", "--username", tc.name}, tc.args...)
+		if err := createAdmin(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),'{}') FROM role_permissions rp JOIN admin_account_roles ar ON ar.role_id=rp.role_id JOIN admin_accounts a ON a.id=ar.account_id WHERE a.username=$1 AND permission_key LIKE 'report_reward.%'`, tc.name).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"report_reward.export." + tc.scope, "report_reward.view." + tc.scope}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s reward report grants=%v want=%v", tc.name, got, want)
+		}
+	}
+}

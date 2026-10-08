@@ -45,6 +45,10 @@ test('reward browser matrix uses fresh viewport databases, normal CLI bootstrap 
   assert.ok(job.indexOf('tests/browser/reward-notifications.spec.ts') > job.indexOf('Start existing inbox worker'));
   assert.match(job, /REWARD_NOTIFICATION_WORKER_ENABLED: "true"/);
   assert.match(job, /tests\/browser\/reward-notifications\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0 --reporter=list,json/);
+  assert.match(job, /tests\/browser\/reward-reports\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0 --reporter=list,json/);
+  assert.ok(job.indexOf('tests/browser/reward-reports.spec.ts') > job.indexOf('tests/browser/reward-notifications.spec.ts'));
+  assert.match(job, /PLAYWRIGHT_JSON_OUTPUT_NAME: \.local\/reward-reports-report\.json/);
+  assert.match(job, /Reward reports CI requires passed tests and zero skipped tests/);
   assert.doesNotMatch(job, /UPDATE |INSERT INTO |DELETE FROM |TRUNCATE|DROP |reset|auth_rate_limits|X-Forwarded-For|payment-policy/i);
 });
 

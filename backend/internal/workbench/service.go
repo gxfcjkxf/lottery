@@ -86,7 +86,12 @@ func (Service) ReadTx(ctx context.Context, tx pgx.Tx, a access.Account, brand st
  'processing_count',count(*) FILTER(WHERE state='processing')::text,
  'processing_points',coalesce(sum(points::numeric) FILTER(WHERE state='processing'),0)::text)
  FROM withdrawal_orders WHERE brand_id=s.id AND state IN('reviewing','processing')`)
-	for _, name := range []string{"commissions", "rewards"} {
+	add("rewards", "reward", `SELECT jsonb_build_object(
+ 'granted_count',count(*) FILTER(WHERE state='granted')::text,
+ 'pending_count',count(*) FILTER(WHERE state='revocation_pending')::text,
+ 'revoked_count',count(*) FILTER(WHERE state='revoked')::text)
+ FROM reward_orders WHERE brand_id=s.id`)
+	for _, name := range []string{"commissions"} {
 		fields = append(fields, "'"+name+"',jsonb_build_object('status','not_implemented','data',NULL)")
 	}
 	query := `WITH s AS MATERIALIZED(SELECT id,name,code,status,timezone,statement_timestamp() snapshot_at,

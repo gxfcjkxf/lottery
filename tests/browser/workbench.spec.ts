@@ -44,10 +44,21 @@ test('workbench displays real scoped financial data, explicit gaps, and clears s
     await expect(card('Withdrawals')).toContainText('Your account cannot view')
     await expect(card('Withdrawals').locator('dd')).toHaveCount(0)
   }
-  for (const name of ['Commissions', 'Rewards']) {
+  for (const name of ['Commissions']) {
     expect(data[name.toLowerCase()]).toEqual({ status: 'not_implemented', data: null })
     await expect(card(name).locator('.badge')).toHaveText('Not implemented')
     await expect(card(name).locator('dd')).toHaveCount(0)
+  }
+  const rewards = data.rewards
+  const rewardsHeading = 'Reward orders (current state)'
+  await expect(card(rewardsHeading).locator('.badge')).toHaveText(rewards.status === 'ready' ? 'Ready' : 'Unavailable')
+  if (rewards.status === 'ready') {
+    await expect(metric(rewardsHeading, 'Granted orders')).toHaveText(rewards.data.granted_count)
+    await expect(metric(rewardsHeading, 'Revocations pending')).toHaveText(rewards.data.pending_count)
+    await expect(metric(rewardsHeading, 'Revoked orders')).toHaveText(rewards.data.revoked_count)
+  } else {
+    expect(rewards).toEqual({ status: 'forbidden', data: null })
+    await expect(card(rewardsHeading).locator('dd')).toHaveCount(0)
   }
   await expect(card('Draw sources')).toContainText(data.sources.status === 'forbidden' ? 'Your account cannot view' : 'does not indicate upstream health')
   await expect(dashboard).not.toContainText('Lin Lan')

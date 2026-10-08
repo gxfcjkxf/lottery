@@ -16,7 +16,7 @@ function component(): Component {
   const descriptor = parse(source, { filename }).descriptor;
   const js = ts.transpileModule(compileScript(descriptor, { id: "reports-locale-test", inlineTemplate: true }).content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
   const empty = { render: () => null };
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./reports-api": ReportsApi, "./report-export-api": ReportExportApi, "./WithdrawalReport.vue": empty, "./CommissionReport.vue": empty };
+  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./reports-api": ReportsApi, "./report-export-api": ReportExportApi, "./WithdrawalReport.vue": empty, "./CommissionReport.vue": empty, "./RewardReports.vue": empty };
   const body = js.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`)
     .replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, name: string, specifier: string) => `const ${name}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
   return new Function("__modules", body)(modules) as Component;

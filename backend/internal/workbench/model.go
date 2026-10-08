@@ -71,6 +71,14 @@ type Withdrawals struct {
 	ProcessingCount  string `json:"processing_count"`
 	ProcessingPoints string `json:"processing_points"`
 }
+
+// Rewards counts the current states of all saved orders, not wallet balances,
+// successful revocation attempts, or today's ledger posting amounts.
+type Rewards struct {
+	GrantedCount string `json:"granted_count"`
+	PendingCount string `json:"pending_count"`
+	RevokedCount string `json:"revoked_count"`
+}
 type ReconciliationJob struct {
 	ID              string     `json:"id"`
 	State           string     `json:"state"`
@@ -112,14 +120,14 @@ type Snapshot struct {
 	Sources        Section[Sources]        `json:"sources"`
 	Withdrawals    Section[Withdrawals]    `json:"withdrawals"`
 	Commissions    Section[struct{}]       `json:"commissions"`
-	Rewards        Section[struct{}]       `json:"rewards"`
+	Rewards        Section[Rewards]        `json:"rewards"`
 }
 
 func CanView(a access.Account, brand, resource string) bool {
 	return access.Authorize(a, resource, "view", access.ScopeBrand, brand) || access.Authorize(a, resource, "view", access.ScopePlatform, "")
 }
 func Allowed(a access.Account, brand string) bool {
-	for _, resource := range []string{"brand", "period", "bet", "report_betting", "settlement", "recharge", "report_ledger", "wallet", "draw_source", "withdrawal"} {
+	for _, resource := range []string{"brand", "period", "bet", "report_betting", "settlement", "recharge", "report_ledger", "wallet", "draw_source", "withdrawal", "reward"} {
 		if CanView(a, brand, resource) {
 			return true
 		}

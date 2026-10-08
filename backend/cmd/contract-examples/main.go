@@ -198,6 +198,9 @@ func main() {
 	for key, value := range rewardExamples() {
 		values[key] = value
 	}
+	for key, value := range rewardReportExamples() {
+		values[key] = value
+	}
 	if err := json.NewEncoder(os.Stdout).Encode(values); err != nil {
 		log.Fatal(err)
 	}

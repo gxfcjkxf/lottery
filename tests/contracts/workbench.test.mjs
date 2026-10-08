@@ -28,7 +28,7 @@ const snapshot = () => ({
   balances: ready({ account_count: "0", available_points: "0", frozen_points: "0", withdrawal_points: "0", total_points: "0" }),
   reconciliation: ready({ latest_job: null }),
   sources: ready({ adapter_state: "stub", configured_games: "0", enabled_api_sources: "0", enabled_dom_sources: "0", attempts_today: "0", failed_today: "0", no_data_today: "0", last_attempt_at: null }),
-  withdrawals: ready({ reviewing_count: "2", reviewing_points: "500", processing_count: "1", processing_points: "900719925474099312345" }), commissions: unavailable(), rewards: unavailable(),
+  withdrawals: ready({ reviewing_count: "2", reviewing_points: "500", processing_count: "1", processing_points: "900719925474099312345" }), commissions: unavailable(), rewards: ready({ granted_count: "1", pending_count: "2", revoked_count: "3" }),
 });
 
 test("workbench operation is authenticated, brand selected, and has no query or routing controls", () => {
@@ -50,7 +50,7 @@ test("authoritative workbench snapshot schema enforces ready data, unavailable n
   const sectionNames = Object.keys(doc.components.schemas.AdminWorkbenchSnapshot.properties);
   for (const name of sectionNames.slice(4)) {
     const sectionName = doc.components.schemas.AdminWorkbenchSnapshot.properties[name].$ref.split("/").at(-1);
-    if (["commissions", "rewards"].includes(name)) {
+    if (name === "commissions") {
       assert.equal(doc.components.schemas[sectionName].properties.status.const, "not_implemented");
     } else {
       assert.deepEqual(doc.components.schemas[sectionName].properties.status.enum, ["ready", "forbidden"]);
@@ -72,8 +72,10 @@ test("authoritative workbench snapshot schema enforces ready data, unavailable n
   for (const amount of ["01", "-1", "1e3"]) {
     assert.ok(!check({ ...value, withdrawals: ready({ ...value.withdrawals.data, processing_points: amount }) }));
   }
-  for (const key of ["withdrawals", "commissions", "rewards"]) {
-    if (key === "withdrawals") continue;
+  assert.ok(check({ ...value, rewards: { status: "forbidden", data: null } }));
+  assert.ok(!check({ ...value, rewards: unavailable() }));
+  assert.ok(!check({ ...value, rewards: ready({ ...value.rewards.data, gift_points: "5" }) }));
+  for (const key of ["commissions"]) {
     assert.ok(check({ ...value, [key]: unavailable() }));
     assert.ok(!check({ ...value, [key]: { status: "not_implemented", data: { count: "0" } } }));
     assert.ok(!check({ ...value, [key]: { status: "not_implemented", data: null, count: "0" } }));

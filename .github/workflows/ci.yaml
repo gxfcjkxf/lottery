@@ -66,6 +66,12 @@ jobs:
         run: |
           pnpm exec playwright test tests/browser/reward-notifications.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --reporter=list,json
           node --input-type=module -e 'import { readFileSync } from "node:fs"; const { stats } = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME, "utf8")); if (stats.skipped !== 0 || !(stats.expected > 0)) throw new Error("Reward inbox CI requires passed tests and zero skipped tests");'
+      - name: Verify both reward reports and current workbench through real UI
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: .local/reward-reports-report.json
+        run: |
+          pnpm exec playwright test tests/browser/reward-reports.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --reporter=list,json
+          node --input-type=module -e 'import { readFileSync } from "node:fs"; const { stats } = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME, "utf8")); if (stats.skipped !== 0 || !(stats.expected > 0)) throw new Error("Reward reports CI requires passed tests and zero skipped tests");'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -74,6 +80,7 @@ jobs:
             test-results/
             .local/reward-browser-report.json
             .local/reward-inbox-report.json
+            .local/reward-reports-report.json
             reward-inbox-worker.log
   commission-cycles-browser:
     runs-on: ubuntu-latest
