@@ -42,9 +42,11 @@ const AgentManagement = defineAsyncComponent(() => import("./AgentManagement.vue
 const CommissionPolicySettings = defineAsyncComponent(() => import("./CommissionPolicySettings.vue"));
 const CommissionCyclesManagement = defineAsyncComponent(() => import("./CommissionCyclesManagement.vue"));
 const CommissionPaymentsManagement = defineAsyncComponent(() => import("./CommissionPaymentsManagement.vue"));
+const RewardsManagement = defineAsyncComponent(() => import("./RewardsManagement.vue"));
 import { clearAllPendingCommissionCycleWrites } from "./commission-cycles-state";
 import { clearAllPendingCommissionAdjustments } from "./commission-adjustments-state";
 import { clearAllCommissionPaymentIntents, hideCommissionPaymentIntentsForScope } from "./commissionPayments-state";
+import { clearAllRewardIntents } from "./rewards-state";
 const JoinCodeManagement = defineAsyncComponent(() => import("./JoinCodeManagement.vue"));
 import { clearAllPendingAgentWrites } from "./agents-state";
 import { clearAllPendingJoinCodeWrites } from "./join-codes-state";
@@ -109,6 +111,7 @@ const englishUi: Record<string, string> = {
   "管理员登录": "Admin sign in", "使用后台管理员账号登录。": "Sign in with an admin account.", "账号": "Account", "密码": "Password", "登录中…": "Signing in…", "登录并加载真实成员": "Sign in and load members", "请选择真实品牌": "Select a live brand", "成员请求不会使用后端默认品牌。请从侧栏品牌选择器中选择一个有权访问的品牌。": "Member requests never use the backend's default brand. Choose an accessible brand from the sidebar selector.", "进入管理员登录": "Go to admin sign in", "正在检查管理员登录状态…": "Checking admin sign-in…", "已登录": "Signed in", "当前真实品牌": "Current live brand", "读取中…": "Loading…", "刷新成员": "Refresh members", "品牌成员": "Brand members", "条本页": "on this page", "搜索用户名 / 手机号 / ID": "Search username / phone / ID", "搜索成员": "Search members", "正在读取品牌成员…": "Loading brand members…", "该品牌当前没有可显示的成员。": "This brand has no members to display.", "成员": "Member", "成员 ID": "Member ID", "手机号": "Phone", "状态": "Status", "加入时间": "Joined", "备注": "Notes", "标签": "Tags", "操作": "Actions", "编辑": "Edit", "踢出": "Remove", "重置密码": "Reset password", "上一页": "Previous", "下一页": "Next", "每页最多": "Up to", "条": "records",
   "代理管理": "Agent management", "代理树": "Agent tree", "加入码管理": "Join code management", "规则配置": "Rule configuration", "期次和开奖": "Periods & draws", "注单和异常": "Orders & exceptions", "资金与账本": "Funds & ledger", "批量对账": "Bulk reconciliation", "佣金和奖励": "Commissions & rewards", "佣金派发": "Commission payouts", "报表和对账": "Reports & reconciliation", "账号与权限": "Accounts and permissions", "审计日志": "Audit log", "通知投递": "Notification delivery", "通知模板": "Notification templates", "风控与合规": "Risk & compliance", "工作台": "Dashboard", "用户和成员": "Users and members",
   "请先登录后台账号查看真实佣金派发记录。": "Sign in to view live commission payout records.",
+  "人工奖励": "Manual rewards", "请先登录后台账号查看人工奖励订单。": "Sign in to view manual reward orders.",
   "刷新日志": "Refresh log", "按选中品牌读取真实后台日志。": "Load live admin logs for the selected brand.", "未登录：以下是静态演示样例，不是后台记录。": "Signed out: these are static examples, not admin records.", "请先从侧栏选择品牌；审计请求始终携带明确的 X-Brand-ID。": "Select a brand in the sidebar. Audit requests always include an explicit X-Brand-ID.", "正在读取审计日志…": "Loading audit log…", "所选品牌没有可显示的审计记录。": "No audit records are available for this brand.", "资源": "Resource", "操作人": "Actor", "原因": "Reason", "时间": "Time", "演示日志不会显示为真实后台记录。": "Demo logs are not shown as live admin records.",
   "关闭": "Close", "取消": "Cancel", "必填": "Required", "保存中…": "Saving…", "保存到后台": "Save to admin", "处理中…": "Processing…", "确认踢出": "Confirm removal", "确认重置全局密码": "Confirm global password reset", "编辑成员状态和备注": "Edit member status and notes", "踢出品牌会话": "Revoke brand session", "重置全局密码": "Reset global password", "这会调用后台踢出接口，撤销该用户在当前品牌的会话。": "This calls the admin removal API and revokes this user's session for the current brand.", "新密码": "New password", "重置原因": "Reset reason", "我确认此重置影响该全局账号在所有品牌的密码和会话。": "I understand this resets the global account password and sessions across all brands.",
   "全部管理页面": "All admin pages", "关闭导航": "Close navigation", "移动端主导航": "Mobile main navigation", "用户": "Users", "期次": "Periods", "审核": "Review", "更多": "More",
@@ -174,6 +177,7 @@ type Page =
   | "批量对账"
   | "佣金和奖励"
   | "佣金派发"
+  | "人工奖励"
   | "报表和对账"
   | "账号与权限"
   | "审计日志"
@@ -193,6 +197,7 @@ const nav: { name: Page; icon: string; group: string }[] = [
   { name: "批量对账", icon: "≋", group: "资金" },
   { name: "佣金和奖励", icon: "↗", group: "资金" },
   { name: "佣金派发", icon: "⇧", group: "资金" },
+  { name: "人工奖励", icon: "✧", group: "资金" },
   { name: "报表和对账", icon: "▥", group: "管理" },
   { name: "账号与权限", icon: "♧", group: "管理" },
   { name: "审计日志", icon: "≡", group: "管理" },
@@ -392,6 +397,7 @@ const clearAdminData = () => {
 	clearAllPendingCommissionAdjustments();
 	clearAllPendingCommissionCycleWrites();
 	clearAllCommissionPaymentIntents();
+	clearAllRewardIntents();
 	clearAllPendingCommissionWrites();
 	clearAllPendingPresentationWrites();
 	clearAllPendingComplianceIntents();
@@ -437,6 +443,7 @@ const restoreAdminSession = async () => {
       clearAllPendingCommissionCycleWrites();
       clearAllPendingCommissionAdjustments();
       clearAllCommissionPaymentIntents();
+      clearAllRewardIntents();
       clearAllPendingBrandCreationWrites();
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
@@ -472,6 +479,7 @@ const login = async () => {
       clearAllPendingCommissionCycleWrites();
       clearAllPendingCommissionAdjustments();
       clearAllCommissionPaymentIntents();
+      clearAllRewardIntents();
       clearAllPendingBrandCreationWrites();
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
@@ -1963,6 +1971,14 @@ const ledger = [
           :account="account" :brand-id="selectedBrandId" :brand-status="selectedBrand?.status" @session-invalid="clearAdminData" />
         <div v-else class="panel directory-state"><h1>{{ ui("佣金派发") }}</h1>
           <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号查看真实佣金派发记录。") }}</p>
+        </div>
+      </section>
+
+      <section v-else-if="page === '人工奖励'" class="page-content">
+        <RewardsManagement v-if="account && selectedBrandId" :key="`rewards:${account.id}:${selectedBrandId}`"
+          :account="account" :brand-id="selectedBrandId" :brand-status="selectedBrand?.status" @session-invalid="clearAdminData" />
+        <div v-else class="panel directory-state"><h1>{{ ui("人工奖励") }}</h1>
+          <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号查看人工奖励订单。") }}</p>
         </div>
       </section>
 

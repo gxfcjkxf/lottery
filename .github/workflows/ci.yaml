@@ -1,6 +1,69 @@
 name: check
 on: [push, pull_request]
 jobs:
+  reward-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        viewport: [desktop, mobile]
+    services:
+      postgres:
+        image: postgres:17.5-alpine
+        env:
+          POSTGRES_DB: lottery_rewards_ui_${{ matrix.viewport }}_s22
+          POSTGRES_USER: lottery_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["127.0.0.1:5432:5432"]
+        options: --health-cmd "pg_isready -U lottery_test -d lottery_rewards_ui_${{ matrix.viewport }}_s22" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_rewards_ui_${{ matrix.viewport }}_s22?sslmode=disable
+      HTTP_ADDR: 127.0.0.1:8080
+      AUTH_KEY_FILE: .local/auth.key
+      PLATFORM_BIN: .local/reward-platform
+      REWARD_UI_VIEWPORT: ${{ matrix.viewport }}
+      REWARD_UI_FIXTURE_CONFIRM: owned_synthetic_database
+      TEST_ADMIN_ORIGIN: http://localhost:5174
+      # These separate credentials exist only in the fresh synthetic service.
+      TEST_REWARD_ADMIN_PASSWORD: reward-s22-owned-operator-password-2026
+      TEST_REWARD_SUPER_PASSWORD: reward-s22-owned-reader-password-2026
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare and verify Chromium
+        timeout-minutes: 7
+        run: node scripts/prepare-ci-browser.mjs
+      - name: Initialize owned reward database with normal CLI and start API
+        run: |
+          mkdir -p .local
+          go -C backend build -o ../.local/reward-platform ./cmd/platform
+          .local/reward-platform generate-auth-key .local/auth.key
+          node scripts/prepare-reward-browser.mjs
+          .local/reward-platform serve > reward-browser-api.log 2>&1 &
+          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
+      - name: Run real reward browser workflow without skipped tests
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: .local/reward-browser-report.json
+        run: |
+          pnpm exec playwright test tests/browser/rewards.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --reporter=list,json
+          node --input-type=module -e 'import { readFileSync } from "node:fs"; const { stats } = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME, "utf8")); if (stats.skipped !== 0 || !(stats.expected > 0)) throw new Error("Reward browser CI requires passed tests and zero skipped tests");'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: reward-browser-${{ matrix.viewport }}-failure-traces
+          path: |
+            test-results/
+            .local/reward-browser-report.json
   commission-cycles-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 20

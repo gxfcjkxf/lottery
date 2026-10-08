@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
@@ -61,6 +62,34 @@ func TestBootstrapCommissionPolicyPermissionsAreExplicitAndScoped(t *testing.T) 
 		}
 		if len(reportGrants) != 2 || reportGrants[0] != "report_commission.export."+scope || reportGrants[1] != "report_commission.view."+scope {
 			t.Fatalf("%s report grants=%v", tc.username, reportGrants)
+		}
+	}
+}
+
+func TestBootstrapRewardPermissionsAreExplicitAndScoped(t *testing.T) {
+	db := testdb.New(t)
+	ctx := context.Background()
+	before := os.Args
+	t.Cleanup(func() { os.Args = before })
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-reward-owned-test-password-2026")
+	for _, tc := range []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{"reward_brand_bootstrap", []string{"--brand", "harbor"}, []string{"reward.grant.brand", "reward.retry.brand", "reward.revoke.brand", "reward.view.brand"}},
+		{"reward_platform_bootstrap", []string{"--super"}, []string{"reward.view.platform"}},
+	} {
+		os.Args = append([]string{"platform", "create-admin", "--username", tc.name}, tc.args...)
+		if err := createAdmin(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),'{}') FROM role_permissions rp JOIN admin_account_roles ar ON ar.role_id=rp.role_id JOIN admin_accounts a ON a.id=ar.account_id WHERE a.username=$1 AND permission_key LIKE 'reward.%'`, tc.name).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("%s rewards=%v want=%v", tc.name, got, tc.want)
 		}
 	}
 }

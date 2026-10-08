@@ -2,6 +2,8 @@
 
 多品牌彩票运营平台。实现依据位于 [docs/README.md](docs/README.md)，阶段验收与当前覆盖范围位于 [docs/implementation-progress.md](docs/implementation-progress.md)。
 
+后台“人工奖励”已接入独立权限、真实赠送积分发放、全额原路撤销及不足待处理，支持中英双语、PC与移动布局。提交须明确核对，结果未知只能恢复原请求，当前查询与原回执分开；余额补足不自动继续。奖励通知、独立报表和工作台摘要仍待完成，交接及专项测试环境见[人工奖励合同](docs/20-manual-reward-orders.md)。
+
 第三方接入请使用 [已实现 OpenAPI](docs/openapi.json) 与 [接口交接说明](docs/09-openapi-handover.md)。运行 `pnpm api:generate` 更新，`pnpm api:check` 和 `pnpm test:contracts` 检查实际路由及代表性数据模型；完整业务设计中的未来接口不代表已经可调用。
 
 后台“品牌和域名”中的新建品牌、运行状态、域名和展示配置已接入真实服务及审计。创建需精确的 `brand.create.platform` 权限，新品牌固定暂停、版本1；不会自动创建管理员、会员、域名、游戏或积分。暂停只阻止新投注，不撤销登录或停止已有订单退款、开奖和结算。配置使用品牌共享版本，提交前应重新读取并核对。
