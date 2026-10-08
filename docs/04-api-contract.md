@@ -569,7 +569,7 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 | GET | /admin/notification-deliveries | 品牌内投递状态分页；显式 `notification.view.brand/platform` 与查询审计 |
 | POST | /admin/notification-deliveries/{event_id}/retry | `{attempt_count:整数,reason:非空文本}`；仅 failed 状态，显式 `notification.retry.brand`，超管禁止 |
 
-列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version,content,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。template_version为正安全整数，content为不可变双语源文案；仅旧非提现/佣金v1消息可为null。原八种事件、六种withdrawal.order状态事件及两种commission事件，共十六种；入品牌积分为null，佣金修正为规范带符号非零int64字符串，其余为规范正int64字符串。用户不能编辑快照或业务事实，详见 [模板与旧消息合同](12-notification-templates.md)及[佣金通知](18-commission-adjustments.md)。
+列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version,content,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。template_version为正安全整数，content为不可变双语源文案；仅旧非提现/佣金/奖励v1消息可为null。原八种事件、六种withdrawal.order状态事件、两种commission事件及reward.order.granted/revocation_pending/revoked，共十九种；入品牌积分为null，佣金修正为规范带符号非零int64字符串，其余为规范正int64字符串。奖励三种事件均用原订单UUID和原奖励正额，待处理说明本次没有积分变动，不表示当前状态。用户不能编辑快照或业务事实，详见 [模板与旧消息合同](12-notification-templates.md)、[佣金通知](18-commission-adjustments.md)及[奖励合同](20-manual-reward-orders.md)。
 
 `won` 仅在实际正额中奖入账事务中生成，points 是实派奖金额而非下注金额；待批准的核算、零额及未中奖不生成此消息。`prize_reversed` 仅在实际全额冲回旧 prize 的事务生成，points 为原正额奖金；来源不足、回滚和零额不会生成。resource_id 都是注单 ID；私有 outbox 另保存 calculation/ledger/job/correction 引用，消费者校验同品牌同会员不可变目标与账本，而非注单当前 won 状态。延迟消费在更正后仍能验证旧入账，原通知不会删除/覆盖；新代次再中奖是新的独立消息。双语文案明确历史入账/冲正事实不代表当前钱包余额或最终中奖状态。不制造迁移前的历史奖金通知。
 

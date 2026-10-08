@@ -16,6 +16,7 @@ const positiveAmount = ref("PositiveInt64String");
 const notificationTemplateKeys = [
   "bet.order.abnormal", "bet.order.cancelled", "bet.order.judged_cancelled", "bet.order.placed",
   "bet.order.prize_reversed", "bet.order.won", "commission.adjusted", "commission.paid", "member.joined", "recharge.confirmed",
+  "reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked",
   "withdrawal.order.cancelled", "withdrawal.order.failed", "withdrawal.order.paid",
   "withdrawal.order.processing", "withdrawal.order.rejected", "withdrawal.order.reviewing",
 ];
@@ -32,7 +33,7 @@ const notificationTemplateContent = obj({
   en: ref("LotteryNotificationTemplateCopy"),
   "zh-CN": ref("LotteryNotificationTemplateCopy"),
 }, ["en", "zh-CN"]);
-notificationTemplateContent.description = "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; fifteen event templates require {points} in each language body, while member.joined forbids {points} in either body or title. Placeholder presence and UTF-8 byte limits are enforced by the handler. Withdrawal events describe historical internal points states, never proof of an external transfer.";
+notificationTemplateContent.description = "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; eighteen event templates require {points} in each language body, while member.joined forbids {points} in either body or title. Placeholder presence and UTF-8 byte limits are enforced by the handler. Withdrawal events describe historical internal points states, never proof of an external transfer.";
 const notificationTemplatePairRules = notificationTemplateKeys.map((key) => ({
   properties: { event_type: { const: key }, template_key: { const: key } },
 }));
@@ -180,6 +181,7 @@ const SettlementTarget = obj({ order_id: uuid, member_id: uuid, state: str, vers
 const CorrectionTarget = obj({ order_id: uuid, member_id: uuid, state: str, version: int, old_order_version: int, old_order_status: str, old_calculation_id: nullable(uuid), old_payout_entry_id: nullable(uuid), old_prize_points: amount, reversal_entry_id: nullable(uuid), reset_order_version: nullable(int), error_code: nullable(str) });
 const NotificationDelivery = obj({ event_id: uuid, brand_id: uuid, status: str, attempt_count: int, last_error: nullable(str), next_attempt_at: dateTime, sent_at: nullable(dateTime) });
 const withdrawalNotificationKeys = notificationTemplateKeys.filter(key => key.startsWith("withdrawal.order."));
+const rewardNotificationKeys = notificationTemplateKeys.filter(key => key.startsWith("reward.order."));
 const positiveNotificationKeys = notificationTemplateKeys.filter(key => key !== "member.joined" && key !== "commission.adjusted");
 const int64Upper = "9223372036854775807";
 const int64Alternatives = (limit) => {
@@ -211,7 +213,7 @@ const Notification = {
   }),
   allOf: [
     { oneOf: notificationTemplatePairRules },
-    { if:{properties:{event_type:{enum:[...withdrawalNotificationKeys,"commission.paid","commission.adjusted"]}}}, then:{properties:{content:ref("LotteryNotificationTemplateContent")}} },
+    { if:{properties:{event_type:{enum:[...withdrawalNotificationKeys,"commission.paid","commission.adjusted",...rewardNotificationKeys]}}}, then:{properties:{content:ref("LotteryNotificationTemplateContent")}} },
     { if:{properties:{event_type:{enum:withdrawalNotificationKeys}}}, then:{properties:{payload:obj({resource_id:uuid,points:withdrawalNotificationPoints})}} },
     { if:{properties:{event_type:{enum:positiveNotificationKeys}}}, then:{properties:{payload:obj({resource_id:uuid,points:withdrawalNotificationPoints})}} },
     { if:{properties:{event_type:{const:"commission.adjusted"}}}, then:{properties:{payload:obj({resource_id:uuid,points:adjustedCommissionPoints})}} },
@@ -220,7 +222,7 @@ const Notification = {
       { properties: { template_version: { minimum: 2 }, content: ref("LotteryNotificationTemplateContent") } },
     ] },
   ],
-  description: "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy non-withdrawal, non-commission version 1 rows may have null content; withdrawal events, commission events and version 2 and later always include their copied content. Withdrawal and commission.paid points are positive int64; commission.adjusted points are signed nonzero int64. Commission events retain a historical-record disclaimer that template editing cannot remove. Updating a template never rewrites existing notifications.",
+  description: "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy non-withdrawal, non-commission, non-reward version 1 rows may have null content; withdrawal events, commission events, reward events and version 2 and later always include their copied content. Withdrawal, reward and commission.paid points are positive int64; commission.adjusted points are signed nonzero int64. Reward events retain a state-specific historical and nonfinancial disclaimer that template editing cannot remove. Updating a template never rewrites existing notifications.",
 };
 
 export const schemas = {
@@ -355,7 +357,7 @@ export const operations = [
   op("GET", "/api/v1/bet-orders", "listMyBetOrders", "List the current member's bet orders", "betting", "user", ref("LotteryBetOrderItems"), { parameters: pageQuery }),
   op("GET", "/api/v1/bet-orders/{id}", "getMyBetOrder", "Get one of the current member's bet orders", "betting", "user", ref("LotteryBetOrder")),
   op("POST", "/api/v1/bet-orders/{id}/cancel", "cancelMyBetOrder", "Request cancellation of a bet order", "betting", "user", ref("LotteryBetOrder"), { ...mutation(obj({ version: int, reason }, ["version", "reason"])), description: "Cancellation is subject to period state and the effective policy; idempotency is enforced by the mutation engine." }),
-  op("GET", "/api/v1/notifications", "listMyNotifications", "List current member's in-app notifications", "notification", "user", ref("LotteryNotificationPage"), { parameters: pageQuery, description: "Notifications expose immutable content snapshots and their template versions. Legacy version 1 content can be null; later versions include copied content. Templates and payload content are not editable through this API." }),
+  op("GET", "/api/v1/notifications", "listMyNotifications", "List current member's in-app notifications", "notification", "user", ref("LotteryNotificationPage"), { parameters: pageQuery, description: "Notifications expose immutable content snapshots and their template versions. Legacy non-withdrawal, non-commission, non-reward version 1 content can be null; reward notifications always include their copied snapshot. Templates and payload content are not editable through this API." }),
   op("POST", "/api/v1/notifications/read", "markMyNotificationsRead", "Mark notifications as read", "notification", "user", ref("LotteryNotificationReadReceipt"), mutation(obj({ ids: { type: "array", minItems: 1, maxItems: 100, uniqueItems: true, items: uuid } }, ["ids"]))),
 ];
 

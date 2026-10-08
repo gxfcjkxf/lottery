@@ -37,8 +37,21 @@ func TestNotificationTemplateHTTPCheckedReplayValidationAndAudit(t *testing.T) {
 	path := base + "/recharge.confirmed"
 	mustStatus(t, f.call("GET", base, "", f.token, managedBrand, nil), 403)
 	grantReportPermission(t, f, "notification_template.view.brand")
-	if rows := templateHTTPList(t, f); len(rows) != 16 {
+	rows := templateHTTPList(t, f)
+	if len(rows) != 19 {
 		t.Fatal(len(rows))
+	}
+	keys := map[string]bool{}
+	for _, row := range rows {
+		if keys[row.Key] || row.BrandID != managedBrand {
+			t.Fatal("duplicate or foreign template", row.Key)
+		}
+		keys[row.Key] = true
+	}
+	for _, key := range []string{"reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked"} {
+		if !keys[key] {
+			t.Fatal("missing real reward template", key)
+		}
 	}
 	for _, q := range []string{"?unexpected=1", "?limit=20"} {
 		mustStatus(t, f.call("GET", base+q, "", f.token, managedBrand, nil), 400)

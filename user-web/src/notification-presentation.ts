@@ -53,6 +53,18 @@ const copy = {
       title: "Prize reversal recorded",
       body: "Historical record: the full original prize amount of {points} points for this order was reversed. This records the reversal, not your current wallet balance. Any later prize correction will appear as a separate event; this record is retained.",
     },
+    "reward.order.granted": {
+      title: "Gift points credited",
+      body: "Historical record: {points} points were credited to your gift available balance. This records that past credit, not your current balance or an external payment.",
+    },
+    "reward.order.revocation_pending": {
+      title: "Reward revocation pending recorded",
+      body: "Historical record: a full reversal of {points} gift points was requested and recorded as awaiting operator handling. No points moved in this attempt. There is no automatic retry, debit, or unfreeze. This is not your current state, balance or an external payment.",
+    },
+    "reward.order.revoked": {
+      title: "Gift points reversal recorded",
+      body: "Historical record: the full original gift of {points} available points was reversed. This records the reversal, not your current balance or any external payment.",
+    },
     "commission.paid": { title: "Commission credit recorded", body: "Historical record: {points} points were credited to your commission wallet. This records a past credit, not new income or an external payment forecast. Check your current wallet balance; this record is retained." },
     "commission.adjusted": { title: "Commission adjustment recorded", body: "Historical record: a commission adjustment of {points} points was recorded. This records a past adjustment, not new income or an external payment forecast. Check your current wallet balance; this record is retained." },
     "withdrawal.order.reviewing": { title: "Withdrawal status recorded", body: "Historical withdrawal status: reviewing. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state." },
@@ -85,6 +97,18 @@ const copy = {
     "bet.order.prize_reversed": {
       title: "奖金冲正记录",
       body: "历史记录：此注单原奖金全额 {points} 积分已冲回。此记录仅表示该笔冲正，不代表当前钱包余额。之后如有奖金更正，会作为单独事件记录；此记录会保留。",
+    },
+    "reward.order.granted": {
+      title: "赠送积分已入账",
+      body: "历史记录：{points} 积分曾记入赠送可用积分。此记录仅表示过去的入账，不代表当前余额或外部付款。",
+    },
+    "reward.order.revocation_pending": {
+      title: "奖励撤销待处理记录",
+      body: "历史记录：曾申请全额撤销 {points} 赠送积分，并记录为待运营处理。本次没有积分变动，不会自动重试、扣款或解冻。此记录不代表当前状态、当前余额或外部付款。",
+    },
+    "reward.order.revoked": {
+      title: "赠送积分冲回记录",
+      body: "历史记录：原始可用赠送积分 {points} 已全额冲回。此记录仅表示该笔冲回，不代表当前余额或任何外部付款。",
     },
     "commission.paid": { title: "佣金入账记录", body: "历史记录：{points} 积分曾记入佣金钱包。此记录表示过去的入账，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。" },
     "commission.adjusted": { title: "佣金调整记录", body: "历史记录：曾调整 {points} 积分。此记录表示过去的调整，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。" },
@@ -129,8 +153,9 @@ export function renderNotification(
   const snapshot = item.content ?? null;
   const withdrawalEvent = item.event_type.startsWith("withdrawal.order.");
   const commissionEvent = item.event_type === "commission.paid" || item.event_type === "commission.adjusted";
-  if ((withdrawalEvent || commissionEvent) && snapshot === null) {
-    throw new RangeError("Withdrawal and commission notifications require an immutable content snapshot");
+  const rewardEvent = item.event_type.startsWith("reward.order.");
+  if ((withdrawalEvent || commissionEvent || rewardEvent) && snapshot === null) {
+    throw new RangeError("Withdrawal, commission, and reward notifications require an immutable content snapshot");
   }
   if (snapshot === null && item.template_version !== 1) {
     throw new RangeError(`Missing notification template snapshot for version: ${item.template_version}`);
@@ -147,7 +172,7 @@ export function renderNotification(
     : item.payload.points !== null
       ? known.body.replaceAll("{points}", points ?? item.payload.points)
       : known.body;
-  const protectedNote = withdrawalEvent || commissionEvent || (snapshot && (item.event_type === "bet.order.won" || item.event_type === "bet.order.prize_reversed"))
+  const protectedNote = withdrawalEvent || commissionEvent || rewardEvent || (snapshot && (item.event_type === "bet.order.won" || item.event_type === "bet.order.prize_reversed"))
     ? known.body.replaceAll("{points}", points ?? "")
     : null;
   const date = new Date(item.created_at);

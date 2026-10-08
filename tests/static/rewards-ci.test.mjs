@@ -39,7 +39,12 @@ test('reward browser matrix uses fresh viewport databases, normal CLI bootstrap 
   assert.match(job, /node scripts\/prepare-reward-browser\.mjs/);
   assert.match(job, /\.local\/reward-platform serve > reward-browser-api\.log 2>&1 &/);
   assert.match(job, /name: Prepare and verify Chromium\n        timeout-minutes: 7\n        run: node scripts\/prepare-ci-browser\.mjs/);
-  assert.doesNotMatch(job, /POSTGRES_PASSWORD:|BOOTSTRAP_ADMIN_PASSWORD:|browserfixture|\bplatform\s+worker\b|\breward-platform\s+worker\b|continue-on-error|--with-deps/);
+  assert.doesNotMatch(job, /POSTGRES_PASSWORD:|BOOTSTRAP_ADMIN_PASSWORD:|browserfixture|continue-on-error|--with-deps/);
+  assert.equal((job.match(/\.local\/reward-platform worker/g) ?? []).length, 1);
+  assert.ok(job.indexOf('Start existing inbox worker') > job.indexOf('tests/browser/rewards.spec.ts'));
+  assert.ok(job.indexOf('tests/browser/reward-notifications.spec.ts') > job.indexOf('Start existing inbox worker'));
+  assert.match(job, /REWARD_NOTIFICATION_WORKER_ENABLED: "true"/);
+  assert.match(job, /tests\/browser\/reward-notifications\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0 --reporter=list,json/);
   assert.doesNotMatch(job, /UPDATE |INSERT INTO |DELETE FROM |TRUNCATE|DROP |reset|auth_rate_limits|X-Forwarded-For|payment-policy/i);
 });
 

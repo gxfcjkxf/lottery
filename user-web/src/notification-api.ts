@@ -9,6 +9,9 @@ export type NotificationEventType =
   | "bet.order.abnormal"
   | "bet.order.won"
   | "bet.order.prize_reversed"
+  | "reward.order.granted"
+  | "reward.order.revocation_pending"
+  | "reward.order.revoked"
   | "commission.paid"
   | "commission.adjusted"
   | "withdrawal.order.reviewing"
@@ -91,6 +94,9 @@ const EVENT_TYPES = new Set<NotificationEventType>([
   "bet.order.abnormal",
   "bet.order.won",
   "bet.order.prize_reversed",
+  "reward.order.granted",
+  "reward.order.revocation_pending",
+  "reward.order.revoked",
   "commission.paid",
   "commission.adjusted",
   "withdrawal.order.reviewing",
@@ -268,8 +274,9 @@ function parseNotification(value: unknown): NotificationItem {
   const content = item.content === undefined || item.content === null
     ? null
     : parseTemplateContent(item.content, eventType);
-  if (content === null && (WITHDRAWAL_EVENT_TYPES.has(eventType) || eventType.startsWith("commission."))) {
-    return malformed("withdrawal and commission notifications require an immutable content snapshot");
+  const rewardEvent = eventType.startsWith("reward.order.");
+  if (content === null && (WITHDRAWAL_EVENT_TYPES.has(eventType) || eventType.startsWith("commission.") || rewardEvent)) {
+    return malformed("withdrawal, commission, and reward notifications require an immutable content snapshot");
   }
   if (content === null && templateVersion !== 1) {
     return malformed("notification.content is required for template versions above 1");

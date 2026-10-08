@@ -57,6 +57,21 @@ const commissionFacts = computed(() => {
   ] as const;
   return null;
 });
+const rewardFacts = computed(() => {
+  if (selectedKey.value === "reward.order.granted") return [
+    `Historical record: ${SAMPLE_POINTS} points were credited to the gift available balance in the past. This records the grant, not the current wallet balance or an external payment. Editing template copy cannot change this state note.`,
+    `历史记录：${SAMPLE_POINTS} 积分曾记入赠送可用积分。此记录表示过去的发放，不代表当前钱包余额或外部付款。编辑模板文案无法改变此状态说明。`,
+  ] as const;
+  if (selectedKey.value === "reward.order.revocation_pending") return [
+    `Historical record: a full reversal of ${SAMPLE_POINTS} reward points was requested and is awaiting operator handling. No points or money moved in this attempt. It does not retry, unfreeze, or deduct automatically. Editing template copy cannot change this state note.`,
+    `历史记录：曾申请全额撤销 ${SAMPLE_POINTS} 积分奖励，正在等待运营处理。本次没有积分或资金变动，不会自动重试、解冻或扣除。编辑模板文案无法改变此状态说明。`,
+  ] as const;
+  if (selectedKey.value === "reward.order.revoked") return [
+    `Historical record: the full original reward of ${SAMPLE_POINTS} points was reversed from the gift available balance. This records the past reversal, not the current wallet balance or an external payment. Editing template copy cannot change this state note.`,
+    `历史记录：原奖励全额 ${SAMPLE_POINTS} 积分曾从赠送可用积分撤销。此记录表示过去的撤销，不代表当前钱包余额或外部付款。编辑模板文案无法改变此状态说明。`,
+  ] as const;
+  return null;
+});
 const canEdit = computed(() => rights.value.view && rights.value.write && !props.account.super_admin && Boolean(record.value) &&
   Boolean(draft.value) && !pending.value && !writing.value && !loading.value);
 const canReview = computed(() => canEdit.value && contentValid.value && reasonValid.value && !historyLoading.value);
@@ -199,7 +214,12 @@ function interpolate(text: string): string {
 function time(value: string): string {
   const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
-function formatKey(key: string): string { return key; }
+function formatKey(key: string): string {
+  if (key === "reward.order.granted") return t("赠送积分已入账 · reward.order.granted", "Gift points granted · reward.order.granted");
+  if (key === "reward.order.revocation_pending") return t("奖励撤销待处理 · reward.order.revocation_pending", "Reward revocation pending · reward.order.revocation_pending");
+  if (key === "reward.order.revoked") return t("赠送积分冲回记录 · reward.order.revoked", "Gift points reversal recorded · reward.order.revoked");
+  return key;
+}
 function localizedNotice(value: string): string {
   const fixed: Record<string, [string, string]> = {
     "核对这份冻结的中英文内容、当前版本和原因后确认保存。": ["核对这份冻结的中英文内容、当前版本和原因后确认保存。", "Review the frozen bilingual content, current version, and reason before confirming the save."],
@@ -242,7 +262,7 @@ onBeforeUnmount(() => { alive = false; listTicket++; historyTicket++; writeTicke
             <option value="" disabled>{{ t("选择通知事件", "Select an event") }}</option>
             <option v-for="key in notificationTemplateKeys" :key="key" :value="key">{{ formatKey(key) }}</option>
           </select>
-          <p class="nt-hint">{{ t("支持16种通知事件：会员、充值、注单、奖项、佣金及提现状态。事件事实由系统生成；奖项发放、冲正、佣金和提现事件的双语历史说明保持只读。提现通知仅记录内部积分状态，不代表银行或虚拟币转账。", "Supports 16 events covering members, recharges, bets, prizes, commissions, and withdrawals. Event facts are system-generated; bilingual historical descriptions for prize, reversal, commission, and withdrawal events are read-only. Withdrawal notices record internal point status only and do not represent bank or cryptocurrency transfers.") }}</p>
+          <p class="nt-hint">{{ t("支持19种通知事件：会员、充值、注单、赠送积分、奖项、佣金及提现状态。事件事实由系统生成；赠送积分通知会附加不可编辑的状态说明，奖项发放、冲正、佣金和提现事件的双语历史说明保持只读。提现通知仅记录内部积分状态，不代表银行或虚拟币转账。", "Supports 19 events covering members, recharges, bets, gift points, prizes, commissions, and withdrawals. Event facts are system-generated; gift point notices include an uneditable state note, while bilingual historical descriptions for prize, reversal, commission, and withdrawal events are read-only. Withdrawal notices record internal point status only and do not represent bank or cryptocurrency transfers.") }}</p>
         </nav>
 
         <div v-if="(record && draft && selectedKey) || pending" class="nt-workspace">
@@ -270,6 +290,8 @@ onBeforeUnmount(() => { alive = false; listTicket++; historyTicket++; writeTicke
             </div>
             <div v-if="commissionFacts" class="nt-facts-note" data-testid="commission-facts-note"><strong>{{ t("不可编辑的佣金历史事实", "Fixed commission history (read only)") }}</strong>
               <p v-for="fact in commissionFacts" :key="fact">{{ fact }}</p></div>
+            <div v-else-if="rewardFacts" class="nt-facts-note" data-testid="reward-facts-note"><strong>{{ t("不可编辑的奖励历史事实 · 固定示例", "Fixed reward history (read only) · sample") }}</strong>
+              <p v-for="fact in rewardFacts" :key="fact">{{ fact }}</p></div>
             <div v-else class="nt-facts-note"><strong>{{ t("系统事实说明", "System facts") }}</strong><p>{{ t("中奖金额、奖项发放和冲正事实不在模板中编辑；只可使用允许的通知占位符。", "Winning amounts, prize awards, and reversal facts are not edited in templates; only supported notification placeholders may be used.") }}</p></div>
             <p v-if="draft && !contentValid" class="nt-message nt-error" role="alert">{{ t("标题或正文格式无效：请检查字节上限、首尾空白、占位符；不接受 HTML、外部地址或控制字符。", "Invalid title or body: check byte limits, surrounding whitespace, and placeholders. HTML, external URLs, and control characters are not accepted.") }}</p>
             <div v-if="rights.write && !props.account.super_admin" class="nt-reason">

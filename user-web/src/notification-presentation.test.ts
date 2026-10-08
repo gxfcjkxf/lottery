@@ -15,6 +15,9 @@ const events = [
   "bet.order.abnormal",
   "bet.order.won",
   "bet.order.prize_reversed",
+  "reward.order.granted",
+  "reward.order.revocation_pending",
+  "reward.order.revoked",
   "commission.paid",
   "commission.adjusted",
   "withdrawal.order.reviewing",
@@ -41,6 +44,10 @@ function item(event_type: NotificationEventType, template_version = 1): Notifica
     ...(event_type.startsWith("commission.") ? { content: {
       en: { title: "Commission historical record", body: "Historical commission record: {points}." },
       "zh-CN": { title: "佣金历史记录", body: "历史佣金记录：{points}。" },
+    } } : {}),
+    ...(event_type.startsWith("reward.order.") ? { content: {
+      en: { title: "Gift event recorded", body: "Edited copy: {points}." },
+      "zh-CN": { title: "赠送记录", body: "已编辑文案：{points}。" },
     } } : {}),
     payload: {
       resource_id: "business-reference-42",
@@ -118,6 +125,31 @@ describe("notification presentation", () => {
   it.each(["commission.paid", "commission.adjusted"] as const)("rejects missing historical snapshots even for v1 %s", (event) => {
     expect(() => renderNotification({ ...item(event), content: null }, "en")).toThrow(/immutable content snapshot/);
   });
+
+  it.each([
+    ["reward.order.granted", "points were credited to your gift available balance", "积分曾记入赠送可用积分"],
+    ["reward.order.revocation_pending", "No points moved in this attempt", "本次没有积分变动"],
+    ["reward.order.revoked", "available points was reversed", "已全额冲回"],
+  ] as const)("keeps the fixed reward-state note for edited %s content", (event, enPhrase, zhPhrase) => {
+    const renderedEn = renderNotification(item(event), "en");
+    const renderedZh = renderNotification(item(event), "zh");
+    expect(renderedEn.body).toBe("Edited copy: 900,719,925,474,099,312,345.");
+    expect(renderedZh.body).toBe("已编辑文案：900,719,925,474,099,312,345。");
+    expect(renderedEn.protectedNote).toContain(enPhrase);
+    expect(renderedZh.protectedNote).toContain(zhPhrase);
+    expect(renderedEn.protectedNote).toContain("900,719,925,474,099,312,345");
+    expect(renderedZh.protectedNote).toContain("900,719,925,474,099,312,345");
+    if (event === "reward.order.revocation_pending") {
+      expect(renderedEn.protectedNote).toContain("no automatic retry, debit, or unfreeze");
+      expect(renderedZh.protectedNote).toContain("不会自动重试、扣款或解冻");
+    }
+  });
+
+  it.each(["reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked"] as const)(
+    "requires a frozen reward snapshot even for v1 %s", (event) => {
+      expect(() => renderNotification({ ...item(event), content: null }, "en")).toThrow(/immutable content snapshot/);
+    },
+  );
 
   it.each([
     ["withdrawal.order.reviewing", "reviewing", "审核中"],

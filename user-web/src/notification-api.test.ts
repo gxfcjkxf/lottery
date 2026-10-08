@@ -149,6 +149,49 @@ describe("user notification API", () => {
     }
   });
 
+  it("accepts all reward order states with frozen v1 content and rejects malformed points or private payload fields", async () => {
+    const states = ["granted", "revocation_pending", "revoked"] as const;
+    const rows = states.map((state, index) => ({
+      ...joined,
+      id: `00000000-0000-4000-8000-00000000001${index}`,
+      event_type: `reward.order.${state}`,
+      template_key: `reward.order.${state}`,
+      template_version: 1,
+      content: {
+        en: { title: "Gift event recorded", body: `Historical gift event: {points}. ${state}.` },
+        "zh-CN": { title: "赠送记录", body: `历史赠送事件：{points}。${state}。` },
+      },
+      payload: { resource_id: resourceId, points: "9223372036854775807" },
+    }));
+    const invalid: unknown[] = [
+      { ...rows[0], event_type: "reward.order.revoked" },
+      { ...rows[1], template_key: "reward.order.granted" },
+      { ...rows[0], content: null },
+      { ...rows[2], content: undefined },
+      ...[0, -1, 1, "0", "-1", "01", "9223372036854775808", null, undefined].map((points) => ({
+        ...rows[0], payload: { resource_id: resourceId, points },
+      })),
+      ...["actor_id", "reason", "ledger_entry_id", "member_id", "status"].map((key) => ({
+        ...rows[0], payload: { ...rows[0].payload, [key]: "private" },
+      })),
+    ];
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(ok(page({ items: rows })))
+      .mockImplementation(async () => ok(page({ items: [invalid.shift()] })));
+    const api = createNotificationApi({ fetch: fetcher });
+    await expect(api.list()).resolves.toMatchObject({
+      items: states.map((state) => ({
+        event_type: `reward.order.${state}`,
+        template_key: `reward.order.${state}`,
+        template_version: 1,
+        payload: { resource_id: resourceId, points: "9223372036854775807" },
+      })),
+    });
+    for (let index = 0; index < invalid.length; index++) {
+      await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
+    }
+  });
+
   it("accepts signed nonzero commission adjustment points but rejects noncanonical values", async () => {
     const adjusted = {
       ...joined,

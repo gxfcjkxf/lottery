@@ -6,6 +6,7 @@ const MAX_SAFE_VERSION = Number.MAX_SAFE_INTEGER;
 const KEYS = [
   "member.joined", "recharge.confirmed", "bet.order.placed", "bet.order.cancelled",
   "bet.order.judged_cancelled", "bet.order.abnormal", "bet.order.won", "bet.order.prize_reversed",
+  "reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked",
   "commission.adjusted", "commission.paid",
   "withdrawal.order.reviewing", "withdrawal.order.processing", "withdrawal.order.paid",
   "withdrawal.order.rejected", "withdrawal.order.failed", "withdrawal.order.cancelled",

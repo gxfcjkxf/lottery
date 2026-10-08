@@ -1,6 +1,6 @@
 # 站内通知模板配置和历史消息合同
 
-品牌运营人员可维护十六类站内通知的中英文标题和正文，包含六种提现状态及两种佣金入账/修正历史。发布模板不创建通知、不修改积分；消费者在真实业务事件落库后生成消息，并保存当时模板版本和文案。本文供第三方接入配置、重试和消息展示，不包含外部渠道或真实支付。
+品牌运营人员可维护十九类站内通知的中英文标题和正文，包含六种提现状态、两种佣金入账/修正和三种奖励历史。发布模板不创建通知、不修改积分；消费者在真实业务事件落库后生成消息，并保存当时模板版本和文案。本文供第三方接入配置、重试和消息展示，不包含外部渠道或真实支付。
 
 ## 配置接口和权限
 
@@ -8,7 +8,7 @@
 
 | 方法 | 路径 | 响应 |
 |---|---|---|
-| GET | /api/v1/admin/notification-templates | items包含当前品牌十六个模板 |
+| GET | /api/v1/admin/notification-templates | items包含当前品牌十九个模板 |
 | GET | /api/v1/admin/notification-templates/{key}/history | items为按version降序的不可变修订 |
 | PUT | /api/v1/admin/notification-templates/{key} | 原提交产生的Template回执 |
 
@@ -16,15 +16,15 @@
 
 查看要求notification_template.view.brand和当前品牌范围，或明确的notification_template.view.platform，不要求平台授权账号伪造品牌成员身份。写入只接受非超级管理员的notification_template.write.brand；超级管理员只能依明确权限读取。每次读写均在共享授权锁下重新校验，成功读取和修订可审计；停用品牌仍可读但不能修改或重放写回执。暂停品牌允许配置和已有业务通知继续处理。
 
-0037迁移初始化原八个模板，0040追加六个提现v1模板，0052追加两个佣金v1模板及系统修订，保留原配置、历史、消息和积分记录；不补造迁移前通知。新品牌自动初始化十六个模板，但不自动获得管理员、用户、域名、积分或业务事件。权限仍沿用原独立授权，不给自定义角色扩权。PostgreSQL数据库必须使用UTF8编码；不能用SQL_ASCII验证中文约束。部署前检查SHOW server_encoding，创建数据库时明确指定UTF8。
+0037迁移初始化原八个模板，0040追加六个提现v1模板，0052追加两个佣金v1模板，0056追加三个奖励v1模板及系统修订。原配置、历史、消息和积分记录保留，不补造迁移前通知；defaults函数原OID保留，使已有品牌初始化触发器和查询仍取得新集合。新品牌自动初始化十九个模板，但不自动获得管理员、用户、域名、积分或业务事件。权限仍沿用原独立授权，不给自定义角色扩权。PostgreSQL数据库必须使用UTF8编码；不能用SQL_ASCII验证中文约束。部署前检查SHOW server_encoding，创建数据库时明确指定UTF8。
 
 ## 模板标识和内容
 
-key只接受：member.joined、recharge.confirmed、bet.order.placed、bet.order.cancelled、bet.order.judged_cancelled、bet.order.abnormal、bet.order.won、bet.order.prize_reversed，以及withdrawal.order.reviewing/processing/paid/rejected/failed/cancelled、commission.paid和commission.adjusted。
+key只接受：member.joined、recharge.confirmed、bet.order.placed、bet.order.cancelled、bet.order.judged_cancelled、bet.order.abnormal、bet.order.won、bet.order.prize_reversed，以及withdrawal.order.reviewing/processing/paid/rejected/failed/cancelled、commission.paid、commission.adjusted和reward.order.granted/revocation_pending/revoked。
 
 content恰好为en和zh-CN，每种语言恰好为title和body。两种语言均必填，不自动翻译或复用另一语言文案。标题1–120 UTF-8字节，正文1–1200字节，须非空、无首尾空白；标题禁止控制字符，正文只允许中间的换行和制表符。不接受HTML尖括号、外部地址标记https?:、javascript:、data:、www.；客户不能通过模板发布富文本或链接。
 
-插值仅支持字面占位符{points}和{resource_id}，不执行脚本、表达式或任意对象访问。未知、未闭合或嵌套花括号拒绝。欢迎通知标题和正文均不能引用points；其他十五类的两种语言正文各须包含points。重复引用允许，不同语言的标题可独立选用合法占位符。用户名、手机号、后台人员、证明、内部原因、密码和令牌都不是模板变量。
+插值仅支持字面占位符{points}和{resource_id}，不执行脚本、表达式或任意对象访问。未知、未闭合或嵌套花括号拒绝。欢迎通知标题和正文均不能引用points；其他十八类的两种语言正文各须包含points。重复引用允许，不同语言的标题可独立选用合法占位符。用户名、手机号、后台人员、证明、内部原因、密码和令牌都不是模板变量。
 
 Template为brand_id、key、version、content、updated_at、audit_log_id；初始版本1的审计ID为null，后续版本必须为非空UUID。每个品牌、每类事件独立递增版本，版本最大9007199254740991，不能把品牌共享配置版本当成模板版本。当前达到上限不可继续更新。
 
@@ -36,7 +36,7 @@ Revision为id、brand_id、key、version、content、changed_by、reason、audit
 
 消费者持有模板行共享锁并复制content和version；配置更新与复制串行。消息内容、消费确认、sent状态仍在同一事务。消息关联同品牌同key的不可变修订；新插入必须复制当前配置，失败不能保留半条消息或错误的消费确认。重复消费不改写已有消息，包括原来的旧版消息。
 
-用户Item增加content（双语模板源文案或null），template_version改为正安全整数。旧非提现/佣金v1消息保持原字段与read_at，content为null，客户端继续固定v1文案；兼容旧接口缺失content仅限这类旧消息。所有提现/佣金消息及版本大于1必须有完整快照，不能从当前模板配置补写旧消息。
+用户Item增加content（双语模板源文案或null），template_version改为正安全整数。旧非提现/佣金/奖励v1消息保持原字段与read_at，content为null，客户端继续固定v1文案；兼容旧接口缺失content仅限这类旧消息。所有提现/佣金/奖励消息及版本大于1必须有完整快照，不能从当前模板配置补写旧消息。
 
 用户端按快照的语言插值并作为纯文本显示；积分用精确整数字符串分组，不转换浮点。派奖和冲正消息另外显示不可编辑的系统事实说明，明确实际历史入账或全额冲正，不表示当前钱包余额或保证最终中奖。旧消息保留，更正的新代次另记，模板不会改变实际账本金额。
 
@@ -45,6 +45,16 @@ Revision为id、brand_id、key、version、content、changed_by、reason、audit
 全部提现消息固定追加不可编辑的双语历史说明：记录的是内部积分状态，不代表当前状态、当前余额或真实外部转账；最新状态须查询提现订单。paid不证明银行、法币或虚拟币出款。模板编辑不能删除这项系统说明，消息与状态历史均保留。
 
 佣金入账与修正仅从实际账本提交生成，零额派发不生成。paid为正积分，adjusted为带符号非零差额；两者均有不可编辑的双语历史说明，不代表当前余额、新收入预测或外部付款。resource_id分别是原目标和修正编号；用户响应不暴露原会员/ledger/目标私有证据。消费及升级约束见[佣金人工修正与通知](18-commission-adjustments.md)。
+
+## 奖励历史事件
+
+每个新提交的奖励动作只生成一个对应事件。granted记录赠送可用入账，revoked记录原奖励全额撤销，revocation_pending记录本次请求待运营处理且没有积分变动。显式继续仍不足时是新的待处理动作，可有新的历史消息；原键重放、只读刷新、解冻或补足余额本身不生成奖励动作或通知，也不自动继续。
+
+事件以动作UUID作aggregate_id，resource_id仍为原奖励订单UUID。私有载荷恰好是member_id、resource_id、points、action_id、version和audit_log_id；points始终是原奖励正int64字符串，撤销方向由事件类型表示。版本使用正安全整数。数据库和消费者核对同品牌、原会员、订单原额、不可变动作、审计及实际原赠送账本；待处理动作必须没有ledger。消费者验证历史动作，不与今日订单状态或余额比较，所以后来已撤销也不使过去的待处理消息失效。
+
+事件、动作、积分和审计原子提交；事件生成失败则整笔回滚。事件仅published_at可修改，事实不可删除或改写；新动作提交必须有匹配事件。普通INSERT不能借旧动作或临时表伪造新事件。0056不回填旧奖励，旧待处理订单在升级后经运营明确继续时，只记录这个新动作的事件。
+
+用户载荷仍仅resource_id和points，不公开原操作人、原因、action、audit或ledger见证。三种消息包括v1均要求非空不可变文案快照，不能用今天的配置补显示。用户端和后台固定预览另外保留不可编辑的历史说明；尤其待处理明确“本次没有积分变动”，不是当前状态、余额或外部付款证明。模板编辑、消息读取、标为已读和重复消费都不改变钱包。详细奖励流程见[人工奖励合同](20-manual-reward-orders.md)。
 
 ## 原回执和未知请求
 
@@ -58,4 +68,4 @@ PUT成功返回原版本加一、提交的双语文案、提交时间和审计ID
 
 ## 尚未包含的功能
 
-本模块不接邮件、短信或Telegram发送，不添加开奖受众或奖励事件，不替代真实身份与地区验证。站内消息不启用提现、佣金金融运行开关或支付；正式资格与金融流程须在对应模块验收。运营可编辑的是现有站内文案，不代表完整通知渠道、财务或整个平台已完成。外部凭据、保留年限和对应新事件要按后续真实业务模块单独实现和验收。
+本模块不接邮件、短信或Telegram发送，不添加开奖受众、自动代理/推荐/活动奖励事件，不替代真实身份与地区验证。站内消息不启用提现、佣金金融运行开关或支付；正式资格与金融流程须在对应模块验收。运营可编辑的是现有站内文案，不代表完整通知渠道、财务或整个平台已完成。外部凭据、保留年限和对应新事件要按后续真实业务模块单独实现和验收。

@@ -241,6 +241,9 @@ func validateEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate string
 	if strings.HasPrefix(kind, "withdrawal.order.") {
 		return validateWithdrawalEvent(ctx, tx, brand, kind, aggregate, raw)
 	}
+	if strings.HasPrefix(kind, "reward.order.") {
+		return validateRewardEvent(ctx, tx, brand, kind, aggregate, raw)
+	}
 	if kind == "commission.paid" || kind == "commission.adjusted" {
 		return validateCommissionEvent(ctx, tx, brand, kind, aggregate, raw)
 	}

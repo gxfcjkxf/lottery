@@ -19,6 +19,7 @@ const notificationKeys=[
   "bet.order.judged_cancelled","bet.order.abnormal","bet.order.won","bet.order.prize_reversed",
   "withdrawal.order.reviewing","withdrawal.order.processing","withdrawal.order.paid",
   "withdrawal.order.rejected","withdrawal.order.failed","withdrawal.order.cancelled",
+  "reward.order.granted","reward.order.revocation_pending","reward.order.revoked",
   "commission.paid","commission.adjusted",
 ];
 const content=(title="Notice",body="Update {points} points.")=>({
@@ -57,7 +58,7 @@ test("all notification template components compile and routes match the implemen
   assert.deepEqual(schemas.LotteryNotificationTemplate.properties.key.enum,[...notificationKeys].sort());
 });
 
-test("the fixture preserves the immutable fourteen previous defaults and adds two commission defaults",()=>{
+test("the actual backend JSON preserves the sixteen previous defaults and contains exactly nineteen keys",()=>{
   assert.deepEqual(Object.keys(defaults).sort(),[...notificationKeys].sort());
   const legacy={
     "member.joined":{en:{title:"Welcome",body:"Your membership is ready. Welcome aboard."},"zh-CN":{title:"欢迎",body:"您的会员账户已准备就绪，欢迎加入。"}},
@@ -70,6 +71,14 @@ test("the fixture preserves the immutable fourteen previous defaults and adds tw
     "bet.order.prize_reversed":{en:{title:"Prize reversal recorded",body:"Historical record: the full original prize amount of {points} points for this order was reversed. This records the reversal, not your current wallet balance. Any later prize correction will appear as a separate event; this record is retained."},"zh-CN":{title:"奖金冲正记录",body:"历史记录：此注单原奖金全额 {points} 积分已冲回。此记录仅表示该笔冲正，不代表当前钱包余额。之后如有奖金更正，会作为单独事件记录；此记录会保留。"}},
   };
   for(const [key,value] of Object.entries(legacy))assert.deepEqual(defaults[key],value,`immutable default ${key}`);
+  assert.deepEqual(defaults["commission.paid"],{
+    en:{title:"Commission credit recorded",body:"Historical record: {points} points were credited to your commission wallet. This records a past credit, not new income or an external payment forecast. Check your current wallet balance; this record is retained."},
+    "zh-CN":{title:"佣金入账记录",body:"历史记录：{points} 积分曾记入佣金钱包。此记录表示过去的入账，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。"},
+  });
+  assert.deepEqual(defaults["commission.adjusted"],{
+    en:{title:"Commission adjustment recorded",body:"Historical record: a commission adjustment of {points} points was recorded. This records a past adjustment, not new income or an external payment forecast. Check your current wallet balance; this record is retained."},
+    "zh-CN":{title:"佣金调整记录",body:"历史记录：曾调整 {points} 积分。此记录表示过去的调整，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。"},
+  });
   const states={reviewing:"审核中",processing:"提现中",paid:"已提现",rejected:"已驳回",failed:"失败",cancelled:"已取消"};
   for(const [state,stateZh] of Object.entries(states)){
     const entry=defaults[`withdrawal.order.${state}`];
@@ -79,6 +88,43 @@ test("the fixture preserves the immutable fourteen previous defaults and adds tw
     });
   }
   for(const key of notificationKeys.slice(0,8))assert.ok(defaults[key],`preserved legacy default ${key}`);
+});
+
+test("actual backend JSON and SQL 0056 each contain three reward defaults with the required historical meaning",()=>{
+  const rewardKeys=["reward.order.granted","reward.order.revocation_pending","reward.order.revoked"];
+  const migration=readFileSync(new URL("../../backend/migrations/0056_reward_notifications.up.sql",import.meta.url),"utf8");
+  const literal=/defaults\s*:=\s*notification_template_defaults\(\)\s*\|\|\s*'((?:[^']|'')*)'::jsonb/.exec(migration);
+  assert.ok(literal,"SQL 0056 must extend the existing defaults with a JSON literal");
+  const sqlDefaults=JSON.parse(literal[1].replaceAll("''","'"));
+  const check=validate("LotteryNotificationTemplateContent");
+  for(const [label,source] of [["actual backend JSON",defaults],["SQL 0056",sqlDefaults]]){
+    assert.deepEqual(Object.keys(source).filter(key=>key.startsWith("reward.order.")).sort(),rewardKeys,label);
+    for(const key of rewardKeys){
+      assert.ok(Object.hasOwn(source,key),`${label} owns ${key}`);
+      assert.ok(check(source[key]),`${label} ${key}: ${JSON.stringify(check.errors)}`);
+      for(const locale of ["en","zh-CN"])assert.match(source[key][locale].body,/\{points\}/,`${label} ${key} ${locale} retains exact point facts`);
+    }
+    for(const key of ["reward.order.granted","reward.order.revoked"]){
+      const {en,"zh-CN":zh}=source[key];
+      assert.match(en.body,/historical.*past/i);
+      assert.match(en.body,/gift available balance/i);
+      assert.match(en.body,/not.*current wallet balance.*external payment/i);
+      assert.match(zh.body,/历史记录.*过去/);
+      assert.match(zh.body,/赠送可用积分/);
+      assert.match(zh.body,/不代表当前钱包余额或外部付款/);
+    }
+    assert.match(source["reward.order.granted"].en.body,/credited/i);
+    assert.match(source["reward.order.granted"]["zh-CN"].body,/记入/);
+    assert.match(source["reward.order.revoked"].en.body,/full original reward.*reversed/i);
+    assert.match(source["reward.order.revoked"]["zh-CN"].body,/原奖励全额.*撤销/);
+    const {en,"zh-CN":zh}=source["reward.order.revocation_pending"];
+    assert.match(en.body,/full.*reversal.*requested.*awaiting operator/i);
+    assert.match(en.body,/no points (?:have )?moved/i);
+    assert.match(en.body,/(?:does not|no)[^.]*retry[^.]*unfreeze[^.]*(?:deduct|debit)[^.]*automatically/i);
+    assert.match(zh.body,/历史记录.*申请全额.*待运营处理/);
+    assert.match(zh.body,/没有积分变动/);
+    assert.match(zh.body,/不会自动重试、解冻或扣除/);
+  }
 });
 
 test("template and revision schemas enforce closed structures and legacy version-one audit nullability",()=>{
@@ -147,6 +193,19 @@ test("commission notifications expose only resource and signed point facts",()=>
   for (const row of [paid, adjusted]) assert.ok(!check({...row,template_version:1,content:null}), `${row.event_type} is never a legacy snapshotless record`);
 });
 
+test("reward notifications require frozen content and expose only UUID plus positive int64 points",()=>{
+  const check=validate("LotteryNotification");
+  const rewards=notificationKeys.filter(key=>key.startsWith("reward.order."));
+  for(const key of rewards){
+    const row={id,brand_id:id,member_id:id,event_type:key,template_key:key,template_version:1,content:defaults[key],payload:{resource_id:id,points:"9223372036854775807"},created_at:"2026-10-07T00:00:00Z",read_at:null};
+    assert.ok(check(row),`${key}: ${JSON.stringify(check.errors)}`);
+    for(const content of [null,undefined])assert.ok(!check({...row,content}),`${key} requires snapshot content for v1`);
+    for(const points of [0,-1,1,"0","-1","01","9223372036854775808",null,undefined])assert.ok(!check({...row,payload:{resource_id:id,points}}),`${key} rejects ${String(points)}`);
+    for(const field of ["actor_id","reason","ledger_entry_id","member_id","status"])assert.ok(!check({...row,payload:{...row.payload,[field]:"private"}}),`${key} rejects ${field}`);
+    assert.ok(!check({...row,template_key:key==="reward.order.revoked"?"reward.order.granted":"reward.order.revoked"}),`${key} event and template key must match`);
+  }
+});
+
 test("template copy schemas reject unknown placeholders and private fields",()=>{
   const check=validate("LotteryNotificationTemplateContent");
   const good=content();
@@ -158,7 +217,7 @@ test("template copy schemas reject unknown placeholders and private fields",()=>
 
   const joined={en:{title:"Welcome",body:"Membership ready."},"zh-CN":{title:"欢迎",body:"会员已就绪。"}};
   assert.ok(check(joined),JSON.stringify(check.errors));
-  assert.match(schemas.LotteryNotificationTemplateContent.description,/fifteen event templates require \{points\} in each language body/);
+  assert.match(schemas.LotteryNotificationTemplateContent.description,/eighteen event templates require \{points\} in each language body/);
   assert.match(schemas.LotteryNotificationTemplateCopy.properties.title.description,/120 UTF-8 bytes/);
   assert.match(schemas.LotteryNotificationTemplateCopy.properties.body.description,/1200 UTF-8 bytes/);
 });

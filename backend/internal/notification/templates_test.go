@@ -32,6 +32,9 @@ var expectedTemplateKeys = []string{
 	"commission.paid",
 	"member.joined",
 	"recharge.confirmed",
+	"reward.order.granted",
+	"reward.order.revocation_pending",
+	"reward.order.revoked",
 	"withdrawal.order.cancelled",
 	"withdrawal.order.failed",
 	"withdrawal.order.paid",
@@ -64,6 +67,26 @@ func TestValidTemplateKeyIsExactAndSortedContract(t *testing.T) {
 	for _, key := range []string{"", "Member.joined", "notification.member.joined", "member.joined ", "bet.order.deleted"} {
 		if ValidTemplateKey(key) {
 			t.Errorf("ValidTemplateKey(%q)=true", key)
+		}
+	}
+}
+
+func TestEmbeddedTemplateDefaultsCoverEverySortedKey(t *testing.T) {
+	var defaults map[string]Content
+	if err := json.Unmarshal(templateDefaultsFixture, &defaults); err != nil {
+		t.Fatal(err)
+	}
+	if len(defaults) != len(expectedTemplateKeys) {
+		t.Fatalf("embedded defaults=%d, keys=%d", len(defaults), len(expectedTemplateKeys))
+	}
+	for _, key := range expectedTemplateKeys {
+		content, ok := defaults[key]
+		if !ok {
+			t.Errorf("embedded defaults missing %q", key)
+			continue
+		}
+		if err := ValidateContent(key, content); err != nil {
+			t.Errorf("embedded default %q: %v", key, err)
 		}
 	}
 }

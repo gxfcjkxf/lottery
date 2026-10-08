@@ -59058,6 +59058,9 @@
                 "commission.paid",
                 "member.joined",
                 "recharge.confirmed",
+                "reward.order.granted",
+                "reward.order.revocation_pending",
+                "reward.order.revoked",
                 "withdrawal.order.cancelled",
                 "withdrawal.order.failed",
                 "withdrawal.order.paid",
@@ -59449,6 +59452,9 @@
                 "commission.paid",
                 "member.joined",
                 "recharge.confirmed",
+                "reward.order.granted",
+                "reward.order.revocation_pending",
+                "reward.order.revoked",
                 "withdrawal.order.cancelled",
                 "withdrawal.order.failed",
                 "withdrawal.order.paid",
@@ -67497,7 +67503,7 @@
         "tags": [
           "notification"
         ],
-        "description": "Notifications expose immutable content snapshots and their template versions. Legacy version 1 content can be null; later versions include copied content. Templates and payload content are not editable through this API.",
+        "description": "Notifications expose immutable content snapshots and their template versions. Legacy non-withdrawal, non-commission, non-reward version 1 content can be null; reward notifications always include their copied snapshot. Templates and payload content are not editable through this API.",
         "security": [
           {
             "userBearer": []
@@ -67813,7 +67819,7 @@
         "tags": [
           "notification"
         ],
-        "description": "Notifications expose immutable content snapshots and their template versions. Legacy version 1 content can be null; later versions include copied content. Templates and payload content are not editable through this API.",
+        "description": "Notifications expose immutable content snapshots and their template versions. Legacy non-withdrawal, non-commission, non-reward version 1 content can be null; reward notifications always include their copied snapshot. Templates and payload content are not editable through this API.",
         "security": [
           {
             "userBearer": []
@@ -97794,7 +97800,7 @@
           "zh-CN"
         ],
         "additionalProperties": false,
-        "description": "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; fifteen event templates require {points} in each language body, while member.joined forbids {points} in either body or title. Placeholder presence and UTF-8 byte limits are enforced by the handler. Withdrawal events describe historical internal points states, never proof of an external transfer."
+        "description": "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; eighteen event templates require {points} in each language body, while member.joined forbids {points} in either body or title. Placeholder presence and UTF-8 byte limits are enforced by the handler. Withdrawal events describe historical internal points states, never proof of an external transfer."
       },
       "LotteryNotificationTemplate": {
         "type": "object",
@@ -97815,6 +97821,9 @@
               "commission.paid",
               "member.joined",
               "recharge.confirmed",
+              "reward.order.granted",
+              "reward.order.revocation_pending",
+              "reward.order.revoked",
               "withdrawal.order.cancelled",
               "withdrawal.order.failed",
               "withdrawal.order.paid",
@@ -97905,6 +97914,9 @@
               "commission.paid",
               "member.joined",
               "recharge.confirmed",
+              "reward.order.granted",
+              "reward.order.revocation_pending",
+              "reward.order.revoked",
               "withdrawal.order.cancelled",
               "withdrawal.order.failed",
               "withdrawal.order.paid",
@@ -98681,6 +98693,9 @@
               "commission.paid",
               "member.joined",
               "recharge.confirmed",
+              "reward.order.granted",
+              "reward.order.revocation_pending",
+              "reward.order.revoked",
               "withdrawal.order.cancelled",
               "withdrawal.order.failed",
               "withdrawal.order.paid",
@@ -98702,6 +98717,9 @@
               "commission.paid",
               "member.joined",
               "recharge.confirmed",
+              "reward.order.granted",
+              "reward.order.revocation_pending",
+              "reward.order.revoked",
               "withdrawal.order.cancelled",
               "withdrawal.order.failed",
               "withdrawal.order.paid",
@@ -98882,6 +98900,36 @@
               {
                 "properties": {
                   "event_type": {
+                    "const": "reward.order.granted"
+                  },
+                  "template_key": {
+                    "const": "reward.order.granted"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "event_type": {
+                    "const": "reward.order.revocation_pending"
+                  },
+                  "template_key": {
+                    "const": "reward.order.revocation_pending"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "event_type": {
+                    "const": "reward.order.revoked"
+                  },
+                  "template_key": {
+                    "const": "reward.order.revoked"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "event_type": {
                     "const": "withdrawal.order.cancelled"
                   },
                   "template_key": {
@@ -98953,7 +99001,10 @@
                     "withdrawal.order.rejected",
                     "withdrawal.order.reviewing",
                     "commission.paid",
-                    "commission.adjusted"
+                    "commission.adjusted",
+                    "reward.order.granted",
+                    "reward.order.revocation_pending",
+                    "reward.order.revoked"
                   ]
                 }
               }
@@ -99017,6 +99068,9 @@
                     "bet.order.won",
                     "commission.paid",
                     "recharge.confirmed",
+                    "reward.order.granted",
+                    "reward.order.revocation_pending",
+                    "reward.order.revoked",
                     "withdrawal.order.cancelled",
                     "withdrawal.order.failed",
                     "withdrawal.order.paid",
@@ -99113,7 +99167,7 @@
             ]
           }
         ],
-        "description": "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy non-withdrawal, non-commission version 1 rows may have null content; withdrawal events, commission events and version 2 and later always include their copied content. Withdrawal and commission.paid points are positive int64; commission.adjusted points are signed nonzero int64. Commission events retain a historical-record disclaimer that template editing cannot remove. Updating a template never rewrites existing notifications."
+        "description": "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy non-withdrawal, non-commission, non-reward version 1 rows may have null content; withdrawal events, commission events, reward events and version 2 and later always include their copied content. Withdrawal, reward and commission.paid points are positive int64; commission.adjusted points are signed nonzero int64. Reward events retain a state-specific historical and nonfinancial disclaimer that template editing cannot remove. Updating a template never rewrites existing notifications."
       },
       "LotteryAdminGamesPage": {
         "type": "object",

@@ -50,10 +50,11 @@ describe("notification templates API", () => {
     expect(init?.credentials).toBe("same-origin");
     expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
     expect(new Headers(init?.headers).get("Accept")).toBe("application/json");
-    expect(notificationTemplateKeys).toHaveLength(16);
+    expect(notificationTemplateKeys).toHaveLength(19);
     expect(notificationTemplateKeys).toEqual([
       "member.joined", "recharge.confirmed", "bet.order.placed", "bet.order.cancelled",
       "bet.order.judged_cancelled", "bet.order.abnormal", "bet.order.won", "bet.order.prize_reversed",
+      "reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked",
       "commission.adjusted", "commission.paid",
       "withdrawal.order.reviewing", "withdrawal.order.processing", "withdrawal.order.paid",
       "withdrawal.order.rejected", "withdrawal.order.failed", "withdrawal.order.cancelled",
@@ -177,6 +178,35 @@ describe("notification templates API", () => {
         .resolves.toMatchObject({ key, content: commissionContent });
     }
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("accepts exactly the three reward template keys and requires points in both localized bodies", async () => {
+    const rewardContent: NotificationTemplateContent = {
+      en: { title: "Edited reward wording", body: "Recorded {points} gift points for {resource_id}." },
+      "zh-CN": { title: "已编辑赠送文案", body: "记录 {points} 赠送积分，编号 {resource_id}。" },
+    };
+    const keys = ["reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked"] as const;
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+      const key = String(input).split("/").at(-1) as typeof keys[number];
+      return response(template({ key, version: 2, content: rewardContent, audit_log_id: auditId }));
+    });
+    const api = createNotificationTemplatesApi(fetchImpl);
+    for (const [index, key] of keys.entries()) {
+      await expect(api.put(key, brand, { version: 1, content: rewardContent, reason: "copy review" }, `reward-template-00${index + 1}`))
+        .resolves.toMatchObject({ key, content: rewardContent });
+    }
+    await expect(api.put("reward.order.unknown" as never, brand,
+      { version: 1, content: rewardContent, reason: "copy review" }, "reward-template-004"))
+      .rejects.toMatchObject({ status: 400, code: "INVALID_INPUT" });
+    for (const key of keys) {
+      const invalidContent: NotificationTemplateContent = {
+        ...rewardContent,
+        en: { ...rewardContent.en, body: "No points placeholder." },
+      };
+      await expect(api.put(key, brand, { version: 1, content: invalidContent, reason: "copy review" }, "reward-template-005"))
+        .rejects.toMatchObject({ status: 400, code: "INVALID_INPUT" });
+    }
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it("preserves backend conflict and permission error codes", async () => {

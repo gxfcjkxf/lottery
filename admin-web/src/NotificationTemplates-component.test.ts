@@ -82,7 +82,7 @@ function mount() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("NotificationTemplates commission history", () => {
-  it("lists sixteen templates and keeps bilingual commission facts fixed beside editable copy", async () => {
+  it("lists exactly nineteen template keys and keeps bilingual commission facts fixed beside editable copy", async () => {
     vi.stubGlobal("Document", class {});
     vi.stubGlobal("ShadowRoot", class {});
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).includes("/history?") ? response({ items: [] }) : response({ items: templates() }));
@@ -90,7 +90,13 @@ describe("NotificationTemplates commission history", () => {
     const mounted = mount();
     await flush();
     const select = find(mounted.root, (node) => node.props.id === "nt-key");
-    expect(select?.options.filter((option) => option.value !== "").map((option) => option.value)).toHaveLength(16);
+    expect(select?.options.filter((option) => option.value !== "").map((option) => option.value).sort()).toEqual([
+      "bet.order.abnormal", "bet.order.cancelled", "bet.order.judged_cancelled", "bet.order.placed",
+      "bet.order.prize_reversed", "bet.order.won", "commission.adjusted", "commission.paid",
+      "member.joined", "recharge.confirmed", "reward.order.granted", "reward.order.revocation_pending",
+      "reward.order.revoked", "withdrawal.order.cancelled", "withdrawal.order.failed", "withdrawal.order.paid",
+      "withdrawal.order.processing", "withdrawal.order.rejected", "withdrawal.order.reviewing",
+    ]);
 
     for (const [key, en, zh] of [
       ["commission.paid", "not a new income forecast or an external payment", "不是新收入预测或外部付款承诺"],
@@ -108,5 +114,59 @@ describe("NotificationTemplates commission history", () => {
       expect(textOf(note!)).not.toContain("Custom English copy");
     }
     mounted.app.unmount();
+  });
+});
+
+describe("NotificationTemplates protected reward preview", () => {
+  it.each([
+    ["reward.order.granted", "were credited to the gift available balance in the past", "过去的发放"],
+    ["reward.order.revocation_pending", "No points or money moved in this attempt", "本次没有积分或资金变动"],
+    ["reward.order.revoked", "full original reward of 12345 points was reversed", "原奖励全额 12345 积分曾从赠送可用积分撤销"],
+  ] as const)("keeps bilingual historical facts for %s when both editable bodies change", async (key, en, zh) => {
+    vi.stubGlobal("Document", class {});
+    vi.stubGlobal("ShadowRoot", class {});
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input) => String(input).includes("/history?") ? response({ items: [] }) : response({ items: templates() })));
+    const mounted = mount();
+    try {
+      await flush();
+      const select = find(mounted.root, (node) => node.props.id === "nt-key");
+      (select?.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: key } });
+      await flush();
+      const note = find(mounted.root, (node) => node.props["data-testid"] === "reward-facts-note");
+      expect(note).not.toBeNull();
+      const originalNote = textOf(note!);
+      expect(originalNote).toContain(en);
+      expect(originalNote).toContain(zh);
+      expect(originalNote).toContain("Historical record");
+      expect(originalNote).toContain("历史记录");
+      expect(originalNote).toContain("Editing template copy cannot change this state note");
+      expect(originalNote).toContain("编辑模板文案无法改变此状态说明");
+      expect(find(note!, (node) => node.tag === "textarea" || node.tag === "input")).toBeNull();
+      if (key === "reward.order.revocation_pending") {
+        expect(originalNote).toContain("awaiting operator handling");
+        expect(originalNote).toContain("does not retry, unfreeze, or deduct automatically");
+        expect(originalNote).toContain("不会自动重试、解冻或扣除");
+      } else {
+        expect(originalNote).toContain("not the current wallet balance or an external payment");
+        expect(originalNote).toContain("不代表当前钱包余额或外部付款");
+      }
+      for (const [locale, body] of [
+        ["en", "Everything is paid now: {points}."],
+        ["zh-CN", "现在已全部支付：{points}。"],
+      ]) {
+        const editor = find(mounted.root, (node) => node.props.id === `nt-body-${locale}`);
+        const update = editor?.props["onUpdate:modelValue"];
+        expect(update).toBeTypeOf("function");
+        (update as (value: string) => void)(body);
+      }
+      await flush();
+      expect(textOf(mounted.root)).toContain("Everything is paid now: 12345.");
+      expect(textOf(mounted.root)).toContain("现在已全部支付：12345。");
+      const protectedNote = find(mounted.root, (node) => node.props["data-testid"] === "reward-facts-note");
+      expect(protectedNote).not.toBeNull();
+      expect(textOf(protectedNote!)).toBe(originalNote);
+    } finally {
+      mounted.app.unmount();
+    }
   });
 });
