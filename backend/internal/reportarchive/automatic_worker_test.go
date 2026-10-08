@@ -32,8 +32,24 @@ func automaticPolicy(t *testing.T, s Service, a access.Account, in AutomaticPoli
 	return p
 }
 func automaticPast(t *testing.T, s Service, a access.Account, days int) AutomaticPolicy {
-	key := time.Now().UTC().AddDate(0, 0, -days).Format("2006-01-02")
+	key := automaticBrandNow(t, s).AddDate(0, 0, -days).Format("2006-01-02")
 	return automaticPolicy(t, s, a, AutomaticPolicyInput{Version: 1, DailyEnabled: true, DailyStartPeriod: &key, Reason: "explicit saved start for isolated core proof"})
+}
+
+// Discovery uses the database clock and brand civil calendar, not the test
+// process's UTC date. Before 00:00 UTC these can already be different days.
+func automaticBrandNow(t *testing.T, s Service) time.Time {
+	t.Helper()
+	var at time.Time
+	var zone string
+	if err := s.DB.QueryRow(context.Background(), `SELECT statement_timestamp(),timezone FROM brands WHERE id=$1`, testBrand).Scan(&at, &zone); err != nil {
+		t.Fatal(err)
+	}
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return at.In(loc)
 }
 func automaticTasks(t *testing.T, s Service) []AutomaticTask {
 	t.Helper()
@@ -105,8 +121,8 @@ func TestAutomaticArchiveMonthlyConcurrentDiscoveryAndDisabledBrand(t *testing.T
 	archiveFund(t, s)
 	money := archiveMoney(t, s)
 	// Start at the previous calendar month, not a fixed number of elapsed days.
-	now := time.Now().UTC()
-	key := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -1, 0).Format("2006-01")
+	now := automaticBrandNow(t, s)
+	key := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, -1, 0).Format("2006-01")
 	automaticPolicy(t, s, a, AutomaticPolicyInput{Version: 1, MonthlyEnabled: true, MonthlyStartPeriod: &key, Reason: "explicit monthly core proof"})
 	var wg sync.WaitGroup
 	results := make(chan int, 2)
@@ -290,7 +306,7 @@ func TestAutomaticArchivePolicyAuditAndPermissionsFailClosed(t *testing.T) {
 	t.Parallel()
 	s, a := archiveFixture(t)
 	ctx := context.Background()
-	key := time.Now().UTC().Format("2006-01-02")
+	key := automaticBrandNow(t, s).Format("2006-01-02")
 	in := AutomaticPolicyInput{Version: 1, DailyEnabled: true, DailyStartPeriod: &key, Reason: "current activation core proof"}
 	platformViewOnly := automaticActor(a)
 	platformViewOnly.Roles = []access.Role{{BrandID: testBrand, Permissions: []access.Permission{{Resource: "report_archive_policy", Action: "write", Scope: access.ScopeBrand}}}, {Permissions: []access.Permission{{Resource: "report_archive", Action: "view", Scope: access.ScopePlatform}}}}

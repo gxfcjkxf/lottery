@@ -614,7 +614,7 @@ Totals含order_count/requested_points，以及reviewing、processing、paid、re
 
 S7-k 接入 GET `/api/v1/admin/reports/betting/export` 与 `/api/v1/admin/reports/ledger/export`，完整筛选范围、不接受分页参数；view与export分别授权，200直接返回CSV而非JSON信封。列定义、大小限制、快照与审计要求见 [CSV导出合同](11-report-csv-exports.md)。后续已接入提现申请状态报表及CSV，不代表外部出款；佣金/奖励报表、代理分组、不可变日月结及大规模异步全链对账仍未实现，不能据此宣称EPIC-11整体完成。
 
-0064/0065增加按品牌日/月范围的单一统计快照及不可变版本；0066接入/api/v1/admin/report-archives的GET列表、POST创建、GET /{id}详情和GET /{id}/download原JSON下载。当前授权复核、审计后响应、加密幂等原回执及独立下载能力已接入，详细输入、响应头、实际入账/当前业务观察/快照时余额分界见[归档合同](26-report-archive-core.md)。人工后台已实现；0067自动核心/worker及四条当前配置只读、任务列表/详情/人工重试接口和双端页面见[任务管理合同](28-report-archive-task-management.md)。正式PUT `/api/v1/admin/report-archive-policy`恰好接受version/daily_enabled/monthly_enabled/reason，由数据库时间计算品牌当前日/月首次起点，不接受历史起点，见[29号合同](29-report-archive-activation.md)。配置编辑页面继续实施，内部服务不得绕过正式接口的授权与审计。
+0064/0065增加按品牌日/月范围的单一统计快照及不可变版本；0066接入/api/v1/admin/report-archives的GET列表、POST创建、GET /{id}详情和GET /{id}/download原JSON下载。当前授权复核、审计后响应、加密幂等原回执及独立下载能力已接入，详细输入、响应头、实际入账/当前业务观察/快照时余额分界见[归档合同](26-report-archive-core.md)。人工后台已实现；0067自动核心/worker及四条当前配置只读、任务列表/详情/人工重试接口和双端页面见[任务管理合同](28-report-archive-task-management.md)。正式PUT `/api/v1/admin/report-archive-policy`恰好接受version/daily_enabled/monthly_enabled/reason，由数据库时间计算品牌当前日/月首次起点，不接受历史起点，见[29号合同](29-report-archive-activation.md)。双端配置编辑与原键恢复已接入，内部服务不得绕过正式接口的授权与审计。
 
 ## 4.7 品牌运行状态
 

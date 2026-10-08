@@ -40,6 +40,7 @@ const ReportArchivesManagement = defineAsyncComponent(() => import("./ReportArch
 import { clearAllArchiveIntents } from "./report-archives-state";
 const ReportArchiveTasksManagement = defineAsyncComponent(() => import("./ReportArchiveTasksManagement.vue"));
 import { clearAllReportArchiveTaskRetryIntents } from "./report-archive-tasks-state";
+import { clearAllReportArchivePolicyIntents } from "./report-archive-policy-state";
 import {clearPendingReconciliationWrites} from "./reconciliation-state";
 const ReportsManagement = defineAsyncComponent(() => import("./ReportsManagement.vue"));
 const AgentManagement = defineAsyncComponent(() => import("./AgentManagement.vue"));
@@ -414,6 +415,7 @@ const apiErrorText = (error: unknown) =>
 const clearAdminData = () => {
 	clearAllArchiveIntents();
 	clearAllReportArchiveTaskRetryIntents();
+	clearAllReportArchivePolicyIntents();
 	clearAllPendingCommissionAdjustments();
 	clearAllPendingCommissionCycleWrites();
 	clearAllCommissionPaymentIntents();
@@ -463,6 +465,7 @@ const restoreAdminSession = async () => {
       adminBrandLoadGeneration += 1;
       clearAllArchiveIntents();
       clearAllReportArchiveTaskRetryIntents();
+      clearAllReportArchivePolicyIntents();
       clearAllPendingCommissionCycleWrites();
       clearAllPendingCommissionAdjustments();
       clearAllCommissionPaymentIntents();
@@ -502,6 +505,7 @@ const login = async () => {
       adminBrandLoadGeneration += 1;
       clearAllArchiveIntents();
       clearAllReportArchiveTaskRetryIntents();
+      clearAllReportArchivePolicyIntents();
       clearAllPendingCommissionCycleWrites();
       clearAllPendingCommissionAdjustments();
       clearAllCommissionPaymentIntents();

@@ -11,6 +11,8 @@ import { adminI18nKey, createAdminI18n } from "./i18n";
 import * as TasksApi from "./report-archive-tasks-api";
 import type { ReportArchivePolicy, ReportArchiveTask } from "./report-archive-tasks-api";
 import * as TasksState from "./report-archive-tasks-state";
+import * as PolicyApi from "./report-archive-policy-api";
+import * as PolicyState from "./report-archive-policy-state";
 
 const actor = "33333333-3333-4333-8333-333333333333";
 const brand = "11111111-1111-4111-8111-111111111111";
@@ -56,7 +58,7 @@ function compileComponent(): Component {
   const descriptor = parse(source, { filename: "ReportArchiveTasksManagement.vue" }).descriptor;
   const compiled = compileScript(descriptor, { id: "report-archive-tasks-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(compiled, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./report-archive-tasks-api": TasksApi, "./report-archive-tasks-state": TasksState };
+  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./report-archive-tasks-api": TasksApi, "./report-archive-tasks-state": TasksState, "./report-archive-policy-api": PolicyApi, "./report-archive-policy-state": PolicyState };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => { if (!(specifier in modules)) throw new Error(`Unmapped import ${specifier}`); return `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`; }).replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => { if (!(specifier in modules)) throw new Error(`Unmapped import ${specifier}`); return `const ${binding}=__modules[${JSON.stringify(specifier)}].default;`; }).replace(/export\s+default\s+/, "return ");
   return new Function("__modules", body)(modules) as Component;
 }
@@ -86,8 +88,8 @@ async function confirmAndSubmit(mounted: ReturnType<typeof mount>) {
   model(byTestId(mounted.container, "archive-tasks-confirm"), true); await flush();
   click(byTestId(mounted.container, "archive-tasks-submit")); await flush();
 }
-beforeEach(() => { fresh(); TasksState.clearAllReportArchiveTaskRetryIntents(); vi.mocked(TasksApi.createReportArchiveTasksApi).mockImplementation(() => apiStub() as never); });
-afterEach(() => { TasksState.clearAllReportArchiveTaskRetryIntents(); calls.length = 0; vi.clearAllMocks(); vi.unstubAllGlobals(); });
+beforeEach(() => { fresh(); TasksState.clearAllReportArchiveTaskRetryIntents(); PolicyState.clearAllReportArchivePolicyIntents(); vi.mocked(TasksApi.createReportArchiveTasksApi).mockImplementation(() => apiStub() as never); });
+afterEach(() => { TasksState.clearAllReportArchiveTaskRetryIntents(); PolicyState.clearAllReportArchivePolicyIntents(); calls.length = 0; vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 describe("ReportArchiveTasksManagement SFC contract", () => {
   it("freezes unknown retries across unmount and locale changes, and replays only on explicit action", async () => {
