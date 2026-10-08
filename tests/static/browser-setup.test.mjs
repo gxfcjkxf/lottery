@@ -127,9 +127,9 @@ test('setup command timeout must be a positive safe integer no greater than four
   assert.equal(runSetupCommand(process.execPath, ['-e', 'process.exit(0)'], { timeoutMs: 240_000, stdio: 'ignore' }), undefined);
 });
 
-test('all seven browser CI jobs use the bounded Chromium preparation step', () => {
+test('all eight browser CI jobs use the bounded Chromium preparation step', () => {
   const blocks = [...workflow.matchAll(/^      - name: Prepare and verify Chromium\n        timeout-minutes: (\d+)\n        run: (.+)$/gm)];
-  assert.equal(blocks.length, 7);
+  assert.equal(blocks.length, 8);
   for (const [, timeout, command] of blocks) {
     assert.equal(timeout, '7');
     assert.equal(command, 'node scripts/prepare-ci-browser.mjs');

@@ -36,6 +36,8 @@ const CorrectionManagement = defineAsyncComponent(() => import("./CorrectionMana
 const NotificationDeliveries = defineAsyncComponent(() => import("./NotificationDeliveries.vue"));
 const NotificationTemplates = defineAsyncComponent(() => import("./NotificationTemplates.vue"));
 const ReconciliationManagement = defineAsyncComponent(() => import("./ReconciliationManagement.vue"));
+const ReportArchivesManagement = defineAsyncComponent(() => import("./ReportArchivesManagement.vue"));
+import { clearAllArchiveIntents } from "./report-archives-state";
 import {clearPendingReconciliationWrites} from "./reconciliation-state";
 const ReportsManagement = defineAsyncComponent(() => import("./ReportsManagement.vue"));
 const AgentManagement = defineAsyncComponent(() => import("./AgentManagement.vue"));
@@ -135,6 +137,8 @@ const englishUi: Record<string, string> = {
   "安全 / 审计轨迹": "SECURITY / AUDIT TRAIL", "平台 / 品牌配置": "PLATFORM / BRAND CONFIG", "操作控制台": "OPERATIONS CONSOLE",
 };
 Object.assign(englishUi, {
+  "日月归档": "Daily and monthly archives",
+  "请登录并选择有归档查看权限的品牌。": "Sign in and choose a brand with archive viewing permission.",
   "演": "D", "品": "B",
   "请先选择真实后台品牌。": "Select a live admin brand first.",
   "请先登录后台账号，才能查看和操作真实积分。": "Sign in with an administrator account to view and manage live points.",
@@ -178,6 +182,7 @@ type Page =
   | "注单和异常"
   | "资金与账本"
   | "批量对账"
+  | "日月归档"
   | "佣金和奖励"
   | "佣金派发"
   | "佣金更正"
@@ -199,6 +204,7 @@ const nav: { name: Page; icon: string; group: string }[] = [
   { name: "注单和异常", icon: "▤", group: "运营" },
   { name: "资金与账本", icon: "◈", group: "资金" },
   { name: "批量对账", icon: "≋", group: "资金" },
+  { name: "日月归档", icon: "▣", group: "管理" },
   { name: "佣金和奖励", icon: "↗", group: "资金" },
   { name: "佣金派发", icon: "⇧", group: "资金" },
   { name: "佣金更正", icon: "⇄", group: "资金" },
@@ -401,6 +407,7 @@ const statusClass = (status: MemberStatus) =>
 const apiErrorText = (error: unknown) =>
   error instanceof Error ? message(error.message, error.message) : message("请求失败，请重试", "Request failed. Please try again.");
 const clearAdminData = () => {
+	clearAllArchiveIntents();
 	clearAllPendingCommissionAdjustments();
 	clearAllPendingCommissionCycleWrites();
 	clearAllCommissionPaymentIntents();
@@ -448,6 +455,7 @@ const restoreAdminSession = async () => {
     const result = await api.me();
     if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
+      clearAllArchiveIntents();
       clearAllPendingCommissionCycleWrites();
       clearAllPendingCommissionAdjustments();
       clearAllCommissionPaymentIntents();
@@ -485,6 +493,7 @@ const login = async () => {
     const result = await api.me();
     if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
+      clearAllArchiveIntents();
       clearAllPendingCommissionCycleWrites();
       clearAllPendingCommissionAdjustments();
       clearAllCommissionPaymentIntents();
@@ -1919,6 +1928,12 @@ const ledger = [
         <ReconciliationManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
         <div v-else class="panel directory-state">{{ ui("请登录并选择有钱包查看权限的品牌。") }}</div>
+      </section>
+
+      <section v-else-if="page === '日月归档'" class="page-content">
+        <ReportArchivesManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
+          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+        <div v-else class="panel directory-state">{{ ui("请登录并选择有归档查看权限的品牌。") }}</div>
       </section>
 
       <section v-else-if="page === '资金与账本'" class="page-content">
