@@ -25295,7 +25295,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads use the primary database, revalidate authorization, and commit an audit record before responding. Counters and total_count are exact decimal strings for this job only; there are no global wallet segments.",
+        "description": "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads use the primary database, revalidate authorization, and commit an audit record before responding. check_scope is immutable job scope; older jobs without the field are interpreted as wallet. Counters and total_count are exact decimal strings for this job only; there are no global wallet segments.",
         "security": [
           {
             "adminBearer": []
@@ -25629,7 +25629,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Requires wallet.reconcile.brand and either wallet.view.brand or wallet.view.platform. Brand-scoped grants must match explicit brand membership; platform view does not bypass brand membership. Super-admins are read-only. The only request field is reason. Captures the selected account/member targets transactionally and creates a frozen original pending v1 receipt. An active job returns 409; more than 100000 targets returns 413 atomically without creating a job. Reason must already be trimmed and contain no LF, CR, or NUL. Workers record per-account, nonfinancial bucket-versus-ledger observations; the service does not repair balances or expose ledger segments. Domain errors use RECONCILIATION_INPUT_INVALID, RECONCILIATION_STATE_CONFLICT, and RECONCILIATION_TOO_LARGE.",
+        "description": "Requires wallet.reconcile.brand and either wallet.view.brand or wallet.view.platform. Brand-scoped grants must match explicit brand membership; platform view does not bypass brand membership. Super-admins are read-only. Requires reason and accepts optional check_scope: wallet (the default, including reason-only legacy requests) or wallet_and_business. Reason-only requests retain the legacy wallet scope, fingerprint, and cached acknowledgement bytes. Captures the selected account/member targets transactionally; scope and account membership are fixed at capture. The wallet_and_business worker checks point-ledger and business-record bindings in both directions. An active job returns 409; more than 100000 targets returns 413 atomically without creating a job. Reason must already be valid UTF-8, trimmed, and contain no LF, CR, or NUL. Checks are diagnostic; they do not mutate funds or automatically repair source records. Domain errors use RECONCILIATION_INPUT_INVALID, RECONCILIATION_STATE_CONFLICT, and RECONCILIATION_TOO_LARGE.",
         "security": [
           {
             "adminBearer": []
@@ -25999,7 +25999,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads current state from the primary database and commits an audit record. The POST creation receipt remains frozen at pending version 1; this endpoint returns current counters and state. Counts are job-local diagnostic observations, not global wallet segments.",
+        "description": "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads current state from the primary database and commits an audit record. The POST creation receipt remains frozen at pending version 1; this endpoint returns current counters, state, and immutable check_scope (older jobs without it mean wallet). A completed job means every captured target reached a terminal check, not that every check is consistent. Counts are job-local diagnostic observations, not global wallet segments.",
         "security": [
           {
             "adminBearer": []
@@ -26321,7 +26321,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads the primary database and commits an audit record. Pagination defaults to limit 20/offset 0, maximum limit 100 and offset 1000000. outcome filters pending/failed target states or the checked observation outcome. Totals are decimal strings scoped to this job; observations do not expose global wallet segments or repair balances.",
+        "description": "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads the primary database and commits an audit record. Pagination defaults to limit 20/offset 0, maximum limit 100 and offset 1000000. outcome filters pending/failed target states or the checked observation outcome. Each target reports its immutable check_scope; older targets without it mean wallet. wallet_and_business results include a nullable point-ledger/business-record preview with bidirectional binding checks and twelve exact family coverage counts. A full preview is present only for a checked target; wallet checks and nonterminal targets return null. Completion does not imply consistency, and observations never automatically fix a source record.",
         "security": [
           {
             "adminBearer": []
@@ -98413,7 +98413,556 @@
         "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\r\\n\\x00])[\\s\\S]+$",
         "description": "Nonempty valid UTF-8, at most 500 bytes, already trimmed, and contains no LF, CR, or NUL. The handler rejects rather than normalizes invalid reasons."
       },
-      "FinanceReconciliationJob": {
+      "FinanceReconciliationBusinessIssue": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "UNSUPPORTED_LEDGER_TYPE",
+              "MISSING_BUSINESS_RECORD",
+              "INVALID_BUSINESS_BINDING",
+              "MISSING_LEDGER_ENTRY",
+              "DUPLICATE_BUSINESS_BINDING",
+              "INVALID_MANUAL_AUDIT"
+            ]
+          },
+          "entry_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_.:-]{1,200}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ledger_entry_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UUID"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resource_type": {
+            "type": "string",
+            "enum": [
+              "bet",
+              "commission",
+              "commission_adjustment",
+              "commission_correction",
+              "manual",
+              "prize",
+              "prize_reversal",
+              "recharge",
+              "refund",
+              "reward",
+              "unknown",
+              "withdrawal",
+              "ledger"
+            ]
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UUID"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "entry_type",
+          "ledger_entry_id",
+          "resource_type",
+          "resource_id"
+        ],
+        "additionalProperties": false
+      },
+      "FinanceReconciliationBusinessCoverage": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "type": "string",
+            "enum": [
+              "bet",
+              "commission",
+              "commission_adjustment",
+              "commission_correction",
+              "manual",
+              "prize",
+              "prize_reversal",
+              "recharge",
+              "refund",
+              "reward",
+              "unknown",
+              "withdrawal"
+            ]
+          },
+          "ledger_entry_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+          },
+          "business_reference_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+          },
+          "issue_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+          }
+        },
+        "required": [
+          "family",
+          "ledger_entry_count",
+          "business_reference_count",
+          "issue_count"
+        ],
+        "additionalProperties": false
+      },
+      "FinanceReconciliationBusinessPreview": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "member_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "account_version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "ledger_entry_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+          },
+          "business_reference_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+          },
+          "issue_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+          },
+          "issues_truncated": {
+            "type": "boolean"
+          },
+          "consistent": {
+            "type": "boolean"
+          },
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{64}$"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FinanceReconciliationBusinessIssue"
+            },
+            "maxItems": 100
+          },
+          "coverage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FinanceReconciliationBusinessCoverage"
+            },
+            "minItems": 12,
+            "maxItems": 12,
+            "prefixItems": [
+              {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "const": "bet"
+                  },
+                  "ledger_entry_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "business_reference_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "issue_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  }
+                },
+                "required": [
+                  "family",
+                  "ledger_entry_count",
+                  "business_reference_count",
+                  "issue_count"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "const": "commission"
+                  },
+                  "ledger_entry_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "business_reference_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "issue_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  }
+                },
+                "required": [
+                  "family",
+                  "ledger_entry_count",
+                  "business_reference_count",
+                  "issue_count"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "const": "commission_adjustment"
+                  },
+                  "ledger_entry_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "business_reference_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "issue_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  }
+                },
+                "required": [
+                  "family",
+                  "ledger_entry_count",
+                  "business_reference_count",
+                  "issue_count"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "const": "commission_correction"
+                  },
+                  "ledger_entry_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "business_reference_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "issue_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  }
+                },
+                "required": [
+                  "family",
+                  "ledger_entry_count",
+                  "business_reference_count",
+                  "issue_count"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "const": "manual"
+                  },
+                  "ledger_entry_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "business_reference_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "issue_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  }
+                },
+                "required": [
+                  "family",
+                  "ledger_entry_count",
+                  "business_reference_count",
+                  "issue_count"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "const": "prize"
+                  },
+                  "ledger_entry_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "business_reference_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "issue_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  }
+                },
+                "required": [
+                  "family",
+                  "ledger_entry_count",
+                  "business_reference_count",
+                  "issue_count"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "const": "prize_reversal"
+                  },
+                  "ledger_entry_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "business_reference_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "issue_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  }
+                },
+                "required": [
+                  "family",
+                  "ledger_entry_count",
+                  "business_reference_count",
+                  "issue_count"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "const": "recharge"
+                  },
+                  "ledger_entry_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "business_reference_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "issue_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  }
+                },
+                "required": [
+                  "family",
+                  "ledger_entry_count",
+                  "business_reference_count",
+                  "issue_count"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "const": "refund"
+                  },
+                  "ledger_entry_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "business_reference_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "issue_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  }
+                },
+                "required": [
+                  "family",
+                  "ledger_entry_count",
+                  "business_reference_count",
+                  "issue_count"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "const": "reward"
+                  },
+                  "ledger_entry_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "business_reference_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "issue_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  }
+                },
+                "required": [
+                  "family",
+                  "ledger_entry_count",
+                  "business_reference_count",
+                  "issue_count"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "const": "unknown"
+                  },
+                  "ledger_entry_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "business_reference_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "issue_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  }
+                },
+                "required": [
+                  "family",
+                  "ledger_entry_count",
+                  "business_reference_count",
+                  "issue_count"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "family": {
+                    "const": "withdrawal"
+                  },
+                  "ledger_entry_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "business_reference_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  },
+                  "issue_count": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "description": "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64."
+                  }
+                },
+                "required": [
+                  "family",
+                  "ledger_entry_count",
+                  "business_reference_count",
+                  "issue_count"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "account_id",
+          "member_id",
+          "account_version",
+          "ledger_entry_count",
+          "business_reference_count",
+          "issue_count",
+          "issues_truncated",
+          "consistent",
+          "fingerprint",
+          "issues",
+          "coverage"
+        ],
+        "additionalProperties": false
+      },
+      "FinanceReconciliationJobLegacy": {
         "type": "object",
         "properties": {
           "id": {
@@ -98541,6 +99090,152 @@
         ],
         "additionalProperties": false
       },
+      "FinanceReconciliationJobModern": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "brand_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "target_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
+            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
+          },
+          "checked_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
+            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
+          },
+          "consistent_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
+            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
+          },
+          "repairable_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
+            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
+          },
+          "corrupt_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
+            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
+          },
+          "failed_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
+            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
+          },
+          "pending_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
+            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/FinanceReconciliationReason"
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/DateTime"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DateTime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DateTime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "CHECK_FAILED"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "can_retry": {
+            "type": "boolean"
+          },
+          "creation_audit_log_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "check_scope": {
+            "type": "string",
+            "enum": [
+              "wallet",
+              "wallet_and_business"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "brand_id",
+          "state",
+          "version",
+          "target_count",
+          "checked_count",
+          "consistent_count",
+          "repairable_count",
+          "corrupt_count",
+          "failed_count",
+          "pending_count",
+          "created_by",
+          "reason",
+          "created_at",
+          "started_at",
+          "completed_at",
+          "last_error_code",
+          "can_retry",
+          "creation_audit_log_id",
+          "check_scope"
+        ],
+        "additionalProperties": false
+      },
+      "FinanceReconciliationJob": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/FinanceReconciliationJobLegacy"
+          },
+          {
+            "$ref": "#/components/schemas/FinanceReconciliationJobModern"
+          }
+        ]
+      },
       "FinanceReconciliationJobPage": {
         "type": "object",
         "properties": {
@@ -98578,7 +99273,7 @@
         ],
         "additionalProperties": false
       },
-      "FinanceReconciliationTarget": {
+      "FinanceReconciliationTargetLegacy": {
         "type": "object",
         "properties": {
           "id": {
@@ -98681,6 +99376,171 @@
         ],
         "additionalProperties": false
       },
+      "FinanceReconciliationTargetModern": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "brand_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "account_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "member_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "checked",
+              "failed"
+            ]
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "consistent",
+                  "repairable",
+                  "corrupt"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FinanceRepairPreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attempt_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "CHECK_FAILED"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DateTime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "audit_log_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UUID"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "check_scope": {
+            "type": "string",
+            "enum": [
+              "wallet",
+              "wallet_and_business"
+            ]
+          },
+          "business_preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FinanceReconciliationBusinessPreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "brand_id",
+          "job_id",
+          "account_id",
+          "member_id",
+          "state",
+          "outcome",
+          "preview",
+          "attempt_count",
+          "error_code",
+          "checked_at",
+          "audit_log_id",
+          "check_scope",
+          "business_preview"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "type": "object",
+              "properties": {
+                "check_scope": {
+                  "const": "wallet_and_business"
+                },
+                "state": {
+                  "const": "checked"
+                }
+              },
+              "required": [
+                "check_scope",
+                "state"
+              ]
+            },
+            "then": {
+              "properties": {
+                "business_preview": {
+                  "$ref": "#/components/schemas/FinanceReconciliationBusinessPreview"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "business_preview": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "FinanceReconciliationTarget": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/FinanceReconciliationTargetLegacy"
+          },
+          {
+            "$ref": "#/components/schemas/FinanceReconciliationTargetModern"
+          }
+        ]
+      },
       "FinanceReconciliationTargetPage": {
         "type": "object",
         "properties": {
@@ -98745,6 +99605,15 @@
         "properties": {
           "reason": {
             "$ref": "#/components/schemas/FinanceReconciliationReason"
+          },
+          "check_scope": {
+            "type": "string",
+            "enum": [
+              "wallet",
+              "wallet_and_business"
+            ],
+            "default": "wallet",
+            "description": "Optional immutable job scope. Omission preserves the legacy reason-only wallet request and its idempotency behavior."
           }
         },
         "required": [
@@ -98758,7 +99627,7 @@
           "version": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 9007199254740991
+            "maximum": 9007199254740990
           },
           "reason": {
             "$ref": "#/components/schemas/FinanceReconciliationReason"

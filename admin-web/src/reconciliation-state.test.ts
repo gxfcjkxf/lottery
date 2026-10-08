@@ -63,4 +63,20 @@ describe("reconciliation pending write state", () => {
     expect(getPendingReconciliationWrite(otherScope)).toBeNull();
     expect(getPendingReconciliationWrite(createScope)?.key).toBe("recon-create-key-004");
   });
+
+  it("preserves the explicitly selected business scope in an unknown frozen create intent", () => {
+    const mutable = { reason: "business audit", check_scope: "wallet_and_business" as const };
+    const intent: PendingReconciliationWrite = { ...createScope, body: freezeReconciliationBody(mutable), key: "recon-full-key-001" };
+    setPendingReconciliationWrite(createScope, intent);
+    mutable.reason = "changed after submission";
+    expect(getPendingReconciliationWrite(createScope)?.body).toEqual({ reason: "business audit", check_scope: "wallet_and_business" });
+    expect(Object.isFrozen(getPendingReconciliationWrite(createScope)?.body)).toBe(true);
+    const savedBody = listPendingReconciliationWrites(accountId, brandId)[0]?.body;
+    expect(savedBody && "check_scope" in savedBody ? savedBody.check_scope : undefined).toBe("wallet_and_business");
+    const otherScope = { ...createScope, accountId: "66666666-6666-4666-8666-666666666666" };
+    const malformed = { ...otherScope, body: { reason: "unsafe", check_scope: "wallet_and_business", extra: true }, key: "recon-full-key-002" } as unknown as PendingReconciliationWrite;
+    setPendingReconciliationWrite(otherScope, malformed);
+    expect(getPendingReconciliationWrite(createScope)?.key).toBe("recon-full-key-001");
+    expect(getPendingReconciliationWrite(otherScope)).toBeNull();
+  });
 });

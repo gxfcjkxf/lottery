@@ -27,7 +27,9 @@ function validIntent(value: unknown, scope: ReconciliationWriteScope): value is 
     new TextEncoder().encode(body.reason).length <= 500 && !/[\u0000-\u001f\u007f-\u009f]/u.test(body.reason) && !hasLoneSurrogate(body.reason) &&
     typeof item.key === "string" && KEY_RE.test(item.key);
   if (!common) return false;
-  if (scope.operation === "create") return scope.jobId === undefined && Object.keys(body).length === 1;
+  if (scope.operation === "create") return scope.jobId === undefined &&
+    (Object.keys(body).length === 1 || Object.keys(body).length === 2 && Object.hasOwn(body, "check_scope") &&
+      (body.check_scope === "wallet" || body.check_scope === "wallet_and_business"));
   return scope.jobId !== undefined && UUID_RE.test(scope.jobId) && Object.keys(body).length === 2 &&
     Number.isSafeInteger(body.version) && Number(body.version) > 0 && Number(body.version) < Number.MAX_SAFE_INTEGER;
 }
@@ -44,13 +46,14 @@ function hasLoneSurrogate(value: string): boolean {
 }
 function copyIntent(value: PendingReconciliationWrite): PendingReconciliationWrite {
   const body = value.operation === "create"
-    ? Object.freeze({ reason: value.body.reason })
+    ? Object.freeze({ reason: value.body.reason, ...("check_scope" in value.body && value.body.check_scope !== undefined ? { check_scope: value.body.check_scope } : {}) })
     : Object.freeze({ version: (value.body as ReconciliationRetryBody).version, reason: value.body.reason });
   return Object.freeze({ accountId: value.accountId, brandId: value.brandId, operation: value.operation,
     ...(value.jobId === undefined ? {} : { jobId: value.jobId }), body, key: value.key });
 }
 export function freezeReconciliationBody<T extends ReconciliationCreateBody | ReconciliationRetryBody>(body: T): Readonly<T> {
-  return Object.freeze("version" in body ? { version: body.version, reason: body.reason } as T : { reason: body.reason } as T);
+  return Object.freeze("version" in body ? { version: body.version, reason: body.reason } as T :
+    { reason: body.reason, ...("check_scope" in body && body.check_scope !== undefined ? { check_scope: body.check_scope } : {}) } as T);
 }
 export function getPendingReconciliationWrite(scope: ReconciliationWriteScope): PendingReconciliationWrite | null {
   if (!UUID_RE.test(scope.accountId) || !UUID_RE.test(scope.brandId) || (scope.jobId !== undefined && !UUID_RE.test(scope.jobId))) return null;

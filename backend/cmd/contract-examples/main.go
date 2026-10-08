@@ -105,7 +105,7 @@ func main() {
 	after[0][0] = 92
 	entry := points.Entry{ID: id, BrandID: id, AccountID: id, MemberID: id, EntryType: "bet", ReferenceType: "order", ReferenceID: id, OperationKey: "contract-example", Reason: "contract example", ActorType: "user", ActorID: id, RequestID: "contract-example", Version: 2, Before: before, Delta: delta, After: after, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 8}}, CreatedAt: now}
 	reconciliationJob := reconciliation.Job{
-		ID: id, BrandID: id, State: "running", Version: 1,
+		ID: id, BrandID: id, CheckScope: reconciliation.ScopeWallet, State: "running", Version: 1,
 		TargetCount: "2", CheckedCount: "1", ConsistentCount: "1", RepairableCount: "0", CorruptCount: "0", FailedCount: "0", PendingCount: "1",
 		CreatedBy: id, Reason: "monthly wallet observation", CreatedAt: now, StartedAt: &startedAt,
 		CanRetry: false, CreationAuditLogID: id,
@@ -120,11 +120,34 @@ func main() {
 	}
 	reconciliationCheckedTarget := reconciliation.Target{
 		ID: "22222222-2222-4222-8222-222222222222", BrandID: id, JobID: id, AccountID: id, MemberID: id,
-		State: "checked", Outcome: &consistent, Preview: &preview, AttemptCount: 1, CheckedAt: &checkedAt, AuditLogID: &reconciliationAuditID,
+		CheckScope: reconciliation.ScopeWallet, State: "checked", Outcome: &consistent, Preview: &preview, AttemptCount: 1, CheckedAt: &checkedAt, AuditLogID: &reconciliationAuditID,
 	}
 	reconciliationPendingTarget := reconciliation.Target{
 		ID: "33333333-3333-4333-8333-333333333333", BrandID: id, JobID: id, AccountID: id, MemberID: id,
-		State: "pending",
+		CheckScope: reconciliation.ScopeWallet, State: "pending",
+	}
+	// Contract-only sample with zero observations: it demonstrates the full
+	// preview shape without implying that this fixture is financial history.
+	reconciliationBusinessJob := reconciliationJob
+	reconciliationBusinessJob.CheckScope = reconciliation.ScopeWalletAndBusiness
+	reconciliationBusinessCoverage := make([]reconciliation.BusinessCoverage, 0, 12)
+	for _, family := range []string{"bet", "commission", "commission_adjustment", "commission_correction", "manual", "prize", "prize_reversal", "recharge", "refund", "reward", "unknown", "withdrawal"} {
+		reconciliationBusinessCoverage = append(reconciliationBusinessCoverage, reconciliation.BusinessCoverage{
+			Family: family, LedgerEntryCount: "0", BusinessReferenceCount: "0", IssueCount: "0",
+		})
+	}
+	reconciliationBusinessPreview := reconciliation.BusinessPreview{
+		AccountID: id, MemberID: id, AccountVersion: 0,
+		LedgerEntryCount: "0", BusinessReferenceCount: "0", IssueCount: "0",
+		IssuesTruncated: false, Consistent: true,
+		Fingerprint: "0000000000000000000000000000000000000000000000000000000000000000",
+		Issues:      []reconciliation.BusinessIssue{}, Coverage: reconciliationBusinessCoverage,
+	}
+	reconciliationBusinessTarget := reconciliation.Target{
+		ID: "44444444-4444-4444-8444-444444444444", BrandID: id, JobID: id, AccountID: id, MemberID: id,
+		CheckScope: reconciliation.ScopeWalletAndBusiness, State: "checked", Outcome: &consistent,
+		Preview: &preview, BusinessPreview: &reconciliationBusinessPreview, AttemptCount: 1,
+		CheckedAt: &checkedAt, AuditLogID: &reconciliationAuditID,
 	}
 	reconciliationTargets := reconciliation.TargetPage{
 		BrandID: id, JobID: id, Items: []reconciliation.Target{reconciliationCheckedTarget, reconciliationPendingTarget},
@@ -171,16 +194,18 @@ func main() {
 		"IdentityUser":   identity.User{ID: id, Status: "normal"},
 		"IdentityMember": identity.Member{ID: id, BrandID: id, Status: "normal", JoinedAt: now},
 		"FinanceBalance": before, "FinanceDeltaBalance": delta, "FinanceEntry": entry,
-		"FinanceReconciliationJob":        reconciliationJob,
-		"FinanceReconciliationJobPage":    reconciliation.JobPage{BrandID: id, Items: []reconciliation.Job{reconciliationJob}, TotalCount: "1", Limit: 20, Offset: 0},
-		"FinanceReconciliationTarget":     reconciliationCheckedTarget,
-		"FinanceReconciliationTargetPage": reconciliationTargets,
-		"FinanceWallet":                   points.Wallet{AccountID: id, BrandID: id, MemberID: id, Version: 2, DisplayPoints: 92, AvailablePoints: 92, RechargePoints: 92, BySource: after},
-		"FinanceReportBalances":           reporting.Balances{AccountCount: "2", AvailablePoints: "18000000000000000000", FrozenPoints: "0", WithdrawalPoints: "0", TotalPoints: "18000000000000000000"},
-		"FinanceLedgerTotals":             reporting.LedgerTotals{EntryCount: "2", NetPoints: "-18000000000000000000", RechargePoints: "0", PrizeCreditPoints: "0", PrizeReversalPoints: "18000000000000000000", RefundPoints: "0"},
-		"CommissionReport":                reporting.CommissionReport{BrandID: id, SnapshotAt: now, Timezone: "UTC", Query: reporting.CommissionQuery{From: now.Add(-24 * time.Hour), To: now, GroupBy: "day", Limit: 20}, Summary: reporting.CommissionTotals{EntryCount: "0", PaidEntryCount: "0", PaidPoints: "0", AdjustmentEntryCount: "0", AdjustmentCreditPoints: "0", AdjustmentDebitPoints: "0", CorrectionEntryCount: "0", CorrectionCreditPoints: "0", CorrectionDebitPoints: "0", NetPoints: "0"}, Items: []reporting.Group[reporting.CommissionTotals]{}, TotalGroups: "0"},
-		"CommissionReportTotals":          reporting.CommissionTotals{EntryCount: "8", PaidEntryCount: "2", PaidPoints: "18000000000000000000", AdjustmentEntryCount: "1", AdjustmentCreditPoints: "0", AdjustmentDebitPoints: "2", CorrectionEntryCount: "5", CorrectionCreditPoints: "18000000000000000000", CorrectionDebitPoints: "27000000000000000000", NetPoints: "8999999999999999998"},
-		"LotteryRuleDefinition":           in.Definition, "LotterySimulationInput": in, "LotterySimulationResult": out,
+		"FinanceReconciliationJob":          reconciliationJob,
+		"FinanceReconciliationJobPage":      reconciliation.JobPage{BrandID: id, Items: []reconciliation.Job{reconciliationJob}, TotalCount: "1", Limit: 20, Offset: 0},
+		"FinanceReconciliationTarget":       reconciliationCheckedTarget,
+		"FinanceReconciliationTargetPage":   reconciliationTargets,
+		"FinanceReconciliationJobModern":    reconciliationBusinessJob,
+		"FinanceReconciliationTargetModern": reconciliationBusinessTarget,
+		"FinanceWallet":                     points.Wallet{AccountID: id, BrandID: id, MemberID: id, Version: 2, DisplayPoints: 92, AvailablePoints: 92, RechargePoints: 92, BySource: after},
+		"FinanceReportBalances":             reporting.Balances{AccountCount: "2", AvailablePoints: "18000000000000000000", FrozenPoints: "0", WithdrawalPoints: "0", TotalPoints: "18000000000000000000"},
+		"FinanceLedgerTotals":               reporting.LedgerTotals{EntryCount: "2", NetPoints: "-18000000000000000000", RechargePoints: "0", PrizeCreditPoints: "0", PrizeReversalPoints: "18000000000000000000", RefundPoints: "0"},
+		"CommissionReport":                  reporting.CommissionReport{BrandID: id, SnapshotAt: now, Timezone: "UTC", Query: reporting.CommissionQuery{From: now.Add(-24 * time.Hour), To: now, GroupBy: "day", Limit: 20}, Summary: reporting.CommissionTotals{EntryCount: "0", PaidEntryCount: "0", PaidPoints: "0", AdjustmentEntryCount: "0", AdjustmentCreditPoints: "0", AdjustmentDebitPoints: "0", CorrectionEntryCount: "0", CorrectionCreditPoints: "0", CorrectionDebitPoints: "0", NetPoints: "0"}, Items: []reporting.Group[reporting.CommissionTotals]{}, TotalGroups: "0"},
+		"CommissionReportTotals":            reporting.CommissionTotals{EntryCount: "8", PaidEntryCount: "2", PaidPoints: "18000000000000000000", AdjustmentEntryCount: "1", AdjustmentCreditPoints: "0", AdjustmentDebitPoints: "2", CorrectionEntryCount: "5", CorrectionCreditPoints: "18000000000000000000", CorrectionDebitPoints: "27000000000000000000", NetPoints: "8999999999999999998"},
+		"LotteryRuleDefinition":             in.Definition, "LotterySimulationInput": in, "LotterySimulationResult": out,
 		"LotterySimulationInputSparse": sparse,
 		"LotteryRuleSelection":         in.Selection, "LotteryRuleDraw": in.Draw,
 		"LotteryRuleTier": in.Definition.PrizeTiers[0], "LotteryRuleCondition": in.Definition.PrizeTiers[0].Condition,

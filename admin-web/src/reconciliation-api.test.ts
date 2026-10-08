@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import {
-  createReconciliationApi, reconciliationPermissions, type ReconciliationJob,
+  BUSINESS_FAMILIES, createReconciliationApi, reconciliationPermissions, type BusinessPreview, type ReconciliationJob,
 } from "./reconciliation-api";
 
 const brand = "11111111-1111-4111-8111-111111111111";
@@ -22,6 +22,13 @@ function response(data: unknown, status = 200) {
 }
 function admin(patch: Partial<AdminAccount> = {}): AdminAccount {
   return { id: accountId, super_admin: false, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: ["wallet.view.brand", "wallet.reconcile.brand"] }, ...patch };
+}
+function businessPreview(memberId = "55555555-5555-4555-8555-555555555555", patch: Partial<BusinessPreview> = {}): BusinessPreview {
+  return {
+    account_id: accountId, member_id: memberId, account_version: 0, ledger_entry_count: "0", business_reference_count: "0", issue_count: "0",
+    issues_truncated: false, consistent: true, fingerprint: "a".repeat(64), issues: [],
+    coverage: BUSINESS_FAMILIES.map((family) => ({ family, ledger_entry_count: "0", business_reference_count: "0", issue_count: "0" })), ...patch,
+  };
 }
 
 describe("reconciliation SDK", () => {
@@ -62,6 +69,160 @@ describe("reconciliation SDK", () => {
     expect(headers.get("Content-Type")).toBe("application/json");
     await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(job({ checked_count: "1", consistent_count: "1", pending_count: "1" }))))
       .create(brand, body, "recon-create-key-001", accountId)).rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 0 });
+  });
+
+  it("sends explicit full scope and binds the immutable receipt scope", async () => {
+    const fullJob = job({ reason: "full audit", check_scope: "wallet_and_business" });
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(fullJob));
+    await expect(createReconciliationApi(fetcher).create(brand, { reason: "full audit", check_scope: "wallet_and_business" }, "recon-full-key-001", accountId))
+      .resolves.toEqual(fullJob);
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ reason: "full audit", check_scope: "wallet_and_business" });
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(job())))
+      .create(brand, { reason: "full audit", check_scope: "wallet_and_business" }, "recon-full-key-001", accountId))
+      .rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 0 });
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(fullJob)))
+      .create(brand, { reason: "wallet audit" }, "recon-full-key-001", accountId))
+      .rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 0 });
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...fullJob, check_scope: "wallet_and_other" })))
+      .read(brand, jobId)).rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 502 });
+  });
+
+  it("accepts only complete, internally consistent full-scope business previews", async () => {
+    const member = "55555555-5555-4555-8555-555555555555";
+    const expected = Object.fromEntries(["recharge", "winning", "gift", "commission"].map((source) => [source,
+      Object.fromEntries(["available", "manual_frozen", "system_frozen", "withdrawal"].map((state) => [state, "0"]))]));
+    const wallet = { account_id: accountId, member_id: member, version: 0, ledger_version: 0, actual: {}, expected,
+      repairable: true, consistent: false, issues: ["missing balance buckets"], token: "b".repeat(64) };
+    const checked = { id: auditId, brand_id: brand, job_id: jobId, account_id: accountId, member_id: member, state: "checked", outcome: "repairable",
+      preview: wallet, attempt_count: 1, error_code: null, checked_at: stamp, audit_log_id: "66666666-6666-4666-8666-666666666666",
+      check_scope: "wallet_and_business", business_preview: businessPreview(member) };
+    const page = { brand_id: brand, job_id: jobId, items: [checked], total_count: "1", limit: 20, offset: 0, outcome: null };
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(page))).targets(brand, jobId, null, 20, 0, "wallet_and_business"))
+      .resolves.toMatchObject({ items: [{ outcome: "repairable" }] });
+    const malformed = [
+      { ...checked, business_preview: null },
+      { ...checked, outcome: "consistent" },
+      { ...checked, business_preview: { ...checked.business_preview, account_version: 1 } },
+      { ...checked, business_preview: { ...checked.business_preview, coverage: checked.business_preview.coverage.slice(1) } },
+      { ...checked, business_preview: { ...checked.business_preview, ledger_entry_count: "1" } },
+      { ...checked, business_preview: { ...checked.business_preview, issue_count: "1" } },
+      { ...checked, business_preview: { ...checked.business_preview, surprise: true } },
+      { ...checked, business_preview: { ...checked.business_preview, issues: Array.from({ length: 101 }, () => ({})) } },
+      { ...checked, business_preview: { ...checked.business_preview, coverage: checked.business_preview.coverage.map((row, index) => index === 1 ? { ...row, family: "bet" } : row) } },
+      { ...checked, business_preview: { ...checked.business_preview, coverage: checked.business_preview.coverage.map((row, index) => index === 0 ? { ...row, ledger_entry_count: "1" } : row) } },
+      { ...checked, business_preview: { ...checked.business_preview, issue_count: "1" } },
+      { ...checked, business_preview: { ...checked.business_preview, issues_truncated: true } },
+    ];
+    for (const item of malformed) {
+      await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...page, items: [item] }))).targets(brand, jobId))
+        .rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    }
+    const businessIssue = { code: "MISSING_BUSINESS_RECORD", entry_type: "recharge", ledger_entry_id: auditId, resource_type: "recharge", resource_id: null } as const;
+    const inconsistent = businessPreview(member, { issue_count: "1", consistent: false, issues: [businessIssue],
+      coverage: BUSINESS_FAMILIES.map((family) => ({ family, ledger_entry_count: "0", business_reference_count: "0", issue_count: family === "recharge" ? "1" : "0" })) });
+    const corrupt = { ...checked, outcome: "corrupt", business_preview: inconsistent };
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...page, items: [corrupt] }))).targets(brand, jobId))
+      .resolves.toMatchObject({ items: [{ outcome: "corrupt" }] });
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...page, items: [{ ...corrupt, outcome: "repairable" }] }))).targets(brand, jobId))
+      .rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    const pendingFull = { ...checked, state: "pending", outcome: null, preview: null, attempt_count: 0, checked_at: null, audit_log_id: null, business_preview: null };
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...page, items: [pendingFull] }))).targets(brand, jobId))
+      .resolves.toMatchObject({ items: [{ state: "pending" }] });
+    const failedFull = { ...checked, state: "failed", outcome: null, preview: null, attempt_count: 1, error_code: "CHECK_FAILED", checked_at: null, audit_log_id: null, business_preview: null };
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...page, items: [failedFull] }))).targets(brand, jobId))
+      .resolves.toMatchObject({ items: [{ state: "failed", business_preview: null }] });
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...page, items: [{ ...failedFull, business_preview: undefined }] }))).targets(brand, jobId))
+      .rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+  });
+
+  it("accepts exact ASCII ledger tags and validates bigint-safe business aggregates", async () => {
+    const member = "55555555-5555-4555-8555-555555555555";
+    const tag = "AbC_9.:--" + "x".repeat(191);
+    const count = "9007199254740992";
+    const coverage = BUSINESS_FAMILIES.map((family, index) => ({ family, ledger_entry_count: "0", business_reference_count: count, issue_count: index === 0 ? "1" : "0" }));
+    const references = (BigInt(count) * BigInt(BUSINESS_FAMILIES.length)).toString();
+    const expected = Object.fromEntries(["recharge", "winning", "gift", "commission"].map((source) => [source,
+      Object.fromEntries(["available", "manual_frozen", "system_frozen", "withdrawal"].map((state) => [state, "0"]))]));
+    const wallet = { account_id: accountId, member_id: member, version: 0, ledger_version: 0, actual: {}, expected,
+      repairable: false, consistent: false, issues: ["legacy wallet observation"], token: "b".repeat(64) };
+    const preview = businessPreview(member, {
+      business_reference_count: references, issue_count: "1", consistent: false, coverage,
+      issues: [{ code: "UNSUPPORTED_LEDGER_TYPE", entry_type: tag, ledger_entry_id: auditId, resource_type: "ledger", resource_id: auditId }],
+    });
+    const checked = { id: auditId, brand_id: brand, job_id: jobId, account_id: accountId, member_id: member, state: "checked", outcome: "corrupt",
+      preview: wallet, attempt_count: 1, error_code: null, checked_at: stamp, audit_log_id: "66666666-6666-4666-8666-666666666666",
+      check_scope: "wallet_and_business", business_preview: preview };
+    const page = { brand_id: brand, job_id: jobId, items: [checked], total_count: "1", limit: 20, offset: 0, outcome: null };
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(page))).targets(brand, jobId))
+      .resolves.toMatchObject({ items: [{ business_preview: { business_reference_count: "108086391056891904", issues: [{ entry_type: tag }] } }] });
+
+    const sampledIssue = { code: "MISSING_BUSINESS_RECORD", entry_type: "recharge", ledger_entry_id: auditId, resource_type: "recharge", resource_id: null };
+    const truncatedPreview = { ...preview, issue_count: "101", issues_truncated: true,
+      coverage: coverage.map((row, index) => ({ ...row, issue_count: index === 0 ? "101" : "0" })),
+      issues: Array.from({ length: 100 }, () => sampledIssue) };
+    const truncated = await createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...page, items: [{ ...checked, business_preview: truncatedPreview }] })))
+      .targets(brand, jobId);
+    expect(truncated.items[0]?.business_preview).toMatchObject({ issue_count: "101", issues_truncated: true });
+    expect(truncated.items[0]?.business_preview?.issues).toHaveLength(100);
+
+    for (const invalidTag of ["x".repeat(201), "ledger-é"]) {
+      const invalid = { ...checked, business_preview: { ...preview, issues: [{ ...preview.issues[0], entry_type: invalidTag }] } };
+      await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...page, items: [invalid] }))).targets(brand, jobId))
+        .rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    }
+    const tooManyIssues = { ...checked, business_preview: { ...preview, issue_count: "101", issues_truncated: true,
+      coverage: coverage.map((row, index) => ({ ...row, issue_count: index === 0 ? "101" : "0" })),
+      issues: Array.from({ length: 101 }, () => preview.issues[0]) } };
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...page, items: [tooManyIssues] }))).targets(brand, jobId))
+      .rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+  });
+
+  it("retains legacy wallet receipts while rejecting mixed-scope and unsafe wire shapes", async () => {
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(job({ reason: "legacy" }))))
+      .create(brand, { reason: "legacy" }, "recon-legacy-key-001", accountId)).resolves.toMatchObject({ id: jobId });
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(job({ reason: "legacy" }))))
+      .create(brand, { reason: "legacy", check_scope: "wallet", unknown: true } as never, "recon-legacy-key-001", accountId))
+      .rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(job({ reason: "legacy" }))))
+      .create(brand, { reason: "legacy", check_scope: "business" as never }, "recon-legacy-key-001", accountId))
+      .rejects.toMatchObject({ code: "INVALID_INPUT" });
+    const mismatchedTarget = { id: auditId, brand_id: brand, job_id: jobId, account_id: accountId, member_id: "55555555-5555-4555-8555-555555555555",
+      state: "pending", outcome: null, preview: null, attempt_count: 0, error_code: null, checked_at: null, audit_log_id: null,
+      check_scope: "wallet_and_business", business_preview: null };
+    const targetPage = { brand_id: brand, job_id: jobId, items: [mismatchedTarget], total_count: "1", limit: 20, offset: 0, outcome: null };
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(targetPage))).targets(brand, jobId, null, 20, 0, "wallet"))
+      .rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    const badScopeTarget = { ...mismatchedTarget, check_scope: "wallet_and_business_extra", business_preview: null };
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...targetPage, items: [badScopeTarget] }))).targets(brand, jobId))
+      .rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+  });
+
+  it("reads legacy inline-tab reasons without changing the stricter UI write policy", async () => {
+    const legacy = job({ reason: "inline\tseparator" });
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(legacy))).read(brand, jobId))
+      .resolves.toEqual(legacy);
+  });
+
+  it("binds retry receipts to the original immutable full scope", async () => {
+    const previous = job({ check_scope: "wallet_and_business", state: "failed", version: 4, checked_count: "1", consistent_count: "1", failed_count: "1", pending_count: "0", started_at: stamp, last_error_code: "CHECK_FAILED", can_retry: true });
+    const receipt = job({ check_scope: "wallet_and_business", state: "pending", version: 5, started_at: stamp, checked_count: "1", consistent_count: "1", pending_count: "1" });
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(receipt)))
+      .retry(brand, jobId, { version: 4, reason: "retry full check" }, "recon-retry-scope-001", previous)).resolves.toEqual(receipt);
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...receipt, check_scope: "wallet" })))
+      .retry(brand, jobId, { version: 4, reason: "retry full check" }, "recon-retry-scope-001", previous))
+      .rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 0 });
+  });
+
+  it("keeps exact UTF-8 reason limits and safe retry version bounds", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(job({ reason: "x".repeat(500) })));
+    await expect(createReconciliationApi(fetcher).create(brand, { reason: "x".repeat(500) }, "recon-limit-key-001", accountId)).resolves.toBeDefined();
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).reason).toHaveLength(500);
+    await expect(createReconciliationApi(fetcher).create(brand, { reason: "x".repeat(501) }, "recon-limit-key-002", accountId))
+      .rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(createReconciliationApi(fetcher).create(brand, { reason: "界".repeat(167) }, "recon-limit-key-003", accountId))
+      .rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(createReconciliationApi(fetcher).retry(brand, jobId, { version: Number.MAX_SAFE_INTEGER, reason: "retry" }, "recon-limit-key-004"))
+      .rejects.toMatchObject({ code: "INVALID_INPUT" });
   });
 
   it("loads current job and outcome-filtered targets with exact cross-scope checks", async () => {

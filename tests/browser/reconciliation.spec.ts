@@ -2,7 +2,7 @@ import { test, expect, type APIRequestContext, type Page } from "@playwright/tes
 import { rememberAdminSession } from "./support/admin-session";
 
 const brand = "0199a000-0000-7000-8000-000000000002";
-const origin = "http://localhost:5174";
+const origin = process.env.TEST_RECONCILIATION_ORIGIN ?? "http://localhost:5174";
 const admin = `${origin}/api/v1/admin`;
 const username = process.env.TEST_RECONCILIATION_ADMIN_USERNAME;
 const password = process.env.TEST_RECONCILIATION_ADMIN_PASSWORD;
@@ -20,12 +20,19 @@ type Job = {
   failed_count: string;
   pending_count: string;
   reason: string;
+  check_scope: "wallet" | "wallet_and_business";
 };
 
 type Target = {
   account_id: string;
   member_id: string;
   outcome: string | null;
+  check_scope: "wallet" | "wallet_and_business";
+  business_preview: {
+    consistent: boolean; ledger_entry_count: string; business_reference_count: string; issue_count: string;
+    fingerprint: string; issues: { code: string; entry_type: string | null }[];
+    coverage: { family: string; ledger_entry_count: string; issue_count: string }[];
+  } | null;
   preview: {
     actual: Record<string, Record<string, string>>;
     expected: Record<string, Record<string, string>>;
@@ -195,6 +202,7 @@ test("real reconciliation keeps an unknown create pending until the original req
   const finalJob = await getData<Job>(page, `/reconciliations/${jobId}`);
   expect(finalJob.brand_id).toBe(brand);
   expect(finalJob.reason).toBe(reason);
+  expect(finalJob.check_scope).toBe("wallet");
   expect(finalJob.version).toBeGreaterThanOrEqual(2);
   expect(finalJob.target_count).toBe("3");
   expect(finalJob.checked_count).toBe("3");
@@ -210,6 +218,7 @@ test("real reconciliation keeps an unknown create pending until the original req
   expect(new Set(rows.map(row => row.member_id)).size).toBe(3);
   expect(rows.map(row => row.outcome).sort()).toEqual(["consistent", "corrupt", "repairable"]);
   expect(rows.every(row => row.preview !== null)).toBe(true);
+  expect(rows.every(row => row.check_scope === "wallet" && row.business_preview === null)).toBe(true);
   const consistent = rows.find(row => row.outcome === "consistent")!;
   expect(consistent.preview!.consistent).toBe(true);
   expect(consistent.preview!.actual.gift?.available).toBe("11");
@@ -245,6 +254,72 @@ test("real reconciliation keeps an unknown create pending until the original req
       "/reconciliations?limit=100&offset=0");
     return list.items.filter(item => item.reason === reason).length;
   }).toBe(1);
+
+  // The same authentic wallet history has synthetic, unsupported gift tags.
+  // Full business coverage must report them, never inherit a wallet-only pass.
+  await page.unroute("**/api/v1/admin/reconciliations");
+  const fullReason = `Full business coverage ${info.project.name} ${crypto.randomUUID()}`;
+  await returnedPanel.getByLabel("检查范围", { exact: true }).selectOption("wallet_and_business");
+  await returnedPanel.getByLabel("操作原因", { exact: true }).fill(fullReason);
+  let fullPosts = 0, fullBody = "", fullKey = "", fullId = "";
+  await page.route("**/api/v1/admin/reconciliations", async route => {
+    if (route.request().method() !== "POST") return route.continue();
+    fullPosts++;
+    if (fullPosts === 1) {
+      fullBody = route.request().postData()!;
+      fullKey = route.request().headers()["idempotency-key"]!;
+      expect(JSON.parse(fullBody)).toEqual({ reason: fullReason, check_scope: "wallet_and_business" });
+      const actual = await route.fetch();
+      const receipt = await data<Job>(actual, 201);
+      expect(receipt.check_scope).toBe("wallet_and_business");
+      expect(receipt.version).toBe(1);
+      fullId = receipt.id;
+      await route.fulfill({ status: 201, contentType: "application/json", body: '{"success":true,"data":{}}' });
+      return;
+    }
+    expect(route.request().postData()).toBe(fullBody);
+    expect(route.request().headers()["idempotency-key"]).toBe(fullKey);
+    await route.continue();
+  });
+  await returnedPanel.getByRole("button", { name: "检查并确认提交", exact: true }).click();
+  let fullDialog = page.getByRole("dialog");
+  await expect(fullDialog).toContainText(/钱包.*业务关联/);
+  await fullDialog.getByRole("checkbox", { name: "我已核对范围与原因，确认由我提交此请求。", exact: true }).check();
+  await fullDialog.getByRole("button", { name: "确认并提交", exact: true }).click();
+  await expect(returnedPanel.getByRole("alert")).toContainText("写入结果未知");
+  await expect(returnedPanel.getByLabel("检查范围", { exact: true })).toBeDisabled();
+  await returnedPanel.getByRole("button", { name: "刷新任务", exact: true }).click();
+  await expect(returnedPanel.getByRole("heading", { name: "尚未确定的写入", exact: true })).toBeVisible();
+  await returnedPanel.getByRole("button", { name: "确认并重放原创建请求", exact: true }).click();
+  fullDialog = page.getByRole("dialog");
+  await expect(fullDialog).toContainText(/钱包.*业务关联/);
+  await fullDialog.getByRole("checkbox", { name: "我已核对范围与原因，确认由我提交此请求。", exact: true }).check();
+  await fullDialog.getByRole("button", { name: "确认并提交", exact: true }).click();
+  expect(fullPosts).toBe(2);
+  await expect.poll(async () => (await getData<Job>(page, `/reconciliations/${fullId}`)).state, { timeout: 45_000 }).toBe("completed");
+  const fullJob = await getData<Job>(page, `/reconciliations/${fullId}`);
+  expect(fullJob.check_scope).toBe("wallet_and_business");
+  expect(fullJob.corrupt_count).toBe("3");
+  expect(fullJob.consistent_count).toBe("0");
+  const fullRows = await targetRows(page, fullId);
+  expect(fullRows).toHaveLength(3);
+  for (const row of fullRows) {
+    expect(row.check_scope).toBe("wallet_and_business");
+    expect(row.outcome).toBe("corrupt");
+    expect(row.business_preview?.consistent).toBe(false);
+    expect(row.business_preview?.ledger_entry_count).toBe("1");
+    expect(row.business_preview?.issue_count).toBe("1");
+    expect(row.business_preview?.coverage).toHaveLength(12);
+    expect(row.business_preview?.issues).toEqual([expect.objectContaining({ code: "UNSUPPORTED_LEDGER_TYPE", entry_type: "gift" })]);
+    expect(await fingerprint(page, row.member_id)).toBe(baseline.get(row.member_id));
+  }
+  await returnedPanel.getByRole("button", { name: `查看对账任务 ${fullId}`, exact: true }).click();
+  await expect(returnedPanel.locator(".target-card")).toHaveCount(3);
+  const fullCard = returnedPanel.locator(".target-card").filter({ hasText: consistent.member_id });
+  await fullCard.getByText("查看业务关联覆盖与诊断", { exact: true }).click();
+  await expect(fullCard).toContainText("UNSUPPORTED_LEDGER_TYPE");
+  await expect(fullCard).toContainText("覆盖指纹");
+  expect(repairPosts).toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await returnedPanel.screenshot({ path: info.outputPath(`reconciliation-${info.project.name}-panel.png`) });
   await page.screenshot({ path: info.outputPath(`reconciliation-${info.project.name}-viewport.png`) });

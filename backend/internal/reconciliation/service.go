@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const jobJSON = `jsonb_build_object('id',j.id::text,'brand_id',j.brand_id::text,'state',j.state,'version',j.version,
+const jobJSON = `jsonb_build_object('check_scope',j.check_scope,'id',j.id::text,'brand_id',j.brand_id::text,'state',j.state,'version',j.version,
  'target_count',j.target_count::text,'checked_count',s.checked::text,'consistent_count',s.consistent::text,
  'repairable_count',s.repairable::text,'corrupt_count',s.corrupt::text,'failed_count',s.failed::text,'pending_count',s.pending::text,
  'created_by',j.created_by::text,'reason',j.reason,'created_at',j.created_at,'started_at',j.started_at,'completed_at',j.completed_at,
@@ -59,7 +59,7 @@ func (s Service) ListTx(ctx context.Context, tx pgx.Tx, brand string, limit, off
 	return out, e
 }
 
-const targetJSON = `jsonb_build_object('id',t.id::text,'brand_id',t.brand_id::text,'job_id',t.job_id::text,
+const targetJSON = `jsonb_build_object('check_scope',(SELECT check_scope FROM point_reconciliation_jobs WHERE id=t.job_id),'business_preview',r.business_preview,'id',t.id::text,'brand_id',t.brand_id::text,'job_id',t.job_id::text,
  'account_id',t.account_id::text,'member_id',t.member_id::text,'state',t.state,'outcome',r.outcome,'preview',r.preview,
  'attempt_count',t.attempt_count,'error_code',CASE WHEN t.state='failed' THEN 'CHECK_FAILED' END,'checked_at',r.checked_at,'audit_log_id',r.audit_log_id::text)`
 
@@ -107,8 +107,11 @@ func writableBrand(ctx context.Context, tx pgx.Tx, brand string) error {
 	return nil
 }
 func (s Service) Create(ctx context.Context, tx pgx.Tx, brand string, a access.Account, reason string, meta points.Metadata) (Job, error) {
+	return s.CreateScoped(ctx, tx, brand, a, ScopeWallet, reason, meta)
+}
+func (s Service) CreateScoped(ctx context.Context, tx pgx.Tx, brand string, a access.Account, scope, reason string, meta points.Metadata) (Job, error) {
 	var out Job
-	if tx == nil || !uuid.MatchString(brand) || !validReason(reason) || !validMeta(a, meta) {
+	if tx == nil || !uuid.MatchString(brand) || !ValidScope(scope) || !validReason(reason) || !validMeta(a, meta) {
 		return out, ErrInvalid
 	}
 	if !Allowed(a, brand, "run") {
@@ -155,11 +158,11 @@ func (s Service) Create(ctx context.Context, tx pgx.Tx, brand string, a access.A
 	if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&at); e != nil {
 		return out, e
 	}
-	auditID, e := audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: a.ID, Action: "wallet.reconciliation.create", ResourceType: "wallet_reconciliation_job", ResourceID: id, Reason: reason, RequestID: meta.RequestID, IP: meta.IP, After: map[string]any{"id": id, "brand_id": brand, "state": "pending", "version": 1, "target_count": strconv.Itoa(len(accounts)), "created_at": at.UTC()}})
+	auditID, e := audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: a.ID, Action: "wallet.reconciliation.create", ResourceType: "wallet_reconciliation_job", ResourceID: id, Reason: reason, RequestID: meta.RequestID, IP: meta.IP, After: map[string]any{"id": id, "brand_id": brand, "state": "pending", "version": 1, "check_scope": scope, "target_count": strconv.Itoa(len(accounts)), "created_at": at.UTC()}})
 	if e != nil {
 		return out, e
 	}
-	if _, e = tx.Exec(ctx, `INSERT INTO point_reconciliation_jobs(id,brand_id,target_count,created_by,reason,created_at,creation_audit_log_id) VALUES($1,$2,$3,$4,$5,$6,$7)`, id, brand, len(accounts), a.ID, reason, at, auditID); e != nil {
+	if _, e = tx.Exec(ctx, `INSERT INTO point_reconciliation_jobs(id,brand_id,target_count,created_by,reason,created_at,creation_audit_log_id,check_scope) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, id, brand, len(accounts), a.ID, reason, at, auditID, scope); e != nil {
 		return out, e
 	}
 	if len(accounts) > 0 {

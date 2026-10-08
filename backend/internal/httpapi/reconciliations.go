@@ -61,8 +61,14 @@ func reconciliationPage(r *http.Request, allowOutcome bool) (limit, offset int, 
 		switch key {
 		case "limit":
 			limit, err = strconv.Atoi(values[0])
+			if err == nil && strconv.Itoa(limit) != values[0] {
+				return 0, 0, "", false
+			}
 		case "offset":
 			offset, err = strconv.Atoi(values[0])
+			if err == nil && strconv.Itoa(offset) != values[0] {
+				return 0, 0, "", false
+			}
 		case "outcome":
 			outcome = values[0]
 		}
@@ -121,6 +127,15 @@ func reconciliationRead(w http.ResponseWriter, r *http.Request, d Dependencies, 
 		return nil, reconciliationDenyRead(ctx, tx, r, fresh, brand, "wallet.view.brand")
 	}
 	_, err = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: fresh.ID, Action: action, ResourceType: "query", RequestID: requestID(r), IP: meta(r).IP})
+	if err == nil {
+		fresh, err = freshAdmin(ctx, tx, r, d, initial, false)
+		if errors.Is(err, adminsys.ErrDenied) || errors.Is(err, identity.ErrSession) {
+			return nil, identity.ErrSession
+		}
+		if err == nil && !reconciliation.Allowed(fresh, brand, "view") {
+			return nil, reconciliation.ErrDenied
+		}
+	}
 	if err == nil {
 		err = tx.Commit(ctx)
 	}
@@ -195,6 +210,19 @@ func reconciliationWriteFailure(w http.ResponseWriter, r *http.Request, d Depend
 func registerReconciliationRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
 	s := reconciliation.Service{DB: d.Admins.DB}
 	const collection = "/reconciliations"
+	originalHandle := handle
+	handle = func(method, path string, handler http.HandlerFunc) {
+		originalHandle(method, path, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.ForceQuery {
+				failure(w, r, 400, "REQUEST_INVALID", "此接口不接受空查询串")
+				return
+			}
+			if method == "GET" && !reconciliationGetHasNoBody(w, r) {
+				return
+			}
+			handler(w, r)
+		})
+	}
 	handle("GET", collection, func(w http.ResponseWriter, r *http.Request) {
 		brand, ok := reconciliationBrand(w, r)
 		if !ok {
@@ -223,9 +251,7 @@ func registerReconciliationRoutes(handle func(string, string, http.HandlerFunc),
 			failure(w, r, 400, "REQUEST_INVALID", "此写接口不接受查询参数")
 			return
 		}
-		var in struct {
-			Reason string `json:"reason"`
-		}
+		var in reconciliationCreateInput
 		if !decodeBody(w, r, &in) {
 			return
 		}
@@ -242,7 +268,16 @@ func registerReconciliationRoutes(handle func(string, string, http.HandlerFunc),
 		result, err := d.Mutations.ExecuteChecked(r.Context(), brand, initial.ID, "admin.wallet.reconciliation.create", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(brand+":"+string(raw)), func(ctx context.Context, tx pgx.Tx) error {
 			return reconciliationWriteCheck(ctx, tx, r, d, initial, brand, "run", &fresh)
 		}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-			job, e := s.Create(ctx, tx, brand, fresh, in.Reason, pointMeta(r, fresh))
+			scope := reconciliation.ScopeWallet
+			if in.CheckScope != nil {
+				scope = *in.CheckScope
+			}
+			job, e := s.CreateScoped(ctx, tx, brand, fresh, scope, in.Reason, pointMeta(r, fresh))
+			if e == nil {
+				if verifyErr := reconciliationWriteCheck(ctx, tx, r, d, initial, brand, "run", &fresh); verifyErr != nil {
+					return mutation.Result{}, verifyErr
+				}
+			}
 			if errors.Is(e, reconciliation.ErrTooLarge) {
 				return mutation.Result{}, e
 			}
@@ -315,10 +350,7 @@ func registerReconciliationRoutes(handle func(string, string, http.HandlerFunc),
 			failure(w, r, 400, "REQUEST_INVALID", "此写接口不接受查询参数")
 			return
 		}
-		var in struct {
-			Version int64  `json:"version"`
-			Reason  string `json:"reason"`
-		}
+		var in reconciliationRetryInput
 		if !decodeBody(w, r, &in) {
 			return
 		}
@@ -336,6 +368,11 @@ func registerReconciliationRoutes(handle func(string, string, http.HandlerFunc),
 			return reconciliationWriteCheck(ctx, tx, r, d, initial, brand, "retry", &fresh)
 		}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
 			job, e := s.Retry(ctx, tx, brand, id, fresh, in.Version, in.Reason, pointMeta(r, fresh))
+			if e == nil {
+				if verifyErr := reconciliationWriteCheck(ctx, tx, r, d, initial, brand, "retry", &fresh); verifyErr != nil {
+					return mutation.Result{}, verifyErr
+				}
+			}
 			return reconciliationResult(job, e)
 		})
 		if errors.Is(err, reconciliation.ErrDenied) || errors.Is(err, reconciliation.ErrNotFound) || errors.Is(err, reconciliation.ErrState) {

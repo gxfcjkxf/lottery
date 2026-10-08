@@ -35,10 +35,10 @@ func (s Service) processOne(ctx context.Context) (worked bool, resultErr error) 
 		return false, e
 	}
 	defer tx.Rollback(ctx)
-	var job, brand string
-	e = tx.QueryRow(ctx, `SELECT id::text,brand_id::text FROM point_reconciliation_jobs j WHERE state IN('pending','running') AND (
+	var job, brand, scope string
+	e = tx.QueryRow(ctx, `SELECT id::text,brand_id::text,check_scope FROM point_reconciliation_jobs j WHERE state IN('pending','running') AND (
  EXISTS(SELECT 1 FROM point_reconciliation_targets t WHERE t.job_id=j.id AND t.state='pending' AND t.next_check_at<=clock_timestamp()) OR NOT EXISTS(SELECT 1 FROM point_reconciliation_targets t WHERE t.job_id=j.id AND t.state='pending'))
- ORDER BY last_step_at,id LIMIT 1 FOR UPDATE SKIP LOCKED`).Scan(&job, &brand)
+ ORDER BY last_step_at,id LIMIT 1 FOR UPDATE SKIP LOCKED`).Scan(&job, &brand, &scope)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -103,6 +103,17 @@ func (s Service) processOne(ctx context.Context) (worked bool, resultErr error) 
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	preview, e := (points.Store{DB: s.DB}).PreviewRepairTx(checkCtx, tx, brand, member)
+	var business *BusinessPreview
+	var businessRaw []byte
+	if e == nil && scope == ScopeWalletAndBusiness {
+		e = tx.QueryRow(checkCtx, `SELECT point_business_preview($1,$2)`, brand, account).Scan(&businessRaw)
+		if e == nil {
+			e = json.Unmarshal(businessRaw, &business)
+		}
+		if e == nil && business == nil {
+			e = ErrInvalid
+		}
+	}
 	cancel()
 	if e != nil {
 		return false, e
@@ -113,11 +124,14 @@ func (s Service) processOne(ctx context.Context) (worked bool, resultErr error) 
 	} else if preview.Repairable {
 		outcome = "repairable"
 	}
+	if business != nil && !business.Consistent {
+		outcome = "corrupt"
+	}
 	var at time.Time
 	if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&at); e != nil {
 		return false, e
 	}
-	auditID, e := audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "system", Action: "wallet.reconciliation.checked", ResourceType: "wallet_reconciliation_target", ResourceID: target, RequestID: ids.New(), After: map[string]any{"job_id": job, "account_id": account, "outcome": outcome, "preview": preview, "checked_at": at.UTC()}})
+	auditID, e := audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "system", Action: "wallet.reconciliation.checked", ResourceType: "wallet_reconciliation_target", ResourceID: target, RequestID: ids.New(), After: map[string]any{"job_id": job, "account_id": account, "outcome": outcome, "preview": preview, "business_preview": business, "checked_at": at.UTC()}})
 	if e != nil {
 		return false, e
 	}
@@ -125,7 +139,7 @@ func (s Service) processOne(ctx context.Context) (worked bool, resultErr error) 
 	if e != nil {
 		return false, e
 	}
-	if _, e = tx.Exec(ctx, `INSERT INTO point_reconciliation_results(target_id,brand_id,job_id,outcome,preview,checked_at,audit_log_id) VALUES($1,$2,$3,$4,$5,$6,$7)`, target, brand, job, outcome, raw, at, auditID); e != nil {
+	if _, e = tx.Exec(ctx, `INSERT INTO point_reconciliation_results(target_id,brand_id,job_id,outcome,preview,checked_at,audit_log_id,business_preview) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, target, brand, job, outcome, raw, at, auditID, businessRaw); e != nil {
 		return false, e
 	}
 	if _, e = tx.Exec(ctx, `UPDATE point_reconciliation_targets SET state='checked',attempt_count=attempt_count+1 WHERE id=$1`, target); e != nil {

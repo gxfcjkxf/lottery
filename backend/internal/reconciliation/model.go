@@ -27,8 +27,41 @@ var (
 const MaxTargets = 100000
 const maxVersion int64 = 9007199254740991
 
+const ScopeWallet = "wallet"
+const ScopeWalletAndBusiness = "wallet_and_business"
+
+type BusinessIssue struct {
+	Code          string  `json:"code"`
+	EntryType     *string `json:"entry_type"`
+	LedgerEntryID *string `json:"ledger_entry_id"`
+	ResourceType  string  `json:"resource_type"`
+	ResourceID    *string `json:"resource_id"`
+}
+type BusinessCoverage struct {
+	Family                 string `json:"family"`
+	LedgerEntryCount       string `json:"ledger_entry_count"`
+	BusinessReferenceCount string `json:"business_reference_count"`
+	IssueCount             string `json:"issue_count"`
+}
+type BusinessPreview struct {
+	AccountID              string             `json:"account_id"`
+	MemberID               string             `json:"member_id"`
+	AccountVersion         int64              `json:"account_version"`
+	LedgerEntryCount       string             `json:"ledger_entry_count"`
+	BusinessReferenceCount string             `json:"business_reference_count"`
+	IssueCount             string             `json:"issue_count"`
+	IssuesTruncated        bool               `json:"issues_truncated"`
+	Consistent             bool               `json:"consistent"`
+	Fingerprint            string             `json:"fingerprint"`
+	Issues                 []BusinessIssue    `json:"issues"`
+	Coverage               []BusinessCoverage `json:"coverage"`
+}
+
+func ValidScope(scope string) bool { return scope == ScopeWallet || scope == ScopeWalletAndBusiness }
+
 type Service struct{ DB *pgxpool.Pool }
 type Job struct {
+	CheckScope         string     `json:"check_scope,omitempty"`
 	ID                 string     `json:"id"`
 	BrandID            string     `json:"brand_id"`
 	State              string     `json:"state"`
@@ -57,18 +90,20 @@ type JobPage struct {
 	Offset     int    `json:"offset"`
 }
 type Target struct {
-	ID           string                `json:"id"`
-	BrandID      string                `json:"brand_id"`
-	JobID        string                `json:"job_id"`
-	AccountID    string                `json:"account_id"`
-	MemberID     string                `json:"member_id"`
-	State        string                `json:"state"`
-	Outcome      *string               `json:"outcome"`
-	Preview      *points.RepairPreview `json:"preview"`
-	AttemptCount int                   `json:"attempt_count"`
-	ErrorCode    *string               `json:"error_code"`
-	CheckedAt    *time.Time            `json:"checked_at"`
-	AuditLogID   *string               `json:"audit_log_id"`
+	CheckScope      string                `json:"check_scope,omitempty"`
+	BusinessPreview *BusinessPreview      `json:"business_preview"`
+	ID              string                `json:"id"`
+	BrandID         string                `json:"brand_id"`
+	JobID           string                `json:"job_id"`
+	AccountID       string                `json:"account_id"`
+	MemberID        string                `json:"member_id"`
+	State           string                `json:"state"`
+	Outcome         *string               `json:"outcome"`
+	Preview         *points.RepairPreview `json:"preview"`
+	AttemptCount    int                   `json:"attempt_count"`
+	ErrorCode       *string               `json:"error_code"`
+	CheckedAt       *time.Time            `json:"checked_at"`
+	AuditLogID      *string               `json:"audit_log_id"`
 }
 type TargetPage struct {
 	BrandID    string   `json:"brand_id"`

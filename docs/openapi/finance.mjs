@@ -7,6 +7,9 @@ const array = (items, extra = {}) => ({ type: "array", items, ...extra });
 const aggregateInteger = str({ pattern: "^(0|[1-9][0-9]*)$", description: "Exact nonnegative decimal aggregate string; totals use SQL numeric-to-text conversion and may exceed int64." });
 const aggregateSignedInteger = str({ pattern: "^-?(0|[1-9][0-9]*)$", description: "Exact signed decimal aggregate string; totals use SQL numeric-to-text conversion and may exceed int64." });
 const reconciliationCount = str({ pattern: "^(0|[1-9][0-9]{0,4}|100000)$", description: "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000." });
+const reconciliationBusinessCount = str({ pattern: "^(0|[1-9][0-9]*)$", description: "Exact nonnegative decimal count; SQL numeric-to-text counters are not bounded by int64." });
+const reconciliationFamilies = ["bet", "commission", "commission_adjustment", "commission_correction", "manual", "prize", "prize_reversal", "recharge", "refund", "reward", "unknown", "withdrawal"];
+const reconciliationScope = str({ enum: ["wallet", "wallet_and_business"] });
 const object = (properties, required = Object.keys(properties), extra = {}) => ({
   type: "object",
   properties,
@@ -95,18 +98,67 @@ export const schemas = {
   FinanceRepairInput: object({ version: int({ minimum: 1 }), token: str(), reason: ref("Reason") }),
 
   FinanceReconciliationReason: str({ minLength: 1, maxLength: 500, pattern: "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\r\\n\\x00])[\\s\\S]+$", description: "Nonempty valid UTF-8, at most 500 bytes, already trimmed, and contains no LF, CR, or NUL. The handler rejects rather than normalizes invalid reasons." }),
-  FinanceReconciliationJob: object({
+  FinanceReconciliationBusinessIssue: object({
+    code: str({ enum: ["UNSUPPORTED_LEDGER_TYPE", "MISSING_BUSINESS_RECORD", "INVALID_BUSINESS_BINDING", "MISSING_LEDGER_ENTRY", "DUPLICATE_BUSINESS_BINDING", "INVALID_MANUAL_AUDIT"] }),
+    entry_type: nullable(str({ pattern: "^[a-zA-Z0-9_.:-]{1,200}$" })),
+    ledger_entry_id: nullable(ref("UUID")),
+    resource_type: str({ enum: [...reconciliationFamilies, "ledger"] }),
+    resource_id: nullable(ref("UUID")),
+  }),
+  FinanceReconciliationBusinessCoverage: object({
+    family: str({ enum: reconciliationFamilies }),
+    ledger_entry_count: reconciliationBusinessCount,
+    business_reference_count: reconciliationBusinessCount,
+    issue_count: reconciliationBusinessCount,
+  }),
+  FinanceReconciliationBusinessPreview: object({
+    account_id: ref("UUID"), member_id: ref("UUID"), account_version: int({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+    ledger_entry_count: reconciliationBusinessCount, business_reference_count: reconciliationBusinessCount, issue_count: reconciliationBusinessCount,
+    issues_truncated: bool, consistent: bool, fingerprint: str({ pattern: "^[0-9a-fA-F]{64}$" }),
+    issues: array(ref("FinanceReconciliationBusinessIssue"), { maxItems: 100 }),
+    coverage: array(ref("FinanceReconciliationBusinessCoverage"), {
+      minItems: 12,
+      maxItems: 12,
+      prefixItems: reconciliationFamilies.map(family => object({
+        family: { const: family }, ledger_entry_count: reconciliationBusinessCount,
+        business_reference_count: reconciliationBusinessCount, issue_count: reconciliationBusinessCount,
+      })),
+    }),
+  }),
+  FinanceReconciliationJobLegacy: object({
     id: ref("UUID"), brand_id: ref("UUID"), state: str({ enum: ["pending", "running", "completed", "failed"] }), version: int({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
     target_count: reconciliationCount, checked_count: reconciliationCount, consistent_count: reconciliationCount, repairable_count: reconciliationCount, corrupt_count: reconciliationCount, failed_count: reconciliationCount, pending_count: reconciliationCount,
     created_by: ref("UUID"), reason: ref("FinanceReconciliationReason"), created_at: ref("DateTime"), started_at: nullable(ref("DateTime")), completed_at: nullable(ref("DateTime")), last_error_code: nullable(str({ const: "CHECK_FAILED" })), can_retry: bool, creation_audit_log_id: ref("UUID"),
   }),
+  FinanceReconciliationJobModern: object({
+    id: ref("UUID"), brand_id: ref("UUID"), state: str({ enum: ["pending", "running", "completed", "failed"] }), version: int({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+    target_count: reconciliationCount, checked_count: reconciliationCount, consistent_count: reconciliationCount, repairable_count: reconciliationCount, corrupt_count: reconciliationCount, failed_count: reconciliationCount, pending_count: reconciliationCount,
+    created_by: ref("UUID"), reason: ref("FinanceReconciliationReason"), created_at: ref("DateTime"), started_at: nullable(ref("DateTime")), completed_at: nullable(ref("DateTime")), last_error_code: nullable(str({ const: "CHECK_FAILED" })), can_retry: bool, creation_audit_log_id: ref("UUID"),
+    check_scope: reconciliationScope,
+  }),
+  FinanceReconciliationJob: { oneOf: [ref("FinanceReconciliationJobLegacy"), ref("FinanceReconciliationJobModern")] },
   FinanceReconciliationJobPage: object({ brand_id: ref("UUID"), items: array(ref("FinanceReconciliationJob")), total_count: aggregateInteger, limit: int({ minimum: 1, maximum: 100 }), offset: int({ minimum: 0, maximum: 1000000 }) }),
-  FinanceReconciliationTarget: object({
+  FinanceReconciliationTargetLegacy: object({
     id: ref("UUID"), brand_id: ref("UUID"), job_id: ref("UUID"), account_id: ref("UUID"), member_id: ref("UUID"), state: str({ enum: ["pending", "checked", "failed"] }), outcome: nullable(str({ enum: ["consistent", "repairable", "corrupt"] })), preview: nullable(ref("FinanceRepairPreview")), attempt_count: int({ minimum: 0 }), error_code: nullable(str({ const: "CHECK_FAILED" })), checked_at: nullable(ref("DateTime")), audit_log_id: nullable(ref("UUID")),
   }),
+  FinanceReconciliationTargetModern: {
+    ...object({
+      id: ref("UUID"), brand_id: ref("UUID"), job_id: ref("UUID"), account_id: ref("UUID"), member_id: ref("UUID"), state: str({ enum: ["pending", "checked", "failed"] }), outcome: nullable(str({ enum: ["consistent", "repairable", "corrupt"] })), preview: nullable(ref("FinanceRepairPreview")), attempt_count: int({ minimum: 0 }), error_code: nullable(str({ const: "CHECK_FAILED" })), checked_at: nullable(ref("DateTime")), audit_log_id: nullable(ref("UUID")),
+      check_scope: reconciliationScope, business_preview: nullable(ref("FinanceReconciliationBusinessPreview")),
+    }),
+    allOf: [{
+      if: { type: "object", properties: { check_scope: { const: "wallet_and_business" }, state: { const: "checked" } }, required: ["check_scope", "state"] },
+      then: { properties: { business_preview: ref("FinanceReconciliationBusinessPreview") } },
+      else: { properties: { business_preview: { type: "null" } } },
+    }],
+  },
+  FinanceReconciliationTarget: { oneOf: [ref("FinanceReconciliationTargetLegacy"), ref("FinanceReconciliationTargetModern")] },
   FinanceReconciliationTargetPage: object({ brand_id: ref("UUID"), job_id: ref("UUID"), items: array(ref("FinanceReconciliationTarget")), total_count: reconciliationCount, limit: int({ minimum: 1, maximum: 100 }), offset: int({ minimum: 0, maximum: 1000000 }), outcome: nullable(str({ enum: ["pending", "failed", "consistent", "repairable", "corrupt"] })) }),
-  FinanceReconciliationCreateInput: object({ reason: ref("FinanceReconciliationReason") }),
-  FinanceReconciliationRetryInput: object({ version: int({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }), reason: ref("FinanceReconciliationReason") }),
+  FinanceReconciliationCreateInput: object({
+    reason: ref("FinanceReconciliationReason"),
+    check_scope: { ...reconciliationScope, default: "wallet", description: "Optional immutable job scope. Omission preserves the legacy reason-only wallet request and its idempotency behavior." },
+  }, ["reason"]),
+  FinanceReconciliationRetryInput: object({ version: int({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER - 1 }), reason: ref("FinanceReconciliationReason") }),
 
   FinanceWithdrawalBrandConfig: object({ enabled: bool, min_points: ref("PositiveInt64String"), max_points: nullable(ref("PositiveInt64String")), allowed_sources: array(str({ enum: ["recharge", "winning", "gift", "commission"] }), { minItems: 1, maxItems: 4, uniqueItems: true }), review_mode: str({ enum: ["manual", "automatic"] }), turnover_multiple: str({ pattern: "^(0|[1-9][0-9]{0,6})([.][0-9]{0,5}[1-9])?$" }) }),
   FinanceWithdrawalGameConfig: object({ turnover_multiple: nullable(str({ pattern: "^(0|[1-9][0-9]{0,6})([.][0-9]{0,5}[1-9])?$" })) }),
@@ -182,10 +234,10 @@ export const operations = [
   write("POST", "/wallets/{memberID}/repair", "repairWalletBalance", "Rebuild materialized wallet buckets from an intact ledger", "finance", "FinanceRepairInput", ref("FinanceRepairRecord"), "wallet.repair.brand", { description: "Requires the current preview version and token, a nonempty reason, and an intact ledger. Rebuilds buckets; it does not create an economic credit or rewrite ledger entries. Super-admin accounts cannot perform finance writes." }),
   admin("GET", "/wallets/{memberID}/repairs", "listWalletRepairs", "List wallet repair history", "finance", ref("FinanceRepairList"), "wallet.view.brand", { parameters: pageParameters }),
 
-  admin("GET", "/reconciliations", "listWalletReconciliations", "List durable wallet reconciliation jobs", "finance", ref("FinanceReconciliationJobPage"), "wallet.view.brand", { permissions: ["wallet.view.brand", "wallet.view.platform"], parameters: [{ name: "limit", in: "query", required: false, schema: int({ default: 20, minimum: 1, maximum: 100 }) }, { name: "offset", in: "query", required: false, schema: int({ default: 0, minimum: 0, maximum: 1000000 }) }], description: "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads use the primary database, revalidate authorization, and commit an audit record before responding. Counters and total_count are exact decimal strings for this job only; there are no global wallet segments." }),
-  write("POST", "/reconciliations", "createWalletReconciliation", "Create a pending wallet reconciliation job", "finance", "FinanceReconciliationCreateInput", ref("FinanceReconciliationJob"), "wallet.reconcile.brand", { permissions: ["wallet.view.brand", "wallet.view.platform", "wallet.reconcile.brand"], successStatus: 201, additionalErrorStatuses: [413], description: "Requires wallet.reconcile.brand and either wallet.view.brand or wallet.view.platform. Brand-scoped grants must match explicit brand membership; platform view does not bypass brand membership. Super-admins are read-only. The only request field is reason. Captures the selected account/member targets transactionally and creates a frozen original pending v1 receipt. An active job returns 409; more than 100000 targets returns 413 atomically without creating a job. Reason must already be trimmed and contain no LF, CR, or NUL. Workers record per-account, nonfinancial bucket-versus-ledger observations; the service does not repair balances or expose ledger segments. Domain errors use RECONCILIATION_INPUT_INVALID, RECONCILIATION_STATE_CONFLICT, and RECONCILIATION_TOO_LARGE." }),
-  admin("GET", "/reconciliations/{id}", "getWalletReconciliation", "Get current wallet reconciliation job state", "finance", ref("FinanceReconciliationJob"), "wallet.view.brand", { permissions: ["wallet.view.brand", "wallet.view.platform"], description: "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads current state from the primary database and commits an audit record. The POST creation receipt remains frozen at pending version 1; this endpoint returns current counters and state. Counts are job-local diagnostic observations, not global wallet segments." }),
-  admin("GET", "/reconciliations/{id}/targets", "listWalletReconciliationTargets", "List diagnostic observations for a wallet reconciliation job", "finance", ref("FinanceReconciliationTargetPage"), "wallet.view.brand", { permissions: ["wallet.view.brand", "wallet.view.platform"], parameters: [{ name: "limit", in: "query", required: false, schema: int({ default: 20, minimum: 1, maximum: 100 }) }, { name: "offset", in: "query", required: false, schema: int({ default: 0, minimum: 0, maximum: 1000000 }) }, query("outcome", str({ enum: ["pending", "failed", "consistent", "repairable", "corrupt"] }))], description: "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads the primary database and commits an audit record. Pagination defaults to limit 20/offset 0, maximum limit 100 and offset 1000000. outcome filters pending/failed target states or the checked observation outcome. Totals are decimal strings scoped to this job; observations do not expose global wallet segments or repair balances." }),
+  admin("GET", "/reconciliations", "listWalletReconciliations", "List durable wallet reconciliation jobs", "finance", ref("FinanceReconciliationJobPage"), "wallet.view.brand", { permissions: ["wallet.view.brand", "wallet.view.platform"], parameters: [{ name: "limit", in: "query", required: false, schema: int({ default: 20, minimum: 1, maximum: 100 }) }, { name: "offset", in: "query", required: false, schema: int({ default: 0, minimum: 0, maximum: 1000000 }) }], description: "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads use the primary database, revalidate authorization, and commit an audit record before responding. check_scope is immutable job scope; older jobs without the field are interpreted as wallet. Counters and total_count are exact decimal strings for this job only; there are no global wallet segments." }),
+  write("POST", "/reconciliations", "createWalletReconciliation", "Create a pending wallet reconciliation job", "finance", "FinanceReconciliationCreateInput", ref("FinanceReconciliationJob"), "wallet.reconcile.brand", { permissions: ["wallet.view.brand", "wallet.view.platform", "wallet.reconcile.brand"], successStatus: 201, additionalErrorStatuses: [413], description: "Requires wallet.reconcile.brand and either wallet.view.brand or wallet.view.platform. Brand-scoped grants must match explicit brand membership; platform view does not bypass brand membership. Super-admins are read-only. Requires reason and accepts optional check_scope: wallet (the default, including reason-only legacy requests) or wallet_and_business. Reason-only requests retain the legacy wallet scope, fingerprint, and cached acknowledgement bytes. Captures the selected account/member targets transactionally; scope and account membership are fixed at capture. The wallet_and_business worker checks point-ledger and business-record bindings in both directions. An active job returns 409; more than 100000 targets returns 413 atomically without creating a job. Reason must already be valid UTF-8, trimmed, and contain no LF, CR, or NUL. Checks are diagnostic; they do not mutate funds or automatically repair source records. Domain errors use RECONCILIATION_INPUT_INVALID, RECONCILIATION_STATE_CONFLICT, and RECONCILIATION_TOO_LARGE." }),
+  admin("GET", "/reconciliations/{id}", "getWalletReconciliation", "Get current wallet reconciliation job state", "finance", ref("FinanceReconciliationJob"), "wallet.view.brand", { permissions: ["wallet.view.brand", "wallet.view.platform"], description: "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads current state from the primary database and commits an audit record. The POST creation receipt remains frozen at pending version 1; this endpoint returns current counters, state, and immutable check_scope (older jobs without it mean wallet). A completed job means every captured target reached a terminal check, not that every check is consistent. Counts are job-local diagnostic observations, not global wallet segments." }),
+  admin("GET", "/reconciliations/{id}/targets", "listWalletReconciliationTargets", "List diagnostic observations for a wallet reconciliation job", "finance", ref("FinanceReconciliationTargetPage"), "wallet.view.brand", { permissions: ["wallet.view.brand", "wallet.view.platform"], parameters: [{ name: "limit", in: "query", required: false, schema: int({ default: 20, minimum: 1, maximum: 100 }) }, { name: "offset", in: "query", required: false, schema: int({ default: 0, minimum: 0, maximum: 1000000 }) }, query("outcome", str({ enum: ["pending", "failed", "consistent", "repairable", "corrupt"] }))], description: "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads the primary database and commits an audit record. Pagination defaults to limit 20/offset 0, maximum limit 100 and offset 1000000. outcome filters pending/failed target states or the checked observation outcome. Each target reports its immutable check_scope; older targets without it mean wallet. wallet_and_business results include a nullable point-ledger/business-record preview with bidirectional binding checks and twelve exact family coverage counts. A full preview is present only for a checked target; wallet checks and nonterminal targets return null. Completion does not imply consistency, and observations never automatically fix a source record." }),
   write("POST", "/reconciliations/{id}/retry", "retryWalletReconciliation", "Retry failed checks in a wallet reconciliation job", "finance", "FinanceReconciliationRetryInput", ref("FinanceReconciliationJob"), "wallet.reconcile.brand", { permissions: ["wallet.view.brand", "wallet.view.platform", "wallet.reconcile.brand"], description: "Requires wallet.reconcile.brand and either wallet.view.brand or wallet.view.platform; brand-scoped grants require explicit brand membership. Super-admins are read-only. Requires the current version and a reason. Returns the new pending version while preserving the earliest started_at (including null) and leaving completed checks untouched. Requests use checked idempotency; an idempotent replay returns its original receipt. Domain errors use RECONCILIATION_INPUT_INVALID, RECONCILIATION_NOT_FOUND, RECONCILIATION_STATE_CONFLICT, and RECONCILIATION_VERSION_CONFLICT." }),
 
   admin("GET", "/withdrawal-policy", "getBrandWithdrawalPolicy", "Get brand withdrawal policy configuration", "finance", ref("FinanceWithdrawalBrandPolicy"), "withdrawal_policy.view.brand", { description: "Policy configuration only; this API does not calculate withdrawal eligibility, create withdrawal orders, or transfer points." }),

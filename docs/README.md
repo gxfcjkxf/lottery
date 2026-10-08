@@ -23,6 +23,7 @@
 - [09-openapi-handover.md](09-openapi-handover.md)：已实现接口的 OpenAPI、接入限制、生成和 CI 契约检查。
 - [09-implementation-backlog.md](09-implementation-backlog.md)：按依赖拆分的第一阶段开发任务。
 - [10-replication-and-recovery.md](10-replication-and-recovery.md)：隔离复制、手动提升与备份恢复命令、证据和生产验收边界。
+- [13-wallet-reconciliation.md](13-wallet-reconciliation.md)：固定品牌账户范围的只读钱包与资金业务双向关联检查、不可变观察、失败人工恢复和旧回执兼容。
 - [14-commission-facts.md](14-commission-facts.md)：最终结算事实、计佣基数和内部锁约束；内部事实本身不授权佣金派发。
 - [15-four-source-ledger.md](15-four-source-ledger.md)：四来源16桶、旧流水与幂等摘要兼容、原路退款、提现来源和协调升级要求。
 - [16-commission-policy-snapshot.md](16-commission-policy-snapshot.md)：品牌金融政策、不可变修订、私有投注快照和已确认的周期收尾/汇总规则。

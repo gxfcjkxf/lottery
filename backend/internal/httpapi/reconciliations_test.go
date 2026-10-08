@@ -3,7 +3,9 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -14,6 +16,23 @@ import (
 type reconciliationHTTPFixture struct {
 	managementHTTP
 	service reconciliation.Service
+}
+
+func (f reconciliationHTTPFixture) call(method, path, key, token, brand string, body any) *httptest.ResponseRecorder {
+	if method != "GET" || body != nil {
+		return f.managementHTTP.call(method, path, key, token, brand, body)
+	}
+	r := httptest.NewRequest(method, "http://localhost"+path, nil)
+	r.RemoteAddr = "192.0.2.55:12345"
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Idempotency-Key", key)
+	r.Header.Set("X-Brand-ID", brand)
+	if token != "" {
+		r.Header.Set("Authorization", "Bearer "+token)
+	}
+	w := httptest.NewRecorder()
+	f.http.ServeHTTP(w, r)
+	return w
 }
 
 func newReconciliationHTTPFixture(t *testing.T) reconciliationHTTPFixture {
@@ -121,8 +140,20 @@ func TestReconciliationHTTPRetryReceiptSurvivesSecondWorkerPass(t *testing.T) {
 	if failedPage.TotalCount != "1" || len(failedPage.Items) != 1 || failedPage.Items[0].State != "failed" || failedPage.Items[0].ErrorCode == nil || *failedPage.Items[0].ErrorCode != "CHECK_FAILED" || failedPage.Items[0].Outcome != nil || failedPage.Items[0].Preview != nil || failedPage.Items[0].CheckedAt != nil || failedPage.Items[0].AuditLogID != nil {
 		t.Fatalf("failed target shape mismatch: %+v", failedPage)
 	}
-	retryBody := map[string]any{"version": failed.Version, "reason": "retry after observation fault was cleared"}
-	first := f.call("POST", "/api/v1/admin/reconciliations/"+job.ID+"/retry", "reconcile-retry-http01", f.token, managedBrand, retryBody)
+	retryPath := "/api/v1/admin/reconciliations/" + job.ID + "/retry"
+	retryReason := "retry after observation fault was cleared"
+	for i, body := range []string{
+		"null",
+		`{"version":` + strconv.FormatInt(failed.Version, 10) + `,"version":` + strconv.FormatInt(failed.Version, 10) + `,"reason":"duplicate version"}`,
+		`{"version":null,"reason":"null version"}`,
+		`{"version":` + strconv.FormatInt(failed.Version, 10) + `,"reason":null}`,
+		`{"version":` + strconv.FormatInt(failed.Version, 10) + `,"reason":"missing reason","extra":true}`,
+		`{"reason":"missing version"}`,
+	} {
+		mustStatus(t, reconciliationRawCall(f, "POST", retryPath, "reconcile-retry-invalid-"+string(rune('1'+i)), body), 400)
+	}
+	retryBody := `{"reason":"` + retryReason + `","version":` + strconv.FormatInt(failed.Version, 10) + `}`
+	first := reconciliationRawCall(f, "POST", retryPath, "reconcile-retry-http01", retryBody)
 	mustStatus(t, first, 200)
 	var retryReceipt reconciliation.Job
 	managedData(t, first, &retryReceipt)
@@ -139,7 +170,8 @@ func TestReconciliationHTTPRetryReceiptSurvivesSecondWorkerPass(t *testing.T) {
 	if _, err := f.service.Process(ctx, 20); err != nil {
 		t.Fatal("process retried observation:", err)
 	}
-	replay := f.call("POST", "/api/v1/admin/reconciliations/"+job.ID+"/retry", "reconcile-retry-http01", f.token, managedBrand, retryBody)
+	replayBody := `{"version":` + strconv.FormatInt(failed.Version, 10) + `,"reason":"` + retryReason + `"}`
+	replay := reconciliationRawCall(f, "POST", retryPath, "reconcile-retry-http01", replayBody)
 	mustStatus(t, replay, 200)
 	var replayReceipt reconciliation.Job
 	managedData(t, replay, &replayReceipt)
