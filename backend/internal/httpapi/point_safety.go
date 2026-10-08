@@ -20,6 +20,7 @@ func registerPointSafetyRoutes(handle func(string, string, http.HandlerFunc), d 
 	registerCommissionDiscoveryRoutes(handle, d)
 	registerCommissionPaymentRoutes(handle, d)
 	registerCommissionAdjustmentRoutes(handle, d)
+	registerRewardRoutes(handle, d)
 	registerNotificationAdminRoutes(handle, d)
 	s := points.Store{DB: d.Admins.DB}
 	f := finance.Service{DB: d.Admins.DB, Points: s}

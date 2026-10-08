@@ -816,6 +816,8 @@ POST 回执保存首次结果，SDK 不在写方法内重新取上下文/改写�
 
 0050注册GET/PUT `/api/v1/admin/commission-payment-policy`、GET `/commission-payments`、GET `/{id}`、POST `/{id}/approve`及POST `/{id}/retry`。读取使用commission.view品牌或平台；策略写入、批准及重试分别要求品牌commission_payment_policy.write、commission_payment.approve、commission_payment.retry加查看权。品牌派发开关默认false；全人工等待单人审核，全自动在开关启用后由系统处理。0054使混合模式整周期等待人工审核，保留mixed身份，不拆分自动部分；旧MODE_UNRESOLVED记录在无批准、无目标且证据有效时只能显式approve。每目标正额实际写入佣金available和完整账本，零额仅审计。已有正额入账的更正仍blocked，不能以approve或retry绕过。原键返回原回执，当前状态另读；具体字段、状态、锁及待补偿边界见[派发合同](17-commission-cycles.md)和OpenAPI。
 
+0055注册后台`/reward-orders`六项接口：GET/POST集合、GET单条、GET动作分页、POST撤销及POST人工继续。奖励权限独立，X-Reward-Actor-ID固定操作者；人工发放201、撤销或继续200，余额不足亦为持久化revocation_pending成功回执，不由客户端自动重试。原grant及回执保留，只有gift.available可反向全额；原键重放重新授权并返回原状态，当前状态另读。无用户奖励提交、自动奖励或支付接口，具体数据与待完成页面/通知/报表见[奖励交接合同](20-manual-reward-orders.md)及OpenAPI。
+
 0051追加GET `/api/v1/admin/commission-payments/{id}/targets`及GET/POST `/api/v1/admin/commission-payment-targets/{id}/adjustments`，写入为独立commission_adjustment.write品牌权限、version/points/reason闭合正文、确认账号及幂等键；成功201。只接受当前已paid且证据有效的目标，精确差额记入佣金available，原派发总额不修改。0052仅为实际完成的入账/修正生成不可变通知，完整状态、字段和错误见[人工修正合同](18-commission-adjustments.md)。
 
 0053追加GET `/api/v1/admin/reports/commission`及`/reports/commission.csv`，独立report_commission.view/export品牌或平台权限。from/to按真实ledger.created_at半开入账窗口筛选，group_by为day/agent/cycle，可选agent_id/member_id/cycle_id；前六项计数和积分非负、net_points可为负的精确字符串。CSV导出完整筛选范围，不接受分页，最多10000组/4MiB，审计后才输出且可核验SHA256；原派发不因多条修正重复累计，完整合同见[佣金账本报表](19-commission-posting-reports.md)。

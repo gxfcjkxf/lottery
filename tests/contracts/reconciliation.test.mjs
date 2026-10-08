@@ -18,6 +18,7 @@ import * as commissionPayments from "../../scripts/openapi-commission-payments.m
 import * as commissionAdjustments from "../../scripts/openapi-commission-adjustments.mjs";
 import * as commissionReports from "../../scripts/openapi-commission-reports.mjs";
 import * as rechargeUser from "../../scripts/openapi-recharge-user.mjs";
+import * as rewards from "../../scripts/openapi-rewards.mjs";
 
 const root=new URL("../../",import.meta.url);
 const go=process.env.LOTTERY_GO_BIN??"go";
@@ -51,6 +52,7 @@ test("reconciliation contract documents exactly the five registered admin routes
     commissionPolicies,
     commissionCycles,
     commissionAdjustments,
+    rewards,
     commissionReports,
     rechargeUser,
     commissionDiscovery,

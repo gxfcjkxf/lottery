@@ -310,7 +310,7 @@ S6-e 实表为 `brand_agent_policies`、`agent_nodes`、`agent_config_revisions`
 - `status`: pending/settled/voided/adjusted
 - 不允许最终金额小于 0；人工修正创建独立 adjustment 记录。
 
-`reward_records` 与佣金记录类似，但必须区分奖励类型和触发来源。
+第一期使用0055的`reward_orders`与不可变`reward_order_actions`，仅人工发放与全额撤销，不补造旧赠送来源记录或自动代理/推荐奖励。当前状态为granted/revocation_pending/revoked；只有gift.available足够才反向原grant账本，不足保留人工待处理，余额补足也不自动恢复。发放、动作、账本及钱包必须同事务，详细字段、独立权限、幂等与剩余UI边界见[人工奖励合同](20-manual-reward-orders.md)。
 
 ### 审计与通知
 
