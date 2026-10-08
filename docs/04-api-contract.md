@@ -614,6 +614,8 @@ Totals含order_count/requested_points，以及reviewing、processing、paid、re
 
 S7-k 接入 GET `/api/v1/admin/reports/betting/export` 与 `/api/v1/admin/reports/ledger/export`，完整筛选范围、不接受分页参数；view与export分别授权，200直接返回CSV而非JSON信封。列定义、大小限制、快照与审计要求见 [CSV导出合同](11-report-csv-exports.md)。后续已接入提现申请状态报表及CSV，不代表外部出款；佣金/奖励报表、代理分组、不可变日月结及大规模异步全链对账仍未实现，不能据此宣称EPIC-11整体完成。
 
+0064/0065增加按品牌日/月范围的单一统计快照及不可变版本内部服务，不新增已注册HTTP操作。其实际入账/当前业务观察/快照时余额的分界、版本追加和原字节摘要见[归档内部合同](26-report-archive-core.md)。管理接口上线还需当前授权复核、审计后响应、幂等原回执及独立下载，不能直接把内部CreateTx或CanonicalPayloadTx当成公开能力。
+
 ## 4.7 品牌运行状态
 
 ### 平台品牌创建
