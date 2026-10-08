@@ -38,6 +38,8 @@ const NotificationTemplates = defineAsyncComponent(() => import("./NotificationT
 const ReconciliationManagement = defineAsyncComponent(() => import("./ReconciliationManagement.vue"));
 const ReportArchivesManagement = defineAsyncComponent(() => import("./ReportArchivesManagement.vue"));
 import { clearAllArchiveIntents } from "./report-archives-state";
+const ReportArchiveTasksManagement = defineAsyncComponent(() => import("./ReportArchiveTasksManagement.vue"));
+import { clearAllReportArchiveTaskRetryIntents } from "./report-archive-tasks-state";
 import {clearPendingReconciliationWrites} from "./reconciliation-state";
 const ReportsManagement = defineAsyncComponent(() => import("./ReportsManagement.vue"));
 const AgentManagement = defineAsyncComponent(() => import("./AgentManagement.vue"));
@@ -138,6 +140,7 @@ const englishUi: Record<string, string> = {
 };
 Object.assign(englishUi, {
   "日月归档": "Daily and monthly archives",
+  "自动归档任务": "Automatic archive tasks",
   "请登录并选择有归档查看权限的品牌。": "Sign in and choose a brand with archive viewing permission.",
   "演": "D", "品": "B",
   "请先选择真实后台品牌。": "Select a live admin brand first.",
@@ -183,6 +186,7 @@ type Page =
   | "资金与账本"
   | "批量对账"
   | "日月归档"
+  | "自动归档任务"
   | "佣金和奖励"
   | "佣金派发"
   | "佣金更正"
@@ -205,6 +209,7 @@ const nav: { name: Page; icon: string; group: string }[] = [
   { name: "资金与账本", icon: "◈", group: "资金" },
   { name: "批量对账", icon: "≋", group: "资金" },
   { name: "日月归档", icon: "▣", group: "管理" },
+  { name: "自动归档任务", icon: "◷", group: "管理" },
   { name: "佣金和奖励", icon: "↗", group: "资金" },
   { name: "佣金派发", icon: "⇧", group: "资金" },
   { name: "佣金更正", icon: "⇄", group: "资金" },
@@ -408,6 +413,7 @@ const apiErrorText = (error: unknown) =>
   error instanceof Error ? message(error.message, error.message) : message("请求失败，请重试", "Request failed. Please try again.");
 const clearAdminData = () => {
 	clearAllArchiveIntents();
+	clearAllReportArchiveTaskRetryIntents();
 	clearAllPendingCommissionAdjustments();
 	clearAllPendingCommissionCycleWrites();
 	clearAllCommissionPaymentIntents();
@@ -456,6 +462,7 @@ const restoreAdminSession = async () => {
     if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
       clearAllArchiveIntents();
+      clearAllReportArchiveTaskRetryIntents();
       clearAllPendingCommissionCycleWrites();
       clearAllPendingCommissionAdjustments();
       clearAllCommissionPaymentIntents();
@@ -494,6 +501,7 @@ const login = async () => {
     if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
       clearAllArchiveIntents();
+      clearAllReportArchiveTaskRetryIntents();
       clearAllPendingCommissionCycleWrites();
       clearAllPendingCommissionAdjustments();
       clearAllCommissionPaymentIntents();
@@ -1932,6 +1940,12 @@ const ledger = [
 
       <section v-else-if="page === '日月归档'" class="page-content">
         <ReportArchivesManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
+          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+        <div v-else class="panel directory-state">{{ ui("请登录并选择有归档查看权限的品牌。") }}</div>
+      </section>
+
+      <section v-else-if="page === '自动归档任务'" class="page-content">
+        <ReportArchiveTasksManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
         <div v-else class="panel directory-state">{{ ui("请登录并选择有归档查看权限的品牌。") }}</div>
       </section>

@@ -37,7 +37,8 @@
 - [24-commission-correction-management.md](24-commission-correction-management.md)：十二条正式更正管理接口、独立权限与当前授权复核、PC/移动双语操作、原回执及同会话未知请求恢复；通知和报表另见25号合同。
 - [25-commission-correction-observability.md](25-commission-correction-observability.md)：真实非零差额的原子事件、不可变历史站内消息、实际补发/追回报表、22列CSV版本2及无旧消息回填的协调升级。
 - [26-report-archive-core.md](26-report-archive-core.md)：日/月不可变快照与追加版本、单一统计观察、四条管理接口、PC/移动原请求恢复、独立原JSON下载及后续自动任务边界。
-- [27-automatic-report-archive-core.md](27-automatic-report-archive-core.md)：默认关闭的日/月配置与任务、保存起点及原范围、自动发现/执行、人工失败重试、系统来源和未接入的管理功能边界。
+- [27-automatic-report-archive-core.md](27-automatic-report-archive-core.md)：默认关闭的日/月配置与任务、保存起点及原范围、自动发现/执行、人工失败重试和系统来源。
+- [28-report-archive-task-management.md](28-report-archive-task-management.md)：四条配置只读/任务管理接口、授权与审计、原pending回执恢复、双端页面及启用口径待确认边界。
 
 ## 第一阶段实现顺序
 

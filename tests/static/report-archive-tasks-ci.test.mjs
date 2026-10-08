@@ -1,0 +1,23 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const workflow = readFileSync(new URL('../../.github/workflows/ci.yaml', import.meta.url), 'utf8');
+const config = readFileSync(new URL('../../playwright.report-archive-tasks.config.ts', import.meta.url), 'utf8');
+test('automatic archive task browser CI owns separate viewports and real lost-receipt recovery', () => {
+  const job = /^  report-archive-tasks-browser:\n([\s\S]*?)(?=^  [a-z][a-z-]*:\n|(?![\s\S]))/m.exec(workflow)?.[1];
+  assert.ok(job);
+  assert.match(job, /viewport: \[desktop, mobile\]/);
+  assert.match(job, /POSTGRES_DB: lottery_archive_tasks_browser_\$\{\{ matrix\.viewport \}\}/);
+  assert.match(job, /go -C backend build -tags browserfixture -o ..\/.local\/archive-tasks-fixture .\/cmd\/report-archive-tasks-fixture/);
+  assert.match(job, /node scripts\/init-report-archive-tasks-browser\.mjs/);
+  assert.match(job, /pnpm exec playwright test --config=playwright\.report-archive-tasks\.config\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0/);
+  assert.match(job, /stats\.skipped !== 0 \|\| stats\.unexpected !== 0 \|\| stats\.flaky !== 0 \|\| stats\.expected !== 1/);
+  assert.doesNotMatch(job, /continue-on-error/);
+  assert.match(config, /testMatch: 'report-archive-tasks\.spec\.ts'/);
+  assert.match(config, /retries: 0/);
+  const spec = readFileSync(new URL('../browser/report-archive-tasks.spec.ts', import.meta.url), 'utf8');
+  assert.match(spec, /route\.fetch\(\)/);
+  assert.match(spec, /fixture\('advance'\)/);
+  assert.match(spec, /requests\[1\]\)\.toEqual\(requests\[0\]\)/);
+  assert.match(spec, /expect\(await economics\(\)\)\.toBe\(before\)/);
+});

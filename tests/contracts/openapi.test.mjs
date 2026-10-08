@@ -19,8 +19,9 @@ import * as rechargeUser from "../../scripts/openapi-recharge-user.mjs";
 import * as rewards from "../../scripts/openapi-rewards.mjs";
 import * as rewardReports from "../../scripts/openapi-reward-reports.mjs";
 import * as reportArchives from "../../scripts/openapi-report-archives.mjs";
+import * as reportArchiveTasks from "../../scripts/openapi-report-archive-tasks.mjs";
 
-const modules=[identity,finance,lottery,withdrawals,withdrawalReports,workbench,commissionPolicies,commissionCycles,commissionDiscovery,commissionPayments,commissionAdjustments,commissionCorrections,commissionReports,rechargeUser,rewards,rewardReports,reportArchives];
+const modules=[identity,finance,lottery,withdrawals,withdrawalReports,workbench,commissionPolicies,commissionCycles,commissionDiscovery,commissionPayments,commissionAdjustments,commissionCorrections,commissionReports,rechargeUser,rewards,rewardReports,reportArchives,reportArchiveTasks];
 const go=process.env.LOTTERY_GO_BIN??"go";
 const operation={method:"POST",path:"/api/v1/me/action",operationId:"performAction",summary:"Submit action",tag:"identity",auth:"user",idempotency:true,requestBody:{$ref:"#/components/schemas/EmptyObject"},data:{$ref:"#/components/schemas/EmptyObject"}};
 const routes=[{method:"POST",path:"/api/v1/me/action"},{method:"POST",path:"/api/v1/b/{brandCode}/me/action"}];
