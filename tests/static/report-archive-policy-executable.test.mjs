@@ -4,7 +4,7 @@ import {
   chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import {
   initializeReportArchivePolicyBrowser,
   runReportArchivePolicyCommand,
