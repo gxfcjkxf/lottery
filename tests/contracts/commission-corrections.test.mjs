@@ -137,7 +137,7 @@ test('correction schemas are closed and the exact request and numeric contracts 
 });
 
 test('actual Go contract examples validate all correction DTO schemas and preserve exact aggregate behavior', () => {
-  const result = spawnSync(process.env.LOTTERY_GO_BIN ?? '/Users/lee/.cache/lottery-tools/go/bin/go', [
+  const result = spawnSync(process.env.LOTTERY_GO_BIN ?? 'go', [
     'run', '-buildvcs=false', './cmd/contract-examples',
   ], { cwd: new URL('../../backend/', import.meta.url), encoding: 'utf8', env: { ...process.env, CGO_ENABLED: '0' } });
   assert.equal(result.status, 0, result.stderr || result.error?.message);
