@@ -12,9 +12,12 @@ const totals=obj({
   adjustment_entry_count:exactUnsigned,
   adjustment_credit_points:exactUnsigned,
   adjustment_debit_points:exactUnsigned,
+  correction_entry_count:exactUnsigned,
+  correction_credit_points:exactUnsigned,
+  correction_debit_points:exactUnsigned,
   net_points:exactSigned,
 });
-totals.description="Immutable commission ledger postings by posting time, not bet/cycle cohort, current wallet, forecast, or verified current earnings. entry_count = paid_entry_count + adjustment_entry_count; net_points = paid_points + adjustment_credit_points - adjustment_debit_points. A period may contain a debit whose credit occurred earlier, so net_points may be negative.";
+totals.description="Immutable commission ledger postings by posting time, not bet/cycle cohort, current wallet, forecast, or verified current earnings. entry_count = paid_entry_count + adjustment_entry_count + correction_entry_count; net_points = paid_points + adjustment_credit_points - adjustment_debit_points + correction_credit_points - correction_debit_points. Correction counts and point totals report actual historical ledger postings, not a plan or current wallet. A period may contain a debit whose credit occurred earlier, so net_points may be negative.";
 const query=obj({
   from:date,to:date,group_by:groupBy,
   limit:{type:"integer",minimum:1,maximum:100},offset:{type:"integer",minimum:0,maximum:1000000},
@@ -51,7 +54,7 @@ export const operations=[
     "X-Report-Group-Count":{description:"Complete number of exported groups.",schema:exactUnsigned},
     "X-Report-Byte-Count":{description:"Exact response body byte count.",schema:{type:"string",pattern:"^(0|[1-9][0-9]*)$"}},
     "X-Report-SHA256":{description:"SHA-256 digest of response body bytes including UTF-8 BOM.",schema:{type:"string",pattern:"^[a-f0-9]{64}$"}},
-    "X-Report-Format-Version":{description:"CSV layout version.",schema:{type:"string",const:"1"}},
+    "X-Report-Format-Version":{description:"CSV layout version.",schema:{type:"string",const:"2"}},
     "X-Report-Audit-ID":{description:"Committed export audit record ID.",schema:uuid},
-  },description:description+" Export has no pagination parameters and fails above 10000 groups or 4MiB. CSV columns, in order: record_type, brand_id, snapshot_at, timezone, from, to, group_by, agent_id, member_id, cycle_id, key, label, entry_count, paid_entry_count, paid_points, adjustment_entry_count, adjustment_credit_points, adjustment_debit_points, net_points. It includes a UTF-8 BOM and formula-injection neutralization; negative net_points cells are apostrophe-prefixed for spreadsheet safety. A zero-group export contains its summary row and no group rows."},
+  },description:description+" Export has no pagination parameters and fails above 10000 groups or 4MiB. CSV format version 2 columns, in order: record_type, brand_id, snapshot_at, timezone, from, to, group_by, agent_id, member_id, cycle_id, key, label, entry_count, paid_entry_count, paid_points, adjustment_entry_count, adjustment_credit_points, adjustment_debit_points, correction_entry_count, correction_credit_points, correction_debit_points, net_points. It includes a UTF-8 BOM and formula-injection neutralization; negative net_points cells are apostrophe-prefixed for spreadsheet safety. A zero-group export contains its summary row and no group rows."},
 ];

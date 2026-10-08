@@ -29,6 +29,7 @@ var expectedTemplateKeys = []string{
 	"bet.order.prize_reversed",
 	"bet.order.won",
 	"commission.adjusted",
+	"commission.corrected",
 	"commission.paid",
 	"member.joined",
 	"recharge.confirmed",

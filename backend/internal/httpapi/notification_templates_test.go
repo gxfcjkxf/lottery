@@ -38,7 +38,7 @@ func TestNotificationTemplateHTTPCheckedReplayValidationAndAudit(t *testing.T) {
 	mustStatus(t, f.call("GET", base, "", f.token, managedBrand, nil), 403)
 	grantReportPermission(t, f, "notification_template.view.brand")
 	rows := templateHTTPList(t, f)
-	if len(rows) != 19 {
+	if len(rows) != 20 {
 		t.Fatal(len(rows))
 	}
 	keys := map[string]bool{}
@@ -48,7 +48,7 @@ func TestNotificationTemplateHTTPCheckedReplayValidationAndAudit(t *testing.T) {
 		}
 		keys[row.Key] = true
 	}
-	for _, key := range []string{"reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked"} {
+	for _, key := range []string{"reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked", "commission.corrected"} {
 		if !keys[key] {
 			t.Fatal("missing real reward template", key)
 		}

@@ -367,4 +367,4 @@ draw_corrections 保存旧/新结果、旧 job、启动后的期次版本、政�
 
 计划目标增加previous_correction_target_id和financial_version。新计划基数优先实际更正净额头，其次原paid净额，最后为零，合并后来补发但新核算不再出现的代理。每步一个目标，非零差额只改变commission.available，完整16桶流水、目标审计、实际净额头和任务版本同事务提交；零差额无流水但有目标与净额版本。目标和步骤不可改写，延迟约束拒绝孤立财务见证。
 
-cycle_holds独立于核算代次。真实可用佣金不足后暂停整周期，不借其他来源或冻结余额；新结果只能使旧任务stale，不能释放暂停。管理员针对当前任务显式continue才清除门闩，failed的技术重试不能替代。新资金更正开关初始关闭，不借旧派发开关自动授权；21个新增或替换函数固定search_path。内部服务和字段见[差额执行合同](23-commission-correction-execution.md)，已接入的正式HTTP及双端操作见[管理合同](24-commission-correction-management.md)。补偿通知和报表仍待实现。
+cycle_holds独立于核算代次。真实可用佣金不足后暂停整周期，不借其他来源或冻结余额；新结果只能使旧任务stale，不能释放暂停。管理员针对当前任务显式continue才清除门闩，failed的技术重试不能替代。新资金更正开关初始关闭，不借旧派发开关自动授权；21个新增或替换函数固定search_path。内部服务和字段见[差额执行合同](23-commission-correction-execution.md)，已接入的正式HTTP及双端操作见[管理合同](24-commission-correction-management.md)。0060实际非零执行目标与事件同事务提交，唯一历史消息不因任务失效删除；报表三类账本独立合并，公开载荷仅目标UUID/有符号积分，详细见[25号合同](25-commission-correction-observability.md)。

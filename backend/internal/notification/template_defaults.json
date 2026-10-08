@@ -119,6 +119,16 @@
       "body": "历史记录：{points} 积分曾记入佣金钱包。此记录表示过去的入账，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。"
     }
   },
+  "commission.corrected": {
+    "en": {
+      "title": "Commission correction recorded",
+      "body": "Historical record: a commission correction of {points} points was posted to your commission available balance. Positive points record a past additional credit; negative points record a past recovery. This is not your current balance, new income or an external payment. Check your current wallet; this record is retained."
+    },
+    "zh-CN": {
+      "title": "佣金更正记录",
+      "body": "历史记录：佣金可用积分曾发生 {points} 积分更正。正数表示过去的补发，负数表示过去的追回；不代表当前余额、新收入或外部付款。请查看当前钱包；此记录会保留。"
+    }
+  },
   "commission.adjusted": {
     "en": {
       "title": "Commission adjustment recorded",

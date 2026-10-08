@@ -1,12 +1,15 @@
 import { test, expect, type Page, type APIResponse } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { rememberAdminSession } from './support/admin-session';
 
 const origin = process.env.TEST_ADMIN_ORIGIN ?? 'http://localhost:5174';
+const userOrigin = process.env.TEST_USER_ORIGIN ?? 'http://localhost:5173';
 const admin = `${origin}/api/v1/admin`, brand = '0199a000-0000-7000-8000-000000000001';
 const fixture = process.env.COMMISSION_FIXTURE_BIN;
 type Execution = { id: string; version: number; state: string; applied_debit_points: string; applied_count: string; cycle_hold_active: boolean };
-function command(name: 'prepare-corrections' | 'execute-corrections' | 'freeze-corrections' | 'unfreeze-corrections' | 'verify-corrections') {
+function command(name: 'prepare-corrections' | 'execute-corrections' | 'freeze-corrections' | 'unfreeze-corrections' | 'verify-corrections' | 'notify') {
   return JSON.parse(execFileSync(fixture!, [name], { env: process.env, encoding: 'utf8', timeout: 120_000 })) as Record<string, unknown>;
 }
 async function data<T>(response: Pick<APIResponse, 'text' | 'status'>): Promise<T> {
@@ -93,4 +96,62 @@ test('actual manual correction preserves lost approval receipts, holds until exp
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
   await panel.screenshot({ path: info.outputPath('commission-corrections-current.png') }); expect(errors).toEqual([]);
   expect(command('verify-corrections').economic_fingerprint).toBe(complete.economic_fingerprint);
+
+  // The actual report counts the original credit plus this correction debit,
+  // not a ready plan, approved amount, freeze/unfreeze or current wallet.
+  await navigate(page, info.project.name, /报表和对账|Reports/);
+  const reportPanel = page.locator('.commission-report');
+  await expect(reportPanel.getByRole('heading', { name: 'Commission ledger report', exact: true })).toBeVisible();
+  await reportPanel.getByLabel('Member UUID', { exact: true }).fill(String(prepared.beneficiary_id));
+  await reportPanel.getByLabel('Cycle UUID', { exact: true }).fill(String(prepared.cycle_id));
+  await reportPanel.getByTestId('commission-report-group').selectOption('cycle');
+  const reportResponse = page.waitForResponse(r => r.request().method() === 'GET' && r.url().startsWith(`${admin}/reports/commission?`));
+  await reportPanel.getByTestId('commission-report-query').click();
+  const expected = { entry_count: '2', paid_entry_count: '1', paid_points: '1', adjustment_entry_count: '0', adjustment_credit_points: '0', adjustment_debit_points: '0', correction_entry_count: '1', correction_credit_points: '0', correction_debit_points: '1', net_points: '0' };
+  const report = await data<{ summary: typeof expected; items: Array<{ key: string }>; total_groups: string }>(await reportResponse);
+  expect(report.summary).toEqual(expected); expect(report.total_groups).toBe('1'); expect(report.items[0]?.key).toBe(prepared.cycle_id);
+  await expect(reportPanel.getByTestId('commission-report-summary').locator('strong')).toHaveText(Object.values(expected));
+  const csvResponse = page.waitForResponse(r => r.request().method() === 'GET' && r.url().startsWith(`${admin}/reports/commission.csv?`));
+  const download = page.waitForEvent('download'); await reportPanel.getByTestId('commission-report-export').click();
+  const csv = await csvResponse; expect(csv.status()).toBe(200); expect(csv.headers()['x-report-format-version']).toBe('2');
+  expect(csv.headers()['x-report-group-count']).toBe('1'); expect(new URL(csv.url()).searchParams.has('limit')).toBe(false);
+  const file = await download, pathOnDisk = await file.path(); expect(pathOnDisk).toBeTruthy(); const bytes = readFileSync(pathOnDisk!);
+  expect(createHash('sha256').update(bytes).digest('hex')).toBe(csv.headers()['x-report-sha256']);
+  expect(String(bytes.length)).toBe(csv.headers()['x-report-byte-count']); expect(bytes.subarray(0, 3)).toEqual(Buffer.from([0xef, 0xbb, 0xbf]));
+  const rows = bytes.toString('utf8').replace(/^\uFEFF/, '').trim().split(/\r?\n/);
+  expect(rows).toHaveLength(3); expect(rows[0]!.split(',')).toHaveLength(22);
+  expect(rows[0]).toContain('correction_entry_count,correction_credit_points,correction_debit_points,net_points');
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+  await reportPanel.screenshot({ path: info.outputPath('commission-correction-report.png') });
+  expect(command('verify-corrections').economic_fingerprint).toBe(complete.economic_fingerprint);
+
+  // Materialize only committed nonzero postings through the real inbox
+  // consumer. Later template edits cannot rewrite the original v1 snapshot.
+  command('notify');
+  const login = await data<{ member: { id: string } }>(await page.request.post(`${userOrigin}/api/v1/auth/login`, { headers: { Origin: userOrigin, 'Idempotency-Key': crypto.randomUUID() }, data: { identifier: 'commission_agent_owner', password: process.env.COMMISSION_FIXTURE_USER_PASSWORD } }));
+  expect(login.member.id).toBe(prepared.beneficiary_id);
+  const inbox = async () => data<{ items: Array<{ id: string; event_type: string; template_version: number; content: unknown; payload: Record<string, string> }> }>(await page.request.get(`${userOrigin}/api/v1/notifications?limit=100&offset=0`));
+  const messages = (await inbox()).items.filter(item => item.event_type === 'commission.corrected'); expect(messages).toHaveLength(1);
+  const message = messages[0]!; expect(message.template_version).toBe(1); expect(message.content).toBeTruthy();
+  expect(message.payload).toEqual({ resource_id: complete.execution_target_id, points: '-1' });
+  command('notify'); expect((await inbox()).items.filter(item => item.event_type === 'commission.corrected')).toEqual(messages);
+  const templates = await get<{ items: Array<{ key: string; version: number; content: unknown }> }>('/notification-templates'); expect(templates.items).toHaveLength(20);
+  const template = templates.items.find(item => item.key === 'commission.corrected')!; expect(template.version).toBe(1);
+  await data(await page.request.put(`${admin}/notification-templates/commission.corrected`, { headers: { Origin: origin, 'X-Brand-ID': brand, 'Idempotency-Key': crypto.randomUUID() }, data: { version: template.version, content: { en: { title: 'New correction copy', body: 'Later template copy: {points} points.' }, 'zh-CN': { title: '新更正文案', body: '后续模板文案：{points} 积分。' } }, reason: 'Owned synthetic edit proves earlier correction snapshot remains immutable' } }));
+  expect((await inbox()).items.find(item => item.id === message.id)).toEqual(message);
+  const userPage = await context.newPage(); userPage.on('pageerror', error => errors.push(error.message));
+  await userPage.goto(`${userOrigin}/notifications`);
+  if (await userPage.getByRole('button', { name: 'Switch to English', exact: true }).count()) await userPage.getByRole('button', { name: 'Switch to English', exact: true }).click();
+  const inboxPanel = userPage.locator('.notifications-panel');
+  await expect(inboxPanel.getByRole('heading', { name: 'Commission correction recorded', exact: true })).toBeVisible();
+  await expect(inboxPanel).not.toContainText('New correction copy');
+  await expect(inboxPanel.locator('.notification-protected-note').filter({ hasText: 'negative points record a past recovery' })).toHaveCount(1);
+  await expect.poll(() => userPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(userPage.viewportSize()!.width + 1);
+  await inboxPanel.screenshot({ path: info.outputPath('commission-correction-inbox-en.png') });
+  await userPage.getByRole('button', { name: 'Switch to Chinese', exact: true }).click();
+  await expect(inboxPanel.getByRole('heading', { name: '佣金更正记录', exact: true })).toBeVisible();
+  await expect(inboxPanel.locator('.notification-protected-note').filter({ hasText: '负数表示过去的追回' })).toHaveCount(1);
+  await inboxPanel.screenshot({ path: info.outputPath('commission-correction-inbox-zh.png') });
+  expect(command('verify-corrections').economic_fingerprint).toBe(complete.economic_fingerprint); expect(errors).toEqual([]);
+  await userPage.close();
 });

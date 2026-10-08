@@ -74,6 +74,11 @@ func validateCommissionEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggreg
 	}
 	var valid bool
 	switch kind {
+	case "commission.corrected":
+		if in.ResourceID != aggregate || in.TargetID != aggregate {
+			return "", Payload{}, ErrInvalid
+		}
+		err = tx.QueryRow(ctx, `SELECT valid_commission_correction_notification_event($1,$2,$3,$4::jsonb)`, brand, kind, aggregate, raw).Scan(&valid)
 	case "commission.paid":
 		err = tx.QueryRow(ctx, `SELECT EXISTS(
  SELECT 1 FROM commission_payment_targets t

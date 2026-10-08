@@ -20,6 +20,7 @@ const events = [
   "reward.order.revoked",
   "commission.paid",
   "commission.adjusted",
+  "commission.corrected",
   "withdrawal.order.reviewing",
   "withdrawal.order.processing",
   "withdrawal.order.paid",
@@ -122,7 +123,19 @@ describe("notification presentation", () => {
     expect(zh.protectedNote).toContain("请查看当前钱包余额");
   });
 
-  it.each(["commission.paid", "commission.adjusted"] as const)("rejects missing historical snapshots even for v1 %s", (event) => {
+  it("keeps the corrected commission disclaimer fixed when custom copy is shown", () => {
+    const corrected = { ...item("commission.corrected", 2), payload: { resource_id: "target-id", points: "-42" }, content: {
+      en: { title: "Operator title", body: "Operator copy: {points}." },
+      "zh-CN": { title: "运营标题", body: "运营内容：{points}。" },
+    } };
+    const en = renderNotification(corrected, "en");
+    const zh = renderNotification(corrected, "zh");
+    expect(en.title).toBe("Operator title");
+    expect(en.protectedNote).toBe("Historical record: a commission correction of -42 points was posted to your commission available balance. Positive points record a past additional credit; negative points record a past recovery. This is not your current balance, new income or an external payment. Check your current wallet; this record is retained.");
+    expect(zh.protectedNote).toBe("历史记录：佣金可用积分曾发生 -42 积分更正。正数表示过去的补发，负数表示过去的追回；不代表当前余额、新收入或外部付款。请查看当前钱包；此记录会保留。");
+  });
+
+  it.each(["commission.paid", "commission.adjusted", "commission.corrected"] as const)("rejects missing historical snapshots even for v1 %s", (event) => {
     expect(() => renderNotification({ ...item(event), content: null }, "en")).toThrow(/immutable content snapshot/);
   });
 

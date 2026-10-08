@@ -57,7 +57,7 @@ func assertCommissionReportTotals(t *testing.T, got reporting.CommissionTotals, 
 	want := reporting.CommissionTotals{
 		EntryCount: entryCount, PaidEntryCount: paidCount, PaidPoints: paidPoints,
 		AdjustmentEntryCount: adjustmentCount, AdjustmentCreditPoints: adjustmentCredits,
-		AdjustmentDebitPoints: adjustmentDebits, NetPoints: net,
+		AdjustmentDebitPoints: adjustmentDebits, CorrectionEntryCount: "0", CorrectionCreditPoints: "0", CorrectionDebitPoints: "0", NetPoints: net,
 	}
 	if got != want {
 		t.Fatalf("commission totals = %+v, want %+v", got, want)

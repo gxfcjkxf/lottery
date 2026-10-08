@@ -61,9 +61,9 @@ async function exportAll() {
     if (cause instanceof AdminApiError && cause.status === 401) { invalidate(); emit("session-invalid"); }
   } finally { if (id === exportGeneration) exportBusy.value = false; }
 }
-const fields: readonly (keyof CommissionTotals)[] = ["entry_count", "paid_entry_count", "paid_points", "adjustment_entry_count", "adjustment_credit_points", "adjustment_debit_points", "net_points"];
+const fields: readonly (keyof CommissionTotals)[] = ["entry_count", "paid_entry_count", "paid_points", "adjustment_entry_count", "adjustment_credit_points", "adjustment_debit_points", "correction_entry_count", "correction_credit_points", "correction_debit_points", "net_points"];
 const metricLabels: Record<keyof CommissionTotals, [string, string]> = {
-  entry_count: ["入账条目", "Ledger entries"], paid_entry_count: ["支付条目", "Paid entries"], paid_points: ["支付入账积分", "Paid ledger credits"], adjustment_entry_count: ["修正条目", "Adjustment entries"], adjustment_credit_points: ["修正增加", "Adjustment credits"], adjustment_debit_points: ["修正扣减", "Adjustment debits"], net_points: ["净积分变化", "Net points"],
+  entry_count: ["入账条目", "Ledger entries"], paid_entry_count: ["支付条目", "Paid entries"], paid_points: ["支付入账积分", "Paid ledger credits"], adjustment_entry_count: ["修正条目", "Adjustment entries"], adjustment_credit_points: ["修正增加", "Adjustment credits"], adjustment_debit_points: ["修正扣减", "Adjustment debits"], correction_entry_count: ["更正笔数", "Correction entries"], correction_credit_points: ["更正补发积分", "Correction credits"], correction_debit_points: ["更正追回积分", "Correction debits"], net_points: ["净积分变化", "Net points"],
 };
 function label(field: keyof CommissionTotals) { const pair = metricLabels[field]; return t(pair[0], pair[1]); }
 function exact(value: string) { try { const n = BigInt(value), negative = n < 0n, digits = (negative ? -n : n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ","); return `${negative ? "−" : ""}${digits}`; } catch { return value; } }
@@ -87,7 +87,7 @@ onBeforeUnmount(() => { alive = false; invalidate(); });
 <template>
   <section class="commission-report" aria-labelledby="commission-report-title">
     <header><div><h3 id="commission-report-title">{{ t("佣金账本报表", "Commission ledger report") }}</h3><p>{{ t("只读业务账本", "Read-only business ledger") }}</p></div><button type="button" data-testid="commission-report-query" :disabled="busy || !permissions.view" @click="run()">{{ t("查询", "Query") }}</button></header>
-    <p class="definition">{{ t("按佣金账本实际入账时间 [from, to) 统计已支付目标与修正账本。它不是投注或周期归属报表，也不代表当前钱包余额、预测或已核实的当前收入。周期被阻止或之后发生更正，不会抹去先前的账本入账。", "Counts paid target and adjustment ledger postings by their actual posting time in [from, to). This is not a bet or cycle cohort report, current wallet balance, forecast, or verified current earnings. A later blocked cycle or correction does not erase earlier ledger postings.") }}</p>
+    <p class="definition">{{ t("按佣金账本实际入账时间 [from, to) 统计已支付目标、修正及更正账本。更正笔数、补发与追回积分反映历史实际入账，不是计划，也不是当前钱包余额。它不是投注或周期归属报表，也不代表预测或已核实的当前收入。周期被阻止或之后发生更正，不会抹去先前的账本入账。", "Counts paid target, adjustment, and correction ledger postings by their actual posting time in [from, to). Correction entry counts, credits, and debits are historical postings, not a plan or current wallet balance. This is not a bet or cycle cohort report, forecast, or verified current earnings. A later blocked cycle or correction does not erase earlier ledger postings.") }}</p>
     <div class="filters" data-testid="commission-report-filters">
       <label>{{ t("开始时间", "From") }}<input v-model="fromDraft" type="datetime-local" step="1"></label>
       <label>{{ t("结束时间", "To") }}<input v-model="toDraft" type="datetime-local" step="1"></label>

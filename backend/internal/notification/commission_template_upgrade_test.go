@@ -16,7 +16,7 @@ func TestCommissionDefaultsReplaceExistingFunctionOIDAndInitializeNewBrands(t *t
 		t.Fatal(err)
 	}
 	var defaultsBefore, priorRowsBefore, functionOIDBefore string
-	if err := db.QueryRow(ctx, `SELECT (notification_template_defaults()-'commission.paid'-'commission.adjusted')::text`).Scan(&defaultsBefore); err != nil {
+	if err := db.QueryRow(ctx, `SELECT (notification_template_defaults()-'commission.paid'-'commission.adjusted'-'commission.corrected'-'reward.order.granted'-'reward.order.revocation_pending'-'reward.order.revoked')::text`).Scan(&defaultsBefore); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(ctx, `SELECT jsonb_build_object(
@@ -36,7 +36,7 @@ func TestCommissionDefaultsReplaceExistingFunctionOIDAndInitializeNewBrands(t *t
 		t.Fatal(err)
 	}
 	var defaultsAfter, priorRowsAfter, functionOIDAfter string
-	if err := db.QueryRow(ctx, `SELECT (notification_template_defaults()-'commission.paid'-'commission.adjusted'-'reward.order.granted'-'reward.order.revocation_pending'-'reward.order.revoked')::text`).Scan(&defaultsAfter); err != nil || defaultsAfter != defaultsBefore {
+	if err := db.QueryRow(ctx, `SELECT (notification_template_defaults()-'commission.paid'-'commission.adjusted'-'commission.corrected'-'reward.order.granted'-'reward.order.revocation_pending'-'reward.order.revoked')::text`).Scan(&defaultsAfter); err != nil || defaultsAfter != defaultsBefore {
 		t.Fatalf("0052 changed one of the previous fourteen defaults: before=%s after=%s err=%v", defaultsBefore, defaultsAfter, err)
 	}
 	if err := db.QueryRow(ctx, `SELECT jsonb_build_object(
@@ -49,10 +49,10 @@ func TestCommissionDefaultsReplaceExistingFunctionOIDAndInitializeNewBrands(t *t
 	}
 	for _, id := range []string{brand, preBrand} {
 		var count, revisions int
-		if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_templates WHERE brand_id=$1`, id).Scan(&count); err != nil || count != 19 {
+		if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_templates WHERE brand_id=$1`, id).Scan(&count); err != nil || count != 20 {
 			t.Fatalf("existing brand %s templates=%d, err=%v", id, count, err)
 		}
-		if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_template_revisions WHERE brand_id=$1 AND template_key LIKE 'commission.%' AND version=1`, id).Scan(&revisions); err != nil || revisions != 2 {
+		if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_template_revisions WHERE brand_id=$1 AND template_key LIKE 'commission.%' AND version=1`, id).Scan(&revisions); err != nil || revisions != 3 {
 			t.Fatalf("existing brand %s commission defaults revisions=%d, err=%v", id, revisions, err)
 		}
 	}
@@ -62,10 +62,10 @@ func TestCommissionDefaultsReplaceExistingFunctionOIDAndInitializeNewBrands(t *t
 		t.Fatal(err)
 	}
 	var templates, revisions int
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_templates WHERE brand_id=$1`, postBrand).Scan(&templates); err != nil || templates != 19 {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_templates WHERE brand_id=$1`, postBrand).Scan(&templates); err != nil || templates != 20 {
 		t.Fatalf("new brand initialized with %d templates, err=%v", templates, err)
 	}
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_template_revisions WHERE brand_id=$1 AND version=1`, postBrand).Scan(&revisions); err != nil || revisions != 19 {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_template_revisions WHERE brand_id=$1 AND version=1`, postBrand).Scan(&revisions); err != nil || revisions != 20 {
 		t.Fatalf("new brand initialized with %d default revisions, err=%v", revisions, err)
 	}
 }

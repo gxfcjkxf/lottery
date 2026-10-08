@@ -28,7 +28,7 @@ function component(): Component {
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
   return new Function("__modules", body)(modules) as Component;
 }
-const payload = (query: Record<string, unknown>) => ({ success: true, request_id: "read-1", data: { brand_id: brand, snapshot_at: "2026-10-08T00:00:00Z", timezone: "Asia/Singapore", query, summary: { entry_count: "1", paid_entry_count: "1", paid_points: huge, adjustment_entry_count: "0", adjustment_credit_points: "0", adjustment_debit_points: "0", net_points: huge }, items: [{ key: query.group_by === "day" ? "2026-10-07" : actor, label: query.group_by === "day" ? "2026-10-07" : actor, totals: { entry_count: "1", paid_entry_count: "1", paid_points: huge, adjustment_entry_count: "0", adjustment_credit_points: "0", adjustment_debit_points: "0", net_points: huge } }], total_groups: "1" } });
+const payload = (query: Record<string, unknown>) => ({ success: true, request_id: "read-1", data: { brand_id: brand, snapshot_at: "2026-10-08T00:00:00Z", timezone: "Asia/Singapore", query, summary: { entry_count: "1", paid_entry_count: "1", paid_points: huge, adjustment_entry_count: "0", adjustment_credit_points: "0", adjustment_debit_points: "0", correction_entry_count: "0", correction_credit_points: "0", correction_debit_points: "0", net_points: huge }, items: [{ key: query.group_by === "day" ? "2026-10-07" : actor, label: query.group_by === "day" ? "2026-10-07" : actor, totals: { entry_count: "1", paid_entry_count: "1", paid_points: huge, adjustment_entry_count: "0", adjustment_credit_points: "0", adjustment_debit_points: "0", correction_entry_count: "0", correction_credit_points: "0", correction_debit_points: "0", net_points: huge } }], total_groups: "1" } });
 function text(node: Node): string { return node.text + node.children.map(text).join(""); }
 function find(node: Node, pred: (n: Node) => boolean): Node | null { if (pred(node)) return node; for (const child of node.children) { const match = find(child, pred); if (match) return match; } return null; }
 function testId(root: Node, id: string) { return find(root, (node) => node.props["data-testid"] === id); }
@@ -36,9 +36,9 @@ function button(root: Node, caption: string) { return find(root, (n) => n.tag ==
 function click(node: Node | null) { expect(node).not.toBeNull(); (node!.props.onClick as (() => void) | undefined)?.(); }
 async function flush() { for (let i = 0; i < 16; i++) await Promise.resolve(); await nextTick(); }
 function mount() {
-  const scope = ref({ account, brandId: brand }), emitted: string[] = [], root = element("root");
+  const scope = ref({ account, brandId: brand }), emitted: string[] = [], root = element("root"), i18n = createAdminI18n();
   const app = renderer.createApp({ setup: () => () => h(component(), { ...scope.value, onSessionInvalid: () => emitted.push("session-invalid") }) });
-  app.provide(adminI18nKey, createAdminI18n()); app.mount(root); return { app, root, scope, emitted };
+  app.provide(adminI18nKey, i18n); app.mount(root); return { app, root, scope, emitted, i18n };
 }
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -61,6 +61,9 @@ describe("CommissionReport real Vue component", () => {
     expect(text(mounted.root)).not.toContain(huge);
     click(testId(mounted.root, "commission-report-query")); await flush();
     expect(text(mounted.root)).toContain("922,337,203,685,477,580,812,345,678,901,234,567,890");
+    expect(text(mounted.root)).toContain("更正笔数"); expect(text(mounted.root)).toContain("更正补发积分"); expect(text(mounted.root)).toContain("更正追回积分");
+    mounted.i18n.setLocale("en"); await flush();
+    expect(text(mounted.root)).toContain("Correction entries"); expect(text(mounted.root)).toContain("Correction credits"); expect(text(mounted.root)).toContain("Correction debits");
     expect(testId(mounted.root, "commission-report-summary")).not.toBeNull();
     expect(testId(mounted.root, "commission-report-group")).not.toBeNull();
     const datetime = find(mounted.root, (n) => n.tag === "input" && n.props.type === "datetime-local"); expect(datetime).not.toBeNull();

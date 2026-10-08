@@ -59055,6 +59055,7 @@
                 "bet.order.prize_reversed",
                 "bet.order.won",
                 "commission.adjusted",
+                "commission.corrected",
                 "commission.paid",
                 "member.joined",
                 "recharge.confirmed",
@@ -59449,6 +59450,7 @@
                 "bet.order.prize_reversed",
                 "bet.order.won",
                 "commission.adjusted",
+                "commission.corrected",
                 "commission.paid",
                 "member.joined",
                 "recharge.confirmed",
@@ -77880,7 +77882,7 @@
         "tags": [
           "reports"
         ],
-        "description": "Read-only immutable commission business-ledger posting report. It includes true paid-target and true adjustment postings exactly once, and retains past credit postings after later cycle blocking or correction. It is not a bet/cycle-period cohort, current wallet balance, forecast, or verified current earnings. It does not invent an allocation of rounded cycle points per lottery. Days use the selected brand IANA timezone; keys are YYYY-MM-DD for day and UUIDs for agent/cycle, with label equal to key. Strict parsing rejects unknown, duplicate, empty, and unsupported parameters. Primary-database Read Committed transaction rechecks current admin session/roles after the query and commits its audit before any response data. Super-admin status does not grant report access. Export has no pagination parameters and fails above 10000 groups or 4MiB. CSV columns, in order: record_type, brand_id, snapshot_at, timezone, from, to, group_by, agent_id, member_id, cycle_id, key, label, entry_count, paid_entry_count, paid_points, adjustment_entry_count, adjustment_credit_points, adjustment_debit_points, net_points. It includes a UTF-8 BOM and formula-injection neutralization; negative net_points cells are apostrophe-prefixed for spreadsheet safety. A zero-group export contains its summary row and no group rows.",
+        "description": "Read-only immutable commission business-ledger posting report. It includes true paid-target and true adjustment postings exactly once, and retains past credit postings after later cycle blocking or correction. It is not a bet/cycle-period cohort, current wallet balance, forecast, or verified current earnings. It does not invent an allocation of rounded cycle points per lottery. Days use the selected brand IANA timezone; keys are YYYY-MM-DD for day and UUIDs for agent/cycle, with label equal to key. Strict parsing rejects unknown, duplicate, empty, and unsupported parameters. Primary-database Read Committed transaction rechecks current admin session/roles after the query and commits its audit before any response data. Super-admin status does not grant report access. Export has no pagination parameters and fails above 10000 groups or 4MiB. CSV format version 2 columns, in order: record_type, brand_id, snapshot_at, timezone, from, to, group_by, agent_id, member_id, cycle_id, key, label, entry_count, paid_entry_count, paid_points, adjustment_entry_count, adjustment_credit_points, adjustment_debit_points, correction_entry_count, correction_credit_points, correction_debit_points, net_points. It includes a UTF-8 BOM and formula-injection neutralization; negative net_points cells are apostrophe-prefixed for spreadsheet safety. A zero-group export contains its summary row and no group rows.",
         "security": [
           {
             "adminBearer": []
@@ -78039,7 +78041,7 @@
                 "description": "CSV layout version.",
                 "schema": {
                   "type": "string",
-                  "const": "1"
+                  "const": "2"
                 }
               },
               "X-Report-Audit-ID": {
@@ -103634,7 +103636,7 @@
           "zh-CN"
         ],
         "additionalProperties": false,
-        "description": "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; eighteen event templates require {points} in each language body, while member.joined forbids {points} in either body or title. Placeholder presence and UTF-8 byte limits are enforced by the handler. Withdrawal events describe historical internal points states, never proof of an external transfer."
+        "description": "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; nineteen event templates require {points} in each language body, while member.joined forbids {points} in either body or title. Placeholder presence and UTF-8 byte limits are enforced by the handler. Withdrawal events describe historical internal points states, never proof of an external transfer."
       },
       "LotteryNotificationTemplate": {
         "type": "object",
@@ -103652,6 +103654,7 @@
               "bet.order.prize_reversed",
               "bet.order.won",
               "commission.adjusted",
+              "commission.corrected",
               "commission.paid",
               "member.joined",
               "recharge.confirmed",
@@ -103745,6 +103748,7 @@
               "bet.order.prize_reversed",
               "bet.order.won",
               "commission.adjusted",
+              "commission.corrected",
               "commission.paid",
               "member.joined",
               "recharge.confirmed",
@@ -104524,6 +104528,7 @@
               "bet.order.prize_reversed",
               "bet.order.won",
               "commission.adjusted",
+              "commission.corrected",
               "commission.paid",
               "member.joined",
               "recharge.confirmed",
@@ -104548,6 +104553,7 @@
               "bet.order.prize_reversed",
               "bet.order.won",
               "commission.adjusted",
+              "commission.corrected",
               "commission.paid",
               "member.joined",
               "recharge.confirmed",
@@ -104704,6 +104710,16 @@
               {
                 "properties": {
                   "event_type": {
+                    "const": "commission.corrected"
+                  },
+                  "template_key": {
+                    "const": "commission.corrected"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "event_type": {
                     "const": "commission.paid"
                   },
                   "template_key": {
@@ -104836,6 +104852,7 @@
                     "withdrawal.order.reviewing",
                     "commission.paid",
                     "commission.adjusted",
+                    "commission.corrected",
                     "reward.order.granted",
                     "reward.order.revocation_pending",
                     "reward.order.revoked"
@@ -104942,7 +104959,10 @@
             "if": {
               "properties": {
                 "event_type": {
-                  "const": "commission.adjusted"
+                  "enum": [
+                    "commission.adjusted",
+                    "commission.corrected"
+                  ]
                 }
               }
             },
@@ -105001,7 +105021,7 @@
             ]
           }
         ],
-        "description": "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy non-withdrawal, non-commission, non-reward version 1 rows may have null content; withdrawal events, commission events, reward events and version 2 and later always include their copied content. Withdrawal, reward and commission.paid points are positive int64; commission.adjusted points are signed nonzero int64. Reward events retain a state-specific historical and nonfinancial disclaimer that template editing cannot remove. Updating a template never rewrites existing notifications."
+        "description": "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy non-withdrawal, non-commission, non-reward version 1 rows may have null content; withdrawal events, commission events, reward events and version 2 and later always include their copied content. Withdrawal, reward and commission.paid points are positive int64; commission.adjusted and commission.corrected points are signed nonzero int64. Reward events retain a state-specific historical and nonfinancial disclaimer that template editing cannot remove. Updating a template never rewrites existing notifications."
       },
       "LotteryAdminGamesPage": {
         "type": "object",
@@ -106762,6 +106782,21 @@
             "pattern": "^(0|[1-9][0-9]*)$",
             "description": "Exact nonnegative decimal integer string; never convert to a JavaScript Number."
           },
+          "correction_entry_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string; never convert to a JavaScript Number."
+          },
+          "correction_credit_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string; never convert to a JavaScript Number."
+          },
+          "correction_debit_points": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal integer string; never convert to a JavaScript Number."
+          },
           "net_points": {
             "type": "string",
             "pattern": "^(0|-?[1-9][0-9]*)$",
@@ -106775,10 +106810,13 @@
           "adjustment_entry_count",
           "adjustment_credit_points",
           "adjustment_debit_points",
+          "correction_entry_count",
+          "correction_credit_points",
+          "correction_debit_points",
           "net_points"
         ],
         "additionalProperties": false,
-        "description": "Immutable commission ledger postings by posting time, not bet/cycle cohort, current wallet, forecast, or verified current earnings. entry_count = paid_entry_count + adjustment_entry_count; net_points = paid_points + adjustment_credit_points - adjustment_debit_points. A period may contain a debit whose credit occurred earlier, so net_points may be negative."
+        "description": "Immutable commission ledger postings by posting time, not bet/cycle cohort, current wallet, forecast, or verified current earnings. entry_count = paid_entry_count + adjustment_entry_count + correction_entry_count; net_points = paid_points + adjustment_credit_points - adjustment_debit_points + correction_credit_points - correction_debit_points. Correction counts and point totals report actual historical ledger postings, not a plan or current wallet. A period may contain a debit whose credit occurred earlier, so net_points may be negative."
       },
       "CommissionReportGroup": {
         "type": "object",

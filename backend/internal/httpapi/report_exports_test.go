@@ -23,7 +23,11 @@ func checkExportBody(t *testing.T, w *httptest.ResponseRecorder, brand, kind str
 	t.Helper()
 	mustStatus(t, w, 200)
 	h := w.Header()
-	if h.Get("Content-Type") != "text/csv; charset=utf-8" || h.Get("Cache-Control") != "no-store" || h.Get("X-Report-Brand-ID") != brand || h.Get("X-Report-Kind") != kind || h.Get("X-Report-Format-Version") != "1" || !uuidPattern.MatchString(h.Get("X-Report-Audit-ID")) {
+	wantVersion := "1"
+	if kind == "commission" {
+		wantVersion = "2"
+	}
+	if h.Get("Content-Type") != "text/csv; charset=utf-8" || h.Get("Cache-Control") != "no-store" || h.Get("X-Report-Brand-ID") != brand || h.Get("X-Report-Kind") != kind || h.Get("X-Report-Format-Version") != wantVersion || !uuidPattern.MatchString(h.Get("X-Report-Audit-ID")) {
 		t.Fatal("bad export metadata", h)
 	}
 	if h.Get("Content-Length") != strconv.Itoa(w.Body.Len()) {

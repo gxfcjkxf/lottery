@@ -44,20 +44,24 @@ func TestCommissionReportHTTPAuthStrictQueryAndSummaryOnlyCSV(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if envelope.Data.BrandID != managedBrand || envelope.Data.Summary["entry_count"] != "0" || envelope.Data.Summary["net_points"] != "0" || len(envelope.Data.Items) != 0 || envelope.Data.Query.Limit != 20 || envelope.Data.Query.Offset != 0 || envelope.Data.Query.AgentID != nil {
+	if envelope.Data.BrandID != managedBrand || envelope.Data.Summary["entry_count"] != "0" || envelope.Data.Summary["correction_entry_count"] != "0" || envelope.Data.Summary["correction_credit_points"] != "0" || envelope.Data.Summary["correction_debit_points"] != "0" || envelope.Data.Summary["net_points"] != "0" || len(envelope.Data.Items) != 0 || envelope.Data.Query.Limit != 20 || envelope.Data.Query.Offset != 0 || envelope.Data.Query.AgentID != nil {
 		t.Fatalf("unexpected empty commission report: %+v", envelope.Data)
 	}
 
 	export := f.call("GET", csvURL, "", f.token, managedBrand, nil)
 	checkExportBody(t, export, managedBrand, "commission")
+	var exportFormatVersion string
+	if err := f.pool.QueryRow(context.Background(), `SELECT after_json->>'format_version' FROM audit_logs WHERE actor_id=$1 AND action='report.commission.export' ORDER BY created_at DESC LIMIT 1`, f.root).Scan(&exportFormatVersion); err != nil || exportFormatVersion != "2" {
+		t.Fatalf("commission export audit format version = %q, err=%v", exportFormatVersion, err)
+	}
 	if export.Header().Get("X-Report-Byte-Count") != export.Header().Get("Content-Length") || export.Header().Get("X-Report-Timezone") == "" {
 		t.Fatal("missing complete export metadata", export.Header())
 	}
 	rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(export.Body.String(), "\xef\xbb\xbf"))).ReadAll()
-	if err != nil || len(rows) != 2 || rows[1][0] != "summary" || rows[1][12] != "0" || rows[1][18] != "0" {
+	if err != nil || len(rows) != 2 || len(rows[0]) != 22 || rows[1][0] != "summary" || rows[1][12] != "0" || rows[1][18] != "0" || rows[1][19] != "0" || rows[1][20] != "0" || rows[1][21] != "0" {
 		t.Fatalf("empty export should contain header and summary only: rows=%d err=%v", len(rows), err)
 	}
-	if got := strings.Join(rows[0], ","); got != "record_type,brand_id,snapshot_at,timezone,from,to,group_by,agent_id,member_id,cycle_id,key,label,entry_count,paid_entry_count,paid_points,adjustment_entry_count,adjustment_credit_points,adjustment_debit_points,net_points" {
+	if got := strings.Join(rows[0], ","); got != "record_type,brand_id,snapshot_at,timezone,from,to,group_by,agent_id,member_id,cycle_id,key,label,entry_count,paid_entry_count,paid_points,adjustment_entry_count,adjustment_credit_points,adjustment_debit_points,correction_entry_count,correction_credit_points,correction_debit_points,net_points" {
 		t.Fatalf("CSV header drifted: %s", got)
 	}
 	for _, suffix := range []string{"&limit=20", "&offset=0"} {

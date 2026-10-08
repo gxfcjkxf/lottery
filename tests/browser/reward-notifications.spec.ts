@@ -17,7 +17,7 @@ test('real reward inbox preserves pending and reversal facts, template snapshots
  const {account}=await get<{account:{id:string}}>('/me');
  const registered=await data<{member:{id:string}}>(await page.request.post(user+'/auth/register',{headers:{Origin:userOrigin,'Idempotency-Key':crypto.randomUUID()},data:{username:`rwmsg_${info.project.name}_${crypto.randomUUID().replaceAll('-','').slice(0,6)}`,password:'owned-reward-notification-user-2026',privacy_policy_version:'dev-1',service_terms_version:'dev-1'}}),201);
  const member=registered.member.id;
- const templates=await get<{items:Array<{key:string;version:number;content:Content}>}>('/notification-templates');expect(templates.items).toHaveLength(19);
+ const templates=await get<{items:Array<{key:string;version:number;content:Content}>}>('/notification-templates');expect(templates.items).toHaveLength(20);
  const original=templates.items.find(item=>item.key==='reward.order.revocation_pending')!;expect(original).toBeTruthy();
  const copy:Content={en:{title:'Edited reward message',body:'Edited text says {points} points moved.'},'zh-CN':{title:'编辑的奖励消息',body:'编辑文本称 {points} 积分已移动。'}};
  const publish=async(content:Content,version:number)=>data<{version:number}>(await page.request.put(admin+'/notification-templates/reward.order.revocation_pending',{headers:{Origin:origin,'X-Brand-ID':brand,'Idempotency-Key':crypto.randomUUID()},data:{version,content,reason:'Owned synthetic test proves mandatory pending fact survives custom copy'}}));

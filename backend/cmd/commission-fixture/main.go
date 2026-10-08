@@ -274,6 +274,7 @@ func initialize(ctx context.Context, db *pgxpool.Pool, adminPassword, userPasswo
 		"commission.view.brand", "commission.run.brand", "commission.retry.brand",
 		"commission_payment.approve.brand", "commission_payment.retry.brand", "commission_payment_policy.write.brand", "commission_adjustment.write.brand",
 		"report_commission.view.brand", "report_commission.export.brand",
+		"notification_template.view.brand", "notification_template.write.brand",
 		"draw.view.brand", "draw.correct.brand", "settlement.view.brand", "wallet.freeze.brand",
 		"commission_correction_policy.write.brand", "commission_correction.retry.brand", "commission_correction.approve.brand", "commission_correction.continue.brand", "commission_correction.execute_retry.brand",
 	}

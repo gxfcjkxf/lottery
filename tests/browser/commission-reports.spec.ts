@@ -7,7 +7,7 @@ import {rememberAdminSession} from './support/admin-session';
 const origin=process.env.TEST_ADMIN_ORIGIN??'http://localhost:5174';
 const admin=`${origin}/api/v1/admin`,brand='0199a000-0000-7000-8000-000000000001';
 const fixture=process.env.COMMISSION_FIXTURE_BIN;
-const expected={entry_count:'4',paid_entry_count:'1',paid_points:'1',adjustment_entry_count:'3',adjustment_credit_points:'3',adjustment_debit_points:'4',net_points:'0'};
+const expected={entry_count:'4',paid_entry_count:'1',paid_points:'1',adjustment_entry_count:'3',adjustment_credit_points:'3',adjustment_debit_points:'4',correction_entry_count:'0',correction_credit_points:'0',correction_debit_points:'0',net_points:'0'};
 async function data<T>(r:Pick<APIResponse,'text'|'status'>):Promise<T>{const text=await r.text();expect(r.status(),text).toBe(200);const e=JSON.parse(text);expect(e.success).toBe(true);return e.data as T;}
 function verify(){return JSON.parse(execFileSync(fixture!,['verify'],{env:process.env,encoding:'utf8',timeout:30_000})) as {commission_ledger_entries:number;commission_wallet_points:number;economic_fingerprint:string};}
 async function navigate(page:Page,project:string){
@@ -31,7 +31,7 @@ test('actual commission posting report filters saved beneficiaries and validates
   const query=page.waitForResponse(r=>r.request().method()==='GET'&&r.url().startsWith(`${admin}/reports/commission?`));
   await panel.getByTestId('commission-report-query').click();const report=await data<{summary:typeof expected;total_groups:string;items:Array<{key:string}>;query:{from:string;to:string}}>(await query);
   expect(report.summary).toEqual(expected);expect(report.total_groups).toBe('1');expect(report.items[0]?.key).toBe(target.agent_id);
-  await expect(panel.getByTestId('commission-report-summary').locator('strong')).toHaveText(['4','1','1','3','3','4','0']);
+  await expect(panel.getByTestId('commission-report-summary').locator('strong')).toHaveText(['4','1','1','3','3','4','0','0','0','0']);
   await panel.getByLabel('代理 UUID',{exact:true}).fill(target.agent_id);await panel.getByLabel('会员 UUID',{exact:true}).fill(target.member_id);await panel.getByLabel('周期 UUID',{exact:true}).fill(payment.cycle_id);await panel.getByTestId('commission-report-group').selectOption('cycle');
   const filteredResponse=page.waitForResponse(r=>r.request().method()==='GET'&&r.url().startsWith(`${admin}/reports/commission?`));await panel.getByTestId('commission-report-query').click();
   const filtered=await data<{summary:typeof expected;items:Array<{key:string}>;query:{from:string;to:string;agent_id:string;member_id:string;cycle_id:string}}>(await filteredResponse);
@@ -42,10 +42,11 @@ test('actual commission posting report filters saved beneficiaries and validates
   const csvResponse=page.waitForResponse(r=>r.request().method()==='GET'&&r.url().startsWith(`${admin}/reports/commission.csv?`));
   const download=page.waitForEvent('download');await panel.getByTestId('commission-report-export').click();
   const csv=await csvResponse;expect(csv.status(),await csv.text()).toBe(200);
+  expect(csv.headers()['x-report-format-version']).toBe('2');
   expect(new URL(csv.url()).searchParams.get('agent_id')).toBe(target.agent_id);expect(new URL(csv.url()).searchParams.has('limit')).toBe(false);
   const file=await download,filePath=await file.path();expect(filePath).toBeTruthy();const bytes=readFileSync(filePath!);
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(csv.headers()['x-report-sha256']);expect(String(bytes.length)).toBe(csv.headers()['x-report-byte-count']);expect(csv.headers()['x-report-group-count']).toBe('1');expect(bytes.subarray(0,3)).toEqual(Buffer.from([0xef,0xbb,0xbf]));
-  expect(bytes.toString('utf8')).toContain('record_type,brand_id,snapshot_at,timezone,from,to,group_by,agent_id,member_id,cycle_id,key,label,entry_count,paid_entry_count,paid_points,adjustment_entry_count,adjustment_credit_points,adjustment_debit_points,net_points');
+  expect(bytes.toString('utf8')).toContain('record_type,brand_id,snapshot_at,timezone,from,to,group_by,agent_id,member_id,cycle_id,key,label,entry_count,paid_entry_count,paid_points,adjustment_entry_count,adjustment_credit_points,adjustment_debit_points,correction_entry_count,correction_credit_points,correction_debit_points,net_points');
   expect(bytes.toString('utf8').split('\n').filter(line=>line.startsWith('group,'))).toHaveLength(1);
   // A posting window containing only the last clawback has negative net
   // movement. This is not a negative commission calculation or wallet.

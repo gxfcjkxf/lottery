@@ -14,12 +14,14 @@ var commissionCSVFields = []string{
 	"record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by",
 	"agent_id", "member_id", "cycle_id", "key", "label",
 	"entry_count", "paid_entry_count", "paid_points", "adjustment_entry_count",
-	"adjustment_credit_points", "adjustment_debit_points", "net_points",
+	"adjustment_credit_points", "adjustment_debit_points", "correction_entry_count",
+	"correction_credit_points", "correction_debit_points", "net_points",
 }
 
 func commissionCSVValues(v CommissionTotals) []string {
 	return []string{v.EntryCount, v.PaidEntryCount, v.PaidPoints, v.AdjustmentEntryCount,
-		v.AdjustmentCreditPoints, v.AdjustmentDebitPoints, v.NetPoints}
+		v.AdjustmentCreditPoints, v.AdjustmentDebitPoints, v.CorrectionEntryCount,
+		v.CorrectionCreditPoints, v.CorrectionDebitPoints, v.NetPoints}
 }
 
 func validCommissionTotals(v CommissionTotals) bool {
@@ -30,14 +32,17 @@ func validCommissionTotals(v CommissionTotals) bool {
 	entries, _ := new(big.Int).SetString(v.EntryCount, 10)
 	paidEntries, _ := new(big.Int).SetString(v.PaidEntryCount, 10)
 	adjustments, _ := new(big.Int).SetString(v.AdjustmentEntryCount, 10)
-	if entries.Cmp(new(big.Int).Add(paidEntries, adjustments)) != 0 {
+	corrections, _ := new(big.Int).SetString(v.CorrectionEntryCount, 10)
+	if entries.Cmp(new(big.Int).Add(new(big.Int).Add(paidEntries, adjustments), corrections)) != 0 {
 		return false
 	}
 	paid, _ := new(big.Int).SetString(v.PaidPoints, 10)
 	credit, _ := new(big.Int).SetString(v.AdjustmentCreditPoints, 10)
 	debit, _ := new(big.Int).SetString(v.AdjustmentDebitPoints, 10)
+	correctionCredit, _ := new(big.Int).SetString(v.CorrectionCreditPoints, 10)
+	correctionDebit, _ := new(big.Int).SetString(v.CorrectionDebitPoints, 10)
 	net, _ := new(big.Int).SetString(v.NetPoints, 10)
-	return net.Cmp(new(big.Int).Sub(new(big.Int).Add(paid, credit), debit)) == 0
+	return net.Cmp(new(big.Int).Sub(new(big.Int).Add(new(big.Int).Add(paid, credit), correctionCredit), new(big.Int).Add(debit, correctionDebit))) == 0
 }
 
 func validCommissionGroup(q CommissionQuery, item Group[CommissionTotals]) bool {

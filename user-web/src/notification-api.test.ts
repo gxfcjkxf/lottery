@@ -192,11 +192,11 @@ describe("user notification API", () => {
     }
   });
 
-  it("accepts signed nonzero commission adjustment points but rejects noncanonical values", async () => {
+  it.each(["commission.adjusted", "commission.corrected"] as const)("accepts signed nonzero %s points but rejects noncanonical values", async (event) => {
     const adjusted = {
       ...joined,
-      event_type: "commission.adjusted",
-      template_key: "commission.adjusted",
+      event_type: event,
+      template_key: event,
       template_version: 2,
       content: {
         en: { title: "Commission adjustment recorded", body: "Historical adjustment: {points}." },
@@ -215,14 +215,38 @@ describe("user notification API", () => {
     }
   });
 
+  it("exposes only the correction target UUID and signed points for commission.corrected", async () => {
+    const corrected = {
+      ...joined,
+      event_type: "commission.corrected",
+      template_key: "commission.corrected",
+      template_version: 1,
+      content: {
+        en: { title: "Commission correction recorded", body: "Historical correction: {points}." },
+        "zh-CN": { title: "佣金更正记录", body: "历史更正：{points}。" },
+      },
+      payload: { resource_id: resourceId, points: "-1" },
+    };
+    const privateFields = ["member_id", "ledger_entry_id", "target_id", "audit_log_id", "version"];
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (_input, _init) => {
+      const field = privateFields.shift();
+      return ok(page({ items: [{ ...corrected, payload: field ? { ...corrected.payload, [field]: resourceId } : corrected.payload }] }));
+    });
+    const api = createNotificationApi({ fetch: fetcher });
+    for (let index = 0; index < 5; index++) {
+      await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
+    }
+    await expect(api.list()).resolves.toMatchObject({ items: [{ payload: { resource_id: resourceId, points: "-1" } }] });
+  });
+
   it("never treats commission messages as legacy snapshotless v1 records", async () => {
-    const variants = ["commission.paid", "commission.adjusted"].flatMap(event => [null, undefined].map(content => ({
+    const variants = ["commission.paid", "commission.adjusted", "commission.corrected"].flatMap(event => [null, undefined].map(content => ({
       ...joined, event_type: event, template_key: event, template_version: 1, content,
       payload: { resource_id: resourceId, points: event === "commission.paid" ? "1" : "-1" },
     })));
     const fetcher = vi.fn<typeof fetch>(async () => ok(page({ items: [variants.shift()] })));
     const api = createNotificationApi({ fetch: fetcher });
-    for (let i = 0; i < 4; i++) await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
+    for (let i = 0; i < 6; i++) await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
   });
 
   it("accepts six withdrawal snapshot events with positive int64 points and rejects missing or private facts", async () => {

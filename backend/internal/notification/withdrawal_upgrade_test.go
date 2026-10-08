@@ -55,7 +55,7 @@ func TestWithdrawalMigrationPreservesExistingCopyHistoryAndInbox(t *testing.T) {
 		t.Fatal("upgrade rewrote existing facts", err)
 	}
 	templates, err := s.Templates(ctx, brand)
-	if err != nil || len(templates) != 19 {
+	if err != nil || len(templates) != 20 {
 		t.Fatal(len(templates), err)
 	}
 	var count int
@@ -67,7 +67,7 @@ func TestWithdrawalMigrationPreservesExistingCopyHistoryAndInbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	templates, err = s.Templates(ctx, newBrand)
-	if err != nil || len(templates) != 19 {
+	if err != nil || len(templates) != 20 {
 		t.Fatal("new brand defaults", len(templates), err)
 	}
 }

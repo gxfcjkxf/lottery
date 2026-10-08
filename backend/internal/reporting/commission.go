@@ -47,6 +47,9 @@ type CommissionTotals struct {
 	AdjustmentEntryCount   string `json:"adjustment_entry_count"`
 	AdjustmentCreditPoints string `json:"adjustment_credit_points"`
 	AdjustmentDebitPoints  string `json:"adjustment_debit_points"`
+	CorrectionEntryCount   string `json:"correction_entry_count"`
+	CorrectionCreditPoints string `json:"correction_credit_points"`
+	CorrectionDebitPoints  string `json:"correction_debit_points"`
 	NetPoints              string `json:"net_points"`
 }
 type CommissionReport struct {
@@ -66,6 +69,9 @@ var commissionAggregates = []aggregate{
 	{"adjustment_entry_count", "count(*) FILTER(WHERE kind='adjustment')"},
 	{"adjustment_credit_points", "coalesce(sum(greatest(delta_points,0)) FILTER(WHERE kind='adjustment'),0)"},
 	{"adjustment_debit_points", "coalesce(sum(greatest(-delta_points,0)) FILTER(WHERE kind='adjustment'),0)"},
+	{"correction_entry_count", "count(*) FILTER(WHERE kind='correction')"},
+	{"correction_credit_points", "coalesce(sum(greatest(delta_points,0)) FILTER(WHERE kind='correction'),0)"},
+	{"correction_debit_points", "coalesce(sum(greatest(-delta_points,0)) FILTER(WHERE kind='correction'),0)"},
 	{"net_points", "coalesce(sum(delta_points),0)"},
 }
 
@@ -122,7 +128,16 @@ func (s Service) commission(ctx context.Context, runner rowQuerier, brand string
  JOIN commission_payment_targets t ON t.brand_id=a.brand_id AND t.id=a.target_id
  JOIN commission_payments p ON p.brand_id=a.brand_id AND p.id=a.payment_id
  WHERE l.brand_id=$1 AND l.created_at >= $2 AND l.created_at < $3
- AND l.member_id=t.member_id AND l.entry_type='commission_adjustment' AND l.reference_type='commission_adjustment' AND l.reference_id=a.id),
+ AND l.member_id=t.member_id AND l.entry_type='commission_adjustment' AND l.reference_type='commission_adjustment' AND l.reference_id=a.id
+ UNION ALL
+ SELECT l.id,l.created_at,t.agent_id,t.member_id,x.cycle_id,'correction'::text,t.delta_points::numeric
+ FROM commission_correction_execution_targets t
+ JOIN commission_correction_executions x ON x.brand_id=t.brand_id AND x.cycle_id=t.cycle_id AND x.id=t.execution_id
+ JOIN point_ledger_entries l ON l.brand_id=t.brand_id AND l.id=t.ledger_entry_id
+ WHERE t.brand_id=$1 AND t.state='applied' AND t.delta_points<>0
+ AND l.created_at >= $2 AND l.created_at < $3 AND l.member_id=t.member_id
+ AND l.entry_type='commission_correction' AND l.reference_type='commission_correction_target' AND l.reference_id=t.id
+ AND (l.delta_snapshot->'commission'->>'available')::numeric=t.delta_points::numeric),
  base AS (SELECT f.*,` + key + ` AS key,` + label + ` AS label FROM facts f JOIN scope b ON true
  WHERE ($4::uuid IS NULL OR f.agent_id=$4) AND ($5::uuid IS NULL OR f.member_id=$5) AND ($6::uuid IS NULL OR f.cycle_id=$6)),
  grouped AS (SELECT key,label,` + agg + ` AS totals FROM base GROUP BY key,label),

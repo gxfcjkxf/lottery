@@ -230,7 +230,7 @@ func commissionReportRead(w http.ResponseWriter, r *http.Request, d Dependencies
 		}
 		sum := sha256.Sum256(body)
 		digest = hex.EncodeToString(sum[:])
-		auditID, err = audit.Append(r.Context(), tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: fresh.ID, Action: "report.commission.export", ResourceType: "report_export", RequestID: requestID(r), IP: meta(r).IP, After: map[string]any{"format": "csv", "format_version": 1, "kind": "commission", "query": q, "snapshot_at": snapshot.UTC(), "timezone": timezone, "group_count": groups, "byte_count": len(body), "sha256": digest}})
+		auditID, err = audit.Append(r.Context(), tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: fresh.ID, Action: "report.commission.export", ResourceType: "report_export", RequestID: requestID(r), IP: meta(r).IP, After: map[string]any{"format": "csv", "format_version": 2, "kind": "commission", "query": q, "snapshot_at": snapshot.UTC(), "timezone": timezone, "group_count": groups, "byte_count": len(body), "sha256": digest}})
 	} else {
 		auditID, err = audit.Append(r.Context(), tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: fresh.ID, Action: "report.commission.view", ResourceType: "query", RequestID: requestID(r), IP: meta(r).IP, After: map[string]any{"query": q}})
 	}
@@ -257,7 +257,7 @@ func commissionReportRead(w http.ResponseWriter, r *http.Request, d Dependencies
 	w.Header().Set("X-Report-Group-Count", groups)
 	w.Header().Set("X-Report-Byte-Count", strconv.Itoa(len(body)))
 	w.Header().Set("X-Report-SHA256", digest)
-	w.Header().Set("X-Report-Format-Version", "1")
+	w.Header().Set("X-Report-Format-Version", "2")
 	w.Header().Set("X-Report-Audit-ID", auditID)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)

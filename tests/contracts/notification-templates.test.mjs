@@ -20,7 +20,7 @@ const notificationKeys=[
   "withdrawal.order.reviewing","withdrawal.order.processing","withdrawal.order.paid",
   "withdrawal.order.rejected","withdrawal.order.failed","withdrawal.order.cancelled",
   "reward.order.granted","reward.order.revocation_pending","reward.order.revoked",
-  "commission.paid","commission.adjusted",
+  "commission.paid","commission.adjusted","commission.corrected",
 ];
 const content=(title="Notice",body="Update {points} points.")=>({
   en:{title,body},"zh-CN":{title:"通知",body:"更新 {points} 积分。"},
@@ -58,7 +58,7 @@ test("all notification template components compile and routes match the implemen
   assert.deepEqual(schemas.LotteryNotificationTemplate.properties.key.enum,[...notificationKeys].sort());
 });
 
-test("the actual backend JSON preserves the sixteen previous defaults and contains exactly nineteen keys",()=>{
+test("the actual backend JSON preserves the previous defaults and contains exactly twenty keys",()=>{
   assert.deepEqual(Object.keys(defaults).sort(),[...notificationKeys].sort());
   const legacy={
     "member.joined":{en:{title:"Welcome",body:"Your membership is ready. Welcome aboard."},"zh-CN":{title:"欢迎",body:"您的会员账户已准备就绪，欢迎加入。"}},
@@ -79,6 +79,10 @@ test("the actual backend JSON preserves the sixteen previous defaults and contai
     en:{title:"Commission adjustment recorded",body:"Historical record: a commission adjustment of {points} points was recorded. This records a past adjustment, not new income or an external payment forecast. Check your current wallet balance; this record is retained."},
     "zh-CN":{title:"佣金调整记录",body:"历史记录：曾调整 {points} 积分。此记录表示过去的调整，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。"},
   });
+  assert.deepEqual(defaults["commission.corrected"],{
+    en:{title:"Commission correction recorded",body:"Historical record: a commission correction of {points} points was posted to your commission available balance. Positive points record a past additional credit; negative points record a past recovery. This is not your current balance, new income or an external payment. Check your current wallet; this record is retained."},
+    "zh-CN":{title:"佣金更正记录",body:"历史记录：佣金可用积分曾发生 {points} 积分更正。正数表示过去的补发，负数表示过去的追回；不代表当前余额、新收入或外部付款。请查看当前钱包；此记录会保留。"},
+  });
   const states={reviewing:"审核中",processing:"提现中",paid:"已提现",rejected:"已驳回",failed:"失败",cancelled:"已取消"};
   for(const [state,stateZh] of Object.entries(states)){
     const entry=defaults[`withdrawal.order.${state}`];
@@ -88,6 +92,21 @@ test("the actual backend JSON preserves the sixteen previous defaults and contai
     });
   }
   for(const key of notificationKeys.slice(0,8))assert.ok(defaults[key],`preserved legacy default ${key}`);
+});
+
+test("SQL 0060 adds the corrected default and guards only real applied correction targets",()=>{
+  const migration=readFileSync(new URL("../../backend/migrations/0060_commission_correction_notifications.up.sql",import.meta.url),"utf8");
+  const literal=/defaults\s*:=\s*notification_template_defaults\(\)\s*\|\|\s*'((?:[^']|'')*)'::jsonb/.exec(migration);
+  assert.ok(literal,"SQL 0060 must extend the existing defaults with a JSON literal");
+  const sqlDefaults=JSON.parse(literal[1].replaceAll("''","'"));
+  assert.deepEqual(sqlDefaults,{"commission.corrected":defaults["commission.corrected"]});
+  assert.match(migration,/CREATE UNIQUE INDEX commission_correction_notification_once[\s\S]*?WHERE event_type='commission\.corrected'/);
+  assert.match(migration,/CREATE TRIGGER commission_correction_notification AFTER UPDATE ON commission_correction_execution_targets/);
+  assert.match(migration,/OLD\.state='pending' AND NEW\.state='applied' AND NEW\.delta_points<>0/);
+  assert.match(migration,/CREATE CONSTRAINT TRIGGER commission_correction_notification_commit AFTER UPDATE[\s\S]*?DEFERRABLE INITIALLY DEFERRED/);
+  assert.match(migration,/CREATE TRIGGER guarded_commission_correction_notification_outbox BEFORE INSERT OR UPDATE OR DELETE ON outbox_events/);
+  assert.match(migration,/to_jsonb\(NEW\)-'published_at'[\s\S]*?correction notification event immutable except published_at/);
+  assert.match(migration,/resource_id',NEW\.id::text/);
 });
 
 test("actual backend JSON and SQL 0056 each contain three reward defaults with the required historical meaning",()=>{
@@ -189,8 +208,19 @@ test("commission notifications expose only resource and signed point facts",()=>
   for(const points of ["0","-0","+1","01","-01","9223372036854775808","-9223372036854775809"]){
     assert.ok(!check({...adjusted,payload:{...adjusted.payload,points}}),`accepted invalid signed amount ${points}`);
   }
+  const corrected={...adjusted,event_type:"commission.corrected",template_key:"commission.corrected",content:content("Commission correction recorded","Historical correction: {points}."),payload:{resource_id:id,points:"-1"}};
+  assert.ok(check(corrected),JSON.stringify(check.errors));
+  assert.ok(check({...corrected,payload:{...corrected.payload,points:"9223372036854775807"}}));
+  assert.ok(!check({...corrected,payload:{...corrected.payload,resource_id:"correction-id"}}));
+  for(const field of ["member_id","ledger_entry_id","target_id","audit_log_id","version"]){
+    assert.ok(!check({...corrected,payload:{...corrected.payload,[field]:id}}),`commission.corrected exposes private ${field}`);
+  }
+  for(const points of ["0","-0","+1","01","-01","9223372036854775808","-9223372036854775809"]){
+    assert.ok(!check({...corrected,payload:{...corrected.payload,points}}),`corrected accepted invalid signed amount ${points}`);
+  }
   assert.ok(!check({...adjusted,payload:{...adjusted.payload,created_by:id}}));
-  for (const row of [paid, adjusted]) assert.ok(!check({...row,template_version:1,content:null}), `${row.event_type} is never a legacy snapshotless record`);
+  assert.ok(!check({...corrected,payload:{...corrected.payload,target_id:id}}));
+  for (const row of [paid, adjusted, corrected]) assert.ok(!check({...row,template_version:1,content:null}), `${row.event_type} is never a legacy snapshotless record`);
 });
 
 test("reward notifications require frozen content and expose only UUID plus positive int64 points",()=>{
@@ -217,7 +247,7 @@ test("template copy schemas reject unknown placeholders and private fields",()=>
 
   const joined={en:{title:"Welcome",body:"Membership ready."},"zh-CN":{title:"欢迎",body:"会员已就绪。"}};
   assert.ok(check(joined),JSON.stringify(check.errors));
-  assert.match(schemas.LotteryNotificationTemplateContent.description,/eighteen event templates require \{points\} in each language body/);
+  assert.match(schemas.LotteryNotificationTemplateContent.description,/nineteen event templates require \{points\} in each language body/);
   assert.match(schemas.LotteryNotificationTemplateCopy.properties.title.description,/120 UTF-8 bytes/);
   assert.match(schemas.LotteryNotificationTemplateCopy.properties.body.description,/1200 UTF-8 bytes/);
 });

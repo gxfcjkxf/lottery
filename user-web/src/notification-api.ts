@@ -14,6 +14,7 @@ export type NotificationEventType =
   | "reward.order.revoked"
   | "commission.paid"
   | "commission.adjusted"
+  | "commission.corrected"
   | "withdrawal.order.reviewing"
   | "withdrawal.order.processing"
   | "withdrawal.order.paid"
@@ -99,6 +100,7 @@ const EVENT_TYPES = new Set<NotificationEventType>([
   "reward.order.revoked",
   "commission.paid",
   "commission.adjusted",
+  "commission.corrected",
   "withdrawal.order.reviewing",
   "withdrawal.order.processing",
   "withdrawal.order.paid",
@@ -291,14 +293,14 @@ function parseNotification(value: unknown): NotificationItem {
     }
     points = null;
   } else {
-    if (eventType === "commission.adjusted") {
+    if (eventType === "commission.adjusted" || eventType === "commission.corrected") {
       if (typeof payload.points !== "string" || !SIGNED_NONZERO_INT64.test(payload.points)) {
-        return malformed("commission.adjusted points must be a canonical signed nonzero int64 string");
+        return malformed(`${eventType} points must be a canonical signed nonzero int64 string`);
       }
       const digits = payload.points.startsWith("-") ? payload.points.slice(1) : payload.points;
       const limit = payload.points.startsWith("-") ? MAX_NEGATIVE_INT64 : MAX_INT64;
       if (digits.length > limit.length || (digits.length === limit.length && digits > limit)) {
-        return malformed("commission.adjusted points exceed int64 range");
+        return malformed(`${eventType} points exceed int64 range`);
       }
       points = payload.points;
     } else {

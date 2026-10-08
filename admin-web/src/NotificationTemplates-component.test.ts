@@ -82,7 +82,7 @@ function mount() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("NotificationTemplates commission history", () => {
-  it("lists exactly nineteen template keys and keeps bilingual commission facts fixed beside editable copy", async () => {
+  it("lists exactly twenty template keys and keeps bilingual commission facts fixed beside editable copy", async () => {
     vi.stubGlobal("Document", class {});
     vi.stubGlobal("ShadowRoot", class {});
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).includes("/history?") ? response({ items: [] }) : response({ items: templates() }));
@@ -92,7 +92,7 @@ describe("NotificationTemplates commission history", () => {
     const select = find(mounted.root, (node) => node.props.id === "nt-key");
     expect(select?.options.filter((option) => option.value !== "").map((option) => option.value).sort()).toEqual([
       "bet.order.abnormal", "bet.order.cancelled", "bet.order.judged_cancelled", "bet.order.placed",
-      "bet.order.prize_reversed", "bet.order.won", "commission.adjusted", "commission.paid",
+      "bet.order.prize_reversed", "bet.order.won", "commission.adjusted", "commission.corrected", "commission.paid",
       "member.joined", "recharge.confirmed", "reward.order.granted", "reward.order.revocation_pending",
       "reward.order.revoked", "withdrawal.order.cancelled", "withdrawal.order.failed", "withdrawal.order.paid",
       "withdrawal.order.processing", "withdrawal.order.rejected", "withdrawal.order.reviewing",
@@ -101,6 +101,7 @@ describe("NotificationTemplates commission history", () => {
     for (const [key, en, zh] of [
       ["commission.paid", "not a new income forecast or an external payment", "不是新收入预测或外部付款承诺"],
       ["commission.adjusted", "signed commission adjustment", "带正负方向的佣金调整"],
+      ["commission.corrected", "past additional credit or recovery", "过去的补发或追回"],
     ] as const) {
       (select?.props.onChange as ((event: { target: { value: string } }) => void) | undefined)?.({ target: { value: key } });
       await flush();

@@ -305,8 +305,8 @@ func correctionExecutionOriginalSnapshot(t *testing.T, f commissionBatchFixture,
 	 coalesce((SELECT jsonb_agg(to_jsonb(h) ORDER BY h.target_id)::text FROM commission_adjustment_heads h WHERE h.brand_id=$1),'[]'),
 	 coalesce((SELECT jsonb_agg(to_jsonb(c) ORDER BY c.id)::text FROM commission_calculations c WHERE c.brand_id=$1),'[]'),
 	 coalesce((SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id)::text FROM commission_earnings e WHERE e.brand_id=$1),'[]'),
-	 coalesce((SELECT jsonb_agg(to_jsonb(o) ORDER BY o.id)::text FROM outbox_events o WHERE o.brand_id=$1),'[]'),
-	 coalesce((SELECT jsonb_agg(to_jsonb(d) ORDER BY d.event_id)::text FROM notification_deliveries d WHERE d.brand_id=$1),'[]')`, f.betting.brand, paymentID).
+	 coalesce((SELECT jsonb_agg(to_jsonb(o) ORDER BY o.id)::text FROM outbox_events o WHERE o.brand_id=$1 AND o.event_type<>'commission.corrected'),'[]'),
+	 coalesce((SELECT jsonb_agg(to_jsonb(d) ORDER BY d.event_id)::text FROM notification_deliveries d JOIN outbox_events e ON e.id=d.event_id WHERE d.brand_id=$1 AND e.event_type<>'commission.corrected'),'[]')`, f.betting.brand, paymentID).
 		Scan(&out.Payment, &out.Targets, &out.OriginalLedgers, &out.AdjustmentHeads, &out.Calculations, &out.Earnings, &out.Outbox, &out.Deliveries)
 	if err != nil {
 		t.Fatal(err)
@@ -542,6 +542,8 @@ func TestCommissionCorrectionExecutionPartialOriginalPaymentCarriesActualHeadsAc
 	if execution = correctionExecutionRead(t, f, execution.ID); execution.State != commission.CorrectionExecutionApplying || execution.AppliedCount != "2" || execution.AppliedCreditPoints != "1" || execution.AppliedDebitPoints != "0" || appliedRoot == nil || appliedRoot.DeltaPoints != 0 || appliedChild == nil || appliedChild.DeltaPoints != 1 || appliedChild.PointsBefore != 0 || appliedChild.PointsAfter != 1 || appliedChild.LedgerEntryID == nil || appliedChild.FinancialVersion == nil || *appliedChild.FinancialVersion != 1 {
 		t.Fatalf("partial actual application duplicated root or omitted child credit: execution=%+v targets=%+v", execution, secondTargets.Items)
 	}
+	assertActualCorrectionEvent(t, f, *appliedRoot)
+	assertActualCorrectionEvent(t, f, *appliedChild)
 	if rootWallet := commissionWalletBySource(t, f, f.node.MemberID); rootWallet[3][0] != 3 {
 		t.Fatalf("child credit duplicated root's original three points: %+v", rootWallet)
 	}
@@ -562,6 +564,7 @@ func TestCommissionCorrectionExecutionPartialOriginalPaymentCarriesActualHeadsAc
 	if stale.State != commission.CorrectionExecutionStale || stale.AppliedCount != "2" || stale.AppliedCreditPoints != "1" || stale.AppliedDebitPoints != "0" {
 		t.Fatalf("staling erased already-applied partial correction history: %+v", stale)
 	}
+	assertActualCorrectionEvent(t, f, *appliedChild)
 	staleTargets := correctionExecutionTargetsRead(t, f, stale.ID)
 	if staleTargets.TotalCount != "2" || len(staleTargets.Items) != 2 {
 		t.Fatalf("staling removed actual zero/+1 target history: %+v", staleTargets)

@@ -15,8 +15,14 @@ test('commission correction CI uses isolated viewport databases and real no-retr
   assert.match(job, /stats\.expected > 0/);
   assert.doesNotMatch(job, /\.\/bin\/platform worker/);
   const spec = readFileSync(new URL('../browser/commission-corrections.spec.ts', import.meta.url), 'utf8');
-  for (const operation of ['prepare-corrections', 'execute-corrections', 'freeze-corrections', 'unfreeze-corrections', 'verify-corrections']) assert.ok(spec.includes(operation));
+  for (const operation of ['prepare-corrections', 'execute-corrections', 'freeze-corrections', 'unfreeze-corrections', 'verify-corrections', 'notify']) assert.ok(spec.includes(operation));
   assert.match(spec, /x-commission-correction-actor-id/);
   assert.match(spec, /expect\(writes\[1\]\)\.toEqual\(writes\[0\]\)/);
   assert.match(spec, /economic_fingerprint/);
+  assert.match(spec, /commission-report-export/);
+  assert.match(spec, /x-report-format-version/);
+  assert.match(spec, /commission\.corrected/);
+  assert.match(spec, /negative points record a past recovery/);
+  assert.match(spec, /messages\)\.toHaveLength\(1\)/);
+  assert.match(spec, /items\.find\(item => item\.id === message\.id\)\)\.toEqual\(message\)/);
 });

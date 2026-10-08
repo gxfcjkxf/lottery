@@ -20,6 +20,7 @@ import (
 )
 
 var rewardUpgradeKeys = []string{"reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked"}
+var latestAddedTemplateKeys = []string{"reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked", "commission.corrected"}
 
 type rewardUpgradeWitness struct {
 	actionID string
@@ -166,10 +167,10 @@ func TestRewardNotificationUpgradePreserves0055HistoryAndRejectsTemporarySpoofs(
 	}
 	rewardUpgradeSame(t, before, rewardUpgradeFingerprint(t, db, true), "0056 changed existing facts")
 	var defaultsAfter, functionOIDAfter string
-	if err = db.QueryRow(ctx, `SELECT (notification_template_defaults()-$1::text[])::text,
+	if err = db.QueryRow(ctx, `SELECT (notification_template_defaults()-$1::text[]-'commission.corrected')::text,
  to_regprocedure('notification_template_defaults()')::oid::text,
  (SELECT count(*) FROM jsonb_object_keys(notification_template_defaults()))`, rewardUpgradeKeys).
-		Scan(&defaultsAfter, &functionOIDAfter, &defaultCount); err != nil || defaultsAfter != oldDefaults || functionOIDAfter != oldFunctionOID || defaultCount != 19 {
+		Scan(&defaultsAfter, &functionOIDAfter, &defaultCount); err != nil || defaultsAfter != oldDefaults || functionOIDAfter != oldFunctionOID || defaultCount != 20 {
 		t.Fatalf("0056 changed prior defaults/OID or failed to add three: count=%d OID=%s/%s defaultsEqual=%t err=%v", defaultCount, oldFunctionOID, functionOIDAfter, defaultsAfter == oldDefaults, err)
 	}
 	for _, id := range oldBrands {
@@ -177,7 +178,7 @@ func TestRewardNotificationUpgradePreserves0055HistoryAndRejectsTemporarySpoofs(
 		if id == brand {
 			oldRevisions++
 		}
-		rewardUpgradeCounts(t, db, id, 19, oldRevisions+3)
+		rewardUpgradeCounts(t, db, id, 20, oldRevisions+4)
 		var templates, revisions int
 		if err = db.QueryRow(ctx, `SELECT
  (SELECT count(*) FROM notification_templates WHERE brand_id=$1 AND template_key=ANY($2::text[]) AND version=1 AND content=notification_template_defaults()->template_key),
@@ -203,7 +204,7 @@ func TestRewardNotificationUpgradePreserves0055HistoryAndRejectsTemporarySpoofs(
 	if _, err = db.Exec(ctx, `INSERT INTO brands(id,code,name,status) VALUES($1,$2,'After reward notifications','paused')`, newBrand, "reward_new_"+newBrand[24:]); err != nil {
 		t.Fatal(err)
 	}
-	rewardUpgradeCounts(t, db, newBrand, 19, 19)
+	rewardUpgradeCounts(t, db, newBrand, 20, 20)
 	for _, w := range witnesses {
 		tx = rewardUpgradeTx(t, db)
 		var valid, oldAction bool
@@ -321,7 +322,7 @@ func rewardUpgradeFingerprint(t *testing.T, q rowQuery, excludeNewDefaults bool)
 		filter := ""
 		var args []any
 		if excludeNewDefaults && (table.name == "notification_templates" || table.name == "notification_template_revisions") {
-			filter, args = " WHERE template_key<>ALL($1::text[])", []any{rewardUpgradeKeys}
+			filter, args = " WHERE template_key<>ALL($1::text[])", []any{latestAddedTemplateKeys}
 		}
 		query := fmt.Sprintf(`SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY %s),'[]'::jsonb)::text FROM %s r%s`, table.order, pgx.Identifier{table.name}.Sanitize(), filter)
 		var fingerprint string
@@ -368,7 +369,7 @@ func rewardUpgradeNoBackfill(t *testing.T, q rowQuery, oldOrders []string) {
 
 func rewardUpgradePinnedFunctions(t *testing.T, db *pgxpool.Pool, schema string) {
 	t.Helper()
-	wanted := []string{"notification_template_defaults", "enqueue_in_app_event", "valid_reward_notification_event", "guard_reward_notification_outbox", "emit_reward_notification", "require_reward_notification_commit"}
+	wanted := []string{"notification_template_defaults", "enqueue_in_app_event", "valid_reward_notification_event", "guard_reward_notification_outbox", "emit_reward_notification", "require_reward_notification_commit", "valid_commission_correction_notification_event", "guard_commission_correction_notification_outbox", "emit_commission_correction_notification", "require_commission_correction_notification_commit"}
 	rows, err := db.Query(context.Background(), `SELECT p.proname,p.proconfig FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.proname=ANY($2::text[])`, schema, wanted)
 	if err != nil {
 		t.Fatal(err)
@@ -471,7 +472,7 @@ func rewardUpgradeTemporarySpoofs(t *testing.T, db *pgxpool.Pool, app, grantedID
 	if err := tx.QueryRow(ctx, `SELECT `+app+`.valid_reward_notification_event($1,'reward.order.granted',$2,$3),
  `+app+`.valid_reward_notification_event($1,'reward.order.granted',$4,$5),
  pg_temp.valid_reward_notification_event($1,'reward.order.granted',$2,$3),
- (SELECT count(*) FROM jsonb_object_keys(`+app+`.notification_template_defaults()))`, brand, fakeAction, fakePayload, oldAction, oldPayload).Scan(&fakeValid, &oldValid, &spoofValid, &defaults); err != nil || fakeValid || !oldValid || !spoofValid || defaults != 19 {
+		(SELECT count(*) FROM jsonb_object_keys(`+app+`.notification_template_defaults()))`, brand, fakeAction, fakePayload, oldAction, oldPayload).Scan(&fakeValid, &oldValid, &spoofValid, &defaults); err != nil || fakeValid || !oldValid || !spoofValid || defaults != 20 {
 		t.Fatalf("temp chain/function displaced real evidence: fake=%t old=%t spoofControl=%t defaults=%d err=%v", fakeValid, oldValid, spoofValid, defaults, err)
 	}
 	insert := "INSERT INTO " + app + `.outbox_events(id,brand_id,event_type,aggregate_id,payload) VALUES($1,$2,'reward.order.granted',$3,$4)`

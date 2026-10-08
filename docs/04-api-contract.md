@@ -569,7 +569,7 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 | GET | /admin/notification-deliveries | 品牌内投递状态分页；显式 `notification.view.brand/platform` 与查询审计 |
 | POST | /admin/notification-deliveries/{event_id}/retry | `{attempt_count:整数,reason:非空文本}`；仅 failed 状态，显式 `notification.retry.brand`，超管禁止 |
 
-列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version,content,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。template_version为正安全整数，content为不可变双语源文案；仅旧非提现/佣金/奖励v1消息可为null。原八种事件、六种withdrawal.order状态事件、两种commission事件及reward.order.granted/revocation_pending/revoked，共十九种；入品牌积分为null，佣金修正为规范带符号非零int64字符串，其余为规范正int64字符串。奖励三种事件均用原订单UUID和原奖励正额，待处理说明本次没有积分变动，不表示当前状态。用户不能编辑快照或业务事实，详见 [模板与旧消息合同](12-notification-templates.md)、[佣金通知](18-commission-adjustments.md)及[奖励合同](20-manual-reward-orders.md)。
+列表数据 `{brand_id,member_id,items,unread_count,limit,offset}`；`unread_count` 为规范非负 int64 字符串。item 为 `{id,brand_id,member_id,event_type,template_key,template_version,content,payload:{resource_id,points},created_at,read_at}`，已读时间初始 null。template_version为正安全整数，content为不可变双语源文案；仅旧非提现/佣金/奖励v1消息可为null。原八种、六种withdrawal.order状态、commission.paid/adjusted/corrected及三种reward.order事件，现二十种；入品牌points为null，佣金人工修正及结果更正为规范有符号非零int64字符串，其余为正int64字符串。corrected引用真实执行目标、正数补发/负数追回，奖励三种引用原订单及原正额、待处理表示本次没有积分变动。均是历史而非当前状态；字段、快照及隐私边界见[模板合同](12-notification-templates.md)与[补偿通知合同](25-commission-correction-observability.md)。
 
 `won` 仅在实际正额中奖入账事务中生成，points 是实派奖金额而非下注金额；待批准的核算、零额及未中奖不生成此消息。`prize_reversed` 仅在实际全额冲回旧 prize 的事务生成，points 为原正额奖金；来源不足、回滚和零额不会生成。resource_id 都是注单 ID；私有 outbox 另保存 calculation/ledger/job/correction 引用，消费者校验同品牌同会员不可变目标与账本，而非注单当前 won 状态。延迟消费在更正后仍能验证旧入账，原通知不会删除/覆盖；新代次再中奖是新的独立消息。双语文案明确历史入账/冲正事实不代表当前钱包余额或最终中奖状态。不制造迁移前的历史奖金通知。
 
@@ -820,10 +820,10 @@ POST 回执保存首次结果，SDK 不在写方法内重新取上下文/改写�
 
 0051追加GET `/api/v1/admin/commission-payments/{id}/targets`及GET/POST `/api/v1/admin/commission-payment-targets/{id}/adjustments`，写入为独立commission_adjustment.write品牌权限、version/points/reason闭合正文、确认账号及幂等键；成功201。只接受当前已paid且证据有效的目标，精确差额记入佣金available，原派发总额不修改。0052仅为实际完成的入账/修正生成不可变通知，完整状态、字段和错误见[人工修正合同](18-commission-adjustments.md)。
 
-0053追加GET `/api/v1/admin/reports/commission`及`/reports/commission.csv`，独立report_commission.view/export品牌或平台权限。from/to按真实ledger.created_at半开入账窗口筛选，group_by为day/agent/cycle，可选agent_id/member_id/cycle_id；前六项计数和积分非负、net_points可为负的精确字符串。CSV导出完整筛选范围，不接受分页，最多10000组/4MiB，审计后才输出且可核验SHA256；原派发不因多条修正重复累计，完整合同见[佣金账本报表](19-commission-posting-reports.md)。
+0053追加GET `/api/v1/admin/reports/commission`及`/reports/commission.csv`，独立report_commission.view/export品牌或平台权限。from/to按真实ledger.created_at半开入账窗口筛选，group_by为day/agent/cycle，可选agent_id/member_id/cycle_id。0060在原七项汇总新增correction_entry_count、correction_credit_points、correction_debit_points，现十项精确字符串前九项非负、net_points可负，见[报表合同](19-commission-posting-reports.md)。佣金CSV为版本2/22列，其他报表仍版本1；导出完整筛选范围、不接受分页、最多10000组/4MiB，审计后才输出且可核验SHA256，原派发不因多条修正或更正重复累计。
 
 ## 佣金结果更正管理当前接口
 
 十二条正式管理操作以`/api/v1/admin`为前缀：GET/PUT `/commission-correction-policy`；GET `/commission-correction-plans`、`/{id}`、`/{id}/targets`及POST `/{id}/retry`；GET `/commission-correction-executions`、`/{id}`、`/{id}/targets`及POST `/{id}/approve`、`/{id}/continue`、`/{id}/retry`。仅使用X-Brand-ID，不增加品牌路径别名。读需要commission.view.brand/platform及已提交审计，写还需各自品牌权限、非超管active管理员、原确认账号X-Commission-Correction-Actor-ID、原正文与幂等键。GET拒绝正文，详情不接受查询串，分页只接受严格limit/offset。
 
-策略正文为version/enabled/reason，其余写入为version/reason；重复、缺失、未知或null字段均拒绝，原因不得含Unicode控制字符。写入200是该操作原回执，不能用后来GET替换；原键重放仍复核当前授权。权限拒绝403、原确认人员不同401、状态/证据/版本冲突409，忙锁503不缓存临时回执。列表总数和金额为精确字符串；credit/debit均可大于int64且同时非零，net为二者差；证据代次为不超过int64的非负字符串。冻结计划、真实已应用数量与金额、当前周期暂停分别表示，不以ready、旧批准或余额补足冒充执行完成。完整字段、错误、恢复与安全边界见[管理合同](24-commission-correction-management.md)和生成OpenAPI。补偿通知、补偿报表及OPEN-117特殊净额组合未在本阶段完成。
+策略正文为version/enabled/reason，其余写入为version/reason；重复、缺失、未知或null字段均拒绝，原因不得含Unicode控制字符。写入200是该操作原回执，不能用后来GET替换；原键重放仍复核当前授权。权限拒绝403、原确认人员不同401、状态/证据/版本冲突409，忙锁503不缓存临时回执。列表总数和金额为精确字符串；credit/debit均可大于int64且同时非零，net为二者差；证据代次为不超过int64的非负字符串。冻结计划、真实已应用数量与金额、当前周期暂停分别表示，不以ready、旧批准或余额补足冒充执行完成。完整字段、错误、恢复与安全边界见[管理合同](24-commission-correction-management.md)和生成OpenAPI。0060实际补偿使用既有站内消息和报表接口，见[25号合同](25-commission-correction-observability.md)，无新增用户金融接口；OPEN-117特殊净额组合仍阻止。

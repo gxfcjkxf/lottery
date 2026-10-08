@@ -55,6 +55,10 @@ const commissionFacts = computed(() => {
     "Historical record: a signed commission adjustment was recorded. Check the current wallet; this is not a new income forecast or an external payment.",
     "历史记录：曾记录一笔带正负方向的佣金调整。请查看当前钱包；本记录不是新收入预测或外部付款承诺。",
   ] as const;
+  if (selectedKey.value === "commission.corrected") return [
+    "Historical record: a signed commission correction records a past additional credit or recovery. Check the current wallet; it is not your current balance, new income or an external payment. Editing template copy cannot change this state note.",
+    "历史记录：带正负方向的佣金更正记录过去的补发或追回。请查看当前钱包；本记录不代表当前余额、新收入或外部付款。编辑模板文案无法改变此状态说明。",
+  ] as const;
   return null;
 });
 const rewardFacts = computed(() => {

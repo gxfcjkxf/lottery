@@ -1,6 +1,6 @@
 # 佣金更正差额执行
 
-0059把已就绪的佣金更正计划交给独立资金执行任务。每个代理只补发或追回计划差额，只移动佣金可用积分；原核算、原派发、原人工修正、旧批准与流水均保留。Go服务、平台worker、正式管理HTTP及PC/移动操作页面已接入，管理细节见[24号合同](24-commission-correction-management.md)。补偿通知及报表接入仍需继续实施。
+0059把已就绪的佣金更正计划交给独立资金执行任务。每个代理只补发或追回计划差额，只移动佣金可用积分；原核算、原派发、原人工修正、旧批准与流水均保留。Go服务、平台worker、正式管理HTTP及PC/移动操作页面已接入，管理细节见[24号合同](24-commission-correction-management.md)。0060补偿历史通知与实际账本报表见[25号合同](25-commission-correction-observability.md)。
 
 ## 启用与授权
 
@@ -60,4 +60,4 @@ commission_correction_executions冻结plan、run、evidence_epoch、plan_version
 
 内部方法为CorrectionExecutionPolicyTx、UpdateCorrectionExecutionPolicyTx、CorrectionExecutionsTx、CorrectionExecutionTx、CorrectionExecutionTargetsTx、ApproveCorrectionExecutionTx、ContinueCorrectionExecutionTx及RetryCorrectionExecutionTx。写入需要当前版本、非空原因与真实管理员元数据。列表金额、总数和epoch为精确字符串，版本为安全整数，时间为UTC，空列表为[]。读取同时返回冻结target_count、实际applied_count及实际正负入账金额；cycle_hold_active表示现在的周期暂停，不是假称原任务创建时的历史状态。
 
-正常migrate至0059并重启API与worker；迁移不改0058或更早迁移校验和、不启用新开关、不迁移旧批准为新授权、不补发通知、不接入外部支付。管理HTTP已提供同会话原请求恢复与幂等回执，页面明确区分原派发、计划、当前执行和历史资金。后续补偿通知与报表必须取真实执行目标而非计划金额。该交付不代表整个佣金或项目完成，客户人工审核及生产验收继续保留。
+正常部署当前版本须migrate至0060并协调API、worker和前端；0059及0060不改旧迁移校验和、不启用新开关、不迁移旧批准为新授权、不补造历史消息、不接入外部支付。管理HTTP已提供同会话原请求恢复与幂等回执，页面明确区分原派发、计划、当前执行和历史资金。0060补偿通知与报表取真实执行目标而非计划金额。该交付不代表整个佣金或项目完成，客户人工审核及生产验收继续保留。

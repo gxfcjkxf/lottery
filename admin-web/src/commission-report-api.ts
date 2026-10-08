@@ -7,11 +7,11 @@ const SIGNED = /^(0|-?[1-9]\d*)$/;
 const MAX_WINDOW_NS = 93n * 24n * 60n * 60n * 1_000_000_000n;
 const MAX_GROUPS = 10_000;
 const MAX_BYTES = 4 * 1024 * 1024;
-const FIELDS = ["entry_count", "paid_entry_count", "paid_points", "adjustment_entry_count", "adjustment_credit_points", "adjustment_debit_points", "net_points"] as const;
+const FIELDS = ["entry_count", "paid_entry_count", "paid_points", "adjustment_entry_count", "adjustment_credit_points", "adjustment_debit_points", "correction_entry_count", "correction_credit_points", "correction_debit_points", "net_points"] as const;
 const GROUPS = ["day", "agent", "cycle"] as const;
 export type CommissionGroup = typeof GROUPS[number];
 export interface CommissionReportQuery { from: string; to: string; group_by: CommissionGroup; limit?: number; offset?: number; agent_id?: string | null; member_id?: string | null; cycle_id?: string | null }
-export interface CommissionTotals { entry_count: string; paid_entry_count: string; paid_points: string; adjustment_entry_count: string; adjustment_credit_points: string; adjustment_debit_points: string; net_points: string }
+export interface CommissionTotals { entry_count: string; paid_entry_count: string; paid_points: string; adjustment_entry_count: string; adjustment_credit_points: string; adjustment_debit_points: string; correction_entry_count: string; correction_credit_points: string; correction_debit_points: string; net_points: string }
 export interface CommissionReport {
   brand_id: string; snapshot_at: string; timezone: string;
   query: { from: string; to: string; group_by: CommissionGroup; limit: number; offset: number; agent_id: string | null; member_id: string | null; cycle_id: string | null };
@@ -55,7 +55,7 @@ function canonical(q: CommissionReportQuery): CanonicalQuery {
 function totals(value: unknown): CommissionTotals {
   if (!isRecord(value) || !exactKeys(value, FIELDS) || FIELDS.some((field) => typeof value[field] !== "string" || !(field === "net_points" ? SIGNED : UNSIGNED).test(value[field] as string))) return fail();
   const v = value as unknown as CommissionTotals;
-  if (BigInt(v.entry_count) !== BigInt(v.paid_entry_count) + BigInt(v.adjustment_entry_count) || BigInt(v.net_points) !== BigInt(v.paid_points) + BigInt(v.adjustment_credit_points) - BigInt(v.adjustment_debit_points)) return fail("佣金分项与总计不一致。");
+  if (BigInt(v.entry_count) !== BigInt(v.paid_entry_count) + BigInt(v.adjustment_entry_count) + BigInt(v.correction_entry_count) || BigInt(v.net_points) !== BigInt(v.paid_points) + BigInt(v.adjustment_credit_points) - BigInt(v.adjustment_debit_points) + BigInt(v.correction_credit_points) - BigInt(v.correction_debit_points)) return fail("佣金分项与总计不一致。");
   return v;
 }
 function validTimezone(v: string): boolean { try { return !!v && v.length <= 100 && new Intl.DateTimeFormat("en", { timeZone: v }).format(0) !== ""; } catch { return false; } }
@@ -97,7 +97,7 @@ function validateCsv(csv: string, brand: string, q: Omit<CanonicalQuery, "limit"
   const snapshot = header("X-Report-Snapshot-At"), groupCount = header("X-Report-Group-Count"), audit = header("X-Report-Audit-ID");
   const digest = header("X-Report-SHA256"), filename = `lottery-commission-${brand}-${filenameDate(snapshot)}.csv`;
   const timezone = header("X-Report-Timezone");
-  if (header("X-Report-Brand-ID").toLowerCase() !== brand.toLowerCase() || header("X-Report-Kind") !== "commission" || !validSnapshot(snapshot) || !UUID.test(audit) || !/^[a-f0-9]{64}$/.test(digest) || header("X-Report-Format-Version") !== "1" || !UNSIGNED.test(groupCount) || BigInt(groupCount) > BigInt(MAX_GROUPS) || header("Content-Length") !== String(byteLength) || header("X-Report-Byte-Count") !== String(byteLength) || byteLength > MAX_BYTES || !validTimezone(timezone) || !/^text\/csv\s*;\s*charset=utf-8$/i.test(header("Content-Type")) || header("Cache-Control").toLowerCase() !== "no-store" || header("Content-Disposition") !== `attachment; filename="${filename}"`) return fail("佣金 CSV 元数据校验失败。");
+  if (header("X-Report-Brand-ID").toLowerCase() !== brand.toLowerCase() || header("X-Report-Kind") !== "commission" || !validSnapshot(snapshot) || !UUID.test(audit) || !/^[a-f0-9]{64}$/.test(digest) || header("X-Report-Format-Version") !== "2" || !UNSIGNED.test(groupCount) || BigInt(groupCount) > BigInt(MAX_GROUPS) || header("Content-Length") !== String(byteLength) || header("X-Report-Byte-Count") !== String(byteLength) || byteLength > MAX_BYTES || !validTimezone(timezone) || !/^text\/csv\s*;\s*charset=utf-8$/i.test(header("Content-Type")) || header("Cache-Control").toLowerCase() !== "no-store" || header("Content-Disposition") !== `attachment; filename="${filename}"`) return fail("佣金 CSV 元数据校验失败。");
   const metadata = rows.slice(1).map((r) => { if (r.length !== columns.length) return fail("佣金 CSV 列数无效。"); return r; });
   const validateMeta = (r: string[]) => r[1]!.toLowerCase() === brand.toLowerCase() && r[2] === snapshot && r[3] === timezone && r[4] === q.from && r[5] === q.to && r[6] === q.group_by && r[7] === (q.agent_id ?? "") && r[8] === (q.member_id ?? "") && r[9] === (q.cycle_id ?? "");
   if (metadata.length !== Number(groupCount) + 1 || metadata.some((r) => !validateMeta(r))) return fail("佣金 CSV 内容与请求范围不匹配。");
