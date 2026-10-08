@@ -127,16 +127,27 @@ func rolePermissionSnapshot(t *testing.T, ctx context.Context, db *pgxpool.Pool,
 
 func assertCommissionCorrectionPermissions(t *testing.T, ctx context.Context, db *pgxpool.Pool, brandBootstrap, platformBootstrap, brandCustom, platformCustom string, brandCustomBefore, platformCustomBefore []string) {
 	t.Helper()
+	var correctionMigrations int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM schema_migrations WHERE name IN('0058_commission_correction_plans.up.sql','0059_commission_correction_execution.up.sql')`).Scan(&correctionMigrations); err != nil || correctionMigrations != 2 {
+		t.Fatalf("expected latest schema with both correction migrations, applied=%d err=%v", correctionMigrations, err)
+	}
+	allCorrectionKeys := []string{
+		"commission_correction.approve.brand",
+		"commission_correction.continue.brand",
+		"commission_correction.execute_retry.brand",
+		"commission_correction.retry.brand",
+		"commission_correction_policy.write.brand",
+	}
 	for _, tc := range []struct {
 		id, want string
 	}{
-		{brandBootstrap, "commission_correction.retry.brand"},
+		{brandBootstrap, "commission_correction.approve.brand,commission_correction.continue.brand,commission_correction.execute_retry.brand,commission_correction.retry.brand,commission_correction_policy.write.brand"},
 		{platformBootstrap, ""},
 		{brandCustom, ""},
 		{platformCustom, ""},
 	} {
 		var grants string
-		if err := db.QueryRow(ctx, `SELECT coalesce(string_agg(permission_key,',' ORDER BY permission_key),'') FROM role_permissions WHERE role_id=$1 AND permission_key LIKE 'commission_correction.%'`, tc.id).Scan(&grants); err != nil || grants != tc.want {
+		if err := db.QueryRow(ctx, `SELECT coalesce(string_agg(permission_key,',' ORDER BY permission_key),'') FROM role_permissions WHERE role_id=$1 AND permission_key=ANY($2::text[])`, tc.id, allCorrectionKeys).Scan(&grants); err != nil || grants != tc.want {
 			t.Errorf("role %s correction grants=%q want=%q err=%v", tc.id, grants, tc.want, err)
 		}
 	}
@@ -146,9 +157,9 @@ func assertCommissionCorrectionPermissions(t *testing.T, ctx context.Context, db
 	if after := rolePermissionSnapshot(t, ctx, db, platformCustom); !equalStrings(after, platformCustomBefore) {
 		t.Errorf("migration expanded custom platform role: before=%v after=%v", platformCustomBefore, after)
 	}
-	var definitions int
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM permissions WHERE key='commission_correction.retry.brand'`).Scan(&definitions); err != nil || definitions != 1 {
-		t.Errorf("retry permission definitions=%d err=%v", definitions, err)
+	var definitions []string
+	if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(key ORDER BY key),'{}') FROM permissions WHERE key=ANY($1::text[])`, allCorrectionKeys).Scan(&definitions); err != nil || !equalStrings(definitions, allCorrectionKeys) {
+		t.Errorf("correction permission definitions=%v want=%v err=%v", definitions, allCorrectionKeys, err)
 	}
 }
 

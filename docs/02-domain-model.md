@@ -360,3 +360,11 @@ draw_corrections 保存旧/新结果、旧 job、启动后的期次版本、政�
 冲正 worker 每目标独立事务：game共享→period独占→correction→wallet→order；发布阶段从头用 game独占→period→correction，避免共享锁升级。普通 worker/批准/重试检查 current 指针和活动更正，历史代次不会继续计算/派奖，迟到失败也不能写入新代次。SQL 保留原期次取消/判定证据限制，新增更正审计、完整 reversal、金额/来源、实际余额及 current 代次守卫；NULL 证据按拒绝处理。
 
 只反向 winning.available 的原 prize，保留原 source_allocation/reversal_of/全桶前后值；余额不足冻结停止。模型结果、原实际开奖时间保留，旧结果和已计算金额不可重写；无 job 的 drawn 可只更正结果，不自动启用派奖。报表与后续代理/奖励模块必须以当前代次/补偿事实计算净值，不能把每个历史 paid 当新收入。
+
+## 佣金更正的实际执行模型
+
+0059保留0058计划、原派发和账本，新增独立资金更正政策与不可变修订、execution任务、execution_targets实际代理差额、execution_steps逐版本操作、balance_heads实际授予净额以及cycle_holds整周期暂停。任务冻结计划版本、run、证据计数、模式、正负总额和目标数，人工或混合取得新批准才执行；同一计划唯一任务，同一周期最多一个非stale任务。
+
+计划目标增加previous_correction_target_id和financial_version。新计划基数优先实际更正净额头，其次原paid净额，最后为零，合并后来补发但新核算不再出现的代理。每步一个目标，非零差额只改变commission.available，完整16桶流水、目标审计、实际净额头和任务版本同事务提交；零差额无流水但有目标与净额版本。目标和步骤不可改写，延迟约束拒绝孤立财务见证。
+
+cycle_holds独立于核算代次。真实可用佣金不足后暂停整周期，不借其他来源或冻结余额；新结果只能使旧任务stale，不能释放暂停。管理员针对当前任务显式continue才清除门闩，failed的技术重试不能替代。新资金更正开关初始关闭，不借旧派发开关自动授权；21个新增或替换函数固定search_path。内部服务、字段与后续HTTP/UI接入边界见[差额执行合同](23-commission-correction-execution.md)。

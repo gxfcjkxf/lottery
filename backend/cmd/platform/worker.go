@@ -98,6 +98,13 @@ func runCommissionWorker(ctx context.Context, service commission.Service, logger
 	planDone := make(chan struct{})
 	go func() { defer close(planDone); runCommissionCorrectionPlanWorker(planCtx, service, logger) }()
 	defer func() { stopPlans(); <-planDone }()
+	executionCtx, stopExecutions := context.WithCancel(ctx)
+	executionDone := make(chan struct{})
+	go func() {
+		defer close(executionDone)
+		runCommissionCorrectionExecutionWorker(executionCtx, service, logger)
+	}()
+	defer func() { stopExecutions(); <-executionDone }()
 	discoveryCtx, stopDiscovery := context.WithCancel(ctx)
 	discoveryDone := make(chan struct{})
 	go func() {
@@ -153,6 +160,24 @@ func runCommissionCorrectionPlanWorker(ctx context.Context, service commission.S
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("commission correction plan preparation failed", "committed_steps", n)
+			}
+		}
+	}
+}
+
+func runCommissionCorrectionExecutionWorker(ctx context.Context, service commission.Service, logger *slog.Logger) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run, cancel := context.WithTimeout(ctx, 10*time.Second)
+			n, err := service.ProcessCorrectionExecutions(run, 20)
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				logger.Error("commission correction execution failed", "committed_steps", n)
 			}
 		}
 	}

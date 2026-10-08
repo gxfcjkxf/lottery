@@ -20,7 +20,7 @@ func TestBootstrapCommissionPolicyPermissionsAreExplicitAndScoped(t *testing.T) 
 		args     []string
 		want     []string
 	}{
-		{"commission_brand_test", []string{"--brand", "harbor"}, []string{"commission.retry.brand", "commission.run.brand", "commission.view.brand", "commission_adjustment.write.brand", "commission_correction.retry.brand", "commission_payment.approve.brand", "commission_payment.retry.brand", "commission_payment_policy.write.brand", "commission_policy.view.brand", "commission_policy.write.brand"}},
+		{"commission_brand_test", []string{"--brand", "harbor"}, []string{"commission.retry.brand", "commission.run.brand", "commission.view.brand", "commission_adjustment.write.brand", "commission_correction.approve.brand", "commission_correction.continue.brand", "commission_correction.execute_retry.brand", "commission_correction.retry.brand", "commission_correction_policy.write.brand", "commission_payment.approve.brand", "commission_payment.retry.brand", "commission_payment_policy.write.brand", "commission_policy.view.brand", "commission_policy.write.brand"}},
 		{"commission_platform_test", []string{"--super"}, []string{"commission.view.platform", "commission_policy.view.platform"}},
 	} {
 		os.Args = append([]string{"platform", "create-admin", "--username", tc.username}, tc.args...)

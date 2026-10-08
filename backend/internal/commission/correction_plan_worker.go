@@ -163,15 +163,15 @@ func createCorrectionPlan(ctx context.Context, tx pgx.Tx, c cycleRow, payment st
 }
 
 func pageCorrectionPlan(ctx context.Context, tx pgx.Tx, p correctionPlanRow, meta points.Metadata) error {
-	rows, err := tx.Query(ctx, `SELECT agent_id::text,member_id::text,original_target_id::text,earning_id::text,adjustment_version,points_before,points_after,delta_points
- FROM commission_correction_candidates($1,$2,$3) WHERE ($4::uuid IS NULL OR agent_id>$4) ORDER BY agent_id LIMIT 100`, p.Brand, p.Payment, p.Run, p.Cursor)
+	rows, err := tx.Query(ctx, `SELECT agent_id::text,member_id::text,original_target_id::text,earning_id::text,adjustment_version,points_before,points_after,delta_points,previous_correction_target_id::text,financial_version
+ FROM commission_correction_candidates_v2($1,$2,$3) WHERE ($4::uuid IS NULL OR agent_id>$4) ORDER BY agent_id LIMIT 100`, p.Brand, p.Payment, p.Run, p.Cursor)
 	if err != nil {
 		return err
 	}
 	var targets []CorrectionPlanTarget
 	for rows.Next() {
 		var t CorrectionPlanTarget
-		if err = rows.Scan(&t.AgentID, &t.MemberID, &t.OriginalTargetID, &t.EarningID, &t.AdjustmentVersion, &t.PointsBefore, &t.PointsAfter, &t.DeltaPoints); err != nil {
+		if err = rows.Scan(&t.AgentID, &t.MemberID, &t.OriginalTargetID, &t.EarningID, &t.AdjustmentVersion, &t.PointsBefore, &t.PointsAfter, &t.DeltaPoints, &t.PreviousCorrectionTargetID, &t.FinancialVersion); err != nil {
 			rows.Close()
 			return err
 		}
@@ -205,8 +205,8 @@ func pageCorrectionPlan(ctx context.Context, tx pgx.Tx, p correctionPlanRow, met
 		return err
 	}
 	for _, t := range targets {
-		_, err = tx.Exec(ctx, `INSERT INTO commission_correction_plan_targets(id,brand_id,plan_id,agent_id,member_id,original_target_id,earning_id,adjustment_version,points_before,points_after,delta_points,plan_version,creation_audit_log_id)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, ids.New(), p.Brand, p.ID, t.AgentID, t.MemberID, t.OriginalTargetID, t.EarningID, t.AdjustmentVersion, t.PointsBefore, t.PointsAfter, t.DeltaPoints, p.Version+1, log)
+		_, err = tx.Exec(ctx, `INSERT INTO commission_correction_plan_targets(id,brand_id,plan_id,agent_id,member_id,original_target_id,earning_id,adjustment_version,points_before,points_after,delta_points,plan_version,creation_audit_log_id,previous_correction_target_id,financial_version)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`, ids.New(), p.Brand, p.ID, t.AgentID, t.MemberID, t.OriginalTargetID, t.EarningID, t.AdjustmentVersion, t.PointsBefore, t.PointsAfter, t.DeltaPoints, p.Version+1, log, t.PreviousCorrectionTargetID, t.FinancialVersion)
 		if err != nil {
 			return paymentDBError(err)
 		}

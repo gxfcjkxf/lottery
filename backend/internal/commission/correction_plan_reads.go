@@ -56,7 +56,7 @@ func (s Service) CorrectionPlansTx(ctx context.Context, tx pgx.Tx, brand string,
 
 const correctionPlanTargetJSON = `jsonb_build_object('id',t.id::text,'brand_id',t.brand_id::text,'plan_id',t.plan_id::text,
  'agent_id',t.agent_id::text,'member_id',t.member_id::text,'original_target_id',t.original_target_id::text,'earning_id',t.earning_id::text,
- 'adjustment_version',t.adjustment_version,'points_before',t.points_before::text,'points_after',t.points_after::text,'delta_points',t.delta_points::text,
+ 'adjustment_version',t.adjustment_version,'previous_correction_target_id',t.previous_correction_target_id::text,'financial_version',t.financial_version,'points_before',t.points_before::text,'points_after',t.points_after::text,'delta_points',t.delta_points::text,
  'creation_audit_log_id',t.creation_audit_log_id::text,'created_at',t.created_at)`
 
 func (s Service) CorrectionPlanTargetsTx(ctx context.Context, tx pgx.Tx, brand, id string, limit, offset int) (CorrectionPlanTargetPage, error) {

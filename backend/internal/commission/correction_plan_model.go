@@ -56,19 +56,21 @@ type CorrectionPlan struct {
 // CorrectionPlanTarget is the privacy-limited planned change for one saved
 // commission beneficiary. Amounts use points.Amount's exact string JSON.
 type CorrectionPlanTarget struct {
-	ID                 string        `json:"id"`
-	BrandID            string        `json:"brand_id"`
-	PlanID             string        `json:"plan_id"`
-	AgentID            string        `json:"agent_id"`
-	MemberID           string        `json:"member_id"`
-	OriginalTargetID   *string       `json:"original_target_id"`
-	EarningID          *string       `json:"earning_id"`
-	AdjustmentVersion  *int64        `json:"adjustment_version"`
-	PointsBefore       points.Amount `json:"points_before"`
-	PointsAfter        points.Amount `json:"points_after"`
-	DeltaPoints        points.Amount `json:"delta_points"`
-	CreationAuditLogID string        `json:"creation_audit_log_id"`
-	CreatedAt          time.Time     `json:"created_at"`
+	ID                         string        `json:"id"`
+	BrandID                    string        `json:"brand_id"`
+	PlanID                     string        `json:"plan_id"`
+	AgentID                    string        `json:"agent_id"`
+	MemberID                   string        `json:"member_id"`
+	OriginalTargetID           *string       `json:"original_target_id"`
+	EarningID                  *string       `json:"earning_id"`
+	AdjustmentVersion          *int64        `json:"adjustment_version"`
+	PreviousCorrectionTargetID *string       `json:"previous_correction_target_id"`
+	FinancialVersion           *int64        `json:"financial_version"`
+	PointsBefore               points.Amount `json:"points_before"`
+	PointsAfter                points.Amount `json:"points_after"`
+	DeltaPoints                points.Amount `json:"delta_points"`
+	CreationAuditLogID         string        `json:"creation_audit_log_id"`
+	CreatedAt                  time.Time     `json:"created_at"`
 }
 
 type CorrectionPlanPage struct {

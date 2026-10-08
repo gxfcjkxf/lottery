@@ -24,6 +24,11 @@ import (
 func newAutomaticCommissionBatchFixture(t *testing.T) commissionBatchFixture {
 	t.Helper()
 	f := newBettingFixtureWithWindow(t, storeTestBrand, 20*time.Second, 22*time.Second)
+	return newAutomaticCommissionBatchFixtureFromBetting(t, f)
+}
+
+func newAutomaticCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixture) commissionBatchFixture {
+	t.Helper()
 	ctx := context.Background()
 	actor := access.Account{
 		ID: f.version.CreatedBy, Type: access.AccountAdmin, BrandIDs: []string{f.brand},

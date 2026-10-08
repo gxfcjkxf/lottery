@@ -335,6 +335,10 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [core, betting, commission]
     services:
       postgres:
         image: postgres:17.5-alpine
@@ -352,15 +356,59 @@ jobs:
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      - run: go vet ./...
+      - name: Vet backend packages
+        if: ${{ matrix.group == 'core' }}
+        run: go vet ./...
         working-directory: backend
       # Real PostgreSQL migrations and boundary waits share each package's
-      # total timer; keep full race coverage with an explicit bounded budget.
-      - run: go test -race -count=1 -timeout=20m ./...
+      # test timer; independent matrix jobs isolate core, betting, and the
+      # slower commission boundary suite while keeping each test timeout at 20m.
+      - name: Verify betting test split against actual inventory
+        if: ${{ matrix.group == 'core' }}
+        run: bash ../scripts/verify-betting-test-split.sh
         working-directory: backend
-      - run: go test -tags reportlimit -count=1 ./internal/reporting -run '^TestReportExportActualDatabaseGroupBoundary$'
+      - name: Run betting commission tests
+        if: ${{ matrix.group == 'commission' }}
+        run: go test -race -count=1 -timeout=20m ./internal/betting -run '^TestCommission'
         working-directory: backend
-      - run: go build ./cmd/platform
+      - name: Run remaining betting tests
+        if: ${{ matrix.group == 'betting' }}
+        run: go test -race -count=1 -timeout=20m ./internal/betting -skip '^TestCommission'
+        working-directory: backend
+      - name: Run all non-betting packages
+        if: ${{ matrix.group == 'core' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          betting_package="$(go list ./internal/betting)"
+          all_package_output="$(go list ./...)"
+          all_packages=()
+          while IFS= read -r package; do
+            all_packages+=("$package")
+          done <<<"$all_package_output"
+          if ! printf '%s\n' "${all_packages[@]}" | grep -Fxq "$betting_package"; then
+            echo "betting package $betting_package is missing from go list ./..." >&2
+            exit 1
+          fi
+          non_betting_packages=()
+          for package in "${all_packages[@]}"; do
+            if [[ "$package" == "$betting_package" ]]; then
+              continue
+            fi
+            non_betting_packages+=("$package")
+          done
+          if [[ ${#non_betting_packages[@]} -eq 0 ]]; then
+            echo 'go list ./... returned no non-betting packages' >&2
+            exit 1
+          fi
+          go test -race -count=1 -timeout=20m "${non_betting_packages[@]}"
+        working-directory: backend
+      - run: go test -race -tags reportlimit -count=1 -timeout=20m ./internal/reporting -run '^TestReportExportActualDatabaseGroupBoundary$'
+        if: ${{ matrix.group == 'core' }}
+        working-directory: backend
+      - name: Build platform
+        if: ${{ matrix.group == 'core' }}
+        run: go build ./cmd/platform
         working-directory: backend
   frontend:
     runs-on: ubuntu-latest

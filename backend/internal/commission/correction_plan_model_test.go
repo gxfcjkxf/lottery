@@ -79,7 +79,7 @@ func TestCorrectionPlanDTOUsesFrozenSnakeCaseShape(t *testing.T) {
 	if err = json.Unmarshal(targetRaw, &targetObject); err != nil {
 		t.Fatal(err)
 	}
-	targetFields := []string{"id", "brand_id", "plan_id", "agent_id", "member_id", "original_target_id", "earning_id", "adjustment_version", "points_before", "points_after", "delta_points", "creation_audit_log_id", "created_at"}
+	targetFields := []string{"id", "brand_id", "plan_id", "agent_id", "member_id", "original_target_id", "earning_id", "adjustment_version", "previous_correction_target_id", "financial_version", "points_before", "points_after", "delta_points", "creation_audit_log_id", "created_at"}
 	if len(targetObject) != len(targetFields) {
 		t.Fatalf("target field count=%d want=%d JSON=%s", len(targetObject), len(targetFields), targetRaw)
 	}
