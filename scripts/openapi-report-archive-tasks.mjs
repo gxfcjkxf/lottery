@@ -57,7 +57,7 @@ export const schemas = {
 };
 
 export const operations = [
-  { method: "GET", path: "/api/v1/admin/report-archive-policy", operationId: "getReportArchiveAutomaticPolicy", summary: "Read automatic report archive policy", tag: "report archive tasks", auth: "admin", brandHeader: true, permissions: view, ...response(ref("ReportArchivePolicy")), description: `${routeDescription} Read only; no policy write or automatic enablement route is documented.` },
+  { method: "GET", path: "/api/v1/admin/report-archive-policy", operationId: "getReportArchiveAutomaticPolicy", summary: "Read automatic report archive policy", tag: "report archive tasks", auth: "admin", brandHeader: true, permissions: view, ...response(ref("ReportArchivePolicy")), description: `${routeDescription} Read only. Enabling or disabling uses the separately authorized PUT operation.` },
   { method: "GET", path: "/api/v1/admin/report-archive-tasks", operationId: "listReportArchiveAutomaticTasks", summary: "List automatic report archive tasks", tag: "report archive tasks", auth: "admin", brandHeader: true, permissions: view,
     parameters: [
       { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },

@@ -8,7 +8,7 @@
 
 第三方接入请使用 [已实现 OpenAPI](docs/openapi.json) 与 [接口交接说明](docs/09-openapi-handover.md)。运行 `pnpm api:generate` 更新，`pnpm api:check` 和 `pnpm test:contracts` 检查实际路由及代表性数据模型；完整业务设计中的未来接口不代表已经可调用。
 
-日/月采用品牌时区不可变快照及追加版本，财务按实际入账，默认不自动删除。后台人工查询、创建/追加与原JSON下载已接入；0067提供默认关闭的[自动核心与worker](docs/27-automatic-report-archive-core.md)，[配置只读及任务查询/人工重试](docs/28-report-archive-task-management.md)已接入双端后台。首次启用起点及启用管理仍待确认和实现。系统归档明确显示任务来源，不冒充管理员操作；升级不回补旧档或改变积分。
+日/月采用品牌时区不可变快照及追加版本，财务按实际入账，默认不自动删除。后台人工查询、创建/追加与原JSON下载已接入；0067提供默认关闭的[自动核心与worker](docs/27-automatic-report-archive-core.md)，[配置只读及任务查询/人工重试](docs/28-report-archive-task-management.md)已接入双端后台。[正式配置PUT](docs/29-report-archive-activation.md)已按确认的首次当天/当月起点接入，配置编辑页面继续实施。系统归档明确显示任务来源，不冒充管理员操作；升级不回补旧档或改变积分。
 
 后台“品牌和域名”中的新建品牌、运行状态、域名和展示配置已接入真实服务及审计。创建需精确的 `brand.create.platform` 权限，新品牌固定暂停、版本1；不会自动创建管理员、会员、域名、游戏或积分。暂停只阻止新投注，不撤销登录或停止已有订单退款、开奖和结算。配置使用品牌共享版本，提交前应重新读取并核对。
 

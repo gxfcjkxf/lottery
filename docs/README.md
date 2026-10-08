@@ -38,7 +38,8 @@
 - [25-commission-correction-observability.md](25-commission-correction-observability.md)：真实非零差额的原子事件、不可变历史站内消息、实际补发/追回报表、22列CSV版本2及无旧消息回填的协调升级。
 - [26-report-archive-core.md](26-report-archive-core.md)：日/月不可变快照与追加版本、单一统计观察、四条管理接口、PC/移动原请求恢复、独立原JSON下载及后续自动任务边界。
 - [27-automatic-report-archive-core.md](27-automatic-report-archive-core.md)：默认关闭的日/月配置与任务、保存起点及原范围、自动发现/执行、人工失败重试和系统来源。
-- [28-report-archive-task-management.md](28-report-archive-task-management.md)：四条配置只读/任务管理接口、授权与审计、原pending回执恢复、双端页面及启用口径待确认边界。
+- [28-report-archive-task-management.md](28-report-archive-task-management.md)：四条配置只读/任务管理接口、授权与审计、原pending回执恢复及双端任务页面。
+- [29-report-archive-activation.md](29-report-archive-activation.md)：首次启用从品牌当前日/月开始的正式PUT、数据库时钟与保存起点、原回执和未完成的配置编辑页面。
 
 ## 第一阶段实现顺序
 

@@ -166,7 +166,7 @@ onBeforeUnmount(() => { alive = false; policyTicket++; listTicket++; readTicket+
 
 <template>
   <section class="archive-tasks panel">
-    <header><div><h2>{{ t("自动归档任务", "Automatic archive tasks") }}</h2><p>{{ t("只读查看自动归档策略与任务。启用周期的起点尚待确认；此页不提供策略修改、启停或回补。", "View automatic archive policy and tasks. Start periods for enabling remain to be confirmed; this page has no policy, enable, disable or backfill controls.") }}</p></div><div class="actions"><button class="button button-secondary" data-testid="archive-tasks-refresh" :disabled="!rights.view || policyLoading || listLoading" @click="loadPolicy(); loadList()">{{ t("刷新", "Refresh") }}</button></div></header>
+    <header><div><h2>{{ t("自动归档任务", "Automatic archive tasks") }}</h2><p>{{ t("查看自动归档策略与任务。首次启用从品牌时区的当天或当月开始，周期结束后归档；此页暂不提供策略修改、启停或历史回补控件。", "View automatic archive policy and tasks. First activation starts in the current brand-local day or month, with archiving after its end. This page does not yet provide policy, enable, disable or historical backfill controls.") }}</p></div><div class="actions"><button class="button button-secondary" data-testid="archive-tasks-refresh" :disabled="!rights.view || policyLoading || listLoading" @click="loadPolicy(); loadList()">{{ t("刷新", "Refresh") }}</button></div></header>
     <p v-if="!rights.view" role="alert">{{ t("没有此品牌的归档查看权限。", "No archive viewing permission for this brand.") }}</p>
     <template v-else>
       <p v-if="notice" role="status">{{ t(notice) }}</p><p v-if="retryError" role="alert">{{ t(retryError) }}</p>

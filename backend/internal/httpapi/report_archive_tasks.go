@@ -25,6 +25,28 @@ type archiveTaskRetryHTTPInput struct {
 	Reason  string `json:"reason"`
 }
 
+type archivePolicyActivationHTTPInput reportarchive.AutomaticActivationInput
+
+func (in *archivePolicyActivationHTTPInput) UnmarshalJSON(raw []byte) error {
+	fields, err := reconciliationClosedObject(raw, map[string]bool{"version": true, "daily_enabled": true, "monthly_enabled": true, "reason": true})
+	if err != nil || len(fields) != 4 {
+		return reportarchive.ErrInvalid
+	}
+	// Reuse the exact version/reason validation of task retry. Booleans must be
+	// present and non-null; json.Unmarshal(null, *bool) alone would accept null.
+	var base archiveTaskRetryHTTPInput
+	closed, err := json.Marshal(map[string]json.RawMessage{"version": fields["version"], "reason": fields["reason"]})
+	if err != nil || json.Unmarshal(closed, &base) != nil {
+		return reportarchive.ErrInvalid
+	}
+	var daily, monthly *bool
+	if json.Unmarshal(fields["daily_enabled"], &daily) != nil || json.Unmarshal(fields["monthly_enabled"], &monthly) != nil || daily == nil || monthly == nil {
+		return reportarchive.ErrInvalid
+	}
+	*in = archivePolicyActivationHTTPInput{Version: base.Version, DailyEnabled: *daily, MonthlyEnabled: *monthly, Reason: base.Reason}
+	return nil
+}
+
 func (in *archiveTaskRetryHTTPInput) UnmarshalJSON(raw []byte) error {
 	fields, err := reconciliationClosedObject(raw, map[string]bool{"version": true, "reason": true})
 	if err != nil || len(fields) != 2 {
@@ -51,7 +73,7 @@ func archiveTaskHTTPAuth(ctx context.Context, tx pgx.Tx, r *http.Request, d Depe
 	if err != nil {
 		return a, archiveHTTPDBError(err)
 	}
-	if action == "retry" {
+	if action == "retry" || action == "policy" {
 		actor := r.Header.Get("X-Report-Archive-Actor-ID")
 		if !cycleCanonicalID(actor) {
 			return a, reportarchive.ErrInvalid
@@ -71,7 +93,7 @@ func archiveTaskHTTPAuth(ctx context.Context, tx pgx.Tx, r *http.Request, d Depe
 	if err != nil {
 		return a, archiveHTTPDBError(err)
 	}
-	if action == "retry" && status == "disabled" {
+	if (action == "retry" || action == "policy") && status == "disabled" {
 		return a, reportarchive.ErrState
 	}
 	return a, nil
@@ -116,10 +138,57 @@ func archiveTaskHTTPRead(r *http.Request, d Dependencies, initial access.Account
 	return out, queryErr
 }
 
-// Activation is deliberately not registered until its business start rule is
-// agreed. These reads and explicit failure retries do not enable a policy.
+// Activation derives first start periods on the server. Reads and failure
+// retries themselves never enable a policy.
 func registerReportArchiveTaskRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
 	s := reportarchive.Service{DB: d.Admins.DB}
+	handle("PUT", archivePolicyRoutePath, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawQuery != "" || r.URL.ForceQuery {
+			failure(w, r, 400, "REQUEST_INVALID", "自动归档配置不接受查询参数")
+			return
+		}
+		brand, ok := reconciliationBrand(w, r)
+		if !ok {
+			return
+		}
+		var in archivePolicyActivationHTTPInput
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		initial, ok := adminAccount(w, r, d)
+		if !ok {
+			return
+		}
+		raw, _ := json.Marshal(in)
+		var fresh access.Account
+		check := func(ctx context.Context, tx pgx.Tx) error {
+			a, err := archiveTaskHTTPAuth(ctx, tx, r, d, initial, brand, "policy")
+			if err == nil {
+				fresh = a
+			}
+			return err
+		}
+		result, err := d.Mutations.ExecuteChecked(r.Context(), brand, initial.ID, "admin.report_archive.policy.update", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(brand+":"+string(raw)), check, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
+			out, e := s.UpdateAutomaticActivationTx(ctx, tx, brand, fresh, reportarchive.AutomaticActivationInput(in), pointMeta(r, fresh))
+			response, e := archiveHTTPResult(out, archiveHTTPDBError(e))
+			if e != nil {
+				return mutation.Result{}, e
+			}
+			if e = check(ctx, tx); e != nil {
+				return mutation.Result{}, e
+			}
+			return response, nil
+		})
+		err = archiveHTTPDBError(err)
+		if errors.Is(err, reportarchive.ErrBusy) || errors.Is(err, reportarchive.ErrIntegrity) {
+			archiveHTTPOutput(w, r, nil, err)
+			return
+		}
+		if err != nil {
+			result, err = archiveHTTPResult(nil, err)
+		}
+		finishAdminMutation(w, r, d, initial, brand, "report_archive_policy.update", result, err)
+	})
 	for _, path := range []string{archivePolicyRoutePath, archiveTasksPath, archiveTasksPath + "/{id}"} {
 		handle("GET", path, func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.ForceQuery || !reconciliationGetHasNoBody(w, r) {

@@ -23,6 +23,7 @@ import * as rewards from "../../scripts/openapi-rewards.mjs";
 import * as rewardReports from "../../scripts/openapi-reward-reports.mjs";
 import * as reportArchives from "../../scripts/openapi-report-archives.mjs";
 import * as reportArchiveTasks from "../../scripts/openapi-report-archive-tasks.mjs";
+import * as reportArchivePolicy from "../../scripts/openapi-report-archive-policy.mjs";
 
 const root=new URL("../../",import.meta.url);
 const go=process.env.LOTTERY_GO_BIN??"go";
@@ -66,6 +67,7 @@ test("reconciliation contract documents exactly the five registered admin routes
     commissionPayments,
     reportArchives,
     reportArchiveTasks,
+    reportArchivePolicy,
   ],JSON.parse(result.stdout));
   for(const route of expectedRoutes){
     assert.ok(actual.has(route),`backend route missing: ${route}`);

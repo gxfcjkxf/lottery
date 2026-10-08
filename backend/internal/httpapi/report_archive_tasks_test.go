@@ -182,10 +182,10 @@ func TestReportArchiveTaskHTTPStrictInputsAuthorizationAndReadScopes(t *testing.
 			t.Errorf("invalid body #%d returned %q: %s", i, code, r.Body.String())
 		}
 	}
-	noPolicyWrite := archiveTaskRequest(f, "PUT", archivePolicyPath, "archive-task-policy-write-absent", f.token, managedBrand, f.root, `{}`)
-	mustStatus(t, noPolicyWrite, 404)
-	if archiveTaskCode(t, noPolicyWrite) != "NOT_FOUND" {
-		t.Fatalf("unexpected policy write route response: %s", noPolicyWrite.Body.String())
+	invalidPolicy := archiveTaskRequest(f, "PUT", archivePolicyPath, "archive-task-policy-write-invalid", f.token, managedBrand, f.root, `{}`)
+	mustStatus(t, invalidPolicy, 400)
+	if archiveTaskCode(t, invalidPolicy) != "REQUEST_INVALID" {
+		t.Fatalf("incomplete policy write was not rejected: %s", invalidPolicy.Body.String())
 	}
 	for _, q := range []string{"?", "?limit=020", "?limit=+20", "?limit=0", "?offset=-1", "?offset=1000001", "?limit=20&limit=20", "?unknown=1", "?%"} {
 		r := archiveTaskRequest(f, "GET", archiveTaskPath+q, "", f.token, managedBrand, "", "")
