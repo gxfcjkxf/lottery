@@ -92,6 +92,7 @@ type paymentRow struct {
 	ID, Brand, Cycle, Run, State, Mode string
 	Version, Epoch                     int64
 	Approval                           *string
+	LastError                          *string
 }
 
 // Workers hold cycle -> payment -> target -> wallet. Administrative admission
@@ -113,7 +114,7 @@ func lockPayment(ctx context.Context, tx pgx.Tx, brand, id string) (paymentRow, 
 	if _, err = cycleLock(ctx, tx, brand, cycle); err != nil {
 		return p, err
 	}
-	err = tx.QueryRow(ctx, `SELECT id::text,brand_id::text,cycle_id::text,run_id::text,state,payout_mode,version,evidence_epoch,approval_audit_log_id::text FROM commission_payments WHERE brand_id=$1 AND id=$2 FOR UPDATE NOWAIT`, brand, id).Scan(&p.ID, &p.Brand, &p.Cycle, &p.Run, &p.State, &p.Mode, &p.Version, &p.Epoch, &p.Approval)
+	err = tx.QueryRow(ctx, `SELECT id::text,brand_id::text,cycle_id::text,run_id::text,state,payout_mode,version,evidence_epoch,approval_audit_log_id::text,last_error_code FROM commission_payments WHERE brand_id=$1 AND id=$2 FOR UPDATE NOWAIT`, brand, id).Scan(&p.ID, &p.Brand, &p.Cycle, &p.Run, &p.State, &p.Mode, &p.Version, &p.Epoch, &p.Approval, &p.LastError)
 	return p, paymentDBError(err)
 }
 
@@ -167,7 +168,15 @@ func (s Service) actPayment(ctx context.Context, tx pgx.Tx, brand, id string, a 
 	if p.Version != in.Version {
 		return Payment{}, ErrPaymentVersion
 	}
-	if action == "approve" && (p.State != "awaiting_approval" || p.Mode != "manual") || action == "retry" && (p.State != "failed" || p.Approval == nil) {
+	manualReview := (p.Mode == "manual" || p.Mode == "mixed") && p.State == "awaiting_approval" && p.Approval == nil
+	if action == "approve" && p.State == "blocked" && p.Mode == "mixed" && p.Approval == nil && p.LastError != nil && *p.LastError == "COMMISSION_PAYMENT_MODE_UNRESOLVED" {
+		var targets bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM commission_payment_targets WHERE payment_id=$1)`, p.ID).Scan(&targets); err != nil {
+			return Payment{}, err
+		}
+		manualReview = !targets
+	}
+	if action == "approve" && !manualReview || action == "retry" && (p.State != "failed" || p.Approval == nil) {
 		return Payment{}, ErrPaymentState
 	}
 	valid, err := paymentEvidence(ctx, tx, p)
@@ -203,12 +212,8 @@ func createPayment(ctx context.Context, tx pgx.Tx, c cycleRow, meta points.Metad
 	state := "paying"
 	var code *string
 	var approval, actor *string
-	if mode == "manual" {
+	if mode == "manual" || mode == "mixed" {
 		state = "awaiting_approval"
-	} else if mode == "mixed" {
-		state = "blocked"
-		v := "COMMISSION_PAYMENT_MODE_UNRESOLVED"
-		code = &v
 	} else if mode != "automatic" && mode != "none" {
 		return ErrPaymentEvidence
 	}

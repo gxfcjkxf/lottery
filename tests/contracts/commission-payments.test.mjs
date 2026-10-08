@@ -49,7 +49,10 @@ test('commission payment schemas are closed, precise and omit target details', (
     assert.equal(schemas.CommissionPayment.properties[field].type, 'string');
   }
   assert.ok(!Object.keys(schemas.CommissionPayment.properties).some(field => /^(targets?|member_id|agent_id|account_id)$/.test(field)));
-  assert.match(schemas.CommissionPayment.description, /Mixed mode remains blocked/);
+  assert.match(schemas.CommissionPayment.description, /immutable historical bet snapshot identity/);
+  assert.match(schemas.CommissionPayment.description, /entire cycle/);
+  assert.match(schemas.CommissionPayment.description, /COMMISSION_PAYMENT_MODE_UNRESOLVED/);
+  assert.match(operations.find(op => op.operationId === 'retryCommissionPayment').description, /only after persisted approval/);
 });
 
 test('the initial disabled payment policy response accepts its empty audit id', () => {

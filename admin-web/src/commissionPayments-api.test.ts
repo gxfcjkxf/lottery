@@ -108,11 +108,31 @@ describe("commission payments API", () => {
       payment({ state: "blocked", last_error_code: null }),
       payment({ state: "paying", last_error_code: "unexpected" }),
       payment({ state: "awaiting_approval", payout_mode: "manual", paid_count: "1" }),
+      payment({ state: "awaiting_approval", payout_mode: "automatic", last_error_code: null, paid_count: "0", paid_points: "0" }),
+      payment({ state: "awaiting_approval", payout_mode: "none", last_error_code: null, paid_count: "0", paid_points: "0" }),
     ];
     for (const record of malformed) await expect(createCommissionPaymentsApi(async () => ok(record)).read(brand, id))
       .rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     await expect(createCommissionPaymentsApi(async () => ok(payment({ state: "paid", paid_count: payment().target_count, paid_points: payment().total_points, last_error_code: null }))).read(brand, id))
       .resolves.toMatchObject({ state: "paid" });
+  });
+
+  it("accepts zero-paid mixed approval snapshots and mixed approval receipts without changing payout mode", async () => {
+    const awaiting = payment({ state: "awaiting_approval", payout_mode: "mixed", paid_count: "0", paid_points: "0", last_error_code: null });
+    await expect(createCommissionPaymentsApi(async () => ok(awaiting)).read(brand, id)).resolves.toMatchObject({ state: "awaiting_approval", payout_mode: "mixed" });
+    const legacy = payment({ state: "blocked", payout_mode: "mixed", paid_count: "0", paid_points: "0", last_error_code: "COMMISSION_PAYMENT_MODE_UNRESOLVED" });
+    await expect(createCommissionPaymentsApi(async () => ok({ ...legacy, state: "paying", version: 3, last_error_code: null })).approve(brand, id, { version: 2, reason: "Review legacy whole cycle" }, "approve-key-mixed1"))
+      .resolves.toMatchObject({ state: "paying", payout_mode: "mixed", version: 3 });
+    for (const mode of ["automatic", "none"] as const) {
+      await expect(createCommissionPaymentsApi(async () => ok(payment({ state: "paying", payout_mode: mode, version: 3, last_error_code: null }))).approve(brand, id, { version: 2, reason: "Reject incorrect approval receipt" }, "approve-key-invalid1"))
+        .rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    }
+  });
+
+  it("accepts a failed mixed retry receipt while preserving the historical payout mode", async () => {
+    const receipt = payment({ state: "paying", payout_mode: "mixed", version: 8, last_error_code: null });
+    await expect(createCommissionPaymentsApi(async () => ok(receipt)).retry(brand, id, { version: 7, reason: "Resume approved mixed cycle" }, "retry-key-mixed01"))
+      .resolves.toMatchObject({ id, state: "paying", payout_mode: "mixed", version: 8, last_error_code: null });
   });
 
   it("validates page bounds, unique ids, and exact totals while allowing an empty out-of-range page", async () => {

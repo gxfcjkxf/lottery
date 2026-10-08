@@ -65,7 +65,7 @@ function validPayment(value: unknown, brand: string): value is CommissionPayment
     !validDate(value.created_at) || !validDate(value.updated_at) || Date.parse(value.updated_at) < Date.parse(value.created_at)) return false;
   if ((value.state === "failed" || value.state === "blocked") !== (typeof value.last_error_code === "string")) return false;
   if (value.state === "paid" && (value.paid_count !== value.target_count || value.paid_points !== value.total_points)) return false;
-  if (value.state === "awaiting_approval" && (value.payout_mode !== "manual" || value.paid_count !== "0" || value.paid_points !== "0")) return false;
+  if (value.state === "awaiting_approval" && (!(["manual", "mixed"] as unknown[]).includes(value.payout_mode) || value.paid_count !== "0" || value.paid_points !== "0")) return false;
   return true;
 }
 function validPage(value: unknown, brand: string, limit: number, offset: number): value is CommissionPaymentPage {
@@ -142,6 +142,6 @@ export function createCommissionPaymentsApi(fetcher: typeof fetch = fetch, actor
   async function action(name: "approve" | "retry", brand: string, id: string, body: Readonly<CommissionPaymentActionBody>, key: string): Promise<CommissionPayment> {
     validBrand(brand); if (!validUuid(id)) invalidInput(); validActionBody(body as CommissionPaymentActionBody); validKey(key);
     const data = await request(brand, `${PAYMENTS}/${encodeURIComponent(id)}/${name}`, { method: "POST", body, key });
-    if (!validPayment(data, brand) || data.id !== id || data.version !== body.version + 1 || data.state !== "paying" || data.last_error_code !== null || (name === "approve" && data.payout_mode !== "manual")) invalidResponse(); return data;
+    if (!validPayment(data, brand) || data.id !== id || data.version !== body.version + 1 || data.state !== "paying" || data.last_error_code !== null || (name === "approve" && !(["manual", "mixed"] as CommissionPayoutMode[]).includes(data.payout_mode))) invalidResponse(); return data;
   }
 }

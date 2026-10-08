@@ -89,7 +89,7 @@ function installFetch(options: { current?: CommissionPayment; onRetry?: (call: {
     if (url.includes("/commission-payments?") && method === "GET") return ok({ brand_id: brand, items: [current], total_count: "1", limit: 20, offset: Number(new URL(url, "http://local").searchParams.get("offset")) });
     if (url.endsWith(`/commission-payments/${paymentId}`) && method === "GET") { detailReads++; if (detailReads === 1 && options.delayFirstDetail) return options.delayFirstDetail.promise; return ok(current); }
     if (url.endsWith(`/commission-payments/${paymentId}/retry`) && method === "POST") return options.onRetry?.({ url, init }) ?? ok({ ...current, state: "paying", version: JSON.parse(String(init?.body)).version + 1, last_error_code: null });
-    if (url.endsWith(`/commission-payments/${paymentId}/approve`) && method === "POST") return ok({ ...current, state: "paying", payout_mode: "manual", version: JSON.parse(String(init?.body)).version + 1, last_error_code: null });
+    if (url.endsWith(`/commission-payments/${paymentId}/approve`) && method === "POST") return ok({ ...current, state: "paying", version: JSON.parse(String(init?.body)).version + 1, last_error_code: null });
     return failure(404);
   });
   vi.stubGlobal("fetch", fetcher);
@@ -142,6 +142,68 @@ describe("CommissionPaymentsManagement", () => {
     expect(byTestId(mounted.container, "commission-payment-retry")?.props.disabled).toBe(false);
     expect(textOf(mounted.container)).toContain("续跑未完成目标");
     mounted.app.unmount();
+  });
+
+  it("reviews and retries a failed mixed cycle with its reason, actor, version, and mode intact", async () => {
+    const server = installFetch({ current: payment({ state: "failed", payout_mode: "mixed", version: 7, paid_count: "1", paid_points: "5", last_error_code: "POST_FAILED" }) });
+    const mounted = mount(baseAccount); await flush();
+    click(button(mounted.container, paymentId)); await flush();
+    expect(textOf(mounted.container)).toContain("混合（整周期人工审核）");
+    setModel(byTestId(mounted.container, "commission-payment-action-reason"), "Resume approved mixed cycle"); await flush();
+    expect(byTestId(mounted.container, "commission-payment-retry")?.props.disabled).toBe(false);
+    click(byTestId(mounted.container, "commission-payment-retry")); await flush();
+    const review = byTestId(mounted.container, "commission-payment-review")!;
+    expect(textOf(review)).toContain("retry");
+    expect(textOf(review)).toContain("v7");
+    expect(textOf(review)).toContain("Resume approved mixed cycle");
+    setModel(byTestId(mounted.container, "commission-payment-review-confirmed"), true); await flush();
+    click(byTestId(mounted.container, "commission-payment-confirm-submit")); await flush();
+    const retries = server.calls.filter((call) => call.url.endsWith(`/commission-payments/${paymentId}/retry`));
+    expect(retries).toHaveLength(1);
+    expect(JSON.parse(String(retries[0].init?.body))).toEqual({ version: 7, reason: "Resume approved mixed cycle" });
+    expect(new Headers(retries[0].init?.headers).get("X-Commission-Payment-Actor-ID")).toBe(actor);
+    expect(textOf(mounted.container)).toContain("混合（整周期人工审核）");
+    expect(textOf(mounted.container)).toContain("操作回执");
+    mounted.app.unmount();
+  });
+
+  it("reviews mixed awaiting and exact legacy blocked cycles through the whole-cycle approval flow", async () => {
+    const cases = [
+      payment({ state: "awaiting_approval", payout_mode: "mixed", last_error_code: null }),
+      payment({ state: "blocked", payout_mode: "mixed", last_error_code: "COMMISSION_PAYMENT_MODE_UNRESOLVED" }),
+    ];
+    for (const snapshot of cases) {
+      const server = installFetch({ current: snapshot }); const mounted = mount(baseAccount); await flush();
+      click(button(mounted.container, paymentId)); await flush();
+      expect(textOf(mounted.container)).toContain("混合（整周期人工审核）");
+      expect(textOf(mounted.container)).toContain("整个混合周期");
+      setModel(byTestId(mounted.container, "commission-payment-action-reason"), "Approve the entire mixed cycle"); await flush();
+      expect(byTestId(mounted.container, "commission-payment-approve")?.props.disabled).toBe(false);
+      click(byTestId(mounted.container, "commission-payment-approve")); await flush();
+      setModel(byTestId(mounted.container, "commission-payment-review-confirmed"), true); await flush();
+      click(byTestId(mounted.container, "commission-payment-confirm-submit")); await flush();
+      const approvals = server.calls.filter((call) => call.url.endsWith(`/commission-payments/${paymentId}/approve`));
+      expect(approvals).toHaveLength(1);
+      expect(JSON.parse(String(approvals[0].init?.body))).toEqual({ version: 2, reason: "Approve the entire mixed cycle" });
+      expect(new Headers(approvals[0].init?.headers).get("X-Commission-Payment-Actor-ID")).toBe(actor);
+      expect(textOf(mounted.container)).toContain("操作回执");
+      mounted.app.unmount();
+    }
+  });
+
+  it("denies legacy approval for correction blocks, paid targets, and unrelated blocked modes", async () => {
+    const blocked = [
+      payment({ state: "blocked", payout_mode: "mixed", last_error_code: "COMMISSION_PAYMENT_CORRECTION_REQUIRED" }),
+      payment({ state: "blocked", payout_mode: "mixed", paid_count: "1", paid_points: "5", last_error_code: "COMMISSION_PAYMENT_MODE_UNRESOLVED" }),
+      payment({ state: "blocked", payout_mode: "automatic", last_error_code: "COMMISSION_PAYMENT_MODE_UNRESOLVED" }),
+    ];
+    for (const snapshot of blocked) {
+      const server = installFetch({ current: snapshot }); const mounted = mount(baseAccount); await flush();
+      click(button(mounted.container, paymentId)); await flush();
+      expect(byTestId(mounted.container, "commission-payment-approve")).toBeNull();
+      expect(server.calls.filter((call) => call.init?.method === "POST")).toHaveLength(0);
+      mounted.app.unmount();
+    }
   });
 
   it("keeps a stale deferred detail from replacing a newer list and detail snapshot", async () => {

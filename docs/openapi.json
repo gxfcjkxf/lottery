@@ -3,7 +3,7 @@
   "info": {
     "title": "Lottery Platform Implemented API",
     "version": "0.1.0",
-    "description": "Current implemented API only. Target 500 betting requests/s is not verified production capacity. Withdrawal order workflows and configured turnover eligibility are implemented. Commission cycles, audited point payouts, adjustments and posting reports are implemented; payout policies default off. Draw-correction commission compensation, mixed payout-mode handling and rewards remain incomplete. Real payment is not connected, and external draw API/DOM adapters remain stubbed. Browser user sessions use brand-named HttpOnly cookies; bearer tokens are supported for nonbrowser clients. Preserve Host through a trusted reverse proxy; a brand path cannot override a dedicated brand domain. See repository docs/04-api-contract.md and implementation-progress.md for business invariants and accepted scope."
+    "description": "Current implemented API only. Target 500 betting requests/s is not verified production capacity. Withdrawal order workflows and configured turnover eligibility are implemented. Commission cycles, audited point payouts, whole-cycle manual approval for mixed snapshot modes, adjustments and posting reports are implemented; payout policies default off. Draw-correction commission compensation and rewards remain incomplete. Real payment is not connected, and external draw API/DOM adapters remain stubbed. Browser user sessions use brand-named HttpOnly cookies; bearer tokens are supported for nonbrowser clients. Preserve Host through a trusted reverse proxy; a brand path cannot override a dedicated brand domain. See repository docs/04-api-contract.md and implementation-progress.md for business invariants and accepted scope."
   },
   "servers": [
     {
@@ -84034,11 +84034,11 @@
     "/api/v1/admin/commission-payments/{id}/approve": {
       "post": {
         "operationId": "approveCommissionPayment",
-        "summary": "Approve a manual commission payout",
+        "summary": "Approve a manual or mixed commission payout",
         "tags": [
           "commissions"
         ],
-        "description": "Requires commission view plus commission_payment.approve.brand and denies super-admin writes. A single administrator approves; the worker performs actual target ledger credits. Manual mode waits for approval; automatic mode is system-approved. Mixed mode stays blocked until explicitly confirmed.",
+        "description": "Requires commission view plus commission_payment.approve.brand and denies super-admin writes. A single brand administrator explicitly approves the whole manual or mixed cycle; the worker performs actual target ledger credits. Mixed payout_mode remains unchanged as historical snapshot identity. The exact legacy zero-paid mixed record blocked with COMMISSION_PAYMENT_MODE_UNRESOLVED may also be approved; correction/evidence blocks and other blocked records may not.",
         "security": [
           {
             "adminBearer": []
@@ -84398,7 +84398,7 @@
         "tags": [
           "commissions"
         ],
-        "description": "Requires commission view plus commission_payment.retry.brand and denies super-admin writes. Evidence is rechecked. Corrections after any paid target are blocked for manual handling; a payment with no paid targets may become stale.",
+        "description": "Requires commission view plus commission_payment.retry.brand and denies super-admin writes. Failed mixed jobs may use the existing retry action only after persisted approval; evidence is rechecked. Corrections after any paid target remain blocked for manual handling; a payment with no paid targets may become stale.",
         "security": [
           {
             "adminBearer": []
@@ -101530,7 +101530,7 @@
           "updated_at"
         ],
         "additionalProperties": false,
-        "description": "Payout progress projection. Exact totals and counts are decimal strings. Payment targets are never exposed. Mixed mode remains blocked pending explicit human confirmation; corrections after any credited target require manual handling."
+        "description": "Payout progress projection. Exact totals and counts are decimal strings. Payment targets are never exposed. payout_mode is the immutable historical bet snapshot identity and remains mixed. Awaiting approval is valid for manual or mixed mode only when paid_points and paid_count are both zero and last_error_code is null. A mixed cycle with any manual bet snapshot requires brand administrator approval for the entire cycle; its automatic portion is never split out. The exact legacy blocked case with payout_mode mixed, last_error_code COMMISSION_PAYMENT_MODE_UNRESOLVED, paid_points 0, and paid_count 0 may be explicitly approved. Other blocked correction or evidence records are not approvable."
       },
       "CommissionPaymentPage": {
         "type": "object",
