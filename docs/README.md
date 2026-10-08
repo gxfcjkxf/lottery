@@ -32,7 +32,8 @@
 - [20-manual-reward-orders.md](20-manual-reward-orders.md)：人工奖励订单、赠送来源入账与完整撤销、真实不足待处理、显式继续、双语后台、双端请求恢复与历史站内通知。
 - [21-reward-reports.md](21-reward-reports.md)：实际奖励入账与订单创建队列的当前状态报表、独立查看和导出权限、完整CSV验证及工作台当前状态计数。
 - [22-commission-correction-plans.md](22-commission-correction-plans.md)：开奖结果更正后的真实佣金差额计划、来源守卫及不可变分页；计划就绪不代表批准或实际补偿。
-- [23-commission-correction-execution.md](23-commission-correction-execution.md)：独立默认关闭的资金更正开关、实际差额执行、整周期暂停与显式继续、多次更正净额基数；管理接口与双端操作继续实施。
+- [23-commission-correction-execution.md](23-commission-correction-execution.md)：独立默认关闭的资金更正开关、实际差额执行、整周期暂停与显式继续、多次更正净额基数。
+- [24-commission-correction-management.md](24-commission-correction-management.md)：十二条正式更正管理接口、独立权限与当前授权复核、PC/移动双语操作、原回执及同会话未知请求恢复；补偿通知和报表仍待接入。
 
 ## 第一阶段实现顺序
 

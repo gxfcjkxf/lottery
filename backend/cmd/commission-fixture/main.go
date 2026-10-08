@@ -63,6 +63,8 @@ const (
 	fixtureDBBAV = "/lottery_commission_adjustment_mobile_s18_verified"
 	fixtureDBAR  = "/lottery_commission_report_desktop_s19"
 	fixtureDBBR  = "/lottery_commission_report_mobile_s19"
+	fixtureDBAC  = "/lottery_commission_correction_desktop_s27"
+	fixtureDBBC  = "/lottery_commission_correction_mobile_s27"
 )
 
 func safeFixtureURL(raw, environment, confirmation, adminPassword, userPassword string, requirePasswords bool) error {
@@ -71,7 +73,7 @@ func safeFixtureURL(raw, environment, confirmation, adminPassword, userPassword 
 		(u.Scheme != "postgres" && u.Scheme != "postgresql") ||
 		(u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") ||
 		(u.Port() != "5432" && u.Port() != "55432") ||
-		(u.Path != fixtureDBA && u.Path != fixtureDBB && u.Path != fixtureDBAV && u.Path != fixtureDBBV && u.Path != fixtureDBAF && u.Path != fixtureDBBF && u.Path != fixtureDBAD && u.Path != fixtureDBBD && u.Path != fixtureDBAP && u.Path != fixtureDBBP && u.Path != fixtureDBAPV && u.Path != fixtureDBBPV && u.Path != fixtureDBAPA && u.Path != fixtureDBBPA && u.Path != fixtureDBAA && u.Path != fixtureDBBA && u.Path != fixtureDBAAV && u.Path != fixtureDBBAV && u.Path != fixtureDBAR && u.Path != fixtureDBBR) || u.RawPath != "" || u.Fragment != "" || u.Opaque != "" ||
+		(u.Path != fixtureDBA && u.Path != fixtureDBB && u.Path != fixtureDBAV && u.Path != fixtureDBBV && u.Path != fixtureDBAF && u.Path != fixtureDBBF && u.Path != fixtureDBAD && u.Path != fixtureDBBD && u.Path != fixtureDBAP && u.Path != fixtureDBBP && u.Path != fixtureDBAPV && u.Path != fixtureDBBPV && u.Path != fixtureDBAPA && u.Path != fixtureDBBPA && u.Path != fixtureDBAA && u.Path != fixtureDBBA && u.Path != fixtureDBAAV && u.Path != fixtureDBBAV && u.Path != fixtureDBAR && u.Path != fixtureDBBR && u.Path != fixtureDBAC && u.Path != fixtureDBBC) || u.RawPath != "" || u.Fragment != "" || u.Opaque != "" ||
 		u.User == nil || u.User.Username() != "lottery_test" || len(adminPassword) < 16 && requirePasswords || len(userPassword) < 16 && requirePasswords {
 		return errors.New("explicit owned synthetic commission database required")
 	}
@@ -115,13 +117,13 @@ func main() {
 func run() error {
 	command := "init"
 	if len(os.Args) > 2 {
-		return errors.New("usage: commission-fixture [init|advance|discover|pay|notify|verify]")
+		return errors.New("usage: commission-fixture [init|advance|discover|pay|notify|verify|prepare-corrections|execute-corrections|freeze-corrections|unfreeze-corrections|verify-corrections]")
 	}
 	if len(os.Args) == 2 {
 		command = os.Args[1]
 	}
-	if command != "init" && command != "advance" && command != "discover" && command != "pay" && command != "notify" && command != "verify" {
-		return errors.New("usage: commission-fixture [init|advance|discover|pay|notify|verify]")
+	if command != "init" && command != "advance" && command != "discover" && command != "pay" && command != "notify" && command != "verify" && command != "prepare-corrections" && command != "execute-corrections" && command != "freeze-corrections" && command != "unfreeze-corrections" && command != "verify-corrections" {
+		return errors.New("usage: commission-fixture [init|advance|discover|pay|notify|verify|prepare-corrections|execute-corrections|freeze-corrections|unfreeze-corrections|verify-corrections]")
 	}
 	dsn := os.Getenv("DATABASE_URL")
 	if err := safeFixtureURL(dsn, os.Getenv("APP_ENV"), os.Getenv("COMMISSION_FIXTURE_CONFIRM"),
@@ -188,6 +190,39 @@ func run() error {
 			return errors.New("fixture verification failed")
 		}
 		return json.NewEncoder(os.Stdout).Encode(out)
+	case "prepare-corrections":
+		if len(os.Getenv("COMMISSION_FIXTURE_USER_PASSWORD")) < 16 {
+			return errors.New("owned synthetic correction user password required")
+		}
+		out, e := prepareCorrections(ctx, db, adminID, os.Getenv("COMMISSION_FIXTURE_USER_PASSWORD"))
+		if e != nil {
+			return e
+		}
+		return json.NewEncoder(os.Stdout).Encode(out)
+	case "execute-corrections":
+		processed, e := (commission.Service{DB: db}).ProcessCorrectionExecutions(ctx, 100)
+		if e != nil {
+			return errors.New("commission correction execution worker failed")
+		}
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{"processed": processed})
+	case "freeze-corrections":
+		out, e := freezeCorrections(ctx, db, adminID)
+		if e != nil {
+			return e
+		}
+		return json.NewEncoder(os.Stdout).Encode(out)
+	case "unfreeze-corrections":
+		out, e := unfreezeCorrections(ctx, db, adminID)
+		if e != nil {
+			return e
+		}
+		return json.NewEncoder(os.Stdout).Encode(out)
+	case "verify-corrections":
+		out, e := verifyCorrections(ctx, db, adminID)
+		if e != nil {
+			return errors.New("correction fixture verification failed")
+		}
+		return json.NewEncoder(os.Stdout).Encode(out)
 	}
 	return nil
 }
@@ -239,6 +274,8 @@ func initialize(ctx context.Context, db *pgxpool.Pool, adminPassword, userPasswo
 		"commission.view.brand", "commission.run.brand", "commission.retry.brand",
 		"commission_payment.approve.brand", "commission_payment.retry.brand", "commission_payment_policy.write.brand", "commission_adjustment.write.brand",
 		"report_commission.view.brand", "report_commission.export.brand",
+		"draw.view.brand", "draw.correct.brand", "settlement.view.brand", "wallet.freeze.brand",
+		"commission_correction_policy.write.brand", "commission_correction.retry.brand", "commission_correction.approve.brand", "commission_correction.continue.brand", "commission_correction.execute_retry.brand",
 	}
 	if err = addScopedRole(ctx, tx, adminID, fixtureBrand, "commission_fixture_admin", "Commission fixture operator", adminPerms); err != nil {
 		return out, errors.New("fixture operator permissions failed")
@@ -378,6 +415,10 @@ func register(ctx context.Context, db *pgxpool.Pool, store *identity.Store, user
 }
 
 func createRuleWorkflow(ctx context.Context, db *pgxpool.Pool, admin, reviewer access.Account, meta func(string) points.Metadata) (rulebook.Game, rulebook.Play, rulebook.Version, error) {
+	return createRuleWorkflowNamed(ctx, db, admin, reviewer, meta, "commission_fixture")
+}
+
+func createRuleWorkflowNamed(ctx context.Context, db *pgxpool.Pool, admin, reviewer access.Account, meta func(string) points.Metadata, code string) (rulebook.Game, rulebook.Play, rulebook.Version, error) {
 	store := rulebook.Store{DB: db}
 	model := rules.Model{Type: "DIGITS_0_9", Length: 3, AllowRepeat: true, Ordered: true}
 	position, one, ten, won := 3, points.Amount(1), points.Amount(10), true
@@ -387,7 +428,7 @@ func createRuleWorkflow(ctx context.Context, db *pgxpool.Pool, admin, reviewer a
 	var game rulebook.Game
 	if err := inTx(ctx, db, func(tx pgx.Tx) error {
 		var e error
-		game, e = store.CreateGame(ctx, tx, fixtureBrand, admin, "commission_fixture", "Commission fixture", model, "UTC", "owned synthetic commission browser workflow", meta(admin.ID))
+		game, e = store.CreateGame(ctx, tx, fixtureBrand, admin, code, "Commission fixture", model, "UTC", "owned synthetic commission browser workflow", meta(admin.ID))
 		return e
 	}); err != nil {
 		return game, rulebook.Play{}, rulebook.Version{}, errors.New("fixture game creation failed")
@@ -435,6 +476,7 @@ func createRuleWorkflow(ctx context.Context, db *pgxpool.Pool, admin, reviewer a
 
 type phaseResult struct {
 	cycleID  string
+	periodID string
 	orderIDs []string
 }
 
@@ -472,6 +514,7 @@ func runPeriod(ctx context.Context, db *pgxpool.Pool, admin access.Account, game
 	}); err != nil {
 		return result, diagnostic("period.open", "FIXTURE_PERIOD_OPEN_FAILED")
 	}
+	result.periodID = period.ID
 	brandPolicy, err := betService.BrandPolicy(ctx, fixtureBrand)
 	if err != nil {
 		return result, diagnostic("period.brand_betting_policy_read", "FIXTURE_BRAND_BETTING_POLICY_READ_FAILED")
@@ -480,7 +523,13 @@ func runPeriod(ctx context.Context, db *pgxpool.Pool, admin access.Account, game
 	if err != nil {
 		return result, diagnostic("period.game_betting_policy_read", "FIXTURE_GAME_BETTING_POLICY_READ_FAILED")
 	}
-	input := betting.Input{PeriodID: period.ID, PlayID: play.ID, RuleVersionID: version.ID, Selection: rules.Selection{Digits: [][]int{{0}, {0}, {0}}}, Multiplier: 1, PolicyVersions: &betting.PolicyVersions{Brand: brandPolicy.Version, Game: gamePolicy.Version}}
+	multiplier := 1
+	if phase == "correction-manual" {
+		// A real two-point stake yields 0.6 commission at ratio 0.3, which the
+		// stored order-scoped half-up rule rounds to one point.
+		multiplier = 2
+	}
+	input := betting.Input{PeriodID: period.ID, PlayID: play.ID, RuleVersionID: version.ID, Selection: rules.Selection{Digits: [][]int{{0}, {0}, {0}}}, Multiplier: points.Amount(multiplier), PolicyVersions: &betting.PolicyVersions{Brand: brandPolicy.Version, Game: gamePolicy.Version}}
 	for i := 0; i < betCount; i++ {
 		tx, e := db.Begin(ctx)
 		if e != nil {
@@ -556,6 +605,17 @@ func runPeriod(ctx context.Context, db *pgxpool.Pool, admin access.Account, game
 		}
 		if err = assertDiscoveryState(ctx, db, result.orderIDs[0], "registered", result.cycleID); err != nil {
 			return result, diagnostic("phase_b.discovery_state", "FIXTURE_DISCOVERY_NOT_LINKED_TO_EXISTING_CYCLE")
+		}
+	case "correction-manual":
+		result.cycleID, err = manuallyCreateCycle(ctx, db, finance, admin, result.orderIDs[0])
+		if err != nil {
+			return result, diagnostic("correction.manual_cycle", "FIXTURE_CORRECTION_CYCLE_CREATE_FAILED")
+		}
+		if _, err = finance.ProcessDiscovery(ctx, 100); err != nil {
+			return result, diagnostic("correction.discovery_link", "FIXTURE_CORRECTION_DISCOVERY_LINK_FAILED")
+		}
+		if err = advanceUntil(ctx, finance, db, fixtureBrand, result.cycleID, "ready"); err != nil {
+			return result, diagnostic("correction.cycle_worker", "FIXTURE_CORRECTION_CYCLE_WORKER_FAILED")
 		}
 	case "discovery-failure":
 		if err = failDiscoveryCreation(ctx, finance); err != nil {
@@ -841,7 +901,7 @@ SELECT jsonb_build_object(
   ORDER BY l.account_id,l.created_at,l.id) FROM point_ledger_entries l JOIN owned_accounts a ON a.id=l.account_id AND a.brand_id=l.brand_id),'[]'::jsonb)
 )::text`
 	var raw []byte
-	if err := db.QueryRow(ctx, query, fixtureBrand, []string{fixtureOwner, fixtureUser}).Scan(&raw); err != nil {
+	if err := db.QueryRow(ctx, query, fixtureBrand, []string{fixtureOwner, fixtureUser, correctionFixtureUser}).Scan(&raw); err != nil {
 		return "", err
 	}
 	return hashCanonicalJSON(raw)

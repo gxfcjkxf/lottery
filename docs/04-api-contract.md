@@ -821,3 +821,9 @@ POST 回执保存首次结果，SDK 不在写方法内重新取上下文/改写�
 0051追加GET `/api/v1/admin/commission-payments/{id}/targets`及GET/POST `/api/v1/admin/commission-payment-targets/{id}/adjustments`，写入为独立commission_adjustment.write品牌权限、version/points/reason闭合正文、确认账号及幂等键；成功201。只接受当前已paid且证据有效的目标，精确差额记入佣金available，原派发总额不修改。0052仅为实际完成的入账/修正生成不可变通知，完整状态、字段和错误见[人工修正合同](18-commission-adjustments.md)。
 
 0053追加GET `/api/v1/admin/reports/commission`及`/reports/commission.csv`，独立report_commission.view/export品牌或平台权限。from/to按真实ledger.created_at半开入账窗口筛选，group_by为day/agent/cycle，可选agent_id/member_id/cycle_id；前六项计数和积分非负、net_points可为负的精确字符串。CSV导出完整筛选范围，不接受分页，最多10000组/4MiB，审计后才输出且可核验SHA256；原派发不因多条修正重复累计，完整合同见[佣金账本报表](19-commission-posting-reports.md)。
+
+## 佣金结果更正管理当前接口
+
+十二条正式管理操作以`/api/v1/admin`为前缀：GET/PUT `/commission-correction-policy`；GET `/commission-correction-plans`、`/{id}`、`/{id}/targets`及POST `/{id}/retry`；GET `/commission-correction-executions`、`/{id}`、`/{id}/targets`及POST `/{id}/approve`、`/{id}/continue`、`/{id}/retry`。仅使用X-Brand-ID，不增加品牌路径别名。读需要commission.view.brand/platform及已提交审计，写还需各自品牌权限、非超管active管理员、原确认账号X-Commission-Correction-Actor-ID、原正文与幂等键。GET拒绝正文，详情不接受查询串，分页只接受严格limit/offset。
+
+策略正文为version/enabled/reason，其余写入为version/reason；重复、缺失、未知或null字段均拒绝，原因不得含Unicode控制字符。写入200是该操作原回执，不能用后来GET替换；原键重放仍复核当前授权。权限拒绝403、原确认人员不同401、状态/证据/版本冲突409，忙锁503不缓存临时回执。列表总数和金额为精确字符串；credit/debit均可大于int64且同时非零，net为二者差；证据代次为不超过int64的非负字符串。冻结计划、真实已应用数量与金额、当前周期暂停分别表示，不以ready、旧批准或余额补足冒充执行完成。完整字段、错误、恢复与安全边界见[管理合同](24-commission-correction-management.md)和生成OpenAPI。补偿通知、补偿报表及OPEN-117特殊净额组合未在本阶段完成。

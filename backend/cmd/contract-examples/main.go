@@ -13,6 +13,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/brandops"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandregistry"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandskin"
+	"github.com/gxfcjkxf/lottery/backend/internal/commission"
 	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
@@ -201,6 +202,16 @@ func main() {
 	for key, value := range rewardReportExamples() {
 		values[key] = value
 	}
+	stamp := time.Date(2026, 10, 8, 12, 34, 56, 123456789, time.UTC)
+	credit, debit, net := "100", "100", "0"
+	values["correction_policy"] = commission.CorrectionExecutionPolicy{BrandID: id, Version: 1, Enabled: false, UpdatedAt: stamp}
+	values["correction_policy_updated"] = commission.CorrectionExecutionPolicy{BrandID: id, Version: 2, Enabled: true, AuditLogID: id, UpdatedAt: stamp}
+	values["correction_plan"] = commission.CorrectionPlan{ID: id, BrandID: id, CycleID: id, PaymentID: id, RunID: id, State: "ready", PayoutMode: "mixed", Version: 3, EvidenceEpoch: "9223372036854775807", BeforePoints: "100", CalculatedPoints: "100", CreditPoints: &credit, DebitPoints: &debit, NetPoints: &net, TargetCount: "2", PlannedCount: "2", CreationAuditLogID: id, LastAuditLogID: id, CreatedAt: stamp, UpdatedAt: stamp}
+	values["correction_plan_target"] = commission.CorrectionPlanTarget{ID: id, BrandID: id, PlanID: id, AgentID: id, MemberID: id, EarningID: func() *string { v := id; return &v }(), PointsBefore: 0, PointsAfter: 100, DeltaPoints: 100, CreationAuditLogID: id, CreatedAt: stamp}
+	values["correction_execution"] = commission.CorrectionExecution{ID: id, BrandID: id, CycleID: id, PlanID: id, RunID: id, PayoutMode: "mixed", State: "awaiting_approval", Version: 1, PlanVersion: 3, EvidenceEpoch: "9223372036854775807", CreditPoints: "100", DebitPoints: "100", NetPoints: "0", AppliedCreditPoints: "0", AppliedDebitPoints: "0", TargetCount: "2", AppliedCount: "0", CreationAuditLogID: id, LastAuditLogID: id, CreatedAt: stamp, UpdatedAt: stamp}
+	financialVersion := int64(1)
+	ledger, targetAudit := id, id
+	values["correction_execution_target"] = commission.CorrectionExecutionTarget{ID: id, BrandID: id, ExecutionID: id, PlanTargetID: id, AgentID: id, MemberID: id, PointsBefore: 100, PointsAfter: 0, DeltaPoints: -100, State: "applied", LedgerEntryID: &ledger, AuditLogID: &targetAudit, FinancialVersion: &financialVersion, CreatedAt: stamp, AppliedAt: &stamp}
 	if err := json.NewEncoder(os.Stdout).Encode(values); err != nil {
 		log.Fatal(err)
 	}

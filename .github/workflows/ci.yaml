@@ -144,6 +144,70 @@ jobs:
         with:
           name: commission-cycles-${{ matrix.viewport }}-failure-traces
           path: test-results/
+  commission-corrections-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        viewport: [desktop, mobile]
+    services:
+      postgres:
+        image: postgres:17.5-alpine
+        env:
+          POSTGRES_DB: lottery_commission_correction_${{ matrix.viewport }}_s27
+          POSTGRES_USER: lottery_test
+          POSTGRES_PASSWORD: local_test_password
+          POSTGRES_INITDB_ARGS: "-c max_locks_per_transaction=256"
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U lottery_test" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgres://lottery_test:local_test_password@localhost:5432/lottery_commission_correction_${{ matrix.viewport }}_s27?sslmode=disable
+      HTTP_ADDR: 127.0.0.1:8080
+      AUTH_KEY_FILE: .local/auth.key
+      COMMISSION_FIXTURE_CONFIRM: owned_synthetic_database
+      COMMISSION_FIXTURE_ADMIN_PASSWORD: commission-ui-owned-admin-password-2026
+      COMMISSION_FIXTURE_USER_PASSWORD: commission-ui-owned-user-password-2026
+      COMMISSION_FIXTURE_BIN: backend/bin/commission-fixture
+      TEST_COMMISSION_ADMIN_PASSWORD: commission-ui-owned-admin-password-2026
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare and verify Chromium
+        timeout-minutes: 7
+        run: node scripts/prepare-ci-browser.mjs
+      - name: Create isolated original commission workflows and start API
+        working-directory: backend
+        run: |
+          go build -tags browserfixture -o bin/commission-fixture ./cmd/commission-fixture
+          go build -o bin/platform ./cmd/platform
+          ./bin/platform generate-auth-key .local/auth.key
+          ./bin/commission-fixture init
+          ./bin/platform serve > ../commission-corrections-api.log 2>&1 &
+          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
+      - name: Verify real correction approval and held-cycle continuation
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: .local/commission-corrections-report.json
+        run: |
+          pnpm exec playwright test tests/browser/commission-corrections.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --reporter=list,json
+          node --input-type=module -e 'import { readFileSync } from "node:fs"; const { stats } = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME, "utf8")); if (stats.skipped !== 0 || !(stats.expected > 0)) throw new Error("Commission correction CI requires passed tests and zero skipped tests");'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: commission-corrections-${{ matrix.viewport }}-failure-traces
+          path: |
+            test-results/
+            .local/commission-corrections-report.json
+            commission-corrections-api.log
   withdrawal-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -346,6 +410,7 @@ jobs:
           POSTGRES_DB: lottery_test
           POSTGRES_USER: lottery_test
           POSTGRES_PASSWORD: local_test_password
+          POSTGRES_INITDB_ARGS: "-c max_locks_per_transaction=256"
         ports: ["5432:5432"]
         options: --health-cmd "pg_isready -U lottery_test -d lottery_test" --health-interval 5s --health-timeout 3s --health-retries 20
     env:

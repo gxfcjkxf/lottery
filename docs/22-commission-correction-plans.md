@@ -38,7 +38,7 @@ SQL核对原paid目标、原ledger、人工审计、精确佣金可用来源、�
 
 ## 内部读取和重试
 
-当前提供Go服务的CorrectionPlansTx、CorrectionPlanTx、CorrectionPlanTargetsTx及RetryCorrectionPlanTx，尚未注册新的HTTP接口或后台页面。读取投影不暴露账户编号、原始规则、钱包桶或worker游标；总数和金额保持字符串，时间为UTC。调用方必须执行真实管理授权和查询审计，不能把内部方法直接当成已认证的公开接口。
+Go服务的CorrectionPlansTx、CorrectionPlanTx、CorrectionPlanTargetsTx及RetryCorrectionPlanTx已由正式管理HTTP及后台接入，见[管理合同](24-commission-correction-management.md)。读取投影不暴露账户编号、原始规则、钱包桶或worker游标；总数和金额保持字符串，时间为UTC。HTTP层执行真实管理授权和查询审计，不能绕过该层把内部方法当成已认证的公开接口。
 
 准备失败的重试要求commission.view及普通品牌管理员的commission_correction.retry.brand，提供当前版本和原因。超级管理员不能写，数据库当前账号状态及超管身份另行核对。只能把failed转回planning，不能把blocked或ready通过重试变为已批准或已入账；新证据必须仍有效，已提交目标保留，不重复准备。
 
@@ -46,4 +46,4 @@ SQL核对原paid目标、原ledger、人工审计、精确佣金可用来源、�
 
 先正常migrate至0058，再重启API和worker。迁移增加计划、目标、步骤、守卫和品牌重试权限，不补发历史资金、不回填旧佣金事件、不修改原核算、派发、人工修正或账本。服务器引导品牌角色追加重试权限，自定义与平台角色不自动扩权。运行开关原本启用且已有更正后的blocked周期时，worker可准备历史计划，但仍不移动积分。
 
-0059已接入内部单人批准、独立执行任务、真实commission.available差额账本、已执行净额基数及多次更正链路。追回不足暂停整个周期，周期门闩跨新核算保留，运营处理后显式继续；不能扣其他来源、自动解冻、形成负余额或余额补足后自动恢复。管理接口、同会话未知请求恢复、双端页面、入账通知和报表覆盖继续实施，计划ready始终不能替代资金执行完成。
+0059已接入单人批准、独立执行任务、真实commission.available差额账本、已执行净额基数及多次更正链路。追回不足暂停整个周期，周期门闩跨新核算保留，运营处理后显式继续；不能扣其他来源、自动解冻、形成负余额或余额补足后自动恢复。正式管理接口、同会话未知请求恢复和双端页面已接入；补偿入账通知和报表覆盖继续实施，计划ready始终不能替代资金执行完成。

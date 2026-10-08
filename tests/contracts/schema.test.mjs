@@ -11,6 +11,7 @@ const ajv=new Ajv2020({strict:false,allErrors:true});
 addFormats(ajv);
 // OpenAPI annotates integers as int64; exact financial integers use strings.
 ajv.addFormat("int64", {type:"number",validate:Number.isInteger});
+ajv.addFormat("nonnegative-int64-string", {type:"string",validate:value=>/^(0|[1-9][0-9]*)$/.test(value)&&BigInt(value)<=9223372036854775807n});
 const components={...doc.components,schemas:{...doc.components.schemas,...lotterySchemas}};
 const root={$id:"urn:lottery:implemented-api",components};
 ajv.addSchema(root);
@@ -40,7 +41,8 @@ test("actual Go DTO serialization and rule-engine outputs satisfy contracts",()=
   const examples=JSON.parse(result.stdout);
   assert.ok(Object.keys(examples).length>=15);
   for(const [name,value] of Object.entries(examples)){
-    const schemaName=exampleSchemaNames[name]??(name==="AdminWorkbench"?"AdminWorkbenchSnapshot":name.replace(/Sparse$|Snapshot$/, ""));
+    const correctionSchemas = { correction_policy: 'CommissionCorrectionExecutionPolicy', correction_policy_updated: 'CommissionCorrectionExecutionPolicy', correction_plan: 'CommissionCorrectionPlan', correction_plan_target: 'CommissionCorrectionPlanTarget', correction_execution: 'CommissionCorrectionExecution', correction_execution_target: 'CommissionCorrectionExecutionTarget' };
+    const schemaName=exampleSchemaNames[name]??correctionSchemas[name]??(name==="AdminWorkbench"?"AdminWorkbenchSnapshot":name.replace(/Sparse$|Snapshot$/, ""));
     const check=validate(schemaName);assert.ok(check(value),`${name} (${schemaName}): ${JSON.stringify(check.errors)}`);
   }
   assert.equal(examples.AdminWorkbench.withdrawals.status,"ready");

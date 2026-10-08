@@ -4,20 +4,25 @@ package main
 
 import (
 	"context"
-	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"testing"
 	"time"
+
+	"github.com/gxfcjkxf/lottery/backend/internal/commission"
+	"github.com/gxfcjkxf/lottery/backend/internal/points"
+	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
-	validFixtureDSN    = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_desktop_s16?sslmode=disable"
-	verifiedDesktopDSN = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_desktop_s16_verified?sslmode=disable"
-	verifiedMobileDSN  = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_mobile_s16_verified?sslmode=disable"
-	finalDesktopDSN    = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_desktop_s16_final?sslmode=disable"
-	finalMobileDSN     = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_mobile_s16_final?sslmode=disable"
-	validAdminPass     = "owned-fixture-admin-password"
-	validUserPass      = "owned-fixture-user-password"
+	validFixtureDSN      = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_desktop_s16?sslmode=disable"
+	verifiedDesktopDSN   = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_desktop_s16_verified?sslmode=disable"
+	verifiedMobileDSN    = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_mobile_s16_verified?sslmode=disable"
+	finalDesktopDSN      = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_desktop_s16_final?sslmode=disable"
+	finalMobileDSN       = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_mobile_s16_final?sslmode=disable"
+	correctionDesktopDSN = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_correction_desktop_s27?sslmode=disable"
+	correctionMobileDSN  = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_correction_mobile_s27?sslmode=disable"
+	validAdminPass       = "owned-fixture-admin-password"
+	validUserPass        = "owned-fixture-user-password"
 )
 
 func TestFixtureGuardAcceptsOnlyNamedLocalSyntheticDatabases(t *testing.T) {
@@ -28,7 +33,7 @@ func TestFixtureGuardAcceptsOnlyNamedLocalSyntheticDatabases(t *testing.T) {
 	if err := safeFixtureURL(second, "test", fixtureAck, validAdminPass, validUserPass, true); err != nil {
 		t.Fatalf("second explicitly owned local database rejected: %v", err)
 	}
-	for _, dsn := range []string{verifiedDesktopDSN, verifiedMobileDSN, finalDesktopDSN, finalMobileDSN,
+	for _, dsn := range []string{verifiedDesktopDSN, verifiedMobileDSN, finalDesktopDSN, finalMobileDSN, correctionDesktopDSN, correctionMobileDSN,
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_payment_desktop_s17?sslmode=disable",
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_payment_mobile_s17?sslmode=disable",
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_payment_desktop_s17_verified?sslmode=disable",
@@ -43,12 +48,20 @@ func TestFixtureGuardAcceptsOnlyNamedLocalSyntheticDatabases(t *testing.T) {
 			t.Errorf("fresh verification database rejected: %v", err)
 		}
 	}
+	if err := safeFixtureURL(correctionDesktopDSN, "test", fixtureAck, validAdminPass, validUserPass, true); err != nil {
+		t.Fatalf("exact newly approved correction database rejected: %v", err)
+	}
+	if err := safeFixtureURL(correctionMobileDSN, "test", fixtureAck, validAdminPass, validUserPass, true); err != nil {
+		t.Fatalf("exact newly approved mobile correction database rejected: %v", err)
+	}
 	unsafe := []struct {
 		name, dsn, environment, confirmation, adminPassword, userPassword string
 	}{
 		{"environment", validFixtureDSN, "production", fixtureAck, validAdminPass, validUserPass},
 		{"confirmation", validFixtureDSN, "test", "", validAdminPass, validUserPass},
 		{"other database", "postgres://lottery_test:pw@127.0.0.1:55432/lottery_test?sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
+		{"unapproved correction database", "postgres://lottery_test:pw@127.0.0.1:55432/lottery_commission_correction_unapproved_s27?sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
+		{"correction database suffix", "postgres://lottery_test:pw@127.0.0.1:55432/lottery_commission_correction_desktop_s27_suffix?sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
 		{"remote host", "postgres://lottery_test:pw@example.com:55432/lottery_commission_ui_desktop_s16?sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
 		{"unapproved port", "postgres://lottery_test:pw@127.0.0.1:5433/lottery_commission_ui_desktop_s16?sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
 		{"wrong user", "postgres://other:pw@127.0.0.1:55432/lottery_commission_ui_desktop_s16?sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
@@ -163,5 +176,33 @@ func TestFixtureMigrationAdmissionRejectsStaleOrDamagedHistoryBeforeWrites(t *te
 				t.Fatalf("%s migration rejection changed fixture identity, funds, audits or metadata", mode)
 			}
 		})
+	}
+}
+
+func TestCorrectionLedgerEntryCountBeforeExecution(t *testing.T) {
+	count, err := correctionLedgerEntryCount(context.Background(), nil, nil)
+	if err != nil || count != 0 {
+		t.Fatalf("ledger count before execution = %d, %v; want 0, nil", count, err)
+	}
+}
+
+func TestVerifiedCorrectionExecutionTargetAllowsUnappliedAndChecksApplied(t *testing.T) {
+	planTarget := commission.CorrectionPlanTarget{ID: "plan-target", BrandID: fixtureBrand, PlanID: "plan", MemberID: "member", DeltaPoints: points.Amount(-1)}
+	if target, err := verifiedCorrectionExecutionTarget("0", "execution", planTarget, nil); err != nil || target != nil {
+		t.Fatalf("unapplied correction target = %+v, %v; want nil, nil", target, err)
+	}
+	ledgerID, auditID := "ledger", "audit"
+	targetValue := commission.CorrectionExecutionTarget{
+		ID: "execution-target", BrandID: fixtureBrand, ExecutionID: "execution", PlanTargetID: planTarget.ID,
+		MemberID: planTarget.MemberID, DeltaPoints: planTarget.DeltaPoints, State: commission.CorrectionExecutionTargetApplied,
+		LedgerEntryID: &ledgerID, AuditLogID: &auditID,
+	}
+	target, err := verifiedCorrectionExecutionTarget("1", "execution", planTarget, []commission.CorrectionExecutionTarget{targetValue})
+	if err != nil || target == nil || target.ID != targetValue.ID {
+		t.Fatalf("applied correction target = %+v, %v; want matching target", target, err)
+	}
+	targetValue.MemberID = "other-member"
+	if _, err = verifiedCorrectionExecutionTarget("1", "execution", planTarget, []commission.CorrectionExecutionTarget{targetValue}); err == nil {
+		t.Fatal("applied correction target with mismatched beneficiary was accepted")
 	}
 }

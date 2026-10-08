@@ -15,6 +15,7 @@ modules.push(await import("./openapi-commission-cycles.mjs"));
 modules.push(await import("./openapi-commission-discovery.mjs"));
 modules.push(await import("./openapi-commission-payments.mjs"));
 modules.push(await import("./openapi-commission-adjustments.mjs"));
+modules.push(await import("./openapi-commission-corrections.mjs"));
 modules.push(await import("./openapi-rewards.mjs"));
 modules.push(await import("./openapi-reward-reports.mjs"));
 const result=spawnSync(process.env.LOTTERY_GO_BIN??"go",["run","-buildvcs=false","./cmd/route-inventory"],{cwd:resolve(root,"backend"),encoding:"utf8",env:{...process.env,CGO_ENABLED:"0"},maxBuffer:8*1024*1024});

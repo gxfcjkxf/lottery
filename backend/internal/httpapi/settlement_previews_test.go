@@ -27,7 +27,7 @@ func settlementHTTPFixtureBeforeBet(t *testing.T, beforeBet func(pointsHTTPFixtu
 	return settlementHTTPFixtureBeforeBetMutating(t, mutate)
 }
 
-func settlementHTTPFixtureBeforeBetMutating(t *testing.T, beforeBet func(*pointsHTTPFixture)) (pointsHTTPFixture, betting.Order) {
+func settlementHTTPFixtureBeforeBetMutating(t *testing.T, beforeBet func(*pointsHTTPFixture), drawOverride ...rules.Draw) (pointsHTTPFixture, betting.Order) {
 	t.Helper()
 	f := pointsFixture(t)
 	ctx := context.Background()
@@ -99,6 +99,9 @@ func settlementHTTPFixtureBeforeBetMutating(t *testing.T, beforeBet func(*points
 	mustStatus(t, f.call("POST", "/api/v1/admin/recharges/"+recharge.ID+"/confirm", "preview-fund-confirm", f.token, managedBrand, map[string]any{"version": 1, "reason": "verified"}), 200)
 	if beforeBet != nil {
 		beforeBet(&f)
+	}
+	if len(drawOverride) == 1 {
+		draw = drawOverride[0]
 	}
 	mutate(func(tx pgx.Tx) error {
 		now := time.Now().UTC()

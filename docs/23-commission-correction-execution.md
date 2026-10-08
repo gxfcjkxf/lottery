@@ -1,6 +1,6 @@
 # 佣金更正差额执行
 
-0059把已就绪的佣金更正计划交给独立资金执行任务。每个代理只补发或追回计划差额，只移动佣金可用积分；原核算、原派发、原人工修正、旧批准与流水均保留。当前交付是内部Go服务与平台worker的资金核心，管理HTTP、PC与移动操作页面、补偿通知及报表接入仍需继续实施。
+0059把已就绪的佣金更正计划交给独立资金执行任务。每个代理只补发或追回计划差额，只移动佣金可用积分；原核算、原派发、原人工修正、旧批准与流水均保留。Go服务、平台worker、正式管理HTTP及PC/移动操作页面已接入，管理细节见[24号合同](24-commission-correction-management.md)。补偿通知及报表接入仍需继续实施。
 
 ## 启用与授权
 
@@ -17,7 +17,7 @@ brand_commission_correction_policies是独立的资金更正开关。升级及�
 | 继续余额不足的周期 | commission_correction.continue.brand | 当前任务paused且已批准 |
 | 重试技术失败 | commission_correction.execute_retry.brand | 当前任务failed且已批准 |
 
-准备阶段的commission_correction.retry.brand不授予资金重试、批准或继续权限。服务再次读取数据库当前管理员active和非超管状态，不信任缓存的普通身份。超级管理员仅按查看权读取。服务器引导品牌角色可获得四项新权限，自定义及平台角色不自动扩权。调用内部读取的HTTP层仍须执行会话、权限及查询审计；这里不是新增的公开接口。
+准备阶段的commission_correction.retry.brand不授予资金重试、批准或继续权限。服务再次读取数据库当前管理员active和非超管状态，不信任缓存的普通身份。超级管理员仅按查看权读取。服务器引导品牌角色可获得四项新权限，自定义及平台角色不自动扩权。正式HTTP层执行会话、权限、查询审计及等待审计后再次授权，不允许从内部方法旁路接入。
 
 ## 状态及整周期暂停
 
@@ -60,4 +60,4 @@ commission_correction_executions冻结plan、run、evidence_epoch、plan_version
 
 内部方法为CorrectionExecutionPolicyTx、UpdateCorrectionExecutionPolicyTx、CorrectionExecutionsTx、CorrectionExecutionTx、CorrectionExecutionTargetsTx、ApproveCorrectionExecutionTx、ContinueCorrectionExecutionTx及RetryCorrectionExecutionTx。写入需要当前版本、非空原因与真实管理员元数据。列表金额、总数和epoch为精确字符串，版本为安全整数，时间为UTC，空列表为[]。读取同时返回冻结target_count、实际applied_count及实际正负入账金额；cycle_hold_active表示现在的周期暂停，不是假称原任务创建时的历史状态。
 
-正常migrate至0059并重启API与worker；迁移不改0058或更早迁移校验和、不启用新开关、不迁移旧批准为新授权、不补发通知、不接入外部支付。后续管理HTTP必须补同会话原请求恢复与幂等回执，页面需明确区分原派发、计划、当前执行和历史资金；补偿通知与报表必须取真实执行目标而非计划金额。该内部资金核心不代表整个佣金或项目完成，客户人工审核及生产验收继续保留。
+正常migrate至0059并重启API与worker；迁移不改0058或更早迁移校验和、不启用新开关、不迁移旧批准为新授权、不补发通知、不接入外部支付。管理HTTP已提供同会话原请求恢复与幂等回执，页面明确区分原派发、计划、当前执行和历史资金。后续补偿通知与报表必须取真实执行目标而非计划金额。该交付不代表整个佣金或项目完成，客户人工审核及生产验收继续保留。

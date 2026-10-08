@@ -16,6 +16,7 @@ import * as commissionCycles from "../../scripts/openapi-commission-cycles.mjs";
 import * as commissionDiscovery from "../../scripts/openapi-commission-discovery.mjs";
 import * as commissionPayments from "../../scripts/openapi-commission-payments.mjs";
 import * as commissionAdjustments from "../../scripts/openapi-commission-adjustments.mjs";
+import * as commissionCorrections from "../../scripts/openapi-commission-corrections.mjs";
 import * as commissionReports from "../../scripts/openapi-commission-reports.mjs";
 import * as rechargeUser from "../../scripts/openapi-recharge-user.mjs";
 import * as rewards from "../../scripts/openapi-rewards.mjs";
@@ -27,6 +28,7 @@ const doc=JSON.parse(readFileSync(new URL("../../docs/openapi.json",import.meta.
 const ajv=new Ajv2020({strict:false,allErrors:true});
 addFormats(ajv);
 ajv.addFormat("int64",{type:"number",validate:Number.isInteger});
+ajv.addFormat("nonnegative-int64-string",{type:"string",validate:value=>/^(0|[1-9][0-9]*)$/.test(value)&&BigInt(value)<=9223372036854775807n});
 const components={...doc.components,schemas:{...doc.components.schemas,...identitySchemas,...schemas,...lotterySchemas}};
 ajv.addSchema({$id:"urn:lottery:reconciliation-contract",components});
 const validate=name=>ajv.compile({$ref:`urn:lottery:reconciliation-contract#/components/schemas/${name}`});
@@ -53,6 +55,7 @@ test("reconciliation contract documents exactly the five registered admin routes
     commissionPolicies,
     commissionCycles,
     commissionAdjustments,
+    commissionCorrections,
     rewards,
     rewardReports,
     commissionReports,
@@ -139,6 +142,11 @@ test("reconciliation permissions, primary reads, strict pagination, and idempote
 });
 
 test("reconciliation schemas enforce canonical bounded versions, exact counters, and strict reasons",()=>{
+  const epoch=ajv.compile(commissionCorrections.schemas.CommissionCorrectionPlan.properties.evidence_epoch);
+  assert.ok(epoch("9223372036854775807"));
+  assert.ok(!epoch("9223372036854775808"),"19 digits alone must not admit values above int64");
+  assert.ok(!epoch("01"),"epoch decimal strings must be canonical unsigned integers");
+  assert.ok(!epoch("-1"),"epoch decimal strings are unsigned");
   const versionSchema=schemas.FinanceReconciliationRetryInput.properties.version;
   assert.equal(versionSchema.minimum,1);
   assert.equal(versionSchema.maximum,Number.MAX_SAFE_INTEGER);

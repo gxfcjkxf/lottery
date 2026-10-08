@@ -31,3 +31,10 @@ test('core runs every other package and the split validator derives coverage fro
   assert.match(verifier, /requires non-commission tests/)
   assert.doesNotMatch(verifier, /TEST_DATABASE_URL=/)
 })
+
+test('backend PostgreSQL initializes the larger lock table in its isolated PG 17 service', () => {
+  const service = backend.match(/^    services:\n([\s\S]*?)(?=^    env:)/m)?.[1]
+  assert.ok(service)
+  assert.match(service, /image: postgres:17\.5-alpine/)
+  assert.match(service, /POSTGRES_INITDB_ARGS: "-c max_locks_per_transaction=256"/)
+})
