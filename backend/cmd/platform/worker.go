@@ -94,6 +94,10 @@ func runCommissionWorker(ctx context.Context, service commission.Service, logger
 	paymentDone := make(chan struct{})
 	go func() { defer close(paymentDone); runCommissionPaymentWorker(paymentCtx, service, logger) }()
 	defer func() { stopPayment(); <-paymentDone }()
+	planCtx, stopPlans := context.WithCancel(ctx)
+	planDone := make(chan struct{})
+	go func() { defer close(planDone); runCommissionCorrectionPlanWorker(planCtx, service, logger) }()
+	defer func() { stopPlans(); <-planDone }()
 	discoveryCtx, stopDiscovery := context.WithCancel(ctx)
 	discoveryDone := make(chan struct{})
 	go func() {
@@ -131,6 +135,24 @@ func runCommissionPaymentWorker(ctx context.Context, service commission.Service,
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("commission payment processing failed", "committed_steps", n)
+			}
+		}
+	}
+}
+
+func runCommissionCorrectionPlanWorker(ctx context.Context, service commission.Service, logger *slog.Logger) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run, cancel := context.WithTimeout(ctx, 10*time.Second)
+			n, err := service.ProcessCorrectionPlans(run, 20)
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				logger.Error("commission correction plan preparation failed", "committed_steps", n)
 			}
 		}
 	}

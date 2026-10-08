@@ -31,6 +31,7 @@
 - [19-commission-posting-reports.md](19-commission-posting-reports.md)：实际佣金账本的入账时间统计、品牌/代理/会员/周期筛选、精确净变动及完整CSV审计导出；不是未派发收益或封存日月报。
 - [20-manual-reward-orders.md](20-manual-reward-orders.md)：人工奖励订单、赠送来源入账与完整撤销、真实不足待处理、显式继续、双语后台、双端请求恢复与历史站内通知。
 - [21-reward-reports.md](21-reward-reports.md)：实际奖励入账与订单创建队列的当前状态报表、独立查看和导出权限、完整CSV验证及工作台当前状态计数。
+- [22-commission-correction-plans.md](22-commission-correction-plans.md)：开奖结果更正后的真实佣金差额计划、来源守卫及不可变分页；计划就绪不代表批准或实际补偿。
 
 ## 第一阶段实现顺序
 

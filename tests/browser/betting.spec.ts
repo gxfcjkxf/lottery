@@ -16,10 +16,17 @@ import type { Cancellation } from "../../admin-web/src/period-cancellation-api";
 import type { Period } from "../../admin-web/src/period-schedules-api";
 
 const brandId = "0199a000-0000-7000-8000-000000000002";
-const apiOrigin = "http://localhost:5173";
+const apiOrigin = process.env.TEST_BET_USER_ORIGIN ?? "http://localhost:5173";
+const adminOrigin = process.env.TEST_BET_ADMIN_ORIGIN ?? "http://localhost:5174";
+// Port overrides are only for owned local test servers, never remote money.
+for (const origin of [apiOrigin, adminOrigin]) {
+  const url = new URL(origin);
+  if (url.protocol !== "http:" || url.hostname !== "localhost" || url.username || url.password || url.pathname !== "/" || url.search || url.hash || origin !== url.origin)
+    throw new Error("Betting browser tests require plain localhost HTTP origins");
+}
 const adminBase = `${apiOrigin}/api/v1/admin`;
 const publicBase = `${apiOrigin}/api/v1/b/harbor`;
-const harborSite = "http://harbor.localhost:5173";
+const harborSite = apiOrigin.replace("://localhost", "://harbor.localhost");
 const unique = () => crypto.randomUUID().replaceAll("-", "").slice(0, 12);
 
 // Node's fetch cannot resolve *.localhost while Chromium can. Send the actual
@@ -30,7 +37,7 @@ async function fetchHarbor(route: Route) {
     url: route.request().url().replace("harbor.localhost", "localhost"),
     headers: {
       ...(await route.request().allHeaders()),
-      host: "harbor.localhost:5173",
+      host: new URL(harborSite).host,
     },
   });
 }
@@ -1185,7 +1192,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
   };
   try {
     await context.addCookies(adminCookies);
-    await adminPage.goto("http://localhost:5174");
+    await adminPage.goto(adminOrigin);
     await adminPage
       .getByLabel("选择真实后台品牌", { exact: true })
       .selectOption(brandId);
@@ -2336,6 +2343,24 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
             `/api/v1/admin/bet-orders/${singleOrder.id}/judge-cancel`,
           ) && response.request().method() === "POST",
     );
+    // The component refreshes the selected order and then reads these two
+    // evidence endpoints in parallel. A separately-issued page.request below
+    // does not prove that the UI's own reads have completed, so synchronize on
+    // both observable responses before asserting rendered evidence.
+    const judgmentEvidenceResponse = adminPage.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        new URL(response.url()).pathname ===
+          `/api/v1/admin/bet-orders/${singleOrder.id}/judgment`,
+      { timeout: 0 },
+    );
+    const exceptionEvidenceResponse = adminPage.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        new URL(response.url()).pathname ===
+          `/api/v1/admin/bet-orders/${singleOrder.id}/exception`,
+      { timeout: 0 },
+    );
     await retrySingleJudge.click();
     const singleRetryResponse = await retrySingleJudgeResponse;
     const singleRetryText = await singleRetryResponse.text();
@@ -2349,6 +2374,12 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
       JSON.parse(singleRetryText) as Envelope<AdminBetOrder>
     ).data;
     expect(singleRetryOrder).toEqual(singleJudgeCommitted.order);
+    const [judgmentEvidenceRead, exceptionEvidenceRead] = await Promise.all([
+      judgmentEvidenceResponse,
+      exceptionEvidenceResponse,
+    ]);
+    expect(judgmentEvidenceRead.status()).toBe(200);
+    expect(exceptionEvidenceRead.status()).toBe(200);
     await adminPage.unroute(singleJudgeRoute);
 
     const singleJudgmentResult = await api<{
@@ -2610,7 +2641,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
       if(route.request().method()!=="POST") {await route.continue();return;}
       const response=await route.fetch();expect(response.status()).toBe(201);
       sessionEndedPreviewId=(await response.json()).data.id;
-      const logout=await adminPage.request.post("http://localhost:5174/api/v1/admin/auth/logout",{headers:{Authorization:`Bearer ${admin}`,Origin:"http://localhost:5174","Idempotency-Key":crypto.randomUUID()},data:{}});
+      const logout=await adminPage.request.post(`${adminOrigin}/api/v1/admin/auth/logout`,{headers:{Authorization:`Bearer ${admin}`,Origin:adminOrigin,"Idempotency-Key":crypto.randomUUID()},data:{}});
       expect(logout.status(),await logout.text()).toBe(200);
       await route.fulfill({response});
     });
