@@ -114397,6 +114397,24 @@
         ],
         "additionalProperties": false
       },
+      "ReportArchiveAutomationEvidence": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "$ref": "#/components/schemas/UUID"
+          },
+          "policy_version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "task_id",
+          "policy_version"
+        ],
+        "additionalProperties": false
+      },
       "ReportArchiveRecord": {
         "type": "object",
         "properties": {
@@ -114428,7 +114446,14 @@
             "$ref": "#/components/schemas/DateTime"
           },
           "created_by": {
-            "$ref": "#/components/schemas/UUID"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UUID"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "reason": {
             "type": "string"
@@ -114445,6 +114470,9 @@
           },
           "snapshot": {
             "$ref": "#/components/schemas/ReportArchiveSnapshot"
+          },
+          "automation": {
+            "$ref": "#/components/schemas/ReportArchiveAutomationEvidence"
           }
         },
         "required": [
@@ -114461,7 +114489,32 @@
           "created_at",
           "snapshot"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "properties": {
+              "created_by": {
+                "$ref": "#/components/schemas/UUID"
+              }
+            },
+            "not": {
+              "required": [
+                "automation"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "created_by": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "automation"
+            ]
+          }
+        ],
+        "description": "Manual records retain their exact 12-field JSON shape. Automatic records have those fields plus automation, with created_by null. No other metadata is accepted."
       },
       "ReportArchivePage": {
         "type": "object",

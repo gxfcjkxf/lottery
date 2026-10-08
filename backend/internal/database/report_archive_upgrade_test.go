@@ -21,9 +21,11 @@ func archiveLegacyTableHashes(t *testing.T, db *pgxpool.Pool, tables []string) m
 		var digest string
 		query := `SELECT md5(coalesce(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text),'[]'::jsonb)::text) FROM ` + pgx.Identifier{name}.Sanitize() + ` r`
 		if name == "permissions" {
-			query += ` WHERE r.key NOT LIKE 'report_archive.%'`
+			query += ` WHERE r.key NOT IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand')`
 		} else if name == "role_permissions" {
-			query += ` WHERE r.permission_key NOT LIKE 'report_archive.%'`
+			query += ` WHERE r.permission_key NOT IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand')`
+		} else if name == "report_archives" {
+			query = `SELECT md5(coalesce(jsonb_agg((to_jsonb(r)-'automatic_task_id'-'automatic_policy_version') ORDER BY (to_jsonb(r)-'automatic_task_id'-'automatic_policy_version')::text),'[]'::jsonb)::text) FROM report_archives r`
 		}
 		if err := db.QueryRow(context.Background(), query).Scan(&digest); err != nil {
 			t.Fatal(name, err)
@@ -79,7 +81,7 @@ func TestReportArchive0063ToLatestPreservesEveryLegacyTable(t *testing.T) {
 		t.Fatal("archive migrations rewrote legacy data outside the separately asserted 0066 permission additions", before, after)
 	}
 	var archiveCount, migrationCount int
-	if err = db.QueryRow(ctx, `SELECT (SELECT count(*) FROM report_archives),(SELECT count(*) FROM schema_migrations WHERE name IN('0064_report_archive_capture.up.sql','0065_report_archive_versions.up.sql','0066_report_archive_permissions.up.sql'))`).Scan(&archiveCount, &migrationCount); err != nil || archiveCount != 0 || migrationCount != 3 {
+	if err = db.QueryRow(ctx, `SELECT (SELECT count(*) FROM report_archives),(SELECT count(*) FROM schema_migrations WHERE name IN('0064_report_archive_capture.up.sql','0065_report_archive_versions.up.sql','0066_report_archive_permissions.up.sql','0067_report_archive_automatic.up.sql'))`).Scan(&archiveCount, &migrationCount); err != nil || archiveCount != 0 || migrationCount != 4 {
 		t.Fatal(archiveCount, migrationCount, err)
 	}
 	var hardened int
@@ -135,18 +137,19 @@ func createArchivePermissionUpgradeRoles(t *testing.T, ctx context.Context, db *
 func assertArchivePermissionUpgrade(t *testing.T, ctx context.Context, db *pgxpool.Pool, roles archivePermissionRoles) {
 	t.Helper()
 	var permissions []string
-	if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(key ORDER BY key),'{}') FROM permissions WHERE key LIKE 'report_archive.%'`).Scan(&permissions); err != nil {
+	if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(key ORDER BY key),'{}') FROM permissions WHERE key LIKE 'report_archive.%' OR key IN('report_archive_policy.write.brand','report_archive_task.retry.brand')`).Scan(&permissions); err != nil {
 		t.Fatal(err)
 	}
 	wantPermissions := []string{
 		"report_archive.create.brand", "report_archive.download.brand", "report_archive.download.platform",
 		"report_archive.view.brand", "report_archive.view.platform",
+		"report_archive_policy.write.brand", "report_archive_task.retry.brand",
 	}
 	if !reflect.DeepEqual(permissions, wantPermissions) {
 		t.Fatalf("0066 archive permissions=%v, want exact additions %v", permissions, wantPermissions)
 	}
 	var grants []string
-	if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(role_id::text||':'||permission_key ORDER BY role_id::text,permission_key),'{}') FROM role_permissions WHERE permission_key LIKE 'report_archive.%'`).Scan(&grants); err != nil {
+	if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(role_id::text||':'||permission_key ORDER BY role_id::text,permission_key),'{}') FROM role_permissions WHERE permission_key LIKE 'report_archive.%' OR permission_key IN('report_archive_policy.write.brand','report_archive_task.retry.brand')`).Scan(&grants); err != nil {
 		t.Fatal(err)
 	}
 	wantGrants := []string{
@@ -155,6 +158,8 @@ func assertArchivePermissionUpgrade(t *testing.T, ctx context.Context, db *pgxpo
 		roles.brandBootstrap + ":report_archive.view.brand",
 		roles.platformBootstrap + ":report_archive.download.platform",
 		roles.platformBootstrap + ":report_archive.view.platform",
+		roles.brandBootstrap + ":report_archive_policy.write.brand",
+		roles.brandBootstrap + ":report_archive_task.retry.brand",
 	}
 	sort.Strings(wantGrants)
 	if !reflect.DeepEqual(grants, wantGrants) {

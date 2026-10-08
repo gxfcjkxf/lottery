@@ -2,13 +2,13 @@
 
 品牌日/月归档采用已确认的快照与追加版本方式：财务按实际入账时间统计，后续更正不覆盖旧档，重新观察时生成新版本，默认不自动删除。归档不是停止记账的财务封账，也不证明所有注单已经最终完成或外部支付到账。
 
-0064、0065实现统计与持久服务，0066注册独立权限，并接入四条正式管理接口、幂等原回执和原字节下载。后台“日月归档”已提供PC/移动双语查询、人工创建/追加、原回执恢复和验证后下载；自动归档任务仍待接入，公开能力以已注册接口为准。
+0064、0065实现统计与持久服务，0066注册独立权限，并接入四条正式管理接口、幂等原回执和原字节下载。后台“日月归档”已提供PC/移动双语查询、人工创建/追加、原回执恢复和验证后下载。0067接入默认关闭的[自动归档内部核心与worker](27-automatic-report-archive-core.md)，配置和任务管理接口/页面继续实施，公开能力以已注册接口为准。
 
 ## 日历与版本范围
 
 创建输入为kind、period_key、expected_revision和reason。kind为daily或monthly，键分别为严格YYYY-MM-DD或YYYY-MM；不接受空白、补零替代格式、无效日期或任意UTC区间。日历年份为0001至9998，解析后的UTC边界必须落在0001至9999；不支持机器本地Local别名。
 
-首个版本按品牌当前具名时区，把民用日或民用月转换为UTC半开区间[from,to)。使用真实日历边界，不加固定24小时或30天。夏令时日可以是23或25小时；重复午夜从第一次出现开始，午夜跳时从该日第一个真实时刻开始，整天跳过的日期拒绝。Go和PostgreSQL使用相同边界算法，并对纽约、哈瓦那、圣保罗和阿皮亚场景验证一致。
+首个版本按品牌当前具名时区，把民用日或民用月转换为UTC半开区间[from,to)。使用真实日历边界，不加固定24小时或30天。夏令时日可以是23或25小时；重复午夜从第一次出现开始，午夜跳时从该日第一个真实时刻开始，整天跳过的日期拒绝。0067修正有效日期紧邻跳过日期的结束边界，保留前一天，不制造不存在的日期；既有版本范围不变。Go和PostgreSQL对纽约、哈瓦那、圣保罗和阿皮亚场景验证一致。
 
 只有to已经过去的日/月能保存归档。新版本复用原记录的timezone、from和to，不随品牌后来修改时区或重新解释日历而改变原范围。同品牌、kind和period_key组成一个版本系列，revision从1连续增加，previous_id指向上一版；不存在覆盖、删除或重置版本的正常操作。
 
@@ -40,7 +40,7 @@ reportarchive.Service提供CreateTx、ReadTx、ListTx和CanonicalPayloadTx，调
 
 纯权限判定为report_archive.view.brand或显式report_archive.view.platform；创建还需品牌成员范围及report_archive.create.brand，超级管理员只读。下载在查看权限之外还需report_archive.download.brand或report_archive.download.platform。超级管理员标记不替代显式查看或下载权限。0066只为既有品牌引导角色追加三项品牌能力，为已分配超级管理员的平台引导角色追加查看/下载，不扩大自定义角色；后续CLI管理员初始化采用相同默认能力。暂停品牌允许归档，停用品牌拒绝新建，历史读取仍由明确授权决定。
 
-Record字段为id、brand_id、window、revision、previous_id、snapshot_at、created_by、reason、payload_sha256、audit_log_id、created_at和snapshot。window包含kind、period_key、timezone、from、to。created_at与snapshot_at相同；这是统计观察时刻，不是所有财务业务完成时刻。列表limit为1至100、offset为0至1000000，按created_at/id倒序，同语句返回精确总数和页。
+人工Record字段为id、brand_id、window、revision、previous_id、snapshot_at、created_by、reason、payload_sha256、audit_log_id、created_at和snapshot。0067系统记录created_by为null，并额外包含automation的task_id及policy_version；人工记录继续省略该对象。window包含kind、period_key、timezone、from、to。created_at与snapshot_at相同；这是统计观察时刻，不是所有财务业务完成时刻。列表limit为1至100、offset为0至1000000，按created_at/id倒序，同语句返回精确总数和页。
 
 创建先锁定品牌配置和该归档系列，追加匹配意图审计，再用同一个SQL语句捕获与插入快照。数据库只读STABLE守卫独立重算该语句的实际统计内容、校验时间、原版本、前后审计和摘要。归档与审计同事务，审计失败或伪造内容不能留下半份记录。守卫共用捕获语句的观察快照，正常资金交易在归档读取期间仍可提交；不加全品牌记账排他锁，也不锁定全部钱包。
 
@@ -99,4 +99,4 @@ create发送确认时actor及原输入/键，要求201和expected_revision+1。�
 
 后台PC与360px移动浏览器使用独立真实测试库，通过正常成员创建、充值确认37、丢失已提交回执、离页/原键恢复、再充值11和追加第二版、旧版37/新版48及原JSON下载校验，归档动作不改变钱包或账本。完整真实流程每个viewport零重试/跳过，截图检查无横向溢出，独立CI矩阵持续运行相同流程。组件另验证409核对、当前/迟到401、权限只读、下载迟到隔离和语言切换。
 
-内部核心、管理HTTP和人工归档双端页面已经接入，自动任务配置与worker仍需完成；不代表自动日/月任务已运行、财务CSV模板已确认、苹果/安卓/鸿蒙真机或生产容量已验收。数据自动删除默认保持关闭，OPEN-106的外部文件保留要求和财务模板仍单独确认。
+内部核心、管理HTTP和人工归档双端页面已经接入；0067自动内部核心与worker已实现，初始日/月关闭，配置/任务管理接口及页面继续实施。不代表已在运营环境启用自动归档、财务CSV模板已确认、苹果/安卓/鸿蒙真机或生产容量已验收。数据自动删除默认保持关闭，OPEN-106的外部文件保留要求和财务模板仍单独确认。

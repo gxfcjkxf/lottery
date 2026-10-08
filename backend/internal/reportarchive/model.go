@@ -39,12 +39,17 @@ type Record struct {
 	Revision      int64                     `json:"revision"`
 	PreviousID    *string                   `json:"previous_id"`
 	SnapshotAt    time.Time                 `json:"snapshot_at"`
-	CreatedBy     string                    `json:"created_by"`
+	CreatedBy     *string                   `json:"created_by"`
 	Reason        string                    `json:"reason"`
 	PayloadSHA256 string                    `json:"payload_sha256"`
 	AuditLogID    string                    `json:"audit_log_id"`
 	CreatedAt     time.Time                 `json:"created_at"`
 	Snapshot      reporting.ArchiveSnapshot `json:"snapshot"`
+	Automation    *AutomationEvidence       `json:"automation,omitempty"`
+}
+type AutomationEvidence struct {
+	TaskID        string `json:"task_id"`
+	PolicyVersion int64  `json:"policy_version"`
 }
 type Page struct {
 	BrandID    string   `json:"brand_id"`

@@ -16,7 +16,7 @@ import (
 
 const archiveJSON = `jsonb_build_object('id',r.id,'brand_id',r.brand_id,'window',jsonb_build_object('kind',r.kind,'period_key',r.period_key,'timezone',r.timezone,'from',r.from_at,'to',r.to_at),
  'revision',r.revision,'previous_id',r.previous_id,'snapshot_at',r.snapshot_at,'created_by',r.created_by,'reason',r.reason,
- 'payload_sha256',r.payload_sha256,'audit_log_id',r.audit_log_id,'created_at',r.created_at,'snapshot',r.payload)`
+ 'payload_sha256',r.payload_sha256,'audit_log_id',r.audit_log_id,'created_at',r.created_at,'snapshot',r.payload) || CASE WHEN to_jsonb(r)->>'automatic_task_id' IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('automation',jsonb_build_object('task_id',to_jsonb(r)->'automatic_task_id','policy_version',to_jsonb(r)->'automatic_policy_version')) END`
 
 // CreateTx captures an elapsed period as one immutable observation. It does
 // not finalize unsettled orders or make any financial change. The caller owns
@@ -46,7 +46,7 @@ func (s Service) CreateTx(ctx context.Context, tx pgx.Tx, brand string, a access
 		return out, ErrState
 	}
 	var locked bool
-	if err = tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended('report-archive:'||$1||':'||$2||':'||$3,0))`, brand, in.Kind, in.PeriodKey).Scan(&locked); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended(current_schema()||':report-archive:'||$1||':'||$2||':'||$3,0))`, brand, in.Kind, in.PeriodKey).Scan(&locked); err != nil {
 		return out, err
 	}
 	if !locked {

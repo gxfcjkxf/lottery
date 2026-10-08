@@ -7,6 +7,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/drawfeed"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
 	"github.com/gxfcjkxf/lottery/backend/internal/reconciliation"
+	"github.com/gxfcjkxf/lottery/backend/internal/reportarchive"
 	"github.com/gxfcjkxf/lottery/backend/internal/rulebook"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
@@ -47,6 +48,13 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 		runReconciliationWorker(reconcileCtx, reconciliation.Service{DB: db}, logger)
 	}()
 	defer func() { stopReconcile(); <-reconcileDone }()
+	archiveCtx, stopArchive := context.WithCancel(ctx)
+	archiveDone := make(chan struct{})
+	go func() {
+		defer close(archiveDone)
+		runReportArchiveWorker(archiveCtx, reportarchive.Service{DB: db}, logger)
+	}()
+	defer func() { stopArchive(); <-archiveDone }()
 	commissionCtx, stopCommission := context.WithCancel(ctx)
 	commissionDone := make(chan struct{})
 	go func() {
@@ -84,6 +92,35 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 				logger.Error("period transition failed", "error", e, "committed_transitions", n)
 			} else if n > 0 {
 				logger.Info("period transitions committed", "count", n)
+			}
+		}
+	}
+}
+
+// Archive reporting never shares the one-second betting clock. Policies are
+// opt-in; independent bounded transactions allow multiple workers safely.
+func runReportArchiveWorker(ctx context.Context, s reportarchive.Service, logger *slog.Logger) {
+	discovery := time.NewTicker(time.Minute)
+	processing := time.NewTicker(time.Second)
+	defer discovery.Stop()
+	defer processing.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-discovery.C:
+			run, cancel := context.WithTimeout(ctx, 30*time.Second)
+			n, err := s.DiscoverAutomatic(run, 20)
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				logger.Error("automatic archive discovery failed", "committed_tasks", n)
+			}
+		case <-processing.C:
+			run, cancel := context.WithTimeout(ctx, 10*time.Second)
+			n, err := s.ProcessAutomatic(run, 20)
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				logger.Error("automatic archive processing failed", "committed_tasks", n)
 			}
 		}
 	}

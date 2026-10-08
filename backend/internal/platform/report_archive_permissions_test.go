@@ -72,7 +72,7 @@ func TestReportArchive0065To0066PermissionsPreserveRolesArchivesAndMoney(t *test
 	}
 	for roleID, want := range oldPermissions {
 		var got []string
-		if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),'{}') FROM role_permissions WHERE role_id=$1 AND permission_key NOT LIKE 'report_archive.%'`, roleID).Scan(&got); err != nil {
+		if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),'{}') FROM role_permissions WHERE role_id=$1 AND permission_key NOT IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand')`, roleID).Scan(&got); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(got, want) {
@@ -83,13 +83,13 @@ func TestReportArchive0065To0066PermissionsPreserveRolesArchivesAndMoney(t *test
 		id   string
 		want []string
 	}{
-		{brandBootstrap, []string{"report_archive.create.brand", "report_archive.download.brand", "report_archive.view.brand"}},
+		{brandBootstrap, []string{"report_archive.create.brand", "report_archive.download.brand", "report_archive.view.brand", "report_archive_policy.write.brand", "report_archive_task.retry.brand"}},
 		{brandCustom, nil},
 		{platformBootstrap, []string{"report_archive.download.platform", "report_archive.view.platform"}},
 		{platformCustom, nil},
 	} {
 		var got []string
-		if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),'{}') FROM role_permissions WHERE role_id=$1 AND permission_key LIKE 'report_archive.%'`, tc.id).Scan(&got); err != nil {
+		if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),'{}') FROM role_permissions WHERE role_id=$1 AND permission_key IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand')`, tc.id).Scan(&got); err != nil {
 			t.Fatal(err)
 		}
 		if len(tc.want) == 0 {
@@ -100,7 +100,7 @@ func TestReportArchive0065To0066PermissionsPreserveRolesArchivesAndMoney(t *test
 		}
 	}
 	var registered int
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM permissions WHERE key IN('report_archive.view.brand','report_archive.create.brand','report_archive.download.brand','report_archive.view.platform','report_archive.download.platform')`).Scan(&registered); err != nil || registered != 5 {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM permissions WHERE key IN('report_archive.view.brand','report_archive.create.brand','report_archive.download.brand','report_archive.view.platform','report_archive.download.platform','report_archive_policy.write.brand','report_archive_task.retry.brand')`).Scan(&registered); err != nil || registered != 7 {
 		t.Fatalf("registered archive permissions=%d err=%v", registered, err)
 	}
 	permissionsBeforeRepeat := reportArchivePermissionState(t, ctx, db)
@@ -198,7 +198,7 @@ func reportArchivePostLedgerFixture(t *testing.T, ctx context.Context, db *pgxpo
 func reportArchivePermissionRoleSnapshot(t *testing.T, ctx context.Context, db *pgxpool.Pool) map[string][]string {
 	t.Helper()
 	out := make(map[string][]string)
-	rows, err := db.Query(ctx, `SELECT role_id::text,permission_key FROM role_permissions WHERE permission_key NOT LIKE 'report_archive.%' ORDER BY role_id,permission_key`)
+	rows, err := db.Query(ctx, `SELECT role_id::text,permission_key FROM role_permissions WHERE permission_key NOT IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand') ORDER BY role_id,permission_key`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func reportArchivePermissionRoleSnapshot(t *testing.T, ctx context.Context, db *
 func reportArchiveArchiveSnapshot(t *testing.T, ctx context.Context, db *pgxpool.Pool) string {
 	t.Helper()
 	var snapshot string
-	if err := db.QueryRow(ctx, `SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY id),'[]'::jsonb)::text FROM report_archives a`).Scan(&snapshot); err != nil {
+	if err := db.QueryRow(ctx, `SELECT coalesce(jsonb_agg((to_jsonb(a)-'automatic_task_id'-'automatic_policy_version') ORDER BY id),'[]'::jsonb)::text FROM report_archives a`).Scan(&snapshot); err != nil {
 		t.Fatal(err)
 	}
 	return snapshot

@@ -45,11 +45,16 @@ export interface ReportArchiveSnapshot {
   withdrawals: ReportArchiveWithdrawalTotals; commissions: ReportArchiveCommissionTotals;
   rewards: ReportArchiveRewardTotals; reward_orders: ReportArchiveRewardOrderTotals;
 }
-export interface ReportArchiveRecord {
+export interface ReportArchiveAutomationEvidence { task_id: string; policy_version: number }
+interface ReportArchiveRecordFields {
   id: string; brand_id: string; window: ReportArchiveWindow; revision: number; previous_id: string | null;
-  snapshot_at: string; created_by: string; reason: string; payload_sha256: string; audit_log_id: string;
+  snapshot_at: string; created_by: string | null; reason: string; payload_sha256: string; audit_log_id: string;
   created_at: string; snapshot: ReportArchiveSnapshot;
 }
+export type ReportArchiveRecord = ReportArchiveRecordFields & (
+  | { created_by: string; automation?: never }
+  | { created_by: null; automation: ReportArchiveAutomationEvidence }
+);
 export interface ReportArchivePage {
   brand_id: string; items: ReportArchiveRecord[]; total_count: string; limit: number; offset: number;
 }
@@ -59,11 +64,14 @@ export interface ReportArchiveCreateInput {
 export interface ReportArchiveDownload {
   bytes: Uint8Array; metadata: { sha256: string; revision: number; format_version: 1; filename: string };
 }
+export interface VerifiedReportArchiveDownload extends ReportArchiveDownload {
+  metadata: ReportArchiveDownload["metadata"] & { record: ReportArchiveRecord };
+}
 export interface ReportArchivesApi {
   list(brandId: string, limit?: number, offset?: number): Promise<ReportArchivePage>;
   read(brandId: string, id: string): Promise<ReportArchiveRecord>;
   create(brandId: string, input: ReportArchiveCreateInput, key: string | undefined, expectedActor: string): Promise<ReportArchiveRecord>;
-  download(brandId: string, id: string, previousRecord: ReportArchiveRecord): Promise<ReportArchiveDownload>;
+  download(brandId: string, id: string, previousRecord: ReportArchiveRecord): Promise<VerifiedReportArchiveDownload>;
 }
 
 const bettingFields = ["order_count", "stake_points", "placed_count", "won_count", "lost_count", "abnormal_count", "cancelled_count", "refund_points", "settled_stake_points", "unfinalized_stake_points", "abnormal_stake_points", "current_prize_points", "correction_open_count"] as const;
@@ -74,6 +82,7 @@ const commissionFields = ["entry_count", "paid_entry_count", "paid_points", "adj
 const rewardFields = ["entry_count", "grant_entry_count", "grant_points", "reversal_entry_count", "reversal_points", "net_points"] as const;
 const rewardOrderFields = ["order_count", "original_points", "granted_count", "granted_points", "pending_count", "pending_points", "revoked_count", "revoked_points"] as const;
 const recordFields = ["id", "brand_id", "window", "revision", "previous_id", "snapshot_at", "created_by", "reason", "payload_sha256", "audit_log_id", "created_at", "snapshot"] as const;
+const automationRecordFields = [...recordFields, "automation"] as const;
 const windowFields = ["kind", "period_key", "timezone", "from", "to"] as const;
 const snapshotFields = ["brand_id", "format_version", "snapshot_at", "timezone", "from", "to", "betting", "ledger", "wallet_snapshot", "withdrawals", "commissions", "rewards", "reward_orders"] as const;
 
@@ -175,10 +184,14 @@ function validSnapshot(value: unknown, brand: string): value is ReportArchiveSna
     sum(ro, ["granted_points", "pending_points", "revoked_points"]) === BigInt(ro.original_points);
 }
 function validRecord(v: unknown, brand: string, id?: string, actor?: string): v is ReportArchiveRecord {
-  if (!isRecord(v) || !exact(v, recordFields) || !uuid(v.id) || id !== undefined && !sameUuid(v.id, id) ||
+  if (!isRecord(v) || !(exact(v, recordFields) || exact(v, automationRecordFields)) || !uuid(v.id) || id !== undefined && !sameUuid(v.id, id) ||
     !uuid(v.brand_id) || !sameUuid(v.brand_id, brand) || !Number.isSafeInteger(v.revision) || (v.revision as number) < 1 || (v.revision as number) > MAX_REVISION ||
     !(v.previous_id === null || uuid(v.previous_id)) || (v.revision === 1) !== (v.previous_id === null) || v.previous_id !== null && sameUuid(v.previous_id, v.id as string) ||
-    !validDate(v.snapshot_at) || !uuid(v.created_by) || actor !== undefined && !sameUuid(v.created_by, actor) ||
+    !validDate(v.snapshot_at) ||
+    (Object.hasOwn(v, "automation")
+      ? v.created_by !== null || !isRecord(v.automation) || !exact(v.automation, ["task_id", "policy_version"]) || !uuid(v.automation.task_id) ||
+        !Number.isSafeInteger(v.automation.policy_version) || (v.automation.policy_version as number) < 1 || (v.automation.policy_version as number) > MAX_REVISION || actor !== undefined
+      : !uuid(v.created_by) || actor !== undefined && !sameUuid(v.created_by, actor)) ||
     !validStoredReason(v.reason) || typeof v.payload_sha256 !== "string" || !HEX256.test(v.payload_sha256) || !uuid(v.audit_log_id) || !validDate(v.created_at) ||
     !isRecord(v.window) || !exact(v.window, windowFields) || !(v.window.kind === "daily" || v.window.kind === "monthly") ||
     typeof v.window.period_key !== "string" || !validTimezone(v.window.timezone) || !validDate(v.window.from) || !validDate(v.window.to) || instant(v.window.to)! <= instant(v.window.from)!) return false;
@@ -262,7 +275,7 @@ export function reportArchivesPermissions(account: AdminAccount, brandId: string
   const view = scoped && (brand.has("report_archive.view.brand") && member || platform.has("report_archive.view.platform"));
   return {
     view,
-    create: Boolean(view && member && !account.super_admin && brand.has("report_archive.create.brand")),
+    create: Boolean(scoped && member && !account.super_admin && brand.has("report_archive.view.brand") && brand.has("report_archive.create.brand")),
     download: Boolean(view && (brand.has("report_archive.download.brand") && member || platform.has("report_archive.download.platform"))),
   };
 }
@@ -335,7 +348,7 @@ export function createReportArchivesApi(fetcher: typeof fetch = fetch): ReportAr
         !sameInstant(decoded.snapshot_at, decoded.wallet_snapshot.at_snapshot) ||
         !sameInstant(decoded.from, expected.window.from) || !sameInstant(decoded.to, expected.window.to) ||
         decoded.timezone !== expected.window.timezone || !snapshotsMatch(decoded, expected.snapshot)) invalidResponse();
-      return { bytes, metadata: { sha256: sha, revision: Number(revisionHeader), format_version: 1, filename } };
+      return { bytes, metadata: { record: expected, sha256: sha, revision: Number(revisionHeader), format_version: 1, filename } };
     },
   };
 }

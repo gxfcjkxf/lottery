@@ -176,7 +176,7 @@ func TestReportArchiveHTTPBusyAndAuditFailureAtomicity(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Rollback(ctx)
-	if _, err = lock.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('report-archive:'||$1||':daily:2020-01-01',0))`, managedBrand); err != nil {
+	if _, err = lock.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_schema()||':report-archive:'||$1||':daily:2020-01-01',0))`, managedBrand); err != nil {
 		t.Fatal(err)
 	}
 	key := "report-archive-busy-01"

@@ -33,7 +33,7 @@ function record(overrides: Partial<ReportArchiveRecord> = {}): ReportArchiveReco
     window: { kind: "daily", period_key: "0001-01-01", timezone: "UTC", from, to },
     revision: 1, previous_id: null, snapshot_at: at, created_by: actor, reason: "scheduled capture",
     payload_sha256: "a".repeat(64), audit_log_id: auditId, created_at: at, snapshot: s, ...overrides,
-  };
+  } as ReportArchiveRecord;
 }
 function page(items: ReportArchiveRecord[] = [record()]) { return { brand_id: brand, items, total_count: String(items.length), limit: 20, offset: 0 }; }
 function fetcher(data: unknown, status = 200) { return vi.fn<typeof fetch>().mockResolvedValue(response(data, status)); }
@@ -67,6 +67,20 @@ describe("report archives API", () => {
     await expect(createReportArchivesApi(fetcher({ ...page(), total_count: "2" })).list(brand)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
     await expect(createReportArchivesApi(fetcher(page([record(), record()]))).list(brand)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
     await expect(createReportArchivesApi(fetcher({ ...record(), created_by: actor })).read(brand, auditId)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    const automatic = record({ created_by: null, automation: { task_id: actor, policy_version: 1 } });
+    await expect(createReportArchivesApi(fetcher(automatic)).read(brand, archiveId)).resolves.toMatchObject({ created_by: null, automation: { task_id: actor, policy_version: 1 } });
+    for (const invalid of [
+      { ...automatic, created_by: actor },
+      { ...record(), created_by: null },
+      { ...automatic, automation: { task_id: actor, policy_version: 0 } },
+      { ...automatic, automation: { task_id: actor, policy_version: 1.5 } },
+      { ...automatic, automation: { task_id: "not-a-uuid", policy_version: 1 } },
+      { ...automatic, automation: { task_id: actor, policy_version: 1, extra: true } },
+      { ...automatic, extra: true },
+    ]) await expect(createReportArchivesApi(fetcher(invalid)).read(brand, archiveId)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    await expect(createReportArchivesApi(fetcher({ ...automatic, automation: { task_id: actor, policy_version: 1 } }, 201)).create(
+      brand, { kind: "daily", period_key: "0001-01-01", expected_revision: 0, reason: "scheduled capture" }, "archive-key-0001", actor,
+    )).rejects.toMatchObject({ code: "UNKNOWN_WRITE_STATUS" });
   });
 
   it("validates independent brand and platform view/download rights and restricts create", () => {
@@ -76,7 +90,7 @@ describe("report archives API", () => {
     expect(reportArchivesPermissions(account({ [brand]: ["report_archive.view.brand"] }), brand)).toEqual({ view: true, create: false, download: false });
     expect(reportArchivesPermissions(account({ [brand]: ["report_archive.view.brand", "report_archive.create.brand", "report_archive.download.brand"] }), brand)).toEqual({ view: true, create: true, download: true });
     expect(reportArchivesPermissions(account({ [brand]: [] }, ["report_archive.view.platform", "report_archive.download.platform"]), brand)).toEqual({ view: true, create: false, download: true });
-    expect(reportArchivesPermissions(account({ [brand]: ["report_archive.create.brand"] }, ["report_archive.view.platform"]), brand).create).toBe(true);
+    expect(reportArchivesPermissions(account({ [brand]: ["report_archive.create.brand"] }, ["report_archive.view.platform"]), brand).create).toBe(false);
     expect(reportArchivesPermissions(account({ [brand]: ["report_archive.view.brand", "report_archive.create.brand"] }, [], true), brand).create).toBe(false);
     expect(reportArchivesPermissions(account({ [brand]: ["report_archive.view.brand"] }), "55555555-5555-4555-8555-555555555555").view).toBe(false);
   });
@@ -156,7 +170,7 @@ describe("report archives API", () => {
     const result = await createReportArchivesApi(f).download(brand, archiveId, value);
     expect(result.bytes).toEqual(bytes);
     expect(new TextDecoder().decode(result.bytes)).toContain("+00:00");
-    expect(result.metadata).toEqual({ sha256: sha, revision: 1, format_version: 1, filename: `report-archive-${archiveId}-v1.json` });
+    expect(result.metadata).toEqual({ record: value, sha256: sha, revision: 1, format_version: 1, filename: `report-archive-${archiveId}-v1.json` });
     const [url, init] = f.mock.calls[0]!;
     expect(url).toBe(`${"/api/v1/admin/report-archives"}/${archiveId}/download`);
     expect(init?.method).toBe("GET");

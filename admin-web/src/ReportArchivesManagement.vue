@@ -210,7 +210,8 @@ onBeforeUnmount(() => { alive = false; listTicket++; readTicket++; writeTicket++
           <dt>{{ t("原时间范围", "Original interval") }}</dt><dd>[{{ selected.window.from }}, {{ selected.window.to }})</dd>
           <dt>{{ t("观察时刻", "Observation time") }}</dt><dd>{{ selected.snapshot_at }}</dd>
           <dt>SHA-256</dt><dd>{{ selected.payload_sha256 }}</dd>
-          <dt>{{ t("创建人", "Created by") }}</dt><dd>{{ selected.created_by }}</dd>
+          <dt>{{ t("创建人", "Created by") }}</dt><dd>{{ selected.automation ? t("系统任务", "System task") : selected.created_by ?? "—" }}</dd>
+          <template v-if="selected.automation"><dt>{{ t("自动归档", "Automatic archive") }}</dt><dd>{{ selected.automation.task_id }} · {{ t("策略版本", "Policy version") }} {{ selected.automation.policy_version }}</dd></template>
           <dt>{{ t("审计 ID", "Audit ID") }}</dt><dd>{{ selected.audit_log_id }}</dd>
           <dt>{{ t("操作原因", "Reason for operation") }}</dt><dd>{{ selected.reason }}</dd>
         </dl>

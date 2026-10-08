@@ -33,6 +33,10 @@ const archiveSnapshot = obj({
   reward_orders: ref("ReportArchiveRewardOrderTotals"),
 });
 archiveSnapshot.description = "Exact reporting.ArchiveSnapshot field set. Aggregate amounts remain decimal strings, including signed ledger and commission net totals.";
+const automationEvidence = obj({
+  task_id: uuid,
+  policy_version: { type: "integer", minimum: 1, maximum: 9007199254740991 },
+});
 const record = obj({
   id: uuid,
   brand_id: uuid,
@@ -40,13 +44,19 @@ const record = obj({
   revision: { type: "integer", minimum: 1, maximum: 9007199254740991 },
   previous_id: nullable(uuid),
   snapshot_at: date,
-  created_by: uuid,
+  created_by: nullable(uuid),
   reason: { type: "string" },
   payload_sha256: { type: "string", pattern: "^[a-f0-9]{64}$" },
   audit_log_id: uuid,
   created_at: date,
   snapshot: ref("ReportArchiveSnapshot"),
-});
+  automation: ref("ReportArchiveAutomationEvidence"),
+}, ["id", "brand_id", "window", "revision", "previous_id", "snapshot_at", "created_by", "reason", "payload_sha256", "audit_log_id", "created_at", "snapshot"]);
+record.oneOf = [
+  { properties: { created_by: uuid }, not: { required: ["automation"] } },
+  { properties: { created_by: { type: "null" } }, required: ["automation"] },
+];
+record.description = "Manual records retain their exact 12-field JSON shape. Automatic records have those fields plus automation, with created_by null. No other metadata is accepted.";
 const strictControlFreeReason = {
   type: "string", minLength: 1, maxLength: 500,
   pattern: "^(?=.*\\S)(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]*$",
@@ -97,6 +107,7 @@ export const schemas = {
   ReportArchiveRewardOrderTotals: aggregate(totals.reward_orders),
   ReportArchiveSnapshot: archiveSnapshot,
   ReportArchiveWindow: window,
+  ReportArchiveAutomationEvidence: automationEvidence,
   ReportArchiveRecord: record,
   ReportArchivePage: page,
   ReportArchiveCreateInput: input,

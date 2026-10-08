@@ -67,6 +67,33 @@ func archiveRead(t *testing.T, s Service, id string) Record {
 	}
 	return r
 }
+
+func TestArchiveLocksSerializeOnlyWithinTheOwningSchema(t *testing.T) {
+	first, firstActor := archiveFixture(t)
+	second, secondActor := archiveFixture(t)
+	ctx := context.Background()
+	in := pastInput()
+	lock, err := first.DB.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Rollback(ctx)
+	if _, err = lock.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_schema()||':report-archive:'||$1||':'||$2||':'||$3,0))`, testBrand, in.Kind, in.PeriodKey); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := first.DB.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = first.CreateTx(ctx, tx, testBrand, firstActor, in, archiveMeta(firstActor))
+	tx.Rollback(ctx)
+	if !errors.Is(err, ErrBusy) {
+		t.Fatal("own series lock not enforced", err)
+	}
+	if r := archiveCreate(t, second, secondActor, in); r.Revision != 1 {
+		t.Fatal("independent schema blocked", r)
+	}
+}
 func archiveMoney(t *testing.T, s Service) string {
 	t.Helper()
 	var v string
@@ -151,7 +178,11 @@ func TestArchiveVersionsFreezePastWindowAndNeverMoveMoney(t *testing.T) {
 	if err = tx.Rollback(ctx); err != nil {
 		t.Fatal(err)
 	}
-	for _, q := range []string{`UPDATE report_archives SET reason='changed'`, `DELETE FROM report_archives`, `TRUNCATE report_archives`} {
+	var archiveHistoryBefore string
+	if err = s.DB.QueryRow(ctx, `SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY id),'[]'::jsonb)::text FROM report_archives r`).Scan(&archiveHistoryBefore); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{`UPDATE report_archives SET reason='changed'`, `DELETE FROM report_archives`, `TRUNCATE report_archives CASCADE`} {
 		_, err = s.DB.Exec(ctx, q)
 		var rejected *pgconn.PgError
 		if !errors.As(err, &rejected) || rejected.Message != "report archives are immutable" {
@@ -160,6 +191,13 @@ func TestArchiveVersionsFreezePastWindowAndNeverMoveMoney(t *testing.T) {
 	}
 	if archiveMoney(t, s) != before {
 		t.Fatal("archive reads mutated funds")
+	}
+	var archiveHistoryAfter string
+	if err = s.DB.QueryRow(ctx, `SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY id),'[]'::jsonb)::text FROM report_archives r`).Scan(&archiveHistoryAfter); err != nil {
+		t.Fatal(err)
+	}
+	if archiveHistoryAfter != archiveHistoryBefore {
+		t.Fatal("rejected archive mutations changed retained archive history")
 	}
 	monthly := Input{Kind: Monthly, PeriodKey: time.Now().UTC().AddDate(0, -2, 0).Format("2006-01"), Reason: "closed calendar month observation"}
 	month := archiveCreate(t, s, a, monthly)
@@ -409,13 +447,13 @@ func TestArchiveDatabaseRecomputesSourceSnapshotAndRejectsForgedContent(t *testi
 		t.Fatal("failed forgery changed archive")
 	}
 	// Go and PostgreSQL agree on normal DST days, repeated midnight and gaps.
-	for _, tc := range []struct{ key, zone string }{{"2024-03-10", "America/New_York"}, {"2024-11-03", "America/New_York"}, {"2020-11-01", "America/Havana"}, {"2018-11-04", "America/Sao_Paulo"}} {
+	for _, tc := range []struct{ key, zone string }{{"2024-03-10", "America/New_York"}, {"2024-11-03", "America/New_York"}, {"2020-11-01", "America/Havana"}, {"2018-11-04", "America/Sao_Paulo"}, {"2011-12-29", "Pacific/Apia"}} {
 		w, err := ResolveWindow(Daily, tc.key, tc.zone)
 		if err != nil {
 			t.Fatal(err)
 		}
 		var from, to time.Time
-		if err = s.DB.QueryRow(ctx, `SELECT report_archive_period_boundary($1::timestamp,$2),report_archive_period_boundary(($1::timestamp)+interval '1 day',$2)`, tc.key, tc.zone).Scan(&from, &to); err != nil || !from.Equal(w.From) || !to.Equal(w.To) {
+		if err = s.DB.QueryRow(ctx, `SELECT report_archive_period_boundary($1::timestamp,$2),report_archive_period_end_boundary(($1::timestamp)+interval '1 day',$2)`, tc.key, tc.zone).Scan(&from, &to); err != nil || !from.Equal(w.From) || !to.Equal(w.To) {
 			t.Fatal(w, from, to, err)
 		}
 	}

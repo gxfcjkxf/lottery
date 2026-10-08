@@ -91,6 +91,13 @@ func TestResolveWindowRejectsSkippedCivilDate(t *testing.T) {
 	}
 }
 
+func TestResolveWindowKeepsDateBeforeSkippedCivilDate(t *testing.T) {
+	w, err := ResolveWindow(Daily, "2011-12-29", "Pacific/Apia")
+	if err != nil || w.From.Format(time.RFC3339) != "2011-12-29T10:00:00Z" || w.To.Format(time.RFC3339) != "2011-12-30T10:00:00Z" {
+		t.Fatalf("date preceding skip = %+v, err = %v", w, err)
+	}
+}
+
 func TestResolveWindowUsesFirstRealTimeAfterMidnightGap(t *testing.T) {
 	// São Paulo advanced from 23:59 to 01:00 at the start of this date.
 	w, err := ResolveWindow(Daily, "2018-11-04", "America/Sao_Paulo")

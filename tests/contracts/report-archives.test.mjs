@@ -125,14 +125,15 @@ func main() {
   zeroReward := reporting.RewardTotals{EntryCount:"0",GrantEntryCount:"0",GrantPoints:"0",ReversalEntryCount:"0",ReversalPoints:"0",NetPoints:"-3"}
   zeroRewardOrders := reporting.RewardOrderTotals{OrderCount:"0",OriginalPoints:"0",GrantedCount:"0",GrantedPoints:"0",PendingCount:"0",PendingPoints:"0",RevokedCount:"0",RevokedPoints:"0"}
   snapshot := reporting.ArchiveSnapshot{BrandID:id,FormatVersion:1,SnapshotAt:now,Timezone:"Asia/Singapore",From:now.Add(-24*time.Hour),To:now,Betting:zeroBetting,Ledger:zeroLedger,WalletSnapshot:reporting.ArchiveWallet{AtSnapshot:now,Balances:zeroBalances},Withdrawals:zeroWithdrawal,Commissions:zeroCommission,Rewards:zeroReward,RewardOrders:zeroRewardOrders}
-  record := reportarchive.Record{ID:id,BrandID:id,Window:reportarchive.Window{Kind:"daily",PeriodKey:"2026-10-07",Timezone:"Asia/Singapore",From:snapshot.From,To:snapshot.To},Revision:1,PreviousID:nil,SnapshotAt:now,CreatedBy:id,Reason:"contract example",PayloadSHA256:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",AuditLogID:id,CreatedAt:now,Snapshot:snapshot}
-  page := reportarchive.Page{BrandID:id,Items:[]reportarchive.Record{record},TotalCount:"1",Limit:1,Offset:0}
+  manualRecord := reportarchive.Record{ID:id,BrandID:id,Window:reportarchive.Window{Kind:"daily",PeriodKey:"2026-10-07",Timezone:"Asia/Singapore",From:snapshot.From,To:snapshot.To},Revision:1,PreviousID:nil,SnapshotAt:now,CreatedBy:&id,Reason:"contract example",PayloadSHA256:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",AuditLogID:id,CreatedAt:now,Snapshot:snapshot}
+  automaticRecord := reportarchive.Record{ID:"22222222-2222-4222-8222-222222222222",BrandID:id,Window:manualRecord.Window,Revision:1,PreviousID:nil,SnapshotAt:now,CreatedBy:nil,Automation:&reportarchive.AutomationEvidence{TaskID:id,PolicyVersion:1},Reason:"automatic archive",PayloadSHA256:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",AuditLogID:id,CreatedAt:now,Snapshot:snapshot}
+  page := reportarchive.Page{BrandID:id,Items:[]reportarchive.Record{manualRecord,automaticRecord},TotalCount:"2",Limit:2,Offset:0}
   dto, err := json.Marshal(snapshot); if err != nil { panic(err) }
   var payload map[string]any
   if err = json.Unmarshal(dto, &payload); err != nil { panic(err) }
   raw, err := json.Marshal(payload); if err != nil { panic(err) }
   rawHash := sha256.Sum256(raw); dtoHash := sha256.Sum256(dto)
-  out := map[string]any{"record":record,"page":page,"snapshot":snapshot,"canonical_payload":string(raw),"canonical_sha256":hex.EncodeToString(rawHash[:]),"dto_snapshot_sha256":hex.EncodeToString(dtoHash[:])}
+  out := map[string]any{"record":manualRecord,"automatic_record":automaticRecord,"page":page,"snapshot":snapshot,"canonical_payload":string(raw),"canonical_sha256":hex.EncodeToString(rawHash[:]),"dto_snapshot_sha256":hex.EncodeToString(dtoHash[:])}
   encoded, err := json.Marshal(out); if err != nil { panic(err) }; fmt.Println(string(encoded))
 }`;
   try {
@@ -146,7 +147,22 @@ func main() {
       const check = validate(name);
       assert.ok(check(value), `${name}: ${JSON.stringify(check.errors)}`);
     }
-    assert.deepEqual(Object.keys(examples.record).sort(), Object.keys(schemas.ReportArchiveRecord.properties).sort());
+    assert.deepEqual(Object.keys(examples.record).sort(), Object.keys(schemas.ReportArchiveRecord.properties).filter(key => key !== "automation").sort());
+    const automaticCheck = validate("ReportArchiveRecord");
+    assert.ok(automaticCheck(examples.automatic_record), `automatic record: ${JSON.stringify(automaticCheck.errors)}`);
+    assert.deepEqual(Object.keys(examples.record).sort(), ["audit_log_id", "brand_id", "created_at", "created_by", "id", "payload_sha256", "previous_id", "reason", "revision", "snapshot", "snapshot_at", "window"].sort());
+    assert.deepEqual(Object.keys(examples.automatic_record).sort(), [...Object.keys(examples.record), "automation"].sort());
+    assert.deepEqual(Object.keys(examples.automatic_record.automation).sort(), ["policy_version", "task_id"]);
+    assert.equal(examples.automatic_record.created_by, null);
+    for (const invalidRecord of [
+      { ...examples.automatic_record, created_by: examples.record.created_by },
+      { ...examples.record, created_by: null },
+      { ...examples.automatic_record, automation: { task_id: examples.record.created_by, policy_version: 0 } },
+      { ...examples.automatic_record, automation: { task_id: examples.record.created_by, policy_version: 1.5 } },
+      { ...examples.automatic_record, automation: { task_id: "not-a-uuid", policy_version: 1 } },
+      { ...examples.automatic_record, automation: { task_id: examples.record.created_by, policy_version: 1, extra: true } },
+      { ...examples.record, unexpected_metadata: true },
+    ]) assert.ok(!automaticCheck(invalidRecord), `invalid record accepted: ${JSON.stringify(invalidRecord)}`);
     assert.deepEqual(Object.keys(examples.snapshot).sort(), Object.keys(schemas.ReportArchiveSnapshot.properties).sort());
     assert.deepEqual(Object.keys(examples.page).sort(), Object.keys(schemas.ReportArchivePage.properties).sort());
     assert.deepEqual(Object.keys(examples.record.window).sort(), Object.keys(schemas.ReportArchiveWindow.properties).sort());
@@ -159,6 +175,7 @@ func main() {
     const canonicalHash = createHash("sha256").update(examples.canonical_payload, "utf8").digest("hex");
     assert.deepEqual(JSON.parse(examples.canonical_payload), examples.snapshot);
     assert.equal(canonicalHash, examples.canonical_sha256);
+    assert.equal(JSON.parse(examples.canonical_payload).automation, undefined, "automation evidence stays outside the format-1 payload");
     assert.notEqual(canonicalHash, examples.dto_snapshot_sha256, "canonical payload bytes are not a Go DTO re-marshalling");
     assert.equal(examples.snapshot.format_version, 1);
     assert.equal(examples.snapshot.ledger.net_points, "-1");

@@ -68,6 +68,9 @@ func ResolveWindow(kind, key, timezone string) (Window, error) {
 	}
 
 	from, ok := localDayStart(year, month, day, loc)
+	if kind == Monthly {
+		from, ok = firstValidCivilBoundary(year, month, day, loc)
+	}
 	if !ok {
 		return invalid("period start does not have a real local civil date")
 	}
@@ -79,7 +82,7 @@ func ResolveWindow(kind, key, timezone string) (Window, error) {
 		civilNext := time.Date(year, month+1, 1, 0, 0, 0, 0, time.UTC)
 		endYear, endMonth, endDay = civilNext.Date()
 	}
-	to, ok := localDayStart(endYear, endMonth, endDay, loc)
+	to, ok := firstValidCivilBoundary(endYear, endMonth, endDay, loc)
 	if !ok {
 		return invalid("period end does not have a real local civil date")
 	}
@@ -97,6 +100,19 @@ func ResolveWindow(kind, key, timezone string) (Window, error) {
 		From:      from,
 		To:        to,
 	}, nil
+}
+
+// A valid date immediately before a wholly skipped date still has a window.
+// Its end is the first real instant on or after the nominal next civil date.
+func firstValidCivilBoundary(year int, month time.Month, day int, loc *time.Location) (time.Time, bool) {
+	civil := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+	for step := 0; step <= 7; step++ {
+		y, m, d := civil.AddDate(0, 0, step).Date()
+		if boundary, ok := localDayStart(y, m, d, loc); ok {
+			return boundary, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // localDayStart selects the first real instant of a civil date. For repeated
