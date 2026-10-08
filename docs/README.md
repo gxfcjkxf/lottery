@@ -36,7 +36,7 @@
 - [23-commission-correction-execution.md](23-commission-correction-execution.md)：独立默认关闭的资金更正开关、实际差额执行、整周期暂停与显式继续、多次更正净额基数。
 - [24-commission-correction-management.md](24-commission-correction-management.md)：十二条正式更正管理接口、独立权限与当前授权复核、PC/移动双语操作、原回执及同会话未知请求恢复；通知和报表另见25号合同。
 - [25-commission-correction-observability.md](25-commission-correction-observability.md)：真实非零差额的原子事件、不可变历史站内消息、实际补发/追回报表、22列CSV版本2及无旧消息回填的协调升级。
-- [26-report-archive-core.md](26-report-archive-core.md)：已确认的日/月不可变快照及追加版本口径、单一统计快照、内部持久服务、原字节摘要和后续管理接入约束。
+- [26-report-archive-core.md](26-report-archive-core.md)：日/月不可变快照与追加版本、单一统计观察、四条正式管理接口、独立授权原JSON下载与摘要，以及后续界面和自动任务边界。
 
 ## 第一阶段实现顺序
 

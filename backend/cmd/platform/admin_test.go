@@ -122,3 +122,34 @@ func TestBootstrapRewardReportRightsAreExplicitAndScoped(t *testing.T) {
 		}
 	}
 }
+
+func TestBootstrapReportArchiveRightsAreExplicitAndScoped(t *testing.T) {
+	db := testdb.New(t)
+	ctx := context.Background()
+	before := os.Args
+	t.Cleanup(func() { os.Args = before })
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-report-archive-owned-test-password-2026")
+	for _, tc := range []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{"archive_brand_test", []string{"--brand", "harbor"}, []string{"report_archive.create.brand", "report_archive.download.brand", "report_archive.view.brand"}},
+		{"archive_platform_test", []string{"--super"}, []string{"report_archive.download.platform", "report_archive.view.platform"}},
+	} {
+		os.Args = append([]string{"platform", "create-admin", "--username", tc.name}, tc.args...)
+		if err := createAdmin(ctx, db); err != nil {
+			t.Fatalf("createAdmin(%s): %v", tc.name, err)
+		}
+		var got []string
+		if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),'{}')
+		 FROM role_permissions rp JOIN admin_account_roles ar ON ar.role_id=rp.role_id
+		 JOIN admin_accounts a ON a.id=ar.account_id
+		 WHERE a.username=$1 AND permission_key LIKE 'report_archive.%'`, tc.name).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("%s report archive grants=%v want=%v", tc.name, got, tc.want)
+		}
+	}
+}

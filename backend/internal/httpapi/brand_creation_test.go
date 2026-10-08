@@ -4,14 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandregistry"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
-	"github.com/jackc/pgx/v5"
+	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
+	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
+	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 )
 
 const creationPath = "/api/v1/admin/brands"
@@ -94,16 +99,31 @@ func TestBrandCreationHTTPGlobalCheckedReplayAndRevocation(t *testing.T) {
 }
 
 func TestBrandlessPlatformCanLoginCreateFirstBrandAndRestoreSession(t *testing.T) {
-	f := managedFixture(t)
+	p := testdb.NewUnseeded(t)
 	ctx := context.Background()
-	var schema string
-	if err := f.pool.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil || !strings.HasPrefix(schema, "test_") {
-		t.Fatal("first-brand fixture must own a test schema")
-	}
-	// Remove only synthetic seeds from this test's schema, before platform grants.
-	// This is not an original/public database and never points at customer data.
-	if _, err := f.pool.Exec(ctx, "TRUNCATE "+pgx.Identifier{schema, "brands"}.Sanitize()+" CASCADE"); err != nil {
+	users, err := identity.New(p)
+	if err != nil {
 		t.Fatal(err)
+	}
+	hash, err := users.PasswordHash(ctx, "root-test-password-2026")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := ids.New()
+	if _, err = p.Exec(ctx, `INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,'managed_root',$2)`, root, hash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.Exec(ctx, `INSERT INTO platform_domains(domain) VALUES('localhost')`); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := mutation.New(p, make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := managementHTTP{pool: p, root: root, http: New(Dependencies{Brands: tenant.Store{DB: p}, Ready: p.Ping, Identity: users, Mutations: engine, Admins: adminsys.Store{DB: p}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})}
+	var brands, archives, guarded int
+	if err = p.QueryRow(ctx, `SELECT (SELECT count(*) FROM brands),(SELECT count(*) FROM report_archives),(SELECT count(*) FROM pg_trigger WHERE tgrelid='report_archives'::regclass AND tgname='guarded_report_archive_truncate' AND tgenabled='O')`).Scan(&brands, &archives, &guarded); err != nil || brands != 0 || archives != 0 || guarded != 1 {
+		t.Fatal("first-brand schema must be empty with archive guard intact", brands, archives, guarded, err)
 	}
 	grantCreation(t, f)
 	mustStatus(t, f.call("GET", "/api/v1/context", "", "", "", nil), 404)

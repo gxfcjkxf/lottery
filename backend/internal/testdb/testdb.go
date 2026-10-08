@@ -20,7 +20,13 @@ import (
 )
 
 func New(t *testing.T) *pgxpool.Pool {
-	return newDatabase(t, 0)
+	return newDatabase(t, 0, true)
+}
+
+// NewUnseeded creates an owned, fully migrated schema without development
+// brands. First-brand tests must start empty, not truncate immutable history.
+func NewUnseeded(t *testing.T) *pgxpool.Pool {
+	return newDatabase(t, 0, false)
 }
 
 // NewAtVersion creates an owned random schema using the actual historical
@@ -30,10 +36,10 @@ func NewAtVersion(t *testing.T, version int) *pgxpool.Pool {
 	if version < 1 {
 		t.Fatal("historical migration version must be positive")
 	}
-	return newDatabase(t, version)
+	return newDatabase(t, version, true)
 }
 
-func newDatabase(t *testing.T, version int) *pgxpool.Pool {
+func newDatabase(t *testing.T, version int, seed bool) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -75,8 +81,10 @@ func newDatabase(t *testing.T, version int) *pgxpool.Pool {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = database.Seed(ctx, p, "test"); err != nil {
-		t.Fatal(err)
+	if seed {
+		if err = database.Seed(ctx, p, "test"); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return p
 }

@@ -58,11 +58,17 @@ func Allowed(a access.Account, brand, action string) bool {
 	if !archiveUUID.MatchString(brand) {
 		return false
 	}
-	view := access.Authorize(a, "report_archive", "view", access.ScopeBrand, brand) || access.Authorize(a, "report_archive", "view", access.ScopePlatform, "")
+	brandView := access.Authorize(a, "report_archive", "view", access.ScopeBrand, brand)
+	platformView := access.Authorize(a, "report_archive", "view", access.ScopePlatform, "")
+	view := brandView || platformView
 	if action == "view" {
 		return view
 	}
-	return action == "create" && view && !a.SuperAdmin && access.Authorize(a, "report_archive", "create", access.ScopeBrand, brand)
+	if action == "download" {
+		return view && (access.Authorize(a, "report_archive", "download", access.ScopeBrand, brand) ||
+			access.Authorize(a, "report_archive", "download", access.ScopePlatform, ""))
+	}
+	return action == "create" && view && !a.SuperAdmin && brandView && access.Authorize(a, "report_archive", "create", access.ScopeBrand, brand)
 }
 func validReason(s string) bool {
 	return utf8.ValidString(s) && s != "" && len(s) <= 500 && strings.TrimSpace(s) == s && !strings.ContainsAny(s, "\x00\r\n")
