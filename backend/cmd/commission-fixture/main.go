@@ -195,8 +195,7 @@ func run() error {
 func initialize(ctx context.Context, db *pgxpool.Pool, adminPassword, userPassword string) (fixtureOutput, error) {
 	var out fixtureOutput
 	out.BrandID = fixtureBrand
-	var latest string
-	if err := db.QueryRow(ctx, `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1`).Scan(&latest); err != nil || latest != "0053_commission_reports.up.sql" {
+	if err := requireLatestMigration(ctx, db); err != nil {
 		return out, errors.New("commission fixture requires the latest migration")
 	}
 	var brandOK bool
@@ -793,8 +792,7 @@ func requireFixtureAdmin(ctx context.Context, db *pgxpool.Pool) (string, error) 
 }
 
 func requireLatestMigration(ctx context.Context, db *pgxpool.Pool) error {
-	var latest string
-	if err := db.QueryRow(ctx, `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1`).Scan(&latest); err != nil || latest != "0053_commission_reports.up.sql" {
+	if err := database.CheckMigrations(ctx, db); err != nil {
 		return errors.New("owned commission fixture requires the latest migration")
 	}
 	return nil

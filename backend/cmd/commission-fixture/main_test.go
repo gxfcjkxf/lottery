@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"testing"
 	"time"
 )
@@ -121,5 +122,46 @@ func TestFixtureInitializesAllThreeActualCommissionWorkflows(t *testing.T) {
 	}
 	if _, err = initialize(ctx, db, validAdminPass, validUserPass); err == nil {
 		t.Fatal("fixture initialization overwrote occupied identities")
+	}
+}
+
+func TestFixtureMigrationAdmissionRejectsStaleOrDamagedHistoryBeforeWrites(t *testing.T) {
+	for _, mode := range []string{"historical", "checksum"} {
+		t.Run(mode, func(t *testing.T) {
+			var db *pgxpool.Pool
+			if mode == "historical" {
+				db = testdb.NewAtVersion(t, 53)
+			} else {
+				db = testdb.New(t)
+				if _, err := db.Exec(context.Background(), `UPDATE schema_migrations SET checksum='damaged' WHERE name=(SELECT min(name) FROM schema_migrations)`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			fingerprint := func() string {
+				t.Helper()
+				var result string
+				if err := db.QueryRow(context.Background(), `SELECT jsonb_build_object(
+				 'migrations',(SELECT jsonb_agg(to_jsonb(m) ORDER BY m.name) FROM schema_migrations m),
+				 'admins',(SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id) FROM admin_accounts a),
+				 'members',(SELECT jsonb_agg(to_jsonb(m) ORDER BY m.id) FROM brand_members m),
+				 'accounts',(SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id) FROM point_accounts a),
+				 'buckets',(SELECT jsonb_agg(to_jsonb(b) ORDER BY b.account_id,b.source,b.state) FROM point_buckets b),
+				 'ledger',(SELECT jsonb_agg(to_jsonb(l) ORDER BY l.id) FROM point_ledger_entries l),
+				 'audits',(SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id) FROM audit_logs a))::text`).Scan(&result); err != nil {
+					t.Fatal(err)
+				}
+				return result
+			}
+			before := fingerprint()
+			if _, err := initialize(context.Background(), db, validAdminPass, validUserPass); err == nil {
+				t.Fatal("fixture initialized against stale or damaged migration history")
+			}
+			if err := requireLatestMigration(context.Background(), db); err == nil {
+				t.Fatal("existing-fixture command admitted stale or damaged migration history")
+			}
+			if after := fingerprint(); after != before {
+				t.Fatalf("%s migration rejection changed fixture identity, funds, audits or metadata", mode)
+			}
+		})
 	}
 }
