@@ -22,7 +22,9 @@ function localExecutable(value, { fallback = false, env = process.env } = {}) {
         const executable = realpathSync(candidate);
         if (statSync(executable).isFile()) {
           accessSync(executable, constants.X_OK);
-          return executable;
+          // Debian/Ubuntu psql may be a link to pg_wrapper, which dispatches
+          // using the invoked client name. Validate its target but invoke psql.
+          return resolve(candidate);
         }
       } catch { /* Try the next PATH directory. */ }
     }
@@ -35,7 +37,7 @@ function localExecutable(value, { fallback = false, env = process.env } = {}) {
     const executable = realpathSync(value);
     if (!statSync(executable).isFile()) throw new Error();
     accessSync(executable, constants.X_OK);
-    return executable;
+    return resolve(value);
   } catch {
     throw new Error('An absolute executable binary path is required');
   }
