@@ -21,14 +21,18 @@ import (
 // The background periods belong to different games but the same 500 wallets
 // used by the foreground load. No wallet or prize state is manufactured.
 func TestBettingWithSettlementCapacity(t *testing.T) {
-	runFinancialCapacity(t, false)
+	runFinancialCapacity(t, false, false)
 }
 
 func TestBettingWithSettlementAndWithdrawalCapacity(t *testing.T) {
-	runFinancialCapacity(t, true)
+	runFinancialCapacity(t, true, false)
 }
 
-func runFinancialCapacity(t *testing.T, withWithdrawals bool) {
+func TestBettingWithSettlementWithdrawalAndCommissionCapacity(t *testing.T) {
+	runFinancialCapacity(t, true, true)
+}
+
+func runFinancialCapacity(t *testing.T, withWithdrawals, withCommission bool) {
 	capacitySafety(t)
 	path := os.Getenv("LOTTERY_CAPACITY_REPORT")
 	if path == "" {
@@ -37,16 +41,27 @@ func runFinancialCapacity(t *testing.T, withWithdrawals bool) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("capacity report must not already exist")
 	}
-	f := newCapacityFixture(t, 500, 2, 20)
+	f := newCapacityMembers(t, 500, 2, 20, withCommission)
 	var withdrawalActors map[string]access.Account
 	if withWithdrawals {
 		withdrawalActors = prepareCapacityWithdrawals(t, f)
+	}
+	var commissionBoundary time.Time
+	if withCommission {
+		commissionBoundary = prepareCapacityCommission(t, f)
 	}
 	background := prepareCapacitySettlement(t, f)
 	if len(background.OrderIDs) != 500 || len(background.Jobs) != 2 {
 		t.Fatal("expected 500 real background orders and two settlement jobs")
 	}
 	ctx := context.Background()
+	if withCommission {
+		// Foreground bets must belong to the next genuine calendar window.
+		// Otherwise their unfinalized orders correctly prevent prior-cycle payout.
+		if wait := time.Until(commissionBoundary); wait > 0 {
+			time.Sleep(wait)
+		}
+	}
 	before, err := capacity.SnapshotDB(ctx, f.DB)
 	if err != nil {
 		t.Fatal(err)
@@ -70,6 +85,7 @@ func runFinancialCapacity(t *testing.T, withWithdrawals bool) {
 	var completeOnce sync.Once
 	var withdrawalReport capacity.Report
 	var withdrawalRunErr error
+	var commissionRunErr error
 	startedAt := time.Now().UTC()
 	for i := 0; i < 2; i++ {
 		workers.Add(1)
@@ -107,6 +123,18 @@ func runFinancialCapacity(t *testing.T, withWithdrawals bool) {
 					case <-time.After(10 * time.Millisecond):
 					}
 				}
+			}
+		}()
+	}
+	if withCommission {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			select {
+			case <-workerCtx.Done():
+				return
+			case <-settlementCompleted:
+				commissionRunErr = processCapacityCommission(workerCtx, f)
 			}
 		}()
 	}
@@ -205,6 +233,9 @@ func runFinancialCapacity(t *testing.T, withWithdrawals bool) {
 	if withWithdrawals {
 		expectedBalance -= 25000
 	}
+	if withCommission {
+		expectedBalance += 50
+	}
 	financeOK := integrity.Orders == 15500 && integrity.Debits == 15500 && integrity.StakePoints == 15500 && integrity.DebitPoints == 15500 && integrity.KnownUniqueReceipts == 15500 && integrity.UnknownCommittedOrders == 0 && integrity.BalancePoints == expectedBalance && integrity.BadOrderLinks == 0 && integrity.BadAccountBalances == 0 && integrity.LateOrders == 0 && completedJobs == 2 && paidTargets == 500 && prizeEntries == 500 && prizePoints == 5000 && badPrizeLinks == 0 && creditsDuringLoad == 500 && wonOrders == 500 && settledPeriods == 2
 	delta := capacity.DBCounterDeltas(before, after)
 	workerOK := settlementErrors.Load() == 0 && notificationErrors.Load() == 0 && delta.Deadlocks == 0 && !delta.CounterResetDetected
@@ -244,6 +275,34 @@ func runFinancialCapacity(t *testing.T, withWithdrawals bool) {
 		artifact["withdrawal_turnover_multiple"] = "0.000001"
 		artifact["scope"] = "isolated TCP bets and genuine qualifying withdrawal applications; real settlement and withdrawal actions on the same wallets; no external payments, TLS or production logging"
 	}
+	commissionOK := true
+	if withCommission {
+		var cycles, payments, entries, credited, duringLoad, badLinks, targets, outOfWindow int64
+		if err = f.DB.QueryRow(ctx, `SELECT
+		 (SELECT count(*) FROM commission_cycles WHERE state='ready'),
+		 (SELECT count(*) FROM commission_payments WHERE state='paid'),
+		 (SELECT count(*) FROM point_ledger_entries WHERE entry_type='commission'),
+		 (SELECT coalesce(sum((delta_snapshot->'commission'->>'available')::bigint),0) FROM point_ledger_entries WHERE entry_type='commission'),
+		 (SELECT count(*) FROM point_ledger_entries WHERE entry_type='commission' AND created_at>=$1 AND created_at<=$2),
+		 (SELECT count(*) FROM commission_payment_targets t LEFT JOIN point_ledger_entries l ON l.id=t.ledger_entry_id WHERE t.state<>'paid' OR l.id IS NULL OR l.entry_type<>'commission' OR l.reference_type<>'commission_payment_target' OR l.reference_id<>t.id OR l.member_id<>t.member_id OR l.brand_id<>t.brand_id OR (l.delta_snapshot->'commission'->>'available')::bigint<>t.points),
+		 (SELECT coalesce(sum(target_count),0) FROM commission_cycles),
+		 (SELECT count(*) FROM commission_cycle_targets t JOIN commission_cycles c ON c.id=t.cycle_id JOIN bet_orders o ON o.id=t.order_id WHERE o.placed_at<c.window_from OR o.placed_at>=c.window_to)`, startedAt, loadEndedAt).Scan(&cycles, &payments, &entries, &credited, &duringLoad, &badLinks, &targets, &outOfWindow); err != nil {
+			t.Fatal(err)
+		}
+		commissionOK = commissionRunErr == nil && cycles == 2 && payments == 2 && entries == 2 && credited == 50 && duringLoad == 2 && badLinks == 0 && targets == 500 && outOfWindow == 0
+		artifact["profile"] = "betting_with_settlement_withdrawals_commission"
+		artifact["commission_ready_cycles"] = cycles
+		artifact["commission_paid_payments"] = payments
+		artifact["commission_entries"] = entries
+		artifact["commission_points"] = credited
+		artifact["commission_credits_during_load"] = duringLoad
+		artifact["commission_bad_links"] = badLinks
+		artifact["commission_cycle_targets"] = targets
+		artifact["commission_out_of_window_orders"] = outOfWindow
+		artifact["commission_checks_passed"] = commissionOK
+		artifact["commission_boundary_utc"] = commissionBoundary
+		artifact["scope"] = "isolated TCP bets and qualifying withdrawals; genuine settlement, weekly snapshot commission calculation and automatic payout on the same wallets; no external payments, TLS or production logging"
+	}
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		t.Fatal(err)
@@ -256,7 +315,7 @@ func runFinancialCapacity(t *testing.T, withWithdrawals bool) {
 		t.Fatal(encodeErr, closeErr)
 	}
 	t.Logf("mixed capacity planned=%d succeeded=%d prize_credits=%d p95_ms=%.2f p99_ms=%.2f", report.Planned, report.Succeeded, creditsDuringLoad, report.EndToEnd.P95Ms, report.EndToEnd.P99Ms)
-	if !requestsOK || !financeOK || !workerOK || !withdrawalsOK {
+	if !requestsOK || !financeOK || !workerOK || !withdrawalsOK || !commissionOK {
 		t.Fatal("mixed capacity checks failed; see sanitized report")
 	}
 }

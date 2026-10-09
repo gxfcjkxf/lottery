@@ -24,6 +24,7 @@
     "test:capacity-safety": "node scripts/check-capacity-safety.mjs",
     "test:capacity-settlement": "node scripts/check-capacity-settlement.mjs",
     "test:capacity-withdrawals": "node scripts/check-capacity-withdrawals.mjs",
+    "test:capacity-commission": "node scripts/check-capacity-commission.mjs",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

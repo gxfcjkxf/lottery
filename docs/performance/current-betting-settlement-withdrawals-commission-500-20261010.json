@@ -1,0 +1,260 @@
+{
+  "background_completed_jobs": 2,
+  "background_orders": 500,
+  "bad_prize_links": 0,
+  "brands": 2,
+  "commission_bad_links": 0,
+  "commission_boundary_utc": "2026-10-09T21:48:14Z",
+  "commission_checks_passed": true,
+  "commission_credits_during_load": 2,
+  "commission_cycle_targets": 500,
+  "commission_entries": 2,
+  "commission_out_of_window_orders": 0,
+  "commission_paid_payments": 2,
+  "commission_points": 50,
+  "commission_ready_cycles": 2,
+  "database_after": {
+    "timestampUTC": "2026-10-09T21:48:44.393041Z",
+    "counters": {
+      "xactCommit": 72901,
+      "xactRollback": 1844,
+      "blksHit": 70064359,
+      "blksRead": 2849,
+      "deadlocks": 0
+    },
+    "totalConnections": 20,
+    "activeConnections": 0,
+    "lockWaiters": 0,
+    "connectionWaitsByWaitEventType": {
+      "Client": 20
+    },
+    "queues": {
+      "draw_corrections": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "notification_deliveries": {
+        "pending": 25,
+        "retry": 0,
+        "sent": 17977,
+        "failed": 0,
+        "completed": 0
+      },
+      "period_cancellations": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "settlement_jobs": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 2
+      }
+    },
+    "replication": {
+      "available": false,
+      "replicas": []
+    }
+  },
+  "database_before": {
+    "timestampUTC": "2026-10-09T21:48:14.008544Z",
+    "counters": {
+      "xactCommit": 5152,
+      "xactRollback": 1010,
+      "blksHit": 3090527,
+      "blksRead": 1868,
+      "deadlocks": 0
+    },
+    "totalConnections": 21,
+    "activeConnections": 0,
+    "lockWaiters": 0,
+    "connectionWaitsByWaitEventType": {
+      "Client": 21
+    },
+    "queues": {
+      "draw_corrections": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "notification_deliveries": {
+        "pending": 1000,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "period_cancellations": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "settlement_jobs": {
+        "pending": 2,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      }
+    },
+    "replication": {
+      "available": false,
+      "replicas": []
+    }
+  },
+  "database_delta": {
+    "xactCommit": 67749,
+    "xactRollback": 834,
+    "blksHit": 66973832,
+    "blksRead": 981,
+    "deadlocks": 0,
+    "counterResetDetected": false,
+    "sharedCacheHitRatio": 0.9999853527026645
+  },
+  "database_version": "17.11 (Postgres.app)",
+  "financial_checks_passed": true,
+  "integrity": {
+    "orders": 15500,
+    "debits": 15500,
+    "stake_points": 15500,
+    "debit_points": 15500,
+    "balance_points": 49964550,
+    "bad_order_links": 0,
+    "bad_account_balances": 0,
+    "late_orders": 0,
+    "known_unique_receipts": 15500,
+    "unknown_committed_orders": 0
+  },
+  "load_ended_at_utc": "2026-10-09T21:48:44.024017Z",
+  "load_started_at_utc": "2026-10-09T21:48:14.019541Z",
+  "notification_worker_errors": 0,
+  "paid_targets": 500,
+  "plan": {
+    "rate": 500,
+    "duration": 30000000000,
+    "max_in_flight": 500,
+    "request_timeout": 10000000000
+  },
+  "pool_max_connections": 20,
+  "prize_credits_during_load": 500,
+  "prize_entries": 500,
+  "prize_points": 5000,
+  "production_capacity_accepted": false,
+  "profile": "betting_with_settlement_withdrawals_commission",
+  "replica_and_redis_capacity_verified": false,
+  "report": {
+    "planned": 15000,
+    "started": 15000,
+    "completed": 15000,
+    "dropped": 0,
+    "backpressure_dropped": 0,
+    "succeeded": 15000,
+    "status_counts": {
+      "201": 15000
+    },
+    "code_counts": {
+      "": 15000
+    },
+    "error_counts": {},
+    "service_latency": {
+      "count": 15000,
+      "p50_ms": 6.977917,
+      "p95_ms": 11.908209,
+      "p99_ms": 14.6605
+    },
+    "start_lag": {
+      "count": 15000,
+      "p50_ms": 0.02425,
+      "p95_ms": 0.078834,
+      "p99_ms": 0.137792
+    },
+    "end_to_end": {
+      "count": 15000,
+      "p50_ms": 7.001667,
+      "p95_ms": 11.95175,
+      "p99_ms": 14.741209
+    },
+    "peak_in_flight": 15,
+    "successes_during_scheduled_interval": 14999,
+    "successes_after_scheduled_interval": 1,
+    "wall_time": 30001795459,
+    "completion_throughput_per_second": 499.97007747415563,
+    "planned_arrival_rate_per_second": 500,
+    "started_arrival_rate_per_second": 500,
+    "drop_rate": 0,
+    "backpressure_drop_rate": 0,
+    "failure_rate": 0
+  },
+  "request_checks_passed": true,
+  "scheduled_seconds": 30,
+  "schema_version": 1,
+  "scope": "isolated TCP bets and qualifying withdrawals; genuine settlement, weekly snapshot commission calculation and automatic payout on the same wallets; no external payments, TLS or production logging",
+  "settled_periods": 2,
+  "settlement_worker_errors": 0,
+  "settlement_workers": 2,
+  "users": 500,
+  "withdrawal_bad_cycles": 0,
+  "withdrawal_bad_links": 0,
+  "withdrawal_checks_passed": true,
+  "withdrawal_paid_during_load": 500,
+  "withdrawal_paid_orders": 500,
+  "withdrawal_pending_points": 0,
+  "withdrawal_points": 25000,
+  "withdrawal_report": {
+    "planned": 500,
+    "started": 500,
+    "completed": 500,
+    "dropped": 0,
+    "backpressure_dropped": 0,
+    "succeeded": 500,
+    "status_counts": {
+      "201": 500
+    },
+    "code_counts": {
+      "": 500
+    },
+    "error_counts": {},
+    "service_latency": {
+      "count": 500,
+      "p50_ms": 17.318625,
+      "p95_ms": 25.250709,
+      "p99_ms": 32.457291
+    },
+    "start_lag": {
+      "count": 500,
+      "p50_ms": 0.029667,
+      "p95_ms": 0.088583,
+      "p99_ms": 0.168333
+    },
+    "end_to_end": {
+      "count": 500,
+      "p50_ms": 17.358,
+      "p95_ms": 25.28625,
+      "p99_ms": 32.514958
+    },
+    "peak_in_flight": 5,
+    "successes_during_scheduled_interval": 498,
+    "successes_after_scheduled_interval": 2,
+    "wall_time": 5005233292,
+    "completion_throughput_per_second": 99.89544359483973,
+    "planned_arrival_rate_per_second": 100,
+    "started_arrival_rate_per_second": 100,
+    "drop_rate": 0,
+    "backpressure_drop_rate": 0,
+    "failure_rate": 0
+  },
+  "withdrawal_turnover_multiple": "0.000001",
+  "won_orders": 500,
+  "worker_checks_passed": true
+}

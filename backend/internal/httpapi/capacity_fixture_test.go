@@ -150,6 +150,12 @@ func capacityRule(t *testing.T, p *pgxpool.Pool, brand, code string, window, dra
 	return betting.Input{PeriodID: period.ID, PlayID: play.ID, RuleVersionID: version.ID, Selection: rules.Selection{Digits: [][]int{{1}, {2}, {1}}}, Multiplier: 1, PolicyVersions: &betting.PolicyVersions{Brand: bp.Version, Game: gp.Version}}
 }
 func newCapacityFixture(t *testing.T, userCount, brands int, poolSize int32) capacityFixture {
+	return newCapacityMembers(t, userCount, brands, poolSize, false)
+}
+
+// Commission members join using a real agent code at first membership creation.
+// Existing immutable member attribution is never changed by a capacity test.
+func newCapacityMembers(t *testing.T, userCount, brands int, poolSize int32, agentJoins bool) capacityFixture {
 	t.Helper()
 	capacitySafety(t)
 	if userCount < 1 || userCount > 5000 || brands < 1 || brands > 2 || poolSize < 4 || poolSize > 100 {
@@ -188,8 +194,18 @@ func newCapacityFixture(t *testing.T, userCount, brands int, poolSize int32) cap
 		inputs[i] = capacityRule(t, p, brandIDs[i], "capacity_game", window, 2*time.Hour)
 	}
 	ctx := context.Background()
+	agentCodes := make([]string, brands)
 	for i := 0; i < userCount; i++ {
 		b := i % brands
+		joinMethod := "domain"
+		selected := json.RawMessage(`{}`)
+		if agentJoins && i >= brands {
+			joinMethod = "agent_code"
+			selected, e = json.Marshal(map[string]string{"kind": "agent", "code": agentCodes[b]})
+			if e != nil {
+				t.Fatal(e)
+			}
+		}
 		user, member, account := ids.New(), ids.New(), ids.New()
 		token, e := authcrypto.NewSessionToken()
 		if e != nil {
@@ -202,7 +218,7 @@ func newCapacityFixture(t *testing.T, userCount, brands int, poolSize int32) cap
 				Args []any
 			}{
 				{`INSERT INTO global_users(id,username)VALUES($1,$2)`, []any{user, "capacity_" + strings.ReplaceAll(user, "-", "")}},
-				{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,terms_accepted,privacy_policy_version,service_terms_version)VALUES($1,$2,$3,'domain',true,'dev-1','dev-1')`, []any{member, brandIDs[b], user}},
+				{`INSERT INTO brand_members(id,brand_id,global_user_id,join_method,terms_accepted,privacy_policy_version,service_terms_version,attribution_snapshot)VALUES($1,$2,$3,$4,true,'dev-1','dev-1',$5)`, []any{member, brandIDs[b], user, joinMethod, selected}},
 				{`INSERT INTO point_accounts(id,brand_id,brand_member_id)VALUES($1,$2,$3)`, []any{account, brandIDs[b], member}},
 				{`INSERT INTO point_buckets(brand_id,account_id,source,state)SELECT $1,$2,s,state FROM unnest(ARRAY['recharge','winning','gift','commission'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])state ON CONFLICT DO NOTHING`, []any{brandIDs[b], account}},
 				{`INSERT INTO sessions(id,token_hash,user_id,member_id,brand_id,expires_at)VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '1 hour')`, []any{ids.New(), hex.EncodeToString(digest[:]), user, member, brandIDs[b]}},
@@ -216,6 +232,9 @@ func newCapacityFixture(t *testing.T, userCount, brands int, poolSize int32) cap
 			_, e := (points.Store{DB: p}).Post(ctx, tx, points.Change{BrandID: brandIDs[b], MemberID: member, EntryType: "adjustment", ReferenceType: "capacity_fixture", OperationKey: "capacity-fund-" + member, Reason: "synthetic isolated capacity funding", ActorType: "system", RequestID: ids.New(), Delta: delta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: capacityFunding}}})
 			return e
 		})
+		if agentJoins && i < brands {
+			agentCodes[b] = capacityCommissionAgent(t, p, codes[b], member)
+		}
 		raw, e := json.Marshal(inputs[b])
 		if e != nil {
 			t.Fatal(e)
@@ -292,5 +311,36 @@ func TestCapacityFixtureSmoke(t *testing.T) {
 	var orders, debits int
 	if e := f.DB.QueryRow(ctx, `SELECT (SELECT count(*) FROM bet_orders),(SELECT count(*) FROM point_ledger_entries WHERE entry_type='bet')`).Scan(&orders, &debits); e != nil || orders != 2 || debits != 2 {
 		t.Fatal("capacity invariant", orders, debits, e)
+	}
+}
+
+func TestCapacityCommissionMembershipSmoke(t *testing.T) {
+	f := newCapacityMembers(t, 4, 2, 20, true)
+	ctx := context.Background()
+	var roots, children, codes int
+	if err := f.DB.QueryRow(ctx, `SELECT
+	 (SELECT count(*) FROM brand_members WHERE join_method='domain'),
+	 (SELECT count(*) FROM brand_members WHERE join_method='agent_code' AND attribution_snapshot->>'agent_id' IS NOT NULL),
+	 (SELECT count(*) FROM join_codes WHERE kind='agent')`).Scan(&roots, &children, &codes); err != nil {
+		t.Fatal(err)
+	}
+	if roots != 2 || children != 2 || codes != 2 {
+		t.Fatal("first-join agent provenance not captured", roots, children, codes)
+	}
+	prepareCapacityCommission(t, f)
+	for i, user := range f.Users {
+		r, err := f.request(ctx, user, "/bet-orders", "commission-member-smoke-"+user.Member, user.Body)
+		if err != nil || r.status != 201 {
+			t.Fatal("agent member bet failed", i, r.status, err)
+		}
+	}
+	var withPath, entries int
+	if err := f.DB.QueryRow(ctx, `SELECT
+	 (SELECT count(*) FROM bet_orders WHERE jsonb_array_length(commission_rule_snapshot->'agent_path')=1),
+	 (SELECT count(*) FROM point_ledger_entries WHERE entry_type='commission')`).Scan(&withPath, &entries); err != nil {
+		t.Fatal(err)
+	}
+	if withPath != 2 || entries != 0 {
+		t.Fatal("bet-time agent path or unearned credit", withPath, entries)
 	}
 }
