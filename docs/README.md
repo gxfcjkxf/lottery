@@ -16,6 +16,8 @@
 
 ## 文档索引
 
+- [44-pwa-production-cache.md](44-pwa-production-cache.md)：三端生产安装元数据、原生图标、公开哈希资源缓存与无后端预览验收；不缓存私有数据或重放写请求。
+
 - [01-product-spec.md](01-product-spec.md)：产品范围、业务规则和状态机。
 - [02-domain-model.md](02-domain-model.md)：领域对象、字段、约束和索引。
 - [03-rule-engine.md](03-rule-engine.md)：彩种模型、玩法配置和结算规则引擎。

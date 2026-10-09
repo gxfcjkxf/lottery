@@ -1,11 +1,26 @@
 {
-  "name": "Aurora 管理端演示原型",
-  "short_name": "Aurora Admin",
-  "description": "静态交互演示，不连接真实业务数据",
-  "lang": "zh-CN",
+  "id": "/",
+  "name": "Brand administration",
+  "short_name": "Brand admin",
+  "description": "Independent administration portal with authenticated access.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#f7f8fa",
-  "theme_color": "#f7f8fa",
-  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "prefer_related_applications": false,
+  "background_color": "#263f67",
+  "theme_color": "#263f67",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }

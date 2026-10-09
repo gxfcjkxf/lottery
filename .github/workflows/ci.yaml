@@ -1,6 +1,28 @@
 name: check
 on: [push, pull_request]
 jobs:
+  pwa-production-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare and verify Chromium
+        timeout-minutes: 7
+        run: node scripts/prepare-ci-browser.mjs
+      - name: Pin installed Chromium for production PWA verification
+        run: node --input-type=module -e 'import { chromium } from "@playwright/test"; import { appendFileSync } from "node:fs"; appendFileSync(process.env.GITHUB_ENV, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${chromium.executablePath()}\n`);'
+      - name: Verify production service workers and isolated cache boundaries
+        run: pnpm test:pwa
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: pwa-production-cache-failure
+          path: test-results/
   administration-entries:
     runs-on: ubuntu-latest
     timeout-minutes: 15

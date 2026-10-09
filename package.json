@@ -25,7 +25,8 @@
     "test:capacity-settlement": "node scripts/check-capacity-settlement.mjs",
     "test:capacity-withdrawals": "node scripts/check-capacity-withdrawals.mjs",
     "test:capacity-commission": "node scripts/check-capacity-commission.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:pwa": "pnpm build && playwright test --config playwright.pwa.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

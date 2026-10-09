@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lottery-brand-static-v1'
+const CACHE_NAME = 'lottery-platform-static-v1'
 const IMMUTABLE_ASSET = /^\/assets\/.+-[A-Za-z0-9_-]{8,}\.(js|css|woff2?|png|svg|webp)$/
 const CONTENT_TYPES = {
   js: ['text/javascript', 'application/javascript'], css: ['text/css'],
