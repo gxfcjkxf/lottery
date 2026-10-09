@@ -29,6 +29,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
+	"github.com/gxfcjkxf/lottery/backend/internal/withdrawal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -171,7 +172,7 @@ func newCapacityFixture(t *testing.T, userCount, brands int, poolSize int32) cap
 	if e != nil {
 		t.Fatal(e)
 	}
-	server := httptest.NewServer(New(Dependencies{Brands: tenant.Store{DB: p}, Ready: p.Ping, Identity: users, Mutations: engine, Admins: adminsys.Store{DB: p}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}))
+	server := httptest.NewServer(New(Dependencies{Brands: tenant.Store{DB: p}, Ready: p.Ping, Identity: users, Mutations: engine, Admins: adminsys.Store{DB: p}, WithdrawalEligibility: withdrawal.TurnoverChecker{}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}))
 	t.Cleanup(server.Close)
 	transport := &http.Transport{MaxIdleConns: 1000, MaxIdleConnsPerHost: 1000, MaxConnsPerHost: 1000}
 	t.Cleanup(transport.CloseIdleConnections)

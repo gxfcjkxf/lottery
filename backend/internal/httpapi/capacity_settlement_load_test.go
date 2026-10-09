@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
 	"github.com/gxfcjkxf/lottery/backend/internal/capacity"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
@@ -20,6 +21,14 @@ import (
 // The background periods belong to different games but the same 500 wallets
 // used by the foreground load. No wallet or prize state is manufactured.
 func TestBettingWithSettlementCapacity(t *testing.T) {
+	runFinancialCapacity(t, false)
+}
+
+func TestBettingWithSettlementAndWithdrawalCapacity(t *testing.T) {
+	runFinancialCapacity(t, true)
+}
+
+func runFinancialCapacity(t *testing.T, withWithdrawals bool) {
 	capacitySafety(t)
 	path := os.Getenv("LOTTERY_CAPACITY_REPORT")
 	if path == "" {
@@ -29,6 +38,10 @@ func TestBettingWithSettlementCapacity(t *testing.T) {
 		t.Fatal("capacity report must not already exist")
 	}
 	f := newCapacityFixture(t, 500, 2, 20)
+	var withdrawalActors map[string]access.Account
+	if withWithdrawals {
+		withdrawalActors = prepareCapacityWithdrawals(t, f)
+	}
 	background := prepareCapacitySettlement(t, f)
 	if len(background.OrderIDs) != 500 || len(background.Jobs) != 2 {
 		t.Fatal("expected 500 real background orders and two settlement jobs")
@@ -53,6 +66,10 @@ func TestBettingWithSettlementCapacity(t *testing.T) {
 	defer cancel()
 	startSettlement := make(chan struct{})
 	var startOnce sync.Once
+	settlementCompleted := make(chan struct{})
+	var completeOnce sync.Once
+	var withdrawalReport capacity.Report
+	var withdrawalRunErr error
 	startedAt := time.Now().UTC()
 	for i := 0; i < 2; i++ {
 		workers.Add(1)
@@ -81,6 +98,7 @@ func TestBettingWithSettlementCapacity(t *testing.T) {
 						return
 					}
 					if completed == len(background.Jobs) {
+						completeOnce.Do(func() { close(settlementCompleted) })
 						return
 					}
 					select {
@@ -90,6 +108,18 @@ func TestBettingWithSettlementCapacity(t *testing.T) {
 					}
 				}
 			}
+		}()
+	}
+	if withWithdrawals {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			select {
+			case <-workerCtx.Done():
+				return
+			case <-settlementCompleted:
+			}
+			withdrawalReport, withdrawalRunErr = processCapacityWithdrawals(workerCtx, f, withdrawalActors)
 		}()
 	}
 	workers.Add(1)
@@ -171,7 +201,11 @@ func TestBettingWithSettlementCapacity(t *testing.T) {
 		t.Fatal(err)
 	}
 	requestsOK := runErr == nil && report.Planned == 15000 && report.Started == 15000 && report.Completed == 15000 && report.Succeeded == 15000 && report.Dropped == 0 && len(report.ErrorCounts) == 0
-	financeOK := integrity.Orders == 15500 && integrity.Debits == 15500 && integrity.StakePoints == 15500 && integrity.DebitPoints == 15500 && integrity.KnownUniqueReceipts == 15500 && integrity.UnknownCommittedOrders == 0 && integrity.BalancePoints == 49989500 && integrity.BadOrderLinks == 0 && integrity.BadAccountBalances == 0 && integrity.LateOrders == 0 && completedJobs == 2 && paidTargets == 500 && prizeEntries == 500 && prizePoints == 5000 && badPrizeLinks == 0 && creditsDuringLoad == 500 && wonOrders == 500 && settledPeriods == 2
+	expectedBalance := int64(49989500)
+	if withWithdrawals {
+		expectedBalance -= 25000
+	}
+	financeOK := integrity.Orders == 15500 && integrity.Debits == 15500 && integrity.StakePoints == 15500 && integrity.DebitPoints == 15500 && integrity.KnownUniqueReceipts == 15500 && integrity.UnknownCommittedOrders == 0 && integrity.BalancePoints == expectedBalance && integrity.BadOrderLinks == 0 && integrity.BadAccountBalances == 0 && integrity.LateOrders == 0 && completedJobs == 2 && paidTargets == 500 && prizeEntries == 500 && prizePoints == 5000 && badPrizeLinks == 0 && creditsDuringLoad == 500 && wonOrders == 500 && settledPeriods == 2
 	delta := capacity.DBCounterDeltas(before, after)
 	workerOK := settlementErrors.Load() == 0 && notificationErrors.Load() == 0 && delta.Deadlocks == 0 && !delta.CounterResetDetected
 	artifact := map[string]any{
@@ -185,6 +219,31 @@ func TestBettingWithSettlementCapacity(t *testing.T) {
 		"request_checks_passed": requestsOK, "financial_checks_passed": financeOK, "worker_checks_passed": workerOK,
 		"production_capacity_accepted": false, "replica_and_redis_capacity_verified": false,
 	}
+	withdrawalsOK := true
+	if withWithdrawals {
+		var paid, spent, paidDuringLoad, pendingPoints, badLinks, badCycles int64
+		if err = f.DB.QueryRow(ctx, `SELECT
+		 (SELECT count(*) FROM withdrawal_orders WHERE state='paid'),
+		 (SELECT coalesce(sum(points),0) FROM withdrawal_orders WHERE state='paid'),
+		 (SELECT count(*) FROM withdrawal_orders WHERE state='paid' AND completed_at>=$1 AND completed_at<=$2),
+		 (SELECT coalesce(sum(points),0) FROM point_buckets WHERE state='withdrawal'),
+		 (SELECT count(*) FROM withdrawal_orders o LEFT JOIN point_ledger_entries l ON l.id=o.paid_entry_id WHERE o.state<>'paid' OR l.id IS NULL OR l.entry_type<>'withdrawal_paid' OR l.reference_type<>'withdrawal' OR l.reference_id<>o.id OR l.member_id<>o.member_id OR l.brand_id<>o.brand_id OR l.account_id<>o.account_id),
+		 (SELECT count(*) FROM withdrawal_orders o LEFT JOIN withdrawal_turnover_cycles c ON c.brand_id=o.brand_id AND c.member_id=o.member_id WHERE c.last_paid_order_id IS DISTINCT FROM o.id OR c.cutoff_version IS DISTINCT FROM o.reserve_version OR c.cutoff_at IS DISTINCT FROM o.created_at)`, startedAt, loadEndedAt).Scan(&paid, &spent, &paidDuringLoad, &pendingPoints, &badLinks, &badCycles); err != nil {
+			t.Fatal(err)
+		}
+		withdrawalsOK = withdrawalRunErr == nil && withdrawalReport.Planned == 500 && withdrawalReport.Started == 500 && withdrawalReport.Completed == 500 && withdrawalReport.Succeeded == 500 && withdrawalReport.Dropped == 0 && len(withdrawalReport.ErrorCounts) == 0 && paid == 500 && spent == 25000 && paidDuringLoad == 500 && pendingPoints == 0 && badLinks == 0 && badCycles == 0
+		artifact["profile"] = "betting_with_settlement_withdrawals"
+		artifact["withdrawal_report"] = withdrawalReport
+		artifact["withdrawal_points"] = spent
+		artifact["withdrawal_paid_orders"] = paid
+		artifact["withdrawal_paid_during_load"] = paidDuringLoad
+		artifact["withdrawal_pending_points"] = pendingPoints
+		artifact["withdrawal_bad_links"] = badLinks
+		artifact["withdrawal_bad_cycles"] = badCycles
+		artifact["withdrawal_checks_passed"] = withdrawalsOK
+		artifact["withdrawal_turnover_multiple"] = "0.000001"
+		artifact["scope"] = "isolated TCP bets and genuine qualifying withdrawal applications; real settlement and withdrawal actions on the same wallets; no external payments, TLS or production logging"
+	}
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +256,7 @@ func TestBettingWithSettlementCapacity(t *testing.T) {
 		t.Fatal(encodeErr, closeErr)
 	}
 	t.Logf("mixed capacity planned=%d succeeded=%d prize_credits=%d p95_ms=%.2f p99_ms=%.2f", report.Planned, report.Succeeded, creditsDuringLoad, report.EndToEnd.P95Ms, report.EndToEnd.P99Ms)
-	if !requestsOK || !financeOK || !workerOK {
+	if !requestsOK || !financeOK || !workerOK || !withdrawalsOK {
 		t.Fatal("mixed capacity checks failed; see sanitized report")
 	}
 }

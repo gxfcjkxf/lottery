@@ -1,0 +1,250 @@
+{
+  "background_completed_jobs": 2,
+  "background_orders": 500,
+  "bad_prize_links": 0,
+  "brands": 2,
+  "database_after": {
+    "timestampUTC": "2026-10-09T21:31:34.508015Z",
+    "counters": {
+      "xactCommit": 71602,
+      "xactRollback": 1785,
+      "blksHit": 75576682,
+      "blksRead": 1948,
+      "deadlocks": 0
+    },
+    "totalConnections": 20,
+    "activeConnections": 0,
+    "lockWaiters": 0,
+    "connectionWaitsByWaitEventType": {
+      "Client": 20
+    },
+    "queues": {
+      "draw_corrections": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "notification_deliveries": {
+        "pending": 223,
+        "retry": 0,
+        "sent": 17777,
+        "failed": 0,
+        "completed": 0
+      },
+      "period_cancellations": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "settlement_jobs": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 2
+      }
+    },
+    "replication": {
+      "available": false,
+      "replicas": []
+    }
+  },
+  "database_before": {
+    "timestampUTC": "2026-10-09T21:31:04.18044Z",
+    "counters": {
+      "xactCommit": 5145,
+      "xactRollback": 1013,
+      "blksHit": 2534780,
+      "blksRead": 1869,
+      "deadlocks": 0
+    },
+    "totalConnections": 21,
+    "activeConnections": 0,
+    "lockWaiters": 0,
+    "connectionWaitsByWaitEventType": {
+      "Client": 21
+    },
+    "queues": {
+      "draw_corrections": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "notification_deliveries": {
+        "pending": 1000,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "period_cancellations": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "settlement_jobs": {
+        "pending": 2,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      }
+    },
+    "replication": {
+      "available": false,
+      "replicas": []
+    }
+  },
+  "database_delta": {
+    "xactCommit": 66457,
+    "xactRollback": 772,
+    "blksHit": 73041902,
+    "blksRead": 79,
+    "deadlocks": 0,
+    "counterResetDetected": false,
+    "sharedCacheHitRatio": 0.9999989184302107
+  },
+  "database_version": "17.11 (Postgres.app)",
+  "financial_checks_passed": true,
+  "integrity": {
+    "orders": 15500,
+    "debits": 15500,
+    "stake_points": 15500,
+    "debit_points": 15500,
+    "balance_points": 49964500,
+    "bad_order_links": 0,
+    "bad_account_balances": 0,
+    "late_orders": 0,
+    "known_unique_receipts": 15500,
+    "unknown_committed_orders": 0
+  },
+  "load_ended_at_utc": "2026-10-09T21:31:34.18941Z",
+  "load_started_at_utc": "2026-10-09T21:31:04.185105Z",
+  "notification_worker_errors": 0,
+  "paid_targets": 500,
+  "plan": {
+    "rate": 500,
+    "duration": 30000000000,
+    "max_in_flight": 500,
+    "request_timeout": 10000000000
+  },
+  "pool_max_connections": 20,
+  "prize_credits_during_load": 500,
+  "prize_entries": 500,
+  "prize_points": 5000,
+  "production_capacity_accepted": false,
+  "profile": "betting_with_settlement_withdrawals",
+  "replica_and_redis_capacity_verified": false,
+  "report": {
+    "planned": 15000,
+    "started": 15000,
+    "completed": 15000,
+    "dropped": 0,
+    "backpressure_dropped": 0,
+    "succeeded": 15000,
+    "status_counts": {
+      "201": 15000
+    },
+    "code_counts": {
+      "": 15000
+    },
+    "error_counts": {},
+    "service_latency": {
+      "count": 15000,
+      "p50_ms": 5.558542,
+      "p95_ms": 10.821084,
+      "p99_ms": 13.338209
+    },
+    "start_lag": {
+      "count": 15000,
+      "p50_ms": 0.024333,
+      "p95_ms": 0.089791,
+      "p99_ms": 0.151875
+    },
+    "end_to_end": {
+      "count": 15000,
+      "p50_ms": 5.586708,
+      "p95_ms": 10.848041,
+      "p99_ms": 13.367583
+    },
+    "peak_in_flight": 13,
+    "successes_during_scheduled_interval": 14999,
+    "successes_after_scheduled_interval": 1,
+    "wall_time": 30001786875,
+    "completion_throughput_per_second": 499.97022052374007,
+    "planned_arrival_rate_per_second": 500,
+    "started_arrival_rate_per_second": 500,
+    "drop_rate": 0,
+    "backpressure_drop_rate": 0,
+    "failure_rate": 0
+  },
+  "request_checks_passed": true,
+  "scheduled_seconds": 30,
+  "schema_version": 1,
+  "scope": "isolated TCP bets and genuine qualifying withdrawal applications; real settlement and withdrawal actions on the same wallets; no external payments, TLS or production logging",
+  "settled_periods": 2,
+  "settlement_worker_errors": 0,
+  "settlement_workers": 2,
+  "users": 500,
+  "withdrawal_bad_cycles": 0,
+  "withdrawal_bad_links": 0,
+  "withdrawal_checks_passed": true,
+  "withdrawal_paid_during_load": 500,
+  "withdrawal_paid_orders": 500,
+  "withdrawal_pending_points": 0,
+  "withdrawal_points": 25000,
+  "withdrawal_report": {
+    "planned": 500,
+    "started": 500,
+    "completed": 500,
+    "dropped": 0,
+    "backpressure_dropped": 0,
+    "succeeded": 500,
+    "status_counts": {
+      "201": 500
+    },
+    "code_counts": {
+      "": 500
+    },
+    "error_counts": {},
+    "service_latency": {
+      "count": 500,
+      "p50_ms": 14.290875,
+      "p95_ms": 19.362792,
+      "p99_ms": 24.558875
+    },
+    "start_lag": {
+      "count": 500,
+      "p50_ms": 0.017625,
+      "p95_ms": 0.055459,
+      "p99_ms": 0.097917
+    },
+    "end_to_end": {
+      "count": 500,
+      "p50_ms": 14.307917,
+      "p95_ms": 19.369584,
+      "p99_ms": 24.567042
+    },
+    "peak_in_flight": 3,
+    "successes_during_scheduled_interval": 499,
+    "successes_after_scheduled_interval": 1,
+    "wall_time": 5004219167,
+    "completion_throughput_per_second": 99.9156878054458,
+    "planned_arrival_rate_per_second": 100,
+    "started_arrival_rate_per_second": 100,
+    "drop_rate": 0,
+    "backpressure_drop_rate": 0,
+    "failure_rate": 0
+  },
+  "withdrawal_turnover_multiple": "0.000001",
+  "won_orders": 500,
+  "worker_checks_passed": true
+}
