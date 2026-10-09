@@ -117,7 +117,7 @@ func freshCheckedAuth(ctx context.Context, tx pgx.Tx, r *http.Request, d Depende
 	return fresh, nil
 }
 
-func commissionCycleRead(w http.ResponseWriter, r *http.Request, d Dependencies, initial access.Account, brand, action, auditAction string, query func(pgx.Tx) (any, error)) (any, error) {
+func commissionCycleRead(w http.ResponseWriter, r *http.Request, d Dependencies, initial access.Account, brand, action, auditAction string, query func(pgx.Tx) (any, error), evidence ...map[string]any) (any, error) {
 	ctx := r.Context()
 	tx, err := d.Admins.DB.Begin(ctx)
 	if err != nil {
@@ -142,7 +142,11 @@ func commissionCycleRead(w http.ResponseWriter, r *http.Request, d Dependencies,
 	} else if err != nil {
 		return nil, err
 	}
-	_, err = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: fresh.ID, Action: auditAction, ResourceType: "query", RequestID: requestID(r), IP: meta(r).IP})
+	var after any
+	if len(evidence) > 0 {
+		after = evidence[0]
+	}
+	_, err = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: fresh.ID, Action: auditAction, ResourceType: "query", RequestID: requestID(r), IP: meta(r).IP, After: after})
 	if err == nil {
 		err = tx.Commit(ctx)
 	}
@@ -212,6 +216,7 @@ func commissionCycleWriteFailure(w http.ResponseWriter, r *http.Request, d Depen
 }
 
 func registerCommissionCycleRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
+	registerCommissionAllocationRoutes(handle, d)
 	s := commission.Service{DB: d.Admins.DB}
 	const collection = "/commission-cycles"
 	handle("GET", collection, func(w http.ResponseWriter, r *http.Request) {

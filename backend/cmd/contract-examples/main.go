@@ -220,6 +220,9 @@ func main() {
 	for key, value := range auditExportExamples() {
 		values[key] = value
 	}
+	for key, value := range commissionAllocationExamples() {
+		values[key] = value
+	}
 	for key, value := range withdrawalExamples() {
 		values[key] = value
 	}

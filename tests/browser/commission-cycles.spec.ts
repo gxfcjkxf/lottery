@@ -7,9 +7,11 @@ const admin=`${origin}/api/v1/admin`;
 const brand='0199a000-0000-7000-8000-000000000001';
 const fixture=process.env.COMMISSION_FIXTURE_BIN;
 test.describe.configure({mode:'serial'});
-type Cycle={id:string;state:string;version:number;current_run_id:string|null;current_generation:string|null;total_points:string;reason:string};
+type Cycle={id:string;anchor_order_id:string;state:string;version:number;current_run_id:string|null;current_generation:string|null;total_points:string;reason:string};
 type Discovery={id:string;state:string;version:number;cycle_id:string|null};
 type Run={id:string;generation:string;state:string;calculated_count:string};
+type Earning={id:string;run_id:string;agent_id:string;member_id:string;exact_amount:{numerator:string;denominator:string};points:string};
+type Allocation={order_id:string;agent_id:string;exact_amount:{numerator:string;denominator:string}};
 async function data<T>(response:Pick<APIResponse,'text'|'status'>,status=200):Promise<T>{const body=await response.text();expect(response.status(),body).toBe(status);const envelope=JSON.parse(body);expect(envelope.success).toBe(true);return envelope.data as T;}
 function command(name:'advance'|'discover'|'verify'){
   const value=execFileSync(fixture!,[name],{env:process.env,encoding:'utf8',timeout:30_000});
@@ -91,7 +93,7 @@ test('real commission cycles retain unknown requests, retry real failures and pr
   const runs=await get<{items:Run[]}>(`/commission-cycles/${failed.id}/runs?limit=100&offset=0`);
   expect(runs.items).toHaveLength(2);const old=runs.items.find(r=>r.state==='abandoned')!;
   await panel.locator(`[data-run-id="${old.id}"]`).click();
-  await expect(panel.locator('.calculations h4')).toContainText(old.id);await expect(panel.locator('.calc-row')).toHaveCount(0);
+  await expect(panel.getByRole('heading',{level:4,name:`所选代次的计算轨迹 · ${old.id}`,exact:true})).toBeVisible();await expect(panel.locator('.calc-row')).toHaveCount(0);
 
   await panel.locator(`[data-discovery-id="${discovery.id}"] .discovery-select`).click();
   const discoveryRetry=panel.locator('.discoveries .retry-box');
@@ -120,6 +122,7 @@ test('real commission cycles retain unknown requests, retry real failures and pr
 test('current commission management renders exact completed evidence without financial writes',async({page,context},info)=>{
   test.skip(!fixture||!process.env.COMMISSION_FIXTURE_CONFIRM||!process.env.TEST_COMMISSION_ADMIN_PASSWORD,'Provide explicitly owned commission workflow fixture');
   const before=command('verify');
+  expect(before.economic_fingerprint).toMatch(/^[0-9a-f]{64}$/);expect(before.commission_ledger_entries).toBe(0);expect(before.commission_wallet_points).toBe(0);
   await data(await page.request.post(`${admin}/auth/login`,{headers:{Origin:origin,'Idempotency-Key':crypto.randomUUID()},data:{identifier:'commission_admin',password:process.env.TEST_COMMISSION_ADMIN_PASSWORD}}));
   rememberAdminSession('commission_admin',await context.cookies(`${admin}/me`),origin);
   const writes:string[]=[];page.on('request',r=>{if(r.url().startsWith(admin)&&r.method()!=='GET')writes.push(r.url());});
@@ -127,14 +130,90 @@ test('current commission management renders exact completed evidence without fin
   const panel=await navigate(page,info.project.name,'佣金和奖励|Commissions.*rewards');
   await expect(panel.getByRole('heading',{name:'佣金周期核算',exact:true})).toBeVisible();
   const cycles=await data<{items:Cycle[]}>(await page.request.get(`${admin}/commission-cycles?limit=100&offset=0`,{headers:{'X-Brand-ID':brand}}));
-  const cycle=cycles.items.find(x=>x.state==='ready'&&x.total_points==='1')!;
-  expect(cycle).toBeTruthy();await panel.locator(`[data-cycle-id="${cycle.id}"]`).click();
+  let cycle:Cycle|undefined,runs:Run[]|undefined,selectedRun:Run|undefined,runEarnings:Earning[]|undefined,allocations:Allocation[]|undefined;
+  for(const candidate of cycles.items.filter(x=>x.state==='ready'&&x.total_points==='1')){
+    const history=await data<{items:Run[]}>(await page.request.get(`${admin}/commission-cycles/${candidate.id}/runs?limit=100&offset=0`,{headers:{'X-Brand-ID':brand}}));
+    const current=history.items.find(r=>r.id===candidate.current_run_id);if(!current)continue;
+    const earnings=await data<{items:Earning[]}>(await page.request.get(`${admin}/commission-cycles/${candidate.id}/runs/${current.id}/earnings?limit=100&offset=0`,{headers:{'X-Brand-ID':brand}}));
+    const shares=await data<{items:Allocation[]}>(await page.request.get(`${admin}/commission-cycles/${candidate.id}/runs/${current.id}/allocations?limit=100&offset=0`,{headers:{'X-Brand-ID':brand}}));
+    if(earnings.items.some(e=>e.exact_amount.numerator==='3'&&e.exact_amount.denominator==='5'&&e.points==='1')&&shares.items.length>0&&shares.items.every(a=>a.exact_amount.numerator==='3'&&a.exact_amount.denominator==='10')){
+      cycle=candidate;runs=history.items;selectedRun=current;runEarnings=earnings.items;allocations=shares.items;break;
+    }
+  }
+  expect(cycle,'fixture needs its real one-point cycle with 3/5 earnings rounded to one and 3/10 allocations').toBeTruthy();
+  expect(selectedRun).toBeTruthy();expect(runEarnings).toBeTruthy();expect(allocations).toBeTruthy();
+  await panel.locator(`[data-cycle-id="${cycle!.id}"]`).click();
   await expect(panel.locator('.data-row')).toContainText('3/5');
+  await expect(panel.locator('.run-earning-row')).toHaveCount(runEarnings!.length);
+  await expect(panel.locator('.run-earning-row').first()).toContainText('3/5');
+  await expect(panel.locator('.run-earning-row').first()).toContainText(/整周期舍入积分\s*1/);
+  await expect(panel).toContainText('整周期精确合计');await expect(panel).toContainText('整周期舍入积分');
+  await expect(panel.locator('.allocation-row')).toHaveCount(allocations!.length);
+  for(const row of await panel.locator('.allocation-row').all()){
+    await expect(row).toContainText('3/10');await expect(row).toContainText('未舍入精确金额');
+    await expect(row).not.toContainText(/舍入积分|rounded points|rounded earnings/i);
+  }
   await expect(panel.locator('.calc-row')).toHaveCount(2);
+  const orderAllocation=allocations![0];
+  await panel.getByLabel('注单编号筛选',{exact:true}).fill(orderAllocation.order_id);
+  const orderFilterResponse=page.waitForResponse(r=>r.url().includes(`/commission-cycles/${cycle!.id}/runs/${selectedRun!.id}/allocations?`)&&r.url().includes(`order_id=${orderAllocation.order_id}`));
+  await panel.getByRole('button',{name:'筛选',exact:true}).click();
+  const orderFiltered=await data<{items:Allocation[]}>(await orderFilterResponse);expect(orderFiltered.items).toHaveLength(1);expect(orderFiltered.items[0].order_id).toBe(orderAllocation.order_id);
+  await expect(panel.locator('.allocation-row')).toHaveCount(1);
+  await panel.getByLabel('代理编号筛选',{exact:true}).fill(orderAllocation.agent_id);
+  await panel.getByLabel('注单编号筛选',{exact:true}).fill('');
+  const agentFilterResponse=page.waitForResponse(r=>r.url().includes(`/commission-cycles/${cycle!.id}/runs/${selectedRun!.id}/allocations?`)&&r.url().includes(`agent_id=${orderAllocation.agent_id}`));
+  await panel.getByRole('button',{name:'筛选',exact:true}).click();
+  const agentFiltered=await data<{items:Allocation[]}>(await agentFilterResponse);expect(agentFiltered.items.length).toBeGreaterThan(0);expect(agentFiltered.items.every(a=>a.agent_id===orderAllocation.agent_id)).toBe(true);
+  await expect(panel.locator('.allocation-row')).toHaveCount(agentFiltered.items.length);
+  const otherOrder=cycles.items.filter(c=>c.id!==cycle!.id).map(c=>c.anchor_order_id).find(id=>!allocations!.some(a=>a.order_id===id));
+  expect(otherOrder,'fixture needs another valid order for an empty historical allocation filter').toBeTruthy();
+  await panel.getByLabel('注单编号筛选',{exact:true}).fill(otherOrder!);
+  const emptyFilterResponse=page.waitForResponse(r=>r.url().includes(`/commission-cycles/${cycle!.id}/runs/${selectedRun!.id}/allocations?`)&&r.url().includes(`order_id=${otherOrder}`));
+  await panel.getByRole('button',{name:'筛选',exact:true}).click();
+  const emptyFiltered=await data<{items:Allocation[]}>(await emptyFilterResponse);expect(emptyFiltered.items).toEqual([]);
+  await expect(panel.locator('.allocation-row')).toHaveCount(0);await expect(panel).toContainText('没有符合条件的分配记录');
+  await panel.getByLabel('注单编号筛选',{exact:true}).fill('');
+  await panel.getByLabel('代理编号筛选',{exact:true}).fill('');
+  const clearFilterResponse=page.waitForResponse(r=>r.url().includes(`/commission-cycles/${cycle!.id}/runs/${selectedRun!.id}/allocations?limit=20&offset=0`));
+  await panel.getByRole('button',{name:'筛选',exact:true}).click();
+  const cleared=await data<{items:Allocation[]}>(await clearFilterResponse);expect(cleared.items.length).toBe(allocations!.length);
+  await expect(panel.locator('.allocation-row')).toHaveCount(allocations!.length);
+  await page.getByTestId('admin-language').selectOption('en');
+  await expect(panel).toContainText('Whole-cycle exact total');await expect(panel).toContainText('Whole-cycle rounded points');
+  await page.getByTestId('admin-language').selectOption('zh-CN');
+  // The real fixture has a distinct retried cycle (3/10 rounds to zero), not
+  // two generations of the automatic 3/5 one-point cycle. Inspect its actual
+  // retained run without inventing an extra financial generation.
+  let historyCycle:Cycle|undefined,priorRun:Run|undefined;
+  for(const candidate of cycles.items.filter(c=>c.id!==cycle!.id&&c.state==='ready')){
+    const history=await data<{items:Run[]}>(await page.request.get(`${admin}/commission-cycles/${candidate.id}/runs?limit=100&offset=0`,{headers:{'X-Brand-ID':brand}}));
+    const prior=history.items.find(r=>r.id!==candidate.current_run_id);
+    if(prior){historyCycle=candidate;priorRun=prior;break;}
+  }
+  expect(historyCycle,'the earlier workflow must preserve the genuinely retried cycle').toBeTruthy();expect(priorRun).toBeTruthy();
+  await panel.locator(`[data-cycle-id="${historyCycle!.id}"]`).click();
+  await expect(panel.locator(`[data-run-id="${priorRun!.id}"]`)).toBeVisible();
+  await panel.locator(`[data-run-id="${priorRun!.id}"]`).click();
+  await expect(panel.getByRole('heading',{level:4,name:`所选代次的计算轨迹 · ${priorRun!.id}`,exact:true})).toBeVisible();
+  const priorEarnings=await data<{items:Earning[]}>(await page.request.get(`${admin}/commission-cycles/${historyCycle!.id}/runs/${priorRun!.id}/earnings?limit=100&offset=0`,{headers:{'X-Brand-ID':brand}}));
+  const priorAllocations=await data<{items:Allocation[]}>(await page.request.get(`${admin}/commission-cycles/${historyCycle!.id}/runs/${priorRun!.id}/allocations?limit=100&offset=0`,{headers:{'X-Brand-ID':brand}}));
+  await expect(panel.locator('.run-earning-row')).toHaveCount(priorEarnings.items.length);
+  await expect(panel.locator('.allocation-row')).toHaveCount(priorAllocations.items.length);
+  await panel.locator(`[data-cycle-id="${cycle!.id}"]`).click();
+  await expect(panel.locator('.allocation-row')).toHaveCount(allocations!.length);
+  await expect(panel.locator('.run-earning-row')).toContainText('3/5');
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await panel.screenshot({path:info.outputPath('commission-cycles-current-panel.png')});
+  await panel.locator('.historical').screenshot({path:info.outputPath('commission-allocation-history.png')});
   await page.screenshot({path:info.outputPath('commission-cycles-current-viewport.png')});
   await page.getByTestId('admin-language').selectOption('en');
   await expect(panel).toContainText('Calculated');
-  expect(writes).toEqual([]);expect(command('verify').economic_fingerprint).toBe(before.economic_fingerprint);
+  await expect(panel).toContainText('Whole-cycle exact total');await expect(panel).toContainText('Whole-cycle rounded points');
+  await page.setViewportSize({width:360,height:800});
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await panel.screenshot({path:info.outputPath('commission-cycles-current-panel-360.png')});
+  await panel.locator('.historical').screenshot({path:info.outputPath('commission-allocation-history-360.png')});
+  await page.screenshot({path:info.outputPath('commission-cycles-current-viewport-360.png')});
+  expect(writes).toEqual([]);const after=command('verify');expect(after.economic_fingerprint).toBe(before.economic_fingerprint);expect(after.commission_ledger_entries).toBe(0);expect(after.commission_wallet_points).toBe(0);
 });

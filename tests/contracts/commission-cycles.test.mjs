@@ -8,6 +8,7 @@ test('commission cycle APIs are exact, primary, audited and do not advertise pay
     'GET /api/v1/admin/commission-cycles', 'POST /api/v1/admin/commission-cycles', 'GET /api/v1/admin/commission-cycles/{id}',
     'GET /api/v1/admin/commission-cycles/{id}/earnings', 'POST /api/v1/admin/commission-cycles/{id}/retry',
     'GET /api/v1/admin/commission-cycles/{id}/runs', 'GET /api/v1/admin/commission-cycles/{id}/runs/{runID}/calculations',
+    'GET /api/v1/admin/commission-cycles/{id}/runs/{runID}/earnings', 'GET /api/v1/admin/commission-cycles/{id}/runs/{runID}/allocations',
   ].sort());
   assert.deepEqual(doc.paths['/api/v1/admin/commission-cycles'].post['x-permissions'], ['commission.run.brand']);
   assert.deepEqual(doc.paths['/api/v1/admin/commission-cycles/{id}/retry'].post['x-permissions'], ['commission.retry.brand']);

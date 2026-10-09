@@ -1,5 +1,7 @@
 # API 与异步任务契约
 
+佣金周期增加明确run的`GET /commission-cycles/{id}/runs/{runID}/earnings`与`/allocations`。沿用commission.view品牌/平台授权，主库读取/会话复核/审计；保存比例、精确分数与整周期舍入值分别显示，不返回完整金融快照或授权资金动作。分页、筛选、历史保持及失败边界见[35号合同](35-commission-allocation-history.md)。
+
 ## 运营工作台快照
 
 `GET /api/v1/admin/workbench`要求后台认证和UUID格式的`X-Brand-ID`，不接受查询参数，固定读取主库并在响应前提交审计。数据包含`brand_id,snapshot_at,timezone,day_from`以及13个区块：brand、periods、orders、today_bets、settlement、recharges、ledger、balances、reconciliation、sources、withdrawals、commissions、rewards。

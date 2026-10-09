@@ -42,6 +42,12 @@ const discovery: CommissionDiscovery = {
   id: discoveryId, brand_id: brand, state: "pending", version: 1, cycle_id: null, window_from: null, window_to: null,
   next_check_at: date, last_error_code: null, last_audit_log_id: null, created_at: date, updated_at: date,
 };
+const allocation = {
+  brand_id: brand, cycle_id: cycleId, run_id: runId, calculation_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  order_id: orderId, agent_id: accountId, member_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab", bettor_member_id: memberId,
+  base_points: "100", mode: "loss", agent_ratio: "0.300000", downstream_ratio: "0.1", difference_ratio: "0.2",
+  exact_amount: { numerator: "20", denominator: "1" }, created_at: date,
+};
 const ok = (data: unknown, status = 200) => new Response(JSON.stringify({ success: true, data }), { status });
 const page = (items: unknown[], extra: Record<string, unknown> = {}) => ({ brand_id: brand, ...extra, items, total_count: "9007199254740993", limit: 20, offset: 0 });
 
@@ -86,6 +92,61 @@ describe("commission cycles API", () => {
       expect(init?.credentials).toBe("same-origin");
       expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
     }
+  });
+
+  it("reads earnings and exact allocations for an explicit run with validated filters and ordering", async () => {
+    const earning = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac", brand_id: brand, cycle_id: cycleId, run_id: runId,
+      agent_id: accountId, member_id: memberId, exact_amount: { numerator: "1", denominator: "1" }, points: "1", created_at: date };
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(ok(page([earning], { cycle_id: cycleId, run_id: runId })))
+      .mockResolvedValueOnce(ok(page([allocation], { cycle_id: cycleId, run_id: runId, agent_id: accountId, order_id: orderId })));
+    const api = createCommissionCyclesApi(fetcher);
+    await expect(api.runEarnings(brand, cycleId, runId)).resolves.toMatchObject({ run_id: runId, items: [earning] });
+    await expect(api.allocations(brand, cycleId, runId, { limit: 20, offset: 0, agent_id: accountId, order_id: orderId }))
+      .resolves.toMatchObject({ run_id: runId, agent_id: accountId, order_id: orderId, items: [allocation] });
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      `/api/v1/admin/commission-cycles/${cycleId}/runs/${runId}/earnings?limit=20&offset=0`,
+      `/api/v1/admin/commission-cycles/${cycleId}/runs/${runId}/allocations?limit=20&offset=0&agent_id=${accountId}&order_id=${orderId}`,
+    ]);
+    for (const [, init] of fetcher.mock.calls) {
+      expect(init?.method ?? "GET").toBe("GET");
+      expect(init?.credentials).toBe("same-origin");
+      expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
+    }
+  });
+
+  it("accepts equal beneficiary and bettor member IDs without relaxing allocation validation", async () => {
+    const sameMember = { ...allocation, member_id: memberId, bettor_member_id: memberId };
+    await expect(createCommissionCyclesApi(vi.fn<typeof fetch>().mockResolvedValue(ok(page([sameMember], {
+      cycle_id: cycleId, run_id: runId, agent_id: null, order_id: null,
+    })))).allocations(brand, cycleId, runId)).resolves.toMatchObject({ items: [sameMember] });
+  });
+
+  it("orders run earnings by precise RFC3339 fractions before using contrary UUID order as a tie-breaker", async () => {
+    const newer = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", brand_id: brand, cycle_id: cycleId, run_id: runId,
+      agent_id: accountId, member_id: memberId, exact_amount: { numerator: "1", denominator: "1" }, points: "1", created_at: "2026-10-06T00:00:00.000002+00:00" };
+    const older = { ...newer, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", created_at: "2026-10-06T00:00:00.000001Z" };
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(ok(page([newer, older], { cycle_id: cycleId, run_id: runId })))
+      .mockResolvedValueOnce(ok(page([{ ...newer, created_at: older.created_at }, { ...older, created_at: newer.created_at }], { cycle_id: cycleId, run_id: runId })));
+    const api = createCommissionCyclesApi(fetcher);
+    await expect(api.runEarnings(brand, cycleId, runId)).resolves.toMatchObject({ items: [newer, older] });
+    await expect(api.runEarnings(brand, cycleId, runId)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+  });
+
+  it("rejects malformed, unsorted, or mis-scoped run history and non-strict allocation queries", async () => {
+    const first = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab", brand_id: brand, cycle_id: cycleId, run_id: runId,
+      agent_id: accountId, member_id: memberId, exact_amount: { numerator: "1", denominator: "1" }, points: "1", created_at: date };
+    const second = { ...first, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" };
+    const api = createCommissionCyclesApi(vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(ok(page([first, second], { cycle_id: cycleId, run_id: runId })))
+      .mockResolvedValueOnce(ok(page([{ ...allocation, difference_ratio: "0.3" }], { cycle_id: cycleId, run_id: runId, agent_id: null, order_id: null })))
+      .mockResolvedValueOnce(ok(page([{ ...allocation, saved_snapshot: {} }], { cycle_id: cycleId, run_id: runId, agent_id: null, order_id: null }))));
+    await expect(api.runEarnings(brand, cycleId, runId)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    await expect(api.allocations(brand, cycleId, runId)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    await expect(api.allocations(brand, cycleId, runId)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    await expect(api.allocations(brand, cycleId, runId, { agent_id: accountId, extra: true } as never))
+      .rejects.toMatchObject({ status: 0, code: "INVALID_INPUT" });
   });
 
   it("normalizes the legacy missing actor only on manual create receipts", async () => {

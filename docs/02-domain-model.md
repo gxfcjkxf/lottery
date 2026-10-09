@@ -283,6 +283,8 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 
 ### 代理、佣金和奖励
 
+保存的commission_earnings/commission_allocations增加[明确run查询投影](35-commission-allocation-history.md)，不新增表或重写旧代次。受益member_id与投注bettor_member_id分开，保存比例/模式和精确分数只用于解释历史计算，不代表当前余额或派发授权。
+
 S6-e 实表为 `brand_agent_policies`、`agent_nodes`、`agent_config_revisions`。节点使用member_id/parent_id/depth作为下列设计字段的实际命名，path为UUID[]；同品牌成员唯一，身份/父级/路径不可改写，最多32级工程上限。配置存JSONB：品牌enabled/max_depth/ratio_cap/mode/cycle，节点ratio/nullable mode/status/can_create_children。比值为0–1精确规范字符串，最多6位小数；根节点可覆盖品牌默认模式；下级只能继承或显式重复上级有效模式，整条代理路径不得混用模式。周期仍品牌级。每次更新递增版本并保留实际操作者/理由/审计证明；不存在现金或积分佣金余额。初始disabled/比值上限0，没有自动开启财务工作流。
 
 父/子/品牌配置更新先取得品牌代理政策独占锁，服务和数据库均拒绝新超限及会破坏既有下级的降限；不靠前端判断或自动缩放。0045新增模式守卫，服务与数据库同时拒绝子级不同模式、破坏后代一致性的父级变更和破坏树的品牌默认变更，均使用品牌政策互斥锁。迁移不改写旧混合路径、修订或注单快照；相关新写入安全拒绝，须授权管理员显式修正配置。用户只改自己直属active下级的比值及沿用/重复上级模式，所有祖先须active；can_create_children不是绕过后台晋升流程的授权。S6-f保存加入及新注单归属快照；用户晋升/重新挂接和财务计算仍待后续，不能用当前代理树为旧注单补造归属。

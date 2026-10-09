@@ -72,6 +72,53 @@ export interface CommissionEarningPage {
   offset: number;
 }
 
+export interface CommissionAllocation {
+  brand_id: string;
+  cycle_id: string;
+  run_id: string;
+  calculation_id: string;
+  order_id: string;
+  agent_id: string;
+  member_id: string;
+  bettor_member_id: string;
+  base_points: string;
+  mode: "loss" | "turnover";
+  agent_ratio: string;
+  downstream_ratio: string;
+  difference_ratio: string;
+  exact_amount: { numerator: string; denominator: string };
+  created_at: string;
+}
+
+export interface CommissionRunEarningPage {
+  brand_id: string;
+  cycle_id: string;
+  run_id: string;
+  items: CommissionEarning[];
+  total_count: string;
+  limit: number;
+  offset: number;
+}
+
+export interface CommissionAllocationQuery {
+  limit?: number;
+  offset?: number;
+  agent_id?: string;
+  order_id?: string;
+}
+
+export interface CommissionAllocationPage {
+  brand_id: string;
+  cycle_id: string;
+  run_id: string;
+  agent_id: string | null;
+  order_id: string | null;
+  items: CommissionAllocation[];
+  total_count: string;
+  limit: number;
+  offset: number;
+}
+
 export interface CommissionRun {
   id: string;
   brand_id: string;
@@ -160,6 +207,8 @@ export interface CommissionCyclesApi {
   list(brand: string, limit?: number, offset?: number): Promise<CommissionCyclePage>;
   read(brand: string, id: string): Promise<CommissionCycleRecord>;
   earnings(brand: string, id: string, limit?: number, offset?: number): Promise<CommissionEarningPage>;
+  runEarnings(brand: string, cycle: string, run: string, limit?: number, offset?: number): Promise<CommissionRunEarningPage>;
+  allocations(brand: string, cycle: string, run: string, query?: Readonly<CommissionAllocationQuery>): Promise<CommissionAllocationPage>;
   runs(brand: string, id: string, limit?: number, offset?: number): Promise<CommissionRunPage>;
   calculations(brand: string, id: string, runId: string, limit?: number, offset?: number): Promise<CommissionCalculationPage>;
   discoveries(brand: string, limit?: number, offset?: number): Promise<CommissionDiscoveryPage>;
@@ -288,10 +337,10 @@ function validCycle(value: unknown, brand: string, allowLegacyActor = false): va
   return true;
 }
 
-function validPage(value: unknown, brand: string, limit: number, offset: number, row: (item: unknown) => boolean, scope: JsonRecord = {}): value is JsonRecord {
+function validPage(value: unknown, brand: string, limit: number, offset: number, row: (item: unknown) => boolean, scope: JsonRecord = {}, identity: (item: unknown) => unknown = (item) => (item as JsonRecord).id): value is JsonRecord {
   if (!exactKeys(value, [...Object.keys(scope), ...PAGE_KEYS]) || !Object.entries(scope).every(([key, expected]) => value[key] === expected) ||
     value.brand_id !== brand || !isCanonicalUuid(value.brand_id) || !Array.isArray(value.items) || value.items.length > limit ||
-    !value.items.every(row) || new Set(value.items.map((item) => (item as JsonRecord).id)).size !== value.items.length ||
+    !value.items.every(row) || new Set(value.items.map(identity)).size !== value.items.length ||
     !isDecimal(value.total_count) || value.limit !== limit || value.offset !== offset) return false;
   const total = BigInt(value.total_count);
   return total >= BigInt(value.items.length) && (value.items.length === 0 || total >= BigInt(offset + value.items.length));
@@ -323,6 +372,60 @@ function validEarningPage(value: unknown, brand: string, cycle: string, limit: n
   if (!validPage(value, brand, limit, offset, (item) => validEarning(item, brand, cycle), { cycle_id: cycle })) return false;
   const items = value.items as unknown[];
   return items.length === 0 || items.every((item) => isRecord(item) && item.run_id === (items[0] as JsonRecord).run_id);
+}
+
+function validOrderedEarnings(value: unknown, brand: string, cycle: string, run: string, limit: number, offset: number): value is CommissionRunEarningPage {
+  if (!validPage(value, brand, limit, offset, (item) => validEarning(item, brand, cycle) && (item as unknown as JsonRecord).run_id === run,
+    { cycle_id: cycle, run_id: run })) return false;
+  const items = value.items as JsonRecord[];
+  for (let index = 1; index < items.length; index++) {
+    const previous = items[index - 1], current = items[index];
+    const timeOrder = timestampNanoseconds(previous.created_at as string) - timestampNanoseconds(current.created_at as string);
+    if (timeOrder < 0n || (timeOrder === 0n && String(previous.id) < String(current.id))) return false;
+  }
+  return true;
+}
+
+function timestampNanoseconds(value: string): bigint {
+  const fraction = value.match(/\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/)?.[1] ?? "";
+  const nanoseconds = BigInt((fraction.slice(0, 9) + "000000000").slice(0, 9));
+  const millisecondsFraction = BigInt((fraction.slice(0, 3) + "000").slice(0, 3));
+  return BigInt(Date.parse(value)) * 1_000_000n + nanoseconds - millisecondsFraction * 1_000_000n;
+}
+
+function parseRatio(value: unknown): bigint | null {
+  if (typeof value !== "string" || !/^(?:0|1)(?:\.[0-9]{1,6})?$/.test(value)) return null;
+  if (value.startsWith("1.") && /[1-9]/.test(value.slice(2))) return null;
+  const [whole, fraction = ""] = value.split(".");
+  return BigInt(whole) * 1_000_000n + BigInt((fraction + "000000").slice(0, 6));
+}
+
+function validAllocation(value: unknown, brand: string, cycle: string, run: string): value is CommissionAllocation {
+  if (!exactKeys(value, ["brand_id", "cycle_id", "run_id", "calculation_id", "order_id", "agent_id", "member_id", "bettor_member_id", "base_points", "mode", "agent_ratio", "downstream_ratio", "difference_ratio", "exact_amount", "created_at"])) return false;
+  const record = value as JsonRecord;
+  const agent = parseRatio(record.agent_ratio), downstream = parseRatio(record.downstream_ratio), difference = parseRatio(record.difference_ratio);
+  const amount = record.exact_amount;
+  if (!(record.brand_id === brand && isCanonicalUuid(record.brand_id) && record.cycle_id === cycle && isCanonicalUuid(record.cycle_id) && record.run_id === run && isCanonicalUuid(record.run_id) &&
+    isCanonicalUuid(record.calculation_id) && isCanonicalUuid(record.order_id) && isCanonicalUuid(record.agent_id) && isCanonicalUuid(record.member_id) && isCanonicalUuid(record.bettor_member_id) &&
+    isDecimal(record.base_points) && ["loss", "turnover"].includes(String(record.mode)) && agent !== null && downstream !== null && difference !== null && agent - downstream === difference &&
+    exactKeys(amount, ["numerator", "denominator"]) && isDecimal(amount.numerator, false, 10n ** 100n - 1n) && typeof amount.denominator === "string" && /^[1-9][0-9]*$/.test(amount.denominator) && amount.denominator.length <= 7 && BigInt(amount.denominator) <= 1_000_000n && 1_000_000n % BigInt(amount.denominator) === 0n &&
+    greatestCommonDivisor(BigInt(amount.numerator), BigInt(amount.denominator)) === 1n && BigInt(amount.numerator) * 1_000_000n === BigInt(record.base_points as string) * difference! * BigInt(amount.denominator) && isDateTime(record.created_at))) return false;
+  return true;
+}
+
+function validAllocationPage(value: unknown, brand: string, cycle: string, run: string, query: Required<Pick<CommissionAllocationQuery, "limit" | "offset">> & { agent_id: string | null; order_id: string | null }): value is CommissionAllocationPage {
+  const scope = { cycle_id: cycle, run_id: run, agent_id: query.agent_id, order_id: query.order_id };
+  if (!validPage(value, brand, query.limit, query.offset, (item) => validAllocation(item, brand, cycle, run) &&
+    (query.agent_id === null || (item as unknown as JsonRecord).agent_id === query.agent_id) && (query.order_id === null || (item as unknown as JsonRecord).order_id === query.order_id), scope,
+  (item) => `${(item as JsonRecord).order_id}:${(item as JsonRecord).agent_id}`)) return false;
+  const items = value.items as JsonRecord[];
+  for (let index = 1; index < items.length; index++) {
+    const previous = items[index - 1], current = items[index];
+    const previousOrder = String(previous.order_id), currentOrder = String(current.order_id);
+    const previousAgent = String(previous.agent_id), currentAgent = String(current.agent_id);
+    if (previousOrder > currentOrder || (previousOrder === currentOrder && previousAgent >= currentAgent)) return false;
+  }
+  return true;
 }
 
 function validRun(value: unknown, brand: string, cycle: string): value is CommissionRun {
@@ -472,6 +575,30 @@ export function createCommissionCyclesApi(fetcher: typeof fetch = fetch): Commis
       if (!isCanonicalUuid(id)) invalidInput("周期编号必须为规范 UUID。");
       const query = pageQuery(limit, offset);
       return request(brand, `${CYCLES}/${id}/earnings?${query}`, {}, (value): value is CommissionEarningPage => validEarningPage(value, brand, id, limit, offset));
+    },
+    async runEarnings(brand, cycle, run, limit = 20, offset = 0) {
+      validateBrand(brand);
+      if (!isCanonicalUuid(cycle) || !isCanonicalUuid(run)) invalidInput("周期或运行编号必须为规范 UUID。");
+      const query = pageQuery(limit, offset);
+      return request(brand, `${CYCLES}/${cycle}/runs/${run}/earnings?${query}`, {},
+        (value): value is CommissionRunEarningPage => validOrderedEarnings(value, brand, cycle, run, limit, offset));
+    },
+    async allocations(brand, cycle, run, input = {}) {
+      validateBrand(brand);
+      if (!isCanonicalUuid(cycle) || !isCanonicalUuid(run)) invalidInput("周期或运行编号必须为规范 UUID。");
+      if (!isRecord(input) || !hasOnlyKeys(input, ["limit", "offset", "agent_id", "order_id"])) invalidInput("分配筛选参数无效。");
+      const limit = input.limit === undefined ? 20 : input.limit;
+      const offset = input.offset === undefined ? 0 : input.offset;
+      validatePage(limit, offset);
+      for (const key of ["agent_id", "order_id"] as const) {
+        if (input[key] !== undefined && !isCanonicalUuid(input[key])) invalidInput("代理或注单编号必须为规范 UUID。");
+      }
+      const agentId = input.agent_id ?? null, orderId = input.order_id ?? null;
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (agentId !== null) params.set("agent_id", agentId);
+      if (orderId !== null) params.set("order_id", orderId);
+      return request(brand, `${CYCLES}/${cycle}/runs/${run}/allocations?${params}`, {},
+        (value): value is CommissionAllocationPage => validAllocationPage(value, brand, cycle, run, { limit, offset, agent_id: agentId, order_id: orderId }));
     },
     async runs(brand, id, limit = 20, offset = 0) {
       validateBrand(brand);

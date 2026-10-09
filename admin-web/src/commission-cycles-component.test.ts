@@ -7,7 +7,7 @@ import ts from "typescript";
 import * as AdminApi from "./admin-api";
 import * as AdminI18n from "./i18n";
 import { adminI18nKey, createAdminI18n } from "./i18n";
-import type { AdminAccount } from "./admin-api";
+import { AdminApiError, type AdminAccount } from "./admin-api";
 import * as CommissionCyclesApi from "./commission-cycles-api";
 import * as CommissionCyclesState from "./commission-cycles-state";
 
@@ -78,7 +78,7 @@ function discovery(brandId: string, state: "pending" | "registered" | "failed" =
 function page(brandId: string, items: unknown[], offset = 0) { return { brand_id: brandId, items, total_count: String(items.length), limit: 20, offset }; }
 function ok(data: unknown, status = 200) { return new Response(JSON.stringify({ success: true, data }), { status }); }
 function error(status: number, message: string) { return new Response(JSON.stringify({ success: false, error: message }), { status }); }
-function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; }
+function deferred<T>() { let resolve!: (value: T) => void, reject!: (cause: unknown) => void; const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; }); return { promise, resolve, reject }; }
 function textOf(node: HostNode): string { return node.text + node.children.map(textOf).join(""); }
 function findNode(node: HostNode, match: (candidate: HostNode) => boolean): HostNode | null { if (match(node)) return node; for (const child of node.children) { const found = findNode(child, match); if (found) return found; } return null; }
 function buttonTexts(node: HostNode): string[] { return (node.tag === "button" ? [textOf(node)] : []).concat(...node.children.map(buttonTexts)); }
@@ -96,6 +96,8 @@ function defaultFetch(input: RequestInfo | URL, init?: RequestInit) {
   if (url.endsWith("/commission-cycles?limit=20&offset=0")) return Promise.resolve(ok(page(brandId, [cycle(brandId, false)])));
   if (url.endsWith(`/commission-cycles/${cycleId}/earnings?limit=20&offset=0`)) return Promise.resolve(ok({ ...page(brandId, []), cycle_id: cycleId }));
   if (url.endsWith(`/commission-cycles/${cycleId}/runs?limit=20&offset=0`)) return Promise.resolve(ok({ ...page(brandId, [run(brandId, runA, "9007199254740999"), run(brandId, runB, "9007199254741000")]), cycle_id: cycleId }));
+  if (url.includes(`/commission-cycles/${cycleId}/runs/${runA}/earnings?`) || url.includes(`/commission-cycles/${cycleId}/runs/${runB}/earnings?`)) return Promise.resolve(ok({ ...page(brandId, []), cycle_id: cycleId, run_id: url.includes(runA) ? runA : runB }));
+  if (url.includes(`/commission-cycles/${cycleId}/runs/${runA}/allocations?`) || url.includes(`/commission-cycles/${cycleId}/runs/${runB}/allocations?`)) return Promise.resolve(ok({ ...page(brandId, []), cycle_id: cycleId, run_id: url.includes(runA) ? runA : runB, agent_id: null, order_id: null }));
   if (url.includes(`/commission-cycles/${cycleId}/runs/${runA}/calculations?`)) return Promise.resolve(ok({ ...page(brandId, []), cycle_id: cycleId, run_id: runA }));
   if (url.includes(`/commission-cycles/${cycleId}/runs/${runB}/calculations?`)) return Promise.resolve(ok({ ...page(brandId, []), cycle_id: cycleId, run_id: runB }));
   if (url.endsWith(`/commission-cycles/${cycleId}`)) return Promise.resolve(ok(cycle(brandId, false)));
@@ -110,6 +112,9 @@ describe("CommissionCyclesManagement", () => {
       list: vi.fn(async (brand: string) => ({ brand_id: brand, items: [cycle(brand, false) as unknown as CommissionCyclesApi.CommissionCycleRecord], total_count: "1", limit: 20, offset: 0 })),
       read: vi.fn(async (brand: string) => cycle(brand, false) as unknown as CommissionCyclesApi.CommissionCycleRecord),
       earnings: vi.fn(async (brand: string) => ({ brand_id: brand, cycle_id: cycleId, items: [], total_count: "0", limit: 20, offset: 0 })),
+      runEarnings: vi.fn(async (brand: string, id: string, runId: string, limit = 20, offset = 0) => ({ brand_id: brand, cycle_id: id, run_id: runId,
+        items: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab", brand_id: brand, cycle_id: id, run_id: runId, agent_id: actorA, member_id: actorB, exact_amount: { numerator: "3", denominator: "2" }, points: "2", created_at: timestamp }], total_count: "1", limit, offset })),
+      allocations: vi.fn(async (brand: string, id: string, runId: string, query: CommissionCyclesApi.CommissionAllocationQuery = {}) => ({ brand_id: brand, cycle_id: id, run_id: runId, agent_id: query.agent_id ?? null, order_id: query.order_id ?? null, items: [], total_count: "0", limit: query.limit ?? 20, offset: query.offset ?? 0 })),
       runs: vi.fn(async (brand: string) => ({ brand_id: brand, cycle_id: cycleId, items: [run(brand, runA, "9007199254740999"), run(brand, runB, "9007199254741000")] as unknown as CommissionCyclesApi.CommissionRun[], total_count: "2", limit: 20, offset: 0 })),
       calculations: vi.fn(async (brand: string, id: string, runId: string) => ({ brand_id: brand, cycle_id: id, run_id: runId, items: [], total_count: "0", limit: 20, offset: 0 })),
       discoveries: vi.fn(async (brand: string) => ({ brand_id: brand, items: [discovery(brand)], total_count: "1", limit: 20, offset: 0 })),
@@ -125,7 +130,95 @@ describe("CommissionCyclesManagement", () => {
     const secondRun = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes(runB));
     (secondRun!.props.onClick as () => void)(); await flush();
     expect(reads.calculations).toHaveBeenCalledWith(brandA, cycleId, runB, 20, 0);
+    expect(reads.runEarnings).toHaveBeenCalledWith(brandA, cycleId, runB, 20, 0);
+    expect(reads.allocations).toHaveBeenCalledWith(brandA, cycleId, runB, { limit: 20, offset: 0 });
+    expect(textOf(mounted.container)).toContain("未舍入分配明细");
+    expect(textOf(mounted.container)).toContain("每位代理的整周期收入只舍入一次");
+    expect(textOf(mounted.container)).toContain("整周期舍入积分 2");
+    expect(textOf(mounted.container)).toContain("整周期精确合计 3/2");
     expect(textOf(mounted.container)).toContain("9007199254740999");
+    mounted.app.unmount();
+  });
+
+  it("filters allocation rows only for the explicitly selected run", async () => {
+    vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
+    const delayed = deferred<CommissionCyclesApi.CommissionAllocationPage>(); let holdRunB = true;
+    const filteredRows = ["loss", "turnover"].map((mode, index) => ({ brand_id: brandA, cycle_id: cycleId, run_id: runB,
+      calculation_id: index === 0 ? "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab" : "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      order_id: index === 0 ? anchorId : cycleId, agent_id: actorA, member_id: actorB, bettor_member_id: actorB,
+      base_points: "100", mode, agent_ratio: "0.3", downstream_ratio: "0.1", difference_ratio: "0.2",
+      exact_amount: { numerator: "20", denominator: "1" }, created_at: timestamp }));
+    const reads = {
+      list: vi.fn(async (brand: string) => ({ brand_id: brand, items: [cycle(brand, true) as unknown as CommissionCyclesApi.CommissionCycleRecord], total_count: "1", limit: 20, offset: 0 })),
+      read: vi.fn(async (brand: string) => cycle(brand, true) as unknown as CommissionCyclesApi.CommissionCycleRecord),
+      earnings: vi.fn(async (brand: string) => ({ brand_id: brand, cycle_id: cycleId, items: [], total_count: "0", limit: 20, offset: 0 })),
+      runEarnings: vi.fn(async (brand: string, id: string, runId: string, limit = 20, offset = 0) => ({ brand_id: brand, cycle_id: id, run_id: runId, items: [], total_count: "0", limit, offset })),
+      allocations: vi.fn((brand: string, id: string, runId: string, query: CommissionCyclesApi.CommissionAllocationQuery = {}) => {
+        if (runId === runB && !query.agent_id && holdRunB) { holdRunB = false; return delayed.promise; }
+        const items = query.agent_id ? filteredRows : [];
+        return Promise.resolve({ brand_id: brand, cycle_id: id, run_id: runId, agent_id: query.agent_id ?? null, order_id: query.order_id ?? null, items, total_count: String(items.length), limit: query.limit ?? 20, offset: query.offset ?? 0 });
+      }),
+      runs: vi.fn(async (brand: string) => ({ brand_id: brand, cycle_id: cycleId, items: [run(brand, runA, "1"), run(brand, runB, "2")] as unknown as CommissionCyclesApi.CommissionRun[], total_count: "2", limit: 20, offset: 0 })),
+      calculations: vi.fn(async (brand: string, id: string, runId: string) => ({ brand_id: brand, cycle_id: id, run_id: runId, items: [], total_count: "0", limit: 20, offset: 0 })),
+      discoveries: vi.fn(async (brand: string) => ({ brand_id: brand, items: [], total_count: "0", limit: 20, offset: 0 })),
+    };
+    vi.spyOn(CommissionCyclesApi, "createCommissionCyclesApi").mockReturnValue(reads as unknown as CommissionCyclesApi.CommissionCyclesApi);
+    const mounted = mount(baseAccount, brandA); await flush();
+    const cycleRow = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-cycle-id"] === cycleId);
+    (cycleRow!.props.onClick as () => void)(); await flush();
+    const secondRun = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-run-id"] === runB);
+    (secondRun!.props.onClick as () => void)(); await flush();
+    const agentInput = findNode(mounted.container, (node) => node.tag === "input" && node.props["aria-label"] === "代理编号筛选");
+    const updateAgent = agentInput!.props["onUpdate:modelValue"] as ((value: string) => void) | Array<(value: string) => void>;
+    for (const update of Array.isArray(updateAgent) ? updateAgent : [updateAgent]) update(actorA); await nextTick();
+    delayed.resolve({ brand_id: brandA, cycle_id: cycleId, run_id: runB, agent_id: null, order_id: null,
+      items: [{ brand_id: brandA, cycle_id: cycleId, run_id: runB, calculation_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", order_id: anchorId, agent_id: actorB, member_id: actorA, bettor_member_id: actorB, base_points: "100", mode: "loss", agent_ratio: "0.3", downstream_ratio: "0.1", difference_ratio: "0.2", exact_amount: { numerator: "20", denominator: "1" }, created_at: timestamp }], total_count: "1", limit: 20, offset: 0 });
+    await flush(); expect(textOf(mounted.container)).not.toContain("dddddddd-dddd-4ddd-8ddd-dddddddddddd");
+    const filter = findNode(mounted.container, (node) => node.tag === "button" && textOf(node) === "筛选");
+    (filter!.props.onClick as () => void)(); await flush();
+    expect(reads.allocations).toHaveBeenLastCalledWith(brandA, cycleId, runB, { limit: 20, offset: 0, agent_id: actorA });
+    expect(textOf(mounted.container)).toContain("输赢"); expect(textOf(mounted.container)).toContain("流水");
+    expect(reads.allocations.mock.calls.some(([, , runId]) => runId !== runB)).toBe(true); // Initial history reads are bound to the previously selected run.
+    mounted.app.unmount();
+  });
+
+  it("ignores late 401 allocation reads after a run switch and after an allocation filter edit", async () => {
+    vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
+    const oldRunRead = deferred<CommissionCyclesApi.CommissionAllocationPage>();
+    const oldFilterRead = deferred<CommissionCyclesApi.CommissionAllocationPage>();
+    let holdRunA = true;
+    const emptyAllocationPage = (brand: string, id: string, runId: string, query: CommissionCyclesApi.CommissionAllocationQuery = {}) => ({ brand_id: brand, cycle_id: id, run_id: runId, agent_id: query.agent_id ?? null, order_id: query.order_id ?? null, items: [], total_count: "0", limit: query.limit ?? 20, offset: query.offset ?? 0 });
+    const reads = {
+      list: vi.fn(async (brand: string) => ({ brand_id: brand, items: [cycle(brand, true) as unknown as CommissionCyclesApi.CommissionCycleRecord], total_count: "1", limit: 20, offset: 0 })),
+      read: vi.fn(async (brand: string) => cycle(brand, true) as unknown as CommissionCyclesApi.CommissionCycleRecord),
+      earnings: vi.fn(async (brand: string) => ({ brand_id: brand, cycle_id: cycleId, items: [], total_count: "0", limit: 20, offset: 0 })),
+      runEarnings: vi.fn(async (brand: string, id: string, runId: string, limit = 20, offset = 0) => ({ brand_id: brand, cycle_id: id, run_id: runId, items: [], total_count: "0", limit, offset })),
+      allocations: vi.fn((brand: string, id: string, runId: string, query: CommissionCyclesApi.CommissionAllocationQuery = {}) => {
+        if (runId === runA && holdRunA) { holdRunA = false; return oldRunRead.promise; }
+        if (query.agent_id === actorA) return oldFilterRead.promise;
+        return Promise.resolve(emptyAllocationPage(brand, id, runId, query));
+      }),
+      runs: vi.fn(async (brand: string) => ({ brand_id: brand, cycle_id: cycleId, items: [run(brand, runA, "1"), run(brand, runB, "2")] as unknown as CommissionCyclesApi.CommissionRun[], total_count: "2", limit: 20, offset: 0 })),
+      calculations: vi.fn(async (brand: string, id: string, runId: string) => ({ brand_id: brand, cycle_id: id, run_id: runId, items: [], total_count: "0", limit: 20, offset: 0 })),
+      discoveries: vi.fn(async (brand: string) => ({ brand_id: brand, items: [], total_count: "0", limit: 20, offset: 0 })),
+    };
+    vi.spyOn(CommissionCyclesApi, "createCommissionCyclesApi").mockReturnValue(reads as unknown as CommissionCyclesApi.CommissionCyclesApi);
+    const mounted = mount(baseAccount, brandA); await flush();
+    const cycleRow = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-cycle-id"] === cycleId);
+    (cycleRow!.props.onClick as () => void)(); await flush();
+    const secondRun = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-run-id"] === runB);
+    (secondRun!.props.onClick as () => void)(); await flush();
+    oldRunRead.reject(new AdminApiError("expired old run", 401)); await flush();
+    const agentInput = findNode(mounted.container, (node) => node.tag === "input" && node.props["aria-label"] === "代理编号筛选");
+    const updateAgent = agentInput!.props["onUpdate:modelValue"] as ((value: string) => void) | Array<(value: string) => void>;
+    const update = (value: string) => { for (const setter of Array.isArray(updateAgent) ? updateAgent : [updateAgent]) setter(value); };
+    update(actorA); await nextTick();
+    const filter = findNode(mounted.container, (node) => node.tag === "button" && textOf(node) === "筛选");
+    (filter!.props.onClick as () => void)(); await flush();
+    update(actorB); await nextTick();
+    oldFilterRead.reject(new AdminApiError("expired old filter", 401)); await flush();
+    expect(mounted.emitted).toEqual([]);
+    expect(textOf(mounted.container)).not.toContain("expired old");
     mounted.app.unmount();
   });
 
