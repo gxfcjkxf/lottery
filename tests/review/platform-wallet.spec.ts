@@ -63,6 +63,11 @@ test('wallet UI preserves exact points, displays before/change/after and paginat
   await expect(detail).toHaveCount(0);
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByTestId('platform-wallet-ledger').locator('tbody tr')).toHaveCount(50);
+  await page.getByTestId('platform-finance-tabs').getByRole('button', { name: 'Recharge records', exact: true }).click();
+  await expect(page.getByTestId('platform-recharges')).toBeVisible();
+  await page.getByTestId('platform-finance-tabs').getByRole('button', { name: 'Wallet', exact: true }).click();
+  await expect(page.getByTestId('platform-wallet-balances')).toContainText(amount);
+  await expect(page.getByTestId('platform-wallet-ledger').locator('tbody tr')).toHaveCount(50);
   await page.locator('.brand-picker select').selectOption('');
   await expect(page.getByTestId('platform-wallet-balances')).toHaveCount(0);
   await expect(page.getByTestId('platform-wallet-ledger')).toHaveCount(0);
@@ -104,7 +109,7 @@ test('real platform member wallet query does not change its wallet or ledger', a
   await expect(page.getByTestId('platform-wallet-balances')).toContainText(before.available_points);
   await expect(page.getByTestId('platform-wallet-ledger')).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Freeze|Adjust|Approve|Recharge/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Freeze|Adjust|Approve|Create recharge|Confirm recharge/i })).toHaveCount(0);
   expect(await read(walletUrl)).toEqual(before);
   expect(await read(ledgerUrl)).toEqual(beforeLedger);
 });

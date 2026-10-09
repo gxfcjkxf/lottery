@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { WALLET_SOURCES, WALLET_STATES } from '@lottery/shared'
 import { PlatformApiError } from './platform-api'
 import { createPlatformWalletApi, type Wallet, type LedgerEntry } from './wallet-api'
+import RechargesPanel from './RechargesPanel.vue'
 
 const props = defineProps<{ brandId: string; memberId: string; locale: 'en' | 'zh-CN' }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
@@ -16,6 +17,8 @@ const offset = ref(0)
 const more = ref(false)
 const loading = ref(false)
 const error = ref('')
+const showingRecharges = ref(false)
+const rechargeMember = ref('')
 let generation = 0
 const copy = computed(() => props.locale === 'en' ? {
   title: 'Member points', readOnly: 'Read-only wallet and immutable ledger', member: 'Member ID', load: 'Load wallet', refresh: 'Refresh', available: 'Available', frozen: 'Frozen', withdrawal: 'Withdrawal pending', display: 'Display points', version: 'Version', source: 'Source', recharge: 'Recharge', winning: 'Winning', gift: 'Gift', commission: 'Commission', manual_frozen: 'Manual freeze', system_frozen: 'System freeze', ledger: 'Point ledger', entry: 'Entry', type: 'Type', reason: 'Reason', date: 'Date', previous: 'Previous page', next: 'Next page', detail: 'Ledger entry detail', before: 'Before', delta: 'Change', after: 'After', state: 'State', empty: 'No ledger entries.', loading: 'Loading…',
@@ -26,6 +29,19 @@ function clear() {
   generation++
   wallet.value = null; entries.value = []; selected.value = null
   offset.value = 0; more.value = false; activeMember.value = ''; loading.value = false; error.value = ''
+}
+function showRecharges() {
+  if (showingRecharges.value) return
+  rechargeMember.value = activeMember.value || props.memberId
+  clear()
+  showingRecharges.value = true
+}
+function showWallet() {
+  showingRecharges.value = false
+  if (rechargeMember.value) {
+    inputMember.value = rechargeMember.value
+    void load()
+  }
 }
 function report(cause: unknown) {
   if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause)
@@ -58,12 +74,19 @@ async function page(nextOffset: number) {
   finally { if (request === generation) loading.value = false }
 }
 watch(() => [props.brandId, props.memberId], () => {
+  showingRecharges.value = false; rechargeMember.value = ''
   clear(); inputMember.value = props.memberId
   if (props.brandId && props.memberId) void load()
 }, { immediate: true, flush: 'sync' })
 </script>
 
 <template>
+  <div class="wallet-pagination" data-testid="platform-finance-tabs">
+    <button class="secondary" :aria-pressed="!showingRecharges" @click="showWallet">{{ locale === 'en' ? 'Wallet' : '钱包' }}</button>
+    <button class="secondary" :aria-pressed="showingRecharges" @click="showRecharges">{{ locale === 'en' ? 'Recharge records' : '充值记录' }}</button>
+  </div>
+  <RechargesPanel v-if="showingRecharges" :brand-id="brandId" :member-id="rechargeMember" :locale="locale" @failure="emit('failure', $event)" />
+  <template v-else>
   <div data-testid="platform-wallet">
     <div class="page-heading"><div><div class="eyebrow">{{ copy.readOnly }}</div><h1>{{ copy.title }}</h1></div></div>
     <form class="panel wallet-query" @submit.prevent="load">
@@ -101,4 +124,5 @@ watch(() => [props.brandId, props.memberId], () => {
       </section>
     </template>
   </div>
+  </template>
 </template>

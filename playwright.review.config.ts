@@ -21,6 +21,7 @@ if (!executablePath) {
 export default defineConfig({
   testDir: "./tests/review",
   fullyParallel: false,
+  workers: 2,
   timeout: 30_000,
   retries: 0,
   use: {

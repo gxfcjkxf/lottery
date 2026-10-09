@@ -45,6 +45,7 @@ test('isolated entry CI pins the installed Chromium before loading the strict re
 test('complete review runs require brand creation credentials instead of silently skipping it', () => {
   for (const key of ['TEST_PLATFORM_ADMIN_USERNAME', 'TEST_PLATFORM_ADMIN_PASSWORD', 'TEST_PLATFORM_ADMIN_ORIGIN']) assert.ok(reviewConfig.includes(key))
   assert.match(reviewConfig, /brand creation must not be skipped/)
+  assert.match(reviewConfig, /workers: 2/)
   assert.match(workflow, /TEST_PLATFORM_ADMIN_USERNAME: review_platform_\{project\}/)
   assert.match(workflow, /create-admin --username review_platform_desktop1440 --super/)
   assert.match(workflow, /create-admin --username review_platform_mobile360 --super/)
