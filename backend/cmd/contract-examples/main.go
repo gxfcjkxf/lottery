@@ -240,6 +240,8 @@ func main() {
 		values[key] = value
 	}
 	values["AttributionReport"] = attributionReportExample()
+	values["CommissionAnalysisReport"] = commissionAnalysisExample()
+	values["CommissionAnalysisTotals"] = commissionAnalysisExample().Summary
 	stamp := time.Date(2026, 10, 8, 12, 34, 56, 123456789, time.UTC)
 	credit, debit, net := "100", "100", "0"
 	values["correction_policy"] = commission.CorrectionExecutionPolicy{BrandID: id, Version: 1, Enabled: false, UpdatedAt: stamp}

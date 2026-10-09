@@ -236,7 +236,14 @@ func createPayment(ctx context.Context, tx pgx.Tx, c cycleRow, meta points.Metad
 // explicit compensation, whose insufficient-balance semantics are not assumed.
 func invalidatePayment(ctx context.Context, tx pgx.Tx, p paymentRow, meta points.Metadata) error {
 	var credited bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM commission_payment_targets WHERE payment_id=$1 AND ledger_entry_id IS NOT NULL)`, p.ID).Scan(&credited); err != nil {
+	// A zero original target may subsequently have an independent actual
+	// adjustment. Preserve that financial history even when its current net
+	// is zero. Reverse bindings also prevent a missing pointer hiding money.
+	if err := tx.QueryRow(ctx, `SELECT
+ EXISTS(SELECT 1 FROM commission_payment_targets t WHERE t.brand_id=$1 AND t.payment_id=$2 AND
+ (t.ledger_entry_id IS NOT NULL OR EXISTS(SELECT 1 FROM point_ledger_entries l WHERE l.brand_id=$1 AND l.reference_type='commission_payment_target' AND l.reference_id=t.id)))
+ OR EXISTS(SELECT 1 FROM commission_adjustments a WHERE a.brand_id=$1 AND a.payment_id=$2 AND
+ (a.ledger_entry_id IS NOT NULL OR EXISTS(SELECT 1 FROM point_ledger_entries l WHERE l.brand_id=$1 AND l.reference_type='commission_adjustment' AND l.reference_id=a.id)))`, p.Brand, p.ID).Scan(&credited); err != nil {
 		return err
 	}
 	state := "stale"

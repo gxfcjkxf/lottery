@@ -1,5 +1,7 @@
 # Lottery 平台
 
+[佣金周期分析](docs/38-commission-cycle-analysis.md)区分保存周期的核算、有效目标、实际净入账及数学差额，包含周期窗口外的后续资金记录；未知不是零，读取与导出不授权派发。0075另提供[零原派发人工入账保护](docs/40-zero-original-commission-evidence.md)，错误stale实际资金历史须审核，不能静默升级或重发。
+
 [品牌资金业务引用检查](docs/37-brand-business-inventory.md)补查逐账户对账可能遗漏的孤立记录；只观察声明范围，不自动补账，也不把结构一致当作金额链或完整财务证明。
 
 [工作台佣金任务汇总](docs/36-commission-workbench.md)显示独立授权的发现、核算、派发和更正任务状态；不表示欠付金额、收益或资金操作授权。
@@ -14,7 +16,7 @@
 
 后台“人工奖励”已接入独立权限、真实赠送积分发放、全额原路撤销及不足待处理，支持中英双语、PC与移动布局。提交须明确核对，结果未知只能恢复原请求，当前查询与原回执分开；余额补足不自动继续。0056接入三种不可变奖励站内消息及固定历史说明，通知消费不改变积分；0057接入实际入账及当前订单队列两种报表、完整CSV和工作台状态计数。交接及专项测试环境见[人工奖励合同](docs/20-manual-reward-orders.md)与[奖励报表合同](docs/21-reward-reports.md)。
 
-0058为开奖结果更正后已有真实佣金入账的周期准备[不可变差额计划](docs/22-commission-correction-plans.md)，0059提供独立默认关闭的[差额执行](docs/23-commission-correction-execution.md)：新批准、仅佣金来源补发/追回、整周期暂停及显式继续。后台“佣金更正”和十二条正式管理接口已接入，原回执与当前查询分开，同会话未知操作只能恢复原请求，见[管理交接合同](docs/24-commission-correction-management.md)。0060接入实际非零差额的不可变站内消息及佣金报表补发/追回分项，CSV为版本2、22列，详见[通知与报表合同](docs/25-commission-correction-observability.md)。OPEN-117已确认新核算覆盖人工修正净额；既有人工修正、审计与账本保留，原blocked派发不解锁。历史政策未决计划只能按[人工修正后重新核算合同](docs/39-commission-manual-recalculation-policy.md)显式审计重试，不自动补偿或恢复。0073仅替换函数；两个资金开关仍默认关闭，升级不迁移资金或自动重试。上述实现与验收状态待本阶段落地，不据此声称已验证。
+0058为开奖结果更正后已有真实佣金入账的周期准备[不可变差额计划](docs/22-commission-correction-plans.md)，0059提供独立默认关闭的[差额执行](docs/23-commission-correction-execution.md)：新批准、仅佣金来源补发/追回、整周期暂停及显式继续。后台“佣金更正”和十二条正式管理接口已接入，原回执与当前查询分开，同会话未知操作只能恢复原请求，见[管理交接合同](docs/24-commission-correction-management.md)。0060接入实际非零差额的不可变站内消息及佣金报表补发/追回分项，CSV为版本2、22列，详见[通知与报表合同](docs/25-commission-correction-observability.md)。OPEN-117已确认新核算覆盖人工修正净额；既有人工修正、审计与账本保留，原blocked派发不解锁。历史政策未决计划只能按[人工修正后重新核算合同](docs/39-commission-manual-recalculation-policy.md)显式审计重试，不自动补偿或恢复。0073仅替换函数；两个资金开关仍默认关闭，升级不迁移资金或自动重试。0073开发验证及对应远程CI已通过；客户生产发布与人工审核另行完成。
 
 第三方接入请使用 [已实现 OpenAPI](docs/openapi.json) 与 [接口交接说明](docs/09-openapi-handover.md)。运行 `pnpm api:generate` 更新，`pnpm api:check` 和 `pnpm test:contracts` 检查实际路由及代表性数据模型；完整业务设计中的未来接口不代表已经可调用。
 

@@ -18,6 +18,7 @@ import * as commissionPayments from "../../scripts/openapi-commission-payments.m
 import * as commissionAdjustments from "../../scripts/openapi-commission-adjustments.mjs";
 import * as commissionCorrections from "../../scripts/openapi-commission-corrections.mjs";
 import * as commissionReports from "../../scripts/openapi-commission-reports.mjs";
+import * as commissionAnalysis from "../../scripts/openapi-commission-analysis.mjs";
 import * as rechargeUser from "../../scripts/openapi-recharge-user.mjs";
 import * as rewards from "../../scripts/openapi-rewards.mjs";
 import * as rewardReports from "../../scripts/openapi-reward-reports.mjs";
@@ -65,6 +66,7 @@ test("reconciliation contract keeps five durable task routes alongside the stand
     rewards,
     rewardReports,
     commissionReports,
+    commissionAnalysis,
     rechargeUser,
     commissionDiscovery,
     commissionPayments,

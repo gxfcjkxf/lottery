@@ -320,6 +320,7 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 		})
 	}
 	registerAuditRoutes(handle, d)
+	registerCommissionAnalysisReportRoutes(handle, d)
 	registerAdminManagementRoutes(handle, d)
 	registerPointAdminRoutes(handle, d)
 	registerBetAdminRoutes(handle, d)

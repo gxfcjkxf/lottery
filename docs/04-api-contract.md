@@ -837,6 +837,15 @@ POST 回执保存首次结果，SDK 不在写方法内重新取上下文/改写�
 
 ## 佣金结果更正管理当前接口
 
+0075将原零派发之后的实际人工资金也纳入更正保护，不允许以旧零目标判断无入账并创建另一全额支付；旧错误stale实际资金历史的升级预检及未完成恢复范围见[40号](40-zero-original-commission-evidence.md)。
+
 十二条正式管理操作以`/api/v1/admin`为前缀：GET/PUT `/commission-correction-policy`；GET `/commission-correction-plans`、`/{id}`、`/{id}/targets`及POST `/{id}/retry`；GET `/commission-correction-executions`、`/{id}`、`/{id}/targets`及POST `/{id}/approve`、`/{id}/continue`、`/{id}/retry`。仅使用X-Brand-ID，不增加品牌路径别名。读需要commission.view.brand/platform及已提交审计，写还需各自品牌权限、非超管active管理员、原确认账号X-Commission-Correction-Actor-ID、原正文与幂等键。GET拒绝正文，详情不接受查询串，分页只接受严格limit/offset。
 
 策略正文为version/enabled/reason，其余写入为version/reason；重复、缺失、未知或null字段均拒绝，原因不得含Unicode控制字符。写入200是该操作原回执，不能用后来GET替换；原键重放仍复核当前授权。权限拒绝403、原确认人员不同401、状态/证据/版本冲突409，忙锁503不缓存临时回执。列表总数和金额为精确字符串；credit/debit均可大于int64且同时非零，net为二者差；证据代次为不超过int64的非负字符串。冻结计划、真实已应用数量与金额、当前周期暂停分别表示，不以ready、旧批准或余额补足冒充执行完成。完整字段、错误、恢复与安全边界见[管理合同](24-commission-correction-management.md)和生成OpenAPI。0060实际补偿使用既有站内消息和报表接口，见[25号合同](25-commission-correction-observability.md)，无新增用户金融接口；0073落实OPEN-117新核算覆盖人工目标，并支持旧政策阻塞计划显式恢复准备，见[39号合同](39-commission-manual-recalculation-policy.md)，恢复不批准或移动积分。
+
+
+## 佣金周期核算与实际入账分析
+
+GET `/api/v1/admin/reports/commission-analysis`及`.csv`读取保存整周期的核算、有效目标与全历史实际入账。from/to按cycle.window_to半开93天窗口筛选，group_by仅cycle/agent；可选受益agent_id/member_id/cycle_id，JSON默认limit20/max100、offset上限1000000，CSV拒绝分页和GET正文，未知/重复/空或非规范参数拒绝。查看同时要求commission.view和report_commission.view，各可为明确品牌/平台权限，导出还需report_commission.export；超管身份不推导授权。
+
+单条主库SQL同时产生四个覆盖计数、十八项精确/null总计、分页及完整分组数；核算未就绪不等于零，实际净額不是余额或支付授权。current核算与资金见证损坏409，筛选资源404、权限403、会话失效401、导出超过10000组/4MiB为413、未能完整查询/审计为503。每次请求15秒限时，保存点处理查询失败，查询后及审计后再复核当前授权，审计提交前不释放结果。CSV版本1/34列带BOM、摘要、品牌/kind=commission_analysis、时区、组数及审计ID，字段及来源合同见[38号](38-commission-cycle-analysis.md)。旧入账时间报告继续版本2/22列，不被本模块替代。

@@ -9,6 +9,7 @@ modules.push(await import("./openapi-withdrawal-orders.mjs"));
 modules.push(await import("./openapi-recharge-user.mjs"));
 modules.push(await import("./openapi-withdrawal-reports.mjs"));
 modules.push(await import("./openapi-commission-reports.mjs"));
+modules.push(await import("./openapi-commission-analysis.mjs"));
 modules.push(await import("./openapi-workbench.mjs"));
 modules.push(await import("./openapi-commission-policies.mjs"));
 modules.push(await import("./openapi-commission-cycles.mjs"));

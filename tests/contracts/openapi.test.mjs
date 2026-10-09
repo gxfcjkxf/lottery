@@ -15,6 +15,7 @@ import * as commissionPayments from "../../scripts/openapi-commission-payments.m
 import * as commissionAdjustments from "../../scripts/openapi-commission-adjustments.mjs";
 import * as commissionCorrections from "../../scripts/openapi-commission-corrections.mjs";
 import * as commissionReports from "../../scripts/openapi-commission-reports.mjs";
+import * as commissionAnalysis from "../../scripts/openapi-commission-analysis.mjs";
 import * as rechargeUser from "../../scripts/openapi-recharge-user.mjs";
 import * as rewards from "../../scripts/openapi-rewards.mjs";
 import * as rewardReports from "../../scripts/openapi-reward-reports.mjs";
@@ -24,7 +25,7 @@ import * as reportArchivePolicy from "../../scripts/openapi-report-archive-polic
 import * as attributionReports from "../../scripts/openapi-attribution-reports.mjs";
 import * as businessInventory from "../../scripts/openapi-business-inventory.mjs";
 
-const modules=[identity,finance,lottery,withdrawals,withdrawalReports,workbench,commissionPolicies,commissionCycles,commissionDiscovery,commissionPayments,commissionAdjustments,commissionCorrections,commissionReports,rechargeUser,rewards,rewardReports,reportArchives,reportArchiveTasks,reportArchivePolicy,attributionReports];
+const modules=[identity,finance,lottery,withdrawals,withdrawalReports,workbench,commissionPolicies,commissionCycles,commissionDiscovery,commissionPayments,commissionAdjustments,commissionCorrections,commissionReports,commissionAnalysis,rechargeUser,rewards,rewardReports,reportArchives,reportArchiveTasks,reportArchivePolicy,attributionReports];
 modules.push(businessInventory);
 const go=process.env.LOTTERY_GO_BIN??"go";
 const operation={method:"POST",path:"/api/v1/me/action",operationId:"performAction",summary:"Submit action",tag:"identity",auth:"user",idempotency:true,requestBody:{$ref:"#/components/schemas/EmptyObject"},data:{$ref:"#/components/schemas/EmptyObject"}};

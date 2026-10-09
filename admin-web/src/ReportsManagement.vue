@@ -5,6 +5,7 @@ import { createReportsApi, reportsPermissions } from "./reports-api";
 import { createReportExportApi, reportExportPermissions } from "./report-export-api";
 import WithdrawalReport from "./WithdrawalReport.vue";
 import CommissionReport from "./CommissionReport.vue";
+import CommissionAnalysisReport from "./CommissionAnalysisReport.vue";
 import RewardReports from "./RewardReports.vue";
 import AttributionReport from "./AttributionReportManagement.vue";
 import { useAdminI18n } from "./i18n";
@@ -480,6 +481,7 @@ onBeforeUnmount(() => { alive = false; exportGeneration++; exportTickets.betting
     </section>
     <WithdrawalReport :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />
     <CommissionReport :key="`commission-report:${props.account.id}:${props.brandId}`" :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />
+    <CommissionAnalysisReport :key="`commission-analysis:${props.account.id}:${props.brandId}`" :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />
     <RewardReports :key="`reward-report:${props.account.id}:${props.brandId}`" :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />
     <AttributionReport :key="`attribution-report:${props.account.id}:${props.brandId}`" :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />
   </section>
