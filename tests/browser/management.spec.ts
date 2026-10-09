@@ -122,7 +122,7 @@ test("real role and account creation persist; new account has only assigned gran
   await page.getByRole("button", { name: "创建管理员", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("管理员账号已创建");
   await expect(page.locator(".page-footer")).toContainText(
-    "账号与角色变更为真实操作",
+    "账号和角色权限按当前品牌权限执行真实后台变更。",
   );
   await fits(page);
   await page.screenshot({
