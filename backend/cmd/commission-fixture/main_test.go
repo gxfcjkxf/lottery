@@ -34,6 +34,8 @@ func TestFixtureGuardAcceptsOnlyNamedLocalSyntheticDatabases(t *testing.T) {
 		t.Fatalf("second explicitly owned local database rejected: %v", err)
 	}
 	for _, dsn := range []string{verifiedDesktopDSN, verifiedMobileDSN, finalDesktopDSN, finalMobileDSN, correctionDesktopDSN, correctionMobileDSN,
+		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_analysis_desktop_s56?sslmode=disable",
+		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_analysis_mobile_s56?sslmode=disable",
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_payment_desktop_s17?sslmode=disable",
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_payment_mobile_s17?sslmode=disable",
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_payment_desktop_s17_verified?sslmode=disable",
@@ -60,6 +62,8 @@ func TestFixtureGuardAcceptsOnlyNamedLocalSyntheticDatabases(t *testing.T) {
 		{"environment", validFixtureDSN, "production", fixtureAck, validAdminPass, validUserPass},
 		{"confirmation", validFixtureDSN, "test", "", validAdminPass, validUserPass},
 		{"other database", "postgres://lottery_test:pw@127.0.0.1:55432/lottery_test?sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
+		{"analysis database suffix", "postgres://lottery_test:pw@127.0.0.1:55432/lottery_commission_analysis_desktop_s56_suffix?sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
+		{"unapproved analysis database", "postgres://lottery_test:pw@127.0.0.1:55432/lottery_commission_analysis_unapproved_s56?sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
 		{"unapproved correction database", "postgres://lottery_test:pw@127.0.0.1:55432/lottery_commission_correction_unapproved_s27?sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
 		{"correction database suffix", "postgres://lottery_test:pw@127.0.0.1:55432/lottery_commission_correction_desktop_s27_suffix?sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
 		{"remote host", "postgres://lottery_test:pw@example.com:55432/lottery_commission_ui_desktop_s16?sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
@@ -132,6 +136,13 @@ func TestFixtureInitializesAllThreeActualCommissionWorkflows(t *testing.T) {
 	}
 	if before["commission_ledger_entries"] != int64(0) {
 		t.Fatalf("fixture posted commission money: %+v", before)
+	}
+	after, err := verify(ctx, db, out.AdminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before["commission_business_fingerprint"] != after["commission_business_fingerprint"] || len(before["commission_business_fingerprint"].(string)) != 64 {
+		t.Fatal("read-only verification changed commission business evidence")
 	}
 	if _, err = initialize(ctx, db, validAdminPass, validUserPass); err == nil {
 		t.Fatal("fixture initialization overwrote occupied identities")

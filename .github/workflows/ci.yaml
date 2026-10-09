@@ -533,11 +533,19 @@ jobs:
       - run: pnpm exec playwright test tests/browser/commission-payments.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
       - run: pnpm exec playwright test tests/browser/commission-adjustments.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
       - run: pnpm exec playwright test tests/browser/commission-reports.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
+      - name: Verify commission analysis passes without skips
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: .local/commission-analysis-report.json
+        run: |
+          pnpm exec playwright test tests/browser/commission-analysis.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --reporter=list,json
+          node --input-type=module -e 'import { readFileSync } from "node:fs"; const { stats } = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME, "utf8")); if (stats.skipped !== 0 || !(stats.expected > 0)) throw new Error("Commission analysis CI requires passed tests and zero skipped tests");'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: commission-cycles-${{ matrix.viewport }}-failure-traces
-          path: test-results/
+          path: |
+            test-results/
+            .local/commission-analysis-report.json
   commission-corrections-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 20

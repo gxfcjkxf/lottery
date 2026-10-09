@@ -65,6 +65,8 @@ const (
 	fixtureDBBR  = "/lottery_commission_report_mobile_s19"
 	fixtureDBAC  = "/lottery_commission_correction_desktop_s27"
 	fixtureDBBC  = "/lottery_commission_correction_mobile_s27"
+	fixtureDBANA = "/lottery_commission_analysis_desktop_s56"
+	fixtureDBANB = "/lottery_commission_analysis_mobile_s56"
 )
 
 func safeFixtureURL(raw, environment, confirmation, adminPassword, userPassword string, requirePasswords bool) error {
@@ -73,7 +75,7 @@ func safeFixtureURL(raw, environment, confirmation, adminPassword, userPassword 
 		(u.Scheme != "postgres" && u.Scheme != "postgresql") ||
 		(u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") ||
 		(u.Port() != "5432" && u.Port() != "55432") ||
-		(u.Path != fixtureDBA && u.Path != fixtureDBB && u.Path != fixtureDBAV && u.Path != fixtureDBBV && u.Path != fixtureDBAF && u.Path != fixtureDBBF && u.Path != fixtureDBAD && u.Path != fixtureDBBD && u.Path != fixtureDBAP && u.Path != fixtureDBBP && u.Path != fixtureDBAPV && u.Path != fixtureDBBPV && u.Path != fixtureDBAPA && u.Path != fixtureDBBPA && u.Path != fixtureDBAA && u.Path != fixtureDBBA && u.Path != fixtureDBAAV && u.Path != fixtureDBBAV && u.Path != fixtureDBAR && u.Path != fixtureDBBR && u.Path != fixtureDBAC && u.Path != fixtureDBBC) || u.RawPath != "" || u.Fragment != "" || u.Opaque != "" ||
+		(u.Path != fixtureDBA && u.Path != fixtureDBB && u.Path != fixtureDBAV && u.Path != fixtureDBBV && u.Path != fixtureDBAF && u.Path != fixtureDBBF && u.Path != fixtureDBAD && u.Path != fixtureDBBD && u.Path != fixtureDBAP && u.Path != fixtureDBBP && u.Path != fixtureDBAPV && u.Path != fixtureDBBPV && u.Path != fixtureDBAPA && u.Path != fixtureDBBPA && u.Path != fixtureDBAA && u.Path != fixtureDBBA && u.Path != fixtureDBAAV && u.Path != fixtureDBBAV && u.Path != fixtureDBAR && u.Path != fixtureDBBR && u.Path != fixtureDBAC && u.Path != fixtureDBBC && u.Path != fixtureDBANA && u.Path != fixtureDBANB) || u.RawPath != "" || u.Fragment != "" || u.Opaque != "" ||
 		u.User == nil || u.User.Username() != "lottery_test" || len(adminPassword) < 16 && requirePasswords || len(userPassword) < 16 && requirePasswords {
 		return errors.New("explicit owned synthetic commission database required")
 	}
@@ -874,7 +876,42 @@ func verify(ctx context.Context, db *pgxpool.Pool, adminID string) (map[string]a
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"admin_id": adminID, "commission_ledger_entries": entries, "commission_wallet_points": walletPoints, "pending_discoveries": pendingDiscoveries, "failed_discoveries": failedDiscoveries, "unresolved_cycles": unresolvedCycles, "economic_fingerprint": fingerprint}, nil
+	commissionFingerprint, err := commissionBusinessFingerprint(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"admin_id": adminID, "commission_ledger_entries": entries, "commission_wallet_points": walletPoints, "pending_discoveries": pendingDiscoveries, "failed_discoveries": failedDiscoveries, "unresolved_cycles": unresolvedCycles, "economic_fingerprint": fingerprint, "commission_business_fingerprint": commissionFingerprint}, nil
+}
+
+// Read reports may append audit records, but must not modify commission
+// calculations, approvals, payout tasks, adjustments, or correction history.
+// Hash every row in this exact synthetic brand, including empty tables, in a
+// single SQL snapshot. Keep the raw business evidence inside the database.
+func commissionBusinessFingerprint(ctx context.Context, db *pgxpool.Pool) (string, error) {
+	tables := []string{
+		"brand_commission_policies", "commission_policy_revisions",
+		"commission_discovery", "commission_cycles", "commission_cycle_targets",
+		"commission_runs", "commission_cycle_steps", "commission_calculations",
+		"commission_allocations", "commission_earnings",
+		"brand_commission_payment_policies", "commission_payment_policy_revisions",
+		"commission_payments", "commission_payment_targets",
+		"commission_adjustment_heads", "commission_adjustments",
+		"commission_correction_plans", "commission_correction_plan_steps",
+		"commission_correction_plan_targets", "brand_commission_correction_policies",
+		"commission_correction_policy_revisions", "commission_correction_executions",
+		"commission_correction_execution_targets", "commission_correction_balance_heads",
+		"commission_correction_cycle_holds", "commission_correction_execution_steps",
+	}
+	parts := make([]string, 0, len(tables))
+	for _, table := range tables {
+		parts = append(parts, fmt.Sprintf(`SELECT '%s' AS name, coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text COLLATE "C"),'[]'::jsonb) AS evidence FROM %s t WHERE t.brand_id=$1`, table, pgx.Identifier{table}.Sanitize()))
+	}
+	query := `SELECT jsonb_object_agg(name,evidence)::text FROM (` + strings.Join(parts, " UNION ALL ") + `) evidence`
+	var raw []byte
+	if err := db.QueryRow(ctx, query, fixtureBrand).Scan(&raw); err != nil {
+		return "", err
+	}
+	return hashCanonicalJSON(raw)
 }
 
 // economicFingerprint hashes canonical JSON for the owned fixture members'
