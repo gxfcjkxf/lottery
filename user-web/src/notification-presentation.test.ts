@@ -59,6 +59,39 @@ function item(event_type: NotificationEventType, template_version = 1): Notifica
 }
 
 describe("notification presentation", () => {
+  it("shows saved draw facts in a separate protected bilingual note and preserves digit zeroes", () => {
+    const drawItem = (event: "draw.result.published" | "draw.result.corrected"): NotificationPresentationItem => ({
+      event_type: event,
+      template_key: event,
+      template_version: 1,
+      content: {
+        en: { title: "Result published", body: "Saved result for {resource_id}." },
+        "zh-CN": { title: "结果已公布", body: "保存的结果：{resource_id}。" },
+      },
+      payload: { resource_id: "44444444-4444-4444-8444-444444444444", points: null, draw: {
+        game_id: "11111111-1111-4111-8111-111111111111",
+        period_id: "22222222-2222-4222-8222-222222222222",
+        period_no: "20261009001",
+        result: { regular: [], special: [], digits: [0, 1, 0] },
+        drawn_at: "2026-10-06T12:00:00.123+08:00",
+        previous_draw_id: event === "draw.result.corrected" ? "55555555-5555-4555-8555-555555555555" : null,
+      } },
+      created_at: "2026-10-06T00:00:00.000Z",
+    });
+    for (const event of ["draw.result.published", "draw.result.corrected"] as const) {
+      const en = renderNotification(drawItem(event), "en");
+      const zh = renderNotification(drawItem(event), "zh");
+      expect(en.body).toBe("Saved result for 44444444-4444-4444-8444-444444444444.");
+      expect(en.protectedNote).toContain("Period: 20261009001");
+      expect(en.protectedNote).toContain("Regular: none · Special: none · Digits: 010");
+      expect(en.protectedNote).toContain("does not indicate a win, prize payment");
+      expect(zh.protectedNote).toContain("期号：20261009001");
+      expect(zh.protectedNote).toContain("普通：无 · 特别：无 · 数字：010");
+      expect(zh.protectedNote).toContain("不代表中奖、派奖或当前结果保证");
+      expect(en.body).not.toContain("010");
+    }
+  });
+
   it.each(["zh", "en"] as const)("renders fixed copy for every %s event", (locale) => {
     for (const event of events) {
       const rendered = renderNotification(item(event), locale);

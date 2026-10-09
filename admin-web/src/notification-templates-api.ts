@@ -10,6 +10,7 @@ const KEYS = [
   "commission.adjusted", "commission.corrected", "commission.paid",
   "withdrawal.order.reviewing", "withdrawal.order.processing", "withdrawal.order.paid",
   "withdrawal.order.rejected", "withdrawal.order.failed", "withdrawal.order.cancelled",
+  "draw.result.published", "draw.result.corrected",
 ] as const;
 const LOCALES = ["en", "zh-CN"] as const;
 const PLACEHOLDERS = new Set(["points", "resource_id"]);
@@ -94,6 +95,8 @@ function placeholdersValid(text: string, key: NotificationTemplateKey, body: boo
   const residue = text.replace(/\{[^{}]*\}/g, "");
   if (/[{}]/.test(residue) || tokens.some((token) => !PLACEHOLDERS.has(token.slice(1, -1)))) return false;
   const hasPoints = tokens.some((token) => token === "{points}");
+  const hasResourceId = tokens.some((token) => token === "{resource_id}");
+  if (key.startsWith("draw.result.")) return !hasPoints && (!body || hasResourceId);
   return key === "member.joined" ? !hasPoints : !body || hasPoints;
 }
 export function validNotificationTemplateContent(value: unknown, key: NotificationTemplateKey): value is NotificationTemplateContent {

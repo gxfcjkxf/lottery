@@ -15,6 +15,8 @@ export type NotificationEventType =
   | "commission.paid"
   | "commission.adjusted"
   | "commission.corrected"
+  | "draw.result.published"
+  | "draw.result.corrected"
   | "withdrawal.order.reviewing"
   | "withdrawal.order.processing"
   | "withdrawal.order.paid"
@@ -35,9 +37,23 @@ export interface NotificationItem {
   template_key: NotificationEventType;
   template_version: number;
   content: NotificationTemplateContent | null;
-  payload: { resource_id: string; points: string | null };
+  payload: LegacyNotificationPayload | DrawNotificationPayload;
   created_at: string;
   read_at: string | null;
+}
+
+export interface LegacyNotificationPayload { resource_id: string; points: string | null }
+export interface DrawNotificationPayload {
+  resource_id: string;
+  points: null;
+  draw: {
+    game_id: string;
+    period_id: string;
+    period_no: string;
+    result: { regular: number[]; special: number[]; digits: number[] };
+    drawn_at: string;
+    previous_draw_id: string | null;
+  };
 }
 
 export interface NotificationPage {
@@ -101,6 +117,8 @@ const EVENT_TYPES = new Set<NotificationEventType>([
   "commission.paid",
   "commission.adjusted",
   "commission.corrected",
+  "draw.result.published",
+  "draw.result.corrected",
   "withdrawal.order.reviewing",
   "withdrawal.order.processing",
   "withdrawal.order.paid",
@@ -115,6 +133,10 @@ const WITHDRAWAL_EVENT_TYPES = new Set<NotificationEventType>([
   "withdrawal.order.rejected",
   "withdrawal.order.failed",
   "withdrawal.order.cancelled",
+]);
+const DRAW_EVENT_TYPES = new Set<NotificationEventType>([
+  "draw.result.published",
+  "draw.result.corrected",
 ]);
 
 function malformed(message: string): never {
@@ -233,7 +255,14 @@ function parseTemplateContent(value: unknown, eventType: NotificationEventType):
     exactKeys(localized, ["title", "body"], `notification.content.${locale}`);
     const title = safeTemplateText(localized.title, `notification.content.${locale}.title`, 120, true, false);
     const body = safeTemplateText(localized.body, `notification.content.${locale}.body`, 1200, true, true);
-    if (eventType === "member.joined") {
+    if (DRAW_EVENT_TYPES.has(eventType)) {
+      if (title.includes("{points}") || body.includes("{points}")) {
+        return malformed(`${eventType} content cannot use {points}`);
+      }
+      if (!body.includes("{resource_id}")) {
+        return malformed(`${eventType} content body must use {resource_id}`);
+      }
+    } else if (eventType === "member.joined") {
       if (title.includes("{points}") || body.includes("{points}")) {
         return malformed("member.joined content cannot use {points}");
       }
@@ -250,6 +279,42 @@ function inputUuid(value: unknown, label: string): string {
     throw new NotificationApiError(`${label} must be a UUID`, 0, "invalid_parameter");
   }
   return value;
+}
+
+function parseDrawPayload(value: Record<string, unknown>, eventType: NotificationEventType, resourceId: string): DrawNotificationPayload {
+  exactKeys(value, ["resource_id", "points", "draw"], "notification.payload");
+  if (value.points !== null) return malformed("draw notification points must be null");
+  const draw = object(value.draw, "notification.payload.draw");
+  exactKeys(draw, ["game_id", "period_id", "period_no", "result", "drawn_at", "previous_draw_id"], "notification.payload.draw");
+  const gameId = uuid(draw.game_id, "notification.payload.draw.game_id");
+  const periodId = uuid(draw.period_id, "notification.payload.draw.period_id");
+  if (typeof draw.period_no !== "string" || draw.period_no.trim().length === 0 || new TextEncoder().encode(draw.period_no).length > 80) {
+    return malformed("notification.payload.draw.period_no must be a nonempty string of at most 80 UTF-8 bytes");
+  }
+  const result = object(draw.result, "notification.payload.draw.result");
+  exactKeys(result, ["regular", "special", "digits"], "notification.payload.draw.result");
+  const parseNumbers = (input: unknown, label: string, maximum: number): number[] => {
+    if (!Array.isArray(input) || input.length > 10 || !input.every((n) => Number.isSafeInteger(n) && n >= 0 && n <= maximum)) {
+      return malformed(`${label} must contain at most 10 integers from 0 to ${maximum}`);
+    }
+    return input as number[];
+  };
+  const regular = parseNumbers(result.regular, "notification.payload.draw.result.regular", 1_000_000);
+  const special = parseNumbers(result.special, "notification.payload.draw.result.special", 1_000_000);
+  const digits = parseNumbers(result.digits, "notification.payload.draw.result.digits", 9);
+  if (!(regular.length || special.length || digits.length) || (digits.length > 0 && (regular.length > 0 || special.length > 0))) {
+    return malformed("notification.payload.draw.result must be nonempty and match one supported number shape");
+  }
+  const drawnAt = dateTime(draw.drawn_at, "notification.payload.draw.drawn_at");
+  const previousDrawId = draw.previous_draw_id === null ? null : uuid(draw.previous_draw_id, "notification.payload.draw.previous_draw_id");
+  if (eventType === "draw.result.published" ? previousDrawId !== null : previousDrawId === null || previousDrawId === resourceId) {
+    return malformed(`${eventType} has an invalid previous_draw_id`);
+  }
+  return {
+    resource_id: resourceId,
+    points: null,
+    draw: { game_id: gameId, period_id: periodId, period_no: draw.period_no, result: { regular, special, digits }, drawn_at: drawnAt, previous_draw_id: previousDrawId },
+  };
 }
 
 function parseNotification(value: unknown): NotificationItem {
@@ -276,6 +341,9 @@ function parseNotification(value: unknown): NotificationItem {
   const content = item.content === undefined || item.content === null
     ? null
     : parseTemplateContent(item.content, eventType);
+  if (DRAW_EVENT_TYPES.has(eventType) && content === null) {
+    return malformed("draw notifications require an immutable content snapshot");
+  }
   const rewardEvent = eventType.startsWith("reward.order.");
   if (content === null && (WITHDRAWAL_EVENT_TYPES.has(eventType) || eventType.startsWith("commission.") || rewardEvent)) {
     return malformed("withdrawal, commission, and reward notifications require an immutable content snapshot");
@@ -284,8 +352,17 @@ function parseNotification(value: unknown): NotificationItem {
     return malformed("notification.content is required for template versions above 1");
   }
   const payload = object(item.payload, "notification.payload");
-  exactKeys(payload, ["resource_id", "points"], "notification.payload");
   const resourceId = uuid(payload.resource_id, "notification.payload.resource_id");
+  if (DRAW_EVENT_TYPES.has(eventType)) {
+    return {
+      id, brand_id: brandId, member_id: memberId, event_type: eventType, template_key: eventType,
+      template_version: templateVersion, content,
+      payload: parseDrawPayload(payload, eventType, resourceId),
+      created_at: dateTime(item.created_at, "notification.created_at"),
+      read_at: item.read_at === null ? null : dateTime(item.read_at, "notification.read_at"),
+    };
+  }
+  exactKeys(payload, ["resource_id", "points"], "notification.payload");
   let points: string | null;
   if (eventType === "member.joined") {
     if (payload.points !== null || resourceId !== memberId) {

@@ -38,7 +38,7 @@ func TestNotificationTemplateHTTPCheckedReplayValidationAndAudit(t *testing.T) {
 	mustStatus(t, f.call("GET", base, "", f.token, managedBrand, nil), 403)
 	grantReportPermission(t, f, "notification_template.view.brand")
 	rows := templateHTTPList(t, f)
-	if len(rows) != 20 {
+	if len(rows) != 22 {
 		t.Fatal(len(rows))
 	}
 	keys := map[string]bool{}

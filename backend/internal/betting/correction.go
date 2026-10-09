@@ -12,6 +12,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/drawfeed"
+	"github.com/gxfcjkxf/lottery/backend/internal/drawnotice"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
@@ -375,7 +376,8 @@ func (s Service) CreateCorrection(ctx context.Context, tx pgx.Tx, brand string, 
 			return out, e
 		}
 	}
-	_, e = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: a.ID, Action: "draw.correct", ResourceType: "draw_correction", ResourceID: id, Reason: strings.TrimSpace(in.Reason), RequestID: meta.RequestID, IP: meta.IP, Before: c, After: map[string]any{"draw_result_id": newDraw, "result": result, "previous_draw_result_id": drawID, "previous_job_id": c.CurrentJobID, "policy_version": pv, "mode": mode}})
+	var auditID string
+	auditID, e = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: a.ID, Action: "draw.correct", ResourceType: "draw_correction", ResourceID: id, Reason: strings.TrimSpace(in.Reason), RequestID: meta.RequestID, IP: meta.IP, Before: c, After: map[string]any{"draw_result_id": newDraw, "result": result, "previous_draw_result_id": drawID, "previous_job_id": c.CurrentJobID, "policy_version": pv, "mode": mode}})
 	if e != nil {
 		return out, e
 	}
@@ -394,6 +396,11 @@ func (s Service) CreateCorrection(ctx context.Context, tx pgx.Tx, brand string, 
 	}
 	if e != nil {
 		return out, e
+	}
+	if !c.RequiresResettlement {
+		if e = drawnotice.Append(ctx, tx, brand, period, newDraw, auditID); e != nil {
+			return out, e
+		}
 	}
 	out, e = scanCorrection(tx.QueryRow(ctx, `SELECT `+correctionFields+correctionCounts+correctionJoin+` WHERE c.id=$1`, id), true)
 	if e != nil {

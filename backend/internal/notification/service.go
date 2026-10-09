@@ -15,6 +15,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
+	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -29,8 +30,20 @@ var uuid = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-
 
 type Service struct{ DB *pgxpool.Pool }
 type Payload struct {
-	ResourceID string  `json:"resource_id"`
-	Points     *string `json:"points"`
+	ResourceID string                   `json:"resource_id"`
+	Points     *string                  `json:"points"`
+	Draw       *DrawNotificationPayload `json:"draw,omitempty"`
+}
+
+// DrawNotificationPayload is an immutable published result, not the current
+// pointer, an order outcome, a prize credit or an authorization to settle.
+type DrawNotificationPayload struct {
+	GameID         string     `json:"game_id"`
+	PeriodID       string     `json:"period_id"`
+	PeriodNo       string     `json:"period_no"`
+	Result         rules.Draw `json:"result"`
+	DrawnAt        time.Time  `json:"drawn_at"`
+	PreviousDrawID *string    `json:"previous_draw_id"`
 }
 type Item struct {
 	ID              string     `json:"id"`
@@ -238,6 +251,9 @@ func positive(v *string) bool {
 	return e == nil && n > 0 && strconv.FormatInt(n, 10) == *v
 }
 func validateEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate string, raw []byte) (string, Payload, error) {
+	if kind == "draw.result.published" || kind == "draw.result.corrected" {
+		return validateDrawEvent(ctx, tx, brand, kind, aggregate, raw)
+	}
 	if strings.HasPrefix(kind, "withdrawal.order.") {
 		return validateWithdrawalEvent(ctx, tx, brand, kind, aggregate, raw)
 	}

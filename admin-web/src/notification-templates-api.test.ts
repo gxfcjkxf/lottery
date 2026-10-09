@@ -50,7 +50,7 @@ describe("notification templates API", () => {
     expect(init?.credentials).toBe("same-origin");
     expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
     expect(new Headers(init?.headers).get("Accept")).toBe("application/json");
-    expect(notificationTemplateKeys).toHaveLength(20);
+    expect(notificationTemplateKeys).toHaveLength(22);
     expect(notificationTemplateKeys).toEqual([
       "member.joined", "recharge.confirmed", "bet.order.placed", "bet.order.cancelled",
       "bet.order.judged_cancelled", "bet.order.abnormal", "bet.order.won", "bet.order.prize_reversed",
@@ -58,11 +58,40 @@ describe("notification templates API", () => {
       "commission.adjusted", "commission.corrected", "commission.paid",
       "withdrawal.order.reviewing", "withdrawal.order.processing", "withdrawal.order.paid",
       "withdrawal.order.rejected", "withdrawal.order.failed", "withdrawal.order.cancelled",
+      "draw.result.published", "draw.result.corrected",
     ]);
     await expect(createNotificationTemplatesApi(vi.fn<typeof fetch>().mockResolvedValue(response({ items: [template({ brand_id: accountId })] }))).list(brand))
       .rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     await expect(createNotificationTemplatesApi(vi.fn<typeof fetch>().mockResolvedValue(response({ items: [template(), template()] }))).list(brand))
       .rejects.toBeInstanceOf(AdminApiError);
+  });
+
+  it("allows editable draw copy with only the existing placeholders and requires the period reference", async () => {
+    const drawContent: NotificationTemplateContent = {
+      en: { title: "Historical result", body: "The saved result for {resource_id} is available." },
+      "zh-CN": { title: "历史开奖结果", body: "期号 {resource_id} 的保存结果已提供。" },
+    };
+    const keys = ["draw.result.published", "draw.result.corrected"] as const;
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+      const key = String(input).split("/").at(-1) as typeof keys[number];
+      return response(template({ key, version: 2, content: drawContent, audit_log_id: auditId }));
+    });
+    const api = createNotificationTemplatesApi(fetchImpl);
+    for (const [index, key] of keys.entries()) {
+      await expect(api.put(key, brand, { version: 1, content: drawContent, reason: "draw copy review" }, `draw-template-00${index + 1}`))
+        .resolves.toMatchObject({ key, content: drawContent });
+    }
+    const invalid: NotificationTemplateContent[] = [
+      { ...drawContent, en: { title: "Result {points}", body: drawContent.en.body } },
+      { ...drawContent, "zh-CN": { title: "结果", body: "保存结果已提供。" } },
+      { ...drawContent, en: { title: "Result", body: "Result {drawn_at}." } },
+      { ...drawContent, en: { title: "Result", body: "Result {resource_id} {points}." } },
+    ];
+    for (const content of invalid) {
+      await expect(api.put("draw.result.published", brand, { version: 1, content, reason: "draw copy review" }, "draw-template-invalid"))
+        .rejects.toMatchObject({ status: 400, code: "INVALID_INPUT" });
+    }
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("reads history using its template route and validates first and later revision audit rules", async () => {

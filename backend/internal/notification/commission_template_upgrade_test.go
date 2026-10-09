@@ -36,12 +36,12 @@ func TestCommissionDefaultsReplaceExistingFunctionOIDAndInitializeNewBrands(t *t
 		t.Fatal(err)
 	}
 	var defaultsAfter, priorRowsAfter, functionOIDAfter string
-	if err := db.QueryRow(ctx, `SELECT (notification_template_defaults()-'commission.paid'-'commission.adjusted'-'commission.corrected'-'reward.order.granted'-'reward.order.revocation_pending'-'reward.order.revoked')::text`).Scan(&defaultsAfter); err != nil || defaultsAfter != defaultsBefore {
+	if err := db.QueryRow(ctx, `SELECT (notification_template_defaults()-'commission.paid'-'commission.adjusted'-'commission.corrected'-'reward.order.granted'-'reward.order.revocation_pending'-'reward.order.revoked'-'draw.result.published'-'draw.result.corrected')::text`).Scan(&defaultsAfter); err != nil || defaultsAfter != defaultsBefore {
 		t.Fatalf("0052 changed one of the previous fourteen defaults: before=%s after=%s err=%v", defaultsBefore, defaultsAfter, err)
 	}
 	if err := db.QueryRow(ctx, `SELECT jsonb_build_object(
-	'templates',(SELECT jsonb_agg(to_jsonb(t) ORDER BY brand_id,template_key) FROM notification_templates t WHERE brand_id=ANY($1::uuid[]) AND template_key NOT LIKE 'commission.%' AND template_key NOT LIKE 'reward.order.%'),
-	 'revisions',(SELECT jsonb_agg(to_jsonb(r) ORDER BY brand_id,template_key,version) FROM notification_template_revisions r WHERE brand_id=ANY($1::uuid[]) AND template_key NOT LIKE 'commission.%' AND template_key NOT LIKE 'reward.order.%'))::text`, []string{brand, preBrand}).Scan(&priorRowsAfter); err != nil || priorRowsAfter != priorRowsBefore {
+	'templates',(SELECT jsonb_agg(to_jsonb(t) ORDER BY brand_id,template_key) FROM notification_templates t WHERE brand_id=ANY($1::uuid[]) AND template_key NOT LIKE 'commission.%' AND template_key NOT LIKE 'reward.order.%' AND template_key NOT IN('draw.result.published','draw.result.corrected')),
+	 'revisions',(SELECT jsonb_agg(to_jsonb(r) ORDER BY brand_id,template_key,version) FROM notification_template_revisions r WHERE brand_id=ANY($1::uuid[]) AND template_key NOT LIKE 'commission.%' AND template_key NOT LIKE 'reward.order.%' AND template_key NOT IN('draw.result.published','draw.result.corrected')))::text`, []string{brand, preBrand}).Scan(&priorRowsAfter); err != nil || priorRowsAfter != priorRowsBefore {
 		t.Fatalf("0052 rewrote existing template content or revision history: err=%v", err)
 	}
 	if err := db.QueryRow(ctx, `SELECT to_regprocedure('notification_template_defaults()')::oid::text`).Scan(&functionOIDAfter); err != nil || functionOIDAfter != functionOIDBefore {
@@ -49,7 +49,7 @@ func TestCommissionDefaultsReplaceExistingFunctionOIDAndInitializeNewBrands(t *t
 	}
 	for _, id := range []string{brand, preBrand} {
 		var count, revisions int
-		if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_templates WHERE brand_id=$1`, id).Scan(&count); err != nil || count != 20 {
+		if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_templates WHERE brand_id=$1`, id).Scan(&count); err != nil || count != 22 {
 			t.Fatalf("existing brand %s templates=%d, err=%v", id, count, err)
 		}
 		if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_template_revisions WHERE brand_id=$1 AND template_key LIKE 'commission.%' AND version=1`, id).Scan(&revisions); err != nil || revisions != 3 {
@@ -62,10 +62,10 @@ func TestCommissionDefaultsReplaceExistingFunctionOIDAndInitializeNewBrands(t *t
 		t.Fatal(err)
 	}
 	var templates, revisions int
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_templates WHERE brand_id=$1`, postBrand).Scan(&templates); err != nil || templates != 20 {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_templates WHERE brand_id=$1`, postBrand).Scan(&templates); err != nil || templates != 22 {
 		t.Fatalf("new brand initialized with %d templates, err=%v", templates, err)
 	}
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_template_revisions WHERE brand_id=$1 AND version=1`, postBrand).Scan(&revisions); err != nil || revisions != 20 {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM notification_template_revisions WHERE brand_id=$1 AND version=1`, postBrand).Scan(&revisions); err != nil || revisions != 22 {
 		t.Fatalf("new brand initialized with %d default revisions, err=%v", revisions, err)
 	}
 }

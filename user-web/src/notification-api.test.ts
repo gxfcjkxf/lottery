@@ -64,6 +64,71 @@ describe("user notification API", () => {
     expect(headers.get("Cookie")).toBeNull();
   });
 
+  it("parses published and corrected draws with exact snapshots and bounded historical results", async () => {
+    const drawSnapshot = {
+      en: { title: "Result {resource_id}", body: "Saved result for {resource_id}." },
+      "zh-CN": { title: "结果 {resource_id}", body: "保存的结果：{resource_id}。" },
+    };
+    const published = {
+      ...joined, event_type: "draw.result.published", template_key: "draw.result.published", template_version: 1,
+      content: drawSnapshot,
+      payload: { resource_id: resourceId, points: null, draw: {
+        game_id: brandId, period_id: memberId, period_no: "20261009001",
+        result: { regular: [3, 12, 28], special: [7], digits: [] },
+        drawn_at: createdAt, previous_draw_id: null,
+      } },
+    };
+    const corrected = {
+      ...published, id: "cd333333-3333-4333-8333-333333333333", event_type: "draw.result.corrected", template_key: "draw.result.corrected",
+      payload: { ...published.payload, draw: { ...published.payload.draw, previous_draw_id: "55555555-5555-4555-8555-555555555555", result: { regular: [], special: [], digits: [0, 1, 0] } } },
+    };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(ok(page({ items: [published, corrected] })));
+    await expect(createNotificationApi({ fetch: fetcher }).list()).resolves.toMatchObject({
+      items: [{ payload: published.payload, content: drawSnapshot }, { payload: corrected.payload }],
+    });
+  });
+
+  it("rejects malformed draw payload shapes, versions, snapshots, and results", async () => {
+    const base = {
+      ...joined, event_type: "draw.result.published", template_key: "draw.result.published", template_version: 1,
+      content: {
+        en: { title: "Result", body: "Result {resource_id}." },
+        "zh-CN": { title: "结果", body: "结果 {resource_id}。" },
+      },
+      payload: { resource_id: resourceId, points: null, draw: {
+        game_id: brandId, period_id: memberId, period_no: "period-01",
+        result: { regular: [1, 2], special: [], digits: [] }, drawn_at: createdAt, previous_draw_id: null,
+      } },
+    };
+    const invalid: unknown[] = [
+      { ...base, template_version: 2, content: null },
+      { ...base, content: { ...base.content, en: { title: "{points}", body: "Result {resource_id}." } } },
+      { ...base, content: { ...base.content, "zh-CN": { title: "结果", body: "结果。" } } },
+      { ...base, payload: { ...base.payload, private: true } },
+      { ...base, payload: { ...base.payload, points: "0" } },
+      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, model: "M_SELECT_N" } } },
+      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, period_no: " ".repeat(2) } } },
+      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, period_no: "界".repeat(27) } } },
+      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, result: { regular: [], special: [], digits: [] } } } },
+      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, result: { regular: [1.5], special: [], digits: [] } } } },
+      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, result: { regular: [1_000_001], special: [], digits: [] } } } },
+      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, result: { regular: [], special: [], digits: [10] } } } },
+      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, result: { regular: Array(11).fill(1), special: [], digits: [] } } } },
+      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, result: { regular: [1], special: [], digits: [2] } } } },
+      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, result: { regular: [1], extra: [], special: [], digits: [] } } } },
+    ];
+    const corrected = { ...base, event_type: "draw.result.corrected", template_key: "draw.result.corrected" };
+    invalid.push(
+      { ...corrected, payload: { ...corrected.payload, draw: { ...corrected.payload.draw, previous_draw_id: null } } },
+      { ...corrected, payload: { ...corrected.payload, draw: { ...corrected.payload.draw, previous_draw_id: resourceId } } },
+      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, previous_draw_id: memberId } } },
+    );
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => ok(page({ items: [invalid.shift()] })));
+    const api = createNotificationApi({ fetch: fetcher });
+    const invalidCount = invalid.length;
+    for (let i = 0; i < invalidCount; i++) await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
+  });
+
   it("normalizes omitted content on legacy v1 rows to null", async () => {
     const legacyRow: Record<string, unknown> = { ...joined };
     delete legacyRow.content;

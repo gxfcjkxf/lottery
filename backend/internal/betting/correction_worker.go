@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
+	"github.com/gxfcjkxf/lottery/backend/internal/drawnotice"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/jackc/pgx/v5"
@@ -253,7 +254,11 @@ func (s Service) publishCorrection(ctx context.Context, id, brand, period string
 	if err = correctionEvent(ctx, tx, c, "draw.correction.published"); err != nil {
 		return
 	}
-	_, err = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "system", Action: "draw.correction.publish", ResourceType: "draw_correction", ResourceID: id, Reason: "all original targets reversed or excluded", RequestID: "correction:" + id, After: map[string]any{"draw_result_id": c.DrawResultID, "new_job_id": newID, "generation": gen + 1, "policy_version": c.PolicyVersion}})
+	var auditID string
+	auditID, err = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "system", Action: "draw.correction.publish", ResourceType: "draw_correction", ResourceID: id, Reason: "all original targets reversed or excluded", RequestID: "correction:" + id, After: map[string]any{"draw_result_id": c.DrawResultID, "new_job_id": newID, "generation": gen + 1, "policy_version": c.PolicyVersion}})
+	if err == nil {
+		err = drawnotice.Append(ctx, tx, brand, period, c.DrawResultID, auditID)
+	}
 	if err == nil {
 		err = tx.Commit(ctx)
 	}

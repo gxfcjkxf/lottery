@@ -15,7 +15,8 @@ const amount = ref("NonnegativeInt64String");
 const positiveAmount = ref("PositiveInt64String");
 const notificationTemplateKeys = [
   "bet.order.abnormal", "bet.order.cancelled", "bet.order.judged_cancelled", "bet.order.placed",
-  "bet.order.prize_reversed", "bet.order.won", "commission.adjusted", "commission.corrected", "commission.paid", "member.joined", "recharge.confirmed",
+  "bet.order.prize_reversed", "bet.order.won", "commission.adjusted", "commission.corrected", "commission.paid",
+  "draw.result.corrected", "draw.result.published", "member.joined", "recharge.confirmed",
   "reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked",
   "withdrawal.order.cancelled", "withdrawal.order.failed", "withdrawal.order.paid",
   "withdrawal.order.processing", "withdrawal.order.rejected", "withdrawal.order.reviewing",
@@ -33,7 +34,7 @@ const notificationTemplateContent = obj({
   en: ref("LotteryNotificationTemplateCopy"),
   "zh-CN": ref("LotteryNotificationTemplateCopy"),
 }, ["en", "zh-CN"]);
-notificationTemplateContent.description = "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; nineteen event templates require {points} in each language body, while member.joined forbids {points} in either body or title. Placeholder presence and UTF-8 byte limits are enforced by the handler. Withdrawal events describe historical internal points states, never proof of an external transfer.";
+notificationTemplateContent.description = "Exactly English and Simplified Chinese copies. Only {points} and {resource_id} placeholders are supported; nineteen event templates require {points} in each language body, while member.joined forbids {points} in either body or title and draw result templates require {resource_id} in both bodies and forbid {points}. Placeholder presence and UTF-8 byte limits are enforced by the handler. Draw result notices identify historical results and are not guarantees of a win or prize payment; the actual result is available in the user app and users cannot edit the notice. Withdrawal events describe historical internal points states, never proof of an external transfer.";
 const notificationTemplatePairRules = notificationTemplateKeys.map((key) => ({
   properties: { event_type: { const: key }, template_key: { const: key } },
 }));
@@ -182,7 +183,8 @@ const CorrectionTarget = obj({ order_id: uuid, member_id: uuid, state: str, vers
 const NotificationDelivery = obj({ event_id: uuid, brand_id: uuid, status: str, attempt_count: int, last_error: nullable(str), next_attempt_at: dateTime, sent_at: nullable(dateTime) });
 const withdrawalNotificationKeys = notificationTemplateKeys.filter(key => key.startsWith("withdrawal.order."));
 const rewardNotificationKeys = notificationTemplateKeys.filter(key => key.startsWith("reward.order."));
-const positiveNotificationKeys = notificationTemplateKeys.filter(key => key !== "member.joined" && key !== "commission.adjusted" && key !== "commission.corrected");
+const drawNotificationKeys = ["draw.result.published", "draw.result.corrected"];
+const positiveNotificationKeys = notificationTemplateKeys.filter(key => key !== "member.joined" && key !== "commission.adjusted" && key !== "commission.corrected" && !drawNotificationKeys.includes(key));
 const int64Upper = "9223372036854775807";
 const int64Alternatives = (limit) => {
   const alternatives = [`[1-9][0-9]{0,${limit.length - 2}}`, limit];
@@ -198,6 +200,26 @@ const positiveInt64Alternatives = int64Alternatives(int64Upper);
 const negativeInt64Alternatives = int64Alternatives("9223372036854775808");
 const withdrawalNotificationPoints = { type:"string", pattern:`^(?:${positiveInt64Alternatives.join("|")})$`, description:"Canonical positive int64 points; at most 9223372036854775807." };
 const adjustedCommissionPoints = { type:"string", pattern:`^(?:${positiveInt64Alternatives.join("|")}|-(?:${negativeInt64Alternatives.join("|")}))$`, description:"Canonical signed nonzero int64 points; at most 9223372036854775807 or as low as -9223372036854775808." };
+const drawNumber = { type:"integer", minimum:0, maximum:1_000_000 };
+const drawNumbers = { type:"array", maxItems:10, items:drawNumber };
+const drawDigits = { type:"array", maxItems:10, items:{ type:"integer", minimum:0, maximum:9 } };
+const drawResult = {
+  ...obj({ regular:drawNumbers, special:drawNumbers, digits:drawDigits }),
+  allOf:[
+    { anyOf:[{ properties:{ regular:{ minItems:1 } } },{ properties:{ special:{ minItems:1 } } },{ properties:{ digits:{ minItems:1 } } }] },
+    { if:{ properties:{ digits:{ minItems:1 } } }, then:{ properties:{ regular:{ maxItems:0 }, special:{ maxItems:0 } } } },
+  ],
+};
+const drawNoticePayload = previousDrawID => obj({
+  resource_id:uuid,
+  points:{ type:"null" },
+  draw:obj({
+    game_id:uuid, period_id:uuid, period_no:{ type:"string", minLength:1, maxLength:80, description:"Nonempty period identifier, limited to 80 characters." }, result:drawResult, drawn_at:dateTime,
+    previous_draw_id:previousDrawID,
+  }),
+});
+const publishedDrawPayload = drawNoticePayload({ type:"null" });
+const correctedDrawPayload = drawNoticePayload(uuid);
 const SettlementJob = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: uuid, draw_result_id: uuid, period_version: int, policy_version: int, mode: str, state: str, version: int, target_count: int, created_by: uuid, approved_by: nullable(uuid), reason, created_at: dateTime, completed_at: nullable(dateTime), last_error_code: nullable(str), pending_count: int, ready_count: int, paid_count: int, excluded_count: int, failed_count: int, prize_points: amount, paid_points: amount, can_retry: bool, generation: int, previous_job_id: nullable(uuid), correction_id: nullable(uuid), current: bool });
 const SettlementPreview = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: uuid, order_id: uuid, order_version: int, order_status: str, period_version: int, period_status: str, draw_result_id: uuid, definition_hash: str, draw_hash: str, draw: ref("LotteryRuleDraw"), outcome: str, error_code: nullable(str), calculation: nullable(obj({ won: bool, combination_count: int, multiplier: amount, bet_points: amount, prize_points: amount, raw_prize_points: str, capped_prize_points: str })), created_by: uuid, created_at: dateTime, reason, audit_log_id: uuid, current: bool, applied: bool });
 const Correction = obj({ id: uuid, brand_id: uuid, game_id: uuid, period_id: uuid, previous_draw_result_id: uuid, draw_result_id: uuid, result: ref("LotteryRuleDraw"), period_version: int, previous_job_id: nullable(uuid), new_job_id: nullable(uuid), policy_version: nullable(int), mode: nullable(str), state: str, version: int, target_count: int, created_by: uuid, reason, created_at: dateTime, completed_at: nullable(dateTime), last_error_code: nullable(str), pending_count: int, reversed_count: int, unchanged_count: int, excluded_count: int, failed_count: int, reverse_points: amount, reversed_points: amount, can_retry: bool, new_job_state: nullable(str), new_job_version: nullable(int), new_job_error_code: nullable(str) });
@@ -209,20 +231,23 @@ const Notification = {
     template_key: notificationTemplateKey,
     template_version: notificationTemplateVersion,
     content: nullable(ref("LotteryNotificationTemplateContent")),
-    payload: obj({ resource_id: uuid, points: nullable(str) }), created_at: dateTime, read_at: nullable(dateTime),
+    payload: obj({ resource_id: uuid, points: nullable(str), draw:{ type:"object" } }, ["resource_id", "points"]), created_at: dateTime, read_at: nullable(dateTime),
   }),
   allOf: [
     { oneOf: notificationTemplatePairRules },
-    { if:{properties:{event_type:{enum:[...withdrawalNotificationKeys,"commission.paid","commission.adjusted","commission.corrected",...rewardNotificationKeys]}}}, then:{properties:{content:ref("LotteryNotificationTemplateContent")}} },
+    { if:{properties:{event_type:{enum:[...withdrawalNotificationKeys,"commission.paid","commission.adjusted","commission.corrected",...rewardNotificationKeys,...drawNotificationKeys]}}}, then:{properties:{content:ref("LotteryNotificationTemplateContent")}} },
     { if:{properties:{event_type:{enum:withdrawalNotificationKeys}}}, then:{properties:{payload:obj({resource_id:uuid,points:withdrawalNotificationPoints})}} },
     { if:{properties:{event_type:{enum:positiveNotificationKeys}}}, then:{properties:{payload:obj({resource_id:uuid,points:withdrawalNotificationPoints})}} },
     { if:{properties:{event_type:{enum:["commission.adjusted","commission.corrected"]}}}, then:{properties:{payload:obj({resource_id:uuid,points:adjustedCommissionPoints})}} },
+    { if:{not:{properties:{event_type:{enum:drawNotificationKeys}},required:["event_type"]}}, then:{properties:{payload:{not:{required:["draw"]}}}} },
+    { if:{properties:{event_type:{const:"draw.result.published"}}}, then:{properties:{payload:publishedDrawPayload}} },
+    { if:{properties:{event_type:{const:"draw.result.corrected"}}}, then:{properties:{payload:correctedDrawPayload}} },
     { oneOf: [
       { properties: { template_version: { const: 1 }, content: nullable(ref("LotteryNotificationTemplateContent")) } },
       { properties: { template_version: { minimum: 2 }, content: ref("LotteryNotificationTemplateContent") } },
     ] },
   ],
-  description: "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy non-withdrawal, non-commission, non-reward version 1 rows may have null content; withdrawal events, commission events, reward events and version 2 and later always include their copied content. Withdrawal, reward and commission.paid points are positive int64; commission.adjusted and commission.corrected points are signed nonzero int64. Reward events retain a state-specific historical and nonfinancial disclaimer that template editing cannot remove. Updating a template never rewrites existing notifications.",
+  description: "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy non-withdrawal, non-commission, non-reward version 1 rows may have null content; withdrawal events, commission events, reward events, draw result events and version 2 and later always include their copied content. Withdrawal, reward and commission.paid points are positive int64; commission.adjusted and commission.corrected points are signed nonzero int64. Draw result payloads are closed historical facts; published events have no previous result and corrected events identify the prior result. Reward events retain a state-specific historical and nonfinancial disclaimer that template editing cannot remove. Updating a template never rewrites existing notifications.",
 };
 
 export const schemas = {
@@ -281,6 +306,12 @@ export const schemas = {
   LotteryPointAllocation: Allocation,
   LotterySettlementJob: SettlementJob, LotterySettlementPreview: SettlementPreview,
   LotteryCorrection: Correction, LotteryPeriodCancellation: CancelJob, LotteryNotification: Notification,
+  LotteryNotificationDrawPublished: {
+    allOf: [ref("LotteryNotification"), { properties: { event_type: { const: "draw.result.published" } } }],
+  },
+  LotteryNotificationDrawCorrected: {
+    allOf: [ref("LotteryNotification"), { properties: { event_type: { const: "draw.result.corrected" } } }],
+  },
 };
 
 export const operations = [

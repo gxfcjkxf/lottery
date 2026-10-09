@@ -54,7 +54,7 @@ func TestCommissionCorrectionNotification0060UpgradePreserves0059History(t *test
 	}
 	if defaultsAfter != oldDefaults {
 		var beforeWithoutNew, afterWithoutNew string
-		if err := db.QueryRow(ctx, `SELECT (notification_template_defaults()-'commission.corrected')::text`).Scan(&afterWithoutNew); err != nil {
+		if err := db.QueryRow(ctx, `SELECT (notification_template_defaults()-'commission.corrected'-'draw.result.published'-'draw.result.corrected')::text`).Scan(&afterWithoutNew); err != nil {
 			t.Fatal(err)
 		}
 		beforeWithoutNew = oldDefaults
@@ -63,7 +63,7 @@ func TestCommissionCorrectionNotification0060UpgradePreserves0059History(t *test
 		}
 	}
 	for _, id := range oldBrands {
-		rewardUpgradeCounts(t, db, id, 20, 20)
+		rewardUpgradeCounts(t, db, id, 22, 22)
 		var addedTemplates, addedRevisions int
 		if err := db.QueryRow(ctx, `SELECT
  (SELECT count(*) FROM notification_templates WHERE brand_id=$1 AND template_key='commission.corrected' AND version=1 AND content=notification_template_defaults()->'commission.corrected'),
@@ -76,7 +76,7 @@ func TestCommissionCorrectionNotification0060UpgradePreserves0059History(t *test
 	if _, err := db.Exec(ctx, `INSERT INTO brands(id,code,name,status) VALUES($1,$2,'After 0060','paused')`, newBrand, "after_0060_"+newBrand[:8]); err != nil {
 		t.Fatal(err)
 	}
-	rewardUpgradeCounts(t, db, newBrand, 20, 20)
+	rewardUpgradeCounts(t, db, newBrand, 22, 22)
 	var events, deliveries, inbox int
 	if err := db.QueryRow(ctx, `SELECT (SELECT count(*) FROM outbox_events),(SELECT count(*) FROM notification_deliveries),(SELECT count(*) FROM notifications)`).
 		Scan(&events, &deliveries, &inbox); err != nil || events != oldOutbox || deliveries != oldDeliveries || inbox != oldInbox {
@@ -124,7 +124,7 @@ func correctionNotificationUpgradeFingerprintValue(t *testing.T, db *pgxpool.Poo
 	t.Helper()
 	filter := ""
 	if table == "notification_templates" || table == "notification_template_revisions" {
-		filter = " WHERE template_key<>'commission.corrected'"
+		filter = " WHERE template_key NOT IN('commission.corrected','draw.result.published','draw.result.corrected')"
 	}
 	query := fmt.Sprintf(`SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text),'[]'::jsonb)::text FROM %s r%s`, pgx.Identifier{table}.Sanitize(), filter)
 	var value string

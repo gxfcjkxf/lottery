@@ -33,6 +33,8 @@ var templateKeys = [...]string{
 	"commission.adjusted",
 	"commission.corrected",
 	"commission.paid",
+	"draw.result.corrected",
+	"draw.result.published",
 	"member.joined",
 	"recharge.confirmed",
 	"reward.order.granted",
@@ -111,7 +113,12 @@ func ValidateContent(key string, content Content) error {
 	}
 	enPoints := strings.Count(content.En.Body, "{points}")
 	zhPoints := strings.Count(content.ZhCN.Body, "{points}")
-	if key == "member.joined" {
+	if strings.HasPrefix(key, "draw.result.") {
+		if enPoints != 0 || zhPoints != 0 || strings.Contains(content.En.Title, "{points}") || strings.Contains(content.ZhCN.Title, "{points}") ||
+			!strings.Contains(content.En.Body, "{resource_id}") || !strings.Contains(content.ZhCN.Body, "{resource_id}") {
+			return ErrInvalid
+		}
+	} else if key == "member.joined" {
 		if enPoints != 0 || zhPoints != 0 || strings.Contains(content.En.Title, "{points}") || strings.Contains(content.ZhCN.Title, "{points}") {
 			return ErrInvalid
 		}

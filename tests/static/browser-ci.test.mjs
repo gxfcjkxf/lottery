@@ -9,7 +9,7 @@ test('general browser CI covers two isolated shards for each viewport without by
   assert.match(job, /shard: \[1, 2\]/);
   assert.match(job, /services:\n      postgres:/);
   assert.match(job, /APP_ENV: test/);
-  assert.match(job, /pnpm test:e2e --project=\$\{\{ matrix\.project \}\} --grep-invert='real report archives recover a lost committed receipt and keep old versions immutable\|real automatic archive tasks recover the original retry receipt after worker completion\|real archive policy activation recovers the original receipt after a later configuration change\|real attribution reports preserve saved agent scope and export unique order totals' --shard=\$\{\{ matrix\.shard \}\}\/2 --workers=1 --retries=0\s*$/m);
+  assert.match(job, /pnpm test:e2e --project=\$\{\{ matrix\.project \}\} --grep-invert='real report archives recover a lost committed receipt and keep old versions immutable\|real automatic archive tasks recover the original retry receipt after worker completion\|real archive policy activation recovers the original receipt after a later configuration change\|real attribution reports preserve saved agent scope and export unique order totals\|real Harbor draw notices publish and correct immutable facts on desktop and mobile' --shard=\$\{\{ matrix\.shard \}\}\/2 --workers=1 --retries=0\s*$/m);
   assert.match(job, /name: browser-failure-traces-\$\{\{ matrix\.project \}\}-\$\{\{ matrix\.shard \}\}/);
   assert.doesNotMatch(job, /continue-on-error|DELETE FROM auth_rate_limits|TRUNCATE|X-Forwarded-For|disable.*limit/i);
 });

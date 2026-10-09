@@ -1,5 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
+import {execFileSync} from "node:child_process";
 import {readFileSync} from "node:fs";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
@@ -21,6 +22,7 @@ const notificationKeys=[
   "withdrawal.order.rejected","withdrawal.order.failed","withdrawal.order.cancelled",
   "reward.order.granted","reward.order.revocation_pending","reward.order.revoked",
   "commission.paid","commission.adjusted","commission.corrected",
+  "draw.result.published","draw.result.corrected",
 ];
 const content=(title="Notice",body="Update {points} points.")=>({
   en:{title,body},"zh-CN":{title:"通知",body:"更新 {points} 积分。"},
@@ -58,7 +60,7 @@ test("all notification template components compile and routes match the implemen
   assert.deepEqual(schemas.LotteryNotificationTemplate.properties.key.enum,[...notificationKeys].sort());
 });
 
-test("the actual backend JSON preserves the previous defaults and contains exactly twenty keys",()=>{
+test("the actual backend JSON preserves the previous defaults and contains exactly twenty-two keys",()=>{
   assert.deepEqual(Object.keys(defaults).sort(),[...notificationKeys].sort());
   const legacy={
     "member.joined":{en:{title:"Welcome",body:"Your membership is ready. Welcome aboard."},"zh-CN":{title:"欢迎",body:"您的会员账户已准备就绪，欢迎加入。"}},
@@ -83,6 +85,20 @@ test("the actual backend JSON preserves the previous defaults and contains exact
     en:{title:"Commission correction recorded",body:"Historical record: a commission correction of {points} points was posted to your commission available balance. Positive points record a past additional credit; negative points record a past recovery. This is not your current balance, new income or an external payment. Check your current wallet; this record is retained."},
     "zh-CN":{title:"佣金更正记录",body:"历史记录：佣金可用积分曾发生 {points} 积分更正。正数表示过去的补发，负数表示过去的追回；不代表当前余额、新收入或外部付款。请查看当前钱包；此记录会保留。"},
   });
+  for(const key of ["draw.result.published","draw.result.corrected"]){
+    const {en,"zh-CN":zh}=defaults[key];
+    assert.match(en.body,/Historical result ID \{resource_id\}/);
+    assert.match(en.body,/not a guarantee of a win or prize payment/i);
+    assert.match(en.body,/users cannot edit this notice/i);
+    assert.match(zh.body,/历史开奖结果 ID：\{resource_id\}/);
+    assert.match(zh.body,/不代表中奖或派奖保证/);
+    assert.match(zh.body,/用户不能编辑此通知/);
+    for(const locale of [en,zh]){
+      assert.doesNotMatch(locale.title,/\{points\}/);
+      assert.doesNotMatch(locale.body,/\{points\}/);
+      assert.match(locale.body,/\{resource_id\}/);
+    }
+  }
   const states={reviewing:"审核中",processing:"提现中",paid:"已提现",rejected:"已驳回",failed:"失败",cancelled:"已取消"};
   for(const [state,stateZh] of Object.entries(states)){
     const entry=defaults[`withdrawal.order.${state}`];
@@ -144,6 +160,26 @@ test("actual backend JSON and SQL 0056 each contain three reward defaults with t
     assert.match(zh.body,/没有积分变动/);
     assert.match(zh.body,/不会自动重试、解冻或扣除/);
   }
+});
+
+test("SQL 0069 adds only the two draw defaults, keeps validator OID and extends event keys",()=>{
+  const migration=readFileSync(new URL("../../backend/migrations/0069_draw_notification_templates.up.sql",import.meta.url),"utf8");
+  const literal=/defaults\s*:=\s*notification_template_defaults\(\)\s*\|\|\s*'((?:[^']|'')*)'::jsonb/.exec(migration);
+  assert.ok(literal,"SQL 0069 must extend the existing defaults with a JSON literal");
+  const sqlDefaults=JSON.parse(literal[1].replaceAll("''","'"));
+  assert.deepEqual(sqlDefaults,{"draw.result.published":defaults["draw.result.published"],"draw.result.corrected":defaults["draw.result.corrected"]});
+  assert.match(migration,/CREATE OR REPLACE FUNCTION %I\.notification_template_defaults\(\)/);
+  assert.match(migration,/CREATE OR REPLACE FUNCTION valid_notification_template_content\(/);
+  assert.match(migration,/p\.proname IN\('notification_template_defaults','valid_notification_template_content'\)/);
+  assert.match(migration,/ALTER FUNCTION %s SET search_path TO pg_catalog, %I, pg_temp/);
+  assert.match(migration,/OR title ~ '\[\[:cntrl:\]<>\]' OR replace\(replace\(body,chr\(10\),''\),chr\(9\),''\) ~ '\[\[:cntrl:\]<>\]'/);
+  assert.match(migration,/position\('\{resource_id\}' IN body\)=0/);
+  assert.match(migration,/position\('\{points\}' IN title\|\|body\)>0/);
+  assert.match(migration,/INSERT INTO notification_templates[\s\S]*?WHERE d\.key IN\('draw\.result\.published','draw\.result\.corrected'\)/);
+  assert.match(migration,/INSERT INTO notification_template_revisions[\s\S]*?WHERE template_key IN\('draw\.result\.published','draw\.result\.corrected'\)/);
+  assert.match(migration,/ALTER TABLE notifications DROP CONSTRAINT notifications_event_type_check/);
+  assert.ok(migration.includes("'draw.result.published','draw.result.corrected'));"));
+  assert.doesNotMatch(migration,/CREATE OR REPLACE FUNCTION enqueue_in_app_event/);
 });
 
 test("template and revision schemas enforce closed structures and legacy version-one audit nullability",()=>{
@@ -221,6 +257,57 @@ test("commission notifications expose only resource and signed point facts",()=>
   assert.ok(!check({...adjusted,payload:{...adjusted.payload,created_by:id}}));
   assert.ok(!check({...corrected,payload:{...corrected.payload,target_id:id}}));
   for (const row of [paid, adjusted, corrected]) assert.ok(!check({...row,template_version:1,content:null}), `${row.event_type} is never a legacy snapshotless record`);
+});
+
+test("draw notifications have closed typed payloads and require immutable content",()=>{
+  const check=validate("LotteryNotification");
+  const at="2026-10-07T00:00:00Z";
+  const draw={game_id:id,period_id:id,period_no:"20261007001",result:{regular:[0,12,999999,1000000],special:[0],digits:[]},drawn_at:at,previous_draw_id:null};
+  const published={id,brand_id:id,member_id:id,event_type:"draw.result.published",template_key:"draw.result.published",template_version:1,content:defaults["draw.result.published"],payload:{resource_id:id,points:null,draw},created_at:at,read_at:null};
+  assert.ok(check(published),JSON.stringify(check.errors));
+  assert.ok(!check({...published,content:null}),"draw v1 requires a content snapshot");
+  assert.ok(!check({...published,payload:{...published.payload,points:"0"}}));
+  assert.ok(!check({...published,payload:{...published.payload,private:"value"}}));
+  assert.ok(!check({...published,payload:{...published.payload,draw:{...draw,unknown:true}}}));
+  assert.ok(!check({...published,payload:{...published.payload,draw:{...draw,period_no:""}}}));
+  assert.ok(!check({...published,payload:{...published.payload,draw:{...draw,period_no:"x".repeat(81)}}}));
+  assert.ok(!check({...published,payload:{...published.payload,draw:{...draw,previous_draw_id:id}}}));
+  assert.ok(!check({...published,payload:{...published.payload,draw:{...draw,result:{...draw.result,regular:[1000001]}}}}));
+  assert.ok(!check({...published,payload:{...published.payload,draw:{...draw,result:{...draw.result,regular:Array(11).fill(1)}}}}));
+  assert.ok(!check({...published,payload:{...published.payload,draw:{...draw,result:{...draw.result,special:Array(11).fill(1)}}}}));
+  assert.ok(!check({...published,payload:{...published.payload,draw:{...draw,result:{regular:[],special:[],digits:[]}}}}));
+  assert.ok(!check({...published,payload:{...published.payload,draw:{...draw,result:{regular:[1],special:[],digits:[1]}}}}));
+  assert.ok(!check({...published,payload:{...published.payload,draw:{...draw,result:{regular:[],special:[],digits:Array(11).fill(1)}}}}));
+  assert.ok(!check({...published,payload:{...published.payload,draw:{...draw,result:{regular:[],special:[],digits:[10]}}}}));
+
+  const corrected={...published,event_type:"draw.result.corrected",template_key:"draw.result.corrected",content:defaults["draw.result.corrected"],payload:{...published.payload,draw:{...draw,previous_draw_id:id}}};
+  assert.ok(check(corrected),JSON.stringify(check.errors));
+  assert.ok(!check({...corrected,payload:{...corrected.payload,draw}}));
+  assert.ok(!check({...corrected,payload:{...corrected.payload,draw:{...corrected.payload.draw,previous_draw_id:"not-a-uuid"}}}));
+  assert.ok(!check({...corrected,template_version:1,content:null}));
+
+  const digitDraw={...published,payload:{...published.payload,draw:{...draw,result:{regular:[],special:[],digits:[0,9]}}}};
+  assert.ok(check(digitDraw),JSON.stringify(check.errors));
+});
+
+test("real Go draw notification DTO examples satisfy both event-specific schemas",()=>{
+  const output=execFileSync(process.env.LOTTERY_GO_BIN??"go",["run","-buildvcs=false","./cmd/contract-examples"],{
+    cwd:new URL("../../backend/",import.meta.url),encoding:"utf8",env:{...process.env,CGO_ENABLED:"0"},
+  });
+  const examples=JSON.parse(output);
+  const check=validate("LotteryNotification");
+  for(const [key,eventType] of [["LotteryNotificationDrawPublished","draw.result.published"],["LotteryNotificationDrawCorrected","draw.result.corrected"]]){
+    const item=examples[key];
+    assert.ok(item,`contract-examples missing ${key}`);
+    assert.equal(item.event_type,eventType);
+    assert.ok(check(item),`${key}: ${JSON.stringify(check.errors)}`);
+    const eventCheck=validate(key);
+    assert.ok(eventCheck(item),`${key} event-specific schema: ${JSON.stringify(eventCheck.errors)}`);
+    assert.equal(item.payload.points,null);
+    assert.ok(item.content,"draw notification DTO must contain the immutable content snapshot");
+    const otherEvent=eventType==="draw.result.published"?"draw.result.corrected":"draw.result.published";
+    assert.ok(!eventCheck({...item,event_type:otherEvent}),`${key} must constrain event_type to ${eventType}`);
+  }
 });
 
 test("reward notifications require frozen content and expose only UUID plus positive int64 points",()=>{

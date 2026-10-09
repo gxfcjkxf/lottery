@@ -38,6 +38,27 @@ describe("page-session notification template write state", () => {
     expect(structuredClone(body)).toEqual(intent.body);
   });
 
+  it("keeps draw template edits as ordinary versioned bilingual copy without adding placeholders", () => {
+    const drawScope: NotificationTemplateWriteScope = { ...scope, templateKey: "draw.result.corrected" };
+    const drawContent = {
+      en: { title: "Corrected result", body: "Saved result for {resource_id}." },
+      "zh-CN": { title: "结果已更正", body: "保存的结果：{resource_id}。" },
+    };
+    const drawIntent: PendingNotificationTemplateWrite = {
+      ...drawScope,
+      body: { version: 2, content: drawContent, reason: "review corrected result copy" },
+      key: "draw-template-key",
+    };
+    setPendingNotificationTemplateWrite(drawScope, drawIntent);
+    expect(getPendingNotificationTemplateWrite(drawScope)).toEqual(drawIntent);
+    expect(Object.isFrozen(getPendingNotificationTemplateWrite(drawScope)?.body.content["zh-CN"])).toBe(true);
+    setPendingNotificationTemplateWrite(drawScope, {
+      ...drawIntent,
+      body: { ...drawIntent.body, content: { ...drawContent, en: { title: "Corrected {points}", body: drawContent.en.body } } },
+    });
+    expect(getPendingNotificationTemplateWrite(drawScope)).toEqual(drawIntent);
+  });
+
   it("retains unknown intents across remounts without reading or writing browser storage", () => {
     const getItem = vi.fn(() => { throw new Error("disk storage must not be used"); });
     const setItem = vi.fn(() => { throw new Error("disk storage must not be used"); });

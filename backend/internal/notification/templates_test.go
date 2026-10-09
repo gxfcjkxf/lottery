@@ -31,6 +31,8 @@ var expectedTemplateKeys = []string{
 	"commission.adjusted",
 	"commission.corrected",
 	"commission.paid",
+	"draw.result.corrected",
+	"draw.result.published",
 	"member.joined",
 	"recharge.confirmed",
 	"reward.order.granted",
@@ -50,7 +52,9 @@ var templateDefaultsFixture []byte
 func validTemplateContent(key string) Content {
 	pointsEN := "{points} points."
 	pointsZH := "涉及 {points} 积分。"
-	if key == "member.joined" {
+	if strings.HasPrefix(key, "draw.result.") {
+		pointsEN, pointsZH = "Historical result ID {resource_id}.", "历史结果 ID：{resource_id}。"
+	} else if key == "member.joined" {
 		pointsEN, pointsZH = "Welcome aboard.", "欢迎加入。"
 	}
 	return Content{
@@ -105,6 +109,34 @@ func TestValidateContentAcceptsSupportedPlaceholdersAndCanonicalText(t *testing.
 	content.En.Title = "Receipt {resource_id}"
 	if err := ValidateContent("recharge.confirmed", content); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDrawTemplateRequiresHistoricalResultIDAndForbidsPoints(t *testing.T) {
+	for _, key := range []string{"draw.result.published", "draw.result.corrected"} {
+		content := validTemplateContent(key)
+		if err := ValidateContent(key, content); err != nil {
+			t.Errorf("ValidateContent(%q): %v", key, err)
+		}
+		for _, edit := range []struct {
+			name  string
+			apply func(*Content)
+		}{
+			{"missing English resource_id", func(c *Content) { c.En.Body = "Historical result." }},
+			{"missing Chinese resource_id", func(c *Content) { c.ZhCN.Body = "历史结果。" }},
+			{"points English body", func(c *Content) { c.En.Body = "Historical result {resource_id}: {points}." }},
+			{"points Chinese body", func(c *Content) { c.ZhCN.Body = "历史结果 {resource_id}：{points}。" }},
+			{"points English title", func(c *Content) { c.En.Title = "Result {points}" }},
+			{"points Chinese title", func(c *Content) { c.ZhCN.Title = "结果 {points}" }},
+		} {
+			t.Run(key+"/"+edit.name, func(t *testing.T) {
+				invalid := content
+				edit.apply(&invalid)
+				if err := ValidateContent(key, invalid); err == nil {
+					t.Fatal("expected validation error")
+				}
+			})
+		}
 	}
 }
 

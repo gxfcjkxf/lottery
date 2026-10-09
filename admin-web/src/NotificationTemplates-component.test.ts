@@ -64,6 +64,12 @@ function templateContent(key: string): NotificationTemplateContent {
   if (key === "member.joined") {
     return { en: { title, body: "Custom English welcome copy." }, "zh-CN": { title: `可编辑 ${key}`, body: "自定义中文欢迎文案。" } };
   }
+  if (key.startsWith("draw.result.")) {
+    return {
+      en: { title, body: "Custom English draw copy for {resource_id}." },
+      "zh-CN": { title: `可编辑 ${key}`, body: "可编辑开奖结果文案：{resource_id}。" },
+    };
+  }
   return {
     en: { title, body: `Custom English copy {points} for {resource_id}.` },
     "zh-CN": { title: `可编辑 ${key}`, body: `自定义中文文案 {points}，编号 {resource_id}。` },
@@ -82,7 +88,7 @@ function mount() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("NotificationTemplates commission history", () => {
-  it("lists exactly twenty template keys and keeps bilingual commission facts fixed beside editable copy", async () => {
+  it("lists exactly twenty-two template keys and keeps bilingual commission facts fixed beside editable copy", async () => {
     vi.stubGlobal("Document", class {});
     vi.stubGlobal("ShadowRoot", class {});
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).includes("/history?") ? response({ items: [] }) : response({ items: templates() }));
@@ -93,6 +99,7 @@ describe("NotificationTemplates commission history", () => {
     expect(select?.options.filter((option) => option.value !== "").map((option) => option.value).sort()).toEqual([
       "bet.order.abnormal", "bet.order.cancelled", "bet.order.judged_cancelled", "bet.order.placed",
       "bet.order.prize_reversed", "bet.order.won", "commission.adjusted", "commission.corrected", "commission.paid",
+      "draw.result.corrected", "draw.result.published",
       "member.joined", "recharge.confirmed", "reward.order.granted", "reward.order.revocation_pending",
       "reward.order.revoked", "withdrawal.order.cancelled", "withdrawal.order.failed", "withdrawal.order.paid",
       "withdrawal.order.processing", "withdrawal.order.rejected", "withdrawal.order.reviewing",
@@ -115,6 +122,46 @@ describe("NotificationTemplates commission history", () => {
       expect(textOf(note!)).not.toContain("Custom English copy");
     }
     mounted.app.unmount();
+  });
+});
+
+describe("NotificationTemplates protected draw preview", () => {
+  it("shows a fixed bilingual historical result note beside independently editable copy", async () => {
+    vi.stubGlobal("Document", class {});
+    vi.stubGlobal("ShadowRoot", class {});
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input) => String(input).includes("/history?") ? response({ items: [] }) : response({ items: templates() })));
+    const mounted = mount();
+    try {
+      await flush();
+      const select = find(mounted.root, (node) => node.props.id === "nt-key");
+      (select?.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "draw.result.published" } });
+      await flush();
+      const note = find(mounted.root, (node) => node.props["data-testid"] === "draw-facts-note");
+      expect(note).not.toBeNull();
+      const fixedNote = textOf(note!);
+      expect(fixedNote).toContain("Period: 20261009001");
+      expect(fixedNote).toContain("Regular: 03, 12, 28 · Special: 07 · Digits: none");
+      expect(fixedNote).toContain("does not indicate a win, prize payment, or guarantee of the current result");
+      expect(fixedNote).toContain("期号：20261009001");
+      expect(fixedNote).toContain("普通：03、12、28 · 特别：07 · 数字：无");
+      expect(fixedNote).toContain("不代表中奖、派奖或当前结果保证");
+      expect(find(note!, (node) => node.tag === "textarea" || node.tag === "input")).toBeNull();
+      for (const [locale, body] of [
+        ["en", "Changed result copy: {resource_id}."],
+        ["zh-CN", "已修改的开奖结果文案：{resource_id}。"],
+      ]) {
+        const editor = find(mounted.root, (node) => node.props.id === `nt-body-${locale}`);
+        const update = editor?.props["onUpdate:modelValue"];
+        expect(update).toBeTypeOf("function");
+        (update as (value: string) => void)(body);
+      }
+      await flush();
+      expect(textOf(mounted.root)).toContain("Changed result copy: 00000000-0000-4000-8000-000000000099.");
+      expect(textOf(mounted.root)).toContain("已修改的开奖结果文案：00000000-0000-4000-8000-000000000099。");
+      expect(textOf(find(mounted.root, (node) => node.props["data-testid"] === "draw-facts-note")!)).toBe(fixedNote);
+    } finally {
+      mounted.app.unmount();
+    }
   });
 });
 

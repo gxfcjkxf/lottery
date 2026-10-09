@@ -129,6 +129,26 @@
       "body": "历史记录：佣金可用积分曾发生 {points} 积分更正。正数表示过去的补发，负数表示过去的追回；不代表当前余额、新收入或外部付款。请查看当前钱包；此记录会保留。"
     }
   },
+  "draw.result.published": {
+    "en": {
+      "title": "Draw result published",
+      "body": "Historical result ID {resource_id}: the result published for this period. This is not a guarantee of a win or prize payment. View the actual result in the app; users cannot edit this notice."
+    },
+    "zh-CN": {
+      "title": "开奖结果已公布",
+      "body": "历史开奖结果 ID：{resource_id}，表示本期已公布的结果，不代表中奖或派奖保证。请在应用中查看实际结果；用户不能编辑此通知。"
+    }
+  },
+  "draw.result.corrected": {
+    "en": {
+      "title": "Draw result corrected",
+      "body": "Historical result ID {resource_id}: the corrected result for this period. This is not a guarantee of a win or prize payment. View the actual result in the app; users cannot edit this notice."
+    },
+    "zh-CN": {
+      "title": "开奖结果已更正",
+      "body": "历史开奖结果 ID：{resource_id}，表示本期已更正的结果，不代表中奖或派奖保证。请在应用中查看实际结果；用户不能编辑此通知。"
+    }
+  },
   "commission.adjusted": {
     "en": {
       "title": "Commission adjustment recorded",

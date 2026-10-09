@@ -1,12 +1,12 @@
 import type { Language } from "../../shared/src/brand";
-import type { NotificationEventType, NotificationTemplateContent } from "./notification-api";
+import type { DrawNotificationPayload, NotificationEventType, NotificationTemplateContent } from "./notification-api";
 
 export type NotificationPresentationItem = {
   event_type: NotificationEventType;
   template_key: NotificationEventType;
   template_version: number;
   content?: NotificationTemplateContent | null;
-  payload: { resource_id: string; points: string | null };
+  payload: { resource_id: string; points: string | null } | DrawNotificationPayload;
   created_at: string;
 };
 
@@ -21,6 +21,8 @@ export type NotificationPresentation = {
 
 const copy = {
   en: {
+    "draw.result.published": { title: "Draw result published", body: "The result for period {resource_id} has been published." },
+    "draw.result.corrected": { title: "Draw result corrected", body: "A corrected result for period {resource_id} has been published." },
     "member.joined": {
       title: "Welcome",
       body: "Your membership is ready. Welcome aboard.",
@@ -76,6 +78,8 @@ const copy = {
     "withdrawal.order.cancelled": { title: "Withdrawal status recorded", body: "Historical withdrawal status: cancelled. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state." },
   },
   zh: {
+    "draw.result.published": { title: "开奖结果已公布", body: "期号 {resource_id} 的开奖结果已公布。" },
+    "draw.result.corrected": { title: "开奖结果已更正", body: "期号 {resource_id} 的更正结果已公布。" },
     "member.joined": { title: "欢迎", body: "您的会员账户已准备就绪，欢迎加入。" },
     "recharge.confirmed": { title: "充值已确认", body: "充值已确认：{points} 积分。" },
     "bet.order.placed": { title: "注单已提交", body: "注单已提交，涉及 {points} 积分。" },
@@ -146,6 +150,32 @@ export function renderNotification(
   }
   const known = copy[locale][item.event_type as keyof (typeof copy)[typeof locale]];
   if (!known) throw new RangeError(`Unsupported notification event: ${item.event_type}`);
+  const isDraw = item.event_type === "draw.result.published" || item.event_type === "draw.result.corrected";
+  if (isDraw) {
+    if (item.payload.points !== null || !("draw" in item.payload) || !item.content) {
+      throw new RangeError("Draw notifications require null points, draw facts, and an immutable content snapshot");
+    }
+    const payload = item.payload as DrawNotificationPayload;
+    const draw = payload.draw;
+    const empty = locale === "zh" ? "无" : "none";
+    const regular = draw.result.regular.length ? draw.result.regular.join(", ") : empty;
+    const special = draw.result.special.length ? draw.result.special.join(", ") : empty;
+    const digits = draw.result.digits.length ? draw.result.digits.join("") : empty;
+    const protectedNote = locale === "zh"
+      ? `历史开奖记录 · 期号：${draw.period_no} · 普通：${regular} · 特别：${special} · 数字：${digits} · 开奖时间：${draw.drawn_at}。这是保存的历史结果，不代表中奖、派奖或当前结果保证。`
+      : `Historical draw record · Period: ${draw.period_no} · Regular: ${regular} · Special: ${special} · Digits: ${digits} · Drawn at: ${draw.drawn_at}. This is a saved historical result; it does not indicate a win, prize payment, or guarantee of the current result.`;
+    const source = item.content[locale === "zh" ? "zh-CN" : "en"];
+    const replace = (text: string) => text.replaceAll("{resource_id}", payload.resource_id);
+    const date = new Date(item.created_at);
+    return {
+      title: replace(source.title),
+      body: replace(source.body),
+      createdAt: Number.isNaN(date.getTime()) ? item.created_at : new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en", { dateStyle: "medium", timeStyle: "short" }).format(date),
+      points: null,
+      reference: payload.resource_id,
+      protectedNote,
+    };
+  }
   if ((item.event_type === "member.joined") !== (item.payload.points === null)) {
     throw new RangeError(`Invalid points value for notification event: ${item.event_type}`);
   }

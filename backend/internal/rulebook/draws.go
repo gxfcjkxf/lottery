@@ -14,6 +14,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/drawfeed"
+	"github.com/gxfcjkxf/lottery/backend/internal/drawnotice"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
@@ -364,6 +365,10 @@ func appendDrawResult(ctx context.Context, tx pgx.Tx, g Game, p Period, source, 
 	if actor != "" {
 		actorType = "admin"
 	}
-	_, e = audit.Append(ctx, tx, audit.Record{BrandID: g.BrandID, ActorType: actorType, ActorID: actor, Action: "draw.lock", ResourceType: "draw_result", ResourceID: id, Reason: reason, RequestID: meta.RequestID, IP: meta.IP, Before: map[string]any{"period_id": p.ID, "period_version": p.Version, "status": p.Status, "draw_result_id": current}, After: out})
+	var auditID string
+	auditID, e = audit.Append(ctx, tx, audit.Record{BrandID: g.BrandID, ActorType: actorType, ActorID: actor, Action: "draw.lock", ResourceType: "draw_result", ResourceID: id, Reason: reason, RequestID: meta.RequestID, IP: meta.IP, Before: map[string]any{"period_id": p.ID, "period_version": p.Version, "status": p.Status, "draw_result_id": current}, After: out})
+	if e == nil {
+		e = drawnotice.Append(ctx, tx, g.BrandID, p.ID, id, auditID)
+	}
 	return out, e
 }

@@ -76,6 +76,13 @@ const rewardFacts = computed(() => {
   ] as const;
   return null;
 });
+const drawFacts = computed(() => {
+  if (selectedKey.value !== "draw.result.published" && selectedKey.value !== "draw.result.corrected") return null;
+  return [
+    "Historical draw record · Period: 20261009001 · Regular: 03, 12, 28 · Special: 07 · Digits: none · Drawn at: 2026-10-09T12:00:00Z. This is a saved historical result; it does not indicate a win, prize payment, or guarantee of the current result.",
+    "历史开奖记录 · 期号：20261009001 · 普通：03、12、28 · 特别：07 · 数字：无 · 开奖时间：2026-10-09T12:00:00Z。此为保存的历史结果，不代表中奖、派奖或当前结果保证。",
+  ] as const;
+});
 const canEdit = computed(() => rights.value.view && rights.value.write && !props.account.super_admin && Boolean(record.value) &&
   Boolean(draft.value) && !pending.value && !writing.value && !loading.value);
 const canReview = computed(() => canEdit.value && contentValid.value && reasonValid.value && !historyLoading.value);
@@ -219,6 +226,8 @@ function time(value: string): string {
   const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 function formatKey(key: string): string {
+  if (key === "draw.result.published") return t("开奖结果已公布 · draw.result.published", "Draw result published · draw.result.published");
+  if (key === "draw.result.corrected") return t("开奖结果已更正 · draw.result.corrected", "Draw result corrected · draw.result.corrected");
   if (key === "reward.order.granted") return t("赠送积分已入账 · reward.order.granted", "Gift points granted · reward.order.granted");
   if (key === "reward.order.revocation_pending") return t("奖励撤销待处理 · reward.order.revocation_pending", "Reward revocation pending · reward.order.revocation_pending");
   if (key === "reward.order.revoked") return t("赠送积分冲回记录 · reward.order.revoked", "Gift points reversal recorded · reward.order.revoked");
@@ -266,7 +275,7 @@ onBeforeUnmount(() => { alive = false; listTicket++; historyTicket++; writeTicke
             <option value="" disabled>{{ t("选择通知事件", "Select an event") }}</option>
             <option v-for="key in notificationTemplateKeys" :key="key" :value="key">{{ formatKey(key) }}</option>
           </select>
-          <p class="nt-hint">{{ t("支持19种通知事件：会员、充值、注单、赠送积分、奖项、佣金及提现状态。事件事实由系统生成；赠送积分通知会附加不可编辑的状态说明，奖项发放、冲正、佣金和提现事件的双语历史说明保持只读。提现通知仅记录内部积分状态，不代表银行或虚拟币转账。", "Supports 19 events covering members, recharges, bets, gift points, prizes, commissions, and withdrawals. Event facts are system-generated; gift point notices include an uneditable state note, while bilingual historical descriptions for prize, reversal, commission, and withdrawal events are read-only. Withdrawal notices record internal point status only and do not represent bank or cryptocurrency transfers.") }}</p>
+          <p class="nt-hint">{{ t("支持22种通知事件：会员、充值、注单、赠送积分、奖项、佣金、提现状态及开奖公布/更正。事件事实由系统生成；开奖结果从保存的历史读取并作为独立只读说明展示。", "Supports 22 events covering members, recharges, bets, gift points, prizes, commissions, withdrawals, and published/corrected draw results. Event facts are system-generated; draw results are read from saved history and shown in a separate read-only note.") }}</p>
         </nav>
 
         <div v-if="(record && draft && selectedKey) || pending" class="nt-workspace">
@@ -285,14 +294,16 @@ onBeforeUnmount(() => { alive = false; listTicket++; historyTicket++; writeTicke
                 <input :id="`nt-title-${locale}`" v-model="draft[locale].title" maxlength="120" autocomplete="off" />
                 <label :for="`nt-body-${locale}`">{{ t("正文（最多 1200 UTF-8 字节）", "Body (up to 1,200 UTF-8 bytes)") }}</label>
                 <textarea :id="`nt-body-${locale}`" v-model="draft[locale].body" rows="5" maxlength="1200" />
-                <small>{{ selectedKey === 'member.joined' ? t('欢迎通知只能使用 {resource_id}，不能引用积分。', 'Welcome notices may use {resource_id} only; points are not available.') : t('正文须包含 {points}，可使用 {resource_id}。', 'The body must include {points}; {resource_id} is optional.') }} {{ t("预览使用固定示例，不是真实通知。", "The preview uses fixed sample data and is not a real notification.") }}</small>
+                <small>{{ selectedKey.startsWith('draw.result.') ? t('开奖标题和正文不能使用 {points}；正文必须包含 {resource_id}。实际号码在独立的只读历史开奖说明中展示。', 'Draw titles and bodies cannot use {points}; the body must include {resource_id}. Actual numbers appear in a separate read-only historical draw note.') : selectedKey === 'member.joined' ? t('欢迎通知只能使用 {resource_id}，不能引用积分。', 'Welcome notices may use {resource_id} only; points are not available.') : t('正文须包含 {points}，可使用 {resource_id}。', 'The body must include {points}; {resource_id} is optional.') }} {{ t("预览使用固定示例，不是真实通知。", "The preview uses fixed sample data and is not a real notification.") }}</small>
                 <div class="nt-preview" :aria-label="t('固定示例预览', 'Fixed sample preview')"><strong>{{ t("固定示例预览 · 不是实际用户通知", "Fixed sample preview · not an actual user notification") }}</strong>
                   <p>{{ interpolate(draft[locale].title) }}</p><div>{{ interpolate(draft[locale].body) }}</div>
-                  <small>{{ t("示例", "Sample") }} points={{ SAMPLE_POINTS }} · resource_id={{ SAMPLE_RESOURCE_ID }}</small>
+                  <small>{{ t("示例", "Sample") }} <template v-if="!selectedKey.startsWith('draw.result.')">points={{ SAMPLE_POINTS }} · </template>resource_id={{ SAMPLE_RESOURCE_ID }}</small>
                 </div>
               </fieldset>
             </div>
-            <div v-if="commissionFacts" class="nt-facts-note" data-testid="commission-facts-note"><strong>{{ t("不可编辑的佣金历史事实", "Fixed commission history (read only)") }}</strong>
+            <div v-if="drawFacts" class="nt-facts-note" data-testid="draw-facts-note"><strong>{{ t("固定历史开奖说明 · 只读示例", "Fixed historical draw note · read-only sample") }}</strong>
+              <p v-for="fact in drawFacts" :key="fact">{{ fact }}</p></div>
+            <div v-else-if="commissionFacts" class="nt-facts-note" data-testid="commission-facts-note"><strong>{{ t("不可编辑的佣金历史事实", "Fixed commission history (read only)") }}</strong>
               <p v-for="fact in commissionFacts" :key="fact">{{ fact }}</p></div>
             <div v-else-if="rewardFacts" class="nt-facts-note" data-testid="reward-facts-note"><strong>{{ t("不可编辑的奖励历史事实 · 固定示例", "Fixed reward history (read only) · sample") }}</strong>
               <p v-for="fact in rewardFacts" :key="fact">{{ fact }}</p></div>

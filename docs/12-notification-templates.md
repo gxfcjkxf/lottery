@@ -1,6 +1,6 @@
 # 站内通知模板配置和历史消息合同
 
-品牌运营人员可维护二十类站内通知的中英文标题和正文，包含六种提现状态、三种佣金入账/人工修正/结果更正和三种奖励历史。发布模板不创建通知、不修改积分；消费者在真实业务事件落库后生成消息，并保存当时模板版本和文案。本文供第三方接入配置、重试和消息展示，不包含外部渠道或真实支付。
+品牌运营人员可维护二十二类站内通知的中英文标题和正文，包含六种提现状态、三种佣金入账/人工修正/结果更正、三种奖励历史及开奖公布/更正。发布模板不创建通知、不修改积分；消费者在真实业务事件落库后生成消息，并保存当时模板版本和文案。本文供第三方接入配置、重试和消息展示，不包含外部渠道或真实支付。
 
 ## 配置接口和权限
 
@@ -8,7 +8,7 @@
 
 | 方法 | 路径 | 响应 |
 |---|---|---|
-| GET | /api/v1/admin/notification-templates | items包含当前品牌二十个模板 |
+| GET | /api/v1/admin/notification-templates | items包含当前品牌二十二个模板 |
 | GET | /api/v1/admin/notification-templates/{key}/history | items为按version降序的不可变修订 |
 | PUT | /api/v1/admin/notification-templates/{key} | 原提交产生的Template回执 |
 
@@ -16,15 +16,15 @@
 
 查看要求notification_template.view.brand和当前品牌范围，或明确的notification_template.view.platform，不要求平台授权账号伪造品牌成员身份。写入只接受非超级管理员的notification_template.write.brand；超级管理员只能依明确权限读取。每次读写均在共享授权锁下重新校验，成功读取和修订可审计；停用品牌仍可读但不能修改或重放写回执。暂停品牌允许配置和已有业务通知继续处理。
 
-0037初始化原八个模板，0040追加六个提现、0052追加两个佣金、0056追加三个奖励、0060追加一个佣金更正v1模板及系统修订。原配置、历史、消息和积分保留，不补造迁移前通知；defaults函数原OID保留。新品牌正常初始化二十个模板，不自动获得管理员、用户、域名、积分或业务事件。权限沿用独立授权，不给自定义角色扩权。数据库须UTF8；不能用SQL_ASCII验证中文约束，部署前检查SHOW server_encoding。
+0037初始化原八个模板，0040追加六个提现、0052追加两个佣金、0056追加三个奖励、0060追加一个佣金更正，0069追加开奖公布/更正两类v1模板及系统修订。原配置、历史、消息和积分保留，不补造迁移前通知；defaults/validator函数原OID及固定搜索路径保留。新品牌正常初始化二十二个模板，不自动获得管理员、用户、域名、积分或业务事件。权限沿用独立授权，不给自定义角色扩权。数据库须UTF8；不能用SQL_ASCII验证中文约束，部署前检查SHOW server_encoding。
 
 ## 模板标识和内容
 
-key只接受：member.joined、recharge.confirmed、bet.order.placed、bet.order.cancelled、bet.order.judged_cancelled、bet.order.abnormal、bet.order.won、bet.order.prize_reversed，以及withdrawal.order.reviewing/processing/paid/rejected/failed/cancelled、commission.paid、commission.adjusted、commission.corrected和reward.order.granted/revocation_pending/revoked。
+key只接受：member.joined、recharge.confirmed、bet.order.placed、bet.order.cancelled、bet.order.judged_cancelled、bet.order.abnormal、bet.order.won、bet.order.prize_reversed，以及withdrawal.order.reviewing/processing/paid/rejected/failed/cancelled、commission.paid、commission.adjusted、commission.corrected、reward.order.granted/revocation_pending/revoked和draw.result.published/corrected。
 
 content恰好为en和zh-CN，每种语言恰好为title和body。两种语言均必填，不自动翻译或复用另一语言文案。标题1–120 UTF-8字节，正文1–1200字节，须非空、无首尾空白；标题禁止控制字符，正文只允许中间的换行和制表符。不接受HTML尖括号、外部地址标记https?:、javascript:、data:、www.；客户不能通过模板发布富文本或链接。
 
-插值仅支持字面占位符{points}和{resource_id}，不执行脚本、表达式或任意对象访问。未知、未闭合或嵌套花括号拒绝。欢迎通知标题和正文均不能引用points；其他十九类的两种语言正文各须包含points。重复引用允许，不同语言的标题可独立选用合法占位符。用户名、手机号、后台人员、证明、内部原因、密码和令牌都不是模板变量。
+插值仅支持字面占位符{points}和{resource_id}，不执行脚本、表达式或任意对象访问。未知、未闭合或嵌套花括号拒绝。欢迎通知标题和正文均不能引用points；开奖公布/更正同样禁止points，两语言正文各须resource_id；其他十九类的两种语言正文各须包含points。重复引用允许，不同语言的标题可独立选用合法占位符。实际开奖数字来自独立保存载荷，不是任意模板变量；用户名、手机号、后台人员、证明、内部原因、密码和令牌均不可插值。
 
 Template为brand_id、key、version、content、updated_at、audit_log_id；初始版本1的审计ID为null，后续版本必须为非空UUID。每个品牌、每类事件独立递增版本，版本最大9007199254740991，不能把品牌共享配置版本当成模板版本。当前达到上限不可继续更新。
 
@@ -36,7 +36,7 @@ Revision为id、brand_id、key、version、content、changed_by、reason、audit
 
 消费者持有模板行共享锁并复制content和version；配置更新与复制串行。消息内容、消费确认、sent状态仍在同一事务。消息关联同品牌同key的不可变修订；新插入必须复制当前配置，失败不能保留半条消息或错误的消费确认。重复消费不改写已有消息，包括原来的旧版消息。
 
-用户Item增加content（双语模板源文案或null），template_version改为正安全整数。旧非提现/佣金/奖励v1消息保持原字段与read_at，content为null，客户端继续固定v1文案；兼容旧接口缺失content仅限这类旧消息。所有提现/佣金/奖励消息及版本大于1必须有完整快照，不能从当前模板配置补写旧消息。
+用户Item增加content（双语模板源文案或null），template_version改为正安全整数。旧非提现/佣金/奖励/开奖v1消息保持原字段与read_at，content为null，客户端继续固定v1文案；兼容旧接口缺失content仅限这类旧消息。所有提现/佣金/奖励/开奖消息及版本大于1必须有完整快照，不能从当前模板配置补写旧消息。
 
 用户端按快照的语言插值并作为纯文本显示；积分用精确整数字符串分组，不转换浮点。派奖和冲正消息另外显示不可编辑的系统事实说明，明确实际历史入账或全额冲正，不表示当前钱包余额或保证最终中奖。旧消息保留，更正的新代次另记，模板不会改变实际账本金额。
 
@@ -68,4 +68,6 @@ PUT成功返回原版本加一、提交的双语文案、提交时间和审计ID
 
 ## 尚未包含的功能
 
-本模块不接邮件、短信或Telegram发送，不添加开奖受众、自动代理/推荐/活动奖励事件，不替代真实身份与地区验证。站内消息不启用提现、佣金金融运行开关或支付；正式资格与金融流程须在对应模块验收。运营可编辑的是现有站内文案，不代表完整通知渠道、财务或整个平台已完成。外部凭据、保留年限和对应新事件要按后续真实业务模块单独实现和验收。
+开奖受众与正式发布已接入[31号合同](31-draw-result-notifications.md)：本期投注会员每人每个已公布结果一条，包含取消/异常，结果更正另记且原历史保留。新公开payload为resource_id、points:null和闭合draw历史对象，不公开后台见证；实际号码及非中奖/派奖说明不可由模板删除。
+
+本模块不接邮件、短信或Telegram发送，不添加自动代理/推荐/活动奖励事件，不替代真实身份与地区验证。站内消息不启用提现、佣金金融运行开关或支付；正式资格与金融流程须在对应模块验收。运营可编辑的是现有站内文案，不代表完整通知渠道、财务或整个平台已完成。外部凭据、保留年限和对应新事件要按后续真实业务模块单独实现和验收。
