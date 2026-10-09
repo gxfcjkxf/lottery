@@ -93,7 +93,7 @@ export const operations = [
   admin('GET', '/commission-correction-plans/{id}', 'getCommissionCorrectionPlan', 'Read a commission correction plan', ref('CommissionCorrectionPlan')),
   admin('GET', '/commission-correction-plans/{id}/targets', 'listCommissionCorrectionPlanTargets', 'List targets in a commission correction plan', ref('CommissionCorrectionPlanTargetPage'), { parameters: page }),
   admin('POST', '/commission-correction-plans/{id}/retry', 'retryCommissionCorrectionPlan', 'Retry commission correction plan preparation', ref('CommissionCorrectionPlan'), {
-    ...action('commission_correction.retry.brand', 'CommissionCorrectionAction', 'Plan retry rebuilds preview evidence only and never approves or posts funds.'),
+    ...action('commission_correction.retry.brand', 'CommissionCorrectionAction', 'Plan retry prepares evidence only and never approves or posts funds. It accepts technical failures and retained historical MANUAL_POLICY_UNRESOLVED blocks with zero targets and null differences. Historical recovery revalidates the unchanged frozen basis, current financial sources and enabled original payment gate before appending a new audited version. A new draw calculation supersedes the prior manual target: actual 12 to recalculated 8 requires debit 4, without carrying forward a manual offset. Existing blocked history is never automatically recovered.'),
   }),
   admin('GET', '/commission-correction-executions', 'listCommissionCorrectionExecutions', 'List commission correction executions', ref('CommissionCorrectionExecutionPage'), { parameters: page }),
   admin('GET', '/commission-correction-executions/{id}', 'getCommissionCorrectionExecution', 'Read a commission correction execution', ref('CommissionCorrectionExecution')),

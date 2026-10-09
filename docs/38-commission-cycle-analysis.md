@@ -1,0 +1,54 @@
+# 佣金跨周期核算与实际入账分析
+
+> 设计草案，接口、SDK和页面尚未实现或验收。本文件记录下一阶段口径，不属于本阶段已交付功能。
+
+佣金周期分析按保存的完整周期选择当前核算及历史实际资金记录，区分核算、人工修正、实际派发和更正补发/追回。它不使用钱包余额计算欠付，不改变比例、周期、旧代次或资金，也不批准任何派发、更正或提现。
+
+## 选定周期和权限
+
+拟接入GET `/api/v1/admin/reports/commission-analysis`及同路径`.csv`。管理会话与X-Brand-ID必需；查看同时要求commission.view和report_commission.view，各自允许明确品牌或平台授权，导出另需report_commission.export。身份/超级管理员标记不推导授权；旧入账时间报表权限和合同不变。
+
+from、to、group_by必填；from含、to不含，完整UTC区间最多93天，**按保存的cycle.window_to选择整周期**，不是只取窗口内的入账或投注。group_by为cycle或agent，不按天拆分已取整周期佣金。可选agent_id、member_id、cycle_id须属于当前品牌；JSON分页limit默认20、最多100，offset默认0、最多1000000，CSV拒绝分页参数。未知、重复、空或非规范参数及GET正文拒绝。
+
+选中周期的资金记录取全部历史实际入账，包含窗口外稍后补发/追回，不能只看本次from/to内的ledger.created_at。过去已入账目标不因原任务后来blocked/stale而消失，零额合法已完成目标不造流水；普通钱包调整及冻结/解冻不冒充佣金收益。
+
+## 响应与完整性
+
+Report恰好brand_id、snapshot_at、timezone、query、coverage、summary、items、total_groups。query恰好from、to、group_by、limit、offset、agent_id、member_id、cycle_id，后三项可空。coverage恰好selected_cycle_count、ready_cycle_count、unready_cycle_count、legacy_policy_blocked_cycle_count，前三项满足selected=ready+unready；legacy_policy_blocked不超过selected，只表示仍保留旧`COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED`计划的周期，该计数只描述保留的历史阻塞，不表示业务规则未决；显式重试成功后不再计为历史阻塞。
+
+summary和每组totals恰好十八字段，数量与积分均规范十进制字符串，除下表说明的空值外不含null。items恰好key、label、totals，key/label为保存周期或受益代理UUID，按C顺序分页；summary覆盖完整筛选，不是当前页合计。
+
+| 字段 | 含义 |
+| --- | --- |
+| observed_calculated_points | 仅当前完整就绪证据的已知核算积分合计，不以部分代次补足 |
+| calculated_points | 完整核算合计；未就绪/过期的周期使其null |
+| paid_entry_count、paid_points | 原派发真实非零流水数量及积分 |
+| adjustment_entry_count、adjustment_credit_points、adjustment_debit_points | 独立人工修正真实非零流水，正负分别统计 |
+| correction_entry_count、correction_credit_points、correction_debit_points | 已实际执行的更正非零流水，补发/追回分别统计 |
+| posting_entry_count | 上述三类流水数量之和，每条只计一次 |
+| actual_net_points | paid+adjustment_credit-adjustment_debit+correction_credit-correction_debit；整周期全部历史的已授予净额，不是余额 |
+| manual_adjustment_net_points | adjustment_credit-adjustment_debit，允许带符号 |
+| effective_target_points | 同一核算代次内包含合法人工修正；开奖结果更正产生新代次后，以新核算为目标，不叠加旧代次人工偏移；未就绪或证据不完整则null |
+| calculation_minus_actual_points | calculated-actual的数学差，允许负值或null，不是授权追回/补发 |
+| effective_minus_actual_points | 已知effective_target-actual的数学差，允许负值或null，不是金融执行权限 |
+| calculation_complete、effective_target_complete | 两个布尔值，分别对应calculated及effective目标是否完整可解释；后者true要求前者true |
+
+完整有效证据沿用当前周期/run、epoch和最终注单来源复核，不以状态ready或今天比例代替。资金从原目标、人工修正及已应用更正独立枚举，非零项须验证实际ledger、品牌/账户/会员、类型、操作键、金额/来源分配及业务审计，不能内连接丢失损坏引用后报零。重复/缺失或无法归属的资金证据应失败关闭，不释放部份汇总。
+
+group_by=cycle时逐周期保留空值；group_by=agent时任何选中未就绪周期都可能尚未给出全部受益人，因此组内calculated完整性随整个选定周期范围保守处理。只展示已保存受益人，不从今天代理树猜测未知代理；summary的coverage始终说明完整范围。各组可累加积分/流水计数；coverage的周期计数独立，不将多受益人重复累加成多个周期。
+
+## 人工修正与结果更正
+
+原核算10、人工修正后实际净额12；结果更正产生新代次8时，新核算覆盖旧人工修正差额，实际净额仍如实为12，差额为追回4，最终目标为8。`manual_adjustment_net_points`及原人工修正账本仍独立保留，不改写；更正目标在新批准和资金门控后执行。迁移前已标记`COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED`的历史计划仍保持blocked、金额null及零目标，须按[39号合同](39-commission-manual-recalculation-policy.md)显式审计重试。该重试不是批准或付款，不改变原派发blocked状态。
+
+若没有新的开奖结果更正，原代次人工修正10至12后，有效目标仍为12、已授予净额为12，有效差额0；不能只因报表读取而把已批准人工目标还原成10。
+
+其他尚未结清、证据过期、准备计划ready、暂停或技术失败不等于资金完成。读取当前已入账与核算不改变原blocked历史、运行开关、批准或暂停门闩。
+
+## CSV和界面
+
+CSV为版本1，UTF8 BOM，完整筛选最多10000组及4MiB，超限413而非截断。列顺序：record_type、brand_id、snapshot_at、timezone、from、to、group_by、agent_id、member_id、cycle_id、key、label；再重复四个coverage字段；最后上述十八totals字段按表中顺序（布尔两字段最后），共34列。summary的key/label空，后续group按key排序；nullable金额写空单元格，布尔恰好true/false，有符号负值使用单引号安全前缀。全部分组金额/流水数量须匹配summary；任一组完整金额为null则对应summary也为null，不把空值当0。
+
+导出具备品牌、kind=commission_analysis、时间、时区、组数、字节数、SHA256、format_version=1和已提交审计回执头；失败不释放文件。管理端使用原报表入口的独立周期分析区，中英PC/360px支持明确查询、分页及完整已提交筛选导出；改草稿、范围/权限/账号或迟到401清理旧响应和文件，不重放资金操作。
+
+验收采用真实多层投注/核算/原派发/人工修正/结果更正及实际差额建立来源，验证跨期入账仍归原周期、不会多修正倍增、旧blocked保持、零额不造流水、未就绪/null及未重试的历史未决计划、不用当前比例/余额重算。直接READ ONLY及HTTP审计/权限/严格参数、完整CSV/摘要、双端未知或迟到读取与资金保持须独立验证。当前规格不证明生产容量或客户人工审核完成。

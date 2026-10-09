@@ -12,7 +12,7 @@
 
 这里的之前积分是已授予的业务净额，不是当前commission.available。代理可能已经投注、提现、冻结或另有积分入账；这些钱包动作不能替代本周期的入账见证。计划准备不读取或占用其可用余额，因此计划就绪不证明追回余额充足。
 
-人工修正头版本大于1时，适用OPEN-117尚未确认的特殊组合：覆盖至新核算额还是保留人工修正差额。整个计划为blocked，错误码COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED，credit_points、debit_points、net_points显式null，且不创建目标。原实际净额与新核算原额仍可追溯，不默认把其中一种当作将要执行的净额。
+新计划接受经完整证据验证的人工修正净额头，并以新run核算额减当前实际授予净额计算差额；OPEN-117已确认新核算覆盖人工修正净额。原人工修正事实不变。迁移前已保存为`COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED`的blocked计划仍保持原状态、null金额及零目标；只有显式调用既有计划retry流程并通过来源、证据、精确冻结计数及开关守卫，才可在新版本重新准备，细则见[39号合同](39-commission-manual-recalculation-policy.md)。
 
 ## 模式和状态
 
@@ -22,7 +22,7 @@
 | --- | --- |
 | planning | 按代理编号每页最多100条准备来源和差额 |
 | ready | 全部代理、前后原额和差额汇总一致，仅计划完成 |
-| blocked | 人工修正后再更正的净额口径未决，整期不生成目标 |
+| blocked | 保留历史未决政策计划；不得由普通批准、自动恢复或新计划覆盖 |
 | failed | 准备步骤发生技术或来源错误，保留已提交页，等待显式重试 |
 | stale | 新核算或证据已经变化，保留原计划、目标与步骤，不继续使用 |
 
@@ -42,10 +42,10 @@ SQL核对原paid目标、原ledger、人工审计、精确佣金可用来源、�
 
 Go服务的CorrectionPlansTx、CorrectionPlanTx、CorrectionPlanTargetsTx及RetryCorrectionPlanTx已由正式管理HTTP及后台接入，见[管理合同](24-commission-correction-management.md)。读取投影不暴露账户编号、原始规则、钱包桶或worker游标；总数和金额保持字符串，时间为UTC。HTTP层执行真实管理授权和查询审计，不能绕过该层把内部方法当成已认证的公开接口。
 
-准备失败的重试要求commission.view及普通品牌管理员的commission_correction.retry.brand，提供当前版本和原因。超级管理员不能写，数据库当前账号状态及超管身份另行核对。只能把failed转回planning，不能把blocked或ready通过重试变为已批准或已入账；新证据必须仍有效，已提交目标保留，不重复准备。
+准备失败的重试要求commission.view及普通品牌管理员的commission_correction.retry.brand，提供当前版本和原因。超级管理员不能写，数据库当前账号状态及超管身份另行核对。普通技术failed按原规则显式重试。历史`COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED` blocked计划可由其既有retry流程在符合[39号合同](39-commission-manual-recalculation-policy.md)的全部条件时，追加新版本并重新准备；不得批准或记账，也不解除原派发blocked。
 
 ## 升级和后续执行
 
-先正常migrate至0058，再重启API和worker。迁移增加计划、目标、步骤、守卫和品牌重试权限，不补发历史资金、不回填旧佣金事件、不修改原核算、派发、人工修正或账本。服务器引导品牌角色追加重试权限，自定义与平台角色不自动扩权。运行开关原本启用且已有更正后的blocked周期时，worker可准备历史计划，但仍不移动积分。
+先正常升级，再协调API、worker与管理端。0073仅替换函数；不回填历史资金或事件，不修改原核算、派发、人工修正或账本，也不自动重试历史计划。两个资金开关保持原有状态，新品牌默认关闭，数据不会自动恢复；人工修正后重算的来源和显式历史retry守卫见[39号合同](39-commission-manual-recalculation-policy.md)。
 
 0059已接入单人批准、独立执行任务、真实commission.available差额账本、已执行净额基数及多次更正链路。追回不足暂停整个周期，周期门闩跨新核算保留，运营处理后显式继续；不能扣其他来源、自动解冻、形成负余额或余额补足后自动恢复。正式管理接口、同会话未知请求恢复和双端页面、0060补偿历史通知及实际入账报表已接入；计划ready始终不能替代资金执行完成。

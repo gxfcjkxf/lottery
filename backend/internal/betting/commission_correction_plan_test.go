@@ -322,7 +322,7 @@ func TestCommissionCorrectionPlanFurtherActualEvidenceMakesPlanStale(t *testing.
 	}
 }
 
-func TestCommissionCorrectionPlanManualAdjustmentVersionBlocksWholePlan(t *testing.T) {
+func TestCommissionCorrectionPlanManualAdjustmentUsesActualAdjustedBasis(t *testing.T) {
 	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	payment := payManualCommissionForAdjustment(t, f, prepareManualCommissionPayment(t, f))
@@ -349,15 +349,15 @@ func TestCommissionCorrectionPlanManualAdjustmentVersionBlocksWholePlan(t *testi
 	}
 	plans := correctionPlansRead(t, f)
 	if len(plans.Items) != 1 {
-		t.Fatalf("manual-adjustment source should produce one policy-blocked plan: %+v", plans)
+		t.Fatalf("manual-adjustment source should produce one correction plan: %+v", plans)
 	}
 	plan := plans.Items[0]
-	if plan.State != commission.CorrectionPlanBlocked || plan.LastErrorCode == nil || *plan.LastErrorCode != "COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED" || plan.CreditPoints != nil || plan.DebitPoints != nil || plan.NetPoints != nil || plan.PayoutMode != commission.PayoutManual || plan.RunID != *current.CurrentRunID {
-		t.Fatalf("version>1 adjustment must block all amounts while preserving manual mode: %+v", plan)
+	if plan.State != commission.CorrectionPlanReady || plan.LastErrorCode != nil || plan.BeforePoints != "2" || plan.CalculatedPoints != "0" || plan.CreditPoints == nil || *plan.CreditPoints != "0" || plan.DebitPoints == nil || *plan.DebitPoints != "2" || plan.NetPoints == nil || *plan.NetPoints != "-2" || plan.PayoutMode != commission.PayoutManual || plan.RunID != *current.CurrentRunID {
+		t.Fatalf("manually adjusted source must produce the exact ready manual-mode difference: %+v", plan)
 	}
 	page := correctionPlanTargetsRead(t, f, plan.ID)
-	if page.TotalCount != "0" || len(page.Items) != 0 {
-		t.Fatalf("blocked manual-policy plan must expose no executable targets (OPEN117): %+v", page)
+	if page.TotalCount != "1" || len(page.Items) != 1 || page.Items[0].PointsBefore != 2 || page.Items[0].PointsAfter != 0 || page.Items[0].DeltaPoints != -2 {
+		t.Fatalf("ready manual-mode plan must expose the actual -2 delta (OPEN117): %+v", page)
 	}
 	mode, err := commission.MergeCorrectionMode(commission.PayoutManual, commission.PayoutNone)
 	if err != nil || mode != commission.PayoutManual {

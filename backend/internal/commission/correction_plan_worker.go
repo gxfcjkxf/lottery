@@ -135,14 +135,14 @@ func createCorrectionPlan(ctx context.Context, tx pgx.Tx, c cycleRow, payment st
 	if err != nil {
 		return err
 	}
-	var sourceValid, current, manualChanged bool
+	var sourceValid, current bool
 	var before, calculated, credit, debit, net, currentMode string
 	var count int64
 	err = tx.QueryRow(ctx, `SELECT commission_correction_source_valid($1,$2,$3),commission_payment_evidence_current($1,$4,$3,$5),
  coalesce(sum(points_before::numeric),0)::text,coalesce(sum(points_after::numeric),0)::text,
  coalesce(sum(greatest(delta_points,0)::numeric),0)::text,coalesce(sum(greatest(-delta_points,0)::numeric),0)::text,
- coalesce(sum(delta_points::numeric),0)::text,count(*),coalesce(bool_or(adjustment_version>1),false),commission_payment_mode($3)
- FROM commission_correction_candidates($1,$2,$3)`, c.Brand, payment, *c.RunID, c.ID, c.Epoch).Scan(&sourceValid, &current, &before, &calculated, &credit, &debit, &net, &count, &manualChanged, &currentMode)
+ coalesce(sum(delta_points::numeric),0)::text,count(*),commission_payment_mode($3)
+ FROM commission_correction_candidates($1,$2,$3)`, c.Brand, payment, *c.RunID, c.ID, c.Epoch).Scan(&sourceValid, &current, &before, &calculated, &credit, &debit, &net, &count, &currentMode)
 	if err != nil {
 		return err
 	}
@@ -159,11 +159,9 @@ func createCorrectionPlan(ctx context.Context, tx pgx.Tx, c cycleRow, payment st
 	state := "planning"
 	var code *string
 	var credits, debits, netPoints *string = &credit, &debit, &net
-	if manualChanged {
-		state = "blocked"
-		v := "COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED"
-		code, credits, debits, netPoints = &v, nil, nil, nil
-	}
+	// A new draw generation supersedes the manual target, not its audit history.
+	// Candidates use the actual granted net as before and the new calculation
+	// as after: 10 -> manually 12 -> recalculated 8 means a debit of 4.
 	p := correctionPlanRow{ID: ids.New(), Brand: c.Brand, Cycle: c.ID, Payment: payment, Run: *c.RunID, State: state, Version: 1, Epoch: c.Epoch, Count: count}
 	const reason = "freeze actual prior commission and replacement calculation; preparation does not move points"
 	log, err := correctionPlanStep(ctx, tx, p, state, "create", reason, 0, nil, code, meta)

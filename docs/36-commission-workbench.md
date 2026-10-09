@@ -25,7 +25,7 @@
 | commission_correction_plans | plan_processing_count、plan_ready_count、plan_blocked_count、plan_failed_count | planning、ready、blocked、failed |
 | commission_correction_executions | execution_awaiting_approval_count、execution_processing_count、execution_paused_count、execution_failed_count | awaiting_approval、applying、paused、failed |
 
-cycle_ready_count只是当前状态和epoch观察，不替代完整金融来源复核，更不代表可立即派发。计划ready也只是准备完成，必须另查当前证据、开关和批准。paused是等待显式运营处理，不等于技术failed；blocked计划可能涉及尚未确认的OPEN-117。paid/completed/stale等历史终态不计为待处理，历史记录仍可在各管理页面查询。
+cycle_ready_count只是当前状态和epoch观察，不替代完整金融来源复核，更不代表可立即派发。计划ready也只是准备完成，必须另查当前证据、开关和批准。paused是等待显式运营处理，不等于技术failed；历史blocked计划可能保留原未决政策错误码，并按[39号合同](39-commission-manual-recalculation-policy.md)显式处理。paid/completed/stale等历史终态不计为待处理，历史记录仍可在各管理页面查询。
 
 ## 管理端和验收
 
@@ -33,4 +33,4 @@ cycle_ready_count只是当前状态和epoch观察，不替代完整金融来源�
 
 验收使用真实投注/周期/审核/派发/结果更正及资金执行建立状态，验证多目标任务只计一次、证据过期ready移入stale、暂停与技术失败分别显示、更正完成后旧派发blocked仍保留。只读查询前后钱包、账本、事件及原业务证据保持。无权限时即使来源表不可用，也不得访问该表；有权限则失败关闭。HTTP再验证独立权限、会话等待与审计失败，PC/360px真实浏览器验证真实数值、双语、导航和失败清理。
 
-该汇总不实现跨周期佣金应付净额分析，不关闭OPEN-117或客户生产审核；实际积分入账继续使用佣金业务账本报表及原金融流程。
+该汇总不实现跨周期佣金应付净额分析；实际积分入账继续使用佣金业务账本报表及原金融流程。人工修正后重新核算规则的实现状态见39号合同，客户生产审核另行完成。

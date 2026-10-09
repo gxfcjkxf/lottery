@@ -108,7 +108,7 @@ commission_payment_targets逐项绑定该任务run的真实earning、代理及�
 
 目标完成、账本入账、钱包推进、积分审计及派发版本步骤在同一事务提交。数据库同时拒绝无批准、错误受益人/来源/金额、孤立账本、孤立完成目标和重复ledger关联；目标必须有对应支付版本及步骤，不能单独标paid。派发paid要求全部目标完成及总额相等，部分成功仍为paying。失败整笔回滚，保留已成功目标，再记录failed及通用错误码；仅运营按真实版本显式retry，继续未完成目标，不重新发放已完成目标。锁忙或暂时调度不作为永久财务失败。
 
-相关证据变化前尚无正额入账时，旧任务stale并保留原审批及零金额轨迹，新run可单独登记和审核。有任何正额已入账时，原任务blocked及COMMISSION_PAYMENT_CORRECTION_REQUIRED，保留已发总额；不得以新run完整总额再发一次。0058准备逐代理差额，0059在独立默认关闭开关及新批准下实际执行；后续计划按真实已授予净额计算。追回只扣commission.available，不足时跨代次暂停整周期，运营处理后针对当前已批准任务显式继续，不扣其他来源、不自动解冻、不形成负余额或因补足自动恢复。正式管理HTTP、双端操作及0060真实补偿通知/报表已接入，分别见[24号](24-commission-correction-management.md)和[25号合同](25-commission-correction-observability.md)；仍不能把计划ready当作资金完成，OPEN-117特殊组合继续阻止。
+相关证据变化前尚无正额入账时，旧任务stale并保留原审批及零金额轨迹，新run可单独登记和审核。有任何正额已入账时，原任务blocked及COMMISSION_PAYMENT_CORRECTION_REQUIRED，保留已发总额；不得以新run完整总额再发一次。0058准备逐代理差额，0059在独立默认关闭开关及新批准下实际执行；后续计划按真实已授予净额计算。追回只扣commission.available，不足时跨代次暂停整周期，运营处理后针对当前已批准任务显式继续，不扣其他来源、不自动解冻、不形成负余额或因补足自动恢复。正式管理HTTP、双端操作及0060真实补偿通知/报表已接入，分别见[24号](24-commission-correction-management.md)和[25号合同](25-commission-correction-observability.md)；计划ready仍不等于资金完成。OPEN-117已确认新核算覆盖人工修正净额，历史未决计划按[39号合同](39-commission-manual-recalculation-policy.md)显式重试；原派发blocked保留。0073实现与开发验证已通过，新增历史恢复浏览器专项及生产验收仍保留。
 
 ## 派发管理接口
 
