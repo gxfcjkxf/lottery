@@ -1,5 +1,7 @@
 # API 与异步任务契约
 
+新增只读`GET /api/v1/admin/reconciliations/business-inventory`：明确wallet.view品牌/平台授权、固定41表来源及完整引用计数，100项问题样本与完整摘要。无正文/查询参数，源总量超限或来源/审计失败关闭，不授权自动修复；旧五条持久对账任务接口不变，见[37号合同](37-brand-business-inventory.md)。
+
 佣金周期增加明确run的`GET /commission-cycles/{id}/runs/{runID}/earnings`与`/allocations`。沿用commission.view品牌/平台授权，主库读取/会话复核/审计；保存比例、精确分数与整周期舍入值分别显示，不返回完整金融快照或授权资金动作。分页、筛选、历史保持及失败边界见[35号合同](35-commission-allocation-history.md)。
 
 ## 运营工作台快照

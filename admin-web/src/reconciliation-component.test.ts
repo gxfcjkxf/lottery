@@ -6,6 +6,7 @@ import ts from "typescript";
 import * as VueRuntime from "vue";
 import * as AdminApi from "./admin-api";
 import * as AdminI18n from "./i18n";
+import * as BusinessInventoryApi from "./business-inventory-api";
 import * as ReconciliationApi from "./reconciliation-api";
 import * as ReconciliationState from "./reconciliation-state";
 import type { AdminAccount } from "./admin-api";
@@ -49,6 +50,18 @@ function find(node: HostNode, predicate: (item: HostNode) => boolean): HostNode 
 }
 function textOf(node: HostNode): string { return node.text + node.children.map(textOf).join(""); }
 async function flush() { for (let i = 0; i < 24; i++) await Promise.resolve(); await nextTick(); }
+function compileInventoryComponent(): Component {
+  const source = readFileSync(new URL("./BrandBusinessInventory.vue", import.meta.url), "utf8");
+  const script = compileScript(parse(source, { filename: "BrandBusinessInventory.vue" }).descriptor, { id: "brand-business-inventory-in-reconciliation-test", inlineTemplate: true }).content;
+  const javascript = ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+  const modules: Record<string, unknown> = {
+    vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n,
+    "./business-inventory-api": BusinessInventoryApi, "./reconciliation-state": ReconciliationState,
+  };
+  const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) =>
+    `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
+  return new Function("__modules", body)(modules) as Component;
+}
 function compilePage(api: unknown): Component {
   const source = readFileSync(new URL("./ReconciliationManagement.vue", import.meta.url), "utf8");
   const script = compileScript(parse(source, { filename: "ReconciliationManagement.vue" }).descriptor, { id: "reconciliation-component-test", inlineTemplate: true }).content;
@@ -57,6 +70,7 @@ function compilePage(api: unknown): Component {
     vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n,
     "./reconciliation-api": { ...ReconciliationApi, createReconciliationApi: () => api },
     "./reconciliation-state": ReconciliationState,
+    "./BrandBusinessInventory.vue": { default: compileInventoryComponent() },
   };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) =>
     `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
@@ -78,6 +92,8 @@ describe("ReconciliationManagement scope confirmation", () => {
     app.provide(adminI18nKey, context);
     app.mount(root);
     await flush();
+    expect(textOf(root)).toContain("Brand business reference inventory");
+    expect(textOf(root)).toContain("Choose “Load observation” to read it.");
 
     const selector = find(root, (node) => node.tag === "select" && String(node.props["aria-label"]).includes("Check scope"));
     (selector?.props["onUpdate:modelValue"] as ((value: string) => void) | undefined)?.("wallet_and_business");

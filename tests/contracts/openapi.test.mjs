@@ -22,8 +22,10 @@ import * as reportArchives from "../../scripts/openapi-report-archives.mjs";
 import * as reportArchiveTasks from "../../scripts/openapi-report-archive-tasks.mjs";
 import * as reportArchivePolicy from "../../scripts/openapi-report-archive-policy.mjs";
 import * as attributionReports from "../../scripts/openapi-attribution-reports.mjs";
+import * as businessInventory from "../../scripts/openapi-business-inventory.mjs";
 
 const modules=[identity,finance,lottery,withdrawals,withdrawalReports,workbench,commissionPolicies,commissionCycles,commissionDiscovery,commissionPayments,commissionAdjustments,commissionCorrections,commissionReports,rechargeUser,rewards,rewardReports,reportArchives,reportArchiveTasks,reportArchivePolicy,attributionReports];
+modules.push(businessInventory);
 const go=process.env.LOTTERY_GO_BIN??"go";
 const operation={method:"POST",path:"/api/v1/me/action",operationId:"performAction",summary:"Submit action",tag:"identity",auth:"user",idempotency:true,requestBody:{$ref:"#/components/schemas/EmptyObject"},data:{$ref:"#/components/schemas/EmptyObject"}};
 const routes=[{method:"POST",path:"/api/v1/me/action"},{method:"POST",path:"/api/v1/b/{brandCode}/me/action"}];

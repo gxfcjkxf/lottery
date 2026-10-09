@@ -766,10 +766,16 @@ jobs:
           ./bin/platform generate-auth-key .local/auth.key
           ./bin/platform create-admin --username ci_reconciliation_operator --brand harbor
           go run -tags browserfixture ./cmd/reconciliation-fixture
+          go run -tags browserfixture ./cmd/reconciliation-fixture verify > ../reconciliation-fingerprint-before.txt
           ./bin/platform serve > ../reconciliation-api.log 2>&1 &
           ./bin/platform worker > ../reconciliation-worker.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
-      - run: pnpm exec playwright test tests/browser/reconciliation.spec.ts --project=${{ matrix.project }} --workers=1
+      - run: pnpm exec playwright test tests/browser/reconciliation.spec.ts tests/browser/business-inventory.spec.ts --project=${{ matrix.project }} --workers=1 --retries=0
+      - name: Verify complete owned financial history after readonly checks
+        working-directory: backend
+        run: |
+          go run -tags browserfixture ./cmd/reconciliation-fixture verify > ../reconciliation-fingerprint-after.txt
+          cmp ../reconciliation-fingerprint-before.txt ../reconciliation-fingerprint-after.txt
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

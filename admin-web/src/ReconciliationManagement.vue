@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useAdminI18n } from "./i18n";
 import type { LocalizedMessage } from "@lottery/shared";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
+import { default as BrandBusinessInventory } from "./BrandBusinessInventory.vue";
 import {
   createReconciliationApi, reconciliationPermissions,
   type ReconciliationCheckScope, type ReconciliationJob, type ReconciliationOutcome, type ReconciliationTarget,
@@ -215,6 +216,8 @@ onBeforeUnmount(() => { alive = false; listTicket++; detailTicket++; targetTicke
     </header>
     <p v-if="notice" class="notice" role="status">{{ t(notice) }}</p>
     <p v-if="writeError" class="error write-error" role="alert">{{ t(writeError) }}</p>
+
+    <BrandBusinessInventory :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />
 
     <section v-if="!rights.view" class="panel muted-panel">{{ t("当前账号没有查看此品牌钱包对账的权限。", "This account cannot view wallet reconciliation for this brand.") }}</section>
 

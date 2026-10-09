@@ -12,6 +12,7 @@ import (
 
 func registerPointSafetyRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
 	registerReconciliationRoutes(handle, d)
+	registerBusinessInventoryRoutes(handle, d)
 	registerReportArchiveRoutes(handle, d)
 	registerReportArchiveTaskRoutes(handle, d)
 	registerJoinCodeAdmin(handle, d)

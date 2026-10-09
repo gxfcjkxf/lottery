@@ -217,6 +217,7 @@ func main() {
 	for key, value := range workbenchExamples() {
 		values[key] = value
 	}
+	values["FinanceBusinessInventorySnapshot"] = businessInventoryExample()
 	for key, value := range auditExportExamples() {
 		values[key] = value
 	}

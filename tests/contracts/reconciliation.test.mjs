@@ -25,6 +25,7 @@ import * as reportArchives from "../../scripts/openapi-report-archives.mjs";
 import * as reportArchiveTasks from "../../scripts/openapi-report-archive-tasks.mjs";
 import * as reportArchivePolicy from "../../scripts/openapi-report-archive-policy.mjs";
 import * as attributionReports from "../../scripts/openapi-attribution-reports.mjs";
+import * as businessInventory from "../../scripts/openapi-business-inventory.mjs";
 
 const root=new URL("../../",import.meta.url);
 const go=process.env.LOTTERY_GO_BIN??"go";
@@ -45,7 +46,7 @@ const expectedRoutes=[
   "POST /api/v1/admin/reconciliations/{id}/retry",
 ];
 
-test("reconciliation contract documents exactly the five registered admin routes",()=>{
+test("reconciliation contract keeps five durable task routes alongside the standalone inventory",()=>{
   const result=spawnSync(go,["run","-buildvcs=false","./cmd/route-inventory"],{cwd:new URL("../../backend/",import.meta.url),encoding:"utf8",env:{...process.env,CGO_ENABLED:"0"}});
   assert.equal(result.status,0,result.stderr||result.error?.message);
   const actual=new Set(JSON.parse(result.stdout).map(({method,path})=>`${method} ${path}`));
@@ -54,6 +55,7 @@ test("reconciliation contract documents exactly the five registered admin routes
     {schemas,operations},
     {schemas:lotterySchemas,operations:lotteryOperations},
     workbench,
+    businessInventory,
     withdrawals,
     withdrawalReports,
     commissionPolicies,
@@ -71,6 +73,8 @@ test("reconciliation contract documents exactly the five registered admin routes
     reportArchivePolicy,
     attributionReports,
   ],JSON.parse(result.stdout));
+  assert.ok(actual.has("GET /api/v1/admin/reconciliations/business-inventory"));
+  assert.ok(fullDocument.paths["/api/v1/admin/reconciliations/business-inventory"].get);
   for(const route of expectedRoutes){
     assert.ok(actual.has(route),`backend route missing: ${route}`);
     assert.ok(methodsByPath.has(route.replace("/api/v1/admin","")),`OpenAPI route missing: ${route}`);

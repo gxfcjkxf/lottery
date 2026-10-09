@@ -6,7 +6,7 @@
 
 已实现接口包含健康检查、品牌上下文、用户认证、管理账号与权限、积分账本和人工充值、玩法与期次、投注、开奖、结算与更正、站内通知、报表、代理配置和加入码。用户标准路径与平台 `/b/{brandCode}` 路径分别列出，域名解析和品牌隔离仍由服务端执行。
 
-佣金政策、周期发现/核算、单人审核与实际佣金来源入账、独立人工差额修正及实际入账报表已接入。派发使用独立`/commission-payment-policy`与`/commission-payments`接口及金融写权限，核算ready不表示已派发。默认关闭的运行开关须品牌管理员显式启用，开启会处理已有历史就绪周期；人工/自动方式仍来自原投注快照，混合周期整期人工批准。结果更正通过独立`/commission-correction-policy`、`/commission-correction-plans`和`/commission-correction-executions`十二条操作接入差额执行，见[管理合同](24-commission-correction-management.md)。0060增加第20种`commission.corrected`消息及佣金报告更正笔数/补发/追回字段，CSV为版本2/22列，实际历史、公开载荷与协调升级见[25号合同](25-commission-correction-observability.md)。0068接入只读历史归属统计，0069/0070追加开奖公布/更正及闭合历史载荷，现22类站内事件，见[31号合同](31-draw-result-notifications.md)。原派发blocked不由独立人工修正解锁，OPEN-117组合仍阻止。当前契约覆盖290条实际操作和392个组件，不能据此宣称整个平台已完成。
+佣金政策、周期发现/核算、单人审核与实际佣金来源入账、独立人工差额修正及实际入账报表已接入。派发使用独立`/commission-payment-policy`与`/commission-payments`接口及金融写权限，核算ready不表示已派发。默认关闭的运行开关须品牌管理员显式启用，开启会处理已有历史就绪周期；人工/自动方式仍来自原投注快照，混合周期整期人工批准。结果更正通过独立`/commission-correction-policy`、`/commission-correction-plans`和`/commission-correction-executions`十二条操作接入差额执行，见[管理合同](24-commission-correction-management.md)。0060增加第20种`commission.corrected`消息及佣金报告更正笔数/补发/追回字段，CSV为版本2/22列，实际历史、公开载荷与协调升级见[25号合同](25-commission-correction-observability.md)。0068接入只读历史归属统计，0069/0070追加开奖公布/更正及闭合历史载荷，现22类站内事件，见[31号合同](31-draw-result-notifications.md)。原派发blocked不由独立人工修正解锁，OPEN-117组合仍阻止。当前契约覆盖291条实际操作和395个组件，不能据此宣称整个平台已完成。
 
 工作台commissions区已接入独立commission.view权限、完整19项当前任务计数及旧not_implemented/null兼容，不增路由或资金权限。无权限不访问来源表，来源或审计失败整体关闭；API和前端协调发布，见[36号合同](36-commission-workbench.md)。
 
@@ -29,6 +29,8 @@ PUT 必须提供当前共享版本、全部 16 个配置键和操作原因。可
 错误包括 `BRAND_DOMAIN_INPUT_INVALID`、`BRAND_DOMAIN_NOT_FOUND`、`BRAND_DOMAIN_VERSION_CONFLICT`、`BRAND_DOMAIN_STATE_CONFLICT`及`BRAND_DOMAIN_CONFLICT`；禁用绑定继续占用全局主机名。请求的Host必须先属于可用管理入口，当前入口被关闭时可能先返回404，不据此认为旧成功回执可重放。域名绑定不验证所有权、不操作DNS/TLS/重定向；客户部署方需另行验证，详见 [05-ui-spec.md](05-ui-spec.md)。
 
 ## 接入约束
+
+品牌业务引用`GET /api/v1/admin/reconciliations/business-inventory`使用明确wallet.view权限、主库观察、闭合11字段及固定41表覆盖；支持复合来源标识，完整计数和摘要不随100项问题样本截断。无正文/查询串，超限413、来源/审计失败503，不能据结构判断修复金额。先migrate至0072并协调API/worker/前端，旧持久任务及回执不改写，见[37号合同](37-brand-business-inventory.md)。
 
 提现可查询独立授权的当前状态报表并完整导出CSV，工作台提供真实审核中/提现中计数；六种提现状态事件通过既有站内收件箱读取。报表按申请created_at筛选，不是实际出款时间或不可变结账；通知记录不可变历史状态，不代表当前余额或外部支付。字段、范围、文件校验与权限见[API合同](04-api-contract.md)，模板和历史说明见[通知合同](12-notification-templates.md)。查询报表或通知不授权提交提现，申请仍须通过当前配置、资格、余额及并发检查。
 

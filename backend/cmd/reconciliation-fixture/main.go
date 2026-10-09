@@ -5,6 +5,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
+	"github.com/gxfcjkxf/lottery/backend/internal/reconciliation"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -54,6 +57,28 @@ func run() error {
 		return errors.New("fixture database unavailable")
 	}
 	defer p.Close()
+	if len(os.Args) > 1 {
+		if len(os.Args) != 2 || os.Args[1] != "verify" {
+			return errors.New("unsupported owned fixture operation")
+		}
+		tx, err := p.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+		if err != nil {
+			return errors.New("owned verification unavailable")
+		}
+		defer tx.Rollback(ctx)
+		hash := sha256.New()
+		for _, table := range append(reconciliation.InventorySources(), "outbox_events") {
+			var raw []byte
+			query := `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM ` + pgx.Identifier{"public", table}.Sanitize() + ` t`
+			if err = tx.QueryRow(ctx, query).Scan(&raw); err != nil {
+				return errors.New("owned financial verification failed")
+			}
+			_, _ = hash.Write([]byte(table + "\n"))
+			_, _ = hash.Write(raw)
+		}
+		fmt.Println("economic_fingerprint=" + hex.EncodeToString(hash.Sum(nil)))
+		return nil
+	}
 	var existing int
 	if e = p.QueryRow(ctx, `SELECT count(*) FROM point_accounts`).Scan(&existing); e != nil {
 		return errors.New("migrated fixture database required")
@@ -123,6 +148,27 @@ func run() error {
 	if e = tx.Commit(ctx); e != nil {
 		return errors.New("fixture damage commit failed")
 	}
-	fmt.Println("owned reconciliation fixture ready: 3 synthetic wallets; immutable guard restored")
+	// A separate corrupt child has no parent order, account or actual money
+	// movement. Only this opt-in owned fixture may inject such a source. The
+	// account-driven check cannot enumerate it; the brand inventory must do so.
+	child, e := p.Begin(ctx)
+	if e != nil {
+		return errors.New("fixture orphan transaction unavailable")
+	}
+	defer child.Rollback(ctx)
+	if _, e = child.Exec(ctx, `SET LOCAL session_replication_role=replica`); e != nil {
+		return errors.New("owned orphan fixture privilege unavailable")
+	}
+	if _, e = child.Exec(ctx, `INSERT INTO reward_order_actions(id,brand_id,order_id,version,operation,state_after,actor_id,reason,audit_log_id)
+	 VALUES($1,$2,$3,1,'grant','granted',$4,'owned orphan source without a real grant',$5)`, ids.New(), brand, ids.New(), ids.New(), ids.New()); e != nil {
+		return errors.New("cannot inject owned parentless action")
+	}
+	if _, e = child.Exec(ctx, `SET LOCAL session_replication_role=origin`); e != nil {
+		return errors.New("cannot restore owned orphan fixture guards")
+	}
+	if e = child.Commit(ctx); e != nil {
+		return errors.New("owned orphan fixture commit failed")
+	}
+	fmt.Println("owned reconciliation fixture ready: 3 synthetic wallets and 1 parentless action; guards restored")
 	return nil
 }
