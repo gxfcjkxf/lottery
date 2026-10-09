@@ -49,6 +49,8 @@ test('complete review runs require brand creation credentials instead of silentl
   assert.match(workflow, /TEST_PLATFORM_ADMIN_USERNAME: review_platform_\{project\}/)
   assert.match(workflow, /create-admin --username review_platform_desktop1440 --super/)
   assert.match(workflow, /create-admin --username review_platform_mobile360 --super/)
+  assert.match(workflow, /create-admin --username review_operator_desktop1440 --brand aurora/)
+  assert.match(workflow, /create-admin --username review_operator_mobile360 --brand aurora/)
 })
 
 test('read-only review panels share real worker sessions without disabling auth limits', () => {
@@ -57,6 +59,8 @@ test('read-only review panels share real worker sessions without disabling auth 
   assert.match(fixture, /platform\/auth\/login/)
   assert.match(fixture, /api\.storageState\(\)/)
   assert.match(fixture, /login\.status\(\).*\.toBe\(200\)/)
+  assert.match(fixture, /review_operator_\$\{project\}/)
+  assert.match(fixture, /expect\(account\.super_admin\)\.toBe\(false\)/)
   assert.doesNotMatch(fixture, /route\.fulfill|auth_rate_limits|DELETE FROM|X-Forwarded-For|retry/)
   for (const file of ['platform-bets', 'platform-read-pages', 'platform-rewards', 'platform-wallet', 'platform-withdrawals']) {
     const source = readFileSync(new URL(`../review/${file}.spec.ts`, import.meta.url), 'utf8')
@@ -65,4 +69,9 @@ test('read-only review panels share real worker sessions without disabling auth 
   const authTests = readFileSync(new URL('../review/admin-entry.spec.ts', import.meta.url), 'utf8')
   assert.match(authTests, /from '@playwright\/test'/)
   assert.match(authTests, /Sign in/)
+  for (const file of ['platform-lottery', 'platform-rules', 'platform-recharges']) {
+    const source = readFileSync(new URL(`../review/${file}.spec.ts`, import.meta.url), 'utf8')
+    assert.match(source, /newContext\(\{ storageState: operatorSession \}\)/)
+    assert.doesNotMatch(source, /identifier: 'review_operator'|\/auth\/login/)
+  }
 })

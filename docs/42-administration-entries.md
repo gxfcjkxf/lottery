@@ -62,6 +62,8 @@ pnpm review:platform
 
 完整浏览器验收使用显式创建的`review_platform_desktop1440`和`review_platform_mobile360`，均持有当前初始化的提现查看权限。原`review_platform`未自动追加授权；缺少权限时仍返回403，不能用客户端或服务端兜底放行。已有独立提现体验账号保留，不作为整套回归的共享登录账号。
 
+真实充值、彩种与规则查询用例的品牌准备操作使用显式创建的`review_operator_desktop1440`和`review_operator_mobile360`，仅授权Aurora，不是平台账号。同一worker复用实际登录并核对品牌范围的Cookie，独立请求上下文从该已验证状态初始化；登录入口用例仍独立操作原`review_operator`。新账号使用普通create-admin命令创建，CI同样显式创建，不改生产限流规则或自动授权已有账号。
+
 真实体验烟测使用`playwright.review.config.ts`，要求显式设置体验密码、品牌创建凭证及浏览器路径，缺少配置即报错，不静默跳过品牌创建。查询用例在同一worker内复用经真实平台登录与`/me`校验的会话；登录、退出和错误入口用例仍独立登录。测试不会关闭限流、清空限流表或伪造来源IP。反复运行触发限流时等待固定窗口自然到期。
 
 ```sh

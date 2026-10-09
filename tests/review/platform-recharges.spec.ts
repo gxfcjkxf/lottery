@@ -56,7 +56,7 @@ test('wallet recharge tab paginates exact list snapshots and clears scope withou
   await expect(page.getByRole('button', { name: /Create recharge|Confirm recharge|Make payment/i })).toHaveCount(0);
 });
 
-test('platform recharge query reads real records without changing wallet or ledger', async ({ page, playwright }) => {
+test('platform recharge query reads real records without changing wallet or ledger', async ({ page, playwright, operatorSession }) => {
   await page.goto('http://127.0.0.1:5183/register');
   await page.getByLabel('Choose a username or phone', { exact: true }).fill(`recharge_review_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`);
   await page.getByLabel('Password', { exact: true }).fill('owned-recharge-review-password-2026');
@@ -69,17 +69,12 @@ test('platform recharge query reads real records without changing wallet or ledg
   const me = await page.request.get('http://127.0.0.1:5183/api/v1/me');
   expect(me.status()).toBe(200);
   const memberId = (await me.json()).data.member.id;
-  const operator = await playwright.request.newContext();
+  const operator = await playwright.request.newContext({ storageState: operatorSession });
   const brandOrigin = 'http://127.0.0.1:5184';
   const operationHeaders = { Origin: brandOrigin, 'X-Brand-ID': brand };
   let rechargeId: string;
   let ledgerId: string;
   try {
-    const login = await operator.post(`${brandOrigin}/api/v1/admin/auth/login`, {
-      headers: { ...operationHeaders, 'Idempotency-Key': crypto.randomUUID() },
-      data: { identifier: 'review_operator', password: process.env.TEST_REVIEW_ADMIN_PASSWORD! },
-    });
-    expect(login.status()).toBe(200);
     const created = await operator.post(`${brandOrigin}/api/v1/admin/recharges`, {
       headers: { ...operationHeaders, 'Idempotency-Key': crypto.randomUUID() },
       data: { member_id: memberId, points: '7', proof_reference: 'owned-recharge-review', remark: 'owned synthetic funding', reason: 'prepare real readonly verification' },

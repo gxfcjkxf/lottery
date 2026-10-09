@@ -56,8 +56,8 @@ test('platform plays and versions paginate and clear failed details without writ
   await expect(panel).toHaveCount(0);
 });
 
-test('platform can read a real pending rule but cannot approve or alter it', async ({ page, playwright }, info) => {
-  const operator = await playwright.request.newContext();
+test('platform can read a real pending rule but cannot approve or alter it', async ({ page, playwright, operatorSession }, info) => {
+  const operator = await playwright.request.newContext({ storageState: operatorSession });
   const suffix = crypto.randomUUID().replaceAll('-', '').slice(0, 12);
   const name = `Platform rule ${suffix}`;
   const headers = { Origin: brandOrigin, 'X-Brand-ID': brand };
@@ -68,7 +68,6 @@ test('platform can read a real pending rule but cannot approve or alter it', asy
     return (await response.json()).data;
   }
   try {
-    await post('/auth/login', { identifier: 'review_operator', password: process.env.TEST_REVIEW_ADMIN_PASSWORD! });
     const game = await post('/games', { code: `platform_rule_${suffix}`, name, model, timezone: 'UTC', reason: 'Create owned rule query fixture' }, 201);
     const play = await post(`/games/${game.id}/plays`, { code: 'exact', name: 'Exact digits', reason: 'Create owned play' }, 201);
     const draft = await post('/rule-versions', { play_id: play.id, definition, effect_mode: 'immediate', reason: 'Create owned draft' }, 201);

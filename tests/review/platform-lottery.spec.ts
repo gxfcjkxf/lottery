@@ -58,20 +58,15 @@ test('platform catalogue uses the real games endpoint and has no manual draw rou
   expect([404, 405]).toContain(denied.status());
 });
 
-test('platform reads a genuine brand-created period and manual result without changing it', async ({ page, playwright }, info) => {
+test('platform reads a genuine brand-created period and manual result without changing it', async ({ page, playwright, operatorSession }, info) => {
   test.setTimeout(60_000);
-  const operator = await playwright.request.newContext();
+  const operator = await playwright.request.newContext({ storageState: operatorSession });
   const brandOrigin = 'http://127.0.0.1:5184';
   const base = `${brandOrigin}/api/v1/admin`;
   const headers = { Origin: brandOrigin, 'X-Brand-ID': brand };
   const suffix = crypto.randomUUID().replaceAll('-', '').slice(0, 12);
   const name = `Platform real draw ${suffix}`;
   try {
-    const login = await operator.post(`${base}/auth/login`, {
-      headers: { ...headers, 'Idempotency-Key': crypto.randomUUID() },
-      data: { identifier: 'review_operator', password: process.env.TEST_REVIEW_ADMIN_PASSWORD! },
-    });
-    expect(login.status()).toBe(200);
     const created = await operator.post(`${base}/games`, {
       headers: { ...headers, 'Idempotency-Key': crypto.randomUUID() },
       data: { code: `platform_draw_${suffix}`, name, model: games[0].model, timezone: 'UTC', reason: 'Owned synthetic game for real platform read verification' },

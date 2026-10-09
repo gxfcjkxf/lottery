@@ -49,6 +49,8 @@ jobs:
           .local/review-platform migrate
           .local/review-platform seed
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_operator --brand aurora
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_operator_desktop1440 --brand aurora
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_operator_mobile360 --brand aurora
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform --super
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform_desktop1440 --super
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform_mobile360 --super
