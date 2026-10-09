@@ -11,6 +11,17 @@ const drawRoutes = readFileSync(new URL('../../backend/internal/httpapi/draws.go
 const correctionRoutes = readFileSync(new URL('../../backend/internal/httpapi/corrections.go', import.meta.url), 'utf8');
 const workflow = readFileSync(new URL('../../.github/workflows/ci.yaml', import.meta.url), 'utf8');
 
+test('existing financial inbox browsers retain exact current template registry assertions', () => {
+  const defaults = JSON.parse(readFileSync(new URL('../../backend/internal/notification/template_defaults.json', import.meta.url), 'utf8'));
+  assert.equal(Object.keys(defaults).length, 22);
+  for (const name of ['reward-notifications.spec.ts', 'commission-corrections.spec.ts']) {
+    const source = readFileSync(new URL(`../browser/${name}`, import.meta.url), 'utf8');
+    assert.match(source, /expect\(templates\.items\)\.toHaveLength\(22\)/);
+    assert.match(source, /\['draw\.result\.corrected',\s*'draw\.result\.published'\]/);
+    assert.doesNotMatch(source, /expect\(templates\.items\)\.toHaveLength\(20\)/);
+  }
+});
+
 test('draw notice CI has isolated viewport jobs with normal bootstrap and a real worker', () => {
   const job = /^  draw-notifications-browser:\n([\s\S]*?)(?=^  [a-z][a-z-]*:\n)/m.exec(workflow)?.[1];
   assert.ok(job);

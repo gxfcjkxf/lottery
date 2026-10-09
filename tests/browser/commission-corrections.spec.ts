@@ -135,7 +135,8 @@ test('actual manual correction preserves lost approval receipts, holds until exp
   const message = messages[0]!; expect(message.template_version).toBe(1); expect(message.content).toBeTruthy();
   expect(message.payload).toEqual({ resource_id: complete.execution_target_id, points: '-1' });
   command('notify'); expect((await inbox()).items.filter(item => item.event_type === 'commission.corrected')).toEqual(messages);
-  const templates = await get<{ items: Array<{ key: string; version: number; content: unknown }> }>('/notification-templates'); expect(templates.items).toHaveLength(20);
+  const templates = await get<{ items: Array<{ key: string; version: number; content: unknown }> }>('/notification-templates'); expect(templates.items).toHaveLength(22);
+  expect(templates.items.filter(item => item.key.startsWith('draw.result.')).map(item => item.key).sort()).toEqual(['draw.result.corrected','draw.result.published']);
   const template = templates.items.find(item => item.key === 'commission.corrected')!; expect(template.version).toBe(1);
   await data(await page.request.put(`${admin}/notification-templates/commission.corrected`, { headers: { Origin: origin, 'X-Brand-ID': brand, 'Idempotency-Key': crypto.randomUUID() }, data: { version: template.version, content: { en: { title: 'New correction copy', body: 'Later template copy: {points} points.' }, 'zh-CN': { title: '新更正文案', body: '后续模板文案：{points} 积分。' } }, reason: 'Owned synthetic edit proves earlier correction snapshot remains immutable' } }));
   expect((await inbox()).items.find(item => item.id === message.id)).toEqual(message);
