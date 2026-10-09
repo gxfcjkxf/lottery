@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5185';
 const brand = '0199a000-0000-7000-8000-000000000001';
@@ -10,9 +11,6 @@ function buckets(amount: string) {
 }
 async function signIn(page: Page) {
   await page.goto(origin);
-  await page.getByLabel('Username', { exact: true }).fill('review_platform');
-  await page.getByLabel('Password', { exact: true }).fill(process.env.TEST_REVIEW_ADMIN_PASSWORD!);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.locator('.app-frame')).toBeVisible();
 }
 

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { reviewPlatformUsername } from './platform-account';
 
 const brandOrigin = 'http://127.0.0.1:5184';
 const platformOrigin = 'http://127.0.0.1:5185';
@@ -37,7 +38,7 @@ test('independent platform entry has no public menu, restores its own cookie and
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   expect((await denied).status()).toBe(403);
   await expect(page.locator('.app-frame')).toHaveCount(0);
-  await page.getByLabel('Username', { exact: true }).fill('review_platform');
+  await page.getByLabel('Username', { exact: true }).fill(reviewPlatformUsername());
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.locator('.app-frame')).toBeVisible();

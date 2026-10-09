@@ -7,6 +7,10 @@ if (!password) {
   );
 }
 
+for (const name of ['TEST_PLATFORM_ADMIN_USERNAME', 'TEST_PLATFORM_ADMIN_PASSWORD', 'TEST_PLATFORM_ADMIN_ORIGIN']) {
+  if (!process.env[name]) throw new Error(`${name} is required for the complete review suite; brand creation must not be skipped.`);
+}
+
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 if (!executablePath) {
   throw new Error(

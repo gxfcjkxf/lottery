@@ -23,7 +23,7 @@ jobs:
       HTTP_ADDR: 127.0.0.1:8085
       AUTH_KEY_FILE: ${{ github.workspace }}/.local/review-auth.key
       TEST_REVIEW_ADMIN_PASSWORD: ci-owned-review-entry-password-2026
-      TEST_PLATFORM_ADMIN_USERNAME: review_platform
+      TEST_PLATFORM_ADMIN_USERNAME: review_platform_{project}
       TEST_PLATFORM_ADMIN_PASSWORD: ci-owned-review-entry-password-2026
       TEST_PLATFORM_ADMIN_ORIGIN: http://127.0.0.1:5185
     steps:
@@ -50,7 +50,8 @@ jobs:
           .local/review-platform seed
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_operator --brand aurora
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform --super
-          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_withdrawal_platform --super
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform_desktop1440 --super
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform_mobile360 --super
           .local/review-platform serve > .local/review-api.log 2>&1 &
           .local/review-platform worker > .local/review-worker.log 2>&1 &
           pnpm review:user > .local/review-user.log 2>&1 &

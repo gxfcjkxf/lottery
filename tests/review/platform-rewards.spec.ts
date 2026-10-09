@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5185';
 const brand = '0199a000-0000-7000-8000-000000000001';
@@ -46,9 +46,6 @@ test('platform rewards paginate orders and history, refresh and reset on brand c
     await route.fulfill({ json: { success: true, data } });
   });
   await page.goto(origin);
-  await page.getByLabel('Username', { exact: true }).fill('review_platform');
-  await page.getByLabel('Password', { exact: true }).fill(process.env.TEST_REVIEW_ADMIN_PASSWORD!);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Manual rewards' }).click();
   await page.locator('.brand-picker select').selectOption(brand);

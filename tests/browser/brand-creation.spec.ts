@@ -9,7 +9,7 @@ test('platform brand creation retains an uncertain committed request across navi
   page.setDefaultTimeout(10_000);
   const login = await page.request.post(`${api}/auth/login`, {
     headers: { Origin: origin, 'Idempotency-Key': crypto.randomUUID() },
-    data: { identifier: process.env.TEST_PLATFORM_ADMIN_USERNAME, password: process.env.TEST_PLATFORM_ADMIN_PASSWORD },
+    data: { identifier: process.env.TEST_PLATFORM_ADMIN_USERNAME!.replace('{project}', info.project.name), password: process.env.TEST_PLATFORM_ADMIN_PASSWORD },
   });
   expect(login.status()).toBe(200);
   const me = await page.request.get(`${api}/me`);

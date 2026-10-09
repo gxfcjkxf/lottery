@@ -54,6 +54,17 @@ pnpm review:platform
 
 体验账户`review_operator`和`review_reviewer`属于Aurora，`review_platform`为平台账号。这些账号由本地人工引导命令创建，不会随迁移或种子自动创建。临时凭证保存在忽略的本地文件中，不属于客户或生产凭证。
 
-提现只读验收另显式创建`review_withdrawal_platform`，它持有当前初始化的提现查看权限。原`review_platform`未自动追加授权；若用原账号查询提现得到403，应由服务器拥有者明确配置权限，不能用客户端或服务端兜底放行。
+完整浏览器验收使用显式创建的`review_platform_desktop1440`和`review_platform_mobile360`，均持有当前初始化的提现查看权限。原`review_platform`未自动追加授权；缺少权限时仍返回403，不能用客户端或服务端兜底放行。已有独立提现体验账号保留，不作为整套回归的共享登录账号。
 
-真实体验烟测使用`playwright.review.config.ts`，要求显式设置`TEST_REVIEW_ADMIN_PASSWORD`和`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`。PC为1440px，移动视口为360px；浏览器视口验收不替代iOS、安卓和鸿蒙真机测试。
+真实体验烟测使用`playwright.review.config.ts`，要求显式设置体验密码、品牌创建凭证及浏览器路径，缺少配置即报错，不静默跳过品牌创建。查询用例在同一worker内复用经真实平台登录与`/me`校验的会话；登录、退出和错误入口用例仍独立登录。测试不会关闭限流、清空限流表或伪造来源IP。反复运行触发限流时等待固定窗口自然到期。
+
+```sh
+TEST_REVIEW_ADMIN_PASSWORD='<owned test password>' \
+TEST_PLATFORM_ADMIN_USERNAME='review_platform_{project}' \
+TEST_PLATFORM_ADMIN_PASSWORD='<owned test password>' \
+TEST_PLATFORM_ADMIN_ORIGIN='http://127.0.0.1:5185' \
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH='<absolute browser executable>' \
+pnpm exec playwright test --config playwright.review.config.ts --workers=2
+```
+
+当前整套26项在PC1440px和移动360px通过，无跳过。真实注册、品牌创建、入口隔离及账本只读核对与合成分页/详情响应均各有对应说明；不把整套通过推导为全部真实财务流程、iOS、安卓或鸿蒙真机验收。

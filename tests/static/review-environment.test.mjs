@@ -41,3 +41,27 @@ test('isolated entry CI pins the installed Chromium before loading the strict re
   assert.match(reviewConfig, /if \(!executablePath\)/)
   assert.match(reviewConfig, /launchOptions: \{ executablePath \}/)
 })
+
+test('complete review runs require brand creation credentials instead of silently skipping it', () => {
+  for (const key of ['TEST_PLATFORM_ADMIN_USERNAME', 'TEST_PLATFORM_ADMIN_PASSWORD', 'TEST_PLATFORM_ADMIN_ORIGIN']) assert.ok(reviewConfig.includes(key))
+  assert.match(reviewConfig, /brand creation must not be skipped/)
+  assert.match(workflow, /TEST_PLATFORM_ADMIN_USERNAME: review_platform_\{project\}/)
+  assert.match(workflow, /create-admin --username review_platform_desktop1440 --super/)
+  assert.match(workflow, /create-admin --username review_platform_mobile360 --super/)
+})
+
+test('read-only review panels share real worker sessions without disabling auth limits', () => {
+  const fixture = readFileSync(new URL('../review/platform-fixture.ts', import.meta.url), 'utf8')
+  assert.match(fixture, /scope: 'worker'/)
+  assert.match(fixture, /platform\/auth\/login/)
+  assert.match(fixture, /api\.storageState\(\)/)
+  assert.match(fixture, /login\.status\(\).*\.toBe\(200\)/)
+  assert.doesNotMatch(fixture, /route\.fulfill|auth_rate_limits|DELETE FROM|X-Forwarded-For|retry/)
+  for (const file of ['platform-bets', 'platform-read-pages', 'platform-rewards', 'platform-wallet', 'platform-withdrawals']) {
+    const source = readFileSync(new URL(`../review/${file}.spec.ts`, import.meta.url), 'utf8')
+    assert.match(source, /from '\.\/platform-fixture'/)
+  }
+  const authTests = readFileSync(new URL('../review/admin-entry.spec.ts', import.meta.url), 'utf8')
+  assert.match(authTests, /from '@playwright\/test'/)
+  assert.match(authTests, /Sign in/)
+})

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5185';
 const brand = '0199a000-0000-7000-8000-000000000001';
@@ -29,9 +29,6 @@ test('platform member and audit pages paginate and clear scope without write con
     });
   }
   await page.goto(origin);
-  await page.getByLabel('Username', { exact: true }).fill('review_platform');
-  await page.getByLabel('Password', { exact: true }).fill(process.env.TEST_REVIEW_ADMIN_PASSWORD!);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.locator('.app-frame')).toBeVisible();
   for (const [section, testId, marker] of [
     ['Brand members', 'platform-member-pages', 'member_page_50'],
