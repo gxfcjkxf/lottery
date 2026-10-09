@@ -85,15 +85,19 @@ export function createPlatformApi(fetcher: typeof fetch = fetch) {
       const data = await request<unknown>('/brands')
       return validate(data, isItems(isBrand), 'brands').items
     },
-    async users(brandId: string) {
+    async users(brandId: string, limit = 100, offset = 0) {
       if (!brandId) apiError('A brand must be selected before loading members', 400, 'BRAND_REQUIRED')
-      const data = await request<unknown>('/users?limit=100&offset=0', { brandId })
-      return validate(data, isItems(isMember), 'brand members').items
+      const data = await request<unknown>(`/users?limit=${limit}&offset=${offset}`, { brandId })
+      const items = validate(data, isItems(isMember), 'brand members').items
+      if (items.length > limit || items.some(item => item.brand_id !== brandId)) apiError('Invalid brand members response', 0, 'INVALID_RESPONSE')
+      return items
     },
-    async audit(brandId: string) {
+    async audit(brandId: string, limit = 100, offset = 0) {
       if (!brandId) apiError('A brand must be selected before loading audit records', 400, 'BRAND_REQUIRED')
-      const data = await request<unknown>('/audit?limit=100&offset=0', { brandId })
-      return validate(data, isItems(isAudit), 'audit').items
+      const data = await request<unknown>(`/audit?limit=${limit}&offset=${offset}`, { brandId })
+      const items = validate(data, isItems(isAudit), 'audit').items
+      if (items.length > limit || items.some(item => item.brand_id !== brandId)) apiError('Invalid audit response', 0, 'INVALID_RESPONSE')
+      return items
     },
     async createBrand(input: BrandCreateInput, key: string) {
       const body = { code: input.code, name: input.name, default_locale: input.default_locale, timezone: input.timezone, reason: input.reason }

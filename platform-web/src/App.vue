@@ -24,6 +24,14 @@ const account = ref<{ id: string; super_admin: true } | null>(null)
 const brands = ref<PlatformBrand[]>([])
 const members = ref<PlatformMember[]>([])
 const auditRows = ref<PlatformAudit[]>([])
+const pageSize = 50
+const memberOffset = ref(0)
+const auditOffset = ref(0)
+const moreMembers = ref(false)
+const moreAudit = ref(false)
+const previousPage = computed(() => locale.value === 'en' ? 'Previous page' : '上一页')
+const nextPage = computed(() => locale.value === 'en' ? 'Next page' : '下一页')
+const thisPage = computed(() => locale.value === 'en' ? 'This page' : '本页')
 const selectedBrand = ref('')
 const section = ref<'brands' | 'users' | 'audit' | 'rewards'>('brands')
 const busy = ref(false)
@@ -46,6 +54,7 @@ function clearPrivateState() {
   retryPayload.value = null; modal.value = false; confirming.value = false
   loading.value = false
   memberRequestGeneration++; auditRequestGeneration++
+  memberOffset.value = 0; auditOffset.value = 0; moreMembers.value = false; moreAudit.value = false
 }
 function handleFailure(cause: unknown) {
   if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) clearPrivateState()
@@ -73,6 +82,7 @@ async function signOut() {
 }
 async function chooseSection(next: 'brands' | 'users' | 'audit' | 'rewards') {
   section.value = next; error.value = ''; notice.value = ''
+  memberOffset.value = 0; auditOffset.value = 0; moreMembers.value = false; moreAudit.value = false
   if (next !== 'users') { memberRequestGeneration++; members.value = [] }
   if (next !== 'audit') { auditRequestGeneration++; auditRows.value = [] }
   if (!selectedBrand.value || (next !== 'audit' && next !== 'users')) loading.value = false
@@ -82,28 +92,37 @@ async function chooseSection(next: 'brands' | 'users' | 'audit' | 'rewards') {
 async function chooseBrand(id: string) {
   selectedBrand.value = id; members.value = []; auditRows.value = []; error.value = ''; notice.value = ''
   memberRequestGeneration++; auditRequestGeneration++
+  memberOffset.value = 0; auditOffset.value = 0; moreMembers.value = false; moreAudit.value = false
   if (!id) { loading.value = false; return }
   if (section.value === 'users') await loadMembers(id)
   if (section.value === 'audit') await loadAudit(id)
 }
-async function loadMembers(brandId: string) {
+async function loadMembers(brandId: string, offset = 0) {
   const generation = ++memberRequestGeneration
-  members.value = []; loading.value = true
+  members.value = []; loading.value = true; moreMembers.value = false; error.value = ''
   try {
-    const result = await api.users(brandId)
-    if (generation === memberRequestGeneration && selectedBrand.value === brandId && section.value === 'users') members.value = result
+    const result = await api.users(brandId, pageSize + 1, offset)
+    if (generation === memberRequestGeneration && selectedBrand.value === brandId && section.value === 'users') {
+      members.value = result.slice(0, pageSize)
+      memberOffset.value = offset
+      moreMembers.value = result.length > pageSize
+    }
   } catch (cause) {
     if (cause instanceof PlatformApiError && cause.status === 401) handleFailure(cause)
     else if (generation === memberRequestGeneration && selectedBrand.value === brandId && section.value === 'users') handleFailure(cause)
   }
   finally { if (generation === memberRequestGeneration) loading.value = false }
 }
-async function loadAudit(brandId: string) {
+async function loadAudit(brandId: string, offset = 0) {
   const generation = ++auditRequestGeneration
-  auditRows.value = []; loading.value = true
+  auditRows.value = []; loading.value = true; moreAudit.value = false; error.value = ''
   try {
-    const result = await api.audit(brandId)
-    if (generation === auditRequestGeneration && selectedBrand.value === brandId && section.value === 'audit') auditRows.value = result
+    const result = await api.audit(brandId, pageSize + 1, offset)
+    if (generation === auditRequestGeneration && selectedBrand.value === brandId && section.value === 'audit') {
+      auditRows.value = result.slice(0, pageSize)
+      auditOffset.value = offset
+      moreAudit.value = result.length > pageSize
+    }
   } catch (cause) {
     if (cause instanceof PlatformApiError && cause.status === 401) handleFailure(cause)
     else if (generation === auditRequestGeneration && selectedBrand.value === brandId && section.value === 'audit') handleFailure(cause)
@@ -177,15 +196,28 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
         <template v-else-if="section === 'users'">
           <div class="page-heading"><div><div class="eyebrow">{{ lang.accessDirectory }}</div><h1>{{ lang.users }}</h1><p>{{ lang.memberReadOnly }}</p></div></div>
           <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label><span v-if="selected" class="selection-tag">{{ selected.name }}</span></div>
-          <section v-if="selectedBrand" class="panel"><div class="panel-heading"><div><h2>{{ selected?.name }} <span class="subtle">/ {{ lang.memberDirectory }}</span></h2><p>{{ lang.memberReadOnly }}</p></div><span class="count-chip">{{ members.length }} {{ lang.memberCount }}</span></div>
+          <section v-if="selectedBrand" class="panel"><div class="panel-heading"><div><h2>{{ selected?.name }} <span class="subtle">/ {{ lang.memberDirectory }}</span></h2><p>{{ lang.memberReadOnly }}</p></div><span class="count-chip">{{ thisPage }} {{ members.length }} {{ lang.memberCount }}</span></div>
             <div class="table-wrap desktop-table"><table><thead><tr><th>{{ lang.username }}</th><th>{{ lang.displayName }}</th><th>{{ lang.phone }}</th><th>{{ lang.status }}</th></tr></thead><tbody><tr v-for="member in members" :key="member.id"><td><strong>{{ member.username || '—' }}</strong><small>{{ member.id }}</small></td><td>{{ member.display_name || '—' }}</td><td>{{ member.phone || '—' }}</td><td><span :class="['status-pill', member.status]">{{ statusLabel(member.status) }}</span></td></tr><tr v-if="!members.length"><td colspan="4" class="empty-state">{{ lang.empty }}</td></tr></tbody></table></div>
             <div class="mobile-cards"><article v-for="member in members" :key="member.id" class="user-card"><div class="card-title"><div><strong>{{ member.display_name || member.username || '—' }}</strong><small>{{ member.id }}</small></div><span :class="['status-pill', member.status]">{{ statusLabel(member.status) }}</span></div><dl class="member-details"><div><dt>{{ lang.username }}</dt><dd>{{ member.username || '—' }}</dd></div><div><dt>{{ lang.displayName }}</dt><dd>{{ member.display_name || '—' }}</dd></div><div><dt>{{ lang.phone }}</dt><dd>{{ member.phone || '—' }}</dd></div></dl></article><div v-if="!members.length" class="empty-state">{{ lang.empty }}</div></div>
+            <div class="reward-list-actions" data-testid="platform-member-pages">
+              <button class="secondary" :disabled="loading || memberOffset === 0" @click="loadMembers(selectedBrand, memberOffset - pageSize)">{{ previousPage }}</button>
+              <span>{{ Math.floor(memberOffset / pageSize) + 1 }}</span>
+              <button class="secondary" :disabled="loading || !moreMembers" @click="loadMembers(selectedBrand, memberOffset + pageSize)">{{ nextPage }}</button>
+              <button class="secondary" :disabled="loading" @click="loadMembers(selectedBrand)">{{ locale === 'en' ? 'Refresh' : '刷新' }}</button>
+            </div>
           </section>
         </template>
         <template v-else-if="section === 'audit'">
           <div class="page-heading"><div><div class="eyebrow">{{ lang.traceability }}</div><h1>{{ lang.audit }}</h1><p>{{ lang.auditDescription }}</p></div></div>
           <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label><span v-if="selected" class="selection-tag">{{ selected.name }}</span></div>
           <section v-if="selectedBrand" class="panel"><div class="panel-heading"><div><h2>{{ lang.audit }} <span class="subtle">/ {{ selected?.name }}</span></h2><p>{{ lang.auditDescription }}</p></div><span class="count-chip">{{ auditRows.length }} {{ lang.countSuffix }}</span></div><div class="table-wrap"><table><thead><tr><th>{{ lang.action }}</th><th>{{ lang.actor }}</th><th>{{ lang.resource }}</th><th>{{ lang.reason }}</th><th>{{ lang.date }}</th></tr></thead><tbody><tr v-for="row in auditRows" :key="row.id"><td><span class="action-label">{{ row.action }}</span><small>{{ row.id }}</small></td><td class="mono">{{ row.actor_id }}</td><td>{{ row.resource_type }}<small>{{ row.resource_id }}</small></td><td class="reason-cell">{{ row.reason || '—' }}</td><td>{{ row.created_at }}</td></tr><tr v-if="!auditRows.length"><td colspan="5" class="empty-state">{{ lang.empty }}</td></tr></tbody></table></div></section>
+          <div v-if="selectedBrand" class="reward-list-actions" data-testid="platform-audit-pages">
+            <span>{{ thisPage }} {{ auditRows.length }}</span>
+            <button class="secondary" :disabled="loading || auditOffset === 0" @click="loadAudit(selectedBrand, auditOffset - pageSize)">{{ previousPage }}</button>
+            <span>{{ Math.floor(auditOffset / pageSize) + 1 }}</span>
+            <button class="secondary" :disabled="loading || !moreAudit" @click="loadAudit(selectedBrand, auditOffset + pageSize)">{{ nextPage }}</button>
+            <button class="secondary" :disabled="loading" @click="loadAudit(selectedBrand)">{{ locale === 'en' ? 'Refresh' : '刷新' }}</button>
+          </div>
         </template>
         <template v-else>
           <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label></div>

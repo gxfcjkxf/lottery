@@ -10,6 +10,20 @@ const validInput: BrandCreateInput = { code: 'northstar', name: 'Northstar Shop'
 const member = { id: 'm1', global_user_id: 'g1', username: 'member_one', phone: '+6500000000', display_name: 'Member One', notes: '', status: 'normal', joined_at: '2026-10-09T01:02:03Z', brand_id: 'b-1', tags: ['new'] }
 
 describe('platform API boundary', () => {
+  it('uses explicit member and audit pagination and rejects cross-brand rows', async () => {
+    const audit = { id: 'a1', brand_id: 'b-1', action: 'member.view', actor_type: 'admin', actor_id: 'admin-1', resource_type: 'member', resource_id: 'm1', reason: '', request_id: 'request-1', created_at: '2026-10-09T01:02:03Z', ip_address: '', before_json: null, after_json: null }
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(reply({ items: [member] }))
+      .mockResolvedValueOnce(reply({ items: [audit] }))
+    const api = createPlatformApi(fetcher)
+    await api.users('b-1', 51, 50)
+    await api.audit('b-1', 51, 50)
+    expect(fetcher.mock.calls.map(call => call[0])).toEqual(['/api/v1/platform/users?limit=51&offset=50', '/api/v1/platform/audit?limit=51&offset=50'])
+    await expect(createPlatformApi(async () => reply({ items: [{ ...member, brand_id: 'b-2' }] })).users('b-1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformApi(async () => reply({ items: [{ ...audit, brand_id: 'b-2' }] })).audit('b-1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformApi(async () => reply({ items: [member, member] })).users('b-1', 1)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+
   it('uses only the platform prefix and same-origin cookie credentials', async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => reply({ account }))
     await createPlatformApi(fetcher).me()

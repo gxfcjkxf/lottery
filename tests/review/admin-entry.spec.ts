@@ -56,6 +56,11 @@ test('independent platform entry has no public menu, restores its own cookie and
   await expect(page.getByRole('button', { name: /Edit|Reset password|Approve withdrawal/i })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('platform-members.png'), fullPage: true });
+  const auditRead = page.waitForResponse(r => r.url().endsWith('/api/v1/platform/audit?limit=51&offset=0'));
+  await page.locator('.nav-item').filter({ hasText: 'Audit log' }).click();
+  expect((await auditRead).status()).toBe(200);
+  await expect(page.getByTestId('platform-audit-pages')).toBeVisible();
+  await expect(page.locator('.global-message.error')).toHaveCount(0);
   await page.getByRole('button', { name: /Sign out/ }).click();
   await expect(page.locator('.login-card')).toBeVisible();
   await expect(page.locator('.sidebar, .app-frame')).toHaveCount(0);
