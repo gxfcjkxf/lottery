@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { createPlatformApi, freezeBrandCreateRequest, PlatformApiError, type BrandCreateInput, type FrozenBrandCreateRequest, type PlatformAudit, type PlatformBrand, type PlatformMember } from './platform-api'
 import RewardsPanel from './RewardsPanel.vue'
 import WalletPanel from './WalletPanel.vue'
+import BetOrdersPanel from './BetOrdersPanel.vue'
 
 const api = createPlatformApi()
 const locale = ref<'en' | 'zh-CN'>('en')
@@ -34,9 +35,11 @@ const previousPage = computed(() => locale.value === 'en' ? 'Previous page' : '�
 const nextPage = computed(() => locale.value === 'en' ? 'Next page' : '下一页')
 const thisPage = computed(() => locale.value === 'en' ? 'This page' : '本页')
 const selectedBrand = ref('')
-const section = ref<'brands' | 'users' | 'audit' | 'rewards' | 'wallets'>('brands')
+const section = ref<'brands' | 'users' | 'audit' | 'rewards' | 'wallets' | 'bets'>('brands')
 const walletMember = ref('')
 const walletLabel = computed(() => locale.value === 'en' ? 'Member points' : '会员积分')
+const betLabel = computed(() => locale.value === 'en' ? 'Bet orders' : '投注订单')
+const sectionLabel = computed(() => section.value === 'wallets' ? walletLabel.value : section.value === 'bets' ? betLabel.value : lang.value[section.value])
 const busy = ref(false)
 const loading = ref(false)
 const error = ref('')
@@ -84,7 +87,7 @@ async function signOut() {
   try { await api.logout(); clearPrivateState() }
   catch (cause) { handleFailure(cause) } finally { busy.value = false }
 }
-async function chooseSection(next: 'brands' | 'users' | 'audit' | 'rewards' | 'wallets') {
+async function chooseSection(next: 'brands' | 'users' | 'audit' | 'rewards' | 'wallets' | 'bets') {
   walletMember.value = ''
   section.value = next; error.value = ''; notice.value = ''
   memberOffset.value = 0; auditOffset.value = 0; moreMembers.value = false; moreAudit.value = false
@@ -185,10 +188,11 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
       <button :class="['nav-item', { selected: section === 'audit' }]" @click="chooseSection('audit')"><span>≋</span>{{ lang.audit }}</button>
       <button :class="['nav-item', { selected: section === 'rewards' }]" @click="chooseSection('rewards')"><span>◇</span>{{ lang.rewards }}</button>
       <button :class="['nav-item', { selected: section === 'wallets' }]" @click="chooseSection('wallets')"><span>◎</span>{{ walletLabel }}</button>
+      <button :class="['nav-item', { selected: section === 'bets' }]" @click="chooseSection('bets')"><span>▤</span>{{ betLabel }}</button>
       <div class="sidebar-bottom"><p>{{ lang.platformNote }}</p></div>
     </aside>
     <section class="main-column">
-      <header class="topbar"><div class="breadcrumb">{{ lang.title }} <span>/</span> {{ section === 'wallets' ? walletLabel : lang[section] }}</div><div class="top-actions"><span class="secure"><i></i> {{ lang.platformAdmin }}</span><button class="language" @click="locale = locale === 'en' ? 'zh-CN' : 'en'">{{ locale === 'en' ? '中文' : 'EN' }}</button><button class="logout-button" :disabled="busy" @click="signOut">↗ {{ lang.logout }}</button></div></header>
+      <header class="topbar"><div class="breadcrumb">{{ lang.title }} <span>/</span> {{ sectionLabel }}</div><div class="top-actions"><span class="secure"><i></i> {{ lang.platformAdmin }}</span><button class="language" @click="locale = locale === 'en' ? 'zh-CN' : 'en'">{{ locale === 'en' ? '中文' : 'EN' }}</button><button class="logout-button" :disabled="busy" @click="signOut">↗ {{ lang.logout }}</button></div></header>
       <main class="content">
         <div v-if="error" class="message error global-message">{{ error }}</div><div v-if="notice" class="message success global-message">{{ notice }}</div>
         <div v-if="loading" class="loading-line">{{ lang.loading }}</div>
@@ -231,9 +235,13 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
           <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label></div>
           <RewardsPanel :brand-id="selectedBrand" :brand-name="selected?.name || ''" :locale="locale" @failure="handleFailure" />
         </template>
-        <template v-else>
+        <template v-else-if="section === 'wallets'">
           <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label></div>
           <WalletPanel :brand-id="selectedBrand" :member-id="walletMember" :locale="locale" @failure="handleFailure" />
+        </template>
+        <template v-else>
+          <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label></div>
+          <BetOrdersPanel :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
         </template>
       </main>
     </section>
