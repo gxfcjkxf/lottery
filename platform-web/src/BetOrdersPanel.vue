@@ -2,10 +2,18 @@
 import { computed, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformBetApi, type BetOrder } from './bet-api'
+import LotteryPanel from './LotteryPanel.vue'
 
 const props = defineProps<{ brandId: string; locale: 'en' | 'zh-CN' }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
 const api = createPlatformBetApi()
+const catalogue = ref(false)
+function chooseTab(value: boolean) {
+  catalogue.value = value
+  ++generation
+  orders.value = []; detail.value = null; more.value = false; error.value = ''; loading.value = false
+  if (!value) void load()
+}
 const draftMember = ref('')
 const memberFilter = ref('')
 const orders = ref<BetOrder[]>([])
@@ -55,6 +63,7 @@ const stateLabel = (state: BetOrder['status']) => (props.locale === 'en' ? {
   placed: '已投注', bet_cancelled: '投注取消', judged_cancelled: '判定取消', abnormal: '异常注单', won: '中奖', lost: '未中奖',
 })[state]
 watch(() => props.brandId, () => {
+  catalogue.value = false
   draftMember.value = ''; memberFilter.value = ''; offset.value = 0
   void load()
 }, { immediate: true, flush: 'sync' })
@@ -62,6 +71,12 @@ watch(() => props.brandId, () => {
 
 <template>
   <div data-testid="platform-bets">
+    <div class="wallet-pagination" data-testid="platform-bet-tabs">
+      <button :class="catalogue ? 'secondary' : 'primary'" @click="chooseTab(false)">{{ copy.title }}</button>
+      <button :class="catalogue ? 'primary' : 'secondary'" @click="chooseTab(true)">{{ locale === 'en' ? 'Games and draws' : '彩种与开奖' }}</button>
+    </div>
+    <LotteryPanel v-if="catalogue" :brand-id="brandId" :locale="locale" @failure="emit('failure', $event)" />
+    <template v-else>
     <div class="page-heading"><div><div class="eyebrow">{{ copy.note }}</div><h1>{{ copy.title }}</h1></div></div>
     <form class="panel wallet-query" @submit.prevent="load(0, draftMember.trim())"><label>{{ copy.member }}<input v-model="draftMember" :disabled="loading || !brandId" autocomplete="off" /></label><button class="secondary" :disabled="loading || !brandId">{{ copy.query }}</button></form>
     <p v-if="error" class="message error" role="alert">{{ error }}</p><p v-if="loading" class="loading-line">{{ copy.loading }}</p>
@@ -89,5 +104,6 @@ watch(() => props.brandId, () => {
         <details><summary>{{ copy.allocation }}</summary><pre>{{ json(detail.deduction_allocation) }}</pre></details>
       </div>
     </section>
+    </template>
   </div>
 </template>
