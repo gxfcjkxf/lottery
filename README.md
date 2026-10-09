@@ -1,5 +1,7 @@
 # Lottery 平台
 
+运维工程交接见[可观测性合同](docs/33-operational-observability.md)和[发布恢复手册](docs/34-release-and-operations.md)。保护端口及追踪默认关闭，监控只读，不授权自动资金重试；生产部署和客户人工审核仍需独立验收。
+
 多品牌彩票运营平台。实现依据位于 [docs/README.md](docs/README.md)，阶段验收与当前覆盖范围位于 [docs/implementation-progress.md](docs/implementation-progress.md)。
 
 [审计管理](docs/32-audit-query-and-export.md)支持品牌、UTC时间及操作/人员/资源筛选，独立授权的完整CSV下载、已提交审计证据和摘要核验。0071只扩展bootstrap导出权限及查询索引；自定义角色不扩权，查询和下载不移动积分或改写历史。

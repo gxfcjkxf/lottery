@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
 	"github.com/gxfcjkxf/lottery/backend/internal/commission"
 	"github.com/gxfcjkxf/lottery/backend/internal/drawfeed"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
+	"github.com/gxfcjkxf/lottery/backend/internal/observability"
 	"github.com/gxfcjkxf/lottery/backend/internal/reconciliation"
 	"github.com/gxfcjkxf/lottery/backend/internal/reportarchive"
 	"github.com/gxfcjkxf/lottery/backend/internal/rulebook"
@@ -13,6 +15,20 @@ import (
 	"log/slog"
 	"time"
 )
+
+// Observation does not change retries, locks, task state or committed counts.
+// A panic is still fatal to this worker; it is never converted to success.
+func observedWork(ctx context.Context, component string, work func(context.Context) (int, error)) (n int, err error) {
+	ctx, finish := observability.BeginWork(ctx, component)
+	defer func() {
+		if value := recover(); value != nil {
+			finish(n, errors.New("worker panic"))
+			panic(value)
+		}
+		finish(n, err)
+	}()
+	return work(ctx)
+}
 
 func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger) error {
 	store := rulebook.Store{DB: db}
@@ -69,7 +85,7 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 	fillCalendar := func() {
 		run, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		n, e := store.FillCalendar(run)
+		n, e := observedWork(run, "calendar", store.FillCalendar)
 		if e != nil && ctx.Err() == nil {
 			logger.Error("calendar reservation failed", "error", e, "committed_created", n)
 		} else if n > 0 {
@@ -86,7 +102,7 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 			fillCalendar()
 		case <-tick.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, e := store.Tick(run)
+			n, e := observedWork(run, "period_tick", store.Tick)
 			cancel()
 			if e != nil && ctx.Err() == nil {
 				logger.Error("period transition failed", "error", e, "committed_transitions", n)
@@ -110,14 +126,14 @@ func runReportArchiveWorker(ctx context.Context, s reportarchive.Service, logger
 			return
 		case <-discovery.C:
 			run, cancel := context.WithTimeout(ctx, 30*time.Second)
-			n, err := s.DiscoverAutomatic(run, 20)
+			n, err := observedWork(run, "archive_discovery", func(ctx context.Context) (int, error) { return s.DiscoverAutomatic(ctx, 20) })
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("automatic archive discovery failed", "committed_tasks", n)
 			}
 		case <-processing.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, err := s.ProcessAutomatic(run, 20)
+			n, err := observedWork(run, "archive_processing", func(ctx context.Context) (int, error) { return s.ProcessAutomatic(ctx, 20) })
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("automatic archive processing failed", "committed_tasks", n)
@@ -157,7 +173,7 @@ func runCommissionWorker(ctx context.Context, service commission.Service, logger
 			return
 		case <-ticker.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, err := service.ProcessCycles(run, 20)
+			n, err := observedWork(run, "commission_cycle", func(ctx context.Context) (int, error) { return service.ProcessCycles(ctx, 20) })
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("commission cycle processing failed", "committed_steps", n)
@@ -175,7 +191,7 @@ func runCommissionPaymentWorker(ctx context.Context, service commission.Service,
 			return
 		case <-ticker.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, err := service.ProcessPayments(run, 20)
+			n, err := observedWork(run, "commission_payment", func(ctx context.Context) (int, error) { return service.ProcessPayments(ctx, 20) })
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("commission payment processing failed", "committed_steps", n)
@@ -193,7 +209,7 @@ func runCommissionCorrectionPlanWorker(ctx context.Context, service commission.S
 			return
 		case <-ticker.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, err := service.ProcessCorrectionPlans(run, 20)
+			n, err := observedWork(run, "commission_correction_plan", func(ctx context.Context) (int, error) { return service.ProcessCorrectionPlans(ctx, 20) })
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("commission correction plan preparation failed", "committed_steps", n)
@@ -211,7 +227,7 @@ func runCommissionCorrectionExecutionWorker(ctx context.Context, service commiss
 			return
 		case <-ticker.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, err := service.ProcessCorrectionExecutions(run, 20)
+			n, err := observedWork(run, "commission_correction_execution", func(ctx context.Context) (int, error) { return service.ProcessCorrectionExecutions(ctx, 20) })
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("commission correction execution failed", "committed_steps", n)
@@ -229,7 +245,7 @@ func runCommissionDiscoveryWorker(ctx context.Context, service commission.Servic
 			return
 		case <-ticker.C:
 			run, cancel := context.WithTimeout(ctx, 5*time.Second)
-			n, err := service.ProcessDiscovery(run, 100)
+			n, err := observedWork(run, "commission_discovery", func(ctx context.Context) (int, error) { return service.ProcessDiscovery(ctx, 100) })
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("commission discovery processing failed", "committed_records", n)
@@ -247,7 +263,7 @@ func runReconciliationWorker(ctx context.Context, service reconciliation.Service
 			return
 		case <-ticker.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, e := service.Process(run, 20)
+			n, e := observedWork(run, "reconciliation", func(ctx context.Context) (int, error) { return service.Process(ctx, 20) })
 			cancel()
 			if e != nil && ctx.Err() == nil {
 				logger.Error("wallet reconciliation processing failed", "committed_steps", n)
@@ -265,7 +281,7 @@ func runCorrectionWorker(ctx context.Context, service betting.Service, logger *s
 			return
 		case <-tick.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, e := service.ProcessCorrections(run, 20)
+			n, e := observedWork(run, "draw_correction", func(ctx context.Context) (int, error) { return service.ProcessCorrections(ctx, 20) })
 			cancel()
 			if e != nil && ctx.Err() == nil {
 				logger.Error("draw correction processing failed", "error", e, "committed_steps", n)
@@ -282,7 +298,7 @@ func runSettlementWorker(ctx context.Context, service betting.Service, logger *s
 			return
 		case <-tick.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, e := service.ProcessSettlements(run, 20)
+			n, e := observedWork(run, "settlement", func(ctx context.Context) (int, error) { return service.ProcessSettlements(ctx, 20) })
 			cancel()
 			if e != nil && ctx.Err() == nil {
 				logger.Error("settlement processing failed", "error", e, "committed_steps", n)
@@ -303,7 +319,7 @@ func runNotificationWorker(ctx context.Context, service notification.Service, lo
 			return
 		case <-ticker.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, err := service.Process(run, 100)
+			n, err := observedWork(run, "notification", func(ctx context.Context) (int, error) { return service.Process(ctx, 100) })
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("in-app notification processing failed", "error", err, "committed_events", n)
@@ -321,7 +337,7 @@ func runCancellationWorker(ctx context.Context, service betting.Service, logger 
 			return
 		case <-ticker.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, err := service.ProcessCancellations(run, 20)
+			n, err := observedWork(run, "period_refund", func(ctx context.Context) (int, error) { return service.ProcessCancellations(ctx, 20) })
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("period refunds failed", "error", err, "committed_targets", n)
@@ -342,7 +358,7 @@ func runDrawWorker(ctx context.Context, store rulebook.Store, logger *slog.Logge
 			return
 		case <-ticker.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, err := store.CollectDraws(run, resolver)
+			n, err := observedWork(run, "draw_collection", func(ctx context.Context) (int, error) { return store.CollectDraws(ctx, resolver) })
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("draw collection failed", "error", err, "committed_results", n)

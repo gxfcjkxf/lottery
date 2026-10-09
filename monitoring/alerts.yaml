@@ -1,0 +1,84 @@
+# Engineering starting thresholds, not customer-approved production SLOs.
+# No receiver and no financial retry, repair, cancellation or payout action.
+groups:
+  - name: lottery-processes
+    rules:
+      - alert: LotteryOperationsEndpointDown
+        expr: up{job=~"lottery-api|lottery-worker"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Private operations endpoint is unavailable
+          description: Check the service, listener, network and bearer-file ownership; do not replay financial requests.
+      - alert: LotteryPrimaryDatabaseUnavailable
+        expr: lottery_database_up{job=~"lottery-api|lottery-worker"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Primary database ping failed
+          description: Preserve the current database and investigate connectivity; readiness failure is not authorization to restore over it.
+      - alert: LotteryOperationsSnapshotUnavailable
+        expr: (lottery_ops_snapshot_success{job=~"lottery-api|lottery-worker"} == 0) or (time() - lottery_ops_snapshot_timestamp_seconds{job=~"lottery-api|lottery-worker"} > 75)
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: Operational business snapshot is failed or stale
+          description: Missing backlog values are unknown, not zero. Check schema, privileges and snapshot timeout without retrying business tasks.
+      - alert: LotteryPeriodClockStalled
+        expr: (time() - lottery_worker_last_completed_timestamp_seconds{job="lottery-worker",component="period_tick"} > 30) or (up{job="lottery-worker"} == 1 unless on(job,instance) lottery_worker_last_completed_timestamp_seconds{job="lottery-worker",component="period_tick"})
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: Period clock has not completed recently
+          description: Inspect the worker and database; preserve the rule that the prior period must finish settlement or refunds before the next opens.
+      - alert: LotteryNotificationLoopStalled
+        expr: (time() - lottery_worker_last_completed_timestamp_seconds{job="lottery-worker",component="notification"} > 30) or (up{job="lottery-worker"} == 1 unless on(job,instance) lottery_worker_last_completed_timestamp_seconds{job="lottery-worker",component="notification"})
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: Notification loop has not completed recently
+          description: Check worker execution and committed delivery evidence; do not construct synthetic notifications or financial facts.
+  - name: lottery-business-work
+    rules:
+      - alert: LotteryTechnicalWorkFailed
+        expr: max by(kind) (lottery_work_failed{job=~"lottery-api|lottery-worker",kind!="withdrawal"}) > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: Explicit technical task failures are recorded
+          description: Inspect original task history and use only its permitted audited manual retry. Approval and insufficient-funds pauses are separate states.
+      - alert: LotteryBackgroundQueueAging
+        expr: max by(kind) (lottery_work_oldest_pending_age_seconds{job=~"lottery-api|lottery-worker",kind!="withdrawal"}) > 300
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Actionable background work has aged beyond the example threshold
+          description: Pending means work eligible for its normal worker, not permission to approve or accelerate a financial job.
+      - alert: LotteryWithdrawalProcessingAging
+        expr: max(lottery_work_oldest_pending_age_seconds{job=~"lottery-api|lottery-worker",kind="withdrawal"}) > 86400
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: Manually processed withdrawal is old
+          description: This is an operator queue, not an automatic payment worker. Inspect the original request without changing its recorded amount.
+      - alert: LotteryRecordedReconciliationDiscrepancy
+        expr: max(lottery_reconciliation_discrepancies{job=~"lottery-api|lottery-worker"}) > 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: Latest completed reconciliation observation contains discrepancies
+          description: The observation is historical evidence, not a continuous proof of current balances. Preserve the diagnosis and investigate; never auto-adjust funds.
+      - alert: LotteryReplicationStatisticsUnavailable
+        expr: lottery_replication_stats_visible{job=~"lottery-api|lottery-worker"} == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Streaming replication statistics are not visible
+          description: Replica lag is unknown, not zero. Review monitoring grants without automatically broadening application privileges.
+      - alert: LotteryReplicationWALLagHigh
+        expr: max(lottery_replication_lag_bytes{job=~"lottery-api|lottery-worker"}) > 16777216
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Observable streaming replica WAL distance is high
+          description: This is a byte-distance observation on the primary, not idle replay time or proof that a configured read node is eligible for history routing.

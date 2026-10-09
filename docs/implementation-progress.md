@@ -1911,3 +1911,21 @@ CSV完整范围最多10000条/4MiB；查询页面累计也最多4MiB。任何超
 三个旧升级测试只允许确切audit.export.brand/platform新增，并重新核验只授予匹配范围的bootstrap角色及自定义角色无扩权，原权限和模板、归档、审计、财务快照仍保持。开奖fixture本来没有bootstrap角色，新增断言按实际bootstrap数量逐范围核验，不虚构必须有品牌/平台角色。草案仍0.49，兼容修正随Git补丁记录。新提交须另行完整CI核验。
 
 运维可观测性、保护端口和发布恢复手册已开始实现但尚未作为本补丁交付：相关源码与示例仍为工作区在制，下一阶段继续真实服务集成、配置及生命周期验收。没有启动或更换原8080服务，没有迁移原public，没有生产部署或真实支付启用；目标仍进行中。
+
+### 运维保护端口、只读监控与发布恢复手册
+
+d23f645的[远程CI](https://github.com/gxfcjkxf/lottery/actions/runs/37878689278)已核验准确SHA、attempt1及31项实际job全部success，run最终completed/success。此前失败记录不删除；本阶段新增源码仍需自己的远程CI，不能借用上一提交的绿灯。
+
+API/worker接入独立默认关闭的回环保护端口，三条GET/HEAD运维路径均要求私有Bearer文件；普通API没有metrics/pprof。监控令牌独立256位、排他0600生成，旧认证密钥编码与读取保持。启动先检查完整迁移且不自动migrate，API先校验密钥；workerready检查主库/迁移及最近period_tick/notification完成。只读复核发现原方案容许私有/公共网卡明文Bearer，已收紧为所有非回环地址失败关闭。监听异常取消服务，退出有界；单元测试保留HTTP写入语义、部分提交错误及原panic，不增加业务重试、改变计数或工作周期。
+
+Prometheus采用独立registry和封闭路由/组件标签，无用户/品牌/余额/原始路径等维度。数据库刷新30秒、不重叠、合计2秒/语句1.8秒限制，repeatable-read只读且正式schema限定；抓取仅缓存。失败或75秒过期省略业务值，复制统计无权限/无streaming观察不是零延迟，对账为各品牌最近完成的历史诊断而非实时健康证明。双进程数据库快照MAX去重，提现人工队列与技术失败分开。真实测试先加入member.joined事件得到1条待通知，再损坏仅自有schema的一张来源表，验证ping正常但snapshot失败/业务值缺失，恢复来源后实际数量仍1；没有账本写入。最终opsmetrics race3.192秒通过，cmd/platform全包race10.406秒、observability全包race1.432秒；额外观测并发race2.680秒及HTTP上下文/路由/ready专项1.674秒通过，非完整HTTP/金融包重验。
+
+可选OTLP/HTTP只使用明确端点、固定属性、无环境凭证或代理、2秒超时/无重试、有界批队列。实际protobuf接收测试验证凭证/请求私有字段、环境resource、vendor tracestate均不外发；保留合法parent ID，不提取baggage。未连接任何客户追踪服务，不等于开启追踪后500次/秒容量已验收。
+
+真实API与worker在明确owned空库正常CLI migrate/check/seed后运行，专用15291/15294/15295不碰原8080。最终验收证据位于自有.local/ops-runtime-xW9iKQ：私有鉴权/缓存头、100个不同404统一unmatched、实际context静态路由、核心循环ready；空schema下check/serve/worker均拒绝且不自动建表，无效密钥/端口冲突/短令牌/非回环启动拒绝；SIGTERM两进程正常退出。120张表摘要全程不变，财务重试及进程重启均0。先前两次通过库另名保留，不清空或删除数据；所有自有验收进程已退出。
+
+相似认领复核另确认差额计划worker存在LEFT JOIN空值旧快照风险，派发worker已有锁后fresh查询未发现同路径。计划认领亦改为明确READ COMMITTED及锁后同周期候选重查，不吞唯一错误，失效候选不计提交步骤。8worker在默认repeatable-read pool下只生成一计划、一目标、一创建审计/步骤；完整原资金证据保持，ready重复steps0且计划/目标/步骤/全部品牌审计摘要不变。完整计划专项71.067秒通过，最终断言并发专项23.370秒，race三重复73.806秒通过；准备仍不能入账或解锁旧派发，OPEN-117保留。
+
+官方Prometheus3.15.0工具按发布SHA256验证；完整配置使用自有私有凭证副本检查，不用syntax-only跳过缺失文件。11条告警、冷启动/去重/未知复制场景及6个仪表盘PromQL通过。新增独立newops-runtime CI（原31项保留），owned PostgreSQL17.5、正常CLI服务及固定Linuxamd64工具下载/大小时间上限，不使用浏览器或资金重试。静态81、契约85、OpenAPI288操作/388组件及lint、Go vet/模块校验/构建/格式/diff通过。无UI源码变更，本阶段未重跑全部前端或浏览器，本地Go1.27.1/PG17，CI按模块Go1.26；新增32项远程结果待本阶段提交后核验。
+
+按文档维护流程新增[33号合同](33-operational-observability.md)、[34号发布恢复手册](34-release-and-operations.md)及systemd/监控示例，同步架构、验收、任务、API索引、README和需求草案0.50，版本仅随阶段提交。手册修正pg_dump服务名必须使用service=连接串；实际生产备份/PITR、角色/密钥/外部对象恢复仍待演练。systemd仅静态示例（本机macOS无systemd执行），Grafana仅查询校验而未安装/渲染，无Docker/云/TLS/告警接收部署。原public仍0041、30账户/360桶/0积分/0账本/0投注/0提现，原8080ready，未迁移/替换。生产部署/容量、真实OS、客户人工审核、OPEN-117、外部发送、归档保留及财务模板、完整佣金应付分析仍待交付，目标继续进行中。

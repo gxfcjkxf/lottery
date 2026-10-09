@@ -1,0 +1,33 @@
+[Unit]
+Description=Lottery API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lottery
+Group=lottery
+WorkingDirectory=/opt/lottery/current
+EnvironmentFile=/etc/lottery/platform.env
+Environment=HTTP_ADDR=127.0.0.1:8080
+Environment=API_METRICS_ADDR=
+ExecStart=/opt/lottery/current/platform serve
+KillSignal=SIGTERM
+TimeoutStopSec=45
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

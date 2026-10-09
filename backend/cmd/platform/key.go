@@ -11,6 +11,16 @@ import (
 )
 
 func generateKey(path string) error {
+	return generatePrivateSecret(path, base64.RawStdEncoding)
+}
+
+// Metrics credentials are separate from the financial idempotency key. URL-safe
+// encoding is a single HTTP bearer token and never needs shell interpolation.
+func generateMetricsToken(path string) error {
+	return generatePrivateSecret(path, base64.RawURLEncoding)
+}
+
+func generatePrivateSecret(path string, encoding *base64.Encoding) error {
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return err
@@ -23,7 +33,7 @@ func generateKey(path string) error {
 		return err
 	}
 	defer f.Close()
-	_, err = f.WriteString(base64.RawStdEncoding.EncodeToString(key))
+	_, err = f.WriteString(encoding.EncodeToString(key))
 	return err
 }
 func loadKey(c config.Config) ([]byte, error) {

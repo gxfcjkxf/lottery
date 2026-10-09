@@ -1,0 +1,9 @@
+# systemd deployment examples
+
+These units are templates for a Linux host with a release-installed `platform` binary, a dedicated non-root `lottery` user, and a customer-managed ingress and PostgreSQL service. They start the API and worker as separate processes against the same primary database. They do not configure TLS, DNS, network policy, backups, alerting, or production financial settings.
+
+Install the reviewed binary under `/opt/lottery/releases/<release-id>/platform`, update `/opt/lottery/current` to the selected release using the host's approved deployment process, and create `/etc/lottery/platform.env` as a root-owned mode `0600` environment file. Provision the auth key and optional metrics token through the approved secret process with access limited to the `lottery` service. The binary and release directory should be owned by root and not writable by the service account.
+
+The API sample binds to loopback at `127.0.0.1:8080` for an ingress proxy on the same host. Choose the actual API bind address and `TRUSTED_PROXY_CIDRS` only after the customer has approved the ingress topology. Metrics are disabled by empty service-specific addresses. If enabled, set `API_METRICS_ADDR` in the API unit or `WORKER_METRICS_ADDR` in the worker unit to a literal loopback address and port, and set `METRICS_TOKEN_FILE` in the protected common environment file. A private token file is mandatory for either listener. Non-loopback binds are rejected because these listeners do not provide TLS; remote collection requires an explicitly secured proxy or local forwarding, not plaintext private-LAN exposure.
+
+Before installation, review [`docs/34-release-and-operations.md`](../docs/34-release-and-operations.md) for release ordering, schema checks, secret handling, health behavior, backup, restore, and financial-task recovery limits. The examples do not activate financial gates or perform database commands.

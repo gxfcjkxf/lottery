@@ -963,3 +963,45 @@ jobs:
         with:
           name: browser-failure-traces-${{ matrix.project }}-${{ matrix.shard }}
           path: test-results/
+  newops-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17.5-alpine
+        env:
+          POSTGRES_DB: lottery_ops_acceptance
+          POSTGRES_USER: lottery_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["127.0.0.1:5432:5432"]
+        options: --health-cmd "pg_isready -U lottery_test -d lottery_ops_acceptance" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_ops_acceptance?sslmode=disable
+      OPS_RUNTIME_FIXTURE_CONFIRM: owned_synthetic_database
+      PLATFORM_BIN: ${{ github.workspace }}/.local/ops-platform
+      POSTGRES_PSQL_BIN: /usr/bin/psql
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - name: Verify operations CI wiring
+        run: node --test tests/static/ops-ci.test.mjs
+      - name: Build the normal platform CLI
+        run: |
+          mkdir -p .local
+          go -C backend build -o "$PLATFORM_BIN" ./cmd/platform
+      - name: Install pinned Prometheus promtool
+        run: node scripts/install-promtool.mjs
+      - name: Check operational monitoring configuration and rules
+        run: node scripts/verify-monitoring.mjs
+      - name: Run real isolated operations runtime acceptance
+        run: node scripts/verify-ops-runtime.mjs

@@ -18,6 +18,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func correctionPlanActor(f commissionBatchFixture) access.Account {
@@ -93,6 +94,26 @@ func correctionPlanSnapshot(t *testing.T, f commissionBatchFixture, paymentID st
 	encoded, err := json.Marshal(struct {
 		Payment, Targets, Ledger, Accounts, Buckets, Heads, Outbox, Deliveries string
 	}{payment, targets, ledger, accounts, buckets, heads, outbox, deliveries})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
+}
+
+func correctionPlanArtifactsSnapshot(t *testing.T, f commissionBatchFixture) string {
+	t.Helper()
+	ctx := context.Background()
+	var plans, steps, targets, audits string
+	err := f.betting.db.QueryRow(ctx, `
+		SELECT coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY p.id)::text FROM commission_correction_plans p WHERE p.brand_id=$1),'[]'),
+		       coalesce((SELECT jsonb_agg(to_jsonb(s) ORDER BY s.plan_id,s.version)::text FROM commission_correction_plan_steps s WHERE s.brand_id=$1),'[]'),
+		       coalesce((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.plan_id,t.agent_id)::text FROM commission_correction_plan_targets t WHERE t.brand_id=$1),'[]'),
+		       coalesce((SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id)::text FROM audit_logs a WHERE a.brand_id=$1),'[]')`, f.betting.brand).
+		Scan(&plans, &steps, &targets, &audits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(struct{ Plans, Steps, Targets, Audits string }{plans, steps, targets, audits})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,15 +523,31 @@ func TestCommissionCorrectionPlanConcurrentWorkersCreateOnePlan(t *testing.T) {
 	if _, err := f.service.ProcessPayments(context.Background(), 20); err != nil {
 		t.Fatal(err)
 	}
+	financialBefore := correctionPlanSnapshot(t, f, payment.ID)
+	// Make the pool default stronger than the worker's required fresh-statement
+	// isolation. The worker must explicitly begin READ COMMITTED transactions.
+	poolConfig := f.betting.db.Config().Copy()
+	poolConfig.ConnConfig.RuntimeParams["default_transaction_isolation"] = "repeatable read"
+	concurrentPool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer concurrentPool.Close()
+	var isolation string
+	if err := concurrentPool.QueryRow(context.Background(), `SHOW default_transaction_isolation`).Scan(&isolation); err != nil || isolation != "repeatable read" {
+		t.Fatal("isolation fixture did not apply", err)
+	}
+	concurrentService := commission.Service{DB: concurrentPool}
 	start := make(chan struct{})
 	var wg sync.WaitGroup
-	errs := make(chan error, 2)
-	for i := 0; i < 2; i++ {
+	const parallelWorkers = 8
+	errs := make(chan error, parallelWorkers)
+	for i := 0; i < parallelWorkers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			<-start
-			_, err := f.service.ProcessCorrectionPlans(context.Background(), 20)
+			_, err := concurrentService.ProcessCorrectionPlans(context.Background(), 20)
 			errs <- err
 		}()
 	}
@@ -529,6 +566,22 @@ func TestCommissionCorrectionPlanConcurrentWorkersCreateOnePlan(t *testing.T) {
 	targets := correctionPlanTargetsRead(t, f, plans.Items[0].ID)
 	if targets.TotalCount != "1" || len(targets.Items) != 1 {
 		t.Fatalf("concurrent workers duplicated/lost plan targets: %+v", targets)
+	}
+	var createAudits, createSteps int
+	if err := f.betting.db.QueryRow(context.Background(), `
+		SELECT (SELECT count(*) FROM audit_logs WHERE brand_id=$1 AND action='commission.correction_plan.create'),
+		       (SELECT count(*) FROM commission_correction_plan_steps WHERE brand_id=$1 AND operation='create')`, f.betting.brand).Scan(&createAudits, &createSteps); err != nil || createAudits != 1 || createSteps != 1 {
+		t.Fatalf("concurrent workers duplicated plan creation audit/step: audits=%d steps=%d err=%v", createAudits, createSteps, err)
+	}
+	if after := correctionPlanSnapshot(t, f, payment.ID); after != financialBefore {
+		t.Fatal("correction planning changed original payment or financial fingerprints")
+	}
+	artifactsBeforeRepeat := correctionPlanArtifactsSnapshot(t, f)
+	if steps, err := concurrentService.ProcessCorrectionPlans(context.Background(), 20); err != nil || steps != 0 {
+		t.Fatalf("ready plan advanced on repeat: steps=%d err=%v", steps, err)
+	}
+	if after := correctionPlanArtifactsSnapshot(t, f); after != artifactsBeforeRepeat {
+		t.Fatal("no-op repeat changed correction-plan or total audit fingerprints")
 	}
 }
 

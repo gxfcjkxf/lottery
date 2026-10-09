@@ -1,0 +1,39 @@
+rule_files: [alerts.yaml]
+evaluation_interval: 15s
+tests:
+  - interval: 15s
+    input_series:
+      - series: 'up{job="lottery-worker",instance="127.0.0.1:9092"}'
+        values: '1+0x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: LotteryPeriodClockStalled
+        exp_alerts:
+          - exp_labels: {job: lottery-worker, instance: '127.0.0.1:9092', severity: critical}
+            exp_annotations:
+              summary: Period clock has not completed recently
+              description: Inspect the worker and database; preserve the rule that the prior period must finish settlement or refunds before the next opens.
+  - interval: 15s
+    input_series:
+      - series: 'lottery_work_failed{job="lottery-api",instance="api-a",kind="settlement"}'
+        values: '1+0x20'
+      - series: 'lottery_work_failed{job="lottery-worker",instance="worker-a",kind="settlement"}'
+        values: '1+0x20'
+      - series: 'lottery_work_failed{job="lottery-worker",instance="worker-a",kind="withdrawal"}'
+        values: '10+0x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: LotteryTechnicalWorkFailed
+        exp_alerts:
+          - exp_labels: {kind: settlement, severity: warning}
+            exp_annotations:
+              summary: Explicit technical task failures are recorded
+              description: Inspect original task history and use only its permitted audited manual retry. Approval and insufficient-funds pauses are separate states.
+  - interval: 15s
+    input_series:
+      - series: 'lottery_replication_observed{job="lottery-api",instance="api-a"}'
+        values: '0+0x40'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: LotteryReplicationWALLagHigh
+        exp_alerts: []

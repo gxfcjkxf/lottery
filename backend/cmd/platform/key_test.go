@@ -4,10 +4,42 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/config"
 )
+
+func TestGenerateMetricsTokenPrivateSeparateAndNeverOverwrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metrics.token")
+	if err := generateMetricsToken(path); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("token must be private", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil || !regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`).Match(before) {
+		t.Fatal("bad bearer token", err)
+	}
+	if err := generateMetricsToken(path); err == nil {
+		t.Fatal("existing metrics secret overwritten")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("existing secret changed", err)
+	}
+	// Independent entropy, not another view of the auth encryption key.
+	authPath := filepath.Join(filepath.Dir(path), "auth.key")
+	if err := generateKey(authPath); err != nil {
+		t.Fatal(err)
+	}
+	auth, err := os.ReadFile(authPath)
+	if err != nil || bytes.Equal(auth, before) {
+		t.Fatal("auth and metrics credentials reused", err)
+	}
+}
 
 func TestGenerateAuthKeyPrivateAndNeverOverwrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "private", "auth.key")

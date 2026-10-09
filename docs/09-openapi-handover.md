@@ -6,7 +6,9 @@
 
 已实现接口包含健康检查、品牌上下文、用户认证、管理账号与权限、积分账本和人工充值、玩法与期次、投注、开奖、结算与更正、站内通知、报表、代理配置和加入码。用户标准路径与平台 `/b/{brandCode}` 路径分别列出，域名解析和品牌隔离仍由服务端执行。
 
-佣金政策、周期发现/核算、单人审核与实际佣金来源入账、独立人工差额修正及实际入账报表已接入。派发使用独立`/commission-payment-policy`与`/commission-payments`接口及金融写权限，核算ready不表示已派发。默认关闭的运行开关须品牌管理员显式启用，开启会处理已有历史就绪周期；人工/自动方式仍来自原投注快照，混合周期整期人工批准。结果更正通过独立`/commission-correction-policy`、`/commission-correction-plans`和`/commission-correction-executions`十二条操作接入差额执行，见[管理合同](24-commission-correction-management.md)。0060增加第20种`commission.corrected`消息及佣金报告更正笔数/补发/追回字段，CSV为版本2/22列，实际历史、公开载荷与协调升级见[25号合同](25-commission-correction-observability.md)。0068接入只读历史归属统计，0069/0070追加开奖公布/更正及闭合历史载荷，现22类站内事件，见[31号合同](31-draw-result-notifications.md)。原派发blocked不由独立人工修正解锁，OPEN-117组合仍阻止。当前契约覆盖287条实际操作和388个组件，不能据此宣称整个平台已完成。
+佣金政策、周期发现/核算、单人审核与实际佣金来源入账、独立人工差额修正及实际入账报表已接入。派发使用独立`/commission-payment-policy`与`/commission-payments`接口及金融写权限，核算ready不表示已派发。默认关闭的运行开关须品牌管理员显式启用，开启会处理已有历史就绪周期；人工/自动方式仍来自原投注快照，混合周期整期人工批准。结果更正通过独立`/commission-correction-policy`、`/commission-correction-plans`和`/commission-correction-executions`十二条操作接入差额执行，见[管理合同](24-commission-correction-management.md)。0060增加第20种`commission.corrected`消息及佣金报告更正笔数/补发/追回字段，CSV为版本2/22列，实际历史、公开载荷与协调升级见[25号合同](25-commission-correction-observability.md)。0068接入只读历史归属统计，0069/0070追加开奖公布/更正及闭合历史载荷，现22类站内事件，见[31号合同](31-draw-result-notifications.md)。原派发blocked不由独立人工修正解锁，OPEN-117组合仍阻止。当前契约覆盖288条实际操作和388个组件，不能据此宣称整个平台已完成。
+
+运维保护端口不属于公共业务OpenAPI，未新增上述操作。鉴权、指标与追踪见[33号交接](33-operational-observability.md)；普通API的ready在正式启动时核验主库及完整迁移状态，失败不暴露内部错误，也不执行迁移。
 
 日/月人工归档使用四条 `/report-archives` 操作；自动归档另提供 GET/PUT `/report-archive-policy`、GET `/report-archive-tasks`、GET `/report-archive-tasks/{id}` 和 POST `/report-archive-tasks/{id}/retry`。PUT首次启用从数据库时刻的品牌当天/月开始，不接受客户端历史起点，见[29号合同](29-report-archive-activation.md)。重试200是原pending回执，不是归档已完成；须独立查询当前任务。品牌查看与品牌写权限同时授权，确认账号头及原幂等键必需，任务管理见[28号合同](28-report-archive-task-management.md)。双端配置编辑及显式原键恢复已接入，无公开历史回补接口。
 

@@ -1,0 +1,20 @@
+{
+  "title": "Lottery Operations",
+  "uid": "lottery-operations",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "timezone": "utc",
+  "tags": ["lottery", "operations"],
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "templating": {"list": [{"name": "DS_PROMETHEUS", "label": "Prometheus", "type": "datasource", "query": "prometheus"}]},
+  "panels": [
+    {"id": 1, "type": "timeseries", "title": "API requests per second", "datasource": {"type": "prometheus", "uid": "$DS_PROMETHEUS"}, "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}, "targets": [{"refId": "A", "expr": "sum by(route,status) (rate(lottery_http_requests_total{job=\"lottery-api\"}[5m]))", "legendFormat": "{{route}} {{status}}"}]},
+    {"id": 2, "type": "timeseries", "title": "API P95 duration in seconds", "datasource": {"type": "prometheus", "uid": "$DS_PROMETHEUS"}, "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}, "targets": [{"refId": "A", "expr": "histogram_quantile(0.95,sum by(le,route) (rate(lottery_http_request_duration_seconds_bucket{job=\"lottery-api\"}[5m])))", "legendFormat": "{{route}}"}]},
+    {"id": 3, "type": "timeseries", "title": "Eligible work pending counts max not sum", "description": "API and worker instances observe the same database; do not sum duplicated snapshots. Withdrawal is a manual operator queue.", "datasource": {"type": "prometheus", "uid": "$DS_PROMETHEUS"}, "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}, "targets": [{"refId": "A", "expr": "max by(kind) (lottery_work_pending{job=~\"lottery-api|lottery-worker\"})", "legendFormat": "{{kind}}"}]},
+    {"id": 4, "type": "timeseries", "title": "Snapshot health missing is unknown", "datasource": {"type": "prometheus", "uid": "$DS_PROMETHEUS"}, "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8}, "targets": [{"refId": "A", "expr": "lottery_ops_snapshot_success{job=~\"lottery-api|lottery-worker\"}", "legendFormat": "{{job}} {{instance}}"}]},
+    {"id": 5, "type": "timeseries", "title": "Worker completed runs per second", "datasource": {"type": "prometheus", "uid": "$DS_PROMETHEUS"}, "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8}, "targets": [{"refId": "A", "expr": "sum by(component,outcome) (rate(lottery_worker_runs_total{job=\"lottery-worker\"}[5m]))", "legendFormat": "{{component}} {{outcome}}"}]},
+    {"id": 6, "type": "timeseries", "title": "Observable WAL replication distance bytes", "description": "Absent series means not observed, not zero lag. This does not prove read-node eligibility.", "datasource": {"type": "prometheus", "uid": "$DS_PROMETHEUS"}, "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8}, "targets": [{"refId": "A", "expr": "max(lottery_replication_lag_bytes{job=~\"lottery-api|lottery-worker\"})", "legendFormat": "maximum observed lag"}]}
+  ]
+}

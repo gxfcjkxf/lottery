@@ -43,6 +43,8 @@
 - [30-attribution-reports.md](30-attribution-reports.md)：投注时历史归属、直属/下级链筛选、互斥分组、双端只读统计及完整CSV。
 - [31-draw-result-notifications.md](31-draw-result-notifications.md)：正式开奖及更正公布、去重受众、不可变历史结果、双语消息和无资金副作用的双端验收。
 - [32-audit-query-and-export.md](32-audit-query-and-export.md)：品牌审计筛选、独立导出权限、完整CSV与摘要、会话等待复核、容量限制及双端下载验收。
+- [33-operational-observability.md](33-operational-observability.md)：默认关闭的保护端口、低基数指标、只读缓存、固定追踪和真实进程验收边界。
+- [34-release-and-operations.md](34-release-and-operations.md)：协调发布、完整迁移核验、systemd示例、备份及隔离恢复、生产待定值。
 
 ## 第一阶段实现顺序
 

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"github.com/gxfcjkxf/lottery/backend/internal/observability"
 	"net/http"
 	"sort"
 	"strings"
@@ -22,7 +23,10 @@ type routeRegistrar interface {
 
 func newRouteMux() *routeMux { return &routeMux{ServeMux: http.NewServeMux()} }
 func (m *routeMux) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
-	m.ServeMux.HandleFunc(pattern, handler)
+	m.ServeMux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		observability.SetRoute(r.Context(), pattern)
+		handler(w, r)
+	})
 	method, path, ok := strings.Cut(pattern, " ")
 	if ok {
 		m.routes = append(m.routes, Route{method, path})

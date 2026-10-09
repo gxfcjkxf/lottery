@@ -9,6 +9,16 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+const correctionPlanCandidateSQL = `SELECT c.brand_id::text,c.id::text,pay.id::text,p.id::text
+ FROM commission_cycles c JOIN commission_payments pay ON pay.cycle_id=c.id AND pay.state='blocked' AND pay.last_error_code='COMMISSION_PAYMENT_CORRECTION_REQUIRED'
+ JOIN brand_commission_payment_policies gate ON gate.brand_id=c.brand_id JOIN brands b ON b.id=c.brand_id
+ LEFT JOIN commission_correction_plans p ON p.cycle_id=c.id AND p.state<>'stale'
+ WHERE ($1::uuid IS NULL OR c.id=$1) AND (
+  (p.id IS NOT NULL AND (p.evidence_epoch<>c.evidence_epoch OR p.run_id IS DISTINCT FROM c.current_run_id OR c.state<>'ready'))
+  OR (gate.enabled AND b.status<>'disabled' AND ((p.state='planning' AND p.next_work_at<=clock_timestamp()) OR
+   (p.id IS NULL AND c.state='ready' AND NOT EXISTS(SELECT 1 FROM commission_correction_plans old WHERE old.cycle_id=c.id AND old.run_id=c.current_run_id)))))
+ ORDER BY coalesce(p.next_work_at,c.updated_at),c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1`
+
 // ProcessCorrectionPlans prepares bounded, immutable difference pages only.
 // It never touches a wallet, approves compensation, or unblocks old payouts.
 func (s Service) ProcessCorrectionPlans(ctx context.Context, maxSteps int) (int, error) {
@@ -17,23 +27,31 @@ func (s Service) ProcessCorrectionPlans(ctx context.Context, maxSteps int) (int,
 	}
 	committed := 0
 	for i := 0; i < maxSteps; i++ {
-		tx, err := s.DB.Begin(ctx)
+		// The post-claim statement must see plans committed after the candidate
+		// query snapshot, even when the pool's default isolation is stronger.
+		tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 		if err != nil {
 			return committed, err
 		}
 		var brand, cycle, payment string
 		var planID *string
-		err = tx.QueryRow(ctx, `SELECT c.brand_id::text,c.id::text,pay.id::text,p.id::text
- FROM commission_cycles c JOIN commission_payments pay ON pay.cycle_id=c.id AND pay.state='blocked' AND pay.last_error_code='COMMISSION_PAYMENT_CORRECTION_REQUIRED'
- JOIN brand_commission_payment_policies gate ON gate.brand_id=c.brand_id JOIN brands b ON b.id=c.brand_id
- LEFT JOIN commission_correction_plans p ON p.cycle_id=c.id AND p.state<>'stale'
- WHERE (p.id IS NOT NULL AND (p.evidence_epoch<>c.evidence_epoch OR p.run_id IS DISTINCT FROM c.current_run_id OR c.state<>'ready'))
- OR (gate.enabled AND b.status<>'disabled' AND ((p.state='planning' AND p.next_work_at<=clock_timestamp()) OR
-  (p.id IS NULL AND c.state='ready' AND NOT EXISTS(SELECT 1 FROM commission_correction_plans old WHERE old.cycle_id=c.id AND old.run_id=c.current_run_id))))
- ORDER BY coalesce(p.next_work_at,c.updated_at),c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1`).Scan(&brand, &cycle, &payment, &planID)
+		err = tx.QueryRow(ctx, correctionPlanCandidateSQL, nil).Scan(&brand, &cycle, &payment, &planID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			_ = tx.Rollback(ctx)
 			break
+		}
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			return committed, paymentDBError(err)
+		}
+		// SKIP LOCKED claims c, not the left-joined plan. A plan can commit
+		// after the candidate snapshot while c remains unchanged, leaving
+		// planID stale (including NULL). Recheck under the cycle lock in a new
+		// READ COMMITTED statement before creating or advancing a plan.
+		err = tx.QueryRow(ctx, correctionPlanCandidateSQL, cycle).Scan(&brand, &cycle, &payment, &planID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			_ = tx.Rollback(ctx)
+			continue
 		}
 		if err != nil {
 			_ = tx.Rollback(ctx)

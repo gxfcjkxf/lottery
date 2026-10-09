@@ -1,0 +1,22 @@
+# Private same-host example. Install the separately copied 0400/0600 token
+# under the Prometheus service identity; never paste it into this file.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+rule_files:
+  - alerts.yaml
+scrape_configs:
+  - job_name: lottery-api
+    scrape_timeout: 5s
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/lottery-metrics.token
+    static_configs:
+      - targets: ['127.0.0.1:9091']
+  - job_name: lottery-worker
+    scrape_timeout: 5s
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/lottery-metrics.token
+    static_configs:
+      - targets: ['127.0.0.1:9092']

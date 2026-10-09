@@ -9,6 +9,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
+	"github.com/gxfcjkxf/lottery/backend/internal/observability"
 	"github.com/gxfcjkxf/lottery/backend/internal/telegramauth"
 	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
 	"github.com/gxfcjkxf/lottery/backend/internal/withdrawal"
@@ -30,6 +31,7 @@ type Dependencies struct {
 	Telegram       telegramauth.Verifier
 	TrustedProxies []*net.IPNet
 	HistoryReads   *database.HistoryRouter
+	Telemetry      *observability.Runtime
 	// Server-owned adapter boundary. Production leaves this nil until the
 	// qualification policy is confirmed; requests cannot configure a checker.
 	WithdrawalEligibility withdrawal.EligibilityChecker
@@ -49,7 +51,11 @@ type apiError struct {
 var requestPattern = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,80}$`)
 
 func New(d Dependencies) http.Handler {
-	return middleware(d.Logger, d.TrustedProxies, buildRouter(d))
+	handler := middleware(d.Logger, d.TrustedProxies, buildRouter(d))
+	if d.Telemetry != nil {
+		return d.Telemetry.WrapHTTP(handler)
+	}
+	return handler
 }
 func buildRouter(d Dependencies) *routeMux {
 	mux := newRouteMux()
@@ -134,7 +140,11 @@ func middleware(logger *slog.Logger, trusted []*net.IPNet, next http.Handler) ht
 				logger.Error("request panic", "request_id", id)
 				failure(w, r, 500, "INTERNAL_ERROR", "服务发生异常")
 			}
-			logger.Info("http request", "request_id", id, "method", r.Method, "duration_ms", time.Since(started).Milliseconds())
+			fields := []any{"request_id", id, "method", observability.MethodLabel(r.Method), "duration_ms", time.Since(started).Milliseconds()}
+			if traceID, spanID := observability.TraceIDs(r.Context()); traceID != "" {
+				fields = append(fields, "trace_id", traceID, "span_id", spanID)
+			}
+			logger.Info("http request", fields...)
 		}()
 		next.ServeHTTP(w, r)
 	})

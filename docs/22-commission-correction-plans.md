@@ -36,6 +36,8 @@ SQL核对原paid目标、原ledger、人工审计、精确佣金可用来源、�
 
 工作器采用周期锁、SKIP LOCKED及交叉锁NOWAIT，每步独立提交，每次最多100步。原派发工作器先保留旧入账并进入blocked；独立准备循环随后每秒检查、最多20步，不占用原核算或发现循环。锁忙延后而不标成财务失败。证据失效可在运行开关关闭或品牌禁用时保留为stale；新准备或重试要求品牌未禁用且派发开关已启用。暂停品牌可继续准备财务计划。
 
+认领事务显式使用READ COMMITTED：周期行锁只保护周期，不使LEFT JOIN计划自动刷新；取得锁后须在新语句快照中重查该周期候选，再创建/推进计划。候选已失效则回滚且不增加已提交步数，不吞掉唯一约束错误。并发不会重复准备计划或创建审计，重复处理ready计划不改变历史；仍不授权资金执行。
+
 ## 内部读取和重试
 
 Go服务的CorrectionPlansTx、CorrectionPlanTx、CorrectionPlanTargetsTx及RetryCorrectionPlanTx已由正式管理HTTP及后台接入，见[管理合同](24-commission-correction-management.md)。读取投影不暴露账户编号、原始规则、钱包桶或worker游标；总数和金额保持字符串，时间为UTC。HTTP层执行真实管理授权和查询审计，不能绕过该层把内部方法当成已认证的公开接口。

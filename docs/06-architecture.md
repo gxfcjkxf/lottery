@@ -149,6 +149,8 @@ S6-b 站内通知由独立的 PostgreSQL worker 循环消费已提交 outbox（�
 
 ## 7. 可靠性和安全运维
 
+已实现范围见[33号可观测性](33-operational-observability.md)和[34号发布恢复手册](34-release-and-operations.md)：独立默认关闭的回环保护端口、低基数指标、有界只读缓存及可选固定属性追踪。启动前核验完整迁移，不隐式升级；监控不触发财务重试、解锁或修账。生产集中日志、告警接收器、备份/PITR服务和目标仍需客户验收，以下为完整架构目标而非全部已上线能力。
+
 - API 超时、限流、重试和熔断；外部开奖源按来源单独隔离。
 - 结构化日志包含 request_id、brand_id、actor_id、resource_id 和 event_id，不记录密码、Telegram 授权原文或完整敏感凭证。
 - OpenTelemetry 链路追踪；Prometheus/Grafana 指标；集中日志和告警。
