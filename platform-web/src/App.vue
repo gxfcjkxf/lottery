@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { createPlatformApi, freezeBrandCreateRequest, PlatformApiError, type BrandCreateInput, type FrozenBrandCreateRequest, type PlatformAudit, type PlatformBrand, type PlatformMember } from './platform-api'
 import RewardsPanel from './RewardsPanel.vue'
+import WalletPanel from './WalletPanel.vue'
 
 const api = createPlatformApi()
 const locale = ref<'en' | 'zh-CN'>('en')
@@ -33,7 +34,9 @@ const previousPage = computed(() => locale.value === 'en' ? 'Previous page' : '�
 const nextPage = computed(() => locale.value === 'en' ? 'Next page' : '下一页')
 const thisPage = computed(() => locale.value === 'en' ? 'This page' : '本页')
 const selectedBrand = ref('')
-const section = ref<'brands' | 'users' | 'audit' | 'rewards'>('brands')
+const section = ref<'brands' | 'users' | 'audit' | 'rewards' | 'wallets'>('brands')
+const walletMember = ref('')
+const walletLabel = computed(() => locale.value === 'en' ? 'Member points' : '会员积分')
 const busy = ref(false)
 const loading = ref(false)
 const error = ref('')
@@ -50,6 +53,7 @@ let auditRequestGeneration = 0
 
 function messageOf(cause: unknown) { return cause instanceof Error ? cause.message : lang.value.error }
 function clearPrivateState() {
+  walletMember.value = ''
   account.value = null; brands.value = []; members.value = []; auditRows.value = []; selectedBrand.value = ''
   retryPayload.value = null; modal.value = false; confirming.value = false
   loading.value = false
@@ -80,7 +84,8 @@ async function signOut() {
   try { await api.logout(); clearPrivateState() }
   catch (cause) { handleFailure(cause) } finally { busy.value = false }
 }
-async function chooseSection(next: 'brands' | 'users' | 'audit' | 'rewards') {
+async function chooseSection(next: 'brands' | 'users' | 'audit' | 'rewards' | 'wallets') {
+  walletMember.value = ''
   section.value = next; error.value = ''; notice.value = ''
   memberOffset.value = 0; auditOffset.value = 0; moreMembers.value = false; moreAudit.value = false
   if (next !== 'users') { memberRequestGeneration++; members.value = [] }
@@ -90,6 +95,7 @@ async function chooseSection(next: 'brands' | 'users' | 'audit' | 'rewards') {
   if (selectedBrand.value && next === 'users') await loadMembers(selectedBrand.value)
 }
 async function chooseBrand(id: string) {
+  walletMember.value = ''
   selectedBrand.value = id; members.value = []; auditRows.value = []; error.value = ''; notice.value = ''
   memberRequestGeneration++; auditRequestGeneration++
   memberOffset.value = 0; auditOffset.value = 0; moreMembers.value = false; moreAudit.value = false
@@ -136,6 +142,7 @@ function statusLabel(status: string) {
 }
 async function openBrandMembers(brandId: string) { section.value = 'users'; await chooseBrand(brandId) }
 async function openBrandAudit(brandId: string) { section.value = 'audit'; await chooseBrand(brandId) }
+function openWallet(memberId: string) { walletMember.value = memberId; section.value = 'wallets'; memberRequestGeneration++; auditRequestGeneration++; loading.value = false; error.value = '' }
 function beginCreate() {
   if (retryPayload.value) { confirming.value = true; modal.value = true; return }
   form.value = { code: '', name: '', default_locale: 'en', timezone: 'UTC', reason: '' }; confirming.value = false; modal.value = true
@@ -177,10 +184,11 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
       <button :class="['nav-item', { selected: section === 'users' }]" @click="chooseSection('users')"><span>◉</span>{{ lang.users }}</button>
       <button :class="['nav-item', { selected: section === 'audit' }]" @click="chooseSection('audit')"><span>≋</span>{{ lang.audit }}</button>
       <button :class="['nav-item', { selected: section === 'rewards' }]" @click="chooseSection('rewards')"><span>◇</span>{{ lang.rewards }}</button>
+      <button :class="['nav-item', { selected: section === 'wallets' }]" @click="chooseSection('wallets')"><span>◎</span>{{ walletLabel }}</button>
       <div class="sidebar-bottom"><p>{{ lang.platformNote }}</p></div>
     </aside>
     <section class="main-column">
-      <header class="topbar"><div class="breadcrumb">{{ lang.title }} <span>/</span> {{ lang[section] }}</div><div class="top-actions"><span class="secure"><i></i> {{ lang.platformAdmin }}</span><button class="language" @click="locale = locale === 'en' ? 'zh-CN' : 'en'">{{ locale === 'en' ? '中文' : 'EN' }}</button><button class="logout-button" :disabled="busy" @click="signOut">↗ {{ lang.logout }}</button></div></header>
+      <header class="topbar"><div class="breadcrumb">{{ lang.title }} <span>/</span> {{ section === 'wallets' ? walletLabel : lang[section] }}</div><div class="top-actions"><span class="secure"><i></i> {{ lang.platformAdmin }}</span><button class="language" @click="locale = locale === 'en' ? 'zh-CN' : 'en'">{{ locale === 'en' ? '中文' : 'EN' }}</button><button class="logout-button" :disabled="busy" @click="signOut">↗ {{ lang.logout }}</button></div></header>
       <main class="content">
         <div v-if="error" class="message error global-message">{{ error }}</div><div v-if="notice" class="message success global-message">{{ notice }}</div>
         <div v-if="loading" class="loading-line">{{ lang.loading }}</div>
@@ -197,8 +205,8 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
           <div class="page-heading"><div><div class="eyebrow">{{ lang.accessDirectory }}</div><h1>{{ lang.users }}</h1><p>{{ lang.memberReadOnly }}</p></div></div>
           <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label><span v-if="selected" class="selection-tag">{{ selected.name }}</span></div>
           <section v-if="selectedBrand" class="panel"><div class="panel-heading"><div><h2>{{ selected?.name }} <span class="subtle">/ {{ lang.memberDirectory }}</span></h2><p>{{ lang.memberReadOnly }}</p></div><span class="count-chip">{{ thisPage }} {{ members.length }} {{ lang.memberCount }}</span></div>
-            <div class="table-wrap desktop-table"><table><thead><tr><th>{{ lang.username }}</th><th>{{ lang.displayName }}</th><th>{{ lang.phone }}</th><th>{{ lang.status }}</th></tr></thead><tbody><tr v-for="member in members" :key="member.id"><td><strong>{{ member.username || '—' }}</strong><small>{{ member.id }}</small></td><td>{{ member.display_name || '—' }}</td><td>{{ member.phone || '—' }}</td><td><span :class="['status-pill', member.status]">{{ statusLabel(member.status) }}</span></td></tr><tr v-if="!members.length"><td colspan="4" class="empty-state">{{ lang.empty }}</td></tr></tbody></table></div>
-            <div class="mobile-cards"><article v-for="member in members" :key="member.id" class="user-card"><div class="card-title"><div><strong>{{ member.display_name || member.username || '—' }}</strong><small>{{ member.id }}</small></div><span :class="['status-pill', member.status]">{{ statusLabel(member.status) }}</span></div><dl class="member-details"><div><dt>{{ lang.username }}</dt><dd>{{ member.username || '—' }}</dd></div><div><dt>{{ lang.displayName }}</dt><dd>{{ member.display_name || '—' }}</dd></div><div><dt>{{ lang.phone }}</dt><dd>{{ member.phone || '—' }}</dd></div></dl></article><div v-if="!members.length" class="empty-state">{{ lang.empty }}</div></div>
+            <div class="table-wrap desktop-table"><table><thead><tr><th>{{ lang.username }}</th><th>{{ lang.displayName }}</th><th>{{ lang.phone }}</th><th>{{ lang.status }}</th></tr></thead><tbody><tr v-for="member in members" :key="member.id"><td><strong>{{ member.username || '—' }}</strong><small>{{ member.id }}</small><button class="row-action" @click="openWallet(member.id)">{{ walletLabel }}</button></td><td>{{ member.display_name || '—' }}</td><td>{{ member.phone || '—' }}</td><td><span :class="['status-pill', member.status]">{{ statusLabel(member.status) }}</span></td></tr><tr v-if="!members.length"><td colspan="4" class="empty-state">{{ lang.empty }}</td></tr></tbody></table></div>
+            <div class="mobile-cards"><article v-for="member in members" :key="member.id" class="user-card"><div class="card-title"><div><strong>{{ member.display_name || member.username || '—' }}</strong><small>{{ member.id }}</small></div><span :class="['status-pill', member.status]">{{ statusLabel(member.status) }}</span></div><dl class="member-details"><div><dt>{{ lang.username }}</dt><dd>{{ member.username || '—' }}</dd></div><div><dt>{{ lang.displayName }}</dt><dd>{{ member.display_name || '—' }}</dd></div><div><dt>{{ lang.phone }}</dt><dd>{{ member.phone || '—' }}</dd></div></dl><button class="row-action" @click="openWallet(member.id)">{{ walletLabel }}</button></article><div v-if="!members.length" class="empty-state">{{ lang.empty }}</div></div>
             <div class="reward-list-actions" data-testid="platform-member-pages">
               <button class="secondary" :disabled="loading || memberOffset === 0" @click="loadMembers(selectedBrand, memberOffset - pageSize)">{{ previousPage }}</button>
               <span>{{ Math.floor(memberOffset / pageSize) + 1 }}</span>
@@ -219,9 +227,13 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
             <button class="secondary" :disabled="loading" @click="loadAudit(selectedBrand)">{{ locale === 'en' ? 'Refresh' : '刷新' }}</button>
           </div>
         </template>
-        <template v-else>
+        <template v-else-if="section === 'rewards'">
           <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label></div>
           <RewardsPanel :brand-id="selectedBrand" :brand-name="selected?.name || ''" :locale="locale" @failure="handleFailure" />
+        </template>
+        <template v-else>
+          <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label></div>
+          <WalletPanel :brand-id="selectedBrand" :member-id="walletMember" :locale="locale" @failure="handleFailure" />
         </template>
       </main>
     </section>

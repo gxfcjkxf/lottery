@@ -38,7 +38,8 @@ test('genuine brand audit filters and validated full CSV preserve finances on bo
   const economicState = async () => ({ wallet: await get(`/wallets/${member.member_id}`), ledger: await get(`/wallets/${member.member_id}/ledger?limit=100&offset=0`) });
   const before = await economicState();
   expect((before.wallet as { available_points: string }).available_points).toBe('7');
-  const range = { from: new Date(Date.now() - 120_000).toISOString().slice(0, 19), to: new Date(Date.now() + 300_000).toISOString().slice(0, 19) };
+  // Minute-aligned bounds use the browser's canonical datetime-local representation.
+  const range = { from: `${new Date(Date.now() - 120_000).toISOString().slice(0, 16)}:00`, to: `${new Date(Date.now() + 300_000).toISOString().slice(0, 16)}:00` };
   const query = new URLSearchParams({ from: `${range.from}Z`, to: `${range.to}Z`, resource_id: recharge.id });
   const auditFacts = await get<{ items: Array<{ action: string; resource_id: string; before_json: unknown; after_json: unknown }> }>(`/audit?${query}`);
   expect(auditFacts.items.length).toBeGreaterThanOrEqual(2);
@@ -70,8 +71,8 @@ test('genuine brand audit filters and validated full CSV preserve finances on bo
   } else { await page.locator('.side-nav').getByRole('button', { name: /Audit log/ }).click(); }
   const panel = page.locator('.audit-page');
   await expect(panel.getByRole('heading', { name: 'Audit log', exact: true })).toBeVisible();
-  await panel.getByLabel('From (UTC)', { exact: true }).fill(range.from);
-  await panel.getByLabel('To (UTC)', { exact: true }).fill(range.to);
+  await panel.getByLabel('From (UTC)', { exact: true }).fill(range.from.slice(0, 16));
+  await panel.getByLabel('To (UTC)', { exact: true }).fill(range.to.slice(0, 16));
   await panel.getByLabel('Resource UUID', { exact: true }).fill(recharge.id);
   const readPromise = page.waitForResponse(res => new URL(res.url()).pathname === '/api/v1/admin/audit');
   await panel.getByRole('button', { name: 'Query audit records', exact: true }).click();
