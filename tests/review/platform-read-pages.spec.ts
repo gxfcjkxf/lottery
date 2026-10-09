@@ -32,7 +32,7 @@ test('platform member and audit pages paginate and clear scope without write con
   await expect(page.locator('.app-frame')).toBeVisible();
   for (const [section, testId, marker] of [
     ['Brand members', 'platform-member-pages', 'member_page_50'],
-    ['Audit log', 'platform-audit-pages', 'audit_page_50'],
+    ['Audit and operations', 'platform-audit-pages', 'audit_page_50'],
   ]) {
     await page.locator('.nav-item').filter({ hasText: section }).click();
     await page.locator('.brand-picker select').selectOption(brand);

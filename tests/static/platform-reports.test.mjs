@@ -6,10 +6,11 @@ const read = path => readFileSync(new URL(`../../${path}`, import.meta.url), 'ut
 test('platform report metrics all have explicit English and Chinese labels', () => {
   const api = read('platform-web/src/reports-api.ts');
   const panel = read('platform-web/src/ReportsPanel.vue');
+  const labels = read('platform-web/src/report-labels.ts');
   const fieldBlock = api.split('export const REPORT_FIELDS')[1].split('export const REPORT_GROUPS')[0];
   const metrics = [...new Set([...fieldBlock.matchAll(/'([a-z_]+)'/g)].map(match => match[1]))];
   assert.ok(metrics.length > 30);
-  for (const metric of metrics) assert.match(panel, new RegExp(`${metric}: \\['[^']+', '[^']+'\\]`));
+  for (const metric of metrics) assert.match(labels, new RegExp(`${metric}: \\['[^']+', '[^']+'\\]`));
   assert.doesNotMatch(panel, /\?\? key|Number\(.*points|parseFloat/);
   assert.match(panel, /Unsupported report label/);
 });

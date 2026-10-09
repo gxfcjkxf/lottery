@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformReportsApi, REPORT_FIELDS, REPORT_GROUPS, type ReportKind, type ReportQuery, type ReportResult } from './reports-api'
 import { createPlatformReportExportApi } from './report-export-api'
+import { REPORT_METRIC_LABELS as metricLabels } from './report-labels'
 
 const props = defineProps<{ brandId: string; memberId: string; locale: 'en' | 'zh-CN' }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
@@ -45,28 +46,6 @@ const copy = computed(() => props.locale === 'en' ? {
 const kindLabels: Record<ReportKind, [string, string]> = {
   betting: ['Betting', '投注'], ledger: ['Points ledger', '积分账本'], withdrawal: ['Withdrawals', '提现'],
   commission: ['Commission', '佣金'], rewards: ['Reward postings', '奖励入账'], reward_orders: ['Reward orders', '奖励订单'],
-}
-const metricLabels: Record<string, [string, string]> = {
-  order_count: ['Orders', '订单数'], stake_points: ['Stake points', '投注积分'], placed_count: ['Placed', '已提交数'],
-  won_count: ['Won', '已中奖数'], lost_count: ['Lost', '未中奖数'], abnormal_count: ['Abnormal', '异常数'],
-  cancelled_count: ['Cancelled', '已取消数'], refund_points: ['Refund points', '退款积分'], settled_stake_points: ['Settled stake points', '已结算投注积分'],
-  unfinalized_stake_points: ['Unfinalized stake points', '未完成投注积分'], abnormal_stake_points: ['Abnormal stake points', '异常投注积分'],
-  current_prize_points: ['Current prize points', '当前派奖积分'], correction_open_count: ['Open corrections', '待处理更正数'],
-  entry_count: ['Entries', '分录数'], net_points: ['Net points', '净积分'], recharge_points: ['Recharge points', '充值积分'],
-  prize_credit_points: ['Prize credits', '派奖入账积分'], prize_reversal_points: ['Prize reversals', '派奖冲正积分'],
-  requested_points: ['Requested points', '申请积分'], reviewing_count: ['Under review', '审核中数量'], reviewing_points: ['Under-review points', '审核中积分'],
-  processing_count: ['Processing', '处理中数量'], processing_points: ['Processing points', '处理中积分'], paid_count: ['Paid', '已付款数量'],
-  paid_points: ['Paid points', '已付款积分'], rejected_count: ['Rejected', '已拒绝数量'], rejected_points: ['Rejected points', '已拒绝积分'],
-  failed_count: ['Failed', '失败数量'], failed_points: ['Failed points', '失败积分'], cancelled_points: ['Cancelled points', '已取消积分'],
-  paid_entry_count: ['Payment entries', '付款分录数'], adjustment_entry_count: ['Adjustment entries', '调整分录数'],
-  adjustment_credit_points: ['Adjustment credits', '调整入账积分'], adjustment_debit_points: ['Adjustment debits', '调整扣减积分'],
-  correction_entry_count: ['Correction entries', '更正分录数'], correction_credit_points: ['Correction credits', '更正入账积分'],
-  correction_debit_points: ['Correction debits', '更正扣减积分'], grant_entry_count: ['Grant entries', '发放分录数'], grant_points: ['Granted points', '发放积分'],
-  reversal_entry_count: ['Reversal entries', '冲正分录数'], reversal_points: ['Reversed points', '冲正积分'], original_points: ['Original points', '原始积分'],
-  granted_count: ['Granted orders', '已发放订单数'], granted_points: ['Granted points', '已发放积分'], pending_count: ['Pending revocation orders', '待撤销订单数'],
-  pending_points: ['Pending revocation original points', '待撤销订单原积分'], revoked_count: ['Revoked orders', '已撤销订单数'], revoked_points: ['Revoked points', '已撤销积分'],
-  account_count: ['Accounts', '账户数'], available_points: ['Available points', '可用积分'], frozen_points: ['Frozen points', '冻结积分'],
-  withdrawal_points: ['Withdrawal points', '提现中积分'], total_points: ['Total points', '总积分'],
 }
 const groupLabels: Record<string, [string, string]> = {
   day: ['Day', '日期'], game: ['Game', '游戏'], member: ['Member', '会员'], entry_type: ['Entry type', '分录类型'],

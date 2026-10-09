@@ -6,6 +6,8 @@ import WalletPanel from './WalletPanel.vue'
 import BetOrdersPanel from './BetOrdersPanel.vue'
 import WithdrawalsPanel from './WithdrawalsPanel.vue'
 import CommissionPanel from './CommissionPanel.vue'
+import ArchivesPanel from './ArchivesPanel.vue'
+import NotificationsPanel from './NotificationsPanel.vue'
 
 const api = createPlatformApi()
 const locale = ref<'en' | 'zh-CN'>('en')
@@ -38,12 +40,14 @@ const nextPage = computed(() => locale.value === 'en' ? 'Next page' : '下一页
 const thisPage = computed(() => locale.value === 'en' ? 'This page' : '本页')
 const selectedBrand = ref('')
 const section = ref<'brands' | 'users' | 'audit' | 'rewards' | 'wallets' | 'bets' | 'withdrawals' | 'commission'>('brands')
+const auditView = ref<'audit' | 'archives' | 'notifications'>('audit')
 const walletMember = ref('')
 const walletLabel = computed(() => locale.value === 'en' ? 'Member points' : '会员积分')
 const betLabel = computed(() => locale.value === 'en' ? 'Bet orders' : '投注订单')
 const withdrawalLabel = computed(() => locale.value === 'en' ? 'Withdrawals' : '提现订单')
 const commissionLabel = computed(() => locale.value === 'en' ? 'Agents and commission' : '代理与佣金')
-const sectionLabel = computed(() => section.value === 'commission' ? commissionLabel.value : section.value === 'wallets' ? walletLabel.value : section.value === 'bets' ? betLabel.value : section.value === 'withdrawals' ? withdrawalLabel.value : lang.value[section.value])
+const operationsLabel = computed(() => locale.value === 'en' ? 'Audit and operations' : '审计与运营')
+const sectionLabel = computed(() => section.value === 'audit' ? operationsLabel.value : section.value === 'commission' ? commissionLabel.value : section.value === 'wallets' ? walletLabel.value : section.value === 'bets' ? betLabel.value : section.value === 'withdrawals' ? withdrawalLabel.value : lang.value[section.value])
 const busy = ref(false)
 const loading = ref(false)
 const error = ref('')
@@ -60,6 +64,7 @@ let auditRequestGeneration = 0
 
 function messageOf(cause: unknown) { return cause instanceof Error ? cause.message : lang.value.error }
 function clearPrivateState() {
+  auditView.value = 'audit'
   walletMember.value = ''
   account.value = null; brands.value = []; members.value = []; auditRows.value = []; selectedBrand.value = ''
   retryPayload.value = null; modal.value = false; confirming.value = false
@@ -78,7 +83,7 @@ async function loadWorkspace() {
     brands.value = await api.brands()
     if (selectedBrand.value && !brands.value.some(brand => brand.id === selectedBrand.value)) { selectedBrand.value = ''; members.value = []; auditRows.value = [] }
     if (selectedBrand.value && section.value === 'users') await loadMembers(selectedBrand.value)
-    if (selectedBrand.value && section.value === 'audit') await loadAudit(selectedBrand.value)
+    if (selectedBrand.value && section.value === 'audit' && auditView.value === 'audit') await loadAudit(selectedBrand.value)
   } catch (cause) { handleFailure(cause); throw cause } finally { loading.value = false }
 }
 async function login() {
@@ -92,6 +97,7 @@ async function signOut() {
   catch (cause) { handleFailure(cause) } finally { busy.value = false }
 }
 async function chooseSection(next: 'brands' | 'users' | 'audit' | 'rewards' | 'wallets' | 'bets' | 'withdrawals' | 'commission') {
+  if (next === 'audit') auditView.value = 'audit'
   walletMember.value = ''
   section.value = next; error.value = ''; notice.value = ''
   memberOffset.value = 0; auditOffset.value = 0; moreMembers.value = false; moreAudit.value = false
@@ -108,7 +114,12 @@ async function chooseBrand(id: string) {
   memberOffset.value = 0; auditOffset.value = 0; moreMembers.value = false; moreAudit.value = false
   if (!id) { loading.value = false; return }
   if (section.value === 'users') await loadMembers(id)
-  if (section.value === 'audit') await loadAudit(id)
+  if (section.value === 'audit' && auditView.value === 'audit') await loadAudit(id)
+}
+async function chooseAuditView(next: 'audit' | 'archives' | 'notifications') {
+  auditView.value = next; auditRequestGeneration++; auditRows.value = []
+  auditOffset.value = 0; moreAudit.value = false; loading.value = false; error.value = ''
+  if (next === 'audit' && selectedBrand.value) await loadAudit(selectedBrand.value)
 }
 async function loadMembers(brandId: string, offset = 0) {
   const generation = ++memberRequestGeneration
@@ -131,14 +142,14 @@ async function loadAudit(brandId: string, offset = 0) {
   auditRows.value = []; loading.value = true; moreAudit.value = false; error.value = ''
   try {
     const result = await api.audit(brandId, pageSize + 1, offset)
-    if (generation === auditRequestGeneration && selectedBrand.value === brandId && section.value === 'audit') {
+    if (generation === auditRequestGeneration && selectedBrand.value === brandId && section.value === 'audit' && auditView.value === 'audit') {
       auditRows.value = result.slice(0, pageSize)
       auditOffset.value = offset
       moreAudit.value = result.length > pageSize
     }
   } catch (cause) {
     if (cause instanceof PlatformApiError && cause.status === 401) handleFailure(cause)
-    else if (generation === auditRequestGeneration && selectedBrand.value === brandId && section.value === 'audit') handleFailure(cause)
+    else if (generation === auditRequestGeneration && selectedBrand.value === brandId && section.value === 'audit' && auditView.value === 'audit') handleFailure(cause)
   }
   finally { if (generation === auditRequestGeneration) loading.value = false }
 }
@@ -189,7 +200,7 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
       <div class="nav-label">{{ lang.workspace }}</div>
       <button :class="['nav-item', { selected: section === 'brands' }]" @click="chooseSection('brands')"><span>◫</span>{{ lang.brands }}</button>
       <button :class="['nav-item', { selected: section === 'users' }]" @click="chooseSection('users')"><span>◉</span>{{ lang.users }}</button>
-      <button :class="['nav-item', { selected: section === 'audit' }]" @click="chooseSection('audit')"><span>≋</span>{{ lang.audit }}</button>
+      <button :class="['nav-item', { selected: section === 'audit' }]" :aria-label="operationsLabel" @click="chooseSection('audit')"><span>≋</span><span class="nav-caption nav-full">{{ operationsLabel }}</span><span class="nav-caption nav-short">{{ locale === 'en' ? 'Audit' : '审计运营' }}</span></button>
       <button :class="['nav-item', { selected: section === 'rewards' }]" @click="chooseSection('rewards')"><span>◇</span>{{ lang.rewards }}</button>
       <button :class="['nav-item', { selected: section === 'wallets' }]" @click="chooseSection('wallets')"><span>◎</span>{{ walletLabel }}</button>
       <button :class="['nav-item', { selected: section === 'bets' }]" @click="chooseSection('bets')"><span>▤</span>{{ betLabel }}</button>
@@ -226,8 +237,16 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
           </section>
         </template>
         <template v-else-if="section === 'audit'">
-          <div class="page-heading"><div><div class="eyebrow">{{ lang.traceability }}</div><h1>{{ lang.audit }}</h1><p>{{ lang.auditDescription }}</p></div></div>
+          <div class="page-heading"><div><div class="eyebrow">{{ lang.traceability }}</div><h1>{{ operationsLabel }}</h1></div></div>
           <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label><span v-if="selected" class="selection-tag">{{ selected.name }}</span></div>
+          <div class="wallet-pagination" data-testid="platform-operations-tabs">
+            <button class="secondary" :aria-pressed="auditView === 'audit'" @click="chooseAuditView('audit')">{{ lang.audit }}</button>
+            <button class="secondary" :aria-pressed="auditView === 'archives'" @click="chooseAuditView('archives')">{{ locale === 'en' ? 'Report archives' : '报表归档' }}</button>
+            <button class="secondary" :aria-pressed="auditView === 'notifications'" @click="chooseAuditView('notifications')">{{ locale === 'en' ? 'Notifications' : '通知' }}</button>
+          </div>
+          <ArchivesPanel v-if="auditView === 'archives'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
+          <NotificationsPanel v-else-if="auditView === 'notifications'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
+          <template v-else>
           <section v-if="selectedBrand" class="panel"><div class="panel-heading"><div><h2>{{ lang.audit }} <span class="subtle">/ {{ selected?.name }}</span></h2><p>{{ lang.auditDescription }}</p></div><span class="count-chip">{{ auditRows.length }} {{ lang.countSuffix }}</span></div><div class="table-wrap"><table><thead><tr><th>{{ lang.action }}</th><th>{{ lang.actor }}</th><th>{{ lang.resource }}</th><th>{{ lang.reason }}</th><th>{{ lang.date }}</th></tr></thead><tbody><tr v-for="row in auditRows" :key="row.id"><td><span class="action-label">{{ row.action }}</span><small>{{ row.id }}</small></td><td class="mono">{{ row.actor_id }}</td><td>{{ row.resource_type }}<small>{{ row.resource_id }}</small></td><td class="reason-cell">{{ row.reason || '—' }}</td><td>{{ row.created_at }}</td></tr><tr v-if="!auditRows.length"><td colspan="5" class="empty-state">{{ lang.empty }}</td></tr></tbody></table></div></section>
           <div v-if="selectedBrand" class="reward-list-actions" data-testid="platform-audit-pages">
             <span>{{ thisPage }} {{ auditRows.length }}</span>
@@ -236,6 +255,7 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
             <button class="secondary" :disabled="loading || !moreAudit" @click="loadAudit(selectedBrand, auditOffset + pageSize)">{{ nextPage }}</button>
             <button class="secondary" :disabled="loading" @click="loadAudit(selectedBrand)">{{ locale === 'en' ? 'Refresh' : '刷新' }}</button>
           </div>
+          </template>
         </template>
         <template v-else-if="section === 'rewards'">
           <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label></div>
