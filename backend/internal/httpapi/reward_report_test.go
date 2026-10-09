@@ -302,8 +302,15 @@ func TestRewardReportPermissionIsIndependentAndExplicitlyScoped(t *testing.T) {
 	if _, err := f.pool.Exec(context.Background(), `DELETE FROM role_permissions WHERE role_id IN(SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key IN('report_reward.view.brand','report_reward.export.brand')`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, rewardReportCall(f.managementHTTP, "GET", jsonURL, f.token, pointsBrandB, ""), 200)
-	mustStatus(t, rewardReportCall(f.managementHTTP, "GET", rewardReportQueryURL(rewardReportCSVPath, from, to, "day"), f.token, pointsBrandB, ""), 200)
+	mustStatus(t, rewardReportCall(f.managementHTTP, "GET", jsonURL, f.token, pointsBrandB, ""), 403)
+	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	platformToken := platformAdminToken(t, f.managementHTTP)
+	platformJSON := strings.Replace(jsonURL, "/api/v1/admin", "/api/v1/platform", 1)
+	platformCSV := strings.Replace(rewardReportQueryURL(rewardReportCSVPath, from, to, "day"), "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, rewardReportCall(f.managementHTTP, "GET", platformJSON, platformToken, pointsBrandB, ""), 200)
+	mustStatus(t, rewardReportCall(f.managementHTTP, "GET", platformCSV, platformToken, pointsBrandB, ""), 200)
 }
 
 func TestRewardReportStrictRFC3339AndNanosecondUTCEcho(t *testing.T) {

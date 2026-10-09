@@ -220,11 +220,15 @@ func TestJoinCodeFreshPermissionAuditRollbackAndPlatformReadOnly(t *testing.T) {
 	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	if view := f.call("GET", "/api/v1/admin/join-codes", "", f.token, managedBrand, nil); view.Code != 200 {
+	platformToken := platformAdminToken(t, f)
+	if view := f.call("GET", "/api/v1/platform/join-codes", "", platformToken, managedBrand, nil); view.Code != 200 {
 		t.Fatalf("platform reader with explicit grant status=%d body=%s", view.Code, view.Body.String())
 	}
-	if write := f.call("POST", "/api/v1/admin/join-codes", "join-super-write-001", f.token, managedBrand, joinCodeCreateBody(member)); write.Code != 403 {
-		t.Fatalf("super administrator write status=%d body=%s", write.Code, write.Body.String())
+	if write := f.call("POST", "/api/v1/platform/join-codes", "join-super-write-001", platformToken, managedBrand, joinCodeCreateBody(member)); write.Code != 404 {
+		t.Fatalf("platform write route should not be registered: status=%d body=%s", write.Code, write.Body.String())
+	}
+	if write := f.call("POST", "/api/v1/admin/join-codes", "join-super-brand-write-001", f.token, managedBrand, joinCodeCreateBody(member)); write.Code != 403 {
+		t.Fatalf("platform account reached brand write entry: status=%d body=%s", write.Code, write.Body.String())
 	}
 }
 

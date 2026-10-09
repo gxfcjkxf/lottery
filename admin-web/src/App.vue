@@ -14,9 +14,7 @@ import BrandPresentation from "./BrandPresentation.vue";
 import CompliancePolicy from "./CompliancePolicy.vue";
 import { clearAllPendingComplianceIntents } from "./compliance-state";
 const BrandDomains = defineAsyncComponent(() => import("./BrandDomains.vue"));
-const BrandCreation = defineAsyncComponent(() => import("./BrandCreation.vue"));
 import {clearAllPendingBrandDomainsWrites} from "./brand-domains-state";
-import { clearAllPendingBrandCreationWrites } from "./brand-creation-state";
 import {watch} from "vue";
 import {buildBrandCssTokens,defaultBrand,safeBrandAssetUrl,applyBrandPresentation,type BrandTheme} from "@lottery/shared";
 import {createBrandPresentationApi,brandPresentationPermissions,type BrandPresentationRecord} from "./brand-presentation-api";
@@ -108,7 +106,7 @@ const englishUi: Record<string, string> = {
   "投注趋势": "Betting trend", "每日总投注积分": "Daily betting points", "趋势时间范围": "Trend time range", "近 7 天": "Last 7 days", "近 30 天": "Last 30 days", "近七日投注量趋势": "Betting volume over the last seven days", "开奖源健康": "Draw source health", "数据源连接状态演示": "Data source connection demo", "正常": "Normal", "主开奖源": "Primary draw source", "备用开奖源": "Backup draw source", "最近检查": "Last checked", "连续可用": "Uptime",
   "请先选择真实品牌。": "Select a live brand first.", "请先登录后台账号并选择真实品牌。": "Sign in to the admin account and select a live brand.",
   "品牌和域名": "Brands & domains", "真实品牌列表、运行状态、展示与域名绑定": "Live brands, operating status, presentation, and domain binding", "选择一个品牌": "Choose a brand", "选择下方真实品牌后，可查看其运行状态与操作记录。": "Select a live brand below to view its status and activity.", "来自管理员品牌接口": "From the admin brands API", "刷新列表": "Refresh list", "正在读取品牌…": "Loading brands…", "当前账号未返回可管理品牌。": "This account has no manageable brands.", "运行中": "Running", "已暂停": "Paused", "已停用": "Disabled", "当前品牌": "Current brand", "查看运行状态 →": "View status →",
-  "管理员登录": "Admin sign in", "使用后台管理员账号登录。": "Sign in with an admin account.", "账号": "Account", "密码": "Password", "登录中…": "Signing in…", "登录并加载真实成员": "Sign in and load members", "请选择真实品牌": "Select a live brand", "成员请求不会使用后端默认品牌。请从侧栏品牌选择器中选择一个有权访问的品牌。": "Member requests never use the backend's default brand. Choose an accessible brand from the sidebar selector.", "进入管理员登录": "Go to admin sign in", "正在检查管理员登录状态…": "Checking admin sign-in…", "已登录": "Signed in", "当前真实品牌": "Current live brand", "读取中…": "Loading…", "刷新成员": "Refresh members", "品牌成员": "Brand members", "条本页": "on this page", "搜索用户名 / 手机号 / ID": "Search username / phone / ID", "搜索成员": "Search members", "正在读取品牌成员…": "Loading brand members…", "该品牌当前没有可显示的成员。": "This brand has no members to display.", "成员": "Member", "成员 ID": "Member ID", "手机号": "Phone", "状态": "Status", "加入时间": "Joined", "备注": "Notes", "标签": "Tags", "操作": "Actions", "编辑": "Edit", "踢出": "Remove", "重置密码": "Reset password", "上一页": "Previous", "下一页": "Next", "每页最多": "Up to", "条": "records",
+  "管理员登录": "Admin sign in", "使用后台管理员账号登录。": "Sign in with an admin account.", "账号": "Account", "密码": "Password", "登录中…": "Signing in…", "登录并加载真实成员": "Sign in and load members", "请选择真实品牌": "Select a live brand", "成员请求不会使用后端默认品牌。请从侧栏品牌选择器中选择一个有权访问的品牌。": "Member requests never use the backend's default brand. Choose an accessible brand from the sidebar selector.", "进入管理员登录": "Go to admin sign in", "正在检查管理员登录状态…": "Checking admin sign-in…", "平台超级管理员请使用平台管理入口。": "Platform super administrators must use the platform admin portal.", "平台管理入口": "Platform admin portal", "品牌管理员 · 运营 · 财务 · 客服": "Brand administrators · Operations · Finance · Support", "已登录": "Signed in", "当前真实品牌": "Current live brand", "读取中…": "Loading…", "刷新成员": "Refresh members", "品牌成员": "Brand members", "条本页": "on this page", "搜索用户名 / 手机号 / ID": "Search username / phone / ID", "搜索成员": "Search members", "正在读取品牌成员…": "Loading brand members…", "该品牌当前没有可显示的成员。": "This brand has no members to display.", "成员": "Member", "成员 ID": "Member ID", "手机号": "Phone", "状态": "Status", "加入时间": "Joined", "备注": "Notes", "标签": "Tags", "操作": "Actions", "编辑": "Edit", "踢出": "Remove", "重置密码": "Reset password", "上一页": "Previous", "下一页": "Next", "每页最多": "Up to", "条": "records",
   "代理管理": "Agent management", "代理树": "Agent tree", "加入码管理": "Join code management", "规则配置": "Rule configuration", "期次和开奖": "Periods & draws", "注单和异常": "Orders & exceptions", "资金与账本": "Funds & ledger", "批量对账": "Bulk reconciliation", "佣金和奖励": "Commissions & rewards", "佣金派发": "Commission payouts", "报表和对账": "Reports & reconciliation", "账号与权限": "Accounts and permissions", "审计日志": "Audit log", "通知投递": "Notification delivery", "通知模板": "Notification templates", "风控与合规": "Risk & compliance", "工作台": "Dashboard", "用户和成员": "Users and members",
   "请先登录后台账号查看真实佣金派发记录。": "Sign in to view live commission payout records.",
   "人工奖励": "Manual rewards", "请先登录后台账号查看人工奖励订单。": "Sign in to view manual reward orders.",
@@ -228,6 +226,10 @@ const loginIdentifier = ref("");
 const loginPassword = ref("");
 const loginBusy = ref(false);
 const loginIdempotencyKey = ref(createIdempotencyKey());
+watch([loginIdentifier, loginPassword], () => {
+  // Editing credentials is a new login intent, not a replay of the old body.
+  if (!loginBusy.value) loginIdempotencyKey.value = createIdempotencyKey();
+});
 const adminBrands = ref<AdminBrand[]>([]);
 const selectedBrandId = ref("");
 let adminBrandLoadGeneration = 0;
@@ -413,7 +415,6 @@ const clearAdminData = () => {
 	clearAllPendingPresentationWrites();
 	clearAllPendingComplianceIntents();
 	clearAllPendingBrandDomainsWrites();
-	clearAllPendingBrandCreationWrites();
 	presentationReadGeneration+=1;presentationSkin.value=null;
   adminBrandLoadGeneration += 1;
   clearAllPendingAgentWrites();
@@ -448,6 +449,11 @@ const restoreAdminSession = async () => {
   authLoading.value = true;
   try {
     const result = await api.me();
+    if (result.account.super_admin) {
+      clearAdminData();
+      authError.value = message("平台超级管理员请使用平台管理入口。", "Platform super administrators must use the platform admin portal.");
+      return;
+    }
     if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
       clearAllArchiveIntents();
@@ -458,7 +464,6 @@ const restoreAdminSession = async () => {
       clearAllCommissionPaymentIntents();
       clearAllRewardIntents();
       clearAllCommissionCorrectionIntents();
-      clearAllPendingBrandCreationWrites();
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
       clearAllPendingPresentationWrites();
@@ -488,6 +493,11 @@ const login = async () => {
     );
     loginPassword.value = "";
     const result = await api.me();
+    if (result.account.super_admin) {
+      clearAdminData();
+      authError.value = message("平台超级管理员请使用平台管理入口。", "Platform super administrators must use the platform admin portal.");
+      return;
+    }
     if (account.value?.id !== result.account.id) {
       adminBrandLoadGeneration += 1;
       clearAllArchiveIntents();
@@ -498,7 +508,6 @@ const login = async () => {
       clearAllCommissionPaymentIntents();
       clearAllRewardIntents();
       clearAllCommissionCorrectionIntents();
-      clearAllPendingBrandCreationWrites();
       clearAllPendingJoinCodeWrites();
       clearAllPendingBrandOperationWrites();
       clearAllPendingPresentationWrites();
@@ -513,7 +522,9 @@ const login = async () => {
     toast("已登录管理员账号");
   } catch (error) {
     clearAdminData();
-    authError.value = apiErrorText(error);
+    authError.value = error instanceof AdminApiError && error.code === "ADMIN_ENTRY_MISMATCH"
+      ? message("平台超级管理员请使用平台管理入口。", "Platform super administrators must use the platform admin portal.")
+      : apiErrorText(error);
   } finally {
     loginBusy.value = false;
   }
@@ -521,7 +532,6 @@ const login = async () => {
 const onBrandOperationChanged = (change: { accountId: string }) => {
   if (account.value?.id === change.accountId) void loadBrands();
 };
-const onBrandCreated = () => { if (account.value) void loadBrands(); };
 const logout = async () => {
   const key = createIdempotencyKey();
   // Invalidate mounted views and their pending downloads immediately. A slow
@@ -698,7 +708,41 @@ const ledger = [
 </script>
 
 <template>
-  <div class="app-shell" :style="skinStyle">
+  <div v-if="authLoading || !account" class="login-entry">
+    <header class="login-entry__topbar">
+      <a class="login-entry__brand" href="#" aria-label="Northstar admin">
+        <span class="login-entry__mark" aria-hidden="true">N</span>
+        <span><b>northstar</b><small>ADMINISTRATION</small></span>
+      </a>
+      <label class="admin-language">
+        <span class="sr-only">{{ t('语言', 'Language') }}</span>
+        <select data-testid="admin-language" :aria-label="t('语言', 'Language')" :value="locale" @change="setLocale(($event.target as HTMLSelectElement).value)">
+          <option v-for="code in availableLocales" :key="code" :value="code">{{ code === 'en' ? 'English' : '简体中文' }}</option>
+        </select>
+      </label>
+    </header>
+    <main class="login-entry__main">
+      <section v-if="authLoading" class="login-entry__loading" role="status" aria-live="polite">
+        <span class="login-entry__spinner" aria-hidden="true"></span>
+        <p>{{ ui("正在检查管理员登录状态…") }}</p>
+      </section>
+      <article v-else class="login-entry__card" aria-labelledby="admin-login-title">
+        <div class="login-entry__eyebrow">ADMINISTRATION</div>
+        <h1 id="admin-login-title">{{ ui("管理员登录") }}</h1>
+        <p class="login-entry__description">{{ ui("使用后台管理员账号登录。会话由同源 HttpOnly Cookie 维护，此页面不会保存访问令牌。") }}</p>
+        <form class="login-entry__form" @submit.prevent="login">
+          <label class="login-entry__field">{{ ui("账号") }}<input v-model="loginIdentifier" class="field" autocomplete="username" required /></label>
+          <label class="login-entry__field">{{ ui("密码") }}<input v-model="loginPassword" class="field" type="password" autocomplete="current-password" required /></label>
+          <p v-if="authError" class="form-error" role="alert">{{ t(authError) }}</p>
+          <button class="button button-primary" :disabled="loginBusy">
+            {{ loginBusy ? ui("登录中…") : ui("登录并加载真实成员") }}
+          </button>
+        </form>
+      </article>
+      <p class="login-entry__footer">{{ ui("品牌管理员 · 运营 · 财务 · 客服") }}</p>
+    </main>
+  </div>
+  <div v-else class="app-shell" :style="skinStyle">
     <aside class="sidebar">
       <a class="brand-lockup" href="#" @click.prevent="go('工作台')"
         ><img v-if="skinLogo&&failedSkinLogo!==skinLogo" class="presentation-logo" :src="skinLogo" :alt="skin?.logo_text" crossorigin="anonymous" referrerpolicy="no-referrer" @error="skinLogoError"/>
@@ -953,7 +997,6 @@ const ledger = [
               <p>{{ ui("真实品牌列表、运行状态、展示与域名绑定") }}</p>
             </div>
           </div>
-          <BrandCreation v-if="account" :key="`create:${account.id}`" :account="account" @session-invalid="clearAdminData" @created="onBrandCreated" />
           <BrandOperation
             v-if="selectedBrandId"
             :key="`${account.id}:${selectedBrandId}`"
@@ -1064,37 +1107,6 @@ const ledger = [
             >{{ ui("已登录 ·") }} {{ account.id }}</span
           >
         </div>
-        <div v-if="authLoading" class="panel directory-state"> {{ ui("正在检查管理员登录状态…") }} </div>
-        <article v-else-if="!account" class="panel auth-panel">
-          <div class="auth-copy">
-            <div class="eyebrow">ADMIN AUTHENTICATION</div>
-            <h2>{{ ui("管理员登录") }}</h2>
-            <p> {{ ui("使用后台管理员账号登录。会话由同源 HttpOnly Cookie 维护，此页面不会保存访问令牌。") }} </p>
-          </div>
-          <form class="auth-form" @submit.prevent="login">
-            <label class="modal-label"
-              >{{ ui("账号") }}<input
-                v-model="loginIdentifier"
-                class="field"
-                autocomplete="username"
-                required /></label
-            ><label class="modal-label"
-              >{{ ui("密码") }}<input
-                v-model="loginPassword"
-                class="field"
-                type="password"
-                autocomplete="current-password"
-                required
-            /></label>
-            <p v-if="authError" class="form-error" role="alert">
-              {{ t(authError) }}
-            </p>
-            <button class="button button-primary" :disabled="loginBusy">
-              {{ loginBusy ? ui("登录中…") : ui("登录并加载真实成员") }}
-            </button>
-          </form>
-        </article>
-        <template v-else>
           <div v-if="authError" class="directory-error" role="alert">
             {{ t(authError) }}
           </div>
@@ -1257,7 +1269,6 @@ const ledger = [
               </div>
             </article>
           </template>
-        </template>
       </section>
 
       <section v-else-if="page === '代理树'" class="page-content">
@@ -1792,6 +1803,29 @@ const ledger = [
 </template>
 
 <style scoped>
+.login-entry { min-height: 100vh; color: #20283a; background: radial-gradient(ellipse at 50% 0, #edf2ff 0, #f7f8fc 44%, #f8f9fb 100%); }
+.login-entry__topbar { display: flex; min-height: 76px; align-items: center; justify-content: space-between; gap: 16px; padding: 14px clamp(20px, 5vw, 72px); border-bottom: 1px solid #e6eaf2; background: rgba(255,255,255,.78); }
+.login-entry__brand { display: flex; align-items: center; gap: 11px; color: inherit; text-decoration: none; }
+.login-entry__mark { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 13px; background: linear-gradient(145deg,#6879ee,#4658ce); color: white; font-size: 21px; font-weight: 800; box-shadow: 0 5px 15px #5969df30; }
+.login-entry__brand b,.login-entry__brand small { display: block; }
+.login-entry__brand b { font-size: 16px; letter-spacing: -.5px; }
+.login-entry__brand small { margin-top: 3px; color: #8992a4; font-size: 9px; letter-spacing: 1.2px; }
+.login-entry__main { display: grid; min-height: calc(100vh - 77px); align-content: center; justify-items: center; gap: 24px; padding: 42px 20px 64px; }
+.login-entry__card { width: min(100%, 430px); padding: clamp(25px, 5vw, 38px); border: 1px solid #e8ebf2; border-radius: 18px; background: white; box-shadow: 0 18px 55px rgba(37,49,88,.09); }
+.login-entry__eyebrow { color: #6372d8; font-size: 10px; font-weight: 700; letter-spacing: 1.55px; }
+.login-entry__card h1 { margin: 10px 0 8px; color: #20283a; font-size: clamp(23px, 5vw, 28px); letter-spacing: -.7px; }
+.login-entry__description { margin: 0; color: #737b8c; line-height: 1.65; }
+.login-entry__form { display: grid; gap: 17px; margin-top: 27px; }
+.login-entry__field { display: grid; gap: 8px; color: #394256; font-size: 13px; font-weight: 600; }
+.login-entry__field .field { width: 100%; min-height: 44px; }
+.login-entry__form .form-error { margin: -3px 0 0; }
+.login-entry__form .button { width: 100%; min-height: 45px; margin-top: 2px; }
+.login-entry__loading { display: grid; justify-items: center; gap: 14px; color: #687287; }
+.login-entry__loading p { margin: 0; }
+.login-entry__spinner { width: 24px; height: 24px; border: 2px solid #dfe4f1; border-top-color: #5969df; border-radius: 50%; animation: login-entry-spin .75s linear infinite; }
+.login-entry__footer { margin: 0; color: #8992a4; font-size: 12px; text-align: center; }
+@keyframes login-entry-spin { to { transform: rotate(360deg); } }
+@media (max-width: 480px) { .login-entry__topbar { min-height: 66px; padding-inline: 17px; } .login-entry__main { min-height: calc(100vh - 67px); padding: 30px 16px 44px; } .login-entry__card { border-radius: 15px; } }
 .brand-operation-empty { margin: 14px 0; padding: 18px; }
 .brand-operation-empty h2 { margin: 0 0 6px; }
 .brand-operation-empty p { margin: 0; color: #718096; }

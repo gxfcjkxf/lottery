@@ -334,13 +334,14 @@ func TestAgentSuperAdminNeedsPlatformViewGrant(t *testing.T) {
 	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.call("GET", "/api/v1/admin/agent-policy", "", f.token, managedBrand, nil); got.Code != 200 {
+	platformToken := platformAdminToken(t, f)
+	if got := f.call("GET", "/api/v1/platform/agent-policy", "", platformToken, managedBrand, nil); got.Code != 200 {
 		t.Fatalf("platform-granted super read status=%d body=%s", got.Code, got.Body.String())
 	}
 	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='agent_policy.view.platform'`, platformRole); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.call("GET", "/api/v1/admin/agent-policy", "", f.token, managedBrand, nil); got.Code != 403 {
+	if got := f.call("GET", "/api/v1/platform/agent-policy", "", platformToken, managedBrand, nil); got.Code != 403 {
 		t.Fatalf("super read without platform grant status=%d body=%s", got.Code, got.Body.String())
 	}
 }

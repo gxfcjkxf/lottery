@@ -18,6 +18,53 @@ import (
 
 const adminCookie = "lottery_admin"
 
+type platformAdminEntryKey struct{}
+
+func platformAdminEntry(r *http.Request) bool {
+	platform, _ := r.Context().Value(platformAdminEntryKey{}).(bool)
+	return platform
+}
+
+func administrativeCookie(r *http.Request) string {
+	if platformAdminEntry(r) {
+		return "lottery_platform_admin"
+	}
+	return adminCookie
+}
+
+// Keep only grants owned by the current administrative surface. A misplaced
+// platform grant can never widen a brand staff account's scope.
+func entryPermissions(a access.Account, platform bool) access.Account {
+	scope := access.ScopeBrand
+	if platform {
+		scope = access.ScopePlatform
+	}
+	roles := make([]access.Role, 0, len(a.Roles))
+	for _, role := range a.Roles {
+		grants := []access.Permission{}
+		for _, grant := range role.Permissions {
+			if grant.Scope == scope {
+				grants = append(grants, grant)
+			}
+		}
+		roles = append(roles, access.Role{BrandID: role.BrandID, Permissions: grants})
+	}
+	a.Roles = roles
+	return a
+}
+
+func issueAdministrativeCookie(w http.ResponseWriter, r *http.Request, token string, expires time.Time, secure bool) {
+	age := int(time.Until(expires).Seconds())
+	if token == "" || age <= 0 {
+		age = -1
+	}
+	path := "/api/v1/admin"
+	if platformAdminEntry(r) {
+		path = "/api/v1/platform"
+	}
+	http.SetCookie(w, &http.Cookie{Name: administrativeCookie(r), Value: token, Path: path, HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, Expires: expires, MaxAge: age})
+}
+
 func adminReadAudit(w http.ResponseWriter, r *http.Request, d Dependencies, a access.Account, brand, action string) bool {
 	tx, err := d.Admins.DB.Begin(r.Context())
 	if err == nil {
@@ -35,7 +82,7 @@ func adminReadAudit(w http.ResponseWriter, r *http.Request, d Dependencies, a ac
 }
 
 func adminAccount(w http.ResponseWriter, r *http.Request, d Dependencies) (access.Account, bool) {
-	id, err := d.Identity.AdminAuthenticate(r.Context(), requestToken(r, adminCookie))
+	id, err := d.Identity.AdminAuthenticate(r.Context(), requestToken(r, administrativeCookie(r)))
 	if err != nil {
 		failure(w, r, 401, "AUTH_SESSION_REVOKED", "请登录管理账号")
 		return access.Account{}, false
@@ -45,7 +92,11 @@ func adminAccount(w http.ResponseWriter, r *http.Request, d Dependencies) (acces
 		failure(w, r, 401, "AUTH_SESSION_REVOKED", "管理账号不可用")
 		return account, false
 	}
-	return account, true
+	if account.SuperAdmin != platformAdminEntry(r) {
+		rejectAdmin(w, r, d, account, "", "admin.entry")
+		return access.Account{}, false
+	}
+	return entryPermissions(account, platformAdminEntry(r)), true
 }
 func permissionNames(a access.Account) []string {
 	out := []string{}
@@ -91,8 +142,21 @@ func adminResult(auditID string, err error) (mutation.Result, error) {
 	return mutation.OK(200, map[string]string{"audit_log_id": auditID}), nil
 }
 func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
+	registerAdministrationRoutes(mux, d, false)
+	registerAdministrationRoutes(mux, d, true)
+}
+
+func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform bool) {
+	prefix := "/api/v1/admin"
+	if platform {
+		prefix = "/api/v1/platform"
+	}
 	handle := func(method, path string, fn http.HandlerFunc) {
-		mux.HandleFunc(method+" /api/v1/admin"+path, func(w http.ResponseWriter, r *http.Request) {
+		if platform && method != "GET" && path != "/auth/login" && path != "/auth/logout" && !(method == "POST" && path == "/brands") {
+			return
+		}
+		mux.HandleFunc(method+" "+prefix+path, func(w http.ResponseWriter, r *http.Request) {
+			r = r.WithContext(context.WithValue(r.Context(), platformAdminEntryKey{}, platform))
 			if d.Identity == nil || d.Mutations == nil || d.Admins.DB == nil {
 				failure(w, r, 503, "AUTH_UNAVAILABLE", "后台尚未配置")
 				return
@@ -132,12 +196,16 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 			if !allowed {
 				return mutation.Fail(429, "AUTH_RATE_LIMITED", "尝试次数过多"), nil
 			}
-			return d.Identity.AdminLogin(ctx, tx, b.ID, in, meta(r))
+			return d.Identity.AdminLogin(ctx, tx, b.ID, in, meta(r), platform)
 		}
 		var result mutation.Result
 		var err error
 		if b.ID == "" {
-			result, err = d.Mutations.ExecuteChecked(r.Context(), "", "admin-anonymous", "admin.login", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(string(encoded)), func(ctx context.Context, tx pgx.Tx) error { return checkPlatformAdminEntry(ctx, tx, r) }, run)
+			operation := "brand.admin.login"
+			if platform {
+				operation = "platform.admin.login"
+			}
+			result, err = d.Mutations.ExecuteChecked(r.Context(), "", "admin-anonymous", operation, r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(string(encoded)), func(ctx context.Context, tx pgx.Tx) error { return checkPlatformAdminEntry(ctx, tx, r) }, run)
 		} else {
 			result, err = d.Mutations.Execute(r.Context(), b.ID, "admin-anonymous", "admin.login", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(string(encoded)), run)
 		}
@@ -147,7 +215,7 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 		if err == nil && result.Error == nil {
 			var auth identity.AdminAuthentication
 			if json.Unmarshal(result.Data, &auth) == nil {
-				issueCookie(w, r, adminCookie, auth.AccessToken, auth.ExpiresAt, d.SecureCookies)
+				issueAdministrativeCookie(w, r, auth.AccessToken, auth.ExpiresAt, d.SecureCookies)
 			}
 		}
 		outputMutation(w, r, result, err)
@@ -158,9 +226,9 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 		if !decodeBody(w, r, &in) {
 			return
 		}
-		token := requestToken(r, adminCookie)
+		token := requestToken(r, administrativeCookie(r))
 		run := func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-			return d.Identity.AdminLogout(ctx, tx, b.ID, token, meta(r))
+			return d.Identity.AdminLogout(ctx, tx, b.ID, token, meta(r), platform)
 		}
 		var result mutation.Result
 		var err error
@@ -173,7 +241,7 @@ func registerAdminRoutes(mux routeRegistrar, d Dependencies) {
 			result, err = mutation.Fail(404, "BRAND_NOT_FOUND", "平台管理入口已停用"), nil
 		}
 		if err == nil && result.Error == nil {
-			issueCookie(w, r, adminCookie, "", time.Unix(1, 0), d.SecureCookies)
+			issueAdministrativeCookie(w, r, "", time.Unix(1, 0), d.SecureCookies)
 		}
 		outputMutation(w, r, result, err)
 	})

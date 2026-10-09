@@ -12,13 +12,6 @@ test("Harbor authentication editor loads real settings; desktop enables captcha"
     "Provide isolated Harbor test administrator credentials",
   );
   await page.goto("http://localhost:5174");
-  if (info.project.name === "mobile")
-    await page.locator(".mobile-nav button").nth(1).click();
-  else
-    await page
-      .locator(".side-nav")
-      .getByRole("button", { name: /用户和成员/ })
-      .click();
   await page
     .getByLabel("账号", { exact: true })
     .fill(process.env.TEST_HARBOR_ADMIN_USERNAME!);

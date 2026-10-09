@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -432,8 +433,12 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
+	grantReportPermission(t, f.managementHTTP, "bet.view.platform")
+	platformToken := platformAdminToken(t, f.managementHTTP)
+	platformPath := strings.Replace(path, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("POST", path+"/abnormal", "exception-mark-idempotent", f.token, managedBrand, markBody), 403)
-	mustStatus(t, f.call("GET", path+"/exception", "", f.token, managedBrand, nil), 200)
+	mustStatus(t, f.call("GET", path+"/exception", "", f.token, managedBrand, nil), 403)
+	mustStatus(t, f.call("GET", platformPath+"/exception", "", platformToken, managedBrand, nil), 200)
 	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
@@ -493,8 +498,12 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	if _, err = f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
+	grantReportPermission(t, f.managementHTTP, "bet.view.platform")
+	platformToken = platformAdminToken(t, f.managementHTTP)
+	platformJudgePath := strings.Replace(judgePath, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("POST", judgePath+"/judge-cancel", "single-judge-idempotent", f.token, managedBrand, judgeBody), 403)
-	mustStatus(t, f.call("GET", judgePath+"/judgment", "", f.token, managedBrand, nil), 200)
+	mustStatus(t, f.call("GET", judgePath+"/judgment", "", f.token, managedBrand, nil), 403)
+	mustStatus(t, f.call("GET", platformJudgePath+"/judgment", "", platformToken, managedBrand, nil), 200)
 	if _, err = f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
@@ -543,8 +552,12 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	if _, err = f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
+	grantReportPermission(t, f.managementHTTP, "period.view.platform")
+	platformToken = platformAdminToken(t, f.managementHTTP)
+	platformPeriodPath := strings.Replace(periodPath, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("POST", periodPath+"/cancel", "period-cancel-idempotent", f.token, managedBrand, periodBody), 403)
-	mustStatus(t, f.call("GET", periodPath+"/cancellation", "", f.token, managedBrand, nil), 200)
+	mustStatus(t, f.call("GET", periodPath+"/cancellation", "", f.token, managedBrand, nil), 403)
+	mustStatus(t, f.call("GET", platformPeriodPath+"/cancellation", "", platformToken, managedBrand, nil), 200)
 	if _, err = f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}

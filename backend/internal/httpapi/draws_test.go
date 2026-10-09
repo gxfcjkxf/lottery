@@ -181,7 +181,12 @@ func TestDrawHTTPPermissionsBrandOriginAndSession(t *testing.T) {
 	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, f.call("GET", sourcePath, "", f.token, managedBrand, nil), 404)
+	mustStatus(t, f.call("GET", sourcePath, "", f.token, managedBrand, nil), 403)
+	platformToken := platformAdminToken(t, f)
+	platformSourcePath := strings.Replace(sourcePath, "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, f.call("GET", platformSourcePath, "", platformToken, managedBrand, nil), 403)
+	grantPlatformPermission(t, f, "draw_source.view.platform")
+	mustStatus(t, f.call("GET", platformSourcePath, "", platformToken, managedBrand, nil), 404)
 	mustStatus(t, f.call("POST", drawPath, "draw-super-readonly", f.token, managedBrand, body), 403)
 	var results int
 	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM draw_results WHERE period_id=$1`, periodID).Scan(&results); err != nil || results != 0 {

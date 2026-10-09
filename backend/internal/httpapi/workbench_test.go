@@ -29,14 +29,18 @@ func TestWorkbenchHTTPFreshAuthorizationAndScope(t *testing.T) {
 	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, f.call("GET", workbenchPath, "", f.token, pointsBrandB, nil), 403)
-	grantReportPermission(t, f, "brand.view.platform")
-	mustStatus(t, f.call("GET", workbenchPath, "", f.token, pointsBrandB, nil), 200)
-	mustStatus(t, f.call("GET", workbenchPath, "", f.token, "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", nil), 404)
+	platformToken := platformAdminToken(t, f)
+	mustStatus(t, f.call("GET", workbenchPath, "", f.token, pointsBrandB, nil), 401)
+	platformPath := strings.Replace(workbenchPath, "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, f.call("GET", platformPath, "", platformToken, pointsBrandB, nil), 403)
+	grantPlatformPermission(t, f, "brand.view.platform")
+	mustStatus(t, f.call("GET", workbenchPath, "", f.token, pointsBrandB, nil), 401)
+	mustStatus(t, f.call("GET", platformPath, "", platformToken, pointsBrandB, nil), 200)
+	mustStatus(t, f.call("GET", platformPath, "", platformToken, "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", nil), 404)
 	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id IN(SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key IN('brand.view.platform','brand.view.brand')`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, f.call("GET", workbenchPath, "", f.token, managedBrand, nil), 403)
+	mustStatus(t, f.call("GET", platformPath, "", platformToken, managedBrand, nil), 403)
 }
 
 func TestWorkbenchHTTPRealRechargeFreezeAndNoBusinessWrites(t *testing.T) {

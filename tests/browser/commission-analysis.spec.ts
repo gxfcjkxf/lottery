@@ -200,7 +200,7 @@ test('commission cycle analysis shows saved-period economics and exports the com
   expect(summaryRow).toHaveLength(33);
   expect(groupRow).toHaveLength(33);
   expect(groupRow[10]).toBe(payment!.cycle_id);
-  expect(summaryRow.slice(12)).toEqual(['1', '1', '0', '0', '1', '1', '1', '1', '3', '3', '4', '0', '0', '0', '4', '0', "'-1", '0', '1', '0', 'true', 'true']);
+  expect(summaryRow.slice(12)).toEqual(['1', '1', '0', '1', '1', '1', '1', '3', '3', '4', '0', '0', '0', '4', '0', "'-1", '0', '1', '0', 'true', 'true']);
   expect(groupRow.slice(12)).toEqual(summaryRow.slice(12));
 
   // Unfiltered cycle grouping spans every saved cycle, including any incomplete

@@ -266,12 +266,31 @@ func TestRewardsHTTPNoPermissionInheritanceAndSuperAdminMutationDenied(t *testin
 		t.Fatal(err)
 	}
 	read := rewardRawCall(f.managementHTTP, "GET", rewardOrdersHTTPPath, "", f.token, managedBrand, "", "")
-	if read.Code != 200 {
-		t.Fatalf("super admin with reward.view could not read: status=%d body=%s", read.Code, read.Body.String())
+	if read.Code != 403 {
+		t.Fatalf("brand permission reached super account through brand entry: status=%d body=%s", read.Code, read.Body.String())
 	}
-	write := rewardRawCall(f.managementHTTP, "POST", rewardOrdersHTTPPath, "reward-superadmin-write-1", f.token, managedBrand, f.root,
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO permissions(key) VALUES('reward.view.platform') ON CONFLICT DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	platformRole := ids.New()
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO roles(id,code,name) VALUES($1,$2,'Platform reward reader')`, platformRole, "reward_platform_"+platformRole[:8]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'reward.view.platform')`, platformRole); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)`, f.root, platformRole); err != nil {
+		t.Fatal(err)
+	}
+	platformToken := platformAdminToken(t, f.managementHTTP)
+	platformPath := strings.Replace(rewardOrdersHTTPPath, "/api/v1/admin", "/api/v1/platform", 1)
+	read = rewardRawCall(f.managementHTTP, "GET", platformPath, "", platformToken, managedBrand, "", "")
+	if read.Code != 200 {
+		t.Fatalf("platform grant did not authorize reward read: status=%d body=%s", read.Code, read.Body.String())
+	}
+	write := rewardRawCall(f.managementHTTP, "POST", platformPath, "reward-superadmin-write-1", platformToken, managedBrand, f.root,
 		`{"member_id":"`+f.memberID+`","points":"1","reason":"super administrator writes are denied"}`)
-	if write.Code != 403 || rewardErrorCode(t, write) != "PERMISSION_DENIED" {
+	if write.Code != 404 {
 		t.Fatalf("super admin mutation status=%d body=%s", write.Code, write.Body.String())
 	}
 }

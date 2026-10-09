@@ -29,6 +29,28 @@ type Resolver interface {
 }
 type Store struct{ DB *pgxpool.Pool }
 
+// AdministrativeBrand checks the configured management host, independently of
+// whether a brand admits new customer business. A registered central management
+// host may be brandless; account type and selected-brand grants are checked by
+// the administrative surface, not inferred from a default brand.
+func (s Store) AdministrativeBrand(ctx context.Context, host string) (Brand, error) {
+	var brandID *string
+	var central bool
+	err := s.DB.QueryRow(ctx, `SELECT
+ (SELECT brand_id::text FROM brand_domains WHERE domain=$1 AND enabled),
+ EXISTS(SELECT 1 FROM platform_domains WHERE domain=$1 AND enabled)`, NormalizeHost(host)).Scan(&brandID, &central)
+	if err != nil {
+		return Brand{}, err
+	}
+	if brandID == nil && !central {
+		return Brand{}, ErrNotFound
+	}
+	if brandID == nil {
+		return Brand{}, nil
+	}
+	return Brand{ID: *brandID}, nil
+}
+
 // PlatformEntry admits only explicitly configured platform hosts; it grants no
 // account or brand permission and does not expose public user brand context.
 func (s Store) PlatformEntry(ctx context.Context, host string) (bool, error) {

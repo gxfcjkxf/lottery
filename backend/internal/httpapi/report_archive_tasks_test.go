@@ -204,11 +204,13 @@ func TestReportArchiveTaskHTTPStrictInputsAuthorizationAndReadScopes(t *testing.
 		t.Fatal(err)
 	}
 	grantArchiveTaskPlatformView(t, f)
-	mustStatus(t, archiveTaskRequest(f, "GET", archiveTaskPath, "", f.token, managedBrand, "", ""), 200)
+	mustStatus(t, archiveTaskRequest(f, "GET", archiveTaskPath, "", f.token, managedBrand, "", ""), 403)
 	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, archiveTaskRequest(f, "GET", archiveTaskPath, "", f.token, managedBrand, "", ""), 200)
+	platformToken := platformAdminToken(t, f)
+	platformPath := strings.Replace(archiveTaskPath, "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, archiveTaskRequest(f, "GET", platformPath, "", platformToken, managedBrand, "", ""), 200)
 }
 
 func TestReportArchiveTaskHTTPReadPaginationAndRetryReceiptLifecycle(t *testing.T) {
@@ -217,31 +219,40 @@ func TestReportArchiveTaskHTTPReadPaginationAndRetryReceiptLifecycle(t *testing.
 	f := pf.managementHTTP
 	task := failedAutomaticArchiveTask(t, f)
 	grantArchiveTaskPlatformView(t, f)
-	foreign := archiveTaskRequest(f, "GET", archiveTaskPath+"/"+task.ID, "", f.token, pointsBrandB, "", "")
+	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	platformToken := platformAdminToken(t, f)
+	platformTaskPath := strings.Replace(archiveTaskPath, "/api/v1/admin", "/api/v1/platform", 1)
+	platformPolicyPath := strings.Replace(archivePolicyPath, "/api/v1/admin", "/api/v1/platform", 1)
+	foreign := archiveTaskRequest(f, "GET", platformTaskPath+"/"+task.ID, "", platformToken, pointsBrandB, "", "")
 	mustStatus(t, foreign, 404)
 	if archiveTaskCode(t, foreign) != "REPORT_ARCHIVE_NOT_FOUND" {
 		t.Fatalf("cross-brand task read leaked or used wrong error: %s", foreign.Body.String())
 	}
-	policy := archiveTaskRequest(f, "GET", archivePolicyPath, "", f.token, managedBrand, "", "")
+	policy := archiveTaskRequest(f, "GET", platformPolicyPath, "", platformToken, managedBrand, "", "")
 	mustStatus(t, policy, 200)
-	page := archiveTaskRequest(f, "GET", archiveTaskPath+"?limit=1&offset=0", "", f.token, managedBrand, "", "")
+	page := archiveTaskRequest(f, "GET", platformTaskPath+"?limit=1&offset=0", "", platformToken, managedBrand, "", "")
 	mustStatus(t, page, 200)
 	var got reportarchive.AutomaticTaskPage
 	managedData(t, page, &got)
 	if got.TotalCount != "1" || len(got.Items) != 1 || got.Items[0].ID != task.ID || got.Items[0].State != "failed" {
 		t.Fatalf("task page mismatch: %+v", got)
 	}
-	one := archiveTaskRequest(f, "GET", archiveTaskPath+"/"+task.ID, "", f.token, managedBrand, "", "")
+	one := archiveTaskRequest(f, "GET", platformTaskPath+"/"+task.ID, "", platformToken, managedBrand, "", "")
 	mustStatus(t, one, 200)
 	var detailed reportarchive.AutomaticTask
 	managedData(t, one, &detailed)
 	if detailed.ID != task.ID || detailed.State != "failed" {
 		t.Fatalf("task read mismatch: %+v", detailed)
 	}
-	missing := archiveTaskRequest(f, "GET", archiveTaskPath+"/0199a000-0000-7000-8000-000000000011", "", f.token, managedBrand, "", "")
+	missing := archiveTaskRequest(f, "GET", platformTaskPath+"/0199a000-0000-7000-8000-000000000011", "", platformToken, managedBrand, "", "")
 	mustStatus(t, missing, 404)
 	if archiveTaskCode(t, missing) != "REPORT_ARCHIVE_NOT_FOUND" {
 		t.Fatalf("unexpected missing-task code: %s", missing.Body.String())
+	}
+	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); err != nil {
+		t.Fatal(err)
 	}
 	key := "archive-task-retry-receipt-01"
 	body := archiveRetryBody(task.Version, "retry after isolated capture failure")

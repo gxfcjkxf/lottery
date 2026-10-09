@@ -39,7 +39,7 @@ const doc={openapi:"3.1.1",info:{title:"Lottery Platform Implemented API",versio
     if(method!=="get")params.push({name:"Origin",in:"header",required:false,schema:{type:"string"},description:"Required when any Cookie is sent: must match the original request Host and accepted scheme. Bearer-only nonbrowser requests may omit it. Client must not forge forwarded Host/IP."});
     if(!["public","user","admin","session"].includes(source.auth))throw new Error(`Invalid auth ${source.auth}`);
     const paramKeys=new Set();for(const p of params){const key=`${p.in}:${p.name.toLowerCase()}`;if(paramKeys.has(key))throw new Error(`Duplicate parameter ${opId} ${key}`);paramKeys.add(key)}
-    const security=source.auth==="public"?[]:source.auth==="admin"?[{adminBearer:[]},{adminCookie:[]}]:[{userBearer:[]}];
+    const security=source.auth==="public"?[]:source.auth==="admin"?[{adminBearer:[]},{[path.startsWith("/api/v1/platform/")?"platformAdminCookie":"adminCookie"]:[]}]:[{userBearer:[]}];
     const status=String(source.successStatus??200),responses={};
     responses[status]={description:source.successDescription??"Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",headers:{...responseHeaders,...(source.successHeaders??{})},content:hasSuccessContent?source.successContent:{"application/json":{schema:success(source.data)}}};
     const errorDescriptions={400:"Invalid input",401:"Session unavailable",403:"Permission/scope/origin rejected",404:"Resource or route unavailable",409:"Version/state/idempotency conflict",413:"Requested export exceeds its size or group limit",415:"JSON content type required",422:"Size limit exceeded; returns a JSON error with the operation-specific error code and no partial data",429:"Persistent authentication or admission rate limit",500:"Internal error",503:"Service or storage unavailable"};
@@ -52,7 +52,20 @@ const doc={openapi:"3.1.1",info:{title:"Lottery Platform Implemented API",versio
     if(method!=="get"&&!source.requestBody)throw new Error(`Missing request schema ${opId}`);
     if(doc.paths[path]?.[method])throw new Error(`Duplicate operation ${operationKey(method,path)}`);(doc.paths[path]??={})[method]=op;
   }
-  for(const source of ops){append(source,source.path,false);if(source.path.startsWith("/api/v1/")&&!source.path.startsWith("/api/v1/admin/"))append(source,source.path.replace("/api/v1/","/api/v1/b/{brandCode}/"),true)}
+  doc.components.securitySchemes.platformAdminCookie={type:"apiKey",in:"cookie",name:"lottery_platform_admin",description:"Independent platform-only HttpOnly cookie, restricted to /api/v1/platform; only super administrator accounts are accepted."};
+  for(const source of ops){
+    append(source,source.path,false);
+    if(source.path.startsWith("/api/v1/admin/")){
+      const path=source.path.replace("/api/v1/admin/","/api/v1/platform/");
+      const suffix=source.path.slice("/api/v1/admin".length);
+      if((source.method==="GET"||suffix==="/auth/login"||suffix==="/auth/logout"||source.method==="POST"&&suffix==="/brands")&&routes.some(route=>route.method===source.method&&route.path===path)){
+        append({...source,operationId:source.operationId+"Platform",summary:"Platform: "+source.summary,description:"Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Only platform-scoped grants are considered. Platform business reads remain permission checked. Brand operations, member edits, approvals and financial mutations are not registered on this entry. "+(source.description??"")},path,false);
+      }
+      doc.paths[source.path][source.method.toLowerCase()].description="Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. "+(source.description??"");
+    }else if(source.path.startsWith("/api/v1/")){
+      append(source,source.path.replace("/api/v1/","/api/v1/b/{brandCode}/"),true);
+    }
+  }
   doc.tags=[...tags].sort().map(name=>({name,description:`Implemented ${name} interfaces.`}));
   assertCoverage(doc,routes);assertReferences(doc);return doc;
 }

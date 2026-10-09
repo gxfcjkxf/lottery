@@ -28,13 +28,6 @@ test("manual recharge, freeze, original-source unfreeze and adjustment reconcile
   const registration = (await registered.json()).data;
   const member = registration.member.id;
   await page.goto("http://localhost:5174");
-  if (info.project.name === "mobile")
-    await page.locator(".mobile-nav button").nth(1).click();
-  else
-    await page
-      .locator(".side-nav")
-      .getByRole("button", { name: /用户和成员/ })
-      .click();
   await page
     .getByLabel("账号", { exact: true })
     .fill(process.env.TEST_ADMIN_USERNAME!);
@@ -44,6 +37,10 @@ test("manual recharge, freeze, original-source unfreeze and adjustment reconcile
   await page
     .getByRole("button", { name: "登录并加载真实成员", exact: true })
     .click();
+  if (info.project.name === "mobile")
+    await page.locator(".mobile-nav button").nth(1).click();
+  else
+    await page.locator(".side-nav").getByRole("button", { name: /用户和成员/ }).click();
   await page
     .getByLabel("选择真实后台品牌", { exact: true })
     .selectOption("0199a000-0000-7000-8000-000000000001");

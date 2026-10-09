@@ -6,11 +6,10 @@ const username = process.env.TEST_ADMIN_USERNAME
 const password = process.env.TEST_ADMIN_PASSWORD
 const brandId = '0199a000-0000-7000-8000-000000000001'
 
-async function signedIn(page: Page, context: BrowserContext, info: TestInfo) {
+async function signedIn(page: Page, context: BrowserContext) {
   const restored = await restoreAdminSession(context, username!, brandId, origin)
   await page.goto(origin)
   await switchLanguage(page, 'en')
-  await navigate(page, info, 'Users and members')
   if (!restored) {
     await page.locator('input[autocomplete="username"]').first().fill(username!)
     await page.locator('input[autocomplete="current-password"]').first().fill(password!)
@@ -41,14 +40,14 @@ async function fits(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
 }
 
-test('admin language selection changes navigation and login without changing a login draft', async ({ page }, info) => {
+test('admin language selection changes login without exposing logged-out navigation', async ({ page }, info) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   const mutations: string[] = []
   page.on('request', request => { if (request.method() !== 'GET' && request.url().includes('/api/')) mutations.push(request.url()) })
   await page.goto(origin)
   await switchLanguage(page, 'en')
-  await navigate(page, info, 'Users and members')
+  await expect(page.locator('.side-nav, .mobile-nav')).toHaveCount(0)
   const identifier = page.locator('input[autocomplete="username"]').first()
   const credential = page.locator('input[autocomplete="current-password"]').first()
   await identifier.fill('unsubmitted_language_draft')
@@ -73,7 +72,7 @@ test('real authenticated member and permission drafts survive language changes w
   test.setTimeout(60_000)
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
-  await signedIn(page, context, info)
+  await signedIn(page, context)
   const writes: string[] = []
   page.on('request', request => { if (request.method() !== 'GET' && request.url().includes('/api/')) writes.push(request.url()) })
   const provision = page.locator('.provision')
@@ -128,7 +127,7 @@ test('real authenticated member and permission drafts survive language changes w
 test('English member submission preserves Chinese business text and its receipt changes language', async ({ page, context }, info) => {
   test.skip(!username || !password, 'Provide isolated test administrator credentials')
   test.setTimeout(60_000)
-  await signedIn(page, context, info)
+  await signedIn(page, context)
   const provision = page.locator('.provision')
   const identifier = `lang_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
   await provision.getByLabel('Username', { exact: false }).fill(identifier)
@@ -159,7 +158,7 @@ test('English member submission preserves Chinese business text and its receipt 
 test('published selected-brand languages control fallback without borrowing the public entry brand', async ({ page, context }, info) => {
   test.skip(!username || !password, 'Provide isolated test administrator credentials')
   test.setTimeout(60_000)
-  await signedIn(page, context, info)
+  await signedIn(page, context)
   const read = async (id: string) => {
     const response = await page.request.get(`${origin}/api/v1/admin/brand-presentation`, { headers: { 'X-Brand-ID': id } })
     expect(response.status()).toBe(200)

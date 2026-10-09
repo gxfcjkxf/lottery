@@ -1,0 +1,8 @@
+{
+  "name": "Northstar Platform Admin",
+  "short_name": "Platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#f5f7fb"
+}

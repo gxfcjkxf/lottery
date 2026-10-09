@@ -19,10 +19,14 @@ const (
 )
 
 func commissionAnalysisHTTPCall(f managementHTTP, path, body string, chunked bool) *httptest.ResponseRecorder {
+	return commissionAnalysisHTTPCallAs(f, path, body, chunked, f.token)
+}
+
+func commissionAnalysisHTTPCallAs(f managementHTTP, path, body string, chunked bool, token string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(http.MethodGet, "http://localhost"+path, strings.NewReader(body))
 	r.RemoteAddr = "192.0.2.55:12345"
 	r.Header.Set("X-Brand-ID", managedBrand)
-	r.Header.Set("Authorization", "Bearer "+f.token)
+	r.Header.Set("Authorization", "Bearer "+token)
 	if chunked {
 		r.ContentLength = -1
 		r.TransferEncoding = []string{"chunked"}
@@ -180,17 +184,20 @@ func TestCommissionAnalysisHTTPRequiresBothExplicitPermissionFamilies(t *testing
 	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	if out := commissionAnalysisHTTPCall(f, path, "", false); out.Code != http.StatusForbidden {
+	platformPath := strings.Replace(path, "/api/v1/admin", "/api/v1/platform", 1)
+	platformToken := platformAdminToken(t, f)
+	if out := commissionAnalysisHTTPCallAs(f, platformPath, "", false, platformToken); out.Code != http.StatusForbidden {
 		t.Fatalf("super-admin identity alone granted analysis: status=%d body=%s", out.Code, out.Body.String())
 	}
-	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); err != nil {
-		t.Fatal(err)
-	}
 	grantCommissionAnalysisPermissions(t, f, "commission.view.platform", "report_commission.view.platform")
-	if out := commissionAnalysisHTTPCall(f, path, "", false); out.Code != http.StatusOK {
+	if out := commissionAnalysisHTTPCall(f, path, "", false); out.Code != http.StatusForbidden {
+		t.Fatalf("brand entry inherited platform grants: status=%d body=%s", out.Code, out.Body.String())
+	}
+	if out := commissionAnalysisHTTPCallAs(f, platformPath, "", false, platformToken); out.Code != http.StatusOK {
 		t.Fatalf("explicit combined platform grants failed: status=%d body=%s", out.Code, out.Body.String())
 	}
-	if out := commissionAnalysisHTTPCall(f, commissionAnalysisQueryURL(commissionAnalysisCSVPath), "", false); out.Code != http.StatusForbidden {
+	platformCSVPath := strings.Replace(commissionAnalysisCSVPath, "/api/v1/admin", "/api/v1/platform", 1)
+	if out := commissionAnalysisHTTPCallAs(f, commissionAnalysisQueryURL(platformCSVPath), "", false, platformToken); out.Code != http.StatusForbidden {
 		t.Fatalf("platform view grants implied export: status=%d body=%s", out.Code, out.Body.String())
 	}
 }

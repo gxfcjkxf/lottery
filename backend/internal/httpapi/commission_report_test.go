@@ -110,12 +110,19 @@ func TestCommissionReportExplicitPlatformPermissionAndDisabledBrand(t *testing.T
 	if _, err := f.pool.Exec(context.Background(), `UPDATE brands SET status='disabled' WHERE id=$1`, managedBrand); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, f.call("GET", commissionReportURL(commissionReportPath, from, to), "", f.token, managedBrand, nil), 200)
-	mustStatus(t, f.call("GET", commissionReportURL(commissionReportCSVPath, from, to), "", f.token, managedBrand, nil), 200)
+	mustStatus(t, f.call("GET", commissionReportURL(commissionReportPath, from, to), "", f.token, managedBrand, nil), 403)
+	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	platformToken := platformAdminToken(t, f)
+	platformJSON := strings.Replace(commissionReportPath, "/api/v1/admin", "/api/v1/platform", 1)
+	platformCSV := strings.Replace(commissionReportCSVPath, "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, f.call("GET", commissionReportURL(platformJSON, from, to), "", platformToken, managedBrand, nil), 200)
+	mustStatus(t, f.call("GET", commissionReportURL(platformCSV, from, to), "", platformToken, managedBrand, nil), 200)
 	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET status='disabled' WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, f.call("GET", commissionReportURL(commissionReportPath, from, to), "", f.token, managedBrand, nil), 401)
+	mustStatus(t, f.call("GET", commissionReportURL(platformJSON, from, to), "", platformToken, managedBrand, nil), 401)
 	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET status='active' WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}

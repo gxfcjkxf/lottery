@@ -9,6 +9,10 @@
   "scripts": {
     "dev:user": "pnpm --filter @lottery/user-web dev",
     "dev:admin": "pnpm --filter @lottery/admin-web dev",
+    "dev:platform": "pnpm --filter @lottery/platform-web dev",
+    "review:user": "pnpm --filter @lottery/user-web exec vite --config vite.review.config.ts",
+    "review:admin": "pnpm --filter @lottery/admin-web exec vite --config vite.review.config.ts",
+    "review:platform": "pnpm --filter @lottery/platform-web exec vite --config vite.review.config.ts",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test && pnpm test:static",

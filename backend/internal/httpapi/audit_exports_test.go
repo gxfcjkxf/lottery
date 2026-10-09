@@ -106,10 +106,18 @@ func TestAuditExportIndependentPermissionScopeFiltersAndEvidence(t *testing.T) {
 		t.Fatal(e)
 	}
 	mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 403)
-	grantReportPermission(t, f, "audit.view.platform")
-	grantReportPermission(t, f, "audit.export.platform")
-	mustStatus(t, f.call("GET", auditExportPath("&action=fixture.audit.export"), "", f.token, other, nil), 200)
-	mustStatus(t, f.call("GET", path, "", f.token, "", nil), 400)
+	grantPlatformPermission(t, f, "audit.export.platform")
+	mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 403)
+	if _, e = f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); e != nil {
+		t.Fatal(e)
+	}
+	platformToken := platformAdminToken(t, f)
+	platformExportPath := strings.Replace(auditExportPath("&action=fixture.audit.export"), "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 403)
+	mustStatus(t, f.call("GET", platformExportPath, "", platformToken, other, nil), 403)
+	grantPlatformPermission(t, f, "audit.view.platform")
+	mustStatus(t, f.call("GET", platformExportPath, "", platformToken, other, nil), 200)
+	mustStatus(t, f.call("GET", strings.Replace(path, "/api/v1/admin", "/api/v1/platform", 1), "", platformToken, "", nil), 400)
 }
 
 func assertNoAuditFile(t *testing.T, w *httptest.ResponseRecorder) {

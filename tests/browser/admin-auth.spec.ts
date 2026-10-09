@@ -26,13 +26,6 @@ test("admin directory writes a real brand member and kick revokes its session", 
   expect(registration.status()).toBe(201);
   const user = (await registration.json()).data;
   await page.goto("http://localhost:5174");
-  if (testInfo.project.name === "mobile")
-    await page.locator(".mobile-nav button").nth(1).click();
-  else
-    await page
-      .locator(".side-nav")
-      .getByRole("button", { name: /用户和成员/ })
-      .click();
   await page
     .getByLabel("账号", { exact: true })
     .fill(process.env.TEST_ADMIN_USERNAME!);
@@ -42,6 +35,10 @@ test("admin directory writes a real brand member and kick revokes its session", 
   await page
     .getByRole("button", { name: "登录并加载真实成员", exact: true })
     .click();
+  if (testInfo.project.name === "mobile")
+    await page.locator(".mobile-nav button").nth(1).click();
+  else
+    await page.locator(".side-nav").getByRole("button", { name: /用户和成员/ }).click();
   await page
     .getByLabel("选择真实后台品牌", { exact: true })
     .selectOption("0199a000-0000-7000-8000-000000000001");

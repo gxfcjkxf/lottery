@@ -80,21 +80,24 @@ func TestAttributionReportHTTPRequiresSeparateExplicitRightsAndAuditsBeforeRelea
 	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
+	platformReadURL := strings.Replace(readURL, "/api/v1/admin", "/api/v1/platform", 1)
+	platformExportURL := strings.Replace(exportURL, "/api/v1/admin", "/api/v1/platform", 1)
+	platformToken := platformAdminToken(t, f)
 	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE permission_key LIKE 'report_attribution.%' AND role_id IN(SELECT role_id FROM admin_account_roles WHERE account_id=$1)`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	if response := call(readURL, managedBrand); response.Code != 403 {
+	if response := attributionReportHTTPCall(f, platformReadURL, platformToken, managedBrand); response.Code != 403 {
 		t.Fatalf("super-admin identity alone granted attribution access: status=%d body=%s", response.Code, response.Body.String())
-	}
-	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); err != nil {
-		t.Fatal(err)
 	}
 	grantReportPermission(t, f, "report_attribution.view.platform")
 	grantReportPermission(t, f, "report_attribution.export.platform")
-	if response := call(readURL, managedBrand); response.Code != 200 {
+	if response := call(readURL, managedBrand); response.Code != 403 {
+		t.Fatalf("brand entry inherited platform view permission: status=%d body=%s", response.Code, response.Body.String())
+	}
+	if response := attributionReportHTTPCall(f, platformReadURL, platformToken, managedBrand); response.Code != 200 {
 		t.Fatalf("explicit platform view permission failed: status=%d body=%s", response.Code, response.Body.String())
 	}
-	if response := call(exportURL, managedBrand); response.Code != 200 {
+	if response := attributionReportHTTPCall(f, platformExportURL, platformToken, managedBrand); response.Code != 200 {
 		t.Fatalf("explicit platform view+export permissions failed: status=%d body=%s", response.Code, response.Body.String())
 	}
 }

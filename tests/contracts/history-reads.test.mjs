@@ -11,8 +11,15 @@ test("only the six implemented immutable history reads advertise routing headers
     "/api/v1/admin/brand-operation/history",
     "/api/v1/admin/brand-presentation/history",
     "/api/v1/admin/brand-domains/history",
+    "/api/v1/platform/audit",
+    "/api/v1/platform/notification-templates/{key}/history",
+    "/api/v1/platform/compliance-policy/history",
+    "/api/v1/platform/brand-operation/history",
+    "/api/v1/platform/brand-presentation/history",
+    "/api/v1/platform/brand-domains/history",
   ]);
   const actual = new Set();
+  let routingHeaderCount = 0;
   for (const [path, item] of Object.entries(doc.paths)) {
     for (const [method, operation] of Object.entries(item)) {
       if (!operation.responses) continue;
@@ -20,6 +27,7 @@ test("only the six implemented immutable history reads advertise routing headers
       if (headers?.["X-Read-Source"]) {
         assert.equal(method, "get");
         actual.add(path);
+        routingHeaderCount += 1;
         assert.deepEqual(headers["X-Read-Source"].schema.enum, ["primary", "replica"]);
         assert.equal(headers["X-Read-Replica"].schema.pattern, "^[1-8]$");
         assert.ok(!headers["X-Read-Reason"].schema.enum.includes("fence_unavailable"));
@@ -31,4 +39,5 @@ test("only the six implemented immutable history reads advertise routing headers
     }
   }
   assert.deepEqual(actual, expected);
+  assert.equal(routingHeaderCount, 12);
 });

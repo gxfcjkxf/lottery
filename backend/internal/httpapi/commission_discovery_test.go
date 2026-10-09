@@ -65,7 +65,11 @@ func TestCommissionDiscoveryHTTPRetryGuardsAndAuthorizationAudit(t *testing.T) {
 	}
 	response = f.rawCall("POST", commissionDiscoveryHTTPPath+"/"+id+"/retry", "discovery-superadmin-denied-01", f.token, managedBrand, body)
 	mustStatus(t, response, 403)
-	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM audit_logs WHERE action='access.denied' AND after_json->>'attempted_brand'=$1 AND after_json->>'permission'='commission.discovery.retry'`, managedBrand).Scan(&denials); err != nil || denials != 2 {
-		t.Fatalf("super-admin retry denial audit count=%d err=%v", denials, err)
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM audit_logs WHERE action='access.denied' AND after_json->>'attempted_brand'=$1 AND after_json->>'permission'='commission.discovery.retry'`, managedBrand).Scan(&denials); err != nil || denials != 1 {
+		t.Fatalf("entry denial changed the original retry permission audit count=%d err=%v", denials, err)
+	}
+	var entryDenials int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM audit_logs WHERE actor_id=$1 AND action='access.denied' AND after_json->>'attempted_brand'='' AND after_json->>'permission'='admin.entry'`, f.root).Scan(&entryDenials); err != nil || entryDenials != 1 {
+		t.Fatalf("super-admin brand-entry denial audit count=%d err=%v", entryDenials, err)
 	}
 }

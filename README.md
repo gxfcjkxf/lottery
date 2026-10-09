@@ -2,6 +2,8 @@
 
 当前项目尚未发布。数据库只保留一份完整基线 `backend/migrations/0001_baseline.up.sql`，使用空库执行 `platform migrate` 后启动。旧开发库不会被自动升级、清空或修复。
 
+管理入口已拆分：`admin-web`为品牌后台，`platform-web`为独立总后台，分别构建部署、使用独立API前缀和Cookie。品牌后台支持管理员、运营、财务、客服的多角色配置；未登录只显示登录页，不展示菜单。总后台当前接入品牌目录、创建品牌、只读会员和品牌审计，其他跨品牌运营视图仍需继续接入，见[管理入口交接](docs/42-administration-entries.md)。
+
 开发遵循 [AGENTS.md](AGENTS.md)：不写旧版本兼容或错误兜底代码，保持 KISS，不为臆想的极限场景堆砌分支。当前钱包及流水统一四来源16分项；接口只接受当前格式。业务账本、审计、结果更正和归档版本仍保留，它们不是版本兼容。
 
 [佣金周期分析](docs/38-commission-cycle-analysis.md)区分保存周期的核算、有效目标、实际净入账及数学差额，包含周期窗口外的后续资金记录；未知不是零，读取与导出不授权派发。[零原派发人工入账保护](docs/40-zero-original-commission-evidence.md)阻止已有人工入账的周期被全额重复派发。
@@ -71,10 +73,12 @@ go run ./cmd/platform worker
 ~~~sh
 pnpm dev:user
 pnpm dev:admin
+pnpm dev:platform
 ~~~
 
 - 用户端：http://localhost:5173
 - 管理端：http://localhost:5174
+- 独立总后台：http://localhost:5175
 - API：http://localhost:8080
 - 存活：http://localhost:8080/health/live
 - 就绪：http://localhost:8080/health/ready

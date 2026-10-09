@@ -17,9 +17,10 @@ type AdminAuthentication struct {
 	ExpiresAt   time.Time `json:"expires_at"`
 }
 
-func (s *Store) AdminLogin(ctx context.Context, tx pgx.Tx, brand string, in LoginInput, meta Metadata) (mutation.Result, error) {
+func (s *Store) AdminLogin(ctx context.Context, tx pgx.Tx, brand string, in LoginInput, meta Metadata, platform bool) (mutation.Result, error) {
 	var id, hash, status string
-	err := tx.QueryRow(ctx, `SELECT id::text,password_hash,status FROM admin_accounts WHERE username=$1 FOR UPDATE`, strings.ToLower(strings.TrimSpace(in.Identifier))).Scan(&id, &hash, &status)
+	var super bool
+	err := tx.QueryRow(ctx, `SELECT id::text,password_hash,status,is_super_admin FROM admin_accounts WHERE username=$1 FOR UPDATE`, strings.ToLower(strings.TrimSpace(in.Identifier))).Scan(&id, &hash, &status, &super)
 	found := err == nil
 	if err != nil && err != pgx.ErrNoRows {
 		return mutation.Result{}, err
@@ -33,6 +34,9 @@ func (s *Store) AdminLogin(ctx context.Context, tx pgx.Tx, brand string, in Logi
 	}
 	if !found || !valid || err != nil || status != "active" {
 		return mutation.Fail(401, "AUTH_INVALID_CREDENTIALS", "账号或密码不正确"), nil
+	}
+	if super != platform {
+		return mutation.Fail(403, "ADMIN_ENTRY_MISMATCH", "账号类型与管理入口不匹配"), nil
 	}
 	token, err := authcrypto.NewSessionToken()
 	if err != nil {
@@ -58,14 +62,18 @@ func (s *Store) AdminAuthenticate(ctx context.Context, token string) (string, er
 	}
 	return id, err
 }
-func (s *Store) AdminLogout(ctx context.Context, tx pgx.Tx, brand, token string, meta Metadata) (mutation.Result, error) {
+func (s *Store) AdminLogout(ctx context.Context, tx pgx.Tx, brand, token string, meta Metadata, platform bool) (mutation.Result, error) {
 	var id, admin string
-	err := tx.QueryRow(ctx, `SELECT id::text,admin_id::text FROM sessions WHERE token_hash=$1 AND admin_id IS NOT NULL FOR UPDATE`, tokenHash(token)).Scan(&id, &admin)
+	var super bool
+	err := tx.QueryRow(ctx, `SELECT s.id::text,s.admin_id::text,a.is_super_admin FROM sessions s JOIN admin_accounts a ON a.id=s.admin_id WHERE s.token_hash=$1 FOR UPDATE OF s`, tokenHash(token)).Scan(&id, &admin, &super)
 	if err == pgx.ErrNoRows {
 		return mutation.Fail(401, "AUTH_SESSION_REVOKED", "会话不可用"), nil
 	}
 	if err != nil {
 		return mutation.Result{}, err
+	}
+	if super != platform {
+		return mutation.Fail(403, "ADMIN_ENTRY_MISMATCH", "账号类型与管理入口不匹配"), nil
 	}
 	if _, err = tx.Exec(ctx, "UPDATE sessions SET revoked_at=coalesce(revoked_at,now()) WHERE id=$1", id); err != nil {
 		return mutation.Result{}, err

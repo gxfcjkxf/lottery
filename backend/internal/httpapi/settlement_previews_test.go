@@ -207,6 +207,11 @@ func TestSettlementPreviewHTTPImmutableRealCalculationReplayAndScope(t *testing.
 	if _, e := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); e != nil {
 		t.Fatal(e)
 	}
-	mustStatus(t, f.call("GET", contextPath, "", f.token, managedBrand, nil), 200)
+	platformToken := platformAdminToken(t, f.managementHTTP)
+	platformBase := strings.Replace(base, "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, f.call("GET", contextPath, "", f.token, managedBrand, nil), 403)
+	mustStatus(t, f.call("GET", platformBase+"/settlement-context", "", platformToken, managedBrand, nil), 403)
+	grantPlatformPermission(t, f.managementHTTP, "settlement.view.platform")
+	mustStatus(t, f.call("GET", platformBase+"/settlement-context", "", platformToken, managedBrand, nil), 200)
 	mustStatus(t, f.call("POST", path, "preview-create-once", f.token, managedBrand, in), 403)
 }

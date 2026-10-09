@@ -68,8 +68,17 @@ func TestReportExportNeedsIndependentReadAndExportScope(t *testing.T) {
 		t.Fatal(e)
 	}
 	mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 403)
-	grantReportPermission(t, f, "report_ledger.export.platform")
-	mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 200)
+	grantPlatformPermission(t, f, "report_ledger.export.platform")
+	mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 403)
+	if _, e := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); e != nil {
+		t.Fatal(e)
+	}
+	platformToken := platformAdminToken(t, f)
+	platformPath := strings.Replace(path, "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, f.call("GET", platformPath, "", platformToken, managedBrand, nil), 403)
+	grantPlatformPermission(t, f, "report_ledger.view.platform")
+	platformOut := f.call("GET", platformPath, "", platformToken, managedBrand, nil)
+	checkExportBody(t, platformOut, managedBrand, "ledger")
 }
 func TestReportExportAuditFailureDoesNotEmitCSV(t *testing.T) {
 	f := managedFixture(t)

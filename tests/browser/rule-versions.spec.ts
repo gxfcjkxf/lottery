@@ -11,13 +11,6 @@ async function login(
   const restored = await restoreAdminSession(page.context(), username, harbor);
   await page.goto("http://localhost:5174");
   if (!restored) {
-  if (info.project.name === "mobile")
-    await page.locator(".mobile-nav button").nth(1).click();
-  else
-    await page
-      .locator(".side-nav")
-      .getByRole("button", { name: /用户和成员/ })
-      .click();
   await page.getByLabel("账号", { exact: true }).fill(username);
   await page.getByLabel("密码", { exact: true }).fill(password);
   await page

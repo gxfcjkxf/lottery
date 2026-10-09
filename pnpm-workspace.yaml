@@ -1,6 +1,7 @@
 packages:
   - user-web
   - admin-web
+  - platform-web
   - shared
 allowBuilds:
   esbuild: true

@@ -103,7 +103,10 @@ func TestNotificationTemplateHTTPCheckedReplayValidationAndAudit(t *testing.T) {
 	}
 	mustStatus(t, f.call("PUT", path, "template-accepted-001", f.token, managedBrand, in), 403)
 	grantReportPermission(t, f, "notification_template.view.platform")
-	mustStatus(t, f.call("GET", base, "", f.token, pointsBrandB, nil), 200)
+	platformToken := platformAdminToken(t, f)
+	platformBase := strings.Replace(base, "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, f.call("GET", base, "", f.token, pointsBrandB, nil), 403)
+	mustStatus(t, f.call("GET", platformBase, "", platformToken, pointsBrandB, nil), 200)
 }
 func TestNotificationTemplateHTTPAuditFailureAndDisabledReplay(t *testing.T) {
 	f := managedFixture(t)

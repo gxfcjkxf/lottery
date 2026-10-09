@@ -270,7 +270,7 @@ func withdrawalAdminRead(r *http.Request, d Dependencies, brand, action string, 
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	id, err := d.Identity.AdminAuthenticateTx(ctx, tx, requestToken(r, adminCookie))
+	id, err := d.Identity.AdminAuthenticateTx(ctx, tx, requestToken(r, administrativeCookie(r)))
 	if err != nil {
 		return nil, err
 	}

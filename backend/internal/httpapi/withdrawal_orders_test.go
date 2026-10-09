@@ -294,9 +294,12 @@ func TestWithdrawalHTTPForeignOriginClosedActionsAndNoImplicitPlatformRead(t *te
 	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, f.call("GET", "/api/v1/admin/withdrawals", "", f.token, pointsBrandB, nil), 403)
-	grantReportPermission(t, f.managementHTTP, "withdrawal.view.platform")
-	mustStatus(t, f.call("GET", "/api/v1/admin/withdrawals", "", f.token, pointsBrandB, nil), 200)
+	mustStatus(t, f.call("GET", "/api/v1/admin/withdrawals", "", f.token, pointsBrandB, nil), 401)
+	platformToken := platformAdminToken(t, f.managementHTTP)
+	mustStatus(t, f.call("GET", "/api/v1/platform/withdrawals", "", platformToken, pointsBrandB, nil), 403)
+	grantPlatformPermission(t, f.managementHTTP, "withdrawal.view.platform")
+	mustStatus(t, f.call("GET", "/api/v1/admin/withdrawals", "", f.token, pointsBrandB, nil), 401)
+	mustStatus(t, f.call("GET", "/api/v1/platform/withdrawals", "", platformToken, pointsBrandB, nil), 200)
 }
 
 func TestWithdrawalHTTPExpiryDuringQualificationRollsBackReservation(t *testing.T) {

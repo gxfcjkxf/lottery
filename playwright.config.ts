@@ -22,5 +22,6 @@ export default defineConfig({
   webServer: [
     { command: 'pnpm dev:user -- --host 127.0.0.1', url: 'http://localhost:5173', reuseExistingServer: !process.env.CI },
     { command: 'pnpm dev:admin -- --host 127.0.0.1', url: 'http://localhost:5174', reuseExistingServer: !process.env.CI },
+    { command: 'pnpm dev:platform', url: 'http://127.0.0.1:5175', reuseExistingServer: !process.env.CI },
   ],
 })

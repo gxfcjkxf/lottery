@@ -1,0 +1,64 @@
+import { test, expect } from '@playwright/test';
+
+const brandOrigin = 'http://127.0.0.1:5184';
+const platformOrigin = 'http://127.0.0.1:5185';
+const aurora = '0199a000-0000-7000-8000-000000000001';
+const password = process.env.TEST_REVIEW_ADMIN_PASSWORD!;
+
+test('brand staff login is the only public entry and platform accounts are rejected', async ({ page }, info) => {
+  await page.goto(brandOrigin);
+  await expect(page.locator('.login-entry__form')).toBeVisible();
+  await expect(page.locator('.sidebar, .mobile-nav, .workbench, .app-shell')).toHaveCount(0);
+  await page.getByLabel('账号', { exact: true }).fill('review_platform');
+  await page.getByLabel('密码', { exact: true }).fill(password);
+  const denied = page.waitForResponse(r => r.url().endsWith('/api/v1/admin/auth/login'));
+  await page.getByRole('button', { name: '登录并加载真实成员', exact: true }).click();
+  expect((await denied).status()).toBe(403);
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.locator('.sidebar, .mobile-nav, .app-shell')).toHaveCount(0);
+  await page.getByLabel('账号', { exact: true }).fill('review_operator');
+  await page.getByLabel('密码', { exact: true }).fill(password);
+  await page.getByRole('button', { name: '登录并加载真实成员', exact: true }).click();
+  await expect(page.locator('.app-shell')).toBeVisible();
+  await page.getByLabel('选择真实后台品牌', { exact: true }).selectOption(aurora);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: info.outputPath('brand-authenticated.png'), fullPage: true });
+});
+
+test('independent platform entry has no public menu, restores its own cookie and keeps members read-only', async ({ page, context }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(platformOrigin);
+  await expect(page.locator('.login-card')).toBeVisible();
+  await expect(page.locator('.sidebar, .nav-item, .app-frame')).toHaveCount(0);
+  await page.getByLabel('Username', { exact: true }).fill('review_operator');
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  const denied = page.waitForResponse(r => r.url().endsWith('/api/v1/platform/auth/login'));
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  expect((await denied).status()).toBe(403);
+  await expect(page.locator('.app-frame')).toHaveCount(0);
+  await page.getByLabel('Username', { exact: true }).fill('review_platform');
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.locator('.app-frame')).toBeVisible();
+  await expect(page.locator('.panel tbody')).toContainText('Aurora');
+  await expect(page.locator('.panel tbody')).toContainText('Harbor');
+  const cookies = await context.cookies();
+  expect(cookies.some(c => c.name === 'lottery_platform_admin' && c.path === '/api/v1/platform' && c.httpOnly && c.sameSite === 'Strict')).toBe(true);
+  expect(cookies.some(c => c.name === 'lottery_admin')).toBe(false);
+  await page.reload();
+  await expect(page.locator('.app-frame')).toBeVisible();
+  await page.locator('.nav-item').filter({ hasText: 'Brand members' }).click();
+  await page.locator('.brand-picker select').selectOption(aurora);
+  await expect(page.locator('.loading-line')).toHaveCount(0);
+  await expect(page.locator('.panel')).toContainText('Read-only membership details');
+  expect((await page.request.get(`${platformOrigin}/api/v1/platform/users?limit=100&offset=0`, { headers: { 'X-Brand-ID': aurora } })).status()).toBe(200);
+  await expect(page.getByRole('button', { name: /Edit|Reset password|Approve withdrawal/i })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: info.outputPath('platform-members.png'), fullPage: true });
+  await page.getByRole('button', { name: /Sign out/ }).click();
+  await expect(page.locator('.login-card')).toBeVisible();
+  await expect(page.locator('.sidebar, .app-frame')).toHaveCount(0);
+  expect((await page.request.get(`${platformOrigin}/api/v1/platform/me`)).status()).toBe(401);
+  expect(errors).toEqual([]);
+});

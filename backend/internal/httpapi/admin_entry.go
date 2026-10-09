@@ -10,24 +10,38 @@ import (
 )
 
 func resolveAdminEntry(w http.ResponseWriter, r *http.Request, d Dependencies) (tenant.Brand, bool) {
-	b, err := d.Brands.Resolve(r.Context(), r.Host, "")
+	if platformAdminEntry(r) {
+		entry, ok := d.Brands.(interface {
+			PlatformEntry(context.Context, string) (bool, error)
+		})
+		if !ok {
+			failure(w, r, 503, "SERVICE_UNAVAILABLE", "平台管理入口未配置")
+			return tenant.Brand{}, false
+		}
+		allowed, err := entry.PlatformEntry(r.Context(), r.Host)
+		if err != nil {
+			failure(w, r, 503, "SERVICE_UNAVAILABLE", "无法检查平台管理入口")
+			return tenant.Brand{}, false
+		}
+		if !allowed {
+			failure(w, r, 404, "PLATFORM_ENTRY_NOT_FOUND", "平台管理入口未启用")
+			return tenant.Brand{}, false
+		}
+		return tenant.Brand{}, true
+	}
+	entry, ok := d.Brands.(interface {
+		AdministrativeBrand(context.Context, string) (tenant.Brand, error)
+	})
+	if !ok {
+		failure(w, r, 503, "SERVICE_UNAVAILABLE", "品牌管理入口未配置")
+		return tenant.Brand{}, false
+	}
+	b, err := entry.AdministrativeBrand(r.Context(), r.Host)
 	if err == nil {
 		return b, true
 	}
 	if errors.Is(err, tenant.ErrNotFound) {
-		if p, ok := d.Brands.(interface {
-			PlatformEntry(context.Context, string) (bool, error)
-		}); ok {
-			allowed, e := p.PlatformEntry(r.Context(), r.Host)
-			if e != nil {
-				failure(w, r, 503, "SERVICE_UNAVAILABLE", "无法检查管理入口")
-				return b, false
-			}
-			if allowed {
-				return tenant.Brand{}, true
-			}
-		}
-		failure(w, r, 404, "BRAND_NOT_FOUND", "当前入口没有可用品牌或平台管理入口")
+		failure(w, r, 404, "BRAND_NOT_FOUND", "当前品牌管理入口未配置品牌")
 		return b, false
 	}
 	failure(w, r, 503, "SERVICE_UNAVAILABLE", "暂时无法检查管理入口")

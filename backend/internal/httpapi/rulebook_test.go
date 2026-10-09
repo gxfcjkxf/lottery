@@ -137,7 +137,11 @@ func TestRuleBookHTTPExplicitRevocationAndSuperReadonly(t *testing.T) {
 	// Super-admin remains denied even if mistakenly assigned brand write grants.
 	r := f.call("POST", "/api/v1/admin/games", "book-super-write", f.token, managedBrand, map[string]any{})
 	mustStatus(t, r, 403)
-	mustStatus(t, f.call("GET", "/api/v1/admin/games", "", f.token, managedBrand, nil), 200)
+	mustStatus(t, f.call("GET", "/api/v1/admin/games", "", f.token, managedBrand, nil), 403)
+	platformToken := platformAdminToken(t, f)
+	mustStatus(t, f.call("GET", "/api/v1/platform/games", "", platformToken, managedBrand, nil), 403)
+	grantPlatformPermission(t, f, "game.view.platform")
+	mustStatus(t, f.call("GET", "/api/v1/platform/games", "", platformToken, managedBrand, nil), 200)
 	if _, e = f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); e != nil {
 		t.Fatal(e)
 	}

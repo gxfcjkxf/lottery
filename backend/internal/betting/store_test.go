@@ -733,13 +733,14 @@ func TestPausedBrandAndFrozenMemberCannotBetButCanCancelOwnOrder(t *testing.T) {
 	for _, state := range []struct {
 		name  string
 		setup func(*testing.T, bettingFixture)
+		want  error
 	}{
-		{name: "paused brand", setup: func(t *testing.T, f bettingFixture) {
+		{name: "paused brand", want: ErrBrandPaused, setup: func(t *testing.T, f bettingFixture) {
 			if _, err := f.db.Exec(context.Background(), `UPDATE brands SET status='paused' WHERE id=$1`, f.brand); err != nil {
 				t.Fatal(err)
 			}
 		}},
-		{name: "frozen member", setup: func(t *testing.T, f bettingFixture) {
+		{name: "frozen member", want: ErrDenied, setup: func(t *testing.T, f bettingFixture) {
 			if _, err := f.db.Exec(context.Background(), `UPDATE brand_members SET status='frozen' WHERE id=$1`, f.member); err != nil {
 				t.Fatal(err)
 			}
@@ -758,8 +759,8 @@ func TestPausedBrandAndFrozenMemberCannotBetButCanCancelOwnOrder(t *testing.T) {
 				t.Fatal(err)
 			}
 			state.setup(t, f)
-			if _, err = placeBettingOrder(t, f, f.input, "status-new-bet-key-001"); !errors.Is(err, ErrDenied) {
-				t.Fatalf("new bet while %s error=%v, want ErrDenied", state.name, err)
+			if _, err = placeBettingOrder(t, f, f.input, "status-new-bet-key-001"); !errors.Is(err, state.want) {
+				t.Fatalf("new bet while %s error=%v, want %v", state.name, err, state.want)
 			}
 			tx, err := f.db.Begin(context.Background())
 			if err != nil {

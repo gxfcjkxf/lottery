@@ -68,14 +68,17 @@ func freshAdmin(ctx context.Context, tx pgx.Tx, r *http.Request, d Dependencies,
 	if err != nil {
 		return a, err
 	}
-	id, err := d.Identity.AdminAuthenticateTx(ctx, tx, requestToken(r, adminCookie))
+	id, err := d.Identity.AdminAuthenticateTx(ctx, tx, requestToken(r, administrativeCookie(r)))
 	if err != nil || id != a.ID {
 		if err == nil || errors.Is(err, pgx.ErrNoRows) {
 			return access.Account{}, adminsys.ErrDenied
 		}
 		return access.Account{}, err
 	}
-	return a, nil
+	if a.SuperAdmin != platformAdminEntry(r) {
+		return access.Account{}, adminsys.ErrDenied
+	}
+	return entryPermissions(a, platformAdminEntry(r)), nil
 }
 
 func finishAdminMutation(w http.ResponseWriter, r *http.Request, d Dependencies, a access.Account, brand, permission string, result mutation.Result, err error) {

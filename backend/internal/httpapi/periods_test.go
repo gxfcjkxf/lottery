@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -121,8 +122,14 @@ func TestPeriodHTTPFreshRevocationAndSuperReadOnly(t *testing.T) {
 	if _, e := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); e != nil {
 		t.Fatal(e)
 	}
-	mustStatus(t, f.call("GET", base+"/schedule", "", f.token, managedBrand, nil), 200)
-	mustStatus(t, f.call("GET", base+"/periods", "", f.token, managedBrand, nil), 200)
+	platformToken := platformAdminToken(t, f)
+	platformBase := strings.Replace(base, "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, f.call("GET", base+"/schedule", "", f.token, managedBrand, nil), 403)
+	mustStatus(t, f.call("GET", platformBase+"/schedule", "", platformToken, managedBrand, nil), 403)
+	mustStatus(t, f.call("GET", platformBase+"/periods", "", platformToken, managedBrand, nil), 403)
+	grantPlatformPermission(t, f, "schedule.view.platform", "period.view.platform")
+	mustStatus(t, f.call("GET", platformBase+"/schedule", "", platformToken, managedBrand, nil), 200)
+	mustStatus(t, f.call("GET", platformBase+"/periods", "", platformToken, managedBrand, nil), 200)
 	mustStatus(t, f.call("PUT", base+"/schedule", "calendar-super-write", f.token, managedBrand, body), 403)
 	mustStatus(t, f.call("POST", base+"/periods/generate", "calendar-super-generate", f.token, managedBrand, map[string]any{"from": time.Now(), "to": time.Now().Add(time.Hour), "reason": "denied"}), 403)
 }

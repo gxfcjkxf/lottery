@@ -2,6 +2,8 @@
 
 当前未发布版本仅使用一份完整基线迁移。旧版本兼容、旧账本补零、历史恢复和失败时切换实现已移除；正常业务历史、结果更正和审计仍保留。开发约束以仓库根目录的AGENTS.md为准。
 
+品牌后台和总后台现在分别使用`admin-web`和`platform-web`，未登录仅显示登录入口，账号类型、Cookie和权限范围由服务端隔离。当前交接与体验环境见[42-administration-entries.md](42-administration-entries.md)。
+
 > 用途：交给第三方开发人员或 AI 作为第一阶段实现依据。  
 > 基线日期：2026-10-05  
 > 状态：实现规格草案，业务未决项集中列在 `08-acceptance-and-open-items.md`。

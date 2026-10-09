@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/commission"
-	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 )
 
 const commissionCyclesPath = "/api/v1/admin/commission-cycles"
@@ -53,24 +52,20 @@ func TestCommissionCyclesHTTPReadAuthorizationPaginationAndRevocation(t *testing
 		t.Fatal(err)
 	}
 	mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 403)
-	if _, err := f.pool.Exec(ctx, `INSERT INTO permissions(key) VALUES('commission.view.platform') ON CONFLICT DO NOTHING`); err != nil {
-		t.Fatal(err)
-	}
-	platformRole := ids.New()
-	if _, err := f.pool.Exec(ctx, `INSERT INTO roles(id,brand_id,code,name) VALUES($1,NULL,$2,'Commission cycle platform viewer')`, platformRole, "cycle_view_"+platformRole[:8]); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'commission.view.platform')`, platformRole); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.pool.Exec(ctx, `INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)`, f.root, platformRole); err != nil {
-		t.Fatal(err)
-	}
+	grantPlatformPermission(t, f, "commission.view.platform")
 	// Platform view grants visibility, but never substitutes for a brand-scoped run.
-	mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 200)
+	mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 403)
 	mustStatus(t, f.call("POST", path, "cycle-platform-run-denied-01", f.token, managedBrand, map[string]string{
 		"anchor_order_id": "0199a000-0000-7000-8000-000000000099", "reason": "platform scope cannot run",
 	}), 403)
+	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
+		t.Fatal(err)
+	}
+	platformToken := platformAdminToken(t, f)
+	mustStatus(t, f.call("GET", "/api/v1/platform/commission-cycles", "", platformToken, managedBrand, nil), 200)
+	mustStatus(t, f.call("POST", "/api/v1/platform/commission-cycles", "cycle-platform-entry-run-denied-01", platformToken, managedBrand, map[string]string{
+		"anchor_order_id": "0199a000-0000-7000-8000-000000000099", "reason": "platform entry has no run route",
+	}), 404)
 }
 
 func TestCommissionCyclesHTTPDetailAndCreateNotFoundAndClosedBodies(t *testing.T) {

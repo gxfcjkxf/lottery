@@ -1,6 +1,71 @@
 name: check
 on: [push, pull_request]
 jobs:
+  administration-entries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        viewport: [desktop1440, mobile360]
+    services:
+      postgres:
+        image: postgres:17.5-alpine
+        env:
+          POSTGRES_DB: lottery_admin_entries_${{ matrix.viewport }}
+          POSTGRES_USER: lottery_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["127.0.0.1:5432:5432"]
+        options: --health-cmd "pg_isready -U lottery_test -d lottery_admin_entries_${{ matrix.viewport }}" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_admin_entries_${{ matrix.viewport }}?sslmode=disable
+      HTTP_ADDR: 127.0.0.1:8085
+      AUTH_KEY_FILE: ${{ github.workspace }}/.local/review-auth.key
+      TEST_REVIEW_ADMIN_PASSWORD: ci-owned-review-entry-password-2026
+      TEST_PLATFORM_ADMIN_USERNAME: review_platform
+      TEST_PLATFORM_ADMIN_PASSWORD: ci-owned-review-entry-password-2026
+      TEST_PLATFORM_ADMIN_ORIGIN: http://127.0.0.1:5185
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare and verify Chromium
+        run: node scripts/prepare-ci-browser.mjs
+      - name: Initialize isolated current baseline and independent administrator accounts
+        run: |
+          mkdir -p .local
+          go -C backend build -o ../.local/review-platform ./cmd/platform
+          .local/review-platform generate-auth-key "$AUTH_KEY_FILE"
+          .local/review-platform migrate
+          .local/review-platform seed
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_operator --brand aurora
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform --super
+          .local/review-platform serve > .local/review-api.log 2>&1 &
+          .local/review-platform worker > .local/review-worker.log 2>&1 &
+          pnpm review:user > .local/review-user.log 2>&1 &
+          pnpm review:admin > .local/review-admin.log 2>&1 &
+          pnpm review:platform > .local/review-platform.log 2>&1 &
+          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:8085/health/ready
+          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:5183/
+          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:5184/
+          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:5185/
+      - name: Verify real isolated administrative entries without retries
+        run: pnpm exec playwright test --config=playwright.review.config.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: administration-entry-${{ matrix.viewport }}-failure
+          path: |
+            test-results/
+            .local/review-*.log
   audit-exports-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -964,6 +1029,17 @@ jobs:
           ./bin/platform create-admin --username ci_platform_operator --super
           ./bin/platform create-admin --username ci_compliance_operator --brand harbor
           ./bin/platform create-admin --username ci_export_operator --brand harbor
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO admin_brand_scopes(account_id,brand_id)
+            SELECT id,'0199a000-0000-7000-8000-000000000001'::uuid FROM admin_accounts WHERE username='ci_export_operator';
+          INSERT INTO roles(id,brand_id,code,name,is_bootstrap)
+            VALUES(gen_random_uuid(),'0199a000-0000-7000-8000-000000000001','ci_export_aurora_read','CI Aurora report reader',true);
+          INSERT INTO admin_account_roles(account_id,role_id)
+            SELECT a.id,r.id FROM admin_accounts a CROSS JOIN roles r WHERE a.username='ci_export_operator' AND r.code='ci_export_aurora_read';
+          INSERT INTO role_permissions(role_id,permission_key)
+            SELECT r.id,p.key FROM roles r CROSS JOIN permissions p
+            WHERE r.code='ci_export_aurora_read' AND p.key IN('brand.view.brand','report_betting.view.brand','report_ledger.view.brand','report_ledger.export.brand');
+          SQL
           ./bin/platform create-admin --username ci_export_platform --super
           ./bin/platform create-admin --username ci_template_operator --brand harbor
           ./bin/platform serve > ../api-test.log 2>&1 &

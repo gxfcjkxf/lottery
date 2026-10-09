@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/withdrawal"
@@ -92,7 +93,12 @@ func TestWithdrawalPolicyHTTPHistoryCheckedReplayAndNoFinancialMutation(t *testi
 	if _, e := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); e != nil {
 		t.Fatal(e)
 	}
-	mustStatus(t, f.call("GET", base, "", f.token, managedBrand, nil), 200)
+	platformToken := platformAdminToken(t, f)
+	platformBase := strings.Replace(base, "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, f.call("GET", base, "", f.token, managedBrand, nil), 403)
+	mustStatus(t, f.call("GET", platformBase, "", platformToken, managedBrand, nil), 403)
+	grantPlatformPermission(t, f, "withdrawal_policy.view.platform")
+	mustStatus(t, f.call("GET", platformBase, "", platformToken, managedBrand, nil), 200)
 	mustStatus(t, f.call("PUT", base, "withdraw-policy-first-01", f.token, managedBrand, body), 403)
 	var entries, orders, audits int
 	if e := f.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM point_ledger_entries),(SELECT count(*) FROM bet_orders),(SELECT count(*) FROM audit_logs WHERE action IN ('withdrawal_policy.brand.update','withdrawal_policy.game.update'))`).Scan(&entries, &orders, &audits); e != nil || entries != 0 || orders != 0 || audits != 2 {

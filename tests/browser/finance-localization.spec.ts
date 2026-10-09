@@ -214,7 +214,7 @@ test('unknown reconciliation creation retains the original body and key across l
   await expect(panel.locator('.receipt-panel')).toContainText('Server-confirmed request receipt')
   expect(attempts).toHaveLength(2)
   expect(attempts[1]).toEqual(attempts[0])
-  expect(JSON.parse(attempts[0].body!)).toEqual({ reason: '中文对账原因 原文不变' })
+  expect(JSON.parse(attempts[0].body!)).toEqual({ check_scope: 'wallet', reason: '中文对账原因 原文不变' })
   await expect(panel.locator('.pending-panel')).toHaveCount(0)
   expect(await fingerprint(page, id)).toBe(before)
   await fits(page)

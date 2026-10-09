@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
-	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"testing"
 )
@@ -88,41 +87,28 @@ func TestBrandOperationHTTPPausePreservesLoginAndAuditFailureRollsBack(t *testin
 func TestBrandOperationSuperAdministratorNeedsExplicitPlatformPermission(t *testing.T) {
 	f := managedFixture(t)
 	ctx := context.Background()
-	const path = "/api/v1/admin/brand-operation"
+	const path = "/api/v1/platform/brand-operation"
 	const other = "0199a000-0000-7000-8000-000000000002"
 	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, f.call("GET", path, "", f.token, other, nil), 403)
-	role := ids.New()
-	for _, q := range []struct {
-		sql  string
-		args []any
-	}{
-		{`INSERT INTO roles(id,brand_id,code,name) VALUES($1,NULL,'brand_operation_platform_test','Platform brand operator')`, []any{role}},
-		{`INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)`, []any{f.root, role}},
-		{`INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'brand_operation.view.platform')`, []any{role}},
-	} {
-		if _, err := f.pool.Exec(ctx, q.sql, q.args...); err != nil {
-			t.Fatal(err)
-		}
-	}
-	initial := f.call("GET", path, "", f.token, other, nil)
+	platformToken := platformAdminToken(t, f)
+	mustStatus(t, f.call("GET", path, "", platformToken, other, nil), 403)
+	grantPlatformPermission(t, f, "brand_operation.view.platform")
+	initial := f.call("GET", path, "", platformToken, other, nil)
 	mustStatus(t, initial, 200)
 	var state struct {
 		Version int64 `json:"version"`
 	}
 	managedData(t, initial, &state)
 	body := map[string]any{"version": state.Version, "status": "paused", "reason": "explicit platform operator pause"}
-	mustStatus(t, f.call("PATCH", path, "brand-super-no-write-01", f.token, other, body), 403)
-	if _, err := f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'brand_operation.write.platform')`, role); err != nil {
-		t.Fatal(err)
-	}
-	mustStatus(t, f.call("PATCH", path, "brand-super-write-01", f.token, other, body), 200)
+	mustStatus(t, f.call("PATCH", path, "brand-super-no-write-01", platformToken, other, body), 404)
+	role := grantPlatformPermission(t, f, "brand_operation.write.platform")
+	mustStatus(t, f.call("PATCH", path, "brand-super-write-01", platformToken, other, body), 404)
 	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='brand_operation.write.platform'`, role); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, f.call("PATCH", path, "brand-super-write-01", f.token, other, body), 403)
+	mustStatus(t, f.call("PATCH", path, "brand-super-write-01", platformToken, other, body), 404)
 }
 
 func TestBrandOperationHTTPHistoryFreshReplayAndIsolation(t *testing.T) {

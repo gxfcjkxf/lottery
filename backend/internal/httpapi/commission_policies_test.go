@@ -3,10 +3,10 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/commission"
-	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 )
 
 const commissionPolicyPath = "/api/v1/admin/commission-policy"
@@ -108,41 +108,25 @@ func TestCommissionPolicyHTTPAuthorizationReplayHistoryAndAudit(t *testing.T) {
 	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id IN (SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key='commission_policy.view.brand'`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.pool.Exec(ctx, `INSERT INTO permissions(key) VALUES('commission_policy.view.platform') ON CONFLICT DO NOTHING`); err != nil {
-		t.Fatal(err)
-	}
-	platformViewer := ids.New()
-	if _, err := f.pool.Exec(ctx, `INSERT INTO roles(id,brand_id,code,name) VALUES($1,NULL,$2,'Commission platform viewer')`, platformViewer, "commission_view_"+platformViewer[:8]); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'commission_policy.view.platform')`, platformViewer); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.pool.Exec(ctx, `INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)`, f.root, platformViewer); err != nil {
-		t.Fatal(err)
-	}
-	mustStatus(t, f.call("GET", commissionPolicyPath, "", f.token, managedBrand, nil), 200)
-	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='commission_policy.view.platform'`, platformViewer); err != nil {
-		t.Fatal(err)
-	}
+	platformViewer := grantPlatformPermission(t, f, "commission_policy.view.platform")
 	mustStatus(t, f.call("GET", commissionPolicyPath, "", f.token, managedBrand, nil), 403)
-	if _, err := f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) SELECT role_id,'commission_policy.view.brand' FROM admin_account_roles WHERE account_id=$1 AND role_id IN (SELECT id FROM roles WHERE brand_id=$2) ON CONFLICT DO NOTHING`, f.root, managedBrand); err != nil {
-		t.Fatal(err)
-	}
-	platformRole := ids.New()
-	if _, err := f.pool.Exec(ctx, `INSERT INTO roles(id,brand_id,code,name) VALUES($1,NULL,'commission_platform_reader','Commission platform reader')`, platformRole); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'commission_policy.view.platform')`, platformRole); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.pool.Exec(ctx, `INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)`, f.root, platformRole); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, f.call("GET", commissionPolicyPath, "", f.token, managedBrand, nil), 200)
+	platformToken := platformAdminToken(t, f)
+	platformPath := strings.Replace(commissionPolicyPath, "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, f.call("GET", platformPath, "", platformToken, managedBrand, nil), 200)
+	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='commission_policy.view.platform'`, platformViewer); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, f.call("GET", platformPath, "", platformToken, managedBrand, nil), 403)
+	if _, err := f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) SELECT role_id,'commission_policy.view.brand' FROM admin_account_roles WHERE account_id=$1 AND role_id IN (SELECT id FROM roles WHERE brand_id=$2) ON CONFLICT DO NOTHING`, f.root, managedBrand); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, f.call("GET", platformPath, "", platformToken, managedBrand, nil), 403)
+	grantPlatformPermission(t, f, "commission_policy.view.platform")
+	mustStatus(t, f.call("GET", commissionPolicyPath, "", f.token, managedBrand, nil), 403)
+	mustStatus(t, f.call("GET", platformPath, "", platformToken, managedBrand, nil), 200)
 	mustStatus(t, f.call("PUT", commissionPolicyPath, "commission-policy-update-001", f.token, managedBrand, body), 403)
 
 	var revisions, updates int

@@ -18,6 +18,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
 	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
+	"github.com/gxfcjkxf/lottery/backend/internal/database"
 	"github.com/gxfcjkxf/lottery/backend/internal/finance"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
@@ -93,9 +94,8 @@ func run() error {
 	if err = db.Ping(ctx); err != nil {
 		return errors.New("fixture database unavailable")
 	}
-	var migrated bool
-	if err = db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE name='0044_pin_positive_withdrawal_validator.up.sql')`).Scan(&migrated); err != nil || !migrated {
-		return errors.New("qualification fixture requires the latest migration to be applied")
+	if err = database.CheckMigrations(ctx, db); err != nil {
+		return errors.New("qualification fixture requires the current baseline to be applied")
 	}
 	var brandExists bool
 	if err = db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM brands WHERE id=$1 AND code='aurora' AND status='active')`, fixtureBrand).Scan(&brandExists); err != nil || !brandExists {

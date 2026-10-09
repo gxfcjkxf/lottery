@@ -20,7 +20,6 @@ async function navigate(page: Page, info: TestInfo, name: string) {
 }
 async function login(page: Page, info: TestInfo) {
   await page.goto("http://localhost:5174");
-  await navigate(page, info, "用户和成员");
   await page
     .getByLabel("账号", { exact: true })
     .fill(process.env.TEST_ADMIN_USERNAME!);

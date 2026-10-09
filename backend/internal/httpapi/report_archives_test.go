@@ -161,8 +161,10 @@ func TestReportArchiveHTTPClosedInputActorAndPlatformReadOnlyScope(t *testing.T)
 	if _, err := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, archiveCall(f, "GET", archiveHTTPPath+"/"+record.ID, "", f.token, pointsBrandB, ""), 404)
-	mustStatus(t, archiveCall(f, "GET", archiveHTTPPath+"/"+record.ID+"/download", "", f.token, managedBrand, ""), 200)
+	platformToken := platformAdminToken(t, f)
+	platformArchivePath := strings.Replace(archiveHTTPPath, "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, archiveCall(f, "GET", platformArchivePath+"/"+record.ID, "", platformToken, pointsBrandB, ""), 404)
+	mustStatus(t, archiveCall(f, "GET", platformArchivePath+"/"+record.ID+"/download", "", platformToken, managedBrand, ""), 200)
 	mustStatus(t, archiveCall(f, "POST", archiveHTTPPath, "report-archive-super-01", f.token, managedBrand, archiveBody(1)), 403)
 }
 

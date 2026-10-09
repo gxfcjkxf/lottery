@@ -1,0 +1,25 @@
+{
+  "name": "@lottery/platform-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5175 --strictPort",
+    "dev:review": "vite --config vite.review.config.ts --host 127.0.0.1 --port 5185 --strictPort",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@lottery/shared": "workspace:*",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^6.1.0",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "typescript": "~5.7.3",
+    "vitest": "^3.0.5",
+    "vue-tsc": "^2.2.0"
+  }
+}

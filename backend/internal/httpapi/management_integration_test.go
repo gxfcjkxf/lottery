@@ -90,6 +90,45 @@ func (f managementHTTP) call(method, path, key, token, brand string, body any) *
 	f.http.ServeHTTP(w, r)
 	return w
 }
+
+func grantPlatformPermission(t *testing.T, f managementHTTP, permissions ...string) string {
+	t.Helper()
+	for _, permission := range permissions {
+		if !strings.HasSuffix(permission, ".platform") {
+			t.Fatalf("platform fixture requires a platform permission: %s", permission)
+		}
+	}
+	ctx := context.Background()
+	role := ids.New()
+	if _, err := f.pool.Exec(ctx, `INSERT INTO roles(id,brand_id,code,name) VALUES($1,NULL,$2,'Platform test grant')`, role, "platform_fixture_"+role); err != nil {
+		t.Fatal(err)
+	}
+	for _, permission := range permissions {
+		if _, err := f.pool.Exec(ctx, `INSERT INTO permissions(key) VALUES($1) ON CONFLICT DO NOTHING`, permission); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) VALUES($1,$2)`, role, permission); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := f.pool.Exec(ctx, `INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)`, f.root, role); err != nil {
+		t.Fatal(err)
+	}
+	return role
+}
+
+func platformAdminToken(t *testing.T, f managementHTTP) string {
+	t.Helper()
+	response := f.call("POST", "/api/v1/platform/auth/login", "platform-login-"+ids.New(), "", "", map[string]string{
+		"identifier": "managed_root",
+		"password":   "root-test-password-2026",
+	})
+	mustStatus(t, response, 200)
+	var auth identity.AdminAuthentication
+	managedData(t, response, &auth)
+	return auth.AccessToken
+}
+
 func managedData(t *testing.T, r *httptest.ResponseRecorder, dst any) {
 	t.Helper()
 	var envelope struct {

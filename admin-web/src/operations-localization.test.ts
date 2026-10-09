@@ -15,7 +15,6 @@ import { adminI18nKey, createAdminI18n } from "./i18n";
 import { clearAllPendingJoinCodeWrites, setPendingJoinCodeWrite, type PendingJoinCodeWrite } from "./join-codes-state";
 import { compileScript, parse } from "vue/compiler-sfc";
 import ts from "typescript";
-import BrandCreation from "./BrandCreation.vue";
 import BrandDomains from "./BrandDomains.vue";
 import AgentManagement from "./AgentManagement.vue";
 import JoinCodeManagement from "./JoinCodeManagement.vue";
@@ -38,7 +37,6 @@ const deliveryAccount: AdminAccount = {
 describe("operations locale rendering", () => {
   it("renders English chrome and switches back to Chinese without translating customer data", async () => {
     const pages: Array<[Component, Record<string, unknown>, string, string]> = [
-      [BrandCreation, { account }, "Create brand", "新建品牌"],
       [BrandDomains, { account, brandId: brand }, "brand domain view access", "域名查看权限"],
       [AgentManagement, { account, brandId: brand }, "Agent management", "代理管理"],
       [JoinCodeManagement, { account, brandId: brand }, "Join code management", "加入码管理"],

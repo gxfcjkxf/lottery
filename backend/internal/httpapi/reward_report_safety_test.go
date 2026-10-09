@@ -117,7 +117,7 @@ func TestRewardReportForeignScopeAndSuperAdminRequireExplicitReportRights(t *tes
 		t.Fatal(err)
 	}
 	grantRewardReportPermission(t, f.managementHTTP, "report_reward.view.platform")
-	mustStatus(t, rewardReportCall(f.managementHTTP, "GET", path, f.token, pointsBrandB, ""), 200)
+	mustStatus(t, rewardReportCall(f.managementHTTP, "GET", path, f.token, pointsBrandB, ""), 403)
 	if _, err := f.pool.Exec(context.Background(), `DELETE FROM role_permissions WHERE role_id IN(SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key='report_reward.view.platform'`, f.root); err != nil {
 		t.Fatal(err)
 	}
@@ -125,8 +125,7 @@ func TestRewardReportForeignScopeAndSuperAdminRequireExplicitReportRights(t *tes
 	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, rewardReportCall(f.managementHTTP, "GET", path, f.token, managedBrand, ""), 200)
-	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); err != nil {
-		t.Fatal(err)
-	}
+	platformToken := platformAdminToken(t, f.managementHTTP)
+	platformPath := strings.Replace(path, "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, rewardReportCall(f.managementHTTP, "GET", platformPath, platformToken, managedBrand, ""), 403)
 }

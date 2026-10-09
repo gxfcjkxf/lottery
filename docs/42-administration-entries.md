@@ -1,0 +1,45 @@
+# 独立管理入口交接
+
+平台后台和品牌后台分别构建、部署和登录。后台账号分为平台账号和品牌账号；品牌账号的管理员、运营、财务、客服等角色仍采用已有可配置RBAC，一个账号可拥有多个角色，权限合并去重。
+
+## 入口与权限
+
+| 项目 | 开发端口 | 体验端口 | API前缀 | Cookie及路径 |
+| --- | --- | --- | --- | --- |
+| 品牌后台 `admin-web` | 5174 | 5184 | `/api/v1/admin` | `lottery_admin`，`/api/v1/admin` |
+| 总后台 `platform-web` | 5175 | 5185 | `/api/v1/platform` | `lottery_platform_admin`，`/api/v1/platform` |
+
+品牌入口拒绝平台账号，总入口拒绝品牌账号。双方使用HttpOnly、SameSite=Strict Cookie，前端不保存访问令牌。Cookie名称与路径独立；服务端同时校验Bearer请求的账号类型，不能通过复制令牌或伪造品牌头绕过入口限制。管理主机名必须登记为启用的品牌域名或中心管理域名；总入口仅接受`platform_domains`登记的主机名。品牌禁用不关闭授权历史查询入口，但各业务写操作仍检查品牌状态。
+
+品牌入口只考虑品牌范围权限和当前品牌授权。总入口只考虑平台范围权限；超级管理员身份本身不替代明确的查看或品牌创建权限。误配到品牌账号的`.platform`权限不会扩大品牌入口访问范围。会员变更、业务审批、派奖和财务操作继续留在品牌后台。
+
+总后台当前注册已有后台GET查询，以及POST登录、退出和品牌创建。会员编辑、玩法审批、充值、提现审批和派奖的写接口不在总入口注册。当前总后台UI接入品牌目录、核对后创建品牌、品牌会员只读列表与品牌审计；其余跨品牌只读业务模块的UI仍需继续接入，不能把入口拆分当作完整总后台已完成。
+
+## 登录与交互
+
+两个后台未登录时仅显示登录入口，会话校验期间不显示菜单、品牌选择器、工作台或演示业务内容。登录失败继续停留在登录页。品牌登录表单修改账号或密码后生成新幂等键，原内容重试保留原键。总后台品牌创建需要先核对、再明确提交；网络结果未知时保留原始内容和键，只允许用户主动原请求重试。
+
+没有内置`admin/admin123`或其他默认账号。服务器拥有者使用`platform create-admin --username ... --brand ...`创建品牌账号，使用`--super`创建平台账号；密码通过`BOOTSTRAP_ADMIN_PASSWORD`传入，不放在命令参数中。角色名称不带隐式继承，不自动赋予财务或审核权限。
+
+## 本地体验环境
+
+当前独立体验库为`lottery_review_20261009`，只含合成测试数据；原开发数据库未清空或升级。API监听`127.0.0.1:8085`，用户端5183，品牌后台5184，总后台5185。前端代理保留Host，不开放局域网监听，也不自动换端口。
+
+启动前确认本机PostgreSQL与显式环境配置，然后分别在终端运行：
+
+```sh
+set -a
+source .local/review.env
+set +a
+.local/review-platform serve
+# 另一终端使用同一环境启动worker
+.local/review-platform worker
+# 三个独立终端
+pnpm review:user
+pnpm review:admin
+pnpm review:platform
+```
+
+体验账户`review_operator`和`review_reviewer`属于Aurora，`review_platform`为平台账号。这些账号由本地人工引导命令创建，不会随迁移或种子自动创建。临时凭证保存在忽略的本地文件中，不属于客户或生产凭证。
+
+真实体验烟测使用`playwright.review.config.ts`，要求显式设置`TEST_REVIEW_ADMIN_PASSWORD`和`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`。PC为1440px，移动视口为360px；浏览器视口验收不替代iOS、安卓和鸿蒙真机测试。

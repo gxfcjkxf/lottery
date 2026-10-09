@@ -3,14 +3,10 @@ import { rememberAdminSession, restoreAdminSession } from "./support/admin-sessi
 
 const harbor = "0199a000-0000-7000-8000-000000000002";
 const adminOrigin = "http://localhost:5174";
-async function signIn(page: Page, context: BrowserContext, info: TestInfo) {
+async function signIn(page: Page, context: BrowserContext) {
   const username = process.env.TEST_HARBOR_ADMIN_USERNAME!;
   const restored = await restoreAdminSession(context, username, harbor, adminOrigin);
   await page.goto(adminOrigin);
-  if (info.project.name === "mobile")
-    await page.locator(".mobile-nav button").nth(1).click();
-  else
-    await page.locator(".side-nav").getByRole("button", { name: /用户和成员/ }).click();
   if (!restored) {
     await page.getByLabel("账号", { exact: true }).fill(username);
     await page.getByLabel("密码", { exact: true }).fill(process.env.TEST_HARBOR_ADMIN_PASSWORD!);
@@ -44,7 +40,7 @@ test("schedule revisions and generated periods persist without activating future
       !process.env.TEST_HARBOR_ADMIN_PASSWORD,
     "Provide isolated brand-admin credentials",
   );
-  await signIn(page, context, info);
+  await signIn(page, context);
   const code = `schedule_${crypto.randomUUID().replaceAll("-", "").slice(0, 10)}`;
   const created = await page.request.post(
     "http://localhost:5174/api/v1/admin/games",
@@ -203,7 +199,7 @@ test("running worker opens, closes and advances a real period using the database
       !process.env.TEST_HARBOR_ADMIN_PASSWORD,
     "Provide isolated brand-admin credentials and run platform worker",
   );
-  await signIn(page, context, info);
+  await signIn(page, context);
   const headers = { "X-Brand-ID": harbor, Origin: "http://localhost:5174" };
   const post = async (path: string, data: unknown) =>
     page.request.post(`http://localhost:5174/api/v1/admin${path}`, {

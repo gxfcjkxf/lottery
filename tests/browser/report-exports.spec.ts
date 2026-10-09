@@ -8,8 +8,6 @@ const adminBase = "http://localhost:5174/api/v1/admin";
 const uiBase = "http://localhost:5174";
 const username = process.env.TEST_EXPORT_ADMIN_USERNAME ?? process.env.TEST_HARBOR_ADMIN_USERNAME;
 const password = process.env.TEST_EXPORT_ADMIN_PASSWORD ?? process.env.TEST_HARBOR_ADMIN_PASSWORD;
-const platformUsername = process.env.TEST_EXPORT_PLATFORM_USERNAME;
-const platformPassword = process.env.TEST_EXPORT_PLATFORM_PASSWORD;
 
 type ExportFixture = { memberId: string; headers: Record<string, string> };
 
@@ -190,16 +188,16 @@ test("real all-group ledger CSV matches the committed Harbor report on desktop a
 });
 
 test("late real CSV response cannot download after tab round-trip, brand switch or logout", async ({ page }, info) => {
-  test.skip(!username || !password || !platformUsername || !platformPassword, "Provide isolated brand and platform report export credentials");
+  test.skip(!username || !password, "Provide the isolated dual-brand report export operator credentials");
   await signIn(page);
   const fixture = await createFixture(page);
   const logout = await page.request.post(`${adminBase}/auth/logout`, {
     headers: { Origin: uiBase, "Idempotency-Key": crypto.randomUUID() }, data: {},
   });
   expect(logout.status(), await logout.text()).toBe(200);
-  // Only the ordinary brand operator funds the fixture. The genuine platform
-  // reader below selects both brands without any user or financial write.
-  await signIn(page, platformUsername, platformPassword);
+  // The fixture operator has explicit brand-scoped read grants in both brands.
+  // A platform account must never sign in to this brand-only application.
+  await signIn(page);
   let panel = await openReports(page, info.project.name);
   let ledger = await queryLedger(panel, fixture.memberId);
   const brandSelect = page.getByLabel("选择真实后台品牌", { exact: true });

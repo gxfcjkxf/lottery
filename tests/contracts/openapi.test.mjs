@@ -46,7 +46,7 @@ test("composes the explicit API module list against real registered routes, incl
   const doc=composeDocument(modules,routes);
   assertCoverage(doc,routes);
   assertReferences(doc);
-  assert.deepEqual(documentedRoutes(doc).filter(path=>path.includes("/commission-payment" )).sort(),[
+  assert.deepEqual(documentedRoutes(doc).filter(path=>path.startsWith("GET /api/v1/admin/commission-payment")||path.startsWith("POST /api/v1/admin/commission-payment")||path.startsWith("PUT /api/v1/admin/commission-payment")).sort(),[
     "GET /api/v1/admin/commission-payment-policy",
     "GET /api/v1/admin/commission-payments",
     "GET /api/v1/admin/commission-payments/{id}",
@@ -57,4 +57,13 @@ test("composes the explicit API module list against real registered routes, incl
     "POST /api/v1/admin/commission-payments/{id}/retry",
     "PUT /api/v1/admin/commission-payment-policy",
   ].sort());
+  const platformPaymentReads=documentedRoutes(doc).filter(path=>path.startsWith("GET /api/v1/platform/commission-payment"));
+  assert.deepEqual(platformPaymentReads,[
+    "GET /api/v1/platform/commission-payment-policy",
+    "GET /api/v1/platform/commission-payments",
+    "GET /api/v1/platform/commission-payments/{id}",
+    "GET /api/v1/platform/commission-payments/{id}/targets",
+    "GET /api/v1/platform/commission-payment-targets/{id}/adjustments",
+  ].sort());
+  assert.ok(!documentedRoutes(doc).some(path=>/^(POST|PUT|PATCH|DELETE) \/api\/v1\/platform\/commission-payment/.test(path)));
 });

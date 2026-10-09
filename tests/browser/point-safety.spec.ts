@@ -7,12 +7,6 @@ async function login(page: Page, mobile: boolean) {
     "Provide isolated Harbor administrator credentials",
   );
   await page.goto("http://localhost:5174");
-  if (mobile) await page.locator(".mobile-nav button").nth(1).click();
-  else
-    await page
-      .locator(".side-nav")
-      .getByRole("button", { name: /用户和成员/ })
-      .click();
   await page
     .getByLabel("账号", { exact: true })
     .fill(process.env.TEST_HARBOR_ADMIN_USERNAME!);
@@ -22,6 +16,8 @@ async function login(page: Page, mobile: boolean) {
   await page
     .getByRole("button", { name: "登录并加载真实成员", exact: true })
     .click();
+  if (mobile) await page.locator(".mobile-nav button").nth(1).click();
+  else await page.locator(".side-nav").getByRole("button", { name: /用户和成员/ }).click();
   await page
     .getByLabel("选择真实后台品牌", { exact: true })
     .selectOption(harbor);

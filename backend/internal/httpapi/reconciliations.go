@@ -96,7 +96,7 @@ func reconciliationRead(w http.ResponseWriter, r *http.Request, d Dependencies, 
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	id, err := d.Identity.AdminAuthenticateTx(ctx, tx, requestToken(r, adminCookie))
+	id, err := d.Identity.AdminAuthenticateTx(ctx, tx, requestToken(r, administrativeCookie(r)))
 	if errors.Is(err, identity.ErrSession) || errors.Is(err, pgx.ErrNoRows) {
 		return nil, identity.ErrSession
 	}

@@ -100,23 +100,29 @@ func TestAdminReportsAuthorizationAndScope(t *testing.T) {
 	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	if r := f.call("GET", betting, "", f.token, managedBrand, nil); r.Code != 200 {
+	platformToken := platformAdminToken(t, f)
+	platformBetting := strings.Replace(betting, "/api/v1/admin", "/api/v1/platform", 1)
+	platformLedger := strings.Replace(ledger, "/api/v1/admin", "/api/v1/platform", 1)
+	if r := f.call("GET", betting, "", f.token, managedBrand, nil); r.Code != 403 {
+		t.Fatalf("brand entry inherited platform report permission: status=%d body=%s", r.Code, r.Body.String())
+	}
+	if r := f.call("GET", platformBetting, "", platformToken, managedBrand, nil); r.Code != 200 {
 		t.Fatalf("platform report permission with brand scope: status=%d body=%s", r.Code, r.Body.String())
 	}
-	if r := f.call("GET", betting, "", f.token, pointsBrandB, nil); r.Code != 200 {
+	if r := f.call("GET", platformBetting, "", platformToken, pointsBrandB, nil); r.Code != 200 {
 		t.Fatalf("platform report permission did not authorize another brand: status=%d body=%s", r.Code, r.Body.String())
 	}
-	if r := f.call("GET", ledger, "", f.token, pointsBrandB, nil); r.Code != 403 {
+	if r := f.call("GET", platformLedger, "", platformToken, pointsBrandB, nil); r.Code != 403 {
 		t.Fatalf("betting platform permission granted ledger access: status=%d body=%s", r.Code, r.Body.String())
 	}
 	if _, err := f.pool.Exec(context.Background(), `DELETE FROM role_permissions WHERE role_id IN(SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key=$2`, f.root, reportLedgerBrand); err != nil {
 		t.Fatal(err)
 	}
-	if r := f.call("GET", ledger, "", f.token, managedBrand, nil); r.Code != 403 {
+	if r := f.call("GET", platformLedger, "", platformToken, managedBrand, nil); r.Code != 403 {
 		t.Fatalf("revoked report permission remained cached: status=%d body=%s", r.Code, r.Body.String())
 	}
 	grantReportPermission(t, f, reportLedgerPlat)
-	if r := f.call("GET", ledger, "", f.token, pointsBrandB, nil); r.Code != 200 {
+	if r := f.call("GET", platformLedger, "", platformToken, pointsBrandB, nil); r.Code != 200 {
 		t.Fatalf("ledger platform permission did not authorize another brand: status=%d body=%s", r.Code, r.Body.String())
 	}
 	var queryAuditsAfter int
