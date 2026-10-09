@@ -1,0 +1,156 @@
+<script setup lang="ts">
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { PlatformApiError } from './platform-api'
+import { createPlatformReportsApi, REPORT_FIELDS, REPORT_GROUPS, type ReportKind, type ReportQuery, type ReportResult } from './reports-api'
+
+const props = defineProps<{ brandId: string; memberId: string; locale: 'en' | 'zh-CN' }>()
+const emit = defineEmits<{ failure: [cause: unknown] }>()
+const api = createPlatformReportsApi()
+const kind = ref<ReportKind>('betting')
+const from = ref('')
+const to = ref('')
+const groupBy = ref('day')
+const memberFilter = ref(props.memberId)
+const gameFilter = ref('')
+const agentFilter = ref('')
+const cycleFilter = ref('')
+const orderFilter = ref('')
+const report = ref<ReportResult | null>(null)
+const submitted = ref<{ kind: ReportKind; query: ReportQuery } | null>(null)
+const offset = ref(0)
+const loading = ref(false)
+const error = ref('')
+let generation = 0
+
+const kinds: ReportKind[] = ['betting', 'ledger', 'withdrawal', 'commission', 'rewards', 'reward_orders']
+const balanceFields = ['account_count', 'available_points', 'frozen_points', 'withdrawal_points', 'total_points'] as const
+const copy = computed(() => props.locale === 'en' ? {
+  title: 'Operational reports', intro: 'Read-only snapshots for the selected brand.', type: 'Report type', from: 'From (UTC)', to: 'To (UTC)', group: 'Group by', member: 'Member ID (optional)', game: 'Game ID (optional)', agent: 'Agent ID (optional)', cycle: 'Cycle ID (optional)', order: 'Order ID (optional)', run: 'Run report', loading: 'Loading report…', snapshot: 'Snapshot', timezone: 'Report timezone', summary: 'Summary for the full filter window', groups: 'Groups', empty: 'No groups in this report.', previous: 'Previous page', next: 'Next page', page: 'Page', total: 'Total groups', balances: 'Current wallet balances', balanceNote: 'Current balances at the snapshot; these are not a change within the selected time window.', bettingNote: 'Bet orders are shown by their current final state at the snapshot.', withdrawalNote: 'Withdrawal requests are shown by their current state; this is not a record of actual payment.', rewardOrdersNote: 'Reward orders are shown by their current state; this is not a record of actual payment.', commissionNote: 'Commission totals use the actual posting time.', rewardsNote: 'Reward totals use the actual wallet posting time.', ledgerNote: 'Ledger totals use the actual posting time.', noBrand: 'Select a brand and run the report to view data.',
+  rewardPendingNote: 'Pending revocation amounts are original order points, not held wallet funds.',
+} : {
+  title: '运营报表', intro: '所选品牌的只读快照。', type: '报表类型', from: '开始时间（UTC）', to: '结束时间（UTC）', group: '分组方式', member: '会员编号（可选）', game: '游戏编号（可选）', agent: '代理编号（可选）', cycle: '周期编号（可选）', order: '订单编号（可选）', run: '查询报表', loading: '正在加载报表…', snapshot: '快照时间', timezone: '报表时区', summary: '整个筛选时间范围汇总', groups: '分组数据', empty: '此报表没有分组数据。', previous: '上一页', next: '下一页', page: '页码', total: '分组总数', balances: '当前钱包余额', balanceNote: '快照时点的当前余额；不是所选时间范围内的变动额。', bettingNote: '投注订单按快照时点的当前最终状态统计。', withdrawalNote: '提现申请按当前状态统计；不代表实际付款记录。', rewardOrdersNote: '奖励订单按当前状态统计；不代表实际付款记录。', commissionNote: '佣金按实际入账时间统计。', rewardsNote: '奖励按实际钱包入账时间统计。', ledgerNote: '账本按实际入账时间统计。', noBrand: '请选择品牌并查询报表以查看数据。',
+  rewardPendingNote: '待撤销金额是原订单积分，不代表已冻结的余额。',
+})
+
+const kindLabels: Record<ReportKind, [string, string]> = {
+  betting: ['Betting', '投注'], ledger: ['Points ledger', '积分账本'], withdrawal: ['Withdrawals', '提现'],
+  commission: ['Commission', '佣金'], rewards: ['Reward postings', '奖励入账'], reward_orders: ['Reward orders', '奖励订单'],
+}
+const metricLabels: Record<string, [string, string]> = {
+  order_count: ['Orders', '订单数'], stake_points: ['Stake points', '投注积分'], placed_count: ['Placed', '已提交数'],
+  won_count: ['Won', '已中奖数'], lost_count: ['Lost', '未中奖数'], abnormal_count: ['Abnormal', '异常数'],
+  cancelled_count: ['Cancelled', '已取消数'], refund_points: ['Refund points', '退款积分'], settled_stake_points: ['Settled stake points', '已结算投注积分'],
+  unfinalized_stake_points: ['Unfinalized stake points', '未完成投注积分'], abnormal_stake_points: ['Abnormal stake points', '异常投注积分'],
+  current_prize_points: ['Current prize points', '当前派奖积分'], correction_open_count: ['Open corrections', '待处理更正数'],
+  entry_count: ['Entries', '分录数'], net_points: ['Net points', '净积分'], recharge_points: ['Recharge points', '充值积分'],
+  prize_credit_points: ['Prize credits', '派奖入账积分'], prize_reversal_points: ['Prize reversals', '派奖冲正积分'],
+  requested_points: ['Requested points', '申请积分'], reviewing_count: ['Under review', '审核中数量'], reviewing_points: ['Under-review points', '审核中积分'],
+  processing_count: ['Processing', '处理中数量'], processing_points: ['Processing points', '处理中积分'], paid_count: ['Paid', '已付款数量'],
+  paid_points: ['Paid points', '已付款积分'], rejected_count: ['Rejected', '已拒绝数量'], rejected_points: ['Rejected points', '已拒绝积分'],
+  failed_count: ['Failed', '失败数量'], failed_points: ['Failed points', '失败积分'], cancelled_points: ['Cancelled points', '已取消积分'],
+  paid_entry_count: ['Payment entries', '付款分录数'], adjustment_entry_count: ['Adjustment entries', '调整分录数'],
+  adjustment_credit_points: ['Adjustment credits', '调整入账积分'], adjustment_debit_points: ['Adjustment debits', '调整扣减积分'],
+  correction_entry_count: ['Correction entries', '更正分录数'], correction_credit_points: ['Correction credits', '更正入账积分'],
+  correction_debit_points: ['Correction debits', '更正扣减积分'], grant_entry_count: ['Grant entries', '发放分录数'], grant_points: ['Granted points', '发放积分'],
+  reversal_entry_count: ['Reversal entries', '冲正分录数'], reversal_points: ['Reversed points', '冲正积分'], original_points: ['Original points', '原始积分'],
+  granted_count: ['Granted orders', '已发放订单数'], granted_points: ['Granted points', '已发放积分'], pending_count: ['Pending revocation orders', '待撤销订单数'],
+  pending_points: ['Pending revocation original points', '待撤销订单原积分'], revoked_count: ['Revoked orders', '已撤销订单数'], revoked_points: ['Revoked points', '已撤销积分'],
+  account_count: ['Accounts', '账户数'], available_points: ['Available points', '可用积分'], frozen_points: ['Frozen points', '冻结积分'],
+  withdrawal_points: ['Withdrawal points', '提现中积分'], total_points: ['Total points', '总积分'],
+}
+const groupLabels: Record<string, [string, string]> = {
+  day: ['Day', '日期'], game: ['Game', '游戏'], member: ['Member', '会员'], entry_type: ['Entry type', '分录类型'],
+  state: ['Current state', '当前状态'], agent: ['Agent', '代理'], cycle: ['Cycle', '周期'], order: ['Order', '订单'],
+  reviewing: ['Under review', '审核中'], processing: ['Processing', '处理中'], paid: ['Paid', '已付款'], rejected: ['Rejected', '已拒绝'],
+  failed: ['Failed', '失败'], cancelled: ['Cancelled', '已取消'], granted: ['Granted', '已发放'], revocation_pending: ['Revocation pending', '待撤销'], revoked: ['Revoked', '已撤销'],
+}
+const groupOptions = computed(() => REPORT_GROUPS[kind.value].map(value => ({ value, label: label(groupLabels, value) })))
+const note = computed(() => ({ betting: copy.value.bettingNote, withdrawal: copy.value.withdrawalNote, reward_orders: copy.value.rewardOrdersNote, commission: copy.value.commissionNote, rewards: copy.value.rewardsNote, ledger: copy.value.ledgerNote })[kind.value])
+function label(labels: Record<string, [string, string]>, key: string) {
+  const pair = labels[key]
+  if (!pair) throw new Error(`Unsupported report label: ${key}`)
+  return pair[props.locale === 'en' ? 0 : 1]
+}
+function clearReport() { generation++; report.value = null; submitted.value = null; offset.value = 0; loading.value = false; error.value = '' }
+function edited() { if (report.value || submitted.value || loading.value) clearReport() }
+watch(kind, () => { groupBy.value = 'day'; gameFilter.value = ''; agentFilter.value = ''; cycleFilter.value = ''; orderFilter.value = ''; edited() })
+watch(() => [props.brandId, props.memberId], () => {
+  clearReport(); from.value = ''; to.value = ''; groupBy.value = 'day'
+  memberFilter.value = props.memberId; gameFilter.value = ''; agentFilter.value = ''; cycleFilter.value = ''; orderFilter.value = ''
+}, { flush: 'sync' })
+onBeforeUnmount(() => { generation++ })
+
+function makeQuery(pageOffset: number): ReportQuery {
+  const utc = (value: string) => `${value.length === 16 ? `${value}:00` : value}Z`
+  const query: ReportQuery = { from: utc(from.value), to: utc(to.value), group_by: groupBy.value, limit: 50, offset: pageOffset }
+  const optional: Partial<Record<'member_id' | 'game_id' | 'agent_id' | 'cycle_id' | 'order_id', string>> = {
+    member_id: memberFilter.value.trim(), game_id: gameFilter.value.trim(), agent_id: agentFilter.value.trim(), cycle_id: cycleFilter.value.trim(), order_id: orderFilter.value.trim(),
+  }
+  for (const [key, value] of Object.entries(optional)) if (value) query[key as keyof typeof optional] = value
+  return query
+}
+async function load(nextOffset = 0) {
+  if (!props.brandId || !from.value || !to.value || !groupBy.value) return
+  const request = ++generation
+  const brand = props.brandId
+  const requestKind = kind.value
+  const query = submitted.value && nextOffset !== 0 ? { ...submitted.value.query, offset: nextOffset } : makeQuery(nextOffset)
+  const frozen = { kind: requestKind, query: { ...query } }
+  report.value = null; submitted.value = null; offset.value = nextOffset; error.value = ''; loading.value = true
+  try {
+    const result = await api.read(brand, requestKind, frozen.query)
+    if (request !== generation || brand !== props.brandId) return
+    report.value = result; submitted.value = frozen; offset.value = nextOffset
+  } catch (cause) {
+    if (request !== generation) return
+    if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause)
+    else error.value = cause instanceof Error ? cause.message : String(cause)
+  } finally { if (request === generation) loading.value = false }
+}
+function page(nextOffset: number) { if (submitted.value) void load(nextOffset) }
+const fields = computed(() => REPORT_FIELDS[report.value ? submitted.value!.kind : kind.value])
+const hasNextPage = computed(() => report.value !== null && BigInt(offset.value + report.value.items.length) < BigInt(report.value.total_groups))
+</script>
+
+<template>
+  <div data-testid="platform-reports">
+    <div class="page-heading"><div><div class="eyebrow">{{ copy.intro }}</div><h1>{{ copy.title }}</h1></div></div>
+    <form class="panel wallet-query" @submit.prevent="load(0)">
+      <label>{{ copy.type }}<select v-model="kind" :aria-label="copy.type" :disabled="loading"><option v-for="option in kinds" :key="option" :value="option">{{ label(kindLabels, option) }}</option></select></label>
+      <label>{{ copy.from }}<input v-model="from" :aria-label="copy.from" type="datetime-local" step="1" required :disabled="loading" @input="edited" /></label>
+      <label>{{ copy.to }}<input v-model="to" :aria-label="copy.to" type="datetime-local" step="1" required :disabled="loading" @input="edited" /></label>
+      <label>{{ copy.group }}<select v-model="groupBy" :aria-label="copy.group" required :disabled="loading" @change="edited"><option v-for="option in groupOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
+      <label>{{ copy.member }}<input v-model="memberFilter" :aria-label="copy.member" autocomplete="off" :disabled="loading" @input="edited" /></label>
+      <label v-if="kind === 'betting'">{{ copy.game }}<input v-model="gameFilter" :aria-label="copy.game" autocomplete="off" :disabled="loading" @input="edited" /></label>
+      <label v-if="kind === 'commission'">{{ copy.agent }}<input v-model="agentFilter" :aria-label="copy.agent" autocomplete="off" :disabled="loading" @input="edited" /></label>
+      <label v-if="kind === 'commission'">{{ copy.cycle }}<input v-model="cycleFilter" :aria-label="copy.cycle" autocomplete="off" :disabled="loading" @input="edited" /></label>
+      <label v-if="kind === 'rewards' || kind === 'reward_orders'">{{ copy.order }}<input v-model="orderFilter" :aria-label="copy.order" autocomplete="off" :disabled="loading" @input="edited" /></label>
+      <button class="secondary" :disabled="loading || !brandId">{{ copy.run }}</button>
+    </form>
+    <p v-if="error" class="message error" role="alert">{{ error }}</p>
+    <p v-if="loading" class="loading-line">{{ copy.loading }}</p>
+    <p v-if="!brandId && !loading" class="loading-line">{{ copy.noBrand }}</p>
+    <template v-if="report && submitted">
+      <p class="message" role="note">{{ note }}</p>
+      <p v-if="submitted.kind === 'reward_orders'" class="message" role="note">{{ copy.rewardPendingNote }}</p>
+      <section class="panel reward-detail" data-testid="platform-reports-summary">
+        <div class="panel-heading"><div><h2>{{ copy.summary }}</h2><p>{{ copy.snapshot }}: {{ report.snapshot_at }} · {{ copy.timezone }}: {{ report.timezone }}</p></div></div>
+        <dl class="confirm-list reward-fields">
+          <div v-for="field in fields" :key="field"><dt>{{ label(metricLabels, field) }}</dt><dd>{{ report.summary[field] }}</dd></div>
+        </dl>
+      </section>
+      <section v-if="report.balances" class="panel reward-detail" data-testid="platform-reports-balances">
+        <div class="panel-heading"><div><h2>{{ copy.balances }}</h2><p>{{ copy.balanceNote }}</p></div></div>
+        <dl class="confirm-list reward-fields"><div v-for="field in balanceFields" :key="field"><dt>{{ label(metricLabels, field) }}</dt><dd>{{ report.balances[field] }}</dd></div></dl>
+      </section>
+      <section class="panel reward-detail" data-testid="platform-reports-list">
+        <div class="panel-heading"><h2>{{ copy.groups }}</h2><span class="count-chip">{{ copy.total }}: {{ report.total_groups }}</span></div>
+        <div class="table-wrap"><table><thead><tr><th>{{ label(groupLabels, submitted.query.group_by) }}</th><th v-for="field in fields" :key="field">{{ label(metricLabels, field) }}</th></tr></thead><tbody>
+          <tr v-for="item in report.items" :key="item.key"><td>{{ submitted.query.group_by === 'state' ? label(groupLabels, item.key) : item.label }}</td><td v-for="field in fields" :key="field">{{ item.totals[field] }}</td></tr>
+          <tr v-if="!report.items.length"><td :colspan="fields.length + 1" class="empty-state">{{ copy.empty }}</td></tr>
+        </tbody></table></div>
+        <div class="wallet-pagination" data-testid="platform-reports-pages"><button class="secondary" :disabled="loading || offset === 0" @click="page(Math.max(0, offset - 50))">{{ copy.previous }}</button><span>{{ copy.page }} {{ Math.floor(offset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !hasNextPage" @click="page(offset + 50)">{{ copy.next }}</button></div>
+      </section>
+    </template>
+  </div>
+</template>

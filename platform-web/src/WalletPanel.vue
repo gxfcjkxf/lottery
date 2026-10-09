@@ -4,6 +4,7 @@ import { WALLET_SOURCES, WALLET_STATES } from '@lottery/shared'
 import { PlatformApiError } from './platform-api'
 import { createPlatformWalletApi, type Wallet, type LedgerEntry } from './wallet-api'
 import RechargesPanel from './RechargesPanel.vue'
+import ReportsPanel from './ReportsPanel.vue'
 
 const props = defineProps<{ brandId: string; memberId: string; locale: 'en' | 'zh-CN' }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
@@ -17,8 +18,8 @@ const offset = ref(0)
 const more = ref(false)
 const loading = ref(false)
 const error = ref('')
-const showingRecharges = ref(false)
-const rechargeMember = ref('')
+const financeSection = ref<'wallet' | 'recharges' | 'reports'>('wallet')
+const financeMember = ref('')
 let generation = 0
 const copy = computed(() => props.locale === 'en' ? {
   title: 'Member points', readOnly: 'Read-only wallet and immutable ledger', member: 'Member ID', load: 'Load wallet', refresh: 'Refresh', available: 'Available', frozen: 'Frozen', withdrawal: 'Withdrawal pending', display: 'Display points', version: 'Version', source: 'Source', recharge: 'Recharge', winning: 'Winning', gift: 'Gift', commission: 'Commission', manual_frozen: 'Manual freeze', system_frozen: 'System freeze', ledger: 'Point ledger', entry: 'Entry', type: 'Type', reason: 'Reason', date: 'Date', previous: 'Previous page', next: 'Next page', detail: 'Ledger entry detail', before: 'Before', delta: 'Change', after: 'After', state: 'State', empty: 'No ledger entries.', loading: 'Loading…',
@@ -31,15 +32,21 @@ function clear() {
   offset.value = 0; more.value = false; activeMember.value = ''; loading.value = false; error.value = ''
 }
 function showRecharges() {
-  if (showingRecharges.value) return
-  rechargeMember.value = activeMember.value || props.memberId
+  if (financeSection.value === 'recharges') return
+  financeMember.value = activeMember.value || financeMember.value || props.memberId
   clear()
-  showingRecharges.value = true
+  financeSection.value = 'recharges'
+}
+function showReports() {
+  if (financeSection.value === 'reports') return
+  financeMember.value = activeMember.value || financeMember.value || props.memberId
+  clear()
+  financeSection.value = 'reports'
 }
 function showWallet() {
-  showingRecharges.value = false
-  if (rechargeMember.value) {
-    inputMember.value = rechargeMember.value
+  financeSection.value = 'wallet'
+  if (financeMember.value) {
+    inputMember.value = financeMember.value
     void load()
   }
 }
@@ -74,7 +81,7 @@ async function page(nextOffset: number) {
   finally { if (request === generation) loading.value = false }
 }
 watch(() => [props.brandId, props.memberId], () => {
-  showingRecharges.value = false; rechargeMember.value = ''
+  financeSection.value = 'wallet'; financeMember.value = ''
   clear(); inputMember.value = props.memberId
   if (props.brandId && props.memberId) void load()
 }, { immediate: true, flush: 'sync' })
@@ -82,10 +89,12 @@ watch(() => [props.brandId, props.memberId], () => {
 
 <template>
   <div class="wallet-pagination" data-testid="platform-finance-tabs">
-    <button class="secondary" :aria-pressed="!showingRecharges" @click="showWallet">{{ locale === 'en' ? 'Wallet' : '钱包' }}</button>
-    <button class="secondary" :aria-pressed="showingRecharges" @click="showRecharges">{{ locale === 'en' ? 'Recharge records' : '充值记录' }}</button>
+    <button class="secondary" :aria-pressed="financeSection === 'wallet'" @click="showWallet">{{ locale === 'en' ? 'Wallet' : '钱包' }}</button>
+    <button class="secondary" :aria-pressed="financeSection === 'recharges'" @click="showRecharges">{{ locale === 'en' ? 'Recharge records' : '充值记录' }}</button>
+    <button class="secondary" :aria-pressed="financeSection === 'reports'" @click="showReports">{{ locale === 'en' ? 'Financial reports' : '财务报表' }}</button>
   </div>
-  <RechargesPanel v-if="showingRecharges" :brand-id="brandId" :member-id="rechargeMember" :locale="locale" @failure="emit('failure', $event)" />
+  <RechargesPanel v-if="financeSection === 'recharges'" :brand-id="brandId" :member-id="financeMember" :locale="locale" @failure="emit('failure', $event)" />
+  <ReportsPanel v-else-if="financeSection === 'reports'" :brand-id="brandId" :member-id="financeMember" :locale="locale" @failure="emit('failure', $event)" />
   <template v-else>
   <div data-testid="platform-wallet">
     <div class="page-heading"><div><div class="eyebrow">{{ copy.readOnly }}</div><h1>{{ copy.title }}</h1></div></div>

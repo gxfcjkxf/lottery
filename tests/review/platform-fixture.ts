@@ -2,7 +2,8 @@ import { test as base, expect, type APIRequestContext } from '@playwright/test';
 
 type SessionState = Awaited<ReturnType<APIRequestContext['storageState']>>;
 
-export const test = base.extend<{}, { platformSession: SessionState; operatorSession: SessionState }>({
+export const test = base.extend<{}, { platformAccountPrefix: string; platformSession: SessionState; operatorSession: SessionState }>({
+  platformAccountPrefix: ['review_platform', { scope: 'worker', option: true }],
   operatorSession: [async ({ playwright }, use, info) => {
     const project = info.project.name;
     if (project !== 'desktop1440' && project !== 'mobile360') throw new Error(`Unsupported review viewport: ${project}`);
@@ -24,7 +25,7 @@ export const test = base.extend<{}, { platformSession: SessionState; operatorSes
       await use(await api.storageState());
     } finally { await api.dispose(); }
   }, { scope: 'worker' }],
-  platformSession: [async ({ playwright }, use, info) => {
+  platformSession: [async ({ playwright, platformAccountPrefix }, use, info) => {
     const project = info.project.name;
     if (project !== 'desktop1440' && project !== 'mobile360') throw new Error(`Unsupported review viewport: ${project}`);
     const password = process.env.TEST_REVIEW_ADMIN_PASSWORD;
@@ -34,7 +35,7 @@ export const test = base.extend<{}, { platformSession: SessionState; operatorSes
     try {
       const login = await api.post(`${origin}/api/v1/platform/auth/login`, {
         headers: { Origin: origin, 'Idempotency-Key': crypto.randomUUID() },
-        data: { identifier: `review_platform_${project}`, password },
+        data: { identifier: `${platformAccountPrefix}_${project}`, password },
       });
       expect(login.status(), 'Owned platform session must authenticate without retries').toBe(200);
       const me = await api.get(`${origin}/api/v1/platform/me`);

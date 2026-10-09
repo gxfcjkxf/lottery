@@ -54,6 +54,8 @@ jobs:
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform --super
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform_desktop1440 --super
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform_mobile360 --super
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_reports_desktop1440 --super
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_reports_mobile360 --super
           .local/review-platform serve > .local/review-api.log 2>&1 &
           .local/review-platform worker > .local/review-worker.log 2>&1 &
           pnpm review:user > .local/review-user.log 2>&1 &
