@@ -26,7 +26,7 @@ test('workbench displays real scoped financial data, explicit gaps, and clears s
   const dashboard = page.locator('.workbench')
   await expect(dashboard.getByRole('heading', { name: 'Operations workbench', exact: true })).toBeVisible()
   const card = (heading: string) => dashboard.locator('.card').filter({ has: page.getByRole('heading', { name: heading, exact: true }) })
-  const metric = (heading: string, label: string) => card(heading).locator('.metrics > div').filter({ has: page.locator('dt').filter({ hasText: new RegExp(`^${label}$`) }) }).locator('dd')
+  const metric = (heading: string, label: string) => card(heading).locator('.metrics > div').filter({ has: page.locator('dt').filter({ hasText: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`) }) }).locator('dd')
   await expect(metric('Balances', 'Total points')).toHaveText(data.balances.data.total_points)
   await expect(metric('Balances', 'Available points')).toHaveText(data.balances.data.available_points)
   await expect(metric('Ledger', 'Net points')).toHaveText(data.ledger.data.net_points)
@@ -44,10 +44,28 @@ test('workbench displays real scoped financial data, explicit gaps, and clears s
     await expect(card('Withdrawals')).toContainText('Your account cannot view')
     await expect(card('Withdrawals').locator('dd')).toHaveCount(0)
   }
-  for (const name of ['Commissions']) {
-    expect(data[name.toLowerCase()]).toEqual({ status: 'not_implemented', data: null })
-    await expect(card(name).locator('.badge')).toHaveText('Not implemented')
-    await expect(card(name).locator('dd')).toHaveCount(0)
+  const commissions = data.commissions
+  await expect(card('Commissions').locator('.badge')).toHaveText(commissions.status === 'ready' ? 'Ready' : 'Unavailable')
+  if (commissions.status === 'ready') {
+    const fields = [
+      ['discovery_pending_count','Discovery pending (including future checks)'],['discovery_failed_count','Discovery failed'],
+      ['cycle_processing_count','Cycles enumerating, calculating, or summarizing'],['cycle_waiting_count','Cycles waiting'],
+      ['cycle_ready_count','Cycles ready (current evidence)'],['cycle_stale_count','Cycles ready (stale evidence)'],['cycle_failed_count','Cycles failed'],
+      ['payment_awaiting_approval_count','Payments awaiting approval'],['payment_processing_count','Payments processing'],['payment_blocked_count','Payments blocked'],['payment_failed_count','Payments failed'],
+      ['plan_processing_count','Plans processing'],['plan_ready_count','Plans ready'],['plan_blocked_count','Plans blocked'],['plan_failed_count','Plans failed'],
+      ['execution_awaiting_approval_count','Executions awaiting approval'],['execution_processing_count','Executions processing'],['execution_paused_count','Executions paused'],['execution_failed_count','Executions failed'],
+    ]
+    expect(Object.keys(commissions.data).sort()).toEqual(fields.map(([key])=>key).sort())
+    for (const [key,label] of fields) {
+      expect(commissions.data[key]).toMatch(/^(0|[1-9][0-9]*)$/)
+      await expect(metric('Commissions',label)).toHaveText(commissions.data[key])
+    }
+    await expect(card('Commissions')).toContainText('workflow indicators, not funds or payment/execution authorization')
+    await expect(card('Commissions').getByRole('button',{name:/Pay|Approve|Continue|Retry|Payout/})).toHaveCount(0)
+    await card('Commissions').screenshot({ path: info.outputPath('commissions-live.png') })
+  } else {
+    expect(commissions).toEqual({ status:'forbidden',data:null })
+    await expect(card('Commissions').locator('dd')).toHaveCount(0)
   }
   const rewards = data.rewards
   const rewardsHeading = 'Reward orders (current state)'

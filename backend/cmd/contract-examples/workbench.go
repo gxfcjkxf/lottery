@@ -31,8 +31,16 @@ func workbenchExamples() map[string]any {
 		Reconciliation: workbenchReady(workbench.Reconciliation{LatestJob: &workbench.ReconciliationJob{ID: id, State: "completed", CreatedAt: snapshotAt.Add(-2 * time.Hour), CompletedAt: &completedAt, TargetCount: "12", CheckedCount: "12", RepairableCount: "0", CorruptCount: "0", FailedCount: "0"}}),
 		Sources:        workbenchReady(workbench.Sources{AdapterState: "stub", ConfiguredGames: "2", EnabledAPISources: "1", EnabledDOMSources: "0", AttemptsToday: "3", FailedToday: "1", NoDataToday: "0", LastAttemptAt: &lastAttemptAt}),
 		Withdrawals:    workbenchReady(workbench.Withdrawals{ReviewingCount: "1", ReviewingPoints: "50", ProcessingCount: "2", ProcessingPoints: "9000000000000000000"}),
-		Commissions:    workbench.Section[struct{}]{Status: "not_implemented"},
-		Rewards:        workbench.Section[workbench.Rewards]{Status: "ready", Data: &workbench.Rewards{GrantedCount: "1", PendingCount: "2", RevokedCount: "3"}},
+		Commissions: workbenchReady(workbench.Commissions{
+			DiscoveryPendingCount: "2", DiscoveryFailedCount: "1",
+			CycleProcessingCount: "1", CycleWaitingCount: "2", CycleReadyCount: "9007199254740993", CycleStaleCount: "1", CycleFailedCount: "1",
+			PaymentAwaitingApprovalCount: "1", PaymentProcessingCount: "2", PaymentBlockedCount: "3", PaymentFailedCount: "1",
+			PlanProcessingCount: "1", PlanReadyCount: "2", PlanBlockedCount: "1", PlanFailedCount: "1",
+			ExecutionAwaitingApprovalCount: "1", ExecutionProcessingCount: "2", ExecutionPausedCount: "3", ExecutionFailedCount: "1",
+		}),
+		Rewards: workbench.Section[workbench.Rewards]{Status: "ready", Data: &workbench.Rewards{GrantedCount: "1", PendingCount: "2", RevokedCount: "3"}},
 	}
-	return map[string]any{"AdminWorkbench": snapshot}
+	legacy := snapshot
+	legacy.Commissions = workbench.Section[workbench.Commissions]{Status: "not_implemented"}
+	return map[string]any{"AdminWorkbench": snapshot, "AdminWorkbenchLegacy": legacy}
 }

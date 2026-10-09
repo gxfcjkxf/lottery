@@ -34,7 +34,17 @@ const sections = computed(() => [
   { key: "reconciliation", title: t("账本对账", "Ledger reconciliation"), fields: [] },
   { key: "sources", title: t("开奖来源", "Draw sources"), fields: [["adapter_state", "适配器状态", "Adapter state"], ["configured_games", "已配置彩种", "Configured games"], ["enabled_api_sources", "启用 API 来源", "Enabled API sources"], ["enabled_dom_sources", "启用 DOM 来源", "Enabled DOM sources"], ["attempts_today", "今日尝试", "Attempts today"], ["failed_today", "今日失败", "Failed today"], ["no_data_today", "今日无数据", "No data today"], ["last_attempt_at", "最近尝试", "Last attempt"]] },
   { key: "withdrawals", title: t("提现", "Withdrawals"), fields: [["reviewing_count", "待审核笔数", "Awaiting review"], ["reviewing_points", "待审核积分", "Awaiting review (points)"], ["processing_count", "提现中笔数", "Processing count"], ["processing_points", "提现中积分", "Processing points"]], note: t("仅统计当前待审核和提现中订单及其订单积分；不代表资格审核、实际支付或利润。", "Counts only current reviewing and processing orders and their order points; this does not indicate eligibility, actual payment, or profit.") },
-  { key: "commissions", title: t("佣金", "Commissions"), fields: [] },
+  { key: "commissions", title: t("佣金", "Commissions"), fields: [
+    ["discovery_pending_count", "待发现（含未来等待）", "Discovery pending (including future checks)"], ["discovery_failed_count", "发现失败", "Discovery failed"],
+    ["cycle_processing_count", "周期枚举、计算或汇总中", "Cycles enumerating, calculating, or summarizing"], ["cycle_waiting_count", "周期等待中", "Cycles waiting"],
+    ["cycle_ready_count", "周期就绪（当前证据）", "Cycles ready (current evidence)"], ["cycle_stale_count", "周期就绪（证据过期）", "Cycles ready (stale evidence)"], ["cycle_failed_count", "周期失败", "Cycles failed"],
+    ["payment_awaiting_approval_count", "付款待审批", "Payments awaiting approval"], ["payment_processing_count", "付款处理中", "Payments processing"],
+    ["payment_blocked_count", "付款受阻", "Payments blocked"], ["payment_failed_count", "付款失败", "Payments failed"],
+    ["plan_processing_count", "方案处理中", "Plans processing"], ["plan_ready_count", "方案就绪", "Plans ready"],
+    ["plan_blocked_count", "方案受阻", "Plans blocked"], ["plan_failed_count", "方案失败", "Plans failed"],
+    ["execution_awaiting_approval_count", "执行待审批", "Executions awaiting approval"], ["execution_processing_count", "执行处理中", "Executions processing"],
+    ["execution_paused_count", "执行已暂停", "Executions paused"], ["execution_failed_count", "执行失败", "Executions failed"],
+  ], note: t("统计全部时间范围内保存的任务当前状态，不是今日新增、实际入账或钱包余额。周期“当前证据”仅依据状态、运行状态和证据 epoch，不代表完整财务证据或审批。已支付、已完成及历史过期任务不计入待处理；受阻的旧付款即使后续已更正完成仍可能保留，不能据此认定欠款或未解决资金。仅作工作状态参考，不代表资金、付款授权或执行授权。", "Counts current saved task states across all time, not today's new earnings, actual postings, or wallet balances. A cycle's “current evidence” means only its state, run state, and evidence epoch; it does not mean complete financial evidence or approval. Paid, completed, and historical stale tasks are excluded from pending counts. An old blocked payment may remain after a later correction completes; it does not establish an amount owed or unresolved funds. These are workflow indicators, not funds or payment/execution authorization.") },
   { key: "rewards", title: t("奖励订单当前状态", "Reward orders (current state)"), fields: [["granted_count", "已发放订单", "Granted orders"], ["pending_count", "撤销待处理", "Revocations pending"], ["revoked_count", "已撤销订单", "Revoked orders"]], note: t("按当前订单状态统计全部奖励订单，不是今日入账额或可用余额；待处理不表示已扣除或预留积分。", "Counts all reward orders by current state, not today's postings or available balance; pending does not mean points were deducted or reserved.") },
 ] as const);
 
@@ -100,7 +110,7 @@ function jobField(field: string): unknown {
   return job && typeof job === "object" && field in job ? (job as Record<string, unknown>)[field] : "";
 }
 function destination(key: string): string | null {
-  const routes: Record<string, string> = { periods: "期次和开奖", orders: "注单和异常", today_bets: "报表和对账", settlement: "期次和开奖", recharges: "资金与账本", ledger: "资金与账本", balances: "资金与账本", withdrawals: "资金与账本", reconciliation: "批量对账", sources: "期次和开奖", rewards: "人工奖励" };
+  const routes: Record<string, string> = { periods: "期次和开奖", orders: "注单和异常", today_bets: "报表和对账", settlement: "期次和开奖", recharges: "资金与账本", ledger: "资金与账本", balances: "资金与账本", withdrawals: "资金与账本", reconciliation: "批量对账", sources: "期次和开奖", commissions: "佣金和奖励", rewards: "人工奖励" };
   return routes[key] ?? null;
 }
 function canNavigate(key: string): boolean {

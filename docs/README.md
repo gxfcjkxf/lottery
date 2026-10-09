@@ -46,6 +46,7 @@
 - [33-operational-observability.md](33-operational-observability.md)：默认关闭的保护端口、低基数指标、只读缓存、固定追踪和真实进程验收边界。
 - [34-release-and-operations.md](34-release-and-operations.md)：协调发布、完整迁移核验、systemd示例、备份及隔离恢复、生产待定值。
 - [35-commission-allocation-history.md](35-commission-allocation-history.md)：明确运行代次的历史整周期收益、保存比例的逐单未舍入差额分配、独立分页筛选和只读双端管理。
+- [36-commission-workbench.md](36-commission-workbench.md)：独立查看授权的当前佣金任务计数、就绪与证据过期、人工暂停与技术失败，以及旧空快照兼容。
 
 ## 第一阶段实现顺序
 

@@ -1,5 +1,7 @@
 # Lottery 平台
 
+[工作台佣金任务汇总](docs/36-commission-workbench.md)显示独立授权的发现、核算、派发和更正任务状态；不表示欠付金额、收益或资金操作授权。
+
 [佣金历史核算明细](docs/35-commission-allocation-history.md)可按明确run查询整周期收益及逐单未舍入差额分配；不以今天的配置覆盖旧证据，不代表已派发或钱包余额。
 
 运维工程交接见[可观测性合同](docs/33-operational-observability.md)和[发布恢复手册](docs/34-release-and-operations.md)。保护端口及追踪默认关闭，监控只读，不授权自动资金重试；生产部署和客户人工审核仍需独立验收。

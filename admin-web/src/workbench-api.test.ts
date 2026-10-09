@@ -5,6 +5,10 @@ import { createWorkbenchApi, validWorkbenchSnapshot, workbenchPermissions, type 
 const brand = "11111111-1111-4111-8111-111111111111";
 const jobId = "33333333-3333-4333-8333-333333333333";
 const stamp = "2026-10-07T10:00:00Z";
+const commissionFields = ["discovery_pending_count", "discovery_failed_count", "cycle_processing_count", "cycle_waiting_count", "cycle_ready_count", "cycle_stale_count", "cycle_failed_count",
+  "payment_awaiting_approval_count", "payment_processing_count", "payment_blocked_count", "payment_failed_count", "plan_processing_count", "plan_ready_count", "plan_blocked_count", "plan_failed_count",
+  "execution_awaiting_approval_count", "execution_processing_count", "execution_paused_count", "execution_failed_count"] as const;
+function commissions(value = "0") { return Object.fromEntries(commissionFields.map((key, index) => [key, index === 0 ? value : "0"])); }
 
 function snapshot(patch: Partial<WorkbenchSnapshot> = {}): WorkbenchSnapshot {
   const ready = <T>(data: T) => ({ status: "ready" as const, data });
@@ -97,6 +101,22 @@ describe("workbench SDK", () => {
     expect(validWorkbenchSnapshot({ ...value, rewards: { status: "ready", data: { ...value.rewards.data!, gift_points: "10" } } }, brand)).toBe(false);
   });
 
+  it("validates all commission workflow counters, accepts legacy snapshots, and rejects private or unknown data", async () => {
+    const value = snapshot();
+    const ready = { ...value, commissions: { status: "ready" as const, data: commissions("900719925474099312345") } };
+    expect(validWorkbenchSnapshot(ready, brand)).toBe(true);
+    await expect(createWorkbenchApi(vi.fn<typeof fetch>().mockResolvedValue(response(ready))).get(brand)).resolves.toEqual(ready);
+    expect(validWorkbenchSnapshot(value, brand)).toBe(true); // Old not_implemented/null response.
+    expect(validWorkbenchSnapshot({ ...value, commissions: { status: "forbidden", data: null } }, brand)).toBe(true);
+    expect(validWorkbenchSnapshot({ ...value, commissions: { status: "not_implemented", data: { ...commissions() } } }, brand)).toBe(false);
+    expect(validWorkbenchSnapshot({ ...value, commissions: { status: "ready", data: {} } }, brand)).toBe(false);
+    expect(validWorkbenchSnapshot({ ...value, commissions: { status: "ready", data: { ...commissions(), private_agent_id: jobId } } }, brand)).toBe(false);
+    for (const invalid of ["01", "-1", "1e3", 1, null]) {
+      expect(validWorkbenchSnapshot({ ...value, commissions: { status: "ready", data: { ...commissions(), cycle_stale_count: invalid } } }, brand)).toBe(false);
+    }
+    expect(validWorkbenchSnapshot({ ...value, commissions: { status: "ready", data: { ...commissions(), cycle_stale_count: "900719925474099312345" } } }, brand)).toBe(true);
+  });
+
   it("validates latest job lifecycle, counters, and cross-field logical coherence", () => {
     const value = snapshot();
     const recon = value.reconciliation.data!;
@@ -132,6 +152,18 @@ describe("workbench SDK", () => {
     expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["reward.view.brand"] } }), brand).rewards).toBe(true);
     expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["reward.view.platform"] }), brand).rewards).toBe(true);
     expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["wallet.view.brand", "report_reward.view.brand"] } }), brand).rewards).toBe(false);
+  });
+
+  it("gates commissions only on commission view in the matching brand or platform scope", () => {
+    expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["commission.view.brand"] } }), brand).commissions).toBe(true);
+    for (const permission of ["wallet.view.brand", "report_commission.view.brand"]) {
+      expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: [permission] }, platform_permissions: [] }), brand).commissions).toBe(false);
+    }
+    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: { [brand]: ["commission.view.brand"] }, platform_permissions: [] }), brand).commissions).toBe(false);
+    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["commission.view.platform"] }), brand).commissions).toBe(true);
+    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["wallet.view.platform", "report_commission.view.platform"] }), brand).commissions).toBe(false);
+    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, permissions: ["commission.view.platform"], platform_permissions: [] }), brand).commissions).toBe(false);
+    expect(workbenchPermissions(account({ super_admin: true, brand_ids: [], permissions_by_brand: {}, platform_permissions: [] }), brand).commissions).toBe(false);
   });
 
   it("rejects invalid identifiers, malformed envelopes, preserves HTTP errors, and supports cancellation", async () => {

@@ -91,9 +91,7 @@ func (Service) ReadTx(ctx context.Context, tx pgx.Tx, a access.Account, brand st
  'pending_count',count(*) FILTER(WHERE state='revocation_pending')::text,
  'revoked_count',count(*) FILTER(WHERE state='revoked')::text)
  FROM reward_orders WHERE brand_id=s.id`)
-	for _, name := range []string{"commissions"} {
-		fields = append(fields, "'"+name+"',jsonb_build_object('status','not_implemented','data',NULL)")
-	}
+	add("commissions", "commission", commissionTaskQuery)
 	query := `WITH s AS MATERIALIZED(SELECT id,name,code,status,timezone,statement_timestamp() snapshot_at,
  date_trunc('day',statement_timestamp() AT TIME ZONE timezone) AT TIME ZONE timezone day_from FROM brands WHERE id=$1)
  SELECT jsonb_build_object(` + strings.Join(fields, ",") + `) FROM s`

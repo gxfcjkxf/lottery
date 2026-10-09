@@ -35,6 +35,13 @@ export interface WorkbenchSources {
   attempts_today: string; failed_today: string; no_data_today: string; last_attempt_at: string | null;
 }
 export interface WorkbenchWithdrawals { reviewing_count: string; reviewing_points: string; processing_count: string; processing_points: string }
+export interface WorkbenchCommissions {
+  discovery_pending_count: string; discovery_failed_count: string;
+  cycle_processing_count: string; cycle_waiting_count: string; cycle_ready_count: string; cycle_stale_count: string; cycle_failed_count: string;
+  payment_awaiting_approval_count: string; payment_processing_count: string; payment_blocked_count: string; payment_failed_count: string;
+  plan_processing_count: string; plan_ready_count: string; plan_blocked_count: string; plan_failed_count: string;
+  execution_awaiting_approval_count: string; execution_processing_count: string; execution_paused_count: string; execution_failed_count: string;
+}
 export interface WorkbenchRewards { granted_count: string; pending_count: string; revoked_count: string }
 export interface WorkbenchSnapshot {
   brand_id: string; snapshot_at: string; timezone: string; day_from: string;
@@ -42,7 +49,7 @@ export interface WorkbenchSnapshot {
   today_bets: Section<WorkbenchTodayBets>; settlement: Section<WorkbenchSettlement>; recharges: Section<WorkbenchRecharges>;
   ledger: Section<WorkbenchLedger>; balances: Section<WorkbenchBalances>; reconciliation: Section<WorkbenchReconciliation>;
   sources: Section<WorkbenchSources>; withdrawals: Section<WorkbenchWithdrawals>;
-  commissions: Section<Record<string, never>>; rewards: Section<WorkbenchRewards>;
+  commissions: Section<WorkbenchCommissions>; rewards: Section<WorkbenchRewards>;
 }
 
 type SectionName = keyof Omit<WorkbenchSnapshot, "brand_id" | "snapshot_at" | "timezone" | "day_from">;
@@ -57,7 +64,11 @@ const SECTION_KEYS: Record<SectionName, string[]> = {
   balances: ["account_count", "available_points", "frozen_points", "withdrawal_points", "total_points"],
   reconciliation: ["latest_job"],
   sources: ["adapter_state", "configured_games", "enabled_api_sources", "enabled_dom_sources", "attempts_today", "failed_today", "no_data_today", "last_attempt_at"],
-  withdrawals: ["reviewing_count", "reviewing_points", "processing_count", "processing_points"], commissions: [], rewards: ["granted_count", "pending_count", "revoked_count"],
+  withdrawals: ["reviewing_count", "reviewing_points", "processing_count", "processing_points"],
+  commissions: ["discovery_pending_count", "discovery_failed_count", "cycle_processing_count", "cycle_waiting_count", "cycle_ready_count", "cycle_stale_count", "cycle_failed_count",
+    "payment_awaiting_approval_count", "payment_processing_count", "payment_blocked_count", "payment_failed_count", "plan_processing_count", "plan_ready_count",
+    "plan_blocked_count", "plan_failed_count", "execution_awaiting_approval_count", "execution_processing_count", "execution_paused_count", "execution_failed_count"],
+  rewards: ["granted_count", "pending_count", "revoked_count"],
 };
 const COUNTS: Partial<Record<SectionName, string[]>> = {
   periods: SECTION_KEYS.periods, orders: SECTION_KEYS.orders,
@@ -65,7 +76,7 @@ const COUNTS: Partial<Record<SectionName, string[]>> = {
   settlement: SECTION_KEYS.settlement, recharges: ["pending_count"], ledger: ["entry_count"],
   balances: ["account_count"], sources: ["configured_games", "enabled_api_sources", "enabled_dom_sources", "attempts_today", "failed_today", "no_data_today"],
   withdrawals: ["reviewing_count", "processing_count"],
-  rewards: SECTION_KEYS.rewards,
+  commissions: SECTION_KEYS.commissions, rewards: SECTION_KEYS.rewards,
 };
 const POINTS: Partial<Record<SectionName, string[]>> = {
   today_bets: ["stake_points"], recharges: ["pending_points"],
@@ -126,12 +137,9 @@ export function validWorkbenchSnapshot(value: unknown, brandId: string): value i
   for (const name of SECTION_ORDER) {
     const section = value[name];
     if (!record(section) || !exactKeys(section, ["status", "data"]) || !STATUSES.includes(section.status as SectionStatus)) return false;
-    const fixedUnimplemented = name === "commissions";
-    if (fixedUnimplemented && (section.status !== "not_implemented" || section.data !== null)) return false;
-    if (!fixedUnimplemented && section.status === "not_implemented") return false;
+    if (name !== "commissions" && section.status === "not_implemented") return false;
     if (section.status !== "ready") {
       if (section.data !== null) return false;
-      if (name === "commissions" && section.status !== "not_implemented") return false;
       continue;
     }
     if (!record(section.data) || !exactKeys(section.data, SECTION_KEYS[name])) return false;
@@ -148,7 +156,6 @@ export function validWorkbenchSnapshot(value: unknown, brandId: string): value i
     for (const key of COUNTS[name] ?? []) if (!uint(data[key])) return false;
     for (const key of POINTS[name] ?? []) if (!uint(data[key])) return false;
     if (name === "ledger" && !sint(data.net_points)) return false;
-    if (name === "commissions" && Object.keys(data).length !== 0) return false;
   }
   const ready = (name: SectionName) => (value[name] as Section<unknown>).status === "ready" ? (value[name] as Section<Record<string, string>>).data : null;
   const bets = ready("today_bets"), sources = ready("sources");
@@ -168,7 +175,7 @@ export function workbenchPermissions(account: AdminAccount, brandId: string): Re
     brand: allowed("brand"), periods: allowed("period"), orders: allowed("bet"),
     today_bets: allowed("report_betting"), settlement: allowed("settlement"), recharges: allowed("recharge"),
     ledger: allowed("report_ledger"), balances: allowed("report_ledger"), reconciliation: allowed("wallet"), sources: allowed("draw_source"),
-    withdrawals: allowed("withdrawal"), commissions: allowed("wallet"), rewards: allowed("reward"),
+    withdrawals: allowed("withdrawal"), commissions: allowed("commission"), rewards: allowed("reward"),
   };
 }
 

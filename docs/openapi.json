@@ -78883,7 +78883,7 @@
         "tags": [
           "workbench"
         ],
-        "description": "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Withdrawals reports only current reviewing and processing order counts and order points; it does not infer eligibility, actual payment, or profit. Rewards counts all current reward orders in granted, revocation_pending and revoked states; not today's postings, attempt counts, wallet balance or reserved funds. Only commissions remains not_implemented. Fresh authorization is rechecked after audit waits before releasing data. Aggregate counts and amounts are exact decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
+        "description": "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Withdrawals reports only current reviewing and processing order counts and order points; it does not infer eligibility, actual payment, or profit. Rewards counts all current reward orders in granted, revocation_pending and revoked states; not today's postings, attempt counts, wallet balance or reserved funds. Commissions reports all-current discovery, cycle, payment, plan and execution task counts, not today's earnings, wallet values or payout authorization. cycle_ready_count includes only ready runs matching the current evidence epoch; cycle_stale_count includes ready runs without matching proof and is disjoint. discovery_pending_count includes future waiting work. A blocked payment reflects its saved state, which can persist after correction and does not establish that funds are owed. Current commission responses are ready with aggregate counts or forbidden with null data; only older stored snapshots may use not_implemented with null data. Fresh authorization is rechecked after audit waits before releasing data. Aggregate counts and amounts are exact canonical decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
         "security": [
           {
             "adminBearer": []
@@ -79205,7 +79205,9 @@
           "draw_source.view.platform",
           "withdrawal.view.platform",
           "reward.view.brand",
-          "reward.view.platform"
+          "reward.view.platform",
+          "commission.view.brand",
+          "commission.view.platform"
         ],
         "x-idempotent-operation": false
       }
@@ -113914,6 +113916,128 @@
         ],
         "additionalProperties": false
       },
+      "AdminWorkbenchCommissions": {
+        "type": "object",
+        "properties": {
+          "discovery_pending_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "discovery_failed_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "cycle_processing_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "cycle_waiting_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "cycle_ready_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "cycle_stale_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "cycle_failed_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "payment_awaiting_approval_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "payment_processing_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "payment_blocked_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "payment_failed_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "plan_processing_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "plan_ready_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "plan_blocked_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "plan_failed_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "execution_awaiting_approval_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "execution_processing_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "execution_paused_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          },
+          "execution_failed_count": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
+          }
+        },
+        "required": [
+          "discovery_pending_count",
+          "discovery_failed_count",
+          "cycle_processing_count",
+          "cycle_waiting_count",
+          "cycle_ready_count",
+          "cycle_stale_count",
+          "cycle_failed_count",
+          "payment_awaiting_approval_count",
+          "payment_processing_count",
+          "payment_blocked_count",
+          "payment_failed_count",
+          "plan_processing_count",
+          "plan_ready_count",
+          "plan_blocked_count",
+          "plan_failed_count",
+          "execution_awaiting_approval_count",
+          "execution_processing_count",
+          "execution_paused_count",
+          "execution_failed_count"
+        ],
+        "additionalProperties": false
+      },
       "AdminWorkbenchRewards": {
         "type": "object",
         "properties": {
@@ -114051,7 +114175,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "brand requires CanView resource \"brand\" for the exact selected brand or an explicit brand.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "description": "brand requires CanView resource \"brand\" for the exact selected brand or an explicit brand.view.platform grant. It is populated only for ready status; forbidden return null data.",
         "allOf": [
           {
             "if": {
@@ -114128,7 +114252,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "periods requires CanView resource \"period\" for the exact selected brand or an explicit period.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "description": "periods requires CanView resource \"period\" for the exact selected brand or an explicit period.view.platform grant. It is populated only for ready status; forbidden return null data.",
         "allOf": [
           {
             "if": {
@@ -114205,7 +114329,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "orders requires CanView resource \"bet\" for the exact selected brand or an explicit bet.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "description": "orders requires CanView resource \"bet\" for the exact selected brand or an explicit bet.view.platform grant. It is populated only for ready status; forbidden return null data.",
         "allOf": [
           {
             "if": {
@@ -114282,7 +114406,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "today_bets requires CanView resource \"report_betting\" for the exact selected brand or an explicit report_betting.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "description": "today_bets requires CanView resource \"report_betting\" for the exact selected brand or an explicit report_betting.view.platform grant. It is populated only for ready status; forbidden return null data.",
         "allOf": [
           {
             "if": {
@@ -114359,7 +114483,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "settlement requires CanView resource \"settlement\" for the exact selected brand or an explicit settlement.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "description": "settlement requires CanView resource \"settlement\" for the exact selected brand or an explicit settlement.view.platform grant. It is populated only for ready status; forbidden return null data.",
         "allOf": [
           {
             "if": {
@@ -114436,7 +114560,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "recharges requires CanView resource \"recharge\" for the exact selected brand or an explicit recharge.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "description": "recharges requires CanView resource \"recharge\" for the exact selected brand or an explicit recharge.view.platform grant. It is populated only for ready status; forbidden return null data.",
         "allOf": [
           {
             "if": {
@@ -114513,7 +114637,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "ledger requires CanView resource \"report_ledger\" for the exact selected brand or an explicit report_ledger.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "description": "ledger requires CanView resource \"report_ledger\" for the exact selected brand or an explicit report_ledger.view.platform grant. It is populated only for ready status; forbidden return null data.",
         "allOf": [
           {
             "if": {
@@ -114590,7 +114714,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "balances requires CanView resource \"report_ledger\" for the exact selected brand or an explicit report_ledger.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "description": "balances requires CanView resource \"report_ledger\" for the exact selected brand or an explicit report_ledger.view.platform grant. It is populated only for ready status; forbidden return null data.",
         "allOf": [
           {
             "if": {
@@ -114667,7 +114791,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "reconciliation requires CanView resource \"wallet\" for the exact selected brand or an explicit wallet.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "description": "reconciliation requires CanView resource \"wallet\" for the exact selected brand or an explicit wallet.view.platform grant. It is populated only for ready status; forbidden return null data.",
         "allOf": [
           {
             "if": {
@@ -114744,7 +114868,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "sources requires CanView resource \"draw_source\" for the exact selected brand or an explicit draw_source.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "description": "sources requires CanView resource \"draw_source\" for the exact selected brand or an explicit draw_source.view.platform grant. It is populated only for ready status; forbidden return null data.",
         "allOf": [
           {
             "if": {
@@ -114821,7 +114945,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "withdrawals requires CanView resource \"withdrawal\" for the exact selected brand or an explicit withdrawal.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "description": "withdrawals requires CanView resource \"withdrawal\" for the exact selected brand or an explicit withdrawal.view.platform grant. It is populated only for ready status; forbidden return null data.",
         "allOf": [
           {
             "if": {
@@ -114867,17 +114991,98 @@
         "type": "object",
         "properties": {
           "status": {
-            "const": "not_implemented"
+            "type": "string",
+            "enum": [
+              "ready",
+              "forbidden",
+              "not_implemented"
+            ]
           },
           "data": {
-            "type": "null"
+            "anyOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AdminWorkbenchCommissions"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ],
+                "description": "Present only when status is ready."
+              },
+              {
+                "type": "null",
+                "description": "Required when status is forbidden or not_implemented."
+              }
+            ]
           }
         },
         "required": [
           "status",
           "data"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "commissions requires CanView resource \"commission\" for the exact selected brand or an explicit commission.view.platform grant. It is populated only for ready status; forbidden and legacy not_implemented return null data.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "ready"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "data": {
+                  "$ref": "#/components/schemas/AdminWorkbenchCommissions"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "forbidden"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "data": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "not_implemented"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "data": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
       },
       "AdminWorkbenchRewardsSection": {
         "type": "object",
@@ -114914,7 +115119,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "rewards requires CanView resource \"reward\" for the exact selected brand or an explicit reward.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.",
+        "description": "rewards requires CanView resource \"reward\" for the exact selected brand or an explicit reward.view.platform grant. It is populated only for ready status; forbidden return null data.",
         "allOf": [
           {
             "if": {

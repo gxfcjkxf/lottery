@@ -17,6 +17,7 @@ const root={$id:"urn:lottery:implemented-api",components};
 ajv.addSchema(root);
 const validate=schema=>ajv.compile({$ref:`urn:lottery:implemented-api#/components/schemas/${schema}`});
 const exampleSchemaNames={
+  AdminWorkbenchLegacy:"AdminWorkbenchSnapshot",
   AdminAuditRecord:"AdminAuditEntry",
   AdminAuditRecordLegacy:"AdminAuditEntry",
   AdminAuditList:"AdminAuditList",
@@ -50,7 +51,10 @@ test("actual Go DTO serialization and rule-engine outputs satisfy contracts",()=
   }
   assert.equal(examples.AdminWorkbench.withdrawals.status,"ready");
   assert.equal(examples.AdminWorkbench.withdrawals.data.processing_points,"9000000000000000000");
-  assert.equal(examples.AdminWorkbench.commissions.data,null);
+  assert.equal(examples.AdminWorkbench.commissions.status,"ready");
+  assert.equal(examples.AdminWorkbench.commissions.data.cycle_ready_count,"9007199254740993");
+  assert.equal(examples.AdminWorkbenchLegacy.commissions.status,"not_implemented");
+  assert.equal(examples.AdminWorkbenchLegacy.commissions.data,null);
   assert.equal(examples.AdminWorkbench.rewards.status,"ready");
   assert.deepEqual(examples.AdminWorkbench.rewards.data,{granted_count:"1",pending_count:"2",revoked_count:"3"});
   assert.equal(examples.LotterySimulationResult.bet_points,"8");

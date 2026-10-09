@@ -9,18 +9,19 @@ const uuid = ref("UUID");
 const str = { type: "string" };
 const nullable = schema => ({ anyOf: [schema, { type: "null" }] });
 
-const section = (name, permission, data) => ({
+const section = (name, permission, data, { legacyNotImplemented = false } = {}) => ({
   ...obj({
-    status: { type: "string", enum: ["ready", "forbidden"] },
+    status: { type: "string", enum: legacyNotImplemented ? ["ready", "forbidden", "not_implemented"] : ["ready", "forbidden"] },
     data: { anyOf: [
       { allOf: [data, { type: "object" }], description: "Present only when status is ready." },
       { type: "null", description: "Required when status is forbidden or not_implemented." },
     ] },
   }),
-  description: `${name} requires CanView resource "${permission}" for the exact selected brand or an explicit ${permission}.view.platform grant. It is populated only for ready status; forbidden and not_implemented return null data.`,
+  description: `${name} requires CanView resource "${permission}" for the exact selected brand or an explicit ${permission}.view.platform grant. It is populated only for ready status; forbidden${legacyNotImplemented ? " and legacy not_implemented" : ""} return null data.`,
   allOf: [
     { if: { properties: { status: { const: "ready" } }, required: ["status"] }, then: { properties: { data } } },
     { if: { properties: { status: { const: "forbidden" } }, required: ["status"] }, then: { properties: { data: { type: "null" } } } },
+    ...(legacyNotImplemented ? [{ if: { properties: { status: { const: "not_implemented" } }, required: ["status"] }, then: { properties: { data: { type: "null" } } } }] : []),
   ],
 });
 
@@ -36,9 +37,26 @@ const reconciliationJob = obj({ id: uuid, state: { type: "string", enum: ["pendi
 const reconciliation = obj({ latest_job: nullable(ref("AdminWorkbenchReconciliationJob")) });
 const sources = obj({ adapter_state: { type: "string", const: "stub" }, configured_games: count, enabled_api_sources: count, enabled_dom_sources: count, attempts_today: count, failed_today: count, no_data_today: count, last_attempt_at: nullable(dateTime) });
 const withdrawals = obj({ reviewing_count: count, reviewing_points: amount, processing_count: count, processing_points: amount });
-const unavailable = status => ({
-  type: "object", properties: { status: { const: status }, data: { type: "null" } },
-  required: ["status", "data"], additionalProperties: false,
+const commissions = obj({
+  discovery_pending_count: count,
+  discovery_failed_count: count,
+  cycle_processing_count: count,
+  cycle_waiting_count: count,
+  cycle_ready_count: count,
+  cycle_stale_count: count,
+  cycle_failed_count: count,
+  payment_awaiting_approval_count: count,
+  payment_processing_count: count,
+  payment_blocked_count: count,
+  payment_failed_count: count,
+  plan_processing_count: count,
+  plan_ready_count: count,
+  plan_blocked_count: count,
+  plan_failed_count: count,
+  execution_awaiting_approval_count: count,
+  execution_processing_count: count,
+  execution_paused_count: count,
+  execution_failed_count: count,
 });
 
 export const schemas = {
@@ -54,6 +72,7 @@ export const schemas = {
   AdminWorkbenchReconciliation: reconciliation,
   AdminWorkbenchSources: sources,
   AdminWorkbenchWithdrawals: withdrawals,
+  AdminWorkbenchCommissions: commissions,
   AdminWorkbenchRewards: obj({ granted_count: count, pending_count: count, revoked_count: count }),
   AdminWorkbenchSnapshot: obj({
     brand_id: uuid, snapshot_at: dateTime, timezone: str, day_from: dateTime,
@@ -76,7 +95,7 @@ export const schemas = {
   AdminWorkbenchReconciliationSection: section("reconciliation", "wallet", ref("AdminWorkbenchReconciliation")),
   AdminWorkbenchSourcesSection: section("sources", "draw_source", ref("AdminWorkbenchSources")),
   AdminWorkbenchWithdrawalsSection: section("withdrawals", "withdrawal", ref("AdminWorkbenchWithdrawals")),
-  AdminWorkbenchCommissionsSection: unavailable("not_implemented"),
+  AdminWorkbenchCommissionsSection: section("commissions", "commission", ref("AdminWorkbenchCommissions"), { legacyNotImplemented: true }),
   AdminWorkbenchRewardsSection: section("rewards", "reward", ref("AdminWorkbenchRewards")),
 };
 
@@ -84,6 +103,6 @@ const permissions = ["brand.view.brand", "period.view.brand", "bet.view.brand", 
 export const operations = [{
   method: "GET", path: "/api/v1/admin/workbench", operationId: "adminGetWorkbench",
   summary: "Read the selected brand's operations workbench", tag: "workbench", auth: "admin",
-  data: ref("AdminWorkbenchSnapshot"), brandHeader: true, permissions: [...permissions, "reward.view.brand", "reward.view.platform"],
-  description: "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Withdrawals reports only current reviewing and processing order counts and order points; it does not infer eligibility, actual payment, or profit. Rewards counts all current reward orders in granted, revocation_pending and revoked states; not today's postings, attempt counts, wallet balance or reserved funds. Only commissions remains not_implemented. Fresh authorization is rechecked after audit waits before releasing data. Aggregate counts and amounts are exact decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
+  data: ref("AdminWorkbenchSnapshot"), brandHeader: true, permissions: [...permissions, "reward.view.brand", "reward.view.platform", "commission.view.brand", "commission.view.platform"],
+  description: "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Withdrawals reports only current reviewing and processing order counts and order points; it does not infer eligibility, actual payment, or profit. Rewards counts all current reward orders in granted, revocation_pending and revoked states; not today's postings, attempt counts, wallet balance or reserved funds. Commissions reports all-current discovery, cycle, payment, plan and execution task counts, not today's earnings, wallet values or payout authorization. cycle_ready_count includes only ready runs matching the current evidence epoch; cycle_stale_count includes ready runs without matching proof and is disjoint. discovery_pending_count includes future waiting work. A blocked payment reflects its saved state, which can persist after correction and does not establish that funds are owed. Current commission responses are ready with aggregate counts or forbidden with null data; only older stored snapshots may use not_implemented with null data. Fresh authorization is rechecked after audit waits before releasing data. Aggregate counts and amounts are exact canonical decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
 }];

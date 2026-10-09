@@ -79,6 +79,30 @@ type Rewards struct {
 	PendingCount string `json:"pending_count"`
 	RevokedCount string `json:"revoked_count"`
 }
+
+// Commissions is a current task-state inventory, not today's earnings,
+// actual credits, wallet balances or authorization to pay a ready cycle.
+type Commissions struct {
+	DiscoveryPendingCount          string `json:"discovery_pending_count"`
+	DiscoveryFailedCount           string `json:"discovery_failed_count"`
+	CycleProcessingCount           string `json:"cycle_processing_count"`
+	CycleWaitingCount              string `json:"cycle_waiting_count"`
+	CycleReadyCount                string `json:"cycle_ready_count"`
+	CycleStaleCount                string `json:"cycle_stale_count"`
+	CycleFailedCount               string `json:"cycle_failed_count"`
+	PaymentAwaitingApprovalCount   string `json:"payment_awaiting_approval_count"`
+	PaymentProcessingCount         string `json:"payment_processing_count"`
+	PaymentBlockedCount            string `json:"payment_blocked_count"`
+	PaymentFailedCount             string `json:"payment_failed_count"`
+	PlanProcessingCount            string `json:"plan_processing_count"`
+	PlanReadyCount                 string `json:"plan_ready_count"`
+	PlanBlockedCount               string `json:"plan_blocked_count"`
+	PlanFailedCount                string `json:"plan_failed_count"`
+	ExecutionAwaitingApprovalCount string `json:"execution_awaiting_approval_count"`
+	ExecutionProcessingCount       string `json:"execution_processing_count"`
+	ExecutionPausedCount           string `json:"execution_paused_count"`
+	ExecutionFailedCount           string `json:"execution_failed_count"`
+}
 type ReconciliationJob struct {
 	ID              string     `json:"id"`
 	State           string     `json:"state"`
@@ -119,7 +143,7 @@ type Snapshot struct {
 	Reconciliation Section[Reconciliation] `json:"reconciliation"`
 	Sources        Section[Sources]        `json:"sources"`
 	Withdrawals    Section[Withdrawals]    `json:"withdrawals"`
-	Commissions    Section[struct{}]       `json:"commissions"`
+	Commissions    Section[Commissions]    `json:"commissions"`
 	Rewards        Section[Rewards]        `json:"rewards"`
 }
 
@@ -127,7 +151,7 @@ func CanView(a access.Account, brand, resource string) bool {
 	return access.Authorize(a, resource, "view", access.ScopeBrand, brand) || access.Authorize(a, resource, "view", access.ScopePlatform, "")
 }
 func Allowed(a access.Account, brand string) bool {
-	for _, resource := range []string{"brand", "period", "bet", "report_betting", "settlement", "recharge", "report_ledger", "wallet", "draw_source", "withdrawal", "reward"} {
+	for _, resource := range []string{"brand", "period", "bet", "report_betting", "settlement", "recharge", "report_ledger", "wallet", "draw_source", "withdrawal", "reward", "commission"} {
 		if CanView(a, brand, resource) {
 			return true
 		}

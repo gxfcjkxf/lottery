@@ -51,7 +51,7 @@ test("authoritative workbench snapshot schema enforces ready data, unavailable n
   for (const name of sectionNames.slice(4)) {
     const sectionName = doc.components.schemas.AdminWorkbenchSnapshot.properties[name].$ref.split("/").at(-1);
     if (name === "commissions") {
-      assert.equal(doc.components.schemas[sectionName].properties.status.const, "not_implemented");
+      assert.deepEqual(doc.components.schemas[sectionName].properties.status.enum, ["ready", "forbidden", "not_implemented"]);
     } else {
       assert.deepEqual(doc.components.schemas[sectionName].properties.status.enum, ["ready", "forbidden"]);
     }
@@ -75,11 +75,9 @@ test("authoritative workbench snapshot schema enforces ready data, unavailable n
   assert.ok(check({ ...value, rewards: { status: "forbidden", data: null } }));
   assert.ok(!check({ ...value, rewards: unavailable() }));
   assert.ok(!check({ ...value, rewards: ready({ ...value.rewards.data, gift_points: "5" }) }));
-  for (const key of ["commissions"]) {
-    assert.ok(check({ ...value, [key]: unavailable() }));
-    assert.ok(!check({ ...value, [key]: { status: "not_implemented", data: { count: "0" } } }));
-    assert.ok(!check({ ...value, [key]: { status: "not_implemented", data: null, count: "0" } }));
-  }
+  assert.ok(check({ ...value, commissions: unavailable() }));
+  assert.ok(!check({ ...value, commissions: { status: "not_implemented", data: { count: "0" } } }));
+  assert.ok(!check({ ...value, commissions: { status: "not_implemented", data: null, count: "0" } }));
   assert.ok(!check({ ...value, brand_id: "not-a-uuid" }));
 });
 
