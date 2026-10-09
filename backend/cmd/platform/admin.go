@@ -90,7 +90,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 		permissions = append(permissions, "schedule.view.platform", "period.view.platform")
 		permissions = append(permissions, "draw_source.view.platform", "draw.view.platform")
 		permissions = append(permissions, "bet.view.platform", "bet_policy.view.platform")
-		permissions = append(permissions, "withdrawal_policy.view.platform")
+		permissions = append(permissions, "withdrawal_policy.view.platform", "withdrawal.view.platform")
 		permissions = append(permissions, "join_code.view.platform")
 		permissions = append(permissions, "notification.view.platform")
 		permissions = append(permissions, "report_betting.view.platform", "report_ledger.view.platform")

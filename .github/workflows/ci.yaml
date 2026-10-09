@@ -50,6 +50,7 @@ jobs:
           .local/review-platform seed
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_operator --brand aurora
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform --super
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_withdrawal_platform --super
           .local/review-platform serve > .local/review-api.log 2>&1 &
           .local/review-platform worker > .local/review-worker.log 2>&1 &
           pnpm review:user > .local/review-user.log 2>&1 &

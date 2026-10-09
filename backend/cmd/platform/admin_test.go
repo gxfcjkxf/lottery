@@ -9,6 +9,37 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 )
 
+func TestBootstrapPlatformWithdrawalPermissionIsReadOnly(t *testing.T) {
+	db := testdb.New(t)
+	ctx := context.Background()
+	before := os.Args
+	t.Cleanup(func() { os.Args = before })
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-owned-test-only-password-2026")
+	os.Args = []string{"platform", "create-admin", "--username", "platform_withdrawal_reader", "--super"}
+	if err := createAdmin(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := db.Query(ctx, `SELECT permission_key FROM role_permissions rp JOIN admin_account_roles ar ON ar.role_id=rp.role_id JOIN admin_accounts a ON a.id=ar.account_id WHERE a.username='platform_withdrawal_reader' AND permission_key LIKE 'withdrawal.%' ORDER BY permission_key`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, key)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, []string{"withdrawal.view.platform"}) {
+		t.Fatalf("unexpected withdrawal grants: %v", got)
+	}
+}
+
 func TestBootstrapCommissionPolicyPermissionsAreExplicitAndScoped(t *testing.T) {
 	db := testdb.New(t)
 	ctx := context.Background()
