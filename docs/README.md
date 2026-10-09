@@ -50,7 +50,7 @@
 - [37-brand-business-inventory.md](37-brand-business-inventory.md)：独立品牌来源的结构引用检查、固定41表覆盖、完整迁移定义核验、闭合只读快照与双端界面。
 - [38-commission-cycle-analysis.md](38-commission-cycle-analysis.md)：保存周期的核算/有效目标/实际净额分析、双查看授权、完整CSV及未知值边界；真实双端查询/导出和只读资金保持已验收，容量与真机另验。
 - [39-commission-manual-recalculation-policy.md](39-commission-manual-recalculation-policy.md)：人工修正后新核算覆盖政策、历史未决计划显式审计重试及部署/验收边界。
-- [40-zero-original-commission-evidence.md](40-zero-original-commission-evidence.md)：零原派发的真实人工资金保护、差额而非全额重发、旧错误stale记录升级预检及恢复边界。
+- [40-zero-original-commission-evidence.md](40-zero-original-commission-evidence.md)：零原派发真实人工资金保护、旧错误stale升级拒绝、显式离线完整历史检查及恢复边界；资金恢复继续实施。
 
 ## 第一阶段实现顺序
 

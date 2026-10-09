@@ -131,6 +131,8 @@ func commissionAnalysisSQL(group string) string {
  AND NOT EXISTS(SELECT 1 FROM relevant WHERE NOT valid OR cycle_id IS NULL)
  AND NOT EXISTS(SELECT 1 FROM relevant e WHERE e.kind='adjustment' AND NOT EXISTS(SELECT 1 FROM relevant original WHERE original.kind='paid' AND original.agent_id=e.agent_id AND original.member_id=e.member_id AND original.cycle_id=e.cycle_id))
  AND NOT EXISTS(SELECT 1 FROM relevant e JOIN duplicate_ledgers dup ON dup.ledger_id=e.ledger_id)
+ AND NOT EXISTS(SELECT 1 FROM raw_edges e JOIN point_ledger_entries l ON l.brand_id=$1 AND l.reference_type=e.reference_type AND l.reference_id=e.source_id
+ WHERE l.id IS DISTINCT FROM e.ledger_id)
  AND NOT EXISTS(SELECT 1 FROM point_ledger_entries l WHERE l.brand_id=$1 AND
  (l.entry_type IN('commission','commission_adjustment','commission_correction') OR l.reference_type IN('commission_payment_target','commission_adjustment','commission_correction_target'))
  AND NOT EXISTS(SELECT 1 FROM attributed_ledgers e WHERE e.id=l.id)) AS valid),

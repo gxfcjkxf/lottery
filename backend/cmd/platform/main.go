@@ -40,17 +40,33 @@ func run(logger *slog.Logger) error {
 	if len(os.Args) == 3 && os.Args[1] == "generate-metrics-token" {
 		return generateMetricsToken(os.Args[2])
 	}
+	reviewCommand, isReviewCommand, err := parseCommissionReviewArgs(os.Args[1:])
+	if isReviewCommand && err != nil {
+		return err
+	}
 	c, err := config.Load()
 	if err != nil {
+		if isReviewCommand {
+			return errors.New("commission history review configuration unavailable")
+		}
 		return err
+	}
+	if isReviewCommand && (c.DatabaseReadURL != "" || len(c.DatabaseReadURLs) != 0) {
+		return errors.New("commission history review requires primary database configuration only")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	pools, err := database.Open(ctx, c)
 	if err != nil {
+		if isReviewCommand {
+			return errors.New("commission history review database unavailable")
+		}
 		return err
 	}
 	defer pools.Close()
+	if isReviewCommand {
+		return runCommissionReviewCommand(ctx, pools.Primary, reviewCommand, os.Stdout)
+	}
 	command := "serve"
 	if len(os.Args) > 1 {
 		command = os.Args[1]
