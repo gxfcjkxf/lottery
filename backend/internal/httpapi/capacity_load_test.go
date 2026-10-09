@@ -48,7 +48,7 @@ type capacityIntegrity struct {
 	UnknownCommittedOrders int64 `json:"unknown_committed_orders"`
 }
 
-func checkCapacityIntegrity(ctx context.Context, f capacityFixture, known map[string]bool) (capacityIntegrity, error) {
+func readCapacityIntegrity(ctx context.Context, f capacityFixture, known map[string]bool) (capacityIntegrity, error) {
 	var out capacityIntegrity
 	e := f.DB.QueryRow(ctx, `SELECT (SELECT count(*) FROM bet_orders),(SELECT count(*) FROM point_ledger_entries WHERE entry_type='bet'),
  coalesce((SELECT sum(total_points) FROM bet_orders),0),
@@ -74,7 +74,18 @@ func checkCapacityIntegrity(ctx context.Context, f capacityFixture, known map[st
 	}
 	out.KnownUniqueReceipts = found
 	out.UnknownCommittedOrders = out.Orders - int64(found)
-	if found != len(known) || out.Orders != out.Debits || out.StakePoints != out.DebitPoints || out.StakePoints != out.Orders || out.BalancePoints != int64(len(f.Users))*int64(capacityFunding)-out.StakePoints || out.BadOrderLinks != 0 || out.BadAccountBalances != 0 || out.LateOrders != 0 {
+	if found != len(known) {
+		return out, fmt.Errorf("capacity acknowledged receipt missing from database")
+	}
+	return out, nil
+}
+
+func checkCapacityIntegrity(ctx context.Context, f capacityFixture, known map[string]bool) (capacityIntegrity, error) {
+	out, err := readCapacityIntegrity(ctx, f, known)
+	if err != nil {
+		return out, err
+	}
+	if out.Orders != out.Debits || out.StakePoints != out.DebitPoints || out.StakePoints != out.Orders || out.BalancePoints != int64(len(f.Users))*int64(capacityFunding)-out.StakePoints || out.BadOrderLinks != 0 || out.BadAccountBalances != 0 || out.LateOrders != 0 {
 		return out, fmt.Errorf("capacity financial invariants failed")
 	}
 	return out, nil

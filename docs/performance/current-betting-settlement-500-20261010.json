@@ -1,0 +1,199 @@
+{
+  "background_completed_jobs": 2,
+  "background_orders": 500,
+  "bad_prize_links": 0,
+  "brands": 2,
+  "database_after": {
+    "timestampUTC": "2026-10-09T16:36:57.770576Z",
+    "counters": {
+      "xactCommit": 68867,
+      "xactRollback": 1940,
+      "blksHit": 21839414,
+      "blksRead": 1915,
+      "deadlocks": 0
+    },
+    "totalConnections": 20,
+    "activeConnections": 0,
+    "lockWaiters": 0,
+    "connectionWaitsByWaitEventType": {
+      "Client": 20
+    },
+    "queues": {
+      "draw_corrections": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "notification_deliveries": {
+        "pending": 25,
+        "retry": 0,
+        "sent": 16475,
+        "failed": 0,
+        "completed": 0
+      },
+      "period_cancellations": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "settlement_jobs": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 2
+      }
+    },
+    "replication": {
+      "available": false,
+      "replicas": []
+    }
+  },
+  "database_before": {
+    "timestampUTC": "2026-10-09T16:36:27.412714Z",
+    "counters": {
+      "xactCommit": 6671,
+      "xactRollback": 1021,
+      "blksHit": 2959625,
+      "blksRead": 1873,
+      "deadlocks": 0
+    },
+    "totalConnections": 21,
+    "activeConnections": 0,
+    "lockWaiters": 0,
+    "connectionWaitsByWaitEventType": {
+      "Client": 21
+    },
+    "queues": {
+      "draw_corrections": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "notification_deliveries": {
+        "pending": 1000,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "period_cancellations": {
+        "pending": 0,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      },
+      "settlement_jobs": {
+        "pending": 2,
+        "retry": 0,
+        "sent": 0,
+        "failed": 0,
+        "completed": 0
+      }
+    },
+    "replication": {
+      "available": false,
+      "replicas": []
+    }
+  },
+  "database_delta": {
+    "xactCommit": 62196,
+    "xactRollback": 919,
+    "blksHit": 18879789,
+    "blksRead": 42,
+    "deadlocks": 0,
+    "counterResetDetected": false,
+    "sharedCacheHitRatio": 0.9999977754038158
+  },
+  "database_version": "17.11 (Postgres.app)",
+  "financial_checks_passed": true,
+  "integrity": {
+    "orders": 15500,
+    "debits": 15500,
+    "stake_points": 15500,
+    "debit_points": 15500,
+    "balance_points": 49989500,
+    "bad_order_links": 0,
+    "bad_account_balances": 0,
+    "late_orders": 0,
+    "known_unique_receipts": 15500,
+    "unknown_committed_orders": 0
+  },
+  "load_ended_at_utc": "2026-10-09T16:36:57.426181Z",
+  "load_started_at_utc": "2026-10-09T16:36:27.417969Z",
+  "notification_worker_errors": 0,
+  "paid_targets": 500,
+  "plan": {
+    "rate": 500,
+    "duration": 30000000000,
+    "max_in_flight": 500,
+    "request_timeout": 10000000000
+  },
+  "pool_max_connections": 20,
+  "prize_credits_during_load": 500,
+  "prize_entries": 500,
+  "prize_points": 5000,
+  "production_capacity_accepted": false,
+  "profile": "betting_with_settlement",
+  "replica_and_redis_capacity_verified": false,
+  "report": {
+    "planned": 15000,
+    "started": 15000,
+    "completed": 15000,
+    "dropped": 0,
+    "backpressure_dropped": 0,
+    "succeeded": 15000,
+    "status_counts": {
+      "201": 15000
+    },
+    "code_counts": {
+      "": 15000
+    },
+    "error_counts": {},
+    "service_latency": {
+      "count": 15000,
+      "p50_ms": 5.654417,
+      "p95_ms": 8.8,
+      "p99_ms": 11.17825
+    },
+    "start_lag": {
+      "count": 15000,
+      "p50_ms": 0.024209,
+      "p95_ms": 0.076542,
+      "p99_ms": 0.129209
+    },
+    "end_to_end": {
+      "count": 15000,
+      "p50_ms": 5.68375,
+      "p95_ms": 8.832875,
+      "p99_ms": 11.227084
+    },
+    "peak_in_flight": 28,
+    "successes_during_scheduled_interval": 14998,
+    "successes_after_scheduled_interval": 2,
+    "wall_time": 30003360375,
+    "completion_throughput_per_second": 499.9440000226975,
+    "planned_arrival_rate_per_second": 500,
+    "started_arrival_rate_per_second": 500,
+    "drop_rate": 0,
+    "backpressure_drop_rate": 0,
+    "failure_rate": 0
+  },
+  "request_checks_passed": true,
+  "scheduled_seconds": 30,
+  "schema_version": 1,
+  "scope": "isolated TCP betting + real settlement workers on the same wallets; preauthenticated synthetic sessions; no TLS or production logging",
+  "settled_periods": 2,
+  "settlement_worker_errors": 0,
+  "settlement_workers": 2,
+  "users": 500,
+  "won_orders": 500,
+  "worker_checks_passed": true
+}

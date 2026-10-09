@@ -72,7 +72,7 @@ func capacityTx(t *testing.T, p *pgxpool.Pool, run func(pgx.Tx) error) {
 		t.Fatal(e)
 	}
 }
-func capacityRule(t *testing.T, p *pgxpool.Pool, brand string) betting.Input {
+func capacityRule(t *testing.T, p *pgxpool.Pool, brand, code string, window, drawDelay time.Duration) betting.Input {
 	t.Helper()
 	ctx := context.Background()
 	rs := rulebook.Store{DB: p}
@@ -99,7 +99,7 @@ func capacityRule(t *testing.T, p *pgxpool.Pool, brand string) betting.Input {
 	var period rulebook.Period
 	capacityTx(t, p, func(tx pgx.Tx) error {
 		var e error
-		game, e = rs.CreateGame(ctx, tx, brand, creator, "capacity_game", "Capacity fixture", definition.Model, "UTC", "capacity isolated fixture", meta)
+		game, e = rs.CreateGame(ctx, tx, brand, creator, code, "Capacity fixture", definition.Model, "UTC", "capacity isolated fixture", meta)
 		return e
 	})
 	capacityTx(t, p, func(tx pgx.Tx) error {
@@ -132,13 +132,9 @@ func capacityRule(t *testing.T, p *pgxpool.Pool, brand string) betting.Input {
 		return e
 	})
 	now := time.Now().UTC()
-	window := time.Hour
-	if cutoff := capacityInt(t, "LOTTERY_CAPACITY_CUTOFF_SECONDS", 0, 0, 300); cutoff > 0 {
-		window = time.Duration(cutoff) * time.Second
-	}
 	capacityTx(t, p, func(tx pgx.Tx) error {
 		var e error
-		period, e = rs.OpenPeriod(ctx, tx, brand, game.ID, "capacity-1", now.Add(-time.Minute), now.Add(window), now.Add(2*time.Hour))
+		period, e = rs.OpenPeriod(ctx, tx, brand, game.ID, "capacity-1", now.Add(-time.Minute), now.Add(window), now.Add(drawDelay))
 		return e
 	})
 	svc := betting.Service{DB: p}
@@ -183,8 +179,12 @@ func newCapacityFixture(t *testing.T, userCount, brands int, poolSize int32) cap
 	brandIDs := []string{"0199a000-0000-7000-8000-000000000001", "0199a000-0000-7000-8000-000000000002"}
 	codes := []string{"aurora", "harbor"}
 	inputs := make([]betting.Input, brands)
+	window := time.Hour
+	if cutoff := capacityInt(t, "LOTTERY_CAPACITY_CUTOFF_SECONDS", 0, 0, 300); cutoff > 0 {
+		window = time.Duration(cutoff) * time.Second
+	}
 	for i := range inputs {
-		inputs[i] = capacityRule(t, p, brandIDs[i])
+		inputs[i] = capacityRule(t, p, brandIDs[i], "capacity_game", window, 2*time.Hour)
 	}
 	ctx := context.Background()
 	for i := 0; i < userCount; i++ {

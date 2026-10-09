@@ -22,6 +22,7 @@
     "test:contracts": "node --test tests/contracts/*.test.mjs",
     "test:capacity-report": "node scripts/check-capacity-baseline.mjs",
     "test:capacity-safety": "node scripts/check-capacity-safety.mjs",
+    "test:capacity-settlement": "node scripts/check-capacity-settlement.mjs",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
