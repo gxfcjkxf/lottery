@@ -3,7 +3,6 @@ import {
   computed,
   defineAsyncComponent,
   onMounted,
-  onUnmounted,
   ref,
 } from "vue";
 import { brandPermissionSet } from "./brand-permissions";
@@ -87,11 +86,11 @@ const englishUi: Record<string, string> = {
   "认证、品牌展示及域名绑定为真实配置；提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。": "Authentication, brand presentation, and domain binding are live settings; withdrawal qualification/status are connected; brand policy is disabled by default and real payments are unavailable.",
   "人工充值、冻结、调整与账本为真实操作；提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。": "Manual deposits, freezes, adjustments, and ledger actions are live; withdrawal qualification/status are connected; brand policy is disabled by default and real payments are unavailable.",
   "内部积分，未接入真实支付": "Internal points · No real payments",
-  "切换品牌": "Switch brand", "真实品牌": "Live brand", "演示品牌": "Demo brand", "选择品牌": "Select a brand",
-  "没有可访问的品牌": "No accessible brands", "仅原型演示": "Prototype demo only", "主导航": "Main navigation",
+  "切换品牌": "Switch brand", "真实品牌": "Live brand", "选择品牌": "Select a brand",
+  "没有可访问的品牌": "No accessible brands", "主导航": "Main navigation",
   "概览": "Overview", "平台": "Platform", "运营": "Operations", "资金": "Finance", "管理": "Management",
-  "帮助与反馈": "Help & feedback", "未登录": "Not signed in", "超级管理员": "Super administrator", "管理员": "Administrator", "原型演示": "Prototype demo",
-  "退出登录": "Sign out", "账号菜单": "Account menu", "退出": "Sign out", "运营控制台": "Operations console", "演示原型": "Prototype demo",
+  "帮助与反馈": "Help & feedback", "超级管理员": "Super administrator", "管理员": "Administrator",
+  "退出登录": "Sign out", "退出": "Sign out", "运营控制台": "Operations console", "演示原型": "Prototype demo",
   "搜索用户、注单、期次": "Search users, orders, periods", "搜索": "Search", "通知": "Notifications", "帮助中心": "Help center", "关闭说明": "Dismiss notice",
   "交互演示 · 非生产环境": "Interactive demo · non-production",
   "后端品牌上下文": "Backend brand context", "正在读取 GET /api/v1/context": "Reading GET /api/v1/context", "平台品牌上下文": "Platform brand context",
@@ -112,21 +111,21 @@ const englishUi: Record<string, string> = {
   "请先登录后台账号查看真实佣金派发记录。": "Sign in to view live commission payout records.",
   "人工奖励": "Manual rewards", "请先登录后台账号查看人工奖励订单。": "Sign in to view manual reward orders.",
   "佣金更正": "Commission corrections", "请先登录后台账号查看佣金更正计划和执行。": "Sign in to view commission correction plans and executions.",
-  "刷新日志": "Refresh log", "按选中品牌读取真实后台日志。": "Load live admin logs for the selected brand.", "未登录：以下是静态演示样例，不是后台记录。": "Signed out: these are static examples, not admin records.", "请先从侧栏选择品牌；审计请求始终携带明确的 X-Brand-ID。": "Select a brand in the sidebar. Audit requests always include an explicit X-Brand-ID.", "正在读取审计日志…": "Loading audit log…", "所选品牌没有可显示的审计记录。": "No audit records are available for this brand.", "资源": "Resource", "操作人": "Actor", "原因": "Reason", "时间": "Time", "演示日志不会显示为真实后台记录。": "Demo logs are not shown as live admin records.",
+  "刷新日志": "Refresh log", "按选中品牌读取真实后台日志。": "Load live admin logs for the selected brand.", "请先从侧栏选择品牌；审计请求始终携带明确的 X-Brand-ID。": "Select a brand in the sidebar. Audit requests always include an explicit X-Brand-ID.", "正在读取审计日志…": "Loading audit log…", "所选品牌没有可显示的审计记录。": "No audit records are available for this brand.", "资源": "Resource", "操作人": "Actor", "原因": "Reason", "时间": "Time", "演示日志不会显示为真实后台记录。": "Demo logs are not shown as live admin records.",
   "关闭": "Close", "取消": "Cancel", "必填": "Required", "保存中…": "Saving…", "保存到后台": "Save to admin", "处理中…": "Processing…", "确认踢出": "Confirm removal", "确认重置全局密码": "Confirm global password reset", "编辑成员状态和备注": "Edit member status and notes", "踢出品牌会话": "Revoke brand session", "重置全局密码": "Reset global password", "这会调用后台踢出接口，撤销该用户在当前品牌的会话。": "This calls the admin removal API and revokes this user's session for the current brand.", "新密码": "New password", "重置原因": "Reset reason", "我确认此重置影响该全局账号在所有品牌的密码和会话。": "I understand this resets the global account password and sessions across all brands.",
   "全部管理页面": "All admin pages", "关闭导航": "Close navigation", "移动端主导航": "Mobile main navigation", "用户": "Users", "期次": "Periods", "审核": "Review", "更多": "More",
   "审核提现申请": "Review withdrawal request", "申请编号": "Request ID", "申请人": "Applicant", "申请积分": "Requested points", "积分来源": "Points source", "审核意见 / 原因": "Review / reason", "说明来源核验结论或驳回原因": "Describe source verification or reason for rejection", "驳回申请": "Reject request", "通过审核": "Approve", "批准仅表示演示状态转为处理中；不会向外部付款或修改真实账本。": "Approval only moves the demo request to processing. No external payment or live ledger change occurs.",
   "纠正开奖结果": "Correct draw result", "原结果": "Original result", "新结果": "New result", "影响范围预览": "Impact preview", "预估值 · 非实际回溯结果": "Estimate · not an actual recalculation", "待回溯注单": "Orders to recalculate", "预计重新结算": "Estimated settlements", "账本处理方式": "Ledger handling", "保留原记录并创建冲正": "Keep original entry and create reversal", "纠正原因": "Correction reason", "记录结果来源、校验依据及纠正原因": "Record the result source, verification, and reason for correction", "确认纠正并创建回溯（演示）": "Confirm correction and create recalculation (demo)",
   "人工录入开奖结果": "Enter draw result manually", "来源": "Source", "人工录入（单人操作）": "Manual entry (single operator)", "提交后影响": "Impact after submission", "演示人工结果生效，本期停用外部来源": "Demo result takes effect; external sources are disabled for this period", "校验项": "Checks", "号码范围 · 重复 · 期次状态": "Number range · duplicates · period status", "后续操作": "Next steps", "记录操作者和原因，进入结算流程": "Record operator and reason, then continue to settlement", "人工录入原因": "Reason for manual entry", "说明人工开奖原因和数据核验依据": "Explain why the draw was entered manually and how the data was verified", "确认人工结果（演示）": "Confirm manual result (demo)",
   "域名绑定不配置 DNS、证书或重定向；展示仅支持固定预设与中英文文案，不支持任意 CSS、HTML 或上传素材。": "Domain binding does not configure DNS, certificates, or redirects. Presentation supports fixed presets and bilingual copy, not arbitrary CSS, HTML, or uploaded assets.",
-  "管理品牌主题、域名及生效版本": "Manage brand themes, domains, and active versions", "新建品牌为演示入口": "Brand creation is a demo entry point", "新建品牌": "Create brand", "全部品牌": "All brands", "导出配置 ↓": "Export config ↓", "默认语言": "Default language", "主域名": "Primary domain", "品牌": "Brand", "时区": "Time zone", "平台默认 → 品牌覆盖　·　配置发布后清理缓存并返回新版本号": "Platform default → brand override · publishing clears the cache and returns a new version", "数据仅用于演示": "Demo data only", "管理 →": "Manage →",
+  "品牌": "Brand", "时区": "Time zone",
   "此页显示真实成员；账号权限、积分账本、认证设置和投注已接入，提现仍为原型。": "This page shows live members. Account permissions, the points ledger, authentication settings, and betting are connected; withdrawals remain a prototype.", "会话由同源 HttpOnly Cookie 维护，此页面不会保存访问令牌。": "The session uses a same-origin HttpOnly cookie. This page does not store access tokens.", "请先登录后台账号。": "Sign in to the admin account first.", "请先登录后台账号查看代理配置。": "Sign in to view agent settings.", "当前账号没有此品牌的加入码查看权限。": "This account cannot view join codes for this brand.", "请先登录后台账号，才能配置站内通知模板。": "Sign in to configure in-app notification templates.", "请先登录后台账号，才能查看真实运营报表。": "Sign in to view live operations reports.", "请先登录后台账号，才能查看真实投递记录。": "Sign in to view live delivery records.", "请先登录后台账号，才能管理真实角色和权限。": "Sign in to manage live roles and permissions.", "请登录并选择有钱包查看权限的品牌。": "Sign in and select a brand with wallet viewing permission.", "请选择一个有权访问的品牌以查看注单。": "Choose an accessible brand to view orders.", "请先登录后台账号。投注策略和注单均从真实 API 读取，不使用演示数据。": "Sign in first. Betting policies and orders load from the live API; demo data is not used.", "前往登录": "Go to sign in",
   "真实规则模拟": "Live rule simulation", "请先登录后台并选择品牌，才能查看真实规则版本和模拟。": "Sign in and select a brand to view live rule versions and simulations.",   "真实期次计划": "Live period plan", "请先登录后台账号并选择品牌，才能保存计划、生成和查询期次。": "Sign in and select a brand to save plans, generate, and view periods.", "查看期次时间线、来源校验与开奖操作": "View period timeline, source checks, and draw actions", "人工开奖": "Manual draw", "生成期次": "Generate period", "复制期次编号": "Copy period ID", "投注开始": "Betting opens", "投注截止": "Betting closes", "开奖时间": "Draw time", "结算完成": "Settlement complete", "投注订单": "Bet orders", "投注积分": "Bet points", "关联规则": "Linked rule", "品牌时区": "Brand time zone", "优先级与最近检查时间": "Priority and last check", "切换记录": "Change history", "主来源 · API": "Primary source · API", "备用来源 · API": "Backup source · API", "上次校验": "Last checked", "健康": "Healthy", "单人操作，必须记录审计原因": "Single operator; an audit reason is required", "录入": "Enter result", "当前开奖结果": "Current draw result", "上一期": "Previous period", "已确认": "Confirmed", "来源：主开奖源": "Source: primary draw source", "校验项：号码范围 ✓　重复校验 ✓　签名 ✓": "Checks: number range ✓ duplicates ✓ signature ✓", "确认时间": "Confirmed at", "确认并结算 →": "Confirm and settle →", "状态时间线": "Status timeline", "开奖结果已确认": "Draw result confirmed", "来源结果通过校验": "Source result passed validation", "期次投注已截止": "Period betting closed", "人工开奖和结果纠正均属于高风险演示操作。确认前必须查看影响范围并填写原因。": "Manual draws and result corrections are high-risk demos. Review the impact and enter a reason before confirming.",
   "周期规则、试算与记录调整概览": "Overview of cycle rules, estimates, and record adjustments", "新建佣金规则": "Create commission rule", "本周期预计佣金": "Estimated commission this cycle", "待结算记录": "Records awaiting settlement", "覆盖 142 位代理": "Covers 142 agents", "已结算佣金": "Settled commission", "本月累计 · 演示数据": "Month to date · demo data", "佣金规则版本": "Commission rule versions", "修改会创建新版本，已结算历史记录保留原始金额": "Changes create a new version; settled history retains original amounts", "版本历史 →": "Version history →", "只计算有效输钱注单 · 品牌范围": "Counts eligible losing orders only · brand scope", "输赢模式": "Win/loss model", "比例": "Rate", "周期": "Cycle", "每周": "Weekly", "每月": "Monthly", "生效中 · v4": "Active · v4", "生效中 · v2": "Active · v2", "详情 →": "Details →", "基于有效投注流水 · 品牌范围": "Based on eligible betting turnover · brand scope", "流水模式": "Turnover model", "近期佣金记录": "Recent commission records", "人工修正会建立独立 adjustment 记录": "Manual corrections create a separate adjustment record", "导出 ↓": "Export ↓", "代理": "Agent", "模式": "Model", "计算基数": "Calculation base", "佣金积分": "Commission points", "待结算": "Pending settlement", "已结算": "Settled",
   "真实代理配置与历史记录；佣金核算已接入，审核和派发尚未实现。": "Live agent settings and history; commission calculations are connected, but approval and payouts are not implemented.", "真实注单结果及账本流水；汇总余额不是完整逐账户对账证明。": "Live order results and ledger entries; aggregate balances are not a complete account-by-account reconciliation.", "真实站内通知投递记录；外部发送渠道尚未接入。": "Live in-app notification delivery records; external channels are not connected.", "真实版本化站内通知模板；已生成消息保留原文案，不触发新通知或资金变化。": "Live versioned in-app notification templates; generated messages retain their original copy and do not send notifications or change funds.", "审计日志为真实后台数据；投注已接入，提现仍为演示。": "Audit logs are live admin data; betting is connected while withdrawals remain a demo.", "账号与角色变更为真实操作；投注已接入，提现仍为演示。": "Account and role changes are live operations; betting is connected while withdrawals remain a demo.", "认证、品牌展示及域名绑定为真实配置；提现仍为演示。": "Authentication, brand presentation, and domain binding are live settings; withdrawals remain a demo.", "人工充值、冻结、调整与账本为真实操作；提现尚未接入。": "Manual deposits, freezes, adjustments, and ledger actions are live; withdrawals are not connected.", "标为演示的功能不写入后台；账号、积分、规则版本和期次计划已接入真实 API。": "Features marked as demos do not write to admin systems. Accounts, points, rule versions, and period plans use the live API.",
   "加入码": "Join codes", "冻结": "Frozen", "已过期": "Expired", "已注销": "Cancelled", "待审核": "Awaiting review", "已通过": "Approved", "已驳回": "Rejected",
   "已登录管理员账号": "Signed in as admin", "已退出管理员账号": "Signed out of admin", "成员资料已更新": "Member details updated", "该成员的品牌会话已踢出": "The member's brand session was revoked", "全局密码已重置，所有品牌会话已撤销": "Global password reset; sessions revoked across all brands", "审核失败": "Review failed", "提交失败": "Submission failed", "纠正原因必填": "Correction reason is required", "人工开奖原因必填": "Manual draw reason is required", "人工结果已锁定本期（演示）": "Manual result locked for this period (demo)",
-  "帮助中心为演示入口": "Help center is a demo entry point", "概览已刷新（演示数据保持不变）": "Overview refreshed (demo data is unchanged)", "配置导出成功（演示）": "Config exported (demo)", "规则草稿已暂存（当前页面演示）": "Rule draft saved temporarily (page demo)", "查看版本差异（演示）": "View version differences (demo)", "来源切换记录（演示）": "View source change history (demo)", "结算任务已加入队列（演示）": "Settlement task added to queue (demo)", "新建佣金规则草稿（演示）": "Create commission rule draft (demo)", "佣金版本历史（演示）": "Commission version history (demo)", "佣金规则详情（演示）": "Commission rule details (demo)", "记录报表导出完成（演示）": "Record report exported (demo)", "已打开规则版本列表（演示）": "Rule version list opened (demo)", "已生成下一期草稿（演示）": "Next period draft generated (demo)", "已复制期次编号": "Period ID copied", "已创建待确认发布版本；演示不会改变实际配置": "Publish version created for confirmation; demo does not change live settings", "规则已提交给周宁审核（演示）": "Rule submitted to Zhou Ning for review (demo)", "审核通过；待发布确认（演示）": "Review approved; awaiting publish confirmation (demo)", "规则已驳回（演示）": "Rule rejected (demo)",
+  "帮助服务尚未连接。": "Help is unavailable because no help service is connected.", "页面范围以各模块状态为准；积分为站内内部积分，不接入外部支付。": "Scope varies by module. Points are internal to the platform; external payments are not connected.", "认证设置、品牌展示和域名绑定为真实配置；积分为站内内部积分，不接入外部支付。": "Authentication, brand presentation, and domain binding are live settings. Points are internal to the platform; external payments are not connected.", "充值、冻结、调整和账本是后台操作；资金使用站内内部积分，不接入外部支付。提现资格和状态流程已接入。": "Deposits, freezes, adjustments, and ledger entries are admin operations using internal points; external payments are not connected. Withdrawal qualification and status workflows are connected.", "审计日志读取当前品牌的真实后台记录。": "Audit logs load live admin records for the selected brand.", "账号和角色权限按当前品牌权限执行真实后台变更。": "Account and role changes use the permissions for the selected brand.", "概览已刷新（演示数据保持不变）": "Overview refreshed (demo data is unchanged)", "规则草稿已暂存（当前页面演示）": "Rule draft saved temporarily (page demo)", "查看版本差异（演示）": "View version differences (demo)", "来源切换记录（演示）": "View source change history (demo)", "结算任务已加入队列（演示）": "Settlement task added to queue (demo)", "新建佣金规则草稿（演示）": "Create commission rule draft (demo)", "佣金版本历史（演示）": "Commission version history (demo)", "佣金规则详情（演示）": "Commission rule details (demo)", "记录报表导出完成（演示）": "Record report exported (demo)", "已打开规则版本列表（演示）": "Rule version list opened (demo)", "已生成下一期草稿（演示）": "Next period draft generated (demo)", "已复制期次编号": "Period ID copied", "已创建待确认发布版本；演示不会改变实际配置": "Publish version created for confirmation; demo does not change live settings", "规则已提交给周宁审核（演示）": "Rule submitted to Zhou Ning for review (demo)", "审核通过；待发布确认（演示）": "Review approved; awaiting publish confirmation (demo)", "规则已驳回（演示）": "Rule rejected (demo)",
   "安全 / 审计轨迹": "SECURITY / AUDIT TRAIL", "平台 / 品牌配置": "PLATFORM / BRAND CONFIG", "操作控制台": "OPERATIONS CONSOLE",
 };
 Object.assign(englishUi, {
@@ -141,7 +140,7 @@ Object.assign(englishUi, {
   "只读接口 GET /api/v1/context 暂不可用；该接口仅用于只读配置状态，不影响管理员认证和真实用户目录。": "Read-only GET /api/v1/context is unavailable. It reports configuration only and does not affect admin authentication or the live user directory.",
   "· 2 期即将截止": "· 2 periods closing soon", "· 一切正常": "· All clear",
   "3 笔申请 · 最近 09:42": "3 requests · latest 09:42", "2 笔订单需要核查": "2 orders need investigation", "9 期期待结果确认": "9 periods awaiting result confirmation",
-  "＋ 新建品牌": "+ Create brand", "已登录 ·": "Signed in ·",
+  "已登录 ·": "Signed in ·",
   "使用后台管理员账号登录。会话由同源 HttpOnly Cookie 维护，此页面不会保存访问令牌。": "Sign in with an administrator account. The session uses a same-origin HttpOnly cookie; this page does not store access tokens.",
   "第": "Page", "页 · 每页最多 100 条": "· up to 100 records per page",
   "星彩 6+1 · 特别号命中": "Star 6+1 · special-number match", "● 自动保存演示": "● Autosave demo",
@@ -213,12 +212,10 @@ const nav: { name: Page; icon: string; group: string }[] = [
   { name: "风控与合规", icon: "⚖", group: "管理" },
 ];
 const page = ref<Page>("工作台");
-const demoBrand = ref("Aurora");
 const brandMenu = ref(false);
 const mobileMore = ref(false);
 const search = ref("");
 const notice = ref<ReturnType<typeof message> | string>("");
-const showDemoNotice = ref(true);
 const api = createAdminApi();
 const account = ref<AdminAccount | null>(null);
 const authLoading = ref(true);
@@ -238,7 +235,7 @@ const correctionSettlementPeriod = ref<{brandId:string;periodId:string;nonce:num
 const brand = computed(
   () =>
     adminBrands.value.find((item) => item.id === selectedBrandId.value)?.name ??
-    demoBrand.value,
+    ui("请选择品牌"),
 );
 const selectedBrand = computed(() => adminBrands.value.find((item) => item.id === selectedBrandId.value) ?? null);
 const presentationApi=createBrandPresentationApi();
@@ -315,28 +312,16 @@ const loadBrandContext = async () => {
     contextState.value = "unavailable";
   }
 };
-const isMobile = ref(
-  typeof window !== "undefined" &&
-    window.matchMedia("(max-width: 700px)").matches,
-);
-const updateMobile = () => {
-  isMobile.value = window.matchMedia("(max-width: 700px)").matches;
-};
 onMounted(() => {
-  window.addEventListener("resize", updateMobile);
   void loadBrandContext();
   void restoreAdminSession();
 });
-onUnmounted(() => window.removeEventListener("resize", updateMobile));
 const groups = computed(() => [...new Set(nav.map((item) => item.group))]);
 const canViewJoinCodes = computed(() => {
   if (!account.value || !selectedBrandId.value) return false;
   return brandPermissionSet(account.value, selectedBrandId.value).has("join_code.view.brand");
 });
 const visibleNav = computed(() => nav.filter((item) => item.name !== "加入码" || canViewJoinCodes.value));
-const currentIcon = computed(
-  () => nav.find((item) => item.name === page.value)?.icon ?? "▦",
-);
 const go = (target: Page) => {
   page.value = target;
   notice.value = "";
@@ -664,39 +649,6 @@ const changeMemberPage = async (direction: -1 | 1) => {
   memberOffset.value = Math.max(0, memberOffset.value + direction * 100);
   await loadMembers();
 };
-const ledgerTab = ref("账本流水");
-const ledger = [
-  {
-    id: "LE-883140",
-    type: "投注扣减",
-    source: "注单 BO-61048219",
-    before: "2,495",
-    change: "-15",
-    after: "2,480",
-    actor: "系统演示",
-    time: "10-05 10:26",
-  },
-  {
-    id: "LE-883102",
-    type: "中奖入账",
-    source: "注单 BO-61047212",
-    before: "2,483",
-    change: "+12",
-    after: "2,495",
-    actor: "结算演示",
-    time: "10-05 08:10",
-  },
-  {
-    id: "LE-882988",
-    type: "人工充值",
-    source: "RC-2601041",
-    before: "483",
-    change: "+2,000",
-    after: "2,483",
-    actor: "周宁",
-    time: "10-04 18:43",
-  },
-];
 </script>
 
 <template>
@@ -752,13 +704,12 @@ const ledger = [
         >
           <span class="brand-avatar">{{ brand.slice(0, 1) }}</span
           ><span class="brand-switch-text"
-            ><small>{{ account ? ui("真实品牌") : ui("演示品牌") }}</small
-            ><b>{{ account && !selectedBrandId ? ui("选择品牌") : brand }}</b></span
+            ><small>{{ ui("真实品牌") }}</small
+            ><b>{{ !selectedBrandId ? ui("请选择品牌") : brand }}</b></span
           ><span class="chevron">⌄</span>
         </button>
         <div v-if="brandMenu" class="brand-dropdown">
-          <template v-if="account"
-            ><button
+          ><button
               v-for="item in adminBrands"
               :key="item.id"
               @click="selectBrand(item.id)"
@@ -766,20 +717,7 @@ const ledger = [
               {{ item.name }} <span v-if="selectedBrandId === item.id">✓</span
               ><small>{{ item.code }} · {{ item.status }}</small>
             </button>
-            <p v-if="!adminBrands.length">{{ ui("没有可访问的品牌") }}</p></template
-          ><template v-else
-            ><button
-              v-for="name in ['Aurora', 'Harbor']"
-              :key="name"
-              @click="
-                demoBrand = name;
-                brandMenu = false;
-                toast(`当前本地原型品牌：${name}`);
-              "
-            >
-              {{ name }}<small>{{ ui("仅原型演示") }}</small>
-            </button></template
-          >
+            <p v-if="!adminBrands.length">{{ ui("没有可访问的品牌") }}</p>
         </div>
       </div>
       <nav class="side-nav" :aria-label="ui('主导航')">
@@ -799,36 +737,20 @@ const ledger = [
         >
       </nav>
       <div class="sidebar-bottom">
-        <button class="support-link" @click="toast('帮助中心为演示入口')">
+        <button class="support-link" @click="toast('帮助服务尚未连接。')">
           ◌ <span>{{ ui("帮助与反馈") }}</span><span class="external">↗</span>
         </button>
         <div class="profile">
-          <div class="profile-avatar">
-            {{ account ? account.id.slice(0, 1).toUpperCase() : ui("演") }}
-          </div>
+          <div class="profile-avatar">{{ account.id.slice(0, 1).toUpperCase() }}</div>
           <span class="profile-name"
-            ><b>{{ account?.id ?? ui("未登录") }}</b
-            ><small>{{
-              account
-                ? account.super_admin
-                  ? ui("超级管理员")
-                  : ui("管理员")
-                : ui("原型演示")
-            }}</small></span
+            ><b>{{ account.id }}</b
+            ><small>{{ account.super_admin ? ui("超级管理员") : ui("管理员") }}</small></span
           ><button
-            v-if="account"
             class="dots"
             :aria-label="ui('退出登录')"
             @click="logout"
           > {{ ui("退出") }}</button
-          ><button
-            v-else
-            class="dots"
-            :aria-label="ui('账号菜单')"
-            @click="go('账号与权限')"
           >
-            ···
-          </button>
         </div>
       </div>
     </aside>
@@ -878,38 +800,11 @@ const ledger = [
           >
             ♧</button
           ><span class="top-divider"></span
-          ><button class="help-button" @click="toast('帮助中心为演示入口')"> {{ ui("帮助中心 ↗") }} </button>
+          ><button class="help-button" @click="toast('帮助服务尚未连接。')"> {{ ui("帮助中心 ↗") }} </button>
         </div>
       </header>
       <div v-if="locale === 'en'" class="admin-locale-coverage" role="status">
         {{ t("部分功能面板来自独立模块，可能仍显示中文。", "Some feature panels are provided by separate modules and may still appear in Chinese.") }}
-      </div>
-      <div
-        v-if="
-          showDemoNotice &&
-          !(account && (page === '品牌和域名' || page === '风控与合规')) &&
-          page !== '工作台' &&
-          page !== '用户和成员' &&
-          page !== '审计日志' &&
-          page !== '通知投递' &&
-          page !== '通知模板' &&
-          page !== '报表和对账' &&
-          page !== '代理树' &&
-          page !== '资金与账本' &&
-          page !== '注单和异常' &&
-          page !== '账号与权限' &&
-          page !== '加入码'
-        "
-        class="demo-banner"
-      >
-        <span class="banner-icon">ⓘ</span
-        ><span
-          ><b>{{ ui("交互演示 · 非生产环境") }}</b
-          ><span class="banner-copy"> {{ ui("控制台包含已接入流程与原型。提现资格与状态流程已接入，品牌策略默认关闭且不支持真实支付；佣金核算与独立派发后台已接入，真实派发策略默认关闭。") }}</span
-          ></span
-        ><button :aria-label="ui('关闭说明')" @click="showDemoNotice = false">
-          ×
-        </button>
       </div>
       <div class="context-strip" :class="contextState">
         <span class="context-indicator"></span
@@ -926,14 +821,9 @@ const ledger = [
         ><template v-else-if="account && !authLoading && !authError"
           ><b>{{ ui("平台品牌上下文") }}</b
           ><span>{{ ui("当前入口没有可用的公开用户品牌上下文；后台管理认证独立，不受影响。请选择需要管理的品牌。") }}</span></template
-        ><template v-else
-          ><b>{{ ui("后端品牌上下文未连接") }}</b
-          ><span
-            >{{ ui("只读接口 GET /api/v1/context 暂不可用；该接口仅用于只读配置状态，不影响管理员认证和真实用户目录。") }}</span
-          ></template
         >
       </div>
-      <div v-if="account" class="directory-brand-bar">
+      <div class="directory-brand-bar">
         <span>{{ ui("真实后台品牌") }}</span
         ><select
           :value="selectedBrandId"
@@ -981,7 +871,6 @@ const ledger = [
           :brand-id="selectedBrandId"
           @session-invalid="clearAdminData"
         />
-        <template v-if="account">
           <div class="page-heading">
             <div>
               <div class="eyebrow">PLATFORM / BRAND CONFIG</div>
@@ -1024,65 +913,6 @@ const ledger = [
               </li>
             </ul>
           </article>
-        </template>
-        <template v-else>
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">PLATFORM / BRAND CONFIG</div>
-              <h1>{{ ui("品牌和域名") }}</h1>
-              <p>{{ ui("管理品牌主题、域名及生效版本") }}</p>
-            </div>
-            <button
-              class="button button-primary"
-              @click="toast('新建品牌为演示入口')"
-            > {{ ui("＋ 新建品牌") }} </button>
-          </div>
-          <article class="panel">
-            <div class="table-toolbar">
-              <div class="filter-tabs">
-                <button class="selected">{{ ui("全部品牌") }} <span>3</span></button
-                ><button>{{ ui("运行中") }}</button><button>{{ ui("已暂停") }}</button>
-              </div>
-              <button
-                class="button button-secondary"
-                @click="toast('配置导出成功（演示）')"
-              > {{ ui("导出配置 ↓") }} </button>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{{ ui("品牌") }}</th>
-                    <th>{{ ui("主域名") }}</th>
-                    <th>{{ ui("状态") }}</th>
-                    <th>{{ ui("默认语言") }}</th>
-                    <th>{{ ui("时区") }}</th>
-                    <th>{{ ui("配置版本") }}</th>
-                    <th>{{ ui("操作") }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="b in [
-                      { name: 'Aurora', domain: 'aurora.demo', state: '运行中', locale: '简体中文', tz: 'Asia/Singapore', version: 'v12' },
-                      { name: 'Harbor · 月湾', domain: 'harbor.demo', state: '运行中', locale: 'English', tz: 'Asia/Kuala_Lumpur', version: 'v8' },
-                      { name: 'Harbor Secondary · 晴野', domain: 'sunfield.demo', state: '已暂停', locale: '繁體中文', tz: 'Asia/Taipei', version: 'v4' },
-                    ]"
-                    :key="b.name"
-                  >
-                    <td><span class="table-brand"><i>{{ b.name[0] }}</i><b>{{ b.name }}</b></span></td>
-                    <td class="mono">{{ b.domain }}</td>
-                    <td><span class="badge" :class="b.state === '运行中' ? 'badge-success' : 'badge-neutral'">{{ b.state }}</span></td>
-                    <td>{{ b.locale }}</td><td>{{ b.tz }}</td>
-                    <td><span class="version-tag">{{ b.version }}</span></td>
-                    <td><button class="text-button" @click="toast(`打开 ${b.name} 配置（演示）`)">{{ ui("管理 →") }}</button></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="panel-foot">{{ ui("平台默认 → 品牌覆盖　·　配置发布后清理缓存并返回新版本号") }}<span>{{ ui("数据仅用于演示") }}</span></div>
-          </article>
-        </template>
       </section>
 
       <section
@@ -1525,35 +1355,30 @@ const ledger = [
       <section v-else class="page-content">
         <AuditManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
         <div v-else-if="account" class="panel directory-state"><h1>{{ ui("审计日志") }}</h1><p>{{ ui("请先从侧栏选择品牌；审计请求始终携带明确的 X-Brand-ID。") }}</p></div>
-        <div v-if="!account" class="panel directory-state">
-          <div class="eyebrow">SECURITY / AUDIT TRAIL</div>
-          <h1>{{ ui("审计日志") }}</h1>
-          <p>{{ ui("未登录：以下是静态演示样例，不是后台记录。") }}</p>
-        </div>
       </section>
 
       <footer v-if="page !== '加入码' && page !== '工作台'" class="page-footer">
-        <span>Aurora Operations Console <b>·</b> Prototype v0.1</span
+        <span>{{ brand }} {{ ui("运营控制台") }} <b>·</b> {{ ui("内部积分，未接入真实支付") }}</span
         ><span>{{
-          page === "用户和成员" && account
+          page === "用户和成员"
               ? ui("成员创建与管理为真实操作；投注已接入。")
-            : page === "代理树" && account
+            : page === "代理树"
               ? t("真实代理配置与历史记录；佣金核算和独立派发后台已接入，派发运行开关默认关闭。", "Live agent settings and history; commission calculations and the separate payout console are connected, with its runtime switch off by default.")
-            : page === "报表和对账" && account
+            : page === "报表和对账"
               ? ui("真实注单结果及账本流水；汇总余额不是完整逐账户对账证明。")
-            : page === "通知投递" && account
+            : page === "通知投递"
               ? ui("真实站内通知投递记录；外部发送渠道尚未接入。")
-            : page === "通知模板" && account
+            : page === "通知模板"
               ? ui("真实版本化站内通知模板；已生成消息保留原文案，不触发新通知或资金变化。")
-            : page === "审计日志" && account
-              ? ui("审计日志为真实后台数据；投注已接入，提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。")
-              : page === "账号与权限" && account
-                ? ui("账号与角色变更为真实操作；投注已接入，提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。")
-                : page === "品牌和域名" && account
-                  ? ui("认证、品牌展示及域名绑定为真实配置；提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。")
-                  : page === "资金与账本" && account
-                    ? ui("人工充值、冻结、调整与账本为真实操作；提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。")
-                    : ui("标为演示的功能不写入后台；账号、积分、规则版本和期次计划已接入真实 API。")
+            : page === "审计日志"
+              ? ui("审计日志读取当前品牌的真实后台记录。")
+            : page === "账号与权限"
+              ? ui("账号和角色权限按当前品牌权限执行真实后台变更。")
+            : page === "品牌和域名"
+              ? ui("认证设置、品牌展示和域名绑定为真实配置；积分为站内内部积分，不接入外部支付。")
+            : page === "资金与账本"
+              ? ui("充值、冻结、调整和账本是后台操作；资金使用站内内部积分，不接入外部支付。提现资格和状态流程已接入。")
+            : ui("页面范围以各模块状态为准；积分为站内内部积分，不接入外部支付。")
         }}</span>
       </footer>
       <div

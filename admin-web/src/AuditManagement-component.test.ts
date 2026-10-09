@@ -146,10 +146,10 @@ describe("audit management UI", () => {
     expect(source).toContain("aria-live=\"polite\"");
   });
 
-  it("keeps a page heading and the demo-only explanation for signed-out navigation", () => {
+  it("keeps signed-out viewers behind the login boundary without demo audit records", () => {
     const app = readFileSync(new URL("./App.vue", import.meta.url), "utf8");
-    expect(app).toContain("<div v-if=\"!account\" class=\"panel directory-state\">");
-    expect(app).toContain("<h1>{{ ui(\"审计日志\") }}</h1>");
-    expect(app).toContain("{{ ui(\"未登录：以下是静态演示样例，不是后台记录。\") }}");
+    expect(app).toContain('v-if="authLoading || !account"');
+    expect(app).toContain('class="login-entry__form"');
+    expect(app).not.toContain('{{ ui("未登录：以下是静态演示样例，不是后台记录。") }}');
   });
 });
