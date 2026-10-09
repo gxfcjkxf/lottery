@@ -11,6 +11,21 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+const correctionExecutionCandidateSQL = `SELECT c.brand_id::text,c.id::text,x.id::text,p.id::text
+ FROM commission_cycles c
+ LEFT JOIN commission_correction_executions x ON x.cycle_id=c.id AND x.state<>'stale'
+ LEFT JOIN commission_correction_plans p ON p.cycle_id=c.id AND p.state='ready'
+ JOIN brands b ON b.id=c.brand_id
+ JOIN brand_commission_payment_policies oldgate ON oldgate.brand_id=c.brand_id
+ JOIN brand_commission_correction_policies gate ON gate.brand_id=c.brand_id
+ WHERE ($1::uuid IS NULL OR c.id=$1) AND
+ ((x.id IS NOT NULL AND NOT commission_correction_execution_current(c.brand_id,x.id)) OR
+ (gate.enabled AND oldgate.enabled AND b.status<>'disabled' AND
+  ((x.state='applying' AND x.next_work_at<=clock_timestamp()) OR
+   (x.id IS NULL AND p.id IS NOT NULL AND c.state='ready' AND NOT EXISTS(SELECT 1 FROM commission_correction_executions prev WHERE prev.plan_id=p.id)))))
+ ORDER BY coalesce(x.next_work_at,p.updated_at,c.updated_at),c.id
+ FOR UPDATE OF c SKIP LOCKED LIMIT 1`
+
 // ProcessCorrectionExecutions commits at most one beneficiary difference per
 // step. Paused/failed jobs never resume on funding, a new draw, or a retry timer.
 func (s Service) ProcessCorrectionExecutions(ctx context.Context, maxSteps int) (int, error) {
@@ -19,28 +34,30 @@ func (s Service) ProcessCorrectionExecutions(ctx context.Context, maxSteps int) 
 	}
 	committed := 0
 	for i := 0; i < maxSteps; i++ {
-		tx, err := s.DB.Begin(ctx)
+		tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 		if err != nil {
 			return committed, err
 		}
 		var brand, cycle string
 		var execution, plan *string
-		err = tx.QueryRow(ctx, `SELECT c.brand_id::text,c.id::text,x.id::text,p.id::text
- FROM commission_cycles c
- LEFT JOIN commission_correction_executions x ON x.cycle_id=c.id AND x.state<>'stale'
- LEFT JOIN commission_correction_plans p ON p.cycle_id=c.id AND p.state='ready'
- JOIN brands b ON b.id=c.brand_id
- JOIN brand_commission_payment_policies oldgate ON oldgate.brand_id=c.brand_id
- JOIN brand_commission_correction_policies gate ON gate.brand_id=c.brand_id
- WHERE (x.id IS NOT NULL AND NOT commission_correction_execution_current(c.brand_id,x.id)) OR
- (gate.enabled AND oldgate.enabled AND b.status<>'disabled' AND
-  ((x.state='applying' AND x.next_work_at<=clock_timestamp()) OR
-   (x.id IS NULL AND p.id IS NOT NULL AND c.state='ready' AND NOT EXISTS(SELECT 1 FROM commission_correction_executions prev WHERE prev.plan_id=p.id))))
- ORDER BY coalesce(x.next_work_at,p.updated_at,c.updated_at),c.id
- FOR UPDATE OF c SKIP LOCKED LIMIT 1`).Scan(&brand, &cycle, &execution, &plan)
+		err = tx.QueryRow(ctx, correctionExecutionCandidateSQL, nil).Scan(&brand, &cycle, &execution, &plan)
 		if errors.Is(err, pgx.ErrNoRows) {
 			_ = tx.Rollback(ctx)
 			break
+		}
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			return committed, paymentDBError(err)
+		}
+		// SKIP LOCKED only claims c, not the left-joined execution or plan.
+		// An earlier statement snapshot can retain x=NULL after another worker
+		// registered a job and released an unchanged cycle row. Re-read this
+		// claimed cycle in a fresh READ COMMITTED statement before any audit,
+		// registration or money work. Stale candidates count as no committed step.
+		err = tx.QueryRow(ctx, correctionExecutionCandidateSQL, cycle).Scan(&brand, &cycle, &execution, &plan)
+		if errors.Is(err, pgx.ErrNoRows) {
+			_ = tx.Rollback(ctx)
+			continue
 		}
 		if err != nil {
 			_ = tx.Rollback(ctx)

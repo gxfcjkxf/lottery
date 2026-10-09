@@ -13,6 +13,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func correctionExecutionActor(f commissionBatchFixture, action string) access.Account {
@@ -1175,6 +1176,20 @@ func TestCommissionCorrectionExecutionFurtherActualCorrectionUsesCumulativeBalan
 func TestCommissionCorrectionExecutionConcurrentWorkersAreIdempotentAndBounded(t *testing.T) {
 	t.Parallel()
 	f, payment, _ := readyAutomaticCorrectionExecutionFixture(t)
+	// Do not rely on the server/operator's default transaction isolation. The
+	// worker must explicitly use READ COMMITTED for its fresh post-claim query.
+	poolConfig := f.betting.db.Config().Copy()
+	poolConfig.ConnConfig.RuntimeParams["default_transaction_isolation"] = "repeatable read"
+	concurrentPool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer concurrentPool.Close()
+	var isolation string
+	if err := concurrentPool.QueryRow(context.Background(), `SHOW default_transaction_isolation`).Scan(&isolation); err != nil || isolation != "repeatable read" {
+		t.Fatal("isolation fixture did not apply", err)
+	}
+	concurrentService := commission.Service{DB: concurrentPool}
 	if _, err := f.service.ProcessCorrectionExecutions(context.Background(), 0); !errors.Is(err, commission.ErrInvalid) {
 		t.Fatalf("maxSteps=0 error=%v, want invalid", err)
 	}
@@ -1183,13 +1198,14 @@ func TestCommissionCorrectionExecutionConcurrentWorkersAreIdempotentAndBounded(t
 	}
 	start := make(chan struct{})
 	var workers sync.WaitGroup
-	errs := make(chan error, 2)
-	for i := 0; i < 2; i++ {
+	const parallelWorkers = 8
+	errs := make(chan error, parallelWorkers)
+	for i := 0; i < parallelWorkers; i++ {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
 			<-start
-			_, err := f.service.ProcessCorrectionExecutions(context.Background(), 100)
+			_, err := concurrentService.ProcessCorrectionExecutions(context.Background(), 100)
 			errs <- err
 		}()
 	}
@@ -1215,5 +1231,12 @@ func TestCommissionCorrectionExecutionConcurrentWorkersAreIdempotentAndBounded(t
 	}
 	if got := commissionPaymentRead(t, f, payment.ID); got.State != "blocked" {
 		t.Fatalf("concurrent execution changed original payment: %+v", got)
+	}
+	beforeRepeat := correctionPlanSnapshot(t, f, payment.ID)
+	if steps, err := f.service.ProcessCorrectionExecutions(context.Background(), 100); err != nil || steps != 0 {
+		t.Fatalf("completed shared plan was registered or advanced again: steps=%d err=%v", steps, err)
+	}
+	if after := correctionPlanSnapshot(t, f, payment.ID); after != beforeRepeat {
+		t.Fatal("no-op repeat rewrote completed financial evidence")
 	}
 }

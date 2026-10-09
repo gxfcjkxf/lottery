@@ -204,6 +204,7 @@ func TestDrawNotificationUpgrade0068PreservesHistoryAndAddsOnlyFutureTemplates(t
 	if permissionsAfter != permissionsBefore {
 		t.Fatalf("upgrade changed permission snapshot: before=%s after=%s", permissionsBefore, permissionsAfter)
 	}
+	assertDrawNotificationAuditExportPermissions(t, db, customRoleID)
 
 	stable := drawNotificationUpgradeFingerprint(t, db)
 	newDefaultsStable := drawNotificationUpgradeDefaultsFingerprint(t, db)
@@ -257,6 +258,10 @@ func drawNotificationUpgradeFingerprintValue(t *testing.T, db *pgxpool.Pool, tab
 	filter := ""
 	if table == "notification_templates" || table == "notification_template_revisions" {
 		filter = " WHERE template_key NOT IN('draw.result.published','draw.result.corrected')"
+	} else if table == "permissions" {
+		filter = " WHERE key NOT IN('audit.export.brand','audit.export.platform')"
+	} else if table == "role_permissions" {
+		filter = " WHERE permission_key NOT IN('audit.export.brand','audit.export.platform')"
 	}
 	query := fmt.Sprintf(`SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text),'[]'::jsonb)::text FROM %s r%s`, pgx.Identifier{table}.Sanitize(), filter)
 	var value string
@@ -264,6 +269,29 @@ func drawNotificationUpgradeFingerprintValue(t *testing.T, db *pgxpool.Pool, tab
 		t.Fatalf("fingerprint %s: %v", table, err)
 	}
 	return value
+}
+
+func assertDrawNotificationAuditExportPermissions(t *testing.T, db *pgxpool.Pool, customRoleID string) {
+	t.Helper()
+	var registered, brandGrants, platformGrants, expectedBrandGrants, expectedPlatformGrants, invalidGrants, customGrants int
+	if err := db.QueryRow(context.Background(), `SELECT count(*) FROM permissions WHERE key IN('audit.export.brand','audit.export.platform')`).Scan(&registered); err != nil || registered != 2 {
+		t.Fatalf("registered audit export permissions=%d want=2 err=%v", registered, err)
+	}
+	if err := db.QueryRow(context.Background(), `SELECT
+ (SELECT count(*) FROM role_permissions WHERE permission_key='audit.export.brand'),
+ (SELECT count(*) FROM role_permissions WHERE permission_key='audit.export.platform'),
+ (SELECT count(*) FROM roles WHERE is_bootstrap AND brand_id IS NOT NULL),
+ (SELECT count(*) FROM roles WHERE is_bootstrap AND brand_id IS NULL),
+ (SELECT count(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id
+  WHERE (rp.permission_key='audit.export.brand' AND (NOT r.is_bootstrap OR r.brand_id IS NULL))
+     OR (rp.permission_key='audit.export.platform' AND (NOT r.is_bootstrap OR r.brand_id IS NOT NULL))),
+ (SELECT count(*) FROM role_permissions WHERE role_id=$1 AND permission_key IN('audit.export.brand','audit.export.platform'))`, customRoleID).
+		Scan(&brandGrants, &platformGrants, &expectedBrandGrants, &expectedPlatformGrants, &invalidGrants, &customGrants); err != nil {
+		t.Fatal("audit export role grants:", err)
+	}
+	if brandGrants != expectedBrandGrants || platformGrants != expectedPlatformGrants || invalidGrants != 0 || customGrants != 0 {
+		t.Fatalf("audit export grants brand/platform=%d/%d invalid_scope_or_custom=%d custom_fixture=%d", brandGrants, platformGrants, invalidGrants, customGrants)
+	}
 }
 
 func drawNotificationUpgradeDefaultsFingerprint(t *testing.T, db *pgxpool.Pool) string {

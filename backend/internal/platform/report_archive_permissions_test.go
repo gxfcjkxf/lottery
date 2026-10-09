@@ -74,12 +74,25 @@ func TestReportArchive0065To0066PermissionsPreserveRolesArchivesAndMoney(t *test
 		var got []string
 		// Migrate also applies later files. Their four explicit 0068 report
 		// grants have their own exact bootstrap/custom-role upgrade regression.
-		if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),'{}') FROM role_permissions WHERE role_id=$1 AND permission_key NOT IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand','report_attribution.view.brand','report_attribution.export.brand','report_attribution.view.platform','report_attribution.export.platform')`, roleID).Scan(&got); err != nil {
+		if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),'{}') FROM role_permissions WHERE role_id=$1 AND permission_key NOT IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand','report_attribution.view.brand','report_attribution.export.brand','report_attribution.view.platform','report_attribution.export.platform','audit.export.brand','audit.export.platform')`, roleID).Scan(&got); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("0066 changed existing role grants for %s: got=%v want=%v", roleID, got, want)
 		}
+	}
+	var auditBrand, auditPlatform, invalidAuditGrants int
+	if err := db.QueryRow(ctx, `SELECT
+ (SELECT count(*) FROM role_permissions WHERE permission_key='audit.export.brand'),
+ (SELECT count(*) FROM role_permissions WHERE permission_key='audit.export.platform'),
+ (SELECT count(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id
+  WHERE (rp.permission_key='audit.export.brand' AND (NOT r.is_bootstrap OR r.brand_id IS NULL))
+     OR (rp.permission_key='audit.export.platform' AND (NOT r.is_bootstrap OR r.brand_id IS NOT NULL)))`).
+		Scan(&auditBrand, &auditPlatform, &invalidAuditGrants); err != nil {
+		t.Fatal("audit export role grants:", err)
+	}
+	if auditBrand == 0 || auditPlatform == 0 || invalidAuditGrants != 0 {
+		t.Fatalf("audit export grants brand/platform=%d/%d invalid_scope_or_custom=%d", auditBrand, auditPlatform, invalidAuditGrants)
 	}
 	for _, tc := range []struct {
 		id   string
