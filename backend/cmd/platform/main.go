@@ -44,12 +44,27 @@ func run(logger *slog.Logger) error {
 	if isReviewCommand && err != nil {
 		return err
 	}
+	proposalCommand, isProposalCommand, err := parseCommissionProposalArgs(os.Args[1:])
+	if isProposalCommand && err != nil {
+		return err
+	}
+	if isProposalCommand {
+		if err := validateCommissionProposalEnvironment(proposalCommand, commissionProposalEnvironmentFromOS()); err != nil {
+			return err
+		}
+	}
 	c, err := config.Load()
 	if err != nil {
+		if isProposalCommand {
+			return errors.New("commission recovery configuration unavailable")
+		}
 		if isReviewCommand {
 			return errors.New("commission history review configuration unavailable")
 		}
 		return err
+	}
+	if isProposalCommand && (c.DatabaseReadURL != "" || len(c.DatabaseReadURLs) != 0) {
+		return errors.New("commission recovery requires primary database configuration only")
 	}
 	if isReviewCommand && (c.DatabaseReadURL != "" || len(c.DatabaseReadURLs) != 0) {
 		return errors.New("commission history review requires primary database configuration only")
@@ -58,6 +73,9 @@ func run(logger *slog.Logger) error {
 	defer stop()
 	pools, err := database.Open(ctx, c)
 	if err != nil {
+		if isProposalCommand {
+			return errors.New("commission recovery database unavailable")
+		}
 		if isReviewCommand {
 			return errors.New("commission history review database unavailable")
 		}
@@ -66,6 +84,9 @@ func run(logger *slog.Logger) error {
 	defer pools.Close()
 	if isReviewCommand {
 		return runCommissionReviewCommand(ctx, pools.Primary, reviewCommand, os.Stdout)
+	}
+	if isProposalCommand {
+		return runCommissionProposalCommand(ctx, pools.Primary, c, proposalCommand, os.Stdout)
 	}
 	command := "serve"
 	if len(os.Args) > 1 {

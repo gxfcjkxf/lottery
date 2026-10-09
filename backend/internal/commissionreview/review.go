@@ -81,6 +81,25 @@ func Inspect(ctx context.Context, db *pgxpool.Pool, brandID, cycleID string) (Re
 		return Report{}, err
 	}
 	defer tx.Rollback(ctx)
+	out, err := InspectTx(ctx, tx, brandID, cycleID)
+	if err != nil {
+		return Report{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Report{}, err
+	}
+	return out, nil
+}
+
+// InspectTx performs the complete legacy review in the caller's transaction.
+// It never begins, commits, or rolls back the transaction. The caller owns
+// isolation and any row locks needed to serialize a subsequent decision.
+func InspectTx(ctx context.Context, tx pgx.Tx, brandID, cycleID string) (Report, error) {
+	if ctx == nil || tx == nil || !canonicalUUID.MatchString(brandID) || !canonicalUUID.MatchString(cycleID) {
+		return Report{}, ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	checkpoint, err := database.CheckCommissionReviewMigrationsTx(ctx, tx)
 	if err != nil {
 		return Report{}, err
@@ -96,6 +115,9 @@ func Inspect(ctx context.Context, db *pgxpool.Pool, brandID, cycleID string) (Re
 		return Report{}, err
 	}
 	if _, err = tx.Exec(ctx, `SET LOCAL statement_timeout='15s'`); err != nil {
+		return Report{}, err
+	}
+	if _, err = tx.Exec(ctx, `SET LOCAL TIME ZONE 'UTC'`); err != nil {
 		return Report{}, err
 	}
 	out := Report{FormatVersion: 1, ReviewOnly: true, MigrationCheckpoint: checkpoint, BrandID: brandID, CycleID: cycleID, Payments: []Payment{}}
@@ -146,9 +168,6 @@ func Inspect(ctx context.Context, db *pgxpool.Pool, brandID, cycleID string) (Re
 	}
 	out.Analysis = FullAnalysis{Coverage: analysis.Coverage, Summary: analysis.Summary, Items: analysis.Items, TotalBeneficiaries: analysis.TotalGroups}
 	out.SnapshotAt = analysis.SnapshotAt
-	if err = tx.Commit(ctx); err != nil {
-		return Report{}, err
-	}
 	return out, nil
 }
 
