@@ -117,10 +117,10 @@ func TestPhysicalHistoryReadRouting(t *testing.T) {
 	evidence := historyRoutingEvidence{SchemaVersion: 1, Scope: "isolated loopback PostgreSQL physical history routing; synthetic HTTP administrator and audit rows only", ReplicaNodes: 2, PrimaryWriteVisibleOnBoth: true, OriginalDigestBefore: originalBefore.SHA256}
 	router := database.NewHistoryRouter(readerPools)
 	for _, expectedReplica := range []int{1, 2} {
-		waitHistoryAuditReplica(t, primaryPool, router, firstMarker, expectedReplica)
+		waitHistoryAuditReplica(t, primaryPool, readerPools[expectedReplica-1], router, firstMarker, expectedReplica)
 		evidence.RoundRobinReplicaIndexes = append(evidence.RoundRobinReplicaIndexes, expectedReplica)
 	}
-	evidence.NotificationRouteReplica = waitHistoryValueReplica(t, primaryPool, router, database.HistoryNotification, 1, func(tx pgx.Tx) (any, error) {
+	evidence.NotificationRouteReplica = waitHistoryValueReplica(t, primaryPool, readerPools[0], router, database.HistoryNotification, 1, func(tx pgx.Tx) (any, error) {
 		var count int
 		err := tx.QueryRow(ctx, `SELECT count(*) FROM notification_template_revisions`).Scan(&count)
 		return count, err
@@ -144,7 +144,7 @@ func TestPhysicalHistoryReadRouting(t *testing.T) {
 	if err == nil {
 		t.Fatal("paused selected replica did not return an error")
 	}
-	waitHistoryAuditReplica(t, primaryPool, pausedRouter, pausedMarker, 2)
+	waitHistoryAuditReplica(t, primaryPool, readerPools[1], pausedRouter, pausedMarker, 2)
 	evidence.PausedReplicaRejected = true
 
 	setReplayPaused(t, ctx, readerPools[1], true)
@@ -184,7 +184,7 @@ func TestPhysicalHistoryReadRouting(t *testing.T) {
 	if err == nil {
 		t.Fatal("offline selected replica did not return an error")
 	}
-	waitHistoryAuditReplica(t, primaryPool, offlineRouter, offlineMarker, 2)
+	waitHistoryAuditReplica(t, primaryPool, readerPools[1], offlineRouter, offlineMarker, 2)
 	evidence.OfflineReplicaRejected = true
 
 	// Neither an unrelated writable cluster nor the actual writable primary can
@@ -302,27 +302,54 @@ func waitHistoryAudit(t *testing.T, pool *pgxpool.Pool, action string) {
 	})
 }
 
-func waitHistoryAuditReplica(t *testing.T, primary *pgxpool.Pool, router *database.HistoryRouter, action string, expectedReplica int) {
+func waitHistoryFence(t *testing.T, primary, replica *pgxpool.Pool) {
 	t.Helper()
+	var fence string
+	if err := primary.QueryRow(context.Background(), `SELECT pg_current_wal_insert_lsn()::text`).Scan(&fence); err != nil {
+		t.Fatal(err)
+	}
+	// A visible marker does not prove later WAL has replayed. Synchronize the
+	// owned test node explicitly, without asking the application to fall back.
+	waitDrill(t, func() bool {
+		var ready bool
+		err := replica.QueryRow(context.Background(), `SELECT coalesce(pg_last_wal_replay_lsn() >= $1::pg_lsn,false)`, fence).Scan(&ready)
+		return err == nil && ready
+	})
+}
+
+func waitHistoryAuditReplica(t *testing.T, primary, replica *pgxpool.Pool, router *database.HistoryRouter, action string, expectedReplica int) {
+	t.Helper()
+	waitHistoryFence(t, primary, replica)
 	var count int
 	var source database.ReadSource
 	var readErr error
 	waitDrill(t, func() bool {
 		count, source, readErr = readHistoryAudit(context.Background(), primary, router, action)
+		if readErr != nil && source.Reason == "replica_not_wal_fenced" {
+			return false // Owned streaming node has not caught up to this sampled fence yet.
+		}
 		return readErr != nil || (source.Replica == expectedReplica && source.Reason == "wal_fenced")
 	})
 	if readErr != nil || count != 1 || source.Replica != expectedReplica || source.Reason != "wal_fenced" {
+		var primaryState, replicaState string
+		_ = primary.QueryRow(context.Background(), `SELECT json_build_object('system',(pg_control_system()).system_identifier::text,'database',current_database(),'schemas',current_schemas(true),'lsn',pg_current_wal_insert_lsn()::text,'timeline',substring(pg_walfile_name(pg_current_wal_insert_lsn()),1,8))::text`).Scan(&primaryState)
+		_ = replica.QueryRow(context.Background(), `SELECT json_build_object('system',(pg_control_system()).system_identifier::text,'database',current_database(),'schemas',current_schemas(true),'lsn',pg_last_wal_replay_lsn()::text,'timeline',(pg_control_checkpoint()).timeline_id,'recovery_timeline',(pg_control_recovery()).min_recovery_end_timeline,'recovery',pg_is_in_recovery(),'paused',pg_is_wal_replay_paused())::text`).Scan(&replicaState)
+		t.Logf("owned fence diagnostics: primary=%s replica=%s", primaryState, replicaState)
 		t.Fatalf("WAL-fenced audit read mismatch: expected replica %d, got replica=%d reason=%s count=%d", expectedReplica, source.Replica, source.Reason, count)
 	}
 }
 
-func waitHistoryValueReplica(t *testing.T, primary *pgxpool.Pool, router *database.HistoryRouter, route database.HistoryRoute, expectedReplica int, run func(pgx.Tx) (any, error)) int {
+func waitHistoryValueReplica(t *testing.T, primary, replica *pgxpool.Pool, router *database.HistoryRouter, route database.HistoryRoute, expectedReplica int, run func(pgx.Tx) (any, error)) int {
 	t.Helper()
+	waitHistoryFence(t, primary, replica)
 	var value any
 	var source database.ReadSource
 	var readErr error
 	waitDrill(t, func() bool {
 		value, source, readErr = readHistoryValue(context.Background(), primary, router, route, run)
+		if readErr != nil && source.Reason == "replica_not_wal_fenced" {
+			return false
+		}
 		return readErr != nil || (source.Replica == expectedReplica && source.Reason == "wal_fenced")
 	})
 	if readErr != nil || source.Replica != expectedReplica || source.Reason != "wal_fenced" {

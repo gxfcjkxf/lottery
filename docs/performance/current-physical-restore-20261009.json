@@ -1,0 +1,1507 @@
+{
+  "application_endpoint_failover_verified": false,
+  "arch": "arm64",
+  "auth_keys_restored": false,
+  "baseline": {
+    "tables": {
+      "admin_account_roles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "admin_accounts": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "admin_brand_scopes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "agent_config_revisions": {
+        "rows": 2,
+        "sha256": "4331eb9a8aa6c851f15ab36cf83e464f4f8de1dcfba46e41c190096ac5778ba9"
+      },
+      "agent_nodes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "audit_logs": {
+        "rows": 2,
+        "sha256": "4ad56907ab38249bab3ffb3720413fd2c2cff0b42508af408060b4e8e4ebbbdf"
+      },
+      "auth_challenges": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "auth_rate_limits": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_order_exceptions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_order_judgments": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_agent_policies": {
+        "rows": 2,
+        "sha256": "e37077d5e1e58275ef101eee2a2356ff4e8d26722952bc8a40de313038bd9042"
+      },
+      "brand_bet_policies": {
+        "rows": 2,
+        "sha256": "9f9cfa448a9200f3aabf6d63d77d612804853ee46b74312cc4465bc160e24448"
+      },
+      "brand_commission_correction_policies": {
+        "rows": 2,
+        "sha256": "c2397f37980bb824df1b3bad501f913c88025d382ba06272ba8567fe7870a74b"
+      },
+      "brand_commission_payment_policies": {
+        "rows": 2,
+        "sha256": "b7ee094e7ab2dba313f00df08966fa827606a0f2a4ef189fb51ce937e0a68cca"
+      },
+      "brand_commission_policies": {
+        "rows": 2,
+        "sha256": "150425e784ddf5d848707d7df3644be1df95d1a725ab95fc9846c5ebcb0b9438"
+      },
+      "brand_compliance_policies": {
+        "rows": 2,
+        "sha256": "616cf6da70e32142539a6e0e651258afd2276946d09b3d802962e7bd19313e9b"
+      },
+      "brand_creation_records": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_domain_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_domains": {
+        "rows": 3,
+        "sha256": "97f6dde1b829f92fb622d69b3f24b0e756d76ed0801df63bafeadaf57d3af984"
+      },
+      "brand_members": {
+        "rows": 1,
+        "sha256": "a6b3578cb9980feed9e90ee9fb8992a009c6f42f367d75b11f44367a7f3b9aca"
+      },
+      "brand_operation_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_point_policies": {
+        "rows": 2,
+        "sha256": "4e75a099b1ff81ce0e582ccbe94b88249d86f8432cc3c0e9cdee6d1827c6729b"
+      },
+      "brand_presentation_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_presentations": {
+        "rows": 2,
+        "sha256": "7afd007582b58f655355df3f6a0417d14ea3513a74a89df5488bedc5fda2cbbd"
+      },
+      "brand_report_archive_policies": {
+        "rows": 2,
+        "sha256": "cffa228bf438ed61dd15ae738f96638241f1eaea8b949522bd1202c592455954"
+      },
+      "brand_settlement_policies": {
+        "rows": 2,
+        "sha256": "6e8f85912040e46a27c54f4b230e7ce26a88ac9b9efb848b8a1335bec1d98954"
+      },
+      "brand_withdrawal_policies": {
+        "rows": 2,
+        "sha256": "c744952786d36d66e439fc70a39c0f8d622194d3ee651fe13509bf2d47b60f07"
+      },
+      "brands": {
+        "rows": 2,
+        "sha256": "45d98c49eac95607749cae9de87b783c870e261f77b8f6e24e098f05e577601a"
+      },
+      "commission_adjustment_heads": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_adjustments": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_allocations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_calculations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_balance_heads": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_cycle_holds": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_execution_steps": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_execution_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_executions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_plan_steps": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_plan_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_plans": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_policy_revisions": {
+        "rows": 2,
+        "sha256": "8e4c56bd01baae27917981fb6af8466b30c457b1bb2c15a41f12acde909e50ed"
+      },
+      "commission_cycle_steps": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_cycle_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_cycles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_discovery": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_earnings": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_payment_policy_revisions": {
+        "rows": 2,
+        "sha256": "1c2263720ef0c507a6792c3e1ec9ae7d940b9e7221949271e44db205022b3960"
+      },
+      "commission_payment_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_payments": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_policy_revisions": {
+        "rows": 2,
+        "sha256": "a782b1cb46999ac93a2ff5b151169d81c6006fa92a37c658e50eeeb8a0b43a8b"
+      },
+      "commission_runs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "compliance_decisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "compliance_gate_rejections": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "compliance_policy_revisions": {
+        "rows": 2,
+        "sha256": "b13881ae1c111c04dec3de543be6276c406a5c07232a56356711d7c7ee75aa5f"
+      },
+      "consumed_events": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_attempt_batches": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_correction_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_correction_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_corrections": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_notification_publications": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_notification_recipients": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_results": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_source_sets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_sources": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_bet_policies": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_schedules": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_withdrawal_policies": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "games": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "global_users": {
+        "rows": 1,
+        "sha256": "68cb55eee6f20714f95405c7cbe651f7b58709256707f2d6064ddce976d64165"
+      },
+      "idempotency_requests": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "join_code_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "join_codes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notification_deliveries": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notification_template_revisions": {
+        "rows": 44,
+        "sha256": "e310778ba79371941a4e3d383147f9ebce1c4a8fcad91b3b4e39e98ccb50c05a"
+      },
+      "notification_templates": {
+        "rows": 44,
+        "sha256": "c43f09c29073af7ae6ffb7686e93fc6e42ffb6df91668070ae91c7e03868a5f3"
+      },
+      "notifications": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "outbox_events": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellation_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellation_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_rule_versions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "periods": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "permissions": {
+        "rows": 167,
+        "sha256": "91c88a595eda0fc7157729f2e20cc4a3c032ea03cc9e293f7df3d0ce3b588c49"
+      },
+      "platform_domains": {
+        "rows": 2,
+        "sha256": "5789d6ce837abf1b55077de05958ad894e3c948241a7865ab625b52c24166ff1"
+      },
+      "platform_idempotency_requests": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "play_definitions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_accounts": {
+        "rows": 1,
+        "sha256": "2a043db9a03e9be251e39a0e2a4af2aa4e491540dfda1a14d21da8f688f336ea"
+      },
+      "point_balance_repairs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_buckets": {
+        "rows": 16,
+        "sha256": "bcdca0c702c6a731b1f8f38d6e5d845bde50281277c7784d5dbe002a51c8c2af"
+      },
+      "point_ledger_entries": {
+        "rows": 2,
+        "sha256": "c9a6b23888b58636a0ef10e8342351bc7d106c62cedb6fefbaf3abf146ed40d0"
+      },
+      "point_reconciliation_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_reconciliation_jobs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_reconciliation_results": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_reconciliation_retries": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_reconciliation_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "recharge_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "report_archive_automatic_cursors": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "report_archive_automatic_tasks": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "report_archive_policy_revisions": {
+        "rows": 2,
+        "sha256": "cffa228bf438ed61dd15ae738f96638241f1eaea8b949522bd1202c592455954"
+      },
+      "report_archives": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "reward_order_actions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "reward_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "role_permissions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "roles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "rule_version_contributors": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "rule_versions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "schema_migrations": {
+        "rows": 1,
+        "sha256": "c210dcc51312d37fe60773eaca39f01cf9b4e9c4efe206cd2c0ad9ec990ccc01"
+      },
+      "sessions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_calculations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_jobs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_policy_history": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_previews": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_operation_receipts": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_order_transitions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_policy_revisions": {
+        "rows": 2,
+        "sha256": "d81627b80bfa1afd094d9ff4ee3c35aba0edd2e34fcd5cd94e650968c2c5d3f3"
+      },
+      "withdrawal_turnover_cycles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    },
+    "row_count": 322,
+    "migration_count": 1,
+    "sha256": "2228c85506540cf48e50bfdba4e5c0bd410e6f3be3df497dc0b7966a8b5420b4"
+  },
+  "evidence": {
+    "replicas": 2,
+    "streaming_replicas": 2,
+    "replica_read_only_rejects": 2,
+    "replica_digest_matches": 2,
+    "initial_primary_writable": true,
+    "primary_stopped_before_promotion": true,
+    "promoted_writable": true,
+    "promoted_digest_matches": true,
+    "promoted_extra_write_visible": true,
+    "remaining_replica_reattached": true,
+    "remaining_replica_digest_matches": true,
+    "restored_digest_matches": true,
+    "restored_immutable_guards_verified": true,
+    "backup_sha256": "ed393da668be62c9e1a73e7bc6a7ee57ae95d86b485a417823f21494f4182dcb",
+    "backup_bytes": 1137023,
+    "baseline_table_count": 120,
+    "restored_table_count": 120,
+    "baseline_row_count": 322,
+    "restored_row_count": 322,
+    "migration_count": 1,
+    "restore_migration_count": 1,
+    "expected_migration_count": 1,
+    "original_database_untouched": true,
+    "automatic_failover_verified": false,
+    "production_disaster_recovery_accepted": false,
+    "replica_catchup_seconds": 0.117588334,
+    "promotion_seconds": 0.105546542,
+    "restore_seconds": 0.956049
+  },
+  "go_version": "go1.27.1",
+  "logical_cpus": 10,
+  "original_digest_after": "bc580fa0e00fcfa49dc33161306213f2f11841bac93974dd4897c185149a01bb",
+  "original_digest_before": "bc580fa0e00fcfa49dc33161306213f2f11841bac93974dd4897c185149a01bb",
+  "os": "darwin",
+  "owned_nodes_stopped": true,
+  "pitr_verified": false,
+  "postgres_version": "postgres (PostgreSQL) 17.11 (Postgres.app)",
+  "promoted": {
+    "tables": {
+      "admin_account_roles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "admin_accounts": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "admin_brand_scopes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "agent_config_revisions": {
+        "rows": 2,
+        "sha256": "4331eb9a8aa6c851f15ab36cf83e464f4f8de1dcfba46e41c190096ac5778ba9"
+      },
+      "agent_nodes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "audit_logs": {
+        "rows": 3,
+        "sha256": "38cbbf673a687e0838070a02c792997982088ca29a71e09d2ba72b432a9b1f6f"
+      },
+      "auth_challenges": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "auth_rate_limits": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_order_exceptions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_order_judgments": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_agent_policies": {
+        "rows": 2,
+        "sha256": "e37077d5e1e58275ef101eee2a2356ff4e8d26722952bc8a40de313038bd9042"
+      },
+      "brand_bet_policies": {
+        "rows": 2,
+        "sha256": "9f9cfa448a9200f3aabf6d63d77d612804853ee46b74312cc4465bc160e24448"
+      },
+      "brand_commission_correction_policies": {
+        "rows": 2,
+        "sha256": "c2397f37980bb824df1b3bad501f913c88025d382ba06272ba8567fe7870a74b"
+      },
+      "brand_commission_payment_policies": {
+        "rows": 2,
+        "sha256": "b7ee094e7ab2dba313f00df08966fa827606a0f2a4ef189fb51ce937e0a68cca"
+      },
+      "brand_commission_policies": {
+        "rows": 2,
+        "sha256": "150425e784ddf5d848707d7df3644be1df95d1a725ab95fc9846c5ebcb0b9438"
+      },
+      "brand_compliance_policies": {
+        "rows": 2,
+        "sha256": "616cf6da70e32142539a6e0e651258afd2276946d09b3d802962e7bd19313e9b"
+      },
+      "brand_creation_records": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_domain_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_domains": {
+        "rows": 3,
+        "sha256": "97f6dde1b829f92fb622d69b3f24b0e756d76ed0801df63bafeadaf57d3af984"
+      },
+      "brand_members": {
+        "rows": 1,
+        "sha256": "a6b3578cb9980feed9e90ee9fb8992a009c6f42f367d75b11f44367a7f3b9aca"
+      },
+      "brand_operation_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_point_policies": {
+        "rows": 2,
+        "sha256": "4e75a099b1ff81ce0e582ccbe94b88249d86f8432cc3c0e9cdee6d1827c6729b"
+      },
+      "brand_presentation_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_presentations": {
+        "rows": 2,
+        "sha256": "7afd007582b58f655355df3f6a0417d14ea3513a74a89df5488bedc5fda2cbbd"
+      },
+      "brand_report_archive_policies": {
+        "rows": 2,
+        "sha256": "cffa228bf438ed61dd15ae738f96638241f1eaea8b949522bd1202c592455954"
+      },
+      "brand_settlement_policies": {
+        "rows": 2,
+        "sha256": "6e8f85912040e46a27c54f4b230e7ce26a88ac9b9efb848b8a1335bec1d98954"
+      },
+      "brand_withdrawal_policies": {
+        "rows": 2,
+        "sha256": "c744952786d36d66e439fc70a39c0f8d622194d3ee651fe13509bf2d47b60f07"
+      },
+      "brands": {
+        "rows": 2,
+        "sha256": "45d98c49eac95607749cae9de87b783c870e261f77b8f6e24e098f05e577601a"
+      },
+      "commission_adjustment_heads": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_adjustments": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_allocations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_calculations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_balance_heads": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_cycle_holds": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_execution_steps": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_execution_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_executions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_plan_steps": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_plan_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_plans": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_policy_revisions": {
+        "rows": 2,
+        "sha256": "8e4c56bd01baae27917981fb6af8466b30c457b1bb2c15a41f12acde909e50ed"
+      },
+      "commission_cycle_steps": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_cycle_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_cycles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_discovery": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_earnings": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_payment_policy_revisions": {
+        "rows": 2,
+        "sha256": "1c2263720ef0c507a6792c3e1ec9ae7d940b9e7221949271e44db205022b3960"
+      },
+      "commission_payment_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_payments": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_policy_revisions": {
+        "rows": 2,
+        "sha256": "a782b1cb46999ac93a2ff5b151169d81c6006fa92a37c658e50eeeb8a0b43a8b"
+      },
+      "commission_runs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "compliance_decisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "compliance_gate_rejections": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "compliance_policy_revisions": {
+        "rows": 2,
+        "sha256": "b13881ae1c111c04dec3de543be6276c406a5c07232a56356711d7c7ee75aa5f"
+      },
+      "consumed_events": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_attempt_batches": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_correction_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_correction_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_corrections": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_notification_publications": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_notification_recipients": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_results": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_source_sets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_sources": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_bet_policies": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_schedules": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_withdrawal_policies": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "games": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "global_users": {
+        "rows": 1,
+        "sha256": "68cb55eee6f20714f95405c7cbe651f7b58709256707f2d6064ddce976d64165"
+      },
+      "idempotency_requests": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "join_code_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "join_codes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notification_deliveries": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notification_template_revisions": {
+        "rows": 44,
+        "sha256": "e310778ba79371941a4e3d383147f9ebce1c4a8fcad91b3b4e39e98ccb50c05a"
+      },
+      "notification_templates": {
+        "rows": 44,
+        "sha256": "c43f09c29073af7ae6ffb7686e93fc6e42ffb6df91668070ae91c7e03868a5f3"
+      },
+      "notifications": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "outbox_events": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellation_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellation_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_rule_versions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "periods": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "permissions": {
+        "rows": 167,
+        "sha256": "91c88a595eda0fc7157729f2e20cc4a3c032ea03cc9e293f7df3d0ce3b588c49"
+      },
+      "platform_domains": {
+        "rows": 2,
+        "sha256": "5789d6ce837abf1b55077de05958ad894e3c948241a7865ab625b52c24166ff1"
+      },
+      "platform_idempotency_requests": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "play_definitions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_accounts": {
+        "rows": 1,
+        "sha256": "ceda007e97a778915acc912ea7d094ad9ac1d982f15e0a3ccc0d653f1053e6a4"
+      },
+      "point_balance_repairs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_buckets": {
+        "rows": 16,
+        "sha256": "3b951dcb0a86e82d8c9c6fe7c3a822b779ca37d6d34e002dfe39a7444e1cf71f"
+      },
+      "point_ledger_entries": {
+        "rows": 3,
+        "sha256": "41883d9beeea32acce7c7bbc29fd316c8ca182bd533ad5dfae103680494ef87a"
+      },
+      "point_reconciliation_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_reconciliation_jobs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_reconciliation_results": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_reconciliation_retries": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_reconciliation_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "recharge_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "report_archive_automatic_cursors": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "report_archive_automatic_tasks": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "report_archive_policy_revisions": {
+        "rows": 2,
+        "sha256": "cffa228bf438ed61dd15ae738f96638241f1eaea8b949522bd1202c592455954"
+      },
+      "report_archives": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "reward_order_actions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "reward_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "role_permissions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "roles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "rule_version_contributors": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "rule_versions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "schema_migrations": {
+        "rows": 1,
+        "sha256": "c210dcc51312d37fe60773eaca39f01cf9b4e9c4efe206cd2c0ad9ec990ccc01"
+      },
+      "sessions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_calculations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_jobs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_policy_history": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_previews": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_operation_receipts": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_order_transitions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_policy_revisions": {
+        "rows": 2,
+        "sha256": "d81627b80bfa1afd094d9ff4ee3c35aba0edd2e34fcd5cd94e650968c2c5d3f3"
+      },
+      "withdrawal_turnover_cycles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    },
+    "row_count": 324,
+    "migration_count": 1,
+    "sha256": "3e3e237f6797f482c267357f4efbe7fcfc77a21a797c836a246653aa392ef91e"
+  },
+  "recorded_at_utc": "2026-10-09T15:32:20.598166Z",
+  "restored": {
+    "tables": {
+      "admin_account_roles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "admin_accounts": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "admin_brand_scopes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "agent_config_revisions": {
+        "rows": 2,
+        "sha256": "4331eb9a8aa6c851f15ab36cf83e464f4f8de1dcfba46e41c190096ac5778ba9"
+      },
+      "agent_nodes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "audit_logs": {
+        "rows": 2,
+        "sha256": "4ad56907ab38249bab3ffb3720413fd2c2cff0b42508af408060b4e8e4ebbbdf"
+      },
+      "auth_challenges": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "auth_rate_limits": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_order_exceptions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_order_judgments": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "bet_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_agent_policies": {
+        "rows": 2,
+        "sha256": "e37077d5e1e58275ef101eee2a2356ff4e8d26722952bc8a40de313038bd9042"
+      },
+      "brand_bet_policies": {
+        "rows": 2,
+        "sha256": "9f9cfa448a9200f3aabf6d63d77d612804853ee46b74312cc4465bc160e24448"
+      },
+      "brand_commission_correction_policies": {
+        "rows": 2,
+        "sha256": "c2397f37980bb824df1b3bad501f913c88025d382ba06272ba8567fe7870a74b"
+      },
+      "brand_commission_payment_policies": {
+        "rows": 2,
+        "sha256": "b7ee094e7ab2dba313f00df08966fa827606a0f2a4ef189fb51ce937e0a68cca"
+      },
+      "brand_commission_policies": {
+        "rows": 2,
+        "sha256": "150425e784ddf5d848707d7df3644be1df95d1a725ab95fc9846c5ebcb0b9438"
+      },
+      "brand_compliance_policies": {
+        "rows": 2,
+        "sha256": "616cf6da70e32142539a6e0e651258afd2276946d09b3d802962e7bd19313e9b"
+      },
+      "brand_creation_records": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_domain_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_domains": {
+        "rows": 3,
+        "sha256": "97f6dde1b829f92fb622d69b3f24b0e756d76ed0801df63bafeadaf57d3af984"
+      },
+      "brand_members": {
+        "rows": 1,
+        "sha256": "a6b3578cb9980feed9e90ee9fb8992a009c6f42f367d75b11f44367a7f3b9aca"
+      },
+      "brand_operation_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_point_policies": {
+        "rows": 2,
+        "sha256": "4e75a099b1ff81ce0e582ccbe94b88249d86f8432cc3c0e9cdee6d1827c6729b"
+      },
+      "brand_presentation_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "brand_presentations": {
+        "rows": 2,
+        "sha256": "7afd007582b58f655355df3f6a0417d14ea3513a74a89df5488bedc5fda2cbbd"
+      },
+      "brand_report_archive_policies": {
+        "rows": 2,
+        "sha256": "cffa228bf438ed61dd15ae738f96638241f1eaea8b949522bd1202c592455954"
+      },
+      "brand_settlement_policies": {
+        "rows": 2,
+        "sha256": "6e8f85912040e46a27c54f4b230e7ce26a88ac9b9efb848b8a1335bec1d98954"
+      },
+      "brand_withdrawal_policies": {
+        "rows": 2,
+        "sha256": "c744952786d36d66e439fc70a39c0f8d622194d3ee651fe13509bf2d47b60f07"
+      },
+      "brands": {
+        "rows": 2,
+        "sha256": "45d98c49eac95607749cae9de87b783c870e261f77b8f6e24e098f05e577601a"
+      },
+      "commission_adjustment_heads": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_adjustments": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_allocations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_calculations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_balance_heads": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_cycle_holds": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_execution_steps": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_execution_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_executions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_plan_steps": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_plan_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_plans": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_correction_policy_revisions": {
+        "rows": 2,
+        "sha256": "8e4c56bd01baae27917981fb6af8466b30c457b1bb2c15a41f12acde909e50ed"
+      },
+      "commission_cycle_steps": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_cycle_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_cycles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_discovery": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_earnings": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_payment_policy_revisions": {
+        "rows": 2,
+        "sha256": "1c2263720ef0c507a6792c3e1ec9ae7d940b9e7221949271e44db205022b3960"
+      },
+      "commission_payment_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_payments": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "commission_policy_revisions": {
+        "rows": 2,
+        "sha256": "a782b1cb46999ac93a2ff5b151169d81c6006fa92a37c658e50eeeb8a0b43a8b"
+      },
+      "commission_runs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "compliance_decisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "compliance_gate_rejections": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "compliance_policy_revisions": {
+        "rows": 2,
+        "sha256": "b13881ae1c111c04dec3de543be6276c406a5c07232a56356711d7c7ee75aa5f"
+      },
+      "consumed_events": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_attempt_batches": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_correction_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_correction_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_corrections": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_notification_publications": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_notification_recipients": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_results": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_source_sets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "draw_sources": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_bet_policies": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_schedules": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "game_withdrawal_policies": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "games": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "global_users": {
+        "rows": 1,
+        "sha256": "68cb55eee6f20714f95405c7cbe651f7b58709256707f2d6064ddce976d64165"
+      },
+      "idempotency_requests": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "join_code_revisions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "join_codes": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notification_deliveries": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notification_template_revisions": {
+        "rows": 44,
+        "sha256": "e310778ba79371941a4e3d383147f9ebce1c4a8fcad91b3b4e39e98ccb50c05a"
+      },
+      "notification_templates": {
+        "rows": 44,
+        "sha256": "c43f09c29073af7ae6ffb7686e93fc6e42ffb6df91668070ae91c7e03868a5f3"
+      },
+      "notifications": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "outbox_events": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellation_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellation_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_cancellations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "period_rule_versions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "periods": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "permissions": {
+        "rows": 167,
+        "sha256": "91c88a595eda0fc7157729f2e20cc4a3c032ea03cc9e293f7df3d0ce3b588c49"
+      },
+      "platform_domains": {
+        "rows": 2,
+        "sha256": "5789d6ce837abf1b55077de05958ad894e3c948241a7865ab625b52c24166ff1"
+      },
+      "platform_idempotency_requests": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "play_definitions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_accounts": {
+        "rows": 1,
+        "sha256": "2a043db9a03e9be251e39a0e2a4af2aa4e491540dfda1a14d21da8f688f336ea"
+      },
+      "point_balance_repairs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_buckets": {
+        "rows": 16,
+        "sha256": "bcdca0c702c6a731b1f8f38d6e5d845bde50281277c7784d5dbe002a51c8c2af"
+      },
+      "point_ledger_entries": {
+        "rows": 2,
+        "sha256": "c9a6b23888b58636a0ef10e8342351bc7d106c62cedb6fefbaf3abf146ed40d0"
+      },
+      "point_reconciliation_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_reconciliation_jobs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_reconciliation_results": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_reconciliation_retries": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "point_reconciliation_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "recharge_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "report_archive_automatic_cursors": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "report_archive_automatic_tasks": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "report_archive_policy_revisions": {
+        "rows": 2,
+        "sha256": "cffa228bf438ed61dd15ae738f96638241f1eaea8b949522bd1202c592455954"
+      },
+      "report_archives": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "reward_order_actions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "reward_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "role_permissions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "roles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "rule_version_contributors": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "rule_versions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "schema_migrations": {
+        "rows": 1,
+        "sha256": "c210dcc51312d37fe60773eaca39f01cf9b4e9c4efe206cd2c0ad9ec990ccc01"
+      },
+      "sessions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_calculations": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_failures": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_jobs": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_policy_history": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_previews": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "settlement_targets": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_operation_receipts": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_order_transitions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_orders": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "withdrawal_policy_revisions": {
+        "rows": 2,
+        "sha256": "d81627b80bfa1afd094d9ff4ee3c35aba0edd2e34fcd5cd94e650968c2c5d3f3"
+      },
+      "withdrawal_turnover_cycles": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    },
+    "row_count": 322,
+    "migration_count": 1,
+    "sha256": "2228c85506540cf48e50bfdba4e5c0bd410e6f3be3df497dc0b7966a8b5420b4"
+  },
+  "schema_version": 1,
+  "scope": "isolated loopback PostgreSQL physical replication, manual fenced promotion, logical public-schema snapshot restoration; synthetic ledger/audit; no automatic endpoint failover, secrets backup or WAL archive/PITR"
+}

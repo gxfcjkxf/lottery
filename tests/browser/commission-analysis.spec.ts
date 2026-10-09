@@ -58,7 +58,7 @@ async function navigate(page: Page, project: string) {
 }
 function localInput(date: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}:${p(date.getSeconds())}`;
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}:${p(date.getSeconds())}`.replace(/:00$/, '');
 }
 function canonicalIso(date: Date): string { return date.toISOString().replace('.000Z', 'Z'); }
 function parseCsvLine(line: string): string[] {

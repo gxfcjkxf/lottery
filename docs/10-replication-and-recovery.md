@@ -29,7 +29,7 @@ CGO_ENABLED=0 go test -tags recovery -buildvcs=false ./internal/recovery \
 
 ## 演练流程和核验
 
-主库正常执行全部迁移和开发种子，再用积分账本服务创建123积分的合成赠送入账。两台从库经pg_basebackup的流式WAL备份建立，确认pg_stat_replication存在两条streaming连接且写入被25006拒绝。两台启动后，再在主库通过账本服务入账7积分；两台从库均须与主库的全部表摘要一致，不能只比较初始基准备份。pg_basebackup的流式WAL模式和恢复配置由[PostgreSQL 17官方说明](https://www.postgresql.org/docs/17/app-pgbasebackup.html)定义。
+主库安装当前完整基线`0001_baseline.up.sql`和开发种子，再用积分账本服务创建123积分的合成赠送入账。两台从库经pg_basebackup的流式WAL备份建立，确认pg_stat_replication存在两条streaming连接且写入被25006拒绝。两台启动后，再在主库通过账本服务入账7积分；两台从库均须与主库的全部表摘要一致，不能只比较初始基准备份。pg_basebackup的流式WAL模式和恢复配置由[PostgreSQL 17官方说明](https://www.postgresql.org/docs/17/app-pgbasebackup.html)定义。
 
 对主库public业务schema执行custom格式逻辑备份，另存SHA256及字节数。恢复前必须与原证据匹配，同大小但内容被修改的备份也拒绝。该备份包含业务表、数据、函数与约束，不包含集群角色、外部认证密钥或对象存储。
 
@@ -39,15 +39,15 @@ CGO_ENABLED=0 go test -tags recovery -buildvcs=false ./internal/recovery \
 
 完成或失败时停止本次拥有的节点，保留数据、备份及诊断日志用于核查，不删除原开发库。成功报告在所有节点停止后生成，并核验原开发库public全部表摘要没有变化。若原开发库同时发生业务写入，摘要会变化并使演练不通过；应在安静开发窗口重跑，不忽略差异。
 
-## 函数查找路径修复
+## 函数查找路径
 
-0032迁移为当前应用schema内的函数固定search_path为pg_catalog、所属schema、pg_temp。pg_restore使用空会话查找路径时，嵌套配置校验及触发器仍能找到同schema的函数和表，调用方临时同名对象不能优先遮蔽它们。原迁移及校验和不改写；没有关闭检查、删除历史或降低账本约束。
+当前完整基线将应用函数的search_path固定为pg_catalog、所属schema、pg_temp。pg_restore使用空会话查找路径时，嵌套配置校验及触发器仍能找到同schema的函数和表，调用方临时同名对象不能优先遮蔽它们。演练核验当前单份基线校验和，不执行旧迁移链升级，也不关闭账本约束。
 
 以后新增数据库函数也须固定到所属schema，兼容随机schema测试和public部署。不能把public硬编码到所有测试函数，不能依赖客户端连接默认search_path。恢复回归会验证空路径下合法代理配置仍通过、临时同名函数不能改变判断，以及应用函数都有固定路径。
 
 ## 当前证据与待交付事项
 
-原始报告为[本地复制和恢复证据](performance/s7g-replication-recovery.json)。数据集为68张业务表、173行、32条迁移和一个合成会员的真实账本/审计；其他业务表包含结构，但不代表完整投注、提现、佣金等实际业务数据都经过灾备负载演练。
+当前报告为[2026年10月9日复制和恢复证据](performance/current-physical-restore-20261009.json)：PostgreSQL17.11、120张表、322行、一份完整基线和一个合成会员的真实账本/审计。两从库只读及全表摘要一致；旧主停止后手动提升、额外入账、另一从库重新连接、备份恢复及不可变约束均通过。原开发库前后摘要相同，演练节点已停止。其他业务表包含结构，不代表完整投注、提现、佣金实际数据均经过灾备负载演练。[旧复制恢复报告](performance/s7g-replication-recovery.json)仅保留为当时的开发记录。
 
 replica_catchup_seconds从主库新增测试流水到两台从库全部表摘要匹配，包含本地提交和摘要查询成本，不是持续复制延迟指标。promotion_seconds仅为已关闭旧主库后的手动提升及恢复状态确认，不包含检测故障、应用重连或端点切换。restore_seconds包含创建恢复节点、恢复和首次完整摘要检查；这些小数据、同机测量不应设置为生产RTO或RPO。
 
@@ -82,7 +82,7 @@ CGO_ENABLED=0 go test -tags recovery -buildvcs=false ./internal/recovery \
 
 演练只启动拥有的一主两从及一个无关集群；结束时停止这些节点并保留数据、日志和报告。原开发库仅作前后只读摘要，不暂停或修改原开发服务。固定字段报告不保存登录令牌、请求正文、数据库连接串或客户资料；真实高可用和生产容量验收仍独立进行。
 
-[原实体读路由证据](performance/s7m-history-read-routing.json)保留为当时的开发记录。当前取消了错误时回退主库的行为；已更新相关测试，新的实体演练仍须独立执行，不能沿用旧报告证明新语义。
+[当前实体读路由证据](performance/current-physical-history-20261009.json)已验证两个从库轮转、6条真实品牌HTTP历史接口、暂停/离线/错误集群/查询超时拒绝、权限撤销403、会话撤销401及主库审计失败不返回历史数据。原开发库摘要相同，节点已停止。初轮夹具只等标记行可见，仍落后于新采样WAL；现先等指定从库回放到实际位置，再在有界准备阶段等待新屏障就绪。准备阶段的独立测试请求不是生产自动重试，生产路由每次选定一个节点，失败即报错，不换节点或回退主库。[旧实体读路由报告](performance/s7m-history-read-routing.json)仅作开发记录，不用于证明当前无回退语义。
 
 ## 生产恢复前必须确认
 
