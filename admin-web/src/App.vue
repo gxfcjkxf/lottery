@@ -43,6 +43,7 @@ import { clearAllReportArchiveTaskRetryIntents } from "./report-archive-tasks-st
 import { clearAllReportArchivePolicyIntents } from "./report-archive-policy-state";
 import {clearPendingReconciliationWrites} from "./reconciliation-state";
 const ReportsManagement = defineAsyncComponent(() => import("./ReportsManagement.vue"));
+const AuditManagement = defineAsyncComponent(() => import("./AuditManagement.vue"));
 const AgentManagement = defineAsyncComponent(() => import("./AgentManagement.vue"));
 const CommissionPolicySettings = defineAsyncComponent(() => import("./CommissionPolicySettings.vue"));
 const CommissionCyclesManagement = defineAsyncComponent(() => import("./CommissionCyclesManagement.vue"));
@@ -79,7 +80,6 @@ import {
   createIdempotencyKey,
   type AdminAccount,
   type AdminBrand,
-  type AdminAuditRecord,
   type Member,
   type MemberStatus,
 } from "./admin-api";
@@ -274,9 +274,6 @@ const members = ref<Member[]>([]);
 const membersLoading = ref(false);
 const membersError = ref<string | ReturnType<typeof message>>("");
 const memberOffset = ref(0);
-const auditRecords = ref<AdminAuditRecord[]>([]);
-const auditLoading = ref(false);
-const auditError = ref<string | ReturnType<typeof message>>("");
 const editTarget = ref<Member | null>(null);
 const editStatus = ref<MemberStatus>("normal");
 const editNotes = ref("");
@@ -439,7 +436,6 @@ const clearAdminData = () => {
   adminBrands.value = [];
   selectedBrandId.value = "";
   members.value = [];
-  auditRecords.value = [];
 };
 const loadBrands = async () => {
   const requestedAccountId = account.value?.id;
@@ -552,8 +548,7 @@ const selectBrand = async (brandId: string) => {
   brandMenu.value = false;
   memberOffset.value = 0;
   members.value = [];
-  auditRecords.value = [];
-  await Promise.all([loadMembers(), loadAudit()]);
+  await loadMembers();
 };
 const loadMembers = async () => {
   if (!account.value || !selectedBrandId.value) return;
@@ -569,20 +564,6 @@ const loadMembers = async () => {
       clearAdminData();
   } finally {
     membersLoading.value = false;
-  }
-};
-const loadAudit = async () => {
-  if (!account.value || !selectedBrandId.value) return;
-  auditLoading.value = true;
-  auditError.value = "";
-  try {
-    auditRecords.value = (await api.audit(selectedBrandId.value)).items;
-  } catch (error) {
-    auditError.value = apiErrorText(error);
-    if (error instanceof AdminApiError && error.status === 401)
-      clearAdminData();
-  } finally {
-    auditLoading.value = false;
   }
 };
 const openEdit = (member: Member) => {
@@ -613,7 +594,7 @@ const saveMember = async () => {
       editIdempotencyKey.value,
     );
     editTarget.value = null;
-    await Promise.all([loadMembers(), loadAudit()]);
+    await loadMembers();
     toast("成员资料已更新");
   } catch (error) {
     toast(apiErrorText(error));
@@ -643,7 +624,7 @@ const kickMember = async () => {
       kickIdempotencyKey.value,
     );
     kickTarget.value = null;
-    await Promise.all([loadMembers(), loadAudit()]);
+    await loadMembers();
     toast("该成员的品牌会话已踢出");
   } catch (error) {
     toast(apiErrorText(error));
@@ -678,7 +659,7 @@ const resetMemberPassword = async () => {
       resetIdempotencyKey.value,
     );
     resetTarget.value = null;
-    await Promise.all([loadMembers(), loadAudit()]);
+    await loadMembers();
     toast("全局密码已重置，所有品牌会话已撤销");
   } catch (error) {
     toast(apiErrorText(error));
@@ -2086,64 +2067,13 @@ const ledger = [
       </section>
 
       <section v-else class="page-content">
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">SECURITY / AUDIT TRAIL</div>
-            <h1>{{ ui("审计日志") }}</h1>
-            <p>
-              {{
-                account
-                  ? ui("按选中品牌读取真实后台日志。")
-                  : ui("未登录：以下是静态演示样例，不是后台记录。")
-              }}
-            </p>
-          </div>
-          <button
-            v-if="account"
-            class="button button-secondary"
-            :disabled="auditLoading || !selectedBrandId"
-            @click="loadAudit"
-          > {{ ui("刷新日志") }} </button>
+        <AuditManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+        <div v-else-if="account" class="panel directory-state"><h1>{{ ui("审计日志") }}</h1><p>{{ ui("请先从侧栏选择品牌；审计请求始终携带明确的 X-Brand-ID。") }}</p></div>
+        <div v-if="!account" class="panel directory-state">
+          <div class="eyebrow">SECURITY / AUDIT TRAIL</div>
+          <h1>{{ ui("审计日志") }}</h1>
+          <p>{{ ui("未登录：以下是静态演示样例，不是后台记录。") }}</p>
         </div>
-        <div v-if="account && !selectedBrandId" class="panel directory-state"> {{ ui("请先从侧栏选择品牌；审计请求始终携带明确的 X-Brand-ID。") }} </div>
-        <div
-          v-else-if="account && auditError"
-          class="directory-error"
-          role="alert"
-        >
-          {{ t(auditError) }}
-        </div>
-        <article v-if="account && selectedBrandId" class="panel">
-          <div v-if="auditLoading" class="directory-state"> {{ ui("正在读取审计日志…") }} </div>
-          <div v-else-if="!auditRecords.length" class="directory-state"> {{ ui("所选品牌没有可显示的审计记录。") }} </div>
-          <div v-else class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>{{ ui("操作") }}</th>
-                  <th>{{ ui("资源") }}</th>
-                  <th>{{ ui("操作人") }}</th>
-                  <th>{{ ui("原因") }}</th>
-                  <th>Request ID</th>
-                  <th>IP</th>
-                  <th>{{ ui("时间") }}</th>
-                </tr>
-              </thead>
-                  <tbody>
-                    <tr v-for="entry in auditRecords" :key="entry.id">
-                  <td>{{ entry.action }}</td>
-                  <td>{{ entry.resource_type }} · {{ entry.resource_id }}</td>
-                  <td>{{ entry.actor_type }} · {{ entry.actor_id }}</td>
-                  <td>{{ entry.reason }}</td>
-                  <td>{{ entry.request_id }}</td>
-                  <td>{{ entry.ip_address }}</td>
-                  <td>{{ new Date(entry.created_at).toLocaleString() }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </article>
-        <div v-if="!account" class="panel directory-state"> {{ ui("演示日志不会显示为真实后台记录。") }} </div>
       </section>
 
       <footer v-if="page !== '加入码' && page !== '工作台'" class="page-footer">

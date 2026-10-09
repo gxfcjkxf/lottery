@@ -17,6 +17,9 @@ const root={$id:"urn:lottery:implemented-api",components};
 ajv.addSchema(root);
 const validate=schema=>ajv.compile({$ref:`urn:lottery:implemented-api#/components/schemas/${schema}`});
 const exampleSchemaNames={
+  AdminAuditRecord:"AdminAuditEntry",
+  AdminAuditRecordLegacy:"AdminAuditEntry",
+  AdminAuditList:"AdminAuditList",
   WithdrawalOrderExample:"WithdrawalOrder",
   WithdrawalOrderPageExample:"WithdrawalOrderPage",
   WithdrawalHistoryExample:"WithdrawalHistory",

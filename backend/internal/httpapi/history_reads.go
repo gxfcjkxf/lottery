@@ -66,6 +66,9 @@ func auditedHistoryRecord(w http.ResponseWriter, r *http.Request, d Dependencies
 		_, e = audit.Append(ctx, tx, record)
 	}
 	if e == nil {
+		e = check() // A session can expire while the audit insert is blocked.
+	}
+	if e == nil {
 		e = tx.Commit(ctx)
 	}
 	if e != nil {

@@ -2,6 +2,8 @@
 
 多品牌彩票运营平台。实现依据位于 [docs/README.md](docs/README.md)，阶段验收与当前覆盖范围位于 [docs/implementation-progress.md](docs/implementation-progress.md)。
 
+[审计管理](docs/32-audit-query-and-export.md)支持品牌、UTC时间及操作/人员/资源筛选，独立授权的完整CSV下载、已提交审计证据和摘要核验。0071只扩展bootstrap导出权限及查询索引；自定义角色不扩权，查询和下载不移动积分或改写历史。
+
 后台“人工奖励”已接入独立权限、真实赠送积分发放、全额原路撤销及不足待处理，支持中英双语、PC与移动布局。提交须明确核对，结果未知只能恢复原请求，当前查询与原回执分开；余额补足不自动继续。0056接入三种不可变奖励站内消息及固定历史说明，通知消费不改变积分；0057接入实际入账及当前订单队列两种报表、完整CSV和工作台状态计数。交接及专项测试环境见[人工奖励合同](docs/20-manual-reward-orders.md)与[奖励报表合同](docs/21-reward-reports.md)。
 
 0058为开奖结果更正后已有真实佣金入账的周期准备[不可变差额计划](docs/22-commission-correction-plans.md)，0059提供独立默认关闭的[差额执行](docs/23-commission-correction-execution.md)：新批准、仅佣金来源补发/追回、整周期暂停及显式继续。后台“佣金更正”和十二条正式管理接口已接入，原回执与当前查询分开，同会话未知操作只能恢复原请求，见[管理交接合同](docs/24-commission-correction-management.md)。0060接入实际非零差额的不可变站内消息及佣金报表补发/追回分项，CSV为版本2、22列，详见[通知与报表合同](docs/25-commission-correction-observability.md)。计划ready不代表资金完成；原派发blocked不会被普通批准或人工修正解锁，OPEN-117特殊组合仍阻止。升级须先正常migrate并协调API/worker/前端，开关不自动启用，也不补造旧消息。

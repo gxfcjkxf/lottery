@@ -8,11 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
+	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/rulebook"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
@@ -35,6 +37,16 @@ func publicTestPeriod(t *testing.T, f bettingFixture, game, number string, seque
 }
 func publicManual(t *testing.T, f bettingFixture, id string, version int64, number string, draw rules.Draw, at time.Time) rulebook.DrawResult {
 	t.Helper()
+	var latestMigration int
+	var hasNotificationFacts bool
+	if err := f.db.QueryRow(context.Background(), `SELECT
+ COALESCE((SELECT max(split_part(name,'_',1)::integer) FROM schema_migrations WHERE split_part(name,'_',1) ~ '^[0-9]+$'),0),
+ to_regclass('draw_notification_publications') IS NOT NULL`).Scan(&latestMigration, &hasNotificationFacts); err != nil {
+		t.Fatal(err)
+	}
+	if latestMigration < 70 && !hasNotificationFacts {
+		return legacyPublicManual(t, f, id, version, number, draw, at)
+	}
 	actor := judgeActor(f)
 	actor.Roles[0].Permissions = append(actor.Roles[0].Permissions, access.Permission{Resource: "draw", Action: "manual_create", Scope: access.ScopeBrand})
 	var result rulebook.DrawResult
@@ -42,6 +54,94 @@ func publicManual(t *testing.T, f bettingFixture, id string, version int64, numb
 		var e error
 		result, e = (rulebook.Store{DB: f.db}).ManualDraw(context.Background(), tx, f.brand, actor, id, version, number, draw, at, "verified archive fixture", policyMeta(actor.ID))
 		return e
+	})
+	return result
+}
+
+// legacyPublicManual reproduces the draw-result insert, period lock, and audit
+// record used before migration 0070 added draw-notification publication facts.
+// Upgrade fixtures use it only while those historical schemas lack the table;
+// fully migrated fixtures always exercise rulebook.ManualDraw above.
+func legacyPublicManual(t *testing.T, f bettingFixture, periodID string, version int64, number string, draw rules.Draw, drawnAt time.Time) rulebook.DrawResult {
+	t.Helper()
+	ctx := context.Background()
+	actor := judgeActor(f)
+	var result rulebook.DrawResult
+	bettingTx(t, f.db, func(tx pgx.Tx) error {
+		var gameID string
+		if err := tx.QueryRow(ctx, `SELECT game_id::text FROM periods WHERE brand_id=$1 AND id=$2`, f.brand, periodID).Scan(&gameID); err != nil {
+			return err
+		}
+		var lockedGame string
+		if err := tx.QueryRow(ctx, `SELECT id::text FROM games WHERE brand_id=$1 AND id=$2 FOR UPDATE`, f.brand, gameID).Scan(&lockedGame); err != nil {
+			return err
+		}
+		var status, current, periodNo string
+		var periodVersion int64
+		var drawAt time.Time
+		if err := tx.QueryRow(ctx, `SELECT status,version,coalesce(draw_result_id::text,''),period_no,draw_at FROM periods WHERE brand_id=$1 AND id=$2 FOR UPDATE`, f.brand, periodID).Scan(&status, &periodVersion, &current, &periodNo, &drawAt); err != nil {
+			return err
+		}
+		if periodVersion != version || status != "waiting_draw" || current != "" || periodNo != number {
+			return fmt.Errorf("legacy manual draw fixture period state changed: status=%q version=%d period_no=%q draw_result_id=%q", status, periodVersion, periodNo, current)
+		}
+		var now time.Time
+		if err := tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
+			return err
+		}
+		if drawnAt.Before(drawAt) || drawnAt.After(now) {
+			return fmt.Errorf("legacy manual draw fixture timestamp outside period window: draw_at=%s drawn_at=%s now=%s", drawAt, drawnAt, now)
+		}
+
+		var sourceID string
+		err := tx.QueryRow(ctx, `SELECT id::text FROM draw_sources WHERE brand_id=$1 AND game_id=$2 AND type='manual'`, f.brand, gameID).Scan(&sourceID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			sourceID = ids.New()
+			_, err = tx.Exec(ctx, `INSERT INTO draw_sources(id,brand_id,game_id,type) VALUES($1,$2,$3,'manual')`, sourceID, f.brand, gameID)
+		}
+		if err != nil {
+			return err
+		}
+
+		normalized := draw
+		normalized.Regular = append([]int{}, draw.Regular...)
+		normalized.Special = append([]int{}, draw.Special...)
+		normalized.Digits = append([]int{}, draw.Digits...)
+		if !f.game.Model.Ordered {
+			sort.Ints(normalized.Regular)
+			sort.Ints(normalized.Special)
+		}
+		raw, err := json.Marshal(normalized)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(raw)
+		id := ids.New()
+		var saved []byte
+		err = tx.QueryRow(ctx, `INSERT INTO draw_results(id,brand_id,game_id,period_id,source_id,kind,result,result_hash,drawn_at,created_by,corrected_from_id)
+VALUES($1,$2,$3,$4,$5,'manual',$6,$7,$8,$9,NULL) RETURNING id::text,brand_id::text,game_id::text,period_id::text,source_id::text,kind,result,result_hash,drawn_at,created_at,coalesce(created_by::text,''),coalesce(corrected_from_id::text,'')`,
+			id, f.brand, gameID, periodID, sourceID, raw, hex.EncodeToString(sum[:]), drawnAt.UTC(), actor.ID).Scan(
+			&result.ID, &result.BrandID, &result.GameID, &result.PeriodID, &result.SourceID, &result.Kind,
+			&saved, &result.ResultHash, &result.DrawnAt, &result.CreatedAt, &result.CreatedBy, &result.CorrectedFromID)
+		if err != nil {
+			return err
+		}
+		if err = json.Unmarshal(saved, &result.Result); err != nil {
+			return err
+		}
+		result.DrawnAt = result.DrawnAt.UTC()
+		result.CreatedAt = result.CreatedAt.UTC()
+		if _, err = tx.Exec(ctx, `UPDATE periods SET draw_result_id=$2,status='drawn',version=version+1,state_reason='result locked: manual',draw_claim_token=NULL,draw_claim_until=NULL,draw_next_poll_at=NULL WHERE id=$1`, periodID, result.ID); err != nil {
+			return err
+		}
+		meta := policyMeta(actor.ID)
+		_, err = audit.Append(ctx, tx, audit.Record{
+			BrandID: f.brand, ActorType: "admin", ActorID: actor.ID, Action: "draw.lock", ResourceType: "draw_result",
+			ResourceID: result.ID, Reason: "verified archive fixture", RequestID: meta.RequestID, IP: meta.IP,
+			Before: map[string]any{"period_id": periodID, "period_version": periodVersion, "status": status, "draw_result_id": current},
+			After:  result,
+		})
+		return err
 	})
 	return result
 }

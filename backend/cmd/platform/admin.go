@@ -60,6 +60,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 	permissions = append(permissions, "brand_presentation.view.brand", "brand_presentation.write.brand")
 	permissions = append(permissions, "brand_domains.view.brand", "brand_domains.write.brand")
 	permissions = append(permissions, "report_betting.export.brand", "report_ledger.export.brand")
+	permissions = append(permissions, "audit.export.brand")
 	permissions = append(permissions, "report_commission.view.brand", "report_commission.export.brand")
 	permissions = append(permissions, "report_reward.view.brand", "report_reward.export.brand")
 	permissions = append(permissions, "report_attribution.view.brand", "report_attribution.export.brand")
@@ -73,6 +74,7 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 		permissions = append(permissions, "brand_operation.view.platform", "brand_operation.write.platform")
 		permissions = append(permissions, "brand_presentation.view.platform", "brand_presentation.write.platform")
 		permissions = append(permissions, "brand_domains.view.platform", "brand_domains.write.platform")
+		permissions = append(permissions, "audit.export.platform")
 	}
 	if *super {
 		permissions = append(permissions, "rule.simulate.platform")

@@ -34,6 +34,26 @@ const brandHeader = (required = true) => ({
   schema: ref("UUID"),
   description: required ? "Target brand; must be an authorized brand even with platform scope." : "Optional brand filter. Omit only when using the platform-scope permission to query across brands.",
 });
+const auditDateParameters = [
+  { name: "from", in: "query", required: false, schema: ref("DateTime"), description: "RFC3339Nano UTC lower bound with literal Z suffix, inclusive. Must be supplied with to." },
+  { name: "to", in: "query", required: false, schema: ref("DateTime"), description: "RFC3339Nano UTC upper bound with literal Z suffix, exclusive. Must be supplied with from; the interval may not exceed 31 days." },
+];
+const auditFilters = [
+  ...auditDateParameters,
+  { name: "action", in: "query", required: false, schema: string({ minLength: 1 }) },
+  { name: "actor_id", in: "query", required: false, schema: ref("UUID") },
+  { name: "resource_type", in: "query", required: false, schema: string({ minLength: 1 }) },
+  { name: "resource_id", in: "query", required: false, schema: ref("UUID") },
+  { name: "request_id", in: "query", required: false, schema: string({ minLength: 1 }) },
+];
+const auditReadParameters = [
+  ...auditFilters,
+  { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 200, default: 100 } },
+  { name: "offset", in: "query", required: false, schema: { type: "integer", minimum: 0, maximum: 100000, default: 0 } },
+];
+const auditExportParameters = auditFilters.map(parameter => parameter.name === "from" || parameter.name === "to" ? { ...parameter, required: true } : parameter);
+const auditReadDescription = "Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. Filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; brand_id is an optional nullable addition to each selected record. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released.";
+const auditExportDescription = "Requires an explicit X-Brand-ID UUID even for platform-authorized exports. The selected brand must have both audit.view.brand or audit.view.platform AND audit.export.brand or audit.export.platform; the view and export grants must apply to that same brand. Requires both RFC3339Nano UTC from and to values ending in literal Z (numeric offsets are rejected), with from < to and a maximum span of 31 days; filtering is half-open [from,to). Accepts the same optional exact action, actor_id, resource_type, resource_id, and request_id filters as GET /admin/audit. Unknown, duplicate, or empty query values, including limit or offset, return 400. Reads the primary database in one snapshot, selects every matching current-window row ordered by created_at descending then id descending, and fails with 422 AUDIT_EXPORT_TOO_LARGE as JSON without a file above 10000 rows or 4 MiB. The CSV is UTF-8 with BOM, RFC 4180 escaped, and uses UTC timestamps. Formula injection is neutralized when the first non-space character is +, -, =, or @, or when a cell contains a tab, CR, or LF. Columns, in order: id, brand_id, action, actor_type, actor_id, resource_type, resource_id, reason, request_id, created_at, ip_address, before_json, after_json. Headers include the explicit brand, RFC3339Nano snapshot time, row count, SHA-256 of the complete CSV bytes including BOM, format version 1, and export UUID. Current session and matching view/export grants are freshly checked before releasing the snapshot; the audit.export record is written on the primary and committed before any CSV bytes are sent. A client must validate complete metadata and digest before starting a blob download.";
 
 export const schemas = {
   ComplianceGateRecord: obj({
@@ -184,7 +204,7 @@ export const schemas = {
   AdminMemberKickRequest: obj({ status: string(), notes: string({ maxLength: 2000 }), reason: ref("Reason"), password: string() }, ["reason"], { description: "Only reason is used; the handler's shared closed request DTO also accepts the other listed fields. notes, if supplied, cannot exceed 2000 bytes." }),
   AdminMemberPasswordResetRequest: obj({ status: string(), notes: string({ maxLength: 2000 }), reason: ref("Reason"), password: string({ minLength: 10, maxLength: 128, description: "10–128 UTF-8 bytes." }) }, ["reason", "password"], { description: "Only password and reason are used; shared handler DTO accepts status and notes. notes, if supplied, cannot exceed 2000 bytes. Reset requires password_reset permission for every brand the global identity belongs to." }),
   AdminAuditEntry: obj({
-    id: ref("UUID"), action: string(), actor_type: string(), actor_id: string(), resource_type: string(), resource_id: string(),
+    id: ref("UUID"), brand_id: nullable(ref("UUID")), action: string(), actor_type: string(), actor_id: string(), resource_type: string(), resource_id: string(),
     reason: string(), request_id: string(), created_at: ref("DateTime"), ip_address: string(), before_json: ref("ArbitraryJSON"), after_json: ref("ArbitraryJSON"),
   }, ["id", "action", "actor_type", "actor_id", "resource_type", "resource_id", "reason", "request_id", "created_at", "ip_address", "before_json", "after_json"]),
   AdminAuditList: obj({ items: array(ref("AdminAuditEntry")) }, ["items"]),
@@ -327,7 +347,26 @@ export const operations = [
   op("PATCH", "/api/v1/admin/users/{id}", "updateBrandMember", "Update a brand member status and notes", "administration", "admin", true, ref("IdentityAuditResult"), { requestBody: ref("AdminMemberUpdateRequest"), brandHeader: true, permissions: ["user.write.brand"], description: "The path ID is a brand-member UUID. Requires user.write.brand. reason is required; notes are limited to 2000 bytes. Status is normal, frozen, disabled, expired, or cancelled. Password and other brands are not changed." }),
   op("POST", "/api/v1/admin/users/{id}/kick", "kickBrandMember", "Revoke a member's sessions for this brand", "administration", "admin", true, ref("IdentityAuditResult"), { requestBody: ref("AdminMemberKickRequest"), brandHeader: true, permissions: ["user.kick.brand"], description: "The path ID is a brand-member UUID. Requires user.kick.brand and a reason. Revokes only sessions for this member in the selected brand." }),
   op("POST", "/api/v1/admin/users/{id}/reset-password", "resetBrandMemberPassword", "Reset the global user's password", "administration", "admin", true, ref("IdentityAuditResult"), { requestBody: ref("AdminMemberPasswordResetRequest"), brandHeader: true, permissions: ["user.password_reset.brand"], description: "The path ID is a brand-member UUID. Requires password-reset permission for every brand the global identity has joined; super-admins are denied. Replaces the global password and revokes all user sessions across brands." }),
-  op("GET", "/api/v1/admin/audit", "listAdminAudit", "List audit records", "administration", "admin", false, ref("AdminAuditList"), { brandHeader: false, parameters: [brandHeader(false), ...pagination], permissions: ["audit.view.brand", "audit.view.platform"], description: "An admin with audit.view.platform may omit X-Brand-ID for all brands; otherwise a valid authorized brand and audit.view.brand are required. The response reflects the SQL projection actually emitted: items only, with before_json and after_json as arbitrary JSON values (including null). The read itself is appended to the audit log." }),
+  op("GET", "/api/v1/admin/audit", "listAdminAudit", "List audit records", "administration", "admin", false, ref("AdminAuditList"), { brandHeader: false, parameters: [brandHeader(false), ...auditReadParameters], permissions: ["audit.view.brand", "audit.view.platform"], additionalErrorStatuses: [422], description: auditReadDescription }),
+  { method: "GET", path: "/api/v1/admin/audit/export", operationId: "exportAdminAudit", summary: "Export audit records as CSV", tag: "administration", auth: "admin", brandHeader: true,
+    permissions: ["audit.view.brand", "audit.view.platform", "audit.export.brand", "audit.export.platform"], parameters: auditExportParameters,
+    additionalErrorStatuses: [422], successDescription: "Complete, bounded UTF-8 CSV v1, emitted only after the export audit record commits.",
+    successContent: { "text/csv": { schema: { type: "string", format: "binary", description: "UTF-8 CSV with BOM, RFC 4180 quoting and CRLF rows. The server returns the complete matching snapshot or a JSON error; it never returns a partial file." } } },
+    successHeaders: {
+      "Content-Type": { description: "CSV media type.", schema: { type: "string", const: "text/csv; charset=utf-8" } },
+      "Content-Length": { description: "Complete CSV byte length; maximum 4194304.", schema: { type: "string", pattern: "^(0|[1-9][0-9]*)$" } },
+      "Content-Disposition": { description: "Download filename in audit-<UUID>-v1.csv form; the UUID is the selected brand ID.", schema: { type: "string", pattern: "^attachment; filename=\"audit-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}-v1\\.csv\"$" } },
+      "Cache-Control": { description: "Exports are never cached.", schema: { type: "string", const: "no-store" } },
+      "X-Content-Type-Options": { description: "Disable MIME sniffing.", schema: { type: "string", const: "nosniff" } },
+      "X-Audit-Brand-ID": { description: "Explicitly selected brand, including platform-authorized exports.", schema: ref("UUID") },
+      "X-Audit-Snapshot-At": { description: "Primary database snapshot timestamp in RFC3339Nano UTC.", schema: { ...ref("DateTime"), description: "RFC3339Nano UTC timestamp." } },
+      "X-Audit-Row-Count": { description: "Number of matching audit rows included in the complete CSV.", schema: { type: "string", pattern: "^(0|[1-9][0-9]*)$" } },
+      "X-Audit-SHA256": { description: "Lowercase SHA-256 digest of the complete response bytes, including BOM.", schema: { type: "string", pattern: "^[a-f0-9]{64}$" } },
+      "X-Audit-Format-Version": { description: "CSV format version.", schema: { type: "string", const: "1" } },
+      "X-Audit-Export-ID": { description: "Unique UUID of this export audit record.", schema: ref("UUID") },
+    },
+    description: auditExportDescription,
+  },
   op("GET", "/api/v1/admin/permissions", "listAdminPermissions", "List registered brand permission keys", "administration", "admin", false, ref("AdminPermissionList"), { brandHeader: true, permissions: ["role.view.brand", "role.view.platform"], description: "Requires role.view for the selected brand or platform scope. Returns registered brand-scoped permission keys in items; the read is audited." }),
   op("GET", "/api/v1/admin/roles", "listAdminRoles", "List brand roles", "administration", "admin", false, ref("AdminRoleList"), { brandHeader: true, parameters: [...pagination], permissions: ["role.view.brand", "role.view.platform"], description: "Requires role.view for the selected brand or platform scope. Results are paginated and the read is audited." }),
   op("POST", "/api/v1/admin/roles", "createAdminRole", "Create a brand role", "administration", "admin", true, ref("AdminRole"), { requestBody: ref("AdminRoleCreateRequest"), successStatus: 201, brandHeader: true, permissions: ["role.write.brand", "role.write.platform"], description: "Requires role.write in the selected brand or platform scope. Roles are brand-scoped; only registered brand permission keys may be assigned. Creation defaults status to active; success includes audit_log_id." }),

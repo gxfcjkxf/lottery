@@ -229,10 +229,11 @@ PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提�
 | POST | /admin/users/{id}/kick | `user.kick.brand`；reason 必填，仅撤销该品牌成员会话 |
 | POST | /admin/users/{id}/reset-password | `user.password_reset.brand`；password、reason，修改全局密码并撤销该用户全部品牌会话 |
 | GET | /admin/audit | `audit.view.brand` 或 `audit.view.platform` |
+| GET | /admin/audit/export | 明确品牌、独立查看和导出权限、UTC时间范围；完整CSV及已提交审计证据，见[审计合同](32-audit-query-and-export.md) |
 
 上述 `{id}` 是品牌成员 UUID，不是全局用户 UUID。品牌操作必须传 `X-Brand-ID`，且服务端校验角色与品牌范围。平台查看权限可不带品牌头查询所有品牌；超级管理员不能修改用户、重置密码或踢人，即使误配相应角色也拒绝。
 
-成员状态值为 `normal`、`frozen`、`disabled`、`expired`、`cancelled`（注销）。冻结仍可登录/查询；禁用、过期、注销后会话验证失败。备注最大 2000 字节，原因必填且不超过 500 字节。修改和踢人返回 `audit_log_id`。查询支持 `limit`（1–100，默认 50）和 `offset`（0–1000000），响应 `{items: [...]}`。成功查询和修改都有审计记录，密码/令牌不进入明文审计。
+成员状态值为 `normal`、`frozen`、`disabled`、`expired`、`cancelled`（注销）。冻结仍可登录/查询；禁用、过期、注销后会话验证失败。备注最大 2000 字节，原因必填且不超过 500 字节。修改和踢人返回 `audit_log_id`。成员查询支持 `limit`（1–100，默认 50）和 `offset`（0–1000000），响应 `{items: [...]}`。审计查询另支持精确操作、人员、资源和请求ID筛选、可选成对UTC时间；limit默认100/1–200、offset0–100000，整页最多4MiB，超限422；详细字段及导出规则见[32号合同](32-audit-query-and-export.md)。成功查询和修改都有审计记录，密码/令牌不进入明文审计。
 
 共享密码安全保护（用户已确认）：要求管理员对该用户所有已加入品牌均拥有 `user.password_reset.brand`，不满足返回 403 `CREDENTIAL_SCOPE_REQUIRED`，不改密码、不撤销会话。不能仅凭当前品牌的重置权限接管其他品牌身份。超级管理员仍不能重置用户密码。
 

@@ -11776,7 +11776,7 @@
         "tags": [
           "administration"
         ],
-        "description": "An admin with audit.view.platform may omit X-Brand-ID for all brands; otherwise a valid authorized brand and audit.view.brand are required. The response reflects the SQL projection actually emitted: items only, with before_json and after_json as arbitrary JSON values (including null). The read itself is appended to the audit log. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
+        "description": "Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. Filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; brand_id is an optional nullable addition to each selected record. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -11796,16 +11796,76 @@
             "description": "Optional brand filter. Omit only when using the platform-scope permission to query across brands."
           },
           {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DateTime"
+            },
+            "description": "RFC3339Nano UTC lower bound with literal Z suffix, inclusive. Must be supplied with to."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DateTime"
+            },
+            "description": "RFC3339Nano UTC upper bound with literal Z suffix, exclusive. Must be supplied with from; the interval may not exceed 31 days."
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "actor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "resource_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "resource_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 100,
-              "default": 50
-            },
-            "description": "Page size (default 50)."
+              "maximum": 200,
+              "default": 100
+            }
           },
           {
             "name": "offset",
@@ -11814,10 +11874,9 @@
             "schema": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 1000000,
+              "maximum": 100000,
               "default": 0
-            },
-            "description": "Number of records to skip."
+            }
           },
           {
             "name": "X-Request-ID",
@@ -12054,6 +12113,31 @@
               }
             }
           },
+          "422": {
+            "description": "Size limit exceeded; returns a JSON error with the operation-specific error code and no partial data",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Persistent authentication or admission rate limit",
             "headers": {
@@ -12134,6 +12218,461 @@
         "x-permissions": [
           "audit.view.brand",
           "audit.view.platform"
+        ],
+        "x-idempotent-operation": false
+      }
+    },
+    "/api/v1/admin/audit/export": {
+      "get": {
+        "operationId": "exportAdminAudit",
+        "summary": "Export audit records as CSV",
+        "tags": [
+          "administration"
+        ],
+        "description": "Requires an explicit X-Brand-ID UUID even for platform-authorized exports. The selected brand must have both audit.view.brand or audit.view.platform AND audit.export.brand or audit.export.platform; the view and export grants must apply to that same brand. Requires both RFC3339Nano UTC from and to values ending in literal Z (numeric offsets are rejected), with from < to and a maximum span of 31 days; filtering is half-open [from,to). Accepts the same optional exact action, actor_id, resource_type, resource_id, and request_id filters as GET /admin/audit. Unknown, duplicate, or empty query values, including limit or offset, return 400. Reads the primary database in one snapshot, selects every matching current-window row ordered by created_at descending then id descending, and fails with 422 AUDIT_EXPORT_TOO_LARGE as JSON without a file above 10000 rows or 4 MiB. The CSV is UTF-8 with BOM, RFC 4180 escaped, and uses UTC timestamps. Formula injection is neutralized when the first non-space character is +, -, =, or @, or when a cell contains a tab, CR, or LF. Columns, in order: id, brand_id, action, actor_type, actor_id, resource_type, resource_id, reason, request_id, created_at, ip_address, before_json, after_json. Headers include the explicit brand, RFC3339Nano snapshot time, row count, SHA-256 of the complete CSV bytes including BOM, format version 1, and export UUID. Current session and matching view/export grants are freshly checked before releasing the snapshot; the audit.export record is written on the primary and committed before any CSV bytes are sent. A client must validate complete metadata and digest before starting a blob download.",
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateTime"
+            },
+            "description": "RFC3339Nano UTC lower bound with literal Z suffix, inclusive. Must be supplied with to."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateTime"
+            },
+            "description": "RFC3339Nano UTC upper bound with literal Z suffix, exclusive. Must be supplied with from; the interval may not exceed 31 days."
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "actor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "resource_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "resource_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "X-Brand-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            },
+            "description": "Selected brand; server revalidates current administrative scope and permission."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete, bounded UTF-8 CSV v1, emitted only after the export audit record commits.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Exports are never cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Content-Type": {
+                "description": "CSV media type.",
+                "schema": {
+                  "type": "string",
+                  "const": "text/csv; charset=utf-8"
+                }
+              },
+              "Content-Length": {
+                "description": "Complete CSV byte length; maximum 4194304.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)$"
+                }
+              },
+              "Content-Disposition": {
+                "description": "Download filename in audit-<UUID>-v1.csv form; the UUID is the selected brand ID.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^attachment; filename=\"audit-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}-v1\\.csv\"$"
+                }
+              },
+              "X-Content-Type-Options": {
+                "description": "Disable MIME sniffing.",
+                "schema": {
+                  "type": "string",
+                  "const": "nosniff"
+                }
+              },
+              "X-Audit-Brand-ID": {
+                "description": "Explicitly selected brand, including platform-authorized exports.",
+                "schema": {
+                  "$ref": "#/components/schemas/UUID"
+                }
+              },
+              "X-Audit-Snapshot-At": {
+                "description": "Primary database snapshot timestamp in RFC3339Nano UTC.",
+                "schema": {
+                  "$ref": "#/components/schemas/DateTime",
+                  "description": "RFC3339Nano UTC timestamp."
+                }
+              },
+              "X-Audit-Row-Count": {
+                "description": "Number of matching audit rows included in the complete CSV.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)$"
+                }
+              },
+              "X-Audit-SHA256": {
+                "description": "Lowercase SHA-256 digest of the complete response bytes, including BOM.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              },
+              "X-Audit-Format-Version": {
+                "description": "CSV format version.",
+                "schema": {
+                  "type": "string",
+                  "const": "1"
+                }
+              },
+              "X-Audit-Export-ID": {
+                "description": "Unique UUID of this export audit record.",
+                "schema": {
+                  "$ref": "#/components/schemas/UUID"
+                }
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "UTF-8 CSV with BOM, RFC 4180 quoting and CRLF rows. The server returns the complete matching snapshot or a JSON error; it never returns a partial file."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Size limit exceeded; returns a JSON error with the operation-specific error code and no partial data",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [
+          "audit.view.brand",
+          "audit.view.platform",
+          "audit.export.brand",
+          "audit.export.platform"
         ],
         "x-idempotent-operation": false
       }
@@ -99501,6 +100040,16 @@
         "properties": {
           "id": {
             "$ref": "#/components/schemas/UUID"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UUID"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "action": {
             "type": "string"
