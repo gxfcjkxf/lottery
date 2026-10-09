@@ -5,18 +5,11 @@ import {
   createApiClient,
   defaultBrand,
   applyBrandPresentation,
-  formatPoints,
   type Language,
 } from "@lottery/shared";
-import {
-  selectionCount,
-  totalPoints,
-  validateSelection,
-  type SelectionDraft,
-  type SelectionModel,
-} from "./selection";
 import WithdrawalPanel from "./WithdrawalPanel.vue";
 import WalletSummary from "./WalletSummary.vue";
+import HomeWalletCard from "./HomeWalletCard.vue";
 import RechargePanel from "./RechargePanel.vue";
 import BettingPanel from "./BettingPanel.vue";
 import DrawResultsPanel from "./DrawResultsPanel.vue";
@@ -68,7 +61,6 @@ const brandContent = ref(defaultBrand.content!);
 const brandPaused = ref(false);
 const mobileMenu = ref(false);
 const notice = ref("");
-const busy = ref(false);
 const agreed = ref(false);
 const privacyAgreed = ref(false);
 const serviceTermsAgreed = ref(false);
@@ -144,7 +136,6 @@ const telegramReady = computed(() => {
     Date.parse(telegramChallenge.value?.expires_at ?? "") > Date.now()
   );
 });
-const excluding = ref(false);
 let tickTimer: ReturnType<typeof setInterval> | undefined;
 let pageGeneration = 0;
 onUnmounted(() => {
@@ -164,8 +155,7 @@ const copy = {
     register: "Create account",
     games: "Games",
     play: "Play now",
-    balance: "Available points",
-    demo: "Prototype · demo data",
+    pointsPayments: "Platform points · payments not connected",
     online: "Service connected",
     offline: "Service unavailable",
     checking: "Checking service",
@@ -176,39 +166,8 @@ const copy = {
     announcement: "A calmer way to play",
     announcementBody: "Set your pace, check the rules, and enjoy the moment.",
     choose: "Choose your numbers",
-    selected: "Selected",
-    excluded: "Excluded",
-    multiplier: "Multiplier",
-    clear: "Clear",
-    random: "Quick pick",
-    next: "Review selection",
-    unit: "per line",
-    lines: "lines",
-    total: "Total points",
-    issue: "Current draw",
-    cutoff: "Closes in 02:18:42",
-    open: "Open for picks",
-    rules: "Rules",
-    confirm: "Confirm picks",
-    snapshot: "Your selection is locked for this review.",
-    submitted: "Demo order created locally. No points were moved.",
-    cancel: "Cancel demo order",
-    cancelled: "Demo order marked cancelled. No points were moved.",
-    status: "Status",
-    noChanges:
-      "This prototype does not change real account balances or submit transactions.",
-    demoAccount: "Demo account",
-    walletNote: "Sample figures only · not connected to a real wallet",
-    withdraw: "Withdrawal request",
-    amount: "Amount",
-    submit: "Preview request",
-    requestSaved: "Preview saved locally. No withdrawal was submitted.",
-    ledger: "Points activity",
-    recharge: "Add points",
-    manual: "First version uses manual top-up requests.",
     notices: "You’re all caught up",
     helpTitle: "Play with clarity",
-    detail: "How it works",
     loginTitle: "Welcome back",
     registerTitle: "Make yourself at home",
     username: "Username or mobile",
@@ -217,14 +176,6 @@ const copy = {
     verification: "Verification code enabled",
     terms: "I agree to the terms and play responsibly.",
     continue: "Continue",
-    demoLogin: "Demo only: authentication is not connected.",
-    resultTitle: "Recent results",
-    resultInfo: "Published draws appear here when the service is connected.",
-    openGame: "View game",
-    back: "Back to games",
-    expiry: "Draw status",
-    ruleVersion: "Rules version 1.2",
-    notificationHelp: "Notifications are sample content in this prototype.",
     invites: "Join codes",
     joinSourceLabel: "Optional join source",
     joinSourceNone: "No code",
@@ -246,8 +197,7 @@ const copy = {
     register: "创建账户",
     games: "彩种",
     play: "立即选号",
-    balance: "可用积分",
-    demo: "原型 · 演示数据",
+    pointsPayments: "平台积分 · 支付尚未接入",
     online: "服务已连接",
     offline: "服务暂不可用",
     checking: "正在检查服务",
@@ -258,38 +208,8 @@ const copy = {
     announcement: "更从容的娱乐方式",
     announcementBody: "量力而行，了解规则，享受当下。",
     choose: "选择号码",
-    selected: "已选",
-    excluded: "已排除",
-    multiplier: "倍数",
-    clear: "清空",
-    random: "机选",
-    next: "查看选号",
-    unit: "每注",
-    lines: "注",
-    total: "总积分",
-    issue: "当前期次",
-    cutoff: "距截止 02:18:42",
-    open: "投注开放中",
-    rules: "玩法规则",
-    confirm: "确认选号",
-    snapshot: "此页面展示的是选号快照。",
-    submitted: "演示注单已保存在本机，未扣除积分。",
-    cancel: "取消演示注单",
-    cancelled: "演示注单已标记取消，未退还或变更积分。",
-    status: "状态",
-    noChanges: "此原型不会更改真实账户余额或提交交易。",
-    demoAccount: "演示账户",
-    walletNote: "仅供演示 · 未连接真实钱包",
-    withdraw: "提现申请",
-    amount: "金额",
-    submit: "提交预览",
-    requestSaved: "预览已保存在本机，没有提交提现。",
-    ledger: "积分明细",
-    recharge: "充值",
-    manual: "首期采用人工充值申请。",
     notices: "目前没有新消息",
     helpTitle: "清晰地享受娱乐",
-    detail: "玩法说明",
     loginTitle: "欢迎回来",
     registerTitle: "欢迎加入",
     username: "用户名或手机号",
@@ -298,14 +218,6 @@ const copy = {
     verification: "启用验证码",
     terms: "我同意相关条款并承诺理性参与。",
     continue: "继续",
-    demoLogin: "仅为演示：身份验证尚未连接。",
-    resultTitle: "近期结果",
-    resultInfo: "服务连接后，已开奖期次将在此显示。",
-    openGame: "查看彩种",
-    back: "返回彩种",
-    expiry: "期次状态",
-    ruleVersion: "规则版本 1.2",
-    notificationHelp: "此原型中的通知为示例内容。",
     invites: "加入码",
     joinSourceLabel: "可选加入来源",
     joinSourceNone: "不使用代码",
@@ -354,308 +266,6 @@ const isBettingRoute = computed(
     route.path === "/orders" ||
     route.path.startsWith("/orders/"),
 );
-const gameId = computed(() => String(route.params.gameId || "classic-6"));
-interface GameConfig {
-  id: string;
-  name: string;
-  type: string;
-  pool: number;
-  pick: number;
-  unit: number;
-  draw: string;
-  color: string;
-  drawResult: string;
-  kind: "regular-special" | "digits";
-  specialPool?: number;
-  specialPick?: number;
-}
-const games: GameConfig[] = [
-  {
-    id: "classic-6",
-    name: "Classic 6/49",
-    type: "SIX + SPECIAL · 1–49 / 1–10",
-    kind: "regular-special",
-    pool: 49,
-    pick: 6,
-    specialPool: 10,
-    specialPick: 1,
-    unit: 2,
-    draw: "No. 20261005-184",
-    color: "mint",
-    drawResult: "04 · 11 · 18 · 26 · 33 · 42 + 07",
-  },
-  {
-    id: "lucky-5",
-    name: "Lucky 5/35",
-    type: "FIVE + SPECIAL · 1–35 / 1–12",
-    kind: "regular-special",
-    pool: 35,
-    pick: 5,
-    specialPool: 12,
-    specialPick: 1,
-    unit: 3,
-    draw: "No. 20261005-092",
-    color: "peach",
-    drawResult: "02 · 09 · 17 · 24 · 31 + 08",
-  },
-  {
-    id: "daily-3",
-    name: "Daily 3",
-    type: "THREE POSITIONAL DIGITS · 0–9",
-    kind: "digits",
-    pool: 10,
-    pick: 3,
-    unit: 1,
-    draw: "No. 20261005-036",
-    color: "blue",
-    drawResult: "3 · 6 · 8",
-  },
-];
-const game = computed(
-  () => games.find((item) => item.id === gameId.value) ?? games[0]!,
-);
-const model = computed<SelectionModel>(() => ({
-  id: game.value.id,
-  kind: game.value.kind,
-  regularPick: game.value.pick,
-  regularPool: game.value.pool,
-  specialPick: game.value.specialPick,
-  specialPool: game.value.specialPool,
-  digitCount: game.value.kind === "digits" ? game.value.pick : undefined,
-  unitPoints: BigInt(game.value.unit),
-  minMultiplier: 1,
-  maxMultiplier: 20,
-}));
-const selected = ref<number[]>([]);
-const selectedSpecial = ref<number[]>([]);
-const excluded = ref<number[]>([]);
-const digits = ref<Array<number | null>>([null, null, null]);
-const digitPosition = ref(0);
-const multiplier = ref(1);
-const draft = computed<SelectionDraft>(() => ({
-  regular: selected.value,
-  special: selectedSpecial.value,
-  digits: digits.value,
-}));
-const count = computed(() => selectionCount(model.value, draft.value));
-const cost = computed(() => {
-  try {
-    return totalPoints(model.value, draft.value, multiplier.value);
-  } catch {
-    return 0n;
-  }
-});
-const selectionError = computed(() =>
-  validateSelection(model.value, draft.value, multiplier.value),
-);
-const currentPickCount = computed(() =>
-  game.value.kind === "digits"
-    ? digits.value.filter((value) => value !== null).length
-    : selected.value.length,
-);
-const displayPoints = (n: bigint | number | string) =>
-  formatPoints(String(n), locale.value === "zh" ? "zh-CN" : "en");
-const orders = ref<
-  Array<{
-    id: string;
-    game: string;
-    numbers: number[];
-    special?: number[];
-    digits?: number[];
-    multiplier: number;
-    points: string;
-    status: string;
-    time: string;
-  }>
->([]);
-const activeOrder = computed(() =>
-  orders.value.find((order) => order.id === String(route.params.id)),
-);
-
-function readOrders() {
-  try {
-    orders.value = JSON.parse(localStorage.getItem("luma-demo-orders") || "[]");
-  } catch {
-    orders.value = [];
-  }
-  if (!orders.value.length)
-    orders.value = [
-      {
-        id: "LP-18426",
-        game: "Classic 6/49",
-        numbers: [4, 11, 18, 26, 33, 42],
-        multiplier: 1,
-        points: "2",
-        status: "Open",
-        time: "Today · 10:42",
-      },
-    ];
-}
-function saveOrders() {
-  localStorage.setItem("luma-demo-orders", JSON.stringify(orders.value));
-}
-function toggleNumber(n: number) {
-  const target = excluding.value ? excluded : selected;
-  const other = excluding.value ? selected : excluded;
-  other.value = other.value.filter((item) => item !== n);
-  target.value = target.value.includes(n)
-    ? target.value.filter((item) => item !== n)
-    : [...target.value, n].sort((a, b) => a - b);
-}
-function toggleSpecial(n: number) {
-  selectedSpecial.value = selectedSpecial.value.includes(n)
-    ? selectedSpecial.value.filter((item) => item !== n)
-    : [...selectedSpecial.value, n].sort((a, b) => a - b);
-}
-function gameArtNumbers(item: GameConfig, index: number): string[] {
-  return Array.from({ length: 3 }, (_, slot) => {
-    const number =
-      item.kind === "digits"
-        ? [1, 2, 1][slot]!
-        : ((index * 7 + slot * 11 + 4) % item.pool) + 1;
-    return item.kind === "digits"
-      ? String(number)
-      : String(number).padStart(2, "0");
-  });
-}
-function setDigit(n: number) {
-  const next = [...digits.value];
-  next[digitPosition.value] = n;
-  digits.value = next;
-  digitPosition.value = Math.min(
-    digitPosition.value + 1,
-    digits.value.length - 1,
-  );
-}
-function clearPicks() {
-  selected.value = [];
-  selectedSpecial.value = [];
-  excluded.value = [];
-  digits.value = [null, null, null];
-  digitPosition.value = 0;
-  multiplier.value = 1;
-}
-function quickPick() {
-  if (game.value.kind === "digits") {
-    digits.value = Array.from({ length: game.value.pick }, () =>
-      Math.floor(Math.random() * 10),
-    );
-    digitPosition.value = game.value.pick - 1;
-    return;
-  }
-  const available = Array.from(
-    { length: game.value.pool },
-    (_, i) => i + 1,
-  ).filter((n) => !excluded.value.includes(n));
-  for (let i = available.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [available[i], available[j]] = [available[j]!, available[i]!];
-  }
-  selected.value = available
-    .slice(0, Math.max(game.value.pick, selected.value.length))
-    .sort((a, b) => a - b);
-  const specialPool = Array.from(
-    { length: game.value.specialPool ?? 0 },
-    (_, i) => i + 1,
-  );
-  selectedSpecial.value = game.value.specialPick
-    ? [specialPool[Math.floor(Math.random() * specialPool.length)]!]
-    : [];
-}
-function continueToBet(id: string) {
-  clearPicks();
-  router.push(`/games/${id}/bet`);
-}
-function reviewPicks() {
-  if (brandPaused.value) {
-    notice.value =
-      locale.value === "en"
-        ? "This brand is paused. Picks are unavailable."
-        : "当前品牌已暂停，暂时无法选号。";
-    return;
-  }
-  if (selectionError.value) {
-    notice.value = selectionError.value;
-    return;
-  }
-  sessionStorage.setItem(
-    "luma-demo-draft",
-    JSON.stringify({
-      game: game.value.name,
-      gameId: game.value.id,
-      numbers: selected.value,
-      regular: selected.value,
-      special: selectedSpecial.value,
-      digits: digits.value,
-      excluded: excluded.value,
-      multiplier: multiplier.value,
-      points: cost.value.toString(),
-      issue: game.value.draw,
-      ruleVersion: "1.2",
-    }),
-  );
-  router.push("/bet/confirm");
-}
-function placeDemoOrder() {
-  if (brandPaused.value) {
-    notice.value =
-      locale.value === "en"
-        ? "This brand is paused. Picks are unavailable."
-        : "当前品牌已暂停，暂时无法选号。";
-    return;
-  }
-  busy.value = true;
-  window.setTimeout(() => {
-    let draft: {
-      game: string;
-      numbers: number[];
-      regular?: number[];
-      special?: number[];
-      digits?: Array<number | null>;
-      multiplier: number;
-      points: string;
-    };
-    try {
-      draft = JSON.parse(sessionStorage.getItem("luma-demo-draft") || "null");
-    } catch {
-      notice.value = "Selection expired. Please pick again.";
-      busy.value = false;
-      return;
-    }
-    if (!draft) {
-      notice.value = "Selection expired. Please pick again.";
-      busy.value = false;
-      return;
-    }
-    const order = {
-      id: `DEMO-${Date.now().toString().slice(-6)}`,
-      game: draft.game,
-      numbers: draft.digits?.length
-        ? draft.digits.filter((digit): digit is number => digit !== null)
-        : (draft.regular ?? draft.numbers),
-      special: draft.special,
-      digits: draft.digits?.filter((digit): digit is number => digit !== null),
-      multiplier: draft.multiplier,
-      points: draft.points,
-      status: "Open",
-      time: "Just now",
-    };
-    orders.value.unshift(order);
-    saveOrders();
-    sessionStorage.removeItem("luma-demo-draft");
-    busy.value = false;
-    notice.value = t.value.submitted;
-    router.push(`/orders/${order.id}`);
-  }, 300);
-}
-function cancelOrder(id: string) {
-  const found = orders.value.find((order) => order.id === id);
-  if (found?.status === "Open") {
-    found.status = "Cancelled (demo)";
-    saveOrders();
-    notice.value = t.value.cancelled;
-  }
-}
 function authTerms() {
   return { ...termsVersions.value };
 }
@@ -1052,35 +662,6 @@ async function logout() {
 function closeNotice() {
   notice.value = "";
 }
-function readDraft(): {
-  game: string;
-  gameId: string;
-  numbers: number[];
-  regular: number[];
-  special: number[];
-  digits: Array<number | null>;
-  excluded: number[];
-  multiplier: number;
-  points: string;
-  issue: string;
-  ruleVersion: string;
-} | null {
-  try {
-    return JSON.parse(sessionStorage.getItem("luma-demo-draft") || "null");
-  } catch {
-    return null;
-  }
-}
-function orderNumbers(order: {
-  numbers: number[];
-  special?: number[];
-  digits?: number[];
-}) {
-  return order.digits?.length
-    ? order.digits.join("")
-    : `${order.numbers.map((n) => String(n).padStart(2, "0")).join(" · ")}${order.special?.length ? ` + ${order.special.map((n) => String(n).padStart(2, "0")).join(" · ")}` : ""}`;
-}
-
 onMounted(async () => {
   const generation = ++pageGeneration;
   try {
@@ -1891,15 +1472,7 @@ watch(
             >
           </section>
           <section class="lower-grid">
-            <div class="mini-panel balance-panel">
-              <div class="panel-icon">◈</div>
-              <div class="eyebrow">{{ t.demoAccount }}</div>
-              <h3>{{ displayPoints("12840") }} <small>pts</small></h3>
-              <p>{{ t.walletNote }}</p>
-              <RouterLink to="/wallet" class="text-link"
-                >{{ t.wallet }} <span>→</span></RouterLink
-              >
-            </div>
+            <HomeWalletCard :brand-code="walletBrandCode" :locale="locale" @auth-expired="authProfile = null" />
             <div class="mini-panel responsible-panel">
               <div class="eyebrow">A QUICK REMINDER</div>
               <h3>
@@ -1922,552 +1495,6 @@ watch(
             </div>
           </section>
         </template>
-
-        <section
-          v-else-if="
-            route.path === '/games' ||
-            (route.path.startsWith('/games/') && !route.path.endsWith('/bet'))
-          "
-          class="page-section"
-        >
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">{{ game.type }}</div>
-              <h1>{{ game.name }}</h1>
-              <p>{{ t.noChanges }}</p>
-            </div>
-            <span class="status-chip"><i></i>{{ t.open }}</span>
-          </div>
-          <div class="game-detail-layout">
-            <div class="detail-card">
-              <div class="eyebrow">{{ t.issue }}</div>
-              <h2>{{ game.draw }}</h2>
-              <div class="countdown-row">
-                <div>
-                  <span class="tiny-label">{{ t.expiry }}</span
-                  ><strong>{{ t.open }}</strong>
-                </div>
-                <div>
-                  <span class="tiny-label">{{ t.cutoff }}</span
-                  ><strong class="countdown"
-                    >02:18:{{
-                      String(42 - (tick % 42)).padStart(2, "0")
-                    }}</strong
-                  >
-                </div>
-              </div>
-              <p class="rule-description">
-                {{
-                  locale === "en"
-                    ? `Choose ${game.pick} or more numbers from the pool. Every ${game.pick}-number combination is one line.`
-                    : `从号码池中至少选择 ${game.pick} 个号码，每 ${game.pick} 个号码组成一注。`
-                }}
-              </p>
-              <div class="detail-actions">
-                <button
-                  class="button button-dark"
-                  @click="continueToBet(game.id)"
-                >
-                  {{ t.play }} <span>→</span></button
-                ><RouterLink to="/results" class="text-link"
-                  >{{ t.results }} →</RouterLink
-                >
-              </div>
-            </div>
-            <div class="result-card">
-              <div class="eyebrow">{{ t.resultTitle }}</div>
-              <h3>{{ game.draw }}</h3>
-              <div class="result-balls">
-                <span v-for="num in game.drawResult.split(' · ')" :key="num">{{
-                  num
-                }}</span>
-              </div>
-              <p>{{ t.resultInfo }}</p>
-            </div>
-          </div>
-          <div class="model-picker">
-            <div class="eyebrow">{{ t.games }}</div>
-            <div class="compact-game-grid">
-              <button
-                v-for="item in games"
-                :key="item.id"
-                class="compact-game"
-                @click="router.push(`/games/${item.id}`)"
-              >
-                <span>{{ item.name }}</span
-                ><span>↗</span
-                ><small
-                  >{{ item.pick }} / {{ item.pool }} ·
-                  {{ item.unit }} pts</small
-                >
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section
-          v-else-if="route.path.endsWith('/bet')"
-          class="page-section bet-page"
-        >
-          <div class="page-heading bet-heading">
-            <div>
-              <div class="eyebrow">{{ game.type }} · {{ t.ruleVersion }}</div>
-              <h1>{{ t.choose }}</h1>
-              <p>
-                {{ game.name }} <span class="sep-dot">·</span> {{ game.draw }}
-                <span class="status-chip small-chip"><i></i>{{ t.open }}</span>
-              </p>
-            </div>
-            <RouterLink :to="`/games/${game.id}`" class="back-link"
-              >← {{ t.back }}</RouterLink
-            >
-          </div>
-          <div class="bet-layout">
-            <div class="bet-main">
-              <div class="pick-toolbar">
-                <div>
-                  <span class="tiny-label">{{ t.issue }}</span
-                  ><strong>{{ game.draw }}</strong>
-                </div>
-                <div class="cutoff-note">
-                  <span class="pulse-dot"></span><span>{{ t.cutoff }}</span>
-                </div>
-              </div>
-              <div class="number-head">
-                <div>
-                  <h2>{{ t.choose }}</h2>
-                  <p v-if="game.kind === 'digits'">
-                    Choose one digit for each position; repeats are allowed.
-                  </p>
-                  <p v-else>
-                    Choose regular numbers and a separate special number.
-                  </p>
-                </div>
-                <button
-                  v-if="game.kind === 'regular-special'"
-                  class="exclude-toggle"
-                  :class="{ selected: excluding }"
-                  @click="excluding = !excluding"
-                  :aria-pressed="excluding"
-                >
-                  ⊘ {{ t.excluded }}
-                </button>
-              </div>
-              <div v-if="game.kind === 'digits'" class="digit-picker">
-                <div
-                  class="digit-slots"
-                  role="group"
-                  aria-label="Digit positions"
-                >
-                  <button
-                    v-for="(_, index) in digits"
-                    :key="index"
-                    :class="{ current: digitPosition === index }"
-                    :aria-pressed="digitPosition === index"
-                    @click="digitPosition = index"
-                  >
-                    <span>Digit {{ index + 1 }}</span
-                    ><strong>{{
-                      digits[index] === null ? "–" : digits[index]
-                    }}</strong>
-                  </button>
-                </div>
-                <div
-                  class="number-grid digit-grid"
-                  role="group"
-                  aria-label="Choose a digit from 0 to 9"
-                >
-                  <button
-                    v-for="n in 10"
-                    :key="n"
-                    class="number-button"
-                    :class="{ picked: digits.includes(n - 1) }"
-                    :aria-label="`Choose digit ${n - 1} for position ${digitPosition + 1}`"
-                    @click="setDigit(n - 1)"
-                  >
-                    {{ n - 1 }}
-                  </button>
-                </div>
-              </div>
-              <template v-else
-                ><div class="pick-group">
-                  <div class="pick-group-label">
-                    REGULAR · CHOOSE {{ game.pick }}+
-                  </div>
-                  <div
-                    class="number-grid"
-                    role="group"
-                    aria-label="Choose regular numbers"
-                  >
-                    <button
-                      v-for="n in game.pool"
-                      :key="n"
-                      class="number-button"
-                      :class="{
-                        picked: selected.includes(n),
-                        excluded: excluded.includes(n),
-                      }"
-                      :aria-pressed="
-                        selected.includes(n) || excluded.includes(n)
-                      "
-                      :aria-label="`${n}${selected.includes(n) ? ', selected' : excluded.includes(n) ? ', excluded' : ''}`"
-                      @click="toggleNumber(n)"
-                    >
-                      {{ String(n).padStart(2, "0") }}
-                    </button>
-                  </div>
-                </div>
-                <div class="pick-group special-group">
-                  <div class="pick-group-label">
-                    SPECIAL · CHOOSE {{ game.specialPick }}
-                  </div>
-                  <div
-                    class="number-grid special-grid"
-                    role="group"
-                    aria-label="Choose a special number"
-                  >
-                    <button
-                      v-for="n in game.specialPool"
-                      :key="n"
-                      class="number-button special-number"
-                      :class="{ picked: selectedSpecial.includes(n) }"
-                      :aria-pressed="selectedSpecial.includes(n)"
-                      :aria-label="`Special number ${n}${selectedSpecial.includes(n) ? ', selected' : ''}`"
-                      @click="toggleSpecial(n)"
-                    >
-                      {{ String(n).padStart(2, "0") }}
-                    </button>
-                  </div>
-                </div></template
-              >
-              <div class="pick-footer">
-                <span
-                  >{{ t.selected }} <strong>{{ currentPickCount }}</strong
-                  ><span class="tiny-label"> / {{ game.pick }}</span></span
-                ><span v-if="excluded.length" class="excluded-count"
-                  >{{ excluded.length }} {{ t.excluded.toLowerCase() }}</span
-                ><span class="pick-attrs"
-                  ><span
-                    v-if="game.kind === 'regular-special'"
-                    class="attribute-tag"
-                    >ODD / EVEN</span
-                  ><span
-                    v-if="game.kind === 'regular-special'"
-                    class="attribute-tag"
-                    >HIGH / LOW</span
-                  ><span v-else class="attribute-tag"
-                    >POSITIONAL · REPEATS OK</span
-                  ></span
-                >
-              </div>
-              <div class="rule-inline">
-                <span class="rule-icon">i</span
-                ><span>{{
-                  game.kind === "digits"
-                    ? "Three ordered digits · each position accepts 0–9 · repeats allowed"
-                    : `Regular 1–${game.pool}, special 1–${game.specialPool} · ${t.ruleVersion} · ${game.unit} points ${t.unit}`
-                }}</span
-                ><button
-                  aria-label="More about rules"
-                  @click="router.push('/help')"
-                >
-                  ?
-                </button>
-              </div>
-            </div>
-            <aside class="bet-summary">
-              <div class="summary-title">
-                <div>
-                  <div class="eyebrow">YOUR PLAY</div>
-                  <h3>{{ game.name }}</h3>
-                </div>
-                <span class="summary-star">✳</span>
-              </div>
-              <div class="summary-issue">
-                <span class="tiny-label">{{ t.issue }}</span
-                ><strong>{{ game.draw }}</strong
-                ><span class="status-chip small-chip"><i></i>{{ t.open }}</span>
-              </div>
-              <div
-                v-if="game.kind === 'digits'"
-                class="summary-numbers digit-summary"
-              >
-                <span v-for="(digit, index) in digits" :key="index">{{
-                  digit === null ? "–" : digit
-                }}</span>
-              </div>
-              <div v-else class="summary-numbers">
-                <span v-for="n in selected" :key="`r${n}`">{{
-                  String(n).padStart(2, "0")
-                }}</span
-                ><span
-                  v-for="n in selectedSpecial"
-                  :key="`s${n}`"
-                  class="special-summary-number"
-                  >★{{ String(n).padStart(2, "0") }}</span
-                ><em v-if="!selected.length && !selectedSpecial.length">{{
-                  locale === "en"
-                    ? "Your picks appear here"
-                    : "所选号码将显示于此"
-                }}</em>
-              </div>
-              <label class="multiplier-label"
-                >{{ t.multiplier
-                }}<span class="multiplier-input"
-                  ><button
-                    aria-label="Decrease multiplier"
-                    @click="multiplier = Math.max(1, multiplier - 1)"
-                  >
-                    −</button
-                  ><input
-                    v-model.number="multiplier"
-                    type="number"
-                    min="1"
-                    max="20"
-                    aria-label="Multiplier"
-                  /><button
-                    aria-label="Increase multiplier"
-                    @click="multiplier = Math.min(20, multiplier + 1)"
-                  >
-                    +
-                  </button></span
-                ></label
-              >
-              <div class="summary-calc">
-                <div>
-                  <span>{{ t.selected }}</span
-                  ><strong>{{ displayPoints(count) }} {{ t.lines }}</strong>
-                </div>
-                <div>
-                  <span>{{ t.unit }}</span
-                  ><strong>{{ game.unit }} pts</strong>
-                </div>
-                <div class="summary-total">
-                  <span>{{ t.total }}</span
-                  ><strong>{{ displayPoints(cost) }} <small>pts</small></strong>
-                </div>
-              </div>
-              <div class="available-balance">
-                <span>{{ t.balance }}</span
-                ><strong>{{ displayPoints("12840") }} pts</strong>
-              </div>
-              <p v-if="selectionError" class="inline-error" role="status">
-                {{ selectionError }}
-              </p>
-              <div class="summary-buttons">
-                <button class="button button-secondary" @click="clearPicks">
-                  {{ t.clear }}</button
-                ><button class="button button-secondary" @click="quickPick">
-                  ✳ {{ t.random }}
-                </button>
-              </div>
-              <button
-                class="button button-primary full-button"
-                :disabled="!!selectionError"
-                @click="reviewPicks"
-              >
-                {{ t.next }} <span>→</span>
-              </button>
-              <p class="no-debit-note">{{ t.noChanges }}</p>
-            </aside>
-          </div>
-        </section>
-
-        <section
-          v-else-if="route.path === '/bet/confirm'"
-          class="page-section narrow-page"
-        >
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">FINAL REVIEW</div>
-              <h1>{{ t.confirm }}</h1>
-              <p>{{ t.snapshot }}</p>
-            </div>
-          </div>
-          <div class="confirmation-card">
-            <div class="confirm-top">
-              <div>
-                <span class="tiny-label">{{ t.issue }}</span>
-                <h2>{{ readDraft()?.game || "Selection" }}</h2>
-              </div>
-              <span class="status-chip"><i></i>{{ t.open }}</span>
-            </div>
-            <template v-if="readDraft()?.digits?.length"
-              ><div class="confirm-group">
-                <span class="tiny-label">POSITIONAL DIGITS</span>
-                <div class="confirm-balls">
-                  <span
-                    v-for="(n, index) in readDraft()?.digits"
-                    :key="index"
-                    >{{ n === null ? "–" : n }}</span
-                  >
-                </div>
-              </div></template
-            ><template v-else
-              ><div class="confirm-group">
-                <span class="tiny-label">REGULAR</span>
-                <div class="confirm-balls">
-                  <span v-for="n in readDraft()?.regular || []" :key="n">{{
-                    n
-                  }}</span>
-                </div>
-              </div>
-              <div v-if="readDraft()?.special?.length" class="confirm-group">
-                <span class="tiny-label">SPECIAL</span>
-                <div class="confirm-balls">
-                  <span v-for="n in readDraft()?.special" :key="n">{{
-                    n
-                  }}</span>
-                </div>
-              </div></template
-            >
-            <div class="confirm-row">
-              <span>{{ t.multiplier }}</span
-              ><strong>{{ readDraft()?.multiplier || 1 }}×</strong>
-            </div>
-            <div class="confirm-row">
-              <span>{{ t.total }}</span
-              ><strong
-                >{{ displayPoints(readDraft()?.points || "0") }} pts</strong
-              >
-            </div>
-            <div class="confirm-row">
-              <span>{{ t.rules }}</span
-              ><strong>v{{ readDraft()?.ruleVersion || "1.2" }}</strong>
-            </div>
-            <div class="demo-callout">
-              <span>ⓘ</span>
-              <p>{{ t.noChanges }}</p>
-            </div>
-            <button
-              class="button button-primary full-button"
-              :disabled="busy || !readDraft()"
-              @click="placeDemoOrder"
-            >
-              {{ busy ? (locale === "en" ? "Saving…" : "保存中…") : t.confirm }}
-              <span>→</span></button
-            ><button
-              class="button button-quiet full-button"
-              @click="router.back()"
-            >
-              {{ locale === "en" ? "Go back" : "返回修改" }}
-            </button>
-          </div>
-        </section>
-
-        <section v-else-if="route.path === '/orders'" class="page-section">
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">YOUR ACTIVITY</div>
-              <h1>{{ t.orders }}</h1>
-              <p>{{ t.noChanges }}</p>
-            </div>
-            <select class="filter-select" aria-label="Filter orders">
-              <option>{{ locale === "en" ? "All orders" : "全部注单" }}</option>
-              <option>Open</option>
-              <option>Cancelled</option>
-            </select>
-          </div>
-          <div class="order-list">
-            <article v-for="order in orders" :key="order.id" class="order-row">
-              <div class="order-game-mark">✳</div>
-              <div class="order-info">
-                <RouterLink :to="`/orders/${order.id}`"
-                  ><strong>{{ order.game }}</strong></RouterLink
-                ><span>{{ order.id }} · {{ order.time }}</span
-                ><span class="order-numbers">{{ orderNumbers(order) }}</span>
-              </div>
-              <div class="order-cost">
-                <strong>{{ displayPoints(order.points) }} pts</strong
-                ><span
-                  class="status-chip"
-                  :class="
-                    order.status.toLowerCase().startsWith('cancel')
-                      ? 'neutral'
-                      : ''
-                  "
-                  ><i></i>{{ order.status }}</span
-                >
-              </div>
-              <RouterLink
-                :to="`/orders/${order.id}`"
-                class="round-link"
-                :aria-label="`View ${order.id}`"
-                >↗</RouterLink
-              >
-            </article>
-          </div>
-          <p class="list-footnote">{{ t.demo }}</p>
-        </section>
-
-        <section
-          v-else-if="route.path.startsWith('/orders/')"
-          class="page-section narrow-page"
-        >
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">ORDER DETAIL</div>
-              <h1>{{ activeOrder?.id || String(route.params.id) }}</h1>
-            </div>
-            <RouterLink to="/orders" class="back-link"
-              >← {{ t.orders }}</RouterLink
-            >
-          </div>
-          <div v-if="activeOrder" class="detail-panel">
-            <div class="detail-panel-head">
-              <div>
-                <span class="tiny-label">{{ t.status }}</span
-                ><span class="status-chip"
-                  ><i></i>{{ activeOrder.status }}</span
-                >
-              </div>
-              <strong>{{ activeOrder.game }}</strong>
-            </div>
-            <div class="order-numbers large-numbers">
-              {{ orderNumbers(activeOrder) }}
-            </div>
-            <dl class="detail-list">
-              <div>
-                <dt>{{ t.issue }}</dt>
-                <dd>20261005 · Demo</dd>
-              </div>
-              <div>
-                <dt>{{ t.multiplier }}</dt>
-                <dd>{{ activeOrder.multiplier }}×</dd>
-              </div>
-              <div>
-                <dt>{{ t.total }}</dt>
-                <dd>{{ activeOrder.points }} pts</dd>
-              </div>
-              <div>
-                <dt>{{ t.demo }}</dt>
-                <dd>{{ activeOrder.time }}</dd>
-              </div>
-              <div>
-                <dt>{{ t.rules }}</dt>
-                <dd>v1.2</dd>
-              </div>
-            </dl>
-            <div class="demo-callout">
-              <span>ⓘ</span>
-              <p>{{ t.noChanges }}</p>
-            </div>
-            <button
-              v-if="activeOrder.status === 'Open'"
-              class="button button-secondary full-button"
-              @click="cancelOrder(activeOrder.id)"
-            >
-              {{ t.cancel }}
-            </button>
-          </div>
-          <div v-else class="empty-state">
-            <span>⌕</span>
-            <h2>{{ locale === "en" ? "Order not found" : "未找到注单" }}</h2>
-            <RouterLink to="/orders" class="text-link"
-              >{{ t.orders }} →</RouterLink
-            >
-          </div>
-        </section>
 
         <section
           v-else-if="
@@ -2567,8 +1594,8 @@ watch(
                 <p>
                   {{
                     locale === "en"
-                      ? "Points are a platform unit. Values on this prototype are fictional examples and do not represent money or a real account."
-                      : "积分是平台单位。本原型中的数值均为虚构示例，不代表现金或真实账户。"
+                      ? "Points are a platform unit shown as whole numbers. Current balances and source breakdowns come from the live wallet module. Points are not cash, and external payments are not connected."
+                      : "积分是平台单位，以整数显示。当前余额和来源明细来自实时钱包模块。积分不代表现金，外部支付尚未接入。"
                   }}
                 </p>
               </details>
@@ -2583,8 +1610,8 @@ watch(
                 <p>
                   {{
                     locale === "en"
-                      ? "Eligibility can depend on point source and play-through requirements. This screen only illustrates a possible status and submits no request."
-                      : "提现资格可能取决于积分来源和流水要求。此页面仅展示可能的状态，不会提交申请。"
+                      ? "Eligibility depends on point source and turnover requirements shown for your account. You can submit an internal withdrawal request and follow its status. First-phase processing is internal; external payments are not connected."
+                      : "提现资格取决于账户显示的积分来源和流水要求。你可以提交内部提现申请并查看处理状态。第一阶段采用内部处理，外部支付尚未接入。"
                   }}
                 </p>
               </details>
@@ -2613,12 +1640,7 @@ watch(
         <span
           >© 2026 {{ brandName
           }}<template v-if="isBettingRoute">
-            ·
-            {{
-              locale === "en"
-                ? "Live betting · real wallet"
-                : "真实投注 · 实时钱包"
-            }}</template
+            · {{ t.pointsPayments }}</template
           ><template v-else-if="route.path === '/results'">
             ·
             {{
@@ -2627,14 +1649,7 @@ watch(
           ><template v-else-if="route.path === '/notifications'">
             · {{ locale === "en" ? "Live in-app inbox" : "真实站内消息" }}
           </template><template v-else>
-            ·
-            {{
-              route.path.startsWith("/wallet")
-                ? locale === "en"
-                  ? "Live wallet"
-                  : "实时钱包"
-                : t.demo
-            }}</template
+            · {{ t.pointsPayments }}</template
           ></span
         >
         <nav>

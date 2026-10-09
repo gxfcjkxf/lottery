@@ -271,7 +271,7 @@ onBeforeUnmount(() => {
       <div>
         <div class="eyebrow">{{ text("AGENT SETTINGS", "代理设置") }}</div>
         <h1>{{ text("My agent", "我的代理") }}</h1>
-        <p>{{ text("Your agent settings and direct children. Commission calculation and payout are not implemented.", "查看自己的代理设置和直属下级。佣金计算与发放尚未实现。") }}</p>
+        <p>{{ text("Your agent settings and direct children. Commission points are shown in your wallet.", "查看自己的代理设置和直属下级。佣金积分可在钱包中查看。") }}</p>
       </div>
       <button class="button button-secondary" type="button" :disabled="loading || writing" @click="load()">{{ text("Reload", "重新加载") }}</button>
     </div>

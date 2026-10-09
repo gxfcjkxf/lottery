@@ -16,7 +16,7 @@ test("user shell loads live persisted brand context and fits viewport", async ({
   await page.goto("http://localhost:5173");
   await expect(page.locator(".footer-online")).toHaveText("Service connected");
   await expect(page.locator(".page-footer")).toContainText(
-    "Prototype · demo data",
+    "Platform points · payments not connected",
   );
   await expect(page.locator(".brand").first()).toContainText("Aurora");
   await noHorizontalOverflow(page);
