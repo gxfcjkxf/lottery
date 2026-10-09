@@ -57,3 +57,87 @@ test('platform catalogue uses the real games endpoint and has no manual draw rou
   const denied = await page.request.post(`${origin}/api/v1/platform/periods/${period.id}/manual-draw`, { headers: { Origin: origin, 'X-Brand-ID': brand }, data: {} });
   expect([404, 405]).toContain(denied.status());
 });
+
+test('platform reads a genuine brand-created period and manual result without changing it', async ({ page, playwright }, info) => {
+  test.setTimeout(60_000);
+  const operator = await playwright.request.newContext();
+  const brandOrigin = 'http://127.0.0.1:5184';
+  const base = `${brandOrigin}/api/v1/admin`;
+  const headers = { Origin: brandOrigin, 'X-Brand-ID': brand };
+  const suffix = crypto.randomUUID().replaceAll('-', '').slice(0, 12);
+  const name = `Platform real draw ${suffix}`;
+  try {
+    const login = await operator.post(`${base}/auth/login`, {
+      headers: { ...headers, 'Idempotency-Key': crypto.randomUUID() },
+      data: { identifier: 'review_operator', password: process.env.TEST_REVIEW_ADMIN_PASSWORD! },
+    });
+    expect(login.status()).toBe(200);
+    const created = await operator.post(`${base}/games`, {
+      headers: { ...headers, 'Idempotency-Key': crypto.randomUUID() },
+      data: { code: `platform_draw_${suffix}`, name, model: games[0].model, timezone: 'UTC', reason: 'Owned synthetic game for real platform read verification' },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    const game = (await created.json()).data;
+    const drawAt = new Date(Date.now() + 20_000);
+    drawAt.setUTCMilliseconds(0);
+    const saved = await operator.put(`${base}/games/${game.id}/schedule`, {
+      headers: { ...headers, 'Idempotency-Key': crypto.randomUUID() },
+      data: { version: game.version, reason: 'Schedule one near-future owned draw', spec: {
+        timezone: 'UTC', mode: 'daily', daily_draw_times: [drawAt.toISOString().slice(11, 19)], interval_seconds: 0,
+        busy_windows: [], bet_open_before_seconds: 60, bet_close_before_seconds: 1, pause_dates: [], weekdays: [0, 1, 2, 3, 4, 5, 6], holiday_dates: [], holiday_policy: 'normal',
+      } },
+    });
+    expect(saved.status(), await saved.text()).toBe(200);
+    const generated = await operator.post(`${base}/games/${game.id}/periods/generate`, {
+      headers: { ...headers, 'Idempotency-Key': crypto.randomUUID() },
+      data: { from: new Date(Date.now() - 1000).toISOString(), to: new Date(drawAt.valueOf() + 1000).toISOString(), reason: 'Generate single real test period' },
+    });
+    expect(generated.status(), await generated.text()).toBe(200);
+    const periods = (await generated.json()).data.periods;
+    expect(periods).toHaveLength(1);
+    const periodId = periods[0].id;
+    async function readPeriod() {
+      const response = await operator.get(`${base}/periods/${periodId}`, { headers });
+      expect(response.status()).toBe(200);
+      return (await response.json()).data;
+    }
+    await expect.poll(async () => (await readPeriod()).status, { timeout: 30_000, intervals: [200, 400, 800] }).toBe('waiting_draw');
+    const ready = await readPeriod();
+    const published = await operator.post(`${base}/periods/${periodId}/manual-draw`, {
+      headers: { ...headers, 'Idempotency-Key': crypto.randomUUID() },
+      data: { version: ready.version, period_no: ready.period_no, result: { regular: [], special: [], digits: [1, 2, 1] }, drawn_at: drawAt.toISOString(), reason: 'Publish owned synthetic 121 result' },
+    });
+    expect(published.status(), await published.text()).toBe(201);
+    const draw = (await published.json()).data;
+    const before = await readPeriod();
+    const historyBefore = await operator.get(`${base}/periods/${periodId}/draw?limit=51&offset=0`, { headers });
+    expect(historyBefore.status()).toBe(200);
+    const original = (await historyBefore.json()).data;
+    expect(original.current.id).toBe(draw.id);
+    await page.goto(origin);
+    await expect(page.locator('.app-frame')).toBeVisible();
+    await page.locator('.nav-item').filter({ hasText: 'Bet orders' }).click();
+    await page.locator('.brand-picker select').selectOption(brand);
+    await page.getByTestId('platform-bet-tabs').getByRole('button', { name: 'Games and draws' }).click();
+    await page.getByTestId('platform-lottery').getByRole('button', { name, exact: true }).click();
+    await page.getByTestId('platform-game-periods').getByRole('button', { name: ready.period_no, exact: true }).click();
+    const result = page.getByTestId('platform-period-draw');
+    await expect(result).toContainText(draw.id);
+    const numbers = JSON.parse(await result.locator('.bet-snapshots pre').first().innerText());
+    expect(numbers).toEqual({ regular: [], special: [], digits: [1, 2, 1] });
+    await expect(page.getByTestId('platform-lottery').getByRole('alert')).toHaveCount(0);
+    const wrongBrand = await page.request.get(`${origin}/api/v1/platform/periods/${periodId}/draw?limit=51&offset=0`, { headers: { 'X-Brand-ID': '0199a000-0000-7000-8000-000000000002' } });
+    expect(wrongBrand.status()).toBe(404);
+    const denied = await page.request.post(`${origin}/api/v1/platform/periods/${periodId}/manual-draw`, {
+      headers: { Origin: origin, 'X-Brand-ID': brand, 'Idempotency-Key': crypto.randomUUID() },
+      data: { version: before.version, period_no: ready.period_no, result: { regular: [], special: [], digits: [9, 9, 9] }, drawn_at: drawAt.toISOString(), reason: 'Verify platform cannot replace result' },
+    });
+    expect([404, 405]).toContain(denied.status());
+    expect(await readPeriod()).toEqual(before);
+    const after = await operator.get(`${base}/periods/${periodId}/draw?limit=51&offset=0`, { headers });
+    expect(after.status()).toBe(200);
+    expect((await after.json()).data).toEqual(original);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await page.screenshot({ path: info.outputPath('platform-real-draw.png'), fullPage: true });
+  } finally { await operator.dispose(); }
+});

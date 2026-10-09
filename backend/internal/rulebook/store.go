@@ -254,7 +254,9 @@ func (s Store) CreateGame(ctx context.Context, tx pgx.Tx, brand string, a access
 		return Game{}, ErrInvalid
 	}
 	var one int
-	if e := tx.QueryRow(ctx, `SELECT 1 FROM brands WHERE id=$1 FOR UPDATE`, brand).Scan(&one); e != nil {
+	// Serialize same-brand creation without blocking login audit FK checks.
+	// This operation does not change the brand's referenced key.
+	if e := tx.QueryRow(ctx, `SELECT 1 FROM brands WHERE id=$1 FOR NO KEY UPDATE`, brand).Scan(&one); e != nil {
 		return Game{}, e
 	}
 	var exists bool
