@@ -10,6 +10,7 @@ import ArchivesPanel from './ArchivesPanel.vue'
 import NotificationsPanel from './NotificationsPanel.vue'
 import ArchiveTasksPanel from './ArchiveTasksPanel.vue'
 import FinancialPoliciesPanel from './FinancialPoliciesPanel.vue'
+import OperationalPoliciesPanel from './OperationalPoliciesPanel.vue'
 
 const api = createPlatformApi()
 const locale = ref<'en' | 'zh-CN'>('en')
@@ -42,7 +43,7 @@ const nextPage = computed(() => locale.value === 'en' ? 'Next page' : '下一页
 const thisPage = computed(() => locale.value === 'en' ? 'This page' : '本页')
 const selectedBrand = ref('')
 const section = ref<'brands' | 'users' | 'audit' | 'rewards' | 'wallets' | 'bets' | 'withdrawals' | 'commission'>('brands')
-const auditView = ref<'audit' | 'archives' | 'archive-tasks' | 'financial-policies' | 'notifications'>('audit')
+const auditView = ref<'audit' | 'archives' | 'archive-tasks' | 'financial-policies' | 'operational-policies' | 'notifications'>('audit')
 const walletMember = ref('')
 const walletLabel = computed(() => locale.value === 'en' ? 'Member points' : '会员积分')
 const betLabel = computed(() => locale.value === 'en' ? 'Bet orders' : '投注订单')
@@ -118,7 +119,7 @@ async function chooseBrand(id: string) {
   if (section.value === 'users') await loadMembers(id)
   if (section.value === 'audit' && auditView.value === 'audit') await loadAudit(id)
 }
-async function chooseAuditView(next: 'audit' | 'archives' | 'archive-tasks' | 'financial-policies' | 'notifications') {
+async function chooseAuditView(next: 'audit' | 'archives' | 'archive-tasks' | 'financial-policies' | 'operational-policies' | 'notifications') {
   auditView.value = next; auditRequestGeneration++; auditRows.value = []
   auditOffset.value = 0; moreAudit.value = false; loading.value = false; error.value = ''
   if (next === 'audit' && selectedBrand.value) await loadAudit(selectedBrand.value)
@@ -246,11 +247,13 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
             <button class="secondary" :aria-pressed="auditView === 'archives'" @click="chooseAuditView('archives')">{{ locale === 'en' ? 'Report archives' : '报表归档' }}</button>
             <button class="secondary" :aria-pressed="auditView === 'archive-tasks'" @click="chooseAuditView('archive-tasks')">{{ locale === 'en' ? 'Archive tasks' : '归档任务' }}</button>
             <button class="secondary" :aria-pressed="auditView === 'financial-policies'" @click="chooseAuditView('financial-policies')">{{ locale === 'en' ? 'Financial policies' : '资金规则' }}</button>
+            <button class="secondary" :aria-pressed="auditView === 'operational-policies'" @click="chooseAuditView('operational-policies')">{{ locale === 'en' ? 'Operational policies' : '运营规则' }}</button>
             <button class="secondary" :aria-pressed="auditView === 'notifications'" @click="chooseAuditView('notifications')">{{ locale === 'en' ? 'Notifications' : '通知' }}</button>
           </div>
           <ArchivesPanel v-if="auditView === 'archives'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
           <ArchiveTasksPanel v-else-if="auditView === 'archive-tasks'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
           <FinancialPoliciesPanel v-else-if="auditView === 'financial-policies'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
+          <OperationalPoliciesPanel v-else-if="auditView === 'operational-policies'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
           <NotificationsPanel v-else-if="auditView === 'notifications'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
           <template v-else>
           <section v-if="selectedBrand" class="panel"><div class="panel-heading"><div><h2>{{ lang.audit }} <span class="subtle">/ {{ selected?.name }}</span></h2><p>{{ lang.auditDescription }}</p></div><span class="count-chip">{{ auditRows.length }} {{ lang.countSuffix }}</span></div><div class="table-wrap"><table><thead><tr><th>{{ lang.action }}</th><th>{{ lang.actor }}</th><th>{{ lang.resource }}</th><th>{{ lang.reason }}</th><th>{{ lang.date }}</th></tr></thead><tbody><tr v-for="row in auditRows" :key="row.id"><td><span class="action-label">{{ row.action }}</span><small>{{ row.id }}</small></td><td class="mono">{{ row.actor_id }}</td><td>{{ row.resource_type }}<small>{{ row.resource_id }}</small></td><td class="reason-cell">{{ row.reason || '—' }}</td><td>{{ row.created_at }}</td></tr><tr v-if="!auditRows.length"><td colspan="5" class="empty-state">{{ lang.empty }}</td></tr></tbody></table></div></section>

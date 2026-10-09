@@ -249,7 +249,7 @@ watch(skin, (presentation) => {
   if (presentation) configure(presentation.default_locale, presentation.available_locales);
   else resetBrand();
 }, { immediate: true });
-watch(() => [account.value?.id, selectedBrandId.value, JSON.stringify(account.value?.permissions_by_brand ?? account.value?.permissions ?? []), JSON.stringify(account.value?.platform_permissions ?? [])] as const,
+watch(() => [account.value?.id, selectedBrandId.value, JSON.stringify(account.value?.permissions_by_brand), JSON.stringify(account.value?.platform_permissions)] as const,
   (next, previous) => {
     if (previous[0] && previous[1] && previous[0] === next[0] && (previous[1] !== next[1] || previous[2] !== next[2] || previous[3] !== next[3])) {
       hideCommissionPaymentIntentsForScope(previous[0], previous[1]);
@@ -356,10 +356,7 @@ const toast = (text: string | ReturnType<typeof message>, english?: string) => {
 };
 const hasPermission = (permission: string) => {
   if (!account.value) return false;
-  const grants =
-    account.value.permissions_by_brand?.[selectedBrandId.value] ??
-    (account.value.permissions_by_brand ? [] : account.value.permissions);
-  return grants.includes(permission);
+  return brandPermissionSet(account.value, selectedBrandId.value).has(permission);
 };
 const canEditUsers = computed(() =>
   Boolean(
