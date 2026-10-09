@@ -14,6 +14,6 @@ func commissionAnalysisExample() reporting.CommissionAnalysisReport {
 		CorrectionEntryCount: "0", CorrectionCreditPoints: "0", CorrectionDebitPoints: "0", PostingEntryCount: "2", ActualNetPoints: "12", ManualAdjustmentNetPoints: "2",
 		EffectiveTargetPoints: &effective, CalculationMinusActualPoints: &gap, EffectiveMinusActualPoints: &gap, CalculationComplete: true, EffectiveTargetComplete: true}
 	return reporting.CommissionAnalysisReport{BrandID: id, SnapshotAt: now, Timezone: "UTC", Query: reporting.CommissionAnalysisQuery{From: now.Add(-24 * time.Hour), To: now, GroupBy: "cycle", Limit: 20},
-		Coverage: reporting.CommissionAnalysisCoverage{SelectedCycleCount: "1", ReadyCycleCount: "1", UnreadyCycleCount: "0", LegacyPolicyBlockedCycleCount: "0"},
+		Coverage: reporting.CommissionAnalysisCoverage{SelectedCycleCount: "1", ReadyCycleCount: "1", UnreadyCycleCount: "0"},
 		Summary:  totals, Items: []reporting.Group[reporting.CommissionAnalysisTotals]{{Key: id, Label: id, Totals: totals}}, TotalGroups: "1"}
 }

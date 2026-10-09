@@ -10,8 +10,9 @@ test('policy browser CI uses normal bootstrap in separate owned viewport databas
   assert.ok(job);
   assert.match(job, /viewport: \[desktop, mobile\]/);
   assert.match(job, /POSTGRES_DB: lottery_archive_policy_browser_\$\{\{ matrix\.viewport \}\}/);
+  assert.match(job, /POSTGRES_PSQL_BIN: \/usr\/bin\/psql/);
   assert.match(job, /REPORT_ARCHIVE_POLICY_FIXTURE_CONFIRM: owned_synthetic_database/);
-  assert.match(job, /export PLATFORM_BIN="\$PWD\/\.local\/archive-policy-platform"/);
+  assert.match(job, /PLATFORM_BIN: \$\{\{ github\.workspace \}\}\/\.local\/archive-policy-platform/);
   assert.match(job, /node scripts\/init-report-archive-policy-browser\.mjs/);
   assert.match(job, /pnpm exec playwright test --config=playwright\.report-archive-policy\.config\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0/);
   assert.match(job, /stats\.skipped !== 0 \|\| stats\.unexpected !== 0 \|\| stats\.flaky !== 0 \|\| stats\.expected !== 1/);

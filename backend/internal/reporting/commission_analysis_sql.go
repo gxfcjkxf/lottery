@@ -113,7 +113,7 @@ func commissionAnalysisSQL(group string) string {
  AND l.entry_type=e.entry_type AND l.reference_type=e.reference_type AND l.reference_id=e.source_id AND l.operation_key=e.operation_key
  AND l.actor_type=e.actor_type AND l.actor_id IS NOT DISTINCT FROM e.actor_id AND l.reversal_of IS NULL
  AND l.request_id=a.request_id
- AND normalize_point_snapshot(l.delta_snapshot)=jsonb_set(point_zero_snapshot(),'{commission,available}',to_jsonb(e.delta::text))
+ AND validated_point_snapshot(l.delta_snapshot)=jsonb_set(point_zero_snapshot(),'{commission,available}',to_jsonb(e.delta::text))
  AND l.source_allocation=jsonb_build_array(jsonb_build_object('source','commission','state','available','points',abs(e.delta)::text))
  AND lottery_business_ledger_applied(l,$1,pa.id) END,false) AS valid
  FROM raw_edges e LEFT JOIN point_ledger_entries l ON l.id=e.ledger_id
@@ -138,8 +138,7 @@ func commissionAnalysisSQL(group string) string {
  AND NOT EXISTS(SELECT 1 FROM attributed_ledgers e WHERE e.id=l.id)) AS valid),
  coverage AS (
  SELECT jsonb_build_object('selected_cycle_count',count(*)::text,'ready_cycle_count',(count(*) FILTER(WHERE ready))::text,
- 'unready_cycle_count',(count(*) FILTER(WHERE NOT ready))::text,
- 'legacy_policy_blocked_cycle_count',(count(*) FILTER(WHERE EXISTS(SELECT 1 FROM commission_correction_plans p WHERE p.brand_id=$1 AND p.cycle_id=cohort.id AND p.state='blocked' AND p.last_error_code='COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED')))::text) AS data FROM cohort),
+ 'unready_cycle_count',(count(*) FILTER(WHERE NOT ready))::text) AS data FROM cohort),
  identities AS (
  SELECT c.id AS cycle_id,e.agent_id,e.member_id FROM cohort c JOIN commission_earnings e ON e.brand_id=$1 AND e.cycle_id=c.id AND e.run_id=c.current_run_id
  UNION SELECT cycle_id,agent_id,member_id FROM relevant WHERE cycle_id IS NOT NULL

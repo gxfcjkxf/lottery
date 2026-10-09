@@ -44,7 +44,7 @@ go build -trimpath -ldflags "-s -w -X main.buildVersion=${LOTTERY_RELEASE_VERSIO
 
 If any check fails, keep traffic drained and stop both processes. Restore the prior application binary only if it is compatible with the already-migrated schema. Database migrations are forward-only: never roll back migration history, edit an applied migration, reset the database, or restore a pre-release dump over the live database as an application rollback. Prepare a reviewed forward fix or recover into a separate new database and follow the recovery procedure below.
 
-Migration 0075 refuses a stale commission payment with actual or suspicious money evidence. Its failed ordinary upgrade remains transactional. The explicit [offline commission history workflow](40-zero-original-commission-evidence.md) can prepare the unchanged 0074 evidence migration for review, but only after draining and stopping all writers. This intermediate checkpoint is not application readiness: `check`, `serve`, and `worker` still refuse it. The review includes original and subsequent payouts in one read-only primary snapshot; it does not repair states, authorize compensation, or bypass the 0075 refusal. Do not use the optional checkpoint as a routine release shortcut or restart an old writer against it.
+This project has not been released. It has one complete baseline migration for a fresh database, not an incremental upgrade chain. Old development databases are not upgraded or reset automatically. Offline commission history checkpoints and restoration commands have been removed; normal business-ledger history and result corrections remain.
 
 ## First deployment and platform-domain bootstrap
 

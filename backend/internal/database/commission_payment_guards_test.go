@@ -48,7 +48,7 @@ func TestCommissionPaymentPolicyStartsOffAndCannotBeToggledWithoutAudit(t *testi
 func TestStandaloneCommissionCreditNeedsPaymentTargetAndGenericAdjustmentRemainsAvailable(t *testing.T) {
 	db := testdb.New(t)
 	ctx := context.Background()
-	member, account := upgradeWallet(t, db, false)
+	member, account := currentWallet(t, db)
 	store := points.Store{DB: db}
 	before, err := store.Read(ctx, upgradeBrand, member)
 	if err != nil {
@@ -114,7 +114,7 @@ func TestStandaloneCommissionCreditNeedsPaymentTargetAndGenericAdjustmentRemains
 func TestCommissionCreditGuardSearchPathResistsTemporaryTargetAndFunctionSpoofing(t *testing.T) {
 	db := testdb.New(t)
 	ctx := context.Background()
-	member, _ := upgradeWallet(t, db, false)
+	member, _ := currentWallet(t, db)
 	var schema string
 	if err := db.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
 		t.Fatal(err)

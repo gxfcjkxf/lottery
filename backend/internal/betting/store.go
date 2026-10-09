@@ -27,9 +27,8 @@ import (
 
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9_:.-]{8,128}$`)
 
-// Preserve ErrDenied compatibility while exposing the specified operational
-// pause reason to authenticated clients. It never applies to refunds.
-var ErrBrandPaused = errors.Join(ErrDenied, errors.New("brand is paused"))
+// A brand pause blocks new bets, not existing refunds.
+var ErrBrandPaused = errors.New("brand is paused")
 
 type Period struct {
 	ID           string    `json:"id"`

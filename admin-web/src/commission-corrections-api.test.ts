@@ -117,9 +117,7 @@ describe("commission corrections API", () => {
     ]) await expect(withActor(async () => ok(bad)).getPolicy(brand)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
-  it("preserves Go nulls and validates exact BigInt economics, including values beyond safe integers", async () => {
-    await expect(withActor(async () => ok(plan({ credit_points: null, debit_points: null, net_points: null, state: "blocked", planned_count: "0", last_error_code: "COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED" }))).readPlan(brand, planID))
-      .resolves.toMatchObject({ credit_points: null, debit_points: null, net_points: null });
+  it("validates exact BigInt economics, including values beyond safe integers", async () => {
     await expect(withActor(async () => ok(execution())).readExecution(brand, executionID)).resolves.toMatchObject({ credit_points: "9223372036854775808", net_points: "9223372036854775801", approved_by: null, paused_plan_target_id: null });
     await expect(withActor(async () => ok({ brand_id: brand, plan_id: planID, items: [planTarget({ original_target_id: null, adjustment_version: null, earning_id: memberID, points_before: "0", points_after: "20", delta_points: "20" })], total_count: "1", limit: 20, offset: 0 })).listPlanTargets(brand, planID)).resolves.toMatchObject({ items: [{ original_target_id: null, adjustment_version: null, previous_correction_target_id: null, financial_version: null, earning_id: memberID }] });
     await expect(withActor(async () => ok({ brand_id: brand, execution_id: executionID, items: [executionTarget()], total_count: "1", limit: 20, offset: 0 })).listExecutionTargets(brand, executionID)).resolves.toMatchObject({ items: [{ state: "pending", ledger_entry_id: null, financial_version: null }] });
@@ -129,7 +127,7 @@ describe("commission corrections API", () => {
       plan({ calculated_points: "9223372036854775808" }), plan({ updated_at: "2026-02-30T00:00:00Z" }),
       plan({ extra_field: true } as Partial<CorrectionPlan>), plan({ brand_id: otherBrand }),
       plan({ state: "planning", credit_points: null, debit_points: null, net_points: null, planned_count: "0" }),
-      plan({ state: "blocked", last_error_code: "COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED" }),
+      { ...plan(), state: "blocked", last_error_code: "COMMISSION_CORRECTION_STATE_CONFLICT" } as unknown as CorrectionPlan,
     ];
     for (const value of badPlans) await expect(withActor(async () => ok(value)).readPlan(brand, planID)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     const badExecutions = [

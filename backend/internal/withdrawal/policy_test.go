@@ -97,14 +97,14 @@ func TestConfigParsingIsExactClosedAndCanonical(t *testing.T) {
 	if json.Unmarshal([]byte(fiveSourcePolicy), &commissionInput) == nil {
 		t.Fatal("oversized allowed source policy accepted")
 	}
-	legacyBrandConfig := `{"enabled":false,"min_points":"1","max_points":null,"allowed_sources":["recharge","winning","gift"],"review_mode":"manual","turnover_multiple":"0"}`
+	zeroBrandConfigJSON := `{"enabled":false,"min_points":"1","max_points":null,"allowed_sources":["recharge","winning","gift"],"review_mode":"manual","turnover_multiple":"0"}`
 	var savedBrand BrandConfig
-	if e := json.Unmarshal([]byte(legacyBrandConfig), &savedBrand); e != nil || savedBrand.TurnoverMultiple != "0" {
-		t.Fatalf("legacy zero brand config must remain readable: %+v, %v", savedBrand, e)
+	if json.Unmarshal([]byte(zeroBrandConfigJSON), &savedBrand) == nil {
+		t.Fatal("brand config read accepted zero N")
 	}
-	legacyBrand := strings.Replace(raw, `"turnover_multiple":"1"`, `"turnover_multiple":"0"`, 1)
+	zeroBrandInput := strings.Replace(raw, `"turnover_multiple":"1"`, `"turnover_multiple":"0"`, 1)
 	var rejectedBrand BrandInput
-	if json.Unmarshal([]byte(legacyBrand), &rejectedBrand) == nil {
+	if json.Unmarshal([]byte(zeroBrandInput), &rejectedBrand) == nil {
 		t.Fatal("new brand write accepted zero N")
 	}
 	for _, bad := range []string{strings.Replace(raw, `"enabled":false`, `"enabled":null`, 1), strings.Replace(raw, `"max_points":null,`, "", 1), strings.Replace(raw, `"version":1`, `"version":1,"version":2`, 1), strings.Replace(raw, `"enabled":false`, `"enabled":false,"enabled":true`, 1), strings.Replace(raw, `"review_mode":"manual"`, `"review_mode":"manual","hidden":true`, 1), strings.Replace(raw, `"min_points":"1"`, `"min_points":1`, 1), strings.Replace(raw, `"allowed_sources":["recharge","winning","gift"]`, `"allowed_sources":["gift","gift"]`, 1), strings.Replace(raw, `"min_points":"1"`, `"min_points":"9223372036854775808"`, 1)} {
@@ -119,17 +119,17 @@ func TestConfigParsingIsExactClosedAndCanonical(t *testing.T) {
 			t.Fatal(raw)
 		}
 	}
-	for _, raw := range []string{`{"turnover_multiple":null}`, `{"turnover_multiple":"0"}`, `{"turnover_multiple":"2.5"}`} {
+	for _, raw := range []string{`{"turnover_multiple":null}`, `{"turnover_multiple":"2.5"}`} {
 		var c GameConfig
 		if e := json.Unmarshal([]byte(raw), &c); e != nil {
 			t.Fatal(raw, e)
 		}
-		if strings.Contains(raw, `"0"`) {
-			write := `{"version":1,"config":` + raw + `,"reason":"legacy"}`
-			var input GameInput
-			if json.Unmarshal([]byte(write), &input) == nil {
-				t.Fatal("new game policy write accepted zero N")
-			}
+	}
+	for _, raw := range []string{`{"turnover_multiple":"0"}`, `{"version":1,"config":{"turnover_multiple":"0"},"reason":"old"}`} {
+		var c GameConfig
+		var input GameInput
+		if json.Unmarshal([]byte(raw), &c) == nil || json.Unmarshal([]byte(raw), &input) == nil {
+			t.Fatalf("game config read or write accepted zero N: %s", raw)
 		}
 	}
 }

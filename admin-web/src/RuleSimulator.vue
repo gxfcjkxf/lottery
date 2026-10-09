@@ -296,7 +296,7 @@ watch(
       <span class="brand-tag">{{ t("品牌 · ", "Brand · ") }}{{ brandId || t("未选择", "Not selected") }}</span>
     </header>
     <div class="safety-banner">
-      {{ t("仅调用真实规则模拟接口：不会扣款、投注、发布或审核规则。模拟结果不代表规则已生效；旧审核演示仍是独立演示内容。", "This calls only the real rule-simulation endpoint. It does not debit funds, place bets, publish, or review rules. A simulation result does not mean a rule is active; the legacy review demo remains separate demo content.") }}
+      {{ t("仅调用真实规则模拟接口：不会扣款、投注、发布或审核规则。模拟结果不代表规则已生效。", "This calls only the real rule-simulation endpoint. It does not debit funds, place bets, publish, or review rules. A simulation result does not mean a rule is active.") }}
     </div>
     <p v-if="!allowed" class="notice error" role="alert">
       {{ t("当前账号没有 rule.simulate.brand 或 rule.simulate.platform 权限。超级管理员也必须有显式的平台模拟权限。", "This account lacks rule.simulate.brand or rule.simulate.platform permission. Super administrators also need explicit platform simulation permission.") }}

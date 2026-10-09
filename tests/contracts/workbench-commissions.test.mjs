@@ -19,7 +19,7 @@ const keys = [
   "discovery_pending_count", "discovery_failed_count",
   "cycle_processing_count", "cycle_waiting_count", "cycle_ready_count", "cycle_stale_count", "cycle_failed_count",
   "payment_awaiting_approval_count", "payment_processing_count", "payment_blocked_count", "payment_failed_count",
-  "plan_processing_count", "plan_ready_count", "plan_blocked_count", "plan_failed_count",
+  "plan_processing_count", "plan_ready_count", "plan_failed_count",
   "execution_awaiting_approval_count", "execution_processing_count", "execution_paused_count", "execution_failed_count",
 ];
 const zeroCounts = () => Object.fromEntries(keys.map(key => [key, "0"]));
@@ -64,15 +64,15 @@ test("commissions DTO is closed and uses exactly the all-current aggregate count
   assert.ok(!check(missing));
 });
 
-test("commissions section accepts current ready/forbidden states and nullable legacy snapshots only", () => {
+test("commissions section accepts only current ready/forbidden states", () => {
   const check = validate("AdminWorkbenchCommissionsSection");
   assert.ok(check(ready(zeroCounts())), JSON.stringify(check.errors));
   assert.ok(check({ status: "forbidden", data: null }));
-  assert.ok(check({ status: "not_implemented", data: null }), "old stored snapshot remains readable");
   for (const value of [
     { status: "ready", data: null },
     { status: "ready", data: { ...zeroCounts(), extra: "0" } },
     { status: "forbidden", data: zeroCounts() },
+    { status: "not_implemented", data: null },
     { status: "not_implemented", data: zeroCounts() },
     { status: "unknown", data: null },
     { status: "not_implemented", data: null, extra: true },
@@ -80,7 +80,8 @@ test("commissions section accepts current ready/forbidden states and nullable le
 
   const checkSnapshot = validate("AdminWorkbenchSnapshot");
   assert.ok(checkSnapshot(snapshot()), JSON.stringify(checkSnapshot.errors));
-  assert.ok(checkSnapshot({ ...snapshot(), commissions: { status: "not_implemented", data: null } }));
+  assert.ok(!checkSnapshot({ ...snapshot(), commissions: { status: "not_implemented", data: null } }));
+  assert.ok(!check({ ...zeroCounts(), plan_blocked_count: "0" }));
 });
 
 test("commissions are independently gated by exact brand or explicit platform read grants on the existing read route", () => {
@@ -112,10 +113,10 @@ test("commissions are independently gated by exact brand or explicit platform re
   assert.match(operation.description, /discovery_pending_count includes future waiting work/);
   assert.match(operation.description, /does not establish that funds are owed/);
   assert.match(operation.description, /not today's earnings, wallet values or payout authorization/);
-  assert.match(operation.description, /only older stored snapshots may use not_implemented/);
+  assert.doesNotMatch(operation.description, /not_implemented/);
 });
 
-test("authoritative Go workbench examples serialize current and legacy commissions under their actual keys", () => {
+test("authoritative Go workbench example serializes current commissions under its actual key", () => {
   const result = spawnSync(process.env.LOTTERY_GO_BIN ?? "go", ["run", "-buildvcs=false", "./cmd/contract-examples"], {
     cwd: new URL("../../backend/", import.meta.url),
     encoding: "utf8",
@@ -124,9 +125,8 @@ test("authoritative Go workbench examples serialize current and legacy commissio
   assert.equal(result.status, 0, result.stderr || result.error?.message);
   const examples = JSON.parse(result.stdout);
   assert.ok(examples.AdminWorkbench);
-  assert.ok(examples.AdminWorkbenchLegacy);
+  assert.equal(Object.hasOwn(examples, "AdminWorkbenchLegacy"), false);
   assert.equal(examples.AdminWorkbenchSnapshot, undefined);
-  assert.equal(examples.AdminWorkbenchLegacySnapshot, undefined);
 
   const current = examples.AdminWorkbench.commissions;
   assert.equal(current.status, "ready");
@@ -134,7 +134,4 @@ test("authoritative Go workbench examples serialize current and legacy commissio
   assert.equal(current.data.cycle_ready_count, "9007199254740993");
   assert.ok(validate("AdminWorkbenchSnapshot")(examples.AdminWorkbench));
 
-  const legacy = examples.AdminWorkbenchLegacy.commissions;
-  assert.deepEqual(legacy, { status: "not_implemented", data: null });
-  assert.ok(validate("AdminWorkbenchSnapshot")(examples.AdminWorkbenchLegacy));
 });

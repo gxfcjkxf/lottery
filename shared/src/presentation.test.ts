@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { buildBrandCssTokens, safeBrandAssetUrl } from './presentation'
+import { buildBrandCssTokens, safeBrandAssetUrl, safeBrandColor } from './presentation'
 import { defaultBrand } from './brand'
 
 describe('brand presentation', () => {
+  it('normalizes valid colors and rejects invalid values instead of substituting a fallback', () => {
+    expect(safeBrandColor('#ABCDEF')).toBe('#abcdef')
+    expect(() => safeBrandColor('red')).toThrow('Invalid brand color')
+    expect(() => safeBrandColor(undefined)).toThrow('Invalid brand color')
+  })
+
   it('maps configured values to bounded CSS tokens and compatibility aliases', () => {
     const tokens = buildBrandCssTokens({
       ...defaultBrand,

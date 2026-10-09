@@ -137,7 +137,7 @@ func TestCommissionAnalysisHTTPEmptyCohortReturnsExactZeroAndNullableTotals(t *t
 	}
 	r := envelope.Data
 	if r.BrandID != managedBrand || r.Coverage.SelectedCycleCount != "0" || r.Coverage.ReadyCycleCount != "0" ||
-		r.Coverage.UnreadyCycleCount != "0" || r.Coverage.LegacyPolicyBlockedCycleCount != "0" ||
+		r.Coverage.UnreadyCycleCount != "0" ||
 		r.TotalGroups != "0" || r.Items == nil || len(r.Items) != 0 {
 		t.Fatalf("expected an empty valid brand cohort: %+v", r)
 	}

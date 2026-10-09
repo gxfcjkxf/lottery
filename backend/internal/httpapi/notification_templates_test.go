@@ -147,7 +147,7 @@ func TestNotificationTemplateHTTPRealRegistrationGetsImmutableCurrentCopy(t *tes
 		t.Fatal(e)
 	}
 	first, e := service.List(ctx, managedBrand, f.memberID, 20, 0)
-	if e != nil || len(first.Items) != 1 || first.Items[0].Content == nil || first.Items[0].TemplateVersion != 1 {
+	if e != nil || len(first.Items) != 1 || first.Items[0].Content.En.Title == "" || first.Items[0].TemplateVersion != 1 {
 		t.Fatal(first, e)
 	}
 	beforeWallet := pointWallet(t, f)
@@ -170,7 +170,7 @@ func TestNotificationTemplateHTTPRealRegistrationGetsImmutableCurrentCopy(t *tes
 		t.Fatal(e)
 	}
 	newer, e := service.List(ctx, managedBrand, auth.Member.ID, 20, 0)
-	if e != nil || len(newer.Items) != 1 || newer.Items[0].TemplateVersion != 2 || newer.Items[0].Content == nil || !reflect.DeepEqual(*newer.Items[0].Content, content) {
+	if e != nil || len(newer.Items) != 1 || newer.Items[0].TemplateVersion != 2 || newer.Items[0].Content.En.Title == "" || !reflect.DeepEqual(newer.Items[0].Content, content) {
 		t.Fatal(newer, e)
 	}
 	in.Version = 2

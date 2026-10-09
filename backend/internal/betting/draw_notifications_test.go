@@ -194,7 +194,7 @@ func TestDrawNotificationAudienceIncludesCancelledAndAbnormalOrdersOnce(t *testi
 				t.Fatal(err)
 			}
 			items := drawNoticeMessages(t, f)
-			if len(items) != 1 || items[0].EventType != "draw.result.published" || items[0].Payload.ResourceID != draw.ID || items[0].Payload.Points != nil || items[0].Content == nil || items[0].Payload.Draw == nil {
+			if len(items) != 1 || items[0].EventType != "draw.result.published" || items[0].Payload.ResourceID != draw.ID || items[0].Payload.Points != nil || items[0].Content.En.Title == "" || items[0].Payload.Draw == nil {
 				t.Fatal(items)
 			}
 			facts := items[0].Payload.Draw

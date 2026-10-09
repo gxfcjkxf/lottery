@@ -35,7 +35,7 @@ export interface ReconciliationJob {
   corrupt_count: string; failed_count: string; pending_count: string;
   created_by: string; reason: string; created_at: string; started_at: string | null;
   completed_at: string | null; last_error_code: "CHECK_FAILED" | null; can_retry: boolean;
-  creation_audit_log_id: string; check_scope?: ReconciliationCheckScope;
+  creation_audit_log_id: string; check_scope: ReconciliationCheckScope;
 }
 export interface ReconciliationJobPage {
   brand_id: string; items: ReconciliationJob[]; total_count: string; limit: number; offset: number;
@@ -44,14 +44,14 @@ export interface ReconciliationTarget {
   id: string; brand_id: string; job_id: string; account_id: string; member_id: string;
   state: ReconciliationTargetState; outcome: Exclude<ReconciliationOutcome, "pending" | "failed"> | null;
   preview: RepairPreview | null; attempt_count: number; error_code: "CHECK_FAILED" | null;
-  checked_at: string | null; audit_log_id: string | null; check_scope?: ReconciliationCheckScope;
-  business_preview?: BusinessPreview | null;
+  checked_at: string | null; audit_log_id: string | null; check_scope: ReconciliationCheckScope;
+  business_preview: BusinessPreview | null;
 }
 export interface ReconciliationTargetPage {
   brand_id: string; job_id: string; items: ReconciliationTarget[]; total_count: string;
   limit: number; offset: number; outcome: ReconciliationOutcome | null;
 }
-export interface ReconciliationCreateBody { reason: string; check_scope?: ReconciliationCheckScope }
+export interface ReconciliationCreateBody { reason: string; check_scope: ReconciliationCheckScope }
 export interface ReconciliationRetryBody { version: number; reason: string }
 export interface ReconciliationApi {
   list(brandId: string, limit?: number, offset?: number): Promise<ReconciliationJobPage>;
@@ -82,7 +82,6 @@ function positiveInt(value: unknown): value is number { return Number.isSafeInte
 function nonnegativeInt(value: unknown): value is number { return Number.isSafeInteger(value) && Number(value) >= 0; }
 function decimal(value: unknown): value is string { return typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value); }
 function scopeValue(value: unknown): value is ReconciliationCheckScope { return value === "wallet" || value === "wallet_and_business"; }
-function effectiveScope(value: { check_scope?: unknown }): ReconciliationCheckScope { return value.check_scope === undefined ? "wallet" : value.check_scope as ReconciliationCheckScope; }
 function int64(value: unknown): value is string {
   if (typeof value !== "string" || !/^(0|-?[1-9][0-9]*)$/.test(value)) return false;
   try { const n = BigInt(value); return n >= -9223372036854775808n && n <= 9223372036854775807n; } catch { return false; }
@@ -143,10 +142,9 @@ function validPreview(value: unknown, target: { account_id: string; member_id: s
   }else if(value.issues.length===0)return false;
   return true;
 }
-const JOB_FIELDS = ["id", "brand_id", "state", "version", "target_count", "checked_count", "consistent_count", "repairable_count", "corrupt_count", "failed_count", "pending_count", "created_by", "reason", "created_at", "started_at", "completed_at", "last_error_code", "can_retry", "creation_audit_log_id"] as const;
+const JOB_FIELDS = ["id", "brand_id", "state", "version", "target_count", "checked_count", "consistent_count", "repairable_count", "corrupt_count", "failed_count", "pending_count", "created_by", "reason", "created_at", "started_at", "completed_at", "last_error_code", "can_retry", "creation_audit_log_id", "check_scope"] as const;
 function validJob(value: unknown, brand: string): value is ReconciliationJob {
-  if (!isRecord(value) || !(exact(value, JOB_FIELDS) || exact(value, [...JOB_FIELDS, "check_scope"])) ||
-    (Object.hasOwn(value, "check_scope") && !scopeValue(value.check_scope)) || !validUuid(value.id) || !sameUuid(value.brand_id, brand) ||
+  if (!isRecord(value) || !exact(value, JOB_FIELDS) || !scopeValue(value.check_scope) || !validUuid(value.id) || !sameUuid(value.brand_id, brand) ||
     !["pending", "running", "completed", "failed"].includes(String(value.state)) || !positiveInt(value.version) ||
     !["target_count", "checked_count", "consistent_count", "repairable_count", "corrupt_count", "failed_count", "pending_count"].every((key) => decimal(value[key])) ||
     !validUuid(value.created_by) || !validStoredReason(value.reason) || !validDate(value.created_at) || !(value.started_at === null || validDate(value.started_at)) ||
@@ -165,7 +163,7 @@ function validJob(value: unknown, brand: string): value is ReconciliationJob {
   if(value.completed_at!==null&&Date.parse(value.completed_at as string)<Date.parse(value.started_at as string))return false;
   return true;
 }
-const TARGET_FIELDS = ["id", "brand_id", "job_id", "account_id", "member_id", "state", "outcome", "preview", "attempt_count", "error_code", "checked_at", "audit_log_id"] as const;
+const TARGET_FIELDS = ["id", "brand_id", "job_id", "account_id", "member_id", "state", "outcome", "preview", "attempt_count", "error_code", "checked_at", "audit_log_id", "check_scope", "business_preview"] as const;
 const BUSINESS_ISSUE_CODES = ["UNSUPPORTED_LEDGER_TYPE", "MISSING_BUSINESS_RECORD", "INVALID_BUSINESS_BINDING", "MISSING_LEDGER_ENTRY", "DUPLICATE_BUSINESS_BINDING", "INVALID_MANUAL_AUDIT"] as const;
 function validBusinessPreview(value: unknown, target: { account_id: string; member_id: string; preview: RepairPreview }): value is BusinessPreview {
   if (!isRecord(value) || !exact(value, ["account_id", "member_id", "account_version", "ledger_entry_count", "business_reference_count", "issue_count", "issues_truncated", "consistent", "fingerprint", "issues", "coverage"]) ||
@@ -197,25 +195,18 @@ function validBusinessPreview(value: unknown, target: { account_id: string; memb
   return true;
 }
 function validTarget(value: unknown, brand: string, job: string): value is ReconciliationTarget {
-  const targetFields = [...TARGET_FIELDS, "check_scope", "business_preview"];
-  const keys = isRecord(value) ? Object.keys(value) : [];
-  if (!isRecord(value) || !(exact(value, TARGET_FIELDS) || exact(value, [...TARGET_FIELDS, "check_scope"]) || exact(value, [...TARGET_FIELDS, "business_preview"]) || exact(value, targetFields)) ||
-    (Object.hasOwn(value, "check_scope") && !scopeValue(value.check_scope)) || !validUuid(value.id) || !sameUuid(value.brand_id, brand) || !sameUuid(value.job_id, job) ||
+  if (!isRecord(value) || !exact(value, TARGET_FIELDS) || !scopeValue(value.check_scope) || !validUuid(value.id) || !sameUuid(value.brand_id, brand) || !sameUuid(value.job_id, job) ||
     !validUuid(value.account_id) || !validUuid(value.member_id) || !["pending", "checked", "failed"].includes(String(value.state)) ||
     !(value.outcome === null || ["consistent", "repairable", "corrupt"].includes(String(value.outcome))) ||
     !(value.preview === null || validPreview(value.preview, { account_id: value.account_id as string, member_id: value.member_id as string })) ||
     !nonnegativeInt(value.attempt_count) || !(value.error_code === null || value.error_code === "CHECK_FAILED") ||
     !(value.checked_at === null || validDate(value.checked_at)) || !(value.audit_log_id === null || validUuid(value.audit_log_id))) return false;
-  const scope = effectiveScope(value);
-  const fullScope = scope === "wallet_and_business";
-  if (fullScope && (keys.length < targetFields.length || !Object.hasOwn(value, "check_scope") || !Object.hasOwn(value, "business_preview"))) return false;
-  if (Object.hasOwn(value, "business_preview") && value.business_preview === undefined) return false;
-  if (!fullScope && value.business_preview !== undefined && value.business_preview !== null) return false;
-  if (value.state === "pending") return value.outcome === null && value.preview === null && value.checked_at === null && value.audit_log_id === null && value.error_code === null && (!fullScope || value.business_preview === null);
+  const fullScope = value.check_scope === "wallet_and_business";
+  if (value.state === "pending") return value.outcome === null && value.preview === null && value.checked_at === null && value.audit_log_id === null && value.error_code === null && value.business_preview === null;
   if (value.state === "failed") return value.outcome === null && value.preview === null && value.checked_at === null && value.audit_log_id === null &&
-    value.error_code === "CHECK_FAILED" && value.attempt_count >= 1 && (!fullScope || value.business_preview === null);
+    value.error_code === "CHECK_FAILED" && value.attempt_count >= 1 && value.business_preview === null;
   if (value.attempt_count < 1 || value.error_code !== null || value.checked_at === null || value.audit_log_id === null || value.preview === null) return false;
-  if (!fullScope) return value.outcome === (value.preview.consistent ? "consistent" : value.preview.repairable ? "repairable" : "corrupt");
+  if (!fullScope) return value.business_preview === null && value.outcome === (value.preview.consistent ? "consistent" : value.preview.repairable ? "repairable" : "corrupt");
   if (!validBusinessPreview(value.business_preview, { account_id: value.account_id as string, member_id: value.member_id as string, preview: value.preview })) return false;
   const walletOutcome = value.preview.consistent ? "consistent" : value.preview.repairable ? "repairable" : "corrupt";
   return value.outcome === (value.business_preview.consistent ? walletOutcome : "corrupt");
@@ -269,7 +260,7 @@ export function createReconciliationApi(fetchImpl: typeof fetch = fetch): Reconc
       if (outcome) query.set("outcome", outcome);
       const value = await request(`${BASE}/${encodeURIComponent(jobId)}/targets?${query}`, brandId);
       if (!isRecord(value) || !exact(value, ["brand_id", "job_id", "items", "total_count", "limit", "offset", "outcome"]) || !sameUuid(value.brand_id, brandId) ||
-        !sameUuid(value.job_id, jobId) || !Array.isArray(value.items) || value.items.length > limit || !value.items.every((item) => validTarget(item, brandId, jobId) && (checkScope === undefined || effectiveScope(item) === checkScope)) ||
+        !sameUuid(value.job_id, jobId) || !Array.isArray(value.items) || value.items.length > limit || !value.items.every((item) => validTarget(item, brandId, jobId) && (checkScope === undefined || item.check_scope === checkScope)) ||
         !decimal(value.total_count) || BigInt(value.total_count) < BigInt(value.items.length) || !nonnegativeInt(value.limit) || value.limit !== limit || !nonnegativeInt(value.offset) || value.offset !== offset ||
         value.outcome !== outcome ||
         (outcome !== null && value.items.some((item) => {
@@ -279,12 +270,11 @@ export function createReconciliationApi(fetchImpl: typeof fetch = fetch): Reconc
       return value as unknown as ReconciliationTargetPage;
     },
     async create(brandId, body, key = createIdempotencyKey(), expectedAccountId) {
-      if (!isRecord(body) || !(exact(body, ["reason"]) || exact(body, ["reason", "check_scope"])) || !safeReason(body.reason) ||
-        (Object.hasOwn(body, "check_scope") && !scopeValue(body.check_scope)) || !/^[A-Za-z0-9_:.-]{8,128}$/.test(key) ||
+      if (!isRecord(body) || !exact(body, ["reason", "check_scope"]) || !safeReason(body.reason) || !scopeValue(body.check_scope) || !/^[A-Za-z0-9_:.-]{8,128}$/.test(key) ||
         (expectedAccountId !== undefined && !validUuid(expectedAccountId))) invalidInput();
       const value = await request(BASE, brandId, { method: "POST", body, key, write: true });
       if (!validJob(value, brandId) || value.version !== 1 || value.state !== "pending" || value.created_by.toLowerCase() !== expectedAccountId?.toLowerCase() && expectedAccountId !== undefined ||
-        value.reason !== body.reason || effectiveScope(value) !== (body.check_scope ?? "wallet") || value.started_at !== null || value.completed_at !== null || value.last_error_code !== null || value.can_retry ||
+        value.reason !== body.reason || value.check_scope !== body.check_scope || value.started_at !== null || value.completed_at !== null || value.last_error_code !== null || value.can_retry ||
         value.checked_count !== "0" || value.consistent_count !== "0" || value.repairable_count !== "0" || value.corrupt_count !== "0" || value.failed_count !== "0" || value.pending_count !== value.target_count) invalidResponse(true);
       return value;
     },
@@ -299,7 +289,7 @@ export function createReconciliationApi(fetchImpl: typeof fetch = fetch): Reconc
       if (previous && (previous.state !== "failed" || !previous.can_retry || previous.version !== body.version || value.target_count !== previous.target_count ||
         value.checked_count !== previous.checked_count || value.consistent_count !== previous.consistent_count || value.repairable_count !== previous.repairable_count ||
         value.corrupt_count !== previous.corrupt_count || value.started_at !== previous.started_at || !sameUuid(value.created_by, previous.created_by) || value.created_at !== previous.created_at ||
-        !sameUuid(value.creation_audit_log_id, previous.creation_audit_log_id) || effectiveScope(value) !== effectiveScope(previous))) invalidResponse(true);
+        !sameUuid(value.creation_audit_log_id, previous.creation_audit_log_id) || value.check_scope !== previous.check_scope)) invalidResponse(true);
       return value;
     },
   };

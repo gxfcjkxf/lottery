@@ -15,7 +15,6 @@ type Config struct {
 	Environment      string
 	HTTPAddr         string
 	DatabaseURL      string
-	DatabaseReadURL  string
 	DatabaseReadURLs []string
 	DBMaxConns       int32
 	AuthKeyFile      string
@@ -24,7 +23,7 @@ type Config struct {
 }
 
 func Load() (Config, error) {
-	c := Config{Environment: value("APP_ENV", "development"), HTTPAddr: value("HTTP_ADDR", "127.0.0.1:8080"), DatabaseURL: os.Getenv("DATABASE_URL"), DatabaseReadURL: os.Getenv("DATABASE_READ_URL"), DBMaxConns: 20}
+	c := Config{Environment: value("APP_ENV", "development"), HTTPAddr: value("HTTP_ADDR", "127.0.0.1:8080"), DatabaseURL: os.Getenv("DATABASE_URL"), DBMaxConns: 20}
 	if err := loadDatabaseReadURLs(&c); err != nil {
 		return c, err
 	}
@@ -61,18 +60,9 @@ func Load() (Config, error) {
 }
 
 func loadDatabaseReadURLs(c *Config) error {
-	legacy := strings.TrimSpace(os.Getenv("DATABASE_READ_URL"))
 	encoded := strings.TrimSpace(os.Getenv("DATABASE_READ_URLS"))
-	c.DatabaseReadURL = legacy
-	if legacy != "" && encoded != "" {
-		return fmt.Errorf("DATABASE_READ_URL and DATABASE_READ_URLS are mutually exclusive")
-	}
-	if legacy != "" {
-		if _, err := pgxpool.ParseConfig(legacy); err != nil {
-			return fmt.Errorf("invalid DATABASE_READ_URL")
-		}
-		c.DatabaseReadURL = legacy
-		return nil
+	if os.Getenv("DATABASE_READ_URL") != "" {
+		return fmt.Errorf("DATABASE_READ_URL is unsupported; use DATABASE_READ_URLS")
 	}
 	if encoded == "" {
 		return nil

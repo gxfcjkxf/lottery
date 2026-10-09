@@ -26,7 +26,7 @@ export const schemas = {
       target_count: count, paid_count: count, creation_audit_log_id: ref('UUID'),
       last_error_code: nullable({ type: 'string' }), created_at: ref('DateTime'), updated_at: ref('DateTime'),
     }),
-    description: 'Payout progress projection. Exact totals and counts are decimal strings. Payment targets are never exposed. payout_mode is the immutable historical bet snapshot identity and remains mixed. Awaiting approval is valid for manual or mixed mode only when paid_points and paid_count are both zero and last_error_code is null. A mixed cycle with any manual bet snapshot requires brand administrator approval for the entire cycle; its automatic portion is never split out. The exact legacy blocked case with payout_mode mixed, last_error_code COMMISSION_PAYMENT_MODE_UNRESOLVED, paid_points 0, and paid_count 0 may be explicitly approved. Other blocked correction or evidence records are not approvable.',
+    description: 'Payout progress projection. Exact totals and counts are decimal strings. Payment targets are never exposed. payout_mode is the immutable historical bet snapshot identity and remains mixed. Awaiting approval is valid for manual or mixed mode only when paid_points and paid_count are both zero and last_error_code is null. A mixed cycle with any manual bet snapshot requires brand administrator approval for the entire cycle; its automatic portion is never split out. Blocked correction or evidence records are not approvable.',
   },
   CommissionPaymentPage: obj({ brand_id: ref('UUID'), ...pageFields('CommissionPayment') }),
   CommissionPaymentAction: obj({ version, reason: ref('Reason') }),
@@ -41,7 +41,7 @@ export const operations = [
   admin('GET', '/commission-payments/{id}', 'getCommissionPayment', 'Read a commission payout record', ref('CommissionPayment')),
   admin('POST', '/commission-payments/{id}/approve', 'approveCommissionPayment', 'Approve a manual or mixed commission payout', ref('CommissionPayment'), {
     permissions: ['commission_payment.approve.brand'], parameters:[actorHeader], requestBody: ref('CommissionPaymentAction'), idempotency: true,
-    description: 'Requires commission view plus commission_payment.approve.brand and denies super-admin writes. A single brand administrator explicitly approves the whole manual or mixed cycle; the worker performs actual target ledger credits. Mixed payout_mode remains unchanged as historical snapshot identity. The exact legacy zero-paid mixed record blocked with COMMISSION_PAYMENT_MODE_UNRESOLVED may also be approved; correction/evidence blocks and other blocked records may not.',
+    description: 'Requires commission view plus commission_payment.approve.brand and denies super-admin writes. A single brand administrator explicitly approves the whole manual or mixed cycle; the worker performs actual target ledger credits. Mixed payout_mode remains unchanged as historical snapshot identity.',
   }),
   admin('POST', '/commission-payments/{id}/retry', 'retryCommissionPayment', 'Retry a commission payout', ref('CommissionPayment'), {
     permissions: ['commission_payment.retry.brand'], parameters:[actorHeader], requestBody: ref('CommissionPaymentAction'), idempotency: true,

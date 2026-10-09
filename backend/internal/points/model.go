@@ -174,18 +174,13 @@ func (b *Balance) UnmarshalJSON(data []byte) error {
 	if _, err = decoder.Token(); err != nil {
 		return fmt.Errorf("%w: malformed balance object", ErrInvalid)
 	}
-	// Exactly the original three-source shape remains readable as a legacy
-	// snapshot. Every other accepted object must contain all four sources.
-	if sourceCount != 3 && sourceCount != 4 {
+	if sourceCount != 4 {
 		return fmt.Errorf("%w: incomplete balance sources", ErrInvalid)
 	}
-	for source := 0; source < 3; source++ {
+	for source := range sourceSeen {
 		if !sourceSeen[source] {
-			return fmt.Errorf("%w: missing original source", ErrInvalid)
+			return fmt.Errorf("%w: missing source", ErrInvalid)
 		}
-	}
-	if sourceCount == 4 && !sourceSeen[3] {
-		return fmt.Errorf("%w: missing commission source", ErrInvalid)
 	}
 	var trailing any
 	if err = decoder.Decode(&trailing); err != io.EOF {

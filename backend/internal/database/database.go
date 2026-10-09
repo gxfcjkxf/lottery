@@ -9,8 +9,8 @@ import (
 )
 
 type Pools struct {
-	Primary, Replica *pgxpool.Pool // Replica is the legacy first-read-node alias.
-	Replicas         []*pgxpool.Pool
+	Primary  *pgxpool.Pool
+	Replicas []*pgxpool.Pool
 }
 
 func Open(ctx context.Context, c config.Config) (*Pools, error) {
@@ -18,15 +18,8 @@ func Open(ctx context.Context, c config.Config) (*Pools, error) {
 	if err != nil {
 		return nil, fmt.Errorf("primary database unavailable")
 	}
-	p := &Pools{Primary: primary, Replica: primary}
+	p := &Pools{Primary: primary}
 	urls := append([]string(nil), c.DatabaseReadURLs...)
-	if c.DatabaseReadURL != "" {
-		if len(urls) != 0 {
-			primary.Close()
-			return nil, fmt.Errorf("conflicting read database configuration")
-		}
-		urls = append(urls, c.DatabaseReadURL)
-	}
 	if len(urls) > 8 {
 		primary.Close()
 		return nil, fmt.Errorf("too many read databases")
@@ -38,9 +31,6 @@ func Open(ctx context.Context, c config.Config) (*Pools, error) {
 			return nil, fmt.Errorf("invalid read database configuration")
 		}
 		p.Replicas = append(p.Replicas, replica)
-	}
-	if len(p.Replicas) > 0 {
-		p.Replica = p.Replicas[0]
 	}
 	return p, nil
 }
@@ -73,7 +63,7 @@ func open(ctx context.Context, url string, max int32) (*pgxpool.Pool, error) {
 }
 func (p *Pools) Close() {
 	seen := map[*pgxpool.Pool]bool{p.Primary: true}
-	for _, replica := range append(append([]*pgxpool.Pool(nil), p.Replicas...), p.Replica) {
+	for _, replica := range p.Replicas {
 		if replica != nil && !seen[replica] {
 			replica.Close()
 			seen[replica] = true

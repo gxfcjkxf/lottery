@@ -1,21 +1,20 @@
 import { spawnSync } from 'node:child_process';
 import { accessSync, constants, realpathSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const CONFIRMATION = 'owned_synthetic_database';
 const SCHEMA_CHECK = "SELECT current_database(), current_user, count(*) FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'f', 'v', 'm');";
 
-function localExecutable(value, fallback) {
-  if ((value === undefined || value === '') && fallback) return fallback;
-  if (typeof value !== 'string' || !value || /[\u0000\r\n]/.test(value) || !/[\\/]/.test(value)) {
+function localExecutable(value) {
+  if (typeof value !== 'string' || !value || !isAbsolute(value) || /[\u0000\r\n]/.test(value)) {
     throw new Error('An executable local binary path is required');
   }
   try {
     const executable = realpathSync(resolve(value));
     if (!statSync(executable).isFile()) throw new Error();
     accessSync(executable, constants.X_OK);
-    return executable;
+    return resolve(value);
   } catch {
     throw new Error('An executable local binary path is required');
   }
@@ -53,7 +52,7 @@ export function readRewardBrowserConfiguration(env = process.env) {
   return Object.freeze({
     viewport, databaseURL, database,
     platformBin: localExecutable(env.PLATFORM_BIN),
-    psqlBin: localExecutable(env.POSTGRES_PSQL_BIN, 'psql'),
+    psqlBin: localExecutable(env.POSTGRES_PSQL_BIN),
     adminOrigin: env.TEST_ADMIN_ORIGIN ?? 'http://localhost:5174',
     adminPassword: password(env.TEST_REWARD_ADMIN_PASSWORD, 'TEST_REWARD_ADMIN_PASSWORD'),
     superPassword: password(env.TEST_REWARD_SUPER_PASSWORD, 'TEST_REWARD_SUPER_PASSWORD'),

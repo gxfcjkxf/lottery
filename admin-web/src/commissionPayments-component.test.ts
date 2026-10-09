@@ -167,35 +167,29 @@ describe("CommissionPaymentsManagement", () => {
     mounted.app.unmount();
   });
 
-  it("reviews mixed awaiting and exact legacy blocked cycles through the whole-cycle approval flow", async () => {
-    const cases = [
-      payment({ state: "awaiting_approval", payout_mode: "mixed", last_error_code: null }),
-      payment({ state: "blocked", payout_mode: "mixed", last_error_code: "COMMISSION_PAYMENT_MODE_UNRESOLVED" }),
-    ];
-    for (const snapshot of cases) {
-      const server = installFetch({ current: snapshot }); const mounted = mount(baseAccount); await flush();
-      click(button(mounted.container, paymentId)); await flush();
-      expect(textOf(mounted.container)).toContain("混合（整周期人工审核）");
-      expect(textOf(mounted.container)).toContain("整个混合周期");
-      setModel(byTestId(mounted.container, "commission-payment-action-reason"), "Approve the entire mixed cycle"); await flush();
-      expect(byTestId(mounted.container, "commission-payment-approve")?.props.disabled).toBe(false);
-      click(byTestId(mounted.container, "commission-payment-approve")); await flush();
-      setModel(byTestId(mounted.container, "commission-payment-review-confirmed"), true); await flush();
-      click(byTestId(mounted.container, "commission-payment-confirm-submit")); await flush();
-      const approvals = server.calls.filter((call) => call.url.endsWith(`/commission-payments/${paymentId}/approve`));
-      expect(approvals).toHaveLength(1);
-      expect(JSON.parse(String(approvals[0].init?.body))).toEqual({ version: 2, reason: "Approve the entire mixed cycle" });
-      expect(new Headers(approvals[0].init?.headers).get("X-Commission-Payment-Actor-ID")).toBe(actor);
-      expect(textOf(mounted.container)).toContain("操作回执");
-      mounted.app.unmount();
-    }
+  it("reviews a mixed awaiting-approval cycle through the whole-cycle approval flow", async () => {
+    const snapshot = payment({ state: "awaiting_approval", payout_mode: "mixed", last_error_code: null });
+    const server = installFetch({ current: snapshot }); const mounted = mount(baseAccount); await flush();
+    click(button(mounted.container, paymentId)); await flush();
+    expect(textOf(mounted.container)).toContain("混合（整周期人工审核）");
+    expect(textOf(mounted.container)).toContain("整个混合周期");
+    setModel(byTestId(mounted.container, "commission-payment-action-reason"), "Approve the entire mixed cycle"); await flush();
+    expect(byTestId(mounted.container, "commission-payment-approve")?.props.disabled).toBe(false);
+    click(byTestId(mounted.container, "commission-payment-approve")); await flush();
+    setModel(byTestId(mounted.container, "commission-payment-review-confirmed"), true); await flush();
+    click(byTestId(mounted.container, "commission-payment-confirm-submit")); await flush();
+    const approvals = server.calls.filter((call) => call.url.endsWith(`/commission-payments/${paymentId}/approve`));
+    expect(approvals).toHaveLength(1);
+    expect(JSON.parse(String(approvals[0].init?.body))).toEqual({ version: 2, reason: "Approve the entire mixed cycle" });
+    expect(new Headers(approvals[0].init?.headers).get("X-Commission-Payment-Actor-ID")).toBe(actor);
+    expect(textOf(mounted.container)).toContain("操作回执");
+    mounted.app.unmount();
   });
 
-  it("denies legacy approval for correction blocks, paid targets, and unrelated blocked modes", async () => {
+  it("does not offer approval for blocked payment records", async () => {
     const blocked = [
       payment({ state: "blocked", payout_mode: "mixed", last_error_code: "COMMISSION_PAYMENT_CORRECTION_REQUIRED" }),
-      payment({ state: "blocked", payout_mode: "mixed", paid_count: "1", paid_points: "5", last_error_code: "COMMISSION_PAYMENT_MODE_UNRESOLVED" }),
-      payment({ state: "blocked", payout_mode: "automatic", last_error_code: "COMMISSION_PAYMENT_MODE_UNRESOLVED" }),
+      payment({ state: "blocked", payout_mode: "mixed", paid_count: "1", paid_points: "5", last_error_code: "COMMISSION_PAYMENT_CORRECTION_REQUIRED" }),
     ];
     for (const snapshot of blocked) {
       const server = installFetch({ current: snapshot }); const mounted = mount(baseAccount); await flush();

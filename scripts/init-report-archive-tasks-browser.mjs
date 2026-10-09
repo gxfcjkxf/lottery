@@ -7,14 +7,13 @@ const CONFIRMATION = 'owned_synthetic_database';
 const SCHEMA_CHECK = "SELECT current_database(), current_user, count(*) FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'f', 'v', 'm');";
 const RESULT_KEYS = ['task_id', 'brand_id', 'task_version', 'state', 'attempt_count', 'archive_id', 'archive_count', 'ledger_count', 'total_points'];
 
-function localExecutable(value, fallback) {
-  if ((value === undefined || value === '') && fallback) return fallback;
+function localExecutable(value) {
   if (typeof value !== 'string' || !value || !isAbsolute(value) || /[\u0000\r\n]/.test(value)) throw new Error('An absolute executable path is required');
   try {
     const executable = realpathSync(resolve(value));
     if (!statSync(executable).isFile()) throw new Error();
     accessSync(executable, constants.X_OK);
-    return executable;
+    return resolve(value);
   } catch {
     throw new Error('An absolute executable path is required');
   }
@@ -53,7 +52,7 @@ export function readReportArchiveTasksBrowserConfiguration(env = process.env) {
     database,
     username,
     platformBin: localExecutable(env.PLATFORM_BIN),
-    psqlBin: localExecutable(env.POSTGRES_PSQL_BIN, 'psql'),
+    psqlBin: localExecutable(env.POSTGRES_PSQL_BIN),
     fixtureBin: localExecutable(env.ARCHIVE_TASKS_FIXTURE_BIN),
     adminPassword: password(env.TEST_ARCHIVE_TASKS_ADMIN_PASSWORD),
   });

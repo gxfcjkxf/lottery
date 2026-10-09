@@ -92,7 +92,7 @@ const metricLabels: Record<typeof COMMISSION_ANALYSIS_FIELDS[number], [string, s
   calculation_complete: ["核算完整", "Calculation complete"], effective_target_complete: ["有效目标完整", "Effective target complete"],
 };
 function metricLabel(field: typeof COMMISSION_ANALYSIS_FIELDS[number]) { const pair = metricLabels[field]; return t(pair[0], pair[1]); }
-function coverageLabel(field: typeof COMMISSION_ANALYSIS_COVERAGE_FIELDS[number]) { const labels: Record<typeof COMMISSION_ANALYSIS_COVERAGE_FIELDS[number], [string, string]> = { selected_cycle_count: ["选中周期", "Selected cycles"], ready_cycle_count: ["就绪周期", "Ready cycles"], unready_cycle_count: ["未就绪周期", "Unready cycles"], legacy_policy_blocked_cycle_count: ["旧策略阻塞周期", "Legacy policy-blocked cycles"] }; const pair = labels[field]; return t(pair[0], pair[1]); }
+function coverageLabel(field: typeof COMMISSION_ANALYSIS_COVERAGE_FIELDS[number]) { const labels: Record<typeof COMMISSION_ANALYSIS_COVERAGE_FIELDS[number], [string, string]> = { selected_cycle_count: ["选中周期", "Selected cycles"], ready_cycle_count: ["就绪周期", "Ready cycles"], unready_cycle_count: ["未就绪周期", "Unready cycles"] }; const pair = labels[field]; return t(pair[0], pair[1]); }
 function hasNext(report: CommissionAnalysisReport) { return BigInt(report.query.offset) + BigInt(report.items.length) < BigInt(report.total_groups) && report.query.offset < 1_000_000; }
 function rangeTitle(group: CommissionAnalysisGroup) { return group === "cycle" ? t("按完整周期", "By complete cycle") : t("按受益代理", "By beneficiary agent"); }
 watch(draftKey, () => { clearCurrent(); error.value = ""; }, { flush: "sync" });

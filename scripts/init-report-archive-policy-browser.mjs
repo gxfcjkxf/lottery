@@ -1,35 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { accessSync, constants, realpathSync, readdirSync, statSync } from 'node:fs';
-import { delimiter, isAbsolute, join, resolve } from 'node:path';
-import { homedir } from 'node:os';
+import { accessSync, constants, realpathSync, statSync } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const CONFIRMATION = 'owned_synthetic_database';
 const BRAND = 'harbor';
 const SCHEMA_CHECK = "SELECT current_database(), current_user, count(*) FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'f', 'v', 'm');";
 
-function localExecutable(value, { fallback = false, env = process.env } = {}) {
-  if (value === undefined && fallback) {
-    let cachedClients = [];
-    try {
-      cachedClients = readdirSync(join(homedir(), '.cache', 'lottery-tools'))
-        .filter(name => /^postgres-app-/.test(name))
-        .map(name => join(homedir(), '.cache', 'lottery-tools', name, 'bin', 'psql'));
-    } catch { /* The CI image may provide psql through PATH instead. */ }
-    const candidates = [...cachedClients, ...(env.PATH ?? '').split(delimiter).filter(Boolean).map(directory => join(directory, 'psql'))];
-    for (const candidate of candidates) {
-      try {
-        const executable = realpathSync(candidate);
-        if (statSync(executable).isFile()) {
-          accessSync(executable, constants.X_OK);
-          // Debian/Ubuntu psql may be a link to pg_wrapper, which dispatches
-          // using the invoked client name. Validate its target but invoke psql.
-          return resolve(candidate);
-        }
-      } catch { /* Try the next PATH directory. */ }
-    }
-    throw new Error('An absolute executable PostgreSQL client path is required');
-  }
+function localExecutable(value) {
   if (typeof value !== 'string' || !value || !isAbsolute(value) || /[\u0000\r\n]/.test(value)) {
     throw new Error('An absolute executable binary path is required');
   }
@@ -89,7 +67,7 @@ export function validateReportArchivePolicyFixtureEnv(env = process.env) {
     database,
     username,
     platformBin: localExecutable(env.PLATFORM_BIN),
-    psqlBin: localExecutable(env.POSTGRES_PSQL_BIN, { fallback: true, env }),
+    psqlBin: localExecutable(env.POSTGRES_PSQL_BIN),
     authKeyFile: ownedAuthKey(env.AUTH_KEY_FILE),
     adminPassword: adminPassword(env.TEST_ARCHIVE_POLICY_ADMIN_PASSWORD),
   });

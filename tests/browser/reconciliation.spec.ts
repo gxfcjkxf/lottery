@@ -121,7 +121,7 @@ test("real reconciliation keeps an unknown create pending until the original req
     if (createPosts === 1) {
       firstBody = body;
       firstKey = key;
-      expect(JSON.parse(body)).toEqual({ reason });
+      expect(JSON.parse(body)).toEqual({ reason, check_scope: "wallet" });
       expect(key).toMatch(/^[A-Za-z0-9_:.-]{8,128}$/);
       const actual = await route.fetch();
       const actualBody = await actual.text();

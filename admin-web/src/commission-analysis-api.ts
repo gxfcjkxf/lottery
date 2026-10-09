@@ -15,7 +15,7 @@ export const COMMISSION_ANALYSIS_FIELDS = [
   "effective_target_points", "calculation_minus_actual_points", "effective_minus_actual_points",
   "calculation_complete", "effective_target_complete",
 ] as const;
-export const COMMISSION_ANALYSIS_COVERAGE_FIELDS = ["selected_cycle_count", "ready_cycle_count", "unready_cycle_count", "legacy_policy_blocked_cycle_count"] as const;
+export const COMMISSION_ANALYSIS_COVERAGE_FIELDS = ["selected_cycle_count", "ready_cycle_count", "unready_cycle_count"] as const;
 const UUID_FIELDS = ["agent_id", "member_id", "cycle_id"] as const;
 const CSV_COLUMNS = ["record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "agent_id", "member_id", "cycle_id", "key", "label", ...COMMISSION_ANALYSIS_COVERAGE_FIELDS, ...COMMISSION_ANALYSIS_FIELDS] as const;
 type AnalysisField = typeof COMMISSION_ANALYSIS_FIELDS[number];
@@ -77,7 +77,7 @@ function validTimezone(value: unknown): value is string { try { return typeof va
 function coverage(value: unknown): CommissionAnalysisCoverage {
   if (!isRecord(value) || !exactKeys(value, COMMISSION_ANALYSIS_COVERAGE_FIELDS) || COMMISSION_ANALYSIS_COVERAGE_FIELDS.some((f) => typeof value[f] !== "string" || !UNSIGNED.test(value[f] as string))) return fail("周期覆盖计数格式无效。");
   const v = value as unknown as CommissionAnalysisCoverage;
-  if (BigInt(v.selected_cycle_count) !== BigInt(v.ready_cycle_count) + BigInt(v.unready_cycle_count) || BigInt(v.legacy_policy_blocked_cycle_count) > BigInt(v.selected_cycle_count)) return fail("周期覆盖计数不一致。");
+  if (BigInt(v.selected_cycle_count) !== BigInt(v.ready_cycle_count) + BigInt(v.unready_cycle_count)) return fail("周期覆盖计数不一致。");
   return v;
 }
 function totals(value: unknown): CommissionAnalysisTotals {
@@ -138,7 +138,7 @@ function filenameDate(snapshot: string): string { const d = new Date(snapshot); 
 function csvTotals(row: string[]): CommissionAnalysisTotals {
   const raw: Record<string, unknown> = {};
   COMMISSION_ANALYSIS_FIELDS.forEach((field, index) => {
-    let cell: string | null = row[16 + index]!;
+    let cell: string | null = row[12 + COMMISSION_ANALYSIS_COVERAGE_FIELDS.length + index]!;
     if (boolFields.has(field)) { if (cell !== "true" && cell !== "false") return fail("CSV 布尔字段无效。"); raw[field] = cell === "true"; return; }
     if (nullableFields.has(field) && cell === "") { raw[field] = null; return; }
     if (signedFields.has(field) && cell.startsWith("'")) { cell = cell.slice(1); if (!/^-[1-9]\d*$/.test(cell)) return fail("CSV 负数前缀无效。"); }

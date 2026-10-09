@@ -56,7 +56,7 @@ func newReconciliationHTTPFixture(t *testing.T) reconciliationHTTPFixture {
 
 func reconciliationCreate(t *testing.T, f reconciliationHTTPFixture, key, reason string) reconciliation.Job {
 	t.Helper()
-	r := f.call("POST", "/api/v1/admin/reconciliations", key, f.token, managedBrand, map[string]string{"reason": reason})
+	r := f.call("POST", "/api/v1/admin/reconciliations", key, f.token, managedBrand, map[string]string{"reason": reason, "check_scope": reconciliation.ScopeWallet})
 	if r.Code != 201 {
 		t.Fatalf("create reconciliation: status=%d body=%s", r.Code, r.Body.String())
 	}
@@ -75,7 +75,7 @@ func TestReconciliationHTTPCreateReceiptSurvivesWorkerAndValidatesIdempotency(t 
 	if _, err := f.service.Process(ctx, 20); err != nil {
 		t.Fatal("process reconciliation:", err)
 	}
-	replay := f.call("POST", "/api/v1/admin/reconciliations", "reconcile-create-0001", f.token, managedBrand, map[string]string{"reason": "monthly wallet check"})
+	replay := f.call("POST", "/api/v1/admin/reconciliations", "reconcile-create-0001", f.token, managedBrand, map[string]string{"reason": "monthly wallet check", "check_scope": reconciliation.ScopeWallet})
 	mustStatus(t, replay, 201)
 	var receipt reconciliation.Job
 	managedData(t, replay, &receipt)
@@ -100,7 +100,7 @@ func TestReconciliationHTTPCreateReceiptSurvivesWorkerAndValidatesIdempotency(t 
 	if target.State != "checked" || target.Outcome == nil || target.Preview == nil || target.CheckedAt == nil || target.AuditLogID == nil || target.ErrorCode != nil || target.AttemptCount < 1 {
 		t.Fatalf("checked target omitted its evidence: %+v", target)
 	}
-	changed := f.call("POST", "/api/v1/admin/reconciliations", "reconcile-create-0001", f.token, managedBrand, map[string]string{"reason": "different reason"})
+	changed := f.call("POST", "/api/v1/admin/reconciliations", "reconcile-create-0001", f.token, managedBrand, map[string]string{"reason": "different reason", "check_scope": reconciliation.ScopeWallet})
 	mustStatus(t, changed, 409)
 	if _, err := f.service.Process(ctx, 20); err != nil {
 		t.Fatal("reprocess reconciliation:", err)
@@ -197,7 +197,7 @@ func TestReconciliationHTTPConcurrentCreateAllowsOnlyOneActiveJob(t *testing.T) 
 		go func(index int, text string) {
 			defer wait.Done()
 			<-start
-			resp := f.call("POST", "/api/v1/admin/reconciliations", "reconcile-race-000"+string(rune('1'+index)), f.token, managedBrand, map[string]string{"reason": text})
+			resp := f.call("POST", "/api/v1/admin/reconciliations", "reconcile-race-000"+string(rune('1'+index)), f.token, managedBrand, map[string]string{"reason": text, "check_scope": reconciliation.ScopeWallet})
 			statuses <- resp.Code
 		}(i, reason)
 	}
@@ -228,7 +228,7 @@ func TestReconciliationHTTPCrossBrandNotFoundAndFreshPermissionChecks(t *testing
 	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, f.call("POST", "/api/v1/admin/reconciliations", "reconcile-super-0001", f.token, managedBrand, map[string]string{"reason": "super admin remains read only"}), 403)
+	mustStatus(t, f.call("POST", "/api/v1/admin/reconciliations", "reconcile-super-0001", f.token, managedBrand, map[string]string{"reason": "super admin remains read only", "check_scope": reconciliation.ScopeWallet}), 403)
 	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestReconciliationHTTPCrossBrandNotFoundAndFreshPermissionChecks(t *testing
 		t.Fatal(err)
 	}
 	mustStatus(t, f.call("GET", "/api/v1/admin/reconciliations/"+job.ID, "", f.token, managedBrand, nil), 200)
-	mustStatus(t, f.call("POST", "/api/v1/admin/reconciliations", "reconcile-revoked-001", f.token, managedBrand, map[string]string{"reason": "permission revoked"}), 403)
+	mustStatus(t, f.call("POST", "/api/v1/admin/reconciliations", "reconcile-revoked-001", f.token, managedBrand, map[string]string{"reason": "permission revoked", "check_scope": reconciliation.ScopeWallet}), 403)
 	if _, err := f.pool.Exec(context.Background(), `DELETE FROM role_permissions WHERE role_id IN(SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key='wallet.view.brand'`, f.root); err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,7 @@ func TestReconciliationHTTPRejectsInvalidQueriesAndBodyFields(t *testing.T) {
 	} {
 		mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 400)
 	}
-	mustStatus(t, f.call("POST", "/api/v1/admin/reconciliations", "reconcile-unknown-01", f.token, managedBrand, map[string]any{"reason": "closed request body", "extra": true}), 400)
+	mustStatus(t, f.call("POST", "/api/v1/admin/reconciliations", "reconcile-unknown-01", f.token, managedBrand, map[string]any{"reason": "closed request body", "check_scope": reconciliation.ScopeWallet, "extra": true}), 400)
 }
 
 func TestReconciliationHTTPAuditFailureRollsBackWritesAndWithholdsReadData(t *testing.T) {
@@ -268,7 +268,7 @@ func TestReconciliationHTTPAuditFailureRollsBackWritesAndWithholdsReadData(t *te
 	if _, err := f.pool.Exec(ctx, `CREATE TRIGGER reject_reconciliation_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_reconciliation_audit()`); err != nil {
 		t.Fatal(err)
 	}
-	created := f.call("POST", "/api/v1/admin/reconciliations", "reconcile-audit-fail1", f.token, managedBrand, map[string]string{"reason": "audit rollback"})
+	created := f.call("POST", "/api/v1/admin/reconciliations", "reconcile-audit-fail1", f.token, managedBrand, map[string]string{"reason": "audit rollback", "check_scope": reconciliation.ScopeWallet})
 	mustStatus(t, created, 503)
 	var envelope struct {
 		Success bool            `json:"success"`

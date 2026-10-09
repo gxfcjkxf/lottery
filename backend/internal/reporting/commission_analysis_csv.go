@@ -13,7 +13,7 @@ import (
 var commissionAnalysisCSVFields = []string{
 	"record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by",
 	"agent_id", "member_id", "cycle_id", "key", "label",
-	"selected_cycle_count", "ready_cycle_count", "unready_cycle_count", "legacy_policy_blocked_cycle_count",
+	"selected_cycle_count", "ready_cycle_count", "unready_cycle_count",
 	"observed_calculated_points", "calculated_points", "paid_entry_count", "paid_points",
 	"adjustment_entry_count", "adjustment_credit_points", "adjustment_debit_points",
 	"correction_entry_count", "correction_credit_points", "correction_debit_points",
@@ -23,7 +23,7 @@ var commissionAnalysisCSVFields = []string{
 }
 
 func commissionAnalysisCoverageValues(v CommissionAnalysisCoverage) []string {
-	return []string{v.SelectedCycleCount, v.ReadyCycleCount, v.UnreadyCycleCount, v.LegacyPolicyBlockedCycleCount}
+	return []string{v.SelectedCycleCount, v.ReadyCycleCount, v.UnreadyCycleCount}
 }
 
 func validCommissionAnalysisCoverage(v CommissionAnalysisCoverage) bool {
@@ -34,8 +34,7 @@ func validCommissionAnalysisCoverage(v CommissionAnalysisCoverage) bool {
 	selected := commissionAnalysisBig(v.SelectedCycleCount)
 	ready := commissionAnalysisBig(v.ReadyCycleCount)
 	unready := commissionAnalysisBig(v.UnreadyCycleCount)
-	legacy := commissionAnalysisBig(v.LegacyPolicyBlockedCycleCount)
-	return selected.Cmp(new(big.Int).Add(ready, unready)) == 0 && legacy.Cmp(selected) <= 0
+	return selected.Cmp(new(big.Int).Add(ready, unready)) == 0
 }
 
 func commissionAnalysisBig(value string) *big.Int {

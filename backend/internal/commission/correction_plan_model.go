@@ -18,7 +18,6 @@ var (
 const (
 	CorrectionPlanPlanning = "planning"
 	CorrectionPlanReady    = "ready"
-	CorrectionPlanBlocked  = "blocked"
 	CorrectionPlanFailed   = "failed"
 	CorrectionPlanStale    = "stale"
 	PayoutMixed            = "mixed"

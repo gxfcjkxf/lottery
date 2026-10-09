@@ -16,7 +16,7 @@ const fields = [
   'effective_target_points', 'calculation_minus_actual_points', 'effective_minus_actual_points',
   'calculation_complete', 'effective_target_complete',
 ] as const;
-const coverageFields = ['selected_cycle_count', 'ready_cycle_count', 'unready_cycle_count', 'legacy_policy_blocked_cycle_count'] as const;
+const coverageFields = ['selected_cycle_count', 'ready_cycle_count', 'unready_cycle_count'] as const;
 const csvColumns = [
   'record_type', 'brand_id', 'snapshot_at', 'timezone', 'from', 'to', 'group_by', 'agent_id', 'member_id', 'cycle_id', 'key', 'label',
   ...coverageFields, ...fields,
@@ -149,7 +149,7 @@ test('commission cycle analysis shows saved-period economics and exports the com
   expect(report.items[0]).toMatchObject({ key: payment!.cycle_id, label: payment!.cycle_id });
   expect(report.summary).toEqual(expectedTotals);
   expect(report.items[0]!.totals).toEqual(expectedTotals);
-  expect(report.coverage).toEqual({ selected_cycle_count: '1', ready_cycle_count: '1', unready_cycle_count: '0', legacy_policy_blocked_cycle_count: '0' });
+  expect(report.coverage).toEqual({ selected_cycle_count: '1', ready_cycle_count: '1', unready_cycle_count: '0' });
   expect(cycleEnd.getTime()).toBeGreaterThanOrEqual(from.getTime());
   expect(cycleEnd.getTime()).toBeLessThan(to.getTime());
 
@@ -197,8 +197,8 @@ test('commission cycle analysis shows saved-period economics and exports the com
   const groupRow = parseCsvLine(lines[2]!);
   expect(summaryRow[0]).toBe('summary');
   expect(groupRow[0]).toBe('group');
-  expect(summaryRow).toHaveLength(34);
-  expect(groupRow).toHaveLength(34);
+  expect(summaryRow).toHaveLength(33);
+  expect(groupRow).toHaveLength(33);
   expect(groupRow[10]).toBe(payment!.cycle_id);
   expect(summaryRow.slice(12)).toEqual(['1', '1', '0', '0', '1', '1', '1', '1', '3', '3', '4', '0', '0', '0', '4', '0', "'-1", '0', '1', '0', 'true', 'true']);
   expect(groupRow.slice(12)).toEqual(summaryRow.slice(12));

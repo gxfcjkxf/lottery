@@ -17,10 +17,10 @@ const examples = () => {
   return JSON.parse(result.stdout);
 };
 
-test("audit list keeps its items envelope and adds only an optional nullable brand_id", () => {
+test("audit list keeps its items envelope and requires a nullable brand_id", () => {
   const record = identity.schemas.AdminAuditEntry;
   assert.equal(record.additionalProperties, false);
-  assert.ok(!record.required.includes("brand_id"));
+  assert.ok(record.required.includes("brand_id"));
   assert.deepEqual(record.properties.brand_id, { anyOf: [{ $ref: "#/components/schemas/UUID" }, { type: "null" }] });
   assert.deepEqual(identity.schemas.AdminAuditList.required, ["items"]);
   const list = document.paths["/api/v1/admin/audit"].get;
@@ -34,6 +34,7 @@ test("audit list keeps its items envelope and adds only an optional nullable bra
   assert.match(list.description, /half-open \[from,to\)/);
   assert.match(list.description, /literal Z \(numeric offsets are rejected\)/);
   assert.match(list.description, /422 AUDIT_QUERY_TOO_LARGE as JSON and omit items/);
+  assert.match(list.description, /required nullable brand_id/);
   assert.deepEqual(Object.keys(list.responses["422"].content), ["application/json"]);
   assert.equal(list.responses["422"].content["application/json"].schema.$ref, "#/components/schemas/ErrorResponse");
   assert.match(list.responses["422"].description, /JSON error.*no partial data/);
@@ -58,15 +59,15 @@ test("audit export declares a bounded raw CSV with exact authorization, filters,
   assert.match(operation.description, /id, brand_id, action, actor_type, actor_id, resource_type, resource_id, reason, request_id, created_at, ip_address, before_json, after_json/);
 });
 
-test("Go audit contract examples validate both new and legacy audit records", () => {
+test("Go audit contract examples serialize the required nullable brand_id", () => {
   const ajv = new Ajv2020({ strict: false, allErrors: true });
   addFormats(ajv);
   ajv.addSchema({ $id: "urn:lottery:admin-audit-contract", components: { schemas: { ...commonSchemas, ...identity.schemas } } });
   const schema = name => ajv.compile({ $ref: `urn:lottery:admin-audit-contract#/components/schemas/${name}` });
   const values = examples();
   assert.ok(schema("AdminAuditEntry")(values.AdminAuditRecord), JSON.stringify(schema("AdminAuditEntry").errors));
-  assert.ok(schema("AdminAuditEntry")(values.AdminAuditRecordLegacy), JSON.stringify(schema("AdminAuditEntry").errors));
   assert.ok(schema("AdminAuditList")(values.AdminAuditList), JSON.stringify(schema("AdminAuditList").errors));
-  assert.equal(Object.hasOwn(values.AdminAuditRecordLegacy, "brand_id"), false);
   assert.equal(values.AdminAuditRecord.brand_id, "22222222-2222-4222-8222-222222222222");
+  assert.ok(schema("AdminAuditEntry")({ ...values.AdminAuditRecord, brand_id: null }));
+  assert.ok(!schema("AdminAuditEntry")((({ brand_id: _brandID, ...record }) => record)(values.AdminAuditRecord)));
 });

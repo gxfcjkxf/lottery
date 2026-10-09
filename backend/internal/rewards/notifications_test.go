@@ -76,7 +76,7 @@ func TestRewardNotificationsBindHistoricActionsAndNeverMovePoints(t *testing.T) 
 	kinds := map[string]int{}
 	for _, item := range page.Items {
 		kinds[item.EventType]++
-		if item.Content == nil || item.TemplateKey != item.EventType || item.TemplateVersion != 1 || item.Payload.ResourceID != order.ID || item.Payload.Points == nil || *item.Payload.Points != "40" {
+		if item.Content.En.Title == "" || item.TemplateKey != item.EventType || item.TemplateVersion != 1 || item.Payload.ResourceID != order.ID || item.Payload.Points == nil || *item.Payload.Points != "40" {
 			t.Fatalf("incorrect reward snapshot: %+v", item)
 		}
 		raw, e := json.Marshal(item.Payload)

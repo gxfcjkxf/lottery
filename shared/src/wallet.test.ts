@@ -24,12 +24,11 @@ describe("four-source wallet contract", () => {
     expect(isWalletDTO({ ...current, extra: "not closed" })).toBe(false);
   });
 
-  it("normalizes immutable three-source snapshots in memory and keeps four-source snapshots strict", () => {
+  it("accepts only current sixteen-bucket snapshots", () => {
     const old = buckets(["recharge", "winning", "gift"]);
-    const normalized = normalizeSourceBuckets(old);
-    expect(Object.keys(normalized ?? {})).toEqual(WALLET_SOURCES);
-    expect(normalized?.commission).toEqual({ available: "0", manual_frozen: "0", system_frozen: "0", withdrawal: "0" });
+    expect(normalizeSourceBuckets(old)).toBeNull();
     expect(Object.keys(old)).toEqual(["recharge", "winning", "gift"]);
+    expect(normalizeSourceBuckets(buckets(WALLET_SOURCES))).not.toBeNull();
     expect(normalizeSourceBuckets({ ...buckets(WALLET_SOURCES), unknown: {} })).toBeNull();
     expect(normalizeSourceBuckets({ ...buckets(WALLET_SOURCES), commission: { available: "0", manual_frozen: "0", system_frozen: "0" } })).toBeNull();
     expect(normalizeSourceBuckets({ ...buckets(WALLET_SOURCES), commission: { available: "-0", manual_frozen: "0", system_frozen: "0", withdrawal: "0" } }, true)).toBeNull();
@@ -53,11 +52,10 @@ describe("four-source wallet contract", () => {
     expect(isWalletDTO({ ...wallet, available_points: "10" })).toBe(false);
   });
 
-  it("normalizes cached historical point-entry receipts without changing the frozen receipt", () => {
+  it("rejects historical point-entry receipts without current commission buckets", () => {
     const legacy = buckets(["recharge", "winning", "gift"]);
     const receipt = { id: "frozen", before_snapshot: legacy, delta_snapshot: legacy, after_snapshot: legacy };
-    const normalized = normalizeLedgerSnapshots(receipt);
-    expect(normalized?.after_snapshot.commission.available).toBe("0");
+    expect(normalizeLedgerSnapshots(receipt)).toBeNull();
     expect(Object.keys(legacy)).toEqual(["recharge", "winning", "gift"]);
   });
 });

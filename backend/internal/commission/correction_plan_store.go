@@ -16,7 +16,6 @@ type correctionPlanRow struct {
 	ID, Brand, Cycle, Payment, Run, State string
 	Version, Epoch, Count, Planned        int64
 	Cursor                                *string
-	ErrorCode                             *string
 }
 
 func lockCorrectionPlan(ctx context.Context, tx pgx.Tx, brand, id string) (correctionPlanRow, error) {
@@ -35,8 +34,8 @@ func lockCorrectionPlan(ctx context.Context, tx pgx.Tx, brand, id string) (corre
 	if _, err = cycleLock(ctx, tx, brand, cycle); err != nil {
 		return p, err
 	}
-	err = tx.QueryRow(ctx, `SELECT id::text,brand_id::text,cycle_id::text,payment_id::text,run_id::text,state,version,evidence_epoch,target_count,planned_count,cursor_agent_id::text,last_error_code
- FROM commission_correction_plans WHERE brand_id=$1 AND id=$2 FOR UPDATE NOWAIT`, brand, id).Scan(&p.ID, &p.Brand, &p.Cycle, &p.Payment, &p.Run, &p.State, &p.Version, &p.Epoch, &p.Count, &p.Planned, &p.Cursor, &p.ErrorCode)
+	err = tx.QueryRow(ctx, `SELECT id::text,brand_id::text,cycle_id::text,payment_id::text,run_id::text,state,version,evidence_epoch,target_count,planned_count,cursor_agent_id::text
+FROM commission_correction_plans WHERE brand_id=$1 AND id=$2 FOR UPDATE NOWAIT`, brand, id).Scan(&p.ID, &p.Brand, &p.Cycle, &p.Payment, &p.Run, &p.State, &p.Version, &p.Epoch, &p.Count, &p.Planned, &p.Cursor)
 	return p, paymentDBError(err)
 }
 
@@ -110,8 +109,7 @@ func (s Service) RetryCorrectionPlanTx(ctx context.Context, tx pgx.Tx, brand, id
 	if p.Version != in.Version {
 		return CorrectionPlan{}, ErrCorrectionPlanVersion
 	}
-	historical := p.State == "blocked" && p.ErrorCode != nil && *p.ErrorCode == "COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED" && p.Planned == 0 && p.Cursor == nil
-	if p.State != "failed" && !historical {
+	if p.State != "failed" {
 		return CorrectionPlan{}, ErrCorrectionPlanState
 	}
 	valid, err := correctionPlanEvidence(ctx, tx, p)
@@ -128,37 +126,11 @@ func (s Service) RetryCorrectionPlanTx(ctx context.Context, tx pgx.Tx, brand, id
 	if !sourcesValid {
 		return CorrectionPlan{}, ErrCorrectionPlanEvidence
 	}
-	if historical {
-		// A historical blocked plan froze these facts before the policy choice.
-		// Do not silently rewrite that basis if actual financial heads changed.
-		var exact bool
-		err = tx.QueryRow(ctx, `SELECT p.credit_points IS NULL AND p.debit_points IS NULL AND p.net_points IS NULL
- AND p.before_points=x.before_points AND p.calculated_points=x.after_points AND p.target_count=x.n
- AND NOT EXISTS(SELECT 1 FROM commission_correction_plan_targets WHERE plan_id=p.id)
- FROM commission_correction_plans p CROSS JOIN LATERAL (
- SELECT count(*) AS n,coalesce(sum(points_before::numeric),0) AS before_points,coalesce(sum(points_after::numeric),0) AS after_points
- FROM commission_correction_candidates(p.brand_id,p.payment_id,p.run_id)) x WHERE p.brand_id=$1 AND p.id=$2`, brand, id).Scan(&exact)
-		if err != nil {
-			return CorrectionPlan{}, err
-		}
-		if !exact {
-			return CorrectionPlan{}, ErrCorrectionPlanEvidence
-		}
-	}
 	log, err := correctionPlanStep(ctx, tx, p, "planning", "retry", in.Reason, p.Planned, p.Cursor, nil, meta)
 	if err != nil {
 		return CorrectionPlan{}, err
 	}
-	if historical {
-		_, err = tx.Exec(ctx, `UPDATE commission_correction_plans p SET version=version+1,state='planning',last_error_code=NULL,last_audit_log_id=$3,next_work_at=clock_timestamp(),
- credit_points=x.credit,debit_points=x.debit,net_points=x.net FROM (
- SELECT coalesce(sum(greatest(delta_points,0)::numeric),0) AS credit,coalesce(sum(greatest(-delta_points,0)::numeric),0) AS debit,coalesce(sum(delta_points::numeric),0) AS net
- FROM commission_correction_candidates($1,$4,$5)) x WHERE p.brand_id=$1 AND p.id=$2`, brand, id, log, p.Payment, p.Run)
-		err = paymentDBError(err)
-	} else {
-		err = saveCorrectionPlan(ctx, tx, p, "planning", p.Planned, p.Cursor, nil, log)
-	}
-	if err != nil {
+	if err = saveCorrectionPlan(ctx, tx, p, "planning", p.Planned, p.Cursor, nil, log); err != nil {
 		return CorrectionPlan{}, err
 	}
 	return s.CorrectionPlanTx(ctx, tx, brand, id)

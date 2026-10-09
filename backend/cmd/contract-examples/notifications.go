@@ -31,7 +31,7 @@ func drawNotificationExamples() map[string]any {
 	return map[string]any{
 		"LotteryNotificationDrawPublished": notification.Item{
 			ID: id, BrandID: id, MemberID: id, EventType: "draw.result.published", TemplateKey: "draw.result.published",
-			TemplateVersion: 1, Content: &publishedContent,
+			TemplateVersion: 1, Content: publishedContent,
 			Payload: notification.Payload{ResourceID: id, Points: nil, Draw: &notification.DrawNotificationPayload{
 				GameID: id, PeriodID: id, PeriodNo: "20261007001",
 				Result: rules.Draw{Regular: []int{0, 14, 49}, Special: []int{}, Digits: []int{}}, DrawnAt: drawnAt,
@@ -39,7 +39,7 @@ func drawNotificationExamples() map[string]any {
 		},
 		"LotteryNotificationDrawCorrected": notification.Item{
 			ID: id, BrandID: id, MemberID: id, EventType: "draw.result.corrected", TemplateKey: "draw.result.corrected",
-			TemplateVersion: 1, Content: &correctedContent,
+			TemplateVersion: 1, Content: correctedContent,
 			Payload: notification.Payload{ResourceID: id, Points: nil, Draw: &notification.DrawNotificationPayload{
 				GameID: id, PeriodID: id, PeriodNo: "20261007001",
 				Result: rules.Draw{Regular: []int{}, Special: []int{}, Digits: []int{1, 2, 3}}, DrawnAt: drawnAt, PreviousDrawID: &previousID,

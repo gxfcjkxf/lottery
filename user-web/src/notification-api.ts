@@ -36,13 +36,13 @@ export interface NotificationItem {
   event_type: NotificationEventType;
   template_key: NotificationEventType;
   template_version: number;
-  content: NotificationTemplateContent | null;
-  payload: LegacyNotificationPayload | DrawNotificationPayload;
+  content: NotificationTemplateContent;
+  payload: NotificationPayload | DrawNotificationPayload;
   created_at: string;
   read_at: string | null;
 }
 
-export interface LegacyNotificationPayload { resource_id: string; points: string | null }
+export interface NotificationPayload { resource_id: string; points: string | null }
 export interface DrawNotificationPayload {
   resource_id: string;
   points: null;
@@ -119,14 +119,6 @@ const EVENT_TYPES = new Set<NotificationEventType>([
   "commission.corrected",
   "draw.result.published",
   "draw.result.corrected",
-  "withdrawal.order.reviewing",
-  "withdrawal.order.processing",
-  "withdrawal.order.paid",
-  "withdrawal.order.rejected",
-  "withdrawal.order.failed",
-  "withdrawal.order.cancelled",
-]);
-const WITHDRAWAL_EVENT_TYPES = new Set<NotificationEventType>([
   "withdrawal.order.reviewing",
   "withdrawal.order.processing",
   "withdrawal.order.paid",
@@ -338,19 +330,7 @@ function parseNotification(value: unknown): NotificationItem {
     return malformed("notification.template_version must be a positive safe integer");
   }
   const templateVersion = item.template_version;
-  const content = item.content === undefined || item.content === null
-    ? null
-    : parseTemplateContent(item.content, eventType);
-  if (DRAW_EVENT_TYPES.has(eventType) && content === null) {
-    return malformed("draw notifications require an immutable content snapshot");
-  }
-  const rewardEvent = eventType.startsWith("reward.order.");
-  if (content === null && (WITHDRAWAL_EVENT_TYPES.has(eventType) || eventType.startsWith("commission.") || rewardEvent)) {
-    return malformed("withdrawal, commission, and reward notifications require an immutable content snapshot");
-  }
-  if (content === null && templateVersion !== 1) {
-    return malformed("notification.content is required for template versions above 1");
-  }
+  const content = parseTemplateContent(item.content, eventType);
   const payload = object(item.payload, "notification.payload");
   const resourceId = uuid(payload.resource_id, "notification.payload.resource_id");
   if (DRAW_EVENT_TYPES.has(eventType)) {

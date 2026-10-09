@@ -43,7 +43,7 @@ func TestBrandOperationPauseBlocksNewBetsKeepsSessionAndOriginalRefund(t *testin
 	}
 	setBrandOperationForBetting(t, f, "paused")
 	pausedBalance := walletBySource(t, f)
-	if _, err = placeBettingOrder(t, f, f.input, "brand-operation-paused-new-bet"); !errors.Is(err, ErrDenied) {
+	if _, err = placeBettingOrder(t, f, f.input, "brand-operation-paused-new-bet"); !errors.Is(err, ErrBrandPaused) {
 		t.Fatal("paused bet admitted", err)
 	}
 	if walletBySource(t, f) != pausedBalance {

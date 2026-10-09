@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
-	"github.com/gxfcjkxf/lottery/backend/internal/database"
+
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
@@ -599,125 +599,5 @@ func TestRewardOrdinarySQLCannotBypassImmutableAuditAndReversalGuard(t *testing.
 	_ = tx.Rollback(context.Background())
 	if err == nil {
 		t.Fatal("points store accepted a partial reward reversal")
-	}
-}
-
-func TestRewardMigration54To55PreservesFinancialFingerprintAndPinsGuards(t *testing.T) {
-	ctx := context.Background()
-	db := testdb.NewAtVersion(t, 54)
-	globalID, memberID, accountID, adminID := ids.New(), ids.New(), ids.New(), ids.New()
-	for _, statement := range []struct {
-		sql  string
-		args []any
-	}{
-		{`INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'reward-upgrade-test')`, []any{globalID, "reward_upgrade_member_" + globalID[:8]}},
-		{`INSERT INTO brand_members(id,brand_id,global_user_id,display_name,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'Upgrade test member','operator','1','1')`, []any{memberID, rewardTestBrand, globalID}},
-		{`INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'reward-upgrade-test')`, []any{adminID, "reward_upgrade_admin_" + adminID[:8]}},
-		{`INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, []any{accountID, rewardTestBrand, memberID}},
-		{`INSERT INTO point_buckets(brand_id,account_id,source,state,points) SELECT $1,$2,s,t,0 FROM unnest(ARRAY['recharge','winning','gift']) s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal']) t`, []any{rewardTestBrand, accountID}},
-	} {
-		if _, err := db.Exec(ctx, statement.sql, statement.args...); err != nil {
-			t.Fatal(err)
-		}
-	}
-	var delta points.Balance
-	delta[0][0] = 41
-	tx := rewardTx(t, db)
-	if _, err := (points.Store{DB: db}).Post(ctx, tx, points.Change{
-		BrandID: rewardTestBrand, MemberID: memberID, EntryType: "adjustment", ReferenceType: "test",
-		OperationKey: "reward-upgrade-seed:" + ids.New(), Reason: "preserve pre-upgrade financial history",
-		ActorType: "system", RequestID: ids.New(), Delta: delta,
-		Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 41}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	rewardCommit(t, tx)
-
-	fingerprint := func() string {
-		t.Helper()
-		var raw string
-		err := db.QueryRow(ctx, `SELECT jsonb_build_object(
- 'brands',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM brands x),
- 'users',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM global_users x),
- 'members',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM brand_members x),
- 'admins',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM admin_accounts x),
- 'accounts',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM point_accounts x),
- 'buckets',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.account_id,x.source,x.state) FROM point_buckets x),
- 'ledger',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM point_ledger_entries x),
- 'audits',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM audit_logs x))::text`).Scan(&raw)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return raw
-	}
-	before := fingerprint()
-	if err := database.Migrate(ctx, db); err != nil {
-		t.Fatalf("upgrade schema 54 to 55: %v", err)
-	}
-	if after := fingerprint(); after != before {
-		t.Fatal("0055 migration changed pre-existing financial, identity, ledger, or audit data")
-	}
-	if err := database.Migrate(ctx, db); err != nil {
-		t.Fatalf("repeat migration: %v", err)
-	}
-	if after := fingerprint(); after != before {
-		t.Fatal("repeated migration changed pre-existing financial history")
-	}
-
-	var schema string
-	if err := db.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
-		t.Fatal(err)
-	}
-	guardNames := []string{"guard_reward_order", "guard_reward_action", "guard_reward_credit", "require_reward_order_commit", "require_reward_action_commit", "require_reward_ledger_commit"}
-	rows, err := db.Query(ctx, `SELECT p.proname,p.proconfig FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.proname=ANY($2::text[])`, schema, guardNames)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantPath := "search_path=pg_catalog, " + schema + ", pg_temp"
-	guarded := make(map[string]bool, len(guardNames))
-	for rows.Next() {
-		var name string
-		var config []string
-		if err := rows.Scan(&name, &config); err != nil {
-			rows.Close()
-			t.Fatal(err)
-		}
-		for _, setting := range config {
-			if setting == wantPath {
-				guarded[name] = true
-			}
-		}
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		t.Fatal(err)
-	}
-	rows.Close()
-	for _, name := range guardNames {
-		if !guarded[name] {
-			t.Errorf("%s lacks pinned search_path %q", name, wantPath)
-		}
-	}
-
-	service := Service{DB: db}
-	actor := access.Account{ID: adminID, Type: access.AccountAdmin, BrandIDs: []string{rewardTestBrand}, Roles: []access.Role{{BrandID: rewardTestBrand, Permissions: []access.Permission{
-		{Resource: "reward", Action: "view", Scope: access.ScopeBrand},
-		{Resource: "reward", Action: "grant", Scope: access.ScopeBrand},
-	}}}}
-	tx = rewardTx(t, db)
-	order, err := service.GrantTx(ctx, tx, rewardTestBrand, actor, GrantInput{MemberID: memberID, Points: 3, Reason: "search path guard probe"}, rewardMeta(adminID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	rewardCommit(t, tx)
-	qualifiedSchema := pgx.Identifier{schema}.Sanitize()
-	tx = rewardTx(t, db)
-	if _, err := tx.Exec(ctx, `SET LOCAL search_path TO pg_catalog`); err != nil {
-		t.Fatal(err)
-	}
-	_, err = tx.Exec(ctx, fmt.Sprintf(`UPDATE %s.reward_orders SET reason='tampered' WHERE id=$1`, qualifiedSchema), order.ID)
-	_ = tx.Rollback(ctx)
-	if err == nil || !strings.Contains(err.Error(), "reward state, version or immutable identity conflict") {
-		t.Fatalf("qualified mutation with empty app search_path did not reach pinned reward guard: %v", err)
 	}
 }

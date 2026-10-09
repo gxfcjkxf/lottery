@@ -10,7 +10,7 @@ test('commission policy routes expose exact permission scopes and frozen-write c
   assert.deepEqual(op.put['x-permissions'], ['commission_policy.write.brand']);
   assert.ok(op.put.parameters.some(p => p.name === 'Idempotency-Key' && p.required));
   assert.match(op.put.description, /before cached receipt replay/);
-  assert.match(op.put.description, /legacy NULL is not backfilled/);
+  assert.match(op.put.description, /every new bet records its current policy/);
   const policyPaths = Object.entries(doc.paths).filter(([p]) => /^\/api\/v1\/admin\/commission-policy(?:\/|$)/.test(p));
   assert.ok(!policyPaths.some(([p]) => /(?:payout|approve)/.test(p)));
   assert.ok(!policyPaths.some(([, path]) => Object.values(path).some(operation => (operation['x-permissions'] ?? []).some(permission => permission.startsWith('commission_payment')))));

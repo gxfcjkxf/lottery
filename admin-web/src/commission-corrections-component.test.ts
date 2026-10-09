@@ -91,7 +91,7 @@ describe("CommissionCorrectionsManagement",()=>{
     executionValue={...executionValue,state:"paused",cycle_hold_active:true,approved_by:actor,approval_actor_type:"admin",approval_audit_log_id:auditId,applied_count:"1",applied_debit_points:"2"};
     executionTargetValue={...executionTargetValue,state:"applied",delta_points:"0",ledger_entry_id:null,audit_log_id:auditId,financial_version:5};
     const mounted=mount(baseAccount,brand,"paused");await flush();
-    expect(textOf(mounted.container)).toContain("真实资金执行已关闭");expect(textOf(mounted.container)).toContain("OPEN-117");
+    expect(textOf(mounted.container)).toContain("真实资金执行已关闭");expect(textOf(mounted.container)).toContain("新核算覆盖旧人工修正目标");
     click(button(mounted.container,planId));await flush();click(button(mounted.container,executionId));await flush();
     expect(textOf(mounted.container)).toContain("跨run代次继承");expect(textOf(mounted.container)).toContain(auditId);expect(textOf(mounted.container)).toContain("零差额已见证");setModel(byTestId(mounted.container,"cc-execution-reason"),"Finance reviewed");await flush();
     expect((byTestId(mounted.container,"cc-continue")?.props.disabled)).toBe(false);expect((byTestId(mounted.container,"cc-approve")?.props.disabled)).toBe(true);
@@ -141,23 +141,9 @@ describe("CommissionCorrectionsManagement",()=>{
     planValue={...planValue,state:"failed",last_error_code:"PLAN_FAILED"};await flush();click(button(mounted.container,planId));await flush();setModel(byTestId(mounted.container,"cc-plan-reason"),"Retry preparation");await flush();expect(byTestId(mounted.container,"cc-plan-retry")?.props.disabled).toBe(false);expect(byTestId(mounted.container,"cc-execute-retry")).toBeNull();
     mounted.scope.value={...mounted.scope.value,account:{...baseAccount,super_admin:true}};await flush();click(button(mounted.container,planId));await flush();expect(byTestId(mounted.container,"cc-plan-retry")?.props.disabled).toBe(true);mounted.app.unmount();
   });
-  it("states the confirmed OPEN-117 recalculation rule and only explicitly retries eligible historical rows",async()=>{
-    planValue={...planValue,state:"blocked",version:4,planned_count:"0",credit_points:null,debit_points:null,net_points:null,last_error_code:"COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED"};
-    const mounted=mount();await flush();mounted.i18n.setLocale("en");await flush();expect(textOf(mounted.container)).toContain("claw back 4 and finish at 8");expect(textOf(mounted.container)).toContain("retain the adjustment and audit history");
-    click(button(mounted.container,planId));await flush();expect(textOf(mounted.container)).toContain("retained historical blocked row");expect(calls.filter((call)=>call.method==="retryPlan")).toHaveLength(0);
-    setModel(byTestId(mounted.container,"cc-plan-reason"),"Recheck legacy OPEN-117 with current evidence");await flush();expect(byTestId(mounted.container,"cc-plan-retry")?.props.disabled).toBe(false);
-    click(byTestId(mounted.container,"cc-plan-retry"));await flush();expect(byTestId(mounted.container,"cc-review")).not.toBeNull();expect(textOf(byTestId(mounted.container,"cc-review")!)).toContain("Recheck legacy OPEN-117 with current evidence");expect(calls.filter((call)=>call.method==="retryPlan")).toHaveLength(0);
-    setChecked(byTestId(mounted.container,"cc-confirm-check"),true);await flush();click(byTestId(mounted.container,"cc-submit"));await flush();
-    const retry=calls.find((call)=>call.method==="retryPlan");expect(retry?.args[0]).toBe(brand);expect(retry?.args[1]).toBe(planId);expect(retry?.args[2]).toMatchObject({version:4,reason:"Recheck legacy OPEN-117 with current evidence"});expect(retry?.args[3]).toEqual(expect.any(String));mounted.app.unmount();
-
-    for (const overrides of [
-      {last_error_code:"OTHER_BLOCK"},
-      {planned_count:"1"},
-      {credit_points:"0"},
-    ]) {
-      freshData();planValue={...planValue,state:"blocked",planned_count:"0",credit_points:null,debit_points:null,net_points:null,last_error_code:"COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED",...overrides};
-      const ineligible=mount();await flush();click(button(ineligible.container,planId));await flush();setModel(byTestId(ineligible.container,"cc-plan-reason"),"Review row");await flush();expect(byTestId(ineligible.container,"cc-plan-retry")?.props.disabled).toBe(true);ineligible.app.unmount();
-    }
+  it("states the recalculation rule and retries current failed preparations",async()=>{
+    const mounted=mount();await flush();mounted.i18n.setLocale("en");await flush();expect(textOf(mounted.container)).toContain("claw back 4 and finish at 8");expect(textOf(mounted.container)).toContain("Retain the adjustment and audit history");
+    freshData();planValue={...planValue,state:"failed",last_error_code:"PLAN_FAILED"};await flush();click(button(mounted.container,planId));await flush();setModel(byTestId(mounted.container,"cc-plan-reason"),"Retry failed preparation");await flush();expect(byTestId(mounted.container,"cc-plan-retry")?.props.disabled).toBe(false);mounted.app.unmount();
   });
   it("clears a definitive 400 request without retaining an unknown intent",async()=>{
     const mounted=mount();await flush();click(button(mounted.container,executionId));await flush();setModel(byTestId(mounted.container,"cc-execution-reason"),"Reject bad version");await flush();click(byTestId(mounted.container,"cc-approve"));await flush();setChecked(byTestId(mounted.container,"cc-confirm-check"),true);await flush();nextWrite=async()=>{throw new AdminApiError("Invalid request",400);};click(byTestId(mounted.container,"cc-submit"));await flush();

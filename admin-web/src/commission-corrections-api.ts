@@ -12,7 +12,7 @@ const MAX_INT64 = 9_223_372_036_854_775_807n;
 const MIN_INT64 = -9_223_372_036_854_775_808n;
 const MAX_TARGETS = 100_000n;
 
-export type CorrectionPlanState = "planning" | "ready" | "blocked" | "failed" | "stale";
+export type CorrectionPlanState = "planning" | "ready" | "failed" | "stale";
 export type CorrectionPayoutMode = "manual" | "automatic" | "mixed" | "none";
 export type CorrectionExecutionState = "awaiting_approval" | "applying" | "completed" | "paused" | "failed" | "stale";
 export type CorrectionExecutionTargetState = "pending" | "applied";
@@ -108,18 +108,13 @@ function validPolicy(value: unknown, brand: string): value is CommissionCorrecti
 }
 function nullableAggregate(value: unknown): value is string | null { return value === null || integerString(value); }
 function validPlan(value: unknown, brand: string): value is CorrectionPlan {
-  if (!isObj(value) || !exact(value, PLAN_KEYS) || value.brand_id !== brand || !uuid(value.id) || !uuid(value.brand_id) || !uuid(value.cycle_id) || !uuid(value.payment_id) || !uuid(value.run_id) || !["planning", "ready", "blocked", "failed", "stale"].includes(String(value.state)) || !["manual", "automatic", "mixed", "none"].includes(String(value.payout_mode)) || !version(value.version) || !integerString(value.evidence_epoch) || BigInt(value.evidence_epoch) > MAX_INT64 || !integerString(value.before_points) || !integerString(value.calculated_points) || !nullableAggregate(value.credit_points) || !nullableAggregate(value.debit_points) || !(value.net_points === null || signedIntegerString(value.net_points)) || !integerString(value.target_count) || !integerString(value.planned_count) || BigInt(value.target_count) > MAX_TARGETS || BigInt(value.planned_count) > BigInt(value.target_count) || !uuid(value.creation_audit_log_id) || !uuid(value.last_audit_log_id) || !nullableCode(value.last_error_code) || !dateTime(value.created_at) || !dateTime(value.updated_at) || instantNsSafe(value.updated_at) < instantNsSafe(value.created_at)) return false;
-  const resolved = value.credit_points !== null && value.debit_points !== null && value.net_points !== null;
-  if ([value.credit_points, value.debit_points, value.net_points].some((v) => v === null) && ![value.credit_points, value.debit_points, value.net_points].every((v) => v === null)) return false;
-  if (resolved) {
-    const delta = BigInt(value.calculated_points) - BigInt(value.before_points);
-    if (BigInt(value.net_points as string) !== delta || BigInt(value.net_points as string) !== BigInt(value.credit_points as string) - BigInt(value.debit_points as string)) return false;
-  }
-  if (value.state === "ready" && (value.last_error_code !== null || BigInt(value.planned_count) !== BigInt(value.target_count) || !resolved)) return false;
+  if (!isObj(value) || !exact(value, PLAN_KEYS) || value.brand_id !== brand || !uuid(value.id) || !uuid(value.brand_id) || !uuid(value.cycle_id) || !uuid(value.payment_id) || !uuid(value.run_id) || !["planning", "ready", "failed", "stale"].includes(String(value.state)) || !["manual", "automatic", "mixed", "none"].includes(String(value.payout_mode)) || !version(value.version) || !integerString(value.evidence_epoch) || BigInt(value.evidence_epoch) > MAX_INT64 || !integerString(value.before_points) || !integerString(value.calculated_points) || !nullableAggregate(value.credit_points) || !nullableAggregate(value.debit_points) || !(value.net_points === null || signedIntegerString(value.net_points)) || !integerString(value.target_count) || !integerString(value.planned_count) || BigInt(value.target_count) > MAX_TARGETS || BigInt(value.planned_count) > BigInt(value.target_count) || !uuid(value.creation_audit_log_id) || !uuid(value.last_audit_log_id) || !nullableCode(value.last_error_code) || !dateTime(value.created_at) || !dateTime(value.updated_at) || instantNsSafe(value.updated_at) < instantNsSafe(value.created_at)) return false;
+  if (!integerString(value.credit_points) || !integerString(value.debit_points) || !signedIntegerString(value.net_points)) return false;
+  const delta = BigInt(value.calculated_points) - BigInt(value.before_points);
+  if (BigInt(value.net_points) !== delta || BigInt(value.net_points) !== BigInt(value.credit_points) - BigInt(value.debit_points)) return false;
+  if (value.state === "ready" && (value.last_error_code !== null || BigInt(value.planned_count) !== BigInt(value.target_count))) return false;
   if (value.state === "planning" && value.last_error_code !== null) return false;
-  if ((value.state === "failed" || value.state === "blocked") !== (value.last_error_code !== null)) return false;
-  if (value.state === "blocked" && (resolved || value.planned_count !== "0" || value.last_error_code !== "COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED")) return false;
-  if (!resolved && (value.state !== "blocked" && value.state !== "stale" || value.planned_count !== "0")) return false;
+  if ((value.state === "failed") !== (value.last_error_code !== null)) return false;
   return true;
 }
 function instantNsSafe(value: string): bigint { return instantNs(value); }

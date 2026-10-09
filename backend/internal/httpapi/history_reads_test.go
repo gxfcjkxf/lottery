@@ -60,13 +60,13 @@ func historyPaths() []string {
 		"/api/v1/admin/brand-domains/history",
 	}
 }
-func TestHistoryHTTPWhitelistAndSingleConnectionFallback(t *testing.T) {
+func TestHistoryHTTPRejectsInvalidConfiguredReplicaWithoutFallback(t *testing.T) {
 	f, _ := historyFixture(t)
 	grantHistoryReads(t, f)
 	for _, path := range historyPaths() {
 		r := f.call("GET", path, "", f.token, managedBrand, nil)
-		mustStatus(t, r, 200)
-		if r.Header().Get("X-Read-Source") != "primary" || r.Header().Get("X-Read-Reason") != "no_eligible_replica" || r.Header().Get("X-Read-Replica") != "" {
+		mustStatus(t, r, 503)
+		if r.Header().Get("X-Read-Source") != "" || r.Header().Get("X-Read-Replica") != "" || strings.Contains(r.Body.String(), `"items"`) {
 			t.Fatal(path, r.Header())
 		}
 	}

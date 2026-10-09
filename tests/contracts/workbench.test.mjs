@@ -15,7 +15,7 @@ ajv.addSchema({ $id: "https://example.test/workbench-contract", components: { sc
 const validate = name => ajv.compile({ $ref: `https://example.test/workbench-contract#/components/schemas/${name}` });
 
 const ready = data => ({ status: "ready", data });
-const unavailable = () => ({ status: "not_implemented", data: null });
+const unavailable = () => ({ status: "forbidden", data: null });
 const snapshot = () => ({
   brand_id: id, snapshot_at: "2026-10-06T12:30:00Z", timezone: "Asia/Singapore", day_from: "2026-10-05T16:00:00Z",
   brand: ready({ name: "Example", code: "example", state: "active" }),
@@ -50,11 +50,7 @@ test("authoritative workbench snapshot schema enforces ready data, unavailable n
   const sectionNames = Object.keys(doc.components.schemas.AdminWorkbenchSnapshot.properties);
   for (const name of sectionNames.slice(4)) {
     const sectionName = doc.components.schemas.AdminWorkbenchSnapshot.properties[name].$ref.split("/").at(-1);
-    if (name === "commissions") {
-      assert.deepEqual(doc.components.schemas[sectionName].properties.status.enum, ["ready", "forbidden", "not_implemented"]);
-    } else {
-      assert.deepEqual(doc.components.schemas[sectionName].properties.status.enum, ["ready", "forbidden"]);
-    }
+    assert.deepEqual(doc.components.schemas[sectionName].properties.status.enum, ["ready", "forbidden"]);
   }
   assert.ok(check(value), JSON.stringify(check.errors));
   assert.ok(!check({ ...value, unexpected: true }));
@@ -73,10 +69,12 @@ test("authoritative workbench snapshot schema enforces ready data, unavailable n
     assert.ok(!check({ ...value, withdrawals: ready({ ...value.withdrawals.data, processing_points: amount }) }));
   }
   assert.ok(check({ ...value, rewards: { status: "forbidden", data: null } }));
-  assert.ok(!check({ ...value, rewards: unavailable() }));
+  assert.ok(check({ ...value, rewards: unavailable() }));
+  assert.ok(!check({ ...value, rewards: { status: "not_implemented", data: null } }));
   assert.ok(!check({ ...value, rewards: ready({ ...value.rewards.data, gift_points: "5" }) }));
   assert.ok(check({ ...value, commissions: unavailable() }));
   assert.ok(!check({ ...value, commissions: { status: "not_implemented", data: { count: "0" } } }));
+  assert.ok(!check({ ...value, commissions: { status: "not_implemented", data: null } }));
   assert.ok(!check({ ...value, commissions: { status: "not_implemented", data: null, count: "0" } }));
   assert.ok(!check({ ...value, brand_id: "not-a-uuid" }));
 });

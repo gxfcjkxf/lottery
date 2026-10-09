@@ -209,8 +209,8 @@ func main() {
 		"LotterySimulationInputSparse": sparse,
 		"LotteryRuleSelection":         in.Selection, "LotteryRuleDraw": in.Draw,
 		"LotteryRuleTier": in.Definition.PrizeTiers[0], "LotteryRuleCondition": in.Definition.PrizeTiers[0].Condition,
-		"LotteryNotification":                 notification.Item{ID: id, BrandID: id, MemberID: id, EventType: "member.joined", TemplateKey: "member.joined", TemplateVersion: 1, Payload: notification.Payload{ResourceID: id}, CreatedAt: now},
-		"LotteryNotificationSnapshot":         notification.Item{ID: id, BrandID: id, MemberID: id, EventType: "recharge.confirmed", TemplateKey: "recharge.confirmed", TemplateVersion: 2, Content: &noticeContent, Payload: notification.Payload{ResourceID: id, Points: &noticePoints}, CreatedAt: now},
+		"LotteryNotification":                 notification.Item{ID: id, BrandID: id, MemberID: id, EventType: "member.joined", TemplateKey: "member.joined", TemplateVersion: 1, Content: notification.Content{En: notification.Copy{Title: "Welcome", Body: "Your membership is ready."}, ZhCN: notification.Copy{Title: "欢迎", Body: "您的会员账户已准备就绪。"}}, Payload: notification.Payload{ResourceID: id}, CreatedAt: now},
+		"LotteryNotificationSnapshot":         notification.Item{ID: id, BrandID: id, MemberID: id, EventType: "recharge.confirmed", TemplateKey: "recharge.confirmed", TemplateVersion: 2, Content: noticeContent, Payload: notification.Payload{ResourceID: id, Points: &noticePoints}, CreatedAt: now},
 		"LotteryNotificationTemplate":         notification.Template{BrandID: id, Key: "recharge.confirmed", Version: 2, Content: noticeContent, UpdatedAt: now, AuditLogID: &noticeAuditID},
 		"LotteryNotificationTemplateRevision": notification.Revision{ID: id, BrandID: id, Key: "recharge.confirmed", Version: 2, Content: noticeContent, ChangedBy: &noticeAuditID, Reason: "contract example", AuditLogID: &noticeAuditID, CreatedAt: now},
 	}

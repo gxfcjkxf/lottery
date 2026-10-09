@@ -24,7 +24,7 @@ func reconciliationRawCall(f reconciliationHTTPFixture, method, path, key, body 
 	return w
 }
 
-func TestReconciliationHTTPBusinessScopeAndWalletReceiptCompatibility(t *testing.T) {
+func TestReconciliationHTTPRequiresExplicitScopeAndPreservesWalletAndBusinessScopes(t *testing.T) {
 	f := newReconciliationHTTPFixture(t)
 	body := `{"reason":"business witness pass","check_scope":"wallet_and_business"}`
 	created := reconciliationRawCall(f, "POST", reconciliationHTTPPath, "reconcile-business-scope-01", body)
@@ -51,33 +51,33 @@ func TestReconciliationHTTPBusinessScopeAndWalletReceiptCompatibility(t *testing
 		t.Fatalf("checked business observation omitted evidence: %+v", page)
 	}
 
-	// Legacy callers omit check_scope. Their saved request and receipt remain wallet-only.
-	legacyBody := `{"reason":"legacy wallet-only pass"}`
-	legacy := reconciliationRawCall(f, "POST", reconciliationHTTPPath, "reconcile-legacy-wallet-01", legacyBody)
-	mustStatus(t, legacy, 201)
-	var legacyReceipt reconciliation.Job
-	managedData(t, legacy, &legacyReceipt)
-	if legacyReceipt.CheckScope != reconciliation.ScopeWallet {
-		t.Fatalf("omitted check_scope did not retain wallet scope: %+v", legacyReceipt)
+	// The old reason-only request is rejected, while an explicit wallet scope is valid.
+	missingScope := reconciliationRawCall(f, "POST", reconciliationHTTPPath, "reconcile-missing-scope-01", `{"reason":"wallet-only pass"}`)
+	mustStatus(t, missingScope, 400)
+	wallet := reconciliationRawCall(f, "POST", reconciliationHTTPPath, "reconcile-explicit-wallet-01", `{"reason":"wallet-only pass","check_scope":"wallet"}`)
+	mustStatus(t, wallet, 201)
+	var walletReceipt reconciliation.Job
+	managedData(t, wallet, &walletReceipt)
+	if walletReceipt.CheckScope != reconciliation.ScopeWallet {
+		t.Fatalf("explicit wallet scope missing from creation receipt: %+v", walletReceipt)
 	}
 	if _, err := f.service.Process(context.Background(), 20); err != nil {
-		t.Fatal("process legacy reconciliation:", err)
+		t.Fatal("process wallet reconciliation:", err)
 	}
-	replay := reconciliationRawCall(f, "POST", reconciliationHTTPPath, "reconcile-legacy-wallet-01", legacyBody)
-	mustStatus(t, replay, 201)
-	var replayReceipt reconciliation.Job
-	managedData(t, replay, &replayReceipt)
-	if replayReceipt != legacyReceipt {
-		t.Fatalf("legacy retry did not return its original wallet receipt: original=%+v replay=%+v", legacyReceipt, replayReceipt)
+	walletTargets := f.call("GET", reconciliationHTTPPath+"/"+walletReceipt.ID+"/targets", "", f.token, managedBrand, nil)
+	mustStatus(t, walletTargets, 200)
+	var walletPage reconciliation.TargetPage
+	managedData(t, walletTargets, &walletPage)
+	if len(walletPage.Items) != 1 || walletPage.Items[0].CheckScope != reconciliation.ScopeWallet || walletPage.Items[0].BusinessPreview != nil {
+		t.Fatalf("wallet target did not preserve explicit wallet scope and null business preview: %+v", walletPage)
 	}
-	changedMode := reconciliationRawCall(f, "POST", reconciliationHTTPPath, "reconcile-legacy-wallet-01", `{"reason":"legacy wallet-only pass","check_scope":"wallet_and_business"}`)
-	mustStatus(t, changedMode, 409)
 }
 
 func TestReconciliationHTTPClosedCreateAndCanonicalGetInputs(t *testing.T) {
 	f := newReconciliationHTTPFixture(t)
 	for i, body := range []string{
 		"null",
+		`{"reason":"missing scope"}`,
 		`{"reason":"duplicate key","reason":"duplicate key"}`,
 		`{"reason":"null scope","check_scope":null}`,
 		`{"reason":"unknown field","extra":true}`,
@@ -97,12 +97,12 @@ func TestReconciliationHTTPClosedCreateAndCanonicalGetInputs(t *testing.T) {
 	mustStatus(t, reconciliationRawCall(f, "GET", reconciliationHTTPPath, "", `null`), 400)
 	// Keep canonical pagination accepted; this also exercises a body-free GET request.
 	mustStatus(t, f.call("GET", reconciliationHTTPPath+"?limit=20&offset=0", "", f.token, managedBrand, nil), 200)
-	inlineTab := reconciliationRawCall(f, "POST", reconciliationHTTPPath, "reconcile-inline-tab-01", `{"reason":"inline\tseparator"}`)
+	inlineTab := reconciliationRawCall(f, "POST", reconciliationHTTPPath, "reconcile-inline-tab-01", `{"reason":"inline\tseparator","check_scope":"wallet"}`)
 	mustStatus(t, inlineTab, 201)
 	var tabReceipt reconciliation.Job
 	managedData(t, inlineTab, &tabReceipt)
 	if tabReceipt.Reason != "inline\tseparator" {
-		t.Fatalf("inline tab was not preserved by legacy reason validation: %q", tabReceipt.Reason)
+		t.Fatalf("inline tab was not preserved by reason validation: %q", tabReceipt.Reason)
 	}
 }
 

@@ -488,39 +488,6 @@ func TestRealWithdrawalTurnoverExcludesCancelledAbnormalAndUnfinished(t *testing
 	}
 }
 
-func TestRealWithdrawalTurnoverMissingLegacySnapshotFailsEvenWithZeroBase(t *testing.T) {
-	f := newBettingFixtureWithWindow(t, storeTestBrand, 2*time.Second, 2100*time.Millisecond)
-	a := eligibilityAdmin(t, f)
-	eligibilityBrandPolicy(t, f, a, "1")
-	eligibilityFund(t, f, 0, 1, 0)
-	// Simulate a pre-0043 order in this disposable schema without inventing a
-	// historical N. All other original bet, ledger, audit and settlement guards
-	// remain active; the capture trigger is restored before settlement.
-	if _, err := f.db.Exec(context.Background(), `ALTER TABLE bet_orders DISABLE TRIGGER capture_bet_withdrawal_snapshot`); err != nil {
-		t.Fatal(err)
-	}
-	o, err := placeBettingOrder(t, f, f.input, "legacy-snapshot-missing")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = f.db.Exec(context.Background(), `ALTER TABLE bet_orders ENABLE TRIGGER capture_bet_withdrawal_snapshot`); err != nil {
-		t.Fatal(err)
-	}
-	var missing bool
-	if err = f.db.QueryRow(context.Background(), `SELECT withdrawal_rule_snapshot IS NULL FROM bet_orders WHERE id=$1`, o.ID).Scan(&missing); err != nil || !missing {
-		t.Fatal(missing, err)
-	}
-	eligibilitySettle(t, f)
-	before := walletBySource(t, f)
-	_, err = eligibilityCreate(t, f, withdrawal.OrderInput{Points: 1, ClientKey: "legacy-not-inferred", SourceAllocation: []points.Allocation{{Source: "winning", State: "available", Points: 1}}})
-	if !errors.Is(err, withdrawal.ErrTurnoverEvidence) {
-		t.Fatalf("legacy stake without its N must not be guessed or skipped at zero base: %v", err)
-	}
-	if walletBySource(t, f) != before {
-		t.Fatal("missing snapshot check reserved points")
-	}
-}
-
 func TestRealWithdrawalTurnoverCorrectionUsesOnlyCompletedCurrentGeneration(t *testing.T) {
 	f, _, _ := settledCorrectionFixture(t)
 	before, err := eligibilityInspect(t, f)

@@ -26,7 +26,7 @@ export interface AuditQuery extends Omit<Partial<AuditFilters>, "from" | "to"> {
 
 export interface AdminAuditRecord {
   id: string;
-  brand_id?: string | null;
+  brand_id: string | null;
   action: string;
   actor_type: string;
   actor_id: string;
@@ -120,7 +120,7 @@ function validateItems(value: unknown, brandId: string, limit: number): AdminAud
   if (!isRecord(value) || !Array.isArray(value.items) || value.items.length > limit) fail("审计响应格式无效。 / Invalid audit response.");
   const fields = ["id", "action", "actor_type", "actor_id", "resource_type", "resource_id", "reason", "request_id", "created_at", "ip_address"] as const;
   for (const item of value.items) {
-    if (!isRecord(item) || fields.some((key) => typeof item[key] !== "string") || !validUuid(item.id) || typeof item.brand_id === "string" && item.brand_id.toLowerCase() !== brandId.toLowerCase() || item.brand_id !== undefined && item.brand_id !== null && typeof item.brand_id !== "string" || item.before_json === undefined || item.after_json === undefined || !validUtcDateTime(item.created_at)) fail("审计记录格式或品牌范围无效。 / Invalid audit record or brand scope.");
+    if (!isRecord(item) || fields.some((key) => typeof item[key] !== "string") || !validUuid(item.id) || !Object.hasOwn(item, "brand_id") || !(item.brand_id === null || validUuid(item.brand_id) && item.brand_id.toLowerCase() === brandId.toLowerCase()) || item.before_json === undefined || item.after_json === undefined || !validUtcDateTime(item.created_at)) fail("审计记录格式或品牌范围无效。 / Invalid audit record or brand scope.");
   }
   return value.items as AdminAuditRecord[];
 }

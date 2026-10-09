@@ -7,7 +7,7 @@ const MAX_WINDOW_NS = 93n * 24n * 60n * 60n * 1_000_000_000n;
 const MAX_GROUPS = 10_000;
 const MAX_BYTES = 4 * 1024 * 1024;
 const GROUPS = ["day", "game", "member", "agent", "join_method"] as const;
-const JOIN_METHODS = ["domain", "operator", "agent_code", "referral_code", "legacy"] as const;
+const JOIN_METHODS = ["domain", "operator", "agent_code", "referral_code"] as const;
 export type AttributionGroupBy = typeof GROUPS[number];
 export type AttributionJoinMethod = typeof JOIN_METHODS[number];
 export interface AttributionReportQuery {
@@ -19,7 +19,7 @@ export interface AttributionTotals {
   order_count: string; stake_points: string; placed_count: string; won_count: string; lost_count: string;
   abnormal_count: string; cancelled_count: string; refund_points: string; settled_stake_points: string;
   unfinalized_stake_points: string; abnormal_stake_points: string; current_prize_points: string;
-  correction_open_count: string; final_lost_stake_points: string; legacy_attribution_count: string;
+  correction_open_count: string; final_lost_stake_points: string;
 }
 export interface AttributionReport {
   brand_id: string; snapshot_at: string; timezone: string;
@@ -28,7 +28,7 @@ export interface AttributionReport {
 }
 export type AttributionExport = { filename: string; bytes: Uint8Array; groupCount: string; snapshotAt: string; auditLogId: string };
 
-const FIELDS = ["order_count", "stake_points", "placed_count", "won_count", "lost_count", "abnormal_count", "cancelled_count", "refund_points", "settled_stake_points", "unfinalized_stake_points", "abnormal_stake_points", "current_prize_points", "correction_open_count", "final_lost_stake_points", "legacy_attribution_count"] as const;
+const FIELDS = ["order_count", "stake_points", "placed_count", "won_count", "lost_count", "abnormal_count", "cancelled_count", "refund_points", "settled_stake_points", "unfinalized_stake_points", "abnormal_stake_points", "current_prize_points", "correction_open_count", "final_lost_stake_points"] as const;
 const COLUMNS = ["record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "game_id", "member_id", "agent_id", "agent_scope", "join_method", "key", "label", ...FIELDS] as const;
 type CanonicalQuery = AttributionReport["query"];
 type FetchLike = typeof fetch;
@@ -87,7 +87,7 @@ function validDay(v: string): boolean {
 function validGroupKey(key: string, group: AttributionGroupBy): boolean {
   if (group === "day") return validDay(key);
   if (group === "game" || group === "member") return UUID.test(key);
-  if (group === "agent") return key === "none" || key === "legacy" || UUID.test(key);
+  if (group === "agent") return key === "none" || UUID.test(key);
   return JOIN_METHODS.includes(key as AttributionJoinMethod);
 }
 function validGroupForQuery(key: string, q: CanonicalQuery): boolean {
@@ -99,14 +99,9 @@ function validGroupForQuery(key: string, q: CanonicalQuery): boolean {
   return true;
 }
 function validTotalsForQuery(value: AttributionTotals, q: CanonicalQuery): boolean {
-  const orders = BigInt(value.order_count), legacy = BigInt(value.legacy_attribution_count);
+  const orders = BigInt(value.order_count);
   const statusOrders = BigInt(value.placed_count) + BigInt(value.won_count) + BigInt(value.lost_count) + BigInt(value.abnormal_count) + BigInt(value.cancelled_count);
   if (statusOrders !== orders || orders === 0n && FIELDS.some((field) => BigInt(value[field]) !== 0n)) return false;
-  if (legacy > orders) return false;
-  if (q.join_method === "legacy" && legacy !== orders) return false;
-  if (q.join_method !== null && q.join_method !== "legacy" && legacy !== 0n) return false;
-  if (q.agent_id !== null && legacy !== 0n) return false;
-  if (q.agent_id !== null && q.join_method === "legacy" && FIELDS.some((field) => BigInt(value[field]) !== 0n)) return false;
   return true;
 }
 function sortedItems(raw: unknown, q: CanonicalQuery): AttributionReport["items"] {

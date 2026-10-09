@@ -22,7 +22,7 @@ func TestCommissionWorkbenchIndependentViewActualZerosAndNoUnauthorizedReads(t *
 	}
 	raw, _ := json.Marshal(out.Commissions.Data)
 	var values map[string]string
-	if err = json.Unmarshal(raw, &values); err != nil || len(values) != 19 {
+	if err = json.Unmarshal(raw, &values); err != nil || len(values) != 18 {
 		t.Fatal("closed count fields", string(raw), err)
 	}
 	for key, value := range values {

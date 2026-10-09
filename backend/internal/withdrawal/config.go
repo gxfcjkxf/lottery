@@ -48,21 +48,14 @@ func DefaultBrandConfig() BrandConfig {
 	return BrandConfig{MinPoints: 1, AllowedSources: []string{"recharge", "winning", "gift"}, ReviewMode: "manual", TurnoverMultiple: "1"}
 }
 func ValidMultiple(v string) bool {
-	if !validSavedMultiple(v) {
-		return false
-	}
-	n, _ := new(big.Rat).SetString(v)
-	return n.Sign() > 0
-}
-func validSavedMultiple(v string) bool {
 	if !multiplePattern.MatchString(v) {
 		return false
 	}
 	n, ok := new(big.Rat).SetString(v)
-	return ok && n.Cmp(big.NewRat(1000000, 1)) <= 0
+	return ok && n.Sign() > 0 && n.Cmp(big.NewRat(1000000, 1)) <= 0
 }
-func validateSavedBrandConfig(c BrandConfig) error {
-	if c.MinPoints <= 0 || c.MaxPoints != nil && *c.MaxPoints < c.MinPoints || !validSavedMultiple(c.TurnoverMultiple) || (c.ReviewMode != "manual" && c.ReviewMode != "automatic") || len(c.AllowedSources) < 1 || len(c.AllowedSources) > 4 {
+func ValidateBrandConfig(c BrandConfig) error {
+	if c.MinPoints <= 0 || c.MaxPoints != nil && *c.MaxPoints < c.MinPoints || !ValidMultiple(c.TurnoverMultiple) || (c.ReviewMode != "manual" && c.ReviewMode != "automatic") || len(c.AllowedSources) < 1 || len(c.AllowedSources) > 4 {
 		return ErrInvalid
 	}
 	seen := map[string]bool{}
@@ -74,20 +67,8 @@ func validateSavedBrandConfig(c BrandConfig) error {
 	}
 	return nil
 }
-func validateSavedGameConfig(c GameConfig) error {
-	if c.TurnoverMultiple != nil && !validSavedMultiple(*c.TurnoverMultiple) {
-		return ErrInvalid
-	}
-	return nil
-}
-func ValidateBrandConfig(c BrandConfig) error {
-	if validateSavedBrandConfig(c) != nil || !ValidMultiple(c.TurnoverMultiple) {
-		return ErrInvalid
-	}
-	return nil
-}
 func ValidateGameConfig(c GameConfig) error {
-	if validateSavedGameConfig(c) != nil || c.TurnoverMultiple != nil && !ValidMultiple(*c.TurnoverMultiple) {
+	if c.TurnoverMultiple != nil && !ValidMultiple(*c.TurnoverMultiple) {
 		return ErrInvalid
 	}
 	return nil
@@ -154,7 +135,7 @@ func (c *BrandConfig) UnmarshalJSON(data []byte) error {
 			return ErrInvalid
 		}
 	}
-	if e = validateSavedBrandConfig(out); e != nil {
+	if e = ValidateBrandConfig(out); e != nil {
 		return e
 	}
 	*c = out
@@ -169,7 +150,7 @@ func (c *GameConfig) UnmarshalJSON(data []byte) error {
 	if decodeField(v["turnover_multiple"], &out.TurnoverMultiple, true) != nil {
 		return ErrInvalid
 	}
-	if e = validateSavedGameConfig(out); e != nil {
+	if e = ValidateGameConfig(out); e != nil {
 		return e
 	}
 	*c = out

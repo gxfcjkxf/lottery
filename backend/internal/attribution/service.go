@@ -203,9 +203,39 @@ func (s Service) Attribution(ctx context.Context, brand, member string) (PublicA
 	if !idsValid(brand, member) {
 		return out, ErrInvalid
 	}
-	e := s.DB.QueryRow(ctx, `SELECT join_method,joined_at,attribution_snapshot->>'code_id',attribution_snapshot->>'code',coalesce((attribution_snapshot->>'legacy')::boolean,true) FROM brand_members WHERE brand_id=$1 AND id=$2`, brand, member).Scan(&out.JoinMethod, &out.JoinedAt, &out.CodeID, &out.SourceCode, &out.Legacy)
+	var snapshot []byte
+	e := s.DB.QueryRow(ctx, `SELECT attribution_snapshot FROM brand_members WHERE brand_id=$1 AND id=$2`, brand, member).Scan(&snapshot)
 	if errors.Is(e, pgx.ErrNoRows) {
 		e = ErrNotFound
+	} else if e == nil {
+		e = parsePublicAttribution(snapshot, &out)
 	}
 	return out, e
+}
+
+func parsePublicAttribution(raw []byte, out *PublicAttribution) error {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || len(fields) != 14 {
+		return ErrInvalid
+	}
+	for _, key := range []string{"schema_version", "join_method", "join_domain", "joined_at", "code_id", "code_version", "code", "code_kind", "owner_member_id", "agent_id", "referrer_member_id", "agent_path", "agent_configs_at_join", "agent_policy_at_join"} {
+		if _, ok := fields[key]; !ok {
+			return ErrInvalid
+		}
+	}
+	var snapshot struct {
+		SchemaVersion int       `json:"schema_version"`
+		JoinMethod    string    `json:"join_method"`
+		JoinedAt      time.Time `json:"joined_at"`
+		CodeID        *string   `json:"code_id"`
+		Code          *string   `json:"code"`
+	}
+	if json.Unmarshal(raw, &snapshot) != nil || snapshot.SchemaVersion != 1 ||
+		(snapshot.JoinMethod != "domain" && snapshot.JoinMethod != "operator" && snapshot.JoinMethod != "agent_code" && snapshot.JoinMethod != "referral_code") || snapshot.JoinedAt.IsZero() ||
+		(snapshot.CodeID == nil) != (snapshot.Code == nil) ||
+		(snapshot.CodeID != nil && (!uuid.MatchString(*snapshot.CodeID) || !codePattern.MatchString(*snapshot.Code))) {
+		return ErrInvalid
+	}
+	out.JoinMethod, out.JoinedAt, out.CodeID, out.SourceCode = snapshot.JoinMethod, snapshot.JoinedAt, snapshot.CodeID, snapshot.Code
+	return nil
 }

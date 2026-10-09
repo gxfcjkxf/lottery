@@ -268,11 +268,7 @@ func registerReconciliationRoutes(handle func(string, string, http.HandlerFunc),
 		result, err := d.Mutations.ExecuteChecked(r.Context(), brand, initial.ID, "admin.wallet.reconciliation.create", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(brand+":"+string(raw)), func(ctx context.Context, tx pgx.Tx) error {
 			return reconciliationWriteCheck(ctx, tx, r, d, initial, brand, "run", &fresh)
 		}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-			scope := reconciliation.ScopeWallet
-			if in.CheckScope != nil {
-				scope = *in.CheckScope
-			}
-			job, e := s.CreateScoped(ctx, tx, brand, fresh, scope, in.Reason, pointMeta(r, fresh))
+			job, e := s.CreateScoped(ctx, tx, brand, fresh, in.CheckScope, in.Reason, pointMeta(r, fresh))
 			if e == nil {
 				if verifyErr := reconciliationWriteCheck(ctx, tx, r, d, initial, brand, "run", &fresh); verifyErr != nil {
 					return mutation.Result{}, verifyErr

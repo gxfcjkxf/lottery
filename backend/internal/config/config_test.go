@@ -64,17 +64,15 @@ func TestDatabaseReadURLs(t *testing.T) {
 	if len(c.DatabaseReadURLs) != 2 || c.DatabaseReadURLs[0] != "postgres://replica-a/test" || c.DatabaseReadURLs[1] != "postgres://replica-b/test" {
 		t.Fatalf("read URLs = %#v", c.DatabaseReadURLs)
 	}
-	if c.DatabaseReadURL != "" {
-		t.Fatalf("legacy read URL = %q", c.DatabaseReadURL)
-	}
 }
 
-func TestDatabaseReadURLCompatibility(t *testing.T) {
+func TestDatabaseReadURLIsUnsupported(t *testing.T) {
 	cleanEnv(t)
-	t.Setenv("DATABASE_READ_URL", " postgres://legacy/test ")
-	c, err := Load()
-	if err != nil || c.DatabaseReadURL != "postgres://legacy/test" || len(c.DatabaseReadURLs) != 0 {
-		t.Fatalf("config = %+v, err = %v", c, err)
+	for _, value := range []string{"postgres://legacy/test", " "} {
+		t.Setenv("DATABASE_READ_URL", value)
+		if _, err := Load(); err == nil || !strings.Contains(err.Error(), "DATABASE_READ_URL is unsupported") {
+			t.Fatalf("legacy read URL %q was not explicitly rejected: %v", value, err)
+		}
 	}
 }
 
@@ -84,7 +82,7 @@ func TestInvalidDatabaseReadURLs(t *testing.T) {
 		read string
 		list string
 	}{
-		{name: "both variables", read: "postgres://legacy/test", list: `["postgres://replica/test"]`},
+		{name: "legacy and list", read: "postgres://legacy/test", list: `["postgres://replica/test"]`},
 		{name: "not JSON array", list: `"postgres://replica/test"`},
 		{name: "null", list: `null`},
 		{name: "empty entry", list: `[""]`},
@@ -92,7 +90,6 @@ func TestInvalidDatabaseReadURLs(t *testing.T) {
 		{name: "duplicate after trimming", list: `["postgres://replica/test", " postgres://replica/test "]`},
 		{name: "too many", list: `["postgres://a/test","postgres://b/test","postgres://c/test","postgres://d/test","postgres://e/test","postgres://f/test","postgres://g/test","postgres://h/test","postgres://i/test"]`},
 		{name: "invalid list URL", list: `["https://replica/test"]`},
-		{name: "invalid legacy URL", read: "https://replica/test"},
 	}
 	for _, tc := range bad {
 		t.Run(tc.name, func(t *testing.T) {

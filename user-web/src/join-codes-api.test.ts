@@ -42,7 +42,6 @@ const attribution = (overrides: Record<string, unknown> = {}) => ({
   joined_at: "2026-10-06T04:00:00Z",
   code_id: codeId,
   source_code: code.code,
-  legacy: false,
   ...overrides,
 });
 const ok = (data: unknown) =>
@@ -67,16 +66,15 @@ describe("user join codes API", () => {
     });
   });
 
-  it("loads own attribution and keeps legacy membership clearly marked", async () => {
+  it("loads the current captured attribution shape", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
-      ok(attribution({ join_method: "domain", code_id: null, source_code: null, legacy: true })),
+      ok(attribution({ join_method: "domain", code_id: null, source_code: null })),
     );
     const api = createJoinCodesApi({ fetch: fetcher });
     await expect(api.attribution(context)).resolves.toMatchObject({
       join_method: "domain",
       code_id: null,
       source_code: null,
-      legacy: true,
     });
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/v1/me/attribution");
   });
@@ -106,11 +104,13 @@ describe("user join codes API", () => {
     const foreignAttributions = [
       attribution({ member_id: "55555555-5555-4555-8555-555555555555" }),
       attribution({ parent_id: "55555555-5555-4555-8555-555555555555" }),
+      attribution({ legacy: true }),
     ];
     const foreignAttributionApi = createJoinCodesApi({
       fetch: vi.fn<typeof fetch>()
         .mockResolvedValueOnce(ok(foreignAttributions[0]))
-        .mockResolvedValueOnce(ok(foreignAttributions[1])),
+        .mockResolvedValueOnce(ok(foreignAttributions[1]))
+        .mockResolvedValueOnce(ok(foreignAttributions[2])),
     });
     for (let index = 0; index < foreignAttributions.length; index++) {
       await expect(foreignAttributionApi.attribution(context)).rejects.toMatchObject({

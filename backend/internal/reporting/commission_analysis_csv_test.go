@@ -28,7 +28,7 @@ func commissionAnalysisCSVFixture() CommissionAnalysisReport {
 	return CommissionAnalysisReport{
 		BrandID:    "0199a000-0000-7000-8000-000000000001",
 		SnapshotAt: time.Date(2026, 2, 2, 3, 4, 5, 0, time.UTC), Timezone: "Asia/Singapore", Query: q,
-		Coverage: CommissionAnalysisCoverage{SelectedCycleCount: "1", ReadyCycleCount: "1", UnreadyCycleCount: "0", LegacyPolicyBlockedCycleCount: "0"},
+		Coverage: CommissionAnalysisCoverage{SelectedCycleCount: "1", ReadyCycleCount: "1", UnreadyCycleCount: "0"},
 		Summary:  totals, Items: []Group[CommissionAnalysisTotals]{{Key: key, Label: key, Totals: totals}}, TotalGroups: "1",
 	}
 }
@@ -46,15 +46,15 @@ func TestCommissionAnalysisCSVContractAndExactSignedFields(t *testing.T) {
 	if err != nil || len(rows) != 3 {
 		t.Fatalf("bad CSV: rows=%d err=%v", len(rows), err)
 	}
-	if len(rows[0]) != 34 || len(rows[1]) != 34 || rows[1][0] != "summary" || rows[2][0] != "group" {
+	if len(rows[0]) != 33 || len(rows[1]) != 33 || rows[1][0] != "summary" || rows[2][0] != "group" {
 		t.Fatalf("CSV column count/order differs from doc 38: header=%v", rows[0])
 	}
-	if rows[1][12] != "1" || rows[1][13] != "1" || rows[1][14] != "0" || rows[1][15] != "0" {
-		t.Fatalf("coverage columns drifted: %v", rows[1][12:16])
+	if rows[1][12] != "1" || rows[1][13] != "1" || rows[1][14] != "0" {
+		t.Fatalf("coverage columns drifted: %v", rows[1][12:15])
 	}
-	if rows[1][16] != "10" || rows[1][17] != "10" || rows[1][27] != "12" ||
-		rows[1][28] != "2" || rows[1][29] != "12" || rows[1][30] != "'-2" || rows[1][31] != "0" ||
-		rows[1][32] != "true" || rows[1][33] != "true" {
+	if rows[1][15] != "10" || rows[1][16] != "10" || rows[1][26] != "12" ||
+		rows[1][27] != "2" || rows[1][28] != "12" || rows[1][29] != "'-2" || rows[1][30] != "0" ||
+		rows[1][31] != "true" || rows[1][32] != "true" {
 		t.Fatalf("exact totals/signed values/status changed: %v", rows[1])
 	}
 	if rows[2][10] != r.Items[0].Key || rows[2][11] != r.Items[0].Key {
@@ -78,7 +78,7 @@ func TestCommissionAnalysisCSVNewEpochDoesNotReapplyOldManualDelta(t *testing.T)
 
 func TestCommissionAnalysisCSVEmptyAgentSelectionWithUnreadyCoverage(t *testing.T) {
 	r := commissionAnalysisCSVFixture()
-	r.Coverage = CommissionAnalysisCoverage{SelectedCycleCount: "1", ReadyCycleCount: "0", UnreadyCycleCount: "1", LegacyPolicyBlockedCycleCount: "1"}
+	r.Coverage = CommissionAnalysisCoverage{SelectedCycleCount: "1", ReadyCycleCount: "0", UnreadyCycleCount: "1"}
 	r.Items, r.TotalGroups = nil, "0"
 	r.Summary = CommissionAnalysisTotals{
 		ObservedCalculatedPoints: "0", PaidEntryCount: "0", PaidPoints: "0", AdjustmentEntryCount: "0",
@@ -91,7 +91,7 @@ func TestCommissionAnalysisCSVEmptyAgentSelectionWithUnreadyCoverage(t *testing.
 		t.Fatalf("empty agent selection with selected unready cycle must preserve unknown summary: %v", err)
 	}
 	rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(body), "\xef\xbb\xbf"))).ReadAll()
-	if err != nil || len(rows) != 2 || rows[1][17] != "" || rows[1][29] != "" || rows[1][30] != "" || rows[1][31] != "" || rows[1][32] != "false" || rows[1][33] != "false" {
+	if err != nil || len(rows) != 2 || rows[1][16] != "" || rows[1][28] != "" || rows[1][29] != "" || rows[1][30] != "" || rows[1][31] != "false" || rows[1][32] != "false" {
 		t.Fatalf("nullable empty summary changed: rows=%v err=%v", rows, err)
 	}
 }
@@ -136,7 +136,6 @@ func TestCommissionAnalysisCSVRejectsCoverageGroupMathAndOrderingTampering(t *te
 		edit func(*CommissionAnalysisReport)
 	}{
 		{"coverage equation", func(r *CommissionAnalysisReport) { r.Coverage.UnreadyCycleCount = "1" }},
-		{"legacy bound", func(r *CommissionAnalysisReport) { r.Coverage.LegacyPolicyBlockedCycleCount = "2" }},
 		{"summary differs from groups", func(r *CommissionAnalysisReport) {
 			r.Summary.ActualNetPoints = "13"
 			r.Summary.CalculationMinusActualPoints = analysisString("-3")
@@ -226,12 +225,12 @@ func TestCommissionAnalysisCSVGroupLimitAndByteLimitReturnNoPartialBody(t *testi
 func TestCommissionAnalysisCSVAllColumnsArePresentAndStable(t *testing.T) {
 	want := strings.Join([]string{
 		"record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "agent_id", "member_id", "cycle_id", "key", "label",
-		"selected_cycle_count", "ready_cycle_count", "unready_cycle_count", "legacy_policy_blocked_cycle_count",
+		"selected_cycle_count", "ready_cycle_count", "unready_cycle_count",
 		"observed_calculated_points", "calculated_points", "paid_entry_count", "paid_points", "adjustment_entry_count", "adjustment_credit_points", "adjustment_debit_points",
 		"correction_entry_count", "correction_credit_points", "correction_debit_points", "posting_entry_count", "actual_net_points", "manual_adjustment_net_points",
 		"effective_target_points", "calculation_minus_actual_points", "effective_minus_actual_points", "calculation_complete", "effective_target_complete",
 	}, ",")
-	if got := strings.Join(commissionAnalysisCSVFields, ","); got != want || len(commissionAnalysisCSVFields) != 34 {
+	if got := strings.Join(commissionAnalysisCSVFields, ","); got != want || len(commissionAnalysisCSVFields) != 33 {
 		t.Fatalf("column contract drifted: %s", got)
 	}
 }

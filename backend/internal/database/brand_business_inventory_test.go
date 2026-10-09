@@ -2,12 +2,11 @@ package database_test
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
+
 	"sort"
 	"strconv"
 	"strings"
@@ -15,7 +14,7 @@ import (
 
 	"github.com/gxfcjkxf/lottery/backend/internal/database"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
-	"github.com/gxfcjkxf/lottery/backend/migrations"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -71,60 +70,6 @@ func TestBrandBusinessInventorySourceLimit(t *testing.T) {
 	}
 	if pgErr == nil || pgErr.Code != "54000" {
 		t.Fatalf("source-limit SQLSTATE = %v, want 54000 (error %v)", pgErr, err)
-	}
-}
-
-func TestBrandBusinessInventoryMigrationRejectsMissingForeignKey(t *testing.T) {
-	for _, fixture := range []struct{ name, sql, errorText string }{
-		{"missing", `ALTER TABLE point_buckets DROP CONSTRAINT point_buckets_brand_id_account_id_fkey`, "foreign-key manifest differs"},
-		{"replaced", `ALTER TABLE point_buckets DROP CONSTRAINT point_buckets_brand_id_account_id_fkey; ALTER TABLE point_buckets ADD CONSTRAINT point_buckets_brand_id_account_id_fkey FOREIGN KEY(brand_id) REFERENCES brands(id)`, "foreign-key tuple manifest differs"},
-	} {
-		t.Run(fixture.name, func(t *testing.T) {
-			p := isolated(t)
-			ctx := context.Background()
-			tx, err := p.Begin(ctx)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer tx.Rollback(ctx)
-			if _, err = tx.Exec(ctx, `CREATE TABLE schema_migrations (name text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`); err != nil {
-				t.Fatal(err)
-			}
-			names, err := fs.Glob(migrations.Files, "*.sql")
-			if err != nil {
-				t.Fatal(err)
-			}
-			sort.Strings(names)
-			for _, name := range names {
-				if !strings.HasSuffix(name, ".up.sql") {
-					continue
-				}
-				if name >= "0072_brand_business_inventory.up.sql" {
-					break
-				}
-				body, readErr := migrations.Files.ReadFile(name)
-				if readErr != nil {
-					t.Fatal(readErr)
-				}
-				if _, err = tx.Exec(ctx, string(body)); err != nil {
-					t.Fatalf("apply pre-inventory migration %s: %v", name, err)
-				}
-				sum := sha256.Sum256(body)
-				if _, err = tx.Exec(ctx, `INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)`, name, hex.EncodeToString(sum[:])); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if err = tx.Commit(ctx); err != nil {
-				t.Fatal(err)
-			}
-			if _, err = p.Exec(ctx, fixture.sql); err != nil {
-				t.Fatal(err)
-			}
-			err = database.Migrate(ctx, p)
-			if err == nil || !strings.Contains(err.Error(), fixture.errorText) {
-				t.Fatalf("migration accepted a missing source FK, error=%v", err)
-			}
-		})
 	}
 }
 
@@ -209,8 +154,12 @@ func TestBrandBusinessInventoryEmptySnapshot(t *testing.T) {
 	if volatile != "s" || securityDefiner {
 		t.Errorf("routine volatility=%q security_definer=%v, want STABLE INVOKER", volatile, securityDefiner)
 	}
-	if len(config) != 1 || config[0] != "search_path=pg_catalog" {
-		t.Errorf("routine config=%v, want fixed search_path=pg_catalog", config)
+	var appSchema string
+	if err := p.QueryRow(ctx, `SELECT current_schema()`).Scan(&appSchema); err != nil {
+		t.Fatal(err)
+	}
+	if len(config) != 1 || config[0] != "search_path=pg_catalog, "+appSchema+", pg_temp" {
+		t.Errorf("routine config=%v, want the pinned current application schema", config)
 	}
 	var definition string
 	if err := p.QueryRow(ctx, `SELECT pg_get_functiondef('brand_business_inventory(uuid)'::regprocedure)`).Scan(&definition); err != nil {

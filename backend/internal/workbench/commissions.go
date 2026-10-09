@@ -9,7 +9,7 @@ const commissionTaskQuery = `SELECT jsonb_build_object(
  'cycle_ready_count',c.ready,'cycle_stale_count',c.stale,'cycle_failed_count',c.failed,
  'payment_awaiting_approval_count',p.awaiting,'payment_processing_count',p.processing,
  'payment_blocked_count',p.blocked,'payment_failed_count',p.failed,
- 'plan_processing_count',a.processing,'plan_ready_count',a.ready,'plan_blocked_count',a.blocked,'plan_failed_count',a.failed,
+ 'plan_processing_count',a.processing,'plan_ready_count',a.ready,'plan_failed_count',a.failed,
  'execution_awaiting_approval_count',x.awaiting,'execution_processing_count',x.processing,
  'execution_paused_count',x.paused,'execution_failed_count',x.failed)
  FROM (
@@ -31,7 +31,6 @@ const commissionTaskQuery = `SELECT jsonb_build_object(
  ) p CROSS JOIN (
  SELECT count(*) FILTER(WHERE state='planning')::text processing,
  count(*) FILTER(WHERE state='ready')::text ready,
- count(*) FILTER(WHERE state='blocked')::text blocked,
  count(*) FILTER(WHERE state='failed')::text failed FROM commission_correction_plans WHERE brand_id=s.id
  ) a CROSS JOIN (
  SELECT count(*) FILTER(WHERE state='awaiting_approval')::text awaiting,

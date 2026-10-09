@@ -55,15 +55,6 @@ func TestCorrectionPlanDTOUsesFrozenSnakeCaseShape(t *testing.T) {
 			t.Errorf("plan leaked field %q: %s", forbidden, raw)
 		}
 	}
-	blocked := plan
-	blocked.State = CorrectionPlanBlocked
-	blocked.LastErrorCode = correctionString("COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED")
-	blocked.CreditPoints, blocked.DebitPoints, blocked.NetPoints = nil, nil, nil
-	blockedRaw, err := json.Marshal(blocked)
-	if err != nil || !strings.Contains(string(blockedRaw), `"credit_points":null`) || !strings.Contains(string(blockedRaw), `"debit_points":null`) || !strings.Contains(string(blockedRaw), `"net_points":null`) {
-		t.Fatalf("manual-policy-blocked amounts must preserve explicit nulls: %s err=%v", blockedRaw, err)
-	}
-
 	target := CorrectionPlanTarget{
 		ID: "12121212-1212-4212-8212-121212121212", BrandID: correctionPlanTestBrand,
 		PlanID: plan.ID, AgentID: "13131313-1313-4313-8313-131313131313", MemberID: "14141414-1414-4414-8414-141414141414",

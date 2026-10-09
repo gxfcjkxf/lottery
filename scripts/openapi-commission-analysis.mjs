@@ -45,9 +45,8 @@ const coverage = obj({
   selected_cycle_count: count,
   ready_cycle_count: count,
   unready_cycle_count: count,
-  legacy_policy_blocked_cycle_count: count,
 });
-coverage.description = "selected_cycle_count equals ready_cycle_count plus unready_cycle_count. legacy_policy_blocked_cycle_count is a subset of selected cycles.";
+coverage.description = "selected_cycle_count equals ready_cycle_count plus unready_cycle_count.";
 
 export const schemas = {
   CommissionAnalysisCoverage: coverage,
@@ -118,6 +117,6 @@ export const operations = [
       "X-Report-Format-Version": { description: "CSV layout version.", schema: { type: "string", const: "1" } },
       "X-Report-Audit-ID": { description: "Committed export audit record ID.", schema: uuid },
     },
-    description: description + " Export rejects limit and offset. CSV v1 is UTF-8 with BOM and exactly 34 columns: record_type, brand_id, snapshot_at, timezone, from, to, group_by, agent_id, member_id, cycle_id, key, label, selected_cycle_count, ready_cycle_count, unready_cycle_count, legacy_policy_blocked_cycle_count, observed_calculated_points, calculated_points, paid_entry_count, paid_points, adjustment_entry_count, adjustment_credit_points, adjustment_debit_points, correction_entry_count, correction_credit_points, correction_debit_points, posting_entry_count, actual_net_points, manual_adjustment_net_points, effective_target_points, calculation_minus_actual_points, effective_minus_actual_points, calculation_complete, effective_target_complete. Summary comes first, followed by groups in key order. Nullable values are empty cells; negative signed values have an apostrophe safety prefix. More than 10000 groups or 4MiB returns 413 without a partial file.",
+    description: description + " Export rejects limit and offset. CSV v1 is UTF-8 with BOM and exactly 33 columns: record_type, brand_id, snapshot_at, timezone, from, to, group_by, agent_id, member_id, cycle_id, key, label, selected_cycle_count, ready_cycle_count, unready_cycle_count, observed_calculated_points, calculated_points, paid_entry_count, paid_points, adjustment_entry_count, adjustment_credit_points, adjustment_debit_points, correction_entry_count, correction_credit_points, correction_debit_points, posting_entry_count, actual_net_points, manual_adjustment_net_points, effective_target_points, calculation_minus_actual_points, effective_minus_actual_points, calculation_complete, effective_target_complete. Summary comes first, followed by groups in key order. Nullable values are empty cells; negative signed values have an apostrophe safety prefix. More than 10000 groups or 4MiB returns 413 without a partial file.",
   },
 ];

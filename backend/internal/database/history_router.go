@@ -129,8 +129,8 @@ func eligible(f walFence, system, db, encoding, schemas string, replay *string, 
 }
 
 // Read samples a WAL fence only after the handler locks and checks primary ACLs.
-// Probe errors are isolated by a savepoint so fallback cannot inherit an aborted
-// primary transaction (e.g. a missing monitoring-function grant).
+// Probe errors are isolated by a savepoint so the caller's primary transaction
+// remains usable when routing returns an error.
 func (h *HistoryRouter) Read(ctx context.Context, primary pgx.Tx, route HistoryRoute, run func(pgx.Tx) (any, error)) (any, ReadSource, error) {
 	source := ReadSource{Reason: "not_configured"}
 	if err := ctx.Err(); err != nil {
@@ -150,78 +150,71 @@ func (h *HistoryRouter) Read(ctx context.Context, primary pgx.Tx, route HistoryR
 	}
 	probe, err := primary.Begin(ctx)
 	if err != nil {
-		return nil, source, err
+		source.Reason = "fence_unavailable"
+		return nil, source, errors.New("primary history fence unavailable")
 	}
 	f, err := readFence(ctx, probe)
 	if err != nil {
-		if rollbackErr := probe.Rollback(ctx); rollbackErr != nil {
-			return nil, source, rollbackErr
-		}
+		_ = probe.Rollback(ctx)
 		source.Reason = "fence_unavailable"
-		out, e := run(primary)
-		return out, source, e
+		return nil, source, errors.New("primary history fence unavailable")
 	}
 	if err = probe.Commit(ctx); err != nil {
-		return nil, source, err
+		source.Reason = "fence_unavailable"
+		return nil, source, errors.New("primary history fence unavailable")
 	}
-	start := int((h.next.Add(1) - 1) % uint64(len(h.replicas)))
-	// All optional-node probes together are bounded. A slow node cannot consume
-	// the entire allowance before the remaining nodes have a chance to be checked.
-	selectionCtx, cancel := context.WithTimeout(ctx, 750*time.Millisecond)
-	defer cancel()
-	source.Reason = "no_eligible_replica"
-	for j := 0; j < len(h.replicas); j++ {
-		i := (start + j) % len(h.replicas)
-		pool := h.replicas[i]
-		if pool == nil {
-			continue
-		}
-		nodeCtx, nodeCancel := context.WithTimeout(selectionCtx, 100*time.Millisecond)
-		conn, e := pool.Acquire(nodeCtx)
-		if e != nil {
-			nodeCancel()
-			continue
-		}
-		var system, db, encoding, schemas string
-		var replay *string
-		var timeline, recoveryTimeline uint64
-		var recovery, paused bool
-		e = conn.QueryRow(nodeCtx, replicaFenceSQL).Scan(&system, &db, &encoding, &schemas, &replay, &timeline, &recoveryTimeline, &recovery, &paused)
+	i := int((h.next.Add(1) - 1) % uint64(len(h.replicas)))
+	source.Replica = i + 1
+	source.Reason = "replica_unavailable"
+	pool := h.replicas[i]
+	if pool == nil {
+		return nil, source, errors.New("configured history replica unavailable")
+	}
+	nodeCtx, nodeCancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	conn, e := pool.Acquire(nodeCtx)
+	if e != nil {
 		nodeCancel()
-		if e != nil || !eligible(f, system, db, encoding, schemas, replay, timeline, recoveryTimeline, recovery, paused) {
-			conn.Release()
-			continue
-		}
-		// The new RR snapshot is established AFTER a successful replay check,
-		// on the very same held physical connection. Never probe inside the RR
-		// snapshot first and then accept a fence reached after that snapshot.
-		queryCtx, queryCancel := context.WithTimeout(ctx, 2*time.Second)
-		tx, e := conn.BeginTx(queryCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
-		var out any
-		if e == nil {
-			out, e = run(historyQueryTx{Tx: tx, ctx: queryCtx})
-			if e == nil {
-				e = tx.Commit(queryCtx)
-			}
-			cleanup, cleanupCancel := context.WithTimeout(context.Background(), time.Second)
-			_ = tx.Rollback(cleanup)
-			cleanupCancel()
-		}
+		return nil, source, errors.New("configured history replica unavailable")
+	}
+	var system, db, encoding, schemas string
+	var replay *string
+	var timeline, recoveryTimeline uint64
+	var recovery, paused bool
+	e = conn.QueryRow(nodeCtx, replicaFenceSQL).Scan(&system, &db, &encoding, &schemas, &replay, &timeline, &recoveryTimeline, &recovery, &paused)
+	nodeCancel()
+	if e != nil {
+		conn.Release()
+		return nil, source, errors.New("configured history replica fence failed")
+	}
+	if !eligible(f, system, db, encoding, schemas, replay, timeline, recoveryTimeline, recovery, paused) {
+		conn.Release()
+		source.Reason = "replica_not_wal_fenced"
+		return nil, source, errors.New("configured history replica is not WAL-fenced")
+	}
+	// Establish the repeatable-read snapshot after the replay check on the same
+	// held physical connection.
+	queryCtx, queryCancel := context.WithTimeout(ctx, 2*time.Second)
+	tx, e := conn.BeginTx(queryCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if e != nil {
 		queryCancel()
 		conn.Release()
-		if e == nil {
-			return out, ReadSource{Replica: i + 1, Reason: "wal_fenced"}, nil
-		}
-		// The callback must be read-only: discard every partial result and repeat
-		// once on primary, never retry business mutations or audit writes.
 		source.Reason = "replica_query_failed"
-		break
+		return nil, source, errors.New("configured history replica query failed")
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, source, err
+	out, e := run(historyQueryTx{Tx: tx, ctx: queryCtx})
+	if e == nil {
+		e = tx.Commit(queryCtx)
 	}
-	out, e := run(primary)
-	return out, source, e
+	cleanup, cleanupCancel := context.WithTimeout(context.Background(), time.Second)
+	_ = tx.Rollback(cleanup)
+	cleanupCancel()
+	queryCancel()
+	conn.Release()
+	if e != nil {
+		source.Reason = "replica_query_failed"
+		return nil, source, errors.New("configured history replica query failed")
+	}
+	return out, ReadSource{Replica: i + 1, Reason: "wal_fenced"}, nil
 }
 
 // Bind every data statement to the node's shorter deadline even when a handler

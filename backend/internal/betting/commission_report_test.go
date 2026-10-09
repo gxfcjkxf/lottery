@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/agency"
-	"github.com/gxfcjkxf/lottery/backend/internal/database"
+
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/reporting"
-	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
+
 	"github.com/jackc/pgx/v5"
 )
 
@@ -282,141 +282,4 @@ func mustCommissionLocation(t *testing.T, name string) *time.Location {
 		t.Fatal(err)
 	}
 	return location
-}
-
-func commissionReportUpgradeFingerprint(t *testing.T, f commissionBatchFixture) string {
-	t.Helper()
-	var fingerprint string
-	err := f.betting.db.QueryRow(context.Background(), `SELECT md5(jsonb_build_object(
-	 'earnings',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM commission_earnings x WHERE x.brand_id=$1),'[]'::jsonb),
-	 'payments',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM commission_payments x WHERE x.brand_id=$1),'[]'::jsonb),
-	 'targets',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM commission_payment_targets x WHERE x.brand_id=$1),'[]'::jsonb),
-	 'adjustment_heads',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.target_id) FROM commission_adjustment_heads x WHERE x.brand_id=$1),'[]'::jsonb),
-	 'adjustments',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM commission_adjustments x WHERE x.brand_id=$1),'[]'::jsonb),
-	 'accounts',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM point_accounts x WHERE x.brand_id=$1),'[]'::jsonb),
-	 'buckets',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.account_id,x.source,x.state) FROM point_buckets x WHERE x.brand_id=$1),'[]'::jsonb),
-	 'ledger',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.created_at,x.id) FROM point_ledger_entries x WHERE x.brand_id=$1),'[]'::jsonb),
-	 'audits',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM audit_logs x WHERE x.brand_id=$1),'[]'::jsonb),
-	 'outbox',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.id) FROM outbox_events x WHERE x.brand_id=$1),'[]'::jsonb)
-	)::text)`, f.betting.brand).Scan(&fingerprint)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return fingerprint
-}
-
-func commissionReportUpgradeGrants(t *testing.T, f commissionBatchFixture, roles ...string) string {
-	t.Helper()
-	var grantSnapshot string
-	err := f.betting.db.QueryRow(context.Background(), `SELECT coalesce(jsonb_agg(jsonb_build_object(
-	 'role_id',r.id::text,'grants',coalesce((SELECT jsonb_agg(rp.permission_key ORDER BY rp.permission_key)
-	 FROM role_permissions rp WHERE rp.role_id=r.id AND rp.permission_key LIKE 'report_commission.%'),'[]'::jsonb)
-	) ORDER BY r.id),'[]'::jsonb)::text FROM roles r WHERE r.id=ANY($1::uuid[])`, roles).Scan(&grantSnapshot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return grantSnapshot
-}
-
-func TestCommissionReportUpgradeFrom52PreservesFinancialHistoryAndScopesGrants(t *testing.T) {
-	db := testdb.NewAtVersion(t, 52)
-	f := newCommissionBatchFixtureFromBetting(t, newBettingFixtureWithDBWindow(t, db, storeTestBrand, 20*time.Second, 22*time.Second))
-	ctx := context.Background()
-
-	bootstrapBrand, customBrand, bootstrapPlatform := ids.New(), ids.New(), ids.New()
-	for _, role := range []struct {
-		id, brand, code string
-		bootstrap       bool
-	}{{bootstrapBrand, f.betting.brand, "bootstrap_report_" + bootstrapBrand[:8], true},
-		{customBrand, f.betting.brand, "custom_report_" + customBrand[:8], false},
-		{bootstrapPlatform, "", "bootstrap_report_platform_" + bootstrapPlatform[:8], true}} {
-		var brand any
-		if role.brand != "" {
-			brand = role.brand
-		}
-		if _, err := db.Exec(ctx, `INSERT INTO roles(id,brand_id,code,name,is_bootstrap) VALUES($1,$2,$3,$3,$4)`, role.id, brand, role.code, role.bootstrap); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// Use the same real cycle, approval, point posting, and adjustment flows as
-	// the report behavior test so the version-52 rows are meaningful history.
-	payment := prepareManualCommissionPayment(t, f)
-	paid := payManualCommissionForAdjustment(t, f, payment)
-	targets := commissionTargets(t, f, paid.ID)
-	if len(targets.Items) != 1 || targets.Items[0].AdjustmentVersion == nil {
-		t.Fatalf("version-52 paid target fixture incomplete: %+v", targets)
-	}
-	target := targets.Items[0]
-	actor := commissionAdjustmentActor(f)
-	up, err := adjustCommission(t, f, f.betting.brand, target, actor, *target.AdjustmentVersion, 3)
-	if err != nil || up.DeltaPoints != 2 {
-		t.Fatalf("version-52 real upward adjustment=%+v err=%v", up, err)
-	}
-	if down, adjustErr := adjustCommission(t, f, f.betting.brand, target, actor, up.Version, 0); adjustErr != nil || down.DeltaPoints != -3 {
-		t.Fatalf("version-52 real downward adjustment=%+v err=%v", down, adjustErr)
-	}
-
-	beforeFinancial := commissionReportUpgradeFingerprint(t, f)
-	if err = database.Migrate(ctx, db); err != nil {
-		t.Fatal(err)
-	}
-	afterFirstFinancial := commissionReportUpgradeFingerprint(t, f)
-	if afterFirstFinancial != beforeFinancial {
-		t.Fatal("migration 53 rewrote version-52 earning, payment, target, adjustment, ledger, wallet, audit, or outbox history")
-	}
-	firstGrants := commissionReportUpgradeGrants(t, f, bootstrapBrand, customBrand, bootstrapPlatform)
-	assertCommissionReportUpgradeRoleGrants(t, f, bootstrapBrand, customBrand, bootstrapPlatform)
-	firstIndex := commissionReportIndexDefinition(t, db)
-	if firstIndex == "" {
-		t.Fatal("migration 53 did not create the commission report posting index")
-	}
-
-	if err = database.Migrate(ctx, db); err != nil {
-		t.Fatal(err)
-	}
-	if afterSecondFinancial := commissionReportUpgradeFingerprint(t, f); afterSecondFinancial != beforeFinancial {
-		t.Fatal("reapplying migration changed version-52 financial history")
-	}
-	if secondGrants := commissionReportUpgradeGrants(t, f, bootstrapBrand, customBrand, bootstrapPlatform); secondGrants != firstGrants {
-		t.Fatalf("migration replay changed report grants: first=%s second=%s", firstGrants, secondGrants)
-	}
-	if secondIndex := commissionReportIndexDefinition(t, db); secondIndex != firstIndex {
-		t.Fatalf("migration replay changed report index: first=%s second=%s", firstIndex, secondIndex)
-	}
-}
-
-func assertCommissionReportUpgradeRoleGrants(t *testing.T, f commissionBatchFixture, bootstrapBrand, customBrand, bootstrapPlatform string) {
-	t.Helper()
-	for _, check := range []struct {
-		role string
-		want []string
-	}{{bootstrapBrand, []string{"report_commission.export.brand", "report_commission.view.brand"}},
-		{customBrand, []string{}},
-		{bootstrapPlatform, []string{"report_commission.export.platform", "report_commission.view.platform"}}} {
-		var got []string
-		if err := f.betting.db.QueryRow(context.Background(), `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),ARRAY[]::text[])
-		 FROM role_permissions WHERE role_id=$1 AND permission_key LIKE 'report_commission.%'`, check.role).Scan(&got); err != nil {
-			t.Fatal(err)
-		}
-		if len(got) != len(check.want) {
-			t.Fatalf("role %s report grants=%v, want %v", check.role, got, check.want)
-		}
-		for i := range got {
-			if got[i] != check.want[i] {
-				t.Fatalf("role %s report grants=%v, want %v", check.role, got, check.want)
-			}
-		}
-	}
-}
-
-func commissionReportIndexDefinition(t *testing.T, db interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}) string {
-	t.Helper()
-	var definition string
-	if err := db.QueryRow(context.Background(), `SELECT coalesce(pg_get_indexdef(to_regclass('commission_report_posted_business_entries')),'')`).Scan(&definition); err != nil {
-		t.Fatal(err)
-	}
-	return definition
 }

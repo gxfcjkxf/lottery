@@ -99,7 +99,6 @@ type PublicAttribution struct {
 	JoinedAt   time.Time `json:"joined_at"`
 	CodeID     *string   `json:"code_id"`
 	SourceCode *string   `json:"source_code"`
-	Legacy     bool      `json:"legacy"`
 }
 
 func Normalize(agent, referral string) (string, string, error) {

@@ -4,7 +4,7 @@ import { attributionReportPermissions, createAttributionReportApi, type Attribut
 
 const brand = "11111111-1111-4111-8111-111111111111", actor = "22222222-2222-4222-8222-222222222222", agent = "33333333-3333-4333-8333-333333333333";
 const from = "2026-01-01T00:00:00Z", to = "2026-01-02T00:00:00Z", huge = "922337203685477580812345678901234567890";
-const totals: AttributionTotals = { order_count: "1", stake_points: huge, placed_count: "0", won_count: "0", lost_count: "1", abnormal_count: "0", cancelled_count: "0", refund_points: "0", settled_stake_points: huge, unfinalized_stake_points: "0", abnormal_stake_points: "0", current_prize_points: "0", correction_open_count: "0", final_lost_stake_points: huge, legacy_attribution_count: "0" };
+const totals: AttributionTotals = { order_count: "1", stake_points: huge, placed_count: "0", won_count: "0", lost_count: "1", abnormal_count: "0", cancelled_count: "0", refund_points: "0", settled_stake_points: huge, unfinalized_stake_points: "0", abnormal_stake_points: "0", current_prize_points: "0", correction_open_count: "0", final_lost_stake_points: huge };
 const query = { from, to, group_by: "agent", limit: 20, offset: 0, game_id: null, member_id: null, agent_id: null, agent_scope: "direct", join_method: null };
 const payload = (overrides: Record<string, unknown> = {}) => ({ success: true, request_id: "attribution-read-1", data: { brand_id: brand, snapshot_at: "2026-01-02T01:00:00Z", timezone: "Asia/Singapore", query, summary: totals, items: [{ key: agent, label: "Agent Alpha", totals }], total_groups: "1", ...overrides } });
 const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
@@ -53,18 +53,13 @@ describe("attribution report API", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(json(payload({ query: { ...query, offset: 40 }, items: [] })));
     await expect(createAttributionReportApi(fetcher).report(brand, { from, to, group_by: "agent", offset: 40 })).resolves.toMatchObject({ summary: totals, items: [], total_groups: "1" });
   });
-  it("rejects grouping keys and legacy metrics that contradict attribution filters", async () => {
+  it("rejects grouping keys and removed legacy wire fields", async () => {
     const directFilter = { ...query, agent_id: agent };
     const wrongAgentGroup = payload({ query: directFilter, items: [{ key: actor, label: actor, totals }] });
     await expect(createAttributionReportApi(vi.fn<typeof fetch>().mockResolvedValue(json(wrongAgentGroup))).report(brand, { from, to, group_by: "agent", agent_id: agent })).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
-    const tooManyLegacy = { ...totals, legacy_attribution_count: "2" };
-    await expect(createAttributionReportApi(vi.fn<typeof fetch>().mockResolvedValue(json(payload({ summary: tooManyLegacy })))).report(brand, { from, to, group_by: "agent" })).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
-    const domainQuery = { ...query, join_method: "domain" };
-    const domainApi = createAttributionReportApi(vi.fn<typeof fetch>().mockResolvedValue(json(payload({ query: domainQuery, summary: { ...totals, legacy_attribution_count: "1" }, items: [{ key: agent, label: agent, totals: { ...totals, legacy_attribution_count: "1" } }] }))));
-    await expect(domainApi.report(brand, { from, to, group_by: "agent", join_method: "domain" })).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
-    const impossible = { ...query, agent_id: agent, join_method: "legacy" };
-    const impossibleApi = createAttributionReportApi(vi.fn<typeof fetch>().mockResolvedValue(json(payload({ query: impossible }))));
-    await expect(impossibleApi.report(brand, { from, to, group_by: "agent", agent_id: agent, join_method: "legacy" })).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    const removedField = { ...totals, legacy_attribution_count: "0" };
+    await expect(createAttributionReportApi(vi.fn<typeof fetch>().mockResolvedValue(json(payload({ summary: removedField })))).report(brand, { from, to, group_by: "agent" })).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    await expect(createAttributionReportApi(vi.fn<typeof fetch>()).report(brand, { from, to, group_by: "agent", join_method: "legacy" as never })).rejects.toMatchObject({ code: "INVALID_INPUT" });
   });
   it("rejects inconsistent status partitions and nonzero metrics with zero orders", async () => {
     const wrongPartition = { ...totals, placed_count: "1" };
@@ -77,7 +72,7 @@ describe("attribution report API", () => {
   });
   it("exports a complete CSV only after metadata, digest, echoed filters, and all group sums validate", async () => {
     const snapshot = "2026-01-02T01:00:00Z";
-    const columns = ["record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "game_id", "member_id", "agent_id", "agent_scope", "join_method", "key", "label", "order_count", "stake_points", "placed_count", "won_count", "lost_count", "abnormal_count", "cancelled_count", "refund_points", "settled_stake_points", "unfinalized_stake_points", "abnormal_stake_points", "current_prize_points", "correction_open_count", "final_lost_stake_points", "legacy_attribution_count"];
+    const columns = ["record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "game_id", "member_id", "agent_id", "agent_scope", "join_method", "key", "label", "order_count", "stake_points", "placed_count", "won_count", "lost_count", "abnormal_count", "cancelled_count", "refund_points", "settled_stake_points", "unfinalized_stake_points", "abnormal_stake_points", "current_prize_points", "correction_open_count", "final_lost_stake_points"];
     const values = Object.values(totals);
     const meta = [brand, snapshot, "Asia/Singapore", from, to, "agent", "", "", agent, "downline", "", "", "", ...values];
     const csv = `\uFEFF${columns.join(",")}\r\nsummary,${meta.join(",")}\r\ngroup,${meta.slice(0, 11).concat([agent, "Agent Alpha"], values).join(",")}\r\n`;
@@ -93,7 +88,7 @@ describe("attribution report API", () => {
   });
   it("preserves formula-escaped game names with spaces and quoted line breaks", async () => {
     const game = "44444444-4444-4444-8444-444444444444", snapshot = "2026-01-02T01:00:00Z", name = "'  =Lottery,\r\nName  ";
-    const columns = ["record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "game_id", "member_id", "agent_id", "agent_scope", "join_method", "key", "label", "order_count", "stake_points", "placed_count", "won_count", "lost_count", "abnormal_count", "cancelled_count", "refund_points", "settled_stake_points", "unfinalized_stake_points", "abnormal_stake_points", "current_prize_points", "correction_open_count", "final_lost_stake_points", "legacy_attribution_count"];
+    const columns = ["record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "game_id", "member_id", "agent_id", "agent_scope", "join_method", "key", "label", "order_count", "stake_points", "placed_count", "won_count", "lost_count", "abnormal_count", "cancelled_count", "refund_points", "settled_stake_points", "unfinalized_stake_points", "abnormal_stake_points", "current_prize_points", "correction_open_count", "final_lost_stake_points"];
     const values = Object.values(totals), base = [brand, snapshot, "Asia/Singapore", from, to, "game", game, "", "", "direct", "", "", ""];
     const row = (fields: string[]) => fields.map((v) => /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v).join(",");
     const csvFor = (label: string) => `\uFEFF${row(columns)}\r\n${row(["summary", ...base, ...values])}\r\n${row(["group", ...base.slice(0, 11), game, label, ...values])}\r\n`;

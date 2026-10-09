@@ -246,12 +246,12 @@ describe("withdrawal policy API", () => {
     ]);
   });
 
-  it("reads legacy zero values and preserves inherited precedence", async () => {
-    const legacyBrand = {
+  it("rejects zero-valued policies and history while preserving inheritance", async () => {
+    const zeroBrandPolicy = {
       ...brandPolicy,
       config: { ...brandConfig, turnover_multiple: "0" },
     };
-    const legacyZero = {
+    const zeroGamePolicy = {
       ...gamePolicy,
       config: { turnover_multiple: "0" },
       effective: {
@@ -260,36 +260,41 @@ describe("withdrawal policy API", () => {
         source: "game" as const,
       },
     };
-    const legacyBrandRevision = {
+    const zeroBrandRevision = {
       ...brandRevision,
       config: { ...brandConfig, turnover_multiple: "0" },
     };
-    const legacyGameRevision = {
+    const zeroGameRevision = {
       ...gameRevision,
       config: { turnover_multiple: "0" },
     };
-    const fetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(ok(legacyBrand))
-      .mockResolvedValueOnce(ok(legacyZero))
-      .mockResolvedValueOnce(
-        ok({ items: [legacyBrandRevision], limit: 50, offset: 0 }),
-      )
-      .mockResolvedValueOnce(
-        ok({ items: [legacyGameRevision], limit: 50, offset: 0 }),
-      );
-    expect(
-      await createWithdrawalPolicyApi(fetcher).getBrandPolicy(brand),
-    ).toEqual(legacyBrand);
-    expect(
-      await createWithdrawalPolicyApi(fetcher).getGamePolicy(brand, game),
-    ).toEqual(legacyZero);
+    const invalidResponses: Array<{
+      data: unknown;
+      request: (api: ReturnType<typeof createWithdrawalPolicyApi>) => Promise<unknown>;
+    }> = [
+      { data: zeroBrandPolicy, request: (api) => api.getBrandPolicy(brand) },
+      { data: zeroGamePolicy, request: (api) => api.getGamePolicy(brand, game) },
+      {
+        data: { items: [zeroBrandRevision], limit: 50, offset: 0 },
+        request: (api) => api.getBrandHistory(brand),
+      },
+      {
+        data: { items: [zeroGameRevision], limit: 50, offset: 0 },
+        request: (api) => api.getGameHistory(brand, game),
+      },
+    ];
+    for (const { data, request } of invalidResponses) {
+      await expect(
+        request(createWithdrawalPolicyApi(
+          vi.fn<typeof fetch>().mockResolvedValue(ok(data)),
+        )),
+      ).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    }
     await expect(
-      createWithdrawalPolicyApi(fetcher).getBrandHistory(brand),
-    ).resolves.toMatchObject({ items: [legacyBrandRevision] });
-    await expect(
-      createWithdrawalPolicyApi(fetcher).getGameHistory(brand, game),
-    ).resolves.toMatchObject({ items: [legacyGameRevision] });
+      createWithdrawalPolicyApi(
+        vi.fn<typeof fetch>().mockResolvedValue(ok(gamePolicy)),
+      ).getGamePolicy(brand, game),
+    ).resolves.toEqual(gamePolicy);
     const badInheritance = {
       ...gamePolicy,
       effective: { ...gamePolicy.effective, source: "game" },
@@ -343,7 +348,7 @@ describe("withdrawal policy API", () => {
       api.updateGamePolicy(
         brand,
         game,
-        { version: 1, config: { turnover_multiple: "0" }, reason: "legacy" },
+        { version: 1, config: { turnover_multiple: "0" }, reason: "zero" },
         "key",
       ),
     ).rejects.toMatchObject({ status: 0, code: "INVALID_INPUT" });

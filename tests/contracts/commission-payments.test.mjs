@@ -51,7 +51,7 @@ test('commission payment schemas are closed, precise and omit target details', (
   assert.ok(!Object.keys(schemas.CommissionPayment.properties).some(field => /^(targets?|member_id|agent_id|account_id)$/.test(field)));
   assert.match(schemas.CommissionPayment.description, /immutable historical bet snapshot identity/);
   assert.match(schemas.CommissionPayment.description, /entire cycle/);
-  assert.match(schemas.CommissionPayment.description, /COMMISSION_PAYMENT_MODE_UNRESOLVED/);
+  assert.doesNotMatch(schemas.CommissionPayment.description, /legacy blocked/);
   assert.match(operations.find(op => op.operationId === 'retryCommissionPayment').description, /only after persisted approval/);
 });
 

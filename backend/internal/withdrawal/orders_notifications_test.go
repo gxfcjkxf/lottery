@@ -54,7 +54,7 @@ func TestWithdrawalNotificationHistorySurvivesLaterStateAndConcurrentDelivery(t 
 			found := map[string]bool{}
 			for _, n := range page.Items {
 				found[n.EventType] = true
-				if n.MemberID != f.member || n.Payload.ResourceID != original.ID || n.Payload.Points == nil || *n.Payload.Points != "40" || n.Content == nil {
+				if n.MemberID != f.member || n.Payload.ResourceID != original.ID || n.Payload.Points == nil || *n.Payload.Points != "40" || n.Content.En.Title == "" {
 					t.Fatal(n)
 				}
 				raw, _ := json.Marshal(n)

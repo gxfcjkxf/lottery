@@ -22,6 +22,7 @@ function environment(viewport = 'desktop') {
     REPORT_ARCHIVE_FIXTURE_CONFIRM: 'owned_synthetic_database',
     DATABASE_URL: `postgres://lottery_test@127.0.0.1:55432/${database(viewport)}?sslmode=disable`,
     PLATFORM_BIN: process.execPath,
+    POSTGRES_PSQL_BIN: process.execPath,
     TEST_ARCHIVE_ADMIN_USERNAME: `archive_browser_${viewport}`,
     TEST_ARCHIVE_ADMIN_PASSWORD: 'archive-static-owned-harbor-admin-password',
   };
@@ -32,6 +33,8 @@ test('archive browser CI owns separate desktop/mobile databases and runs the rea
   assert.match(job, /timeout-minutes: 20/);
   assert.match(job, /viewport: \[desktop, mobile\]/);
   assert.match(job, /POSTGRES_DB: lottery_archive_browser_\$\{\{ matrix\.viewport \}\}/);
+  assert.match(job, /PLATFORM_BIN: \$\{\{ github\.workspace \}\}\/\.local\/archive-platform/);
+  assert.match(job, /POSTGRES_PSQL_BIN: \/usr\/bin\/psql/);
   assert.match(job, /POSTGRES_USER: lottery_test/);
   assert.match(job, /POSTGRES_HOST_AUTH_METHOD: trust/);
   assert.match(job, /POSTGRES_INITDB_ARGS: "-c max_locks_per_transaction=256"/);
@@ -76,7 +79,7 @@ test('initializer accepts only the exact empty owned loopback database and known
           assert.equal(config.database, database(viewport));
           assert.equal(config.viewport, viewport);
           assert.equal(config.username, `archive_browser_${viewport}`);
-          assert.equal(config.psqlBin, 'psql');
+          assert.equal(config.psqlBin, process.execPath);
           assert.ok(Object.isFrozen(config));
         }
       }
@@ -101,6 +104,7 @@ test('unacknowledged, misconfigured, replicated or uncredentialed initialization
     { REPORT_ARCHIVE_VIEWPORT: 'tablet' }, { REPORT_ARCHIVE_FIXTURE_CONFIRM: '' },
     { REPORT_ARCHIVE_FIXTURE_CONFIRM: 'yes' }, { DATABASE_READ_URL: environment().DATABASE_URL },
     { DATABASE_READ_URLS: '[]' }, { DATABASE_READ_URL: ' ' }, { PLATFORM_BIN: undefined },
+    { POSTGRES_PSQL_BIN: undefined }, { POSTGRES_PSQL_BIN: '' },
     { PLATFORM_BIN: 'platform' }, { PLATFORM_BIN: '/nonexistent/report-archive-platform' },
     { POSTGRES_PSQL_BIN: 'psql --command=unsafe' }, { POSTGRES_PSQL_BIN: '/nonexistent/psql' },
     { TEST_ARCHIVE_ADMIN_USERNAME: 'other_admin' }, { TEST_ARCHIVE_ADMIN_PASSWORD: undefined },

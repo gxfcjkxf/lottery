@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/commission"
-	"github.com/gxfcjkxf/lottery/backend/internal/database"
+
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
-	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
+
 	"github.com/jackc/pgx/v5"
 )
 
@@ -48,42 +48,6 @@ func finishManualCommissionPayment(t *testing.T, f commissionBatchFixture, payme
 		t.Fatal(err)
 	}
 	return runCommissionPayment(t, f, commissionPaymentRead(t, f, payment.ID))
-}
-
-func TestCommissionPaidBeforeNotificationMigrationIsNeverBackfilled(t *testing.T) {
-	db := testdb.NewAtVersion(t, 50)
-	f := newCommissionBatchFixtureFromBetting(t, newBettingFixtureWithDBWindow(t, db, storeTestBrand, 20*time.Second, 22*time.Second))
-	payment := prepareManualCommissionPayment(t, f)
-	finishManualCommissionPayment(t, f, payment)
-	beforeWallet := walletBySource(t, f.betting)
-	var beforeLedger, oldCommissionEvents int
-	if err := db.QueryRow(context.Background(), `SELECT count(*) FROM point_ledger_entries`).Scan(&beforeLedger); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.QueryRow(context.Background(), `SELECT count(*) FROM outbox_events WHERE event_type IN('commission.paid','commission.adjusted')`).Scan(&oldCommissionEvents); err != nil || oldCommissionEvents != 0 {
-		t.Fatalf("0050 unexpectedly has commission notification events=%d err=%v", oldCommissionEvents, err)
-	}
-	if err := database.Migrate(context.Background(), db); err != nil {
-		t.Fatal(err)
-	}
-	if after := walletBySource(t, f.betting); after != beforeWallet {
-		t.Fatalf("0051/0052 migration changed historical point buckets: before=%+v after=%+v", beforeWallet, after)
-	}
-	var afterLedger, eventCount int
-	if err := db.QueryRow(context.Background(), `SELECT count(*) FROM point_ledger_entries`).Scan(&afterLedger); err != nil || afterLedger != beforeLedger {
-		t.Fatalf("migration changed the historical ledger count: before=%d after=%d err=%v", beforeLedger, afterLedger, err)
-	}
-	if err := db.QueryRow(context.Background(), `SELECT count(*) FROM outbox_events WHERE event_type IN('commission.paid','commission.adjusted')`).Scan(&eventCount); err != nil || eventCount != 0 {
-		t.Fatalf("migration backfilled old commission events=%d err=%v", eventCount, err)
-	}
-	if done, err := (notification.Service{DB: db}).Process(context.Background(), 100); err != nil {
-		t.Fatal(err)
-	} else if done == 0 {
-		t.Fatal("expected unrelated legacy outbox work to be processed")
-	}
-	if err := db.QueryRow(context.Background(), `SELECT count(*) FROM notifications WHERE event_type IN('commission.paid','commission.adjusted')`).Scan(&eventCount); err != nil || eventCount != 0 {
-		t.Fatalf("consumer created notification for a pre-migration payment: count=%d err=%v", eventCount, err)
-	}
 }
 
 func TestCommissionNotificationsFollowOnlyCommittedLedgerAndAdjustments(t *testing.T) {
@@ -219,8 +183,8 @@ func TestCommissionNotificationsFollowOnlyCommittedLedgerAndAdjustments(t *testi
 		}
 	}
 	for fact, resource := range map[string]string{
-		"commission.paid:1": target.ID,
-		"commission.adjusted:2": first.ID,
+		"commission.paid:1":      target.ID,
+		"commission.adjusted:2":  first.ID,
 		"commission.adjusted:-3": second.ID,
 	} {
 		if resourceByFact[fact] != resource {

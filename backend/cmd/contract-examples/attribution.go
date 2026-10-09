@@ -15,7 +15,7 @@ func attributionReportExample() reporting.AttributionReport {
 			AbnormalCount: "0", CancelledCount: "0", RefundPoints: "0", SettledStakePoints: "18446744073709551614",
 			UnfinalizedStakePoints: "0", AbnormalStakePoints: "0", CurrentPrizePoints: "0", CorrectionOpenCount: "0",
 		},
-		FinalLostStakePoints: "18446744073709551614", LegacyAttributionCount: "0",
+		FinalLostStakePoints: "18446744073709551614",
 	}
 	return reporting.AttributionReport{
 		BrandID: brand, SnapshotAt: stamp, Timezone: "Asia/Manila",

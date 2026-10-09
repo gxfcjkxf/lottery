@@ -14,7 +14,7 @@ function job(patch: Partial<ReconciliationJob> = {}): ReconciliationJob {
     id: jobId, brand_id: brand, state: "pending", version: 1,
     target_count: "2", checked_count: "0", consistent_count: "0", repairable_count: "0", corrupt_count: "0", failed_count: "0", pending_count: "2",
     created_by: accountId, reason: "scheduled audit", created_at: stamp, started_at: null, completed_at: null,
-    last_error_code: null, can_retry: false, creation_audit_log_id: auditId, ...patch,
+    last_error_code: null, can_retry: false, creation_audit_log_id: auditId, check_scope: "wallet", ...patch,
   };
 }
 function response(data: unknown, status = 200) {
@@ -57,7 +57,7 @@ describe("reconciliation SDK", () => {
   it("freezes a create request on the wire and accepts only its pending v1 receipt", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(job()));
     const api = createReconciliationApi(fetcher);
-    const body = { reason: "scheduled audit" };
+    const body = { reason: "scheduled audit", check_scope: "wallet" as const };
     await expect(api.create(brand, body, "recon-create-key-001", accountId)).resolves.toEqual(job());
     const [url, init] = fetcher.mock.calls[0];
     expect(url).toBe("/api/v1/admin/reconciliations");
@@ -81,7 +81,7 @@ describe("reconciliation SDK", () => {
       .create(brand, { reason: "full audit", check_scope: "wallet_and_business" }, "recon-full-key-001", accountId))
       .rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 0 });
     await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(fullJob)))
-      .create(brand, { reason: "wallet audit" }, "recon-full-key-001", accountId))
+      .create(brand, { reason: "wallet audit", check_scope: "wallet" }, "recon-full-key-001", accountId))
       .rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 0 });
     await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...fullJob, check_scope: "wallet_and_other" })))
       .read(brand, jobId)).rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 502 });
@@ -177,9 +177,12 @@ describe("reconciliation SDK", () => {
       .rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
-  it("retains legacy wallet receipts while rejecting mixed-scope and unsafe wire shapes", async () => {
-    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(job({ reason: "legacy" }))))
-      .create(brand, { reason: "legacy" }, "recon-legacy-key-001", accountId)).resolves.toMatchObject({ id: jobId });
+  it("rejects reason-only creates and legacy DTO shapes while preserving explicit wallet scope", async () => {
+    const wallet = job({ reason: "wallet check" });
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(wallet)))
+      .create(brand, { reason: "wallet check", check_scope: "wallet" }, "recon-wallet-key-001", accountId)).resolves.toEqual(wallet);
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(wallet)))
+      .create(brand, { reason: "legacy" } as never, "recon-legacy-key-001", accountId)).rejects.toMatchObject({ code: "INVALID_INPUT" });
     await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(job({ reason: "legacy" }))))
       .create(brand, { reason: "legacy", check_scope: "wallet", unknown: true } as never, "recon-legacy-key-001", accountId))
       .rejects.toMatchObject({ code: "INVALID_INPUT" });
@@ -197,10 +200,11 @@ describe("reconciliation SDK", () => {
       .rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
-  it("reads legacy inline-tab reasons without changing the stricter UI write policy", async () => {
-    const legacy = job({ reason: "inline\tseparator" });
+  it("rejects job DTOs without an explicit scope", async () => {
+    const oldShape = job({ reason: "inline\tseparator" });
+    const { check_scope: _scope, ...legacy } = oldShape;
     await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(legacy))).read(brand, jobId))
-      .resolves.toEqual(legacy);
+      .rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
   it("binds retry receipts to the original immutable full scope", async () => {
@@ -215,11 +219,11 @@ describe("reconciliation SDK", () => {
 
   it("keeps exact UTF-8 reason limits and safe retry version bounds", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(job({ reason: "x".repeat(500) })));
-    await expect(createReconciliationApi(fetcher).create(brand, { reason: "x".repeat(500) }, "recon-limit-key-001", accountId)).resolves.toBeDefined();
+    await expect(createReconciliationApi(fetcher).create(brand, { reason: "x".repeat(500), check_scope: "wallet" }, "recon-limit-key-001", accountId)).resolves.toBeDefined();
     expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).reason).toHaveLength(500);
-    await expect(createReconciliationApi(fetcher).create(brand, { reason: "x".repeat(501) }, "recon-limit-key-002", accountId))
+    await expect(createReconciliationApi(fetcher).create(brand, { reason: "x".repeat(501), check_scope: "wallet" }, "recon-limit-key-002", accountId))
       .rejects.toMatchObject({ code: "INVALID_INPUT" });
-    await expect(createReconciliationApi(fetcher).create(brand, { reason: "界".repeat(167) }, "recon-limit-key-003", accountId))
+    await expect(createReconciliationApi(fetcher).create(brand, { reason: "界".repeat(167), check_scope: "wallet" }, "recon-limit-key-003", accountId))
       .rejects.toMatchObject({ code: "INVALID_INPUT" });
     await expect(createReconciliationApi(fetcher).retry(brand, jobId, { version: Number.MAX_SAFE_INTEGER, reason: "retry" }, "recon-limit-key-004"))
       .rejects.toMatchObject({ code: "INVALID_INPUT" });
@@ -227,7 +231,7 @@ describe("reconciliation SDK", () => {
 
   it("loads current job and outcome-filtered targets with exact cross-scope checks", async () => {
     const target = { id: auditId, brand_id: brand, job_id: jobId, account_id: accountId, member_id: "55555555-5555-4555-8555-555555555555",
-      state: "pending", outcome: null, preview: null, attempt_count: 0, error_code: null, checked_at: null, audit_log_id: null };
+      state: "pending", outcome: null, preview: null, attempt_count: 0, error_code: null, checked_at: null, audit_log_id: null, check_scope: "wallet", business_preview: null };
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(response(job()))
       .mockResolvedValueOnce(response({ brand_id: brand, job_id: jobId, items: [target], total_count: "1", limit: 20, offset: 0, outcome: "pending" }));
@@ -239,6 +243,9 @@ describe("reconciliation SDK", () => {
     const bad = { ...target, brand_id: accountId };
     await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ brand_id: brand, job_id: jobId, items: [bad], total_count: "1", limit: 20, offset: 0, outcome: null })))
       .targets(brand, jobId)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    const { check_scope: _scope, business_preview: _preview, ...oldTarget } = target;
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ brand_id: brand, job_id: jobId, items: [oldTarget], total_count: "1", limit: 20, offset: 0, outcome: null })))
+      .targets(brand, jobId)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
   it("accepts zero-version historical previews with sparse actual buckets and nonnegative expected buckets", async () => {
@@ -248,7 +255,7 @@ describe("reconciliation SDK", () => {
     const preview = { account_id: accountId, member_id: member, version: 0, ledger_version: 0, actual: {}, expected,
       repairable: true, consistent: false, issues: ["missing balance buckets"], token: "a".repeat(64) };
     const target = { id: auditId, brand_id: brand, job_id: jobId, account_id: accountId, member_id: member, state: "checked", outcome: "repairable",
-      preview, attempt_count: 1, error_code: null, checked_at: stamp, audit_log_id: "66666666-6666-4666-8666-666666666666" };
+      preview, attempt_count: 1, error_code: null, checked_at: stamp, audit_log_id: "66666666-6666-4666-8666-666666666666", check_scope: "wallet", business_preview: null };
     const page = { brand_id: brand, job_id: jobId, items: [target], total_count: "1", limit: 20, offset: 0, outcome: null };
     await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(page))).targets(brand, jobId)).resolves.toMatchObject({ items: [target] });
     const falsePass={...target,outcome:"consistent",preview:{...preview,consistent:true,repairable:false,issues:[]}};
@@ -259,14 +266,13 @@ describe("reconciliation SDK", () => {
     const signedActual = { ...preview, actual: { recharge: { available: "-1" } } };
     await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...page, items: [{ ...target, preview: signedActual }] })))
       .targets(brand, jobId)).resolves.toMatchObject({ items: [{ preview: signedActual }] });
-    const legacyBuckets = Object.fromEntries(["recharge", "winning", "gift"].map((source) => [source,
+    const oldBuckets = Object.fromEntries(["recharge", "winning", "gift"].map((source) => [source,
       Object.fromEntries(["available", "manual_frozen", "system_frozen", "withdrawal"].map((state) => [state, "0"]))]));
-    const legacyPreview = { ...preview, actual: legacyBuckets, expected: legacyBuckets, consistent: true, repairable: false, issues: [] };
-    const legacyPage = { ...page, items: [{ ...target, outcome: "consistent", preview: legacyPreview }] };
-    const read = await createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(legacyPage))).targets(brand, jobId);
-    expect(read.items[0]?.preview?.actual).toHaveProperty("commission.available", "0");
-    expect(read.items[0]?.preview?.expected).toHaveProperty("commission.available", "0");
-    expect(Object.keys(legacyBuckets)).toEqual(["recharge", "winning", "gift"]);
+    const oldShapePreview = { ...preview, actual: oldBuckets, expected: oldBuckets, consistent: true, repairable: false, issues: [] };
+    const oldShapePage = { ...page, items: [{ ...target, outcome: "consistent", preview: oldShapePreview }] };
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response(oldShapePage))).targets(brand, jobId))
+      .rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    expect(Object.keys(oldBuckets)).toEqual(["recharge", "winning", "gift"]);
   });
 
   it("validates running and completed job lifecycle counters and timestamps", async () => {
@@ -314,9 +320,9 @@ describe("reconciliation SDK", () => {
       .rejects.toMatchObject({ code: "INVALID_INPUT" });
     await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(new Response("{}", { status: 200 }))).list(brand))
       .rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 502 });
-    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({}))).create(brand, { reason: "ok" }, "recon-create-key-001", accountId))
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockResolvedValue(response({}))).create(brand, { reason: "ok", check_scope: "wallet" }, "recon-create-key-001", accountId))
       .rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 0 });
-    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockRejectedValue(new Error("offline"))).create(brand, { reason: "ok" }, "recon-create-key-001"))
+    await expect(createReconciliationApi(vi.fn<typeof fetch>().mockRejectedValue(new Error("offline"))).create(brand, { reason: "ok", check_scope: "wallet" }, "recon-create-key-001"))
       .rejects.toBeInstanceOf(AdminApiError);
   });
 });

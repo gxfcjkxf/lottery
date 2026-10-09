@@ -8,6 +8,9 @@ test('automatic archive task browser CI owns separate viewports and real lost-re
   assert.ok(job);
   assert.match(job, /viewport: \[desktop, mobile\]/);
   assert.match(job, /POSTGRES_DB: lottery_archive_tasks_browser_\$\{\{ matrix\.viewport \}\}/);
+  assert.match(job, /PLATFORM_BIN: \$\{\{ github\.workspace \}\}\/\.local\/archive-tasks-platform/);
+  assert.match(job, /ARCHIVE_TASKS_FIXTURE_BIN: \$\{\{ github\.workspace \}\}\/\.local\/archive-tasks-fixture/);
+  assert.match(job, /POSTGRES_PSQL_BIN: \/usr\/bin\/psql/);
   assert.match(job, /go -C backend build -tags browserfixture -o ..\/.local\/archive-tasks-fixture .\/cmd\/report-archive-tasks-fixture/);
   assert.match(job, /node scripts\/init-report-archive-tasks-browser\.mjs/);
   assert.match(job, /pnpm exec playwright test --config=playwright\.report-archive-tasks\.config\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0/);

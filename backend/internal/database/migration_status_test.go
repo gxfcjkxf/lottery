@@ -30,25 +30,6 @@ func TestCheckMigrationsCurrentSchemaIsReadOnly(t *testing.T) {
 	}
 }
 
-func TestCheckMigrationsRejectsHistoricalSchemaWithoutMigrating(t *testing.T) {
-	db := testdb.NewAtVersion(t, 53)
-	ctx := context.Background()
-	before := migrationStatusSnapshot(t, ctx, db)
-	schemaBefore := schemaCatalogSnapshot(t, ctx, db)
-
-	if err := database.CheckMigrations(ctx, db); err == nil {
-		t.Fatal("CheckMigrations accepted schema at migration 53; want incomplete-set error")
-	}
-
-	after := migrationStatusSnapshot(t, ctx, db)
-	if !reflect.DeepEqual(after, before) {
-		t.Fatalf("rejected historical schema metadata changed:\nbefore: %+v\nafter:  %+v", before, after)
-	}
-	if schemaAfter := schemaCatalogSnapshot(t, ctx, db); schemaAfter != schemaBefore {
-		t.Fatalf("rejected historical schema was migrated:\nbefore: %s\nafter:  %s", schemaBefore, schemaAfter)
-	}
-}
-
 func TestCheckMigrationsRejectsInconsistentMetadataWithoutChangingIt(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -121,7 +102,7 @@ func TestCheckMigrationsRejectsNilPoolAndCanceledContext(t *testing.T) {
 }
 
 func TestCheckMigrationsRejectsTemporaryMetadataSpoofing(t *testing.T) {
-	db := testdb.NewAtVersion(t, 53)
+	db := testdb.New(t)
 	ctx := context.Background()
 	// Force the check onto the connection that owns the counterfeit temp table.
 	config := db.Config()
@@ -149,11 +130,17 @@ func TestCheckMigrationsRejectsTemporaryMetadataSpoofing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := database.CheckMigrations(ctx, probe); err == nil {
-		t.Fatal("counterfeit temporary metadata hid the real historical schema")
+	if err := database.CheckMigrations(ctx, probe); err != nil {
+		t.Fatal("temporary metadata interfered with the real current baseline", err)
 	}
 	if after := migrationMetadataSnapshot(t, ctx, db); after != before {
 		t.Fatal("spoofed status check changed the real migration metadata")
+	}
+	if _, err = db.Exec(ctx, `UPDATE schema_migrations SET checksum='damaged'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.CheckMigrations(ctx, probe); err == nil {
+		t.Fatal("temporary metadata hid the damaged real baseline")
 	}
 }
 

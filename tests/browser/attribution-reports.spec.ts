@@ -76,10 +76,9 @@ type PublicAttribution = {
   joined_at: string;
   code_id: string | null;
   source_code: string | null;
-  legacy: boolean;
 };
 
-const publicAttributionFields = ['brand_id', 'member_id', 'join_method', 'joined_at', 'code_id', 'source_code', 'legacy'];
+const publicAttributionFields = ['brand_id', 'member_id', 'join_method', 'joined_at', 'code_id', 'source_code'];
 
 function expectPublicAttribution(value: PublicAttribution, memberId: string, expected: Partial<PublicAttribution>) {
   expect(Object.keys(value).sort()).toEqual([...publicAttributionFields].sort());
@@ -286,10 +285,10 @@ test('real attribution reports preserve saved agent scope and export unique orde
     const directAttribution = await publicAPI(page.request, directMember.token).get<PublicAttribution>('/me/attribution');
     const childAttribution = await publicAPI(page.request, childMember.token).get<PublicAttribution>('/me/attribution');
     expectPublicAttribution(directAttribution, directMember.memberId, {
-      join_method: 'agent_code', code_id: rootCode.id, source_code: rootCode.code, legacy: false,
+      join_method: 'agent_code', code_id: rootCode.id, source_code: rootCode.code,
     });
     expectPublicAttribution(childAttribution, childMember.memberId, {
-      join_method: 'agent_code', code_id: childCode.id, source_code: childCode.code, legacy: false,
+      join_method: 'agent_code', code_id: childCode.id, source_code: childCode.code,
     });
 
     const operatorName = `attr_operator_${suffix()}`;
@@ -440,8 +439,8 @@ test('real attribution reports preserve saved agent scope and export unique orde
     expect(bytes.subarray(0, 3)).toEqual(Buffer.from([0xef, 0xbb, 0xbf]));
     const rows = parseCsv(bytes.subarray(3).toString('utf8'));
     expect(rows).toHaveLength(4);
-    expect(rows[0]).toHaveLength(29);
-    expect(rows[0]).toContain('legacy_attribution_count');
+    expect(rows[0]).toHaveLength(28);
+    expect(rows[0]).not.toContain('legacy_attribution_count');
     expect(rows[1]![0]).toBe('summary');
     const orderCount = rows[0]!.indexOf('order_count');
     const stakePoints = rows[0]!.indexOf('stake_points');

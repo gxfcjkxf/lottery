@@ -14,7 +14,7 @@ var attributionCSVFields = []string{
 }
 
 func attributionCSVValues(v AttributionTotals) []string {
-	return append(bettingCSVValues(v.BettingTotals), v.FinalLostStakePoints, v.LegacyAttributionCount)
+	return append(bettingCSVValues(v.BettingTotals), v.FinalLostStakePoints)
 }
 
 func attributionGroupKey(key, group string) bool {
@@ -25,19 +25,16 @@ func attributionGroupKey(key, group string) bool {
 	case "game", "member":
 		return uuid.MatchString(key)
 	case "agent":
-		return key == "none" || key == "legacy" || uuid.MatchString(key)
+		return key == "none" || uuid.MatchString(key)
 	case "join_method":
-		return key == "domain" || key == "operator" || key == "agent_code" || key == "referral_code" || key == "legacy"
+		return key == "domain" || key == "operator" || key == "agent_code" || key == "referral_code"
 	}
 	return false
 }
 
 func attributionTotalsMatch(t AttributionTotals, q AttributionQuery, key string) bool {
 	parse := func(v string) *big.Int { n, _ := new(big.Int).SetString(v, 10); return n }
-	orders, legacy := parse(t.OrderCount), parse(t.LegacyAttributionCount)
-	if legacy.Cmp(orders) > 0 {
-		return false
-	}
+	orders := parse(t.OrderCount)
 	count := new(big.Int)
 	for _, v := range []string{t.PlacedCount, t.WonCount, t.LostCount, t.AbnormalCount, t.CancelledCount} {
 		count.Add(count, parse(v))
@@ -52,12 +49,6 @@ func attributionTotalsMatch(t AttributionTotals, q AttributionQuery, key string)
 			}
 		}
 	}
-	if q.JoinMethod != nil && ((*q.JoinMethod == "legacy" && legacy.Cmp(orders) != 0) || (*q.JoinMethod != "legacy" && legacy.Sign() != 0)) || q.AgentID != nil && legacy.Sign() != 0 {
-		return false
-	}
-	if q.AgentID != nil && q.JoinMethod != nil && *q.JoinMethod == "legacy" && orders.Sign() != 0 {
-		return false
-	}
 	if key == "" {
 		return true
 	}
@@ -67,12 +58,9 @@ func attributionTotalsMatch(t AttributionTotals, q AttributionQuery, key string)
 	case "member":
 		return q.MemberID == nil || strings.EqualFold(key, *q.MemberID)
 	case "join_method":
-		return (q.JoinMethod == nil || key == *q.JoinMethod) && (key == "legacy" && legacy.Cmp(orders) == 0 || key != "legacy" && legacy.Sign() == 0)
+		return q.JoinMethod == nil || key == *q.JoinMethod
 	case "agent":
-		if key == "legacy" {
-			return q.AgentID == nil && legacy.Cmp(orders) == 0
-		}
-		return legacy.Sign() == 0 && (q.AgentID == nil || key != "none" && (q.AgentScope != "direct" || strings.EqualFold(key, *q.AgentID)))
+		return q.AgentID == nil || q.AgentScope == "downline" || strings.EqualFold(key, *q.AgentID)
 	}
 	return true
 }

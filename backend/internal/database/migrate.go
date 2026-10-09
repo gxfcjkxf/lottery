@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"io/fs"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -31,6 +32,26 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 	sort.Strings(names)
+	rows, err := tx.Query(ctx, `SELECT name FROM schema_migrations`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var installed string
+		if err = rows.Scan(&installed); err != nil {
+			rows.Close()
+			return err
+		}
+		if !slices.Contains(names, installed) {
+			rows.Close()
+			return fmt.Errorf("existing migration history is not supported by this pre-release baseline; use a new database")
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
 	for _, name := range names {
 		if !strings.HasSuffix(name, ".up.sql") {
 			continue

@@ -76,7 +76,7 @@ describe("auth client", () => {
   it("sends each write with a separate idempotency key and supports PATCH profile requests", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(
+      .mockImplementation(async () =>
         new Response(
           JSON.stringify({ success: true, data: { audit_log_id: "audit-1" } }),
           { status: 200 },
@@ -241,7 +241,7 @@ describe("auth client", () => {
         joined_at: "",
       },
     };
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
       new Response(JSON.stringify({ success: true, data: session }), { status: 200 }),
     );
     const client = createAuthClient({ fetcher });

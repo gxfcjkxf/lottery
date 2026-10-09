@@ -24,7 +24,7 @@
 | GET | /reconciliations/{id}/targets | 目标及历史观察结果 |
 | POST | /reconciliations/{id}/retry | 人工恢复失败目标，200 |
 
-创建正文为`{reason,check_scope?}`；省略check_scope表示旧版`wallet`，也可显式选择`wallet`或`wallet_and_business`。显式null、重复键、未知字段和未知范围拒绝。重试正文恰好为`{version,reason}`，版本须小于9007199254740991，以便生成下一版本。原因须已去除首尾空白，非空，最多500个UTF8字节，不含NUL、CR、LF。两个POST需要幂等键，Cookie还需可信Origin。GET不接受正文，包括null；列表和目标支持规范十进制`limit`1至100、默认20，以及`offset`0至1000000；目标可按`outcome=pending|failed|consistent|repairable|corrupt`筛选。未知、重复、空查询参数、裸问号及带正号或前导零的分页数拒绝。
+创建正文必须为`{reason,check_scope}`，明确选择`wallet`或`wallet_and_business`。省略范围、显式null、重复键、未知字段和未知范围均拒绝。重试正文为`{version,reason}`。两个POST需要幂等键，Cookie还需可信Origin。列表和目标支持limit、offset，目标可按outcome筛选；具体参数以当前OpenAPI为准。
 
 创建回执固定为首次pending/v1、原目标数及原检查范围；即使worker已完成任务，原键重放仍返回该原始回执。旧reason-only请求的摘要算法不变；同键改为业务关联范围返回冲突，不能升级旧回执。重试回执为pending、原业务版本加一，保留已检查目标、原开始时间及检查范围。GET提供当前状态，不能代替未知写入的原回执确认。品牌停用、撤权或退出后重放也重新执行授权检查；审计等待结束后还要复核会话，过期时新任务、审计和回执一并回滚。活动任务冲突返回409，超过账户范围上限返回413，不提交半个任务或孤立审计。
 
@@ -36,11 +36,11 @@ Job包含编号、品牌、状态、版本、check_scope、范围/已检查/一�
 
 状态为pending、running、completed或failed。检查出余额差异或账本损坏也是一次已完成的观察，不属于技术执行失败；全部目标检查完毕后任务completed，但这不表示所有账户都一致。空范围任务由worker完成，不能将没有账户解释为有资金结论。
 
-Target保存编号、品牌、任务、账户、成员、check_scope、pending/checked/failed状态、尝试次数、错误码、观察时间和审计编号。checked目标才有outcome和preview；只有业务关联范围的checked目标有business_preview，其他当前响应均为null。历史旧回执可缺少新增字段，客户端只按wallet解释，不把它当成新的完整检查。技术失败仅返回`CHECK_FAILED`，不暴露连接串、SQL异常或内部堆栈。
+Target保存编号、品牌、任务、账户、成员、check_scope、pending/checked/failed状态、尝试次数、错误码、观察时间和审计编号。check_scope和business_preview字段始终存在；只有业务关联范围的checked目标有非空business_preview。缺字段响应明确报错，不按旧格式解释。技术失败仅返回`CHECK_FAILED`，不暴露连接串、SQL异常或内部堆栈。
 
 preview沿用单会员修复预览：账户/成员、实际账户版本、完整账本版本计数、实际存在的分项、账本重建期望余额、consistent/repairable、问题列表和绑定观察内容的token。实际分项稀疏保存，缺失桶不补零；期望分项包含四来源乘四状态的完整整数矩阵。未产生账本的账户版本可以为0。
 
-- consistent：完整账本版本链、摘要、前后快照、来源分配、冲正引用及实际16桶均一致；旧完整12桶仅在读取时以佣金零值规范化。
+- consistent：完整账本版本链、摘要、前后快照、来源分配、冲正引用及实际16分项均一致；快照缺少分项时拒绝，不补零。
 - repairable：账本完整性可证明，但余额桶或账户版本投影存在差异；任务不执行修复。
 - corrupt：账本完整性不能证明，或在业务关联范围内存在关联问题；不允许根据该结果重建余额或自填金额“补平”。钱包preview与业务preview分别保留真实判断，业务异常不能被钱包一致或可修复覆盖。
 
@@ -83,7 +83,7 @@ fingerprint为绑定账户和完整检查材料的SHA-256诊断摘要，不返�
 
 原账户、16桶余额、经济账本、修复记录和outbox不由检查任务修改。已发现损坏时现有记账完整性检查继续拒绝不安全写入；此任务本身不新增封禁、冻结或自动资金补偿策略。
 
-0061至0063不回填旧检查的业务结论，也不重算旧结果、审计或幂等回执。旧任务check_scope默认wallet，旧结果business_preview为null。迁移必须先于新API和worker启动；新前端接受旧缺字段的wallet回执，同时拒绝全范围checked响应缺业务preview或混用范围。
+上述结构包含在当前完整基线中。项目未发布，不提供旧任务、旧回执或旧账本格式的兼容与回填。
 
 ## Worker与故障处理
 

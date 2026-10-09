@@ -44,22 +44,21 @@ type historyRoutingEvidence struct {
 	RoundRobinReplicaIndexes       []int  `json:"round_robin_replica_indexes"`
 	NotificationRouteReplica       int    `json:"notification_route_replica"`
 	UnallowlistedRoutePrimaryOnly  bool   `json:"unallowlisted_route_primary_only"`
-	PausedReplicaSkipped           bool   `json:"paused_replica_skipped"`
-	BothPausedFallbackHasNewRow    bool   `json:"both_paused_fallback_has_new_row"`
-	OfflineReplicaSkipped          bool   `json:"offline_replica_skipped"`
+	PausedReplicaRejected          bool   `json:"paused_replica_rejected"`
+	BothPausedRejected             bool   `json:"both_paused_rejected"`
+	OfflineReplicaRejected         bool   `json:"offline_replica_rejected"`
 	UnavailableOptionalPoolStartup bool   `json:"unavailable_optional_pool_startup"`
 	WrongClusterAndPrimaryRejected bool   `json:"wrong_cluster_and_primary_rejected"`
-	ReplicaQueryErrorFallbackClean bool   `json:"replica_query_error_fallback_clean"`
+	ReplicaQueryErrorReturned      bool   `json:"replica_query_error_returned"`
 	HTTPHistoryRoutes              int    `json:"http_history_routes"`
 	HTTPSuccessfulHistoryRequests  int    `json:"http_successful_history_requests"`
 	HTTPObservedReplicaIndexes     []int  `json:"http_observed_replica_indexes"`
 	CurrentTemplateHeadersAbsent   bool   `json:"current_template_headers_absent"`
 	HTTPAuditFailureNoHistoryData  bool   `json:"http_audit_failure_no_history_data"`
-	HTTPPausedPrimaryHasNewRow     bool   `json:"http_paused_primary_has_new_row"`
 	HTTPPermissionRevocation403    bool   `json:"http_permission_revocation_403"`
 	HTTPSessionRevocation401       bool   `json:"http_session_revocation_401"`
-	PrimaryFencePermissionFallback bool   `json:"primary_fence_permission_fallback"`
-	ReplicaQueryTimeoutFallback    bool   `json:"replica_query_timeout_fallback"`
+	PrimaryFencePermissionError    bool   `json:"primary_fence_permission_error"`
+	ReplicaQueryTimeoutError       bool   `json:"replica_query_timeout_error"`
 	OriginalDigestBefore           string `json:"original_digest_before"`
 	OriginalDigestAfter            string `json:"original_digest_after"`
 	OriginalDatabaseUntouched      bool   `json:"original_database_untouched"`
@@ -136,23 +135,30 @@ func TestPhysicalHistoryReadRouting(t *testing.T) {
 	}
 	evidence.UnallowlistedRoutePrimaryOnly = true
 
-	// Pause replica 1 and create a fresh primary row. The fresh router starts at
-	// index zero, must reject the paused node, then serve the caught-up peer.
+	// Pause replica 1 and verify that the selected node's failure is returned.
 	setReplayPaused(t, ctx, readerPools[0], true)
 	pausedMarker := historyAuditMarker(t, primaryPool, "replica1_paused")
 	waitHistoryAudit(t, readerPools[1], pausedMarker)
 	pausedRouter := database.NewHistoryRouter(readerPools)
+	_, _, err = readHistoryAudit(ctx, primaryPool, pausedRouter, pausedMarker)
+	if err == nil {
+		t.Fatal("paused selected replica did not return an error")
+	}
 	waitHistoryAuditReplica(t, primaryPool, pausedRouter, pausedMarker, 2)
-	evidence.PausedReplicaSkipped = true
+	evidence.PausedReplicaRejected = true
 
 	setReplayPaused(t, ctx, readerPools[1], true)
 	allPausedMarker := historyAuditMarker(t, primaryPool, "both_replicas_paused")
 	allPausedRouter := database.NewHistoryRouter(readerPools)
-	count, source, err := readHistoryAudit(ctx, primaryPool, allPausedRouter, allPausedMarker)
-	if err != nil || count != 1 || source.Replica != 0 || source.Reason != "no_eligible_replica" {
-		t.Fatal("both paused standbys did not fall back to the primary with the new row")
+	_, _, err = readHistoryAudit(ctx, primaryPool, allPausedRouter, allPausedMarker)
+	if err == nil {
+		t.Fatal("selected paused standby did not return an error")
 	}
-	evidence.BothPausedFallbackHasNewRow = true
+	_, _, err = readHistoryAudit(ctx, primaryPool, allPausedRouter, allPausedMarker)
+	if err == nil {
+		t.Fatal("second paused standby did not return an error")
+	}
+	evidence.BothPausedRejected = true
 
 	setReplayPaused(t, ctx, readerPools[1], false)
 	readerPools[0].Close()
@@ -174,41 +180,47 @@ func TestPhysicalHistoryReadRouting(t *testing.T) {
 	offlineMarker := historyAuditMarker(t, primaryPool, "replica1_offline")
 	waitHistoryAudit(t, readerPools[1], offlineMarker)
 	offlineRouter := database.NewHistoryRouter(readerPools)
+	_, _, err = readHistoryAudit(ctx, primaryPool, offlineRouter, offlineMarker)
+	if err == nil {
+		t.Fatal("offline selected replica did not return an error")
+	}
 	waitHistoryAuditReplica(t, primaryPool, offlineRouter, offlineMarker, 2)
-	evidence.OfflineReplicaSkipped = true
+	evidence.OfflineReplicaRejected = true
 
 	// Neither an unrelated writable cluster nor the actual writable primary can
 	// pass the replica probes, even when both are configured as reader candidates.
 	wrongNodesRouter := database.NewHistoryRouter([]*pgxpool.Pool{unrelatedPool, primaryPool})
-	count, source, err = readHistoryAudit(ctx, primaryPool, wrongNodesRouter, offlineMarker)
-	if err != nil || count != 1 || source.Replica != 0 || source.Reason != "no_eligible_replica" {
-		t.Fatal("wrong-cluster and writable-primary candidates were not rejected")
+	for i := 0; i < 2; i++ {
+		if _, _, err = readHistoryAudit(ctx, primaryPool, wrongNodesRouter, offlineMarker); err == nil {
+			t.Fatal("wrong-cluster or writable-primary candidate did not return an error")
+		}
 	}
 	evidence.WrongClusterAndPrimaryRejected = true
 
-	// Force a read-only SQL failure only on a recovery node. The failed
-	// repeatable-read transaction is discarded, and the callback is rerun on the
-	// primary; the expression has no side effects and is safe to retry.
+	// Force a read-only SQL failure on the selected recovery node and verify it
+	// is returned without retrying the callback on primary.
 	queryErrorRouter := database.NewHistoryRouter([]*pgxpool.Pool{readerPools[1]})
 	var value any
 	var querySource database.ReadSource
 	var readErr error
+	queryCallbackRuns := 0
 	waitDrill(t, func() bool {
 		value, querySource, readErr = readHistoryValue(ctx, primaryPool, queryErrorRouter, database.HistoryAudit, func(tx pgx.Tx) (any, error) {
+			queryCallbackRuns++
 			var n int
 			err := tx.QueryRow(ctx, `SELECT 1/(CASE WHEN pg_is_in_recovery() THEN 0 ELSE 1 END)`).Scan(&n)
 			return n, err
 		})
 		return readErr != nil || querySource.Reason == "replica_query_failed"
 	})
-	if readErr != nil || value != 1 || querySource.Replica != 0 || querySource.Reason != "replica_query_failed" {
-		t.Fatalf("replica query error fallback did not prove an eligible replica attempt (replica=%d reason=%s)", querySource.Replica, querySource.Reason)
+	if readErr == nil || value != nil || queryCallbackRuns != 1 || querySource.Replica != 1 || querySource.Reason != "replica_query_failed" {
+		t.Fatalf("replica query failure was not returned (callback_runs=%d replica=%d reason=%s)", queryCallbackRuns, querySource.Replica, querySource.Reason)
 	}
 	var audits int
 	if err := primaryPool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE action LIKE 'recovery.history.routing.%'`).Scan(&audits); err != nil || audits != 4 {
 		t.Fatal("routing drill changed or lost synthetic audit rows")
 	}
-	evidence.ReplicaQueryErrorFallbackClean = true
+	evidence.ReplicaQueryErrorReturned = true
 	evidence.SyntheticMarkerRows = audits
 
 	// Reattach the offline standby so the HTTP handler can be observed routing
@@ -224,11 +236,10 @@ func TestPhysicalHistoryReadRouting(t *testing.T) {
 	evidence.HTTPObservedReplicaIndexes = httpEvidence.replicas
 	evidence.CurrentTemplateHeadersAbsent = httpEvidence.currentTemplateHeadersAbsent
 	evidence.HTTPAuditFailureNoHistoryData = httpEvidence.auditFailureNoData
-	evidence.HTTPPausedPrimaryHasNewRow = httpEvidence.pausedPrimaryHasRow
 	evidence.HTTPPermissionRevocation403 = httpEvidence.permissionRevocation403
 	evidence.HTTPSessionRevocation401 = httpEvidence.sessionRevocation401
-	evidence.PrimaryFencePermissionFallback = httpEvidence.fencePermissionFallback
-	evidence.ReplicaQueryTimeoutFallback = httpEvidence.timeoutFallback
+	evidence.PrimaryFencePermissionError = httpEvidence.fencePermissionError
+	evidence.ReplicaQueryTimeoutError = httpEvidence.timeoutError
 	evidence.SyntheticMarkerRows += 3 // Timeout, withheld-response, and paused-primary markers.
 
 	// Cleanly close all pools, resume paused replay, and stop every owned server
@@ -253,7 +264,7 @@ func TestPhysicalHistoryReadRouting(t *testing.T) {
 	if err := writeHistoryRoutingEvidence(t, bin, evidence); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("replicas=%d round_robin=%v paused_peer=%t offline_peer=%t original_untouched=%t", evidence.ReplicaNodes, evidence.RoundRobinReplicaIndexes, evidence.PausedReplicaSkipped, evidence.OfflineReplicaSkipped, evidence.OriginalDatabaseUntouched)
+	t.Logf("replicas=%d round_robin=%v paused_rejected=%t offline_rejected=%t original_untouched=%t", evidence.ReplicaNodes, evidence.RoundRobinReplicaIndexes, evidence.PausedReplicaRejected, evidence.OfflineReplicaRejected, evidence.OriginalDatabaseUntouched)
 }
 
 func assertHistoryDrillNodesStopped(t *testing.T, nodes []*drillNode) {
@@ -388,9 +399,9 @@ type historyHTTPDrillEvidence struct {
 	routes, successful                            int
 	replicas                                      []int
 	currentTemplateHeadersAbsent                  bool
-	auditFailureNoData, pausedPrimaryHasRow       bool
+	auditFailureNoData                            bool
 	permissionRevocation403, sessionRevocation401 bool
-	fencePermissionFallback, timeoutFallback      bool
+	fencePermissionError, timeoutError            bool
 }
 
 func runHistoryHTTPDrill(t *testing.T, primary *pgxpool.Pool, replicas []*pgxpool.Pool, router *database.HistoryRouter) historyHTTPDrillEvidence {
@@ -493,23 +504,21 @@ func runHistoryHTTPDrill(t *testing.T, primary *pgxpool.Pool, replicas []*pgxpoo
 		if reason == "" || (source != "primary" && source != "replica") {
 			t.Fatal("history endpoint omitted its fixed read-source evidence")
 		}
-		if source == "primary" {
-			if response.Header().Get("X-Read-Replica") != "" {
-				t.Fatal("primary history response exposed a replica index")
-			}
-			if reason != "no_eligible_replica" && reason != "replica_query_failed" && reason != "fence_unavailable" {
-				t.Fatal("primary history response used an unknown routing reason")
-			}
-			return
-		}
 		index, err := strconv.Atoi(response.Header().Get("X-Read-Replica"))
-		if err != nil || index < 1 || index > len(replicas) || reason != "wal_fenced" {
+		if err != nil || source != "replica" || index < 1 || index > len(replicas) || reason != "wal_fenced" {
 			t.Fatal("history endpoint returned invalid physical-replica evidence")
 		}
 		seenReplica[index] = true
 	}
 	for _, path := range paths {
-		response := historyHTTPCall(t, handler, http.MethodGet, path, "", token, nil)
+		var response *httptest.ResponseRecorder
+		waitDrill(t, func() bool {
+			response = historyHTTPCall(t, handler, http.MethodGet, path, "", token, nil)
+			if response.Code == http.StatusServiceUnavailable && historyHTTPHeadersAbsent(response) && !historyHTTPHasData(response) {
+				return false
+			}
+			return true
+		})
 		observe(response)
 		evidence.successful++
 	}
@@ -525,11 +534,14 @@ func runHistoryHTTPDrill(t *testing.T, primary *pgxpool.Pool, replicas []*pgxpoo
 	}
 	evidence.currentTemplateHeadersAbsent = true
 
-	// Each history request itself appends an audit row, so allow replicas to
-	// replay between attempts while retaining successful primary fallbacks.
+	// Each history request itself appends an audit row, so wait for replay before
+	// retrying the next selected replica.
 	for attempt := 0; attempt < 60 && (!seenReplica[1] || !seenReplica[2]); attempt++ {
 		time.Sleep(75 * time.Millisecond)
 		response := historyHTTPCall(t, handler, http.MethodGet, paths[attempt%len(paths)], "", token, nil)
+		if response.Code == http.StatusServiceUnavailable && historyHTTPHeadersAbsent(response) && !historyHTTPHasData(response) {
+			continue
+		}
 		observe(response)
 		evidence.successful++
 	}
@@ -543,8 +555,7 @@ func runHistoryHTTPDrill(t *testing.T, primary *pgxpool.Pool, replicas []*pgxpoo
 	}
 
 	// Test the router's fixed two-second query cap even when the callback passes
-	// context.Background. The recovery-only branch sleeps; primary fallback is
-	// immediate and the query has no side effects.
+	// context.Background. The selected replica query times out and returns error.
 	timeoutMarker := historyAuditMarker(t, primary, "http_timeout_fence")
 	waitHistoryAudit(t, replicas[1], timeoutMarker)
 	var timeoutEligible, timeoutVerified bool
@@ -553,14 +564,14 @@ func runHistoryHTTPDrill(t *testing.T, primary *pgxpool.Pool, replicas []*pgxpoo
 		return timeoutEligible
 	})
 	if !timeoutVerified {
-		t.Fatal("replica query timeout did not safely fall back to primary")
+		t.Fatal("replica query timeout was not returned explicitly")
 	}
-	evidence.timeoutFallback = true
+	evidence.timeoutError = true
 
-	if !verifyHistoryFencePermissionFallback(t, primary, router, timeoutMarker) {
-		t.Fatal("primary fence privilege failure did not recover through its savepoint")
+	if !verifyHistoryFencePermissionError(t, primary, router, timeoutMarker) {
+		t.Fatal("primary fence privilege failure was not returned after savepoint rollback")
 	}
-	evidence.fencePermissionFallback = true
+	evidence.fencePermissionError = true
 
 	leakMarker := historyHTTPAuditMarker(t, primary, "audit_failure_no_response_"+ids.New())
 	installHistoryAuditFailure(t, primary)
@@ -576,21 +587,13 @@ func runHistoryHTTPDrill(t *testing.T, primary *pgxpool.Pool, replicas []*pgxpoo
 	setReplayPaused(t, ctx, replicas[1], true)
 	pausedMarker := historyHTTPAuditMarker(t, primary, "http_both_paused_"+ids.New())
 	pausedResponse := historyHTTPCall(t, handler, http.MethodGet, paths[0], "", token, nil)
-	if pausedResponse.Code != http.StatusOK || pausedResponse.Header().Get("X-Read-Source") != "primary" ||
-		pausedResponse.Header().Get("X-Read-Reason") != "no_eligible_replica" || !bytes.Contains(pausedResponse.Body.Bytes(), []byte(pausedMarker)) {
-		t.Fatal("paused physical replicas did not return the new history row from primary")
+	if pausedResponse.Code != http.StatusServiceUnavailable || !historyHTTPHeadersAbsent(pausedResponse) || historyHTTPHasData(pausedResponse) || bytes.Contains(pausedResponse.Body.Bytes(), []byte(pausedMarker)) {
+		t.Fatal("paused selected replica failure did not withhold history data")
 	}
-	evidence.pausedPrimaryHasRow = true
-	evidence.successful++
-	pausedRequestID := pausedResponse.Header().Get("X-Request-ID")
 	setReplayPaused(t, ctx, replicas[0], false)
 	setReplayPaused(t, ctx, replicas[1], false)
 	waitHistoryAudit(t, replicas[0], pausedMarker)
 	waitHistoryAudit(t, replicas[1], pausedMarker)
-	if pausedRequestID != "" {
-		waitHistoryRequestAudit(t, replicas[0], pausedRequestID)
-		waitHistoryRequestAudit(t, replicas[1], pausedRequestID)
-	}
 
 	if _, err := primary.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='audit.view.brand'`, roleID); err != nil {
 		t.Fatal("could not revoke synthetic audit permission")
@@ -681,7 +684,7 @@ func removeHistoryAuditFailure(pool *pgxpool.Pool) {
 	_, _ = pool.Exec(ctx, `DROP FUNCTION IF EXISTS public.history_routing_reject_audit()`)
 }
 
-func verifyHistoryFencePermissionFallback(t *testing.T, primary *pgxpool.Pool, router *database.HistoryRouter, action string) bool {
+func verifyHistoryFencePermissionError(t *testing.T, primary *pgxpool.Pool, router *database.HistoryRouter, action string) bool {
 	t.Helper()
 	ctx := context.Background()
 	if _, err := primary.Exec(ctx, `CREATE ROLE history_routing_limited_probe NOLOGIN`); err != nil {
@@ -706,20 +709,19 @@ func verifyHistoryFencePermissionFallback(t *testing.T, primary *pgxpool.Pool, r
 		_ = tx.Rollback(ctx)
 		t.Fatal("could not assume owned least-privilege probe role")
 	}
-	value, source, readErr := router.Read(ctx, tx, database.HistoryAudit, func(readTx pgx.Tx) (any, error) {
+	_, source, readErr := router.Read(ctx, tx, database.HistoryAudit, func(readTx pgx.Tx) (any, error) {
 		var count int
 		err := readTx.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE action=$1`, action).Scan(&count)
 		return count, err
 	})
-	if readErr != nil {
+	if readErr == nil || source.Reason != "fence_unavailable" {
 		_ = tx.Rollback(ctx)
-		t.Fatal("fence privilege fallback callback failed")
+		t.Fatal("primary fence privilege failure was not returned")
 	}
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal("outer primary transaction could not commit after fence savepoint rollback")
 	}
-	count, ok := value.(int)
-	return ok && count == 1 && source.Replica == 0 && source.Reason == "fence_unavailable"
+	return source.Replica == 0 && source.Reason == "fence_unavailable"
 }
 
 func verifyHistoryReplicaQueryTimeout(t *testing.T, primary, replica *pgxpool.Pool) (bool, bool) {
@@ -741,18 +743,14 @@ func verifyHistoryReplicaQueryTimeout(t *testing.T, primary, replica *pgxpool.Po
 		return result, err
 	})
 	elapsed := time.Since(started)
-	if err != nil {
-		t.Fatal("timeout query did not complete through primary fallback")
-	}
 	if err := primaryTx.Commit(ctx); err != nil {
-		t.Fatal("query-timeout primary transaction did not commit")
+		t.Fatal("query-timeout primary transaction did not commit after replica error")
 	}
-	result, ok := value.(int)
-	eligible := source.Reason == "replica_query_failed"
+	eligible := err != nil && source.Reason == "replica_query_failed"
 	if !eligible {
 		return false, false
 	}
-	verified := ok && result == 0 && callbackRuns == 2 && source.Replica == 0 && elapsed >= 1800*time.Millisecond && elapsed < 5*time.Second
+	verified := value == nil && callbackRuns == 1 && source.Replica == 1 && elapsed >= 1800*time.Millisecond && elapsed < 5*time.Second
 	return true, verified
 }
 

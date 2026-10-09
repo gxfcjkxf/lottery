@@ -310,12 +310,10 @@ function isCalendar(value: unknown): value is CommissionCycleCalendar {
 const CYCLE_KEYS = ["id", "brand_id", "window_from", "window_to", "anchor_order_id", "calendar", "state", "version", "target_count", "scan_complete", "current_run_id", "current_generation", "evidence_epoch", "evidence_current", "calculated_count", "earning_count", "total_points", "created_by", "creation_actor_type", "reason", "created_at", "updated_at", "last_error_code", "creation_audit_log_id"] as const;
 const PAGE_KEYS = ["brand_id", "items", "total_count", "limit", "offset"] as const;
 
-function validCycle(value: unknown, brand: string, allowLegacyActor = false): value is CommissionCycleRecord {
+function validCycle(value: unknown, brand: string): value is CommissionCycleRecord {
   if (!isRecord(value)) return false;
-  const hasActorType = hasExactKeySet(value, CYCLE_KEYS);
-  const hasLegacyActor = allowLegacyActor && hasExactKeySet(value, CYCLE_KEYS.filter((key) => key !== "creation_actor_type")) && isCanonicalUuid(value.created_by);
-  if (!hasActorType && !hasLegacyActor) return false;
-  const actorType = value.creation_actor_type === undefined ? "admin" : value.creation_actor_type;
+  if (!hasExactKeySet(value, CYCLE_KEYS)) return false;
+  const actorType = value.creation_actor_type;
   if (!isCanonicalUuid(value.id) || value.brand_id !== brand || !isCanonicalUuid(value.brand_id) ||
     !isDateTime(value.window_from) || !isDateTime(value.window_to) || Date.parse(value.window_from) >= Date.parse(value.window_to) ||
     !isCanonicalUuid(value.anchor_order_id) || !isCalendar(value.calendar) ||
@@ -627,7 +625,7 @@ export function createCommissionCyclesApi(fetcher: typeof fetch = fetch): Commis
       if (expectedAccountId !== undefined && !isCanonicalUuid(expectedAccountId)) invalidInput("管理员编号必须为规范 UUID。");
       const requestBody: CommissionCreateBody = { anchor_order_id: body.anchor_order_id, reason: body.reason };
       return request(brand, CYCLES, { method: "POST", body: requestBody, key, write: true, successStatus: 201 }, (value): value is CommissionCycleRecord =>
-        validCycle(value, brand, true) && value.version === 1 && value.state === "enumerating" && value.anchor_order_id === body.anchor_order_id &&
+        validCycle(value, brand) && value.version === 1 && value.state === "enumerating" && value.anchor_order_id === body.anchor_order_id &&
         value.reason === body.reason && value.creation_actor_type === "admin" && value.created_by !== null &&
         (expectedAccountId === undefined || value.created_by === expectedAccountId));
     },

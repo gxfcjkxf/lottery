@@ -45,7 +45,7 @@ func (q AttributionQuery) Validate() error {
 	}
 	if q.JoinMethod != nil {
 		switch *q.JoinMethod {
-		case "domain", "operator", "agent_code", "referral_code", "legacy":
+		case "domain", "operator", "agent_code", "referral_code":
 		default:
 			return ErrInvalid
 		}
@@ -58,8 +58,7 @@ func (q AttributionQuery) Validate() error {
 // Counts and sums may exceed int64 and always remain exact decimal strings.
 type AttributionTotals struct {
 	BettingTotals
-	FinalLostStakePoints   string `json:"final_lost_stake_points"`
-	LegacyAttributionCount string `json:"legacy_attribution_count"`
+	FinalLostStakePoints string `json:"final_lost_stake_points"`
 }
 
 type AttributionReport struct {
@@ -74,7 +73,6 @@ type AttributionReport struct {
 
 var attributionAggregates = append(append([]aggregate{}, betAggregates...),
 	aggregate{"final_lost_stake_points", "coalesce(sum(total_points::numeric) FILTER(WHERE final AND status='lost'),0)"},
-	aggregate{"legacy_attribution_count", "count(*) FILTER(WHERE legacy_attribution)"},
 )
 
 func (s Service) Attribution(ctx context.Context, brand string, q AttributionQuery) (AttributionReport, error) {
@@ -114,15 +112,15 @@ func (s Service) attribution(ctx context.Context, runner rowQuerier, brand strin
 	case "agent":
 		// Even a downline filter groups by the saved DIRECT agent. Expanding
 		// every ancestor into its own row would duplicate summary and CSV sums.
-		key, label = `coalesce(f.direct_agent_id,CASE WHEN f.legacy_attribution THEN 'legacy' ELSE 'none' END)`, `coalesce(f.direct_agent_id,CASE WHEN f.legacy_attribution THEN 'legacy' ELSE 'none' END)`
+		key, label = `coalesce(f.direct_agent_id,'none')`, `coalesce(f.direct_agent_id,'none')`
 	case "join_method":
 		key, label = `f.saved_join_method`, `f.saved_join_method`
 	}
 	agg := aggregateJSON(attributionAggregates)
 	// Read only saved attribution. Identity existence validates scope and saved
 	// path links, but mutable configs/status/path never reconstruct provenance.
-	// Classify legacy explicitly, and fail the WHOLE cohort on malformed modern
-	// provenance before applying attribution filters (no silent missing rows).
+	// Fail the whole cohort on malformed current provenance before applying
+	// attribution filters, so bad snapshots cannot disappear from the report.
 	sql := `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1), validity AS (
  SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM games WHERE brand_id=$1 AND id=$4)) AND
  ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$5)) AND
@@ -146,17 +144,23 @@ func (s Service) attribution(ctx context.Context, runner rowQuerier, brand strin
  LEFT JOIN point_ledger_entries debit ON debit.brand_id=o.brand_id AND debit.id=o.debit_entry_id AND debit.member_id=o.brand_member_id AND debit.account_id=o.account_id
  LEFT JOIN point_ledger_entries prize ON prize.brand_id=o.brand_id AND prize.id=o.payout_entry_id AND prize.member_id=o.brand_member_id AND prize.account_id=o.account_id
  WHERE o.placed_at >= $2 AND o.placed_at < $3 AND ($4::uuid IS NULL OR o.game_id=$4) AND ($5::uuid IS NULL OR o.brand_member_id=$5)),
- shapes AS (SELECT cohort.*,a->'legacy'='true'::jsonb AS legacy_attribution,
+ shapes AS (SELECT cohort.*,
  CASE WHEN jsonb_typeof(a->'agent_configs_at_bet')='array' THEN a->'agent_configs_at_bet' ELSE '[]'::jsonb END AS saved_nodes,
  a->'member_attribution' AS m FROM cohort),
  provenance AS (SELECT shapes.*,
- CASE WHEN legacy_attribution THEN NULL ELSE m->>'agent_id' END AS direct_agent_id,
- CASE WHEN legacy_attribution THEN 'legacy' ELSE m->>'join_method' END AS saved_join_method,
- coalesce(a->'schema_version'='1'::jsonb AND jsonb_typeof(a->'legacy')='boolean' AND
- (legacy_attribution OR (
- a->'legacy'='false'::jsonb AND jsonb_typeof(m)='object' AND m->'schema_version'='1'::jsonb AND m->'legacy'='false'::jsonb
+ m->>'agent_id' AS direct_agent_id,
+ m->>'join_method' AS saved_join_method,
+	coalesce(CASE WHEN jsonb_typeof(a)='object' THEN (SELECT count(*) FROM jsonb_object_keys(a))=6 ELSE false END
+ AND a ?& ARRAY['schema_version','member_attribution','agent_policy','agent_configs_at_bet','captured_at','commission_policy']
+ AND a->'schema_version'='1'::jsonb AND jsonb_typeof(a->'agent_policy')='object'
+ AND jsonb_typeof(a->'captured_at')='string' AND a->'commission_policy'='null'::jsonb
+	AND CASE WHEN jsonb_typeof(m)='object' THEN (SELECT count(*) FROM jsonb_object_keys(m))=14 ELSE false END
+ AND m ?& ARRAY['schema_version','join_method','join_domain','joined_at','code_id','code_version','code','code_kind','owner_member_id','agent_id','referrer_member_id','agent_path','agent_configs_at_join','agent_policy_at_join']
+ AND m->'schema_version'='1'::jsonb
  AND m->>'join_method' IN ('domain','operator','agent_code','referral_code')
  AND m ? 'agent_id' AND (m->'agent_id'='null'::jsonb OR (jsonb_typeof(m->'agent_id')='string' AND m->>'agent_id' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'))
+ AND ((m->'code_id'='null'::jsonb AND m->'code'='null'::jsonb) OR
+ (jsonb_typeof(m->'code_id')='string' AND m->>'code_id' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND jsonb_typeof(m->'code')='string' AND m->>'code' ~ '^[A-F0-9]{24}$'))
  AND jsonb_typeof(a->'agent_configs_at_bet')='array' AND jsonb_array_length(saved_nodes)<=32
  AND ((m->'agent_id'='null'::jsonb AND jsonb_array_length(saved_nodes)=0) OR
  (m->>'agent_id'=saved_nodes->-1->>'id' AND jsonb_array_length(saved_nodes)>0))
@@ -166,12 +170,12 @@ func (s Service) attribution(ctx context.Context, runner rowQuerier, brand strin
  OR (ord>1 AND node->>'parent_id' IS DISTINCT FROM saved_nodes->((ord-2)::int)->>'id')
  OR NOT EXISTS(SELECT 1 FROM agent_nodes an WHERE an.brand_id=$1 AND an.id::text=node->>'id'))
  AND (SELECT count(DISTINCT node->>'id') FROM jsonb_array_elements(saved_nodes) AS n(node))=jsonb_array_length(saved_nodes)
- )),false) AS provenance_valid FROM shapes),
+	 ,false) AS provenance_valid FROM shapes),
  base AS (SELECT f.*,` + key + ` AS key,` + label + ` AS label,finalized AND NOT correction_open AS final
  FROM provenance f JOIN scope b ON true
  WHERE ($8::text IS NULL OR saved_join_method=$8) AND ($6::uuid IS NULL OR
  CASE WHEN $7='direct' THEN direct_agent_id=$6::uuid::text ELSE
- EXISTS(SELECT 1 FROM jsonb_array_elements(saved_nodes) n WHERE n->>'id'=$6::uuid::text) AND NOT legacy_attribution END)),
+ EXISTS(SELECT 1 FROM jsonb_array_elements(saved_nodes) n WHERE n->>'id'=$6::uuid::text) END)),
  grouped AS (SELECT key,label,` + agg + ` AS totals FROM base GROUP BY key,label),
  page AS (SELECT key,label,totals FROM grouped ORDER BY key COLLATE "C" LIMIT $9 OFFSET $10)
  SELECT statement_timestamp(),scope.timezone,validity.valid,

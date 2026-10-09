@@ -14,8 +14,9 @@ const SHADOWS = {
   lifted: '0 18px 55px rgba(28, 54, 44, .16)',
 } as const
 
-export function safeBrandColor(value: unknown, fallback: string): string {
-  return typeof value === 'string' && HEX_COLOR.test(value) ? value.toLowerCase() : fallback
+export function safeBrandColor(value: unknown): string {
+  if (typeof value !== 'string' || !HEX_COLOR.test(value)) throw new TypeError('Invalid brand color')
+  return value.toLowerCase()
 }
 
 const DNS_HOST_SYNTAX = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/
@@ -56,11 +57,11 @@ function darken(hex: string): string {
 
 /** Build safe inline CSS variables from an already normalized public context. */
 export function buildBrandCssTokens(theme: Pick<BrandTheme, 'primary' | 'accent' | 'success' | 'warning' | 'danger' | 'fontFamily' | 'fontScale' | 'radius' | 'shadow'>): Record<string, string> {
-  const primary = safeBrandColor(theme.primary, '#20594c')
-  const accent = safeBrandColor(theme.accent, '#d9ef9b')
-  const success = safeBrandColor(theme.success, '#287b59')
-  const warning = safeBrandColor(theme.warning, '#a96d20')
-  const danger = safeBrandColor(theme.danger, '#bc4b43')
+  const primary = safeBrandColor(theme.primary)
+  const accent = safeBrandColor(theme.accent)
+  const success = safeBrandColor(theme.success)
+  const warning = safeBrandColor(theme.warning)
+  const danger = safeBrandColor(theme.danger)
   const family = Object.hasOwn(FONT_FAMILIES, theme.fontFamily) ? FONT_FAMILIES[theme.fontFamily as keyof typeof FONT_FAMILIES] : FONT_FAMILIES.system
   const scale = theme.fontScale && Object.hasOwn(FONT_SCALES, theme.fontScale) ? FONT_SCALES[theme.fontScale as keyof typeof FONT_SCALES] : FONT_SCALES.standard
   const scaleFactor = theme.fontScale === 'compact' ? '0.875' : theme.fontScale === 'large' ? '1.125' : '1'

@@ -32,14 +32,14 @@ export const schemas = {
   CommissionCorrectionPlan: {
     ...obj({
       id: ref('UUID'), brand_id: ref('UUID'), cycle_id: ref('UUID'), payment_id: ref('UUID'), run_id: ref('UUID'),
-      state: { type: 'string', enum: ['planning', 'ready', 'blocked', 'failed', 'stale'] },
+      state: { type: 'string', enum: ['planning', 'ready', 'failed', 'stale'] },
       payout_mode: { type: 'string', enum: ['manual', 'automatic', 'mixed', 'none'] }, version,
       evidence_epoch: epoch, before_points: aggregate, calculated_points: aggregate,
-      credit_points: nullable(aggregate), debit_points: nullable(aggregate), net_points: nullable(net),
+      credit_points: aggregate, debit_points: aggregate, net_points: net,
       target_count: count, planned_count: count, creation_audit_log_id: ref('UUID'), last_audit_log_id: ref('UUID'),
       last_error_code: nullable({ type: 'string' }), created_at: ref('DateTime'), updated_at: ref('DateTime'),
     }),
-    description: 'A ready plan is only a preview and does not approve or move funds. before_points, calculated_points, credit_points, and debit_points are exact nonnegative numeric aggregates; net_points is the only signed aggregate. Totals may exceed int64. The three correction totals are all null until planning resolves them. Timestamps preserve Go RFC3339Nano precision. last_error_code is null when there is no current error.',
+    description: 'A ready plan is only a preview and does not approve or move funds. before_points, calculated_points, credit_points, and debit_points are exact nonnegative numeric aggregates; net_points is the only signed aggregate. Totals may exceed int64 and all totals are required from plan creation. Timestamps preserve Go RFC3339Nano precision. last_error_code is null when there is no current error.',
   },
   CommissionCorrectionPlanTarget: {
     ...obj({
@@ -93,7 +93,7 @@ export const operations = [
   admin('GET', '/commission-correction-plans/{id}', 'getCommissionCorrectionPlan', 'Read a commission correction plan', ref('CommissionCorrectionPlan')),
   admin('GET', '/commission-correction-plans/{id}/targets', 'listCommissionCorrectionPlanTargets', 'List targets in a commission correction plan', ref('CommissionCorrectionPlanTargetPage'), { parameters: page }),
   admin('POST', '/commission-correction-plans/{id}/retry', 'retryCommissionCorrectionPlan', 'Retry commission correction plan preparation', ref('CommissionCorrectionPlan'), {
-    ...action('commission_correction.retry.brand', 'CommissionCorrectionAction', 'Plan retry prepares evidence only and never approves or posts funds. It accepts technical failures and retained historical MANUAL_POLICY_UNRESOLVED blocks with zero targets and null differences. Historical recovery revalidates the unchanged frozen basis, current financial sources and enabled original payment gate before appending a new audited version. A new draw calculation supersedes the prior manual target: actual 12 to recalculated 8 requires debit 4, without carrying forward a manual offset. Existing blocked history is never automatically recovered.'),
+    ...action('commission_correction.retry.brand', 'CommissionCorrectionAction', 'Plan retry prepares evidence only and never approves or posts funds. It accepts failed preparations. A new draw calculation supersedes the prior manual target: actual 12 to recalculated 8 requires debit 4, without carrying forward a manual offset.'),
   }),
   admin('GET', '/commission-correction-executions', 'listCommissionCorrectionExecutions', 'List commission correction executions', ref('CommissionCorrectionExecutionPage'), { parameters: page }),
   admin('GET', '/commission-correction-executions/{id}', 'getCommissionCorrectionExecution', 'Read a commission correction execution', ref('CommissionCorrectionExecution')),

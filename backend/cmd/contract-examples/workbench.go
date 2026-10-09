@@ -35,12 +35,10 @@ func workbenchExamples() map[string]any {
 			DiscoveryPendingCount: "2", DiscoveryFailedCount: "1",
 			CycleProcessingCount: "1", CycleWaitingCount: "2", CycleReadyCount: "9007199254740993", CycleStaleCount: "1", CycleFailedCount: "1",
 			PaymentAwaitingApprovalCount: "1", PaymentProcessingCount: "2", PaymentBlockedCount: "3", PaymentFailedCount: "1",
-			PlanProcessingCount: "1", PlanReadyCount: "2", PlanBlockedCount: "1", PlanFailedCount: "1",
+			PlanProcessingCount: "1", PlanReadyCount: "2", PlanFailedCount: "1",
 			ExecutionAwaitingApprovalCount: "1", ExecutionProcessingCount: "2", ExecutionPausedCount: "3", ExecutionFailedCount: "1",
 		}),
 		Rewards: workbench.Section[workbench.Rewards]{Status: "ready", Data: &workbench.Rewards{GrantedCount: "1", PendingCount: "2", RevokedCount: "3"}},
 	}
-	legacy := snapshot
-	legacy.Commissions = workbench.Section[workbench.Commissions]{Status: "not_implemented"}
-	return map[string]any{"AdminWorkbench": snapshot, "AdminWorkbenchLegacy": legacy}
+	return map[string]any{"AdminWorkbench": snapshot}
 }

@@ -73,9 +73,9 @@ func TestHistoryRouteWhitelist(t *testing.T) {
 		}
 	}
 }
-func TestHistoryFallbackDoesNotReplacePrimaryTransaction(t *testing.T) {
+func TestHistoryRoutingUsesPrimaryOnlyWhenAppropriate(t *testing.T) {
 	primary := &stubHistoryTx{}
-	for _, router := range []*HistoryRouter{nil, NewHistoryRouter(nil), NewHistoryRouter([]*pgxpool.Pool{nil})} {
+	for _, router := range []*HistoryRouter{nil, NewHistoryRouter(nil)} {
 		out, source, e := router.Read(context.Background(), primary, "wallet", func(tx pgx.Tx) (any, error) {
 			if tx != primary {
 				t.Fatal("primary tx replaced")
@@ -86,9 +86,39 @@ func TestHistoryFallbackDoesNotReplacePrimaryTransaction(t *testing.T) {
 			t.Fatal(out, source, e)
 		}
 	}
+	for _, router := range []*HistoryRouter{nil, NewHistoryRouter(nil)} {
+		called := false
+		out, source, err := router.Read(context.Background(), primary, HistoryAudit, func(tx pgx.Tx) (any, error) {
+			called = tx == primary
+			return "primary", nil
+		})
+		if err != nil || !called || out != "primary" || source.Replica != 0 {
+			t.Fatal("allowlisted route without configured replicas did not use primary", out, source, err)
+		}
+	}
+	called := false
+	_, source, err := NewHistoryRouter([]*pgxpool.Pool{nil}).Read(context.Background(), primary, HistoryAudit, func(pgx.Tx) (any, error) {
+		called = true
+		return "unexpected", nil
+	})
+	if err == nil || called || source.Reason != "fence_unavailable" {
+		t.Fatal("configured routing failure did not return an explicit error", source, err)
+	}
+	called = false
+	out, source, err := NewHistoryRouter([]*pgxpool.Pool{nil}).Read(context.Background(), primary, "wallet", func(tx pgx.Tx) (any, error) {
+		called = true
+		return "primary", nil
+	})
+	if err != nil || !called || out != "primary" || source.Reason != "primary_only" {
+		t.Fatal("unlisted route did not stay on primary", out, source, err)
+	}
 }
 
 type stubHistoryTx struct{ pgx.Tx }
+
+func (stubHistoryTx) Begin(context.Context) (pgx.Tx, error) {
+	return nil, errors.New("stub transaction cannot start a fence")
+}
 
 func TestHistoryCanceledSelectionDoesNotRunCallback(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

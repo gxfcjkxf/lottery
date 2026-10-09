@@ -29,10 +29,9 @@ func (q CommissionAnalysisQuery) Validate() error {
 }
 
 type CommissionAnalysisCoverage struct {
-	SelectedCycleCount            string `json:"selected_cycle_count"`
-	ReadyCycleCount               string `json:"ready_cycle_count"`
-	UnreadyCycleCount             string `json:"unready_cycle_count"`
-	LegacyPolicyBlockedCycleCount string `json:"legacy_policy_blocked_cycle_count"`
+	SelectedCycleCount string `json:"selected_cycle_count"`
+	ReadyCycleCount    string `json:"ready_cycle_count"`
+	UnreadyCycleCount  string `json:"unready_cycle_count"`
 }
 
 type CommissionAnalysisTotals struct {

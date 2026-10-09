@@ -96,7 +96,6 @@ type Commissions struct {
 	PaymentFailedCount             string `json:"payment_failed_count"`
 	PlanProcessingCount            string `json:"plan_processing_count"`
 	PlanReadyCount                 string `json:"plan_ready_count"`
-	PlanBlockedCount               string `json:"plan_blocked_count"`
 	PlanFailedCount                string `json:"plan_failed_count"`
 	ExecutionAwaitingApprovalCount string `json:"execution_awaiting_approval_count"`
 	ExecutionProcessingCount       string `json:"execution_processing_count"`

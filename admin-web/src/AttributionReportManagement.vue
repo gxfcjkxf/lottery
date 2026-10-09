@@ -14,11 +14,11 @@ const englishUi: Record<string, string> = {
   "开始时间": "Start time", "结束时间": "End time", "彩种 UUID（可选）": "Game UUID (optional)", "会员 UUID（可选）": "Member UUID (optional)", "代理 UUID（可选）": "Agent UUID (optional)",
   "代理范围": "Agent scope", "直属代理": "Direct agent", "下级代理": "Downline", "加入方式": "Join method", "全部加入方式": "All join methods", "按天": "By day", "按彩种": "By game", "按会员": "By member", "按代理": "By agent", "按加入方式": "By join method", "分组": "Group",
   "按代理分组始终使用快照中的直属代理；下级筛选后的分组仍保持互斥。": "Agent groups always use the saved direct agent. Groups remain disjoint when filtering a downline.",
-  "查询": "Query", "导出完整 CSV": "Export complete CSV", "查询中…": "Loading…", "导出中…": "Exporting…", "快照": "Snapshot", "时区": "Timezone", "品牌": "Brand", "总计": "Summary", "分组记录": "Groups", "标签": "Label", "全部": "All", "历史代理未记录": "Legacy agent not recorded", "历史归因未记录": "Legacy attribution not recorded", "无代理": "No agent", "无加入方式": "No join method", "暂无分组": "No groups", "第": "Items", "项，共": "of", "组": "groups", "上一页": "Previous", "下一页": "Next",
-  "注单数": "Bet orders", "投注积分": "Stake points", "已放置": "Placed", "已中奖": "Won", "已未中奖": "Lost", "异常": "Abnormal", "已取消": "Cancelled", "退款积分": "Refund points", "已结算投注": "Settled stakes", "未结算投注": "Unsettled stakes", "异常投注": "Abnormal stakes", "当前最终代次奖金": "Current final-generation prizes", "未完成更正数": "Open corrections", "最终未中奖投注": "Final lost stakes", "历史归因未记录数": "Legacy attribution count",
+  "查询": "Query", "导出完整 CSV": "Export complete CSV", "查询中…": "Loading…", "导出中…": "Exporting…", "快照": "Snapshot", "时区": "Timezone", "品牌": "Brand", "总计": "Summary", "分组记录": "Groups", "标签": "Label", "全部": "All", "无代理": "No agent", "无加入方式": "No join method", "暂无分组": "No groups", "第": "Items", "项，共": "of", "组": "groups", "上一页": "Previous", "下一页": "Next",
+  "注单数": "Bet orders", "投注积分": "Stake points", "已放置": "Placed", "已中奖": "Won", "已未中奖": "Lost", "异常": "Abnormal", "已取消": "Cancelled", "退款积分": "Refund points", "已结算投注": "Settled stakes", "未结算投注": "Unsettled stakes", "异常投注": "Abnormal stakes", "当前最终代次奖金": "Current final-generation prizes", "未完成更正数": "Open corrections", "最终未中奖投注": "Final lost stakes",
   "读取失败，请重试。": "Read failed. Please try again.", "需要 report_attribution.view.brand 或 report_attribution.view.platform 查看权限。": "Requires report_attribution.view.brand or report_attribution.view.platform permission.", "需要 report_attribution.export.brand 或 report_attribution.export.platform 导出权限。": "Requires report_attribution.export.brand or report_attribution.export.platform permission.",
   "下级范围需要有效代理 UUID。": "Downline scope requires a valid agent UUID.", "请选择有效时间范围。": "Choose a valid time range.", "结束时间必须晚于开始时间。": "The end must be later than the start.", "时间范围不能超过 93 天。": "The time range cannot exceed 93 days.", "UUID 格式无效。": "Invalid UUID format.",
-  domain: "Domain", operator: "Operator", agent_code: "Agent code", referral_code: "Referral code", legacy: "Legacy",
+  domain: "Domain", operator: "Operator", agent_code: "Agent code", referral_code: "Referral code",
 };
 const ui = (value: string) => t(value, englishUi[value] ?? value);
 const api = createAttributionReportApi();
@@ -90,14 +90,12 @@ async function exportReport() {
 }
 function formatInteger(value: string) { try { const n = BigInt(value); return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ","); } catch { return value; } }
 function formatDate(value: string) { const d = new Date(value); return Number.isFinite(d.getTime()) ? d.toLocaleString(locale.value === "en" ? "en-US" : "zh-CN") : value; }
-function metrics(totals: AttributionTotals) { return [["注单数", totals.order_count], ["投注积分", totals.stake_points], ["已放置", totals.placed_count], ["已中奖", totals.won_count], ["已未中奖", totals.lost_count], ["异常", totals.abnormal_count], ["已取消", totals.cancelled_count], ["退款积分", totals.refund_points], ["已结算投注", totals.settled_stake_points], ["未结算投注", totals.unfinalized_stake_points], ["异常投注", totals.abnormal_stake_points], ["当前最终代次奖金", totals.current_prize_points], ["未完成更正数", totals.correction_open_count], ["最终未中奖投注", totals.final_lost_stake_points], ["历史归因未记录数", totals.legacy_attribution_count]] as const; }
+function metrics(totals: AttributionTotals) { return [["注单数", totals.order_count], ["投注积分", totals.stake_points], ["已放置", totals.placed_count], ["已中奖", totals.won_count], ["已未中奖", totals.lost_count], ["异常", totals.abnormal_count], ["已取消", totals.cancelled_count], ["退款积分", totals.refund_points], ["已结算投注", totals.settled_stake_points], ["未结算投注", totals.unfinalized_stake_points], ["异常投注", totals.abnormal_stake_points], ["当前最终代次奖金", totals.current_prize_points], ["未完成更正数", totals.correction_open_count], ["最终未中奖投注", totals.final_lost_stake_points]] as const; }
 function hasNext() { return !!result.value && offset.value + 20 <= 1_000_000 && BigInt(offset.value) + BigInt(result.value.items.length) < BigInt(result.value.total_groups); }
 function displayGroup(item: AttributionReport["items"][number]) {
   if (result.value?.query.group_by === "agent") {
     if (item.key === "none") return ui("无代理");
-    if (item.key === "legacy") return ui("历史代理未记录");
   }
-  if (result.value?.query.group_by === "join_method" && item.key === "legacy") return ui("历史归因未记录");
   return item.label;
 }
 watch(scopeKey, (next) => { ticket++; exportTicket++; committedScope = next; committed.value = null; clear(); busy.value = false; exportBusy.value = false; }, { flush: "sync" });
@@ -119,7 +117,7 @@ preset24h();
       <label>{{ ui("代理 UUID（可选）") }}<input v-model.trim="agentDraft" autocomplete="off"></label>
       <label>{{ ui("代理范围") }}<select v-model="agentScope" :aria-label="ui('代理范围')" data-testid="attribution-agent-scope"><option value="direct">{{ ui("直属代理") }}</option><option value="downline">{{ ui("下级代理") }}</option></select></label>
       <label>{{ ui("分组") }}<select v-model="groupBy" :aria-label="ui('分组')" data-testid="attribution-group"><option value="day">{{ ui("按天") }}</option><option value="game">{{ ui("按彩种") }}</option><option value="member">{{ ui("按会员") }}</option><option value="agent">{{ ui("按代理") }}</option><option value="join_method">{{ ui("按加入方式") }}</option></select></label>
-      <label>{{ ui("加入方式") }}<select v-model="joinMethod" :aria-label="ui('加入方式')" data-testid="attribution-join-method"><option value="">{{ ui("全部加入方式") }}</option><option value="domain">{{ ui("domain") }}</option><option value="operator">{{ ui("operator") }}</option><option value="agent_code">{{ ui("agent_code") }}</option><option value="referral_code">{{ ui("referral_code") }}</option><option value="legacy">{{ ui("legacy") }}</option></select></label>
+      <label>{{ ui("加入方式") }}<select v-model="joinMethod" :aria-label="ui('加入方式')" data-testid="attribution-join-method"><option value="">{{ ui("全部加入方式") }}</option><option value="domain">{{ ui("domain") }}</option><option value="operator">{{ ui("operator") }}</option><option value="agent_code">{{ ui("agent_code") }}</option><option value="referral_code">{{ ui("referral_code") }}</option></select></label>
     </div>
     <p class="ar-note">{{ ui("按代理分组始终使用快照中的直属代理；下级筛选后的分组仍保持互斥。") }}</p>
     <p v-if="props.account.super_admin" class="ar-note">{{ ui("需要 report_attribution.view.brand 或 report_attribution.view.platform 查看权限。") }}</p>

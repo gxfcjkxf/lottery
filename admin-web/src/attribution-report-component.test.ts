@@ -28,8 +28,8 @@ function component(): Component {
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
   return new Function("__modules", body)(modules) as Component;
 }
-function payload(query: Record<string, unknown>, key = "2026-10-07", label = key, legacyCount = "0") {
-  const totals = { order_count: "1", stake_points: huge, placed_count: "0", won_count: "0", lost_count: "1", abnormal_count: "0", cancelled_count: "0", refund_points: "0", settled_stake_points: huge, unfinalized_stake_points: "0", abnormal_stake_points: "0", current_prize_points: "0", correction_open_count: "0", final_lost_stake_points: huge, legacy_attribution_count: legacyCount };
+function payload(query: Record<string, unknown>, key = "2026-10-07", label = key) {
+  const totals = { order_count: "1", stake_points: huge, placed_count: "0", won_count: "0", lost_count: "1", abnormal_count: "0", cancelled_count: "0", refund_points: "0", settled_stake_points: huge, unfinalized_stake_points: "0", abnormal_stake_points: "0", current_prize_points: "0", correction_open_count: "0", final_lost_stake_points: huge };
   return { success: true, request_id: "attribution-test", data: { brand_id: brand, snapshot_at: "2026-10-08T00:00:00Z", timezone: "Asia/Singapore", query, summary: totals, items: [{ key, label, totals }], total_groups: "1" } };
 }
 function text(node: Node): string { return node.text + node.children.map(text).join(""); }
@@ -94,11 +94,11 @@ describe("AttributionReportManagement real Vue component", () => {
     (start!.props["onUpdate:modelValue"] as ((value: string) => void))("2026-02-30T12:00:00"); await flush(); click(testId(mounted.root, "attribution-query")); await flush();
     expect(fetcher).not.toHaveBeenCalled(); expect(find(mounted.root, (n) => n.props.role === "alert")).not.toBeNull(); mounted.app.unmount();
   });
-  it("labels the agent-none and legacy groups according to their grouping context", async () => {
-    let key = "none", label = "none", legacyCount = "0";
+  it("labels the agent-none group and offers only current join methods", async () => {
+    let key = "none", label = "none";
     const fetcher = vi.fn<typeof fetch>(async (input) => {
       const q = new URL(String(input), "http://local").searchParams;
-      return new Response(JSON.stringify(payload({ from: q.get("from"), to: q.get("to"), group_by: q.get("group_by"), limit: Number(q.get("limit")), offset: Number(q.get("offset")), game_id: q.get("game_id"), member_id: q.get("member_id"), agent_id: q.get("agent_id"), agent_scope: q.get("agent_scope"), join_method: q.get("join_method") }, key, label, legacyCount)), { status: 200 });
+      return new Response(JSON.stringify(payload({ from: q.get("from"), to: q.get("to"), group_by: q.get("group_by"), limit: Number(q.get("limit")), offset: Number(q.get("offset")), game_id: q.get("game_id"), member_id: q.get("member_id"), agent_id: q.get("agent_id"), agent_scope: q.get("agent_scope"), join_method: q.get("join_method") }, key, label)), { status: 200 });
     });
     vi.stubGlobal("fetch", fetcher); vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
     const mounted = mount(); mounted.i18n.setLocale("en"); await flush();
@@ -108,15 +108,14 @@ describe("AttributionReportManagement real Vue component", () => {
     expect(testId(mounted.root, "attribution-join-method")!.props["aria-label"]).toBe("Join method");
     const selectGroup = async (group: string) => { (groupSelect!.props["onUpdate:modelValue"] as (value: string) => void)(group); await flush(); click(testId(mounted.root, "attribution-query")); await flush(); };
     await selectGroup("agent"); expect(text(mounted.root)).toContain("No agent"); expect(text(mounted.root)).not.toContain("No identity");
-    key = "legacy"; label = "legacy"; legacyCount = "1";
-    await selectGroup("agent"); expect(text(mounted.root)).toContain("Legacy agent not recorded");
-    await selectGroup("join_method"); expect(text(mounted.root)).toContain("Legacy attribution not recorded");
-    key = actor; label = actor; legacyCount = "0";
+    const joinMethodSelect = testId(mounted.root, "attribution-join-method");
+    expect(joinMethodSelect!.options.map((option) => option.value)).not.toContain("legacy");
+    key = actor; label = actor;
     await selectGroup("member"); expect(text(mounted.root)).toContain(actor); expect(text(mounted.root)).not.toContain("No identity");
     mounted.app.unmount();
   });
   it("shows an honest zero range for an empty result and explains the two timezones", async () => {
-    const zero = { order_count: "0", stake_points: "0", placed_count: "0", won_count: "0", lost_count: "0", abnormal_count: "0", cancelled_count: "0", refund_points: "0", settled_stake_points: "0", unfinalized_stake_points: "0", abnormal_stake_points: "0", current_prize_points: "0", correction_open_count: "0", final_lost_stake_points: "0", legacy_attribution_count: "0" };
+    const zero = { order_count: "0", stake_points: "0", placed_count: "0", won_count: "0", lost_count: "0", abnormal_count: "0", cancelled_count: "0", refund_points: "0", settled_stake_points: "0", unfinalized_stake_points: "0", abnormal_stake_points: "0", current_prize_points: "0", correction_open_count: "0", final_lost_stake_points: "0" };
     const fetcher = vi.fn<typeof fetch>(async (input) => {
       const q = new URL(String(input), "http://local").searchParams;
       const body = payload({ from: q.get("from"), to: q.get("to"), group_by: q.get("group_by"), limit: Number(q.get("limit")), offset: Number(q.get("offset")), game_id: null, member_id: null, agent_id: null, agent_scope: "direct", join_method: null });

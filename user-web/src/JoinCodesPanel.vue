@@ -31,7 +31,6 @@ const text = {
     retry: "Retry",
     attribution: "How you joined this brand",
     codes: "Your join codes",
-    legacy: "Legacy membership. No join code attribution is recorded.",
     noAttribution: "No join code was used for this membership.",
     noCodes: "No join codes are assigned to this membership.",
     usable: "Usable",
@@ -49,7 +48,6 @@ const text = {
     referral: "Referral code",
     domain: "Brand domain",
     operator: "Added by operations",
-    legacyMethod: "Legacy record",
     starts: "Starts",
     expires: "Expires",
   },
@@ -59,7 +57,6 @@ const text = {
     retry: "重试",
     attribution: "您加入此品牌的方式",
     codes: "您的加入码",
-    legacy: "历史会员记录，未记录加入码归属。",
     noAttribution: "此会员没有使用加入码。",
     noCodes: "当前会员没有分配加入码。",
     usable: "可用",
@@ -77,7 +74,6 @@ const text = {
     referral: "推荐码",
     domain: "品牌域名加入",
     operator: "运营添加",
-    legacyMethod: "历史记录",
     starts: "生效",
     expires: "到期",
   },
@@ -225,8 +221,7 @@ onUnmounted(() => {
         <template v-if="attribution">
           <p>{{ methodLabel(attribution.join_method) }}</p>
           <p v-if="attribution.source_code" class="join-source-code">{{ attribution.source_code }}</p>
-          <p v-if="attribution.legacy" class="muted">{{ t().legacy }}</p>
-          <p v-else-if="!attribution.code_id" class="muted">{{ t().noAttribution }}</p>
+          <p v-if="!attribution.code_id" class="muted">{{ t().noAttribution }}</p>
         </template>
       </section>
 

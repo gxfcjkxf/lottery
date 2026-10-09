@@ -7,7 +7,7 @@ const jsonPath = "/api/v1/admin/reports/commission-analysis";
 const csvPath = `${jsonPath}.csv`;
 const csvColumns = [
   "record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "agent_id", "member_id", "cycle_id", "key", "label",
-  "selected_cycle_count", "ready_cycle_count", "unready_cycle_count", "legacy_policy_blocked_cycle_count",
+  "selected_cycle_count", "ready_cycle_count", "unready_cycle_count",
   "observed_calculated_points", "calculated_points", "paid_entry_count", "paid_points", "adjustment_entry_count", "adjustment_credit_points", "adjustment_debit_points",
   "correction_entry_count", "correction_credit_points", "correction_debit_points", "posting_entry_count", "actual_net_points", "manual_adjustment_net_points",
   "effective_target_points", "calculation_minus_actual_points", "effective_minus_actual_points", "calculation_complete", "effective_target_complete",
@@ -35,7 +35,7 @@ test("closes report, query, coverage, and totals objects to the documented exact
   };
   assert.deepEqual(exact(schemas.CommissionAnalysisReport), ["brand_id", "snapshot_at", "timezone", "query", "coverage", "summary", "items", "total_groups"]);
   assert.deepEqual(exact(schemas.CommissionAnalysisReport.properties.query), ["from", "to", "group_by", "limit", "offset", "agent_id", "member_id", "cycle_id"]);
-  assert.deepEqual(exact(schemas.CommissionAnalysisCoverage), ["selected_cycle_count", "ready_cycle_count", "unready_cycle_count", "legacy_policy_blocked_cycle_count"]);
+  assert.deepEqual(exact(schemas.CommissionAnalysisCoverage), ["selected_cycle_count", "ready_cycle_count", "unready_cycle_count"]);
   assert.deepEqual(exact(schemas.CommissionAnalysisTotals), [
     "observed_calculated_points", "calculated_points", "paid_entry_count", "paid_points", "adjustment_entry_count", "adjustment_credit_points", "adjustment_debit_points",
     "correction_entry_count", "correction_credit_points", "correction_debit_points", "posting_entry_count", "actual_net_points", "manual_adjustment_net_points",
@@ -49,7 +49,7 @@ test("closes report, query, coverage, and totals objects to the documented exact
   assert.equal(schemas.CommissionAnalysisTotals.properties.effective_target_complete.type, "boolean");
 });
 
-test("describes the cycle window, strict bounded query, and all 34 CSV columns", () => {
+test("describes the cycle window, strict bounded query, and all 33 CSV columns", () => {
   const [json, csv] = operations;
   assert.match(json.description, /cycle\.window_to/);
   assert.match(json.description, /93 days/);
@@ -59,7 +59,7 @@ test("describes the cycle window, strict bounded query, and all 34 CSV columns",
   assert.match(csv.description, /cycle\.window_to/);
   assert.match(csv.description, /apostrophe safety prefix/);
   assert.match(csv.description, /10000 groups or 4MiB/);
-  assert.equal(csvColumns.length, 34);
+  assert.equal(csvColumns.length, 33);
   assert.ok(csv.description.includes(csvColumns.join(", ")));
 });
 

@@ -25,17 +25,23 @@ func TestOptionalReadNodeCannotBlockPrimaryStartup(t *testing.T) {
 	if time.Since(before) > time.Second {
 		t.Fatal("optional node delayed startup")
 	}
-	if len(pools.Replicas) != 1 || pools.Replica != pools.Replicas[0] {
-		t.Fatal("read alias invalid")
+	if len(pools.Replicas) != 1 {
+		t.Fatal("configured replica pool missing")
 	}
 	tx, e := pools.Primary.Begin(ctx)
 	if e != nil {
 		t.Fatal(e)
 	}
 	defer tx.Rollback(ctx)
-	value, source, e := database.NewHistoryRouter(pools.Replicas).Read(ctx, tx, database.HistoryAudit, func(tx pgx.Tx) (any, error) { var n int; e := tx.QueryRow(ctx, `SELECT 42`).Scan(&n); return n, e })
-	if e != nil || value != 42 || source.Name() != "primary" || source.Reason != "no_eligible_replica" {
-		t.Fatal(value, source, e)
+	callbackRan := false
+	_, source, e := database.NewHistoryRouter(pools.Replicas).Read(ctx, tx, database.HistoryAudit, func(tx pgx.Tx) (any, error) {
+		callbackRan = true
+		var n int
+		err := tx.QueryRow(ctx, `SELECT 42`).Scan(&n)
+		return n, err
+	})
+	if e == nil || callbackRan || source.Reason != "replica_unavailable" {
+		t.Fatal("unavailable configured replica did not return an explicit error", source, e)
 	}
 	if e = tx.Commit(ctx); e != nil {
 		t.Fatal(e)

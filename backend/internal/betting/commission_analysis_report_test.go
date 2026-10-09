@@ -100,7 +100,7 @@ func assertCommissionAnalysisCycleReport(t *testing.T, report reporting.Commissi
 		t.Fatalf("analysis report metadata drifted: %+v", report)
 	}
 	if report.Coverage != (reporting.CommissionAnalysisCoverage{
-		SelectedCycleCount: "1", ReadyCycleCount: "1", UnreadyCycleCount: "0", LegacyPolicyBlockedCycleCount: "0",
+		SelectedCycleCount: "1", ReadyCycleCount: "1", UnreadyCycleCount: "0",
 	}) {
 		t.Fatalf("analysis coverage = %+v, want one ready saved cycle", report.Coverage)
 	}
@@ -268,14 +268,14 @@ func TestCommissionAnalysisGenuinePaymentAdjustmentCorrectionReadAndExport(t *te
 	}
 	assertCommissionAnalysisCycleReport(t, final, f, cycle, query, finalTotals)
 	csvRows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(body), "\xef\xbb\xbf"))).ReadAll()
-	if err != nil || len(csvRows) != 3 || len(csvRows[0]) != 34 || len(csvRows[1]) != 34 || len(csvRows[2]) != 34 || csvRows[1][0] != "summary" || csvRows[2][0] != "group" {
-		t.Fatalf("analysis CSV is not the full 34-column summary/group export: rows=%d err=%v", len(csvRows), err)
+	if err != nil || len(csvRows) != 3 || len(csvRows[0]) != 33 || len(csvRows[1]) != 33 || len(csvRows[2]) != 33 || csvRows[1][0] != "summary" || csvRows[2][0] != "group" {
+		t.Fatalf("analysis CSV is not the full 33-column summary/group export: rows=%d err=%v", len(csvRows), err)
 	}
-	if csvRows[1][16] != "0" || csvRows[1][17] != "0" || csvRows[1][18] != "1" || csvRows[1][19] != "1" ||
-		csvRows[1][20] != "1" || csvRows[1][21] != "1" || csvRows[1][22] != "0" || csvRows[1][23] != "1" ||
-		csvRows[1][24] != "0" || csvRows[1][25] != "2" || csvRows[1][26] != "3" || csvRows[1][27] != "0" ||
-		csvRows[1][28] != "1" || csvRows[1][29] != "0" ||
-		csvRows[1][30] != "0" || csvRows[1][31] != "0" || csvRows[1][32] != "true" || csvRows[1][33] != "true" {
+	if csvRows[1][15] != "0" || csvRows[1][16] != "0" || csvRows[1][17] != "1" || csvRows[1][18] != "1" ||
+		csvRows[1][19] != "1" || csvRows[1][20] != "1" || csvRows[1][21] != "0" || csvRows[1][22] != "1" ||
+		csvRows[1][23] != "0" || csvRows[1][24] != "2" || csvRows[1][25] != "3" || csvRows[1][26] != "0" ||
+		csvRows[1][27] != "1" || csvRows[1][28] != "0" ||
+		csvRows[1][29] != "0" || csvRows[1][30] != "0" || csvRows[1][31] != "true" || csvRows[1][32] != "true" {
 		t.Fatalf("CSV summary lost the real corrected financial facts: %v", csvRows[1])
 	}
 
@@ -288,7 +288,7 @@ func TestCommissionAnalysisGenuinePaymentAdjustmentCorrectionReadAndExport(t *te
 	if err != nil {
 		t.Fatalf("valid empty analysis range: %v", err)
 	}
-	if empty.Coverage != (reporting.CommissionAnalysisCoverage{SelectedCycleCount: "0", ReadyCycleCount: "0", UnreadyCycleCount: "0", LegacyPolicyBlockedCycleCount: "0"}) || empty.TotalGroups != "0" || len(empty.Items) != 0 ||
+	if empty.Coverage != (reporting.CommissionAnalysisCoverage{SelectedCycleCount: "0", ReadyCycleCount: "0", UnreadyCycleCount: "0"}) || empty.TotalGroups != "0" || len(empty.Items) != 0 ||
 		empty.Summary.CalculatedPoints == nil || *empty.Summary.CalculatedPoints != "0" || !empty.Summary.CalculationComplete ||
 		empty.Summary.EffectiveTargetPoints == nil || *empty.Summary.EffectiveTargetPoints != "0" || !empty.Summary.EffectiveTargetComplete {
 		t.Fatalf("empty selection should be complete zero, not missing/unknown: %+v", empty)

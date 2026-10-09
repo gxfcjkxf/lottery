@@ -52,7 +52,7 @@ test('workbench displays real scoped financial data, explicit gaps, and clears s
       ['cycle_processing_count','Cycles enumerating, calculating, or summarizing'],['cycle_waiting_count','Cycles waiting'],
       ['cycle_ready_count','Cycles ready (current evidence)'],['cycle_stale_count','Cycles ready (stale evidence)'],['cycle_failed_count','Cycles failed'],
       ['payment_awaiting_approval_count','Payments awaiting approval'],['payment_processing_count','Payments processing'],['payment_blocked_count','Payments blocked'],['payment_failed_count','Payments failed'],
-      ['plan_processing_count','Plans processing'],['plan_ready_count','Plans ready'],['plan_blocked_count','Plans blocked'],['plan_failed_count','Plans failed'],
+      ['plan_processing_count','Plans processing'],['plan_ready_count','Plans ready'],['plan_failed_count','Plans failed'],
       ['execution_awaiting_approval_count','Executions awaiting approval'],['execution_processing_count','Executions processing'],['execution_paused_count','Executions paused'],['execution_failed_count','Executions failed'],
     ]
     expect(Object.keys(commissions.data).sort()).toEqual(fields.map(([key])=>key).sort())

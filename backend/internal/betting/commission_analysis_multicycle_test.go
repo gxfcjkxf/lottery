@@ -80,13 +80,13 @@ func assertCommissionAnalysisMulticycleCSV(t *testing.T, body []byte, q reportin
 		"correction_credit_points", "correction_debit_points", "posting_entry_count", "actual_net_points",
 		"manual_adjustment_net_points", "effective_target_points", "calculation_minus_actual_points", "effective_minus_actual_points",
 		"calculation_complete", "effective_target_complete"}
-	if len(rows[0]) != 34 || !reflect.DeepEqual(rows[0][16:], wantFields) {
+	if len(rows[0]) != 33 || !reflect.DeepEqual(rows[0][15:], wantFields) {
 		t.Fatalf("multicycle CSV totals header drifted: %v", rows[0])
 	}
-	wantCoverage := []string{coverage.SelectedCycleCount, coverage.ReadyCycleCount, coverage.UnreadyCycleCount, coverage.LegacyPolicyBlockedCycleCount}
+	wantCoverage := []string{coverage.SelectedCycleCount, coverage.ReadyCycleCount, coverage.UnreadyCycleCount}
 	lastKey := ""
 	for i, row := range rows[1:] {
-		if len(row) != 34 || row[4] != q.From.UTC().Format(time.RFC3339Nano) || row[5] != q.To.UTC().Format(time.RFC3339Nano) || row[6] != q.GroupBy || !reflect.DeepEqual(row[12:16], wantCoverage) {
+		if len(row) != 33 || row[4] != q.From.UTC().Format(time.RFC3339Nano) || row[5] != q.To.UTC().Format(time.RFC3339Nano) || row[6] != q.GroupBy || !reflect.DeepEqual(row[12:15], wantCoverage) {
 			t.Fatalf("multicycle CSV metadata/coverage drifted: %v", row)
 		}
 		want := summary
@@ -102,8 +102,8 @@ func assertCommissionAnalysisMulticycleCSV(t *testing.T, body []byte, q reportin
 			}
 			lastKey = row[10]
 		}
-		if !reflect.DeepEqual(row[16:], commissionAnalysisMulticycleCSVValues(want)) {
-			t.Fatalf("multicycle CSV amounts/nullability = %v, want %v", row[16:], commissionAnalysisMulticycleCSVValues(want))
+		if !reflect.DeepEqual(row[15:], commissionAnalysisMulticycleCSVValues(want)) {
+			t.Fatalf("multicycle CSV amounts/nullability = %v, want %v", row[15:], commissionAnalysisMulticycleCSVValues(want))
 		}
 	}
 }
@@ -237,7 +237,7 @@ func TestCommissionAnalysisActualMulticycleMultilevelCoveragePaginationAndCSV(t 
 	mixedRoot, mixedChild := rootFirst, childFirst
 	mixedRoot.calculationComplete, mixedRoot.effectiveComplete = false, false
 	mixedChild.calculationComplete, mixedChild.effectiveComplete = false, false
-	mixedCoverage := reporting.CommissionAnalysisCoverage{SelectedCycleCount: "2", ReadyCycleCount: "1", UnreadyCycleCount: "1", LegacyPolicyBlockedCycleCount: "0"}
+	mixedCoverage := reporting.CommissionAnalysisCoverage{SelectedCycleCount: "2", ReadyCycleCount: "1", UnreadyCycleCount: "1"}
 	mixedCases := []struct {
 		group  string
 		groups map[string]commissionAnalysisExpectedTotals
@@ -304,7 +304,7 @@ func TestCommissionAnalysisActualMulticycleMultilevelCoveragePaginationAndCSV(t 
 	rootAll := rootFirst
 	rootAll.observed, rootAll.calculated, rootAll.effective = "4", "4", "6"
 	rootAll.calculationGap, rootAll.effectiveGap = "-1", "1"
-	readyCoverage := reporting.CommissionAnalysisCoverage{SelectedCycleCount: "2", ReadyCycleCount: "2", UnreadyCycleCount: "0", LegacyPolicyBlockedCycleCount: "0"}
+	readyCoverage := reporting.CommissionAnalysisCoverage{SelectedCycleCount: "2", ReadyCycleCount: "2", UnreadyCycleCount: "0"}
 	readyCases := []struct {
 		group  string
 		groups map[string]commissionAnalysisExpectedTotals

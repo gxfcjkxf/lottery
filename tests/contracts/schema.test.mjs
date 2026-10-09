@@ -17,10 +17,10 @@ const root={$id:"urn:lottery:implemented-api",components};
 ajv.addSchema(root);
 const validate=schema=>ajv.compile({$ref:`urn:lottery:implemented-api#/components/schemas/${schema}`});
 const exampleSchemaNames={
+  FinanceReconciliationJobModern:"FinanceReconciliationJob",
+  FinanceReconciliationTargetModern:"FinanceReconciliationTarget",
   FinanceBusinessInventorySnapshot:"FinanceBusinessInventorySnapshot",
-  AdminWorkbenchLegacy:"AdminWorkbenchSnapshot",
   AdminAuditRecord:"AdminAuditEntry",
-  AdminAuditRecordLegacy:"AdminAuditEntry",
   AdminAuditList:"AdminAuditList",
   WithdrawalOrderExample:"WithdrawalOrder",
   WithdrawalOrderPageExample:"WithdrawalOrderPage",
@@ -54,8 +54,8 @@ test("actual Go DTO serialization and rule-engine outputs satisfy contracts",()=
   assert.equal(examples.AdminWorkbench.withdrawals.data.processing_points,"9000000000000000000");
   assert.equal(examples.AdminWorkbench.commissions.status,"ready");
   assert.equal(examples.AdminWorkbench.commissions.data.cycle_ready_count,"9007199254740993");
-  assert.equal(examples.AdminWorkbenchLegacy.commissions.status,"not_implemented");
-  assert.equal(examples.AdminWorkbenchLegacy.commissions.data,null);
+  assert.equal(Object.hasOwn(examples,"AdminWorkbenchLegacy"),false);
+  assert.equal(Object.hasOwn(examples,"AdminAuditRecordLegacy"),false);
   assert.equal(examples.AdminWorkbench.rewards.status,"ready");
   assert.deepEqual(examples.AdminWorkbench.rewards.data,{granted_count:"1",pending_count:"2",revoked_count:"3"});
   assert.equal(examples.LotterySimulationResult.bet_points,"8");
@@ -81,23 +81,23 @@ test("full-replacement finance requests require explicit nullable fields",()=>{
   assert.ok(!validate("FinanceWithdrawalGameConfig")({}));
 });
 
-test("new withdrawal policy writes require positive N while legacy zero history stays readable",()=>{
+test("all withdrawal policy reads and writes require positive N",()=>{
   const check=validate("FinanceWithdrawalPositiveMultiple");
   for(const value of ["1","0.000001","0.25","2.5","999999.999999","1000000"])
     assert.ok(check(value),`${value}: ${JSON.stringify(check.errors)}`);
   for(const value of ["0","01","1.0","1e2","-1","0.0000001","1000000.000001","1000001"])
     assert.ok(!check(value),`invalid new N accepted: ${value}`);
-  assert.ok(validate("FinanceWithdrawalGameConfig")({turnover_multiple:"0"}));
+  assert.ok(!validate("FinanceWithdrawalGameConfig")({turnover_multiple:"0"}));
   assert.ok(!validate("FinanceWithdrawalGameWriteConfig")({turnover_multiple:"0"}));
   assert.ok(validate("FinanceWithdrawalGameWriteConfig")({turnover_multiple:null}));
   assert.ok(validate("FinanceWithdrawalGameWriteConfig")({turnover_multiple:"0.000001"}));
   const brand={enabled:false,min_points:"1",max_points:null,allowed_sources:["recharge","winning","gift"],review_mode:"manual",turnover_multiple:"0"};
-  assert.ok(validate("FinanceWithdrawalBrandConfig")(brand));
+  assert.ok(!validate("FinanceWithdrawalBrandConfig")(brand));
   assert.ok(!validate("FinanceWithdrawalBrandWriteConfig")(brand));
   assert.ok(validate("FinanceWithdrawalBrandWriteConfig")({...brand,turnover_multiple:"1"}));
   assert.ok(validate("FinanceWithdrawalBrandWriteConfig")({...brand,allowed_sources:["recharge","winning","gift","commission"],turnover_multiple:"1"}));
 });
-test("wallet is a strict four-source DTO while immutable ledger snapshots retain a legacy three-source shape",()=>{
+test("wallet and ledger snapshots require all four current sources",()=>{
   const schemas=doc.components.schemas;
   assert.deepEqual(Object.keys(schemas.FinanceBalance.properties),["recharge","winning","gift","commission"]);
   assert.ok(schemas.FinanceWallet.required.includes("commission_points"));
@@ -105,8 +105,10 @@ test("wallet is a strict four-source DTO while immutable ledger snapshots retain
   assert.deepEqual(schemas.FinanceEntry.properties.before_snapshot,{$ref:"#/components/schemas/FinanceLedgerBalance"});
   assert.deepEqual(schemas.FinanceEntry.properties.after_snapshot,{$ref:"#/components/schemas/FinanceLedgerBalance"});
   assert.deepEqual(schemas.FinanceEntry.properties.delta_snapshot,{$ref:"#/components/schemas/FinanceLedgerDeltaBalance"});
-  assert.ok(schemas.FinanceLedgerBalance.anyOf.some((schema)=>schema.$ref==="#/components/schemas/FinanceLegacyBalance"));
-  assert.ok(schemas.FinanceLedgerDeltaBalance.anyOf.some((schema)=>schema.$ref==="#/components/schemas/FinanceLegacyDeltaBalance"));
+  assert.deepEqual(schemas.FinanceLedgerBalance,{$ref:"#/components/schemas/FinanceBalance"});
+  assert.deepEqual(schemas.FinanceLedgerDeltaBalance,{$ref:"#/components/schemas/FinanceDeltaBalance"});
+  assert.equal(schemas.FinanceLegacyBalance,undefined);
+  assert.equal(schemas.FinanceLegacyDeltaBalance,undefined);
   assert.equal(schemas.FinanceEntry.properties.source_allocation.maxItems,4);
 });
 test("admin logout uses admin authentication while unsupported payout operations remain absent",()=>{

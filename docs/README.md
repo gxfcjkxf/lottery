@@ -1,5 +1,7 @@
 # Lottery 实现交接文档
 
+当前未发布版本仅使用一份完整基线迁移。旧版本兼容、旧账本补零、历史恢复和失败时切换实现已移除；正常业务历史、结果更正和审计仍保留。开发约束以仓库根目录的AGENTS.md为准。
+
 > 用途：交给第三方开发人员或 AI 作为第一阶段实现依据。  
 > 基线日期：2026-10-05  
 > 状态：实现规格草案，业务未决项集中列在 `08-acceptance-and-open-items.md`。
@@ -23,9 +25,9 @@
 - [09-openapi-handover.md](09-openapi-handover.md)：已实现接口的 OpenAPI、接入限制、生成和 CI 契约检查。
 - [09-implementation-backlog.md](09-implementation-backlog.md)：按依赖拆分的第一阶段开发任务。
 - [10-replication-and-recovery.md](10-replication-and-recovery.md)：隔离复制、手动提升与备份恢复命令、证据和生产验收边界。
-- [13-wallet-reconciliation.md](13-wallet-reconciliation.md)：固定品牌账户范围的只读钱包与资金业务双向关联检查、不可变观察、失败人工恢复和旧回执兼容。
+- [13-wallet-reconciliation.md](13-wallet-reconciliation.md)：固定品牌账户范围的只读钱包与资金业务双向关联检查、不可变观察和当前任务人工重试。
 - [14-commission-facts.md](14-commission-facts.md)：最终结算事实、计佣基数和内部锁约束；内部事实本身不授权佣金派发。
-- [15-four-source-ledger.md](15-four-source-ledger.md)：四来源16桶、旧流水与幂等摘要兼容、原路退款、提现来源和协调升级要求。
+- [15-four-source-ledger.md](15-four-source-ledger.md)：统一四来源16分项、当前快照与幂等、原路退款和提现来源。
 - [16-commission-policy-snapshot.md](16-commission-policy-snapshot.md)：品牌金融政策、不可变修订、私有投注快照和已确认的周期收尾/汇总规则。
 - [17-commission-cycles.md](17-commission-cycles.md)：真实周期发现、待结清、分页核算、代次历史、独立派发开关、单人审核及实际佣金来源入账；更正补偿见22与23号合同。
 - [18-commission-adjustments.md](18-commission-adjustments.md)：已派发目标的独立人工差额修正、不可变证据、PC/移动确认与真实佣金入账通知；不解锁结果更正待处理任务。
@@ -51,7 +53,6 @@
 - [38-commission-cycle-analysis.md](38-commission-cycle-analysis.md)：保存周期的核算/有效目标/实际净额分析、双查看授权、完整CSV及未知值边界；真实双端查询/导出和只读资金保持已验收，容量与真机另验。
 - [39-commission-manual-recalculation-policy.md](39-commission-manual-recalculation-policy.md)：人工修正后新核算覆盖政策、历史未决计划显式审计重试及部署/验收边界。
 - [40-zero-original-commission-evidence.md](40-zero-original-commission-evidence.md)：零原派发真实人工资金保护、旧错误stale升级拒绝、显式离线完整历史检查及恢复边界；资金恢复继续实施。
-- [41-commission-history-proposals.md](41-commission-history-proposals.md)：历史恢复来源摘要、真实会话/权限、申请与单人依据审核、原幂等回执与不可变审计；不开放资金执行。
 
 ## 第一阶段实现顺序
 

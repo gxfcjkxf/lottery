@@ -14,6 +14,7 @@ function environment(viewport = 'desktop') {
     APP_ENV: 'test', REWARD_UI_VIEWPORT: viewport, REWARD_UI_FIXTURE_CONFIRM: 'owned_synthetic_database',
     DATABASE_URL: `postgres://lottery_test@127.0.0.1:55432/${database(viewport)}?sslmode=disable`,
     PLATFORM_BIN: process.execPath,
+    POSTGRES_PSQL_BIN: process.execPath,
     TEST_REWARD_ADMIN_PASSWORD: 'reward-static-owned-operator-password',
     TEST_REWARD_SUPER_PASSWORD: 'reward-static-owned-reader-password',
   };
@@ -33,7 +34,8 @@ test('reward browser matrix uses fresh viewport databases, normal CLI bootstrap 
   assert.match(job, /REWARD_UI_FIXTURE_CONFIRM: owned_synthetic_database/);
   assert.match(job, /TEST_ADMIN_ORIGIN: http:\/\/localhost:5174/);
   for (const name of ['TEST_REWARD_ADMIN_PASSWORD', 'TEST_REWARD_SUPER_PASSWORD']) assert.match(job, new RegExp(`^      ${name}: .+$`, 'm'));
-  assert.match(job, /PLATFORM_BIN: \.local\/reward-platform/);
+  assert.match(job, /PLATFORM_BIN: \$\{\{ github\.workspace \}\}\/\.local\/reward-platform/);
+  assert.match(job, /POSTGRES_PSQL_BIN: \/usr\/bin\/psql/);
   assert.match(job, /go -C backend build -o \.\.\/\.local\/reward-platform \.\/cmd\/platform/);
   assert.match(job, /\.local\/reward-platform generate-auth-key \.local\/auth\.key/);
   assert.match(job, /node scripts\/prepare-reward-browser\.mjs/);
@@ -73,7 +75,7 @@ test('initializer accepts only the exact owned database, viewport, loopback, por
           const config = readRewardBrowserConfiguration({ ...environment(viewport), DATABASE_URL: `${scheme}://lottery_test@${host}:${port}/${database(viewport)}?sslmode=disable` });
           assert.equal(config.database, database(viewport));
           assert.equal(config.viewport, viewport);
-          assert.equal(config.psqlBin, 'psql');
+          assert.equal(config.psqlBin, process.execPath);
           assert.equal(config.adminOrigin, 'http://localhost:5174');
           assert.ok(Object.isFrozen(config));
         }
@@ -99,6 +101,7 @@ test('unsafe ownership, read configuration, missing binaries and missing credent
     { REWARD_UI_FIXTURE_CONFIRM: '' }, { REWARD_UI_FIXTURE_CONFIRM: 'yes' },
     { DATABASE_READ_URL: environment().DATABASE_URL }, { DATABASE_READ_URLS: '[]' }, { DATABASE_READ_URL: ' ' },
     { PLATFORM_BIN: undefined }, { PLATFORM_BIN: 'platform' }, { PLATFORM_BIN: '/nonexistent/reward-platform' },
+    { POSTGRES_PSQL_BIN: undefined }, { POSTGRES_PSQL_BIN: '' },
     { POSTGRES_PSQL_BIN: 'psql --command=unsafe' }, { POSTGRES_PSQL_BIN: '/nonexistent/psql' },
     { TEST_REWARD_ADMIN_PASSWORD: undefined }, { TEST_REWARD_SUPER_PASSWORD: 'short' },
     { TEST_REWARD_SUPER_PASSWORD: 'x'.repeat(129) }, { TEST_REWARD_ADMIN_PASSWORD: 'x'.repeat(16) + '\u0000' },

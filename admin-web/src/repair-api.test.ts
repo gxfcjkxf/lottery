@@ -47,13 +47,13 @@ describe("balance repair API", () => {
       ),
     ).toEqual(["GET", "GET"]);
   });
-  it("normalizes legacy repair audit snapshots in memory while preserving the server row", async () => {
+  it("preserves historical repair audit snapshots without bucket normalization", async () => {
     const buckets = Object.fromEntries(["recharge", "winning", "gift"].map((source) => [source, { available: "1", manual_frozen: "0", system_frozen: "0", withdrawal: "0" }]));
     const snapshot = { version: 3, buckets };
     const row = { id: "repair", version: 3, before_snapshot: snapshot, after_snapshot: snapshot, reason: "legacy", actor_id: "actor", request_id: "request", created_at: "2026-01-01T00:00:00Z" };
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ success: true, data: { items: [row] } }), { status: 200 }));
     const result = await createRepairApi(fetcher as typeof fetch).history("brand", "member");
-    expect(result.items[0]?.before_snapshot).toMatchObject({ buckets: { commission: { available: "0" } } });
+    expect(result.items[0]?.before_snapshot).toEqual(snapshot);
     expect(Object.keys(buckets)).toEqual(["recharge", "winning", "gift"]);
   });
   it("does not convert denied repair into success", async () => {

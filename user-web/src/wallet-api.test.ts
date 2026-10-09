@@ -78,12 +78,11 @@ describe("user wallet API", () => {
     );
   });
 
-  it("normalizes legacy ledger snapshots without altering their source object", async () => {
+  it("rejects ledger snapshots missing current commission buckets", async () => {
     const legacy = Object.fromEntries(["recharge", "winning", "gift"].map((source) => [source, { available: "1", manual_frozen: "0", system_frozen: "0", withdrawal: "0" }]));
     const entry = { before_snapshot: legacy, delta_snapshot: legacy, after_snapshot: legacy };
     const api = createWalletApi({ fetcher: vi.fn<typeof fetch>().mockResolvedValue(ok({ items: [entry] })) });
-    const result = await api.ledger();
-    expect(result.items[0]?.before_snapshot.commission.available).toBe("0");
+    await expect(api.ledger()).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     expect(Object.keys(legacy)).toEqual(["recharge", "winning", "gift"]);
   });
 

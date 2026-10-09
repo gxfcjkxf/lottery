@@ -26,7 +26,7 @@ func commissionWorkbenchRead(t *testing.T, f commissionBatchFixture, want map[st
 	encoded, _ := json.Marshal(out.Commissions.Data)
 	var fields map[string]string
 	_ = json.Unmarshal(encoded, &fields)
-	if len(fields) != 19 {
+	if len(fields) != 18 {
 		t.Fatal("unexpected task summary fields", string(encoded))
 	}
 	for key, value := range want {

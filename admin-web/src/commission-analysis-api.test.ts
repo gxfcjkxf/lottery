@@ -4,7 +4,7 @@ import { COMMISSION_ANALYSIS_COVERAGE_FIELDS, COMMISSION_ANALYSIS_FIELDS, commis
 
 const brand = "11111111-1111-4111-8111-111111111111", actor = "22222222-2222-4222-8222-222222222222", key = "abcdefab-cdef-4abc-8def-abcdefabcdef";
 const from = "2026-01-01T00:00:00Z", to = "2026-01-02T00:00:00Z", huge = "922337203685477580812345678901234567890";
-const coverage = { selected_cycle_count: "1", ready_cycle_count: "1", unready_cycle_count: "0", legacy_policy_blocked_cycle_count: "0" };
+const coverage = { selected_cycle_count: "1", ready_cycle_count: "1", unready_cycle_count: "0" };
 const totals: CommissionAnalysisTotals = {
   observed_calculated_points: huge, calculated_points: huge, paid_entry_count: "1", paid_points: huge,
   adjustment_entry_count: "1", adjustment_credit_points: "0", adjustment_debit_points: `${BigInt(huge) + 9n}`,
@@ -85,7 +85,7 @@ describe("commission analysis API", () => {
     const mismatch = payload({ items: [{ key, label: key, totals: unknownTotals }] });
     await expect(createCommissionAnalysisApi(vi.fn<typeof fetch>().mockResolvedValue(json(mismatch))).report(brand, { from, to, group_by: "cycle" })).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
-  it("accepts empty complete cycles, empty globally-unready agent cohorts, and observational legacy blocks", async () => {
+  it("accepts empty complete cycles and empty globally-unready agent cohorts", async () => {
     const zeros: CommissionAnalysisTotals = {
       observed_calculated_points: "0", calculated_points: "0", paid_entry_count: "0", paid_points: "0",
       adjustment_entry_count: "0", adjustment_credit_points: "0", adjustment_debit_points: "0", correction_entry_count: "0",
@@ -93,22 +93,22 @@ describe("commission analysis API", () => {
       manual_adjustment_net_points: "0", effective_target_points: "0", calculation_minus_actual_points: "0", effective_minus_actual_points: "0",
       calculation_complete: true, effective_target_complete: true,
     };
-    const readyCoverage = { selected_cycle_count: "1", ready_cycle_count: "1", unready_cycle_count: "0", legacy_policy_blocked_cycle_count: "1" };
+    const readyCoverage = { selected_cycle_count: "1", ready_cycle_count: "1", unready_cycle_count: "0" };
     const readyCycle = payload({ coverage: readyCoverage, summary: zeros, items: [{ key, label: key, totals: zeros }] });
     await expect(createCommissionAnalysisApi(vi.fn<typeof fetch>().mockResolvedValue(json(readyCycle))).report(brand, { from, to, group_by: "cycle" })).resolves.toMatchObject({ summary: zeros, coverage: readyCoverage });
 
     const unready: CommissionAnalysisTotals = { ...zeros, calculated_points: null, effective_target_points: null, calculation_minus_actual_points: null, effective_minus_actual_points: null, calculation_complete: false, effective_target_complete: false };
     const agentQuery = { ...query, group_by: "agent", limit: 20, offset: 0 };
-    const noBeneficiaries = payload({ query: agentQuery, coverage: { selected_cycle_count: "1", ready_cycle_count: "0", unready_cycle_count: "1", legacy_policy_blocked_cycle_count: "0" }, summary: unready, items: [], total_groups: "0" });
+    const noBeneficiaries = payload({ query: agentQuery, coverage: { selected_cycle_count: "1", ready_cycle_count: "0", unready_cycle_count: "1" }, summary: unready, items: [], total_groups: "0" });
     await expect(createCommissionAnalysisApi(vi.fn<typeof fetch>().mockResolvedValue(json(noBeneficiaries))).report(brand, { from, to, group_by: "agent" })).resolves.toMatchObject({ summary: unready, items: [], coverage: noBeneficiaries.data.coverage });
   });
   it("accepts a valid manual offset on the same evidence and a new evidence target that supersedes it", async () => {
     const manualOffset: CommissionAnalysisTotals = { ...totals, observed_calculated_points: "10", calculated_points: "10", paid_entry_count: "1", paid_points: "10", adjustment_entry_count: "1", adjustment_credit_points: "2", adjustment_debit_points: "0", correction_entry_count: "0", correction_credit_points: "0", correction_debit_points: "0", posting_entry_count: "2", actual_net_points: "12", manual_adjustment_net_points: "2", effective_target_points: "12", calculation_minus_actual_points: "-2", effective_minus_actual_points: "0" };
-    const sameEvidence = payload({ coverage: { selected_cycle_count: "1", ready_cycle_count: "1", unready_cycle_count: "0", legacy_policy_blocked_cycle_count: "0" }, summary: manualOffset, items: [{ key, label: key, totals: manualOffset }] });
+    const sameEvidence = payload({ coverage: { selected_cycle_count: "1", ready_cycle_count: "1", unready_cycle_count: "0" }, summary: manualOffset, items: [{ key, label: key, totals: manualOffset }] });
     await expect(createCommissionAnalysisApi(vi.fn<typeof fetch>().mockResolvedValue(json(sameEvidence))).report(brand, { from, to, group_by: "cycle" })).resolves.toMatchObject({ summary: { calculated_points: "10", effective_target_points: "12", manual_adjustment_net_points: "2" } });
 
     const newEvidence: CommissionAnalysisTotals = { ...manualOffset, observed_calculated_points: "8", calculated_points: "8", effective_target_points: "8", calculation_minus_actual_points: "-4", effective_minus_actual_points: "-4" };
-    const superseded = payload({ coverage: { selected_cycle_count: "1", ready_cycle_count: "1", unready_cycle_count: "0", legacy_policy_blocked_cycle_count: "1" }, summary: newEvidence, items: [{ key, label: key, totals: newEvidence }] });
+    const superseded = payload({ coverage: { selected_cycle_count: "1", ready_cycle_count: "1", unready_cycle_count: "0" }, summary: newEvidence, items: [{ key, label: key, totals: newEvidence }] });
     await expect(createCommissionAnalysisApi(vi.fn<typeof fetch>().mockResolvedValue(json(superseded))).report(brand, { from, to, group_by: "cycle" })).resolves.toMatchObject({ summary: { calculated_points: "8", effective_target_points: "8", manual_adjustment_net_points: "2", effective_target_complete: true } });
   });
   it("preserves whole-filter summary when the requested page is empty", async () => {
@@ -160,7 +160,7 @@ describe("commission analysis API", () => {
     await expect(createCommissionAnalysisApi(vi.fn<typeof fetch>().mockResolvedValue(json(payload({ timezone: "Local" })))).report(brand, { from, to, group_by: "cycle" })).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
     await expect(createCommissionAnalysisApi(vi.fn<typeof fetch>().mockResolvedValue(await csvResponse(totals, [totals], coverage, "cycle", "Local"))).exportCsv(brand, { from, to, group_by: "cycle" })).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
-  it("validates a real signed, nullable 34-column export, digest, metadata and whole-group sums", async () => {
+  it("validates a real signed, nullable 33-column export, digest, metadata and whole-group sums", async () => {
     const snapshot = "2026-01-02T01:00:00Z";
     const columns = ["record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "agent_id", "member_id", "cycle_id", "key", "label", ...COMMISSION_ANALYSIS_COVERAGE_FIELDS, ...COMMISSION_ANALYSIS_FIELDS];
     const toCells = (type: string, rowKey: string, rowTotals: CommissionAnalysisTotals, cov = coverage) => [type, brand, snapshot, "Asia/Singapore", from, to, "cycle", "", "", "", rowKey, rowKey, ...COMMISSION_ANALYSIS_COVERAGE_FIELDS.map((f) => cov[f]), ...COMMISSION_ANALYSIS_FIELDS.map((f) => {

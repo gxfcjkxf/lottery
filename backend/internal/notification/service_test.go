@@ -8,13 +8,37 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
-	"github.com/gxfcjkxf/lottery/backend/migrations"
 	"sync"
 	"testing"
 )
 
 const brand = "0199a000-0000-7000-8000-000000000001"
 const other = "0199a000-0000-7000-8000-000000000002"
+
+func TestExactEventJSONKeysRequiresCurrentClosedPayloadShape(t *testing.T) {
+	valid := []byte(`{"member_id":"member","resource_id":"member","points":null}`)
+	for _, raw := range [][]byte{
+		valid,
+		[]byte(`{"member_id":"member","resource_id":"member","points":null,"legacy":true}`),
+	} {
+		if exactEventJSONKeys(raw, "member_id", "resource_id", "points") != (string(raw) == string(valid)) {
+			t.Fatalf("exactEventJSONKeys(%s) returned unexpected result", raw)
+		}
+	}
+	for _, raw := range [][]byte{
+		[]byte(`{"member_id":"member","resource_id":"member","points":null,"points":"1"}`),
+		[]byte(`{"member_id":"member","resource_id":"member"}`),
+		[]byte(`[]`),
+		[]byte(`{"member_id":"member","resource_id":"member","points":null} false`),
+	} {
+		if exactEventJSONKeys(raw, "member_id", "resource_id", "points") {
+			t.Fatalf("accepted non-current event payload %s", raw)
+		}
+	}
+	if !exactEventJSONKeys([]byte(`{"correction_id":null,"original_payout_entry_id":null}`), "correction_id", "original_payout_entry_id") {
+		t.Fatal("rejected null optional witnesses emitted by current prize events")
+	}
+}
 
 func fixture(t *testing.T) (Service, string, string) {
 	t.Helper()
@@ -230,84 +254,42 @@ func TestAcknowledgementFailureRollsBackInboxThenRecoversWithAuditedRetry(t *tes
 	}
 }
 
-func TestQueueMigrationRecoversOnlyExistingFactsAndEnqueuesAfterCommit(t *testing.T) {
+func TestFreshSchemaQueueEnqueuesCurrentEventsOnly(t *testing.T) {
 	s, m, _ := fixture(t)
 	ctx := context.Background()
-	// Simulate the immediately preceding schema in this disposable test schema.
-	if _, e := s.DB.Exec(ctx, `DROP TRIGGER enqueue_in_app_event ON outbox_events;DROP FUNCTION enqueue_in_app_event()`); e != nil {
-		t.Fatal(e)
-	}
 	event := emit(t, s, brand, m)
-	if _, e := s.DB.Exec(ctx, `UPDATE outbox_events SET published_at=clock_timestamp() WHERE id=$1`, event); e != nil {
-		t.Fatal(e)
-	}
 	unknown := ids.New()
 	if _, e := s.DB.Exec(ctx, `INSERT INTO outbox_events(id,brand_id,event_type,aggregate_id,payload) VALUES($1,$2,'future.prize.requested',$3,'{}')`, unknown, brand, m); e != nil {
 		t.Fatal(e)
 	}
-	sql, e := migrations.Files.ReadFile("0019_notification_outbox_queue.up.sql")
-	if e != nil {
-		t.Fatal(e)
+	var queued int
+	if e := s.DB.QueryRow(ctx, `SELECT count(*) FROM notification_deliveries WHERE event_id=$1`, event).Scan(&queued); e != nil || queued != 1 {
+		t.Fatal(queued, e)
 	}
-	if _, e = s.DB.Exec(ctx, string(sql)); e != nil {
-		t.Fatal(e)
+	if e := s.DB.QueryRow(ctx, `SELECT count(*) FROM notification_deliveries WHERE event_id=$1`, unknown).Scan(&queued); e != nil || queued != 0 {
+		t.Fatal(queued, e)
 	}
-	emit(t, s, brand, m)
-	var n int
-	if e = s.DB.QueryRow(ctx, `SELECT count(*) FROM notification_deliveries`).Scan(&n); e != nil || n != 2 {
-		t.Fatal(n, e)
-	}
-	if _, e = s.Process(ctx, 20); e != nil {
+	if _, e := s.Process(ctx, 20); e != nil {
 		t.Fatal(e)
 	}
 	page, e := s.List(ctx, brand, m, 20, 0)
-	if e != nil || len(page.Items) != 2 {
+	if e != nil || len(page.Items) != 1 || page.Items[0].Content.En.Title == "" || page.Items[0].TemplateVersion != 1 {
 		t.Fatal(page, e)
 	}
-	var published bool
-	if e = s.DB.QueryRow(ctx, `SELECT published_at IS NOT NULL FROM outbox_events WHERE id=$1`, event).Scan(&published); e != nil || !published {
-		t.Fatal(published, e)
+	var contentIsCurrent bool
+	if e = s.DB.QueryRow(ctx, `SELECT content IS NOT NULL AND template_version=1 FROM notifications WHERE event_id=$1`, event).Scan(&contentIsCurrent); e != nil || !contentIsCurrent {
+		t.Fatal(contentIsCurrent, e)
 	}
 }
 
-func TestBootstrapPermissionUpgradeLeavesCustomRolesAndSuperWritesUnchanged(t *testing.T) {
+func TestFreshSchemaContainsNotificationPermissions(t *testing.T) {
 	s, _, _ := fixture(t)
 	ctx := context.Background()
-	admin, br, custom, platform := ids.New(), ids.New(), ids.New(), ids.New()
-	if _, e := s.DB.Exec(ctx, `INSERT INTO admin_accounts(id,username,password_hash,is_super_admin) VALUES($1,$2,'test-only',true)`, admin, "notification_super_"+admin); e != nil {
-		t.Fatal(e)
-	}
-	for i, r := range []string{br, custom, platform} {
-		var b *string
-		if i != 2 {
-			v := brand
-			b = &v
-		}
-		if _, e := s.DB.Exec(ctx, `INSERT INTO roles(id,brand_id,code,name,is_bootstrap) VALUES($1,$2,$3,'Test notification role',$4)`, r, b, "notify_role_"+r, i != 1); e != nil {
-			t.Fatal(e)
-		}
-	}
-	if _, e := s.DB.Exec(ctx, `INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)`, admin, platform); e != nil {
-		t.Fatal(e)
-	}
-	sql, e := migrations.Files.ReadFile("0020_notification_bootstrap_permissions.up.sql")
-	if e != nil {
-		t.Fatal(e)
-	}
-	if _, e = s.DB.Exec(ctx, string(sql)); e != nil {
-		t.Fatal(e)
-	}
-	for _, v := range []struct {
-		role  string
-		count int
-	}{{br, 2}, {custom, 0}, {platform, 1}} {
-		var n int
-		if e = s.DB.QueryRow(ctx, `SELECT count(*) FROM role_permissions WHERE role_id=$1 AND permission_key LIKE 'notification.%'`, v.role).Scan(&n); e != nil || n != v.count {
-			t.Fatal(v, n, e)
-		}
-	}
-	var forbidden int
-	if e = s.DB.QueryRow(ctx, `SELECT count(*) FROM role_permissions WHERE role_id=$1 AND permission_key='notification.retry.brand'`, platform).Scan(&forbidden); e != nil || forbidden != 0 {
-		t.Fatal(forbidden, e)
+	var n int
+	if e := s.DB.QueryRow(ctx, `SELECT count(*) FROM permissions WHERE key = ANY($1::text[])`, []string{
+		"notification.view.brand", "notification.retry.brand", "notification.view.platform",
+		"notification_template.view.brand", "notification_template.view.platform", "notification_template.write.brand",
+	}).Scan(&n); e != nil || n != 6 {
+		t.Fatal(n, e)
 	}
 }

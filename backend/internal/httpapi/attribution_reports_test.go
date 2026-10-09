@@ -29,7 +29,7 @@ func TestAttributionReportHTTPRequiresSeparateExplicitRightsAndAuditsBeforeRelea
 		t.Fatal(err)
 	}
 	from, to := reportWindow()
-	query := url.Values{"from": {from}, "to": {to}, "group_by": {"day"}, "join_method": {"legacy"}}
+	query := url.Values{"from": {from}, "to": {to}, "group_by": {"day"}, "join_method": {"domain"}}
 	readURL := reportURL("/api/v1/admin/reports/attribution", query)
 	exportURL := reportURL("/api/v1/admin/reports/attribution/export", query)
 	call := func(path, brand string) *httptest.ResponseRecorder {
@@ -64,14 +64,14 @@ func TestAttributionReportHTTPRequiresSeparateExplicitRightsAndAuditsBeforeRelea
 	}
 	grantReportPermission(t, f, "report_attribution.view.brand")
 	export := call(exportURL, managedBrand)
-	if export.Code != 200 || export.Header().Get("X-Report-Audit-ID") == "" || export.Header().Get("X-Report-Agent-Scope") != "direct" || export.Header().Get("X-Report-Join-Method") != "legacy" {
+	if export.Code != 200 || export.Header().Get("X-Report-Audit-ID") == "" || export.Header().Get("X-Report-Agent-Scope") != "direct" || export.Header().Get("X-Report-Join-Method") != "domain" {
 		t.Fatalf("separate view+export permissions failed: status=%d headers=%v body=%s", export.Code, export.Header(), export.Body.String())
 	}
 	rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(export.Body.String(), "\xef\xbb\xbf"))).ReadAll()
-	if err != nil || len(rows) != 2 || len(rows[0]) != 29 || rows[1][0] != "summary" || rows[1][10] != "direct" || rows[1][11] != "legacy" {
+	if err != nil || len(rows) != 2 || len(rows[0]) != 28 || rows[1][0] != "summary" || rows[1][10] != "direct" || rows[1][11] != "domain" {
 		t.Fatalf("attribution export is not complete header+summary CSV: rows=%d err=%v body=%q", len(rows), err, export.Body.String())
 	}
-	if got := strings.Join(rows[0], ","); got != "record_type,brand_id,snapshot_at,timezone,from,to,group_by,game_id,member_id,agent_id,agent_scope,join_method,key,label,order_count,stake_points,placed_count,won_count,lost_count,abnormal_count,cancelled_count,refund_points,settled_stake_points,unfinalized_stake_points,abnormal_stake_points,current_prize_points,correction_open_count,final_lost_stake_points,legacy_attribution_count" {
+	if got := strings.Join(rows[0], ","); got != "record_type,brand_id,snapshot_at,timezone,from,to,group_by,game_id,member_id,agent_id,agent_scope,join_method,key,label,order_count,stake_points,placed_count,won_count,lost_count,abnormal_count,cancelled_count,refund_points,settled_stake_points,unfinalized_stake_points,abnormal_stake_points,current_prize_points,correction_open_count,final_lost_stake_points" {
 		t.Fatalf("CSV column order drifted: %s", got)
 	}
 	if response := call(readURL, "0199a000-0000-7000-8000-000000000002"); response.Code != 403 {

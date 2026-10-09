@@ -28,7 +28,6 @@ export interface WalletDTO {
   by_source: SourceBuckets;
 }
 
-const LEGACY_SOURCES = ["recharge", "winning", "gift"] as const;
 const WALLET_KEYS = [
   "account_id", "brand_id", "member_id", "version", "display_points",
   "available_points", "frozen_points", "withdrawal_points", "recharge_points",
@@ -88,21 +87,12 @@ export function isWalletDTO(value: unknown): value is WalletDTO {
     BigInt(value.commission_points as string) === BigInt(buckets.commission.available);
 }
 
-/**
- * Read immutable legacy 12-bucket snapshots without modifying persisted history.
- * Four-source snapshots stay strict; the returned value is always four-source.
- */
+/** Validate and parse an exact current sixteen-bucket snapshot. */
 export function normalizeSourceBuckets(value: unknown, signed = false): SourceBuckets | null {
-  if (!record(value)) return null;
-  const legacy = exact(value, LEGACY_SOURCES);
-  if (!legacy && !exact(value, WALLET_SOURCES)) return null;
+  if (!record(value) || !exact(value, WALLET_SOURCES)) return null;
   const normalized = {} as SourceBuckets;
   for (const source of WALLET_SOURCES) {
-    const buckets = source === "commission" && legacy ? undefined : value[source];
-    if (source === "commission" && legacy) {
-      normalized.commission = { available: "0", manual_frozen: "0", system_frozen: "0", withdrawal: "0" };
-      continue;
-    }
+    const buckets = value[source];
     if (!record(buckets) || !exact(buckets, WALLET_STATES) || !WALLET_STATES.every((state) => amount(buckets[state], signed))) return null;
     normalized[source] = {
       available: buckets.available as string,
@@ -123,7 +113,7 @@ export function normalizeSourceBuckets(value: unknown, signed = false): SourceBu
   return normalized;
 }
 
-/** Normalize immutable ledger entries, including old idempotent write receipts, in memory. */
+/** Validate and parse an immutable ledger entry with current snapshots. */
 export function normalizeLedgerSnapshots<T>(value: T): T | (T & {
   before_snapshot: SourceBuckets;
   delta_snapshot: SourceBuckets;

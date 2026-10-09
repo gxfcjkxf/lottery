@@ -33,7 +33,6 @@ export interface MemberAttribution {
   joined_at: string;
   code_id: string | null;
   source_code: string | null;
-  legacy: boolean;
 }
 
 export interface JoinCodeContext {
@@ -241,7 +240,7 @@ function parseAttribution(
   context: JoinCodeContext,
 ): MemberAttribution {
   const data = object(value, "attribution");
-  exactKeys(data, "attribution", ["brand_id", "member_id", "join_method", "joined_at", "code_id", "source_code", "legacy"]);
+  exactKeys(data, "attribution", ["brand_id", "member_id", "join_method", "joined_at", "code_id", "source_code"]);
   const brandId = uuid(data.brand_id, "attribution.brand_id");
   const memberId = uuid(data.member_id, "attribution.member_id");
   if (brandId !== context.brand_id || memberId !== context.member_id) {
@@ -259,9 +258,6 @@ function parseAttribution(
   if ((codeId === null) !== (sourceCode === null)) {
     return malformed("attribution code_id and source_code must both be null or present");
   }
-  if (typeof data.legacy !== "boolean") {
-    return malformed("attribution.legacy must be a boolean");
-  }
   return {
     brand_id: brandId,
     member_id: memberId,
@@ -269,7 +265,6 @@ function parseAttribution(
     joined_at: dateTime(data.joined_at, "attribution.joined_at"),
     code_id: codeId,
     source_code: sourceCode,
-    legacy: data.legacy,
   };
 }
 

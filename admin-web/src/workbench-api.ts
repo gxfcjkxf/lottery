@@ -4,7 +4,7 @@ const BASE = "/api/v1/admin/workbench";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UINT = /^(0|[1-9][0-9]*)$/;
 const SINT = /^(0|-?[1-9][0-9]*)$/;
-const STATUSES = ["ready", "forbidden", "not_implemented"] as const;
+const STATUSES = ["ready", "forbidden"] as const;
 
 export type SectionStatus = (typeof STATUSES)[number];
 export interface Section<T> { status: SectionStatus; data: T | null }
@@ -39,7 +39,7 @@ export interface WorkbenchCommissions {
   discovery_pending_count: string; discovery_failed_count: string;
   cycle_processing_count: string; cycle_waiting_count: string; cycle_ready_count: string; cycle_stale_count: string; cycle_failed_count: string;
   payment_awaiting_approval_count: string; payment_processing_count: string; payment_blocked_count: string; payment_failed_count: string;
-  plan_processing_count: string; plan_ready_count: string; plan_blocked_count: string; plan_failed_count: string;
+  plan_processing_count: string; plan_ready_count: string; plan_failed_count: string;
   execution_awaiting_approval_count: string; execution_processing_count: string; execution_paused_count: string; execution_failed_count: string;
 }
 export interface WorkbenchRewards { granted_count: string; pending_count: string; revoked_count: string }
@@ -67,7 +67,7 @@ const SECTION_KEYS: Record<SectionName, string[]> = {
   withdrawals: ["reviewing_count", "reviewing_points", "processing_count", "processing_points"],
   commissions: ["discovery_pending_count", "discovery_failed_count", "cycle_processing_count", "cycle_waiting_count", "cycle_ready_count", "cycle_stale_count", "cycle_failed_count",
     "payment_awaiting_approval_count", "payment_processing_count", "payment_blocked_count", "payment_failed_count", "plan_processing_count", "plan_ready_count",
-    "plan_blocked_count", "plan_failed_count", "execution_awaiting_approval_count", "execution_processing_count", "execution_paused_count", "execution_failed_count"],
+    "plan_failed_count", "execution_awaiting_approval_count", "execution_processing_count", "execution_paused_count", "execution_failed_count"],
   rewards: ["granted_count", "pending_count", "revoked_count"],
 };
 const COUNTS: Partial<Record<SectionName, string[]>> = {
@@ -137,7 +137,6 @@ export function validWorkbenchSnapshot(value: unknown, brandId: string): value i
   for (const name of SECTION_ORDER) {
     const section = value[name];
     if (!record(section) || !exactKeys(section, ["status", "data"]) || !STATUSES.includes(section.status as SectionStatus)) return false;
-    if (name !== "commissions" && section.status === "not_implemented") return false;
     if (section.status !== "ready") {
       if (section.data !== null) return false;
       continue;

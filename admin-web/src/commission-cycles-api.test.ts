@@ -149,13 +149,13 @@ describe("commission cycles API", () => {
       .rejects.toMatchObject({ status: 0, code: "INVALID_INPUT" });
   });
 
-  it("normalizes the legacy missing actor only on manual create receipts", async () => {
+  it("rejects missing actor type on both create receipts and current reads", async () => {
     const legacy = { ...cycle } as Record<string, unknown>;
     delete legacy.creation_actor_type;
     const receipt = { ...legacy, state: "enumerating", version: 1, anchor_order_id: orderId, reason: "Reviewed" };
     await expect(createCommissionCyclesApi(vi.fn<typeof fetch>().mockResolvedValue(ok(receipt, 201)))
       .create(brand, { anchor_order_id: orderId, reason: "Reviewed" }, key, accountId))
-      .resolves.toMatchObject({ created_by: accountId, creation_actor_type: "admin" });
+      .rejects.toMatchObject({ status: 0, code: "UNKNOWN_WRITE_STATUS" });
     await expect(createCommissionCyclesApi(vi.fn<typeof fetch>().mockResolvedValue(ok(legacy))).read(brand, cycleId))
       .rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     const invalidLegacy = { ...legacy, created_by: null };

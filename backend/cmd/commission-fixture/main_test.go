@@ -10,7 +10,6 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/commission"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -150,16 +149,11 @@ func TestFixtureInitializesAllThreeActualCommissionWorkflows(t *testing.T) {
 }
 
 func TestFixtureMigrationAdmissionRejectsStaleOrDamagedHistoryBeforeWrites(t *testing.T) {
-	for _, mode := range []string{"historical", "checksum"} {
+	for _, mode := range []string{"checksum"} {
 		t.Run(mode, func(t *testing.T) {
-			var db *pgxpool.Pool
-			if mode == "historical" {
-				db = testdb.NewAtVersion(t, 53)
-			} else {
-				db = testdb.New(t)
-				if _, err := db.Exec(context.Background(), `UPDATE schema_migrations SET checksum='damaged' WHERE name=(SELECT min(name) FROM schema_migrations)`); err != nil {
-					t.Fatal(err)
-				}
+			db := testdb.New(t)
+			if _, err := db.Exec(context.Background(), `UPDATE schema_migrations SET checksum='damaged' WHERE name=(SELECT min(name) FROM schema_migrations)`); err != nil {
+				t.Fatal(err)
 			}
 			fingerprint := func() string {
 				t.Helper()

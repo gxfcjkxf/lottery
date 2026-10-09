@@ -6,7 +6,7 @@ import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-
 import { default as BrandBusinessInventory } from "./BrandBusinessInventory.vue";
 import {
   createReconciliationApi, reconciliationPermissions,
-  type ReconciliationCheckScope, type ReconciliationJob, type ReconciliationOutcome, type ReconciliationTarget,
+  type ReconciliationCheckScope, type ReconciliationCreateBody, type ReconciliationJob, type ReconciliationOutcome, type ReconciliationTarget,
 } from "./reconciliation-api";
 import {
   classifyReconciliationWriteFailure, clearPendingReconciliationWrite, freezeReconciliationBody,
@@ -87,7 +87,7 @@ async function loadTargets(next = 0) {
   targetLoading.value = true; targetError.value = "";
   targets.value = []; targetTotal.value = "0";
   try {
-    const page = await api.targets(props.brandId, id, outcomeFilter.value || null, PAGE_SIZE, next, job.value.check_scope ?? "wallet");
+    const page = await api.targets(props.brandId, id, outcomeFilter.value || null, PAGE_SIZE, next, job.value.check_scope);
     if (!current(ticket, "targets", captured, generation) || !job.value || job.value.id !== id) return false;
     targets.value = page.items; targetTotal.value = page.total_count; targetOffset.value = page.offset; return true;
   } catch (problem) {
@@ -127,9 +127,7 @@ function selectedForCreate(): PendingReconciliationWrite | null {
   const existing = getPendingReconciliationWrite(createScope.value);
   if (existing) return existing;
   if (!reasonValid.value) return null;
-  const body = freezeReconciliationBody(checkScope.value === "wallet"
-    ? { reason: reason.value }
-    : { reason: reason.value, check_scope: "wallet_and_business" });
+  const body = freezeReconciliationBody({ reason: reason.value, check_scope: checkScope.value });
   return Object.freeze({ ...createScope.value, body, key: createIdempotencyKey() });
 }
 function selectedForRetry(): PendingReconciliationWrite | null {
@@ -155,7 +153,7 @@ async function submit(intent: PendingReconciliationWrite) {
   refreshPending(); writing.value = true; review.value = null; confirmed.value = false; writeError.value = ""; notice.value = "";
   try {
     const result = intent.operation === "create"
-      ? await api.create(intent.brandId, intent.body, intent.key, intent.accountId)
+      ? await api.create(intent.brandId, intent.body as ReconciliationCreateBody, intent.key, intent.accountId)
       : await api.retry(intent.brandId, intent.jobId!, intent.body as { version: number; reason: string }, intent.key, previous);
     if (!currentWrite(ticket, capturedPermission, generation)) return;
     clearPendingReconciliationWrite(intent, intent.key);
@@ -199,7 +197,7 @@ function short(value: string) { return `${value.slice(0, 8)}…${value.slice(-4)
 function json(value: unknown) { return JSON.stringify(value, null, 2); }
 function onOutcomeChange(event: Event) { setOutcome((event.target as HTMLSelectElement).value); }
 function retryVersion(intent: PendingReconciliationWrite) { return (intent.body as { version: number }).version; }
-function checkScopeLabel(scope: ReconciliationCheckScope | undefined) {
+function checkScopeLabel(scope: ReconciliationCheckScope) {
   return scope === "wallet_and_business" ? t("钱包 + 业务关联", "Wallet + business associations") : t("仅钱包", "Wallet only");
 }
 
@@ -235,7 +233,7 @@ onBeforeUnmount(() => { alive = false; listTicket++; detailTicket++; targetTicke
 
       <section v-if="pendingCreate || pendingRetries.length" class="panel pending-panel" aria-live="polite">
         <div class="section-title"><div><h2>{{ t("尚未确定的写入", "Unconfirmed writes") }}</h2><p>{{ t("即使任务列表或详情不可用，冻结的请求仍可从此处恢复。", "Frozen requests can be recovered here even when the job list or details are unavailable.") }}</p></div><span class="tag warning">{{ writing ? t("正在发送，等待回执", "Sending; awaiting receipt") : t("结果未知 / 待重放", "Unknown outcome / replay required") }}</span></div>
-        <article v-if="pendingCreate" class="pending-item"><b>{{ t("创建当前品牌任务", "Create current-brand job") }} · {{ checkScopeLabel('check_scope' in pendingCreate.body ? pendingCreate.body.check_scope : undefined) }}</b><code>{{ pendingCreate.key }}</code><p>{{ t("原因：", "Reason:") }}{{ pendingCreate.body.reason }}</p><button class="primary" :disabled="writing" @click="confirmRecovery(pendingCreate)">{{ t("确认并重放原创建请求", "Confirm and replay original creation") }}</button></article>
+        <article v-if="pendingCreate" class="pending-item"><b>{{ t("创建当前品牌任务", "Create current-brand job") }} · {{ checkScopeLabel((pendingCreate.body as ReconciliationCreateBody).check_scope) }}</b><code>{{ pendingCreate.key }}</code><p>{{ t("原因：", "Reason:") }}{{ pendingCreate.body.reason }}</p><button class="primary" :disabled="writing" @click="confirmRecovery(pendingCreate)">{{ t("确认并重放原创建请求", "Confirm and replay original creation") }}</button></article>
         <article v-for="intent in pendingRetries" :key="intent.key" class="pending-item"><b>{{ t("重试任务", "Retry job") }} {{ short(intent.jobId!) }}</b><code>{{ intent.key }}</code><p>{{ t("版本 v", "Version v") }}{{ retryVersion(intent) }} · {{ intent.body.reason }}</p><button class="primary" :disabled="writing" @click="confirmRecovery(intent)">{{ t("确认并重放原重试请求", "Confirm and replay original retry") }}</button></article>
       </section>
 
@@ -279,7 +277,7 @@ onBeforeUnmount(() => { alive = false; listTicket++; detailTicket++; targetTicke
     <div v-if="review" class="scrim" role="presentation" @click.self="review = null; confirmed = false">
       <section class="confirm panel" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
         <h2 id="confirm-title">{{ t("确认唯一操作员提交", "Confirm single-operator submission") }}</h2><p>{{ t("请核对冻结的请求内容。点击确认后只发送一次该操作；若结果未知，只能使用同一请求体和幂等键重放。", "Check the frozen request. Confirmation sends this operation once. If the outcome is unknown, replay only the same body and idempotency key.") }}</p>
-        <dl class="facts"><dt>{{ t("操作", "Operation") }}</dt><dd>{{ review.operation === "create" ? t("创建对账任务", "Create reconciliation job") : t("重试任务 {id}", "Retry job {id}", { id: review.jobId! }) }}</dd><dt v-if="review.operation === 'create'">{{ t("检查范围", "Check scope") }}</dt><dd v-if="review.operation === 'create'">{{ checkScopeLabel('check_scope' in review.body ? review.body.check_scope : undefined) }}</dd><dt>{{ t("原因", "Reason") }}</dt><dd>{{ review.body.reason }}</dd><dt>{{ t("版本", "Version") }}</dt><dd>{{ "version" in review.body ? `v${review.body.version}` : t("新任务 v1", "New job v1") }}</dd><dt>{{ t("幂等键", "Idempotency key") }}</dt><dd><code>{{ review.key }}</code></dd></dl>
+        <dl class="facts"><dt>{{ t("操作", "Operation") }}</dt><dd>{{ review.operation === "create" ? t("创建对账任务", "Create reconciliation job") : t("重试任务 {id}", "Retry job {id}", { id: review.jobId! }) }}</dd><dt v-if="review.operation === 'create'">{{ t("检查范围", "Check scope") }}</dt><dd v-if="review.operation === 'create'">{{ checkScopeLabel((review.body as ReconciliationCreateBody).check_scope) }}</dd><dt>{{ t("原因", "Reason") }}</dt><dd>{{ review.body.reason }}</dd><dt>{{ t("版本", "Version") }}</dt><dd>{{ "version" in review.body ? `v${review.body.version}` : t("新任务 v1", "New job v1") }}</dd><dt>{{ t("幂等键", "Idempotency key") }}</dt><dd><code>{{ review.key }}</code></dd></dl>
         <label class="confirm-check"><input v-model="confirmed" type="checkbox">{{ t("我已核对范围与原因，确认由我提交此请求。", "I have checked the scope and reason and confirm that I am submitting this request.") }}</label>
         <div class="actions"><button class="quiet" @click="review = null; confirmed = false">{{ t("返回", "Back") }}</button><button class="primary" :disabled="!confirmed || writing" @click="confirmWrite">{{ t("确认并提交", "Confirm and submit") }}</button></div>
       </section>

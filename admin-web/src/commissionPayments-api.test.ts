@@ -117,11 +117,10 @@ describe("commission payments API", () => {
       .resolves.toMatchObject({ state: "paid" });
   });
 
-  it("accepts zero-paid mixed approval snapshots and mixed approval receipts without changing payout mode", async () => {
+  it("accepts mixed awaiting-approval snapshots and receipts without changing payout mode", async () => {
     const awaiting = payment({ state: "awaiting_approval", payout_mode: "mixed", paid_count: "0", paid_points: "0", last_error_code: null });
     await expect(createCommissionPaymentsApi(async () => ok(awaiting)).read(brand, id)).resolves.toMatchObject({ state: "awaiting_approval", payout_mode: "mixed" });
-    const legacy = payment({ state: "blocked", payout_mode: "mixed", paid_count: "0", paid_points: "0", last_error_code: "COMMISSION_PAYMENT_MODE_UNRESOLVED" });
-    await expect(createCommissionPaymentsApi(async () => ok({ ...legacy, state: "paying", version: 3, last_error_code: null })).approve(brand, id, { version: 2, reason: "Review legacy whole cycle" }, "approve-key-mixed1"))
+    await expect(createCommissionPaymentsApi(async () => ok({ ...awaiting, state: "paying", version: 3, last_error_code: null })).approve(brand, id, { version: 2, reason: "Review whole mixed cycle" }, "approve-key-mixed1"))
       .resolves.toMatchObject({ state: "paying", payout_mode: "mixed", version: 3 });
     for (const mode of ["automatic", "none"] as const) {
       await expect(createCommissionPaymentsApi(async () => ok(payment({ state: "paying", payout_mode: mode, version: 3, last_error_code: null }))).approve(brand, id, { version: 2, reason: "Reject incorrect approval receipt" }, "approve-key-invalid1"))

@@ -86,7 +86,7 @@ test("reconciliation contract keeps five durable task routes alongside the stand
   assert.deepEqual(reconciliationRoutes.sort(),expectedRoutes.map(route=>route.replace("/api/v1/admin","")).sort());
 });
 
-test("reconciliation DTO examples satisfy closed legacy and modern schemas and preserve nulls and zero versions",()=>{
+test("reconciliation DTO examples require scope and preserve nulls and zero versions",()=>{
   for(const name of Object.keys(components.schemas))assert.doesNotThrow(()=>validate(name),`${name} schema compiles`);
   for(const name of ["FinanceReconciliationJob","FinanceReconciliationJobPage","FinanceReconciliationTarget","FinanceReconciliationTargetPage"]){
     assert.ok(validate(name),`${name} schema compiles`);
@@ -129,13 +129,13 @@ test("reconciliation DTO examples satisfy closed legacy and modern schemas and p
   assert.equal(businessTarget.business_preview.issues.length,0);
   assert.equal(businessTarget.business_preview.coverage.length,12);
 
-  const legacyJob={...job};
-  delete legacyJob.check_scope;
-  assert.ok(validate("FinanceReconciliationJob")(legacyJob),"the old job shape remains readable");
-  const legacyTarget={...checked};
-  delete legacyTarget.check_scope;
-  delete legacyTarget.business_preview;
-  assert.ok(validate("FinanceReconciliationTarget")(legacyTarget),"the old target shape remains readable");
+  const oldJob={...job};
+  delete oldJob.check_scope;
+  assert.ok(!validate("FinanceReconciliationJob")(oldJob),"jobs require an explicit scope");
+  const oldTarget={...checked};
+  delete oldTarget.check_scope;
+  delete oldTarget.business_preview;
+  assert.ok(!validate("FinanceReconciliationTarget")(oldTarget),"targets require explicit scope and nullable business preview");
 });
 
 test("reconciliation permissions, primary reads, strict pagination, and idempotent writes match handler behavior",()=>{
@@ -156,10 +156,13 @@ test("reconciliation permissions, primary reads, strict pagination, and idempote
     assert.match(operation.description,/explicit brand membership/);
   }
   assert.deepEqual(create.requestBody,{ $ref:"#/components/schemas/FinanceReconciliationCreateInput" });
-  assert.deepEqual(schemas.FinanceReconciliationCreateInput.required,["reason"]);
+  assert.deepEqual(schemas.FinanceReconciliationCreateInput.required,["reason","check_scope"]);
   assert.deepEqual(Object.keys(schemas.FinanceReconciliationCreateInput.properties),["reason","check_scope"]);
   assert.deepEqual(schemas.FinanceReconciliationCreateInput.properties.check_scope.enum,["wallet","wallet_and_business"]);
-  assert.equal(schemas.FinanceReconciliationCreateInput.properties.check_scope.default,"wallet");
+  assert.equal(schemas.FinanceReconciliationCreateInput.properties.check_scope.default,undefined);
+  assert.ok(schemas.FinanceReconciliationJob.required.includes("check_scope"));
+  assert.ok(schemas.FinanceReconciliationTarget.required.includes("check_scope"));
+  assert.ok(schemas.FinanceReconciliationTarget.required.includes("business_preview"));
   assert.deepEqual(targets.parameters.filter(parameter=>parameter.in==="query").map(parameter=>parameter.name),["limit","offset","outcome"]);
   assert.equal(targets.parameters.find(parameter=>parameter.name==="limit").schema.default,20);
   assert.equal(targets.parameters.find(parameter=>parameter.name==="limit").schema.maximum,100);
@@ -178,7 +181,7 @@ test("reconciliation permissions, primary reads, strict pagination, and idempote
   }
   assert.equal((routeSource.match(/d\.Mutations\.ExecuteChecked/g)??[]).length,2);
   assert.ok(routeSource.includes("var in reconciliationCreateInput"));
-  for(const guard of ["utf8.Valid(raw)","fields[key] != nil","!allowed[key]","bytes.TrimSpace(value)","reconciliation.ValidScope(text)"]){
+  for(const guard of ["utf8.Valid(raw)","fields[key] != nil","!allowed[key]","bytes.TrimSpace(value)","!present","reconciliation.ValidScope(next.CheckScope)"]){
     assert.ok(createInputSource.includes(guard),`strict create decoder missing ${guard}`);
   }
   assert.match(modelSource,/return \(action == "run" \|\| action == "retry"\) && view && !a\.SuperAdmin && access\.Authorize\(a, "wallet", "reconcile", access\.ScopeBrand, brand\)/);
@@ -198,7 +201,7 @@ test("reconciliation schemas enforce canonical bounded versions, exact counters,
   assert.ok(!validate("FinanceReconciliationRetryInput")({version:0,reason:"retry"}));
   assert.ok(!validate("FinanceReconciliationRetryInput")({version:Number.MAX_SAFE_INTEGER,reason:"retry"}));
   assert.ok(!validate("FinanceReconciliationRetryInput")({version:Number.MAX_SAFE_INTEGER+1,reason:"retry"}));
-  assert.ok(validate("FinanceReconciliationCreateInput")({reason:"wallet check"}));
+  assert.ok(!validate("FinanceReconciliationCreateInput")({reason:"wallet check"}));
   assert.ok(validate("FinanceReconciliationCreateInput")({reason:"wallet check",check_scope:"wallet"}));
   assert.ok(validate("FinanceReconciliationCreateInput")({reason:"business check",check_scope:"wallet_and_business"}));
   assert.ok(!validate("FinanceReconciliationCreateInput")({reason:"check",check_scope:null}));
@@ -211,15 +214,15 @@ test("reconciliation schemas enforce canonical bounded versions, exact counters,
   const example={brand_id:"11111111-1111-4111-8111-111111111111",items:[],total_count:"10000000000000000000",limit:20,offset:0};
   assert.ok(page(example));
   assert.ok(!page({...example,total_count:10000000000000000000}));
-  assert.ok(validate("FinanceReconciliationJob")({
+  assert.ok(!validate("FinanceReconciliationJob")({
     id:"11111111-1111-4111-8111-111111111111",brand_id:"11111111-1111-4111-8111-111111111111",state:"pending",version:1,
     target_count:"100000",checked_count:"0",consistent_count:"0",repairable_count:"0",corrupt_count:"0",failed_count:"0",pending_count:"100000",
     created_by:"11111111-1111-4111-8111-111111111111",reason:"check",created_at:"2026-10-06T00:00:00Z",started_at:null,completed_at:null,last_error_code:null,can_retry:false,creation_audit_log_id:"11111111-1111-4111-8111-111111111111",
-  }));
+  }),"jobs without check_scope are rejected");
   assert.ok(!validate("FinanceReconciliationJob")({
     id:"11111111-1111-4111-8111-111111111111",brand_id:"11111111-1111-4111-8111-111111111111",state:"pending",version:1,
     target_count:"100001",checked_count:"0",consistent_count:"0",repairable_count:"0",corrupt_count:"0",failed_count:"0",pending_count:"100001",
-    created_by:"11111111-1111-4111-8111-111111111111",reason:"check",created_at:"2026-10-06T00:00:00Z",started_at:null,completed_at:null,last_error_code:null,can_retry:false,creation_audit_log_id:"11111111-1111-4111-8111-111111111111",
+    created_by:"11111111-1111-4111-8111-111111111111",reason:"check",created_at:"2026-10-06T00:00:00Z",started_at:null,completed_at:null,last_error_code:null,can_retry:false,creation_audit_log_id:"11111111-1111-4111-8111-111111111111",check_scope:"wallet",
   }));
 });
 
@@ -272,5 +275,5 @@ test("business previews are exact, unbounded-count snapshots and only full check
   const old={...wallet};
   delete old.check_scope;
   delete old.business_preview;
-  assert.ok(checkTarget(old),"legacy target shape remains accepted");
+  assert.ok(!checkTarget(old),"targets without scope and business_preview are rejected");
 });

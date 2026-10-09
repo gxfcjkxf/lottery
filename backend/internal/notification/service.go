@@ -3,9 +3,11 @@
 package notification
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -52,7 +54,7 @@ type Item struct {
 	EventType       string     `json:"event_type"`
 	TemplateKey     string     `json:"template_key"`
 	TemplateVersion int64      `json:"template_version"`
-	Content         *Content   `json:"content"`
+	Content         Content    `json:"content"`
 	Payload         Payload    `json:"payload"`
 	CreatedAt       time.Time  `json:"created_at"`
 	ReadAt          *time.Time `json:"read_at"`
@@ -90,6 +92,14 @@ func list(ctx context.Context, q rowQuery, brand, member string, limit, offset i
  FROM notifications WHERE brand_id=$1 AND member_id=$2 ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4) n),'[]'::jsonb)`, brand, member, limit, offset).Scan(&out.UnreadCount, &raw)
 	if err == nil {
 		err = json.Unmarshal(raw, &out.Items)
+	}
+	if err == nil {
+		for _, item := range out.Items {
+			if item.TemplateKey != item.EventType || !validTemplateVersion(item.TemplateVersion) ||
+				ValidateContent(item.EventType, item.Content) != nil {
+				return out, ErrInvalid
+			}
+		}
 	}
 	return out, err
 }
@@ -250,6 +260,41 @@ func positive(v *string) bool {
 	n, e := strconv.ParseInt(*v, 10, 64)
 	return e == nil && n > 0 && strconv.FormatInt(n, 10) == *v
 }
+
+func exactEventJSONKeys(raw []byte, expected ...string) bool {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	token, err := decoder.Token()
+	delim, ok := token.(json.Delim)
+	if err != nil || !ok || delim != '{' {
+		return false
+	}
+	seen := make(map[string]bool, len(expected))
+	for decoder.More() {
+		token, err = decoder.Token()
+		key, isString := token.(string)
+		if err != nil || !isString || seen[key] {
+			return false
+		}
+		seen[key] = true
+		var value json.RawMessage
+		if decoder.Decode(&value) != nil {
+			return false
+		}
+	}
+	token, err = decoder.Token()
+	close, ok := token.(json.Delim)
+	if err != nil || !ok || close != '}' || len(seen) != len(expected) {
+		return false
+	}
+	for _, key := range expected {
+		if !seen[key] {
+			return false
+		}
+	}
+	var trailing any
+	return decoder.Decode(&trailing) == io.EOF
+}
+
 func validateEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate string, raw []byte) (string, Payload, error) {
 	if kind == "draw.result.published" || kind == "draw.result.corrected" {
 		return validateDrawEvent(ctx, tx, brand, kind, aggregate, raw)
@@ -262,6 +307,22 @@ func validateEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate string
 	}
 	if kind == "commission.paid" || kind == "commission.adjusted" || kind == "commission.corrected" {
 		return validateCommissionEvent(ctx, tx, brand, kind, aggregate, raw)
+	}
+	switch kind {
+	case "member.joined", "recharge.confirmed":
+		if !exactEventJSONKeys(raw, "member_id", "resource_id", "points") {
+			return "", Payload{}, ErrInvalid
+		}
+	case "bet.order.won", "bet.order.prize_reversed":
+		if !exactEventJSONKeys(raw, "member_id", "order_id", "period_id", "points", "calculation_id", "payout_entry_id", "job_id", "correction_id", "original_payout_entry_id") {
+			return "", Payload{}, ErrInvalid
+		}
+	case "bet.order.placed", "bet.order.cancelled", "bet.order.judged_cancelled", "bet.order.abnormal":
+		if !exactEventJSONKeys(raw, "order_id", "member_id", "period_id", "version", "status", "points") {
+			return "", Payload{}, ErrInvalid
+		}
+	default:
+		return "", Payload{}, ErrInvalid
 	}
 	var in struct {
 		MemberID              string  `json:"member_id"`

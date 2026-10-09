@@ -44,7 +44,7 @@ test("real Go attribution report DTOs match the closed schema and exact decimal 
     assert.ok(!validate({ ...value, summary: { ...value.summary, [field]: 1 } }));
     assert.ok(!validate({ ...value, summary: { ...value.summary, [field]: "01" } }));
   }
-  assert.equal(Object.keys(value.summary).length, 15);
+  assert.equal(Object.keys(value.summary).length, 14);
   assert.equal(value.query.agent_scope, "direct");
   assert.equal(value.query.join_method, null);
 });

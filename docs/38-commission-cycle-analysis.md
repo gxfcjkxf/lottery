@@ -14,7 +14,7 @@ from、to、group_by必填；from含、to不含，完整UTC区间最多93天，*
 
 ## 响应与完整性
 
-Report恰好brand_id、snapshot_at、timezone、query、coverage、summary、items、total_groups。query恰好from、to、group_by、limit、offset、agent_id、member_id、cycle_id，后三项可空。coverage恰好selected_cycle_count、ready_cycle_count、unready_cycle_count、legacy_policy_blocked_cycle_count，前三项满足selected=ready+unready；legacy_policy_blocked不超过selected，只表示仍保留旧`COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED`计划的周期，该计数只描述保留的历史阻塞，不表示业务规则未决；显式重试成功后不再计为历史阻塞。
+Report恰好brand_id、snapshot_at、timezone、query、coverage、summary、items、total_groups。query恰好from、to、group_by、limit、offset、agent_id、member_id、cycle_id，后三项可空。coverage恰好selected_cycle_count、ready_cycle_count、unready_cycle_count，满足selected=ready+unready。
 
 summary和每组totals恰好十八字段，数量与积分均规范十进制字符串，除下表说明的空值外不含null。items恰好key、label、totals，key/label为保存周期或受益代理UUID，按C顺序分页；summary覆盖完整筛选，不是当前页合计。
 

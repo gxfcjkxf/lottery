@@ -22,7 +22,7 @@ test("only the six implemented immutable history reads advertise routing headers
         actual.add(path);
         assert.deepEqual(headers["X-Read-Source"].schema.enum, ["primary", "replica"]);
         assert.equal(headers["X-Read-Replica"].schema.pattern, "^[1-8]$");
-        assert.ok(headers["X-Read-Reason"].schema.enum.includes("fence_unavailable"));
+        assert.ok(!headers["X-Read-Reason"].schema.enum.includes("fence_unavailable"));
       }
       for (const [status, response] of Object.entries(operation.responses)) {
         if (Number(status) >= 400) assert.ok(!response.headers?.["X-Read-Source"]);

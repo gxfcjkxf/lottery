@@ -213,76 +213,12 @@ func (s Store) Entry(ctx context.Context, tx pgx.Tx, brand, member, id string) (
 func changeHash(c Change) (string, error) {
 	c.RequestID = ""
 	c.IP = ""
-	var raw []byte
-	var err error
-	if legacyChangeShape(c) {
-		legacy := legacyChange{
-			BrandID: c.BrandID, MemberID: c.MemberID, EntryType: c.EntryType,
-			ReferenceType: c.ReferenceType, ReferenceID: c.ReferenceID,
-			OperationKey: c.OperationKey, Reason: c.Reason, ActorType: c.ActorType,
-			ActorID: c.ActorID, RequestID: c.RequestID, IP: c.IP,
-			Delta:      legacyBalance{c.Delta[0], c.Delta[1], c.Delta[2]},
-			Allocation: c.Allocation, ReversalOf: c.ReversalOf,
-		}
-		raw, err = json.Marshal(legacy)
-	} else {
-		raw, err = json.Marshal(c)
-	}
+	raw, err := json.Marshal(c)
 	if err != nil {
 		return "", err
 	}
 	h := sha256.Sum256(raw)
 	return hex.EncodeToString(h[:]), nil
-}
-
-// Historical request hashes used a typed three-source Change. Keep its field
-// ordering and JSON shape for immutable entries whose commission row is zero.
-type legacyBalance [3][4]Amount
-
-func (b legacyBalance) MarshalJSON() ([]byte, error) {
-	var out strings.Builder
-	out.WriteByte('{')
-	for source := 0; source < 3; source++ {
-		if source > 0 {
-			out.WriteByte(',')
-		}
-		name, _ := json.Marshal(sourceNames[source])
-		out.Write(name)
-		out.WriteString(":{")
-		for state, stateName := range stateNames {
-			if state > 0 {
-				out.WriteByte(',')
-			}
-			stateJSON, _ := json.Marshal(stateName)
-			out.Write(stateJSON)
-			out.WriteByte(':')
-			amountJSON, _ := b[source][state].MarshalJSON()
-			out.Write(amountJSON)
-		}
-		out.WriteByte('}')
-	}
-	out.WriteByte('}')
-	return []byte(out.String()), nil
-}
-
-// Keep this declaration in the exact order of Change's original fields.
-type legacyChange struct {
-	BrandID, MemberID, EntryType, ReferenceType, ReferenceID, OperationKey, Reason, ActorType, ActorID, RequestID, IP string
-	Delta                                                                                                             legacyBalance
-	Allocation                                                                                                        []Allocation
-	ReversalOf                                                                                                        string
-}
-
-func legacyChangeShape(c Change) bool {
-	if c.Delta[3] != ([4]Amount{}) {
-		return false
-	}
-	for _, allocation := range c.Allocation {
-		if allocation.Source == sourceNames[3] {
-			return false
-		}
-	}
-	return true
 }
 func validChange(c Change) bool {
 	if !uuidPattern.MatchString(c.BrandID) || !uuidPattern.MatchString(c.MemberID) || !operationPattern.MatchString(c.OperationKey) || !operationPattern.MatchString(c.EntryType) || !operationPattern.MatchString(c.ReferenceType) || len(c.Reason) == 0 || len(c.Reason) > 500 || !utf8.ValidString(c.Reason) || len(c.RequestID) == 0 || len(c.RequestID) > 80 {

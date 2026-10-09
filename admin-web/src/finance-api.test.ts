@@ -60,20 +60,19 @@ describe("finance API client", () => {
     ]);
   });
 
-  it("normalizes historical three-source ledger snapshots without rewriting them", async () => {
+  it("rejects ledger snapshots missing current commission buckets", async () => {
     const legacy = Object.fromEntries(["recharge", "winning", "gift"].map((source) => [source, { available: "0", manual_frozen: "0", system_frozen: "0", withdrawal: "0" }]));
     const api = createFinanceApi(vi.fn<typeof fetch>().mockResolvedValue(ok({ items: [{ before_snapshot: legacy, delta_snapshot: legacy, after_snapshot: legacy }] })));
-    const result = await api.ledger("brand", "member");
-    expect(result.items[0]?.after_snapshot.commission.available).toBe("0");
+    await expect(api.ledger("brand", "member")).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     expect(Object.keys(legacy)).toEqual(["recharge", "winning", "gift"]);
   });
 
-  it("normalizes a cached legacy point-entry write receipt in memory", async () => {
+  it("rejects cached point-entry receipts missing current commission buckets", async () => {
     const legacy = Object.fromEntries(["recharge", "winning", "gift"].map((source) => [source, { available: "0", manual_frozen: "0", system_frozen: "0", withdrawal: "0" }]));
     const receipt = { id: "frozen", before_snapshot: legacy, delta_snapshot: legacy, after_snapshot: legacy };
     const api = createFinanceApi(vi.fn<typeof fetch>().mockResolvedValue(ok(receipt)));
-    const replayed = await api.freezeWallet("brand", "member", { points: "1", reason: "replay" }, "same-key");
-    expect((replayed as typeof receipt & { after_snapshot: Record<string, Record<string, string>> }).after_snapshot.commission.available).toBe("0");
+    await expect(api.freezeWallet("brand", "member", { points: "1", reason: "replay" }, "same-key"))
+      .rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     expect(Object.keys(legacy)).toEqual(["recharge", "winning", "gift"]);
   });
 

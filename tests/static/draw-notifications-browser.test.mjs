@@ -27,6 +27,8 @@ test('draw notice CI has isolated viewport jobs with normal bootstrap and a real
   assert.ok(job);
   assert.match(job, /viewport: \[desktop, mobile\]/);
   assert.match(job, /POSTGRES_DB: lottery_attribution_browser_\$\{\{ matrix\.viewport \}\}/);
+  assert.match(job, /PLATFORM_BIN: \$\{\{ github\.workspace \}\}\/\.local\/draw-notification-platform/);
+  assert.match(job, /POSTGRES_PSQL_BIN: \/usr\/bin\/psql/);
   assert.match(job, /APP_ENV: test/);
   assert.match(job, /REPORT_ATTRIBUTION_FIXTURE_CONFIRM: owned_synthetic_database/);
   assert.match(job, /node scripts\/init-attribution-browser\.mjs/);

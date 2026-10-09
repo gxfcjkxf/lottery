@@ -5,7 +5,7 @@ export type NotificationPresentationItem = {
   event_type: NotificationEventType;
   template_key: NotificationEventType;
   template_version: number;
-  content?: NotificationTemplateContent | null;
+  content: NotificationTemplateContent;
   payload: { resource_id: string; points: string | null } | DrawNotificationPayload;
   created_at: string;
 };
@@ -150,9 +150,10 @@ export function renderNotification(
   }
   const known = copy[locale][item.event_type as keyof (typeof copy)[typeof locale]];
   if (!known) throw new RangeError(`Unsupported notification event: ${item.event_type}`);
+  if (!item.content) throw new RangeError("Notification requires an immutable content snapshot");
   const isDraw = item.event_type === "draw.result.published" || item.event_type === "draw.result.corrected";
   if (isDraw) {
-    if (item.payload.points !== null || !("draw" in item.payload) || !item.content) {
+    if (item.payload.points !== null || !("draw" in item.payload)) {
       throw new RangeError("Draw notifications require null points, draw facts, and an immutable content snapshot");
     }
     const payload = item.payload as DrawNotificationPayload;
@@ -182,29 +183,17 @@ export function renderNotification(
   const points = item.payload.points === null
     ? null
     : formatIntegerString(item.payload.points, locale);
-  const snapshot = item.content ?? null;
+  const snapshot = item.content;
   const withdrawalEvent = item.event_type.startsWith("withdrawal.order.");
   const commissionEvent = item.event_type === "commission.paid" || item.event_type === "commission.adjusted" || item.event_type === "commission.corrected";
   const rewardEvent = item.event_type.startsWith("reward.order.");
-  if ((withdrawalEvent || commissionEvent || rewardEvent) && snapshot === null) {
-    throw new RangeError("Withdrawal, commission, and reward notifications require an immutable content snapshot");
-  }
-  if (snapshot === null && item.template_version !== 1) {
-    throw new RangeError(`Missing notification template snapshot for version: ${item.template_version}`);
-  }
-  const source = snapshot
-    ? snapshot[locale === "zh" ? "zh-CN" : "en"]
-    : known;
+  const source = snapshot[locale === "zh" ? "zh-CN" : "en"];
   const replacePlaceholders = (value: string) => value
     .replaceAll("{points}", points ?? "")
     .replaceAll("{resource_id}", item.payload.resource_id);
-  const title = snapshot ? replacePlaceholders(source.title) : source.title;
-  const body = snapshot
-    ? replacePlaceholders(source.body)
-    : item.payload.points !== null
-      ? known.body.replaceAll("{points}", points ?? item.payload.points)
-      : known.body;
-  const protectedNote = withdrawalEvent || commissionEvent || rewardEvent || (snapshot && (item.event_type === "bet.order.won" || item.event_type === "bet.order.prize_reversed"))
+  const title = replacePlaceholders(source.title);
+  const body = replacePlaceholders(source.body);
+  const protectedNote = withdrawalEvent || commissionEvent || rewardEvent || item.event_type === "bet.order.won" || item.event_type === "bet.order.prize_reversed"
     ? known.body.replaceAll("{points}", points ?? "")
     : null;
   const date = new Date(item.created_at);

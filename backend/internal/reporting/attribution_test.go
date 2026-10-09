@@ -61,6 +61,7 @@ func TestAttributionQueryValidationRequiresClosedBoundedWindowAndGroup(t *testin
 		{"bad member UUID", func(q *reporting.AttributionQuery) { v := "member"; q.MemberID = &v }},
 		{"bad agent UUID", func(q *reporting.AttributionQuery) { v := "agent"; q.AgentID = &v }},
 		{"bad join method", func(q *reporting.AttributionQuery) { v := "current"; q.JoinMethod = &v }},
+		{"legacy join method", func(q *reporting.AttributionQuery) { v := "legacy"; q.JoinMethod = &v }},
 	} {
 		t.Run(edit.name, func(t *testing.T) {
 			q := query
@@ -86,7 +87,7 @@ func TestAttributionQueryValidationAcceptsEveryGroupAndHistoricalFilter(t *testi
 			}
 		})
 	}
-	for _, method := range []string{"domain", "operator", "agent_code", "referral_code", "legacy"} {
+	for _, method := range []string{"domain", "operator", "agent_code", "referral_code"} {
 		q := validAttributionQuery()
 		q.JoinMethod = testAttributionStringPointer(method)
 		if err := q.Validate(); err != nil {
@@ -119,7 +120,7 @@ func TestAttributionTotalsJSONIsFlatAndUsesExactDecimalStrings(t *testing.T) {
 		"order_count", "stake_points", "placed_count", "won_count", "lost_count", "abnormal_count",
 		"cancelled_count", "refund_points", "settled_stake_points", "unfinalized_stake_points",
 		"abnormal_stake_points", "current_prize_points", "correction_open_count",
-		"final_lost_stake_points", "legacy_attribution_count",
+		"final_lost_stake_points",
 	}
 	if len(object) != len(want) {
 		t.Fatalf("totals JSON has %d fields, want exactly %d: %s", len(object), len(want), encoded)
@@ -151,7 +152,7 @@ func TestAttributionEmptyReportIsReadOnlyAndValidatesHistoricalScope(t *testing.
 	if report.BrandID != brand || report.SnapshotAt.IsZero() || report.Timezone == "" ||
 		report.Query != query || report.TotalGroups != "0" || len(report.Items) != 0 || report.Items == nil ||
 		report.Summary.OrderCount != "0" || report.Summary.StakePoints != "0" ||
-		report.Summary.FinalLostStakePoints != "0" || report.Summary.LegacyAttributionCount != "0" {
+		report.Summary.FinalLostStakePoints != "0" {
 		t.Fatalf("unexpected empty attribution report: %+v", report)
 	}
 	if after := attributionReadOnlyCounts(t, db); after != before {
@@ -190,7 +191,7 @@ func testAttributionTotals() reporting.AttributionTotals {
 			AbnormalCount: "0", CancelledCount: "0", RefundPoints: "0", SettledStakePoints: "0",
 			UnfinalizedStakePoints: "0", AbnormalStakePoints: "0", CurrentPrizePoints: "0", CorrectionOpenCount: "0",
 		},
-		FinalLostStakePoints: "0", LegacyAttributionCount: "0",
+		FinalLostStakePoints: "0",
 	}
 }
 
@@ -410,7 +411,7 @@ func TestAttributionReportUsesSavedAgentChainAcrossGamesAndSettlementCorrection(
 		report.Summary.RefundPoints != "1" || report.Summary.AbnormalCount != "1" || report.Summary.AbnormalStakePoints != "1" ||
 		report.Summary.WonCount != "1" || report.Summary.LostCount != "1" || report.Summary.SettledStakePoints != "2" ||
 		report.Summary.FinalLostStakePoints != "1" || report.Summary.CurrentPrizePoints != "10" || report.Summary.CorrectionOpenCount != "0" ||
-		report.Summary.LegacyAttributionCount != "0" || report.TotalGroups != "2" || len(report.Items) != 2 {
+		report.TotalGroups != "2" || len(report.Items) != 2 {
 		t.Fatalf("wrong snapshot-based multi-agent projection: %+v", report)
 	}
 	countsByAgent := map[string]string{report.Items[0].Key: report.Items[0].Totals.OrderCount, report.Items[1].Key: report.Items[1].Totals.OrderCount}

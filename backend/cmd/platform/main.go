@@ -40,54 +40,17 @@ func run(logger *slog.Logger) error {
 	if len(os.Args) == 3 && os.Args[1] == "generate-metrics-token" {
 		return generateMetricsToken(os.Args[2])
 	}
-	reviewCommand, isReviewCommand, err := parseCommissionReviewArgs(os.Args[1:])
-	if isReviewCommand && err != nil {
-		return err
-	}
-	proposalCommand, isProposalCommand, err := parseCommissionProposalArgs(os.Args[1:])
-	if isProposalCommand && err != nil {
-		return err
-	}
-	if isProposalCommand {
-		if err := validateCommissionProposalEnvironment(proposalCommand, commissionProposalEnvironmentFromOS()); err != nil {
-			return err
-		}
-	}
 	c, err := config.Load()
 	if err != nil {
-		if isProposalCommand {
-			return errors.New("commission recovery configuration unavailable")
-		}
-		if isReviewCommand {
-			return errors.New("commission history review configuration unavailable")
-		}
 		return err
-	}
-	if isProposalCommand && (c.DatabaseReadURL != "" || len(c.DatabaseReadURLs) != 0) {
-		return errors.New("commission recovery requires primary database configuration only")
-	}
-	if isReviewCommand && (c.DatabaseReadURL != "" || len(c.DatabaseReadURLs) != 0) {
-		return errors.New("commission history review requires primary database configuration only")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	pools, err := database.Open(ctx, c)
 	if err != nil {
-		if isProposalCommand {
-			return errors.New("commission recovery database unavailable")
-		}
-		if isReviewCommand {
-			return errors.New("commission history review database unavailable")
-		}
 		return err
 	}
 	defer pools.Close()
-	if isReviewCommand {
-		return runCommissionReviewCommand(ctx, pools.Primary, reviewCommand, os.Stdout)
-	}
-	if isProposalCommand {
-		return runCommissionProposalCommand(ctx, pools.Primary, c, proposalCommand, os.Stdout)
-	}
 	command := "serve"
 	if len(os.Args) > 1 {
 		command = os.Args[1]
@@ -106,13 +69,13 @@ func run(logger *slog.Logger) error {
 	default:
 		return errors.New("usage: platform serve|worker|migrate|check|seed|create-admin|generate-auth-key <file>|generate-metrics-token <file>")
 	}
-	// Refuse partial/foreign schema versions before accepting requests or
-	// starting business workers. This check never migrates or repairs metadata.
+	// Refuse anything other than the current schema before accepting requests or
+	// starting business workers. This check never upgrades or repairs metadata.
 	checkCtx, checkCancel := context.WithTimeout(ctx, 5*time.Second)
 	err = database.CheckMigrations(checkCtx, pools.Primary)
 	checkCancel()
 	if err != nil {
-		return errors.New("database migration status unavailable or incompatible; run the explicit check/migrate workflow")
+		return errors.New("database schema unavailable or incompatible; initialize the current schema explicitly")
 	}
 	// Finish API dependency validation before any operational listener can
 	// advertise readiness. Workers intentionally do not need the API auth key.

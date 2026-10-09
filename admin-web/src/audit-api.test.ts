@@ -78,6 +78,15 @@ describe("audit API", () => {
     await expect(createAuditApi(fetcher).list(brand, {})).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
+  it("requires brand_id while accepting null for platform audit records", async () => {
+    const item = { id: recordId, action: "view", actor_type: "admin", actor_id: actor, resource_type: "user", resource_id: "x", reason: "", request_id: "r", created_at: "2026-10-01T01:00:00Z", ip_address: "", before_json: null, after_json: null };
+    const missingBrand = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [item] } }), { status: 200 }));
+    await expect(createAuditApi(missingBrand).list(brand, {})).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+
+    const platformRecord = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [{ ...item, brand_id: null }] } }), { status: 200 }));
+    await expect(createAuditApi(platformRecord).list(brand, {})).resolves.toEqual({ items: [{ ...item, brand_id: null }] });
+  });
+
   it("validates full CSV, digest, metadata, row count, and brand before resolving", async () => {
     const fetcher = vi.fn<typeof fetch>(async () => await exportResponse());
     const result = await createAuditApi(fetcher).exportCsv(brand, { from, to });

@@ -15,7 +15,7 @@ var attributionCSVHeader = []string{
 	"order_count", "stake_points", "placed_count", "won_count", "lost_count",
 	"abnormal_count", "cancelled_count", "refund_points", "settled_stake_points",
 	"unfinalized_stake_points", "abnormal_stake_points", "current_prize_points",
-	"correction_open_count", "final_lost_stake_points", "legacy_attribution_count",
+	"correction_open_count", "final_lost_stake_points",
 }
 
 func attributionCSVFixture() AttributionReport {
@@ -38,7 +38,6 @@ func attributionCSVFixture() AttributionReport {
 	totals.SettledStakePoints = "400000000000000000000"
 	totals.UnfinalizedStakePoints = "500719925474099312345"
 	totals.FinalLostStakePoints = "400000000000000000000"
-	totals.LegacyAttributionCount = "0"
 	return AttributionReport{
 		BrandID:    "0199a000-0000-7000-8000-000000000001",
 		SnapshotAt: time.Date(2026, 1, 2, 3, 4, 5, 678901234, time.UTC),
@@ -62,7 +61,7 @@ func attributionTestTotals() AttributionTotals {
 			UnfinalizedStakePoints: "0", AbnormalStakePoints: "0", CurrentPrizePoints: "0",
 			CorrectionOpenCount: "0",
 		},
-		FinalLostStakePoints: "0", LegacyAttributionCount: "0",
+		FinalLostStakePoints: "0",
 	}
 }
 
@@ -91,8 +90,8 @@ func TestAttributionCSVHasExactClosedHeaderAndEchoesAllMetadata(t *testing.T) {
 		t.Fatal("CSV records must use CRLF")
 	}
 	rows := attributionCSVRows(t, body)
-	if len(rows) != 3 || len(rows[0]) != 29 {
-		t.Fatalf("expected header, summary, and one group with 29 columns; got %d rows and header width %d", len(rows), len(rows[0]))
+	if len(rows) != 3 || len(rows[0]) != 28 {
+		t.Fatalf("expected header, summary, and one group with 28 columns; got %d rows and header width %d", len(rows), len(rows[0]))
 	}
 	for i, want := range attributionCSVHeader {
 		if rows[0][i] != want {
@@ -111,7 +110,7 @@ func TestAttributionCSVHasExactClosedHeaderAndEchoesAllMetadata(t *testing.T) {
 	}
 	if rows[1][14] != "2" || rows[1][15] != "900719925474099312345" || rows[1][18] != "1" ||
 		rows[1][22] != "400000000000000000000" || rows[1][23] != "500719925474099312345" ||
-		rows[1][27] != "400000000000000000000" || rows[1][28] != "0" {
+		rows[1][27] != "400000000000000000000" {
 		t.Fatalf("summary metrics changed or lost exact integer precision: %v", rows[1][14:])
 	}
 	if rows[2][12] != r.Items[0].Key || rows[2][13] != "'=SUM(1,1)" {
@@ -142,7 +141,7 @@ func TestAttributionCSVRequiresWholeGroupsAndExactSummarySums(t *testing.T) {
 	}
 }
 
-func TestAttributionAgentCSVKeepsNoAgentAndLegacyAsSeparateStableKeys(t *testing.T) {
+func TestAttributionAgentCSVKeepsNoAgentSeparateFromSavedAgent(t *testing.T) {
 	r := attributionCSVFixture()
 	r.Query.GroupBy = "agent"
 	r.Query.AgentID, r.Query.AgentScope, r.Query.JoinMethod = nil, "direct", nil
@@ -151,24 +150,20 @@ func TestAttributionAgentCSVKeepsNoAgentAndLegacyAsSeparateStableKeys(t *testing
 	lost := attributionTestTotals()
 	lost.OrderCount, lost.LostCount, lost.StakePoints = "1", "1", "1"
 	lost.SettledStakePoints, lost.FinalLostStakePoints = "1", "1"
-	legacyLost := lost
-	legacyLost.LegacyAttributionCount = "1"
 	r.Items = []Group[AttributionTotals]{
 		{Key: uuid, Label: uuid, Totals: lost},
-		{Key: "legacy", Label: "legacy", Totals: legacyLost},
 		{Key: "none", Label: "none", Totals: lost},
 	}
 	r.Summary = lost
-	r.Summary.OrderCount, r.Summary.LostCount, r.Summary.StakePoints = "3", "3", "3"
-	r.Summary.SettledStakePoints, r.Summary.FinalLostStakePoints = "3", "3"
-	r.Summary.LegacyAttributionCount = "1"
-	r.TotalGroups = "3"
+	r.Summary.OrderCount, r.Summary.LostCount, r.Summary.StakePoints = "2", "2", "2"
+	r.Summary.SettledStakePoints, r.Summary.FinalLostStakePoints = "2", "2"
+	r.TotalGroups = "2"
 	body, err := AttributionCSV(r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rows := attributionCSVRows(t, body)
-	if len(rows) != 5 || rows[2][12] != uuid || rows[3][12] != "legacy" || rows[4][12] != "none" {
+	if len(rows) != 4 || rows[2][12] != uuid || rows[3][12] != "none" {
 		t.Fatalf("agent grouping merged or rewrote saved provenance keys: %v", rows)
 	}
 
@@ -178,14 +173,12 @@ func TestAttributionAgentCSVKeepsNoAgentAndLegacyAsSeparateStableKeys(t *testing
 	r.Items = []Group[AttributionTotals]{
 		{Key: "agent_code", Label: "agent_code", Totals: lost},
 		{Key: "domain", Label: "domain", Totals: lost},
-		{Key: "legacy", Label: "legacy", Totals: legacyLost},
 		{Key: "operator", Label: "operator", Totals: lost},
 		{Key: "referral_code", Label: "referral_code", Totals: lost},
 	}
-	r.TotalGroups = "5"
-	r.Summary.OrderCount, r.Summary.LostCount, r.Summary.StakePoints = "5", "5", "5"
-	r.Summary.SettledStakePoints, r.Summary.FinalLostStakePoints = "5", "5"
-	r.Summary.LegacyAttributionCount = "1"
+	r.TotalGroups = "4"
+	r.Summary.OrderCount, r.Summary.LostCount, r.Summary.StakePoints = "4", "4", "4"
+	r.Summary.SettledStakePoints, r.Summary.FinalLostStakePoints = "4", "4"
 	if _, err = AttributionCSV(r); err != nil {
 		t.Fatalf("closed join-method categories rejected: %v", err)
 	}
@@ -201,33 +194,10 @@ func TestAttributionCSVRejectsContradictorySourceAndDirectAgentGroups(t *testing
 	}
 	r = attributionCSVFixture()
 	r.Query.GroupBy = "join_method"
-	r.Query.JoinMethod = attributionStringPointer("legacy")
+	r.Query.JoinMethod = attributionStringPointer("domain")
 	r.Items[0].Key, r.Items[0].Label = "agent_code", "agent_code"
 	if body, err := AttributionCSV(r); err != ErrInvalid || body != nil {
 		t.Fatalf("accepted a group key that contradicts the saved source filter: bytes=%d err=%v", len(body), err)
-	}
-}
-
-func TestAttributionCSVLegacyGroupRetainsLegacyProofWithoutAgentIdentity(t *testing.T) {
-	r := attributionCSVFixture()
-	r.Query.GroupBy = "agent"
-	r.Query.AgentID = nil
-	r.Query.AgentScope = "direct"
-	r.Query.GroupBy = "agent"
-	r.Query.GameID, r.Query.MemberID = nil, nil
-	r.Query.JoinMethod = attributionStringPointer("legacy")
-	r.Items = []Group[AttributionTotals]{{Key: "legacy", Label: "legacy", Totals: attributionTestTotals()}}
-	r.Summary = attributionTestTotals()
-	r.Summary.OrderCount = "1"
-	r.Summary.StakePoints = "1"
-	r.Summary.LostCount = "1"
-	r.Summary.SettledStakePoints = "1"
-	r.Summary.FinalLostStakePoints = "1"
-	r.Summary.LegacyAttributionCount = "1"
-	r.Items[0].Totals = r.Summary
-	r.TotalGroups = "1"
-	if _, err := AttributionCSV(r); err != nil {
-		t.Fatalf("valid legacy-only evidence was rejected or rewritten: %v", err)
 	}
 }
 
@@ -239,7 +209,7 @@ func TestAttributionCSVRejectsSignedAndNoncanonicalMetrics(t *testing.T) {
 		{"signed total", func(r *AttributionReport) { r.Summary.StakePoints = "-1" }},
 		{"negative zero", func(r *AttributionReport) { r.Summary.FinalLostStakePoints = "-0" }},
 		{"leading zero", func(r *AttributionReport) { r.Summary.OrderCount = "02" }},
-		{"nondigit", func(r *AttributionReport) { r.Items[0].Totals.LegacyAttributionCount = "1.0" }},
+		{"nondigit", func(r *AttributionReport) { r.Items[0].Totals.OrderCount = "1.0" }},
 	} {
 		t.Run(edit.name, func(t *testing.T) {
 			r := attributionCSVFixture()
@@ -263,9 +233,7 @@ func TestAttributionCSVRejectsContradictoryTotals(t *testing.T) {
 		{"status counts do not partition orders", func(r *AttributionReport) {
 			r.Summary.PlacedCount, r.Items[0].Totals.PlacedCount = "0", "0"
 		}},
-		{"legacy count exceeds matching cohort", func(r *AttributionReport) {
-			r.Summary.LegacyAttributionCount, r.Items[0].Totals.LegacyAttributionCount = "1", "1"
-		}},
+		{"legacy join method is unsupported", func(r *AttributionReport) { r.Query.JoinMethod = attributionStringPointer("legacy") }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			r := attributionCSVFixture()
@@ -286,15 +254,14 @@ func TestAttributionCSVUsesUnboundedExactDecimalSums(t *testing.T) {
 	totals.StakePoints = "18446744073709551615"
 	totals.SettledStakePoints = "18446744073709551615"
 	totals.FinalLostStakePoints = "18446744073709551615"
-	totals.LegacyAttributionCount = "18446744073709551616"
 	r.Summary = totals
 	r.Items[0].Totals = totals
 	r.Query.AgentID = nil
 	r.Query.AgentScope = "direct"
 	r.Query.GroupBy = "agent"
 	r.Query.GameID, r.Query.MemberID = nil, nil
-	r.Query.JoinMethod = attributionStringPointer("legacy")
-	r.Items[0].Key, r.Items[0].Label = "legacy", "legacy"
+	r.Query.JoinMethod = nil
+	r.Items[0].Key, r.Items[0].Label = "0199a000-0000-7000-8000-000000000099", "agent"
 	if _, err := AttributionCSV(r); err != nil {
 		t.Fatalf("rejected exact totals above uint64/int64 range: %v", err)
 	}

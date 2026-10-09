@@ -11,21 +11,7 @@ import (
 	"testing"
 )
 
-type legacyHashBalance [3][4]Amount
-
-func (b legacyHashBalance) MarshalJSON() ([]byte, error) {
-	return (legacyBalance{b[0], b[1], b[2]}).MarshalJSON()
-}
-
-// This is the original typed Change field order used before commission.
-type legacyHashChange struct {
-	BrandID, MemberID, EntryType, ReferenceType, ReferenceID, OperationKey, Reason, ActorType, ActorID, RequestID, IP string
-	Delta                                                                                                             legacyHashBalance
-	Allocation                                                                                                        []Allocation
-	ReversalOf                                                                                                        string
-}
-
-func TestLegacyThreeSourceChangeHashGolden(t *testing.T) {
+func TestChangeHashUsesCurrentSixteenBucketShape(t *testing.T) {
 	var delta Balance
 	delta[0][0], delta[1][2], delta[2][3] = 125, -7, 3
 	c := Change{
@@ -36,35 +22,28 @@ func TestLegacyThreeSourceChangeHashGolden(t *testing.T) {
 		Allocation: []Allocation{{Source: "recharge", State: "available", Points: 125}, {Source: "winning", State: "system_frozen", Points: 7}, {Source: "gift", State: "withdrawal", Points: 3}},
 		ReversalOf: "",
 	}
-	legacy := legacyHashChange{
-		BrandID: c.BrandID, MemberID: c.MemberID, EntryType: c.EntryType, ReferenceType: c.ReferenceType,
-		ReferenceID: c.ReferenceID, OperationKey: c.OperationKey, Reason: c.Reason, ActorType: c.ActorType,
-		ActorID: c.ActorID, RequestID: "", IP: "",
-		Delta: legacyHashBalance{delta[0], delta[1], delta[2]}, Allocation: c.Allocation, ReversalOf: c.ReversalOf,
-	}
-	legacyJSON, err := json.Marshal(legacy)
+	current := c
+	current.RequestID, current.IP = "", ""
+	raw, err := json.Marshal(current)
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacySum := sha256.Sum256(legacyJSON)
-	want := hex.EncodeToString(legacySum[:])
-	if want != "9a912d7129ee841a7fcf201e2017dc4275144159ea800b5f6df8622e6302eab3" {
-		t.Fatalf("typed legacy golden hash changed: got=%s json=%s", want, legacyJSON)
-	}
+	sum := sha256.Sum256(raw)
+	want := hex.EncodeToString(sum[:])
 	got, err := changeHash(c)
 	if err != nil || got != want {
-		t.Fatalf("changeHash=%s err=%v want typed legacy hash %s", got, err, want)
+		t.Fatalf("changeHash=%s err=%v want current hash %s", got, err, want)
 	}
 	c.Delta[3][0] = 1
 	changedHash, err := changeHash(c)
 	if err != nil || changedHash == want {
-		t.Fatalf("commission delta reused legacy hash: hash=%s err=%v", changedHash, err)
+		t.Fatalf("commission delta reused current hash: hash=%s err=%v", changedHash, err)
 	}
 	c.Delta[3][0] = 0
 	c.Allocation = append(c.Allocation, Allocation{Source: "commission", State: "available", Points: 1})
 	allocationHash, err := changeHash(c)
 	if err != nil || allocationHash == want {
-		t.Fatalf("commission allocation reused legacy hash: hash=%s err=%v", allocationHash, err)
+		t.Fatalf("commission allocation reused current hash: hash=%s err=%v", allocationHash, err)
 	}
 }
 
@@ -119,7 +98,7 @@ func TestAmountJSONIsDecimalStringOnly(t *testing.T) {
 	}
 }
 
-func TestBalanceJSONRoundTripAndStrictLegacyOrSixteenBuckets(t *testing.T) {
+func TestBalanceJSONRoundTripAndStrictSixteenBuckets(t *testing.T) {
 	var balance Balance
 	for source := range balance {
 		for state := range balance[source] {
@@ -143,19 +122,7 @@ func TestBalanceJSONRoundTripAndStrictLegacyOrSixteenBuckets(t *testing.T) {
 	}
 
 	valid := `{"recharge":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"},"winning":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"},"gift":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"}}`
-	legacy := valid
 	full := strings.TrimSuffix(valid, "}") + `,"commission":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"}}`
-	var legacyBalance Balance
-	if err := json.Unmarshal([]byte(legacy), &legacyBalance); err != nil {
-		t.Fatalf("exact legacy snapshot rejected: %v", err)
-	}
-	if legacyBalance[3] != ([4]Amount{}) {
-		t.Fatalf("legacy commission values=%v", legacyBalance[3])
-	}
-	canonical, err := json.Marshal(legacyBalance)
-	if err != nil || !strings.Contains(string(canonical), `"commission":`) {
-		t.Fatalf("legacy snapshot did not normalize to four sources: %s err=%v", canonical, err)
-	}
 	invalid := []struct {
 		name string
 		json string
@@ -168,6 +135,7 @@ func TestBalanceJSONRoundTripAndStrictLegacyOrSixteenBuckets(t *testing.T) {
 		{name: "duplicate source", json: strings.TrimSuffix(valid, "}") + `,"gift":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"}}`},
 		{name: "duplicate state", json: strings.Replace(valid, `"available":"0"`, `"available":"0","available":"0"`, 1)},
 		{name: "incomplete four-source shape", json: strings.Replace(full, `,"gift":{"available":"0","manual_frozen":"0","system_frozen":"0","withdrawal":"0"}`, "", 1)},
+		{name: "old twelve-bucket shape", json: valid},
 		{name: "trailing value", json: valid + ` true`},
 		{name: "null root", json: `null`},
 	}
@@ -184,7 +152,7 @@ func TestBalanceJSONRoundTripAndStrictLegacyOrSixteenBuckets(t *testing.T) {
 		})
 	}
 	var signed Balance
-	if err := json.Unmarshal([]byte(strings.Replace(valid, `"available":"0"`, `"available":"-9"`, 1)), &signed); err != nil || signed[0][0] != -9 {
+	if err := json.Unmarshal([]byte(strings.Replace(full, `"available":"0"`, `"available":"-9"`, 1)), &signed); err != nil || signed[0][0] != -9 {
 		t.Fatalf("signed delta snapshot rejected: balance=%v err=%v", signed, err)
 	}
 }

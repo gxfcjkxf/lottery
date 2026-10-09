@@ -18,7 +18,10 @@ const joined: NotificationItem = {
   event_type: "member.joined",
   template_key: "member.joined",
   template_version: 1,
-  content: null,
+  content: {
+    en: { title: "Welcome", body: "Your membership is ready. Welcome aboard." },
+    "zh-CN": { title: "欢迎", body: "您的会员账户已准备就绪，欢迎加入。" },
+  },
   payload: { resource_id: memberId, points: null },
   created_at: createdAt,
   read_at: null,
@@ -129,13 +132,12 @@ describe("user notification API", () => {
     for (let i = 0; i < invalidCount; i++) await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
   });
 
-  it("normalizes omitted content on legacy v1 rows to null", async () => {
-    const legacyRow: Record<string, unknown> = { ...joined };
-    delete legacyRow.content;
+  it.each([undefined, null])("rejects notifications missing content at template version 1 (%s)", async (content) => {
+    const row = { ...joined, content };
     const api = createNotificationApi({
-      fetch: vi.fn<typeof fetch>().mockResolvedValue(ok(page({ items: [legacyRow] }))),
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(ok(page({ items: [row] }))),
     });
-    await expect(api.list()).resolves.toMatchObject({ items: [{ template_version: 1, content: null }] });
+    await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
   });
 
   it("uses unprefixed paths, requested pagination and no payload-provided links or HTML", async () => {
@@ -152,6 +154,10 @@ describe("user notification API", () => {
       ...joined,
       event_type: "recharge.confirmed",
       template_key: "recharge.confirmed",
+      content: {
+        en: { title: "Recharge confirmed", body: "Recharge confirmed: {points} points." },
+        "zh-CN": { title: "充值已确认", body: "充值已确认：{points} 积分。" },
+      },
       payload: { resource_id: resourceId, points: "9007199254740993123" },
       read_at: "2026-10-06T04:00:00Z",
     };
@@ -182,6 +188,10 @@ describe("user notification API", () => {
       ...joined,
       event_type: "bet.order.won",
       template_key: "bet.order.won",
+      content: {
+        en: { title: "Prize credit recorded", body: "Historical prize: {points}." },
+        "zh-CN": { title: "派奖入账记录", body: "历史奖金：{points}。" },
+      },
       payload: { resource_id: resourceId, points: "9223372036854775807" },
     };
     const reversed = {
@@ -189,10 +199,13 @@ describe("user notification API", () => {
       id: "cd333333-3333-4333-8333-333333333333",
       event_type: "bet.order.prize_reversed",
       template_key: "bet.order.prize_reversed",
+      content: {
+        en: { title: "Prize reversal recorded", body: "Historical reversal: {points}." },
+        "zh-CN": { title: "奖金冲正记录", body: "历史冲正：{points}。" },
+      },
       payload: { resource_id: resourceId, points: "9007199254740993" },
     };
     const invalidItems = [
-      { ...won, template_version: 2 },
       { ...won, payload: { ...won.payload, resource_id: "order-42" } },
       { ...won, payload: { ...won.payload, points: 0 } },
       { ...won, payload: { ...won.payload, points: "0" } },
@@ -209,12 +222,12 @@ describe("user notification API", () => {
       ["bet.order.won", { resource_id: resourceId, points: "9223372036854775807" }],
       ["bet.order.prize_reversed", { resource_id: resourceId, points: "9007199254740993" }],
     ]);
-    for (let index = 0; index < 6; index++) {
+    for (let index = 0; index < invalidItems.length; index++) {
       await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
     }
   });
 
-  it("accepts all reward order states with frozen v1 content and rejects malformed points or private payload fields", async () => {
+  it("accepts all reward states with a template version 1 snapshot and rejects malformed points or private payload fields", async () => {
     const states = ["granted", "revocation_pending", "revoked"] as const;
     const rows = states.map((state, index) => ({
       ...joined,
@@ -304,7 +317,7 @@ describe("user notification API", () => {
     await expect(api.list()).resolves.toMatchObject({ items: [{ payload: { resource_id: resourceId, points: "-1" } }] });
   });
 
-  it("never treats commission messages as legacy snapshotless v1 records", async () => {
+  it("rejects commission notifications missing content regardless of template version", async () => {
     const variants = ["commission.paid", "commission.adjusted", "commission.corrected"].flatMap(event => [null, undefined].map(content => ({
       ...joined, event_type: event, template_key: event, template_version: 1, content,
       payload: { resource_id: resourceId, points: event === "commission.paid" ? "1" : "-1" },

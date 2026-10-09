@@ -1094,7 +1094,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Brand-scoped compliance configuration and explicit administrative stub checks only. Separate explicit administrative simulations from actual registration/join/betting rejection gates. No real verification or withdrawal flow. Independent policy version, immutable audited history and decisions, checked encrypted idempotency. Super administrators may read only with explicit platform grants; writes and runs denied. Disabled brands readonly. All-disabled means checks skipped, not a verified user; enabled means review/ADAPTER_NOT_CONFIGURED. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
+        "description": "Brand-scoped compliance configuration and explicit administrative stub checks only. Separate explicit administrative simulations from actual registration/join/betting rejection gates. No real verification or withdrawal flow. Independent policy version, immutable audited history and decisions, checked encrypted idempotency. Super administrators may read only with explicit platform grants; writes and runs denied. Disabled brands readonly. All-disabled means checks skipped, not a verified user; enabled means review/ADAPTER_NOT_CONFIGURED. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -1182,9 +1182,6 @@
                   "enum": [
                     "not_configured",
                     "primary_only",
-                    "fence_unavailable",
-                    "no_eligible_replica",
-                    "replica_query_failed",
                     "wal_fenced"
                   ]
                 }
@@ -11776,7 +11773,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. Filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; brand_id is an optional nullable addition to each selected record. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
+        "description": "Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. Filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; each record includes a required nullable brand_id, which is null for platform records. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -11923,9 +11920,6 @@
                   "enum": [
                     "not_configured",
                     "primary_only",
-                    "fence_unavailable",
-                    "no_eligible_replica",
-                    "replica_query_failed",
                     "wal_fenced"
                   ]
                 }
@@ -16726,7 +16720,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Requires an explicit brand_operation.view.brand grant for the selected brand or brand_operation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Returns newest revisions first for the brand selected by X-Brand-ID; there is no brand-ID path alias. Unknown or repeated query parameters are rejected. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
+        "description": "Requires an explicit brand_operation.view.brand grant for the selected brand or brand_operation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Returns newest revisions first for the brand selected by X-Brand-ID; there is no brand-ID path alias. Unknown or repeated query parameters are rejected. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -16814,9 +16808,6 @@
                   "enum": [
                     "not_configured",
                     "primary_only",
-                    "fence_unavailable",
-                    "no_eligible_replica",
-                    "replica_query_failed",
                     "wal_fenced"
                   ]
                 }
@@ -18103,7 +18094,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Requires an explicit brand_domains.view.brand grant for the selected brand or brand_domains.view.platform grant. Super-admin status alone grants no access. Returns newest revisions first for the brand selected only by X-Brand-ID. Before and after domain snapshots are sorted by domain then id; each may have zero or one primary. Versions may have gaps because config_version is shared. Unknown or repeated query parameters are rejected. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
+        "description": "Requires an explicit brand_domains.view.brand grant for the selected brand or brand_domains.view.platform grant. Super-admin status alone grants no access. Returns newest revisions first for the brand selected only by X-Brand-ID. Before and after domain snapshots are sorted by domain then id; each may have zero or one primary. Versions may have gaps because config_version is shared. Unknown or repeated query parameters are rejected. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -18191,9 +18182,6 @@
                   "enum": [
                     "not_configured",
                     "primary_only",
-                    "fence_unavailable",
-                    "no_eligible_replica",
-                    "replica_query_failed",
                     "wal_fenced"
                   ]
                 }
@@ -19128,7 +19116,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Requires an explicit brand_presentation.view.brand grant for the selected brand or brand_presentation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Returns newest presentation revisions first for the brand selected only by X-Brand-ID. Versions may have gaps because the version is shared with other brand/auth configuration. Unknown or repeated query parameters are rejected; no brand-ID path alias is accepted. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
+        "description": "Requires an explicit brand_presentation.view.brand grant for the selected brand or brand_presentation.view.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Returns newest presentation revisions first for the brand selected only by X-Brand-ID. Versions may have gaps because the version is shared with other brand/auth configuration. Unknown or repeated query parameters are rejected; no brand-ID path alias is accepted. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -19216,9 +19204,6 @@
                   "enum": [
                     "not_configured",
                     "primary_only",
-                    "fence_unavailable",
-                    "no_eligible_replica",
-                    "replica_query_failed",
                     "wal_fenced"
                   ]
                 }
@@ -25846,7 +25831,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads use the primary database, revalidate authorization, and commit an audit record before responding. check_scope is immutable job scope; older jobs without the field are interpreted as wallet. Counters and total_count are exact decimal strings for this job only; there are no global wallet segments.",
+        "description": "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads use the primary database, revalidate authorization, and commit an audit record before responding. Every job reports its immutable check_scope. Counters and total_count are exact decimal strings for this job only; there are no global wallet segments.",
         "security": [
           {
             "adminBearer": []
@@ -26180,7 +26165,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Requires wallet.reconcile.brand and either wallet.view.brand or wallet.view.platform. Brand-scoped grants must match explicit brand membership; platform view does not bypass brand membership. Super-admins are read-only. Requires reason and accepts optional check_scope: wallet (the default, including reason-only legacy requests) or wallet_and_business. Reason-only requests retain the legacy wallet scope, fingerprint, and cached acknowledgement bytes. Captures the selected account/member targets transactionally; scope and account membership are fixed at capture. The wallet_and_business worker checks point-ledger and business-record bindings in both directions. An active job returns 409; more than 100000 targets returns 413 atomically without creating a job. Reason must already be valid UTF-8, trimmed, and contain no LF, CR, or NUL. Checks are diagnostic; they do not mutate funds or automatically repair source records. Domain errors use RECONCILIATION_INPUT_INVALID, RECONCILIATION_STATE_CONFLICT, and RECONCILIATION_TOO_LARGE.",
+        "description": "Requires wallet.reconcile.brand and either wallet.view.brand or wallet.view.platform. Brand-scoped grants must match explicit brand membership; platform view does not bypass brand membership. Super-admins are read-only. Requires reason and explicit check_scope: wallet or wallet_and_business. Captures the selected account/member targets transactionally; scope and account membership are fixed at capture. The wallet_and_business worker checks point-ledger and business-record bindings in both directions. An active job returns 409; more than 100000 targets returns 413 atomically without creating a job. Reason must already be valid UTF-8, trimmed, and contain no LF, CR, or NUL. Checks are diagnostic; they do not mutate funds or automatically repair source records. Domain errors use RECONCILIATION_INPUT_INVALID, RECONCILIATION_STATE_CONFLICT, and RECONCILIATION_TOO_LARGE.",
         "security": [
           {
             "adminBearer": []
@@ -26550,7 +26535,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads current state from the primary database and commits an audit record. The POST creation receipt remains frozen at pending version 1; this endpoint returns current counters, state, and immutable check_scope (older jobs without it mean wallet). A completed job means every captured target reached a terminal check, not that every check is consistent. Counts are job-local diagnostic observations, not global wallet segments.",
+        "description": "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads current state from the primary database and commits an audit record. The POST creation receipt remains frozen at pending version 1; this endpoint returns current counters, state, and immutable check_scope. A completed job means every captured target reached a terminal check, not that every check is consistent. Counts are job-local diagnostic observations, not global wallet segments.",
         "security": [
           {
             "adminBearer": []
@@ -26872,7 +26857,7 @@
         "tags": [
           "finance"
         ],
-        "description": "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads the primary database and commits an audit record. Pagination defaults to limit 20/offset 0, maximum limit 100 and offset 1000000. outcome filters pending/failed target states or the checked observation outcome. Each target reports its immutable check_scope; older targets without it mean wallet. wallet_and_business results include a nullable point-ledger/business-record preview with bidirectional binding checks and twelve exact family coverage counts. A full preview is present only for a checked target; wallet checks and nonterminal targets return null. Completion does not imply consistency, and observations never automatically fix a source record.",
+        "description": "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads the primary database and commits an audit record. Pagination defaults to limit 20/offset 0, maximum limit 100 and offset 1000000. outcome filters pending/failed target states or the checked observation outcome. Each target reports its immutable check_scope. wallet_and_business results include a nullable point-ledger/business-record preview with bidirectional binding checks and twelve exact family coverage counts. A full preview is present only for a checked target; wallet checks and nonterminal targets return null. Completion does not imply consistency, and observations never automatically fix a source record.",
         "security": [
           {
             "adminBearer": []
@@ -59582,7 +59567,7 @@
         "tags": [
           "notification"
         ],
-        "description": "Requires brand view permission with selected-brand membership, or explicit platform view permission independent of membership. limit is 1–100 and offset is 0–1000000. Invalid key or pagination returns NOTIFICATION_TEMPLATE_INPUT_INVALID; a missing brand template returns NOTIFICATION_TEMPLATE_NOT_FOUND. Revision actor and audit IDs are null only for version 1. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary; unhealthy or lagging replicas fall back to primary. The result is not a current financial or configuration projection.",
+        "description": "Requires brand view permission with selected-brand membership, or explicit platform view permission independent of membership. limit is 1–100 and offset is 0–1000000. Invalid key or pagination returns NOTIFICATION_TEMPLATE_INPUT_INVALID; a missing brand template returns NOTIFICATION_TEMPLATE_NOT_FOUND. Revision actor and audit IDs are null only for template revision version 1. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -59698,9 +59683,6 @@
                   "enum": [
                     "not_configured",
                     "primary_only",
-                    "fence_unavailable",
-                    "no_eligible_replica",
-                    "replica_query_failed",
                     "wal_fenced"
                   ]
                 }
@@ -68060,7 +68042,7 @@
         "tags": [
           "notification"
         ],
-        "description": "Notifications expose immutable content snapshots and their template versions. Legacy non-withdrawal, non-commission, non-reward version 1 content can be null; reward notifications always include their copied snapshot. Templates and payload content are not editable through this API.",
+        "description": "Notifications expose immutable content snapshots and their template versions. Templates and payload content are not editable through this API.",
         "security": [
           {
             "userBearer": []
@@ -68376,7 +68358,7 @@
         "tags": [
           "notification"
         ],
-        "description": "Notifications expose immutable content snapshots and their template versions. Legacy non-withdrawal, non-commission, non-reward version 1 content can be null; reward notifications always include their copied snapshot. Templates and payload content are not editable through this API.",
+        "description": "Notifications expose immutable content snapshots and their template versions. Templates and payload content are not editable through this API.",
         "security": [
           {
             "userBearer": []
@@ -79275,7 +79257,7 @@
         "tags": [
           "reports"
         ],
-        "description": "Read-only cycle analysis selected by saved cycle.window_to, including all historical real postings attached to selected cycles regardless of posting time. Requires an authenticated admin session and both commission.view and report_commission.view, each via explicit brand or platform grants; super-admin identity does not imply either grant. Export additionally requires report_commission.export. One primary SQL statement supplies each complete report snapshot. Current authorization is rechecked after the query, and report data is released only after its audit commits. Incomplete current calculation evidence produces null targets; inconsistent financial witnesses fail closed with 409 COMMISSION_ANALYSIS_INTEGRITY. Export rejects limit and offset. CSV v1 is UTF-8 with BOM and exactly 34 columns: record_type, brand_id, snapshot_at, timezone, from, to, group_by, agent_id, member_id, cycle_id, key, label, selected_cycle_count, ready_cycle_count, unready_cycle_count, legacy_policy_blocked_cycle_count, observed_calculated_points, calculated_points, paid_entry_count, paid_points, adjustment_entry_count, adjustment_credit_points, adjustment_debit_points, correction_entry_count, correction_credit_points, correction_debit_points, posting_entry_count, actual_net_points, manual_adjustment_net_points, effective_target_points, calculation_minus_actual_points, effective_minus_actual_points, calculation_complete, effective_target_complete. Summary comes first, followed by groups in key order. Nullable values are empty cells; negative signed values have an apostrophe safety prefix. More than 10000 groups or 4MiB returns 413 without a partial file.",
+        "description": "Read-only cycle analysis selected by saved cycle.window_to, including all historical real postings attached to selected cycles regardless of posting time. Requires an authenticated admin session and both commission.view and report_commission.view, each via explicit brand or platform grants; super-admin identity does not imply either grant. Export additionally requires report_commission.export. One primary SQL statement supplies each complete report snapshot. Current authorization is rechecked after the query, and report data is released only after its audit commits. Incomplete current calculation evidence produces null targets; inconsistent financial witnesses fail closed with 409 COMMISSION_ANALYSIS_INTEGRITY. Export rejects limit and offset. CSV v1 is UTF-8 with BOM and exactly 33 columns: record_type, brand_id, snapshot_at, timezone, from, to, group_by, agent_id, member_id, cycle_id, key, label, selected_cycle_count, ready_cycle_count, unready_cycle_count, observed_calculated_points, calculated_points, paid_entry_count, paid_points, adjustment_entry_count, adjustment_credit_points, adjustment_debit_points, correction_entry_count, correction_credit_points, correction_debit_points, posting_entry_count, actual_net_points, manual_adjustment_net_points, effective_target_points, calculation_minus_actual_points, effective_minus_actual_points, calculation_complete, effective_target_complete. Summary comes first, followed by groups in key order. Nullable values are empty cells; negative signed values have an apostrophe safety prefix. More than 10000 groups or 4MiB returns 413 without a partial file.",
         "security": [
           {
             "adminBearer": []
@@ -79723,7 +79705,7 @@
         "tags": [
           "workbench"
         ],
-        "description": "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Withdrawals reports only current reviewing and processing order counts and order points; it does not infer eligibility, actual payment, or profit. Rewards counts all current reward orders in granted, revocation_pending and revoked states; not today's postings, attempt counts, wallet balance or reserved funds. Commissions reports all-current discovery, cycle, payment, plan and execution task counts, not today's earnings, wallet values or payout authorization. cycle_ready_count includes only ready runs matching the current evidence epoch; cycle_stale_count includes ready runs without matching proof and is disjoint. discovery_pending_count includes future waiting work. A blocked payment reflects its saved state, which can persist after correction and does not establish that funds are owed. Current commission responses are ready with aggregate counts or forbidden with null data; only older stored snapshots may use not_implemented with null data. Fresh authorization is rechecked after audit waits before releasing data. Aggregate counts and amounts are exact canonical decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
+        "description": "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Withdrawals reports only current reviewing and processing order counts and order points; it does not infer eligibility, actual payment, or profit. Rewards counts all current reward orders in granted, revocation_pending and revoked states; not today's postings, attempt counts, wallet balance or reserved funds. Commissions reports all-current discovery, cycle, payment, plan and execution task counts, not today's earnings, wallet values or payout authorization. cycle_ready_count includes only ready runs matching the current evidence epoch; cycle_stale_count includes ready runs without matching proof and is disjoint. discovery_pending_count includes future waiting work. A blocked payment reflects its saved state, which can persist after correction and does not establish that funds are owed. Current commission responses are ready with aggregate counts or forbidden with null data. Fresh authorization is rechecked after audit waits before releasing data. Aggregate counts and amounts are exact canonical decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
         "security": [
           {
             "adminBearer": []
@@ -80371,7 +80353,7 @@
         "tags": [
           "commissions"
         ],
-        "description": "Complete replacement with version/reason. Unknown, duplicate, null and missing required fields are rejected. Rechecks actual session and brand write permission before cached receipt replay; changed body with same key conflicts. Audit, immutable revision and current policy commit together. Enabled calendar must match enabled agency cycle; disable financial policy first before changing agency cycle. Changes affect only new bet snapshots; legacy NULL is not backfilled. No batch generation or payout is performed.",
+        "description": "Complete replacement with version/reason. Unknown, duplicate, null and missing required fields are rejected. Rechecks actual session and brand write permission before cached receipt replay; changed body with same key conflicts. Audit, immutable revision and current policy commit together. Enabled calendar must match enabled agency cycle; disable financial policy first before changing agency cycle. Changes affect only new bet snapshots; every new bet records its current policy. No batch generation or payout is performed.",
         "security": [
           {
             "adminBearer": []
@@ -86169,7 +86151,7 @@
         "tags": [
           "commissions"
         ],
-        "description": "Requires commission view plus commission_payment.approve.brand and denies super-admin writes. A single brand administrator explicitly approves the whole manual or mixed cycle; the worker performs actual target ledger credits. Mixed payout_mode remains unchanged as historical snapshot identity. The exact legacy zero-paid mixed record blocked with COMMISSION_PAYMENT_MODE_UNRESOLVED may also be approved; correction/evidence blocks and other blocked records may not.",
+        "description": "Requires commission view plus commission_payment.approve.brand and denies super-admin writes. A single brand administrator explicitly approves the whole manual or mixed cycle; the worker performs actual target ledger credits. Mixed payout_mode remains unchanged as historical snapshot identity.",
         "security": [
           {
             "adminBearer": []
@@ -89603,7 +89585,7 @@
         "tags": [
           "commissions"
         ],
-        "description": "Requires ordinary brand-admin authorization plus commission view and commission_correction.retry.brand; super-admins are read-only. The request is a closed UTF-8 JSON object with no query parameters. Go Unicode control characters are rejected in reason. A version above JavaScript's maximum safe integer fails closed input validation with 400; SDKs should reject it before sending to avoid rounded intent. A version equal to the maximum safe integer passes input decoding, but a domain version increment overflow returns 409. The authenticated session, actor, and permission are checked again after business and audit writes, immediately before commit. A 409 conflict retains the original intent and requires a fresh review before a new key/body. SQLSTATE 55P03 busy maps to 503 and is not cached; retry with the same idempotency key and identical body. Successful receipts return the original action result, not a later live snapshot. Plan retry prepares evidence only and never approves or posts funds. It accepts technical failures and retained historical MANUAL_POLICY_UNRESOLVED blocks with zero targets and null differences. Historical recovery revalidates the unchanged frozen basis, current financial sources and enabled original payment gate before appending a new audited version. A new draw calculation supersedes the prior manual target: actual 12 to recalculated 8 requires debit 4, without carrying forward a manual offset. Existing blocked history is never automatically recovered.",
+        "description": "Requires ordinary brand-admin authorization plus commission view and commission_correction.retry.brand; super-admins are read-only. The request is a closed UTF-8 JSON object with no query parameters. Go Unicode control characters are rejected in reason. A version above JavaScript's maximum safe integer fails closed input validation with 400; SDKs should reject it before sending to avoid rounded intent. A version equal to the maximum safe integer passes input decoding, but a domain version increment overflow returns 409. The authenticated session, actor, and permission are checked again after business and audit writes, immediately before commit. A 409 conflict retains the original intent and requires a fresh review before a new key/body. SQLSTATE 55P03 busy maps to 503 and is not cached; retry with the same idempotency key and identical body. Successful receipts return the original action result, not a later live snapshot. Plan retry prepares evidence only and never approves or posts funds. It accepts failed preparations. A new draw calculation supersedes the prior manual target: actual 12 to recalculated 8 requires debit 4, without carrying forward a manual offset.",
         "security": [
           {
             "adminBearer": []
@@ -95835,7 +95817,7 @@
         "tags": [
           "reports"
         ],
-        "description": "Read-only operational report grouped from immutable BET attribution_snapshot and placed_at. It does not join current mutable agent relationships and does not authorize commission payouts or other financial actions. One primary-database statement supplies summary, groups, count, timezone, and snapshot. Current session and permissions are rechecked before release, including after audit waits; audit commits before a JSON or CSV response. Requires independent report_attribution.view rights; CSV also requires report_attribution.export rights, and super-admin status alone grants neither. Unknown, duplicate, empty, and unsupported query parameters and GET bodies are rejected. Day keys use the brand timezone; game groups use UUID/name; member groups use the brand member UUID; agent groups use the saved direct agent UUID, none, or legacy; join_method groups use the saved method enumeration. Legacy records remain legacy and are never backfilled.",
+        "description": "Read-only operational report grouped from immutable BET attribution_snapshot and placed_at. It does not join current mutable agent relationships and does not authorize commission payouts or other financial actions. One primary-database statement supplies summary, groups, count, timezone, and snapshot. Current session and permissions are rechecked before release, including after audit waits; audit commits before a JSON or CSV response. Requires independent report_attribution.view rights; CSV also requires report_attribution.export rights, and super-admin status alone grants neither. Unknown, duplicate, empty, and unsupported query parameters and GET bodies are rejected. Day keys use the brand timezone; game groups use UUID/name; member groups use the brand member UUID; agent groups use the saved direct agent UUID or none; join_method groups use the saved method enumeration.",
         "security": [
           {
             "adminBearer": []
@@ -95927,8 +95909,7 @@
                 "domain",
                 "operator",
                 "agent_code",
-                "referral_code",
-                "legacy"
+                "referral_code"
               ]
             }
           },
@@ -96258,7 +96239,7 @@
         "tags": [
           "reports"
         ],
-        "description": "Read-only operational report grouped from immutable BET attribution_snapshot and placed_at. It does not join current mutable agent relationships and does not authorize commission payouts or other financial actions. One primary-database statement supplies summary, groups, count, timezone, and snapshot. Current session and permissions are rechecked before release, including after audit waits; audit commits before a JSON or CSV response. Requires independent report_attribution.view rights; CSV also requires report_attribution.export rights, and super-admin status alone grants neither. Unknown, duplicate, empty, and unsupported query parameters and GET bodies are rejected. Day keys use the brand timezone; game groups use UUID/name; member groups use the brand member UUID; agent groups use the saved direct agent UUID, none, or legacy; join_method groups use the saved method enumeration. Legacy records remain legacy and are never backfilled. Export has no pagination and fails above 10000 groups or 4MiB without a truncated file. CSV v1 columns are record_type,brand_id,snapshot_at,timezone,from,to,group_by,game_id,member_id,agent_id,agent_scope,join_method,key,label,order_count,stake_points,placed_count,won_count,lost_count,abnormal_count,cancelled_count,refund_points,settled_stake_points,unfinalized_stake_points,abnormal_stake_points,current_prize_points,correction_open_count,final_lost_stake_points,legacy_attribution_count. It contains a summary row followed by every group; no balances row.",
+        "description": "Read-only operational report grouped from immutable BET attribution_snapshot and placed_at. It does not join current mutable agent relationships and does not authorize commission payouts or other financial actions. One primary-database statement supplies summary, groups, count, timezone, and snapshot. Current session and permissions are rechecked before release, including after audit waits; audit commits before a JSON or CSV response. Requires independent report_attribution.view rights; CSV also requires report_attribution.export rights, and super-admin status alone grants neither. Unknown, duplicate, empty, and unsupported query parameters and GET bodies are rejected. Day keys use the brand timezone; game groups use UUID/name; member groups use the brand member UUID; agent groups use the saved direct agent UUID or none; join_method groups use the saved method enumeration. Export has no pagination and fails above 10000 groups or 4MiB without a truncated file. CSV v1 columns are record_type,brand_id,snapshot_at,timezone,from,to,group_by,game_id,member_id,agent_id,agent_scope,join_method,key,label,order_count,stake_points,placed_count,won_count,lost_count,abnormal_count,cancelled_count,refund_points,settled_stake_points,unfinalized_stake_points,abnormal_stake_points,current_prize_points,correction_open_count,final_lost_stake_points. It contains a summary row followed by every group; no balances row.",
         "security": [
           {
             "adminBearer": []
@@ -96350,8 +96331,7 @@
                 "domain",
                 "operator",
                 "agent_code",
-                "referral_code",
-                "legacy"
+                "referral_code"
               ]
             }
           },
@@ -96502,8 +96482,7 @@
                     "domain",
                     "operator",
                     "agent_code",
-                    "referral_code",
-                    "legacy"
+                    "referral_code"
                   ]
                 }
               }
@@ -101988,6 +101967,7 @@
         },
         "required": [
           "id",
+          "brand_id",
           "action",
           "actor_type",
           "actor_id",
@@ -103841,191 +103821,11 @@
         ],
         "additionalProperties": false
       },
-      "FinanceLegacyBalance": {
-        "type": "object",
-        "properties": {
-          "recharge": {
-            "type": "object",
-            "properties": {
-              "available": {
-                "$ref": "#/components/schemas/NonnegativeInt64String"
-              },
-              "manual_frozen": {
-                "$ref": "#/components/schemas/NonnegativeInt64String"
-              },
-              "system_frozen": {
-                "$ref": "#/components/schemas/NonnegativeInt64String"
-              },
-              "withdrawal": {
-                "$ref": "#/components/schemas/NonnegativeInt64String"
-              }
-            },
-            "required": [
-              "available",
-              "manual_frozen",
-              "system_frozen",
-              "withdrawal"
-            ],
-            "additionalProperties": false
-          },
-          "winning": {
-            "type": "object",
-            "properties": {
-              "available": {
-                "$ref": "#/components/schemas/NonnegativeInt64String"
-              },
-              "manual_frozen": {
-                "$ref": "#/components/schemas/NonnegativeInt64String"
-              },
-              "system_frozen": {
-                "$ref": "#/components/schemas/NonnegativeInt64String"
-              },
-              "withdrawal": {
-                "$ref": "#/components/schemas/NonnegativeInt64String"
-              }
-            },
-            "required": [
-              "available",
-              "manual_frozen",
-              "system_frozen",
-              "withdrawal"
-            ],
-            "additionalProperties": false
-          },
-          "gift": {
-            "type": "object",
-            "properties": {
-              "available": {
-                "$ref": "#/components/schemas/NonnegativeInt64String"
-              },
-              "manual_frozen": {
-                "$ref": "#/components/schemas/NonnegativeInt64String"
-              },
-              "system_frozen": {
-                "$ref": "#/components/schemas/NonnegativeInt64String"
-              },
-              "withdrawal": {
-                "$ref": "#/components/schemas/NonnegativeInt64String"
-              }
-            },
-            "required": [
-              "available",
-              "manual_frozen",
-              "system_frozen",
-              "withdrawal"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "recharge",
-          "winning",
-          "gift"
-        ],
-        "additionalProperties": false
-      },
-      "FinanceLegacyDeltaBalance": {
-        "type": "object",
-        "properties": {
-          "recharge": {
-            "type": "object",
-            "properties": {
-              "available": {
-                "$ref": "#/components/schemas/Int64String"
-              },
-              "manual_frozen": {
-                "$ref": "#/components/schemas/Int64String"
-              },
-              "system_frozen": {
-                "$ref": "#/components/schemas/Int64String"
-              },
-              "withdrawal": {
-                "$ref": "#/components/schemas/Int64String"
-              }
-            },
-            "required": [
-              "available",
-              "manual_frozen",
-              "system_frozen",
-              "withdrawal"
-            ],
-            "additionalProperties": false
-          },
-          "winning": {
-            "type": "object",
-            "properties": {
-              "available": {
-                "$ref": "#/components/schemas/Int64String"
-              },
-              "manual_frozen": {
-                "$ref": "#/components/schemas/Int64String"
-              },
-              "system_frozen": {
-                "$ref": "#/components/schemas/Int64String"
-              },
-              "withdrawal": {
-                "$ref": "#/components/schemas/Int64String"
-              }
-            },
-            "required": [
-              "available",
-              "manual_frozen",
-              "system_frozen",
-              "withdrawal"
-            ],
-            "additionalProperties": false
-          },
-          "gift": {
-            "type": "object",
-            "properties": {
-              "available": {
-                "$ref": "#/components/schemas/Int64String"
-              },
-              "manual_frozen": {
-                "$ref": "#/components/schemas/Int64String"
-              },
-              "system_frozen": {
-                "$ref": "#/components/schemas/Int64String"
-              },
-              "withdrawal": {
-                "$ref": "#/components/schemas/Int64String"
-              }
-            },
-            "required": [
-              "available",
-              "manual_frozen",
-              "system_frozen",
-              "withdrawal"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "recharge",
-          "winning",
-          "gift"
-        ],
-        "additionalProperties": false
-      },
       "FinanceLedgerBalance": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/FinanceBalance"
-          },
-          {
-            "$ref": "#/components/schemas/FinanceLegacyBalance"
-          }
-        ]
+        "$ref": "#/components/schemas/FinanceBalance"
       },
       "FinanceLedgerDeltaBalance": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/FinanceDeltaBalance"
-          },
-          {
-            "$ref": "#/components/schemas/FinanceLegacyDeltaBalance"
-          }
-        ]
+        "$ref": "#/components/schemas/FinanceDeltaBalance"
       },
       "FinanceAllocation": {
         "type": "object",
@@ -105414,135 +105214,7 @@
         ],
         "additionalProperties": false
       },
-      "FinanceReconciliationJobLegacy": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "#/components/schemas/UUID"
-          },
-          "brand_id": {
-            "$ref": "#/components/schemas/UUID"
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "running",
-              "completed",
-              "failed"
-            ]
-          },
-          "version": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "target_count": {
-            "type": "string",
-            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
-            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
-          },
-          "checked_count": {
-            "type": "string",
-            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
-            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
-          },
-          "consistent_count": {
-            "type": "string",
-            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
-            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
-          },
-          "repairable_count": {
-            "type": "string",
-            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
-            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
-          },
-          "corrupt_count": {
-            "type": "string",
-            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
-            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
-          },
-          "failed_count": {
-            "type": "string",
-            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
-            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
-          },
-          "pending_count": {
-            "type": "string",
-            "pattern": "^(0|[1-9][0-9]{0,4}|100000)$",
-            "description": "Exact nonnegative decimal count bounded by the reconciliation target cap of 100000."
-          },
-          "created_by": {
-            "$ref": "#/components/schemas/UUID"
-          },
-          "reason": {
-            "$ref": "#/components/schemas/FinanceReconciliationReason"
-          },
-          "created_at": {
-            "$ref": "#/components/schemas/DateTime"
-          },
-          "started_at": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DateTime"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "completed_at": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DateTime"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "last_error_code": {
-            "anyOf": [
-              {
-                "type": "string",
-                "const": "CHECK_FAILED"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "can_retry": {
-            "type": "boolean"
-          },
-          "creation_audit_log_id": {
-            "$ref": "#/components/schemas/UUID"
-          }
-        },
-        "required": [
-          "id",
-          "brand_id",
-          "state",
-          "version",
-          "target_count",
-          "checked_count",
-          "consistent_count",
-          "repairable_count",
-          "corrupt_count",
-          "failed_count",
-          "pending_count",
-          "created_by",
-          "reason",
-          "created_at",
-          "started_at",
-          "completed_at",
-          "last_error_code",
-          "can_retry",
-          "creation_audit_log_id"
-        ],
-        "additionalProperties": false
-      },
-      "FinanceReconciliationJobModern": {
+      "FinanceReconciliationJob": {
         "type": "object",
         "properties": {
           "id": {
@@ -105678,16 +105350,6 @@
         ],
         "additionalProperties": false
       },
-      "FinanceReconciliationJob": {
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/FinanceReconciliationJobLegacy"
-          },
-          {
-            "$ref": "#/components/schemas/FinanceReconciliationJobModern"
-          }
-        ]
-      },
       "FinanceReconciliationJobPage": {
         "type": "object",
         "properties": {
@@ -105725,110 +105387,7 @@
         ],
         "additionalProperties": false
       },
-      "FinanceReconciliationTargetLegacy": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "#/components/schemas/UUID"
-          },
-          "brand_id": {
-            "$ref": "#/components/schemas/UUID"
-          },
-          "job_id": {
-            "$ref": "#/components/schemas/UUID"
-          },
-          "account_id": {
-            "$ref": "#/components/schemas/UUID"
-          },
-          "member_id": {
-            "$ref": "#/components/schemas/UUID"
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "checked",
-              "failed"
-            ]
-          },
-          "outcome": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "consistent",
-                  "repairable",
-                  "corrupt"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "preview": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/FinanceRepairPreview"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "attempt_count": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "error_code": {
-            "anyOf": [
-              {
-                "type": "string",
-                "const": "CHECK_FAILED"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "checked_at": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DateTime"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "audit_log_id": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UUID"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "brand_id",
-          "job_id",
-          "account_id",
-          "member_id",
-          "state",
-          "outcome",
-          "preview",
-          "attempt_count",
-          "error_code",
-          "checked_at",
-          "audit_log_id"
-        ],
-        "additionalProperties": false
-      },
-      "FinanceReconciliationTargetModern": {
+      "FinanceReconciliationTarget": {
         "type": "object",
         "properties": {
           "id": {
@@ -105983,16 +105542,6 @@
           }
         ]
       },
-      "FinanceReconciliationTarget": {
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/FinanceReconciliationTargetLegacy"
-          },
-          {
-            "$ref": "#/components/schemas/FinanceReconciliationTargetModern"
-          }
-        ]
-      },
       "FinanceReconciliationTargetPage": {
         "type": "object",
         "properties": {
@@ -106064,12 +105613,12 @@
               "wallet",
               "wallet_and_business"
             ],
-            "default": "wallet",
-            "description": "Optional immutable job scope. Omission preserves the legacy reason-only wallet request and its idempotency behavior."
+            "description": "Required immutable job scope: wallet or wallet_and_business."
           }
         },
         "required": [
-          "reason"
+          "reason",
+          "check_scope"
         ],
         "additionalProperties": false
       },
@@ -106133,8 +105682,7 @@
             ]
           },
           "turnover_multiple": {
-            "type": "string",
-            "pattern": "^(0|[1-9][0-9]{0,6})([.][0-9]{0,5}[1-9])?$"
+            "$ref": "#/components/schemas/FinanceWithdrawalPositiveMultiple"
           }
         },
         "required": [
@@ -106153,8 +105701,7 @@
           "turnover_multiple": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(0|[1-9][0-9]{0,6})([.][0-9]{0,5}[1-9])?$"
+                "$ref": "#/components/schemas/FinanceWithdrawalPositiveMultiple"
               },
               {
                 "type": "null"
@@ -106170,7 +105717,7 @@
       "FinanceWithdrawalPositiveMultiple": {
         "type": "string",
         "pattern": "^(?!0$)(?:1000000|(?:0|[1-9][0-9]{0,5})(?:[.][0-9]{0,5}[1-9])?)$",
-        "description": "New policy writes require 0 < N <= 1000000, in canonical decimal notation with at most six fractional digits. Legacy zero-valued saved policies and immutable revisions remain readable without normalization."
+        "description": "All policy reads and writes require 0 < N <= 1000000, in canonical decimal notation with at most six fractional digits."
       },
       "FinanceWithdrawalBrandWriteConfig": {
         "type": "object",
@@ -107745,9 +107292,6 @@
                 "type": "null"
               }
             ]
-          },
-          "legacy": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -107756,8 +107300,7 @@
           "join_method",
           "joined_at",
           "code_id",
-          "source_code",
-          "legacy"
+          "source_code"
         ],
         "additionalProperties": false
       },
@@ -111904,14 +111447,7 @@
             "description": "Positive version no greater than 9007199254740991, so it is exactly representable as a JSON/JavaScript integer."
           },
           "content": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LotteryNotificationTemplateContent"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/LotteryNotificationTemplateContent"
           },
           "payload": {
             "type": "object",
@@ -112192,35 +111728,9 @@
             ]
           },
           {
-            "if": {
-              "properties": {
-                "event_type": {
-                  "enum": [
-                    "withdrawal.order.cancelled",
-                    "withdrawal.order.failed",
-                    "withdrawal.order.paid",
-                    "withdrawal.order.processing",
-                    "withdrawal.order.rejected",
-                    "withdrawal.order.reviewing",
-                    "commission.paid",
-                    "commission.adjusted",
-                    "commission.corrected",
-                    "reward.order.granted",
-                    "reward.order.revocation_pending",
-                    "reward.order.revoked",
-                    "draw.result.published",
-                    "draw.result.corrected"
-                  ]
-                }
-              }
-            },
-            "then": {
-              "properties": {
-                "content": {
-                  "$ref": "#/components/schemas/LotteryNotificationTemplateContent"
-                }
-              }
-            }
+            "required": [
+              "content"
+            ]
           },
           {
             "if": {
@@ -112662,40 +112172,9 @@
                 }
               }
             }
-          },
-          {
-            "oneOf": [
-              {
-                "properties": {
-                  "template_version": {
-                    "const": 1
-                  },
-                  "content": {
-                    "anyOf": [
-                      {
-                        "$ref": "#/components/schemas/LotteryNotificationTemplateContent"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                }
-              },
-              {
-                "properties": {
-                  "template_version": {
-                    "minimum": 2
-                  },
-                  "content": {
-                    "$ref": "#/components/schemas/LotteryNotificationTemplateContent"
-                  }
-                }
-              }
-            ]
           }
         ],
-        "description": "Notification content is an immutable snapshot copied from the selected brand template when materialized. Legacy non-withdrawal, non-commission, non-reward version 1 rows may have null content; withdrawal events, commission events, reward events, draw result events and version 2 and later always include their copied content. Withdrawal, reward and commission.paid points are positive int64; commission.adjusted and commission.corrected points are signed nonzero int64. Draw result payloads are closed historical facts; published events have no previous result and corrected events identify the prior result. Reward events retain a state-specific historical and nonfinancial disclaimer that template editing cannot remove. Updating a template never rewrites existing notifications."
+        "description": "Notification content is an immutable snapshot copied from the selected brand template when materialized, including initial version 1 templates. Withdrawal, reward and commission.paid points are positive int64; commission.adjusted and commission.corrected points are signed nonzero int64. Draw result payloads are closed historical facts; published events have no previous result and corrected events identify the prior result. Reward events retain a state-specific historical and nonfinancial disclaimer that template editing cannot remove. Updating a template never rewrites existing notifications."
       },
       "LotteryNotificationDrawPublished": {
         "allOf": [
@@ -114667,21 +114146,15 @@
             "type": "string",
             "pattern": "^(0|[1-9][0-9]*)$",
             "description": "Exact nonnegative decimal integer string."
-          },
-          "legacy_policy_blocked_cycle_count": {
-            "type": "string",
-            "pattern": "^(0|[1-9][0-9]*)$",
-            "description": "Exact nonnegative decimal integer string."
           }
         },
         "required": [
           "selected_cycle_count",
           "ready_cycle_count",
-          "unready_cycle_count",
-          "legacy_policy_blocked_cycle_count"
+          "unready_cycle_count"
         ],
         "additionalProperties": false,
-        "description": "selected_cycle_count equals ready_cycle_count plus unready_cycle_count. legacy_policy_blocked_cycle_count is a subset of selected cycles."
+        "description": "selected_cycle_count equals ready_cycle_count plus unready_cycle_count."
       },
       "CommissionAnalysisTotals": {
         "type": "object",
@@ -115470,11 +114943,6 @@
             "pattern": "^(0|[1-9][0-9]*)$",
             "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
           },
-          "plan_blocked_count": {
-            "type": "string",
-            "pattern": "^(0|[1-9][0-9]*)$",
-            "description": "Canonical nonnegative decimal integer string with no int64 aggregate bound."
-          },
           "plan_failed_count": {
             "type": "string",
             "pattern": "^(0|[1-9][0-9]*)$",
@@ -115515,7 +114983,6 @@
           "payment_failed_count",
           "plan_processing_count",
           "plan_ready_count",
-          "plan_blocked_count",
           "plan_failed_count",
           "execution_awaiting_approval_count",
           "execution_processing_count",
@@ -115651,7 +115118,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -115661,7 +115128,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "brand requires CanView resource \"brand\" for the exact selected brand or an explicit brand.view.platform grant. It is populated only for ready status; forbidden return null data.",
+        "description": "brand requires CanView resource \"brand\" for the exact selected brand or an explicit brand.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -115728,7 +115195,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -115738,7 +115205,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "periods requires CanView resource \"period\" for the exact selected brand or an explicit period.view.platform grant. It is populated only for ready status; forbidden return null data.",
+        "description": "periods requires CanView resource \"period\" for the exact selected brand or an explicit period.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -115805,7 +115272,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -115815,7 +115282,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "orders requires CanView resource \"bet\" for the exact selected brand or an explicit bet.view.platform grant. It is populated only for ready status; forbidden return null data.",
+        "description": "orders requires CanView resource \"bet\" for the exact selected brand or an explicit bet.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -115882,7 +115349,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -115892,7 +115359,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "today_bets requires CanView resource \"report_betting\" for the exact selected brand or an explicit report_betting.view.platform grant. It is populated only for ready status; forbidden return null data.",
+        "description": "today_bets requires CanView resource \"report_betting\" for the exact selected brand or an explicit report_betting.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -115959,7 +115426,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -115969,7 +115436,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "settlement requires CanView resource \"settlement\" for the exact selected brand or an explicit settlement.view.platform grant. It is populated only for ready status; forbidden return null data.",
+        "description": "settlement requires CanView resource \"settlement\" for the exact selected brand or an explicit settlement.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -116036,7 +115503,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -116046,7 +115513,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "recharges requires CanView resource \"recharge\" for the exact selected brand or an explicit recharge.view.platform grant. It is populated only for ready status; forbidden return null data.",
+        "description": "recharges requires CanView resource \"recharge\" for the exact selected brand or an explicit recharge.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -116113,7 +115580,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -116123,7 +115590,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "ledger requires CanView resource \"report_ledger\" for the exact selected brand or an explicit report_ledger.view.platform grant. It is populated only for ready status; forbidden return null data.",
+        "description": "ledger requires CanView resource \"report_ledger\" for the exact selected brand or an explicit report_ledger.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -116190,7 +115657,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -116200,7 +115667,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "balances requires CanView resource \"report_ledger\" for the exact selected brand or an explicit report_ledger.view.platform grant. It is populated only for ready status; forbidden return null data.",
+        "description": "balances requires CanView resource \"report_ledger\" for the exact selected brand or an explicit report_ledger.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -116267,7 +115734,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -116277,7 +115744,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "reconciliation requires CanView resource \"wallet\" for the exact selected brand or an explicit wallet.view.platform grant. It is populated only for ready status; forbidden return null data.",
+        "description": "reconciliation requires CanView resource \"wallet\" for the exact selected brand or an explicit wallet.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -116344,7 +115811,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -116354,7 +115821,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "sources requires CanView resource \"draw_source\" for the exact selected brand or an explicit draw_source.view.platform grant. It is populated only for ready status; forbidden return null data.",
+        "description": "sources requires CanView resource \"draw_source\" for the exact selected brand or an explicit draw_source.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -116421,7 +115888,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -116431,7 +115898,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "withdrawals requires CanView resource \"withdrawal\" for the exact selected brand or an explicit withdrawal.view.platform grant. It is populated only for ready status; forbidden return null data.",
+        "description": "withdrawals requires CanView resource \"withdrawal\" for the exact selected brand or an explicit withdrawal.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -116480,8 +115947,7 @@
             "type": "string",
             "enum": [
               "ready",
-              "forbidden",
-              "not_implemented"
+              "forbidden"
             ]
           },
           "data": {
@@ -116499,7 +115965,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -116509,7 +115975,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "commissions requires CanView resource \"commission\" for the exact selected brand or an explicit commission.view.platform grant. It is populated only for ready status; forbidden and legacy not_implemented return null data.",
+        "description": "commissions requires CanView resource \"commission\" for the exact selected brand or an explicit commission.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -116535,25 +116001,6 @@
               "properties": {
                 "status": {
                   "const": "forbidden"
-                }
-              },
-              "required": [
-                "status"
-              ]
-            },
-            "then": {
-              "properties": {
-                "data": {
-                  "type": "null"
-                }
-              }
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "status": {
-                  "const": "not_implemented"
                 }
               },
               "required": [
@@ -116595,7 +116042,7 @@
               },
               {
                 "type": "null",
-                "description": "Required when status is forbidden or not_implemented."
+                "description": "Required when status is forbidden."
               }
             ]
           }
@@ -116605,7 +116052,7 @@
           "data"
         ],
         "additionalProperties": false,
-        "description": "rewards requires CanView resource \"reward\" for the exact selected brand or an explicit reward.view.platform grant. It is populated only for ready status; forbidden return null data.",
+        "description": "rewards requires CanView resource \"reward\" for the exact selected brand or an explicit reward.view.platform grant. It is populated only for ready status; forbidden returns null data.",
         "allOf": [
           {
             "if": {
@@ -118020,7 +117467,7 @@
           "updated_at"
         ],
         "additionalProperties": false,
-        "description": "Payout progress projection. Exact totals and counts are decimal strings. Payment targets are never exposed. payout_mode is the immutable historical bet snapshot identity and remains mixed. Awaiting approval is valid for manual or mixed mode only when paid_points and paid_count are both zero and last_error_code is null. A mixed cycle with any manual bet snapshot requires brand administrator approval for the entire cycle; its automatic portion is never split out. The exact legacy blocked case with payout_mode mixed, last_error_code COMMISSION_PAYMENT_MODE_UNRESOLVED, paid_points 0, and paid_count 0 may be explicitly approved. Other blocked correction or evidence records are not approvable."
+        "description": "Payout progress projection. Exact totals and counts are decimal strings. Payment targets are never exposed. payout_mode is the immutable historical bet snapshot identity and remains mixed. Awaiting approval is valid for manual or mixed mode only when paid_points and paid_count are both zero and last_error_code is null. A mixed cycle with any manual bet snapshot requires brand administrator approval for the entire cycle; its automatic portion is never split out. Blocked correction or evidence records are not approvable."
       },
       "CommissionPaymentPage": {
         "type": "object",
@@ -118470,7 +117917,6 @@
             "enum": [
               "planning",
               "ready",
-              "blocked",
               "failed",
               "stale"
             ]
@@ -118508,40 +117954,19 @@
             "description": "Exact nonnegative decimal numeric aggregate; database numeric totals may exceed int64."
           },
           "credit_points": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^(0|[1-9][0-9]*)$",
-                "description": "Exact nonnegative decimal numeric aggregate; database numeric totals may exceed int64."
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal numeric aggregate; database numeric totals may exceed int64."
           },
           "debit_points": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^(0|[1-9][0-9]*)$",
-                "description": "Exact nonnegative decimal numeric aggregate; database numeric totals may exceed int64."
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative decimal numeric aggregate; database numeric totals may exceed int64."
           },
           "net_points": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^(0|-?[1-9][0-9]*)$",
-                "description": "Exact signed decimal net aggregate; database numeric totals may exceed int64."
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "type": "string",
+            "pattern": "^(0|-?[1-9][0-9]*)$",
+            "description": "Exact signed decimal net aggregate; database numeric totals may exceed int64."
           },
           "target_count": {
             "type": "string",
@@ -118600,7 +118025,7 @@
           "updated_at"
         ],
         "additionalProperties": false,
-        "description": "A ready plan is only a preview and does not approve or move funds. before_points, calculated_points, credit_points, and debit_points are exact nonnegative numeric aggregates; net_points is the only signed aggregate. Totals may exceed int64. The three correction totals are all null until planning resolves them. Timestamps preserve Go RFC3339Nano precision. last_error_code is null when there is no current error."
+        "description": "A ready plan is only a preview and does not approve or move funds. before_points, calculated_points, credit_points, and debit_points are exact nonnegative numeric aggregates; net_points is the only signed aggregate. Totals may exceed int64 and all totals are required from plan creation. Timestamps preserve Go RFC3339Nano precision. last_error_code is null when there is no current error."
       },
       "CommissionCorrectionPlanTarget": {
         "type": "object",
@@ -120108,11 +119533,6 @@
             "type": "string",
             "pattern": "^(0|[1-9][0-9]*)$",
             "description": "Exact nonnegative decimal integer string; aggregates have no int64 bound."
-          },
-          "legacy_attribution_count": {
-            "type": "string",
-            "pattern": "^(0|[1-9][0-9]*)$",
-            "description": "Exact nonnegative decimal integer string; aggregates have no int64 bound."
           }
         },
         "required": [
@@ -120129,11 +119549,10 @@
           "abnormal_stake_points",
           "current_prize_points",
           "correction_open_count",
-          "final_lost_stake_points",
-          "legacy_attribution_count"
+          "final_lost_stake_points"
         ],
         "additionalProperties": false,
-        "description": "Current operational projection over BET rows in the placement-time cohort, classified by current order generation/state. These figures are not a validated commission base, payout entitlement, or financial authorization. final_lost_stake_points sums current final LOST stake only; winning stakes are never netted against prizes. legacy_attribution_count identifies permanently legacy/unattributed historical rows and is not backfilled."
+        "description": "Current operational projection over BET rows in the placement-time cohort, classified by current order generation/state. These figures are not a validated commission base, payout entitlement, or financial authorization. final_lost_stake_points sums current final LOST stake only; winning stakes are never netted against prizes."
       },
       "AttributionReportQuery": {
         "type": "object",
@@ -120209,8 +119628,7 @@
                   "domain",
                   "operator",
                   "agent_code",
-                  "referral_code",
-                  "legacy"
+                  "referral_code"
                 ]
               },
               {
@@ -120340,8 +119758,7 @@
                       "domain",
                       "operator",
                       "agent_code",
-                      "referral_code",
-                      "legacy"
+                      "referral_code"
                     ]
                   },
                   {

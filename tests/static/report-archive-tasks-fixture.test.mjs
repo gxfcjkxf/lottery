@@ -14,6 +14,7 @@ function environment(viewport = 'desktop') {
     REPORT_ARCHIVE_TASKS_FIXTURE_CONFIRM: 'owned_synthetic_database',
     DATABASE_URL: `postgres://lottery_test@127.0.0.1:55432/${database(viewport)}?sslmode=disable`,
     PLATFORM_BIN: process.execPath,
+    POSTGRES_PSQL_BIN: process.execPath,
     ARCHIVE_TASKS_FIXTURE_BIN: process.execPath,
     TEST_ARCHIVE_TASKS_ADMIN_USERNAME: `archive_tasks_browser_${viewport}`,
     TEST_ARCHIVE_TASKS_ADMIN_PASSWORD: 'owned-synthetic-archive-admin-password',
@@ -37,7 +38,7 @@ test('fixture URL guard accepts only the selected owned desktop/mobile loopback 
           assert.equal(config.viewport, viewport);
           assert.equal(config.database, database(viewport));
           assert.equal(config.username, `archive_tasks_browser_${viewport}`);
-          assert.equal(config.psqlBin, 'psql');
+          assert.equal(config.psqlBin, process.execPath);
           assert.ok(Object.isFrozen(config));
         }
       }
@@ -62,6 +63,7 @@ test('configuration and executable validation reject unsafe runs before any comm
     { APP_ENV: 'production' }, { REPORT_ARCHIVE_TASKS_VIEWPORT: 'tablet' },
     { REPORT_ARCHIVE_TASKS_FIXTURE_CONFIRM: '' }, { DATABASE_READ_URL: ' ' }, { DATABASE_READ_URLS: '[]' },
     { PLATFORM_BIN: 'platform' }, { ARCHIVE_TASKS_FIXTURE_BIN: 'fixture' },
+    { POSTGRES_PSQL_BIN: undefined }, { POSTGRES_PSQL_BIN: '' },
     { PLATFORM_BIN: '/missing/platform' }, { ARCHIVE_TASKS_FIXTURE_BIN: '/missing/fixture' },
     { POSTGRES_PSQL_BIN: '/missing/psql' }, { TEST_ARCHIVE_TASKS_ADMIN_USERNAME: 'other' },
     { TEST_ARCHIVE_TASKS_ADMIN_PASSWORD: undefined }, { TEST_ARCHIVE_TASKS_ADMIN_PASSWORD: 'short' },

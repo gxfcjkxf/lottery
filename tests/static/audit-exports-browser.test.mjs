@@ -6,7 +6,7 @@ const config=read('playwright.audit-exports.config.ts'),ci=read('.github/workflo
 test('audit export double layout CI uses owned normal initialization and bounded no-retry test',()=>{
   assert.match(config,/testMatch: 'audit-exports.spec.ts'/);assert.match(config,/timeout: 60_000/);assert.match(config,/retries: 0/);assert.match(config,/timezoneId: 'Asia\/Singapore'/);
   const job=ci.split('  audit-exports-browser:')[1]?.split('  draw-notifications-browser:')[0];assert.ok(job);
-  assert.match(job,/viewport: \[desktop, mobile\]/);assert.match(job,/init-attribution-browser.mjs/);assert.match(job,/audit-export-platform serve/);assert.match(job,/stats.expected !== 1/);
+  assert.match(job,/viewport: \[desktop, mobile\]/);assert.match(job,/PLATFORM_BIN: \$\{\{ github\.workspace \}\}\/\.local\/audit-export-platform/);assert.match(job,/POSTGRES_PSQL_BIN: \/usr\/bin\/psql/);assert.match(job,/init-attribution-browser.mjs/);assert.match(job,/audit-export-platform serve/);assert.match(job,/stats.expected !== 1/);
   assert.match(ci,/--grep-invert=.*genuine brand audit filters and validated full CSV preserve finances on both layouts/);
   assert.doesNotMatch(spec,/test\.skip\(|force:\s*true|route\.fulfill|\b(?:INSERT|UPDATE|DELETE)\s+.*\b(?:INTO|SET|FROM)\b/i);
 });

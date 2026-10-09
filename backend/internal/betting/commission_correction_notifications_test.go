@@ -130,7 +130,7 @@ func TestCommissionCorrectionNotificationActualDebitIsImmutablePrivateAndDoesNot
 			item = &page.Items[i]
 		}
 	}
-	if item == nil || item.Content == nil || item.TemplateVersion != 1 || item.TemplateKey != "commission.corrected" || item.Payload.ResourceID != target.ID || item.Payload.Points == nil || *item.Payload.Points != "-1" {
+	if item == nil || item.Content.En.Title == "" || item.TemplateVersion != 1 || item.TemplateKey != "commission.corrected" || item.Payload.ResourceID != target.ID || item.Payload.Points == nil || *item.Payload.Points != "-1" {
 		t.Fatalf("public historical correction=%+v", item)
 	}
 	var raw []byte

@@ -16,18 +16,8 @@ func auditExportExamples() map[string]any {
 		CreatedAt: createdAt, IP: "192.0.2.1", Before: json.RawMessage(`{"status":"normal"}`),
 		After: json.RawMessage(`{"status":"frozen"}`),
 	}
-	encoded, err := json.Marshal(item)
-	if err != nil {
-		panic(err)
-	}
-	var legacy map[string]any
-	if err = json.Unmarshal(encoded, &legacy); err != nil {
-		panic(err)
-	}
-	delete(legacy, "brand_id") // Previous handler's map had no brand_id field.
 	return map[string]any{
-		"AdminAuditRecord":       item,
-		"AdminAuditRecordLegacy": legacy,
-		"AdminAuditList":         map[string]any{"items": []httpapi.AdminAuditRecord{item}},
+		"AdminAuditRecord": item,
+		"AdminAuditList":   map[string]any{"items": []httpapi.AdminAuditRecord{item}},
 	}
 }

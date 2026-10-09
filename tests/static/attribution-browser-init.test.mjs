@@ -74,6 +74,7 @@ test('rejects missing confirmation, read replicas, bad credentials and invalid l
     { TEST_ATTRIBUTION_ADMIN_PASSWORD: 'short' }, { TEST_ATTRIBUTION_ADMIN_PASSWORD: 'x'.repeat(129) },
     { TEST_ATTRIBUTION_ADMIN_PASSWORD: `${'x'.repeat(16)}\u0000` },
     { PLATFORM_BIN: 'platform' }, { PLATFORM_BIN: '/no/such/platform' },
+    { POSTGRES_PSQL_BIN: undefined }, { POSTGRES_PSQL_BIN: '' },
     { POSTGRES_PSQL_BIN: 'psql --command=unsafe' }, { POSTGRES_PSQL_BIN: '/no/such/psql' },
     { AUTH_KEY_FILE: undefined }, { AUTH_KEY_FILE: join(tempDirectory, 'missing.key') },
     { AUTH_KEY_FILE: tempDirectory }, { AUTH_KEY_FILE: 'file:///tmp/auth.key' },

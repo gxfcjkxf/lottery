@@ -11,11 +11,9 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/reconciliation"
 )
 
-// A missing scope is the legacy wallet request; explicit null is never a
-// scope. Keep the old canonical reason-only fingerprint and saved receipts.
 type reconciliationCreateInput struct {
-	Reason     string  `json:"reason"`
-	CheckScope *string `json:"check_scope,omitempty"`
+	Reason     string `json:"reason"`
+	CheckScope string `json:"check_scope"`
 }
 
 func reconciliationGetHasNoBody(w http.ResponseWriter, r *http.Request) bool {
@@ -73,12 +71,9 @@ func (in *reconciliationCreateInput) UnmarshalJSON(raw []byte) error {
 	if json.Unmarshal(fields["reason"], &next.Reason) != nil {
 		return errors.New("reconciliation reason is required")
 	}
-	if scope, present := fields["check_scope"]; present {
-		var text string
-		if json.Unmarshal(scope, &text) != nil || !reconciliation.ValidScope(text) {
-			return errors.New("invalid reconciliation scope")
-		}
-		next.CheckScope = &text
+	scope, present := fields["check_scope"]
+	if !present || json.Unmarshal(scope, &next.CheckScope) != nil || !reconciliation.ValidScope(next.CheckScope) {
+		return errors.New("valid reconciliation scope is required")
 	}
 	*in = next
 	return nil

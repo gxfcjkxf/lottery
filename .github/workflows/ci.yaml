@@ -23,7 +23,8 @@ jobs:
       DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_attribution_browser_${{ matrix.viewport }}?sslmode=disable
       HTTP_ADDR: 127.0.0.1:8080
       AUTH_KEY_FILE: .local/auth.key
-      PLATFORM_BIN: .local/audit-export-platform
+      PLATFORM_BIN: ${{ github.workspace }}/.local/audit-export-platform
+      POSTGRES_PSQL_BIN: /usr/bin/psql
       REPORT_ATTRIBUTION_VIEWPORT: ${{ matrix.viewport }}
       REPORT_ATTRIBUTION_FIXTURE_CONFIRM: owned_synthetic_database
       TEST_AUDIT_ADMIN_ORIGIN: http://localhost:5174
@@ -48,7 +49,6 @@ jobs:
           mkdir -p .local
           go -C backend build -o ../.local/audit-export-platform ./cmd/platform
           .local/audit-export-platform generate-auth-key .local/auth.key
-          export PLATFORM_BIN="$PWD/.local/audit-export-platform"
           node scripts/init-attribution-browser.mjs
           .local/audit-export-platform serve > audit-exports-api.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
@@ -86,7 +86,8 @@ jobs:
       DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_attribution_browser_${{ matrix.viewport }}?sslmode=disable
       HTTP_ADDR: 127.0.0.1:8080
       AUTH_KEY_FILE: .local/auth.key
-      PLATFORM_BIN: .local/draw-notification-platform
+      PLATFORM_BIN: ${{ github.workspace }}/.local/draw-notification-platform
+      POSTGRES_PSQL_BIN: /usr/bin/psql
       REPORT_ATTRIBUTION_VIEWPORT: ${{ matrix.viewport }}
       REPORT_ATTRIBUTION_FIXTURE_CONFIRM: owned_synthetic_database
       TEST_DRAW_NOTICE_ADMIN_ORIGIN: http://localhost:5174
@@ -112,7 +113,6 @@ jobs:
           mkdir -p .local
           go -C backend build -o ../.local/draw-notification-platform ./cmd/platform
           .local/draw-notification-platform generate-auth-key .local/auth.key
-          export PLATFORM_BIN="$PWD/.local/draw-notification-platform"
           node scripts/init-attribution-browser.mjs
           .local/draw-notification-platform serve > draw-notifications-api.log 2>&1 &
           .local/draw-notification-platform worker > draw-notifications-worker.log 2>&1 &
@@ -152,7 +152,8 @@ jobs:
       DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_attribution_browser_${{ matrix.viewport }}?sslmode=disable
       HTTP_ADDR: 127.0.0.1:8080
       AUTH_KEY_FILE: .local/auth.key
-      PLATFORM_BIN: .local/attribution-platform
+      PLATFORM_BIN: ${{ github.workspace }}/.local/attribution-platform
+      POSTGRES_PSQL_BIN: /usr/bin/psql
       REPORT_ATTRIBUTION_VIEWPORT: ${{ matrix.viewport }}
       REPORT_ATTRIBUTION_FIXTURE_CONFIRM: owned_synthetic_database
       TEST_ATTRIBUTION_ORIGIN: http://localhost:5174
@@ -178,7 +179,6 @@ jobs:
           mkdir -p .local
           go -C backend build -o ../.local/attribution-platform ./cmd/platform
           .local/attribution-platform generate-auth-key .local/auth.key
-          export PLATFORM_BIN="$PWD/.local/attribution-platform"
           node scripts/init-attribution-browser.mjs
           .local/attribution-platform serve > attribution-reports-api.log 2>&1 &
           .local/attribution-platform worker > attribution-reports-worker.log 2>&1 &
@@ -219,7 +219,8 @@ jobs:
       DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_archive_policy_browser_${{ matrix.viewport }}?sslmode=disable
       HTTP_ADDR: 127.0.0.1:8080
       AUTH_KEY_FILE: .local/auth.key
-      PLATFORM_BIN: .local/archive-policy-platform
+      PLATFORM_BIN: ${{ github.workspace }}/.local/archive-policy-platform
+      POSTGRES_PSQL_BIN: /usr/bin/psql
       REPORT_ARCHIVE_POLICY_VIEWPORT: ${{ matrix.viewport }}
       REPORT_ARCHIVE_POLICY_FIXTURE_CONFIRM: owned_synthetic_database
       TEST_ARCHIVE_POLICY_ORIGIN: http://localhost:5174
@@ -245,7 +246,6 @@ jobs:
           mkdir -p .local
           go -C backend build -o ../.local/archive-policy-platform ./cmd/platform
           .local/archive-policy-platform generate-auth-key .local/auth.key
-          export PLATFORM_BIN="$PWD/.local/archive-policy-platform"
           node scripts/init-report-archive-policy-browser.mjs
           .local/archive-policy-platform serve > report-archive-policy-api.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
@@ -284,8 +284,9 @@ jobs:
       DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_archive_tasks_browser_${{ matrix.viewport }}?sslmode=disable
       HTTP_ADDR: 127.0.0.1:8080
       AUTH_KEY_FILE: .local/auth.key
-      PLATFORM_BIN: .local/archive-tasks-platform
-      ARCHIVE_TASKS_FIXTURE_BIN: .local/archive-tasks-fixture
+      PLATFORM_BIN: ${{ github.workspace }}/.local/archive-tasks-platform
+      POSTGRES_PSQL_BIN: /usr/bin/psql
+      ARCHIVE_TASKS_FIXTURE_BIN: ${{ github.workspace }}/.local/archive-tasks-fixture
       REPORT_ARCHIVE_TASKS_VIEWPORT: ${{ matrix.viewport }}
       REPORT_ARCHIVE_TASKS_FIXTURE_CONFIRM: owned_synthetic_database
       TEST_ARCHIVE_TASKS_ORIGIN: http://localhost:5174
@@ -312,8 +313,6 @@ jobs:
           go -C backend build -o ../.local/archive-tasks-platform ./cmd/platform
           go -C backend build -tags browserfixture -o ../.local/archive-tasks-fixture ./cmd/report-archive-tasks-fixture
           .local/archive-tasks-platform generate-auth-key .local/auth.key
-          export PLATFORM_BIN="$PWD/.local/archive-tasks-platform"
-          export ARCHIVE_TASKS_FIXTURE_BIN="$PWD/.local/archive-tasks-fixture"
           node scripts/init-report-archive-tasks-browser.mjs
           .local/archive-tasks-platform serve > report-archive-tasks-api.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
@@ -352,7 +351,8 @@ jobs:
       DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_archive_browser_${{ matrix.viewport }}?sslmode=disable
       HTTP_ADDR: 127.0.0.1:8080
       AUTH_KEY_FILE: .local/auth.key
-      PLATFORM_BIN: .local/archive-platform
+      PLATFORM_BIN: ${{ github.workspace }}/.local/archive-platform
+      POSTGRES_PSQL_BIN: /usr/bin/psql
       REPORT_ARCHIVE_VIEWPORT: ${{ matrix.viewport }}
       REPORT_ARCHIVE_FIXTURE_CONFIRM: owned_synthetic_database
       TEST_ARCHIVE_ORIGIN: http://localhost:5174
@@ -416,7 +416,8 @@ jobs:
       DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_rewards_ui_${{ matrix.viewport }}_s22?sslmode=disable
       HTTP_ADDR: 127.0.0.1:8080
       AUTH_KEY_FILE: .local/auth.key
-      PLATFORM_BIN: .local/reward-platform
+      PLATFORM_BIN: ${{ github.workspace }}/.local/reward-platform
+      POSTGRES_PSQL_BIN: /usr/bin/psql
       REWARD_UI_VIEWPORT: ${{ matrix.viewport }}
       REWARD_UI_FIXTURE_CONFIRM: owned_synthetic_database
       TEST_ADMIN_ORIGIN: http://localhost:5174

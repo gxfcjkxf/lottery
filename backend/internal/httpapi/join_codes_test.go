@@ -318,7 +318,7 @@ func TestAuthHTTPJoinCodeRegistrationReplayAndIsolation(t *testing.T) {
 	}
 	var attributed attribution.PublicAttribution
 	managedData(t, attributionResponse, &attributed)
-	if attributed.BrandID != managedBrand || attributed.MemberID != auth.Member.ID || attributed.JoinMethod != "referral_code" || attributed.CodeID == nil || *attributed.CodeID != code.ID || attributed.SourceCode == nil || *attributed.SourceCode != code.Code || attributed.Legacy {
+	if attributed.BrandID != managedBrand || attributed.MemberID != auth.Member.ID || attributed.JoinMethod != "referral_code" || attributed.CodeID == nil || *attributed.CodeID != code.ID || attributed.SourceCode == nil || *attributed.SourceCode != code.Code {
 		t.Fatalf("unexpected public attribution: %+v; code=%+v", attributed, code)
 	}
 	var publicEnvelope struct {
@@ -328,7 +328,7 @@ func TestAuthHTTPJoinCodeRegistrationReplayAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	serialized, _ := json.Marshal(publicEnvelope.Data)
-	if len(publicEnvelope.Data) != 7 {
+	if len(publicEnvelope.Data) != 6 {
 		t.Fatalf("public attribution DTO has unexpected fields: %s", serialized)
 	}
 	for _, privateField := range []string{"owner_member_id", "agent_id", "reason", "actor_id", "audit_log_id"} {

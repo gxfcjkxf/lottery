@@ -61,7 +61,7 @@ func ValidScope(scope string) bool { return scope == ScopeWallet || scope == Sco
 
 type Service struct{ DB *pgxpool.Pool }
 type Job struct {
-	CheckScope         string     `json:"check_scope,omitempty"`
+	CheckScope         string     `json:"check_scope"`
 	ID                 string     `json:"id"`
 	BrandID            string     `json:"brand_id"`
 	State              string     `json:"state"`
@@ -90,7 +90,7 @@ type JobPage struct {
 	Offset     int    `json:"offset"`
 }
 type Target struct {
-	CheckScope      string                `json:"check_scope,omitempty"`
+	CheckScope      string                `json:"check_scope"`
 	BusinessPreview *BusinessPreview      `json:"business_preview"`
 	ID              string                `json:"id"`
 	BrandID         string                `json:"brand_id"`

@@ -72,7 +72,7 @@ func TestFirstJoinCodeSnapshotsAndDisabledSourceReplay(t *testing.T) {
 		t.Fatal(result, e)
 	}
 	attr, e := s.Attribution(ctx, brand, child.Member.ID)
-	if e != nil || attr.JoinMethod != "referral_code" || attr.Legacy || attr.CodeID == nil || *attr.CodeID != code.ID || attr.SourceCode == nil || *attr.SourceCode != code.Code {
+	if e != nil || attr.JoinMethod != "referral_code" || attr.CodeID == nil || *attr.CodeID != code.ID || attr.SourceCode == nil || *attr.SourceCode != code.Code {
 		t.Fatal(attr, e)
 	}
 	var before []byte
