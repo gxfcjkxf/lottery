@@ -1,4 +1,5 @@
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 import type { BettingTotals, LedgerTotals } from "./reports-api";
 
 const BASE = "/api/v1/admin/report-archives";
@@ -269,14 +270,12 @@ function ensureBrand(brand: string): void { if (!uuid(brand)) invalidInput(); }
 
 export function reportArchivesPermissions(account: AdminAccount, brandId: string): { view: boolean; create: boolean; download: boolean } {
   const scoped = uuid(account.id) && uuid(brandId);
-  const member = scoped && (account.brand_ids ?? []).some((id) => sameUuid(id, brandId));
-  const brand = new Set(account.permissions_by_brand?.[brandId] ?? []);
-  const platform = new Set(account.platform_permissions ?? []);
-  const view = scoped && (brand.has("report_archive.view.brand") && member || platform.has("report_archive.view.platform"));
+  const brand = brandPermissionSet(account, brandId.toLowerCase());
+  const view = scoped && brand.has("report_archive.view.brand");
   return {
-    view,
-    create: Boolean(scoped && member && !account.super_admin && brand.has("report_archive.view.brand") && brand.has("report_archive.create.brand")),
-    download: Boolean(view && (brand.has("report_archive.download.brand") && member || platform.has("report_archive.download.platform"))),
+    view: Boolean(view),
+    create: Boolean(view && brand.has("report_archive.create.brand")),
+    download: Boolean(view && brand.has("report_archive.download.brand")),
   };
 }
 

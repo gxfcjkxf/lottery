@@ -56,12 +56,12 @@ describe("reports permissions", () => {
     permissions_by_brand: { [brand]: ["report_betting.view.brand"] },
   };
 
-  it("keeps capabilities separate and uses exact brand and platform grants without implicit super privileges", () => {
+  it("keeps capabilities separate and requires mapped brand grants", () => {
     expect(reportsPermissions(account, brand)).toEqual({ betting: true, ledger: false });
-    const platform = { ...account, super_admin: true, platform_permissions: ["report_ledger.view.platform"] };
-    expect(reportsPermissions(platform, brand)).toEqual({ betting: true, ledger: true });
-    expect(reportsPermissions({...platform,brand_ids:[]},foreignBrand)).toEqual({betting:false,ledger:true});
-    expect(reportsPermissions({ ...platform, super_admin: false }, brand).ledger).toBe(true);
+    expect(reportsPermissions({ ...account, permissions_by_brand: { [brand]: ["report_betting.view.brand", "report_ledger.view.brand"] } }, brand)).toEqual({ betting: true, ledger: true });
+    expect(reportsPermissions({ ...account, permissions_by_brand: { [brand]: ["report_ledger.view.brand"] }, platform_permissions: ["report_betting.view.platform"] }, brand)).toEqual({ betting: false, ledger: true });
+    expect(reportsPermissions({ ...account, super_admin: true, permissions_by_brand: { [brand]: ["report_betting.view.brand", "report_ledger.view.brand"] } }, brand)).toEqual({ betting: false, ledger: false });
+    expect(reportsPermissions({...account,brand_ids:[]},foreignBrand)).toEqual({betting:false,ledger:false});
     expect(reportsPermissions(account, foreignBrand)).toEqual({ betting: false, ledger: false });
   });
   it("rejects flattened permissions and invalid scopes",()=>{

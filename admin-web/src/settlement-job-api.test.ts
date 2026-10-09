@@ -68,24 +68,24 @@ function account(overrides: Partial<AdminAccount> = {}): AdminAccount {
 }
 
 describe("settlement job permissions", () => {
-  it("requires explicit brand membership and grants, with platform view limited to super admins", () => {
+  it("requires mapped grants and denies platform and super-admin access", () => {
     const permissions = [
       "settlement.view.brand", "settlement.run.brand", "settlement.approve.brand",
       "settlement.retry.brand", "settlement_policy.view.brand", "settlement_policy.write.brand",
     ];
-    expect(settlementJobPermissions(account({ permissions }), brand)).toEqual({
+    expect(settlementJobPermissions(account({ permissions_by_brand: { [brand]: permissions } }), brand)).toEqual({
       view: true, run: true, approve: true, retry: true, policyView: true, policyWrite: true,
     });
-    expect(settlementJobPermissions(account({ permissions, super_admin: true }), brand)).toMatchObject({ run:false,approve:false,retry:false,policyWrite: false });
+    expect(settlementJobPermissions(account({ permissions_by_brand: { [brand]: permissions }, super_admin: true }), brand)).toEqual({ view: false, run:false,approve:false,retry:false,policyView: false,policyWrite: false });
     expect(settlementJobPermissions(account({
       super_admin: true,
       platform_permissions: ["settlement.view.platform", "settlement_policy.view.platform"],
-    }), brand)).toMatchObject({ view: true, policyView: true, run: false, approve: false, retry: false, policyWrite: false });
+    }), brand)).toMatchObject({ view: false, policyView: false, run: false, approve: false, retry: false, policyWrite: false });
     expect(settlementJobPermissions(account({ permissions: ["settlement.view.platform"] }), brand).view).toBe(false);
-    expect(settlementJobPermissions(account({ brand_ids: [] , permissions }), brand)).toEqual({
+    expect(settlementJobPermissions(account({ brand_ids: [] , permissions_by_brand: { [brand]: permissions } }), brand)).toEqual({
       view: false, run: false, approve: false, retry: false, policyView: false, policyWrite: false,
     });
-    expect(settlementJobPermissions(account({ id: "invalid", permissions }), brand).run).toBe(false);
+    expect(settlementJobPermissions(account({ id: "invalid", permissions_by_brand: { [brand]: permissions } }), brand).run).toBe(false);
     expect(settlementJobPermissions(account({ permissions_by_brand: { [brand]: ["settlement.run.brand"] }, permissions: ["settlement.approve.brand"] }), brand))
       .toMatchObject({ run: true, approve: false });
   });

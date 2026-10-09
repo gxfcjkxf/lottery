@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/reports/attribution";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -162,11 +163,10 @@ function validateCsv(text: string, brand: string, q: CanonicalQuery, headers: He
 }
 
 export function attributionReportPermissions(account: AdminAccount, brand: string) {
-  const brandId = brand.toLowerCase(), valid = UUID.test(account.id) && UUID.test(brandId), inBrand = (account.brand_ids ?? []).some((id) => id.toLowerCase() === brandId);
-  const scoped = account.permissions_by_brand === undefined ? inBrand ? account.permissions ?? [] : [] : account.permissions_by_brand[brandId] ?? [];
-  const grants = new Set(scoped), platform = new Set(account.platform_permissions ?? account.permissions ?? []);
-  const view = valid && (platform.has("report_attribution.view.platform") || inBrand && grants.has("report_attribution.view.brand"));
-  const exportAllowed = view && (platform.has("report_attribution.export.platform") || inBrand && grants.has("report_attribution.export.brand"));
+  const brandId = brand.toLowerCase(), valid = UUID.test(account.id) && UUID.test(brandId);
+  const grants = brandPermissionSet(account, brandId);
+  const view = valid && grants.has("report_attribution.view.brand");
+  const exportAllowed = view && grants.has("report_attribution.export.brand");
   return { view, export: exportAllowed };
 }
 

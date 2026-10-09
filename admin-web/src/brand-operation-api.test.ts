@@ -31,16 +31,17 @@ function account(overrides: Partial<AdminAccount> = {}): AdminAccount {
 }
 
 describe("brand operation permissions", () => {
-  it("requires an exact brand or platform grant, without a super-admin shortcut", () => {
-    expect(brandOperationPermissions(account({ permissions: ["brand_operation.view.brand", "brand_operation.write.brand"] }), brand))
+  it("requires mapped brand grants and denies flat or platform grants", () => {
+    expect(brandOperationPermissions(account({ permissions_by_brand: { [brand]: ["brand_operation.view.brand", "brand_operation.write.brand"] } }), brand))
       .toEqual({ view: true, write: true });
     expect(brandOperationPermissions(account({ brand_ids: [], permissions: ["brand_operation.view.brand", "brand_operation.write.brand"] }), brand))
       .toEqual({ view: false, write: false });
     expect(brandOperationPermissions(account({ super_admin: true }), brand)).toEqual({ view: false, write: false });
-    expect(brandOperationPermissions(account({ super_admin: true, platform_permissions: ["brand_operation.view.platform", "brand_operation.write.platform"] }), brand))
-      .toEqual({ view: true, write: true });
+    expect(brandOperationPermissions(account({ super_admin: true, platform_permissions: ["brand_operation.view.platform", "brand_operation.write.platform"], permissions_by_brand: { [brand]: ["brand_operation.view.brand", "brand_operation.write.brand"] } }), brand))
+      .toEqual({ view: false, write: false });
     expect(brandOperationPermissions(account({ permissions: ["brand_operation.view.platform"] }), brand).view).toBe(false);
     expect(brandOperationPermissions(account({ permissions: ["brand_operation.view.brand"], permissions_by_brand: {} }), brand).view).toBe(false);
+    expect(brandOperationPermissions(account({ permissions: ["brand_operation.view.brand", "brand_operation.write.brand"] }), brand)).toEqual({ view: false, write: false });
   });
 });
 

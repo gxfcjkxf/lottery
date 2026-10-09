@@ -31,14 +31,15 @@ async function csvResponse(summary: CommissionAnalysisTotals, items: CommissionA
 }
 
 describe("commission analysis permissions", () => {
-  const base: AdminAccount = { id: actor, super_admin: true, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: ["commission.view.brand", "report_commission.view.brand"] } };
+  const base: AdminAccount = { id: actor, super_admin: false, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: ["commission.view.brand", "report_commission.view.brand"] } };
   it("requires commission and report view, plus a separate report export grant", () => {
     expect(commissionAnalysisPermissions(base, brand)).toEqual({ view: true, export: false });
     expect(commissionAnalysisPermissions({ ...base, permissions_by_brand: { [brand]: ["commission.view.brand", "report_commission.export.brand"] } }, brand).view).toBe(false);
     expect(commissionAnalysisPermissions({ ...base, permissions_by_brand: { [brand]: ["commission.view.brand", "report_commission.view.brand", "report_commission.export.brand"] } }, brand)).toEqual({ view: true, export: true });
-    expect(commissionAnalysisPermissions({ ...base, brand_ids: [], permissions_by_brand: {}, platform_permissions: ["commission.view.platform", "report_commission.view.platform", "report_commission.export.platform"] }, brand)).toEqual({ view: true, export: true });
-    expect(commissionAnalysisPermissions({ ...base, permissions_by_brand: { [brand]: ["commission.view.brand", "report_commission.view.brand"] }, platform_permissions: ["report_commission.export.platform"] }, brand)).toEqual({ view: true, export: true });
+    expect(commissionAnalysisPermissions({ ...base, brand_ids: [], permissions_by_brand: {}, platform_permissions: ["commission.view.platform", "report_commission.view.platform", "report_commission.export.platform"] }, brand)).toEqual({ view: false, export: false });
+    expect(commissionAnalysisPermissions({ ...base, permissions_by_brand: { [brand]: ["commission.view.brand", "report_commission.view.brand"] }, platform_permissions: ["report_commission.export.platform"] }, brand)).toEqual({ view: true, export: false });
     expect(commissionAnalysisPermissions({ ...base, permissions_by_brand: {}, platform_permissions: [] }, brand)).toEqual({ view: false, export: false });
+    expect(commissionAnalysisPermissions({ ...base, super_admin: true }, brand)).toEqual({ view: false, export: false });
   });
 });
 

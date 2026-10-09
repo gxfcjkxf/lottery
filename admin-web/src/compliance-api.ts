@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/compliance-policy";
 const CHECKS = "/api/v1/admin/compliance-checks";
@@ -38,14 +39,13 @@ export interface CompliancePolicyApi {
 }
 
 export function compliancePermissions(account: AdminAccount, brandId: string): { viewPolicy: boolean; writePolicy: boolean; viewChecks: boolean; runCheck: boolean } {
-  const brandGrants = new Set(account.permissions_by_brand?.[brandId] ?? []);
-  const platformGrants = new Set(account.platform_permissions ?? []);
+  const brandGrants = brandPermissionSet(account, brandId);
   const validScope = UUID_RE.test(account.id) && UUID_RE.test(brandId);
   const inBrand = validScope && (account.brand_ids ?? []).includes(brandId);
   return {
-    viewPolicy: validScope && (inBrand && brandGrants.has("compliance_policy.view.brand") || platformGrants.has("compliance_policy.view.platform")),
+    viewPolicy: validScope && inBrand && brandGrants.has("compliance_policy.view.brand"),
     writePolicy: inBrand && !account.super_admin && brandGrants.has("compliance_policy.write.brand"),
-    viewChecks: validScope && (inBrand && brandGrants.has("compliance_check.view.brand") || platformGrants.has("compliance_check.view.platform")),
+    viewChecks: validScope && inBrand && brandGrants.has("compliance_check.view.brand"),
     runCheck: inBrand && !account.super_admin && brandGrants.has("compliance_check.run.brand"),
   };
 }

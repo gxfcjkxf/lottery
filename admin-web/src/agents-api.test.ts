@@ -74,20 +74,21 @@ describe("agent permissions", () => {
     ...overrides,
   });
 
-  it("requires actual brand scope and grants only named brand or super-admin platform permissions", () => {
+  it("requires mapped grants for a member and denies flat or platform grants", () => {
     const grants = ["agent_policy.view.brand", "agent_policy.write.brand", "agent.view.brand", "agent.write.brand"];
-    expect(agentsPermissions(account({ permissions: grants }), brand)).toEqual({
+    expect(agentsPermissions(account({ permissions_by_brand: { [brand]: grants } }), brand)).toEqual({
       policyView: true, policyWrite: true, view: true, write: true,
     });
-    expect(agentsPermissions(account({ permissions: grants, brand_ids: [] }), brand)).toEqual({
+    expect(agentsPermissions(account({ permissions_by_brand: { [brand]: grants }, brand_ids: [] }), brand)).toEqual({
       policyView: false, policyWrite: false, view: false, write: false,
     });
     expect(agentsPermissions(account({ permissions: grants, permissions_by_brand: {} }), brand).view).toBe(false);
-    expect(agentsPermissions(account({ super_admin: true, platform_permissions: ["agent.view.platform", "agent_policy.view.platform"] }), brand)).toEqual({
-      policyView: true, policyWrite: false, view: true, write: false,
+    expect(agentsPermissions(account({ super_admin: true, platform_permissions: ["agent.view.platform", "agent_policy.view.platform"], permissions_by_brand: { [brand]: grants } }), brand)).toEqual({
+      policyView: false, policyWrite: false, view: false, write: false,
     });
     expect(agentsPermissions(account({ super_admin: true }), brand).view).toBe(false);
     expect(agentsPermissions(account({ platform_permissions: ["agent.view.platform"] }), brand).view).toBe(false);
+    expect(agentsPermissions(account({ permissions: grants }), brand).view).toBe(false);
   });
 
   it("maps unknown errors while preserving known admin errors", () => {

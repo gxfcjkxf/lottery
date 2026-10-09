@@ -127,10 +127,11 @@ describe("audit API", () => {
   });
 
   it("requires export dates and excludes mixed or wrong-brand grants", async () => {
-    const brandViewer: AdminAccount = { id: actor, super_admin: true, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: ["audit.view.brand"] } };
-    const platformExportOnly: AdminAccount = { id: actor, super_admin: true, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: ["audit.view.brand"] }, platform_permissions: ["audit.export.platform"] };
+    const brandViewer: AdminAccount = { id: actor, super_admin: false, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: ["audit.view.brand"] } };
+    const platformExportOnly: AdminAccount = { ...brandViewer, platform_permissions: ["audit.export.platform"] };
     expect(auditPermissions(brandViewer, brand)).toMatchObject({ view: true, export: false });
-    expect(auditPermissions(platformExportOnly, brand)).toMatchObject({ view: true, export: true });
+    expect(auditPermissions(platformExportOnly, brand)).toMatchObject({ view: true, export: false });
+    expect(auditPermissions({ ...brandViewer, super_admin: true, permissions_by_brand: { [brand]: ["audit.view.brand", "audit.export.brand"] } }, brand)).toMatchObject({ view: false, export: false });
     expect(auditPermissions({ ...brandViewer, permissions_by_brand: { [otherBrand]: ["audit.view.brand", "audit.export.brand"] } }, brand)).toMatchObject({ view: false, export: false });
     const fetcher = vi.fn();
     await expect(createAuditApi(fetcher as typeof fetch).exportCsv(brand, {} as never)).rejects.toBeInstanceOf(AdminApiError);

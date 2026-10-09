@@ -11,16 +11,17 @@ const payload=(overrides:Record<string,unknown>={})=>({success:true,request_id:"
 const response=(data:unknown)=>new Response(JSON.stringify(data),{status:200,headers:{"content-type":"application/json"}});
 
 describe("withdrawal report authorization",()=>{
-  const account:AdminAccount={id:brand,super_admin:true,brand_ids:[brand],permissions:[],permissions_by_brand:{[brand]:["report_withdrawal.view.brand"]}};
+  const account:AdminAccount={id:brand,super_admin:false,brand_ids:[brand],permissions:[],permissions_by_brand:{[brand]:["report_withdrawal.view.brand"]}};
   it("requires view plus export, and enforces selected-brand membership for brand grants",()=>{
     expect(withdrawalReportPermissions(account,brand)).toEqual({view:true,export:false});
     expect(withdrawalReportPermissions({...account,permissions_by_brand:{[brand]:["report_withdrawal.export.brand"]}},brand)).toEqual({view:false,export:false});
     expect(withdrawalReportPermissions({...account,permissions_by_brand:{[brand]:["report_withdrawal.view.brand","report_withdrawal.export.brand"]}},brand)).toEqual({view:true,export:true});
     expect(withdrawalReportPermissions({...account,brand_ids:[],permissions_by_brand:{[brand]:["report_withdrawal.view.brand","report_withdrawal.export.brand"]}},brand)).toEqual({view:false,export:false});
-    expect(withdrawalReportPermissions({...account,brand_ids:[],permissions_by_brand:{},platform_permissions:["report_withdrawal.view.platform","report_withdrawal.export.platform"]},brand)).toEqual({view:true,export:true});
-    expect(withdrawalReportPermissions({...account,brand_ids:[],permissions_by_brand:{[brand]:["report_withdrawal.export.brand"]},platform_permissions:["report_withdrawal.view.platform"]},brand)).toEqual({view:true,export:false});
+    expect(withdrawalReportPermissions({...account,brand_ids:[],permissions_by_brand:{},platform_permissions:["report_withdrawal.view.platform","report_withdrawal.export.platform"]},brand)).toEqual({view:false,export:false});
+    expect(withdrawalReportPermissions({...account,brand_ids:[],permissions_by_brand:{[brand]:["report_withdrawal.export.brand"]},platform_permissions:["report_withdrawal.view.platform"]},brand)).toEqual({view:false,export:false});
     expect(withdrawalReportPermissions({...account,permissions_by_brand:{},platform_permissions:["report_withdrawal.export.platform"]},brand)).toEqual({view:false,export:false});
     expect(withdrawalReportPermissions({...account,permissions:["report_withdrawal.view.brand"],permissions_by_brand:undefined},brand).view).toBe(false);
+    expect(withdrawalReportPermissions({...account,super_admin:true,permissions_by_brand:{[brand]:["report_withdrawal.view.brand","report_withdrawal.export.brand"]}},brand)).toEqual({view:false,export:false});
   });
 });
 

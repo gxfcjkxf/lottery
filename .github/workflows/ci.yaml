@@ -39,6 +39,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Prepare and verify Chromium
         run: node scripts/prepare-ci-browser.mjs
+      - name: Pin the installed Chromium executable for the review suite
+        run: node --input-type=module -e 'import { chromium } from "@playwright/test"; import { appendFileSync } from "node:fs"; appendFileSync(process.env.GITHUB_ENV, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${chromium.executablePath()}\n`);'
       - name: Initialize isolated current baseline and independent administrator accounts
         run: |
           mkdir -p .local
@@ -63,6 +65,7 @@ jobs:
         if: failure()
         with:
           name: administration-entry-${{ matrix.viewport }}-failure
+          include-hidden-files: true
           path: |
             test-results/
             .local/review-*.log

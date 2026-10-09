@@ -15,14 +15,15 @@ function payload(kind: RewardReportKind, overrides: Record<string, unknown> = {}
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 
 describe("reward report permissions", () => {
-  const base: AdminAccount = { id: actor, super_admin: true, brand_ids: [brand], permissions: ["report_reward.view.brand", "report_reward.export.brand", "reward.view.brand"], permissions_by_brand: { [brand]: ["reward.view.brand"] } };
+  const base: AdminAccount = { id: actor, super_admin: false, brand_ids: [brand], permissions: ["report_reward.view.brand", "report_reward.export.brand", "reward.view.brand"], permissions_by_brand: { [brand]: ["reward.view.brand"] } };
   it("requires independent explicit report rights and never inherits reward or unrelated permissions", () => {
     expect(rewardReportPermissions(base, brand)).toEqual({ view: false, export: false });
     expect(rewardReportPermissions({ ...base, platform_permissions: ["report_reward.export.platform"] }, brand)).toEqual({ view: false, export: false });
     expect(rewardReportPermissions({ ...base, permissions_by_brand: { [brand]: ["report_reward.view.brand"] } }, brand)).toEqual({ view: true, export: false });
     expect(rewardReportPermissions({ ...base, permissions_by_brand: { [brand]: ["report_reward.view.brand", "report_reward.export.brand"] } }, brand)).toEqual({ view: true, export: true });
-    expect(rewardReportPermissions({ ...base, brand_ids: [], permissions_by_brand: {}, platform_permissions: ["report_reward.view.platform", "report_reward.export.platform"] }, brand)).toEqual({ view: true, export: true });
+    expect(rewardReportPermissions({ ...base, brand_ids: [], permissions_by_brand: {}, platform_permissions: ["report_reward.view.platform", "report_reward.export.platform"] }, brand)).toEqual({ view: false, export: false });
     expect(rewardReportPermissions({ ...base, brand_ids: [], permissions_by_brand: { [brand]: ["report_reward.view.brand", "report_reward.export.brand"] } }, brand)).toEqual({ view: false, export: false });
+    expect(rewardReportPermissions({ ...base, super_admin: true, permissions_by_brand: { [brand]: ["report_reward.view.brand", "report_reward.export.brand"] } }, brand)).toEqual({ view: false, export: false });
   });
 });
 

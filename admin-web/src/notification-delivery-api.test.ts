@@ -34,16 +34,18 @@ function account(overrides: Partial<AdminAccount> = {}): AdminAccount {
 }
 
 describe("notification delivery permissions", () => {
-  it("grants brand and super-admin platform viewing while retry remains brand-only and non-super", () => {
-    expect(deliveryPermissions(account({ permissions: ["notification.view.brand", "notification.retry.brand"] }), brand))
+  it("requires mapped brand grants and denies flat or platform grants", () => {
+    expect(deliveryPermissions(account({ permissions_by_brand: { [brand]: ["notification.view.brand", "notification.retry.brand"] } }), brand))
       .toEqual({ view: true, retry: true });
-    expect(deliveryPermissions(account({ super_admin: true, permissions: ["notification.retry.brand"] }), brand).retry).toBe(false);
+    expect(deliveryPermissions(account({ super_admin: true, permissions_by_brand: { [brand]: ["notification.view.brand", "notification.retry.brand"] }, platform_permissions: ["notification.view.platform"] }), brand))
+      .toEqual({ view: false, retry: false });
     expect(deliveryPermissions(account({ super_admin: true, platform_permissions: ["notification.view.platform"] }), brand))
-      .toEqual({ view: true, retry: false });
+      .toEqual({ view: false, retry: false });
     expect(deliveryPermissions(account({ permissions: ["notification.view.platform"] }), brand).view).toBe(false);
     expect(deliveryPermissions(account({ brand_ids: [], permissions: ["notification.view.brand", "notification.retry.brand"] }), brand))
       .toEqual({ view: false, retry: false });
     expect(deliveryPermissions(account({ permissions: ["notification.view.brand"], permissions_by_brand: {} }), brand).view).toBe(false);
+    expect(deliveryPermissions(account({ permissions: ["notification.view.brand", "notification.retry.brand"] }), brand)).toEqual({ view: false, retry: false });
   });
 });
 

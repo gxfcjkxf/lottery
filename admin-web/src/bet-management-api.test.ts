@@ -375,6 +375,8 @@ describe("bet management API", () => {
       platform_permissions: ["bet.view.platform", "game.view.platform"],
       permissions_by_brand: {
         [brand]: [
+          "bet.view.brand",
+          "game.view.brand",
           "bet.cancel.brand",
           "bet.judge_cancel.brand",
           "bet.mark_abnormal.brand",
@@ -403,7 +405,7 @@ describe("bet management API", () => {
       betManagementPermissions(
         {
           ...account,
-          permissions_by_brand: { [brand]: ["bet.judge_cancel.brand"] },
+      permissions_by_brand: { [brand]: ["bet.judge_cancel.brand"] },
           platform_permissions: [],
         },
         brand,

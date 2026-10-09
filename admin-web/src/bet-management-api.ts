@@ -3,6 +3,7 @@ import {
   createIdempotencyKey,
   type AdminAccount,
 } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 import type {
   RuleDefinition,
   RuleTicketSelection,
@@ -127,17 +128,8 @@ export function betManagementPermissions(
   account: AdminAccount,
   brandId: string,
 ): BetManagementPermissions {
-  const brand = new Set(
-    account.permissions_by_brand === undefined
-      ? (account.permissions ?? [])
-      : (account.permissions_by_brand[brandId] ?? []),
-  );
-  const platform = new Set(
-    account.platform_permissions ?? account.permissions ?? [],
-  );
-  const view = (name: string) =>
-    Boolean(brandId) &&
-    (brand.has(`${name}.view.brand`) || platform.has(`${name}.view.platform`));
+  const brand = brandPermissionSet(account, brandId);
+  const view = (name: string) => Boolean(brandId) && brand.has(`${name}.view.brand`);
   const write = (grant: string) =>
     Boolean(brandId) && !account.super_admin && brand.has(grant);
   return {

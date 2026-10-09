@@ -52,15 +52,16 @@ const ok = (data: unknown, status = 200) => new Response(JSON.stringify({ succes
 const page = (items: unknown[], extra: Record<string, unknown> = {}) => ({ brand_id: brand, ...extra, items, total_count: "9007199254740993", limit: 20, offset: 0 });
 
 describe("commission cycles API", () => {
-  it("uses brand and platform view grants while keeping super-admin read-only", () => {
+  it("uses mapped brand grants only and denies platform actors", () => {
     const base = { id: accountId, super_admin: false, brand_ids: [brand], permissions: [] } satisfies AdminAccount;
     expect(commissionCyclePermissions({ ...base, permissions_by_brand: { [brand]: ["commission.view.brand", "commission.run.brand", "commission.retry.brand"] } }, brand)).toEqual({ view: true, run: true, retry: true });
     expect(commissionCyclePermissions({ ...base, permissions_by_brand: { [otherBrand]: ["commission.view.brand", "commission.run.brand"] } }, brand)).toEqual({ view: false, run: false, retry: false });
-    expect(commissionCyclePermissions({ ...base, super_admin: true, platform_permissions: ["commission.view.platform"], permissions_by_brand: { [brand]: ["commission.run.brand", "commission.retry.brand"] } }, brand)).toEqual({ view: true, run: false, retry: false });
+    expect(commissionCyclePermissions({ ...base, super_admin: true, platform_permissions: ["commission.view.platform"], permissions_by_brand: { [brand]: ["commission.view.brand", "commission.run.brand", "commission.retry.brand"] } }, brand)).toEqual({ view: false, run: false, retry: false });
     expect(commissionCyclePermissions({ ...base, platform_permissions: ["commission.view.platform"] }, "")).toEqual({ view: false, run: false, retry: false });
     expect(commissionCyclePermissions({ ...base, brand_ids: [], permissions_by_brand: { [brand]: ["commission.view.brand", "commission.run.brand"] } }, brand)).toEqual({ view: false, run: false, retry: false });
-    expect(commissionCyclePermissions({ ...base, brand_ids: [], permissions_by_brand: { [brand]: ["commission.run.brand"] }, platform_permissions: ["commission.view.platform"] }, brand)).toEqual({ view: true, run: false, retry: false });
+    expect(commissionCyclePermissions({ ...base, brand_ids: [], permissions_by_brand: { [brand]: ["commission.view.brand", "commission.run.brand"] }, platform_permissions: ["commission.view.platform"] }, brand)).toEqual({ view: false, run: false, retry: false });
     expect(commissionCyclePermissions({ ...base, id: "bad", platform_permissions: ["commission.view.platform"] }, brand)).toEqual({ view: false, run: false, retry: false });
+    expect(commissionCyclePermissions({ ...base, permissions: ["commission.view.brand", "commission.run.brand"] }, brand)).toEqual({ view: false, run: false, retry: false });
   });
 
   it("calls all read routes with same-origin credentials, explicit brand, and echoed pagination", async () => {

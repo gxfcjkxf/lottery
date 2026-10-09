@@ -6,6 +6,7 @@ import {
   onUnmounted,
   ref,
 } from "vue";
+import { brandPermissionSet } from "./brand-permissions";
 const AccessManagement = defineAsyncComponent(() => import("./AccessManagement.vue"));
 import MemberProvision from "./MemberProvision.vue";
 import AuthSettings from "./AuthSettings.vue";
@@ -330,13 +331,7 @@ onUnmounted(() => window.removeEventListener("resize", updateMobile));
 const groups = computed(() => [...new Set(nav.map((item) => item.group))]);
 const canViewJoinCodes = computed(() => {
   if (!account.value || !selectedBrandId.value) return false;
-  if (account.value.super_admin)
-    return (account.value.platform_permissions ?? []).includes("join_code.view.platform");
-  if (!account.value.brand_ids.includes(selectedBrandId.value)) return false;
-  const permissions = account.value.permissions_by_brand === undefined
-    ? account.value.permissions ?? []
-    : account.value.permissions_by_brand[selectedBrandId.value] ?? [];
-  return permissions.includes("join_code.view.brand");
+  return brandPermissionSet(account.value, selectedBrandId.value).has("join_code.view.brand");
 });
 const visibleNav = computed(() => nav.filter((item) => item.name !== "加入码" || canViewJoinCodes.value));
 const currentIcon = computed(

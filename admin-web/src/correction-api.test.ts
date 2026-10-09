@@ -48,7 +48,7 @@ describe("correction permissions", () => {
   it("requires scoped grants and denies every write to super admins", () => {
     expect(correctionPermissions(account(), brand)).toEqual({ view: true, correct: true, retry: true, settleRun: true });
     expect(correctionPermissions(account({ super_admin: true, platform_permissions: ["draw.view.platform"] }), brand))
-      .toEqual({ view: true, correct: false, retry: false, settleRun: false });
+      .toEqual({ view: false, correct: false, retry: false, settleRun: false });
     expect(correctionPermissions(account(), "")).toEqual({ view: false, correct: false, retry: false, settleRun: false });
     expect(correctionPermissions(account({ brand_ids: [] }), brand)).toEqual({ view: false, correct: false, retry: false, settleRun: false });
     expect(correctionPermissions(account({ permissions_by_brand: { [game]: ["draw.view.brand", "draw.correct.brand"] } }), brand))

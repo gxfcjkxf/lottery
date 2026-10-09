@@ -3,6 +3,7 @@ import {
   createIdempotencyKey,
   type AdminAccount,
 } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 import { parsePeriod, type Period } from "./period-schedules-api";
 import type { RuleDraw, RuleModel } from "./rule-simulation-api";
 
@@ -98,29 +99,18 @@ export function drawManagementPermissions(
   account: AdminAccount,
   brandId: string,
 ): DrawManagementPermissions {
-  const brand = new Set(
-    account.permissions_by_brand === undefined
-      ? (account.permissions ?? [])
-      : (account.permissions_by_brand[brandId] ?? []),
-  );
-  const platform = new Set(
-    account.platform_permissions ?? account.permissions ?? [],
-  );
-  const view = (name: string) =>
-    Boolean(brandId) &&
-    (brand.has(`${name}.view.brand`) || platform.has(`${name}.view.platform`));
+  const brand = brandPermissionSet(account, brandId);
+  const view = (name: string) => Boolean(brandId) && brand.has(`${name}.view.brand`);
   return {
     gamesView: view("game"),
     periodsView: view("period"),
     sourceView: view("draw_source"),
     sourceWrite:
       Boolean(brandId) &&
-      !account.super_admin &&
       brand.has("draw_source.write.brand"),
     drawView: view("draw"),
     manualCreate:
       Boolean(brandId) &&
-      !account.super_admin &&
       brand.has("draw.manual_create.brand"),
   };
 }

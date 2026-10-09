@@ -228,7 +228,7 @@ describe("period cancellation API", () => {
       permissions: [],
       platform_permissions: ["period.view.platform"],
       permissions_by_brand: {
-        [brand]: ["period.cancel.brand", "period.cancel_retry.brand"],
+        [brand]: ["period.view.brand", "period.cancel.brand", "period.cancel_retry.brand"],
       },
     };
     expect(periodCancellationPermissions(account, brand)).toEqual({
@@ -238,7 +238,7 @@ describe("period cancellation API", () => {
     });
     expect(
       periodCancellationPermissions({ ...account, super_admin: true }, brand),
-    ).toEqual({ view: true, cancel: false, retry: false });
+    ).toEqual({ view: false, cancel: false, retry: false });
     expect(
       periodCancellationPermissions(
         {

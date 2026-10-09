@@ -14,7 +14,7 @@ const canView = computed(() => permissions.value.view);
 const canWrite = computed(() => permissions.value.write);
 const permissionSignature = computed(() => JSON.stringify({ accountId: props.account.id, brandId: props.brandId,
   superAdmin: props.account.super_admin, brandIds: [...props.account.brand_ids].sort(),
-  brandPermissions: [...(props.account.permissions_by_brand?.[props.brandId] ?? props.account.permissions ?? [])].sort(),
+  brandPermissions: [...(props.account.permissions_by_brand?.[props.brandId] ?? [])].sort(),
   platformPermissions: [...(props.account.platform_permissions ?? [])].sort() }));
 const pageSize = 20;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;

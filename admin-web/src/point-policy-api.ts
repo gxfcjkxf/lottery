@@ -1,4 +1,5 @@
 import { AdminApiError, createIdempotencyKey } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin";
 
@@ -13,9 +14,8 @@ export interface PointPolicy {
 
 export interface PointPolicyAccount {
   super_admin: boolean;
-  permissions: string[];
+  brand_ids: string[];
   permissions_by_brand?: Record<string, string[]>;
-  platform_permissions?: string[];
 }
 
 export interface UpdatePointPolicyBody {
@@ -36,20 +36,7 @@ export function effectiveBrandPermissions(
   account: PointPolicyAccount,
   brandId: string,
 ): Set<string> {
-  return new Set(
-    account.permissions_by_brand === undefined
-      ? (account.permissions ?? [])
-      : (account.permissions_by_brand[brandId] ?? []),
-  );
-}
-
-function hasPlatformPermission(
-  account: PointPolicyAccount,
-  permission: string,
-): boolean {
-  return (account.platform_permissions ?? account.permissions ?? []).includes(
-    permission,
-  );
+  return brandPermissionSet(account, brandId);
 }
 
 export function canViewPointPolicy(
@@ -57,9 +44,7 @@ export function canViewPointPolicy(
   brandId: string,
 ): boolean {
   return (
-    effectiveBrandPermissions(account, brandId).has(
-      "point_policy.view.brand",
-    ) || hasPlatformPermission(account, "point_policy.view.platform")
+    effectiveBrandPermissions(account, brandId).has("point_policy.view.brand")
   );
 }
 
@@ -68,7 +53,6 @@ export function canWritePointPolicy(
   brandId: string,
 ): boolean {
   return (
-    !account.super_admin &&
     effectiveBrandPermissions(account, brandId).has("point_policy.write.brand")
   );
 }

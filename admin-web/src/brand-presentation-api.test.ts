@@ -26,12 +26,13 @@ function response(data: unknown, status = 200): Response { return new Response(J
 function account(overrides: Partial<AdminAccount> = {}): AdminAccount { return { id: actor, super_admin: false, brand_ids: [brand], permissions: [], ...overrides }; }
 
 describe("brand presentation permissions", () => {
-  it("unions exact brand and platform grants, while requiring explicit super-admin grants", () => {
-    expect(brandPresentationPermissions(account({ permissions: ["brand_presentation.view.brand"], platform_permissions: ["brand_presentation.write.platform"] }), brand)).toEqual({ view: true, write: true });
-    expect(brandPresentationPermissions(account({ brand_ids: [], permissions: ["brand_presentation.view.brand", "brand_presentation.write.brand"] }), brand)).toEqual({ view: false, write: false });
+  it("requires mapped grants for brand members and denies platform actors", () => {
+    expect(brandPresentationPermissions(account({ permissions_by_brand: { [brand]: ["brand_presentation.view.brand", "brand_presentation.write.brand"] } }), brand)).toEqual({ view: true, write: true });
+    expect(brandPresentationPermissions(account({ brand_ids: [], permissions_by_brand: { [brand]: ["brand_presentation.view.brand", "brand_presentation.write.brand"] } }), brand)).toEqual({ view: false, write: false });
     expect(brandPresentationPermissions(account({ super_admin: true }), brand)).toEqual({ view: false, write: false });
-    expect(brandPresentationPermissions(account({ super_admin: true, platform_permissions: ["brand_presentation.view.platform", "brand_presentation.write.platform"] }), brand)).toEqual({ view: true, write: true });
+    expect(brandPresentationPermissions(account({ super_admin: true, platform_permissions: ["brand_presentation.view.platform", "brand_presentation.write.platform"], permissions_by_brand: { [brand]: ["brand_presentation.view.brand", "brand_presentation.write.brand"] } }), brand)).toEqual({ view: false, write: false });
     expect(brandPresentationPermissions(account({ permissions_by_brand: { [other]: ["brand_presentation.view.brand"] } }), brand).view).toBe(false);
+    expect(brandPresentationPermissions(account({ permissions: ["brand_presentation.view.brand", "brand_presentation.write.brand"] }), brand)).toEqual({ view: false, write: false });
   });
 });
 

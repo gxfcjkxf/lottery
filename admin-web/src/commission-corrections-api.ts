@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const ROOT = "/api/v1/admin";
 const POLICY = `${ROOT}/commission-correction-policy`;
@@ -174,10 +175,9 @@ function safeErrorCode(value: unknown): string | undefined {
 }
 
 export function commissionCorrectionPermissions(account: AdminAccount, brand: string) {
-  const member = Array.isArray(account.brand_ids) && account.brand_ids.includes(brand);
-  const brandGrants = new Set(account.permissions_by_brand === undefined ? (member ? account.permissions ?? [] : []) : account.permissions_by_brand[brand] ?? []);
-  const platformGrants = new Set(account.platform_permissions ?? account.permissions ?? []);
-  const view = uuid(account.id) && uuid(brand) && (account.super_admin ? platformGrants.has("commission.view.platform") : (member && brandGrants.has("commission.view.brand")) || platformGrants.has("commission.view.platform"));
+  const member = account.brand_ids.includes(brand);
+  const brandGrants = brandPermissionSet(account, brand);
+  const view = uuid(account.id) && uuid(brand) && member && brandGrants.has("commission.view.brand");
   const writesAllowed = Boolean(view && member && !account.super_admin);
   return {
     view,

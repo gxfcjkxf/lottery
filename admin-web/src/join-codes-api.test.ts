@@ -17,12 +17,13 @@ const fail = (status: number, errorCode = "JOIN_CODE_VERSION_CONFLICT") => new R
 describe("join code permissions", () => {
   const account = (overrides: Partial<AdminAccount> = {}): AdminAccount => ({ id: accountId, super_admin: false, brand_ids: [brand], permissions: [], ...overrides });
   it("requires explicit in-scope view grants and never grants super-admin writes", () => {
-    expect(joinCodePermissions(account({ permissions: ["join_code.view.brand", "join_code.write.brand"] }), brand)).toEqual({ view: true, write: true });
+    expect(joinCodePermissions(account({ permissions_by_brand: { [brand]: ["join_code.view.brand", "join_code.write.brand"] } }), brand)).toEqual({ view: true, write: true });
     expect(joinCodePermissions(account({ brand_ids: [] }), brand)).toEqual({ view: false, write: false });
     expect(joinCodePermissions(account({ permissions_by_brand: {} }), brand).view).toBe(false);
-    expect(joinCodePermissions(account({ super_admin: true, platform_permissions: ["join_code.view.platform", "join_code.write.brand"] }), brand)).toEqual({ view: true, write: false });
-    expect(joinCodePermissions(account({ super_admin: true, brand_ids: [], platform_permissions: ["join_code.view.platform"] }), "00000000-0000-4000-8000-000000000009").view).toBe(true);
+    expect(joinCodePermissions(account({ super_admin: true, platform_permissions: ["join_code.view.platform", "join_code.write.brand"], permissions_by_brand: { [brand]: ["join_code.view.brand"] } }), brand)).toEqual({ view: false, write: false });
+    expect(joinCodePermissions(account({ super_admin: true, brand_ids: [], platform_permissions: ["join_code.view.platform"] }), "00000000-0000-4000-8000-000000000009").view).toBe(false);
     expect(joinCodePermissions(account({ super_admin: true, brand_ids: [] }), "00000000-0000-4000-8000-000000000009").view).toBe(false);
+    expect(joinCodePermissions(account({ permissions: ["join_code.view.brand", "join_code.write.brand"] }), brand)).toEqual({ view: false, write: false });
   });
 });
 

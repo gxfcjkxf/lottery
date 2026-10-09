@@ -72,7 +72,8 @@ describe("withdrawal policy API", () => {
       id: "admin",
       super_admin: false,
       brand_ids: [brand],
-      permissions: ["withdrawal_policy.write.brand"],
+      permissions: [],
+      permissions_by_brand: { [brand]: ["withdrawal_policy.write.brand"] },
     } satisfies AdminAccount;
     expect(withdrawalPolicyPermissions(account, brand)).toEqual({
       view: false,
@@ -91,12 +92,12 @@ describe("withdrawal policy API", () => {
         },
         brand,
       ),
-    ).toEqual({ view: true, write: false, gameView: false });
+    ).toEqual({ view: false, write: false, gameView: false });
     expect(
       withdrawalPolicyPermissions(
         {
           ...account,
-          permissions: ["withdrawal_policy.view.brand", "game.view.brand"],
+          permissions: [],
           permissions_by_brand: {
             [otherBrand]: ["withdrawal_policy.view.brand"],
           },
@@ -104,17 +105,18 @@ describe("withdrawal policy API", () => {
         },
         brand,
       ),
-    ).toEqual({ view: false, write: false, gameView: true });
+    ).toEqual({ view: false, write: false, gameView: false });
     expect(
       withdrawalPolicyPermissions(
         {
           ...account,
           permissions: [],
+          permissions_by_brand: { [brand]: [] },
           platform_permissions: ["withdrawal_policy.view.platform"],
         },
         brand,
       ),
-    ).toMatchObject({ view: true, write: false });
+    ).toMatchObject({ view: false, write: false });
     expect(withdrawalPolicyPermissions(account, "")).toEqual({
       view: false,
       write: false,

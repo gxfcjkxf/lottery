@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -32,17 +33,12 @@ export function deliveryPermissions(
   account: AdminAccount,
   brand: string,
 ): { view: boolean; retry: boolean } {
-  const brandPermissions = new Set(
-    account.permissions_by_brand === undefined
-      ? account.permissions ?? []
-      : account.permissions_by_brand[brand] ?? [],
-  );
-  const platformPermissions = new Set(account.platform_permissions ?? []);
+  const brandPermissions = brandPermissionSet(account, brand);
   const isMember = UUID_RE.test(account.id) && UUID_RE.test(brand) &&
     account.brand_ids.includes(brand);
   return {
     view: isMember && (brandPermissions.has("notification.view.brand") ||
-      (account.super_admin && platformPermissions.has("notification.view.platform"))),
+      brandPermissions.has("notification.view.brand")),
     retry: isMember && !account.super_admin && brandPermissions.has("notification.retry.brand"),
   };
 }

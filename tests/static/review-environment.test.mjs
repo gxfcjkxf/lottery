@@ -7,6 +7,8 @@ const userReview = readFileSync(new URL('../../user-web/vite.review.config.ts', 
 const adminReview = readFileSync(new URL('../../admin-web/vite.review.config.ts', import.meta.url), 'utf8')
 const userDev = readFileSync(new URL('../../user-web/vite.config.ts', import.meta.url), 'utf8')
 const adminDev = readFileSync(new URL('../../admin-web/vite.config.ts', import.meta.url), 'utf8')
+const workflow = readFileSync(new URL('../../.github/workflows/ci.yaml', import.meta.url), 'utf8')
+const reviewConfig = readFileSync(new URL('../../playwright.review.config.ts', import.meta.url), 'utf8')
 
 test('review Vite configs extend normal configs and pin loopback ports and API proxy', () => {
   for (const [config, port] of [[userReview, 5183], [adminReview, 5184]]) {
@@ -28,4 +30,14 @@ test('root review scripts select the matching review config while normal dev con
   assert.match(userDev, /target: 'http:\/\/localhost:8080'/)
   assert.match(adminDev, /target: 'http:\/\/localhost:8080'/)
   assert.doesNotMatch(userDev + adminDev, /5183|5184|127\.0\.0\.1:8085/)
+})
+
+test('isolated entry CI pins the installed Chromium before loading the strict review config', () => {
+  const job = workflow.split('  administration-entries:')[1].split('  audit-exports-browser:')[0]
+  assert.match(job, /chromium\.executablePath\(\)/)
+  assert.match(job, /appendFileSync\(process\.env\.GITHUB_ENV/)
+  assert.match(job, /PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=\$\{chromium\.executablePath\(\)\}/)
+  assert.ok(job.indexOf('Pin the installed Chromium executable') < job.indexOf('Verify real isolated administrative entries'))
+  assert.match(reviewConfig, /if \(!executablePath\)/)
+  assert.match(reviewConfig, /launchOptions: \{ executablePath \}/)
 })

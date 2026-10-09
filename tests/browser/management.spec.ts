@@ -29,6 +29,7 @@ async function login(page: Page, info: TestInfo) {
   await page
     .getByRole("button", { name: "登录并加载真实成员", exact: true })
     .click();
+  await navigate(page, info, "用户和成员");
   await page
     .getByLabel("选择真实后台品牌", { exact: true })
     .selectOption(brandId);

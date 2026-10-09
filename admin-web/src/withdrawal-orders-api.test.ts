@@ -34,9 +34,9 @@ describe("admin withdrawal permissions", () => {
     expect(withdrawalPermissions({ ...account, permissions_by_brand: { [brand]: ["withdrawal.view.brand"] } }, "not-a-uuid").view).toBe(false);
   });
 
-  it("allows explicit platform view without membership while super admins never gain writes", () => {
+  it("denies platform and super-admin access without mapped brand membership", () => {
     const platform = { ...account, super_admin: true, brand_ids: [], platform_permissions: ["withdrawal.view.platform"] };
-    expect(withdrawalPermissions(platform, brand).view).toBe(true);
+    expect(withdrawalPermissions(platform, brand).view).toBe(false);
     expect(Object.values(withdrawalPermissions(platform, brand).actions).every((granted) => !granted)).toBe(true);
   });
 });

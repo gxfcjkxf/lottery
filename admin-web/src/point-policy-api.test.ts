@@ -76,10 +76,10 @@ describe("point policy API", () => {
     }
   });
 
-  it("applies exact brand/platform view and non-super brand write grants", () => {
+  it("applies only mapped grants for an authorized brand", () => {
     const scoped = {
       super_admin: false,
-      permissions: ["point_policy.view.brand", "point_policy.write.brand"],
+      brand_ids: ["a"],
       permissions_by_brand: {
         a: ["point_policy.view.brand", "point_policy.write.brand"],
       },
@@ -93,11 +93,12 @@ describe("point policy API", () => {
     );
     const platformView = {
       ...scoped,
+      brand_ids: ["a"],
       permissions: [],
       permissions_by_brand: {},
       platform_permissions: ["point_policy.view.platform"],
     };
-    expect(canViewPointPolicy(platformView, "b")).toBe(true);
+    expect(canViewPointPolicy(platformView, "b")).toBe(false);
     expect(canWritePointPolicy(platformView, "b")).toBe(false);
   });
 

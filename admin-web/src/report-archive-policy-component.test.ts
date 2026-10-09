@@ -244,7 +244,7 @@ describe("ReportArchiveTasksManagement archive policy editor contract", () => {
     mounted.app.unmount();
   });
 
-  it("blocks writes when initial policy loading fails and keeps platform, super-admin and view-only accounts read-only", async () => {
+  it("blocks writes after load failures and denies platform and super-admin brand access", async () => {
     policyFailure = new AdminApiError("policy unavailable", 503);
     const failed = mount(); await flush();
     expect(byTestId(failed.container, "archive-policy-save")?.props.disabled).toBe(true);
@@ -253,8 +253,7 @@ describe("ReportArchiveTasksManagement archive policy editor contract", () => {
 
     const platform: AdminAccount = { ...account, super_admin: true, brand_ids: [], platform_permissions: ["report_archive.view.platform", "report_archive_policy.write.brand"] };
     const superAdmin = mount(platform); await flush();
-    expect(byTestId(superAdmin.container, "archive-policy-editor")).not.toBeNull();
-    expect(byTestId(superAdmin.container, "archive-policy-daily")!.props.disabled).toBe(true);
+    expect(byTestId(superAdmin.container, "archive-policy-editor")).toBeNull();
     expect(updateCalls()).toHaveLength(0); superAdmin.app.unmount();
     const viewOnly: AdminAccount = { ...account, permissions_by_brand: { [brand]: ["report_archive.view.brand"] } };
     const readOnly = mount(viewOnly); await flush();

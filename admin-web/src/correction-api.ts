@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -45,13 +46,12 @@ export interface CorrectionPermissions { view: boolean; correct: boolean; retry:
 
 export function correctionPermissions(account: AdminAccount, brandId: string): CorrectionPermissions {
   const member = Boolean(brandId) && account.brand_ids.some(id => sameUuid(id, brandId));
-  const brand = new Set(account.permissions_by_brand === undefined ? account.permissions ?? [] : account.permissions_by_brand[brandId] ?? []);
-  const platform = new Set(account.platform_permissions ?? []);
+  const brand = brandPermissionSet(account, brandId);
   return {
-    view: member && (brand.has("draw.view.brand") || platform.has("draw.view.platform")),
-    correct: member && !account.super_admin && brand.has("draw.correct.brand"),
-    retry: member && !account.super_admin && brand.has("draw.correction_retry.brand"),
-    settleRun: member && !account.super_admin && brand.has("settlement.run.brand"),
+    view: member && brand.has("draw.view.brand"),
+    correct: member && brand.has("draw.correct.brand"),
+    retry: member && brand.has("draw.correction_retry.brand"),
+    settleRun: member && brand.has("settlement.run.brand"),
   };
 }
 

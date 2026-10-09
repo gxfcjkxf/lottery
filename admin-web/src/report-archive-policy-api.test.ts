@@ -85,8 +85,8 @@ describe("report archive policy API", () => {
     expect(reportArchivePolicyPermissions({ ...account, brand_ids: [], permissions_by_brand: { [brand]: ["report_archive.view.brand", "report_archive_policy.write.brand"] } }, brand)).toEqual({ view: false, write: false });
     expect(reportArchivePolicyPermissions({ ...account, permissions_by_brand: { [brand]: ["report_archive_policy.write.brand"] } }, brand)).toEqual({ view: false, write: false });
     expect(reportArchivePolicyPermissions({ ...account, permissions_by_brand: { [brand]: ["report_archive.view.brand"] } }, brand)).toEqual({ view: true, write: false });
-    expect(reportArchivePolicyPermissions({ ...account, super_admin: true, permissions_by_brand: { [brand]: ["report_archive.view.brand", "report_archive_policy.write.brand"] } }, brand)).toEqual({ view: true, write: false });
-    expect(reportArchivePolicyPermissions({ ...account, super_admin: true, brand_ids: [], permissions_by_brand: {}, platform_permissions: ["report_archive.view.platform"] }, brand)).toEqual({ view: true, write: false });
+    expect(reportArchivePolicyPermissions({ ...account, super_admin: true, permissions_by_brand: { [brand]: ["report_archive.view.brand", "report_archive_policy.write.brand"] } }, brand)).toEqual({ view: false, write: false });
+    expect(reportArchivePolicyPermissions({ ...account, super_admin: true, brand_ids: [], permissions_by_brand: {}, platform_permissions: ["report_archive.view.platform"] }, brand)).toEqual({ view: false, write: false });
   });
 
   it("treats mismatched acknowledgements and unknown 500 outcomes as unknown writes without automatic replay", async () => {

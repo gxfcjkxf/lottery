@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/audit";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -173,15 +174,9 @@ function validateCsv(text: string, brandId: string, query: Record<string, string
 
 export function auditPermissions(account: AdminAccount, brandId: string): { view: boolean; export: boolean } {
   const scoped = validUuid(account.id) && validUuid(brandId);
-  const brandAllowed = scoped && (account.brand_ids ?? []).some((id) => id.toLowerCase() === brandId.toLowerCase());
-  const brandGrants = new Set(account.permissions_by_brand?.[brandId] ?? []);
-  const platformGrants = new Set(account.platform_permissions ?? []);
-  const viewBrand = brandAllowed && brandGrants.has("audit.view.brand");
-  const exportBrand = brandAllowed && brandGrants.has("audit.export.brand");
-  const viewPlatform = platformGrants.has("audit.view.platform");
-  const exportPlatform = platformGrants.has("audit.export.platform");
-  const view = scoped && (viewBrand || viewPlatform);
-  return { view, export: view && scoped && (exportBrand || exportPlatform) };
+  const grants = brandPermissionSet(account, brandId.toLowerCase());
+  const view = scoped && grants.has("audit.view.brand");
+  return { view, export: view && scoped && grants.has("audit.export.brand") };
 }
 
 export function createAuditApi(fetchImpl: typeof fetch = fetch) {

@@ -9,13 +9,14 @@ const payload = (overrides: Record<string, unknown> = {}) => ({ success: true, r
 const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
 
 describe("commission report permissions", () => {
-  const account: AdminAccount = { id: actor, super_admin: true, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: ["report_commission.view.brand"] } };
-  it("requires view and export grants independently, including for platform administrators", () => {
+  const account: AdminAccount = { id: actor, super_admin: false, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: ["report_commission.view.brand"] } };
+  it("requires mapped view and export grants and denies platform administrators", () => {
     expect(commissionReportPermissions(account, brand)).toEqual({ view: true, export: false });
     expect(commissionReportPermissions({ ...account, permissions_by_brand: { [brand]: ["report_commission.export.brand"] } }, brand)).toEqual({ view: false, export: false });
     expect(commissionReportPermissions({ ...account, permissions_by_brand: { [brand]: ["report_commission.view.brand", "report_commission.export.brand"] } }, brand)).toEqual({ view: true, export: true });
-    expect(commissionReportPermissions({ ...account, brand_ids: [], permissions_by_brand: {}, platform_permissions: ["report_commission.view.platform", "report_commission.export.platform"] }, brand)).toEqual({ view: true, export: true });
+    expect(commissionReportPermissions({ ...account, brand_ids: [], permissions_by_brand: {}, platform_permissions: ["report_commission.view.platform", "report_commission.export.platform"] }, brand)).toEqual({ view: false, export: false });
     expect(commissionReportPermissions({ ...account, brand_ids: [], permissions_by_brand: { [brand]: ["report_commission.view.brand", "report_commission.export.brand"] } }, brand)).toEqual({ view: false, export: false });
+    expect(commissionReportPermissions({ ...account, super_admin: true, permissions_by_brand: { [brand]: ["report_commission.view.brand", "report_commission.export.brand"] } }, brand)).toEqual({ view: false, export: false });
   });
 });
 

@@ -22,7 +22,8 @@ describe("commission payments API", () => {
   it("keeps payment permissions brand scoped and denies super-admin writes", () => {
     expect(commissionPaymentPermissions(base, brand)).toEqual({ view: true, policyWrite: true, approve: true, retry: true });
     expect(commissionPaymentPermissions(base, otherBrand).view).toBe(false);
-    expect(commissionPaymentPermissions({ ...base, super_admin: true, platform_permissions: ["commission.view.platform"], permissions_by_brand: { [brand]: base.permissions_by_brand![brand] } }, brand)).toEqual({ view: true, policyWrite: false, approve: false, retry: false });
+    expect(commissionPaymentPermissions({ ...base, super_admin: true, platform_permissions: ["commission.view.platform"], permissions_by_brand: { [brand]: base.permissions_by_brand![brand] } }, brand)).toEqual({ view: false, policyWrite: false, approve: false, retry: false });
+    expect(commissionPaymentPermissions({ ...base, permissions: ["commission.view.brand", "commission_payment_policy.write.brand"], permissions_by_brand: undefined }, brand)).toEqual({ view: false, policyWrite: false, approve: false, retry: false });
   });
 
   it("sends exact versioned bodies, brand and idempotency headers for all six routes", async () => {

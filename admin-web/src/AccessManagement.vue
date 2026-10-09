@@ -11,7 +11,6 @@ import {
   createBodyKeyTracker,
   createManagementApi,
   effectivePermissions,
-  hasPlatformWrite,
   rolePermissionChoices,
   rolePermissionUnion,
   type AdminRecord,
@@ -100,27 +99,25 @@ const pageHasNext = computed(() =>
     : accounts.value.length === 50,
 );
 const editableAccount = (target: AdminRecord) =>
-  canEditAccountScope(props.account, target) &&
+  canEditAccountScope(props.account, props.brandId, target) &&
   roleCatalogLoaded.value &&
   target.role_ids.every(
     (id) =>
       roles.value.find((role) => role.id === id) !== undefined &&
-      (hasPlatformWrite(props.account, "admin") ||
-        roles.value
-          .find((role) => role.id === id)
-          ?.permissions.every((permission) =>
-            actorPermissions.value.has(permission),
-          )),
+      roles.value
+        .find((role) => role.id === id)
+        ?.permissions.every((permission) =>
+          actorPermissions.value.has(permission),
+        ),
   );
 const canResetTarget = (target: AdminRecord) =>
-  canEditAccountScope(props.account, target);
+  canEditAccountScope(props.account, props.brandId, target);
 const editableRole = (role: RoleRecord) =>
   writeRoles.value &&
   !role.is_bootstrap &&
-  (hasPlatformWrite(props.account, "role") ||
-    role.permissions.every((permission) =>
-      actorPermissions.value.has(permission),
-    ));
+  role.permissions.every((permission) =>
+    actorPermissions.value.has(permission),
+  );
 const roleNameBytes = computed(
   () => new TextEncoder().encode(roleForm.value.name).length,
 );
@@ -178,8 +175,8 @@ async function load() {
       } catch (cause) {
         if (props.brandId !== requestBrandId) return;
         roleCatalogMessage.value = message(
-          "角色或权限目录读取失败；有写权限仍可依据内置权限键创建角色。",
-          "Could not load the role or permission catalog. With write permission, you can still create roles using built-in permission keys.",
+          "角色或权限目录读取失败；目录加载成功后才能配置角色权限。",
+          "Could not load the role or permission catalog. Role permissions can be configured after the catalog loads.",
         );
         handleError(cause);
       }
@@ -188,8 +185,8 @@ async function load() {
       registeredPermissions.value = [];
       roleCatalogLoaded.value = false;
       roleCatalogMessage.value = message(
-        "缺少 role.view 权限，无法读取角色与服务端权限目录；平台写权限可创建角色，但这里只能显示内置权限键。",
-        "Missing role.view permission: the role and server permission catalogs cannot be loaded. Platform write permission allows role creation, but only built-in permission keys are shown here.",
+        "缺少 role.view 权限，无法读取角色与服务端权限目录。",
+        "Missing role.view permission: the role and server permission catalogs cannot be loaded.",
       );
     }
   }
@@ -501,9 +498,7 @@ function changePage(direction: -1 | 1) {
               <h2>{{ roleForm.id ? t("编辑角色", "Edit role") : t("新建角色", "Create role") }}</h2>
               <p>
                 {{
-                  hasPlatformWrite(account, "role")
-                    ? t("平台角色写权限可登记品牌权限键。无查看权限时仅显示系统内置权限键。", "Platform role write permission can register brand permission keys. Without view permission, only built-in permission keys are shown.")
-                    : t("仅可授予当前品牌账号已拥有的登记权限。", "You can grant only registered permissions already held by an account in this brand.")
+                  t("仅可授予当前品牌账号已拥有的登记权限。", "You can grant only registered permissions already held by an account in this brand.")
                 }}
               </p>
             </div>
@@ -783,7 +778,7 @@ function changePage(direction: -1 | 1) {
           <div class="panel-title">
             <div>
               <h2>{{ t("品牌管理员", "Brand administrators") }}</h2>
-              <p>{{ t("本人和超级管理员只读；跨品牌账号由平台管理员权限控制。", "Your own account and super administrators are read-only; cross-brand accounts are controlled by platform administrator permissions.") }}</p>
+              <p>{{ t("本人、超级管理员和跨品牌账号只读。", "Your own account, super administrators, and cross-brand accounts are read-only.") }}</p>
             </div>
             <button
               v-if="writeAccounts && roleCatalogLoaded"

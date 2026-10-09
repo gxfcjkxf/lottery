@@ -29,9 +29,9 @@ describe("report archive tasks API", () => {
     const base = { id: actor, super_admin: false, brand_ids: [brand], permissions: [] } satisfies AdminAccount;
     expect(reportArchiveTasksPermissions({ ...base, permissions_by_brand: { [brand]: ["report_archive.view.brand", "report_archive_task.retry.brand"] } }, brand)).toEqual({ view: true, retry: true });
     expect(reportArchiveTasksPermissions({ ...base, brand_ids: [], permissions_by_brand: { [brand]: ["report_archive.view.brand", "report_archive_task.retry.brand"] } }, brand)).toEqual({ view: false, retry: false });
-    expect(reportArchiveTasksPermissions({ ...base, super_admin: true, platform_permissions: ["report_archive.view.platform", "report_archive_task.retry.brand"] }, brand)).toEqual({ view: true, retry: false });
-    expect(reportArchiveTasksPermissions({ ...base, platform_permissions: ["report_archive.view.platform"] }, brand)).toEqual({ view: true, retry: false });
-    expect(reportArchiveTasksPermissions({ ...base, platform_permissions: ["report_archive.view.platform"], permissions_by_brand: { [brand]: ["report_archive_task.retry.brand"] } }, brand)).toEqual({ view: true, retry: false });
+    expect(reportArchiveTasksPermissions({ ...base, super_admin: true, permissions_by_brand: { [brand]: ["report_archive.view.brand", "report_archive_task.retry.brand"] }, platform_permissions: ["report_archive.view.platform"] }, brand)).toEqual({ view: false, retry: false });
+    expect(reportArchiveTasksPermissions({ ...base, platform_permissions: ["report_archive.view.platform"] }, brand)).toEqual({ view: false, retry: false });
+    expect(reportArchiveTasksPermissions({ ...base, platform_permissions: ["report_archive.view.platform"], permissions_by_brand: { [brand]: ["report_archive_task.retry.brand"] } }, brand)).toEqual({ view: false, retry: false });
   });
 
   it("reads policy, list, and detail with strict 200, explicit brand header, and exact response scope", async () => {

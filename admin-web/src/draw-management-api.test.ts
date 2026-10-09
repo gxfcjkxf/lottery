@@ -103,32 +103,30 @@ const failure = (status: number, code: string) =>
   );
 
 describe("draw management permissions", () => {
-  it("uses exact brand/platform view grants and never grants writes to super admins", () => {
+  it("uses mapped brand grants and denies super admins", () => {
     const account: AdminAccount = {
       id: "admin",
-      super_admin: true,
+      super_admin: false,
       brand_ids: [brand],
       permissions: [],
       permissions_by_brand: {
         [brand]: [
+          "game.view.brand",
+          "period.view.brand",
           "draw_source.view.brand",
           "draw_source.write.brand",
+          "draw.view.brand",
           "draw.manual_create.brand",
         ],
       },
-      platform_permissions: [
-        "game.view.platform",
-        "period.view.platform",
-        "draw.view.platform",
-      ],
     };
     expect(drawManagementPermissions(account, brand)).toEqual({
       gamesView: true,
       periodsView: true,
       sourceView: true,
-      sourceWrite: false,
+      sourceWrite: true,
       drawView: true,
-      manualCreate: false,
+      manualCreate: true,
     });
     expect(drawManagementPermissions(account, "")).toEqual({
       gamesView: false,
@@ -137,6 +135,10 @@ describe("draw management permissions", () => {
       sourceWrite: false,
       drawView: false,
       manualCreate: false,
+    });
+    expect(drawManagementPermissions({ ...account, super_admin: true }, brand)).toEqual({
+      gamesView: false, periodsView: false, sourceView: false,
+      sourceWrite: false, drawView: false, manualCreate: false,
     });
   });
 });

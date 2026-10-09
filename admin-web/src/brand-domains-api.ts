@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/brand-domains";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -18,12 +19,11 @@ export interface BrandDomainsApi {
 }
 
 export function brandDomainsPermissions(account: AdminAccount, brandId: string): { view: boolean; write: boolean } {
-  const scoped = new Set(account.permissions_by_brand === undefined ? account.permissions ?? [] : account.permissions_by_brand[brandId] ?? []);
-  const platform = new Set(account.platform_permissions ?? []);
+  const scoped = brandPermissionSet(account, brandId);
   const member = UUID_RE.test(account.id) && UUID_RE.test(brandId) && (account.brand_ids ?? []).includes(brandId);
   return {
-    view: member && scoped.has("brand_domains.view.brand") || platform.has("brand_domains.view.platform"),
-    write: member && scoped.has("brand_domains.write.brand") || platform.has("brand_domains.write.platform"),
+    view: member && scoped.has("brand_domains.view.brand"),
+    write: member && scoped.has("brand_domains.write.brand"),
   };
 }
 

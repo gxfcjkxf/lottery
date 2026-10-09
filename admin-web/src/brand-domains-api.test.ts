@@ -16,11 +16,12 @@ describe("brand domain validation and permissions", () => {
     for (const host of ["localhost", "x.localhost", "x.local", "x.internal", "192.0.2.1", "127.1", "2001:db8::1", "*.example.com", "https://example.com", "UPPER.example", "example.com.", "a..example.com", "-a.example.com", "a-.example.com", "a.123", "a.0x7f", `${"a".repeat(64)}.example.com`, `${"a".repeat(250)}.com`]) expect(isCanonicalBrandDomain(host)).toBe(false);
   });
   it("requires explicit scoped grants and has no super-admin shortcut", () => {
-    expect(brandDomainsPermissions(account({ permissions: ["brand_domains.view.brand", "brand_domains.write.brand"] }), brand)).toEqual({ view: true, write: true });
-    expect(brandDomainsPermissions(account({ super_admin: true }), brand)).toEqual({ view: false, write: false });
+    expect(brandDomainsPermissions(account({ permissions_by_brand: { [brand]: ["brand_domains.view.brand", "brand_domains.write.brand"] } }), brand)).toEqual({ view: true, write: true });
+    expect(brandDomainsPermissions(account({ super_admin: true, permissions_by_brand: { [brand]: ["brand_domains.view.brand", "brand_domains.write.brand"] } }), brand)).toEqual({ view: false, write: false });
     expect(brandDomainsPermissions(account({ brand_ids: [], permissions: ["brand_domains.write.brand"] }), brand).write).toBe(false);
-    expect(brandDomainsPermissions(account({ platform_permissions: ["brand_domains.view.platform"] }), brand).view).toBe(true);
+    expect(brandDomainsPermissions(account({ platform_permissions: ["brand_domains.view.platform"] }), brand).view).toBe(false);
     expect(brandDomainsPermissions(account({ permissions: ["brand_domains.view.platform"] }), brand).view).toBe(false);
+    expect(brandDomainsPermissions(account({ permissions: ["brand_domains.view.brand", "brand_domains.write.brand"] }), brand)).toEqual({ view: false, write: false });
   });
 });
 

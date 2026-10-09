@@ -1,20 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { createPlatformApi, freezeBrandCreateRequest, PlatformApiError, type BrandCreateInput, type FrozenBrandCreateRequest, type PlatformAudit, type PlatformBrand, type PlatformMember } from './platform-api'
+import RewardsPanel from './RewardsPanel.vue'
 
 const api = createPlatformApi()
 const locale = ref<'en' | 'zh-CN'>('en')
 const lang = computed(() => locale.value === 'en' ? en : zh)
 const en = {
   title: 'Northstar', subtitle: 'Platform administration', loginTitle: 'Sign in to platform', identifier: 'Username', password: 'Password', signIn: 'Sign in', workspace: 'Workspace',
-  brands: 'Brands', users: 'Brand members', audit: 'Audit log', createBrand: 'New brand', selectBrand: 'Select a brand', allBrands: 'All brands', brandCount: 'brands in the platform directory',
+  brands: 'Brands', users: 'Brand members', audit: 'Audit log', rewards: 'Manual rewards', createBrand: 'New brand', selectBrand: 'Select a brand', allBrands: 'All brands', brandCount: 'brands in the platform directory',
   name: 'Brand name', code: 'Brand code', status: 'Status', view: 'View members', username: 'Username', displayName: 'Display name', phone: 'Phone', memberCount: 'members',
   locale: 'Default language', timezone: 'Timezone', reason: 'Reason for creation', cancel: 'Cancel', review: 'Review request', confirm: 'Confirm and create', confirmation: 'Confirm new brand', confirmCopy: 'This will create a paused brand and record the stated reason in the audit log.',
   action: 'Action', actor: 'Actor', resource: 'Resource', date: 'Date', empty: 'Nothing to show yet.', loading: 'Loading…', logout: 'Sign out', close: 'Close', platformNote: 'Platform access only · Brand staff should use their brand admin portal.', platformAdmin: 'Platform super admin', error: 'Something went wrong', retry: 'Retry same request', unknown: 'The server may have received this request. Retry only with the same frozen details and key.', created: 'Brand created in paused status.', localeEnglish: 'English', localeChinese: 'Chinese (Simplified)', directory: 'Directory', directoryDescription: 'Manage platform tenants and inspect their members.', brandDirectory: 'Brand directory', brandDirectoryDescription: 'Brands available in the platform directory', memberDirectory: 'Member directory', memberReadOnly: 'Read-only membership details', auditDescription: 'Audit history for the selected brand · read-only', traceability: 'Traceability', accessDirectory: 'Membership directory', platformDirectory: 'Platform directory', createDescription: 'A new brand starts paused. Brand staff access is managed in that brand’s admin portal.', codePlaceholder: 'northstar_shop', timezonePlaceholder: 'Asia/Singapore', accountLabel: 'Account', brandLabel: 'Brand', statusNormal: 'Normal', statusFrozen: 'Frozen', statusDisabled: 'Disabled', statusExpired: 'Expired', statusCancelled: 'Cancelled', statusPaused: 'Paused', statusActive: 'Active', countSuffix: 'records',
  }
 const zh = {
   title: 'Northstar', subtitle: '平台管理', loginTitle: '登录平台管理', identifier: '用户名', password: '密码', signIn: '登录', workspace: '工作区',
-  brands: '品牌', users: '品牌会员', audit: '审计日志', createBrand: '新建品牌', selectBrand: '请选择品牌', allBrands: '全部品牌', brandCount: '个品牌',
+  brands: '品牌', users: '品牌会员', audit: '审计日志', rewards: '人工奖励', createBrand: '新建品牌', selectBrand: '请选择品牌', allBrands: '全部品牌', brandCount: '个品牌',
   name: '品牌名称', code: '品牌代码', status: '状态', view: '查看会员', username: '用户名', displayName: '显示名称', phone: '手机号', memberCount: '位会员',
   locale: '默认语言', timezone: '时区', reason: '创建原因', cancel: '取消', review: '核对请求', confirm: '确认并创建', confirmation: '确认新建品牌', confirmCopy: '品牌将以暂停状态创建，填写的原因会写入审计日志。',
   action: '操作', actor: '操作人', resource: '资源', date: '时间', empty: '暂无数据。', loading: '加载中…', logout: '退出登录', close: '关闭', platformNote: '仅限平台管理；品牌员工请使用品牌管理后台。', platformAdmin: '平台超级管理员', error: '发生错误', retry: '使用同一请求重试', unknown: '服务器可能已收到请求。仅使用冻结的原始内容和请求键重试。', created: '品牌已创建并暂停。', localeEnglish: '英语', localeChinese: '简体中文', directory: '目录', directoryDescription: '管理平台租户并查看其会员。', brandDirectory: '品牌目录', brandDirectoryDescription: '平台目录中的品牌', memberDirectory: '会员目录', memberReadOnly: '只读会员信息', auditDescription: '所选品牌的审计记录 · 只读', traceability: '操作追踪', accessDirectory: '会员目录', platformDirectory: '平台目录', createDescription: '新品牌将以暂停状态创建。品牌员工权限在对应品牌后台管理。', codePlaceholder: 'northstar_shop', timezonePlaceholder: 'Asia/Singapore', accountLabel: '账号', brandLabel: '品牌', statusNormal: '正常', statusFrozen: '已冻结', statusDisabled: '已停用', statusExpired: '已过期', statusCancelled: '已取消', statusPaused: '已暂停', statusActive: '启用', countSuffix: '条记录',
@@ -24,7 +25,7 @@ const brands = ref<PlatformBrand[]>([])
 const members = ref<PlatformMember[]>([])
 const auditRows = ref<PlatformAudit[]>([])
 const selectedBrand = ref('')
-const section = ref<'brands' | 'users' | 'audit'>('brands')
+const section = ref<'brands' | 'users' | 'audit' | 'rewards'>('brands')
 const busy = ref(false)
 const loading = ref(false)
 const error = ref('')
@@ -70,7 +71,7 @@ async function signOut() {
   try { await api.logout(); clearPrivateState() }
   catch (cause) { handleFailure(cause) } finally { busy.value = false }
 }
-async function chooseSection(next: 'brands' | 'users' | 'audit') {
+async function chooseSection(next: 'brands' | 'users' | 'audit' | 'rewards') {
   section.value = next; error.value = ''; notice.value = ''
   if (next !== 'users') { memberRequestGeneration++; members.value = [] }
   if (next !== 'audit') { auditRequestGeneration++; auditRows.value = [] }
@@ -156,6 +157,7 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
       <button :class="['nav-item', { selected: section === 'brands' }]" @click="chooseSection('brands')"><span>◫</span>{{ lang.brands }}</button>
       <button :class="['nav-item', { selected: section === 'users' }]" @click="chooseSection('users')"><span>◉</span>{{ lang.users }}</button>
       <button :class="['nav-item', { selected: section === 'audit' }]" @click="chooseSection('audit')"><span>≋</span>{{ lang.audit }}</button>
+      <button :class="['nav-item', { selected: section === 'rewards' }]" @click="chooseSection('rewards')"><span>◇</span>{{ lang.rewards }}</button>
       <div class="sidebar-bottom"><p>{{ lang.platformNote }}</p></div>
     </aside>
     <section class="main-column">
@@ -180,10 +182,14 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
             <div class="mobile-cards"><article v-for="member in members" :key="member.id" class="user-card"><div class="card-title"><div><strong>{{ member.display_name || member.username || '—' }}</strong><small>{{ member.id }}</small></div><span :class="['status-pill', member.status]">{{ statusLabel(member.status) }}</span></div><dl class="member-details"><div><dt>{{ lang.username }}</dt><dd>{{ member.username || '—' }}</dd></div><div><dt>{{ lang.displayName }}</dt><dd>{{ member.display_name || '—' }}</dd></div><div><dt>{{ lang.phone }}</dt><dd>{{ member.phone || '—' }}</dd></div></dl></article><div v-if="!members.length" class="empty-state">{{ lang.empty }}</div></div>
           </section>
         </template>
-        <template v-else>
+        <template v-else-if="section === 'audit'">
           <div class="page-heading"><div><div class="eyebrow">{{ lang.traceability }}</div><h1>{{ lang.audit }}</h1><p>{{ lang.auditDescription }}</p></div></div>
           <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label><span v-if="selected" class="selection-tag">{{ selected.name }}</span></div>
           <section v-if="selectedBrand" class="panel"><div class="panel-heading"><div><h2>{{ lang.audit }} <span class="subtle">/ {{ selected?.name }}</span></h2><p>{{ lang.auditDescription }}</p></div><span class="count-chip">{{ auditRows.length }} {{ lang.countSuffix }}</span></div><div class="table-wrap"><table><thead><tr><th>{{ lang.action }}</th><th>{{ lang.actor }}</th><th>{{ lang.resource }}</th><th>{{ lang.reason }}</th><th>{{ lang.date }}</th></tr></thead><tbody><tr v-for="row in auditRows" :key="row.id"><td><span class="action-label">{{ row.action }}</span><small>{{ row.id }}</small></td><td class="mono">{{ row.actor_id }}</td><td>{{ row.resource_type }}<small>{{ row.resource_id }}</small></td><td class="reason-cell">{{ row.reason || '—' }}</td><td>{{ row.created_at }}</td></tr><tr v-if="!auditRows.length"><td colspan="5" class="empty-state">{{ lang.empty }}</td></tr></tbody></table></div></section>
+        </template>
+        <template v-else>
+          <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label></div>
+          <RewardsPanel :brand-id="selectedBrand" :brand-name="selected?.name || ''" :locale="locale" @failure="handleFailure" />
         </template>
       </main>
     </section>

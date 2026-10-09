@@ -1,4 +1,5 @@
 import { createIdempotencyKey } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 import { isWalletDTO, normalizeLedgerSnapshots, normalizeSourceBuckets, type WalletDTO, type WalletSource as SharedWalletSource, type WalletState as SharedWalletState, type SourceBuckets as SharedSourceBuckets } from "@lottery/shared";
 
 const BASE = "/api/v1/admin";
@@ -95,20 +96,7 @@ export function brandPermissions(
   account: FinanceAccount,
   brandId: string,
 ): Set<string> {
-  return new Set(
-    account.permissions_by_brand
-      ? (account.permissions_by_brand[brandId] ?? [])
-      : (account.permissions ?? []),
-  );
-}
-
-function hasPlatformPermission(
-  account: FinanceAccount,
-  permission: string,
-): boolean {
-  const platformPermissions =
-    account.platform_permissions ?? account.permissions ?? [];
-  return platformPermissions.includes(permission);
+  return brandPermissionSet(account, brandId);
 }
 
 export function canViewWallet(
@@ -116,8 +104,7 @@ export function canViewWallet(
   brandId: string,
 ): boolean {
   return (
-    brandPermissions(account, brandId).has("wallet.view.brand") ||
-    hasPlatformPermission(account, "wallet.view.platform")
+    brandPermissions(account, brandId).has("wallet.view.brand")
   );
 }
 
@@ -126,8 +113,7 @@ export function canViewRecharges(
   brandId: string,
 ): boolean {
   return (
-    brandPermissions(account, brandId).has("recharge.view.brand") ||
-    hasPlatformPermission(account, "recharge.view.platform")
+    brandPermissions(account, brandId).has("recharge.view.brand")
   );
 }
 

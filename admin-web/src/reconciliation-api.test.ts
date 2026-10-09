@@ -32,13 +32,15 @@ function businessPreview(memberId = "55555555-5555-4555-8555-555555555555", patc
 }
 
 describe("reconciliation SDK", () => {
-  it("applies platform wallet view independently of membership but requires member brand permissions to write", () => {
+  it("requires mapped brand grants for view and write and denies platform administrators", () => {
     expect(reconciliationPermissions(admin({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["wallet.view.platform"] }), brand))
-      .toEqual({ view: true, run: false, retry: false });
-    expect(reconciliationPermissions(admin({ super_admin: true, platform_permissions: ["wallet.view.platform"] }), brand))
-      .toEqual({ view: true, run: false, retry: false });
-    expect(reconciliationPermissions(admin({ permissions_by_brand: undefined, permissions: ["wallet.view.brand", "wallet.reconcile.brand"] }), brand))
+      .toEqual({ view: false, run: false, retry: false });
+    expect(reconciliationPermissions(admin({ super_admin: true, platform_permissions: ["wallet.view.platform"], permissions_by_brand: { [brand]: ["wallet.view.brand", "wallet.reconcile.brand"] } }), brand))
+      .toEqual({ view: false, run: false, retry: false });
+    expect(reconciliationPermissions(admin({ permissions_by_brand: { [brand]: ["wallet.view.brand", "wallet.reconcile.brand"] } }), brand))
       .toEqual({ view: true, run: true, retry: true });
+    expect(reconciliationPermissions(admin({ permissions_by_brand: { [brand]: ["wallet.reconcile.brand"] } }), brand))
+      .toEqual({ view: false, run: false, retry: false });
   });
 
   it("sends same-origin scoped list and validates the complete page contract", async () => {

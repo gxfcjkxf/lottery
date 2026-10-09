@@ -3,6 +3,7 @@ import {
   createIdempotencyKey,
   type AdminAccount,
 } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 import {
   buildRuleSimulationRequest,
   DEFAULT_RULE_SIMULATION_FORM,
@@ -143,18 +144,9 @@ export function ruleVersionPermissions(
   account: RuleVersionAccount,
   brandId: string,
 ) {
-  const brand = new Set(
-    account.permissions_by_brand === undefined
-      ? (account.permissions ?? [])
-      : (account.permissions_by_brand[brandId] ?? []),
-  );
-  const platform = new Set(
-    account.platform_permissions ?? account.permissions ?? [],
-  );
+  const brand = brandPermissionSet(account, brandId);
   const view = (resource: "game" | "rule") =>
-    Boolean(brandId) &&
-    (brand.has(`${resource}.view.brand`) ||
-      platform.has(`${resource}.view.platform`));
+    Boolean(brandId) && brand.has(`${resource}.view.brand`);
   const write = (grant: string) =>
     Boolean(brandId) && !account.super_admin && brand.has(grant);
   return {

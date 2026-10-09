@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/notification-templates";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -57,11 +58,9 @@ export const notificationTemplateKeys = KEYS;
 export function notificationTemplatePermissions(account: AdminAccount, brandId: string): { view: boolean; write: boolean } {
   const scoped = UUID_RE.test(account.id) && UUID_RE.test(brandId);
   const member = scoped && (account.brand_ids ?? []).includes(brandId);
-  const brandPermissions = new Set(account.permissions_by_brand?.[brandId] ?? []);
-  const platformPermissions = new Set(account.platform_permissions ?? []);
+  const brandPermissions = brandPermissionSet(account, brandId);
   return {
-    view: scoped && (member && brandPermissions.has("notification_template.view.brand") ||
-      platformPermissions.has("notification_template.view.platform")),
+    view: scoped && member && brandPermissions.has("notification_template.view.brand"),
     write: member && !account.super_admin && brandPermissions.has("notification_template.write.brand"),
   };
 }

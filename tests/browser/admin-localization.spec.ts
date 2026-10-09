@@ -6,7 +6,7 @@ const username = process.env.TEST_ADMIN_USERNAME
 const password = process.env.TEST_ADMIN_PASSWORD
 const brandId = '0199a000-0000-7000-8000-000000000001'
 
-async function signedIn(page: Page, context: BrowserContext) {
+async function signedIn(page: Page, context: BrowserContext, info: TestInfo) {
   const restored = await restoreAdminSession(context, username!, brandId, origin)
   await page.goto(origin)
   await switchLanguage(page, 'en')
@@ -15,6 +15,7 @@ async function signedIn(page: Page, context: BrowserContext) {
     await page.locator('input[autocomplete="current-password"]').first().fill(password!)
     await page.getByRole('button', { name: 'Sign in and load members', exact: true }).click()
   }
+  await navigate(page, info, 'Users and members')
   await page.locator('.directory-brand-bar select').selectOption(brandId)
   await expect(page.locator('.provision')).toBeVisible()
   rememberAdminSession(username!, await context.cookies(), origin)
@@ -72,7 +73,7 @@ test('real authenticated member and permission drafts survive language changes w
   test.setTimeout(60_000)
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
-  await signedIn(page, context)
+  await signedIn(page, context, info)
   const writes: string[] = []
   page.on('request', request => { if (request.method() !== 'GET' && request.url().includes('/api/')) writes.push(request.url()) })
   const provision = page.locator('.provision')
@@ -127,7 +128,7 @@ test('real authenticated member and permission drafts survive language changes w
 test('English member submission preserves Chinese business text and its receipt changes language', async ({ page, context }, info) => {
   test.skip(!username || !password, 'Provide isolated test administrator credentials')
   test.setTimeout(60_000)
-  await signedIn(page, context)
+  await signedIn(page, context, info)
   const provision = page.locator('.provision')
   const identifier = `lang_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
   await provision.getByLabel('Username', { exact: false }).fill(identifier)
@@ -158,7 +159,7 @@ test('English member submission preserves Chinese business text and its receipt 
 test('published selected-brand languages control fallback without borrowing the public entry brand', async ({ page, context }, info) => {
   test.skip(!username || !password, 'Provide isolated test administrator credentials')
   test.setTimeout(60_000)
-  await signedIn(page, context)
+  await signedIn(page, context, info)
   const read = async (id: string) => {
     const response = await page.request.get(`${origin}/api/v1/admin/brand-presentation`, { headers: { 'X-Brand-ID': id } })
     expect(response.status()).toBe(200)

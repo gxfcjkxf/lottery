@@ -71,7 +71,7 @@ function account(overrides: Partial<AdminAccount> = {}): AdminAccount {
 }
 
 describe("settlement preview permissions", () => {
-  it("requires explicit brand grants and reserves platform view for super admins", () => {
+  it("requires mapped staff grants for the selected brand", () => {
     expect(
       settlementPreviewPermissions(
         account({
@@ -92,13 +92,13 @@ describe("settlement preview permissions", () => {
         }),
         brand,
       ),
-    ).toEqual({ view: true, preview: false });
+    ).toEqual({ view: false, preview: false });
     expect(
       settlementPreviewPermissions(
         account({ super_admin: true, platform_permissions: ["settlement.view.platform"] }),
         brand,
       ),
-    ).toEqual({ view: true, preview: false });
+    ).toEqual({ view: false, preview: false });
     expect(
       settlementPreviewPermissions(
         account({ permissions: ["settlement.view.platform"] }),

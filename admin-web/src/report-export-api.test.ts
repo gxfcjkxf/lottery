@@ -71,16 +71,16 @@ async function validResponse(kind: ExportKind, options: Parameters<typeof respon
 
 describe("report export permissions", () => {
   const base: AdminAccount = { id: brand, super_admin: false, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: [] } };
-  it("requires view and export grants with each grant independently resolved in brand or platform scope", () => {
+  it("requires separate mapped brand view and export grants", () => {
     expect(reportExportPermissions({ ...base, permissions_by_brand: { [brand]: ["report_betting.view.brand", "report_betting.export.brand"] } }, brand).betting).toBe(true);
-    expect(reportExportPermissions({ ...base, permissions_by_brand: { [brand]: ["report_betting.view.brand"] }, platform_permissions: ["report_betting.export.platform"] }, brand).betting).toBe(true);
+    expect(reportExportPermissions({ ...base, permissions_by_brand: { [brand]: ["report_betting.view.brand"] }, platform_permissions: ["report_betting.export.platform"] }, brand).betting).toBe(false);
     expect(reportExportPermissions({ ...base, permissions: ["report_betting.view.brand", "report_betting.export.brand"], permissions_by_brand: { [brand]: [] } }, brand).betting).toBe(false);
     expect(reportExportPermissions({ ...base, permissions: ["report_betting.view.brand", "report_betting.export.brand"], permissions_by_brand: undefined }, brand).betting).toBe(false);
     expect(reportExportPermissions({ ...base, permissions_by_brand: { [brand]: ["report_betting.export.brand"] } }, brand).betting).toBe(false);
-    expect(reportExportPermissions({ ...base, permissions_by_brand: { [brand]: ["report_betting.export.brand"] }, platform_permissions: ["report_betting.view.platform"] }, brand).betting).toBe(true);
+    expect(reportExportPermissions({ ...base, permissions_by_brand: { [brand]: ["report_betting.export.brand"] }, platform_permissions: ["report_betting.view.platform"] }, brand).betting).toBe(false);
     expect(reportExportPermissions({ ...base, permissions_by_brand: { [brand]: ["report_betting.view.brand", "report_betting.export.brand"] }, brand_ids: [] }, brand).betting).toBe(false);
     expect(reportExportPermissions({ ...base, super_admin: true }, brand)).toEqual({ betting: false, ledger: false });
-    expect(reportExportPermissions({ ...base, brand_ids: [], platform_permissions: ["report_ledger.view.platform", "report_ledger.export.platform"] }, foreign).ledger).toBe(true);
+    expect(reportExportPermissions({ ...base, brand_ids: [], platform_permissions: ["report_ledger.view.platform", "report_ledger.export.platform"] }, foreign).ledger).toBe(false);
   });
 });
 

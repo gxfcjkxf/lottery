@@ -22,7 +22,7 @@ const permissionSignature = computed(() => JSON.stringify({
   brandId: props.brandId,
   superAdmin: props.account.super_admin,
   brandIds: [...props.account.brand_ids].sort(),
-  brandPermissions: [...(props.account.permissions_by_brand?.[props.brandId] ?? props.account.permissions ?? [])].sort(),
+  brandPermissions: [...(props.account.permissions_by_brand?.[props.brandId] ?? [])].sort(),
   platformPermissions: [...(props.account.platform_permissions ?? [])].sort(),
 }));
 const policy = ref<AgentPolicy | null>(null);

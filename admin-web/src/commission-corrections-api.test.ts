@@ -50,8 +50,8 @@ describe("commission corrections API", () => {
     expect(commissionCorrectionPermissions({ ...full, permissions_by_brand: { [brand]: grants.slice(0, 2) } }, brand).planRetry).toBe(false);
     expect(commissionCorrectionPermissions({ ...full, permissions_by_brand: { [brand]: ["commission.view.brand", "commission_correction.retry.brand"] } }, brand).retry).toBe(false);
     expect(commissionCorrectionPermissions({ ...full, permissions_by_brand: { [brand]: grants }, brand_ids: [] }, brand)).toMatchObject({ view: false, policyWrite: false, planRetry: false, approve: false, continue: false, retry: false });
-    expect(commissionCorrectionPermissions({ ...full, super_admin: true, platform_permissions: ["commission.view.platform"] }, brand)).toMatchObject({ view: true, policyWrite: false, planRetry: false, approve: false, continue: false, retry: false });
-    expect(commissionCorrectionPermissions({ ...full, permissions_by_brand: { [otherBrand]: grants }, platform_permissions: ["commission.view.platform"] }, brand)).toMatchObject({ view: true, policyWrite: false, planRetry: false, approve: false, continue: false, retry: false });
+    expect(commissionCorrectionPermissions({ ...full, super_admin: true, platform_permissions: ["commission.view.platform"] }, brand)).toMatchObject({ view: false, policyWrite: false, planRetry: false, approve: false, continue: false, retry: false });
+    expect(commissionCorrectionPermissions({ ...full, permissions_by_brand: { [otherBrand]: grants }, platform_permissions: ["commission.view.platform"] }, brand)).toMatchObject({ view: false, policyWrite: false, planRetry: false, approve: false, continue: false, retry: false });
     expect(commissionCorrectionPermissions({ ...full, permissions: grants, permissions_by_brand: {} }, brand).view).toBe(false);
   });
 

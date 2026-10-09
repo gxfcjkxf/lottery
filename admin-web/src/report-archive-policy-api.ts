@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 import { reportArchiveTasksPermissions, type ReportArchivePolicy } from "./report-archive-tasks-api";
 
 const PATH = "/api/v1/admin/report-archive-policy";
@@ -88,13 +89,10 @@ function validPolicy(value: unknown, brand: string, input: UpdateReportArchivePo
 }
 
 export function reportArchivePolicyPermissions(account: AdminAccount, brand: string): { view: boolean; write: boolean } {
-  const member = account.brand_ids.includes(brand);
-  const permissions = new Set(account.permissions_by_brand === undefined
-    ? member ? account.permissions ?? [] : []
-    : account.permissions_by_brand[brand] ?? []);
+  const permissions = brandPermissionSet(account, brand.toLowerCase());
   return {
     view: reportArchiveTasksPermissions(account, brand).view,
-    write: Boolean(UUID.test(brand) && member && !account.super_admin && permissions.has("report_archive.view.brand") && permissions.has("report_archive_policy.write.brand")),
+    write: Boolean(UUID.test(brand) && permissions.has("report_archive.view.brand") && permissions.has("report_archive_policy.write.brand")),
   };
 }
 

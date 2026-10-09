@@ -44,7 +44,7 @@ function issue(patch: Partial<BusinessInventoryIssue> = {}): BusinessInventoryIs
 describe("brand business inventory SDK", () => {
   it("uses explicit wallet.view grants, without super-admin inference or reconciliation write permission", () => {
     expect(businessInventoryPermissions(account({ permissions_by_brand: { [brand]: ["wallet.view.brand"] } }), brand)).toEqual({ view: true });
-    expect(businessInventoryPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["wallet.view.platform"], super_admin: true }), brand)).toEqual({ view: true });
+    expect(businessInventoryPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["wallet.view.platform"], super_admin: true }), brand)).toEqual({ view: false });
     expect(businessInventoryPermissions(account({ permissions_by_brand: {}, super_admin: true }), brand)).toEqual({ view: false });
     expect(businessInventoryPermissions(account({ permissions_by_brand: { [brand]: ["wallet.reconcile.brand"] } }), brand)).toEqual({ view: false });
   });

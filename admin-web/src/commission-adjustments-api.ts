@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const PAYMENTS = "/api/v1/admin/commission-payments";
 const TARGETS = "/api/v1/admin/commission-payment-targets";
@@ -61,9 +62,8 @@ function validPage<T>(v: unknown, brand: string, parentField: "payment_id" | "ta
 function validDecimal(v: unknown): v is string { return typeof v === "string" && UINT.test(v); }
 export function commissionAdjustmentPermissions(account: AdminAccount, brand: string) {
   const member = account.brand_ids.includes(brand);
-  const brandPermissions = new Set(account.permissions_by_brand === undefined ? (member ? account.permissions : []) : account.permissions_by_brand[brand] ?? []);
-  const platformPermissions = new Set(account.platform_permissions ?? account.permissions ?? []);
-  const view = uuid(account.id) && uuid(brand) && (account.super_admin ? platformPermissions.has("commission.view.platform") : member && brandPermissions.has("commission.view.brand") || platformPermissions.has("commission.view.platform"));
+  const brandPermissions = brandPermissionSet(account, brand);
+  const view = uuid(account.id) && uuid(brand) && member && brandPermissions.has("commission.view.brand");
   return { view, write: Boolean(view && !account.super_admin && member && brandPermissions.has("commission_adjustment.write.brand") && brandPermissions.has("commission.view.brand")) };
 }
 type Envelope = { success?: unknown; data?: unknown; error?: unknown };

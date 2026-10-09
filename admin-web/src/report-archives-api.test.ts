@@ -83,15 +83,15 @@ describe("report archives API", () => {
     )).rejects.toMatchObject({ code: "UNKNOWN_WRITE_STATUS" });
   });
 
-  it("validates independent brand and platform view/download rights and restricts create", () => {
+  it("validates independent brand view/download grants and restricts create", () => {
     const account = (permissions_by_brand: Record<string, string[]>, platform_permissions: string[] = [], super_admin = false): AdminAccount => ({
       id: actor, super_admin, brand_ids: [brand], permissions: [], permissions_by_brand, platform_permissions,
     });
     expect(reportArchivesPermissions(account({ [brand]: ["report_archive.view.brand"] }), brand)).toEqual({ view: true, create: false, download: false });
     expect(reportArchivesPermissions(account({ [brand]: ["report_archive.view.brand", "report_archive.create.brand", "report_archive.download.brand"] }), brand)).toEqual({ view: true, create: true, download: true });
-    expect(reportArchivesPermissions(account({ [brand]: [] }, ["report_archive.view.platform", "report_archive.download.platform"]), brand)).toEqual({ view: true, create: false, download: true });
+    expect(reportArchivesPermissions(account({ [brand]: [] }, ["report_archive.view.platform", "report_archive.download.platform"]), brand)).toEqual({ view: false, create: false, download: false });
     expect(reportArchivesPermissions(account({ [brand]: ["report_archive.create.brand"] }, ["report_archive.view.platform"]), brand).create).toBe(false);
-    expect(reportArchivesPermissions(account({ [brand]: ["report_archive.view.brand", "report_archive.create.brand"] }, [], true), brand).create).toBe(false);
+    expect(reportArchivesPermissions(account({ [brand]: ["report_archive.view.brand", "report_archive.create.brand", "report_archive.download.brand"] }, [], true), brand)).toEqual({ view: false, create: false, download: false });
     expect(reportArchivesPermissions(account({ [brand]: ["report_archive.view.brand"] }), "55555555-5555-4555-8555-555555555555").view).toBe(false);
   });
 

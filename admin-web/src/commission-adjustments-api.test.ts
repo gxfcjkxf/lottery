@@ -10,7 +10,8 @@ function adjustment(overrides:Partial<CommissionAdjustment>={}):CommissionAdjust
 describe("commission adjustments API",()=>{
   it("applies brand and role rules, including super-admin read-only",()=>{
     expect(commissionAdjustmentPermissions(account,brand)).toEqual({view:true,write:true});
-    expect(commissionAdjustmentPermissions({...account,super_admin:true,platform_permissions:["commission.view.platform"]},brand)).toEqual({view:true,write:false});
+    expect(commissionAdjustmentPermissions({...account,super_admin:true,platform_permissions:["commission.view.platform"],permissions_by_brand:{[brand]:["commission.view.brand","commission_adjustment.write.brand"]}},brand)).toEqual({view:false,write:false});
+    expect(commissionAdjustmentPermissions({...account,permissions:["commission.view.brand","commission_adjustment.write.brand"],permissions_by_brand:undefined},brand)).toEqual({view:false,write:false});
     expect(commissionAdjustmentPermissions({...account,permissions_by_brand:{[brand]:["commission_adjustment.write.brand"]}},brand)).toEqual({view:false,write:false});
   });
   it("uses exact paths, actor and brand headers, immutable body and exact acknowledgement",async()=>{

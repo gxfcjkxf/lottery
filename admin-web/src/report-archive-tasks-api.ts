@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/report-archive-tasks";
 const POLICY = "/api/v1/admin/report-archive-policy";
@@ -138,11 +139,9 @@ function validateRetry(input: ReportArchiveTaskRetryInput): void {
 function validateKey(key: string): void { if (typeof key !== "string" || !/^[A-Za-z0-9_:.-]{8,128}$/.test(key)) invalidInput(); }
 
 export function reportArchiveTasksPermissions(account: AdminAccount, brand: string): { view: boolean; retry: boolean } {
-  const member = account.brand_ids.includes(brand);
-  const brandPermissions = new Set(account.permissions_by_brand === undefined ? member ? account.permissions ?? [] : [] : account.permissions_by_brand[brand] ?? []);
-  const platformPermissions = new Set(account.platform_permissions ?? account.permissions ?? []);
-  const view = uuid(brand) && (platformPermissions.has("report_archive.view.platform") || member && brandPermissions.has("report_archive.view.brand"));
-  return { view, retry: Boolean(uuid(brand) && member && !account.super_admin && brandPermissions.has("report_archive.view.brand") && brandPermissions.has("report_archive_task.retry.brand")) };
+  const brandPermissions = brandPermissionSet(account, brand.toLowerCase());
+  const view = uuid(brand) && brandPermissions.has("report_archive.view.brand");
+  return { view, retry: Boolean(view && brandPermissions.has("report_archive_task.retry.brand")) };
 }
 
 export function createReportArchiveTasksApi(fetcher: typeof fetch = fetch) {

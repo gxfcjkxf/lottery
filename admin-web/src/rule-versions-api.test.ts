@@ -353,7 +353,7 @@ describe("rule version client", () => {
 });
 
 describe("rule version permission, retry and response scopes", () => {
-  it("isolates brand maps, authoritative empty platform grants, and separate read/write stages", () => {
+  it("isolates brand maps, ignores flat grants, and keeps read/write stages separate", () => {
     expect(ruleVersionPermissions(actor, brand)).toEqual({
       gamesView: true,
       gamesWrite: true,
@@ -389,7 +389,7 @@ describe("rule version permission, retry and response scopes", () => {
         { ...flat, platform_permissions: undefined },
         brand,
       ).rulesView,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       ruleVersionPermissions(
         {
@@ -408,14 +408,14 @@ describe("rule version permission, retry and response scopes", () => {
           permissions: ["rule.view.brand"],
         },
         brand,
-      ).rulesView,
-    ).toBe(true);
+        ).rulesView,
+    ).toBe(false);
     expect(Object.values(ruleVersionPermissions(actor, ""))).toEqual(
       Array(7).fill(false),
     );
   });
 
-  it("lets platform view grants read, but gives no platform publishing rights and blocks all super writes", () => {
+  it("ignores platform grants and denies all super-admin rights", () => {
     const platform = {
       ...actor,
       permissions_by_brand: {},
@@ -427,8 +427,8 @@ describe("rule version permission, retry and response scopes", () => {
       ],
     };
     expect(ruleVersionPermissions(platform, brand)).toEqual({
-      gamesView: true,
-      rulesView: true,
+      gamesView: false,
+      rulesView: false,
       gamesWrite: false,
       rulesWrite: false,
       validate: false,
@@ -438,8 +438,8 @@ describe("rule version permission, retry and response scopes", () => {
     expect(
       ruleVersionPermissions({ ...actor, super_admin: true }, brand),
     ).toEqual({
-      gamesView: true,
-      rulesView: true,
+      gamesView: false,
+      rulesView: false,
       gamesWrite: false,
       rulesWrite: false,
       validate: false,

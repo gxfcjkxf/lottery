@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/reports";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -285,12 +286,10 @@ export function reportsPermissions(
   brandId: string,
 ): { betting: boolean; ledger: boolean } {
   const scoped = UUID_RE.test(account.id) && UUID_RE.test(brandId);
-  const inBrand = (account.brand_ids ?? []).some((id) => id.toLowerCase() === brandId.toLowerCase());
-  const brand = new Set(account.permissions_by_brand?.[brandId] ?? []);
-  const platform = new Set(account.platform_permissions ?? []);
+  const brand = brandPermissionSet(account, brandId.toLowerCase());
   return {
-    betting: scoped && (platform.has("report_betting.view.platform") || inBrand && brand.has("report_betting.view.brand")),
-    ledger: scoped && (platform.has("report_ledger.view.platform") || inBrand && brand.has("report_ledger.view.brand")),
+    betting: scoped && brand.has("report_betting.view.brand"),
+    ledger: scoped && brand.has("report_ledger.view.brand"),
   };
 }
 

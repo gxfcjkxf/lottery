@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/workbench";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -166,10 +167,8 @@ export function validWorkbenchSnapshot(value: unknown, brandId: string): value i
 }
 
 export function workbenchPermissions(account: AdminAccount, brandId: string): Record<SectionName, boolean> {
-  const inBrand = (account.brand_ids ?? []).some((id) => id.toLowerCase() === brandId.toLowerCase());
-  const brand = new Set(account.permissions_by_brand === undefined ? account.permissions ?? [] : account.permissions_by_brand[brandId] ?? []);
-  const platform = new Set(account.platform_permissions ?? account.permissions ?? []);
-  const allowed = (resource: string) => platform.has(`${resource}.view.platform`) || inBrand && brand.has(`${resource}.view.brand`);
+  const brand = brandPermissionSet(account, brandId.toLowerCase());
+  const allowed = (resource: string) => brand.has(`${resource}.view.brand`);
   return {
     brand: allowed("brand"), periods: allowed("period"), orders: allowed("bet"),
     today_bets: allowed("report_betting"), settlement: allowed("settlement"), recharges: allowed("recharge"),

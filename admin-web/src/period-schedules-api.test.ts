@@ -219,13 +219,12 @@ describe("period schedule API", () => {
       account([], { platform_permissions: ["schedule.view.platform", "period.view.platform", "schedule.write.platform", "period.generate.platform"] }),
       brand,
     );
-    expect(platformView).toEqual({ gameCatalogView: false, scheduleView: true, scheduleWrite: false, periodView: true, periodGenerate: false });
+    expect(platformView).toEqual({ gameCatalogView: false, scheduleView: false, scheduleWrite: false, periodView: false, periodGenerate: false });
     const superAdmin = periodSchedulePermissions(
       account(["schedule.write.brand", "period.generate.brand"], { super_admin: true }),
       brand,
     );
-    expect(superAdmin.scheduleWrite).toBe(false);
-    expect(superAdmin.periodGenerate).toBe(false);
+    expect(superAdmin).toEqual({ gameCatalogView: false, scheduleView: false, scheduleWrite: false, periodView: false, periodGenerate: false });
     expect(periodSchedulePermissions(account(["schedule.view.brand"]), "").scheduleView).toBe(false);
     expect(
       periodSchedulePermissions(account(["game.view.brand", "schedule.write.brand"]), brand),

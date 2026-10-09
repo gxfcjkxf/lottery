@@ -218,11 +218,10 @@ describe("ReportArchiveTasksManagement SFC contract", () => {
     old.app.unmount();
   });
 
-  it("keeps super admins and view-only members read-only", async () => {
+  it("denies super-admin brand access and keeps mapped view-only members read-only", async () => {
     const superAdmin: AdminAccount = { id: actor, super_admin: true, brand_ids: [], permissions: [], platform_permissions: ["report_archive.view.platform", "report_archive_task.retry.brand"] };
     const superView = mount(superAdmin); superView.i18n.setLocale("en"); await flush();
-    const row = findNode(superView.container, (node) => node.tag === "button" && textOf(node).includes(taskId)); click(row); await flush();
-    expect((byTestId(superView.container, "archive-tasks-retry")!.props.disabled)).toBe(true);
+    expect(byTestId(superView.container, "archive-tasks-retry")).toBeNull();
     expect(calls.some((call) => call.method === "retry")).toBe(false); superView.app.unmount();
     const viewOnly: AdminAccount = { ...account, permissions_by_brand: { [brand]: ["report_archive.view.brand"] } };
     const memberView = mount(viewOnly); memberView.i18n.setLocale("en"); await flush();

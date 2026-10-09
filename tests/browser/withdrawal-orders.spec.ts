@@ -50,8 +50,6 @@ test('closed user admission and exact administrative receipt recovery preserve s
   expect(await responseData(await page.request.get(`${userOrigin}/api/v1/wallet`))).toEqual(originalWallet)
   await page.goto(adminOrigin)
   await page.getByTestId('admin-language').selectOption('en')
-  if(info.project.name==='mobile') await page.locator('.mobile-nav button').nth(1).click()
-  else await page.locator('.side-nav').getByRole('button',{name:/Users and members/}).click()
   await page.getByLabel('Account',{exact:true}).fill(adminUsername!)
   await page.getByLabel('Password',{exact:true}).fill(adminPassword!)
   await page.getByRole('button',{name:'Sign in and load members',exact:true}).click()

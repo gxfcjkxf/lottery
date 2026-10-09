@@ -204,9 +204,17 @@ describe("ReportArchivesManagement", () => {
     remounted.app.unmount();
   });
 
-  it("keeps platform super-admins read-only for creation while allowing independent platform download", async () => {
-    const platformSuper: AdminAccount = { id: actor, super_admin: true, brand_ids: [], permissions: [], platform_permissions: ["report_archive.view.platform", "report_archive.download.platform"] };
-    const mounted = mount(platformSuper); mounted.i18n.setLocale("en"); await flush();
+  it("denies super-admin brand access and allows a mapped reader to download without create permission", async () => {
+    const platformSuper: AdminAccount = { id: actor, super_admin: true, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: permissions }, platform_permissions: ["report_archive.view.platform", "report_archive.download.platform"] };
+    const denied = mount(platformSuper); denied.i18n.setLocale("en"); await flush();
+    expect(textOf(denied.container)).toContain("No archive viewing permission for this brand");
+    expect(button(denied.container, "archive-review-button")).toBeNull();
+    expect(calls.some((call) => call.method === "list")).toBe(false);
+    expect(calls.some((call) => call.method === "download")).toBe(false);
+    denied.app.unmount();
+
+    const mappedReader: AdminAccount = { ...account, permissions_by_brand: { [brand]: ["report_archive.view.brand", "report_archive.download.brand"] } };
+    const mounted = mount(mappedReader); mounted.i18n.setLocale("en"); await flush();
     expect(textOf(mounted.container)).toContain("can view but cannot create archives");
     expect(button(mounted.container, "archive-review-button")!.props.disabled).toBe(true);
     expect(calls.some((call) => call.method === "list")).toBe(true);

@@ -90,10 +90,10 @@ describe("rule simulation API", () => {
     ).rejects.toMatchObject({ status: 200 });
   });
 
-  it("grants only explicit brand/platform simulation permission, including super-admin platform simulation", () => {
+  it("grants only mapped staff simulation permission", () => {
     const actor = {
       super_admin: false,
-      permissions: ["rule.simulate.brand"],
+      brand_ids: ["a"],
       permissions_by_brand: { a: ["rule.simulate.brand"] },
     };
     expect(canSimulateRules(actor, "a")).toBe(true);
@@ -103,19 +103,17 @@ describe("rule simulation API", () => {
       canSimulateRules(
         {
           super_admin: true,
-          permissions: [],
-          platform_permissions: ["rule.simulate.platform"],
+          brand_ids: [],
         },
         "b",
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       canSimulateRules(
         {
           super_admin: true,
-          permissions: ["rule.simulate.brand"],
+          brand_ids: ["b"],
           permissions_by_brand: { b: ["rule.simulate.brand"] },
-          platform_permissions: [],
         },
         "b",
       ),

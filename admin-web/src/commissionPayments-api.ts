@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const POLICY = "/api/v1/admin/commission-payment-policy";
 const PAYMENTS = "/api/v1/admin/commission-payments";
@@ -85,11 +86,8 @@ function validActionBody(body: CommissionPaymentActionBody): void {
 
 export function commissionPaymentPermissions(account: AdminAccount, brand: string) {
   const member = account.brand_ids.includes(brand);
-  const brandPermissions = new Set(account.permissions_by_brand === undefined ? (member ? account.permissions : []) : account.permissions_by_brand[brand] ?? []);
-  const platformPermissions = new Set(account.platform_permissions ?? account.permissions ?? []);
-  const view = validUuid(account.id) && validUuid(brand) && (account.super_admin
-    ? platformPermissions.has("commission.view.platform")
-    : (member && brandPermissions.has("commission.view.brand")) || platformPermissions.has("commission.view.platform"));
+  const brandPermissions = brandPermissionSet(account, brand);
+  const view = validUuid(account.id) && validUuid(brand) && member && brandPermissions.has("commission.view.brand");
   return {
     view,
     policyWrite: Boolean(view && member && !account.super_admin && brandPermissions.has("commission_payment_policy.write.brand")),

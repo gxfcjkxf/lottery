@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 import { WALLET_SOURCES, type WalletSource } from "@lottery/shared";
 
 const BASE = "/api/v1/admin";
@@ -75,25 +76,12 @@ export function withdrawalPolicyPermissions(
   account: AdminAccount,
   brand: string,
 ): { view: boolean; write: boolean; gameView: boolean } {
-  const brandPermissions = new Set(
-    account.permissions_by_brand === undefined
-      ? account.brand_ids.includes(brand)
-        ? (account.permissions ?? [])
-        : []
-      : (account.permissions_by_brand[brand] ?? []),
-  );
-  const platformPermissions = new Set(
-    account.platform_permissions ?? account.permissions ?? [],
-  );
-  const view = (name: string) =>
-    Boolean(brand) &&
-    (brandPermissions.has(`${name}.view.brand`) ||
-      platformPermissions.has(`${name}.view.platform`));
+  const brandPermissions = brandPermissionSet(account, brand);
+  const view = (name: string) => Boolean(brand) && brandPermissions.has(`${name}.view.brand`);
   return {
     view: view("withdrawal_policy"),
     write:
       Boolean(brand) &&
-      !account.super_admin &&
       brandPermissions.has("withdrawal_policy.write.brand"),
     gameView: view("game"),
   };

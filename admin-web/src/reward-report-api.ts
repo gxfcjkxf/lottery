@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 // Match the backend's public UUID shape contract; legacy IDs need not carry RFC version/variant bits.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -190,10 +191,10 @@ function validateCsv(csv: string, brand: string, kind: RewardReportKind, q: Cano
 }
 
 export function rewardReportPermissions(account: AdminAccount, brand: string) {
-  const valid = UUID.test(account.id) && UUID.test(brand), member = (account.brand_ids ?? []).some((id) => id.toLowerCase() === brand.toLowerCase());
-  const grants = new Set(account.permissions_by_brand?.[brand] ?? []), platform = new Set(account.platform_permissions ?? []);
-  const view = valid && (platform.has("report_reward.view.platform") || member && grants.has("report_reward.view.brand"));
-  return { view, export: Boolean(view && (platform.has("report_reward.export.platform") || member && grants.has("report_reward.export.brand"))) };
+  const valid = UUID.test(account.id) && UUID.test(brand);
+  const grants = brandPermissionSet(account, brand.toLowerCase());
+  const view = valid && grants.has("report_reward.view.brand");
+  return { view, export: Boolean(view && grants.has("report_reward.export.brand")) };
 }
 
 export function createRewardReportApi(fetcher: FetchLike = fetch) {

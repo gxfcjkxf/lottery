@@ -21,15 +21,15 @@ function response(data: unknown, status = 200): Response { return new Response(J
 function account(overrides: Partial<AdminAccount> = {}): AdminAccount { return { id: actor, super_admin: false, brand_ids: [brand], permissions: [], ...overrides }; }
 
 describe("compliance permissions", () => {
-  it("requires exact brand/platform grants and denies brand writes and runs to super-admins", () => {
+  it("requires mapped brand grants and denies platform actors", () => {
     const grants = ["compliance_policy.view.brand", "compliance_policy.write.brand", "compliance_check.view.brand", "compliance_check.run.brand"];
     expect(compliancePermissions(account({ permissions_by_brand: { [brand]: grants } }), brand)).toEqual({ viewPolicy: true, writePolicy: true, viewChecks: true, runCheck: true });
-    expect(compliancePermissions(account({ super_admin: true, permissions_by_brand: { [brand]: grants } }), brand)).toEqual({ viewPolicy: true, writePolicy: false, viewChecks: true, runCheck: false });
-    expect(compliancePermissions(account({ brand_ids: [], permissions_by_brand: { [brand]: grants }, platform_permissions: ["compliance_check.view.platform"] }), brand)).toEqual({ viewPolicy: false, writePolicy: false, viewChecks: true, runCheck: false });
+    expect(compliancePermissions(account({ super_admin: true, permissions_by_brand: { [brand]: grants }, platform_permissions: ["compliance_policy.view.platform", "compliance_check.view.platform"] }), brand)).toEqual({ viewPolicy: false, writePolicy: false, viewChecks: false, runCheck: false });
+    expect(compliancePermissions(account({ brand_ids: [], permissions_by_brand: { [brand]: grants }, platform_permissions: ["compliance_check.view.platform"] }), brand)).toEqual({ viewPolicy: false, writePolicy: false, viewChecks: false, runCheck: false });
     expect(compliancePermissions(account({ permissions_by_brand: { [other]: grants }, permissions: grants }), brand)).toEqual({ viewPolicy: false, writePolicy: false, viewChecks: false, runCheck: false });
     expect(compliancePermissions(account({ permissions: grants }), brand)).toEqual({ viewPolicy: false, writePolicy: false, viewChecks: false, runCheck: false });
     expect(compliancePermissions(account({ platform_permissions: ["compliance_policy.write.platform", "compliance_check.run.platform"] }), brand)).toEqual({ viewPolicy: false, writePolicy: false, viewChecks: false, runCheck: false });
-    expect(compliancePermissions(account({ super_admin: true, platform_permissions: ["compliance_policy.view.platform", "compliance_check.view.platform"] }), brand)).toEqual({ viewPolicy: true, writePolicy: false, viewChecks: true, runCheck: false });
+    expect(compliancePermissions(account({ super_admin: true, platform_permissions: ["compliance_policy.view.platform", "compliance_check.view.platform"] }), brand)).toEqual({ viewPolicy: false, writePolicy: false, viewChecks: false, runCheck: false });
     expect(compliancePermissions(account({ id: "bad", platform_permissions: ["compliance_policy.view.platform", "compliance_check.view.platform"] }), brand)).toEqual({ viewPolicy: false, writePolicy: false, viewChecks: false, runCheck: false });
     expect(compliancePermissions(account({ platform_permissions: ["compliance_policy.view.platform", "compliance_check.view.platform"] }), "bad")).toEqual({ viewPolicy: false, writePolicy: false, viewChecks: false, runCheck: false });
   });

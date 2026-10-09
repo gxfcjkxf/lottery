@@ -28,13 +28,14 @@ const policy: CommissionPolicy = {
 const ok = (data: unknown) => new Response(JSON.stringify({ success: true, data }), { status: 200 });
 
 describe("commission policy API", () => {
-  it("keeps brand and platform view grants scoped and denies superadmin writes", () => {
+  it("uses only mapped brand grants and denies platform actors", () => {
     const base = { id: adminId, super_admin: false, brand_ids: [brand], permissions: [] } satisfies AdminAccount;
     expect(commissionPolicyPermissions({ ...base, permissions_by_brand: { [brand]: ["commission_policy.view.brand", "commission_policy.write.brand"] } }, brand)).toEqual({ view: true, write: true });
     expect(commissionPolicyPermissions({ ...base, permissions_by_brand: { [otherBrand]: ["commission_policy.view.brand", "commission_policy.write.brand"] } }, brand)).toEqual({ view: false, write: false });
-    expect(commissionPolicyPermissions({ ...base, super_admin: true, platform_permissions: ["commission_policy.view.platform", "commission_policy.write.brand"] }, brand)).toEqual({ view: true, write: false });
+    expect(commissionPolicyPermissions({ ...base, super_admin: true, platform_permissions: ["commission_policy.view.platform", "commission_policy.write.brand"], permissions_by_brand: { [brand]: ["commission_policy.view.brand", "commission_policy.write.brand"] } }, brand)).toEqual({ view: false, write: false });
     expect(commissionPolicyPermissions({ ...base, platform_permissions: ["commission_policy.view.platform"] }, brand)).toEqual({ view: false, write: false });
     expect(commissionPolicyPermissions({ ...base, platform_permissions: ["commission_policy.view.platform"] }, "")).toEqual({ view: false, write: false });
+    expect(commissionPolicyPermissions({ ...base, permissions: ["commission_policy.view.brand", "commission_policy.write.brand"] }, brand)).toEqual({ view: false, write: false });
   });
 
   it("accepts only closed, semantically valid calendar shapes", () => {

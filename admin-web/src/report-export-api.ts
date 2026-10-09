@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 import type { ReportGroupBy, ReportQuery } from "./reports-api";
 
 const BASE = "/api/v1/admin/reports";
@@ -183,15 +184,10 @@ function validateCsv(csvText: string, kind: ExportKind, brandId: string, query: 
 
 export function reportExportPermissions(account: AdminAccount, brandId: string): { betting: boolean; ledger: boolean } {
   const scoped = UUID_RE.test(account.id) && UUID_RE.test(brandId);
-  const brandIds = new Set((account.brand_ids ?? []).map((id) => id.toLowerCase()));
-  const brandGrants = new Set(account.permissions_by_brand?.[brandId] ?? []);
-  const platform = new Set(account.platform_permissions ?? []);
+  const brandGrants = brandPermissionSet(account, brandId.toLowerCase());
   const allowed = (kind: ExportKind) => {
     const base = `report_${kind}`;
-    const hasBrandScope = scoped && brandIds.has(brandId.toLowerCase());
-    const view = (hasBrandScope && brandGrants.has(`${base}.view.brand`)) || platform.has(`${base}.view.platform`);
-    const exportGrant = (hasBrandScope && brandGrants.has(`${base}.export.brand`)) || platform.has(`${base}.export.platform`);
-    return scoped && view && exportGrant;
+    return scoped && brandGrants.has(`${base}.view.brand`) && brandGrants.has(`${base}.export.brand`);
   };
   return { betting: allowed("betting"), ledger: allowed("ledger") };
 }

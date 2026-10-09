@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const CYCLES = "/api/v1/admin/commission-cycles";
 const DISCOVERIES = "/api/v1/admin/commission-discovery";
@@ -491,11 +492,8 @@ function validateKey(key: string): void {
 export function commissionCyclePermissions(account: AdminAccount, brand: string): { view: boolean; run: boolean; retry: boolean } {
   const validBrand = isCanonicalUuid(brand);
   const memberOfBrand = account.brand_ids.includes(brand);
-  const brandPermissions = new Set(account.permissions_by_brand === undefined
-    ? memberOfBrand ? account.permissions ?? [] : []
-    : account.permissions_by_brand[brand] ?? []);
-  const platformPermissions = new Set(account.platform_permissions ?? account.permissions ?? []);
-  const view = validBrand && isCanonicalUuid(account.id) && (platformPermissions.has("commission.view.platform") || (memberOfBrand && brandPermissions.has("commission.view.brand")));
+  const brandPermissions = brandPermissionSet(account, brand);
+  const view = validBrand && isCanonicalUuid(account.id) && memberOfBrand && brandPermissions.has("commission.view.brand");
   return {
     view,
     run: Boolean(view && memberOfBrand && !account.super_admin && brandPermissions.has("commission.run.brand")),

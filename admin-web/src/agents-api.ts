@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -237,17 +238,11 @@ export function agentsPermissions(account: AdminAccount, brand: string): {
   policyView: boolean; policyWrite: boolean; view: boolean; write: boolean;
 } {
   const scoped = validUuid(account.id) && validUuid(brand) && account.brand_ids.includes(brand);
-  const brandPermissions = new Set(account.permissions_by_brand === undefined
-    ? account.permissions ?? []
-    : account.permissions_by_brand[brand] ?? []);
-  const platform = new Set(account.platform_permissions ?? []);
-  const platformView = scoped && account.super_admin;
+  const brandPermissions = brandPermissionSet(account, brand);
   return {
-    policyView: scoped && (brandPermissions.has("agent_policy.view.brand") ||
-      (platformView && platform.has("agent_policy.view.platform"))),
+    policyView: scoped && brandPermissions.has("agent_policy.view.brand"),
     policyWrite: scoped && !account.super_admin && brandPermissions.has("agent_policy.write.brand"),
-    view: scoped && (brandPermissions.has("agent.view.brand") ||
-      (platformView && platform.has("agent.view.platform"))),
+    view: scoped && brandPermissions.has("agent.view.brand"),
     write: scoped && !account.super_admin && brandPermissions.has("agent.write.brand"),
   };
 }

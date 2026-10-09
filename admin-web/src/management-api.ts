@@ -1,4 +1,5 @@
 import { AdminApiError, createIdempotencyKey } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin";
 
@@ -7,7 +8,6 @@ export interface ManagementAccount {
   super_admin: boolean;
   brand_ids: string[];
   permissions: string[];
-  platform_permissions?: string[];
   permissions_by_brand?: Record<string, string[]>;
 }
 
@@ -52,16 +52,6 @@ export interface CreatedMember {
   audit_log_id: string;
 }
 
-export const KNOWN_BRAND_PERMISSION_KEYS = [
-  "admin.view.brand",
-  "admin.write.brand",
-  "auth_config.view.brand",
-  "auth_config.write.brand",
-  "role.view.brand",
-  "role.write.brand",
-  "user.create.brand",
-].sort();
-
 type Envelope<T> = {
   success?: boolean;
   data?: T;
@@ -73,28 +63,7 @@ export function effectivePermissions(
   account: ManagementAccount,
   brandId: string,
 ): Set<string> {
-  const byBrand = account.permissions_by_brand;
-  return new Set(
-    byBrand ? (byBrand[brandId] ?? []) : (account.permissions ?? []),
-  );
-}
-
-function hasPlatformGrant(
-  account: ManagementAccount,
-  permission: string,
-  action: "view" | "write",
-): boolean {
-  const grant = `${permission}.${action}.platform`;
-  const platformPermissions =
-    account.platform_permissions ?? account.permissions ?? [];
-  return platformPermissions.includes(grant);
-}
-
-export function hasPlatformWrite(
-  account: ManagementAccount,
-  permission: string,
-): boolean {
-  return hasPlatformGrant(account, permission, "write");
+  return brandPermissionSet(account, brandId);
 }
 
 export function canView(
@@ -102,11 +71,7 @@ export function canView(
   brandId: string,
   permission: string,
 ): boolean {
-  const grants = effectivePermissions(account, brandId);
-  return Boolean(
-    grants.has(`${permission}.view.brand`) ||
-    hasPlatformGrant(account, permission, "view"),
-  );
+  return effectivePermissions(account, brandId).has(`${permission}.view.brand`);
 }
 
 export function canWrite(
@@ -114,10 +79,7 @@ export function canWrite(
   brandId: string,
   permission: string,
 ): boolean {
-  return Boolean(
-    effectivePermissions(account, brandId).has(`${permission}.write.brand`) ||
-    hasPlatformGrant(account, permission, "write"),
-  );
+  return effectivePermissions(account, brandId).has(`${permission}.write.brand`);
 }
 
 /** Kept as the management section's read gate; writes are checked separately. */
@@ -128,11 +90,14 @@ export function rolePermissionChoices(
   brandId: string,
   registeredPermissions: string[] | null,
 ): string[] {
-  const source = hasPlatformGrant(account, "role", "write")
-    ? (registeredPermissions ?? KNOWN_BRAND_PERMISSION_KEYS)
-    : [...effectivePermissions(account, brandId)];
+  if (!registeredPermissions) return [];
+  const grants = effectivePermissions(account, brandId);
   return [
-    ...new Set(source.filter((permission) => permission.endsWith(".brand"))),
+    ...new Set(
+      registeredPermissions.filter(
+        (permission) => grants.has(permission) && permission.endsWith(".brand"),
+      ),
+    ),
   ].sort();
 }
 
@@ -141,11 +106,6 @@ export function assignableRoles(
   brandId: string,
   roles: RoleRecord[],
 ): RoleRecord[] {
-  if (hasPlatformGrant(account, "admin", "write")) {
-    return roles.filter(
-      (role) => role.status === "active" && role.brand_id === brandId,
-    );
-  }
   const grants = effectivePermissions(account, brandId);
   return roles.filter(
     (role) =>
@@ -157,11 +117,12 @@ export function assignableRoles(
 
 export function canEditAccountScope(
   account: ManagementAccount,
+  brandId: string,
   target: AdminRecord,
 ): boolean {
+  if (account.super_admin || !account.brand_ids.includes(brandId)) return false;
   if (target.super_admin || target.id === account.id) return false;
-  if (hasPlatformGrant(account, "admin", "write")) return true;
-  return target.brand_ids.length <= 1;
+  return target.brand_ids.length === 1 && target.brand_ids[0] === brandId;
 }
 
 export function rolePermissionUnion(

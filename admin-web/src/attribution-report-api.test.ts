@@ -10,18 +10,19 @@ const payload = (overrides: Record<string, unknown> = {}) => ({ success: true, r
 const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
 
 describe("attribution report permissions", () => {
-  const account: AdminAccount = { id: actor, super_admin: true, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: ["report_attribution.view.brand"] } };
+  const account: AdminAccount = { id: actor, super_admin: false, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: ["report_attribution.view.brand"] } };
   it("requires separate view and export grants even for super admins", () => {
     expect(attributionReportPermissions(account, brand)).toEqual({ view: true, export: false });
     expect(attributionReportPermissions({ ...account, permissions_by_brand: { [brand]: ["report_attribution.export.brand"] } }, brand)).toEqual({ view: false, export: false });
-    expect(attributionReportPermissions({ ...account, brand_ids: [], permissions_by_brand: {}, platform_permissions: ["report_attribution.view.platform", "report_attribution.export.platform"] }, brand)).toEqual({ view: true, export: true });
+    expect(attributionReportPermissions({ ...account, brand_ids: [], permissions_by_brand: {}, platform_permissions: ["report_attribution.view.platform", "report_attribution.export.platform"] }, brand)).toEqual({ view: false, export: false });
     expect(attributionReportPermissions({ ...account, brand_ids: [], permissions_by_brand: { [brand]: ["report_attribution.view.brand", "report_attribution.export.brand"] } }, brand)).toEqual({ view: false, export: false });
+    expect(attributionReportPermissions({ ...account, super_admin: true, permissions_by_brand: { [brand]: ["report_attribution.view.brand", "report_attribution.export.brand"] } }, brand)).toEqual({ view: false, export: false });
   });
-  it("uses flat legacy brand grants only when the per-brand map is absent", () => {
+  it("requires a per-brand map and ignores flat grants", () => {
     const flat: AdminAccount = { id: actor, super_admin: false, brand_ids: [brand], permissions: ["report_attribution.view.brand", "report_attribution.export.brand"] };
-    expect(attributionReportPermissions(flat, brand)).toEqual({ view: true, export: true });
+    expect(attributionReportPermissions(flat, brand)).toEqual({ view: false, export: false });
     expect(attributionReportPermissions({ ...flat, permissions_by_brand: { "99999999-9999-4999-8999-999999999999": flat.permissions } }, brand)).toEqual({ view: false, export: false });
-    expect(attributionReportPermissions({ ...flat, brand_ids: [], permissions: ["report_attribution.view.platform", "report_attribution.export.platform"] }, brand)).toEqual({ view: true, export: true });
+    expect(attributionReportPermissions({ ...flat, brand_ids: [], permissions: ["report_attribution.view.platform", "report_attribution.export.platform"] }, brand)).toEqual({ view: false, export: false });
   });
 });
 

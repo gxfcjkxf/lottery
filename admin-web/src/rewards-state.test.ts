@@ -85,7 +85,7 @@ describe("reward intent state", () => {
     expect(rewardPermissions({ ...all, permissions_by_brand: { [brand]: ["reward.grant.brand"] }, permissions: ["reward.view.platform", "reward.revoke.brand"], platform_permissions: [] }, brand))
       .toEqual({ view: false, grant: false, revoke: false, retry: false });
     expect(rewardPermissions({ ...all, super_admin: true, platform_permissions: ["reward.view.platform"], permissions_by_brand: { [brand]: ["reward.view.brand", "reward.grant.brand"] } }, brand))
-      .toEqual({ view: true, grant: false, revoke: false, retry: false });
+      .toEqual({ view: false, grant: false, revoke: false, retry: false });
     expect(rewardPermissions({ ...all, brand_ids: [], permissions_by_brand: { [brand]: ["reward.view.brand", "reward.grant.brand"] } }, brand))
       .toEqual({ view: false, grant: false, revoke: false, retry: false });
   });

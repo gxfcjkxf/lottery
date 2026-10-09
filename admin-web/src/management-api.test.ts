@@ -8,7 +8,6 @@ import {
   createBodyKeyTracker,
   createManagementApi,
   effectivePermissions,
-  KNOWN_BRAND_PERMISSION_KEYS,
   rolePermissionChoices,
   rolePermissionUnion,
   type AdminRecord,
@@ -131,11 +130,11 @@ describe("management API", () => {
     vi.unstubAllGlobals();
   });
 
-  it("isolates mapped brand permissions and keeps flat permissions only as legacy fallback", () => {
+  it("uses only mapped permissions for authorized brands and denies missing mappings", () => {
     const account = {
       id: "a",
       super_admin: false,
-      brand_ids: [],
+      brand_ids: ["a", "b"],
       permissions: ["role.write.brand"],
       permissions_by_brand: { a: ["role.view.brand"] },
     };
@@ -145,75 +144,45 @@ describe("management API", () => {
     expect([...effectivePermissions(account, "b")]).toEqual([]);
     expect(canView(account, "b", "role")).toBe(false);
     expect(canWrite(account, "b", "role")).toBe(false);
-    expect(
-      canManage({ ...account, permissions_by_brand: undefined }, "b", "role"),
-    ).toBe(false);
-    expect(
-      canWrite(
-        {
-          id: "legacy",
-          super_admin: false,
-          brand_ids: [],
-          permissions: ["role.write.brand"],
-        },
-        "b",
-        "role",
-      ),
-    ).toBe(true);
+    expect(canManage({ ...account, permissions_by_brand: undefined }, "a", "role")).toBe(false);
+    expect(canWrite({ ...account, brand_ids: ["b"], permissions_by_brand: undefined }, "b", "role")).toBe(false);
   });
 
-  it("does not treat write grants as read access and reads admin independently from role catalog access", () => {
+  it("requires explicit mapped view and write grants and denies super-admin actors", () => {
     const writer: ManagementAccount = {
-      id: "platform-admin",
+      id: "brand-admin",
       super_admin: false,
-      brand_ids: [],
-      permissions: [],
-      platform_permissions: [
-        "admin.view.platform",
-        "admin.write.platform",
-        "role.write.platform",
-      ],
+      brand_ids: ["brand-a"],
+      permissions: ["role.view.brand", "admin.write.brand"],
+      permissions_by_brand: { "brand-a": ["admin.write.brand", "role.write.brand"] },
     };
-    expect(canManage(writer, "brand-a", "admin")).toBe(true);
+    expect(canManage(writer, "brand-a", "admin")).toBe(false);
+    expect(canWrite(writer, "brand-a", "admin")).toBe(true);
     expect(canManage(writer, "brand-a", "role")).toBe(false);
     expect(canWrite(writer, "brand-a", "role")).toBe(true);
     expect(canView(writer, "brand-a", "role")).toBe(false);
+    const superAdmin = { ...writer, super_admin: true, permissions_by_brand: { "brand-a": ["role.view.brand", "role.write.brand", "admin.write.brand"] } };
+    expect(canManage(superAdmin, "brand-a", "role")).toBe(false);
+    expect(canWrite(superAdmin, "brand-a", "admin")).toBe(false);
   });
 
-  it("treats an explicit platform permission array as authoritative and falls back only for legacy accounts", () => {
-    const account: ManagementAccount = {
-      id: "platform-admin",
-      super_admin: false,
-      brand_ids: [],
-      permissions: ["role.view.platform", "role.write.platform"],
-      platform_permissions: [],
-    };
-    expect(canView(account, "brand-a", "role")).toBe(false);
-    expect(canWrite(account, "brand-a", "role")).toBe(false);
-
-    const legacy = { ...account, platform_permissions: undefined };
-    expect(canView(legacy, "brand-a", "role")).toBe(true);
-    expect(canWrite(legacy, "brand-a", "role")).toBe(true);
-  });
-
-  it("lets platform role writers grant registered brand keys and platform admin writers assign all active roles in the current brand", () => {
+  it("requires a loaded permission catalog and limits choices and role assignment to the actor's grants", () => {
     const writer: ManagementAccount = {
-      id: "platform-admin",
+      id: "brand-admin",
       super_admin: false,
-      brand_ids: [],
-      permissions: [],
-      permissions_by_brand: {},
-      platform_permissions: ["role.write.platform", "admin.write.platform"],
+      brand_ids: ["brand-a"],
+      permissions: ["role.view.brand", "role.write.brand"],
+      permissions_by_brand: { "brand-a": ["role.write.brand", "user.view.brand"] },
     };
-    expect(rolePermissionChoices(writer, "brand-a", null)).toEqual(
-      KNOWN_BRAND_PERMISSION_KEYS,
-    );
+    expect(rolePermissionChoices(writer, "brand-a", null)).toEqual([]);
     expect(
       rolePermissionChoices(writer, "brand-a", [
         "custom.read.brand",
-        "admin.write.platform",
+        "custom.read.brand",
+        "user.view.brand",
+        "role.write.brand",
       ]),
-    ).toEqual(["custom.read.brand"]);
+    ).toEqual(["role.write.brand", "user.view.brand"]);
     const roles: RoleRecord[] = [
       {
         id: "a",
@@ -251,27 +220,28 @@ describe("management API", () => {
     ).toEqual(["a"]);
   });
 
-  it("allows platform admin writers to edit multi-brand ordinary targets, but never self or super accounts", () => {
+  it("allows only same-brand ordinary targets, never self, super-admin, or multi-brand targets", () => {
     const writer: ManagementAccount = {
-      id: "platform-admin",
+      id: "brand-admin",
       super_admin: false,
-      brand_ids: [],
+      brand_ids: ["a"],
       permissions: [],
-      platform_permissions: ["admin.write.platform"],
+      permissions_by_brand: { a: ["admin.write.brand"] },
     };
-    const target = (id: string, super_admin = false): AdminRecord => ({
+    const target = (id: string, brand_ids = ["a"], super_admin = false): AdminRecord => ({
       id,
       username: id,
       status: "active",
       version: 1,
       super_admin,
-      brand_ids: ["a", "b"],
+      brand_ids,
       role_ids: [],
       role_codes: [],
     });
-    expect(canEditAccountScope(writer, target("ordinary"))).toBe(true);
-    expect(canEditAccountScope(writer, target("platform-admin"))).toBe(false);
-    expect(canEditAccountScope(writer, target("super", true))).toBe(false);
+    expect(canEditAccountScope(writer, "a", target("ordinary"))).toBe(true);
+    expect(canEditAccountScope(writer, "a", target("brand-admin"))).toBe(false);
+    expect(canEditAccountScope(writer, "a", target("super", ["a"], true))).toBe(false);
+    expect(canEditAccountScope(writer, "a", target("multi", ["a", "b"]))).toBe(false);
     const brandWriter: ManagementAccount = {
       id: "brand-admin",
       super_admin: false,
@@ -279,6 +249,6 @@ describe("management API", () => {
       permissions: [],
       permissions_by_brand: { a: ["admin.write.brand"] },
     };
-    expect(canEditAccountScope(brandWriter, target("cross-brand"))).toBe(false);
+    expect(canEditAccountScope(brandWriter, "b", target("cross-brand"))).toBe(false);
   });
 });

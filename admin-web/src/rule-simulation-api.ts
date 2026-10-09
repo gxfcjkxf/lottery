@@ -1,12 +1,12 @@
 import { AdminApiError, createIdempotencyKey } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const ENDPOINT = "/api/v1/admin/rule-simulations";
 
 export interface RuleSimulationAccount {
   super_admin: boolean;
-  permissions: string[];
+  brand_ids: string[];
   permissions_by_brand?: Record<string, string[]>;
-  platform_permissions?: string[];
 }
 
 export type RuleTemplate =
@@ -274,32 +274,14 @@ export function effectiveRuleBrandPermissions(
   account: RuleSimulationAccount,
   brandId: string,
 ): Set<string> {
-  return new Set(
-    account.permissions_by_brand === undefined
-      ? (account.permissions ?? [])
-      : (account.permissions_by_brand[brandId] ?? []),
-  );
-}
-
-function hasPlatformSimulation(account: RuleSimulationAccount): boolean {
-  return (account.platform_permissions ?? account.permissions ?? []).includes(
-    "rule.simulate.platform",
-  );
+  return brandPermissionSet(account, brandId);
 }
 
 export function canSimulateRules(
   account: RuleSimulationAccount,
   brandId: string,
 ): boolean {
-  if (account.super_admin)
-    return (
-      account.platform_permissions?.includes("rule.simulate.platform") ?? false
-    );
-  return (
-    effectiveRuleBrandPermissions(account, brandId).has(
-      "rule.simulate.brand",
-    ) || hasPlatformSimulation(account)
-  );
+  return effectiveRuleBrandPermissions(account, brandId).has("rule.simulate.brand");
 }
 
 export function parseIntegerList(value: string): number[] {

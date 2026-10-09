@@ -1,5 +1,6 @@
 import { isWithdrawalHistory, isWithdrawalOrder, isWithdrawalPage, type WithdrawalAction, type WithdrawalActionBody, type WithdrawalHistory, type WithdrawalOrder, type WithdrawalPage, type WithdrawalState } from "@lottery/shared";
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 export { AdminApiError as WithdrawalAdminApiError };
 export const MAX_WITHDRAWAL_PAGE = 100;
@@ -7,19 +8,15 @@ const BRAND_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 export function withdrawalPermissions(account: AdminAccount, brandId: string) {
   const validBrand = BRAND_UUID.test(brandId);
-  const isMember = validBrand && account.brand_ids.includes(brandId);
-  const brandGrants = new Set(!isMember ? [] : account.permissions_by_brand === undefined
-    ? account.permissions ?? []
-    : account.permissions_by_brand[brandId] ?? []);
-  const platformGrants = new Set(account.platform_permissions ?? account.permissions ?? []);
+  const brandGrants = brandPermissionSet(account, brandId);
   return {
-    view: validBrand && (brandGrants.has("withdrawal.view.brand") || platformGrants.has("withdrawal.view.platform")),
+    view: validBrand && brandGrants.has("withdrawal.view.brand"),
     actions: {
-      approve: validBrand && isMember && !account.super_admin && brandGrants.has("withdrawal.approve.brand"),
-      reject: validBrand && isMember && !account.super_admin && brandGrants.has("withdrawal.reject.brand"),
-      cancel: validBrand && isMember && !account.super_admin && brandGrants.has("withdrawal.cancel.brand"),
-      fail: validBrand && isMember && !account.super_admin && brandGrants.has("withdrawal.fail.brand"),
-      "mark-paid": validBrand && isMember && !account.super_admin && brandGrants.has("withdrawal.mark_paid.brand"),
+      approve: validBrand && brandGrants.has("withdrawal.approve.brand"),
+      reject: validBrand && brandGrants.has("withdrawal.reject.brand"),
+      cancel: validBrand && brandGrants.has("withdrawal.cancel.brand"),
+      fail: validBrand && brandGrants.has("withdrawal.fail.brand"),
+      "mark-paid": validBrand && brandGrants.has("withdrawal.mark_paid.brand"),
     } satisfies Record<WithdrawalAction, boolean>,
   };
 }

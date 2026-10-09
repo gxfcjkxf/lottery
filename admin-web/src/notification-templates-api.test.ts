@@ -28,14 +28,16 @@ describe("notification template permissions", () => {
     expect(notificationTemplatePermissions(account({ permissions_by_brand: { [brand]: ["notification_template.view.brand", "notification_template.write.brand"] } }), brand))
       .toEqual({ view: true, write: true });
     expect(notificationTemplatePermissions(account({ permissions_by_brand: {}, permissions: ["notification_template.view.brand"] }), brand).view).toBe(false);
-    expect(notificationTemplatePermissions(account({ platform_permissions: ["notification_template.view.platform"] }), brand).view).toBe(true);
-    expect(notificationTemplatePermissions(account({ brand_ids: [], platform_permissions: ["notification_template.view.platform"] }), brand).view).toBe(true);
+    expect(notificationTemplatePermissions(account({ platform_permissions: ["notification_template.view.platform"] }), brand).view).toBe(false);
+    expect(notificationTemplatePermissions(account({ brand_ids: [], platform_permissions: ["notification_template.view.platform"] }), brand).view).toBe(false);
     expect(notificationTemplatePermissions(account({ permissions: ["notification_template.view.brand", "notification_template.write.brand"] }), brand))
       .toEqual({ view: false, write: false });
     expect(notificationTemplatePermissions(account({ super_admin: true, permissions: ["notification_template.write.brand"] }), brand).write).toBe(false);
     expect(notificationTemplatePermissions(account({ permissions: ["notification_template.write.brand"], brand_ids: [] }), brand))
       .toEqual({ view: false, write: false });
     expect(notificationTemplatePermissions(account({ permissions: ["notification.view.brand", "notification.write.brand"] }), brand))
+      .toEqual({ view: false, write: false });
+    expect(notificationTemplatePermissions(account({ permissions: ["notification_template.view.brand", "notification_template.write.brand"] }), brand))
       .toEqual({ view: false, write: false });
   });
 });

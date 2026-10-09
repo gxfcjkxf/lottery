@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 import type { RuleTicketSelection } from "../../shared/src/rules";
 
 const BASE = "/api/v1/admin";
@@ -144,24 +145,14 @@ export function settlementPreviewPermissions(
   account: AdminAccount,
   brandId: string,
 ): { view: boolean; preview: boolean } {
-  const member =
-    UUID_RE.test(account.id) &&
-    UUID_RE.test(brandId) &&
-    account.brand_ids.some((id) => id.toLowerCase() === brandId.toLowerCase());
-  const brand = new Set(
-    account.permissions_by_brand === undefined
-      ? account.permissions ?? []
-      : account.permissions_by_brand[brandId] ?? [],
-  );
-  const platform = new Set(account.platform_permissions ?? []);
+  const brand = brandPermissionSet(account, brandId);
+  const member = UUID_RE.test(account.id) && UUID_RE.test(brandId);
   return {
     view:
       member &&
-      (brand.has("settlement.view.brand") ||
-        (account.super_admin && platform.has("settlement.view.platform"))),
+      brand.has("settlement.view.brand"),
     preview:
       member &&
-      !account.super_admin &&
       brand.has("settlement.preview.brand"),
   };
 }

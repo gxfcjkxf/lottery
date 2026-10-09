@@ -1,5 +1,6 @@
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import type { FinanceAccount, SourceBuckets, WalletSource, WalletState } from "./finance-api";
+import { brandPermissionSet } from "./brand-permissions";
 import type { RepairPreview } from "./repair-api";
 import { normalizeSourceBuckets, WALLET_SOURCES } from "@lottery/shared";
 
@@ -63,11 +64,9 @@ export interface ReconciliationApi {
 
 export function reconciliationPermissions(account: AdminAccount | FinanceAccount, brandId: string): { view: boolean; run: boolean; retry: boolean } {
   const scoped = validUuid(account.id) && validUuid(brandId);
-  const member = scoped && (account.brand_ids ?? []).some((id) => sameUuid(id, brandId));
-  const brand = new Set(account.permissions_by_brand === undefined ? account.permissions ?? [] : account.permissions_by_brand[brandId] ?? []);
-  const platform = new Set(account.platform_permissions ?? account.permissions ?? []);
-  const view = scoped && (platform.has("wallet.view.platform") || (member && brand.has("wallet.view.brand")));
-  const write = member && !account.super_admin && brand.has("wallet.reconcile.brand") && view;
+  const brand = brandPermissionSet(account, brandId.toLowerCase());
+  const view = scoped && brand.has("wallet.view.brand");
+  const write = view && brand.has("wallet.reconcile.brand");
   return { view, run: write, retry: write };
 }
 

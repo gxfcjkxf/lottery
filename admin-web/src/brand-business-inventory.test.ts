@@ -195,15 +195,18 @@ describe("BrandBusinessInventory real Vue component", () => {
     mounted.app.unmount();
   });
 
-  it("honors view-only and platform view grants without inferring access from super-admin", async () => {
+  it("honors mapped brand view grants without accepting platform-only actors", async () => {
     const read = vi.fn().mockResolvedValue(sample());
     const noView = { ...account, super_admin: true, permissions_by_brand: {}, platform_permissions: [] };
     const mounted = mount({ read }, noView);
     await flush();
     expect(read).not.toHaveBeenCalled();
-    expect(textOf(mounted.root)).toContain("lacks wallet.view.brand or wallet.view.platform");
+    expect(textOf(mounted.root)).toContain("lacks wallet.view.brand");
     expect(button(mounted.root, "Load observation").props.disabled).toBe(true);
     mounted.scope.account = { ...noView, platform_permissions: ["wallet.view.platform"] };
+    await flush();
+    expect(read).not.toHaveBeenCalled();
+    mounted.scope.account = account;
     await flush();
     expect(textOf(mounted.root)).toContain("Choose “Load observation”");
     expect(read).not.toHaveBeenCalled();

@@ -222,16 +222,12 @@ describe("finance API client", () => {
     expect(isSignedAmount("+1")).toBe(false);
   });
 
-  it("applies brand-scoped and platform view grants, while super admins never receive writes", () => {
+  it("uses only mapped grants for a member brand and denies super admins", () => {
     const operator: FinanceAccount = {
       id: "a",
       super_admin: false,
-      brand_ids: [],
-      permissions: [
-        "wallet.view.brand",
-        "recharge.view.brand",
-        "wallet.freeze.brand",
-      ],
+      brand_ids: ["a"],
+      permissions: [],
       permissions_by_brand: {
         a: ["wallet.view.brand", "recharge.view.brand", "wallet.freeze.brand"],
       },
@@ -254,8 +250,8 @@ describe("finance API client", () => {
       permissions_by_brand: {},
       platform_permissions: ["wallet.view.platform", "recharge.view.platform"],
     };
-    expect(canViewWallet(platformReader, "b")).toBe(true);
-    expect(canViewRecharges(platformReader, "b")).toBe(true);
+    expect(canViewWallet(platformReader, "b")).toBe(false);
+    expect(canViewRecharges(platformReader, "b")).toBe(false);
     expect(
       canWriteFinance(
         { ...platformReader, platform_permissions: ["wallet.freeze.platform"] },
@@ -269,13 +265,11 @@ describe("finance API client", () => {
     const account: FinanceAccount = {
       id: "a",
       super_admin: false,
-      brand_ids: [],
+      brand_ids: ["b"],
       permissions: ["wallet.view.platform"],
       platform_permissions: [],
     };
     expect(canViewWallet(account, "b")).toBe(false);
-    expect(
-      canViewWallet({ ...account, platform_permissions: undefined }, "b"),
-    ).toBe(true);
+    expect(canViewWallet({ ...account, platform_permissions: undefined }, "b")).toBe(false);
   });
 });

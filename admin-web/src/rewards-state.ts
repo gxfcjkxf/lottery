@@ -1,4 +1,5 @@
 import type { AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 import type { RewardActionBody, RewardGrantBody } from "./rewards-api";
 
 export type RewardOperation = "grant" | "revoke" | "retry";
@@ -55,11 +56,8 @@ function copy(intent: PendingRewardIntent): PendingRewardIntent {
 
 export function rewardPermissions(account: AdminAccount, brand: string) {
   const member = account.brand_ids.includes(brand);
-  const brandPermissions = new Set(account.permissions_by_brand === undefined ? (member ? account.permissions : []) : account.permissions_by_brand[brand] ?? []);
-  const platformPermissions = new Set(account.platform_permissions ?? account.permissions ?? []);
-  const view = UUID.test(account.id) && UUID.test(brand) && (account.super_admin
-    ? platformPermissions.has("reward.view.platform")
-    : (member && brandPermissions.has("reward.view.brand")) || platformPermissions.has("reward.view.platform"));
+  const brandPermissions = brandPermissionSet(account, brand);
+  const view = UUID.test(account.id) && UUID.test(brand) && brandPermissions.has("reward.view.brand");
   return {
     view,
     grant: Boolean(view && member && !account.super_admin && brandPermissions.has("reward.grant.brand")),

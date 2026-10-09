@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/join-codes";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -155,13 +156,9 @@ function validHistoryItem(value: unknown, brand: string, codeId: string): value 
 export function joinCodePermissions(account: AdminAccount, brand: string): { view: boolean; write: boolean } {
   const validScope = validUuid(account.id) && validUuid(brand);
   const brandScoped = validScope && account.brand_ids.includes(brand);
-  const platformScoped = validScope && account.super_admin;
-  const permissions = new Set(account.permissions_by_brand === undefined ? account.permissions ?? [] : account.permissions_by_brand[brand] ?? []);
-  const platform = new Set(account.platform_permissions ?? []);
+  const permissions = brandPermissionSet(account, brand);
   return {
-    view: account.super_admin
-      ? platformScoped && platform.has("join_code.view.platform")
-      : brandScoped && permissions.has("join_code.view.brand"),
+    view: brandScoped && permissions.has("join_code.view.brand"),
     write: brandScoped && !account.super_admin && permissions.has("join_code.write.brand"),
   };
 }

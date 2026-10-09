@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/reports/withdrawal";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -59,10 +60,9 @@ function canonical(q:WithdrawalReportQuery) {
 }
 export function withdrawalReportPermissions(account:AdminAccount,brand:string) {
   const valid=UUID.test(account.id)&&UUID.test(brand);
-  const inBrand=(account.brand_ids??[]).some(id=>id.toLowerCase()===brand.toLowerCase());
-  const grants=new Set(account.permissions_by_brand?.[brand]??[]),platform=new Set(account.platform_permissions??[]);
-  const view=valid&&(platform.has("report_withdrawal.view.platform")||inBrand&&grants.has("report_withdrawal.view.brand"));
-  const exportAllowed=view&&(platform.has("report_withdrawal.export.platform")||inBrand&&grants.has("report_withdrawal.export.brand"));
+  const grants=brandPermissionSet(account,brand.toLowerCase());
+  const view=valid&&grants.has("report_withdrawal.view.brand");
+  const exportAllowed=view&&grants.has("report_withdrawal.export.brand");
   return {view,export:exportAllowed};
 }
 type FetchLike=typeof fetch;

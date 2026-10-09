@@ -93,7 +93,7 @@ onBeforeUnmount(() => { alive = false; ticket++; });
       </button>
     </div>
 
-    <p v-if="!rights.view" class="inventory-empty">{{ t("当前账号没有此品牌的 wallet.view.brand 或 wallet.view.platform 权限。", "This account lacks wallet.view.brand or wallet.view.platform for this brand.") }}</p>
+    <p v-if="!rights.view" class="inventory-empty">{{ t("当前账号没有此品牌的 wallet.view.brand 权限。", "This account lacks wallet.view.brand for this brand.") }}</p>
     <p v-else-if="loading" class="inventory-empty" role="status">{{ t("正在读取当前品牌观察…", "Loading the current brand observation…") }}</p>
     <p v-else-if="error" class="error" role="alert">{{ t(error) }}</p>
     <p v-else-if="!inventory" class="inventory-empty">{{ t("选择“加载观察”后才会读取；本页面不会自动执行检查。", "Choose “Load observation” to read it. This page does not run the check automatically.") }}</p>

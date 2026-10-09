@@ -1,6 +1,7 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { createBetMutationKeyTracker } from "./bet-management-api";
 import type { Period } from "./period-schedules-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin";
 
@@ -36,25 +37,16 @@ export function periodCancellationPermissions(
   account: AdminAccount,
   brandId: string,
 ): PeriodCancellationPermissions {
-  const brand = new Set(
-    account.permissions_by_brand === undefined
-      ? (account.permissions ?? [])
-      : (account.permissions_by_brand[brandId] ?? []),
-  );
-  const platform = new Set(
-    account.platform_permissions ?? account.permissions ?? [],
-  );
+  const brand = brandPermissionSet(account, brandId);
   return {
     view:
       Boolean(brandId) &&
-      (brand.has("period.view.brand") || platform.has("period.view.platform")),
+      brand.has("period.view.brand"),
     cancel:
       Boolean(brandId) &&
-      !account.super_admin &&
       brand.has("period.cancel.brand"),
     retry:
       Boolean(brandId) &&
-      !account.super_admin &&
       brand.has("period.cancel_retry.brand"),
   };
 }

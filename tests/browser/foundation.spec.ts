@@ -29,12 +29,11 @@ test("signed-out admin shell shows the login boundary without fictional financia
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("http://localhost:5174");
-  await expect(page.locator(".context-strip")).toContainText("Aurora · aurora");
   await expect(
-    page.getByRole("heading", { name: "运营工作台", exact: true }),
+    page.getByRole("heading", { name: "管理员登录", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("请先登录后台账号查看运营工作台。", {exact:true})).toBeVisible();
-  await expect(page.locator(".workbench .card")).toHaveCount(0);
+  await expect(page.locator(".login-entry__form")).toBeVisible();
+  await expect(page.locator(".sidebar, .mobile-nav, .context-strip, .workbench, .app-shell")).toHaveCount(0);
   await expect(page.locator("main")).not.toContainText("128,450");
   await noHorizontalOverflow(page);
   expect(errors).toEqual([]);

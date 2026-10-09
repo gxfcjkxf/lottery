@@ -27,8 +27,6 @@ async function login(page: Page, context: BrowserContext, info: TestInfo) {
   await page.goto(origin)
   await language(page, 'en')
   if (!restored) {
-    if (info.project.name === 'mobile') await page.locator('.mobile-nav button').nth(1).click()
-    else await page.locator('.side-nav').getByRole('button', { name: /Users and members/ }).click()
     await page.getByLabel('Account', { exact: true }).fill(username!)
     await page.getByLabel('Password', { exact: true }).fill(password!)
     await page.getByRole('button', { name: 'Sign in and load members', exact: true }).click()

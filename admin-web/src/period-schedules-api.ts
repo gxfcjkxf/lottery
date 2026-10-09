@@ -3,6 +3,7 @@ import {
   createIdempotencyKey,
   type AdminAccount,
 } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin";
 
@@ -89,18 +90,6 @@ export interface PeriodSchedulePermissions {
   periodGenerate: boolean;
 }
 
-function brandPermissions(account: PeriodScheduleAccount, brandId: string) {
-  return new Set(
-    account.permissions_by_brand === undefined
-      ? (account.permissions ?? [])
-      : (account.permissions_by_brand[brandId] ?? []),
-  );
-}
-
-function platformPermissions(account: PeriodScheduleAccount) {
-  return new Set(account.platform_permissions ?? account.permissions ?? []);
-}
-
 export function periodSchedulePermissions(
   account: PeriodScheduleAccount,
   brandId: string,
@@ -113,19 +102,13 @@ export function periodSchedulePermissions(
       periodView: false,
       periodGenerate: false,
     };
-  const brand = brandPermissions(account, brandId);
-  const platform = platformPermissions(account);
+  const brand = brandPermissionSet(account, brandId);
   return {
-    gameCatalogView:
-      brand.has("game.view.brand") || platform.has("game.view.platform"),
-    scheduleView:
-      brand.has("schedule.view.brand") ||
-      platform.has("schedule.view.platform"),
+    gameCatalogView: brand.has("game.view.brand"),
+    scheduleView: brand.has("schedule.view.brand"),
     scheduleWrite:
       !account.super_admin && brand.has("schedule.write.brand"),
-    periodView:
-      brand.has("period.view.brand") ||
-      platform.has("period.view.platform"),
+    periodView: brand.has("period.view.brand"),
     periodGenerate:
       !account.super_admin && brand.has("period.generate.brand"),
   };

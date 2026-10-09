@@ -144,27 +144,28 @@ describe("workbench SDK", () => {
     expect(validWorkbenchSnapshot({ ...value, balances: { status: "ready", data: { ...value.balances.data!, total_points: "35" } } }, brand)).toBe(false);
   });
 
-  it("derives links only from effective brand or platform view grants", () => {
+  it("derives links only from mapped brand view grants", () => {
     expect(workbenchPermissions(account(), brand)).toMatchObject({ periods: true, orders: true, today_bets: false, settlement: false, balances: false, ledger: false, withdrawals: false });
     const scoped = workbenchPermissions(account({ permissions_by_brand: { [brand]: ["report_betting.view.brand", "settlement.view.brand", "report_ledger.view.brand"] } }), brand);
     expect(scoped).toMatchObject({ orders: false, today_bets: true, settlement: true, balances: true, ledger: true });
-    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["report_ledger.view.platform"] }), brand).balances).toBe(true);
+    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["report_ledger.view.platform"] }), brand).balances).toBe(false);
     expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["withdrawal.view.brand"] } }), brand).withdrawals).toBe(true);
-    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["withdrawal.view.platform"] }), brand).withdrawals).toBe(true);
+    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["withdrawal.view.platform"] }), brand).withdrawals).toBe(false);
     expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["wallet.view.brand"] }, platform_permissions: [] }), brand).withdrawals).toBe(false);
     expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: [] }, platform_permissions: [] }), brand).orders).toBe(false);
     expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["reward.view.brand"] } }), brand).rewards).toBe(true);
-    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["reward.view.platform"] }), brand).rewards).toBe(true);
+    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["reward.view.platform"] }), brand).rewards).toBe(false);
+    expect(workbenchPermissions(account({ super_admin: true }), brand)).toEqual(Object.fromEntries(Object.keys(workbenchPermissions(account(), brand)).map((key) => [key, false])));
     expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["wallet.view.brand", "report_reward.view.brand"] } }), brand).rewards).toBe(false);
   });
 
-  it("gates commissions only on commission view in the matching brand or platform scope", () => {
+  it("gates commissions only on commission view in the matching brand", () => {
     expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: ["commission.view.brand"] } }), brand).commissions).toBe(true);
     for (const permission of ["wallet.view.brand", "report_commission.view.brand"]) {
       expect(workbenchPermissions(account({ permissions_by_brand: { [brand]: [permission] }, platform_permissions: [] }), brand).commissions).toBe(false);
     }
     expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: { [brand]: ["commission.view.brand"] }, platform_permissions: [] }), brand).commissions).toBe(false);
-    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["commission.view.platform"] }), brand).commissions).toBe(true);
+    expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["commission.view.platform"] }), brand).commissions).toBe(false);
     expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, platform_permissions: ["wallet.view.platform", "report_commission.view.platform"] }), brand).commissions).toBe(false);
     expect(workbenchPermissions(account({ brand_ids: [], permissions_by_brand: {}, permissions: ["commission.view.platform"], platform_permissions: [] }), brand).commissions).toBe(false);
     expect(workbenchPermissions(account({ super_admin: true, brand_ids: [], permissions_by_brand: {}, platform_permissions: [] }), brand).commissions).toBe(false);

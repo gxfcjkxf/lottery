@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/reports/commission-analysis";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -177,9 +178,9 @@ async function parseError(response: Response): Promise<never> {
   throw new AdminApiError(message, response.status, code);
 }
 export function commissionAnalysisPermissions(account: AdminAccount, brand: string) {
-  const valid = UUID.test(account.id) && UUID.test(brand), inBrand = (account.brand_ids ?? []).some((id) => id.toLowerCase() === brand.toLowerCase());
-  const grants = new Set(account.permissions_by_brand?.[brand] ?? []), platform = new Set(account.platform_permissions ?? []);
-  const scoped = (permission: string) => (inBrand && grants.has(`${permission}.brand`)) || platform.has(`${permission}.platform`);
+  const valid = UUID.test(account.id) && UUID.test(brand);
+  const grants = brandPermissionSet(account, brand.toLowerCase());
+  const scoped = (permission: string) => grants.has(`${permission}.brand`);
   const view = valid && scoped("commission.view") && scoped("report_commission.view");
   const exportAllowed = view && scoped("report_commission.export");
   return { view, export: exportAllowed };

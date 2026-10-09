@@ -1,4 +1,5 @@
 import { AdminApiError, type AdminAccount } from "./admin-api";
+import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/commission-policy";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -60,24 +61,13 @@ export function commissionPolicyPermissions(
   account: AdminAccount,
   brand: string,
 ): { view: boolean; write: boolean } {
-  const brandPermissions = new Set(
-    account.permissions_by_brand === undefined
-      ? account.brand_ids.includes(brand)
-        ? account.permissions ?? []
-        : []
-      : account.permissions_by_brand[brand] ?? [],
-  );
-  const platformPermissions = new Set(
-    account.platform_permissions ?? account.permissions ?? [],
-  );
-  const view = Boolean(brand) && (account.super_admin
-    ? platformPermissions.has("commission_policy.view.platform")
-    : brandPermissions.has("commission_policy.view.brand"));
+  const brandPermissions = brandPermissionSet(account, brand);
+  const view = Boolean(brand) && brandPermissions.has("commission_policy.view.brand");
   return {
     view,
     write:
       Boolean(brand) &&
-      !account.super_admin &&
+      !account.super_admin && account.brand_ids.includes(brand) &&
       brandPermissions.has("commission_policy.write.brand"),
   };
 }
