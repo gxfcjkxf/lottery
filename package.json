@@ -20,6 +20,7 @@
     "api:generate": "node scripts/build-openapi.mjs",
     "api:check": "node scripts/build-openapi.mjs --check && redocly lint --extends spec docs/openapi.json",
     "test:contracts": "node --test tests/contracts/*.test.mjs",
+    "test:capacity-report": "node scripts/check-capacity-baseline.mjs",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
