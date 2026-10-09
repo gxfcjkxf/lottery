@@ -21,9 +21,9 @@ func archiveLegacyTableHashes(t *testing.T, db *pgxpool.Pool, tables []string) m
 		var digest string
 		query := `SELECT md5(coalesce(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text),'[]'::jsonb)::text) FROM ` + pgx.Identifier{name}.Sanitize() + ` r`
 		if name == "permissions" {
-			query += ` WHERE r.key NOT IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand')`
+			query += ` WHERE r.key NOT IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand','report_attribution.view.brand','report_attribution.export.brand','report_attribution.view.platform','report_attribution.export.platform')`
 		} else if name == "role_permissions" {
-			query += ` WHERE r.permission_key NOT IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand')`
+			query += ` WHERE r.permission_key NOT IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand','report_attribution.view.brand','report_attribution.export.brand','report_attribution.view.platform','report_attribution.export.platform')`
 		} else if name == "report_archives" {
 			query = `SELECT md5(coalesce(jsonb_agg((to_jsonb(r)-'automatic_task_id'-'automatic_policy_version') ORDER BY (to_jsonb(r)-'automatic_task_id'-'automatic_policy_version')::text),'[]'::jsonb)::text) FROM report_archives r`
 		}

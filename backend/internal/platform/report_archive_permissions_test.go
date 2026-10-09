@@ -72,7 +72,9 @@ func TestReportArchive0065To0066PermissionsPreserveRolesArchivesAndMoney(t *test
 	}
 	for roleID, want := range oldPermissions {
 		var got []string
-		if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),'{}') FROM role_permissions WHERE role_id=$1 AND permission_key NOT IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand')`, roleID).Scan(&got); err != nil {
+		// Migrate also applies later files. Their four explicit 0068 report
+		// grants have their own exact bootstrap/custom-role upgrade regression.
+		if err := db.QueryRow(ctx, `SELECT coalesce(array_agg(permission_key ORDER BY permission_key),'{}') FROM role_permissions WHERE role_id=$1 AND permission_key NOT IN('report_archive.create.brand','report_archive.download.brand','report_archive.download.platform','report_archive.view.brand','report_archive.view.platform','report_archive_policy.write.brand','report_archive_task.retry.brand','report_attribution.view.brand','report_attribution.export.brand','report_attribution.view.platform','report_attribution.export.platform')`, roleID).Scan(&got); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(got, want) {

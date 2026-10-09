@@ -1,6 +1,73 @@
 name: check
 on: [push, pull_request]
 jobs:
+  attribution-reports-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        viewport: [desktop, mobile]
+    services:
+      postgres:
+        image: postgres:17.5-alpine
+        env:
+          POSTGRES_DB: lottery_attribution_browser_${{ matrix.viewport }}
+          POSTGRES_USER: lottery_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_INITDB_ARGS: "-c max_locks_per_transaction=256"
+        ports: ["127.0.0.1:5432:5432"]
+        options: --health-cmd "pg_isready -U lottery_test -d lottery_attribution_browser_${{ matrix.viewport }}" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_attribution_browser_${{ matrix.viewport }}?sslmode=disable
+      HTTP_ADDR: 127.0.0.1:8080
+      AUTH_KEY_FILE: .local/auth.key
+      PLATFORM_BIN: .local/attribution-platform
+      REPORT_ATTRIBUTION_VIEWPORT: ${{ matrix.viewport }}
+      REPORT_ATTRIBUTION_FIXTURE_CONFIRM: owned_synthetic_database
+      TEST_ATTRIBUTION_ORIGIN: http://localhost:5174
+      TEST_ATTRIBUTION_API_ORIGIN: http://127.0.0.1:8080
+      TEST_ATTRIBUTION_ADMIN_USERNAME: attribution_browser_${{ matrix.viewport }}
+      TEST_ATTRIBUTION_ADMIN_PASSWORD: attribution-owned-harbor-admin-password-2026
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare and verify Chromium
+        timeout-minutes: 7
+        run: node scripts/prepare-ci-browser.mjs
+      - name: Initialize owned attribution database with normal CLI and start API
+        run: |
+          mkdir -p .local
+          go -C backend build -o ../.local/attribution-platform ./cmd/platform
+          .local/attribution-platform generate-auth-key .local/auth.key
+          export PLATFORM_BIN="$PWD/.local/attribution-platform"
+          node scripts/init-attribution-browser.mjs
+          .local/attribution-platform serve > attribution-reports-api.log 2>&1 &
+          .local/attribution-platform worker > attribution-reports-worker.log 2>&1 &
+          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
+      - name: Run real saved attribution and complete CSV without skips
+        run: |
+          pnpm exec playwright test --config=playwright.attribution-reports.config.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
+          node --input-type=module -e 'import { readFileSync } from "node:fs"; const { stats } = JSON.parse(readFileSync(".local/attribution-reports-browser-report.json", "utf8")); if (stats.skipped !== 0 || stats.unexpected !== 0 || stats.flaky !== 0 || stats.expected !== 1) throw new Error("Attribution report CI requires exactly one passed test and zero skips or retries");'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: attribution-reports-${{ matrix.viewport }}-failure-traces
+          path: |
+            test-results/
+            .local/attribution-reports-browser-report.json
+            attribution-reports-api.log
+            attribution-reports-worker.log
+            .local/attribution-reports-*.png
   report-archive-policy-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -761,7 +828,7 @@ jobs:
       # Each viewport/shard gets an independent PostgreSQL service; preserve real auth limits.
       # Brand-level settings tests temporarily change the same Harbor config.
       # Serialize UI cases; transaction concurrency is exercised by Go tests.
-      - run: pnpm test:e2e --project=${{ matrix.project }} --grep-invert='real report archives recover a lost committed receipt and keep old versions immutable|real automatic archive tasks recover the original retry receipt after worker completion|real archive policy activation recovers the original receipt after a later configuration change' --shard=${{ matrix.shard }}/2 --workers=1 --retries=0
+      - run: pnpm test:e2e --project=${{ matrix.project }} --grep-invert='real report archives recover a lost committed receipt and keep old versions immutable|real automatic archive tasks recover the original retry receipt after worker completion|real archive policy activation recovers the original receipt after a later configuration change|real attribution reports preserve saved agent scope and export unique order totals' --shard=${{ matrix.shard }}/2 --workers=1 --retries=0
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

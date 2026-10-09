@@ -612,7 +612,9 @@ Totals含order_count/requested_points，以及reviewing、processing、paid、re
 
 客户端校验品牌、回显筛选、精确整数及金额/状态分区；日期按精确纳秒时间值比较，允许等价UTC/时区或尾零格式，拒绝真实边界变化。服务端按PostgreSQL微秒网格将两个边界向上取整，保持原半开区间语义；不让驱动截断纳秒改变结果。旧结果在新筛选请求发起时清除，失败/401/跨品牌切换不能保留旧数据冒充新范围。草稿不改变已显示范围，只读刷新使用已提交条件。
 
-S7-k 接入 GET `/api/v1/admin/reports/betting/export` 与 `/api/v1/admin/reports/ledger/export`，完整筛选范围、不接受分页参数；view与export分别授权，200直接返回CSV而非JSON信封。列定义、大小限制、快照与审计要求见 [CSV导出合同](11-report-csv-exports.md)。后续已接入提现申请状态报表及CSV，不代表外部出款；佣金/奖励报表、代理分组、不可变日月结及大规模异步全链对账仍未实现，不能据此宣称EPIC-11整体完成。
+S7-k 接入 GET `/api/v1/admin/reports/betting/export` 与 `/api/v1/admin/reports/ledger/export`，完整筛选范围、不接受分页参数；view与export分别授权，200直接返回CSV而非JSON信封。列定义、大小限制、快照与审计要求见 [CSV导出合同](11-report-csv-exports.md)。后续已接入提现申请状态、实际佣金/奖励入账、不可变日月归档及归属统计接口；这些观察不代表外部出款、佣金应付收益或大规模异步全链对账，也不标记EPIC-11整体完成。
+
+0068增加GET `/api/v1/admin/reports/attribution`及`/export`，按placed_at及已保存归属快照提供day/game/member/agent/join_method五类互斥分组。直属或投注时下级链过滤不会将一笔注单展开到多个祖先；查看及完整CSV导出分别授权。十五项精确指标、十字段筛选回显、29列CSV及当前授权/审计边界见[30号合同](30-attribution-reports.md)。不改变原公开用户归属字段、佣金核算或旧归档字节。
 
 0064/0065增加按品牌日/月范围的单一统计快照及不可变版本；0066接入/api/v1/admin/report-archives的GET列表、POST创建、GET /{id}详情和GET /{id}/download原JSON下载。当前授权复核、审计后响应、加密幂等原回执及独立下载能力已接入，详细输入、响应头、实际入账/当前业务观察/快照时余额分界见[归档合同](26-report-archive-core.md)。人工后台已实现；0067自动核心/worker及四条当前配置只读、任务列表/详情/人工重试接口和双端页面见[任务管理合同](28-report-archive-task-management.md)。正式PUT `/api/v1/admin/report-archive-policy`恰好接受version/daily_enabled/monthly_enabled/reason，由数据库时间计算品牌当前日/月首次起点，不接受历史起点，见[29号合同](29-report-archive-activation.md)。双端配置编辑与原键恢复已接入，内部服务不得绕过正式接口的授权与审计。
 

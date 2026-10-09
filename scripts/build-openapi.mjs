@@ -18,6 +18,7 @@ modules.push(await import("./openapi-commission-adjustments.mjs"));
 modules.push(await import("./openapi-commission-corrections.mjs"));
 modules.push(await import("./openapi-rewards.mjs"));
 modules.push(await import("./openapi-reward-reports.mjs"));
+modules.push(await import("./openapi-attribution-reports.mjs"));
 modules.push(await import("./openapi-report-archives.mjs"));
 modules.push(await import("./openapi-report-archive-tasks.mjs"));
 modules.push(await import("./openapi-report-archive-policy.mjs"));

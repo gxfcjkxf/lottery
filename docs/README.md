@@ -40,6 +40,7 @@
 - [27-automatic-report-archive-core.md](27-automatic-report-archive-core.md)：默认关闭的日/月配置与任务、保存起点及原范围、自动发现/执行、人工失败重试和系统来源。
 - [28-report-archive-task-management.md](28-report-archive-task-management.md)：四条配置只读/任务管理接口、授权与审计、原pending回执恢复及双端任务页面。
 - [29-report-archive-activation.md](29-report-archive-activation.md)：首次启用从品牌当前日/月开始的正式PUT、数据库时钟与保存起点、双端配置编辑及原回执恢复。
+- [30-attribution-reports.md](30-attribution-reports.md)：投注时历史归属、直属/下级链筛选、互斥分组、双端只读统计及完整CSV。
 
 ## 第一阶段实现顺序
 

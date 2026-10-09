@@ -58,6 +58,7 @@ func reportQuery(r *http.Request, kind string) (reporting.Query, error) {
 	return out, out.Validate(kind)
 }
 func registerReportAdminRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
+	registerAttributionReportRoutes(handle, d)
 	registerWithdrawalReportRoutes(handle, d)
 	registerCommissionReportRoutes(handle, d)
 	registerRewardReportRoutes(handle, d)

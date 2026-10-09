@@ -57,7 +57,7 @@ test('archive browser CI owns separate desktop/mobile databases and runs the rea
   assert.match(job, /stats\.skipped !== 0/);
   assert.match(job, /stats\.expected > 0/);
   assert.doesNotMatch(job, /POSTGRES_PASSWORD:|browserfixture|continue-on-error|--with-deps|--retries=([1-9]\d*)/);
-  assert.match(generalBrowserJob, /pnpm test:e2e --project=\$\{\{ matrix\.project \}\} --grep-invert='real report archives recover a lost committed receipt and keep old versions immutable\|real automatic archive tasks recover the original retry receipt after worker completion\|real archive policy activation recovers the original receipt after a later configuration change' --shard=\$\{\{ matrix\.shard \}\}\/2 --workers=1 --retries=0/);
+  assert.match(generalBrowserJob, /pnpm test:e2e --project=\$\{\{ matrix\.project \}\} --grep-invert='real report archives recover a lost committed receipt and keep old versions immutable\|real automatic archive tasks recover the original retry receipt after worker completion\|real archive policy activation recovers the original receipt after a later configuration change\|real attribution reports preserve saved agent scope and export unique order totals' --shard=\$\{\{ matrix\.shard \}\}\/2 --workers=1 --retries=0/);
   assert.ok(browserSpec.includes(String.raw`const allowedBrowserOrigin = /^http:\/\/localhost:(?:5174|15292)$/;`));
   assert.ok(browserSpec.includes(String.raw`const allowedAPIOrigin = /^http:\/\/127\.0\.0\.1:(?:8080|15291)$/;`));
   assert.match(browserSpec, /page\.locator\("\.archives"\)/);
