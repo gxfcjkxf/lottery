@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformLotteryApi, type Game, type Period, type DrawHistoryPage } from './lottery-api'
+import RulesPanel from './RulesPanel.vue'
 
 const props = defineProps<{ brandId: string; locale: 'en' | 'zh-CN' }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
@@ -11,6 +12,7 @@ const periods = ref<Period[]>([])
 const game = ref<Game | null>(null)
 const period = ref<Period | null>(null)
 const draws = ref<DrawHistoryPage | null>(null)
+const showRules = ref(false)
 const gameOffset = ref(0), periodOffset = ref(0), drawOffset = ref(0)
 const moreGames = ref(false), morePeriods = ref(false), moreDraws = ref(false)
 const loading = ref(false), error = ref('')
@@ -28,6 +30,7 @@ function report(cause: unknown) {
 async function loadGames(offset = 0) {
   const request = ++generation, brandId = props.brandId
   games.value = []; periods.value = []; game.value = null; period.value = null; draws.value = null
+  showRules.value = false
   moreGames.value = false; morePeriods.value = false; moreDraws.value = false; error.value = ''
   if (!brandId) { loading.value = false; return }
   loading.value = true
@@ -40,6 +43,7 @@ async function loadGames(offset = 0) {
 async function loadPeriods(selected: Game, offset = 0) {
   const request = ++generation, brandId = props.brandId
   game.value = selected; periods.value = []; period.value = null; draws.value = null; morePeriods.value = false; moreDraws.value = false; error.value = ''; loading.value = true
+  showRules.value = false
   try {
     const rows = await api.periods(brandId, selected.id, 51, offset)
     if (request === generation && brandId === props.brandId) { periods.value = rows.slice(0, 50); morePeriods.value = rows.length > 50; periodOffset.value = offset }
@@ -65,13 +69,16 @@ watch(() => props.brandId, () => { gameOffset.value = 0; periodOffset.value = 0;
     <section class="panel"><div class="panel-heading"><h2>{{ copy.games }}</h2></div><div class="table-wrap"><table><thead><tr><th>{{ copy.name }}</th><th>{{ copy.code }}</th><th>{{ copy.state }}</th><th>{{ copy.timezone }}</th></tr></thead><tbody>
       <tr v-for="row in games" :key="row.id"><td><button class="row-action" @click="loadPeriods(row)">{{ row.name }}</button><small>{{ row.id }}</small></td><td>{{ row.code }}</td><td>{{ row.status }}</td><td>{{ row.timezone }}</td></tr><tr v-if="!games.length"><td colspan="4" class="empty-state">{{ copy.empty }}</td></tr>
     </tbody></table></div><div class="wallet-pagination" data-testid="platform-game-pages"><button class="secondary" :disabled="loading || gameOffset === 0" @click="loadGames(gameOffset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(gameOffset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !moreGames" @click="loadGames(gameOffset + 50)">{{ copy.next }}</button></div></section>
-    <section v-if="game" class="panel reward-detail" data-testid="platform-game-periods"><div class="panel-heading"><h2>{{ game.name }} / {{ copy.periods }}</h2></div>
+    <section v-if="game" class="panel reward-detail" data-testid="platform-game-periods"><div class="panel-heading"><h2>{{ game.name }} / {{ showRules ? locale === 'en' ? 'Plays and rules' : '玩法与规则' : copy.periods }}</h2><button class="secondary" @click="showRules = !showRules">{{ showRules ? copy.periods : locale === 'en' ? 'Plays and rules' : '玩法与规则' }}</button></div>
+      <RulesPanel v-if="showRules" :brand-id="brandId" :game-id="game.id" :locale="locale" @failure="emit('failure', $event)" />
+      <template v-else>
       <details class="bet-snapshots"><summary>{{ copy.model }}</summary><pre>{{ json(game.model) }}</pre></details>
       <div class="table-wrap"><table><thead><tr><th>{{ copy.period }}</th><th>{{ copy.state }}</th><th>{{ copy.start }}</th><th>{{ copy.end }}</th><th>{{ copy.drawAt }}</th></tr></thead><tbody>
         <tr v-for="row in periods" :key="row.id"><td><button class="row-action" @click="loadDraw(row)">{{ row.period_no }}</button></td><td>{{ row.status }}</td><td>{{ row.bet_start_at }}</td><td>{{ row.bet_end_at }}</td><td>{{ row.draw_at }}</td></tr><tr v-if="!periods.length"><td colspan="5" class="empty-state">{{ copy.empty }}</td></tr>
       </tbody></table></div><div class="wallet-pagination" data-testid="platform-period-pages"><button class="secondary" :disabled="loading || periodOffset === 0" @click="loadPeriods(game, periodOffset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(periodOffset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !morePeriods" @click="loadPeriods(game, periodOffset + 50)">{{ copy.next }}</button></div>
+      </template>
     </section>
-    <section v-if="period && draws" class="panel reward-detail" data-testid="platform-period-draw"><div class="panel-heading"><h2>{{ period.period_no }} / {{ copy.current }}</h2></div>
+    <section v-if="!showRules && period && draws" class="panel reward-detail" data-testid="platform-period-draw"><div class="panel-heading"><h2>{{ period.period_no }} / {{ copy.current }}</h2></div>
       <div class="bet-snapshots"><pre v-if="draws.current">{{ json(draws.current.result) }}</pre><p v-else>{{ copy.noResult }}</p></div>
       <div class="table-wrap"><table><thead><tr><th>{{ copy.history }}</th><th>{{ copy.source }}</th><th>{{ copy.result }}</th><th>{{ copy.drawAt }}</th></tr></thead><tbody><tr v-for="row in draws.history.slice(0, 50)" :key="row.id"><td>{{ row.id }}</td><td>{{ row.kind }}<small>{{ row.source_id }}</small></td><td><pre>{{ json(row.result) }}</pre></td><td>{{ row.drawn_at }}</td></tr></tbody></table></div>
       <div class="bet-snapshots"><h3>{{ copy.attempts }}</h3><pre>{{ json(draws.attempts.slice(0, 50)) }}</pre></div>
