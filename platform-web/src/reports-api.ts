@@ -95,7 +95,7 @@ function utcSecond(value: unknown): number {
   return date.getTime()
 }
 
-function normalizeQuery(kind: ReportKind, query: ReportQuery) {
+export function normalizeReportQuery(kind: ReportKind, query: ReportQuery) {
   if (!REPORT_FIELDS[kind]) invalidInput('Unsupported report kind')
   if (!isObj(query) || Object.keys(query).some(key => !['from', 'to', 'group_by', 'limit', 'offset', ...FILTERS[kind]].includes(key))) invalidInput('Unsupported report query field')
   const fromMs = utcSecond(query.from), toMs = utcSecond(query.to)
@@ -120,7 +120,7 @@ function reportQueryKeys(kind: ReportKind): string[] {
   return ['from', 'to', 'group_by', 'limit', 'offset', 'member_id', 'order_id']
 }
 
-function expectedEcho(kind: ReportKind, q: ReturnType<typeof normalizeQuery>): Obj {
+function expectedEcho(kind: ReportKind, q: ReturnType<typeof normalizeReportQuery>): Obj {
   const echo: Obj = { from: q.from, to: q.to, group_by: q.group_by, limit: q.limit, offset: q.offset }
   for (const key of reportQueryKeys(kind).slice(5)) echo[key] = q.filters[key] ?? null
   return echo
@@ -136,7 +136,7 @@ function validateTotals(value: unknown, kind: ReportKind): Record<string, string
   return value as Record<string, string>
 }
 
-function validateReport(value: unknown, brandId: string, kind: ReportKind, q: ReturnType<typeof normalizeQuery>): ReportResult {
+function validateReport(value: unknown, brandId: string, kind: ReportKind, q: ReturnType<typeof normalizeReportQuery>): ReportResult {
   const topKeys = ['brand_id', 'snapshot_at', 'timezone', 'query', 'summary', 'items', 'total_groups', ...(kind === 'ledger' ? ['balances'] : [])]
   if (!isObj(value) || !exact(value, topKeys) || value.brand_id !== brandId || !validTimestamp(value.snapshot_at) ||
     typeof value.timezone !== 'string' || value.timezone.length === 0 || value.timezone.length > 100 ||
@@ -181,7 +181,7 @@ export function createPlatformReportsApi(fetcher: typeof fetch = fetch) {
     async read(brandId: string, kind: ReportKind, query: ReportQuery): Promise<ReportResult> {
       if (typeof brandId !== 'string' || !UUID.test(brandId)) invalidInput('A valid brand UUID is required')
       if (!Object.hasOwn(REPORT_FIELDS, kind)) invalidInput('Unsupported report kind')
-      const brand = brandId.toLowerCase(), q = normalizeQuery(kind, query)
+      const brand = brandId.toLowerCase(), q = normalizeReportQuery(kind, query)
       const params = new URLSearchParams({ from: q.from, to: q.to, group_by: q.group_by, limit: String(q.limit), offset: String(q.offset) })
       for (const [key, value] of Object.entries(q.filters)) if (value !== null) params.set(key, value)
       const segment = kind === 'reward_orders' ? 'reward-orders' : kind

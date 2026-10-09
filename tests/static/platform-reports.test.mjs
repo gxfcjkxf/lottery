@@ -24,3 +24,26 @@ test('report review accounts are created explicitly and retain ordinary authenti
   assert.match(fixture, /platformAccountPrefix: \['review_platform'/);
   assert.doesNotMatch(spec + fixture, /auth_rate_limits|X-Forwarded-For|DELETE FROM/);
 });
+
+test('platform CSV download is gated by verification and a frozen confirmed complete-filter request', () => {
+  const client = read('platform-web/src/report-export-api.ts');
+  const panel = read('platform-web/src/ReportsPanel.vue');
+  assert.match(client, /normalizeReportQuery\(kind/);
+  assert.match(client, /crypto\.subtle\.digest\('SHA-256'/);
+  assert.match(client, /response\.status !== 200/);
+  assert.match(client, /MAX_GROUPS = 10_000/);
+  assert.match(client, /MAX_BYTES = 4 \* 1024 \* 1024/);
+  assert.match(panel, /Object\.freeze\(\{ brandId: props\.brandId/);
+  assert.ok(panel.indexOf('await exportApi.export') < panel.indexOf('URL.createObjectURL'));
+  assert.match(panel, /request !== generation \|\| props\.brandId !== frozen\.brandId/);
+  assert.match(panel, /limit: _limit, offset: _offset, \.\.\.query/);
+});
+
+test('CSV review uses explicit isolated export accounts without changing old viewer grants', () => {
+  const workflow = read('.github/workflows/ci.yaml');
+  for (const viewport of ['desktop1440', 'mobile360']) assert.ok(workflow.includes(`create-admin --username review_exports_${viewport} --super`));
+  const spec = read('tests/review/platform-report-exports.spec.ts');
+  assert.match(spec, /platformAccountPrefix: 'review_exports'/);
+  assert.match(spec, /CSV audit must already be committed/);
+  assert.doesNotMatch(spec, /auth_rate_limits|X-Forwarded-For|DELETE FROM/);
+});

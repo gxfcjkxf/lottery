@@ -13,11 +13,62 @@ import (
 	"time"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
+	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
+	"github.com/gxfcjkxf/lottery/backend/internal/identity"
+	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 )
 
 func exportURL(kind string) string {
 	from, to := reportWindow()
 	return reportURL("/api/v1/admin/reports/"+kind+"/export", url.Values{"from": {from}, "to": {to}, "group_by": {"day"}})
+}
+
+func TestPlatformWithdrawalExportRequiresExplicitPlatformGrant(t *testing.T) {
+	f := managedFixture(t)
+	ctx := context.Background()
+	account, role := ids.New(), ids.New()
+	password := "platform-report-export-test-2026"
+	hash, err := authcrypto.HashPassword(password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.pool.Exec(ctx, `INSERT INTO admin_accounts(id,username,password_hash,is_super_admin) VALUES($1,'platform_export_reader',$2,true)`, account, hash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.pool.Exec(ctx, `INSERT INTO roles(id,code,name,is_bootstrap) VALUES($1,$2,'Platform report reader',true)`, role, "export_"+role); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.pool.Exec(ctx, `INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)`, account, role); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.pool.Exec(ctx, `INSERT INTO admin_brand_scopes(account_id,brand_id) VALUES($1,$2)`, account, managedBrand); err != nil {
+		t.Fatal(err)
+	}
+	for _, permission := range []string{"report_withdrawal.view.platform", "report_withdrawal.export.brand"} {
+		if _, err = f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) VALUES($1,$2)`, role, permission); err != nil {
+			t.Fatal(err)
+		}
+	}
+	login := f.call("POST", "/api/v1/platform/auth/login", "platform-export-login", "", "", map[string]string{"identifier": "platform_export_reader", "password": password})
+	mustStatus(t, login, 200)
+	var auth identity.AdminAuthentication
+	managedData(t, login, &auth)
+	readPath := strings.Replace(withdrawalReportURL(false, ""), "/api/v1/admin", "/api/v1/platform", 1)
+	exportPath := strings.Replace(withdrawalReportURL(true, ""), "/api/v1/admin", "/api/v1/platform", 1)
+	mustStatus(t, f.call("GET", readPath, "", auth.AccessToken, managedBrand, nil), 200)
+	denied := f.call("GET", exportPath, "", auth.AccessToken, managedBrand, nil)
+	mustStatus(t, denied, 403)
+	if strings.Contains(denied.Header().Get("Content-Type"), "csv") || denied.Header().Get("Content-Disposition") != "" {
+		t.Fatal("view or brand export grant released a platform CSV")
+	}
+	if _, err = f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'report_withdrawal.export.platform')`, role); err != nil {
+		t.Fatal(err)
+	}
+	checkExportBody(t, f.call("GET", exportPath, "", auth.AccessToken, managedBrand, nil), managedBrand, "withdrawal")
+	var exports int
+	if err = f.pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE actor_id=$1 AND action='report.withdrawal.export'`, account).Scan(&exports); err != nil || exports != 1 {
+		t.Fatal("successful platform export must have one committed audit", exports, err)
+	}
 }
 func checkExportBody(t *testing.T, w *httptest.ResponseRecorder, brand, kind string) {
 	t.Helper()

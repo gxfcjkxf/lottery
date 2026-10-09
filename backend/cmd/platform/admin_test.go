@@ -40,7 +40,7 @@ func TestBootstrapPlatformWithdrawalPermissionIsReadOnly(t *testing.T) {
 	}
 }
 
-func TestBootstrapPlatformWithdrawalReportPermissionIsExplicitAndReadOnly(t *testing.T) {
+func TestBootstrapPlatformWithdrawalReportPermissionsAreExplicitAndReadOnly(t *testing.T) {
 	db := testdb.New(t)
 	ctx := context.Background()
 	before := os.Args
@@ -66,7 +66,7 @@ func TestBootstrapPlatformWithdrawalReportPermissionIsExplicitAndReadOnly(t *tes
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got, []string{"report_withdrawal.view.platform"}) {
+	if !reflect.DeepEqual(got, []string{"report_withdrawal.export.platform", "report_withdrawal.view.platform"}) {
 		t.Fatalf("unexpected withdrawal report grants: %v", got)
 	}
 }
