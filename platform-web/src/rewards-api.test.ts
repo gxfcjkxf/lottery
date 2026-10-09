@@ -23,6 +23,19 @@ function response(data: unknown, status = 200) {
 }
 
 describe('platform rewards read API', () => {
+  it('requests explicit later pages and rejects a mismatched page offset', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ brand_id: brandId, items: [order], total_count: '101', limit: 100, offset: 100 }))
+      .mockResolvedValueOnce(response({ brand_id: brandId, order_id: orderId, items: [action], total_count: '101', limit: 100, offset: 100 }))
+      .mockResolvedValueOnce(response({ brand_id: brandId, items: [order], total_count: '101', limit: 100, offset: 0 }))
+    const api = createPlatformRewardsApi(fetcher)
+    expect((await api.list(brandId, 100, 100)).offset).toBe(100)
+    expect((await api.actions(brandId, orderId, 100, 100)).offset).toBe(100)
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/platform/reward-orders?limit=100&offset=100')
+    expect(fetcher.mock.calls[1]?.[0]).toBe(`/api/v1/platform/reward-orders/${orderId}/actions?limit=100&offset=100`)
+    await expect(api.list(brandId, 100, 100)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+
   it('reads list, current order, and action history with the selected brand header and GET only', async () => {
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(response({ brand_id: brandId, items: [order], total_count: '1', limit: 100, offset: 0 }))

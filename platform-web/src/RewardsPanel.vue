@@ -17,6 +17,16 @@ const orders = ref<RewardOrder[]>([])
 const selected = ref<RewardOrder | null>(null)
 const detail = ref<RewardOrder | null>(null)
 const history = ref<RewardAction[]>([])
+const pageSize = 100
+const orderOffset = ref(0)
+const orderTotal = ref('0')
+const historyOffset = ref(0)
+const historyTotal = ref('0')
+const previousLabel = computed(() => props.locale === 'en' ? 'Previous page' : '上一页')
+const nextLabel = computed(() => props.locale === 'en' ? 'Next page' : '下一页')
+const totalLabel = computed(() => props.locale === 'en' ? 'Total' : '总计')
+const hasNextOrders = computed(() => BigInt(orderOffset.value + pageSize) < BigInt(orderTotal.value))
+const hasNextHistory = computed(() => BigInt(historyOffset.value + pageSize) < BigInt(historyTotal.value))
 const loading = ref(false)
 const error = ref('')
 let generation = 0
@@ -27,7 +37,7 @@ function report(cause: unknown) {
   if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause)
   else error.value = cause instanceof Error ? cause.message : 'Something went wrong'
 }
-async function refresh() {
+async function refresh(offset = 0) {
   const request = ++generation
   const brandId = props.brandId
   error.value = ''
@@ -35,11 +45,19 @@ async function refresh() {
   selected.value = null
   detail.value = null
   history.value = []
+  orderOffset.value = 0
+  orderTotal.value = '0'
+  historyTotal.value = '0'
+  historyOffset.value = 0
   if (!brandId) { loading.value = false; return }
   loading.value = true
   try {
-    const page = await api.list(brandId)
-    if (request === generation && props.brandId === brandId) orders.value = page.items
+    const page = await api.list(brandId, pageSize, offset)
+    if (request === generation && props.brandId === brandId) {
+      orders.value = page.items
+      orderOffset.value = page.offset
+      orderTotal.value = page.total_count
+    }
   } catch (cause) {
     if (request === generation && props.brandId === brandId) report(cause)
   } finally {
@@ -52,11 +70,39 @@ async function openOrder(order: RewardOrder) {
   selected.value = order
   detail.value = null
   history.value = []
+  historyOffset.value = 0
+  historyTotal.value = '0'
   error.value = ''
   loading.value = true
   try {
     const [current, actions] = await Promise.all([api.read(brandId, order.id), api.actions(brandId, order.id)])
-    if (request === generation && props.brandId === brandId) { detail.value = current; history.value = actions.items }
+    if (request === generation && props.brandId === brandId) {
+      detail.value = current
+      history.value = actions.items
+      historyTotal.value = actions.total_count
+    }
+  } catch (cause) {
+    if (request === generation && props.brandId === brandId) report(cause)
+  } finally {
+    if (request === generation) loading.value = false
+  }
+}
+async function loadHistory(offset: number) {
+  if (!detail.value) return
+  const request = ++generation
+  const brandId = props.brandId
+  const orderId = detail.value.id
+  error.value = ''
+  history.value = []
+  historyTotal.value = '0'
+  loading.value = true
+  try {
+    const page = await api.actions(brandId, orderId, pageSize, offset)
+    if (request === generation && props.brandId === brandId) {
+      history.value = page.items
+      historyOffset.value = page.offset
+      historyTotal.value = page.total_count
+    }
   } catch (cause) {
     if (request === generation && props.brandId === brandId) report(cause)
   } finally {
@@ -73,11 +119,16 @@ watch(() => props.brandId, () => { void refresh() }, { immediate: true, flush: '
     <div v-if="error" class="message error global-message">{{ error }}</div>
     <div v-if="loading" class="loading-line">{{ copy.loading }}</div>
     <section class="panel">
-      <div class="panel-heading"><div><h2>{{ copy.listTitle }} <span v-if="props.brandName" class="subtle">/ {{ props.brandName }}</span></h2><p>{{ copy.readOnly }}</p></div><div class="reward-list-actions"><span class="count-chip">{{ orders.length }}</span><button class="secondary" data-testid="platform-reward-refresh" :disabled="loading || !props.brandId" @click="refresh">{{ copy.refresh }}</button></div></div>
+      <div class="panel-heading"><div><h2>{{ copy.listTitle }} <span v-if="props.brandName" class="subtle">/ {{ props.brandName }}</span></h2><p>{{ copy.readOnly }}</p></div><div class="reward-list-actions"><span class="count-chip">{{ totalLabel }} {{ orderTotal }}</span><button class="secondary" data-testid="platform-reward-refresh" :disabled="loading || !props.brandId" @click="refresh()">{{ copy.refresh }}</button></div></div>
       <div class="table-wrap"><table><thead><tr><th>{{ copy.order }}</th><th>{{ copy.member }}</th><th>{{ copy.points }}</th><th>{{ copy.state }}</th><th>{{ copy.version }}</th></tr></thead><tbody>
         <tr v-for="order in orders" :key="order.id"><td><button class="row-action mono reward-order-link" @click="openOrder(order)">{{ order.id }}</button><small>{{ order.created_at }}</small></td><td class="mono">{{ order.member_id }}</td><td>{{ order.points }}</td><td><span :class="['status-pill', order.state]">{{ stateLabel(order.state) }}</span></td><td>v{{ order.version }}</td></tr>
         <tr v-if="!orders.length"><td colspan="5" class="empty-state">{{ copy.empty }}</td></tr>
       </tbody></table></div>
+      <div class="reward-list-actions" data-testid="platform-reward-pages">
+        <button class="secondary" :disabled="loading || orderOffset === 0" @click="refresh(orderOffset - pageSize)">{{ previousLabel }}</button>
+        <span>{{ Math.floor(orderOffset / pageSize) + 1 }}</span>
+        <button class="secondary" :disabled="loading || !hasNextOrders" @click="refresh(orderOffset + pageSize)">{{ nextLabel }}</button>
+      </div>
     </section>
     <section v-if="selected" class="panel reward-detail" data-testid="platform-reward-detail">
       <div class="panel-heading"><div><h2>{{ copy.detail }}</h2><p class="mono">{{ selected.id }}</p></div><span v-if="detail" class="count-chip">{{ stateLabel(detail.state) }} · v{{ detail.version }}</span></div>
@@ -93,6 +144,12 @@ watch(() => props.brandId, () => { void refresh() }, { immediate: true, flush: '
         <tr v-for="action in history" :key="action.id"><td><strong>{{ operationLabel(action.operation) }}</strong><small>{{ action.id }} · v{{ action.version }}</small></td><td>{{ action.state_before ? `${stateLabel(action.state_before)} → ` : '' }}{{ stateLabel(action.state_after) }}</td><td class="mono">{{ action.actor_id }}</td><td>{{ action.reason }}</td><td class="mono">{{ action.ledger_entry_id || '—' }}</td><td>{{ action.created_at }}</td></tr>
         <tr v-if="!history.length"><td colspan="6" class="empty-state">{{ copy.noHistory }}</td></tr>
       </tbody></table></div>
+      <div v-if="detail" class="reward-list-actions" data-testid="platform-reward-history-pages">
+        <span>{{ totalLabel }} {{ historyTotal }}</span>
+        <button class="secondary" :disabled="loading || historyOffset === 0" @click="loadHistory(historyOffset - pageSize)">{{ previousLabel }}</button>
+        <span>{{ Math.floor(historyOffset / pageSize) + 1 }}</span>
+        <button class="secondary" :disabled="loading || !hasNextHistory" @click="loadHistory(historyOffset + pageSize)">{{ nextLabel }}</button>
+      </div>
     </section>
   </div>
 </template>
