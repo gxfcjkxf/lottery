@@ -80,6 +80,24 @@ test('real turnover qualification survives unknown intent and follows ledger cha
   expect(initialBox!.x + initialBox!.width).toBeLessThanOrEqual(info.project.name === 'mobile' ? 360 : 1440)
   await panel.screenshot({ path: info.outputPath('withdrawal-qualification-initial.png') })
 
+  await panel.getByLabel('Recharge', { exact: true }).fill('3')
+  await panel.getByLabel('Winnings', { exact: true }).fill('2')
+  await panel.getByLabel('Gift', { exact: true }).fill('4')
+  const beforeOfflineWallet = await data<Record<string, unknown>>(await page.request.get(userOrigin + '/api/v1/wallet'))
+  const beforeOfflineOrders = await data<{ items: Array<Record<string, unknown>> }>(await page.request.get(userOrigin + '/api/v1/withdrawals'))
+  await page.context().setOffline(true)
+  await panel.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(panel.getByRole('button', { name: 'Submit request', exact: true })).toHaveCount(0)
+  await expect(panel.getByRole('alert')).toBeVisible()
+  await page.context().setOffline(false)
+  await panel.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(panel).toContainText('Turnover requirement met')
+  await expect(panel.getByRole('button', { name: 'Submit request', exact: true })).toBeEnabled()
+  const afterOfflineWallet = await data<Record<string, unknown>>(await page.request.get(userOrigin + '/api/v1/wallet'))
+  const afterOfflineOrders = await data<{ items: Array<Record<string, unknown>> }>(await page.request.get(userOrigin + '/api/v1/withdrawals'))
+  expect(afterOfflineWallet).toEqual(beforeOfflineWallet)
+  expect(afterOfflineOrders).toEqual(beforeOfflineOrders)
+
   const intentKeys: string[] = []
   const intentBodies: unknown[] = []
   let committedReceipt: { id: string; reserve_entry_id: string; points: string } | undefined
@@ -110,9 +128,6 @@ test('real turnover qualification survives unknown intent and follows ledger cha
       { source: 'gift', state: 'available', points: '4' },
     ],
   }
-  await panel.getByLabel('Recharge', { exact: true }).fill('3')
-  await panel.getByLabel('Winnings', { exact: true }).fill('2')
-  await panel.getByLabel('Gift', { exact: true }).fill('4')
   await panel.getByRole('button', { name: 'Submit request', exact: true }).click()
   await expect(panel).toContainText('The outcome is unknown')
   const replay = panel.getByRole('button', { name: 'Replay the same request', exact: true })

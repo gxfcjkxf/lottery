@@ -15,6 +15,8 @@ The repository's `backend/Dockerfile` builds a static executable and runs it as 
 
 ## Release gates and sequence
 
+Create the PostgreSQL database with UTF8 encoding before applying the baseline. Confirm `SHOW server_encoding` returns `UTF8`; when initializing a local cluster use `initdb --encoding=UTF8`, or explicitly create a UTF8 database from template0. SQL_ASCII is not a supported multilingual database: the default Chinese notification templates failed validation in a reproduced fresh-install test. Do not loosen template checks or silently convert an existing database. This is an operator prerequisite; the migration command does not automatically create or convert databases.
+
 The release owner should have a reviewed build identity, the exact backend and frontend artifacts, a database backup and its verification evidence, and a rollback decision before touching a live environment. Customer-owned values such as cloud and region, TLS termination, DNS, trusted proxy ranges, backup service, alert receivers, RTO, RPO, frequency, and retention must be resolved by the customer and platform owner. No defaults in this repository settle those choices.
 
 Use this sequence for a coordinated release:

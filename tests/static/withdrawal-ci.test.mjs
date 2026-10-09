@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 
 const workflow=readFileSync(new URL("../../.github/workflows/ci.yaml",import.meta.url),"utf8");
+const withdrawalPanel=readFileSync(new URL("../../user-web/src/WithdrawalPanel.vue",import.meta.url),"utf8");
 const match=/^  withdrawal-browser:\n([\s\S]*?)(?=^  [a-z][a-z-]*:\n|(?![\s\S]))/m.exec(workflow);
+
+test("withdrawal intent uses the required native UUID without a legacy key fallback",()=>{
+  assert.match(withdrawalPanel,/key: crypto\.randomUUID\(\), actorContext:/);
+  assert.doesNotMatch(withdrawalPanel,/function makeKey|getRandomValues|Date\.now\(\)/);
+});
 
 test("withdrawal CI uses an explicitly owned database and nonproduction fixture",()=>{
   assert.ok(match,"dedicated withdrawal-browser job is required");

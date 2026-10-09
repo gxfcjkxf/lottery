@@ -57,7 +57,6 @@ const validSubmission = computed(() => {
 function sourceName(source: WithdrawalSource) { return labels.value.source[source]; }
 function stateName(order: WithdrawalOrder) { return labels.value.states[order.state]; }
 function time(value: string) { return new Intl.DateTimeFormat(props.locale === "en" ? "en" : "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
-function makeKey() { return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(16)}${Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (n) => n.toString(16).padStart(2, "0")).join("")}`; }
 
 async function load() {
   const requestGeneration = ++generation;
@@ -155,7 +154,7 @@ async function submit(replay = false) {
     if (!validSubmission.value) { error.value = labels.value.invalidAmount; return; }
     const body = buildBody();
     if (!body) { error.value = labels.value.sourceSum; return; }
-    intent = Object.freeze({ scope: currentScope, body, key: makeKey(), actorContext: availability.value.actor_context });
+    intent = Object.freeze({ scope: currentScope, body, key: crypto.randomUUID(), actorContext: availability.value.actor_context });
   }
   if (!intent || intent.scope !== currentScope) return;
   submitting.value = true;
