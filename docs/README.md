@@ -18,6 +18,8 @@
 
 ## 文档索引
 
+- [47-first-phase-handover.md](47-first-phase-handover.md)：一期试用交付范围、源码及回归证据、本机入口、伪适配器和待人工审核事项。
+
 - [46-webkit-functional-verification.md](46-webkit-functional-verification.md)：WebKit真实账号/后台双视口专项、锁定引擎与明确凭据；不替代Safari/iPhone真机或PWA离线验收。
 
 - [45-risk-stub-checks.md](45-risk-stub-checks.md)：七组配置式伪检查、四个新增风险开关、九键当前合同、实际拒绝准入及非真实识别边界。
