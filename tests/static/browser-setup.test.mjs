@@ -116,15 +116,17 @@ test('setup command wrapper runs a harmless child and reports failure and timeou
   assert.ok(Date.now() - started < 3_000, 'timed child should be terminated promptly');
 });
 
-test('setup command timeout must be a positive safe integer no greater than four minutes', () => {
-  for (const timeoutMs of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, 240_001, Infinity, NaN]) {
+test('setup command allows five minutes for browser downloads and rejects unbounded timeouts', () => {
+  for (const timeoutMs of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, 300_001, Infinity, NaN]) {
     assert.throws(
       () => runSetupCommand(process.execPath, ['-e', 'process.exit(0)'], { timeoutMs, stdio: 'ignore' }),
       /timeout/i,
       String(timeoutMs),
     );
   }
-  assert.equal(runSetupCommand(process.execPath, ['-e', 'process.exit(0)'], { timeoutMs: 240_000, stdio: 'ignore' }), undefined);
+  assert.equal(runSetupCommand(process.execPath, ['-e', 'process.exit(0)'], { timeoutMs: 300_000, stdio: 'ignore' }), undefined);
+  const source = readFileSync(new URL('../../scripts/prepare-ci-browser.mjs', import.meta.url), 'utf8');
+  assert.match(source, /timeoutMs = 300_000/);
 });
 
 test('fourteen browser CI preparation steps use the bounded Chromium command', () => {

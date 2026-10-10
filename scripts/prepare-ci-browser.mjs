@@ -10,8 +10,10 @@ export function isMissingSystemDependency(error) {
     || /error while loading shared libraries:\s*lib[A-Za-z0-9_.+-]+\.so(?:\.[0-9]+)*:\s*cannot open shared object file/i.test(error.message);
 }
 
-export function runSetupCommand(command, args, { timeoutMs = 180_000, env = process.env, stdio = 'inherit' } = {}) {
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 240_000) throw new Error('Invalid browser setup timeout');
+// Browser downloads may take longer than three minutes on a hosted runner.
+// Keep a five-minute child bound and the independent seven-minute CI step bound.
+export function runSetupCommand(command, args, { timeoutMs = 300_000, env = process.env, stdio = 'inherit' } = {}) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 300_000) throw new Error('Invalid browser setup timeout');
   const result = spawnSync(command, args, { timeout: timeoutMs, env, stdio, killSignal: 'SIGTERM' });
   if (result.error) throw result.error;
   if (result.status !== 0 || result.signal) throw new Error(`Browser setup command failed: status=${result.status}, signal=${result.signal ?? 'none'}`);
