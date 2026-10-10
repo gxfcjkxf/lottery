@@ -52,11 +52,6 @@ export interface CreatedMember {
   audit_log_id: string;
 }
 
-type Envelope<T> = {
-  success?: boolean;
-  data?: T;
-  error?: { code?: string; message?: string } | null;
-};
 type FetchLike = typeof fetch;
 
 export function effectivePermissions(
@@ -176,35 +171,22 @@ export function createManagementApi(fetcher: FetchLike = fetch) {
         ? {}
         : { body: JSON.stringify(options.body) }),
     });
-    let envelope: Envelope<T>;
+    let envelope: unknown;
+    function invalid(): never { throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE"); }
+    const object = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value));
     try {
-      envelope = (await response.json()) as Envelope<T>;
+      envelope = await response.json();
     } catch {
-      throw new AdminApiError(
-        response.ok
-          ? "Invalid server response"
-          : `Request failed (${response.status})`,
-        response.status,
-      );
+      invalid();
     }
-    if (
-      !response.ok ||
-      envelope.success !== true ||
-      envelope.data === undefined
-    ) {
-      const detail =
-        typeof envelope.error === "object" && envelope.error
-          ? envelope.error
-          : undefined;
-      if (typeof envelope.error === "string")
-        throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError(
-        detail?.message || `Request failed (${response.status})`,
-        response.status,
-        detail?.code,
-      );
+    if (!object(envelope)) invalid();
+    const detail = envelope.error;
+    if (!response.ok && envelope.success === false && object(detail) &&
+      typeof detail.code === "string" && detail.code.trim() && typeof detail.message === "string" && detail.message.trim()) {
+      throw new AdminApiError(detail.message, response.status, detail.code);
     }
-    return envelope.data;
+    if (!response.ok || envelope.success !== true || !object(envelope.data)) invalid();
+    return envelope.data as T;
   }
 
   return {

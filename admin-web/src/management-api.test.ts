@@ -27,6 +27,15 @@ const fail = (status: number) =>
   );
 
 describe("management API", () => {
+  it("rejects malformed envelopes instead of confirming management writes", async () => {
+    const body = { code: "owned_role", name: "Owned role", permissions: ["user.view.brand"], reason: "Verify request receipt" };
+    for (const envelope of [null, [], { success: true, data: null }, { success: true, data: [] }, { success: false, error: { message: "Missing code" } }]) {
+      const api = createManagementApi(async () => new Response(JSON.stringify(envelope), { status: 200 }));
+      await expect(api.createRole("brand/a", body, "management-test-key")).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    }
+    const api = createManagementApi(async () => new Response("upstream error", { status: 400 }));
+    await expect(api.createRole("brand/a", body, "management-test-key")).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+  });
   it("uses base paths, same-origin cookies, JSON bodies and brand headers for list requests", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok({ items: [] }));
     const api = createManagementApi(fetcher);

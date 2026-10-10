@@ -42,4 +42,28 @@ test('brand role creation waits for a successfully loaded permission catalog', a
   unavailable = false;
   await panel.getByRole('button', { name: '刷新', exact: true }).click();
   await expect(save).toBeEnabled();
+  const code = `receipt_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`;
+  await panel.getByLabel(/角色代码/).fill(code);
+  await panel.getByLabel('user.view.brand', { exact: true }).check();
+  const attempts: Array<{ body: string | null; key: string }> = [];
+  const receiptIds: string[] = [];
+  await page.route('**/api/v1/admin/roles', async route => {
+    if (route.request().method() !== 'POST') { await route.continue(); return; }
+    writes++;
+    attempts.push({ body: route.request().postData(), key: route.request().headers()['idempotency-key'] });
+    const response = await route.fetch();
+    expect(response.status()).toBe(201);
+    receiptIds.push((await response.json()).data.id);
+    if (attempts.length === 1) await route.fulfill({ status: 200, json: { success: true, data: null } });
+    else await route.fulfill({ response });
+  });
+  await save.click();
+  await expect(panel.getByRole('alert')).toContainText('operation result is unconfirmed');
+  await expect(panel.getByLabel(/角色代码/)).toHaveValue(code);
+  await save.click();
+  await expect(panel.getByRole('status')).toContainText('角色已创建');
+  expect(attempts).toHaveLength(2);
+  expect(attempts[1]).toEqual(attempts[0]);
+  expect(receiptIds[1]).toBe(receiptIds[0]);
+  expect(writes).toBe(2);
 });
