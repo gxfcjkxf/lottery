@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { expect, request, test, type APIRequestContext, type APIResponse } from '@playwright/test';
+import { formatDateTimeLocal } from './support/datetime-local';
 
 const brand = '0199a000-0000-7000-8000-000000000002';
 const origin = process.env.TEST_ATTRIBUTION_ORIGIN;
@@ -357,13 +358,11 @@ test('real attribution reports preserve saved agent scope and export unique orde
     }
     const panel = page.locator('.attribution-report');
     await expect(panel.getByRole('heading', { name: 'Attribution report', exact: true })).toBeVisible();
-    const range = await page.evaluate(() => {
-      const local = (date: Date) => {
-        const pad = (value: number) => String(value).padStart(2, '0');
-        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-      };
-      return { from: local(new Date(Date.now() - 2 * 60_000)), to: local(new Date(Date.now() + 5 * 60_000)) };
-    });
+    const clock = await page.evaluate(() => Date.now());
+    const range = {
+      from: await page.evaluate(formatDateTimeLocal, clock - 2 * 60_000),
+      to: await page.evaluate(formatDateTimeLocal, clock + 5 * 60_000),
+    };
     await panel.getByLabel('Start time', { exact: true }).fill(range.from);
     await panel.getByLabel('End time', { exact: true }).fill(range.to);
     await panel.getByLabel('Game UUID (optional)', { exact: true }).fill('');
