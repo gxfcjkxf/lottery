@@ -32,6 +32,18 @@ const zh = {
  }
 const account = ref<{ id: string; super_admin: true } | null>(null)
 const brands = ref<PlatformBrand[]>([])
+const brandQuery = ref('')
+const brandStatus = ref('')
+const filteredBrands = computed(() => {
+  const query = brandQuery.value.trim().toLowerCase()
+  return brands.value.filter(brand => (!brandStatus.value || brand.status === brandStatus.value) &&
+    (!query || `${brand.name} ${brand.code} ${brand.id}`.toLowerCase().includes(query)))
+})
+const directoryCopy = computed(() => locale.value === 'en' ? {
+  search: 'Find a brand', hint: 'Name, code or ID', status: 'Brand status', all: 'All statuses', clear: 'Clear filters', empty: 'No brands match these filters.',
+} : {
+  search: '查找品牌', hint: '名称、代码或编号', status: '品牌状态', all: '全部状态', clear: '清除筛选', empty: '没有符合筛选条件的品牌。',
+})
 const members = ref<PlatformMember[]>([])
 const auditRows = ref<PlatformAudit[]>([])
 const pageSize = 50
@@ -69,6 +81,7 @@ let auditRequestGeneration = 0
 
 function messageOf(cause: unknown) { return cause instanceof Error ? cause.message : lang.value.error }
 function clearPrivateState() {
+  brandQuery.value = ''; brandStatus.value = ''
   auditView.value = 'audit'
   walletMember.value = ''
   account.value = null; brands.value = []; members.value = []; auditRows.value = []; selectedBrand.value = ''
@@ -178,6 +191,7 @@ async function submitCreate() {
   busy.value = true; error.value = ''; notice.value = ''
   try {
     await api.createBrand(pending.body, pending.key)
+    brandQuery.value = ''; brandStatus.value = ''
     modal.value = false; confirming.value = false; retryPayload.value = null; notice.value = lang.value.created
     await loadWorkspace()
   } catch (cause) {
@@ -222,10 +236,16 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
         <div v-if="loading" class="loading-line">{{ lang.loading }}</div>
         <template v-if="section === 'brands'">
           <div class="page-heading"><div><div class="eyebrow">{{ lang.directory }}</div><h1>{{ lang.brands }}</h1><p>{{ lang.directoryDescription }}</p></div><button class="primary" @click="beginCreate"><span>＋</span> {{ lang.createBrand }}</button></div>
-          <section class="panel"><div class="panel-heading"><div><h2>{{ lang.brandDirectory }}</h2><p>{{ brands.length }} {{ lang.brandCount }}</p></div><span class="count-chip">{{ brands.length }}</span></div>
+          <section class="panel" data-testid="platform-brand-list"><div class="panel-heading"><div><h2>{{ lang.brandDirectory }}</h2><p>{{ brands.length }} {{ lang.brandCount }}</p></div><span class="count-chip">{{ filteredBrands.length }} / {{ brands.length }}</span></div>
+            <div class="wallet-query">
+              <label>{{ directoryCopy.search }}<input v-model="brandQuery" :placeholder="directoryCopy.hint" type="search" /></label>
+              <label>{{ directoryCopy.status }}<select v-model="brandStatus"><option value="">{{ directoryCopy.all }}</option><option value="active">{{ lang.statusActive }}</option><option value="paused">{{ lang.statusPaused }}</option></select></label>
+              <button v-if="brandQuery || brandStatus" class="secondary" @click="brandQuery = ''; brandStatus = ''">{{ directoryCopy.clear }}</button>
+            </div>
             <div class="table-wrap"><table><thead><tr><th>{{ lang.name }}</th><th>{{ lang.code }}</th><th>{{ lang.status }}</th><th></th></tr></thead><tbody>
-              <tr v-for="brand in brands" :key="brand.id" class="clickable-row" @click="openBrandMembers(brand.id)"><td><strong>{{ brand.name }}</strong><small>{{ brand.id }}</small></td><td class="mono">{{ brand.code }}</td><td><span :class="['status-pill', brand.status]">{{ statusLabel(brand.status) }}</span></td><td><button class="row-action" @click.stop="openBrandMembers(brand.id)">{{ lang.view }} →</button><button class="row-action" @click.stop="openBrandAccounts(brand.id)">{{ locale === 'en' ? 'View accounts' : '查看账号' }} →</button></td></tr>
+              <tr v-for="brand in filteredBrands" :key="brand.id" class="clickable-row" @click="openBrandMembers(brand.id)"><td><strong>{{ brand.name }}</strong><small>{{ brand.id }}</small></td><td class="mono">{{ brand.code }}</td><td><span :class="['status-pill', brand.status]">{{ statusLabel(brand.status) }}</span></td><td><button class="row-action" @click.stop="openBrandMembers(brand.id)">{{ lang.view }} →</button><button class="row-action" @click.stop="openBrandAccounts(brand.id)">{{ locale === 'en' ? 'View accounts' : '查看账号' }} →</button></td></tr>
               <tr v-if="!brands.length"><td colspan="4" class="empty-state">{{ lang.empty }}</td></tr>
+              <tr v-else-if="!filteredBrands.length"><td colspan="4" class="empty-state" role="status">{{ directoryCopy.empty }}</td></tr>
             </tbody></table></div>
           </section>
         </template>

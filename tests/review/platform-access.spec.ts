@@ -30,7 +30,9 @@ test('platform reads genuine scoped accounts roles and permission directory with
   const panel = page.getByTestId('platform-access');
   const firstAccount = before.get('accounts?limit=51&offset=0').items[0];
   await expect(panel).toContainText(firstAccount.username);
-  await page.getByTestId('platform-access-list').getByRole('button', { name: firstAccount.id, exact: true }).click();
+  const accountRow = page.getByTestId('platform-access-list').locator('tr').filter({ hasText: firstAccount.id });
+  for (const code of firstAccount.role_codes) await expect(accountRow).toContainText(code);
+  await accountRow.getByRole('button', { name: `List snapshot details: ${firstAccount.username}`, exact: true }).click();
   await expect(page.getByTestId('platform-access-detail')).toContainText(firstAccount.id);
   await page.getByTestId('platform-access-tabs').getByRole('tab', { name: 'Roles', exact: true }).click();
   const firstRole = before.get('roles?limit=51&offset=0').items[0];

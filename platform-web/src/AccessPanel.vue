@@ -132,9 +132,9 @@ onBeforeUnmount(() => { ++generation })
 
     <template v-if="tab === 'accounts'">
       <section class="panel reward-detail" data-testid="platform-access-list">
-        <div class="table-wrap"><table><thead><tr><th>{{ copy.username }}</th><th>{{ copy.status }}</th><th>{{ copy.superAdmin }}</th><th>{{ copy.version }}</th></tr></thead><tbody>
-          <tr v-for="account in accounts" :key="account.id"><td><button class="row-action mono" @click="selectAccount(account)">{{ account.id }}</button><small>{{ account.username }}</small></td><td><span class="status-pill" :class="account.status">{{ stateLabel(account.status) }}</span></td><td>{{ account.super_admin ? copy.yes : copy.no }}</td><td>{{ account.version }}</td></tr>
-          <tr v-if="!accounts.length"><td colspan="4" class="empty-state">{{ copy.emptyAccounts }}</td></tr>
+        <div class="table-wrap"><table><thead><tr><th>{{ copy.username }}</th><th>{{ copy.roles }}</th><th>{{ copy.status }}</th><th>{{ copy.superAdmin }}</th><th>{{ copy.version }}</th></tr></thead><tbody>
+          <tr v-for="account in accounts" :key="account.id"><td><button class="row-action mono" :aria-label="`${copy.detail}: ${account.username}`" @click="selectAccount(account)">{{ account.username }}</button><small>{{ account.id }}</small></td><td><span v-for="roleCode in account.role_codes" :key="roleCode" class="mono">{{ roleCode }}<br></span><span v-if="!account.role_codes.length">—</span></td><td><span class="status-pill" :class="account.status">{{ stateLabel(account.status) }}</span></td><td>{{ account.super_admin ? copy.yes : copy.no }}</td><td>{{ account.version }}</td></tr>
+          <tr v-if="!accounts.length"><td colspan="5" class="empty-state">{{ copy.emptyAccounts }}</td></tr>
         </tbody></table></div>
         <div class="wallet-pagination" data-testid="platform-access-pages"><button class="secondary" :disabled="loading || offset === 0 || !brandId" @click="page(offset - 50)">{{ copy.previous }}</button><span>{{ copy.page }} {{ Math.floor(offset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !more" @click="page(offset + 50)">{{ copy.next }}</button></div>
       </section>
