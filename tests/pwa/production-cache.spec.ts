@@ -21,6 +21,12 @@ test('production manifest, service worker cache boundary, and offline asset beha
   expect(baseURL).toBe(origin)
 
   await page.goto('/')
+  if (appName === 'brand') {
+    await expect(page).toHaveTitle('Brand administration')
+    const description = await page.locator('meta[name="description"]').getAttribute('content')
+    expect(description).toBeTruthy()
+    expect(description).not.toMatch(/demo|prototype|演示|原型/i)
+  }
   const firstRegistration = await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.ready
     return { scope: registration.scope, script: registration.active?.scriptURL }

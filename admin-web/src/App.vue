@@ -90,7 +90,7 @@ const englishUi: Record<string, string> = {
   "没有可访问的品牌": "No accessible brands", "主导航": "Main navigation",
   "概览": "Overview", "平台": "Platform", "运营": "Operations", "资金": "Finance", "管理": "Management",
   "帮助与反馈": "Help & feedback", "超级管理员": "Super administrator", "管理员": "Administrator",
-  "退出登录": "Sign out", "退出": "Sign out", "运营控制台": "Operations console", "演示原型": "Prototype demo",
+  "退出登录": "Sign out", "退出": "Sign out", "运营控制台": "Operations console", "品牌后台": "Brand administration",
   "搜索用户、注单、期次": "Search users, orders, periods", "搜索": "Search", "通知": "Notifications", "帮助中心": "Help center", "关闭说明": "Dismiss notice",
   "交互演示 · 非生产环境": "Interactive demo · non-production",
   "后端品牌上下文": "Backend brand context", "正在读取 GET /api/v1/context": "Reading GET /api/v1/context", "平台品牌上下文": "Platform brand context",
@@ -760,24 +760,7 @@ const changeMemberPage = async (direction: -1 | 1) => {
         <div class="breadcrumbs">
           <span>{{ ui("运营控制台") }}</span><span class="crumb-slash">/</span
           ><b>{{ ui(page) }}</b
-          ><span
-            v-if="
-              !(account && (page === '品牌和域名' || page === '风控与合规')) &&
-              page !== '工作台' &&
-              page !== '用户和成员' &&
-              page !== '审计日志' &&
-              page !== '通知投递' &&
-              page !== '通知模板' &&
-              page !== '报表和对账' &&
-              page !== '代理树' &&
-              page !== '资金与账本' &&
-              page !== '批量对账' &&
-              page !== '账号与权限' &&
-              page !== '加入码'
-            "
-            class="prototype-badge"
-            >{{ ui("演示原型") }}</span
-          >
+          ><span class="prototype-badge">{{ ui("品牌后台") }}</span>
         </div>
         <div class="top-actions">
           <label class="admin-language">

@@ -8,6 +8,7 @@ const password = process.env.TEST_REVIEW_ADMIN_PASSWORD!;
 
 test('brand staff login is the only public entry and platform accounts are rejected', async ({ page }, info) => {
   await page.goto(brandOrigin);
+  await expect(page).toHaveTitle('Brand administration');
   await expect(page.locator('.login-entry__form')).toBeVisible();
   await expect(page.locator('.sidebar, .mobile-nav, .workbench, .app-shell')).toHaveCount(0);
   await page.getByLabel('账号', { exact: true }).fill('review_platform');
@@ -21,6 +22,7 @@ test('brand staff login is the only public entry and platform accounts are rejec
   await page.getByLabel('密码', { exact: true }).fill(password);
   await page.getByRole('button', { name: '登录并加载真实成员', exact: true }).click();
   await expect(page.locator('.app-shell')).toBeVisible();
+  await expect(page.locator('.breadcrumbs .prototype-badge')).toHaveText('品牌后台');
   await page.getByLabel('选择真实后台品牌', { exact: true }).selectOption(aurora);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('brand-authenticated.png'), fullPage: true });
