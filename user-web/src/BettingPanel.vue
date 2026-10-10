@@ -154,20 +154,6 @@ function invalidateReview() {
   uncertainPlace.value = false;
   quoteLoading.value = false;
 }
-function getItems(result: any): CatalogGame[] {
-  return Array.isArray(result)
-    ? result
-    : Array.isArray(result?.items)
-      ? result.items
-      : [];
-}
-function exactAmount(value: unknown): string {
-  return typeof value === "string"
-    ? value
-    : value == null
-      ? "0"
-      : String(value);
-}
 const gameId = computed(() => String(route.params.gameId ?? ""));
 const selectedPlay = computed(
   () =>
@@ -242,7 +228,7 @@ async function loadCatalog() {
   try {
     const result = await api.games();
     if (generation !== catalogGeneration.value) return;
-    catalog.value = getItems(result);
+    catalog.value = result.items;
     catalogError.value = "";
   } catch (error) {
     if (generation === catalogGeneration.value)
@@ -259,9 +245,9 @@ async function loadGame(id: string, passive = false) {
     const result = await api.game(id);
     if (generation !== fetchGeneration.value || id !== gameId.value) return;
     currentGame.value = result.game;
-    plays.value = Array.isArray(result.plays) ? result.plays : [];
-    period.value = result.period ?? null;
-    policy.value = result.policy ?? null;
+    plays.value = result.plays;
+    period.value = result.period;
+    policy.value = result.policy;
     policyVersions.value = result.policy_versions;
     const nextFingerprint = JSON.stringify({
       game: result.game,
@@ -282,8 +268,7 @@ async function loadGame(id: string, passive = false) {
       multiplier.value = "1";
     }
     loadedGameFingerprint.value = nextFingerprint;
-    const received = Date.parse(result.server_time ?? "");
-    if (Number.isFinite(received)) serverOffset.value = received - Date.now();
+    serverOffset.value = Date.parse(result.server_time) - Date.now();
     if (
       !uncertainPlace.value &&
       !plays.value.some((item) => item.id === chosenPlayId.value)
@@ -517,13 +502,9 @@ async function loadOrders() {
   ordersLoading.value = true;
   orderError.value = "";
   try {
-    const result: any = await api.orders();
+    const result = await api.orders();
     if (generation === orderGeneration.value)
-      orders.value = Array.isArray(result)
-        ? result
-        : Array.isArray(result?.items)
-          ? result.items
-          : [];
+      orders.value = result.items;
   } catch (error) {
     if (generation === orderGeneration.value) {
       orders.value = [];
@@ -604,22 +585,13 @@ function openBet(game: CatalogGame, play?: CatalogPlay) {
     query: play ? { play: play.id } : {},
   });
 }
-function periodTitle(value: any) {
-  return (
-    value?.period_no ??
-    value?.id ??
-    (zh.value ? "无开放期次" : "No open period")
-  );
+function periodTitle(value: import('./betting-api').Period | null) {
+  return value ? value.period_no : (zh.value ? "无开放期次" : "No open period");
 }
-function modelName(value?: string | { model?: string }) {
-  const model = typeof value === "string" ? value : value?.model;
-  return model === "X_PLUS_Y"
-    ? "X + Y"
-    : model === "M_SELECT_N"
-      ? "M select N"
-      : model === "DIGITS_0_9"
-        ? "0–9 digits"
-        : (model ?? "");
+function modelName(value: RuleDefinition['model']) {
+  const labels: Record<string, string> = { X_PLUS_Y: 'X + Y', M_SELECT_N: 'M select N', DIGITS_0_9: '0–9 digits' };
+  if (!labels[value.model]) throw new Error('Unsupported number model');
+  return labels[value.model];
 }
 function detailsStatus(value: string) {
   return value.replaceAll("_", " ");
@@ -627,12 +599,8 @@ function detailsStatus(value: string) {
 function isCancelAllowed(order: BetOrder) {
   return order.status === "placed" && order.policy_snapshot.user_cancel_allowed;
 }
-function formatExactPoints(value: unknown) {
-  try {
-    return BigInt(exactAmount(value)).toLocaleString(zh.value ? "zh-CN" : "en");
-  } catch {
-    return exactAmount(value);
-  }
+function formatExactPoints(value: string) {
+  return BigInt(value).toLocaleString(zh.value ? "zh-CN" : "en");
 }
 
 onMounted(() => {
@@ -1153,8 +1121,8 @@ onUnmounted(() => {
         <strong>{{ order.game_id }}</strong
         ><span>{{ order.period_id }} · {{ detailsStatus(order.status) }}</span
         ><span
-          >{{ zh ? "积分" : "Points" }} {{ exactAmount(order.total_points) }} ·
-          ×{{ exactAmount(order.multiplier) }}</span
+          >{{ zh ? "积分" : "Points" }} {{ order.total_points }} ·
+          ×{{ order.multiplier }}</span
         >
       </div>
       <RouterLink
@@ -1194,14 +1162,14 @@ onUnmounted(() => {
         >{{ zh ? "状态" : "Status" }} ·
         {{ detailsStatus(placedOrder.status) }}</strong
       ><span>{{ zh ? "期次" : "Period" }} {{ placedOrder.period_id }}</span
-      ><span v-if="placedOrder.settled_at">{{ zh ? "中奖积分" : "Prize points" }} {{ exactAmount(placedOrder.prize_points ?? '0') }} · {{ zh ? "已入账" : "Applied" }}</span
+      ><span v-if="placedOrder.settled_at">{{ zh ? "中奖积分" : "Prize points" }} {{ placedOrder.prize_points }} · {{ zh ? "已入账" : "Applied" }}</span
       ><span>{{ zh ? "玩法" : "Play" }} {{ placedOrder.play_id }}</span
       ><span
         >{{ zh ? "总积分" : "Total points" }}
-        {{ exactAmount(placedOrder.total_points) }}</span
+        {{ placedOrder.total_points }}</span
       ><span
         >{{ zh ? "倍数" : "Multiplier" }}
-        {{ exactAmount(placedOrder.multiplier) }}</span
+        {{ placedOrder.multiplier }}</span
       ><span
         >{{ zh ? "赔率规则摘要" : "Rule hash" }}
         {{ placedOrder.definition_hash }}</span

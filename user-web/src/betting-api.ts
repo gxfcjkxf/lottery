@@ -112,7 +112,7 @@ export interface BetOrder {
   cancel_reason?: string;
   settlement_calculation_id?: string | null;
   payout_entry_id?: string | null;
-  prize_points?: string;
+  prize_points: string;
   settled_at?: string | null;
 }
 export interface BettingApiErrorEnvelope {
@@ -122,7 +122,7 @@ export interface BettingApiErrorEnvelope {
 interface Envelope<T> {
   success?: boolean;
   data?: T;
-  error?: string | BettingApiErrorEnvelope | null;
+  error?: BettingApiErrorEnvelope | null;
 }
 
 export class BettingApiError extends Error {
@@ -154,6 +154,35 @@ function validateMultiplier(value: string): void {
       "invalid_multiplier",
     );
   }
+}
+
+function invalidResponse(): never {
+  throw new BettingApiError('Server returned an invalid current betting response', 502, 'invalid_response');
+}
+function checkedPage<T extends { items: unknown[] }>(value: T): T {
+  if (!value || Array.isArray(value) || !Array.isArray(value.items)) invalidResponse();
+  return value;
+}
+function checkedCatalogGame(value: CatalogGame): CatalogGame {
+  if (!value || !value.model || typeof value.model !== 'object' ||
+    !['X_PLUS_Y', 'M_SELECT_N', 'DIGITS_0_9'].includes(value.model.model)) invalidResponse();
+  return value;
+}
+function checkedGameCatalog(value: GameCatalog): GameCatalog {
+  if (!value || !Array.isArray(value.plays) || !Object.hasOwn(value, 'period') ||
+    (value.period !== null && (!value.period || typeof value.period.period_no !== 'string')) || !value.policy ||
+    typeof value.brand_status !== 'string' || typeof value.server_time !== 'string' ||
+    !Number.isFinite(Date.parse(value.server_time)) || !value.policy_versions) invalidResponse();
+  checkedCatalogGame(value.game);
+  return value;
+}
+function checkedOrder(value: BetOrder): BetOrder {
+  const fields = ['unit_points', 'multiplier', 'total_points', 'prize_points'] as const;
+  if (!value || fields.some(field => {
+    const amount = value[field];
+    return typeof amount !== 'string' || !(field === 'prize_points' ? /^(?:0|[1-9]\d*)$/ : canonicalPositiveInt64).test(amount);
+  })) invalidResponse();
+  return value;
 }
 
 function canonicalClone<T>(value: T): T {
@@ -242,33 +271,14 @@ export function createBettingApi(
     let envelope: Envelope<T>;
     try {
       envelope = (await response.json()) as Envelope<T>;
-    } catch {
-      throw new BettingApiError(
-        response.ok
-          ? "Server returned malformed JSON"
-          : `Request failed (${response.status})`,
-        response.status,
-      );
+    } catch { invalidResponse(); }
+    if (!envelope || typeof envelope !== 'object') invalidResponse();
+    if (!response.ok) {
+      if (envelope.success !== false || typeof envelope.error?.code !== 'string' ||
+        typeof envelope.error?.message !== 'string') invalidResponse();
+      throw new BettingApiError(envelope.error.message, response.status, envelope.error.code);
     }
-    if (
-      !envelope ||
-      typeof envelope !== "object" ||
-      !response.ok ||
-      envelope.success !== true ||
-      envelope.data === undefined
-    ) {
-      const error =
-        typeof envelope?.error === "object" && envelope.error
-          ? envelope.error
-          : undefined;
-      throw new BettingApiError(
-        typeof envelope?.error === "string"
-          ? envelope.error
-          : (error?.message ?? `Request failed (${response.status})`),
-        response.status,
-        error?.code,
-      );
-    }
+    if (envelope.success !== true || envelope.data == null) invalidResponse();
     return envelope.data;
   }
   const pageQuery = (limit: number, offset: number) =>
@@ -277,10 +287,10 @@ export function createBettingApi(
     games(limit = 50, offset = 0) {
       return request<{ items: CatalogGame[]; limit: number; offset: number }>(
         `/games?${pageQuery(limit, offset)}`,
-      );
+      ).then(value => { checkedPage(value); value.items.forEach(checkedCatalogGame); return value; });
     },
     game(id: string) {
-      return request<GameCatalog>(`/games/${encodeURIComponent(id)}`);
+      return request<GameCatalog>(`/games/${encodeURIComponent(id)}`).then(checkedGameCatalog);
     },
     preview(input: BetInput) {
       validateMultiplier(input.multiplier);
@@ -293,15 +303,15 @@ export function createBettingApi(
         "POST",
         canonicalClone(input),
         key,
-      );
+      ).then(checkedOrder);
     },
     orders(limit = 50, offset = 0) {
       return request<{ items: BetOrder[] }>(
         `/bet-orders?${pageQuery(limit, offset)}`,
-      );
+      ).then(value => { checkedPage(value); value.items.forEach(checkedOrder); return value; });
     },
     order(id: string) {
-      return request<BetOrder>(`/bet-orders/${encodeURIComponent(id)}`);
+      return request<BetOrder>(`/bet-orders/${encodeURIComponent(id)}`).then(checkedOrder);
     },
     cancel(id: string, body: { version: number; reason: string }, key: string) {
       return request<BetOrder>(
@@ -309,7 +319,7 @@ export function createBettingApi(
         "POST",
         body,
         key,
-      );
+      ).then(checkedOrder);
     },
   };
 }

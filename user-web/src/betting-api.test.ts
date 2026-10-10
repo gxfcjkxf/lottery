@@ -64,6 +64,48 @@ const quote: BetQuote = {
 };
 
 describe("betting API", () => {
+  it('accepts current empty pages and explicit zero prize strings without replacements', async () => {
+    const pages = createBettingApi({ fetcher: vi.fn<typeof fetch>().mockImplementation(async () => ok({ items: [], limit: 50, offset: 0 })) });
+    expect((await pages.games()).items).toEqual([]);
+    expect((await pages.orders()).items).toEqual([]);
+    const order = { unit_points: '1', multiplier: '2', total_points: '2', prize_points: '0' };
+    const api = createBettingApi({ fetcher: vi.fn<typeof fetch>().mockImplementation(async () => ok(order)) });
+    expect(await api.order('order-id')).toEqual(order);
+  });
+  it('rejects legacy model names and missing current catalog metadata', async () => {
+    const catalog = { game: { model: { model: 'DIGITS_0_9' } }, plays: [], period: null, policy: quote.policy, policy_versions: quote.policy_versions, server_time: '2026-10-10T04:00:00Z', brand_status: 'active' };
+    for (const body of [{ ...catalog, game: { model: 'DIGITS_0_9' } }, { ...catalog, plays: null }, { ...catalog, period: undefined }, { ...catalog, server_time: 'invalid' }]) {
+      const api = createBettingApi({ fetcher: vi.fn<typeof fetch>().mockResolvedValue(ok(body)) });
+      await expect(api.game('game-id')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    }
+  });
+  it('treats malformed write replies and string-only gateway errors as unknown responses', async () => {
+    for (const reply of [new Response('broken', { status: 201 }), new Response(JSON.stringify({ success: false, error: 'gateway rejection' }), { status: 400 })]) {
+      const api = createBettingApi({ fetcher: vi.fn<typeof fetch>().mockResolvedValue(reply) });
+      await expect(api.place(input, 'original-key')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    }
+  });
+  it('rejects bare-array and missing-items list formats instead of treating them as empty', async () => {
+    for (const body of [[], {}, { items: null }]) {
+      const api = createBettingApi({ fetcher: vi.fn<typeof fetch>().mockImplementation(async () => ok(body)) });
+      await expect(api.games()).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+      await expect(api.orders()).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    }
+  });
+  it('rejects numeric, missing and noncanonical order amounts in reads and write receipts', async () => {
+    const order = { unit_points: '1', multiplier: '2', total_points: '2', prize_points: '0' };
+    for (const field of Object.keys(order)) {
+      for (const value of [0, null, undefined, '01', '1.5']) {
+        const invalid = { ...order, [field]: value };
+        const api = createBettingApi({ fetcher: vi.fn<typeof fetch>().mockImplementation(async () => ok(invalid)) });
+        await expect(api.order('order-id')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+        await expect(api.place(input, 'original-key')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+        await expect(api.cancel('order-id', { version: 1, reason: 'Cancel owned test order' }, 'cancel-key')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+        const list = createBettingApi({ fetcher: vi.fn<typeof fetch>().mockResolvedValue(ok({ items: [invalid] })) });
+        await expect(list.orders()).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+      }
+    }
+  });
   it("uses brand encoded endpoints and cookie credentials without session tokens", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
@@ -82,7 +124,7 @@ describe("betting API", () => {
   it("sends a reusable caller key and preserves arbitrary precision point strings", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockImplementation(async () => ok({ total_points: "9007199254740993" }));
+      .mockImplementation(async () => ok({ unit_points: '1', multiplier: '2', total_points: "9007199254740993", prize_points: '0' }));
     const api = createBettingApi({ fetcher });
     const placed = await api.place(input, "caller-stable-key");
     await api.place(input, "caller-stable-key");
@@ -98,7 +140,11 @@ describe("betting API", () => {
   });
 
   it("uses the public game detail route without an invented catalog suffix", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok({ game: {} }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok({
+      game: { model: { model: 'DIGITS_0_9' } }, plays: [], period: null,
+      policy: quote.policy, policy_versions: quote.policy_versions,
+      server_time: '2026-10-10T04:00:00Z', brand_status: 'active',
+    }));
     await createBettingApi({ fetcher }).game("game-id");
     expect(fetcher.mock.calls[0][0]).toBe("/api/v1/games/game-id");
   });
@@ -129,7 +175,7 @@ describe("betting API", () => {
         .fn<typeof fetch>()
         .mockResolvedValue(new Response("not json", { status: 200 })),
     });
-    await expect(malformed.orders()).rejects.toMatchObject({ status: 200 });
+    await expect(malformed.orders()).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
   });
 
   it("snapshots a canonical detached intent and captures quote policy versions once", () => {
