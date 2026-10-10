@@ -2,7 +2,17 @@
 
 package main
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
+
+func TestFixtureUsersMatchFourIndependentViewports(t *testing.T) {
+	want := []string{"qual_user", "qual_mobile_user", "qual_tablet_user", "qual_laptop_user"}
+	if !reflect.DeepEqual(fixtureUsernames, want) {
+		t.Fatalf("unexpected viewport users: %v", fixtureUsernames)
+	}
+}
 
 const (
 	validFixtureDSN = "postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_withdrawal_qualification_s9?sslmode=disable"

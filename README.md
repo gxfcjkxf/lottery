@@ -118,6 +118,8 @@ pnpm test:e2e --project=mobile --shard=2/2 --workers=1 --retries=0
 
 `pnpm test:responsive`在768px/1024px复用真实注册与完整投注浏览器流程，要求独立合成库的正式API/worker、不同的Harbor创建/审核账号，以及明确的Chromium路径；环境变量同投注测试（TEST_HARBOR_ADMIN_USERNAME/PASSWORD、TEST_RULE_REVIEWER_USERNAME/PASSWORD、PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH）。串行、零重试，不复用已占用的5173/5174/5175前端服务。它不覆盖这两种尺寸的完整提现/佣金或真机安装。
 
+四尺寸提现专项使用`pnpm exec playwright test --config playwright.qualification.config.ts`。先在新的UTF8合成库按基线migrate/seed，并运行带browserfixture标签的qualification-fixture：它只允许APP_ENV=test、明确确认、含密码的本机lottery_test连接及lottery_withdrawal_qualification_s9数据库，要求身份和钱包为空。夹具创建四个独立用户，通过真实充值、投注和派奖准备资格。启动正式API/worker，设置TEST_QUAL_ADMIN_PASSWORD、TEST_QUAL_USER_PASSWORD及PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH后串行验证360/768/1024/1440px。不能在已使用的夹具库重复运行或清空原数据来重试；此流程不接入外部支付。
+
 ## 工程结构
 
 ```text

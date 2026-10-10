@@ -47,7 +47,10 @@ async function userLogin(page: Page, username: string) {
 test('real turnover qualification survives unknown intent and follows ledger changes', async ({ page }, info) => {
   test.skip(!adminPassword || !userPassword, 'Set credentials for the isolated synthetic qualification database')
   test.setTimeout(90_000)
-  const username = info.project.name === 'mobile' ? 'qual_mobile_user' : 'qual_user'
+  const usernames: Record<string, string> = { desktop: 'qual_user', mobile: 'qual_mobile_user', tablet768: 'qual_tablet_user', laptop1024: 'qual_laptop_user' }
+  const username = usernames[info.project.name]
+  if (!username) throw new Error(`Unsupported qualification viewport: ${info.project.name}`)
+  const viewportWidth = page.viewportSize()!.width
   const runtimeErrors: string[] = []
   page.on('pageerror', error => runtimeErrors.push(error.message))
   await userLogin(page, username)
@@ -77,7 +80,7 @@ test('real turnover qualification survives unknown intent and follows ledger cha
   const initialBox = await panel.boundingBox()
   expect(initialBox).not.toBeNull()
   expect(initialBox!.x).toBeGreaterThanOrEqual(0)
-  expect(initialBox!.x + initialBox!.width).toBeLessThanOrEqual(info.project.name === 'mobile' ? 360 : 1440)
+  expect(initialBox!.x + initialBox!.width).toBeLessThanOrEqual(viewportWidth)
   await panel.screenshot({ path: info.outputPath('withdrawal-qualification-initial.png') })
 
   await panel.getByLabel('Recharge', { exact: true }).fill('3')
@@ -254,7 +257,7 @@ test('real turnover qualification survives unknown intent and follows ledger cha
   const finalBox = await panel.boundingBox()
   expect(finalBox).not.toBeNull()
   expect(finalBox!.x).toBeGreaterThanOrEqual(0)
-  expect(finalBox!.x + finalBox!.width).toBeLessThanOrEqual(info.project.name === 'mobile' ? 360 : 1440)
+  expect(finalBox!.x + finalBox!.width).toBeLessThanOrEqual(viewportWidth)
   await panel.screenshot({ path: info.outputPath('withdrawal-qualification-complete.png') })
   expect(runtimeErrors).toEqual([])
 })

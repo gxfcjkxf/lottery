@@ -36,6 +36,8 @@ const (
 	fixtureAck   = "owned_synthetic_database"
 )
 
+var fixtureUsernames = []string{"qual_user", "qual_mobile_user", "qual_tablet_user", "qual_laptop_user"}
+
 func safeFixtureURL(raw, environment, confirmation, adminPassword, userPassword string) error {
 	u, err := url.Parse(raw)
 	if err != nil || environment != "test" || confirmation != fixtureAck || len(adminPassword) < 16 || len(userPassword) < 16 ||
@@ -111,9 +113,9 @@ func run() error {
 	}
 	var existing int
 	err = tx.QueryRow(ctx, `SELECT
-	 (SELECT count(*) FROM global_users WHERE username IN ('qual_user','qual_mobile_user'))+
+	 (SELECT count(*) FROM global_users WHERE username=ANY($1::text[]))+
 	 +(SELECT count(*) FROM admin_accounts WHERE username IN ('qual_admin','qual_rule_reviewer'))
-	 +(SELECT count(*) FROM point_accounts pa JOIN brand_members bm ON bm.id=pa.brand_member_id JOIN global_users u ON u.id=bm.global_user_id WHERE u.username IN ('qual_user','qual_mobile_user'))`).Scan(&existing)
+	 +(SELECT count(*) FROM point_accounts pa JOIN brand_members bm ON bm.id=pa.brand_member_id JOIN global_users u ON u.id=bm.global_user_id WHERE u.username=ANY($1::text[]))`, fixtureUsernames).Scan(&existing)
 	if err != nil {
 		return err
 	}
@@ -167,9 +169,9 @@ func run() error {
 	if err != nil {
 		return errors.New("identity service unavailable")
 	}
-	users := make([]fixtureUser, 0, 2)
-	sessions := make([]identity.Session, 0, 2)
-	for _, username := range []string{"qual_user", "qual_mobile_user"} {
+	users := make([]fixtureUser, 0, len(fixtureUsernames))
+	sessions := make([]identity.Session, 0, len(fixtureUsernames))
+	for _, username := range fixtureUsernames {
 		registered, registerErr := identityMutation(ctx, db, func(tx pgx.Tx) (any, error) {
 			result, e := identityStore.Register(ctx, tx, fixtureBrand, identity.RegisterInput{Username: username, Password: userPassword, Privacy: "dev-1", Terms: "dev-1"}, identity.Metadata{RequestID: ids.New(), Domain: "localhost"})
 			if e != nil {

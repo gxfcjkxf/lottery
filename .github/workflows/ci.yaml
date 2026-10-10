@@ -893,8 +893,9 @@ jobs:
           ./bin/platform serve > ../qualification-api.log 2>&1 &
           ./bin/platform worker > ../qualification-worker.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
-      - run: pnpm exec playwright test tests/browser/withdrawal-qualification.spec.ts --project=desktop --workers=1 --retries=0
-      - run: pnpm exec playwright test tests/browser/withdrawal-qualification.spec.ts --project=mobile --workers=1 --retries=0
+      - name: Pin Chromium for the four-viewport qualification suite
+        run: node --input-type=module -e 'import { chromium } from "@playwright/test"; import { appendFileSync } from "node:fs"; appendFileSync(process.env.GITHUB_ENV, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${chromium.executablePath()}\n`);'
+      - run: pnpm exec playwright test --config playwright.qualification.config.ts
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
