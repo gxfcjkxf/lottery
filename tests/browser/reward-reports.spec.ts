@@ -27,7 +27,7 @@ test('real reward reports separate immutable postings from current order cohorts
   await post('/auth/login', { identifier: 'reward_s22_operator', password: process.env.TEST_REWARD_ADMIN_PASSWORD });
   const { account } = await get<{ account: { id: string; permissions_by_brand: Record<string, string[]> } }>('/me');
   expect(account.permissions_by_brand[brand]).toEqual(expect.arrayContaining(['report_reward.view.brand', 'report_reward.export.brand', 'reward.view.brand']));
-  rememberAdminSession('reward_s22_operator', await context.cookies(`${admin}/me`), origin, account.id);
+  await rememberAdminSession(context, 'reward_s22_operator', origin);
   const member = await post<{ member_id: string }>('/users', { username: `rr_${info.project.name}_${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`, password: 'owned-report-member-password-2026', display_name: 'Owned reward report member', reason: 'Create explicitly owned reward report browser member' }, {}, 201);
   const memberID = member.member_id, actor = { 'X-Reward-Actor-ID': account.id };
   const grant = (points: string) => post<Order>('/reward-orders', { member_id: memberID, points, reason: 'Owned synthetic report grant' }, actor, 201);

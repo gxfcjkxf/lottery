@@ -11,7 +11,7 @@ test('brand inventory finds a parentless child without changing funds or automat
  test.skip(!username||!password,'Provide owned reconciliation administrator credentials');
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  const login=await page.request.post(origin+'/api/v1/admin/auth/login',{headers:{Origin:origin,'Idempotency-Key':crypto.randomUUID()},data:{identifier:username,password}});
- expect(login.status(),await login.text()).toBe(200);rememberAdminSession(username!,await context.cookies(origin+'/api/v1/admin/me'));
+ expect(login.status(),await login.text()).toBe(200);await rememberAdminSession(context,username!);
  let reads=0;await page.route('**'+endpoint,route=>{reads++;return route.continue()});
  let writes=0;page.on('request',request=>{if(request.method()!=='GET'&&request.url().includes('/api/v1/admin/'))writes++});
  await page.goto(origin);

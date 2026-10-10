@@ -11,7 +11,7 @@ test("real member recharge records reflect manual confirmation and cancellation 
     const response = await page.request.post(`${adminOrigin}/api/v1/admin/auth/login`, { headers: { ...headers, "Idempotency-Key": uid() }, data: { identifier: username, password: process.env.TEST_HARBOR_ADMIN_PASSWORD } });
     expect(response.status()).toBe(200);
   }
-  rememberAdminSession(username, await context.cookies(`${adminOrigin}/api/v1/admin/me`), adminOrigin);
+  await rememberAdminSession(context, username, adminOrigin);
   const admin = async (path: string, body?: unknown, status = 200) => {
     const response = await page.request.fetch(`${adminOrigin}/api/v1/admin${path}`, { method: body === undefined ? "GET" : "POST", headers: { ...headers, ...(body === undefined ? {} : { "Idempotency-Key": uid() }) }, ...(body === undefined ? {} : { data: body }) });
     expect(response.status(), await response.text()).toBe(status); return (await response.json()).data;

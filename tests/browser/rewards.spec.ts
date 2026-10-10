@@ -34,7 +34,7 @@ test('real manual rewards recover original receipts without duplicate money and 
   await data(await page.request.post(`${admin}/auth/login`,{headers:{Origin:origin,'Idempotency-Key':crypto.randomUUID()},data:{identifier:'reward_s22_operator',password:process.env.TEST_REWARD_ADMIN_PASSWORD}}));
   const {account}=await get<{account:{id:string;permissions_by_brand:Record<string,string[]>}}>('/me');
   expect(account.permissions_by_brand[brand]).toEqual(expect.arrayContaining(['reward.view.brand','reward.grant.brand','reward.revoke.brand','reward.retry.brand']));
-  rememberAdminSession('reward_s22_operator',await context.cookies(`${admin}/me`),origin,account.id);
+  await rememberAdminSession(context,'reward_s22_operator',origin);
   expect((await get<{items:Order[]}>('/reward-orders?limit=100&offset=0')).items).toEqual([]);
   // The member and all balances are created by normal APIs, never by direct SQL.
   const member=await data<{member_id:string}>(await page.request.post(`${admin}/users`,{headers:{Origin:origin,'X-Brand-ID':brand,'Idempotency-Key':crypto.randomUUID()},data:{username:`rw_${info.project.name}_${crypto.randomUUID().replaceAll('-','').slice(0,8)}`,password:'owned-reward-member-password-2026',display_name:'Owned synthetic reward member',reason:'Create explicitly owned reward browser member'}}),201);

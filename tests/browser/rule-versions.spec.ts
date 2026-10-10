@@ -20,7 +20,7 @@ async function login(
   await page
     .getByLabel("选择真实后台品牌", { exact: true })
     .selectOption(harbor);
-  rememberAdminSession(username, await page.context().cookies("http://localhost:5174/api/v1/admin/me"));
+  await rememberAdminSession(page.context(), username);
   if (info.project.name === "mobile") {
     await page.locator(".mobile-nav button").last().click();
     await page

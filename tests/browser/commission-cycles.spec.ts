@@ -37,7 +37,7 @@ test('real commission cycles retain unknown requests, retry real failures and pr
   expect(before.commission_ledger_entries).toBe(0);expect(before.commission_wallet_points).toBe(0);expect(before.economic_fingerprint).toMatch(/^[0-9a-f]{64}$/);
   const username='commission_admin';
   await data(await page.request.post(`${admin}/auth/login`,{headers:{Origin:origin,'Idempotency-Key':crypto.randomUUID()},data:{identifier:username,password:process.env.TEST_COMMISSION_ADMIN_PASSWORD}}));
-  rememberAdminSession(username,await context.cookies(`${admin}/me`),origin);
+  await rememberAdminSession(context,username,origin);
   const get=async<T>(path:string)=>data<T>(await page.request.get(`${admin}${path}`,{headers:{'X-Brand-ID':brand}}));
   const all=await get<{items:Cycle[]}>('/commission-cycles?limit=100&offset=0');
   const ready=all.items.find(c=>c.state==='ready')!,failed=all.items.find(c=>c.state==='failed')!;
@@ -124,7 +124,7 @@ test('current commission management renders exact completed evidence without fin
   const before=command('verify');
   expect(before.economic_fingerprint).toMatch(/^[0-9a-f]{64}$/);expect(before.commission_ledger_entries).toBe(0);expect(before.commission_wallet_points).toBe(0);
   await data(await page.request.post(`${admin}/auth/login`,{headers:{Origin:origin,'Idempotency-Key':crypto.randomUUID()},data:{identifier:'commission_admin',password:process.env.TEST_COMMISSION_ADMIN_PASSWORD}}));
-  rememberAdminSession('commission_admin',await context.cookies(`${admin}/me`),origin);
+  await rememberAdminSession(context,'commission_admin',origin);
   const writes:string[]=[];page.on('request',r=>{if(r.url().startsWith(admin)&&r.method()!=='GET')writes.push(r.url());});
   await page.goto(origin);await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);
   const panel=await navigate(page,'佣金和奖励|Commissions.*rewards');

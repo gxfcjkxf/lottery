@@ -9,7 +9,7 @@ test("real agent policy tree and direct-child configuration retain audited idemp
   if(!await restoreAdminSession(context,process.env.TEST_HARBOR_ADMIN_USERNAME!,brand)) {
     const r=await page.request.post(`${admin}/auth/login`,{headers:{...headers,"Idempotency-Key":uid()},data:{identifier:process.env.TEST_HARBOR_ADMIN_USERNAME,password:process.env.TEST_HARBOR_ADMIN_PASSWORD}});expect(r.status(),await r.text()).toBe(200);
   }
-  rememberAdminSession(process.env.TEST_HARBOR_ADMIN_USERNAME!,await context.cookies(`${admin}/me`));
+  await rememberAdminSession(context,process.env.TEST_HARBOR_ADMIN_USERNAME!);
   const adminCall=async(path:string,method:"GET"|"POST"|"PUT",body?:unknown,status=200)=>{
     const r=await page.request.fetch(`${admin}${path}`,{method,headers:{...headers,...(method==="GET"?{}:{"Idempotency-Key":uid()})},...(body===undefined?{}:{data:body})});expect(r.status(),await r.text()).toBe(status);return(await r.json()).data;
   };

@@ -32,7 +32,7 @@ async function login(page: Page, context: BrowserContext, info: TestInfo) {
     await page.getByRole('button', { name: 'Sign in and load members', exact: true }).click()
   }
   await page.locator('.directory-brand-bar select').selectOption(brand)
-  rememberAdminSession(username!, await context.cookies(), origin)
+  await rememberAdminSession(context, username!, origin)
 }
 async function data(response: Awaited<ReturnType<Page['request']['get']>>, status = 200) {
   expect(response.status()).toBe(status)

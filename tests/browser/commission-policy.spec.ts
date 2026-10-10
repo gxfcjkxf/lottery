@@ -15,7 +15,7 @@ test('real commission financial policy retains the original unknown receipt and 
   const h={Origin:origin,'X-Brand-ID':brand};
   const username=process.env.TEST_HARBOR_ADMIN_USERNAME!;
   if(!await restoreAdminSession(context,username,brand,origin))await data(await page.request.post(`${api}/auth/login`,{headers:{...h,'Idempotency-Key':uid()},data:{identifier:username,password:process.env.TEST_HARBOR_ADMIN_PASSWORD}}),'admin login');
-  rememberAdminSession(username,await context.cookies(`${api}/me`),origin);
+  await rememberAdminSession(context,username,origin);
   const call=async<T>(path:string,method:'GET'|'PUT',body?:unknown)=>data<T>(await page.request.fetch(`${api}${path}`,{method,headers:{...h,...(body===undefined?{}:{'Content-Type':'application/json','Idempotency-Key':uid()})},...(body===undefined?{}:{data:body})}),`${method} ${path}`);
   const original=await call<Policy>('/commission-policy','GET');
   expect(original.config.enabled,'test must not take over a running financial policy').toBe(false);

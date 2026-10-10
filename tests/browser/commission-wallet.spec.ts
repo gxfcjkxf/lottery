@@ -31,7 +31,7 @@ async function loginAdminHarbor(page: Page, context: BrowserContext) {
       data: { identifier: username, password },
     }), "Harbor admin login");
   }
-  rememberAdminSession(username, await context.cookies(`${adminApi}/me`), adminOrigin);
+  await rememberAdminSession(context, username, adminOrigin);
   await page.goto(adminOrigin);
   await page.locator(".directory-brand-bar select").selectOption(harbor);
 }

@@ -18,7 +18,7 @@ async function signedIn(page: Page, context: BrowserContext, info: TestInfo) {
   await navigate(page, info, 'Users and members')
   await page.locator('.directory-brand-bar select').selectOption(brandId)
   await expect(page.locator('.provision')).toBeVisible()
-  rememberAdminSession(username!, await context.cookies(), origin)
+  await rememberAdminSession(context, username!, origin)
 }
 
 async function switchLanguage(page: Page, language: 'en' | 'zh-CN') {

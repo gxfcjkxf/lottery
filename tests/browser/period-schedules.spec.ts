@@ -18,7 +18,7 @@ async function signIn(page: Page, context: BrowserContext) {
   expect(me.status(), meBody).toBe(200);
   const account = JSON.parse(meBody).data.account;
   expect(account.brand_ids).toContain(harbor);
-  rememberAdminSession(username, await context.cookies(`${adminOrigin}/api/v1/admin/me`), adminOrigin, account.id);
+  await rememberAdminSession(context, username, adminOrigin);
 }
 async function showPeriods(page: Page, info: TestInfo) {
   if (info.project.name === "mobile") {

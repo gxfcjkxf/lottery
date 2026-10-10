@@ -94,11 +94,11 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   const creator = await login(page.request, process.env.TEST_HARBOR_ADMIN_USERNAME!, process.env.TEST_HARBOR_ADMIN_PASSWORD!);
   const creatorCookies = (await context.cookies(`${adminBase}/me`)).filter(cookie => cookie.name === "lottery_admin");
   expect(creatorCookies).toHaveLength(1);
-  rememberAdminSession(process.env.TEST_HARBOR_ADMIN_USERNAME!,creatorCookies,adminOrigin);
+  await rememberAdminSession(context,process.env.TEST_HARBOR_ADMIN_USERNAME!,adminOrigin);
   const reviewer = await login(page.request, process.env.TEST_RULE_REVIEWER_USERNAME!, process.env.TEST_RULE_REVIEWER_PASSWORD!);
   const reviewerCookies = (await context.cookies(`${adminBase}/me`)).filter(cookie => cookie.name === "lottery_admin");
   expect(reviewerCookies).toHaveLength(1);
-  rememberAdminSession(process.env.TEST_RULE_REVIEWER_USERNAME!, reviewerCookies,adminOrigin);
+  await rememberAdminSession(context,process.env.TEST_RULE_REVIEWER_USERNAME!,adminOrigin);
 
   const authContext = await publicApi<{ auth?: { captcha_enabled?: boolean } }>(page.request, "/context");
   const username = `corr_${unique()}`;

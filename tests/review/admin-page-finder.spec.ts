@@ -1,6 +1,27 @@
 import { test, expect } from './platform-fixture';
+import { rememberAdminSession, restoreAdminSession } from '../browser/support/admin-session';
 
 test.use({ storageState: async ({ operatorSession }, use) => { await use(operatorSession); } });
+
+test('session cache binds the authenticated account before restoring its brand cookie', async ({ page, context }, info) => {
+  const origin = 'http://127.0.0.1:5184';
+  const brand = '0199a000-0000-7000-8000-000000000001';
+  const username = `review_operator_${info.project.name}`;
+  const original = await context.request.get(`${origin}/api/v1/admin/me`);
+  expect(original.status()).toBe(200);
+  const accountId = (await original.json()).data.account.id;
+  await rememberAdminSession(context, username, origin);
+  await context.clearCookies({ name: 'lottery_admin' });
+  expect((await context.request.get(`${origin}/api/v1/admin/me`)).status()).toBe(401);
+  expect(await restoreAdminSession(context, username, brand, origin)).toBe(true);
+  const restored = await context.request.get(`${origin}/api/v1/admin/me`);
+  expect(restored.status()).toBe(200);
+  expect((await restored.json()).data.account.id).toBe(accountId);
+  await page.goto(origin);
+  await expect(page.locator('.app-shell')).toBeVisible();
+  expect(await restoreAdminSession(context, username, '0199a000-0000-7000-8000-000000000002', origin)).toBe(false);
+  expect((await context.request.get(`${origin}/api/v1/admin/me`)).status()).toBe(401);
+});
 
 test('page finder navigates without filtering members and mobile keeps its existing menu', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('lottery.admin.locale', 'zh-CN'));

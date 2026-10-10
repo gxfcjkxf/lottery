@@ -43,7 +43,7 @@ test("real bilingual template publication survives lost receipt and preserves hi
  const identity=await page.request.get(admin+"/me",{headers:{"X-Brand-ID":brand}});
  const identityData=await unwrap<{account:{id:string;brand_ids:string[]}}>(identity);
  expect(identityData.account.brand_ids).toContain(brand);
- rememberAdminSession(username!,await context.cookies(admin+"/me"),origin,identityData.account.id);
+ await rememberAdminSession(context,username!,origin);
  const original=await read(page),prior=await register(page);
  await expect.poll(async()=> (await inbox(page,prior.access_token)).items.length).toBe(1);
  const oldMessage=(await inbox(page,prior.access_token)).items[0]!;

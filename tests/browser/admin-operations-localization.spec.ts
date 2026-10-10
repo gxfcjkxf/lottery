@@ -11,7 +11,7 @@ test("translated operational console preserves rule and report drafts without bu
     const response = await page.request.post(`${origin}/api/v1/admin/auth/login`, { headers: { ...headers, "Idempotency-Key": crypto.randomUUID() }, data: { identifier: username, password: process.env.TEST_HARBOR_ADMIN_PASSWORD } });
     expect(response.status()).toBe(200);
   }
-  rememberAdminSession(username, await context.cookies(`${origin}/api/v1/admin/me`), origin);
+  await rememberAdminSession(context, username, origin);
   const writes: string[] = [], errors: string[] = [];
   page.on("request", request => { if (new URL(request.url()).pathname.startsWith("/api/") && !["GET", "HEAD", "OPTIONS"].includes(request.method())) writes.push(`${request.method()} ${new URL(request.url()).pathname}`); });
   page.on("pageerror", error => errors.push(error.message));

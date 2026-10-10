@@ -19,7 +19,7 @@ test('actual commission posting report filters saved beneficiaries and validates
   test.skip(!fixture||!process.env.COMMISSION_FIXTURE_CONFIRM||!process.env.TEST_COMMISSION_ADMIN_PASSWORD,'Provide completed owned commission workflow fixture');
   const before=verify();expect(before.commission_ledger_entries).toBe(1);expect(before.commission_wallet_points).toBe(0);
   await data(await page.request.post(`${admin}/auth/login`,{headers:{Origin:origin,'Idempotency-Key':crypto.randomUUID()},data:{identifier:'commission_admin',password:process.env.TEST_COMMISSION_ADMIN_PASSWORD}}));
-  rememberAdminSession('commission_admin',await context.cookies(`${admin}/me`),origin);
+  await rememberAdminSession(context,'commission_admin',origin);
   const get=async<T>(path:string)=>data<T>(await page.request.get(`${admin}${path}`,{headers:{'X-Brand-ID':brand}}));
   const jobs=await get<{items:Array<{id:string;cycle_id:string;payout_mode:string;paid_points:string}>}>('/commission-payments?limit=100&offset=0');
   const payment=jobs.items.find(p=>p.payout_mode==='automatic'&&p.paid_points==='1')!;expect(payment).toBeTruthy();

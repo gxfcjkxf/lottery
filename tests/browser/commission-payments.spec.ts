@@ -23,7 +23,7 @@ test('real payout opt-in credits automatic C and preserves lost manual approval 
   // No production scheduler is started; all advancement is explicit.
   expect(command('pay').processed).toBe(0);
   await data(await page.request.post(`${admin}/auth/login`,{headers:{Origin:origin,'Idempotency-Key':crypto.randomUUID()},data:{identifier:'commission_admin',password:process.env.TEST_COMMISSION_ADMIN_PASSWORD}}));
-  rememberAdminSession('commission_admin',await context.cookies(`${admin}/me`),origin);
+  await rememberAdminSession(context,'commission_admin',origin);
   const get=async<T>(path:string)=>data<T>(await page.request.get(`${admin}${path}`,{headers:{'X-Brand-ID':brand}}));
   expect((await get<{enabled:boolean;version:number;audit_log_id:string}>('/commission-payment-policy')).enabled).toBe(false);
   await page.goto(origin);await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);
@@ -84,7 +84,7 @@ test('current payout status renders exact credited C without further financial w
   test.skip(!fixture||!process.env.COMMISSION_FIXTURE_CONFIRM||!process.env.TEST_COMMISSION_ADMIN_PASSWORD,'Provide explicitly owned commission workflow fixture');
   const before=command('verify');expect(before.commission_ledger_entries).toBe(1);expect(before.commission_wallet_points).toBe(1);
   await data(await page.request.post(`${admin}/auth/login`,{headers:{Origin:origin,'Idempotency-Key':crypto.randomUUID()},data:{identifier:'commission_admin',password:process.env.TEST_COMMISSION_ADMIN_PASSWORD}}));
-  rememberAdminSession('commission_admin',await context.cookies(`${admin}/me`),origin);
+  await rememberAdminSession(context,'commission_admin',origin);
   const writes:string[]=[];page.on('request',r=>{if(r.url().startsWith(admin)&&r.method()!=='GET')writes.push(r.url());});
   await page.goto(origin);await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);
   await navigate(page,'佣金派发|Commission payouts');const panel=page.locator('.commission-payments');

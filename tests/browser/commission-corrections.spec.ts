@@ -34,7 +34,7 @@ test('actual manual correction preserves lost approval receipts, holds until exp
   const before = command('verify-corrections'); expect(before.correction_ledger_entries).toBe(0);
   expect(command('execute-corrections').processed).toBe(0);
   await data(await page.request.post(`${admin}/auth/login`, { headers: { Origin: origin, 'Idempotency-Key': crypto.randomUUID() }, data: { identifier: 'commission_admin', password: process.env.TEST_COMMISSION_ADMIN_PASSWORD } }));
-  rememberAdminSession('commission_admin', await context.cookies(`${admin}/me`), origin);
+  await rememberAdminSession(context, 'commission_admin', origin);
   const get = async <T>(path: string) => data<T>(await page.request.get(`${admin}${path}`, { headers: { 'X-Brand-ID': brand } }));
   const policy = await get<{ enabled: boolean; version: number }>('/commission-correction-policy'); expect(policy.enabled).toBe(false);
   await page.goto(origin); await page.getByLabel(/选择真实后台品牌|Select an administrative brand/, { exact: true }).selectOption(brand);

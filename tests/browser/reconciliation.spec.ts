@@ -96,7 +96,7 @@ test("real reconciliation keeps an unknown create pending until the original req
     data: { identifier: username, password },
   });
   expect(login.status(), await login.text()).toBe(200);
-  rememberAdminSession(username!, await context.cookies(`${admin}/me`));
+  await rememberAdminSession(context, username!);
 
   await page.goto(origin);
   await page.getByLabel("选择真实后台品牌", { exact: true }).selectOption(brand);
