@@ -1,0 +1,68 @@
+import { test, expect } from './platform-fixture';
+
+const origin = 'http://127.0.0.1:5185';
+
+test('new brand receives its first administrator with the complete registered brand directory', async ({ page, playwright }) => {
+  page.setDefaultTimeout(10_000);
+  const suffix = crypto.randomUUID().replaceAll('-', '').slice(0, 10);
+  await page.goto(origin);
+  await page.getByRole('button', { name: 'New brand', exact: false }).click();
+  let dialog = page.getByRole('dialog');
+  const brandCode = `onboard_${suffix}`;
+  await dialog.getByLabel('Brand code', { exact: true }).fill(brandCode);
+  await dialog.getByLabel('Brand name', { exact: true }).fill(`Onboarding ${suffix}`);
+  await dialog.getByLabel('Reason for creation', { exact: true }).fill('Prepare owned first brand administrator');
+  await dialog.getByRole('button', { name: /Review request/ }).click();
+  const created = page.waitForResponse(response => response.url() === `${origin}/api/v1/platform/brands` && response.request().method() === 'POST');
+  await dialog.getByRole('button', { name: 'Confirm and create', exact: true }).click();
+  const createdResponse = await created;
+  expect(createdResponse.status()).toBe(201);
+  const brandId = (await createdResponse.json()).data.id;
+  await expect(dialog).toHaveCount(0);
+  await page.getByTestId('platform-brand-list').locator('tr').filter({ hasText: brandCode }).getByRole('button', { name: 'View accounts →', exact: true }).click();
+  const panel = page.getByTestId('platform-access');
+  await panel.getByRole('tab', { name: 'Roles', exact: true }).click();
+  await panel.getByRole('button', { name: 'New role', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  const roleCode = `administrator_${suffix}`;
+  await dialog.getByLabel('Code', { exact: true }).fill(roleCode);
+  await dialog.getByLabel('Name', { exact: true }).fill('Brand administrator');
+  await expect(dialog.getByRole('button', { name: 'Select all permissions', exact: true })).toBeVisible();
+  await expect(dialog.locator('.access-options input[type=checkbox]').first()).toBeVisible();
+  const keys = await dialog.locator('.access-options input[type=checkbox]').evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).value));
+  expect(keys.length).toBeGreaterThan(100);
+  await dialog.getByRole('button', { name: 'Select all permissions', exact: true }).click();
+  await expect(dialog.locator('.access-options input:checked')).toHaveCount(keys.length);
+  await dialog.getByRole('button', { name: 'Clear permissions', exact: true }).click();
+  await expect(dialog.locator('.access-options input:checked')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Select all permissions', exact: true }).click();
+  await dialog.getByLabel('Reason', { exact: true }).fill('Assign full registered brand permission directory');
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(panel).toContainText(roleCode);
+  await panel.getByRole('tab', { name: 'Accounts', exact: true }).click();
+  await panel.getByRole('button', { name: 'New account', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  const username = `brandadmin_${suffix}`;
+  const password = 'owned-brand-onboarding-password-2026';
+  await dialog.getByLabel('Username', { exact: true }).fill(username);
+  await dialog.getByLabel('Password (16–128 bytes)', { exact: true }).fill(password);
+  await dialog.getByRole('checkbox', { name: new RegExp(roleCode) }).check();
+  await dialog.getByLabel('Reason', { exact: true }).fill('Create first owned brand administrator');
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(panel).toContainText(username);
+  const staff = await playwright.request.newContext();
+  try {
+    const staffOrigin = 'http://127.0.0.1:5184';
+    const login = await staff.post(`${staffOrigin}/api/v1/admin/auth/login`, { headers: { Origin: staffOrigin, 'Idempotency-Key': crypto.randomUUID() }, data: { identifier: username, password } });
+    expect(login.status()).toBe(200);
+    const me = (await (await staff.get(`${staffOrigin}/api/v1/admin/me`)).json()).data.account;
+    expect(me.super_admin).toBe(false);
+    expect(me.brand_ids).toEqual([brandId]);
+    expect([...me.permissions_by_brand[brandId]].sort()).toEqual([...keys].sort());
+    const brands = (await (await staff.get(`${staffOrigin}/api/v1/admin/brands`)).json()).data.items;
+    expect(brands.map((brand: { id: string }) => brand.id)).toEqual([brandId]);
+  } finally { await staff.dispose(); }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+});

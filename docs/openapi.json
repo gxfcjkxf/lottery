@@ -149897,8 +149897,7 @@
             "items": {
               "type": "string",
               "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*\\.brand$"
-            },
-            "maxItems": 100
+            }
           },
           "reason": {
             "$ref": "#/components/schemas/Reason"
@@ -149940,8 +149939,7 @@
             "type": "array",
             "items": {
               "type": "string"
-            },
-            "maxItems": 100
+            }
           },
           "reason": {
             "$ref": "#/components/schemas/Reason"

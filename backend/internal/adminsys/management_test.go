@@ -126,8 +126,9 @@ func TestManagementInputBoundsAndUTF8(t *testing.T) {
 	for i := range permissions {
 		permissions[i] = "user.view.brand"
 	}
-	if _, err := cleanPermissions(permissions); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("101 permissions error=%v, want invalid", err)
+	cleaned, err := cleanPermissions(permissions)
+	if err != nil || len(cleaned) != 1 || cleaned[0] != "user.view.brand" {
+		t.Fatalf("repeated registered permission keys were not deduplicated: %v, %v", cleaned, err)
 	}
 	roleIDs := make([]string, 101)
 	for i := range roleIDs {

@@ -286,7 +286,11 @@ onBeforeUnmount(() => { ++generation; form.value.password = ''; pending.value = 
             </div>
             <label v-if="formMode === 'role-create'">{{ copy.code }}<input v-model="form.code" pattern="[a-z][a-z0-9_]{2,47}" required /></label>
             <label v-if="formMode === 'role-create' || formMode === 'role-edit'">{{ copy.name }}<input v-model="form.name" maxlength="120" required /></label>
-            <div v-if="formMode === 'role-create' || formMode === 'role-edit'" class="access-options"><p>{{ copy.grants }}</p><label v-for="key in permissionOptions" :key="key"><input v-model="form.permissions" type="checkbox" :value="key" /> {{ key }}</label></div>
+            <div v-if="formMode === 'role-create' || formMode === 'role-edit'" class="access-options">
+              <p>{{ copy.grants }} · {{ form.permissions.length }} / {{ permissionOptions.length }}</p>
+              <div class="form-actions"><button type="button" class="secondary" @click="form.permissions = [...permissionOptions]">{{ locale === 'en' ? 'Select all permissions' : '全选权限' }}</button><button type="button" class="secondary" @click="form.permissions = []">{{ locale === 'en' ? 'Clear permissions' : '清空权限' }}</button></div>
+              <label v-for="key in permissionOptions" :key="key"><input v-model="form.permissions" type="checkbox" :value="key" /> {{ key }}</label>
+            </div>
             <label>{{ writeCopy.reason }}<textarea v-model="form.reason" required maxlength="500" /></label>
           </fieldset>
           <div class="form-actions">

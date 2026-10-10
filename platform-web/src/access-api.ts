@@ -215,13 +215,13 @@ export function createPlatformAccessApi(fetcher: typeof fetch = fetch) {
     async createRole(brand: string, body: RoleCreateBody, key: string): Promise<RoleRecord> {
       validBrand(brand); validReason(body.reason)
       if (!/^[a-z][a-z0-9_]{2,47}$/.test(body.code) || !body.name.trim() || body.name.length > 120 ||
-        !Array.isArray(body.permissions) || body.permissions.length > 100 || !body.permissions.every(value => isText(value) && value.endsWith('.brand') && MACHINE_KEY.test(value))) invalid()
+        !Array.isArray(body.permissions) || !body.permissions.every(value => isText(value) && value.endsWith('.brand') && MACHINE_KEY.test(value))) invalid()
       return roleReceipt(await request('/roles', writeOptions(brand, body, key, 201)), brand, 1)
     },
     async updateRole(brand: string, id: string, body: RoleUpdateBody, key: string): Promise<RoleRecord> {
       validBrand(brand); validVersion(body.version); validReason(body.reason)
       if (!isUUID(id) || !body.name.trim() || body.name.length > 120 || (body.status !== 'active' && body.status !== 'disabled') ||
-        !Array.isArray(body.permissions) || body.permissions.length > 100 || !body.permissions.every(value => isText(value) && value.endsWith('.brand') && MACHINE_KEY.test(value))) invalid()
+        !Array.isArray(body.permissions) || !body.permissions.every(value => isText(value) && value.endsWith('.brand') && MACHINE_KEY.test(value))) invalid()
       return roleReceipt(await request(`/roles/${id}`, { ...writeOptions(brand, body, key), method: 'PATCH' }), brand, body.version + 1)
     },
   }

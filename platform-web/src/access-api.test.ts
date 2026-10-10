@@ -14,6 +14,14 @@ const platformRole = { id: roleId, brand_id: '', code: 'platform_ops', name: 'Pl
 function reply(data: unknown, status = 200) { return new Response(JSON.stringify({ success: true, data }), { status, headers: { 'Content-Type': 'application/json' } }) }
 
 describe('platform access API', () => {
+  it('can submit a complete brand permission catalog larger than 100 keys', async () => {
+    const permissions = Array.from({ length: 119 }, (_, index) => `module${index}.view.brand`);
+    const record = { ...role, status: 'active', version: 1, permissions, audit_log_id: auditId };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(reply(record, 201));
+    const body = { code: 'full_brand_admin', name: 'Brand administrator', status: 'active' as const, permissions, reason: 'Assign registered directory' };
+    await expect(createPlatformAccessApi(fetcher).createRole(brand, body, key)).resolves.toEqual(record);
+    expect(JSON.parse(fetcher.mock.calls[0][1]!.body as string).permissions).toEqual(permissions);
+  });
   it('accepts a genuine disabled platform account update receipt', async () => {
     const disabled = { ...platformAccount, status: 'disabled', version: 3, audit_log_id: auditId };
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(reply(disabled));

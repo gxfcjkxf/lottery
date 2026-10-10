@@ -157,7 +157,7 @@ func (s Store) WriteRole(ctx context.Context, tx pgx.Tx, actor access.Account, b
 	if id == "" && in.Status == "" {
 		in.Status = "active"
 	}
-	if !validRoleFields(in.Name, in.Status) || len(in.Permissions) > 100 {
+	if !validRoleFields(in.Name, in.Status) {
 		return RoleRecord{}, ErrInvalid
 	}
 	permissions, err := cleanPermissions(in.Permissions)
@@ -475,9 +475,6 @@ func cleanReason(reason string) (string, error) {
 }
 
 func cleanPermissions(values []string) ([]string, error) {
-	if len(values) > 100 {
-		return nil, ErrInvalid
-	}
 	set := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		parts := strings.Split(value, ".")

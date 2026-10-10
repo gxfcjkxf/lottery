@@ -218,11 +218,11 @@ export const schemas = {
   AdminRoleList: obj({ items: array(ref("AdminRole")) }, ["items"]),
   AdminRoleCreateRequest: obj({
     version: integer({ minimum: 0 }), code: string({ pattern: "^[a-z][a-z0-9_]{2,47}$" }), name: string({ minLength: 1, maxLength: 120 }),
-    status: string({ enum: ["active", "disabled"] }), permissions: array(string({ pattern: "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*\\.brand$" }), { maxItems: 100 }), reason: ref("Reason"),
+    status: string({ enum: ["active", "disabled"] }), permissions: array(string({ pattern: "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*\\.brand$" })), reason: ref("Reason"),
   }, ["code", "name", "reason"], { description: "status defaults to active; version is ignored at creation. Only brand-scoped permissions can be assigned." }),
   AdminRoleUpdateRequest: obj({
     version: integer({ minimum: 1 }), code: string({ maxLength: 0 }), name: string({ minLength: 1, maxLength: 120 }),
-    status: string({ enum: ["active", "disabled"] }), permissions: array(string(), { maxItems: 100 }), reason: ref("Reason"),
+    status: string({ enum: ["active", "disabled"] }), permissions: array(string()), reason: ref("Reason"),
   }, ["version", "name", "status", "reason"], { description: "code cannot be changed and must be omitted or empty. permissions may be empty; only brand-scoped registered permissions are accepted." }),
   AdminAccount: obj({
     id: ref("UUID"), username: string(), status: string({ enum: ["active", "disabled"] }), version: integer(), super_admin: { type: "boolean" },
