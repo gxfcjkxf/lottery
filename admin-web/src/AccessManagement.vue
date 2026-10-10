@@ -174,6 +174,9 @@ async function load() {
         roleCatalogMessage.value = "";
       } catch (cause) {
         if (props.brandId !== requestBrandId) return;
+        roles.value = [];
+        registeredPermissions.value = [];
+        roleCatalogLoaded.value = false;
         roleCatalogMessage.value = message(
           "角色或权限目录读取失败；目录加载成功后才能配置角色权限。",
           "Could not load the role or permission catalog. Role permissions can be configured after the catalog loads.",
@@ -288,6 +291,9 @@ async function saveRole() {
   const form = roleForm.value;
   if (
     busy.value ||
+    loading.value ||
+    !writeRoles.value ||
+    !roleCatalogLoaded.value ||
     !form.name.trim() ||
     roleNameBytes.value > 120 ||
     !form.reason.trim() ||
@@ -556,6 +562,8 @@ function changePage(direction: -1 | 1) {
             class="primary"
             :disabled="
               busy ||
+              loading ||
+              !roleCatalogLoaded ||
               !roleForm.reason.trim() ||
               !roleForm.name.trim() ||
               roleNameBytes > 120 ||
