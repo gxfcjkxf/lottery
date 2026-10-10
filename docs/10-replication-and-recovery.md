@@ -53,7 +53,29 @@ CGO_ENABLED=0 go test -tags recovery -buildvcs=false ./internal/recovery \
 
 replica_catchup_seconds从主库新增测试流水到两台从库全部表摘要匹配，包含本地提交和摘要查询成本，不是持续复制延迟指标。promotion_seconds仅为已关闭旧主库后的手动提升及恢复状态确认，不包含检测故障、应用重连或端点切换。restore_seconds包含创建恢复节点、恢复和首次完整摘要检查；这些小数据、同机测量不应设置为生产RTO或RPO。
 
-应用历史查询现已支持下述多读节点路由；资金和当前业务读写仍使用主库。自动主库切换、统一写端点、真实复制延迟告警、WAL归档/PITR、离机加密备份、保留/轮换、角色权限与认证密钥恢复、负载下故障、网络分区和客户环境仍需继续实施及演练。
+应用历史查询现已支持下述多读节点路由；资金和当前业务读写仍使用主库。下述隔离演练另验证了WAL归档及命名恢复点，生产归档策略仍待实施。自动主库切换、统一写端点、真实复制延迟告警、离机加密备份、保留/轮换、角色权限与认证密钥恢复、负载下故障、网络分区和客户环境仍需继续实施及演练。
+
+## WAL归档与命名恢复点
+
+时间点恢复使用物理基础备份和后续连续WAL归档；命名恢复点由`pg_create_restore_point`创建，`recovery_target_name`指定目标，`recovery_target_action=pause`允许提升前检查数据。配置语义见[PostgreSQL 17连续归档](https://www.postgresql.org/docs/17/continuous-archiving.html)和[恢复目标](https://www.postgresql.org/docs/17/runtime-config-wal.html)。本演练只验证一个命名恢复点，不提供按任意时间输入的恢复管理界面。
+
+使用前述环境变量、新空目录、四个空闲回环端口及全新报告路径，从backend运行：
+
+```sh
+export LOTTERY_RECOVERY_ROOT="$(mktemp -d /tmp/lottery-named-pitr.XXXXXX)"
+export LOTTERY_RECOVERY_BASE_PORT=55551
+export LOTTERY_RECOVERY_REPORT='/absolute/test-output/fresh-named-pitr.json'
+go test -tags recovery ./internal/recovery \
+  -run '^TestNamedRestorePointPITR$' -count=1 -v
+```
+
+合成主库先保存123赠送积分并生成物理基础备份，再入账7积分、记录130积分的全表摘要并创建命名恢复点，最后入账50积分至180。切换WAL后，核验目标段归档完成及源文件/归档SHA256和字节数一致。归档文件不覆盖；已存在文件仅在内容相同的情况下确认成功。源主库必须停止且连接失败，才启动基础备份上的归档恢复。
+
+恢复在目标LSN暂停，实际写入被25006拒绝，只读查询余额为130，全表摘要与目标一致。正式积分查询使用共享行锁，因此在手动提升为可写节点后再次验证；不会为演练改变业务锁。提升后的临时写事务回滚，账本和审计不可变约束仍有效，全表摘要仍保持。结束后停止两个拥有的节点，保留归档、基础备份和日志，原开发库前后摘要须相同。
+
+[2026年10月10日命名恢复点证据](performance/current-named-pitr-20261010.json)通过：120表、322行、一份基线，130积分目标完整恢复且排除目标后的50积分。目标WAL段为16,777,216字节，归档摘要已按实际文件独立重算。整项测试3.17秒；报告的1.228秒仅计恢复节点启动至提升后临时写事务核验，不含基础备份和全部准备成本，不是生产RTO。运行`node scripts/check-pitr-evidence.mjs REPORT.json`核对四个全表快照、目标边界及隔离声明；当前原始报告和错误余额、归档、隔离及生产声明拒绝用例进入静态回归。
+
+归档和恢复均在同机回环合成集群，未验收断电持久性、异地存储、加密轮换、全业务负载、角色/密钥恢复、自动切换或生产RTO/RPO。报告只记录目标WAL段清单，不代表全部备份文件的完整性清单。原逻辑备份报告保持`pitr_verified=false`，本次独立命名恢复点报告的`pitr_verified=true`仅表示上述隔离测试通过。
 
 ## 应用历史读路由
 

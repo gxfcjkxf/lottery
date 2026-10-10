@@ -17,6 +17,7 @@ function snapshot(value) {
       createHash('sha256').update(JSON.stringify(Object.fromEntries(entries))).digest('hex') !== value.sha256) throw new Error('Snapshot table contents or row totals do not match its digest');
   return entries.length;
 }
+export { snapshot as checkRecoverySnapshot };
 export function checkRecoveryBaseline(data) {
   if (data?.schema_version !== 1 || !data.evidence) throw new Error('Recovery evidence required');
   untouched(data);
