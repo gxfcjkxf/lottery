@@ -533,6 +533,14 @@ async function previewPlay(
   const panel = page.getByTestId("bet-selection-page");
   await expect(panel).toBeVisible();
   await panel.getByTestId("play-select").selectOption(playId);
+  // Randomization only edits the ticket; the real server still validates it.
+  await panel.getByRole('button', { name: 'Random selection', exact: true }).click();
+  await expect(panel.locator('.selection-editor input:checked').first()).toBeChecked();
+  await panel.getByTestId('preview-button').click();
+  await expect(panel.getByTestId('bet-quote')).toBeVisible();
+  await panel.getByRole('button', { name: 'Clear selection', exact: true }).click();
+  await expect(panel.locator('.selection-editor input:checked')).toHaveCount(0);
+  await expect(panel.getByTestId('bet-quote')).toHaveCount(0);
   await chooseSelection(panel, mode, modelType);
   await panel.getByTestId("multiplier-input").fill("1");
   await panel.getByTestId("preview-button").click();

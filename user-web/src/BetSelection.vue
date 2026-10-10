@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
+import { emptyBetSelection, randomBetSelection } from "./selection-actions";
 import type {
   RuleDefinition,
   RuleTicketSelection,
@@ -16,6 +17,19 @@ const emit = defineEmits<{
 }>();
 const zh = computed(() => props.locale === "zh");
 const mode = computed(() => props.definition.selection.mode);
+const actionError = ref(false);
+
+function clearSelection() {
+  if (props.disabled) return;
+  actionError.value = false;
+  emit("update:modelValue", emptyBetSelection());
+}
+function randomSelection() {
+  if (props.disabled) return;
+  actionError.value = false;
+  try { emit("update:modelValue", randomBetSelection(props.definition)); }
+  catch { actionError.value = true; }
+}
 
 function pool(
   values: number[],
@@ -148,6 +162,11 @@ function toggleFeature(name: string, value: number) {
 
 <template>
   <div class="selection-editor" :aria-label="zh ? '投注选择' : 'Bet selection'">
+    <div class="selection-actions">
+      <button type="button" :disabled="disabled" @click="clearSelection">{{ zh ? '清空选号' : 'Clear selection' }}</button>
+      <button type="button" :disabled="disabled" @click="randomSelection">{{ zh ? '随机选号' : 'Random selection' }}</button>
+    </div>
+    <p v-if="actionError" role="alert">{{ zh ? '无法根据当前玩法生成选号，请手动选择。' : 'Unable to generate a selection for this play. Please choose manually.' }}</p>
     <template v-if="mode === 'numbers'">
       <fieldset
         v-if="definition.model.model === 'DIGITS_0_9'"
@@ -320,6 +339,9 @@ function toggleFeature(name: string, value: number) {
   display: grid;
   gap: 1rem;
 }
+.selection-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.selection-actions button { min-height: 44px; padding: 0.5rem 0.9rem; border: 1px solid #dce5dc; border-radius: 10px; background: white; color: var(--brand-primary); cursor: pointer; }
+.selection-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
 .selection-group {
   min-width: 0;
   margin: 0;
