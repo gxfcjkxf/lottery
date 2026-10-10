@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { createPlatformApi, freezeBrandCreateRequest, PlatformApiError, type BrandCreateInput, type FrozenBrandCreateRequest, type PlatformAudit, type PlatformBrand, type PlatformMember } from './platform-api'
+import { createPlatformApi, freezeBrandCreateRequest, PlatformApiError, type BrandCreateInput, type FrozenBrandCreateRequest, type PlatformAudit, type PlatformBrand, type PlatformMember, type PlatformAccount } from './platform-api'
 import RewardsPanel from './RewardsPanel.vue'
 import WalletPanel from './WalletPanel.vue'
 import BetOrdersPanel from './BetOrdersPanel.vue'
@@ -30,7 +30,9 @@ const zh = {
   locale: '默认语言', timezone: '时区', reason: '创建原因', cancel: '取消', review: '核对请求', confirm: '确认并创建', confirmation: '确认新建品牌', confirmCopy: '品牌将以暂停状态创建，填写的原因会写入审计日志。',
   action: '操作', actor: '操作人', resource: '资源', date: '时间', empty: '暂无数据。', loading: '加载中…', logout: '退出登录', close: '关闭', platformNote: '仅限平台管理；品牌员工请使用品牌管理后台。', platformAdmin: '平台超级管理员', error: '发生错误', retry: '使用同一请求重试', unknown: '服务器可能已收到请求。仅使用冻结的原始内容和请求键重试。', created: '品牌已创建并暂停。', localeEnglish: '英语', localeChinese: '简体中文', directory: '目录', directoryDescription: '管理平台租户并查看其会员。', brandDirectory: '品牌目录', brandDirectoryDescription: '平台目录中的品牌', memberDirectory: '会员目录', memberReadOnly: '只读会员信息', auditDescription: '所选品牌的审计记录 · 只读', traceability: '操作追踪', accessDirectory: '会员目录', platformDirectory: '平台目录', createDescription: '新品牌将以暂停状态创建。品牌员工权限在对应品牌后台管理。', codePlaceholder: 'northstar_shop', timezonePlaceholder: 'Asia/Singapore', accountLabel: '账号', brandLabel: '品牌', statusNormal: '正常', statusFrozen: '已冻结', statusDisabled: '已停用', statusExpired: '已过期', statusCancelled: '已取消', statusPaused: '已暂停', statusActive: '启用', countSuffix: '条记录',
  }
-const account = ref<{ id: string; super_admin: true } | null>(null)
+const account = ref<PlatformAccount | null>(null)
+const accessScope = ref<'brand' | 'platform'>('platform')
+const accountWriteLocked = ref(false)
 const brands = ref<PlatformBrand[]>([])
 const brandQuery = ref('')
 const brandStatus = ref('')
@@ -81,6 +83,8 @@ let auditRequestGeneration = 0
 
 function messageOf(cause: unknown) { return cause instanceof Error ? cause.message : lang.value.error }
 function clearPrivateState() {
+  accountWriteLocked.value = false
+  accessScope.value = 'platform'
   brandQuery.value = ''; brandStatus.value = ''
   auditView.value = 'audit'
   walletMember.value = ''
@@ -115,6 +119,7 @@ async function signOut() {
   catch (cause) { handleFailure(cause) } finally { busy.value = false }
 }
 async function chooseSection(next: typeof section.value) {
+  if (accountWriteLocked.value) return
   if (next === 'audit') auditView.value = 'audit'
   walletMember.value = ''
   section.value = next; error.value = ''; notice.value = ''
@@ -126,6 +131,7 @@ async function chooseSection(next: typeof section.value) {
   if (selectedBrand.value && next === 'users') await loadMembers(selectedBrand.value)
 }
 async function chooseBrand(id: string) {
+  if (accountWriteLocked.value) return
   walletMember.value = ''
   selectedBrand.value = id; members.value = []; auditRows.value = []; error.value = ''; notice.value = ''
   memberRequestGeneration++; auditRequestGeneration++
@@ -177,7 +183,7 @@ function statusLabel(status: string) {
   return key ? lang.value[key] : status
 }
 async function openBrandMembers(brandId: string) { section.value = 'users'; await chooseBrand(brandId) }
-async function openBrandAccounts(brandId: string) { await chooseSection('access'); await chooseBrand(brandId) }
+async function openBrandAccounts(brandId: string) { accessScope.value = 'brand'; await chooseSection('access'); await chooseBrand(brandId) }
 async function openBrandAudit(brandId: string) { section.value = 'audit'; await chooseBrand(brandId) }
 function openWallet(memberId: string) { walletMember.value = memberId; section.value = 'wallets'; memberRequestGeneration++; auditRequestGeneration++; loading.value = false; error.value = '' }
 function beginCreate() {
@@ -250,9 +256,12 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
           </section>
         </template>
         <template v-else-if="section === 'access'">
-          <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label><span v-if="selected" class="selection-tag">{{ selected.name }}</span></div>
-          <p class="message">{{ locale === 'en' ? 'Read-only brand staff accounts, roles and permissions. Create and edit brand staff in the brand admin portal.' : '只读查看品牌后台账号、角色和权限。创建或修改品牌员工请在品牌后台操作。' }}</p>
-          <AccessPanel :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
+          <div class="wallet-pagination" data-testid="platform-account-scopes">
+            <button :class="accessScope === 'platform' ? 'primary' : 'secondary'" :disabled="accountWriteLocked" @click="accessScope = 'platform'">{{ locale === 'en' ? 'Platform administrators' : '平台管理员' }}</button>
+            <button :class="accessScope === 'brand' ? 'primary' : 'secondary'" :disabled="accountWriteLocked" @click="accessScope = 'brand'">{{ locale === 'en' ? 'Brand staff' : '品牌员工' }}</button>
+          </div>
+          <div v-if="accessScope === 'brand'" class="brand-picker"><label>{{ lang.brandLabel }}<select :disabled="accountWriteLocked" :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label><span v-if="selected" class="selection-tag">{{ selected.name }}</span></div>
+          <AccessPanel :brand-id="selectedBrand" :locale="locale" :scope="accessScope" :account-id="account.id" :grants="account.platform_permissions" @locked="accountWriteLocked = $event" @failure="handleFailure" />
         </template>
         <template v-else-if="section === 'users'">
           <div class="page-heading"><div><div class="eyebrow">{{ lang.accessDirectory }}</div><h1>{{ lang.users }}</h1><p>{{ lang.memberReadOnly }}</p></div></div>

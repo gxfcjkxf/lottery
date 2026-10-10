@@ -1,4 +1,4 @@
-export interface PlatformAccount { id: string; super_admin: true }
+export interface PlatformAccount { id: string; super_admin: true; platform_permissions: string[] }
 export interface PlatformBrand { id: string; code: string; name: string; status: string }
 export interface PlatformMember { id: string; global_user_id: string; username: string; phone: string; display_name: string; notes: string; status: string; joined_at: string; brand_id: string; tags: string[] }
 export interface PlatformAudit { id: string; brand_id: string | null; action: string; actor_type: string; actor_id: string; resource_type: string; resource_id: string; reason: string; request_id: string; created_at: string; ip_address: string; before_json: unknown; after_json: unknown }
@@ -79,6 +79,7 @@ export function createPlatformApi(fetcher: typeof fetch = fetch) {
       const data = await request<unknown>('/me')
       const account = isObj(data) ? data.account : undefined
       if (!isObj(account) || !text(account.id) || account.super_admin !== true) apiError('This account is not a platform super administrator', 403, 'PLATFORM_ADMIN_REQUIRED')
+      if (!stringArray(account.platform_permissions)) apiError('Invalid platform permissions response', 0, 'INVALID_RESPONSE')
       return account as unknown as PlatformAccount
     },
     async brands() {

@@ -8,6 +8,7 @@ test('expired access query removes private platform content and returns to login
   await page.route('**/api/v1/platform/accounts?**', route => route.fulfill({ status: 401, json: { success: false, error: { code: 'AUTH_SESSION_REVOKED', message: 'Session expired' } } }));
   await page.goto(origin);
   await page.getByRole('button', { name: 'Accounts and permissions', exact: true }).click();
+  await page.getByTestId('platform-account-scopes').getByRole('button', { name: 'Brand staff', exact: true }).click();
   await page.locator('.content > .brand-picker select').selectOption(brand);
   await expect(page.locator('.login-card')).toBeVisible();
   await expect(page.locator('.app-frame')).toHaveCount(0);
@@ -59,7 +60,7 @@ test('platform reads genuine scoped accounts roles and permission directory with
   }
   await page.locator('.content > .brand-picker select').selectOption('');
   await expect(page.getByTestId('platform-access-detail')).toHaveCount(0);
-  await expect(page.getByTestId('platform-permission-directory')).not.toContainText(before.get('permissions').items[0]);
+  await expect(page.getByTestId('platform-permission-directory')).toHaveCount(0);
 });
 
 test('access lists paginate and clear list-snapshot details on errors and scope changes', async ({ page }) => {
@@ -71,6 +72,7 @@ test('access lists paginate and clear list-snapshot details on errors and scope 
   });
   await page.goto(origin);
   await page.getByRole('button', { name: 'Accounts and permissions', exact: true }).click();
+  await page.getByTestId('platform-account-scopes').getByRole('button', { name: 'Brand staff', exact: true }).click();
   await page.locator('.content > .brand-picker select').selectOption(brand);
   const panel = page.getByTestId('platform-access');
   await page.getByTestId('platform-access-tabs').getByRole('tab', { name: 'Roles', exact: true }).click();

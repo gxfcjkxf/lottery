@@ -4,7 +4,7 @@ import { createPlatformApi, freezeBrandCreateRequest, PlatformApiError, type Bra
 function reply(data: unknown, status = 200) {
   return new Response(JSON.stringify({ success: true, data }), { status, headers: { 'Content-Type': 'application/json' } })
 }
-const account = { id: 'admin-1', super_admin: true }
+const account = { id: 'admin-1', super_admin: true, platform_permissions: ['admin.view.platform', 'admin.write.platform'] }
 const brand = { id: 'b-1', code: 'luma', name: 'Luma', status: 'active' }
 const validInput: BrandCreateInput = { code: 'northstar', name: 'Northstar Shop', default_locale: 'en', timezone: 'Asia/Singapore', reason: 'Launch a new market' }
 const member = { id: 'm1', global_user_id: 'g1', username: 'member_one', phone: '+6500000000', display_name: 'Member One', notes: '', status: 'normal', joined_at: '2026-10-09T01:02:03Z', brand_id: 'b-1', tags: ['new'] }
@@ -30,6 +30,9 @@ describe('platform API boundary', () => {
     expect(fetcher.mock.calls[0][0]).toBe('/api/v1/platform/me')
     expect(fetcher.mock.calls[0][1]).toMatchObject({ credentials: 'same-origin', method: 'GET' })
     expect(JSON.stringify(fetcher.mock.calls.map(call => call[0]))).not.toContain('/api/v1/admin')
+  })
+  it('rejects a missing platform grant directory rather than inventing write permissions', async () => {
+    await expect(createPlatformApi(async () => reply({ account: { id: account.id, super_admin: true } })).me()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   })
 
   it('rejects accounts unless the current DTO explicitly says super_admin true', async () => {
