@@ -49,6 +49,10 @@ test('commission handovers use current formats rather than removed recovery flow
   assert.match(acceptance, /`platform-web` 独立总后台/)
   const index = read('docs/README.md')
   assert.doesNotMatch(index, /旧空快照兼容|历史未决计划显式审计重试|旧错误stale升级拒绝/)
+  const backlog = read('docs/09-implementation-backlog.md')
+  assert.doesNotMatch(backlog, /历史未决计划|历史计划恢复|复用0006结构|0071升级/)
+  assert.match(backlog, /真实技术失败的显式审计重试/)
+  assert.match(backlog, /当前单份完整基线/)
 })
 
 test('brand administration metadata and authenticated header do not label real operations as a prototype', () => {
