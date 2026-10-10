@@ -5,8 +5,9 @@ test.use({ storageState: async ({ operatorSession }, use) => { await use(operato
 test('page finder navigates without filtering members and mobile keeps its existing menu', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('lottery.admin.locale', 'zh-CN'));
   // Prepare one real synthetic member; a fresh CI database can be empty.
+  const username = `finder_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   await page.goto('http://127.0.0.1:5183/register');
-  await page.getByLabel('Choose a username or phone', { exact: true }).fill(`finder_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`);
+  await page.getByLabel('Choose a username or phone', { exact: true }).fill(username);
   await page.getByLabel('Password', { exact: true }).fill('owned-page-finder-password-2026');
   await page.locator('.auth-form input[type="checkbox"]').nth(0).check();
   await page.locator('.auth-form input[type="checkbox"]').nth(1).check();
@@ -14,6 +15,7 @@ test('page finder navigates without filtering members and mobile keeps its exist
   await page.getByRole('button', { name: /Continue/ }).click();
   expect((await registered).status()).toBe(201);
   await expect(page).toHaveURL(/\/account$/);
+  const memberId = (await (await page.request.get('http://127.0.0.1:5183/api/v1/me')).json()).data.member.id;
   await page.goto('http://127.0.0.1:5184');
   await expect(page.locator('.app-shell')).toBeVisible();
   await page.getByLabel('选择真实后台品牌', { exact: true }).selectOption('0199a000-0000-7000-8000-000000000001');
@@ -40,6 +42,28 @@ test('page finder navigates without filtering members and mobile keeps its exist
   await expect(rows).toHaveCount(count);
   await memberSearch.fill('   ');
   await expect(rows).toHaveCount(count);
+  const walletURL = `http://127.0.0.1:5184/api/v1/admin/wallets/${memberId}`;
+  const headers = { 'X-Brand-ID': '0199a000-0000-7000-8000-000000000001' };
+  const before = await page.request.get(walletURL, { headers });
+  expect(before.status()).toBe(200);
+  const walletBefore = (await before.json()).data;
+  const writes: string[] = [];
+  page.on('request', request => { if (request.url().includes('/api/v1/admin/') && request.method() !== 'GET') writes.push(request.url()); });
+  const walletRead = page.waitForResponse(response => response.url() === walletURL && response.request().method() === 'GET');
+  await rows.filter({ hasText: username }).getByRole('button', { name: '查看积分', exact: true }).click();
+  expect((await walletRead).status()).toBe(200);
+  await expect(page.locator('.finance-management').getByLabel('会员 UUID', { exact: true })).toHaveValue(memberId);
+  await expect(page.locator('.finance-management')).toContainText(memberId);
+  const after = await page.request.get(walletURL, { headers });
+  expect(after.status()).toBe(200);
+  expect((await after.json()).data).toEqual(walletBefore);
+  expect(writes).toEqual([]);
+  if (page.viewportSize()!.width < 700) {
+    await page.getByRole('navigation', { name: '移动端主导航', exact: true }).getByRole('button', { name: /用户$/ }).click();
+  } else {
+    await finder.fill('用户和成员');
+    await finder.press('Enter');
+  }
   await memberSearch.fill('trial-member-filter');
   if (page.viewportSize()!.width >= 700) {
     await finder.fill('not-an-admin-page');

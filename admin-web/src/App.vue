@@ -6,6 +6,7 @@ import {
   ref,
 } from "vue";
 import { brandPermissionSet } from "./brand-permissions";
+import { canViewWallet } from "./finance-api";
 const AccessManagement = defineAsyncComponent(() => import("./AccessManagement.vue"));
 import MemberProvision from "./MemberProvision.vue";
 import AuthSettings from "./AuthSettings.vue";
@@ -206,6 +207,7 @@ watch([loginIdentifier, loginPassword], () => {
 });
 const adminBrands = ref<AdminBrand[]>([]);
 const selectedBrandId = ref("");
+const financeMemberId = ref("");
 let adminBrandLoadGeneration = 0;
 const correctionSettlementPeriod = ref<{brandId:string;periodId:string;nonce:number}|null>(null);
 const brand = computed(
@@ -305,10 +307,17 @@ const canViewJoinCodes = computed(() => {
 const visibleNav = computed(() => nav.filter((item) => item.name !== "加入码" || canViewJoinCodes.value));
 const go = (target: Page) => {
   page.value = target;
+  if (target !== "资金与账本") financeMemberId.value = "";
   pageSearch.value = "";
   notice.value = "";
   mobileMore.value = false;
 };
+const canViewMemberWallet = computed(() => Boolean(account.value && selectedBrandId.value && canViewWallet(account.value, selectedBrandId.value)));
+function openMemberWallet(member: Member) {
+  if (!canViewMemberWallet.value) return;
+  financeMemberId.value = member.id;
+  go("资金与账本");
+}
 function openSearchedPage() {
   const query = pageSearch.value.trim().toLowerCase();
   const target = visibleNav.value.find((item) => ui(item.name).toLowerCase() === query);
@@ -390,6 +399,7 @@ const clearAdminData = () => {
   correctionSettlementPeriod.value = null;
   pageSearch.value = "";
   search.value = "";
+  financeMemberId.value = "";
   account.value = null;
   adminBrands.value = [];
   selectedBrandId.value = "";
@@ -512,6 +522,7 @@ const logout = async () => {
 };
 const selectBrand = async (brandId: string) => {
   selectedBrandId.value = brandId;
+  financeMemberId.value = "";
   search.value = "";
   brandMenu.value = false;
   memberOffset.value = 0;
@@ -1029,6 +1040,7 @@ const changeMemberPage = async (direction: -1 | 1) => {
                             "
                             @click="openEdit(m)"
                           > {{ ui("编辑") }}</button
+                          ><button v-if="canViewMemberWallet" class="text-button" @click="openMemberWallet(m)">{{ t('查看积分', 'View points') }}</button
                           ><button
                             class="text-button"
                             :disabled="!canKickUsers"
@@ -1214,6 +1226,7 @@ const changeMemberPage = async (direction: -1 | 1) => {
           :key="selectedBrandId"
           :account="account"
           :brand-id="selectedBrandId"
+          :initial-member-id="financeMemberId"
           @session-invalid="clearAdminData"
         />
         <BalanceRepair

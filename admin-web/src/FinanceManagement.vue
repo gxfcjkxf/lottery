@@ -27,6 +27,7 @@ import { useAdminI18n } from "./i18n";
 const props = defineProps<{
   account: AdminAccount & Partial<FinanceAccount>;
   brandId: string;
+  initialMemberId?: string;
 }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const { t, message } = useAdminI18n();
@@ -55,7 +56,7 @@ function stateName(state: WalletState) {
         ? t("系统冻结", "System frozen")
         : state === "withdrawal" ? t("提现中", "Withdrawal pending") : state;
 }
-const memberId = ref("");
+const memberId = ref(props.initialMemberId ?? "");
 const loadedMemberId = ref("");
 const wallet = ref<Wallet | null>(null);
 const entries = ref<LedgerEntry[]>([]);
@@ -307,7 +308,8 @@ async function reloadData() {
   if (isCurrent()) loading.value = false;
 }
 onMounted(() => {
-  if (viewRecharges.value && !viewWallet.value) void loadRechargeQueue();
+  if (memberId.value && viewWallet.value) void inspectMember();
+  else if (viewRecharges.value && !viewWallet.value) void loadRechargeQueue();
 });
 watch(
   () => props.brandId,
