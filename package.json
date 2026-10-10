@@ -26,6 +26,7 @@
     "test:capacity-withdrawals": "node scripts/check-capacity-withdrawals.mjs",
     "test:capacity-commission": "node scripts/check-capacity-commission.mjs",
     "test:e2e": "playwright test",
+    "test:webkit": "playwright test --config playwright.webkit.config.ts",
     "test:pwa": "pnpm build && playwright test --config playwright.pwa.config.ts"
   },
   "devDependencies": {

@@ -189,7 +189,29 @@ test('real turnover qualification survives unknown intent and follows ledger cha
   await panel.getByLabel('Recharge', { exact: true }).fill('3')
   await panel.getByLabel('Winnings', { exact: true }).fill('2')
   await panel.getByLabel('Gift', { exact: true }).fill('4')
+  let releaseNewReceipt!: () => void
+  let newCommitted = false
+  const receiptGate = new Promise<void>(resolve => { releaseNewReceipt = resolve })
+  await page.route(routeURL, async route => {
+    if (route.request().method() !== 'POST') return route.continue()
+    const response = await route.fetch()
+    expect(response.status()).toBe(201)
+    newCommitted = true
+    await receiptGate
+    await route.fulfill({ response })
+  })
+  const newSubmission = page.waitForResponse(response => response.url() === routeURL && response.request().method() === 'POST')
   await panel.getByRole('button', { name: 'Submit request', exact: true }).click()
+  await expect.poll(() => newCommitted).toBe(true)
+  try {
+    await expect(panel.locator('.success-note')).toHaveCount(0)
+  } finally {
+    releaseNewReceipt()
+  }
+  const newResponse = await newSubmission
+  const newReceipt = await data<{ id: string }>(newResponse, 201)
+  expect(newReceipt.id).not.toBe(firstReceipt!.id)
+  await page.unroute(routeURL)
   await expect(panel).toContainText('Request submitted')
   const orders = await data<{ items: Array<{ id: string; points: string; state: string; reserve_entry_id?: string }> }>(
     await page.request.get(userOrigin + '/api/v1/withdrawals'),

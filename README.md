@@ -114,6 +114,8 @@ pnpm test:e2e --project=mobile --shard=2/2 --workers=1 --retries=0
 
 `pnpm test:pwa`验证生产构建元数据、图标和公开哈希缓存，不连接API/数据库，不缓存HTML、私有API或写请求，不排队重放投注/提现，不等于真机安装或完整离线验收。
 
+设置独立WebKit可执行路径和受保护测试凭据后，`pnpm test:webkit`运行真实账号、后台权限及风控双视口功能专项；服务工作线程明确禁用，不将其当作Safari/iPhone真机或PWA验证。安装、环境及范围见[WebKit交接](docs/46-webkit-functional-verification.md)。
+
 ## 工程结构
 
 ```text

@@ -157,6 +157,7 @@ async function submit(replay = false) {
     intent = Object.freeze({ scope: currentScope, body, key: crypto.randomUUID(), actorContext: availability.value.actor_context });
   }
   if (!intent || intent.scope !== currentScope) return;
+  receipt.value = null;
   submitting.value = true;
   error.value = "";
   try {

@@ -16,6 +16,8 @@
 
 ## 文档索引
 
+- [46-webkit-functional-verification.md](46-webkit-functional-verification.md)：WebKit真实账号/后台双视口专项、锁定引擎与明确凭据；不替代Safari/iPhone真机或PWA离线验收。
+
 - [45-risk-stub-checks.md](45-risk-stub-checks.md)：七组配置式伪检查、四个新增风险开关、九键当前合同、实际拒绝准入及非真实识别边界。
 
 - [44-pwa-production-cache.md](44-pwa-production-cache.md)：三端生产安装元数据、原生图标、公开哈希资源缓存与无后端预览验收；不缓存私有数据或重放写请求。
