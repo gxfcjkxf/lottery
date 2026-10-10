@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onUnmounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import { createBettingApi, type CatalogGame } from "./betting-api";
@@ -739,7 +740,8 @@ onUnmounted(() => {
       >{{ zh ? "查看历史期次" : "View period history" }} →</RouterLink
     >
 
-    <div
+    <DetailModal v-if="detailLoading || !!detailError || !!detail" :title="props.locale === 'en' ? 'Details' : '详情'" :close-label="props.locale === 'en' ? 'Close' : '关闭'" @close="closeDetail()">
+<div
       v-if="detailLoading || detailError || detail"
       class="dr-detail"
       aria-live="polite"
@@ -827,6 +829,7 @@ onUnmounted(() => {
         </p>
       </template>
     </div>
+</DetailModal>
 
     <p class="dr-disclaimer">
       {{
@@ -840,11 +843,11 @@ onUnmounted(() => {
 
 <style scoped>
 .draw-results {
-  --dr-ink: #182b2a;
-  --dr-muted: #627270;
-  --dr-border: #dce7e4;
-  --dr-accent: #087f70;
-  --dr-surface: #fff;
+  --dr-ink: #0f172a;
+  --dr-muted: #64748b;
+  --dr-border: #e2e8f0;
+  --dr-accent: #059669;
+  --dr-surface: #ffffff;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -1047,22 +1050,24 @@ onUnmounted(() => {
 }
 .dr-ball {
   display: inline-grid;
-  min-width: 34px;
-  height: 34px;
-  padding: 0 7px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
   place-items: center;
-  border: 1px solid #cce4df;
-  border-radius: 50px;
-  color: #075d53;
-  background: #edf8f5;
-  font-size: 0.91rem;
-  font-weight: 750;
+  border-radius: 50%;
+  border: none;
+  color: #ffffff;
+  background: radial-gradient(circle at 35% 35%, #ecfdf5 0%, #10b981 60%, #059669 100%);
+  font-size: 0.95rem;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 10px rgba(5, 150, 105, 0.35);
 }
 .dr-number-group:nth-child(2) .dr-ball {
-  color: #795320;
-  border-color: #ead9b3;
-  background: #fff8e9;
+  color: #ffffff;
+  border: none;
+  background: radial-gradient(circle at 35% 35%, #fffbeb 0%, #f59e0b 60%, #d97706 100%);
+  box-shadow: 0 4px 10px rgba(245, 158, 11, 0.35);
 }
 .dr-digit-positions {
   display: flex;

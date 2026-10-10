@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import {test,expect,type APIResponse} from '@playwright/test';
 const origin=process.env.TEST_ADMIN_ORIGIN??'http://localhost:5174';
 const userOrigin=process.env.TEST_USER_ORIGIN??'http://localhost:5173';
@@ -43,10 +44,10 @@ test('real reward inbox preserves pending and reversal facts, template snapshots
  await expect(panel).not.toContainText('private browser');await expect(panel).not.toContainText('private operator');
  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await panel.screenshot({path:info.outputPath('reward-inbox-panel.png')});
- await page.getByRole('button',{name:'Switch to Chinese',exact:true}).click();
+ await selectLanguage(page, 'zh-CN');
  await expect(panel.locator('.notification-protected-note').filter({hasText:'本次没有积分变动'})).toHaveCount(1);
  await expect(panel.getByRole('heading',{name:'编辑的奖励消息',exact:true})).toBeVisible();
- await page.getByRole('button',{name:'Switch to English',exact:true}).click();
+ await selectLanguage(page, 'en');
  const writes:Array<{body:string|null;key:string|undefined}>=[];
  await page.route('**/api/v1/notifications/read',async route=>{writes.push({body:route.request().postData(),key:route.request().headers()['idempotency-key']});const response=await route.fetch();await data(response);if(writes.length===1)await route.abort('failed');else{expect(writes[1]).toEqual(writes[0]);await route.fulfill({response});}});
  await panel.getByRole('button',{name:'Mark this page read',exact:true}).click();await expect(panel.getByRole('button',{name:'Retry the same request',exact:true})).toBeVisible();

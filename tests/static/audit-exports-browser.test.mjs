@@ -11,5 +11,5 @@ test('audit export double layout CI uses owned normal initialization and bounded
   assert.doesNotMatch(spec,/test\.skip\(|force:\s*true|route\.fulfill|\b(?:INSERT|UPDATE|DELETE)\s+.*\b(?:INTO|SET|FROM)\b/i);
 });
 test('audit browser checks real scope, digest, immutable financial state, UTC and both languages',()=>{
-  for(const fragment of ['owned_synthetic_database','lottery_attribution_browser_','readerContext','toBe(403)','download.createReadStream','createHash','x-audit-export-id','economicState()).toEqual(before)','From (UTC)','Resource UUID','admin-language','导出完整 CSV','document.documentElement.scrollWidth','pageErrors).toEqual([])'])assert.ok(spec.includes(fragment),fragment);
+  for(const fragment of ['owned_synthetic_database','lottery_attribution_browser_','readerContext','toBe(403)','download.createReadStream','createHash','x-audit-export-id','economicState()).toEqual(before)','From (UTC)','Resource UUID','selectLanguage(page,','导出完整 CSV','document.documentElement.scrollWidth','pageErrors).toEqual([])'])assert.ok(spec.includes(fragment),fragment);
 });

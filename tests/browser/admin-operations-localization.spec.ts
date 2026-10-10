@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect } from "@playwright/test";
 import { rememberAdminSession, restoreAdminSession } from "./support/admin-session";
 
@@ -16,10 +17,10 @@ test("translated operational console preserves rule and report drafts without bu
   page.on("request", request => { if (new URL(request.url()).pathname.startsWith("/api/") && !["GET", "HEAD", "OPTIONS"].includes(request.method())) writes.push(`${request.method()} ${new URL(request.url()).pathname}`); });
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(origin);
-  await page.getByTestId("admin-language").selectOption("zh-CN");
+  await selectLanguage(page, "zh-CN");
   await page.getByLabel("选择真实后台品牌", { exact: true }).selectOption(brand);
   const navigate = async (name: string) => {
-    await page.getByTestId("admin-language").selectOption("zh-CN");
+    await selectLanguage(page, "zh-CN");
     if (info.project.name === "mobile") {
       if (name === "期次和开奖") { await page.locator(".mobile-nav button").nth(2).click(); return; }
       await page.locator(".mobile-nav button").nth(4).click();
@@ -37,14 +38,14 @@ test("translated operational console preserves rule and report drafts without bu
     ["风控与合规", ".compliance", "Risk and compliance"],
   ]) {
     await navigate(item[0]); const panel = page.locator(item[1]); await expect(panel).toBeVisible();
-    await page.getByTestId("admin-language").selectOption("en");
+    await selectLanguage(page, "en");
     await expect(panel.getByRole("heading", { name: item[2], exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), item[0]).toBe(true);
   }
   await navigate("规则配置"); const simulator = page.locator(".rule-simulator");
   await simulator.getByLabel("特别号候选（最多 49）", { exact: true }).fill("7,19,31,43");
   const draft = await simulator.locator("input, select, textarea").evaluateAll(elements => elements.map(el => (el as HTMLInputElement).value));
-  await page.getByTestId("admin-language").selectOption("en");
+  await selectLanguage(page, "en");
   await expect(simulator.getByRole("heading", { name: "Rule simulator", exact: true })).toBeVisible();
   const templateOptions = simulator.locator(".simulator-form select").first().locator("option");
   await expect(templateOptions).toHaveCount(6);
@@ -57,7 +58,7 @@ test("translated operational console preserves rule and report drafts without bu
   await simulator.screenshot({ path: info.outputPath("english-rule-simulator.png") });
   await navigate("报表和对账"); const reports = page.locator(".reports-management");
   await reports.getByLabel("会员筛选 UUID", { exact: true }).fill("unsubmitted-customer-draft");
-  await page.getByTestId("admin-language").selectOption("en");
+  await selectLanguage(page, "en");
   await expect(reports.getByRole("heading", { name: "Operational reports", exact: true })).toBeVisible();
   await expect(reports.getByLabel("Member UUID filter", { exact: true })).toHaveValue("unsubmitted-customer-draft");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);

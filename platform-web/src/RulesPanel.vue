@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformRulesApi, type Play, type RuleVersion } from './rules-api'
@@ -69,10 +70,12 @@ onBeforeUnmount(() => { ++generation })
       </tbody></table></div>
       <div class="wallet-pagination" data-testid="platform-rule-pages"><button class="secondary" :disabled="loading || versionOffset === 0" @click="loadVersions(play, versionOffset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(versionOffset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !moreVersions" @click="loadVersions(play, versionOffset + 50)">{{ copy.next }}</button></div>
     </section>
-    <section v-if="detail" class="reward-detail" data-testid="platform-rule-detail">
+    <DetailModal v-if="detail" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="detail = null">
+<section v-if="detail" class="reward-detail" data-testid="platform-rule-detail">
       <div class="panel-heading"><h3>{{ copy.detail }} / {{ detail.version_no }}</h3><span>{{ detail.status }}</span></div>
       <dl class="confirm-list reward-fields"><div><dt>{{ copy.creator }}</dt><dd>{{ detail.created_by }}</dd></div><div><dt>{{ copy.reviewer }}</dt><dd>{{ detail.reviewed_by || '—' }}</dd></div><div><dt>{{ copy.comment }}</dt><dd>{{ detail.review_comment || '—' }}</dd></div><div><dt>{{ copy.effective }}</dt><dd>{{ detail.effective_at || '—' }}</dd></div><div><dt>{{ copy.sequence }}</dt><dd>{{ detail.effective_sequence ?? '—' }}</dd></div><div><dt>{{ copy.hash }}</dt><dd>{{ detail.definition_hash }}</dd></div></dl>
       <div class="bet-snapshots"><details><summary>{{ copy.definition }}</summary><pre>{{ json(detail.definition) }}</pre></details><details><summary>{{ copy.validation }}</summary><pre>{{ json(detail.validation ?? null) }}</pre></details></div>
     </section>
+</DetailModal>
   </div>
 </template>

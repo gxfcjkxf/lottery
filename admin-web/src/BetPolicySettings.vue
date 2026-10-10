@@ -965,7 +965,7 @@ onUnmounted(() => {
   overflow-wrap: anywhere;
 }
 .eyebrow {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.2px;
   color: #8991a2;
   font-weight: 700;

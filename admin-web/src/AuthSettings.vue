@@ -249,7 +249,7 @@ async function save() {
   margin: 0;
 }
 .eyebrow {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.2px;
   color: #8991a2;
   font-weight: 700;
@@ -311,7 +311,7 @@ async function save() {
 }
 .toggle-row small,
 .form label small {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   color: #828a99;
   line-height: 1.55;
@@ -362,7 +362,7 @@ async function save() {
   min-width: 0;
 }
 .legal dt {
-  font-size: 10px;
+  font-size: 11px;
   color: #858c99;
 }
 .legal dd {
@@ -372,13 +372,13 @@ async function save() {
   overflow-wrap: anywhere;
 }
 .legal p {
-  font-size: 10px;
+  font-size: 11px;
   color: #858c99;
   margin: 10px 0 0;
 }
 .field-error {
   color: #a83d36;
-  font-size: 10px;
+  font-size: 11px;
 }
 .actions {
   display: flex;
@@ -433,7 +433,7 @@ async function save() {
   gap: 5px;
 }
 .audit {
-  font-size: 10px;
+  font-size: 11px;
   color: #858c99;
   margin: 0;
   overflow-wrap: anywhere;

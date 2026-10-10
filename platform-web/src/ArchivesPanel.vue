@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformArchivesApi, type ArchivePage, type ArchiveRecord, type ArchiveSnapshot } from './archives-api'
@@ -178,7 +179,8 @@ onBeforeUnmount(() => {
       </tbody></table></div>
       <div class="wallet-pagination" data-testid="platform-archive-pages"><button class="secondary" :disabled="loading || offset === 0 || !brandId" @click="load(Math.max(0, offset - pageSize))">{{ copy.previous }}</button><span>{{ copy.page }} {{ Math.floor(offset / pageSize) + 1 }}</span><button class="secondary" :disabled="loading || !hasNextPage" @click="load(offset + pageSize)">{{ copy.next }}</button></div>
     </section>
-    <section v-if="detail" class="panel reward-detail" data-testid="platform-archive-detail">
+    <DetailModal v-if="detail" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="detail = null">
+<section v-if="detail" class="panel reward-detail" data-testid="platform-archive-detail">
       <div class="panel-heading"><div><h2>{{ copy.detail }}</h2><p class="mono">{{ detail.id }}</p></div><button class="secondary" :disabled="loading || downloading" @click="download">{{ downloading ? copy.downloading : copy.download }}</button></div>
       <dl class="confirm-list reward-fields">
         <div><dt>{{ copy.window }}</dt><dd>{{ copy.from }}: {{ detail.window.from }} · {{ copy.to }}: {{ detail.window.to }}</dd></div>
@@ -205,6 +207,7 @@ onBeforeUnmount(() => {
         <dl class="confirm-list reward-fields"><div><dt>{{ copy.walletAt }}</dt><dd>{{ detail.snapshot.wallet_snapshot.at_snapshot }}</dd></div><div v-for="field in balanceFields" :key="field"><dt>{{ metricLabel(field) }}</dt><dd>{{ detail.snapshot.wallet_snapshot.balances[field] }}</dd></div></dl>
       </section>
     </section>
+</DetailModal>
     <p v-else-if="page && !loading" class="loading-line">{{ copy.emptyDetail }}</p>
   </div>
 </template>

@@ -18,6 +18,8 @@
 
 ## 文档索引
 
+- [48-ui-architecture-and-design-system.md](48-ui-architecture-and-design-system.md)：全平台 UI 架构、设计系统令牌（Tokens）、字号排版阶梯与通用组件规范。
+
 - [47-first-phase-handover.md](47-first-phase-handover.md)：一期试用交付范围、源码及回归证据、本机入口、伪适配器和待人工审核事项。
 
 - [46-webkit-functional-verification.md](46-webkit-functional-verification.md)：WebKit真实账号/后台双视口专项、锁定引擎与明确凭据；不替代Safari/iPhone真机或PWA离线验收。

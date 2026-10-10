@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import LanguageSwitcher from '@lottery/shared/LanguageSwitcher.vue'
+import { computed, onMounted, ref, shallowRef } from 'vue'
 import { createPlatformApi, freezeBrandCreateRequest, PlatformApiError, type BrandCreateInput, type FrozenBrandCreateRequest, type PlatformAudit, type PlatformBrand, type PlatformMember, type PlatformAccount } from './platform-api'
+import { platformErrorMessage } from './platform-error-message'
 import RewardsPanel from './RewardsPanel.vue'
 import WalletPanel from './WalletPanel.vue'
 import BetOrdersPanel from './BetOrdersPanel.vue'
@@ -23,14 +25,14 @@ const en = {
   brands: 'Brands', users: 'Brand members', audit: 'Audit log', rewards: 'Manual rewards', createBrand: 'New brand', selectBrand: 'Select a brand', allBrands: 'All brands', brandCount: 'brands in the platform directory',
   name: 'Brand name', code: 'Brand code', status: 'Status', view: 'View members', username: 'Username', displayName: 'Display name', phone: 'Phone', memberCount: 'members',
   locale: 'Default language', timezone: 'Timezone', reason: 'Reason for creation', cancel: 'Cancel', review: 'Review request', confirm: 'Confirm and create', confirmation: 'Confirm new brand', confirmCopy: 'This will create a paused brand and record the stated reason in the audit log.',
-  action: 'Action', actor: 'Actor', resource: 'Resource', date: 'Date', empty: 'Nothing to show yet.', loading: 'Loading…', logout: 'Sign out', close: 'Close', platformNote: 'Platform access only · Brand staff should use their brand admin portal.', platformAdmin: 'Platform super admin', error: 'Something went wrong', retry: 'Retry same request', unknown: 'The server may have received this request. Retry only with the same frozen details and key.', created: 'Brand created in paused status.', localeEnglish: 'English', localeChinese: 'Chinese (Simplified)', directory: 'Directory', directoryDescription: 'Manage platform tenants and inspect their members.', brandDirectory: 'Brand directory', brandDirectoryDescription: 'Brands available in the platform directory', memberDirectory: 'Member directory', memberReadOnly: 'Read-only membership details', auditDescription: 'Audit history for the selected brand · read-only', traceability: 'Traceability', accessDirectory: 'Membership directory', platformDirectory: 'Platform directory', createDescription: 'A new brand starts paused. Brand staff access is managed in that brand’s admin portal.', codePlaceholder: 'northstar_shop', timezonePlaceholder: 'Asia/Singapore', accountLabel: 'Account', brandLabel: 'Brand', statusNormal: 'Normal', statusFrozen: 'Frozen', statusDisabled: 'Disabled', statusExpired: 'Expired', statusCancelled: 'Cancelled', statusPaused: 'Paused', statusActive: 'Active', countSuffix: 'records',
+  action: 'Action', actor: 'Actor', resource: 'Resource', date: 'Date', empty: 'Nothing to show yet.', loading: 'Loading…', logout: 'Sign out', close: 'Close', platformNote: '', platformAdmin: 'Platform super admin', error: 'Something went wrong', retry: 'Retry same request', unknown: 'The server may have received this request. Retry only with the same frozen details and key.', created: 'Brand created in paused status.', localeEnglish: 'English', localeChinese: 'Chinese (Simplified)', directory: 'Directory', directoryDescription: '', brandDirectory: 'Brand directory', brandDirectoryDescription: '', memberDirectory: 'Member directory', memberReadOnly: '', auditDescription: '', traceability: 'Traceability', accessDirectory: 'Membership directory', platformDirectory: 'Platform directory', createDescription: 'A new brand starts paused. Brand staff access is managed in that brand’s admin portal.', codePlaceholder: 'northstar_shop', timezonePlaceholder: 'Asia/Singapore', accountLabel: 'Account', brandLabel: 'Brand', statusNormal: 'Normal', statusFrozen: 'Frozen', statusDisabled: 'Disabled', statusExpired: 'Expired', statusCancelled: 'Cancelled', statusPaused: 'Paused', statusActive: 'Active', countSuffix: 'records', accountProfile: 'Profile', accountPassword: 'Change password', accountId: 'Account ID',
  }
 const zh = {
   title: 'Northstar', subtitle: '平台管理', loginTitle: '登录平台管理', identifier: '用户名', password: '密码', signIn: '登录', workspace: '工作区',
   brands: '品牌', users: '品牌会员', audit: '审计日志', rewards: '人工奖励', createBrand: '新建品牌', selectBrand: '请选择品牌', allBrands: '全部品牌', brandCount: '个品牌',
   name: '品牌名称', code: '品牌代码', status: '状态', view: '查看会员', username: '用户名', displayName: '显示名称', phone: '手机号', memberCount: '位会员',
   locale: '默认语言', timezone: '时区', reason: '创建原因', cancel: '取消', review: '核对请求', confirm: '确认并创建', confirmation: '确认新建品牌', confirmCopy: '品牌将以暂停状态创建，填写的原因会写入审计日志。',
-  action: '操作', actor: '操作人', resource: '资源', date: '时间', empty: '暂无数据。', loading: '加载中…', logout: '退出登录', close: '关闭', platformNote: '仅限平台管理；品牌员工请使用品牌管理后台。', platformAdmin: '平台超级管理员', error: '发生错误', retry: '使用同一请求重试', unknown: '服务器可能已收到请求。仅使用冻结的原始内容和请求键重试。', created: '品牌已创建并暂停。', localeEnglish: '英语', localeChinese: '简体中文', directory: '目录', directoryDescription: '管理平台租户并查看其会员。', brandDirectory: '品牌目录', brandDirectoryDescription: '平台目录中的品牌', memberDirectory: '会员目录', memberReadOnly: '只读会员信息', auditDescription: '所选品牌的审计记录 · 只读', traceability: '操作追踪', accessDirectory: '会员目录', platformDirectory: '平台目录', createDescription: '新品牌将以暂停状态创建。品牌员工权限在对应品牌后台管理。', codePlaceholder: 'northstar_shop', timezonePlaceholder: 'Asia/Singapore', accountLabel: '账号', brandLabel: '品牌', statusNormal: '正常', statusFrozen: '已冻结', statusDisabled: '已停用', statusExpired: '已过期', statusCancelled: '已取消', statusPaused: '已暂停', statusActive: '启用', countSuffix: '条记录',
+  action: '操作', actor: '操作人', resource: '资源', date: '时间', empty: '暂无数据。', loading: '加载中…', logout: '退出登录', close: '关闭', platformNote: '', platformAdmin: '平台超级管理员', error: '发生错误', retry: '使用同一请求重试', unknown: '服务器可能已收到请求。仅使用冻结的原始内容和请求键重试。', created: '品牌已创建并暂停。', localeEnglish: '英语', localeChinese: '简体中文', directory: '目录', directoryDescription: '', brandDirectory: '品牌目录', brandDirectoryDescription: '', memberDirectory: '会员目录', memberReadOnly: '', auditDescription: '', traceability: '操作追踪', accessDirectory: '会员目录', platformDirectory: '平台目录', createDescription: '新品牌将以暂停状态创建。品牌员工权限在对应品牌后台管理。', codePlaceholder: 'northstar_shop', timezonePlaceholder: 'Asia/Singapore', accountLabel: '账号', brandLabel: '品牌', statusNormal: '正常', statusFrozen: '已冻结', statusDisabled: '已停用', statusExpired: '已过期', statusCancelled: '已取消', statusPaused: '已暂停', statusActive: '启用', countSuffix: '条记录', accountProfile: '个人信息', accountPassword: '修改密码', accountId: '账号 ID',
  }
 const account = ref<PlatformAccount | null>(null)
 const brandOperationPanel = ref<{ openForBrand: (brandId: string) => void } | null>(null)
@@ -45,9 +47,9 @@ const filteredBrands = computed(() => {
     (!query || `${brand.name} ${brand.code} ${brand.id}`.toLowerCase().includes(query)))
 })
 const directoryCopy = computed(() => locale.value === 'en' ? {
-  search: 'Find a brand', hint: 'Name, code or ID', status: 'Brand status', all: 'All statuses', clear: 'Clear filters', empty: 'No brands match these filters.',
+  search: 'Find a brand', hint: 'Name, code or ID', status: 'Brand status', all: 'All statuses', clear: 'Clear filters', submit: 'Search', empty: 'No brands match these filters.',
 } : {
-  search: '查找品牌', hint: '名称、代码或编号', status: '品牌状态', all: '全部状态', clear: '清除筛选', empty: '没有符合筛选条件的品牌。',
+  search: '查找品牌', hint: '名称、代码或编号', status: '品牌状态', all: '全部状态', clear: '清除筛选', submit: '搜索', empty: '没有符合筛选条件的品牌。',
 })
 const members = ref<PlatformMember[]>([])
 const auditRows = ref<PlatformAudit[]>([])
@@ -72,7 +74,12 @@ const accessLabel = computed(() => locale.value === 'en' ? 'Accounts and permiss
 const sectionLabel = computed(() => section.value === 'access' ? accessLabel.value : section.value === 'audit' ? operationsLabel.value : section.value === 'commission' ? commissionLabel.value : section.value === 'wallets' ? walletLabel.value : section.value === 'bets' ? betLabel.value : section.value === 'withdrawals' ? withdrawalLabel.value : lang.value[section.value])
 const busy = ref(false)
 const loading = ref(false)
-const error = ref('')
+const errorCause = shallowRef<unknown>('')
+const uncertainError = ref(false)
+const error = computed({
+  get: () => errorCause.value === '' ? '' : `${platformErrorMessage(errorCause.value, locale.value)}${uncertainError.value ? ` — ${lang.value.unknown}` : ''}`,
+  set: (value: string) => { errorCause.value = value; uncertainError.value = false },
+})
 const notice = ref('')
 const identifier = ref('')
 const password = ref('')
@@ -81,11 +88,11 @@ const confirming = ref(false)
 const retryPayload = ref<FrozenBrandCreateRequest | null>(null)
 const form = ref<BrandCreateInput>({ code: '', name: '', default_locale: 'en', timezone: 'UTC', reason: '' })
 const selected = computed(() => brands.value.find(brand => brand.id === selectedBrand.value))
+const accountName = computed(() => account.value?.username || account.value?.display_name || account.value?.id || '')
 const canManageBrandOperation = computed(() => account.value?.platform_permissions.includes('brand_operation.view.platform') === true && account.value.platform_permissions.includes('brand_operation.write.platform'))
 let memberRequestGeneration = 0
 let auditRequestGeneration = 0
 
-function messageOf(cause: unknown) { return cause instanceof Error ? cause.message : lang.value.error }
 function clearPrivateState() {
   accountWriteLocked.value = false
   accessScope.value = 'platform'
@@ -100,7 +107,7 @@ function clearPrivateState() {
 }
 function handleFailure(cause: unknown) {
   if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) clearPrivateState()
-  error.value = messageOf(cause)
+  errorCause.value = cause; uncertainError.value = false
 }
 async function loadWorkspace() {
   loading.value = true; error.value = ''
@@ -219,7 +226,7 @@ async function submitCreate() {
     modal.value = false; confirming.value = false; retryPayload.value = null; notice.value = lang.value.created
     await loadWorkspace()
   } catch (cause) {
-    if (cause instanceof PlatformApiError && (cause.network || cause.status >= 500 || cause.code === 'INVALID_RESPONSE')) error.value = `${messageOf(cause)} — ${lang.value.unknown}`
+    if (cause instanceof PlatformApiError && (cause.network || cause.status >= 500 || cause.code === 'INVALID_RESPONSE')) { errorCause.value = cause; uncertainError.value = true }
     else { handleFailure(cause); retryPayload.value = null }
   } finally { busy.value = false }
 }
@@ -235,7 +242,7 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
         <label>{{ lang.password }}<input v-model="password" type="password" autocomplete="current-password" required /></label>
         <p v-if="error" class="message error">{{ error }}</p><button class="primary full" :disabled="busy">{{ busy ? lang.loading : lang.signIn }}</button>
       </form>
-      <button class="language" @click="locale = locale === 'en' ? 'zh-CN' : 'en'">{{ locale === 'en' ? '中文' : 'English' }}</button>
+      <LanguageSwitcher v-model="locale" :label="locale === 'en' ? 'Language' : '语言'" :options="[{code:'zh-CN',label:'简体中文'},{code:'en',label:'English'}]" />
     </div>
   </main>
   <div v-else class="app-frame">
@@ -254,18 +261,32 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
       <div class="sidebar-bottom"><p>{{ lang.platformNote }}</p></div>
     </aside>
     <section class="main-column">
-      <header class="topbar"><div class="breadcrumb">{{ lang.title }} <span>/</span> {{ sectionLabel }}</div><div class="top-actions"><span class="secure"><i></i> {{ lang.platformAdmin }}</span><button class="language" @click="locale = locale === 'en' ? 'zh-CN' : 'en'">{{ locale === 'en' ? '中文' : 'EN' }}</button><button class="logout-button" :disabled="busy" @click="signOut">↗ {{ lang.logout }}</button></div></header>
+      <header class="topbar"><nav class="breadcrumb" aria-label="Breadcrumb"><button type="button" @click="chooseSection('brands')">{{ lang.title }}</button><span>/</span><button type="button" @click="chooseSection(section)">{{ sectionLabel }}</button></nav><div class="top-actions"><span class="secure"><i></i> {{ lang.platformAdmin }}</span><LanguageSwitcher v-model="locale" :label="locale === 'en' ? 'Language' : '语言'" :options="[{code:'zh-CN',label:'简体中文'},{code:'en',label:'English'}]" /><div class="account-menu"><button class="account-trigger" type="button"><span class="account-avatar">{{ accountName.slice(0, 1).toUpperCase() }}</span><span>{{ accountName }}</span><span aria-hidden="true">⌄</span></button><div class="account-popover" role="menu"><strong>{{ accountName }}</strong><span>{{ lang.accountId }} · {{ account?.id }}</span><button type="button" role="menuitem">{{ lang.accountProfile }}</button><button type="button" role="menuitem">{{ lang.accountPassword }}</button><button type="button" role="menuitem" class="popover-logout" :disabled="busy" @click="signOut">{{ lang.logout }}</button></div></div></div></header>
       <main class="content">
         <div v-if="error" class="message error global-message">{{ error }}</div><div v-if="notice" class="message success global-message">{{ notice }}</div>
         <div v-if="loading" class="loading-line">{{ lang.loading }}</div>
         <template v-if="section === 'brands'">
-          <div class="page-heading"><div><div class="eyebrow">{{ lang.directory }}</div><h1>{{ lang.brands }}</h1><p>{{ lang.directoryDescription }}</p></div><button class="primary" @click="beginCreate"><span>＋</span> {{ lang.createBrand }}</button></div>
-          <section class="panel" data-testid="platform-brand-list"><div class="panel-heading"><div><h2>{{ lang.brandDirectory }}</h2><p>{{ brands.length }} {{ lang.brandCount }}</p></div><span class="count-chip">{{ filteredBrands.length }} / {{ brands.length }}</span></div>
-            <div class="wallet-query">
-              <label>{{ directoryCopy.search }}<input v-model="brandQuery" :placeholder="directoryCopy.hint" type="search" /></label>
-              <label>{{ directoryCopy.status }}<select v-model="brandStatus"><option value="">{{ directoryCopy.all }}</option><option value="active">{{ lang.statusActive }}</option><option value="paused">{{ lang.statusPaused }}</option></select></label>
-              <button v-if="brandQuery || brandStatus" class="secondary" @click="brandQuery = ''; brandStatus = ''">{{ directoryCopy.clear }}</button>
-            </div>
+          <div class="page-heading compact-heading"><h1>{{ lang.brands }}</h1><button class="primary" @click="beginCreate"><span>＋</span> {{ lang.createBrand }}</button></div>
+          <section class="panel" data-testid="platform-brand-list"><div class="panel-heading"><span class="count-chip">{{ filteredBrands.length }} / {{ brands.length }}</span></div>
+            <form class="wallet-query" @submit.prevent="brandQuery = brandQuery.trim()">
+              <label class="query-field">
+                <span class="field-label">{{ directoryCopy.search }}</span>
+                <div class="input-with-icon">
+                  <span class="input-icon">🔍</span>
+                  <input v-model="brandQuery" :placeholder="directoryCopy.hint" type="search" />
+                </div>
+              </label>
+              <label class="query-field query-field-status">
+                <span class="field-label">{{ directoryCopy.status }}</span>
+                <select v-model="brandStatus">
+                  <option value="">{{ directoryCopy.all }}</option>
+                  <option value="active">{{ lang.statusActive }}</option>
+                  <option value="paused">{{ lang.statusPaused }}</option>
+                </select>
+              </label>
+              <button v-if="brandQuery || brandStatus" type="button" class="secondary clear-btn" @click="brandQuery = ''; brandStatus = ''">{{ directoryCopy.clear }}</button>
+              <button class="primary query-submit" type="submit">{{ directoryCopy.submit }}</button>
+            </form>
             <div class="table-wrap"><table><thead><tr><th>{{ lang.name }}</th><th>{{ lang.code }}</th><th>{{ lang.status }}</th><th></th></tr></thead><tbody>
               <tr v-for="brand in filteredBrands" :key="brand.id" class="clickable-row" @click="openBrandMembers(brand.id)"><td><strong>{{ brand.name }}</strong><small>{{ brand.id }}</small></td><td class="mono">{{ brand.code }}</td><td><span :class="['status-pill', brand.status]">{{ statusLabel(brand.status) }}</span></td><td><button class="row-action" @click.stop="openBrandMembers(brand.id)">{{ lang.view }} →</button><button class="row-action" @click.stop="openBrandAccounts(brand.id)">{{ locale === 'en' ? 'View accounts' : '查看账号' }} →</button><button v-if="canManageBrandOperation" class="row-action" @click.stop="brandOperationPanel?.openForBrand(brand.id)">{{ locale === 'en' ? 'Manage status' : '管理运行状态' }}</button></td></tr>
               <tr v-if="!brands.length"><td colspan="4" class="empty-state">{{ lang.empty }}</td></tr>

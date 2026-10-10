@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import {test,expect,type APIResponse,type Page} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
 import {rememberAdminSession} from './support/admin-session';
@@ -74,7 +75,7 @@ test('real payout opt-in credits automatic C and preserves lost manual approval 
   expect(command('verify').commission_ledger_entries).toBe(1);
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await panel.screenshot({path:info.outputPath('commission-payments-panel.png')});
-  await page.getByTestId('admin-language').selectOption('en');
+  await selectLanguage(page, 'en');
   await expect(panel.getByRole('heading',{name:'Commission payouts',exact:true})).toBeVisible();
   await expect(panel.getByTestId('commission-payment-receipt')).toContainText(`Paying · v${manual.version+1}`);
   expect(errors).toEqual([]);
@@ -98,6 +99,6 @@ test('current payout status renders exact credited C without further financial w
   await expect(panel.getByTestId('commission-payment-retry')).toHaveCount(0);
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await panel.screenshot({path:info.outputPath('commission-payments-current-panel.png')});
-  await page.getByTestId('admin-language').selectOption('en');await expect(panel).toContainText('Paid');
+  await selectLanguage(page, 'en');await expect(panel).toContainText('Paid');
   expect(writes).toEqual([]);expect(command('verify').economic_fingerprint).toBe(before.economic_fingerprint);
 });

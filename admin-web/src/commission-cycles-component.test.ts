@@ -51,10 +51,15 @@ function compileComponent() {
   const descriptor = parse(source, { filename: "CommissionCyclesManagement.vue" }).descriptor;
   const compiled = compileScript(descriptor, { id: "commission-cycles-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(compiled, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-cycles-api": CommissionCyclesApi, "./commission-cycles-state": CommissionCyclesState };
+  const modules: Record<string, unknown> = {
+    // Business tests use a host renderer; native dialog behavior is checked in Chrome.
+    "@lottery/shared/DetailModal.vue": { inheritAttrs: false, setup: (_props: unknown, context: { slots: { default?: () => unknown } }) => () => context.slots.default?.() }, vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-cycles-api": CommissionCyclesApi, "./commission-cycles-state": CommissionCyclesState };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => {
     if (!(specifier in modules)) throw new Error(`Unmapped component import: ${specifier}`);
     return `const {${bindings.replace(/\s+as\s+/g, ": ")}} = __modules[${JSON.stringify(specifier)}];`;
+  }).replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => {
+    if (!(specifier in modules)) throw new Error(`Unmapped component import: ${specifier}`);
+    return `const ${binding} = __modules[${JSON.stringify(specifier)}];`;
   }).replace(/export\s+default\s+/, "return ");
   return new Function("__modules", body)(modules) as Component;
 }

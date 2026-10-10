@@ -232,7 +232,24 @@ watch(() => [props.brandId, props.account.id, permissionSignature.value] as cons
     <p v-if="!canView" class="jc-note">{{ t("当前账号缺少此品牌的加入码查看权限。冻结请求仍保留在本页会话中。", "This account cannot view join codes for this brand. Frozen requests remain in this page's session.") }}</p>
     <template v-else>
       <section class="jc-card"><div class="jc-card-head"><div><h3>{{ t("加入码目录", "Join code directory") }}</h3><p>{{ t("共", "Total") }} {{ total }} {{ t("条 · 不展示财务或推算统计", "records · no financial or derived statistics are shown") }}</p></div><button v-if="canWrite" type="button" class="jc-secondary" @click="startCreate">{{ t("新建加入码", "Create join code") }}</button></div>
-        <form class="jc-filters" @submit.prevent="search"><label>{{ t("类型", "Type") }}<select v-model="kindFilter"><option value="">{{ t("全部", "All") }}</option><option value="agent">{{ t("代理", "Agent") }}</option><option value="referral">{{ t("推荐", "Referral") }}</option></select></label><label>{{ t("归属会员 UUID", "Owner member UUID") }}<input v-model.trim="ownerFilter" autocomplete="off" :placeholder="t('按会员筛选', 'Filter by member')"></label><button class="jc-secondary" type="submit" :disabled="loading">{{ t("查询", "Search") }}</button></form>
+        <form class="jc-filters" @submit.prevent="search">
+          <label class="query-field query-field-status">
+            <span class="field-label">{{ t("类型", "Type") }}</span>
+            <select v-model="kindFilter">
+              <option value="">{{ t("全部", "All") }}</option>
+              <option value="agent">{{ t("代理", "Agent") }}</option>
+              <option value="referral">{{ t("推荐", "Referral") }}</option>
+            </select>
+          </label>
+          <label class="query-field">
+            <span class="field-label">{{ t("归属会员 UUID", "Owner member UUID") }}</span>
+            <div class="input-with-icon">
+              <span class="input-icon">👤</span>
+              <input v-model.trim="ownerFilter" autocomplete="off" :placeholder="t('按会员筛选', 'Filter by member')">
+            </div>
+          </label>
+          <button class="jc-primary" type="submit" :disabled="loading">{{ t("查询", "Search") }}</button>
+        </form>
         <p v-if="loading" class="jc-note" role="status">{{ t("正在读取加入码…", "Loading join codes…") }}</p><div class="jc-list">
           <article v-for="item in items" :key="item.id" class="jc-row"><div class="jc-row-main"><strong><code>{{ item.code }}</code></strong><span>{{ item.kind === "agent" ? t("代理码", "Agent code") : t("推荐码", "Referral code") }} · {{ item.status === "active" ? t("启用", "Active") : t("停用", "Disabled") }} · {{ t("版本", "Version") }} {{ item.version }}</span><small>{{ t("归属会员", "Owner member") }} {{ item.owner_member_id }}<template v-if="item.agent_id"> · {{ t("代理", "Agent") }} {{ item.agent_id }}</template></small><small>{{ historyRange(item) }} · {{ item.usable ? t("当前可用", "Currently usable") : t("当前不可用", "Currently unusable") }}</small></div><div class="jc-actions"><button type="button" class="jc-secondary" @click="openCode(item)">{{ t("详情与历史", "Details and history") }}</button></div></article>
           <p v-if="!loading && items.length === 0" class="jc-note">{{ t("当前筛选没有加入码记录。", "No join codes match the current filters.") }}</p>

@@ -64,7 +64,7 @@ test('archive browser CI owns separate desktop/mobile databases and runs the rea
   assert.ok(browserSpec.includes(String.raw`const allowedBrowserOrigin = /^http:\/\/localhost:(?:5174|15292)$/;`));
   assert.ok(browserSpec.includes(String.raw`const allowedAPIOrigin = /^http:\/\/127\.0\.0\.1:(?:8080|15291)$/;`));
   assert.match(browserSpec, /page\.locator\("\.archives"\)/);
-  assert.match(browserSpec, /page\.getByTestId\("admin-language"\)/);
+  assert.match(browserSpec, /selectLanguage\(page, "en"\)/);
 });
 
 test('initializer accepts only the exact empty owned loopback database and known PostgreSQL user', () => {

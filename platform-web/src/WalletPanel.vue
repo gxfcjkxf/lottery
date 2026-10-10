@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, ref, watch } from 'vue'
 import { WALLET_SOURCES, WALLET_STATES } from '@lottery/shared'
 import { PlatformApiError } from './platform-api'
@@ -99,8 +100,14 @@ watch(() => [props.brandId, props.memberId], () => {
   <div data-testid="platform-wallet">
     <div class="page-heading"><div><div class="eyebrow">{{ copy.readOnly }}</div><h1>{{ copy.title }}</h1></div></div>
     <form class="panel wallet-query" @submit.prevent="load">
-      <label>{{ copy.member }}<input v-model="inputMember" required :disabled="loading || !brandId" autocomplete="off" /></label>
-      <button class="secondary" :disabled="loading || !brandId">{{ copy.load }}</button>
+      <label class="query-field">
+        <span class="field-label">{{ copy.member }}</span>
+        <div class="input-with-icon">
+          <span class="input-icon">👤</span>
+          <input v-model="inputMember" required :disabled="loading || !brandId" autocomplete="off" :placeholder="locale === 'en' ? 'Enter member UUID' : '输入会员 UUID'" />
+        </div>
+      </label>
+      <button class="primary" :disabled="loading || !brandId">{{ copy.load }}</button>
     </form>
     <p v-if="error" class="message error" role="alert">{{ error }}</p>
     <p v-if="loading" class="loading-line">{{ copy.loading }}</p>
@@ -125,12 +132,14 @@ watch(() => [props.brandId, props.memberId], () => {
         </tbody></table></div>
         <div class="wallet-pagination" data-testid="platform-wallet-pages"><button class="secondary" :disabled="loading || offset === 0" @click="page(offset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(offset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !more" @click="page(offset + 50)">{{ copy.next }}</button></div>
       </section>
-      <section v-if="selected" class="panel reward-detail" data-testid="platform-wallet-entry">
+      <DetailModal v-if="selected" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="selected = null">
+<section v-if="selected" class="panel reward-detail" data-testid="platform-wallet-entry">
         <div class="panel-heading"><div><h2>{{ copy.detail }}</h2><p class="mono">{{ selected.id }}</p><p>{{ selected.reason }}</p></div></div>
         <div class="table-wrap"><table><thead><tr><th>{{ copy.source }}</th><th>{{ copy.state }}</th><th>{{ copy.before }}</th><th>{{ copy.delta }}</th><th>{{ copy.after }}</th></tr></thead><tbody>
           <template v-for="source in WALLET_SOURCES" :key="source"><tr v-for="state in WALLET_STATES" :key="state"><td>{{ copy[source] }}</td><td>{{ copy[state] }}</td><td>{{ selected.before_snapshot[source][state] }}</td><td>{{ selected.delta_snapshot[source][state] }}</td><td>{{ selected.after_snapshot[source][state] }}</td></tr></template>
         </tbody></table></div>
       </section>
+</DetailModal>
     </template>
   </div>
   </template>

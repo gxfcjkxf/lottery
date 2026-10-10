@@ -646,7 +646,7 @@ onBeforeUnmount(() => {
 .settlement-preview { min-width: 0; display: grid; gap: 12px; color: #252a36; }
 .sp-heading, .sp-section-title, .sp-pagination, .sp-line-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
 .sp-heading h3, .sp-section-title h4 { margin: 0; font-size: 14px; }
-.sp-eyebrow { margin: 0 0 3px; color: #8991a0; font-size: 10px; }
+.sp-eyebrow { margin: 0 0 3px; color: #8991a0; font-size: 11px; }
 .sp-panel { min-width: 0; padding: 12px; border: 1px solid #e9ebf0; border-radius: 8px; background: #fff; }
 .sp-warning, .sp-note, .sp-pending, .sp-confirm { margin: 0; padding: 10px; border-radius: 7px; background: #fff7e8; color: #704d18; line-height: 1.55; overflow-wrap: anywhere; }
 .sp-warning.compact { margin-top: 10px; padding: 8px; }
@@ -657,19 +657,19 @@ onBeforeUnmount(() => {
 .sp-primary:disabled, .sp-secondary:disabled { opacity: .5; cursor: not-allowed; }
 .sp-message { margin: 0; padding: 9px; border-radius: 6px; background: #eef1ff; color: #4758b9; overflow-wrap: anywhere; }
 .sp-message.error { background: #fff0ef; color: #a3332d; }
-.sp-badge { flex: 0 0 auto; padding: 4px 7px; border-radius: 999px; background: #edf0f5; color: #687083; font-size: 10px; }
+.sp-badge { flex: 0 0 auto; padding: 4px 7px; border-radius: 999px; background: #edf0f5; color: #687083; font-size: 11px; }
 .sp-badge.ready, .sp-badge.good { background: #e8f5ef; color: #25734e; }
 .sp-badge.blocked, .sp-badge.alert { background: #fff0ef; color: #a3332d; }
 .sp-badge.quiet { background: #f0f2f5; color: #596174; }
 .sp-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0 0; }
 .sp-facts div { min-width: 0; padding: 8px; border-radius: 6px; background: #f8f9fb; }
-.sp-facts dt { margin-bottom: 4px; color: #788092; font-size: 10px; }
+.sp-facts dt { margin-bottom: 4px; color: #788092; font-size: 11px; }
 .sp-facts dd { margin: 0; font-size: 12px; overflow-wrap: anywhere; word-break: break-word; }
 .sp-break { word-break: break-all; }
 .sp-form { display: grid; gap: 8px; margin-top: 12px; }
 .sp-form label { display: grid; gap: 5px; font-size: 11px; }
 .sp-form textarea { width: 100%; min-width: 0; resize: vertical; padding: 8px; border: 1px solid #dfe2e9; border-radius: 6px; }
-.sp-form small, .sp-note-inline { color: #8790a0; font-size: 10px; }
+.sp-form small, .sp-note-inline { color: #8790a0; font-size: 11px; }
 .sp-confirm, .sp-pending { display: grid; gap: 8px; background: #f5f6ff; color: #3f4c94; }
 .sp-confirm p, .sp-pending p { margin: 0; overflow-wrap: anywhere; }
 .sp-check { display: flex !important; align-items: flex-start; }
@@ -677,7 +677,7 @@ onBeforeUnmount(() => {
 .sp-history { display: grid; gap: 6px; margin-top: 10px; }
 .sp-history-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; min-width: 0; padding: 8px; border: 1px solid #e9ebf0; border-radius: 6px; background: #fff; text-align: left; overflow-wrap: anywhere; }
 .sp-history-item.selected { border-color: #8390ed; background: #f7f8ff; }
-.sp-history-item span { color: #788092; font-size: 10px; }
+.sp-history-item span { color: #788092; font-size: 11px; }
 .sp-history-item b { font-size: 11px; }
 .sp-history-item small { grid-column: 1 / -1; color: #8790a0; }
 .sp-pagination { justify-content: flex-start; flex-wrap: wrap; margin-top: 9px; }
@@ -689,7 +689,7 @@ onBeforeUnmount(() => {
 .sp-hit span { color: #697184; font-size: 11px; }
 details { min-width: 0; }
 summary { color: #4e5fc9; cursor: pointer; font-size: 11px; }
-pre { max-width: 100%; margin: 7px 0; padding: 8px; border-radius: 5px; background: #f5f6f8; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+pre { max-width: 100%; margin: 7px 0; padding: 8px; border-radius: 5px; background: #f5f6f8; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 @media (max-width: 480px) {
   .sp-panel { padding: 9px; }
   .sp-facts { grid-template-columns: minmax(0, 1fr); }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, ref, watch } from 'vue'
 import type { WithdrawalHistory, WithdrawalOrder, WithdrawalState } from '@lottery/shared'
 import { PlatformApiError } from './platform-api'
@@ -66,16 +67,29 @@ watch(() => props.brandId, () => {
   <div data-testid="platform-withdrawals">
     <div class="page-heading"><div><div class="eyebrow">{{ copy.note }}</div><h1>{{ copy.title }}</h1></div></div>
     <form class="panel wallet-query" @submit.prevent="load(0, memberDraft.trim(), stateDraft)">
-      <label>{{ copy.member }}<input v-model="memberDraft" :disabled="loading || !brandId" autocomplete="off" /></label>
-      <label><span>{{ copy.state }}</span><select v-model="stateDraft" :aria-label="copy.state" :disabled="loading || !brandId"><option value="">{{ copy.all }}</option><option v-for="state in states" :key="state" :value="state">{{ labels[state] }}</option></select></label>
-      <button class="secondary" :disabled="loading || !brandId">{{ copy.query }}</button>
+      <label class="query-field">
+        <span class="field-label">{{ copy.member }}</span>
+        <div class="input-with-icon">
+          <span class="input-icon">👤</span>
+          <input v-model="memberDraft" :disabled="loading || !brandId" autocomplete="off" :placeholder="locale === 'en' ? 'Filter by member UUID' : '按会员 UUID 筛选'" />
+        </div>
+      </label>
+      <label class="query-field query-field-status">
+        <span class="field-label">{{ copy.state }}</span>
+        <select v-model="stateDraft" :aria-label="copy.state" :disabled="loading || !brandId">
+          <option value="">{{ copy.all }}</option>
+          <option v-for="state in states" :key="state" :value="state">{{ labels[state] }}</option>
+        </select>
+      </label>
+      <button class="primary" :disabled="loading || !brandId">{{ copy.query }}</button>
     </form>
     <p v-if="error" class="message error" role="alert">{{ error }}</p><p v-if="loading" class="loading-line">{{ copy.loading }}</p>
     <section class="panel reward-detail"><div class="table-wrap"><table><thead><tr><th>{{ copy.order }}</th><th>{{ copy.points }}</th><th>{{ copy.state }}</th><th>{{ copy.created }}</th></tr></thead><tbody>
       <tr v-for="order in rows" :key="order.id"><td><button class="row-action" @click="open(order)">{{ order.id }}</button><small>{{ order.member_id }}</small></td><td>{{ order.points }}</td><td>{{ labels[order.state] }}</td><td>{{ order.created_at }}</td></tr>
       <tr v-if="!rows.length"><td colspan="4" class="empty-state">{{ copy.empty }}</td></tr>
     </tbody></table></div><div class="wallet-pagination" data-testid="platform-withdrawal-pages"><button class="secondary" :disabled="loading || offset === 0 || !brandId" @click="load(offset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(offset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !more" @click="load(offset + 50)">{{ copy.next }}</button></div></section>
-    <section v-if="detail" class="panel reward-detail" data-testid="platform-withdrawal-detail">
+    <DetailModal v-if="detail" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="detail = null">
+<section v-if="detail" class="panel reward-detail" data-testid="platform-withdrawal-detail">
       <div class="panel-heading"><h2>{{ copy.detail }}</h2><span>{{ labels[detail.state] }} · v{{ detail.version }}</span></div>
       <dl class="confirm-list reward-fields">
         <div><dt>{{ copy.order }}</dt><dd>{{ detail.id }}</dd></div><div><dt>{{ copy.points }}</dt><dd>{{ detail.points }}</dd></div><div><dt>{{ copy.reason }}</dt><dd>{{ detail.decision_reason }}</dd></div>
@@ -85,5 +99,6 @@ watch(() => props.brandId, () => {
       <div class="table-wrap"><table><thead><tr><th>{{ copy.sources }}</th><th>{{ copy.points }}</th></tr></thead><tbody><tr v-for="allocation in detail.source_allocation" :key="allocation.source"><td>{{ copy[allocation.source] }}</td><td>{{ allocation.points }}</td></tr></tbody></table></div>
       <div v-if="history" class="table-wrap" data-testid="platform-withdrawal-history"><table><thead><tr><th>{{ copy.version }}</th><th>{{ copy.from }}</th><th>{{ copy.to }}</th><th>{{ copy.actor }}</th><th>{{ copy.reason }}</th><th>{{ copy.created }}</th></tr></thead><tbody><tr v-for="item in history.items" :key="item.id"><td>{{ item.version }}</td><td>{{ item.from_state ? labels[item.from_state] : '—' }}</td><td>{{ labels[item.to_state] }}</td><td>{{ item.actor_type }}</td><td>{{ item.reason }}</td><td>{{ item.created_at }}</td></tr></tbody></table></div>
     </section>
+</DetailModal>
   </div>
 </template>

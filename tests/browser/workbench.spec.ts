@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect } from '@playwright/test'
 
 const origin = process.env.TEST_ADMIN_ORIGIN ?? 'http://localhost:5174'
@@ -11,7 +12,7 @@ test('workbench displays real scoped financial data, explicit gaps, and clears s
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.goto(origin)
-  await page.getByTestId('admin-language').selectOption('en')
+  await selectLanguage(page, 'en')
   await page.getByLabel('Account', { exact: true }).fill(username!)
   await page.getByLabel('Password', { exact: true }).fill(password!)
   await page.getByRole('button', { name: 'Sign in and load members', exact: true }).click()
@@ -81,9 +82,9 @@ test('workbench displays real scoped financial data, explicit gaps, and clears s
   await expect(card('Draw sources')).toContainText(data.sources.status === 'forbidden' ? 'Your account cannot view' : 'does not indicate upstream health')
   await expect(dashboard).not.toContainText('Lin Lan')
   await expect(dashboard).not.toContainText('128,450')
-  await page.getByTestId('admin-language').selectOption('zh-CN')
+  await selectLanguage(page, 'zh-CN')
   await expect(dashboard.getByRole('heading', { name: '运营工作台', exact: true })).toBeVisible()
-  await page.getByTestId('admin-language').selectOption('en')
+  await selectLanguage(page, 'en')
   await expect(metric('Balances', 'Total points')).toHaveText(data.balances.data.total_points)
   const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth, visible: visualViewport?.width }))
   expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.width + 1)

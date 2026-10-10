@@ -318,7 +318,7 @@ watch(
   line-height: 1.55;
 }
 .eyebrow {
-  font-size: 10px !important;
+  font-size: 11px !important;
   letter-spacing: 1.2px;
   color: #8991a2 !important;
   font-weight: 700;
@@ -364,7 +364,7 @@ watch(
 }
 .card-head p,
 .audit-id {
-  font-size: 10px;
+  font-size: 11px;
   color: #737b8c;
   line-height: 1.55;
   margin: 0;
@@ -383,7 +383,7 @@ watch(
   min-width: 0;
 }
 .current-limits dt {
-  font-size: 10px;
+  font-size: 11px;
   color: #737b8c;
 }
 .current-limits dd {
@@ -423,7 +423,7 @@ watch(
   resize: vertical;
 }
 .policy-form small {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 400;
   color: #8991a0;
 }
@@ -479,7 +479,7 @@ watch(
   margin: 0;
   border-radius: 7px;
   padding: 8px;
-  font-size: 10px;
+  font-size: 11px;
 }
 @media (max-width: 600px) {
   .policy-head {

@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect, type APIResponse, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -76,7 +77,7 @@ test('real reward reports separate immutable postings from current order cohorts
   const negative = await get<Report>(`/reports/rewards?${narrow}`); expect(negative.summary.net_points).toBe('-20'); expect(negative.summary.grant_points).toBe('0');
   const negativeCSV = await page.request.get(`${admin}/reports/rewards.csv?${narrow}`, { headers: { 'X-Brand-ID': brand } }); expect(negativeCSV.status()).toBe(200); expect(await negativeCSV.text()).toContain(",'\u002d20");
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true); await panel.screenshot({ path: info.outputPath('reward-reports.png') });
-  await page.getByTestId('admin-language').selectOption('en'); await expect(panel.getByRole('heading', { name: 'Reward reports', exact: true })).toBeVisible();
+  await selectLanguage(page, 'en'); await expect(panel.getByRole('heading', { name: 'Reward reports', exact: true })).toBeVisible();
   const snapshot = await get<{ rewards: { status: string; data: { granted_count: string; pending_count: string; revoked_count: string } } }>('/workbench');
   await navigate(page, info.project.name, '工作台|Dashboard'); const card = page.locator('.workbench .card').filter({ has: page.getByRole('heading', { name: 'Reward orders (current state)', exact: true }) });
   expect(snapshot.rewards.status).toBe('ready'); await expect(card.locator('dd')).toHaveText(Object.values(snapshot.rewards.data));

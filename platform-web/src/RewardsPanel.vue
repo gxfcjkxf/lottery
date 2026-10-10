@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformRewardsApi, type RewardAction, type RewardOrder } from './rewards-api'
@@ -130,7 +131,8 @@ watch(() => props.brandId, () => { void refresh() }, { immediate: true, flush: '
         <button class="secondary" :disabled="loading || !hasNextOrders" @click="refresh(orderOffset + pageSize)">{{ nextLabel }}</button>
       </div>
     </section>
-    <section v-if="selected" class="panel reward-detail" data-testid="platform-reward-detail">
+    <DetailModal v-if="selected" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="selected = null">
+<section v-if="selected" class="panel reward-detail" data-testid="platform-reward-detail">
       <div class="panel-heading"><div><h2>{{ copy.detail }}</h2><p class="mono">{{ selected.id }}</p></div><span v-if="detail" class="count-chip">{{ stateLabel(detail.state) }} · v{{ detail.version }}</span></div>
       <dl v-if="detail" class="confirm-list reward-fields">
         <div><dt>{{ copy.order }}</dt><dd class="mono">{{ detail.id }}</dd></div><div><dt>{{ copy.member }}</dt><dd class="mono">{{ detail.member_id }}</dd></div>
@@ -151,5 +153,6 @@ watch(() => props.brandId, () => { void refresh() }, { immediate: true, flush: '
         <button class="secondary" :disabled="loading || !hasNextHistory" @click="loadHistory(historyOffset + pageSize)">{{ nextLabel }}</button>
       </div>
     </section>
+</DetailModal>
   </div>
 </template>

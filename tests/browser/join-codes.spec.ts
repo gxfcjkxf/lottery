@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test,expect } from "@playwright/test";
 import { rememberAdminSession,restoreAdminSession } from "./support/admin-session";
 
@@ -27,9 +28,9 @@ test("real join code receipt recovery and first membership preserve source witho
  }finally{releaseDirectory()}
  expect((await directoryResponse).status()).toBe(200);await expect(review.getByTestId("join-code-frozen-confirmation")).toBeEnabled();await page.unroute("**/api/v1/admin/join-codes?**");
  await review.getByTestId("join-code-frozen-confirmation").check();const frozen=await review.locator(".jc-json").textContent();
- await page.getByTestId("admin-language").selectOption("en");await expect(review.getByTestId("join-code-frozen-confirmation")).toBeChecked();await expect(review.locator(".jc-json")).toHaveText(frozen!);
+ await selectLanguage(page, "en");await expect(review.getByTestId("join-code-frozen-confirmation")).toBeChecked();await expect(review.locator(".jc-json")).toHaveText(frozen!);
  const replayResponse=page.waitForResponse(r=>r.url().endsWith("/api/v1/admin/join-codes")&&r.request().method()==="POST"&&r.status()===201);
- await review.getByTestId("join-code-retry").click();await replayResponse;await expect(review).toHaveCount(0);expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1]);await page.unroute("**/api/v1/admin/join-codes");await page.getByTestId("admin-language").selectOption("zh-CN");
+ await review.getByTestId("join-code-retry").click();await replayResponse;await expect(review).toHaveCount(0);expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1]);await page.unroute("**/api/v1/admin/join-codes");await selectLanguage(page, "zh-CN");
  const codes=await call(`/join-codes?kind=agent&owner_member_id=${root.member_id}&limit=100&offset=0`,"GET");const code=codes.items.find((x:{starts_at:string|null})=>x.starts_at!==null&&Date.parse(x.starts_at)===Date.parse(starts));expect(code).toBeTruthy();expect(code).toMatchObject({kind:"agent",owner_member_id:root.member_id,agent_id:root.id,usable:true,version:1});
  const guest=await context.newPage();guest.on("pageerror",e=>errors.push(e.message));await guest.addInitScript(()=>localStorage.setItem("luma-language","en"));await guest.route(`${userOrigin}/api/**`,async route=>{const response=await route.fetch({url:route.request().url().replace("harbor.localhost","localhost"),headers:{...(await route.request().allHeaders()),host:new URL(userOrigin).host}});await route.fulfill({response})});
  try{await guest.goto(`${userOrigin}/register`);const username=`code_join_${uid().replaceAll("-","").slice(0,11)}`;await guest.getByLabel("Choose a username or phone",{exact:true}).fill(username);await guest.getByLabel("Password",{exact:true}).fill("join-code-test-password-2026");await guest.getByRole("combobox",{name:"Optional join source",exact:true}).selectOption("agent");await guest.getByLabel("24-character code",{exact:true}).fill(code.code.toLowerCase());await guest.locator('.auth-form input[type="checkbox"]').nth(0).check();await guest.locator('.auth-form input[type="checkbox"]').nth(1).check();

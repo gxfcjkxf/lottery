@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onUnmounted, ref, watch } from "vue";
 import { formatIntegerAmount } from "./wallet-api";
 import { createRechargeApi, RechargeApiError, type MemberRecharge, type RechargeState } from "./recharge-api";
@@ -196,10 +197,12 @@ onUnmounted(() => {
           </nav>
         </div>
         <div v-if="detailLoading" class="detail-panel" role="status">{{ labels.loading }}</div>
-        <section v-if="detail" class="detail-panel recharge-detail" aria-live="polite">
+        <DetailModal v-if="!!detail" :title="props.locale === 'en' ? 'Details' : '详情'" :close-label="props.locale === 'en' ? 'Close' : '关闭'" @close="detail = null">
+<section v-if="detail" class="detail-panel recharge-detail" aria-live="polite">
           <div class="recharge-detail-heading"><h2>{{ labels.details }}</h2><button class="text-button" @click="detail = null">{{ labels.close }}</button></div>
           <dl><div><dt>{{ labels.recordId }}</dt><dd>{{ detail.id }}</dd></div><div><dt>{{ labels.points }}</dt><dd>{{ formatted(detail.points) }} {{ labels.pointsUnit }}</dd></div><div><dt>{{ labels.status }}</dt><dd>{{ statusName(detail.state) }}</dd></div><div><dt>{{ labels.version }}</dt><dd>{{ detail.version }}</dd></div><div><dt>{{ labels.created }}</dt><dd>{{ date(detail.created_at) }} {{ labels.utc }}</dd></div><div v-if="detail.confirmed_at"><dt>{{ labels.confirmedAt }}</dt><dd>{{ date(detail.confirmed_at) }} {{ labels.utc }}</dd></div><div v-if="detail.ledger_entry_id"><dt>{{ labels.ledgerEntry }}</dt><dd>{{ detail.ledger_entry_id }}</dd></div></dl>
         </section>
+</DetailModal>
       </template>
     </template>
   </section>

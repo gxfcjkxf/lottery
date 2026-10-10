@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect, type APIResponse, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -225,7 +226,7 @@ test('commission cycle analysis shows saved-period economics and exports the com
   await expect(panel.locator('.table-wrap, .mobile-groups')).toHaveCount(0);
   await expect.poll(() => page.evaluate(width => document.documentElement.scrollWidth <= width + 1, configuredWidth)).toBe(true);
   await panel.screenshot({ path: info.outputPath('commission-analysis-cleared-panel.png') });
-  await page.getByTestId('admin-language').selectOption('en');
+  await selectLanguage(page, 'en');
   await expect(panel.getByRole('heading', { name: 'Commission cycle calculation and actual posting analysis', exact: true })).toBeVisible();
   await panel.getByLabel('Agent UUID (optional)', { exact: true }).fill(target!.agent_id);
   await panel.getByLabel(/^Group by/).selectOption('agent');

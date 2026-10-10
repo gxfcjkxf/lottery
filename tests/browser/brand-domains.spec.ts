@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect, type APIRequestContext, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { restoreAdminSession } from "./support/admin-session";
 
@@ -142,7 +143,7 @@ async function assertHostDoesNotResolve(page: Page, host: string): Promise<void>
 
 async function openBrandSettings(page: Page, projectName: string) {
   await page.goto(adminOrigin);
-  await page.getByTestId("admin-language").selectOption("zh-CN");
+  await selectLanguage(page, "zh-CN");
   await page.getByLabel("选择真实后台品牌", { exact: true }).selectOption(harbor);
   if (projectName === "mobile") {
     await page.locator(".mobile-nav button").nth(4).click();
@@ -150,13 +151,13 @@ async function openBrandSettings(page: Page, projectName: string) {
   } else {
     await page.locator(".side-nav").getByRole("button", { name: /品牌和域名/ }).click();
   }
-  await page.getByTestId("admin-language").selectOption("en");
+  await selectLanguage(page, "en");
   await expect(page.locator(".brand-domains").getByRole("heading", { name: "Brand domains", exact: true })).toBeVisible();
   return page.locator(".brand-domains");
 }
 
 async function leaveAndReturn(page: Page, projectName: string): Promise<void> {
-  await page.getByTestId("admin-language").selectOption("zh-CN");
+  await selectLanguage(page, "zh-CN");
   if (projectName === "mobile") await page.locator(".mobile-nav button").nth(1).click();
   else await page.locator(".side-nav").getByRole("button", { name: /用户和成员/ }).click();
   await expect(page.getByRole("heading", { name: "用户和成员", exact: true })).toBeVisible();
@@ -164,7 +165,7 @@ async function leaveAndReturn(page: Page, projectName: string): Promise<void> {
     await page.locator(".mobile-nav button").last().click();
     await page.locator(".mobile-more-menu").getByRole("button", { name: /品牌和域名/ }).click();
   } else await page.locator(".side-nav").getByRole("button", { name: /品牌和域名/ }).click();
-  await page.getByTestId("admin-language").selectOption("en");
+  await selectLanguage(page, "en");
 }
 
 async function editFromUI(page: Page, panel: Locator, hostname: string, values: { enabled: boolean; primary: boolean; reason: string }): Promise<void> {

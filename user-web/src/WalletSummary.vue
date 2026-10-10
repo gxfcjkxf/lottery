@@ -374,7 +374,7 @@ function changePage(direction: -1 | 1) {
   margin: 0;
 }
 .eyebrow {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.2px;
   color: #8991a2;
   font-weight: 700;
@@ -416,7 +416,7 @@ function changePage(direction: -1 | 1) {
 }
 .total-card > span,
 .total-card small {
-  font-size: 10px;
+  font-size: 11px;
   color: #737b8c;
 }
 .total-card strong {
@@ -477,7 +477,7 @@ function changePage(direction: -1 | 1) {
   align-items: baseline;
 }
 .bucket-source dt {
-  font-size: 10px;
+  font-size: 11px;
   color: #777f8f;
 }
 .bucket-source dd {
@@ -506,7 +506,7 @@ function changePage(direction: -1 | 1) {
 .entry-head small,
 .entry-head > span {
   color: #8991a0;
-  font-size: 10px;
+  font-size: 11px;
 }
 .entry-reason {
   font-size: 11px;
@@ -518,7 +518,7 @@ function changePage(direction: -1 | 1) {
   grid-template-columns: minmax(112px, 1.1fr) repeat(3, minmax(0, 1fr));
   gap: 6px 8px;
   align-items: baseline;
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 .snapshot-label {
@@ -596,10 +596,10 @@ function changePage(direction: -1 | 1) {
   .snapshot-grid {
     grid-template-columns: minmax(94px, 1fr) repeat(3, minmax(0, 0.8fr));
     gap: 6px 4px;
-    font-size: 9px;
+    font-size: 11px;
   }
   .snapshot-bucket {
-    font-size: 9px;
+    font-size: 11px;
   }
   .wallet-head {
     align-items: center;

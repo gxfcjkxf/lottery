@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
 
 const origin = process.env.TEST_ARCHIVE_POLICY_ORIGIN;
@@ -228,7 +229,7 @@ test('real archive policy activation recovers the original receipt after a later
   expect(archives).toMatchObject({ items: [], total_count: '0' });
   expect(await economics()).toEqual(before);
 
-  await page.getByTestId('admin-language').selectOption('en');
+  await selectLanguage(page, 'en');
   await expect(panel.getByRole('heading', { name: 'Automatic archive tasks', exact: true })).toBeVisible();
   const width = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: innerWidth }));
   expect(width.document).toBeLessThanOrEqual(width.viewport);

@@ -58,7 +58,9 @@ function compileComponent(): Component {
   const descriptor = parse(source, { filename: "ReportArchiveTasksManagement.vue" }).descriptor;
   const compiled = compileScript(descriptor, { id: "report-archive-tasks-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(compiled, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./report-archive-tasks-api": TasksApi, "./report-archive-tasks-state": TasksState, "./report-archive-policy-api": PolicyApi, "./report-archive-policy-state": PolicyState };
+  const modules: Record<string, unknown> = {
+    // Business tests use a host renderer; native dialog behavior is checked in Chrome.
+    "@lottery/shared/DetailModal.vue": { default: { inheritAttrs: false, setup: (_props: unknown, context: { slots: { default?: () => unknown } }) => () => context.slots.default?.() } }, vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./report-archive-tasks-api": TasksApi, "./report-archive-tasks-state": TasksState, "./report-archive-policy-api": PolicyApi, "./report-archive-policy-state": PolicyState };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => { if (!(specifier in modules)) throw new Error(`Unmapped import ${specifier}`); return `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`; }).replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => { if (!(specifier in modules)) throw new Error(`Unmapped import ${specifier}`); return `const ${binding}=__modules[${JSON.stringify(specifier)}].default;`; }).replace(/export\s+default\s+/, "return ");
   return new Function("__modules", body)(modules) as Component;
 }

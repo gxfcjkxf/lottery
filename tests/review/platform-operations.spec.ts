@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './platform-fixture';
@@ -106,7 +107,7 @@ test('platform reads genuine archive bytes and notification history without writ
   await expect(page.getByTestId('platform-template-detail')).toContainText(selected.content.en.title);
   await expect(page.getByTestId('platform-template-detail')).toContainText(selected.content['zh-CN'].title);
   await expect(page.getByTestId('platform-template-history')).toContainText(history.items[0].reason);
-  await page.locator('.language').click();
+  await selectLanguage(page, 'zh-CN');
   await expect(page.getByTestId('platform-template-detail')).toContainText('修订历史');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('platform-notifications.png'), fullPage: true });

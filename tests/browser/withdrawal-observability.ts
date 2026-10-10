@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import {expect,type Page,type BrowserContext,type TestInfo,type APIResponse,type Response} from '@playwright/test'
 import {createHash} from 'node:crypto'
 const brand='0199a000-0000-7000-8000-000000000001'
@@ -47,10 +48,10 @@ export async function checkWithdrawalObservability(page:Page, context:BrowserCon
   expect(bytes.subarray(0,3).toString('hex')).toBe('efbbbf')
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(exported.headers()['x-report-sha256'])
   expect(bytes.toString()).toContain(info.project.name==='mobile'?'paid':'failed')
-  await page.getByTestId('admin-language').selectOption('zh-CN')
+  await selectLanguage(page, 'zh-CN')
   await expect(reportPanel.getByRole('heading',{name:'提现报表',exact:true})).toBeVisible()
   await expect(reportPanel.locator('.metrics')).toBeVisible()
-  await page.getByTestId('admin-language').selectOption('en')
+  await selectLanguage(page, 'en')
   await reportPanel.screenshot({path:info.outputPath('withdrawal-report.png')})
   await page.goto(`${userOrigin}/withdraw`)
   await expect(userPanel).toContainText(info.project.name==='mobile' ? 'Paid' : 'Failed')

@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { createHash } from "node:crypto";
 import { expect, test, type APIResponse, type Page } from "@playwright/test";
 
@@ -217,7 +218,7 @@ test("real report archives recover a lost committed receipt and keep old version
   await expect.poll(() => page.evaluate(width => document.documentElement.scrollWidth <= width && innerWidth <= width, configuredWidth)).toBe(true);
   await panel.screenshot({ path: info.outputPath(`report-archives-${info.project.name}.png`) });
   await page.screenshot({ path: info.outputPath(`report-archives-${info.project.name}-viewport.png`) });
-  await page.getByTestId("admin-language").selectOption("en");
+  await selectLanguage(page, "en");
   await expect(panel.getByRole("heading", { name: "Daily and monthly archives", exact: true })).toBeVisible();
   expect(await economicState()).toBe(beforeSecondArchive);
   expect(errors).toEqual([]);

@@ -104,7 +104,8 @@ test("real bilingual template publication survives lost receipt and preserves hi
   const userPanel=user.locator(".notifications-panel");
   await expect(userPanel.getByRole("heading",{name:content.en.title,exact:true})).toBeVisible();
   await expect(userPanel).toContainText("Hello "+joined.member.id+".");
-  await user.getByRole("button",{name:"Switch to Chinese",exact:true}).click();
+  await user.locator('.locale-picker__trigger').click();
+  await user.getByRole('button', { name: '简体中文', exact: true }).click();
   await expect(userPanel.getByRole("heading",{name:content["zh-CN"].title,exact:true})).toBeVisible();
   await expect(userPanel).toContainText("欢迎会员 "+joined.member.id+"。");
   expect(await user.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);

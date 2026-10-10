@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onUnmounted, ref, watch } from "vue";
 import { hasPendingWithdrawalIntent, isWithdrawalAllocation, retainWithdrawalIntent, type CreateWithdrawalBody, type WithdrawalAllocation, type WithdrawalAvailability, type WithdrawalHistory, type WithdrawalOrder, type WithdrawalQualification, type WithdrawalSource } from "@lottery/shared";
 import { createWithdrawalOrdersApi, WithdrawalUnknownIntentError } from "./withdrawal-orders-api";
@@ -259,10 +260,12 @@ onUnmounted(() => { disposed = true; generation++; historyGeneration++; controll
           <div><strong>{{ formatIntegerAmount(order.points) }} pts</strong><span class="status-chip">{{ stateName(order) }}</span></div>
           <small>{{ labels.date }} · {{ time(order.created_at) }}</small>
           <button class="text-button" :aria-expanded="history?.order_id === order.id" :aria-controls="'withdrawal-history-' + order.id" @click="loadHistory(order)">{{ labels.history }}</button>
-          <div v-if="history?.order_id === order.id" :id="'withdrawal-history-' + order.id" class="withdrawal-history" role="region" :aria-label="labels.history + ' · ' + order.id">
+          <DetailModal v-if="history?.order_id === order.id" :title="props.locale === 'en' ? 'Details' : '详情'" :close-label="props.locale === 'en' ? 'Close' : '关闭'" @close="history = null">
+<div v-if="history?.order_id === order.id" :id="'withdrawal-history-' + order.id" class="withdrawal-history" role="region" :aria-label="labels.history + ' · ' + order.id">
             <button class="text-button" @click="history = null">{{ labels.close }}</button>
             <div v-for="item in history.items" :key="item.id"><strong>{{ item.from_state ? labels.states[item.from_state] + ' → ' : '' }}{{ labels.states[item.to_state] }}</strong><small>{{ time(item.created_at) }} · {{ item.reason }}</small></div>
           </div>
+</DetailModal>
         </article>
       </div>
     </template>

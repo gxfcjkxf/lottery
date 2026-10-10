@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import type { LocalizedMessage } from "@lottery/shared";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useAdminI18n } from "./i18n";
@@ -755,21 +756,27 @@ onUnmounted(() => {
     </p>
     <template v-else>
       <form class="search panel" @submit.prevent="lookupOrder">
-        <label
-          >{{ t("成员 UUID（可选）", "Member UUID (optional)") }}
-          <input
-            v-model="memberQuery"
-            autocomplete="off"
-            :placeholder="t('按品牌成员筛选', 'Filter by brand member')"
-          />
+        <label class="query-field">
+          <span class="field-label">{{ t("成员 UUID（可选）", "Member UUID (optional)") }}</span>
+          <div class="input-with-icon">
+            <span class="input-icon">👤</span>
+            <input
+              v-model="memberQuery"
+              autocomplete="off"
+              :placeholder="t('按品牌成员筛选', 'Filter by brand member')"
+            />
+          </div>
         </label>
-        <label
-          >{{ t("直接查询注单 UUID", "Look up bet order by UUID") }}
-          <input
-            v-model="orderQuery"
-            autocomplete="off"
-            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-          />
+        <label class="query-field">
+          <span class="field-label">{{ t("直接查询注单 UUID", "Look up bet order by UUID") }}</span>
+          <div class="input-with-icon">
+            <span class="input-icon">📑</span>
+            <input
+              v-model="orderQuery"
+              autocomplete="off"
+              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            />
+          </div>
         </label>
         <button class="primary" type="submit" :disabled="listBusy">
           {{ listBusy ? t("读取中…", "Loading…") : t("查询", "Search") }}
@@ -830,7 +837,8 @@ onUnmounted(() => {
         </footer>
       </section>
 
-      <section
+      <DetailModal v-if="!!selectedOrderId" :title="t('详情', 'Details')" :close-label="t('关闭', 'Close')" :open="!intent || pendingUnknown" @close="selectOrder('')">
+<section
         v-if="selectedOrderId"
         class="panel detail-panel"
         :aria-label="t('注单详情', 'Bet order details')"
@@ -1156,6 +1164,7 @@ onUnmounted(() => {
           </div>
         </template>
       </section>
+</DetailModal>
     </template>
 
     <div
@@ -1316,7 +1325,7 @@ onUnmounted(() => {
 }
 .eyebrow {
   color: #858da0;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.2px;
 }
 .panel {

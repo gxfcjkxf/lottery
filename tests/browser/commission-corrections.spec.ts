@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect, type Page, type APIResponse } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -38,7 +39,7 @@ test('actual manual correction preserves lost approval receipts, holds until exp
   const get = async <T>(path: string) => data<T>(await page.request.get(`${admin}${path}`, { headers: { 'X-Brand-ID': brand } }));
   const policy = await get<{ enabled: boolean; version: number }>('/commission-correction-policy'); expect(policy.enabled).toBe(false);
   await page.goto(origin); await page.getByLabel(/选择真实后台品牌|Select an administrative brand/, { exact: true }).selectOption(brand);
-  await page.getByTestId('admin-language').selectOption('zh-CN'); await navigate(page, info.project.name, /佣金更正|Commission corrections/);
+  await selectLanguage(page, 'zh-CN'); await navigate(page, info.project.name, /佣金更正|Commission corrections/);
   let panel = page.locator('.correction-admin'); await expect(panel.getByRole('heading', { name: '佣金更正差额', exact: true })).toBeVisible();
   await expect(panel.getByTestId('cc-policy-toggle')).not.toBeChecked();
   await panel.getByTestId('cc-policy-toggle').check(); await panel.getByTestId('cc-reason').fill('Enable only the explicitly owned synthetic financial correction gate');
@@ -89,7 +90,7 @@ test('actual manual correction preserves lost approval receipts, holds until exp
   command('execute-corrections'); expect(command('verify-corrections').economic_fingerprint).toBe(complete.economic_fingerprint);
   await panel.getByRole('button', { name: String(prepared.plan_id), exact: true }).click();
   await expect(panel.getByTestId('cc-plan-detail')).toContainText('计划就绪');
-  await page.getByTestId('admin-language').selectOption('en'); await expect(panel.getByRole('heading', { name: 'Commission correction', exact: true })).toBeVisible();
+  await selectLanguage(page, 'en'); await expect(panel.getByRole('heading', { name: 'Commission correction', exact: true })).toBeVisible();
   await expect(panel.getByRole('status')).toContainText('The server confirmed the operation receipt.');
   await expect(panel.getByTestId('cc-plan-detail')).toContainText('Frozen before / calculated');
   await panel.getByRole('button', { name: id, exact: true }).click(); await expect(panel.getByTestId('cc-execution-detail')).toContainText('Completed');
@@ -142,14 +143,14 @@ test('actual manual correction preserves lost approval receipts, holds until exp
   expect((await inbox()).items.find(item => item.id === message.id)).toEqual(message);
   const userPage = await context.newPage(); userPage.on('pageerror', error => errors.push(error.message));
   await userPage.goto(`${userOrigin}/notifications`);
-  if (await userPage.getByRole('button', { name: 'Switch to English', exact: true }).count()) await userPage.getByRole('button', { name: 'Switch to English', exact: true }).click();
+  if (await userPage.locator('.locale-picker__trigger').count()) await selectLanguage(userPage, 'en');
   const inboxPanel = userPage.locator('.notifications-panel');
   await expect(inboxPanel.getByRole('heading', { name: 'Commission correction recorded', exact: true })).toBeVisible();
   await expect(inboxPanel).not.toContainText('New correction copy');
   await expect(inboxPanel.locator('.notification-protected-note').filter({ hasText: 'negative points record a past recovery' })).toHaveCount(1);
   await expect.poll(() => userPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(userPage.viewportSize()!.width + 1);
   await inboxPanel.screenshot({ path: info.outputPath('commission-correction-inbox-en.png') });
-  await userPage.getByRole('button', { name: 'Switch to Chinese', exact: true }).click();
+  await selectLanguage(userPage, 'zh-CN');
   await expect(inboxPanel.getByRole('heading', { name: '佣金更正记录', exact: true })).toBeVisible();
   await expect(inboxPanel.locator('.notification-protected-note').filter({ hasText: '负数表示过去的追回' })).toHaveCount(1);
   await inboxPanel.screenshot({ path: info.outputPath('commission-correction-inbox-zh.png') });

@@ -222,7 +222,7 @@ async function submit() {
   margin: 0;
 }
 .eyebrow {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.2px;
   color: #8991a2;
   font-weight: 700;
@@ -275,7 +275,7 @@ async function submit() {
   display: inline;
 }
 .form label > b {
-  font-size: 10px;
+  font-size: 11px;
 }
 .form input,
 .form textarea {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LanguageSwitcher from '@lottery/shared/LanguageSwitcher.vue';
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
@@ -815,16 +816,14 @@ watch(
                   : t.offline
             }}</span></span
           >
-          <button
+          <LanguageSwitcher
             v-if="contextLoaded && availableLanguages.length > 1"
             class="language-button"
-            :aria-label="
-              locale === 'en' ? 'Switch to Chinese' : 'Switch to English'
-            "
-            @click="locale = locale === 'en' ? 'zh' : 'en'"
-          >
-            {{ locale === "en" ? "中" : "EN" }}
-          </button>
+            :model-value="locale"
+            :label="locale === 'en' ? 'Language' : '语言'"
+            :options="availableLanguages.map(code => ({ code, label: code === 'en' ? 'English' : '简体中文' }))"
+            @update:model-value="locale = $event as Language"
+          />
           <RouterLink
             class="avatar-link"
             :to="authProfile ? '/account' : '/login'"
@@ -837,6 +836,7 @@ watch(
             ><span class="avatar-name">{{
               authProfile ? (locale === "en" ? "Account" : "账户") : t.login
             }}</span></RouterLink
+          ><div v-if="authProfile" class="account-menu" tabindex="0"><div class="account-popover" role="menu"><strong>{{ authProfile.user.username }}</strong><span>{{ locale === "en" ? "Signed in account" : "当前登录账号" }}</span><RouterLink to="/account" role="menuitem">{{ locale === "en" ? "Profile" : "个人信息" }}</RouterLink><RouterLink to="/account" role="menuitem">{{ locale === "en" ? "Change password" : "修改密码" }}</RouterLink><button type="button" role="menuitem" class="popover-logout" @click="logout">{{ locale === "en" ? "Sign out" : "退出登录" }}</button></div></div>
           >
         </div>
       </header>
@@ -1675,19 +1675,19 @@ watch(
 .join-code-choice label {
   display: grid;
   gap: 7px;
-  color: #596a5e;
-  font-size: 9px;
+  color: var(--ink-secondary, #334155);
+  font-size: 11px;
   font-weight: 600;
 }
 .join-code-choice select {
   width: 100%;
   min-height: 42px;
   padding: 0 12px;
-  border: 1px solid #e3e9e2;
+  border: 1px solid var(--line, #e2e8f0);
   border-radius: 9px;
   background: #fff;
-  color: #35483b;
-  font-size: 11px;
+  color: var(--ink, #0f172a);
+  font-size: 13px;
 }
 .join-source-review {
   display: grid;
@@ -1695,9 +1695,9 @@ watch(
   margin: 10px 0 12px;
   padding: 10px;
   border-radius: 9px;
-  background: #eef3eb;
-  color: #425c4a;
-  font-size: 10px;
+  background: var(--line-subtle, #f1f5f9);
+  color: var(--ink, #0f172a);
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 </style>

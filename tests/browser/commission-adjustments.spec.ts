@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import {test,expect,type APIResponse,type Page} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
 import {rememberAdminSession} from './support/admin-session';
@@ -72,7 +73,7 @@ test('real commission differences retain lost receipts across newer corrections 
   expect(commissions.every(n=>n.content!==null)).toBe(true);expect(commissions.every(n=>Object.keys(n.payload).sort().join(',')==='points,resource_id')).toBe(true);
   expect(command('verify').economic_fingerprint).toBe(finished.economic_fingerprint);
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await panel.screenshot({path:info.outputPath('commission-adjustments-panel.png')});
-  await page.getByTestId('admin-language').selectOption('en');await expect(panel).toContainText('Current net commission points');expect(errors).toEqual([]);
+  await selectLanguage(page, 'en');await expect(panel).toContainText('Current net commission points');expect(errors).toEqual([]);
 });
 
 test('current adjustment status preserves original payout and immutable net history without financial writes',async({page,context},info)=>{
@@ -88,6 +89,6 @@ test('current adjustment status preserves original payout and immutable net hist
   const panel=page.getByTestId('commission-adjustments-management');await expect(panel.locator('.history-card')).toHaveCount(3);
   const facts=panel.locator('.target-detail');await expect(facts).toContainText('原始佣金积分');await expect(facts.locator('dd').nth(0)).toHaveText('1');await expect(facts.locator('dd').nth(1)).toHaveText('0');await expect(facts.locator('dd').nth(2)).toHaveText('4');
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await panel.screenshot({path:info.outputPath('commission-adjustments-current-panel.png')});
-  await page.getByTestId('admin-language').selectOption('en');await expect(panel).toContainText('Current net commission points');
+  await selectLanguage(page, 'en');await expect(panel).toContainText('Current net commission points');
   expect(writes).toEqual([]);expect(command('verify').economic_fingerprint).toBe(before.economic_fingerprint);
 });

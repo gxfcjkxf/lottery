@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5185';
@@ -34,7 +35,7 @@ test('platform reads genuine archive and financial policies without enabling or 
     await expect(detail).toContainText(brand);
     await expect(panel.getByRole('alert')).toHaveCount(0);
   }
-  await page.locator('.language').click();
+  await selectLanguage(page, 'zh-CN');
   await expect(panel).toContainText('发放模式');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('platform-financial-policies.png'), fullPage: true });
@@ -120,6 +121,6 @@ test('financial policy views preserve integer limits and clear errors independen
   await panel.getByTestId('platform-financial-policy-select').selectOption('points');
   await expect(panel.getByRole('alert')).toHaveCount(0);
   await expect(panel).toContainText(amount);
-  await page.locator('.language').click();
+  await selectLanguage(page, 'zh-CN');
   await expect(panel).toContainText('积分余额上限');
 });

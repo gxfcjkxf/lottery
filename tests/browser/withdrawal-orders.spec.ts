@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect, type Page } from '@playwright/test'
 import {checkWithdrawalObservability} from './withdrawal-observability'
 
@@ -49,7 +50,7 @@ test('closed user admission and exact administrative receipt recovery preserve s
   expect((await denied.json()).error.code).toBe('WITHDRAWAL_ACTIVE_ORDER')
   expect(await responseData(await page.request.get(`${userOrigin}/api/v1/wallet`))).toEqual(originalWallet)
   await page.goto(adminOrigin)
-  await page.getByTestId('admin-language').selectOption('en')
+  await selectLanguage(page, 'en')
   await page.getByLabel('Account',{exact:true}).fill(adminUsername!)
   await page.getByLabel('Password',{exact:true}).fill(adminPassword!)
   await page.getByRole('button',{name:'Sign in and load members',exact:true}).click()
@@ -78,9 +79,9 @@ test('closed user admission and exact administrative receipt recovery preserve s
   await adminPanel.getByRole('button',{name:'Refresh',exact:true}).click()
   await expect(adminPanel.getByRole('button',{name:'Replay same action',exact:true})).toBeVisible()
   await expect(adminPanel.locator('tbody')).toContainText('Withdrawal in progress')
-  await page.getByTestId('admin-language').selectOption('zh-CN')
+  await selectLanguage(page, 'zh-CN')
   await expect(adminPanel).toContainText('中文审核原因保持原值')
-  await page.getByTestId('admin-language').selectOption('en')
+  await selectLanguage(page, 'en')
   await adminPanel.getByRole('button',{name:'Replay same action',exact:true}).click()
   await expect(adminPanel.getByRole('button',{name:'Replay same action',exact:true})).toHaveCount(0)
   expect(intents).toHaveLength(2)

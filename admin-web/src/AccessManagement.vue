@@ -896,7 +896,7 @@ function changePage(direction: -1 | 1) {
   margin: 0;
 }
 .eyebrow {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.2px;
   color: #8991a2;
   font-weight: 700;
@@ -1013,7 +1013,7 @@ function changePage(direction: -1 | 1) {
 }
 .check code,
 code {
-  font-size: 10px;
+  font-size: 11px;
   color: #777f90;
   overflow-wrap: anywhere;
 }
@@ -1067,7 +1067,7 @@ code {
 }
 .record-bottom small {
   color: #969dac;
-  font-size: 10px;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 .pill.active {

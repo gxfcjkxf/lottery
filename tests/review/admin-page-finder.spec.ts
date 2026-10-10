@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect } from './platform-fixture';
 import { rememberAdminSession, restoreAdminSession } from '../browser/support/admin-session';
 
@@ -93,7 +94,7 @@ test('page finder navigates without filtering members and mobile keeps its exist
     await expect(memberSearch).toHaveValue('trial-member-filter');
     await finder.press('Escape');
     await expect(finder).toHaveValue('');
-    await page.getByTestId('admin-language').selectOption('en');
+    await selectLanguage(page, 'en');
     await page.getByLabel('Find an admin page', { exact: true }).fill('Dashboard');
     await page.getByLabel('Find an admin page', { exact: true }).press('Enter');
     await expect(page.locator('.breadcrumbs b')).toHaveText('Dashboard');

@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect, type BrowserContext, type Page, type TestInfo } from '@playwright/test'
 import { rememberAdminSession, restoreAdminSession } from './support/admin-session'
 
@@ -10,7 +11,7 @@ const headers = { 'X-Brand-ID': brand }
 
 test.beforeEach(() => test.skip(!username || !password, 'Provide isolated test administrator credentials'))
 async function language(page: Page, value: 'en' | 'zh-CN') {
-  await page.getByTestId('admin-language').selectOption(value)
+  await selectLanguage(page, value)
   await expect(page.locator('html')).toHaveAttribute('lang', value)
 }
 async function navigate(page: Page, info: TestInfo, destination: 'funds' | 'reconciliation') {

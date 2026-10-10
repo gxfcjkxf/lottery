@@ -48,7 +48,7 @@ function mount(fetcher: typeof fetch, props: Record<string, unknown> = {}) {
   app.mount(root);
   const render = () => {
     let output = "";
-    instance.type.ssrRender(instance.proxy, (chunk: string) => { output += chunk; }, null, {}, instance.props, instance.setupState, instance.data, instance.appContext.config.globalProperties);
+    instance.type.ssrRender(instance.proxy, (chunk: string) => { output += chunk; }, instance, {}, instance.props, instance.setupState, instance.data, instance.appContext.config.globalProperties);
     root.text = output;
   };
   return { root, state, emitted, get setup() { return instance.setupState; }, emit: (name: string) => instance.emit(name), render, unmount: () => app.unmount() };

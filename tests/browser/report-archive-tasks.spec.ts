@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { spawnSync } from 'node:child_process';
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
 
@@ -134,7 +135,7 @@ test('real automatic archive tasks recover the original retry receipt after work
   expect(archive.created_by).toBeNull();
   expect(archive.automation.task_id).toBe(original.id);
   expect(archive.snapshot.wallet_snapshot.balances.available_points).toBe('37');
-  await page.getByTestId('admin-language').selectOption('en');
+  await selectLanguage(page, 'en');
   await expect(panel.getByRole('heading', { name: 'Automatic archive tasks', exact: true })).toBeVisible();
   expect(requests).toHaveLength(2);
   const width = await page.evaluate(() => ({ body: document.documentElement.scrollWidth, viewport: innerWidth }));

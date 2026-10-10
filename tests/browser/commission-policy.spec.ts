@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import {test,expect,type APIResponse} from '@playwright/test';
 import {rememberAdminSession,restoreAdminSession} from './support/admin-session';
 
@@ -73,7 +74,7 @@ test('real commission financial policy retains the original unknown receipt and 
     expect(history.items[0]).toMatchObject({id:saved.revision_id,audit_log_id:saved.audit_log_id});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
     await panel.screenshot({path:info.outputPath('commission-policy-configured.png')});
-    await page.getByTestId('admin-language').selectOption('en');
+    await selectLanguage(page, 'en');
     await expect(panel.getByRole('heading',{name:'Commission financial policy',exact:true})).toBeVisible();
     await expect(panel.getByLabel('Timezone (IANA)',{exact:true})).toHaveValue('UTC');
     await expect(panel.getByRole('combobox',{name:'Payout mode',exact:true})).toHaveValue('automatic');

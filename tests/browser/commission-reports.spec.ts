@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import {test,expect,type APIResponse,type Page} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
@@ -59,6 +60,6 @@ test('actual commission posting report filters saved beneficiaries and validates
   const negative=await get<{summary:typeof expected}>(`/reports/commission?${narrow}`);expect(negative.summary.net_points).toBe('-4');expect(negative.summary.entry_count).toBe('1');
   const negativeCSV=await page.request.get(`${admin}/reports/commission.csv?${narrow}`,{headers:{'X-Brand-ID':brand}});expect(negativeCSV.status()).toBe(200);expect(await negativeCSV.text()).toContain(",'\u002d4");
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await panel.screenshot({path:info.outputPath('commission-report-panel.png')});
-  await page.getByTestId('admin-language').selectOption('en');await expect(panel.getByRole('heading',{name:'Commission ledger report',exact:true})).toBeVisible();
+  await selectLanguage(page, 'en');await expect(panel.getByRole('heading',{name:'Commission ledger report',exact:true})).toBeVisible();
   expect(writes).toEqual([]);expect(errors).toEqual([]);expect(verify().economic_fingerprint).toBe(before.economic_fingerprint);
 });

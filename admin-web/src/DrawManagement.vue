@@ -1014,7 +1014,7 @@ onUnmounted(() => guard.invalidate());
 }
 .eyebrow {
   color: #5969df;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 1.1px;
   margin: 0;
@@ -1024,7 +1024,7 @@ onUnmounted(() => guard.invalidate());
   border-radius: 14px;
   padding: 5px 9px;
   color: #737b8c;
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
 }
 .server-note,
@@ -1066,7 +1066,7 @@ onUnmounted(() => guard.invalidate());
   display: grid;
   gap: 5px;
   color: #555e6e;
-  font-size: 10px;
+  font-size: 11px;
 }
 .picker-grid select,
 .source-fields input,
@@ -1096,7 +1096,7 @@ onUnmounted(() => guard.invalidate());
 .page-actions {
   align-self: end;
   color: #737b8c;
-  font-size: 10px;
+  font-size: 11px;
 }
 .page-actions span {
   margin-right: auto;
@@ -1109,7 +1109,7 @@ onUnmounted(() => guard.invalidate());
   border-radius: 5px;
   background: #fff;
   padding: 7px 9px;
-  font-size: 10px;
+  font-size: 11px;
 }
 .form-actions > button:last-child {
   border-color: #5969df;
@@ -1140,7 +1140,7 @@ onUnmounted(() => guard.invalidate());
   min-width: 0;
   overflow-wrap: anywhere;
   color: #8c93a0;
-  font-size: 9px;
+  font-size: 11px;
 }
 .source-heading .danger-link {
   margin-left: auto;
@@ -1215,7 +1215,7 @@ onUnmounted(() => guard.invalidate());
 .history-list span,
 .history-list small {
   color: #737b8c;
-  font-size: 10px;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 .manual-entry {
@@ -1225,13 +1225,13 @@ onUnmounted(() => guard.invalidate());
 }
 .manual-entry > p {
   color: #737b8c;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.6;
 }
 .validation {
   overflow-wrap: anywhere;
   color: #27714f;
-  font-size: 10px;
+  font-size: 11px;
 }
 .validation.invalid {
   color: #a94d49;
@@ -1239,7 +1239,7 @@ onUnmounted(() => guard.invalidate());
 .confirm {
   margin: 12px 0;
   color: #454b59;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.6;
 }
 button:disabled,

@@ -1,4 +1,4 @@
-export interface PlatformAccount { id: string; super_admin: true; platform_permissions: string[] }
+export interface PlatformAccount { id: string; username?: string; display_name?: string; super_admin: true; platform_permissions: string[] }
 export interface PlatformBrand { id: string; code: string; name: string; status: string }
 export interface PlatformMember { id: string; global_user_id: string; username: string; phone: string; display_name: string; notes: string; status: string; joined_at: string; brand_id: string; tags: string[] }
 export interface PlatformAudit { id: string; brand_id: string | null; action: string; actor_type: string; actor_id: string; resource_type: string; resource_id: string; reason: string; request_id: string; created_at: string; ip_address: string; before_json: unknown; after_json: unknown }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { createPlatformAccessApi, PlatformAccessApiError } from './access-api'
 
@@ -245,7 +246,8 @@ onBeforeUnmount(() => { ++generation; form.value.password = ''; pending.value = 
       </section>
     </template>
 
-    <section v-if="selected" class="panel reward-detail" data-testid="platform-access-detail">
+    <DetailModal v-if="selected" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" :open="!formMode" @close="selected = null">
+<section v-if="selected" class="panel reward-detail" data-testid="platform-access-detail">
       <div class="panel-heading"><div><h2>{{ copy.detail }}</h2><p>{{ copy.snapshotNote }}</p></div><span class="status-pill" :class="selected.status">{{ stateLabel(selected.status) }} · v{{ selected.version }}</span></div>
       <dl v-if="isAccount(selected)" class="confirm-list reward-fields">
         <div><dt>{{ copy.id }}</dt><dd class="mono">{{ selected.id }}</dd></div><div><dt>{{ copy.username }}</dt><dd>{{ selected.username }}</dd></div>
@@ -268,6 +270,7 @@ onBeforeUnmount(() => { ++generation; form.value.password = ''; pending.value = 
         <button v-if="!isAccount(selected) && canWriteRoles" class="secondary" :disabled="locked || selected.is_bootstrap" @click="beginForm('role-edit', selected)">{{ writeCopy.editRole }}</button>
       </div>
     </section>
+</DetailModal>
     <div v-if="formMode" class="modal-scrim">
       <section class="modal-card" role="dialog" aria-modal="true" :aria-label="formTitle">
         <h2>{{ formTitle }}</h2>

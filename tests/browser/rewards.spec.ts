@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import {test,expect,type APIResponse,type Page} from '@playwright/test';
 import {rememberAdminSession} from './support/admin-session';
 
@@ -113,7 +114,7 @@ test('real manual rewards recover original receipts without duplicate money and 
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await panel.screenshot({path:info.outputPath('manual-rewards-panel.png')});
   const writes:string[]=[];page.on('request',request=>{if(request.url().includes('/reward-orders')&&request.method()!=='GET')writes.push(request.url());});
-  await page.getByTestId('admin-language').selectOption('en');await expect(panel.getByRole('heading',{name:'Manual rewards',exact:true})).toBeVisible();
+  await selectLanguage(page, 'en');await expect(panel.getByRole('heading',{name:'Manual rewards',exact:true})).toBeVisible();
   await expect(panel.getByTestId('rewards-receipt')).toContainText('Revoked · v3');expect(writes).toEqual([]);
   const loggedOut=page.waitForResponse(response=>response.request().method()==='POST'&&response.url()===`${admin}/auth/logout`);
   await page.getByRole('button',{name:'Sign out',exact:true}).first().click();await data(await loggedOut);

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformRechargeApi, type Recharge } from './recharge-api'
@@ -46,18 +47,29 @@ watch(() => [props.brandId, props.memberId], () => {
 <template>
   <div data-testid="platform-recharges">
     <div class="page-heading"><div><div class="eyebrow">{{ copy.note }}</div><h1>{{ copy.title }}</h1></div></div>
-    <form class="panel wallet-query" @submit.prevent="load(0, draftMember.trim())"><label>{{ copy.member }}<input v-model="draftMember" :disabled="loading || !brandId" autocomplete="off" /></label><button class="secondary" :disabled="loading || !brandId">{{ copy.query }}</button></form>
+    <form class="panel wallet-query" @submit.prevent="load(0, draftMember.trim())">
+      <label class="query-field">
+        <span class="field-label">{{ copy.member }}</span>
+        <div class="input-with-icon">
+          <span class="input-icon">👤</span>
+          <input v-model="draftMember" :disabled="loading || !brandId" autocomplete="off" :placeholder="locale === 'en' ? 'Filter by member UUID' : '按会员 UUID 筛选'" />
+        </div>
+      </label>
+      <button class="primary" :disabled="loading || !brandId">{{ copy.query }}</button>
+    </form>
     <p v-if="error" class="message error" role="alert">{{ error }}</p><p v-if="loading" class="loading-line">{{ copy.loading }}</p>
     <section class="panel reward-detail"><div class="table-wrap"><table><thead><tr><th>{{ copy.order }}</th><th>{{ copy.points }}</th><th>{{ copy.state }}</th><th>{{ copy.created }}</th></tr></thead><tbody>
       <tr v-for="order in rows" :key="order.id"><td><button class="row-action" @click="detail = order">{{ order.id }}</button><small>{{ order.member_id }}</small></td><td>{{ order.points }}</td><td>{{ copy[order.state] }}</td><td>{{ order.created_at }}</td></tr>
       <tr v-if="!rows.length"><td colspan="4" class="empty-state">{{ copy.empty }}</td></tr>
     </tbody></table></div><div class="wallet-pagination" data-testid="platform-recharge-pages"><button class="secondary" :disabled="loading || offset === 0 || !brandId" @click="load(offset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(offset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !more" @click="load(offset + 50)">{{ copy.next }}</button></div></section>
-    <section v-if="detail" class="panel reward-detail" data-testid="platform-recharge-detail">
+    <DetailModal v-if="detail" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="detail = null">
+<section v-if="detail" class="panel reward-detail" data-testid="platform-recharge-detail">
       <div class="panel-heading"><h2>{{ copy.detail }}</h2><span>{{ copy[detail.state] }} · v{{ detail.version }}</span></div>
       <dl class="confirm-list reward-fields">
         <div><dt>{{ copy.order }}</dt><dd>{{ detail.id }}</dd></div><div><dt>{{ copy.points }}</dt><dd>{{ detail.points }}</dd></div><div><dt>{{ copy.proof }}</dt><dd>{{ detail.proof_reference }}</dd></div><div><dt>{{ copy.remark }}</dt><dd>{{ detail.remark }}</dd></div><div><dt>{{ copy.creator }}</dt><dd>{{ detail.created_by }}</dd></div>
         <div><dt>{{ copy.confirmer }}</dt><dd>{{ detail.confirmed_by || '—' }}</dd></div><div><dt>{{ copy.confirmedAt }}</dt><dd>{{ detail.confirmed_at || '—' }}</dd></div><div><dt>{{ copy.ledger }}</dt><dd>{{ detail.ledger_entry_id || '—' }}</dd></div><div><dt>{{ copy.audit }}</dt><dd>{{ detail.audit_log_id || '—' }}</dd></div>
       </dl>
     </section>
+</DetailModal>
   </div>
 </template>

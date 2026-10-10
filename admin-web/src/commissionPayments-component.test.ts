@@ -41,7 +41,9 @@ function compileComponent(): Component {
   const javascript = transpileScript(compiled);
   // Child behavior has its own real component tests and browser workflow;
   // isolate these payout control tests from the child's additional reads.
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commissionPayments-api": PaymentApi, "./commissionPayments-state": PaymentState,
+  const modules: Record<string, unknown> = {
+    // Business tests use a host renderer; native dialog behavior is checked in Chrome.
+    "@lottery/shared/DetailModal.vue": { default: { inheritAttrs: false, setup: (_props: unknown, context: { slots: { default?: () => unknown } }) => () => context.slots.default?.() } }, vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commissionPayments-api": PaymentApi, "./commissionPayments-state": PaymentState,
     "./CommissionAdjustmentsManagement.vue": { default: { render: () => null } } };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) => {
     if (!(specifier in modules)) throw new Error(`Unmapped test import: ${specifier}`);

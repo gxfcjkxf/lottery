@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformArchiveTasksApi } from './archive-tasks-api'
@@ -122,7 +123,8 @@ onBeforeUnmount(() => { alive = false; policyGeneration++; listGeneration++; det
         <div class="wallet-pagination" data-testid="platform-archive-task-pages"><button class="secondary" :disabled="listLoading || offset === 0" @click="loadList(Math.max(0, offset - pageSize))">{{ copy.previous }}</button><span>{{ copy.page }} {{ Math.floor(offset / pageSize) + 1 }}</span><button class="secondary" :disabled="listLoading || !hasNextPage" @click="loadList(offset + pageSize)">{{ copy.next }}</button></div>
       </section>
 
-      <section class="panel reward-detail" data-testid="platform-archive-task-detail">
+      <DetailModal v-if="!!selectedId" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="selectedId = ''; detail = null; detailError = ''">
+<section class="panel reward-detail" data-testid="platform-archive-task-detail">
         <div class="panel-heading"><h2>{{ copy.detail }}</h2></div>
         <p v-if="detailLoading" class="loading-line" role="status">{{ copy.loading }}</p>
         <p v-if="detailError" class="message error" role="alert">{{ copy.readDetailFailure }}{{ detailError }}</p>
@@ -137,6 +139,7 @@ onBeforeUnmount(() => { alive = false; policyGeneration++; listGeneration++; det
         </template>
         <p v-else-if="!detailLoading && !detailError" class="loading-line">{{ copy.select }}</p>
       </section>
+</DetailModal>
     </template>
   </div>
 </template>

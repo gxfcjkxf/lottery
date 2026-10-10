@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { expect, test, request, type APIResponse } from '@playwright/test';
@@ -100,7 +101,7 @@ test('genuine brand audit filters and validated full CSV preserve finances on bo
   const proof = await get<{ items: Array<{ id: string; action: string; after_json: { sha256: string } }> }>(`/audit?action=audit.export`);
   expect(proof.items.find(item => item.id === exportHeaders['x-audit-export-id'])).toMatchObject({ action: 'audit.export', after_json: { sha256: exportHeaders['x-audit-sha256'] } });
   await expect(panel.locator('.audit-receipt')).toBeVisible();
-  await page.getByTestId('admin-language').selectOption('zh-CN');
+  await selectLanguage(page, 'zh-CN');
   await expect(panel.getByRole('heading', { name: '审计日志', exact: true })).toBeVisible();
   await expect(panel.locator('.audit-receipt')).toHaveCount(0);
   await expect(panel.getByRole('button', { name: '导出完整 CSV', exact: true })).toBeDisabled();

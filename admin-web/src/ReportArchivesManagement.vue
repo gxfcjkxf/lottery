@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import { useAdminI18n } from "./i18n";
@@ -200,7 +201,8 @@ onBeforeUnmount(() => { alive = false; listTicket++; readTicket++; writeTicket++
       <div v-if="receipt" data-testid="archive-receipt" class="archive-receipt"><h3>{{ t("原提交回执", "Original submission receipt") }}</h3><p>{{ receipt.id }} · v{{ receipt.revision }}</p><p>{{ receipt.reason }}</p><p>{{ t("这是原请求的服务器确认，不会被后来版本或查询失败替换。", "This confirms the original request and is not replaced by later versions or a failed query.") }}</p></div>
       <div class="archive-list" data-testid="archive-list"><h3>{{ t("归档历史", "Archive history") }}</h3><p>{{ t("总记录数", "Total records") }}: {{ total }} · {{ t("偏移", "Offset") }}: {{ offset }}</p><p v-if="loading" role="status">{{ t("读取中", "Loading") }}</p><p v-else-if="items.length === 0">{{ t("当前页没有归档记录。", "No archive records on this page.") }}</p><ul><li v-for="item in items" :key="item.id"><button class="button button-secondary" :disabled="reading" @click="loadRecord(item.id)">{{ item.window.period_key }} · {{ item.window.kind }} · v{{ item.revision }}<small>{{ item.id }}</small></button><small>{{ item.snapshot_at }}</small><small>{{ item.reason }}</small></li></ul><div class="archive-actions"><button class="button button-secondary" :disabled="loading || offset === 0" @click="loadList(Math.max(0, offset - pageSize))">{{ t("上一页", "Previous page") }}</button><button class="button button-secondary" :disabled="loading || !nextPage" @click="loadList(offset + pageSize)">{{ t("下一页", "Next page") }}</button></div></div>
       <p v-if="reading" role="status">{{ t("正在读取所选归档", "Loading selected archive") }}</p>
-      <div v-if="selected" data-testid="archive-detail" class="archive-detail">
+      <DetailModal v-if="!!selected" :title="t('详情', 'Details')" :close-label="t('关闭', 'Close')" @close="selected = null">
+<div v-if="selected" data-testid="archive-detail" class="archive-detail">
         <h3>{{ t("所选不可变归档", "Selected immutable archive") }}</h3>
         <dl>
           <dt>ID</dt><dd>{{ selected.id }}</dd>
@@ -227,6 +229,7 @@ onBeforeUnmount(() => { alive = false; listTicket++; readTicket++; writeTicket++
           </section>
         </div>
       </div>
+</DetailModal>
     </template>
     <div v-if="review" class="archive-modal" role="dialog" aria-modal="true" :aria-label="t('确认归档创建', 'Confirm archive creation')" data-testid="archive-review"><div><h3>{{ t("确认归档创建", "Confirm archive creation") }}</h3><dl><dt>{{ t("品牌", "Brand") }}</dt><dd>{{ review.brandId }}</dd><dt>{{ t("提交管理员", "Submitting administrator") }}</dt><dd>{{ review.actorId }}</dd><dt>{{ t("周期", "Period") }}</dt><dd>{{ review.body.kind }} / {{ review.body.period_key }}</dd><dt>{{ t("确认版本", "Confirmed revision") }}</dt><dd>{{ review.body.expected_revision }} → {{ review.body.expected_revision + 1 }}</dd><dt>{{ t("操作原因", "Reason for operation") }}</dt><dd>{{ review.body.reason }}</dd><dt>{{ t("原幂等键", "Original idempotency key") }}</dt><dd>{{ review.key }}</dd></dl><label><input v-model="confirmed" type="checkbox" data-testid="archive-confirm" />{{ t("我已核对品牌、周期、版本和原因，确认提交此原请求。", "I reviewed the brand, period, revision and reason and confirm submitting this original request.") }}</label><div class="archive-actions"><button class="button button-secondary" @click="review = null">{{ t("取消", "Cancel") }}</button><button class="button" data-testid="archive-submit" :disabled="!confirmed || writing || !rights.create" @click="submit">{{ t("确认并提交", "Confirm and submit") }}</button></div></div></div>
   </section>

@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import {test,expect} from '@playwright/test'
 import {checkWithdrawalObservability,responseData} from './withdrawal-observability'
 
@@ -25,7 +26,7 @@ test('completed withdrawal projection export and historical inbox agree without 
   const orders=await responseData(await page.request.get(`${userOrigin}/api/v1/withdrawals?state=${info.project.name==='mobile'?'paid':'failed'}`))
   expect(orders.items).toHaveLength(1)
   await page.goto(adminOrigin)
-  await page.getByTestId('admin-language').selectOption('en')
+  await selectLanguage(page, 'en')
   await page.getByLabel('Account',{exact:true}).fill(adminUsername!)
   await page.getByLabel('Password',{exact:true}).fill(adminPassword!)
   await page.getByRole('button',{name:'Sign in and load members',exact:true}).click()

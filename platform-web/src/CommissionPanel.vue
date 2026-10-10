@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformCommissionApi, type AgentNode, type Cycle, type Earning, type Payment } from './commission-api'
@@ -211,7 +212,8 @@ onBeforeUnmount(() => { generation++ })
       </div>
     </section>
 
-    <section v-if="agentDetail" class="panel reward-detail" data-testid="platform-commission-details">
+    <DetailModal v-if="agentDetail" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="agentDetail = null">
+<section v-if="agentDetail" class="panel reward-detail" data-testid="platform-commission-details">
       <div class="panel-heading"><div><h2>{{ copy.detail }} · {{ copy.agent }}</h2><p class="mono">{{ agentDetail.id }}</p></div><span class="count-chip">{{ stateLabel(agentDetail.config.status) }} · v{{ agentDetail.version }}</span></div>
       <dl v-if="agentDetail" class="confirm-list reward-fields wallet-details">
         <div><dt>{{ copy.agent }}</dt><dd class="mono">{{ agentDetail.id }}</dd></div><div><dt>{{ copy.member }}</dt><dd class="mono">{{ agentDetail.member_id }}</dd></div><div><dt>{{ copy.parent }}</dt><dd class="mono">{{ agentDetail.parent_id || '—' }}</dd></div>
@@ -219,8 +221,10 @@ onBeforeUnmount(() => { generation++ })
         <div><dt>{{ copy.mode }}</dt><dd>{{ modeLabel(agentDetail.config.mode) }}</dd></div><div><dt>{{ copy.effectiveMode }}</dt><dd>{{ modeLabel(agentDetail.effective_mode) }}</dd></div><div><dt>{{ copy.status }}</dt><dd>{{ stateLabel(agentDetail.config.status) }}</dd></div><div><dt>{{ copy.version }}</dt><dd>{{ agentDetail.version }}</dd></div>
       </dl>
     </section>
+</DetailModal>
 
-    <section v-if="cycleDetail" class="panel reward-detail" data-testid="platform-commission-details">
+    <DetailModal v-if="cycleDetail" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="cycleDetail = null">
+<section v-if="cycleDetail" class="panel reward-detail" data-testid="platform-commission-details">
       <div class="panel-heading"><div><h2>{{ copy.detail }} · {{ copy.cycle }}</h2><p class="mono">{{ cycleDetail.id }}</p></div><span :class="['status-pill', cycleDetail.state]">{{ stateLabel(cycleDetail.state) }}</span></div>
       <dl v-if="cycleDetail" class="confirm-list reward-fields wallet-details">
         <div><dt>{{ copy.cycle }}</dt><dd class="mono">{{ cycleDetail.id }}</dd></div><div><dt>{{ copy.window }}</dt><dd>{{ cycleDetail.window_from }} → {{ cycleDetail.window_to }}</dd></div><div><dt>{{ copy.state }}</dt><dd>{{ stateLabel(cycleDetail.state) }} · v{{ cycleDetail.version }}</dd></div>
@@ -238,8 +242,10 @@ onBeforeUnmount(() => { generation++ })
         <div class="wallet-pagination" data-testid="platform-commission-earnings-pages"><span>{{ copy.total }} {{ earningTotal }}</span><button class="secondary" :disabled="loading || earningOffset === 0" @click="loadEarnings(earningOffset - pageSize)">{{ copy.previous }}</button><span>{{ Math.floor(earningOffset / pageSize) + 1 }}</span><button class="secondary" :disabled="loading || !hasNextEarnings" @click="loadEarnings(earningOffset + pageSize)">{{ copy.next }}</button></div>
       </template>
     </section>
+</DetailModal>
 
-    <section v-if="paymentDetail" class="panel reward-detail" data-testid="platform-commission-details">
+    <DetailModal v-if="paymentDetail" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="paymentDetail = null">
+<section v-if="paymentDetail" class="panel reward-detail" data-testid="platform-commission-details">
       <div class="panel-heading"><div><h2>{{ copy.detail }} · {{ copy.payment }}</h2><p class="mono">{{ paymentDetail.id }}</p></div><span :class="['status-pill', paymentDetail.state]">{{ stateLabel(paymentDetail.state) }}</span></div>
       <dl v-if="paymentDetail" class="confirm-list reward-fields wallet-details">
         <div><dt>{{ copy.payment }}</dt><dd class="mono">{{ paymentDetail.id }}</dd></div><div><dt>{{ copy.cycle }}</dt><dd class="mono">{{ paymentDetail.cycle_id }}</dd></div><div><dt>{{ copy.currentRun }}</dt><dd class="mono">{{ paymentDetail.run_id }}</dd></div>
@@ -248,5 +254,6 @@ onBeforeUnmount(() => { generation++ })
         <div><dt>{{ copy.errorCode }}</dt><dd>{{ paymentDetail.last_error_code || '—' }}</dd></div><div><dt>{{ copy.created }}</dt><dd>{{ paymentDetail.created_at }}</dd></div><div><dt>{{ copy.updated }}</dt><dd>{{ paymentDetail.updated_at }}</dd></div>
       </dl>
     </section>
+</DetailModal>
   </div>
 </template>

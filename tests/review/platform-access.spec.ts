@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5185';
@@ -43,7 +44,7 @@ test('platform reads genuine scoped accounts roles and permission directory with
   await page.getByTestId('platform-access-tabs').getByRole('tab', { name: 'Permission directory', exact: true }).click();
   await expect(page.getByTestId('platform-permission-directory')).toContainText(before.get('permissions').items[0]);
   await expect(panel.getByRole('alert')).toHaveCount(0);
-  await page.locator('.language').click();
+  await selectLanguage(page, 'zh-CN');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('platform-access.png'), fullPage: true });
   await expect(panel.getByRole('button', { name: /Create|Save|Reset|创建|保存|重置/ })).toHaveCount(0);

@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher';
 import { test, expect, type APIRequestContext, type BrowserContext, type Locator } from "@playwright/test";
 import { restoreAdminSession } from "./support/admin-session";
 
@@ -295,12 +296,12 @@ test("Harbor presentation survives a lost acknowledgment, renders safely, and re
     await expect(user.locator(".announcement h3")).toHaveText(announcement);
     await expect(user.locator(".announcement img, .announcement script")).toHaveCount(0);
     expect(await user.evaluate(() => (window as Window & { __brandPresentationXss?: unknown }).__brandPresentationXss)).toBeUndefined();
-    const languageSwitch = user.getByRole("button", { name: "Switch to English", exact: true });
+    const languageSwitch = user.locator('.locale-picker__trigger');
     await expect(languageSwitch).toBeVisible();
-    await languageSwitch.click();
+    await selectLanguage(user, 'en');
     await expect(user.locator(".hero h1")).toHaveText("Harbor English preview");
     await expect(user.locator(".announcement h3")).toHaveText("Harbor presentation browser verification");
-    await user.getByRole("button", { name: "Switch to Chinese", exact: true }).click();
+    await selectLanguage(user, 'zh-CN');
     await expect(user.locator(".hero h1")).toHaveText("港湾品牌展示验证");
     await expect(user.locator(".announcement h3")).toHaveText(announcement);
     await expect(user.locator(".announcement img, .announcement script")).toHaveCount(0);

@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect } from './platform-fixture';
 
 test.use({ platformAccountPrefix: 'review_reports' });
@@ -54,7 +55,7 @@ test('platform ledger reports preserve signed totals, paginate and clear failed 
   await expect(panel.getByRole('alert')).toContainText('Report unavailable');
   await expect(page.getByTestId('platform-reports-summary')).toHaveCount(0);
   await expect(page.getByTestId('platform-reports-balances')).toHaveCount(0);
-  await page.locator('.language').click();
+  await selectLanguage(page, 'zh-CN');
   await expect(panel.getByRole('heading', { name: '运营报表', exact: true })).toBeVisible();
   await page.locator('.brand-picker select').selectOption('');
   await expect(panel).toHaveCount(0);

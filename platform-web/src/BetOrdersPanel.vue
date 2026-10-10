@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformBetApi, type BetOrder } from './bet-api'
@@ -78,7 +79,16 @@ watch(() => props.brandId, () => {
     <LotteryPanel v-if="catalogue" :brand-id="brandId" :locale="locale" @failure="emit('failure', $event)" />
     <template v-else>
     <div class="page-heading"><div><div class="eyebrow">{{ copy.note }}</div><h1>{{ copy.title }}</h1></div></div>
-    <form class="panel wallet-query" @submit.prevent="load(0, draftMember.trim())"><label>{{ copy.member }}<input v-model="draftMember" :disabled="loading || !brandId" autocomplete="off" /></label><button class="secondary" :disabled="loading || !brandId">{{ copy.query }}</button></form>
+    <form class="panel wallet-query" @submit.prevent="load(0, draftMember.trim())">
+      <label class="query-field">
+        <span class="field-label">{{ copy.member }}</span>
+        <div class="input-with-icon">
+          <span class="input-icon">👤</span>
+          <input v-model="draftMember" :disabled="loading || !brandId" autocomplete="off" :placeholder="locale === 'en' ? 'Filter by member UUID' : '按会员 UUID 筛选'" />
+        </div>
+      </label>
+      <button class="primary" :disabled="loading || !brandId">{{ copy.query }}</button>
+    </form>
     <p v-if="error" class="message error" role="alert">{{ error }}</p><p v-if="loading" class="loading-line">{{ copy.loading }}</p>
     <section class="panel reward-detail">
       <div class="table-wrap"><table><thead><tr><th>{{ copy.order }}</th><th>{{ copy.period }}</th><th>{{ copy.points }}</th><th>{{ copy.state }}</th><th>{{ copy.date }}</th></tr></thead><tbody>
@@ -87,7 +97,8 @@ watch(() => props.brandId, () => {
       </tbody></table></div>
       <div class="wallet-pagination" data-testid="platform-bet-pages"><button class="secondary" :disabled="loading || offset === 0 || !brandId" @click="load(offset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(offset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !more" @click="load(offset + 50)">{{ copy.next }}</button></div>
     </section>
-    <section v-if="detail" class="panel reward-detail" data-testid="platform-bet-detail">
+    <DetailModal v-if="detail" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="detail = null">
+<section v-if="detail" class="panel reward-detail" data-testid="platform-bet-detail">
       <div class="panel-heading"><h2>{{ copy.detail }}</h2><span>{{ stateLabel(detail.status) }}</span></div>
       <dl class="confirm-list reward-fields">
         <div><dt>{{ copy.order }}</dt><dd>{{ detail.id }}</dd></div><div><dt>{{ copy.version }}</dt><dd>{{ detail.version }}</dd></div>
@@ -104,6 +115,7 @@ watch(() => props.brandId, () => {
         <details><summary>{{ copy.allocation }}</summary><pre>{{ json(detail.deduction_allocation) }}</pre></details>
       </div>
     </section>
+</DetailModal>
     </template>
   </div>
 </template>

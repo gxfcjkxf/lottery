@@ -65,7 +65,9 @@ function compileComponent(): Component {
   const descriptor = parseVue(source, { filename: "CommissionCorrectionsManagement.vue" }).descriptor;
   const compiled = compileVueScript(descriptor, { id: "commission-corrections-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(compiled, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-corrections-api": CorrectionApi, "./commission-corrections-state": CorrectionState, "./commissionPayments-api": PaymentApi };
+  const modules: Record<string, unknown> = {
+    // Business tests use a host renderer; native dialog behavior is checked in Chrome.
+    "@lottery/shared/DetailModal.vue": { default: { inheritAttrs: false, setup: (_props: unknown, context: { slots: { default?: () => unknown } }) => () => context.slots.default?.() } }, vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-corrections-api": CorrectionApi, "./commission-corrections-state": CorrectionState, "./commissionPayments-api": PaymentApi };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => { if (!(specifier in modules)) throw new Error(`Unmapped import ${specifier}`); return `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`; }).replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m,binding: string,specifier: string)=>{if(!(specifier in modules))throw new Error(`Unmapped import ${specifier}`);return `const ${binding}=__modules[${JSON.stringify(specifier)}].default;`;}).replace(/export\s+default\s+/, "return ");
   return new Function("__modules",body)(modules) as Component;
 }

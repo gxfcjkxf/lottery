@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LanguageSwitcher from '@lottery/shared/LanguageSwitcher.vue';
 import {
   computed,
   defineAsyncComponent,
@@ -659,12 +660,9 @@ const changeMemberPage = async (direction: -1 | 1) => {
         <span class="login-entry__mark" aria-hidden="true">N</span>
         <span><b>northstar</b><small>ADMINISTRATION</small></span>
       </a>
-      <label class="admin-language">
-        <span class="sr-only">{{ t('语言', 'Language') }}</span>
-        <select data-testid="admin-language" :aria-label="t('语言', 'Language')" :value="locale" @change="setLocale(($event.target as HTMLSelectElement).value)">
-          <option v-for="code in availableLocales" :key="code" :value="code">{{ code === 'en' ? 'English' : '简体中文' }}</option>
-        </select>
-      </label>
+      <LanguageSwitcher data-testid="admin-language" :model-value="locale" :label="t('语言', 'Language')"
+        :options="availableLocales.map(code => ({ code, label: code === 'en' ? 'English' : '简体中文' }))"
+        @update:model-value="setLocale" />
     </header>
     <main class="login-entry__main">
       <section v-if="authLoading" class="login-entry__loading" role="status" aria-live="polite">
@@ -766,12 +764,9 @@ const changeMemberPage = async (direction: -1 | 1) => {
           ><span class="prototype-badge">{{ ui("品牌后台") }}</span>
         </div>
         <div class="top-actions">
-          <label class="admin-language">
-            <span class="sr-only">{{ t('语言', 'Language') }}</span>
-            <select data-testid="admin-language" :aria-label="t('语言', 'Language')" :value="locale" @change="setLocale(($event.target as HTMLSelectElement).value)">
-              <option v-for="code in availableLocales" :key="code" :value="code">{{ code === 'en' ? 'English' : '简体中文' }}</option>
-            </select>
-          </label>
+          <LanguageSwitcher data-testid="admin-language" :model-value="locale" :label="t('语言', 'Language')"
+            :options="availableLocales.map(code => ({ code, label: code === 'en' ? 'English' : '简体中文' }))"
+            @update:model-value="setLocale" />
           <label class="search-box"
             ><span>⌕</span
             ><input
@@ -793,7 +788,7 @@ const changeMemberPage = async (direction: -1 | 1) => {
           >
             ♧</button
           ><span class="top-divider"></span
-          ><button class="help-button" @click="toast('帮助服务尚未连接。')"> {{ ui("帮助中心 ↗") }} </button>
+          ><button class="help-button" @click="toast('帮助服务尚未连接。')"> {{ ui("帮助中心 ↗") }} </button><div class="account-menu" tabindex="0"><button class="account-trigger" type="button"><span class="account-avatar">{{ account.id.slice(0, 1).toUpperCase() }}</span><span>{{ account.id }}</span><span aria-hidden="true">⌄</span></button><div class="account-popover" role="menu"><strong>{{ account.id }}</strong><span>{{ ui("管理员") }}</span><button type="button" role="menuitem">{{ ui("个人信息") }}</button><button type="button" role="menuitem">{{ ui("修改密码") }}</button><button type="button" role="menuitem" class="popover-logout" @click="logout">{{ ui("退出登录") }}</button></div></div>
         </div>
       </header>
       <div v-if="locale === 'en'" class="admin-locale-coverage" role="status">
@@ -1619,10 +1614,10 @@ const changeMemberPage = async (direction: -1 | 1) => {
 .login-entry__mark { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 13px; background: linear-gradient(145deg,#6879ee,#4658ce); color: white; font-size: 21px; font-weight: 800; box-shadow: 0 5px 15px #5969df30; }
 .login-entry__brand b,.login-entry__brand small { display: block; }
 .login-entry__brand b { font-size: 16px; letter-spacing: -.5px; }
-.login-entry__brand small { margin-top: 3px; color: #8992a4; font-size: 9px; letter-spacing: 1.2px; }
+.login-entry__brand small { margin-top: 3px; color: #8992a4; font-size: 11px; letter-spacing: 1.2px; }
 .login-entry__main { display: grid; min-height: calc(100vh - 77px); align-content: center; justify-items: center; gap: 24px; padding: 42px 20px 64px; }
 .login-entry__card { width: min(100%, 430px); padding: clamp(25px, 5vw, 38px); border: 1px solid #e8ebf2; border-radius: 18px; background: white; box-shadow: 0 18px 55px rgba(37,49,88,.09); }
-.login-entry__eyebrow { color: #6372d8; font-size: 10px; font-weight: 700; letter-spacing: 1.55px; }
+.login-entry__eyebrow { color: #6372d8; font-size: 11px; font-weight: 700; letter-spacing: 1.55px; }
 .login-entry__card h1 { margin: 10px 0 8px; color: #20283a; font-size: clamp(23px, 5vw, 28px); letter-spacing: -.7px; }
 .login-entry__description { margin: 0; color: #737b8c; line-height: 1.65; }
 .login-entry__form { display: grid; gap: 17px; margin-top: 27px; }

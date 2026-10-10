@@ -135,16 +135,50 @@ const hasNextPage = computed(() => report.value !== null && BigInt(offset.value 
   <div data-testid="platform-reports">
     <div class="page-heading"><div><div class="eyebrow">{{ copy.intro }}</div><h1>{{ copy.title }}</h1></div></div>
     <form class="panel wallet-query" @submit.prevent="load(0)">
-      <label>{{ copy.type }}<select v-model="kind" :aria-label="copy.type" :disabled="loading"><option v-for="option in kinds" :key="option" :value="option">{{ label(kindLabels, option) }}</option></select></label>
-      <label>{{ copy.from }}<input v-model="from" :aria-label="copy.from" type="datetime-local" step="1" required :disabled="loading" @input="edited" /></label>
-      <label>{{ copy.to }}<input v-model="to" :aria-label="copy.to" type="datetime-local" step="1" required :disabled="loading" @input="edited" /></label>
-      <label>{{ copy.group }}<select v-model="groupBy" :aria-label="copy.group" required :disabled="loading" @change="edited"><option v-for="option in groupOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
-      <label>{{ copy.member }}<input v-model="memberFilter" :aria-label="copy.member" autocomplete="off" :disabled="loading" @input="edited" /></label>
-      <label v-if="kind === 'betting'">{{ copy.game }}<input v-model="gameFilter" :aria-label="copy.game" autocomplete="off" :disabled="loading" @input="edited" /></label>
-      <label v-if="kind === 'commission'">{{ copy.agent }}<input v-model="agentFilter" :aria-label="copy.agent" autocomplete="off" :disabled="loading" @input="edited" /></label>
-      <label v-if="kind === 'commission'">{{ copy.cycle }}<input v-model="cycleFilter" :aria-label="copy.cycle" autocomplete="off" :disabled="loading" @input="edited" /></label>
-      <label v-if="kind === 'rewards' || kind === 'reward_orders'">{{ copy.order }}<input v-model="orderFilter" :aria-label="copy.order" autocomplete="off" :disabled="loading" @input="edited" /></label>
-      <button class="secondary" :disabled="loading || !brandId">{{ copy.run }}</button>
+      <label class="query-field">
+        <span class="field-label">{{ copy.type }}</span>
+        <select v-model="kind" :aria-label="copy.type" :disabled="loading">
+          <option v-for="option in kinds" :key="option" :value="option">{{ label(kindLabels, option) }}</option>
+        </select>
+      </label>
+      <label class="query-field">
+        <span class="field-label">{{ copy.from }}</span>
+        <input v-model="from" :aria-label="copy.from" type="datetime-local" step="1" required :disabled="loading" @input="edited" />
+      </label>
+      <label class="query-field">
+        <span class="field-label">{{ copy.to }}</span>
+        <input v-model="to" :aria-label="copy.to" type="datetime-local" step="1" required :disabled="loading" @input="edited" />
+      </label>
+      <label class="query-field">
+        <span class="field-label">{{ copy.group }}</span>
+        <select v-model="groupBy" :aria-label="copy.group" required :disabled="loading" @change="edited">
+          <option v-for="option in groupOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+        </select>
+      </label>
+      <label class="query-field">
+        <span class="field-label">{{ copy.member }}</span>
+        <div class="input-with-icon">
+          <span class="input-icon">👤</span>
+          <input v-model="memberFilter" :aria-label="copy.member" autocomplete="off" :disabled="loading" :placeholder="locale === 'en' ? 'Optional member UUID' : '可选会员 UUID'" @input="edited" />
+        </div>
+      </label>
+      <label v-if="kind === 'betting'" class="query-field">
+        <span class="field-label">{{ copy.game }}</span>
+        <input v-model="gameFilter" :aria-label="copy.game" autocomplete="off" :disabled="loading" :placeholder="locale === 'en' ? 'Game ID' : '彩种 UUID'" @input="edited" />
+      </label>
+      <label v-if="kind === 'commission'" class="query-field">
+        <span class="field-label">{{ copy.agent }}</span>
+        <input v-model="agentFilter" :aria-label="copy.agent" autocomplete="off" :disabled="loading" :placeholder="locale === 'en' ? 'Agent UUID' : '代理 UUID'" @input="edited" />
+      </label>
+      <label v-if="kind === 'commission'" class="query-field">
+        <span class="field-label">{{ copy.cycle }}</span>
+        <input v-model="cycleFilter" :aria-label="copy.cycle" autocomplete="off" :disabled="loading" :placeholder="locale === 'en' ? 'Cycle UUID' : '周期 UUID'" @input="edited" />
+      </label>
+      <label v-if="kind === 'rewards' || kind === 'reward_orders'" class="query-field">
+        <span class="field-label">{{ copy.order }}</span>
+        <input v-model="orderFilter" :aria-label="copy.order" autocomplete="off" :disabled="loading" :placeholder="locale === 'en' ? 'Order UUID' : '订单 UUID'" @input="edited" />
+      </label>
+      <button class="primary" :disabled="loading || !brandId">{{ copy.run }}</button>
     </form>
     <p v-if="error" class="message error" role="alert">{{ error }}</p>
     <p v-if="exportNotice" class="message success" role="status" data-testid="platform-report-export-receipt">{{ exportNotice }}</p>

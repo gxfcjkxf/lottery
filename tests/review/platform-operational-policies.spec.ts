@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5185';
@@ -30,7 +31,7 @@ test('platform reads six genuine operational policies without writes or verifica
       for (const label of ['Account risk check', 'Betting risk check', 'Blacklist/self-exclusion check', 'Responsible gambling/cooling check']) await expect(panel).toContainText(label);
     }
   }
-  await page.locator('.language').click();
+  await selectLanguage(page, 'zh-CN');
   await expect(panel).toContainText('此只读开关不会启用处理或派发资金');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('platform-operational-policies.png'), fullPage: true });

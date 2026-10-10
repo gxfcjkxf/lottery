@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect, type BrowserContext, type Page, type TestInfo } from '@playwright/test'
 import { rememberAdminSession, restoreAdminSession } from './support/admin-session'
 
@@ -22,7 +23,7 @@ async function signedIn(page: Page, context: BrowserContext, info: TestInfo) {
 }
 
 async function switchLanguage(page: Page, language: 'en' | 'zh-CN') {
-  await page.locator('[data-testid="admin-language"]').selectOption(language)
+  await selectLanguage(page, language)
   await expect(page.locator('html')).toHaveAttribute('lang', language)
 }
 async function navigate(page: Page, info: TestInfo, name: string) {
@@ -62,7 +63,7 @@ test('admin language selection changes login without exposing logged-out navigat
   await fits(page)
   await page.screenshot({ path: info.outputPath('admin-english-login.png'), fullPage: true })
   await page.reload()
-  await expect(page.locator('[data-testid="admin-language"]')).toHaveValue('en')
+  await expect(page.locator('[data-testid="admin-language"]')).toHaveAttribute('data-locale', 'en')
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   expect(mutations).toEqual([])
   expect(errors).toEqual([])
@@ -169,7 +170,7 @@ test('published selected-brand languages control fallback without borrowing the 
   await page.evaluate(() => localStorage.removeItem('lottery.admin.locale'))
   await page.reload()
   await page.locator('.directory-brand-bar select').selectOption(brandId)
-  await expect(page.locator('[data-testid="admin-language"]')).toHaveValue(initial.default_locale)
+  await expect(page.locator('[data-testid="admin-language"]')).toHaveAttribute('data-locale', initial.default_locale)
   const preference = initial.available_locales.includes('zh-CN') ? 'zh-CN' : initial.default_locale
   await switchLanguage(page, preference as 'en' | 'zh-CN')
   const options = await page.locator('.directory-brand-bar select option').evaluateAll(elements => elements.map(element => (element as HTMLOptionElement).value).filter(Boolean))
@@ -178,11 +179,13 @@ test('published selected-brand languages control fallback without borrowing the 
   for (const id of options) {
     const published = await read(id)
     await page.locator('.directory-brand-bar select').selectOption(id)
-    await expect(page.locator('[data-testid="admin-language"] option')).toHaveCount(published.available_locales.length)
-    await expect(page.locator('[data-testid="admin-language"]')).toHaveValue(published.available_locales.includes(preference) ? preference : published.default_locale)
-    expect((await page.locator('[data-testid="admin-language"] option').evaluateAll(elements => elements.map(element => (element as HTMLOptionElement).value))).sort()).toEqual([...published.available_locales].sort())
+    await expect(page.locator('[data-testid="admin-language"]')).toHaveAttribute('data-locale', published.available_locales.includes(preference) ? preference : published.default_locale)
+    await page.locator('[data-testid="admin-language"] .locale-picker__trigger').click()
+    await expect(page.locator('[data-testid="admin-language"] .locale-picker__option')).toHaveCount(published.available_locales.length)
+    expect((await page.locator('[data-testid="admin-language"] .locale-picker__option').evaluateAll(elements => elements.map(element => element.getAttribute('data-code')))).sort()).toEqual([...published.available_locales].sort())
+    await page.keyboard.press('Escape')
   }
   await page.locator('.directory-brand-bar select').selectOption(brandId)
-  await expect(page.locator('[data-testid="admin-language"]')).toHaveValue(preference)
+  await expect(page.locator('[data-testid="admin-language"]')).toHaveAttribute('data-locale', preference)
   expect(writes).toEqual([])
 })

@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5185';
@@ -78,7 +79,7 @@ test('platform commission pages preserve exact totals and clear failed details',
   await list.getByRole('button', { name: payments[50].id, exact: true }).click();
   await expect(panel.getByRole('alert')).toContainText('Commission read unavailable');
   await expect(detail).toHaveCount(0);
-  await page.locator('.language').click();
+  await selectLanguage(page, 'zh-CN');
   await expect(tabs.getByRole('tab', { name: '派发', exact: true })).toBeVisible();
   await page.locator('.brand-picker select').selectOption('');
   await expect(panel).toHaveCount(0);

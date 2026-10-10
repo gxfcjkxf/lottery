@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { expect, test, type APIRequestContext, type APIResponse, type Page } from '@playwright/test';
 
 const brand = '0199a000-0000-7000-8000-000000000002';
@@ -453,7 +454,7 @@ test('real Harbor draw notices publish and correct immutable facts on desktop an
   await expect(panel).toContainText('does not indicate a win, prize payment, or guarantee of the current result');
   await expect(panel).toContainText('Digits: 101');
   await expect(panel).not.toContainText('draw_notice_');
-  await userPage.getByRole('button', { name: 'Switch to Chinese', exact: true }).click();
+  await selectLanguage(userPage, 'zh-CN');
   await expect(panel.getByRole('heading', { name: originalNotice!.content!['zh-CN'].title.replaceAll('{resource_id}', originalDraw.id), exact: true })).toBeVisible();
   await expect(panel.getByRole('heading', { name: correctedNotice!.content!['zh-CN'].title.replaceAll('{resource_id}', correction.draw_result_id), exact: true })).toBeVisible();
   await expect(panel).toContainText('数字：010');
@@ -479,7 +480,7 @@ test('real Harbor draw notices publish and correct immutable facts on desktop an
     expect(response.status(), await response.text()).toBe(200);
     await route.fulfill({ response });
   });
-  await userPage.getByRole('button', { name: 'Switch to English', exact: true }).click();
+  await selectLanguage(userPage, 'en');
   await originalCard.getByRole('button', { name: 'Mark as read', exact: true }).click();
   await correctedCard.getByRole('button', { name: 'Mark as read', exact: true }).click();
   await expect.poll(async () => (await drawMessages()).filter((item) => item.read_at !== null).length).toBe(2);

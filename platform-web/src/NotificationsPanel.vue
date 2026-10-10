@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { createPlatformNotificationsApi, type Delivery, type Template, type TemplateRevision } from './notifications-api'
 
@@ -133,7 +134,8 @@ onBeforeUnmount(() => { ++generation })
           <tr v-if="!templates.length"><td colspan="4" class="empty-state">{{ copy.emptyTemplates }}</td></tr>
         </tbody></table></div>
       </section>
-      <section v-if="selected" class="panel reward-detail" data-testid="platform-template-detail">
+      <DetailModal v-if="selected" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="selected = null">
+<section v-if="selected" class="panel reward-detail" data-testid="platform-template-detail">
         <div class="panel-heading"><h2>{{ selected.key }}</h2><span>{{ copy.version }} {{ selected.version }}</span></div>
         <dl class="confirm-list reward-fields"><div><dt>{{ copy.updated }}</dt><dd>{{ selected.updated_at }}</dd></div><div><dt>{{ copy.audit }}</dt><dd>{{ selected.audit_log_id ?? '—' }}</dd></div></dl>
         <h3>{{ copy.current }}</h3>
@@ -148,6 +150,7 @@ onBeforeUnmount(() => { ++generation })
         </tbody></table></div>
         <div class="wallet-pagination" data-testid="platform-template-history-pages"><button class="secondary" :disabled="loading || historyOffset === 0 || !brandId" @click="selectTemplate(selected, historyOffset - 50)">{{ copy.previous }}</button><span>{{ copy.page }} {{ Math.floor(historyOffset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !historyMore" @click="selectTemplate(selected, historyOffset + 50)">{{ copy.next }}</button></div>
       </section>
+</DetailModal>
     </template>
   </div>
 </template>

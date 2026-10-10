@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import {test,expect,type APIResponse,type Page} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
 import {rememberAdminSession} from './support/admin-session';
@@ -113,7 +114,7 @@ test('real commission cycles retain unknown requests, retry real failures and pr
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await panel.screenshot({path:info.outputPath('commission-cycles-panel.png')});
   await page.screenshot({path:info.outputPath('commission-cycles-viewport.png')});
-  await page.getByTestId('admin-language').selectOption('en');
+  await selectLanguage(page, 'en');
   await expect(panel.getByRole('heading',{name:'Commission cycle calculations',exact:true})).toBeVisible();
   await expect(panel).toContainText('Calculated');expect(writes).toHaveLength(2);
   expect(errors).toEqual([]);
@@ -179,9 +180,9 @@ test('current commission management renders exact completed evidence without fin
   await panel.getByRole('button',{name:'筛选',exact:true}).click();
   const cleared=await data<{items:Allocation[]}>(await clearFilterResponse);expect(cleared.items.length).toBe(allocations!.length);
   await expect(panel.locator('.allocation-row')).toHaveCount(allocations!.length);
-  await page.getByTestId('admin-language').selectOption('en');
+  await selectLanguage(page, 'en');
   await expect(panel).toContainText('Whole-cycle exact total');await expect(panel).toContainText('Whole-cycle rounded points');
-  await page.getByTestId('admin-language').selectOption('zh-CN');
+  await selectLanguage(page, 'zh-CN');
   // The real fixture has a distinct retried cycle (3/10 rounds to zero), not
   // two generations of the automatic 3/5 one-point cycle. Inspect its actual
   // retained run without inventing an extra financial generation.
@@ -207,7 +208,7 @@ test('current commission management renders exact completed evidence without fin
   await panel.screenshot({path:info.outputPath('commission-cycles-current-panel.png')});
   await panel.locator('.historical').screenshot({path:info.outputPath('commission-allocation-history.png')});
   await page.screenshot({path:info.outputPath('commission-cycles-current-viewport.png')});
-  await page.getByTestId('admin-language').selectOption('en');
+  await selectLanguage(page, 'en');
   await expect(panel).toContainText('Calculated');
   await expect(panel).toContainText('Whole-cycle exact total');await expect(panel).toContainText('Whole-cycle rounded points');
   await page.setViewportSize({width:360,height:800});

@@ -599,13 +599,19 @@ function sourceSnapshotValue(
       class="lookup"
       @submit.prevent="inspectMember"
     >
-      <label
-        >{{ t("会员 UUID", "Member ID") }}<input
-          v-model.trim="memberId"
-          required
-          autocomplete="off"
-          :placeholder="t('输入当前品牌的 member_id', 'Enter the member_id for this brand')" /></label
-      ><button class="primary" :disabled="loading || !memberId.trim()">
+      <label class="query-field">
+        <span class="field-label">{{ t("会员 UUID", "Member ID") }}</span>
+        <div class="input-with-icon">
+          <span class="input-icon">👤</span>
+          <input
+            v-model.trim="memberId"
+            required
+            autocomplete="off"
+            :placeholder="t('输入当前品牌的 member_id', 'Enter the member_id for this brand')"
+          />
+        </div>
+      </label>
+      <button class="primary" :disabled="loading || !memberId.trim()">
         {{ loading ? t("读取中…", "Loading…") : t("查询会员", "Load wallet") }}
       </button>
     </form>
@@ -1091,7 +1097,7 @@ function sourceSnapshotValue(
   line-height: 1.55;
 }
 .eyebrow {
-  font-size: 10px !important;
+  font-size: 11px !important;
   letter-spacing: 1.2px;
   color: #8991a2 !important;
   font-weight: 700;
@@ -1221,7 +1227,7 @@ function sourceSnapshotValue(
 }
 .panel-title p,
 .muted {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.55;
   color: #737b8c;
   margin: 0;
@@ -1241,7 +1247,7 @@ function sourceSnapshotValue(
   min-width: 0;
 }
 .total span {
-  font-size: 10px;
+  font-size: 11px;
   color: #737b8c;
 }
 .total strong {
@@ -1256,7 +1262,7 @@ function sourceSnapshotValue(
 .recon-table {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
-  font-size: 10px;
+  font-size: 11px;
 }
 .table-head,
 .bucket-row,
@@ -1328,19 +1334,19 @@ function sourceSnapshotValue(
 }
 .entry-head small,
 .recharge-head small {
-  font-size: 10px;
+  font-size: 11px;
   color: #8991a0;
   overflow-wrap: anywhere;
 }
 .entry-head code {
-  font-size: 9px;
+  font-size: 11px;
   color: #8b92a0;
   overflow-wrap: anywhere;
 }
 .reason-text,
 .allocation,
 .recharge-row > p {
-  font-size: 10px;
+  font-size: 11px;
   color: #626b7c;
   overflow-wrap: anywhere;
   line-height: 1.55;
@@ -1350,7 +1356,7 @@ function sourceSnapshotValue(
   grid-template-columns: minmax(120px, 1.2fr) repeat(3, minmax(0, 1fr));
   gap: 6px 8px;
   align-items: baseline;
-  font-size: 9px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 .snapshot-grid > b {
@@ -1363,12 +1369,12 @@ function sourceSnapshotValue(
   overflow-wrap: anywhere;
 }
 .snapshot-heading {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   color: #858c99;
 }
 .ledger-entry details {
-  font-size: 10px;
+  font-size: 11px;
   color: #737b8c;
   margin-top: 9px;
   overflow-wrap: anywhere;
@@ -1397,7 +1403,7 @@ function sourceSnapshotValue(
   align-items: center;
   padding-top: 12px;
   color: #737b8c;
-  font-size: 10px;
+  font-size: 11px;
 }
 .pager > div {
   display: flex;
@@ -1409,7 +1415,7 @@ function sourceSnapshotValue(
   background: white;
   padding: 6px 9px;
   color: #50596a;
-  font-size: 10px;
+  font-size: 11px;
 }
 .pager button:disabled {
   opacity: 0.45;
@@ -1420,7 +1426,7 @@ function sourceSnapshotValue(
   gap: 12px;
 }
 .form-grid small {
-  font-size: 9px;
+  font-size: 11px;
   color: #8991a0;
   font-weight: 400;
 }
@@ -1473,10 +1479,10 @@ function sourceSnapshotValue(
   .snapshot-grid {
     grid-template-columns: minmax(94px, 1fr) repeat(3, minmax(0, 0.8fr));
     gap: 6px 4px;
-    font-size: 8px;
+    font-size: 11px;
   }
   .snapshot-heading {
-    font-size: 8px;
+    font-size: 11px;
   }
   .unfreeze-row {
     align-items: stretch;
@@ -1487,7 +1493,7 @@ function sourceSnapshotValue(
   }
   .bucket-table,
   .recon-table {
-    font-size: 9px;
+    font-size: 11px;
   }
 }
 </style>

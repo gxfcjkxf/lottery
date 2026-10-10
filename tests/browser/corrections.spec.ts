@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect, type APIRequestContext, type Page, type Route } from "@playwright/test";
 import type { Wallet, LedgerEntry } from "../../admin-web/src/finance-api";
 import type { Period } from "../../admin-web/src/period-schedules-api";
@@ -208,7 +209,7 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   adminPage.on("pageerror",e=>pageErrors.push(e.message));
   adminPage.setDefaultTimeout(8_000);
   await adminPage.goto(adminOrigin);
-  await adminPage.getByTestId("admin-language").selectOption("zh-CN");
+  await selectLanguage(adminPage, "zh-CN");
   await adminPage.getByLabel("选择真实后台品牌", { exact: true }).selectOption(brandId);
   await goToPeriods(adminPage, info.project.name);
   const correction = adminPage.locator(".correction-management");

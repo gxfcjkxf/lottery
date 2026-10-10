@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect } from '@playwright/test';
 import { rememberAdminSession } from './support/admin-session';
 
@@ -15,7 +16,7 @@ test('brand inventory finds a parentless child without changing funds or automat
  let reads=0;await page.route('**'+endpoint,route=>{reads++;return route.continue()});
  let writes=0;page.on('request',request=>{if(request.method()!=='GET'&&request.url().includes('/api/v1/admin/'))writes++});
  await page.goto(origin);
- await page.getByTestId('admin-language').selectOption('zh-CN');
+ await selectLanguage(page, 'zh-CN');
  await page.getByLabel('选择真实后台品牌',{exact:true}).selectOption(brand);
  if(info.project.name==='mobile'){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:/批量对账/}).click()}
  else await page.locator('.side-nav').getByRole('button',{name:/批量对账/}).click();
@@ -40,7 +41,7 @@ test('brand inventory finds a parentless child without changing funds or automat
  for(let i=0;i<data.issues.length;i++){await expect(panel.locator('.issue-row').nth(i)).toContainText(data.issues[i].source_id);await expect(panel.locator('.issue-row').nth(i)).toContainText(data.issues[i].reference_key)}
  const after=await page.request.get(origin+endpoint,{headers:{'X-Brand-ID':brand}});expect(after.status()).toBe(200);
  expect((await after.json()).data.fingerprint).toBe(data.fingerprint);
- await page.getByTestId('admin-language').selectOption('en');
+ await selectLanguage(page, 'en');
  await expect(panel.getByRole('heading',{name:'Brand business reference inventory',exact:true})).toBeVisible();
  await expect(panel).toContainText('not a complete wallet or financial proof');
  await panel.screenshot({path:info.outputPath('inventory-live.png')});

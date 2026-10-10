@@ -58,6 +58,8 @@ function compileComponent(): Component {
   const compiled = compileVueScript(descriptor, { id: "rewards-component-test", inlineTemplate: true }).content;
   const javascript = transpileScript(compiled);
   const modules: Record<string, unknown> = {
+    // Business tests use a host renderer; native dialog behavior is checked in Chrome.
+    "@lottery/shared/DetailModal.vue": { default: { inheritAttrs: false, setup: (_props: unknown, context: { slots: { default?: () => unknown } }) => () => context.slots.default?.() } },
     vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n,
     "./rewards-api": RewardsApi, "./rewards-state": RewardsState,
   };

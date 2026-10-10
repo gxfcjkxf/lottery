@@ -711,7 +711,7 @@ watch(
   line-height: 1.55;
 }
 .eyebrow {
-  font-size: 10px !important;
+  font-size: 11px !important;
   letter-spacing: 1.2px;
   color: #8991a2 !important;
   font-weight: 700;
@@ -807,7 +807,7 @@ watch(
 .hint {
   margin: 0;
   color: #737b8c;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 .condition-editor {
@@ -834,7 +834,7 @@ watch(
 .condition-row label {
   display: grid;
   gap: 5px;
-  font-size: 10px;
+  font-size: 11px;
   min-width: 0;
 }
 .primary,
@@ -899,7 +899,7 @@ watch(
   min-width: 0;
 }
 .summary-grid small {
-  font-size: 10px;
+  font-size: 11px;
   color: #737b8c;
 }
 .summary-grid strong {
@@ -951,7 +951,7 @@ watch(
   font-size: 11px;
 }
 .tier-hit p {
-  font-size: 10px;
+  font-size: 11px;
   color: #737b8c;
   overflow-wrap: anywhere;
 }
@@ -964,7 +964,7 @@ watch(
   background: #f7f8fa;
   padding: 9px;
   border-radius: 6px;
-  font-size: 10px;
+  font-size: 11px;
 }
 .normalized {
   border-top: 1px solid #eff0f4;

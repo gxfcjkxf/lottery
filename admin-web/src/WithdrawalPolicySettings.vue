@@ -1401,7 +1401,7 @@ onUnmounted(() => {
   overflow-wrap: anywhere;
 }
 .eyebrow {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.2px;
   color: #8991a2;
   font-weight: 700;
@@ -1578,7 +1578,7 @@ onUnmounted(() => {
   min-width: 0;
 }
 .saved-summary dt {
-  font-size: 10px;
+  font-size: 11px;
   color: #737b8c;
 }
 .saved-summary dd {
@@ -1631,7 +1631,7 @@ onUnmounted(() => {
   background: #f7f8fb;
   border-radius: 7px;
   padding: 10px;
-  font-size: 10px;
+  font-size: 11px;
   max-width: 100%;
   overflow: auto;
 }
@@ -1640,7 +1640,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 10px;
+  font-size: 11px;
   flex-wrap: wrap;
 }
 .confirmation-panel {

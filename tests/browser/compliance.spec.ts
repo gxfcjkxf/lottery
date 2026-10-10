@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import {test,expect,type Page} from "@playwright/test";
 
 const origin=process.env.TEST_ADMIN_ORIGIN??"http://localhost:5174",api=`${origin}/api/v1/admin`;
@@ -13,7 +14,7 @@ test("audited compliance configuration and explicit stub check replay across nav
  const headers={"X-Brand-ID":brand.id};const original=(await page.request.get(`${api}/compliance-policy`,{headers}).then(r=>r.json())).data;
  let policyChanged=false;
  try {
- await page.goto(origin);await page.getByTestId("admin-language").selectOption("zh-CN");await page.locator(".directory-brand-bar select").selectOption(brand.id);await visit(page,mobile);
+ await page.goto(origin);await selectLanguage(page, "zh-CN");await page.locator(".directory-brand-bar select").selectOption(brand.id);await visit(page,mobile);
  const panel=page.locator(".compliance");await expect(panel.getByRole("alert").first()).toContainText("启用但适配器未配置时会拒绝新业务");
  for(const label of [/账号关联风险：/,/投注风险：/,/排除名单：/,/负责任博彩：/]) await expect(panel.getByLabel(label)).toBeVisible();
  await panel.getByLabel(/账号关联风险：/).check();const reason=`Explicit browser configuration ${crypto.randomUUID()}`;

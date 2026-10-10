@@ -1220,7 +1220,7 @@ onBeforeUnmount(() => {
 }
 .eyebrow {
   color: #5969df;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 1px;
   margin: 0;
@@ -1334,7 +1334,7 @@ button:disabled {
 }
 .details dt {
   color: #737b8c;
-  font-size: 10px;
+  font-size: 11px;
 }
 .details dd {
   margin: 4px 0 0;
@@ -1357,7 +1357,7 @@ button:disabled {
 }
 .counts span {
   color: #737b8c;
-  font-size: 10px;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 .counts b {

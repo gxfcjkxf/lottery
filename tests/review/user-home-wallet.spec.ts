@@ -1,3 +1,4 @@
+import { selectLanguage } from '../language-switcher'
 import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5183';
@@ -72,7 +73,7 @@ test('home wallet shows real recharge and clears the balance on failure and logo
   fail = false;
   await card.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByTestId('home-wallet-balance')).toHaveText('7 pts');
-  await page.locator('.language-button').click();
+  await selectLanguage(page, 'zh-CN');
   await expect(card).toContainText('我的积分');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('home-wallet-real.png'), fullPage: true });

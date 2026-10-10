@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onUnmounted, ref, watch } from "vue";
 import { hasPendingWithdrawalIntent, retainWithdrawalIntent, type WithdrawalAction, type WithdrawalActionBody, type WithdrawalHistory, type WithdrawalOrder, type WithdrawalState } from "@lottery/shared";
 import type { AdminAccount } from "./admin-api";
@@ -142,12 +143,30 @@ onUnmounted(() => { disposed = true; generation++; historyGeneration++; controll
       <p v-if="error" class="withdrawal-error" role="alert">{{ error }}</p>
       <p v-if="receipt" class="withdrawal-receipt" role="status">{{ words.receipt }} · {{ receipt.id }} · {{ stateName(receipt.state) }}. {{ words.receiptNote }}</p>
       <div v-if="pending && pending.scope === scope" class="withdrawal-confirm" role="alert"><strong>{{ words.unknown }} · {{ pending.orderId }}</strong><p>{{ words.reason }} · {{ pending.body.reason }}</p><button class="button button-secondary" :disabled="busy" @click="perform(pending.action, true)">{{ words.replay }}</button></div>
-      <div class="panel withdrawal-filters"><label>{{ words.state }}<select v-model="stateFilter"><option value="">{{ words.all }}</option><option v-for="state in states" :key="state" :value="state">{{ stateName(state) }}</option></select></label><label>{{ words.member }}<input v-model="memberFilter" type="text" autocomplete="off" /></label><button class="button button-primary" :disabled="loading" @click="load(0)">{{ words.filter }}</button></div>
+      <div class="panel withdrawal-filters">
+        <label class="query-field query-field-status">
+          <span class="field-label">{{ words.state }}</span>
+          <select v-model="stateFilter">
+            <option value="">{{ words.all }}</option>
+            <option v-for="state in states" :key="state" :value="state">{{ stateName(state) }}</option>
+          </select>
+        </label>
+        <label class="query-field">
+          <span class="field-label">{{ words.member }}</span>
+          <div class="input-with-icon">
+            <span class="input-icon">👤</span>
+            <input v-model="memberFilter" type="text" autocomplete="off" :placeholder="en ? 'Filter by member UUID' : '按会员 UUID 筛选'" />
+          </div>
+        </label>
+        <button class="button button-primary" :disabled="loading" @click="load(0)">{{ words.filter }}</button>
+      </div>
       <div class="panel withdrawal-table-wrap"><table class="withdrawal-table"><thead><tr><th>{{ words.order }}</th><th>{{ words.member }}</th><th>{{ words.points }}</th><th>{{ words.state }}</th><th>{{ words.created }}</th><th></th></tr></thead><tbody><tr v-for="order in page" :key="order.id"><td class="mono">{{ order.id }}</td><td class="mono">{{ order.member_id }}</td><td>{{ order.points }}</td><td><span class="badge" :class="order.state === 'paid' ? 'badge-success' : ['failed','rejected','cancelled'].includes(order.state) ? 'badge-neutral' : 'badge-warn'">{{ stateName(order.state) }}</span></td><td>{{ date(order.created_at) }}</td><td><button class="text-button" @click="showHistory(order)">{{ words.history }}</button></td></tr></tbody></table><p v-if="!page.length && !loading" class="muted">{{ words.empty }}</p></div>
       <nav class="withdrawal-pagination"><button class="button button-secondary" :disabled="offset === 0 || loading" @click="load(Math.max(0, offset - MAX_WITHDRAWAL_PAGE))">{{ words.previous }}</button><span>{{ offset + 1 }}–{{ offset + page.length }}</span><button class="button button-secondary" :disabled="!hasMore || loading" @click="load(offset + MAX_WITHDRAWAL_PAGE)">{{ words.next }}</button></nav>
-      <div v-if="selected" class="panel withdrawal-detail"><div class="panel-header"><div><h2>{{ selected.id }}</h2><p>{{ words.state }} · {{ stateName(selected.state) }}</p></div><button class="text-button" @click="selected = null; history = null">{{ words.close }}</button></div><div v-if="history"><div v-for="item in history.items" :key="item.id" class="withdrawal-history-row"><span>{{ item.from_state ? stateName(item.from_state) + ' → ' : '' }}{{ stateName(item.to_state) }}</span><small>{{ date(item.created_at) }} · {{ words.actors }}: {{ item.actor_type }} · {{ item.reason }}</small></div></div><p v-else class="muted">{{ words.loading }}</p>
+      <DetailModal v-if="!!selected" :title="en ? 'Withdrawal details' : '提现详情'" :close-label="words.close" @close="selected = null; history = null">
+<div v-if="selected" class="panel withdrawal-detail"><div class="panel-header"><div><h2>{{ selected.id }}</h2><p>{{ words.state }} · {{ stateName(selected.state) }}</p></div><button class="text-button" @click="selected = null; history = null">{{ words.close }}</button></div><div v-if="history"><div v-for="item in history.items" :key="item.id" class="withdrawal-history-row"><span>{{ item.from_state ? stateName(item.from_state) + ' → ' : '' }}{{ stateName(item.to_state) }}</span><small>{{ date(item.created_at) }} · {{ words.actors }}: {{ item.actor_type }} · {{ item.reason }}</small></div></div><p v-else class="muted">{{ words.loading }}</p>
         <template v-if="actionsFor(selected).some((action) => grants.actions[action])"><div class="withdrawal-actions"><button v-for="action in actionsFor(selected).filter((entry) => grants.actions[entry])" :key="action" class="button button-secondary" :disabled="Boolean(pending)" :title="action === 'mark-paid' ? words.internal : undefined" @click="begin(selected!, action)">{{ actionName(action) }}</button></div><form v-if="activeAction && !pending" class="withdrawal-confirm" @submit.prevent="perform(activeAction)"><p v-if="activeAction === 'mark-paid'" class="withdrawal-internal-note" role="note">{{ words.internal }}</p><label>{{ words.reason }}<textarea v-model="reason" :placeholder="words.reasonPlaceholder" required maxlength="1000" /></label><div class="withdrawal-actions"><button class="button button-secondary" type="button" @click="reason = ''; activeAction = null">{{ words.close }}</button><button class="button button-primary" type="submit" :disabled="busy || !activeAction">{{ activeAction === 'mark-paid' ? words.confirm : `${words.confirm} ${actionName(activeAction)}` }}</button></div></form></template>
       </div>
+</DetailModal>
     </div>
   </section>
 </template>
