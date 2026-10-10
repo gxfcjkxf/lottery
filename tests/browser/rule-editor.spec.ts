@@ -27,7 +27,7 @@ async function login(
       .getByRole("button", { name: /规则配置/ })
       .click();
 }
-test("custom model and visual multi-tier rules validate independent cases before distinct review", async ({
+test("custom multi-tier rules retain creator review controls and allow another authorized reviewer", async ({
   page,
   browser,
 }, info) => {
@@ -231,7 +231,7 @@ test("custom model and visual multi-tier rules validate independent cases before
   expect(verified.validation.cases[0].actual_prize_points).toBe("14");
   await editor
     .getByLabel("提交审核原因", { exact: true })
-    .fill("validated custom rule, distinct reviewer needed");
+    .fill("validated custom rule ready for brand review");
   const submitReply = page.waitForResponse(
     (r) =>
       r.url().endsWith(`/rule-versions/${record.id}/submit-review`) &&
@@ -242,7 +242,7 @@ test("custom model and visual multi-tier rules validate independent cases before
     .click();
   const submitted = await submitReply;
   expect(submitted.status(), await submitted.text()).toBe(200);
-  await expect(panel.locator(".review")).toContainText("你是该版本的创建者");
+  await expect(panel.locator(".review").getByRole("button", { name: "批准该版本", exact: true })).toBeVisible();
   const ctx = await browser.newContext({
     viewport: info.project.use.viewport,
     isMobile: info.project.name === "mobile",
