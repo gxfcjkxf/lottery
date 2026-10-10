@@ -33,9 +33,9 @@
 
 依赖：无。
 
-- 创建 backend、user-web、admin-web、shared 包目录。
+- 创建 backend、user-web、admin-web、platform-web、shared 包目录。
 - 配置 lint、format、test、migration、seed、build、Docker Compose。
-- 接入 PostgreSQL、Redis、消息队列、对象存储适配器和配置加载。
+- 接入 PostgreSQL、数据库持久任务/Outbox 和配置加载；Redis、外部消息队列、对象存储为后续扩展，不是一期启动前置条件。
 - 实现 request_id、结构化日志、健康检查和基础错误响应。
 
 完成标准：新开发者按 README 可启动完整本地环境，数据库迁移可重复执行。
