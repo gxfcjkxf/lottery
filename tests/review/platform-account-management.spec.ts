@@ -2,7 +2,8 @@ import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5185';
 const brand = '0199a000-0000-7000-8000-000000000001';
-const password = 'owned-account-management-password-2026';
+// Fewer than 16 characters but at least 16 UTF-8 bytes, as required by the server.
+const password = '本地账号测试密码';
 
 test('platform manages both account types with explicit roles and original-request recovery', async ({ page, playwright }) => {
   page.setDefaultTimeout(10_000);
@@ -58,7 +59,7 @@ test('platform manages both account types with explicit roles and original-reque
   await panel.getByRole('button', { name: `List snapshot details: ${created!.username}`, exact: true }).click();
   await panel.getByRole('button', { name: 'Reset password', exact: true }).click();
   dialog = page.getByRole('dialog');
-  const newPassword = 'replacement-account-management-password-2026';
+  const newPassword = '更换账号测试密码';
   await dialog.getByLabel('Password (16–128 bytes)', { exact: true }).fill(newPassword);
   await dialog.getByLabel('Reason', { exact: true }).fill('Reset owned platform account password');
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();

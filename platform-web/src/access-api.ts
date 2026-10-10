@@ -99,8 +99,12 @@ function validRoleIds(roleIds: string[]) {
   }
 }
 function validPassword(password: string) {
-  if (typeof password !== 'string' || password.length < 16 || password.length > 128) {
-    throw new PlatformAccessApiError('Password must be between 16 and 128 characters', 400, 'REQUEST_INVALID')
+  if (typeof password !== 'string') {
+    throw new PlatformAccessApiError('Password must be between 16 and 128 UTF-8 bytes', 400, 'REQUEST_INVALID')
+  }
+  const bytes = new TextEncoder().encode(password).length
+  if (bytes < 16 || bytes > 128) {
+    throw new PlatformAccessApiError('Password must be between 16 and 128 UTF-8 bytes', 400, 'REQUEST_INVALID')
   }
 }
 

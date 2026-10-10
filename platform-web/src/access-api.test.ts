@@ -14,6 +14,37 @@ const platformRole = { id: roleId, brand_id: '', code: 'platform_ops', name: 'Pl
 function reply(data: unknown, status = 200) { return new Response(JSON.stringify({ success: true, data }), { status, headers: { 'Content-Type': 'application/json' } }) }
 
 describe('platform access API', () => {
+  it('uses UTF-8 byte limits for passwords in both account families', async () => {
+    const createdBrand = { ...account, version: 1, audit_log_id: auditId }
+    const createdPlatform = { ...platformAccount, version: 1, audit_log_id: auditId }
+    for (const password of ['密'.repeat(6), '密'.repeat(42), 'a'.repeat(16), 'a'.repeat(128)]) {
+      const fetcher = vi.fn<typeof fetch>()
+        .mockResolvedValueOnce(reply(createdBrand, 201))
+        .mockResolvedValueOnce(reply(createdPlatform, 201))
+        .mockResolvedValueOnce(reply({ audit_log_id: auditId }))
+        .mockResolvedValueOnce(reply({ audit_log_id: auditId }))
+      const api = createPlatformAccessApi(fetcher)
+      const create = { username: 'new_ops', password, role_ids: [roleId], reason: 'Create owned account' }
+      const reset = { version: 2, password, reason: 'Reset owned account' }
+      await expect(api.createAccount(brand, create, key)).resolves.toEqual(createdBrand)
+      await expect(api.createPlatformAccount(create, key)).resolves.toEqual(createdPlatform)
+      await expect(api.resetPassword(brand, accountId, reset, key)).resolves.toEqual({ audit_log_id: auditId })
+      await expect(api.resetPlatformPassword(accountId, reset, key)).resolves.toEqual({ audit_log_id: auditId })
+      expect(fetcher).toHaveBeenCalledTimes(4)
+      for (const [, init] of fetcher.mock.calls) expect(JSON.parse(String(init?.body)).password).toBe(password)
+    }
+    for (const password of ['密'.repeat(5), '密'.repeat(43), 'a'.repeat(15), 'a'.repeat(129)]) {
+      const fetcher = vi.fn<typeof fetch>()
+      const api = createPlatformAccessApi(fetcher)
+      const create = { username: 'new_ops', password, role_ids: [roleId], reason: 'Create owned account' }
+      const reset = { version: 2, password, reason: 'Reset owned account' }
+      await expect(api.createAccount(brand, create, key)).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
+      await expect(api.createPlatformAccount(create, key)).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
+      await expect(api.resetPassword(brand, accountId, reset, key)).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
+      await expect(api.resetPlatformPassword(accountId, reset, key)).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
+      expect(fetcher).not.toHaveBeenCalled()
+    }
+  })
   it('can submit a complete brand permission catalog larger than 100 keys', async () => {
     const permissions = Array.from({ length: 119 }, (_, index) => `module${index}.view.brand`);
     const record = { ...role, status: 'active', version: 1, permissions, audit_log_id: auditId };
