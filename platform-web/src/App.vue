@@ -43,15 +43,16 @@ const previousPage = computed(() => locale.value === 'en' ? 'Previous page' : '�
 const nextPage = computed(() => locale.value === 'en' ? 'Next page' : '下一页')
 const thisPage = computed(() => locale.value === 'en' ? 'This page' : '本页')
 const selectedBrand = ref('')
-const section = ref<'brands' | 'users' | 'audit' | 'rewards' | 'wallets' | 'bets' | 'withdrawals' | 'commission'>('brands')
-const auditView = ref<'audit' | 'archives' | 'archive-tasks' | 'financial-policies' | 'operational-policies' | 'access' | 'notifications'>('audit')
+const section = ref<'brands' | 'users' | 'audit' | 'rewards' | 'wallets' | 'bets' | 'withdrawals' | 'commission' | 'access'>('brands')
+const auditView = ref<'audit' | 'archives' | 'archive-tasks' | 'financial-policies' | 'operational-policies' | 'notifications'>('audit')
 const walletMember = ref('')
 const walletLabel = computed(() => locale.value === 'en' ? 'Member points' : '会员积分')
 const betLabel = computed(() => locale.value === 'en' ? 'Bet orders' : '投注订单')
 const withdrawalLabel = computed(() => locale.value === 'en' ? 'Withdrawals' : '提现订单')
 const commissionLabel = computed(() => locale.value === 'en' ? 'Agents and commission' : '代理与佣金')
 const operationsLabel = computed(() => locale.value === 'en' ? 'Audit and operations' : '审计与运营')
-const sectionLabel = computed(() => section.value === 'audit' ? operationsLabel.value : section.value === 'commission' ? commissionLabel.value : section.value === 'wallets' ? walletLabel.value : section.value === 'bets' ? betLabel.value : section.value === 'withdrawals' ? withdrawalLabel.value : lang.value[section.value])
+const accessLabel = computed(() => locale.value === 'en' ? 'Accounts and permissions' : '账号与权限')
+const sectionLabel = computed(() => section.value === 'access' ? accessLabel.value : section.value === 'audit' ? operationsLabel.value : section.value === 'commission' ? commissionLabel.value : section.value === 'wallets' ? walletLabel.value : section.value === 'bets' ? betLabel.value : section.value === 'withdrawals' ? withdrawalLabel.value : lang.value[section.value])
 const busy = ref(false)
 const loading = ref(false)
 const error = ref('')
@@ -100,7 +101,7 @@ async function signOut() {
   try { await api.logout(); clearPrivateState() }
   catch (cause) { handleFailure(cause) } finally { busy.value = false }
 }
-async function chooseSection(next: 'brands' | 'users' | 'audit' | 'rewards' | 'wallets' | 'bets' | 'withdrawals' | 'commission') {
+async function chooseSection(next: typeof section.value) {
   if (next === 'audit') auditView.value = 'audit'
   walletMember.value = ''
   section.value = next; error.value = ''; notice.value = ''
@@ -120,7 +121,7 @@ async function chooseBrand(id: string) {
   if (section.value === 'users') await loadMembers(id)
   if (section.value === 'audit' && auditView.value === 'audit') await loadAudit(id)
 }
-async function chooseAuditView(next: 'audit' | 'archives' | 'archive-tasks' | 'financial-policies' | 'operational-policies' | 'access' | 'notifications') {
+async function chooseAuditView(next: typeof auditView.value) {
   auditView.value = next; auditRequestGeneration++; auditRows.value = []
   auditOffset.value = 0; moreAudit.value = false; loading.value = false; error.value = ''
   if (next === 'audit' && selectedBrand.value) await loadAudit(selectedBrand.value)
@@ -163,6 +164,7 @@ function statusLabel(status: string) {
   return key ? lang.value[key] : status
 }
 async function openBrandMembers(brandId: string) { section.value = 'users'; await chooseBrand(brandId) }
+async function openBrandAccounts(brandId: string) { await chooseSection('access'); await chooseBrand(brandId) }
 async function openBrandAudit(brandId: string) { section.value = 'audit'; await chooseBrand(brandId) }
 function openWallet(memberId: string) { walletMember.value = memberId; section.value = 'wallets'; memberRequestGeneration++; auditRequestGeneration++; loading.value = false; error.value = '' }
 function beginCreate() {
@@ -203,6 +205,7 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
       <div class="logo-row"><div class="brand-mark small">N</div><div><strong>{{ lang.title }}</strong><span>{{ lang.subtitle }}</span></div></div>
       <div class="nav-label">{{ lang.workspace }}</div>
       <button :class="['nav-item', { selected: section === 'brands' }]" @click="chooseSection('brands')"><span>◫</span>{{ lang.brands }}</button>
+      <button :class="['nav-item', { selected: section === 'access' }]" :aria-label="accessLabel" @click="chooseSection('access')"><span>♧</span><span class="nav-caption nav-full">{{ accessLabel }}</span><span class="nav-caption nav-short">{{ locale === 'en' ? 'Accounts' : '账号' }}</span></button>
       <button :class="['nav-item', { selected: section === 'users' }]" @click="chooseSection('users')"><span>◉</span>{{ lang.users }}</button>
       <button :class="['nav-item', { selected: section === 'audit' }]" :aria-label="operationsLabel" @click="chooseSection('audit')"><span>≋</span><span class="nav-caption nav-full">{{ operationsLabel }}</span><span class="nav-caption nav-short">{{ locale === 'en' ? 'Audit' : '审计运营' }}</span></button>
       <button :class="['nav-item', { selected: section === 'rewards' }]" @click="chooseSection('rewards')"><span>◇</span>{{ lang.rewards }}</button>
@@ -221,10 +224,15 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
           <div class="page-heading"><div><div class="eyebrow">{{ lang.directory }}</div><h1>{{ lang.brands }}</h1><p>{{ lang.directoryDescription }}</p></div><button class="primary" @click="beginCreate"><span>＋</span> {{ lang.createBrand }}</button></div>
           <section class="panel"><div class="panel-heading"><div><h2>{{ lang.brandDirectory }}</h2><p>{{ brands.length }} {{ lang.brandCount }}</p></div><span class="count-chip">{{ brands.length }}</span></div>
             <div class="table-wrap"><table><thead><tr><th>{{ lang.name }}</th><th>{{ lang.code }}</th><th>{{ lang.status }}</th><th></th></tr></thead><tbody>
-              <tr v-for="brand in brands" :key="brand.id" class="clickable-row" @click="openBrandMembers(brand.id)"><td><strong>{{ brand.name }}</strong><small>{{ brand.id }}</small></td><td class="mono">{{ brand.code }}</td><td><span :class="['status-pill', brand.status]">{{ statusLabel(brand.status) }}</span></td><td><button class="row-action" @click.stop="openBrandMembers(brand.id)">{{ lang.view }} →</button></td></tr>
+              <tr v-for="brand in brands" :key="brand.id" class="clickable-row" @click="openBrandMembers(brand.id)"><td><strong>{{ brand.name }}</strong><small>{{ brand.id }}</small></td><td class="mono">{{ brand.code }}</td><td><span :class="['status-pill', brand.status]">{{ statusLabel(brand.status) }}</span></td><td><button class="row-action" @click.stop="openBrandMembers(brand.id)">{{ lang.view }} →</button><button class="row-action" @click.stop="openBrandAccounts(brand.id)">{{ locale === 'en' ? 'View accounts' : '查看账号' }} →</button></td></tr>
               <tr v-if="!brands.length"><td colspan="4" class="empty-state">{{ lang.empty }}</td></tr>
             </tbody></table></div>
           </section>
+        </template>
+        <template v-else-if="section === 'access'">
+          <div class="brand-picker"><label>{{ lang.brandLabel }}<select :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label><span v-if="selected" class="selection-tag">{{ selected.name }}</span></div>
+          <p class="message">{{ locale === 'en' ? 'Read-only brand staff accounts, roles and permissions. Create and edit brand staff in the brand admin portal.' : '只读查看品牌后台账号、角色和权限。创建或修改品牌员工请在品牌后台操作。' }}</p>
+          <AccessPanel :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
         </template>
         <template v-else-if="section === 'users'">
           <div class="page-heading"><div><div class="eyebrow">{{ lang.accessDirectory }}</div><h1>{{ lang.users }}</h1><p>{{ lang.memberReadOnly }}</p></div></div>
@@ -249,14 +257,12 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
             <button class="secondary" :aria-pressed="auditView === 'archive-tasks'" @click="chooseAuditView('archive-tasks')">{{ locale === 'en' ? 'Archive tasks' : '归档任务' }}</button>
             <button class="secondary" :aria-pressed="auditView === 'financial-policies'" @click="chooseAuditView('financial-policies')">{{ locale === 'en' ? 'Financial policies' : '资金规则' }}</button>
             <button class="secondary" :aria-pressed="auditView === 'operational-policies'" @click="chooseAuditView('operational-policies')">{{ locale === 'en' ? 'Operational policies' : '运营规则' }}</button>
-            <button class="secondary" :aria-pressed="auditView === 'access'" @click="chooseAuditView('access')">{{ locale === 'en' ? 'Access and permissions' : '账号与权限' }}</button>
             <button class="secondary" :aria-pressed="auditView === 'notifications'" @click="chooseAuditView('notifications')">{{ locale === 'en' ? 'Notifications' : '通知' }}</button>
           </div>
           <ArchivesPanel v-if="auditView === 'archives'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
           <ArchiveTasksPanel v-else-if="auditView === 'archive-tasks'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
           <FinancialPoliciesPanel v-else-if="auditView === 'financial-policies'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
           <OperationalPoliciesPanel v-else-if="auditView === 'operational-policies'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
-          <AccessPanel v-else-if="auditView === 'access'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
           <NotificationsPanel v-else-if="auditView === 'notifications'" :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
           <template v-else>
           <section v-if="selectedBrand" class="panel"><div class="panel-heading"><div><h2>{{ lang.audit }} <span class="subtle">/ {{ selected?.name }}</span></h2><p>{{ lang.auditDescription }}</p></div><span class="count-chip">{{ auditRows.length }} {{ lang.countSuffix }}</span></div><div class="table-wrap"><table><thead><tr><th>{{ lang.action }}</th><th>{{ lang.actor }}</th><th>{{ lang.resource }}</th><th>{{ lang.reason }}</th><th>{{ lang.date }}</th></tr></thead><tbody><tr v-for="row in auditRows" :key="row.id"><td><span class="action-label">{{ row.action }}</span><small>{{ row.id }}</small></td><td class="mono">{{ row.actor_id }}</td><td>{{ row.resource_type }}<small>{{ row.resource_id }}</small></td><td class="reason-cell">{{ row.reason || '—' }}</td><td>{{ row.created_at }}</td></tr><tr v-if="!auditRows.length"><td colspan="5" class="empty-state">{{ lang.empty }}</td></tr></tbody></table></div></section>

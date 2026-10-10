@@ -7,9 +7,8 @@ const headers = { 'X-Brand-ID': brand };
 test('expired access query removes private platform content and returns to login', async ({ page }) => {
   await page.route('**/api/v1/platform/accounts?**', route => route.fulfill({ status: 401, json: { success: false, error: { code: 'AUTH_SESSION_REVOKED', message: 'Session expired' } } }));
   await page.goto(origin);
-  await page.getByRole('button', { name: 'Audit and operations', exact: true }).click();
+  await page.getByRole('button', { name: 'Accounts and permissions', exact: true }).click();
   await page.locator('.content > .brand-picker select').selectOption(brand);
-  await page.getByTestId('platform-operations-tabs').getByRole('button', { name: 'Access and permissions', exact: true }).click();
   await expect(page.locator('.login-card')).toBeVisible();
   await expect(page.locator('.app-frame')).toHaveCount(0);
   await expect(page.locator('.nav-item')).toHaveCount(0);
@@ -25,9 +24,9 @@ test('platform reads genuine scoped accounts roles and permission directory with
     before.set(path, data);
   }
   await page.goto(origin);
-  await page.getByRole('button', { name: 'Audit and operations', exact: true }).click();
-  await page.locator('.content > .brand-picker select').selectOption(brand);
-  await page.getByTestId('platform-operations-tabs').getByRole('button', { name: 'Access and permissions', exact: true }).click();
+  await page.locator('tr').filter({ hasText: brand }).getByRole('button', { name: 'View accounts →', exact: true }).click();
+  await expect(page.locator('.content > .brand-picker select')).toHaveValue(brand);
+  await expect(page.getByRole('button', { name: 'Accounts and permissions', exact: true })).toHaveClass(/selected/);
   const panel = page.getByTestId('platform-access');
   const firstAccount = before.get('accounts?limit=51&offset=0').items[0];
   await expect(panel).toContainText(firstAccount.username);
@@ -69,9 +68,8 @@ test('access lists paginate and clear list-snapshot details on errors and scope 
     await route.fulfill(fail ? { status: 503, json: { success: false, error: { message: 'Roles unavailable' } } } : { json: { success: true, data: { items: roles.slice(offset, offset + 51) } } });
   });
   await page.goto(origin);
-  await page.getByRole('button', { name: 'Audit and operations', exact: true }).click();
+  await page.getByRole('button', { name: 'Accounts and permissions', exact: true }).click();
   await page.locator('.content > .brand-picker select').selectOption(brand);
-  await page.getByTestId('platform-operations-tabs').getByRole('button', { name: 'Access and permissions', exact: true }).click();
   const panel = page.getByTestId('platform-access');
   await page.getByTestId('platform-access-tabs').getByRole('tab', { name: 'Roles', exact: true }).click();
   await expect(page.getByTestId('platform-access-list').locator('tbody tr')).toHaveCount(50);
