@@ -26,3 +26,17 @@ test('brand administration metadata and authenticated header do not label real o
   assert.match(app, /ui\("品牌后台"\)/)
   assert.doesNotMatch(app, /ui\("演示原型"\)/)
 })
+
+test('current UI handover describes implemented modules and confirmed withdrawal rules', () => {
+  const spec = read('docs/05-ui-spec.md')
+  assert.match(spec, /管理平台管理员与品牌员工账号及品牌角色/)
+  assert.match(spec, /佣金与奖励报表、不可变日\/月归档已接入/)
+  assert.match(spec, /自动归档配置、任务查询和失败人工重试已接入/)
+  assert.match(spec, /接入二十二类事件/)
+  assert.match(spec, /N 必须大于0，null 表示继承，0不是有效配置/)
+  assert.match(spec, /充值、中奖、佣金、赠送来源/)
+  assert.doesNotMatch(spec, /佣金\/奖励及不可变日月结仍未接入|自动任务仍未接入|接入八类事件|金额分配明确使用三种来源|旧not_implemented\/null快照/)
+  assert.match(read('admin-web/src/ReportsManagement.vue'), /<CommissionReport[\s\S]*<RewardReports/)
+  assert.match(read('admin-web/src/App.vue'), /<ReportArchivesManagement[\s\S]*<ReportArchiveTasksManagement/)
+  assert.match(read('user-web/src/WithdrawalPanel.vue'), /const sources: WithdrawalSource\[\] = \["recharge", "winning", "gift", "commission"\]/)
+})
