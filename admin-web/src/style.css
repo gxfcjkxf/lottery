@@ -3839,6 +3839,7 @@ label:has(input[type="radio"]),
 
 /* Shared site rules: compact hierarchy, plain table columns, and account access. */
 .nav-heading, .page-heading p { display: none; }
+.side-nav .nav-item:hover, .breadcrumbs a:hover { text-decoration: none; }
 .account-menu { position: relative; }
 .account-trigger { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--ink); padding: 4px 6px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; }
 .account-trigger:hover, .account-menu:focus-within .account-trigger { background: #f1f5f9; }

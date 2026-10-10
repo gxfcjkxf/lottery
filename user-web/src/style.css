@@ -3189,6 +3189,7 @@ input:not([type="checkbox"]):focus {
 
 /* Shared site rules: compact hierarchy, plain table columns, and account access. */
 .nav-label, .page-heading p { display: none; }
+.side-nav a:hover, .breadcrumbs a:hover { text-decoration: none; }
 .account-menu { position: relative; width: 0; height: 0; }
 .account-menu .account-popover { position: absolute; right: 0; top: 28px; z-index: 40; width: 190px; padding: 10px; display: grid; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); opacity: 0; pointer-events: none; transform: translateY(-4px); transition: opacity .15s ease, transform .15s ease; }
 .account-menu:hover .account-popover, .account-menu:focus-within .account-popover { opacity: 1; pointer-events: auto; transform: translateY(0); }

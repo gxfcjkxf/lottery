@@ -238,8 +238,8 @@ button:disabled {
 }
 
 .breadcrumb button { border: 0; padding: 4px 2px; background: transparent; color: inherit; font: inherit; }
-.breadcrumb button:first-child { color: var(--primary-text); }
-.breadcrumb button:hover { color: var(--text-main); text-decoration: underline; }
+.breadcrumb button:first-child, .breadcrumb button:last-child { color: var(--primary-text); }
+.breadcrumb button:hover { color: var(--primary-hover); text-decoration: none; }
 
 .breadcrumb span {
   padding: 0 6px;

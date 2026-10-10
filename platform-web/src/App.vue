@@ -305,6 +305,7 @@ onMounted(() => {
           </section>
         </template>
         <template v-else-if="section === 'access'">
+          <div class="page-heading compact-heading"><h1>{{ accessLabel }}</h1></div>
           <div class="wallet-pagination" data-testid="platform-account-scopes">
             <button :class="accessScope === 'platform' ? 'primary' : 'secondary'" :disabled="accountWriteLocked" @click="accessScope = 'platform'">{{ locale === 'en' ? 'Platform administrators' : '平台管理员' }}</button>
             <button :class="accessScope === 'brand' ? 'primary' : 'secondary'" :disabled="accountWriteLocked" @click="accessScope = 'brand'">{{ locale === 'en' ? 'Brand staff' : '品牌员工' }}</button>
