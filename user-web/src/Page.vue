@@ -1582,8 +1582,8 @@ watch(
                 <p>
                   {{
                     locale === "en"
-                      ? "Choose at least the required number of unique numbers. Choosing extra numbers creates a system play, expanding into every matching combination."
-                      : "选择不少于规定数量的不同号码。多选会形成复式，系统将展开全部组合。"
+                      ? "X+Y and M-select-N games use the configured ordinary and special-number pools. In digit-position games, choose digits from 0–9 for each position; the game rules decide whether repeated digits such as 111 are allowed. Extra selections form compound bets. Check the server quote for the combination count, multiplier and total points before submitting. Attribute, feature and exclusion picks follow the selected play rules."
+                      : "X+Y 和 M选N 玩法按配置的普通号、特别号号码池选号。数字位玩法为每一位选择 0–9，是否允许 111 这样的重复数字由游戏规则决定。多选形成复式；提交前请核对服务器报价中的注数、倍数和总积分。属性、特征和排除选号按所选玩法规则执行。"
                   }}
                 </p>
               </details>
