@@ -100,12 +100,6 @@ func Authorize(account Account, resource, action string, scope Scope, brandID st
 	return false
 }
 
-// CanReviewRule applies the separation-of-duties rule to brand rule reviews.
-func CanReviewRule(reviewer Account, brandID, creatorID string) bool {
-	return !reviewer.SuperAdmin && reviewer.ID != "" && creatorID != "" && reviewer.ID != creatorID &&
-		Authorize(reviewer, "rule", "review", ScopeBrand, brandID)
-}
-
 func contains(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {

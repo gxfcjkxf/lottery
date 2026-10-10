@@ -98,26 +98,23 @@ func draftReady(t *testing.T, s Store, a access.Account, p Play, d rules.Definit
 	})
 	return v
 }
-func TestImmediateApprovalImmutableHistoryAndNoSelfReview(t *testing.T) {
-	s, a, b, _, p, d := fixture(t)
+func TestImmediateSelfApprovalImmutableHistoryAndAudit(t *testing.T) {
+	s, a, _, _, p, d := fixture(t)
 	ctx := context.Background()
 	v := draftReady(t, s, a, p, d, "immediate")
-	tx, _ := s.DB.Begin(ctx)
-	_, e := s.Review(ctx, tx, brand, a, v.ID, v.Version, true, true, "approve self", points.Metadata{})
-	tx.Rollback(ctx)
-	if !errors.Is(e, ErrDenied) {
-		t.Fatal(e)
-	}
 	transact(t, s.DB, func(tx pgx.Tx) error {
 		var e error
-		v, e = s.Review(ctx, tx, brand, b, v.ID, v.Version, true, true, "approve", points.Metadata{})
+		v, e = s.Review(ctx, tx, brand, a, v.ID, v.Version, true, true, "approve self", points.Metadata{})
 		return e
 	})
-	if v.Status != "active" || v.EffectiveAt == nil {
+	if v.Status != "active" || v.EffectiveAt == nil || v.ReviewedBy != a.ID || v.CreatedBy != a.ID {
 		t.Fatal(v)
 	}
-	tx, _ = s.DB.Begin(ctx)
-	_, e = s.UpdateVersion(ctx, tx, brand, a, v.ID, v.Version, d, "immediate", "edit active", points.Metadata{})
+	if audits := concurrencyCount(t, s, `SELECT count(*) FROM audit_logs WHERE resource_id=$1 AND action='rule.review.approve' AND actor_id=$2`, v.ID, a.ID); audits != 1 {
+		t.Fatalf("self approval audit count=%d, want 1", audits)
+	}
+	tx, _ := s.DB.Begin(ctx)
+	_, e := s.UpdateVersion(ctx, tx, brand, a, v.ID, v.Version, d, "immediate", "edit active", points.Metadata{})
 	tx.Rollback(ctx)
 	if !errors.Is(e, ErrState) {
 		t.Fatal(e)
@@ -137,16 +134,53 @@ func TestImmediateApprovalImmutableHistoryAndNoSelfReview(t *testing.T) {
 		t.Fatal(v)
 	}
 }
+func TestSelfReviewRequiresBrandPermissionAndRecordsRejection(t *testing.T) {
+	s, a, _, _, p, d := fixture(t)
+	v := draftReady(t, s, a, p, d, "immediate")
+	noPermission := a
+	noPermission.Roles = nil
+	super := a
+	super.SuperAdmin = true
+	for _, tc := range []struct {
+		name    string
+		account access.Account
+		brand   string
+	}{{"missing review permission", noPermission, brand}, {"platform account", super, brand}, {"foreign brand", a, "0199a000-0000-7000-8000-000000000002"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			tx, err := s.DB.Begin(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(context.Background())
+			_, err = s.Review(context.Background(), tx, tc.brand, tc.account, v.ID, v.Version, false, false, "reject own draft", points.Metadata{})
+			if !errors.Is(err, ErrDenied) {
+				t.Fatalf("review error=%v, want ErrDenied", err)
+			}
+		})
+	}
+	transact(t, s.DB, func(tx pgx.Tx) error {
+		var err error
+		v, err = s.Review(context.Background(), tx, brand, a, v.ID, v.Version, false, false, "reject own draft", points.Metadata{})
+		return err
+	})
+	if v.Status != "rejected" || v.ReviewedBy != a.ID || v.ReviewComment != "reject own draft" {
+		t.Fatal(v)
+	}
+	if audits := concurrencyCount(t, s, `SELECT count(*) FROM audit_logs WHERE resource_id=$1 AND action='rule.review.reject' AND actor_id=$2`, v.ID, a.ID); audits != 1 {
+		t.Fatalf("self rejection audit count=%d, want 1", audits)
+	}
+}
+
 func TestNextPeriodActivationAndApprovalConflict(t *testing.T) {
 	s, a, b, g, p, d := fixture(t)
 	ctx := context.Background()
 	v := draftReady(t, s, a, p, d, "next_period")
 	transact(t, s.DB, func(tx pgx.Tx) error {
 		var e error
-		v, e = s.Review(ctx, tx, brand, b, v.ID, v.Version, true, true, "next period", points.Metadata{})
+		v, e = s.Review(ctx, tx, brand, a, v.ID, v.Version, true, true, "next period self review", points.Metadata{})
 		return e
 	})
-	if v.Status != "approved" || v.EffectiveAt != nil || v.EffectiveSequence == nil || *v.EffectiveSequence != 1 {
+	if v.Status != "approved" || v.ReviewedBy != a.ID || v.EffectiveAt != nil || v.EffectiveSequence == nil || *v.EffectiveSequence != 1 {
 		t.Fatal(v)
 	}
 	plays, e := s.Plays(ctx, brand, g.ID, 100, 0)

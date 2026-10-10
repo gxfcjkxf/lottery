@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
-	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/jackc/pgx/v5"
@@ -452,7 +451,7 @@ func TestOpenPeriodRollbackRestoresQueuePointersSnapshotsSequenceAndAudits(t *te
 	}
 }
 
-func TestDefinitionEditorCannotReviewAnotherCreatorsEditedVersion(t *testing.T) {
+func TestDefinitionEditorCanReviewEditedVersionWithAudit(t *testing.T) {
 	s, creator, editor, _, play, definition := fixture(t)
 	var version Version
 	transact(t, s.DB, func(tx pgx.Tx) error {
@@ -472,30 +471,15 @@ func TestDefinitionEditorCannotReviewAnotherCreatorsEditedVersion(t *testing.T) 
 	if version.CreatedBy != creator.ID || !Allowed(editor, brand, "rule", "review") {
 		t.Fatal("fixture must retain creator A and give editor B a full review grant")
 	}
-	tx, err := s.DB.Begin(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, reviewErr := s.Review(context.Background(), tx, brand, editor, version.ID, version.Version, true, true, "editor attempts approval", points.Metadata{})
-	_ = tx.Rollback(context.Background())
-	if !errors.Is(reviewErr, ErrDenied) {
-		t.Fatalf("definition editor review error=%v, want ErrDenied", reviewErr)
-	}
-	if current := concurrencyReadVersion(t, s, version.ID); current.Status != "pending_review" || current.Version != version.Version || current.ReviewedBy != "" {
-		t.Fatalf("denied editor review mutated version: %+v", current)
+	approved := concurrencyApprove(t, s, editor, version)
+	if approved.Status != "active" || approved.ReviewedBy != editor.ID || approved.CreatedBy != creator.ID {
+		t.Fatalf("editor approval did not retain creator and reviewer: %+v", approved)
 	}
 	if contributors := concurrencyCount(t, s, `SELECT count(*) FROM rule_version_contributors WHERE rule_version_id=$1 AND admin_id IN ($2,$3)`, version.ID, creator.ID, editor.ID); contributors != 2 {
 		t.Fatalf("creator/editor contributor count=%d, want 2", contributors)
 	}
-	if audits := concurrencyCount(t, s, `SELECT count(*) FROM audit_logs WHERE resource_id=$1 AND action='rule.review.approve'`, version.ID); audits != 0 {
-		t.Fatalf("denied editor review left %d approval audits", audits)
-	}
-	independent := actor(ids.New())
-	if _, err := s.DB.Exec(context.Background(), `INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,'rule_independent_reviewer','test-only')`, independent.ID); err != nil {
-		t.Fatal(err)
-	}
-	if approved := concurrencyApprove(t, s, independent, version); approved.Status != "active" || approved.ReviewedBy != independent.ID {
-		t.Fatalf("independent reviewer could not approve edited definition: %+v", approved)
+	if audits := concurrencyCount(t, s, `SELECT count(*) FROM audit_logs WHERE resource_id=$1 AND action='rule.review.approve' AND actor_id=$2`, version.ID, editor.ID); audits != 1 {
+		t.Fatalf("editor approval audit count=%d, want 1", audits)
 	}
 }
 

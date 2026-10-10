@@ -61,7 +61,7 @@ const display = (zh: string) => {
     "验证用例有未解析或无效输入，请先修正。": "The validation cases contain incomplete or invalid input. Fix them first.", "批准前请确认已阅读验证结果和全部警告。": "Confirm that you have reviewed the validation results and all warnings before approving.",
     "彩种已创建": "Game created.", "玩法已创建": "Play created.", "草稿已保存，尚未提交审核": "Draft saved; it has not been submitted for review.",
     "草稿修改已保存，请重新验证": "Draft changes saved. Validate again.", "服务端验证结果已保存，请检查通过状态与警告": "Server validation results saved. Check the pass status and warnings.",
-    "已提交审核，等待其他品牌管理员决定": "Submitted for review; waiting for another brand administrator.", "审批决定已保存，生效状态以服务端返回及期次绑定为准": "Review decision saved. The server response and period binding determine activation.",
+    "已提交审核，等待审核决定": "Submitted for review; awaiting a decision.", "审批决定已保存，生效状态以服务端返回及期次绑定为准": "Review decision saved. The server response and period binding determine activation.",
     "已拒绝，原定义保留在历史中": "Rejected; the original definition remains in history.", "已克隆为新草稿，来源版本保持不变": "Cloned as a new draft; the source version is unchanged.",
     "版本或状态冲突，请重新读取历史确认最新状态，再重新操作。": "Version or status conflict. Reload history to confirm the latest state before trying again.",
     "单位积分（正整数）": "Unit points (positive whole number)", "赔率（正十进制数，最多 6 位小数）": "Odds (positive decimal, up to 6 decimal places)",
@@ -753,7 +753,7 @@ async function submitReview() {
       () => rights.value.submit && readyToSubmit.value,
       (brand, key) => api.submitRuleVersion(brand, record.id, body, key),
       (result) => applyVersion(result),
-      "已提交审核，等待其他品牌管理员决定",
+      "已提交审核，等待审核决定",
     );
   } catch (cause) {
     showError(cause);
@@ -875,7 +875,7 @@ watch(
       <span>{{ t("品牌 · ", "Brand · ") }}{{ brandId || t("未选择", "Not selected") }}</span>
     </header>
     <p class="notice">
-      {{ t("所有保存、验证和审批均调用真实接口。提交审核后定义冻结，创建者和所有编辑者均不能审核该版本。权限及生效状态由服务端最终判定。", "All saves, validations, and reviews use live endpoints. After submission for review, the definition is frozen; neither its creator nor any editor may review it. The server makes the final decision on permissions and activation status.") }}
+      {{ t("所有保存、验证和审批均调用真实接口。提交审核后定义冻结；具备本品牌审核权限的管理员可以审核自己创建或修改的规则。权限及生效状态由服务端最终判定。", "All saves, validations, and reviews use live endpoints. After submission for review, the definition is frozen; administrators with this brand's review permission may review rules they created or edited. The server makes the final decision on permissions and activation status.") }}
     </p>
     <p v-if="account.super_admin" class="notice">
       {{ t("超级管理员仅可按显式读取权限查看，不可创建、修改、验证、提交或审批。", "Super administrators may view only with explicit read permission; they cannot create, edit, validate, submit, or review.") }}
@@ -1128,7 +1128,7 @@ watch(
         {{ t("当前定义使用通用可视化编辑器完整保留。普通草稿可以编辑；回滚草稿定义保持锁定，不会用快捷模板覆盖原定义。", "The definition is fully preserved in the visual editor. Regular drafts can be edited; rollback draft definitions stay locked and are never overwritten by a quick template.") }}
       </p>
       <p v-if="isDraft && selected.source_version_id" class="notice">
-        {{ t("这是回滚草稿，定义必须与来源版本完全相同，只允许调整生效方式。仍需重新验证，并由未参与创建或编辑的其他管理员审核。", "This is a rollback draft. Its definition must exactly match the source version; only the effective mode can change. It still requires validation and review by an administrator who did not create or edit it.") }}
+        {{ t("这是回滚草稿，定义必须与来源版本完全相同，只允许调整生效方式。仍需重新验证并提交品牌审核。", "This is a rollback draft. Its definition must exactly match the source version; only the effective mode can change. It still requires validation and brand review.") }}
       </p>
       <form
         v-if="isDraft && selected.source_version_id && rights.rulesWrite"
@@ -1493,12 +1493,9 @@ watch(
     <section v-if="selected?.status === 'pending_review'" class="card review">
       <h3>{{ t("4 · 品牌管理员审核", "4 · Brand administrator review") }}</h3>
       <p class="notice">
-        {{ t("审批会影响正式规则生效。请逐项阅读定义、验证报告、全部警告和生效方式；服务端会检查审核人是否为创建者或曾参与编辑，以及权限和版本。", "Approval affects the live rule. Review the definition, validation report, all warnings, and effective mode. The server checks whether the reviewer created or edited the version, as well as permissions and version state.") }}
+        {{ t("审批会影响正式规则生效。请逐项阅读定义、验证报告、全部警告和生效方式；服务端会检查品牌审核权限、版本及状态。", "Approval affects the live rule. Review the definition, validation report, all warnings, and effective mode. The server checks brand review permission, version, and status.") }}
       </p>
-      <p v-if="selected.created_by === account.id" class="hint">
-        {{ t("你是该版本的创建者，不能批准或拒绝自己的版本，请由另一名具备品牌审核权限的管理员处理。", "You created this version and cannot approve or reject it. Ask another administrator with brand review permission to handle it.") }}
-      </p>
-      <p v-else-if="!reviewAllowed" class="hint">
+      <p v-if="!reviewAllowed" class="hint">
         {{ t("当前账号没有本品牌 rule.review.brand 权限，或不具备服务端要求的品牌管理员审核身份。", "This account lacks rule.review.brand permission for this brand or does not meet the server's brand-administrator review requirements.") }}
       </p>
       <form v-else @submit.prevent="decide(true)">

@@ -15,7 +15,7 @@ import (
 func rulebookResult(status int, out any, err error) (mutation.Result, error) {
 	switch {
 	case errors.Is(err, rulebook.ErrDenied):
-		return mutation.Fail(403, "PERMISSION_DENIED", "创建者或编辑者不能审核；平台账号不能修改品牌玩法"), nil
+		return mutation.Fail(403, "PERMISSION_DENIED", "缺少本品牌操作权限；平台账号不能修改品牌玩法"), nil
 	case errors.Is(err, rulebook.ErrInvalid) || errors.Is(err, rules.ErrInvalid):
 		return mutation.Fail(400, "RULE_INVALID", "规则配置、样例或操作参数不正确"), nil
 	case errors.Is(err, rules.ErrLimit):

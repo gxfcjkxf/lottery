@@ -504,13 +504,6 @@ func (s Store) Review(ctx context.Context, tx pgx.Tx, brand string, a access.Acc
 	if v.Status != "pending_review" {
 		return v, ErrState
 	}
-	var contributed bool
-	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM rule_version_contributors WHERE rule_version_id=$1 AND admin_id=$2)`, id, a.ID).Scan(&contributed); e != nil {
-		return v, e
-	}
-	if contributed || v.CreatedBy == a.ID {
-		return v, ErrDenied
-	}
 	if v.Validation == nil || !v.Validation.Passed || v.Validation.DefinitionHash != v.DefinitionHash {
 		return v, ErrValidation
 	}

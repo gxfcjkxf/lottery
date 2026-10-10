@@ -2744,7 +2744,6 @@ BEGIN
  IF OLD.status<>'draft' AND (NEW.definition IS DISTINCT FROM OLD.definition OR NEW.definition_sha256<>OLD.definition_sha256 OR NEW.effect_mode<>OLD.effect_mode OR NEW.validation IS DISTINCT FROM OLD.validation) THEN RAISE EXCEPTION 'reviewed definition is immutable'; END IF;
  IF OLD.source_version_id IS NOT NULL AND (NEW.definition IS DISTINCT FROM OLD.definition OR NEW.definition_sha256<>OLD.definition_sha256) THEN RAISE EXCEPTION 'rollback source definition is immutable'; END IF;
  IF NOT ((OLD.status='draft' AND NEW.status IN ('draft','pending_review')) OR (OLD.status='pending_review' AND NEW.status IN ('approved','active','rejected')) OR (OLD.status='approved' AND NEW.status='active') OR (OLD.status='active' AND NEW.status IN ('expired','rolled_back'))) THEN RAISE EXCEPTION 'invalid rule transition'; END IF;
- IF NEW.reviewed_by IS NOT NULL AND EXISTS(SELECT 1 FROM rule_version_contributors WHERE rule_version_id=OLD.id AND admin_id=NEW.reviewed_by) THEN RAISE EXCEPTION 'rule contributor cannot review'; END IF;
  IF OLD.reviewed_by IS NOT NULL AND (NEW.reviewed_by IS DISTINCT FROM OLD.reviewed_by OR NEW.reviewed_at IS DISTINCT FROM OLD.reviewed_at OR NEW.review_comment<>OLD.review_comment) THEN RAISE EXCEPTION 'immutable review evidence'; END IF;
  RETURN NEW;
 END $$;
@@ -6613,7 +6612,6 @@ CREATE TABLE rule_versions (
     source_version_id uuid,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT rule_versions_check CHECK (((reviewed_by IS NULL) OR (reviewed_by <> created_by))),
     CONSTRAINT rule_versions_check1 CHECK ((((status = ANY (ARRAY['draft'::text, 'pending_review'::text])) AND (reviewed_by IS NULL) AND (reviewed_at IS NULL)) OR ((status <> ALL (ARRAY['draft'::text, 'pending_review'::text])) AND (reviewed_by IS NOT NULL) AND (reviewed_at IS NOT NULL)))),
     CONSTRAINT rule_versions_check2 CHECK (((status <> ALL (ARRAY['pending_review'::text, 'approved'::text, 'active'::text, 'expired'::text, 'rolled_back'::text])) OR ((((validation ->> 'passed'::text) = 'true'::text) AND ((validation ->> 'definition_hash'::text) = definition_sha256)) IS TRUE))),
     CONSTRAINT rule_versions_check3 CHECK (((status <> ALL (ARRAY['active'::text, 'expired'::text, 'rolled_back'::text])) OR (effective_at IS NOT NULL))),

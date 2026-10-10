@@ -73,31 +73,3 @@ func TestUserAndSuperAdminRestrictions(t *testing.T) {
 		}
 	}
 }
-
-func TestCanReviewRuleRequiresDifferentCreatorAndReviewer(t *testing.T) {
-	reviewer := Account{
-		ID:   "reviewer",
-		Type: AccountAdmin,
-		Roles: []Role{{Permissions: []Permission{{
-			Resource: "rule", Action: "review", Scope: ScopeBrand,
-		}}}},
-		BrandIDs: []string{"brand-a"},
-	}
-	if !CanReviewRule(reviewer, "brand-a", "creator") {
-		t.Fatal("authorized reviewer denied a different creator's rule")
-	}
-	if CanReviewRule(reviewer, "brand-a", "reviewer") {
-		t.Fatal("creator reviewed their own rule")
-	}
-	if CanReviewRule(reviewer, "brand-b", "creator") {
-		t.Fatal("reviewer crossed brand boundary")
-	}
-	if CanReviewRule(reviewer, "brand-a", "") {
-		t.Fatal("empty creator identity accepted")
-	}
-	superAdmin := reviewer
-	superAdmin.SuperAdmin = true
-	if CanReviewRule(superAdmin, "brand-a", "creator") {
-		t.Fatal("super administrator with a brand review role participated in review")
-	}
-}

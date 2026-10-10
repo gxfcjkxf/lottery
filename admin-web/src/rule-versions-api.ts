@@ -168,8 +168,7 @@ export function canReviewRuleVersion(
     ruleVersionPermissions(account, brandId).review &&
     record.brand_id === brandId &&
     record.status === "pending_review" &&
-    Boolean(account.id) &&
-    record.created_by !== account.id
+    Boolean(account.id)
   );
 }
 export function canCloneRuleVersion(

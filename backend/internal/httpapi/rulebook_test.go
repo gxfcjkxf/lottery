@@ -48,7 +48,7 @@ func mustStatus(t *testing.T, r *httptest.ResponseRecorder, status int) {
 	}
 }
 func TestRuleBookHTTPCompleteWorkflowReplayAndImmutableHistory(t *testing.T) {
-	f, reviewer := bookFixture(t)
+	f, _ := bookFixture(t)
 	in := ruleInput()
 	definition := in["definition"]
 	body := map[string]any{"code": "six_one", "name": "Six plus one", "model": definition.(map[string]any)["model"], "timezone": "Asia/Manila", "reason": "game setup"}
@@ -92,18 +92,16 @@ func TestRuleBookHTTPCompleteWorkflowReplayAndImmutableHistory(t *testing.T) {
 	r = action("submit-review", "book-submit-review", f.token, map[string]any{"version": v.Version, "reason": "ready for review"})
 	mustStatus(t, r, 200)
 	managedData(t, r, &v)
-	r = action("approve", "book-deny-self-review", f.token, map[string]any{"version": v.Version, "reason": "cannot self approve", "warnings_acknowledged": true})
-	mustStatus(t, r, 403)
-	r = action("approve", "book-warning-needs-ack", reviewer, map[string]any{"version": v.Version, "reason": "without acknowledgement"})
+	r = action("approve", "book-warning-needs-ack", f.token, map[string]any{"version": v.Version, "reason": "without acknowledgement"})
 	mustStatus(t, r, 409)
 	approvedBody := map[string]any{"version": v.Version, "reason": "brand reviewed", "warnings_acknowledged": true}
-	r = action("approve", "book-approved-001", reviewer, approvedBody)
+	r = action("approve", "book-approved-001", f.token, approvedBody)
 	mustStatus(t, r, 200)
 	managedData(t, r, &v)
-	if v.Status != "active" || v.ReviewedBy == f.root {
+	if v.Status != "active" || v.ReviewedBy != f.root || v.CreatedBy != f.root {
 		t.Fatal(v)
 	}
-	mustStatus(t, action("approve", "book-approved-001", reviewer, approvedBody), 200)
+	mustStatus(t, action("approve", "book-approved-001", f.token, approvedBody), 200)
 	var n int
 	if e := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM audit_logs WHERE action='rule.review.approve'`).Scan(&n); e != nil || n != 1 {
 		t.Fatal(n, e)

@@ -33,16 +33,14 @@ async function login(
       .getByRole("button", { name: /规则配置/ })
       .click();
 }
-test("persisted rules validate, forbid self-review, and activate after a distinct brand review", async ({
+test("persisted rules validate and allow creator review with audited immediate and next-period approval", async ({
   page,
   browser,
 }, info) => {
   test.skip(
     !process.env.TEST_HARBOR_ADMIN_USERNAME ||
-      !process.env.TEST_HARBOR_ADMIN_PASSWORD ||
-      !process.env.TEST_RULE_REVIEWER_USERNAME ||
-      !process.env.TEST_RULE_REVIEWER_PASSWORD,
-    "Provide isolated creator and distinct brand reviewer credentials",
+      !process.env.TEST_HARBOR_ADMIN_PASSWORD,
+    "Provide an isolated brand administrator with creation and review permissions",
   );
   const code = `book_${crypto.randomUUID().replaceAll("-", "").slice(0, 10)}`;
   await login(
@@ -140,7 +138,7 @@ test("persisted rules validate, forbid self-review, and activate after a distinc
   ).toBeVisible();
   await editor
     .getByLabel("提交审核原因", { exact: true })
-    .fill("ready for distinct administrator");
+    .fill("ready for single-administrator review");
   const submitReply = page.waitForResponse(
     (r) =>
       r.url().endsWith(`/rule-versions/${ruleId}/submit-review`) &&
@@ -150,10 +148,10 @@ test("persisted rules validate, forbid self-review, and activate after a distinc
     .getByRole("button", { name: "提交审核（需服务端验证通过）", exact: true })
     .click();
   expect((await submitReply).status()).toBe(200);
-  await expect(panel.locator(".review")).toContainText("你是该版本的创建者");
+  await expect(panel.locator(".review")).not.toContainText("不能批准或拒绝自己的版本");
   await expect(
     panel.getByRole("button", { name: "批准该版本", exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await page.reload();
   if (info.project.name === "mobile") {
     await page.locator(".mobile-nav button").last().click();
@@ -177,7 +175,7 @@ test("persisted rules validate, forbid self-review, and activate after a distinc
     .locator(".version-list")
     .getByRole("button", { name: /第 1 版/ })
     .click();
-  await expect(panel.locator(".review")).toContainText("你是该版本的创建者");
+  await expect(panel.getByRole("button", { name: "批准该版本", exact: true })).toBeVisible();
   const reviewContext = await browser.newContext({
     viewport: info.project.use.viewport,
     isMobile: info.project.name === "mobile",
@@ -188,8 +186,8 @@ test("persisted rules validate, forbid self-review, and activate after a distinc
     await login(
       reviewer,
       info,
-      process.env.TEST_RULE_REVIEWER_USERNAME!,
-      process.env.TEST_RULE_REVIEWER_PASSWORD!,
+      process.env.TEST_HARBOR_ADMIN_USERNAME!,
+      process.env.TEST_HARBOR_ADMIN_PASSWORD!,
     );
     const reviewPanel = reviewer.locator(".rule-versions");
     await reviewPanel

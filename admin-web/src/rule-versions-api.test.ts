@@ -448,12 +448,10 @@ describe("rule version permission, retry and response scopes", () => {
     });
   });
 
-  it("only offers review to a different creator with the pending brand grant; editors are still denied by server", () => {
+  it("allows creator review while requiring the pending version's brand permission", () => {
     const pending = { ...version, status: "pending_review" as const };
     expect(canReviewRuleVersion(actor, brand, pending)).toBe(true);
-    expect(
-      canReviewRuleVersion({ ...actor, id: "creator" }, brand, pending),
-    ).toBe(false);
+    expect(canReviewRuleVersion({ ...actor, id: pending.created_by }, brand, pending)).toBe(true);
     expect(canReviewRuleVersion(actor, "brand-b", pending)).toBe(false);
     expect(canReviewRuleVersion(actor, brand, version)).toBe(false);
     expect(
