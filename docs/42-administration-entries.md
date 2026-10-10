@@ -2,6 +2,14 @@
 
 平台后台和品牌后台分别构建、部署和登录。后台账号分为平台账号和品牌账号；品牌账号的管理员、运营、财务、客服等角色仍采用已有可配置RBAC，一个账号可拥有多个角色，权限合并去重。
 
+## 品牌角色组合验收
+
+brand-role-boundaries.spec.ts通过正式角色和账号API建立财务只读、客服只读及同时拥有两角色的独立账号，再从无会话的浏览器登录。两个视口均验证登录前无菜单、Cookie重载、当前品牌的精确授权、重叠权限去重、成员与充值查询及跨品牌拒绝。三个账号均没有角色/账号管理权限，角色查询和实际POST创建都返回403。
+
+该测试的财务角色显式授予brand.view.brand、wallet.view.brand、recharge.view.brand；客服角色授予brand.view.brand、user.view.brand。钱包查看不自动包含充值查看，角色名称也不直接赋予权限。这些是独立验收账号，不是强制生产角色模板；运营仍按实际岗位配置审核、资金操作或客服写权限。
+
+在独立合成库启动正式API并显式创建普通品牌管理员后，设置TEST_ADMIN_USERNAME、TEST_ADMIN_PASSWORD和PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH，运行pnpm exec playwright test tests/browser/brand-role-boundaries.spec.ts --workers=1 --retries=0。现有CI浏览器任务自动收录该文件。当前本机桌面及360px两项33.1秒通过，无重试或跳过；不代表全部权限组合、真机或生产验收。
+
 ## 入口与权限
 
 | 项目 | 开发端口 | 体验端口 | API前缀 | Cookie及路径 |
