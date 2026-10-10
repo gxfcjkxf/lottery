@@ -47,7 +47,7 @@ const isText = (v: unknown): v is string => typeof v === 'string'
 const isUUID = (v: unknown): v is string => isText(v) && UUID.test(v)
 const isKeys = (v: unknown): v is string[] => Array.isArray(v) && v.every(isText)
 const isMachineKeys = (v: unknown): v is string[] => Array.isArray(v) && v.every(v => isText(v) && MACHINE_KEY.test(v))
-function invalid(): never { throw new PlatformAccessApiError('Invalid server response', 0, 'INVALID_RESPONSE') }
+function invalid(): never { throw new PlatformAccessApiError('Invalid server response; operation result is unconfirmed', 502, 'INVALID_RESPONSE') }
 function validPage(limit: number, offset: number) {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) {
     throw new PlatformAccessApiError('Invalid pagination parameters', 400, 'REQUEST_INVALID')
@@ -124,13 +124,11 @@ export function createPlatformAccessApi(fetcher: typeof fetch = fetch) {
       throw new PlatformAccessApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR')
     }
     let envelope: unknown
-    try { envelope = await response.json() } catch {
-      if (!response.ok) throw new PlatformAccessApiError(`Request failed (${response.status})`, response.status)
-      invalid()
-    }
+    try { envelope = await response.json() } catch { invalid() }
     if (!response.ok) {
-      const error = isObj(envelope) && isObj(envelope.error) ? envelope.error : undefined
-      throw new PlatformAccessApiError(isText(error?.message) ? error.message : `Request failed (${response.status})`, response.status, isText(error?.code) ? error.code : undefined)
+      if (!isObj(envelope) || envelope.success !== false || !isObj(envelope.error) ||
+        !isText(envelope.error.code) || !envelope.error.code.trim() || !isText(envelope.error.message) || !envelope.error.message.trim()) invalid()
+      throw new PlatformAccessApiError(envelope.error.message, response.status, envelope.error.code)
     }
     if (!isObj(envelope) || envelope.success !== true || envelope.data === undefined) invalid()
     if (response.status !== (options.expectedStatus ?? 200)) invalid()

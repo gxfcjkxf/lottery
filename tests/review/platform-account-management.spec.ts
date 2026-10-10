@@ -5,7 +5,8 @@ const brand = '0199a000-0000-7000-8000-000000000001';
 // Fewer than 16 characters but at least 16 UTF-8 bytes, as required by the server.
 const password = '本地账号测试密码';
 
-test('platform manages both account types with explicit roles and original-request recovery', async ({ page, playwright }) => {
+for (const fault of ['network', 'legacy-error'] as const) {
+test(`platform manages both account types with explicit roles and original-request recovery (${fault})`, async ({ page, playwright }) => {
   page.setDefaultTimeout(10_000);
   const suffix = crypto.randomUUID().replaceAll('-', '').slice(0, 10);
   await page.goto(origin);
@@ -30,7 +31,8 @@ test('platform manages both account types with explicit roles and original-reque
       const committed = await route.fetch();
       expect(committed.status()).toBe(201);
       created = (await committed.json()).data;
-      await route.abort('failed');
+      if (fault === 'network') await route.abort('failed');
+      else await route.fulfill({ status: 400, json: { success: false, error: 'legacy failure after committed create' } });
     } else await route.continue();
   });
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();
@@ -123,3 +125,4 @@ test('platform manages both account types with explicit roles and original-reque
   } finally { await staffLogin.dispose(); }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
 });
+}

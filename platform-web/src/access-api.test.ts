@@ -14,6 +14,25 @@ const platformRole = { id: roleId, brand_id: '', code: 'platform_ops', name: 'Pl
 function reply(data: unknown, status = 200) { return new Response(JSON.stringify({ success: true, data }), { status, headers: { 'Content-Type': 'application/json' } }) }
 
 describe('platform access API', () => {
+  it('does not treat malformed errors as confirmed account write failures', async () => {
+    const bodies = [
+      { success: false, error: 'legacy failure' },
+      { success: false, error: { message: 'Missing code' } },
+      { success: true, error: { code: 'DENIED', message: 'Wrong envelope' } },
+      { success: false, error: { code: ' ', message: 'Missing code' } },
+      null,
+    ]
+    const create = { username: 'new_ops', password: 'a sufficiently long password', role_ids: [roleId], reason: 'Create owned account' }
+    for (const body of bodies) {
+      const api = createPlatformAccessApi(async () => new Response(JSON.stringify(body), { status: 400 }))
+      await expect(api.platformAccounts()).rejects.toMatchObject({ status: 502, code: 'INVALID_RESPONSE' })
+      await expect(api.createPlatformAccount(create, key)).rejects.toMatchObject({ status: 502, code: 'INVALID_RESPONSE' })
+    }
+    const html = createPlatformAccessApi(async () => new Response('upstream unavailable', { status: 400 }))
+    await expect(html.createPlatformAccount(create, key)).rejects.toMatchObject({ status: 502, code: 'INVALID_RESPONSE' })
+    const denied = createPlatformAccessApi(async () => new Response(JSON.stringify({ success: false, error: { code: 'PERMISSION_DENIED', message: 'Current permission denied' } }), { status: 403 }))
+    await expect(denied.createPlatformAccount(create, key)).rejects.toMatchObject({ status: 403, code: 'PERMISSION_DENIED', message: 'Current permission denied' })
+  })
   it('uses UTF-8 byte limits for passwords in both account families', async () => {
     const createdBrand = { ...account, version: 1, audit_log_id: auditId }
     const createdPlatform = { ...platformAccount, version: 1, audit_log_id: auditId }
