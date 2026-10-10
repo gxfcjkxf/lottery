@@ -10,9 +10,11 @@ import (
 
 func age(value int) *int { return &value }
 
+const validConfigJSON = `{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`
+
 func TestDefaultAndValidConfig(t *testing.T) {
 	c := DefaultConfig()
-	if c.AgeEnabled || c.MinimumAge != nil || c.RegionEnabled || c.IdentityEnabled || c.AllowedCountries == nil || len(c.AllowedCountries) != 0 {
+	if c.AgeEnabled || c.MinimumAge != nil || c.RegionEnabled || c.IdentityEnabled || c.AccountRiskEnabled || c.BettingRiskEnabled || c.ExclusionEnabled || c.ResponsibleGamblingEnabled || c.AllowedCountries == nil || len(c.AllowedCountries) != 0 {
 		t.Fatalf("unexpected default config: %#v", c)
 	}
 	if !ValidConfig(c) {
@@ -58,27 +60,27 @@ func TestDefaultAndValidConfig(t *testing.T) {
 }
 
 func TestConfigUnmarshalIsClosedAndStrict(t *testing.T) {
-	valid := `{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false}`
+	valid := validConfigJSON
 	var got Config
 	if err := json.Unmarshal([]byte(valid), &got); err != nil || !ValidConfig(got) {
 		t.Fatalf("valid config: %#v, %v", got, err)
 	}
 	bad := []string{
 		`{}`, // missing all required fields
-		`{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[]}`, // missing field
-		`{"age_enabled":false,"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false}`,
-		`{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"extra":true}`,
-		`{"age_enabled":null,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false}`,
-		`{"age_enabled":"false","minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false}`,
-		`{"age_enabled":0,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false}`,
-		`{"age_enabled":false,"minimum_age":false,"region_enabled":false,"allowed_countries":[],"identity_enabled":false}`,
-		`{"age_enabled":false,"minimum_age":"18","region_enabled":false,"allowed_countries":[],"identity_enabled":false}`,
-		`{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":null,"identity_enabled":false}`,
-		`{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":"US","identity_enabled":false}`,
-		`{"age_enabled":true,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false}`,
-		`{"age_enabled":false,"minimum_age":17,"region_enabled":false,"allowed_countries":[],"identity_enabled":false}`,
-		`{"age_enabled":false,"minimum_age":null,"region_enabled":true,"allowed_countries":[],"identity_enabled":false}`,
-		`{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":["US","CA"],"identity_enabled":false}`,
+		`{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`, // missing field
+		`{"age_enabled":false,"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`,
+		`{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false,"extra":true}`,
+		`{"age_enabled":null,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`,
+		`{"age_enabled":"false","minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`,
+		`{"age_enabled":0,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`,
+		`{"age_enabled":false,"minimum_age":false,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`,
+		`{"age_enabled":false,"minimum_age":"18","region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`,
+		`{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":null,"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`,
+		`{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":"US","identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`,
+		`{"age_enabled":true,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`,
+		`{"age_enabled":false,"minimum_age":17,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`,
+		`{"age_enabled":false,"minimum_age":null,"region_enabled":true,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`,
+		`{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":["US","CA"],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`,
 		`null`,
 		`[]`,
 	}
@@ -86,6 +88,12 @@ func TestConfigUnmarshalIsClosedAndStrict(t *testing.T) {
 		err := json.Unmarshal([]byte(raw), &got)
 		if !errors.Is(err, ErrInvalid) {
 			t.Errorf("Unmarshal(%s) error=%v, want ErrInvalid", raw, err)
+		}
+	}
+	for _, flag := range []string{"account_risk_enabled", "betting_risk_enabled", "exclusion_enabled", "responsible_gambling_enabled"} {
+		missing := strings.Replace(valid, `,"`+flag+`":false`, "", 1)
+		if err := json.Unmarshal([]byte(missing), &got); !errors.Is(err, ErrInvalid) {
+			t.Errorf("missing %s accepted: %v", flag, err)
 		}
 	}
 	if err := json.Unmarshal([]byte(valid+` {}`), &got); err == nil {
@@ -98,18 +106,18 @@ func TestConfigUnmarshalIsClosedAndStrict(t *testing.T) {
 }
 
 func TestInputAndCheckInputClosedAndValidated(t *testing.T) {
-	input := `{"version":1,"config":{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false},"reason":"admin policy update"}`
+	input := `{"version":1,"config":` + validConfigJSON + `,"reason":"admin policy update"}`
 	var in Input
 	if err := json.Unmarshal([]byte(input), &in); err != nil || in.Version != 1 {
 		t.Fatalf("valid input: %#v, %v", in, err)
 	}
 	for _, raw := range []string{
-		`{"version":0,"config":{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false},"reason":"valid"}`,
-		`{"version":1,"config":{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false},"reason":"valid","x":0}`,
-		`{"version":1,"version":2,"config":{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false},"reason":"valid"}`,
+		`{"version":0,"config":{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false},"reason":"valid"}`,
+		`{"version":1,"config":{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false},"reason":"valid","x":0}`,
+		`{"version":1,"version":2,"config":{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false},"reason":"valid"}`,
 		`{"version":1,"config":null,"reason":"valid"}`,
-		`{"version":1.5,"config":{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false},"reason":"valid"}`,
-		`{"version":"1","config":{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false},"reason":"valid"}`,
+		`{"version":1.5,"config":{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false},"reason":"valid"}`,
+		`{"version":"1","config":{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false},"reason":"valid"}`,
 	} {
 		if err := json.Unmarshal([]byte(raw), &in); !errors.Is(err, ErrInvalid) {
 			t.Errorf("Input.Unmarshal(%s) error=%v", raw, err)
@@ -167,8 +175,9 @@ func TestValidReasonAndOperation(t *testing.T) {
 }
 
 func TestEvaluateAllFeatureCombinations(t *testing.T) {
-	for mask := 0; mask < 8; mask++ {
-		c := Config{AgeEnabled: mask&1 != 0, MinimumAge: age(18), RegionEnabled: mask&2 != 0, AllowedCountries: []string{"US"}, IdentityEnabled: mask&4 != 0}
+	names := []string{"age", "region", "identity", "account_risk", "betting_risk", "exclusion", "responsible_gambling"}
+	for mask := 0; mask < 1<<len(names); mask++ {
+		c := Config{AgeEnabled: mask&1 != 0, MinimumAge: age(18), RegionEnabled: mask&2 != 0, AllowedCountries: []string{"US"}, IdentityEnabled: mask&4 != 0, AccountRiskEnabled: mask&8 != 0, BettingRiskEnabled: mask&16 != 0, ExclusionEnabled: mask&32 != 0, ResponsibleGamblingEnabled: mask&64 != 0}
 		got, checks, err := Evaluate(c)
 		if err != nil {
 			t.Fatalf("mask %03b: %v", mask, err)
@@ -177,11 +186,10 @@ func TestEvaluateAllFeatureCombinations(t *testing.T) {
 		if mask != 0 {
 			want = "review"
 		}
-		if got != want || len(checks) != 3 {
+		if got != want || len(checks) != len(names) {
 			t.Fatalf("mask %03b: decision=%q checks=%#v", mask, got, checks)
 		}
-		names := []string{"age", "region", "identity"}
-		for i, enabled := range []bool{c.AgeEnabled, c.RegionEnabled, c.IdentityEnabled} {
+		for i, enabled := range []bool{c.AgeEnabled, c.RegionEnabled, c.IdentityEnabled, c.AccountRiskEnabled, c.BettingRiskEnabled, c.ExclusionEnabled, c.ResponsibleGamblingEnabled} {
 			wantDecision, wantCode := "allow", "CHECK_DISABLED"
 			if enabled {
 				wantDecision, wantCode = "review", "ADAPTER_NOT_CONFIGURED"
@@ -215,7 +223,7 @@ func TestDefaultAndEvaluateResultsAreIsolated(t *testing.T) {
 }
 
 func TestStubAdapterDoesNotMakeDecisionsFromUserData(t *testing.T) {
-	for _, name := range []string{"age", "region", "identity"} {
+	for _, name := range []string{"age", "region", "identity", "account_risk", "betting_risk", "exclusion", "responsible_gambling"} {
 		got, err := (StubAdapter{}).Check(nil, name, Config{})
 		if err != nil || got != (Check{Check: name, Enabled: true, Decision: "review", ReasonCode: "ADAPTER_NOT_CONFIGURED"}) {
 			t.Errorf("stub %q: %#v, %v", name, got, err)

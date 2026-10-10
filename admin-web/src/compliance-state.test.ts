@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { clearAllPendingComplianceIntents, clearPendingComplianceIntent, classifyComplianceFailure, complianceSessionGeneration, createComplianceRequestGuard, getPendingComplianceIntent, setPendingComplianceIntent, updatePendingCompliancePhase, type PendingComplianceIntent } from "./compliance-state";
 
 const scope = { accountId: "00000000-0000-4000-8000-000000000001", brandId: "00000000-0000-4000-8000-000000000002" };
-const policy: PendingComplianceIntent = { ...scope, kind: "policy", key: "policy-key-001", phase: "unknown", body: { version: 8, config: { age_enabled: false, minimum_age: null, region_enabled: true, allowed_countries: ["CA", "US"], identity_enabled: false }, reason: "Review regions" } };
+const policy: PendingComplianceIntent = { ...scope, kind: "policy", key: "policy-key-001", phase: "unknown", body: { version: 8, config: { age_enabled: false, minimum_age: null, region_enabled: true, allowed_countries: ["CA", "US"], identity_enabled: false, account_risk_enabled: false, betting_risk_enabled: false, exclusion_enabled: false, responsible_gambling_enabled: false }, reason: "Review regions" } };
 const check: PendingComplianceIntent = { ...scope, kind: "check", key: "check-key-001", phase: "review", body: { version: 8, operation: "withdrawal", reason: "Manual simulation" } };
 afterEach(() => clearAllPendingComplianceIntents());
 
@@ -42,6 +42,15 @@ describe("compliance intent state", () => {
     expect(setPendingComplianceIntent({ ...policy, key: "conflict-replacement" })).toBe(false);
     expect(getPendingComplianceIntent(scope, "policy")).toMatchObject({ key: policy.key, phase: "conflict", body: policy.body });
     expect(setPendingComplianceIntent({ ...check, body: { ...check.body, reason: " padded " } })).toBe(false);
+  });
+
+  it("treats every pseudo-check flag as part of the frozen policy body", () => {
+    expect(setPendingComplianceIntent(policy)).toBe(true);
+    for (const flag of ["account_risk_enabled", "betting_risk_enabled", "exclusion_enabled", "responsible_gambling_enabled"] as const) {
+      const changed = { ...policy, body: { ...policy.body, config: { ...policy.body.config, [flag]: true } } };
+      expect(setPendingComplianceIntent(changed)).toBe(false);
+    }
+    expect(getPendingComplianceIntent(scope, "policy")).toEqual(policy);
   });
 
   it("updates only the origin scope after the selected brand has changed", () => {

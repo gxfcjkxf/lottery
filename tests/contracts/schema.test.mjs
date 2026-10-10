@@ -124,8 +124,9 @@ test("admin logout uses admin authentication while unsupported payout operations
 });
 test("compliance admission records cannot claim anonymous users or disabled-check reviews",()=>{
   const id="11111111-1111-4111-8111-111111111111";
-  const config={age_enabled:false,minimum_age:null,region_enabled:false,allowed_countries:[],identity_enabled:true};
+  const config={age_enabled:false,minimum_age:null,region_enabled:false,allowed_countries:[],identity_enabled:true,account_risk_enabled:false,betting_risk_enabled:false,exclusion_enabled:false,responsible_gambling_enabled:false};
   const row={id,brand_id:id,policy_version:2,config,operation:"registration",action:"register",decision:"review",checks:[{check:"age",enabled:false,decision:"allow",reason_code:"CHECK_DISABLED"},{check:"region",enabled:false,decision:"allow",reason_code:"CHECK_DISABLED"},{check:"identity",enabled:true,decision:"review",reason_code:"ADAPTER_NOT_CONFIGURED"}],adapter_mode:"stub",actor_type:"anonymous",actor_id:null,member_id:null,request_id:id,audit_log_id:id,created_at:"2026-10-07T00:00:00Z"};
+  row.checks.push(...["account_risk","betting_risk","exclusion","responsible_gambling"].map(check=>({check,enabled:false,decision:"allow",reason_code:"CHECK_DISABLED"})));
   const check=validate("ComplianceGateRecord");assert.ok(check(row),JSON.stringify(check.errors));
   assert.ok(!check({...row,actor_id:id}));assert.ok(!check({...row,operation:"betting",action:"bet_place"}));
   assert.ok(!check({...row,config:{...config,identity_enabled:false}}));assert.ok(!check({...row,password:"not-an-admission-field"}));

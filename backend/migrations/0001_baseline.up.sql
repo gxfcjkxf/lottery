@@ -629,7 +629,11 @@ CREATE FUNCTION compliance_stub_checks(v jsonb) RETURNS jsonb
  SELECT jsonb_build_array(
  jsonb_build_object('check','age','enabled',v->'age_enabled','decision',CASE WHEN v->'age_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'age_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END),
  jsonb_build_object('check','region','enabled',v->'region_enabled','decision',CASE WHEN v->'region_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'region_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END),
- jsonb_build_object('check','identity','enabled',v->'identity_enabled','decision',CASE WHEN v->'identity_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'identity_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END))
+ jsonb_build_object('check','identity','enabled',v->'identity_enabled','decision',CASE WHEN v->'identity_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'identity_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END),
+ jsonb_build_object('check','account_risk','enabled',v->'account_risk_enabled','decision',CASE WHEN v->'account_risk_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'account_risk_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END),
+ jsonb_build_object('check','betting_risk','enabled',v->'betting_risk_enabled','decision',CASE WHEN v->'betting_risk_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'betting_risk_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END),
+ jsonb_build_object('check','exclusion','enabled',v->'exclusion_enabled','decision',CASE WHEN v->'exclusion_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'exclusion_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END),
+ jsonb_build_object('check','responsible_gambling','enabled',v->'responsible_gambling_enabled','decision',CASE WHEN v->'responsible_gambling_enabled'='true'::jsonb THEN 'review' ELSE 'allow' END,'reason_code',CASE WHEN v->'responsible_gambling_enabled'='true'::jsonb THEN 'ADAPTER_NOT_CONFIGURED' ELSE 'CHECK_DISABLED' END))
 $$;
 
 SET LOCAL default_tablespace = '';
@@ -699,7 +703,7 @@ $$;
 CREATE FUNCTION default_compliance_config() RETURNS jsonb
     LANGUAGE sql IMMUTABLE
     AS $$
- SELECT '{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false}'::jsonb
+ SELECT '{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}'::jsonb
 $$;
 
 CREATE FUNCTION default_game_bet_policy() RETURNS jsonb
@@ -4501,10 +4505,12 @@ CREATE FUNCTION valid_compliance_config(v jsonb) RETURNS boolean
     AS $_$
 DECLARE countries jsonb; n integer;
 BEGIN
- IF jsonb_typeof(v)<>'object' OR (SELECT count(*) FROM jsonb_object_keys(v))<>5
- OR NOT(v ?& ARRAY['age_enabled','minimum_age','region_enabled','allowed_countries','identity_enabled'])
+ IF jsonb_typeof(v)<>'object' OR (SELECT count(*) FROM jsonb_object_keys(v))<>9
+ OR NOT(v ?& ARRAY['age_enabled','minimum_age','region_enabled','allowed_countries','identity_enabled','account_risk_enabled','betting_risk_enabled','exclusion_enabled','responsible_gambling_enabled'])
  OR jsonb_typeof(v->'age_enabled')<>'boolean' OR jsonb_typeof(v->'region_enabled')<>'boolean'
- OR jsonb_typeof(v->'identity_enabled')<>'boolean' OR jsonb_typeof(v->'allowed_countries')<>'array' THEN RETURN false; END IF;
+ OR jsonb_typeof(v->'identity_enabled')<>'boolean' OR jsonb_typeof(v->'allowed_countries')<>'array'
+ OR jsonb_typeof(v->'account_risk_enabled')<>'boolean' OR jsonb_typeof(v->'betting_risk_enabled')<>'boolean'
+ OR jsonb_typeof(v->'exclusion_enabled')<>'boolean' OR jsonb_typeof(v->'responsible_gambling_enabled')<>'boolean' THEN RETURN false; END IF;
  IF v->'minimum_age'<>'null'::jsonb AND (jsonb_typeof(v->'minimum_age')<>'number' OR v->>'minimum_age' !~ '^[0-9]+$' OR (v->>'minimum_age')::integer NOT BETWEEN 18 AND 120) THEN RETURN false; END IF;
  IF v->'age_enabled'='true'::jsonb AND v->'minimum_age'='null'::jsonb THEN RETURN false; END IF;
  n:=jsonb_array_length(v->'allowed_countries');
@@ -5835,7 +5841,7 @@ CREATE TABLE compliance_decisions (
     CONSTRAINT compliance_decisions_check CHECK ((checks = compliance_stub_checks(config))),
     CONSTRAINT compliance_decisions_check1 CHECK ((decision =
 CASE
-    WHEN (((config -> 'age_enabled'::text) = 'true'::jsonb) OR ((config -> 'region_enabled'::text) = 'true'::jsonb) OR ((config -> 'identity_enabled'::text) = 'true'::jsonb)) THEN 'review'::text
+    WHEN (((config -> 'age_enabled'::text) = 'true'::jsonb) OR ((config -> 'region_enabled'::text) = 'true'::jsonb) OR ((config -> 'identity_enabled'::text) = 'true'::jsonb) OR ((config -> 'account_risk_enabled'::text) = 'true'::jsonb) OR ((config -> 'betting_risk_enabled'::text) = 'true'::jsonb) OR ((config -> 'exclusion_enabled'::text) = 'true'::jsonb) OR ((config -> 'responsible_gambling_enabled'::text) = 'true'::jsonb)) THEN 'review'::text
     ELSE 'allow'::text
 END)),
     CONSTRAINT compliance_decisions_config_check CHECK ((valid_compliance_config(config) IS TRUE)),
@@ -5867,7 +5873,7 @@ CREATE TABLE compliance_gate_rejections (
     CONSTRAINT compliance_gate_rejections_check1 CHECK ((((operation = 'registration'::text) AND (action = ANY (ARRAY['register'::text, 'join'::text, 'operator_join'::text]))) OR ((operation = 'betting'::text) AND (action = ANY (ARRAY['bet_preview'::text, 'bet_place'::text]))))),
     CONSTRAINT compliance_gate_rejections_check2 CHECK ((((actor_type = 'anonymous'::text) AND (action = 'register'::text) AND (actor_id IS NULL) AND (member_id IS NULL)) OR ((actor_type = 'admin'::text) AND (action = 'operator_join'::text) AND (actor_id IS NOT NULL) AND (member_id IS NULL)) OR ((actor_type = 'user'::text) AND (actor_id IS NOT NULL) AND ((action = 'join'::text) OR ((action = ANY (ARRAY['bet_preview'::text, 'bet_place'::text])) AND (member_id IS NOT NULL)))))),
     CONSTRAINT compliance_gate_rejections_config_check CHECK ((valid_compliance_config(config) IS TRUE)),
-    CONSTRAINT compliance_gate_rejections_config_check1 CHECK ((((config -> 'age_enabled'::text) = 'true'::jsonb) OR ((config -> 'region_enabled'::text) = 'true'::jsonb) OR ((config -> 'identity_enabled'::text) = 'true'::jsonb))),
+    CONSTRAINT compliance_gate_rejections_config_check1 CHECK ((((config -> 'age_enabled'::text) = 'true'::jsonb) OR ((config -> 'region_enabled'::text) = 'true'::jsonb) OR ((config -> 'identity_enabled'::text) = 'true'::jsonb) OR ((config -> 'account_risk_enabled'::text) = 'true'::jsonb) OR ((config -> 'betting_risk_enabled'::text) = 'true'::jsonb) OR ((config -> 'exclusion_enabled'::text) = 'true'::jsonb) OR ((config -> 'responsible_gambling_enabled'::text) = 'true'::jsonb))),
     CONSTRAINT compliance_gate_rejections_decision_check CHECK ((decision = 'review'::text)),
     CONSTRAINT compliance_gate_rejections_operation_check CHECK ((operation = ANY (ARRAY['registration'::text, 'betting'::text]))),
     CONSTRAINT compliance_gate_rejections_request_id_check CHECK (((length(request_id) >= 1) AND (length(request_id) <= 80)))

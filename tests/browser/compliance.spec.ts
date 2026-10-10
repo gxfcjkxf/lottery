@@ -15,14 +15,15 @@ test("audited compliance configuration and explicit stub check replay across nav
  try {
  await page.goto(origin);await page.getByTestId("admin-language").selectOption("zh-CN");await page.locator(".directory-brand-bar select").selectOption(brand.id);await visit(page,mobile);
  const panel=page.locator(".compliance");await expect(panel.getByRole("alert").first()).toContainText("启用但适配器未配置时会拒绝新业务");
- await panel.getByLabel("启用身份检查").check();const reason=`Explicit browser configuration ${crypto.randomUUID()}`;
+ for(const label of [/账号关联风险：/,/投注风险：/,/排除名单：/,/负责任博彩：/]) await expect(panel.getByLabel(label)).toBeVisible();
+ await panel.getByLabel(/账号关联风险：/).check();const reason=`Explicit browser configuration ${crypto.randomUUID()}`;
  await panel.getByLabel("政策变更原因").fill(reason);await panel.getByRole("button",{name:"核对政策变更",exact:true}).click();
  let receipt:unknown;let dropped=false;const bodies:string[]=[],keys:string[]=[];
  await page.route("**/api/v1/admin/compliance-policy",async route=>{if(route.request().method()!=="PUT"){await route.continue();return}bodies.push(route.request().postData()??"");keys.push(route.request().headers()["idempotency-key"]??"");if(!dropped){dropped=true;const response=await route.fetch();expect(response.status()).toBe(200);policyChanged=true;receipt=(await response.json()).data;await route.abort("failed");return}await route.continue()});
  await panel.getByRole("button",{name:"确认并提交政策",exact:true}).click();await expect.poll(()=>Boolean(receipt)).toBe(true);await expect(panel.getByRole("button",{name:"用原键重试",exact:true})).toBeEnabled();
  if(mobile) await page.locator(".mobile-nav button").nth(1).click();else await page.locator(".side-nav").getByRole("button",{name:/用户和成员/}).click();await expect(panel).toHaveCount(0);await visit(page,mobile);
  await panel.getByRole("button",{name:"用原键重试",exact:true}).click();await expect(panel.locator(".notice")).toContainText("政策写入回执已核验");expect(bodies).toHaveLength(2);expect(bodies[1]).toBe(bodies[0]);expect(keys[1]).toBe(keys[0]);await page.unroute("**/api/v1/admin/compliance-policy");
- let current=(await page.request.get(`${api}/compliance-policy`,{headers}).then(r=>r.json())).data;expect(current.version).toBe(original.version+1);expect(current.config.identity_enabled).toBe(true);
+ let current=(await page.request.get(`${api}/compliance-policy`,{headers}).then(r=>r.json())).data;expect(current.version).toBe(original.version+1);expect(current.config.account_risk_enabled).toBe(true);expect(current.config.identity_enabled).toBe(false);
  // A real, new anonymous user request must be rejected by the server; the
  // administrative simulation below is not evidence of this business gate.
  const regKey=crypto.randomUUID(),registrationUsername=`gate_${crypto.randomUUID().replaceAll("-","").slice(0,12)}`;

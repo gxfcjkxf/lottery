@@ -145,7 +145,7 @@ func TestGateRejectsInvalidContextAndUsesEachEnabledCheck(t *testing.T) {
 	a := actor(t, s)
 	ctx := context.Background()
 	version := int64(1)
-	for _, name := range []string{"age", "region", "identity"} {
+	for _, name := range []string{"age", "region", "identity", "account_risk", "betting_risk", "exclusion", "responsible_gambling"} {
 		cfg := DefaultConfig()
 		switch name {
 		case "age":
@@ -157,6 +157,14 @@ func TestGateRejectsInvalidContextAndUsesEachEnabledCheck(t *testing.T) {
 			cfg.AllowedCountries = []string{"PH"}
 		case "identity":
 			cfg.IdentityEnabled = true
+		case "account_risk":
+			cfg.AccountRiskEnabled = true
+		case "betting_risk":
+			cfg.BettingRiskEnabled = true
+		case "exclusion":
+			cfg.ExclusionEnabled = true
+		case "responsible_gambling":
+			cfg.ResponsibleGamblingEnabled = true
 		}
 		if _, e := update(t, s, a, Input{Version: version, Config: cfg, Reason: "Test one enabled check"}); e != nil {
 			t.Fatal(e)
@@ -170,10 +178,22 @@ func TestGateRejectsInvalidContextAndUsesEachEnabledCheck(t *testing.T) {
 		if e = AssessTx(ctx, tx, testBrand, "register", GateSubject{ActorType: "anonymous", RequestID: "single-check"}); !errors.As(e, &b) {
 			t.Fatal(e)
 		}
+		if len(b.Record.Checks) != 7 {
+			t.Fatalf("risk gate returned %d checks", len(b.Record.Checks))
+		}
+		found := false
 		for _, c := range b.Record.Checks {
-			if c.Check == name && (c.Decision != "review" || c.ReasonCode != "ADAPTER_NOT_CONFIGURED") {
-				t.Fatal(c)
+			if c.Check == name {
+				found = true
+				if !c.Enabled || c.Decision != "review" || c.ReasonCode != "ADAPTER_NOT_CONFIGURED" {
+					t.Fatal(c)
+				}
+			} else if c.Enabled || c.Decision != "allow" || c.ReasonCode != "CHECK_DISABLED" {
+				t.Fatalf("unconfigured check %q should stay disabled: %#v", c.Check, c)
 			}
+		}
+		if !found {
+			t.Fatalf("risk gate omitted enabled check %q", name)
 		}
 		tx.Rollback(ctx)
 	}

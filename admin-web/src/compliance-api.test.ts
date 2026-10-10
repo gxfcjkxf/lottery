@@ -3,19 +3,15 @@ import { AdminApiError, type AdminAccount } from "./admin-api";
 import { compliancePermissions, createCompliancePolicyApi, validComplianceConfig, validComplianceReason, type ComplianceConfig, type ComplianceDecision, type ComplianceGateRecord, type CompliancePolicy } from "./compliance-api";
 
 const brand = "00000000-0000-4000-8000-000000000001", other = "00000000-0000-4000-8000-000000000002", actor = "00000000-0000-4000-8000-000000000003", audit = "00000000-0000-4000-8000-000000000004";
-const config: ComplianceConfig = { age_enabled: false, minimum_age: null, region_enabled: false, allowed_countries: [], identity_enabled: false };
+const config: ComplianceConfig = { age_enabled: false, minimum_age: null, region_enabled: false, allowed_countries: [], identity_enabled: false, account_risk_enabled: false, betting_risk_enabled: false, exclusion_enabled: false, responsible_gambling_enabled: false };
 const at = "2026-10-07T03:04:05Z";
 const policy: CompliancePolicy = { brand_id: brand, version: 1, config, updated_at: at };
 function decision(overrides: Partial<ComplianceDecision> = {}): ComplianceDecision { return { id: actor, brand_id: brand, policy_version: 1, config, operation: "registration", decision: "allow", checks: [
-  { check: "age", enabled: false, decision: "allow", reason_code: "CHECK_DISABLED" },
-  { check: "region", enabled: false, decision: "allow", reason_code: "CHECK_DISABLED" },
-  { check: "identity", enabled: false, decision: "allow", reason_code: "CHECK_DISABLED" },
+  ...(["age", "region", "identity", "account_risk", "betting_risk", "exclusion", "responsible_gambling"] as const).map((check) => ({ check, enabled: false, decision: "allow" as const, reason_code: "CHECK_DISABLED" as const })),
 ], adapter_mode: "stub", created_by: actor, reason: "Explicit test", audit_log_id: audit, created_at: at, ...overrides }; }
 const gatedConfig: ComplianceConfig = { ...config, identity_enabled: true };
 function gate(overrides: Partial<ComplianceGateRecord> = {}): ComplianceGateRecord { return { id: actor, brand_id: brand, policy_version: 2, config: gatedConfig, operation: "registration", action: "register", decision: "review", checks: [
-  { check: "age", enabled: false, decision: "allow", reason_code: "CHECK_DISABLED" },
-  { check: "region", enabled: false, decision: "allow", reason_code: "CHECK_DISABLED" },
-  { check: "identity", enabled: true, decision: "review", reason_code: "ADAPTER_NOT_CONFIGURED" },
+  ...(["age", "region", "identity", "account_risk", "betting_risk", "exclusion", "responsible_gambling"] as const).map((check) => ({ check, enabled: check === "identity", decision: check === "identity" ? "review" as const : "allow" as const, reason_code: check === "identity" ? "ADAPTER_NOT_CONFIGURED" as const : "CHECK_DISABLED" as const })),
 ], adapter_mode: "stub", actor_type: "anonymous", actor_id: null, member_id: null, request_id: "request-123", audit_log_id: audit, created_at: at, ...overrides }; }
 function response(data: unknown, status = 200): Response { return new Response(JSON.stringify({ success: true, data }), { status, headers: { "Content-Type": "application/json" } }); }
 function account(overrides: Partial<AdminAccount> = {}): AdminAccount { return { id: actor, super_admin: false, brand_ids: [brand], permissions: [], ...overrides }; }
@@ -38,6 +34,12 @@ describe("compliance permissions", () => {
 describe("compliance API contracts", () => {
   it("validates exact policy configuration and strict country normalization", () => {
     expect(validComplianceConfig(config)).toBe(true);
+    const oldShape = { age_enabled: false, minimum_age: null, region_enabled: false, allowed_countries: [], identity_enabled: false };
+    expect(validComplianceConfig(oldShape)).toBe(false);
+    for (const flag of ["account_risk_enabled", "betting_risk_enabled", "exclusion_enabled", "responsible_gambling_enabled"] as const) {
+      const missingFlag = Object.fromEntries(Object.entries(config).filter(([key]) => key !== flag));
+      expect(validComplianceConfig(missingFlag)).toBe(false);
+    }
     expect(validComplianceConfig({ ...config, age_enabled: true })).toBe(false);
     expect(validComplianceConfig({ ...config, age_enabled: true, minimum_age: 18 })).toBe(true);
     for (const minimum_age of [17, 121, 18.5, NaN]) expect(validComplianceConfig({ ...config, minimum_age })).toBe(false);
@@ -71,9 +73,17 @@ describe("compliance API contracts", () => {
     const [url, init] = fetcher.mock.calls[0]; expect(url).toBe("/api/v1/admin/compliance-checks"); expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toEqual(body); expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand); expect(new Headers(init?.headers).get("Idempotency-Key")).toBe(key);
     await expect(createCompliancePolicyApi(vi.fn<typeof fetch>().mockResolvedValue(response(decision(), 200))).run(brand, body, key)).rejects.toMatchObject({ status: 0, code: "INVALID_RESPONSE" });
-    await expect(createCompliancePolicyApi(vi.fn<typeof fetch>().mockResolvedValue(response(decision({ checks: [decision().checks[1], decision().checks[0], decision().checks[2]] }), 201))).run(brand, body, key)).rejects.toMatchObject({ status: 0, code: "INVALID_RESPONSE" });
-    const enabled = decision({ config: { ...config, age_enabled: true, minimum_age: 18 }, checks: [{ check: "age", enabled: true, decision: "review", reason_code: "ADAPTER_NOT_CONFIGURED" }, decision().checks[1], decision().checks[2]], decision: "review" });
+    const unorderedChecks = [...decision().checks]; [unorderedChecks[3], unorderedChecks[4]] = [unorderedChecks[4], unorderedChecks[3]];
+    await expect(createCompliancePolicyApi(vi.fn<typeof fetch>().mockResolvedValue(response(decision({ checks: unorderedChecks }), 201))).run(brand, body, key)).rejects.toMatchObject({ status: 0, code: "INVALID_RESPONSE" });
+    const enabledConfig = { ...config, age_enabled: true, minimum_age: 18, region_enabled: true, allowed_countries: ["CA"], identity_enabled: true, account_risk_enabled: true, betting_risk_enabled: true, exclusion_enabled: true, responsible_gambling_enabled: true };
+    expect(validComplianceConfig(enabledConfig)).toBe(true);
+    const enabledChecks = decision().checks.map((row) => ({ ...row, enabled: true, decision: "review" as const, reason_code: "ADAPTER_NOT_CONFIGURED" as const }));
+    const enabled = decision({ config: enabledConfig, checks: enabledChecks, decision: "review" });
     await expect(createCompliancePolicyApi(vi.fn<typeof fetch>().mockResolvedValue(response(enabled, 201))).run(brand, body, key)).resolves.toEqual(enabled);
+    for (let i = 0; i < enabledChecks.length; i++) {
+      const malformed = [...enabledChecks]; malformed.splice(i, 1);
+      await expect(createCompliancePolicyApi(vi.fn<typeof fetch>().mockResolvedValue(response(decision({ config: enabledConfig, checks: malformed, decision: "review" }), 201))).run(brand, body, key)).rejects.toMatchObject({ status: 0, code: "INVALID_RESPONSE" });
+    }
     const contradictory = { ...enabled, config };
     await expect(createCompliancePolicyApi(vi.fn<typeof fetch>().mockResolvedValue(response(contradictory, 201))).run(brand, body, key)).rejects.toMatchObject({ status: 0, code: "INVALID_RESPONSE" });
     for (const reason of [" leading", "trailing "]) await expect(createCompliancePolicyApi(vi.fn<typeof fetch>()).run(brand, { ...body, reason }, key)).rejects.toMatchObject({ status: 400, code: "INVALID_INPUT" });
@@ -126,7 +136,7 @@ describe("compliance API contracts", () => {
       { ...item, actor_id: actor },
       { ...item, request_id: "r".repeat(81) },
       { ...item, decision: "allow" },
-      { ...item, checks: [item.checks[1], item.checks[0], item.checks[2]] },
+      { ...item, checks: [item.checks[1], item.checks[0], ...item.checks.slice(2)] },
       { ...item, config },
     ]) await expect(page(malformed)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     await expect(createCompliancePolicyApi(vi.fn<typeof fetch>().mockResolvedValue(response({ brand_id: other, operation: null, items: [], limit: 20, offset: 0, total_count: "0" }))).gates(brand)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });

@@ -6,16 +6,16 @@ const CHECKS = "/api/v1/admin/compliance-checks";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const COUNTRIES_RE = /^[A-Z]{2}$/;
 const OPERATIONS = ["registration", "betting", "withdrawal"] as const;
-const CHECKS_ORDER = ["age", "region", "identity"] as const;
+const CHECKS_ORDER = ["age", "region", "identity", "account_risk", "betting_risk", "exclusion", "responsible_gambling"] as const;
 const CHECK_DECISIONS = ["allow", "review", "deny", "freeze"] as const;
 const CHECK_REASONS = ["CHECK_DISABLED", "ADAPTER_NOT_CONFIGURED"] as const;
 
 export type ComplianceOperation = (typeof OPERATIONS)[number];
-export interface ComplianceConfig { age_enabled: boolean; minimum_age: number | null; region_enabled: boolean; allowed_countries: string[]; identity_enabled: boolean }
+export interface ComplianceConfig { age_enabled: boolean; minimum_age: number | null; region_enabled: boolean; allowed_countries: string[]; identity_enabled: boolean; account_risk_enabled: boolean; betting_risk_enabled: boolean; exclusion_enabled: boolean; responsible_gambling_enabled: boolean }
 export interface CompliancePolicy { brand_id: string; version: number; config: ComplianceConfig; updated_at: string; audit_log_id?: string }
 export interface CompliancePolicyRevision { id: string; brand_id: string; version: number; config: ComplianceConfig; changed_by: string | null; reason: string; audit_log_id: string | null; created_at: string }
 export interface ComplianceHistoryPage { brand_id: string; items: CompliancePolicyRevision[]; limit: number; offset: number; total_count: string }
-export interface ComplianceCheck { check: "age" | "region" | "identity"; enabled: boolean; decision: (typeof CHECK_DECISIONS)[number]; reason_code: (typeof CHECK_REASONS)[number] }
+export interface ComplianceCheck { check: (typeof CHECKS_ORDER)[number]; enabled: boolean; decision: (typeof CHECK_DECISIONS)[number]; reason_code: (typeof CHECK_REASONS)[number] }
 export interface ComplianceDecision { id: string; brand_id: string; policy_version: number; config: ComplianceConfig; operation: ComplianceOperation; decision: (typeof CHECK_DECISIONS)[number]; checks: ComplianceCheck[]; adapter_mode: "stub"; created_by: string; reason: string; audit_log_id: string; created_at: string }
 export interface ComplianceChecksPage { brand_id: string; operation: ComplianceOperation | null; items: ComplianceDecision[]; limit: number; offset: number; total_count: string }
 export type ComplianceGateOperation = "registration" | "betting";
@@ -64,8 +64,8 @@ function timestamp(value: unknown): value is string {
 }
 export function validComplianceReason(value: unknown): value is string { return typeof value === "string" && value.length > 0 && value.trim() === value && !/\p{Cc}/u.test(value) && new TextEncoder().encode(value).length <= 500; }
 export function validComplianceConfig(value: unknown): value is ComplianceConfig {
-  if (!record(value) || !exact(value, ["age_enabled", "minimum_age", "region_enabled", "allowed_countries", "identity_enabled"])) return false;
-  if (typeof value.age_enabled !== "boolean" || typeof value.region_enabled !== "boolean" || typeof value.identity_enabled !== "boolean") return false;
+  if (!record(value) || !exact(value, ["age_enabled", "minimum_age", "region_enabled", "allowed_countries", "identity_enabled", "account_risk_enabled", "betting_risk_enabled", "exclusion_enabled", "responsible_gambling_enabled"])) return false;
+  if (!["age_enabled", "region_enabled", "identity_enabled", "account_risk_enabled", "betting_risk_enabled", "exclusion_enabled", "responsible_gambling_enabled"].every((key) => typeof value[key] === "boolean")) return false;
   if (value.minimum_age !== null && (!Number.isInteger(value.minimum_age) || Number(value.minimum_age) < 18 || Number(value.minimum_age) > 120)) return false;
   if (value.age_enabled && value.minimum_age === null) return false;
   if (!Array.isArray(value.allowed_countries) || value.allowed_countries.length > 250 || !value.allowed_countries.every((country) => typeof country === "string" && COUNTRIES_RE.test(country))) return false;
@@ -77,8 +77,9 @@ function validCount(value: unknown): value is string { return typeof value === "
 function equalConfig(a: unknown, b: unknown): boolean {
   if (!record(a) || !record(b) || !Array.isArray(a.allowed_countries) || !Array.isArray(b.allowed_countries)) return false;
   const aCountries = a.allowed_countries as unknown[], bCountries = b.allowed_countries as unknown[];
-  return a.age_enabled === b.age_enabled && a.minimum_age === b.minimum_age && a.region_enabled === b.region_enabled && a.identity_enabled === b.identity_enabled && aCountries.length === bCountries.length && aCountries.every((country, index) => country === bCountries[index]);
+  return a.age_enabled === b.age_enabled && a.minimum_age === b.minimum_age && a.region_enabled === b.region_enabled && a.identity_enabled === b.identity_enabled && a.account_risk_enabled === b.account_risk_enabled && a.betting_risk_enabled === b.betting_risk_enabled && a.exclusion_enabled === b.exclusion_enabled && a.responsible_gambling_enabled === b.responsible_gambling_enabled && aCountries.length === bCountries.length && aCountries.every((country, index) => country === bCountries[index]);
 }
+function enabledChecks(config: ComplianceConfig): boolean[] { return [config.age_enabled, config.region_enabled, config.identity_enabled, config.account_risk_enabled, config.betting_risk_enabled, config.exclusion_enabled, config.responsible_gambling_enabled]; }
 function validPolicy(value: unknown, brandId: string): value is CompliancePolicy {
   if (!record(value) || !(exact(value, ["brand_id", "version", "config", "updated_at"]) || exact(value, ["brand_id", "version", "config", "updated_at", "audit_log_id"]))) return false;
   return value.brand_id === brandId && version(value.version) && validComplianceConfig(value.config) && timestamp(value.updated_at) && (value.audit_log_id === undefined || uuid(value.audit_log_id));
@@ -89,8 +90,8 @@ function validRevision(value: unknown, brandId: string): value is CompliancePoli
 }
 function validDecision(value: unknown, brandId: string): value is ComplianceDecision {
   if (!record(value) || !exact(value, ["id", "brand_id", "policy_version", "config", "operation", "decision", "checks", "adapter_mode", "created_by", "reason", "audit_log_id", "created_at"])) return false;
-  if (!uuid(value.id) || value.brand_id !== brandId || !version(value.policy_version) || !validComplianceConfig(value.config) || !OPERATIONS.includes(value.operation as ComplianceOperation) || !CHECK_DECISIONS.includes(value.decision as ComplianceDecision["decision"]) || value.adapter_mode !== "stub" || !uuid(value.created_by) || !validComplianceReason(value.reason) || !uuid(value.audit_log_id) || !timestamp(value.created_at) || !Array.isArray(value.checks) || value.checks.length !== 3) return false;
-  const expectedEnabled = [value.config.age_enabled, value.config.region_enabled, value.config.identity_enabled];
+  if (!uuid(value.id) || value.brand_id !== brandId || !version(value.policy_version) || !validComplianceConfig(value.config) || !OPERATIONS.includes(value.operation as ComplianceOperation) || !CHECK_DECISIONS.includes(value.decision as ComplianceDecision["decision"]) || value.adapter_mode !== "stub" || !uuid(value.created_by) || !validComplianceReason(value.reason) || !uuid(value.audit_log_id) || !timestamp(value.created_at) || !Array.isArray(value.checks) || value.checks.length !== CHECKS_ORDER.length) return false;
+  const expectedEnabled = enabledChecks(value.config);
   const checksValid = value.checks.every((item, i) => record(item) && exact(item, ["check", "enabled", "decision", "reason_code"]) && item.check === CHECKS_ORDER[i] && item.enabled === expectedEnabled[i] && item.decision === (expectedEnabled[i] ? "review" : "allow") && item.reason_code === (expectedEnabled[i] ? "ADAPTER_NOT_CONFIGURED" : "CHECK_DISABLED"));
   return checksValid && value.decision === (expectedEnabled.some(Boolean) ? "review" : "allow");
 }
@@ -100,8 +101,8 @@ function validGateRecord(value: unknown, brandId: string): value is ComplianceGa
   if (!(value.operation === "registration" || value.operation === "betting") || value.decision !== "review" || value.adapter_mode !== "stub" || !uuid(value.audit_log_id) || !timestamp(value.created_at)) return false;
   if (typeof value.request_id !== "string" || value.request_id.length < 1 || value.request_id.length > 80 || /\p{Cc}/u.test(value.request_id)) return false;
   const config = value.config as ComplianceConfig;
-  const enabled = [config.age_enabled, config.region_enabled, config.identity_enabled];
-  if (!enabled.some(Boolean) || !Array.isArray(value.checks) || value.checks.length !== 3) return false;
+  const enabled = enabledChecks(config);
+  if (!enabled.some(Boolean) || !Array.isArray(value.checks) || value.checks.length !== CHECKS_ORDER.length) return false;
   const checksValid = value.checks.every((item, i) => record(item) && exact(item, ["check", "enabled", "decision", "reason_code"]) && item.check === CHECKS_ORDER[i] && item.enabled === enabled[i] && item.decision === (enabled[i] ? "review" : "allow") && item.reason_code === (enabled[i] ? "ADAPTER_NOT_CONFIGURED" : "CHECK_DISABLED"));
   if (!checksValid) return false;
   if (value.operation === "registration") {

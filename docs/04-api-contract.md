@@ -719,9 +719,9 @@ API当前不写积分、不生成佣金/奖励记录，不修改加入归属或�
 | GET | /compliance-checks | `{brand_id,operation:null或筛选值,items:Decision[],limit,offset,total_count}` |
 | GET | /compliance-gates | `{brand_id,operation:null或registration/betting,items:GateRecord[],limit,offset,total_count}`；真实业务准入拒绝，使用compliance_check.view.brand/platform |
 
-config必须包含五键 `{age_enabled:boolean,minimum_age:null或18..120整数,region_enabled:boolean,allowed_countries:有序唯一字符串数组,identity_enabled:boolean}`。年龄开关开启时年龄必填，地区开关开启时名单非空；名单最多250项，每项两位大写ASCII字母并严格升序。它们是工程配置限制，不是年龄/国家法律结论或已获授权市场清单。默认false/null/false/[]/false。拒绝未知/缺失/重复/null错误字段、控制字符和原因首尾空白；原因非空UTF-8≤500字节。版本独立于品牌共享版本。
+config必须包含九键：原age_enabled、minimum_age、region_enabled、allowed_countries、identity_enabled，以及account_risk_enabled、betting_risk_enabled、exclusion_enabled、responsible_gambling_enabled。七个开关均为必填boolean，默认false；年龄默认null，名单默认[]。年龄开启时minimum_age必填18..120整数，地区开启时名单非空，最多250个严格升序唯一两位大写ASCII代码；它们不是法律或市场授权结论。拒绝未知/缺失/重复/错误null和类型字段，不兼容旧五键请求。原因非空UTF-8≤500字节，无首尾空白/控制字符，政策版本独立于品牌共享版本。七组范围和业务边界见[45号合同](45-risk-stub-checks.md)。
 
-Decision字段 `{id,brand_id,policy_version,config,operation,decision,checks,adapter_mode:"stub",created_by,reason,audit_log_id,created_at}`。operation为registration/betting/withdrawal，仅检查场景标签，不启动相关业务。checks严格按age/region/identity排序，各含check/enabled/decision/reason_code；关闭allow/CHECK_DISABLED，开启review/ADAPTER_NOT_CONFIGURED，整体全关闭才allow。deny/freeze为接口扩展枚举，当前不会生成这两个结果或执行冻结；allow不代表用户验证完成，review不创建审核队列。
+Decision字段 `{id,brand_id,policy_version,config,operation,decision,checks,adapter_mode:"stub",created_by,reason,audit_log_id,created_at}`。operation为registration/betting/withdrawal，仅检查场景标签，不启动相关业务。checks严格按age/region/identity/account_risk/betting_risk/exclusion/responsible_gambling排序，各含check/enabled/decision/reason_code；关闭allow/CHECK_DISABLED，开启review/ADAPTER_NOT_CONFIGURED，整体全关闭才allow。deny/freeze为接口扩展枚举，当前不会生成这两个结果或执行冻结；allow不代表用户验证完成，review不创建审核队列。
 
 查询默认limit20、1..100，offset0..1000000；历史仅接受分页，检查列表另可operation筛选，拒绝未知/重复/空参数，total_count为精确字符串。配置和决策与审计、历史、加密幂等回执同事务；检查锁定当前政策版本，改版后新检查需新版本，旧键则重放原决策快照。未知写只允许原正文/键重试，撤权/会话变化/品牌停用后不得用旧缓存绕过；停用品牌可只读。配置错误400 COMPLIANCE_INPUT_INVALID、缺失404 COMPLIANCE_NOT_FOUND、版本409 COMPLIANCE_VERSION_CONFLICT、状态409 COMPLIANCE_STATE_CONFLICT，正文解析失败仍400 REQUEST_INVALID。
 

@@ -144433,6 +144433,34 @@
                         "const": true
                       }
                     }
+                  },
+                  {
+                    "properties": {
+                      "account_risk_enabled": {
+                        "const": true
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "betting_risk_enabled": {
+                        "const": true
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "exclusion_enabled": {
+                        "const": true
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "responsible_gambling_enabled": {
+                        "const": true
+                      }
+                    }
                   }
                 ]
               }
@@ -144464,8 +144492,8 @@
             "items": {
               "$ref": "#/components/schemas/ComplianceCheck"
             },
-            "minItems": 3,
-            "maxItems": 3
+            "minItems": 7,
+            "maxItems": 7
           },
           "adapter_mode": {
             "type": "string",
@@ -144696,6 +144724,18 @@
           },
           "identity_enabled": {
             "type": "boolean"
+          },
+          "account_risk_enabled": {
+            "type": "boolean"
+          },
+          "betting_risk_enabled": {
+            "type": "boolean"
+          },
+          "exclusion_enabled": {
+            "type": "boolean"
+          },
+          "responsible_gambling_enabled": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -144703,7 +144743,11 @@
           "minimum_age",
           "region_enabled",
           "allowed_countries",
-          "identity_enabled"
+          "identity_enabled",
+          "account_risk_enabled",
+          "betting_risk_enabled",
+          "exclusion_enabled",
+          "responsible_gambling_enabled"
         ],
         "additionalProperties": false,
         "allOf": [
@@ -144749,7 +144793,7 @@
             }
           }
         ],
-        "description": "All five fields required. Default all flags disabled, age null and countries empty. Enabled unconfigured checks reject new registration/brand admission and betting; disabled checks are skipped, not real verification. Existing login/reads/refunds remain available; withdrawal not implemented."
+        "description": "All nine fields required. Default all flags disabled, age null and countries empty. Enabled unconfigured checks reject new registration/brand admission, betting and withdrawal; disabled checks are skipped, not real verification. Existing login/reads/refunds remain available; external payments not implemented."
       },
       "CompliancePolicy": {
         "type": "object",
@@ -144846,7 +144890,11 @@
             "enum": [
               "age",
               "region",
-              "identity"
+              "identity",
+              "account_risk",
+              "betting_risk",
+              "exclusion",
+              "responsible_gambling"
             ]
           },
           "enabled": {
@@ -144917,8 +144965,8 @@
             "items": {
               "$ref": "#/components/schemas/ComplianceCheck"
             },
-            "minItems": 3,
-            "maxItems": 3
+            "minItems": 7,
+            "maxItems": 7
           },
           "adapter_mode": {
             "type": "string",
@@ -144956,7 +145004,7 @@
           "created_at"
         ],
         "additionalProperties": false,
-        "description": "Immutable explicit check snapshot, not user verification, review queue, live enforcement, wallet freeze or legal approval. Check order age/region/identity."
+        "description": "Immutable explicit check snapshot, not user verification, review queue, live enforcement, wallet freeze or legal approval. Check order age/region/identity/account_risk/betting_risk/exclusion/responsible_gambling."
       },
       "ComplianceRevision": {
         "type": "object",

@@ -10,7 +10,7 @@ test('operational policy queries remain GET-only and separated from verification
   assert.match(api, /X-Brand-ID/);
   assert.match(api, /response.status !== 200/);
   assert.doesNotMatch(api, /method: '(POST|PUT|PATCH|DELETE)'/);
-  assert.match(panel, /Real verification adapters are not connected/);
+  assert.match(panel, /Real verification and risk adapters are not connected/);
   assert.match(panel, /onBeforeUnmount/);
   assert.match(panel, /selected.value === kind/);
   assert.doesNotMatch(panel, /as any|v-html|parseFloat|Number\(.*points/);

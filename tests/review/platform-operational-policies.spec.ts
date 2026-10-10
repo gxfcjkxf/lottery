@@ -25,7 +25,10 @@ test('platform reads six genuine operational policies without writes or verifica
     await expect(page.getByTestId('platform-operational-policy-detail')).toBeVisible();
     await expect(page.getByTestId('platform-operational-policy-detail')).toContainText(brand);
     await expect(panel.getByRole('alert')).toHaveCount(0);
-    if (kind === 'compliance') await expect(panel).toContainText('Real verification adapters are not connected');
+    if (kind === 'compliance') {
+      await expect(panel).toContainText('Real verification and risk adapters are not connected');
+      for (const label of ['Account risk check', 'Betting risk check', 'Blacklist/self-exclusion check', 'Responsible gambling/cooling check']) await expect(panel).toContainText(label);
+    }
   }
   await page.locator('.language').click();
   await expect(panel).toContainText('此只读开关不会启用处理或派发资金');

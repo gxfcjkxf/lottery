@@ -6,6 +6,50 @@ import (
 	"testing"
 )
 
+func TestRiskStubRegistrationHTTPKeepsIdentityAndFundsUnchanged(t *testing.T) {
+	groups := []struct {
+		name   string
+		enable func(*compliance.Config)
+	}{
+		{"account_risk", func(c *compliance.Config) { c.AccountRiskEnabled = true }},
+		{"betting_risk", func(c *compliance.Config) { c.BettingRiskEnabled = true }},
+		{"exclusion", func(c *compliance.Config) { c.ExclusionEnabled = true }},
+		{"responsible_gambling", func(c *compliance.Config) { c.ResponsibleGamblingEnabled = true }},
+	}
+	for _, group := range groups {
+		t.Run(group.name, func(t *testing.T) {
+			f := managedFixture(t)
+			grantCompliance(t, f)
+			cfg := compliance.DefaultConfig()
+			group.enable(&cfg)
+			mustStatus(t, f.call("PUT", "/api/v1/admin/compliance-policy", "risk-stub-policy-"+group.name, f.token, managedBrand, compliance.Input{Version: 1, Config: cfg, Reason: "Require configured pseudo risk check"}), 200)
+			ctx := context.Background()
+			var accountsBefore, ledgerBefore, pointsBefore int64
+			query := `SELECT (SELECT count(*) FROM point_accounts), (SELECT count(*) FROM point_ledger_entries), (SELECT coalesce(sum(points),0)::bigint FROM point_buckets)`
+			if err := f.pool.QueryRow(ctx, query).Scan(&accountsBefore, &ledgerBefore, &pointsBefore); err != nil {
+				t.Fatal(err)
+			}
+			body := map[string]string{"username": "risk_stub_member", "password": "risk-stub-test-password-2026", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"}
+			for range 2 {
+				mustStatus(t, f.call("POST", "/api/v1/auth/register", "risk-stub-registration-"+group.name, "", "", body), 409)
+			}
+			var identities, records, accountsAfter, ledgerAfter, pointsAfter int64
+			if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM global_users WHERE username='risk_stub_member'`).Scan(&identities); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM compliance_gate_rejections WHERE brand_id=$1`, managedBrand).Scan(&records); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.pool.QueryRow(ctx, query).Scan(&accountsAfter, &ledgerAfter, &pointsAfter); err != nil {
+				t.Fatal(err)
+			}
+			if identities != 0 || records != 1 || accountsBefore != accountsAfter || ledgerBefore != ledgerAfter || pointsBefore != pointsAfter {
+				t.Fatalf("risk rejection changed identity/funds or duplicated evidence: identities=%d records=%d accounts=%d/%d ledger=%d/%d points=%d/%d", identities, records, accountsBefore, accountsAfter, ledgerBefore, ledgerAfter, pointsBefore, pointsAfter)
+			}
+		})
+	}
+}
+
 func TestComplianceRegistrationHTTPNoIdentityOnReplayAndScopedEvidence(t *testing.T) {
 	f := managedFixture(t)
 	ctx := context.Background()

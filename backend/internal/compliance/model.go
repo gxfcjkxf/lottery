@@ -22,14 +22,21 @@ var (
 	ErrState    = errors.New("compliance state conflict")
 )
 
-var configKeys = []string{"age_enabled", "minimum_age", "region_enabled", "allowed_countries", "identity_enabled"}
+var configKeys = []string{
+	"age_enabled", "minimum_age", "region_enabled", "allowed_countries", "identity_enabled",
+	"account_risk_enabled", "betting_risk_enabled", "exclusion_enabled", "responsible_gambling_enabled",
+}
 
 type Config struct {
-	AgeEnabled       bool     `json:"age_enabled"`
-	MinimumAge       *int     `json:"minimum_age"`
-	RegionEnabled    bool     `json:"region_enabled"`
-	AllowedCountries []string `json:"allowed_countries"`
-	IdentityEnabled  bool     `json:"identity_enabled"`
+	AgeEnabled                 bool     `json:"age_enabled"`
+	MinimumAge                 *int     `json:"minimum_age"`
+	RegionEnabled              bool     `json:"region_enabled"`
+	AllowedCountries           []string `json:"allowed_countries"`
+	IdentityEnabled            bool     `json:"identity_enabled"`
+	AccountRiskEnabled         bool     `json:"account_risk_enabled"`
+	BettingRiskEnabled         bool     `json:"betting_risk_enabled"`
+	ExclusionEnabled           bool     `json:"exclusion_enabled"`
+	ResponsibleGamblingEnabled bool     `json:"responsible_gambling_enabled"`
 }
 
 type Input struct {
@@ -131,6 +138,10 @@ func Evaluate(c Config) (string, []Check, error) {
 		evaluateCheck("age", c.AgeEnabled),
 		evaluateCheck("region", c.RegionEnabled),
 		evaluateCheck("identity", c.IdentityEnabled),
+		evaluateCheck("account_risk", c.AccountRiskEnabled),
+		evaluateCheck("betting_risk", c.BettingRiskEnabled),
+		evaluateCheck("exclusion", c.ExclusionEnabled),
+		evaluateCheck("responsible_gambling", c.ResponsibleGamblingEnabled),
 	}
 	decision := "allow"
 	for _, check := range checks {
@@ -238,6 +249,8 @@ func closedJSON(data []byte, keys []string, nullable map[string]bool) error {
 func validCheckName(name string) bool {
 	switch name {
 	case "age", "region", "identity":
+		return true
+	case "account_risk", "betting_risk", "exclusion", "responsible_gambling":
 		return true
 	default:
 		return false

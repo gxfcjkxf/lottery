@@ -10,10 +10,10 @@ const current = [
   { brand_id: brand, version: 1, config: { min_bet_points: '1', max_bet_points: null, max_period_points: null, max_user_period_points: null, user_cancel_allowed: false }, updated_at: at },
   { brand_id: brand, version: 1, mode: null, updated_at: at },
   { brand_id: brand, version: 1, config: { enabled: false, max_depth: 5, ratio_cap: '0', mode: 'loss', cycle: 'monthly' }, updated_at: at },
-  { brand_id: brand, version: 1, config: { age_enabled: false, minimum_age: null, region_enabled: false, allowed_countries: [], identity_enabled: false }, updated_at: at },
+  { brand_id: brand, version: 1, config: { age_enabled: false, minimum_age: null, region_enabled: false, allowed_countries: [], identity_enabled: false, account_risk_enabled: false, betting_risk_enabled: false, exclusion_enabled: false, responsible_gambling_enabled: false }, updated_at: at },
   { brand_id: brand, version: 1, enabled: false, audit_log_id: '', updated_at: at },
   { brand_id: brand, version: 1, enabled: false, audit_log_id: '', updated_at: at },
-]
+] as const
 const paths = ['/bet-policy', '/settlement-policy', '/agent-policy', '/compliance-policy', '/commission-payment-policy', '/commission-correction-policy']
 const methods = ['betting', 'settlement', 'agents', 'compliance', 'payment', 'correction'] as const
 
@@ -39,7 +39,7 @@ describe('platform operational policy read API', () => {
       { ...current[0], version: 4, config: { min_bet_points: '25', max_bet_points: '9007199254740993', max_period_points: null, max_user_period_points: '9223372036854775807', user_cancel_allowed: true } },
       { ...current[1], version: 2, mode: 'manual', audit_log_id: audit },
       { ...current[2], version: 3, config: { enabled: true, max_depth: 3, ratio_cap: '0.125', mode: 'turnover', cycle: 'weekly' } },
-      { ...current[3], version: 2, audit_log_id: audit, config: { age_enabled: true, minimum_age: 21, region_enabled: true, allowed_countries: ['SG', 'US'], identity_enabled: true } },
+      { ...current[3], version: 2, audit_log_id: audit, config: { age_enabled: true, minimum_age: 21, region_enabled: true, allowed_countries: ['SG', 'US'], identity_enabled: true, account_risk_enabled: true, betting_risk_enabled: false, exclusion_enabled: true, responsible_gambling_enabled: false } },
       { ...current[4], version: 2, enabled: true, audit_log_id: audit },
       { ...current[5], version: 2, enabled: true, audit_log_id: audit },
     ]
@@ -66,6 +66,10 @@ describe('platform operational policy read API', () => {
       [{ ...current[3], config: { ...current[3].config, age_enabled: true } }, client => client.compliance(brand)],
       [{ ...current[3], config: { ...current[3].config, identity_enabled: true, allowed_countries: null } }, client => client.compliance(brand)],
       [{ ...current[3], config: { ...current[3].config, allowed_countries: ['US', 'SG'] } }, client => client.compliance(brand)],
+      ...(['account_risk_enabled', 'betting_risk_enabled', 'exclusion_enabled', 'responsible_gambling_enabled'] as const).flatMap(key => [
+        [{ ...current[3], config: Object.fromEntries(Object.entries(current[3].config).filter(([field]) => field !== key)) }, client => client.compliance(brand)] as [unknown, (client: ReturnType<typeof createPlatformOperationalPoliciesApi>) => Promise<unknown>],
+        [{ ...current[3], config: { ...current[3].config, [key]: 'false' } }, client => client.compliance(brand)] as [unknown, (client: ReturnType<typeof createPlatformOperationalPoliciesApi>) => Promise<unknown>],
+      ]),
       [{ ...current[4], audit_log_id: null }, client => client.payment(brand)],
       [{ ...current[4], version: 1, enabled: true, audit_log_id: audit }, client => client.payment(brand)],
       [{ ...current[5], version: 2, audit_log_id: '' }, client => client.correction(brand)],

@@ -38,7 +38,7 @@ function sameBody(a: PendingComplianceIntent, b: PendingComplianceIntent): boole
   if (a.kind === "check" && b.kind === "check") return a.body.version === b.body.version && a.body.operation === b.body.operation && a.body.reason === b.body.reason;
   if (a.kind !== "policy" || b.kind !== "policy") return false;
   const ac = a.body.config, bc = b.body.config;
-  return a.body.version === b.body.version && a.body.reason === b.body.reason && ac.age_enabled === bc.age_enabled && ac.minimum_age === bc.minimum_age && ac.region_enabled === bc.region_enabled && ac.identity_enabled === bc.identity_enabled && ac.allowed_countries.length === bc.allowed_countries.length && ac.allowed_countries.every((country, i) => country === bc.allowed_countries[i]);
+  return a.body.version === b.body.version && a.body.reason === b.body.reason && ac.age_enabled === bc.age_enabled && ac.minimum_age === bc.minimum_age && ac.region_enabled === bc.region_enabled && ac.identity_enabled === bc.identity_enabled && ac.account_risk_enabled === bc.account_risk_enabled && ac.betting_risk_enabled === bc.betting_risk_enabled && ac.exclusion_enabled === bc.exclusion_enabled && ac.responsible_gambling_enabled === bc.responsible_gambling_enabled && ac.allowed_countries.length === bc.allowed_countries.length && ac.allowed_countries.every((country, i) => country === bc.allowed_countries[i]);
 }
 export function setPendingComplianceIntent(value: PendingComplianceIntent): boolean {
   if (!validIntent(value, value, value.kind)) return false;

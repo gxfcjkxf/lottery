@@ -28,7 +28,17 @@ export interface AgentPolicy {
 export interface CompliancePolicy {
   brand_id: string
   version: number
-  config: { age_enabled: boolean; minimum_age: number | null; region_enabled: boolean; allowed_countries: string[]; identity_enabled: boolean }
+  config: {
+    age_enabled: boolean
+    minimum_age: number | null
+    region_enabled: boolean
+    allowed_countries: string[]
+    identity_enabled: boolean
+    account_risk_enabled: boolean
+    betting_risk_enabled: boolean
+    exclusion_enabled: boolean
+    responsible_gambling_enabled: boolean
+  }
   updated_at: string
   audit_log_id?: string
 }
@@ -71,10 +81,11 @@ function validAgents(value: unknown, brand: string): value is AgentPolicy {
     (c.mode === 'loss' || c.mode === 'turnover') && (c.cycle === 'weekly' || c.cycle === 'monthly')
 }
 function validCompliance(value: unknown, brand: string): value is CompliancePolicy {
-  if (!policyEnvelope(value, brand, ['brand_id', 'version', 'config', 'updated_at']) || !object(value.config) || !exactKeys(value.config, ['age_enabled', 'minimum_age', 'region_enabled', 'allowed_countries', 'identity_enabled'])) return false
+  if (!policyEnvelope(value, brand, ['brand_id', 'version', 'config', 'updated_at']) || !object(value.config) || !exactKeys(value.config, ['age_enabled', 'minimum_age', 'region_enabled', 'allowed_countries', 'identity_enabled', 'account_risk_enabled', 'betting_risk_enabled', 'exclusion_enabled', 'responsible_gambling_enabled'])) return false
   const c = value.config
   const countries = c.allowed_countries
   if (typeof c.age_enabled !== 'boolean' || typeof c.region_enabled !== 'boolean' || typeof c.identity_enabled !== 'boolean' ||
+    typeof c.account_risk_enabled !== 'boolean' || typeof c.betting_risk_enabled !== 'boolean' || typeof c.exclusion_enabled !== 'boolean' || typeof c.responsible_gambling_enabled !== 'boolean' ||
     !(c.minimum_age === null || Number.isInteger(c.minimum_age) && Number(c.minimum_age) >= 18 && Number(c.minimum_age) <= 120) || c.age_enabled && c.minimum_age === null ||
     !Array.isArray(countries) || countries.length > 250 || c.region_enabled && countries.length === 0) return false
   return countries.every((country, index) => typeof country === 'string' && /^[A-Z]{2}$/.test(country) && (index === 0 || country > countries[index - 1]))

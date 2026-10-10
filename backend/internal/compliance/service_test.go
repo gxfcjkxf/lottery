@@ -67,11 +67,11 @@ func TestDefaultDisabledAndExplicitStubRecordsHaveNoBusinessEffects(t *testing.T
 	a := actor(t, s)
 	before := financial(t, s)
 	p, e := s.Read(ctx, testBrand)
-	if e != nil || p.Version != 1 || p.Config.AgeEnabled || p.Config.RegionEnabled || p.Config.IdentityEnabled || p.Config.MinimumAge != nil || p.Config.AllowedCountries == nil || p.AuditLogID != "" {
+	if e != nil || p.Version != 1 || p.Config.AgeEnabled || p.Config.RegionEnabled || p.Config.IdentityEnabled || p.Config.AccountRiskEnabled || p.Config.BettingRiskEnabled || p.Config.ExclusionEnabled || p.Config.ResponsibleGamblingEnabled || p.Config.MinimumAge != nil || p.Config.AllowedCountries == nil || p.AuditLogID != "" {
 		t.Fatal(p, e)
 	}
 	d, e := check(t, s, a, CheckInput{Version: 1, Operation: "betting", Reason: "Explicit disabled adapter check"})
-	if e != nil || d.Decision != "allow" || d.AdapterMode != "stub" || len(d.Checks) != 3 || d.AuditLogID == "" {
+	if e != nil || d.Decision != "allow" || d.AdapterMode != "stub" || len(d.Checks) != 7 || d.AuditLogID == "" {
 		t.Fatal(d, e)
 	}
 	age := 21
@@ -81,16 +81,37 @@ func TestDefaultDisabledAndExplicitStubRecordsHaveNoBusinessEffects(t *testing.T
 	cfg.RegionEnabled = true
 	cfg.AllowedCountries = []string{"PH", "US"}
 	cfg.IdentityEnabled = true
+	cfg.AccountRiskEnabled = true
 	p, e = update(t, s, a, Input{Version: 1, Config: cfg, Reason: "Configure future checks"})
 	if e != nil || p.Version != 2 || p.AuditLogID == "" {
 		t.Fatal(p, e)
+	}
+	gateTx, e := s.DB.Begin(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var blocked *Blocked
+	e = AssessTx(ctx, gateTx, testBrand, "register", GateSubject{ActorType: "anonymous", RequestID: "risk-gate-review"})
+	if !errors.As(e, &blocked) {
+		gateTx.Rollback(ctx)
+		t.Fatalf("enabled account risk did not reject real admission: %v", e)
+	}
+	if blocked.Record.Decision != "review" || len(blocked.Record.Checks) != 7 {
+		gateTx.Rollback(ctx)
+		t.Fatalf("unexpected gate rejection: %#v", blocked.Record)
+	}
+	if e = gateTx.Rollback(ctx); e != nil {
+		t.Fatal(e)
 	}
 	d, e = check(t, s, a, CheckInput{Version: 2, Operation: "registration", Reason: "Explicit unconfigured adapter check"})
 	if e != nil || d.Decision != "review" || d.PolicyVersion != 2 {
 		t.Fatal(d, e)
 	}
 	for _, c := range d.Checks {
-		if c.Decision != "review" || c.ReasonCode != "ADAPTER_NOT_CONFIGURED" {
+		if c.Enabled && (c.Decision != "review" || c.ReasonCode != "ADAPTER_NOT_CONFIGURED") {
+			t.Fatal(c)
+		}
+		if !c.Enabled && (c.Decision != "allow" || c.ReasonCode != "CHECK_DISABLED") {
 			t.Fatal(c)
 		}
 	}
@@ -217,7 +238,7 @@ func TestSQLValidatorRestorePathAndNewBrandInitialization(t *testing.T) {
 	if e = tx.QueryRow(ctx, "SELECT "+pgx.Identifier{schema, "valid_compliance_config"}.Sanitize()+"($1::jsonb)", raw).Scan(&valid); e != nil || !valid {
 		t.Fatal("empty restore path invalid", e)
 	}
-	for _, bad := range []string{`{}`, `{"age_enabled":true,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false}`, `{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":["US","PH"],"identity_enabled":false}`, `{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":["PH","PH"],"identity_enabled":false}`} {
+	for _, bad := range []string{`{}`, `{"age_enabled":true,"minimum_age":null,"region_enabled":false,"allowed_countries":[],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`, `{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":["US","PH"],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`, `{"age_enabled":false,"minimum_age":null,"region_enabled":false,"allowed_countries":["PH","PH"],"identity_enabled":false,"account_risk_enabled":false,"betting_risk_enabled":false,"exclusion_enabled":false,"responsible_gambling_enabled":false}`} {
 		if e = tx.QueryRow(ctx, "SELECT "+pgx.Identifier{schema, "valid_compliance_config"}.Sanitize()+"($1::jsonb)", bad).Scan(&valid); e != nil || valid {
 			t.Fatal("SQL accepted invalid config", bad, e)
 		}
