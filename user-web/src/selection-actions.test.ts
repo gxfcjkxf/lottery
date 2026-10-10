@@ -25,6 +25,17 @@ describe('editable selection actions', () => {
     const html = await renderToString(createSSRApp(BetSelection, { definition: definition(), modelValue: emptyBetSelection(), locale: 'en', disabled: true }));
     expect(html.match(/<button type="button" disabled/g)).toHaveLength(2);
   });
+  it('shows all configured attributes beside regular and special numbers without inventing labels', async () => {
+    const rule = definition();
+    rule.number_attributes = { color: { red: [1, 7] }, parity: { odd: [1, 3, 7] } };
+    const html = await renderToString(createSSRApp(BetSelection, { definition: rule, modelValue: emptyBetSelection(), locale: 'en' }));
+    const labels = html.split('</label>');
+    for (const choice of ['Choose regular number 1', 'Choose special number 7']) {
+      const label = labels.find(value => value.includes(`aria-label="${choice}"`));
+      expect(label).toContain('color: red'); expect(label).toContain('parity: odd');
+    }
+    expect(labels.find(value => value.includes('aria-label="Choose regular number 2"'))).not.toContain('number-attributes');
+  });
   it('clears every selection field using independent arrays and maps', () => {
     const first = emptyBetSelection();
     first.regular!.push(1); first.attributes!.color = ['red'];

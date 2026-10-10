@@ -17,6 +17,19 @@ const emit = defineEmits<{
 }>();
 const zh = computed(() => props.locale === "zh");
 const mode = computed(() => props.definition.selection.mode);
+const numberLabels = computed(() => {
+  const labels = new Map<number, string[]>();
+  for (const [group, values] of Object.entries(props.definition.number_attributes ?? {})) {
+    for (const [name, numbers] of Object.entries(values)) {
+      for (const number of numbers) {
+        const current = labels.get(number) ?? [];
+        current.push(`${group}: ${name}`);
+        labels.set(number, current);
+      }
+    }
+  }
+  return labels;
+});
 const actionError = ref(false);
 
 function clearSelection() {
@@ -201,6 +214,7 @@ function toggleFeature(name: string, value: number) {
                 @change="toggleDigit(position - 1, value)"
               />
               <span>{{ value }}</span>
+              <small v-if="numberLabels.has(value)" class="number-attributes">{{ numberLabels.get(value)?.join(' · ') }}</small>
             </label>
           </div>
         </div>
@@ -224,6 +238,7 @@ function toggleFeature(name: string, value: number) {
               :disabled="disabled"
               @change="toggle('regular', value)"
             /><span>{{ value }}</span>
+            <small v-if="numberLabels.has(value)" class="number-attributes">{{ numberLabels.get(value)?.join(' · ') }}</small>
           </label>
         </div>
       </fieldset>
@@ -246,6 +261,7 @@ function toggleFeature(name: string, value: number) {
               :disabled="disabled"
               @change="toggle('special', value)"
             /><span>{{ value }}</span>
+            <small v-if="numberLabels.has(value)" class="number-attributes">{{ numberLabels.get(value)?.join(' · ') }}</small>
           </label>
         </div>
       </fieldset>
@@ -267,6 +283,7 @@ function toggleFeature(name: string, value: number) {
             :disabled="disabled"
             @change="toggle('exclude', value)"
           /><span>{{ value }}</span>
+          <small v-if="numberLabels.has(value)" class="number-attributes">{{ numberLabels.get(value)?.join(' · ') }}</small>
         </label>
       </div>
     </fieldset>
@@ -373,7 +390,10 @@ function toggleFeature(name: string, value: number) {
   border-radius: 10px;
   cursor: pointer;
   font-variant-numeric: tabular-nums;
+  padding: 0.25rem;
+  gap: 0.15rem;
 }
+.number-attributes { max-width: 100%; font-size: 0.65rem; line-height: 1.3; overflow-wrap: anywhere; text-align: center; }
 .choice-chip:has(input:checked) {
   border-color: var(--brand-primary);
   background: #eaf2e9;

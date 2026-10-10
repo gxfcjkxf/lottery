@@ -154,8 +154,10 @@ function fixture(
     attribute_groups: mode === "attributes" ? ["color"] : [],
     feature_choices: mode === "features" ? { odd_count: [0, 1, 2, 3] } : {},
   };
-  const numberAttributes =
-    mode === "attributes" ? { color: { red: [1, 2, 3], blue: [4, 5, 6] } } : {};
+  const numberAttributes = {
+    color: { red: [1, 2, 3], blue: [4, 5, 6] },
+    parity: { odd: [1, 3, 5], even: [2, 4, 6] },
+  };
   let condition: Record<string, unknown>;
   let validationSelection: Record<string, unknown>;
   let draw: Record<string, unknown>;
@@ -533,6 +535,11 @@ async function previewPlay(
   const panel = page.getByTestId("bet-selection-page");
   await expect(panel).toBeVisible();
   await panel.getByTestId("play-select").selectOption(playId);
+  if (mode === 'numbers' || mode === 'exclude') {
+    await expect(panel.locator('.number-attributes').first()).toContainText('color: red');
+    await expect(panel.locator('.number-attributes').first()).toContainText('parity: odd');
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   // Randomization only edits the ticket; the real server still validates it.
   await panel.getByRole('button', { name: 'Random selection', exact: true }).click();
   await expect(panel.locator('.selection-editor input:checked').first()).toBeChecked();
