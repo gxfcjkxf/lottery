@@ -4,6 +4,8 @@
 
 第一阶段采用模块化单体，不拆分独立微服务；所有模块通过清晰接口和领域事件解耦，未来可独立拆分。
 
+当前运行实现是Go API、独立Go worker与PostgreSQL；会话、限流、幂等和持久任务均在数据库中。Redis/NATS/对象存储是尚未接入的扩展选项，不是当前启动或验收前置条件；下面的运行图描述当前实现，生产自动故障切换等未完成目标另列。
+
 ```text
 user-web / admin-web / platform-web
           |
@@ -19,14 +21,14 @@ user-web / admin-web / platform-web
   | Agent / Commission / Reward |
   | Notification / Report / Audit|
   -----------------------------
-       |             |
- PostgreSQL       Redis
- primary/read     cache/limit
- replicas         idempotency aid
        |
-  Outbox -> NATS JetStream/worker
+ PostgreSQL
+ primary/read replicas
+ sessions/limits/idempotency
        |
- external result sources / object storage
+  Outbox -> PostgreSQL durable queues -> worker
+       |
+ external result adapters (pseudo implementation)
 ```
 
 ## 2. 技术选型
@@ -51,9 +53,9 @@ user-web / admin-web / platform-web
 ### 数据和任务
 
 - PostgreSQL：唯一业务事实来源。
-- Redis：会话、热点配置、限流、短期锁和幂等辅助；不作为账本唯一来源。
-- NATS JetStream 或等价持久化队列：异步任务和领域事件。
-- 对象存储：外部开奖原始响应引用、品牌素材、导出文件和备份。
+- 当前会话、限流和幂等使用PostgreSQL，事务锁保护资金与任务；不依赖Redis。
+- PostgreSQL持久任务及独立worker实现异步业务处理；当前不连接NATS JetStream。
+- 品牌素材和外部响应保存引用，当前不提供上传/对象存储适配器；导出经已授权API返回。
 - PostgreSQL Outbox：业务事务提交后再投递事件，避免“数据库成功但消息丢失”。
 
 ## 3. 模块边界
@@ -87,7 +89,7 @@ user-web / admin-web / platform-web
 - 连接池、PgBouncer、慢查询监控和复制延迟监控必须配置。
 - 主库至少有可自动切换的备用节点；“一主多从”不等同于没有故障切换。
 
-本地已提供一主两从、只读拒绝、真实新增流水复制、关闭旧主库后手动提升、另一从库重新跟随及public逻辑备份恢复演练，复现和限制见[复制与恢复手册](10-replication-and-recovery.md)。0032固定应用函数查找路径以兼容恢复会话与隔离schema；六类不可变管理历史已接入WAL屏障的多读节点路由，其余业务与资金仍走主库。生产高可用、自动切换、WAL归档、密钥恢复和客户环境验收仍待后续。
+本地已提供一主两从、只读拒绝、真实新增流水复制、关闭旧主库后手动提升、另一从库重新跟随及public逻辑备份恢复演练，复现和限制见[复制与恢复手册](10-replication-and-recovery.md)。当前完整基线固定应用函数查找路径；六类不可变管理历史已接入WAL屏障的多读节点路由，其余业务与资金仍走主库。生产高可用、自动切换、WAL归档、密钥恢复和客户环境验收仍待后续。
 
 ## 5. 高并发投注路径
 
@@ -96,7 +98,7 @@ user-web / admin-web / platform-web
 投注请求：
 
 1. 网关限流和身份校验。
-2. 从缓存读取品牌/彩种/玩法配置并校验版本。
+2. 从数据库读取品牌/彩种/玩法配置并校验保存版本；未来缓存不能替代最终门禁。
 3. 期次和限额读取主库或带版本缓存。
 4. 以用户品牌账户行作为锁粒度开启事务。
 5. 校验幂等键和请求摘要。

@@ -1,6 +1,6 @@
 .PHONY: infra migrate seed api check build
 infra:
-	docker compose up -d
+	docker compose up -d postgres
 migrate:
 	cd backend && go run ./cmd/platform migrate
 seed:

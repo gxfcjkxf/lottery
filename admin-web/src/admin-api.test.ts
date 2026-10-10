@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAdminApi } from "./admin-api";
+import { createAdminApi, createIdempotencyKey } from "./admin-api";
 
 function response(data: unknown, status = 200) {
   return new Response(
@@ -17,6 +17,36 @@ function response(data: unknown, status = 200) {
 }
 
 describe("admin HTTP client", () => {
+  it("creates unique idempotency keys with crypto.randomUUID", () => {
+    const getRandomValues = vi.fn();
+    const randomUUID = vi
+      .fn<() => `${string}-${string}-${string}-${string}-${string}`>()
+      .mockReturnValueOnce("00000000-0000-4000-8000-000000000001")
+      .mockReturnValueOnce("00000000-0000-4000-8000-000000000002");
+    vi.stubGlobal("crypto", { randomUUID, getRandomValues });
+
+    expect(createIdempotencyKey()).toBe(
+      "00000000-0000-4000-8000-000000000001",
+    );
+    expect(createIdempotencyKey()).toBe(
+      "00000000-0000-4000-8000-000000000002",
+    );
+    expect(randomUUID).toHaveBeenCalledTimes(2);
+    expect(getRandomValues).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("fails explicitly when crypto.randomUUID is unavailable", () => {
+    const getRandomValues = vi.fn();
+    vi.stubGlobal("crypto", { getRandomValues });
+
+    expect(createIdempotencyKey).toThrow(
+      "crypto.randomUUID is required to create an idempotency key",
+    );
+    expect(getRandomValues).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
   it("posts login with same-origin cookies and never persists a returned token", async () => {
     const setItem = vi.fn();
     vi.stubGlobal("localStorage", { setItem });
