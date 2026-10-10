@@ -58,11 +58,11 @@
 - [33-operational-observability.md](33-operational-observability.md)：默认关闭的保护端口、低基数指标、只读缓存、固定追踪和真实进程验收边界。
 - [34-release-and-operations.md](34-release-and-operations.md)：协调发布、完整迁移核验、systemd示例、备份及隔离恢复、生产待定值。
 - [35-commission-allocation-history.md](35-commission-allocation-history.md)：明确运行代次的历史整周期收益、保存比例的逐单未舍入差额分配、独立分页筛选和只读双端管理。
-- [36-commission-workbench.md](36-commission-workbench.md)：独立查看授权的当前佣金任务计数、就绪与证据过期、人工暂停与技术失败，以及旧空快照兼容。
+- [36-commission-workbench.md](36-commission-workbench.md)：独立查看授权的当前佣金任务计数、就绪与证据过期、人工暂停与技术失败；旧空快照不受支持。
 - [37-brand-business-inventory.md](37-brand-business-inventory.md)：独立品牌来源的结构引用检查、固定41表覆盖、完整迁移定义核验、闭合只读快照与双端界面。
 - [38-commission-cycle-analysis.md](38-commission-cycle-analysis.md)：保存周期的核算/有效目标/实际净额分析、双查看授权、完整CSV及未知值边界；真实双端查询/导出和只读资金保持已验收，容量与真机另验。
-- [39-commission-manual-recalculation-policy.md](39-commission-manual-recalculation-policy.md)：人工修正后新核算覆盖政策、历史未决计划显式审计重试及部署/验收边界。
-- [40-zero-original-commission-evidence.md](40-zero-original-commission-evidence.md)：零原派发真实人工资金保护、旧错误stale升级拒绝、显式离线完整历史检查及恢复边界；资金恢复继续实施。
+- [39-commission-manual-recalculation-policy.md](39-commission-manual-recalculation-policy.md)：人工修正后新核算覆盖政策、差额执行、批准、余额不足暂停及当前基线验收。
+- [40-zero-original-commission-evidence.md](40-zero-original-commission-evidence.md)：零原派发后的实际人工入账保护、按真实净额更正和零差额不生成流水。
 
 ## 第一阶段实现顺序
 

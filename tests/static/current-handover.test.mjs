@@ -30,6 +30,27 @@ test('default infrastructure starts only the implemented PostgreSQL dependency',
   assert.doesNotMatch(read('.env.example'), /^(?:REDIS_URL|NATS_URL|OBJECT_STORAGE_\w+)=/m)
 })
 
+test('commission handovers use current formats rather than removed recovery flows', () => {
+  const workbench = read('docs/36-commission-workbench.md')
+  assert.match(workbench, /旧not_implemented\/null快照不受支持/)
+  assert.doesNotMatch(workbench, /保留可读兼容|历史blocked计划可能保留原未决政策错误码/)
+  assert.match(read('admin-web/src/workbench-api.ts'), /const STATUSES = \["ready", "forbidden"\]/)
+
+  const analysis = read('docs/38-commission-cycle-analysis.md')
+  const csvSource = read('backend/internal/reporting/commission_analysis_csv.go')
+  const fields = csvSource.match(/var commissionAnalysisCSVFields = \[\]string\{([\s\S]*?)\n\}/)?.[1].match(/"[a-z_]+"/g)
+  assert.equal(fields?.length, 33)
+  assert.match(analysis, /三个coverage字段/)
+  assert.match(analysis, /共33列/)
+  assert.doesNotMatch(analysis, /34列|COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED|升级必须停止/)
+
+  const acceptance = read('docs/08-acceptance-and-open-items.md')
+  assert.doesNotMatch(acceptance, /34列|MODE_UNRESOLVED|COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED|retryPlan流程/)
+  assert.match(acceptance, /`platform-web` 独立总后台/)
+  const index = read('docs/README.md')
+  assert.doesNotMatch(index, /旧空快照兼容|历史未决计划显式审计重试|旧错误stale升级拒绝/)
+})
+
 test('brand administration metadata and authenticated header do not label real operations as a prototype', () => {
   const html = read('admin-web/index.html')
   assert.match(html, /<title>Brand administration<\/title>/)

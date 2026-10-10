@@ -8,7 +8,7 @@
 
 有权限返回ready及完整19字段对象；无权限返回forbidden/null，并且不生成访问佣金表的SQL片段。授权来源缺失、超时、查询或审计失败时整体503，不填虚假零值或返回部分快照。查询与其他已授权区块共用一条主库SELECT、同一statement_timestamp观察；响应前重新核验会话/权限并提交审计。它不是持续实时锁定的队列，也不保证读取后状态不再变化。
 
-旧快照的not_implemented/null保留可读兼容，仅表示旧版本没有接入；新版服务不生成这种正常状态。新版客户端不能将旧空值变成0，API/前端应协调发布。工作台不保存资金回执，也不重写旧审计或归档。
+区块仅接受ready或forbidden：ready必须提供完整字段，forbidden的数据必须为null。旧not_implemented/null快照不受支持，客户端明确拒绝，不能将空值变成0。工作台不保存资金回执，也不重写业务审计或归档。
 
 ## 计数映射
 
@@ -25,7 +25,7 @@
 | commission_correction_plans | plan_processing_count、plan_ready_count、plan_blocked_count、plan_failed_count | planning、ready、blocked、failed |
 | commission_correction_executions | execution_awaiting_approval_count、execution_processing_count、execution_paused_count、execution_failed_count | awaiting_approval、applying、paused、failed |
 
-cycle_ready_count只是当前状态和epoch观察，不替代完整金融来源复核，更不代表可立即派发。计划ready也只是准备完成，必须另查当前证据、开关和批准。paused是等待显式运营处理，不等于技术failed；历史blocked计划可能保留原未决政策错误码，并按[39号合同](39-commission-manual-recalculation-policy.md)显式处理。paid/completed/stale等历史终态不计为待处理，历史记录仍可在各管理页面查询。
+cycle_ready_count只是当前状态和epoch观察，不替代完整金融来源复核，更不代表可立即派发。计划ready也只是准备完成，必须另查当前证据、开关和批准。paused是等待显式运营处理，不等于技术failed；人工修正后的新核算及差额执行按[39号合同](39-commission-manual-recalculation-policy.md)处理，不提供旧未决政策恢复流程。paid/completed/stale等历史终态不计为待处理，业务历史仍可在各管理页面查询。
 
 ## 管理端和验收
 

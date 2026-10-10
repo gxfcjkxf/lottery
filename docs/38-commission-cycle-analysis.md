@@ -43,17 +43,17 @@ group_by=cycle时逐周期保留空值；group_by=agent时任何选中未就绪�
 
 ## 人工修正与结果更正
 
-原核算10、人工修正后实际净额12；结果更正产生新代次8时，新核算覆盖旧人工修正差额，实际净额仍如实为12，差额为追回4，最终目标为8。`manual_adjustment_net_points`及原人工修正账本仍独立保留，不改写；更正目标在新批准和资金门控后执行。迁移前已标记`COMMISSION_CORRECTION_MANUAL_POLICY_UNRESOLVED`的历史计划仍保持blocked、金额null及零目标，须按[39号合同](39-commission-manual-recalculation-policy.md)显式审计重试。该重试不是批准或付款，不改变原派发blocked状态。
+原核算10、人工修正后实际净额12；结果更正产生新代次8时，新核算覆盖旧人工修正差额，实际净额仍如实为12，差额为追回4，最终目标为8。`manual_adjustment_net_points`及原人工修正账本仍独立保留，不改写；更正目标在新批准和资金门控后执行，见[39号合同](39-commission-manual-recalculation-policy.md)。当前基线不提供旧政策未决计划的升级或恢复流程。
 
 若没有新的开奖结果更正，原代次人工修正10至12后，有效目标仍为12、已授予净额为12，有效差额0；不能只因报表读取而把已批准人工目标还原成10。
 
-人工偏移是否仍适用按保存的evidence_epoch判断，而非只比较run UUID：同一证据epoch的技术重算不能擅自清除已批准修正；结算证据改变后，新核算取代旧偏移。原派发0后人工实际入账也属于历史资金，0075防止错误注册另一全额派发；旧系统已将实际资金标为stale时，升级必须停止并保留历史供审核，见[40号合同](40-zero-original-commission-evidence.md)。
+人工偏移是否仍适用按保存的evidence_epoch判断，而非只比较run UUID：同一证据epoch的技术重算不能擅自清除已批准修正；结算证据改变后，新核算取代旧偏移。原派发0后人工实际入账也属于业务资金，必须防止错误注册另一全额派发，见[40号合同](40-zero-original-commission-evidence.md)。
 
 其他尚未结清、证据过期、准备计划ready、暂停或技术失败不等于资金完成。读取当前已入账与核算不改变原blocked历史、运行开关、批准或暂停门闩。
 
 ## CSV和界面
 
-CSV为版本1，UTF8 BOM，完整筛选最多10000组及4MiB，超限413而非截断。列顺序：record_type、brand_id、snapshot_at、timezone、from、to、group_by、agent_id、member_id、cycle_id、key、label；再重复四个coverage字段；最后上述十八totals字段按表中顺序（布尔两字段最后），共34列。summary的key/label空，后续group按key排序；nullable金额写空单元格，布尔恰好true/false，有符号负值使用单引号安全前缀。全部分组金额/流水数量须匹配summary；任一组完整金额为null则对应summary也为null，不把空值当0。
+CSV为版本1，UTF8 BOM，完整筛选最多10000组及4MiB，超限413而非截断。列顺序：record_type、brand_id、snapshot_at、timezone、from、to、group_by、agent_id、member_id、cycle_id、key、label；再重复三个coverage字段；最后上述十八totals字段按表中顺序（布尔两字段最后），共33列。summary的key/label空，后续group按key排序；nullable金额写空单元格，布尔恰好true/false，有符号负值使用单引号安全前缀。全部分组金额/流水数量须匹配summary；任一组完整金额为null则对应summary也为null，不把空值当0。
 
 导出具备品牌、kind=commission_analysis、时间、时区、组数、字节数、SHA256、format_version=1和已提交审计回执头；失败不释放文件。管理端使用原报表入口的独立周期分析区，中英PC/360px支持明确查询、分页及完整已提交筛选导出；改草稿、范围/权限/账号或迟到401清理旧响应和文件，不重放资金操作。
 
@@ -67,6 +67,6 @@ HTTP使用主库READ COMMITTED，单条SQL同时生成覆盖、完整汇总、�
 
 `tests/browser/commission-analysis.spec.ts`在独立合成库内，接续真实周期、派发和人工修正流程运行，不模拟API响应或直接插入成功资金记录。原派发1积分、三笔人工修正分别+1、+2、-4，实际净入账0、保存核算1、同代次有效目标0；十八项指标分别核对，不用钱包余额推算。
 
-查询仅选一秒的周期结束时间窗口，独立账本查询证明四笔入账全部发生在窗口之后；周期与受益代理分组仍纳入这四笔历史记录。完整34列CSV验证BOM、品牌及已提交审计头、组数、字节数、SHA256、负数安全前缀和全量金额。修改筛选清空原结果和导出资格，中英实际查询及移动端展开明细均通过；页面宽度与固定1440/360px比较，不用溢出后的innerWidth放宽判断。
+查询仅选一秒的周期结束时间窗口，独立账本查询证明四笔入账全部发生在窗口之后；周期与受益代理分组仍纳入这四笔历史记录。完整33列CSV验证BOM、品牌及已提交审计头、组数、字节数、SHA256、负数安全前缀和全量金额。修改筛选清空原结果和导出资格，中英实际查询及移动端展开明细均通过；页面宽度与固定1440/360px比较，不用溢出后的innerWidth放宽判断。
 
 只读步骤前后比较账户、全部余额桶、账本经济指纹，以及固定26张佣金业务表的独立指纹，后者包括核算、批准、派发、人工修正和更正历史；查询审计允许追加，不列入不可变业务指纹。CI在原desktop/mobile隔离矩阵中串行追加该专项，单worker、零重试，并要求有通过用例且零跳过。当前合成浏览器流程不包含未结清周期和结果更正后的资金执行；这些分支已有真实数据库验收，不能把本浏览器专项作为它们的UI证据。详细命令和结果见[实施记录](implementation-progress.md)。
