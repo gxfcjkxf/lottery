@@ -252,12 +252,26 @@ onUnmounted(() => { disposed = true; generation++; historyGeneration++; controll
           <button class="button button-primary full-button" type="submit" :disabled="!validSubmission || submitting || Boolean(uncertain)">{{ submitting ? labels.loading : labels.submit }}</button>
         </form>
       </div>
-      <div class="detail-panel"><h2>{{ labels.orders }}</h2><p v-if="!orders.length" class="muted">{{ labels.empty }}</p><article v-for="order in orders" :key="order.id" class="withdrawal-order"><div><strong>{{ formatIntegerAmount(order.points) }} pts</strong><span class="status-chip">{{ stateName(order) }}</span></div><small>{{ labels.date }} · {{ time(order.created_at) }}</small><button class="text-button" @click="loadHistory(order)">{{ labels.history }}</button><div v-if="history?.order_id === order.id" class="withdrawal-history"><button class="text-button" @click="history = null">{{ labels.close }}</button><div v-for="item in history.items" :key="item.id"><strong>{{ item.from_state ? labels.states[item.from_state] + ' → ' : '' }}{{ labels.states[item.to_state] }}</strong><small>{{ time(item.created_at) }} · {{ item.reason }}</small></div></div></article></div>
+      <div class="detail-panel">
+        <h2>{{ labels.orders }}</h2>
+        <p v-if="!orders.length" class="muted">{{ labels.empty }}</p>
+        <article v-for="order in orders" :key="order.id" class="withdrawal-order">
+          <div><strong>{{ formatIntegerAmount(order.points) }} pts</strong><span class="status-chip">{{ stateName(order) }}</span></div>
+          <small>{{ labels.date }} · {{ time(order.created_at) }}</small>
+          <button class="text-button" :aria-expanded="history?.order_id === order.id" :aria-controls="'withdrawal-history-' + order.id" @click="loadHistory(order)">{{ labels.history }}</button>
+          <div v-if="history?.order_id === order.id" :id="'withdrawal-history-' + order.id" class="withdrawal-history" role="region" :aria-label="labels.history + ' · ' + order.id">
+            <button class="text-button" @click="history = null">{{ labels.close }}</button>
+            <div v-for="item in history.items" :key="item.id"><strong>{{ item.from_state ? labels.states[item.from_state] + ' → ' : '' }}{{ labels.states[item.to_state] }}</strong><small>{{ time(item.created_at) }} · {{ item.reason }}</small></div>
+          </div>
+        </article>
+      </div>
     </template>
   </section>
 </template>
 
 <style scoped>
+.withdrawal-page .text-button{min-height:44px;padding:8px 0;border:0;background:transparent;color:var(--brand-primary,#20594c);font:inherit;font-size:14px;font-weight:650;text-align:left;cursor:pointer;justify-self:start}
+.withdrawal-page .text-button:focus-visible{outline:2px solid var(--brand-primary,#20594c);outline-offset:3px;border-radius:4px}
 .qualification-snapshot{border-top:1px solid var(--line,#d9dedc);margin-top:14px;padding-top:12px}.qualification-snapshot h2{font-size:1rem}.qualification-snapshot dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:8px 16px;margin:0}.qualification-snapshot dl>div{min-width:0}.qualification-snapshot dt{color:var(--muted,#66716d);font-size:.85rem}.qualification-snapshot dd{margin:3px 0 0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 .withdrawal-allocation{border:1px solid var(--line,#d9dedc);border-radius:12px;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px;margin:16px 0}.withdrawal-allocation legend{padding:0 6px;font-weight:650}.withdrawal-allocation input{display:block;width:100%;margin-top:6px}.withdrawal-order{display:grid;grid-template-columns:1fr auto;gap:8px;padding:14px 0;border-bottom:1px solid var(--line,#d9dedc)}.withdrawal-order>div:first-child{display:flex;justify-content:space-between;gap:12px}.withdrawal-order small,.withdrawal-history small{color:var(--muted,#66716d)}.withdrawal-order>.text-button{justify-self:start}.withdrawal-history{grid-column:1/-1;padding:10px;background:var(--surface-soft,#f5f7f6);border-radius:8px}.withdrawal-history>div{display:grid;padding:8px 0}.withdrawal-page .auth-error{margin:10px 0}
 </style>
