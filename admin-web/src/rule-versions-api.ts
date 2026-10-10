@@ -403,31 +403,33 @@ export function createRuleVersionsApi(fetcher: typeof fetch = fetch) {
     let envelope: {
       success?: boolean;
       data?: T;
-      error?: string | { code?: string; message?: string } | null;
+      error?: { code: string; message: string } | null;
     } | null;
     try {
       envelope = await response.json();
     } catch {
-      throw new AdminApiError("服务器未返回有效 JSON。", response.status);
+      throw new AdminApiError("服务器未返回有效 JSON，操作结果未确认。", 502, "INVALID_RESPONSE");
+    }
+    if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+      throw new AdminApiError("服务器响应不符合当前接口格式，操作结果未确认。", 502, "INVALID_RESPONSE");
+    }
+    const detail = envelope.error;
+    if (
+      !response.ok && envelope.success === false && detail &&
+      typeof detail === "object" && !Array.isArray(detail) &&
+      typeof detail.code === "string" && detail.code.trim().length > 0 &&
+      typeof detail.message === "string" && detail.message.trim().length > 0
+    ) {
+      throw new AdminApiError(detail.message, response.status, detail.code);
     }
     if (
       !response.ok ||
-      !envelope ||
-      typeof envelope !== "object" ||
-      Array.isArray(envelope) ||
       envelope.success !== true ||
       envelope.data == null ||
       typeof envelope.data !== "object" ||
       Array.isArray(envelope.data)
     ) {
-      const detail = envelope?.error;
-      throw new AdminApiError(
-        typeof detail === "string"
-          ? detail
-          : (detail?.message ?? `请求失败（${response.status}）`),
-        response.status,
-        typeof detail === "object" && detail ? detail.code : undefined,
-      );
+      throw new AdminApiError("服务器响应不符合当前接口格式，操作结果未确认。", 502, "INVALID_RESPONSE");
     }
     return envelope.data;
   }

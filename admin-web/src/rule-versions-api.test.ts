@@ -319,7 +319,7 @@ describe("rule version client", () => {
           .fn<typeof fetch>()
           .mockResolvedValue(new Response(raw, { status: 200 })),
       );
-      await expect(api.getGames(brand)).rejects.toMatchObject({ status: 200 });
+      await expect(api.getGames(brand)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     }
     const fetcher = vi
       .fn<typeof fetch>()
@@ -328,6 +328,13 @@ describe("rule version client", () => {
     await expect(api.getGames("")).rejects.toMatchObject({ status: 0 });
     expect(fetcher).not.toHaveBeenCalled();
     await expect(api.getGames(brand)).rejects.toThrow("Network failed");
+  });
+
+  it("rejects legacy or incomplete error envelopes instead of treating them as confirmed business rejections", async () => {
+    for (const error of ["old denial", null, { message: "missing code" }, { code: "RULE_INVALID" }, { code: 1, message: "invalid code" }]) {
+      const api = createRuleVersionsApi(vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ success: false, error }), { status: 400 })));
+      await expect(api.approveRuleVersion(brand, version.id, { version: 7, reason: "approve", warnings_acknowledged: true }, "original-key")).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    }
   });
 
   it("uses no token/storage and creates an idempotency key when one is omitted", async () => {

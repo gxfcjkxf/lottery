@@ -49,11 +49,33 @@ test('one brand administrator creates and reviews rules with immediate and next-
     const approve = card.getByRole('button', { name: '批准该版本', exact: true });
     await expect(approve).toBeDisabled();
     await card.getByRole('checkbox').check();
+    const attempts: Array<{ body: string | null; key: string | undefined }> = [];
+    const approvalUrl = `${origin}/api/v1/admin/rule-versions/${draft.id}/approve`;
+    if (effect_mode === 'immediate') {
+      await page.route(approvalUrl, async route => {
+        attempts.push({ body: route.request().postData(), key: route.request().headers()['idempotency-key'] });
+        if (attempts.length === 1) {
+          const committed = await route.fetch();
+          expect(committed.status()).toBe(200);
+          // The real approval committed, but a proxy returned an unsupported old envelope.
+          await route.fulfill({ status: 400, json: { success: false, error: 'legacy proxy response' } });
+        } else await route.continue();
+      });
+      const malformed = page.waitForResponse(response => response.url() === approvalUrl && response.request().method() === 'POST');
+      await approve.click();
+      expect((await malformed).status()).toBe(400);
+      await expect(panel.getByRole('alert')).toContainText('操作结果未确认');
+    }
     const reply = page.waitForResponse(response => response.url().endsWith(`/rule-versions/${draft.id}/approve`) && response.request().method() === 'POST');
     await approve.click();
     const response = await reply;
     expect(response.status(), await response.text()).toBe(200);
     const reviewed = (await response.json()).data;
+    if (effect_mode === 'immediate') {
+      expect(attempts).toHaveLength(2);
+      expect(attempts[1]).toEqual(attempts[0]);
+      await page.unroute(approvalUrl);
+    }
     expect(reviewed.created_by).toBe(account.id);
     expect(reviewed.reviewed_by).toBe(account.id);
     expect(reviewed.review_comment).toBe('Own rule checked and warnings acknowledged');
