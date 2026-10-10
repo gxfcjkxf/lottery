@@ -20,6 +20,7 @@ import type { Language } from "../../shared/src/brand";
 import { createAuthClient, type AuthProfile } from "../../shared/src/auth";
 import BetSelection from "./BetSelection.vue";
 import SelectionSummary from "./SelectionSummary.vue";
+import OrderPrize from "./OrderPrize.vue";
 import { createWalletApi } from "./wallet-api";
 import DrawResultsPanel from "./DrawResultsPanel.vue";
 
@@ -1162,8 +1163,8 @@ onUnmounted(() => {
         >{{ zh ? "状态" : "Status" }} ·
         {{ detailsStatus(placedOrder.status) }}</strong
       ><span>{{ zh ? "期次" : "Period" }} {{ placedOrder.period_id }}</span
-      ><span v-if="placedOrder.settled_at">{{ zh ? "中奖积分" : "Prize points" }} {{ placedOrder.prize_points }} · {{ zh ? "已入账" : "Applied" }}</span
-      ><span>{{ zh ? "玩法" : "Play" }} {{ placedOrder.play_id }}</span
+      ><OrderPrize :order="placedOrder" :locale="locale" />
+      <span>{{ zh ? "玩法" : "Play" }} {{ placedOrder.play_id }}</span
       ><span
         >{{ zh ? "总积分" : "Total points" }}
         {{ placedOrder.total_points }}</span

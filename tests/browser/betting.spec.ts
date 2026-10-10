@@ -2757,6 +2757,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     await adminPage.screenshot({path:info.outputPath("s5-c2-real-settlement-page.png"),fullPage:true});
     await page.goto(`${harborSite}/orders/${previewOrder.id}`);
     await expect(page.getByTestId("order-detail")).toContainText("Prize points 8");
+    await expect(page.getByTestId("order-prize")).toContainText("Applied");
   } finally {
     await adminPage.close();
   }
