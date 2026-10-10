@@ -17,9 +17,11 @@ test("real registration restores its cookie, starts at zero, and logs out", asyn
   context,
 }) => {
   const username = `review_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
+  const password = "用户测试密码"; // 18 UTF-8 bytes, fewer than 10 characters.
   await page.goto(`${userOrigin}/register`);
   await page.getByLabel("Choose a username or phone", { exact: true }).fill(username);
-  await page.getByLabel("Password", { exact: true }).fill("review-only-member-password-2026");
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  expect(await page.getByLabel("Password", { exact: true }).evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(true);
   await page.locator('.auth-form input[type="checkbox"]').nth(0).check();
   await page.locator('.auth-form input[type="checkbox"]').nth(1).check();
   const registrationResponse = page.waitForResponse(
@@ -51,6 +53,17 @@ test("real registration restores its cookie, starts at zero, and logs out", asyn
   await page.getByRole("button", { name: /Sign out/ }).click();
   await expect(page).toHaveURL(/\/login$/);
   expect((await page.request.get(`${userOrigin}/api/v1/me`)).status()).toBe(401);
+  await page.getByLabel("Username or phone", { exact: true }).fill(username);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  const loginResponse = page.waitForResponse(response => response.url() === `${userOrigin}/api/v1/auth/login`);
+  await page.getByRole("button", { name: /Continue/ }).click();
+  expect((await loginResponse).status()).toBe(200);
+  await expect(page).toHaveURL(/\/account$/);
+  const loggedIn = (await (await page.request.get(`${userOrigin}/api/v1/me`)).json()).data;
+  expect(loggedIn.user.id).toBe(meBefore.user.id);
+  expect(loggedIn.member.id).toBe(meBefore.member.id);
+  await page.getByRole("button", { name: /Sign out/ }).click();
+  await expect(page).toHaveURL(/\/login$/);
 });
 
 test("Aurora operator sees Aurora only and cannot read Harbor members", async ({ page }) => {

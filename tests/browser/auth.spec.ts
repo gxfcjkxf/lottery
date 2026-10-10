@@ -11,7 +11,8 @@ test("real registration, cookie restoration, one-time profile fill and logout", 
     .fill(username);
   await page
     .getByLabel("Password", { exact: true })
-    .fill("test-only-password-123");
+    .fill("用户测试密码"); // 18 UTF-8 bytes; native character minimum must not reject it.
+  expect(await page.getByLabel("Password", { exact: true }).evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(true);
   await page.locator('.auth-form input[type="checkbox"]').nth(0).check();
   await page.locator('.auth-form input[type="checkbox"]').nth(1).check();
   await page.getByRole("button", { name: /Continue/ }).click();

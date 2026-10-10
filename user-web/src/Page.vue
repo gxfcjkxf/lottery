@@ -937,7 +937,6 @@ watch(
                   type="password"
                   autocomplete="current-password"
                   :readonly="joinTermsPrompt"
-                  minlength="10"
                   maxlength="128"
                   placeholder="••••••••••"
               /></label>
