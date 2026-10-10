@@ -19,6 +19,8 @@ test('platform brand creation retains an uncertain committed request across navi
   expect(account.platform_permissions).toContain('brand.create.platform');
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
+  await page.getByLabel('Find a brand', { exact: true }).fill('hide-existing-brands-for-creation');
+  await page.getByRole('combobox', { name: 'Brand status', exact: true }).selectOption('active');
   await page.getByRole('button', { name: /New brand/, exact: false }).click();
   const dialog = page.getByRole('dialog');
   const code = `brand_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
@@ -53,6 +55,9 @@ test('platform brand creation retains an uncertain committed request across navi
   await dialog.getByRole('button', { name: 'Retry same request', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('.message.success')).toContainText('Brand created in paused status.');
+  await expect(page.getByLabel('Find a brand', { exact: true })).toHaveValue('');
+  await expect(page.getByRole('combobox', { name: 'Brand status', exact: true })).toHaveValue('');
+  await expect(page.getByTestId('platform-brand-list').locator('tr').filter({ hasText: code })).toHaveCount(1);
   expect(attempts).toHaveLength(2);
   expect(attempts[1]).toEqual(attempts[0]);
   expect(receipt).toMatchObject({ code, status: 'paused', version: 1 });
