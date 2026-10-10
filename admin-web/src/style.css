@@ -439,14 +439,6 @@ html[lang="en"] .breadcrumbs { min-width: 0; flex-wrap: wrap; overflow-wrap: any
   background: none;
   color: var(--ink);
 }
-.search-box kbd {
-  white-space: nowrap;
-  border: 1px solid #eaecf0;
-  border-radius: 3px;
-  padding: 2px 4px;
-  color: #a2a7b2;
-  font-size: 8px;
-}
 .icon-button {
   border: 0;
   background: none;
@@ -2854,7 +2846,6 @@ tbody tr:hover {
     max-width: 155px;
     height: 29px;
   }
-  .search-box kbd,
   .help-button,
   .top-divider {
     display: none;

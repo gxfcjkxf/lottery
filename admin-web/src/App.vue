@@ -190,6 +190,7 @@ const page = ref<Page>("工作台");
 const brandMenu = ref(false);
 const mobileMore = ref(false);
 const search = ref("");
+const pageSearch = ref("");
 const notice = ref<ReturnType<typeof message> | string>("");
 const api = createAdminApi();
 const account = ref<AdminAccount | null>(null);
@@ -299,9 +300,15 @@ const canViewJoinCodes = computed(() => {
 const visibleNav = computed(() => nav.filter((item) => item.name !== "加入码" || canViewJoinCodes.value));
 const go = (target: Page) => {
   page.value = target;
+  pageSearch.value = "";
   notice.value = "";
   mobileMore.value = false;
 };
+function openSearchedPage() {
+  const query = pageSearch.value.trim().toLowerCase();
+  const target = visibleNav.value.find((item) => ui(item.name).toLowerCase() === query);
+  if (target) go(target.name);
+}
 const navigateWorkbench = (destination: string) => {
   const target = nav.find((item) => item.name === destination);
   if (target) go(target.name);
@@ -376,6 +383,8 @@ const clearAdminData = () => {
   clearPendingReconciliationWrites();
   clearAllPendingBrandOperationWrites();
   correctionSettlementPeriod.value = null;
+  pageSearch.value = "";
+  search.value = "";
   account.value = null;
   adminBrands.value = [];
   selectedBrandId.value = "";
@@ -749,10 +758,17 @@ const changeMemberPage = async (direction: -1 | 1) => {
           <label class="search-box"
             ><span>⌕</span
             ><input
-              v-model="search"
-              :placeholder="ui('搜索用户、注单、期次')"
-              :aria-label="ui('搜索')"
-            /><kbd>⌘ K</kbd></label
+              v-model="pageSearch"
+              list="admin-page-options"
+              :placeholder="t('查找管理页面', 'Find an admin page')"
+              :aria-label="t('查找管理页面', 'Find an admin page')"
+              @change="openSearchedPage"
+              @keydown.enter.prevent="openSearchedPage"
+              @keydown.esc="pageSearch = ''"
+            />
+            <datalist id="admin-page-options">
+              <option v-for="item in visibleNav" :key="item.name" :value="ui(item.name)" />
+            </datalist></label
           ><button
             class="icon-button"
             :aria-label="ui('通知')"
