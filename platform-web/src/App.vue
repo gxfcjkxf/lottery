@@ -12,6 +12,8 @@ import ArchiveTasksPanel from './ArchiveTasksPanel.vue'
 import FinancialPoliciesPanel from './FinancialPoliciesPanel.vue'
 import OperationalPoliciesPanel from './OperationalPoliciesPanel.vue'
 import AccessPanel from './AccessPanel.vue'
+import BrandOperationPanel from './BrandOperationPanel.vue'
+import type { BrandOperation } from './brand-operation-api'
 
 const api = createPlatformApi()
 const locale = ref<'en' | 'zh-CN'>('en')
@@ -31,6 +33,7 @@ const zh = {
   action: '操作', actor: '操作人', resource: '资源', date: '时间', empty: '暂无数据。', loading: '加载中…', logout: '退出登录', close: '关闭', platformNote: '仅限平台管理；品牌员工请使用品牌管理后台。', platformAdmin: '平台超级管理员', error: '发生错误', retry: '使用同一请求重试', unknown: '服务器可能已收到请求。仅使用冻结的原始内容和请求键重试。', created: '品牌已创建并暂停。', localeEnglish: '英语', localeChinese: '简体中文', directory: '目录', directoryDescription: '管理平台租户并查看其会员。', brandDirectory: '品牌目录', brandDirectoryDescription: '平台目录中的品牌', memberDirectory: '会员目录', memberReadOnly: '只读会员信息', auditDescription: '所选品牌的审计记录 · 只读', traceability: '操作追踪', accessDirectory: '会员目录', platformDirectory: '平台目录', createDescription: '新品牌将以暂停状态创建。品牌员工权限在对应品牌后台管理。', codePlaceholder: 'northstar_shop', timezonePlaceholder: 'Asia/Singapore', accountLabel: '账号', brandLabel: '品牌', statusNormal: '正常', statusFrozen: '已冻结', statusDisabled: '已停用', statusExpired: '已过期', statusCancelled: '已取消', statusPaused: '已暂停', statusActive: '启用', countSuffix: '条记录',
  }
 const account = ref<PlatformAccount | null>(null)
+const brandOperationPanel = ref<{ openForBrand: (brandId: string) => void } | null>(null)
 const accessScope = ref<'brand' | 'platform'>('platform')
 const accountWriteLocked = ref(false)
 const brands = ref<PlatformBrand[]>([])
@@ -78,6 +81,7 @@ const confirming = ref(false)
 const retryPayload = ref<FrozenBrandCreateRequest | null>(null)
 const form = ref<BrandCreateInput>({ code: '', name: '', default_locale: 'en', timezone: 'UTC', reason: '' })
 const selected = computed(() => brands.value.find(brand => brand.id === selectedBrand.value))
+const canManageBrandOperation = computed(() => account.value?.platform_permissions.includes('brand_operation.view.platform') === true && account.value.platform_permissions.includes('brand_operation.write.platform'))
 let memberRequestGeneration = 0
 let auditRequestGeneration = 0
 
@@ -185,6 +189,20 @@ function statusLabel(status: string) {
 async function openBrandMembers(brandId: string) { section.value = 'users'; await chooseBrand(brandId) }
 async function openBrandAccounts(brandId: string) { accessScope.value = 'brand'; await chooseSection('access'); await chooseBrand(brandId) }
 async function openBrandAudit(brandId: string) { section.value = 'audit'; await chooseBrand(brandId) }
+async function refreshAfterBrandOperation(record: BrandOperation) {
+  try {
+    await loadWorkspace()
+    notice.value = locale.value === 'en' ? `${record.name}: status change confirmed; the directory shows the latest status.` : `${record.name}：状态变更已确认，目录显示最新状态。`
+  } catch {
+    brands.value = []
+    members.value = []
+    auditRows.value = []
+    selectedBrand.value = ''
+    memberRequestGeneration++
+    auditRequestGeneration++
+    notice.value = locale.value === 'en' ? 'Brand status changed; refresh the directory to see the latest status.' : '品牌状态已变更；请刷新目录查看最新状态。'
+  }
+}
 function openWallet(memberId: string) { walletMember.value = memberId; section.value = 'wallets'; memberRequestGeneration++; auditRequestGeneration++; loading.value = false; error.value = '' }
 function beginCreate() {
   if (retryPayload.value) { confirming.value = true; modal.value = true; return }
@@ -249,7 +267,7 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
               <button v-if="brandQuery || brandStatus" class="secondary" @click="brandQuery = ''; brandStatus = ''">{{ directoryCopy.clear }}</button>
             </div>
             <div class="table-wrap"><table><thead><tr><th>{{ lang.name }}</th><th>{{ lang.code }}</th><th>{{ lang.status }}</th><th></th></tr></thead><tbody>
-              <tr v-for="brand in filteredBrands" :key="brand.id" class="clickable-row" @click="openBrandMembers(brand.id)"><td><strong>{{ brand.name }}</strong><small>{{ brand.id }}</small></td><td class="mono">{{ brand.code }}</td><td><span :class="['status-pill', brand.status]">{{ statusLabel(brand.status) }}</span></td><td><button class="row-action" @click.stop="openBrandMembers(brand.id)">{{ lang.view }} →</button><button class="row-action" @click.stop="openBrandAccounts(brand.id)">{{ locale === 'en' ? 'View accounts' : '查看账号' }} →</button></td></tr>
+              <tr v-for="brand in filteredBrands" :key="brand.id" class="clickable-row" @click="openBrandMembers(brand.id)"><td><strong>{{ brand.name }}</strong><small>{{ brand.id }}</small></td><td class="mono">{{ brand.code }}</td><td><span :class="['status-pill', brand.status]">{{ statusLabel(brand.status) }}</span></td><td><button class="row-action" @click.stop="openBrandMembers(brand.id)">{{ lang.view }} →</button><button class="row-action" @click.stop="openBrandAccounts(brand.id)">{{ locale === 'en' ? 'View accounts' : '查看账号' }} →</button><button v-if="canManageBrandOperation" class="row-action" @click.stop="brandOperationPanel?.openForBrand(brand.id)">{{ locale === 'en' ? 'Manage status' : '管理运行状态' }}</button></td></tr>
               <tr v-if="!brands.length"><td colspan="4" class="empty-state">{{ lang.empty }}</td></tr>
               <tr v-else-if="!filteredBrands.length"><td colspan="4" class="empty-state" role="status">{{ directoryCopy.empty }}</td></tr>
             </tbody></table></div>
@@ -325,6 +343,7 @@ onMounted(() => { loadWorkspace().catch(() => {}) })
           <WithdrawalsPanel :brand-id="selectedBrand" :locale="locale" @failure="handleFailure" />
         </template>
       </main>
+      <BrandOperationPanel ref="brandOperationPanel" :locale="locale" :allowed="canManageBrandOperation" @updated="refreshAfterBrandOperation" @failure="handleFailure" />
     </section>
     <div v-if="modal" class="modal-scrim" @click.self="!busy && (modal = false)"><section class="modal-card" role="dialog" aria-modal="true" :aria-label="confirming ? lang.confirmation : lang.createBrand">
       <template v-if="!confirming"><div class="modal-heading"><div><div class="eyebrow">{{ lang.platformDirectory }}</div><h2>{{ lang.createBrand }}</h2></div><button class="icon-button" @click="modal = false">×</button></div><p class="modal-intro">{{ lang.createDescription }}</p>

@@ -152,7 +152,7 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 		prefix = "/api/v1/platform"
 	}
 	handle := func(method, path string, fn http.HandlerFunc) {
-		if platform && method != "GET" && path != "/auth/login" && path != "/auth/logout" && !(method == "POST" && path == "/brands") && !platformAccountWriteRoute(method, path) {
+		if platform && method != "GET" && path != "/auth/login" && path != "/auth/logout" && !(method == "POST" && path == "/brands") && !(method == "PATCH" && path == "/brand-operation") && !platformAccountWriteRoute(method, path) {
 			return
 		}
 		mux.HandleFunc(method+" "+prefix+path, func(w http.ResponseWriter, r *http.Request) {

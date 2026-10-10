@@ -643,7 +643,7 @@ S7-k 接入 GET `/api/v1/admin/reports/betting/export` 与 `/api/v1/admin/report
 
 ### 品牌运行状态接口
 
-路径均在 `/api/v1/admin`，必须通过 `X-Brand-ID` 指定品牌。读取需 `brand_operation.view.brand/platform`，写入需 `brand_operation.write.brand/platform`，品牌权限还要求对应品牌范围。超级管理员不自动获得授权；显式平台写权限可以管理不同品牌的运行状态，不授予用户、积分或其他业务写权限。
+路径分别在 `/api/v1/admin` 与 `/api/v1/platform`，必须通过 `X-Brand-ID` 指定品牌。品牌入口仅接受品牌账号及 `brand_operation.view.brand` / `brand_operation.write.brand`，并要求对应品牌范围；平台入口仅接受平台账号及 `brand_operation.view.platform` / `brand_operation.write.platform`。超级管理员不自动获得授权；显式平台写权限可以管理不同品牌的运行状态，不授予用户、积分或其他业务写权限。
 
 | 方法 | 路径 | 合同 |
 |---|---|---|

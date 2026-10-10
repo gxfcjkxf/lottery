@@ -138,7 +138,11 @@ func registerBrandOperationRoutes(handle func(string, string, http.HandlerFunc),
 			return
 		}
 		var fresh access.Account
-		result, err := d.Mutations.ExecuteChecked(r.Context(), b, a.ID, "admin.brand_operation.update", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(b+":"+string(raw)), func(ctx context.Context, tx pgx.Tx) error {
+		operation := "admin.brand_operation.update"
+		if platformAdminEntry(r) {
+			operation = "platform.brand_operation.update"
+		}
+		result, err := d.Mutations.ExecuteChecked(r.Context(), b, a.ID, operation, r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(b+":"+string(raw)), func(ctx context.Context, tx pgx.Tx) error {
 			var e error
 			fresh, e = freshAdmin(ctx, tx, r, d, a, false)
 			if errors.Is(e, adminsys.ErrDenied) || errors.Is(e, identity.ErrSession) {

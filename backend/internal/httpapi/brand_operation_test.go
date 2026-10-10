@@ -102,13 +102,41 @@ func TestBrandOperationSuperAdministratorNeedsExplicitPlatformPermission(t *test
 	}
 	managedData(t, initial, &state)
 	body := map[string]any{"version": state.Version, "status": "paused", "reason": "explicit platform operator pause"}
-	mustStatus(t, f.call("PATCH", path, "brand-super-no-write-01", platformToken, other, body), 404)
+	mustStatus(t, f.call("PATCH", path, "brand-super-no-write-01", platformToken, other, body), 403)
 	role := grantPlatformPermission(t, f, "brand_operation.write.platform")
-	mustStatus(t, f.call("PATCH", path, "brand-super-write-01", platformToken, other, body), 404)
+	paused := f.call("PATCH", path, "brand-super-write-01", platformToken, other, body)
+	mustStatus(t, paused, 200)
+	var after struct {
+		Version int64  `json:"version"`
+		Status  string `json:"status"`
+		AuditID string `json:"audit_log_id"`
+	}
+	managedData(t, paused, &after)
+	if after.Version != state.Version+1 || after.Status != "paused" || after.AuditID == "" {
+		t.Fatal("platform pause missing version or audit", after)
+	}
+	replay := f.call("PATCH", path, "brand-super-write-01", platformToken, other, body)
+	mustStatus(t, replay, 200)
+	var receipt struct {
+		Version int64  `json:"version"`
+		AuditID string `json:"audit_log_id"`
+	}
+	managedData(t, replay, &receipt)
+	if receipt.Version != after.Version || receipt.AuditID != after.AuditID {
+		t.Fatal("replay changed operation", receipt)
+	}
+	mustStatus(t, f.call("PATCH", path, "brand-super-stale-01", platformToken, other, body), 409)
+	resume := map[string]any{"version": after.Version, "status": "active", "reason": "platform resume"}
+	mustStatus(t, f.call("PATCH", path, "brand-super-resume-01", platformToken, other, resume), 200)
+	var status string
+	if err := f.pool.QueryRow(ctx, `SELECT status FROM brands WHERE id=$1`, managedBrand).Scan(&status); err != nil || status != "active" {
+		t.Fatal("platform pause affected another brand", status, err)
+	}
+	mustStatus(t, f.call("PATCH", "/api/v1/admin/brand-operation", "platform-brand-entry-01", platformToken, other, body), 403)
 	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='brand_operation.write.platform'`, role); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, f.call("PATCH", path, "brand-super-write-01", platformToken, other, body), 404)
+	mustStatus(t, f.call("PATCH", path, "brand-super-write-01", platformToken, other, body), 403)
 }
 
 func TestBrandOperationHTTPHistoryFreshReplayAndIsolation(t *testing.T) {

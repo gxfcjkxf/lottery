@@ -25301,7 +25301,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires an explicit brand_operation.write.brand grant for the selected brand or brand_operation.write.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Idempotent replay returns the original successful receipt (200), which may describe an older version after later writes; issue GET to retrieve current state. Version conflicts return 409 CONFIG_VERSION_CONFLICT; brand operation shares the configuration version with brand and authentication configuration updates. The selected brand is identified only by X-Brand-ID.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires an explicit brand_operation.write.brand grant for the selected brand or brand_operation.write.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Idempotent replay returns the original successful receipt (200), which may describe an older version after later writes; issue GET to retrieve current state. Version conflicts return 409 BRAND_OPERATION_VERSION_CONFLICT; brand operation shares the configuration version with brand and authentication configuration updates. The selected brand is identified only by X-Brand-ID.",
         "security": [
           {
             "adminBearer": []
@@ -25950,6 +25950,348 @@
           "brand_operation.view.platform"
         ],
         "x-idempotent-operation": false
+      },
+      "patch": {
+        "operationId": "updateAdminBrandOperationPlatform",
+        "summary": "Platform: Pause or resume the selected brand",
+        "tags": [
+          "administration"
+        ],
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Only platform-scoped grants are considered. Platform business reads remain permission checked. Account and role management are registered explicitly; brand member edits, approvals and financial mutations remain unregistered. Brand pause/resume is also registered explicitly, requires brand_operation.write.platform, and retains version checks, idempotent receipts and audited status history. Paused brands may still log in and withdraw; new bets are rejected and existing orders continue. Requires an explicit brand_operation.write.brand grant for the selected brand or brand_operation.write.platform grant. Super-admin status alone grants no access; a super-admin with the exact required grant is authorized. Idempotent replay returns the original successful receipt (200), which may describe an older version after later writes; issue GET to retrieve current state. Version conflicts return 409 BRAND_OPERATION_VERSION_CONFLICT; brand operation shares the configuration version with brand and authentication configuration updates. The selected brand is identified only by X-Brand-ID.",
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "platformAdminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Request-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_.:-]{1,80}$"
+            },
+            "description": "Accepted correlation syntax; invalid or missing identifiers are replaced by the server."
+          },
+          {
+            "name": "X-Brand-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UUID"
+            },
+            "description": "Selected brand; server revalidates current administrative scope and permission."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_:.-]{8,128}$"
+            },
+            "description": "Unique operation intent. Unknown result retries preserve this key and exactly the same body. Same key/different body returns409; successful cached receipts describe the original result, not live state."
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required when any Cookie is sent: must match the original request Host and accepted scheme. Bearer-only nonbrowser requests may omit it. Client must not forge forwarded Host/IP."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "request_id"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AdminBrandOperation"
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission/scope/origin rejected",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or route unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version/state/idempotency conflict",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Persistent authentication or admission rate limit",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service or storage unavailable",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Correlation identifier, echoed or generated by middleware.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Dynamic API responses are not cacheable.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implemented": true,
+        "x-permissions": [
+          "brand_operation.write.brand",
+          "brand_operation.write.platform"
+        ],
+        "x-idempotent-operation": true,
+        "requestBody": {
+          "required": true,
+          "description": "Exactly one JSON object, at most16KiB; unknown fields rejected where documented. JSON Schema cannot represent duplicate-member rejection; see handler contract.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminBrandOperationUpdateRequest"
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/admin/brand-operation/history": {

@@ -55,6 +55,7 @@ func TestAdministrativeEntriesRejectOtherAccountTypeAndSeparateCookies(t *testin
 	}
 	mustStatus(t, f.call("GET", "/api/v1/admin/me", "", auth.AccessToken, "", nil), 403)
 	mustStatus(t, f.call("GET", "/api/v1/platform/me", "", f.token, "", nil), 403)
+	mustStatus(t, f.call("PATCH", "/api/v1/platform/brand-operation", "entry-brand-operation-01", f.token, managedBrand, map[string]any{"version": 1, "status": "paused", "reason": "brand staff must not enter platform"}), 403)
 	brands := f.call("GET", "/api/v1/platform/brands", "", auth.AccessToken, "", nil)
 	mustStatus(t, brands, 200)
 	var listed struct {
