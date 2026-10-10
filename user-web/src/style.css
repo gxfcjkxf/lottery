@@ -3200,3 +3200,5 @@ input:not([type="checkbox"]):focus {
 th { background: var(--surface) !important; }
 th:first-child, td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); }
 th:last-child, td:last-child { position: sticky; right: 0; z-index: 1; background: var(--surface); text-align: right; }
+.recharge-filter { display: flex; flex-direction: row; align-items: center; gap: 8px; max-width: 320px; }
+.recharge-filter select { flex: 1 1 auto; min-width: 0; }

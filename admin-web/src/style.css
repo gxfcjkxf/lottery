@@ -3853,3 +3853,7 @@ label:has(input[type="radio"]),
 th { background: var(--surface) !important; }
 th:first-child, td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); }
 th:last-child, td:last-child { position: sticky; right: 0; z-index: 1; background: var(--surface); text-align: right; }
+.filters > label, .filter-bar > label, .jc-filters > label { flex-direction: row; align-items: center; gap: 8px; }
+.filters > label > input, .filters > label > select, .filter-bar > label > input, .filter-bar > label > select, .jc-filters > label > input, .jc-filters > label > select { flex: 1 1 auto; min-width: 0; }
+.reports-filter-grid label { display: flex; align-items: center; gap: 8px; }
+.reports-filter-grid label > input, .reports-filter-grid label > select { flex: 1 1 auto; min-width: 0; }

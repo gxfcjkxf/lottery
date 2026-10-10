@@ -804,6 +804,23 @@ td small {
 }
 
 /* Login Shell */
+.loading-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f8fafc;
+}
+
+.loading-card {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+.loading-card p { margin: 0; }
+
 .login-shell {
   min-height: 100vh;
   display: grid;
@@ -1109,3 +1126,9 @@ td small {
   font-size: 11px !important;
   white-space: nowrap !important;
 }
+
+/* Keep filter captions beside their controls. */
+.wallet-query { align-items: center; }
+.wallet-query .query-field { flex-direction: row !important; align-items: center; gap: 8px !important; min-width: 250px !important; }
+.wallet-query .field-label { flex: 0 0 auto; white-space: nowrap; }
+.wallet-query .input-with-icon, .wallet-query .query-field > select { flex: 1 1 auto; min-width: 0; }
