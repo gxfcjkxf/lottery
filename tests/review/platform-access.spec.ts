@@ -47,11 +47,11 @@ test('platform reads genuine scoped accounts roles and permission directory with
   await page.screenshot({ path: info.outputPath('platform-access.png'), fullPage: true });
   await expect(panel.getByRole('button', { name: /Create|Save|Reset|创建|保存|重置/ })).toHaveCount(0);
   for (const path of ['/accounts', '/roles', `/accounts/${firstAccount.id}/reset-password`]) {
-    const denied = await page.request.post(`${origin}/api/v1/platform${path}`, { headers: { ...headers, Origin: origin }, data: {} });
-    expect([404, 405]).toContain(denied.status());
+    const invalid = await page.request.post(`${origin}/api/v1/platform${path}`, { headers: { ...headers, Origin: origin }, data: {} });
+    expect(invalid.status()).toBe(400);
   }
   const patch = await page.request.patch(`${origin}/api/v1/platform/roles/${firstRole.id}`, { headers: { ...headers, Origin: origin }, data: {} });
-  expect([404, 405]).toContain(patch.status());
+  expect(patch.status()).toBe(400);
   for (const [path, data] of before) {
     const response = await page.request.get(`${origin}/api/v1/platform/${path}`, { headers });
     expect(response.status()).toBe(200);

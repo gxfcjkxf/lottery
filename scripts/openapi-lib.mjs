@@ -57,12 +57,11 @@ const doc={openapi:"3.1.1",info:{title:"Lottery Platform Implemented API",versio
     append(source,source.path,false);
     if(source.path.startsWith("/api/v1/admin/")){
       const path=source.path.replace("/api/v1/admin/","/api/v1/platform/");
-      const suffix=source.path.slice("/api/v1/admin".length);
-      if((source.method==="GET"||suffix==="/auth/login"||suffix==="/auth/logout"||source.method==="POST"&&suffix==="/brands")&&routes.some(route=>route.method===source.method&&route.path===path)){
-        append({...source,operationId:source.operationId+"Platform",summary:"Platform: "+source.summary,description:"Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Only platform-scoped grants are considered. Platform business reads remain permission checked. Brand operations, member edits, approvals and financial mutations are not registered on this entry. "+(source.description??"")},path,false);
+      if(routes.some(route=>route.method===source.method&&route.path===path)){
+        append({...source,operationId:source.operationId+"Platform",summary:"Platform: "+source.summary,description:"Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Only platform-scoped grants are considered. Platform business reads remain permission checked. Account and role management are registered explicitly; brand member edits, approvals and financial mutations remain unregistered. "+(source.description??"")},path,false);
       }
       doc.paths[source.path][source.method.toLowerCase()].description="Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. "+(source.description??"");
-    }else if(source.path.startsWith("/api/v1/")){
+    }else if(source.path.startsWith("/api/v1/")&&!source.path.startsWith("/api/v1/platform/")){
       append(source,source.path.replace("/api/v1/","/api/v1/b/{brandCode}/"),true);
     }
   }

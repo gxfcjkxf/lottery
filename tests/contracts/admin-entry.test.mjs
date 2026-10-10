@@ -19,8 +19,12 @@ test('platform admin entry documents only registered independent routes and its 
   const expectedPlatformRoutes = routes
     .filter(route => route.path.startsWith('/api/v1/admin/'))
     .filter(route => route.method === 'GET'
-      || route.method === 'POST' && ['/api/v1/admin/auth/login', '/api/v1/admin/auth/logout', '/api/v1/admin/brands'].includes(route.path))
+      || route.method === 'POST' && ['/api/v1/admin/auth/login', '/api/v1/admin/auth/logout', '/api/v1/admin/brands', '/api/v1/admin/accounts', '/api/v1/admin/accounts/{id}/reset-password', '/api/v1/admin/roles'].includes(route.path)
+      || route.method === 'PATCH' && ['/api/v1/admin/accounts/{id}', '/api/v1/admin/roles/{id}'].includes(route.path))
     .map(route => ({ ...route, path: route.path.replace('/api/v1/admin/', '/api/v1/platform/') }));
+  for (const [method, path] of [['GET', '/platform-accounts'], ['GET', '/platform-roles'], ['POST', '/platform-accounts'], ['PATCH', '/platform-accounts/{id}'], ['POST', '/platform-accounts/{id}/reset-password']]) {
+    expectedPlatformRoutes.push({ method, path: `/api/v1/platform${path}` });
+  }
   assert.deepEqual(platformRoutes.map(operationKey).sort(), expectedPlatformRoutes.map(operationKey).sort());
 
   const documentedPlatformRoutes = Object.entries(doc.paths)
@@ -56,9 +60,17 @@ test('platform admin entry documents only registered independent routes and its 
 
   const platformWrites = platformRoutes.filter(route => route.method !== 'GET').map(operationKey).sort();
   assert.deepEqual(platformWrites, [
+    'PATCH /api/v1/platform/accounts/{id}',
+    'PATCH /api/v1/platform/platform-accounts/{id}',
+    'PATCH /api/v1/platform/roles/{id}',
+    'POST /api/v1/platform/accounts',
+    'POST /api/v1/platform/accounts/{id}/reset-password',
     'POST /api/v1/platform/auth/login',
     'POST /api/v1/platform/auth/logout',
     'POST /api/v1/platform/brands',
+    'POST /api/v1/platform/platform-accounts',
+    'POST /api/v1/platform/platform-accounts/{id}/reset-password',
+    'POST /api/v1/platform/roles',
   ]);
   assert.ok(!platformRoutes.some(route => /\/(?:approve|members?)(?:\/|$)/i.test(route.path)));
 });

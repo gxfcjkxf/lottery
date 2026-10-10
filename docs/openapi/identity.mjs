@@ -1,4 +1,5 @@
 import { addHistoryReadHeaders } from "./history-reads.mjs";
+import { schemas as platformAccountSchemas, operations as platformAccountOperations } from "../../scripts/openapi-platform-accounts.mjs";
 const ref = (name) => ({ $ref: `#/components/schemas/${name}` });
 const obj = (properties, required = [], extra = {}) => ({
   type: "object",
@@ -56,6 +57,7 @@ const auditReadDescription = "Requires audit.view.brand for the selected brand o
 const auditExportDescription = "Requires an explicit X-Brand-ID UUID even for platform-authorized exports. The selected brand must have both audit.view.brand or audit.view.platform AND audit.export.brand or audit.export.platform; the view and export grants must apply to that same brand. Requires both RFC3339Nano UTC from and to values ending in literal Z (numeric offsets are rejected), with from < to and a maximum span of 31 days; filtering is half-open [from,to). Accepts the same optional exact action, actor_id, resource_type, resource_id, and request_id filters as GET /admin/audit. Unknown, duplicate, or empty query values, including limit or offset, return 400. Reads the primary database in one snapshot, selects every matching current-window row ordered by created_at descending then id descending, and fails with 422 AUDIT_EXPORT_TOO_LARGE as JSON without a file above 10000 rows or 4 MiB. The CSV is UTF-8 with BOM, RFC 4180 escaped, and uses UTC timestamps. Formula injection is neutralized when the first non-space character is +, -, =, or @, or when a cell contains a tab, CR, or LF. Columns, in order: id, brand_id, action, actor_type, actor_id, resource_type, resource_id, reason, request_id, created_at, ip_address, before_json, after_json. Headers include the explicit brand, RFC3339Nano snapshot time, row count, SHA-256 of the complete CSV bytes including BOM, format version 1, and export UUID. Current session and matching view/export grants are freshly checked before releasing the snapshot; the audit.export record is written on the primary and committed before any CSV bytes are sent. A client must validate complete metadata and digest before starting a blob download.";
 
 export const schemas = {
+  ...platformAccountSchemas,
   ComplianceGateRecord: obj({
     id:ref("UUID"),brand_id:ref("UUID"),policy_version:integer({minimum:1}),
     config:{allOf:[ref("ComplianceConfig"),{anyOf:[{properties:{age_enabled:{const:true}}},{properties:{region_enabled:{const:true}}},{properties:{identity_enabled:{const:true}}},{properties:{account_risk_enabled:{const:true}}},{properties:{betting_risk_enabled:{const:true}}},{properties:{exclusion_enabled:{const:true}}},{properties:{responsible_gambling_enabled:{const:true}}}]}]},
@@ -317,6 +319,7 @@ const op = (method, path, operationId, summary, tag, auth, idempotency, data, ex
 });
 
 export const operations = [
+  ...platformAccountOperations,
   {method:"GET",path:"/api/v1/admin/compliance-gates",operationId:"getComplianceAdmissionRejections",summary:"List actual compliance admission rejections",tag:"administration",auth:"admin",brandHeader:true,idempotency:false,permissions:["compliance_check.view.brand","compliance_check.view.platform"],data:ref("ComplianceGatesPage"),successStatus:200,parameters:[{name:"limit",in:"query",required:false,schema:integer({minimum:1,maximum:100,default:20})},{name:"offset",in:"query",required:false,schema:integer({minimum:0,maximum:1000000,default:0})},{name:"operation",in:"query",required:false,schema:string({enum:["registration","betting"]})}],description:"Brand-scoped audited readonly immutable actual registration/join/operator-provisioning and betting admission rejections. Strict paging/filter, repeatable-read count/rows. Not a manual review queue or real verification/freeze. Evidence and encrypted negative idempotency receipt commit after business rollback; cached replays create no new evidence. Previews are separate non-idempotent observations."},
   ...[
     ["GET","/compliance-policy","getCompliancePolicy","compliance_policy.view.brand","CompliancePolicy",null],
