@@ -19,6 +19,7 @@
     ".": "./src/index.ts",
     "./styles.css": "./src/styles.css",
     "./LanguageSwitcher.vue": "./src/LanguageSwitcher.vue",
-    "./DetailModal.vue": "./src/DetailModal.vue"
+    "./DetailModal.vue": "./src/DetailModal.vue",
+    "./TablePagination.vue": "./src/TablePagination.vue"
   }
 }
