@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import LanguageSwitcher from '@lottery/shared/LanguageSwitcher.vue'
-import { computed, onMounted, ref, shallowRef } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import { createPlatformApi, freezeBrandCreateRequest, PlatformApiError, type BrandCreateInput, type FrozenBrandCreateRequest, type PlatformAudit, type PlatformBrand, type PlatformMember, type PlatformAccount } from './platform-api'
 import { platformErrorMessage } from './platform-error-message'
 import RewardsPanel from './RewardsPanel.vue'
@@ -18,7 +18,10 @@ import BrandOperationPanel from './BrandOperationPanel.vue'
 import type { BrandOperation } from './brand-operation-api'
 
 const api = createPlatformApi()
-const locale = ref<'en' | 'zh-CN'>('en')
+const localeStorageKey = 'lottery-platform-locale'
+const storedLocale = localStorage.getItem(localeStorageKey)
+const locale = ref<'en' | 'zh-CN'>(storedLocale === 'zh-CN' ? 'zh-CN' : 'en')
+const authReady = ref(false)
 const lang = computed(() => locale.value === 'en' ? en : zh)
 const en = {
   title: 'Northstar', subtitle: 'Platform administration', loginTitle: 'Sign in to platform', identifier: 'Username', password: 'Password', signIn: 'Sign in', workspace: 'Workspace',
@@ -230,11 +233,17 @@ async function submitCreate() {
     else { handleFailure(cause); retryPayload.value = null }
   } finally { busy.value = false }
 }
-onMounted(() => { loadWorkspace().catch(() => {}) })
+watch(locale, (value) => localStorage.setItem(localeStorageKey, value))
+onMounted(() => {
+  loadWorkspace().catch(() => {}).finally(() => { authReady.value = true })
+})
 </script>
 
 <template>
-  <main v-if="!account" class="login-shell">
+  <main v-if="!authReady" class="loading-shell" aria-busy="true">
+    <div class="loading-card"><div class="brand-mark">N</div><div class="eyebrow">{{ lang.subtitle }}</div><p>{{ lang.loading }}</p></div>
+  </main>
+  <main v-else-if="!account" class="login-shell">
     <div class="login-card">
       <div class="brand-mark">N</div><div class="eyebrow">{{ lang.subtitle }}</div><h1>{{ lang.loginTitle }}</h1>
       <form @submit.prevent="login">
