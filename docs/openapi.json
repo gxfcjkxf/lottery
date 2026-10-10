@@ -63570,7 +63570,7 @@
         "tags": [
           "games"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Review requires a different authorized reviewer from the creator/editor; SUPER_ADMIN is read-only for this brand workflow.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Brand administrators with rule.review.brand may review rules they created or edited. The rule must be pending review with a current passing validation report; approval requires explicit warning acknowledgement. Version checks and immutable review audit records remain required; SUPER_ADMIN is read-only for this brand workflow.",
         "security": [
           {
             "adminBearer": []
@@ -63938,7 +63938,7 @@
         "tags": [
           "games"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Review requires a different authorized reviewer from the creator/editor; SUPER_ADMIN is read-only for this brand workflow.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Brand administrators with rule.review.brand may review rules they created or edited. The rule must be pending review with a current passing validation report; approval requires explicit warning acknowledgement. Version checks and immutable review audit records remain required; SUPER_ADMIN is read-only for this brand workflow.",
         "security": [
           {
             "adminBearer": []

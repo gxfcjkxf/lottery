@@ -7,6 +7,18 @@ const doc = JSON.parse(readFileSync(new URL('../../docs/openapi.json', import.me
 const go = process.env.LOTTERY_GO_BIN ?? 'go';
 const operationKey = ({ method, path }) => `${method.toUpperCase()} ${path}`;
 
+test('rule review contract permits authorized self-review without removing validation or platform isolation', () => {
+  for (const decision of ['approve', 'reject']) {
+    const operation = doc.paths[`/api/v1/admin/rule-versions/{id}/${decision}`].post;
+    assert.match(operation.description, /rule\.review\.brand/);
+    assert.match(operation.description, /may review rules they created or edited/);
+    assert.match(operation.description, /validation.*warning/i);
+    assert.match(operation.description, /SUPER_ADMIN is read-only/);
+    assert.doesNotMatch(operation.description, /different authorized reviewer|creator\/editor/);
+    assert.equal(doc.paths[`/api/v1/platform/rule-versions/{id}/${decision}`], undefined);
+  }
+});
+
 test('platform admin entry documents only registered independent routes and its own cookie boundary', () => {
   const result = spawnSync(go, ['run', '-buildvcs=false', './cmd/route-inventory'], {
     cwd: new URL('../../backend/', import.meta.url),
