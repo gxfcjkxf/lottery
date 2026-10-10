@@ -25,6 +25,7 @@
     "test:capacity-settlement": "node scripts/check-capacity-settlement.mjs",
     "test:capacity-withdrawals": "node scripts/check-capacity-withdrawals.mjs",
     "test:capacity-commission": "node scripts/check-capacity-commission.mjs",
+    "test:capacity-mixed-models": "node scripts/check-capacity-mixed-models.mjs",
     "test:e2e": "playwright test",
     "test:webkit": "playwright test --config playwright.webkit.config.ts",
     "test:responsive": "playwright test --config playwright.responsive.config.ts",

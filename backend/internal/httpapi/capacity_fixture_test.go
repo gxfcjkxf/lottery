@@ -74,6 +74,15 @@ func capacityTx(t *testing.T, p *pgxpool.Pool, run func(pgx.Tx) error) {
 	}
 }
 func capacityRule(t *testing.T, p *pgxpool.Pool, brand, code string, window, drawDelay time.Duration) betting.Input {
+	three := 3
+	definition := rules.Definition{SchemaVersion: 1, Model: rules.Model{Type: "DIGITS_0_9", Length: 3, AllowRepeat: true, Ordered: true}, Selection: rules.SelectionRule{Mode: "numbers"}, UnitPoints: 1, PrizeTiers: []rules.Tier{{Code: "EXACT", Condition: rules.Condition{Op: "equals", Field: "position_match", Value: &three}, Odds: "10", Exclusive: true}}, Rounding: "half_up", RoundingScope: "order", Limits: rules.Limits{MaxCombinations: 100, MaxMultiplier: 1000}}
+	stake, prize := points.Amount(1), points.Amount(10)
+	won := true
+	validation := rules.ValidationCase{Name: "exact", Selection: rules.Selection{Digits: [][]int{{1}, {2}, {1}}}, Draw: rules.Draw{Digits: []int{1, 2, 1}}, Multiplier: 1, ExpectedBetPoints: &stake, ExpectedPrizePoints: &prize, ExpectedWon: &won}
+	return capacityRuleDefinition(t, p, brand, code, window, drawDelay, definition, validation)
+}
+
+func capacityRuleDefinition(t *testing.T, p *pgxpool.Pool, brand, code string, window, drawDelay time.Duration, definition rules.Definition, validation rules.ValidationCase) betting.Input {
 	t.Helper()
 	ctx := context.Background()
 	rs := rulebook.Store{DB: p}
@@ -91,8 +100,6 @@ func capacityRule(t *testing.T, p *pgxpool.Pool, brand, code string, window, dra
 		return access.Account{ID: id, Type: access.AccountAdmin, BrandIDs: []string{brand}, Roles: []access.Role{r}}
 	}
 	creator, reviewer := actor(creatorID, "write", "validate", "submit"), actor(reviewerID, "review")
-	three := 3
-	definition := rules.Definition{SchemaVersion: 1, Model: rules.Model{Type: "DIGITS_0_9", Length: 3, AllowRepeat: true, Ordered: true}, Selection: rules.SelectionRule{Mode: "numbers"}, UnitPoints: 1, PrizeTiers: []rules.Tier{{Code: "EXACT", Condition: rules.Condition{Op: "equals", Field: "position_match", Value: &three}, Odds: "10", Exclusive: true}}, Rounding: "half_up", RoundingScope: "order", Limits: rules.Limits{MaxCombinations: 100, MaxMultiplier: 1000}}
 	meta := points.Metadata{ActorType: "admin", ActorID: creatorID, RequestID: ids.New()}
 	var game rulebook.Game
 	var play rulebook.Play
@@ -113,11 +120,9 @@ func capacityRule(t *testing.T, p *pgxpool.Pool, brand, code string, window, dra
 		version, e = rs.CreateVersion(ctx, tx, brand, creator, play.ID, definition, "immediate", "capacity isolated fixture", meta)
 		return e
 	})
-	stake, prize := points.Amount(1), points.Amount(10)
-	won := true
 	capacityTx(t, p, func(tx pgx.Tx) error {
 		var e error
-		version, e = rs.Validate(ctx, tx, brand, creator, version.ID, version.Version, []rules.ValidationCase{{Name: "exact", Selection: rules.Selection{Digits: [][]int{{1}, {2}, {1}}}, Draw: rules.Draw{Digits: []int{1, 2, 1}}, Multiplier: 1, ExpectedBetPoints: &stake, ExpectedPrizePoints: &prize, ExpectedWon: &won}}, "capacity isolated validation", meta)
+		version, e = rs.Validate(ctx, tx, brand, creator, version.ID, version.Version, []rules.ValidationCase{validation}, "capacity isolated validation", meta)
 		return e
 	})
 	capacityTx(t, p, func(tx pgx.Tx) error {
@@ -147,7 +152,7 @@ func capacityRule(t *testing.T, p *pgxpool.Pool, brand, code string, window, dra
 	if e != nil {
 		t.Fatal(e)
 	}
-	return betting.Input{PeriodID: period.ID, PlayID: play.ID, RuleVersionID: version.ID, Selection: rules.Selection{Digits: [][]int{{1}, {2}, {1}}}, Multiplier: 1, PolicyVersions: &betting.PolicyVersions{Brand: bp.Version, Game: gp.Version}}
+	return betting.Input{PeriodID: period.ID, PlayID: play.ID, RuleVersionID: version.ID, Selection: validation.Selection, Multiplier: validation.Multiplier, PolicyVersions: &betting.PolicyVersions{Brand: bp.Version, Game: gp.Version}}
 }
 func newCapacityFixture(t *testing.T, userCount, brands int, poolSize int32) capacityFixture {
 	return newCapacityMembers(t, userCount, brands, poolSize, false)

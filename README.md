@@ -114,6 +114,8 @@ pnpm test:e2e --project=mobile --shard=2/2 --workers=1 --retries=0
 
 `pnpm test:pwa`验证生产构建元数据、图标和公开哈希缓存，不连接API/数据库，不缓存HTML、私有API或写请求，不排队重放投注/提现，不等于真机安装或完整离线验收。
 
+三模型复式/倍投受控压测的原始报告及复跑命令见[容量交接](docs/43-current-capacity-baselines.md)；`pnpm test:capacity-mixed-models REPORT.json`独立核对15000笔请求、各模型实际组合/倍数/金额及账本不变量，不将本机结果视为生产或主从验收。
+
 设置独立WebKit可执行路径和受保护测试凭据后，`pnpm test:webkit`运行真实账号、后台权限及风控双视口功能专项；服务工作线程明确禁用，不将其当作Safari/iPhone真机或PWA验证。安装、环境及范围见[WebKit交接](docs/46-webkit-functional-verification.md)。
 
 `pnpm test:responsive`在768px/1024px复用真实注册与完整投注浏览器流程，要求独立合成库的正式API/worker、不同的Harbor创建/审核账号，以及明确的Chromium路径；环境变量同投注测试（TEST_HARBOR_ADMIN_USERNAME/PASSWORD、TEST_RULE_REVIEWER_USERNAME/PASSWORD、PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH）。串行、零重试，不复用已占用的5173/5174/5175前端服务。它不覆盖这两种尺寸的完整提现/佣金或真机安装。
