@@ -204,7 +204,6 @@ onBeforeUnmount(() => { ++generation; form.value.password = ''; pending.value = 
 
 <template>
   <div data-testid="platform-access">
-    <div class="page-heading"><div><h1>{{ copy.title }}</h1></div></div>
     <div class="wallet-pagination" role="tablist" :aria-label="copy.title" data-testid="platform-access-tabs">
       <button :disabled="locked" :class="tab === 'accounts' ? 'primary' : 'secondary'" role="tab" :aria-selected="tab === 'accounts'" @click="chooseTab('accounts')">{{ copy.accounts }}</button>
       <button :disabled="locked" :class="tab === 'roles' ? 'primary' : 'secondary'" role="tab" :aria-selected="tab === 'roles'" @click="chooseTab('roles')">{{ copy.roles }}</button>
