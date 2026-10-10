@@ -145,7 +145,7 @@ test('browser CI keeps independent database and viewport or shard splits', () =>
   const browser = /^  browser:\n([\s\S]*?)(?=^  [a-z][a-z-]*:\n|(?![\s\S]))/m.exec(workflow)?.[1];
   assert.ok(commission);
   assert.ok(browser);
-  assert.match(commission, /viewport: \[desktop, mobile\]/);
+  assert.match(commission, /viewport: \[desktop, mobile, tablet768, laptop1024\]/);
   assert.match(commission, /POSTGRES_DB: lottery_commission_ui_\$\{\{ matrix\.viewport \}\}_s16/);
   assert.match(browser, /project: \[desktop, mobile\]/);
   assert.match(browser, /shard: \[1, 2\]/);

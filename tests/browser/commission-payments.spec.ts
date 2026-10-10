@@ -8,8 +8,8 @@ const fixture=process.env.COMMISSION_FIXTURE_BIN;
 type Payment={id:string;state:string;version:number;payout_mode:string;total_points:string;paid_points:string;paid_count:string;target_count:string};
 async function data<T>(response:Pick<APIResponse,'text'|'status'>):Promise<T>{const body=await response.text();expect(response.status(),body).toBe(200);const e=JSON.parse(body);expect(e.success).toBe(true);return e.data as T;}
 function command(name:'pay'|'verify'){return JSON.parse(execFileSync(fixture!,[name],{env:process.env,encoding:'utf8',timeout:30_000})) as Record<string,unknown>;}
-async function navigate(page:Page,project:string,destination:string){
-  if(project==='mobile'){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:new RegExp(destination)}).click();}
+async function navigate(page:Page,destination:string){
+  if(await page.evaluate(()=>innerWidth<=700)){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:new RegExp(destination)}).click();}
   else await page.locator('.side-nav').getByRole('button',{name:new RegExp(destination)}).click();
 }
 async function confirm(page:Page){const dialog=page.getByTestId('commission-payment-review');await expect(dialog).toBeVisible();await dialog.getByRole('checkbox').check();await dialog.getByRole('button',{name:'确认提交',exact:true}).click();}
@@ -27,7 +27,7 @@ test('real payout opt-in credits automatic C and preserves lost manual approval 
   const get=async<T>(path:string)=>data<T>(await page.request.get(`${admin}${path}`,{headers:{'X-Brand-ID':brand}}));
   expect((await get<{enabled:boolean;version:number;audit_log_id:string}>('/commission-payment-policy')).enabled).toBe(false);
   await page.goto(origin);await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);
-  await navigate(page,info.project.name,'佣金派发|Commission payouts');
+  await navigate(page,'佣金派发|Commission payouts');
   let panel=page.locator('.commission-payments');
   await expect(panel.getByRole('heading',{name:'佣金派发管理',exact:true})).toBeVisible();
   await expect(panel.getByTestId('commission-payment-policy-enabled')).not.toBeChecked();
@@ -61,8 +61,8 @@ test('real payout opt-in credits automatic C and preserves lost manual approval 
   expect((await get<Payment>(`/commission-payments/${manual.id}`)).state).toBe('paid');
   await panel.locator('.cp-heading').getByRole('button',{name:'刷新',exact:true}).click();
   await expect(panel.getByRole('button',{name:'使用原请求重试',exact:true})).toBeVisible();
-  await navigate(page,info.project.name,'佣金和奖励|Commissions.*rewards');
-  await navigate(page,info.project.name,'佣金派发|Commission payouts');panel=page.locator('.commission-payments');
+  await navigate(page,'佣金和奖励|Commissions.*rewards');
+  await navigate(page,'佣金派发|Commission payouts');panel=page.locator('.commission-payments');
   await panel.getByRole('button',{name:'使用原请求重试',exact:true}).click();await confirm(page);
   await expect(panel.getByTestId('commission-payment-receipt')).toContainText(`派发中 · v${manual.version+1}`);
   await expect(panel.locator('.cp-detail')).toContainText('已入账');
@@ -87,7 +87,7 @@ test('current payout status renders exact credited C without further financial w
   rememberAdminSession('commission_admin',await context.cookies(`${admin}/me`),origin);
   const writes:string[]=[];page.on('request',r=>{if(r.url().startsWith(admin)&&r.method()!=='GET')writes.push(r.url());});
   await page.goto(origin);await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);
-  await navigate(page,info.project.name,'佣金派发|Commission payouts');const panel=page.locator('.commission-payments');
+  await navigate(page,'佣金派发|Commission payouts');const panel=page.locator('.commission-payments');
   await expect(panel.getByRole('heading',{name:'佣金派发管理',exact:true})).toBeVisible();
   const jobs=await data<{items:Payment[]}>(await page.request.get(`${admin}/commission-payments?limit=100&offset=0`,{headers:{'X-Brand-ID':brand}}));
   const credited=jobs.items.find(x=>x.payout_mode==='automatic'&&x.state==='paid'&&x.paid_points==='1')!;expect(credited).toBeTruthy();

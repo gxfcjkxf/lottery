@@ -9,8 +9,8 @@ type Target={id:string;member_id:string;original_points:string;adjusted_points:s
 type Receipt={id:string;version:number;points_before:string;points_after:string;delta_points:string;ledger_entry_id:string;created_by:string};
 async function data<T>(r:Pick<APIResponse,'text'|'status'>,status=200):Promise<T>{const body=await r.text();expect(r.status(),body).toBe(status);const e=JSON.parse(body);expect(e.success).toBe(true);return e.data as T;}
 function command(name:'verify'|'notify'){return JSON.parse(execFileSync(fixture!,[name],{env:process.env,encoding:'utf8',timeout:30_000})) as Record<string,unknown>;}
-async function navigate(page:Page,project:string,destination:string){
-  if(project==='mobile'){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:new RegExp(destination)}).click();}
+async function navigate(page:Page,destination:string){
+  if(await page.evaluate(()=>innerWidth<=700)){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:new RegExp(destination)}).click();}
   else await page.locator('.side-nav').getByRole('button',{name:new RegExp(destination)}).click();
 }
 async function confirm(page:Page){const dialog=page.getByTestId('adjustment-review-dialog');await expect(dialog).toBeVisible();await dialog.getByTestId('adjustment-confirmed').check();await dialog.getByTestId('adjustment-confirm-submit').click();}
@@ -30,7 +30,7 @@ test('real commission differences retain lost receipts across newer corrections 
   const original=(await targets()).items[0]!;expect(original.original_points).toBe('1');expect(original.adjusted_points).toBe('1');expect(original.adjustment_version).toBe(1);
   const path=`/commission-payment-targets/${original.id}/adjustments`;
   await page.goto(origin);await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);
-  await navigate(page,info.project.name,'佣金派发|Commission payouts');
+  await navigate(page,'佣金派发|Commission payouts');
   const payout=page.locator('.commission-payments');await payout.getByRole('button',{name:payment.id,exact:true}).click();
   let panel=page.getByTestId('commission-adjustments-management');
   await expect(panel.getByTestId('adjustment-points')).toBeEnabled();
@@ -50,7 +50,7 @@ test('real commission differences retain lost receipts across newer corrections 
   // lost v1 request is recovered. Old receipt replay must not credit twice.
   const later=await data<Receipt>(await page.request.post(`${admin}${path}`,{headers:{Origin:origin,'X-Brand-ID':brand,'X-Commission-Payment-Actor-ID':me.account.id,'Idempotency-Key':crypto.randomUUID()},data:{version:2,points:'4',reason:'Independent later synthetic correction before old receipt recovery'}}),201);
   expect(later.version).toBe(3);expect(later.delta_points).toBe('1');
-  await navigate(page,info.project.name,'佣金和奖励|Commissions.*rewards');await navigate(page,info.project.name,'佣金派发|Commission payouts');
+  await navigate(page,'佣金和奖励|Commissions.*rewards');await navigate(page,'佣金派发|Commission payouts');
   await payout.getByRole('button',{name:payment.id,exact:true}).click();panel=page.getByTestId('commission-adjustments-management');
   await panel.getByRole('button',{name:'使用原请求重试',exact:true}).click();await confirm(page);
   await expect(panel.getByTestId('adjustment-receipt')).toContainText('v2');
@@ -84,7 +84,7 @@ test('current adjustment status preserves original payout and immutable net hist
   const payment=jobs.items.find(p=>p.state==='paid'&&p.payout_mode==='automatic'&&p.paid_points==='1')!;expect(payment).toBeTruthy();
   const writes:string[]=[];page.on('request',r=>{if(r.url().startsWith(admin)&&r.method()!=='GET')writes.push(r.url());});
   await page.goto(origin);await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);
-  await navigate(page,info.project.name,'佣金派发|Commission payouts');await page.locator('.commission-payments').getByRole('button',{name:payment.id,exact:true}).click();
+  await navigate(page,'佣金派发|Commission payouts');await page.locator('.commission-payments').getByRole('button',{name:payment.id,exact:true}).click();
   const panel=page.getByTestId('commission-adjustments-management');await expect(panel.locator('.history-card')).toHaveCount(3);
   const facts=panel.locator('.target-detail');await expect(facts).toContainText('原始佣金积分');await expect(facts.locator('dd').nth(0)).toHaveText('1');await expect(facts.locator('dd').nth(1)).toHaveText('0');await expect(facts.locator('dd').nth(2)).toHaveText('4');
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await panel.screenshot({path:info.outputPath('commission-adjustments-current-panel.png')});

@@ -45,6 +45,8 @@ const (
 	fixtureUser  = "commission_user"
 	fixtureDBA   = "/lottery_commission_ui_desktop_s16"
 	fixtureDBB   = "/lottery_commission_ui_mobile_s16"
+	fixtureDBT   = "/lottery_commission_ui_tablet768_s16"
+	fixtureDBL   = "/lottery_commission_ui_laptop1024_s16"
 	fixtureDBAV  = "/lottery_commission_ui_desktop_s16_verified"
 	fixtureDBBV  = "/lottery_commission_ui_mobile_s16_verified"
 	fixtureDBAF  = "/lottery_commission_ui_desktop_s16_final"
@@ -75,7 +77,7 @@ func safeFixtureURL(raw, environment, confirmation, adminPassword, userPassword 
 		(u.Scheme != "postgres" && u.Scheme != "postgresql") ||
 		(u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") ||
 		(u.Port() != "5432" && u.Port() != "55432") ||
-		(u.Path != fixtureDBA && u.Path != fixtureDBB && u.Path != fixtureDBAV && u.Path != fixtureDBBV && u.Path != fixtureDBAF && u.Path != fixtureDBBF && u.Path != fixtureDBAD && u.Path != fixtureDBBD && u.Path != fixtureDBAP && u.Path != fixtureDBBP && u.Path != fixtureDBAPV && u.Path != fixtureDBBPV && u.Path != fixtureDBAPA && u.Path != fixtureDBBPA && u.Path != fixtureDBAA && u.Path != fixtureDBBA && u.Path != fixtureDBAAV && u.Path != fixtureDBBAV && u.Path != fixtureDBAR && u.Path != fixtureDBBR && u.Path != fixtureDBAC && u.Path != fixtureDBBC && u.Path != fixtureDBANA && u.Path != fixtureDBANB) || u.RawPath != "" || u.Fragment != "" || u.Opaque != "" ||
+		(u.Path != fixtureDBA && u.Path != fixtureDBB && u.Path != fixtureDBT && u.Path != fixtureDBL && u.Path != fixtureDBAV && u.Path != fixtureDBBV && u.Path != fixtureDBAF && u.Path != fixtureDBBF && u.Path != fixtureDBAD && u.Path != fixtureDBBD && u.Path != fixtureDBAP && u.Path != fixtureDBBP && u.Path != fixtureDBAPV && u.Path != fixtureDBBPV && u.Path != fixtureDBAPA && u.Path != fixtureDBBPA && u.Path != fixtureDBAA && u.Path != fixtureDBBA && u.Path != fixtureDBAAV && u.Path != fixtureDBBAV && u.Path != fixtureDBAR && u.Path != fixtureDBBR && u.Path != fixtureDBAC && u.Path != fixtureDBBC && u.Path != fixtureDBANA && u.Path != fixtureDBANB) || u.RawPath != "" || u.Fragment != "" || u.Opaque != "" ||
 		u.User == nil || u.User.Username() != "lottery_test" || len(adminPassword) < 16 && requirePasswords || len(userPassword) < 16 && requirePasswords {
 		return errors.New("explicit owned synthetic commission database required")
 	}

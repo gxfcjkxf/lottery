@@ -656,7 +656,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        viewport: [desktop, mobile]
+        viewport: [desktop, mobile, tablet768, laptop1024]
+        include:
+          - viewport: desktop
+            config: playwright.config.ts
+          - viewport: mobile
+            config: playwright.config.ts
+          - viewport: tablet768
+            config: playwright.commission-responsive.config.ts
+          - viewport: laptop1024
+            config: playwright.commission-responsive.config.ts
     services:
       postgres:
         image: postgres:17.5-alpine
@@ -691,6 +700,8 @@ jobs:
       - name: Prepare and verify Chromium
         timeout-minutes: 7
         run: node scripts/prepare-ci-browser.mjs
+      - name: Pin Chromium for explicit commission configurations
+        run: node --input-type=module -e 'import { chromium } from "@playwright/test"; import { appendFileSync } from "node:fs"; appendFileSync(process.env.GITHUB_ENV, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${chromium.executablePath()}\n`);'
       - name: Create owned real commission workflows and start API
         working-directory: backend
         run: |
@@ -703,15 +714,15 @@ jobs:
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
       # The test advances real workers explicitly between lost/replayed
       # receipts. No always-running worker races the unregistered anchor.
-      - run: pnpm exec playwright test tests/browser/commission-cycles.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
-      - run: pnpm exec playwright test tests/browser/commission-payments.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
-      - run: pnpm exec playwright test tests/browser/commission-adjustments.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
-      - run: pnpm exec playwright test tests/browser/commission-reports.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
+      - run: pnpm exec playwright test tests/browser/commission-cycles.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --config=${{ matrix.config }}
+      - run: pnpm exec playwright test tests/browser/commission-payments.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --config=${{ matrix.config }}
+      - run: pnpm exec playwright test tests/browser/commission-adjustments.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --config=${{ matrix.config }}
+      - run: pnpm exec playwright test tests/browser/commission-reports.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --config=${{ matrix.config }}
       - name: Verify commission analysis passes without skips
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: .local/commission-analysis-report.json
         run: |
-          pnpm exec playwright test tests/browser/commission-analysis.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --reporter=list,json
+          pnpm exec playwright test tests/browser/commission-analysis.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --config=${{ matrix.config }} --reporter=list,json
           node --input-type=module -e 'import { readFileSync } from "node:fs"; const { stats } = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME, "utf8")); if (stats.skipped !== 0 || !(stats.expected > 0)) throw new Error("Commission analysis CI requires passed tests and zero skipped tests");'
       - uses: actions/upload-artifact@v4
         if: failure()

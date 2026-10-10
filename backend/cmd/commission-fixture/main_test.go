@@ -33,6 +33,8 @@ func TestFixtureGuardAcceptsOnlyNamedLocalSyntheticDatabases(t *testing.T) {
 		t.Fatalf("second explicitly owned local database rejected: %v", err)
 	}
 	for _, dsn := range []string{verifiedDesktopDSN, verifiedMobileDSN, finalDesktopDSN, finalMobileDSN, correctionDesktopDSN, correctionMobileDSN,
+		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_tablet768_s16?sslmode=disable",
+		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_laptop1024_s16?sslmode=disable",
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_analysis_desktop_s56?sslmode=disable",
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_analysis_mobile_s56?sslmode=disable",
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_payment_desktop_s17?sslmode=disable",

@@ -17,8 +17,8 @@ function command(name:'advance'|'discover'|'verify'){
   const value=execFileSync(fixture!,[name],{env:process.env,encoding:'utf8',timeout:30_000});
   return JSON.parse(value) as Record<string,unknown>;
 }
-async function navigate(page:Page,project:string,destination:string){
-  if(project==='mobile'){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:new RegExp(destination)}).click();}
+async function navigate(page:Page,destination:string){
+  if(await page.evaluate(()=>innerWidth<=700)){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:new RegExp(destination)}).click();}
   else await page.locator('.side-nav').getByRole('button',{name:new RegExp(destination)}).click();
   return page.locator('.commission-cycles');
 }
@@ -45,7 +45,7 @@ test('real commission cycles retain unknown requests, retry real failures and pr
   const discovery=queued.items.find(d=>d.state==='failed')!;
   expect(ready).toBeTruthy();expect(failed).toBeTruthy();expect(discovery).toBeTruthy();expect(ready.total_points).toBe('1');
   await page.goto(origin);await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);
-  let panel=await navigate(page,info.project.name,'佣金和奖励|Commissions.*rewards');
+  let panel=await navigate(page,'佣金和奖励|Commissions.*rewards');
   await expect(panel.getByRole('heading',{name:'佣金周期核算',exact:true})).toBeVisible();
   await panel.locator(`[data-cycle-id="${ready.id}"]`).click();
   await expect(panel.locator('.detail')).toContainText('核算就绪');
@@ -72,8 +72,8 @@ test('real commission cycles retain unknown requests, retry real failures and pr
   const current=await get<Cycle>(`/commission-cycles/${createdId}`);expect(current.state).toBe('ready');expect(current.version).toBeGreaterThan(1);
   await panel.getByRole('button',{name:'刷新',exact:true}).click();
   await expect(panel.getByRole('heading',{name:'待恢复的原请求',exact:true})).toBeVisible();
-  await navigate(page,info.project.name,'代理树|Agent tree');
-  panel=await navigate(page,info.project.name,'佣金和奖励|Commissions.*rewards');
+  await navigate(page,'代理树|Agent tree');
+  panel=await navigate(page,'佣金和奖励|Commissions.*rewards');
   await expect(panel.getByRole('button',{name:'检查并恢复原请求',exact:true})).toBeVisible();
   await panel.getByRole('button',{name:'检查并恢复原请求',exact:true}).click();await confirm(page);
   await expect(panel.locator('.commission-receipt')).toContainText('登记中 · v1');
@@ -127,7 +127,7 @@ test('current commission management renders exact completed evidence without fin
   rememberAdminSession('commission_admin',await context.cookies(`${admin}/me`),origin);
   const writes:string[]=[];page.on('request',r=>{if(r.url().startsWith(admin)&&r.method()!=='GET')writes.push(r.url());});
   await page.goto(origin);await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);
-  const panel=await navigate(page,info.project.name,'佣金和奖励|Commissions.*rewards');
+  const panel=await navigate(page,'佣金和奖励|Commissions.*rewards');
   await expect(panel.getByRole('heading',{name:'佣金周期核算',exact:true})).toBeVisible();
   const cycles=await data<{items:Cycle[]}>(await page.request.get(`${admin}/commission-cycles?limit=100&offset=0`,{headers:{'X-Brand-ID':brand}}));
   let cycle:Cycle|undefined,runs:Run[]|undefined,selectedRun:Run|undefined,runEarnings:Earning[]|undefined,allocations:Allocation[]|undefined;

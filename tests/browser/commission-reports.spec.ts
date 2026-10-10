@@ -10,8 +10,8 @@ const fixture=process.env.COMMISSION_FIXTURE_BIN;
 const expected={entry_count:'4',paid_entry_count:'1',paid_points:'1',adjustment_entry_count:'3',adjustment_credit_points:'3',adjustment_debit_points:'4',correction_entry_count:'0',correction_credit_points:'0',correction_debit_points:'0',net_points:'0'};
 async function data<T>(r:Pick<APIResponse,'text'|'status'>):Promise<T>{const text=await r.text();expect(r.status(),text).toBe(200);const e=JSON.parse(text);expect(e.success).toBe(true);return e.data as T;}
 function verify(){return JSON.parse(execFileSync(fixture!,['verify'],{env:process.env,encoding:'utf8',timeout:30_000})) as {commission_ledger_entries:number;commission_wallet_points:number;economic_fingerprint:string};}
-async function navigate(page:Page,project:string){
-  if(project==='mobile'){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:/报表和对账|Reports/}).click();}
+async function navigate(page:Page){
+  if(await page.evaluate(()=>innerWidth<=700)){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:/报表和对账|Reports/}).click();}
   else await page.locator('.side-nav').getByRole('button',{name:/报表和对账|Reports/}).click();
 }
 
@@ -25,7 +25,7 @@ test('actual commission posting report filters saved beneficiaries and validates
   const payment=jobs.items.find(p=>p.payout_mode==='automatic'&&p.paid_points==='1')!;expect(payment).toBeTruthy();
   const targets=await get<{items:Array<{id:string;agent_id:string;member_id:string}>}>(`/commission-payments/${payment.id}/targets?limit=20&offset=0`);const target=targets.items[0]!;
   const writes:string[]=[],errors:string[]=[];page.on('request',r=>{if(r.url().startsWith(admin)&&r.method()!=='GET')writes.push(r.url());});page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(origin);await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);await navigate(page,info.project.name);
+  await page.goto(origin);await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);await navigate(page);
   const panel=page.locator('.commission-report');await expect(panel.getByRole('heading',{name:'佣金账本报表',exact:true})).toBeVisible();
   await panel.getByTestId('commission-report-group').selectOption('agent');
   const query=page.waitForResponse(r=>r.request().method()==='GET'&&r.url().startsWith(`${admin}/reports/commission?`));

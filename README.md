@@ -120,6 +120,8 @@ pnpm test:e2e --project=mobile --shard=2/2 --workers=1 --retries=0
 
 四尺寸提现专项使用`pnpm exec playwright test --config playwright.qualification.config.ts`。先在新的UTF8合成库按基线migrate/seed，并运行带browserfixture标签的qualification-fixture：它只允许APP_ENV=test、明确确认、含密码的本机lottery_test连接及lottery_withdrawal_qualification_s9数据库，要求身份和钱包为空。夹具创建四个独立用户，通过真实充值、投注和派奖准备资格。启动正式API/worker，设置TEST_QUAL_ADMIN_PASSWORD、TEST_QUAL_USER_PASSWORD及PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH后串行验证360/768/1024/1440px。不能在已使用的夹具库重复运行或清空原数据来重试；此流程不接入外部支付。
 
+佣金中间尺寸使用`pnpm test:commission-responsive tablet768`或`laptop1024`。各自先初始化新的UTF8合成库lottery_commission_ui_tablet768_s16或lottery_commission_ui_laptop1024_s16，设置APP_ENV=test、含密码的本机lottery_test DATABASE_URL、COMMISSION_FIXTURE_CONFIRM=owned_synthetic_database、COMMISSION_FIXTURE_ADMIN_PASSWORD及COMMISSION_FIXTURE_USER_PASSWORD；带browserfixture标签构建的commission-fixture执行init已包含当前基线与seed。启动正式API，不启动常驻worker：测试显式推进真实任务。设置COMMISSION_FIXTURE_BIN为夹具绝对路径、TEST_COMMISSION_ADMIN_PASSWORD及PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH；顺序入口依次执行周期、派发、修正、报表、分析，任一步失败就停止。不要直接运行整份配置的字母排序测试或重用已完成的有状态夹具。
+
 ## 工程结构
 
 ```text

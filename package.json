@@ -28,6 +28,7 @@
     "test:e2e": "playwright test",
     "test:webkit": "playwright test --config playwright.webkit.config.ts",
     "test:responsive": "playwright test --config playwright.responsive.config.ts",
+    "test:commission-responsive": "node scripts/run-commission-responsive.mjs",
     "test:pwa": "pnpm build && playwright test --config playwright.pwa.config.ts"
   },
   "devDependencies": {

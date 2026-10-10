@@ -48,8 +48,8 @@ async function data<T>(response: Pick<APIResponse, 'text' | 'status'>): Promise<
 function verify(): FixtureVerify {
   return JSON.parse(execFileSync(fixture!, ['verify'], { env: process.env, encoding: 'utf8', timeout: 30_000 })) as FixtureVerify;
 }
-async function navigate(page: Page, project: string) {
-  if (project === 'mobile') {
+async function navigate(page: Page) {
+  if (await page.evaluate(() => innerWidth <= 700)) {
     await page.locator('.mobile-nav button').nth(4).click();
     await page.locator('.mobile-more-menu').getByRole('button', { name: /报表和对账|Reports/ }).click();
   } else {
@@ -126,7 +126,7 @@ test('commission cycle analysis shows saved-period economics and exports the com
 
   await page.goto(origin);
   await page.getByLabel(/选择真实后台品牌|Select an administrative brand/, { exact: true }).selectOption(brand);
-  await navigate(page, info.project.name);
+  await navigate(page);
   const panel = page.locator('.commission-analysis');
   await expect(panel.getByRole('heading', { name: /佣金周期核算与实际入账分析|Commission cycle calculation and actual posting analysis/ })).toBeVisible();
   page.on('request', request => {
@@ -155,14 +155,15 @@ test('commission cycle analysis shows saved-period economics and exports the com
 
   const summary = panel.getByTestId('commission-analysis-summary');
   await expect(summary.locator('dd')).toHaveText(['1', '1', '1', '1', '3', '3', '4', '0', '0', '0', '4', '0', '−1', '0', '1', '0', '完整', '完整']);
-  if (info.project.name === 'mobile') {
+  const usesMobileGrouping = await page.evaluate(() => innerWidth <= 700);
+  if (usesMobileGrouping) {
     await panel.locator('.mobile-groups details summary').click();
     await expect(panel.locator('.mobile-groups')).toBeVisible();
     await expect(panel.locator('.mobile-groups dd')).toHaveCount(18);
   } else {
     await expect(panel.locator('.table-wrap')).toBeVisible();
   }
-  const configuredWidth = info.project.name === 'mobile' ? 360 : 1440;
+  const configuredWidth = await page.evaluate(() => innerWidth);
   await expect.poll(() => page.evaluate(width => document.documentElement.scrollWidth <= width + 1, configuredWidth)).toBe(true);
   await panel.screenshot({ path: info.outputPath('commission-analysis-panel.png') });
   await page.screenshot({ path: info.outputPath('commission-analysis-viewport.png') });
@@ -235,7 +236,7 @@ test('commission cycle analysis shows saved-period economics and exports the com
   expect(byAgent.items).toEqual([{key: target!.agent_id, label: target!.agent_id, totals: expectedTotals}]);
   expect(byAgent.summary).toEqual(expectedTotals);
   await expect(panel.getByTestId('commission-analysis-summary').locator('dd')).toHaveText(['1', '1', '1', '1', '3', '3', '4', '0', '0', '0', '4', '0', '−1', '0', '1', '0', 'Complete', 'Complete']);
-  if (info.project.name === 'mobile') await panel.locator('.mobile-groups details summary').click();
+  if (usesMobileGrouping) await panel.locator('.mobile-groups details summary').click();
   await expect.poll(() => page.evaluate(width => document.documentElement.scrollWidth <= width + 1, configuredWidth)).toBe(true);
   await panel.screenshot({path: info.outputPath('commission-analysis-english-panel.png')});
   expect(writes).toEqual([]);
