@@ -68,7 +68,7 @@ test('access lists paginate and clear list-snapshot details on errors and scope 
   const roles = Array.from({ length: 51 }, (_, index) => ({ id: crypto.randomUUID(), brand_id: brand, code: `role_${index}`, name: `Role ${index}`, status: 'active', version: 1, is_bootstrap: false, permissions: ['user.view.brand'] }));
   await page.route('**/api/v1/platform/roles?**', async route => {
     const offset = Number(new URL(route.request().url()).searchParams.get('offset'));
-    await route.fulfill(fail ? { status: 503, json: { success: false, error: { message: 'Roles unavailable' } } } : { json: { success: true, data: { items: roles.slice(offset, offset + 51) } } });
+    await route.fulfill(fail ? { status: 503, json: { success: false, error: { code: 'ROLES_UNAVAILABLE', message: 'Roles unavailable' } } } : { json: { success: true, data: { items: roles.slice(offset, offset + 51) } } });
   });
   await page.goto(origin);
   await page.getByRole('button', { name: 'Accounts and permissions', exact: true }).click();

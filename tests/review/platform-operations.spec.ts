@@ -131,7 +131,7 @@ test('notification paging clears failed and changed-brand data', async ({ page }
   await page.route('**/api/v1/platform/notification-deliveries?**', async route => {
     expect(route.request().method()).toBe('GET');
     const offset = Number(new URL(route.request().url()).searchParams.get('offset'));
-    await route.fulfill(fail ? { status: 503, json: { success: false, error: { message: 'Delivery unavailable' } } } : { json: { success: true, data: { items: rows.slice(offset, offset + 51) } } });
+    await route.fulfill(fail ? { status: 503, json: { success: false, error: { code: 'DELIVERY_UNAVAILABLE', message: 'Delivery unavailable' } } } : { json: { success: true, data: { items: rows.slice(offset, offset + 51) } } });
   });
   await page.goto(origin);
   await page.getByRole('button', { name: 'Audit and operations', exact: true }).click();

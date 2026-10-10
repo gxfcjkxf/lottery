@@ -72,7 +72,7 @@ test('synthetic archive task paging preserves saved policy versions and clears d
     await route.fulfill({ json: { success: true, data: { brand_id: brand, items: items.slice(offset, offset + 50), total_count: '51', limit: 50, offset } } });
   });
   await page.route('**/api/v1/platform/report-archive-tasks/*', async route => {
-    if (fail) await route.fulfill({ status: 503, json: { success: false, error: { message: 'Task unavailable' } } });
+    if (fail) await route.fulfill({ status: 503, json: { success: false, error: { code: 'TASK_UNAVAILABLE', message: 'Task unavailable' } } });
     else await route.fulfill({ json: { success: true, data: items.find(item => route.request().url().endsWith(item.id)) } });
   });
   await operations(page, 'Archive tasks');
@@ -101,7 +101,7 @@ test('financial policy views preserve integer limits and clear errors independen
   const amount = '9007199254740993';
   await page.route('**/api/v1/platform/point-policy', route => route.fulfill({ json: { success: true, data: { brand_id: brand, version: 1, max_balance_points: amount, max_recharge_points: null, max_adjustment_points: null } } }));
   await page.route('**/api/v1/platform/withdrawal-policy', async route => {
-    await route.fulfill(denied ? { status: 403, json: { success: false, error: { message: 'Policy permission denied' } } } : { json: { success: true, data: {
+    await route.fulfill(denied ? { status: 403, json: { success: false, error: { code: 'PERMISSION_DENIED', message: 'Policy permission denied' } } } : { json: { success: true, data: {
       brand_id: brand, version: 2, updated_at: '2026-10-10T00:00:00Z', audit_log_id: crypto.randomUUID(),
       config: { enabled: true, min_points: '1', max_points: amount, allowed_sources: ['recharge', 'winning', 'commission', 'gift'], review_mode: 'manual', turnover_multiple: '2.5' },
     } } });

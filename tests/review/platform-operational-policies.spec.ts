@@ -55,7 +55,7 @@ test('operational policy views preserve exact caps, null settlement and fail clo
     config: { min_bet_points: '1', max_bet_points: amount, max_period_points: null, max_user_period_points: null, user_cancel_allowed: false },
   } } }));
   await page.route('**/api/v1/platform/settlement-policy', async route => {
-    await route.fulfill(fail ? { status: 403, json: { success: false, error: { message: 'Settlement policy denied' } } } : { json: { success: true, data: { brand_id: brand, version: 1, mode: null, updated_at: stamp } } });
+    await route.fulfill(fail ? { status: 403, json: { success: false, error: { code: 'PERMISSION_DENIED', message: 'Settlement policy denied' } } } : { json: { success: true, data: { brand_id: brand, version: 1, mode: null, updated_at: stamp } } });
   });
   await page.goto(origin);
   await page.getByRole('button', { name: 'Audit and operations', exact: true }).click();
