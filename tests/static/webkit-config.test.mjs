@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 
 const config = readFileSync(new URL('../../playwright.webkit.config.ts', import.meta.url), 'utf8')
 const scripts = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).scripts
+const workflow = readFileSync(new URL('../../.github/workflows/ci.yaml', import.meta.url), 'utf8')
 
 test('WebKit functional suite requires its own executable and explicit test credentials', () => {
   assert.match(config, /PLAYWRIGHT_WEBKIT_EXECUTABLE_PATH/)
@@ -27,4 +28,21 @@ test('WebKit functional scope is explicit, serial, and separate from service-wor
   assert.match(config, /width: 1440, height: 900/)
   assert.match(config, /width: 360, height: 800/)
   assert.equal((config.match(/reuseExistingServer: false/g) ?? []).length, 3)
+})
+
+test('WebKit CI installs its own engine and initializes an independent real API database', () => {
+  const job = workflow.split('  webkit-functional:\n')[1]?.split('  pwa-production-cache:\n')[0]
+  assert.ok(job)
+  assert.match(job, /POSTGRES_DB: lottery_webkit_test/)
+  assert.match(job, /playwright install --with-deps webkit/)
+  assert.match(job, /await webkit.launch/)
+  assert.match(job, /PLAYWRIGHT_WEBKIT_EXECUTABLE_PATH=\$\{webkit.executablePath\(\)\}/)
+  for (const command of ['migrate', 'seed', 'generate-auth-key', 'serve', 'worker']) {
+    assert.ok(job.includes(`.local/webkit-platform ${command}`))
+  }
+  for (const role of ['ADMIN', 'HARBOR_ADMIN', 'COMPLIANCE_ADMIN']) {
+    assert.ok(job.includes(`--username "$TEST_${role}_USERNAME"`))
+  }
+  assert.match(job, /run: pnpm test:webkit/)
+  assert.doesNotMatch(job, /chromium|continue-on-error|--retries=[1-9]/i)
 })

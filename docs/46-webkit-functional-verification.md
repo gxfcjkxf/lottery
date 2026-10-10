@@ -31,4 +31,10 @@ pnpm exec playwright install webkit
 pnpm test:webkit
 ```
 
-路径缺失、不存在或凭据缺失立即报错，不改用Chrome、不跳过。配置自动启动三套前端5173/5174/5175；不要让已有进程占用这些端口。开发机不自动安装系统库或调整密码安全参数。当前专项尚未接入远程CI，后续应使用独立服务和明确WebKit依赖，不能把其他CI任务的Chromium结果换名为WebKit证明。
+路径缺失、不存在或凭据缺失立即报错，不改用Chrome、不跳过。配置自动启动三套前端5173/5174/5175；不要让已有进程占用这些端口。开发机不自动安装系统库或调整密码安全参数。
+
+## 独立 CI 运行
+
+webkit-functional任务使用GitHub Actions Linux运行器与独立lottery_webkit_test数据库。先按锁定包安装WebKit及Linux依赖，实际启动引擎并验证页面，再把该引擎的绝对路径提供给配置。使用正式单份数据库基线、CLI引导三个品牌账号及API/worker，不共享Chromium任务的服务或业务数据。
+
+任务运行同一八项功能测试，串行、无测试重试、无失败放行。失败时保留浏览器trace和专项服务日志；引擎安装、启动或业务测试失败均使任务失败。当前本机功能结果、CI配置检查与实际远程任务成功分别记录；不能把配置校验或Chromium结果当作Linux WebKit成功证据，也不能把Linux结果当作Safari/iPhone真机验收。

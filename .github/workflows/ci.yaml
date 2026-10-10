@@ -1,6 +1,81 @@
 name: check
 on: [push, pull_request]
 jobs:
+  webkit-functional:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.5-alpine
+        env:
+          POSTGRES_DB: lottery_webkit_test
+          POSTGRES_USER: lottery_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["127.0.0.1:5432:5432"]
+        options: --health-cmd "pg_isready -U lottery_test -d lottery_webkit_test" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_webkit_test?sslmode=disable
+      HTTP_ADDR: 127.0.0.1:8080
+      AUTH_KEY_FILE: ${{ github.workspace }}/.local/webkit-auth.key
+      TEST_ADMIN_USERNAME: ci_webkit_aurora
+      TEST_ADMIN_PASSWORD: ci-webkit-owned-password-2026
+      TEST_HARBOR_ADMIN_USERNAME: ci_webkit_harbor
+      TEST_HARBOR_ADMIN_PASSWORD: ci-webkit-owned-password-2026
+      TEST_COMPLIANCE_ADMIN_USERNAME: ci_webkit_compliance
+      TEST_COMPLIANCE_ADMIN_PASSWORD: ci-webkit-owned-password-2026
+      BOOTSTRAP_ADMIN_PASSWORD: ci-webkit-owned-password-2026
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - name: Install locked WebKit and Linux dependencies
+        timeout-minutes: 7
+        run: pnpm exec playwright install --with-deps webkit
+      - name: Verify WebKit launch and record its executable
+        run: |
+          node --input-type=module <<'JS'
+          import { webkit } from '@playwright/test';
+          import { appendFileSync } from 'node:fs';
+          const browser = await webkit.launch({ headless: true, timeout: 15000 });
+          try {
+            const page = await browser.newPage();
+            await page.setContent('<p>WebKit ready</p>');
+            if (await page.textContent('p') !== 'WebKit ready') throw new Error('WebKit launch probe failed');
+            appendFileSync(process.env.GITHUB_ENV, `PLAYWRIGHT_WEBKIT_EXECUTABLE_PATH=${webkit.executablePath()}\n`);
+          } finally { await browser.close(); }
+          JS
+      - name: Initialize isolated baseline and explicit brand accounts
+        run: |
+          mkdir -p .local
+          go -C backend build -o ../.local/webkit-platform ./cmd/platform
+          .local/webkit-platform migrate
+          .local/webkit-platform seed
+          .local/webkit-platform generate-auth-key "$AUTH_KEY_FILE"
+          .local/webkit-platform create-admin --username "$TEST_ADMIN_USERNAME" --brand aurora
+          .local/webkit-platform create-admin --username "$TEST_HARBOR_ADMIN_USERNAME" --brand harbor
+          .local/webkit-platform create-admin --username "$TEST_COMPLIANCE_ADMIN_USERNAME" --brand harbor
+          .local/webkit-platform serve > .local/webkit-api.log 2>&1 &
+          .local/webkit-platform worker > .local/webkit-worker.log 2>&1 &
+          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:8080/health/ready
+      - name: Run WebKit functional scenarios without test retries
+        run: pnpm test:webkit
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: webkit-functional-failure
+          include-hidden-files: true
+          path: |
+            test-results/
+            .local/webkit-api.log
+            .local/webkit-worker.log
   pwa-production-cache:
     runs-on: ubuntu-latest
     timeout-minutes: 10

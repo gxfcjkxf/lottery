@@ -134,7 +134,9 @@ test('fourteen browser CI preparation steps use the bounded Chromium command', (
     assert.equal(timeout, '7');
     assert.equal(command, 'node scripts/prepare-ci-browser.mjs');
   }
-  assert.doesNotMatch(workflow, /--with-deps/);
+  // WebKit has its own Linux job with explicitly installed dependencies.
+  // Chromium jobs retain their bounded, diagnostic-driven setup unchanged.
+  assert.doesNotMatch(workflow.replaceAll('playwright install --with-deps webkit', 'playwright install webkit'), /--with-deps/);
   assert.doesNotMatch(workflow, /continue-on-error|--retries(?:\s+|=)(?!0\b)/);
 });
 
