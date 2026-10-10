@@ -306,11 +306,13 @@ onMounted(() => {
         </template>
         <template v-else-if="section === 'access'">
           <div class="page-heading compact-heading"><h1>{{ accessLabel }}</h1></div>
-          <div class="wallet-pagination" data-testid="platform-account-scopes">
-            <button :class="accessScope === 'platform' ? 'primary' : 'secondary'" :disabled="accountWriteLocked" @click="accessScope = 'platform'">{{ locale === 'en' ? 'Platform administrators' : '平台管理员' }}</button>
-            <button :class="accessScope === 'brand' ? 'primary' : 'secondary'" :disabled="accountWriteLocked" @click="accessScope = 'brand'">{{ locale === 'en' ? 'Brand staff' : '品牌员工' }}</button>
+          <div class="access-scope-row">
+            <div class="wallet-pagination" data-testid="platform-account-scopes">
+              <button :class="accessScope === 'platform' ? 'primary' : 'secondary'" :disabled="accountWriteLocked" @click="accessScope = 'platform'">{{ locale === 'en' ? 'Platform administrators' : '平台管理员' }}</button>
+              <button :class="accessScope === 'brand' ? 'primary' : 'secondary'" :disabled="accountWriteLocked" @click="accessScope = 'brand'">{{ locale === 'en' ? 'Brand staff' : '品牌员工' }}</button>
+            </div>
+            <div v-if="accessScope === 'brand'" class="brand-picker access-brand-picker"><label><span class="visually-hidden">{{ lang.brandLabel }}</span><select :disabled="accountWriteLocked" :aria-label="lang.brandLabel" :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label><span v-if="selected" class="selection-tag">{{ selected.name }}</span></div>
           </div>
-          <div v-if="accessScope === 'brand'" class="brand-picker"><label>{{ lang.brandLabel }}<select :disabled="accountWriteLocked" :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label><span v-if="selected" class="selection-tag">{{ selected.name }}</span></div>
           <AccessPanel :brand-id="selectedBrand" :locale="locale" :scope="accessScope" :account-id="account.id" :grants="account.platform_permissions" @locked="accountWriteLocked = $event" @failure="handleFailure" />
         </template>
         <template v-else-if="section === 'users'">

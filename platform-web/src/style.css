@@ -1133,3 +1133,9 @@ td small {
 .wallet-query .field-label { flex: 0 0 auto; white-space: nowrap; }
 .wallet-query .input-with-icon, .wallet-query .query-field > select { flex: 1 1 auto; min-width: 0; }
 .wallet-query .field-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.access-scope-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.access-scope-row > .wallet-pagination { flex: 0 0 auto; padding: 0; border: 0; }
+.access-brand-picker { flex: 1 1 360px; margin: 0; padding: 8px 12px; box-shadow: var(--shadow-sm); }
+.access-brand-picker label { flex: 1 1 auto; }
+.access-brand-picker select { max-width: none; }
+@media (max-width: 640px) { .access-scope-row { align-items: stretch; flex-direction: column; gap: 8px; } .access-scope-row > .wallet-pagination { flex-wrap: wrap; } }
