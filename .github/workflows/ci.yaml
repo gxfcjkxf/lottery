@@ -1,25 +1,15 @@
 name: check
-on: [push, pull_request]
+run-name: "${{ github.event_name == 'workflow_dispatch' && 'Full regression' || 'Quick checks' }} · ${{ github.ref_name }}"
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    outputs:
-      business_changed: ${{ steps.scope.outputs.business_changed }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - id: scope
-        env:
-          CI_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          CI_HEAD_SHA: ${{ github.sha }}
-        run: node scripts/classify-ci-changes.mjs
   webkit-functional:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -95,8 +85,7 @@ jobs:
             .local/webkit-api.log
             .local/webkit-worker.log
   pwa-production-cache:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -119,8 +108,7 @@ jobs:
           name: pwa-production-cache-failure
           path: test-results/
   administration-entries:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -197,8 +185,7 @@ jobs:
             test-results/
             .local/review-*.log
   audit-exports-browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -262,8 +249,7 @@ jobs:
             .local/audit-exports-browser-report.json
             audit-exports-api.log
   draw-notifications-browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -330,8 +316,7 @@ jobs:
             draw-notifications-api.log
             draw-notifications-worker.log
   attribution-reports-browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -399,8 +384,7 @@ jobs:
             attribution-reports-worker.log
             .local/attribution-reports-*.png
   report-archive-policy-browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -466,8 +450,7 @@ jobs:
             report-archive-policy-api.log
             .local/report-archive-policy-*.png
   report-archive-tasks-browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -535,8 +518,7 @@ jobs:
             report-archive-tasks-api.log
             .local/report-archive-tasks-*.png
   report-archives-browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -603,8 +585,7 @@ jobs:
             .local/report-archives-browser-report.json
             report-archives-api.log
   reward-browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -687,8 +668,7 @@ jobs:
             .local/reward-reports-report.json
             reward-inbox-worker.log
   commission-cycles-browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -770,8 +750,7 @@ jobs:
             test-results/
             .local/commission-analysis-report.json
   commission-corrections-browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -836,8 +815,7 @@ jobs:
             .local/commission-corrections-report.json
             commission-corrections-api.log
   withdrawal-browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -896,8 +874,7 @@ jobs:
           name: withdrawal-browser-failure-traces
           path: test-results/
   qualification-browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -957,8 +934,7 @@ jobs:
           name: qualification-browser-failure-traces
           path: test-results/
   reconciliation-browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -1036,9 +1012,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm api:check
       - run: pnpm test:contracts
+  backend-quick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TEST_DATABASE_URL: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Vet backend packages
+        run: go vet ./...
+        working-directory: backend
+      - name: Unit checks only, not database/financial acceptance
+        run: go test -count=1 -timeout=2m ./...
+        working-directory: backend
+      - name: Build platform
+        run: go build ./cmd/platform
+        working-directory: backend
   backend:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -1130,8 +1125,7 @@ jobs:
       - run: pnpm test
       - run: pnpm build
   browser:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -1225,8 +1219,7 @@ jobs:
           name: browser-failure-traces-${{ matrix.project }}-${{ matrix.shard }}
           path: test-results/
   newops-runtime:
-    needs: changes
-    if: needs.changes.outputs.business_changed == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
