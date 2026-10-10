@@ -194,4 +194,17 @@ describe("admin HTTP client", () => {
       message: "Not allowed",
     });
   });
+
+  it("rejects old string errors and incomplete envelopes with an explicit protocol error", async () => {
+    for (const body of [null, [], { success: false, error: "old denial" }, { success: false, error: { message: "missing code" } }, { success: true, data: {} }]) {
+      const api = createAdminApi(vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(body), { status: 400 })));
+      await expect(api.me()).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    }
+    for (const body of [null, [], { success: true }, { success: true, data: null }, { success: true, data: [] }]) {
+      const api = createAdminApi(vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 })));
+      await expect(api.me()).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    }
+    const api = createAdminApi(vi.fn<typeof fetch>().mockResolvedValue(new Response('not JSON', { status: 401 })));
+    await expect(api.me()).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+  });
 });

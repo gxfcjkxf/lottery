@@ -53,10 +53,7 @@ export interface AdminAuditRecord {
 interface Envelope<T> {
   success: boolean;
   data?: T;
-  error?:
-    | { code?: string; message?: string; [key: string]: unknown }
-    | string
-    | null;
+  error?: { code: string; message: string } | null;
 }
 
 export class AdminApiError extends Error {
@@ -71,14 +68,6 @@ export class AdminApiError extends Error {
 }
 
 type FetchLike = typeof fetch;
-
-function errorMessage(
-  error: Envelope<unknown>["error"],
-  fallback: string,
-): string {
-  if (typeof error === "string") return error;
-  return error?.message || fallback;
-}
 
 export function createIdempotencyKey(): string {
   const uuid = globalThis.crypto?.randomUUID?.();
@@ -116,26 +105,30 @@ export function createAdminApi(fetcher: FetchLike = fetch) {
       envelope = (await response.json()) as Envelope<T>;
     } catch {
       throw new AdminApiError(
-        response.ok
-          ? "Invalid server response"
-          : `Request failed (${response.status})`,
-        response.status,
+        "Invalid server response; operation result is unconfirmed",
+        502,
+        "INVALID_RESPONSE",
       );
+    }
+    if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
+    }
+    const error = envelope.error;
+    if (
+      !response.ok && envelope.success === false && error &&
+      typeof error === "object" && !Array.isArray(error) &&
+      typeof error.code === "string" && error.code.trim().length > 0 &&
+      typeof error.message === "string" && error.message.trim().length > 0
+    ) {
+      throw new AdminApiError(error.message, response.status, error.code);
     }
     if (
       !response.ok ||
       envelope.success !== true ||
-      envelope.data === undefined
+      envelope.data == null ||
+      typeof envelope.data !== "object" || Array.isArray(envelope.data)
     ) {
-      const error =
-        typeof envelope.error === "object" && envelope.error !== null
-          ? envelope.error
-          : undefined;
-      throw new AdminApiError(
-        errorMessage(envelope.error, `Request failed (${response.status})`),
-        response.status,
-        error?.code,
-      );
+      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
     }
     return envelope.data;
   }
