@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "scope": "isolated loopback PostgreSQL physical history routing; synthetic HTTP administrator and audit rows only",
+  "postgres_version": "postgres (PostgreSQL) 17.11 (Postgres.app)",
+  "go_version": "go1.27.1",
+  "replica_nodes": 2,
+  "primary_write_visible_on_both": true,
+  "round_robin_replica_indexes": [
+    1,
+    2
+  ],
+  "notification_route_replica": 1,
+  "unallowlisted_route_primary_only": true,
+  "paused_replica_rejected": true,
+  "both_paused_rejected": true,
+  "offline_replica_rejected": true,
+  "unavailable_optional_pool_startup": true,
+  "wrong_cluster_and_primary_rejected": true,
+  "replica_query_error_returned": true,
+  "http_history_routes": 6,
+  "http_successful_history_requests": 6,
+  "http_observed_replica_indexes": [
+    1,
+    2
+  ],
+  "current_template_headers_absent": true,
+  "http_audit_failure_no_history_data": true,
+  "http_permission_revocation_403": true,
+  "http_session_revocation_401": true,
+  "primary_fence_permission_error": true,
+  "replica_query_timeout_error": true,
+  "original_digest_before": "bc580fa0e00fcfa49dc33161306213f2f11841bac93974dd4897c185149a01bb",
+  "original_digest_after": "bc580fa0e00fcfa49dc33161306213f2f11841bac93974dd4897c185149a01bb",
+  "original_database_untouched": true,
+  "owned_nodes_stopped": true,
+  "synthetic_marker_rows": 7,
+  "recorded_at_utc": "2026-10-10T02:17:55Z"
+}

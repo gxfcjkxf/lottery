@@ -47,7 +47,9 @@ CGO_ENABLED=0 go test -tags recovery -buildvcs=false ./internal/recovery \
 
 ## 当前证据与待交付事项
 
-当前报告为[2026年10月9日复制和恢复证据](performance/current-physical-restore-20261009.json)：PostgreSQL17.11、120张表、322行、一份完整基线和一个合成会员的真实账本/审计。两从库只读及全表摘要一致；旧主停止后手动提升、额外入账、另一从库重新连接、备份恢复及不可变约束均通过。原开发库前后摘要相同，演练节点已停止。其他业务表包含结构，不代表完整投注、提现、佣金实际数据均经过灾备负载演练。[旧复制恢复报告](performance/s7g-replication-recovery.json)仅保留为当时的开发记录。
+最新[2026年10月10日复制恢复证据](performance/current-recovery-baseline-20261010.json)复跑当前代码：PostgreSQL17.11、120张表、322行、一份完整基线及合成会员账本/审计。两从库只读及全表摘要一致；旧主停止后手动提升、额外入账、另一从库重新连接、逻辑备份恢复及不可变约束均通过。备份1,139,271字节，原开发库前后摘要相同，演练节点已停止；本地追平/提升/恢复分别约0.108/0.110/1.094秒。其他业务表包含结构，不代表完整投注、提现、佣金实际数据经过灾备负载演练。[10月9日报告](performance/current-physical-restore-20261009.json)及[早期报告](performance/s7g-replication-recovery.json)保留为各自执行记录，不覆盖旧证据。
+
+在仓库根目录运行`node scripts/check-recovery-evidence.mjs recovery REPORT.json`，独立核对整表摘要清单及总摘要、恢复前后表/行/单份基线数量、两台从库、旧主隔离、恢复保护及原库未变声明；不接受自动切换、PITR、密钥恢复或生产验收声明。两份当前原始报告和篡改/缺失证据用例进入静态回归。
 
 replica_catchup_seconds从主库新增测试流水到两台从库全部表摘要匹配，包含本地提交和摘要查询成本，不是持续复制延迟指标。promotion_seconds仅为已关闭旧主库后的手动提升及恢复状态确认，不包含检测故障、应用重连或端点切换。restore_seconds包含创建恢复节点、恢复和首次完整摘要检查；这些小数据、同机测量不应设置为生产RTO或RPO。
 
@@ -83,6 +85,8 @@ CGO_ENABLED=0 go test -tags recovery -buildvcs=false ./internal/recovery \
 演练只启动拥有的一主两从及一个无关集群；结束时停止这些节点并保留数据、日志和报告。原开发库仅作前后只读摘要，不暂停或修改原开发服务。固定字段报告不保存登录令牌、请求正文、数据库连接串或客户资料；真实高可用和生产容量验收仍独立进行。
 
 [当前实体读路由证据](performance/current-physical-history-20261009.json)已验证两个从库轮转、6条真实品牌HTTP历史接口、暂停/离线/错误集群/查询超时拒绝、权限撤销403、会话撤销401及主库审计失败不返回历史数据。原开发库摘要相同，节点已停止。初轮夹具只等标记行可见，仍落后于新采样WAL；现先等指定从库回放到实际位置，再在有界准备阶段等待新屏障就绪。准备阶段的独立测试请求不是生产自动重试，生产路由每次选定一个节点，失败即报错，不换节点或回退主库。[旧实体读路由报告](performance/s7m-history-read-routing.json)仅作开发记录，不用于证明当前无回退语义。
+
+[10月10日复跑报告](performance/current-physical-history-20261010.json)再次通过上述六条真实接口及全部拒绝/权限检查，两个从库均被实际选中，原库摘要未变，节点停止。`node scripts/check-recovery-evidence.mjs history REPORT.json`核对这组明确的成功/拒绝证据与节点索引，不把历史读路由当作应用写端点自动切换。当前复跑总耗时19.87秒，不是生产查询延迟或恢复SLO。
 
 ## 生产恢复前必须确认
 
