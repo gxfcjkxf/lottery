@@ -311,7 +311,7 @@ onMounted(() => {
               <button :class="accessScope === 'platform' ? 'primary' : 'secondary'" :disabled="accountWriteLocked" @click="accessScope = 'platform'">{{ locale === 'en' ? 'Platform administrators' : '平台管理员' }}</button>
               <button :class="accessScope === 'brand' ? 'primary' : 'secondary'" :disabled="accountWriteLocked" @click="accessScope = 'brand'">{{ locale === 'en' ? 'Brand staff' : '品牌员工' }}</button>
             </div>
-            <div v-if="accessScope === 'brand'" class="brand-picker access-brand-picker"><label><span class="visually-hidden">{{ lang.brandLabel }}</span><select :disabled="accountWriteLocked" :aria-label="lang.brandLabel" :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label><span v-if="selected" class="selection-tag">{{ selected.name }}</span></div>
+            <div v-if="accessScope === 'brand'" class="access-brand-control"><label><span class="visually-hidden">{{ lang.brandLabel }}</span><select :disabled="accountWriteLocked" :aria-label="lang.brandLabel" :value="selectedBrand" @change="chooseBrand(($event.target as HTMLSelectElement).value)"><option value="">— {{ lang.selectBrand }} —</option><option v-for="brand in brands" :key="brand.id" :value="brand.id">{{ brand.name }} · {{ brand.code }}</option></select></label></div>
           </div>
           <AccessPanel :brand-id="selectedBrand" :locale="locale" :scope="accessScope" :account-id="account.id" :grants="account.platform_permissions" @locked="accountWriteLocked = $event" @failure="handleFailure" />
         </template>
