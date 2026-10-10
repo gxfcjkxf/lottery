@@ -428,6 +428,11 @@ html[lang="en"] .breadcrumbs { min-width: 0; flex-wrap: wrap; overflow-wrap: any
   gap: 7px;
   color: #a6adba;
 }
+.member-search-note {
+  color: #697386;
+  font-size: 12px;
+  margin: 0 0 12px;
+}
 .search-box span {
   font-size: 17px;
 }

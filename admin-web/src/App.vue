@@ -238,6 +238,11 @@ function skinLogoError(event:Event){if(event.target instanceof HTMLImageElement&
 function acceptPresentation(value:{accountId:string;record:BrandPresentationRecord}){if(account.value?.id!==value.accountId||selectedBrandId.value!==value.record.brand_id)return;if(presentationSkin.value?.accountId===value.accountId&&presentationSkin.value.record.brand_id===value.record.brand_id&&presentationSkin.value.record.version>value.record.version)return;presentationSkin.value=value;const theme=skinTheme();if(theme)applyBrandPresentation({brand:theme,paused:value.record.status==='paused',availableLanguages:value.record.effective.available_locales},document.querySelector<HTMLElement>('.app-shell')??document.documentElement)}
 watch(()=>[account.value?.id,selectedBrandId.value],()=>{const generation=++presentationReadGeneration;presentationSkin.value=null;document.querySelector('link[rel="icon"][data-brand-favicon]')?.remove();const current=account.value,id=selectedBrandId.value;if(!current||!id||!brandPresentationPermissions(current,id).view)return;void presentationApi.get(id).then(record=>{if(generation===presentationReadGeneration&&account.value?.id===current.id&&selectedBrandId.value===id)acceptPresentation({accountId:current.id,record})}).catch(cause=>{if(generation===presentationReadGeneration&&account.value?.id===current.id&&selectedBrandId.value===id&&cause instanceof AdminApiError&&cause.status===401)clearAdminData()})});
 const members = ref<Member[]>([]);
+const filteredMembers = computed(() => {
+  const query = search.value.trim().toLowerCase();
+  return members.value.filter((item) => !query ||
+    `${item.display_name} ${item.username} ${item.phone} ${item.id} ${item.global_user_id}`.toLowerCase().includes(query));
+});
 const membersLoading = ref(false);
 const membersError = ref<string | ReturnType<typeof message>>("");
 const memberOffset = ref(0);
@@ -507,6 +512,7 @@ const logout = async () => {
 };
 const selectBrand = async (brandId: string) => {
   selectedBrandId.value = brandId;
+  search.value = "";
   brandMenu.value = false;
   memberOffset.value = 0;
   members.value = [];
@@ -951,11 +957,15 @@ const changeMemberPage = async (direction: -1 | 1) => {
                     :placeholder="ui('搜索用户名 / 手机号 / ID')"
                     v-model="search"
                     :aria-label="ui('搜索成员')"
+                    aria-describedby="member-search-scope"
                   />
+                  <button v-if="search" type="button" class="button button-secondary" @click="search = ''">{{ t('清除筛选', 'Clear filter') }}</button>
                 </div>
               </div>
+              <p id="member-search-scope" class="member-search-note">{{ t('仅筛选当前已加载页面的成员；可翻页查看其他成员。', 'Filters members on the currently loaded page only. Use pagination to view other members.') }}</p>
               <div v-if="membersLoading" class="directory-state"> {{ ui("正在读取品牌成员…") }} </div>
               <div v-else-if="!members.length" class="directory-state"> {{ ui("该品牌当前没有可显示的成员。") }} </div>
+              <div v-else-if="!filteredMembers.length" class="directory-state" role="status">{{ t('本页没有匹配的成员，请修改或清除筛选。', 'No matching members on this page. Change or clear the filter.') }}</div>
               <div v-else class="table-wrap">
                 <table class="member-directory-table">
                   <thead>
@@ -972,13 +982,7 @@ const changeMemberPage = async (direction: -1 | 1) => {
                   </thead>
                   <tbody>
                     <tr
-                      v-for="m in members.filter(
-                        (item) =>
-                          !search ||
-                          `${item.display_name} ${item.username} ${item.phone} ${item.id} ${item.global_user_id}`
-                            .toLowerCase()
-                            .includes(search.toLowerCase()),
-                      )"
+                      v-for="m in filteredMembers"
                       :key="m.id"
                     >
                       <td>
