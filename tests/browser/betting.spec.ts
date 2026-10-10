@@ -1164,7 +1164,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
   const adminPage = await context.newPage();
   adminPage.setDefaultTimeout(10_000);
   const showS5AdminPage = async () => {
-    if (info.project.name === "mobile") {
+    if (adminPage.viewportSize()!.width <= 700) {
       await adminPage
         .locator(".mobile-nav")
         .getByRole("button", { name: /更多/ })
@@ -1845,7 +1845,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     expect(periodBefore.id).toBe(placed.period_id);
     expect(["betting", "closed"]).toContain(periodBefore.status);
     const periodPage = async () => {
-      if (info.project.name === "mobile") {
+      if (adminPage.viewportSize()!.width <= 700) {
         await adminPage.locator(".mobile-nav button").nth(2).click();
       } else {
         await adminPage

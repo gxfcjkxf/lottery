@@ -702,6 +702,8 @@ const changeMemberPage = async (direction: -1 | 1) => {
             v-for="item in visibleNav.filter((entry) => entry.group === group)"
             :key="item.name"
             class="nav-item"
+            :aria-label="ui(item.name)"
+            :title="ui(item.name)"
             :class="{ active: page === item.name }"
             @click="go(item.name)"
           >

@@ -116,6 +116,8 @@ pnpm test:e2e --project=mobile --shard=2/2 --workers=1 --retries=0
 
 设置独立WebKit可执行路径和受保护测试凭据后，`pnpm test:webkit`运行真实账号、后台权限及风控双视口功能专项；服务工作线程明确禁用，不将其当作Safari/iPhone真机或PWA验证。安装、环境及范围见[WebKit交接](docs/46-webkit-functional-verification.md)。
 
+`pnpm test:responsive`在768px/1024px复用真实注册与完整投注浏览器流程，要求独立合成库的正式API/worker、不同的Harbor创建/审核账号，以及明确的Chromium路径；环境变量同投注测试（TEST_HARBOR_ADMIN_USERNAME/PASSWORD、TEST_RULE_REVIEWER_USERNAME/PASSWORD、PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH）。串行、零重试，不复用已占用的5173/5174/5175前端服务。它不覆盖这两种尺寸的完整提现/佣金或真机安装。
+
 ## 工程结构
 
 ```text
