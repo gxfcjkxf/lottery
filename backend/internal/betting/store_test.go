@@ -123,10 +123,10 @@ func newBettingFixtureWithDBWindow(t *testing.T, db *pgxpool.Pool, brand string,
 	if _, err := db.Exec(ctx, `INSERT INTO sessions(id,token_hash,user_id,member_id,brand_id,expires_at) VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '1 hour')`, ids.New(), hex.EncodeToString(digest[:]), userID, memberID, brand); err != nil {
 		t.Fatal(err)
 	}
-	identityStore, err := identity.New(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// This fixture revalidates an already issued token, not a password login.
+	// AuthenticateTx uses the real transaction and session/member locks; it
+	// does not need New's intentionally expensive unknown-login password hash.
+	identityStore := &identity.Store{DB: db}
 	tx, err := db.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
