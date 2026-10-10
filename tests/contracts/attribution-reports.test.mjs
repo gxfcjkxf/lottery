@@ -10,6 +10,16 @@ const ajv = new Ajv2020({ strict: false, allErrors: true }); addFormats(ajv);
 ajv.addSchema({ $id: "urn:lottery:attribution-reports", components: doc.components });
 const check = name => ajv.compile({ $ref: `urn:lottery:attribution-reports#/components/schemas/${name}` });
 
+test("attribution handover describes only the current metric set and CSV columns", () => {
+  const guide = readFileSync(new URL("../../docs/30-attribution-reports.md", import.meta.url), "utf8");
+  const metrics = Object.keys(doc.components.schemas.AttributionReportTotals.properties);
+  assert.equal(metrics.length, 14);
+  for (const metric of metrics) assert.ok(guide.includes(metric), `Missing current metric: ${metric}`);
+  assert.match(guide, /十四项指标，共28列/);
+  assert.doesNotMatch(guide, /legacy_attribution_count|十五项|共29列|正常迁移至0068|升级测试/);
+  assert.match(guide, /不提供增量升级或旧报表字段兼容/);
+});
+
 test("attribution report exposes the closed read and export query contracts", () => {
   const path = "/api/v1/admin/reports/attribution";
   const view = doc.paths[path].get;
