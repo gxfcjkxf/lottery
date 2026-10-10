@@ -1,5 +1,6 @@
 /** Schema-v1 rule and ticket-selection JSON shared with backend/internal/rules. */
 export interface RulePool {
+  /** Current Go JSON omits zero bounds; an omitted bound represents zero. */
   min?: number;
   max?: number;
   values?: number[] | null;

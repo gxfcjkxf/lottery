@@ -155189,10 +155189,12 @@
         "type": "object",
         "properties": {
           "min": {
-            "type": "integer"
+            "type": "integer",
+            "default": 0
           },
           "max": {
-            "type": "integer"
+            "type": "integer",
+            "default": 0
           },
           "values": {
             "type": "array",
@@ -155742,10 +155744,12 @@
         "type": "object",
         "properties": {
           "min": {
-            "type": "integer"
+            "type": "integer",
+            "default": 0
           },
           "max": {
-            "type": "integer"
+            "type": "integer",
+            "default": 0
           },
           "values": {
             "anyOf": [

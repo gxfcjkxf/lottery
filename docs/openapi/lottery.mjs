@@ -67,8 +67,8 @@ const RuleCondition = obj({
   attribute_value: str, selection_key: str, value: nullable(int), values: nullable(arr(int)),
   min: nullable(int), max: nullable(int), children: nullable(arr(ref("LotteryRuleCondition"))),
 }, ["op"]);
-const RulePool = obj({ min: int, max: int, values: arr(int), allow_repeat: bool }, ["allow_repeat"]);
-const RulePoolInput = obj({ min: int, max: int, values: nullable(arr(int)), allow_repeat: bool }, []);
+const RulePool = obj({ min: { ...int, default: 0 }, max: { ...int, default: 0 }, values: arr(int), allow_repeat: bool }, ["allow_repeat"]);
+const RulePoolInput = obj({ min: { ...int, default: 0 }, max: { ...int, default: 0 }, values: nullable(arr(int)), allow_repeat: bool }, []);
 const RuleModel = obj({
   model: str, regular_pool: ref("LotteryRulePool"), special_pool: ref("LotteryRulePool"),
   regular_count: int, special_count: int, pool_size: int, total_count: int,

@@ -121,7 +121,7 @@ function modelFor(type: "X_PLUS_Y" | "M_SELECT_N" | "DIGITS_0_9") {
   const regularPool =
     type === "M_SELECT_N"
       ? { min: 0, max: 0, values: [1, 2, 3, 4, 5, 6], allow_repeat: false }
-      : { min: 1, max: 6, values: [], allow_repeat: false };
+      : { min: 0, max: 6, values: [], allow_repeat: false };
   const specialPool =
     type === "M_SELECT_N"
       ? { min: 0, max: 0, values: [1, 2, 3, 4, 5, 6], allow_repeat: false }
@@ -535,6 +535,9 @@ async function previewPlay(
   const panel = page.getByTestId("bet-selection-page");
   await expect(panel).toBeVisible();
   await panel.getByTestId("play-select").selectOption(playId);
+  if (modelType === 'X_PLUS_Y' && mode === 'numbers') {
+    await expect(panel.getByLabel('Choose regular number 0', { exact: true })).toBeVisible();
+  }
   if (mode === 'numbers' || mode === 'exclude') {
     await expect(panel.locator('.number-attributes').first()).toContainText('color: red');
     await expect(panel.locator('.number-attributes').first()).toContainText('parity: odd');

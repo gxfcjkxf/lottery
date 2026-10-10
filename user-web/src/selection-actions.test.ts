@@ -3,7 +3,7 @@ import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import BetSelection from './BetSelection.vue';
 import type { RuleDefinition } from '../../shared/src/rules';
-import { emptyBetSelection, randomBetSelection } from './selection-actions';
+import { emptyBetSelection, exclusionPoolValues, randomBetSelection } from './selection-actions';
 
 const definition = (): RuleDefinition => ({
   schema_version: 1,
@@ -46,6 +46,27 @@ describe('editable selection actions', () => {
     const rule = definition(), before = structuredClone(rule);
     expect(randomBetSelection(rule)).toEqual({ ...emptyBetSelection(), regular: [1, 2, 3], special: [7] });
     expect(rule).toEqual(before);
+  });
+  it('reads omitted zero bounds from the current Go JSON representation', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const rule = definition();
+    rule.model.regular_pool = JSON.parse('{"max":6,"allow_repeat":false}');
+    expect(randomBetSelection(rule).regular).toEqual([0, 1, 2]);
+    rule.model.regular_pool = JSON.parse('{"allow_repeat":false}');
+    rule.model.regular_count = 1; rule.selection.regular_count = 1;
+    expect(randomBetSelection(rule).regular).toEqual([0]);
+  });
+  it('keeps inactive empty pools out of exclusion choices without removing active zero bounds', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const rule = definition();
+    rule.model.special_count = 0; rule.model.special_pool = { allow_repeat: false };
+    rule.selection.mode = 'exclude'; rule.selection.regular_count = 0; rule.selection.special_count = 0; rule.selection.exclude_count = 1;
+    expect(exclusionPoolValues(rule.model)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(randomBetSelection(rule).exclude).toEqual([1]);
+    rule.model.regular_pool = JSON.parse('{"max":6,"allow_repeat":false}');
+    expect(randomBetSelection(rule).exclude).toEqual([0]);
+    const html = await renderToString(createSSRApp(BetSelection, { definition: rule, modelValue: emptyBetSelection(), locale: 'en' }));
+    expect(html).toContain('aria-label="Exclude number 0"');
   });
   it('keeps M-select-N regular and special numbers distinct across one pool', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);

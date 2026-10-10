@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { emptyBetSelection, randomBetSelection } from "./selection-actions";
+import { emptyBetSelection, exclusionPoolValues, randomBetSelection, rulePoolValues } from "./selection-actions";
 import type {
   RuleDefinition,
   RuleTicketSelection,
@@ -44,75 +44,14 @@ function randomSelection() {
   catch { actionError.value = true; }
 }
 
-function pool(
-  values: number[],
-  min: number | undefined,
-  max: number | undefined,
-  required: boolean,
-): number[] {
-  if (!required) return [];
-  if (Array.isArray(values) && values.length)
-    return [...new Set(values)].sort((a, b) => a - b);
-  const low = min ?? 0;
-  const high = max ?? low;
-  return high >= low && high - low <= 9999
-    ? Array.from({ length: high - low + 1 }, (_, i) => low + i)
-    : [];
-}
 const regularPool = computed(() =>
-  pool(
-    props.definition.model.regular_pool?.values ?? [],
-    props.definition.model.regular_pool?.min,
-    props.definition.model.regular_pool?.max,
-    props.definition.selection.regular_count > 0,
-  ),
+  props.definition.selection.regular_count > 0 ? rulePoolValues(props.definition.model.regular_pool) : [],
 );
 const specialPool = computed(() =>
-  pool(
-    props.definition.model.special_pool?.values ?? [],
-    props.definition.model.special_pool?.min,
-    props.definition.model.special_pool?.max,
-    props.definition.selection.special_count > 0,
-  ),
+  props.definition.selection.special_count > 0 ? rulePoolValues(props.definition.model.special_pool) : [],
 );
-const excludePool = computed(() => {
-  if (props.definition.model.model === "DIGITS_0_9")
-    return Array.from({ length: 10 }, (_, i) => i);
-  const regular = props.definition.model.regular_pool;
-  const special = props.definition.model.special_pool;
-  const regularPresent = Boolean(
-    regular?.values?.length ||
-      regular?.min !== undefined ||
-      regular?.max !== undefined ||
-      props.definition.model.regular_count > 0,
-  );
-  const specialPresent = Boolean(
-    special?.values?.length ||
-      special?.min !== undefined ||
-      special?.max !== undefined ||
-      props.definition.model.special_count > 0,
-  );
-  return [
-    ...new Set([
-      ...pool(
-        regular?.values ?? [],
-        regular?.min,
-        regular?.max,
-        regularPresent,
-      ),
-      ...pool(
-        special?.values ?? [],
-        special?.min,
-        special?.max,
-        specialPresent,
-      ),
-    ]),
-  ].sort((a, b) => a - b);
-});
-const digitCount = computed(
-  () =>
-    props.definition.model.length || props.definition.model.total_count || 0,
-);
+const excludePool = computed(() => exclusionPoolValues(props.definition.model));
+const digitCount = computed(() => props.definition.model.length);
 const digitPool = Array.from({ length: 10 }, (_, i) => i);
 
 function copy(): RuleTicketSelection {
