@@ -463,7 +463,7 @@ function validatePage(limit: number, offset: number): void {
 type Envelope = {
   success?: unknown;
   data?: unknown;
-  error?: string | { code?: string; message?: string } | null;
+  error?: { code?: string; message?: string } | null;
 };
 
 export function createSettlementPreviewApi({ fetch: fetcher = fetch }: { fetch?: typeof fetch } = {}): SettlementPreviewApi {
@@ -510,8 +510,9 @@ export function createSettlementPreviewApi({ fetch: fetcher = fetch }: { fetch?:
     }
     if (!response.ok || envelope.success !== true || envelope.data === undefined) {
       const error = typeof envelope.error === "object" && envelope.error ? envelope.error : undefined;
+      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
       throw new AdminApiError(
-        typeof envelope.error === "string" ? envelope.error : error?.message || `Request failed (${response.status})`,
+        error?.message || `Request failed (${response.status})`,
         response.ok ? 502 : response.status,
         response.ok ? "INVALID_RESPONSE" : error?.code,
       );

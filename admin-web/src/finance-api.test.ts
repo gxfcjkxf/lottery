@@ -32,6 +32,10 @@ const wallet = {
 };
 
 describe("finance API client", () => {
+  it("rejects the old string error format as an unconfirmed response", async () => {
+    const api = createFinanceApi(vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ success: false, error: "old denial" }), { status: 400 })));
+    await expect(api.wallet("brand-1", "member-1")).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+  });
   it("sends admin wallet reads with same-origin cookies and mandatory brand scope", async () => {
     const fetcher = vi
       .fn<typeof fetch>()

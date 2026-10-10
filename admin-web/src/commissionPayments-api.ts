@@ -96,7 +96,7 @@ export function commissionPaymentPermissions(account: AdminAccount, brand: strin
   };
 }
 
-type Envelope = { success?: unknown; data?: unknown; error?: string | { code?: string; message?: string } | null };
+type Envelope = { success?: unknown; data?: unknown; error?: { code?: string; message?: string } | null };
 // Actor is captured when the account-scoped client is created, not reread from
 // a mutable cookie/session at retry time. Reads may use an unbound client.
 export function createCommissionPaymentsApi(fetcher: typeof fetch = fetch, actorId?: string) {
@@ -116,7 +116,8 @@ export function createCommissionPaymentsApi(fetcher: typeof fetch = fetch, actor
     catch { throw new AdminApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`, response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : undefined); }
     if (!response.ok || !isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
       const detail = isRecord(envelope?.error) ? envelope.error : undefined;
-      throw new AdminApiError(typeof envelope?.error === "string" ? envelope.error : (typeof detail?.message === "string" && detail.message) || `Request failed (${response.status})`, response.ok ? 502 : response.status, typeof detail?.code === "string" ? detail.code : undefined);
+      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+      throw new AdminApiError((typeof detail?.message === "string" && detail.message) || `Request failed (${response.status})`, response.ok ? 502 : response.status, typeof detail?.code === "string" ? detail.code : undefined);
     }
     return envelope.data;
   }

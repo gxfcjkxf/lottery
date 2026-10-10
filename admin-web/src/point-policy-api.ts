@@ -29,7 +29,7 @@ export interface UpdatePointPolicyBody {
 type Envelope<T> = {
   success?: boolean;
   data?: T;
-  error?: string | { code?: string; message?: string } | null;
+  error?: { code: string; message: string } | null;
 };
 
 export function effectiveBrandPermissions(
@@ -103,29 +103,23 @@ export function createPointPolicyApi(fetcher: typeof fetch = fetch) {
     try {
       envelope = (await response.json()) as Envelope<T>;
     } catch {
-      throw new AdminApiError(
-        response.ok
-          ? "Invalid server response"
-          : `Request failed (${response.status})`,
-        response.status,
-      );
+      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
+    }
+    if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
+    }
+    const detail = envelope.error;
+    if (!response.ok && envelope.success === false && detail && typeof detail === "object" && !Array.isArray(detail)
+      && typeof detail.code === "string" && detail.code.trim()
+      && typeof detail.message === "string" && detail.message.trim()) {
+      throw new AdminApiError(detail.message, response.status, detail.code);
     }
     if (
       !response.ok ||
       envelope.success !== true ||
-      envelope.data === undefined
+      envelope.data == null || typeof envelope.data !== "object" || Array.isArray(envelope.data)
     ) {
-      const detail =
-        typeof envelope.error === "object" && envelope.error
-          ? envelope.error
-          : undefined;
-      throw new AdminApiError(
-        typeof envelope.error === "string"
-          ? envelope.error
-          : (detail?.message ?? `Request failed (${response.status})`),
-        response.status,
-        detail?.code,
-      );
+      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
     }
     return envelope.data;
   }

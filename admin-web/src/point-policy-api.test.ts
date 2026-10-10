@@ -29,6 +29,10 @@ const fail = (status: number) =>
   );
 
 describe("point policy API", () => {
+  it("rejects the old string error format as an unconfirmed response", async () => {
+    const api = createPointPolicyApi(vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ success: false, error: "old denial" }), { status: 400 })));
+    await expect(api.getPointPolicy("brand-1")).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+  });
   it("reads with same-origin cookies and required brand scope", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok(policy));
     const api = createPointPolicyApi(fetcher);

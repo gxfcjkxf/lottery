@@ -19,6 +19,11 @@ const auditId = "55555555-5555-4555-8555-555555555555";
 const revisionId = "66666666-6666-4666-8666-666666666666";
 const timestamp = "2026-10-06T00:00:00Z";
 
+it("rejects the old withdrawal policy string error format as an unconfirmed response", async () => {
+  const api = createWithdrawalPolicyApi(vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ success: false, error: "old denial" }), { status: 400 })));
+  await expect(api.getBrandPolicy(brand)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+});
+
 const brandConfig: BrandWithdrawalConfig = {
   enabled: false,
   min_points: "1",

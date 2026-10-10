@@ -717,7 +717,7 @@ function stableJson(value: unknown): string {
 type Envelope<T> = {
   success?: boolean;
   data?: T;
-  error?: string | { code?: string; message?: string } | null;
+  error?: { code?: string; message?: string } | null;
 };
 
 export function createDrawManagementApi(fetcher: typeof fetch = fetch) {
@@ -761,10 +761,9 @@ export function createDrawManagementApi(fetcher: typeof fetch = fetch) {
       !("data" in envelope)
     ) {
       const detail = isRecord(envelope?.error) ? envelope.error : undefined;
+      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
       throw new AdminApiError(
-        typeof envelope?.error === "string"
-          ? envelope.error
-          : typeof detail?.message === "string"
+        typeof detail?.message === "string"
             ? detail.message
             : `请求失败（${response.status}）`,
         response.status,

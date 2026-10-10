@@ -78,7 +78,7 @@ export interface FinanceAccount {
 type Envelope<T> = {
   success?: boolean;
   data?: T;
-  error?: string | { code?: string; message?: string } | null;
+  error?: { code: string; message: string } | null;
 };
 
 export class FinanceApiError extends Error {
@@ -199,29 +199,23 @@ export function createFinanceApi(fetcher: FetchLike = fetch) {
     try {
       envelope = (await response.json()) as Envelope<T>;
     } catch {
-      throw new FinanceApiError(
-        response.ok
-          ? "Invalid server response"
-          : `Request failed (${response.status})`,
-        response.status,
-      );
+      throw new FinanceApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
+    }
+    if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+      throw new FinanceApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
+    }
+    const detail = envelope.error;
+    if (!response.ok && envelope.success === false && detail && typeof detail === "object" && !Array.isArray(detail)
+      && typeof detail.code === "string" && detail.code.trim()
+      && typeof detail.message === "string" && detail.message.trim()) {
+      throw new FinanceApiError(detail.message, response.status, detail.code);
     }
     if (
       !response.ok ||
       envelope.success !== true ||
-      envelope.data === undefined
+      envelope.data == null || typeof envelope.data !== "object" || Array.isArray(envelope.data)
     ) {
-      const detail =
-        typeof envelope.error === "object" && envelope.error
-          ? envelope.error
-          : undefined;
-      throw new FinanceApiError(
-        typeof envelope.error === "string"
-          ? envelope.error
-          : (detail?.message ?? `Request failed (${response.status})`),
-        response.status,
-        detail?.code,
-      );
+      throw new FinanceApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
     }
     const data = envelope.data;
     if (data && typeof data === "object" && !Array.isArray(data) &&

@@ -102,13 +102,16 @@ function filenameDate(snapshotAt: string): string {
 }
 async function parseError(response: Response): Promise<never> {
   let message = `Request failed (${response.status})`, code: string | undefined;
+  let body: unknown;
   try {
-    const body: unknown = await response.json();
-    if (isRecord(body) && isRecord(body.error)) {
-      if (typeof body.error.message === "string") message = body.error.message;
-      if (typeof body.error.code === "string") code = body.error.code;
-    } else if (isRecord(body) && typeof body.error === "string") message = body.error;
+    body = await response.json();
   } catch { /* Non-JSON error bodies are intentionally not downloaded. */ }
+  if (isRecord(body) && typeof body.error === "string")
+    throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+  if (isRecord(body) && isRecord(body.error)) {
+    if (typeof body.error.message === "string") message = body.error.message;
+    if (typeof body.error.code === "string") code = body.error.code;
+  }
   throw new AdminApiError(message, response.status, code);
 }
 

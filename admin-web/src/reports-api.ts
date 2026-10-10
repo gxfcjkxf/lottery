@@ -82,7 +82,7 @@ export type LedgerReport = ReportBase<LedgerTotals> & {
 type Envelope<T> = {
   success?: boolean;
   data?: T;
-  error?: string | { code?: string; message?: string } | null;
+  error?: { code?: string; message?: string } | null;
 };
 
 type FetchLike = typeof fetch;
@@ -316,8 +316,8 @@ export function createReportsApi(fetchImpl: FetchLike = fetch) {
     catch { throw new AdminApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`, response.status); }
     if (!response.ok || envelope.success !== true || envelope.data === undefined) {
       const error = typeof envelope.error === "object" && envelope.error !== null ? envelope.error : undefined;
-      throw new AdminApiError(typeof envelope.error === "string" ? envelope.error :
-        error?.message || `Request failed (${response.status})`, response.status, error?.code);
+      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+      throw new AdminApiError(error?.message || `Request failed (${response.status})`, response.status, error?.code);
     }
     return validateReport<T>(envelope.data, brandId, normalized, report) as T;
   }

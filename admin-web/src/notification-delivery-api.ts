@@ -87,7 +87,7 @@ function validateDelivery(value: unknown, brand: string, expected?: { eventID?: 
   return true;
 }
 
-type Envelope = { success?: unknown; data?: unknown; error?: string | { code?: string; message?: string } | null };
+type Envelope = { success?: unknown; data?: unknown; error?: { code?: string; message?: string } | null };
 
 export function createNotificationDeliveryApi(fetchImpl: typeof fetch = fetch): NotificationDeliveryApi {
   async function request(path: string, brand: string, options: {
@@ -120,7 +120,8 @@ export function createNotificationDeliveryApi(fetchImpl: typeof fetch = fetch): 
     }
     if (!response.ok || envelope.success !== true || envelope.data === undefined) {
       const error = typeof envelope.error === "object" && envelope.error ? envelope.error : undefined;
-      throw new AdminApiError(typeof envelope.error === "string" ? envelope.error : error?.message || `Request failed (${response.status})`,
+      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+      throw new AdminApiError(error?.message || `Request failed (${response.status})`,
         response.ok ? (options.write ? 0 : 502) : response.status,
         response.ok ? "INVALID_RESPONSE" : error?.code);
     }

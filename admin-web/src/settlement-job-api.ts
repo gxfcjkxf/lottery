@@ -238,7 +238,7 @@ function validTarget(value: unknown): value is SettlementTarget {
     (value.error_code === null || nonempty(value.error_code));
 }
 
-type Envelope = { success?: unknown; data?: unknown; error?: string | { code?: string; message?: string } | null };
+type Envelope = { success?: unknown; data?: unknown; error?: { code?: string; message?: string } | null };
 
 export function createSettlementJobApi({ fetch: fetcher = fetch }: { fetch?: typeof fetch } = {}): SettlementJobApi {
   async function request(path: string, brandId: string, options: { method?: "GET" | "POST" | "PUT"; body?: unknown; key?: string; successStatus?: number } = {}): Promise<unknown> {
@@ -263,7 +263,8 @@ export function createSettlementJobApi({ fetch: fetcher = fetch }: { fetch?: typ
     }
     if (!response.ok || envelope.success !== true || envelope.data === undefined) {
       const error = typeof envelope.error === "object" && envelope.error ? envelope.error : undefined;
-      throw new AdminApiError(typeof envelope.error === "string" ? envelope.error : error?.message || `Request failed (${response.status})`, response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : error?.code);
+      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+      throw new AdminApiError(error?.message || `Request failed (${response.status})`, response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : error?.code);
     }
     return envelope.data;
   }

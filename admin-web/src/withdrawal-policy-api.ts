@@ -101,7 +101,7 @@ export function isValidTurnoverMultiple(value: string): boolean {
 type Envelope<T> = {
   success?: boolean;
   data?: T;
-  error?: string | { code?: string; message?: string } | null;
+  error?: { code: string; message: string } | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -357,29 +357,21 @@ export function createWithdrawalPolicyApi(fetcher: typeof fetch = fetch) {
     try {
       envelope = (await response.json()) as Envelope<T>;
     } catch {
-      throw new AdminApiError(
-        response.ok
-          ? "Invalid server response"
-          : `Request failed (${response.status})`,
-        response.ok ? 502 : response.status,
-        response.ok ? "INVALID_RESPONSE" : undefined,
-      );
+      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
+    }
+    if (!isRecord(envelope)) throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
+    const error = envelope.error;
+    if (!response.ok && envelope.success === false && isRecord(error)
+      && typeof error.code === "string" && error.code.trim()
+      && typeof error.message === "string" && error.message.trim()) {
+      throw new AdminApiError(error.message, response.status, error.code);
     }
     if (
       !response.ok ||
-      !isRecord(envelope) ||
       envelope.success !== true ||
-      envelope.data === undefined
+      envelope.data == null || !isRecord(envelope.data)
     ) {
-      const error = isRecord(envelope?.error) ? envelope.error : undefined;
-      throw new AdminApiError(
-        typeof envelope?.error === "string"
-          ? envelope.error
-          : (typeof error?.message === "string" && error.message) ||
-            `Request failed (${response.status})`,
-        response.ok ? 502 : response.status,
-        typeof error?.code === "string" ? error.code : undefined,
-      );
+      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
     }
     return envelope.data;
   }

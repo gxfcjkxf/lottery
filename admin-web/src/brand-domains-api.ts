@@ -80,7 +80,8 @@ export function createBrandDomainsApi(fetchImpl: typeof fetch = fetch): BrandDom
     const expectedStatus = method === "GET" ? 200 : method === "POST" ? 201 : 200;
     if (response.status !== expectedStatus) {
       const err = isRecord(envelope?.error) ? envelope.error : undefined;
-      if (!response.ok) throw new AdminApiError(typeof err?.message === "string" ? err.message : typeof envelope?.error === "string" ? envelope.error : `Request failed (${response.status})`, response.status, typeof err?.code === "string" ? err.code : undefined);
+      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+      if (!response.ok) throw new AdminApiError(typeof err?.message === "string" ? err.message : `Request failed (${response.status})`, response.status, typeof err?.code === "string" ? err.code : undefined);
       invalidResponse(method !== "GET");
     }
     if (!isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {

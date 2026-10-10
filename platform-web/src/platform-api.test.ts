@@ -47,9 +47,9 @@ describe('platform API boundary', () => {
     await expect(createPlatformApi(fetcher).brands()).rejects.toMatchObject({ status: 400, code: 'BRAND_CODE_TAKEN', message: 'Code is already in use' })
   })
 
-  it('does not parse legacy string-form errors', async () => {
+  it('rejects legacy string-form errors as unconfirmed protocol responses', async () => {
     const fetcher = async () => new Response(JSON.stringify({ success: false, error: 'legacy error text' }), { status: 400 })
-    await expect(createPlatformApi(fetcher).brands()).rejects.toMatchObject({ status: 400, message: 'Request failed (400)' })
+    await expect(createPlatformApi(fetcher).brands()).rejects.toMatchObject({ status: 502, code: 'INVALID_RESPONSE' })
   })
 
   it('validates list DTOs and rejects malformed current-format data', async () => {

@@ -515,7 +515,7 @@ type FetchLike = typeof fetch;
 interface Envelope<T> {
   success?: boolean;
   data?: T;
-  error?: string | { code?: string; message?: string } | null;
+  error?: { code?: string; message?: string } | null;
 }
 
 export function createPeriodSchedulesApi(fetcher: FetchLike = fetch) {
@@ -552,12 +552,11 @@ export function createPeriodSchedulesApi(fetcher: FetchLike = fetch) {
       !("data" in envelope)
     ) {
       const detail = isRecord(envelope?.error) ? envelope.error : undefined;
+      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
       throw new AdminApiError(
-        typeof envelope?.error === "string"
-          ? envelope.error
-          : (typeof detail?.message === "string"
+        typeof detail?.message === "string"
               ? detail.message
-              : `请求失败（${response.status}）`),
+              : `请求失败（${response.status}）`,
         response.status,
         typeof detail?.code === "string" ? detail.code : undefined,
       );

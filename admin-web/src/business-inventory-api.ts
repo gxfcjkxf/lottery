@@ -192,8 +192,8 @@ export function createBusinessInventoryApi(fetchImpl: typeof fetch = fetch): Bus
       }
       if (!response.ok || !isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
         const detail = isRecord(envelope) && isRecord(envelope.error) ? envelope.error : undefined;
-        const error = isRecord(envelope) && typeof envelope.error === "string" ? envelope.error
-          : typeof detail?.message === "string" ? detail.message : `Request failed (${response.status})`;
+        if (isRecord(envelope) && typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+        const error = typeof detail?.message === "string" ? detail.message : `Request failed (${response.status})`;
         if (!response.ok) throw new AdminApiError(error, response.status, typeof detail?.code === "string" ? detail.code : undefined);
         invalidResponse();
       }

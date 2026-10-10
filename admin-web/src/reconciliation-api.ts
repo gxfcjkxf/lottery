@@ -229,7 +229,8 @@ export function createReconciliationApi(fetchImpl: typeof fetch = fetch): Reconc
     catch { if (!response.ok) throw new AdminApiError(`Request failed (${response.status})`, response.status); invalidResponse(Boolean(options.write)); }
     if (!response.ok || !isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
       const detail = isRecord(envelope?.error) ? envelope.error : undefined;
-      const message = typeof envelope?.error === "string" ? envelope.error : typeof detail?.message === "string" ? detail.message : `Request failed (${response.status})`;
+      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+      const message = typeof detail?.message === "string" ? detail.message : `Request failed (${response.status})`;
       if (!response.ok) throw new AdminApiError(message, response.status, typeof detail?.code === "string" ? detail.code : undefined);
       invalidResponse(Boolean(options.write));
     }

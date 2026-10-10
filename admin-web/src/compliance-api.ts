@@ -130,7 +130,8 @@ export function createCompliancePolicyApi(fetchImpl: typeof fetch = fetch): Comp
     try { envelope = await response.json() as Envelope; } catch { if (!response.ok) throw new AdminApiError(`Request failed (${response.status})`, response.status); invalid(method !== "GET"); }
     if (!response.ok || !record(envelope) || envelope.success !== true || envelope.data === undefined) {
       const error = record(envelope?.error) ? envelope.error : undefined;
-      const message = typeof envelope?.error === "string" ? envelope.error : typeof error?.message === "string" ? error.message : `Request failed (${response.status})`;
+      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+      const message = typeof error?.message === "string" ? error.message : `Request failed (${response.status})`;
       if (!response.ok) throw new AdminApiError(message, response.status, typeof error?.code === "string" ? error.code : undefined);
       invalid(method !== "GET");
     }

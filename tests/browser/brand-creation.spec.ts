@@ -3,7 +3,8 @@ import { test, expect } from '@playwright/test';
 const origin = process.env.TEST_PLATFORM_ADMIN_ORIGIN ?? 'http://127.0.0.1:5175';
 const api = `${origin}/api/v1/platform`;
 
-test('platform brand creation retains an uncertain committed request across navigation and replays once', async ({ page }, info) => {
+for (const responseFault of ['network', 'legacy-error'] as const) {
+test(`platform brand creation retains an uncertain committed request across navigation and replays once (${responseFault})`, async ({ page }, info) => {
   test.skip(!process.env.TEST_PLATFORM_ADMIN_USERNAME || !process.env.TEST_PLATFORM_ADMIN_PASSWORD, 'Provide isolated platform administrator credentials');
   test.setTimeout(60_000);
   page.setDefaultTimeout(10_000);
@@ -40,7 +41,8 @@ test('platform brand creation retains an uncertain committed request across navi
       const committed = await route.fetch();
       expect(committed.status()).toBe(201);
       receipt = (await committed.json()).data;
-      await route.abort('failed');
+      if (responseFault === 'network') await route.abort('failed');
+      else await route.fulfill({ status: 400, json: { success: false, error: 'legacy proxy response' } });
     } else await route.continue();
   });
   await dialog.getByRole('button', { name: 'Confirm and create', exact: true }).click();
@@ -72,3 +74,4 @@ test('platform brand creation retains an uncertain committed request across navi
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('platform-brand-created.png'), fullPage: true });
 });
+}

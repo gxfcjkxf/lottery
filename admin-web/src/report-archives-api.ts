@@ -257,10 +257,11 @@ function contentLength(response: Response, actual: number): boolean {
 async function envelope(response: Response, write: boolean): Promise<unknown> {
   let body: unknown;
   if (!response.ok) {
-    if (write && (response.status < 400 || response.status >= 500)) unknownWrite();
     try { body = await response.json(); } catch { body = undefined; }
     const e = isRecord(body) && isRecord(body.error) ? body.error : undefined;
-    throw new AdminApiError(isRecord(body) && typeof body.error === "string" ? body.error : typeof e?.message === "string" ? e.message : `Request failed (${response.status})`, response.status, typeof e?.code === "string" ? e.code : undefined);
+    if (isRecord(body) && typeof body.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+    if (write && (response.status < 400 || response.status >= 500)) unknownWrite();
+    throw new AdminApiError(typeof e?.message === "string" ? e.message : `Request failed (${response.status})`, response.status, typeof e?.code === "string" ? e.code : undefined);
   }
   try { body = await response.json(); } catch { if (write) unknownWrite(); invalidResponse(); }
   if (!isRecord(body) || body.success !== true || body.data === undefined) { if (write) unknownWrite(); invalidResponse(); }

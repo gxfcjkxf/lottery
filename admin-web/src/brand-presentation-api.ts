@@ -196,7 +196,8 @@ export function createBrandPresentationApi(fetchImpl: typeof fetch = fetch): Bra
     if (response.status !== 200 && response.ok) invalidResponse(Boolean(options.write));
     if (!response.ok || !isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
       const error = isRecord(envelope?.error) ? envelope.error : undefined;
-      const message = typeof envelope?.error === "string" ? envelope.error : typeof error?.message === "string" ? error.message : `Request failed (${response.status})`;
+      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+      const message = typeof error?.message === "string" ? error.message : `Request failed (${response.status})`;
       if (!response.ok) throw new AdminApiError(message, response.status, typeof error?.code === "string" ? error.code : undefined);
       invalidResponse(Boolean(options.write));
     }

@@ -59,14 +59,14 @@ export function createPlatformApi(fetcher: typeof fetch = fetch) {
     }
     let envelope: unknown
     try { envelope = await response.json() } catch {
-      if (!response.ok) apiError(`Request failed (${response.status})`, response.status)
-      apiError('Invalid server response', response.status, 'INVALID_RESPONSE')
+      apiError('Invalid server response; operation result is unconfirmed', 502, 'INVALID_RESPONSE')
     }
-    if (!isObj(envelope) || envelope.success !== true || envelope.data === undefined || !response.ok) {
-      const err = isObj(envelope) && isObj(envelope.error) ? envelope.error : undefined
-      const message = text(err?.message) ? err.message : `Request failed (${response.status})`
-      apiError(message, response.status, text(err?.code) ? err.code : undefined)
+    if (!isObj(envelope)) apiError('Invalid server response; operation result is unconfirmed', 502, 'INVALID_RESPONSE')
+    const err = envelope.error
+    if (!response.ok && envelope.success === false && isObj(err) && text(err.code) && err.code.trim() && text(err.message) && err.message.trim()) {
+      apiError(err.message, response.status, err.code)
     }
+    if (envelope.success !== true || !isObj(envelope.data) || !response.ok) apiError('Invalid server response; operation result is unconfirmed', 502, 'INVALID_RESPONSE')
     if (options.expectedStatus !== undefined && response.status !== options.expectedStatus) apiError('Invalid server response status', response.status, 'INVALID_RESPONSE')
     return envelope.data as T
   }

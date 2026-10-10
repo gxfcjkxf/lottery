@@ -77,7 +77,7 @@ function discovery(brandId: string, state: "pending" | "registered" | "failed" =
 }
 function page(brandId: string, items: unknown[], offset = 0) { return { brand_id: brandId, items, total_count: String(items.length), limit: 20, offset }; }
 function ok(data: unknown, status = 200) { return new Response(JSON.stringify({ success: true, data }), { status }); }
-function error(status: number, message: string) { return new Response(JSON.stringify({ success: false, error: message }), { status }); }
+function error(status: number, message: string) { return new Response(JSON.stringify({ success: false, error: { code: status === 401 ? "UNAUTHORIZED" : status === 409 ? "VERSION_CONFLICT" : "REQUEST_FAILED", message } }), { status }); }
 function deferred<T>() { let resolve!: (value: T) => void, reject!: (cause: unknown) => void; const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; }); return { promise, resolve, reject }; }
 function textOf(node: HostNode): string { return node.text + node.children.map(textOf).join(""); }
 function findNode(node: HostNode, match: (candidate: HostNode) => boolean): HostNode | null { if (match(node)) return node; for (const child of node.children) { const found = findNode(child, match); if (found) return found; } return null; }

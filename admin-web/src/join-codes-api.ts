@@ -70,7 +70,7 @@ export interface JoinCodeHistoryPage {
   offset: number;
   total_count: string;
 }
-type Envelope = { success?: unknown; data?: unknown; error?: string | { code?: string; message?: string } | null };
+type Envelope = { success?: unknown; data?: unknown; error?: { code?: string; message?: string } | null };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -186,7 +186,8 @@ export function createJoinCodesApi(fetchImpl: typeof fetch = fetch) {
     catch { throw new AdminApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`, response.ok && write ? 0 : response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : undefined); }
     if (!response.ok || envelope.success !== true || envelope.data === undefined) {
       const detail = typeof envelope.error === "object" && envelope.error ? envelope.error : undefined;
-      throw new AdminApiError(typeof envelope.error === "string" ? envelope.error : detail?.message ?? `Request failed (${response.status})`,
+      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+      throw new AdminApiError(detail?.message ?? `Request failed (${response.status})`,
         response.ok && write ? 0 : response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : detail?.code);
     }
     return envelope.data;

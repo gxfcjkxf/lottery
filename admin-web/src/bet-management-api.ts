@@ -192,7 +192,7 @@ export function createBetMutationKeyTracker() {
 type Envelope<T> = {
   success?: boolean;
   data?: T;
-  error?: string | { code?: string; message?: string } | null;
+  error?: { code?: string; message?: string } | null;
 };
 function invalidResponse(): never {
   throw new AdminApiError("投注管理响应格式无效。", 502, "INVALID_RESPONSE");
@@ -339,10 +339,9 @@ export function createBetManagementApi(fetcher: typeof fetch = fetch) {
         typeof envelope.error === "object" && envelope.error
           ? envelope.error
           : undefined;
+      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
       throw new AdminApiError(
-        typeof envelope.error === "string"
-          ? envelope.error
-          : error?.message || `Request failed (${response.status})`,
+        error?.message || `Request failed (${response.status})`,
         response.ok ? 502 : response.status,
         error?.code,
       );

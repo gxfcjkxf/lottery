@@ -528,12 +528,12 @@ export function createCommissionCyclesApi(fetcher: typeof fetch = fetch): Commis
     }
 
     if (!response.ok) {
-      if (options.write && (response.status < 400 || response.status >= 500)) unknownWriteStatus();
       let error: unknown;
       try { error = await response.json(); } catch { error = undefined; }
       const detail = isRecord(error) && isRecord(error.error) ? error.error : undefined;
-      const message = isRecord(error) && typeof error.error === "string" ? error.error :
-        (typeof detail?.message === "string" && detail.message) || `Request failed (${response.status})`;
+      if (isRecord(error) && typeof error.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
+      if (options.write && (response.status < 400 || response.status >= 500)) unknownWriteStatus();
+      const message = (typeof detail?.message === "string" && detail.message) || `Request failed (${response.status})`;
       throw new AdminApiError(message, response.status, typeof detail?.code === "string" ? detail.code : undefined);
     }
 

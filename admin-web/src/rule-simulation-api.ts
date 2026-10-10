@@ -661,7 +661,7 @@ function isPositiveDecimalString(value: string): boolean {
 type Envelope<T> = {
   success?: boolean;
   data?: T;
-  error?: string | { code?: string; message?: string } | null;
+  error?: { code?: string; message?: string } | null;
 };
 
 export function createRuleSimulationApi(fetcher: typeof fetch = fetch) {
@@ -702,10 +702,9 @@ export function createRuleSimulationApi(fetcher: typeof fetch = fetch) {
           typeof envelope.error === "object" && envelope.error
             ? envelope.error
             : undefined;
+        if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
         throw new AdminApiError(
-          typeof envelope.error === "string"
-            ? envelope.error
-            : (detail?.message ?? `Request failed (${response.status})`),
+          detail?.message ?? `Request failed (${response.status})`,
           response.status,
           detail?.code,
         );

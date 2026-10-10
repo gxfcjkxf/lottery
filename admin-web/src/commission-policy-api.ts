@@ -179,7 +179,7 @@ function validateBody(body: UpdateCommissionPolicyBody): void {
   }
 }
 
-type Envelope<T> = { success?: boolean; data?: T; error?: string | { code?: string; message?: string } | null };
+type Envelope<T> = { success?: boolean; data?: T; error?: { code?: string; message?: string } | null };
 
 export function createCommissionPolicyApi(fetcher: typeof fetch = fetch) {
   async function request<T>(brand: string, path: string, options: { method?: "GET" | "PUT"; body?: unknown; key?: string } = {}): Promise<T> {
@@ -205,9 +205,9 @@ export function createCommissionPolicyApi(fetcher: typeof fetch = fetch) {
     }
     if (!response.ok || !isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
       const detail = isRecord(envelope?.error) ? envelope.error : undefined;
+      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
       throw new AdminApiError(
-        typeof envelope?.error === "string" ? envelope.error :
-          (typeof detail?.message === "string" && detail.message) || `Request failed (${response.status})`,
+        (typeof detail?.message === "string" && detail.message) || `Request failed (${response.status})`,
         response.ok ? 502 : response.status,
         typeof detail?.code === "string" ? detail.code : undefined,
       );
