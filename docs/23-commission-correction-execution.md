@@ -54,7 +54,7 @@ commission_correction_executions冻结plan、run、evidence_epoch、plan_version
 
 钱包前后值与最新流水必须一致。正差额服从当前总余额封顶；负差额降低已有超限余额可以执行，但不得减为负值。无权限、跨品牌、旧版本、旧核算、旧计划或错误资金标签不能授权资金移动。
 
-## 内部接入与升级
+## 内部接入与安装
 
 平台commission worker增加独立的执行循环，每秒检查一次、每次最多20步、单轮10秒上下文；ProcessCorrectionExecutions只允许1至100步。周期使用SKIP LOCKED，交叉锁NOWAIT，忙锁延后1秒而不标财务失败。暂停与失败不自动选择，过期任务的失效保存不依赖资金开关。
 
@@ -62,4 +62,4 @@ commission_correction_executions冻结plan、run、evidence_epoch、plan_version
 
 内部方法为CorrectionExecutionPolicyTx、UpdateCorrectionExecutionPolicyTx、CorrectionExecutionsTx、CorrectionExecutionTx、CorrectionExecutionTargetsTx、ApproveCorrectionExecutionTx、ContinueCorrectionExecutionTx及RetryCorrectionExecutionTx。写入需要当前版本、非空原因与真实管理员元数据。列表金额、总数和epoch为精确字符串，版本为安全整数，时间为UTC，空列表为[]。读取同时返回冻结target_count、实际applied_count及实际正负入账金额；cycle_hold_active表示现在的周期暂停，不是假称原任务创建时的历史状态。
 
-正常部署当前版本须migrate至0060并协调API、worker和前端；0059及0060不改旧迁移校验和、不启用新开关、不迁移旧批准为新授权、不补造历史消息、不接入外部支付。管理HTTP已提供同会话原请求恢复与幂等回执，页面明确区分原派发、计划、当前执行和历史资金。0060补偿通知与报表取真实执行目标而非计划金额。该交付不代表整个佣金或项目完成，客户人工审核及生产验收继续保留。
+本模块的数据库结构已包含在当前 `0001_baseline.up.sql`。按[空库安装](../README.md#空库安装)初始化新数据库，再运行匹配版本的API、worker和前端；程序不自动迁移，不提供旧开发库的增量升级，也不清空旧库。不自动开启金融开关，不把旧批准作为新授权，也不补造历史消息或执行外部付款。管理界面仍区分原派发、计划、当前执行和历史资金。

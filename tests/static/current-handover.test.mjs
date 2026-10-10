@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 
 const read = path => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
@@ -10,6 +10,18 @@ test('current handover uses the single baseline and independent platform creatio
   assert.match(readme, /POST \/api\/v1\/platform\/brands/)
   assert.doesNotMatch(readme, /POST \/api\/v1\/admin\/brands|migrate至00\d\d|0018–0020|原型演示订单|用户投注\/提现与业务订单仍待/)
   assert.match(readme, /platform-web\s+总后台/)
+})
+
+test('current module handovers do not instruct installation of removed incremental migrations', () => {
+  const historical = new Set(['implementation-progress.md', 'requirements-draft.md'])
+  for (const name of readdirSync(new URL('../../docs/', import.meta.url)).filter(name => name.endsWith('.md') && !historical.has(name))) {
+    assert.doesNotMatch(read(`docs/${name}`), /migrate\s*(?:至|到)\s*00\d\d|升级至\s*00\d\d|正常迁移\s*00\d\d/, name)
+  }
+  for (const name of ['19-commission-posting-reports', '21-reward-reports', '23-commission-correction-execution', '25-commission-correction-observability', '26-report-archive-core', '27-automatic-report-archive-core', '28-report-archive-task-management', '29-report-archive-activation', '37-brand-business-inventory', '38-commission-cycle-analysis']) {
+    assert.match(read(`docs/${name}.md`), /0001_baseline\.up\.sql/)
+    assert.match(read(`docs/${name}.md`), /README\.md#空库安装/)
+  }
+  assert.match(read('docs/README.md'), /备份恢复和审计仍保留/)
 })
 
 test('default infrastructure starts only the implemented PostgreSQL dependency', () => {

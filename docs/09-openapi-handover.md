@@ -30,7 +30,7 @@ PUT 必须提供当前共享版本、全部 16 个配置键和操作原因。可
 
 ## 接入约束
 
-品牌业务引用`GET /api/v1/admin/reconciliations/business-inventory`使用明确wallet.view权限、主库观察、闭合11字段及固定41表覆盖；支持复合来源标识，完整计数和摘要不随100项问题样本截断。无正文/查询串，超限413、来源/审计失败503，不能据结构判断修复金额。先migrate至0072并协调API/worker/前端，旧持久任务及回执不改写，见[37号合同](37-brand-business-inventory.md)。
+品牌业务引用`GET /api/v1/admin/reconciliations/business-inventory`使用明确wallet.view权限、主库观察、闭合11字段及固定41表覆盖；支持复合来源标识，完整计数和摘要不随100项问题样本截断。无正文/查询串，超限413、来源/审计失败503，不能据结构判断修复金额。新空库按[安装步骤](../README.md#空库安装)应用当前 `0001_baseline.up.sql`，API、worker与前端须使用匹配版本；业务任务及回执不改写，见[37号合同](37-brand-business-inventory.md)。
 
 提现可查询独立授权的当前状态报表并完整导出CSV，工作台提供真实审核中/提现中计数；六种提现状态事件通过既有站内收件箱读取。报表按申请created_at筛选，不是实际出款时间或不可变结账；通知记录不可变历史状态，不代表当前余额或外部支付。字段、范围、文件校验与权限见[API合同](04-api-contract.md)，模板和历史说明见[通知合同](12-notification-templates.md)。查询报表或通知不授权提交提现，申请仍须通过当前配置、资格、余额及并发检查。
 
