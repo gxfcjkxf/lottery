@@ -45,7 +45,7 @@ go run ./cmd/platform seed
 go run ./cmd/platform serve
 ```
 
-seed提供Aurora/Harbor虚构品牌及localhost/harbor.localhost域名，在production拒绝运行，不创建默认密码。AUTH_KEY_FILE相对backend工作目录解析；密钥0600且不入Git，多实例共享，不能丢失或直接替换。
+seed提供Aurora/Harbor虚构品牌及localhost/harbor.localhost域名，在production拒绝运行。`APP_ENV=development`时还创建总管理员`admin / admin123`；test不创建默认管理员。重复seed不重置已有同名账号的密码、状态或权限。AUTH_KEY_FILE相对backend工作目录解析；密钥0600且不入Git，多实例共享，不能丢失或直接替换。
 
 另一个终端从仓库根目录加载相同环境，启动独立worker：
 
@@ -61,7 +61,9 @@ go run ./cmd/platform worker
 
 ## 账号与安全
 
-没有admin/admin123或其他内置密码。服务器拥有者安全注入BOOTSTRAP_ADMIN_PASSWORD（16–128字节），从backend显式创建，随后清除环境变量。密码不放入命令参数、日志或仓库：
+开发环境执行seed后，可用`admin / admin123`登录独立总后台；这不是品牌管理员，不能进入品牌后台。已存在admin时不会覆盖，请使用其已有密码。固定短密码仅在development总后台登录时接受，不放宽普通用户、账号创建或密码重置规则；不可用于公网或正式部署。
+
+test/production不自动创建管理员。服务器拥有者安全注入BOOTSTRAP_ADMIN_PASSWORD（16–128字节），从backend显式创建，随后清除环境变量。实际部署密码不放入命令参数、日志或仓库：
 
 ```sh
 go run ./cmd/platform create-admin --username operator --brand aurora

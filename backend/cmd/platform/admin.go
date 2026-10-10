@@ -7,18 +7,19 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
 	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"os"
 	"regexp"
 	"strings"
 )
 
-// Bootstrap credentials come from the environment, not argv/history or defaults.
+// Explicit bootstrap credentials come from the environment, not argv/history.
 func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 	flags := flag.NewFlagSet("create-admin", flag.ContinueOnError)
 	username := flags.String("username", "", "new administrative username")
 	brand := flags.String("brand", "", "brand code for brand operator")
-	super := flags.Bool("super", false, "platform read-only user administration")
+	super := flags.Bool("super", false, "platform administrator")
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		return err
 	}
@@ -48,10 +49,19 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 			return errors.New("brand not found")
 		}
 	}
-	admin, role := ids.New(), ids.New()
+	admin := ids.New()
 	if _, err = tx.Exec(ctx, "INSERT INTO admin_accounts(id,username,password_hash,is_super_admin) VALUES($1,$2,$3,$4)", admin, *username, hash, *super); err != nil {
 		return errors.New("cannot create admin; account may already exist")
 	}
+	if err := grantBootstrapAdmin(ctx, tx, admin, brandID, *super, "explicit server-owner bootstrap"); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, super bool, reason string) error {
+	role := ids.New()
+	var err error
 	if _, err = tx.Exec(ctx, "INSERT INTO roles(id,brand_id,code,name,is_bootstrap) VALUES($1,NULLIF($2,'')::uuid,$3,$4,true)", role, brandID, "bootstrap_"+role, "Bootstrap administrator"); err != nil {
 		return err
 	}
@@ -69,14 +79,14 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 	permissions = append(permissions, "notification_template.view.brand", "notification_template.write.brand")
 	permissions = append(permissions, "wallet.reconcile.brand")
 	permissions = append(permissions, "compliance_policy.view.brand", "compliance_policy.write.brand", "compliance_check.view.brand", "compliance_check.run.brand")
-	if *super {
+	if super {
 		permissions = []string{"user.view.platform", "audit.view.platform", "brand.view.platform", "role.view.platform", "role.write.platform", "admin.view.platform", "admin.write.platform", "auth_config.view.platform", "auth_config.write.platform", "wallet.view.platform", "recharge.view.platform", "point_policy.view.platform"}
 		permissions = append(permissions, "brand_operation.view.platform", "brand_operation.write.platform")
 		permissions = append(permissions, "brand_presentation.view.platform", "brand_presentation.write.platform")
 		permissions = append(permissions, "brand_domains.view.platform", "brand_domains.write.platform")
 		permissions = append(permissions, "audit.export.platform")
 	}
-	if *super {
+	if super {
 		permissions = append(permissions, "rule.simulate.platform")
 		permissions = append(permissions, "brand.create.platform")
 		permissions = append(permissions, "compliance_policy.view.platform", "compliance_check.view.platform")
@@ -140,8 +150,8 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 	if _, err = tx.Exec(ctx, "INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)", admin, role); err != nil {
 		return err
 	}
-	if _, err = audit.Append(ctx, tx, audit.Record{BrandID: brandID, ActorType: "system", Action: "admin.bootstrap", ResourceType: "admin", ResourceID: admin, Reason: "explicit server-owner bootstrap", RequestID: ids.New(), After: map[string]any{"super_admin": *super}}); err != nil {
+	if _, err = audit.Append(ctx, tx, audit.Record{BrandID: brandID, ActorType: "system", Action: "admin.bootstrap", ResourceType: "admin", ResourceID: admin, Reason: reason, RequestID: ids.New(), After: map[string]any{"super_admin": super}}); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return nil
 }

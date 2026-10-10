@@ -10,6 +10,10 @@ test('current handover uses the single baseline and independent platform creatio
   assert.match(readme, /POST \/api\/v1\/platform\/brands/)
   assert.doesNotMatch(readme, /POST \/api\/v1\/admin\/brands|migrate至00\d\d|0018–0020|原型演示订单|用户投注\/提现与业务订单仍待/)
   assert.match(readme, /platform-web\s+总后台/)
+  assert.match(readme, /APP_ENV=development/)
+  assert.match(readme, /总管理员`admin \/ admin123`/)
+  assert.match(readme, /test\/production不自动创建管理员/)
+  assert.doesNotMatch(readme, /没有admin\/admin123或其他内置密码|在production拒绝运行，不创建默认密码/)
 })
 
 test('current module handovers do not instruct installation of removed incremental migrations', () => {

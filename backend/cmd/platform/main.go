@@ -59,7 +59,10 @@ func run(logger *slog.Logger) error {
 	case "migrate":
 		return database.Migrate(ctx, pools.Primary)
 	case "seed":
-		return database.Seed(ctx, pools.Primary, c.Environment)
+		if err := database.Seed(ctx, pools.Primary, c.Environment); err != nil {
+			return err
+		}
+		return seedDevelopmentAdmin(ctx, pools.Primary, c.Environment)
 	case "create-admin":
 		return createAdmin(ctx, pools.Primary)
 	case "check":
@@ -94,6 +97,7 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
+		users.Development = c.Environment == "development"
 	}
 	service := "api"
 	if command == "worker" {

@@ -44,6 +44,15 @@ func HashPassword(password string) (string, error) {
 	if !validPassword(password) {
 		return "", ErrInvalidPassword
 	}
+	return hashPassword(password)
+}
+
+// HashDevelopmentAdminPassword hashes the fixed development-only administrator password.
+func HashDevelopmentAdminPassword() (string, error) {
+	return hashPassword("admin123")
+}
+
+func hashPassword(password string) (string, error) {
 	salt := make([]byte, argonSaltBytes)
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("generate password salt: %w", err)
@@ -61,6 +70,15 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 	if !validPassword(password) {
 		return false, ErrInvalidPassword
 	}
+	return verifyPassword(password, encodedHash)
+}
+
+// VerifyDevelopmentAdminPassword verifies the fixed development-only administrator password.
+func VerifyDevelopmentAdminPassword(encodedHash string) (bool, error) {
+	return verifyPassword("admin123", encodedHash)
+}
+
+func verifyPassword(password, encodedHash string) (bool, error) {
 	parsed, err := parseHash(encodedHash)
 	if err != nil {
 		return false, ErrInvalidHash

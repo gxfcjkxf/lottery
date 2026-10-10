@@ -24,10 +24,11 @@ var ErrSession = errors.New("session unavailable")
 var ErrBusy = errors.New("password hashing busy")
 
 type Store struct {
-	DB        *pgxpool.Pool
-	TTL       time.Duration
-	dummyHash string
-	slots     chan struct{}
+	DB          *pgxpool.Pool
+	TTL         time.Duration
+	Development bool
+	dummyHash   string
+	slots       chan struct{}
 }
 
 func New(db *pgxpool.Pool) (*Store, error) {
@@ -138,6 +139,17 @@ func (s *Store) verify(ctx context.Context, password, hash string) (bool, error)
 	case s.slots <- struct{}{}:
 		defer func() { <-s.slots }()
 		return authcrypto.VerifyPassword(password, hash)
+	case <-ctx.Done():
+		return false, ctx.Err()
+	default:
+		return false, ErrBusy
+	}
+}
+func (s *Store) verifyDevelopmentAdmin(ctx context.Context, hash string) (bool, error) {
+	select {
+	case s.slots <- struct{}{}:
+		defer func() { <-s.slots }()
+		return authcrypto.VerifyDevelopmentAdminPassword(hash)
 	case <-ctx.Done():
 		return false, ctx.Err()
 	default:

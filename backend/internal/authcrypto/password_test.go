@@ -50,6 +50,28 @@ func TestPasswordByteBounds(t *testing.T) {
 	}
 }
 
+func TestDevelopmentAdminPasswordUsesArgon2WithoutChangingNormalBounds(t *testing.T) {
+	if _, err := HashPassword("admin123"); err != ErrInvalidPassword {
+		t.Fatalf("ordinary HashPassword accepted short password: %v", err)
+	}
+	if _, err := VerifyPassword("admin123", "$invalid"); err != ErrInvalidPassword {
+		t.Fatalf("ordinary VerifyPassword accepted short password: %v", err)
+	}
+	hash, err := HashDevelopmentAdminPassword()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(hash, "$argon2id$v=19$") {
+		t.Fatalf("development hash is not Argon2id: %q", hash)
+	}
+	if ok, err := VerifyDevelopmentAdminPassword(hash); err != nil || !ok {
+		t.Fatalf("development password verification failed: ok=%v err=%v", ok, err)
+	}
+	if ok, err := VerifyDevelopmentAdminPassword("$invalid"); err != ErrInvalidHash || ok {
+		t.Fatalf("malformed development hash accepted: ok=%v err=%v", ok, err)
+	}
+}
+
 func TestVerifyRejectsMalformedAndOverBudgetHashes(t *testing.T) {
 	validSalt := base64.RawStdEncoding.EncodeToString(make([]byte, argonSaltBytes))
 	validKey := base64.RawStdEncoding.EncodeToString(make([]byte, argonKeyBytes))
