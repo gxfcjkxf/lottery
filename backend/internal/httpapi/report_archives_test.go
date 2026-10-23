@@ -162,10 +162,11 @@ func TestReportArchiveHTTPClosedInputActorAndPlatformReadOnlyScope(t *testing.T)
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	platformArchivePath := strings.Replace(archiveHTTPPath, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, archiveCall(f, "GET", platformArchivePath+"/"+record.ID, "", platformToken, pointsBrandB, ""), 404)
 	mustStatus(t, archiveCall(f, "GET", platformArchivePath+"/"+record.ID+"/download", "", platformToken, managedBrand, ""), 200)
-	mustStatus(t, archiveCall(f, "POST", archiveHTTPPath, "report-archive-super-01", f.token, managedBrand, archiveBody(1)), 403)
+	mustStatus(t, archiveCall(f, "POST", archiveHTTPPath, "report-archive-super-01", platformToken, managedBrand, archiveBody(1)), 403)
 }
 
 func TestReportArchiveHTTPBusyAndAuditFailureAtomicity(t *testing.T) {

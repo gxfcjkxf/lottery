@@ -1,8 +1,18 @@
 <script setup lang="ts">
+import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vInlineValidation } from '@lottery/shared'
 import { computed, ref, watch } from "vue";
 import type { AdminAccount } from "./admin-api";
 import { AdminApiError } from "./admin-api";
-import { useAdminI18n } from "./i18n";
+import { adminKey, useAdminI18n } from "./i18n";
 import {
   buildRuleSimulationRequest,
   canSimulateRules,
@@ -24,8 +34,7 @@ const props = defineProps<{
   account: AdminAccount & Partial<RuleSimulationAccount>;
   brandId: string;
 }>();
-const { t } = useAdminI18n();
-const ui = (zh: string, en: string = zh) => t(zh, en);
+const { t, display } = useAdminI18n();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createRuleSimulationApi();
 const template = ref<RuleTemplate>("special");
@@ -34,25 +43,25 @@ const templates = Object.entries(RULE_TEMPLATE_LABELS) as [
   string,
 ][];
 const templateLabels: Record<string, string> = {
-  "特别号命中": "Special-number match", "数字直选（三位）": "Straight three-digit play",
-  "数字特征": "Digit features", "排除号码": "Excluded numbers",
-  "号码属性（特别号）": "Number attributes (special number)", "M 选 N 全中": "M-choose-N all matched",
+  "特别号命中": "admin.rule.template.special", "数字直选（三位）": "admin.rule.template.digits",
+  "数字特征": "admin.rule.template.features", "排除号码": "admin.rule.template.exclude",
+  "号码属性（特别号）": "admin.rule.template.attributes", "M 选 N 全中": "admin.rule.template.mselect",
 };
-const translatedTemplate = (value: string) => ui(value, templateLabels[value] ?? value);
+const translatedTemplate = (value: string) => templateLabels[value] ? t(adminKey(templateLabels[value]!)) : display(value);
 const translatedField = (value: SafeConditionField) => {
-  const labels: Record<string, [string, string]> = {
-    regular_match: ["普通号命中数量", "Regular number matches"], special_match: ["特别号命中数量", "Special number matches"],
-    position_match: ["逐位命中数量", "Position matches"], excluded_match: ["被排除号码命中数量", "Excluded number matches"],
-    draw_sum: ["号码和值", "Draw sum"], draw_odd_count: ["奇数个数", "Odd number count"], draw_even_count: ["偶数个数", "Even number count"],
-    draw_unique_count: ["不同号码个数", "Unique number count"], draw_all_same: ["全部号码相同", "All numbers are the same"],
-    draw_first_last_same: ["首尾号码相同", "First and last numbers match"], draw_span: ["号码跨度", "Number span"],
-    draw_consecutive: ["连续邻接对数", "Adjacent consecutive pairs"], draw_digit: ["指定位置数字", "Digit at position"],
-    draw_parity: ["指定位置奇偶", "Digit parity at position"], attribute_match: ["属性命中次数", "Attribute matches"],
+  const labels: Record<string, string> = {
+    regular_match: 'admin.copy.2e8458c7', special_match: 'admin.copy.144bb84a',
+    position_match: 'admin.copy.702fa755', excluded_match: 'admin.copy.fe3bf2dd',
+    draw_sum: 'admin.copy.b169b132', draw_odd_count: 'admin.copy.d13641c1', draw_even_count: 'admin.copy.64aef7ff',
+    draw_unique_count: 'admin.copy.bd8be16d', draw_all_same: 'admin.copy.d0aaa2ed',
+    draw_first_last_same: 'admin.copy.3724f7e5', draw_span: 'admin.copy.d5367324',
+    draw_consecutive: 'admin.copy.fee17cf2', draw_digit: 'admin.copy.5afccd6b',
+    draw_parity: 'admin.copy.e17e2fc4', attribute_match: 'admin.copy.0574fa30',
   };
-  const [zh, en] = labels[value] ?? [value, value];
-  return `${ui(zh, en)} (${value})`;
+  return `${labels[value] ? t(adminKey(labels[value]!)) : display(value)} (${value})`;
 };
-const localErrorText = (value: string) => {
+const localErrorText = (value: string | import("@lottery/shared").LocalizedMessage) => {
+  if (typeof value !== "string") return displayPublicError(value);
   const labels: Record<string, string> = {
     "特别号候选": "Special-number candidates", "开奖普通号": "Regular draw numbers", "开奖特别号": "Special draw number",
     "开奖数字": "Draw digits", "排除号码": "Excluded numbers", "红色号码映射": "Red-number mapping",
@@ -61,22 +70,20 @@ const localErrorText = (value: string) => {
   const match = value.match(/^(.+?)(不能为空。|必须在 (\d+) 至 (\d+) 范围内。)$/);
   if (match) {
     const label = labels[match[1]!] ?? match[1]!;
-    return match[2] === "不能为空。" ? ui(`${match[1]}不能为空。`, `${label} cannot be empty.`) : ui(`${match[1]}必须在 ${match[3]} 至 ${match[4]} 范围内。`, `${label} must be between ${match[3]} and ${match[4]}.`);
+    return match[2] === "不能为空。" ? display(`${match[1]}不能为空。`) : display(`${match[1]}必须在 ${match[3]} 至 ${match[4]} 范围内。`);
   }
   const pairs: Record<string, string> = {
-    "三位数字开奖结果需要正好 3 位。": "The three-digit draw must contain exactly 3 digits.",
-    "同一位置候选数字不能重复。": "Candidate digits at the same position must be unique.",
-    "请至少选择一种号码属性。": "Select at least one number attribute.",
-    "M 选 N 需要六个普通号和一个特别号，开奖结果也须符合此数量。": "M-choose-N requires six regular numbers and one special number; the draw must use the same counts.",
-    "模拟请求无效。": "Invalid simulation request.",
+    "三位数字开奖结果需要正好 3 位。": "admin.rule.case.digitCount", "同一位置候选数字不能重复。": "admin.rule.simulation.uniqueDigits",
+    "请至少选择一种号码属性。": "admin.rule.simulation.attributes", "M 选 N 需要六个普通号和一个特别号，开奖结果也须符合此数量。": "admin.rule.simulation.mselect",
+    "模拟请求无效。": "admin.rule.simulation.invalid",
   };
-  return ui(value, pairs[value] ?? value);
+  return pairs[value] ? t(adminKey(pairs[value]!), { count: "3" }) : display(value);
 };
 const form = ref<RuleSimulationForm>(
   structuredClone(DEFAULT_RULE_SIMULATION_FORM),
 );
-const localError = ref("");
-const requestError = ref("");
+const localError = ref<string | import("@lottery/shared").LocalizedMessage>("");
+const requestError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const loading = ref(false);
 const result = ref<RuleSimulation | null>(null);
 const keyFor = createRuleSimulationKeyTracker();
@@ -245,13 +252,10 @@ async function simulate() {
       return;
     if (cause instanceof AdminApiError) {
       if (cause.status === 401) emit("session-invalid");
-      requestError.value =
-        cause.status === 409
-          ? `${cause.message}；规则或幂等状态已变化，请调整输入后重试。`
-          : cause.message;
+      requestError.value = publicErrorMessage(cause);
     } else {
       localError.value =
-        cause instanceof Error ? cause.message : "模拟请求无效。";
+        cause instanceof Error ? publicErrorMessage(cause) : "模拟请求无效。";
     }
   } finally {
     if (
@@ -289,22 +293,20 @@ watch(
   <section class="rule-simulator">
     <header class="simulator-head">
       <div>
-        <p class="eyebrow">{{ t("真实规则模拟", "REAL RULE SIMULATION") }}</p>
-        <h2>{{ t("规则模拟器", "Rule simulator") }}</h2>
-        <p>{{ t("通过受限模板构建规则，不接受脚本或自定义 JSON。", "Build rules from restricted templates. Scripts and custom JSON are not accepted.") }}</p>
+        <h2>{{ t('admin.copy.19714e82') }}</h2>
       </div>
-      <span class="brand-tag">{{ t("品牌 · ", "Brand · ") }}{{ brandId || t("未选择", "Not selected") }}</span>
+      <span class="brand-tag">{{ t('admin.copy.55bdd7a5') }}<AssociationName kind="brand" :id="brandId" :locale="associationLocale" /></span>
     </header>
     <div class="safety-banner">
-      {{ t("仅调用真实规则模拟接口：不会扣款、投注、发布或审核规则。模拟结果不代表规则已生效。", "This calls only the real rule-simulation endpoint. It does not debit funds, place bets, publish, or review rules. A simulation result does not mean a rule is active.") }}
+      {{ t('admin.copy.1473f8c6') }}
     </div>
     <p v-if="!allowed" class="notice error" role="alert">
-      {{ t("当前账号没有 rule.simulate.brand 或 rule.simulate.platform 权限。超级管理员也必须有显式的平台模拟权限。", "This account lacks rule.simulate.brand or rule.simulate.platform permission. Super administrators also need explicit platform simulation permission.") }}
+      {{ t('admin.copy.bb7c6849') }}
     </p>
     <template v-else>
-      <form class="simulator-form" @submit.prevent="simulate">
+      <form novalidate v-inline-validation class="simulator-form" @submit.prevent="withGlobalLoading(simulate)">
         <label class="wide"
-          >{{ t("玩法模板", "Play template") }}
+          >{{ t('admin.copy.158affdb') }}
           <select v-model="template">
             <option
               v-for="[value, label] in templates"
@@ -318,19 +320,19 @@ watch(
 
         <template v-if="template === 'special'">
           <label
-            >{{ t("特别号候选（最多 49）", "Special-number candidates (up to 49)") }}<input
+            >{{ t('admin.copy.b420eed9') }}<input
               v-model.trim="form.specialNumbers"
               inputmode="numeric"
               placeholder="7,19,31,43"
           /></label>
           <label
-            >{{ t("开奖普通号（6 个）", "Regular draw numbers (6)") }}<input
+            >{{ t('admin.copy.fcfeff00') }}<input
               v-model.trim="form.drawRegular"
               inputmode="numeric"
               placeholder="1,2,3,4,5,6"
           /></label>
           <label class="wide"
-            >{{ t("开奖特别号", "Special draw number") }}<input
+            >{{ t('admin.copy.55b44fc8') }}<input
               v-model.trim="form.drawSpecial"
               inputmode="numeric"
               placeholder="7"
@@ -339,7 +341,7 @@ watch(
 
         <template v-else-if="template === 'digits'">
           <label v-for="(candidate, index) in form.digitCandidates" :key="index"
-            >{{ ui(`第 ${index + 1} 位候选（0–9）`, `Position ${index + 1} candidates (0–9)`) }}
+            >{{ t('admin.rule.case.position', { index: index + 1 }) }}
             <input
               v-model.trim="form.digitCandidates[index]"
               inputmode="numeric"
@@ -347,7 +349,7 @@ watch(
             />
           </label>
           <label class="wide"
-            >{{ t("三位开奖结果", "Three-digit draw") }}<input
+            >{{ t('admin.copy.89e6faa8') }}<input
               v-model.trim="form.drawDigits"
               inputmode="numeric"
               placeholder="3,1,0"
@@ -356,55 +358,55 @@ watch(
 
         <template v-else-if="template === 'features'">
           <label
-            >{{ t("三同号（0 否 / 1 是）", "Three of a kind (0 no / 1 yes)") }}<input
+            >{{ t('admin.copy.255c1994') }}<input
               v-model.trim="form.featureValues.three_kind"
               inputmode="numeric"
               placeholder="1"
           /></label>
           <label
-            >{{ t("首尾同号（0 否 / 1 是）", "First and last match (0 no / 1 yes)") }}<input
+            >{{ t('admin.copy.ef7b22cd') }}<input
               v-model.trim="form.featureValues.same_ends"
               inputmode="numeric"
               placeholder="1"
           /></label>
           <label
-            >{{ t("奇数个数（0–3）", "Odd number count (0–3)") }}<input
+            >{{ t('admin.copy.d28a71e7') }}<input
               v-model.trim="form.featureValues.odd_count"
               inputmode="numeric"
               placeholder="3"
           /></label>
           <label
-            >{{ t("和值（0–27）", "Sum (0–27)") }}<input
+            >{{ t('admin.copy.a9eec73c') }}<input
               v-model.trim="form.featureValues.sum"
               inputmode="numeric"
               placeholder="4"
           /></label>
           <label class="wide"
-            >{{ t("三位开奖结果", "Three-digit draw") }}<input
+            >{{ t('admin.copy.89e6faa8') }}<input
               v-model.trim="form.drawDigits"
               inputmode="numeric"
               placeholder="3,1,0"
           /></label>
           <p class="wide hint">
-            {{ t("每项输入逗号分隔的可选值；奖级将通过 selected 条件与所选特征值比对。", "Enter comma-separated allowed values for each feature. Prize tiers compare them with selected conditions.") }}
+            {{ t('admin.copy.7faa215e') }}
           </p>
         </template>
 
         <template v-else-if="template === 'exclude'">
           <label
-            >{{ t("排除号码（49 选）", "Excluded numbers (choose from 49)") }}<input
+            >{{ t('admin.copy.c9d4507d') }}<input
               v-model.trim="form.excludedNumbers"
               inputmode="numeric"
               placeholder="11,22,33"
           /></label>
           <label
-            >{{ t("开奖普通号（6 个）", "Regular draw numbers (6)") }}<input
+            >{{ t('admin.copy.fcfeff00') }}<input
               v-model.trim="form.drawRegular"
               inputmode="numeric"
               placeholder="1,2,3,4,5,6"
           /></label>
           <label
-            >{{ t("开奖特别号", "Special draw number") }}<input
+            >{{ t('admin.copy.55b44fc8') }}<input
               v-model.trim="form.drawSpecial"
               inputmode="numeric"
               placeholder="7"
@@ -413,42 +415,42 @@ watch(
 
         <template v-else-if="template === 'attributes'">
           <label
-            >{{ t("红色号码映射", "Red-number mapping") }}<input
+            >{{ t('admin.copy.f94469a6') }}<input
               v-model.trim="form.redNumbers"
               inputmode="numeric"
               placeholder="1,3,5,7,9"
           /></label>
           <label
-            >{{ t("蓝色号码映射", "Blue-number mapping") }}<input
+            >{{ t('admin.copy.5ef620d2') }}<input
               v-model.trim="form.blueNumbers"
               inputmode="numeric"
               placeholder="2,4,6,8"
           /></label>
           <fieldset class="wide">
-            <legend>{{ t("下注属性（可多选）", "Bet attributes (multiple selections allowed)") }}</legend>
+            <legend>{{ t('admin.copy.ee9db472') }}</legend>
             <label class="check"
               ><input
                 v-model="form.selectedColors"
                 type="checkbox"
                 value="red"
-              />{{ t("红", "Red") }}</label
+              />{{ t('admin.copy.4a98e5d6') }}</label
             >
             <label class="check"
               ><input
                 v-model="form.selectedColors"
                 type="checkbox"
                 value="blue"
-              />{{ t("蓝", "Blue") }}</label
+              />{{ t('admin.copy.82e76224') }}</label
             >
           </fieldset>
           <label
-            >{{ t("开奖普通号（6 个）", "Regular draw numbers (6)") }}<input
+            >{{ t('admin.copy.fcfeff00') }}<input
               v-model.trim="form.drawRegular"
               inputmode="numeric"
               placeholder="1,2,3,4,5,6"
           /></label>
           <label
-            >{{ t("开奖特别号", "Special draw number") }}<input
+            >{{ t('admin.copy.55b44fc8') }}<input
               v-model.trim="form.drawSpecial"
               inputmode="numeric"
               placeholder="7"
@@ -457,25 +459,25 @@ watch(
 
         <template v-else>
           <label
-            >{{ t("所选普通号（6 个）", "Selected regular numbers (6)") }}<input
+            >{{ t('admin.copy.cb08d518') }}<input
               v-model.trim="form.regularNumbers"
               inputmode="numeric"
               placeholder="1,2,3,4,5,6"
           /></label>
           <label
-            >{{ t("所选特别号", "Selected special number") }}<input
+            >{{ t('admin.copy.26fdc04c') }}<input
               v-model.trim="form.specialNumbers"
               inputmode="numeric"
               placeholder="7"
           /></label>
           <label
-            >{{ t("开奖普通号（6 个）", "Regular draw numbers (6)") }}<input
+            >{{ t('admin.copy.fcfeff00') }}<input
               v-model.trim="form.drawRegular"
               inputmode="numeric"
               placeholder="1,2,3,4,5,6"
           /></label>
           <label
-            >{{ t("开奖特别号", "Special draw number") }}<input
+            >{{ t('admin.copy.55b44fc8') }}<input
               v-model.trim="form.drawSpecial"
               inputmode="numeric"
               placeholder="7"
@@ -483,46 +485,46 @@ watch(
         </template>
 
         <label
-          >{{ t("单位积分（正整数）", "Unit points (positive whole number)") }}<input
+          >{{ t('admin.copy.fcaa2d0b') }}<input
             v-model.trim="form.unitPoints"
             inputmode="numeric"
         /></label>
         <label
-          >{{ t("赔率（最多 6 位小数）", "Odds (up to 6 decimal places)") }}<input
+          >{{ t('admin.copy.72812ead') }}<input
             v-model.trim="form.odds"
             inputmode="decimal"
         /></label>
         <label
-          >{{ t("模拟倍数（最多 1000）", "Simulation multiplier (up to 1,000)") }}<input
+          >{{ t('admin.copy.0e757f30') }}<input
             v-model.trim="form.multiplier"
             inputmode="decimal"
         /></label>
         <label
-          >{{ t("全局积分封顶（留空不限）", "Global points cap (blank for unlimited)") }}<input
+          >{{ t('admin.copy.4f64097d') }}<input
             v-model.trim="form.capPoints"
             inputmode="numeric"
-            :placeholder="t('不限', 'Unlimited')"
+            :placeholder="t('admin.copy.374fa8f7')"
         /></label>
         <label class="wide"
-          >{{ t("投注积分限额（留空不限）", "Bet points limit (blank for unlimited)") }}<input
+          >{{ t('admin.copy.0d72b609') }}<input
             v-model.trim="form.maxBetPoints"
             inputmode="numeric"
-            :placeholder="t('不限', 'Unlimited')"
+            :placeholder="t('admin.copy.374fa8f7')"
         /></label>
         <label class="wide"
-          >{{ t("舍入范围", "Rounding scope") }}<select v-model="form.roundingScope">
-            <option value="order">{{ t("整注汇总后舍入（order）", "Round after summing the order (order)") }}</option>
-            <option value="line">{{ t("每组合行舍入后汇总（line）", "Round each combination line, then sum (line)") }}</option>
-            <option value="tier">{{ t("每个奖级舍入后汇总（tier）", "Round each prize tier, then sum (tier)") }}</option></select
-          ><small>{{ t("舍入方式固定为 half_up；范围会写入模拟请求。", "Rounding is fixed to half_up; the scope is included in the simulation request.") }}</small></label
+          >{{ t('admin.copy.87ba003c') }}<select v-model="form.roundingScope">
+            <option value="order">{{ t('admin.copy.ac1adbc4') }}</option>
+            <option value="line">{{ t('admin.copy.affabdee') }}</option>
+            <option value="tier">{{ t('admin.copy.c3176d1e') }}</option></select
+          ><small>{{ t('admin.copy.d608ffbf') }}</small></label
         >
 
         <details class="wide condition-editor">
-          <summary>{{ t("条件组合（白名单数值条件，最多 8 个）", "Condition group (allowlisted numeric conditions, up to 8)") }}</summary>
+          <summary>{{ t('admin.copy.98d1fae7') }}</summary>
           <label
-            >{{ t("组合关系", "Join conditions") }}<select v-model="form.conditionJoin">
-              <option value="all">{{ t("全部满足（AND）", "All must match (AND)") }}</option>
-              <option value="any">{{ t("任一满足（OR）", "Any may match (OR)") }}</option>
+            >{{ t('admin.copy.e8435add') }}<select v-model="form.conditionJoin">
+              <option value="all">{{ t('admin.copy.7674da94') }}</option>
+              <option value="any">{{ t('admin.copy.ec366404') }}</option>
             </select></label
           >
           <div
@@ -531,7 +533,7 @@ watch(
             class="condition-row"
           >
             <label
-              >{{ t("字段", "Field") }}<select
+              >{{ t('admin.copy.4a0386a5') }}<select
                 v-model="condition.field"
                 @change="conditionFieldChanged(condition)"
               >
@@ -545,7 +547,7 @@ watch(
               </select></label
             >
             <label v-if="conditionHasTarget(condition.field)"
-              >{{ t("目标", "Target") }}<select v-model="condition.target">
+              >{{ t('admin.copy.559998d7') }}<select v-model="condition.target">
                 <option
                   v-for="target in conditionTargets(condition.field)"
                   :key="target"
@@ -553,92 +555,91 @@ watch(
                 >
                   {{
                     target === "all"
-                      ? t("全部", "All")
+                      ? t('admin.copy.ef22c1d2')
                       : target === "regular"
-                        ? t("普通号", "Regular")
+                        ? t('admin.copy.14f26052')
                         : target === "special"
-                          ? t("特别号", "Special")
-                          : t("数字", "Digits")
+                          ? t('admin.copy.308f60c1')
+                          : t('admin.copy.0e8ca53a')
                   }}
                 </option>
               </select></label
             >
             <label v-if="conditionNeedsPosition(condition.field)"
-              >{{ t("位置（从 0 开始）", "Position (zero-based)") }}<input
+              >{{ t('admin.copy.a3c9898e') }}<input
                 v-model.trim="condition.position"
                 inputmode="numeric"
             /></label>
             <label
-              >{{ t("比较", "Operator") }}<select v-model="condition.operator">
-                <option value="equals">{{ t("等于", "Equals") }}</option>
-                <option value="in">{{ t("属于列表", "In list") }}</option>
-                <option value="between">{{ t("范围内", "Between") }}</option>
+              >{{ t('admin.copy.b792e490') }}<select v-model="condition.operator">
+                <option value="equals">{{ t('admin.copy.1e199c87') }}</option>
+                <option value="in">{{ t('admin.copy.48da3113') }}</option>
+                <option value="between">{{ t('admin.copy.dff3c801') }}</option>
               </select></label
             >
             <label
               >{{
                 condition.operator === "between"
-                  ? t("最小值", "Minimum")
-                  : t("数值（逗号分隔）", "Values (comma-separated)")
+                  ? t('admin.copy.b55f1798')
+                  : t('admin.copy.950abe20')
               }}<input v-model.trim="condition.value" inputmode="numeric"
             /></label>
             <label v-if="condition.operator === 'between'"
-              >{{ t("最大值", "Maximum") }}<input v-model.trim="condition.max" inputmode="numeric"
+              >{{ t('admin.copy.bcb03f9a') }}<input v-model.trim="condition.max" inputmode="numeric"
             /></label>
             <button
               type="button"
               class="remove"
               @click="removeCondition(index)"
             >
-              {{ t("移除", "Remove") }}
+              {{ t('admin.copy.cd87c66a') }}
             </button>
           </div>
           <button
             type="button"
-            class="secondary"
+            class="button button-secondary"
             :disabled="!canAddCondition"
             @click="addCondition"
           >
-            {{ t("添加条件", "Add condition") }}
+            {{ t('admin.copy.9aa54df7') }}
           </button>
         </details>
         <p v-if="localError" class="notice error wide" role="alert">
           {{ localErrorText(localError) }}
         </p>
         <p v-if="requestError" class="notice error wide" role="alert">
-          {{ requestError }}
+          {{ displayPublicError(requestError) }}
         </p>
-        <button class="primary wide submit" type="submit" :disabled="loading">
-          {{ loading ? t("模拟中…", "Simulating…") : t("运行真实规则模拟", "Run real rule simulation") }}
+        <button class="button button-primary wide submit" type="submit" :disabled="loading">
+          {{ loading ? t('admin.copy.f0767da7') : t('admin.copy.650ec5cf') }}
         </button>
       </form>
 
       <section v-if="result" class="result-card" aria-live="polite">
         <header class="result-head">
           <div>
-            <p class="eyebrow">{{ t("服务端结果", "SERVER RESULT") }}</p>
-            <h3>{{ result.won ? t("模拟命中", "Simulation win") : t("未命中", "No win") }}</h3>
+            <h3>{{ result.won ? t('admin.copy.7a22ae48') : t('admin.copy.158b5ef8') }}</h3>
           </div>
           <span class="status" :class="result.won ? 'won' : 'miss'">{{
-            result.won ? t("中奖", "Won") : t("未中奖", "Not won")
+            result.won ? t('admin.copy.638b1e06') : t('admin.copy.5fa501a3')
           }}</span>
         </header>
         <div class="summary-grid">
           <div>
-            <small>{{ t("组合数", "Combinations") }}</small><strong>{{ result.combination_count }}</strong>
+            <small>{{ t('admin.copy.ba87920d') }}</small><strong>{{ result.combination_count }}</strong>
           </div>
           <div>
-            <small>{{ t("倍数", "Multiplier") }}</small><strong>{{ result.multiplier }}</strong>
+            <small>{{ t('admin.copy.a062ae4f') }}</small><strong>{{ result.multiplier }}</strong>
           </div>
           <div>
-            <small>{{ t("投注积分", "Bet points") }}</small><strong>{{ result.bet_points }}</strong>
+            <small>{{ t('admin.copy.a8314239') }}</small><strong>{{ result.bet_points }}</strong>
           </div>
           <div>
-            <small>{{ t("中奖积分", "Prize points") }}</small><strong>{{ result.prize_points }}</strong>
+            <small>{{ t('admin.copy.c018fe9a') }}</small><strong>{{ result.prize_points }}</strong>
           </div>
         </div>
         <p v-if="form.roundingScope === 'order'" class="rounding-note">
-          {{ t("当前为 order 舍入：整注汇总后再舍入。逐行 points 是各组合独立舍入的展示值，不能直接相加作为总奖金；raw_points 展示精确 n/d。", "Rounding scope is order: the total is rounded after summing the order. Per-line points are display values rounded separately for each combination and must not be summed as the total prize; raw_points shows the exact n/d value.") }}
+          {{ t('admin.copy.30613ac7') }}
         </p>
         <ul v-if="result.warnings.length" class="warnings">
           <li v-for="(warning, index) in result.warnings" :key="index">
@@ -650,7 +651,7 @@ watch(
           :key="lineIndex"
           class="line-result"
         >
-          <h4>{{ ui(`注单行 ${lineIndex + 1}`, `Bet line ${lineIndex + 1}`) }} · {{ line.points }} {{ t("积分", "points") }}</h4>
+          <h4>{{ t('admin.rule.betLine', { index: lineIndex + 1 }) }} · {{ line.points }} {{ t('admin.copy.feacf287') }}</h4>
           <div
             v-for="hit in line.hits"
             :key="hit.code"
@@ -662,25 +663,25 @@ watch(
               ><span>{{
                 hit.matched
                   ? hit.selected
-                    ? t("命中并计奖", "Matched and awarded")
-                    : t("命中但未选中", "Matched but not selected")
-                  : t("未命中", "Not matched")
+                    ? t('admin.copy.fd340701')
+                    : t('admin.copy.fd143794')
+                  : t('admin.copy.406ff986')
               }}</span>
             </div>
             <p>
-              {{ t("精确原始积分", "Exact raw points") }} {{ hit.raw_points }} · {{ t("该奖级独立舍入值", "independently rounded value for this tier") }}
+              {{ t('admin.copy.1036bc1a') }} {{ hit.raw_points }} · {{ t('admin.copy.b244a5c2') }}
               {{ hit.points }} ·
-              {{ hit.exclusive ? t("排他奖级", "Exclusive tier") : t("可累加奖级", "Additive tier") }}
+              {{ hit.exclusive ? t('admin.copy.5c080016') : t('admin.copy.1606fa6e') }}
             </p>
             <details>
-              <summary>{{ t("条件解释 trace", "Condition trace") }}</summary>
-              <pre>{{ prettyTrace(hit.trace) }}</pre>
+              <summary>{{ t('admin.copy.ca105086') }}</summary>
+              <BusinessDetails :value="hit.trace" :locale="associationLocale" />
             </details>
           </div>
         </article>
         <details class="normalized">
-          <summary>{{ t("服务端规范化选号", "Server-normalized selection") }}</summary>
-          <pre>{{ prettyTrace(result.normalized) }}</pre>
+          <summary>{{ t('admin.copy.8035cec8') }}</summary>
+          <BusinessDetails :value="result.normalized" :locale="associationLocale" />
         </details>
       </section>
     </template>
@@ -706,7 +707,7 @@ watch(
 }
 .simulator-head p {
   margin: 0;
-  color: #737b8c;
+  color: var(--muted);
   font-size: 11px;
   line-height: 1.55;
 }
@@ -745,8 +746,8 @@ watch(
 }
 .simulator-form,
 .result-card {
-  background: #fff;
-  border: 1px solid #e9ebf0;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 11px;
   padding: 16px;
   min-width: 0;
@@ -761,6 +762,7 @@ watch(
 .simulator-form > label,
 .condition-editor > label {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   font-size: 11px;
   font-weight: 600;
@@ -778,7 +780,7 @@ watch(
   min-width: 0;
   border: 1px solid #dfe3eb;
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   padding: 9px 10px;
   color: #252a36;
   font: inherit;
@@ -806,7 +808,7 @@ watch(
 }
 .hint {
   margin: 0;
-  color: #737b8c;
+  color: var(--muted);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -837,30 +839,30 @@ watch(
   font-size: 11px;
   min-width: 0;
 }
-.primary,
-.secondary,
+.button-primary,
+.button-secondary,
 .remove {
   border-radius: 7px;
   padding: 9px 12px;
   font-size: 11px;
   font-weight: 700;
 }
-.primary {
+.button-primary {
   border: 0;
-  background: #5969df;
-  color: #fff;
+  background: var(--primary);
+  color: var(--surface);
 }
-.secondary,
+.button-secondary,
 .remove {
   border: 1px solid #e0e3ea;
-  background: #fff;
+  background: var(--surface);
   color: #586174;
 }
 .remove {
   padding: 8px;
 }
-.primary:disabled,
-.secondary:disabled {
+.button-primary:disabled,
+.button-secondary:disabled {
   opacity: 0.48;
   cursor: not-allowed;
 }
@@ -894,13 +896,13 @@ watch(
   display: grid;
   gap: 5px;
   padding: 10px;
-  border: 1px solid #eceef3;
+  border: 1px solid var(--line);
   border-radius: 8px;
   min-width: 0;
 }
 .summary-grid small {
   font-size: 11px;
-  color: #737b8c;
+  color: var(--muted);
 }
 .summary-grid strong {
   font-size: 16px;
@@ -934,7 +936,7 @@ watch(
   font-size: 12px;
 }
 .tier-hit {
-  border: 1px solid #eceef3;
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px;
   margin: 7px 0;
@@ -952,7 +954,7 @@ watch(
 }
 .tier-hit p {
   font-size: 11px;
-  color: #737b8c;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 .tier-hit pre,

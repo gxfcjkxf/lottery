@@ -1,0 +1,7 @@
+<script setup lang="ts">
+import {watch} from 'vue'
+import {createCatalogI18n} from './localization'
+import {canadaCatalog,canadaLabel,type CanadaItem} from './canada'
+const props=defineProps<{item:CanadaItem;profile:string;locale:'en'|'zh-CN'}>()
+const i18n=createCatalogI18n(canadaCatalog,props.locale);watch(()=>props.locale,v=>i18n.setLocale(v));const t=i18n.t
+</script><template><div class="ticket-line"><strong>{{ canadaLabel(item.code,t) }}</strong><span>{{ t('stake') }} {{ item.points }}</span><span>{{ t(profile==='canada_niuniu'?'profitFactor':'odds') }} {{ item.odds }}</span><span v-if="item.special_odds">{{ t('special') }} {{ item.special_odds }}</span><span v-if="item.winning_odds">{{ t(profile==='canada_niuniu'?'netProfitRate':'winningOdds') }} {{ item.winning_odds }}</span><span v-if="item.risk_points!==item.points">{{ t('riskReserved') }} {{ item.risk_points }}</span><span v-if="item.loss_points!=='0'">{{ t('riskLoss') }} {{ item.loss_points }}</span><span v-if="item.outcome">{{ t(item.outcome) }} · {{ item.payout }}</span></div></template><style scoped>.ticket-line{display:flex;flex-wrap:wrap;gap:8px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:1.5;overflow-wrap:anywhere}</style>

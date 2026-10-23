@@ -24,7 +24,7 @@ PUT 必须提供当前共享版本、全部 16 个配置键和操作原因。可
 
 提现政策、正式流水资格查询、用户申请/查询和运营审核/内部积分处理接口已注册，具体字段、确认上下文与幂等语义见[API合同](04-api-contract.md)。正式资格使用实际投注时N快照与有效投注证据；旧无快照记录不能补造资格。mark-paid只记录内部积分成功，不执行法币或虚拟币转账。真实支付、真实外部开奖API/DOM适配器不可调用。500次投注/秒只有受控本地基线证据，不代表完整生产容量验收。
 
-域名管理使用 `/api/v1/admin/brand-domains` 的GET/POST、`/{domainID}`的PATCH及`/history`的GET。创建要求完整 `version,domain,enabled,is_primary,reason`，更新只接受 `version,enabled,is_primary,reason`；主机名不可修改。写回执返回完整绑定列表、共享版本加一及审计ID；读取中的审计ID仅在当前共享版本来自域名变更时存在。读写要求显式的 `brand_domains.view/write.brand/platform` 权限，超级管理员身份不绕过授权。
+域名管理使用 `/api/v1/admin/brand-domains` 的GET/POST、`/{domainID}`的PATCH及`/history`的GET。创建要求完整 `version,domain,enabled,reason`，更新只接受 `version,enabled,reason`；主机名不可修改。写回执返回完整绑定列表、共享版本加一及审计ID；读取中的审计ID仅在当前共享版本来自域名变更时存在。读写要求显式的 `brand_domains.view/write.brand/platform` 权限，超级管理员身份不绕过授权。
 
 错误包括 `BRAND_DOMAIN_INPUT_INVALID`、`BRAND_DOMAIN_NOT_FOUND`、`BRAND_DOMAIN_VERSION_CONFLICT`、`BRAND_DOMAIN_STATE_CONFLICT`及`BRAND_DOMAIN_CONFLICT`；禁用绑定继续占用全局主机名。请求的Host必须先属于可用管理入口，当前入口被关闭时可能先返回404，不据此认为旧成功回执可重放。域名绑定不验证所有权、不操作DNS/TLS/重定向；客户部署方需另行验证，详见 [05-ui-spec.md](05-ui-spec.md)。
 

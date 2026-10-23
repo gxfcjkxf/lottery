@@ -7,7 +7,7 @@ const member="018f47a1-7b2c-7abc-8def-0123456789ad";
 const from="2026-01-01T00:00:00Z",to="2026-01-02T00:00:00Z";
 const huge="922337203685477580812345678901234567890";
 const totals:WithdrawalTotals={order_count:"1",requested_points:huge,reviewing_count:"0",reviewing_points:"0",processing_count:"0",processing_points:"0",paid_count:"1",paid_points:huge,rejected_count:"0",rejected_points:"0",failed_count:"0",failed_points:"0",cancelled_count:"0",cancelled_points:"0"};
-const payload=(overrides:Record<string,unknown>={})=>({success:true,request_id:"018f47a1-7b2c-7abc-8def-0123456789ac",data:{brand_id:brand,snapshot_at:"2026-01-02T01:00:00Z",timezone:"Asia/Singapore",query:{from,to,group_by:"day",limit:20,offset:0,game_id:null,member_id:null},summary:totals,items:[{key:"2026-01-01",label:"2026-01-01",totals}],total_groups:"1",...overrides}});
+const payload=(overrides:Record<string,unknown>={})=>({success:true,associations:{["brand:"+brand]:{name:"Aurora"}},request_id:"018f47a1-7b2c-7abc-8def-0123456789ac",data:{brand_id:brand,snapshot_at:"2026-01-02T01:00:00Z",timezone:"Asia/Singapore",query:{from,to,group_by:"day",limit:20,offset:0,game_id:null,member_id:null},summary:totals,items:[{key:"2026-01-01",label:"2026-01-01",totals}],total_groups:"1",...overrides}});
 const response=(data:unknown)=>new Response(JSON.stringify(data),{status:200,headers:{"content-type":"application/json"}});
 
 describe("withdrawal report authorization",()=>{

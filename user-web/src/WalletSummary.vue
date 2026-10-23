@@ -1,5 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { useUserI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import SiteIcon from "@lottery/shared/SiteIcon";
+import { vRefreshButton } from '@lottery/shared';
+import { vGlobalLoading } from "@lottery/shared";
+import { formatDisplayDateTime } from "@lottery/shared";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useUserI18n } from './i18n';
+import { RouterLink } from 'vue-router';
 import {
   createWalletApi,
   formatIntegerAmount,
@@ -11,93 +22,37 @@ import {
 } from "./wallet-api";
 
 const props = withDefaults(
-  defineProps<{ brandCode?: string; locale?: "en" | "zh" | "zh-CN" }>(),
-  { locale: "en" },
+  defineProps<{ brandCode?: string; locale?: "en" | "zh" | "zh-CN"; view?: 'overview' | 'buckets' | 'ledger' }>(),
+  { locale: "en", view: 'overview' },
 );
-const isZh = computed(() => props.locale !== "en");
-const copy = computed(() =>
-  isZh.value
-    ? {
-        title: "积分钱包",
-        intro: "余额与流水来自当前品牌的真实钱包接口。",
-        refresh: "刷新",
-        loading: "读取中…",
-        reading: "正在读取钱包…",
-        unauthenticated: "请先登录后查看积分钱包。",
-        recheck: "重新检查登录",
-        retry: "重试",
-        balance: "积分余额",
-        available: "可用",
-        points: "分",
-        frozen: "冻结",
-        frozenDetail: "人工及系统冻结",
-        withdrawal: "提现中",
-        withdrawalDetail: "暂不可用于投注",
-        version: "账本版本",
-        memberWallet: "会员钱包",
-        buckets: "来源与状态",
-        bucketsIntro: "逐项显示 16 个积分桶。",
-        ledger: "钱包流水",
-        ledgerIntro: "展示每笔变动前、变动额及变动后各积分桶。",
-        empty: "当前页没有钱包流水。",
-        bucket: "积分桶",
-        before: "变动前",
-        delta: "变动额",
-        after: "变动后",
-        page: (number: number) => `第 ${number} 页`,
-        previous: "上一页",
-        next: "下一页",
-        sources: { recharge: "充值", winning: "中奖", gift: "赠送", commission: "佣金" },
-        states: {
-          available: "可用",
-          manual_frozen: "人工冻结",
-          system_frozen: "系统冻结",
-          withdrawal: "提现中",
-        },
-        networkError: "钱包暂时无法读取。",
-      }
-    : {
-        title: "Points wallet",
-        intro:
-          "Balances and ledger entries come from the current brand's wallet API.",
-        refresh: "Refresh",
-        loading: "Loading…",
-        reading: "Loading wallet…",
-        unauthenticated: "Sign in to view your points wallet.",
-        recheck: "Check sign-in again",
-        retry: "Retry",
-        balance: "Points balance",
-        available: "Available",
-        points: "pts",
-        frozen: "Frozen",
-        frozenDetail: "Manual and system frozen",
-        withdrawal: "Withdrawing",
-        withdrawalDetail: "Not available for bets",
-        version: "Ledger version",
-        memberWallet: "Member wallet",
-        buckets: "Sources and states",
-        bucketsIntro: "All 16 points buckets.",
-        ledger: "Wallet ledger",
-        ledgerIntro:
-          "Each entry shows all buckets before, delta, and after the change.",
-        empty: "No wallet entries on this page.",
-        bucket: "Bucket",
-        before: "Before",
-        delta: "Change",
-        after: "After",
-        page: (number: number) => `Page ${number}`,
-        previous: "Previous",
-        next: "Next",
-        sources: { recharge: "Recharge", winning: "Winning", gift: "Gift", commission: "Commission" },
-        states: {
-          available: "Available",
-          manual_frozen: "Manual freeze",
-          system_frozen: "System freeze",
-          withdrawal: "Withdrawing",
-        },
-        networkError: "Wallet is temporarily unavailable.",
-      },
-);
+const ui = useUserI18n().t;
+const title = computed(() => ui(props.view === 'overview' ? 'user.wallet.title' : props.view === 'buckets' ? 'user.wallet.buckets' : 'user.wallet.ledger'));
+const copy = computed(() => ({
+  title: ui('user.wallet.title'), refresh: ui('user.wallet.refresh'), loading: ui('user.wallet.loading'), reading: ui('user.wallet.reading'), unauthenticated: ui('user.wallet.unauthenticated'), recheck: ui('user.wallet.recheck'), retry: ui('user.wallet.retry'), balance: ui('user.wallet.balance'), points: ui('user.wallet.points'), frozen: ui('user.wallet.frozen'), withdrawal: ui('user.wallet.withdrawal'), buckets: ui('user.wallet.buckets'), ledger: ui('user.wallet.ledger'), empty: ui('user.wallet.empty'), bucket: ui('user.wallet.bucket'), before: ui('user.wallet.before'), delta: ui('user.wallet.delta'), after: ui('user.wallet.after'), page: (number: number) => ui('user.wallet.page', { number }), previous: ui('user.wallet.previous'), next: ui('user.wallet.next'), sources: { recharge: ui('user.wallet.source.recharge'), winning: ui('user.wallet.source.winning'), gift: ui('user.wallet.source.gift'), commission: ui('user.wallet.source.commission') }, states: { available: ui('user.wallet.state.available'), manual_frozen: ui('user.wallet.state.manualFrozen'), system_frozen: ui('user.wallet.state.systemFrozen'), withdrawal: ui('user.wallet.state.withdrawal') }, networkError: ui('user.wallet.networkError'), brandMismatch: ui('user.wallet.brandMismatch'),
+}));
+function ledgerLabel(entry:LedgerEntry,reason=false):string{
+ if(entry.reference_type==="canada_order"){
+ const frozenDelta=Object.values(entry.delta_snapshot).reduce((sum,b)=>sum+BigInt(b.system_frozen),0n);
+ if(entry.entry_type==='bet'&&frozenDelta>0n)return ui(reason?'user.wallet.canada.reserveReason':'user.wallet.canada.reserve');
+ if(entry.entry_type==='bet'&&frozenDelta<0n)return ui(reason?'user.wallet.canada.lossReason':'user.wallet.canada.loss');
+ if(entry.entry_type==='refund'&&frozenDelta<0n)return ui(reason?'user.wallet.canada.releaseReason':'user.wallet.canada.release');
+ switch(entry.entry_type){case "bet":return ui(reason?'user.wallet.canada.betReason':'user.wallet.canada.bet');case "prize":return ui(reason?'user.wallet.canada.prizeReason':'user.wallet.canada.prize');case "refund":return ui(reason?'user.wallet.canada.refundReason':'user.wallet.canada.refund');default:throw new Error('Unsupported Canada ledger entry')}
+ }
+ if(entry.reference_type!=="mark_six_order") {
+   if (reason) return entry.reason;
+   return ui(`user.wallet.entry.${entry.entry_type}`);
+ }
+ switch(entry.entry_type){
+ case "bet":return ui(reason?'user.wallet.markSix.betReason':'user.wallet.markSix.bet');
+ case "prize":return ui(reason?'user.wallet.markSix.prizeReason':'user.wallet.markSix.prize');
+ case "refund":return ui(reason?'user.wallet.markSix.refundReason':'user.wallet.markSix.refund');
+ default:throw new Error('Unsupported Mark Six ledger entry');
+ }
+}
+function availableChange(entry: LedgerEntry): string {
+  const change = sources.reduce((sum, source) => sum + BigInt(entry.delta_snapshot[source].available), 0n);
+  return `${change > 0n ? '+' : ''}${formatIntegerAmount(change.toString())}`;
+}
 const PAGE_SIZE = 50;
 const sources: WalletSource[] = ["recharge", "winning", "gift", "commission"];
 const states: WalletState[] = [
@@ -109,11 +64,12 @@ const states: WalletState[] = [
 const wallet = ref<Wallet | null>(null);
 const entries = ref<LedgerEntry[]>([]);
 const state = ref<"loading" | "ready" | "unauthenticated" | "error">("loading");
-const error = ref("");
+const error = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const offset = ref(0);
 const loading = ref(false);
 const api = computed(() => createWalletApi({ brandCode: props.brandCode }));
 let loadGeneration = 0;
+let polling = false;
 const bucketRows = computed(() =>
   wallet.value
     ? sources.map((source) => ({
@@ -123,18 +79,21 @@ const bucketRows = computed(() =>
     : [],
 );
 
-async function load() {
+async function load(silent = false) {
   const requestedBrandCode = props.brandCode;
   const generation = ++loadGeneration;
   const isCurrent = () =>
     generation === loadGeneration && props.brandCode === requestedBrandCode;
-  loading.value = true;
-  state.value = "loading";
-  error.value = "";
+  if (silent) polling = true;
+  else {
+    loading.value = true;
+    state.value = "loading";
+    error.value = "";
+  }
   try {
     const [currentWallet, ledger] = await Promise.all([
       api.value.wallet(),
-      api.value.ledger(PAGE_SIZE, offset.value),
+      props.view === 'ledger' ? api.value.ledger(PAGE_SIZE, offset.value) : Promise.resolve({ items: [] }),
     ]);
     if (!isCurrent()) return;
     if (
@@ -145,9 +104,7 @@ async function load() {
       )
     ) {
       throw new WalletApiError(
-        isZh.value
-          ? "钱包数据与当前品牌不匹配。"
-          : "Wallet data does not match the current brand.",
+        copy.value.brandMismatch,
         0,
         "brand_mismatch",
       );
@@ -170,14 +127,17 @@ async function load() {
         cause.code !== "brand_mismatch"
           ? copy.value.networkError
           : cause instanceof Error
-            ? cause.message
+            ? publicErrorMessage(cause)
             : copy.value.networkError;
     }
   } finally {
-    if (isCurrent()) loading.value = false;
+    if (silent) polling = false;
+    else if (isCurrent()) loading.value = false;
   }
 }
 
+const poll=setInterval(()=>{if(!loading.value&&!polling&&state.value==="ready")void load(true)},5000);
+onUnmounted(()=>{clearInterval(poll);loadGeneration++});
 onMounted(() => void load());
 watch(
   () => props.brandCode,
@@ -189,26 +149,24 @@ watch(
     void load();
   },
 );
-function changePage(direction: -1 | 1) {
+async function changePage(direction: -1 | 1) {
   offset.value = Math.max(0, offset.value + direction * PAGE_SIZE);
-  void load();
+  await load();
 }
 </script>
 
 <template>
   <section class="wallet-summary">
-    <header class="wallet-head">
-      <div>
-        <p class="eyebrow">MY WALLET</p>
-        <h1>{{ copy.title }}</h1>
-        <p class="subhead">{{ copy.intro }}</p>
+    <header class="wallet-head page-heading">
+      <div class="wallet-heading-copy">
+        <h1>{{ title }}</h1>
       </div>
-      <button class="refresh" type="button" :disabled="loading" @click="load">
+      <Teleport defer to="#user-page-refresh"><button v-if="!wallet || props.view !== 'overview'" v-refresh-button="loading ? copy.loading : copy.refresh" class="refresh" type="button" :disabled="loading" @click="withGlobalLoading(load)">
         {{ loading ? copy.loading : copy.refresh }}
-      </button>
+      </button></Teleport>
     </header>
 
-    <div v-if="state === 'loading' && !wallet" class="state-card" role="status">
+    <div v-global-loading v-if="state === 'loading' && !wallet" class="state-card" role="status">
       {{ copy.reading }}
     </div>
     <div
@@ -216,8 +174,8 @@ function changePage(direction: -1 | 1) {
       class="state-card"
       role="status"
     >
-      {{ error }}
-      <button type="button" class="text-action" @click="load">
+      {{ displayPublicError(error) }}
+      <button type="button" class="text-action" @click="withGlobalLoading(load)">
         {{ copy.recheck }}
       </button>
     </div>
@@ -226,55 +184,51 @@ function changePage(direction: -1 | 1) {
       class="state-card state-error"
       role="alert"
     >
-      <span>{{ error }}</span>
-      <button type="button" class="text-action" @click="load">
+      <span>{{ displayPublicError(error) }}</span>
+      <button type="button" class="text-action" @click="withGlobalLoading(load)">
         {{ copy.retry }}
       </button>
     </div>
     <template v-else-if="wallet">
-      <div class="totals">
+      <div v-if="props.view === 'overview'" class="totals">
         <article class="total-card total-primary">
-          <span>{{ copy.balance }}</span
-          ><strong>{{ formatIntegerAmount(wallet.display_points) }}</strong>
-          <small
-            >{{ copy.available }}
-            {{ formatIntegerAmount(wallet.available_points) }}
-            {{ copy.points }}</small
-          >
+          <div class="balance-card-head">
+            <span>{{ copy.balance }}</span>
+            <div class="balance-amount"><strong>{{ formatIntegerAmount(wallet.display_points) }}</strong><span>{{ copy.points }}</span></div>
+            <Teleport defer to="#user-page-refresh"><button v-refresh-button="copy.refresh" class="refresh" type="button" :disabled="loading" @click="withGlobalLoading(load)">{{ copy.refresh }}</button></Teleport>
+          </div>
+          <div class="wallet-available">
+            <span>{{ ui('user.wallet.availableBalance') }}</span>
+            <b>{{ formatIntegerAmount(wallet.available_points) }} <small>{{ copy.points }}</small></b>
+          </div>
         </article>
-        <article class="total-card">
-          <span>{{ copy.frozen }}</span
-          ><strong>{{ formatIntegerAmount(wallet.frozen_points) }}</strong
-          ><small>{{ copy.frozenDetail }}</small>
+        <article class="total-card key-value-row">
+          <span class="total-label key-value-label">{{ copy.frozen }}</span>
+          <div class="metric-amount key-value-value"><strong>{{ formatIntegerAmount(wallet.frozen_points) }}</strong><span>{{ copy.points }}</span></div>
         </article>
-        <article class="total-card">
-          <span>{{ copy.withdrawal }}</span
-          ><strong>{{ formatIntegerAmount(wallet.withdrawal_points) }}</strong
-          ><small>{{ copy.withdrawalDetail }}</small>
-        </article>
-        <article class="total-card">
-          <span>{{ copy.version }}</span
-          ><strong>{{ wallet.version }}</strong
-          ><small>{{ copy.memberWallet }}</small>
+        <article class="total-card key-value-row">
+          <span class="total-label key-value-label">{{ copy.withdrawal }}</span>
+          <div class="metric-amount key-value-value"><strong>{{ formatIntegerAmount(wallet.withdrawal_points) }}</strong><span>{{ copy.points }}</span></div>
         </article>
       </div>
 
-      <section class="panel">
-        <div class="panel-title">
-          <div>
-            <h2>{{ copy.buckets }}</h2>
-            <p>{{ copy.bucketsIntro }}</p>
-          </div>
-        </div>
+      <nav v-if="props.view === 'overview'" class="wallet-links">
+        <RouterLink to="/wallet/buckets" class="button button-secondary">{{ copy.buckets }}</RouterLink>
+        <RouterLink to="/wallet/ledger" class="button button-secondary">{{ copy.ledger }}</RouterLink>
+      </nav>
+
+      <section v-if="props.view === 'buckets'" class="panel">
         <div class="bucket-grid">
           <article
             v-for="row in bucketRows"
             :key="row.source"
             class="bucket-source"
           >
-            <h3>{{ copy.sources[row.source] }}</h3>
+            <header class="source-head">
+              <h3>{{ copy.sources[row.source] }}</h3>
+            </header>
             <dl>
-              <div v-for="bucketState in states" :key="bucketState">
+              <div v-for="bucketState in states" :key="bucketState" :class="{ 'bucket-available': bucketState === 'available' }">
                 <dt>{{ copy.states[bucketState] }}</dt>
                 <dd>{{ formatIntegerAmount(row.values[bucketState]) }}</dd>
               </div>
@@ -283,26 +237,26 @@ function changePage(direction: -1 | 1) {
         </div>
       </section>
 
-      <section class="panel ledger-panel">
-        <div class="panel-title">
-          <div>
-            <h2>{{ copy.ledger }}</h2>
-            <p>{{ copy.ledgerIntro }}</p>
-          </div>
-        </div>
-        <p v-if="!entries.length" class="empty">{{ copy.empty }}</p>
+      <section v-if="props.view === 'ledger'" class="panel ledger-panel">
+        <p v-if="!entries.length" class="empty empty-state">{{ copy.empty }}</p>
         <article v-for="entry in entries" :key="entry.id" class="ledger-entry">
           <div class="entry-head">
             <div>
-              <b>{{ entry.entry_type }}</b
+              <b>{{ ledgerLabel(entry) }}</b
               ><small>{{
-                new Date(entry.created_at).toLocaleString(isZh ? "zh-CN" : "en")
+                formatDisplayDateTime(entry.created_at, props.locale)
               }}</small>
             </div>
-            <span>{{ copy.version }} {{ entry.version }}</span>
+            <div class="entry-change">
+              <span>{{ ui('user.wallet.availableChange') }}</span>
+              <strong :class="{ 'change-negative': availableChange(entry).startsWith('−'), 'change-positive': availableChange(entry).startsWith('+') }">{{ availableChange(entry) }}</strong>
+            </div>
           </div>
-          <p class="entry-reason">{{ entry.reason }}</p>
-          <div class="snapshot-grid">
+          <details class="ledger-details">
+            <summary>{{ ui('user.wallet.viewDetails') }}<SiteIcon name="down" /></summary>
+          <p class="entry-reason">{{ ledgerLabel(entry,true) }}</p>
+          <p v-if="entry.reference_type==='mark_six_order'||entry.reference_type==='canada_order'" class="entry-reference">{{ ui('user.wallet.orderReference') }} · {{ entry.reference_id }}</p>
+            <div class="snapshot-grid">
             <div class="snapshot-label">{{ copy.bucket }}</div>
             <div class="snapshot-label">{{ copy.before }}</div>
             <div class="snapshot-label">{{ copy.delta }}</div>
@@ -328,6 +282,7 @@ function changePage(direction: -1 | 1) {
               ></template
             >
           </div>
+          </details>
         </article>
         <footer class="pager">
           <span>{{ copy.page(offset / PAGE_SIZE + 1) }}</span>
@@ -335,13 +290,13 @@ function changePage(direction: -1 | 1) {
             <button
               type="button"
               :disabled="offset === 0 || loading"
-              @click="changePage(-1)"
+              @click="withGlobalLoading(changePage, -1)"
             >
               {{ copy.previous }}</button
             ><button
               type="button"
               :disabled="entries.length < PAGE_SIZE || loading"
-              @click="changePage(1)"
+              @click="withGlobalLoading(changePage, 1)"
             >
               {{ copy.next }}
             </button>
@@ -353,256 +308,80 @@ function changePage(direction: -1 | 1) {
 </template>
 
 <style scoped>
-.wallet-summary {
-  width: 100%;
-  min-width: 0;
-  color: #252a36;
-}
-.wallet-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 14px;
-  margin: 4px 0 18px;
-}
-.wallet-head h1 {
-  font-size: 25px;
-  letter-spacing: -0.5px;
-  margin: 3px 0 5px;
-}
-.wallet-head p {
-  margin: 0;
-}
-.eyebrow {
-  font-size: 11px;
-  letter-spacing: 1.2px;
-  color: #8991a2;
-  font-weight: 700;
-}
-.subhead,
-.panel-title p {
-  font-size: 11px;
-  color: #737b8c;
-  line-height: 1.55;
-}
-.refresh,
-.pager button {
-  border: 1px solid #e1e4eb;
-  border-radius: 7px;
-  background: white;
-  padding: 8px 12px;
-  color: #50596a;
-  font-size: 11px;
-}
-.totals {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 14px;
-}
-.total-card,
-.panel,
-.state-card {
-  background: white;
-  border: 1px solid #e9ebf0;
-  border-radius: 11px;
-  padding: 15px;
-  min-width: 0;
-  box-shadow: 0 2px 8px #1e2a5008;
-}
-.total-card {
-  display: grid;
-  gap: 8px;
-}
-.total-card > span,
-.total-card small {
-  font-size: 11px;
-  color: #737b8c;
-}
-.total-card strong {
-  font-size: 22px;
-  overflow-wrap: anywhere;
-  font-variant-numeric: tabular-nums;
-}
-.total-primary {
-  background: linear-gradient(135deg, #5969df, #7986ed);
-  color: white;
-  border: 0;
-}
-.total-primary > span,
-.total-primary small {
-  color: #eef0ff;
-}
-.panel {
-  margin-top: 14px;
-}
-.panel-title {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.panel-title h2 {
-  font-size: 14px;
-  margin: 0 0 4px;
-}
-.panel-title p {
-  margin: 0;
-}
-.bucket-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.bucket-source {
-  border: 1px solid #eceef3;
-  border-radius: 8px;
-  padding: 11px;
-  min-width: 0;
-}
-.bucket-source h3 {
-  font-size: 12px;
-  margin: 0 0 8px;
-}
-.bucket-source dl {
-  margin: 0;
-  display: grid;
-  gap: 7px;
-}
-.bucket-source dl div {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: baseline;
-}
-.bucket-source dt {
-  font-size: 11px;
-  color: #777f8f;
-}
-.bucket-source dd {
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.ledger-entry {
-  padding: 14px 0;
-  border-top: 1px solid #eff0f4;
-  min-width: 0;
-}
-.entry-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-  font-size: 11px;
-}
-.entry-head > div {
-  display: grid;
-  gap: 4px;
-}
-.entry-head small,
-.entry-head > span {
-  color: #8991a0;
-  font-size: 11px;
-}
-.entry-reason {
-  font-size: 11px;
-  color: #626b7c;
-  overflow-wrap: anywhere;
-}
-.snapshot-grid {
-  display: grid;
-  grid-template-columns: minmax(112px, 1.1fr) repeat(3, minmax(0, 1fr));
-  gap: 6px 8px;
-  align-items: baseline;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-.snapshot-label {
-  color: #8991a0;
-  font-weight: 700;
-  padding-bottom: 3px;
-}
-.snapshot-bucket {
-  font-weight: 500;
-  color: #626b7c;
-  overflow-wrap: anywhere;
-}
-.snapshot-grid > span {
-  overflow-wrap: anywhere;
-  text-align: right;
-}
-.pager {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 13px;
-  color: #737b8c;
-  font-size: 11px;
-}
-.pager div {
-  display: flex;
-  gap: 7px;
-}
-.pager button:disabled,
-.refresh:disabled {
-  opacity: 0.48;
-  cursor: not-allowed;
-}
-.state-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  color: #667083;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.state-error {
-  background: #fff0ef;
-  color: #a83d36;
-}
-.text-action {
-  border: 0;
-  background: transparent;
-  color: #5969df;
-  text-decoration: underline;
-  white-space: nowrap;
-}
-.empty {
-  font-size: 11px;
-  color: #737b8c;
-}
+.wallet-summary { width: 100%; max-width: 1100px; margin: 0 auto; min-width: 0; color: var(--ink); }
+.wallet-head { display: flex; flex-direction: row; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 12px; }
+.wallet-head h1 { font-size: 24px; margin: 0; }
+.totals { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(0, 1fr)); gap: 12px; }
+.wallet-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.wallet-links a { min-width: 0; min-height: 44px; text-align: center; overflow-wrap: anywhere; }
+.total-card, .panel, .state-card { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow-sm); }
+.total-card { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.total-label { font-size: 14px; font-weight: 600; color: var(--ink-secondary); }
+.total-card.key-value-row { grid-template-columns: fit-content(60%) minmax(0, 1fr) !important; }
+.balance-amount, .metric-amount { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; min-width: 0; font-variant-numeric: tabular-nums; }
+.balance-amount strong { font-size: 36px; line-height: 1.2; overflow-wrap: anywhere; min-width: 0; }
+.metric-amount strong { font-size: 28px; line-height: 1.2; overflow-wrap: anywhere; min-width: 0; }
+.balance-amount > span, .metric-amount > span { font-size: 12px; }
+.metric-amount > span { color: var(--muted); }
+.total-primary { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); border-color: transparent; color: var(--surface); gap: 10px; }
+.balance-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; font-size: 14px; font-weight: 600; }
+.balance-card-head { flex-wrap: wrap; }
+.balance-card-head .balance-amount { flex: 1 1 8ch; justify-content: flex-end; }
+.key-value-value.metric-amount { justify-content: flex-end; }
+.wallet-available { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; width: 100%; margin-top: 4px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--surface) 25%, transparent); font-size: 13px; }
+.wallet-available b { min-width: 0; font-size: 20px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.wallet-available small { font-size: 12px; font-weight: 400; }
+.panel { margin-top: 20px; }
+.bucket-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.bucket-source { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.source-head { margin-bottom: 12px; }
+.source-head h3 { margin: 0; font-size: 15px; }
+.bucket-source dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 0; }
+.bucket-source dl > div { min-width: 0; }
+.bucket-source dt { font-size: 12px; color: var(--muted); }
+.bucket-source dd { margin: 0; font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.bucket-available dd { color: var(--primary-dark); }
+.ledger-entry { padding: 18px 0; border-top: 1px solid var(--line); min-width: 0; }
+.entry-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.entry-head > div { min-width: 0; display: grid; gap: 5px; overflow-wrap: anywhere; }
+.entry-head b { font-size: 14px; }
+.entry-head small { color: var(--muted); font-size: 12px; }
+.entry-change { text-align: right; font-variant-numeric: tabular-nums; }
+.entry-change > span { color: var(--muted); font-size: 11px; }
+.entry-change strong { font-size: 18px; }
+.change-negative { color: var(--danger); }
+.change-positive { color: var(--primary-dark); }
+.entry-reason { margin: 12px 0; font-size: 13px; line-height: 1.6; color: var(--ink-secondary); overflow-wrap: anywhere; }
+.entry-reference { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.ledger-details summary { display: flex; align-items: center; gap: 8px; min-height: 44px; width: fit-content; font-size: 13px; color: var(--primary-dark); cursor: pointer; list-style: none; }
+.ledger-details summary::-webkit-details-marker { display: none; }
+.ledger-details[open] summary .site-icon { transform: rotate(180deg); }
+.ledger-details summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: var(--radius-sm); }
+.snapshot-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); gap: 0 10px; align-items: stretch; font-size: 12px; font-variant-numeric: tabular-nums; }
+.snapshot-grid > * { display: flex; align-items: center; min-width: 0; overflow-wrap: anywhere; padding: 8px 0; border-bottom: 1px solid var(--line-subtle); }
+.snapshot-label { color: var(--muted); font-weight: 600; }
+.snapshot-bucket { font-weight: 400; color: var(--ink-secondary); }
+.snapshot-grid > span, .snapshot-label:not(:first-child) { justify-content: flex-end; text-align: right; }
+.pager { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding-top: 16px; color: var(--muted); font-size: 12px; }
+.pager > div { display: flex; gap: 8px; }
+.pager button { min-height: 44px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); padding: 8px 12px; color: var(--ink-secondary); font-size: 13px; }
+.pager button:disabled { opacity: 0.48; cursor: not-allowed; }
+.state-card { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.state-error { color: var(--danger); }
+.text-action { min-height: 44px; border: 0; background: transparent; color: var(--primary-dark); font-size: 14px; text-decoration: underline; }
 @media (max-width: 700px) {
-  .totals {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-  .total-card {
-    padding: 12px;
-  }
-  .total-card strong {
-    font-size: 19px;
-  }
-  .bucket-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .panel {
-    padding: 13px;
-  }
-  .snapshot-grid {
-    grid-template-columns: minmax(94px, 1fr) repeat(3, minmax(0, 0.8fr));
-    gap: 6px 4px;
-    font-size: 11px;
-  }
-  .snapshot-bucket {
-    font-size: 11px;
-  }
-  .wallet-head {
-    align-items: center;
-  }
+  .totals { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .total-primary { grid-column: 1 / -1; }
+  .total-card, .panel, .state-card { padding: 16px; }
+  .metric-amount strong { font-size: 24px; }
+  .bucket-grid { grid-template-columns: minmax(0, 1fr); }
+  .panel { margin-top: 16px; }
+  .snapshot-grid { gap: 0 6px; }
+}
+@media (max-width: 620px) {
+  .wallet-heading-copy { display: none; }
+  .wallet-head { justify-content: flex-end; margin: 0; }
+  .wallet-head:has(button) { margin-bottom: 12px; }
+  .balance-amount strong { font-size: 32px; }
 }
 </style>

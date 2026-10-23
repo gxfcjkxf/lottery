@@ -99,7 +99,7 @@ describe("report archive intent state", () => {
     for (const period_key of ["0000-01", "9999-01", "2024-00", "2024-13", "2024-1"]) {
       expect(createArchiveIntent(actor, brand, { ...body, kind: "monthly", period_key }, "archive-create-key-001")).toBeNull();
     }
-    for (const reason of ["", " padded ", "line\nbreak", "tab\there", "nul\u0000", "control\u0085", "lone\ud800", "✅".repeat(167)]) {
+    for (const reason of [ " padded ", "line\nbreak", "tab\there", "nul\u0000", "control\u0085", "lone\ud800", "✅".repeat(167)]) {
       expect(createArchiveIntent(actor, brand, { ...body, reason }, "archive-create-key-001")).toBeNull();
     }
     expect(createArchiveIntent(actor, brand, { ...body, reason: "✅".repeat(166) }, "archive-create-key-001")).not.toBeNull();

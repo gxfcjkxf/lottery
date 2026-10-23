@@ -37,6 +37,7 @@ type Role struct {
 // BrandIDs are the brands in which this account has been granted membership.
 type Account struct {
 	ID         string
+	Username   string
 	Type       AccountType
 	SuperAdmin bool
 	Roles      []Role
@@ -82,9 +83,9 @@ func Authorize(account Account, resource, action string, scope Scope, brandID st
 	if scope == ScopeBrand && (brandID == "" || !contains(account.BrandIDs, brandID)) {
 		return false
 	}
-	// Super administrators can inspect user records but cannot mutate users or
-	// kick their sessions, even if a role accidentally contains such a grant.
-	if account.SuperAdmin && resource == "user" && action != "view" {
+	// The only platform user write is explicit global-account deletion. Brand
+	// profile edits, password resets and session kicks remain unavailable.
+	if account.SuperAdmin && resource == "user" && action != "view" && !(action == "delete" && scope == ScopePlatform) {
 		return false
 	}
 	for _, role := range account.Roles {

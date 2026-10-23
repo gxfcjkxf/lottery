@@ -119,6 +119,7 @@ func assertCommissionAnalysisCycleReport(t *testing.T, report reporting.Commissi
 }
 
 func TestCommissionAnalysisGenuinePaymentAdjustmentCorrectionReadAndExport(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	ctx := context.Background()
 
@@ -151,7 +152,7 @@ func TestCommissionAnalysisGenuinePaymentAdjustmentCorrectionReadAndExport(t *te
 	if err = commissionBatchCallTx(t, f, func(tx pgx.Tx) error {
 		_, updateErr := agents.Update(ctx, tx, f.betting.brand, f.actor, f.node.ID, agency.UpdateInput{
 			Version: f.node.Version, PolicyVersion: agentPolicy.Version,
-			Config: agency.NodeConfig{Ratio: "0.2", Status: "active", CanCreateChildren: true},
+			Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0.2", Status: "active", CanCreateChildren: true},
 			Reason: "analysis must preserve the saved run when today's ratio changes",
 		}, points.Metadata{RequestID: ids.New()})
 		return updateErr
@@ -353,8 +354,10 @@ func assertCommissionAnalysisCoupledSnapshotTamperingClosed(t *testing.T, f comm
 	}
 	defer tx.Rollback(ctx)
 	// Controlled, rollback-only metadata corruption in this random owned schema.
-	// Both copies agree, so the ordinary epoch/order equality test alone cannot
-	// prove that the captured policy was ever an approved immutable revision.
+	// Financial policy is current-only; its historical authority is the protected
+	// order snapshot, not a deleted policy-history table. Agent revisions remain
+	// independent immutable evidence. Corrupt all snapshot copies without changing
+	// arithmetic, so their agreement cannot substitute for the saved agent revision.
 	if _, err = tx.Exec(ctx, `SET LOCAL session_replication_role=replica`); err != nil {
 		t.Fatal(err)
 	}
@@ -363,10 +366,13 @@ func assertCommissionAnalysisCoupledSnapshotTamperingClosed(t *testing.T, f comm
 		if table == "commission_calculations" {
 			column, key = "rule_snapshot", "order_id"
 		}
-		sql := `UPDATE ` + table + ` SET ` + column + `=jsonb_set(` + column + `,'{financial_policy,config,payout_mode}','"automatic"'::jsonb) WHERE brand_id=$1 AND ` + key + `=$2`
+		sql := `UPDATE ` + table + ` SET ` + column + `=jsonb_set(` + column + `,'{agent_path,0,config,status}','"disabled"'::jsonb) WHERE brand_id=$1 AND ` + key + `=$2`
 		if _, err = tx.Exec(ctx, sql, f.betting.brand, f.orders[0].ID); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err = tx.Exec(ctx, `UPDATE bet_orders SET attribution_snapshot=jsonb_set(attribution_snapshot,'{agent_configs_at_bet,0,config,status}','"disabled"'::jsonb) WHERE brand_id=$1 AND id=$2`, f.betting.brand, f.orders[0].ID); err != nil {
+		t.Fatal(err)
 	}
 	if _, err = tx.Exec(ctx, `SET LOCAL session_replication_role=origin`); err != nil {
 		t.Fatal(err)
@@ -376,7 +382,7 @@ func assertCommissionAnalysisCoupledSnapshotTamperingClosed(t *testing.T, f comm
 		t.Fatalf("fixture did not isolate the immutable revision proof: current=%v err=%v", superficiallyCurrent, err)
 	}
 	if _, err = (reporting.Service{DB: f.betting.db}).CommissionAnalysisRead(ctx, tx, f.betting.brand, query); !errors.Is(err, reporting.ErrAnalysisIntegrity) {
-		t.Fatalf("matching but unapproved policy snapshots became known accrual: %v", err)
+		t.Fatalf("matching but unapproved agent revision snapshots became known accrual: %v", err)
 	}
 	if err = tx.Rollback(ctx); err != nil {
 		t.Fatal(err)
@@ -387,6 +393,7 @@ func assertCommissionAnalysisCoupledSnapshotTamperingClosed(t *testing.T, f comm
 }
 
 func TestCommissionAnalysisCreatedUnreadyCycleIsUnknownNotZero(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	waitCommissionBoundary(t, f.boundary)
 	cycle := createCommissionCycle(t, f)

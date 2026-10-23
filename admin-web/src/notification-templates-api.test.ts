@@ -114,7 +114,7 @@ describe("notification templates API", () => {
   });
 
   it("puts a canonical frozen request with the supplied idempotency key and validates the receipt", async () => {
-    const body = { version: 3, content, reason: "approved for updated wording" };
+    const body = { version: 3, content, reason: "" };
     const receipt = template({ version: 4, content, audit_log_id: auditId });
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(response(receipt));
     await expect(createNotificationTemplatesApi(fetchImpl).put("recharge.confirmed", brand, body, "template-key-001"))
@@ -246,4 +246,12 @@ describe("notification templates API", () => {
       .put("recharge.confirmed", brand, { version: 1, content, reason: "reason" }, "template-key-001"))
       .rejects.toMatchObject({ status: 409, code: "VERSION_CONFLICT" });
   });
+});
+
+it("loads system template references from the shared i18n catalog for editing", async () => {
+  const stored = { ...template(), key: "member.joined", content: { i18n_key: "member.joined", i18n_version: 1 } };
+  const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(response({ items: [stored] }));
+  const items = await createNotificationTemplatesApi(fetchImpl).list(brand);
+  expect(items[0].content["zh-CN"].body).toBe("您的会员账号已准备就绪，欢迎加入。");
+  expect(items[0].content.en.title).toBe("Welcome");
 });

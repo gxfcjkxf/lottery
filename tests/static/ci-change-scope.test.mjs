@@ -8,9 +8,9 @@ const jobs = [...workflow.split('\njobs:\n')[1].matchAll(/^  ([a-z][a-z-]*):\n([
 test('push and PR run quick checks; manual dispatch enables every existing regression job', () => {
   assert.match(workflow, /on:\n  push:\n  pull_request:\n  workflow_dispatch:/);
   assert.match(workflow, /run-name: .*'Full regression'.*'Quick checks'/);
-  assert.equal(jobs.length, 21);
-  const quick = ['frontend', 'api-contract', 'backend-quick'];
-  assert.deepEqual(jobs.filter(([, , body]) => !/    if:/.test(body)).map(([, name]) => name).sort(), [...quick].sort());
+  assert.equal(jobs.length, 22);
+  const quick = ['frontend', 'api-contract', 'backend-quick', 'mobile-layout'];
+  assert.deepEqual(jobs.filter(([, , body]) => !/^    if:/m.test(body)).map(([, name]) => name).sort(), [...quick].sort());
   for (const [, name, body] of jobs) {
     if (quick.includes(name)) continue;
     assert.match(body, /if: github\.event_name == 'workflow_dispatch'/, name);
@@ -21,7 +21,7 @@ test('push and PR run quick checks; manual dispatch enables every existing regre
     const dimensions = [...body.matchAll(/^        \w+: \[([^\]]+)\]/gm)];
     if (dimensions.length) expanded += dimensions.reduce((total, [, values]) => total * values.split(',').length, 1) - 1;
   }
-  assert.equal(expanded, 39);
+  assert.equal(expanded, 40);
   assert.doesNotMatch(workflow, /business_changed|classify-ci-changes/);
   assert.equal(existsSync(new URL('../../scripts/classify-ci-changes.mjs', import.meta.url)), false);
 });

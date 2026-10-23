@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createJoinCodesApi,
   JoinCodesApiError,
-  normalizeJoinCode,
   type JoinCode,
 } from "./join-codes-api";
 
@@ -139,13 +138,4 @@ describe("user join codes API", () => {
     });
   });
 
-  it("normalizes explicit join codes and rejects anything outside 24 hex characters", () => {
-    expect(normalizeJoinCode("  a1b2c3d4e5f607182930abcd\n")).toBe(
-      "A1B2C3D4E5F607182930ABCD",
-    );
-    expect(() => normalizeJoinCode("short")).toThrow(/24 hexadecimal/i);
-    expect(() => normalizeJoinCode("G1B2C3D4E5F607182930ABCD")).toThrow(
-      /24 hexadecimal/i,
-    );
-  });
 });

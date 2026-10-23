@@ -1,3 +1,7 @@
+import { BusinessDetailsTestComponent as BusinessDetails } from "./business-details-test-helper";
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
+import * as FormValidation from '../../shared/src/form-validation';
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRenderer, createSSRApp, h, nextTick, type Component } from "vue";
@@ -38,8 +42,8 @@ describe("operations locale rendering", () => {
   it("renders English chrome and switches back to Chinese without translating customer data", async () => {
     const pages: Array<[Component, Record<string, unknown>, string, string]> = [
       [BrandDomains, { account, brandId: brand }, "brand domain view access", "域名查看权限"],
-      [AgentManagement, { account, brandId: brand }, "Agent management", "代理管理"],
-      [JoinCodeManagement, { account, brandId: brand }, "Join code management", "加入码管理"],
+      [AgentManagement, { account, brandId: brand }, "Agent list", "代理列表"],
+      [JoinCodeManagement, { account, brandId: brand, memberId: owner, kind: "referral", ownerRecord: {} }, "Referral code", "推荐码"],
       [CompliancePolicy, { account, brandId: brand }, "Risk and compliance", "风控与合规"],
       [NotificationDeliveries, { account, brandId: brand }, "Notification deliveries", "通知投递记录"],
       [NotificationTemplates, { account, brandId: brand }, "Notification templates", "通知模板"],
@@ -56,25 +60,26 @@ describe("operations locale rendering", () => {
     expect(englishHtml).toContain(english);
     if (page === CompliancePolicy) {
       expect(englishHtml).toContain(
-        "Withdrawal point workflows are connected, but real payments and identity verification are not.",
+        "Configuration check",
       );
     }
     context.setLocale("zh-CN");
     const chineseHtml = await render();
     expect(chineseHtml).toContain(chinese);
     if (page === CompliancePolicy) {
-      expect(chineseHtml).toContain("提现积分流程已接入，但真实支付及身份验证未接入");
+      expect(chineseHtml).toContain("配置检查");
     }
     }
   });
 });
 
 type HostNode = {
+  focus: () => void; scrollIntoView: () => void;
   tag: string; props: Record<string, unknown>; children: HostNode[]; text: string; parent?: HostNode;
   value?: string; checked?: boolean; addEventListener: (...args: unknown[]) => void;
   removeEventListener: (...args: unknown[]) => void; getRootNode: () => HostNode; options: HostNode[];
 };
-function element(tag: string): HostNode { return { tag, props: {}, children: [], text: "", value: "", checked: false, addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } }; }
+function element(tag: string): HostNode { return { focus: vi.fn(), scrollIntoView: vi.fn(), tag, props: {}, children: [], text: "", value: "", checked: false, addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } }; }
 const renderer = createRenderer<HostNode, HostNode>({
   createElement: element,
   createText: (text) => ({ ...element("#text"), text }),
@@ -102,13 +107,16 @@ function compileJoinCodePage(): Component {
   const script = compileScript(descriptor, { id: "operations-localization-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
   const apiModule = { ...JoinCodeApi, createJoinCodesApi: () => api };
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = { "@lottery/shared/BusinessDetails.vue": BusinessDetails,
+    "@lottery/shared/DetailModal.vue": { setup(_props: unknown, { slots }: { slots: Record<string, () => unknown> }) { return () => h("dialog", slots.default?.() as never); } },
+    "@lottery/shared": { ...DisplayShared, ...FormValidation },
     vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n,
     "./join-codes-api": apiModule, "./join-codes-state": JoinCodeState,
+    "./member-lookup": { selectAdminAssociation: async (_brand: string, username: string) => ({ id: owner, member_id: owner, brand_id: brand, username }) },
   };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) =>
     `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 const JoinCodePageComponent = compileJoinCodePage();
 function find(node: HostNode, predicate: (item: HostNode) => boolean): HostNode | null {
@@ -123,7 +131,7 @@ function deferred<T>() {
   const promise = new Promise<T>((done) => { resolve = done; });
   return { promise, resolve };
 }
-const page: JoinCodePage = { brand_id: brand, kind: null, owner_member_id: null, items: [], limit: 20, offset: 0, total_count: "0" };
+const page: JoinCodePage = { brand_id: brand, kind: "referral", owner_member_id: owner, items: [], limit: 20, offset: 0, total_count: "0" };
 
 afterEach(() => { clearAllPendingJoinCodeWrites(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
@@ -141,14 +149,14 @@ describe("JoinCodeManagement slow-read confirmation", () => {
     create.mockResolvedValueOnce(undefined);
     const ComponentUnderTest = JoinCodePageComponent;
     const root = element("root"), context = createAdminI18n();
-    const app = renderer.createApp({ render: () => h(ComponentUnderTest, { account, brandId: brand }) });
+    const app = renderer.createApp({ render: () => h(ComponentUnderTest, { account, brandId: brand, memberId: owner, kind: "referral", ownerRecord: {} }) });
     app.provide(adminI18nKey, context);
     app.mount(root);
     await flush();
 
     const confirmation = find(root, (node) => node.props["data-testid"] === "join-code-frozen-confirmation");
     const retry = find(root, (node) => node.props["data-testid"] === "join-code-retry");
-    const confirm = find(root, (node) => typeof node.props.onClick === "function" && textOf(node).includes("确认提交"));
+    const confirm = find(root, (node) => typeof node.props.onClick === "function" && textOf(node).includes("提交"));
     expect(confirmation?.props.disabled).toBe(true);
     expect(retry?.props.disabled).toBe(true);
     expect(confirm?.props.disabled).toBe(true);
@@ -159,10 +167,11 @@ describe("JoinCodeManagement slow-read confirmation", () => {
 
     context.setLocale("en");
     await nextTick();
-    expect(textOf(root)).toContain("Join code management");
+    expect(textOf(root)).toContain("Referral code");
     expect(textOf(root)).toContain("I reviewed the immutable ownership and request content above");
-    expect(textOf(root)).toContain(JSON.stringify(frozen.body, null, 2));
-    expect(textOf(root)).toContain(frozen.key);
+    expect(textOf(root)).toContain("Start time");
+    expect(textOf(root)).not.toContain('"starts_at"');
+    expect(textOf(root)).not.toContain(frozen.key);
 
     firstRead.resolve(page);
     await flush();
@@ -172,7 +181,7 @@ describe("JoinCodeManagement slow-read confirmation", () => {
     await nextTick();
     context.setLocale("zh-CN");
     await nextTick();
-    expect(textOf(root)).toContain("加入码管理");
+    expect(textOf(root)).toContain("推荐码");
     expect(textOf(root)).toContain("我已核对上方不可变归属与请求内容");
     const retryAfterLocaleChange = find(root, (node) => node.props["data-testid"] === "join-code-retry");
     expect(retryAfterLocaleChange?.props.disabled).toBe(false);
@@ -191,17 +200,19 @@ function compileDeliveryPage(): Component {
   const descriptor = parse(source, { filename: "NotificationDeliveries.vue" }).descriptor;
   const script = compileScript(descriptor, { id: "operations-delivery-localization-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = { "@lottery/shared/BusinessDetails.vue": BusinessDetails,
+    "@lottery/shared/DetailModal.vue": { setup(_props: unknown, { slots }: { slots: Record<string, () => unknown> }) { return () => h("dialog", slots.default?.() as never); } },
+    "@lottery/shared": { ...DisplayShared, ...FormValidation },
     vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n,
     "./notification-delivery-api": DeliveryApi, "./notification-delivery-state": DeliveryState,
   };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) =>
     `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 
 describe("NotificationDeliveries locale-aware notices", () => {
-  it("re-renders an unknown retry notice after locale changes while keeping server errors raw", async () => {
+  it("re-renders an unknown retry notice and safe errors after locale changes", async () => {
     const eventId = "44444444-4444-4444-8444-444444444444";
     const failedDelivery = {
       event_id: eventId, brand_id: brand, status: "failed", attempt_count: 2,
@@ -235,11 +246,13 @@ describe("NotificationDeliveries locale-aware notices", () => {
     await flush();
 
     expect(textOf(root)).toContain("重试结果未知");
-    expect(textOf(root)).toContain("raw transport failure");
+    expect(textOf(root)).toContain("无法连接，请检查网络。");
+    expect(textOf(root)).not.toContain("raw transport failure");
     context.setLocale("en");
     await nextTick();
-    expect(textOf(root)).toContain("The retry outcome is unknown.");
-    expect(textOf(root)).toContain("raw transport failure");
+    expect(textOf(root)).toContain("The result is not yet confirmed");
+    expect(textOf(root)).toContain("Unable to connect.");
+    expect(textOf(root)).not.toContain("raw transport failure");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     app.unmount();
   });

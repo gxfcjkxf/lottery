@@ -10,7 +10,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
+	"sort"
 	"sync"
 	"testing"
 )
@@ -58,7 +58,7 @@ func enable(t *testing.T, s Service, a access.Account) Policy {
 	var p Policy
 	e := transaction(t, s, func(tx pgx.Tx) error {
 		var e error
-		p, e = s.SavePolicy(context.Background(), tx, brandA, a, PolicyInput{Version: 1, Config: PolicyConfig{Enabled: true, MaxDepth: 3, RatioCap: "0.1", Mode: "loss", Cycle: "weekly"}, Reason: "enable isolated agent fixture"}, metadata(a))
+		p, e = s.SavePolicy(context.Background(), tx, brandA, a, PolicyInput{Version: 1, Config: PolicyConfig{Enabled: true, MaxDepth: 3, LossRatioCap: "0.1", TurnoverRatioCap: "0.1", Mode: "loss", Cycle: "weekly"}, Reason: "enable isolated agent fixture"}, metadata(a))
 		return e
 	})
 	if e != nil {
@@ -69,7 +69,10 @@ func enable(t *testing.T, s Service, a access.Account) Policy {
 func create(t *testing.T, s Service, a access.Account, p Policy, parent *Node, r string) Node {
 	t.Helper()
 	var n Node
-	in := CreateInput{PolicyVersion: p.Version, MemberID: member(t, s, brandA), Config: NodeConfig{Ratio: r, Status: "active", CanCreateChildren: true}, Reason: "create scoped agent fixture"}
+	in := CreateInput{PolicyVersion: p.Version, Username: testdb.AgentUsername(member(t, s, brandA)), Password: "agent123", Config: NodeConfig{Ratio: r, Status: "active", CanCreateChildren: true}, Reason: "create scoped agent fixture"}
+	if parent == nil {
+		in.Config.Mode = new(p.Config.Mode)
+	}
 	if parent != nil {
 		in.ParentID = &parent.ID
 		in.ParentVersion = &parent.Version
@@ -88,7 +91,7 @@ func TestAgentHierarchyBoundsHistoryAndDatabaseGuards(t *testing.T) {
 	s, a := fixture(t)
 	ctx := context.Background()
 	p, e := s.Policy(ctx, brandA)
-	if e != nil || p.Config.Enabled || p.Config.RatioCap != "0" || p.Version != 1 {
+	if e != nil || !p.Config.Enabled || p.Config.LossRatioCap != "0" || p.Version != 1 {
 		t.Fatal(p, e)
 	}
 	p = enable(t, s, a)
@@ -99,11 +102,28 @@ func TestAgentHierarchyBoundsHistoryAndDatabaseGuards(t *testing.T) {
 	if e != nil || tree.TotalCount != "1" || len(tree.Items) != 1 || tree.Items[0].ID != child.ID || len(leaf.Path) != 3 {
 		t.Fatal(tree, leaf, e)
 	}
+	// The directory orders by persisted creation time, not call order. A database
+	// wall-clock correction can put the later-created node before its parent.
+	expected := []Node{root, child, leaf}
+	sort.Slice(expected, func(i, j int) bool {
+		if expected[i].CreatedAt.Equal(expected[j].CreatedAt) {
+			return expected[i].ID < expected[j].ID
+		}
+		return expected[i].CreatedAt.Before(expected[j].CreatedAt)
+	})
+	listed, err := s.List(ctx, brandA, DirectoryFilter{}, 2, 1)
+	if err != nil || listed.TotalCount != "3" || len(listed.Items) != 2 || listed.Items[0].ID != expected[1].ID || listed.Items[1].ID != expected[2].ID {
+		t.Fatal(listed, err)
+	}
+	foreign, err := s.List(ctx, brandB, DirectoryFilter{}, 20, 0)
+	if err != nil || foreign.TotalCount != "0" || len(foreign.Items) != 0 {
+		t.Fatal(foreign, err)
+	}
 	for _, tc := range []struct {
 		node Node
 		cfg  NodeConfig
 		err  error
-	}{{root, NodeConfig{Ratio: "0.02", Status: "active", CanCreateChildren: true}, ErrLimit}, {child, NodeConfig{Ratio: "0.09", Status: "active", CanCreateChildren: true}, ErrLimit}} {
+	}{{root, NodeConfig{Ratio: "0.02", Mode: new("loss"), Status: "active", CanCreateChildren: true}, ErrLimit}, {child, NodeConfig{Ratio: "0.09", Status: "active", CanCreateChildren: true}, ErrLimit}} {
 		e := transaction(t, s, func(tx pgx.Tx) error {
 			_, e := s.Update(ctx, tx, brandA, a, tc.node.ID, UpdateInput{Version: tc.node.Version, PolicyVersion: p.Version, ParentVersion: tc.node.ParentVersion, Config: tc.cfg, Reason: "reject invalid hierarchy ratio"}, metadata(a))
 			return e
@@ -112,7 +132,7 @@ func TestAgentHierarchyBoundsHistoryAndDatabaseGuards(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	for _, cfg := range []PolicyConfig{{Enabled: true, MaxDepth: 2, RatioCap: "0.1", Mode: "loss", Cycle: "weekly"}, {Enabled: true, MaxDepth: 3, RatioCap: "0.01", Mode: "loss", Cycle: "weekly"}} {
+	for _, cfg := range []PolicyConfig{{Enabled: true, MaxDepth: 2, LossRatioCap: "0.1", TurnoverRatioCap: "0.1", Mode: "loss", Cycle: "weekly"}, {Enabled: true, MaxDepth: 3, LossRatioCap: "0.01", TurnoverRatioCap: "0.01", Mode: "loss", Cycle: "weekly"}} {
 		e := transaction(t, s, func(tx pgx.Tx) error {
 			_, e := s.SavePolicy(ctx, tx, brandA, a, PolicyInput{Version: p.Version, Config: cfg, Reason: "reject invalid brand shrink"}, metadata(a))
 			return e
@@ -201,6 +221,7 @@ func TestAgentConcurrentParentAndChildModeChangesStayUniform(t *testing.T) {
 	loss := "loss"
 	rootCfg := root.Config
 	rootCfg.Mode = &loss
+	rootCfg.Ratio = "0.09"
 	root, err := updateNode(t, s, a, p, root, rootCfg)
 	if err != nil {
 		t.Fatal(err)
@@ -210,7 +231,7 @@ func TestAgentConcurrentParentAndChildModeChangesStayUniform(t *testing.T) {
 	err = transaction(t, s, func(tx pgx.Tx) error {
 		var e error
 		child, e = s.Create(ctx, tx, brandA, a, CreateInput{
-			PolicyVersion: p.Version, MemberID: childMember, ParentID: &root.ID, ParentVersion: &root.Version,
+			PolicyVersion: p.Version, Username: testdb.AgentUsername(childMember), Password: "agent123", ParentID: &root.ID, ParentVersion: &root.Version,
 			Config: NodeConfig{Ratio: "0.04", Mode: &loss, Status: "active", CanCreateChildren: true},
 			Reason: "create explicit child for mode race",
 		}, metadata(a))
@@ -261,7 +282,7 @@ func TestAgentConcurrentParentAndChildModeChangesStayUniform(t *testing.T) {
 			childErr = r.err
 		}
 	}
-	if childErr != nil || parentErr != nil && !errors.Is(parentErr, ErrLimit) {
+	if childErr != nil || parentErr != nil && !errors.Is(parentErr, ErrInvalid) {
 		t.Fatal("unexpected concurrent mode mutation results", parentErr, childErr)
 	}
 	currentRoot, err := s.Node(ctx, brandA, root.ID)
@@ -298,7 +319,7 @@ func TestAgentRatioAndClosedInput(t *testing.T) {
 			t.Fatal(v)
 		}
 	}
-	for _, raw := range []string{`{"version":1,"config":{"enabled":null,"max_depth":5,"ratio_cap":"0","mode":"loss","cycle":"weekly"},"reason":"x"}`, `{"version":1,"version":2,"config":{},"reason":"x"}`, `{"version":1,"config":{"enabled":false,"max_depth":5,"ratio_cap":"0","mode":"loss","cycle":"weekly"},"reason":"x","extra":true}`} {
+	for _, raw := range []string{`{"version":1,"config":{"enabled":null,"max_depth":5,"loss_ratio_cap": "0", "turnover_ratio_cap": "0","mode":"loss","cycle":"weekly"},"reason":"x"}`, `{"version":1,"version":2,"config":{},"reason":"x"}`, `{"version":1,"config":{"enabled":false,"max_depth":5,"loss_ratio_cap": "0", "turnover_ratio_cap": "0","mode":"loss","cycle":"weekly"},"reason":"x","extra":true}`} {
 		var in PolicyInput
 		if json.Unmarshal([]byte(raw), &in) == nil {
 			t.Fatal(raw)
@@ -312,23 +333,10 @@ func TestAgentEffectiveModeInheritanceAndGuards(t *testing.T) {
 	p := enable(t, s, a)
 	turnover := "turnover"
 
-	root := create(t, s, a, p, nil, "0.08")
-	// Roots may override the brand default. Children may inherit or explicitly
-	// repeat the parent's effective mode.
-	rootCfg := root.Config
-	rootCfg.Mode = &turnover
-	var updatedRoot Node
-	err := transaction(t, s, func(tx pgx.Tx) error {
-		var e error
-		updatedRoot, e = s.Update(ctx, tx, brandA, a, root.ID, UpdateInput{
-			Version: root.Version, PolicyVersion: p.Version, Config: rootCfg,
-			Reason: "set root mode override",
-		}, metadata(a))
-		return e
-	})
-	if err != nil || updatedRoot.EffectiveMode != turnover {
-		t.Fatal(updatedRoot, err)
-	}
+	rootPolicy := p
+	rootPolicy.Config.Mode = turnover
+	updatedRoot := create(t, s, a, rootPolicy, nil, "0.08")
+	var err error
 	child := create(t, s, a, p, &updatedRoot, "0.04")
 	if child.EffectiveMode != turnover || child.Config.Mode != nil {
 		t.Fatal("inherited child mode", child)
@@ -338,7 +346,7 @@ func TestAgentEffectiveModeInheritanceAndGuards(t *testing.T) {
 	err = transaction(t, s, func(tx pgx.Tx) error {
 		var e error
 		explicitChild, e = s.Create(ctx, tx, brandA, a, CreateInput{
-			PolicyVersion: p.Version, MemberID: equalChild, ParentID: &updatedRoot.ID,
+			PolicyVersion: p.Version, Username: testdb.AgentUsername(equalChild), Password: "agent123", ParentID: &updatedRoot.ID,
 			ParentVersion: &updatedRoot.Version,
 			Config:        NodeConfig{Ratio: "0.03", Mode: &turnover, Status: "active", CanCreateChildren: true},
 			Reason:        "create explicit equal mode child",
@@ -360,7 +368,7 @@ func TestAgentEffectiveModeInheritanceAndGuards(t *testing.T) {
 	badMember := member(t, s, brandA)
 	err = transaction(t, s, func(tx pgx.Tx) error {
 		_, e := s.Create(ctx, tx, brandA, a, CreateInput{
-			PolicyVersion: p.Version, MemberID: badMember, ParentID: &updatedRoot.ID,
+			PolicyVersion: p.Version, Username: testdb.AgentUsername(badMember), Password: "agent123", ParentID: &updatedRoot.ID,
 			ParentVersion: &updatedRoot.Version,
 			Config:        NodeConfig{Ratio: "0.02", Mode: &wrong, Status: "active", CanCreateChildren: true},
 			Reason:        "reject differing child mode",
@@ -382,117 +390,13 @@ func TestAgentEffectiveModeInheritanceAndGuards(t *testing.T) {
 	if !errors.Is(err, ErrInvalid) {
 		t.Fatalf("differing child update error=%v, want ErrInvalid", err)
 	}
-	user := identity.Session{View: identity.View{
-		User:   identity.User{ID: ids.New(), Status: "active"},
-		Member: identity.Member{ID: updatedRoot.MemberID, BrandID: brandA, Status: "normal"},
-	}}
+	user := identity.AgentSession{AccountID: updatedRoot.MemberID, BrandID: brandA}
 	err = transaction(t, s, func(tx pgx.Tx) error {
-		_, e := s.UpdateChild(ctx, tx, brandA, user, child.ID, ChildInput{
-			Version: child.Version, PolicyVersion: p.Version, ParentVersion: updatedRoot.Version,
-			Ratio: child.Config.Ratio, Mode: &wrong, Reason: "reject user child mode mismatch",
-		}, points.Metadata{RequestID: ids.New()})
+		_, e := s.UpdateChild(ctx, tx, brandA, user, child.ID, ChildInput{Version: child.Version, PolicyVersion: p.Version, ParentVersion: updatedRoot.Version, Ratio: child.Config.Ratio, Mode: &wrong}, metadata(a))
 		return e
 	})
 	if !errors.Is(err, ErrInvalid) {
-		t.Fatalf("user child differing mode error=%v, want ErrInvalid", err)
-	}
-	rootCfg.Mode = nil
-	err = transaction(t, s, func(tx pgx.Tx) error {
-		_, e := s.Update(ctx, tx, brandA, a, updatedRoot.ID, UpdateInput{
-			Version: updatedRoot.Version, PolicyVersion: p.Version, Config: rootCfg,
-			Reason: "reject parent change that splits descendants",
-		}, metadata(a))
-		return e
-	})
-	if !errors.Is(err, ErrLimit) {
-		t.Fatalf("parent mode change error=%v, want ErrLimit", err)
-	}
-	var revisionsAfter, auditsAfter int
-	if err = s.DB.QueryRow(ctx, `SELECT count(*) FROM agent_config_revisions WHERE brand_id=$1`, brandA).Scan(&revisionsAfter); err != nil || revisionsAfter != revisionsBefore {
-		t.Fatal("rejected mode mutations wrote revisions", revisionsBefore, revisionsAfter, err)
-	}
-	if err = s.DB.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE brand_id=$1 AND resource_type IN ('agent_node','agent_policy')`, brandA).Scan(&auditsAfter); err != nil || auditsAfter != auditsBefore {
-		t.Fatal("rejected mode mutations wrote audit records", auditsBefore, auditsAfter, err)
-	}
-	badID := ids.New()
-	_, err = s.DB.Exec(ctx, `INSERT INTO agent_nodes(id,brand_id,member_id,parent_id,depth,path,config,created_by)
-	 VALUES($1,$2,$3,$4,2,$5::uuid[],$6,$7)`, badID, brandA, badMember, updatedRoot.ID,
-		append(append([]string{}, updatedRoot.Path...), badID),
-		[]byte(`{"ratio":"0.02","mode":"loss","status":"active","can_create_children":true}`), a.ID)
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.ConstraintName != "agent_child_mode_matches_parent" {
-		t.Fatalf("direct SQL child mode guard error=%v", err)
-	}
-	_, err = s.DB.Exec(ctx, `UPDATE agent_nodes SET version=version+1,config=jsonb_set(config,'{mode}','"loss"') WHERE id=$1`, child.ID)
-	pgErr = nil
-	if !errors.As(err, &pgErr) || pgErr.ConstraintName != "agent_child_mode_matches_parent" {
-		t.Fatalf("direct SQL child update mode guard error=%v", err)
-	}
-	_, err = s.DB.Exec(ctx, `UPDATE agent_nodes SET version=version+1,config=jsonb_set(config,'{mode}','null'::jsonb) WHERE id=$1`, updatedRoot.ID)
-	pgErr = nil
-	if !errors.As(err, &pgErr) || pgErr.ConstraintName != "agent_descendant_mode_matches_parent" {
-		t.Fatalf("direct SQL parent descendant mode guard error=%v", err)
-	}
-	leaf := create(t, s, a, p, &child, "0.02")
-	legacyErr := transaction(t, s, func(tx pgx.Tx) error {
-		if _, e := tx.Exec(ctx, `ALTER TABLE agent_nodes DISABLE TRIGGER guarded_agent_node`); e != nil {
-			return e
-		}
-		if _, e := tx.Exec(ctx, `ALTER TABLE agent_nodes DISABLE TRIGGER guarded_agent_uniform_node_mode`); e != nil {
-			return e
-		}
-		if _, e := tx.Exec(ctx, `ALTER TABLE agent_nodes DISABLE TRIGGER agent_node_revision_required`); e != nil {
-			return e
-		}
-		if _, e := tx.Exec(ctx, `UPDATE agent_nodes SET config=jsonb_set(config,'{mode}','"loss"') WHERE id=$1`, child.ID); e != nil {
-			return e
-		}
-		if _, e := tx.Exec(ctx, `ALTER TABLE agent_nodes ENABLE TRIGGER guarded_agent_node`); e != nil {
-			return e
-		}
-		if _, e := tx.Exec(ctx, `ALTER TABLE agent_nodes ENABLE TRIGGER guarded_agent_uniform_node_mode`); e != nil {
-			return e
-		}
-		if _, e := tx.Exec(ctx, `ALTER TABLE agent_nodes ENABLE TRIGGER agent_node_revision_required`); e != nil {
-			return e
-		}
-		if _, e := tx.Exec(ctx, `SAVEPOINT legacy_insert_guard`); e != nil {
-			return e
-		}
-		grandchildID, grandchildMember := ids.New(), member(t, s, brandA)
-		_, insertErr := tx.Exec(ctx, `INSERT INTO agent_nodes(id,brand_id,member_id,parent_id,depth,path,config,created_by)
-		 SELECT $1,$2,$3,parent.id,parent.depth+1,array_append(parent.path,$1::uuid),
-		        '{"ratio":"0.01","mode":null,"status":"active","can_create_children":true}'::jsonb,$4
-		 FROM agent_nodes parent WHERE parent.brand_id=$2 AND parent.id=$5`,
-			grandchildID, brandA, grandchildMember, a.ID, child.ID)
-		var insertPGErr *pgconn.PgError
-		if !errors.As(insertErr, &insertPGErr) || insertPGErr.ConstraintName != "agent_ancestor_mode_chain_consistent" {
-			return errors.New("direct SQL insert did not reject legacy mixed ancestor chain")
-		}
-		if _, e := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT legacy_insert_guard`); e != nil {
-			return e
-		}
-		if _, e := tx.Exec(ctx, `SAVEPOINT legacy_policy_guard`); e != nil {
-			return e
-		}
-		_, policyErr := tx.Exec(ctx, `UPDATE brand_agent_policies SET version=version+1,config=jsonb_set(config,'{mode}','"turnover"') WHERE brand_id=$1`, brandA)
-		var policyPGErr *pgconn.PgError
-		if !errors.As(policyErr, &policyPGErr) || policyPGErr.ConstraintName != "agent_brand_mode_preserves_hierarchy" {
-			return errors.New("direct SQL brand mode guard did not reject legacy mixed path")
-		}
-		if _, e := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT legacy_policy_guard`); e != nil {
-			return e
-		}
-		cfg := leaf.Config
-		cfg.Ratio = "0.019"
-		_, e := s.Update(ctx, tx, brandA, a, leaf.ID, UpdateInput{
-			Version: leaf.Version, PolicyVersion: p.Version, ParentVersion: leaf.ParentVersion,
-			Config: cfg, Reason: "fail closed on legacy mixed ancestor chain",
-		}, metadata(a))
-		return e
-	})
-	if !errors.Is(legacyErr, ErrLimit) {
-		t.Fatalf("legacy mixed path mutation error=%v, want ErrLimit", legacyErr)
+		t.Fatalf("differing child mode: %v", err)
 	}
 }
 
@@ -502,97 +406,49 @@ func TestAgentBrandModeChangesPreserveExistingChains(t *testing.T) {
 	p := enable(t, s, a)
 	root := create(t, s, a, p, nil, "0.08")
 	child := create(t, s, a, p, &root, "0.04")
-	explicitRoot := create(t, s, a, p, nil, "0.08")
-	loss := "loss"
-	explicitMember := member(t, s, brandA)
-	var explicitChild Node
+	cfg := p.Config
+	cfg.Mode = "turnover"
 	err := transaction(t, s, func(tx pgx.Tx) error {
-		var e error
-		explicitChild, e = s.Create(ctx, tx, brandA, a, CreateInput{
-			PolicyVersion: p.Version, MemberID: explicitMember, ParentID: &explicitRoot.ID,
-			ParentVersion: &explicitRoot.Version,
-			Config:        NodeConfig{Ratio: "0.03", Mode: &loss, Status: "active", CanCreateChildren: true},
-			Reason:        "create homogeneous explicit child mode",
-		}, metadata(a))
-		return e
-	})
-	if err != nil || explicitChild.EffectiveMode != "loss" {
-		t.Fatal(explicitChild, err)
-	}
-	turnover := PolicyConfig{Enabled: true, MaxDepth: 3, RatioCap: "0.1", Mode: "turnover", Cycle: "weekly"}
-	var revisionsBefore int
-	if err = s.DB.QueryRow(ctx, `SELECT count(*) FROM agent_config_revisions WHERE brand_id=$1`, brandA).Scan(&revisionsBefore); err != nil {
-		t.Fatal(err)
-	}
-	err = transaction(t, s, func(tx pgx.Tx) error {
-		var e error
-		_, e = s.SavePolicy(ctx, tx, brandA, a, PolicyInput{Version: p.Version, Config: turnover, Reason: "reject mode change that splits explicit child"}, metadata(a))
-		return e
-	})
-	if !errors.Is(err, ErrLimit) {
-		t.Fatalf("opposite brand mode with explicit homogeneous child error=%v, want ErrLimit", err)
-	}
-	var revisionsAfter int
-	if err = s.DB.QueryRow(ctx, `SELECT count(*) FROM agent_config_revisions WHERE brand_id=$1`, brandA).Scan(&revisionsAfter); err != nil || revisionsAfter != revisionsBefore {
-		t.Fatal("rejected brand mode change wrote revisions", revisionsBefore, revisionsAfter, err)
-	}
-	childCfg := explicitChild.Config
-	childCfg.Mode = nil
-	var inheritedExplicitChild Node
-	err = transaction(t, s, func(tx pgx.Tx) error {
-		var e error
-		inheritedExplicitChild, e = s.Update(ctx, tx, brandA, a, explicitChild.ID, UpdateInput{
-			Version: explicitChild.Version, PolicyVersion: p.Version, ParentVersion: explicitChild.ParentVersion,
-			Config: childCfg, Reason: "return child to inherited mode",
-		}, metadata(a))
-		return e
-	})
-	if err != nil || inheritedExplicitChild.EffectiveMode != "loss" {
-		t.Fatal(inheritedExplicitChild, err)
-	}
-	var next Policy
-	err = transaction(t, s, func(tx pgx.Tx) error {
-		var e error
-		next, e = s.SavePolicy(ctx, tx, brandA, a, PolicyInput{Version: p.Version, Config: turnover, Reason: "change inherited brand mode"}, metadata(a))
+		_, e := s.SavePolicy(ctx, tx, brandA, a, PolicyInput{Version: p.Version, Config: cfg}, metadata(a))
 		return e
 	})
 	if err != nil {
-		t.Fatal("homogeneous inherited hierarchy should follow the brand default", err)
+		t.Fatal(err)
 	}
-	n, err := s.Node(ctx, brandA, child.ID)
-	if err != nil || n.EffectiveMode != "turnover" {
-		t.Fatal(n, err)
+	for _, id := range []string{root.ID, child.ID} {
+		node, e := s.Node(ctx, brandA, id)
+		if e != nil || node.EffectiveMode != "loss" {
+			t.Fatal(node, e)
+		}
 	}
-	explicitAfter, err := s.Node(ctx, brandA, explicitChild.ID)
-	if err != nil || explicitAfter.EffectiveMode != "turnover" {
-		t.Fatal(explicitAfter, err)
-	}
+}
 
-	// A root override shields its inherited subtree from a later default change.
-	rootCfg := root.Config
-	rootCfg.Mode = &loss
-	var overridden Node
-	err = transaction(t, s, func(tx pgx.Tx) error {
-		var e error
-		overridden, e = s.Update(ctx, tx, brandA, a, root.ID, UpdateInput{Version: root.Version, PolicyVersion: next.Version, Config: rootCfg, Reason: "override root mode"}, metadata(a))
-		return e
-	})
-	if err != nil || overridden.EffectiveMode != "loss" {
-		t.Fatal(overridden, err)
+func TestAgentFunctionsAreAvailableByDefault(t *testing.T) {
+	s, a := fixture(t)
+	ctx := context.Background()
+	p, err := s.Policy(ctx, brandA)
+	if err != nil || !p.Config.Enabled {
+		t.Fatalf("default agent rules: %+v %v", p, err)
 	}
-	changed := turnover
-	changed.Mode = "loss"
-	var final Policy
-	err = transaction(t, s, func(tx pgx.Tx) error {
-		var e error
-		final, e = s.SavePolicy(ctx, tx, brandA, a, PolicyInput{Version: next.Version, Config: changed, Reason: "change brand mode under root override"}, metadata(a))
-		return e
-	})
-	if err != nil || final.Config.Mode != "loss" {
-		t.Fatal(final, err)
+	// Existing depth, ratio and brand permissions still apply without an enable step.
+	n := create(t, s, a, p, nil, "0")
+	if n.Config.Ratio != "0" {
+		t.Fatal(n)
 	}
-	childAfter, err := s.Node(ctx, brandA, child.ID)
-	if err != nil || childAfter.EffectiveMode != "loss" {
-		t.Fatal("brand default change affected explicit root subtree", childAfter, err)
+	disabled := p.Config
+	disabled.Enabled = false
+	err = transaction(t, s, func(tx pgx.Tx) error {
+		_, err := s.SavePolicy(ctx, tx, brandA, a, PolicyInput{Version: p.Version, Config: disabled}, metadata(a))
+		return err
+	})
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("removed disable action accepted: %v", err)
+	}
+	if _, err = s.DB.Exec(ctx, `UPDATE brand_agent_policies SET config=jsonb_set(config,'{enabled}','false'),version=version+1 WHERE brand_id=$1`, brandA); err == nil {
+		t.Fatal("database accepted a disabled agent policy")
+	}
+	after, err := s.Policy(ctx, brandA)
+	if err != nil || after.Version != p.Version || !after.Config.Enabled {
+		t.Fatalf("rejected disable changed rules: %+v %v", after, err)
 	}
 }

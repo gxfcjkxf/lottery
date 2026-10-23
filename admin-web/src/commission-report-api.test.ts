@@ -5,7 +5,7 @@ import { commissionReportPermissions, createCommissionReportApi, type Commission
 const brand = "11111111-1111-4111-8111-111111111111", actor = "22222222-2222-4222-8222-222222222222", agent = "abcdefab-cdef-4abc-8def-abcdefabcdef", cycle = "44444444-4444-4444-8444-444444444444";
 const from = "2026-01-01T00:00:00Z", to = "2026-01-02T00:00:00Z", huge = "922337203685477580812345678901234567890";
 const totals: CommissionTotals = { entry_count: "3", paid_entry_count: "1", paid_points: huge, adjustment_entry_count: "1", adjustment_credit_points: "0", adjustment_debit_points: `${BigInt(huge) + 9n}`, correction_entry_count: "1", correction_credit_points: `${BigInt(huge) + 20n}`, correction_debit_points: `${BigInt(huge) + 20n}`, net_points: "-9" };
-const payload = (overrides: Record<string, unknown> = {}) => ({ success: true, request_id: "report-request-1", data: { brand_id: brand, snapshot_at: "2026-01-02T01:00:00Z", timezone: "Asia/Singapore", query: { from, to, group_by: "day", limit: 20, offset: 0, agent_id: null, member_id: null, cycle_id: null }, summary: totals, items: [{ key: "2026-01-01", label: "2026-01-01", totals }], total_groups: "1", ...overrides } });
+const payload = (overrides: Record<string, unknown> = {}) => ({ success: true, associations: { ["brand:" + brand]: { name: "Aurora" } }, request_id: "report-request-1", data: { brand_id: brand, snapshot_at: "2026-01-02T01:00:00Z", timezone: "Asia/Singapore", query: { from, to, group_by: "day", limit: 20, offset: 0, agent_id: null, member_id: null, cycle_id: null }, summary: totals, items: [{ key: "2026-01-01", label: "2026-01-01", totals }], total_groups: "1", ...overrides } });
 const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
 
 describe("commission report permissions", () => {
@@ -59,7 +59,7 @@ describe("commission report API", () => {
     await expect(createCommissionReportApi(vi.fn<typeof fetch>().mockResolvedValue(json(data))).report(brand, { from: earlyFrom, to: earlyTo, group_by: "day" })).resolves.toMatchObject({ items: [{ key: "0001-01-01" }] });
   });
   it("lowercases brand and filter UUIDs on CSV requests", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ error: { message: "unavailable" } }), { status: 503 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ success: false, error: { code: "SERVICE_UNAVAILABLE", message: "unavailable" } }), { status: 503 }));
     await expect(createCommissionReportApi(fetcher).exportCsv(brand.toUpperCase(), { from, to, group_by: "day", agent_id: agent.toUpperCase(), member_id: actor.toUpperCase(), cycle_id: cycle.toUpperCase() })).rejects.toMatchObject({ status: 503 });
     const [url, init] = fetcher.mock.calls[0]!;
     const parsed = new URL(String(url), "http://local");

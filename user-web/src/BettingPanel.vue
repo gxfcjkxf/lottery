@@ -1,4 +1,17 @@
 <script setup lang="ts">
+import { vWriteGuard } from "@lottery/shared";
+import { useUserI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName, copyAssociationNames } from "@lottery/shared";
+import { useUserI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import SiteIcon from "@lottery/shared/SiteIcon";
+import { vRefreshButton } from '@lottery/shared';
+import { vGlobalLoading } from "@lottery/shared";
+import { vInlineValidation } from '@lottery/shared'
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
@@ -18,30 +31,43 @@ import type {
 } from "../../shared/src/rules";
 import type { Language } from "../../shared/src/brand";
 import { createAuthClient, type AuthProfile } from "../../shared/src/auth";
+import BettingHistory from "./BettingHistory.vue";
 import BetSelection from "./BetSelection.vue";
-import SelectionSummary from "./SelectionSummary.vue";
-import OrderPrize from "./OrderPrize.vue";
+import SelectionSummary from "@lottery/shared/SelectionSummary.vue";
+import OrderPrize from "@lottery/shared/OrderPrize.vue";
 import { createWalletApi } from "./wallet-api";
-import DrawResultsPanel from "./DrawResultsPanel.vue";
+import DrawArchive from './DrawArchive.vue';
+import PlayRules from "./PlayRules.vue";
+import UserPeriodStrip from './UserPeriodStrip.vue';
+import BettingSheet from './BettingSheet.vue';
+import {standardQuoteChanged,selectionReady} from './bet-confirmation';
+import {createDrawsApi,type PublicDrawResult} from './draws-api';
+import {readStandardIntent,saveStandardIntent,clearStandardIntent} from './standard-bet-intent';
+import { useUserI18n } from "./i18n";
 
 const props = defineProps<{
   locale: Language;
   brandCode?: string;
   auth?: AuthProfile | null;
   embeddedCatalog?: boolean;
+  embeddedGameId?: string;
 }>();
-const emit = defineEmits<{ "auth-expired": [] }>();
+const emit = defineEmits<{ "auth-expired": []; "game-title": [title:string] }>();
 const route = useRoute();
 const router = useRouter();
 const api = createBettingApi({ brandCode: props.brandCode });
 const authApi = createAuthClient({ brandCode: props.brandCode });
-const zh = computed(() => props.locale === "zh");
+const ui = useUserI18n().t;
 const catalog = ref<CatalogGame[]>([]);
+const previousDraw=ref<PublicDrawResult|null>(null);
+const draftOpen=ref(false);
+const submittingStandard=ref(false),standardChanged=ref(false);
+const hasSelection=computed(()=>[...(selection.value.regular??[]),...(selection.value.special??[]),...(selection.value.digits??[]).flat(),...(selection.value.exclude??[]),...Object.values(selection.value.attributes??{}).flat(),...Object.values(selection.value.features??{}).flat()].length>0);
 const catalogLoading = ref(false);
-const catalogError = ref("");
+const catalogError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const catalogGeneration = ref(0);
 const detailLoading = ref(false);
-const detailError = ref("");
+const detailError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const currentGame = ref<CatalogGame | null>(null);
 const plays = ref<CatalogPlay[]>([]);
 const period = ref<import("./betting-api").Period | null>(null);
@@ -55,7 +81,7 @@ const selection = ref<RuleTicketSelection>(emptySelection());
 const multiplier = ref("1");
 const quote = ref<BetQuote | null>(null);
 const quoteLoading = ref(false);
-const quoteError = ref("");
+const quoteError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const review = ref<{
   body: Readonly<BetInput>;
   quote: BetQuote;
@@ -68,14 +94,11 @@ const placedOrder = ref<BetOrder | null>(null);
 const availablePoints = ref<string | null>(null);
 const memberStatus = ref(props.auth?.member.status ?? "");
 const authRequired = ref(false);
-const orders = ref<BetOrder[]>([]);
-const ordersLoading = ref(false);
-const orderError = ref("");
+const orderError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const cancelReason = ref("");
 const cancelBusy = ref(false);
 const cancelReasonBytesValid = computed(
   () =>
-    new TextEncoder().encode(cancelReason.value.trim()).length > 0 &&
     new TextEncoder().encode(cancelReason.value.trim()).length <= 500,
 );
 const cancelIntent = ref<{
@@ -84,13 +107,14 @@ const cancelIntent = ref<{
   key: string;
 } | null>(null);
 const uncertainPlace = ref(false);
+const intentReadFailed = ref(false);
+watch(selection,()=>{if(!uncertainPlace.value)draftOpen.value=hasSelection.value},{deep:true});
 const previewGeneration = ref(0);
 const previewBody = ref<BetInput | null>(null);
 type AuthIdentity = { userId: string; memberId: string; brandId: string };
 const previewActor = ref<AuthIdentity | null>(null);
 const notice = ref("");
 const fetchGeneration = ref(0);
-const orderGeneration = ref(0);
 const detailOrderGeneration = ref(0);
 const loadedGameFingerprint = ref("");
 let pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -107,7 +131,9 @@ function emptySelection(): RuleTicketSelection {
   };
 }
 function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  const copy = JSON.parse(JSON.stringify(value)) as T;
+  copyAssociationNames(value,copy);
+  return copy;
 }
 function freezeDeep<T>(value: T): T {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
@@ -117,33 +143,25 @@ function freezeDeep<T>(value: T): T {
   }
   return value;
 }
-function message(error: unknown, protectedRequest = false): string {
+function message(error: unknown, protectedRequest = false): string | import("@lottery/shared").LocalizedMessage {
   const raw = error as { status?: number; code?: string; message?: string };
   if (raw?.status === 401 && protectedRequest) {
     authRequired.value = true;
     emit("auth-expired");
-    return zh.value
-      ? "登录已过期，请重新登录。"
-      : "Your session expired. Please sign in again.";
+    return ui("betting.sessionExpired");
   }
   if (
     raw?.status === 409 ||
     /CONFLICT|CLOSED|VERSION|POLICY|CUTOFF|RULE/i.test(raw?.code ?? "")
   ) {
     invalidateReview();
-    return zh.value
-      ? "期次、规则或投注政策已变化。请刷新信息并重新获取报价。"
-      : "The period, rules, or betting policy changed. Refresh and request a new quote.";
+    return ui("betting.stateChanged");
   }
   if (raw?.status === 0 && raw.code !== "invalid_multiplier")
-    return zh.value
-      ? "网络结果不确定。请重试同一操作；系统会保留请求编号。"
-      : "The network result is uncertain. Retry the same action; its request key is preserved.";
+    return ui("betting.uncertainNetwork");
   return (
-    raw?.message ||
-    (zh.value
-      ? "服务暂时不可用，请稍后重试。"
-      : "The service is temporarily unavailable. Please try again.")
+    publicErrorMessage(raw) ||
+    ui("betting.serviceUnavailable")
   );
 }
 function invalidateReview() {
@@ -155,7 +173,7 @@ function invalidateReview() {
   uncertainPlace.value = false;
   quoteLoading.value = false;
 }
-const gameId = computed(() => String(route.params.gameId ?? ""));
+const gameId = computed(() => props.embeddedGameId ?? String(route.params.gameId ?? ""));
 const selectedPlay = computed(
   () =>
     plays.value.find((item) => item.id === chosenPlayId.value) ??
@@ -192,6 +210,7 @@ const canBet = computed(() =>
       memberAuthorized.value &&
       multiplier.value.length > 0 &&
       !quoteLoading.value &&
+      !intentReadFailed.value &&
       !uncertainPlace.value,
   ),
 );
@@ -223,9 +242,9 @@ const confirmationGameId = computed(
     "",
 );
 
-async function loadCatalog() {
+async function loadCatalog(passive = false) {
   const generation = ++catalogGeneration.value;
-  catalogLoading.value = catalog.value.length === 0;
+  if (!passive) catalogLoading.value = true;
   try {
     const result = await api.games();
     if (generation !== catalogGeneration.value) return;
@@ -243,9 +262,11 @@ async function loadGame(id: string, passive = false) {
   if (!passive) detailLoading.value = true;
   detailError.value = "";
   try {
-    const result = await api.game(id);
+    const [result,draws] = await Promise.all([api.game(id),createDrawsApi(props.brandCode).listResults({gameId:id,limit:1,offset:0})]);
     if (generation !== fetchGeneration.value || id !== gameId.value) return;
     currentGame.value = result.game;
+    previousDraw.value = draws.items[0] ?? null;
+    emit("game-title",result.game.name);
     plays.value = result.plays;
     period.value = result.period;
     policy.value = result.policy;
@@ -292,6 +313,8 @@ function onIntentChange() {
   if (uncertainPlace.value) return;
   invalidateReview();
   quoteError.value = "";
+  standardChanged.value=false;
+  if(definition.value && hasSelection.value && selectionReady(definition.value,selection.value) && props.auth && !isPaused.value && /^[1-9][0-9]*$/.test(multiplier.value))void requestQuote();
 }
 watch([selection, multiplier, chosenPlayId], onIntentChange, {
   deep: true,
@@ -338,15 +361,11 @@ async function requestQuote() {
   if (uncertainPlace.value) return;
   quoteError.value = "";
   if (!selectedPlay.value || !period.value) {
-    quoteError.value = zh.value
-      ? "当前没有开放期次。"
-      : "There is no open period.";
+    quoteError.value = ui("betting.noOpenPeriodError");
     return;
   }
   if (!/^[1-9][0-9]*$/.test(multiplier.value)) {
-    quoteError.value = zh.value
-      ? "请输入正整数倍数。"
-      : "Enter a positive whole-number multiplier.";
+    quoteError.value = ui("betting.invalidMultiplier");
     return;
   }
   invalidateReview();
@@ -367,9 +386,7 @@ async function requestQuote() {
       profile.member.status !== "normal" ||
       profile.user.status !== "active"
     ) {
-      quoteError.value = zh.value
-        ? "当前账户状态不允许投注。"
-        : "This account is not eligible to place bets.";
+      quoteError.value = ui("betting.accountCannotBet");
       quoteLoading.value = false;
       return;
     }
@@ -404,9 +421,7 @@ async function requestQuote() {
       currentProfile.member.brand_id !== previewActor.value?.brandId
     ) {
       invalidateReview();
-      quoteError.value = zh.value
-        ? "登录账户已变化，请重新获取报价。"
-        : "The signed-in account changed. Request a new quote.";
+      quoteError.value = ui("betting.accountChanged");
       return;
     }
     quote.value = result;
@@ -433,7 +448,12 @@ function beginReview() {
     actor: Object.freeze({ ...previewActor.value }),
     definition: freezeDeep(clone(definition.value!)),
   };
-  void router.push("/bet/confirm");
+  draftOpen.value = true;
+}
+async function submitStandard(){
+ if(submittingStandard.value||placing.value||!canBet.value||!quote.value)return;
+ const shown=clone(quote.value);submittingStandard.value=true;standardChanged.value=false;
+ try{await requestQuote();if(!quote.value)return;if(standardQuoteChanged(shown,quote.value)){standardChanged.value=true;return}beginReview();await placeOrder()}finally{submittingStandard.value=false}
 }
 async function placeOrder() {
   const current = review.value;
@@ -448,30 +468,32 @@ async function placeOrder() {
       profile.member.brand_id !== current.actor.brandId
     ) {
       if (!uncertainPlace.value) invalidateReview();
-      quoteError.value = zh.value
-        ? "当前登录账户已变化。请用原账户继续，或重新获取报价。"
-        : "The signed-in account changed. Continue with the original account or request a fresh quote.";
+      quoteError.value = ui("betting.accountChangedContinue");
       return;
     }
     if (
       !uncertainPlace.value &&
       (profile.member.status !== "normal" || profile.user.status !== "active")
     ) {
-      quoteError.value = zh.value
-        ? "当前账户状态不允许投注。"
-        : "This account is not eligible to place bets.";
+      quoteError.value = ui("betting.accountCannotBet");
       return;
     }
+    try { saveStandardIntent(sessionStorage,current.quote.period.game_id,current); }
+    catch { quoteError.value=ui('betting.serviceUnavailable'); return; }
     const result = await api.place(
       clone(current.body) as BetInput,
       current.key,
     );
+    clearStandardIntent(sessionStorage,current.quote.period.game_id,current);
+    if(props.auth?.user.id!==current.actor.userId||props.auth.member.id!==current.actor.memberId||props.auth.member.brand_id!==current.actor.brandId)return;
     placedOrder.value = result;
     invalidateReview();
-    await Promise.allSettled([loadOrders(), refreshWalletEvent()]);
-    void router.push(`/orders/${encodeURIComponent(result.id)}`);
+    await Promise.allSettled([refreshWalletEvent()]);
+    selection.value=emptySelection(); draftOpen.value=false;
+    notice.value=ui("workspace.betSuccess");
   } catch (error) {
     const status = (error as { status?: number })?.status;
+    if(status && status>=400 && status<500 && status!==401)clearStandardIntent(sessionStorage,current.quote.period.game_id,current);
     if (status === 0 || (status != null && status >= 500))
       uncertainPlace.value = true;
     else if (status === 401) {
@@ -482,6 +504,12 @@ async function placeOrder() {
   } finally {
     placing.value = false;
   }
+}
+function restoreStandardReview(){
+ if(!props.auth||!gameId.value)return;
+ const actor={userId:props.auth.user.id,memberId:props.auth.member.id,brandId:props.auth.member.brand_id};
+ try{const saved=readStandardIntent(sessionStorage,actor,gameId.value);if(saved){uncertainPlace.value=true;review.value=freezeDeep(saved);draftOpen.value=true}}
+ catch{intentReadFailed.value=true;quoteError.value=ui('betting.serviceUnavailable')}
 }
 async function refreshWalletEvent() {
   try {
@@ -498,24 +526,6 @@ async function refreshWalletEvent() {
   }
 }
 
-async function loadOrders() {
-  const generation = ++orderGeneration.value;
-  ordersLoading.value = true;
-  orderError.value = "";
-  try {
-    const result = await api.orders();
-    if (generation === orderGeneration.value)
-      orders.value = result.items;
-  } catch (error) {
-    if (generation === orderGeneration.value) {
-      orders.value = [];
-      orderError.value = message(error, true);
-      authRequired.value = (error as { status?: number })?.status === 401;
-    }
-  } finally {
-    if (generation === orderGeneration.value) ordersLoading.value = false;
-  }
-}
 async function loadOrder(id: string) {
   const generation = ++detailOrderGeneration.value;
   orderError.value = "";
@@ -569,7 +579,6 @@ async function cancelOrder(order: BetOrder) {
     cancelIntent.value = null;
     await Promise.allSettled([
       loadOrder(order.id),
-      loadOrders(),
       refreshWalletEvent(),
     ]);
   } catch (error) {
@@ -586,11 +595,11 @@ function openBet(game: CatalogGame, play?: CatalogPlay) {
     query: play ? { play: play.id } : {},
   });
 }
-function periodTitle(value: import('./betting-api').Period | null) {
-  return value ? value.period_no : (zh.value ? "无开放期次" : "No open period");
+function periodTitle(value: import("./betting-api").Period | null) {
+  return value ? value.period_no : ui("betting.noOpenPeriod");
 }
 function modelName(value: RuleDefinition['model']) {
-  const labels: Record<string, string> = { X_PLUS_Y: 'X + Y', M_SELECT_N: 'M select N', DIGITS_0_9: '0–9 digits' };
+  const labels: Record<string, string> = { X_PLUS_Y: ui('user.bet.model.xPlusY'), M_SELECT_N: ui('user.bet.model.mSelectN'), DIGITS_0_9: ui('user.bet.model.digits') };
   if (!labels[value.model]) throw new Error('Unsupported number model');
   return labels[value.model];
 }
@@ -601,21 +610,20 @@ function isCancelAllowed(order: BetOrder) {
   return order.status === "placed" && order.policy_snapshot.user_cancel_allowed;
 }
 function formatExactPoints(value: string) {
-  return BigInt(value).toLocaleString(zh.value ? "zh-CN" : "en");
+  return BigInt(value).toLocaleString(props.locale === "zh" ? "zh-CN" : "en");
 }
 
 onMounted(() => {
-  void loadCatalog();
+  restoreStandardReview();
+  if (!gameId.value && route.path !== "/orders") void loadCatalog();
   if (gameId.value) void loadGame(gameId.value);
-  if (route.path === "/orders") void loadOrders();
   if (route.path.startsWith("/orders/") && placedOrderRouteId.value)
     void loadOrder(placedOrderRouteId.value);
-  if (route.path.endsWith("/bet") || route.path.startsWith("/orders"))
+  if (props.embeddedGameId || route.path.endsWith("/bet") || route.path.startsWith("/orders/"))
     void refreshMember();
   pollTimer = setInterval(() => {
-    void loadCatalog();
+    if (!gameId.value && route.path !== "/orders") void loadCatalog(true);
     if (gameId.value) void loadGame(gameId.value, true);
-    if (route.path === "/orders") void loadOrders();
     if (route.path.startsWith("/orders/") && placedOrderRouteId.value)
       void loadOrder(placedOrderRouteId.value);
   }, 15_000);
@@ -632,19 +640,23 @@ watch(
       cancelIntent.value = null;
       cancelReason.value = "";
     }
-    if (path === "/orders") void loadOrders();
     if (path.startsWith("/orders/") && placedOrderRouteId.value)
       void loadOrder(placedOrderRouteId.value);
-    if (path.endsWith("/bet") || path.startsWith("/orders"))
+    if (path.endsWith("/bet") || path.startsWith("/orders/"))
       void refreshMember();
   },
 );
 watch(
   () => props.auth,
   (profile) => {
+    if(review.value && (!profile || profile.user.id!==review.value.actor.userId || profile.member.id!==review.value.actor.memberId || profile.member.brand_id!==review.value.actor.brandId)) {
+      invalidateReview(); selection.value=emptySelection(); draftOpen.value=false;
+    }
     if (profile) {
       memberStatus.value = profile.member.status;
       authRequired.value = false;
+      restoreStandardReview();
+      if(!uncertainPlace.value && definition.value && hasSelection.value && selectionReady(definition.value,selection.value))void requestQuote();
     }
   },
 );
@@ -660,28 +672,28 @@ onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer);
   catalogGeneration.value++;
   fetchGeneration.value++;
-  orderGeneration.value++;
   detailOrderGeneration.value++;
   previewGeneration.value++;
 });
 </script>
 
 <template>
+  <BettingHistory v-if="route.path === '/orders'" :brand-code="brandCode" :locale="locale" :auth="auth" @auth-expired="emit('auth-expired')" />
   <section
     v-if="embeddedCatalog"
     class="catalog-embed"
-    aria-label="Featured games"
+    :aria-label="ui('betting.allGames')"
     data-testid="catalog-featured"
   >
-    <div v-if="catalogLoading" class="state-card" role="status">
-      {{ zh ? "正在加载彩种…" : "Loading games…" }}
+    <div v-global-loading v-if="catalogLoading" class="state-card" role="status">
+      {{ ui("betting.loadingGames") }}
     </div>
     <div v-else-if="catalogError" class="state-card error" role="alert">
-      {{ catalogError }}
-      <button @click="loadCatalog">{{ zh ? "重试" : "Retry" }}</button>
+      {{ displayPublicError(catalogError) }}
+      <button @click="withGlobalLoading(loadCatalog)">{{ ui("betting.retry") }}</button>
     </div>
-    <div v-else-if="!catalog.length" class="state-card">
-      {{ zh ? "暂无开放彩种。" : "No games are available." }}
+    <div v-else-if="!catalog.length" class="state-card empty-state">
+      {{ ui("betting.noGames") }}
     </div>
     <div v-else class="catalog-grid compact">
       <article
@@ -691,12 +703,13 @@ onUnmounted(() => {
       >
         <span class="model-pill">{{ modelName(game.model) }}</span>
         <h3>{{ game.name }}</h3>
-        <p>{{ game.code }} · {{ detailsStatus(game.status) }}</p>
+
         <RouterLink
           :to="`/games/${encodeURIComponent(game.id)}`"
           class="panel-button"
-          >{{ zh ? "查看彩种" : "View game" }} →</RouterLink
+          >{{ ui("betting.viewGame") }} <SiteIcon name="next" /> </RouterLink
         >
+        <RouterLink :to="{ path: '/results', query: { game_id: game.id } }" class="text-link game-results-link">{{ ui('user.page.results') }}</RouterLink>
       </article>
     </div>
   </section>
@@ -708,22 +721,21 @@ onUnmounted(() => {
   >
     <div class="panel-heading">
       <div>
-        <p class="eyebrow">{{ zh ? "真实彩种目录" : "GAME CATALOG" }}</p>
-        <h1>{{ zh ? "全部彩种" : "All games" }}</h1>
+        <h1>{{ ui("betting.allGames") }}</h1>
       </div>
-      <button class="quiet-button" @click="loadCatalog">
-        {{ zh ? "刷新" : "Refresh" }}
-      </button>
+      <Teleport defer to="#user-page-refresh"><button v-refresh-button="ui('betting.refresh')" class="quiet-button" @click="withGlobalLoading(loadCatalog)">
+        {{ ui("betting.refresh") }}
+      </button></Teleport>
     </div>
-    <div v-if="catalogLoading" class="state-card" role="status">
-      {{ zh ? "正在加载彩种…" : "Loading games…" }}
+    <div v-global-loading v-if="catalogLoading" class="state-card" role="status">
+      {{ ui("betting.loadingGames") }}
     </div>
     <div v-else-if="catalogError" class="state-card error" role="alert">
-      {{ catalogError }}
-      <button @click="loadCatalog">{{ zh ? "重试" : "Retry" }}</button>
+      {{ displayPublicError(catalogError) }}
+      <button @click="withGlobalLoading(loadCatalog)">{{ ui("betting.retry") }}</button>
     </div>
-    <div v-else-if="!catalog.length" class="state-card">
-      {{ zh ? "暂无开放彩种。" : "No games are available." }}
+    <div v-else-if="!catalog.length" class="state-card empty-state">
+      {{ ui("betting.noGames") }}
     </div>
     <div v-else class="catalog-grid">
       <article
@@ -735,18 +747,19 @@ onUnmounted(() => {
         <span class="model-pill">{{ modelName(game.model) }}</span
         ><span class="status-label">{{ detailsStatus(game.status) }}</span>
         <h2>{{ game.name }}</h2>
-        <p>{{ game.code }} · {{ game.timezone }}</p>
+
         <RouterLink
           :to="`/games/${encodeURIComponent(game.id)}`"
           class="panel-button"
-          >{{ zh ? "查看彩种" : "View game" }} →</RouterLink
+          >{{ ui("betting.viewGame") }} <SiteIcon name="next" /> </RouterLink
         >
+        <RouterLink :to="{ path: '/results', query: { game_id: game.id } }" class="text-link game-results-link">{{ ui('user.page.results') }}</RouterLink>
       </article>
     </div>
   </section>
 
   <section
-    v-else-if="route.path.startsWith('/games/') && !route.path.endsWith('/bet')"
+    v-else-if="!embeddedGameId && route.path.startsWith('/games/') && !route.path.endsWith('/bet')"
     class="betting-panel"
     data-testid="game-detail"
   >
@@ -755,37 +768,35 @@ onUnmounted(() => {
         <p class="eyebrow">
           {{ currentGame ? modelName(currentGame.model) : "" }}
         </p>
-        <h1>{{ currentGame?.name ?? (zh ? "彩种详情" : "Game details") }}</h1>
+        <h1>{{ currentGame?.name ?? (ui("betting.gameDetails")) }}</h1>
       </div>
       <RouterLink to="/games" class="text-link"
-        >← {{ zh ? "全部彩种" : "All games" }}</RouterLink
+        > <SiteIcon name="back" /> {{ ui("betting.allGames") }}</RouterLink
       >
     </div>
-    <div v-if="detailLoading" class="state-card" role="status">
-      {{ zh ? "正在加载规则和期次…" : "Loading rules and period…" }}
+    <div v-global-loading v-if="detailLoading" class="state-card" role="status">
+      {{ ui("betting.loadingRulesAndPeriod") }}
     </div>
     <div v-else-if="detailError" class="state-card error" role="alert">
-      {{ detailError }}
-      <button @click="loadGame(gameId)">{{ zh ? "重试" : "Retry" }}</button>
+      {{ displayPublicError(detailError) }}
+      <button @click="withGlobalLoading(loadGame, gameId)">{{ ui("betting.retry") }}</button>
     </div>
     <template v-else-if="currentGame">
       <div class="period-card">
         <div>
-          <span>{{ zh ? "当前期次" : "Current period" }}</span
+          <span>{{ ui("betting.currentPeriod") }}</span
           ><strong>{{ periodTitle(period) }}</strong>
         </div>
         <div>
-          <span>{{ zh ? "状态" : "Status" }}</span
+          <span>{{ ui("betting.status") }}</span
           ><strong>{{
             period?.status
               ? detailsStatus(period.status)
-              : zh
-                ? "暂无开放期次"
-                : "No open period"
+              : ui("betting.noOpenPeriod")
           }}</strong>
         </div>
         <div>
-          <span>{{ zh ? "截止倒计时" : "Time remaining" }}</span
+          <span>{{ ui("betting.timeRemaining") }}</span
           ><strong class="timer">{{ cutoffText }}</strong>
         </div>
       </div>
@@ -793,14 +804,11 @@ onUnmounted(() => {
         <article v-for="play in plays" :key="play.id" class="play-card">
           <div>
             <h2>{{ play.name }}</h2>
+
             <p>
-              {{ play.code }} · {{ zh ? "规则版本" : "Rule version" }}
-              {{ play.rule_version_id }}
-            </p>
-            <p>
-              {{ zh ? "每注" : "Unit" }} {{ play.definition.unit_points }}
-              {{ zh ? "积分" : "points" }} ·
-              {{ zh ? "最高倍数" : "Max multiplier" }}
+              {{ ui("betting.unit") }} {{ play.definition.unit_points }}
+              {{ ui("betting.points") }} ·
+              {{ ui("betting.maxMultiplier") }}
               {{ play.definition.limits.max_multiplier }}
             </p>
             <div class="tier-list">
@@ -818,18 +826,15 @@ onUnmounted(() => {
             "
             @click="openBet(currentGame, play)"
           >
-            {{ zh ? "开始选号" : "Choose numbers" }} →
-          </button>
+            {{ ui("betting.chooseNumbers") }} <SiteIcon name="next" /> </button>
         </article>
       </div>
-      <p v-else class="state-card">
+      <p v-else class="state-card empty-state">
         {{
-          zh
-            ? "此彩种暂时没有可投注玩法。"
-            : "No playable options are available."
+          ui("betting.noPlayableOptions")
         }}
       </p>
-      <DrawResultsPanel
+      <DrawArchive kind="standard"
         :key="`${props.brandCode ?? ''}:${currentGame.id}`"
         :locale="props.locale"
         :brand-code="props.brandCode"
@@ -840,143 +845,62 @@ onUnmounted(() => {
   </section>
 
   <section
-    v-else-if="route.path.endsWith('/bet')"
-    class="betting-panel"
+    v-else-if="embeddedGameId || route.path.endsWith('/bet')"
+    class="betting-panel workspace-standard"
     data-testid="bet-selection-page"
   >
-    <div class="panel-heading">
-      <div>
-        <p class="eyebrow">
-          {{ currentGame ? modelName(currentGame.model) : "" }}
-        </p>
-        <h1>{{ currentGame?.name ?? (zh ? "投注选号" : "Place a bet") }}</h1>
-      </div>
-      <RouterLink :to="`/games/${encodeURIComponent(gameId)}`" class="text-link"
-        >← {{ zh ? "返回彩种" : "Back to game" }}</RouterLink
-      >
-    </div>
-    <div v-if="detailLoading" class="state-card" role="status">
-      {{ zh ? "正在加载规则…" : "Loading rules…" }}
+    <div v-global-loading v-if="detailLoading" class="state-card" role="status">
+      {{ ui("betting.loadingRules") }}
     </div>
     <div v-else-if="detailError" class="state-card error" role="alert">
-      {{ detailError }}
+      {{ displayPublicError(detailError) }}
     </div>
     <template v-else-if="definition && selectedPlay">
-      <div class="period-card">
-        <div>
-          <span>{{ zh ? "当前期次" : "Current period" }}</span
-          ><strong>{{ periodTitle(period) }}</strong>
-        </div>
-        <div>
-          <span>{{ zh ? "截止倒计时" : "Time remaining" }}</span
-          ><strong class="timer">{{ cutoffText }}</strong>
-        </div>
-        <div>
-          <span>{{ zh ? "状态" : "Status" }}</span
-          ><strong>{{
-            isPaused
-              ? zh
-                ? "暂停"
-                : "Paused"
-              : period
-                ? detailsStatus(period.status)
-                : zh
-                  ? "未开放"
-                  : "Unavailable"
-          }}</strong>
-        </div>
-      </div>
+      <Teleport defer to="#user-page-refresh"><button v-refresh-button="ui('betting.refresh')" class="button button-secondary" :disabled="detailLoading || placing" @click="withGlobalLoading(loadGame, gameId)">{{ ui('betting.refresh') }}</button></Teleport>
+      <p v-if="notice" role="status">{{ notice }}</p>
+      <p v-if="intentReadFailed" role="alert">{{ displayPublicError(quoteError) }}</p>
+      <UserPeriodStrip :previous-no="previousDraw?.period.period_no" :period-no="period?.period_no" :close-at="period?.bet_end_at" :draw-at="period?.draw_at" :now="now" :clock-offset="serverOffset"><template v-if="previousDraw"><span v-for="(n,index) in [...previousDraw.result.regular,...previousDraw.result.special,...previousDraw.result.digits]" :key="index" class="standard-result-ball">{{ n }}</span></template></UserPeriodStrip>
       <p v-if="isPaused" class="notice-card">
         {{
-          zh
-            ? "当前彩种或期次暂停投注。"
-            : "Betting is paused for this game or period."
+          ui("betting.bettingPaused")
         }}
       </p>
-      <label class="field-label"
-        >{{ zh ? "玩法" : "Play"
-        }}<select
-          v-model="chosenPlayId"
-          :disabled="uncertainPlace"
-          aria-label="Play"
-          data-testid="play-select"
-        >
-          <option v-for="play in plays" :key="play.id" :value="play.id">
-            {{ play.name }} · {{ play.code }}
-          </option>
-        </select></label
-      >
-      <div class="rule-summary">
-        <span
-          >{{ zh ? "单位投注" : "Unit stake" }}
-          {{ definition.unit_points }}</span
-        ><span
-          >{{ zh ? "最高倍数" : "Maximum multiplier" }}
-          {{ definition.limits.max_multiplier }}</span
-        ><span
-          >{{ zh ? "规则摘要" : "Rule hash" }}
-          {{ selectedPlay.definition_hash }}</span
-        >
-      </div>
+      <PlayRules :locale="locale" :name="selectedPlay.name" :definition="definition" />
+      <div class="standard-play-layout"><nav class="standard-play-groups" :aria-label="ui('betting.play')"><button v-for="play in plays" :key="play.id" type="button" :aria-pressed="chosenPlayId===play.id" :disabled="uncertainPlace||submittingStandard||placing" @click="chosenPlayId=play.id">{{ play.name }}</button></nav><div class="standard-play-options">
       <BetSelection
         v-model="selection"
         :definition="definition"
         :locale="locale"
-        :disabled="isPaused || uncertainPlace"
+        :disabled="isPaused || uncertainPlace || intentReadFailed || submittingStandard || placing"
       />
+      </div></div>
+      <button v-if="hasSelection || uncertainPlace" class="button button-primary selection-reopen" @click="draftOpen=true">{{ ui('betting.reviewBet') }}</button>
+      <BettingSheet v-if="draftOpen && (hasSelection || uncertainPlace)" :title="ui('betting.confirm')" :close-label="ui('workspace.continue')" @close="draftOpen=false">
+      <template v-if="!uncertainPlace">
+      <SelectionSummary :selection="selection" :locale="locale" />
       <label class="field-label"
-        >{{ zh ? "倍数" : "Multiplier"
+        >{{ ui("betting.multiplier")
         }}<input
           v-model="multiplier"
           inputmode="numeric"
           autocomplete="off"
           pattern="[0-9]*"
-          :disabled="isPaused || uncertainPlace"
+          :disabled="isPaused || uncertainPlace || submittingStandard || placing"
           data-testid="multiplier-input"
       /></label>
       <div class="tier-list odds-list">
-        <strong>{{ zh ? "奖级及赔率" : "Prize tiers and odds" }}</strong
+        <strong>{{ ui("betting.prizeTiersOdds") }}</strong
         ><span v-for="tier in rulesTiers" :key="tier.code"
           >{{ tier.code }} · ×{{ tier.odds }}</span
         >
       </div>
-      <div class="action-row">
-        <button
-          class="panel-button"
-          :disabled="!canBet"
-          data-testid="preview-button"
-          @click="requestQuote"
-        >
-          {{
-            quoteLoading
-              ? zh
-                ? "计算中…"
-                : "Calculating…"
-              : zh
-                ? "获取服务器报价"
-                : "Get server quote"
-          }}
-        </button>
-      </div>
-      <p v-if="quoteError" class="error-text" role="alert">{{ quoteError }}</p>
-      <div v-if="quote" class="quote-card" data-testid="bet-quote">
-        <strong>{{ zh ? "服务器报价" : "Server quote" }}</strong
-        ><span
-          >{{ zh ? "注数" : "Combinations" }}
-          {{ quote.combination_count }}</span
-        ><span>{{ zh ? "每注" : "Unit points" }} {{ quote.unit_points }}</span
-        ><span>{{ zh ? "总积分" : "Total points" }} {{ quote.bet_points }}</span
-        ><span>{{ zh ? "期次" : "Period" }} {{ quote.period_id }}</span
-        ><span
-          >{{ zh ? "规则摘要" : "Rule hash" }} {{ quote.definition_hash }}</span
-        ><button
-          class="panel-button"
-          data-testid="review-bet"
-          @click="beginReview"
-        >
-          {{ zh ? "审核并确认" : "Review bet" }}
-        </button>
-      </div>
+      <p v-if="quoteError" class="error-text" role="alert">{{ displayPublicError(quoteError) }}</p>
+      <p v-if="standardChanged" role="status">{{ ui('workspace.quoteChanged') }}</p>
+      <div v-if="quote" class="sheet-totals" data-testid="bet-quote"><span>{{ ui('workspace.betCount') }} <strong>{{ quote.combination_count }}</strong></span><span>{{ ui('workspace.betPoints') }} <strong class="summary-points">{{ quote.bet_points }}</strong></span></div>
+      </template>
+      <template v-else-if="review"><SelectionSummary :selection="review.quote.normalized" :locale="locale" /><strong>{{ ui('workspace.betPoints') }} {{ review.quote.bet_points }}</strong><p>{{ ui('betting.period') }} {{ review.quote.period.period_no }}</p><p v-if="quoteError" role="alert">{{ displayPublicError(quoteError) }}</p></template>
+      <div class="sheet-summary"><div class="dock-actions"><button type="button" class="button button-secondary" :disabled="submittingStandard||placing||uncertainPlace" @click="selection=emptySelection()">{{ ui('workspace.clear') }}</button><button v-write-guard="placing || submittingStandard" v-if="uncertainPlace" class="button button-primary" :disabled="placing" data-testid="confirm-bet" @click="withGlobalLoading(placeOrder)">{{ ui('betting.retryConfirm') }}</button><button v-write-guard="placing || submittingStandard" v-else type="button" class="button button-primary" :disabled="!canBet || !quote || submittingStandard || placing" data-testid="confirm-bet" @click="withGlobalLoading(submitStandard)">{{ standardChanged?ui('workspace.confirmChanges'):ui('betting.confirm') }}</button><button type="button" class="button button-secondary sheet-continue" @click="draftOpen=false">{{ ui('workspace.continue') }}</button></div></div>
+      </BettingSheet>
     </template>
   </section>
 
@@ -987,52 +911,43 @@ onUnmounted(() => {
   >
     <div class="panel-heading">
       <div>
-        <p class="eyebrow">{{ zh ? "确认投注" : "CONFIRM BET" }}</p>
-        <h1>{{ zh ? "核对投注详情" : "Review your bet" }}</h1>
+        <p class="eyebrow">{{ ui("betting.confirmEyebrow") }}</p>
+        <h1>{{ ui("betting.reviewYourBet") }}</h1>
       </div>
     </div>
     <div v-if="!review" class="state-card">
       {{
-        zh
-          ? "报价已失效或不存在，请返回重新获取。"
-          : "The quote is no longer available. Return and request a fresh quote."
+        ui("betting.quoteInvalid")
       }}
       <RouterLink
         v-if="confirmationGameId"
         :to="`/games/${encodeURIComponent(confirmationGameId)}/bet`"
-        >{{ zh ? "返回选号" : "Return to selection" }}</RouterLink
+        >{{ ui("betting.returnSelection") }}</RouterLink
       ><RouterLink v-else to="/games">{{
-        zh ? "浏览彩种" : "Browse games"
+        ui("betting.browseGames")
       }}</RouterLink>
     </div>
     <template v-else
       ><div class="quote-card">
-        <strong>{{ currentGame?.name ?? review.quote.period.game_id }}</strong
+        <strong>{{ currentGame?.name ?? ui('association.unavailable') }}</strong
         ><span
-          >{{ zh ? "注数" : "Combinations" }}
+          >{{ ui("betting.combinations") }}
           {{ review.quote.combination_count }}</span
         ><span
-          >{{ zh ? "倍数" : "Multiplier" }} {{ review.body.multiplier }}</span
+          >{{ ui("betting.multiplier") }} {{ review.body.multiplier }}</span
         ><span
-          >{{ zh ? "总积分" : "Total points" }}
+          >{{ ui("betting.totalPoints") }}
           {{ review.quote.bet_points }}</span
         ><span
-          >{{ zh ? "期次" : "Period" }}
+          >{{ ui("betting.period") }}
           {{ review.quote.period.period_no }}</span
         ><span
-          >{{ zh ? "规则摘要" : "Rule hash" }}
-          {{ review.quote.definition_hash }}</span
-        ><span
-          >{{ zh ? "奖级赔率" : "Prize odds" }}
+          >{{ ui("betting.prizeOdds") }}
           {{
             review.definition.prize_tiers
               ?.map((tier) => `${tier.code} ×${tier.odds}`)
               .join(" · ")
           }}</span
-        ><span
-          >{{ zh ? "品牌/游戏政策版本" : "Brand/game policy versions" }}
-          {{ review.quote.policy_versions.brand }} /
-          {{ review.quote.policy_versions.game }}</span
         >
       </div>
       <SelectionSummary :selection="review.quote.normalized" :locale="locale" />
@@ -1042,16 +957,12 @@ onUnmounted(() => {
         role="status"
       >
         {{
-          zh
-            ? "投注已截止，请返回查看新期次。"
-            : "Betting has closed. Return to select a new period."
+          ui("betting.bettingClosed")
         }}
       </p>
       <p class="notice-card">
         {{
-          zh
-            ? "确认将按上述报价提交不可变投注请求。网络不确定时重试会使用同一请求编号。"
-            : "Confirming submits this immutable request. If the network result is uncertain, retry uses the same request key."
+          ui("betting.confirmImmutable")
         }}
       </p>
       <div class="action-row">
@@ -1059,79 +970,30 @@ onUnmounted(() => {
           v-if="!uncertainPlace && confirmationGameId"
           :to="`/games/${encodeURIComponent(confirmationGameId)}/bet`"
           class="quiet-button"
-          >{{ zh ? "返回修改" : "Back to edit" }}</RouterLink
+          >{{ ui("betting.backToEdit") }}</RouterLink
         ><button
+          v-write-guard="placing || submittingStandard"
           class="panel-button"
           :disabled="placing || (reviewExpired && !uncertainPlace)"
           data-testid="confirm-bet"
-          @click="placeOrder"
+          @click="withGlobalLoading(placeOrder)"
         >
           {{
             placing
-              ? zh
-                ? "提交中…"
-                : "Submitting…"
+              ? ui("betting.submitting")
               : uncertainPlace
-                ? zh
-                  ? "重试确认"
-                  : "Retry confirm"
-                : zh
-                  ? "确认投注"
-                  : "Confirm bet"
+                ? ui("betting.retryConfirm")
+                : ui("betting.confirm")
           }}
         </button>
       </div>
       <p v-if="quoteError" class="error-text" role="alert">
-        {{ quoteError }}
+        {{ displayPublicError(quoteError) }}
         <RouterLink v-if="authRequired" to="/login">{{
-          zh ? "登录" : "Sign in"
+          ui("betting.signIn")
         }}</RouterLink>
       </p></template
     >
-  </section>
-
-  <section
-    v-else-if="route.path === '/orders'"
-    class="betting-panel"
-    data-testid="orders-list"
-  >
-    <div class="panel-heading">
-      <div>
-        <p class="eyebrow">{{ zh ? "真实注单" : "BET HISTORY" }}</p>
-        <h1>{{ zh ? "我的注单" : "My orders" }}</h1>
-      </div>
-      <button class="quiet-button" @click="loadOrders">
-        {{ zh ? "刷新" : "Refresh" }}
-      </button>
-    </div>
-    <div v-if="authRequired" class="state-card">
-      {{ zh ? "请登录查看投注记录。" : "Sign in to view your bet history." }}
-      <RouterLink to="/login">{{ zh ? "登录" : "Sign in" }}</RouterLink>
-    </div>
-    <div v-else-if="ordersLoading" class="state-card" role="status">
-      {{ zh ? "正在加载注单…" : "Loading orders…" }}
-    </div>
-    <p v-else-if="orderError" class="state-card error" role="alert">
-      {{ orderError }}
-    </p>
-    <p v-else-if="!orders.length" class="state-card">
-      {{ zh ? "暂无投注记录。" : "You have no bet orders yet." }}
-    </p>
-    <article v-for="order in orders" :key="order.id" class="order-card">
-      <div>
-        <strong>{{ order.game_id }}</strong
-        ><span>{{ order.period_id }} · {{ detailsStatus(order.status) }}</span
-        ><span
-          >{{ zh ? "积分" : "Points" }} {{ order.total_points }} ·
-          ×{{ order.multiplier }}</span
-        >
-      </div>
-      <RouterLink
-        :to="`/orders/${encodeURIComponent(order.id)}`"
-        class="text-link"
-        >{{ zh ? "详情" : "Details" }} →</RouterLink
-      >
-    </article>
   </section>
 
   <section
@@ -1141,65 +1003,50 @@ onUnmounted(() => {
   >
     <div class="panel-heading">
       <div>
-        <p class="eyebrow">{{ zh ? "注单详情" : "ORDER DETAILS" }}</p>
         <h1>{{ placedOrder?.id ?? placedOrderRouteId }}</h1>
       </div>
       <RouterLink to="/orders" class="text-link"
-        >← {{ zh ? "我的注单" : "My orders" }}</RouterLink
+        > <SiteIcon name="back" /> {{ ui("betting.myOrders") }}</RouterLink
       >
     </div>
     <div v-if="!placedOrder && !orderError" class="state-card" role="status">
-      {{ zh ? "正在加载注单…" : "Loading order…" }}
+      {{ ui("betting.loadingOrder") }}
     </div>
     <p v-if="orderError" class="state-card error" role="alert">
-      {{ orderError }}
+      {{ displayPublicError(orderError) }}
     </p>
     <div v-if="availablePoints !== null" class="wallet-balance">
-      <span>{{ zh ? "最新可用积分" : "Current available points" }}</span
+      <span>{{ ui("betting.currentAvailablePoints") }}</span
       ><strong>{{ formatExactPoints(availablePoints) }}</strong>
     </div>
     <div v-if="placedOrder" class="quote-card">
       <strong
-        >{{ zh ? "状态" : "Status" }} ·
+        >{{ ui("betting.status") }} ·
         {{ detailsStatus(placedOrder.status) }}</strong
-      ><span>{{ zh ? "期次" : "Period" }} {{ placedOrder.period_id }}</span
+      ><span>{{ ui("betting.period") }} <AssociationName :record="placedOrder" kind="period" :id="placedOrder.period_id" :locale="associationLocale" /></span
       ><OrderPrize :order="placedOrder" :locale="locale" />
-      <span>{{ zh ? "玩法" : "Play" }} {{ placedOrder.play_id }}</span
+      <span>{{ ui("betting.play") }} <AssociationName :record="placedOrder" kind="play" :id="placedOrder.play_id" :locale="associationLocale" /></span
       ><span
-        >{{ zh ? "总积分" : "Total points" }}
+        >{{ ui("betting.totalPoints") }}
         {{ placedOrder.total_points }}</span
       ><span
-        >{{ zh ? "倍数" : "Multiplier" }}
+        >{{ ui("betting.multiplier") }}
         {{ placedOrder.multiplier }}</span
-      ><span
-        >{{ zh ? "赔率规则摘要" : "Rule hash" }}
-        {{ placedOrder.definition_hash }}</span
       >
       <SelectionSummary
         :selection="placedOrder.selection_normalized"
         :locale="locale"
       />
     </div>
-    <form
+    <form v-write-guard="cancelBusy" novalidate v-inline-validation
       v-if="placedOrder && isCancelAllowed(placedOrder)"
       class="cancel-form"
-      @submit.prevent="cancelOrder(placedOrder)"
+      @submit.prevent="withGlobalLoading(cancelOrder, placedOrder)"
     >
-      <label class="field-label"
-        >{{ zh ? "取消原因（必填）" : "Cancellation reason (required)"
-        }}<textarea
-          v-model="cancelReason"
-          required
-          maxlength="500"
-          rows="3"
-          :disabled="Boolean(cancelIntent)"
-        ></textarea>
-      </label>
+
       <p v-if="cancelReason && !cancelReasonBytesValid" class="error-text">
         {{
-          zh
-            ? "原因须为 500 字节以内的 UTF-8 文本。"
-            : "Reason must be valid UTF-8 within 500 bytes."
+          ui("betting.reasonBytes")
         }}
       </p>
       <button
@@ -1208,16 +1055,10 @@ onUnmounted(() => {
       >
         {{
           cancelBusy
-            ? zh
-              ? "处理中…"
-              : "Processing…"
+            ? ui("betting.processing")
             : cancelIntent
-              ? zh
-                ? "重试取消"
-                : "Retry cancellation"
-              : zh
-                ? "取消此注单"
-                : "Cancel this order"
+              ? ui("betting.retryCancellation")
+              : ui("betting.cancelOrder")
         }}
       </button>
     </form>
@@ -1252,7 +1093,7 @@ onUnmounted(() => {
 }
 .betting-panel,
 .catalog-embed {
-  color: var(--ink, #1c2a22);
+  color: var(--ink);
   max-width: 1100px;
   margin: 0 auto;
 }
@@ -1291,7 +1132,7 @@ onUnmounted(() => {
 .order-card,
 .notice-card {
   padding: 1.1rem;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid #e3eae2;
   border-radius: 16px;
   box-shadow: 0 8px 24px #1d39230a;
@@ -1334,7 +1175,7 @@ onUnmounted(() => {
   padding: 0.65rem 1rem;
   border: 0;
   border-radius: 10px;
-  background: var(--brand-primary, #347555);
+  background: var(--brand-primary);
   color: white;
   font: inherit;
   font-weight: 700;

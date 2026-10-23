@@ -35,8 +35,8 @@ function ownedAuthKey(value) {
 }
 
 function adminPassword(value) {
-  if (typeof value !== 'string' || value.includes('\u0000') || Buffer.byteLength(value, 'utf8') < 16 || Buffer.byteLength(value, 'utf8') > 128) {
-    throw new Error('TEST_ARCHIVE_POLICY_ADMIN_PASSWORD must contain 16-128 bytes');
+  if (typeof value !== 'string' || value.includes('\u0000') || Buffer.byteLength(value, 'utf8') < 6 || Buffer.byteLength(value, 'utf8') > 30) {
+    throw new Error('TEST_ARCHIVE_POLICY_ADMIN_PASSWORD must contain 6-30 bytes');
   }
   return value;
 }

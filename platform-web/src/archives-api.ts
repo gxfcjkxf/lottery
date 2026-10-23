@@ -1,3 +1,5 @@
+import { readPlatformEnvelope } from './platform-api'
+
 import { PlatformApiError } from './platform-api'
 import { REPORT_FIELDS } from './reports-api'
 
@@ -105,7 +107,7 @@ function validSnapshot(v: unknown, brand: string): v is ArchiveSnapshot {
   const ro = v.reward_orders
   return total(ro, ['granted_count', 'pending_count', 'revoked_count']) === BigInt(ro.order_count as string) && total(ro, ['granted_points', 'pending_points', 'revoked_points']) === BigInt(ro.original_points as string)
 }
-function validReason(v: unknown): v is string { return typeof v === 'string' && !!v && v.trim() === v && !/[\u0000\r\n]/u.test(v) && new TextEncoder().encode(v).length <= 500 }
+function validReason(v: unknown): v is string { return typeof v === 'string' && v.trim() === v && !/[\u0000\r\n]/u.test(v) && new TextEncoder().encode(v).length <= 500 }
 function validRecord(v: unknown, brand: string, id?: string): v is ArchiveRecord {
   if (!isObj(v) || !(exact(v, recordFields) || exact(v, automationRecordFields)) || !uuid(v.id) || id !== undefined && !sameUuid(v.id, id) || !uuid(v.brand_id) || !sameUuid(v.brand_id, brand) ||
       !Number.isSafeInteger(v.revision) || (v.revision as number) < 1 || (v.revision as number) > MAX_REVISION || !(v.previous_id === null || uuid(v.previous_id)) ||
@@ -130,12 +132,7 @@ function snapshotsMatch(a: ArchiveSnapshot, b: ArchiveSnapshot): boolean {
     deepEqual({ ...a, snapshot_at: '', from: '', to: '', wallet_snapshot: { balances: a.wallet_snapshot.balances } }, { ...b, snapshot_at: '', from: '', to: '', wallet_snapshot: { balances: b.wallet_snapshot.balances } })
 }
 async function responseData(response: Response): Promise<unknown> {
-  let body: unknown
-  try { body = await response.json() } catch { if (!response.ok) throw new PlatformApiError(`Request failed (${response.status})`, response.status); fail() }
-  if (!response.ok || !isObj(body) || body.success !== true || body.data === undefined) {
-    const error = isObj(body) && isObj(body.error) ? body.error : undefined
-    throw new PlatformApiError(typeof error?.message === 'string' ? error.message : `Request failed (${response.status})`, response.status, typeof error?.code === 'string' ? error.code : undefined)
-  }
+  const body = await readPlatformEnvelope<unknown>(response);
   if (response.status !== 200) fail()
   return body.data
 }

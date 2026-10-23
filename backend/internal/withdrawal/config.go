@@ -102,8 +102,13 @@ func fields(data []byte, keys ...string) (map[string]json.RawMessage, error) {
 		}
 		out[key] = raw
 	}
-	if tok, e = d.Token(); e != nil || tok != json.Delim('}') || len(out) != len(keys) {
+	if tok, e = d.Token(); e != nil || tok != json.Delim('}') {
 		return nil, ErrInvalid
+	}
+	for _, key := range keys {
+		if key != "reason" && out[key] == nil {
+			return nil, ErrInvalid
+		}
 	}
 	var extra any
 	if d.Decode(&extra) != io.EOF {
@@ -162,7 +167,7 @@ func (in *BrandInput) UnmarshalJSON(data []byte) error {
 		return e
 	}
 	var out BrandInput
-	if decodeField(v["version"], &out.Version, false) != nil || decodeField(v["config"], &out.Config, false) != nil || decodeField(v["reason"], &out.Reason, false) != nil || ValidateBrandConfig(out.Config) != nil {
+	if decodeField(v["version"], &out.Version, false) != nil || decodeField(v["config"], &out.Config, false) != nil || (v["reason"] != nil && decodeField(v["reason"], &out.Reason, false) != nil) || ValidateBrandConfig(out.Config) != nil {
 		return ErrInvalid
 	}
 	*in = out
@@ -174,7 +179,7 @@ func (in *GameInput) UnmarshalJSON(data []byte) error {
 		return e
 	}
 	var out GameInput
-	if decodeField(v["version"], &out.Version, false) != nil || decodeField(v["config"], &out.Config, false) != nil || decodeField(v["reason"], &out.Reason, false) != nil || ValidateGameConfig(out.Config) != nil {
+	if decodeField(v["version"], &out.Version, false) != nil || decodeField(v["config"], &out.Config, false) != nil || (v["reason"] != nil && decodeField(v["reason"], &out.Reason, false) != nil) || ValidateGameConfig(out.Config) != nil {
 		return ErrInvalid
 	}
 	*in = out

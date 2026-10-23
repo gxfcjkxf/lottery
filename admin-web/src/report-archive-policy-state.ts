@@ -1,3 +1,4 @@
+import { copyAssociationNames } from "@lottery/shared";
 import { readonly, shallowRef } from "vue";
 import type { ReportArchivePolicy } from "./report-archive-tasks-api";
 
@@ -26,7 +27,7 @@ export const reportArchivePolicyIntentChanges = readonly(changes);
 function scopeKey(actorId: string, brandId: string): string { return JSON.stringify([actorId, brandId]); }
 
 function validReason(value: unknown): value is string {
-  if (typeof value !== "string" || value.length === 0 || value.trim() !== value || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
+  if (typeof value !== "string" || value.trim() !== value || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff) {
@@ -119,7 +120,9 @@ function transition(intent: ReportArchivePolicyIntent, phase: ReportArchivePolic
   let savedReceipt: Readonly<ReportArchivePolicy> | null = phase === "acknowledged" ? current.receipt : null;
   if (phase === "acknowledged") {
     if (!validPolicyReceipt(receipt, current)) return false;
-    savedReceipt = Object.freeze({ ...receipt });
+    const snapshot = { ...receipt };
+    copyAssociationNames(receipt, snapshot);
+    savedReceipt = Object.freeze(snapshot);
   }
   intents.set(id, makeIntent(current.actorId, current.brandId, current.version, current.daily_enabled, current.monthly_enabled, current.reason, current.key, phase, savedReceipt));
   changes.value++;

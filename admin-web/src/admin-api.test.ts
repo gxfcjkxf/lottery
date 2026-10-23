@@ -112,7 +112,7 @@ describe("admin HTTP client", () => {
   it("requires an explicit brand header on directory and audit requests", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockImplementation(async () => response({ items: [] }));
+      .mockImplementation(async (url) => response(String(url).includes("/users?") ? { items: [], limit:100, offset:0, total_count:"0" } : { items: [] }));
     const api = createAdminApi(fetcher);
     await api.users("brand-uuid", 100, 0);
     await api.audit("brand-uuid", 100, 0);
@@ -147,6 +147,20 @@ describe("admin HTTP client", () => {
       expect(headers.get("Idempotency-Key")).toBe(key);
       expect(headers.get("Content-Type")).toBe("application/json");
       expect(JSON.parse(String(init?.body))).toEqual(body);
+    }
+  });
+
+  it("sends directory filters before pagination and preserves exact points", async () => {
+    const item = { id: "member-1", brand_id: "brand-uuid", online: true, display_points: "9007199254740993" };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ items: [item], limit: 10, offset: 20, total_count: "101" }));
+    const api = createAdminApi(fetcher);
+    const result = await api.users("brand-uuid", 10, 20, "", { query: " member 100% ", online: "true" });
+    const url = new URL(String(fetcher.mock.calls[0][0]), "https://example.test");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ limit: "10", offset: "20", q: "member 100%", online: "true" });
+    expect(result.items[0].display_points).toBe("9007199254740993");
+    for (const invalid of [ { ...item, brand_id: "another-brand" }, { ...item, online: "true" }, { ...item, display_points: 9007199254740992 } ]) {
+      fetcher.mockResolvedValueOnce(response({ items: [invalid], limit: 10, offset: 20, total_count: "101" }));
+      await expect(api.users("brand-uuid", 10, 20)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
     }
   });
 

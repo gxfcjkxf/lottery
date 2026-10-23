@@ -128,7 +128,8 @@ func TestEvaluateOrderEmptyPathAndExactLargestBasis(t *testing.T) {
 	snapshot = snapshotFixture()
 	snapshot.Path = snapshot.Path[:1]
 	snapshot.Path[0].Config.Ratio = "1"
-	snapshot.Agency.Config.RatioCap = "1"
+	snapshot.Agency.Config.LossRatioCap = "1"
+	snapshot.Agency.Config.TurnoverRatioCap = "1"
 	got, err = EvaluateOrder(snapshot, evaluationFact(snapshot, "lost", points.Amount(math.MaxInt64), 0))
 	want := ExactAmount{"9223372036854775807", "1"}
 	if err != nil || len(got) != 1 || got[0].Exact != want {

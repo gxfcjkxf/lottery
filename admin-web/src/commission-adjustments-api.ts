@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -32,7 +34,7 @@ function sint(v: unknown): v is string { return typeof v === "string" && SINT.te
 function safeVersion(v: unknown): v is number { return Number.isSafeInteger(v) && Number(v) >= 1; }
 function date(v: unknown): v is string { return typeof v === "string" && DATE.test(v) && Number.isFinite(Date.parse(v)); }
 export function validCommissionAdjustmentReason(v: unknown): v is string {
-  if (typeof v !== "string" || !v || v.trim() !== v || new TextEncoder().encode(v).length > 500 || v.includes("\u0000")) return false;
+  if (typeof v !== "string" || v.trim() !== v || new TextEncoder().encode(v).length > 500 || v.includes("\u0000")) return false;
   for (let i = 0; i < v.length; i++) { const c = v.charCodeAt(i); if (c >= 0xd800 && c <= 0xdbff) { const n = v.charCodeAt(++i); if (!(n >= 0xdc00 && n <= 0xdfff)) return false; } else if (c >= 0xdc00 && c <= 0xdfff) return false; }
   return true;
 }
@@ -66,7 +68,7 @@ export function commissionAdjustmentPermissions(account: AdminAccount, brand: st
   const view = uuid(account.id) && uuid(brand) && member && brandPermissions.has("commission.view.brand");
   return { view, write: Boolean(view && !account.super_admin && member && brandPermissions.has("commission_adjustment.write.brand") && brandPermissions.has("commission.view.brand")) };
 }
-type Envelope = { success?: unknown; data?: unknown; error?: unknown };
+
 export function createCommissionAdjustmentsApi(fetcher: typeof fetch = fetch) {
   async function request(brand: string, path: string, method: "GET" | "POST" = "GET", body?: CommissionAdjustmentBody, actor?: string, key?: string): Promise<unknown> {
     const headers = new Headers({ Accept: "application/json", "X-Brand-ID": brand });
@@ -74,12 +76,7 @@ export function createCommissionAdjustmentsApi(fetcher: typeof fetch = fetch) {
     let response: Response;
     try { response = await fetcher(path, { method, credentials: "same-origin", headers, ...(body ? { body: JSON.stringify(body) } : {}) }); }
     catch (e) { throw new AdminApiError(e instanceof Error ? e.message : "Network request failed", 0, "NETWORK_ERROR"); }
-    let envelope: Envelope;
-    try { envelope = await response.json() as Envelope; } catch { throw new AdminApiError("Invalid server response", response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : undefined); }
-    if (!response.ok || !obj(envelope) || envelope.success !== true || envelope.data === undefined) {
-      const error = obj(envelope?.error) ? envelope.error : {};
-      throw new AdminApiError(typeof error.message === "string" ? error.message : `Request failed (${response.status})`, response.ok ? 502 : response.status, typeof error.code === "string" ? error.code : undefined);
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     const expectedStatus = method === "POST" ? 201 : 200;
     if (response.status !== expectedStatus) throw new AdminApiError("Unexpected server response status", 502, "INVALID_RESPONSE");
     return envelope.data;

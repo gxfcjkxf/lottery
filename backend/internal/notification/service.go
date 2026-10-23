@@ -469,7 +469,7 @@ func (s Service) Deliveries(ctx context.Context, brand string, limit, offset int
 	return out, rows.Err()
 }
 func (s Service) Retry(ctx context.Context, tx pgx.Tx, brand string, a access.Account, id string, attempts int, reason string, meta points.Metadata) (Delivery, error) {
-	if tx == nil || !uuid.MatchString(brand) || !uuid.MatchString(id) || attempts < 1 || len(strings.TrimSpace(reason)) < 1 || len(reason) > 500 {
+	if tx == nil || !uuid.MatchString(brand) || !uuid.MatchString(id) || attempts < 1 || len(reason) > 500 {
 		return Delivery{}, ErrInvalid
 	}
 	if a.SuperAdmin || !access.Authorize(a, "notification", "retry", access.ScopeBrand, brand) {

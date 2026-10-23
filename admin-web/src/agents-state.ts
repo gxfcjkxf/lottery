@@ -1,5 +1,7 @@
+import { copyAssociationNames } from '@lottery/shared';
 import type {
   AgentMode,
+  ModeChangeBody,
   CreateAgentBody,
   SaveAgentPolicyBody,
   UpdateAgentBody,
@@ -13,8 +15,8 @@ export function parentModeVerified(parentId: string | null, ready: boolean): boo
   return parentId === null || ready;
 }
 
-export type AgentWriteBody = SaveAgentPolicyBody | CreateAgentBody | UpdateAgentBody;
-export type AgentWriteOperation = "policy" | "create" | "update";
+export type AgentWriteBody = SaveAgentPolicyBody | CreateAgentBody | UpdateAgentBody | ModeChangeBody;
+export type AgentWriteOperation = "policy" | "create" | "update" | "mode-change";
 
 export interface PendingAgentWrite {
   readonly accountId: string;
@@ -58,18 +60,22 @@ function resolveScope(scope: string | AgentWriteScope): (AgentWriteScope & { key
 function validBody(operation: AgentWriteOperation, value: unknown): value is AgentWriteBody {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const body = value as Record<string, unknown>;
+  if (operation === 'mode-change') return Number.isSafeInteger(body.policy_version) && Number(body.policy_version) >= 1 &&
+    (body.mode === 'loss' || body.mode === 'turnover') && Array.isArray(body.items) && body.items.length > 0 &&
+    body.items.every(item => item && typeof item === 'object' && validUuid(item.agent_id) && Number.isSafeInteger(item.version) && item.version >= 1 && typeof item.ratio === 'string' && RATIO_RE.test(item.ratio)) &&
+    new Set(body.items.map(item => item.agent_id)).size === body.items.length;
   const config = body.config;
   if (!config || typeof config !== "object" || Array.isArray(config)) return false;
   const conf = config as Record<string, unknown>;
-  const ratio = operation === "policy" ? conf.ratio_cap : conf.ratio;
+  const ratio = operation === "policy" ? conf.loss_ratio_cap : conf.ratio;
   if (typeof ratio !== "string" || !RATIO_RE.test(ratio) ||
       (ratio !== "0" && ratio !== "1" && ratio.split(".")[1].length > 6) ||
       !(conf.mode === null || conf.mode === "loss" || conf.mode === "turnover") ||
-      typeof body.reason !== "string" || body.reason.trim().length === 0 ||
-      new TextEncoder().encode(body.reason).length > 500) return false;
+      (body.reason !== undefined && (typeof body.reason !== "string" ||
+      new TextEncoder().encode(body.reason).length > 500))) return false;
   if (operation === "policy") {
-    return Number.isSafeInteger(body.version) && Number(body.version) >= 1 &&
-      typeof conf.enabled === "boolean" && Number.isSafeInteger(conf.max_depth) &&
+    return typeof conf.turnover_ratio_cap === "string" && RATIO_RE.test(conf.turnover_ratio_cap) && Number.isSafeInteger(body.version) && Number(body.version) >= 1 &&
+      conf.enabled === true && Number.isSafeInteger(conf.max_depth) &&
       Number(conf.max_depth) >= 1 && Number(conf.max_depth) <= 32 &&
       (conf.mode === "loss" || conf.mode === "turnover") &&
       (conf.cycle === "weekly" || conf.cycle === "monthly");
@@ -78,7 +84,7 @@ function validBody(operation: AgentWriteOperation, value: unknown): value is Age
       typeof conf.can_create_children !== "boolean") return false;
   if (operation === "create") {
     return Number.isSafeInteger(body.policy_version) && Number(body.policy_version) >= 1 &&
-      validUuid(body.member_id) && (body.parent_id === null || validUuid(body.parent_id)) &&
+      typeof body.username === "string" && /^[a-z][a-z0-9_]{2,31}$/.test(body.username) && typeof body.password === "string" && body.password.length>=6 && body.password.length<=30 && (body.parent_id === null || validUuid(body.parent_id)) &&
       (body.parent_version === null || (Number.isSafeInteger(body.parent_version) && Number(body.parent_version) >= 1)) &&
       (body.parent_id === null ? body.parent_version === null : body.parent_version !== null);
   }
@@ -93,8 +99,8 @@ function validIntent(value: unknown, scope: AgentWriteScope): value is PendingAg
   const operation = candidate.operation;
   if (candidate.accountId !== scope.accountId || candidate.brandId !== scope.brandId ||
       !validUuid(scope.accountId) || !validUuid(scope.brandId) ||
-      (operation !== "policy" && operation !== "create" && operation !== "update") ||
-      (operation === "update" ? !validUuid(candidate.resourceId) : candidate.resourceId !== null) ||
+      (operation !== "policy" && operation !== "create" && operation !== "update" && operation !== "mode-change") ||
+      ((operation === "update" || operation === "mode-change") ? !validUuid(candidate.resourceId) : candidate.resourceId !== null) ||
       typeof candidate.key !== "string" || candidate.key.length === 0 ||
       !validBody(operation, candidate.body)) return false;
   return true;
@@ -105,6 +111,7 @@ export function freezeAgentBody<T extends object>(body: T): Readonly<T> {
   let copy: T;
   try {
     copy = JSON.parse(JSON.stringify(body)) as T;
+    copyAssociationNames(body, copy);
   } catch {
     throw new TypeError("Agent write body must be JSON serializable");
   }

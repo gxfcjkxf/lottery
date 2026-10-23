@@ -44,6 +44,7 @@ func commissionFingerprint(t *testing.T, f bettingFixture) string {
 }
 
 func TestCommissionFactsUseFinalWitnessesAllSourcesAndExcludeInvalidOrders(t *testing.T) {
+	t.Parallel()
 	f := newBettingFixtureWithWindow(t, storeTestBrand, 5*time.Second, 5100*time.Millisecond)
 	fundBettingWallet(t, f, 10, 10, 10)
 	ctx := context.Background()
@@ -139,6 +140,7 @@ func TestCommissionFactsUseFinalWitnessesAllSourcesAndExcludeInvalidOrders(t *te
 }
 
 func TestCommissionFactsFailClosedForMissingOrCorruptFinalWitnesses(t *testing.T) {
+	t.Parallel()
 	f, order, _ := settledCorrectionFixture(t)
 	ctx := context.Background()
 	before := commissionFingerprint(t, f)
@@ -188,6 +190,7 @@ func TestCommissionFactsFailClosedForMissingOrCorruptFinalWitnesses(t *testing.T
 }
 
 func TestCommissionFactLockKeepsGenerationStableUntilTransactionEnds(t *testing.T) {
+	t.Parallel()
 	f, order, _ := settledCorrectionFixture(t)
 	ctx := context.Background()
 	c, err := f.service.CorrectionContext(ctx, f.brand, f.period.ID)
@@ -233,6 +236,7 @@ func TestCommissionFactLockKeepsGenerationStableUntilTransactionEnds(t *testing.
 }
 
 func TestCommissionFactsFollowCurrentGenerationAndFailBusyWithoutWrites(t *testing.T) {
+	t.Parallel()
 	f, order, old := settledCorrectionFixture(t)
 	ctx := context.Background()
 	out, err := commissionFact(t, f, f.brand, order.ID)

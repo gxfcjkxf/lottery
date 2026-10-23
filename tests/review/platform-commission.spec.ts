@@ -48,7 +48,7 @@ test('platform commission pages preserve exact totals and clear failed details',
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Agents and commission' }).click();
-  await page.locator('.brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   const panel = page.getByTestId('platform-commission');
   const tabs = page.getByTestId('platform-commission-tabs');
   await tabs.getByRole('tab', { name: 'Cycles', exact: true }).click();
@@ -81,20 +81,20 @@ test('platform commission pages preserve exact totals and clear failed details',
   await expect(detail).toHaveCount(0);
   await selectLanguage(page, 'zh-CN');
   await expect(tabs.getByRole('tab', { name: '派发', exact: true })).toBeVisible();
-  await page.locator('.brand-picker select').selectOption('');
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(panel).toHaveCount(0);
 });
 
 test('platform reads a real agent and commission collections without financial or agent writes', async ({ page, playwright, operatorSession }, info) => {
   await page.goto('http://127.0.0.1:5183/register');
-  await page.getByLabel('Choose a username or phone', { exact: true }).fill(`agent_review_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`);
+  await page.getByLabel('Choose an account or phone', { exact: true }).fill(`agent_review_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`);
   await page.getByLabel('Password', { exact: true }).fill('owned-agent-review-password-2026');
   await page.locator('.auth-form input[type="checkbox"]').nth(0).check();
   await page.locator('.auth-form input[type="checkbox"]').nth(1).check();
   const registered = page.waitForResponse(r => r.url() === 'http://127.0.0.1:5183/api/v1/auth/register');
   await page.getByRole('button', { name: /Continue/ }).click();
   expect((await registered).status()).toBe(201);
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/$/);
   const me = await page.request.get('http://127.0.0.1:5183/api/v1/me');
   expect(me.status()).toBe(200);
   const member = (await me.json()).data.member.id;
@@ -135,7 +135,7 @@ test('platform reads a real agent and commission collections without financial o
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Agents and commission' }).click();
-  await page.locator('.brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   const panel = page.getByTestId('platform-commission');
   await panel.getByRole('button', { name: agent.id, exact: true }).click();
   await expect(page.getByTestId('platform-commission-details')).toContainText(member);
@@ -156,6 +156,6 @@ test('platform reads a real agent and commission collections without financial o
   expect(after).toEqual(before);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('platform-commission-real.png'), fullPage: true });
-  await page.locator('.brand-picker select').selectOption('');
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(panel).toHaveCount(0);
 });

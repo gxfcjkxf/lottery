@@ -1,4 +1,20 @@
 <script setup lang="ts">
+import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
+import { vWriteGuard } from "@lottery/shared";
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import { vGlobalLoading } from "@lottery/shared";
+const displayDate = (value: string | null | undefined) => formatDisplayDateTime(value, displayLocale.value);
+import { formatDisplayDateTime } from "@lottery/shared";
+const displayLocale = useAdminI18n().locale;
+import { vInlineValidation } from '@lottery/shared'
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   AdminApiError,
@@ -171,7 +187,7 @@ function sessionExpired(cause: unknown) {
 }
 function explain(cause: unknown, fallback: LocalizedMessage) {
   if (cause instanceof LocalizedPolicyError) return cause.copy;
-  return cause instanceof Error && cause.message ? cause.message : fallback;
+  return cause instanceof Error && publicErrorMessage(cause) ? publicErrorMessage(cause) : fallback;
 }
 function displayMessage(value: string | LocalizedMessage) {
   return typeof value === "string" ? value : t(value);
@@ -242,7 +258,7 @@ const gameInputValid = computed(
     isValidTurnoverMultiple(gameDraft.value.turnover_multiple),
 );
 const reasonValid = (value: string) =>
-  Boolean(value.trim()) && new TextEncoder().encode(value.trim()).length <= 500;
+  new TextEncoder().encode(value.trim()).length <= 500;
 const canWrite = computed(
   () => rights.value.write && !props.account.super_admin,
 );
@@ -289,7 +305,7 @@ async function loadBrand(preserveDraft = false) {
     const item = await api.getBrandPolicy(brandId);
     if (!current(ticket, brandId, actorId) || read !== brandRead) return;
     if (item.brand_id !== brandId)
-      throw new LocalizedPolicyError(message("品牌策略响应与当前品牌不匹配。", "The brand policy response does not match the selected brand."));
+      throw new LocalizedPolicyError(message('admin.copy.b9a1214f'));
     brandPolicy.value = item;
     if (
       !getPendingPolicyWrite(contextKey(actorId, brandId, "brand")) &&
@@ -300,7 +316,7 @@ async function loadBrand(preserveDraft = false) {
     if (!current(ticket, brandId, actorId) || read !== brandRead) return;
     brandPolicy.value = null;
     sessionExpired(cause);
-    error.value = explain(cause, message("读取品牌提现策略失败。", "Failed to load the brand withdrawal policy."));
+    error.value = explain(cause, message('admin.copy.8fbd2a77'));
   } finally {
     if (current(ticket, brandId, actorId) && read === brandRead)
       loadingBrand.value = false;
@@ -343,7 +359,7 @@ async function loadGame(id = gameId.value, preserveDraft = false) {
     )
       return;
     if (item.brand_id !== brandId || item.game_id !== normalizedId)
-      throw new LocalizedPolicyError(message("彩种策略响应与当前品牌或彩种不匹配。", "The game policy response does not match the selected brand or game."));
+      throw new LocalizedPolicyError(message('admin.copy.dc9b1fa2'));
     gamePolicy.value = item;
     if (
       !getPendingPolicyWrite(
@@ -361,7 +377,7 @@ async function loadGame(id = gameId.value, preserveDraft = false) {
       return;
     gamePolicy.value = null;
     sessionExpired(cause);
-    error.value = explain(cause, message("读取彩种提现策略失败。", "Failed to load the game withdrawal policy."));
+    error.value = explain(cause, message('admin.copy.1a5ae7cf'));
   } finally {
     if (
       current(ticket, brandId, actorId) &&
@@ -396,7 +412,7 @@ async function loadGames() {
       return;
     games.value = [];
     sessionExpired(cause);
-    error.value = explain(cause, message("读取彩种目录失败。", "Failed to load the game catalog."));
+    error.value = explain(cause, message('admin.copy.c052ffbf'));
   } finally {
     if (sameContext(ticket, brandId, actorId) && read === gamesRead)
       loadingGames.value = false;
@@ -438,7 +454,7 @@ async function loadHistory(lane: Lane, offset: number) {
             : item.game_id !== selectedGameId),
       )
     )
-      throw new LocalizedPolicyError(message("策略历史响应与当前范围不匹配。", "The policy history response does not match the selected scope."));
+      throw new LocalizedPolicyError(message('admin.copy.b5e0ce9c'));
     if (lane === "brand") {
       brandHistory.value = page;
       brandHistoryOffset.value = offset;
@@ -456,7 +472,7 @@ async function loadHistory(lane: Lane, offset: number) {
     )
       return;
     sessionExpired(cause);
-    error.value = explain(cause, message("读取策略历史失败。", "Failed to load policy history."));
+    error.value = explain(cause, message('admin.copy.126ed15f'));
   } finally {
     if (current(ticket, brandId, actorId)) {
       if (lane === "brand" && read === brandHistoryRead)
@@ -466,7 +482,7 @@ async function loadHistory(lane: Lane, offset: number) {
     }
   }
 }
-function changeSelectedGame(id: string) {
+async function changeSelectedGame(id: string) {
   confirmation.value = null;
   gameRead++;
   gameHistoryRead++;
@@ -478,7 +494,7 @@ function changeSelectedGame(id: string) {
     uncertain.value =
       getPending(props.account.id, props.brandId, "game", gameId.value) ??
       getPending(props.account.id, props.brandId, "brand");
-    void loadGame(gameId.value, Boolean(uncertain.value));
+    await loadGame(gameId.value, Boolean(uncertain.value));
   } else {
     uncertain.value = getPending(props.account.id, props.brandId, "brand");
   }
@@ -537,7 +553,7 @@ async function confirmAndSubmit() {
     return;
   if (policyBodyFingerprint(mutation.body) !== mutation.fingerprint) {
     confirmation.value = null;
-    error.value = message("待提交内容与已核对内容不一致，请重新核对。", "The pending content differs from the reviewed content. Review it again.");
+    error.value = message('admin.copy.a858f2bf');
     return;
   }
   confirmation.value = null;
@@ -588,7 +604,7 @@ async function submitMutation(mutation: FrozenMutation) {
       (mutation.lane === "game" &&
         (item as GameWithdrawalPolicy).game_id !== mutation.gameId)
     ) {
-      error.value = message("保存响应与当前范围不匹配；写请求已获得响应，请重新读取确认状态。", "The save response does not match the current scope. The write request received a response; reload to confirm the current state.");
+      error.value = message('admin.copy.aed6d0e9');
       uncertain.value = null;
       return;
     }
@@ -605,7 +621,7 @@ async function submitMutation(mutation: FrozenMutation) {
       gameHistory.value = null;
       void loadHistory("game", 0);
     }
-    notice.value = message("配置已保存。此页面只保存策略，不代表提现功能已上线。", "Settings saved. This page only saves policies; it does not mean withdrawals are available.");
+    notice.value = message('admin.copy.a0a25fb6');
   } catch (cause) {
     const status = cause instanceof AdminApiError ? cause.status : 0;
     const outcome = classifyPolicyWriteFailure(status);
@@ -627,19 +643,19 @@ async function submitMutation(mutation: FrozenMutation) {
       if (mutation.lane === "brand") await loadBrand(true);
       else await loadGame(mutation.gameId, true);
       if (sameContext(ticket, mutation.brandId, mutation.actorId)) {
-        error.value = message("版本冲突：已读取当前配置。请核对新版本后重新发起确认；原请求未自动重放。", "Version conflict: the current settings were loaded. Review the new version and start a new confirmation; the original request was not replayed.");
+        error.value = message('admin.copy.8c257e14');
         reconciling.value = false;
       }
     } else if (outcome === "uncertain") {
       setPendingPolicyWrite(registryKey, mutation);
       uncertain.value = mutation;
-      error.value = message("服务器结果尚未确认。相同配置可能已提交；读取到相同值不能证明是本次请求提交。请使用原请求重试（复用原幂等键），或只读核对后仍保留待确认状态。", "The server outcome is unconfirmed. The same settings may have been saved, but reading the same values does not prove this request caused it. Retry the original request with its original idempotency key, or perform a read-only check while keeping the request unconfirmed.");
+      error.value = message('admin.copy.e63ba0cd');
     } else {
       clearPendingPolicyWrite(registryKey);
       uncertain.value = null;
       error.value = explain(
         cause,
-        message("保存提现策略失败；旧请求意图已解除。请修正后重新确认。", "Failed to save the withdrawal policy. The previous request intent was cleared; correct the settings and review them again."),
+        message('admin.copy.6f7c7600'),
       );
     }
   } finally {
@@ -674,33 +690,33 @@ async function reconcileUncertain() {
       ),
     )
   ) {
-    error.value = message("已重新读取当前版本；由于读取结果不含本次请求凭据，原写入仍待确认，可用同一幂等键重试。", "The current version was reloaded. Because the read does not include proof of this request, the original write remains unconfirmed; retry with the same idempotency key.");
+    error.value = message('admin.copy.2826c8fd');
   }
   reconciling.value = false;
 }
-function historyPrevious(lane: Lane) {
+async function historyPrevious(lane: Lane) {
   const offset =
     lane === "brand" ? brandHistoryOffset.value : gameHistoryOffset.value;
-  if (offset > 0) void loadHistory(lane, Math.max(0, offset - 50));
+  if (offset > 0) await loadHistory(lane, Math.max(0, offset - 50));
 }
-function historyNext(lane: Lane) {
+async function historyNext(lane: Lane) {
   const page = lane === "brand" ? brandHistory.value : gameHistory.value;
   const offset =
     lane === "brand" ? brandHistoryOffset.value : gameHistoryOffset.value;
-  if (page && page.items.length === 50) void loadHistory(lane, offset + 50);
+  if (page && page.items.length === 50) await loadHistory(lane, offset + 50);
 }
 function formatSources(sources: WithdrawalSource[]) {
   return sources
     .map(
       (source) =>
         ({
-          recharge: t("充值", "Recharge"),
-          winning: t("中奖", "Winnings"),
-          gift: t("赠送", "Gift"),
-          commission: t("佣金", "Commission"),
+          recharge: t('admin.copy.6ffe1179'),
+          winning: t('admin.copy.99c31497'),
+          gift: t('admin.copy.2b8ae17c'),
+          commission: t('admin.copy.101e2e66'),
         })[source],
     )
-    .join(t("、", ", "));
+    .join(t('admin.copy.b71594e8'));
 }
 function configJson(config: unknown) {
   return JSON.stringify(config, null, 2);
@@ -772,43 +788,41 @@ onUnmounted(() => {
   <section class="withdrawal-policy" data-testid="withdrawal-policy-settings">
     <header class="policy-header">
       <div>
-        <p class="eyebrow">{{ t("提现策略", "Withdrawal policy") }}</p>
-        <h2>{{ t("品牌与彩种提现配置", "Withdrawal policy settings") }}</h2>
-        <p>{{ t("本页面仅保存规则；申请、来源占用和流水资格由独立提现流程处理。品牌提现策略默认关闭，未接入真实支付。", "This page only saves rules. Applications, source holds, and turnover qualification are handled by the separate withdrawal workflow. Brand withdrawal policy is disabled by default; real payments are not connected.") }}</p>
+        <p class="eyebrow">{{ t('admin.copy.b258cb23') }}</p>
+        <h2>{{ t('admin.copy.b5eed7bd') }}</h2>
       </div>
-      <span class="brand-pill">{{ t("品牌", "Brand") }} · {{ brandId || t("未选择", "Not selected") }}</span>
+      <span class="brand-pill">{{ t('admin.copy.9c32661d') }} · <AssociationName kind="brand" :id="brandId" :locale="associationLocale" /></span>
     </header>
 
     <p class="callout warning" role="note">
-      {{ t("已确认提现流水口径：每笔有效投注按投注时 N 折算达标额度（投注额 ÷ N），跨彩种精确累加后与占用前全部可用充值＋赠送余额比较。充值、中奖、赠送及佣金来源投注均计入，每笔只计一次；佣金不计入基础金额。N 必须大于 0，修改仅影响新投注。平台资格入口与只读预览已接入，品牌仍须明确启用；预览不是授权，申请时会重新检查流水、余额和合规。", "Confirmed turnover rule: divide each valid stake by its bet-time N, sum exact credits across games, and compare with all available recharge plus gift points before reservation. Recharge-, winnings-, gift-, and commission-funded stakes count once per valid bet; commission does not count toward the base amount. N must be positive; changes affect new bets only. The platform eligibility checker and read-only preview are connected; the brand must explicitly enable withdrawals. A preview is not authorization: application rechecks turnover, funds, and compliance.") }}
+      {{ t('admin.copy.eb850a76') }}
     </p>
     <p v-if="account.super_admin" class="callout">
-      {{ t("超级管理员仅可按显式读取权限查看，不能保存配置。", "Super administrators may view settings only when explicitly granted read access; they cannot save settings.") }}
+      {{ t('admin.copy.bdc5d412') }}
     </p>
     <p v-if="!rights.view" class="callout" role="status">
-      {{ t("当前账号没有提现策略读取权限；不会请求策略或历史数据。写权限不会隐含读取权限。", "This account cannot read withdrawal policies. Policy or history data will not be requested. Write permission does not imply read permission.") }}
+      {{ t('admin.copy.bf76c8c5') }}
     </p>
 
     <section v-if="!rights.view && rights.gameView" class="policy-card">
       <div class="card-heading">
         <div>
-          <h3>{{ t("彩种目录", "Game catalog") }}</h3>
-          <p>{{ t("目录读取权限独立于策略读取权限。", "Catalog read permission is separate from policy read permission.") }}</p>
+          <h3>{{ t('admin.copy.6b42b097') }}</h3>
         </div>
         <button
-          class="secondary"
+          class="button button-secondary"
           type="button"
           :disabled="loadingGames"
-          @click="loadGames"
+          @click="withGlobalLoading(loadGames)"
         >
-          {{ loadingGames ? t("读取中…", "Loading…") : t("读取彩种目录", "Load game catalog") }}
+          {{ loadingGames ? t('admin.copy.27342bf3') : t('admin.copy.5d10b2de') }}
         </button>
       </div>
-      <p v-if="loadingGames" class="muted" role="status">{{ t("正在读取彩种目录…", "Loading game catalog…") }}</p>
-      <p v-else-if="!games.length" class="muted">{{ t("彩种目录为空，或尚未读取。", "The game catalog is empty or has not been loaded.") }}</p>
+      <p v-global-loading v-if="loadingGames" class="muted" role="status">{{ t('admin.copy.4d221807') }}</p>
+      <p v-else-if="!games.length" class="muted empty-state">{{ t('admin.copy.a493ddef') }}</p>
       <ul v-else class="catalog-list">
         <li v-for="game in games" :key="game.id">
-          {{ game.name }} · {{ game.id }}
+          {{ game.name }}
         </li>
       </ul>
     </section>
@@ -820,86 +834,87 @@ onUnmounted(() => {
       <p v-if="notice" class="message success" role="status">{{ displayMessage(notice) }}</p>
       <div v-if="pendingInContext" class="message warning" role="alert">
         <span
-          >{{ t("此范围有写入结果待确认。配置已冻结；相同内容不代表已证明本次请求成功。待确认意图仅保存在当前页面会话内。", "A write in this scope has an unconfirmed outcome. The settings are frozen; matching values do not prove this request succeeded. The pending intent is held only for the current page session.") }}</span
+          >{{ t('admin.copy.cca19357') }}</span
         >
         <button
-          class="primary"
+          v-write-guard="Boolean(saving)"
+          class="button button-primary"
           type="button"
           :disabled="!!saving || !canWrite"
-          @click="retryUncertain"
+          @click="withGlobalLoading(retryUncertain)"
         >
-          {{ t("使用原请求重试", "Retry original request") }}
+          {{ t('admin.copy.c6a6aa0c') }}
         </button>
         <button
-          class="secondary"
+          class="button button-secondary"
           type="button"
           :disabled="!!saving || reconciling"
-          @click="reconcileUncertain"
+          @click="withGlobalLoading(reconcileUncertain)"
         >
-          {{ t("只读核对", "Read-only check") }}
+          {{ t('admin.copy.5d79fbcc') }}
         </button>
       </div>
       <section class="policy-card">
         <div class="card-heading">
           <div>
-            <h3>{{ t("品牌默认配置", "Brand default settings") }}</h3>
+            <h3>{{ t('admin.copy.06fe3b08') }}</h3>
             <p v-if="brandPolicy">
-              {{ t("已保存版本", "Saved version") }} {{ brandPolicy.version }} ·
-              {{ brandPolicy.brand_id }} · {{ t("更新于", "Updated") }} {{ brandPolicy.updated_at }}
+               ·
+              <AssociationName :record="brandPolicy" kind="brand" :id="brandPolicy.brand_id" :locale="associationLocale" /> {{ t('admin.copy.c6f1ca9e') }} {{ displayDate(brandPolicy.updated_at) }}
             </p>
           </div>
-          <button
-            class="secondary"
+          <button v-refresh-button="loadingBrand ? t('admin.copy.27342bf3') : t('admin.copy.655019c3')"
+            class="button button-secondary"
             type="button"
             :disabled="loadingBrand || !!saving || !!pendingInContext"
-            @click="() => loadBrand()"
+            @click="withGlobalLoading(async () => { return () => loadBrand() })"
           >
-            {{ loadingBrand ? t("读取中…", "Loading…") : t("刷新品牌配置", "Refresh brand settings") }}
+            {{ loadingBrand ? t('admin.copy.27342bf3') : t('admin.copy.655019c3') }}
           </button>
         </div>
-        <p v-if="loadingBrand && !brandPolicy" class="muted" role="status">
-          {{ t("正在读取品牌配置…", "Loading brand settings…") }}
+        <p v-global-loading v-if="loadingBrand && !brandPolicy" class="muted" role="status">
+          {{ t('admin.copy.9ad33899') }}
         </p>
-        <p v-else-if="!brandPolicy && !error" class="muted">
-          {{ t("尚无可显示的已保存品牌配置。", "There are no saved brand settings to display.") }}
+        <p v-else-if="!brandPolicy && !error" class="muted empty-state">
+          {{ t('admin.copy.6a43bda0') }}
         </p>
         <template v-if="brandPolicy">
           <dl class="saved-summary">
             <div>
-              <dt>{{ t("状态", "Status") }}</dt>
+              <dt>{{ t('admin.copy.a765b3ca') }}</dt>
               <dd>
-                {{ brandPolicy.config.enabled ? t("启用配置", "Enabled") : t("停用配置", "Disabled") }}
+                {{ brandPolicy.config.enabled ? t('admin.copy.c418ddd0') : t('admin.copy.a298c1aa') }}
               </dd>
             </div>
             <div>
-              <dt>{{ t("提现积分范围", "Withdrawal points range") }}</dt>
+              <dt>{{ t('admin.copy.cb3b3680') }}</dt>
               <dd>
-                {{ brandPolicy.config.min_points }} {{ t("至", "to") }}
-                {{ brandPolicy.config.max_points ?? t("无上限", "No limit") }}
+                {{ brandPolicy.config.min_points }} {{ t('admin.copy.2284cf7b') }}
+                {{ brandPolicy.config.max_points ?? t('admin.copy.5302e1a7') }}
               </dd>
             </div>
             <div>
-              <dt>{{ t("允许来源", "Allowed sources") }}</dt>
+              <dt>{{ t('admin.copy.4364767b') }}</dt>
               <dd>{{ formatSources(brandPolicy.config.allowed_sources) }}</dd>
             </div>
             <div>
-              <dt>{{ t("审核模式", "Review mode") }}</dt>
+              <dt>{{ t('admin.copy.85964287') }}</dt>
               <dd>
                 {{
                   brandPolicy.config.review_mode === "manual"
-                    ? t("人工审核", "Manual review")
-                    : t("自动审核", "Automatic review")
+                    ? t('admin.copy.f1e1066f')
+                    : t('admin.copy.19cf2be7')
                 }}
               </dd>
             </div>
             <div>
-              <dt>{{ t("已保存流水倍数 N", "Saved turnover multiple N") }}</dt>
+              <dt>{{ t('admin.copy.64f2bdc4') }}</dt>
               <dd>{{ brandPolicy.config.turnover_multiple }}</dd>
             </div>
           </dl>
-          <form class="editor-grid" @submit.prevent="requestBrandConfirmation">
+          <form novalidate v-inline-validation class="editor-grid" @submit.prevent="withGlobalLoading(requestBrandConfirmation)">
             <label for="withdraw-brand-enabled"
-              >{{ t("品牌：启用提现配置", "Brand: enable withdrawal settings") }}<input
+              >{{ t('admin.copy.b79e77f2') }}<input
                 id="withdraw-brand-enabled"
                 v-model="brandDraft.enabled"
                 type="checkbox"
@@ -911,7 +926,7 @@ onUnmounted(() => {
                 "
             /></label>
             <label for="withdraw-brand-min"
-              >{{ t("品牌：最低提现积分", "Brand: minimum withdrawal points") }}<input
+              >{{ t('admin.copy.f3a168b4') }}<input
                 id="withdraw-brand-min"
                 v-model.trim="brandDraft.min_points"
                 inputmode="numeric"
@@ -924,12 +939,12 @@ onUnmounted(() => {
                 "
             /></label>
             <label for="withdraw-brand-max"
-              >{{ t("品牌：最高提现积分（留空表示无上限）", "Brand: maximum withdrawal points (leave blank for no limit)") }}<input
+              >{{ t('admin.copy.a99f767f') }}<input
                 id="withdraw-brand-max"
                 v-model.trim="brandDraft.max_points_input"
                 inputmode="numeric"
                 autocomplete="off"
-                :placeholder="t('无上限', 'No limit')"
+                :placeholder="t('admin.copy.5302e1a7')"
                 :disabled="
                   !canWrite ||
                   !!pendingInContext ||
@@ -938,7 +953,7 @@ onUnmounted(() => {
                 "
             /></label>
             <fieldset class="source-field wide">
-              <legend>{{ t("品牌：允许提现来源（至少选择一项）", "Brand: allowed withdrawal sources (select at least one)") }}</legend>
+              <legend>{{ t('admin.copy.c0bdf463') }}</legend>
               <label for="withdraw-source-recharge"
                 ><input
                   id="withdraw-source-recharge"
@@ -951,7 +966,7 @@ onUnmounted(() => {
                     !!confirmation ||
                     reconciling
                   "
-                />{{ t("充值", "Recharge") }}</label
+                />{{ t('admin.copy.6ffe1179') }}</label
               >
               <label for="withdraw-source-winning"
                 ><input
@@ -965,7 +980,7 @@ onUnmounted(() => {
                     !!confirmation ||
                     reconciling
                   "
-                />{{ t("中奖", "Winnings") }}</label
+                />{{ t('admin.copy.99c31497') }}</label
               >
               <label for="withdraw-source-gift"
                 ><input
@@ -979,7 +994,7 @@ onUnmounted(() => {
                     !!confirmation ||
                     reconciling
                   "
-                />{{ t("赠送", "Gift") }}</label
+                />{{ t('admin.copy.2b8ae17c') }}</label
               >
               <label for="withdraw-source-commission"
                 ><input
@@ -988,11 +1003,11 @@ onUnmounted(() => {
                   type="checkbox"
                   value="commission"
                   :disabled="!canWrite || !!pendingInContext || !!confirmation || reconciling"
-                />{{ t("佣金", "Commission") }}</label
+                />{{ t('admin.copy.101e2e66') }}</label
               >
             </fieldset>
             <label for="withdraw-brand-review"
-              >{{ t("品牌：审核方式", "Brand: review mode") }}<select
+              >{{ t('admin.copy.0af1bc63') }}<select
                 id="withdraw-brand-review"
                 v-model="brandDraft.review_mode"
                 :disabled="
@@ -1002,17 +1017,17 @@ onUnmounted(() => {
                   reconciling
                 "
               >
-                <option value="manual">{{ t("人工审核", "Manual review") }}</option>
-                <option value="automatic">{{ t("自动审核", "Automatic review") }}</option>
+                <option value="manual">{{ t('admin.copy.f1e1066f') }}</option>
+                <option value="automatic">{{ t('admin.copy.19cf2be7') }}</option>
               </select></label
             >
             <label for="withdraw-brand-multiple"
-              >{{ t("品牌：默认流水倍数 N", "Brand: default turnover multiple N") }}<input
+              >{{ t('admin.copy.c104d4d5') }}<input
                 id="withdraw-brand-multiple"
                 v-model.trim="brandDraft.turnover_multiple"
                 inputmode="decimal"
                 autocomplete="off"
-                :placeholder="t('例如 1.25', 'For example, 1.25')"
+                :placeholder="t('admin.copy.c7a62fd5')"
                 :disabled="
                   !canWrite ||
                   !!pendingInContext ||
@@ -1020,35 +1035,23 @@ onUnmounted(() => {
                   reconciling
                 "
             /></label>
-            <label class="wide" for="withdraw-brand-reason"
-              >{{ t("品牌：变更原因（必填，最多 500 UTF-8 字节）", "Brand: reason for change (required, up to 500 UTF-8 bytes)") }}<textarea
-                id="withdraw-brand-reason"
-                v-model="brandDraft.reason"
-                rows="3"
-                :disabled="
-                  !canWrite ||
-                  !!pendingInContext ||
-                  !!confirmation ||
-                  reconciling
-                "
-              />
-            </label>
+
             <p v-if="!brandInputsValid" class="field-error wide" role="alert">
-              {{ t("积分范围须为正的 int64 整数字符串且最低值不高于最高值；来源至少一项且不能重复；N 须大于 0 且不超过 1,000,000，最多 6 位小数并使用规范十进制格式。", "Points must be positive int64 integer strings, with the minimum no greater than the maximum. Select at least one unique source. N must be greater than 0 and at most 1,000,000, with at most 6 decimal places in canonical decimal format.") }}
+              {{ t('admin.copy.f9f48fa7') }}
             </p>
             <p
               v-if="brandDraft.reason && !reasonValid(brandDraft.reason)"
               class="field-error wide"
               role="alert"
             >
-              {{ t("原因须非空且最多 500 UTF-8 字节。", "Enter a reason of up to 500 UTF-8 bytes.") }}
+              {{ t('admin.copy.82d98d17') }}
             </p>
             <p v-if="!canWrite" class="muted wide">
-              {{ t("当前账号仅可查看品牌配置。", "This account can only view brand settings.") }}
+              {{ t('admin.copy.29035ab8') }}
             </p>
             <div v-if="canWrite" class="wide action-row">
-              <button class="primary" type="submit" :disabled="!brandCanSave">
-                {{ t("核对品牌配置并继续", "Review brand settings and continue") }}
+              <button class="button button-primary" type="submit" :disabled="!brandCanSave">
+                {{ t('admin.copy.041b3e8e') }}
               </button>
             </div>
           </form>
@@ -1058,24 +1061,22 @@ onUnmounted(() => {
       <section class="policy-card">
         <div class="card-heading">
           <div>
-            <h3>{{ t("彩种流水倍数覆盖", "Game turnover multiple override") }}</h3>
-            <p>{{ t("彩种仅可指定 N 或留空继承；有效值与来源来自服务端记录。", "A game can specify N or leave it blank to inherit. The effective value and source come from the server record.") }}</p>
+            <h3>{{ t('admin.copy.c42e6ae8') }}</h3>
+            <p>{{ t('admin.copy.b7c3d9f6') }}</p>
           </div>
         </div>
         <div class="game-picker">
           <label v-if="rights.gameView" for="withdraw-game-select"
-            >{{ t("选择彩种", "Select a game") }}<select
+            >{{ t('admin.copy.68ccd146') }}<select
               id="withdraw-game-select"
-          :aria-label="t('选择彩种', 'Select game')"
+          :aria-label="t('admin.copy.260664bf')"
               :value="gameId"
               :disabled="
                 loadingGames || !!saving || !!pendingInContext || !!confirmation
               "
-              @change="
-                changeSelectedGame(($event.target as HTMLSelectElement).value)
-              "
+              @change="withGlobalLoading(changeSelectedGame, ($event.target as HTMLSelectElement).value)"
             >
-              <option value="">{{ t("请选择彩种", "Select a game") }}</option>
+              <option value="">{{ t('admin.copy.3aba80cd') }}</option>
               <option
                 v-if="
                   gamePolicy &&
@@ -1084,45 +1085,45 @@ onUnmounted(() => {
                 "
                 :value="gameId"
               >
-                {{ t("直接查询", "Direct lookup") }} · {{ gameId }}
+                {{ t('admin.copy.c8c2e3f4') }} · {{ gameId }}
               </option>
               <option v-for="game in games" :key="game.id" :value="game.id">
-                {{ game.name }} · {{ game.id }}
+                {{ game.name }}
               </option>
             </select></label
           >
-          <button
+          <button v-refresh-button="loadingGames ? t('admin.copy.b1808de5') : t('admin.copy.f8a8e3bf')"
             v-if="rights.gameView"
-            class="secondary"
+            class="button button-secondary"
             type="button"
             :disabled="loadingGames || !!saving"
-            @click="loadGames"
+            @click="withGlobalLoading(loadGames)"
           >
-            {{ loadingGames ? t("读取目录中…", "Loading catalog…") : t("刷新彩种目录", "Refresh game catalog") }}
+            {{ loadingGames ? t('admin.copy.b1808de5') : t('admin.copy.f8a8e3bf') }}
           </button>
           <span
             v-if="rights.gameView && !games.length && !loadingGames"
             class="muted"
-            >{{ t("彩种目录为空，或尚未读取。", "The game catalog is empty or has not been loaded.") }}</span
+            >{{ t('admin.copy.a493ddef') }}</span
           >
           <span v-if="!rights.gameView" class="muted"
-            >{{ t("无彩种目录读取权限；可通过 ID 直接查询，不会因此读取目录。", "No permission to read the game catalog. You can look up a game by ID without loading the catalog.") }}</span
+            >{{ t('admin.copy.e013e750') }}</span
           >
         </div>
-        <form
+        <form novalidate v-inline-validation
           class="game-id-form"
-          @submit.prevent="changeSelectedGame(directGameId)"
+          @submit.prevent="withGlobalLoading(changeSelectedGame, directGameId)"
         >
           <label for="withdraw-game-id"
-            >{{ t("彩种：直接输入 ID", "Game: enter ID directly") }}<input
+            >{{ t('admin.copy.1341137a') }}<input
               id="withdraw-game-id"
               v-model.trim="directGameId"
               autocomplete="off"
-              :placeholder="t('彩种 ID，可输入 UUID', 'Game ID; UUID accepted')"
+              :placeholder="t('admin.copy.6c390a48')"
               :disabled="!!saving || !!pendingInContext || !!confirmation"
           /></label>
           <button
-            class="secondary"
+            class="button button-secondary"
             type="submit"
             :disabled="
               !directGameId.trim() ||
@@ -1132,56 +1133,46 @@ onUnmounted(() => {
               !!confirmation
             "
           >
-            {{ loadingGame ? t("读取中…", "Loading…") : t("读取此彩种策略", "Load this game policy") }}
+            {{ loadingGame ? t('admin.copy.27342bf3') : t('admin.copy.bc479ccf') }}
           </button>
         </form>
-        <p v-if="loadingGame && !gamePolicy" class="muted" role="status">
-          {{ t("正在读取彩种策略…", "Loading game policy…") }}
+        <p v-global-loading v-if="loadingGame && !gamePolicy" class="muted" role="status">
+          {{ t('admin.copy.739dd9f0') }}
         </p>
-        <p v-else-if="gameId && !gamePolicy && !error" class="muted">
-          {{ t("尚无可显示的已保存彩种策略。", "There are no saved game settings to display.") }}
+        <p v-else-if="gameId && !gamePolicy && !error" class="muted empty-state">
+          {{ t('admin.copy.ba17d22a') }}
         </p>
         <template v-if="gamePolicy">
           <dl class="saved-summary">
             <div>
-              <dt>{{ t("已保存彩种", "Saved game") }}</dt>
-              <dd>{{ gamePolicy.game_id }}</dd>
+              <dt>{{ t('admin.copy.23d2b485') }}</dt>
+              <dd><AssociationName :record="gamePolicy" kind="game" :id="gamePolicy.game_id" :locale="associationLocale" /></dd>
             </div>
+
             <div>
-              <dt>{{ t("彩种配置版本", "Game settings version") }}</dt>
-              <dd>{{ gamePolicy.version }}</dd>
-            </div>
-            <div>
-              <dt>{{ t("已保存有效 N", "Saved effective N") }}</dt>
+              <dt>{{ t('admin.copy.eced7c37') }}</dt>
               <dd>{{ gamePolicy.effective.turnover_multiple }}</dd>
             </div>
             <div>
-              <dt>{{ t("有效值来源", "Effective value source") }}</dt>
+              <dt>{{ t('admin.copy.2bda19de') }}</dt>
               <dd>
                 {{
                   gamePolicy.effective.source === "brand"
-                    ? t("品牌默认", "Brand default")
-                    : t("彩种覆盖", "Game override")
+                    ? t('admin.copy.a70308e4')
+                    : t('admin.copy.99af8a49')
                 }}
               </dd>
             </div>
-            <div>
-              <dt>{{ t("品牌配置版本", "Brand settings version") }}</dt>
-              <dd>{{ gamePolicy.effective.brand_version }}</dd>
-            </div>
-            <div>
-              <dt>{{ t("彩种配置版本", "Game settings version") }}</dt>
-              <dd>{{ gamePolicy.effective.game_version }}</dd>
-            </div>
+
           </dl>
-          <form class="editor-grid" @submit.prevent="requestGameConfirmation">
+          <form novalidate v-inline-validation class="editor-grid" @submit.prevent="withGlobalLoading(requestGameConfirmation)">
             <label class="wide" for="withdraw-game-multiple"
-              >{{ t("彩种：流水倍数 N（必须大于 0；留空继承品牌默认）", "Game: turnover multiple N (must be greater than 0; leave blank to inherit brand default)") }}<input
+              >{{ t('admin.copy.72ddec59') }}<input
                 id="withdraw-game-multiple"
                 v-model.trim="gameDraft.turnover_multiple"
                 inputmode="decimal"
                 autocomplete="off"
-                :placeholder="t('继承品牌默认', 'Inherit brand default')"
+                :placeholder="t('admin.copy.e6cd5a15')"
                 :disabled="
                   !canWrite ||
                   !!pendingInContext ||
@@ -1190,87 +1181,72 @@ onUnmounted(() => {
                 "
             /></label>
             <p v-if="!gameInputValid" class="field-error wide" role="alert">
-              {{ t("N 须大于 0 且不超过 1,000,000，最多 6 位小数并使用规范十进制格式；留空表示继承。", "N must be greater than 0 and at most 1,000,000, with at most 6 decimal places in canonical decimal format. Leave blank to inherit.") }}
+              {{ t('admin.copy.85dd702c') }}
             </p>
-            <label class="wide" for="withdraw-game-reason"
-              >{{ t("彩种：变更原因（必填，最多 500 UTF-8 字节）", "Game: reason for change (required, up to 500 UTF-8 bytes)") }}<textarea
-                id="withdraw-game-reason"
-                v-model="gameDraft.reason"
-                rows="3"
-                :disabled="
-                  !canWrite ||
-                  !!pendingInContext ||
-                  !!confirmation ||
-                  reconciling
-                "
-              />
-            </label>
+
             <p v-if="!canWrite" class="muted wide">
-              {{ t("当前账号仅可查看彩种配置。", "This account can only view game settings.") }}
+              {{ t('admin.copy.e9ac506e') }}
             </p>
             <div v-if="canWrite" class="wide action-row">
-              <button class="primary" type="submit" :disabled="!gameCanSave">
-                {{ t("核对彩种配置并继续", "Review game settings and continue") }}
+              <button class="button button-primary" type="submit" :disabled="!gameCanSave">
+                {{ t('admin.copy.48a1572c') }}
               </button>
             </div>
           </form>
           <section class="history-panel">
             <div class="card-heading">
               <div>
-              <h4>{{ t("彩种不可变历史", "Immutable game history") }}</h4>
-                <p>{{ t("仅查看本彩种版本记录。", "Showing revisions for this game only.") }}</p>
+              <h4>{{ t('admin.copy.8752bd11') }}</h4>
               </div>
               <button
-                class="secondary"
+                class="button button-secondary"
                 type="button"
                 :disabled="loadingGameHistory"
-                @click="loadHistory('game', 0)"
+                @click="withGlobalLoading(loadHistory, 'game', 0)"
               >
-                {{ loadingGameHistory ? t("读取中…", "Loading…") : t("读取彩种历史", "Load game history") }}
+                {{ loadingGameHistory ? t('admin.copy.27342bf3') : t('admin.copy.5cedae54') }}
               </button>
             </div>
-            <p
+            <p v-global-loading
               v-if="loadingGameHistory && !gameHistory"
               class="muted"
               role="status"
             >
-              {{ t("正在读取彩种历史…", "Loading game history…") }}
+              {{ t('admin.copy.b7842e6d') }}
             </p>
             <p
               v-else-if="gameHistory && !gameHistory.items.length"
-              class="muted"
+              class="muted empty-state"
             >
-              {{ t("此页没有历史记录。", "There are no history entries on this page.") }}
+              {{ t('admin.copy.0a4b249a') }}
             </p>
             <ol v-if="gameHistory?.items.length" class="history-list">
               <li v-for="item in gameHistory.items" :key="item.id">
-                <h5>{{ t("版本", "Version") }} {{ item.version }} · {{ item.created_at }}</h5>
+                <h5> {{ displayDate(item.created_at) }}</h5>
                 <p>
-                  {{ t("操作人：", "Changed by: ") }}{{ item.changed_by || t("系统", "System") }} · {{ t("原因：", "Reason: ") }}{{
-                    item.reason
-                  }}
+                  {{ t('admin.copy.76bff253') }}<AssociationName v-if="item.changed_by" :record="item" kind="admin" :id="item.changed_by" :locale="associationLocale" /><span v-else>{{ t('admin.copy.532e2e04') }}</span><span v-if="item.reason"> {{ t('admin.copy.2809a1e6') }}{{ item.reason }}</span>
                 </p>
-                <pre>{{ configJson(item.config) }}</pre>
+                <BusinessDetails :value="item.config" :locale="associationLocale" />
               </li>
             </ol>
             <div v-if="gameHistory" class="history-pagination">
               <button
-                class="secondary"
+                class="button button-secondary"
                 type="button"
                 :disabled="gameHistoryOffset === 0 || loadingGameHistory"
-                @click="historyPrevious('game')"
+                @click="withGlobalLoading(historyPrevious, 'game')"
               >
-                {{ t("上一页", "Previous") }}</button
+                {{ t('admin.copy.dbe7a5d7') }}</button
               ><span
-                >{{ t("偏移", "Offset") }} {{ gameHistoryOffset }} · {{ t("每页", "per page") }}
-                {{ gameHistory.limit }} {{ t("条", "items") }}</span
+                >{{ t('admin.copy.4ffb01e2') }} {{ gameHistoryOffset }} · {{ t('admin.copy.62e6982d') }}
+                {{ gameHistory.limit }} {{ t('admin.copy.067fed38') }}</span
               ><button
-                class="secondary"
+                class="button button-secondary"
                 type="button"
                 :disabled="gameHistory.items.length < 50 || loadingGameHistory"
-                @click="historyNext('game')"
+                @click="withGlobalLoading(historyNext, 'game')"
               >
-                {{ t("下一页", "Next") }}
+                {{ t('admin.copy.2e9c9e7a') }}
               </button>
             </div>
           </section>
@@ -1280,55 +1256,54 @@ onUnmounted(() => {
       <section class="policy-card history-panel">
         <div class="card-heading">
           <div>
-            <h3>{{ t("品牌不可变历史", "Immutable brand history") }}</h3>
-            <p>{{ t("仅查看当前品牌的版本记录。", "Showing revisions for the current brand only.") }}</p>
+            <h3>{{ t('admin.copy.b7274a55') }}</h3>
           </div>
           <button
-            class="secondary"
+            class="button button-secondary"
             type="button"
             :disabled="loadingBrandHistory"
-            @click="loadHistory('brand', 0)"
+            @click="withGlobalLoading(loadHistory, 'brand', 0)"
           >
-            {{ loadingBrandHistory ? t("读取中…", "Loading…") : t("读取品牌历史", "Load brand history") }}
+            {{ loadingBrandHistory ? t('admin.copy.27342bf3') : t('admin.copy.794f6f6a') }}
           </button>
         </div>
-        <p
+        <p v-global-loading
           v-if="loadingBrandHistory && !brandHistory"
           class="muted"
           role="status"
         >
-          {{ t("正在读取品牌历史…", "Loading brand history…") }}
+          {{ t('admin.copy.c2a09339') }}
         </p>
-        <p v-else-if="brandHistory && !brandHistory.items.length" class="muted">
-          {{ t("此页没有历史记录。", "There are no history entries on this page.") }}
+        <p v-else-if="brandHistory && !brandHistory.items.length" class="muted empty-state">
+          {{ t('admin.copy.0a4b249a') }}
         </p>
         <ol v-if="brandHistory?.items.length" class="history-list">
           <li v-for="item in brandHistory.items" :key="item.id">
-            <h5>{{ t("版本", "Version") }} {{ item.version }} · {{ item.created_at }}</h5>
+            <h5> {{ displayDate(item.created_at) }}</h5>
             <p>
-              {{ t("操作人：", "Changed by: ") }}{{ item.changed_by || t("系统", "System") }} · {{ t("原因：", "Reason: ") }}{{ item.reason }}
+              {{ t('admin.copy.76bff253') }}<AssociationName v-if="item.changed_by" :record="item" kind="admin" :id="item.changed_by" :locale="associationLocale" /><span v-else>{{ t('admin.copy.532e2e04') }}</span><span v-if="item.reason"> {{ t('admin.copy.2809a1e6') }}{{ item.reason }}</span>
             </p>
-            <pre>{{ configJson(item.config) }}</pre>
+            <BusinessDetails :value="item.config" :locale="associationLocale" />
           </li>
         </ol>
         <div v-if="brandHistory" class="history-pagination">
           <button
-            class="secondary"
+            class="button button-secondary"
             type="button"
             :disabled="brandHistoryOffset === 0 || loadingBrandHistory"
-            @click="historyPrevious('brand')"
+            @click="withGlobalLoading(historyPrevious, 'brand')"
           >
-            {{ t("上一页", "Previous") }}</button
+            {{ t('admin.copy.dbe7a5d7') }}</button
           ><span
-            >{{ t("偏移", "Offset") }} {{ brandHistoryOffset }} · {{ t("每页", "per page") }}
-            {{ brandHistory.limit }} {{ t("条", "items") }}</span
+            >{{ t('admin.copy.4ffb01e2') }} {{ brandHistoryOffset }} · {{ t('admin.copy.62e6982d') }}
+            {{ brandHistory.limit }} {{ t('admin.copy.067fed38') }}</span
           ><button
-            class="secondary"
+            class="button button-secondary"
             type="button"
             :disabled="brandHistory.items.length < 50 || loadingBrandHistory"
-            @click="historyNext('brand')"
+            @click="withGlobalLoading(historyNext, 'brand')"
           >
-            {{ t("下一页", "Next") }}
+            {{ t('admin.copy.2e9c9e7a') }}
           </button>
         </div>
       </section>
@@ -1339,30 +1314,25 @@ onUnmounted(() => {
       class="confirmation-panel"
       aria-labelledby="withdraw-confirm-title"
     >
-      <h3 id="withdraw-confirm-title">{{ t("请核对将要保存的配置", "Review the settings to be saved") }}</h3>
+      <h3 id="withdraw-confirm-title">{{ t('admin.copy.bfe5b2ed') }}</h3>
       <p>
-        {{ t("范围：", "Scope: ") }}{{
-          confirmation.lane === "brand"
-            ? `${t("品牌", "Brand")} ${confirmation.brandId}`
-            : `${t("彩种", "Game")} ${confirmation.gameId}`
-        }}
-        · {{ t("版本", "Version") }} {{ confirmation.body.version }}
+        {{ t('admin.copy.1cf64566') }}
+        <AssociationName v-if="confirmation.lane === 'brand'" :record="brandPolicy" kind="brand" :id="confirmation.brandId" :locale="associationLocale" />
+        <AssociationName v-else :record="gamePolicy" kind="game" :id="confirmation.gameId" :locale="associationLocale" />
       </p>
-      <p>{{ t("原因：", "Reason: ") }}{{ confirmation.body.reason }}</p>
-      <pre>{{ configJson(confirmation.body.config) }}</pre>
-      <p class="muted">
-        {{ t("幂等键：", "Idempotency key: ") }}<code>{{ confirmation.key }}</code>
-      </p>
+      <p v-if="confirmation.body.reason">{{ t('admin.copy.2809a1e6') }}{{ confirmation.body.reason }}</p>
+      <BusinessDetails :value="confirmation.body.config" :locale="associationLocale" />
       <div class="action-row">
-        <button class="secondary" type="button" @click="cancelConfirmation">
-          {{ t("返回编辑", "Back to editing") }}</button
+        <button class="button button-secondary" type="button" @click="cancelConfirmation">
+          {{ t('admin.copy.1377553a') }}</button
         ><button
-          class="primary"
+          v-write-guard="Boolean(saving)"
+          class="button button-primary"
           type="button"
           :disabled="!!saving"
-          @click="confirmAndSubmit"
+          @click="withGlobalLoading(confirmAndSubmit)"
         >
-          {{ saving ? t("提交中…", "Submitting…") : t("确认并提交冻结请求", "Confirm and submit frozen request") }}
+          {{ saving ? t('admin.copy.46511dc0') : t('admin.finance.savePolicy') }}
         </button>
       </div>
     </section>
@@ -1396,7 +1366,7 @@ onUnmounted(() => {
 .muted {
   font-size: 11px;
   line-height: 1.55;
-  color: #737b8c;
+  color: var(--muted);
   margin: 0;
   overflow-wrap: anywhere;
 }
@@ -1447,8 +1417,8 @@ onUnmounted(() => {
 }
 .policy-card,
 .confirmation-panel {
-  background: #fff;
-  border: 1px solid #e9ebf0;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 11px;
   padding: 16px;
   min-width: 0;
@@ -1492,7 +1462,7 @@ onUnmounted(() => {
   min-width: 0;
   border: 1px solid #dfe3eb;
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   padding: 9px 10px;
   color: #252a36;
   font: inherit;
@@ -1502,7 +1472,7 @@ onUnmounted(() => {
 .editor-grid textarea:disabled,
 .game-id-form input:disabled {
   background: #f6f7f9;
-  color: #737b8c;
+  color: var(--muted);
 }
 .editor-grid input[type="checkbox"] {
   justify-self: start;
@@ -1515,7 +1485,7 @@ onUnmounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
-  border: 1px solid #e9ebf0;
+  border: 1px solid var(--line);
   border-radius: 7px;
   padding: 10px;
   min-width: 0;
@@ -1541,8 +1511,8 @@ onUnmounted(() => {
   gap: 8px;
   flex-wrap: wrap;
 }
-.primary,
-.secondary {
+.button-primary,
+.button-secondary {
   border: 0;
   border-radius: 7px;
   padding: 9px 12px;
@@ -1552,16 +1522,16 @@ onUnmounted(() => {
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.primary {
+.button-primary {
   background: #405bd6;
-  color: #fff;
+  color: var(--surface);
 }
-.secondary {
+.button-secondary {
   background: #eef1f7;
   color: #455064;
 }
-.primary:disabled,
-.secondary:disabled {
+.button-primary:disabled,
+.button-secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -1579,7 +1549,7 @@ onUnmounted(() => {
 }
 .saved-summary dt {
   font-size: 11px;
-  color: #737b8c;
+  color: var(--muted);
 }
 .saved-summary dd {
   font-size: 12px;
@@ -1601,7 +1571,7 @@ onUnmounted(() => {
 }
 .game-id-form {
   padding-bottom: 12px;
-  border-bottom: 1px solid #eceef3;
+  border-bottom: 1px solid var(--line);
 }
 .history-panel {
   margin-top: 15px;
@@ -1610,7 +1580,7 @@ onUnmounted(() => {
   padding-left: 20px;
 }
 .history-list li {
-  border-top: 1px solid #eceef3;
+  border-top: 1px solid var(--line);
   padding: 10px 0;
   overflow-wrap: anywhere;
 }
@@ -1628,7 +1598,7 @@ onUnmounted(() => {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
-  background: #f7f8fb;
+  background: var(--canvas);
   border-radius: 7px;
   padding: 10px;
   font-size: 11px;

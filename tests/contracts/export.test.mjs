@@ -43,7 +43,7 @@ test("builder preserves JSON envelopes and rejects missing or conflicting succes
   const doc=composeDocument([{schemas:{},operations:[json,binary]}],[{method:"GET",path:json.path},{method:"GET",path:binary.path}]);
   assert.deepEqual(doc.paths[json.path].get.responses["200"].content["application/json"].schema,{
     type:"object",required:["success","data","request_id"],additionalProperties:false,
-    properties:{success:{const:true},data:{$ref:"#/components/schemas/EmptyObject"},request_id:{type:"string"}},
+    properties:{success:{const:true},data:{$ref:"#/components/schemas/EmptyObject"},request_id:{type:"string"},associations:{type:'object',additionalProperties:{$ref:'#/components/schemas/AssociationDisplayName'},description:'Display-only names for structured references already in this authorized response. Keys are entity-kind:UUID. Original business data and CSV are unchanged; do not persist this metadata or submit it in mutations.'},association_error:{type:'boolean',description:'Display-name projection unavailable. Does not invalidate the acknowledged business response.'}},
   });
   assert.deepEqual(doc.paths[binary.path].get.responses["200"].content,binary.successContent);
   assert.throws(()=>composeDocument([{schemas:{},operations:[{...base,operationId:"missing"}]}],[{method:"GET",path:base.path}]),/success declaration/);

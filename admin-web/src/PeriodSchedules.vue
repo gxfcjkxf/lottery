@@ -1,4 +1,19 @@
 <script setup lang="ts">
+import { vWriteGuard } from "@lottery/shared";
+import SiteIcon from "@lottery/shared/SiteIcon";
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import PlatformTemporalInput from "@lottery/shared/PlatformTemporalInput.vue";
+import { vGlobalLoading } from "@lottery/shared";
+import { formatDisplayDateTime } from "@lottery/shared";
+const displayLocale = useAdminI18n().locale;
 import type { LocalizedMessage } from "@lottery/shared";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useAdminI18n } from "./i18n";
@@ -20,7 +35,7 @@ import {
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
-const { t, message: localized } = useAdminI18n();
+const { t, message: localized, display } = useAdminI18n();
 const api = createPeriodSchedulesApi();
 const guard = createPeriodScheduleRequestGuard();
 const keyFor = createPeriodScheduleKeyTracker();
@@ -86,11 +101,11 @@ function current(ticket: ReturnType<typeof guard.capture>, permitted: boolean) {
 function showError(cause: unknown) {
   if (cause instanceof AdminApiError && cause.status === 401)
     emit("session-invalid");
-  error.value = cause instanceof Error ? cause.message : localized("请求失败，请重试。", "Request failed. Please try again.");
+  error.value = cause instanceof Error ? publicErrorMessage(cause) : localized('admin.copy.4fb9cc4e');
 }
 function checkBrand<T extends { brand_id: string }>(record: T): T {
   if (record.brand_id !== props.brandId)
-    throw new Error(t("服务端返回记录的品牌与当前品牌不匹配，请重新读取。", "The returned record belongs to a different brand. Reload and try again."));
+    throw new Error(t('admin.copy.52d94929'));
   return record;
 }
 function resetEditor() {
@@ -171,7 +186,7 @@ async function loadSchedule() {
     if (result) {
       checkBrand(result);
       if (result.game_id !== game.id)
-        throw new Error(t("排期响应的彩种与当前选择不匹配，请重新读取。", "The schedule response does not match the selected game. Reload and try again."));
+        throw new Error(t('admin.copy.f48cde32'));
       schedule.value = result;
       games.value = games.value.map((item) =>
         item.id === game.id ? { ...item, version: result.game_version } : item,
@@ -212,7 +227,7 @@ async function loadPeriods(offset = pageOffset.value) {
     if (!current(ticket, rights.value.periodView)) return;
     result.periods.forEach(checkBrand);
     if (result.periods.some((period) => period.game_id !== game.id))
-      throw new Error(t("期数响应包含其他彩种记录，请重新读取。", "The period response contains records for another game. Reload and try again."));
+      throw new Error(t('admin.copy.a3ab9cc6'));
     periods.value = result.periods;
     pageOffset.value = result.offset;
   } catch (cause) {
@@ -228,7 +243,7 @@ async function loadPeriods(offset = pageOffset.value) {
 function splitCsv(value: string, label: string): string[] {
   const entries = value.split(",").map((item) => item.trim()).filter(Boolean);
   if (entries.some((item) => item.includes(" ")))
-    throw new Error(`${label}${t("请用逗号分隔，不要在单项中加入空格。", " must be comma-separated; individual values cannot contain spaces.")}`);
+    throw new Error(`${label}${t('admin.copy.7d86b09f')}`);
   return entries;
 }
 
@@ -266,7 +281,7 @@ async function saveSchedule() {
     if (!current(ticket, rights.value.scheduleWrite)) return;
     checkBrand(result);
     if (result.game_id !== game.id)
-      throw new Error(t("保存响应的彩种与当前选择不匹配，请重新读取确认。", "The save response does not match the selected game. Reload to confirm the current state."));
+      throw new Error(t('admin.copy.6326514c'));
     activeScheduleWrite = null;
     savingSchedule.value = false;
     schedule.value = result;
@@ -278,7 +293,7 @@ async function saveSchedule() {
     pauseDates.value = spec.value.pause_dates.join(", ");
     holidayDates.value = spec.value.holiday_dates.join(", ");
     scheduleReason.value = "";
-    notice.value = localized("已保存为不可变排期修订版 {revision}.", "Saved as immutable schedule revision {revision}.", { revision: result.revision });
+    notice.value = localized('admin.versionDisplay.scheduleSaved');
   } catch (cause) {
     if (current(ticket, rights.value.scheduleWrite)) showError(cause);
   } finally {
@@ -317,11 +332,11 @@ async function generatePeriods() {
     if (!current(ticket, rights.value.periodGenerate)) return;
     result.periods.forEach(checkBrand);
     if (result.periods.some((period) => period.game_id !== game.id))
-      throw new Error(t("生成响应包含其他彩种记录，请重新读取确认。", "The generation response contains records for another game. Reload to confirm the current state."));
+      throw new Error(t('admin.copy.e8c93a63'));
     activeGenerateWrite = null;
     generating.value = false;
     generatedTotals.value = { created: result.created, existing: result.existing };
-    notice.value = localized("生成请求已完成，统计来自服务端真实结果。", "Period generation completed; counts reflect the actual server response.");
+    notice.value = localized('admin.copy.5faf1bb0');
     generation.value.reason = "";
     pageOffset.value = 0;
     if (rights.value.periodView) await loadPeriods(0);
@@ -340,25 +355,22 @@ function addBusyWindow() {
 }
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
-    pending: t("待开始", "Pending"),
-    betting: t("投注中", "Betting open"),
-    closed: t("已截止", "Closed"),
-    waiting_draw: t("待开奖", "Awaiting draw"),
-    drawn: t("已开奖", "Drawn"),
-    settling: t("结算中", "Settling"),
-    settled: t("已结算", "Settled"),
-    bet_cancelled: t("投注取消", "Betting cancelled"),
-    judged_cancelled: t("判定取消", "Judgment cancelled"),
+    pending: t('admin.copy.997b3d22'),
+    betting: t('admin.copy.3a20b720'),
+    closed: t('admin.copy.3198ad9b'),
+    waiting_draw: t('admin.copy.aab1777a'),
+    drawn: t('admin.copy.a16e8013'),
+    settling: t('admin.copy.01f90196'),
+    settled: t('admin.copy.037164c2'),
+    bet_cancelled: t('admin.copy.a1834cc2'),
+    judged_cancelled: t('admin.copy.46a60c2c'),
   };
   return labels[status] ?? status;
 }
-function displayTime(value: string) {
-  const parsed = new Date(value);
-  return Number.isFinite(parsed.valueOf()) ? parsed.toLocaleString() : value;
-}
-function movePage(direction: -1 | 1) {
+function displayTime(value: string){ return formatDisplayDateTime(value, displayLocale.value); }
+async function movePage(direction: -1 | 1) {
   const next = Math.max(0, pageOffset.value + direction * pageSize);
-  void loadPeriods(next);
+  await loadPeriods(next);
 }
 
 watch(
@@ -424,172 +436,176 @@ onUnmounted(() => guard.invalidate());
   <section class="period-schedules">
     <header class="page-head">
       <div>
-        <p class="eyebrow">PERIOD SCHEDULES</p>
-        <h2>{{ t("开奖排期与期数", "Draw schedules and periods") }}</h2>
-        <p>{{ t("排期按修订版保存；已生成的期数不可在此编辑。", "Schedules are saved as revisions; generated periods cannot be edited here.") }}</p>
+        <h2>{{ t('admin.copy.18d26d2c') }}</h2>
+        <p>{{ t('admin.copy.1d7831b8') }}</p>
       </div>
-      <span class="brand-tag">{{ t("品牌", "Brand") }} · {{ brandId || t("未选择", "Not selected") }}</span>
+      <span class="brand-tag">{{ t('admin.copy.9c32661d') }} · <AssociationName kind="brand" :id="brandId" :locale="associationLocale" /></span>
     </header>
-    <p class="server-note">{{ t("管理操作由服务端权限和版本校验保护。此页面不提供手动激活入口。", "Management actions require server authorization and version checks. This page has no manual activation action.") }}</p>
 
-    <p v-if="!canSeeAnything" class="callout">{{ t("当前账号没有此品牌的排期或期数查看权限。", "This account cannot view schedules or periods for this brand.") }}</p>
+    <p v-if="!canSeeAnything" class="callout">{{ t('admin.copy.33b6b172') }}</p>
     <template v-else>
       <div v-if="error" class="notice error" role="alert">
-        {{ t(error) }}
-        <button type="button" :disabled="loadingGames || loadingSchedule || loadingPeriods" @click="loadGames()">{{ t("重新读取", "Reload") }}</button>
+        {{ display(error) }}
+        <button v-refresh-button="t('admin.copy.deca021e')" type="button" :disabled="loadingGames || loadingSchedule || loadingPeriods" @click="withGlobalLoading(loadGames)">{{ t('admin.copy.deca021e') }}</button>
       </div>
-      <p v-if="notice" class="notice success" role="status">{{ t(notice) }}</p>
-      <p v-if="!rights.gameCatalogView" class="callout">{{ t("当前账号缺少 game.view.brand / game.view.platform 彩种目录查看权限；排期和期数读写不会替代目录权限。", "This account lacks game.view.brand / game.view.platform permission to view the game catalog; schedule and period access does not grant catalog access.") }}</p>
-      <div v-else-if="loadingGames && !games.length" class="callout" role="status">{{ t("正在读取彩种…", "Loading games…") }}</div>
+      <p v-if="notice" class="notice success" role="status">{{ display(notice) }}</p>
+      <p v-if="!rights.gameCatalogView" class="callout">{{ t('admin.copy.5adcddb8') }}</p>
+      <div v-global-loading v-else-if="loadingGames && !games.length" class="callout" role="status">{{ t('admin.copy.24fadb90') }}</div>
       <div v-if="rights.gameCatalogView && games.length" class="game-picker">
-        <label for="period-game">{{ t("彩种", "Game") }}</label>
+        <label for="period-game">{{ t('admin.copy.7492bbfb') }}</label>
         <select id="period-game" v-model="gameId">
-          <option v-for="game in games" :key="game.id" :value="game.id">{{ game.name }} · {{ game.code }}</option>
+          <option v-for="game in games" :key="game.id" :value="game.id">{{ game.name }}</option>
         </select>
-        <span v-if="selectedGame" class="muted">{{ t("时区", "Timezone") }} {{ selectedGame.timezone }} · {{ t("彩种版本", "Game version") }} {{ selectedGame.version }}</span>
-        <span class="catalog-actions"><button type="button" class="secondary" :disabled="loadingGames || catalogOffset === 0" @click="loadGames(Math.max(0, catalogOffset - catalogLimit))">{{ t("上一页彩种", "Previous games") }}</button><span class="muted">{{ t("目录偏移", "Catalog offset") }} {{ catalogOffset }}</span><button type="button" class="secondary" :disabled="loadingGames || !catalogHasNext" @click="loadGames(catalogOffset + catalogLimit, true)">{{ t("下一页彩种", "Next games") }}</button><button type="button" class="secondary" :disabled="loadingGames" @click="loadGames(0)">{{ t("刷新彩种", "Refresh games") }}</button></span>
+        <span v-if="selectedGame" class="muted">{{ t('admin.copy.f257539c') }} {{ selectedGame.timezone }}</span>
+        <span class="catalog-actions"><button type="button" class="button button-secondary" :disabled="loadingGames || catalogOffset === 0" @click="withGlobalLoading(loadGames, Math.max(0, catalogOffset - catalogLimit))">{{ t('admin.copy.a0844ef2') }}</button><span class="muted">{{ t('admin.copy.48392060') }} {{ catalogOffset }}</span><button type="button" class="button button-secondary" :disabled="loadingGames || !catalogHasNext" @click="withGlobalLoading(loadGames, catalogOffset + catalogLimit, true)">{{ t('admin.copy.239a81b3') }}</button><button v-refresh-button="t('admin.copy.4422e4ac')" type="button" class="button button-secondary" :disabled="loadingGames" @click="withGlobalLoading(loadGames, 0)">{{ t('admin.copy.4422e4ac') }}</button></span>
       </div>
-      <p v-if="rights.gameCatalogView && !games.length && !loadingGames" class="callout">{{ t("此目录页没有彩种记录。可以使用刷新或翻页重新读取。", "No games on this catalog page. Refresh or change pages to reload the catalog.") }}</p>
+      <p v-if="rights.gameCatalogView && !games.length && !loadingGames" class="callout empty-state">{{ t('admin.copy.81366f21') }}</p>
 
       <template v-if="selectedGame">
-        <section v-if="rights.scheduleView || rights.scheduleWrite" class="panel">
-          <div class="section-head">
-            <div>
-              <h3>{{ t("排期配置", "Schedule configuration") }}</h3>
-              <p v-if="schedule">{{ t("当前修订版", "Current revision") }} {{ schedule.revision }} · {{ t("记录", "Record") }} {{ schedule.id }} · {{ t("彩种版本证据", "Game version evidence") }} {{ schedule.game_version }}</p>
-              <p v-else-if="rights.scheduleView">{{ t("尚无已保存排期；以下为基于彩种时区的初始草稿。", "No saved schedule exists; this initial draft uses the game's timezone.") }}</p>
-              <p v-else>{{ t("当前账号没有读取已保存排期的权限；下方表单不能预填现有配置。", "This account cannot read the saved schedule, so the form cannot be prefilled with the current configuration.") }}</p>
-            </div>
-            <button type="button" class="secondary" :disabled="loadingSchedule" @click="loadSchedule">{{ loadingSchedule ? t("读取中…", "Loading…") : t("重新读取排期", "Reload schedule") }}</button>
-          </div>
-          <div v-if="loadingSchedule && !schedule" class="callout">{{ t("正在读取排期…", "Loading schedule…") }}</div>
-          <div v-if="!rights.scheduleView" class="callout">{{ t("当前账号可以保存排期，但不能读取现有配置；提交会创建一个新的不可变修订版。请确认下方全部字段。", "This account can save a schedule but cannot read the existing configuration. Submitting creates an immutable revision; review every field below.") }}</div>
-          <div class="form-grid">
-            <label>{{ t("彩种时区（IANA）", "Game timezone (IANA)") }}
-              <input v-model="spec.timezone" readonly aria-readonly="true">
-            </label>
-            <label>{{ t("排期模式", "Schedule mode") }}
-              <select v-model="spec.mode" :disabled="!rights.scheduleWrite || loadingSchedule">
-                <option value="daily">{{ t("每日固定时间", "Daily fixed times") }}</option>
-                <option value="interval">{{ t("固定间隔", "Fixed interval") }}</option>
-              </select>
-            </label>
-            <label v-if="spec.mode === 'daily'" class="wide">{{ t("每日开奖时间（HH:MM:SS，以逗号分隔）", "Daily draw times (HH:MM:SS, comma-separated)") }}
-              <input v-model="drawTimes" :disabled="!rights.scheduleWrite || loadingSchedule" placeholder="12:00:00, 19:00:00">
-            </label>
-            <label v-else>{{ t("基准间隔（秒）", "Base interval (seconds)") }}
-              <input v-model.number="spec.interval_seconds" type="number" min="30" max="86400" step="1" :disabled="!rights.scheduleWrite || loadingSchedule">
-            </label>
-            <label>{{ t("投注开放提前秒数", "Seconds before draw to open betting") }}
-              <input v-model.number="spec.bet_open_before_seconds" type="number" min="1" max="86400" step="1" :disabled="!rights.scheduleWrite || loadingSchedule">
-            </label>
-            <label>{{ t("投注截止提前秒数", "Seconds before draw to close betting") }}
-              <input v-model.number="spec.bet_close_before_seconds" type="number" min="0" :max="spec.bet_open_before_seconds - 1" step="1" :disabled="!rights.scheduleWrite || loadingSchedule">
-            </label>
-            <label class="wide">{{ t("开奖星期（0 周日至 6 周六）", "Draw weekdays (0 Sunday to 6 Saturday)") }}</label>
-            <div class="weekday-list wide">
-              <label v-for="day in [{n:0,l:t('周日','Sun')},{n:1,l:t('周一','Mon')},{n:2,l:t('周二','Tue')},{n:3,l:t('周三','Wed')},{n:4,l:t('周四','Thu')},{n:5,l:t('周五','Fri')},{n:6,l:t('周六','Sat')}]" :key="day.n" class="check-label">
-                <input v-model="spec.weekdays" type="checkbox" :value="day.n" :disabled="!rights.scheduleWrite || loadingSchedule">{{ day.l }}
-              </label>
-            </div>
-            <label>{{ t("暂停日期（YYYY-MM-DD，逗号分隔）", "Paused dates (YYYY-MM-DD, comma-separated)") }}
-              <input v-model="pauseDates" :disabled="!rights.scheduleWrite || loadingSchedule" placeholder="2026-12-25">
-            </label>
-            <label>{{ t("节假日日期（YYYY-MM-DD，逗号分隔）", "Holiday dates (YYYY-MM-DD, comma-separated)") }}
-              <input v-model="holidayDates" :disabled="!rights.scheduleWrite || loadingSchedule" placeholder="2026-10-01">
-            </label>
-            <label>{{ t("节假日策略", "Holiday policy") }}
-              <select v-model="spec.holiday_policy" :disabled="!rights.scheduleWrite || loadingSchedule">
-                <option value="skip">{{ t("跳过开奖", "Skip draw") }}</option>
-                <option value="normal">{{ t("照常开奖", "Draw as scheduled") }}</option>
-              </select>
-            </label>
-          </div>
-          <div v-if="spec.mode === 'interval'" class="subpanel">
-            <div class="section-head"><div><h4>{{ t("繁忙时段", "Busy windows") }}</h4><p>{{ t("各时段覆盖基准间隔；开始须早于结束，时段不能重叠，最多 128 行。", "Each window overrides the base interval. Start must precede end, windows cannot overlap, and at most 128 rows are allowed.") }}</p></div><button v-if="rights.scheduleWrite" type="button" class="secondary" :disabled="loadingSchedule || spec.busy_windows.length >= 128" @click="addBusyWindow">{{ t("添加时段", "Add window") }}</button></div>
-            <p v-if="!spec.busy_windows.length" class="muted">{{ t("未配置繁忙时段。", "No busy windows configured.") }}</p>
-            <div v-for="(window, index) in spec.busy_windows" :key="index" class="busy-row">
-              <label>{{ t("开始", "Start") }}<input v-model="window.start" type="time" step="1" :disabled="!rights.scheduleWrite || loadingSchedule"></label>
-              <label>{{ t("结束", "End") }}<input v-model="window.end" type="time" step="1" :disabled="!rights.scheduleWrite || loadingSchedule"></label>
-              <label>{{ t("间隔（秒）", "Interval (seconds)") }}<input v-model.number="window.interval_seconds" type="number" min="1" step="1" :disabled="!rights.scheduleWrite || loadingSchedule"></label>
-              <button v-if="rights.scheduleWrite" type="button" class="danger-link" :disabled="loadingSchedule" @click="spec.busy_windows.splice(index, 1)">{{ t("移除", "Remove") }}</button>
-            </div>
-          </div>
-          <div v-if="rights.scheduleWrite" class="save-row">
-            <label class="reason-field">{{ t("操作原因（必填）", "Reason (required)") }}<input v-model="scheduleReason" :disabled="savingSchedule" maxlength="500" :placeholder="t('说明本次排期调整', 'Describe this schedule change')"></label>
-            <button type="button" :disabled="savingSchedule || loadingSchedule || !scheduleReason.trim()" @click="saveSchedule">{{ savingSchedule ? t("保存中…", "Saving…") : t("保存新修订版", "Save new revision") }}</button>
-          </div>
-        </section>
-
-        <section v-if="rights.periodGenerate" class="panel">
-          <div class="section-head"><div><h3>{{ t("生成期数", "Generate periods") }}</h3><p>{{ t("输入按", "Input uses") }} {{ selectedGame.timezone }}{{ t("解读；提交时转换为 UTC。范围最多 7 天，已存在期数由服务端统计。", "; it is converted to UTC on submission. The range is limited to 7 days; existing periods are counted by the server.") }}</p></div></div>
-          <div class="form-grid generate-grid">
-            <label>{{ t("开始（彩种本地时间）", "Start (game local time)") }}<input v-model="generation.from" type="datetime-local" step="1"></label>
-            <label>{{ t("结束（彩种本地时间）", "End (game local time)") }}<input v-model="generation.to" type="datetime-local" step="1"></label>
-            <label class="wide">{{ t("操作原因（必填）", "Reason (required)") }}<input v-model="generation.reason" maxlength="500" :placeholder="t('说明本次期数生成', 'Describe this period generation')"></label>
-          </div>
-          <div class="save-row"><button type="button" :disabled="generating || !generation.reason.trim() || !generation.from || !generation.to" @click="generatePeriods">{{ generating ? t("生成中…", "Generating…") : t("生成期数", "Generate periods") }}</button><span v-if="generatedTotals" class="muted">{{ t("服务端结果：新建", "Server result: created") }} {{ generatedTotals.created }} · {{ t("已存在", "already existed") }} {{ generatedTotals.existing }}</span></div>
-        </section>
-
         <section v-if="rights.periodView" class="panel">
-          <div class="section-head"><div><h3>{{ t("期数记录", "Period records") }}</h3><p>{{ t("只读分页历史；以下列表是独立读取的记录页，不代表单次生成响应中的全部记录。", "Read-only paginated history. This independently loaded page does not represent every record returned by a generation request.") }}</p></div><button type="button" class="secondary" :disabled="loadingPeriods" @click="loadPeriods(pageOffset)">{{ loadingPeriods ? t("读取中…", "Loading…") : t("刷新", "Refresh") }}</button></div>
-          <div v-if="loadingPeriods && !periods.length" class="callout" role="status">{{ t("正在读取期数…", "Loading periods…") }}</div>
-          <div v-else-if="!periods.length" class="callout">{{ t("此页没有期数记录。", "No period records on this page.") }}</div>
+          <div class="section-head"><div><h3>{{ t('admin.copy.e0d09058') }}</h3></div><button v-refresh-button="loadingPeriods ? t('admin.copy.27342bf3') : t('admin.copy.894e2a7d')" type="button" class="button button-secondary" :disabled="loadingPeriods" @click="withGlobalLoading(loadPeriods, pageOffset)">{{ loadingPeriods ? t('admin.copy.27342bf3') : t('admin.copy.894e2a7d') }}</button></div>
+          <div v-global-loading v-if="loadingPeriods && !periods.length" class="callout" role="status">{{ t('admin.copy.caaf8db2') }}</div>
+          <div v-else-if="!periods.length" class="callout empty-state">{{ t('admin.copy.30f48614') }}</div>
           <div v-else class="period-list">
             <article v-for="period in periods" :key="period.id" class="period-card">
               <div class="period-title"><strong>{{ period.period_no }}</strong><span class="status-chip">{{ statusLabel(period.status) }}</span></div>
               <dl>
-                <div><dt>{{ t("序号 / 版本", "Sequence / version") }}</dt><dd>{{ period.sequence }} / {{ period.version }}</dd></div>
-                <div><dt>{{ t("投注开始", "Betting starts") }}</dt><dd>{{ displayTime(period.bet_start_at) }}</dd></div>
-                <div><dt>{{ t("投注截止", "Betting closes") }}</dt><dd>{{ displayTime(period.bet_end_at) }}</dd></div>
-                <div><dt>{{ t("开奖时间", "Draw time") }}</dt><dd>{{ displayTime(period.draw_at) }}</dd></div>
-                <div><dt>{{ t("排期记录", "Schedule record") }}</dt><dd>{{ period.schedule_id || "—" }}</dd></div>
-                <div><dt>{{ t("状态原因", "Status reason") }}</dt><dd>{{ period.state_reason || "—" }}</dd></div>
+                <div><dt>{{ t('admin.copy.a04dd7be') }}</dt><dd>{{ period.sequence }}</dd></div>
+                <div><dt>{{ t('admin.copy.0718d24b') }}</dt><dd>{{ displayTime(period.bet_start_at) }}</dd></div>
+                <div><dt>{{ t('admin.copy.1155ce54') }}</dt><dd>{{ displayTime(period.bet_end_at) }}</dd></div>
+                <div><dt>{{ t('admin.copy.f3f01ff2') }}</dt><dd>{{ displayTime(period.draw_at) }}</dd></div>
+                <div><dt>{{ t('admin.copy.8034df47') }}</dt><dd>{{ period.schedule_id || "—" }}</dd></div>
+                <div><dt>{{ t('admin.copy.8cf33349') }}</dt><dd>{{ period.state_reason || "—" }}</dd></div>
               </dl>
             </article>
           </div>
-          <div class="pagination"><span>{{ t("显示", "Showing") }} {{ periods.length }} {{ t("条", "items") }} · {{ t("偏移", "Offset") }} {{ pageOffset }}</span><div><button type="button" class="secondary" :disabled="pageOffset === 0 || loadingPeriods" @click="movePage(-1)">{{ t("上一页", "Previous") }}</button><button type="button" class="secondary" :disabled="periods.length < pageSize || loadingPeriods" @click="movePage(1)">{{ t("下一页", "Next") }}</button></div></div>
+          <div class="pagination"><span>{{ t('admin.copy.4554742a') }} {{ periods.length }} {{ t('admin.copy.067fed38') }} · {{ t('admin.copy.4ffb01e2') }} {{ pageOffset }}</span><div><button type="button" class="button button-secondary" :disabled="pageOffset === 0 || loadingPeriods" @click="withGlobalLoading(movePage, -1)">{{ t('admin.copy.dbe7a5d7') }}</button><button type="button" class="button button-secondary" :disabled="periods.length < pageSize || loadingPeriods" @click="withGlobalLoading(movePage, 1)">{{ t('admin.copy.2e9c9e7a') }}</button></div></div>
         </section>
+        <details v-if="rights.scheduleView || rights.scheduleWrite" class="console-disclosure">
+          <summary>{{ t('admin.console.scheduleConfiguration') }}<SiteIcon name="down" /></summary>
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <h3>{{ t('admin.copy.96d2d5a8') }}</h3>
+              <p v-if="schedule">{{ t('admin.copy.5f1f6b9f') }} {{ schedule.id }}</p>
+              <p v-else-if="rights.scheduleView">{{ t('admin.copy.2fb1b321') }}</p>
+              <p v-else>{{ t('admin.copy.8f8e9812') }}</p>
+            </div>
+            <button v-refresh-button="loadingSchedule ? t('admin.copy.27342bf3') : t('admin.copy.b7dc54dc')" type="button" class="button button-secondary" :disabled="loadingSchedule" @click="withGlobalLoading(loadSchedule)">{{ loadingSchedule ? t('admin.copy.27342bf3') : t('admin.copy.b7dc54dc') }}</button>
+          </div>
+          <div v-global-loading v-if="loadingSchedule && !schedule" class="callout">{{ t('admin.copy.92bf783b') }}</div>
+          <div v-if="!rights.scheduleView" class="callout">{{ t('admin.copy.9375bcce') }}</div>
+          <div class="form-grid">
+            <label>{{ t('admin.copy.83daf4d6') }}
+              <input v-model="spec.timezone" readonly aria-readonly="true">
+            </label>
+            <label>{{ t('admin.copy.05dbb122') }}
+              <select v-model="spec.mode" :disabled="!rights.scheduleWrite || loadingSchedule">
+                <option value="daily">{{ t('admin.copy.b8853696') }}</option>
+                <option value="interval">{{ t('admin.copy.7495dc0c') }}</option>
+              </select>
+            </label>
+            <label v-if="spec.mode === 'daily'" class="wide">{{ t('admin.copy.0d03eb72') }}
+              <input v-model="drawTimes" :disabled="!rights.scheduleWrite || loadingSchedule" placeholder="12:00:00, 19:00:00">
+            </label>
+            <label v-else>{{ t('admin.copy.bdba3e64') }}
+              <input v-model.number="spec.interval_seconds" type="number" min="30" max="86400" step="1" :disabled="!rights.scheduleWrite || loadingSchedule">
+            </label>
+            <label>{{ t('admin.copy.c1582779') }}
+              <input v-model.number="spec.bet_open_before_seconds" type="number" min="1" max="86400" step="1" :disabled="!rights.scheduleWrite || loadingSchedule">
+            </label>
+            <label>{{ t('admin.copy.7df28047') }}
+              <input v-model.number="spec.bet_close_before_seconds" type="number" min="0" :max="spec.bet_open_before_seconds - 1" step="1" :disabled="!rights.scheduleWrite || loadingSchedule">
+            </label>
+            <label class="wide">{{ t('admin.copy.6f87cdad') }}</label>
+            <div class="weekday-list wide">
+              <label v-for="day in [{n:0,l:t('admin.copy.5cb9ee44')},{n:1,l:t('admin.copy.741629ff')},{n:2,l:t('admin.copy.6a3487ef')},{n:3,l:t('admin.copy.d3866a1a')},{n:4,l:t('admin.copy.052a82ef')},{n:5,l:t('admin.copy.df2b59b2')},{n:6,l:t('admin.copy.aae507ce')}]" :key="day.n" class="check-label">
+                <input v-model="spec.weekdays" type="checkbox" :value="day.n" :disabled="!rights.scheduleWrite || loadingSchedule">{{ day.l }}
+              </label>
+            </div>
+            <label>{{ t('admin.copy.64331095') }}
+              <input v-model="pauseDates" :disabled="!rights.scheduleWrite || loadingSchedule" placeholder="2026-12-25">
+            </label>
+            <label>{{ t('admin.copy.64546e21') }}
+              <input v-model="holidayDates" :disabled="!rights.scheduleWrite || loadingSchedule" placeholder="2026-10-01">
+            </label>
+            <label>{{ t('admin.copy.4c6acdce') }}
+              <select v-model="spec.holiday_policy" :disabled="!rights.scheduleWrite || loadingSchedule">
+                <option value="skip">{{ t('admin.copy.e683b33a') }}</option>
+                <option value="normal">{{ t('admin.copy.ba1b301d') }}</option>
+              </select>
+            </label>
+          </div>
+          <div v-if="spec.mode === 'interval'" class="subpanel">
+            <div class="section-head"><div><h4>{{ t('admin.copy.fa048b16') }}</h4><p>{{ t('admin.copy.ffb2a0c6') }}</p></div><button v-if="rights.scheduleWrite" type="button" class="button button-secondary" :disabled="loadingSchedule || spec.busy_windows.length >= 128" @click="addBusyWindow">{{ t('admin.copy.c36778c0') }}</button></div>
+            <p v-if="!spec.busy_windows.length" class="muted empty-state">{{ t('admin.copy.6a6c3d22') }}</p>
+            <div v-for="(window, index) in spec.busy_windows" :key="index" class="busy-row">
+              <label>{{ t('admin.copy.515ed3b8') }}<PlatformTemporalInput v-model="window.start" type="time" :disabled="!rights.scheduleWrite || loadingSchedule" :locale="displayLocale" /></label>
+              <label>{{ t('admin.copy.1138be4a') }}<PlatformTemporalInput v-model="window.end" type="time" :disabled="!rights.scheduleWrite || loadingSchedule" :locale="displayLocale" /></label>
+              <label>{{ t('admin.copy.2003e1d3') }}<input v-model.number="window.interval_seconds" type="number" min="1" step="1" :disabled="!rights.scheduleWrite || loadingSchedule"></label>
+              <button v-if="rights.scheduleWrite" type="button" class="danger-link" :disabled="loadingSchedule" @click="spec.busy_windows.splice(index, 1)">{{ t('admin.copy.cd87c66a') }}</button>
+            </div>
+          </div>
+          <div v-if="rights.scheduleWrite" class="save-row">
+
+            <button v-write-guard="savingSchedule" type="button" :disabled="savingSchedule || loadingSchedule " @click="withGlobalLoading(saveSchedule)">{{ savingSchedule ? t('admin.copy.2462134b') : t('admin.copy.b33c1f08') }}</button>
+          </div>
+        </section>
+        </details>
+
+        <details v-if="rights.periodGenerate" class="console-disclosure">
+          <summary>{{ t('admin.copy.22320ad6') }}<SiteIcon name="down" /></summary>
+        <section class="panel">
+          <div class="section-head"><div><h3>{{ t('admin.copy.22320ad6') }}</h3><p>{{ t('admin.copy.0df28e10') }} {{ selectedGame.timezone }}{{ t('admin.copy.5a1b6e12') }}</p></div></div>
+          <div class="form-grid generate-grid">
+            <label>{{ t('admin.copy.bcb53f32') }}<PlatformTemporalInput v-model="generation.from" type="datetime-local" :locale="displayLocale" /></label>
+            <label>{{ t('admin.copy.69df62ec') }}<PlatformTemporalInput v-model="generation.to" type="datetime-local" :locale="displayLocale" /></label>
+
+          </div>
+          <div class="save-row"><button v-write-guard="generating" type="button" :disabled="generating  || !generation.from || !generation.to" @click="withGlobalLoading(generatePeriods)">{{ generating ? t('admin.copy.a3028803') : t('admin.copy.22320ad6') }}</button><span v-if="generatedTotals" class="muted">{{ t('admin.copy.501266cd') }} {{ generatedTotals.created }} · {{ t('admin.copy.31913043') }} {{ generatedTotals.existing }}</span></div>
+        </section>
+        </details>
+
       </template>
     </template>
   </section>
 </template>
 
 <style scoped>
-.period-schedules { display: grid; gap: 1rem; min-width: 0; color: #172b3a; }
+.period-schedules { display: grid; gap: 1rem; min-width: 0; color: var(--ink); }
 .page-head, .section-head, .save-row, .game-picker, .pagination, .period-title { display: flex; align-items: center; justify-content: space-between; gap: .8rem; }
 .page-head, .section-head { flex-wrap: wrap; }
 .page-head h2, .section-head h3, .subpanel h4, .page-head p, .section-head p, .subpanel p { margin: .2rem 0; }
 .page-head h2 { font-size: 1.45rem; }
-.eyebrow { color: #597486; font-size: .72rem; font-weight: 750; letter-spacing: .12em; }
-.brand-tag, .status-chip { border-radius: 999px; background: #e8f0f5; color: #315469; padding: .35rem .7rem; font-size: .82rem; white-space: nowrap; }
-.server-note, .callout { padding: .8rem 1rem; background: #f0f5f8; border-radius: .65rem; color: #496274; }
+.eyebrow { color: var(--muted); font-size: .72rem; font-weight: 750; letter-spacing: .12em; }
+.brand-tag, .status-chip { border-radius: 999px; background: var(--canvas); color: var(--ink-secondary); padding: .35rem .7rem; font-size: .82rem; white-space: nowrap; }
+.server-note, .callout { padding: .8rem 1rem; background: var(--canvas); border-radius: .65rem; color: var(--ink-secondary); }
 .callout { margin: 0; }
 .notice { padding: .75rem 1rem; border-radius: .6rem; }
 .notice button { margin-left: .75rem; }
-.error { background: #fff0ed; color: #8b2f22; }
-.success { background: #eaf8ef; color: #25633e; }
-.panel, .subpanel, .period-card { min-width: 0; border: 1px solid #d9e3e9; border-radius: .8rem; background: #fff; padding: 1rem; }
-.subpanel { margin-top: 1rem; background: #f8fafb; }
+.error { background: var(--danger-bg); color: var(--danger-text); }
+.success { background: var(--success-bg); color: var(--success-text); }
+.panel, .subpanel, .period-card { min-width: 0; border: 1px solid var(--line); border-radius: .8rem; background: var(--surface); padding: 1rem; }
+.subpanel { margin-top: 1rem; background: var(--canvas); }
 .game-picker { justify-content: flex-start; flex-wrap: wrap; }
 .catalog-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
 .game-picker select { min-width: min(22rem, 100%); }
-.muted, .section-head p { color: #647987; font-size: .9rem; }
+.muted, .section-head p { color: var(--muted); font-size: .9rem; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem 1rem; margin-top: .9rem; }
 label { display: grid; gap: .35rem; min-width: 0; font-size: .88rem; font-weight: 650; }
-input, select { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid #bacad4; border-radius: .45rem; padding: .6rem .7rem; background: #fff; color: inherit; font: inherit; }
-input:disabled, select:disabled { background: #f2f5f7; color: #758692; }
+input, select { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: .45rem; padding: .6rem .7rem; background: var(--surface); color: inherit; font: inherit; }
+input:disabled, select:disabled { background: var(--canvas); color: var(--muted); }
 .wide { grid-column: 1 / -1; }
 .weekday-list { display: flex; flex-wrap: wrap; gap: .55rem; }
-.check-label { display: inline-flex; align-items: center; gap: .35rem; border: 1px solid #d6e0e6; border-radius: .45rem; padding: .4rem .55rem; }
+.check-label { display: inline-flex; align-items: center; gap: .35rem; border: 1px solid var(--line); border-radius: .45rem; padding: .4rem .55rem; }
 .check-label input { width: auto; }
-.busy-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: .7rem; padding: .65rem 0; border-top: 1px solid #e2e9ed; }
+.busy-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: .7rem; padding: .65rem 0; border-top: 1px solid var(--line); }
 .save-row { justify-content: flex-start; flex-wrap: wrap; margin-top: 1rem; }
 .reason-field { flex: 1 1 18rem; }
-button { border: 0; border-radius: .48rem; padding: .62rem .9rem; background: #176b86; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
-button.secondary { border: 1px solid #bdcbd3; background: #fff; color: #315469; }
+button { border: 0; border-radius: .48rem; padding: .62rem .9rem; background: var(--primary); color: var(--surface); font: inherit; font-weight: 700; cursor: pointer; }
+button.secondary { border: 1px solid var(--line); background: var(--surface); color: var(--ink-secondary); }
 button:disabled { opacity: .55; cursor: not-allowed; }
-.danger-link { background: transparent; color: #a2352b; padding: .5rem; }
+.danger-link { background: transparent; color: var(--danger); padding: .5rem; }
 .period-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 23rem), 1fr)); gap: .75rem; }
 .period-card { padding: .85rem; }
 .period-title { justify-content: flex-start; }
@@ -598,7 +614,7 @@ dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem
 dl div { min-width: 0; }
 dt { color: #70828d; font-size: .76rem; }
 dd { margin: .15rem 0 0; overflow-wrap: anywhere; font-size: .87rem; }
-.pagination { margin-top: .9rem; flex-wrap: wrap; color: #647987; font-size: .88rem; }
+.pagination { margin-top: .9rem; flex-wrap: wrap; color: var(--muted); font-size: .88rem; }
 .pagination div { display: flex; gap: .5rem; }
 @media (max-width: 680px) {
   .form-grid { grid-template-columns: minmax(0, 1fr); }

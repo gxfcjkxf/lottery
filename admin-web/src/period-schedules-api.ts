@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import {
   AdminApiError,
   createIdempotencyKey,
@@ -284,7 +286,6 @@ export function buildUpdateScheduleBody(
   reason: string,
 ): UpdateScheduleBody {
   if (!canonicalInteger(version, 1)) fail("彩种版本无效，请重新读取。");
-  if (!reason.trim()) fail("保存排期前必须填写原因。");
   return {
     version,
     spec: validateScheduleSpec(spec),
@@ -370,7 +371,6 @@ export function buildGeneratePeriodsBody(
   timezone: string,
   reason: string,
 ): GeneratePeriodsBody {
-  if (!reason.trim()) fail("生成期数前必须填写原因。");
   const from = zonedDateTimeToUtc(fromLocal, timezone);
   const to = zonedDateTimeToUtc(toLocal, timezone);
   const span = Date.parse(to) - Date.parse(from);
@@ -381,7 +381,6 @@ export function buildGeneratePeriodsBody(
 
 function validateUtcGenerationBody(body: GeneratePeriodsBody): GeneratePeriodsBody {
   if (!body || typeof body !== "object") fail("生成范围格式无效。");
-  if (!body.reason?.trim()) fail("生成期数前必须填写原因。");
   for (const value of [body.from, body.to]) {
     if (
       typeof value !== "string" ||
@@ -512,11 +511,6 @@ function stableJson(value: unknown): string {
 }
 
 type FetchLike = typeof fetch;
-interface Envelope<T> {
-  success?: boolean;
-  data?: T;
-  error?: { code?: string; message?: string } | null;
-}
 
 export function createPeriodSchedulesApi(fetcher: FetchLike = fetch) {
   async function request<T>(
@@ -539,28 +533,7 @@ export function createPeriodSchedulesApi(fetcher: FetchLike = fetch) {
     });
     if (response.status === 404 && options.method === undefined)
       throw new AdminApiError("资源不存在。", 404);
-    let envelope: Envelope<unknown> | null;
-    try {
-      envelope = await response.json();
-    } catch {
-      throw new AdminApiError("服务器未返回有效 JSON。", response.status);
-    }
-    if (
-      !response.ok ||
-      !isRecord(envelope) ||
-      envelope.success !== true ||
-      !("data" in envelope)
-    ) {
-      const detail = isRecord(envelope?.error) ? envelope.error : undefined;
-      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError(
-        typeof detail?.message === "string"
-              ? detail.message
-              : `请求失败（${response.status}）`,
-        response.status,
-        typeof detail?.code === "string" ? detail.code : undefined,
-      );
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     return parse(envelope.data);
   }
   const id = encodeURIComponent;

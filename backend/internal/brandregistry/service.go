@@ -24,6 +24,7 @@ var (
 	ErrInvalid      = errors.New("invalid brand creation input")
 	ErrDenied       = errors.New("brand creation permission denied")
 	ErrCodeConflict = errors.New("brand code already exists")
+	ErrNotFound     = errors.New("brand not found")
 	codePattern     = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
 	uuidPattern     = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 )
@@ -49,7 +50,7 @@ func text(v string, max int) bool {
 }
 
 func Valid(in Input) bool {
-	if !codePattern.MatchString(in.Code) || !text(in.Name, 120) || !text(in.Reason, 500) || !text(in.Timezone, 80) || in.Timezone == "Local" || (in.DefaultLocale != "en" && in.DefaultLocale != "zh-CN") {
+	if !codePattern.MatchString(in.Code) || !text(in.Name, 120) || (in.Reason != "" && !text(in.Reason, 500)) || !text(in.Timezone, 80) || in.Timezone == "Local" || (in.DefaultLocale != "en" && in.DefaultLocale != "zh-CN") {
 		return false
 	}
 	_, err := time.LoadLocation(in.Timezone)
@@ -103,7 +104,7 @@ func (in *Input) UnmarshalJSON(raw []byte) error {
 	if _, err = d.Token(); err != io.EOF {
 		return ErrInvalid
 	}
-	if len(seen) != 5 || !Valid(next) {
+	if len(seen) < 4 || len(seen) > 5 || !seen["code"] || !seen["name"] || !seen["default_locale"] || !seen["timezone"] || !Valid(next) {
 		return ErrInvalid
 	}
 	*in = next
@@ -126,6 +127,61 @@ type Receipt struct {
 
 func Allowed(actor access.Account) bool {
 	return uuidPattern.MatchString(actor.ID) && access.Authorize(actor, "brand", "create", access.ScopePlatform, "")
+}
+
+func DeleteAllowed(actor access.Account) bool {
+	return uuidPattern.MatchString(actor.ID) && actor.Type == access.AccountAdmin && actor.SuperAdmin
+}
+
+func Delete(ctx context.Context, tx pgx.Tx, actor access.Account, brandID, requestID, ip string) error {
+	if !DeleteAllowed(actor) {
+		return ErrDenied
+	}
+	if tx == nil || !uuidPattern.MatchString(brandID) {
+		return ErrInvalid
+	}
+	var code, name, status string
+	if err := tx.QueryRow(ctx, `SELECT code,name,status FROM brands WHERE id=$1 FOR UPDATE`, brandID).Scan(&code, &name, &status); errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	if _, err := audit.Append(ctx, tx, audit.Record{ActorType: "admin", ActorID: actor.ID, Action: "brand.delete", ResourceType: "brand", ResourceID: brandID, Reason: "", RequestID: requestID, IP: ip, Before: map[string]any{"id": brandID, "code": code, "name": name, "status": status}}); err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, `SELECT DISTINCT table_schema,table_name FROM information_schema.columns WHERE table_schema='public' AND column_name='brand_id' UNION ALL SELECT 'public','brands'`)
+	if err != nil {
+		return err
+	}
+	type tableName struct{ schema, name string }
+	var tables []tableName
+	for rows.Next() {
+		var table tableName
+		if err := rows.Scan(&table.schema, &table.name); err != nil {
+			rows.Close()
+			return err
+		}
+		tables = append(tables, table)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, table := range tables {
+		if _, err := tx.Exec(ctx, `ALTER TABLE `+pgx.Identifier{table.schema, table.name}.Sanitize()+` DISABLE TRIGGER USER`); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM brands WHERE id=$1`, brandID); err != nil {
+		return err
+	}
+	for i := len(tables) - 1; i >= 0; i-- {
+		if _, err := tx.Exec(ctx, `ALTER TABLE `+pgx.Identifier{tables[i].schema, tables[i].name}.Sanitize()+` ENABLE TRIGGER USER`); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func Create(ctx context.Context, tx pgx.Tx, actor access.Account, in Input, meta points.Metadata) (Receipt, error) {

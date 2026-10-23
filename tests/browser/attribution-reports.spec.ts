@@ -250,11 +250,11 @@ test('real attribution reports preserve saved agent scope and export unique orde
     const reviewerLogin = await loginAdmin(reviewerRequest, reviewerName, reviewerPassword);
     const reviewer = adminAPI(reviewerRequest, reviewerLogin.access_token);
 
-    let policy = await creator.get<{ version: number; config: { enabled: boolean; max_depth: number; ratio_cap: string; mode: string | null; cycle: string } }>('/agent-policy');
+    let policy = await creator.get<{ version: number; config: { enabled: boolean; max_depth: number; loss_ratio_cap: string; turnover_ratio_cap: string; mode: string | null; cycle: string } }>('/agent-policy');
     if (!policy.config.enabled) {
       policy = await creator.put('/agent-policy', {
         version: policy.version,
-        config: { enabled: true, max_depth: 3, ratio_cap: '0.1', mode: 'loss', cycle: 'monthly' },
+        config: { enabled: true, max_depth: 3, loss_ratio_cap: '0.1', turnover_ratio_cap: '0.1', mode: 'loss', cycle: 'monthly' },
         reason: 'enable an isolated agent tree for attribution history',
       });
     }

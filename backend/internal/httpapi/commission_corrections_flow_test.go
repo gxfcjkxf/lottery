@@ -29,16 +29,20 @@ func TestCommissionCorrectionHTTPRealPlanRetryApprovalPauseContinueAndExecutionR
 		grantCorrectionHTTP(t, f.managementHTTP, "commission_correction_policy.write.brand", "commission_correction.retry.brand", "commission_correction.approve.brand", "commission_correction.continue.brand", "commission_correction.execute_retry.brand", "commission_payment.approve.brand")
 		agentGrantRoot(t, f.managementHTTP)
 		grantJoinCodeRoot(t, f.managementHTTP)
-		mustStatus(t, f.call("PUT", "/api/v1/admin/agent-policy", "correction-http-agency-01", f.token, managedBrand, map[string]any{"version": 1, "config": map[string]any{"enabled": true, "max_depth": 3, "ratio_cap": "1", "mode": "loss", "cycle": "weekly"}, "reason": "real correction beneficiary policy"}), 200)
+		mustStatus(t, f.call("PUT", "/api/v1/admin/agent-policy", "correction-http-agency-01", f.token, managedBrand, map[string]any{"version": 1, "config": map[string]any{"enabled": true, "max_depth": 3, "loss_ratio_cap": "1", "turnover_ratio_cap": "1", "mode": "loss", "cycle": "weekly"}, "reason": "real correction beneficiary policy"}), 200)
 		r := f.call("POST", "/api/v1/admin/agents", "correction-http-agent-01", f.token, managedBrand, agentNodeBody(2, beneficiary, nil, nil, "1"))
 		mustStatus(t, r, 201)
 		var node agentNode
 		managedData(t, r, &node)
+		beneficiary = node.MemberID
+		// Independent agents no longer share the member fixture's recharge bucket.
+		// Fund a real second source so the reclaim must still leave it untouched.
+		mustStatus(t, f.call("POST", "/api/v1/admin/wallets/"+beneficiary+"/adjust", "correction-http-agent-funding-01", f.token, managedBrand, map[string]string{"source": "recharge", "delta": "100", "reason": "fund independent beneficiary non-commission source"}), 200)
 		r = f.call("POST", "/api/v1/admin/join-codes", "correction-http-code-01", f.token, managedBrand, map[string]any{"kind": "agent", "owner_member_id": beneficiary, "agent_id": node.ID, "starts_at": nil, "expires_at": nil, "reason": "join a real commission beneficiary"})
 		mustStatus(t, r, 201)
 		var code attribution.Code
 		managedData(t, r, &code)
-		r = f.call("POST", "/api/v1/auth/register", "correction-http-player-01", "", managedBrand, map[string]string{"username": "correction_http_" + strings.ReplaceAll(ids.New(), "-", "")[:12], "password": "correction-http-member-password-2026", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1", "agent_code": code.Code})
+		r = f.call("POST", "/api/v1/auth/register", "correction-http-player-01", "", managedBrand, map[string]string{"username": "correction_http_" + strings.ReplaceAll(ids.New(), "-", "")[:12], "password": "correction-http-memb-test-2026", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1", "agent_code": code.Code})
 		mustStatus(t, r, 201)
 		var user struct {
 			AccessToken string `json:"access_token"`

@@ -20,5 +20,5 @@ test('intermediate viewport acceptance reuses real authentication and full betti
   assert.doesNotMatch(betting, /info.project.name === "mobile"/)
   assert.equal((betting.match(/adminPage.viewportSize\(\)!\.width <= 700/g) ?? []).length, 2)
   assert.equal(scripts['test:responsive'], 'playwright test --config playwright.responsive.config.ts')
-  assert.match(shell, /class="nav-item"\s+:aria-label="ui\(item.name\)"\s+:title="ui\(item.name\)"/)
+  assert.match(shell, /class="nav-item"\s+:aria-label="navLabel\(item.name\)"\s+:title="navLabel\(item.name\)"/)
 })

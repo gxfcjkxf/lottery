@@ -34,7 +34,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Safari'], viewport: { width: 1440, height: 900 } } },
-    { name: 'mobile', use: { ...devices['iPhone 13'], viewport: { width: 360, height: 800 } } },
+    { name: 'mobile', use: { ...devices['iPhone 13'], contextOptions: { screen: devices['iPhone 13'].screen } } },
   ],
   webServer: [
     { command: 'pnpm dev:user -- --host 127.0.0.1', url: 'http://localhost:5173', reuseExistingServer: false },

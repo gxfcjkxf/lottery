@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, createIdempotencyKey } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -76,9 +78,6 @@ export function canWrite(
 ): boolean {
   return effectivePermissions(account, brandId).has(`${permission}.write.brand`);
 }
-
-/** Kept as the management section's read gate; writes are checked separately. */
-export const canManage = canView;
 
 export function rolePermissionChoices(
   account: ManagementAccount,
@@ -171,21 +170,8 @@ export function createManagementApi(fetcher: FetchLike = fetch) {
         ? {}
         : { body: JSON.stringify(options.body) }),
     });
-    let envelope: unknown;
-    function invalid(): never { throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE"); }
-    const object = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value));
-    try {
-      envelope = await response.json();
-    } catch {
-      invalid();
-    }
-    if (!object(envelope)) invalid();
-    const detail = envelope.error;
-    if (!response.ok && envelope.success === false && object(detail) &&
-      typeof detail.code === "string" && detail.code.trim() && typeof detail.message === "string" && detail.message.trim()) {
-      throw new AdminApiError(detail.message, response.status, detail.code);
-    }
-    if (!response.ok || envelope.success !== true || !object(envelope.data)) invalid();
+    const envelope = await readAdminEnvelope<T>(response);
+    if (envelope.data == null || !envelope.data || typeof envelope.data !== "object" || Array.isArray(envelope.data)) throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
     return envelope.data as T;
   }
 
@@ -205,7 +191,7 @@ export function createManagementApi(fetcher: FetchLike = fetch) {
         code: string;
         name: string;
         permissions: string[];
-        reason: string;
+        reason?: string;
       },
       key: string,
     ) {
@@ -224,7 +210,7 @@ export function createManagementApi(fetcher: FetchLike = fetch) {
         name: string;
         status: "active" | "disabled";
         permissions: string[];
-        reason: string;
+        reason?: string;
       },
       key: string,
     ) {
@@ -247,7 +233,7 @@ export function createManagementApi(fetcher: FetchLike = fetch) {
         username: string;
         password: string;
         role_ids: string[];
-        reason: string;
+        reason?: string;
       },
       key: string,
     ) {
@@ -265,7 +251,7 @@ export function createManagementApi(fetcher: FetchLike = fetch) {
         version: number;
         role_ids: string[];
         status: string;
-        reason: string;
+        reason?: string;
       },
       key: string,
     ) {
@@ -279,7 +265,7 @@ export function createManagementApi(fetcher: FetchLike = fetch) {
     resetAccountPassword(
       brandId: string,
       id: string,
-      body: { version: number; password: string; reason: string },
+      body: { version: number; password: string; reason?: string },
       key: string,
     ) {
       return request<{ audit_log_id?: string }>(

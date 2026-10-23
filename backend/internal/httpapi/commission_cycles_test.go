@@ -62,6 +62,7 @@ func TestCommissionCyclesHTTPReadAuthorizationPaginationAndRevocation(t *testing
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	mustStatus(t, f.call("GET", "/api/v1/platform/commission-cycles", "", platformToken, managedBrand, nil), 200)
 	mustStatus(t, f.call("POST", "/api/v1/platform/commission-cycles", "cycle-platform-entry-run-denied-01", platformToken, managedBrand, map[string]string{
 		"anchor_order_id": "0199a000-0000-7000-8000-000000000099", "reason": "platform entry has no run route",
@@ -77,7 +78,7 @@ func TestCommissionCyclesHTTPDetailAndCreateNotFoundAndClosedBodies(t *testing.T
 	for _, body := range []string{
 		`{"anchor_order_id":"` + missing + `","reason":"valid reason","extra":true}`,
 		`{"anchor_order_id":"` + missing + `","anchor_order_id":"` + missing + `","reason":"valid reason"}`,
-		`{"anchor_order_id":"` + missing + `","reason":""}`,
+		`{"reason":""}`,
 	} {
 		mustStatus(t, f.rawCall("POST", commissionCyclesPath, "cycle-invalid-body-001", f.token, managedBrand, body), 400)
 	}

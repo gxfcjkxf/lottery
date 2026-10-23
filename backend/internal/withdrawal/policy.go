@@ -121,7 +121,7 @@ func (s Service) GamePolicy(ctx context.Context, brand, game string) (GamePolicy
 	return out, tx.Commit(ctx)
 }
 func checkWrite(tx pgx.Tx, brand string, a access.Account, version int64, reason string) error {
-	if tx == nil || !validIDs(brand, a.ID) || version < 1 || strings.TrimSpace(reason) == "" || len(reason) > 500 || !utf8.ValidString(reason) {
+	if tx == nil || !validIDs(brand, a.ID) || version < 1 || len(reason) > 500 || !utf8.ValidString(reason) {
 		return ErrInvalid
 	}
 	if a.SuperAdmin || !access.Authorize(a, "withdrawal_policy", "write", access.ScopeBrand, brand) {

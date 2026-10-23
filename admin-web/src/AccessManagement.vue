@@ -1,4 +1,17 @@
 <script setup lang="ts">
+import { vWriteGuard } from "@lottery/shared";
+import { AssociationName } from '@lottery/shared'
+import { permissionLabel } from '@lottery/shared'
+import DetailModal from '@lottery/shared/DetailModal.vue'
+import PermissionPicker from '@lottery/shared/PermissionPicker.vue'
+const associationLocale = useAdminI18n().locale;
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import { vInlineValidation } from '@lottery/shared'
 import { computed, onMounted, ref, watch } from "vue";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { useAdminI18n } from "./i18n";
@@ -6,7 +19,7 @@ import type { LocalizedMessage } from "@lottery/shared";
 import {
   assignableRoles as getAssignableRoles,
   canEditAccountScope,
-  canManage,
+  canView,
   canWrite,
   createBodyKeyTracker,
   createManagementApi,
@@ -27,14 +40,19 @@ const emit = defineEmits<{
   (event: "created", saved: AdminRecord): void;
 }>();
 const api = createManagementApi();
-const { t, message } = useAdminI18n();
+const { t, message, display } = useAdminI18n();
 const section = ref<"roles" | "accounts">(
-  canManage(props.account, props.brandId, "role") ||
+  canView(props.account, props.brandId, "role") ||
     canWrite(props.account, props.brandId, "role")
     ? "roles"
     : "accounts",
 );
+const roleEditorOpen = ref(false);
+const accountEditorOpen = ref(false);
+function startRole() { newRole(); error.value = ""; roleEditorOpen.value = true; }
+function startAccount() { newAccount(); error.value = ""; accountEditorOpen.value = true; }
 const roles = ref<RoleRecord[]>([]);
+const viewedRole = ref<RoleRecord | null>(null);
 const accounts = ref<AdminRecord[]>([]);
 const registeredPermissions = ref<string[]>([]);
 const roleCatalogLoaded = ref(false);
@@ -51,7 +69,6 @@ const roleForm = ref({
   name: "",
   status: "active" as "active" | "disabled",
   permissions: [] as string[],
-  reason: "",
 });
 const accountForm = ref({
   id: "",
@@ -60,7 +77,6 @@ const accountForm = ref({
   password: "",
   role_ids: [] as string[],
   status: "active",
-  reason: "",
   reset: false,
 });
 const accountPasswordBytes = computed(
@@ -69,10 +85,10 @@ const accountPasswordBytes = computed(
 const roleKeyFor = createBodyKeyTracker();
 const accountKeyFor = createBodyKeyTracker();
 const canRoles = computed(() =>
-  canManage(props.account, props.brandId, "role"),
+  canView(props.account, props.brandId, "role"),
 );
 const canAccounts = computed(() =>
-  canManage(props.account, props.brandId, "admin"),
+  canView(props.account, props.brandId, "admin"),
 );
 const writeRoles = computed(() =>
   canWrite(props.account, props.brandId, "role"),
@@ -133,18 +149,17 @@ const rolePermissionDisplay = (target: AdminRecord) =>
   );
 const accountPermissionDisplay = (target: AdminRecord) =>
   roleCatalogLoaded.value
-    ? rolePermissionDisplay(target).join(" · ") || t("无权限", "No permissions")
-    : t("无法计算：缺少角色查看权限", "Cannot calculate: role view permission is missing");
+    ? rolePermissionDisplay(target).map(permission => permissionLabel(permission, associationLocale.value)).join(" · ") || t('admin.copy.d04292ff')
+    : t('admin.copy.d0b2463d');
 
 function handleError(cause: unknown) {
+  if (cause instanceof AdminApiError && cause.code === 'ROLE_ASSIGNED') {
+    error.value = message('admin.error.ROLE_ASSIGNED');
+    return;
+  }
   if (cause instanceof AdminApiError && cause.status === 401)
     emit("session-invalid");
-  const serverError = cause instanceof Error ? cause.message : null;
-  error.value = cause instanceof AdminApiError && cause.status === 409
-    ? serverError
-      ? message("{serverError}；数据版本已变化，请刷新后重试。", "{serverError} The data version changed; refresh and try again.", { serverError })
-      : message("数据版本已变化，请刷新后重试。", "The data version changed; refresh and try again.")
-    : serverError ?? message("请求失败", "Request failed");
+  error.value = publicErrorMessage(cause);
 }
 async function load() {
   const requestBrandId = props.brandId;
@@ -177,9 +192,7 @@ async function load() {
         roles.value = [];
         registeredPermissions.value = [];
         roleCatalogLoaded.value = false;
-        roleCatalogMessage.value = message(
-          "角色或权限目录读取失败；目录加载成功后才能配置角色权限。",
-          "Could not load the role or permission catalog. Role permissions can be configured after the catalog loads.",
+        roleCatalogMessage.value = message('admin.copy.afb348bc',
         );
         handleError(cause);
       }
@@ -187,9 +200,7 @@ async function load() {
       roles.value = [];
       registeredPermissions.value = [];
       roleCatalogLoaded.value = false;
-      roleCatalogMessage.value = message(
-        "缺少 role.view 权限，无法读取角色与服务端权限目录。",
-        "Missing role.view permission: the role and server permission catalogs cannot be loaded.",
+      roleCatalogMessage.value = message('admin.copy.56c87a94',
       );
     }
   }
@@ -218,9 +229,7 @@ async function load() {
           .catch((cause: unknown) => {
             if (props.brandId !== requestBrandId) return;
             roleCatalogLoaded.value = false;
-            roleCatalogMessage.value = message(
-              "角色目录读取失败；账号仍可查看，但角色并集无法计算，依赖角色目录的账号变更不可用。",
-              "Could not load the role catalog. Accounts remain viewable, but role permissions cannot be calculated and account changes that depend on the catalog are unavailable.",
+            roleCatalogMessage.value = message('admin.copy.50575ea4',
             );
             handleError(cause);
           }),
@@ -228,9 +237,7 @@ async function load() {
     } else {
       roles.value = [];
       roleCatalogLoaded.value = false;
-      roleCatalogMessage.value = message(
-        "缺少 role.view 权限；账号目录仍可查看，但角色并集无法计算，角色分配、创建账号和角色/状态变更不可用；密码重置仍按账号写权限处理。",
-        "Missing role.view permission. The account list remains viewable, but role permissions cannot be calculated; role assignment, account creation, and role/status changes are unavailable. Password resets still follow account write permission.",
+      roleCatalogMessage.value = message('admin.copy.48fe4041',
       );
     }
     await Promise.all(tasks);
@@ -245,10 +252,11 @@ async function loadRoleCatalog(brandId: string): Promise<RoleRecord[]> {
     if (page.items.length < 50) return all;
   }
 }
-onMounted(() => void load());
+onMounted(() => void withGlobalLoading(load));
 watch(
   () => props.brandId,
   () => {
+    viewedRole.value = null;
     roles.value = [];
     accounts.value = [];
     registeredPermissions.value = [];
@@ -257,14 +265,17 @@ watch(
     offset.value = 0;
     newRole();
     newAccount();
-    void load();
+    void withGlobalLoading(load);
   },
 );
 watch(section, () => {
+  roleEditorOpen.value = false; accountEditorOpen.value = false;
+  viewedRole.value = null;
   offset.value = 0;
   void load();
 });
 function newRole() {
+  roleEditorOpen.value = false;
   roleForm.value = {
     id: "",
     version: 0,
@@ -272,7 +283,6 @@ function newRole() {
     name: "",
     status: "active",
     permissions: [],
-    reason: "",
   };
 }
 function editRole(role: RoleRecord) {
@@ -284,8 +294,8 @@ function editRole(role: RoleRecord) {
     name: role.name,
     status: role.status,
     permissions: [...role.permissions],
-    reason: "",
   };
+  error.value = ""; roleEditorOpen.value = true;
 }
 async function saveRole() {
   const form = roleForm.value;
@@ -296,7 +306,6 @@ async function saveRole() {
     !roleCatalogLoaded.value ||
     !form.name.trim() ||
     roleNameBytes.value > 120 ||
-    !form.reason.trim() ||
     (!form.id && form.code.trim().length > 48)
   )
     return;
@@ -306,13 +315,11 @@ async function saveRole() {
         name: form.name.trim(),
         status: form.status,
         permissions: [...form.permissions].sort(),
-        reason: form.reason.trim(),
       }
     : {
         code: form.code.trim(),
         name: form.name.trim(),
         permissions: [...form.permissions].sort(),
-        reason: form.reason.trim(),
       };
   busy.value = true;
   error.value = "";
@@ -326,7 +333,7 @@ async function saveRole() {
           name: string;
           status: "active" | "disabled";
           permissions: string[];
-          reason: string;
+          reason?: string;
         },
         roleKeyFor(body),
       );
@@ -337,14 +344,14 @@ async function saveRole() {
           code: string;
           name: string;
           permissions: string[];
-          reason: string;
+          reason?: string;
         },
         roleKeyFor(body),
       );
     roleKeyFor.clear();
     notice.value = form.id
-      ? message("角色已保存。", "Role saved.")
-      : message("角色已创建。", "Role created.");
+      ? message('admin.copy.b42c6c01')
+      : message('admin.copy.94e00f54');
     newRole();
     await load();
   } catch (cause) {
@@ -354,6 +361,7 @@ async function saveRole() {
   }
 }
 function newAccount() {
+  accountEditorOpen.value = false;
   accountForm.value = {
     id: "",
     version: 0,
@@ -361,7 +369,6 @@ function newAccount() {
     password: "",
     role_ids: [],
     status: "active",
-    reason: "",
     reset: false,
   };
 }
@@ -374,15 +381,14 @@ function editAccount(target: AdminRecord, reset = false) {
     password: "",
     role_ids: [...target.role_ids],
     status: target.status,
-    reason: "",
     reset,
   };
+  error.value = ""; accountEditorOpen.value = true;
 }
 async function saveAccount() {
   const form = accountForm.value;
   if (
     busy.value ||
-    !form.reason.trim() ||
     (!form.reset && !roleCatalogLoaded.value)
   )
     return;
@@ -391,19 +397,16 @@ async function saveAccount() {
       ? {
           version: form.version,
           password: form.password,
-          reason: form.reason.trim(),
         }
       : {
           version: form.version,
           role_ids: [...form.role_ids],
           status: form.status,
-          reason: form.reason.trim(),
         }
     : {
         username: form.username.trim(),
         password: form.password,
         role_ids: [...form.role_ids],
-        reason: form.reason.trim(),
       };
   busy.value = true;
   error.value = "";
@@ -415,20 +418,20 @@ async function saveAccount() {
           username: string;
           password: string;
           role_ids: string[];
-          reason: string;
+          reason?: string;
         },
         accountKeyFor(body),
       );
       emit("created", saved);
-      notice.value = message("管理员账号已创建。", "Administrator account created.");
+      notice.value = message('admin.copy.2b0119ea');
     } else if (form.reset) {
       await api.resetAccountPassword(
         props.brandId,
         form.id,
-        body as { version: number; password: string; reason: string },
+        body as { version: number; password: string; reason?: string },
         accountKeyFor(body),
       );
-      notice.value = message("密码重置已提交。", "Password reset submitted.");
+      notice.value = message('admin.copy.5c42969c');
     } else {
       await api.updateAccount(
         props.brandId,
@@ -437,11 +440,11 @@ async function saveAccount() {
           version: number;
           role_ids: string[];
           status: string;
-          reason: string;
+          reason?: string;
         },
         accountKeyFor(body),
       );
-      notice.value = message("管理员账号已更新。", "Administrator account updated.");
+      notice.value = message('admin.copy.c1434a1e');
     }
     accountKeyFor.clear();
     newAccount();
@@ -452,9 +455,9 @@ async function saveAccount() {
     busy.value = false;
   }
 }
-function changePage(direction: -1 | 1) {
+async function changePage(direction: -1 | 1) {
   offset.value = Math.max(0, offset.value + direction * 50);
-  void load();
+  await load();
 }
 </script>
 
@@ -462,11 +465,8 @@ function changePage(direction: -1 | 1) {
   <section class="access-page">
     <header class="heading">
       <div>
-        <p class="eyebrow">{{ t("ACCESS CONTROL", "ACCESS CONTROL") }}</p>
-        <h1>{{ t("账号与权限", "Accounts and permissions") }}</h1>
-        <p>{{ t("管理当前品牌的角色权限和后台管理员。", "Manage roles, permissions, and administrator accounts for the current brand.") }}</p>
+        <h1>{{ t('admin.copy.9c6ee39c') }}</h1>
       </div>
-      <span class="brand-tag">{{ t("品牌范围", "Brand scope") }} · {{ brandId || t("未选择", "None selected") }}</span>
     </header>
     <div class="tabs" role="tablist">
       <button
@@ -475,178 +475,123 @@ function changePage(direction: -1 | 1) {
         :disabled="!(canRoles || writeRoles)"
         @click="section = 'roles'"
       >
-        {{ t("角色权限", "Roles and permissions") }}</button
+        {{ t('admin.copy.78c84d5e') }}</button
       ><button
         role="tab"
         :aria-selected="section === 'accounts'"
         :disabled="!(canAccounts || writeAccounts)"
         @click="section = 'accounts'"
       >
-        {{ t("管理员账号", "Administrator accounts") }}
+        {{ t('admin.copy.f8e4afe4') }}
       </button>
     </div>
     <p
       v-if="!(canRoles || writeRoles || canAccounts || writeAccounts)"
       class="callout"
     >
-      {{ t("当前账号没有此品牌的角色或管理员查看、写入权限。", "This account cannot view or modify roles or administrators for this brand.") }}
+      {{ t('admin.copy.ce325bac') }}
     </p>
-    <p v-if="error" class="message error" role="alert">
-      {{ t(error) }} <button type="button" @click="load">{{ t("刷新", "Refresh") }}</button>
+    <p v-if="error && !roleEditorOpen && !accountEditorOpen" class="message error" role="alert">
+      {{ display(error) }} <button v-refresh-button="t('admin.copy.894e2a7d')" type="button" @click="withGlobalLoading(load)">{{ t('admin.copy.894e2a7d') }}</button>
     </p>
-    <p v-if="notice" class="message success" role="status">{{ t(notice) }}</p>
+    <p v-if="notice" class="message success" role="status">{{ display(notice) }}</p>
 
     <template v-if="section === 'roles' && (canRoles || writeRoles)">
       <div class="columns">
-        <form v-if="writeRoles" class="panel form" @submit.prevent="saveRole">
-          <div class="panel-title">
-            <div>
-              <h2>{{ roleForm.id ? t("编辑角色", "Edit role") : t("新建角色", "Create role") }}</h2>
-              <p>
-                {{
-                  t("仅可授予当前品牌账号已拥有的登记权限。", "You can grant only registered permissions already held by an account in this brand.")
-                }}
-              </p>
-            </div>
-            <button
-              v-if="roleForm.id"
-              type="button"
-              class="text-button"
-              @click="newRole"
-            >
-              {{ t("取消", "Cancel") }}
-            </button>
-          </div>
+        <button v-if="writeRoles && !canRoles" class="button button-secondary" type="button" @click="startRole">{{ t('admin.copy.8c7fddfb') }}</button>
+        <DetailModal v-if="writeRoles && roleEditorOpen" :title="roleForm.id ? t('admin.copy.0233b2e8') : t('admin.copy.8c7fddfb')" :close-label="t('association.close')" @close="!busy && (roleEditorOpen = false)">
+          <p v-if="error" class="message error" role="alert">{{ display(error) }}</p>
+        <form v-write-guard="busy" novalidate v-inline-validation v-if="writeRoles" class="panel form" @submit.prevent="withGlobalLoading(saveRole)">
           <label v-if="!roleForm.id"
-            >{{ t("角色代码（最多 48 字符）", "Role code (up to 48 characters)") }}<input
+            >{{ t('admin.copy.8c47c503') }}<input
               v-model.trim="roleForm.code"
               required
               maxlength="48"
               autocomplete="off" /></label
           ><label
-            >{{ t("显示名称（最多 120 字节）", "Display name (up to 120 bytes)") }}<input
+            >{{ t('admin.copy.6404dc43') }}<input
               v-model.trim="roleForm.name"
               required
-            /><small>{{ roleNameBytes }} / 120 {{ t("字节", "bytes") }}</small></label
+            /><small>{{ roleNameBytes }} / 120 {{ t('admin.copy.b2ca2f37') }}</small></label
           >
-          <fieldset class="permissions">
-            <legend>{{ t("品牌权限", "Brand permissions") }}</legend>
-            <label
-              v-for="permission in roleChoices"
-              :key="permission"
-              class="check"
-              ><input
-                v-model="roleForm.permissions"
-                type="checkbox"
-                :value="permission"
-              />{{ permission }}</label
-            >
-            <p v-if="!roleChoices.length" class="muted">
-              {{ t("没有可登记的授权权限。", "There are no grantable registered permissions.") }}
-            </p>
-          </fieldset>
+          <PermissionPicker v-model="roleForm.permissions" :options="roleChoices" :locale="associationLocale" />
           <label v-if="roleForm.id"
-            >{{ t("状态", "Status") }}<select v-model="roleForm.status">
-              <option value="active">{{ t("启用", "Active") }}</option>
-              <option value="disabled">{{ t("停用", "Disabled") }}</option>
-            </select></label
-          ><label
-            >{{ t("变更原因", "Reason for change") }}<textarea
-              v-model.trim="roleForm.reason"
-              required
-              rows="2"
-              maxlength="500"
-            />
-          </label>
+            >{{ t('admin.copy.a765b3ca') }}<select v-model="roleForm.status">
+              <option value="active">{{ t('admin.copy.98d24810') }}</option>
+              <option value="disabled">{{ t('admin.copy.5e3326db') }}</option>
+            </select></label>
           <button
-            class="primary"
+            class="button button-primary"
             :disabled="
               busy ||
               loading ||
               !roleCatalogLoaded ||
-              !roleForm.reason.trim() ||
               !roleForm.name.trim() ||
               roleNameBytes > 120 ||
               (!roleForm.id && !roleForm.code.trim())
             "
           >
-            {{ busy ? t("保存中…", "Saving…") : roleForm.id ? t("保存角色", "Save role") : t("创建角色", "Create role") }}
+            {{ busy ? t('admin.copy.2462134b') : roleForm.id ? t('admin.copy.383c86a7') : t('admin.copy.80f397e0') }}
           </button>
         </form>
+        </DetailModal>
         <div v-if="canRoles" class="panel listing">
           <div class="panel-title">
             <div>
-              <h2>{{ t("品牌角色", "Brand roles") }}</h2>
-              <p>{{ t("每页 50 条；bootstrap 角色只读。", "50 per page; bootstrap roles are read-only.") }}</p>
+              <h2>{{ t('admin.copy.efb1fda4') }}</h2>
             </div>
             <button
               v-if="writeRoles"
               class="text-button"
               type="button"
-              @click="newRole"
+              @click="startRole"
             >
-              {{ t("新建角色", "Create role") }}
+              {{ t('admin.copy.8c7fddfb') }}
             </button>
           </div>
-          <p v-if="loading" class="muted">{{ t("正在读取…", "Loading…") }}</p>
-          <p v-else-if="!roles.length" class="muted">{{ t("暂无角色。", "No roles yet.") }}</p>
+          <p v-if="!roles.length" class="muted empty-state">{{ t('admin.copy.5c979929') }}</p>
           <article v-for="role in roles" :key="role.id" class="record">
             <div class="record-top">
               <div>
-                <b>{{ role.name }}</b
-                ><code>{{ role.code }}</code>
+                <button type="button" class="text-button" @click="viewedRole = role"><AssociationName :record="role" kind="role" :id="role.id" :locale="associationLocale" /></button>
               </div>
               <span class="pill" :class="role.status">{{
-                role.is_bootstrap
-                  ? t("系统只读", "System read-only")
-                  : role.status === "active"
-                    ? t("启用", "Active")
-                    : t("停用", "Disabled")
+                 role.status === "active"
+                    ? t('admin.copy.98d24810')
+                    : t('admin.copy.5e3326db')
               }}</span>
             </div>
-            <p class="permission-summary">
-              {{
-                role.permissions.length
-                  ? role.permissions.join(" · ")
-                  : t("无权限", "No permissions")
-              }}
-            </p>
             <div class="record-bottom">
-              <small
-                >{{ t("版本", "Version") }} {{ role.version
-                }}<span v-if="role.audit_log_id">
-                  · {{ t("审计", "Audit") }} {{ role.audit_log_id }}</span
-                ></small
-              ><button
+              <button
                 v-if="editableRole(role)"
                 class="text-button"
                 type="button"
                 @click="editRole(role)"
               >
-                {{ t("编辑", "Edit") }}</button
-              ><span v-else class="muted">{{ t("只读", "Read-only") }}</span>
+                {{ t('admin.copy.24dfbf6c') }}</button
+              >
             </div>
           </article>
           <footer class="pager">
-            <span>{{ t("第 {page} 页", "Page {page}", { page: offset / 50 + 1 }) }}</span>
+            <span>{{ t('admin.copy.f3d61d27', { page: offset / 50 + 1 }) }}</span>
             <div>
               <button
                 :disabled="offset === 0 || loading"
-                @click="changePage(-1)"
+                @click="withGlobalLoading(changePage, -1)"
               >
-                {{ t("上一页", "Previous") }}</button
+                {{ t('admin.withdrawal.previous') }}</button
               ><button
                 :disabled="!pageHasNext || loading"
-                @click="changePage(1)"
+                @click="withGlobalLoading(changePage, 1)"
               >
-                {{ t("下一页", "Next") }}
+                {{ t('admin.withdrawal.next') }}
               </button>
             </div>
           </footer>
         </div>
         <p v-else class="callout">
           {{
-            t(roleCatalogMessage || message("缺少 role.view 权限；角色列表与完整权限目录不可读取。", "Missing role.view permission: the role list and full permission catalog cannot be loaded."))
+            display(roleCatalogMessage || message('admin.copy.4f2155ad'))
           }}
         </p>
       </div>
@@ -656,170 +601,140 @@ function changePage(direction: -1 | 1) {
       v-else-if="section === 'accounts' && (canAccounts || writeAccounts)"
     >
       <div class="columns">
-        <form
+        <button v-if="writeAccounts && !canAccounts && roleCatalogLoaded" class="button button-secondary" type="button" @click="startAccount">{{ t('admin.copy.0f043095') }}</button>
+        <DetailModal v-if="writeAccounts && accountEditorOpen && (roleCatalogLoaded || accountForm.reset)" :title="accountForm.id ? accountForm.reset ? t('admin.copy.1945c635') : t('admin.copy.b74a3dd7') : t('admin.copy.d2a40bda')" :close-label="t('association.close')" @close="!busy && (accountEditorOpen = false)">
+          <p v-if="error" class="message error" role="alert">{{ display(error) }}</p>
+        <form v-write-guard="busy" novalidate v-inline-validation
           v-if="writeAccounts && (roleCatalogLoaded || accountForm.reset)"
           class="panel form"
-          @submit.prevent="saveAccount"
+          @submit.prevent="withGlobalLoading(saveAccount)"
         >
-          <div class="panel-title">
-            <div>
-              <h2>
-                {{
-                  accountForm.id
-                    ? accountForm.reset
-                      ? t("重置管理员密码", "Reset administrator password")
-                      : t("变更管理员", "Edit administrator")
-                    : t("创建管理员", "Create administrator")
-                }}
-              </h2>
-              <p>{{ t("新账号仅限当前品牌，不支持创建超级管理员。", "New accounts are limited to this brand; super administrators cannot be created here.") }}</p>
-            </div>
-            <button
-              v-if="accountForm.id"
-              class="text-button"
-              type="button"
-              @click="newAccount"
-            >
-              {{ t("取消", "Cancel") }}
-            </button>
-          </div>
           <template v-if="!accountForm.id"
             ><label
-              >{{ t("用户名（最多 32 字符）", "Username (up to 32 characters)") }}<input
+              >{{ t('admin.copy.91eab520') }}<input
                 v-model.trim="accountForm.username"
                 required
                 maxlength="32"
                 autocomplete="username" /></label
             ><label
-              >{{ t("初始密码（16–128 字节）", "Initial password (16–128 bytes)") }}<input
+              >{{ t('admin.copy.f1a553c9') }}<input
                 v-model="accountForm.password"
                 type="password"
                 required
                 autocomplete="new-password"
-              /><small>{{ accountPasswordBytes }} {{ t("字节", "bytes") }}</small></label
+              /><small>{{ accountPasswordBytes }} {{ t('admin.copy.b2ca2f37') }}</small></label
             ></template
           >
           <template v-else-if="accountForm.reset"
             ><label
-              >{{ t("新密码（16–128 字节）", "New password (16–128 bytes)") }}<input
+              >{{ t('admin.copy.683caabd') }}<input
                 v-model="accountForm.password"
                 type="password"
                 required
                 autocomplete="new-password"
-              /><small>{{ accountPasswordBytes }} {{ t("字节", "bytes") }}</small></label
+              /><small>{{ accountPasswordBytes }} {{ t('admin.copy.b2ca2f37') }}</small></label
             ></template
           >
           <template v-else
             ><p class="readonly">
-              {{ t("账号", "Account") }}: <b>{{ accountForm.username }}</b>
+              {{ t('admin.copy.851c6121') }}: <b>{{ accountForm.username }}</b>
             </p>
             <label
-              >{{ t("状态", "Status") }}<select v-model="accountForm.status">
-                <option value="active">{{ t("启用", "Active") }}</option>
-                <option value="disabled">{{ t("停用", "Disabled") }}</option>
+              >{{ t('admin.copy.a765b3ca') }}<select v-model="accountForm.status">
+                <option value="active">{{ t('admin.copy.98d24810') }}</option>
+                <option value="disabled">{{ t('admin.copy.5e3326db') }}</option>
               </select></label
             ></template
           >
           <fieldset v-if="!accountForm.reset" class="permissions">
-            <legend>{{ t("品牌角色（可多选）", "Brand roles (multiple selection)") }}</legend>
+            <legend>{{ t('admin.copy.31ff8470') }}</legend>
             <label v-for="role in assignableRoles" :key="role.id" class="check"
               ><input
                 v-model="accountForm.role_ids"
                 type="checkbox"
                 :value="role.id"
-              />{{ role.name }} <code>{{ role.code }}</code></label
+              /><AssociationName :record="role" kind="role" :id="role.id" :locale="associationLocale" /></label
             >
-            <p v-if="!assignableRoles.length" class="muted">
-              {{ t("没有当前账号可安全分配的启用角色。", "There are no active roles this account can safely assign.") }}
+            <p v-if="!assignableRoles.length" class="muted empty-state">
+              {{ t('admin.copy.222e48f4') }}
             </p>
           </fieldset>
           <div v-if="!accountForm.reset" class="union">
-            <b>{{ t("所选角色权限并集", "Combined permissions of selected roles") }}</b
+            <b>{{ t('admin.copy.54bf1d77') }}</b
             ><span>{{
               selectedRolePermissionUnion.length
-                ? selectedRolePermissionUnion.join(" · ")
-                : t("无权限", "No permissions")
+                ? selectedRolePermissionUnion.map(permission => permissionLabel(permission, associationLocale)).join(" · ")
+                : t('admin.copy.d04292ff')
             }}</span
             ><small
-              >{{ t("权限按角色合并并去重计算；账号不可获得当前操作者尚未拥有的权限。", "Permissions are combined across roles and deduplicated. An account cannot receive permissions the current operator does not have.") }}</small
+              >{{ t('admin.copy.ebec9012') }}</small
             >
           </div>
-          <label
-            >{{ t("变更原因", "Reason for change") }}<textarea
-              v-model.trim="accountForm.reason"
-              required
-              rows="2"
-              maxlength="500"
-            /></label
-          ><button
-            class="primary"
+          <button
+            class="button button-primary"
             :disabled="
               busy ||
-              !accountForm.reason.trim() ||
               ((!accountForm.id || accountForm.reset) &&
-                (accountPasswordBytes < 16 || accountPasswordBytes > 128))
+                (accountPasswordBytes < 6 || accountPasswordBytes > 30))
             "
           >
             {{
               busy
-                ? t("提交中…", "Submitting…")
+                ? t('admin.copy.46511dc0')
                 : accountForm.id
                   ? accountForm.reset
-                    ? t("重置密码", "Reset password")
-                    : t("保存变更", "Save changes")
-                  : t("创建管理员", "Create administrator")
+                    ? t('admin.copy.d1e2ba79')
+                    : t('admin.copy.56c2cb94')
+                  : t('admin.copy.d2a40bda')
             }}
           </button>
         </form>
+        </DetailModal>
         <p
           v-if="(canAccounts || writeAccounts) && !roleCatalogLoaded"
           class="callout"
         >
           {{
-            t(roleCatalogMessage || message("缺少 role.view 权限；管理员目录是否可读取取决于 admin.view，角色并集无法计算。依赖角色目录的创建和变更暂不可用。", "Missing role.view permission: the administrator list depends on admin.view, combined role permissions cannot be calculated, and changes that depend on the role catalog are unavailable."))
+            display(roleCatalogMessage || message('admin.copy.d6eded98'))
           }}
         </p>
         <p v-if="writeAccounts && !canAccounts" class="callout">
-          {{ t("当前账号有管理员写权限但没有 admin.view，无法读取管理员目录；此处只可创建新账号，不能选择或查看现有账号。", "This account has administrator write permission but lacks admin.view, so the administrator list cannot be loaded. You can create a new account here, but cannot select or view existing accounts.") }}
+          {{ t('admin.copy.f738dce4') }}
         </p>
         <div v-if="canAccounts" class="panel listing">
           <div class="panel-title">
             <div>
-              <h2>{{ t("品牌管理员", "Brand administrators") }}</h2>
-              <p>{{ t("本人、超级管理员和跨品牌账号只读。", "Your own account, super administrators, and cross-brand accounts are read-only.") }}</p>
+              <h2>{{ t('admin.copy.09cda972') }}</h2>
             </div>
             <button
               v-if="writeAccounts && roleCatalogLoaded"
               class="text-button"
               type="button"
-              @click="newAccount"
+              @click="startAccount"
             >
-              {{ t("新建管理员", "Create administrator") }}
+              {{ t('admin.copy.0f043095') }}
             </button>
           </div>
-          <p v-if="loading" class="muted">{{ t("正在读取…", "Loading…") }}</p>
-          <p v-else-if="!accounts.length" class="muted">{{ t("暂无管理员。", "No administrators yet.") }}</p>
+          <p v-if="!accounts.length" class="muted empty-state">{{ t('admin.copy.3a1d4b47') }}</p>
           <article v-for="target in accounts" :key="target.id" class="record">
             <div class="record-top">
               <div>
                 <b>{{ target.username }}</b
-                ><code>{{ target.id }}</code>
+                >
               </div>
               <span class="pill" :class="target.status">{{
-                target.super_admin ? t("超级管理员", "Super administrator") : target.status === "active" ? t("启用", "Active") : t("停用", "Disabled")
+                target.status === "active" ? t('admin.copy.98d24810') : t('admin.copy.5e3326db')
               }}</span>
             </div>
             <p class="permission-summary">
-              {{ t("角色", "Roles") }}: {{ target.role_codes.join(" · ") || t("未分配", "Unassigned") }}
+              {{ t('admin.copy.cebd8508') }}: <span v-for="roleId in target.role_ids" :key="roleId" class="role-name"><AssociationName :record="target" kind="role" :id="roleId" :locale="associationLocale" /> </span><span v-if="!target.role_ids.length">{{ t('admin.copy.1b957d47') }}</span>
             </p>
-            <p class="permission-summary">
-              {{ t("权限并集", "Combined permissions") }}: {{ accountPermissionDisplay(target) }}
-            </p>
+            <details class="permission-summary">
+              <summary>{{ t('admin.copy.abc7e339') }}</summary>
+              <p>{{ accountPermissionDisplay(target) }}</p>
+            </details>
             <div class="record-bottom">
-              <small
-                >{{ t("版本", "Version") }} {{ target.version }} ·
-                {{ t("{count} 个品牌", "{count} brands", { count: target.brand_ids.length }) }}</small
-              >
+
               <div v-if="writeAccounts" class="inline-actions">
                 <button
                   v-if="editableAccount(target)"
@@ -827,57 +742,65 @@ function changePage(direction: -1 | 1) {
                   type="button"
                   @click="editAccount(target)"
                 >
-                  {{ t("编辑", "Edit") }}</button
+                  {{ t('admin.copy.24dfbf6c') }}</button
                 ><button
                   v-if="canResetTarget(target)"
                   class="text-button"
                   type="button"
                   @click="editAccount(target, true)"
                 >
-                  {{ t("重置密码", "Reset password") }}</button
+                  {{ t('admin.copy.d1e2ba79') }}</button
                 ><span
                   v-if="!editableAccount(target) && !canResetTarget(target)"
                   class="muted"
-                  >{{ t("只读", "Read-only") }}</span
+                  >{{ t('admin.copy.9be4e033') }}</span
                 >
               </div>
-              <span v-else class="muted">{{ t("只读", "Read-only") }}</span>
+              <span v-else class="muted">{{ t('admin.copy.9be4e033') }}</span>
             </div>
           </article>
           <footer class="pager">
-            <span>{{ t("第 {page} 页", "Page {page}", { page: offset / 50 + 1 }) }}</span>
+            <span>{{ t('admin.copy.f3d61d27', { page: offset / 50 + 1 }) }}</span>
             <div>
               <button
                 :disabled="offset === 0 || loading"
-                @click="changePage(-1)"
+                @click="withGlobalLoading(changePage, -1)"
               >
-                {{ t("上一页", "Previous") }}</button
+                {{ t('admin.copy.dbe7a5d7') }}</button
               ><button
                 :disabled="!pageHasNext || loading"
-                @click="changePage(1)"
+                @click="withGlobalLoading(changePage, 1)"
               >
-                {{ t("下一页", "Next") }}
+                {{ t('admin.copy.2e9c9e7a') }}
               </button>
             </div>
           </footer>
         </div>
         <p v-else class="callout">
-          {{ t("缺少 admin.view 权限；管理员目录不可读取。具备写权限时仍需 role.view 权限才能安全分配角色。", "Missing admin.view permission: the administrator list cannot be loaded. Even with write permission, role.view is required to assign roles safely.") }}
+          {{ t('admin.copy.1a880f7b') }}
         </p>
       </div>
     </template>
+    <DetailModal v-if="viewedRole && canRoles" :title="t('association.roleDetails')" :close-label="t('association.close')" @close="viewedRole = null">
+      <dl>
+        <div><dt>{{ t('admin.copy.6404dc43') }}</dt><dd><AssociationName :record="viewedRole" kind="role" :id="viewedRole.id" :locale="associationLocale" /></dd></div>
+        <div><dt>{{ t('admin.copy.a765b3ca') }}</dt><dd>{{ viewedRole.status === 'active' ? t('admin.copy.98d24810') : t('admin.copy.5e3326db') }}</dd></div>
+        <div><dt>{{ t('admin.copy.0ede5b86') }}</dt><dd><ul v-if="viewedRole.permissions.length"><li v-for="permission in viewedRole.permissions" :key="permission">{{ permissionLabel(permission, associationLocale) }}</li></ul><span v-else>{{ t('admin.copy.d04292ff') }}</span></dd></div>
+      </dl>
+    </DetailModal>
   </section>
 </template>
 
 <style scoped>
 .access-page {
   --ink: #252a36;
-  --sub: #737b8c;
-  --line: #e9ebf0;
-  --primary: #5969df;
+  --sub: var(--muted);
   color: var(--ink);
   width: 100%;
   min-width: 0;
+}
+.editor-heading {
+  scroll-margin-block-start: 24px;
 }
 .heading {
   display: flex;
@@ -930,7 +853,7 @@ function changePage(direction: -1 | 1) {
 }
 .columns {
   display: grid;
-  grid-template-columns: minmax(260px, 0.86fr) minmax(0, 1.3fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -944,10 +867,19 @@ function changePage(direction: -1 | 1) {
 }
 .panel-title {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
   margin-bottom: 14px;
+}
+.panel-title > div {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.panel-title > button {
+  flex-shrink: 0;
+  white-space: normal;
 }
 .panel-title h2 {
   font-size: 15px;
@@ -977,7 +909,7 @@ function changePage(direction: -1 | 1) {
   min-width: 0;
   border: 1px solid #dfe3eb;
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   padding: 9px 10px;
   color: var(--ink);
 }
@@ -1017,7 +949,7 @@ code {
   color: #777f90;
   overflow-wrap: anywhere;
 }
-.primary {
+.button-primary {
   border: 0;
   border-radius: 7px;
   background: var(--primary);
@@ -1025,7 +957,7 @@ code {
   font-weight: 700;
   padding: 10px 12px;
 }
-.primary:hover {
+.button-primary:hover {
   background: #4858cf;
 }
 .text-button {

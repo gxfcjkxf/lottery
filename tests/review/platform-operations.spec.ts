@@ -10,14 +10,14 @@ const scoped = { 'X-Brand-ID': brand };
 
 test('platform reads genuine archive bytes and notification history without write routes', async ({ page, playwright, operatorSession }, info) => {
   await page.goto('http://127.0.0.1:5183/register');
-  await page.getByLabel('Choose a username or phone', { exact: true }).fill(`operations_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`);
+  await page.getByLabel('Choose an account or phone', { exact: true }).fill(`operations_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`);
   await page.getByLabel('Password', { exact: true }).fill('owned-operations-review-password-2026');
   await page.locator('.auth-form input[type="checkbox"]').nth(0).check();
   await page.locator('.auth-form input[type="checkbox"]').nth(1).check();
   const registered = page.waitForResponse(r => r.url() === 'http://127.0.0.1:5183/api/v1/auth/register');
   await page.getByRole('button', { name: /Continue/ }).click();
   expect((await registered).status()).toBe(201);
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/$/);
   const memberResponse = await page.request.get('http://127.0.0.1:5183/api/v1/me');
   expect(memberResponse.status()).toBe(200);
   const member = (await memberResponse.json()).data.member.id;
@@ -79,9 +79,9 @@ test('platform reads genuine archive bytes and notification history without writ
 
   await page.goto(origin);
   await page.getByRole('button', { name: 'Audit and operations', exact: true }).click();
-  await page.locator('.brand-picker select').selectOption(brand);
   const tabs = page.getByTestId('platform-operations-tabs');
   await tabs.getByRole('button', { name: 'Report archives', exact: true }).click();
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   await page.getByTestId('platform-archive-list').getByRole('button', { name: archive.id, exact: true }).click();
   const detail = page.getByTestId('platform-archive-detail');
   await expect(detail).toContainText(archive.payload_sha256);
@@ -121,7 +121,7 @@ test('platform reads genuine archive bytes and notification history without writ
   expect((await (await page.request.get(`${origin}/api/v1/platform/notification-templates`, { headers: scoped })).json()).data).toEqual(templates);
   expect((await (await page.request.get(historyURL, { headers: scoped })).json()).data).toEqual(history);
   expect(await readWallet()).toEqual(walletBefore);
-  await page.locator('.brand-picker select').selectOption('');
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(page.getByTestId('platform-template-detail')).toHaveCount(0);
   await expect(page.getByTestId('platform-template-list').locator('tbody tr')).toHaveCount(1);
 });
@@ -136,8 +136,8 @@ test('notification paging clears failed and changed-brand data', async ({ page }
   });
   await page.goto(origin);
   await page.getByRole('button', { name: 'Audit and operations', exact: true }).click();
-  await page.locator('.brand-picker select').selectOption(brand);
   await page.getByTestId('platform-operations-tabs').getByRole('button', { name: 'Notifications', exact: true }).click();
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   const panel = page.getByTestId('platform-notifications');
   await expect(page.getByTestId('platform-delivery-list').locator('tbody tr')).toHaveCount(50);
   await page.getByTestId('platform-delivery-pages').getByRole('button', { name: 'Next', exact: true }).click();
@@ -147,7 +147,7 @@ test('notification paging clears failed and changed-brand data', async ({ page }
   await panel.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(panel.getByRole('alert')).toContainText('Delivery unavailable');
   await expect(panel).not.toContainText(rows[50].event_id);
-  await page.locator('.brand-picker select').selectOption('');
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(panel.getByRole('alert')).toHaveCount(0);
   await expect(panel).not.toContainText(rows[0].event_id);
 });

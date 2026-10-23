@@ -79,7 +79,7 @@ type Revision struct {
 	Status     string     `json:"status"`
 	StartsAt   *time.Time `json:"starts_at"`
 	ExpiresAt  *time.Time `json:"expires_at"`
-	ActorID    string     `json:"actor_id"`
+	ActorID    *string    `json:"actor_id"`
 	Reason     string     `json:"reason"`
 	AuditLogID string     `json:"audit_log_id"`
 	CreatedAt  time.Time  `json:"created_at"`
@@ -120,6 +120,9 @@ func Normalize(agent, referral string) (string, string, error) {
 }
 func DatabaseError(err error) error {
 	var p *pgconn.PgError
+	if errors.As(err, &p) && p.ConstraintName == "join_codes_one_referral_per_member" {
+		return ErrState
+	}
 	if errors.As(err, &p) && p.ConstraintName == "join_code_unavailable" {
 		return ErrUnavailable
 	}
@@ -134,7 +137,7 @@ func validWindow(start, end *time.Time) bool {
 	return start == nil || end == nil || start.Before(*end)
 }
 func validReason(s string) bool {
-	return utf8.ValidString(s) && strings.TrimSpace(s) != "" && len([]byte(s)) <= 500
+	return s == "" || (utf8.ValidString(s) && strings.TrimSpace(s) != "" && len([]byte(s)) <= 500)
 }
 func closed(b []byte, keys ...string) error {
 	d := json.NewDecoder(bytes.NewReader(b))
@@ -162,7 +165,14 @@ func closed(b []byte, keys ...string) error {
 		}
 	}
 	t, e = d.Token()
-	if e != nil || t != json.Delim('}') || len(seen) != len(keys) {
+	optionalReason := false
+	for _, k := range keys {
+		if k == "reason" {
+			optionalReason = true
+			break
+		}
+	}
+	if e != nil || t != json.Delim('}') || (len(seen) != len(keys) && !(optionalReason && len(seen) == len(keys)-1)) {
 		return ErrInvalid
 	}
 	var tail any

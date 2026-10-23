@@ -10,6 +10,7 @@ import (
 )
 
 func TestCommissionPolicyContentionDoesNotHoldBettingWallet(t *testing.T) {
+	t.Parallel()
 	f := newBettingFixture(t, storeTestBrand)
 	fundBettingWallet(t, f, 20)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

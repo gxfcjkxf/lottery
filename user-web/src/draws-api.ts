@@ -1,3 +1,4 @@
+import { readApiEnvelope } from '@lottery/shared'
 import {
   BettingApiError,
   bettingBasePath,
@@ -426,29 +427,6 @@ function queryString(
   return params.toString();
 }
 
-function unwrap(value: unknown): Record<string, unknown> {
-  const root = object(value, "response");
-  if ("success" in root || "data" in root) {
-    if (root.success !== true) {
-      const error =
-        typeof root.error === "object" && root.error
-          ? (root.error as Record<string, unknown>)
-          : undefined;
-      throw new BettingApiError(
-        typeof root.error === "string"
-          ? root.error
-          : typeof error?.message === "string"
-            ? error.message
-            : "Request failed",
-        200,
-        typeof error?.code === "string" ? error.code : undefined,
-      );
-    }
-    return object(root.data, "response.data");
-  }
-  return root;
-}
-
 export function createDrawsApi(
   brandCode?: string,
   fetcher: typeof fetch = fetch,
@@ -472,38 +450,9 @@ export function createDrawsApi(
       );
     }
 
-    let payload: unknown;
-    try {
-      payload = JSON.parse(await response.text());
-    } catch {
-      throw new BettingApiError(
-        response.ok
-          ? "Server returned malformed JSON"
-          : `Request failed (${response.status})`,
-        response.ok ? 502 : response.status,
-        response.ok ? "invalid_response" : undefined,
-      );
-    }
-    if (!response.ok) {
-      const envelope =
-        payload && typeof payload === "object"
-          ? (payload as Record<string, unknown>)
-          : undefined;
-      const error =
-        typeof envelope?.error === "object" && envelope.error
-          ? (envelope.error as Record<string, unknown>)
-          : undefined;
-      throw new BettingApiError(
-        typeof envelope?.error === "string"
-          ? envelope.error
-          : typeof error?.message === "string"
-            ? error.message
-            : `Request failed (${response.status})`,
-        response.status,
-        typeof error?.code === "string" ? error.code : undefined,
-      );
-    }
-    return unwrap(payload);
+    const envelope = await readApiEnvelope(response, (message,status,code)=>new BettingApiError(message,status,code === 'INVALID_RESPONSE' ? 'invalid_response' : code));
+    return object(envelope.data, "response.data");
+
   }
 
   return {

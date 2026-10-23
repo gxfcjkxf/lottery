@@ -8,19 +8,19 @@ func TestSealedResponseAndFingerprint(t *testing.T) {
 		t.Fatal(err)
 	}
 	plaintext := []byte(`{"access_token":"private-token"}`)
-	encrypted, err := e.seal(plaintext)
+	encrypted, err := e.sealBound(plaintext, []byte("scope-A"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(encrypted) == string(plaintext) {
 		t.Fatal("response not encrypted")
 	}
-	got, err := e.open(encrypted)
+	got, err := e.openBound(encrypted, []byte("scope-A"))
 	if err != nil || string(got) != string(plaintext) {
 		t.Fatal("decrypt", err)
 	}
 	encrypted[len(encrypted)-1] ^= 1
-	if _, err = e.open(encrypted); err == nil {
+	if _, err = e.openBound(encrypted, []byte("scope-A")); err == nil {
 		t.Fatal("tamper accepted")
 	}
 	if e.Fingerprint("password1") == e.Fingerprint("password2") {

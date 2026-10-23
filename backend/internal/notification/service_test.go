@@ -273,7 +273,7 @@ func TestFreshSchemaQueueEnqueuesCurrentEventsOnly(t *testing.T) {
 		t.Fatal(e)
 	}
 	page, e := s.List(ctx, brand, m, 20, 0)
-	if e != nil || len(page.Items) != 1 || page.Items[0].Content.En.Title == "" || page.Items[0].TemplateVersion != 1 {
+	if e != nil || len(page.Items) != 1 || page.Items[0].Content != (Content{I18nKey: "member.joined", I18nVersion: 1}) || page.Items[0].TemplateVersion != 1 {
 		t.Fatal(page, e)
 	}
 	var contentIsCurrent bool

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"reflect"
 	"strings"
 	"testing"
@@ -21,12 +22,13 @@ import (
 )
 
 func TestBetCommissionRuleSnapshotCapturesPrivateImmutablePlacementEvidence(t *testing.T) {
+	t.Parallel()
 	f := newBettingFixture(t, storeTestBrand)
 	ctx := context.Background()
 	var ready bool
 	if err := f.db.QueryRow(ctx, `SELECT
  to_regclass('brand_commission_policies') IS NOT NULL
- AND to_regclass('commission_policy_revisions') IS NOT NULL
+ AND to_regclass('commission_policy_revisions') IS NULL
  AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='bet_orders' AND column_name='commission_rule_snapshot')`).Scan(&ready); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +56,7 @@ func TestBetCommissionRuleSnapshotCapturesPrivateImmutablePlacementEvidence(t *t
 		var err error
 		agentPolicy, err = agents.SavePolicy(ctx, tx, f.brand, actor, agency.PolicyInput{
 			Version: 1,
-			Config:  agency.PolicyConfig{Enabled: true, MaxDepth: 3, RatioCap: "0.1", Mode: "loss", Cycle: "weekly"},
+			Config:  agency.PolicyConfig{Enabled: true, MaxDepth: 3, LossRatioCap: "0.1", TurnoverRatioCap: "0.1", Mode: "loss", Cycle: "weekly"},
 			Reason:  "commission snapshot fixture evidence",
 		}, points.Metadata{RequestID: ids.New()})
 		return err
@@ -62,8 +64,8 @@ func TestBetCommissionRuleSnapshotCapturesPrivateImmutablePlacementEvidence(t *t
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		var err error
 		node, err = agents.Create(ctx, tx, f.brand, actor, agency.CreateInput{
-			PolicyVersion: agentPolicy.Version, MemberID: f.member,
-			Config: agency.NodeConfig{Ratio: "0.08", Status: "active", CanCreateChildren: true},
+			PolicyVersion: agentPolicy.Version, Username: testdb.AgentUsername(f.member), Password: "agent123",
+			Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0.08", Status: "active", CanCreateChildren: true},
 			Reason: "commission snapshot fixture agent",
 		}, points.Metadata{RequestID: ids.New()})
 		return err
@@ -71,7 +73,7 @@ func TestBetCommissionRuleSnapshotCapturesPrivateImmutablePlacementEvidence(t *t
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		var err error
 		code, err = codes.Create(ctx, tx, f.brand, actor, attribution.CreateInput{
-			Kind: "agent", OwnerMemberID: f.member, AgentID: &node.ID, Reason: "commission snapshot fixture join code",
+			Kind: "agent", OwnerMemberID: node.MemberID, AgentID: &node.ID, Reason: "commission snapshot fixture join code",
 		}, points.Metadata{RequestID: ids.New()})
 		return err
 	})
@@ -84,11 +86,11 @@ func TestBetCommissionRuleSnapshotCapturesPrivateImmutablePlacementEvidence(t *t
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		out, err := users.Register(ctx, tx, f.brand, identity.RegisterInput{
 			Username: "bet_commission_" + strings.ReplaceAll(ids.New(), "-", "")[:12],
-			Password: "test-commission-snapshot-password", Privacy: "dev-1", Terms: "dev-1", AgentCode: code.Code,
+			Password: "commission-snapshot-password", Privacy: "dev-1", Terms: "dev-1", AgentCode: code.Code,
 		}, identity.Metadata{Domain: "aurora.localhost"})
 		if err == nil {
 			if out.Status != 201 {
-				t.Fatalf("register status=%d", out.Status)
+				t.Fatalf("register status=%d error=%+v", out.Status, out.Error)
 			}
 			err = json.Unmarshal(out.Data, &session)
 		}
@@ -252,37 +254,19 @@ func TestBetCommissionRuleSnapshotCapturesPrivateImmutablePlacementEvidence(t *t
 		t.Fatalf("commission policy configuration posted financial entries: count=%d err=%v", financialEntries, err)
 	}
 
-	historyBeforeFault, err := financial.History(ctx, f.brand, 10, 0)
+	if _, err = f.db.Exec(ctx, `UPDATE bet_orders SET commission_rule_snapshot=jsonb_set(commission_rule_snapshot,'{financial_policy,revision_id}',to_jsonb($2::text),false) WHERE id=$1`, first.ID, ids.New()); err == nil {
+		t.Fatal("immutable order snapshot was rewritten")
+	}
+	tx, err := f.db.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	faultTx, err := f.db.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
+	defer tx.Rollback(ctx)
+	after, err := (commission.Source{}).PolicySnapshotTx(ctx, tx, f.brand, first.ID)
+	if err != nil || !reflect.DeepEqual(after, firstEvidence) {
+		t.Fatalf("historical snapshot changed: %+v %v", after, err)
 	}
-	if _, err = faultTx.Exec(ctx, `ALTER TABLE bet_orders DISABLE TRIGGER capture_bet_commission_snapshot`); err != nil {
-		_ = faultTx.Rollback(ctx)
-		t.Fatal(err)
-	}
-	if _, err = faultTx.Exec(ctx, `ALTER TABLE bet_orders DISABLE TRIGGER immutable_bet_order`); err != nil {
-		_ = faultTx.Rollback(ctx)
-		t.Fatal(err)
-	}
-	if _, err = faultTx.Exec(ctx, `UPDATE bet_orders SET commission_rule_snapshot=jsonb_set(commission_rule_snapshot,'{financial_policy,revision_id}',to_jsonb($2::text),false) WHERE id=$1`, first.ID, ids.New()); err != nil {
-		_ = faultTx.Rollback(ctx)
-		t.Fatal(err)
-	}
-	if _, err = (commission.Source{}).PolicySnapshotTx(ctx, faultTx, f.brand, first.ID); !errors.Is(err, commission.ErrPolicyEvidence) {
-		_ = faultTx.Rollback(ctx)
-		t.Fatalf("mismatched immutable revision reference read error=%v, want policy evidence", err)
-	}
-	if err = faultTx.Rollback(ctx); err != nil {
-		t.Fatal(err)
-	}
-	historyAfterFault, err := financial.History(ctx, f.brand, 10, 0)
-	if err != nil || !reflect.DeepEqual(historyAfterFault, historyBeforeFault) {
-		t.Fatalf("rollback fault injection changed policy history: before=%+v after=%+v err=%v", historyBeforeFault, historyAfterFault, err)
-	}
+
 }
 
 type commissionSnapshotShape struct {

@@ -1,0 +1,45 @@
+/* Reserved icon-only refresh control; page-local button styles cannot resize it. */
+[data-refresh-button] {
+  position: relative !important;
+  display: inline-block !important;
+  box-sizing: border-box !important;
+  flex: 0 0 var(--icon-control-size, 44px) !important;
+  width: var(--icon-control-size, 44px) !important;
+  min-width: var(--icon-control-size, 44px) !important;
+  max-width: var(--icon-control-size, 44px) !important;
+  height: var(--icon-control-size, 44px) !important;
+  min-height: var(--icon-control-size, 44px) !important;
+  max-height: var(--icon-control-size, 44px) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 10px !important;
+  background: var(--surface) !important;
+  color: var(--muted) !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  line-height: var(--icon-control-size, 44px) !important;
+  text-indent: -9999px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  vertical-align: middle !important;
+  cursor: pointer;
+  transform: none !important;
+  transition: background-color .15s, color .15s, opacity .15s !important;
+}
+[data-refresh-button] > :not([data-refresh-icon]) { display: none !important; }
+[data-refresh-button] > [data-refresh-icon] {
+  position: absolute;
+  inset: 0;
+  display: grid !important;
+  place-items: center;
+  text-indent: 0;
+  line-height: 1;
+  pointer-events: none;
+}
+[data-refresh-icon] > svg { display: block; width: 20px; height: 20px; }
+[data-refresh-button]:hover:not(:disabled) { background: var(--primary-light) !important; color: var(--primary) !important; }
+[data-refresh-button]:focus-visible { outline: 2px solid var(--primary) !important; outline-offset: 3px !important; }
+[data-refresh-button]:disabled { opacity: .5 !important; cursor: not-allowed; }
+/* Only the containing action group is affected, not the surrounding page grid. */
+:has(> [data-refresh-button]) { gap: 12px !important; }

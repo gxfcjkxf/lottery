@@ -1,7 +1,20 @@
 <script setup lang="ts">
+import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
+import { vWriteGuard } from "@lottery/shared";
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import { formatDisplayDateTime } from "@lottery/shared";
+const displayLocale = useAdminI18n().locale;
 import type { LocalizedMessage } from "@lottery/shared";
 import { computed, onUnmounted, ref, watch } from "vue";
-import { useAdminI18n } from "./i18n";
+import { adminKey, useAdminI18n } from "./i18n";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import {
   buildDrawResult,
@@ -19,9 +32,9 @@ import {
 } from "./draw-management-api";
 import type { Period } from "./period-schedules-api";
 
-const props = defineProps<{ account: AdminAccount; brandId: string }>();
-const emit = defineEmits<{ (event: "session-invalid"): void }>();
-const { t, message: localized } = useAdminI18n();
+const props = defineProps<{ account: AdminAccount; brandId: string; active: boolean }>();
+const emit = defineEmits<{ (event: "session-invalid"): void; (event: "select-period", periodId: string): void }>();
+const { t, message: localized, display } = useAdminI18n();
 const api = createDrawManagementApi();
 const guard = createDrawManagementRequestGuard();
 const keyFor = createDrawManagementKeyTracker();
@@ -60,6 +73,7 @@ const selectedPeriod = computed(
   () => periods.value.find((item) => item.id === periodId.value) ?? null,
 );
 const currentDraw = computed(() => drawPage.value?.current ?? null);
+watch(() => [props.active, selectedPeriod.value?.id] as const, ([active, id]) => { if (active) emit("select-period", id ?? ""); });
 const canOpenManual = computed(() => {
   const period = selectedPeriod.value;
   const current = currentDraw.value;
@@ -83,7 +97,7 @@ const parsedDraw = computed(() => {
     );
     return JSON.stringify(draw);
   } catch (cause) {
-    return cause instanceof Error ? cause.message : t("开奖结果输入无效。", "Invalid draw result input.");
+    return cause instanceof Error ? cause.message : t('admin.copy.32c6ed4c');
   }
 });
 
@@ -124,12 +138,12 @@ function finish(lane: string, owner: string) {
 }
 function checkBrand<T extends { brand_id: string }>(record: T): T {
   if (record.brand_id !== props.brandId)
-    throw new Error(t("响应品牌与当前品牌不匹配，请重新读取。", "The response belongs to a different brand. Reload and try again."));
+    throw new Error(t('admin.copy.911918b9'));
   return record;
 }
 function checkGame(record: { game_id: string }) {
   if (record.game_id !== gameId.value)
-    throw new Error(t("响应彩种与当前选择不匹配，请重新读取。", "The response does not match the selected game. Reload and try again."));
+    throw new Error(t('admin.copy.7a9b4d30'));
 }
 function checkPeriod(record: {
   period_id?: string;
@@ -140,25 +154,25 @@ function checkPeriod(record: {
     record.game_id !== gameId.value ||
     (record.period_id && record.period_id !== periodId.value)
   )
-    throw new Error(t("响应期数与当前选择不匹配，请重新读取。", "The response does not match the selected period. Reload and try again."));
+    throw new Error(t('admin.copy.04523b78'));
 }
 function periodStatusLabel(value: string) {
   const labels: Record<string, string> = {
-    pending: t("待开始", "Pending"), betting: t("投注中", "Betting open"),
-    closed: t("已截止", "Closed"), waiting_draw: t("待开奖", "Awaiting draw"),
-    drawn: t("已开奖", "Drawn"), settling: t("结算中", "Settling"),
-    settled: t("已结算", "Settled"), bet_cancelled: t("投注取消", "Betting cancelled"),
-    judged_cancelled: t("判定取消", "Judgment cancelled"),
+    pending: t('admin.copy.997b3d22'), betting: t('admin.copy.3a20b720'),
+    closed: t('admin.copy.3198ad9b'), waiting_draw: t('admin.copy.aab1777a'),
+    drawn: t('admin.copy.a16e8013'), settling: t('admin.copy.01f90196'),
+    settled: t('admin.copy.037164c2'), bet_cancelled: t('admin.copy.a1834cc2'),
+    judged_cancelled: t('admin.copy.46a60c2c'),
   };
   return labels[value] ?? value;
 }
 function drawKindLabel(value: string) {
-  return value === "manual" ? t("手动录入", "Manual") : value === "automatic" ? t("自动采集", "Automated") : value;
+  return value === "manual" ? t('admin.copy.1e41277a') : value === "automatic" ? t('admin.copy.993400b8') : value;
 }
 function attemptStatusLabel(value: string) {
   const labels: Record<string, string> = {
-    succeeded: t("成功", "Succeeded"), failed: t("失败", "Failed"),
-    pending: t("待处理", "Pending"), skipped: t("已跳过", "Skipped"),
+    succeeded: t('admin.copy.4d71c40d'), failed: t('admin.copy.1feabec0'),
+    pending: t('admin.copy.99f247fd'), skipped: t('admin.copy.9d70d1bf'),
   };
   return labels[value] ?? value;
 }
@@ -209,7 +223,7 @@ function reportError(cause: unknown) {
     emit("session-invalid");
     return;
   }
-    error.value = cause instanceof Error ? cause.message : localized("请求失败，请重试。", "Request failed. Please try again.");
+    error.value = cause instanceof Error ? publicErrorMessage(cause) : localized('admin.copy.4fb9cc4e');
 }
 
 async function loadGames(offset = 0) {
@@ -266,7 +280,7 @@ async function loadSources() {
     if (result) {
       checkBrand(result);
       if (result.game_id !== game.id)
-        throw new Error(t("来源集彩种与当前选择不匹配。", "The source set does not match the selected game."));
+        throw new Error(t('admin.copy.954e14fc'));
       sourceSet.value = result;
       sources.value = structuredClone(result.sources);
       games.value = games.value.map((item) =>
@@ -281,7 +295,7 @@ async function loadSources() {
       sourceSet.value = null;
       sources.value = [];
       sourceError.value =
-        cause instanceof Error ? cause.message : localized("来源读取失败。", "Failed to load sources.");
+        cause instanceof Error ? publicErrorMessage(cause) : localized('admin.copy.a32a8eb9');
       reportError(cause);
     }
   } finally {
@@ -308,7 +322,7 @@ async function loadPeriods(offset = 0) {
     result.periods.forEach((period) => {
       checkBrand(period);
       if (period.game_id !== game.id)
-        throw new Error(t("期数彩种与当前选择不匹配。", "The period belongs to a different game."));
+        throw new Error(t('admin.copy.0073fada'));
     });
     periods.value = result.periods;
     periodNext.value = result.periods.length === pageSize;
@@ -358,7 +372,7 @@ async function loadHistory(offset = 0) {
       checkBrand(row);
       checkGame(row);
       if (row.period_id !== period.id)
-        throw new Error(t("尝试批次期数与当前选择不匹配。", "The attempt batch belongs to a different period."));
+        throw new Error(t('admin.copy.facb4cf9'));
     });
     drawPage.value = result;
   } catch (cause) {
@@ -396,7 +410,7 @@ async function chooseGame(id: string) {
   if (rights.value.sourceView) void loadSources();
   if (rights.value.periodsView) void loadPeriods(0);
 }
-function selectPeriod(id: string) {
+async function selectPeriod(id: string) {
   if (!periods.value.some((item) => item.id === id)) return;
   guard.invalidate("history");
   guard.invalidate("manual-write");
@@ -409,7 +423,7 @@ function selectPeriod(id: string) {
   sourceError.value = "";
   manualError.value = "";
   delete busy.value["manual-write"];
-  if (rights.value.drawView) void loadHistory(0);
+  if (rights.value.drawView) await loadHistory(0);
 }
 function addSource() {
   if (sources.value.length >= 16) return;
@@ -451,7 +465,7 @@ async function saveSources() {
     body = buildSourceSetBody(version, sources.value, sourceReason.value);
   } catch (cause) {
     sourceError.value =
-      cause instanceof Error ? cause.message : localized("来源配置无效。", "Invalid source configuration.");
+      cause instanceof Error ? publicErrorMessage(cause) : localized('admin.copy.eb21f657');
     return;
   }
   const key = keyFor(props.brandId, "draw-sources.put", game.id, body);
@@ -463,7 +477,7 @@ async function saveSources() {
       return;
     checkBrand(result);
     if (result.game_id !== game.id)
-      throw new Error(t("保存响应的彩种与当前选择不匹配。", "The save response does not match the selected game."));
+      throw new Error(t('admin.copy.6650877e'));
     sourceSet.value = result;
     sources.value = structuredClone(result.sources);
     sourceReason.value = "";
@@ -471,11 +485,11 @@ async function saveSources() {
       item.id === game.id ? { ...item, version: result.game_version } : item,
     );
     notice.value =
-      localized("来源配置已保存为新修订版。API / DOM 适配器尚未连接；此页面不会向来源发起真实网络请求。", "Source configuration saved as a new revision. API / DOM adapters are not connected, and this page will not make network requests to sources.");
+      localized('admin.copy.14edbd12');
   } catch (cause) {
     if (current(ticket, rights.value.sourceWrite && rights.value.sourceView)) {
       sourceError.value =
-        cause instanceof Error ? cause.message : localized("来源保存失败。", "Failed to save sources.");
+        cause instanceof Error ? publicErrorMessage(cause) : localized('admin.copy.fc98aa46');
       reportError(cause);
     }
   } finally {
@@ -504,7 +518,7 @@ async function submitManualDraw() {
     });
   } catch (cause) {
     manualError.value =
-      cause instanceof Error ? cause.message : localized("手动开奖结果无效。", "Invalid manual draw result.");
+      cause instanceof Error ? publicErrorMessage(cause) : localized('admin.copy.3091b4b5');
     return;
   }
   const key = keyFor(props.brandId, "manual-draw.post", period.id, body);
@@ -524,7 +538,7 @@ async function submitManualDraw() {
     checkGame(result);
     checkPeriod(result);
     resetManualForm();
-    notice.value = localized("手动开奖结果已保存，原有开奖记录仍保留在历史中。", "Manual draw result saved. Existing draw records remain in history.");
+    notice.value = localized('admin.copy.8b77a74b');
     const submittedPeriodId = period.id;
     await loadPeriods(periodOffset.value);
     if (periodId.value === submittedPeriodId)
@@ -532,7 +546,7 @@ async function submitManualDraw() {
   } catch (cause) {
     if (current(ticket, rights.value.manualCreate && rights.value.drawView)) {
       manualError.value =
-        cause instanceof Error ? cause.message : localized("手动开奖保存失败。", "Failed to save manual draw result.");
+        cause instanceof Error ? publicErrorMessage(cause) : localized('admin.copy.1e9aa543');
       reportError(cause);
     }
   } finally {
@@ -543,9 +557,7 @@ function resultText(draw: DrawResult) {
   if (draw.result.digits.length) return draw.result.digits.join(" ");
   return [...draw.result.regular, ...draw.result.special].join(" ");
 }
-function timestamp(value: string) {
-  return new Date(value).toLocaleString();
-}
+function timestamp(value: string){ return formatDisplayDateTime(value, displayLocale.value); }
 
 watch(
   permissionScope,
@@ -558,7 +570,7 @@ watch(
     notice.value = "";
     sourceError.value = "";
     manualError.value = "";
-    if (rights.value.gamesView && props.brandId) void loadGames(0);
+    if (rights.value.gamesView && props.brandId) void withGlobalLoading(loadGames, 0);
   },
   { immediate: true },
 );
@@ -569,75 +581,71 @@ onUnmounted(() => guard.invalidate());
   <section class="draw-management">
     <header class="page-head">
       <div>
-        <p class="eyebrow">DRAW MANAGEMENT</p>
-        <h2>{{ t("开奖管理", "Draw management") }}</h2>
-        <p>{{ t("配置来源、查看开奖历史，并按权限手动录入开奖结果。", "Configure sources, review draw history, and enter verified results manually when permitted.") }}</p>
+        <h2>{{ t('admin.copy.26bac4a5') }}</h2>
       </div>
-      <span class="brand-tag">{{ t("品牌", "Brand") }} · {{ brandId || t("未选择", "Not selected") }}</span>
+      <span class="brand-tag">{{ t('admin.copy.9c32661d') }} · <AssociationName kind="brand" :id="brandId" :locale="associationLocale" /></span>
     </header>
     <p class="server-note">
-      {{ t("API / DOM 适配器尚未接入，本页目前只保存来源配置，不会向来源发起真实网络请求，也不会执行实际采集。", "API / DOM adapters are not connected. This page only saves source configuration; it does not make network requests to sources or perform data collection.") }}
+      {{ t('admin.copy.5c64d079') }}
     </p>
-    <div v-if="error" class="notice error" role="alert">{{ t(error) }}</div>
-    <p v-if="notice" class="notice success" role="status">{{ t(notice) }}</p>
+    <div v-if="error" class="notice error" role="alert">{{ display(error) }}</div>
+    <p v-if="notice" class="notice success" role="status">{{ display(notice) }}</p>
     <p v-if="!rights.gamesView" class="callout">
-      {{ t("需要 game.view.brand 或 game.view.platform 才能读取彩种目录；目录权限与来源、期数、开奖权限相互独立。", "game.view.brand or game.view.platform is required to read the game catalog. Catalog access is independent of source, period, and draw permissions.") }}
+      {{ t('admin.copy.3d88d4bd') }}
     </p>
     <div v-else class="draw-content">
       <section class="panel">
         <div class="section-head">
           <div>
-            <h3>{{ t("彩种与期数", "Games and periods") }}</h3>
-            <p>{{ t("彩种分页每页最多 25 条；期数分页每页最多 25 条。", "Game and period lists are paginated, with up to 25 records per page.") }}</p>
+            <h3>{{ t('admin.copy.db14a8b4') }}</h3>
           </div>
-          <button
-            class="secondary"
+          <button v-refresh-button="t('admin.copy.4422e4ac')"
+            class="button button-secondary"
             :disabled="!!busy.games"
-            @click="loadGames(gameOffset)"
+            @click="withGlobalLoading(loadGames, gameOffset)"
           >
-            {{ t("刷新彩种", "Refresh games") }}
+            {{ t('admin.copy.4422e4ac') }}
           </button>
         </div>
         <div class="picker-grid">
           <label
-            >{{ t("彩种", "Game") }}<select
+            >{{ t('admin.copy.7492bbfb') }}<select
               :value="gameId"
               :disabled="!!busy.games"
-              @change="chooseGame(($event.target as HTMLSelectElement).value)"
+              @change="withGlobalLoading(chooseGame, ($event.target as HTMLSelectElement).value)"
             >
-              <option value="">{{ t("选择彩种", "Select a game") }}</option>
+              <option value="">{{ t('admin.copy.68ccd146') }}</option>
               <option v-for="game in games" :key="game.id" :value="game.id">
-                {{ game.name }} · {{ game.code }}
+                {{ game.name }}
               </option>
             </select></label
           >
           <div class="page-actions">
-            <span>{{ games.length }} {{ t("条 · 偏移", "items · Offset") }} {{ gameOffset }}</span
+            <span>{{ games.length }} {{ t('admin.copy.1015fa3f') }} {{ gameOffset }}</span
             ><button
-              class="secondary"
+              class="button button-secondary"
               :disabled="!!busy.games || gameOffset === 0"
-              @click="loadGames(Math.max(0, gameOffset - pageSize))"
+              @click="withGlobalLoading(loadGames, Math.max(0, gameOffset - pageSize))"
             >
-              {{ t("上一页", "Previous") }}</button
+              {{ t('admin.copy.dbe7a5d7') }}</button
             ><button
-              class="secondary"
+              class="button button-secondary"
               :disabled="!!busy.games || !gameNext"
-              @click="loadGames(gameOffset + pageSize)"
+              @click="withGlobalLoading(loadGames, gameOffset + pageSize)"
             >
-              {{ t("下一页", "Next") }}
+              {{ t('admin.copy.2e9c9e7a') }}
             </button>
           </div>
           <p v-if="selectedGame" class="muted model-meta">
-            {{ selectedGame.model.model }} · {{ selectedGame.timezone }} ·
-            {{ t("彩种版本", "Game version") }} {{ selectedGame.version }}
+            {{ t(adminKey('admin.console.model.' + selectedGame.model.model)) }} · {{ selectedGame.timezone }}
           </p>
           <label v-if="rights.periodsView && selectedGame"
-            >{{ t("期数", "Period") }}<select
+            >{{ t('admin.copy.da3c8007') }}<select
               :value="periodId"
               :disabled="!!busy.periods"
-              @change="selectPeriod(($event.target as HTMLSelectElement).value)"
+              @change="withGlobalLoading(selectPeriod, ($event.target as HTMLSelectElement).value)"
             >
-              <option value="">{{ t("选择期数", "Select a period") }}</option>
+              <option value="">{{ t('admin.copy.d972b3a0') }}</option>
               <option
                 v-for="period in periods"
                 :key="period.id"
@@ -648,30 +656,31 @@ onUnmounted(() => guard.invalidate());
             </select></label
           >
           <div v-if="rights.periodsView && selectedGame" class="page-actions">
-            <span>{{ periods.length }} {{ t("条 · 偏移", "items · Offset") }} {{ periodOffset }}</span
+            <span>{{ periods.length }} {{ t('admin.copy.1015fa3f') }} {{ periodOffset }}</span
             ><button
-              class="secondary"
+              class="button button-secondary"
               :disabled="!!busy.periods || periodOffset === 0"
-              @click="loadPeriods(Math.max(0, periodOffset - pageSize))"
+              @click="withGlobalLoading(loadPeriods, Math.max(0, periodOffset - pageSize))"
             >
-              {{ t("上一页", "Previous") }}</button
+              {{ t('admin.copy.dbe7a5d7') }}</button
             ><button
-              class="secondary"
+              class="button button-secondary"
               :disabled="!!busy.periods || !periodNext"
-              @click="loadPeriods(periodOffset + pageSize)"
+              @click="withGlobalLoading(loadPeriods, periodOffset + pageSize)"
             >
-              {{ t("下一页", "Next") }}</button
-            ><button
-              class="secondary"
+              {{ t('admin.copy.2e9c9e7a') }}</button
+            ><button v-refresh-button="t('admin.copy.72fdf4a4')"
+              class="button button-secondary"
               :disabled="!!busy.periods"
-              @click="loadPeriods(periodOffset)"
+              @click="withGlobalLoading(loadPeriods, periodOffset)"
             >
-              {{ t("刷新期数", "Refresh periods") }}
+              {{ t('admin.copy.72fdf4a4') }}
             </button>
           </div>
           <p v-else-if="selectedGame" class="callout">
-            {{ t("当前账号缺少 period.view.brand / period.view.platform 期数查看权限。", "This account lacks period.view.brand / period.view.platform permission to view periods.") }}
+            {{ t('admin.copy.17c75777') }}
           </p>
+          <p v-if="rights.periodsView && selectedGame && !busy.periods && !periods.length" class="callout empty-state">{{ t('admin.copy.30f48614') }}</p>
         </div>
       </section>
 
@@ -681,27 +690,26 @@ onUnmounted(() => guard.invalidate());
       >
         <div class="section-head">
           <div>
-            <h3>{{ t("自动开奖来源", "Automated draw sources") }}</h3>
+            <h3>{{ t('admin.copy.4ff2b556') }}</h3>
             <p>
-              {{ t("最多 16 个来源；完整集合保存会创建新修订版。移除来源不会修改不可变历史。", "Up to 16 sources. Saving the full set creates a new revision; removing a source does not change immutable history.") }}
+              {{ t('admin.copy.3b52011c') }}
             </p>
           </div>
-          <button
-            class="secondary"
+          <button v-refresh-button="t('admin.copy.deca021e')"
+            class="button button-secondary"
             :disabled="!!busy.sources"
-            @click="loadSources"
+            @click="withGlobalLoading(loadSources)"
           >
-            {{ t("重新读取", "Reload") }}
+            {{ t('admin.copy.deca021e') }}
           </button>
         </div>
         <p v-if="!rights.sourceView" class="callout">
-          {{ t("需要 draw_source.view.brand 或 draw_source.view.platform 才能读取并安全更新完整来源集。", "draw_source.view.brand or draw_source.view.platform is required to read and safely update the complete source set.") }}
+          {{ t('admin.copy.f1464125') }}
         </p>
         <p v-else-if="sourceSet" class="muted">
-          {{ t("修订", "Revision") }} {{ sourceSet.revision }} · {{ t("彩种版本", "Game version") }}
-          {{ sourceSet.game_version }} · {{ timestamp(sourceSet.created_at) }}
+          {{ timestamp(sourceSet.created_at) }}
         </p>
-        <p v-else-if="!busy.sources" class="muted">{{ t("尚无来源配置。", "No source configuration exists.") }}</p>
+        <p v-else-if="!busy.sources" class="muted empty-state">{{ t('admin.copy.71263f39') }}</p>
         <div v-if="rights.sourceView" class="source-list">
           <article
             v-for="(source, index) in sources"
@@ -709,7 +717,7 @@ onUnmounted(() => guard.invalidate());
             class="source-card"
           >
             <div class="source-heading">
-              <strong>{{ t("来源", "Source") }} {{ index + 1 }}</strong
+              <strong>{{ t('admin.copy.d2089b75') }} {{ index + 1 }}</strong
               ><code>{{ source.id }}</code
               ><button
                 v-if="rights.sourceWrite"
@@ -717,27 +725,27 @@ onUnmounted(() => guard.invalidate());
                 :disabled="!!busy['source-write']"
                 @click="removeSource(index)"
               >
-                {{ t("从新修订中移除", "Remove from new revision") }}
+                {{ t('admin.copy.ad76fa40') }}
               </button>
             </div>
             <div class="source-fields">
               <label
-                >{{ t("名称", "Name") }}<input
+                >{{ t('admin.copy.e19e3eeb') }}<input
                   v-model="source.name"
                   maxlength="120"
                   :disabled="!rights.sourceWrite || !!busy['source-write']"
               /></label>
               <label
-                >{{ t("类型", "Type") }}<select
+                >{{ t('admin.copy.214be851') }}<select
                   v-model="source.type"
                   :disabled="!rights.sourceWrite || !!busy['source-write']"
                 >
-                  <option value="api">API</option>
-                  <option value="dom">DOM</option>
+                  <option value="api">{{ t('admin.ui.api') }}</option>
+                  <option value="dom">{{ t('admin.ui.dom') }}</option>
                 </select></label
               >
               <label
-                >{{ t("优先级", "Priority") }}<input
+                >{{ t('admin.copy.e9b0cdbe') }}<input
                   type="number"
                   min="1"
                   step="1"
@@ -751,13 +759,13 @@ onUnmounted(() => guard.invalidate());
                   "
               /></label>
               <label class="check"
-                >{{ t("启用", "Enabled") }}<input
+                >{{ t('admin.copy.5eb01613') }}<input
                   v-model="source.enabled"
                   type="checkbox"
                   :disabled="!rights.sourceWrite || !!busy['source-write']"
               /></label>
               <label class="wide"
-                >{{ t("HTTPS 公网 DNS 地址（仅 443 端口）", "Public HTTPS DNS address (port 443 only)") }}<input
+                >{{ t('admin.copy.e144becb') }}<input
                   v-model="source.endpoint"
                   type="url"
                   maxlength="2048"
@@ -765,13 +773,13 @@ onUnmounted(() => guard.invalidate());
                   :disabled="!rights.sourceWrite || !!busy['source-write']"
               /></label>
               <label v-if="source.type === 'dom'" class="wide"
-                >{{ t("DOM 选择器", "DOM selector") }}<input
+                >{{ t('admin.copy.c4efb4da') }}<input
                   v-model="source.selector"
                   maxlength="500"
                   :disabled="!rights.sourceWrite || !!busy['source-write']"
               /></label>
               <label class="wide"
-                >{{ t("凭据引用（仅标识符；不得填写实际密钥）", "Credential reference (identifier only; never enter a secret)") }}<input
+                >{{ t('admin.copy.2f8c8c3b') }}<input
                   v-model="source.credential_ref"
                   maxlength="120"
                   autocomplete="off"
@@ -782,26 +790,21 @@ onUnmounted(() => guard.invalidate());
           </article>
           <div v-if="rights.sourceWrite" class="form-actions">
             <button
-              class="secondary"
+              class="button button-secondary"
               :disabled="sources.length >= 16 || !!busy['source-write']"
               @click="addSource"
             >
-              {{ t("添加来源", "Add source") }}</button
-            ><label class="reason"
-              >{{ t("修订原因", "Revision reason") }}<input
-                v-model="sourceReason"
-                maxlength="500"
-                :disabled="!!busy['source-write']"
-                :placeholder="t('说明本次配置变更', 'Describe this configuration change')" /></label
+              {{ t('admin.copy.df8f0555') }}</button
             ><button
-              :disabled="!!busy['source-write'] || !sourceReason.trim()"
-              @click="saveSources"
+              v-write-guard="Boolean(busy['source-write'])"
+              :disabled="!!busy['source-write'] "
+              @click="withGlobalLoading(saveSources)"
             >
-              {{ busy["source-write"] ? t("保存中…", "Saving…") : t("保存新修订", "Save new revision") }}
+              {{ busy["source-write"] ? t('admin.copy.2462134b') : t('admin.copy.e13b5300') }}
             </button>
           </div>
           <p v-if="sourceError" class="inline-error" role="alert">
-            {{ t(sourceError) }}
+            {{ display(sourceError) }}
           </p>
         </div>
       </section>
@@ -809,28 +812,25 @@ onUnmounted(() => guard.invalidate());
       <section v-if="selectedPeriod && rights.drawView" class="panel">
         <div class="section-head">
           <div>
-            <h3>{{ t("开奖结果与尝试历史", "Draw results and attempt history") }}</h3>
-            <p>
-              {{ t("按 50 条分页读取实际历史。worker 尝试记录只读；没有手动抓取入口。", "Actual history is paginated at 50 records per page. Worker attempts are read-only; there is no manual fetch action.") }}
-            </p>
+            <h3>{{ t('admin.copy.17425e40') }}</h3>
           </div>
-          <button
-            class="secondary"
+          <button v-refresh-button="t('admin.copy.deca021e')"
+            class="button button-secondary"
             :disabled="!!busy.history"
-            @click="loadHistory(drawHistoryOffset)"
+            @click="withGlobalLoading(loadHistory, drawHistoryOffset)"
           >
-            {{ t("重新读取", "Reload") }}
+            {{ t('admin.copy.deca021e') }}
           </button>
         </div>
         <div class="current-result">
-          <b>{{ t("当前开奖结果", "Current draw result") }}</b
+          <b>{{ t('admin.copy.c56aa572') }}</b
           ><span v-if="currentDraw"
             >{{ resultText(currentDraw) }} · {{ drawKindLabel(currentDraw.kind) }} ·
             {{ timestamp(currentDraw.drawn_at) }}</span
-          ><span v-else>{{ t("暂无当前开奖结果", "No current draw result") }}</span>
+          ><span v-else>{{ t('admin.copy.1867cad7') }}</span>
         </div>
         <h4>
-          {{ t("开奖记录 ·", "Draw records ·") }} {{ drawPage?.history.length ?? 0 }} {{ t("条 · 偏移", "items · Offset") }}
+          {{ t('admin.copy.becd7fe2') }} {{ drawPage?.history.length ?? 0 }} {{ t('admin.copy.1015fa3f') }}
           {{ drawHistoryOffset }}
         </h4>
         <div v-if="drawPage?.history.length" class="history-list">
@@ -839,38 +839,33 @@ onUnmounted(() => guard.invalidate());
               <b>{{ resultText(row) }}</b
               ><span>{{ drawKindLabel(row.kind) }} · {{ timestamp(row.drawn_at) }}</span>
             </div>
-            <small
-              >{{ row.result_hash
-              }}<template v-if="row.corrected_from_id">
-                · {{ t("修正自", "Corrected from") }} {{ row.corrected_from_id }}</template
-              ></small
-            >
+
           </article>
         </div>
-        <p v-else class="muted">{{ t("此页没有历史记录。", "No history records on this page.") }}</p>
+        <p v-else class="muted empty-state">{{ t('admin.copy.3407e578') }}</p>
         <div class="page-actions">
           <span
-            >{{ t("开奖", "Draws") }} {{ drawPage?.history.length ?? 0 }} {{ t("条 · 尝试", "items · Attempts") }}
-            {{ drawPage?.attempts.length ?? 0 }} {{ t("条", "items") }}</span
+            >{{ t('admin.copy.7044ea84') }} {{ drawPage?.history.length ?? 0 }} {{ t('admin.copy.c3590ada') }}
+            {{ drawPage?.attempts.length ?? 0 }} {{ t('admin.copy.067fed38') }}</span
           ><button
-            class="secondary"
+            class="button button-secondary"
             :disabled="!!busy.history || drawHistoryOffset === 0"
-            @click="loadHistory(Math.max(0, drawHistoryOffset - 50))"
+            @click="withGlobalLoading(loadHistory, Math.max(0, drawHistoryOffset - 50))"
           >
-            {{ t("上一页", "Previous") }}</button
+            {{ t('admin.copy.dbe7a5d7') }}</button
           ><button
-            class="secondary"
+            class="button button-secondary"
             :disabled="
               !!busy.history ||
               ((drawPage?.history.length ?? 0) < 50 &&
                 (drawPage?.attempts.length ?? 0) < 50)
             "
-            @click="loadHistory(drawHistoryOffset + 50)"
+            @click="withGlobalLoading(loadHistory, drawHistoryOffset + 50)"
           >
-            {{ t("下一页", "Next") }}
+            {{ t('admin.copy.2e9c9e7a') }}
           </button>
         </div>
-        <h4>{{ t("Worker 尝试批次 ·", "Worker attempt batches ·") }} {{ drawPage?.attempts.length ?? 0 }} {{ t("条", "items") }}</h4>
+        <h4>{{ t('admin.copy.6103ce3e') }} {{ drawPage?.attempts.length ?? 0 }} {{ t('admin.copy.067fed38') }}</h4>
         <div v-if="drawPage?.attempts.length" class="history-list">
           <article v-for="batch in drawPage.attempts" :key="batch.id">
             <div>
@@ -881,28 +876,28 @@ onUnmounted(() => guard.invalidate());
               batch.attempts
                 .map(
                   (attempt) =>
-                    `${attempt.source_id}: ${attemptStatusLabel(attempt.status)} (${attempt.code})`,
+                    `${attempt.source_id}: ${attemptStatusLabel(attempt.status)}`,
                 )
-                .join(" · ") || t("无来源尝试详情", "No source attempt details")
+                .join(" · ") || t('admin.copy.2b0430fe')
             }}</small>
           </article>
         </div>
-        <p v-else class="muted">{{ t("此页没有 worker 尝试批次。", "No worker attempt batches on this page.") }}</p>
+        <p v-else class="muted empty-state">{{ t('admin.copy.ab81f982') }}</p>
         <div v-if="rights.manualCreate" class="manual-entry">
-          <h4>{{ t("手动录入 / 外部覆盖", "Manual entry / external override") }}</h4>
+          <h4>{{ t('admin.copy.900b7645') }}</h4>
           <p v-if="currentDraw?.kind === 'manual'" class="callout">
-            {{ t("当前开奖结果已由人工录入，不能覆盖；未来修正需等待专门的修正流程。", "The current result was entered manually and cannot be overwritten. Future corrections must use the dedicated correction workflow.") }}
+            {{ t('admin.copy.a86f5a0c') }}
           </p>
           <p v-else-if="!canOpenManual" class="callout">
-            {{ t("仅 waiting_draw，或已有非人工结果的 drawn 期数可录入；settling 状态不可操作。手动入口同时受当前结果可见权限约束。", "Manual entry is allowed only for waiting_draw periods or drawn periods with a non-manual result. Settling periods cannot be changed. The action also requires permission to view the current result.") }}
+            {{ t('admin.copy.191b0541') }}
           </p>
           <template v-else>
             <div v-if="selectedGame" class="draw-input-grid">
               <label v-if="selectedGame.model.model !== 'DIGITS_0_9'"
-                >{{ t("普通号码（逗号分隔，", "Regular numbers (comma-separated, ") }}{{
+                >{{ t('admin.copy.d05b3af0') }}{{
                   selectedGame.model.regular_count
                 }}
-                {{ t("个）", ")") }}<input
+                {{ t('admin.copy.5a1d35c7') }}<input
                   v-model="drawInput.regular"
                   :disabled="!!busy['manual-write']"
                   placeholder="1, 2, 3"
@@ -912,7 +907,7 @@ onUnmounted(() => guard.invalidate());
                   selectedGame.model.model !== 'DIGITS_0_9' &&
                   selectedGame.model.special_count > 0
                 "
-                >{{ t("特别号码（", "Special numbers (") }}{{ selectedGame.model.special_count }} {{ t("个）", ")") }}<input
+                >{{ t('admin.copy.f5a73e76') }}{{ selectedGame.model.special_count }} {{ t('admin.copy.5a1d35c7') }}<input
                   v-model="drawInput.special"
                   :disabled="!!busy['manual-write']"
                   placeholder="4"
@@ -920,72 +915,62 @@ onUnmounted(() => guard.invalidate());
               <label
                 v-if="selectedGame.model.model === 'DIGITS_0_9'"
                 class="wide"
-                >{{ t("数字位置（逗号分隔，", "Digit positions (comma-separated, ") }}{{ selectedGame.model.length }} {{ t("位，每位 0–9）", " positions, each 0–9)") }}<input
+                >{{ t('admin.copy.0168dccf') }}{{ selectedGame.model.length }} {{ t('admin.copy.5c4e146f') }}<input
                   v-model="drawInput.digits"
                   :disabled="!!busy['manual-write']"
                   placeholder="0, 1, 2"
               /></label>
               <label class="wide"
-                >{{ t("开奖时间（UTC RFC3339；不早于期数计划开奖时间", "Draw time (UTC RFC3339; must not precede scheduled draw time") }}
+                >{{ t('admin.copy.b78bd29c') }}
                 {{ timestamp(selectedPeriod.draw_at) }}）<input
                   v-model="manual.drawnAt"
                   :disabled="!!busy['manual-write']"
                   placeholder="2026-10-06T12:30:00Z"
               /></label>
-              <label class="wide"
-                >{{ t("操作原因（必填）", "Reason (required)") }}<textarea
-                  v-model="manual.reason"
-                  maxlength="500"
-                  :disabled="!!busy['manual-write']"
-                  rows="2"
-                  :placeholder="t('说明外部开奖结果来源及覆盖原因', 'Describe the external result source and reason for overriding')"
-                ></textarea>
-              </label>
+
             </div>
             <p
               class="validation"
               :class="{ invalid: parsedDraw && !parsedDraw.startsWith('{') }"
             >
-              {{
-                parsedDraw.startsWith("{")
-                  ? `将录入：${parsedDraw}`
-                  : parsedDraw
-              }}
+              <BusinessDetails v-if="parsedDraw.startsWith('{')" :value="JSON.parse(parsedDraw)" :locale="displayLocale" />
+              <span v-else-if="parsedDraw">{{ displayPublicError(publicErrorMessage({ status: 400 })) }}</span>
             </p>
             <label class="confirm"
               ><input
                 v-model="manual.confirmed"
                 type="checkbox"
                 :disabled="!!busy['manual-write']"
-              />{{ t("我确认这是核实后的真实开奖结果，并理解该记录会持久保存和审计。", "I confirm this is the verified result and understand it will be persistently stored and audited.") }}</label
+              />{{ t('admin.copy.2595be5c') }}</label
             >
             <div class="form-actions">
               <button
+                v-write-guard="Boolean(busy['manual-write'])"
                 :disabled="
                   !!busy['manual-write'] ||
-                  !manual.confirmed ||
-                  !manual.reason.trim() ||
+                  !manual.confirmed  ||
                   !parsedDraw.startsWith('{')
                 "
-                @click="submitManualDraw"
+                @click="withGlobalLoading(submitManualDraw)"
               >
-                {{ busy["manual-write"] ? t("提交中…", "Submitting…") : t("确认并持久保存", "Confirm and save permanently") }}
+                {{ busy["manual-write"] ? t('admin.copy.46511dc0') : t('admin.copy.7221edab') }}
               </button>
             </div>
           </template>
           <p v-if="manualError" class="inline-error" role="alert">
-            {{ t(manualError) }}
+            {{ display(manualError) }}
           </p>
         </div>
       </section>
       <p v-else-if="selectedPeriod" class="callout">
-        {{ t("当前账号缺少 draw.view.brand / draw.view.platform 开奖历史查看权限。", "This account lacks draw.view.brand / draw.view.platform permission to view draw history.") }}
+        {{ t('admin.copy.52a3d234') }}
       </p>
     </div>
   </section>
 </template>
 
 <style scoped>
+.draw-content { display: grid; gap: 16px; min-width: 0; }
 .draw-management {
   display: grid;
   gap: 14px;
@@ -1007,39 +992,39 @@ onUnmounted(() => guard.invalidate());
 .section-head p,
 .server-note,
 .muted {
-  color: #737b8c;
+  color: var(--muted);
   font-size: 11px;
   line-height: 1.6;
   margin: 4px 0 0;
 }
 .eyebrow {
-  color: #5969df;
+  color: var(--primary);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 1.1px;
   margin: 0;
 }
 .brand-tag {
-  border: 1px solid #e9ebf0;
+  border: 1px solid var(--line);
   border-radius: 14px;
   padding: 5px 9px;
-  color: #737b8c;
+  color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
 }
 .server-note,
 .callout {
   padding: 10px 12px;
-  border: 1px solid #e9ebf0;
+  border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
 }
 .panel {
   min-width: 0;
   padding: 16px;
-  border: 1px solid #e9ebf0;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 2px 8px #1e2a8008;
 }
 .section-head {
@@ -1068,6 +1053,8 @@ onUnmounted(() => guard.invalidate());
   color: #555e6e;
   font-size: 11px;
 }
+.picker-grid label { min-width: 0; width: 100%; }
+.picker-grid select { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .picker-grid select,
 .source-fields input,
 .source-fields select,
@@ -1079,7 +1066,7 @@ onUnmounted(() => guard.invalidate());
   border: 1px solid #dfe2e9;
   border-radius: 5px;
   padding: 8px;
-  background: #fff;
+  background: var(--surface);
   color: #252a36;
   font-size: 11px;
 }
@@ -1095,26 +1082,26 @@ onUnmounted(() => guard.invalidate());
 }
 .page-actions {
   align-self: end;
-  color: #737b8c;
+  color: var(--muted);
   font-size: 11px;
 }
 .page-actions span {
   margin-right: auto;
 }
 .page-actions button,
-.secondary,
+.button-secondary,
 .form-actions button,
 .danger-link {
   border: 1px solid #dfe2e9;
   border-radius: 5px;
-  background: #fff;
+  background: var(--surface);
   padding: 7px 9px;
   font-size: 11px;
 }
 .form-actions > button:last-child {
-  border-color: #5969df;
-  background: #5969df;
-  color: #fff;
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--surface);
 }
 .model-meta {
   grid-column: 1/-1;
@@ -1214,17 +1201,17 @@ onUnmounted(() => guard.invalidate());
 }
 .history-list span,
 .history-list small {
-  color: #737b8c;
+  color: var(--muted);
   font-size: 11px;
   overflow-wrap: anywhere;
 }
 .manual-entry {
   margin-top: 20px;
   padding-top: 15px;
-  border-top: 1px solid #e9ebf0;
+  border-top: 1px solid var(--line);
 }
 .manual-entry > p {
-  color: #737b8c;
+  color: var(--muted);
   font-size: 11px;
   line-height: 1.6;
 }
@@ -1262,6 +1249,9 @@ textarea:disabled {
   .source-fields,
   .draw-input-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  :global(#app .draw-management .picker-grid select) {
+    width: 100% !important;
   }
   .wide,
   .model-meta {

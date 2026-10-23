@@ -15,8 +15,8 @@ function environment(viewport = 'desktop') {
     DATABASE_URL: `postgres://lottery_test@127.0.0.1:55432/${database(viewport)}?sslmode=disable`,
     PLATFORM_BIN: process.execPath,
     POSTGRES_PSQL_BIN: process.execPath,
-    TEST_REWARD_ADMIN_PASSWORD: 'reward-static-owned-operator-password',
-    TEST_REWARD_SUPER_PASSWORD: 'reward-static-owned-reader-password',
+    TEST_REWARD_ADMIN_PASSWORD: 'reward-static-operator-2026',
+    TEST_REWARD_SUPER_PASSWORD: 'reward-static-reader-2026',
   };
 }
 

@@ -1,4 +1,7 @@
+import { assertReviewIsolation } from './scripts/review-isolation.mjs';
 import { defineConfig, devices } from "@playwright/test";
+
+assertReviewIsolation(process.env);
 
 const password = process.env.TEST_REVIEW_ADMIN_PASSWORD;
 if (!password) {
@@ -9,6 +12,10 @@ if (!password) {
 
 for (const name of ['TEST_PLATFORM_ADMIN_USERNAME', 'TEST_PLATFORM_ADMIN_PASSWORD', 'TEST_PLATFORM_ADMIN_ORIGIN']) {
   if (!process.env[name]) throw new Error(`${name} is required for the complete review suite; brand creation must not be skipped.`);
+}
+
+if (process.env.TEST_PLATFORM_ADMIN_USERNAME?.trim().toLowerCase() === 'admin') {
+  throw new Error('Use dedicated review accounts; shared admin login replaces the developer session.');
 }
 
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
@@ -45,12 +52,10 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
     {
-      name: "mobile360",
+      name: "mobilepixel7",
       use: {
-        ...devices["Desktop Chrome"],
-        viewport: { width: 360, height: 800 },
-        isMobile: true,
-        hasTouch: true,
+        ...devices["Pixel 7"],
+        contextOptions: { screen: devices["Pixel 7"].screen },
       },
     },
   ],

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   classifyCommissionCorrectionWriteFailure, clearAllCommissionCorrectionIntents,
-  clearPendingCommissionCorrectionIntent, commissionCorrectionContextKey,
+  clearPendingCommissionCorrectionIntent,
   createCommissionCorrectionIntent, getPendingCommissionCorrectionIntent,
   isCommissionCorrectionIntentConflict, listPendingCommissionCorrectionIntents,
   markCommissionCorrectionIntentConflict, setPendingCommissionCorrectionIntent,
@@ -26,7 +26,6 @@ describe("commission correction request state", () => {
     expect(listPendingCommissionCorrectionIntents(actor, brand)).toHaveLength(1);
     expect(listPendingCommissionCorrectionIntents(otherActor, brand)).toHaveLength(0);
     expect(getPendingCommissionCorrectionIntent({ ...scope, operation: "continue" })).toBeNull();
-    expect(commissionCorrectionContextKey(actor, brand)).not.toBe(commissionCorrectionContextKey(otherActor, brand));
   });
 
   it("isolates operation idempotency slots and clears only the expected original key", () => {

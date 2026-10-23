@@ -1,4 +1,20 @@
 <script setup lang="ts">
+import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
+import { vWriteGuard } from "@lottery/shared";
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import { vGlobalLoading } from "@lottery/shared";
+const displayDate = (value: string | null | undefined) => formatDisplayDateTime(value, displayLocale.value);
+import { formatDisplayDateTime } from "@lottery/shared";
+const displayLocale = useAdminI18n().locale;
+import { vInlineValidation } from '@lottery/shared'
 import { computed, ref, watch } from "vue";
 import RuleDefinitionEditor from "./RuleDefinitionEditor.vue";
 import RuleModelEditor from "./RuleModelEditor.vue";
@@ -11,7 +27,7 @@ import {
 } from "./rule-editor";
 import { defaultRuleCase, validateRuleCases } from "./rule-cases-editor";
 import { AdminApiError, type AdminAccount } from "./admin-api";
-import { useAdminI18n } from "./i18n";
+import { adminKey, useAdminI18n } from "./i18n";
 import {
   buildRuleSimulationRequest,
   RULE_TEMPLATE_LABELS,
@@ -43,12 +59,12 @@ import {
 } from "./rule-versions-api";
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
-const { t } = useAdminI18n();
-const ui = (zh: string, en: string = zh) => t(zh, en);
-const display = (zh: string) => {
+const { t, locale, display: render } = useAdminI18n();
+const display = (zh: string | import("@lottery/shared").LocalizedMessage) => {
+  if (typeof zh !== "string") return displayPublicError(zh);
   const known: Record<string, string> = {
     "草稿": "Draft", "待审核": "Pending review", "已批准": "Approved", "生效中": "Active", "已过期": "Expired", "已拒绝": "Rejected", "已回滚": "Rolled back",
-    "请求失败，请重试。": "Request failed. Please try again.", "每次操作都必须填写原因。": "A reason is required for every operation.",
+    "请求失败，请重试。": "Request failed. Please try again.",
     "响应品牌与当前品牌不匹配，请重新读取。": "The response does not match the current brand. Reload and try again.",
     "玩法响应不属于当前彩种。": "The play response does not belong to the selected game.", "版本响应不属于当前玩法。": "The version response does not belong to the selected play.",
     "当前通用定义不能无损还原为快捷模板，请继续使用通用编辑器；不会覆盖已有条件。": "This generic definition cannot be losslessly converted to a quick template. Continue with the visual editor; existing conditions will not be overwritten.",
@@ -72,17 +88,26 @@ const display = (zh: string) => {
   // The immutable receipt ID is business data; translate only our known
   // action caption, keeping the ID byte-for-byte unchanged.
   const receipt = /^(.+)（ID：([0-9a-f-]{36})）。$/.exec(zh);
-  if (receipt && known[receipt[1]]) return ui(zh, `${known[receipt[1]]} (ID: ${receipt[2]}).`);
-  return ui(zh, known[zh] ?? zh);
+  if (receipt && known[receipt[1]]) return t('admin.rule.version.receipt', { message: locale.value === "zh-CN" ? receipt[1]! : known[receipt[1]]!, id: receipt[2]! });
+  return known[zh] && locale.value === "en" ? known[zh]! : render(zh);
 };
 const statusLabel = (status: RuleVersionStatus) => display(({ draft: "草稿", pending_review: "待审核", approved: "已批准", active: "生效中", expired: "已过期", rejected: "已拒绝", rolled_back: "已回滚" } as const)[status]);
 const playStatus = (value: string) => {
-  const known: Record<string, string> = { active: "Active", inactive: "Inactive", draft: "Draft", archived: "Archived", enabled: "Enabled", disabled: "Disabled" };
-  return known[value] ? ui(value, known[value]) : value;
+  const keys: Record<string, import("./i18n").AdminTranslationKey> = {
+    active: "admin.rule.play.active", inactive: "admin.rule.play.inactive", draft: "admin.rule.play.draft",
+    archived: "admin.rule.play.archived", enabled: "admin.rule.play.enabled", disabled: "admin.rule.play.disabled",
+  };
+  if (!keys[value]) throw new Error("Unsupported play status");
+  return t(keys[value]);
 };
 const templateLabel = (value: string) => {
-  const names: Record<string, string> = { "特别号命中": "Special-number match", "数字直选（三位）": "Straight three-digit play", "数字特征": "Digit features", "排除号码": "Excluded numbers", "号码属性（特别号）": "Number attributes (special number)", "M 选 N 全中": "M-choose-N all matched" };
-  return ui(value, names[value] ?? value);
+  const keys: Record<string, import("./i18n").AdminTranslationKey> = {
+    "特别号命中": "admin.rule.template.special", "数字直选（三位）": "admin.rule.template.digits",
+    "数字特征": "admin.rule.template.features", "排除号码": "admin.rule.template.exclude",
+    "号码属性（特别号）": "admin.rule.template.attributes", "M 选 N 全中": "admin.rule.template.mselect",
+  };
+  if (!keys[value]) throw new Error("Unsupported rule template");
+  return t(keys[value]);
 };
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createRuleVersionsApi();
@@ -139,7 +164,7 @@ const loadingGames = ref(false);
 const loadingPlays = ref(false);
 const loadingVersions = ref(false);
 const busy = ref(false);
-const error = ref("");
+const error = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const notice = ref("");
 const conflict = ref(false);
 let hydrating = false;
@@ -284,15 +309,9 @@ function showError(cause: unknown) {
   if (cause instanceof AdminApiError && cause.status === 401)
     emit("session-invalid");
   conflict.value = cause instanceof AdminApiError && cause.status === 409;
-  const detail = cause instanceof Error ? cause.message : "请求失败，请重试。";
-  const code =
-    cause instanceof AdminApiError && cause.code ? ` [${cause.code}]` : "";
-  error.value = conflict.value
-    ? `${detail}${code}；版本或状态冲突，请重新读取历史确认最新状态，再重新操作。`
-    : `${detail}${code}`;
+  error.value = publicErrorMessage(cause);
 }
 function reason(value: string) {
-  if (!value.trim()) throw new Error("每次操作都必须填写原因。");
   return value.trim();
 }
 function pretty(value: unknown) {
@@ -666,7 +685,7 @@ async function persistDraft() {
       (!advancedValid.value || !advancedModelValid.value)
     )
       throw new Error("规则有未解析或无效输入，请先修正。");
-    validateEditorDefinition(definition);
+    validateEditorDefinition(normalizeEditorDefinition(definition));
     if (
       selectedGame.value &&
       selectedGame.value.model.model !== definition.model.model
@@ -869,107 +888,106 @@ watch(
   <section class="rule-versions">
     <header class="section-head">
       <div>
-        <p class="eyebrow">{{ t("规则版本管理", "Rule version management") }}</p>
-        <h2>{{ t("彩种、玩法与规则审批", "Games, plays, and rule approvals") }}</h2>
+        <h2>{{ t('admin.copy.8ac737a2') }}</h2>
       </div>
-      <span>{{ t("品牌 · ", "Brand · ") }}{{ brandId || t("未选择", "Not selected") }}</span>
+      <span>{{ t('admin.copy.55bdd7a5') }}<AssociationName kind="brand" :id="brandId" :locale="associationLocale" /></span>
     </header>
     <p class="notice">
-      {{ t("所有保存、验证和审批均调用真实接口。提交审核后定义冻结；具备本品牌审核权限的管理员可以审核自己创建或修改的规则。权限及生效状态由服务端最终判定。", "All saves, validations, and reviews use live endpoints. After submission for review, the definition is frozen; administrators with this brand's review permission may review rules they created or edited. The server makes the final decision on permissions and activation status.") }}
+      {{ t('admin.copy.61b2f577') }}
     </p>
     <p v-if="account.super_admin" class="notice">
-      {{ t("超级管理员仅可按显式读取权限查看，不可创建、修改、验证、提交或审批。", "Super administrators may view only with explicit read permission; they cannot create, edit, validate, submit, or review.") }}
+      {{ t('admin.copy.3be75e15') }}
     </p>
     <p v-if="error" class="notice error" role="alert">{{ display(error) }}</p>
     <p v-if="notice" class="notice success" role="status">{{ display(notice) }}</p>
-    <button
+    <button v-refresh-button="t('admin.copy.b403c843')"
       v-if="conflict && rights.rulesView && playId"
       type="button"
       :disabled="busy || loadingVersions"
-      @click="loadVersions()"
+      @click="withGlobalLoading(loadVersions)"
     >
-      {{ t("重新读取版本历史（将清除未保存输入）", "Reload version history (unsaved input will be cleared)") }}
+      {{ t('admin.copy.b403c843') }}
     </button>
 
     <div class="catalog-grid">
       <section class="card">
-        <h3>{{ t("1 · 选择彩种和玩法", "1 · Select a game and play") }}</h3>
+        <h3>{{ t('admin.copy.047e290f') }}</h3>
         <template v-if="rights.gamesView">
-          <button
+          <button v-refresh-button="loadingGames ? t('admin.copy.4bbccd78') : t('admin.copy.4422e4ac')"
             type="button"
             :disabled="busy || loadingGames"
-            @click="loadGames"
+            @click="withGlobalLoading(loadGames)"
           >
-            {{ loadingGames ? t("读取彩种中…", "Loading games…") : t("刷新彩种", "Refresh games") }}
+            {{ loadingGames ? t('admin.copy.4bbccd78') : t('admin.copy.4422e4ac') }}
           </button>
           <label
-            >{{ t("彩种", "Game") }}<select
+            >{{ t('admin.copy.7492bbfb') }}<select
               :value="gameId"
               :disabled="busy || loadingGames"
-              @change="chooseGame(($event.target as HTMLSelectElement).value)"
+              @change="withGlobalLoading(chooseGame, ($event.target as HTMLSelectElement).value)"
             >
-              <option value="">{{ t("请选择彩种", "Select a game") }}</option>
+              <option value="">{{ t('admin.copy.3aba80cd') }}</option>
               <option v-for="item in games" :key="item.id" :value="item.id">
-                {{ item.name }} · {{ item.code }} · {{ item.model.model }}
+                {{ item.name }} · <BusinessDetails :value="item.model.model" :locale="associationLocale" />
               </option>
             </select></label
           >
-          <p v-if="!loadingGames && !games.length" class="hint">
-            {{ t("当前品牌没有可显示的彩种。", "No games are available for this brand.") }}
+          <p v-if="!loadingGames && !games.length" class="hint empty-state">
+            {{ t('admin.copy.396947ce') }}
           </p>
           <label
-            >{{ t("玩法", "Play") }}<select
+            >{{ t('admin.copy.728b00ef') }}<select
               :value="playId"
               :disabled="busy || loadingPlays || !gameId"
-              @change="choosePlay(($event.target as HTMLSelectElement).value)"
+              @change="withGlobalLoading(choosePlay, ($event.target as HTMLSelectElement).value)"
             >
               <option value="">
-                {{ loadingPlays ? t("读取玩法中…", "Loading plays…") : t("请选择玩法", "Select a play") }}
+                {{ loadingPlays ? t('admin.copy.c198d008') : t('admin.copy.3c1f454d') }}
               </option>
               <option v-for="item in plays" :key="item.id" :value="item.id">
-                {{ item.name }} · {{ item.code }} · {{ playStatus(item.status) }}
+                {{ item.name }} · {{ playStatus(item.status) }}
               </option>
             </select></label
           >
           <p v-if="chosenPlay?.active_version_id" class="hint">
-            {{ t("当前生效版本 ID：", "Active version ID: ") }}{{ chosenPlay.active_version_id }}
+            {{ t('admin.copy.c8e49b92') }}{{ chosenPlay.active_version_id }}
           </p>
         </template>
         <p v-else class="hint">
-          {{ t("缺少 game.view.brand/platform，不能读取彩种或玩法目录。写权限不自动包含读取权限。", "Missing game.view.brand/platform permission. The game and play catalogs cannot be loaded. Write permission does not include read permission.") }}
+          {{ t('admin.copy.7af15e08') }}
         </p>
-        <form
+        <form novalidate v-inline-validation
           v-if="rights.rulesView || rights.rulesWrite"
-          @submit.prevent="choosePlay(directPlayId, true)"
+          @submit.prevent="withGlobalLoading(choosePlay, directPlayId, true)"
         >
           <label
-            >{{ t("直接指定玩法 ID", "Enter play ID directly") }}<input
+            >{{ t('admin.copy.cf817637') }}<input
               v-model.trim="directPlayId"
               required
               :disabled="busy"
-              :placeholder="t('玩法 UUID', 'Play UUID')"
+              :placeholder="t('admin.copy.fca59717')"
           /></label>
           <button type="submit" :disabled="busy || !directPlayId">
-            {{ t("选择玩法", "Select play") }}{{ rights.rulesView ? t("并读取历史", " and load history") : t("以创建草稿", " to create a draft") }}
+            {{ t('admin.copy.9a17cdc3') }}{{ rights.rulesView ? t('admin.copy.df866903') : t('admin.copy.6603e340') }}
           </button>
         </form>
       </section>
       <section class="card">
-        <h3>{{ t("2 · 版本历史", "2 · Version history") }}</h3>
+        <h3>{{ t('admin.copy.5b0737eb') }}</h3>
         <p v-if="!rights.rulesView" class="hint">
-          {{ t("缺少 rule.view.brand/platform，不能读取版本历史。其他步骤的权限不自动包含读取权限。", "Missing rule.view.brand/platform permission. Version history cannot be loaded; permissions for other steps do not include read access.") }}
+          {{ t('admin.copy.358ca7b1') }}
         </p>
         <template v-else>
-          <button
+          <button v-refresh-button="loadingVersions ? t('admin.copy.86388593') : t('admin.copy.e9176bb1')"
             type="button"
             :disabled="busy || loadingVersions || !playId"
-            @click="loadVersions()"
+            @click="withGlobalLoading(loadVersions)"
           >
-            {{ loadingVersions ? t("读取历史中…", "Loading history…") : t("刷新版本历史", "Refresh version history") }}
+            {{ loadingVersions ? t('admin.copy.86388593') : t('admin.copy.e9176bb1') }}
           </button>
-          <p v-if="!playId" class="hint">{{ t("先选择玩法。", "Select a play first.") }}</p>
-          <p v-else-if="!loadingVersions && !versions.length" class="hint">
-            {{ t("当前玩法没有可显示的版本。", "No versions are available for this play.") }}
+          <p v-if="!playId" class="hint">{{ t('admin.copy.beace858') }}</p>
+          <p v-else-if="!loadingVersions && !versions.length" class="hint empty-state">
+            {{ t('admin.copy.b9554b92') }}
           </p>
           <ul class="version-list">
             <li v-for="record in versions" :key="record.id">
@@ -980,18 +998,18 @@ watch(
                 @click="chooseVersion(record)"
               >
                 <strong
-                  >{{ ui(`第 ${record.version_no} 版`, `Version ${record.version_no}`) }} ·
+                  >{{ t('admin.rule.version', { version: record.version_no }) }} ·
                   {{ statusLabel(record.status) }}</strong
                 ><span
-                  >CAS {{ record.version }} ·
+                  >
                   {{
                     record.effect_mode === "immediate"
-                      ? t("立即生效", "Effective immediately")
-                      : t("下一期生效", "Effective next period")
+                      ? t('admin.copy.fc7c7e13')
+                      : t('admin.copy.644b87af')
                   }}</span
                 ><small
-                  >{{ record.updated_at }} · {{ t("创建者", "Created by") }}
-                  {{ record.created_by }}</small
+                  >{{ displayDate(record.updated_at) }} · {{ t('admin.copy.6ca804b8') }}
+                  <AssociationName :record="record" kind="admin" :id="record.created_by" :locale="associationLocale" /></small
                 >
               </button>
             </li>
@@ -1003,28 +1021,28 @@ watch(
           :disabled="busy || !playId"
           @click="startDraft"
         >
-          {{ t("新建规则草稿", "Create rule draft") }}
+          {{ t('admin.copy.d8379e91') }}
         </button>
       </section>
     </div>
 
     <div v-if="rights.gamesWrite" class="catalog-grid">
       <details class="card">
-        <summary>{{ t("创建彩种（模板或自定义号码模型）", "Create game (template or custom number model)") }}</summary>
-        <form @submit.prevent="createGame">
+        <summary>{{ t('admin.copy.a5d6be19') }}</summary>
+        <form v-write-guard="busy" novalidate v-inline-validation @submit.prevent="withGlobalLoading(createGame)">
           <fieldset :disabled="busy" class="form-grid">
-            <label>{{ t("代码", "Code") }}<input v-model.trim="gameCreate.code" required /></label
+            <label>{{ t('admin.copy.e00bf3f2') }}<input v-model.trim="gameCreate.code" required /></label
             ><label
-              >{{ t("名称", "Name") }}<input v-model.trim="gameCreate.name" required
+              >{{ t('admin.copy.e19e3eeb') }}<input v-model.trim="gameCreate.name" required
             /></label>
             <label class="check wide"
               ><input
                 v-model="customGame"
                 type="checkbox"
-              />{{ t("自定义彩种号码模型（任意合法数量与号码池）", "Custom game number model (any valid counts and number pools)") }}</label
+              />{{ t('admin.copy.2a27a6b0') }}</label
             >
             <label v-if="!customGame"
-              >{{ t("模型模板", "Model template") }}<select v-model="gameCreate.template">
+              >{{ t('admin.copy.df284c42') }}<select v-model="gameCreate.template">
                 <option
                   v-for="[value, label] in templates"
                   :key="value"
@@ -1043,45 +1061,33 @@ watch(
               @validity="customGameValid = $event"
             />
             <label
-              >{{ t("IANA 时区", "IANA time zone") }}<input
+              >{{ t('admin.copy.800dd59c') }}<input
                 v-model.trim="gameCreate.timezone"
                 required
                 placeholder="Asia/Manila"
             /></label>
-            <label class="wide"
-              >{{ t("创建原因", "Creation reason") }}<textarea
-                v-model="gameCreate.reason"
-                required
-                rows="2"
-              /></label
-            ><button
+            <button
               class="wide"
               type="submit"
               :disabled="customGame && !customGameValid"
             >
-              {{ t("创建彩种", "Create game") }}
+              {{ t('admin.copy.ae708a9c') }}
             </button>
           </fieldset>
         </form>
       </details>
       <details class="card">
-        <summary>{{ t("创建玩法", "Create play") }}</summary>
-        <form @submit.prevent="createPlay">
+        <summary>{{ t('admin.copy.4a95e870') }}</summary>
+        <form v-write-guard="busy" novalidate v-inline-validation @submit.prevent="withGlobalLoading(createPlay)">
           <fieldset :disabled="busy" class="form-grid">
             <label class="wide"
-              >{{ t("彩种 ID", "Game ID") }}<input v-model.trim="playCreate.gameId" required
+              >{{ t('admin.copy.20ad4b7f') }}<input v-model.trim="playCreate.gameId" required
             /></label>
-            <label>{{ t("代码", "Code") }}<input v-model.trim="playCreate.code" required /></label
+            <label>{{ t('admin.copy.e00bf3f2') }}<input v-model.trim="playCreate.code" required /></label
             ><label
-              >{{ t("名称", "Name") }}<input v-model.trim="playCreate.name" required
+              >{{ t('admin.copy.e19e3eeb') }}<input v-model.trim="playCreate.name" required
             /></label>
-            <label class="wide"
-              >{{ t("创建原因", "Creation reason") }}<textarea
-                v-model="playCreate.reason"
-                required
-                rows="2"
-              /></label
-            ><button class="wide" type="submit">{{ t("创建玩法", "Create play") }}</button>
+            <button class="wide" type="submit">{{ t('admin.copy.4a95e870') }}</button>
           </fieldset>
         </form>
       </details>
@@ -1089,35 +1095,34 @@ watch(
 
     <section v-if="selected" class="card history">
       <h3>
-        {{ ui(`第 ${selected.version_no} 版`, `Version ${selected.version_no}`) }} · {{ statusLabel(selected.status) }}
+         {{ statusLabel(selected.status) }}
       </h3>
       <dl>
-        <dt>{{ t("版本 ID / CAS", "Version ID / CAS") }}</dt>
-        <dd>{{ selected.id }} / {{ selected.version }}</dd>
-        <dt>{{ t("创建者", "Created by") }}</dt>
-        <dd>{{ selected.created_by }}</dd>
-        <dt>{{ t("审核者 / 意见", "Reviewer / comment") }}</dt>
+        <dt>{{ t('admin.copy.dd591447') }}</dt>
+        <dd>{{ selected.id }}</dd>
+        <dt>{{ t('admin.copy.6ca804b8') }}</dt>
+        <dd><AssociationName :record="selected" kind="admin" :id="selected.created_by" :locale="associationLocale" /></dd>
+        <dt>{{ t('admin.copy.cad23bbd') }}</dt>
         <dd>
-          {{ selected.reviewed_by || t("尚无", "None yet") }} /
-          {{ selected.review_comment || t("尚无", "None yet") }}
+          <AssociationName v-if="selected.reviewed_by" :record="selected" kind="admin" :id="selected.reviewed_by" :locale="associationLocale" /><span v-else>{{ t('admin.copy.d664da69') }}</span> {{ selected.review_comment || t('admin.copy.d664da69') }}
         </dd>
-        <dt>{{ t("生效时间 / 期次 / 序号", "Effective time / period / sequence") }}</dt>
+        <dt>{{ t('admin.copy.d48b9a76') }}</dt>
         <dd>
-          {{ selected.effective_at || t("尚无", "None yet") }} /
-          {{ selected.effective_period_id || t("尚无", "None yet") }} /
-          {{ selected.effective_sequence ?? t("尚无", "None yet") }}
+          {{ displayDate(selected.effective_at) }} /
+          {{ selected.effective_period_id || t('admin.copy.d664da69') }} /
+          {{ selected.effective_sequence ?? t('admin.copy.d664da69') }}
         </dd>
-        <dt>{{ t("来源版本", "Source version") }}</dt>
-        <dd>{{ selected.source_version_id || t("无", "None") }}</dd>
-        <dt v-if="selected.audit_log_id">{{ t("审计 ID", "Audit ID") }}</dt>
-        <dd v-if="selected.audit_log_id">{{ selected.audit_log_id }}</dd>
+        <dt>{{ t('admin.copy.457e41ad') }}</dt>
+        <dd>{{ selected.source_version_id || t('admin.copy.c2b41b33') }}</dd>
+
+
       </dl>
       <details>
-        <summary>{{ t("已保存规则定义（只读 JSON）", "Saved rule definition (read-only JSON)") }}</summary>
-        <pre>{{ pretty(selected.definition) }}</pre>
+        <summary>{{ t('admin.copy.6c1e0c40') }}</summary>
+        <BusinessDetails :value="selected.definition" :locale="associationLocale" />
       </details>
       <details v-if="!isDraft" class="saved-rule-summary">
-        <summary>{{ t("已保存规则可视化摘要（只读）", "Saved visual rule summary (read-only)") }}</summary>
+        <summary>{{ t('admin.copy.ba00d898') }}</summary>
         <RuleDefinitionEditor
           :key="`${selected.id}:${selected.version}:readonly`"
           :model-value="normalizeEditorDefinition(selected.definition)"
@@ -1125,38 +1130,36 @@ watch(
         />
       </details>
       <p v-if="isDraft && !supported" class="notice">
-        {{ t("当前定义使用通用可视化编辑器完整保留。普通草稿可以编辑；回滚草稿定义保持锁定，不会用快捷模板覆盖原定义。", "The definition is fully preserved in the visual editor. Regular drafts can be edited; rollback draft definitions stay locked and are never overwritten by a quick template.") }}
+        {{ t('admin.copy.08ce4cbb') }}
       </p>
       <p v-if="isDraft && selected.source_version_id" class="notice">
-        {{ t("这是回滚草稿，定义必须与来源版本完全相同，只允许调整生效方式。仍需重新验证并提交品牌审核。", "This is a rollback draft. Its definition must exactly match the source version; only the effective mode can change. It still requires validation and brand review.") }}
+        {{ t('admin.copy.266c0896') }}
       </p>
-      <form
+      <form v-write-guard="busy" novalidate v-inline-validation
         v-if="isDraft && selected.source_version_id && rights.rulesWrite"
-        :aria-label="t('回滚草稿生效方式', 'Rollback draft effective mode')"
-        @submit.prevent="persistDraft"
+        :aria-label="t('admin.copy.1e8f369f')"
+        @submit.prevent="withGlobalLoading(persistDraft)"
       >
         <fieldset :disabled="busy">
-          <legend>{{ t("回滚草稿 · 仅调整生效方式", "Rollback draft · change effective mode only") }}</legend>
+          <legend>{{ t('admin.copy.999dd607') }}</legend>
           <label
-            >{{ t("生效方式", "Effective mode") }}<select v-model="effectMode">
-              <option value="immediate">{{ t("批准后立即生效", "Effective immediately after approval") }}</option>
-              <option value="next_period">{{ t("下一期生效", "Effective next period") }}</option>
+            >{{ t('admin.copy.1575ab32') }}<select v-model="effectMode">
+              <option value="immediate">{{ t('admin.copy.5f1eae67') }}</option>
+              <option value="next_period">{{ t('admin.copy.644b87af') }}</option>
             </select></label
           >
-          <label
-            >{{ t("变更原因", "Change reason") }}<textarea v-model="draftReason" required rows="2" /></label
-          ><button type="submit">{{ t("仅保存生效方式", "Save effective mode only") }}</button>
+          <button type="submit">{{ t('admin.copy.7ddfaee5') }}</button>
         </fieldset>
       </form>
       <p v-if="!isDraft" class="hint">
-        {{ t("该版本不可修改。需要变更时可克隆为新草稿，重新验证和提交审批。", "This version cannot be edited. Clone it as a new draft to make changes, then validate and submit it for review.") }}
+        {{ t('admin.copy.7922957d') }}
       </p>
     </section>
 
     <section v-if="editable" class="card editor">
-      <h3>{{ t("3 · ", "3 · ") }}{{ newDraft ? t("新建草稿", "New draft") : t("草稿配置与验证", "Draft configuration and validation") }}</h3>
+      <h3>{{ t('admin.copy.eaf6fa57') }}{{ newDraft ? t('admin.copy.d8d699fe') : t('admin.copy.651bc11e') }}</h3>
       <label
-        >{{ t("编辑方式", "Editor mode") }}<select
+        >{{ t('admin.copy.7ff89358') }}<select
           :value="editorMode"
           :disabled="busy || !rights.rulesWrite || definitionLocked"
           @change="
@@ -1166,14 +1169,14 @@ watch(
             )
           "
         >
-          <option value="template">{{ t("六个快捷模板", "Six quick templates") }}</option>
-          <option value="advanced">{{ t("通用可视化编辑器", "Visual editor") }}</option>
+          <option value="template">{{ t('admin.copy.b76c643c') }}</option>
+          <option value="advanced">{{ t('admin.copy.32da5226') }}</option>
         </select></label
       >
-      <form @submit.prevent="persistDraft">
+      <form v-write-guard="busy" novalidate v-inline-validation @submit.prevent="withGlobalLoading(persistDraft)">
         <template v-if="editorMode === 'advanced' && newDraft && !selectedGame">
           <p class="notice">
-            {{ t("未读取目标彩种模型。请明确配置与目标彩种完全一致的模型；服务器会核对，不会修改彩种。", "The target game's model has not been loaded. Configure a model that exactly matches the target; the server will verify it and will not modify the game.") }}
+            {{ t('admin.copy.9eed50b5') }}
           </p>
           <RuleModelEditor
             v-model="advancedDefinition.model"
@@ -1194,7 +1197,7 @@ watch(
           class="form-grid"
         >
           <label class="wide"
-            >{{ t("模板", "Template") }}<select v-model="template" @change="changeTemplate">
+            >{{ t('admin.copy.a085fe79') }}<select v-model="template" @change="changeTemplate">
               <option
                 v-for="[value, label] in templates"
                 :key="value"
@@ -1215,49 +1218,42 @@ watch(
               :inputmode="input.key === 'odds' ? 'decimal' : 'numeric'"
           /></label>
           <label
-            >{{ t("舍入范围", "Rounding scope") }}<select v-model="form.roundingScope">
-              <option value="order">{{ t("整注汇总后舍入", "Round after summing the order") }}</option>
-              <option value="line">{{ t("每组合舍入后汇总", "Round each combination, then sum") }}</option>
-              <option value="tier">{{ t("每奖级舍入后汇总", "Round each prize tier, then sum") }}</option>
+            >{{ t('admin.copy.87ba003c') }}<select v-model="form.roundingScope">
+              <option value="order">{{ t('admin.copy.c8b62866') }}</option>
+              <option value="line">{{ t('admin.copy.3a771232') }}</option>
+              <option value="tier">{{ t('admin.copy.f19680be') }}</option>
             </select></label
           >
           <label v-if="template === 'features'" class="wide"
-            >{{ t("特征条件关系", "Feature condition join") }}<select v-model="form.conditionJoin">
-              <option value="all">{{ t("全部满足（AND）", "All must match (AND)") }}</option>
-              <option value="any">{{ t("任一满足（OR）", "Any may match (OR)") }}</option>
+            >{{ t('admin.copy.93de1b9f') }}<select v-model="form.conditionJoin">
+              <option value="all">{{ t('admin.copy.7674da94') }}</option>
+              <option value="any">{{ t('admin.copy.ec366404') }}</option>
             </select></label
           >
           <template v-if="template === 'attributes'"
             ><label
-              >{{ t("红色号码映射", "Red-number mapping") }}<input
+              >{{ t('admin.copy.f94469a6') }}<input
                 v-model.trim="form.redNumbers"
                 inputmode="numeric" /></label
             ><label
-              >{{ t("蓝色号码映射", "Blue-number mapping") }}<input
+              >{{ t('admin.copy.5ef620d2') }}<input
                 v-model.trim="form.blueNumbers"
                 inputmode="numeric" /></label
           ></template>
         </fieldset>
         <label v-if="!definitionLocked"
-          >{{ t("生效方式", "Effective mode") }}<select
+          >{{ t('admin.copy.1575ab32') }}<select
             v-model="effectMode"
             :disabled="busy || !rights.rulesWrite"
           >
-            <option value="immediate">{{ t("批准后立即生效", "Effective immediately after approval") }}</option>
-            <option value="next_period">{{ t("下一期生效", "Effective next period") }}</option>
+            <option value="immediate">{{ t('admin.copy.5f1eae67') }}</option>
+            <option value="next_period">{{ t('admin.copy.644b87af') }}</option>
           </select></label
         >
         <p class="hint">
-          {{ t("积分和倍率使用整数字符串，赔率精确计算。快捷模板倍率上限 1000；通用编辑器可配置倍率、组合和封顶。定义与审核结果以服务端为准，单次请求最多 16 KiB。", "Points and multipliers use integer strings; odds are calculated precisely. Quick templates support multipliers up to 1,000; the visual editor supports configurable multipliers, combinations, and caps. The server is authoritative for definitions and review results. Requests are limited to 16 KiB.") }}
+          {{ t('admin.copy.c1e7c9de') }}
         </p>
-        <label v-if="rights.rulesWrite && !definitionLocked"
-          >{{ t("保存原因", "Save reason") }}<textarea
-            v-model="draftReason"
-            required
-            rows="2"
-            :disabled="busy"
-          />
-        </label>
+
         <button
           v-if="rights.rulesWrite && !definitionLocked"
           type="submit"
@@ -1267,11 +1263,11 @@ watch(
               (!advancedValid || !advancedModelValid))
           "
         >
-          {{ newDraft ? t("保存新草稿", "Save new draft") : t("保存草稿修改", "Save draft changes") }}
+          {{ newDraft ? t('admin.copy.c69bee60') : t('admin.copy.eb05c8d8') }}
         </button>
       </form>
 
-      <form @submit.prevent="validateDraft">
+      <form v-write-guard="busy" novalidate v-inline-validation @submit.prevent="withGlobalLoading(validateDraft)">
         <template v-if="editorMode === 'advanced'">
           <RuleCasesEditor
             :key="`${selected?.id ?? 'new'}:${selected?.version ?? 0}:cases`"
@@ -1280,20 +1276,13 @@ watch(
             :disabled="busy || (!rights.validate && !rights.rulesWrite)"
             @validity="casesValid = $event"
           />
-          <label v-if="rights.validate && selected"
-            >{{ t("验证原因", "Validation reason") }}<textarea
-              v-model="draftReason"
-              required
-              rows="2"
-              :disabled="busy"
-            />
-          </label>
+
           <button
             v-if="rights.validate && selected"
             type="submit"
             :disabled="busy || dirty || !isDraft || !casesValid"
           >
-            {{ t("验证已保存草稿并保存报告", "Validate saved draft and save report") }}
+            {{ t('admin.copy.71e031b3') }}
           </button>
         </template>
         <fieldset
@@ -1301,31 +1290,31 @@ watch(
           :disabled="busy || (!rights.validate && !rights.rulesWrite)"
           class="form-grid"
         >
-          <legend>{{ t("完整验证用例 · 输入选号、开奖和独立预期", "Complete validation case · enter selections, draw, and independent expectations") }}</legend>
+          <legend>{{ t('admin.copy.d1199771') }}</legend>
           <label v-if="template === 'special'"
-            >{{ t("特别号候选", "Special-number candidates") }}<input
+            >{{ t('admin.copy.0302cab7') }}<input
               v-model.trim="form.specialNumbers"
               inputmode="numeric"
               placeholder="7,19,31,43"
           /></label>
           <template v-if="template === 'm-select-n'"
             ><label
-              >{{ t("所选普通号（6 个）", "Selected regular numbers (6)") }}<input
+              >{{ t('admin.copy.cb08d518') }}<input
                 v-model.trim="form.regularNumbers"
                 inputmode="numeric" /></label
             ><label
-              >{{ t("所选特别号（1 个）", "Selected special number (1)") }}<input
+              >{{ t('admin.copy.e7cea210') }}<input
                 v-model.trim="form.specialNumbers"
                 inputmode="numeric" /></label
           ></template>
           <label v-if="template === 'exclude'"
-            >{{ t("排除号码（逗号分隔，数量也属于规则配置）", "Excluded numbers (comma-separated; the count is part of the rule configuration)") }}<input
+            >{{ t('admin.copy.acd015ea') }}<input
               v-model.trim="form.excludedNumbers"
               inputmode="numeric"
           /></label>
           <template v-if="template === 'digits'"
             ><label v-for="(_, index) in form.digitCandidates" :key="index"
-              >{{ ui(`第 ${index + 1} 位候选（0–9，逗号分隔）`, `Position ${index + 1} candidates (0–9, comma-separated)`) }}<input
+              >{{ t('admin.rule.case.position', { index: index + 1 }) }}<input
                 v-model.trim="form.digitCandidates[index]"
                 inputmode="numeric" /></label
           ></template>
@@ -1337,98 +1326,94 @@ watch(
                 inputmode="numeric"
             /></label>
             <p class="hint wide">
-              {{ t("每项仅选一个值。新增或移除特征需先保存草稿，允许值由模板确定。", "Select one value per feature. Save the draft before adding or removing a feature; allowed values are set by the template.") }}
+              {{ t('admin.copy.d213a808') }}
             </p></template
           >
           <div v-if="template === 'attributes'" class="wide">
-            <span>{{ t("所选颜色（可多选）", "Selected colors (multiple allowed)") }}</span
+            <span>{{ t('admin.copy.5ad7c49f') }}</span
             ><label class="check"
               ><input
                 v-model="form.selectedColors"
                 type="checkbox"
                 value="red"
-              />{{ t("红", "Red") }}</label
+              />{{ t('admin.copy.4a98e5d6') }}</label
             ><label class="check"
               ><input
                 v-model="form.selectedColors"
                 type="checkbox"
                 value="blue"
-              />{{ t("蓝", "Blue") }}</label
+              />{{ t('admin.copy.82e76224') }}</label
             >
           </div>
           <label v-if="template === 'digits' || template === 'features'"
-            >{{ t("三位开奖结果", "Three-digit draw") }}<input
+            >{{ t('admin.copy.89e6faa8') }}<input
               v-model.trim="form.drawDigits"
               inputmode="numeric"
           /></label>
           <template v-else
             ><label
-              >{{ t("开奖普通号（6 个）", "Regular draw numbers (6)") }}<input
+              >{{ t('admin.copy.fcfeff00') }}<input
                 v-model.trim="form.drawRegular"
                 inputmode="numeric" /></label
             ><label
-              >{{ t("开奖特别号（1 个）", "Special draw number (1)") }}<input
+              >{{ t('admin.copy.c8d5b8a6') }}<input
                 v-model.trim="form.drawSpecial"
                 inputmode="numeric" /></label
           ></template>
           <label
-            >{{ t("验证倍率（1–1000 整数）", "Validation multiplier (integer, 1–1,000)") }}<input
+            >{{ t('admin.copy.0b249936') }}<input
               v-model.trim="form.multiplier"
               inputmode="numeric"
           /></label>
-          <label>{{ t("用例名称", "Case name") }}<input v-model.trim="expected.name" required /></label>
+          <label>{{ t('admin.copy.3c80afee') }}<input v-model.trim="expected.name" required /></label>
           <label
-            >{{ t("预期投注积分", "Expected bet points") }}<input
+            >{{ t('admin.copy.aa8c440a') }}<input
               v-model.trim="expected.bet"
               inputmode="numeric"
               required
-              :placeholder="t('规范非负整数', 'Canonical non-negative integer')"
+              :placeholder="t('admin.copy.3a1749c0')"
           /></label>
           <label
-            >{{ t("预期中奖积分", "Expected prize points") }}<input
+            >{{ t('admin.copy.25addb19') }}<input
               v-model.trim="expected.prize"
               inputmode="numeric"
               required
-              :placeholder="t('规范非负整数', 'Canonical non-negative integer')"
+              :placeholder="t('admin.copy.3a1749c0')"
           /></label>
           <label
-            >{{ t("预期是否中奖", "Expected win") }}<select v-model="expected.won">
-              <option :value="true">{{ t("中奖", "Won") }}</option>
-              <option :value="false">{{ t("未中奖", "Not won") }}</option>
+            >{{ t('admin.copy.12b4c538') }}<select v-model="expected.won">
+              <option :value="true">{{ t('admin.copy.638b1e06') }}</option>
+              <option :value="false">{{ t('admin.copy.5fa501a3') }}</option>
             </select></label
           >
-          <label v-if="rights.validate && selected" class="wide"
-            >{{ t("验证原因", "Validation reason") }}<textarea v-model="draftReason" required rows="2" />
-          </label>
+
           <button
             v-if="rights.validate && selected"
             class="wide"
             type="submit"
             :disabled="busy || dirty || !isDraft"
           >
-            {{ t("验证已保存草稿并保存报告", "Validate saved draft and save report") }}
+            {{ t('admin.copy.71e031b3') }}
           </button>
         </fieldset>
       </form>
       <p v-if="newDraft" class="hint">
-        {{ t("先保存草稿，再调用验证接口；预期结果由运营填写，未调用 API 时不会显示验证成功。", "Save the draft before calling validation. Operators enter the expected results; validation is not shown as successful until the API has been called.") }}
+        {{ t('admin.copy.2b1cd8a7') }}
       </p>
       <p v-else-if="dirty" class="notice">
-        {{ t("输入与已保存配置不一致，暂不可验证或提交审核。普通草稿需先保存配置；回滚草稿的特征项目和排除数量必须与原定义一致。修改不会自动保存。", "The input differs from the saved configuration, so validation and review submission are unavailable. Save regular drafts first; rollback drafts must retain the source definition's feature set and exclusion count. Changes are not saved automatically.") }}
+        {{ t('admin.copy.c04936db') }}
       </p>
       <p v-else-if="validationInputsChanged" class="hint">
-        {{ t("用例输入已变化，已清除旧验证显示，请重新验证。", "Case input changed; the previous validation display was cleared. Validate again.") }}
+        {{ t('admin.copy.a8a3dedb') }}
       </p>
-      <form
+      <form v-write-guard="busy" novalidate v-inline-validation
         v-if="rights.submit && selected && isDraft"
-        @submit.prevent="submitReview"
+        @submit.prevent="withGlobalLoading(submitReview)"
       >
         <fieldset :disabled="busy">
-          <label
-            >{{ t("提交审核原因", "Review submission reason") }}<textarea v-model="draftReason" required rows="2" />
-          </label>
+
           <button type="submit" :disabled="!readyToSubmit">
-            {{ t("提交审核（需服务端验证通过）", "Submit for review (server validation must pass)") }}
+            {{ t('admin.copy.fdf143f8') }}
           </button>
         </fieldset>
       </form>
@@ -1439,114 +1424,104 @@ watch(
       class="card validation"
       aria-live="polite"
     >
-      <h3>{{ t("服务端验证：", "Server validation: ") }}{{ validationDisplay.passed ? t("通过", "Passed") : t("未通过", "Failed") }}</h3>
-      <p class="hint">{{ t("定义校验指纹：", "Definition validation fingerprint: ") }}{{ validationDisplay.definition_hash }}</p>
+      <h3>{{ t('admin.copy.a03178f3') }}{{ validationDisplay.passed ? t('admin.copy.14385fca') : t('admin.copy.f49253c3') }}</h3>
+
       <ul v-if="validationDisplay.warnings?.length">
         <li v-for="(warning, index) in validationDisplay.warnings" :key="index">
           {{ warning }}
         </li>
       </ul>
-      <p v-else class="hint">{{ t("服务端未返回警告。", "The server returned no warnings.") }}</p>
+      <p v-else class="hint">{{ t('admin.copy.f91f449b') }}</p>
       <div
         v-for="(report, index) in validationDisplay.cases"
         :key="index"
         class="case-report"
       >
         <h4>
-          {{ report.name }} · {{ report.matched ? t("符合预期", "Matches expectation") : t("不符合预期", "Does not match expectation") }}
+          {{ report.name }} · {{ report.matched ? t('admin.copy.89d58cc9') : t('admin.copy.e90f3382') }}
         </h4>
         <dl>
-          <dt>{{ t("投注积分 · 预期 / 实际", "Bet points · expected / actual") }}</dt>
+          <dt>{{ t('admin.copy.c1576e5d') }}</dt>
           <dd>
             {{ report.expected_bet_points }} / {{ report.actual_bet_points }}
           </dd>
-          <dt>{{ t("中奖积分 · 预期 / 实际", "Prize points · expected / actual") }}</dt>
+          <dt>{{ t('admin.copy.f15611ea') }}</dt>
           <dd>
             {{ report.expected_prize_points }} /
             {{ report.actual_prize_points }}
           </dd>
-          <dt>{{ t("中奖 · 预期 / 实际", "Win · expected / actual") }}</dt>
+          <dt>{{ t('admin.copy.738302ac') }}</dt>
           <dd>
-            {{ report.expected_won ? t("是", "Yes") : t("否", "No") }} /
-            {{ report.actual_won ? t("是", "Yes") : t("否", "No") }}
+            {{ report.expected_won ? t('admin.copy.1a264f45') : t('admin.copy.b92bb6e0') }} /
+            {{ report.actual_won ? t('admin.copy.1a264f45') : t('admin.copy.b92bb6e0') }}
           </dd>
         </dl>
       </div>
       <ul v-if="validationDisplay.findings?.length">
         <li v-for="(finding, index) in validationDisplay.findings" :key="index">
-          {{ finding.blocking ? t("阻断", "Blocking") : t("提示", "Notice") }} · {{ finding.code }}：{{
+          {{ finding.blocking ? t('admin.copy.76443d08') : t('admin.copy.d1d73b39') }} · {{ finding.code }}：{{
             finding.message
           }}
         </li>
       </ul>
       <details>
-        <summary>{{ t("验证用例和发现（只读）", "Validation cases and findings (read-only)") }}</summary>
-        <pre>{{
-          pretty({
+        <summary>{{ t('admin.copy.944f2a69') }}</summary>
+        <BusinessDetails :value="{
             cases: validationDisplay.cases,
             findings: validationDisplay.findings,
-          })
-        }}</pre>
+          }" :locale="associationLocale" />
       </details>
     </section>
 
     <section v-if="selected?.status === 'pending_review'" class="card review">
-      <h3>{{ t("4 · 品牌管理员审核", "4 · Brand administrator review") }}</h3>
+      <h3>{{ t('admin.copy.d1c53498') }}</h3>
       <p class="notice">
-        {{ t("审批会影响正式规则生效。请逐项阅读定义、验证报告、全部警告和生效方式；服务端会检查品牌审核权限、版本及状态。", "Approval affects the live rule. Review the definition, validation report, all warnings, and effective mode. The server checks brand review permission, version, and status.") }}
+        {{ t('admin.copy.6fc67a87') }}
       </p>
       <p v-if="!reviewAllowed" class="hint">
-        {{ t("当前账号没有本品牌 rule.review.brand 权限，或不具备服务端要求的品牌管理员审核身份。", "This account lacks rule.review.brand permission for this brand or does not meet the server's brand-administrator review requirements.") }}
+        {{ t('admin.copy.736e1a91') }}
       </p>
-      <form v-else @submit.prevent="decide(true)">
+      <form v-write-guard="busy" novalidate v-inline-validation v-else @submit.prevent="withGlobalLoading(decide, true)">
         <fieldset :disabled="busy">
-          <label
-            >{{ t("审核原因（批准和拒绝均必填）", "Review reason (required for approval and rejection)") }}<textarea
-              v-model="review.reason"
-              required
-              rows="3"
-            />
-          </label>
+
           <label class="check"
             ><input
               v-model="review.acknowledged"
               type="checkbox"
-            />{{ t("我已阅读验证结果、全部警告及生效范围，确认批准。", "I have reviewed the validation results, all warnings, and the effective scope, and confirm approval.") }}</label
+            />{{ t('admin.copy.1c171617') }}</label
           >
           <div class="actions">
             <button type="submit" :disabled="!review.acknowledged">
-              {{ t("批准该版本", "Approve this version") }}</button
+              {{ t('admin.copy.d75a2d5c') }}</button
             ><button
+              v-write-guard="busy"
               type="button"
-              class="danger"
-              :disabled="!review.reason.trim()"
-              @click="decide(false)"
+              class="button button-danger"
+              @click="withGlobalLoading(decide, false)"
             >
-              {{ t("拒绝并记录原因", "Reject and record reason") }}
+              {{ t('admin.copy.d7f578ff') }}
             </button>
           </div>
         </fieldset>
       </form>
     </section>
-    <form
+    <form v-write-guard="busy" novalidate v-inline-validation
       v-if="selected && cloneAllowed"
       class="card"
-      @submit.prevent="cloneVersion"
+      @submit.prevent="withGlobalLoading(cloneVersion)"
     >
       <fieldset :disabled="busy" class="form-grid">
-        <legend>{{ t("克隆当前版本为新草稿", "Clone current version as a new draft") }}</legend>
+        <legend>{{ t('admin.copy.0b157d4c') }}</legend>
         <label
-          >{{ t("新草稿生效方式", "New draft effective mode") }}<select v-model="clone.effectMode">
-            <option value="immediate">{{ t("批准后立即生效", "Effective immediately after approval") }}</option>
-            <option value="next_period">{{ t("下一期生效", "Effective next period") }}</option>
+          >{{ t('admin.copy.20d539bb') }}<select v-model="clone.effectMode">
+            <option value="immediate">{{ t('admin.copy.5f1eae67') }}</option>
+            <option value="next_period">{{ t('admin.copy.644b87af') }}</option>
           </select></label
         >
-        <label
-          >{{ t("克隆原因", "Clone reason") }}<textarea v-model="clone.reason" required rows="2" /></label
-        ><button class="wide" type="submit">{{ t("克隆（来源定义保持不变）", "Clone (source definition remains unchanged)") }}</button>
+        <button class="wide" type="submit">{{ t('admin.copy.4108acba') }}</button>
       </fieldset>
     </form>
-    <p v-if="busy" role="status" class="hint">{{ t("请求处理中，请等待服务端结果…", "Request in progress. Please wait for the server result…") }}</p>
+    <p v-global-loading v-if="busy" role="status" class="hint">{{ t('admin.copy.229230c6') }}</p>
   </section>
 </template>
 
@@ -1617,7 +1592,7 @@ h3 {
   padding: 18px;
   border: 1px solid #dce4df;
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
   display: grid;
   gap: 12px;
   align-content: start;
@@ -1657,7 +1632,7 @@ textarea {
   border-radius: 8px;
   padding: 10px;
   color: inherit;
-  background: #fff;
+  background: var(--surface);
   font: inherit;
 }
 textarea {
@@ -1680,7 +1655,7 @@ button:disabled {
   cursor: default;
   opacity: 0.55;
 }
-.danger {
+.button-danger {
   color: #8f3033;
   background: #fff0ed;
   border-color: #dfbbb4;

@@ -4,7 +4,7 @@
 
 ## 权限和品牌范围
 
-GET `/api/v1/admin/audit`需要audit.view.brand或audit.view.platform。品牌权限只能查询所属品牌；平台查看权限可省略品牌头跨品牌查询。响应仍为`{items:[]}`，旧字段保留，新增brand_id为UUID或null。
+GET `/api/v1/admin/audit`需要audit.view.brand或audit.view.platform。品牌权限只能查询所属品牌；平台查看权限可省略品牌头跨品牌查询。响应仍为`{items:[]}`，旧字段保留，新增brand_id为UUID或null；每条记录返回`actor_username`，管理员记录为操作账号，系统或非管理员操作为空字符串。
 
 GET `/api/v1/admin/audit/export`同时需要对应品牌的查看权和独立audit.export.brand或audit.export.platform。即使拥有平台权限也必须传明确X-Brand-ID，不提供全部品牌一键导出。超级管理员身份不替代权限；拒绝访问沿用access.denied审计。
 
@@ -16,7 +16,7 @@ GET `/api/v1/admin/audit/export`同时需要对应品牌的查看权和独立aud
 
 查询limit默认100、范围1至200，offset默认0、范围0至100000；按created_at DESC、id DESC排序。查询自身新审计不在本次结果内。逐页查询不是冻结快照；并发新增记录可能移动后续页偏移。后台每页100条，继续读取须明确翻页。完整导出不接受分页、不拼接多页。
 
-完整查询页面序列化记录累计最多4MiB，超限422 AUDIT_QUERY_TOO_LARGE，没有部分items，可缩小范围或分页条数。导出最多10000条，累计记录及最终CSV均有4MiB界限，超限422 AUDIT_EXPORT_TOO_LARGE，没有下载头或截断文件。数据库先限制单条前后JSON传输大小，再限制整个缓冲结果。
+完整查询页面序列化记录累计最多4MiB，超限422 AUDIT_QUERY_TOO_LARGE，没有部分items，可缩小范围或分页条数。导出最多10000条，累计记录及最终CSV均有4MiB界限，超限422 AUDIT_EXPORT_TOO_LARGE，没有下载头或截断文件。数据库先限制单条前后JSON传输大小，再限制整个缓冲结果。`actor_id`仍是审计关联用的UUID，界面优先使用`actor_username`；系统或非管理员记录使用明确的`actor_type`文案，不把UUID当账号名。
 
 ## CSV 和导出证据
 

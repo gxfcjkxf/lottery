@@ -65,6 +65,7 @@ func assertCommissionReportTotals(t *testing.T, got reporting.CommissionTotals, 
 }
 
 func TestCommissionReportUsesActualPostingLedgerAndPreservesHistoricalFacts(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	ctx := context.Background()
 	reports := reporting.Service{DB: f.betting.db}
@@ -137,7 +138,7 @@ func TestCommissionReportUsesActualPostingLedgerAndPreservesHistoricalFacts(t *t
 	if err = commissionBatchCallTx(t, f, func(tx pgx.Tx) error {
 		_, updateErr := agents.Update(ctx, tx, f.betting.brand, f.actor, f.node.ID, agency.UpdateInput{
 			Version: f.node.Version, PolicyVersion: agentPolicy.Version,
-			Config: agency.NodeConfig{Ratio: "0.2", Status: "disabled", CanCreateChildren: false},
+			Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0.2", Status: "disabled", CanCreateChildren: false},
 			Reason: "report keeps historical beneficiary after current agent is disabled",
 		}, points.Metadata{RequestID: ids.New()})
 		return updateErr

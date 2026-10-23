@@ -132,6 +132,20 @@ describe("report CSV export API", () => {
     expect(lines[10_001]).toContain("group");
   });
 
+  it("rejects invalid summary timezones and a different timezone in any group", async () => {
+    for (const [row, timezone] of [[1, "Invalid/Timezone"], [3, "UTC"]] as const) {
+      const result = responseFor("betting", { groupCount: 2 });
+      const lines = new TextDecoder().decode(result.body).split("\n");
+      const cells = lines[row]!.split(",");
+      cells[3] = timezone;
+      lines[row] = cells.join(",");
+      const bytes = new TextEncoder().encode(`\ufeff${lines.join("\n")}`);
+      result.headers.set("Content-Length", String(bytes.length));
+      result.headers.set("X-Report-SHA256", [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((n) => n.toString(16).padStart(2, "0")).join(""));
+      await expect(createReportExportApi(fetchWith(new Response(bytes, { status: 200, headers: result.headers }))).betting(brand, { ...query, group_by: "game" })).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    }
+  });
+
   it("rejects foreign brand scope, bad columns, incorrect byte length, and hash mismatch before returning a file", async () => {
     const foreignResponse = await validResponse("betting", { foreignBrand: true });
     await expect(createReportExportApi(fetchWith(foreignResponse)).betting(brand, query)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });

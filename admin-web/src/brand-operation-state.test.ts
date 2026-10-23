@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   brandOperationSessionGeneration,
-  brandOperationCompletionMessage,
   classifyBrandOperationFailure,
   clearAllPendingBrandOperationWrites,
   clearPendingBrandOperationWrite,
@@ -80,9 +79,4 @@ describe("page-session brand operation write state", () => {
     expect(write.isCurrent(writeToken)).toBe(true);
   });
 
-  it("distinguishes a verified write receipt from a successful independent live-state read", () => {
-    expect(brandOperationCompletionMessage(true)).toMatch(/已独立重新读取/);
-    expect(brandOperationCompletionMessage(false)).toMatch(/回执已核验，但读取最新状态失败/);
-    expect(brandOperationCompletionMessage(false)).not.toMatch(/当前状态已独立重新读取/);
-  });
 });

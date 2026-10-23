@@ -1,3 +1,5 @@
+import { readPlatformEnvelope } from './platform-api'
+
 import { PlatformApiError } from './platform-api'
 
 const BASE = '/api/v1/platform'
@@ -120,15 +122,7 @@ export function createPlatformFinancialPoliciesApi(fetcher: typeof fetch = fetch
     } catch (cause) {
       throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true)
     }
-    let envelope: unknown
-    try { envelope = await response.json() } catch {
-      if (!response.ok) throw new PlatformApiError(`Request failed (${response.status})`, response.status)
-      throw new PlatformApiError('Invalid server response', response.status, 'INVALID_RESPONSE')
-    }
-    if (!object(envelope) || envelope.success !== true || envelope.data === undefined || !response.ok) {
-      const error = object(envelope) && object(envelope.error) ? envelope.error : undefined
-      throw new PlatformApiError(typeof error?.message === 'string' ? error.message : `Request failed (${response.status})`, response.status, typeof error?.code === 'string' ? error.code : undefined)
-    }
+    const envelope = await readPlatformEnvelope<unknown>(response);
     if (response.status !== 200) throw new PlatformApiError('Invalid server response status', response.status, 'INVALID_RESPONSE')
     return envelope.data
   }

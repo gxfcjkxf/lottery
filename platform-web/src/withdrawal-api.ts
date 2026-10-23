@@ -1,3 +1,5 @@
+import { readPlatformEnvelope } from './platform-api'
+
 import { isWithdrawalHistory, isWithdrawalOrder, isWithdrawalPage, type WithdrawalHistory, type WithdrawalOrder, type WithdrawalPage, type WithdrawalState } from '@lottery/shared'
 import { PlatformApiError } from './platform-api'
 
@@ -16,15 +18,7 @@ export function createPlatformWithdrawalApi(fetcher: typeof fetch = fetch) {
     } catch (cause) {
       throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true)
     }
-    let envelope: unknown
-    try { envelope = await response.json() } catch {
-      throw new PlatformApiError(response.ok ? 'Invalid server response' : `Request failed (${response.status})`, response.status, 'INVALID_RESPONSE')
-    }
-    if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope) || !('success' in envelope) || envelope.success !== true || !('data' in envelope) || !response.ok) {
-      const error = envelope && typeof envelope === 'object' && !Array.isArray(envelope) && 'error' in envelope && envelope.error && typeof envelope.error === 'object'
-        ? envelope.error as Record<string, unknown> : undefined
-      throw new PlatformApiError(typeof error?.message === 'string' ? error.message : `Request failed (${response.status})`, response.status, typeof error?.code === 'string' ? error.code : undefined)
-    }
+    const envelope = await readPlatformEnvelope<unknown>(response);
     return envelope.data
   }
 

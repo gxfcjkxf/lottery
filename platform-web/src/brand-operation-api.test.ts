@@ -17,6 +17,47 @@ function reply(data: unknown, status = 200) {
 }
 
 describe('platform brand operation API', () => {
+  it.each(['中', '😀'])('counts 500 %s characters instead of UTF-8 bytes', async char => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => reply({ ...record, version: 4 }))
+    const api = createPlatformBrandOperationApi(fetcher)
+    await expect(api.update(brandId, { version: 3, status: 'paused', reason: char.repeat(500) }, 'characters-key')).resolves.toMatchObject({ version: 4 })
+    await expect(api.update(brandId, { version: 3, status: 'paused', reason: char.repeat(501) }, 'characters-key')).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+  it('accepts scheduled active receipts, preserving the pause window and reason', async () => {
+    const body = { version: 3, status: 'paused' as const, reason: 'Scheduled maintenance', pause_starts_at: '2030-01-01T01:00:00.000Z', pause_ends_at: '2030-01-01T02:00:00.000Z' }
+    const scheduled = { ...record, version: 4, status: 'active', pause_starts_at: '2030-01-01T01:00:00Z', pause_ends_at: '2030-01-01T02:00:00Z' }
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(reply(scheduled))
+    await expect(createPlatformBrandOperationApi(fetcher).update(brandId, body, 'scheduled-key')).resolves.toEqual(scheduled)
+    expect(JSON.parse(String(fetcher.mock.calls[0]![1]?.body))).toEqual(body)
+    await expect(createPlatformBrandOperationApi(async () => reply({ ...scheduled, pause_ends_at: undefined })).read(brandId)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+  it.each(['', 'Stop operations'])('reads and writes stopped status with reason %j', async reason => {
+    const stopped = { ...record, version: 4, status: 'disabled' as const }
+    const body = { version: 3, status: 'disabled' as const, reason }
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => reply(stopped))
+    const api = createPlatformBrandOperationApi(fetcher)
+    await expect(api.read(brandId)).resolves.toEqual(stopped)
+    await expect(api.update(brandId, body, 'stop-key')).resolves.toEqual(stopped)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    const [, init] = fetcher.mock.calls[1]!
+    expect(init?.method).toBe('PATCH')
+    expect(new Headers(init?.headers).get('X-Brand-ID')).toBe(brandId)
+    expect(new Headers(init?.headers).get('Idempotency-Key')).toBe('stop-key')
+    expect(JSON.parse(String(init?.body))).toEqual(body)
+  })
+  it.each(['active', 'paused'] as const)('accepts %s receipts with an empty reason', async status => {
+    const body = { version: 3, status, reason: '' }
+    const updated = { ...record, version: 4, status }
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(reply(updated))
+    await expect(createPlatformBrandOperationApi(fetcher).update(brandId, body, 'empty-reason-key')).resolves.toEqual(updated)
+    expect(JSON.parse(String(fetcher.mock.calls[0]![1]?.body))).toEqual(body)
+  })
+  it('rejects an overlong stopped-status reason before sending a request', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+    await expect(createPlatformBrandOperationApi(fetcher).update(brandId, { version: 3, status: 'disabled', reason: 'x'.repeat(501) }, 'stop-key')).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
+    expect(fetcher).not.toHaveBeenCalled()
+  })
   it('reads fresh status and version under the explicit brand scope', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(reply(record))
     await expect(createPlatformBrandOperationApi(fetcher).read(brandId)).resolves.toEqual(record)
@@ -43,7 +84,7 @@ describe('platform brand operation API', () => {
   it('rejects an invalid brand scope or malformed and mismatched records', async () => {
     await expect(createPlatformBrandOperationApi().read('not-a-brand')).rejects.toMatchObject({ code: 'BRAND_REQUIRED' })
     await expect(createPlatformBrandOperationApi(async () => reply({ ...record, brand_id: auditId })).read(brandId)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(createPlatformBrandOperationApi(async () => reply({ ...record, status: 'disabled' })).read(brandId)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformBrandOperationApi(async () => reply({ ...record, status: 'invalid' })).read(brandId)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
     await expect(createPlatformBrandOperationApi(async () => reply({ ...record, status: 'paused' })).update(brandId, { version: 3, status: 'active', reason: 'Resume' }, 'fixed-key-123')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
 
@@ -56,16 +97,15 @@ describe('platform brand operation API', () => {
   })
 
   it('preserves structured permission errors and marks malformed responses unconfirmed', async () => {
-    const denied = async () => new Response(JSON.stringify({ success: false, error: { code: 'FORBIDDEN', message: 'Permission denied' } }), { status: 403 })
-    await expect(createPlatformBrandOperationApi(denied).read(brandId)).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN', message: 'Permission denied' })
+    const denied = async () => new Response(JSON.stringify({ success: false, error: { code: 'PERMISSION_DENIED', message: 'Permission denied' } }), { status: 403 })
+    await expect(createPlatformBrandOperationApi(denied).read(brandId)).rejects.toMatchObject({ status: 403, code: 'PERMISSION_DENIED', message: 'Permission denied' })
     const malformed = async () => new Response('not json', { status: 400 })
     await expect(createPlatformBrandOperationApi(malformed).update(brandId, { version: 3, status: 'active', reason: 'Resume' }, 'fixed-key-123')).rejects.toMatchObject({ status: 502, code: 'INVALID_RESPONSE' })
   })
 
-  it('requires a reason and key before a write', async () => {
+  it('requires an idempotency key before a write', async () => {
     const fetcher = vi.fn<typeof fetch>()
     const api = createPlatformBrandOperationApi(fetcher)
-    await expect(api.update(brandId, { version: 3, status: 'active', reason: '  ' }, 'fixed-key-123')).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
     await expect(api.update(brandId, { version: 3, status: 'active', reason: 'Resume' }, ' ')).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
     expect(fetcher).not.toHaveBeenCalled()
   })

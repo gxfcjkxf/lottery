@@ -9,16 +9,18 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/agency"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
-	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/jackc/pgx/v5"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 func agentResult(out any, e error) (mutation.Result, error) {
 	switch {
 	case e == nil:
 		return mutation.OK(200, out), nil
+	case errors.Is(e, agency.ErrExists):
+		return mutation.Fail(409, "IDENTITY_EXISTS", "代理账号已存在"), nil
 	case errors.Is(e, agency.ErrInvalid):
 		return mutation.Fail(400, "AGENT_INPUT_INVALID", "代理配置或筛选资料不正确"), nil
 	case errors.Is(e, agency.ErrNotFound):
@@ -29,6 +31,10 @@ func agentResult(out any, e error) (mutation.Result, error) {
 		return mutation.Fail(409, "AGENT_VERSION_CONFLICT", "代理、上级或品牌政策版本已变化，请重新核对"), nil
 	case errors.Is(e, agency.ErrLimit):
 		return mutation.Fail(409, "AGENT_LIMIT_CONFLICT", "代理比例或层级超出上级/品牌上限，或已有下级超出新上限"), nil
+	case errors.Is(e, agency.ErrCalendarRequired):
+		return mutation.Fail(409, "AGENT_COMMISSION_CALENDAR_REQUIRED", "请先配置佣金日历，再预约代理模式切换"), nil
+	case errors.Is(e, agency.ErrModePending):
+		return mutation.Fail(409, "AGENT_MODE_PENDING", "整条代理线已有待生效模式，请在生效后再修改"), nil
 	case errors.Is(e, agency.ErrState):
 		return mutation.Fail(409, "AGENT_STATE_CONFLICT", "代理身份已存在、父级不允许发展、代理管理未启用或配置未变化"), nil
 	default:
@@ -50,7 +56,7 @@ func agentPage(r *http.Request, parentAllowed bool) (int, int, *string, bool) {
 				return 0, 0, nil, false
 			}
 			parent = &v[0]
-		} else if key != "limit" && key != "offset" {
+		} else if key != "limit" && key != "offset" && !((key == "q" || key == "online") && (r.URL.Path == "/api/v1/admin/agents" || r.URL.Path == "/api/v1/platform/agents")) {
 			return 0, 0, nil, false
 		}
 	}
@@ -115,36 +121,89 @@ func registerAgentAdminRoutes(handle func(string, string, http.HandlerFunc), d D
 			return agentResult(out, e)
 		})
 	})
-	for _, path := range []string{"/agent-policy/history", "/agents/{id}/history"} {
-		handle("GET", path, func(w http.ResponseWriter, r *http.Request) {
-			resource := "agent_policy"
-			var id *string
-			if path != "/agent-policy/history" {
-				resource = "agent"
-				v := r.PathValue("id")
-				if !uuidPattern.MatchString(v) {
-					failure(w, r, 400, "REQUEST_INVALID", "代理编号不正确")
+
+	handle("GET", "/agents/{id}/mode-change", func(w http.ResponseWriter, r *http.Request) {
+		a, b, ok := pointAdminActor(w, r, d, "agent", "view", false)
+		if !ok {
+			return
+		}
+		out, e := s.ModeScope(r.Context(), b, r.PathValue("id"))
+		if e == nil && !adminReadAudit(w, r, d, a, b, "agent.mode_scope.view") {
+			return
+		}
+		res, e := agentResult(out, e)
+		outputMutation(w, r, res, e)
+	})
+	handle("POST", "/agents/{id}/mode-change", func(w http.ResponseWriter, r *http.Request) {
+		a, b, ok := pointAdminActor(w, r, d, "agent", "write", true)
+		if !ok {
+			return
+		}
+		id := r.PathValue("id")
+		var in agency.ModeChangeInput
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		agentWrite(w, r, d, a, b, "agent", "agent.mode.schedule", id, in, func(ctx context.Context, tx pgx.Tx, a access.Account) (mutation.Result, error) {
+			out, e := s.ScheduleModeChange(ctx, tx, b, a, id, in, pointMeta(r, a))
+			return agentResult(out, e)
+		})
+	})
+	handle("GET", "/agents/{id}/history", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if !uuidPattern.MatchString(id) {
+			failure(w, r, 400, "REQUEST_INVALID", "代理编号不正确")
+			return
+		}
+
+		a, b, ok := pointAdminActor(w, r, d, "agent", "view", false)
+		if !ok {
+			return
+		}
+		limit, offset, _, ok := agentPage(r, false)
+		if !ok {
+			failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
+			return
+		}
+		out, e := s.History(r.Context(), b, &id, limit, offset)
+		if e == nil && !adminReadAudit(w, r, d, a, b, "agent.history.view") {
+			return
+		}
+		res, e := agentResult(out, e)
+		outputMutation(w, r, res, e)
+	})
+	handle("GET", "/agents", func(w http.ResponseWriter, r *http.Request) {
+		a, b, ok := pointAdminActor(w, r, d, "agent", "view", false)
+		if !ok {
+			return
+		}
+		limit, offset, _, ok := agentPage(r, false)
+		if !ok {
+			failure(w, r, 400, "REQUEST_INVALID", "代理列表筛选参数不正确")
+			return
+		}
+		filter := agency.DirectoryFilter{Search: strings.TrimSpace(r.URL.Query().Get("q")), ViewPoints: access.Authorize(a, "wallet", "view", access.ScopePlatform, "") || access.Authorize(a, "wallet", "view", access.ScopeBrand, b)}
+		for key, values := range r.URL.Query() {
+			if key != "q" && key != "online" && key != "limit" && key != "offset" {
+				failure(w, r, 400, "REQUEST_INVALID", "代理列表筛选参数不正确")
+				return
+			}
+			if key == "online" {
+				if values[0] != "true" && values[0] != "false" {
+					failure(w, r, 400, "REQUEST_INVALID", "在线筛选参数不正确")
 					return
 				}
-				id = &v
+				online := values[0] == "true"
+				filter.Online = &online
 			}
-			a, b, ok := pointAdminActor(w, r, d, resource, "view", false)
-			if !ok {
-				return
-			}
-			limit, offset, _, ok := agentPage(r, false)
-			if !ok {
-				failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
-				return
-			}
-			out, e := s.History(r.Context(), b, id, limit, offset)
-			if e == nil && !adminReadAudit(w, r, d, a, b, "agent.history.view") {
-				return
-			}
-			res, e := agentResult(out, e)
-			outputMutation(w, r, res, e)
-		})
-	}
+		}
+		out, e := s.List(r.Context(), b, filter, limit, offset)
+		if e == nil && !adminReadAudit(w, r, d, a, b, "agent.list.view") {
+			return
+		}
+		res, e := agentResult(out, e)
+		outputMutation(w, r, res, e)
+	})
 	handle("GET", "/agents/tree", func(w http.ResponseWriter, r *http.Request) {
 		a, b, ok := pointAdminActor(w, r, d, "agent", "view", false)
 		if !ok {
@@ -209,97 +268,5 @@ func registerAgentAdminRoutes(handle func(string, string, http.HandlerFunc), d D
 	})
 }
 func registerAgentUserRoutes(mux routeRegistrar, d Dependencies) {
-	s := agency.Service{DB: d.Admins.DB}
-	for _, prefix := range []string{"/api/v1", "/api/v1/b/{brandCode}"} {
-		mux.HandleFunc("GET "+prefix+"/agent/me", func(w http.ResponseWriter, r *http.Request) {
-			if bettingUnavailable(w, r, d) {
-				return
-			}
-			b, ok := resolveBrand(w, r, d)
-			if !ok {
-				return
-			}
-			v, ok := currentBetSession(w, r, d, b.ID)
-			if !ok {
-				return
-			}
-			out, e := s.Me(r.Context(), b.ID, v.Member.ID)
-			res, e := agentResult(out, e)
-			outputMutation(w, r, res, e)
-		})
-		mux.HandleFunc("GET "+prefix+"/agent/children", func(w http.ResponseWriter, r *http.Request) {
-			if bettingUnavailable(w, r, d) {
-				return
-			}
-			b, ok := resolveBrand(w, r, d)
-			if !ok {
-				return
-			}
-			v, ok := currentBetSession(w, r, d, b.ID)
-			if !ok {
-				return
-			}
-			limit, offset, _, ok := agentPage(r, false)
-			if !ok {
-				failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
-				return
-			}
-			own, e := s.Me(r.Context(), b.ID, v.Member.ID)
-			var out agency.Tree
-			if e == nil {
-				out, e = s.Tree(r.Context(), b.ID, &own.ID, limit, offset)
-			}
-			res, e := agentResult(out, e)
-			outputMutation(w, r, res, e)
-		})
-		mux.HandleFunc("PUT "+prefix+"/agent/children/{id}/config", func(w http.ResponseWriter, r *http.Request) {
-			if bettingUnavailable(w, r, d) {
-				return
-			}
-			b, ok := resolveBrand(w, r, d)
-			if !ok {
-				return
-			}
-			initial, ok := currentBetSession(w, r, d, b.ID)
-			if !ok {
-				return
-			}
-			id := r.PathValue("id")
-			if !uuidPattern.MatchString(id) {
-				failure(w, r, 400, "REQUEST_INVALID", "代理编号不正确")
-				return
-			}
-			var in agency.ChildInput
-			if !decodeBody(w, r, &in) {
-				return
-			}
-			raw, e := json.Marshal(in)
-			if e != nil {
-				failure(w, r, 400, "REQUEST_INVALID", "请求格式不正确")
-				return
-			}
-			var fresh identity.Session
-			res, e := d.Mutations.ExecuteChecked(r.Context(), b.ID, "agent-user:"+initial.User.ID+":"+initial.Member.ID, "agent.child.update", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(id+":"+string(raw)), func(ctx context.Context, tx pgx.Tx) error {
-				var e error
-				fresh, e = d.Identity.AuthenticateTx(ctx, tx, b.ID, requestToken(r, userCookieName(b.ID)))
-				if e != nil {
-					return e
-				}
-				if fresh.User.ID != initial.User.ID || fresh.Member.ID != initial.Member.ID {
-					return identity.ErrSession
-				}
-				_, e = s.CheckUserWrite(ctx, tx, b.ID, fresh, id)
-				return e
-			}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-				out, e := s.UpdateChild(ctx, tx, b.ID, fresh, id, in, points.Metadata{RequestID: requestID(r), IP: meta(r).IP})
-				return agentResult(out, e)
-			})
-			if errors.Is(e, identity.ErrSession) {
-				res, e = mutation.Fail(401, "AUTH_SESSION_REVOKED", "登录状态已变化，请重新登录"), nil
-			} else if errors.Is(e, agency.ErrDenied) {
-				res, e = mutation.Fail(403, "AGENT_DENIED", "无权配置此直属下级或代理权限已停用"), nil
-			}
-			outputMutation(w, r, res, e)
-		})
-	}
+	registerIndependentAgentRoutes(mux, d)
 }

@@ -57,6 +57,11 @@ test("closed OpenAPI schemas reject unknown fields, unsafe versions, and invalid
   const checkPage = validate("ReportArchiveTaskPage"), checkRetry = validate("ReportArchiveTaskRetryInput");
   const validRetry = { version: 1, reason: "reviewed and retrying" };
   assert.ok(checkRetry(validRetry), JSON.stringify(checkRetry.errors));
+  assert.deepEqual(schemas.ReportArchiveTaskRetryInput.required, ["version"]);
+  assert.ok(checkRetry({ version: 1 }));
+  assert.ok(checkRetry({ version: 1, reason: "" }));
+  assert.ok(!checkRetry({ version: 1, reason: null }));
+  assert.ok(!checkRetry({ version: 1, reason: 1 }));
   for (const value of [
     { ...validRetry, extra: true }, { version: 9007199254740991, reason: "reason" }, { version: 1, reason: " padded " },
     { version: 1, reason: "control\u0085" }, { version: 1, reason: "é".repeat(501) },

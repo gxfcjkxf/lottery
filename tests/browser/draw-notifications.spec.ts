@@ -459,7 +459,7 @@ test('real Harbor draw notices publish and correct immutable facts on desktop an
   await expect(panel.getByRole('heading', { name: correctedNotice!.content!['zh-CN'].title.replaceAll('{resource_id}', correction.draw_result_id), exact: true })).toBeVisible();
   await expect(panel).toContainText('数字：010');
   await expect(panel).toContainText('数字：101');
-  await expect(panel).toContainText('不代表中奖、派奖或当前结果保证');
+  await expect(panel).not.toContainText('不代表中奖、派奖或当前结果保证');
   const originalCard = panel.locator('.notification-card').filter({
     hasText: originalNotice!.payload.resource_id,
   });

@@ -13,7 +13,7 @@ async function navigate(page:Page,destination:string){
   if(await page.evaluate(()=>innerWidth<=700)){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:new RegExp(destination)}).click();}
   else await page.locator('.side-nav').getByRole('button',{name:new RegExp(destination)}).click();
 }
-async function confirm(page:Page){const dialog=page.getByTestId('commission-payment-review');await expect(dialog).toBeVisible();await dialog.getByRole('checkbox').check();await dialog.getByRole('button',{name:'确认提交',exact:true}).click();}
+async function confirm(page:Page){const dialog=page.getByTestId('commission-payment-review');await expect(dialog).toBeVisible();await dialog.getByRole('checkbox').check();await dialog.getByRole('button',{name:'提交',exact:true}).click();}
 
 test('real payout opt-in credits automatic C and preserves lost manual approval receipts after completion',async({page,context},info)=>{
   test.skip(!fixture||!process.env.COMMISSION_FIXTURE_CONFIRM||!process.env.TEST_COMMISSION_ADMIN_PASSWORD,'Provide explicitly owned commission workflow fixture');

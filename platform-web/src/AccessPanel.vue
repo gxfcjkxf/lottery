@@ -1,85 +1,99 @@
 <script setup lang="ts">
+import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
+import { vWriteGuard } from "@lottery/shared";
+import { AssociationName } from '@lottery/shared'
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import { vInlineValidation } from '@lottery/shared'
+import { usePlatformI18n } from "./i18n"
+const ui = usePlatformI18n().t
 import DetailModal from "@lottery/shared/DetailModal.vue"
+import PermissionPicker from "@lottery/shared/PermissionPicker.vue"
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { createPlatformAccessApi, PlatformAccessApiError } from './access-api'
+import { permissionLabel } from '@lottery/shared'
+import Toast from '@lottery/shared/Toast.vue'
+import { platformErrorMessage } from './platform-error-message'
 
-const props = defineProps<{ brandId: string; locale: 'en' | 'zh-CN'; scope: 'brand' | 'platform'; accountId: string; grants: string[] }>()
+const props = defineProps<{ brandId: string; locale: 'en' | 'zh-CN'; scope: 'brand' | 'platform'; accountId: string; grants: string[]; initialTab?: Tab }>()
 const emit = defineEmits<{ failure: [cause: unknown]; locked: [value: boolean] }>()
 const api = createPlatformAccessApi()
-type Tab = 'accounts' | 'roles' | 'permissions'
+type Tab = 'accounts' | 'roles'
 type AccessAccount = Awaited<ReturnType<typeof api.accounts>>[number]
 type AccessRole = Awaited<ReturnType<typeof api.roles>>[number]
 type AccessItem = AccessAccount | AccessRole
 
-const tab = ref<Tab>('accounts')
+const tab = ref<Tab>(props.initialTab ?? 'accounts')
 const accounts = ref<AccessAccount[]>([])
 const roles = ref<AccessRole[]>([])
-const permissions = ref<string[]>([])
 const selected = ref<AccessItem | null>(null)
 const offset = ref(0)
 const more = ref(false)
 const loading = ref(false)
-const error = ref('')
+type AccessError = string | { cause: unknown }
+const error = ref<AccessError>('')
+const errorToast = ref<AccessError>('')
 let generation = 0
 const ready = computed(() => props.scope === 'platform' || Boolean(props.brandId))
 const canWriteAccounts = computed(() => props.grants.includes('admin.write.platform'))
-const canWriteRoles = computed(() => props.scope === 'brand' && props.grants.includes('role.write.platform'))
-type FormMode = '' | 'account-create' | 'account-edit' | 'password' | 'role-create' | 'role-edit'
+const canDeleteAccounts = computed(() => props.grants.includes('admin.delete.platform'))
+const canWriteRoles = computed(() => props.grants.includes('role.write.platform'))
+const canDeleteRoles = computed(() => props.grants.includes('role.delete.brand') || props.grants.includes('role.delete.platform'))
+type FormMode = '' | 'account-create' | 'account-edit' | 'account-delete' | 'password' | 'role-create' | 'role-edit' | 'role-delete'
 const formMode = ref<FormMode>('')
-const form = ref({ username: '', password: '', status: 'active' as 'active' | 'disabled', role_ids: [] as string[], code: '', name: '', permissions: [] as string[], reason: '' })
+const form = ref({ username: '', password: '', status: 'active' as 'active' | 'disabled', role_ids: [] as string[], code: '', name: '', permissions: [] as string[] })
 const formTarget = ref<AccessItem | null>(null)
 const roleOptions = ref<AccessRole[]>([])
 const permissionOptions = ref<string[]>([])
 const optionsLoading = ref(false)
 const optionsReady = ref(false)
 const saving = ref(false)
-const notice = ref('')
+const notice = ref<{ key: string; name: string } | null>(null)
 const pending = ref<null | { run: () => Promise<unknown> }>(null)
 const locked = computed(() => saving.value || pending.value !== null)
 const writeCopy = computed(() => props.locale === 'en' ? {
-  create: 'New account', edit: 'Edit status and roles', reset: 'Reset password', createRole: 'New role', editRole: 'Edit role', password: 'Password (16–128 bytes)', reason: 'Reason', save: 'Save', cancel: 'Cancel', retry: 'Retry original request', saved: 'Saved. The account or role change is recorded in the audit log.', unknown: 'The request may have committed. Retry only this original request; do not submit a new one.', roleLimit: 'The selector shows up to 100 active roles.', chooseRoles: 'Assigned roles', self: 'You cannot edit or reset your own account here.',
+  create: ui('platform.copy.1f19a013'), edit: ui('platform.copy.497d7839'), reset: ui('platform.copy.6dbd20b5'), delete: ui('platform.copy.9851501a'), actions: ui('platform.copy.412ae2c3'), createRole: ui('platform.copy.8aa1740f'), editRole: ui('platform.copy.26c6cda4'), password: ui('platform.copy.cb6bdf7d'), save: ui('platform.copy.57b298e5'), cancel: ui('platform.copy.2230b1a7'), retry: ui('platform.copy.0ffed4b3'), saved: ui('platform.copy.33341f71'), unknown: ui('common.uncertainRequest'), deleteUnknown: ui('common.uncertainRequest'), roleNameLocked: ui('common.bootstrapRoleNameLocked'), roleLimit: ui('platform.copy.b1e44031'), chooseRoles: ui('platform.copy.c4aa8d0d'), self: ui('platform.copy.d7d2e55c'),
 } : {
-  create: '新建账号', edit: '修改状态和角色', reset: '重置密码', createRole: '新建角色', editRole: '修改角色', password: '密码（16–128 字节）', reason: '操作原因', save: '保存', cancel: '取消', retry: '重试原请求', saved: '已保存，账号或角色变更已记录审计。', unknown: '请求可能已经提交。只能重试这笔原请求，不要另建请求。', roleLimit: '选择器最多显示100个启用角色。', chooseRoles: '分配角色', self: '不能在这里修改或重置自己的账号。',
+  create: ui('platform.copy.1f19a013'), edit: ui('platform.copy.497d7839'), reset: ui('platform.copy.6dbd20b5'), delete: ui('platform.copy.9851501a'), actions: ui('platform.copy.412ae2c3'), createRole: ui('platform.copy.8aa1740f'), editRole: ui('platform.copy.26c6cda4'), password: ui('platform.copy.cb6bdf7d'), save: ui('platform.copy.57b298e5'), cancel: ui('platform.copy.2230b1a7'), retry: ui('platform.copy.0ffed4b3'), saved: ui('platform.copy.33341f71'), unknown: ui('common.uncertainRequest'), deleteUnknown: ui('common.uncertainRequest'), roleNameLocked: ui('common.bootstrapRoleNameLocked'), roleLimit: ui('platform.copy.b1e44031'), chooseRoles: ui('platform.copy.c4aa8d0d'), self: ui('platform.copy.d7d2e55c'),
 })
-const formTitle = computed(() => formMode.value === 'account-create' ? writeCopy.value.create : formMode.value === 'account-edit' ? writeCopy.value.edit : formMode.value === 'password' ? writeCopy.value.reset : formMode.value === 'role-create' ? writeCopy.value.createRole : writeCopy.value.editRole)
+const formTitle = computed(() => formMode.value === 'account-create' ? writeCopy.value.create : formMode.value === 'account-edit' ? writeCopy.value.edit : formMode.value === 'account-delete' || formMode.value === 'role-delete' ? writeCopy.value.delete : formMode.value === 'password' ? writeCopy.value.reset : formMode.value === 'role-create' ? writeCopy.value.createRole : writeCopy.value.editRole)
 watch(locked, value => emit('locked', value), { immediate: true })
 
 const copy = computed(() => props.locale === 'en' ? {
-  title: 'Access and permissions', accounts: 'Accounts', roles: 'Roles', permissionsTab: 'Permission directory',
-  loading: 'Loading…', emptyAccounts: 'No accounts found.', emptyRoles: 'No roles found.', emptyPermissions: 'No brand permission keys returned.',
-  previous: 'Previous page', next: 'Next page', page: 'Page', refresh: 'Refresh', brand: 'Brand', id: 'ID', username: 'Username',
-  name: 'Name', code: 'Code', status: 'Status', version: 'Version', superAdmin: 'Super admin', yes: 'Yes', no: 'No',
-  roleIds: 'Role IDs', roleCodes: 'Role codes', globalBrands: 'Globally authorized brands', bootstrap: 'Bootstrap role',
-  grants: 'Machine permission keys', detail: 'List snapshot details', snapshotNote: 'Details come from this loaded list snapshot. No single-record request was made.',
-  directoryNote: 'This is the brand-scoped permission directory returned by the server. It is not the selected account’s grants.',
-  noBrand: 'Select a brand to view access records.',
+  title: ui('platform.copy.e44a8e33'), accounts: ui('platform.copy.198d86ac'), roles: ui('platform.copy.94ddefde'),
+  loading: ui('platform.copy.fa02e7b1'), emptyAccounts: ui('platform.copy.c518e2f9'), emptyRoles: ui('platform.copy.c196b15b'), emptyPermissions: ui('platform.copy.698dfd7b'),
+  previous: ui('platform.copy.7f5aba9a'), next: ui('platform.copy.282be575'), page: ui('platform.copy.6695ff1c'), refresh: ui('platform.copy.256fe8b3'), brand: ui('platform.copy.d5b68c0f'), id: ui('platform.copy.55d8fcaf'), username: ui('platform.copy.eeaa7275'),
+  name: ui('platform.copy.00d0ada7'), code: ui('platform.copy.ba1081a4'), status: ui('platform.copy.c7260510'), superAdmin: ui('platform.copy.432a5216'), yes: ui('platform.copy.ab57ddad'), no: ui('platform.copy.502adcd8'),
+  roleIds: ui('platform.copy.70143702'), roleCodes: ui('platform.copy.a22eb37d'), globalBrands: ui('platform.copy.21a5fdcc'), bootstrap: ui('platform.copy.597ea988'),
+  grants: ui('platform.copy.143b5c26'), detail: ui('platform.copy.b14bf4ef'), accountDetail: ui('platform.copy.7f98c4a1'), roleDetail: ui('platform.copy.4baf6e21'), close: ui('platform.copy.27b2fd29'), selectAll: ui('platform.copy.65d89eae'), clear: ui('platform.copy.2e88de26'),
 } : {
-  title: '访问控制与权限', accounts: '账户', roles: '角色', permissionsTab: '权限目录',
-  loading: '加载中…', emptyAccounts: '暂无账户。', emptyRoles: '暂无角色。', emptyPermissions: '接口未返回品牌权限键。',
-  previous: '上一页', next: '下一页', page: '页码', refresh: '刷新', brand: '品牌', id: '编号', username: '用户名',
-  name: '名称', code: '代码', status: '状态', version: '版本', superAdmin: '超级管理员', yes: '是', no: '否',
-  roleIds: '角色编号', roleCodes: '角色代码', globalBrands: '全局授权品牌', bootstrap: '引导角色',
-  grants: '机器权限键', detail: '列表快照详情', snapshotNote: '详情来自当前已加载的列表快照；没有请求单条记录接口。',
-  directoryNote: '这是服务器返回的品牌范围权限目录，不代表当前账户已获授的权限。',
-  noBrand: '请选择品牌以查看访问控制记录。',
+  title: ui('platform.copy.e44a8e33'), accounts: ui('platform.copy.198d86ac'), roles: ui('platform.copy.94ddefde'),
+  loading: ui('platform.copy.fa02e7b1'), emptyAccounts: ui('platform.copy.c518e2f9'), emptyRoles: ui('platform.copy.c196b15b'), emptyPermissions: ui('platform.copy.698dfd7b'),
+  previous: ui('platform.copy.7f5aba9a'), next: ui('platform.copy.282be575'), page: ui('platform.copy.6695ff1c'), refresh: ui('platform.copy.256fe8b3'), brand: ui('platform.copy.d5b68c0f'), id: ui('platform.copy.55d8fcaf'), username: ui('platform.copy.eeaa7275'),
+  name: ui('platform.copy.00d0ada7'), code: ui('platform.copy.ba1081a4'), status: ui('platform.copy.c7260510'), superAdmin: ui('platform.copy.432a5216'), yes: ui('platform.copy.ab57ddad'), no: ui('platform.copy.502adcd8'),
+  roleIds: ui('platform.copy.70143702'), roleCodes: ui('platform.copy.a22eb37d'), globalBrands: ui('platform.copy.21a5fdcc'), bootstrap: ui('platform.copy.597ea988'),
+  grants: ui('platform.copy.143b5c26'), detail: ui('platform.copy.b14bf4ef'), accountDetail: ui('platform.copy.7f98c4a1'), roleDetail: ui('platform.copy.4baf6e21'), close: ui('platform.copy.27b2fd29'), selectAll: ui('platform.copy.65d89eae'), clear: ui('platform.copy.2e88de26'),
 })
 
 function stateLabel(value: string): string {
-  if (props.locale === 'en') {
-    if (value === 'active') return 'Active'
-    if (value === 'disabled') return 'Disabled'
-    if (value === 'paused') return 'Paused'
-    return value
-  }
-  if (value === 'active') return '启用'
-  if (value === 'disabled') return '停用'
-  if (value === 'paused') return '暂停'
+  if (value === 'active') return ui('platform.access.active')
+  if (value === 'disabled') return ui('platform.access.disabled')
+  if (value === 'paused') return ui('platform.access.paused')
   return value
+}
+
+function displayError(value: AccessError): string {
+  return typeof value === 'string' ? value : platformErrorMessage(value.cause, props.locale)
+}
+
+function showError(message: AccessError) {
+  error.value = message
+  errorToast.value = message
 }
 
 function report(cause: unknown) {
   if (cause instanceof PlatformAccessApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause)
-  else error.value = cause instanceof Error ? cause.message : String(cause)
+  else showError({ cause })
 }
 
 async function load() {
@@ -89,10 +103,9 @@ async function load() {
   const currentOffset = offset.value
   accounts.value = []
   roles.value = []
-  permissions.value = []
   selected.value = null
   more.value = false
-  error.value = ''
+  error.value = ''; errorToast.value = ''
   if (!ready.value) { loading.value = false; return }
   loading.value = true
   try {
@@ -106,10 +119,6 @@ async function load() {
       if (request !== generation || props.brandId !== brand || tab.value !== currentTab || offset.value !== currentOffset) return
       roles.value = result.slice(0, 50)
       more.value = result.length > 50
-    } else {
-      const result = await api.permissions(brand)
-      if (request !== generation || props.brandId !== brand || tab.value !== currentTab) return
-      permissions.value = result
     }
   } catch (cause) {
     if (request === generation && props.brandId === brand && tab.value === currentTab) report(cause)
@@ -137,19 +146,24 @@ function selectRole(item: AccessRole) { selected.value = item }
 function isAccount(item: AccessItem): item is AccessAccount { return 'username' in item }
 
 async function beginForm(mode: FormMode, item: AccessItem | null = null) {
-  if (locked.value || !ready.value) return
-  formMode.value = mode; formTarget.value = item; notice.value = ''; error.value = ''
-  form.value = { username: item && isAccount(item) ? item.username : '', password: '', status: item?.status ?? 'active', role_ids: item && isAccount(item) ? [...item.role_ids] : [], code: item && !isAccount(item) ? item.code : '', name: item && !isAccount(item) ? item.name : '', permissions: item && !isAccount(item) ? [...item.permissions] : [], reason: '' }
-  roleOptions.value = []; permissionOptions.value = []; optionsReady.value = mode === 'password'
-  if (mode === 'password') return
+  errorToast.value = ''
+  if ((mode === 'role-edit' || mode === 'role-delete') && item && !isAccount(item) && item.is_bootstrap) { showError(ui('association.builtinReadOnly')); return }
+  if (!ready.value) { showError(ui('platform.error.BRAND_REQUIRED')); return }
+  if (locked.value) { showError(ui('common.uncertainRequest')); return }
+  if (loading.value) { showError(ui('access.waitForLoad')); return }
+  formMode.value = mode; formTarget.value = item; notice.value = null; error.value = ''
+  form.value = { username: item && isAccount(item) ? item.username : '', password: '', status: item?.status ?? 'active', role_ids: item && isAccount(item) ? [...item.role_ids] : [], code: item && !isAccount(item) ? item.code : '', name: item && !isAccount(item) ? item.name : '', permissions: item && !isAccount(item) ? [...item.permissions] : [] }
+  roleOptions.value = []; permissionOptions.value = []; optionsReady.value = mode === 'password' || mode === 'account-delete' || mode === 'role-delete'
+  if (mode === 'password' || mode === 'account-delete' || mode === 'role-delete') return
   const request = generation; optionsLoading.value = true
   try {
     if (mode === 'account-create' || mode === 'account-edit') {
       const result = await (props.scope === 'platform' ? api.platformRoles(100, 0) : api.roles(props.brandId, 100, 0))
       if (request !== generation) return
       roleOptions.value = result.filter(role => role.status === 'active' || form.value.role_ids.includes(role.id))
+      if (!roleOptions.value.length) showError(ui('access.noAssignableRoles'))
     } else {
-      const result = await api.permissions(props.brandId)
+      const result = props.scope === 'platform' ? await api.platformPermissions() : await api.permissions(props.brandId)
       if (request !== generation) return
       permissionOptions.value = result
     }
@@ -163,30 +177,41 @@ async function saveForm() {
   const request = generation
   if (!pending.value) {
     const key = crypto.randomUUID(), brand = props.brandId, target = formTarget.value, platform = props.scope === 'platform'
-    const reason = form.value.reason.trim()
     if (formMode.value === 'account-create') {
-      const body = { username: form.value.username, password: form.value.password, role_ids: [...form.value.role_ids], reason }
+      const body = { username: form.value.username, password: form.value.password, role_ids: [...form.value.role_ids] }
       pending.value = { run: () => platform ? api.createPlatformAccount(body, key) : api.createAccount(brand, body, key) }
     } else if (formMode.value === 'account-edit' && target && isAccount(target)) {
-      const body = { version: target.version, status: form.value.status, role_ids: [...form.value.role_ids], reason }
+      const body = { version: target.version, status: form.value.status, role_ids: [...form.value.role_ids] }
       pending.value = { run: () => platform ? api.updatePlatformAccount(target.id, body, key) : api.updateAccount(brand, target.id, body, key) }
     } else if (formMode.value === 'password' && target && isAccount(target)) {
-      const body = { version: target.version, password: form.value.password, reason }
+      const body = { version: target.version, password: form.value.password }
       pending.value = { run: () => platform ? api.resetPlatformPassword(target.id, body, key) : api.resetPassword(brand, target.id, body, key) }
+    } else if (formMode.value === 'account-delete' && target && isAccount(target)) {
+      const body = { version: target.version }
+      pending.value = { run: () => platform ? api.deletePlatformAccount(target.id, body, key) : api.deleteAccount(brand, target.id, body, key) }
+    } else if (formMode.value === 'role-delete' && target && !isAccount(target)) {
+      const body = { version: target.version }
+      pending.value = { run: () => platform ? api.deletePlatformRole(target.id, body, key) : api.deleteRole(brand, target.id, body, key) }
     } else if (formMode.value === 'role-create') {
-      const body = { code: form.value.code, name: form.value.name, status: form.value.status, permissions: [...form.value.permissions], reason }
-      pending.value = { run: () => api.createRole(brand, body, key) }
+      const body = { code: form.value.code, name: form.value.name, status: form.value.status, permissions: [...form.value.permissions] }
+      pending.value = { run: () => platform ? api.createPlatformRole(body, key) : api.createRole(brand, body, key) }
     } else if (formMode.value === 'role-edit' && target && !isAccount(target)) {
-      const body = { version: target.version, name: form.value.name, status: form.value.status, permissions: [...form.value.permissions], reason }
-      pending.value = { run: () => api.updateRole(brand, target.id, body, key) }
+      const body = { version: target.version, name: form.value.name, status: form.value.status, permissions: [...form.value.permissions] }
+      pending.value = { run: () => platform ? api.updatePlatformRole(target.id, body, key) : api.updateRole(brand, target.id, body, key) }
     }
   }
   if (!pending.value) return
-  saving.value = true; error.value = ''
+  saving.value = true; error.value = ''; errorToast.value = ''
   try {
     await pending.value.run()
     if (request !== generation) return
-    pending.value = null; formMode.value = ''; form.value.password = ''; notice.value = writeCopy.value.saved
+    const target = formTarget.value
+    notice.value = formMode.value === 'account-delete' && target && isAccount(target)
+      ? { key: 'access.accountDeleted', name: target.username }
+      : formMode.value === 'role-delete' && target && !isAccount(target)
+        ? { key: 'access.roleDeleted', name: target.name }
+        : { key: 'platform.copy.33341f71', name: '' }
+    pending.value = null; formMode.value = ''; form.value.password = ''
     saving.value = false
     await load()
   } catch (cause) {
@@ -197,107 +222,90 @@ async function saveForm() {
   } finally { if (request === generation || !pending.value) saving.value = false }
 }
 
-watch(() => [props.brandId, props.scope, props.accountId], () => { tab.value = 'accounts'; offset.value = 0; formMode.value = ''; form.value.password = ''; pending.value = null; notice.value = ''; optionsLoading.value = false }, { flush: 'sync' })
-watch(() => [props.brandId, props.scope, props.accountId, tab.value, offset.value], () => { void load() }, { immediate: true, flush: 'sync' })
+watch(() => [props.brandId, props.scope, props.accountId, props.initialTab], () => { tab.value = props.initialTab ?? 'accounts'; offset.value = 0; formMode.value = ''; form.value.password = ''; pending.value = null; notice.value = null; errorToast.value = ''; optionsLoading.value = false }, { flush: 'sync' })
+watch(() => [props.brandId, props.scope, props.accountId, tab.value, offset.value], () => { void withGlobalLoading(load) }, { immediate: true, flush: 'sync' })
 onBeforeUnmount(() => { ++generation; form.value.password = ''; pending.value = null; emit('locked', false) })
 </script>
 
 <template>
   <div data-testid="platform-access">
     <div class="wallet-pagination" role="tablist" :aria-label="copy.title" data-testid="platform-access-tabs">
-      <button :disabled="locked" :class="tab === 'accounts' ? 'primary' : 'secondary'" role="tab" :aria-selected="tab === 'accounts'" @click="chooseTab('accounts')">{{ copy.accounts }}</button>
-      <button :disabled="locked" :class="tab === 'roles' ? 'primary' : 'secondary'" role="tab" :aria-selected="tab === 'roles'" @click="chooseTab('roles')">{{ copy.roles }}</button>
-      <button v-if="scope === 'brand'" :disabled="locked" :class="tab === 'permissions' ? 'primary' : 'secondary'" role="tab" :aria-selected="tab === 'permissions'" @click="chooseTab('permissions')">{{ copy.permissionsTab }}</button>
-      <button class="secondary" :disabled="loading || !ready || locked" @click="load">{{ copy.refresh }}</button>
-      <button v-if="tab === 'accounts' && canWriteAccounts" class="primary" :disabled="!ready || loading || locked" @click="beginForm('account-create')">{{ writeCopy.create }}</button>
-      <button v-if="tab === 'roles' && canWriteRoles" class="primary" :disabled="!ready || loading || locked" @click="beginForm('role-create')">{{ writeCopy.createRole }}</button>
+      <button :disabled="locked" :class="tab === 'accounts' ? 'button button-primary' : 'button button-secondary'" role="tab" :aria-selected="tab === 'accounts'" @click="chooseTab('accounts')">{{ copy.accounts }}</button>
+      <button :disabled="locked" :class="tab === 'roles' ? 'button button-primary' : 'button button-secondary'" role="tab" :aria-selected="tab === 'roles'" @click="chooseTab('roles')">{{ copy.roles }}</button>
+      <button v-if="tab === 'accounts' && canWriteAccounts" class="button button-primary" @click="withGlobalLoading(beginForm, 'account-create')">{{ writeCopy.create }}</button>
+      <button v-if="tab === 'roles' && canWriteRoles" class="button button-primary" @click="withGlobalLoading(beginForm, 'role-create')">{{ writeCopy.createRole }}</button>
     </div>
-    <p v-if="error" class="message error" role="alert">{{ error }}</p>
-    <p v-if="loading" class="loading-line" aria-live="polite">{{ copy.loading }}</p>
-    <p v-if="notice" class="message success" role="status">{{ notice }}</p>
-    <p v-if="!ready" class="wallet-pagination">{{ copy.noBrand }}</p>
-
+    <p v-if="error" class="message error" role="alert">{{ displayError(error) }}</p>
+    <Toast v-if="errorToast" tone="error" :title="ui('common.operationFailed')" :message="displayError(errorToast)" :close-label="copy.close" @dismiss="errorToast = ''" />
+    <Toast v-else-if="notice" :title="ui('common.operationSuccess')" :message="ui(notice.key, { name: notice.name })" :close-label="copy.close" @dismiss="notice = null" />
     <template v-if="tab === 'accounts'">
       <section class="panel reward-detail" data-testid="platform-access-list">
-        <div class="table-wrap"><table><thead><tr><th>{{ copy.username }}</th><th>{{ copy.roles }}</th><th>{{ copy.status }}</th><th>{{ copy.superAdmin }}</th><th>{{ copy.version }}</th></tr></thead><tbody>
-          <tr v-for="account in accounts" :key="account.id"><td><button class="row-action mono" :aria-label="`${copy.detail}: ${account.username}`" @click="selectAccount(account)">{{ account.username }}</button><small>{{ account.id }}</small></td><td><span v-for="roleCode in account.role_codes" :key="roleCode" class="mono">{{ roleCode }}<br></span><span v-if="!account.role_codes.length">—</span></td><td><span class="status-pill" :class="account.status">{{ stateLabel(account.status) }}</span></td><td>{{ account.super_admin ? copy.yes : copy.no }}</td><td>{{ account.version }}</td></tr>
-          <tr v-if="!accounts.length"><td colspan="5" class="empty-state">{{ copy.emptyAccounts }}</td></tr>
+        <div class="table-wrap"><table><thead><tr><th>{{ copy.username }}</th><th>{{ copy.roles }}</th><th><BusinessDetails :value="copy.status" :locale="props.locale" /></th><th v-if="canDeleteAccounts" class="access-actions">{{ writeCopy.actions }}</th></tr></thead><tbody>
+          <tr v-for="account in accounts" :key="account.id"><td><button class="row-action" :aria-label="`${copy.detail}: ${account.username}`" @click="selectAccount(account)">{{ account.username }}</button></td><td><span v-for="roleId in account.role_ids" :key="roleId"><AssociationName :record="account" kind="role" :id="roleId" :locale="locale" /><br></span><span v-if="!account.role_ids.length">—</span></td><td><span class="status-pill" :class="account.status">{{ stateLabel(account.status) }}</span></td><td v-if="canDeleteAccounts" class="access-actions"><button v-if="account.id !== accountId" class="row-action danger-text" @click.stop="withGlobalLoading(beginForm, 'account-delete', account)">{{ writeCopy.delete }}</button></td></tr>
+          <tr v-if="!accounts.length"><td :colspan="3 + (canDeleteAccounts ? 1 : 0)" class="empty-state">{{ copy.emptyAccounts }}</td></tr>
         </tbody></table></div>
-        <div class="wallet-pagination" data-testid="platform-access-pages"><button class="secondary" :disabled="loading || offset === 0 || !ready || locked" @click="page(offset - 50)">{{ copy.previous }}</button><span>{{ copy.page }} {{ Math.floor(offset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !more || locked" @click="page(offset + 50)">{{ copy.next }}</button></div>
+        <div class="wallet-pagination" data-testid="platform-access-pages"><button class="button button-secondary" :disabled="loading || offset === 0 || !ready || locked" @click="page(offset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(offset / 50) + 1 }}</span><button class="button button-secondary" :disabled="loading || !more || locked" @click="page(offset + 50)">{{ copy.next }}</button><button v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading || !ready || locked" @click="withGlobalLoading(load)">{{ copy.refresh }}</button></div>
       </section>
     </template>
     <template v-else-if="tab === 'roles'">
       <section class="panel reward-detail" data-testid="platform-access-list">
-        <div class="table-wrap"><table><thead><tr><th>{{ copy.name }}</th><th>{{ copy.code }}</th><th>{{ copy.status }}</th><th>{{ copy.version }}</th></tr></thead><tbody>
-          <tr v-for="role in roles" :key="role.id"><td><button class="row-action mono" @click="selectRole(role)">{{ role.id }}</button><small>{{ role.name }}</small></td><td class="mono">{{ role.code }}</td><td><span class="status-pill" :class="role.status">{{ stateLabel(role.status) }}</span></td><td>{{ role.version }}</td></tr>
-          <tr v-if="!roles.length"><td colspan="4" class="empty-state">{{ copy.emptyRoles }}</td></tr>
+        <div class="table-wrap"><table><thead><tr><th>{{ copy.name }}</th><th><BusinessDetails :value="copy.status" :locale="props.locale" /></th><th v-if="canDeleteRoles" class="access-actions">{{ writeCopy.actions }}</th></tr></thead><tbody>
+          <tr v-for="role in roles" :key="role.id"><td><button class="row-action" @click="selectRole(role)"><AssociationName :record="role" kind="role" :id="role.id" :locale="locale" /></button></td><td><span class="status-pill" :class="role.status">{{ stateLabel(role.status) }}</span></td><td v-if="canDeleteRoles" class="access-actions"><button v-if="!role.is_bootstrap" class="row-action danger-text" @click.stop="withGlobalLoading(beginForm, 'role-delete', role)">{{ writeCopy.delete }}</button></td></tr>
+          <tr v-if="!roles.length"><td :colspan="canDeleteRoles ? 3 : 2" class="empty-state">{{ copy.emptyRoles }}</td></tr>
         </tbody></table></div>
-        <div class="wallet-pagination" data-testid="platform-access-pages"><button class="secondary" :disabled="loading || offset === 0 || !ready || locked" @click="page(offset - 50)">{{ copy.previous }}</button><span>{{ copy.page }} {{ Math.floor(offset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !more || locked" @click="page(offset + 50)">{{ copy.next }}</button></div>
+        <div class="wallet-pagination" data-testid="platform-access-pages"><button class="button button-secondary" :disabled="loading || offset === 0 || !ready || locked" @click="page(offset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(offset / 50) + 1 }}</span><button class="button button-secondary" :disabled="loading || !more || locked" @click="page(offset + 50)">{{ copy.next }}</button><button v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading || !ready || locked" @click="withGlobalLoading(load)">{{ copy.refresh }}</button></div>
       </section>
     </template>
-    <template v-else>
-      <section class="panel reward-detail" data-testid="platform-permission-directory">
-        <div class="panel-heading"><div><h2>{{ copy.permissionsTab }}</h2><p>{{ copy.directoryNote }}</p></div><span class="count-chip">{{ permissions.length }}</span></div>
-        <div class="table-wrap"><table><thead><tr><th>{{ copy.grants }}</th></tr></thead><tbody>
-          <tr v-for="permission in permissions" :key="permission"><td class="mono">{{ permission }}</td></tr>
-          <tr v-if="!permissions.length"><td class="empty-state">{{ copy.emptyPermissions }}</td></tr>
-        </tbody></table></div>
-      </section>
-    </template>
-
-    <DetailModal v-if="selected" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" :open="!formMode" @close="selected = null">
-<section v-if="selected" class="panel reward-detail" data-testid="platform-access-detail">
-      <div class="panel-heading"><div><h2>{{ copy.detail }}</h2><p>{{ copy.snapshotNote }}</p></div><span class="status-pill" :class="selected.status">{{ stateLabel(selected.status) }} · v{{ selected.version }}</span></div>
+    <DetailModal v-if="selected" :title="isAccount(selected) ? copy.accountDetail : copy.roleDetail" :close-label="copy.close" :open="!formMode" @close="selected = null">
+<section v-if="selected" class="detail-section" data-testid="platform-access-detail">
       <dl v-if="isAccount(selected)" class="confirm-list reward-fields">
-        <div><dt>{{ copy.id }}</dt><dd class="mono">{{ selected.id }}</dd></div><div><dt>{{ copy.username }}</dt><dd>{{ selected.username }}</dd></div>
-        <div><dt>{{ copy.status }}</dt><dd>{{ stateLabel(selected.status) }}</dd></div><div><dt>{{ copy.version }}</dt><dd>{{ selected.version }}</dd></div><div><dt>{{ copy.superAdmin }}</dt><dd>{{ selected.super_admin ? copy.yes : copy.no }}</dd></div>
-        <div><dt>{{ copy.brand }}</dt><dd class="mono">{{ brandId }}</dd></div><div><dt>{{ copy.roleIds }} / {{ copy.roleCodes }}</dt><dd><span v-for="(roleId, index) in selected.role_ids" :key="roleId" class="mono">{{ roleId }} · {{ selected.role_codes[index] }}<br></span><span v-if="!selected.role_ids.length">—</span></dd></div>
-        <div><dt>{{ copy.globalBrands }}</dt><dd><span v-for="id in selected.brand_ids" :key="id" class="mono">{{ id }}<br></span><span v-if="!selected.brand_ids.length">—</span></dd></div>
+        <div><dt>{{ copy.username }}</dt><dd>{{ selected.username }}</dd></div>
+        <div><dt><BusinessDetails :value="copy.status" :locale="props.locale" /></dt><dd>{{ stateLabel(selected.status) }}</dd></div>
+        <div><dt>{{ copy.roles }}</dt><dd><span v-for="roleId in selected.role_ids" :key="roleId"><AssociationName :record="selected" kind="role" :id="roleId" :locale="locale" /><br></span><span v-if="!selected.role_ids.length">—</span></dd></div>
+        <div v-if="selected.brand_ids.length"><dt>{{ copy.globalBrands }}</dt><dd><span v-for="id in selected.brand_ids" :key="id"><AssociationName :record="selected" kind="brand" :id="id" :locale="locale" /><br></span></dd></div>
       </dl>
-      <dl v-else-if="!isAccount(selected)" class="confirm-list reward-fields">
-        <div><dt>{{ copy.id }}</dt><dd class="mono">{{ selected.id }}</dd></div><div><dt>{{ copy.brand }}</dt><dd class="mono">{{ selected.brand_id }}</dd></div>
-        <div><dt>{{ copy.name }}</dt><dd>{{ selected.name }}</dd></div><div><dt>{{ copy.code }}</dt><dd class="mono">{{ selected.code }}</dd></div>
-        <div><dt>{{ copy.status }}</dt><dd>{{ stateLabel(selected.status) }}</dd></div><div><dt>{{ copy.version }}</dt><dd>{{ selected.version }}</dd></div><div><dt>{{ copy.bootstrap }}</dt><dd>{{ selected.is_bootstrap ? copy.yes : copy.no }}</dd></div>
-        <div><dt>{{ copy.grants }}</dt><dd><span v-for="permission in selected.permissions" :key="permission" class="mono">{{ permission }}<br></span><span v-if="!selected.permissions.length">—</span></dd></div>
+      <dl v-else-if="!isAccount(selected)" class="confirm-list reward-fields role-detail-fields">
+        <div><dt>{{ copy.name }}</dt><dd><AssociationName :record="selected" kind="role" :id="selected.id" :locale="locale" /></dd></div>
+        <div><dt><BusinessDetails :value="copy.status" :locale="props.locale" /></dt><dd>{{ stateLabel(selected.status) }}</dd></div>
+        <div class="role-permissions-field"><dt>{{ copy.grants }}</dt><dd><div v-if="selected.permissions.length" class="permission-grid"><span v-for="permission in selected.permissions" :key="permission" class="permission-chip">{{ permissionLabel(permission, locale) }}</span></div><span v-else>—</span></dd></div>
       </dl>
-      <div class="wallet-pagination">
-        <template v-if="isAccount(selected) && canWriteAccounts">
-          <button class="secondary" :disabled="locked || selected.id === accountId" @click="beginForm('account-edit', selected)">{{ writeCopy.edit }}</button>
-          <button class="secondary" :disabled="locked || selected.id === accountId" @click="beginForm('password', selected)">{{ writeCopy.reset }}</button>
-          <span v-if="selected.id === accountId">{{ writeCopy.self }}</span>
-        </template>
-        <button v-if="!isAccount(selected) && canWriteRoles" class="secondary" :disabled="locked || selected.is_bootstrap" @click="beginForm('role-edit', selected)">{{ writeCopy.editRole }}</button>
-      </div>
     </section>
+    <template #footer v-if="(isAccount(selected) && canWriteAccounts && selected.id !== accountId) || (!isAccount(selected) && !selected.is_bootstrap && canWriteRoles)">
+      <template v-if="isAccount(selected) && canWriteAccounts && selected.id !== accountId">
+        <button class="button button-secondary" :disabled="locked" @click="withGlobalLoading(beginForm, 'account-edit', selected)">{{ writeCopy.edit }}</button>
+        <button class="button button-secondary" :disabled="locked" @click="withGlobalLoading(beginForm, 'password', selected)">{{ writeCopy.reset }}</button>
+        <button v-if="canDeleteAccounts" class="button button-danger" :disabled="locked" @click="withGlobalLoading(beginForm, 'account-delete', selected)">{{ writeCopy.delete }}</button>
+      </template>
+      <button v-if="!isAccount(selected) && !selected.is_bootstrap && canWriteRoles" class="button button-secondary" :disabled="locked" @click="withGlobalLoading(beginForm, 'role-edit', selected)">{{ writeCopy.editRole }}</button>
+    </template>
 </DetailModal>
     <div v-if="formMode" class="modal-scrim">
-      <section class="modal-card" role="dialog" aria-modal="true" :aria-label="formTitle">
+      <section class="modal-card" :class="{ 'access-role-modal': formMode === 'role-create' || formMode === 'role-edit', 'access-delete-modal': formMode === 'account-delete' || formMode === 'role-delete' }" role="dialog" aria-modal="true" :aria-label="formTitle">
         <h2>{{ formTitle }}</h2>
-        <p v-if="formTarget">{{ isAccount(formTarget) ? formTarget.username : formTarget.name }} · {{ formTarget.id }}</p>
-        <p v-if="optionsLoading">{{ copy.loading }}</p>
-        <p v-if="pending" class="message" role="status">{{ writeCopy.unknown }}</p>
-        <p v-if="error" class="message error" role="alert">{{ error }}</p>
-        <form class="brand-form" @submit.prevent="saveForm">
+        <p v-if="formTarget">{{ isAccount(formTarget) ? formTarget.username : formTarget.name }}</p>
+        <p v-if="pending && !saving" class="message" role="status">{{ formMode === 'account-delete' ? writeCopy.deleteUnknown : writeCopy.unknown }}</p>
+        <form v-write-guard="saving" novalidate v-inline-validation class="brand-form" @submit.prevent="withGlobalLoading(saveForm)">
+          <div class="access-form-fields">
           <fieldset :disabled="locked || optionsLoading">
             <label v-if="formMode === 'account-create'">{{ copy.username }}<input v-model="form.username" pattern="[a-z][a-z0-9_]{2,31}" required autocomplete="off" /></label>
             <label v-if="formMode === 'account-create' || formMode === 'password'">{{ writeCopy.password }}<input v-model="form.password" type="password" maxlength="128" required autocomplete="new-password" /></label>
-            <label v-if="formMode === 'account-edit' || formMode === 'role-create' || formMode === 'role-edit'">{{ copy.status }}<select v-model="form.status"><option value="active">{{ stateLabel('active') }}</option><option value="disabled">{{ stateLabel('disabled') }}</option></select></label>
+            <label v-if="formMode === 'account-edit'"><BusinessDetails :value="copy.status" :locale="props.locale" /><select v-model="form.status"><option value="active">{{ stateLabel('active') }}</option><option value="disabled">{{ stateLabel('disabled') }}</option></select></label>
             <div v-if="formMode === 'account-create' || formMode === 'account-edit'" class="access-options">
               <p>{{ writeCopy.chooseRoles }} · {{ writeCopy.roleLimit }}</p>
-              <label v-for="role in roleOptions" :key="role.id"><input v-model="form.role_ids" type="checkbox" :value="role.id" :disabled="role.status !== 'active' && !form.role_ids.includes(role.id)" /> {{ role.name }} · {{ role.code }} · {{ stateLabel(role.status) }}</label>
+              <label v-for="role in roleOptions" :key="role.id"><input v-model="form.role_ids" type="checkbox" :value="role.id" :disabled="role.status !== 'active' && !form.role_ids.includes(role.id)" /> <AssociationName :record="role" kind="role" :id="role.id" :locale="locale" /> · {{ stateLabel(role.status) }}</label>
             </div>
-            <label v-if="formMode === 'role-create'">{{ copy.code }}<input v-model="form.code" pattern="[a-z][a-z0-9_]{2,47}" required /></label>
-            <label v-if="formMode === 'role-create' || formMode === 'role-edit'">{{ copy.name }}<input v-model="form.name" maxlength="120" required /></label>
-            <div v-if="formMode === 'role-create' || formMode === 'role-edit'" class="access-options">
-              <p>{{ copy.grants }} · {{ form.permissions.length }} / {{ permissionOptions.length }}</p>
-              <div class="form-actions"><button type="button" class="secondary" @click="form.permissions = [...permissionOptions]">{{ locale === 'en' ? 'Select all permissions' : '全选权限' }}</button><button type="button" class="secondary" @click="form.permissions = []">{{ locale === 'en' ? 'Clear permissions' : '清空权限' }}</button></div>
-              <label v-for="key in permissionOptions" :key="key"><input v-model="form.permissions" type="checkbox" :value="key" /> {{ key }}</label>
+            <div v-if="formMode === 'role-create' || formMode === 'role-edit'" class="role-identity">
+              <label>{{ copy.name }}<input v-model="form.name" maxlength="120" required /></label>
+              <label>{{ copy.code }}<input v-model="form.code" pattern="[a-z][a-z0-9_]{2,47}" required :readonly="formMode === 'role-edit'" :class="{'readonly-field': formMode === 'role-edit'}" /></label>
+              <label><BusinessDetails :value="copy.status" :locale="props.locale" /><select v-model="form.status"><option value="active">{{ stateLabel('active') }}</option><option value="disabled">{{ stateLabel('disabled') }}</option></select></label>
             </div>
-            <label>{{ writeCopy.reason }}<textarea v-model="form.reason" required maxlength="500" /></label>
+            <PermissionPicker v-if="formMode === 'role-create' || formMode === 'role-edit'" v-model="form.permissions" :options="permissionOptions" :locale="locale" />
           </fieldset>
+          </div>
           <div class="form-actions">
-            <button type="button" class="secondary" :disabled="locked" @click="formMode = ''; form.password = ''">{{ writeCopy.cancel }}</button>
-            <button type="submit" class="primary" :disabled="saving || !optionsReady || ((formMode === 'account-create' || formMode === 'account-edit') && !form.role_ids.length)">{{ saving ? copy.loading : pending ? writeCopy.retry : writeCopy.save }}</button>
+            <p v-if="error" class="message error inline-validation-error" role="alert">{{ displayError(error) }}</p>
+            <button type="button" class="button button-secondary" :disabled="locked" @click="formMode = ''; form.password = ''">{{ writeCopy.cancel }}</button>
+            <button type="submit" :class="formMode === 'account-delete' || formMode === 'role-delete' ? 'button button-danger' : 'button button-primary'" :disabled="saving || !optionsReady || ((formMode === 'account-create' || formMode === 'account-edit') && !form.role_ids.length)">{{ saving ? copy.loading : pending ? writeCopy.retry : formMode === 'account-delete' || formMode === 'role-delete' ? writeCopy.delete : writeCopy.save }}</button>
           </div>
         </form>
       </section>
@@ -306,10 +314,48 @@ onBeforeUnmount(() => { ++generation; form.value.password = ''; pending.value = 
 </template>
 
 <style scoped>
+.table-wrap table { table-layout: fixed; white-space: normal; }
+.table-wrap :is(th, td) { position: static; min-width: 0; overflow-wrap: anywhere; }
+.table-wrap .row-action { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 14px; min-width: 0; }
 .access-options { max-height: 200px; overflow: auto; border: 1px solid #e5eaf0; border-radius: 6px; padding: 10px; }
-.access-options label { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.access-options label { display: flex; flex-direction: row; align-items: center; gap: 8px; overflow-wrap: anywhere; }
 .access-options input { width: auto; min-height: 18px; flex-shrink: 0; }
-.modal-card { max-height: 90vh; overflow-y: auto; }
-textarea { width: 100%; min-height: 70px; resize: vertical; box-sizing: border-box; }
+.modal-card { max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; }
+.access-delete-modal { width: min(480px, 100%); padding: 18px 20px 16px; }
+.access-delete-modal > h2 { margin: 0 0 12px; }
+.access-delete-modal > p { margin: 0 0 12px; color: var(--text-muted); }
+.access-delete-modal .brand-form { gap: 10px; }
+.access-role-modal { width: min(1000px, 100%); max-width: 100%; padding: 0 24px 20px; }
+.access-role-modal fieldset > label { min-width: 0; }
+.access-role-modal fieldset > label :is(input, select) { min-width: 0; width: 100%; }
+.access-role-modal > p { margin: 0 0 8px; }
+.access-role-modal fieldset { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.role-identity { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(130px,.55fr); gap:12px; }
+.role-identity label { display:grid; gap:6px; min-width:0; font-size:13px; }
+.role-identity :is(input,select) { min-width:0; width:100%; min-height:44px; }
+.modal-card > .brand-form { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.modal-card > .brand-form > .access-form-fields { min-height: 0; overflow-y: auto; padding-right: 4px; }
+.modal-card > .brand-form > .form-actions { flex: 0 0 auto; margin: 0; padding-top: 10px; border-top: 1px solid var(--border-light); background: var(--bg-surface); }
+.access-role-modal > .brand-form > .access-form-fields { overflow-y: scroll; scrollbar-gutter: stable; }
+input.readonly-field { background: var(--bg-subtle); color: var(--text-muted); cursor: not-allowed; }
+textarea { width: 100%; min-height: 56px; resize: vertical; box-sizing: border-box; }
+.access-actions { text-align: right; }
+.role-detail-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.role-permissions-field { grid-column: 1 / -1; }
+.permission-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 6px; }
+.permission-chip { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 5px 7px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-subtle); font-size: 12px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.permission-chip input { width: auto; min-height: 18px; margin: 0; flex: 0 0 auto; }
+.access-role-modal .access-options { max-height: none; padding: 6px; }
+@media (max-width: 720px) { .role-detail-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .role-detail-fields { grid-template-columns: 1fr; } .role-permissions-field { grid-column: auto; } }
+@media (max-width: 900px) {
+  .access-role-modal :is(button, select), .access-role-modal fieldset > label input { min-height: 44px; }
+  .access-role-modal .permission-chip { min-height: 44px; }
+}
+@media (max-width: 620px) {
+  .access-role-modal { padding: 0 16px 16px; }
+  .access-role-modal fieldset { grid-template-columns: minmax(0, 1fr); }
+  .role-identity { grid-template-columns:minmax(0,1fr); }
+}
 </style>

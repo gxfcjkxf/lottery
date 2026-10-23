@@ -41,6 +41,7 @@ func runEarningRead(t *testing.T, f commissionBatchFixture, cycle, run string) c
 }
 
 func TestCommissionAllocationHistoryUsesRealMultilevelSavedRatesAndExactPages(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	f, child := addActualChildAgentBeneficiary(t, f)
 	waitCommissionBoundary(t, f.boundary)
@@ -133,6 +134,7 @@ func TestCommissionAllocationHistoryUsesRealMultilevelSavedRatesAndExactPages(t 
 }
 
 func TestCommissionAllocationHistoryRetainsOldAndReplacementRunsWithoutPayment(t *testing.T) {
+	t.Parallel()
 	f, payment, _ := createAndPayAutomaticCorrectionFixture(t)
 	old, err := runAllocationRead(t, f, payment.CycleID, payment.RunID, commission.AllocationQuery{Limit: 100})
 	if err != nil {

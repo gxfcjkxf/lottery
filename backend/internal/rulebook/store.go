@@ -106,7 +106,7 @@ func validText(s string, max int) bool {
 }
 func modeOK(s string) bool { return s == "immediate" || s == "next_period" }
 func check(tx pgx.Tx, brand string, a access.Account, resource, action, reason string) error {
-	if tx == nil || !uuidPattern.MatchString(brand) || !validText(reason, 500) {
+	if tx == nil || !uuidPattern.MatchString(brand) || (reason != "" && !validText(reason, 500)) {
 		return ErrInvalid
 	}
 	if !Allowed(a, brand, resource, action) {

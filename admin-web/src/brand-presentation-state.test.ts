@@ -9,7 +9,7 @@ import {
 const scope = { accountId: "00000000-0000-4000-8000-000000000001", brandId: "00000000-0000-4000-8000-000000000002" };
 const source: PendingBrandPresentationWrite = {
   ...scope, key: "write-key", phase: "unknown",
-  body: { version: 7, reason: "Refresh", config: {
+  body: { version: 7, reason: "", config: {
     display_name: null, logo_text: "Aurora", logo_url: null, favicon_url: null,
     primary_color: "#112233", accent_color: null, success_color: null, warning_color: null, danger_color: null,
     font_family: "system", font_scale: null, radius: null, shadow: null, default_locale: "en",

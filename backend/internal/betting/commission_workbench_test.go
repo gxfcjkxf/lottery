@@ -41,6 +41,7 @@ func commissionWorkbenchRead(t *testing.T, f commissionBatchFixture, want map[st
 }
 
 func TestCommissionWorkbenchRealManualCycleAndMultipleTargetsAreCountedOnce(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	f, _ = addActualChildAgentBeneficiary(t, f)
 	ctx := context.Background()
@@ -90,6 +91,7 @@ func TestCommissionWorkbenchRealManualCycleAndMultipleTargetsAreCountedOnce(t *t
 }
 
 func TestCommissionWorkbenchCorrectionPauseFailureAndHistoricalBlockedState(t *testing.T) {
+	t.Parallel()
 	f, payment, plan := readyAutomaticCorrectionPlanFixture(t)
 	ctx := context.Background()
 	commissionWorkbenchRead(t, f, map[string]string{"cycle_ready_count": "1", "payment_blocked_count": "1", "plan_ready_count": "1", "execution_processing_count": "0"})

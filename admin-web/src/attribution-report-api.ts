@@ -1,4 +1,6 @@
-import { AdminApiError, type AdminAccount } from "./admin-api";
+import { readAdminEnvelope } from './admin-api'
+import { copyAssociationNames } from "@lottery/shared"
+import { AdminApiError, readAdminErrorResponse, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/reports/attribution";
@@ -171,18 +173,13 @@ export function attributionReportPermissions(account: AdminAccount, brand: strin
 }
 
 export function createAttributionReportApi(fetcher: FetchLike = fetch) {
-  async function errorResponse(response: Response): Promise<never> {
-    let message = `Request failed (${response.status})`, code: string | undefined;
-    try { const body: unknown = await response.json(); if (isRecord(body) && isRecord(body.error)) { if (typeof body.error.message === "string") message = body.error.message; if (typeof body.error.code === "string") code = body.error.code; } } catch { /* status fallback */ }
-    throw new AdminApiError(message, response.status, code);
-  }
   async function request(brand: string, input: AttributionReportQuery, exportCsv: boolean): Promise<AttributionReport | AttributionExport> {
     if (!UUID.test(brand)) return bad("品牌 UUID 无效。");
     if (exportCsv && (input.limit !== undefined || input.offset !== undefined)) return bad("CSV 导出不接受分页参数。");
     const brandId = brand.toLowerCase(), q = canonical(input), params = new URLSearchParams();
     for (const [key, value] of Object.entries(q)) if (value !== null && (!exportCsv || key !== "limit" && key !== "offset")) params.set(key, String(value));
     const response = await fetcher(`${BASE}${exportCsv ? "/export" : ""}?${params}`, { method: "GET", credentials: "same-origin", headers: { "X-Brand-ID": brandId, Accept: exportCsv ? "text/csv" : "application/json" } });
-    if (!response.ok) return errorResponse(response);
+    if (!response.ok) throw await readAdminErrorResponse(response);
     if (exportCsv) {
       const length = response.headers.get("Content-Length");
       if (!length || !UNSIGNED.test(length) || Number(length) > MAX_BYTES) return fail("归因 CSV 文件大小无效。");
@@ -193,8 +190,8 @@ export function createAttributionReportApi(fetcher: FetchLike = fetch) {
       let decoded: string; try { decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(3)); } catch { return fail("归因 CSV 不是有效 UTF-8。"); }
       return { ...validateCsv(decoded, brandId, q, response.headers, bytes.length), bytes };
     }
-    let body: unknown; try { body = await response.json(); } catch { body = null; }
-    if (!isRecord(body) || !exactKeys(body, ["success", "data", "request_id"]) || body.success !== true || typeof body.request_id !== "string" || !/^[a-zA-Z0-9_.:-]{1,80}$/.test(body.request_id) || !isRecord(body.data)) return fail();
+    const body = await readAdminEnvelope(response);
+    if (!isRecord(body) || Object.keys(body).some(key => !["success", "data", "request_id", "associations", "association_error"].includes(key)) || body.success !== true || typeof body.request_id !== "string" || !/^[a-zA-Z0-9_.:-]{1,80}$/.test(body.request_id) || !isRecord(body.data)) return fail();
     const d = body.data;
     if (!exactKeys(d, ["brand_id", "snapshot_at", "timezone", "query", "summary", "items", "total_groups"]) || typeof d.brand_id !== "string" || d.brand_id.toLowerCase() !== brandId || typeof d.snapshot_at !== "string" || !validSnapshot(d.snapshot_at) || typeof d.timezone !== "string" || !validTimezone(d.timezone) || !isRecord(d.query) || typeof d.total_groups !== "string" || !UNSIGNED.test(d.total_groups)) return fail();
     const echo = d.query;
@@ -204,7 +201,9 @@ export function createAttributionReportApi(fetcher: FetchLike = fetch) {
     const items = sortedItems(d.items, q), total = BigInt(d.total_groups);
     if (total < BigInt(items.length) || items.length > 0 && BigInt(q.offset) + BigInt(items.length) > total) return fail();
     if (q.offset === 0 && BigInt(items.length) === total && !sumMatches(items, summary)) return fail("归因分组与汇总不一致。");
-    return { brand_id: brandId, snapshot_at: d.snapshot_at, timezone: d.timezone, query: echo as AttributionReport["query"], summary, items, total_groups: d.total_groups };
+    const checked = { brand_id: brandId, snapshot_at: d.snapshot_at, timezone: d.timezone, query: echo as AttributionReport["query"], summary, items, total_groups: d.total_groups };
+    copyAssociationNames(d, checked);
+    return checked;
   }
   return {
     report: async (brand: string, query: AttributionReportQuery) => await request(brand, query, false) as AttributionReport,

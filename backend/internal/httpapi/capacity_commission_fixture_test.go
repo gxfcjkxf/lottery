@@ -5,6 +5,7 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"strings"
 	"testing"
 
@@ -75,7 +76,7 @@ func capacityCommissionAgent(t *testing.T, p *pgxpool.Pool, brand, member string
 		var err error
 		policy, err = agents.SavePolicy(ctx, tx, brandID, actor, agency.PolicyInput{
 			Version: 1,
-			Config:  agency.PolicyConfig{Enabled: true, MaxDepth: 3, RatioCap: "0.1", Mode: "turnover", Cycle: "weekly"},
+			Config:  agency.PolicyConfig{Enabled: true, MaxDepth: 3, LossRatioCap: "0.1", TurnoverRatioCap: "0.1", Mode: "turnover", Cycle: "weekly"},
 			Reason:  "capacity commission agent fixture policy",
 		}, points.Metadata{RequestID: ids.New()})
 		return err
@@ -86,9 +87,9 @@ func capacityCommissionAgent(t *testing.T, p *pgxpool.Pool, brand, member string
 		var err error
 		root, err = agents.Create(ctx, tx, brandID, actor, agency.CreateInput{
 			PolicyVersion: policy.Version,
-			MemberID:      member,
-			Config:        agency.NodeConfig{Ratio: "0.1", Status: "active"},
-			Reason:        "capacity commission agent fixture root",
+			Username:      testdb.AgentUsername(member), Password: "agent123",
+			Config: agency.NodeConfig{Ratio: "0.1", Status: "active"},
+			Reason: "capacity commission agent fixture root",
 		}, points.Metadata{RequestID: ids.New()})
 		return err
 	})
@@ -118,7 +119,7 @@ func TestCapacityCommissionAgentFixture(t *testing.T) {
 			t.Fatalf("reload capacity brand %s: %v", user.Brand, err)
 		}
 		policy, err := (agency.Service{DB: f.DB}).Policy(context.Background(), brandID)
-		if err != nil || !policy.Config.Enabled || policy.Config.MaxDepth != 3 || policy.Config.RatioCap != "0.1" || policy.Config.Mode != "turnover" || policy.Config.Cycle != "weekly" {
+		if err != nil || !policy.Config.Enabled || policy.Config.MaxDepth != 3 || policy.Config.LossRatioCap != "0.1" || policy.Config.Mode != "turnover" || policy.Config.Cycle != "weekly" {
 			t.Fatalf("capacity agent policy for %s was not persisted as requested: policy=%+v err=%v", user.Brand, policy, err)
 		}
 		node, err := (agency.Service{DB: f.DB}).Me(context.Background(), brandID, user.Member)

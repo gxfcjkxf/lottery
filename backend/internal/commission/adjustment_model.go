@@ -44,7 +44,7 @@ func (in *AdjustmentInput) UnmarshalJSON(data []byte) error {
 
 func (in AdjustmentInput) Validate() error {
 	if in.Version < 1 || in.Version > maxCycleVersion || in.Points < 0 ||
-		!utf8.ValidString(in.Reason) || in.Reason == "" || in.Reason != strings.TrimSpace(in.Reason) ||
+		!utf8.ValidString(in.Reason) || in.Reason != strings.TrimSpace(in.Reason) ||
 		len([]byte(in.Reason)) > 500 || strings.ContainsRune(in.Reason, '\x00') {
 		return ErrInvalid
 	}

@@ -62,4 +62,4 @@ commission_correction_executions冻结plan、run、evidence_epoch、plan_version
 
 内部方法为CorrectionExecutionPolicyTx、UpdateCorrectionExecutionPolicyTx、CorrectionExecutionsTx、CorrectionExecutionTx、CorrectionExecutionTargetsTx、ApproveCorrectionExecutionTx、ContinueCorrectionExecutionTx及RetryCorrectionExecutionTx。写入需要当前版本、非空原因与真实管理员元数据。列表金额、总数和epoch为精确字符串，版本为安全整数，时间为UTC，空列表为[]。读取同时返回冻结target_count、实际applied_count及实际正负入账金额；cycle_hold_active表示现在的周期暂停，不是假称原任务创建时的历史状态。
 
-本模块的数据库结构已包含在当前 `0001_baseline.up.sql`。按[空库安装](../README.md#空库安装)初始化新数据库，再运行匹配版本的API、worker和前端；程序不自动迁移，不提供旧开发库的增量升级，也不清空旧库。不自动开启金融开关，不把旧批准作为新授权，也不补造历史消息或执行外部付款。管理界面仍区分原派发、计划、当前执行和历史资金。
+本模块的数据库结构已包含在当前 `0001_baseline.up.sql`。按[空库安装](../README.md#空库安装)初始化新数据库，再运行匹配版本的API、worker和前端；程序不自动迁移。正式发布前维护单一基线；已有开发库按 README 先备份并在副本验证，再显式同步迁移记录，不重放建表 SQL、不清空旧库；正式发布后追加增量迁移。不自动开启金融开关，不把旧批准作为新授权，也不补造历史消息或执行外部付款。管理界面仍区分原派发、计划、当前执行和历史资金。

@@ -34,7 +34,7 @@ test('platform bet UI paginates original snapshots and applies member filters wi
     await route.fulfill({ json: { success: true, data } });
   });
   await login(page);
-  await page.locator('.brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   const panel = page.getByTestId('platform-bets');
   const pages = page.getByTestId('platform-bet-pages');
   await expect(panel.locator('tbody tr')).toHaveCount(50);
@@ -58,7 +58,7 @@ test('platform bet UI paginates original snapshots and applies member filters wi
   await pages.getByRole('button', { name: 'Next page' }).click();
   await expect(panel.getByRole('alert')).toContainText('Order read unavailable');
   await expect(detail).toHaveCount(0);
-  await page.locator('.brand-picker select').selectOption('');
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(panel.locator('tbody')).not.toContainText(uuid(150));
   await expect(panel.getByRole('button', { name: /Cancel order|Judge|Settle|Mark abnormal/i })).toHaveCount(0);
 });
@@ -66,7 +66,7 @@ test('platform bet UI paginates original snapshots and applies member filters wi
 test('platform bet page reads the real brand endpoint and rejects financial write routes', async ({ page }) => {
   await login(page);
   const response = page.waitForResponse(r => r.url().endsWith('/api/v1/platform/bet-orders?limit=51&offset=0'));
-  await page.locator('.brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   expect((await response).status()).toBe(200);
   await expect(page.getByTestId('platform-bets').getByRole('alert')).toHaveCount(0);
   const denied = await page.request.post(`${origin}/api/v1/platform/bet-orders/${uuid(100)}/cancel`, {

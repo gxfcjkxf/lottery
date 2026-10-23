@@ -56,7 +56,7 @@ test('dedicated two-viewport draw notice browser project is bounded and uses the
   assert.match(config, /localhost:15293/);
   assert.match(config, /\.local\/draw-notifications-browser-report\.json/);
   assert.match(base, /name: 'desktop',[\s\S]*?width: 1440, height: 900/);
-  assert.match(base, /name: 'mobile',[\s\S]*?width: 360, height: 800/);
+  assert.match(base, /name: 'mobile',[\s\S]*?devices\['Pixel 7'\]/);
   assert.match(drawRoutes, /drawAPIResult\(201, out, err\)/);
   assert.match(correctionRoutes, /result\.Status = 201/);
   assert.match(walletDTO, /AvailablePoints\s+Amount\s+`json:"available_points"`/);
@@ -98,7 +98,7 @@ test('real draw publication and correction flow asserts immutable, private-safe 
   assert.match(spec, /recipient_id\|audit_log_id\|created_by/);
   assert.match(spec, /nonBettor/);
   assert.match(spec, /does not indicate a win, prize payment/);
-  assert.match(spec, /不代表中奖、派奖或当前结果保证/);
+  assert.match(spec, /not\.toContainText\('不代表中奖、派奖或当前结果保证'\)/);
   assert.match(spec, /Mark as read/);
   assert.match(spec, /changed: 0/);
   assert.match(spec, /walletFingerprint/);

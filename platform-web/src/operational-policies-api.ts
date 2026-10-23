@@ -1,3 +1,5 @@
+import { readPlatformEnvelope } from './platform-api'
+
 import { PlatformApiError } from './platform-api'
 
 const BASE = '/api/v1/platform'
@@ -21,7 +23,7 @@ export interface SettlementPolicy { brand_id: string; version: number; mode: 'au
 export interface AgentPolicy {
   brand_id: string
   version: number
-  config: { enabled: boolean; max_depth: number; ratio_cap: string; mode: 'loss' | 'turnover'; cycle: 'weekly' | 'monthly' }
+  config: { enabled: boolean; max_depth: number; loss_ratio_cap: string; turnover_ratio_cap: string; mode: 'loss' | 'turnover'; cycle: 'weekly' | 'monthly' }
   updated_at: string
   audit_log_id?: string
 }
@@ -75,12 +77,12 @@ function validSettlement(value: unknown, brand: string): value is SettlementPoli
   return policyEnvelope(value, brand, ['brand_id', 'version', 'mode', 'updated_at']) && (value.mode === null || value.mode === 'automatic' || value.mode === 'manual')
 }
 function validAgents(value: unknown, brand: string): value is AgentPolicy {
-  if (!policyEnvelope(value, brand, ['brand_id', 'version', 'config', 'updated_at']) || !object(value.config) || !exactKeys(value.config, ['enabled', 'max_depth', 'ratio_cap', 'mode', 'cycle'])) return false
+  if (!policyEnvelope(value, brand, ['brand_id', 'version', 'config', 'updated_at']) || !object(value.config) || !exactKeys(value.config, ['enabled', 'max_depth', 'loss_ratio_cap', 'turnover_ratio_cap', 'mode', 'cycle'])) return false
   const c = value.config
-  return typeof c.enabled === 'boolean' && Number.isInteger(c.max_depth) && Number(c.max_depth) >= 1 && Number(c.max_depth) <= 32 && validRatio(c.ratio_cap) &&
+  return typeof c.enabled === 'boolean' && Number.isInteger(c.max_depth) && Number(c.max_depth) >= 1 && Number(c.max_depth) <= 32 && validRatio(c.loss_ratio_cap) && validRatio(c.turnover_ratio_cap) &&
     (c.mode === 'loss' || c.mode === 'turnover') && (c.cycle === 'weekly' || c.cycle === 'monthly')
 }
-function validCompliance(value: unknown, brand: string): value is CompliancePolicy {
+export function validCompliance(value: unknown, brand: string): value is CompliancePolicy {
   if (!policyEnvelope(value, brand, ['brand_id', 'version', 'config', 'updated_at']) || !object(value.config) || !exactKeys(value.config, ['age_enabled', 'minimum_age', 'region_enabled', 'allowed_countries', 'identity_enabled', 'account_risk_enabled', 'betting_risk_enabled', 'exclusion_enabled', 'responsible_gambling_enabled'])) return false
   const c = value.config
   const countries = c.allowed_countries
@@ -105,15 +107,7 @@ export function createPlatformOperationalPoliciesApi(fetcher: typeof fetch = fet
     } catch (cause) {
       throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true)
     }
-    let envelope: unknown
-    try { envelope = await response.json() } catch {
-      if (!response.ok) throw new PlatformApiError(`Request failed (${response.status})`, response.status)
-      throw new PlatformApiError('Invalid server response', response.status, 'INVALID_RESPONSE')
-    }
-    if (!object(envelope) || envelope.success !== true || envelope.data === undefined || !response.ok) {
-      const error = object(envelope) && object(envelope.error) ? envelope.error : undefined
-      throw new PlatformApiError(typeof error?.message === 'string' ? error.message : `Request failed (${response.status})`, response.status, typeof error?.code === 'string' ? error.code : undefined)
-    }
+    const envelope = await readPlatformEnvelope<unknown>(response);
     if (response.status !== 200) throw new PlatformApiError('Invalid server response status', response.status, 'INVALID_RESPONSE')
     return envelope.data
   }

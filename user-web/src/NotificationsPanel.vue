@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import { vWriteGuard } from "@lottery/shared";
+import { withGlobalLoading } from '@lottery/shared';
+import SiteIcon from "@lottery/shared/SiteIcon";
+import { vRefreshButton } from '@lottery/shared';
+import { vGlobalLoading, formatDisplayDateTime } from "@lottery/shared";
+import { useUserI18n } from "./i18n";
+import DetailModal from '@lottery/shared/DetailModal.vue';
+
+const ui = useUserI18n().t;
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { Language } from "../../shared/src/brand";
 import {
@@ -21,6 +30,14 @@ type PendingIntent = {
 };
 
 const items = ref<NotificationItem[]>([]);
+const selected = ref<NotificationItem | null>(null);
+const confirmedRead = ref(new Set<string>());
+const isMobile = ref(false);
+const loadSentinel = ref<HTMLElement>();
+const loadMoreError = ref(false);
+const loadedMore = ref(false);
+let observer: IntersectionObserver;
+let media: MediaQueryList;
 const context = ref<Context | null>(null);
 const limit = 20;
 const offset = ref(0);
@@ -33,17 +50,17 @@ const scopeGeneration = ref(0);
 const listGeneration = ref(0);
 const disposed = ref(false);
 const api = ref(createNotificationApi({ brandCode: props.brandCode }));
-const isZh = computed(() => props.locale === "zh");
 const pageNumber = computed(() => Math.floor(offset.value / limit) + 1);
 const hasPrevious = computed(() => offset.value > 0);
 const hasNext = computed(
   () => total.value !== null && offset.value + limit < total.value,
 );
-const unreadOnPage = computed(() => items.value.filter((item) => !item.read_at));
+function isRead(item: NotificationItem) { return !!item.read_at || confirmedRead.value.has(item.id); }
+const unreadOnPage = computed(() => items.value.filter((item) => !isRead(item)));
+const unreadBatch = computed(() => unreadOnPage.value.slice(0, 100));
+const batchLabel = computed(() => isMobile.value
+  ? ui('user.notifications.markLoaded', { count: unreadBatch.value.length }) : ui('user.copy.ba71505e'));
 
-function text(en: string, zh: string): string {
-  return isZh.value ? zh : en;
-}
 
 function isCurrent(generation: number): boolean {
   return !disposed.value && generation === scopeGeneration.value;
@@ -55,6 +72,10 @@ function sameContext(a: Context | null, b: Context): boolean {
 
 function clearAccountState() {
   items.value = [];
+  selected.value = null;
+  confirmedRead.value = new Set();
+  loadMoreError.value = false;
+  loadedMore.value = false;
   context.value = null;
   pending.value = null;
   offset.value = 0;
@@ -64,17 +85,17 @@ function clearAccountState() {
 
 function handleAuthExpired() {
   clearAccountState();
-  error.value = text("Your session expired. Please sign in again.", "登录已过期，请重新登录。");
+  error.value = ui('user.copy.6480027f');
   emit("auth-expired");
 }
 
 function errorMessage(cause: unknown): string {
   const err = cause as { status?: number; message?: string };
-  if (err?.status === 401) return text("Your session expired. Please sign in again.", "登录已过期，请重新登录。");
+  if (err?.status === 401) return ui('user.copy.6480027f');
   if (err?.status === 0 || (err?.status !== undefined && err.status >= 500)) {
-    return text("The request result is unknown. Retry the same action; this page will not assume it succeeded.", "请求结果暂时无法确认。可重试同一操作；页面不会自行推断操作已成功。");
+    return ui('user.copy.a9882e2b');
   }
-  return text("Notifications could not be loaded. Try again.", "暂时无法加载通知，请重试。");
+  return ui('user.copy.9326acb2');
 }
 
 function presentation(item: NotificationItem) {
@@ -82,9 +103,9 @@ function presentation(item: NotificationItem) {
     return renderNotification(item, props.locale);
   } catch {
     return {
-      title: text("Notification unavailable", "通知内容暂不可用"),
-      body: text("This notification cannot be displayed.", "暂时无法显示此通知。"),
-      createdAt: item.created_at,
+      title: ui('user.copy.b811f4e5'),
+      body: ui('user.copy.51e43bf7'),
+      createdAt: formatDisplayDateTime(item.created_at, props.locale),
       points: null,
       reference: null,
       protectedNote: null,
@@ -92,20 +113,24 @@ function presentation(item: NotificationItem) {
   }
 }
 
-async function loadPage(options: { resetError?: boolean; afterWrite?: boolean } = {}) {
+async function loadPage(options: { resetError?: boolean; afterWrite?: boolean; append?: boolean; offset?: number } = {}) {
   if (writing.value && !options.afterWrite) return;
   const generation = scopeGeneration.value;
   const request = ++listGeneration.value;
   if (options.resetError !== false && !pending.value) error.value = "";
   loading.value = true;
+  loadMoreError.value = false;
+  const requestOffset = options.offset ?? (options.append ? offset.value + limit : isMobile.value ? 0 : offset.value);
   try {
-    const result = await api.value.list(limit, offset.value);
+    const result = await api.value.list(limit, requestOffset);
     if (!isCurrent(generation) || request !== listGeneration.value) return;
     const nextContext = { brand_id: result.brand_id, member_id: result.member_id };
     if (context.value && !sameContext(context.value, nextContext)) {
       // An account change invalidates any unresolved write identity.
       pending.value = null;
       items.value = [];
+      selected.value = null;
+      confirmedRead.value = new Set();
       offset.value = 0;
       context.value = nextContext;
       emit("unread-count", result.unread_count);
@@ -117,14 +142,19 @@ async function loadPage(options: { resetError?: boolean; afterWrite?: boolean } 
       context.value = nextContext;
       emit("unread-count", result.unread_count);
     }
-    items.value = result.items;
+    if (options.append && requestOffset > 0) {
+      const existing = new Set(items.value.map(item => item.id));
+      items.value = [...items.value, ...result.items.filter(item => !existing.has(item.id))];
+    } else items.value = result.items;
+    offset.value = result.offset;
+    loadedMore.value = !!options.append && requestOffset > 0;
     total.value = result.offset + result.items.length + (result.items.length === limit ? 1 : 0);
     if (!pending.value) error.value = "";
   } catch (cause) {
     if (!isCurrent(generation) || request !== listGeneration.value) return;
     const err = cause as { status?: number };
     if (err?.status === 401) handleAuthExpired();
-    else error.value = errorMessage(cause);
+    else { error.value = errorMessage(cause); loadMoreError.value = !!options.append; }
   } finally {
     if (isCurrent(generation) && request === listGeneration.value) loading.value = false;
   }
@@ -151,13 +181,15 @@ async function submitIntent(intent: PendingIntent) {
     if (!isCurrent(generation)) return;
     if (!sameContext(intent.context, { brand_id: result.brand_id, member_id: result.member_id })) {
       clearAccountState();
-      error.value = text("Your account changed. Reload notifications.", "账号已切换，请重新加载通知。");
+      error.value = ui('user.copy.b6aff54e');
       return;
     }
     pending.value = null;
     emit("unread-count", result.unread_count);
-    // A successful write refreshes through the current scope and current page.
-    await loadPage({ resetError: false, afterWrite: true });
+    // A validated receipt confirms these IDs are read without inventing a timestamp.
+    // Preserve the accumulated mobile list and scroll position.
+    confirmedRead.value = new Set([...confirmedRead.value, ...result.ids]);
+    if (!isMobile.value) await loadPage({ resetError: false, afterWrite: true });
   } catch (cause) {
     if (!isCurrent(generation)) return;
     const err = cause as { status?: number };
@@ -168,7 +200,7 @@ async function submitIntent(intent: PendingIntent) {
       // Preserve the exact ids/context/key for an explicit same-request retry.
       if (err?.status !== undefined && err.status > 0 && err.status < 500) {
         pending.value = null;
-        error.value = text("The request was not accepted. Reload and try again.", "请求未被接受。请重新加载后再试。");
+        error.value = ui('user.copy.45032eb2');
       } else {
         pending.value = intent;
         error.value = errorMessage(cause);
@@ -179,25 +211,42 @@ async function submitIntent(intent: PendingIntent) {
   }
 }
 
-function markRead(ids: string[]) {
+async function markRead(ids: string[]) {
   if (loading.value || writing.value || pending.value || ids.length === 0 || !context.value) return;
   const intent: PendingIntent = {
     ids: [...ids],
     context: { ...context.value },
     idempotencyKey: createKey(),
   };
-  void submitIntent(intent);
+  await submitIntent(intent);
 }
 
-function retryPending() {
-  if (pending.value && !writing.value && !loading.value) void submitIntent(pending.value);
+function openMessage(item: NotificationItem) {
+  selected.value = item;
+  if (!isRead(item)) markRead([item.id]);
 }
 
-function changePage(nextOffset: number) {
+async function retryPending() {
+  if (pending.value && !writing.value && !loading.value) await submitIntent(pending.value);
+}
+
+async function changePage(nextOffset: number) {
   if (pending.value || writing.value || loading.value) return;
-  offset.value = Math.max(0, nextOffset);
-  void loadPage();
+  await loadPage({ offset: Math.max(0, nextOffset) });
 }
+
+async function loadMore(retry = false) {
+  if (!isMobile.value || !hasNext.value || loading.value || writing.value || pending.value || (error.value && !retry)) return;
+  await loadPage({ append: true });
+}
+function changeViewport(event: MediaQueryListEvent) {
+  isMobile.value = event.matches;
+  if (!pending.value && !writing.value) void loadPage({ offset: 0 });
+}
+watch([loadSentinel, isMobile, hasNext, loading, writing, pending, error], () => {
+  observer?.disconnect();
+  if (isMobile.value && loadSentinel.value && hasNext.value && !loading.value && !writing.value && !pending.value && !error.value) observer?.observe(loadSentinel.value);
+}, { flush: 'post' });
 
 watch(
   () => props.brandCode,
@@ -213,8 +262,16 @@ watch(
   },
 );
 
-onMounted(() => void loadPage());
+onMounted(() => {
+  media = window.matchMedia('(max-width: 620px)');
+  isMobile.value = media.matches;
+  media.addEventListener('change', changeViewport);
+  observer = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) loadMore(); }, { rootMargin: '160px 0px' });
+  void loadPage();
+});
 onBeforeUnmount(() => {
+  observer?.disconnect();
+  media?.removeEventListener('change', changeViewport);
   emit("unread-count", null);
   disposed.value = true;
   scopeGeneration.value++;
@@ -224,58 +281,54 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="notifications-panel">
-    <div class="page-heading notifications-heading">
-      <div>
-        <div class="eyebrow">{{ text("YOUR INBOX", "站内信") }}</div>
-        <h1>{{ text("Updates", "消息") }}</h1>
-        <p>
-          {{ text("Messages for your current brand. External notifications are not connected.", "当前品牌的站内消息。外部通知暂未接入。") }}
-        </p>
-      </div>
-    </div>
-
     <div class="notifications-toolbar">
-      <button
-        class="button button-secondary"
+      <Teleport defer to="#user-page-refresh"><button v-refresh-button="ui('user.copy.8a197e0a')"
+        class="button button-secondary notification-tool"
         type="button"
+        :aria-label="ui('user.copy.8a197e0a')"
+        :title="ui('user.copy.8a197e0a')"
         :disabled="loading || writing"
-        @click="loadPage()"
+        @click="withGlobalLoading(loadPage)"
       >
-        {{ text("Reload", "重新加载") }}
-      </button>
+        {{ ui('user.copy.8a197e0a') }}
+      </button></Teleport>
       <button
-        v-if="unreadOnPage.length"
-        class="button button-secondary"
+        v-write-guard="writing"
+        v-if="unreadBatch.length"
+        class="button button-secondary notification-tool"
         type="button"
+        :aria-label="batchLabel"
+        :title="batchLabel"
         :disabled="loading || writing || !!pending"
-        @click="markRead(unreadOnPage.map((item) => item.id))"
+        @click="withGlobalLoading(markRead, unreadBatch.map((item) => item.id))"
       >
-        {{ text("Mark this page read", "本页标为已读") }}
+        <SiteIcon name="read" />
       </button>
     </div>
 
-    <p v-if="error && !pending" class="notifications-message notifications-error" role="alert">
+    <p v-if="error && !pending && !loadMoreError" class="notifications-message notifications-error" role="alert">
       {{ error }}
     </p>
     <p v-if="pending" class="notifications-message notifications-error" role="alert">
-      {{ text("The mark-read result is unknown. Reloading does not confirm whether the earlier request succeeded.", "标为已读的结果尚未确认。重新加载无法确认此前请求是否成功。") }}
+      {{ ui('user.copy.39040996') }}
       <button
+        v-write-guard="writing"
         type="button"
         class="notifications-inline-button"
         :disabled="writing || loading"
-        @click="retryPending"
+        @click="withGlobalLoading(retryPending)"
       >
-        {{ text("Retry the same request", "重试同一请求") }}
+        {{ ui('user.copy.4da8cfa4') }}
       </button>
     </p>
-    <p v-if="loading && !items.length" class="notifications-message" role="status">
-      {{ text("Loading notifications…", "正在加载通知…") }}
+    <p v-global-loading v-if="loading && !items.length" class="notifications-message" role="status">
+      {{ ui('user.copy.c8ac0a56') }}
     </p>
-    <p v-else-if="loading" class="notifications-message" role="status">
-      {{ text("Refreshing notifications…", "正在刷新通知…") }}
+    <p v-global-loading v-else-if="loading && !isMobile" class="notifications-message" role="status">
+      {{ ui('user.copy.c36a8e93') }}
     </p>
-    <div v-else-if="!items.length && !error" class="notifications-empty">
-      {{ text("You have no notifications yet.", "暂无通知。") }}
+    <div v-else-if="!items.length && !error" class="notifications-empty empty-state">
+      {{ ui('user.notifications.empty') }}
     </div>
 
     <div v-if="items.length" class="notification-list">
@@ -283,54 +336,55 @@ onBeforeUnmount(() => {
         v-for="item in items"
         :key="item.id"
         class="notification-card"
-        :class="{ 'read-card': !!item.read_at }"
+        :class="{ 'read-card': isRead(item) }"
       >
-        <span class="notification-marker" aria-hidden="true"></span>
-        <div class="notifications-content">
-          <div class="notification-meta">
-            {{ presentation(item).createdAt }}
-            <span v-if="!item.read_at">{{ text("NEW", "未读") }}</span>
-          </div>
-          <h3>{{ presentation(item).title }}</h3>
-          <p>{{ presentation(item).body }}</p>
-          <p v-if="presentation(item).protectedNote" class="notification-protected-note">
-            {{ presentation(item).protectedNote }}
-          </p>
-          <p v-if="presentation(item).reference" class="notification-reference">
-            {{ text("Reference", "业务编号") }}: {{ presentation(item).reference }}
-          </p>
-          <button
-            v-if="!item.read_at"
-            class="notifications-inline-button"
-            type="button"
-            :disabled="loading || writing || !!pending"
-            @click="markRead([item.id])"
-          >
-            {{ text("Mark as read", "标为已读") }}
-          </button>
-        </div>
+        <button type="button" class="notification-summary" aria-haspopup="dialog" :disabled="loading || writing || !!pending" @click="openMessage(item)">
+          <span class="notification-status" role="img" :aria-label="isRead(item) ? ui('user.notifications.read') : ui('user.copy.25fe7670')" :title="isRead(item) ? ui('user.notifications.read') : ui('user.copy.25fe7670')"><span class="notification-marker" aria-hidden="true"></span></span>
+          <strong class="notification-title">{{ presentation(item).title }}</strong>
+          <time :datetime="item.created_at">{{ presentation(item).createdAt }}</time>
+        </button>
       </article>
     </div>
 
-    <div v-if="items.length || total !== null" class="notifications-pagination">
+    <div v-if="isMobile && items.length && (hasNext || loadedMore || loadMoreError || loading)" ref="loadSentinel" class="notifications-load-more">
+      <template v-if="loadMoreError">
+        <p class="notifications-error" role="alert">{{ error }}</p>
+        <button type="button" class="button button-secondary" :disabled="loading || writing || !!pending" @click="withGlobalLoading(loadMore, true)">{{ ui('user.notifications.retryMore') }}</button>
+      </template>
+      <span v-global-loading v-else-if="loading" role="status">{{ ui('user.notifications.loadingMore') }}</span>
+      <span v-else-if="loadedMore && !hasNext">{{ ui('user.notifications.noMore') }}</span>
+    </div>
+
+    <div v-if="!isMobile && (items.length || total !== null)" class="notifications-pagination">
       <button
         class="button button-secondary"
         type="button"
         :disabled="!hasPrevious || loading || writing || !!pending"
-        @click="changePage(offset - limit)"
+        @click="withGlobalLoading(changePage, offset - limit)"
       >
-        {{ text("Previous", "上一页") }}
+        {{ ui('user.copy.d1c7b375') }}
       </button>
-      <span>{{ text(`Page ${pageNumber}`, `第 ${pageNumber} 页`) }}</span>
+      <span>{{ ui("user.pagination.page", { page: pageNumber }) }}</span>
       <button
         class="button button-secondary"
         type="button"
         :disabled="!hasNext || loading || writing || !!pending"
-        @click="changePage(offset + limit)"
+        @click="withGlobalLoading(changePage, offset + limit)"
       >
-        {{ text("Next", "下一页") }}
+        {{ ui('user.copy.2d3bed9a') }}
       </button>
     </div>
+    <DetailModal v-if="selected" :title="presentation(selected).title" :close-label="ui('user.notifications.close')" @close="selected = null">
+      <div class="notification-detail">
+        <div class="notification-meta"><span>{{ isRead(selected) ? ui('user.notifications.read') : ui('user.copy.25fe7670') }}</span><time :datetime="selected.created_at">{{ presentation(selected).createdAt }}</time></div>
+        <p class="notification-body">{{ presentation(selected).body }}</p>
+        <p v-if="presentation(selected).protectedNote && presentation(selected).protectedNote !== presentation(selected).body">{{ presentation(selected).protectedNote }}</p>
+        <p v-if="presentation(selected).reference" class="notification-reference">{{ ui('user.copy.c7f9efbc') }}: {{ presentation(selected).reference }}</p>
+        <p v-if="error && !loadMoreError" class="notifications-error" role="alert">{{ error }}</p>
+        <button v-write-guard="writing" v-if="pending" type="button" class="button button-secondary" :disabled="writing || loading" @click="withGlobalLoading(retryPending)">{{ ui('user.copy.4da8cfa4') }}</button>
+      </div>
+      <template #footer><button type="button" class="button button-primary" @click="selected = null">{{ ui('user.notifications.closeAction') }}</button></template>
+    </DetailModal>
   </section>
 </template>
 
@@ -338,17 +392,12 @@ onBeforeUnmount(() => {
 .notifications-panel {
   min-width: 0;
 }
-.notifications-heading {
-  padding-bottom: 16px;
-}
-.notifications-heading h1 {
-  overflow-wrap: anywhere;
-}
+.notifications-toolbar:not(:has(> button)) { display: none; }
 .notifications-toolbar,
 .notifications-pagination {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 10px;
   padding: 0 17px 12px;
@@ -356,29 +405,28 @@ onBeforeUnmount(() => {
 .notifications-pagination {
   justify-content: center;
   padding: 14px 17px;
-  color: #87938a;
+  color: var(--muted);
   font-size: 12px;
 }
-.notifications-message,
-.notifications-empty {
+.notifications-message {
   margin: 0;
   padding: 18px;
-  color: #87938a;
+  color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
 .notifications-error {
-  color: #9b4b3f;
+  color: var(--danger);
 }
 .notifications-content {
   white-space: pre-wrap;
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.notification-card .notification-reference {
+.notification-reference {
   margin-top: 2px;
-  color: #98a29a;
+  color: var(--muted);
   font-size: 11px;
   overflow-wrap: anywhere;
 }
@@ -387,12 +435,13 @@ onBeforeUnmount(() => {
   padding: 4px 0;
   border: 0;
   background: transparent;
-  color: var(--brand-primary, #56745e);
+  color: var(--primary);
   font: inherit;
   font-size: 12px;
   font-weight: 700;
   text-align: left;
   cursor: pointer;
+  min-height: 44px;
 }
 .notifications-inline-button:disabled {
   opacity: 0.55;
@@ -403,15 +452,31 @@ onBeforeUnmount(() => {
   opacity: 0.55;
   cursor: not-allowed;
 }
+.notification-tool { width: 44px; height: 44px; min-width: 44px; padding: 10px; }
+
+.notification-card { display: block; padding: 0; overflow: hidden; }
+.notification-summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; width: 100%; min-height: 64px; padding: 16px; border: 0; background: var(--surface); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.notification-summary:hover { background: var(--canvas); }
+.notification-summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.notification-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.notification-marker { width: 8px; height: 8px; margin: 0; background: var(--danger); box-shadow: none; flex-shrink: 0; }
+.read-card .notification-marker { background: var(--success); }
+.notification-title { min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notification-summary time { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.notification-detail { display: grid; gap: 16px; min-width: 0; overflow-wrap: anywhere; }
+.notification-detail p { margin: 0; }
+.notification-body { white-space: pre-wrap; line-height: 1.7; }
+.notification-detail .notification-meta { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 12px; }
+.notifications-load-more { min-height: 44px; padding: 16px; text-align: center; color: var(--muted); font-size: 13px; }
 @media (max-width: 620px) {
   .notifications-toolbar {
     padding-right: 12px;
     padding-left: 12px;
   }
   .notification-card {
-    gap: 9px;
-    padding: 16px 2px;
+    padding: 0;
   }
+  .notification-summary { gap: 10px; padding: 14px; }
   .notifications-pagination {
     gap: 7px;
     padding-right: 12px;

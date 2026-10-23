@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -87,8 +89,6 @@ function validateDelivery(value: unknown, brand: string, expected?: { eventID?: 
   return true;
 }
 
-type Envelope = { success?: unknown; data?: unknown; error?: { code?: string; message?: string } | null };
-
 export function createNotificationDeliveryApi(fetchImpl: typeof fetch = fetch): NotificationDeliveryApi {
   async function request(path: string, brand: string, options: {
     method?: "GET" | "POST";
@@ -111,20 +111,7 @@ export function createNotificationDeliveryApi(fetchImpl: typeof fetch = fetch): 
     } catch (cause) {
       throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR");
     }
-    let envelope: Envelope;
-    try {
-      envelope = await response.json() as Envelope;
-    } catch {
-      throw new AdminApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`,
-        response.ok ? (options.write ? 0 : 502) : response.status, response.ok ? "INVALID_RESPONSE" : undefined);
-    }
-    if (!response.ok || envelope.success !== true || envelope.data === undefined) {
-      const error = typeof envelope.error === "object" && envelope.error ? envelope.error : undefined;
-      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError(error?.message || `Request failed (${response.status})`,
-        response.ok ? (options.write ? 0 : 502) : response.status,
-        response.ok ? "INVALID_RESPONSE" : error?.code);
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     return envelope.data;
   }
 
@@ -143,7 +130,7 @@ export function createNotificationDeliveryApi(fetchImpl: typeof fetch = fetch): 
     async retry(brand, eventID, body, key) {
       if (!validUuid(eventID)) invalidInput("事件编号必须是 UUID。");
       if (!Number.isSafeInteger(body?.attempt_count) || body.attempt_count < 1 ||
-        typeof body.reason !== "string" || body.reason.trim().length === 0 || new TextEncoder().encode(body.reason).length > 500 ||
+        typeof body.reason !== "string" || new TextEncoder().encode(body.reason).length > 500 ||
         typeof key !== "string" || key.length === 0) invalidInput("重试请求参数无效。");
       const value = await request(`${BASE}/notification-deliveries/${encodeURIComponent(eventID)}/retry`, brand,
         { method: "POST", body, key, write: true });

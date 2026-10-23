@@ -1,3 +1,5 @@
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createRenderer, h, nextTick, type Component } from "vue";
@@ -22,11 +24,12 @@ const account: AdminAccount = {
 
 type HostNode = {
   tag: string; props: Record<string, unknown>; children: HostNode[]; text: string; parent?: HostNode;
+  focus: () => void; scrollIntoView: () => void;
   value?: string; checked?: boolean; addEventListener: (...args: unknown[]) => void;
   removeEventListener: (...args: unknown[]) => void; getRootNode: () => HostNode; options: HostNode[];
 };
 function element(tag: string): HostNode {
-  return { tag, props: {}, children: [], text: "", value: "", checked: false, addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } };
+  return { focus: vi.fn(), scrollIntoView: vi.fn(), tag, props: {}, children: [], text: "", value: "", checked: false, addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((child) => child.tag === "option"); } };
 }
 const renderer = createRenderer<HostNode, HostNode>({
   createElement: element, createText: (text) => ({ ...element("#text"), text }), createComment: (text) => ({ ...element("#comment"), text }),
@@ -43,13 +46,13 @@ function compile(): Component {
   const descriptor = parse(source, { filename: "NotificationTemplates.vue" }).descriptor;
   const script = compileScript(descriptor, { id: "notification-templates-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = {  "@lottery/shared": DisplayShared,
     vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n,
     "./notification-templates-api": TemplateApi, "./notification-templates-state": TemplateState,
   };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) =>
     `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 const ComponentUnderTest = compile();
 function textOf(node: HostNode): string { return node.text + node.children.map(textOf).join(""); }
@@ -81,8 +84,9 @@ function templates(): NotificationTemplate[] {
 function response(data: unknown) { return new Response(JSON.stringify({ success: true, data }), { status: 200 }); }
 function mount() {
   const root = element("root"), app = renderer.createApp({ setup: () => () => h(ComponentUnderTest, { account, brandId: brand }) });
-  app.provide(adminI18nKey, createAdminI18n()); app.mount(root);
-  return { app, root };
+  const i18n = createAdminI18n();
+  app.provide(adminI18nKey, i18n); app.mount(root);
+  return { app, root, i18n };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -105,8 +109,20 @@ describe("NotificationTemplates commission history", () => {
       "withdrawal.order.processing", "withdrawal.order.rejected", "withdrawal.order.reviewing",
     ]);
 
+    for (const locale of ["en", "zh-CN"] as const) {
+      mounted.i18n.setLocale(locale);
+      await flush();
+      for (const option of select!.options.filter((option) => option.value !== "")) {
+        expect(textOf(option)).not.toContain(option.value);
+        expect(textOf(option)).not.toContain("admin.notification.event.");
+        expect(textOf(option).trim().length).toBeGreaterThan(0);
+      }
+    }
+    mounted.i18n.setLocale("en");
+    await flush();
+
     for (const [key, en, zh] of [
-      ["commission.paid", "not a new income forecast or an external payment", "不是新收入预测或外部付款承诺"],
+      ["commission.paid", "commission points were credited", "佣金积分曾入账"],
       ["commission.adjusted", "signed commission adjustment", "带正负方向的佣金调整"],
       ["commission.corrected", "past additional credit or recovery", "过去的补发或追回"],
     ] as const) {
@@ -141,10 +157,10 @@ describe("NotificationTemplates protected draw preview", () => {
       const fixedNote = textOf(note!);
       expect(fixedNote).toContain("Period: 20261009001");
       expect(fixedNote).toContain("Regular: 03, 12, 28 · Special: 07 · Digits: none");
-      expect(fixedNote).toContain("does not indicate a win, prize payment, or guarantee of the current result");
+      expect(fixedNote).not.toContain("does not indicate a win, prize payment, or guarantee of the current result");
       expect(fixedNote).toContain("期号：20261009001");
       expect(fixedNote).toContain("普通：03、12、28 · 特别：07 · 数字：无");
-      expect(fixedNote).toContain("不代表中奖、派奖或当前结果保证");
+      expect(fixedNote).not.toContain("不代表中奖、派奖或当前结果保证");
       expect(find(note!, (node) => node.tag === "textarea" || node.tag === "input")).toBeNull();
       for (const [locale, body] of [
         ["en", "Changed result copy: {resource_id}."],
@@ -167,7 +183,7 @@ describe("NotificationTemplates protected draw preview", () => {
 
 describe("NotificationTemplates protected reward preview", () => {
   it.each([
-    ["reward.order.granted", "were credited to the gift available balance in the past", "过去的发放"],
+    ["reward.order.granted", "were credited to the gift available balance in the past", "积分曾记入赠送可用积分"],
     ["reward.order.revocation_pending", "No points or money moved in this attempt", "本次没有积分或资金变动"],
     ["reward.order.revoked", "full original reward of 12345 points was reversed", "原奖励全额 12345 积分曾从赠送可用积分撤销"],
   ] as const)("keeps bilingual historical facts for %s when both editable bodies change", async (key, en, zh) => {
@@ -195,8 +211,8 @@ describe("NotificationTemplates protected reward preview", () => {
         expect(originalNote).toContain("does not retry, unfreeze, or deduct automatically");
         expect(originalNote).toContain("不会自动重试、解冻或扣除");
       } else {
-        expect(originalNote).toContain("not the current wallet balance or an external payment");
-        expect(originalNote).toContain("不代表当前钱包余额或外部付款");
+        expect(originalNote).not.toContain("not the current wallet balance or an external payment");
+        expect(originalNote).not.toContain("不代表当前钱包余额或外部付款");
       }
       for (const [locale, body] of [
         ["en", "Everything is paid now: {points}."],
@@ -216,5 +232,27 @@ describe("NotificationTemplates protected reward preview", () => {
     } finally {
       mounted.app.unmount();
     }
+  });
+});
+
+describe("NotificationTemplates review without operation reasons", () => {
+  it("reveals the review and localizes its event without requesting a reason", async () => {
+    vi.stubGlobal("Document", class {});
+    vi.stubGlobal("ShadowRoot", class {});
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input) => String(input).includes("/history?") ? response({ items: [] }) : response({ items: templates() })));
+    const mounted = mount();
+    mounted.i18n.setLocale("en");
+    await flush();
+    const reviewButton = find(mounted.root, node => node.tag === "button" && textOf(node) === "Continue")!;
+    (reviewButton.props.onClick as () => void)();
+    await flush();
+    const heading = find(mounted.root, node => node.props.id === "nt-confirm-title")!;
+    expect(heading.focus).toHaveBeenCalled();
+    expect(heading.scrollIntoView).toHaveBeenCalled();
+    expect(textOf(mounted.root)).toContain("content in both languages before confirming");
+    expect(textOf(mounted.root)).not.toContain("and reason");
+    const confirmation = find(mounted.root, node => node.props.class === "nt-confirm")!;
+    expect(textOf(find(confirmation, node => node.tag === "p")!)).toContain("Confirm saving changes to this template.");
+    mounted.app.unmount();
   });
 });

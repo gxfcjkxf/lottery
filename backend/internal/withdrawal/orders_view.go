@@ -133,7 +133,7 @@ func (c *ActionRequest) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	var out ActionRequest
-	if decodeField(f["version"], &out.Version, false) != nil || decodeField(f["reason"], &out.Reason, false) != nil || ValidateActionInput(ActionInput{Version: out.Version, Reason: out.Reason, ClientKey: "validate-body"}) != nil {
+	if decodeField(f["version"], &out.Version, false) != nil || (f["reason"] != nil && decodeField(f["reason"], &out.Reason, false) != nil) || ValidateActionInput(ActionInput{Version: out.Version, Reason: out.Reason, ClientKey: "validate-body"}) != nil {
 		return ErrInvalid
 	}
 	*c = out

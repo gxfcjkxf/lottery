@@ -54,7 +54,7 @@ func managedFixture(t *testing.T) managementHTTP {
 			t.Fatal(err)
 		}
 	}
-	for _, key := range []string{"user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "user.create.brand", "brand.view.brand", "audit.view.brand", "role.view.brand", "role.write.brand", "admin.view.brand", "admin.write.brand", "auth_config.view.brand", "auth_config.write.brand"} {
+	for _, key := range []string{"user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "user.create.brand", "brand.view.brand", "audit.view.brand", "role.view.brand", "role.write.brand", "role.delete.brand", "admin.view.brand", "admin.write.brand", "auth_config.view.brand", "auth_config.write.brand"} {
 		if _, err = p.Exec(ctx, `INSERT INTO permissions(key) VALUES($1) ON CONFLICT DO NOTHING`, key); err != nil {
 			t.Fatal(err)
 		}
@@ -171,6 +171,24 @@ func TestManagementHTTPRolesAccountsReplayRevocationAndAudit(t *testing.T) {
 	if len(extra.Permissions) != 1 {
 		t.Fatal("duplicate permission retained")
 	}
+	deletable := map[string]any{"code": "temporary_role", "name": "Temporary role", "permissions": []string{"user.view.brand"}, "reason": "delete test role"}
+	r = f.call("POST", "/api/v1/admin/roles", "create-role-delete-001", f.token, managedBrand, deletable)
+	if r.Code != 201 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	var deletableRole adminsys.RoleRecord
+	managedData(t, r, &deletableRole)
+	if r = f.call("POST", "/api/v1/admin/roles/"+deletableRole.ID+"/delete", "delete-role-001", f.token, managedBrand, map[string]any{"version": deletableRole.Version}); r.Code != 200 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	var bootstrapID string
+	var bootstrapVersion int64
+	if err := f.pool.QueryRow(ctx, `SELECT r.id::text,r.version FROM roles r JOIN admin_account_roles a ON a.role_id=r.id WHERE a.account_id=$1 AND r.is_bootstrap`, f.root).Scan(&bootstrapID, &bootstrapVersion); err != nil {
+		t.Fatal(err)
+	}
+	if r = f.call("POST", "/api/v1/admin/roles/"+bootstrapID+"/delete", "delete-bootstrap-role-001", f.token, managedBrand, map[string]any{"version": bootstrapVersion}); r.Code != 403 {
+		t.Fatal("bootstrap role deletion was allowed", r.Code, r.Body.String())
+	}
 	r = f.call("POST", "/api/v1/admin/accounts", "create-staff-001", f.token, managedBrand, map[string]any{"username": "managed_staff", "password": "staff-test-password-2026", "role_ids": []string{role.ID, extra.ID, role.ID}, "reason": "create reader"})
 	if r.Code != 201 {
 		t.Fatal(r.Code, r.Body.String())
@@ -243,8 +261,8 @@ func TestManagementHTTPRolesAccountsReplayRevocationAndAudit(t *testing.T) {
 	if r = f.call("GET", "/api/v1/admin/me", "", token, managedBrand, nil); r.Code != 401 {
 		t.Fatal("disabled staff remained authenticated")
 	}
-	var denied, roleAudits int
-	if err := f.pool.QueryRow(ctx, `SELECT count(*) FILTER(WHERE action='access.denied'),count(*) FILTER(WHERE action='role.create') FROM audit_logs`).Scan(&denied, &roleAudits); err != nil || denied < 2 || roleAudits != 2 {
+	var denied, roleAudits, roleDeletes int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FILTER(WHERE action='access.denied'),count(*) FILTER(WHERE action='role.create'),count(*) FILTER(WHERE action='role.delete') FROM audit_logs`).Scan(&denied, &roleAudits, &roleDeletes); err != nil || denied < 2 || roleAudits != 3 || roleDeletes != 1 {
 		t.Fatal("missing/duplicate audit", denied, roleAudits, err)
 	}
 	var auditText string
@@ -286,11 +304,14 @@ func TestManagementHTTPOperatorConsentConfigCASAndSuperRestrictions(t *testing.T
 	if r = f.call("POST", "/api/v1/auth/login", "member-login-002", "", managedBrand, login); r.Code != 200 {
 		t.Fatal(r.Code, r.Body.String())
 	}
-	r = f.call("GET", "/api/v1/admin/auth-settings", "", f.token, managedBrand, nil)
+	mustStatus(t, f.call("GET", "/api/v1/admin/auth-settings", "", f.token, managedBrand, nil), 403)
+	operator := securityOperator(t, f)
+	grantPlatformPermission(t, operator, "auth_config.view.platform", "auth_config.write.platform")
+	r = operator.call("GET", "/api/v1/platform/auth-settings", "", operator.token, managedBrand, nil)
 	var config identity.AuthSettingsRecord
 	managedData(t, r, &config)
 	patch := map[string]any{"version": config.Version, "captcha_enabled": true, "telegram_enabled": false, "telegram_client_id": "", "reason": "enable local captcha"}
-	r = f.call("PATCH", "/api/v1/admin/auth-settings", "config-patch-001", f.token, managedBrand, patch)
+	r = operator.call("PATCH", "/api/v1/platform/auth-settings", "config-patch-001", operator.token, managedBrand, patch)
 	if r.Code != 200 {
 		t.Fatal(r.Code, r.Body.String())
 	}
@@ -299,7 +320,7 @@ func TestManagementHTTPOperatorConsentConfigCASAndSuperRestrictions(t *testing.T
 	if !after.CaptchaEnabled || after.PrivacyPolicyVersion != "dev-1" || after.ServiceTermsVersion != "dev-1" {
 		t.Fatal("config update lost policies", r.Body.String())
 	}
-	if r = f.call("PATCH", "/api/v1/admin/auth-settings", "config-stale-001", f.token, managedBrand, patch); r.Code != 409 {
+	if r = operator.call("PATCH", "/api/v1/platform/auth-settings", "config-stale-001", operator.token, managedBrand, patch); r.Code != 409 {
 		t.Fatal("config CAS missing", r.Code)
 	}
 	if r = f.call("POST", "/api/v1/auth/login", "member-login-no-captcha", "", managedBrand, login); r.Code != 400 {

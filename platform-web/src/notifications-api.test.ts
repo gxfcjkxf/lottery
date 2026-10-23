@@ -80,3 +80,12 @@ describe('platform notifications API', () => {
     expect(Object.keys(createPlatformNotificationsApi()).sort()).toEqual(['deliveries', 'history', 'templates'])
   })
 })
+
+it('resolves system i18n references for platform template and history views', async () => {
+  const reference = { i18n_key: 'member.joined', i18n_version: 1 };
+  const stored = { ...template, key: 'member.joined', version: 1, audit_log_id: null, content: reference };
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(reply({ items: [stored] })).mockResolvedValueOnce(reply({ items: [{ ...revision, key: 'member.joined', version: 1, changed_by: null, audit_log_id: null, content: reference }] }));
+  const api = createPlatformNotificationsApi(fetcher);
+  expect((await api.templates(brand))[0].content['zh-CN'].body).toBe('您的会员账号已准备就绪，欢迎加入。');
+  expect((await api.history(brand, 'member.joined'))[0].content.en.title).toBe('Welcome');
+});

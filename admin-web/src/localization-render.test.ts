@@ -18,14 +18,13 @@ describe('rendered locale and content-field separation', () => {
     const before = JSON.stringify(config)
     const context = createAdminI18n()
     context.setLocale(locale)
-    const app = createSSRApp({ render: () => h(PresentationFields, { config, effective, disabled: false }) })
+    const app = createSSRApp({ render: () => h(PresentationFields, { config, defaults: effective, brandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", disabled: false }) })
     app.provide(adminI18nKey, context)
     const html = await renderToString(app)
-    for (const label of locale === 'en'
-      ? ['English tagline', 'English announcement', 'Chinese tagline', 'Chinese announcement', 'Display name inherit default', 'Primary color inherit default']
-      : ['英文标语', '英文公告', '中文标语', '中文公告', '展示名称继承默认', '主色继承默认', '启用English', '启用简体中文']) {
-      expect(html.match(new RegExp(`aria-label="${label}"`, 'g'))).toHaveLength(1)
-    }
+    expect(html).not.toContain('inherit-toggle')
+    expect(html).not.toContain('inherit default')
+    expect(html).not.toContain('继承默认')
+    for (const label of locale === 'en' ? ['Advanced settings', 'Restore defaults', 'English announcement', 'Chinese announcement'] : ['高级设置', '恢复默认', '英文公告', '简体中文公告']) expect(html).toContain(label)
     expect(html).toContain('角色权限')
     expect(html).toContain('中文运营文案')
     expect(html).toContain('Unchanged English {name}')
@@ -36,7 +35,7 @@ describe('rendered locale and content-field separation', () => {
     const malicious = { ...config, display_name: '<img src=x onerror=alert(1)>', content: { en: { tagline: '<script>alert(1)</script>', announcement: '' }, 'zh-CN': { tagline: '中文', announcement: '' } } }
     const context = createAdminI18n()
     context.setLocale('en')
-    const app = createSSRApp({ render: () => h(PresentationFields, { config: malicious, effective, disabled: false }) })
+    const app = createSSRApp({ render: () => h(PresentationFields, { config: malicious, defaults: effective, brandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", disabled: false }) })
     app.provide(adminI18nKey, context)
     const html = await renderToString(app)
     expect(html).not.toContain('<script>')

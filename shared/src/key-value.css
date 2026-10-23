@@ -1,0 +1,39 @@
+/* Display facts share compact rows across all surfaces; form labels and inputs
+   are intentionally outside this contract. Keep local typography/card styling. */
+dl > div:has(> dt + dd),
+.key-value-row {
+  display: grid !important;
+  grid-template-columns: fit-content(45%) minmax(0, 1fr) !important;
+  align-items: baseline !important;
+  column-gap: 12px !important;
+  row-gap: 4px !important;
+  min-width: 0;
+}
+dl:not(:has(> div)):has(> dt + dd) {
+  display: grid !important;
+  grid-template-columns: fit-content(40%) minmax(0, 1fr) !important;
+  align-items: baseline !important;
+  gap: 8px 12px !important;
+  min-width: 0;
+}
+dl > div:has(> dt + dd) > :is(dt, dd),
+dl:not(:has(> div)):has(> dt + dd) > :is(dt, dd),
+.key-value-row > :is(.key-value-label, .key-value-value) {
+  min-width: 0;
+  margin: 0 !important;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+dl > div:has(> dt + dd) > dd,
+dl:not(:has(> div)):has(> dt + dd) > dd,
+.key-value-value {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+/* Structured or explicitly long descriptions can use the full row. */
+dl dd.key-value-wide,
+dl dd:has(> :is(p, pre, ul, ol, table)),
+.key-value-row > .key-value-wide {
+  grid-column: 1 / -1;
+  text-align: start;
+}

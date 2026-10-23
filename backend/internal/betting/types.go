@@ -38,6 +38,7 @@ type Order struct {
 	AccountID               string              `json:"account_id"`
 	GameID                  string              `json:"game_id"`
 	PeriodID                string              `json:"period_id"`
+	PeriodNo                string              `json:"period_no,omitempty"`
 	PlayID                  string              `json:"play_id"`
 	RuleVersionID           string              `json:"rule_version_id"`
 	DefinitionHash          string              `json:"definition_hash"`

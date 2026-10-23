@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import {
   AdminApiError,
   createIdempotencyKey,
@@ -400,37 +402,9 @@ export function createRuleVersionsApi(fetcher: typeof fetch = fetch) {
       headers,
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    let envelope: {
-      success?: boolean;
-      data?: T;
-      error?: { code: string; message: string } | null;
-    } | null;
-    try {
-      envelope = await response.json();
-    } catch {
-      throw new AdminApiError("服务器未返回有效 JSON，操作结果未确认。", 502, "INVALID_RESPONSE");
-    }
-    if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
-      throw new AdminApiError("服务器响应不符合当前接口格式，操作结果未确认。", 502, "INVALID_RESPONSE");
-    }
-    const detail = envelope.error;
-    if (
-      !response.ok && envelope.success === false && detail &&
-      typeof detail === "object" && !Array.isArray(detail) &&
-      typeof detail.code === "string" && detail.code.trim().length > 0 &&
-      typeof detail.message === "string" && detail.message.trim().length > 0
-    ) {
-      throw new AdminApiError(detail.message, response.status, detail.code);
-    }
-    if (
-      !response.ok ||
-      envelope.success !== true ||
-      envelope.data == null ||
-      typeof envelope.data !== "object" ||
-      Array.isArray(envelope.data)
-    ) {
-      throw new AdminApiError("服务器响应不符合当前接口格式，操作结果未确认。", 502, "INVALID_RESPONSE");
-    }
+    const envelope = await readAdminEnvelope<T>(response);
+    if (envelope.data == null || typeof envelope.data !== "object" || Array.isArray(envelope.data))
+      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
     return envelope.data;
   }
   const id = encodeURIComponent;

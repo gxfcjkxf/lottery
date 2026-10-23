@@ -58,7 +58,7 @@ test("real bilingual template publication survives lost receipt and preserves hi
   await panel.locator("#nt-title-zh-CN").fill(content["zh-CN"].title);await panel.locator("#nt-body-zh-CN").fill(content["zh-CN"].body);
   await panel.getByLabel("修改原因（最多 500 UTF-8 字节）",{exact:true}).fill("Publish bilingual welcome for isolated browser verification");
   await expect(panel.locator(".nt-preview").first()).toContainText("00000000-0000-4000-8000-000000000099");
-  await panel.getByRole("button",{name:"核对并继续",exact:true}).click();
+  await panel.getByRole("button",{name:"继续",exact:true}).click();
   await panel.getByRole("checkbox",{name:"我已核对品牌、事件、版本、中英文内容和原因，并确认保存",exact:true}).check();
   let firstBody:string|undefined,firstKey:string|undefined,attempts=0;
   await page.route("**/api/v1/admin/notification-templates/member.joined",async route=>{
@@ -70,10 +70,10 @@ test("real bilingual template publication survives lost receipt and preserves hi
     await route.fulfill({status:200,contentType:"application/json",body:'{"success":true,"data":{}}'})}
    else{expect(body).toBe(firstBody);expect(id).toBe(firstKey);await route.continue()}
   });
-  await panel.getByRole("button",{name:"确认保存",exact:true}).click();
+  await panel.getByRole("button",{name:"保存",exact:true}).click();
   await expect(panel.getByRole("heading",{name:"保存结果未知",exact:true})).toBeVisible();
   const committed=await read(page);expect(committed.version).toBe(original.version+1);expect(committed.content).toEqual(content);
-  await panel.getByRole("button",{name:"只读刷新通知模板",exact:true}).click();
+  await panel.getByRole("button",{name:"刷新",exact:true}).click();
   await expect(panel.getByRole("heading",{name:"保存结果未知",exact:true})).toBeVisible();
   if(info.project.name==="mobile"){await page.locator(".mobile-nav button").nth(4).click();await page.locator(".mobile-more-menu").getByRole("button",{name:/报表和对账/}).click()}
   else await page.locator(".side-nav").getByRole("button",{name:/报表和对账/}).click();

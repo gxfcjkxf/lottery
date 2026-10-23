@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError } from "./admin-api";
 
 const ORDERS = "/api/v1/admin/reward-orders";
@@ -81,7 +83,7 @@ export class RewardsApiError extends AdminApiError {
 }
 
 type ObjectValue = Record<string, unknown>;
-type Envelope = ObjectValue & { success?: unknown; data?: unknown; error?: unknown; request_id?: unknown };
+
 const ORDER_KEYS = [
   "id", "brand_id", "member_id", "points", "state", "version", "grant_ledger_entry_id", "revoke_ledger_entry_id",
   "creation_audit_log_id", "last_audit_log_id", "last_error_code", "created_by", "reason", "point_policy_version",
@@ -153,7 +155,7 @@ function instantNanoseconds(value: string): bigint {
 }
 
 function isReason(value: unknown): value is string {
-  if (typeof value !== "string" || value.length === 0 || value.trim() !== value || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
+  if (typeof value !== "string" || value.trim() !== value || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff) {
@@ -288,17 +290,6 @@ function snapshotBody<T extends object>(value: unknown, validate: (value: unknow
   return Object.freeze(snapshot);
 }
 
-function invalidUnauthorizedResponse(): never {
-  throw new RewardsApiError("奖励请求失败（401）。", 401, "AUTH_UNAUTHENTICATED");
-}
-
-function safeAPIErrorCode(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  return /^(?:REWARD_[A-Z0-9_]{1,80}|AUTH_[A-Z0-9_]{1,80}|PERMISSION_DENIED|CSRF_REJECTED|CONTENT_TYPE_INVALID|REQUEST_INVALID)$/.test(value)
-    ? value
-    : undefined;
-}
-
 export function createRewardsApi(fetcher: typeof fetch = fetch, actorID = "") {
   // This closure intentionally captures the actor identity once. The API does
   // not infer role permissions from this header; the server remains authoritative.
@@ -334,33 +325,8 @@ export function createRewardsApi(fetcher: typeof fetch = fetch, actorID = "") {
       throw new RewardsApiError("奖励请求暂时无法连接。", 0, "NETWORK_ERROR");
     }
 
-    let envelope: Envelope;
-    try {
-      const decoded: unknown = await response.json();
-      if (!isObject(decoded)) {
-        if (response.status === 401) invalidUnauthorizedResponse();
-        invalidResponse();
-      }
-      envelope = decoded;
-    } catch (error) {
-      if (error instanceof RewardsApiError) throw error;
-      if (response.status === 401) invalidUnauthorizedResponse();
-      if (response.ok) invalidResponse();
-      throw new RewardsApiError(`奖励请求失败（${response.status}）。`, response.status, "API_ERROR");
-    }
-
-    if (!response.ok) {
-      const error = isObject(envelope.error) ? envelope.error : undefined;
-      const code = safeAPIErrorCode(error?.code) ?? "API_ERROR";
-      if (!hasExactKeys(envelope, ["success", "error", "request_id"]) || !error || !hasExactKeys(error, ["code", "message"]) ||
-        envelope.success !== false || !isReason(error.message) || !isRequestID(envelope.request_id) ||
-        (response.status === 401 && !safeAPIErrorCode(error.code))) {
-        if (response.status === 401) invalidUnauthorizedResponse();
-        invalidResponse();
-      }
-      throw new RewardsApiError(`奖励请求失败：${code}`, response.status, code);
-    }
-    if (response.status !== expectedStatus || !hasExactKeys(envelope, ["success", "data", "request_id"]) ||
+    const envelope = await readAdminEnvelope<unknown>(response);
+    if (response.status !== expectedStatus || !Object.keys(envelope).every((key) => ["success", "data", "request_id", "associations", "association_error"].includes(key)) ||
       envelope.success !== true || !isRequestID(envelope.request_id) || !validate(envelope.data)) invalidResponse();
     return envelope.data;
   }

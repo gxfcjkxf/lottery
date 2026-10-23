@@ -21,7 +21,7 @@ func TestResolveOverridesAndInheritance(t *testing.T) {
 	}
 }
 func TestPresentationInputIsClosed(t *testing.T) {
-	raw, err := json.Marshal(Input{Version: 1, Config: Config{}, Reason: "presentation test"})
+	raw, err := json.Marshal(Input{Version: 1, Config: Config{}, Reason: ""})
 	if err != nil {
 		t.Fatal(err)
 	}

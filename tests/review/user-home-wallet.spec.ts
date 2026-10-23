@@ -31,14 +31,14 @@ test('signed-out home has no fictional points or local demo order path', async (
 
 test('home wallet shows real recharge and clears the balance on failure and logout', async ({ page, playwright, operatorSession }, info) => {
   await page.goto(`${origin}/register`);
-  await page.getByLabel('Choose a username or phone', { exact: true }).fill(`home_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`);
+  await page.getByLabel('Choose an account or phone', { exact: true }).fill(`home_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`);
   await page.getByLabel('Password', { exact: true }).fill('owned-home-review-password-2026');
   await page.locator('.auth-form input[type="checkbox"]').nth(0).check();
   await page.locator('.auth-form input[type="checkbox"]').nth(1).check();
   const registered = page.waitForResponse(r => r.url() === `${origin}/api/v1/auth/register`);
   await page.getByRole('button', { name: /Continue/ }).click();
   expect((await registered).status()).toBe(201);
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/$/);
   const me = await page.request.get(`${origin}/api/v1/me`);
   expect(me.status()).toBe(200);
   const member = (await me.json()).data.member.id;

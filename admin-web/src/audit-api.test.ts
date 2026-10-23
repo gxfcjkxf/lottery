@@ -33,9 +33,9 @@ function exportResponse(overrides: Record<string, string> = {}, body = bytes, le
 
 describe("audit API", () => {
   it("sends an explicit brand, defaults paging, and serializes accepted filters", async () => {
-    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [{ id: recordId, brand_id: brand, action: "view", actor_type: "admin", actor_id: actor, resource_type: "user", resource_id: "user-7", reason: "", request_id: "r1", created_at: "2026-10-01T01:00:00Z", ip_address: "", before_json: null, after_json: null }] } }), { status: 200 }));
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [{ id: recordId, brand_id: brand, action: "view", actor_type: "admin", actor_id: actor, actor_username: "admin", resource_type: "user", resource_id: "user-7", reason: "", request_id: "r1", created_at: "2026-10-01T01:00:00Z", ip_address: "", before_json: null, after_json: null }] } }), { status: 200 }));
     const api = createAuditApi(fetcher);
-    const result = await api.list(brand, { from, to, action: "view", actor_id: actor, resource_type: "user", resource_id: actor, request_id: "r1" });
+      const result = await api.list(brand, { from, to, action: "view", actor_id: actor, resource_type: "user", resource_id: actor, request_id: "r1" });
     expect(result.items).toHaveLength(1);
     const [url, init] = fetcher.mock.calls[0]!;
     const parsed = new URL(String(url), "http://localhost");
@@ -74,12 +74,12 @@ describe("audit API", () => {
   });
 
   it("rejects records returned for a different brand", async () => {
-    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [{ id: recordId, brand_id: otherBrand, action: "view", actor_type: "admin", actor_id: actor, resource_type: "user", resource_id: "x", reason: "", request_id: "r", created_at: "2026-10-01T01:00:00Z", ip_address: "", before_json: null, after_json: null }] } }), { status: 200 }));
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [{ id: recordId, brand_id: otherBrand, action: "view", actor_type: "admin", actor_id: actor, actor_username: "admin", resource_type: "user", resource_id: "x", reason: "", request_id: "r", created_at: "2026-10-01T01:00:00Z", ip_address: "", before_json: null, after_json: null }] } }), { status: 200 }));
     await expect(createAuditApi(fetcher).list(brand, {})).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
   it("requires brand_id while accepting null for platform audit records", async () => {
-    const item = { id: recordId, action: "view", actor_type: "admin", actor_id: actor, resource_type: "user", resource_id: "x", reason: "", request_id: "r", created_at: "2026-10-01T01:00:00Z", ip_address: "", before_json: null, after_json: null };
+    const item = { id: recordId, action: "view", actor_type: "admin", actor_id: actor, actor_username: "admin", resource_type: "user", resource_id: "x", reason: "", request_id: "r", created_at: "2026-10-01T01:00:00Z", ip_address: "", before_json: null, after_json: null };
     const missingBrand = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [item] } }), { status: 200 }));
     await expect(createAuditApi(missingBrand).list(brand, {})).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
 

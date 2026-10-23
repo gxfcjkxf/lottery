@@ -33,7 +33,7 @@ test('platform plays and versions paginate and clear failed details without writ
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Bet orders' }).click();
-  await page.locator('.brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   await page.getByTestId('platform-bet-tabs').getByRole('button', { name: 'Games and draws' }).click();
   await page.getByTestId('platform-lottery').getByRole('button', { name: 'Fixture game' }).click();
   await page.getByTestId('platform-game-periods').getByRole('button', { name: 'Plays and rules', exact: true }).click();
@@ -52,7 +52,7 @@ test('platform plays and versions paginate and clear failed details without writ
   await list.getByRole('button', { name: '51', exact: true }).click();
   await expect(panel.getByRole('alert')).toContainText('Rule read unavailable');
   await expect(page.getByTestId('platform-rule-detail')).toHaveCount(0);
-  await page.locator('.brand-picker select').selectOption('');
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(panel).toHaveCount(0);
 });
 
@@ -84,7 +84,7 @@ test('platform can read a real pending rule but cannot approve or alter it', asy
     await page.goto(origin);
     await expect(page.locator('.app-frame')).toBeVisible();
     await page.locator('.nav-item').filter({ hasText: 'Bet orders' }).click();
-    await page.locator('.brand-picker select').selectOption(brand);
+    await page.locator('.topbar-brand-picker select').selectOption(brand);
     await page.getByTestId('platform-bet-tabs').getByRole('button', { name: 'Games and draws' }).click();
     await page.getByTestId('platform-lottery').getByRole('button', { name, exact: true }).click();
     await page.getByTestId('platform-game-periods').getByRole('button', { name: 'Plays and rules', exact: true }).click();
@@ -109,7 +109,7 @@ test('platform can read a real pending rule but cannot approve or alter it', asy
     expect((await after.json()).data).toEqual(before);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.screenshot({ path: info.outputPath('platform-real-rule.png'), fullPage: true });
-    await page.locator('.brand-picker select').selectOption('');
+    await page.locator('.topbar-brand-picker select').selectOption('');
     await expect(detail).toHaveCount(0);
     await expect(panel).toHaveCount(0);
   } finally { await operator.dispose(); }

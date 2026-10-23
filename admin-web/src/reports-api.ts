@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+import { copyAssociationNames } from "@lottery/shared"
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -77,12 +79,6 @@ export type LedgerReport = ReportBase<LedgerTotals> & {
     withdrawal_points: string;
     total_points: string;
   };
-};
-
-type Envelope<T> = {
-  success?: boolean;
-  data?: T;
-  error?: { code?: string; message?: string } | null;
 };
 
 type FetchLike = typeof fetch;
@@ -311,15 +307,10 @@ export function createReportsApi(fetchImpl: FetchLike = fetch) {
       credentials: "same-origin",
       headers: { Accept: "application/json", "X-Brand-ID": brandId },
     });
-    let envelope: Envelope<unknown>;
-    try { envelope = await response.json() as Envelope<unknown>; }
-    catch { throw new AdminApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`, response.status); }
-    if (!response.ok || envelope.success !== true || envelope.data === undefined) {
-      const error = typeof envelope.error === "object" && envelope.error !== null ? envelope.error : undefined;
-      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError(error?.message || `Request failed (${response.status})`, response.status, error?.code);
-    }
-    return validateReport<T>(envelope.data, brandId, normalized, report) as T;
+    const envelope = await readAdminEnvelope<unknown>(response);
+    const checked = validateReport<T>(envelope.data, brandId, normalized, report) as T;
+    copyAssociationNames(envelope.data, checked);
+    return checked;
   }
   return {
     betting(brandId: string, query: ReportQuery): Promise<BettingReport> {

@@ -41,7 +41,7 @@ function item(event_type: NotificationEventType, template_version = 1): Notifica
     content: event_type === "member.joined"
       ? {
           en: { title: "Welcome", body: "Your membership is ready. Welcome aboard." },
-          "zh-CN": { title: "欢迎", body: "您的会员账户已准备就绪，欢迎加入。" },
+          "zh-CN": { title: "欢迎", body: "您的会员账号已准备就绪，欢迎加入。" },
         }
       : event_type === "bet.order.won"
         ? {
@@ -103,10 +103,10 @@ describe("notification presentation", () => {
       expect(en.body).toBe("Saved result for 44444444-4444-4444-8444-444444444444.");
       expect(en.protectedNote).toContain("Period: 20261009001");
       expect(en.protectedNote).toContain("Regular: none · Special: none · Digits: 010");
-      expect(en.protectedNote).toContain("does not indicate a win, prize payment");
+      expect(en.protectedNote).not.toContain("does not indicate a win, prize payment");
       expect(zh.protectedNote).toContain("期号：20261009001");
       expect(zh.protectedNote).toContain("普通：无 · 特别：无 · 数字：010");
-      expect(zh.protectedNote).toContain("不代表中奖、派奖或当前结果保证");
+      expect(zh.protectedNote).not.toContain("不代表中奖、派奖或当前结果保证");
       expect(en.body).not.toContain("010");
     }
   });
@@ -153,11 +153,11 @@ describe("notification presentation", () => {
     expect(reversedZh.body).toContain("不代表当前钱包余额");
     expect(reversedZh.body).toContain("单独事件");
     expect(reversedZh.body).toContain("此记录会保留");
-    expect(wonEn.protectedNote).toBe(wonEn.body);
-    expect(reversedEn.protectedNote).toBe(reversedEn.body);
+    expect(wonEn.protectedNote).toContain("were credited");
+    expect(reversedEn.protectedNote).toContain("full original prize amount");
   });
 
-  it.each(["commission.paid", "commission.adjusted"] as const)("keeps a fixed historical wallet disclaimer for %s", (event) => {
+  it.each(["commission.paid", "commission.adjusted"] as const)("keeps historical wallet facts for %s", (event) => {
     const snapshot = {
       en: { title: "Operator title", body: "Operator copy: {points}." },
       "zh-CN": { title: "运营标题", body: "运营内容：{points}。" },
@@ -167,15 +167,15 @@ describe("notification presentation", () => {
     const zh = renderNotification(custom, "zh");
     expect(en.body).toBe("Operator copy: 900,719,925,474,099,312,345.");
     expect(en.protectedNote).toContain("Historical record");
-    expect(en.protectedNote).toContain("not new income or an external payment forecast");
-    expect(en.protectedNote).toContain("Check your current wallet balance");
+    expect(en.protectedNote).not.toContain("not new income or an external payment forecast");
+    expect(en.protectedNote).toContain("900,719,925,474,099,312,345");
     expect(zh.body).toBe("运营内容：900,719,925,474,099,312,345。");
     expect(zh.protectedNote).toContain("历史记录");
-    expect(zh.protectedNote).toContain("不是新收入预测或外部付款承诺");
-    expect(zh.protectedNote).toContain("请查看当前钱包余额");
+    expect(zh.protectedNote).not.toContain("不是新收入预测或外部付款承诺");
+    expect(zh.protectedNote).toContain("900,719,925,474,099,312,345");
   });
 
-  it("keeps the corrected commission disclaimer fixed when custom copy is shown", () => {
+  it("keeps corrected commission facts fixed when custom copy is shown", () => {
     const corrected = { ...item("commission.corrected", 2), payload: { resource_id: "target-id", points: "-42" }, content: {
       en: { title: "Operator title", body: "Operator copy: {points}." },
       "zh-CN": { title: "运营标题", body: "运营内容：{points}。" },
@@ -183,8 +183,8 @@ describe("notification presentation", () => {
     const en = renderNotification(corrected, "en");
     const zh = renderNotification(corrected, "zh");
     expect(en.title).toBe("Operator title");
-    expect(en.protectedNote).toBe("Historical record: a commission correction of -42 points was posted to your commission available balance. Positive points record a past additional credit; negative points record a past recovery. This is not your current balance, new income or an external payment. Check your current wallet; this record is retained.");
-    expect(zh.protectedNote).toBe("历史记录：佣金可用积分曾发生 -42 积分更正。正数表示过去的补发，负数表示过去的追回；不代表当前余额、新收入或外部付款。请查看当前钱包；此记录会保留。");
+    expect(en.protectedNote).toBe("Historical record: a commission correction of -42 points was posted to your commission available balance. Positive points record an additional credit; negative points record a recovery.");
+    expect(zh.protectedNote).toBe("历史记录：佣金可用积分曾发生 -42 积分更正。正数表示补发，负数表示追回。");
   });
 
   it.each(["commission.paid", "commission.adjusted", "commission.corrected"] as const)("rejects missing historical snapshots for %s", (event) => {
@@ -194,7 +194,7 @@ describe("notification presentation", () => {
   it.each([
     ["reward.order.granted", "points were credited to your gift available balance", "积分曾记入赠送可用积分"],
     ["reward.order.revocation_pending", "No points moved in this attempt", "本次没有积分变动"],
-    ["reward.order.revoked", "available points was reversed", "已全额冲回"],
+    ["reward.order.revoked", "was reversed from your gift available balance", "曾从赠送可用积分撤销"],
   ] as const)("keeps the fixed reward-state note for edited %s content", (event, enPhrase, zhPhrase) => {
     const renderedEn = renderNotification(item(event), "en");
     const renderedZh = renderNotification(item(event), "zh");
@@ -205,8 +205,8 @@ describe("notification presentation", () => {
     expect(renderedEn.protectedNote).toContain("900,719,925,474,099,312,345");
     expect(renderedZh.protectedNote).toContain("900,719,925,474,099,312,345");
     if (event === "reward.order.revocation_pending") {
-      expect(renderedEn.protectedNote).toContain("no automatic retry, debit, or unfreeze");
-      expect(renderedZh.protectedNote).toContain("不会自动重试、扣款或解冻");
+      expect(renderedEn.protectedNote).toContain("does not retry, unfreeze or deduct automatically");
+      expect(renderedZh.protectedNote).toContain("不会自动重试、解冻或扣除");
     }
   });
 
@@ -234,11 +234,11 @@ describe("notification presentation", () => {
 
     expect(renderedEn.body).toBe("Operator copy: 900,719,925,474,099,312,345.");
     expect(renderedEn.protectedNote).toContain(`Historical withdrawal status: ${state}.`);
-    expect(renderedEn.protectedNote).toContain("not proof of an external transfer");
+    expect(renderedEn.protectedNote).not.toContain("not proof of an external transfer");
     expect(renderedEn.protectedNote).toContain("Check the withdrawal order for its current state.");
     expect(renderedZh.body).toBe("运营内容：900,719,925,474,099,312,345。");
     expect(renderedZh.protectedNote).toContain(`历史提现状态：${stateZh}`);
-    expect(renderedZh.protectedNote).toContain("不证明外部转账");
+    expect(renderedZh.protectedNote).not.toContain("不证明外部转账");
     expect(renderedZh.protectedNote).toContain("请查询提现订单的最新状态");
     expect(renderedEn.protectedNote).not.toMatch(/bank|crypto|virtual currency|payment|transfer succeeded/i);
     expect(() => renderNotification({ ...item(event), content: null as never }, "en")).toThrow(/immutable content snapshot/);
@@ -279,11 +279,11 @@ describe("notification presentation", () => {
       const defaultEn = renderNotification(item(event), "en");
       const defaultZh = renderNotification(item(event), "zh");
       expect(renderedEn.body).toBe("Operator copy: 900,719,925,474,099,312,345.");
-      expect(renderedEn.protectedNote).toBe(defaultEn.body);
+      expect(renderedEn.protectedNote).toBe(defaultEn.protectedNote);
       expect(renderedZh.body).toBe("自定义内容：900,719,925,474,099,312,345。");
-      expect(renderedZh.protectedNote).toBe(defaultZh.body);
-      expect(renderedEn.protectedNote).toContain("not your current wallet balance");
-      expect(renderedZh.protectedNote).toContain("不代表当前钱包余额");
+      expect(renderedZh.protectedNote).toBe(defaultZh.protectedNote);
+      expect(renderedEn.protectedNote).not.toContain("not your current wallet balance");
+      expect(renderedZh.protectedNote).not.toContain("不代表当前钱包余额");
     },
   );
 

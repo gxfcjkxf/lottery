@@ -112,6 +112,7 @@ func TestAuditExportIndependentPermissionScopeFiltersAndEvidence(t *testing.T) {
 		t.Fatal(e)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	platformExportPath := strings.Replace(auditExportPath("&action=fixture.audit.export"), "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 403)
 	mustStatus(t, f.call("GET", platformExportPath, "", platformToken, other, nil), 403)

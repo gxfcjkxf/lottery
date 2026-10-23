@@ -1,0 +1,10 @@
+import { createApp } from 'vue'
+import App from './App.vue'
+import '@lottery/shared/styles.css'
+import '@lottery/shared/management.css'
+import '@lottery/shared/empty-state.css'
+import '@lottery/shared/form-validation.css'
+import '@lottery/shared/key-value.css'
+import '@lottery/shared/login-entry.css'
+import '@lottery/shared/controls.css'
+createApp(App).mount('#app')

@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -13,6 +15,8 @@ export interface BrandOperation {
   version: number;
   name: string;
   status: BrandOperationStatus;
+  pause_starts_at?: string;
+  pause_ends_at?: string;
   updated_at: string;
   audit_log_id?: string;
 }
@@ -30,6 +34,8 @@ export interface BrandOperationHistoryItem {
   changed_by: string;
   reason: string;
   audit_log_id: string;
+  pause_starts_at?: string;
+  pause_ends_at?: string;
   created_at: string;
 }
 
@@ -42,7 +48,7 @@ export interface BrandOperationHistoryPage {
 export interface BrandOperationPatchBody {
   version: number;
   status: BrandOperationTargetStatus;
-  reason: string;
+  reason?: string;
 }
 
 export interface BrandOperationApi {
@@ -64,8 +70,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function exactKeys(value: Record<string, unknown>, keys: string[]): boolean {
-  const actual = Object.keys(value).sort();
+function validPauseWindow(value: Record<string, unknown>): boolean {
+  if (value.pause_starts_at === undefined && value.pause_ends_at === undefined) return true;
+  return validDateTime(value.pause_starts_at) && validDateTime(value.pause_ends_at) && Date.parse(value.pause_ends_at) > Date.parse(value.pause_starts_at) && value.status !== "disabled";
+}
+
+function exactKeys(value: Record<string, unknown>, keys: string[], pauseFields = false): boolean {
+  if (pauseFields && !validPauseWindow(value)) return false;
+  const actual = Object.keys(value).filter(key => !pauseFields || (key !== "pause_starts_at" && key !== "pause_ends_at")).sort();
   const expected = [...keys].sort();
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
@@ -95,19 +107,19 @@ function validVersion(value: unknown): value is number {
 }
 
 function validBrandOperation(value: unknown, brandId: string): value is BrandOperation {
-  return isRecord(value) && (exactKeys(value, ["brand_id", "version", "name", "status", "updated_at"]) ||
-      exactKeys(value, ["brand_id", "version", "name", "status", "updated_at", "audit_log_id"])) &&
+  return isRecord(value) && (exactKeys(value, ["brand_id", "version", "name", "status", "updated_at"], true) ||
+      exactKeys(value, ["brand_id", "version", "name", "status", "updated_at", "audit_log_id"], true)) &&
     value.brand_id === brandId && validVersion(value.version) && typeof value.name === "string" &&
     validStatus(value.status) && validDateTime(value.updated_at) &&
     (value.audit_log_id === undefined || validUuid(value.audit_log_id));
 }
 
 function validHistoryItem(value: unknown, brandId: string): value is BrandOperationHistoryItem {
-  return isRecord(value) && exactKeys(value, ["id", "brand_id", "version", "previous_status", "status", "changed_by", "reason", "audit_log_id", "created_at"]) &&
+  return isRecord(value) && exactKeys(value, ["id", "brand_id", "version", "previous_status", "status", "changed_by", "reason", "audit_log_id", "created_at"], true) &&
     validUuid(value.id) && value.brand_id === brandId && validVersion(value.version) &&
-    (value.previous_status === "active" || value.previous_status === "paused") &&
-    (value.status === "active" || value.status === "paused") && validUuid(value.changed_by) &&
-    typeof value.reason === "string" && new TextEncoder().encode(value.reason).length <= 500 &&
+    validStatus(value.previous_status) &&
+    validStatus(value.status) && validUuid(value.changed_by) &&
+    typeof value.reason === "string" && Array.from(value.reason).length <= 500 &&
     validUuid(value.audit_log_id) && validDateTime(value.created_at);
 }
 
@@ -118,8 +130,6 @@ function invalidInput(message: string): never {
 function invalidResponse(write: boolean): never {
   throw new AdminApiError("品牌运行状态响应格式无效。", write ? 0 : 502, "INVALID_RESPONSE");
 }
-
-type Envelope = { success?: unknown; data?: unknown; error?: unknown };
 
 export function createBrandOperationApi(fetchImpl: typeof fetch = fetch): BrandOperationApi {
   async function request(path: string, brandId: string, options: { method?: "GET" | "PATCH"; body?: unknown; key?: string; write?: boolean } = {}): Promise<unknown> {
@@ -134,20 +144,7 @@ export function createBrandOperationApi(fetchImpl: typeof fetch = fetch): BrandO
     } catch (cause) {
       throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR");
     }
-    let envelope: Envelope;
-    try {
-      envelope = await response.json() as Envelope;
-    } catch {
-      if (!response.ok) throw new AdminApiError(`Request failed (${response.status})`, response.status);
-      invalidResponse(Boolean(options.write));
-    }
-    if (!response.ok || !isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
-      const error = typeof envelope?.error === "object" && envelope.error ? envelope.error as Record<string, unknown> : undefined;
-      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      const message = typeof error?.message === "string" ? error.message : `Request failed (${response.status})`;
-      if (!response.ok) throw new AdminApiError(message, response.status, typeof error?.code === "string" ? error.code : undefined);
-      invalidResponse(Boolean(options.write));
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     return envelope.data;
   }
 
@@ -167,11 +164,11 @@ export function createBrandOperationApi(fetchImpl: typeof fetch = fetch): BrandO
     },
     async patch(brandId, body, idempotencyKey) {
       if (!validUuid(brandId) || !isRecord(body) || !validVersion(body.version) ||
-        (body.status !== "active" && body.status !== "paused") || typeof body.reason !== "string" ||
-        body.reason.trim().length === 0 || new TextEncoder().encode(body.reason).length > 500 ||
+        (body.status !== "active" && body.status !== "paused") ||
+        (body.reason !== undefined && (typeof body.reason !== "string" || Array.from(body.reason).length > 500)) ||
         typeof idempotencyKey !== "string" || !/^[\x21-\x7e]{8,128}$/.test(idempotencyKey)) invalidInput("品牌运行状态操作参数无效。");
-      const data = await request(BASE, brandId, { method: "PATCH", body: { version: body.version, status: body.status, reason: body.reason }, key: idempotencyKey, write: true });
-      if (!isRecord(data) || !exactKeys(data, ["brand_id", "version", "name", "status", "updated_at", "audit_log_id"]) ||
+      const data = await request(BASE, brandId, { method: "PATCH", body: { version: body.version, status: body.status, ...(body.reason === undefined ? {} : { reason: body.reason }) }, key: idempotencyKey, write: true });
+      if (!isRecord(data) || !exactKeys(data, ["brand_id", "version", "name", "status", "updated_at", "audit_log_id"], true) ||
         !validBrandOperation({ brand_id: data.brand_id, version: data.version, name: data.name, status: data.status, updated_at: data.updated_at }, brandId) ||
         data.status !== body.status || data.version !== body.version + 1 || !validUuid(data.audit_log_id)) invalidResponse(true);
       return data as unknown as BrandOperationReceipt;

@@ -27,8 +27,8 @@ test('wallet recharge tab paginates exact list snapshots and clears scope withou
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Member points' }).click();
-  await page.locator('.brand-picker select').selectOption(brand);
-  await page.getByTestId('platform-finance-tabs').getByRole('button', { name: 'Recharge records', exact: true }).click();
+  await page.getByTestId('platform-wallet-tabs').getByRole('button', { name: 'Recharge records', exact: true }).click();
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   const panel = page.getByTestId('platform-recharges');
   const pages = page.getByTestId('platform-recharge-pages');
   await expect(panel.locator('tbody tr')).toHaveCount(50);
@@ -50,22 +50,22 @@ test('wallet recharge tab paginates exact list snapshots and clears scope withou
   await pages.getByRole('button', { name: 'Next page' }).click();
   await expect(panel.getByRole('alert')).toContainText('Recharge read unavailable');
   await expect(detail).toHaveCount(0);
-  await page.locator('.brand-picker select').selectOption('');
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(panel).toHaveCount(0);
-  await expect(page.getByTestId('platform-wallet')).toBeVisible();
+  await expect(page.getByTestId('platform-wallet')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Create recharge|Confirm recharge|Make payment/i })).toHaveCount(0);
 });
 
 test('platform recharge query reads real records without changing wallet or ledger', async ({ page, playwright, operatorSession }) => {
   await page.goto('http://127.0.0.1:5183/register');
-  await page.getByLabel('Choose a username or phone', { exact: true }).fill(`recharge_review_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`);
+  await page.getByLabel('Choose an account or phone', { exact: true }).fill(`recharge_review_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`);
   await page.getByLabel('Password', { exact: true }).fill('owned-recharge-review-password-2026');
   await page.locator('.auth-form input[type="checkbox"]').nth(0).check();
   await page.locator('.auth-form input[type="checkbox"]').nth(1).check();
   const registered = page.waitForResponse(r => r.url() === 'http://127.0.0.1:5183/api/v1/auth/register');
   await page.getByRole('button', { name: /Continue/ }).click();
   expect((await registered).status()).toBe(201);
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/$/);
   const me = await page.request.get('http://127.0.0.1:5183/api/v1/me');
   expect(me.status()).toBe(200);
   const memberId = (await me.json()).data.member.id;
@@ -99,9 +99,9 @@ test('platform recharge query reads real records without changing wallet or ledg
   expect(before[0].available_points).toBe('7');
   expect(before[1].items).toHaveLength(1);
   await page.locator('.nav-item').filter({ hasText: 'Member points' }).click();
+  await page.getByTestId('platform-wallet-tabs').getByRole('button', { name: 'Recharge records', exact: true }).click();
   const response = page.waitForResponse(r => r.url().endsWith('/api/v1/platform/recharges?limit=51&offset=0'));
-  await page.locator('.brand-picker select').selectOption(brand);
-  await page.getByTestId('platform-finance-tabs').getByRole('button', { name: 'Recharge records', exact: true }).click();
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   expect((await response).status()).toBe(200);
   await page.getByTestId('platform-recharges').getByLabel('Member ID (optional)', { exact: true }).fill(memberId);
   const filtered = page.waitForResponse(r => new URL(r.url()).pathname === '/api/v1/platform/recharges' && new URL(r.url()).searchParams.get('member_id') === memberId);

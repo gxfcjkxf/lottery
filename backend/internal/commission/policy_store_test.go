@@ -15,29 +15,17 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 )
 
-func TestScanPolicyRequiresMatchingRevisionEvidence(t *testing.T) {
-	config := DefaultPolicyConfig()
-	raw, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestScanPolicyUsesCurrentConfiguration(t *testing.T) {
+	raw, _ := json.Marshal(DefaultPolicyConfig())
 	stamp := time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)
-	id, auditID := "0199a000-0000-7000-8000-000000000001", "0199a000-0000-7000-8000-000000000002"
-	base := []any{"0199a000-0000-7000-8000-000000000003", int64(1), raw, stamp, stamp, &id, &auditID, raw}
+	id := "0199a000-0000-7000-8000-000000000001"
+	base := []any{"0199a000-0000-7000-8000-000000000003", int64(1), raw, stamp, stamp, id}
 	if got, err := scanPolicy(valuesRow(base)); err != nil || got.RevisionID != id {
-		t.Fatalf("scanPolicy() = %+v, %v", got, err)
+		t.Fatalf("current policy: %+v %v", got, err)
 	}
-	missing := append([]any(nil), base...)
-	missing[5] = (*string)(nil)
-	if _, err := scanPolicy(valuesRow(missing)); !errors.Is(err, ErrPolicyEvidence) {
-		t.Fatalf("missing revision evidence error = %v", err)
-	}
-	other := PolicyConfig{PayoutMode: PayoutAutomatic}
-	otherRaw, _ := json.Marshal(other)
-	mismatched := append([]any(nil), base...)
-	mismatched[7] = otherRaw
-	if _, err := scanPolicy(valuesRow(mismatched)); !errors.Is(err, ErrPolicyEvidence) {
-		t.Fatalf("mismatched revision config error = %v", err)
+	base[5] = "invalid"
+	if _, err := scanPolicy(valuesRow(base)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("invalid current token: %v", err)
 	}
 }
 
@@ -69,11 +57,11 @@ func (values valuesRow) Scan(dest ...any) error {
 	return nil
 }
 
-func TestPolicyStoreRevisionAuditEvidenceAndSQLGuards(t *testing.T) {
+func TestPolicyStoreCurrentOnlyAndSQLGuards(t *testing.T) {
 	db := testdb.New(t)
 	ctx := context.Background()
 	var ready bool
-	if err := db.QueryRow(ctx, `SELECT to_regclass('brand_commission_policies') IS NOT NULL AND to_regclass('commission_policy_revisions') IS NOT NULL`).Scan(&ready); err != nil {
+	if err := db.QueryRow(ctx, `SELECT to_regclass('brand_commission_policies') IS NOT NULL AND to_regclass('commission_policy_revisions') IS NULL`).Scan(&ready); err != nil {
 		t.Fatal(err)
 	}
 	if !ready {
@@ -94,14 +82,14 @@ func TestPolicyStoreRevisionAuditEvidenceAndSQLGuards(t *testing.T) {
 	service := Service{DB: db}
 	agencyService := agency.Service{DB: db}
 	initial, err := service.Policy(ctx, brand)
-	if err != nil || initial.Version != 1 || !reflect.DeepEqual(initial.Config, DefaultPolicyConfig()) || initial.RevisionID == "" || initial.AuditLogID != "" {
+	if err != nil || initial.Version != 1 || !reflect.DeepEqual(initial.Config, DefaultPolicyConfig()) || initial.RevisionID == "" {
 		t.Fatalf("initial commission policy = %+v, err=%v", initial, err)
 	}
 	agencyPolicy, err := agencyService.Policy(ctx, brand)
 	if err != nil || agencyPolicy.Version != 1 {
 		t.Fatalf("initial agency policy = %+v, err=%v", agencyPolicy, err)
 	}
-	agencyConfig := agency.PolicyConfig{Enabled: true, MaxDepth: 5, RatioCap: "0", Mode: "loss", Cycle: "weekly"}
+	agencyConfig := agency.PolicyConfig{Enabled: true, MaxDepth: 5, LossRatioCap: "0", TurnoverRatioCap: "0", Mode: "loss", Cycle: "weekly"}
 	agencyMeta := points.Metadata{ActorType: "admin", ActorID: actor.ID, RequestID: ids.New()}
 	if err = agencyUpdateTest(t, agencyService, brand, actor, agency.PolicyInput{Version: agencyPolicy.Version, Config: agencyConfig, Reason: "enable weekly agency policy fixture"}, agencyMeta); err != nil {
 		t.Fatalf("enable agency policy through revision service: %v", err)
@@ -117,7 +105,7 @@ func TestPolicyStoreRevisionAuditEvidenceAndSQLGuards(t *testing.T) {
 		t.Fatalf("enable commission policy with matching agency evidence: %v", err)
 	}
 	updated, err := service.Policy(ctx, brand)
-	if err != nil || updated.Version != 2 || !updated.Config.Enabled || updated.RevisionID == initial.RevisionID || updated.AuditLogID == "" {
+	if err != nil || updated.Version != 2 || !updated.Config.Enabled || updated.RevisionID == initial.RevisionID {
 		t.Fatalf("updated commission policy = %+v, err=%v", updated, err)
 	}
 	betTx, err := service.DB.Begin(ctx)
@@ -146,9 +134,28 @@ func TestPolicyStoreRevisionAuditEvidenceAndSQLGuards(t *testing.T) {
 	}
 
 	monthly := PolicyConfig{Enabled: true, Calendar: &Calendar{Timezone: "UTC", Cycle: "monthly", BoundaryTime: "00:00:00", MonthDay: intPointer(1), ShortMonth: "last_day"}, PayoutMode: PayoutManual}
-	if _, err = updatePolicyValue(ctx, service, brand, actor, PolicyInput{Version: updated.Version, Config: monthly, Reason: "reject mismatched cycle"}, points.Metadata{ActorType: "admin", ActorID: actor.ID, RequestID: ids.New()}); !errors.Is(err, ErrPolicyEvidence) {
-		t.Fatalf("mismatched agency cycle error = %v", err)
+	monthlySaved, err := updatePolicyValue(ctx, service, brand, actor, PolicyInput{Version: updated.Version, Config: monthly}, points.Metadata{ActorType: "admin", ActorID: actor.ID, RequestID: ids.New()})
+	if err != nil {
+		t.Fatalf("single calendar update: %v", err)
 	}
+	synced, err := agencyService.Policy(ctx, brand)
+	if err != nil || synced.Config.Cycle != "monthly" || synced.Version != agencyPolicy.Version+1 {
+		t.Fatalf("agency snapshot cycle did not synchronize: %+v %v", synced, err)
+	}
+	if _, err = db.Exec(ctx, `CREATE FUNCTION reject_cycle_sync() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.config->'cycle' IS DISTINCT FROM OLD.config->'cycle' THEN RAISE EXCEPTION 'injected sync failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_cycle_sync BEFORE UPDATE ON brand_agent_policies FOR EACH ROW EXECUTE FUNCTION reject_cycle_sync()`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = updatePolicyValue(ctx, service, brand, actor, PolicyInput{Version: monthlySaved.Version, Config: weekly}, points.Metadata{ActorType: "admin", ActorID: actor.ID, RequestID: ids.New()}); err == nil {
+		t.Fatal("calendar save succeeded despite cycle synchronization failure")
+	}
+	unchanged, err := service.Policy(ctx, brand)
+	if err != nil || unchanged.Version != monthlySaved.Version || unchanged.Config.Calendar.Cycle != "monthly" {
+		t.Fatalf("failed synchronization leaked financial policy: %+v %v", unchanged, err)
+	}
+	if _, err = db.Exec(ctx, `DROP TRIGGER reject_cycle_sync ON brand_agent_policies; DROP FUNCTION reject_cycle_sync()`); err != nil {
+		t.Fatal(err)
+	}
+
 	superAdmin := actor
 	superAdmin.SuperAdmin = true
 	if _, err = updatePolicyValue(ctx, service, brand, superAdmin, PolicyInput{Version: updated.Version, Config: monthly, Reason: "superadmin must not write"}, points.Metadata{ActorType: "admin", ActorID: superAdmin.ID, RequestID: ids.New()}); !errors.Is(err, ErrDenied) {
@@ -158,15 +165,12 @@ func TestPolicyStoreRevisionAuditEvidenceAndSQLGuards(t *testing.T) {
 		t.Fatalf("stale commission version error = %v", err)
 	}
 
-	history, err := service.History(ctx, brand, 10, 0)
-	if err != nil || len(history) != 2 || history[0].ID != updated.RevisionID || history[1].ID != initial.RevisionID || history[1].ChangedBy != nil || history[1].AuditLogID != nil {
-		t.Fatalf("commission history = %+v, err=%v", history, err)
+	assertPolicySQLGuards(t, service, brand)
+	var policyAudits, agencyHistory int
+	if err = db.QueryRow(ctx, `SELECT (SELECT count(*) FROM audit_logs WHERE brand_id=$1 AND action IN ('commission.policy.update','agent.policy.update')),(SELECT count(*) FROM agent_config_revisions WHERE brand_id=$1 AND agent_id IS NULL)`, brand).Scan(&policyAudits, &agencyHistory); err != nil || policyAudits != 0 || agencyHistory != 0 {
+		t.Fatalf("policy history recorded: %d %d %v", policyAudits, agencyHistory, err)
 	}
-	if _, err = service.History(ctx, brand, 1, 1); err != nil {
-		t.Fatalf("commission history page: %v", err)
-	}
-	assertPolicySQLGuards(t, service, brand, initial.RevisionID)
-	assertPolicyAuditFailureRollsBack(t, service, brand, actor, updated)
+
 }
 
 func intPointer(value int) *int { return &value }
@@ -200,60 +204,15 @@ func updatePolicyValue(ctx context.Context, service Service, brand string, actor
 	return updated, nil
 }
 
-func assertPolicySQLGuards(t *testing.T, service Service, brand, initialRevision string) {
+func assertPolicySQLGuards(t *testing.T, service Service, brand string) {
 	t.Helper()
-	ctx := context.Background()
-	tx, err := service.DB.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, execErr := tx.Exec(ctx, `UPDATE brand_commission_policies SET version=version+1,config=$2 WHERE brand_id=$1`, brand, []byte(`{"enabled":false,"calendar":null,"payout_mode":"automatic"}`))
-	commitErr := tx.Commit(ctx)
-	if execErr == nil && commitErr == nil {
-		t.Fatal("direct commission policy update without revision committed")
-	}
 	for _, statement := range []string{
-		`UPDATE commission_policy_revisions SET reason='tampered' WHERE id=$1`,
-		`DELETE FROM commission_policy_revisions WHERE id=$1`,
+		`UPDATE brand_commission_policies SET version=version+2 WHERE brand_id=$1`,
+		`UPDATE brand_commission_policies SET config='{}'::jsonb,version=version+1 WHERE brand_id=$1`,
+		`DELETE FROM brand_commission_policies WHERE brand_id=$1`,
 	} {
-		if _, err = service.DB.Exec(ctx, statement, initialRevision); err == nil {
-			t.Fatalf("direct SQL mutation unexpectedly succeeded: %s", statement)
+		if _, err := service.DB.Exec(context.Background(), statement, brand); err == nil {
+			t.Fatalf("invalid SQL mutation succeeded: %s", statement)
 		}
-	}
-}
-
-func assertPolicyAuditFailureRollsBack(t *testing.T, service Service, brand string, actor access.Account, current Policy) {
-	t.Helper()
-	ctx := context.Background()
-	if _, err := service.DB.Exec(ctx, `CREATE FUNCTION reject_commission_policy_audit() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN IF NEW.action='commission.policy.update' THEN RAISE EXCEPTION 'injected commission audit failure'; END IF; RETURN NEW; END $$`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.DB.Exec(ctx, `CREATE TRIGGER reject_commission_policy_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_commission_policy_audit()`); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_, _ = service.DB.Exec(ctx, `DROP TRIGGER IF EXISTS reject_commission_policy_audit ON audit_logs`)
-		_, _ = service.DB.Exec(ctx, `DROP FUNCTION IF EXISTS reject_commission_policy_audit()`)
-	}()
-	var revisionsBefore, auditsBefore int
-	if err := service.DB.QueryRow(ctx, `SELECT (SELECT count(*) FROM commission_policy_revisions WHERE brand_id=$1),(SELECT count(*) FROM audit_logs WHERE brand_id=$1 AND action='commission.policy.update')`, brand).Scan(&revisionsBefore, &auditsBefore); err != nil {
-		t.Fatal(err)
-	}
-	config := current.Config
-	config.PayoutMode = PayoutAutomatic
-	if _, err := updatePolicyValue(ctx, service, brand, actor, PolicyInput{Version: current.Version, Config: config, Reason: "injected audit failure"}, points.Metadata{ActorType: "admin", ActorID: actor.ID, RequestID: ids.New()}); err == nil {
-		t.Fatal("policy update succeeded despite audit insertion failure")
-	}
-	after, err := service.Policy(ctx, brand)
-	if err != nil || after.Version != current.Version || after.RevisionID != current.RevisionID || after.Config.PayoutMode != current.Config.PayoutMode {
-		t.Fatalf("audit failure leaked policy mutation: %+v, err=%v", after, err)
-	}
-	var revisionsAfter, auditsAfter int
-	if err = service.DB.QueryRow(ctx, `SELECT (SELECT count(*) FROM commission_policy_revisions WHERE brand_id=$1),(SELECT count(*) FROM audit_logs WHERE brand_id=$1 AND action='commission.policy.update')`, brand).Scan(&revisionsAfter, &auditsAfter); err != nil {
-		t.Fatal(err)
-	}
-	if revisionsAfter != revisionsBefore || auditsAfter != auditsBefore {
-		t.Fatalf("audit failure leaked records: revisions %d->%d, audits %d->%d", revisionsBefore, revisionsAfter, auditsBefore, auditsAfter)
 	}
 }

@@ -15,7 +15,7 @@ test('brand role creation waits for a successfully loaded permission catalog', a
   });
   await page.goto('http://127.0.0.1:5184');
   await page.getByLabel('选择真实后台品牌', { exact: true }).selectOption('0199a000-0000-7000-8000-000000000001');
-  if (info.project.name === 'mobile360') {
+  if (info.project.name === 'mobilepixel7') {
     await page.locator('.mobile-nav button').last().click();
     await page.getByRole('navigation', { name: '全部管理页面' }).getByRole('button', { name: /账号与权限/ }).click();
   } else await page.locator('.side-nav').getByRole('button', { name: /账号与权限/ }).click();

@@ -2,12 +2,11 @@ package betting
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
+	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"testing"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/agency"
-	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
 	"github.com/gxfcjkxf/lottery/backend/internal/commission"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
@@ -20,6 +19,7 @@ import (
 // registration attribution, placement trigger, final settlement, cycle and
 // ledger posting. Stopping agent operations is not stopping its saved earnings.
 func TestCommissionDisabledAgentPreservesNewBetSnapshotsAndActualPayout(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{commission.PayoutAutomatic, commission.PayoutManual} {
 		t.Run(mode, func(t *testing.T) { assertDisabledAgentActualPayout(t, mode) })
 	}
@@ -43,38 +43,35 @@ func assertDisabledAgentActualPayout(t *testing.T, mode string) {
 	bettingTx(t, f.betting.db, func(tx pgx.Tx) error {
 		parentVersion := f.node.Version
 		child, err = agents.Create(ctx, tx, f.betting.brand, f.actor, agency.CreateInput{
-			PolicyVersion: policy.Version, MemberID: f.betting.member,
+			PolicyVersion: policy.Version, Username: testdb.AgentUsername(f.betting.member), Password: "agent123",
 			ParentID: &f.node.ID, ParentVersion: &parentVersion,
-			Config: agency.NodeConfig{Ratio: "0.1", Status: "active"},
+			Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0.1", Status: "active"},
 			Reason: "actual child for disabled-agent operation boundary",
 		}, policyMeta(f.actor.ID))
 		return err
 	})
 
-	// Authenticate a real persisted session for the original agent member. Its
-	// normal user identity remains valid after only the agent node is disabled.
-	var userID string
-	if err = f.betting.db.QueryRow(ctx, `SELECT global_user_id::text FROM brand_members WHERE brand_id=$1 AND id=$2`, f.betting.brand, f.node.MemberID).Scan(&userID); err != nil {
-		t.Fatal(err)
-	}
-	token, err := authcrypto.NewSessionToken()
-	if err != nil {
-		t.Fatal(err)
-	}
-	digest := authcrypto.DigestSessionToken(token)
-	if _, err = f.betting.db.Exec(ctx, `INSERT INTO sessions(id,token_hash,user_id,member_id,brand_id,expires_at) VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '1 hour')`, ids.New(), hex.EncodeToString(digest[:]), userID, f.node.MemberID, f.betting.brand); err != nil {
-		t.Fatal(err)
-	}
+	// Reuse the original agent's issued session; registering the referred
+	// bettor does not authorize creating a second active agent session.
 	users, err := identity.New(f.betting.db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentSession, err := users.Authenticate(ctx, f.betting.brand, token)
-	if err != nil {
-		t.Fatal(err)
+	var agentSession identity.AgentSession
+	bettingTx(t, f.betting.db, func(tx pgx.Tx) error {
+		var e error
+		agentSession, e = users.AgentAuthenticateTx(ctx, tx, f.betting.brand, f.agentToken)
+		return e
+	})
+	if agentSession.AccountID != f.node.MemberID {
+		t.Fatal("agent session belongs to a different agent account")
+	}
+	var activeSessions int
+	if err = f.betting.db.QueryRow(ctx, `SELECT count(*) FROM agent_sessions WHERE brand_id=$1 AND agent_account_id=$2 AND revoked_at IS NULL`, f.betting.brand, agentSession.AccountID).Scan(&activeSessions); err != nil || activeSessions != 1 {
+		t.Fatalf("agent sessions: %d err=%v", activeSessions, err)
 	}
 	bettingTx(t, f.betting.db, func(tx pgx.Tx) error {
-		_, e := agents.CheckUserWrite(ctx, tx, f.betting.brand, agentSession, child.ID)
+		_, e := agents.CheckUserWrite(ctx, tx, f.betting.brand, identity.AgentSession{AccountID: f.node.MemberID, BrandID: f.betting.brand}, child.ID)
 		return e
 	})
 
@@ -83,19 +80,26 @@ func assertDisabledAgentActualPayout(t *testing.T, mode string) {
 		bettingTx(t, f.betting.db, func(tx pgx.Tx) error {
 			f.node, err = agents.Update(ctx, tx, f.betting.brand, f.actor, f.node.ID, agency.UpdateInput{
 				Version: f.node.Version, PolicyVersion: policy.Version,
-				Config: agency.NodeConfig{Ratio: ratio, Status: "disabled"},
+				Config: agency.NodeConfig{Mode: new("loss"), Ratio: ratio, Status: "disabled"},
 				Reason: "disable agent operations without suppressing saved earnings",
 			}, policyMeta(f.actor.ID))
 			return err
 		})
 	}
 	update("0.2")
-	agentSession, err = users.Authenticate(ctx, f.betting.brand, token)
-	if err != nil || agentSession.Member.Status != "normal" {
-		t.Fatalf("agent disable changed ordinary member authentication: session=%+v err=%v", agentSession.Member, err)
+	err = commissionPaymentCallTx(t, f, func(tx pgx.Tx) error {
+		_, e := users.AgentAuthenticateTx(ctx, tx, f.betting.brand, f.agentToken)
+		return e
+	})
+	if !errors.Is(err, identity.ErrSession) {
+		t.Fatalf("disabled agent session accepted: %v", err)
+	}
+	memberSession, e := users.Authenticate(ctx, f.betting.brand, f.betting.token)
+	if e != nil || memberSession.Member.Status != "normal" {
+		t.Fatalf("disabling agent affected independent member: %v", e)
 	}
 	err = commissionPaymentCallTx(t, f, func(tx pgx.Tx) error {
-		_, e := agents.UpdateChild(ctx, tx, f.betting.brand, agentSession, child.ID, agency.ChildInput{
+		_, e := agents.UpdateChild(ctx, tx, f.betting.brand, identity.AgentSession{AccountID: f.node.MemberID, BrandID: f.betting.brand}, child.ID, agency.ChildInput{
 			Version: child.Version, PolicyVersion: policy.Version, ParentVersion: f.node.Version,
 			Ratio: "0.05", Reason: "disabled agent must not edit its child",
 		}, points.Metadata{RequestID: ids.New()})

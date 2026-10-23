@@ -1,3 +1,6 @@
+import { h as temporalTestH } from "vue";
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createRenderer, h, nextTick, ref, type Component } from "vue";
@@ -30,9 +33,9 @@ const renderer = createRenderer<Node, Node>({
 function component(): Component {
   const source = readFileSync(new URL("./RewardReports.vue", import.meta.url), "utf8"), descriptor = parse(source, { filename: "RewardReports.vue" }).descriptor;
   const javascript = ts.transpileModule(compileScript(descriptor, { id: "reward-report-test", inlineTemplate: true }).content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./reward-report-api": RewardReportApi };
+  const modules: Record<string, unknown> = { "@lottery/shared/FilterAssociationSelect.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("select", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) },  "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": DisplayShared,  vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./reward-report-api": RewardReportApi, "./member-lookup": { lookupAdminMember: async () => { throw new Error("Member lookup failed"); } } };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 function report(url: URL) {
   const q = url.searchParams, kind = url.pathname.includes("reward-orders") ? "reward_orders" : "rewards", group = q.get("group_by") ?? "day";
@@ -74,8 +77,8 @@ describe("RewardReports real Vue component", () => {
     expect(postingSummary).toContain(huge.replace(/\B(?=(\d{3})+(?!\d))/g, ","));
     expect(postingSummary).toContain("−7");
     const committedFrom = new URL(calls[0]!.url).searchParams.get("from");
-    const filters = testId(mounted.root, "reward-report-filters")!, dateInput = find(filters, (n) => n.tag === "input" && n.props.type === "datetime-local");
-    setModel(dateInput, "2026-10-01T00:00:00"); await flush(); click(testId(mounted.root, "reward-report-export")); await flush();
+    const filters = testId(mounted.root, "reward-report-filters")!, dateInput = find(filters, (n) => n.tag === "input" && n.props.type === "date");
+    setModel(dateInput, "2026-10-01"); await flush(); click(testId(mounted.root, "reward-report-export")); await flush();
     expect(new URL(calls[1]!.url).searchParams.get("from")).toBe(committedFrom);
     expect(new URL(calls[1]!.url).pathname).toBe("/api/v1/admin/reports/rewards.csv");
     expect(new URL(calls[1]!.url).searchParams.has("offset")).toBe(false);
@@ -91,7 +94,7 @@ describe("RewardReports real Vue component", () => {
     const orderSummary = text(testId(mounted.root, "reward-report-summary")!);
     for (const label of ["订单数", "原始积分", "已发放订单", "已发放积分", "待处理订单", "待处理积分", "已撤销订单", "已撤销积分"]) expect(orderSummary).toContain(label);
     expect(orderSummary).toContain(huge.replace(/\B(?=(\d{3})+(?!\d))/g, ","));
-    expect(text(mounted.root)).toContain("revocation_pending");
+    expect(text(mounted.root)).not.toContain("revocation_pending");
     expect(text(mounted.root)).toContain("撤销待处理");
     click(testId(mounted.root, "reward-report-mode-postings")); await flush();
     expect(testId(mounted.root, "reward-report-summary")).toBeNull();
@@ -104,9 +107,9 @@ describe("RewardReports real Vue component", () => {
     const calls: { url: URL; init?: RequestInit }[] = [];
     const fetcher = vi.fn<typeof fetch>(async (input, init) => {
       const url = new URL(String(input), "http://local"); calls.push({ url, init });
-      if (url.pathname.endsWith(".csv")) { if (firstExport) { firstExport = false; return exportWait; } return new Response(JSON.stringify({ error: { message: "sensitive server detail" } }), { status: 401 }); }
+      if (url.pathname.endsWith(".csv")) { if (firstExport) { firstExport = false; return exportWait; } return new Response(JSON.stringify({ success: false, error: { code: "AUTH_UNAUTHENTICATED", message: "sensitive server detail" } }), { status: 401 }); }
       if (firstRead) { firstRead = false; return readWait; }
-      if (calls.filter((call) => !call.url.pathname.endsWith(".csv")).length >= 4) return new Response(JSON.stringify({ error: { message: "sensitive server detail" } }), { status: 401 });
+      if (calls.filter((call) => !call.url.pathname.endsWith(".csv")).length >= 4) return new Response(JSON.stringify({ success: false, error: { code: "AUTH_UNAUTHENTICATED", message: "sensitive server detail" } }), { status: 401 });
       return new Response(JSON.stringify(report(url)), { status: 200 });
     });
     vi.stubGlobal("fetch", fetcher); vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});

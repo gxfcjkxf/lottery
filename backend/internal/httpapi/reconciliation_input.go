@@ -68,8 +68,8 @@ func (in *reconciliationCreateInput) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	var next reconciliationCreateInput
-	if json.Unmarshal(fields["reason"], &next.Reason) != nil {
-		return errors.New("reconciliation reason is required")
+	if fields["reason"] != nil && json.Unmarshal(fields["reason"], &next.Reason) != nil {
+		return errors.New("invalid reconciliation reason")
 	}
 	scope, present := fields["check_scope"]
 	if !present || json.Unmarshal(scope, &next.CheckScope) != nil || !reconciliation.ValidScope(next.CheckScope) {
@@ -90,8 +90,8 @@ func (in *reconciliationRetryInput) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	var next reconciliationRetryInput
-	if json.Unmarshal(fields["version"], &next.Version) != nil || next.Version < 1 || next.Version >= 9007199254740991 || json.Unmarshal(fields["reason"], &next.Reason) != nil {
-		return errors.New("reconciliation version and reason are required")
+	if json.Unmarshal(fields["version"], &next.Version) != nil || next.Version < 1 || next.Version >= 9007199254740991 || (fields["reason"] != nil && json.Unmarshal(fields["reason"], &next.Reason) != nil) {
+		return errors.New("valid reconciliation version is required")
 	}
 	*in = next
 	return nil

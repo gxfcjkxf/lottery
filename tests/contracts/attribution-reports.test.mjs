@@ -17,7 +17,7 @@ test("attribution handover describes only the current metric set and CSV columns
   for (const metric of metrics) assert.ok(guide.includes(metric), `Missing current metric: ${metric}`);
   assert.match(guide, /十四项指标，共28列/);
   assert.doesNotMatch(guide, /legacy_attribution_count|十五项|共29列|正常迁移至0068|升级测试/);
-  assert.match(guide, /不提供增量升级或旧报表字段兼容/);
+  assert.match(guide, /结构更新使用新迁移，不提供旧报表字段兼容/);
 });
 
 test("attribution report exposes the closed read and export query contracts", () => {

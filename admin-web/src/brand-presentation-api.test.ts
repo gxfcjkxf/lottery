@@ -57,7 +57,7 @@ describe("brand presentation API", () => {
   });
 
   it("accepts only permitted asset URIs and validates the exact put receipt", async () => {
-    const body = { version: 4, config, reason: "Brand refresh" };
+    const body = { version: 4, config, reason: "" };
     const key = "brand-presentation-key-01";
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(response({ ...record({ version: 5, audit_log_id: audit }) }))
@@ -87,7 +87,7 @@ describe("brand presentation API", () => {
       { ...record({ version: 5, audit_log_id: audit }), effective: { ...effective, font_family: "sans" } },
     ]) await expect(createBrandPresentationApi(vi.fn<typeof fetch>().mockResolvedValue(response(receipt))).put(brand, body, key)).rejects.toMatchObject({ status: 0, code: "INVALID_RESPONSE" });
     await expect(createBrandPresentationApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...record({ version: 5, audit_log_id: audit }) }, 201))).put(brand, body, key)).rejects.toMatchObject({ status: 0, code: "INVALID_RESPONSE" });
-    const conflictResponse = new Response(JSON.stringify({ success: false, error: { code: "CONFLICT" } }), { status: 409 });
+    const conflictResponse = new Response(JSON.stringify({ success: false, error: { code: "CONFLICT", message: "Version changed" } }), { status: 409 });
     await expect(createBrandPresentationApi(vi.fn<typeof fetch>().mockResolvedValue(conflictResponse)).put(brand, body, key)).rejects.toMatchObject({ status: 409, code: "CONFLICT" });
     await expect(createBrandPresentationApi(vi.fn<typeof fetch>().mockRejectedValue(new Error("offline"))).put(brand, body, key)).rejects.toMatchObject({ status: 0, code: "NETWORK_ERROR" });
     await expect(createBrandPresentationApi(vi.fn<typeof fetch>()).put(brand, { ...body, reason: "   " }, key)).rejects.toMatchObject({ status: 400, code: "INVALID_INPUT" });
@@ -124,7 +124,7 @@ describe("brand presentation API", () => {
   });
 
   it("validates history page scope, shape, and timestamp", async () => {
-    const revision = { id: actor, brand_id: brand, version: 4, config, effective, changed_by: actor, reason: "Brand refresh", audit_log_id: audit, created_at: at };
+    const revision = { id: actor, brand_id: brand, version: 4, config, effective, changed_by: actor, reason: "", audit_log_id: audit, created_at: at };
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ items: [revision], limit: 20, offset: 40 }));
     await expect(createBrandPresentationApi(fetcher).history(brand, 20, 40)).resolves.toEqual({ items: [revision], limit: 20, offset: 40 });
     expect(fetcher.mock.calls[0][0]).toBe(`${"/api/v1/admin/brand-presentation"}/history?limit=20&offset=40`);

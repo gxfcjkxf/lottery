@@ -1,3 +1,6 @@
+import { readApiEnvelope } from './api-response'
+
+import { notifySessionReplaced } from './session-replacement'
 import type { BrandLocaleContent, BrandTheme, Language, PlatformContext } from './brand'
 import { safeBrandAssetUrl, safeBrandColor } from './presentation'
 
@@ -5,6 +8,7 @@ export class ApiError extends Error {
   constructor(message: string, readonly status?: number, readonly code?: string) {
     super(message)
     this.name = 'ApiError'
+    notifySessionReplaced(code)
   }
 }
 
@@ -12,12 +16,6 @@ export interface ApiClientOptions {
   baseUrl?: string
   brandCode?: string
   fetcher?: typeof fetch
-}
-
-interface ApiEnvelope<T> {
-  success: boolean
-  data?: T
-  error?: { code?: string; message?: string; details?: unknown }
 }
 
 interface BackendTheme {
@@ -31,7 +29,7 @@ interface BackendTheme {
   warning_color: string
   danger_color: string
   font_family: 'system' | 'serif' | 'mono'
-  font_scale: 'compact' | 'standard' | 'large'
+  font_scale: 'compact' | 'standard'
   radius: 'square' | 'soft' | 'round'
   shadow: 'none' | 'subtle' | 'lifted'
   default_locale: 'en' | 'zh-CN'
@@ -88,7 +86,7 @@ function isBackendContext(value: unknown): value is BackendContext {
     if (typeof theme[color] !== 'string' || !/^#[\da-f]{6}$/i.test(theme[color] as string)) return false
   }
   if (!['system', 'serif', 'mono'].includes(theme.font_family as string)) return false
-  if (!['compact', 'standard', 'large'].includes(theme.font_scale as string)) return false
+  if (!['compact', 'standard'].includes(theme.font_scale as string)) return false
   if (!['square', 'soft', 'round'].includes(theme.radius as string)) return false
   if (!['none', 'subtle', 'lifted'].includes(theme.shadow as string)) return false
   if (!isRecord(theme.content) || !isStringRecord(theme.content.en, ['tagline', 'announcement']) || !isStringRecord(theme.content['zh-CN'], ['tagline', 'announcement'])) return false
@@ -159,14 +157,9 @@ export function createApiClient({ baseUrl = '', brandCode, fetcher = fetch }: Ap
     } catch (error) {
       throw new ApiError(error instanceof Error ? error.message : 'Network unavailable')
     }
-    const body: unknown = await response.json().catch(() => undefined)
-    if (!isRecord(body) || typeof body.success !== 'boolean') throw new ApiError('Invalid API response', response.status)
-    const envelope = body as unknown as ApiEnvelope<T>
-    if (!response.ok || !envelope.success) {
-      throw new ApiError(envelope.error?.message ?? `Request failed (${response.status})`, response.status, envelope.error?.code)
-    }
-    if (!('data' in body)) throw new ApiError('Invalid API response', response.status)
-    return envelope.data as T
+    const envelope = await readApiEnvelope<T>(response, (message,status,code)=>new ApiError(message,status,code))
+    return envelope.data
+
   }
 
   return {

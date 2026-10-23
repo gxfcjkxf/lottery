@@ -74,6 +74,22 @@ func TestAdminHTTPAuthorizationKickAndAudit(t *testing.T) {
 	if r := call("GET", "/api/v1/admin/users", "", s.Data.AccessToken, b, nil); r.Code != 403 {
 		t.Fatal("cross-brand users", r.Code)
 	}
+	listed := call("GET", "/api/v1/admin/users?q=MEMBER_&limit=1&offset=0", "", s.Data.AccessToken, a, nil)
+	if listed.Code != 200 {
+		t.Fatal(listed.Code, listed.Body.String())
+	}
+	var directory struct {
+		Data adminsys.MemberPage `json:"data"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &directory); err != nil {
+		t.Fatal(err)
+	}
+	if directory.Data.TotalCount != "1" || directory.Data.Limit != 1 || len(directory.Data.Items) != 1 || directory.Data.Items[0].Username != "member_test" || directory.Data.Items[0].DisplayPoints != nil {
+		t.Fatalf("bad filtered member page: %s", listed.Body.String())
+	}
+	if bad := call("GET", "/api/v1/admin/users?online=invalid", "", s.Data.AccessToken, a, nil); bad.Code != 400 {
+		t.Fatal(bad.Code, bad.Body.String())
+	}
 	if r := call("GET", "/api/v1/admin/users", "", u.Data.AccessToken, a, nil); r.Code != 401 {
 		t.Fatal("user got admin access", r.Code)
 	}

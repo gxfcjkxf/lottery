@@ -1,3 +1,6 @@
+import { h as temporalTestH } from "vue";
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createRenderer, h, nextTick, ref, type Component } from "vue";
@@ -24,9 +27,9 @@ const renderer = createRenderer<Node, Node>({
 function component(): Component {
   const source = readFileSync(new URL("./CommissionReport.vue", import.meta.url), "utf8"), descriptor = parse(source, { filename: "CommissionReport.vue" }).descriptor;
   const javascript = ts.transpileModule(compileScript(descriptor, { id: "commission-report-test", inlineTemplate: true }).content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-report-api": CommissionReportApi };
+  const modules: Record<string, unknown> = { "@lottery/shared/FilterAssociationSelect.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("select", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) },  "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": DisplayShared,  vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-report-api": CommissionReportApi, "./member-lookup": { lookupAdminMember: async () => { throw new Error("Member lookup failed"); } } };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 const payload = (query: Record<string, unknown>) => ({ success: true, request_id: "read-1", data: { brand_id: brand, snapshot_at: "2026-10-08T00:00:00Z", timezone: "Asia/Singapore", query, summary: { entry_count: "1", paid_entry_count: "1", paid_points: huge, adjustment_entry_count: "0", adjustment_credit_points: "0", adjustment_debit_points: "0", correction_entry_count: "0", correction_credit_points: "0", correction_debit_points: "0", net_points: huge }, items: [{ key: query.group_by === "day" ? "2026-10-07" : actor, label: query.group_by === "day" ? "2026-10-07" : actor, totals: { entry_count: "1", paid_entry_count: "1", paid_points: huge, adjustment_entry_count: "0", adjustment_credit_points: "0", adjustment_debit_points: "0", correction_entry_count: "0", correction_credit_points: "0", correction_debit_points: "0", net_points: huge } }], total_groups: "1" } });
 function text(node: Node): string { return node.text + node.children.map(text).join(""); }
@@ -48,7 +51,7 @@ describe("CommissionReport real Vue component", () => {
     const slow = new Promise<Response>((resolve) => { resolveFirst = resolve; });
     const fetcher = vi.fn<typeof fetch>(async (input) => {
       const url = String(input); calls.push(url);
-      if (url.includes(".csv?")) return new Response("", { status: exportStatus, headers: { "content-type": "application/json" } });
+      if (url.includes(".csv?")) return new Response(JSON.stringify({ success: false, error: { code: exportStatus === 401 ? "SESSION_EXPIRED" : "SERVICE_UNAVAILABLE", message: "Request unavailable" } }), { status: exportStatus, headers: { "content-type": "application/json" } });
       if (first) { first = false; return slow; }
       const q = new URL(url, "http://local").searchParams;
       return new Response(JSON.stringify(payload({ from: q.get("from"), to: q.get("to"), group_by: q.get("group_by"), limit: Number(q.get("limit")), offset: Number(q.get("offset")), agent_id: q.get("agent_id"), member_id: q.get("member_id"), cycle_id: q.get("cycle_id") })), { status: 200 });
@@ -66,12 +69,13 @@ describe("CommissionReport real Vue component", () => {
     expect(text(mounted.root)).toContain("Correction entries"); expect(text(mounted.root)).toContain("Correction credits"); expect(text(mounted.root)).toContain("Correction debits");
     expect(testId(mounted.root, "commission-report-summary")).not.toBeNull();
     expect(testId(mounted.root, "commission-report-group")).not.toBeNull();
-    const datetime = find(mounted.root, (n) => n.tag === "input" && n.props.type === "datetime-local"); expect(datetime).not.toBeNull();
-    (datetime!.props["onUpdate:modelValue"] as ((value: string) => void))("2020-01-01T00:00:00");
+    const datetime = find(mounted.root, (n) => n.tag === "input" && n.props.type === "date"); expect(datetime).not.toBeNull();
+    (datetime!.props["onUpdate:modelValue"] as ((value: string) => void))("2020-01-01");
     click(testId(mounted.root, "commission-report-export")); await flush();
     const readUrl = new URL(calls.filter((url) => !url.includes(".csv?" )).at(-1)!, "http://local"), exportUrl = new URL(calls.at(-1)!, "http://local");
     expect(exportUrl.searchParams.get("from")).toBe(readUrl.searchParams.get("from"));
-    expect(text(mounted.root)).toContain("Request failed (503)");
+    expect(text(mounted.root)).toContain("This service is temporarily unavailable. Please try again later.");
+    expect(text(mounted.root)).not.toContain("Request failed (503)");
     exportStatus = 401; click(testId(mounted.root, "commission-report-export")); await flush();
     expect(mounted.emitted).toContain("session-invalid");
     expect(testId(mounted.root, "commission-report-summary")).toBeNull();
@@ -84,8 +88,8 @@ describe("CommissionReport real Vue component", () => {
     });
     vi.stubGlobal("fetch", fetcher); vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
     const mounted = mount(); click(testId(mounted.root, "commission-report-query")); await flush();
-    const fromInput = find(mounted.root, (n) => n.tag === "input" && n.props.type === "datetime-local"); expect(fromInput).not.toBeNull();
-    (fromInput!.props["onUpdate:modelValue"] as ((value: string) => void))("2026-02-30T12:00:00");
+    const fromInput = find(mounted.root, (n) => n.tag === "input" && n.props.type === "date"); expect(fromInput).not.toBeNull();
+    (fromInput!.props["onUpdate:modelValue"] as ((value: string) => void))("2026-02-30");
     click(testId(mounted.root, "commission-report-query")); await flush();
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(find(mounted.root, (n) => n.props.role === "alert")).not.toBeNull();

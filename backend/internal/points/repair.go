@@ -214,7 +214,7 @@ func (s Store) PreviewRepairTx(ctx context.Context, tx pgx.Tx, brand, member str
 // account lock as Post. No caller-supplied amount and no business ledger mutation.
 func (s Store) RepairBalance(ctx context.Context, tx pgx.Tx, brand, member string, version int64, token, reason string, meta Metadata) (RepairRecord, error) {
 	reason = strings.TrimSpace(reason)
-	if tx == nil || reason == "" || len(reason) > 500 || !utf8.ValidString(reason) || meta.ActorType != "admin" || !uuidPattern.MatchString(meta.ActorID) || meta.RequestID == "" || len(meta.RequestID) > 80 {
+	if tx == nil || len(reason) > 500 || !utf8.ValidString(reason) || meta.ActorType != "admin" || !uuidPattern.MatchString(meta.ActorID) || meta.RequestID == "" || len(meta.RequestID) > 80 {
 		return RepairRecord{}, ErrInvalid
 	}
 	out, err := s.repairPreview(ctx, tx, brand, member, true)

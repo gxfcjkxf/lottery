@@ -53,7 +53,7 @@ func (in *SettlementPreviewInput) UnmarshalJSON(raw []byte) error {
 		}
 		fields[name] = v
 	}
-	if _, e = d.Token(); e != nil || len(fields) != 4 {
+	if _, e = d.Token(); e != nil {
 		return ErrInvalid
 	}
 	var extra any
@@ -65,6 +65,9 @@ func (in *SettlementPreviewInput) UnmarshalJSON(raw []byte) error {
 		key string
 		dst any
 	}{{"version", &out.Version}, {"period_version", &out.PeriodVersion}, {"draw_result_id", &out.DrawResultID}, {"reason", &out.Reason}} {
+		if v.key == "reason" && fields[v.key] == nil {
+			continue
+		}
 		if json.Unmarshal(fields[v.key], v.dst) != nil {
 			return ErrInvalid
 		}

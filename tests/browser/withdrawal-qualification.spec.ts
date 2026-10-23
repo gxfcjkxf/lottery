@@ -38,10 +38,10 @@ async function adminAPI(page: Page) {
 async function userLogin(page: Page, username: string) {
   await page.addInitScript(() => localStorage.setItem('luma-language', 'en'))
   await page.goto(userOrigin + '/login')
-  await page.getByLabel('Username or phone', { exact: true }).fill(username)
+  await page.getByLabel('Account', { exact: true }).fill(username)
   await page.getByLabel('Password', { exact: true }).fill(userPassword!)
-  await page.locator('.auth-form').getByRole('button', { name: /Continue/ }).click()
-  await expect(page).toHaveURL(/\/account$/)
+  await page.locator('.auth-form').getByRole('button', { name: /^Log in$/ }).click()
+  await expect(page).toHaveURL(/\/$/)
 }
 
 test('real turnover qualification survives unknown intent and follows ledger changes', async ({ page }, info) => {

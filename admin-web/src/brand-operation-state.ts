@@ -35,7 +35,7 @@ function valid(value: unknown, scope: BrandOperationScope): value is PendingBran
   return item.accountId === scope.accountId && item.brandId === scope.brandId && UUID_RE.test(scope.accountId) && UUID_RE.test(scope.brandId) &&
     typeof item.key === "string" && item.key.length > 0 && ["review", "unknown", "conflict"].includes(String(item.phase)) &&
     Number.isSafeInteger(body.version) && Number(body.version) >= 1 && (body.status === "active" || body.status === "paused") &&
-    typeof body.reason === "string" && body.reason.trim().length > 0 && new TextEncoder().encode(body.reason).length <= 500;
+    typeof body.reason === "string" && Array.from(body.reason).length <= 500;
 }
 
 function copy(value: PendingBrandOperationWrite): PendingBrandOperationWrite {
@@ -81,11 +81,6 @@ export function classifyBrandOperationFailure(status: number | undefined): "unkn
   return "definitive";
 }
 
-export function brandOperationCompletionMessage(liveStateRead: boolean): string {
-  return liveStateRead
-    ? "变更回执已核验；当前状态已独立重新读取。"
-    : "变更回执已核验，但读取最新状态失败。当前显示可能不是最新状态，请重新读取。";
-}
 
 export function createBrandOperationRequestGuard() {
   let current = 0;

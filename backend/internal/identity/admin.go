@@ -30,11 +30,7 @@ func (s *Store) AdminLogin(ctx context.Context, tx pgx.Tx, brand string, in Logi
 		hash = s.dummyHash
 	}
 	var valid bool
-	if s.Development && platform && identifier == "admin" && in.Password == "admin123" {
-		valid, err = s.verifyDevelopmentAdmin(ctx, hash)
-	} else {
-		valid, err = s.verify(ctx, in.Password, hash)
-	}
+	valid, err = s.verify(ctx, in.Password, hash)
 	if err == ErrBusy {
 		return mutation.Fail(429, "AUTH_BUSY", "登录繁忙，请稍后重试"), nil
 	}
@@ -46,6 +42,10 @@ func (s *Store) AdminLogin(ctx context.Context, tx pgx.Tx, brand string, in Logi
 	}
 	token, err := authcrypto.NewSessionToken()
 	if err != nil {
+		return mutation.Result{}, err
+	}
+	// The account row lock serializes concurrent logins across server instances.
+	if _, err = tx.Exec(ctx, `UPDATE sessions SET revoked_at=clock_timestamp(),replaced_by_login=(expires_at>clock_timestamp()) WHERE admin_id=$1 AND revoked_at IS NULL`, id); err != nil {
 		return mutation.Result{}, err
 	}
 	expiry := time.Now().UTC().Add(12 * time.Hour)
@@ -86,4 +86,45 @@ func (s *Store) AdminLogout(ctx context.Context, tx pgx.Tx, brand, token string,
 	}
 	auditID, err := audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: admin, Action: "admin.logout", ResourceType: "admin", ResourceID: admin, RequestID: meta.RequestID, IP: meta.IP})
 	return mutation.OK(200, map[string]string{"audit_log_id": auditID}), err
+}
+
+func (s *Store) AdminChangePassword(ctx context.Context, tx pgx.Tx, id, currentPassword, newPassword string, meta Metadata) (mutation.Result, error) {
+	var storedHash, status string
+	if err := tx.QueryRow(ctx, `SELECT password_hash,status FROM admin_accounts WHERE id=$1 FOR UPDATE`, id).Scan(&storedHash, &status); err != nil {
+		if err == pgx.ErrNoRows {
+			return mutation.Fail(401, "AUTH_SESSION_REVOKED", "管理账号不可用"), nil
+		}
+		return mutation.Result{}, err
+	}
+	if status != "active" {
+		return mutation.Fail(401, "AUTH_SESSION_REVOKED", "管理账号不可用"), nil
+	}
+	valid, err := s.verify(ctx, currentPassword, storedHash)
+	if err == ErrBusy {
+		return mutation.Fail(429, "AUTH_BUSY", "登录繁忙，请稍后重试"), nil
+	}
+	if err != nil || !valid {
+		return mutation.Fail(401, "AUTH_INVALID_CREDENTIALS", "当前密码不正确"), nil
+	}
+	hash, err := s.PasswordHash(ctx, newPassword)
+	if err == ErrBusy {
+		return mutation.Fail(429, "AUTH_BUSY", "登录繁忙，请稍后重试"), nil
+	}
+	if err != nil {
+		if err == authcrypto.ErrInvalidPassword {
+			return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字节"), nil
+		}
+		return mutation.Result{}, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE admin_accounts SET password_hash=$2,version=version+1 WHERE id=$1`, id, hash); err != nil {
+		return mutation.Result{}, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE sessions SET revoked_at=now() WHERE admin_id=$1 AND revoked_at IS NULL`, id); err != nil {
+		return mutation.Result{}, err
+	}
+	auditID, err := audit.Append(ctx, tx, audit.Record{ActorType: "admin", ActorID: id, Action: "admin.password_change", ResourceType: "admin", ResourceID: id, RequestID: meta.RequestID, IP: meta.IP, Before: map[string]string{"password": "redacted"}, After: map[string]string{"password": "redacted"}})
+	if err != nil {
+		return mutation.Result{}, err
+	}
+	return mutation.OK(200, map[string]string{"audit_log_id": auditID}), nil
 }

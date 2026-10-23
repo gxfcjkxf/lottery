@@ -1,0 +1,42 @@
+export const orderTicketCatalog = {
+  "en": {
+    "regular": "Regular numbers",
+    "special": "Special numbers",
+    "exclude": "Excluded numbers",
+    "position": "Position {position}",
+    "attribute": "Attribute",
+    "feature": "Feature",
+    "prize": "Prize points",
+    "applied": "Applied",
+    "missing": "No prize credit recorded",
+    "period": "Period",
+    "points": "points",
+    "details": "Details",
+    "placed": "Placed",
+    "abnormal": "Under review",
+    "won": "Won",
+    "lost": "Lost",
+    "bet_cancelled": "Cancelled",
+    "judged_cancelled": "Cancelled after review"
+  },
+  "zh-CN": {
+    "regular": "普通号码",
+    "special": "特别号码",
+    "exclude": "排除号码",
+    "position": "位置 {position}",
+    "attribute": "属性",
+    "feature": "特征",
+    "prize": "中奖积分",
+    "applied": "已入账",
+    "missing": "无中奖积分入账记录",
+    "period": "期次",
+    "points": "积分",
+    "details": "详情",
+    "placed": "已投注",
+    "abnormal": "待处理",
+    "won": "已中奖",
+    "lost": "未中奖",
+    "bet_cancelled": "已撤单",
+    "judged_cancelled": "已判定取消"
+  }
+} as const

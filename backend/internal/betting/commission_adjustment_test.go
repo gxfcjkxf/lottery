@@ -221,6 +221,7 @@ func saveCommissionPointCaps(t *testing.T, f commissionBatchFixture, actor acces
 }
 
 func TestCommissionAdjustmentPaidTargetMovesOnlyCommissionAvailableAndPreservesEvidence(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	ctx := context.Background()
 	a := commissionAdjustmentActor(f)
@@ -316,6 +317,7 @@ func TestCommissionAdjustmentPaidTargetMovesOnlyCommissionAvailableAndPreservesE
 }
 
 func TestCommissionAdjustmentRejectsInsufficientCommissionAndConcurrentStaleWriters(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	ctx := context.Background()
 	a := commissionAdjustmentActor(f)
@@ -409,6 +411,7 @@ func TestCommissionAdjustmentRejectsInsufficientCommissionAndConcurrentStaleWrit
 }
 
 func TestCommissionAdjustmentRequiresPaidTargetDedicatedPermissionAndOpenGate(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	ctx := context.Background()
 	writer := commissionAdjustmentActor(f)
@@ -468,6 +471,7 @@ func TestCommissionAdjustmentRequiresPaidTargetDedicatedPermissionAndOpenGate(t 
 }
 
 func TestCommissionAdjustmentBlockedOrChangedEpochIsFinanciallyInert(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	ctx := context.Background()
 	a := commissionAdjustmentActor(f)
@@ -503,6 +507,7 @@ func TestCommissionAdjustmentBlockedOrChangedEpochIsFinanciallyInert(t *testing.
 }
 
 func TestCommissionAdjustmentSQLGuardsRejectMissingAndForgedEvidence(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	a := commissionAdjustmentActor(f)
 	payment := payManualCommissionForAdjustment(t, f, prepareManualCommissionPayment(t, f))
@@ -559,6 +564,7 @@ func TestCommissionAdjustmentSQLGuardsRejectMissingAndForgedEvidence(t *testing.
 }
 
 func TestCommissionAdjustmentHonorsCurrentPointAdjustmentAndBalanceCaps(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	a := commissionAdjustmentActor(f)
 	payment := payManualCommissionForAdjustment(t, f, prepareManualCommissionPayment(t, f))

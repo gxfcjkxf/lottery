@@ -70,8 +70,10 @@ func (in *GrantInput) UnmarshalJSON(data []byte) error {
 	if err = decodeField(fields, "points", &parsed.Points); err != nil {
 		return err
 	}
-	if err = decodeField(fields, "reason", &parsed.Reason); err != nil {
-		return err
+	if fields["reason"] != nil {
+		if err = decodeField(fields, "reason", &parsed.Reason); err != nil {
+			return err
+		}
 	}
 	if err = parsed.Validate(); err != nil {
 		return err
@@ -92,8 +94,10 @@ func (in *ActionInput) UnmarshalJSON(data []byte) error {
 	if err = decodeField(fields, "version", &parsed.Version); err != nil {
 		return err
 	}
-	if err = decodeField(fields, "reason", &parsed.Reason); err != nil {
-		return err
+	if fields["reason"] != nil {
+		if err = decodeField(fields, "reason", &parsed.Reason); err != nil {
+			return err
+		}
 	}
 	if err = parsed.Validate(); err != nil {
 		return err
@@ -145,8 +149,10 @@ func decodeClosedObject(data []byte, keys ...string) (map[string]json.RawMessage
 	if _, err = decoder.Token(); err != nil {
 		return nil, fmt.Errorf("%w: malformed object", ErrInvalid)
 	}
-	if len(fields) != len(wanted) {
-		return nil, fmt.Errorf("%w: missing required field", ErrInvalid)
+	for key := range wanted {
+		if key != "reason" && fields[key] == nil {
+			return nil, fmt.Errorf("%w: missing required field", ErrInvalid)
+		}
 	}
 	var trailing any
 	if err = decoder.Decode(&trailing); err != io.EOF {
@@ -280,7 +286,7 @@ func canonicalUUID(s string) bool { return uuidPattern.MatchString(s) }
 func validID(s string) bool { return canonicalUUID(s) }
 
 func validReason(s string) bool {
-	if !utf8.ValidString(s) || s == "" || strings.TrimSpace(s) != s || len(s) > 500 {
+	if !utf8.ValidString(s) || strings.TrimSpace(s) != s || len(s) > 500 {
 		return false
 	}
 	for _, r := range s {

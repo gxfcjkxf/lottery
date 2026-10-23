@@ -1,4 +1,19 @@
 <script setup lang="ts">
+import { vWriteGuard } from "@lottery/shared";
+import FilterAssociationSelect from "@lottery/shared/FilterAssociationSelect.vue";
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import { vGlobalLoading } from "@lottery/shared";
+const displayDate = (value: string | null | undefined) => formatDisplayDateTime(value, displayLocale.value);
+import { formatDisplayDateTime } from "@lottery/shared";
+const displayLocale = useAdminI18n().locale;
 import type { LocalizedMessage } from "@lottery/shared";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useAdminI18n } from "./i18n";
@@ -31,7 +46,7 @@ const emit = defineEmits<{
   (event: "session-invalid"): void;
   (event: "open-settlement", periodId: string): void;
 }>();
-const { t, message: localized } = useAdminI18n();
+const { t, message: localized, display } = useAdminI18n();
 
 const api = createCorrectionApi();
 const rights = computed(() => correctionPermissions(props.account, props.brandId));
@@ -133,18 +148,18 @@ function clearScopeData() {
 function invalidateSession() {
   clearScopeData(); frozenCorrectionWrites.clear(); pendingWrite.value = null; unknownWrite.value = false; emit("session-invalid");
 }
-function handleError(problem: unknown) {
+function handleError(problem: unknown, operation: "read" | "write" = "write") {
   if (problem instanceof AdminApiError && problem.status === 401) { invalidateSession(); return; }
-  error.value = problem instanceof Error ? problem.message : localized("请求失败，请重试。", "Request failed. Please try again.");
+  error.value = problem instanceof Error ? publicErrorMessage(problem, operation) : localized('admin.copy.4fb9cc4e');
 }
 function checkContext(value: Context) {
   if (value.brand_id !== props.brandId || value.period_id !== periodId.value)
-    throw new Error(t("更正上下文与当前品牌或期次不匹配，请重新读取。", "Correction context does not match the current brand or period. Reload and try again."));
+    throw new Error(t('admin.copy.29e03173'));
 }
 function checkCorrection(value: Correction) {
   if (value.brand_id !== props.brandId || value.period_id !== periodId.value)
-    throw new Error(t("更正记录与当前品牌或期次不匹配。", "Correction record does not match the current brand or period."));
-  if (!correctionCountsMatch(value)) throw new Error(t("服务器更正目标计数不一致，已停止显示该记录。", "Server correction target counts do not match; this record is hidden."));
+    throw new Error(t('admin.copy.4e2c3a8e'));
+  if (!correctionCountsMatch(value)) throw new Error(t('admin.copy.8e8a006c'));
 }
 function clearTargets() { targetsLane.invalidate(); targetsBusy.value = false; targetPage.value = null; targetOffset.value = 0; }
 
@@ -162,13 +177,13 @@ async function readContext() {
         digits: result.draw?.digits.join(", ") ?? "",
       };
     }
-    if (!result.can_correct) notice.value = localized("服务器当前不允许更正此期次。", "The server currently does not allow correction of this period.");
-    else if (result.current_job_id && (!result.mode || result.policy_version < 1)) notice.value = localized("当前存在结算任务，但结算模式或策略版本无效；禁止财务更正。", "A settlement job exists, but its mode or policy version is invalid. Financial correction is blocked.");
-    else notice.value = localized("已读取服务器开奖、更正权限和当前结算任务。", "Draw result, correction eligibility, and current settlement job loaded from the server.");
+    if (!result.can_correct) notice.value = localized('admin.copy.4e02872f');
+    else if (result.current_job_id && (!result.mode || result.policy_version < 1)) notice.value = localized('admin.copy.43a77556');
+    else notice.value = localized('admin.copy.fc163500');
     return true;
   } catch (problem) {
     if (problem instanceof AdminApiError && problem.status === 401) { invalidateSession(); return false; }
-    if (isCurrent(contextLane, ticket, capturedScope)) { context.value = null; handleError(problem); }
+    if (isCurrent(contextLane, ticket, capturedScope)) { context.value = null; handleError(problem, "read"); }
     return false;
   } finally { if (isCurrent(contextLane, ticket, capturedScope, true)) contextBusy.value = false; }
 }
@@ -186,7 +201,7 @@ async function readHistory(offset = historyOffset.value, capturedScope = scope.v
     return true;
   } catch (problem) {
     if (problem instanceof AdminApiError && problem.status === 401) { invalidateSession(); return false; }
-    if (isCurrent(historyLane, ticket, capturedScope)) { history.value = null; handleError(problem); }
+    if (isCurrent(historyLane, ticket, capturedScope)) { history.value = null; handleError(problem, "read"); }
     return false;
   } finally { if (isCurrent(historyLane, ticket, capturedScope, true)) historyBusy.value = false; }
 }
@@ -201,7 +216,7 @@ async function readCorrection(id: string, capturedScope = scope.value, allowDuri
     return true;
   } catch (problem) {
     if (problem instanceof AdminApiError && problem.status === 401) { invalidateSession(); return false; }
-    if (isCurrent(detailLane, ticket, capturedScope)) { selected.value = null; clearTargets(); handleError(problem); }
+    if (isCurrent(detailLane, ticket, capturedScope)) { selected.value = null; clearTargets(); handleError(problem, "read"); }
     return false;
   } finally { if (isCurrent(detailLane, ticket, capturedScope, true)) detailBusy.value = false; }
 }
@@ -211,11 +226,11 @@ async function readTargets(id = selected.value?.id, offset = targetOffset.value,
   try {
     const page = await api.targets(props.brandId, id, CORRECTION_PAGE_SIZE, offset);
     if (!isCurrent(targetsLane, ticket, capturedScope) || selected.value?.id !== id) return false;
-    if (page.brand_id !== props.brandId || page.correction_id !== id) throw new Error(t("目标列表与当前更正不匹配。", "Target list does not match the current correction."));
+    if (page.brand_id !== props.brandId || page.correction_id !== id) throw new Error(t('admin.copy.dd44f587'));
     targetPage.value = page; targetOffset.value = page.offset; return true;
   } catch (problem) {
     if (problem instanceof AdminApiError && problem.status === 401) { invalidateSession(); return false; }
-    if (isCurrent(targetsLane, ticket, capturedScope)) { targetPage.value = null; handleError(problem); }
+    if (isCurrent(targetsLane, ticket, capturedScope)) { targetPage.value = null; handleError(problem, "read"); }
     return false;
   } finally { if (isCurrent(targetsLane, ticket, capturedScope, true)) targetsBusy.value = false; }
 }
@@ -226,7 +241,7 @@ async function refreshAll() {
   if (!ok) return;
   await readHistory(0);
   if (selected.value) await readCorrection(selected.value.id);
-  if (pendingWrite.value) notice.value = localized("存在结果未知的写入。只读刷新不会确认或清除它；只能使用原请求体和幂等键重试。", "A write outcome is unknown. Read-only refresh cannot confirm or clear it; retry only with the original request body and idempotency key.");
+  if (pendingWrite.value) notice.value = localized('admin.copy.d3750e0e');
 }
 
 function reviewCorrect() {
@@ -249,7 +264,7 @@ function reviewRetry() {
   reviewExpectedMode.value = selected.value.mode;
   reviewMode.value = "retry"; reviewConfirmed.value = false; error.value = "";
 }
-function beginWrite() {
+async function beginWrite() {
   const mode = reviewMode.value; const body = reviewBody.value;
   if (!mode || !body || !reviewConfirmed.value || pendingWrite.value || writing.value || props.account.super_admin) return;
   if (mode === "correct" && !canCorrect.value) return;
@@ -263,7 +278,7 @@ function beginWrite() {
     body, key: createIdempotencyKey(),
   }) as WriteIntent;
   pendingWrite.value = intent; frozenCorrectionWrites.remember(intent); unknownWrite.value = false;
-  void submitPending();
+  await submitPending();
 }
 function validateReceipt(value: Correction, intent: WriteIntent) {
   checkCorrection(value);
@@ -273,11 +288,11 @@ function validateReceipt(value: Correction, intent: WriteIntent) {
       brandId: intent.brandId, periodId: intent.periodId, previousDrawResultId: intent.expectedDrawResultId,
       periodVersion: body.version, policyVersion: body.policy_version, mode: intent.expectedMode,
       accountId: intent.accountId, reason: body.reason, result: body.result, financial: body.policy_version !== null,
-    })) throw new Error(t("更正回执与原账号、品牌、期次、开奖记录、递增版本、模式、原因或规范结果不匹配。", "Correction receipt does not match the original account, brand, period, draw record, incremented version, mode, reason, or canonical result."));
+    })) throw new Error(t('admin.copy.cb9227b9'));
   } else {
     const body = intent.body as RetryBody;
     if (!intent.resourceId || !matchesCorrectionRetryReceipt(value, { id: intent.resourceId, version: body.version }))
-      throw new Error(t("重试回执未匹配原更正、冲正状态或递增后的版本。", "Retry receipt does not match the original correction, reversal state, or incremented version."));
+      throw new Error(t('admin.copy.60489250'));
   }
 }
 async function submitPending() {
@@ -290,7 +305,7 @@ async function submitPending() {
   if ((intent.operation === "retry" || (intent.body as CorrectBody).policy_version != null) && !rights.value.settleRun) return;
   if (intent.operation === "correct" && (!intent.expectedDrawResultId || intent.expectedMode === undefined)) return;
   writing.value = true; error.value = "";
-  notice.value = unknownWrite.value ? localized("正在使用原请求体和幂等键重试…", "Retrying with the original request body and idempotency key…") : localized("正在提交已核对的更正操作…", "Submitting the reviewed correction…");
+  notice.value = unknownWrite.value ? localized('admin.copy.9bf6f293') : localized('admin.copy.5e070757');
   invalidateReads(); const ticket = writeLane.begin(); const capturedScope = scope.value;
   let receipt: Correction;
   try {
@@ -306,10 +321,10 @@ async function submitPending() {
     const failure = correctionWriteFailure(status);
     if (failure === "unknown") {
       frozenCorrectionWrites.remember(intent); pendingWrite.value = intent; unknownWrite.value = true;
-      notice.value = localized("写入结果未知。原请求体和幂等键仍保留；只读状态不能证明操作已成功。", "The write outcome is unknown. The original request body and idempotency key remain available; read-only state cannot prove that the action succeeded.");
+      notice.value = localized('admin.copy.80f12762');
     } else {
       frozenCorrectionWrites.forget(intent); pendingWrite.value = null; unknownWrite.value = false; cancelReview();
-      notice.value = failure === "conflict" ? localized("服务器报告版本冲突；请重新读取并重新核对。", "The server reported a version conflict. Reload and review again.") : localized("服务器明确拒绝请求；请检查权限和操作原因。", "The server rejected the request. Check permissions and the reason.");
+      notice.value = failure === "conflict" ? localized('admin.copy.650c3c5d') : localized('admin.copy.04bc6fd5');
     }
     handleError(problem); writing.value = false; return;
   }
@@ -317,48 +332,51 @@ async function submitPending() {
   try { validateReceipt(receipt, intent); }
   catch (problem) {
     frozenCorrectionWrites.remember(intent); pendingWrite.value = intent; unknownWrite.value = true;
-    notice.value = localized("收到的回执与原请求不匹配。原请求仍保留，只能使用相同请求体和幂等键重试。", "The receipt does not match the original request. The original request is retained and can only be retried with the same body and idempotency key.");
+    notice.value = localized('admin.copy.85a03112');
     handleError(problem); writing.value = false; return;
   }
 
   // A validated receipt acknowledges the write before follow-up GETs. A GET failure never re-freezes it.
   frozenCorrectionWrites.forget(intent); pendingWrite.value = null; unknownWrite.value = false; cancelReview();
-  notice.value = localized("服务器已确认写入；正在读取最新服务器状态。", "The server confirmed the write; loading the latest server state.");
+  notice.value = localized('admin.copy.3b592217');
   const correctionId = intent.operation === "correct" ? receipt.id : intent.resourceId!;
   try {
     const detailOk = await readCorrection(correctionId, capturedScope, true);
     if (!isCurrent(writeLane, ticket, capturedScope, true)) return;
     const historyOk = await readHistory(0, capturedScope, true);
     if (!isCurrent(writeLane, ticket, capturedScope, true)) return;
-    if (!detailOk || !historyOk) notice.value = localized("写入已确认；后续读取失败。写入保持已确认，不会要求重复提交。请只读刷新。", "The write is confirmed, but a follow-up read failed. It remains confirmed and must not be resubmitted. Refresh status only.");
-    else notice.value = localized("更正已确认，并已读取最新服务器状态。", "Correction confirmed; the latest server state has been loaded.");
+    if (!detailOk || !historyOk) notice.value = localized('admin.copy.6d5599f8');
+    else notice.value = localized('admin.copy.ed38bfa7');
   } finally { if (isCurrent(writeLane, ticket, capturedScope, true)) writing.value = false; }
 }
 
 function stateLabel(state: string) {
-  const labels: Record<string, string> = { reversing: t("正在撤销旧账", "Reversing old entries"), resettling: t("正在重算并结算", "Recalculating and settling"), failed: t("更正失败", "Correction failed"), completed: t("更正完成", "Correction completed") };
+  const labels: Record<string, string> = { reversing: t('admin.copy.6967c4cf'), resettling: t('admin.copy.937f6429'), failed: t('admin.copy.25c4fdb7'), completed: t('admin.copy.c9cf4e4d') };
   return labels[state] ?? state;
 }
 function targetStateLabel(state: string) {
-  const labels: Record<string, string> = { pending: t("待处理", "Pending"), reversed: t("已撤销", "Reversed"), unchanged: t("无需撤销", "No reversal needed"), excluded: t("已排除", "Excluded"), failed: t("失败", "Failed") };
+  const labels: Record<string, string> = { pending: t('admin.copy.99f247fd'), reversed: t('admin.copy.8d77a2f1'), unchanged: t('admin.copy.025bb177'), excluded: t('admin.copy.c43717fb'), failed: t('admin.copy.1feabec0') };
   return labels[state] ?? state;
 }
+function settlementModeLabel(mode: CorrectionMode) {
+  return mode === "automatic" ? t('admin.copy.4b7603bc') : mode === "manual" ? t('admin.copy.81397eb4') : t('admin.copy.c18d7481');
+}
 function periodStatusLabel(state: string) {
-  const labels: Record<string, string> = { pending: t("待开始", "Pending"), betting: t("投注中", "Betting open"), closed: t("已截止", "Closed"), waiting_draw: t("待开奖", "Awaiting draw"), drawn: t("已开奖", "Drawn"), settling: t("结算中", "Settling"), settled: t("已结算", "Settled"), bet_cancelled: t("投注取消", "Betting cancelled"), judged_cancelled: t("判定取消", "Judgment cancelled") };
+  const labels: Record<string, string> = { pending: t('admin.copy.997b3d22'), betting: t('admin.copy.3a20b720'), closed: t('admin.copy.3198ad9b'), waiting_draw: t('admin.copy.aab1777a'), drawn: t('admin.copy.a16e8013'), settling: t('admin.copy.01f90196'), settled: t('admin.copy.037164c2'), bet_cancelled: t('admin.copy.a1834cc2'), judged_cancelled: t('admin.copy.46a60c2c') };
   return labels[state] ?? state;
 }
 function orderStatusLabel(state: string) {
-  const labels: Record<string, string> = { placed: t("待开奖", "Awaiting draw"), abnormal: t("异常注单", "Abnormal order"), bet_cancelled: t("投注取消", "Betting cancelled"), judged_cancelled: t("判定取消", "Judgment cancelled"), won: t("已中奖", "Won"), lost: t("未中奖", "Lost") };
+  const labels: Record<string, string> = { placed: t('admin.copy.aab1777a'), abnormal: t('admin.copy.7bcf4b54'), bet_cancelled: t('admin.copy.a1834cc2'), judged_cancelled: t('admin.copy.46a60c2c'), won: t('admin.copy.6de62356'), lost: t('admin.copy.e2f3b9bc') };
   return labels[state] ?? state;
 }
 function jobStateLabel(state: string | null) {
-  const labels: Record<string, string> = { processing: t("处理中", "Processing"), awaiting_approval: t("待运营批准", "Awaiting approval"), paying: t("逐单入账中", "Posting payouts"), failed: t("失败", "Failed"), completed: t("完成", "Completed") };
+  const labels: Record<string, string> = { processing: t('admin.copy.395f62f9'), awaiting_approval: t('admin.copy.662f2855'), paying: t('admin.copy.4faa8659'), failed: t('admin.copy.1feabec0'), completed: t('admin.copy.a5aa4b5c') };
   return state ? labels[state] ?? state : "—";
 }
 function modelDescription(model: NonNullable<Context["model"]>) {
-  return `${model.model}${model.ordered ? ` · ${t("顺序有意义", "order matters")}` : ` · ${t("普通号码按升序规范化", "regular numbers are normalized in ascending order")}`}`;
+  return `${model.model}${model.ordered ? ` · ${t('admin.copy.6aef61c3')}` : ` · ${t('admin.copy.98f4ddb5')}`}`;
 }
-function selectCorrection(id: string) { if (id !== selected.value?.id) { cancelReview(); selected.value = null; clearTargets(); void readCorrection(id); } }
+async function selectCorrection(id: string) { if (id !== selected.value?.id) { cancelReview(); selected.value = null; clearTargets(); await readCorrection(id); } }
 
 watch(() => props.initialPeriodId, (value) => { if (value !== undefined && value !== periodId.value) periodId.value = value; });
 watch(scope, () => { clearScopeData(); if (alive && rights.value.view) void refreshAll(); }, { flush: "sync" });
@@ -371,130 +389,135 @@ onBeforeUnmount(() => { alive = false; invalidateReads(); writeLane.invalidate()
 <template>
   <section class="correction-management" aria-labelledby="correction-management-title">
     <header class="cm-heading">
-      <div><p class="cm-eyebrow">{{ t("开奖更正 · 账务冲正", "Draw correction · Financial reversal") }}</p><h2 id="correction-management-title">{{ t("开奖结果更正", "Draw result correction") }}</h2></div>
-      <button v-if="rights.view" class="cm-secondary" type="button" :disabled="contextBusy || historyBusy || writing" @click="refreshAll">{{ t("只读刷新", "Refresh status") }}</button>
+      <div><h2 id="correction-management-title">{{ t('admin.copy.fc54e9ea') }}</h2></div>
+      <button v-refresh-button="t('admin.copy.a3439760')" v-if="rights.view" class="cm-secondary button button-secondary" type="button" :disabled="contextBusy || historyBusy || writing" @click="withGlobalLoading(refreshAll)">{{ t('admin.copy.a3439760') }}</button>
     </header>
-    <p class="cm-warning" role="note"><strong>{{ t("开奖结果更正不可撤回。", "Draw corrections cannot be undone.") }}</strong>{{ t("有结算任务时，先按原账本全额冲正，再按新开奖结果重算。若可用中奖积分不足，冲正会安全停止：不会扣其他来源积分，也不会产生负债。", "When a settlement job exists, the original ledger entries are reversed in full before recalculation with the corrected result. Reversal stops safely if available winnings are insufficient; other point sources are not debited and no debt is created.") }}</p>
-    <p v-if="!rights.view" class="cm-note">{{ t("当前账号没有 draw.view.brand / draw.view.platform 查看权限。", "This account lacks draw.view.brand / draw.view.platform permission.") }}</p>
+    <p class="cm-warning" role="note"><strong>{{ t('admin.copy.4d163c15') }}</strong>{{ t('admin.copy.b2f62001') }}</p>
+    <p v-if="!rights.view" class="cm-note">{{ t('admin.copy.6ab52e13') }}</p>
     <template v-else>
-      <div class="cm-period"><label for="correction-period-id">{{ t("期次 UUID", "Period UUID") }}</label><input id="correction-period-id" v-model.trim="periodId" type="text" :placeholder="t('输入期次 UUID', 'Enter period UUID')" :disabled="writing || Boolean(pendingWrite)" /></div>
-      <p v-if="error" class="cm-message error" role="alert">{{ t(error) }}</p>
-      <p v-if="notice" class="cm-message" role="status">{{ t(notice) }}</p>
+      <p class="muted">{{ t('admin.period.selectionGuide') }}</p>
+      <details v-if="!initialPeriodId" open>
+        <summary>{{ t('filter.selectPeriod') }}</summary>
+      <div class="cm-period"><label for="correction-period-id">{{ t('admin.copy.c506752c') }}</label><FilterAssociationSelect v-model="periodId" :brand-id="brandId" surface="admin" resource="draw" kind="period" :label="t('filter.period')" :locale="displayLocale" :scope-key="JSON.stringify(account)" :disabled="writing || Boolean(pendingWrite)" /></div>
+      </details>
+      <p v-if="error" class="cm-message error" role="alert">{{ display(error) }}</p>
+      <p v-if="notice" class="cm-message" role="status">{{ display(notice) }}</p>
       <div v-if="pendingWrite" class="cm-pending">
-        <strong>{{ t("写入结果未知", "Write outcome unknown") }} · {{ pendingWrite.operation === 'correct' ? t('开奖更正', 'Draw correction') : t('重试冲正', 'Retry reversal') }}</strong>
-        <p>{{ t("原请求、账号、品牌、期次、目标及幂等键仅保存在本页内存。只读刷新不会确认或清除写入。", "The original request, account, brand, period, targets, and idempotency key are held in this page's memory. A read-only refresh cannot confirm or clear the write.") }}</p>
-        <p class="cm-break">{{ t("冻结的期次", "Frozen period") }} {{ pendingWrite.periodId }} · {{ t("开奖记录", "Draw record") }} {{ pendingWrite.expectedDrawResultId ?? '—' }} · {{ t("模式", "Mode") }} {{ pendingWrite.expectedMode ?? t('无财务结算', 'No financial settlement') }} · {{ t("请求版本", "Request version") }} v{{ pendingWrite.body.version }}</p>
-        <button class="cm-primary" type="button" :disabled="writing || (pendingWrite.operation === 'correct' ? !rights.correct || ((pendingWrite.body as CorrectBody).policy_version !== null && !rights.settleRun) : !rights.retry || !rights.settleRun)" @click="submitPending">{{ writing ? t('按原请求提交中…', 'Retrying the original request…') : t('原样重试同一请求', 'Retry the exact same request') }}</button>
+        <strong>{{ t('admin.copy.20bbd934') }} · {{ pendingWrite.operation === 'correct' ? t('admin.copy.a2850468') : t('admin.copy.56709e84') }}</strong>
+        <p>{{ t('admin.copy.d1a0334e') }}</p>
+        <p class="cm-break">{{ t('admin.copy.310f9b9a') }} {{ pendingWrite.periodId }} · {{ t('admin.copy.0336a9c7') }} {{ pendingWrite.expectedDrawResultId ?? '—' }} · {{ t('admin.copy.e682c364') }} {{ pendingWrite.expectedMode ?? t('admin.copy.6eee3edb') }}</p>
+        <button v-write-guard="writing" class="cm-primary button button-primary" type="button" :disabled="writing || (pendingWrite.operation === 'correct' ? !rights.correct || ((pendingWrite.body as CorrectBody).policy_version !== null && !rights.settleRun) : !rights.retry || !rights.settleRun)" @click="withGlobalLoading(submitPending)">{{ writing ? t('admin.copy.4faf8610') : t('admin.copy.9e6100bd') }}</button>
       </div>
 
       <section v-if="context" class="cm-panel" aria-labelledby="cm-context-title">
-        <div class="cm-section-title"><h3 id="cm-context-title">{{ t("期次上下文", "Period context") }}</h3><span class="cm-badge" :class="context.can_correct ? 'ready' : 'blocked'">{{ context.can_correct ? t('服务器允许更正', 'Correction allowed by server') : t('暂不可更正', 'Correction unavailable') }}</span></div>
-        <p v-if="contextBusy" class="cm-note">{{ t("正在读取期次上下文…", "Reading period context…") }}</p>
+        <div class="cm-section-title"><h3 id="cm-context-title">{{ t('admin.copy.05bd87cf') }}</h3><span class="cm-badge" :class="context.can_correct ? 'ready' : 'blocked'">{{ context.can_correct ? t('admin.copy.b9c85213') : t('admin.copy.38157e6a') }}</span></div>
+        <p v-global-loading v-if="contextBusy" class="cm-note">{{ t('admin.copy.4de21371') }}</p>
         <dl class="cm-facts">
-          <div><dt>{{ t("品牌 / 彩种 / 期次", "Brand / game / period") }}</dt><dd class="cm-break">{{ context.brand_id }} · {{ context.game_id }} · {{ context.period_id }}</dd></div>
-          <div><dt>{{ t("期次版本 / 状态", "Period version / status") }}</dt><dd>v{{ context.period_version }} · {{ periodStatusLabel(context.period_status) }}</dd></div>
-          <div><dt>{{ t("当前开奖记录", "Current draw record") }}</dt><dd class="cm-break">{{ context.draw_result_id ?? '—' }}</dd></div>
-          <div><dt>{{ t("号码模型", "Number model") }}</dt><dd>{{ modelDescription(context.model) }}</dd></div>
-          <div><dt>{{ t("当前结算任务", "Current settlement job") }}</dt><dd class="cm-break">{{ context.current_job_id ?? t('无', 'None') }}<template v-if="context.current_job_id"> · v{{ context.current_job_version }}</template></dd></div>
-          <div><dt>{{ t("结算策略 / 模式", "Settlement policy / mode") }}</dt><dd>v{{ context.policy_version }} · {{ context.mode ?? t('未配置', 'Not configured') }}</dd></div>
+          <div><dt>{{ t('admin.copy.11f487e4') }}</dt><dd class="cm-break"><AssociationName :record="context" kind="brand" :id="context.brand_id" :locale="associationLocale" /> · <AssociationName :record="context" kind="game" :id="context.game_id" :locale="associationLocale" /> · <AssociationName :record="context" kind="period" :id="context.period_id" :locale="associationLocale" /></dd></div>
+          <div><dt>{{ t('admin.copy.4ac4f8df') }}</dt><dd> {{ periodStatusLabel(context.period_status) }}</dd></div>
+          <div><dt>{{ t('admin.copy.089bad6a') }}</dt><dd class="cm-break">{{ context.draw_result_id ?? '—' }}</dd></div>
+          <div><dt>{{ t('admin.copy.570709e7') }}</dt><dd>{{ modelDescription(context.model) }}</dd></div>
+          <div><dt>{{ t('admin.copy.0fc7375a') }}</dt><dd class="cm-break">{{ context.current_job_id ?? t('admin.copy.c2b41b33') }}</dd></div>
+          <div><dt>{{ t('admin.copy.8c6d9d0a') }}</dt><dd> {{ settlementModeLabel(context.mode) }}</dd></div>
         </dl>
-        <p v-if="context.current_job_id" class="cm-warning compact">{{ t("此更正涉及财务：必须有有效结算模式、draw.correct.brand 和 settlement.run.brand。旧代次会冻结，旧账逐单冲正后才创建新结算任务。", "This correction affects finances and requires a valid settlement mode, draw.correct.brand, and settlement.run.brand. The old generation is frozen; a new job starts only after every old ledger entry is reversed.") }}</p>
-        <p v-else class="cm-note">{{ t("当前无结算任务；提交后只更正未结算结果，不会启动或创建结算任务。", "There is no settlement job. Submitting corrects only the unsettled result and will not start or create a settlement job.") }}</p>
-        <p v-if="rights.correct && !rights.settleRun && context.current_job_id" class="cm-note">{{ t("缺少 settlement.run.brand，不能提交财务更正。", "Missing settlement.run.brand; financial correction cannot be submitted.") }}</p>
-        <p v-if="props.account.super_admin" class="cm-note">{{ t("超级管理员可查看，但更正操作不提供写入。", "Super administrators may view this page, but cannot write corrections.") }}</p>
+        <p v-if="context.current_job_id" class="cm-warning compact">{{ t('admin.copy.fd95657c') }}</p>
+        <p v-else class="cm-note">{{ t('admin.copy.75c697b7') }}</p>
+        <p v-if="rights.correct && !rights.settleRun && context.current_job_id" class="cm-note">{{ t('admin.copy.7f62f7e5') }}</p>
+        <p v-if="props.account.super_admin" class="cm-note">{{ t('admin.copy.cfc13b33') }}</p>
       </section>
 
       <section v-if="context && rights.correct && !props.account.super_admin" class="cm-panel" aria-labelledby="cm-edit-title">
-        <div class="cm-section-title"><h3 id="cm-edit-title">{{ t("更正结果", "Correct result") }}</h3><span class="cm-badge" :class="financial ? 'pending' : 'ready'">{{ financial ? t('更正并重新结算', 'Correct and settle again') : t('只更正未结算结果', 'Correct unsettled result only') }}</span></div>
+        <div class="cm-section-title"><h3 id="cm-edit-title">{{ t('admin.copy.fc9ac622') }}</h3><span class="cm-badge" :class="financial ? 'pending' : 'ready'">{{ financial ? t('admin.copy.dfb07aad') : t('admin.copy.3940538c') }}</span></div>
         <dl class="cm-facts cm-results">
-          <div><dt>{{ t("更正前", "Before correction") }}</dt><dd class="cm-break">{{ t("普通：", "Regular: ") }}{{ context.draw?.regular.join(', ') ?? '—' }}；{{ t("特别：", "Special: ") }}{{ context.draw?.special.join(', ') ?? '—' }}；{{ t("数字：", "Digits: ") }}{{ context.draw?.digits.join(', ') ?? '—' }}</dd></div>
-          <div><dt>{{ t("提交候选（规范化后）", "Submitted candidate (normalized)") }}</dt><dd class="cm-break">{{ t("普通：", "Regular: ") }}{{ parsedResult?.regular.join(', ') ?? t('格式无效', 'Invalid format') }}；{{ t("特别：", "Special: ") }}{{ parsedResult?.special.join(', ') ?? t('格式无效', 'Invalid format') }}；{{ t("数字：", "Digits: ") }}{{ parsedResult?.digits.join(', ') ?? t('格式无效', 'Invalid format') }}</dd></div>
+          <div><dt>{{ t('admin.copy.e52beeae') }}</dt><dd class="cm-break">{{ t('admin.copy.9e0f0b07') }}{{ context.draw?.regular.join(', ') ?? '—' }}；{{ t('admin.copy.ab8809e4') }}{{ context.draw?.special.join(', ') ?? '—' }}；{{ t('admin.copy.7f03881e') }}{{ context.draw?.digits.join(', ') ?? '—' }}</dd></div>
+          <div><dt>{{ t('admin.copy.0ecc7ccd') }}</dt><dd class="cm-break">{{ t('admin.copy.9e0f0b07') }}{{ parsedResult?.regular.join(', ') ?? t('admin.copy.37c876ca') }}；{{ t('admin.copy.ab8809e4') }}{{ parsedResult?.special.join(', ') ?? t('admin.copy.37c876ca') }}；{{ t('admin.copy.7f03881e') }}{{ parsedResult?.digits.join(', ') ?? t('admin.copy.37c876ca') }}</dd></div>
         </dl>
         <div class="cm-form">
-          <label for="correction-regular">{{ t("普通号码（逗号分隔）", "Regular numbers (comma-separated)") }}</label><input id="correction-regular" v-model="resultInput.regular" :aria-label="t('普通号码（逗号分隔）', 'Regular numbers (comma-separated)')" inputmode="numeric" autocomplete="off" :placeholder="t('例如 3, 12, 28', 'e.g. 3, 12, 28')" :disabled="writing || Boolean(pendingWrite)" />
-          <label for="correction-special">{{ t("特别号码（逗号分隔）", "Special numbers (comma-separated)") }}</label><input id="correction-special" v-model="resultInput.special" :aria-label="t('特别号码（逗号分隔）', 'Special numbers (comma-separated)')" inputmode="numeric" autocomplete="off" :placeholder="t('例如 7', 'e.g. 7')" :disabled="writing || Boolean(pendingWrite)" />
-          <label for="correction-digits">{{ t("数字结果（逗号分隔）", "Digits (comma-separated)") }}</label><input id="correction-digits" v-model="resultInput.digits" :aria-label="t('数字结果（逗号分隔）', 'Digits (comma-separated)')" inputmode="numeric" autocomplete="off" :placeholder="t('例如 1, 2, 3, 4', 'e.g. 1, 2, 3, 4')" :disabled="writing || Boolean(pendingWrite)" />
-          <p class="cm-note">{{ t("普通及特别号码按模型规则处理；数字结果保持输入顺序。相同旧结果不能再次提交。", "Regular and special numbers follow the model rules; digit results retain input order. The current result cannot be submitted again as a correction.") }}</p>
-          <label for="correction-reason">{{ t("操作原因（UTF-8 不超过 500 字节）", "Reason (up to 500 UTF-8 bytes)") }}</label><textarea id="correction-reason" v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" :placeholder="t('说明更正依据', 'Describe the basis for this correction')" />
-          <small>{{ reasonBytes }} / {{ t("500 字节", "500 bytes") }}</small>
-          <button class="cm-primary" type="button" :disabled="!canCorrect" @click="reviewCorrect">{{ financial ? t('核对并更正、重新结算', 'Review, correct, and settle again') : t('核对并只更正未结算结果', 'Review and correct unsettled result only') }}</button>
-          <p v-if="sameAsPrevious" class="cm-note">{{ t("候选结果与当前开奖结果相同，无需更正。", "The candidate matches the current result; no correction is needed.") }}</p>
+          <label for="correction-regular">{{ t('admin.copy.a1f3c1fc') }}</label><input id="correction-regular" v-model="resultInput.regular" :aria-label="t('admin.copy.a1f3c1fc')" inputmode="numeric" autocomplete="off" :placeholder="t('admin.copy.f7aec45a')" :disabled="writing || Boolean(pendingWrite)" />
+          <label for="correction-special">{{ t('admin.copy.caa54743') }}</label><input id="correction-special" v-model="resultInput.special" :aria-label="t('admin.copy.caa54743')" inputmode="numeric" autocomplete="off" :placeholder="t('admin.copy.7d133634')" :disabled="writing || Boolean(pendingWrite)" />
+          <label for="correction-digits">{{ t('admin.copy.b9f04d9a') }}</label><input id="correction-digits" v-model="resultInput.digits" :aria-label="t('admin.copy.b9f04d9a')" inputmode="numeric" autocomplete="off" :placeholder="t('admin.copy.8571188a')" :disabled="writing || Boolean(pendingWrite)" />
+          <p class="cm-note">{{ t('admin.copy.634c5bed') }}</p>
+
+          <small v-if="reason">{{ reasonBytes }} / {{ t('admin.copy.c8116369') }}</small>
+          <button class="cm-primary button button-primary" type="button" :disabled="!canCorrect" @click="reviewCorrect">{{ financial ? t('admin.copy.808714d5') : t('admin.copy.f19f4318') }}</button>
+          <p v-if="sameAsPrevious" class="cm-note">{{ t('admin.copy.e8d91f39') }}</p>
         </div>
       </section>
 
       <section v-if="rights.view && periodId" class="cm-panel" aria-labelledby="cm-history-title">
-        <div class="cm-section-title"><h3 id="cm-history-title">{{ t("更正历史", "Correction history") }}</h3><span>{{ t("每页", "Per page") }} {{ CORRECTION_PAGE_SIZE }}</span></div>
-        <p v-if="historyBusy" class="cm-note">{{ t("正在读取更正历史…", "Reading correction history…") }}</p>
+        <div class="cm-section-title"><h3 id="cm-history-title">{{ t('admin.copy.29852268') }}</h3><span>{{ t('admin.copy.5cb7f04d') }} {{ CORRECTION_PAGE_SIZE }}</span></div>
+        <p v-global-loading v-if="historyBusy" class="cm-note">{{ t('admin.copy.362f810a') }}</p>
         <div v-if="history?.items.length" class="cm-history-list">
-          <button v-for="item in history.items" :key="item.id" class="cm-history-item" :class="{ active: selected?.id === item.id }" type="button" :disabled="writing || Boolean(pendingWrite)" @click="selectCorrection(item.id)">
-            <span><strong>{{ stateLabel(item.state) }}</strong><small>{{ item.created_at }}</small></span><span class="cm-break">{{ item.id }}</span><span>v{{ item.version }} · {{ item.target_count }} {{ t("个目标", "targets") }}</span>
+          <button v-for="item in history.items" :key="item.id" class="cm-history-item" :class="{ active: selected?.id === item.id }" type="button" :disabled="writing || Boolean(pendingWrite)" @click="withGlobalLoading(selectCorrection, item.id)">
+            <span><strong>{{ stateLabel(item.state) }}</strong><small>{{ displayDate(item.created_at) }}</small></span><span class="cm-break">{{ item.id }}</span><span> {{ item.target_count }} {{ t('admin.copy.23ac8df4') }}</span>
           </button>
         </div>
-        <p v-else-if="history && !historyBusy" class="cm-note">{{ t("此期次还没有更正记录。", "There are no correction records for this period.") }}</p>
+        <p v-else-if="history && !historyBusy" class="cm-note empty-state">{{ t('admin.copy.cdbaf4a2') }}</p>
         <div v-if="history" class="cm-pagination">
-          <button class="cm-secondary" type="button" :disabled="historyOffset <= 0 || historyBusy || writing" @click="readHistory(Math.max(0, historyOffset - CORRECTION_PAGE_SIZE))">{{ t("上一页", "Previous") }}</button>
-          <span>{{ t("偏移", "Offset") }} {{ history.offset }} · {{ history.items.length }} {{ t("条", "items") }}</span>
-          <button class="cm-secondary" type="button" :disabled="!history.has_more || historyBusy || writing" @click="readHistory(historyOffset + CORRECTION_PAGE_SIZE)">{{ t("下一页", "Next") }}</button>
+          <button class="cm-secondary button button-secondary" type="button" :disabled="historyOffset <= 0 || historyBusy || writing" @click="withGlobalLoading(readHistory, Math.max(0, historyOffset - CORRECTION_PAGE_SIZE))">{{ t('admin.copy.dbe7a5d7') }}</button>
+          <span>{{ t('admin.copy.4ffb01e2') }} {{ history.offset }} · {{ history.items.length }} {{ t('admin.copy.067fed38') }}</span>
+          <button class="cm-secondary button button-secondary" type="button" :disabled="!history.has_more || historyBusy || writing" @click="withGlobalLoading(readHistory, historyOffset + CORRECTION_PAGE_SIZE)">{{ t('admin.copy.2e9c9e7a') }}</button>
         </div>
       </section>
 
       <section v-if="selected" class="cm-panel" aria-labelledby="cm-detail-title">
-        <div class="cm-section-title"><h3 id="cm-detail-title">{{ t("更正详情", "Correction details") }}</h3><span class="cm-badge" :class="selected.state === 'completed' ? 'ready' : selected.state === 'failed' ? 'blocked' : 'pending'">{{ stateLabel(selected.state) }}</span></div>
-        <p v-if="detailBusy" class="cm-note">{{ t("正在读取更正详情…", "Reading correction details…") }}</p>
+        <div class="cm-section-title"><h3 id="cm-detail-title">{{ t('admin.copy.243a698d') }}</h3><span class="cm-badge" :class="selected.state === 'completed' ? 'ready' : selected.state === 'failed' ? 'blocked' : 'pending'">{{ stateLabel(selected.state) }}</span></div>
+        <p v-global-loading v-if="detailBusy" class="cm-note">{{ t('admin.copy.9cc5a14b') }}</p>
         <dl class="cm-facts">
-          <div><dt>{{ t("更正 / 期次版本", "Correction / period version") }}</dt><dd class="cm-break">{{ selected.id }} · v{{ selected.period_version }} ({{ t("更正时版本", "version at correction") }})</dd></div>
-          <div><dt>{{ t("旧 / 新开奖记录", "Previous / new draw record") }}</dt><dd class="cm-break">{{ selected.previous_draw_result_id }} → {{ selected.draw_result_id }}</dd></div>
-          <div><dt>{{ t("该更正保存的规范结果", "Canonical result saved by this correction") }}</dt><dd class="cm-break">{{ t("普通：", "Regular: ") }}{{ selected.result.regular.join(', ') }}；{{ t("特别：", "Special: ") }}{{ selected.result.special.join(', ') }}；{{ t("数字：", "Digits: ") }}{{ selected.result.digits.join(', ') }}</dd></div>
-          <div><dt>{{ t("旧 / 新结算任务", "Previous / new settlement job") }}</dt><dd class="cm-break">{{ selected.previous_job_id ?? '—' }} → {{ selected.new_job_id ?? '—' }}</dd></div>
-          <div><dt>{{ t("策略 / 模式", "Policy / mode") }}</dt><dd>{{ selected.policy_version ?? '—' }} · {{ selected.mode ?? t('无财务结算', 'No financial settlement') }}</dd></div>
-          <div><dt>{{ t("目标总数 / 状态计数", "Total targets / state counts") }}</dt><dd>{{ selected.target_count }} · {{ t("待", "Pending") }} {{ selected.pending_count }} / {{ t("已冲正", "Reversed") }} {{ selected.reversed_count }} / {{ t("无需冲正", "Unchanged") }} {{ selected.unchanged_count }} / {{ t("排除", "Excluded") }} {{ selected.excluded_count }} / {{ t("失败", "Failed") }} {{ selected.failed_count }}</dd></div>
-          <div><dt>{{ t("原应冲正积分 / 实际冲正积分", "Points due for reversal / points reversed") }}</dt><dd>{{ formatCorrectionPoints(selected.reverse_points) }} / {{ formatCorrectionPoints(selected.reversed_points) }}</dd></div>
-          <div><dt>{{ t("操作者 / 创建时间 / 完成时间", "Operator / created / completed") }}</dt><dd class="cm-break">{{ selected.created_by }} · {{ selected.created_at }} · {{ selected.completed_at ?? '—' }}</dd></div>
-          <div><dt>{{ t("原因 / 最后错误码", "Reason / last error code") }}</dt><dd class="cm-break">{{ selected.reason }} · {{ selected.last_error_code ?? '—' }}</dd></div>
-          <div><dt>{{ t("新任务状态 / 版本 / 错误码", "New job state / version / error code") }}</dt><dd>{{ jobStateLabel(selected.new_job_state) }} · {{ selected.new_job_version ?? '—' }} · {{ selected.new_job_error_code ?? '—' }}</dd></div>
+          <div><dt>{{ t('admin.copy.838e3a09') }}</dt><dd class="cm-break">{{ selected.id }}</dd></div>
+          <div><dt>{{ t('admin.copy.fdc9ab8b') }}</dt><dd class="cm-break">{{ selected.previous_draw_result_id }} → {{ selected.draw_result_id }}</dd></div>
+          <div><dt>{{ t('admin.copy.f1b9111b') }}</dt><dd class="cm-break">{{ t('admin.copy.9e0f0b07') }}{{ selected.result.regular.join(', ') }}；{{ t('admin.copy.ab8809e4') }}{{ selected.result.special.join(', ') }}；{{ t('admin.copy.7f03881e') }}{{ selected.result.digits.join(', ') }}</dd></div>
+          <div><dt>{{ t('admin.copy.fa60586f') }}</dt><dd class="cm-break">{{ selected.previous_job_id ?? '—' }} → {{ selected.new_job_id ?? '—' }}</dd></div>
+          <div><dt>{{ t('admin.copy.1d82d0ed') }}</dt><dd> {{ selected.mode === null ? t('admin.copy.6eee3edb') : settlementModeLabel(selected.mode) }}</dd></div>
+          <div><dt>{{ t('admin.copy.f8e5c1cc') }}</dt><dd>{{ selected.target_count }} · {{ t('admin.copy.bc56e30b') }} {{ selected.pending_count }} / {{ t('admin.copy.8598a3e4') }} {{ selected.reversed_count }} / {{ t('admin.copy.b6ebf693') }} {{ selected.unchanged_count }} / {{ t('admin.copy.6a1919eb') }} {{ selected.excluded_count }} / {{ t('admin.copy.1feabec0') }} {{ selected.failed_count }}</dd></div>
+          <div><dt>{{ t('admin.copy.fb40a1d6') }}</dt><dd>{{ formatCorrectionPoints(selected.reverse_points) }} / {{ formatCorrectionPoints(selected.reversed_points) }}</dd></div>
+          <div><dt>{{ t('admin.copy.86543ed7') }}</dt><dd class="cm-break"><AssociationName :record="selected" kind="admin" :id="selected.created_by" :locale="associationLocale" /> {{ displayDate(selected.created_at) }} · {{ displayDate(selected.completed_at) }}</dd></div>
+          <div><dt>{{ t('admin.copy.da9cc09c') }}</dt><dd class="cm-break">{{ selected.reason }} · {{ selected.last_error_code ? displayPublicError(publicErrorMessage({ code: selected.last_error_code })) : "—" }}</dd></div>
+          <div><dt>{{ t('admin.copy.09d8990a') }}</dt><dd>{{ jobStateLabel(selected.new_job_state) }} · {{ selected.new_job_error_code ?? '—' }}</dd></div>
         </dl>
-        <p v-if="selected.failed_count > 0" class="cm-warning compact">{{ t("冲正失败会停止，不会自动重试。可用中奖积分不足时不会从其他积分来源扣款，也不会形成负债；原中奖账本只会有一次全额冲正。", "A failed reversal stops and is not retried automatically. If available winnings are insufficient, other point sources are not debited and no debt is created. The original winnings ledger is reversed in full only once.") }}</p>
+        <p v-if="selected.failed_count > 0" class="cm-warning compact">{{ t('admin.copy.a66c9a95') }}</p>
         <div v-if="canRetry" class="cm-form">
-          <label for="correction-retry-reason">{{ t("冲正失败重试原因（UTF-8 不超过 500 字节）", "Failed reversal retry reason (up to 500 UTF-8 bytes)") }}</label><textarea id="correction-retry-reason" v-model="reason" rows="2" maxlength="500" :disabled="writing || Boolean(pendingWrite)" :placeholder="t('说明重试依据', 'Describe the basis for retrying')" />
-          <small>{{ reasonBytes }} / {{ t("500 字节", "500 bytes") }}</small>
-          <button class="cm-primary" type="button" :disabled="!canStartRetry" @click="reviewRetry">{{ t("核对并重试失败冲正", "Review and retry failed reversals") }}</button>
-        </div>
-        <button v-if="selected.new_job_id" class="cm-secondary" type="button" @click="emit('open-settlement', selected.period_id)">{{ t("打开新结算任务", "Open new settlement job") }}</button>
 
-        <div class="cm-target-heading"><h4>{{ t("逐单冲正目标", "Per-order reversal targets") }}</h4><span>{{ t("每页", "Per page") }} {{ CORRECTION_PAGE_SIZE }} {{ t("条", "items") }}</span></div>
-        <p v-if="targetsBusy" class="cm-note">{{ t("正在读取冲正目标…", "Loading reversal targets…") }}</p>
+          <small v-if="reason">{{ reasonBytes }} / {{ t('admin.copy.c8116369') }}</small>
+          <button class="cm-primary button button-primary" type="button" :disabled="!canStartRetry" @click="reviewRetry">{{ t('admin.copy.d6e10f74') }}</button>
+        </div>
+        <button v-if="selected.new_job_id" class="cm-secondary button button-secondary" type="button" @click="emit('open-settlement', selected.period_id)">{{ t('admin.copy.19b7dd12') }}</button>
+
+        <div class="cm-target-heading"><h4>{{ t('admin.copy.15fdd724') }}</h4><span>{{ t('admin.copy.5cb7f04d') }} {{ CORRECTION_PAGE_SIZE }} {{ t('admin.copy.067fed38') }}</span></div>
+        <p v-global-loading v-if="targetsBusy" class="cm-note">{{ t('admin.copy.a4a7f5f1') }}</p>
         <div v-if="targetPage?.items.length" class="cm-targets">
           <article v-for="target in targetPage.items" :key="target.order_id" class="cm-target">
-            <div class="cm-target-title"><strong>{{ targetStateLabel(target.state) }}</strong><span>{{ target.error_code ?? '—' }}</span></div>
+            <div class="cm-target-title"><strong>{{ targetStateLabel(target.state) }}</strong><span>{{ target.error_code ? displayPublicError(publicErrorMessage({ code: target.error_code })) : "—" }}</span></div>
             <dl class="cm-facts compact-facts">
-              <div><dt>{{ t("注单 / 会员", "Order / member") }}</dt><dd class="cm-break">{{ target.order_id }} / {{ target.member_id }}</dd></div>
-              <div><dt>{{ t("旧注单版本 / 状态", "Previous order version / status") }}</dt><dd>v{{ target.old_order_version }} / {{ orderStatusLabel(target.old_order_status) }}</dd></div>
-              <div><dt>{{ t("旧核算 / 原派奖账本", "Previous calculation / original payout ledger") }}</dt><dd class="cm-break">{{ target.old_calculation_id ?? '—' }} / {{ target.old_payout_entry_id ?? '—' }}</dd></div>
-              <div><dt>{{ t("原中奖积分 / 冲正账本 / 注单重置版本", "Original winnings / reversal ledger / reset order version") }}</dt><dd class="cm-break">{{ formatCorrectionPoints(target.old_prize_points) }} / {{ target.reversal_entry_id ?? '—' }} / {{ target.reset_order_version ?? '—' }}</dd></div>
+              <div><dt>{{ t('admin.copy.8a34d31c') }}</dt><dd class="cm-break">{{ target.order_id }} / <AssociationName :record="target" kind="member" :id="target.member_id" :locale="associationLocale" /></dd></div>
+              <div><dt>{{ t('admin.copy.0b25637f') }}</dt><dd> {{ orderStatusLabel(target.old_order_status) }}</dd></div>
+              <div><dt>{{ t('admin.copy.b3781bda') }}</dt><dd class="cm-break">{{ target.old_calculation_id ?? '—' }} / {{ target.old_payout_entry_id ?? '—' }}</dd></div>
+              <div><dt>{{ t('admin.copy.dd8e73d1') }}</dt><dd class="cm-break">{{ formatCorrectionPoints(target.old_prize_points) }} / {{ target.reversal_entry_id ?? '—' }}</dd></div>
             </dl>
           </article>
         </div>
-        <p v-else-if="targetPage && !targetsBusy" class="cm-note">{{ t("此页没有冲正目标。", "No reversal targets on this page.") }}</p>
+        <p v-else-if="targetPage && !targetsBusy" class="cm-note empty-state">{{ t('admin.copy.9e8399db') }}</p>
         <div v-if="targetPage" class="cm-pagination">
-          <button class="cm-secondary" type="button" :disabled="targetOffset <= 0 || targetsBusy || writing" @click="readTargets(selected.id, Math.max(0, targetOffset - CORRECTION_PAGE_SIZE))">{{ t("上一页", "Previous") }}</button>
-          <span>{{ t("偏移", "Offset") }} {{ targetPage.offset }} · {{ targetPage.items.length }} {{ t("条", "items") }}</span>
-          <button class="cm-secondary" type="button" :disabled="!targetPage.has_more || targetsBusy || writing" @click="readTargets(selected.id, targetOffset + CORRECTION_PAGE_SIZE)">{{ t("下一页", "Next") }}</button>
+          <button class="cm-secondary button button-secondary" type="button" :disabled="targetOffset <= 0 || targetsBusy || writing" @click="withGlobalLoading(readTargets, selected.id, Math.max(0, targetOffset - CORRECTION_PAGE_SIZE))">{{ t('admin.copy.dbe7a5d7') }}</button>
+          <span>{{ t('admin.copy.4ffb01e2') }} {{ targetPage.offset }} · {{ targetPage.items.length }} {{ t('admin.copy.067fed38') }}</span>
+          <button class="cm-secondary button button-secondary" type="button" :disabled="!targetPage.has_more || targetsBusy || writing" @click="withGlobalLoading(readTargets, selected.id, targetOffset + CORRECTION_PAGE_SIZE)">{{ t('admin.copy.2e9c9e7a') }}</button>
         </div>
       </section>
 
       <div v-if="reviewMode && reviewBody && !pendingWrite" class="cm-confirm">
-        <strong>{{ t("再次确认不可撤回操作", "Confirm this irreversible action") }}</strong>
-        <p v-if="reviewMode === 'correct'">{{ (reviewBody as CorrectBody).policy_version !== null ? t('更正并重新结算', 'Correct and settle again') : t('只更正未结算结果', 'Correct unsettled result only') }}{{ t("。期次 v", ". Period v") }}{{ reviewBody.version }}{{ t("；策略", "; policy") }} {{ (reviewBody as CorrectBody).policy_version ?? '—' }}{{ t("；模式", "; mode") }} {{ reviewExpectedMode ?? t('无财务结算', 'No financial settlement') }}{{ t("。确认结果：普通", ". Confirm result: regular") }} {{ (reviewBody as CorrectBody).result.regular.join(', ') }}{{ t("；特别", "; special") }} {{ (reviewBody as CorrectBody).result.special.join(', ') }}{{ t("；数字", "; digits") }} {{ (reviewBody as CorrectBody).result.digits.join(', ') }}。</p>
-        <p v-else>{{ t("重试更正", "Retry correction") }} {{ selected?.id }}{{ t("，使用冲正版本 v", " with reversal version v") }}{{ reviewBody.version }}。</p>
-        <p>{{ t("原因：", "Reason: ") }}{{ reviewBody.reason }}</p>
-        <label for="correction-confirmed" class="cm-check"><input id="correction-confirmed" v-model="reviewConfirmed" type="checkbox" />{{ t("我已核对品牌、期次、版本、结果和原因，确认提交", "I reviewed the brand, period, version, result, and reason, and confirm submission") }}</label>
-        <div class="cm-review-actions"><button class="cm-secondary" type="button" :disabled="writing" @click="cancelReview">{{ t("返回修改", "Back to edit") }}</button><button class="cm-primary" type="button" :disabled="!reviewConfirmed || writing || (reviewMode === 'correct' ? !rights.correct : !rights.retry || !rights.settleRun)" @click="beginWrite">{{ writing ? t('提交中…', 'Submitting…') : t('确认提交', 'Confirm submission') }}</button></div>
+        <strong>{{ t('admin.copy.1cbc1c30') }}</strong>
+        <p v-if="reviewMode === 'correct'">{{ t('admin.copy.e682c364') }}  {{ reviewExpectedMode === null ? t('admin.copy.6eee3edb') : settlementModeLabel(reviewExpectedMode) }}{{ t('admin.copy.adb13b01') }} {{ (reviewBody as CorrectBody).result.regular.join(', ') }}{{ t('admin.copy.bc420c94') }} {{ (reviewBody as CorrectBody).result.special.join(', ') }}{{ t('admin.copy.5a7a878c') }} {{ (reviewBody as CorrectBody).result.digits.join(', ') }}。</p>
+        <p v-else>{{ t('admin.copy.94372458') }} {{ selected?.id }}。</p>
+        <p v-if="reviewBody.reason">{{ t('admin.copy.2809a1e6') }}{{ reviewBody.reason }}</p>
+        <label for="correction-confirmed" class="cm-check"><input id="correction-confirmed" v-model="reviewConfirmed" type="checkbox" />{{ t('admin.copy.a42ef8dd') }}</label>
+        <div class="cm-review-actions"><button class="cm-secondary button button-secondary" type="button" :disabled="writing" @click="cancelReview">{{ t('admin.copy.bf7400b6') }}</button><button v-write-guard="writing" class="cm-primary button button-primary" type="button" :disabled="!reviewConfirmed || writing || (reviewMode === 'correct' ? !rights.correct : !rights.retry || !rights.settleRun)" @click="withGlobalLoading(beginWrite)">{{ writing ? t('admin.copy.46511dc0') : t('admin.copy.a1a8013d') }}</button></div>
       </div>
     </template>
   </section>
 </template>
 
 <style scoped>
-.correction-management{display:grid;gap:16px;color:#172033}.cm-heading,.cm-section-title,.cm-target-heading,.cm-target-title,.cm-pagination,.cm-review-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}.cm-heading h2{margin:2px 0 0;font-size:1.25rem}.cm-eyebrow{margin:0;color:#68758a;font-size:.78rem}.cm-warning,.cm-pending,.cm-confirm,.cm-panel{border:1px solid #d9e0ea;border-radius:12px;padding:16px;background:#fff}.cm-warning{background:#fff8e8;border-color:#e9c66a;color:#694d08}.cm-warning.compact{padding:10px;margin:8px 0}.cm-pending{background:#fff1ee;border-color:#df9385}.cm-panel{display:grid;gap:12px}.cm-section-title h3,.cm-target-heading h4{margin:0}.cm-target-heading{margin-top:8px}.cm-target-heading span,.cm-note,.cm-message,.cm-target-title span,.cm-pagination span,.cm-history-item small{color:#667085;font-size:.88rem}.cm-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;margin:0}.cm-facts>div{min-width:0;padding:8px 0;border-bottom:1px solid #eef1f5}.cm-facts dt{color:#697586;font-size:.78rem}.cm-facts dd{margin:4px 0 0;font-weight:550}.cm-break{overflow-wrap:anywhere;word-break:break-word}.cm-badge{display:inline-flex;border-radius:99px;padding:4px 10px;font-size:.8rem;background:#edf0f5}.cm-badge.ready{background:#e6f6eb;color:#176b37}.cm-badge.blocked{background:#fff0ee;color:#a32e1a}.cm-badge.pending{background:#fff5dd;color:#725708}.cm-form{display:grid;gap:8px;max-width:720px}.cm-form label,.cm-period label{display:grid;gap:6px;font-size:.9rem}.cm-form textarea,.cm-form input,.cm-period input{width:100%;box-sizing:border-box;border:1px solid #cbd3df;border-radius:8px;padding:9px 10px;font:inherit;background:white}.cm-form small{color:#667085}.cm-primary,.cm-secondary{border:1px solid #c5ceda;border-radius:8px;padding:8px 12px;font:inherit;cursor:pointer;background:#fff}.cm-primary{background:#254a83;border-color:#254a83;color:#fff}.cm-primary:disabled,.cm-secondary:disabled{opacity:.52;cursor:not-allowed}.cm-message{margin:0;padding:10px 12px;border-radius:8px;background:#f0f4fa}.cm-message.error{background:#fff0ee;color:#a32e1a}.cm-note{margin:0}.cm-period{display:grid;gap:6px;max-width:720px}.cm-history-list,.cm-targets{display:grid;gap:10px}.cm-history-item{display:grid;grid-template-columns:1fr minmax(120px,1fr) auto;align-items:center;gap:12px;text-align:left;border:1px solid #e2e7ef;border-radius:10px;padding:12px;background:white;color:inherit;font:inherit;cursor:pointer}.cm-history-item span:first-child{display:grid;gap:4px}.cm-history-item.active{border-color:#254a83;background:#f1f5fb}.cm-target{border:1px solid #e2e7ef;border-radius:10px;padding:12px}.compact-facts{margin-top:8px}.compact-facts>div{padding:5px 0}.cm-check{display:flex;align-items:flex-start;gap:8px;margin:12px 0}.cm-review-actions{justify-content:flex-end}.cm-pagination{justify-content:center;flex-wrap:wrap}
+details > summary { min-height:44px; padding:10px 0; box-sizing:border-box; cursor:pointer; }
+.correction-management{display:grid;gap:16px;color:var(--ink)}.cm-heading,.cm-section-title,.cm-target-heading,.cm-target-title,.cm-pagination,.cm-review-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}.cm-heading h2{margin:2px 0 0;font-size:1.25rem}.cm-eyebrow{margin:0;color:#68758a;font-size:.78rem}.cm-warning,.cm-pending,.cm-confirm,.cm-panel{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--surface)}.cm-warning{background:#fff8e8;border-color:#e9c66a;color:#694d08}.cm-warning.compact{padding:10px;margin:8px 0}.cm-pending{background:#fff1ee;border-color:#df9385}.cm-panel{display:grid;gap:12px}.cm-section-title h3,.cm-target-heading h4{margin:0}.cm-target-heading{margin-top:8px}.cm-target-heading span,.cm-note,.cm-message,.cm-target-title span,.cm-pagination span,.cm-history-item small{color:var(--muted);font-size:.88rem}.cm-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;margin:0}.cm-facts>div{min-width:0;padding:8px 0;border-bottom:1px solid #eef1f5}.cm-facts dt{color:#697586;font-size:.78rem}.cm-facts dd{margin:4px 0 0;font-weight:550}.cm-break{overflow-wrap:anywhere;word-break:break-word}.cm-badge{display:inline-flex;border-radius:99px;padding:4px 10px;font-size:.8rem;background:#edf0f5}.cm-badge.ready{background:#e6f6eb;color:#176b37}.cm-badge.blocked{background:#fff0ee;color:#a32e1a}.cm-badge.pending{background:#fff5dd;color:#725708}.cm-form{display:grid;gap:8px;max-width:720px}.cm-form label,.cm-period label{display:grid;gap:6px;font-size:.9rem}.cm-form textarea,.cm-form input,.cm-period input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:inherit;background:white}.cm-form small{color:var(--muted)}.cm-primary,.cm-secondary{border:1px solid #c5ceda;border-radius:8px;padding:8px 12px;font:inherit;cursor:pointer;background:var(--surface)}.cm-primary{background:var(--primary);border-color:var(--primary);color:var(--surface)}.cm-primary:disabled,.cm-secondary:disabled{opacity:.52;cursor:not-allowed}.cm-message{margin:0;padding:10px 12px;border-radius:8px;background:#f0f4fa}.cm-message.error{background:#fff0ee;color:#a32e1a}.cm-note{margin:0}.cm-period{display:grid;gap:6px;max-width:720px}.cm-history-list,.cm-targets{display:grid;gap:10px}.cm-history-item{display:grid;grid-template-columns:1fr minmax(120px,1fr) auto;align-items:center;gap:12px;text-align:left;border:1px solid #e2e7ef;border-radius:10px;padding:12px;background:white;color:inherit;font:inherit;cursor:pointer}.cm-history-item span:first-child{display:grid;gap:4px}.cm-history-item.active{border-color:var(--primary);background:var(--primary-light)}.cm-target{border:1px solid #e2e7ef;border-radius:10px;padding:12px}.compact-facts{margin-top:8px}.compact-facts>div{padding:5px 0}.cm-check{display:flex;align-items:flex-start;gap:8px;margin:12px 0}.cm-review-actions{justify-content:flex-end}.cm-pagination{justify-content:center;flex-wrap:wrap}
 @media(max-width:600px){.correction-management{gap:12px}.cm-heading{align-items:flex-start}.cm-warning,.cm-panel,.cm-confirm,.cm-pending{padding:12px}.cm-facts{grid-template-columns:minmax(0,1fr);gap:2px}.cm-section-title{align-items:flex-start}.cm-pagination .cm-secondary{flex:1}.cm-review-actions{align-items:stretch;flex-direction:column-reverse}.cm-review-actions button{width:100%}.cm-history-item{grid-template-columns:1fr;gap:6px}}
 </style>

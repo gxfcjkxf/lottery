@@ -6,7 +6,6 @@ import type {
 import type { RuleValidationCase } from "./rule-versions-api";
 
 const MAX_INT64 = 9_223_372_036_854_775_807n;
-const MAX_NUMBER_VALUE = 1_000_000;
 const MAX_FEATURE_VALUE = 20_000_000;
 
 type LooseArray<T> = T[] | null | undefined;

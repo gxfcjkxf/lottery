@@ -91,10 +91,10 @@ func TestCommissionCorrectionHTTPPolicyActorReplayAndClosedBody(t *testing.T) {
 	f := managedFixture(t)
 	path := correctionHTTPPrefix + correctionPolicyPath
 	grantCorrectionHTTP(t, f, "commission.view.brand", "commission_correction_policy.write.brand")
-	for _, body := range []string{`{}`, `null`, `{"version":1,"enabled":true}`, `{"version":1,"enabled":null,"reason":"enable"}`, `{"version":1,"enabled":true,"reason":"enable","extra":1}`, `{"version":1,"version":1,"enabled":true,"reason":"enable"}`, `{"version":1,"enabled":true,"reason":"newline\nhere"}`, `{"version":1,"enabled":true,"reason":" leading"}`, `{"version":1,"enabled":true,"reason":"enable"} {}`, "{\"version\":1,\"enabled\":true,\"reason\":\"\xff\"}"} {
+	for _, body := range []string{`{}`, `null`, `{"version":1,"reason":"enable"}`, `{"version":1,"enabled":null,"reason":"enable"}`, `{"version":1,"enabled":true,"reason":"enable","extra":1}`, `{"version":1,"version":1,"enabled":true,"reason":"enable"}`, `{"version":1,"enabled":true,"reason":"newline\nhere"}`, `{"version":1,"enabled":true,"reason":" leading"}`, `{"version":1,"enabled":true,"reason":"enable"} {}`, "{\"version\":1,\"enabled\":true,\"reason\":\"\xff\"}"} {
 		mustStatus(t, correctionCall(f, "PUT", path, "correction-policy-closed-01", f.token, managedBrand, body), 400)
 	}
-	body := `{"version":1,"enabled":true,"reason":"explicit financial correction opt-in"}`
+	body := `{"version":1,"enabled":true}`
 	key := "correction-policy-receipt-01"
 	for _, a := range []string{"", ids.New()} {
 		want := 401

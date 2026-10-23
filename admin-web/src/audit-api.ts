@@ -1,3 +1,5 @@
+import { readAdminEnvelope, readAdminErrorResponse } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -31,6 +33,7 @@ export interface AdminAuditRecord {
   action: string;
   actor_type: string;
   actor_id: string;
+  actor_username: string;
   resource_type: string;
   resource_id: string;
   reason: string;
@@ -102,24 +105,9 @@ function normalizeQuery(input: AuditQuery, exportMode = false) {
   return normalized;
 }
 
-function readEnvelope<T>(raw: unknown, status: number): T {
-  if (!isRecord(raw) || raw.success !== true || raw.data === undefined) {
-    const error = isRecord(raw) && isRecord(raw.error) ? raw.error : null;
-    throw new AdminApiError(typeof error?.message === "string" ? error.message : `Request failed (${status})`, status, typeof error?.code === "string" ? error.code : undefined);
-  }
-  return raw.data as T;
-}
-async function responseError(response: Response): Promise<never> {
-  try {
-    const raw: unknown = await response.json();
-    if (isRecord(raw) && isRecord(raw.error)) throw new AdminApiError(typeof raw.error.message === "string" ? raw.error.message : `Request failed (${response.status})`, response.status, typeof raw.error.code === "string" ? raw.error.code : undefined);
-    if (isRecord(raw) && typeof raw.error === "string") throw new AdminApiError(raw.error, response.status);
-  } catch (cause) { if (cause instanceof AdminApiError) throw cause; }
-  throw new AdminApiError(`Request failed (${response.status})`, response.status);
-}
 function validateItems(value: unknown, brandId: string, limit: number): AdminAuditRecord[] {
   if (!isRecord(value) || !Array.isArray(value.items) || value.items.length > limit) fail("审计响应格式无效。 / Invalid audit response.");
-  const fields = ["id", "action", "actor_type", "actor_id", "resource_type", "resource_id", "reason", "request_id", "created_at", "ip_address"] as const;
+  const fields = ["id", "action", "actor_type", "actor_id", "actor_username", "resource_type", "resource_id", "reason", "request_id", "created_at", "ip_address"] as const;
   for (const item of value.items) {
     if (!isRecord(item) || fields.some((key) => typeof item[key] !== "string") || !validUuid(item.id) || !Object.hasOwn(item, "brand_id") || !(item.brand_id === null || validUuid(item.brand_id) && item.brand_id.toLowerCase() === brandId.toLowerCase()) || item.before_json === undefined || item.after_json === undefined || !validUtcDateTime(item.created_at)) fail("审计记录格式或品牌范围无效。 / Invalid audit record or brand scope.");
   }
@@ -186,10 +174,9 @@ export function createAuditApi(fetchImpl: typeof fetch = fetch) {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) params.set(key, String(value));
     const response = await fetchImpl(`${BASE}?${params.toString()}`, { method: "GET", credentials: "same-origin", headers: { Accept: "application/json", "X-Brand-ID": brandId } });
-    if (!response.ok) return responseError(response);
-    let raw: unknown;
-    try { raw = await response.json(); } catch { fail("审计响应格式无效。 / Invalid audit response."); }
-    return { items: validateItems(readEnvelope(raw, response.status), brandId, Number(query.limit)) };
+    if (!response.ok) throw await readAdminErrorResponse(response);
+    const raw = await readAdminEnvelope(response);
+    return { items: validateItems(raw.data, brandId, Number(query.limit)) };
   }
   async function exportCsv(brandId: string, input: AuditFilters): Promise<AuditExport> {
     if (!validUuid(brandId)) badInput("品牌必须是 UUID。 / Brand must be a UUID.");
@@ -197,7 +184,7 @@ export function createAuditApi(fetchImpl: typeof fetch = fetch) {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) params.set(key, String(value));
     const response = await fetchImpl(`${BASE}/export?${params.toString()}`, { method: "GET", credentials: "same-origin", headers: { Accept: "text/csv", "X-Brand-ID": brandId } });
-    if (!response.ok) return responseError(response);
+    if (!response.ok) throw await readAdminErrorResponse(response);
     const header = (name: string) => response.headers.get(name);
     const exportId = header("X-Audit-Export-ID"), snapshotAt = header("X-Audit-Snapshot-At"), countText = header("X-Audit-Row-Count"), digestHeader = header("X-Audit-SHA256");
     const disposition = `attachment; filename="audit-${brandId}-v1.csv"`;

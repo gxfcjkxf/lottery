@@ -49,6 +49,8 @@ func ledgerKey(d Dependencies, r *http.Request, a access.Account, member, kind s
 	return kind + ":" + d.Mutations.Fingerprint(a.ID+":"+member+":"+r.Header.Get("Idempotency-Key"))
 }
 func registerPointRoutes(mux routeRegistrar, d Dependencies) {
+	registerMemberSummary(mux, d)
+	registerBettingPreferences(mux, d)
 	registerRechargeUserRoutes(mux, d)
 	registerWithdrawalUserRoutes(mux, d)
 	registerAgentUserRoutes(mux, d)

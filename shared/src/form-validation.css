@@ -1,0 +1,19 @@
+.inline-validation-error {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  grid-column: 1 / -1;
+  flex-basis: 100%;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface));
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.inline-validation-invalid {
+  border-color: var(--danger) !important;
+}

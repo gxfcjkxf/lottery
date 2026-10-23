@@ -48,7 +48,7 @@ describe("compliance API contracts", () => {
     expect(validComplianceConfig({ ...config, region_enabled: true, allowed_countries: ["CA", "US"] })).toBe(true);
     expect(validComplianceConfig({ ...config, ignored: true })).toBe(false);
     expect(validComplianceReason("A reason")).toBe(true);
-    for (const reason of ["", " ", " padded ", " padded", "padded ", "line\nbreak", "control\u0085"]) expect(validComplianceReason(reason)).toBe(false);
+    for (const reason of [ " ", " padded ", " padded", "padded ", "line\nbreak", "control\u0085"]) expect(validComplianceReason(reason)).toBe(false);
     expect(validComplianceReason("é".repeat(250))).toBe(true);
     expect(validComplianceReason("é".repeat(251))).toBe(false);
   });

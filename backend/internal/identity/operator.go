@@ -85,13 +85,27 @@ func validTelegramClientID(value string, enabled bool) bool {
 // OperatorCreate provisions a new global identity and a pending-consent member.
 // Existing global identities are intentionally never reused or modified.
 func (s *Store) OperatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID string, in OperatorInput, meta Metadata) (mutation.Result, error) {
+	return s.operatorCreate(ctx, tx, brand, operatorID, in, meta, "admin")
+}
+func (s *Store) AgentCreateMember(ctx context.Context, tx pgx.Tx, v AgentSession, in OperatorInput, meta Metadata) (mutation.Result, error) {
+	var code string
+	err := tx.QueryRow(ctx, `SELECT c.code FROM join_codes c JOIN agent_nodes n ON n.brand_id=c.brand_id AND n.id=c.agent_id WHERE n.brand_id=$1 AND n.member_id=$2 AND c.kind='agent' AND join_code_usable(c) ORDER BY c.created_at,c.id LIMIT 1`, v.BrandID, v.AccountID).Scan(&code)
+	if err != nil {
+		return mutation.Fail(409, "JOIN_CODE_UNAVAILABLE", "代理码不可用"), nil
+	}
+	// The caller cannot reassign a new member to a different agent.
+	in.AgentCode = code
+	in.ReferralCode = ""
+	return s.operatorCreate(ctx, tx, v.BrandID, v.AccountID, in, meta, "agent")
+}
+func (s *Store) operatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID string, in OperatorInput, meta Metadata, actorType string) (mutation.Result, error) {
 	kind, code, joinErr := attribution.Normalize(in.AgentCode, in.ReferralCode)
 	if joinErr != nil {
 		return mutation.Fail(400, "JOIN_CODE_INPUT_INVALID", "加入码格式不正确，且代理码与推荐码不能同时使用"), nil
 	}
-	reason, ok := validTrimmedText(in.Reason, 500, false)
+	reason, ok := validTrimmedText(in.Reason, 500, true)
 	if !ok {
-		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "操作原因须为 1 至 500 字节有效文本"), nil
+		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "操作原因最多 500 字节有效文本"), nil
 	}
 	in.Reason = reason
 	in.DisplayName, ok = validTrimmedText(in.DisplayName, 120, true)
@@ -119,8 +133,8 @@ func (s *Store) OperatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 	if in.Username == "" && in.Phone == "" {
 		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "需要用户名或手机号"), nil
 	}
-	if len([]byte(in.Password)) < 10 || len([]byte(in.Password)) > 128 {
-		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 10-128 字节"), nil
+	if len([]byte(in.Password)) < 6 || len([]byte(in.Password)) > 30 {
+		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字节"), nil
 	}
 	var status string
 	var raw []byte
@@ -139,7 +153,7 @@ func (s *Store) OperatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 		return mutation.Result{}, err
 	}
 	if errors.Is(err, authcrypto.ErrInvalidPassword) {
-		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 10-128 字节"), nil
+		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字节"), nil
 	}
 	if err != nil {
 		return mutation.Result{}, err
@@ -153,8 +167,12 @@ func (s *Store) OperatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 	if err != nil {
 		return mutation.Result{}, err
 	}
+	joinMethod, createdBy := "operator", operatorID
+	if actorType == "agent" {
+		joinMethod, createdBy = "agent_code", ""
+	}
 	member, err := s.createMember(ctx, tx, brand, userID, cfg.Privacy, cfg.Terms, meta, memberCreateOptions{
-		joinMethod: "operator", createdBy: operatorID, displayName: in.DisplayName,
+		joinMethod: joinMethod, createdBy: createdBy, displayName: in.DisplayName,
 		notes: in.Notes, termsAccepted: false, codeKind: kind, code: code,
 	})
 	if err != nil {
@@ -167,7 +185,7 @@ func (s *Store) OperatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 		return mutation.Result{}, err
 	}
 	auditID, err := audit.Append(ctx, tx, audit.Record{
-		BrandID: brand, ActorType: "admin", ActorID: operatorID, Action: "user.operator_create",
+		BrandID: brand, ActorType: actorType, ActorID: operatorID, Action: "user.operator_create",
 		ResourceType: "member", ResourceID: member.ID, Reason: in.Reason, RequestID: meta.RequestID, IP: meta.IP,
 		After: map[string]any{"user_id": userID, "member_id": member.ID, "terms_accepted": false},
 	})
@@ -179,9 +197,9 @@ func (s *Store) OperatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 
 // UpdateAuthSettings changes only the three public login configuration fields.
 func (s *Store) UpdateAuthSettings(ctx context.Context, tx pgx.Tx, brand, operatorID string, in AuthSettingsInput, meta Metadata) (mutation.Result, error) {
-	reason, ok := validTrimmedText(in.Reason, 500, false)
+	reason, ok := validTrimmedText(in.Reason, 500, true)
 	if !ok {
-		return mutation.Fail(400, "AUTH_CONFIG_INVALID", "操作原因须为 1 至 500 字节有效文本"), nil
+		return mutation.Fail(400, "AUTH_CONFIG_INVALID", "操作原因最多 500 字节有效文本"), nil
 	}
 	if in.Version <= 0 {
 		return mutation.Fail(400, "AUTH_CONFIG_INVALID", "配置版本必须大于 0"), nil

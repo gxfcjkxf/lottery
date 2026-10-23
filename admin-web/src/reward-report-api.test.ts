@@ -10,7 +10,7 @@ const orders = { order_count: "3", original_points: huge, granted_count: "1", gr
 const query = (group_by: string = "day", extras: Record<string, unknown> = {}) => ({ from, to, group_by, limit: 20, offset: 0, member_id: null, order_id: null, ...extras });
 function payload(kind: RewardReportKind, overrides: Record<string, unknown> = {}) {
   const total = kind === "rewards" ? posting : orders;
-  return { success: true, request_id: "reward-report-request_1", data: { brand_id: brand, snapshot_at: "2026-10-08T01:02:03.123456780Z", timezone: "Asia/Singapore", query: query("day"), summary: total, items: [{ key: "2026-10-01", label: "2026-10-01", totals: total }], total_groups: "1", ...overrides } };
+  return { success: true, associations: { ["brand:" + brand]: { name: "Aurora" } }, request_id: "reward-report-request_1", data: { brand_id: brand, snapshot_at: "2026-10-08T01:02:03.123456780Z", timezone: "Asia/Singapore", query: query("day"), summary: total, items: [{ key: "2026-10-01", label: "2026-10-01", totals: total }], total_groups: "1", ...overrides } };
 }
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 
@@ -97,7 +97,7 @@ describe("reward report API", () => {
     expect(normalized.query.to).toBe(to);
   });
   it("validates arbitrary-precision signed postings, canonical states, key/window membership, and page limits", async () => {
-    const apiFor = (data: unknown) => createRewardReportApi(vi.fn<typeof fetch>().mockResolvedValue(json({ success: true, request_id: "r1", data })));
+    const apiFor = (data: unknown) => createRewardReportApi(vi.fn<typeof fetch>().mockResolvedValue(json({ success: true, associations: { ["brand:" + brand]: { name: "Aurora" } }, request_id: "r1", data })));
     const pendingOnly = { order_count: "1", original_points: "25", granted_count: "0", granted_points: "0", pending_count: "1", pending_points: "25", revoked_count: "0", revoked_points: "0" };
     const stateData = payload("reward_orders", { query: query("state"), summary: pendingOnly, items: [{ key: "revocation_pending", label: "revocation_pending", totals: pendingOnly }] });
     await expect(apiFor(stateData.data).read("reward_orders", brand, { from, to, group_by: "state" })).resolves.toMatchObject({ items: [{ key: "revocation_pending" }] });
@@ -122,10 +122,10 @@ describe("reward report API", () => {
     await expect(createRewardReportApi(vi.fn()).read("rewards", brand, { from: "9999-12-31T23:59:59.999999999-00:01", to: "9999-12-31T23:59:59Z", group_by: "day" })).rejects.toMatchObject({ code: "INVALID_INPUT" });
   });
   it("forwards AbortSignal and reports generic 401 without exposing server details", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(json({ error: { code: "AUTH_UNAUTHENTICATED", message: "expired" } }, 401));
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => json({ success: false, error: { code: "AUTH_UNAUTHENTICATED", message: "expired" } }, 401));
     const controller = new AbortController();
-    await expect(createRewardReportApi(fetcher).read("rewards", brand, { from, to, group_by: "day" }, controller.signal)).rejects.toMatchObject({ status: 401, message: "Request failed (401)" });
-    await expect(createRewardReportApi(fetcher).export("rewards", brand, { from, to, group_by: "day" }, controller.signal)).rejects.toMatchObject({ status: 401, message: "Request failed (401)" });
+    await expect(createRewardReportApi(fetcher).read("rewards", brand, { from, to, group_by: "day" }, controller.signal)).rejects.toMatchObject({ status: 401, code: "AUTH_UNAUTHENTICATED", message: "expired" });
+    await expect(createRewardReportApi(fetcher).export("rewards", brand, { from, to, group_by: "day" }, controller.signal)).rejects.toMatchObject({ status: 401, code: "AUTH_UNAUTHENTICATED", message: "expired" });
     expect(fetcher.mock.calls[0]![1]?.signal).toBe(controller.signal);
     expect(fetcher.mock.calls[1]![1]?.signal).toBe(controller.signal);
   });

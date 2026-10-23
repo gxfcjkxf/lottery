@@ -9,6 +9,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
+	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"github.com/jackc/pgx/v5"
 	"strings"
 	"testing"
@@ -26,17 +27,17 @@ func TestBetAttributionUsesImmutableJoinAndSubmissionConfig(t *testing.T) {
 	var code attribution.Code
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		var e error
-		policy, e = agents.SavePolicy(ctx, tx, f.brand, a, agency.PolicyInput{Version: 1, Config: agency.PolicyConfig{Enabled: true, MaxDepth: 3, RatioCap: "0.1", Mode: "loss", Cycle: "weekly"}, Reason: "attribution fixture policy"}, points.Metadata{RequestID: ids.New()})
+		policy, e = agents.SavePolicy(ctx, tx, f.brand, a, agency.PolicyInput{Version: 1, Config: agency.PolicyConfig{Enabled: true, MaxDepth: 3, LossRatioCap: "0.1", TurnoverRatioCap: "0.1", Mode: "loss", Cycle: "weekly"}, Reason: "attribution fixture policy"}, points.Metadata{RequestID: ids.New()})
 		return e
 	})
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		var e error
-		node, e = agents.Create(ctx, tx, f.brand, a, agency.CreateInput{PolicyVersion: policy.Version, MemberID: f.member, Config: agency.NodeConfig{Ratio: "0.08", Status: "active", CanCreateChildren: true}, Reason: "attribution fixture root"}, points.Metadata{RequestID: ids.New()})
+		node, e = agents.Create(ctx, tx, f.brand, a, agency.CreateInput{PolicyVersion: policy.Version, Username: testdb.AgentUsername(f.member), Password: "agent123", Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0.08", Status: "active", CanCreateChildren: true}, Reason: "attribution fixture root"}, points.Metadata{RequestID: ids.New()})
 		return e
 	})
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		var e error
-		code, e = codes.Create(ctx, tx, f.brand, a, attribution.CreateInput{Kind: "agent", OwnerMemberID: f.member, AgentID: &node.ID, Reason: "attribution fixture join code"}, points.Metadata{RequestID: ids.New()})
+		code, e = codes.Create(ctx, tx, f.brand, a, attribution.CreateInput{Kind: "agent", OwnerMemberID: node.MemberID, AgentID: &node.ID, Reason: "attribution fixture join code"}, points.Metadata{RequestID: ids.New()})
 		return e
 	})
 	users, e := identity.New(f.db)

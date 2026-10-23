@@ -67,6 +67,21 @@ describe("report archive tasks API", () => {
     }
   });
 
+  it("accepts omitted and empty optional reasons and keeps the original version during an in-flight request", async () => {
+    const receipt = task({ version: 3, attempt_count: 1, last_audit_log_id: audit2 });
+    for (const body of [{ version: 2 }, { version: 2, reason: "" }]) {
+      let complete!: (response: Response) => void;
+      const fetcher = vi.fn<typeof fetch>().mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+      const input = { ...body }, original = { ...body };
+      const pending = createReportArchiveTasksApi(fetcher).retry(brand, taskId, input, "retry-key-0001", actor);
+      input.version = 9;
+      complete(ok(receipt));
+      await expect(pending).resolves.toEqual(receipt);
+      expect(JSON.parse(String(fetcher.mock.calls[0]![1]?.body))).toEqual(original);
+      expect(fetcher).toHaveBeenCalledOnce();
+    }
+  });
+
   it("keeps conflict codes and treats network or ambiguous server results as unknown writes", async () => {
     const conflict = new Response(JSON.stringify({ success: false, error: { code: "VERSION_CONFLICT", message: "stale" } }), { status: 409 });
     await expect(createReportArchiveTasksApi(vi.fn<typeof fetch>().mockResolvedValue(conflict)).retry(brand, taskId, { version: 1, reason: "retry now" }, "retry-key-0001", actor)).rejects.toMatchObject({ status: 409, code: "VERSION_CONFLICT" });
@@ -80,7 +95,7 @@ describe("report archive tasks API", () => {
     for (const [limit, offset] of [[0, 0], [101, 0], [20, 1_000_001], [1.5, 0]]) await expect(Promise.resolve().then(() => api.list(brand, limit, offset))).rejects.toMatchObject({ code: "INVALID_INPUT" });
     for (const input of [
       { version: Number.MAX_SAFE_INTEGER, reason: "reason" }, { version: 0, reason: "reason" },
-      { version: 1, reason: " padded " }, { version: 1, reason: "" }, { version: 1, reason: "bad\u0085" },
+      { version: 1, reason: " padded " }, { version: 1, reason: null }, { version: 1, reason: 1 }, { version: 1, reason: "bad\u0085" },
       { version: 1, reason: "é".repeat(251) }, { version: 1, reason: "bad\uD800" }, { version: 1, reason: "good", extra: true },
     ]) await expect(Promise.resolve().then(() => api.retry(brand, taskId, input as never, "retry-key-0001", actor))).rejects.toMatchObject({ code: "INVALID_INPUT" });
     expect(f).not.toHaveBeenCalled();

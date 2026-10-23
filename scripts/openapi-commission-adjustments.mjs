@@ -17,7 +17,7 @@ const admin = (method, suffix, operationId, summary, data, extra = {}) => ({
 });
 
 export const schemas = {
-  CommissionAdjustmentInput: { ...obj({ version, points: ref('NonnegativeInt64String'), reason: ref('Reason') }), description: 'Reason must be valid UTF-8 with no leading or trailing whitespace and at most 500 UTF-8 bytes.' },
+  CommissionAdjustmentInput: { ...obj({ version, points: ref('NonnegativeInt64String'), reason: ref('Reason') }, ["version", "points"]), description: 'Reason must be valid UTF-8 with no leading or trailing whitespace and at most 500 UTF-8 bytes.' },
   CommissionPaymentTarget: obj({
     id: ref('UUID'), brand_id: ref('UUID'), payment_id: ref('UUID'), earning_id: ref('UUID'), agent_id: ref('UUID'), member_id: ref('UUID'),
     original_points: ref('NonnegativeInt64String'), state: { type: 'string', enum: ['pending', 'paid'] }, ledger_entry_id: nullable(ref('UUID')), paid_at: nullable(ref('DateTime')),

@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { isWithdrawalHistory, isWithdrawalOrder, isWithdrawalPage, type WithdrawalAction, type WithdrawalActionBody, type WithdrawalHistory, type WithdrawalOrder, type WithdrawalPage, type WithdrawalState } from "@lottery/shared";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
@@ -28,11 +30,6 @@ export class WithdrawalAdminUnknownIntentError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === "object" && !Array.isArray(value)); }
-function unwrap<T>(raw: unknown): T {
-  if (!isRecord(raw) || raw.success !== true || !Object.hasOwn(raw, "data")) throw new Error("Invalid server response");
-  return raw.data as T;
-}
 function encodeQuery(values: Record<string, string | number | undefined>) {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) if (value !== undefined && value !== "") query.set(key, String(value));
@@ -51,26 +48,15 @@ export function createWithdrawalOrdersAdminApi(fetcher: typeof fetch = fetch) {
       if (options.method === "POST") throw new WithdrawalAdminUnknownIntentError(cause instanceof Error ? cause.message : undefined);
       throw new AdminApiError(cause instanceof Error ? cause.message : "Network unavailable", 0);
     }
-    let raw: unknown;
-    try { raw = await response.json(); } catch {
-      if (options.method === "POST") throw new WithdrawalAdminUnknownIntentError("The server returned an invalid action receipt.");
-      throw new AdminApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`, response.status);
+    try {
+      const raw = await readAdminEnvelope<T>(response);
+      if (options.method === "POST" && response.status !== 200) throw new WithdrawalAdminUnknownIntentError("The server returned an unrecognized withdrawal action response.");
+      return raw.data;
+    } catch (cause) {
+      if (options.method === "POST" && cause instanceof AdminApiError && (cause.status === 0 || cause.status >= 500 || cause.status === 408 || cause.status === 429)) throw new WithdrawalAdminUnknownIntentError(cause.message);
+      throw cause;
     }
-    if (response.ok && options.method === "POST" && (response.status !== 200 || !isRecord(raw) || raw.success !== true || !Object.hasOwn(raw, "data"))) {
-      throw new WithdrawalAdminUnknownIntentError("The server returned an unrecognized withdrawal action response.");
-    }
-    if (!response.ok || !isRecord(raw) || raw.success !== true || !Object.hasOwn(raw, "data")) {
-      const error = isRecord(raw) && isRecord(raw.error) ? raw.error : undefined;
-      const code = typeof error?.code === "string" ? error.code : undefined;
-      const message = typeof error?.message === "string" ? error.message : `Request failed (${response.status})`;
-      if (options.method === "POST" && (!isRecord(raw) || raw.success !== false || !error || typeof error.code !== "string" || typeof error.message !== "string")) throw new WithdrawalAdminUnknownIntentError(message);
-      if (options.method === "POST" && (response.status === 0 || response.status >= 500 || response.status === 408 || response.status === 429)) throw new WithdrawalAdminUnknownIntentError(message);
-      throw new AdminApiError(message, response.status, code);
-    }
-    try { return unwrap<T>(raw); } catch (cause) {
-      if (options.method === "POST") throw new WithdrawalAdminUnknownIntentError(cause instanceof Error ? cause.message : undefined);
-      throw new AdminApiError("Invalid server response", response.status);
-    }
+
   }
   return {
     async list(brandId: string, filters: { state?: WithdrawalState; memberId?: string; limit: number; offset: number }, signal?: AbortSignal): Promise<WithdrawalPage> {
@@ -90,7 +76,7 @@ export function createWithdrawalOrdersAdminApi(fetcher: typeof fetch = fetch) {
       return value;
     },
     async action(brandId: string, id: string, action: WithdrawalAction, body: WithdrawalActionBody, key: string): Promise<WithdrawalOrder> {
-      if (!Number.isSafeInteger(body.version) || body.version < 1 || !body.reason.trim() || !key.trim()) throw new TypeError("A current version, reason, and idempotency key are required.");
+      if (!Number.isSafeInteger(body.version) || body.version < 1  || !key.trim()) throw new TypeError("A current version, reason, and idempotency key are required.");
       let value: unknown;
       try { value = await request<unknown>(`/api/v1/admin/withdrawals/${encodeURIComponent(id)}/${action}`, brandId, { method: "POST", body, key }); }
       catch (cause) { throw cause; }

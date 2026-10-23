@@ -43,7 +43,7 @@ test('platform withdrawals retain exact sources, state history and filters witho
     await route.fulfill({ json: { success: true, data } });
   });
   await login(page);
-  await page.locator('.brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   const panel = page.getByTestId('platform-withdrawals');
   const pages = page.getByTestId('platform-withdrawal-pages');
   await expect(panel.locator('tbody tr')).toHaveCount(50);
@@ -74,7 +74,7 @@ test('platform withdrawals retain exact sources, state history and filters witho
   await pages.getByRole('button', { name: 'Next page' }).click();
   await expect(panel.getByRole('alert')).toContainText('Withdrawal read unavailable');
   await expect(detail).toHaveCount(0);
-  await page.locator('.brand-picker select').selectOption('');
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(panel.getByLabel('State', { exact: true })).toHaveValue('');
   await expect(panel.getByLabel('Member ID (optional)', { exact: true })).toHaveValue('');
   await expect(panel.getByRole('button', { name: /Approve|Reject|Cancel|Mark paid/i })).toHaveCount(0);
@@ -83,7 +83,7 @@ test('platform withdrawals retain exact sources, state history and filters witho
 test('platform withdrawal page uses the real read endpoint, not brand approval routes', async ({ page }) => {
   await login(page);
   const read = page.waitForResponse(r => r.url().endsWith('/api/v1/platform/withdrawals?limit=50&offset=0'));
-  await page.locator('.brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   expect((await read).status()).toBe(200);
   await expect(page.getByTestId('platform-withdrawals').getByRole('alert')).toHaveCount(0);
   const response = await page.request.post(`${origin}/api/v1/platform/withdrawals/${uuid(100)}/approve`, {

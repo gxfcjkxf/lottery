@@ -153,7 +153,7 @@ export function settlementReasonByteLength(value: string): number {
 }
 
 export function validSettlementReason(value: string): boolean {
-  return Boolean(value.trim()) && settlementReasonByteLength(value) <= SETTLEMENT_JOB_REASON_MAX_BYTES;
+  return (value === "" || value.trim().length > 0) && settlementReasonByteLength(value) <= SETTLEMENT_JOB_REASON_MAX_BYTES;
 }
 
 export function isSettlementJobTerminal(job: {

@@ -1,5 +1,5 @@
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
-const obj = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
+const obj = (properties, required = Object.keys(properties)) => ({ type: 'object', properties, required, additionalProperties: false });
 const count = {
   type: 'string',
   pattern: '^(0|[1-9][0-9]*)$',

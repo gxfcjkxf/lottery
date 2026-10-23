@@ -1,3 +1,5 @@
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { readFileSync } from 'node:fs'
 import { createRenderer, createSSRApp, nextTick, type Component } from 'vue'
 import * as VueRuntime from 'vue'
@@ -33,25 +35,28 @@ async function render(locale: 'zh-CN' | 'en') {
 }
 
 describe('settlement and correction localization', () => {
-  it('renders translated correction controls while keeping the period identifier stable', async () => {
+  it('renders translated correction controls and the carried-period guidance', async () => {
     const english = await render('en')
     const chinese = await render('zh-CN')
 
     expect(english).toContain('Draw result correction')
     expect(english).toContain('Draw corrections cannot be undone.')
-    expect(english).toContain('Period UUID')
+    expect(english).toContain('Choose a game and period in Draw management; the selected period is carried into this page.')
     expect(chinese).toContain('开奖结果更正')
     expect(chinese).toContain('开奖结果更正不可撤回。')
-    expect(chinese).toContain('期次 UUID')
-    expect(english.match(new RegExp(`value="${periodId}"`))).not.toBeNull()
-    expect(chinese.match(new RegExp(`value="${periodId}"`))).not.toBeNull()
+    expect(chinese).toContain('在开奖管理选择彩种和期次后，会自动带入此页。')
+    expect(english).not.toContain('在开奖管理选择彩种和期次后，会自动带入此页。')
+    expect(chinese).not.toContain('Choose a game and period in Draw management')
   })
 
-  it('does not translate or mutate API identifiers or user supplied values', async () => {
-    const english = await render('en')
-    expect(english).toContain(periodId)
-    expect(english).not.toContain('value="Draw result correction"')
-    expect(account.permissions_by_brand?.[brandId]).toContain('draw.correct.brand')
+  it('does not expose a raw UUID input when the period is carried from draw management', async () => {
+    for (const locale of ['en', 'zh-CN'] as const) {
+      const html = await render(locale)
+      expect(html).not.toContain(periodId)
+      expect(html).not.toContain('Period UUID')
+      expect(html).not.toContain('期次 UUID')
+      expect(html).not.toContain('class="association-filter"')
+    }
   })
 })
 
@@ -106,7 +111,7 @@ function compileCorrection(api: ReturnType<typeof CorrectionApi.createCorrection
   const javascript = ts.transpileModule(compiled, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
   }).outputText
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = {  "@lottery/shared": DisplayShared,
     vue: VueRuntime, './admin-api': AdminApi, './i18n': AdminI18n,
     './correction-api': { ...CorrectionApi, createCorrectionApi: () => api },
     './correction-state': CorrectionState,
@@ -116,7 +121,7 @@ function compileCorrection(api: ReturnType<typeof CorrectionApi.createCorrection
       if (!(specifier in modules)) throw new Error(`Unmapped component import: ${specifier}`)
       return `const {${bindings.replace(/\s+as\s+/g, ': ')}} = __modules[${JSON.stringify(specifier)}];`
     }).replace(/export\s+default\s+/, 'return ')
-  return new Function('__modules', body)(modules) as Component
+  return new Function('__modules', body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component
 }
 function textOf(node: HostNode): string { return node.text + node.children.map(textOf).join('') }
 function findNode(node: HostNode, match: (node: HostNode) => boolean): HostNode | undefined {
@@ -141,18 +146,18 @@ afterEach(() => { CorrectionState.frozenCorrectionWrites.clear(); vi.unstubAllGl
 
 describe('settlement and correction localization live messages', () => {
   it.each([
-    { outcome: 'unknown', status: 503, zh: '写入结果未知。原请求体和幂等键仍保留', en: 'The write outcome is unknown. The original request body' },
+    { outcome: 'unknown', status: 503, zh: '暂未确认操作结果', en: 'The result is not yet confirmed' },
     { outcome: 'conflict', status: 409, zh: '服务器报告版本冲突', en: 'The server reported a version conflict.' },
     { outcome: 'rejected', status: 403, zh: '服务器明确拒绝请求', en: 'The server rejected the request.' },
     { outcome: 'confirmed', status: 200, zh: '更正已确认，并已读取最新服务器状态。', en: 'Correction confirmed; the latest server state has been loaded.' },
-    { outcome: 'mismatched', status: 200, zh: '收到的回执与原请求不匹配', en: 'The receipt does not match the original request.' },
+    { outcome: 'mismatched', status: 200, zh: '暂未确认操作结果', en: 'The result is not yet confirmed' },
   ])('updates $outcome notices in the same mounted page without changing the request', async ({ outcome, status, zh, en }) => {
     vi.stubGlobal('Document', class {})
     vi.stubGlobal('ShadowRoot', class {})
     CorrectionState.frozenCorrectionWrites.clear()
     const drawId = '00000000-0000-4000-8000-000000000004'
     const gameId = '00000000-0000-4000-8000-000000000005'
-    const reason = '用户原因 {name} / 原样保留'
+    const reason = ''
     const externalError = '服务端业务错误原文 {name}'
     const context: CorrectionContext = {
       brand_id: brandId, game_id: gameId, period_id: periodId, period_version: 9,
@@ -193,19 +198,22 @@ describe('settlement and correction localization live messages', () => {
     app.mount(root)
     try {
       await flush()
+      expect(contextRead).toHaveBeenCalledWith(brandId, periodId)
+      expect(api.history).toHaveBeenCalledWith(brandId, periodId, 20, 0)
       await update(root, 'correction-regular', '5, 2')
-      await update(root, 'correction-reason', reason)
-      await click(root, '核对并只更正未结算结果')
+      await click(root, '更正未结算结果')
       await update(root, 'correction-confirmed', true)
       i18n.setLocale('en')
       await flush()
       expect(textOf(root)).toContain('Confirm this irreversible action')
-      expect(textOf(root)).toContain(reason)
+      expect(findNode(root, node => node.props.id === 'correction-reason')).toBeUndefined()
       expect(create).not.toHaveBeenCalled()
-      await click(root, 'Confirm submission')
+      await click(root, 'Submit')
       expect(create).toHaveBeenCalledTimes(1)
       const request = create.mock.calls[0] as unknown as Parameters<typeof api.create>
       const serialized = JSON.stringify(request)
+      expect(request[0]).toBe(brandId)
+      expect(request[1]).toBe(drawId)
       expect(request[2]).toEqual({ version: 9, policy_version: null, result: { regular: [2, 5], special: [7], digits: [] }, reason })
       expect(request[3]).toBeTruthy()
       expect(textOf(root)).toContain(en)
@@ -217,8 +225,11 @@ describe('settlement and correction localization live messages', () => {
         await flush()
         expect(textOf(root)).toContain(locale === 'en' ? en : zh)
         expect(textOf(root)).not.toContain(locale === 'en' ? zh : en)
-        if (status !== 200) expect(textOf(root)).toContain(externalError)
-        expect(findNode(root, node => node.props.id === 'correction-reason')?.value).toBe(reason)
+        if (status !== 200) {
+          expect(textOf(root)).not.toContain(externalError)
+          expect(textOf(root)).toContain(i18n.errorText({ status }))
+        }
+        expect(findNode(root, node => node.props.id === 'correction-reason')).toBeUndefined()
         expect(findNode(root, node => node.props.id === 'correction-regular')?.value).toBe('5, 2')
         expect(JSON.stringify(create.mock.calls[0])).toBe(serialized)
         expect(CorrectionState.frozenCorrectionWrites.find(account.id, brandId, periodId)).toBe(frozen)

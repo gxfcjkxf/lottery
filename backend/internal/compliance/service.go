@@ -71,12 +71,12 @@ func Allowed(a access.Account, brand, resource, action string) bool {
 		return false
 	}
 	if action == "view" {
-		return access.Authorize(a, resource, action, access.ScopeBrand, brand) || access.Authorize(a, resource, action, access.ScopePlatform, "")
+		return a.SuperAdmin && access.Authorize(a, resource, action, access.ScopePlatform, "")
 	}
 	if resource == "compliance_policy" && action != "write" || resource == "compliance_check" && action != "run" {
 		return false
 	}
-	return !a.SuperAdmin && access.Authorize(a, resource, action, access.ScopeBrand, brand)
+	return a.SuperAdmin && access.Authorize(a, resource, action, access.ScopePlatform, "")
 }
 
 const policySQL = `SELECT p.brand_id::text,p.version,p.config,p.updated_at,coalesce((SELECT audit_log_id::text FROM compliance_policy_revisions WHERE brand_id=p.brand_id AND version=p.version),'') FROM brand_compliance_policies p WHERE p.brand_id=$1`

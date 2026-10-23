@@ -1,3 +1,4 @@
+import { readApiEnvelope } from '@lottery/shared'
 export type RechargeState = "pending" | "confirmed" | "cancelled";
 
 export interface MemberRecharge {
@@ -156,21 +157,9 @@ export function createRechargeApi(options: { brandCode?: string; fetcher?: typeo
     } catch (cause) {
       throw new RechargeApiError(cause instanceof Error ? cause.message : "Request failed", 0);
     }
-    let body: unknown;
-    try {
-      const text = await response.text();
-      if (!text) throw new Error("Empty response");
-      body = JSON.parse(text) as unknown;
-    } catch {
-      throw new RechargeApiError("The server returned an unreadable response.", response.status || 502, "INVALID_RESPONSE");
-    }
-    if (!response.ok) {
-      const envelope = isRecord(body) && isRecord(body.error) ? body.error : null;
-      throw new RechargeApiError(typeof envelope?.message === "string" ? envelope.message : `Request failed (${response.status})`, response.status, typeof envelope?.code === "string" ? envelope.code : undefined);
-    }
+    const envelope = await readApiEnvelope(response,(message,status,code)=>new RechargeApiError(message,status,code));
     if (response.status !== 200) throw new RechargeApiError("The server returned an unexpected status.", 502, "INVALID_RESPONSE");
-    if (!isRecord(body) || body.success !== true || !Object.hasOwn(body, "data")) throw new RechargeApiError("The server returned an invalid response.", 502, "INVALID_RESPONSE");
-    return body.data;
+    return envelope.data;
   }
 
   function expectedScope(scope: RechargeScope): void {

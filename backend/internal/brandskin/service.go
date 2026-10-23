@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"math"
-	"strings"
 	"time"
 )
 
@@ -70,7 +69,7 @@ func (s Service) Read(ctx context.Context, brand string) (Record, error) {
 	return readRecord(s.DB.QueryRow(ctx, recordSQL, brand))
 }
 func (s Service) Update(ctx context.Context, tx pgx.Tx, brand string, a access.Account, in Input, meta points.Metadata) (Record, error) {
-	if tx == nil || !uuidPattern.MatchString(brand) || in.Version < 1 || !validText(in.Reason, 500, false) || strings.TrimSpace(in.Reason) == "" {
+	if tx == nil || !uuidPattern.MatchString(brand) || in.Version < 1 || !validText(in.Reason, 500, false) {
 		return Record{}, ErrInvalid
 	}
 	if !Allowed(a, brand, "write") {

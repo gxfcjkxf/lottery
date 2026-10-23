@@ -1,3 +1,5 @@
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRenderer, h, nextTick, type Component } from "vue";
@@ -54,19 +56,19 @@ function compileInventoryComponent(): Component {
   const source = readFileSync(new URL("./BrandBusinessInventory.vue", import.meta.url), "utf8");
   const script = compileScript(parse(source, { filename: "BrandBusinessInventory.vue" }).descriptor, { id: "brand-business-inventory-in-reconciliation-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = {  "@lottery/shared": DisplayShared,
     vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n,
     "./business-inventory-api": BusinessInventoryApi, "./reconciliation-state": ReconciliationState,
   };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) =>
     `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 function compilePage(api: unknown): Component {
   const source = readFileSync(new URL("./ReconciliationManagement.vue", import.meta.url), "utf8");
   const script = compileScript(parse(source, { filename: "ReconciliationManagement.vue" }).descriptor, { id: "reconciliation-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = {  "@lottery/shared": DisplayShared,
     vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n,
     "./reconciliation-api": { ...ReconciliationApi, createReconciliationApi: () => api },
     "./reconciliation-state": ReconciliationState,
@@ -74,7 +76,7 @@ function compilePage(api: unknown): Component {
   };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) =>
     `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 
 afterEach(() => { clearPendingReconciliationWrites(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
@@ -100,7 +102,7 @@ describe("ReconciliationManagement scope confirmation", () => {
     const reason = find(root, (node) => node.tag === "textarea" && String(node.props["aria-label"]).includes("Reason for operation"));
     (reason?.props["onUpdate:modelValue"] as ((value: string) => void) | undefined)?.("explicit business association audit");
     await flush();
-    const review = find(root, (node) => node.tag === "button" && typeof node.props.onClick === "function" && textOf(node).includes("Review and confirm submission"));
+    const review = find(root, (node) => node.tag === "button" && typeof node.props.onClick === "function" && textOf(node).includes("Submit"));
     (review?.props.onClick as (() => void) | undefined)?.();
     await nextTick();
     expect(textOf(root)).toContain("Wallet + business associations");
@@ -108,17 +110,18 @@ describe("ReconciliationManagement scope confirmation", () => {
     const checkbox = find(root, (node) => node.tag === "input" && node.props.type === "checkbox");
     (checkbox?.props["onUpdate:modelValue"] as ((value: boolean) => void) | undefined)?.(true);
     await nextTick();
-    const submit = find(root, (node) => node.tag === "button" && typeof node.props.onClick === "function" && textOf(node).includes("Confirm and submit"));
+    const dialog = find(root, (node) => node.props.role === "dialog");
+    const submit = find(dialog!, (node) => node.tag === "button" && typeof node.props.onClick === "function" && textOf(node) === "Submit");
     (submit?.props.onClick as (() => void) | undefined)?.();
     await flush();
 
     expect(create).toHaveBeenCalledTimes(1);
     expect(create.mock.calls[0]?.[0]).toBe(brand);
-    expect(create.mock.calls[0]?.[1]).toEqual({ reason: "explicit business association audit", check_scope: "wallet_and_business" });
+    expect(create.mock.calls[0]?.[1]).toEqual({ reason: "", check_scope: "wallet_and_business" });
     expect(create.mock.calls[0]?.[3]).toBe(actor);
     const locked = find(root, (node) => node.tag === "select" && String(node.props["aria-label"]).includes("Check scope"));
     expect(locked?.props.disabled).toBe(true);
-    expect(textOf(root)).toContain("The write result is unknown");
+    expect(textOf(root)).toContain("The result is not yet confirmed");
     expect(textOf(root)).toContain("Wallet + business associations");
     app.unmount();
   });

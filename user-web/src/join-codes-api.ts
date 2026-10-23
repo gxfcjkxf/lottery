@@ -1,3 +1,5 @@
+import { readApiEnvelope } from '@lottery/shared'
+
 export type JoinCodeKind = "agent" | "referral";
 
 export interface JoinCode {
@@ -38,12 +40,6 @@ export interface MemberAttribution {
 export interface JoinCodeContext {
   brand_id: string;
   member_id: string;
-}
-
-interface Envelope<T> {
-  success?: boolean;
-  data?: T;
-  error?: string | { code?: string; message?: string } | null;
 }
 
 export class JoinCodesApiError extends Error {
@@ -268,18 +264,6 @@ function parseAttribution(
   };
 }
 
-export function normalizeJoinCode(value: string): string {
-  const normalized = value.trim().toUpperCase();
-  if (normalized && !JOIN_CODE.test(normalized)) {
-    throw new JoinCodesApiError(
-      "Join code must contain exactly 24 hexadecimal characters",
-      0,
-      "invalid_parameter",
-    );
-  }
-  return normalized;
-}
-
 export function createJoinCodesApi(
   options: { brandCode?: string; fetch?: typeof fetch } = {},
 ) {
@@ -304,28 +288,7 @@ export function createJoinCodesApi(
         "network_error",
       );
     }
-    let envelope: Envelope<unknown>;
-    try {
-      envelope = (await response.json()) as Envelope<unknown>;
-    } catch (cause) {
-      if (!response.ok) throw new JoinCodesApiError(`Request failed (${response.status})`, response.status);
-      throw new JoinCodesApiError(
-        cause instanceof Error ? cause.message : "Invalid response",
-        502,
-        "invalid_response",
-      );
-    }
-    if (!response.ok) {
-      const error = typeof envelope?.error === "object" && envelope.error ? envelope.error : undefined;
-      throw new JoinCodesApiError(
-        typeof envelope?.error === "string" ? envelope.error : error?.message ?? `Request failed (${response.status})`,
-        response.status,
-        error?.code,
-      );
-    }
-    if (!envelope || envelope.success !== true || envelope.data === undefined) {
-      return malformed("successful response must contain a success envelope and data");
-    }
+    const envelope = await readApiEnvelope<unknown>(response,(message,status,code)=>new JoinCodesApiError(message,status,code === 'INVALID_RESPONSE' ? 'invalid_response' : code === 'NETWORK_ERROR' ? 'network_error' : code));
     return envelope.data;
   }
 

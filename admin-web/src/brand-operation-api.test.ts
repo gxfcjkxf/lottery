@@ -46,6 +46,34 @@ describe("brand operation permissions", () => {
 });
 
 describe("brand operation API", () => {
+  it.each(['中', '😀'])('allows 500 %s characters in writes and history', async char => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(response({ ...record(), audit_log_id: audit })).mockResolvedValueOnce(response({ items: [revision({ reason: char.repeat(500) })], limit: 20, offset: 0 }));
+    const api = createBrandOperationApi(fetchImpl);
+    await expect(api.patch(brand, { ...intent, reason: char.repeat(500) }, 'characters-key')).resolves.toMatchObject({ version: 5 });
+    await expect(api.history(brand)).resolves.toMatchObject({ items: [{ reason: char.repeat(500) }] });
+    await expect(api.patch(brand, { ...intent, reason: char.repeat(501) }, 'characters-key')).rejects.toBeInstanceOf(AdminApiError);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+  it.each(['active', 'paused'] as const)('accepts %s with an omitted or empty reason', async status => {
+    for (const body of [{ version: 4, status }, { version: 4, status, reason: '' }]) {
+      const updated = record({ status, audit_log_id: audit })
+      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(response(updated))
+      await expect(createBrandOperationApi(fetchImpl).patch(brand, body, 'optional-reason-key')).resolves.toEqual(updated)
+      expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))).toEqual(body)
+    }
+  });
+  it('reads stopped records and history without offering a brand-level stop write', async () => {
+    const stopped = record({ status: 'disabled' });
+    const item = revision({ status: 'disabled', reason: '' });
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(response(stopped))
+      .mockResolvedValueOnce(response({ items: [item], limit: 20, offset: 0 }));
+    const api = createBrandOperationApi(fetchImpl);
+    await expect(api.get(brand)).resolves.toEqual(stopped);
+    await expect(api.history(brand)).resolves.toMatchObject({ items: [item] });
+    await expect(api.patch(brand, { ...intent, status: 'disabled' } as unknown as typeof intent, 'stopped-key')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
   it("reads the exact current record with same-origin credentials and X-Brand-ID", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(response(record())).mockResolvedValueOnce(response(record({ audit_log_id: audit })));
     const api = createBrandOperationApi(fetchImpl);
@@ -102,7 +130,6 @@ describe("brand operation API", () => {
       { items: [{ ...revision(), surprise: 1 }], limit: 20, offset: 0 },
       { items: [revision({ brand_id: otherBrand })], limit: 20, offset: 0 },
       { items: [revision({ created_at: "2026-10-06 04:00:00" })], limit: 20, offset: 0 },
-      { items: [revision({ status: "disabled" })], limit: 20, offset: 0 },
       { items: [], limit: 19, offset: 0 },
     ]) {
       await expect(createBrandOperationApi(vi.fn<typeof fetch>().mockResolvedValue(response(invalid))).history(brand))
@@ -115,7 +142,7 @@ describe("brand operation API", () => {
 
   it("preserves known version conflicts as definitive server errors", async () => {
     await expect(createBrandOperationApi(vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ success: false, error: { code: "CONFLICT", message: "version changed" } }), { status: 409 }),
-    )).patch(brand, intent, "stable-key")).rejects.toMatchObject({ status: 409, code: "CONFLICT" });
+      new Response(JSON.stringify({ success: false, error: { code: "BRAND_OPERATION_VERSION_CONFLICT", message: "version changed" } }), { status: 409 }),
+    )).patch(brand, intent, "stable-key")).rejects.toMatchObject({ status: 409, code: "BRAND_OPERATION_VERSION_CONFLICT" });
   });
 });

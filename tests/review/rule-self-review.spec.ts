@@ -1,9 +1,6 @@
-import { test, expect } from './platform-fixture';
-
-test.use({ storageState: async ({ operatorSession }, use) => use(operatorSession) });
+import { test, expect } from './self-review-fixture';
 
 const origin = 'http://127.0.0.1:5184';
-const brand = '0199a000-0000-7000-8000-000000000001';
 const model = { model: 'DIGITS_0_9', length: 3, allow_repeat: true, ordered: true };
 const definition = {
   schema_version: 1, model, selection: { mode: 'numbers' }, unit_points: '1',
@@ -11,7 +8,8 @@ const definition = {
   mixed_tier_policy: 'max_all', rounding: 'half_up', rounding_scope: 'order', limits: { max_combinations: 100, max_multiplier: '1000' },
 };
 
-test('one brand administrator creates and reviews rules with immediate and next-period effects', async ({ page }, info) => {
+test('one brand administrator creates and reviews rules with immediate and next-period effects', async ({ page, selfReviewBrand }, info) => {
+  const brand = selfReviewBrand.id;
   await page.addInitScript(() => localStorage.setItem('lottery.admin.locale', 'zh-CN'));
   const me = await page.request.get(`${origin}/api/v1/admin/me`);
   expect(me.status()).toBe(200);
@@ -26,7 +24,7 @@ test('one brand administrator creates and reviews rules with immediate and next-
   }
   await page.goto(origin);
   await page.getByLabel('选择真实后台品牌', { exact: true }).selectOption(brand);
-  if (info.project.name === 'mobile360') {
+  if (info.project.name === 'mobilepixel7') {
     await page.locator('.mobile-nav button').last().click();
     await page.locator('.mobile-more-menu').getByRole('button', { name: /规则配置/ }).click();
   } else await page.locator('.side-nav').getByRole('button', { name: /规则配置/ }).click();

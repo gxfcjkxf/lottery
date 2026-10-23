@@ -1,3 +1,5 @@
+import { readAdminErrorResponse } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 import type { ReportGroupBy, ReportQuery } from "./reports-api";
@@ -22,7 +24,7 @@ function fail(message = "报表导出响应格式无效。", status = 502, code 
   throw new AdminApiError(message, status, code);
 }
 function badInput(message: string): never { return fail(message, 0, "INVALID_INPUT"); }
-function isRecord(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value); }
+
 function validDateTime(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(value);
@@ -100,20 +102,6 @@ function filenameDate(snapshotAt: string): string {
   if (!Number.isFinite(date.getTime())) fail();
   return `${String(date.getUTCFullYear()).padStart(4, "0")}${String(date.getUTCMonth() + 1).padStart(2, "0")}${String(date.getUTCDate()).padStart(2, "0")}T${String(date.getUTCHours()).padStart(2, "0")}${String(date.getUTCMinutes()).padStart(2, "0")}${String(date.getUTCSeconds()).padStart(2, "0")}Z`;
 }
-async function parseError(response: Response): Promise<never> {
-  let message = `Request failed (${response.status})`, code: string | undefined;
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch { /* Non-JSON error bodies are intentionally not downloaded. */ }
-  if (isRecord(body) && typeof body.error === "string")
-    throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-  if (isRecord(body) && isRecord(body.error)) {
-    if (typeof body.error.message === "string") message = body.error.message;
-    if (typeof body.error.code === "string") code = body.error.code;
-  }
-  throw new AdminApiError(message, response.status, code);
-}
 
 function validateCsv(csvText: string, kind: ExportKind, brandId: string, query: ExportQuery, headers: Headers): { groupCount: string; snapshotAt: string } {
   const rows = parseCsv(csvText);
@@ -132,12 +120,14 @@ function validateCsv(csvText: string, kind: ExportKind, brandId: string, query: 
       !/^text\/csv\s*;\s*charset=utf-8$/i.test(header("Content-Type")) || header("Cache-Control").toLowerCase() !== "no-store") fail();
   const filename = `lottery-${kind}-${brandId}-${filenameDate(snapshotAt)}.csv`;
   if (header("Content-Disposition") !== `attachment; filename="${filename}"`) fail();
+  const stableTimezone = rows[1]![columns.indexOf("timezone")];
+  if (typeof stableTimezone !== "string" || !validTimezone(stableTimezone)) fail();
   const metadata = rows.slice(1).map((row) => {
     if (row.length !== columns.length) fail();
     const record: Record<string, string> = {};
     columns.forEach((column, i) => { record[column] = row[i]!; });
     if (record.brand_id.toLowerCase() !== brandId.toLowerCase() || record.snapshot_at !== snapshotAt ||
-        !validTimezone(record.timezone) || !validCanonicalUtcDateTime(record.from) || !sameInstant(record.from, query.from) ||
+        record.timezone !== stableTimezone || !validCanonicalUtcDateTime(record.from) || !sameInstant(record.from, query.from) ||
         !validCanonicalUtcDateTime(record.to) || !sameInstant(record.to, query.to) || record.group_by !== query.group_by ||
         record.game_id !== (query.game_id ?? "") || record.member_id !== (query.member_id ?? "")) fail("导出内容与请求范围不匹配。");
     return record;
@@ -156,7 +146,6 @@ function validateCsv(csvText: string, kind: ExportKind, brandId: string, query: 
   const totalFields = kind === "betting" ? BETTING_FIELDS : LEDGER_FIELDS;
   for (const field of totalFields) if (!(field === "net_points" ? SIGNED_INTEGER_RE : INTEGER_RE).test(summary[field]!)) fail();
   if (kind === "ledger" && BALANCE_FIELDS.some((field) => summary[field] !== "")) fail();
-  const stableTimezone = metadata[0]!.timezone;
   const aggregate = new Map<string, bigint>(totalFields.map((field) => [field, 0n]));
   const groupRows = metadata.slice(groupStart);
   let priorRawKey: string | null = null;
@@ -203,7 +192,7 @@ export function createReportExportApi(fetchImpl: typeof fetch = fetch) {
     if (query.game_id) params.set("game_id", query.game_id);
     if (query.member_id) params.set("member_id", query.member_id);
     const response = await fetchImpl(`${BASE}/${kind}/export?${params}`, { method: "GET", credentials: "same-origin", headers: { Accept: "text/csv", "X-Brand-ID": brandId } });
-    if (!response.ok) return parseError(response);
+    if (!response.ok) throw await readAdminErrorResponse(response);
     const contentLength = response.headers.get("Content-Length");
     if (!contentLength || !/^(0|[1-9]\d*)$/.test(contentLength) || Number(contentLength) > MAX_BYTES) fail("导出文件大小无效。");
     const bytes = new Uint8Array(await response.arrayBuffer());

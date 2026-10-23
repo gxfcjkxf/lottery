@@ -24,6 +24,10 @@ import { createCommissionPolicyApi } from "./commission-policy-api";
 import { createBrandDomainsApi } from "./brand-domains-api";
 import { createCommissionPaymentsApi } from "./commissionPayments-api";
 
+import { createCommissionReportApi } from "./commission-report-api";
+import { createCommissionAnalysisApi } from "./commission-analysis-api";
+import { createAttributionReportApi } from "./attribution-report-api";
+
 const brand = "00000000-0000-4000-8000-000000000001";
 const target = "00000000-0000-4000-8000-000000000002";
 const oldStringError = () => vi.fn<typeof fetch>().mockResolvedValue(
@@ -60,6 +64,12 @@ describe("admin API error envelope contract", () => {
       ["business inventory", (fetcher) => createBusinessInventoryApi(fetcher).read(brand)],
       ["commission policy", (fetcher) => createCommissionPolicyApi(fetcher).getPolicy(brand)],
       ["brand domains", (fetcher) => createBrandDomainsApi(fetcher).get(brand)],
+      ["commission report", (fetcher) => createCommissionReportApi(fetcher).report(brand, reportQuery)],
+      ["commission CSV", (fetcher) => createCommissionReportApi(fetcher).exportCsv(brand, reportQuery)],
+      ["commission analysis", (fetcher) => createCommissionAnalysisApi(fetcher).report(brand, { ...reportQuery, group_by: "cycle" })],
+      ["commission analysis CSV", (fetcher) => createCommissionAnalysisApi(fetcher).exportCsv(brand, { ...reportQuery, group_by: "cycle" })],
+      ["attribution report", (fetcher) => createAttributionReportApi(fetcher).report(brand, reportQuery)],
+      ["attribution CSV", (fetcher) => createAttributionReportApi(fetcher).exportCsv(brand, reportQuery)],
       ["commission payments", (fetcher) => createCommissionPaymentsApi(fetcher).getPolicy(brand)],
     ];
 

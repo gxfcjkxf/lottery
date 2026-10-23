@@ -253,7 +253,7 @@ func TestAttributionReportUsesSavedAgentChainAcrossGamesAndSettlementCorrection(
 	attributionReportTx(t, db, func(tx pgx.Tx) error {
 		var e error
 		policy, e = agents.SavePolicy(ctx, tx, attributionIntegrationBrand, actor, agency.PolicyInput{
-			Version: 1, Config: agency.PolicyConfig{Enabled: true, MaxDepth: 3, RatioCap: "0.1", Mode: "loss", Cycle: "weekly"},
+			Version: 1, Config: agency.PolicyConfig{Enabled: true, MaxDepth: 3, LossRatioCap: "0.1", TurnoverRatioCap: "0.1", Mode: "loss", Cycle: "weekly"},
 			Reason: "attribution report integration policy",
 		}, metadata())
 		return e
@@ -261,8 +261,8 @@ func TestAttributionReportUsesSavedAgentChainAcrossGamesAndSettlementCorrection(
 	attributionReportTx(t, db, func(tx pgx.Tx) error {
 		var e error
 		root, e = agents.Create(ctx, tx, attributionIntegrationBrand, actor, agency.CreateInput{
-			PolicyVersion: policy.Version, MemberID: adminMember.Member.ID,
-			Config: agency.NodeConfig{Ratio: "0.08", Status: "active", CanCreateChildren: true},
+			PolicyVersion: policy.Version, Username: testdb.AgentUsername(adminMember.Member.ID), Password: "agent123",
+			Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0.08", Status: "active", CanCreateChildren: true},
 			Reason: "attribution report root agent",
 		}, metadata())
 		return e
@@ -270,7 +270,7 @@ func TestAttributionReportUsesSavedAgentChainAcrossGamesAndSettlementCorrection(
 	attributionReportTx(t, db, func(tx pgx.Tx) error {
 		var e error
 		rootCode, e = codes.Create(ctx, tx, attributionIntegrationBrand, actor, attribution.CreateInput{
-			Kind: "agent", OwnerMemberID: adminMember.Member.ID, AgentID: &root.ID, Reason: "attribution report root code",
+			Kind: "agent", OwnerMemberID: root.MemberID, AgentID: &root.ID, Reason: "attribution report root code",
 		}, metadata())
 		return e
 	})
@@ -280,7 +280,7 @@ func TestAttributionReportUsesSavedAgentChainAcrossGamesAndSettlementCorrection(
 	attributionReportTx(t, db, func(tx pgx.Tx) error {
 		var e error
 		child, e = agents.Create(ctx, tx, attributionIntegrationBrand, actor, agency.CreateInput{
-			PolicyVersion: policy.Version, MemberID: childAgentMember.Member.ID,
+			PolicyVersion: policy.Version, Username: testdb.AgentUsername(childAgentMember.Member.ID), Password: "agent123",
 			ParentID: &parentID, ParentVersion: &parentVersion,
 			Config: agency.NodeConfig{Ratio: "0.04", Status: "active", CanCreateChildren: false},
 			Reason: "attribution report child agent",
@@ -291,7 +291,7 @@ func TestAttributionReportUsesSavedAgentChainAcrossGamesAndSettlementCorrection(
 	attributionReportTx(t, db, func(tx pgx.Tx) error {
 		var e error
 		childCode, e = codes.Create(ctx, tx, attributionIntegrationBrand, actor, attribution.CreateInput{
-			Kind: "agent", OwnerMemberID: childAgentMember.Member.ID, AgentID: &child.ID, Reason: "attribution report child code",
+			Kind: "agent", OwnerMemberID: child.MemberID, AgentID: &child.ID, Reason: "attribution report child code",
 		}, metadata())
 		return e
 	})

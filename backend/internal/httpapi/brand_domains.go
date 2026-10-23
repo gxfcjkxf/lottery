@@ -33,7 +33,7 @@ func domainActor(w http.ResponseWriter, r *http.Request, d Dependencies, action 
 func domainResult(out any, e error, status int) (mutation.Result, error) {
 	switch {
 	case errors.Is(e, branddomains.ErrInvalid):
-		return mutation.Fail(400, "BRAND_DOMAIN_INPUT_INVALID", "域名、主域名状态、版本或原因不正确"), nil
+		return mutation.Fail(400, "BRAND_DOMAIN_INPUT_INVALID", "域名、启用状态、版本或原因不正确"), nil
 	case errors.Is(e, branddomains.ErrDenied):
 		return mutation.Fail(403, "PERMISSION_DENIED", "无品牌域名管理权限"), nil
 	case errors.Is(e, branddomains.ErrNotFound):
@@ -96,10 +96,11 @@ func registerBrandDomainRoutes(handle func(string, string, http.HandlerFunc), d 
 			outputMutation(w, r, result, err)
 		})
 	}
-	for _, create := range []bool{true, false} {
-		method, path, status := "PATCH", "/brand-domains/{domainID}", 200
+	for _, method := range []string{"POST", "PATCH", "DELETE"} {
+		create, remove := method == "POST", method == "DELETE"
+		path, status := "/brand-domains/{domainID}", 200
 		if create {
-			method, path, status = "POST", "/brand-domains", 201
+			path, status = "/brand-domains", 201
 		}
 		handle(method, path, func(w http.ResponseWriter, r *http.Request) {
 			a, b, ok := domainActor(w, r, d, "write")
@@ -111,7 +112,15 @@ func registerBrandDomainRoutes(handle func(string, string, http.HandlerFunc), d 
 				return
 			}
 			var in branddomains.Input
-			if !decodeBody(w, r, &in) {
+			var deletion struct {
+				Version int64 `json:"version"`
+			}
+			if remove {
+				if !decodeBody(w, r, &deletion) {
+					return
+				}
+				in.Version = deletion.Version
+			} else if !decodeBody(w, r, &in) {
 				return
 			}
 			target := r.PathValue("domainID")
@@ -120,6 +129,9 @@ func registerBrandDomainRoutes(handle func(string, string, http.HandlerFunc), d 
 				return
 			}
 			raw, e := json.Marshal(in)
+			if remove {
+				raw, e = json.Marshal(deletion)
+			}
 			if e != nil {
 				failure(w, r, 400, "REQUEST_INVALID", "请求格式不正确")
 				return
@@ -148,7 +160,13 @@ func registerBrandDomainRoutes(handle func(string, string, http.HandlerFunc), d 
 				}
 				return nil
 			}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-				out, e := s.Change(ctx, tx, b, fresh, target, in, pointMeta(r, fresh))
+				var out branddomains.Record
+				var e error
+				if remove {
+					out, e = s.Remove(ctx, tx, b, fresh, target, in.Version, pointMeta(r, fresh))
+				} else {
+					out, e = s.Change(ctx, tx, b, fresh, target, in, pointMeta(r, fresh))
+				}
 				return domainResult(out, e, status)
 			})
 			if errors.Is(e, identity.ErrSession) {

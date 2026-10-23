@@ -1,3 +1,6 @@
+import { BusinessDetailsTestComponent as BusinessDetails } from "./business-details-test-helper";
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createRenderer, h, nextTick, ref, type Component } from "vue";
@@ -57,10 +60,11 @@ function compileComponent(): Component {
   const descriptor = parseVue(source, { filename: "RewardsManagement.vue" }).descriptor;
   const compiled = compileVueScript(descriptor, { id: "rewards-component-test", inlineTemplate: true }).content;
   const javascript = transpileScript(compiled);
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = { "@lottery/shared/BusinessDetails.vue": { default: BusinessDetails },  "@lottery/shared": DisplayShared,
     // Business tests use a host renderer; native dialog behavior is checked in Chrome.
     "@lottery/shared/DetailModal.vue": { default: { inheritAttrs: false, setup: (_props: unknown, context: { slots: { default?: () => unknown } }) => () => context.slots.default?.() } },
     vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n,
+    "./member-lookup": { selectAdminAssociation: async () => ({ id: member, member_id: member, brand_id: brand, username: "reward_user" }) },
     "./rewards-api": RewardsApi, "./rewards-state": RewardsState,
   };
   const body = javascript
@@ -73,7 +77,7 @@ function compileComponent(): Component {
       return `const ${binding} = __modules[${JSON.stringify(specifier)}].default;`;
     })
     .replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 import { compileScript as compileVueScript, parse as parseVue } from "vue/compiler-sfc";
 import ts from "typescript";
@@ -82,12 +86,12 @@ function transpileScript(source: string): string { return ts.transpileModule(sou
 function reward(overrides: Partial<RewardOrder> = {}): RewardOrder {
   return { id: orderID, brand_id: brand, member_id: member, points: "25", state: "granted", version: 1,
     grant_ledger_entry_id: ledger, revoke_ledger_entry_id: null, creation_audit_log_id: audit,
-    last_audit_log_id: audit, last_error_code: null, created_by: actor, reason: "Welcome reward",
+    last_audit_log_id: audit, last_error_code: null, created_by: actor, reason: "",
     point_policy_version: "1", created_at: timestamp, updated_at: timestamp, revoked_at: null, ...overrides };
 }
 function action(overrides: Partial<RewardAction> = {}): RewardAction {
   return { id: actionID, brand_id: brand, order_id: orderID, version: 1, operation: "grant", state_before: null,
-    state_after: "granted", actor_id: actor, reason: "Welcome reward", audit_log_id: audit,
+    state_after: "granted", actor_id: actor, reason: "", audit_log_id: audit,
     ledger_entry_id: ledger, created_at: timestamp, ...overrides };
 }
 function ok(data: unknown, status = 200) { return new Response(JSON.stringify({ success: true, data, request_id: requestID }), { status }); }
@@ -112,7 +116,7 @@ function setModel(node: HostNode | null, value: unknown) {
   node!.value = String(value ?? "");
   for (const listener of node!.listeners.input ?? []) listener({ target: node! });
 }
-async function flush() { for (let i = 0; i < 14; i++) await Promise.resolve(); await nextTick(); }
+async function flush() { await new Promise(resolve => setTimeout(resolve, 0)); await nextTick(); }
 function mount(account: AdminAccount, brandId = brand, brandStatus = "active") {
   const scope = ref({ account, brandId, brandStatus }), container = element("root"), emitted: string[] = [], i18n = createAdminI18n();
   const app = renderer.createApp({ setup: () => () => h(RewardsComponent, { ...scope.value, onSessionInvalid: () => emitted.push("session-invalid") }) });
@@ -168,9 +172,9 @@ function installFetch(options: {
 
 function writes(server: ReturnType<typeof installFetch>) { return server.calls.filter((call) => call.init?.method === "POST"); }
 async function fillGrant(mounted: ReturnType<typeof mount>, reason: string, points = "25") {
-  setModel(byTestId(mounted.container, "rewards-grant-member"), member);
+  setModel(byTestId(mounted.container, "rewards-grant-member"), "reward_user");
   setModel(byTestId(mounted.container, "rewards-grant-points"), points);
-  setModel(byTestId(mounted.container, "rewards-grant-reason"), reason);
+
   await flush();
 }
 async function confirmReview(mounted: ReturnType<typeof mount>) {
@@ -187,7 +191,7 @@ async function submitGrant(mounted: ReturnType<typeof mount>, reason: string, po
 }
 async function submitRevoke(mounted: ReturnType<typeof mount>, reason: string) {
   click(button(mounted.container, orderID)); await flush();
-  setModel(byTestId(mounted.container, "rewards-action-reason"), reason); await flush();
+   await flush();
   expect(byTestId(mounted.container, "rewards-revoke")?.props.disabled).toBe(false);
   click(byTestId(mounted.container, "rewards-revoke")); await flush();
   await confirmReview(mounted);
@@ -200,7 +204,7 @@ describe("RewardsManagement", () => {
     installFetch(); const mounted = mount(baseAccount); await flush();
     const root = findNode(mounted.container, (node) => node.tag === "article");
     expect(root?.props.class).toContain("rewards-management");
-    for (const id of ["rewards-grant-member", "rewards-grant-points", "rewards-grant-reason", "rewards-grant-review", "rewards-list-refresh"]) {
+    for (const id of ["rewards-grant-member", "rewards-grant-points", "rewards-grant-review", "rewards-list-refresh"]) {
       expect(byTestId(mounted.container, id)).not.toBeNull();
     }
     mounted.app.unmount();
@@ -236,19 +240,19 @@ describe("RewardsManagement", () => {
     let server!: ReturnType<typeof installFetch>;
     server = installFetch({ onWrite: ({ body }) => ok(reward({ member_id: (body as { member_id: string }).member_id, points: (body as { points: string }).points }), 201) });
     const mounted = mount(baseAccount); await flush();
-    setModel(byTestId(mounted.container, "rewards-grant-member"), member); await flush();
+    setModel(byTestId(mounted.container, "rewards-grant-member"), "reward_user"); await flush();
     setModel(byTestId(mounted.container, "rewards-grant-points"), "9223372036854775807"); await flush();
-    setModel(byTestId(mounted.container, "rewards-grant-reason"), "Approved customer reward"); await flush();
+     await flush();
     click(byTestId(mounted.container, "rewards-grant-review")); await flush();
     expect(server.calls.filter((call) => call.init?.method === "POST")).toHaveLength(0);
-    expect(textOf(byTestId(mounted.container, "rewards-review")!)).toContain("Approved customer reward");
-    expect(textOf(byTestId(mounted.container, "rewards-review")!)).toContain(member);
+
+    expect(textOf(byTestId(mounted.container, "rewards-review")!)).toContain("reward_user");
     setModel(byTestId(mounted.container, "rewards-review-confirmed"), true); await flush();
     click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
     const writes = server.calls.filter((call) => call.init?.method === "POST");
     expect(writes).toHaveLength(1);
     expect(writes[0].url).toBe("/api/v1/admin/reward-orders");
-    expect(writes[0].body).toEqual({ member_id: member, points: "9223372036854775807", reason: "Approved customer reward" });
+    expect(writes[0].body).toEqual({ member_id: member, points: "9223372036854775807", reason: "" });
     expect(new Headers(writes[0].init?.headers).get("X-Reward-Actor-ID")).toBe(actor);
     expect(new Headers(writes[0].init?.headers).get("Idempotency-Key")).toBeTruthy();
     expect(byTestId(mounted.container, "rewards-receipt")).not.toBeNull();
@@ -262,13 +266,13 @@ describe("RewardsManagement", () => {
     ] as const) {
       const server = installFetch({ current: snapshot }); const mounted = mount(baseAccount); await flush();
       click(button(mounted.container, orderID)); await flush();
-      setModel(byTestId(mounted.container, "rewards-action-reason"), `Approved ${operation}`); await flush();
+       await flush();
       click(byTestId(mounted.container, testId)); await flush();
       setModel(byTestId(mounted.container, "rewards-review-confirmed"), true); await flush();
       click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
       const write = server.calls.find((call) => call.init?.method === "POST");
       expect(write?.url).toContain(`/${orderID}${route}`);
-      expect(write?.body).toEqual({ version: snapshot.version, reason: `Approved ${operation}` });
+      expect(write?.body).toEqual({ version: snapshot.version, reason: "" });
       expect(mounted.app).toBeDefined(); mounted.app.unmount();
     }
     for (const snapshot of [reward({ state: "revoked", version: 2, revoke_ledger_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", revoked_at: timestamp })]) {
@@ -284,21 +288,21 @@ describe("RewardsManagement", () => {
     let attempt = 0;
     const server = installFetch({ onWrite: (call) => { requests.push({ ...call, body: call.body }); attempt++; if (attempt === 1) throw new Error("response lost after server accepted write"); return ok(reward({ member_id: (call.body as { member_id: string }).member_id, points: (call.body as { points: string }).points }), 201); } });
     let mounted = mount(baseAccount); await flush();
-    setModel(byTestId(mounted.container, "rewards-grant-member"), member); setModel(byTestId(mounted.container, "rewards-grant-points"), "25"); setModel(byTestId(mounted.container, "rewards-grant-reason"), "Keep original request"); await flush();
+    setModel(byTestId(mounted.container, "rewards-grant-member"), "reward_user"); setModel(byTestId(mounted.container, "rewards-grant-points"), "25");  await flush();
     click(byTestId(mounted.container, "rewards-grant-review")); await flush(); setModel(byTestId(mounted.container, "rewards-review-confirmed"), true); await flush();
     click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
-    expect(textOf(mounted.container)).toContain("结果未知"); mounted.app.unmount();
+    expect(textOf(mounted.container)).toContain("暂未确认操作结果"); mounted.app.unmount();
 
-    server.current = reward({ state: "granted", version: 1, reason: "Keep original request" });
+    server.current = reward({ state: "granted", version: 1, reason: "" });
     mounted = mount(baseAccount); await flush();
-    expect(textOf(mounted.container)).toContain("待确认请求");
+    expect(textOf(mounted.container)).toContain("有待确认的操作");
     const frozenBefore = RewardsState.getPendingRewardIntent({ accountId: actor, brandId: brand, operation: "grant" });
-    expect(frozenBefore?.body).toEqual({ member_id: member, points: "25", reason: "Keep original request" });
+    expect(frozenBefore?.body).toEqual({ member_id: member, points: "25", reason: "" });
     click(byTestId(mounted.container, "rewards-list-refresh")); await flush();
     expect(RewardsState.getPendingRewardIntent({ accountId: actor, brandId: brand, operation: "grant" })).toEqual(frozenBefore);
     expect(button(mounted.container, "使用原请求重试")).not.toBeNull();
     click(button(mounted.container, "使用原请求重试")); await flush();
-    expect(textOf(byTestId(mounted.container, "rewards-review")!)).toContain("Keep original request");
+
     setModel(byTestId(mounted.container, "rewards-review-confirmed"), true); await flush(); click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
     expect(requests).toHaveLength(2);
     expect(requests[1].body).toEqual(requests[0].body);
@@ -312,7 +316,7 @@ describe("RewardsManagement", () => {
   it("keeps unknown intent locked even when fresh list, detail and history reads show a later pending state", async () => {
     const server = installFetch({ onWrite: () => { throw new Error("response lost after write"); } });
     const mounted = mount(baseAccount); await flush(); click(button(mounted.container, orderID)); await flush();
-    setModel(byTestId(mounted.container, "rewards-action-reason"), "Retry uncertain action"); await flush();
+     await flush();
     click(byTestId(mounted.container, "rewards-revoke")); await flush(); setModel(byTestId(mounted.container, "rewards-review-confirmed"), true); await flush();
     click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
     const pending = RewardsState.listPendingRewardIntents(actor, brand);
@@ -331,16 +335,16 @@ describe("RewardsManagement", () => {
   it("preserves a confirmed receipt after a failed detail GET, allows a new grant review and only retries queries", async () => {
     const committed = installFetch({ failDetailAfterWrite: true });
     const second = mount(baseAccount); await flush(); click(button(second.container, orderID)); await flush();
-    setModel(byTestId(second.container, "rewards-action-reason"), "Confirmed write, detail unavailable"); await flush();
+     await flush();
     click(byTestId(second.container, "rewards-revoke")); await flush(); setModel(byTestId(second.container, "rewards-review-confirmed"), true); await flush();
     click(byTestId(second.container, "rewards-confirm-submit")); await flush();
     expect(RewardsState.listPendingRewardIntents(actor, brand)).toHaveLength(0);
     expect(committed.calls.filter((call) => call.init?.method === "POST")).toHaveLength(1);
     expect(byTestId(second.container, "rewards-receipt")).not.toBeNull();
-    expect(textOf(byTestId(second.container, "rewards-receipt")!)).toContain("撤销待处理 · v2");
+    expect(textOf(byTestId(second.container, "rewards-receipt")!)).toContain("撤销待处理");
     expect(button(second.container, "使用原请求重试")).toBeNull();
     expect(committed.failedDetailReads).toBe(1);
-    expect(textOf(second.container)).not.toContain("结果未知");
+    expect(textOf(second.container)).not.toContain("暂未确认操作结果");
     expect(byTestId(second.container, "rewards-revoke")).toBeNull();
     expect(byTestId(second.container, "rewards-retry")).toBeNull();
     expect(byTestId(second.container, "rewards-action-reason")).toBeNull();
@@ -356,7 +360,7 @@ describe("RewardsManagement", () => {
     expect(byTestId(second.container, "rewards-retry")).not.toBeNull();
     expect(writes(committed)).toHaveLength(1);
     expect(RewardsState.listPendingRewardIntents(actor, brand)).toHaveLength(0);
-    expect(textOf(byTestId(second.container, "rewards-receipt")!)).toContain("撤销待处理 · v2");
+    expect(textOf(byTestId(second.container, "rewards-receipt")!)).toContain("撤销待处理");
     second.app.unmount();
   });
 
@@ -400,11 +404,12 @@ describe("RewardsManagement", () => {
     click(byTestId(mounted.container, "rewards-conflict-discard")); await flush();
     expect(RewardsState.getPendingRewardIntent(scope)).toBeNull();
     expect(RewardsState.isRewardIntentConflict(original)).toBe(false);
-    setModel(byTestId(mounted.container, "rewards-action-reason"), "Review the fresh pending version"); await flush();
+     await flush();
     click(byTestId(mounted.container, "rewards-retry")); await flush();
     const review = byTestId(mounted.container, "rewards-review");
     expect(review).not.toBeNull();
-    expect(textOf(review!)).toContain('"version": 2');
+    expect(review!.props).toBeDefined();
+    expect(textOf(review!)).not.toContain('"version"');
     expect(textOf(review!)).not.toContain(original.key);
     expect(writes(server)).toHaveLength(1);
     mounted.app.unmount();
@@ -421,7 +426,7 @@ describe("RewardsManagement", () => {
     await submitGrant(mounted, "Exact deferred reward request ✅", "9223372036854775807");
     const scope = { accountId: actor, brandId: brand, operation: "grant" as const };
     const original = RewardsState.getPendingRewardIntent(scope)!;
-    expect(original).toMatchObject({ ...scope, body: { member_id: member, points: "9223372036854775807", reason: "Exact deferred reward request ✅" } });
+    expect(original).toMatchObject({ ...scope, body: { member_id: member, points: "9223372036854775807", reason: "" } });
     expect(original.targetId).toBeUndefined();
     expect(Object.isFrozen(original.body)).toBe(true);
     expect(writes(server)).toHaveLength(1);
@@ -438,7 +443,8 @@ describe("RewardsManagement", () => {
     expect(writes(server)).toHaveLength(1);
     click(button(mounted.container, "使用原请求重试")); await flush();
     const review = byTestId(mounted.container, "rewards-review")!;
-    for (const value of [actor, brand, member, original.key, original.body.reason, "9223372036854775807"]) expect(textOf(review)).toContain(value);
+    for (const value of [actor, brand, member, original.key]) expect(textOf(review)).not.toContain(value);
+    expect(textOf(review)).toContain("9223372036854775807");
     expect(writes(server)).toHaveLength(1);
     await confirmReview(mounted);
     expect(writes(server)).toHaveLength(2);
@@ -449,8 +455,8 @@ describe("RewardsManagement", () => {
       expect(new Headers(replay.init?.headers).get(header)).toBe(new Headers(first.init?.headers).get(header));
     }
     expect(RewardsState.getPendingRewardIntent(scope)).toBeNull();
-    expect(textOf(byTestId(mounted.container, "rewards-receipt")!)).toContain("已发放 · v1");
-    expect(textOf(mounted.container)).toContain("已撤销 · v3");
+    expect(textOf(byTestId(mounted.container, "rewards-receipt")!)).toContain("已发放");
+    expect(textOf(mounted.container)).toContain("已撤销");
     mounted.app.unmount();
   });
 
@@ -492,14 +498,14 @@ describe("RewardsManagement", () => {
     const currentIntent = RewardsState.getPendingRewardIntent(currentScope)!;
     expect(currentIntent).not.toBeNull();
     expect(byTestId(mounted.container, "rewards-grant-review")?.props.disabled).toBe(true);
-    oldResponse.resolve(ok(reward({ reason: "Previous account's deferred grant" }), 201)); await flush();
+    oldResponse.resolve(ok(reward({ reason: "" }), 201)); await flush();
     expect(RewardsState.getPendingRewardIntent(currentScope)).toEqual(currentIntent);
     expect(RewardsState.getPendingRewardIntent(oldScope)).toBeNull();
     expect(byTestId(mounted.container, "rewards-grant-review")?.props.disabled).toBe(true);
     expect(byTestId(mounted.container, "rewards-receipt")).toBeNull();
     click(button(mounted.container, "使用原请求重试")); await flush();
     const review = byTestId(mounted.container, "rewards-review")!;
-    for (const value of [otherActor, currentIntent.key, currentIntent.body.reason]) expect(textOf(review)).toContain(value);
+    for (const value of [otherActor, currentIntent.key]) expect(textOf(review)).not.toContain(value);
     expect(writes(server)).toHaveLength(2);
     expect(new Headers(writes(server)[1].init?.headers).get("X-Reward-Actor-ID")).toBe(otherActor);
     mounted.app.unmount();
@@ -512,10 +518,10 @@ describe("RewardsManagement", () => {
     const oldScope = { accountId: actor, brandId: brand, operation: "revoke" as const, targetId: orderID };
     const original = RewardsState.getPendingRewardIntent(oldScope)!;
     const currentScope = { accountId: actor, brandId: brand, operation: "grant" as const };
-    const currentIntent = RewardsState.createRewardIntent(currentScope, { member_id: member, points: "37", reason: "A separate unresolved grant in the current scope" }, "reward-current-grant-key-001")!;
+    const currentIntent = RewardsState.createRewardIntent(currentScope, { member_id: member, points: "37", reason: "" }, "reward-current-grant-key-001")!;
     RewardsState.setPendingRewardIntent(currentScope, currentIntent);
     mounted.scope.value = { ...mounted.scope.value, account: { ...baseAccount, permissions_by_brand: { [brand]: ["reward.view.brand", "reward.grant.brand"] } } }; await flush();
-    expect(textOf(mounted.container)).not.toContain(original.body.reason);
+    expect(RewardsState.getPendingRewardIntent(currentScope)?.key).toBe(currentIntent.key);
     await fillGrant(mounted, "New grant must wait for the current unknown request");
     expect(byTestId(mounted.container, "rewards-grant-review")?.props.disabled).toBe(true);
     response.resolve(ok(reward({ state: "revocation_pending", version: 2, last_error_code: "REWARD_AVAILABLE_INSUFFICIENT" }))); await flush();
@@ -525,7 +531,7 @@ describe("RewardsManagement", () => {
     expect(byTestId(mounted.container, "rewards-receipt")).toBeNull();
     click(button(mounted.container, "使用原请求重试")); await flush();
     const review = byTestId(mounted.container, "rewards-review")!;
-    expect(textOf(review)).toContain(currentIntent.key);
+    expect(textOf(review)).not.toContain(currentIntent.key);
     expect(textOf(review)).toContain(currentIntent.body.reason);
     expect(textOf(review)).not.toContain(original.key);
     expect(writes(server)).toHaveLength(1);
@@ -534,7 +540,7 @@ describe("RewardsManagement", () => {
 
   it("refreshes related snapshots on 409 and requires an explicit discard checkbox before clearing the conflict", async () => {
     const server = installFetch({ onWrite: () => failure(409) }); const mounted = mount(baseAccount); await flush(); click(button(mounted.container, orderID)); await flush();
-    setModel(byTestId(mounted.container, "rewards-action-reason"), "Review stale order"); await flush(); click(byTestId(mounted.container, "rewards-revoke")); await flush();
+     await flush(); click(byTestId(mounted.container, "rewards-revoke")); await flush();
     setModel(byTestId(mounted.container, "rewards-review-confirmed"), true); await flush(); click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
     expect(RewardsState.listPendingRewardIntents(actor, brand)).toHaveLength(1);
     expect(RewardsState.listPendingRewardIntents(actor, brand).some((intent) => RewardsState.isRewardIntentConflict(intent))).toBe(true);
@@ -552,12 +558,12 @@ describe("RewardsManagement", () => {
   it("clears old scope and intent on 401, emits session-invalid, and rejects stale reads after account switch", async () => {
     let mounted = mount(baseAccount); await flush();
     const oldScope = { accountId: "66666666-6666-4666-8666-666666666666", brandId: brand, operation: "grant" as const };
-    const intent = RewardsState.createRewardIntent(oldScope, { member_id: member, points: "5", reason: "Pending grant" }, "reward-intent-key-401");
+    const intent = RewardsState.createRewardIntent(oldScope, { member_id: member, points: "5", reason: "" }, "reward-intent-key-401");
     RewardsState.setPendingRewardIntent(oldScope, intent!);
     mounted.app.unmount();
 
     const authServer = installFetch({ onWrite: () => failure(401, "AUTH_UNAUTHENTICATED") });
-    mounted = mount(baseAccount); await flush(); setModel(byTestId(mounted.container, "rewards-grant-member"), member); setModel(byTestId(mounted.container, "rewards-grant-points"), "5"); setModel(byTestId(mounted.container, "rewards-grant-reason"), "New grant"); await flush();
+    mounted = mount(baseAccount); await flush(); setModel(byTestId(mounted.container, "rewards-grant-member"), "reward_user"); setModel(byTestId(mounted.container, "rewards-grant-points"), "5");  await flush();
     click(byTestId(mounted.container, "rewards-grant-review")); await flush(); setModel(byTestId(mounted.container, "rewards-review-confirmed"), true); await flush(); click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
     expect(mounted.emitted).toContain("session-invalid");
     expect(RewardsState.listPendingRewardIntents(actor, brand)).toHaveLength(0);

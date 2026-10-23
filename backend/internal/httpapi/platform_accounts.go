@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
@@ -15,8 +16,8 @@ import (
 
 // Account and role administration does not enable platform financial or member writes.
 func platformAccountWriteRoute(method, path string) bool {
-	return method == "POST" && (path == "/accounts" || path == "/accounts/{id}/reset-password" || path == "/roles" || path == "/platform-accounts" || path == "/platform-accounts/{id}/reset-password") ||
-		method == "PATCH" && (path == "/accounts/{id}" || path == "/roles/{id}" || path == "/platform-accounts/{id}")
+	return method == "POST" && (path == "/accounts" || path == "/accounts/{id}/reset-password" || path == "/accounts/{id}/delete" || path == "/roles" || path == "/roles/{id}/delete" || path == "/platform-accounts" || path == "/platform-accounts/{id}/reset-password" || path == "/platform-accounts/{id}/delete" || path == "/platform-roles" || path == "/platform-roles/{id}/delete") ||
+		method == "PATCH" && (path == "/accounts/{id}" || path == "/roles/{id}" || path == "/platform-accounts/{id}" || path == "/platform-roles/{id}")
 }
 
 func platformAccountActor(w http.ResponseWriter, r *http.Request, d Dependencies, resource, action string) (access.Account, bool) {
@@ -51,7 +52,15 @@ func platformAccountWrite(w http.ResponseWriter, r *http.Request, d Dependencies
 		if err != nil {
 			return err
 		}
-		if !fresh.SuperAdmin || !access.Authorize(fresh, "admin", "write", access.ScopePlatform, "") {
+		resource, action := "admin", "write"
+		if operation == "platform.account.delete" {
+			action = "delete"
+		} else if operation == "platform.role.update" || operation == "platform.role.create" {
+			resource = "role"
+		} else if operation == "platform.role.delete" {
+			resource, action = "role", "delete"
+		}
+		if !fresh.SuperAdmin || !access.Authorize(fresh, resource, action, access.ScopePlatform, "") {
 			return adminsys.ErrDenied
 		}
 		return nil
@@ -61,7 +70,18 @@ func platformAccountWrite(w http.ResponseWriter, r *http.Request, d Dependencies
 	} else if errors.Is(err, adminsys.ErrDenied) {
 		result, err = mutation.Fail(403, "PERMISSION_DENIED", "无平台账号管理权限"), nil
 	}
-	finishAdminMutation(w, r, d, actor, "", "admin.write.platform", result, err)
+	permission := "admin.write.platform"
+	if operation == "platform.account.delete" {
+		permission = "admin.delete.platform"
+	} else if operation == "platform.role.update" || operation == "platform.role.create" {
+		permission = "role.write.platform"
+	} else if operation == "platform.role.delete" {
+		permission = "role.delete.platform"
+	}
+	if err != nil {
+		slog.Default().Error("platform account mutation failed", "operation", operation, "request_id", requestID(r), "error", err)
+	}
+	finishAdminMutation(w, r, d, actor, "", permission, result, err)
 }
 
 func registerPlatformAccountRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
@@ -96,6 +116,20 @@ func registerPlatformAccountRoutes(handle func(string, string, http.HandlerFunc)
 			}
 		})
 	}
+	handle("GET", "/platform-permissions", func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := platformAccountActor(w, r, d, "role", "view")
+		if !ok {
+			return
+		}
+		items, err := d.Admins.ListPlatformPermissions(r.Context(), actor)
+		if err != nil {
+			managementFailure(w, r, d, actor, "", "role.view.platform", err)
+			return
+		}
+		if adminReadAudit(w, r, d, actor, "", "role.view.platform") {
+			respond(w, r, 200, map[string]any{"items": items})
+		}
+	})
 	handle("POST", "/platform-accounts", func(w http.ResponseWriter, r *http.Request) {
 		actor, ok := platformAccountActor(w, r, d, "admin", "write")
 		if !ok {
@@ -172,6 +206,100 @@ func registerPlatformAccountRoutes(handle func(string, string, http.HandlerFunc)
 				return fail, err
 			}
 			auditID, err := d.Admins.ResetPlatformAdminPassword(ctx, tx, fresh, id, in.Version, hash, in.Reason, meta(r))
+			if err != nil {
+				return managementError(err)
+			}
+			return mutation.OK(200, map[string]string{"audit_log_id": auditID}), nil
+		})
+	})
+	handle("POST", "/platform-accounts/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := platformAccountActor(w, r, d, "admin", "delete")
+		if !ok {
+			return
+		}
+		id := r.PathValue("id")
+		var in struct {
+			Version int64 `json:"version"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if !uuidPattern.MatchString(id) || in.Version < 1 {
+			failure(w, r, 400, "REQUEST_INVALID", "账号编号或版本不正确")
+			return
+		}
+		platformAccountWrite(w, r, d, actor, "platform.account.delete", id, in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+			auditID, err := d.Admins.DeletePlatformAdmin(ctx, tx, fresh, id, in.Version, meta(r))
+			if err != nil {
+				if errors.Is(err, adminsys.ErrInvalid) {
+					return mutation.Fail(400, "REQUEST_INVALID", "删除账号请求无效，请刷新后重试"), nil
+				}
+				return managementError(err)
+			}
+			return mutation.OK(200, map[string]string{"audit_log_id": auditID}), nil
+		})
+	})
+	handle("POST", "/platform-roles", func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := platformAccountActor(w, r, d, "role", "write")
+		if !ok {
+			return
+		}
+		var in adminsys.RoleInput
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		platformAccountWrite(w, r, d, actor, "platform.role.create", "", in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+			record, err := d.Admins.CreatePlatformRole(ctx, tx, fresh, in, meta(r))
+			if err != nil {
+				return managementError(err)
+			}
+			return mutation.OK(201, record), nil
+		})
+	})
+
+	handle("PATCH", "/platform-roles/{id}", func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := platformAccountActor(w, r, d, "role", "write")
+		if !ok {
+			return
+		}
+		id := r.PathValue("id")
+		var in adminsys.RoleInput
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if !uuidPattern.MatchString(id) || in.Code != "" {
+			failure(w, r, 400, "REQUEST_INVALID", "角色编号不正确，角色代码不能修改")
+			return
+		}
+		platformAccountWrite(w, r, d, actor, "platform.role.update", id, in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+			record, err := d.Admins.UpdatePlatformRole(ctx, tx, fresh, id, in, meta(r))
+			if err != nil {
+				return managementError(err)
+			}
+			return mutation.OK(200, record), nil
+		})
+	})
+	handle("POST", "/platform-roles/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := platformAccountActor(w, r, d, "role", "delete")
+		if !ok {
+			return
+		}
+		id := r.PathValue("id")
+		var in struct {
+			Version int64 `json:"version"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if !uuidPattern.MatchString(id) || in.Version < 1 {
+			failure(w, r, 400, "REQUEST_INVALID", "角色编号或版本不正确")
+			return
+		}
+		platformAccountWrite(w, r, d, actor, "platform.role.delete", id, in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+			auditID, err := d.Admins.DeletePlatformRole(ctx, tx, fresh, id, in.Version, meta(r))
+			if errors.Is(err, adminsys.ErrRoleAssigned) {
+				return mutation.Fail(409, "ROLE_ASSIGNED", "角色仍被账号使用，请先移除角色后再删除"), nil
+			}
 			if err != nil {
 				return managementError(err)
 			}

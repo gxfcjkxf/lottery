@@ -21,9 +21,8 @@ let generation = 0;
 export function commissionCorrectionIntentKey(scope: CommissionCorrectionIntentScope): string {
   return JSON.stringify([scope.actorId, scope.brandId, scope.operation, scope.targetId ?? null]);
 }
-export function commissionCorrectionContextKey(actorId: string, brandId: string): string { return JSON.stringify([actorId, brandId]); }
 function validReason(reason: unknown): reason is string {
-  if (typeof reason !== "string" || !reason || reason.trim() !== reason || new TextEncoder().encode(reason).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(reason)) return false;
+  if (typeof reason !== "string" || reason.trim() !== reason || new TextEncoder().encode(reason).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(reason)) return false;
   for (let i = 0; i < reason.length; i++) {
     const code = reason.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff) { const next = reason.charCodeAt(++i); if (!(next >= 0xdc00 && next <= 0xdfff)) return false; }

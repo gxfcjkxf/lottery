@@ -221,7 +221,7 @@ func changeHash(c Change) (string, error) {
 	return hex.EncodeToString(h[:]), nil
 }
 func validChange(c Change) bool {
-	if !uuidPattern.MatchString(c.BrandID) || !uuidPattern.MatchString(c.MemberID) || !operationPattern.MatchString(c.OperationKey) || !operationPattern.MatchString(c.EntryType) || !operationPattern.MatchString(c.ReferenceType) || len(c.Reason) == 0 || len(c.Reason) > 500 || !utf8.ValidString(c.Reason) || len(c.RequestID) == 0 || len(c.RequestID) > 80 {
+	if !uuidPattern.MatchString(c.BrandID) || !uuidPattern.MatchString(c.MemberID) || !operationPattern.MatchString(c.OperationKey) || !operationPattern.MatchString(c.EntryType) || !operationPattern.MatchString(c.ReferenceType) || len(c.Reason) > 500 || !utf8.ValidString(c.Reason) || len(c.RequestID) == 0 || len(c.RequestID) > 80 {
 		return false
 	}
 	if c.ActorType != "user" && c.ActorType != "admin" && c.ActorType != "system" {

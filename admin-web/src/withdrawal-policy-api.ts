@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 import { WALLET_SOURCES, type WalletSource } from "@lottery/shared";
@@ -97,12 +99,6 @@ export function isValidTurnoverMultiple(value: string): boolean {
     BigInt(whole) * 1000000n + BigInt(fraction.padEnd(6, "0") || "0");
   return micros > 0n && micros <= MAX_TURNOVER_MICROS;
 }
-
-type Envelope<T> = {
-  success?: boolean;
-  data?: T;
-  error?: { code: string; message: string } | null;
-};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -272,7 +268,7 @@ function validRevision(
       : validGameConfig(value.config)) ||
     typeof value.changed_by !== "string" ||
     typeof value.reason !== "string" ||
-    value.reason.trim().length === 0 ||
+
     new TextEncoder().encode(value.reason).length > 500 ||
     !isDateTime(value.created_at)
   )
@@ -304,7 +300,7 @@ function validateUpdateBody(
     !isRecord(body) ||
     !isVersion(body.version) ||
     typeof body.reason !== "string" ||
-    body.reason.trim().length === 0 ||
+
     new TextEncoder().encode(body.reason).length > 500 ||
     !(game ? validGameConfig(body.config) : validBrandConfig(body.config))
   )
@@ -353,26 +349,8 @@ export function createWithdrawalPolicyApi(fetcher: typeof fetch = fetch) {
         "NETWORK_ERROR",
       );
     }
-    let envelope: Envelope<T>;
-    try {
-      envelope = (await response.json()) as Envelope<T>;
-    } catch {
-      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
-    }
-    if (!isRecord(envelope)) throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
-    const error = envelope.error;
-    if (!response.ok && envelope.success === false && isRecord(error)
-      && typeof error.code === "string" && error.code.trim()
-      && typeof error.message === "string" && error.message.trim()) {
-      throw new AdminApiError(error.message, response.status, error.code);
-    }
-    if (
-      !response.ok ||
-      envelope.success !== true ||
-      envelope.data == null || !isRecord(envelope.data)
-    ) {
-      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
-    }
+    const envelope = await readAdminEnvelope<T>(response);
+    if (envelope.data == null || !isRecord(envelope.data)) throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
     return envelope.data;
   }
 

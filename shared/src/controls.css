@@ -1,0 +1,197 @@
+/* Body copy uses the same size as standard action buttons on every surface. */
+#app, #app :is(.app-frame, .app-shell) { font-size: var(--body-font-size); }
+#app :is(p, label, li, dt, dd, td, th, small, legend, output, button, .button,
+  .message, .notice, .description, .hint, .form-help, .auth-error,
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), select, textarea) {
+  font-size: var(--body-font-size);
+}
+
+/* Shared control geometry. Brand tokens remain owned by the active brand. */
+:is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--body-font-size);
+  line-height: 1.5;
+}
+/* Number inputs keep numeric validation and keyboards without native steppers. */
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+select { padding-right: 28px; }
+/* Native intrinsic sizing fits the option text and arrow without stretching. */
+#app select {
+  width: max-content !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  flex: 0 1 auto !important;
+  padding-right: 36px !important;
+}
+#app select[multiple] { padding-right: 12px !important; }
+textarea { height: auto; min-height: 96px; resize: vertical; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
+input::placeholder, textarea::placeholder { color: var(--muted); }
+:is(input, select, textarea):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.button, .button-primary, .button-secondary, .button-danger {
+  min-height: 36px;
+  border-radius: var(--radius-sm);
+  font-size: var(--body-font-size);
+}
+.button-primary, .button-dark, button.primary, .jc-primary {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: white !important;
+  box-shadow: var(--shadow-sm);
+}
+.button-primary:hover, .button-dark:hover, button.primary:hover, .jc-primary:hover {
+  background: var(--primary-dark) !important;
+  border-color: var(--primary-dark) !important;
+}
+.button-secondary { border-color: var(--line); background: var(--surface); color: var(--ink-secondary); }
+.button-danger { border-color: var(--danger); color: var(--danger); }
+
+/* Both back offices use the same panel hierarchy and space scale. */
+:is(.app-shell, .app-frame) :is(.panel-heading h2, .panel-header h2) { font-size: 16px; line-height: 1.5; }
+:is(.app-shell, .app-frame) :is(.panel-heading, .panel-header, .form-actions) { gap: 12px; }
+:is(.app-shell, .app-frame) :is(.wallet-query, .filters, .filter-bar, .jc-filters) { gap: 12px; }
+:is(.app-shell, .app-frame) :is(.panel-heading, .panel-header) { flex-wrap: wrap; }
+:is(.app-shell, .app-frame) :is(.panel, .stat-card) { min-width: 0; }
+
+@media (max-width: 900px), (pointer: coarse) {
+  /* 16px inputs prevent focus zoom on iOS; minimums also cover compact local rules. */
+  #app :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), select, textarea) {
+    min-height: 44px !important;
+    font-size: 16px !important;
+  }
+  button, .button, summary { min-height: 44px !important; }
+  button { min-width: 44px; }
+  :is(.account-popover button, .account-popover a) { min-height: 44px; display: flex; align-items: center; }
+  :is(.app-shell, .app-frame) :is(.form-actions, .filter-actions) { flex-wrap: wrap; gap: 12px; }
+  :is(.app-shell, .app-frame) :is(.filters, .filter-bar, .jc-filters, .wallet-query) { padding: 14px; }
+  :is(.app-shell, .app-frame) :is(.panel-heading, .panel-header) { gap: 12px; }
+}
+
+@media (max-width: 700px) {
+  .app-shell .panel { padding: 16px; }
+  :is(.app-shell, .app-frame) .stat-card { padding: 16px; }
+}
+
+.site-icon { display: inline-block; flex-shrink: 0; vertical-align: middle; }
+.association-name { overflow-wrap: anywhere; white-space: normal; }
+.nav-icon, .account-tool-icon { display: inline-flex; align-items: center; justify-content: center; }
+
+.nav-icon { width: 20px; min-width: 20px; color: var(--muted); }
+.input-with-icon .input-icon { left: 12px !important; display: inline-flex !important; align-items: center; line-height: 1; }
+.input-with-icon input { padding-left: 40px !important; }
+select { appearance: none !important; background-image: url('./icons/chevron-down.svg') !important; background-position: right 10px center !important; background-repeat: no-repeat !important; background-size: 20px 20px !important; padding-right: 36px; }
+select[multiple] { background-image: none !important; padding-right: 12px; }
+
+/* Search controls use content width and wrap only when the row is full. */
+#app .management-console :is(.filters, .ar-filters, .allocation-filters, .filter-bar, .filter-row, .reports-filter-grid, .audit-filters, .wallet-query, .withdrawal-filters) {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-start !important;
+  align-items: flex-end !important;
+  gap: 10px !important;
+}
+#app .management-console :is(.filters, .ar-filters, .allocation-filters, .filter-bar, .filter-row, .reports-filter-grid, .audit-filters, .wallet-query, .withdrawal-filters) > label {
+  flex: 0 1 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 100%;
+}
+#app .management-console :is(.filters, .ar-filters, .allocation-filters, .filter-bar, .filter-row, .reports-filter-grid, .audit-filters, .wallet-query, .withdrawal-filters) label:has(> .platform-temporal-input) {
+  width: 148px !important;
+}
+#app .management-console :is(.filters, .ar-filters, .allocation-filters, .filter-bar, .filter-row, .reports-filter-grid, .audit-filters, .wallet-query, .withdrawal-filters) input:not([type="checkbox"], [type="radio"], .platform-temporal-value, .platform-date-input-display) {
+  width: 168px !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+#app .management-console :is(.filters, .ar-filters, .allocation-filters, .filter-bar, .filter-row, .reports-filter-grid, .audit-filters, .wallet-query, .withdrawal-filters) .platform-date-input-display {
+  min-height: 36px;
+  height: 36px;
+}
+#app .management-console :is(.filters, .ar-filters, .allocation-filters, .filter-bar, .filter-row, .reports-filter-grid, .audit-filters, .wallet-query, .withdrawal-filters) .input-with-icon {
+  flex: 0 1 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+#app .management-console .audit-actions { flex: 0 1 auto; }
+#app .management-console :is(.filters, .ar-filters, .allocation-filters, .reports-filter-grid, .audit-filters, .wallet-query, .withdrawal-filters) > .button {
+  height: var(--console-control-height);
+  min-height: var(--console-control-height) !important;
+  padding-top: 0;
+  padding-bottom: 0;
+  align-self: flex-end;
+}
+
+/* Action buttons share geometry across all three applications. */
+#app .button:not([data-refresh-button]) {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  box-sizing:border-box;
+  min-height:36px;
+  padding:8px 12px;
+  border-width:1px;
+  border-style:solid;
+  border-radius:var(--radius-sm) !important;
+  font-family:inherit;
+  font-size:var(--body-font-size);
+  font-weight:600;
+  line-height:1.5;
+  text-decoration:none;
+  cursor:pointer;
+  transition:background-color 150ms,border-color 150ms,color 150ms,box-shadow 150ms;
+}
+#app .button:hover, #app .button:active { transform:none; }
+#app .button:disabled { cursor:not-allowed; }
+#app select { justify-self:start; white-space:nowrap; }
+
+/* Desktop fields fit typical content instead of stretching with their forms. */
+@media (min-width:901px) and (pointer:fine) {
+  #app input:not([type="hidden"],[type="checkbox"],[type="radio"],[type="range"],[type="color"],[type="file"],[type="submit"],[type="button"],[type="image"],.platform-temporal-value,.platform-date-input-display) {
+    width:var(--input-width,28ch) !important;
+    min-width:0 !important;
+    max-width:100% !important;
+    flex:0 1 auto !important;
+    justify-self:start;
+    box-sizing:border-box;
+  }
+  #app input:is([type="email"],[type="url"]) { --input-width:40ch; }
+  #app input:is([type="number"],[inputmode="numeric"],[inputmode="decimal"]) { --input-width:16ch; }
+  #app input[type="tel"] { --input-width:24ch; }
+  #app input:is([type="date"],[type="month"],[type="week"]) { --input-width:20ch; }
+  #app input[type="time"] { --input-width:16ch; }
+  #app input[type="datetime-local"] { --input-width:28ch; }
+  #app input[autocomplete="one-time-code"] { --input-width:12ch; }
+  #app .input-with-icon { width:max-content; max-width:100%; flex:0 1 auto; }
+  #app .button:not([data-refresh-button]) {
+    width:max-content !important;
+    min-width:0;
+    max-width:100%;
+    flex:0 1 auto !important;
+    justify-self:start;
+  }
+}
+@media (max-width:900px), (pointer:coarse) {
+  #app .button { min-height:44px; }
+}
+
+/* Write entrances stay visibly unavailable during the submission gate. */
+button[data-write-locked], form[data-write-locked] button[type=submit], form[data-write-locked] button:not([type]) {
+  opacity: .6;
+  cursor: wait;
+}

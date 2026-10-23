@@ -1,6 +1,7 @@
 package betting
 
 import (
+ "github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"context"
 	"encoding/json"
 	"errors"
@@ -620,8 +621,8 @@ func addActualChildAgentBeneficiary(t *testing.T, f commissionBatchFixture, mult
 	bettingTx(t, f.betting.db, func(tx pgx.Tx) error {
 		var err error
 		child, err = agents.Create(ctx, tx, f.betting.brand, f.actor, agency.CreateInput{
-			PolicyVersion: agentPolicy.Version, MemberID: secondMember.Member.ID, ParentID: &parentID, ParentVersion: &parentVersion,
-			Config: agency.NodeConfig{Ratio: "0.1", Status: "active"}, Reason: "create actual second correction beneficiary",
+			PolicyVersion: agentPolicy.Version, Username: testdb.AgentUsername(secondMember.Member.ID), Password: "agent123", ParentID: &parentID, ParentVersion: &parentVersion,
+			Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0.1", Status: "active"}, Reason: "create actual second correction beneficiary",
 		}, points.Metadata{ActorType: "admin", ActorID: f.actor.ID, RequestID: ids.New()})
 		return err
 	})
@@ -630,7 +631,7 @@ func addActualChildAgentBeneficiary(t *testing.T, f commissionBatchFixture, mult
 	bettingTx(t, f.betting.db, func(tx pgx.Tx) error {
 		var err error
 		childCode, err = codes.Create(ctx, tx, f.betting.brand, f.actor, attribution.CreateInput{
-			Kind: "agent", OwnerMemberID: secondMember.Member.ID, AgentID: &child.ID, Reason: "actual child agent join code",
+			Kind: "agent", OwnerMemberID: child.MemberID, AgentID: &child.ID, Reason: "actual child agent join code",
 		}, points.Metadata{ActorType: "admin", ActorID: f.actor.ID, RequestID: ids.New()})
 		return err
 	})

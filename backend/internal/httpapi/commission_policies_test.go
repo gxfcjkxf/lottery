@@ -35,7 +35,7 @@ func enabledCommissionPolicyConfig() commission.PolicyConfig {
 	}
 }
 
-func TestCommissionPolicyHTTPAuthorizationReplayHistoryAndAudit(t *testing.T) {
+func TestCommissionPolicyHTTPAuthorizationReplayWithoutHistory(t *testing.T) {
 	f := managedFixture(t)
 	ctx := context.Background()
 	grantCommissionPolicy(t, f)
@@ -50,7 +50,7 @@ func TestCommissionPolicyHTTPAuthorizationReplayHistoryAndAudit(t *testing.T) {
 	managedData(t, createdAgent, &node)
 	disableAgent := map[string]any{
 		"version": node.Version, "policy_version": node.PolicyVersion, "parent_version": nil,
-		"config": map[string]any{"ratio": "0.05", "mode": nil, "status": "disabled", "can_create_children": true},
+		"config": map[string]any{"ratio": "0.05", "mode": "loss", "status": "disabled", "can_create_children": true},
 		"reason": "manually disable agent",
 	}
 	mustStatus(t, f.call("PUT", "/api/v1/admin/agents/"+node.ID, "commission-agent-disable-001", f.token, managedBrand, disableAgent), 200)
@@ -68,7 +68,7 @@ func TestCommissionPolicyHTTPAuthorizationReplayHistoryAndAudit(t *testing.T) {
 	mustStatus(t, first, 200)
 	var updated commission.Policy
 	managedData(t, first, &updated)
-	if updated.Version != 2 || !updated.Config.Enabled || updated.Config.Calendar == nil || updated.Config.Calendar.Cycle != "weekly" || updated.AuditLogID == "" {
+	if updated.Version != 2 || !updated.Config.Enabled || updated.Config.Calendar == nil || updated.Config.Calendar.Cycle != "weekly" {
 		t.Fatalf("unexpected updated policy: %+v", updated)
 	}
 
@@ -76,7 +76,7 @@ func TestCommissionPolicyHTTPAuthorizationReplayHistoryAndAudit(t *testing.T) {
 	mustStatus(t, replay, 200)
 	var repeated commission.Policy
 	managedData(t, replay, &repeated)
-	if repeated.Version != updated.Version || repeated.RevisionID != updated.RevisionID || repeated.AuditLogID != updated.AuditLogID {
+	if repeated.Version != updated.Version || repeated.RevisionID != updated.RevisionID {
 		t.Fatalf("replay was not stable: %+v vs %+v", repeated, updated)
 	}
 	changed := body
@@ -85,18 +85,8 @@ func TestCommissionPolicyHTTPAuthorizationReplayHistoryAndAudit(t *testing.T) {
 	mustStatus(t, f.call("PUT", commissionPolicyPath, "commission-policy-stale-001", f.token, managedBrand, body), 409)
 	mustStatus(t, f.call("GET", commissionPolicyPath, "", f.token, "0199a000-0000-7000-8000-000000000002", nil), 403)
 
-	historyResponse := f.call("GET", commissionPolicyPath+"/history?limit=20&offset=0", "", f.token, managedBrand, nil)
-	mustStatus(t, historyResponse, 200)
-	var history struct {
-		Items []commission.Revision `json:"items"`
-	}
-	managedData(t, historyResponse, &history)
-	if len(history.Items) != 2 || history.Items[0].Version != 2 || history.Items[1].Version != 1 || history.Items[0].ChangedBy == nil || *history.Items[0].ChangedBy != f.root {
-		t.Fatalf("unexpected history: %+v", history)
-	}
-	mustStatus(t, f.call("GET", commissionPolicyPath+"/history?limit=101", "", f.token, managedBrand, nil), 400)
-	mustStatus(t, f.call("GET", commissionPolicyPath+"/history?unexpected=1", "", f.token, managedBrand, nil), 400)
-	mustStatus(t, f.call("GET", commissionPolicyPath+"/history?limit=10&limit=20", "", f.token, managedBrand, nil), 400)
+	mustStatus(t, f.call("GET", commissionPolicyPath+"/history", "", f.token, managedBrand, nil), 404)
+	mustStatus(t, f.call("GET", "/api/v1/admin/agent-policy/history", "", f.token, managedBrand, nil), 404)
 
 	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id IN (SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key='commission_policy.write.brand'`, f.root); err != nil {
 		t.Fatal(err)
@@ -114,6 +104,7 @@ func TestCommissionPolicyHTTPAuthorizationReplayHistoryAndAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	platformPath := strings.Replace(commissionPolicyPath, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("GET", platformPath, "", platformToken, managedBrand, nil), 200)
 	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='commission_policy.view.platform'`, platformViewer); err != nil {
@@ -129,12 +120,12 @@ func TestCommissionPolicyHTTPAuthorizationReplayHistoryAndAudit(t *testing.T) {
 	mustStatus(t, f.call("GET", platformPath, "", platformToken, managedBrand, nil), 200)
 	mustStatus(t, f.call("PUT", commissionPolicyPath, "commission-policy-update-001", f.token, managedBrand, body), 403)
 
-	var revisions, updates int
-	if err := f.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM commission_policy_revisions WHERE brand_id=$1),(SELECT count(*) FROM audit_logs WHERE brand_id=$1 AND action='commission.policy.update')`, managedBrand).Scan(&revisions, &updates); err != nil {
+	var updates int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE brand_id=$1 AND action='commission.policy.update'`, managedBrand).Scan(&updates); err != nil {
 		t.Fatal(err)
 	}
-	if revisions != 2 || updates != 1 {
-		t.Fatalf("rejected writes changed durable policy evidence: revisions=%d updates=%d", revisions, updates)
+	if updates != 0 {
+		t.Fatalf("policy history was recorded: %d", updates)
 	}
 }
 
@@ -154,14 +145,14 @@ func TestCommissionPolicyHTTPStrictBodyAndEvidenceRollback(t *testing.T) {
 	wrongCalendar.Calendar.Weekday = nil
 	wrongCalendar.Calendar.MonthDay = &day
 	wrongCalendar.Calendar.ShortMonth = "last_day"
-	wrong := commission.PolicyInput{Version: 1, Config: wrongCalendar, Reason: "reject mismatched cycle evidence"}
+	wrong := commission.PolicyInput{Version: 2, Config: wrongCalendar, Reason: "reject stale policy version"}
 	mustStatus(t, f.call("PUT", commissionPolicyPath, "commission-policy-evidence-001", f.token, managedBrand, wrong), 409)
-	var version, revisions, updates int
-	if err := f.pool.QueryRow(context.Background(), `SELECT (SELECT version FROM brand_commission_policies WHERE brand_id=$1),(SELECT count(*) FROM commission_policy_revisions WHERE brand_id=$1),(SELECT count(*) FROM audit_logs WHERE brand_id=$1 AND action='commission.policy.update')`, managedBrand).Scan(&version, &revisions, &updates); err != nil {
+	var version, updates int
+	if err := f.pool.QueryRow(context.Background(), `SELECT (SELECT version FROM brand_commission_policies WHERE brand_id=$1),(SELECT count(*) FROM audit_logs WHERE brand_id=$1 AND action='commission.policy.update')`, managedBrand).Scan(&version, &updates); err != nil {
 		t.Fatal(err)
 	}
-	if version != 1 || revisions != 1 || updates != 0 {
-		t.Fatalf("rejected evidence write was not rolled back: version=%d revisions=%d updates=%d", version, revisions, updates)
+	if version != 1 || updates != 0 {
+		t.Fatalf("rejected evidence write was not rolled back: version=%d updates=%d", version, updates)
 	}
 
 	// Verify the HTTP response remains the standard envelope on a cached rejection.
@@ -173,7 +164,7 @@ func TestCommissionPolicyHTTPStrictBodyAndEvidenceRollback(t *testing.T) {
 			Code string `json:"code"`
 		} `json:"error"`
 	}
-	if err := json.Unmarshal(raw.Body.Bytes(), &envelope); err != nil || envelope.Success || envelope.Error.Code != "COMMISSION_POLICY_EVIDENCE_CONFLICT" {
+	if err := json.Unmarshal(raw.Body.Bytes(), &envelope); err != nil || envelope.Success || envelope.Error.Code != "COMMISSION_POLICY_VERSION_CONFLICT" {
 		t.Fatalf("unexpected rejection envelope: %s (%v)", raw.Body.String(), err)
 	}
 
@@ -184,12 +175,12 @@ func TestCommissionPolicyHTTPStrictBodyAndEvidenceRollback(t *testing.T) {
 	if _, err := f.pool.Exec(context.Background(), `CREATE TRIGGER fail_commission_policy_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION fail_commission_policy_audit()`); err != nil {
 		t.Fatal(err)
 	}
-	mustStatus(t, f.call("PUT", commissionPolicyPath, "commission-policy-audit-retry-001", f.token, managedBrand, valid), 503)
-	if err := f.pool.QueryRow(context.Background(), `SELECT (SELECT version FROM brand_commission_policies WHERE brand_id=$1),(SELECT count(*) FROM commission_policy_revisions WHERE brand_id=$1),(SELECT count(*) FROM audit_logs WHERE brand_id=$1 AND action='commission.policy.update')`, managedBrand).Scan(&version, &revisions, &updates); err != nil {
+	mustStatus(t, f.call("PUT", commissionPolicyPath, "commission-policy-audit-retry-001", f.token, managedBrand, valid), 200)
+	if err := f.pool.QueryRow(context.Background(), `SELECT (SELECT version FROM brand_commission_policies WHERE brand_id=$1),(SELECT count(*) FROM audit_logs WHERE brand_id=$1 AND action='commission.policy.update')`, managedBrand).Scan(&version, &updates); err != nil {
 		t.Fatal(err)
 	}
-	if version != 1 || revisions != 1 || updates != 0 {
-		t.Fatalf("audit failure leaked commission writes: version=%d revisions=%d updates=%d", version, revisions, updates)
+	if version != 2 || updates != 0 {
+		t.Fatalf("policy update unexpectedly depended on history: version=%d updates=%d", version, updates)
 	}
 	if _, err := f.pool.Exec(context.Background(), `DROP TRIGGER fail_commission_policy_audit ON audit_logs`); err != nil {
 		t.Fatal(err)
@@ -203,5 +194,53 @@ func TestCommissionPolicyHTTPStrictBodyAndEvidenceRollback(t *testing.T) {
 	managedData(t, retried, &committed)
 	if committed.Version != 2 {
 		t.Fatalf("retry after transient audit failure was not executed: %+v", committed)
+	}
+}
+
+func TestCommissionPolicyCanEnableOnDefaultAgentRules(t *testing.T) {
+	f := managedFixture(t)
+	grantCommissionPolicy(t, f)
+	day := 1
+	config := commission.PolicyConfig{Enabled: true, Calendar: &commission.Calendar{Timezone: "UTC", Cycle: "monthly", BoundaryTime: "00:00:00", MonthDay: &day, ShortMonth: "last_day"}, PayoutMode: commission.PayoutManual}
+	mustStatus(t, f.call("PUT", commissionPolicyPath, "commission-default-agency-enable-001", f.token, managedBrand, commission.PolicyInput{Version: 1, Config: config}), 200)
+	mustStatus(t, f.call("PUT", commissionPolicyPath, "commission-default-agency-disable-001", f.token, managedBrand, commission.PolicyInput{Version: 2, Config: commission.DefaultPolicyConfig()}), 200)
+	var version int
+	var enabled bool
+	if err := f.pool.QueryRow(context.Background(), `SELECT version,(config->>'enabled')::boolean FROM brand_agent_policies WHERE brand_id=$1`, managedBrand).Scan(&version, &enabled); err != nil || version != 1 || !enabled {
+		t.Fatalf("commission toggle changed agent rules: %d %v %v", version, enabled, err)
+	}
+}
+
+func TestCommissionCalendarSynchronizesAgentCycleWithoutSecondSetting(t *testing.T) {
+	f := managedFixture(t)
+	grantCommissionPolicy(t, f)
+	config := enabledCommissionPolicyConfig()
+	mustStatus(t, f.call("PUT", commissionPolicyPath, "single-calendar-weekly-001", f.token, managedBrand, commission.PolicyInput{Version: 1, Config: config}), 200)
+	var cycle string
+	var version int
+	read := func() {
+		t.Helper()
+		if err := f.pool.QueryRow(context.Background(), `SELECT config->>'cycle',version FROM brand_agent_policies WHERE brand_id=$1`, managedBrand).Scan(&cycle, &version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read()
+	if cycle != "weekly" || version != 2 {
+		t.Fatalf("derived agent cycle: %s %d", cycle, version)
+	}
+	// The source remains the financial calendar even while commission is disabled.
+	config.Enabled = false
+	mustStatus(t, f.call("PUT", commissionPolicyPath, "single-calendar-disabled-001", f.token, managedBrand, commission.PolicyInput{Version: 2, Config: config}), 200)
+	agentGrantRoot(t, f)
+	body := agentPolicyBody(true, 5, "0")
+	body["version"] = 2
+	body["config"].(map[string]any)["cycle"] = "monthly"
+	mustStatus(t, f.call("PUT", "/api/v1/admin/agent-policy", "reject-second-cycle-setting-001", f.token, managedBrand, body), 409)
+	day := 1
+	config.Calendar = &commission.Calendar{Timezone: "UTC", Cycle: "monthly", BoundaryTime: "00:00:00", MonthDay: &day, ShortMonth: "last_day"}
+	mustStatus(t, f.call("PUT", commissionPolicyPath, "single-calendar-monthly-001", f.token, managedBrand, commission.PolicyInput{Version: 3, Config: config}), 200)
+	read()
+	if cycle != "monthly" || version != 3 {
+		t.Fatalf("derived monthly cycle: %s %d", cycle, version)
 	}
 }

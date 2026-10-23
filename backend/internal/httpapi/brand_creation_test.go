@@ -52,7 +52,7 @@ func creationBrandOperationActor(t *testing.T, f managementHTTP, brand string) s
 	if err != nil {
 		t.Fatal(err)
 	}
-	hash, err := users.PasswordHash(ctx, "brand-operator-test-password-2026")
+	hash, err := users.PasswordHash(ctx, "brand-operator-test-pass-2026")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func creationBrandOperationActor(t *testing.T, f managementHTTP, brand string) s
 	}
 	login := f.call("POST", "/api/v1/admin/auth/login", "brand-operator-login-"+ids.New(), "", brand, map[string]string{
 		"identifier": "brand_operator_" + account[:8],
-		"password":   "brand-operator-test-password-2026",
+		"password":   "brand-operator-test-pass-2026",
 	})
 	mustStatus(t, login, 200)
 	var auth identity.AdminAuthentication
@@ -99,6 +99,7 @@ func TestBrandCreationHTTPGlobalCheckedReplayAndRevocation(t *testing.T) {
 	mustStatus(t, f.call("POST", creationPath, "brand-create-0001", f.token, "", in), 403)
 	role := grantCreation(t, f)
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	mustStatus(t, f.call("POST", "/api/v1/admin/brands", "brand-create-brand-entry-denied", f.token, "", in), 403)
 	first := f.call("POST", creationPath, "brand-create-0001", platformToken, "", in)
 	mustStatus(t, first, 201)

@@ -29,14 +29,14 @@ test('page finder navigates without filtering members and mobile keeps its exist
   // Prepare one real synthetic member; a fresh CI database can be empty.
   const username = `finder_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   await page.goto('http://127.0.0.1:5183/register');
-  await page.getByLabel('Choose a username or phone', { exact: true }).fill(username);
+  await page.getByLabel('Choose an account or phone', { exact: true }).fill(username);
   await page.getByLabel('Password', { exact: true }).fill('owned-page-finder-password-2026');
   await page.locator('.auth-form input[type="checkbox"]').nth(0).check();
   await page.locator('.auth-form input[type="checkbox"]').nth(1).check();
   const registered = page.waitForResponse(response => response.url() === 'http://127.0.0.1:5183/api/v1/auth/register');
   await page.getByRole('button', { name: /Continue/ }).click();
   expect((await registered).status()).toBe(201);
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/$/);
   const memberId = (await (await page.request.get('http://127.0.0.1:5183/api/v1/me')).json()).data.member.id;
   await page.goto('http://127.0.0.1:5184');
   await expect(page.locator('.app-shell')).toBeVisible();

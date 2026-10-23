@@ -41,12 +41,12 @@
 
 `brand_domains`
 
-- `id`, `brand_id`, `domain`, `is_primary`, `status`
+- `id`, `brand_id`, `domain`, `enabled`
 - 全局唯一 `domain`
 
-域名管理沿用实际表的 `enabled` 布尔字段表示启用/禁用，不新增第二套状态列。绑定的编号、品牌和主机名不可修改或删除；禁用也继续保留全局归属。最多100条绑定/品牌（含禁用），平台入口的主机名同样不能被新增品牌绑定占用。原localhost/IP绑定保持原值且可调整启停/主域名标志；新绑定仅接受规范的小写ASCII多标签DNS形式主机名。
+域名管理沿用实际表的 `enabled` 布尔字段表示启用/禁用，不新增第二套状态列。绑定的编号、品牌和主机名不可修改；可以删除绑定并释放域名归属，禁用仍保留归属。最多100条绑定/品牌（含禁用），平台入口的主机名同样不能被新增品牌绑定占用。原localhost/IP绑定保持原值且可调整启停；新绑定仅接受规范的小写ASCII多标签DNS形式主机名。
 
-`brand_domain_revisions` 保存 `id,brand_id,version,changed_by,reason,audit_log_id,created_at,before_domains,domains`，前后绑定数组各含 `id,domain,enabled,is_primary` 并按域名/编号排序。操作沿用品牌共享版本和品牌行锁，主域名切换自动将旧主域名降为普通绑定，不禁用旧域名。绑定更新与不可改写审计历史在同一事务提交；版本与品牌唯一，历史不可更新或删除。数据库更新/删除约束保护绑定身份与更新历史；初始化的直接插入不补造人工审核记录，运营新增必须经过受审计服务。
+`brand_domain_revisions` 保存 `id,brand_id,version,changed_by,reason,audit_log_id,created_at,before_domains,domains`，前后绑定数组各含 `id,domain,enabled` 并按域名/编号排序。操作沿用品牌共享版本和品牌行锁，所有已启用域名地位相同。绑定更新与不可改写审计历史在同一事务提交；版本与品牌唯一，历史不可更新或删除。数据库更新/删除约束保护绑定身份与更新历史；初始化的直接插入不补造人工审核记录，运营新增必须经过受审计服务。
 
 `brand_members`
 
@@ -82,7 +82,7 @@ S6-f 使用现有 attribution_snapshot 保存不可改写的 schema_version/lega
 
 ### 品牌配置
 
-`brand_operation_revisions` 保存品牌运行状态变更：`id,brand_id,version,previous_status,status,changed_by,reason,audit_log_id,created_at`；品牌和版本唯一，历史不可修改或删除，写入须匹配实际品牌状态及同事务审计证据。此模块只提供 active 与 paused 之间的切换，不提供禁用品牌；品牌创建和域名配置使用独立模块。
+`brand_operation_revisions` 保存品牌运行状态变更：`id,brand_id,version,previous_status,status,changed_by,reason,audit_log_id,created_at`；品牌和版本唯一，历史不可修改或删除，写入须匹配实际品牌状态及同事务审计证据。此模块提供 active/paused/disabled 状态；disabled 的停止和重新启用仅允许平台写权限。品牌及历史可携带 pause_starts_at/pause_ends_at，period worker 每秒执行预约暂停和到期恢复，人工变更会取消或替换预约；品牌创建和域名配置使用独立模块。
 
 运行状态沿用 `brands.config_version`，与认证配置共享版本和品牌行锁，因此历史版本可有间隔。暂停和恢复递增版本，保留名称、语言、主题、认证配置、成员和全部资金数据；初始化不补造人工操作或审计记录。
 
@@ -285,7 +285,7 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 
 保存的commission_earnings/commission_allocations增加[明确run查询投影](35-commission-allocation-history.md)，不新增表或重写旧代次。受益member_id与投注bettor_member_id分开，保存比例/模式和精确分数只用于解释历史计算，不代表当前余额或派发授权。
 
-S6-e 实表为 `brand_agent_policies`、`agent_nodes`、`agent_config_revisions`。节点使用member_id/parent_id/depth作为下列设计字段的实际命名，path为UUID[]；同品牌成员唯一，身份/父级/路径不可改写，最多32级工程上限。配置存JSONB：品牌enabled/max_depth/ratio_cap/mode/cycle，节点ratio/nullable mode/status/can_create_children。比值为0–1精确规范字符串，最多6位小数；根节点可覆盖品牌默认模式；下级只能继承或显式重复上级有效模式，整条代理路径不得混用模式。周期仍品牌级。每次更新递增版本并保留实际操作者/理由/审计证明；不存在现金或积分佣金余额。初始disabled/比值上限0，没有自动开启财务工作流。
+S6-e 实表为 `brand_agent_policies`、`agent_nodes`、`agent_config_revisions`。节点使用member_id/parent_id/depth作为下列设计字段的实际命名，path为UUID[]；同品牌成员唯一，身份/父级/路径不可改写，最多32级工程上限。配置存JSONB：品牌enabled/max_depth/loss_ratio_cap/turnover_ratio_cap/mode/cycle，节点ratio/nullable mode/status/can_create_children。比值为0–1精确规范字符串，最多6位小数；根节点可覆盖品牌默认模式；下级只能继承或显式重复上级有效模式，整条代理路径不得混用模式。周期仍品牌级。每次更新递增版本并保留实际操作者/理由/审计证明；不存在现金或积分佣金余额。初始disabled/比值上限0，没有自动开启财务工作流。
 
 父/子/品牌配置更新先取得品牌代理政策独占锁，服务和数据库均拒绝新超限及会破坏既有下级的降限；不靠前端判断或自动缩放。0045新增模式守卫，服务与数据库同时拒绝子级不同模式、破坏后代一致性的父级变更和破坏树的品牌默认变更，均使用品牌政策互斥锁。迁移不改写旧混合路径、修订或注单快照；相关新写入安全拒绝，须授权管理员显式修正配置。用户只改自己直属active下级的比值及沿用/重复上级模式，所有祖先须active；can_create_children不是绕过后台晋升流程的授权。S6-f保存加入及新注单归属快照；用户晋升/重新挂接和财务计算仍待后续，不能用当前代理树为旧注单补造归属。
 

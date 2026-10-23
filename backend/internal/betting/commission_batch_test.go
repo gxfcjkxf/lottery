@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"reflect"
 	"strings"
 	"sync"
@@ -25,12 +26,13 @@ import (
 )
 
 type commissionBatchFixture struct {
-	betting  bettingFixture
-	service  commission.Service
-	actor    access.Account
-	node     agency.Node
-	orders   []Order
-	boundary time.Time
+	betting    bettingFixture
+	service    commission.Service
+	actor      access.Account
+	node       agency.Node
+	orders     []Order
+	boundary   time.Time
+	agentToken string
 }
 
 func newCommissionBatchFixture(t *testing.T) commissionBatchFixture {
@@ -41,11 +43,12 @@ func newCommissionBatchFixture(t *testing.T) commissionBatchFixture {
 func newCommissionBatchFixtureWithWindow(t *testing.T, betWindow, drawWindow time.Duration) commissionBatchFixture {
 	t.Helper()
 	f := newBettingFixtureWithWindow(t, storeTestBrand, betWindow, drawWindow)
-	return newCommissionBatchFixtureFromBetting(t, f)
+	return newCommissionBatchFixtureFromBetting(t, f, betWindow, drawWindow)
 }
 
-func newCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixture) commissionBatchFixture {
+func newCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixture, betWindow, drawWindow time.Duration) commissionBatchFixture {
 	t.Helper()
+	agentToken := f.token
 	ctx := context.Background()
 	adminID := f.version.CreatedBy
 	actor := access.Account{
@@ -70,7 +73,7 @@ func newCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixture) commis
 		var err error
 		policy, err = agents.SavePolicy(ctx, tx, f.brand, actor, agency.PolicyInput{
 			Version: 1,
-			Config:  agency.PolicyConfig{Enabled: true, MaxDepth: 3, RatioCap: "0.3", Mode: "loss", Cycle: "weekly"},
+			Config:  agency.PolicyConfig{Enabled: true, MaxDepth: 3, LossRatioCap: "0.3", TurnoverRatioCap: "0.3", Mode: "loss", Cycle: "weekly"},
 			Reason:  "commission batch integration policy",
 		}, points.Metadata{RequestID: ids.New()})
 		return err
@@ -78,8 +81,8 @@ func newCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixture) commis
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		var err error
 		root, err = agents.Create(ctx, tx, f.brand, actor, agency.CreateInput{
-			PolicyVersion: policy.Version, MemberID: f.member,
-			Config: agency.NodeConfig{Ratio: "0.3", Status: "active", CanCreateChildren: true},
+			PolicyVersion: policy.Version, Username: testdb.AgentUsername(f.member), Password: "agent123",
+			Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0.3", Status: "active", CanCreateChildren: true},
 			Reason: "commission batch root beneficiary",
 		}, points.Metadata{RequestID: ids.New()})
 		return err
@@ -87,10 +90,26 @@ func newCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixture) commis
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		var err error
 		code, err = codes.Create(ctx, tx, f.brand, actor, attribution.CreateInput{
-			Kind: "agent", OwnerMemberID: f.member, AgentID: &root.ID, Reason: "commission batch actual registration code",
+			Kind: "agent", OwnerMemberID: root.MemberID, AgentID: &root.ID, Reason: "commission batch actual registration code",
 		}, points.Metadata{RequestID: ids.New()})
 		return err
 	})
+	var agentAuth identity.AgentAuthentication
+	agentIdentity, agentErr := identity.New(f.db)
+	if agentErr != nil {
+		t.Fatal(agentErr)
+	}
+	bettingTx(t, f.db, func(tx pgx.Tx) error {
+		out, e := agentIdentity.AgentLogin(ctx, tx, f.brand, identity.AgentLoginInput{Username: testdb.AgentUsername(f.member), Password: "agent123"})
+		if e != nil {
+			return e
+		}
+		if out.Error != nil {
+			t.Fatal(out.Error)
+		}
+		return json.Unmarshal(out.Data, &agentAuth)
+	})
+	agentToken = agentAuth.AccessToken
 	users, err := identity.New(f.db)
 	if err != nil {
 		t.Fatal(err)
@@ -114,6 +133,15 @@ func newCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixture) commis
 		t.Fatal(err)
 	}
 	f.member, f.token = session.Member.ID, session.AccessToken
+
+	finishUnusedBettingPeriod(t, f)
+	bettingTx(t, f.db, func(tx pgx.Tx) error {
+		var err error
+		now := bettingDatabaseNow(t, f.db)
+		f.period, err = (rulebook.Store{DB: f.db}).OpenPeriod(ctx, tx, f.brand, f.game.ID, "commission-"+ids.New(), now.Add(-time.Minute), now.Add(betWindow), now.Add(drawWindow))
+		return err
+	})
+	f.input.PeriodID = f.period.ID
 
 	boundary := f.period.BetEndAt.UTC().Truncate(time.Second).Add(-3 * time.Second)
 	weekday := int(boundary.Weekday())
@@ -155,7 +183,7 @@ func newCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixture) commis
 			t.Fatalf("order %s was placed at %s, not before weekly boundary %s", order.ID, order.PlacedAt, boundary)
 		}
 	}
-	return commissionBatchFixture{betting: f, service: financial, actor: actor, node: root, orders: []Order{first, second, cancelled}, boundary: boundary}
+	return commissionBatchFixture{betting: f, service: financial, actor: actor, node: root, orders: []Order{first, second, cancelled}, boundary: boundary, agentToken: agentToken}
 }
 
 func waitCommissionBoundary(t *testing.T, boundary time.Time) {
@@ -237,11 +265,12 @@ func commissionBatchPersistence(t *testing.T, f commissionBatchFixture, cycleID 
 }
 
 func TestCommissionBatchRealWindowWaitsThenCalculatesAndInvalidatesOnCorrection(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	ctx := context.Background()
 	// The policy is captured at placement. Updating the mutable agent after the
 	// wagers cannot alter the saved 0.3 loss allocation.
-	disabled := agency.NodeConfig{Ratio: "0.2", Status: "disabled", CanCreateChildren: false}
+	disabled := agency.NodeConfig{Mode: new("loss"), Ratio: "0.2", Status: "disabled", CanCreateChildren: false}
 	agents := agency.Service{DB: f.betting.db}
 	policy, err := agents.Policy(ctx, f.betting.brand)
 	if err != nil {
@@ -612,6 +641,7 @@ func settleEmptyCommissionBatchPeriod(t *testing.T, f bettingFixture, after time
 }
 
 func TestCommissionBatchCalculationPageFailureIsAuditedAndRetryable(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	waitCommissionBoundary(t, f.boundary)
 	cycle := createCommissionCycle(t, f)
@@ -666,6 +696,7 @@ func TestCommissionBatchCalculationPageFailureIsAuditedAndRetryable(t *testing.T
 }
 
 func TestCommissionBatchOverHundredOrdersUsesRealManifestAndConcurrentWorkerPages(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixtureWithWindow(t, 45*time.Second, 47*time.Second)
 	ctx := context.Background()
 	// These later wagers capture the then-current 0.2 disabled node policy;
@@ -680,7 +711,7 @@ func TestCommissionBatchOverHundredOrdersUsesRealManifestAndConcurrentWorkerPage
 		var updateErr error
 		updated, updateErr = agents.Update(ctx, tx, f.betting.brand, f.actor, f.node.ID, agency.UpdateInput{
 			Version: f.node.Version, PolicyVersion: policy.Version,
-			Config: agency.NodeConfig{Ratio: "0.2", Status: "disabled", CanCreateChildren: false},
+			Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0.2", Status: "disabled", CanCreateChildren: false},
 			Reason: "later wagers capture disabled node at ratio 0.2",
 		}, points.Metadata{RequestID: ids.New()})
 		return updateErr

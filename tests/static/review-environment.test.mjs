@@ -5,6 +5,7 @@ import test from 'node:test'
 const rootPackage = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
 const userReview = readFileSync(new URL('../../user-web/vite.review.config.ts', import.meta.url), 'utf8')
 const adminReview = readFileSync(new URL('../../admin-web/vite.review.config.ts', import.meta.url), 'utf8')
+const platformReview = readFileSync(new URL('../../platform-web/vite.review.config.ts', import.meta.url), 'utf8')
 const userDev = readFileSync(new URL('../../user-web/vite.config.ts', import.meta.url), 'utf8')
 const adminDev = readFileSync(new URL('../../admin-web/vite.config.ts', import.meta.url), 'utf8')
 const workflow = readFileSync(new URL('../../.github/workflows/ci.yaml', import.meta.url), 'utf8')
@@ -32,6 +33,18 @@ test('root review scripts select the matching review config while normal dev con
   assert.doesNotMatch(userDev + adminDev, /5183|5184|127\.0\.0\.1:8085/)
 })
 
+test('local-only review previews keep empty external allowlists, loopback ports and same-origin API hosts on all entries', () => {
+  for (const [entry, port, config] of [['user', 5183, userReview], ['admin', 5184, adminReview], ['platform', 5185, platformReview]]) {
+    assert.equal(rootPackage.scripts[`review:preview:${entry}`], `pnpm --filter @lottery/${entry}-web exec vite preview --config vite.review.config.ts --port ${port} --strictPort`)
+    assert.match(config, /host: '127\.0\.0\.1'/)
+    assert.match(config, /target: 'http:\/\/127\.0\.0\.1:8085'/)
+    assert.match(config, /changeOrigin: false/)
+    assert.match(config, /allowedHosts:\s*\[\]/)
+    assert.doesNotMatch(config, /ngrok|zrok|pinggy|trycloudflare|lhr\.life|serveo/)
+    assert.doesNotMatch(config, /allowedHosts:\s*true/)
+  }
+})
+
 test('isolated entry CI pins the installed Chromium before loading the strict review config', () => {
   const job = workflow.split('  administration-entries:')[1].split('  audit-exports-browser:')[0]
   assert.match(job, /chromium\.executablePath\(\)/)
@@ -48,9 +61,9 @@ test('complete review runs require brand creation credentials instead of silentl
   assert.match(reviewConfig, /workers: 2/)
   assert.match(workflow, /TEST_PLATFORM_ADMIN_USERNAME: review_platform_\{project\}/)
   assert.match(workflow, /create-admin --username review_platform_desktop1440 --super/)
-  assert.match(workflow, /create-admin --username review_platform_mobile360 --super/)
+  assert.match(workflow, /create-admin --username review_platform_mobilepixel7 --super/)
   assert.match(workflow, /create-admin --username review_operator_desktop1440 --brand aurora/)
-  assert.match(workflow, /create-admin --username review_operator_mobile360 --brand aurora/)
+  assert.match(workflow, /create-admin --username review_operator_mobilepixel7 --brand aurora/)
 })
 
 test('read-only review panels share real worker sessions without disabling auth limits', () => {
@@ -74,4 +87,10 @@ test('read-only review panels share real worker sessions without disabling auth 
     assert.match(source, /newContext\(\{ storageState: operatorSession \}\)/)
     assert.doesNotMatch(source, /identifier: 'review_operator'|\/auth\/login/)
   }
+})
+
+
+test('review refuses the shared developer admin account', () => {
+  assert.match(reviewConfig, /TEST_PLATFORM_ADMIN_USERNAME\?\.trim\(\)\.toLowerCase\(\) === 'admin'/)
+  assert.match(reviewConfig, /shared admin login replaces the developer session/)
 })

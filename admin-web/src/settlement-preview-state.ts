@@ -171,8 +171,7 @@ export function reasonByteLength(value: string): number {
 }
 
 export function validPreviewReason(value: string): boolean {
-  return (
-    Boolean(value.trim()) &&
+  return (value === "" || value.trim().length > 0) && (
     reasonByteLength(value) <= SETTLEMENT_PREVIEW_REASON_MAX_BYTES
   );
 }

@@ -1,0 +1,51 @@
+/* Reserved three-surface primitive. Important declarations keep legacy scoped
+   typography/panel rules from overriding the shared empty-state contract. */
+.empty-state {
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 12px !important;
+  min-width: 0 !important;
+  min-height: 96px !important;
+  margin: 0 !important;
+  padding: 16px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius) !important;
+  background: var(--surface) !important;
+  box-shadow: none !important;
+  color: var(--muted) !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  line-height: 1.6 !important;
+  text-align: center !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* Retain table semantics and colspan; no card border nested inside the table. */
+td.empty-state {
+  display: table-cell !important;
+  height: 96px !important;
+  vertical-align: middle !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+/* Empty tables retain a full-width cell even when populated mobile rows use
+   a grid/card presentation. Never override the global loading row's hiding. */
+table:has(> tbody > tr > td.empty-state) {
+  display: table !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+tbody:has(> tr > td.empty-state) { display: table-row-group !important; }
+tr:has(> td.empty-state):not([data-global-loading="true"]) {
+  display: table-row !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+.empty-state[hidden],
+.empty-state[data-global-loading="true"] { display: none !important; }

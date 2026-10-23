@@ -122,7 +122,7 @@ func TestUpdateAutomaticActivationTxKeepsStartsAndDoesNotImmediatelyDiscoverCurr
 		}
 		return out
 	}
-	first := update(AutomaticActivationInput{Version: 1, DailyEnabled: true, MonthlyEnabled: true, Reason: "activate current reporting periods"})
+	first := update(AutomaticActivationInput{Version: 1, DailyEnabled: true, MonthlyEnabled: true, Reason: ""})
 	if first.Version != 2 || first.DailyStartPeriod == nil || *first.DailyStartPeriod != wantDaily || first.MonthlyStartPeriod == nil || *first.MonthlyStartPeriod != wantMonthly {
 		t.Fatalf("first activation = %+v, want version 2 and current brand-local day/month", first)
 	}

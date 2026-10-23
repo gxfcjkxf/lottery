@@ -160,7 +160,7 @@ test("custom multi-tier rules retain creator review controls and allow another a
       r.url().endsWith("/api/v1/admin/rule-versions") &&
       r.request().method() === "POST",
   );
-  await editor.getByRole("button", { name: "保存新草稿", exact: true }).click();
+  await editor.getByRole("button", { name: "保存草稿", exact: true }).click();
   const draftResponse = await draftReply;
   expect(draftResponse.status(), await draftResponse.text()).toBe(201);
   const record = (await draftResponse.json()).data;
@@ -170,7 +170,7 @@ test("custom multi-tier rules retain creator review controls and allow another a
   const cases = editor.locator(".rule-cases-editor");
   const first = cases.locator(".case-card").first();
   const validate = editor.getByRole("button", {
-    name: "验证已保存草稿并保存报告",
+    name: "验证草稿",
     exact: true,
   });
   // Adding/copying/removing rows must not resurrect a stale valid CSV value.
@@ -238,7 +238,7 @@ test("custom multi-tier rules retain creator review controls and allow another a
       r.request().method() === "POST",
   );
   await editor
-    .getByRole("button", { name: "提交审核（需服务端验证通过）", exact: true })
+    .getByRole("button", { name: "提交审核", exact: true })
     .click();
   const submitted = await submitReply;
   expect(submitted.status(), await submitted.text()).toBe(200);

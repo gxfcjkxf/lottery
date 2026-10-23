@@ -101,6 +101,7 @@ func TestAdminReportsAuthorizationAndScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	platformBetting := strings.Replace(betting, "/api/v1/admin", "/api/v1/platform", 1)
 	platformLedger := strings.Replace(ledger, "/api/v1/admin", "/api/v1/platform", 1)
 	if r := f.call("GET", betting, "", f.token, managedBrand, nil); r.Code != 403 {

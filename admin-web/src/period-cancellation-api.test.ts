@@ -251,3 +251,20 @@ describe("period cancellation API", () => {
     ).toEqual({ view: false, cancel: true, retry: false });
   });
 });
+
+it("accepts empty operation notes on cancel, retry and completed reads while rejecting a missing note field", async () => {
+  const processing = { ...cancellation, reason: "" };
+  const completed = { ...processing, state: "completed", version: 4, pending_count: 0, refunded_count: 3, completed_at: "2026-10-06T01:00:00Z" };
+  const fetcher = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(ok(processing, 201))
+    .mockResolvedValueOnce(ok({ ...processing, version: 3 }))
+    .mockResolvedValueOnce(ok({ cancellation: completed }))
+    .mockResolvedValueOnce(ok({ cancellation: { ...completed, reason: undefined } }));
+  const api = createPeriodCancellationApi(fetcher);
+  await expect(api.cancelPeriod(brand, cancellation.period_id, { version: 3, mode: "bet_cancelled", cause: "operator_cancel", reason: "" }, "empty-note-cancel")).resolves.toMatchObject({ reason: "", state: "processing" });
+  await expect(api.retryCancellation(brand, cancellation.period_id, { version: 2, reason: "" }, "empty-note-retry")).resolves.toMatchObject({ reason: "", version: 3 });
+  await expect(api.getCancellation(brand, cancellation.period_id)).resolves.toMatchObject({ cancellation: completed });
+  await expect(api.getCancellation(brand, cancellation.period_id)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+  expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body)).reason).toBe("");
+  expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body)).reason).toBe("");
+});

@@ -78,23 +78,6 @@ func registerCommissionPolicyRoutes(handle func(string, string, http.HandlerFunc
 		result, e := commissionPolicyResult(out, err)
 		outputMutation(w, r, result, e)
 	})
-	handle("GET", "/commission-policy/history", func(w http.ResponseWriter, r *http.Request) {
-		a, brand, ok := pointAdminActor(w, r, d, "commission_policy", "view", false)
-		if !ok {
-			return
-		}
-		limit, offset, _, ok := agentPage(r, false)
-		if !ok {
-			failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
-			return
-		}
-		out, err := s.History(r.Context(), brand, limit, offset)
-		if err == nil && !adminReadAudit(w, r, d, a, brand, "commission_policy.history.view") {
-			return
-		}
-		result, e := commissionPolicyResult(map[string]any{"items": out, "limit": limit, "offset": offset}, err)
-		outputMutation(w, r, result, e)
-	})
 	handle("PUT", "/commission-policy", func(w http.ResponseWriter, r *http.Request) {
 		a, brand, ok := pointAdminActor(w, r, d, "commission_policy", "write", true)
 		if !ok {

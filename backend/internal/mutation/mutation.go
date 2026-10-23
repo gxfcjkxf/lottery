@@ -81,18 +81,12 @@ func (e *Engine) Fingerprint(value string) string {
 	h.Write([]byte(value))
 	return hex.EncodeToString(h.Sum(nil))
 }
-func (e *Engine) seal(body []byte) ([]byte, error) {
-	return e.sealBound(body, []byte("lottery-idempotency-v1"))
-}
 func (e *Engine) sealBound(body, aad []byte) ([]byte, error) {
 	nonce := make([]byte, e.aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
 	return e.aead.Seal(nonce, nonce, body, aad), nil
-}
-func (e *Engine) open(body []byte) ([]byte, error) {
-	return e.openBound(body, []byte("lottery-idempotency-v1"))
 }
 func (e *Engine) openBound(body, aad []byte) ([]byte, error) {
 	n := e.aead.NonceSize()
@@ -116,7 +110,7 @@ type sealedResponse struct {
 
 // Execute locks the logical operation, rolls back business failures to a savepoint,
 // and commits the final result together with the business state. Transient DB errors
-// aren't cached. Sensitive response bodies are AEAD-encrypted, never plaintext.
+// and 5xx responses aren't cached. Sensitive response bodies are AEAD-encrypted, never plaintext.
 func (e *Engine) Execute(ctx context.Context, brand, actor, operation, key, fingerprint string, run func(context.Context, pgx.Tx) (Result, error)) (Result, error) {
 	return e.execute(ctx, brand, actor, operation, key, fingerprint, nil, run)
 }
@@ -206,6 +200,12 @@ func (e *Engine) execute(ctx context.Context, brand, actor, operation, key, fing
 	}
 	if result.rejectedEvidence != nil && (result.Status < 400 || result.Status > 599 || result.Error == nil) {
 		return Result{}, errors.New("rejected evidence callback requires a 400-599 rejection result with an error")
+	}
+	// A temporary failure is not a completed logical operation. Roll back all
+	// effects and leave the original key available for recovery after contention
+	// or a dependency outage; caching 503 would make every same-key retry fail.
+	if result.Status >= 500 && result.Status <= 599 {
+		return result, nil
 	}
 	if result.Status >= 400 {
 		if _, err = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT business"); err != nil {

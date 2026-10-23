@@ -66,12 +66,6 @@ type CommissionAnalysisReport struct {
 	TotalGroups string                            `json:"total_groups"`
 }
 
-func (s Service) CommissionAnalysis(ctx context.Context, brand string, q CommissionAnalysisQuery) (CommissionAnalysisReport, error) {
-	if s.DB == nil {
-		return CommissionAnalysisReport{}, ErrInvalid
-	}
-	return s.commissionAnalysis(ctx, s.DB, brand, q, q.Limit, q.Offset, false)
-}
 func (s Service) CommissionAnalysisRead(ctx context.Context, tx pgx.Tx, brand string, q CommissionAnalysisQuery) (CommissionAnalysisReport, error) {
 	if tx == nil {
 		return CommissionAnalysisReport{}, ErrInvalid

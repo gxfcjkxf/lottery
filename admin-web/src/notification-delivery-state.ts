@@ -45,8 +45,7 @@ function validIntent(value: unknown, scope: { accountId: string; brandId: string
     UUID_RE.test(scope.accountId) && UUID_RE.test(scope.brandId) &&
     typeof candidate.eventId === "string" && UUID_RE.test(candidate.eventId) &&
     Number.isSafeInteger(request.attempt_count) && Number(request.attempt_count) >= 1 &&
-    typeof request.reason === "string" && request.reason.trim().length > 0 &&
-    new TextEncoder().encode(request.reason).length <= 500 &&
+    typeof request.reason === "string" && new TextEncoder().encode(request.reason).length <= 500 &&
     typeof candidate.key === "string" && candidate.key.length > 0;
 }
 

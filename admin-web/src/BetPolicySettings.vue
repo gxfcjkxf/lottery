@@ -1,8 +1,20 @@
 <script setup lang="ts">
+import { vWriteGuard } from "@lottery/shared";
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import { vGlobalLoading } from "@lottery/shared";
+import { vInlineValidation } from '@lottery/shared'
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { createRuleVersionsApi, type GameRecord } from "./rule-versions-api";
-import { useAdminI18n } from "./i18n";
+import { adminKey, useAdminI18n } from "./i18n";
 import {
   createBetManagementApi,
   createBetMutationKeyTracker,
@@ -48,23 +60,28 @@ type FrozenMutation = {
 };
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
-const { t } = useAdminI18n();
-const ui = (zh: string, en: string = zh) => t(zh, en);
+const { t, display: render } = useAdminI18n();
+const ui = (key: string) => t(adminKey(key));
 const labels: Record<string, string> = {
-  "投注策略": "Betting policy", "品牌与彩种投注限额": "Brand and game betting limits",
-  "最低单注积分": "Minimum points per bet", "单注上限积分": "Maximum points per bet",
-  "单期上限积分": "Maximum points per period", "单用户单期上限积分": "Maximum points per user per period",
+  "投注策略": "admin.copy.c29852b8", "品牌与彩种投注限额": "admin.copy.bf8aa701",
+  "最低单注积分": "admin.copy.3890e98a", "单注上限积分": "admin.copy.1083c018",
+  "单期上限积分": "admin.copy.1455f7ed", "单用户单期上限积分": "admin.copy.46ccdedd",
 };
 const textEn: Record<string, string> = {
-  "品牌策略响应与当前品牌不匹配。": "The brand-policy response does not match the current brand.", "读取品牌投注策略失败。": "Failed to load brand betting policy.",
-  "彩种策略响应与当前品牌或彩种不匹配。": "The game-policy response does not match the current brand or game.", "读取彩种投注策略失败。": "Failed to load game betting policy.",
-  "读取彩种目录失败。": "Failed to load the game catalog.", "保存响应与当前策略不匹配，请重新读取确认结果。": "The save response does not match the current policy. Reload to confirm the result.",
-  "投注策略已保存并生效。": "Betting policy saved and applied.",
-  "策略版本已变化。已尝试读取最新版本；请核对后再次提交，当前未保存的输入已保留。": "The policy version changed. The latest version was reloaded; review it before submitting again. Your unsaved input has been preserved.",
-  "保存结果尚未确认。请按原请求重试，或刷新读取以核对版本；重试会复用原请求内容和幂等键。": "The save result is unconfirmed. Retry the original request or reload to check the version; a retry reuses the original request body and idempotency key.",
-  "保存投注策略失败。": "Failed to save betting policy.", "正在读取最新版本；表单输入会保留。": "Loading the latest version; form input will be preserved.",
+  "品牌策略响应与当前品牌不匹配。": "admin.copy.de368a44", "读取品牌投注策略失败。": "admin.copy.e0817861",
+  "彩种策略响应与当前品牌或彩种不匹配。": "admin.copy.9560b971", "读取彩种投注策略失败。": "admin.copy.ea846a99",
+  "读取彩种目录失败。": "admin.copy.c052ffbf", "保存响应与当前策略不匹配，请重新读取确认结果。": "admin.copy.c721cb8d",
+  "投注策略已保存并生效。": "admin.copy.97f13a5b",
+  "策略版本已变化。已尝试读取最新版本；请核对后再次提交，当前未保存的输入已保留。": "admin.copy.3142ca3b",
+  "保存结果尚未确认。请按原请求重试，或刷新读取以核对版本；重试会复用原请求内容和幂等键。": "admin.copy.fb62e6a5",
+  "保存投注策略失败。": "admin.copy.5861c31c", "正在读取最新版本；表单输入会保留。": "admin.copy.0d5783ad",
 };
-const display = (value: string) => ui(value, textEn[value] ?? labels[value] ?? value);
+const display = (value: string | import("@lottery/shared").LocalizedMessage) => {
+  if (typeof value !== "string") return displayPublicError(value);
+  const key = textEn[value] ?? labels[value];
+  return key ? t(adminKey(key)) : render(value);
+};
+
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createBetManagementApi();
 const ruleBook = createRuleVersionsApi();
@@ -84,7 +101,7 @@ const loadingGame = ref(false);
 const loadingGames = ref(false);
 const saving = ref<Lane | "">("");
 const reconciling = ref(false);
-const error = ref("");
+const error = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const notice = ref("");
 const uncertain = ref<FrozenMutation | null>(null);
 let generation = 0;
@@ -171,7 +188,7 @@ function sessionExpired(cause: unknown) {
   return false;
 }
 function explain(cause: unknown, fallback: string) {
-  if (cause instanceof Error && cause.message) return cause.message;
+  if (cause instanceof Error && publicErrorMessage(cause)) return publicErrorMessage(cause);
   return fallback;
 }
 function clearVisibleData() {
@@ -241,7 +258,7 @@ function resolveDraftCap(
   return brandValue || null;
 }
 const reasonValid = (value: string) =>
-  Boolean(value.trim()) && new TextEncoder().encode(value.trim()).length <= 500;
+  new TextEncoder().encode(value.trim()).length <= 500;
 const brandCanSave = computed(
   () =>
     canWrite.value &&
@@ -396,9 +413,9 @@ function buildGameConfig(): GameConfig {
         : gameDraft.value.user_cancel_allowed === "allow",
   };
 }
-function retryUncertain() {
+async function retryUncertain() {
   if (!uncertain.value || saving.value) return;
-  void submitMutation(uncertain.value);
+  await submitMutation(uncertain.value);
 }
 async function saveBrand() {
   if (!brandCanSave.value || !brandPolicy.value) return;
@@ -535,12 +552,12 @@ function reconcile() {
     reconciling.value = false;
   })();
 }
-function changeSelectedGame(id: string) {
+async function changeSelectedGame(id: string) {
   gameRead++;
   gamePolicy.value = null;
   gameDraft.value = emptyGameDraft();
   gameId.value = id;
-  if (id) void loadGame(id);
+  if (id) await loadGame(id);
 }
 
 watch(
@@ -577,139 +594,138 @@ onUnmounted(() => {
   <section class="bet-policy-settings" data-testid="bet-policy-settings">
     <header class="policy-header">
       <div>
-        <p class="eyebrow">{{ display("投注策略") }}</p>
         <h2>{{ display("品牌与彩种投注限额") }}</h2>
-        <p>{{ t("彩种设置覆盖品牌默认值；单注、单期和单用户单期上限分别生效。", "Game settings override brand defaults. Per-bet, per-period, and per-user per-period limits apply independently.") }}</p>
+        <p>{{ t('admin.copy.8caceb4b') }}</p>
       </div>
-      <span class="brand-pill">{{ t("品牌 · ", "Brand · ") }}{{ brandId || t("未选择", "Not selected") }}</span>
+      <span class="brand-pill">{{ t('admin.copy.55bdd7a5') }}<AssociationName kind="brand" :id="brandId" :locale="associationLocale" /></span>
     </header>
 
     <p v-if="account.super_admin" class="callout">
-      {{ t("超级管理员仅可按显式权限查看，不能修改投注策略。", "Super administrators may view only with explicit permission and cannot modify betting policies.") }}
+      {{ t('admin.copy.2599abb5') }}
     </p>
     <p class="callout">
-      {{ t("所有积分均按整数字符串处理。品牌限额留空表示不限；彩种可继承、指定数值或设为不限。", "Points are handled as integer strings. Blank brand limits mean unlimited; games can inherit, set a value, or be unlimited.") }}
+      {{ t('admin.copy.8f1f1315') }}
     </p>
     <p v-if="!rights.policyView" class="callout" role="status">
-      {{ t("当前账号缺少品牌投注策略读取权限。", "This account lacks permission to view brand betting policies.") }}
+      {{ t('admin.copy.aebcd8b6') }}
     </p>
     <section v-if="!rights.policyView && rights.gameView" class="policy-card">
       <div class="card-heading">
         <div>
-          <h3>{{ t("彩种目录", "Game catalog") }}</h3>
-          <p>{{ t("仅展示当前账号获准查看的彩种目录，不读取彩种投注策略。", "Shows only the game catalog this account is allowed to view; game betting policies are not loaded here.") }}</p>
+          <h3>{{ t('admin.copy.6b42b097') }}</h3>
         </div>
-        <button
-          class="secondary"
+        <button v-refresh-button="loadingGames ? t('admin.copy.27342bf3') : t('admin.copy.f8a8e3bf')"
+          class="button button-secondary"
           type="button"
           :disabled="loadingGames"
-          @click="loadGames"
+          @click="withGlobalLoading(loadGames)"
         >
-          {{ loadingGames ? t("读取中…", "Loading…") : t("刷新彩种目录", "Refresh game catalog") }}
+          {{ loadingGames ? t('admin.copy.27342bf3') : t('admin.copy.f8a8e3bf') }}
         </button>
       </div>
-      <p v-if="loadingGames && !games.length" class="muted" role="status">
-        {{ t("正在读取彩种目录…", "Loading game catalog…") }}
+      <p v-global-loading v-if="loadingGames && !games.length" class="muted" role="status">
+        {{ t('admin.copy.4d221807') }}
       </p>
-      <p v-else-if="!games.length" class="muted">{{ t("彩种目录为空，或尚未读取。", "The game catalog is empty or has not been loaded.") }}</p>
+      <p v-else-if="!games.length" class="muted empty-state">{{ t('admin.copy.a493ddef') }}</p>
       <ul v-else class="catalog-list">
         <li v-for="game in games" :key="game.id">
-          {{ game.name }} · {{ game.id }}
+          {{ game.name }}
         </li>
       </ul>
     </section>
     <template v-if="rights.policyView">
       <div v-if="error" class="message error" role="alert">
         <span>{{ display(error) }}</span>
-        <button
+        <button v-refresh-button="t('admin.copy.3dc463ff')"
           v-if="!uncertain"
           type="button"
-          class="secondary"
-          @click="() => loadBrand()"
+          class="button button-secondary"
+          @click="withGlobalLoading(async () => { return () => loadBrand() })"
         >
-          {{ t("重新读取品牌策略", "Reload brand policy") }}
+          {{ t('admin.copy.3dc463ff') }}
         </button>
       </div>
       <p v-if="notice" class="message success" role="status">{{ display(notice) }}</p>
       <div v-if="uncertain" class="message warning" role="alert">
         <span
-          >{{ t("有一项写入结果待确认。表单已冻结，不能编辑或创建新的写入请求。", "A write result is pending confirmation. The form is frozen; you cannot edit it or create another write request.") }}</span
+          >{{ t('admin.copy.932f172b') }}</span
         >
         <button
+          v-write-guard="Boolean(saving)"
           type="button"
-          class="primary"
+          class="button button-primary"
           :disabled="!!saving"
-          @click="retryUncertain"
+          @click="withGlobalLoading(retryUncertain)"
         >
-          {{ t("使用原请求重试", "Retry original request") }}
+          {{ t('admin.copy.c6a6aa0c') }}
         </button>
-        <button
+        <button v-refresh-button="t('admin.copy.515305da')"
           type="button"
-          class="secondary"
+          class="button button-secondary"
           :disabled="!!saving"
-          @click="reconcile"
+          @click="withGlobalLoading(reconcile)"
         >
-          {{ t("重新读取核对", "Reload and reconcile") }}
+          {{ t('admin.copy.515305da') }}
         </button>
       </div>
 
       <section class="policy-card">
         <div class="card-heading">
           <div>
-            <h3>{{ t("品牌默认策略", "Brand default policy") }}</h3>
+            <h3>{{ t('admin.copy.5172b25d') }}</h3>
             <p v-if="brandPolicy">
-              {{ t("版本", "Version") }} {{ brandPolicy.version }} · {{ brandPolicy.brand_id }}
+               · <AssociationName :record="brandPolicy" kind="brand" :id="brandPolicy.brand_id" :locale="associationLocale" />
             </p>
           </div>
-          <button
-            class="secondary"
+          <button v-refresh-button="loadingBrand ? t('admin.copy.27342bf3') : t('admin.copy.894e2a7d')"
+            class="button button-secondary"
             type="button"
             :disabled="loadingBrand || !!saving || !!uncertain"
-            @click="() => loadBrand()"
+            @click="withGlobalLoading(async () => { return () => loadBrand() })"
           >
-            {{ loadingBrand ? t("读取中…", "Loading…") : t("刷新", "Refresh") }}
+            {{ loadingBrand ? t('admin.copy.27342bf3') : t('admin.copy.894e2a7d') }}
           </button>
         </div>
-        <p v-if="loadingBrand && !brandPolicy" class="muted" role="status">
-          {{ t("正在读取品牌策略…", "Loading brand policy…") }}
+        <p v-global-loading v-if="loadingBrand && !brandPolicy" class="muted" role="status">
+          {{ t('admin.copy.da04c68a') }}
         </p>
-        <p v-else-if="!brandPolicy && !error" class="muted">
-          {{ t("尚无可显示的品牌策略。", "No brand policy is available to display.") }}
+        <p v-else-if="!brandPolicy && !error" class="muted empty-state">
+          {{ t('admin.copy.5e311882') }}
         </p>
-        <form
+        <form v-write-guard="Boolean(saving)" novalidate v-inline-validation
           v-if="brandPolicy"
           class="editor-grid"
-          @submit.prevent="saveBrand"
+          @submit.prevent="withGlobalLoading(saveBrand)"
         >
           <label
-            >{{ t("品牌：最低单注积分", "Brand: minimum points per bet") }}<input
+            >{{ t('admin.copy.ab573088') }}<input
               v-model.trim="brandDraft.min_bet_points"
               inputmode="numeric"
               autocomplete="off"
               :disabled="!canWrite || !!uncertain || reconciling"
           /></label>
           <label
-            >{{ t("品牌：单注上限积分（留空不限）", "Brand: maximum points per bet (blank for unlimited)") }}<input
+            >{{ t('admin.copy.3a263c82') }}<input
               v-model.trim="brandDraft.max_bet_points"
               inputmode="numeric"
               autocomplete="off"
-              :placeholder="t('不限', 'Unlimited')"
+              :placeholder="t('admin.copy.374fa8f7')"
               :disabled="!canWrite || !!uncertain || reconciling"
           /></label>
           <label
-            >{{ t("品牌：单期上限积分（留空不限）", "Brand: maximum points per period (blank for unlimited)") }}<input
+            >{{ t('admin.copy.b23a9c93') }}<input
               v-model.trim="brandDraft.max_period_points"
               inputmode="numeric"
               autocomplete="off"
-              :placeholder="t('不限', 'Unlimited')"
+              :placeholder="t('admin.copy.374fa8f7')"
               :disabled="!canWrite || !!uncertain || reconciling"
           /></label>
           <label
-            >{{ t("品牌：单用户单期上限积分（留空不限）", "Brand: maximum points per user per period (blank for unlimited)") }}<input
+            >{{ t('admin.copy.61dba6bb') }}<input
               v-model.trim="brandDraft.max_user_period_points"
               inputmode="numeric"
               autocomplete="off"
-              :placeholder="t('不限', 'Unlimited')"
+              :placeholder="t('admin.copy.374fa8f7')"
               :disabled="!canWrite || !!uncertain || reconciling"
           /></label>
           <label class="check-label"
@@ -717,32 +733,25 @@ onUnmounted(() => {
               v-model="brandDraft.user_cancel_allowed"
               type="checkbox"
               :disabled="!canWrite || !!uncertain || reconciling"
-            />{{ t("品牌：允许用户撤销投注", "Brand: allow users to cancel bets") }}</label
+            />{{ t('admin.copy.f6d733a8') }}</label
           >
-          <label class="wide"
-            >{{ t("品牌：变更原因（必填，最多 500 UTF-8 字节）", "Brand: change reason (required, up to 500 UTF-8 bytes)") }}<textarea
-              v-model="brandDraft.reason"
-              rows="3"
-              maxlength="500"
-              :disabled="!canWrite || !!uncertain || reconciling"
-            />
-          </label>
+
           <p v-if="!brandInputsValid" class="field-error wide" role="alert">
-            {{ t("请填写正整数；最低单注积分不得高于任一有限上限。", "Enter positive whole numbers. The minimum per bet cannot exceed any finite limit.") }}
+            {{ t('admin.copy.331a9f86') }}
           </p>
           <p
             v-if="!reasonValid(brandDraft.reason) && brandDraft.reason"
             class="field-error wide"
             role="alert"
           >
-            {{ t("原因必须非空，且不超过 500 UTF-8 字节。", "The reason is required and must be no longer than 500 UTF-8 bytes.") }}
+            {{ t('admin.copy.9f181711') }}
           </p>
           <p v-if="brandPolicy && !canWrite" class="muted wide">
-            {{ t("当前账号仅有读取权限，无法修改品牌策略。", "This account has view-only access and cannot modify the brand policy.") }}
+            {{ t('admin.copy.486eece3') }}
           </p>
           <div v-if="canWrite" class="wide action-row">
-            <button class="primary" type="submit" :disabled="!brandCanSave">
-              {{ saving === "brand" ? t("保存中…", "Saving…") : t("保存品牌策略", "Save brand policy") }}
+            <button class="button button-primary" type="submit" :disabled="!brandCanSave">
+              {{ saving === "brand" ? t('admin.copy.2462134b') : t('admin.copy.cce06086') }}
             </button>
           </div>
         </form>
@@ -751,81 +760,79 @@ onUnmounted(() => {
       <section class="policy-card game-card">
         <div class="card-heading">
           <div>
-            <h3>{{ t("彩种策略覆盖", "Game policy overrides") }}</h3>
+            <h3>{{ t('admin.copy.5c087e13') }}</h3>
             <p>
-              {{ t("可用彩种目录仅在具备彩种读取权限时显示；也可输入彩种 ID 直接读取策略。", "The game catalog appears only with game-view permission. You can also enter a game ID to load its policy directly.") }}
+              {{ t('admin.copy.06508683') }}
             </p>
           </div>
         </div>
         <div class="game-picker">
           <label v-if="rights.gameView"
-            >{{ t("选择彩种", "Select a game") }}
+            >{{ t('admin.copy.68ccd146') }}
             <select
               :value="gameId"
               :disabled="loadingGames || !!saving || !!uncertain"
-              @change="
-                changeSelectedGame(($event.target as HTMLSelectElement).value)
-              "
+              @change="withGlobalLoading(changeSelectedGame, ($event.target as HTMLSelectElement).value)"
             >
-              <option value="">{{ t("请选择彩种", "Select a game") }}</option>
+              <option value="">{{ t('admin.copy.3aba80cd') }}</option>
               <option v-for="game in games" :key="game.id" :value="game.id">
-                {{ game.name }} · {{ game.id }}
+                {{ game.name }}
               </option>
             </select>
           </label>
-          <button
+          <button v-refresh-button="loadingGames ? t('admin.copy.b1808de5') : t('admin.copy.f8a8e3bf')"
             v-if="rights.gameView"
-            class="secondary"
+            class="button button-secondary"
             type="button"
             :disabled="loadingGames || !!saving || !!uncertain"
-            @click="loadGames"
+            @click="withGlobalLoading(loadGames)"
           >
-            {{ loadingGames ? t("读取目录中…", "Loading catalog…") : t("刷新彩种目录", "Refresh game catalog") }}
+            {{ loadingGames ? t('admin.copy.b1808de5') : t('admin.copy.f8a8e3bf') }}
           </button>
           <p
             v-if="rights.gameView && !games.length && !loadingGames"
-            class="muted"
+            class="muted empty-state"
           >
-            {{ t("彩种目录为空，或尚未读取。", "The game catalog is empty or has not been loaded.") }}
+            {{ t('admin.copy.a493ddef') }}
           </p>
           <p v-if="!rights.gameView" class="muted">
-            {{ t("当前账号没有彩种目录读取权限；可以用下方 ID 直接读取策略。", "This account cannot view the game catalog; use the ID below to load a policy directly.") }}
+            {{ t('admin.copy.a60157b8') }}
           </p>
         </div>
-        <form
+        <form novalidate v-inline-validation
           class="game-id-form"
-          @submit.prevent="changeSelectedGame(directGameId.trim())"
+          @submit.prevent="withGlobalLoading(changeSelectedGame, directGameId.trim())"
         >
           <label
-            >{{ t("游戏：彩种 ID", "Game ID") }}<input
+            >{{ t('admin.copy.43d91d0a') }}<input
               v-model.trim="directGameId"
               autocomplete="off"
-              :placeholder="t('输入彩种 ID', 'Enter game ID')"
+              :placeholder="t('admin.copy.e143b771')"
               :disabled="!!saving || !!uncertain"
           /></label>
           <button
-            class="secondary"
+            class="button button-secondary"
             type="submit"
             :disabled="
               !directGameId.trim() || loadingGame || !!saving || !!uncertain
             "
           >
-            {{ loadingGame ? t("读取中…", "Loading…") : t("读取彩种策略", "Load game policy") }}
+            {{ loadingGame ? t('admin.copy.27342bf3') : t('admin.copy.373b0a3d') }}
           </button>
         </form>
-        <p v-if="loadingGame && !gamePolicy" class="muted" role="status">
-          {{ t("正在读取彩种策略…", "Loading game policy…") }}
+        <p v-global-loading v-if="loadingGame && !gamePolicy" class="muted" role="status">
+          {{ t('admin.copy.739dd9f0') }}
         </p>
         <p v-else-if="gameId && !gamePolicy && !error" class="muted">
-          {{ t("未读取到此彩种策略。", "No policy was found for this game.") }}
+          {{ t('admin.copy.beecc9a2') }}
         </p>
-        <form
+        <form v-write-guard="Boolean(saving)" novalidate v-inline-validation
           v-if="gamePolicy"
           class="editor-grid game-editor"
-          @submit.prevent="saveGame"
+          @submit.prevent="withGlobalLoading(saveGame)"
         >
           <p class="policy-version wide">
-            {{ t("游戏：", "Game: ") }}{{ gamePolicy.game_id }} · {{ t("版本", "Version") }} {{ gamePolicy.version }}
+            {{ t('admin.copy.9661b2ca') }}<AssociationName :record="gamePolicy" kind="game" :id="gamePolicy.game_id" :locale="associationLocale" />
           </p>
           <template
             v-for="field in [
@@ -845,9 +852,9 @@ onUnmounted(() => {
             :key="field.key"
           >
             <label
-              >{{ t("游戏：", "Game: ") }}{{ display(field.label) }}
+              >{{ t('admin.copy.9661b2ca') }}{{ display(field.label) }}
               <select
-                :aria-label="`${t('游戏：', 'Game: ')}${display(field.label)}`"
+                :aria-label="`${t('admin.copy.9661b2ca')}${display(field.label)}`"
                 v-model="
                   gameDraft[
                     field.key as keyof Pick<
@@ -861,9 +868,9 @@ onUnmounted(() => {
                 "
                 :disabled="!canWrite || !!uncertain || reconciling"
               >
-                <option value="inherit">{{ t("继承品牌默认", "Inherit brand default") }}</option>
-                <option value="value">{{ t("指定数值", "Set a value") }}</option>
-                <option v-if="!field.minimum" value="unlimited">{{ t("不限", "Unlimited") }}</option>
+                <option value="inherit">{{ t('admin.copy.e6cd5a15') }}</option>
+                <option value="value">{{ t('admin.copy.94924ab6') }}</option>
+                <option v-if="!field.minimum" value="unlimited">{{ t('admin.copy.374fa8f7') }}</option>
               </select>
             </label>
             <label
@@ -878,9 +885,9 @@ onUnmounted(() => {
                   >
                 ].mode === 'value'
               "
-              >{{ t("游戏：", "Game: ") }}{{ display(field.label) }}{{ t("数值", "value") }}
+              >{{ t('admin.copy.9661b2ca') }}{{ display(field.label) }}{{ t('admin.copy.46eb2008') }}
               <input
-                :aria-label="`${t('游戏：', 'Game: ')}${display(field.label)}${t('数值', 'value')}`"
+                :aria-label="`${t('admin.copy.9661b2ca')}${display(field.label)}${t('admin.copy.46eb2008')}`"
                 v-model.trim="
                   gameDraft[
                     field.key as keyof Pick<
@@ -899,32 +906,25 @@ onUnmounted(() => {
             </label>
           </template>
           <label
-            >{{ t("游戏：用户撤销权限", "Game: user cancellation") }}<select
+            >{{ t('admin.copy.ee6240ba') }}<select
               v-model="gameDraft.user_cancel_allowed"
               :disabled="!canWrite || !!uncertain || reconciling"
             >
-              <option value="inherit">{{ t("继承品牌默认", "Inherit brand default") }}</option>
-              <option value="allow">{{ t("允许", "Allow") }}</option>
-              <option value="deny">{{ t("禁止", "Deny") }}</option>
+              <option value="inherit">{{ t('admin.copy.e6cd5a15') }}</option>
+              <option value="allow">{{ t('admin.copy.068bad15') }}</option>
+              <option value="deny">{{ t('admin.copy.02430d7c') }}</option>
             </select></label
           >
-          <label class="wide"
-            >{{ t("游戏：变更原因（必填，最多 500 UTF-8 字节）", "Game: change reason (required, up to 500 UTF-8 bytes)") }}<textarea
-              v-model="gameDraft.reason"
-              rows="3"
-              maxlength="500"
-              :disabled="!canWrite || !!uncertain || reconciling"
-            />
-          </label>
+
           <p v-if="!gameInputsValid" class="field-error wide" role="alert">
-            {{ t("覆盖值必须为正整数；生效后的最低单注积分不得高于任一有限上限。", "Override values must be positive whole numbers. The effective minimum per bet cannot exceed any finite limit.") }}
+            {{ t('admin.copy.1e61ff65') }}
           </p>
           <p v-if="gamePolicy && !canWrite" class="muted wide">
-            {{ t("当前账号仅有读取权限，无法修改彩种策略。", "This account has view-only access and cannot modify the game policy.") }}
+            {{ t('admin.copy.2ee5cdd3') }}
           </p>
           <div v-if="canWrite" class="wide action-row">
-            <button class="primary" type="submit" :disabled="!gameCanSave">
-              {{ saving === "game" ? t("保存中…", "Saving…") : t("保存彩种策略", "Save game policy") }}
+            <button class="button button-primary" type="submit" :disabled="!gameCanSave">
+              {{ saving === "game" ? t('admin.copy.2462134b') : t('admin.copy.90512a84') }}
             </button>
           </div>
         </form>
@@ -960,7 +960,7 @@ onUnmounted(() => {
 .muted {
   font-size: 11px;
   line-height: 1.55;
-  color: #737b8c;
+  color: var(--muted);
   margin: 0;
   overflow-wrap: anywhere;
 }
@@ -1009,8 +1009,8 @@ onUnmounted(() => {
   color: #745417;
 }
 .policy-card {
-  background: #fff;
-  border: 1px solid #e9ebf0;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 11px;
   padding: 16px;
   min-width: 0;
@@ -1049,7 +1049,7 @@ onUnmounted(() => {
   min-width: 0;
   border: 1px solid #dfe3eb;
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   padding: 9px 10px;
   color: #252a36;
   font: inherit;
@@ -1059,7 +1059,7 @@ onUnmounted(() => {
 .editor-grid textarea:disabled,
 .game-id-form input:disabled {
   background: #f6f7f9;
-  color: #737b8c;
+  color: var(--muted);
 }
 .check-label {
   display: flex !important;
@@ -1099,15 +1099,15 @@ onUnmounted(() => {
 }
 .game-id-form {
   padding-bottom: 12px;
-  border-bottom: 1px solid #eceef3;
+  border-bottom: 1px solid var(--line);
 }
 .policy-version {
   font-size: 11px;
-  color: #737b8c;
+  color: var(--muted);
   margin: 0;
 }
-.primary,
-.secondary {
+.button-primary,
+.button-secondary {
   border: 0;
   border-radius: 7px;
   padding: 9px 12px;
@@ -1116,16 +1116,16 @@ onUnmounted(() => {
   cursor: pointer;
   white-space: nowrap;
 }
-.primary {
+.button-primary {
   background: #405bd6;
-  color: #fff;
+  color: var(--surface);
 }
-.secondary {
+.button-secondary {
   background: #eef1f7;
   color: #455064;
 }
-.primary:disabled,
-.secondary:disabled {
+.button-primary:disabled,
+.button-secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

@@ -23,7 +23,6 @@ const policy: CommissionPolicy = {
   created_at: timestamp,
   updated_at: timestamp,
   revision_id: revisionId,
-  audit_log_id: auditId,
 };
 const ok = (data: unknown) => new Response(JSON.stringify({ success: true, data }), { status: 200 });
 
@@ -57,26 +56,20 @@ describe("commission policy API", () => {
     for (let index = 0; index < 3; index++) await expect(api.getPolicy(brand)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
   });
 
-  it("reads brand policy and history with same-origin credentials and explicit brand header", async () => {
-    const revision = { id: revisionId, brand_id: brand, version: 1, config, changed_by: null, reason: "Initial policy", audit_log_id: null, created_at: timestamp };
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(ok(policy)).mockResolvedValueOnce(ok({ items: [revision], limit: 20, offset: 0 }));
+  it("reads only the current brand policy with same-origin credentials", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok({ ...policy, version: 2 }));
     const api = createCommissionPolicyApi(fetcher);
-    await expect(api.getPolicy(brand)).resolves.toEqual(policy);
-    await expect(api.getHistory(brand)).resolves.toEqual({ items: [revision], limit: 20, offset: 0 });
-    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
-      "/api/v1/admin/commission-policy",
-      "/api/v1/admin/commission-policy/history?limit=20&offset=0",
-    ]);
-    for (const [, init] of fetcher.mock.calls) {
-      expect(init?.credentials).toBe("same-origin");
-      expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
-    }
+    await expect(api.getPolicy(brand)).resolves.toEqual({ ...policy, version: 2 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe("/api/v1/admin/commission-policy");
+    expect(init?.credentials).toBe("same-origin");
+    expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
   });
 
   it.each([
     ["cross-brand response", { ...policy, brand_id: otherBrand }],
     ["noncanonical date", { ...policy, updated_at: "2026-02-30T00:00:00Z" }],
-    ["missing post-initial audit id", { ...policy, version: 2, audit_log_id: undefined }],
     ["updated before created", { ...policy, created_at: "2026-10-07T00:00:00Z" }],
     ["noncanonical UUID", { ...policy, revision_id: "33333333333343338333333333333333" }],
     ["unsafe version", { ...policy, version: Number.MAX_SAFE_INTEGER + 1 }],
@@ -84,23 +77,6 @@ describe("commission policy API", () => {
   ])("rejects invalid GET policy (%s)", async (_name, value) => {
     const api = createCommissionPolicyApi(vi.fn<typeof fetch>().mockResolvedValue(ok(value)));
     await expect(api.getPolicy(brand)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
-  });
-
-  it("rejects cross-brand and malformed history rows", async () => {
-    const crossBrand = { id: revisionId, brand_id: otherBrand, version: 1, config, changed_by: null, reason: "reason", audit_log_id: null, created_at: timestamp };
-    const api = createCommissionPolicyApi(vi.fn<typeof fetch>().mockResolvedValue(ok({ items: [crossBrand], limit: 20, offset: 0 })));
-    await expect(api.getHistory(brand)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
-  });
-
-  it("requires initial revisions to have null actor and audit ids, and later revisions to have both UUIDs", async () => {
-    const initial = { id: revisionId, brand_id: brand, version: 1, config, changed_by: null, reason: "Initial policy", audit_log_id: null, created_at: timestamp };
-    const later = { ...initial, version: 2, changed_by: adminId, audit_log_id: auditId };
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(ok({ items: [initial], limit: 20, offset: 0 })).mockResolvedValueOnce(ok({ items: [later], limit: 20, offset: 0 })).mockResolvedValueOnce(ok({ items: [{ ...initial, changed_by: adminId }], limit: 20, offset: 0 })).mockResolvedValueOnce(ok({ items: [{ ...later, audit_log_id: null }], limit: 20, offset: 0 }));
-    const api = createCommissionPolicyApi(fetcher);
-    await expect(api.getHistory(brand)).resolves.toMatchObject({ items: [initial] });
-    await expect(api.getHistory(brand)).resolves.toMatchObject({ items: [later] });
-    await expect(api.getHistory(brand)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
-    await expect(api.getHistory(brand)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
   });
 
   it("binds the update response to the submitted brand, next version, and exact config", async () => {

@@ -30,12 +30,12 @@ func TestParallelPeriodWorkersAndIndividualCancelNeverDoubleRefund(t *testing.T)
 	}
 	actor := periodCancelActor(f)
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
-		_, e := f.service.CancelPeriod(ctx, tx, f.brand, actor, f.period.ID, CancelPeriodInput{Version: f.period.Version, Mode: "judged_cancelled", Cause: "no_result", Reason: "parallel cancellation"}, policyMeta(actor.ID))
+		_, e := f.service.CancelPeriod(ctx, tx, f.brand, actor, f.period.ID, CancelPeriodInput{Version: f.period.Version, Mode: "judged_cancelled", Cause: "no_result", Reason: ""}, policyMeta(actor.ID))
 		return e
 	})
 	// Another valid endpoint can refund one captured target before the workers.
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
-		_, e := f.service.CancelAdmin(ctx, tx, f.brand, actor, orders[0].ID, 1, "independent operator refund", policyMeta(actor.ID))
+		_, e := f.service.CancelAdmin(ctx, tx, f.brand, actor, orders[0].ID, 1, "", policyMeta(actor.ID))
 		return e
 	})
 	var wg sync.WaitGroup
@@ -68,7 +68,7 @@ func TestDrawnPeriodInvalidResultCancellationPreservesLockedEvidence(t *testing.
 	ctx := context.Background()
 	actor := periodCancelActor(f)
 	actor.Roles[0].Permissions = append(actor.Roles[0].Permissions, access.Permission{Resource: "draw", Action: "manual_create", Scope: access.ScopeBrand})
-	now := time.Now().UTC()
+	now := bettingDatabaseNow(t, f.db)
 	rs := rulebook.Store{DB: f.db}
 	var p rulebook.Period
 	bettingTx(t, f.db, func(tx pgx.Tx) error {

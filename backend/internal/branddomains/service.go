@@ -39,7 +39,6 @@ type Domain struct {
 	ID      string `json:"id"`
 	Domain  string `json:"domain"`
 	Enabled bool   `json:"enabled"`
-	Primary bool   `json:"is_primary"`
 }
 type Record struct {
 	BrandID    string    `json:"brand_id"`
@@ -64,7 +63,6 @@ type Input struct {
 	Version int64  `json:"version"`
 	Domain  string `json:"domain,omitempty"`
 	Enabled bool   `json:"enabled"`
-	Primary bool   `json:"is_primary"`
 	Reason  string `json:"reason"`
 }
 
@@ -100,8 +98,6 @@ func (in *Input) UnmarshalJSON(raw []byte) error {
 			}
 		case "enabled":
 			e = json.Unmarshal(value, &next.Enabled)
-		case "is_primary":
-			e = json.Unmarshal(value, &next.Primary)
 		case "reason":
 			e = json.Unmarshal(value, &next.Reason)
 		default:
@@ -111,7 +107,7 @@ func (in *Input) UnmarshalJSON(raw []byte) error {
 			return ErrInvalid
 		}
 	}
-	if token, e = d.Token(); e != nil || token != json.Delim('}') || !seen["version"] || !seen["enabled"] || !seen["is_primary"] || !seen["reason"] {
+	if token, e = d.Token(); e != nil || token != json.Delim('}') || !seen["version"] || !seen["enabled"] {
 		return ErrInvalid
 	}
 	var tail any
@@ -146,7 +142,7 @@ func Allowed(a access.Account, brand, action string) bool {
 
 type Service struct{ DB *pgxpool.Pool }
 
-const domainProjection = `COALESCE((SELECT jsonb_agg(jsonb_build_object('id',d.id,'domain',d.domain,'enabled',d.enabled,'is_primary',d.is_primary) ORDER BY d.domain,d.id) FROM brand_domains d WHERE d.brand_id=b.id),'[]'::jsonb)`
+const domainProjection = `COALESCE((SELECT jsonb_agg(jsonb_build_object('id',d.id,'domain',d.domain,'enabled',d.enabled) ORDER BY d.domain,d.id) FROM brand_domains d WHERE d.brand_id=b.id),'[]'::jsonb)`
 const recordSQL = `SELECT b.id::text,b.config_version,b.status,` + domainProjection + `,b.updated_at,
  COALESCE((SELECT h.audit_log_id::text FROM brand_domain_revisions h WHERE h.brand_id=b.id AND h.version=b.config_version),'') FROM brands b WHERE b.id=$1`
 
@@ -171,7 +167,7 @@ func (s Service) Read(ctx context.Context, brand string) (Record, error) {
 	return read(s.DB.QueryRow(ctx, recordSQL, brand))
 }
 func (s Service) Change(ctx context.Context, tx pgx.Tx, brand string, a access.Account, target string, in Input, meta points.Metadata) (Record, error) {
-	if tx == nil || !uuidPattern.MatchString(brand) || in.Version < 1 || !utf8.ValidString(in.Reason) || len(in.Reason) > 500 || strings.TrimSpace(in.Reason) == "" || in.Primary && !in.Enabled {
+	if tx == nil || !uuidPattern.MatchString(brand) || in.Version < 1 || !utf8.ValidString(in.Reason) || len(in.Reason) > 500 {
 		return Record{}, ErrInvalid
 	}
 	if target == "" && !ValidDomain(in.Domain) || target != "" && (!uuidPattern.MatchString(target) || in.Domain != "") {
@@ -210,7 +206,7 @@ func (s Service) Change(ctx context.Context, tx pgx.Tx, brand string, a access.A
 		}
 		target = ids.New()
 		var inserted string
-		e = tx.QueryRow(ctx, `INSERT INTO brand_domains(id,brand_id,domain,enabled,is_primary)VALUES($1,$2,$3,$4,false) ON CONFLICT DO NOTHING RETURNING id::text`, target, brand, in.Domain, in.Enabled).Scan(&inserted)
+		e = tx.QueryRow(ctx, `INSERT INTO brand_domains(id,brand_id,domain,enabled)VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id::text`, target, brand, in.Domain, in.Enabled).Scan(&inserted)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return Record{}, ErrConflict
 		}
@@ -222,7 +218,7 @@ func (s Service) Change(ctx context.Context, tx pgx.Tx, brand string, a access.A
 		for _, d := range before.Domains {
 			if d.ID == strings.ToLower(target) {
 				found = true
-				if d.Enabled == in.Enabled && d.Primary == in.Primary {
+				if d.Enabled == in.Enabled {
 					return Record{}, ErrState
 				}
 			}
@@ -234,20 +230,59 @@ func (s Service) Change(ctx context.Context, tx pgx.Tx, brand string, a access.A
 	if _, e = tx.Exec(ctx, `UPDATE brands SET config_version=config_version+1,updated_at=clock_timestamp() WHERE id=$1`, brand); e != nil {
 		return Record{}, e
 	}
-	if in.Primary {
-		if _, e = tx.Exec(ctx, `UPDATE brand_domains SET is_primary=false WHERE brand_id=$1 AND is_primary`, brand); e != nil {
-			return Record{}, e
-		}
-	}
-	_, e = tx.Exec(ctx, `UPDATE brand_domains SET enabled=$3,is_primary=$4 WHERE brand_id=$1 AND id=$2`, brand, target, in.Enabled, in.Primary)
+	_, e = tx.Exec(ctx, `UPDATE brand_domains SET enabled=$3 WHERE brand_id=$1 AND id=$2`, brand, target, in.Enabled)
 	if e != nil {
 		return Record{}, e
 	}
+	return finishChange(ctx, tx, brand, a, before, in.Reason, meta)
+}
+
+// Remove releases the live hostname reservation; immutable revisions retain its history.
+func (s Service) Remove(ctx context.Context, tx pgx.Tx, brand string, a access.Account, target string, version int64, meta points.Metadata) (Record, error) {
+	if tx == nil || !uuidPattern.MatchString(brand) || !uuidPattern.MatchString(target) || version < 1 || !uuidPattern.MatchString(a.ID) || meta.ActorType != "admin" || meta.ActorID != a.ID || meta.RequestID == "" {
+		return Record{}, ErrInvalid
+	}
+	if !Allowed(a, brand, "write") {
+		return Record{}, ErrDenied
+	}
+	before, e := read(tx.QueryRow(ctx, recordSQL+` FOR UPDATE OF b`, brand))
+	if e != nil {
+		return Record{}, e
+	}
+	if before.Version != version || before.Version == math.MaxInt64 {
+		return Record{}, ErrVersion
+	}
+	if before.Status == "disabled" {
+		return Record{}, ErrState
+	}
+	var host string
+	for _, d := range before.Domains {
+		if d.ID == strings.ToLower(target) {
+			host = d.Domain
+			break
+		}
+	}
+	if host == "" {
+		return Record{}, ErrNotFound
+	}
+	if _, e = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,790031))`, host); e != nil {
+		return Record{}, e
+	}
+	if _, e = tx.Exec(ctx, `UPDATE brands SET config_version=config_version+1,updated_at=clock_timestamp() WHERE id=$1`, brand); e != nil {
+		return Record{}, e
+	}
+	if _, e = tx.Exec(ctx, `DELETE FROM brand_domains WHERE brand_id=$1 AND id=$2`, brand, target); e != nil {
+		return Record{}, e
+	}
+	return finishChange(ctx, tx, brand, a, before, "", meta)
+}
+
+func finishChange(ctx context.Context, tx pgx.Tx, brand string, a access.Account, before Record, reason string, meta points.Metadata) (Record, error) {
 	after, e := read(tx.QueryRow(ctx, recordSQL, brand))
 	if e != nil {
 		return Record{}, e
 	}
-	auditID, e := audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: a.ID, Action: "brand_domains.update", ResourceType: "brand_domains", ResourceID: brand, Reason: in.Reason, RequestID: meta.RequestID, IP: meta.IP, Before: before, After: after})
+	auditID, e := audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: a.ID, Action: "brand_domains.update", ResourceType: "brand_domains", ResourceID: brand, Reason: reason, RequestID: meta.RequestID, IP: meta.IP, Before: before, After: after})
 	if e != nil {
 		return Record{}, e
 	}
@@ -259,7 +294,7 @@ func (s Service) Change(ctx context.Context, tx pgx.Tx, brand string, a access.A
 	if e != nil {
 		return Record{}, e
 	}
-	if _, e = tx.Exec(ctx, `INSERT INTO brand_domain_revisions(id,brand_id,version,changed_by,reason,audit_log_id,before_domains,domains)VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, ids.New(), brand, after.Version, a.ID, in.Reason, auditID, prev, next); e != nil {
+	if _, e = tx.Exec(ctx, `INSERT INTO brand_domain_revisions(id,brand_id,version,changed_by,reason,audit_log_id,before_domains,domains)VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, ids.New(), brand, after.Version, a.ID, reason, auditID, prev, next); e != nil {
 		return Record{}, e
 	}
 	after.AuditLogID = auditID

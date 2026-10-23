@@ -1,37 +1,46 @@
 <script setup lang="ts">
+import { usePlatformI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import { usePlatformI18n } from "./i18n"
+const ui = usePlatformI18n().t
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformFinancialPoliciesApi, type PointPolicy, type WithdrawalPolicy, type CommissionPolicy } from './financial-policies-api'
+import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform-format'
 
-const props = defineProps<{ brandId: string; locale: 'en' | 'zh-CN' }>()
+const props = defineProps<{ brandId: string; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
 const api = createPlatformFinancialPoliciesApi()
 type PolicyType = 'points' | 'withdrawal' | 'commission'
 const selected = ref<PolicyType>('points')
 const policy = ref<PointPolicy | WithdrawalPolicy | CommissionPolicy | null>(null)
 const loading = ref(false)
-const error = ref('')
+const error = ref<string | import("@lottery/shared").LocalizedMessage>("")
 let generation = 0
 
 const copy = () => props.locale === 'en' ? {
-  title: 'Financial policies', policyType: 'Policy type', points: 'Points', withdrawals: 'Withdrawals', commission: 'Commission', refresh: 'Refresh', loading: 'Loading…', empty: 'No policy loaded.',
-  brand: 'Brand', version: 'Version', updated: 'Updated', revision: 'Revision', audit: 'Audit log', unlimited: 'Unlimited', enabled: 'Enabled', disabled: 'Disabled',
-  balance: 'Maximum balance points', recharge: 'Maximum recharge points', adjustment: 'Maximum adjustment points', minimum: 'Minimum withdrawal points', maximum: 'Maximum withdrawal points', sources: 'Allowed sources', review: 'Review mode', manual: 'Manual', automatic: 'Automatic', turnover: 'Turnover multiple', defaultNote: 'The brand turnover multiple is the default; a game override takes precedence. This view does not calculate withdrawal eligibility.',
-  payout: 'Payout mode', calendar: 'Calendar', notConfigured: 'Not configured', cycle: 'Cycle', weekly: 'Weekly', monthly: 'Monthly', timezone: 'Time zone', boundary: 'Boundary time', weekday: 'Weekday', monthday: 'Month day', shortMonth: 'Short month rule', lastDay: 'Use last day', skip: 'Skip short months',
-  weekdays: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+  title: ui('platform.copy.f731cce4'), policyType: ui('platform.copy.ac262406'), points: ui('platform.copy.a1f74153'), withdrawals: ui('platform.copy.c2a6a429'), commission: ui('platform.copy.648ed708'), rechargeSource: ui('platform.copy.3420a04d'), winningSource: ui('platform.copy.b8a2ff9b'), giftSource: ui('platform.copy.c8d77732'), commissionSource: ui('platform.copy.648ed708'), refresh: ui('platform.copy.256fe8b3'), empty: ui('platform.copy.aad579db'),
+  brand: ui('platform.copy.d5b68c0f'), version: ui('platform.copy.59405491'), updated: ui('platform.copy.b8b9d3d6'), revision: ui('platform.copy.6a185a4f'), audit: ui('platform.copy.8262ff2c'), unlimited: ui('platform.copy.2b8630e5'), enabled: ui('platform.copy.997d5f45'), disabled: ui('platform.copy.1b47d863'),
+  balance: ui('platform.copy.c530f4d5'), recharge: ui('platform.copy.7752d1b9'), adjustment: ui('platform.copy.b36178d5'), minimum: ui('platform.copy.619f1358'), maximum: ui('platform.copy.c47b156c'), sources: ui('platform.copy.12b9d6bb'), review: ui('platform.copy.97fb0fe9'), manual: ui('platform.copy.05b370d4'), automatic: ui('platform.copy.b080e80e'), turnover: ui('platform.copy.51f363cc'), defaultNote: ui('platform.copy.082fdfea'),
+  payout: ui('platform.copy.a296bc29'), calendar: ui('platform.copy.0bb0776b'), notConfigured: ui('platform.copy.41ea503b'), cycle: ui('platform.copy.f6f6ceea'), weekly: ui('platform.copy.8916e895'), monthly: ui('platform.copy.dfecc78d'), timezone: ui('platform.copy.27570df6'), boundary: ui('platform.copy.1de328f6'), weekday: ui('platform.copy.54ce5a7d'), monthday: ui('platform.copy.b1050932'), shortMonth: ui('platform.copy.5e80124f'), lastDay: ui('platform.copy.b4999ff7'), skip: ui('platform.copy.ca61d3ea'),
+  weekdays: ['platform.weekday.sunday', 'platform.weekday.monday', 'platform.weekday.tuesday', 'platform.weekday.wednesday', 'platform.weekday.thursday', 'platform.weekday.friday', 'platform.weekday.saturday'],
 } : {
-  title: '财务规则', policyType: '规则类型', points: '积分', withdrawals: '提现', commission: '佣金', refresh: '刷新', loading: '加载中…', empty: '尚未加载规则。',
-  brand: '品牌', version: '版本', updated: '更新时间', revision: '修订记录', audit: '审计日志', unlimited: '不限', enabled: '启用', disabled: '停用',
-  balance: '积分余额上限', recharge: '充值积分上限', adjustment: '积分调整上限', minimum: '最低提现积分', maximum: '最高提现积分', sources: '允许的来源', review: '审核模式', manual: '人工', automatic: '自动', turnover: '流水倍数', defaultNote: '品牌流水倍数为默认值；游戏单独设置时优先使用游戏规则。本页面不计算提现资格。',
-  payout: '发放模式', calendar: '日历周期', notConfigured: '未配置', cycle: '周期', weekly: '每周', monthly: '每月', timezone: '时区', boundary: '周期边界时间', weekday: '星期', monthday: '每月日期', shortMonth: '短月规则', lastDay: '使用当月最后一天', skip: '跳过短月',
-  weekdays: ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'],
+  title: ui('platform.copy.f731cce4'), policyType: ui('platform.copy.ac262406'), points: ui('platform.copy.a1f74153'), withdrawals: ui('platform.copy.c2a6a429'), commission: ui('platform.copy.648ed708'), rechargeSource: ui('platform.copy.3420a04d'), winningSource: ui('platform.copy.b8a2ff9b'), giftSource: ui('platform.copy.c8d77732'), commissionSource: ui('platform.copy.648ed708'), refresh: ui('platform.copy.256fe8b3'), empty: ui('platform.copy.aad579db'),
+  brand: ui('platform.copy.d5b68c0f'), version: ui('platform.copy.59405491'), updated: ui('platform.copy.b8b9d3d6'), revision: ui('platform.copy.6a185a4f'), audit: ui('platform.copy.8262ff2c'), unlimited: ui('platform.copy.2b8630e5'), enabled: ui('platform.copy.997d5f45'), disabled: ui('platform.copy.1b47d863'),
+  balance: ui('platform.copy.c530f4d5'), recharge: ui('platform.copy.7752d1b9'), adjustment: ui('platform.copy.b36178d5'), minimum: ui('platform.copy.619f1358'), maximum: ui('platform.copy.c47b156c'), sources: ui('platform.copy.12b9d6bb'), review: ui('platform.copy.97fb0fe9'), manual: ui('platform.copy.05b370d4'), automatic: ui('platform.copy.b080e80e'), turnover: ui('platform.copy.51f363cc'), defaultNote: ui('platform.copy.082fdfea'),
+  payout: ui('platform.copy.a296bc29'), calendar: ui('platform.copy.0bb0776b'), notConfigured: ui('platform.copy.41ea503b'), cycle: ui('platform.copy.f6f6ceea'), weekly: ui('platform.copy.8916e895'), monthly: ui('platform.copy.dfecc78d'), timezone: ui('platform.copy.27570df6'), boundary: ui('platform.copy.1de328f6'), weekday: ui('platform.copy.54ce5a7d'), monthday: ui('platform.copy.b1050932'), shortMonth: ui('platform.copy.5e80124f'), lastDay: ui('platform.copy.b4999ff7'), skip: ui('platform.copy.ca61d3ea'),
+  weekdays: ['platform.weekday.sunday', 'platform.weekday.monday', 'platform.weekday.tuesday', 'platform.weekday.wednesday', 'platform.weekday.thursday', 'platform.weekday.friday', 'platform.weekday.saturday'],
 }
 const enabledLabel = (value: boolean) => value ? copy().enabled : copy().disabled
-const auditId = (value?: string | null) => value || '—'
+const sourceLabel = (source: string) => source === 'recharge' ? copy().rechargeSource : source === 'winning' ? copy().winningSource : source === 'gift' ? copy().giftSource : copy().commissionSource
 
 function report(cause: unknown) {
   if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause)
-  else error.value = cause instanceof Error ? cause.message : String(cause)
+  else error.value = cause instanceof Error ? publicErrorMessage(cause) : publicErrorMessage(cause)
 }
 
 async function refresh() {
@@ -54,70 +63,70 @@ async function refresh() {
   }
 }
 
-watch(() => [props.brandId, selected.value], () => { void refresh() }, { immediate: true, flush: 'sync' })
+watch(() => [props.brandId, selected.value], () => { void withGlobalLoading(refresh) }, { immediate: true, flush: 'sync' })
 onBeforeUnmount(() => { ++generation })
 </script>
 
 <template>
   <div data-testid="platform-financial-policies">
-    <div class="page-heading"><div><h1>{{ copy().title }}</h1></div></div>
-    <div class="brand-picker"><label>{{ copy().policyType }}
+    <div class="brand-picker policy-picker"><label>{{ copy().policyType }}
       <select v-model="selected" :aria-label="copy().policyType" data-testid="platform-financial-policy-select">
         <option value="points">{{ copy().points }}</option><option value="withdrawal">{{ copy().withdrawals }}</option><option value="commission">{{ copy().commission }}</option>
       </select>
-    </label></div>
-    <p v-if="error" class="message error global-message" role="alert">{{ error }}</p>
-    <p v-if="loading" class="loading-line" aria-live="polite">{{ copy().loading }}</p>
+    </label><button v-refresh-button="copy().refresh" class="button button-secondary" :disabled="loading || !props.brandId" @click="withGlobalLoading(refresh)">{{ copy().refresh }}</button></div>
+    <p v-if="error" class="message error global-message" role="alert">{{ displayPublicError(error) }}</p>
     <section class="panel">
-      <div class="panel-heading"><div><h2>{{ selected === 'points' ? copy().points : selected === 'withdrawal' ? copy().withdrawals : copy().commission }}</h2><p>{{ copy().brand }}: <span class="mono">{{ props.brandId || '—' }}</span></p></div><button class="secondary" :disabled="loading || !props.brandId" @click="refresh">{{ copy().refresh }}</button></div>
       <section v-if="policy" class="reward-detail" data-testid="platform-financial-policy-detail">
-        <dl v-if="selected === 'points'" class="confirm-list reward-fields">
-          <div><dt>{{ copy().brand }}</dt><dd class="mono">{{ (policy as PointPolicy).brand_id }}</dd></div>
-          <div><dt>{{ copy().version }}</dt><dd>{{ (policy as PointPolicy).version }}</dd></div>
-          <div><dt>{{ copy().balance }}</dt><dd>{{ (policy as PointPolicy).max_balance_points == null ? copy().unlimited : (policy as PointPolicy).max_balance_points }}</dd></div>
-          <div><dt>{{ copy().recharge }}</dt><dd>{{ (policy as PointPolicy).max_recharge_points == null ? copy().unlimited : (policy as PointPolicy).max_recharge_points }}</dd></div>
-          <div><dt>{{ copy().adjustment }}</dt><dd>{{ (policy as PointPolicy).max_adjustment_points == null ? copy().unlimited : (policy as PointPolicy).max_adjustment_points }}</dd></div>
-          <div><dt>{{ copy().audit }}</dt><dd class="mono">{{ auditId((policy as PointPolicy).audit_log_id) }}</dd></div>
-        </dl>
-        <dl v-else-if="selected === 'withdrawal'" class="confirm-list reward-fields">
-          <div><dt>{{ copy().brand }}</dt><dd class="mono">{{ (policy as WithdrawalPolicy).brand_id }}</dd></div>
-          <div><dt>{{ copy().version }}</dt><dd>{{ (policy as WithdrawalPolicy).version }}</dd></div>
-          <div><dt>{{ copy().updated }}</dt><dd>{{ (policy as WithdrawalPolicy).updated_at }}</dd></div>
-          <div><dt>{{ copy().enabled }}</dt><dd>{{ enabledLabel((policy as WithdrawalPolicy).config.enabled) }}</dd></div>
-          <div><dt>{{ copy().minimum }}</dt><dd>{{ (policy as WithdrawalPolicy).config.min_points }}</dd></div>
-          <div><dt>{{ copy().maximum }}</dt><dd>{{ (policy as WithdrawalPolicy).config.max_points == null ? copy().unlimited : (policy as WithdrawalPolicy).config.max_points }}</dd></div>
-          <div><dt>{{ copy().sources }}</dt><dd>{{ (policy as WithdrawalPolicy).config.allowed_sources.map((source) => source === 'recharge' ? (props.locale === 'en' ? 'Recharge' : '充值') : source === 'winning' ? (props.locale === 'en' ? 'Winnings' : '中奖') : source === 'gift' ? (props.locale === 'en' ? 'Gift' : '赠送') : (props.locale === 'en' ? 'Commission' : '佣金')).join(', ') }}</dd></div>
-          <div><dt>{{ copy().review }}</dt><dd>{{ (policy as WithdrawalPolicy).config.review_mode === 'manual' ? copy().manual : copy().automatic }}</dd></div>
-          <div><dt>{{ copy().turnover }}</dt><dd>{{ (policy as WithdrawalPolicy).config.turnover_multiple }}</dd></div>
-          <div><dt>{{ copy().audit }}</dt><dd class="mono">{{ auditId((policy as WithdrawalPolicy).audit_log_id) }}</dd></div>
-        </dl>
-        <dl v-else class="confirm-list reward-fields">
-          <div><dt>{{ copy().brand }}</dt><dd class="mono">{{ (policy as CommissionPolicy).brand_id }}</dd></div>
-          <div><dt>{{ copy().version }}</dt><dd>{{ (policy as CommissionPolicy).version }}</dd></div>
-          <div><dt>{{ copy().updated }}</dt><dd>{{ (policy as CommissionPolicy).updated_at }}</dd></div>
-          <div><dt>{{ copy().enabled }}</dt><dd>{{ enabledLabel((policy as CommissionPolicy).config.enabled) }}</dd></div>
-          <div><dt>{{ copy().payout }}</dt><dd>{{ (policy as CommissionPolicy).config.payout_mode === 'manual' ? copy().manual : copy().automatic }}</dd></div>
-          <div><dt>{{ copy().calendar }}</dt><dd>{{ (policy as CommissionPolicy).config.calendar == null ? copy().notConfigured : ((policy as CommissionPolicy).config.calendar!.cycle === 'weekly' ? copy().weekly : copy().monthly) }}</dd></div>
-          <template v-if="(policy as CommissionPolicy).config.calendar">
-            <div><dt>{{ copy().cycle }}</dt><dd>{{ (policy as CommissionPolicy).config.calendar!.cycle === 'weekly' ? copy().weekly : copy().monthly }}</dd></div>
-            <div><dt>{{ copy().timezone }}</dt><dd>{{ (policy as CommissionPolicy).config.calendar!.timezone }}</dd></div>
-            <div><dt>{{ copy().boundary }}</dt><dd>{{ (policy as CommissionPolicy).config.calendar!.boundary_time }}</dd></div>
-            <div v-if="(policy as CommissionPolicy).config.calendar!.cycle === 'weekly'"><dt>{{ copy().weekday }}</dt><dd>{{ copy().weekdays[(policy as CommissionPolicy).config.calendar!.weekday!] }}</dd></div>
-            <template v-else>
-              <div><dt>{{ copy().monthday }}</dt><dd>{{ (policy as CommissionPolicy).config.calendar!.month_day }}</dd></div>
-              <div><dt>{{ copy().shortMonth }}</dt><dd>{{ (policy as CommissionPolicy).config.calendar!.short_month === 'last_day' ? copy().lastDay : copy().skip }}</dd></div>
-            </template>
-          </template>
-          <div><dt>{{ copy().revision }}</dt><dd class="mono">{{ (policy as CommissionPolicy).revision_id }}</dd></div>
-          <div><dt>{{ copy().audit }}</dt><dd class="mono">{{ auditId((policy as CommissionPolicy).audit_log_id) }}</dd></div>
-        </dl>
+        <div class="table-wrap">
+          <table v-if="selected === 'points'" class="policy-table">
+            <tbody>
+              <tr></tr>
+              <tr><th scope="row">{{ copy().balance }}</th><td>{{ (policy as PointPolicy).max_balance_points == null ? copy().unlimited : (policy as PointPolicy).max_balance_points }}</td></tr>
+              <tr><th scope="row">{{ copy().recharge }}</th><td>{{ (policy as PointPolicy).max_recharge_points == null ? copy().unlimited : (policy as PointPolicy).max_recharge_points }}</td></tr>
+              <tr><th scope="row">{{ copy().adjustment }}</th><td>{{ (policy as PointPolicy).max_adjustment_points == null ? copy().unlimited : (policy as PointPolicy).max_adjustment_points }}</td></tr>
+            </tbody>
+          </table>
+          <table v-else-if="selected === 'withdrawal'" class="policy-table">
+            <tbody>
+              <tr></tr>
+              <tr><th scope="row">{{ copy().updated }}</th><td>{{ formatPlatformDateTime((policy as WithdrawalPolicy).updated_at, props.displaySettings, props.locale) }}</td></tr>
+              <tr><th scope="row">{{ copy().enabled }}</th><td>{{ enabledLabel((policy as WithdrawalPolicy).config.enabled) }}</td></tr>
+              <tr><th scope="row">{{ copy().minimum }}</th><td>{{ (policy as WithdrawalPolicy).config.min_points }}</td></tr>
+              <tr><th scope="row">{{ copy().maximum }}</th><td>{{ (policy as WithdrawalPolicy).config.max_points == null ? copy().unlimited : (policy as WithdrawalPolicy).config.max_points }}</td></tr>
+              <tr><th scope="row">{{ copy().sources }}</th><td>{{ (policy as WithdrawalPolicy).config.allowed_sources.map(sourceLabel).join(', ') }}</td></tr>
+              <tr><th scope="row">{{ copy().review }}</th><td>{{ (policy as WithdrawalPolicy).config.review_mode === 'manual' ? copy().manual : copy().automatic }}</td></tr>
+              <tr><th scope="row">{{ copy().turnover }}</th><td>{{ (policy as WithdrawalPolicy).config.turnover_multiple }}</td></tr>
+            </tbody>
+          </table>
+          <table v-else class="policy-table">
+            <tbody>
+              <tr></tr>
+              <tr><th scope="row">{{ copy().updated }}</th><td>{{ formatPlatformDateTime((policy as CommissionPolicy).updated_at, props.displaySettings, props.locale) }}</td></tr>
+              <tr><th scope="row">{{ copy().enabled }}</th><td>{{ enabledLabel((policy as CommissionPolicy).config.enabled) }}</td></tr>
+              <tr><th scope="row">{{ copy().payout }}</th><td>{{ (policy as CommissionPolicy).config.payout_mode === 'manual' ? copy().manual : copy().automatic }}</td></tr>
+              <tr><th scope="row">{{ copy().calendar }}</th><td>{{ (policy as CommissionPolicy).config.calendar == null ? copy().notConfigured : ((policy as CommissionPolicy).config.calendar!.cycle === 'weekly' ? copy().weekly : copy().monthly) }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <template v-if="selected === 'commission' && (policy as CommissionPolicy).config.calendar">
+          <div class="table-wrap">
+            <table class="policy-table">
+              <tbody>
+                <tr><th scope="row">{{ copy().cycle }}</th><td>{{ (policy as CommissionPolicy).config.calendar!.cycle === 'weekly' ? copy().weekly : copy().monthly }}</td></tr>
+                <tr><th scope="row">{{ copy().timezone }}</th><td>{{ (policy as CommissionPolicy).config.calendar!.timezone }}</td></tr>
+                <tr><th scope="row">{{ copy().boundary }}</th><td>{{ (policy as CommissionPolicy).config.calendar!.boundary_time }}</td></tr>
+                <tr v-if="(policy as CommissionPolicy).config.calendar!.cycle === 'weekly'"><th scope="row">{{ copy().weekday }}</th><td>{{ ui(copy().weekdays[(policy as CommissionPolicy).config.calendar!.weekday!]) }}</td></tr>
+                <template v-else>
+                  <tr><th scope="row">{{ copy().monthday }}</th><td>{{ (policy as CommissionPolicy).config.calendar!.month_day }}</td></tr>
+                  <tr><th scope="row">{{ copy().shortMonth }}</th><td>{{ (policy as CommissionPolicy).config.calendar!.short_month === 'last_day' ? copy().lastDay : copy().skip }}</td></tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </template>
         <p v-if="selected === 'withdrawal'" class="wallet-pagination">{{ copy().defaultNote }}</p>
       </section>
       <p v-else-if="!loading && !error" class="empty-state">{{ copy().empty }}</p>
     </section>
   </div>
 </template>
-
-<style scoped>
-.panel-heading button { flex-shrink: 0; }
-</style>

@@ -152,7 +152,7 @@ func TestRechargeValidationBrandIsolationAndList(t *testing.T) {
 		proof  string
 		remark string
 		reason string
-	}{{"zero amount", 0, "ref", "note", "reason"}, {"negative amount", -1, "ref", "note", "reason"}, {"empty reason", 1, "ref", "note", "  "}, {"long proof", 1, string(make([]byte, 501)), "note", "reason"}, {"long remark", 1, "ref", string(make([]byte, 2001)), "reason"}} {
+	}{{"zero amount", 0, "ref", "note", "reason"}, {"negative amount", -1, "ref", "note", "reason"}, {"long proof", 1, string(make([]byte, 501)), "note", "reason"}, {"long remark", 1, "ref", string(make([]byte, 2001)), "reason"}} {
 		t.Run(tc.name, func(t *testing.T) {
 			tx := financeTx(t, f.pool)
 			_, err := f.service.CreateRecharge(ctx, tx, f.brandID, f.memberID, tc.amount, tc.proof, tc.remark, tc.reason, meta)
@@ -348,8 +348,8 @@ func TestCancelRechargeRejectsDuplicateAndConfirmedOrders(t *testing.T) {
 	}
 	pending := create("pending-cancel")
 	tx := financeTx(t, f.pool)
-	if _, err := f.service.CancelRecharge(ctx, tx, f.brandID, pending.ID, pending.Version, "", meta); !errors.Is(err, points.ErrInvalid) {
-		t.Fatalf("empty cancellation reason error=%v, want points.ErrInvalid", err)
+	if _, err := f.service.CancelRecharge(ctx, tx, f.brandID, pending.ID, pending.Version, "", meta); err != nil {
+		t.Fatalf("cancellation without reason failed: %v", err)
 	}
 	_ = tx.Rollback(ctx)
 	tx = financeTx(t, f.pool)

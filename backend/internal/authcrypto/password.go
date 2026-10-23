@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	passwordMinBytes = 10
-	passwordMaxBytes = 128
+	passwordMinBytes = 6
+	passwordMaxBytes = 30
 
 	argonVersion     = 19
 	argonMemoryKiB   = 64 * 1024
@@ -34,7 +34,7 @@ const (
 )
 
 var (
-	ErrInvalidPassword = errors.New("password must be between 10 and 128 bytes")
+	ErrInvalidPassword = errors.New("password must be between 6 and 30 bytes")
 	ErrInvalidHash     = errors.New("invalid password hash")
 )
 
@@ -45,11 +45,6 @@ func HashPassword(password string) (string, error) {
 		return "", ErrInvalidPassword
 	}
 	return hashPassword(password)
-}
-
-// HashDevelopmentAdminPassword hashes the fixed development-only administrator password.
-func HashDevelopmentAdminPassword() (string, error) {
-	return hashPassword("admin123")
 }
 
 func hashPassword(password string) (string, error) {
@@ -71,11 +66,6 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 		return false, ErrInvalidPassword
 	}
 	return verifyPassword(password, encodedHash)
-}
-
-// VerifyDevelopmentAdminPassword verifies the fixed development-only administrator password.
-func VerifyDevelopmentAdminPassword(encodedHash string) (bool, error) {
-	return verifyPassword("admin123", encodedHash)
 }
 
 func verifyPassword(password, encodedHash string) (bool, error) {

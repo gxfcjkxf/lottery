@@ -144,6 +144,10 @@ func TestMultiBrandOperatorAndVerifiedTelegramJoinPaths(t *testing.T) {
 		t.Fatal(attr, e)
 	}
 	var ledger int
+	var missing int
+	if e = db.QueryRow(ctx, `SELECT count(*) FROM brand_members m WHERE NOT EXISTS(SELECT 1 FROM join_codes c WHERE c.brand_id=m.brand_id AND c.owner_member_id=m.id AND c.kind='referral')`).Scan(&missing); e != nil || missing != 0 {
+		t.Fatal("registration, cross-brand join, operator or Telegram member missing own referral", missing, e)
+	}
 	if e = db.QueryRow(ctx, `SELECT count(*) FROM point_ledger_entries`).Scan(&ledger); e != nil || ledger != 0 {
 		t.Fatal(ledger, e)
 	}

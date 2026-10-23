@@ -1,9 +1,20 @@
 <script setup lang="ts">
+import { vWriteGuard } from "@lottery/shared";
+import { useUserI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import { vGlobalLoading } from "@lottery/shared";
+import { formatDisplayDateTime } from "@lottery/shared";
+import { vInlineValidation } from '@lottery/shared'
 import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onUnmounted, ref, watch } from "vue";
 import { hasPendingWithdrawalIntent, isWithdrawalAllocation, retainWithdrawalIntent, type CreateWithdrawalBody, type WithdrawalAllocation, type WithdrawalAvailability, type WithdrawalHistory, type WithdrawalOrder, type WithdrawalQualification, type WithdrawalSource } from "@lottery/shared";
 import { createWithdrawalOrdersApi, WithdrawalUnknownIntentError } from "./withdrawal-orders-api";
 import { formatIntegerAmount } from "./wallet-api";
+import { useUserI18n } from './i18n';
 
 const props = defineProps<{
   locale: "en" | "zh";
@@ -16,13 +27,13 @@ const api = computed(() => createWithdrawalOrdersApi({ brandCode: props.brandCod
 const availability = ref<WithdrawalAvailability | null>(null);
 const qualification = ref<WithdrawalQualification | null>(null);
 const qualificationLoading = ref(false);
-const qualificationError = ref("");
+const qualificationError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const orders = ref<WithdrawalOrder[]>([]);
 const history = ref<WithdrawalHistory | null>(null);
 const allocations = ref<Record<WithdrawalSource, string>>({ recharge: "", winning: "", gift: "", commission: "" });
 const loading = ref(false);
 const submitting = ref(false);
-const error = ref("");
+const error = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const receipt = ref<WithdrawalOrder | null>(null);
 const uncertain = ref<{
   scope: string;
@@ -38,9 +49,10 @@ let controller: AbortController | null = null;
 let historyController: AbortController | null = null;
 let disposed = false;
 const sources: WithdrawalSource[] = ["recharge", "winning", "gift", "commission"];
-const labels = computed(() => props.locale === "en"
-  ? { title: "Withdrawal requests", intro: "Submit a points withdrawal request and review its status.", refresh: "Refresh", loading: "Loading…", signIn: "Sign in to view withdrawal requests.", min: "Minimum", max: "Maximum", amount: "Points to withdraw", available: "Available source allocation", submit: "Submit request", unavailable: "Withdrawal requests are currently unavailable.", noEligibility: "Withdrawal eligibility has not been configured for this account.", disabled: "Withdrawals are disabled for this brand.", restricted: "This account cannot submit a withdrawal request.", qualification: "Read-only turnover snapshot", basePoints: "Base points", validPoints: "Valid turnover", validOrders: "Valid orders", credit: "Turnover credit", meetsTurnover: "Turnover requirement met", missesTurnover: "Turnover requirement not met", qualificationUnavailable: "Turnover qualification could not be loaded. Refresh before starting a new request.", qualificationNote: "This read-only snapshot is not authorization, a reservation, signed approval, or an external payment.", source: { recharge: "Recharge", winning: "Winnings", gift: "Gift", commission: "Commission" }, orders: "Your requests", empty: "No withdrawal requests yet.", history: "History", close: "Close history", date: "Created", reason: "Reason", status: "Status", receipt: "Request submitted", refreshAfter: "The receipt shows the original submitted state. Refresh separately to see later changes.", replay: "Replay the same request", unknown: "The outcome is unknown. You can explicitly replay the exact same request for this account.", accountChanged: "The account confirmation changed. Refresh availability before starting a new request.", sourceSum: "Source allocations must add up exactly to the requested points.", invalidAmount: "Enter a positive whole number within the server limits.", realPayments: "No external payment is made by this request.", states: { reviewing: "Reviewing", processing: "Processing", paid: "Paid", rejected: "Rejected", failed: "Failed", cancelled: "Cancelled" } }
-  : { title: "提现申请", intro: "提交积分提现申请并查看处理状态。", refresh: "刷新", loading: "正在加载…", signIn: "请登录以查看提现申请。", min: "最低金额", max: "最高金额", amount: "提现积分", available: "可用来源分配", submit: "提交申请", unavailable: "当前无法提交提现申请。", noEligibility: "此账户尚未配置提现资格。", disabled: "此品牌已停用提现。", restricted: "此账户无法提交提现申请。", qualification: "只读流水快照", basePoints: "基础积分", validPoints: "有效流水", validOrders: "有效订单", credit: "流水计入", meetsTurnover: "已满足流水要求", missesTurnover: "未满足流水要求", qualificationUnavailable: "无法加载流水资格。开始新申请前请刷新。", qualificationNote: "此只读快照不代表授权、预留、签字批准或外部付款。", source: { recharge: "充值", winning: "中奖", gift: "赠送", commission: "佣金" }, orders: "我的申请", empty: "暂无提现申请。", history: "历史记录", close: "关闭记录", date: "创建时间", reason: "原因", status: "状态", receipt: "申请已提交", refreshAfter: "此回执显示提交时的原始状态。请单独刷新以查看后续变化。", replay: "使用相同申请重试", unknown: "提交结果未知。你可以明确选择为此账户重放完全相同的申请。", accountChanged: "账户确认信息已变化。请先刷新资格，再开始新申请。", sourceSum: "各来源分配总额必须与申请积分完全一致。", invalidAmount: "请输入服务器金额限制内的正整数。", realPayments: "此申请不会触发外部付款。", states: { reviewing: "审核中", processing: "提现中", paid: "已提现", rejected: "已驳回", failed: "失败", cancelled: "已取消" } });
+const ui = useUserI18n().t;
+const labels = computed(() => ({
+  title: ui('user.withdrawal.title'), intro: ui('user.withdrawal.intro'), refresh: ui('user.withdrawal.refresh'), loading: ui('user.withdrawal.loading'), signIn: ui('user.withdrawal.signIn'), min: ui('user.withdrawal.min'), max: ui('user.withdrawal.max'), amount: ui('user.withdrawal.amount'), available: ui('user.withdrawal.available'), submit: ui('user.withdrawal.submit'), unavailable: ui('user.withdrawal.unavailable'), noEligibility: ui('user.withdrawal.noEligibility'), disabled: ui('user.withdrawal.disabled'), restricted: ui('user.withdrawal.restricted'), qualification: ui('user.withdrawal.qualification'), basePoints: ui('user.withdrawal.basePoints'), validPoints: ui('user.withdrawal.validPoints'), validOrders: ui('user.withdrawal.validOrders'), credit: ui('user.withdrawal.credit'), meetsTurnover: ui('user.withdrawal.meetsTurnover'), missesTurnover: ui('user.withdrawal.missesTurnover'), qualificationUnavailable: ui('user.withdrawal.qualificationUnavailable'), qualificationNote: ui('user.withdrawal.qualificationNote'), orders: ui('user.withdrawal.orders'), empty: ui('user.withdrawal.empty'), history: ui('user.withdrawal.history'), close: ui('user.withdrawal.close'), date: ui('user.withdrawal.date'), reason: ui('user.withdrawal.reason'), status: ui('user.withdrawal.status'), receipt: ui('user.withdrawal.receipt'), refreshAfter: ui('user.withdrawal.refreshAfter'), replay: ui('user.withdrawal.replay'), unknown: ui('user.withdrawal.unknown'), accountChanged: ui('user.withdrawal.accountChanged'), sourceSum: ui('user.withdrawal.sourceSum'), invalidAmount: ui('user.withdrawal.invalidAmount'), realPayments: ui('user.withdrawal.realPayments'), source: { recharge: ui('user.withdrawal.source.recharge'), winning: ui('user.withdrawal.source.winning'), gift: ui('user.withdrawal.source.gift'), commission: ui('user.withdrawal.source.commission') }, ordersLabel: ui('user.withdrawal.orders'), states: { reviewing: ui('user.withdrawal.state.reviewing'), processing: ui('user.withdrawal.state.processing'), paid: ui('user.withdrawal.state.paid'), rejected: ui('user.withdrawal.state.rejected'), failed: ui('user.withdrawal.state.failed'), cancelled: ui('user.withdrawal.state.cancelled') },
+}));
 const total = computed(() => {
   try { return sources.reduce((sum, source) => sum + BigInt(allocations.value[source].trim() || "0"), 0n); } catch { return -1n; }
 });
@@ -57,7 +69,7 @@ const validSubmission = computed(() => {
 });
 function sourceName(source: WithdrawalSource) { return labels.value.source[source]; }
 function stateName(order: WithdrawalOrder) { return labels.value.states[order.state]; }
-function time(value: string) { return new Intl.DateTimeFormat(props.locale === "en" ? "en" : "zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
+function time(value: string) { return formatDisplayDateTime(value, props.locale ?? "en"); }
 
 async function load() {
   const requestGeneration = ++generation;
@@ -111,7 +123,7 @@ async function load() {
       } catch (cause) {
         if (disposed || requestGeneration !== generation || requestScope !== scopeKey.value || (cause instanceof DOMException && cause.name === "AbortError")) return;
         qualification.value = null;
-        qualificationError.value = cause instanceof Error ? cause.message : labels.value.qualificationUnavailable;
+        qualificationError.value = cause instanceof Error ? publicErrorMessage(cause) : labels.value.qualificationUnavailable;
         if (cause && typeof cause === "object" && "status" in cause && Number((cause as { status?: number }).status) === 401) {
           qualification.value = null;
           emit("auth-expired");
@@ -129,7 +141,7 @@ async function load() {
       qualification.value = null;
       emit("auth-expired");
     }
-    error.value = cause instanceof Error ? cause.message : "Request failed";
+    error.value = cause instanceof Error ? publicErrorMessage(cause) : ui('user.common.requestFailed');
   } finally {
     if (!disposed && requestGeneration === generation && requestScope === scopeKey.value) loading.value = false;
   }
@@ -182,7 +194,7 @@ async function submit(replay = false) {
       const code = cause && typeof cause === "object" && "code" in cause ? String((cause as { code?: string }).code ?? "") : "";
       const status = cause && typeof cause === "object" && "status" in cause ? Number((cause as { status?: number }).status) : 0;
       if (status === 409 && /INELIGIBLE|TURNOVER.*EVIDENCE|EVIDENCE.*TURNOVER/i.test(code)) qualification.value = null;
-      error.value = cause instanceof Error ? cause.message : "Request failed";
+      error.value = cause instanceof Error ? publicErrorMessage(cause) : ui('user.common.requestFailed');
     }
     if (cause && typeof cause === "object" && "status" in cause && Number((cause as { status?: number }).status) === 401) {
       qualification.value = null;
@@ -206,7 +218,7 @@ async function loadHistory(order: WithdrawalOrder) {
         qualification.value = null;
         emit("auth-expired");
       }
-      error.value = cause instanceof Error ? cause.message : "Request failed";
+    error.value = cause instanceof Error ? publicErrorMessage(cause) : ui('user.common.requestFailed');
     }
   }
 }
@@ -217,13 +229,13 @@ onUnmounted(() => { disposed = true; generation++; historyGeneration++; controll
 
 <template>
   <section class="page-section narrow-page withdrawal-page">
-    <div class="page-heading"><div><div class="eyebrow">POINTS</div><h1>{{ labels.title }}</h1><p>{{ labels.intro }}</p></div><button class="button button-secondary" :disabled="loading" @click="load">{{ loading ? labels.loading : labels.refresh }}</button></div>
-    <p v-if="loading" class="detail-panel" role="status">{{ labels.loading }}</p>
+    <div class="page-heading"><div><div class="eyebrow">{{ ui('user.ui.points') }}</div><h1>{{ labels.title }}</h1></div><Teleport defer to="#user-page-refresh"><button v-refresh-button="loading ? labels.loading : labels.refresh" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load)">{{ loading ? labels.loading : labels.refresh }}</button></Teleport></div>
+    <p v-global-loading v-if="loading" class="detail-panel" role="status">{{ labels.loading }}</p>
     <div v-else-if="!member" class="detail-panel" role="status">{{ labels.signIn }}</div>
     <template v-else>
-      <p v-if="error" class="auth-error" role="alert">{{ error }}</p>
-      <div v-if="receipt" class="detail-panel success-note" role="status"><strong>{{ labels.receipt }} · {{ receipt.id }}</strong><p>{{ stateName(receipt) }}</p><p>{{ labels.refreshAfter }}</p><button class="button button-secondary" @click="receipt = null">{{ labels.close }}</button></div>
-      <div v-if="uncertain && uncertain.scope === scopeKey" class="detail-panel demo-callout" role="alert"><p>{{ labels.unknown }}</p><button class="button button-secondary" :disabled="submitting" @click="submit(true)">{{ labels.replay }}</button></div>
+      <p v-if="error" class="auth-error" role="alert">{{ displayPublicError(error) }}</p>
+      <div v-if="receipt" class="detail-panel success-note" role="status"><strong>{{ labels.receipt }}</strong><p>{{ stateName(receipt) }}</p><p>{{ labels.refreshAfter }}</p><button class="button button-secondary" @click="receipt = null">{{ labels.close }}</button></div>
+      <div v-if="uncertain && uncertain.scope === scopeKey" class="detail-panel demo-callout" role="alert"><p>{{ labels.unknown }}</p><button v-write-guard="submitting" class="button button-secondary" :disabled="submitting" @click="withGlobalLoading(submit, true)">{{ labels.replay }}</button></div>
       <div v-if="availability" class="detail-panel">
         <div class="eligibility"><div><span class="tiny-label">{{ labels.min }}</span><strong>{{ formatIntegerAmount(availability.min_points) }} pts</strong></div><div v-if="availability.max_points !== null"><span class="tiny-label">{{ labels.max }}</span><strong>{{ formatIntegerAmount(availability.max_points) }} pts</strong></div></div>
         <p v-if="availability.reason_code === 'WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED'" class="muted" role="status">{{ labels.noEligibility }}</p>
@@ -232,7 +244,7 @@ onUnmounted(() => { disposed = true; generation++; historyGeneration++; controll
         <p class="muted">{{ labels.realPayments }}</p>
         <div v-if="availability.can_apply" class="qualification-snapshot" aria-live="polite">
           <h2>{{ labels.qualification }}</h2>
-          <p v-if="qualificationLoading" class="muted" role="status">{{ labels.loading }}</p>
+          <p v-global-loading v-if="qualificationLoading" class="muted" role="status">{{ labels.loading }}</p>
           <p v-else-if="qualificationError" class="muted" role="status">{{ labels.qualificationUnavailable }}</p>
           <template v-else-if="qualification">
             <dl>
@@ -245,7 +257,7 @@ onUnmounted(() => { disposed = true; generation++; historyGeneration++; controll
             <p class="muted">{{ labels.qualificationNote }}</p>
           </template>
         </div>
-        <form @submit.prevent="submit()">
+        <form v-write-guard="submitting" novalidate v-inline-validation @submit.prevent="withGlobalLoading(submit)">
           <fieldset class="withdrawal-allocation" :disabled="!availability.can_apply || submitting || Boolean(uncertain)"><legend>{{ labels.available }}</legend>
             <label v-for="source in sources.filter((entry) => availability!.allowed_sources.includes(entry))" :key="source" class="field-label">{{ sourceName(source) }}<input v-model="allocations[source]" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="0" :disabled="Boolean(uncertain) || submitting" /></label>
           </fieldset>
@@ -255,12 +267,12 @@ onUnmounted(() => { disposed = true; generation++; historyGeneration++; controll
       </div>
       <div class="detail-panel">
         <h2>{{ labels.orders }}</h2>
-        <p v-if="!orders.length" class="muted">{{ labels.empty }}</p>
+        <p v-if="!orders.length" class="muted empty-state">{{ labels.empty }}</p>
         <article v-for="order in orders" :key="order.id" class="withdrawal-order">
           <div><strong>{{ formatIntegerAmount(order.points) }} pts</strong><span class="status-chip">{{ stateName(order) }}</span></div>
           <small>{{ labels.date }} · {{ time(order.created_at) }}</small>
-          <button class="text-button" :aria-expanded="history?.order_id === order.id" :aria-controls="'withdrawal-history-' + order.id" @click="loadHistory(order)">{{ labels.history }}</button>
-          <DetailModal v-if="history?.order_id === order.id" :title="props.locale === 'en' ? 'Details' : '详情'" :close-label="props.locale === 'en' ? 'Close' : '关闭'" @close="history = null">
+          <button class="text-button" :aria-expanded="history?.order_id === order.id" :aria-controls="'withdrawal-history-' + order.id" @click="withGlobalLoading(loadHistory, order)">{{ labels.history }}</button>
+          <DetailModal v-if="history?.order_id === order.id" :title="labels.history" :close-label="labels.close" @close="history = null">
 <div v-if="history?.order_id === order.id" :id="'withdrawal-history-' + order.id" class="withdrawal-history" role="region" :aria-label="labels.history + ' · ' + order.id">
             <button class="text-button" @click="history = null">{{ labels.close }}</button>
             <div v-for="item in history.items" :key="item.id"><strong>{{ item.from_state ? labels.states[item.from_state] + ' → ' : '' }}{{ labels.states[item.to_state] }}</strong><small>{{ time(item.created_at) }} · {{ item.reason }}</small></div>
@@ -273,8 +285,8 @@ onUnmounted(() => { disposed = true; generation++; historyGeneration++; controll
 </template>
 
 <style scoped>
-.withdrawal-page .text-button{min-height:44px;padding:8px 0;border:0;background:transparent;color:var(--brand-primary,#20594c);font:inherit;font-size:14px;font-weight:650;text-align:left;cursor:pointer;justify-self:start}
-.withdrawal-page .text-button:focus-visible{outline:2px solid var(--brand-primary,#20594c);outline-offset:3px;border-radius:4px}
-.qualification-snapshot{border-top:1px solid var(--line,#d9dedc);margin-top:14px;padding-top:12px}.qualification-snapshot h2{font-size:1rem}.qualification-snapshot dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:8px 16px;margin:0}.qualification-snapshot dl>div{min-width:0}.qualification-snapshot dt{color:var(--muted,#66716d);font-size:.85rem}.qualification-snapshot dd{margin:3px 0 0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
-.withdrawal-allocation{border:1px solid var(--line,#d9dedc);border-radius:12px;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px;margin:16px 0}.withdrawal-allocation legend{padding:0 6px;font-weight:650}.withdrawal-allocation input{display:block;width:100%;margin-top:6px}.withdrawal-order{display:grid;grid-template-columns:1fr auto;gap:8px;padding:14px 0;border-bottom:1px solid var(--line,#d9dedc)}.withdrawal-order>div:first-child{display:flex;justify-content:space-between;gap:12px}.withdrawal-order small,.withdrawal-history small{color:var(--muted,#66716d)}.withdrawal-order>.text-button{justify-self:start}.withdrawal-history{grid-column:1/-1;padding:10px;background:var(--surface-soft,#f5f7f6);border-radius:8px}.withdrawal-history>div{display:grid;padding:8px 0}.withdrawal-page .auth-error{margin:10px 0}
+.withdrawal-page .text-button{min-height:44px;padding:8px 0;border:0;background:transparent;color:var(--brand-primary);font:inherit;font-size:14px;font-weight:650;text-align:left;cursor:pointer;justify-self:start}
+.withdrawal-page .text-button:focus-visible{outline:2px solid var(--brand-primary);outline-offset:3px;border-radius:4px}
+.qualification-snapshot{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}.qualification-snapshot h2{font-size:1rem}.qualification-snapshot dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:8px 16px;margin:0}.qualification-snapshot dl>div{min-width:0}.qualification-snapshot dt{color:var(--muted);font-size:.85rem}.qualification-snapshot dd{margin:3px 0 0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.withdrawal-allocation{border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px;margin:16px 0}.withdrawal-allocation legend{padding:0 6px;font-weight:650}.withdrawal-allocation input{display:block;width:100%;margin-top:6px}.withdrawal-order{display:grid;grid-template-columns:1fr auto;gap:8px;padding:14px 0;border-bottom:1px solid var(--line)}.withdrawal-order>div:first-child{display:flex;justify-content:space-between;gap:12px}.withdrawal-order small,.withdrawal-history small{color:var(--muted)}.withdrawal-order>.text-button{justify-self:start}.withdrawal-history{grid-column:1/-1;padding:10px;background:var(--surface-soft,#f5f7f6);border-radius:8px}.withdrawal-history>div{display:grid;padding:8px 0}.withdrawal-page .auth-error{margin:10px 0}
 </style>

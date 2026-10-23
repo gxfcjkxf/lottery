@@ -23,6 +23,7 @@ func commissionCyclePage(t *testing.T, f bettingFixture, brand string, calendar 
 }
 
 func TestCommissionCyclePagesUsePlacementTimeEvenWhenSettlementCrossesBoundary(t *testing.T) {
+	t.Parallel()
 	f := newBettingFixtureWithWindow(t, storeTestBrand, 6*time.Second, 6100*time.Millisecond)
 	eligibilityFund(t, f, 10, 0, 0)
 	first, err := placeBettingOrder(t, f, f.input, "cycle-first")
@@ -121,6 +122,7 @@ func TestCommissionCyclePagesUsePlacementTimeEvenWhenSettlementCrossesBoundary(t
 }
 
 func TestCommissionCyclePagesValidateWindowCursorAndFailWithoutPartialPage(t *testing.T) {
+	t.Parallel()
 	f, order, _ := settledCorrectionFixture(t)
 	day := 1
 	calendar := commission.Calendar{Timezone: "UTC", Cycle: "monthly", BoundaryTime: "00:00:00", MonthDay: &day, ShortMonth: "last_day"}

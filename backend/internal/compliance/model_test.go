@@ -149,7 +149,10 @@ func TestValidReasonAndOperation(t *testing.T) {
 			t.Errorf("valid reason rejected: %q", reason)
 		}
 	}
-	for _, reason := range []string{"", " leading", "trailing ", "\tinside", "line\nbreak", "nul\x00byte", strings.Repeat("x", 501), "\u00a0trimmed\u00a0"} {
+	if !ValidReason("") {
+		t.Fatal("empty operator reason rejected")
+	}
+	for _, reason := range []string{" leading", "trailing ", "\tinside", "line\nbreak", "nul\x00byte", strings.Repeat("x", 501), "\u00a0trimmed\u00a0"} {
 		if ValidReason(reason) {
 			t.Errorf("invalid reason accepted: %q", reason)
 		}
@@ -164,14 +167,7 @@ func TestValidReasonAndOperation(t *testing.T) {
 			t.Errorf("invalid operation accepted: %q", op)
 		}
 	}
-	for _, decision := range []string{"allow", "review", "deny", "freeze"} {
-		if !ValidDecision(decision) {
-			t.Errorf("valid decision rejected: %q", decision)
-		}
-	}
-	if ValidDecision("approve") {
-		t.Fatal("unknown decision accepted")
-	}
+
 }
 
 func TestEvaluateAllFeatureCombinations(t *testing.T) {
@@ -219,17 +215,5 @@ func TestDefaultAndEvaluateResultsAreIsolated(t *testing.T) {
 	_, again, err := Evaluate(DefaultConfig())
 	if err != nil || again[0].Check != "age" {
 		t.Fatalf("Evaluate shared result state: %#v, %v", again, err)
-	}
-}
-
-func TestStubAdapterDoesNotMakeDecisionsFromUserData(t *testing.T) {
-	for _, name := range []string{"age", "region", "identity", "account_risk", "betting_risk", "exclusion", "responsible_gambling"} {
-		got, err := (StubAdapter{}).Check(nil, name, Config{})
-		if err != nil || got != (Check{Check: name, Enabled: true, Decision: "review", ReasonCode: "ADAPTER_NOT_CONFIGURED"}) {
-			t.Errorf("stub %q: %#v, %v", name, got, err)
-		}
-	}
-	if _, err := (StubAdapter{}).Check(nil, "unknown", Config{}); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("unknown stub check error=%v", err)
 	}
 }

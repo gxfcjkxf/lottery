@@ -29,7 +29,7 @@ test('commission adjustment contract exposes two reads and one actor-bound write
   assert.deepEqual(write.parameters.map(parameter => [parameter.name, parameter.in, parameter.required]), [
     ['X-Commission-Payment-Actor-ID', 'header', true],
   ]);
-  assert.deepEqual(schemas.CommissionAdjustmentInput.required, ['version', 'points', 'reason']);
+  assert.deepEqual(schemas.CommissionAdjustmentInput.required, ['version', 'points']);
 });
 
 test('adjustment schemas are closed and preserve exact point values', () => {

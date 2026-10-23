@@ -71,12 +71,22 @@ describe("report archive policy API", () => {
       { ...input, starts: {} }, { ...input, version: 0 }, { ...input, version: Number.MAX_SAFE_INTEGER },
       { ...input, daily_enabled: 1 }, { ...input, monthly_enabled: "false" }, { ...input, reason: " padded " },
       { ...input, reason: "control\u0085" }, { ...input, reason: "é".repeat(251) },
-      { ...input, reason: "\ud800" }, { ...input, reason: "" },
+      { ...input, reason: "\ud800" }, { ...input, reason: null }, { ...input, reason: 1 },
     ];
     for (const value of invalidInputs) await expect(api.update(brand, value as UpdateReportArchivePolicyInput, key, actor)).rejects.toMatchObject({ code: "INVALID_INPUT" });
     await expect(api.update("bad-brand", input, key, actor)).rejects.toMatchObject({ code: "INVALID_INPUT" });
     await expect(api.update(brand, input, key, "bad-actor")).rejects.toMatchObject({ code: "INVALID_INPUT" });
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("accepts an omitted or empty optional reason without changing the submitted body", async () => {
+    const body = { version: 4, daily_enabled: true, monthly_enabled: false };
+    for (const value of [body, { ...body, reason: "" }]) {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok(policy));
+      await expect(createReportArchivePolicyApi(fetcher).update(brand, value, key, actor)).resolves.toEqual(policy);
+      expect(JSON.parse(String(fetcher.mock.calls[0]![1]?.body))).toEqual(value);
+      expect(fetcher).toHaveBeenCalledOnce();
+    }
   });
 
   it("requires current brand membership and both brand permissions for a nonsuper account", () => {

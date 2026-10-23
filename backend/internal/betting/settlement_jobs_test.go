@@ -28,7 +28,7 @@ func setSettlementMode(t *testing.T, f bettingFixture, actor access.Account, ver
 		policy, err = f.service.SaveSettlementPolicy(context.Background(), tx, f.brand, actor, SettlementPolicyInput{
 			Version: version,
 			Mode:    mode,
-			Reason:  "configure integration settlement mode",
+			Reason:  "",
 		}, policyMeta(actor.ID))
 		return err
 	})
@@ -49,7 +49,7 @@ func startFixtureSettlement(t *testing.T, f bettingFixture, actor access.Account
 			Version:       c.PeriodVersion,
 			PolicyVersion: policyVersion,
 			DrawResultID:  *c.DrawResultID,
-			Reason:        "start integration settlement",
+			Reason:        "",
 		}, policyMeta(actor.ID))
 		return err
 	})
@@ -65,7 +65,7 @@ func actOnFixtureSettlement(t *testing.T, f bettingFixture, actor access.Account
 	}
 	updated, err := f.service.ActOnSettlement(ctx, tx, f.brand, actor, job.ID, action, SettlementActionInput{
 		Version: version,
-		Reason:  "integration settlement action",
+		Reason:  "",
 	}, policyMeta(actor.ID))
 	if err != nil {
 		_ = tx.Rollback(ctx)

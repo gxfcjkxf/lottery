@@ -1,20 +1,24 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/brand-domains";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-export interface BrandDomain { id: string; domain: string; enabled: boolean; is_primary: boolean }
+export interface BrandDomain { id: string; domain: string; enabled: boolean }
 export interface BrandDomainsRecord { brand_id: string; version: number; status: "active" | "paused" | "disabled"; domains: BrandDomain[]; updated_at: string; audit_log_id?: string }
 export interface BrandDomainsReceipt extends BrandDomainsRecord { audit_log_id: string }
 export interface BrandDomainsHistoryItem { id: string; brand_id: string; version: number; changed_by: string; reason: string; audit_log_id: string; created_at: string; before_domains: BrandDomain[]; domains: BrandDomain[] }
 export interface BrandDomainsHistoryPage { items: BrandDomainsHistoryItem[]; limit: number; offset: number }
-export interface BrandDomainPostBody { version: number; domain: string; enabled: boolean; is_primary: boolean; reason: string }
-export interface BrandDomainPatchBody { version: number; enabled: boolean; is_primary: boolean; reason: string }
+export interface BrandDomainPostBody { version: number; domain: string; enabled: boolean; reason: string }
+export interface BrandDomainPatchBody { version: number; enabled: boolean; reason: string }
+export interface BrandDomainDeleteBody { version: number }
 export interface BrandDomainsApi {
   get(brandId: string): Promise<BrandDomainsRecord>;
   history(brandId: string, limit?: number, offset?: number): Promise<BrandDomainsHistoryPage>;
   post(brandId: string, body: BrandDomainPostBody, key: string): Promise<BrandDomainsReceipt>;
+  remove(brandId: string, domainId: string, body: BrandDomainDeleteBody, key: string): Promise<BrandDomainsReceipt>;
   patch(brandId: string, domainId: string, body: BrandDomainPatchBody, key: string): Promise<BrandDomainsReceipt>;
 }
 
@@ -50,12 +54,12 @@ export function isCanonicalBrandDomain(host: string): boolean {
   return true;
 }
 function domain(value: unknown): value is BrandDomain {
-  return isRecord(value) && exact(value, ["id", "domain", "enabled", "is_primary"]) && uuid(value.id) &&
+  return isRecord(value) && exact(value, ["id", "domain", "enabled"]) && uuid(value.id) &&
     typeof value.domain === "string" && value.domain.length > 0 && new TextEncoder().encode(value.domain).length <= 253 &&
-    !/[\u0000-\u001f\u007f]/.test(value.domain) && typeof value.enabled === "boolean" && typeof value.is_primary === "boolean" && (!value.is_primary || value.enabled);
+    !/[\u0000-\u001f\u007f]/.test(value.domain) && typeof value.enabled === "boolean";
 }
 function domainList(v: unknown): v is BrandDomain[] {
-  return Array.isArray(v) && v.length <= 100 && v.every(domain) && new Set(v.map((item) => item.id)).size === v.length && new Set(v.map((item) => item.domain)).size === v.length && v.filter((item) => item.is_primary).length <= 1;
+  return Array.isArray(v) && v.length <= 100 && v.every(domain) && new Set(v.map((item) => item.id)).size === v.length && new Set(v.map((item) => item.domain)).size === v.length;
 }
 function record(value: unknown, brandId: string): value is BrandDomainsRecord {
   return isRecord(value) && (exact(value, ["brand_id", "version", "status", "domains", "updated_at"]) || exact(value, ["brand_id", "version", "status", "domains", "updated_at", "audit_log_id"])) &&
@@ -63,10 +67,9 @@ function record(value: unknown, brandId: string): value is BrandDomainsRecord {
 }
 function invalidInput(): never { throw new AdminApiError("品牌域名参数无效。", 400, "BRAND_DOMAIN_INPUT_INVALID"); }
 function invalidResponse(write: boolean): never { throw new AdminApiError("品牌域名响应格式无效。", write ? 0 : 502, "INVALID_RESPONSE"); }
-type Envelope = { success?: unknown; data?: unknown; error?: unknown };
 
 export function createBrandDomainsApi(fetchImpl: typeof fetch = fetch): BrandDomainsApi {
-  async function request(path: string, brandId: string, method: "GET" | "POST" | "PATCH" = "GET", body?: unknown, key?: string): Promise<{ data: unknown; status: number }> {
+  async function request(path: string, brandId: string, method: "GET" | "POST" | "PATCH" | "DELETE" = "GET", body?: unknown, key?: string): Promise<{ data: unknown; status: number }> {
     if (!uuid(brandId)) invalidInput();
     const headers = new Headers({ Accept: "application/json", "X-Brand-ID": brandId });
     if (body !== undefined) headers.set("Content-Type", "application/json");
@@ -74,39 +77,26 @@ export function createBrandDomainsApi(fetchImpl: typeof fetch = fetch): BrandDom
     let response: Response;
     try { response = await fetchImpl(path, { method, credentials: "same-origin", headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); }
     catch (cause) { throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR"); }
-    let envelope: Envelope;
-    try { envelope = await response.json() as Envelope; }
-    catch { if (!response.ok) throw new AdminApiError(`Request failed (${response.status})`, response.status); invalidResponse(method !== "GET"); }
+    const envelope = await readAdminEnvelope(response);
     const expectedStatus = method === "GET" ? 200 : method === "POST" ? 201 : 200;
-    if (response.status !== expectedStatus) {
-      const err = isRecord(envelope?.error) ? envelope.error : undefined;
-      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      if (!response.ok) throw new AdminApiError(typeof err?.message === "string" ? err.message : `Request failed (${response.status})`, response.status, typeof err?.code === "string" ? err.code : undefined);
-      invalidResponse(method !== "GET");
-    }
-    if (!isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
-      const err = isRecord(envelope?.error) ? envelope.error : undefined;
-      if (!response.ok) throw new AdminApiError(typeof err?.message === "string" ? err.message : `Request failed (${response.status})`, response.status, typeof err?.code === "string" ? err.code : undefined);
-      invalidResponse(method !== "GET");
-    }
+    if (response.status !== expectedStatus) invalidResponse(method !== "GET");
     return { data: envelope.data, status: response.status };
   }
   function validWrite(body: BrandDomainPostBody | BrandDomainPatchBody, key: string, creating: boolean): boolean {
-    return isRecord(body) && exact(body, creating ? ["version", "domain", "enabled", "is_primary", "reason"] : ["version", "enabled", "is_primary", "reason"]) &&
-      version(body.version) && typeof body.enabled === "boolean" && typeof body.is_primary === "boolean" && (!body.is_primary || body.enabled) &&
-      typeof body.reason === "string" && body.reason.trim().length > 0 && new TextEncoder().encode(body.reason).length <= 500 && /^[A-Za-z0-9_:.-]{8,128}$/.test(key);
+    return isRecord(body) && exact(body, creating ? ["version", "domain", "enabled", "reason"] : ["version", "enabled", "reason"]) &&
+      version(body.version) && typeof body.enabled === "boolean" &&
+      typeof body.reason === "string" && new TextEncoder().encode(body.reason).length <= 500 && /^[A-Za-z0-9_:.-]{8,128}$/.test(key);
   }
   function validateReceipt(value: unknown, brandId: string, body: BrandDomainPostBody | BrandDomainPatchBody, targetId?: string): BrandDomainsReceipt {
     if (!record(value, brandId) || !exact(value as unknown as Record<string, unknown>, ["brand_id", "version", "status", "domains", "updated_at", "audit_log_id"]) || value.version !== body.version + 1 || !uuid(value.audit_log_id)) invalidResponse(true);
     const domains = value.domains;
     if ("domain" in body) {
       const created = domains.find((item) => item.domain === body.domain);
-      if (!created || created.enabled !== body.enabled || created.is_primary !== body.is_primary) invalidResponse(true);
+      if (!created || created.enabled !== body.enabled) invalidResponse(true);
     } else {
       const updated = domains.find((item) => item.id === targetId);
-      if (!updated || updated.enabled !== body.enabled || updated.is_primary !== body.is_primary) invalidResponse(true);
+      if (!updated || updated.enabled !== body.enabled) invalidResponse(true);
     }
-    if (body.is_primary && domains.filter((item) => item.is_primary).length !== 1) invalidResponse(true);
     return value as BrandDomainsReceipt;
   }
   return {
@@ -120,12 +110,18 @@ export function createBrandDomainsApi(fetchImpl: typeof fetch = fetch): BrandDom
     },
     async post(brandId, body, key) {
       if (!validWrite(body, key, true) || !isCanonicalBrandDomain(body.domain)) invalidInput();
-      const { data } = await request(BASE, brandId, "POST", { version: body.version, domain: body.domain, enabled: body.enabled, is_primary: body.is_primary, reason: body.reason }, key);
+      const { data } = await request(BASE, brandId, "POST", { version: body.version, domain: body.domain, enabled: body.enabled, reason: body.reason }, key);
       return validateReceipt(data, brandId, body);
+    },
+    async remove(brandId, domainId, body, key) {
+      if (!uuid(domainId) || !isRecord(body) || !exact(body, ['version']) || !version(body.version) || !/^[A-Za-z0-9_:.-]{8,128}$/.test(key)) invalidInput();
+      const {data} = await request(`${BASE}/${encodeURIComponent(domainId)}`,brandId,'DELETE',{version:body.version},key);
+      if (!record(data,brandId) || !exact(data as unknown as Record<string,unknown>,['brand_id','version','status','domains','updated_at','audit_log_id']) || data.version!==body.version+1 || !uuid(data.audit_log_id) || data.domains.some(item=>item.id===domainId)) invalidResponse(true);
+      return data as BrandDomainsReceipt;
     },
     async patch(brandId, domainId, body, key) {
       if (!uuid(domainId) || !validWrite(body, key, false)) invalidInput();
-      const { data } = await request(`${BASE}/${encodeURIComponent(domainId)}`, brandId, "PATCH", { version: body.version, enabled: body.enabled, is_primary: body.is_primary, reason: body.reason }, key);
+      const { data } = await request(`${BASE}/${encodeURIComponent(domainId)}`, brandId, "PATCH", { version: body.version, enabled: body.enabled, reason: body.reason }, key);
       return validateReceipt(data, brandId, body, domainId);
     },
   };

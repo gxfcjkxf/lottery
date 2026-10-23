@@ -69,6 +69,7 @@ const (
 	fixtureDBBC  = "/lottery_commission_correction_mobile_s27"
 	fixtureDBANA = "/lottery_commission_analysis_desktop_s56"
 	fixtureDBANB = "/lottery_commission_analysis_mobile_s56"
+	fixtureDBCUA = "/lottery_commission_cua_20261020"
 )
 
 func safeFixtureURL(raw, environment, confirmation, adminPassword, userPassword string, requirePasswords bool) error {
@@ -77,8 +78,8 @@ func safeFixtureURL(raw, environment, confirmation, adminPassword, userPassword 
 		(u.Scheme != "postgres" && u.Scheme != "postgresql") ||
 		(u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") ||
 		(u.Port() != "5432" && u.Port() != "55432") ||
-		(u.Path != fixtureDBA && u.Path != fixtureDBB && u.Path != fixtureDBT && u.Path != fixtureDBL && u.Path != fixtureDBAV && u.Path != fixtureDBBV && u.Path != fixtureDBAF && u.Path != fixtureDBBF && u.Path != fixtureDBAD && u.Path != fixtureDBBD && u.Path != fixtureDBAP && u.Path != fixtureDBBP && u.Path != fixtureDBAPV && u.Path != fixtureDBBPV && u.Path != fixtureDBAPA && u.Path != fixtureDBBPA && u.Path != fixtureDBAA && u.Path != fixtureDBBA && u.Path != fixtureDBAAV && u.Path != fixtureDBBAV && u.Path != fixtureDBAR && u.Path != fixtureDBBR && u.Path != fixtureDBAC && u.Path != fixtureDBBC && u.Path != fixtureDBANA && u.Path != fixtureDBANB) || u.RawPath != "" || u.Fragment != "" || u.Opaque != "" ||
-		u.User == nil || u.User.Username() != "lottery_test" || len(adminPassword) < 16 && requirePasswords || len(userPassword) < 16 && requirePasswords {
+		(u.Path != fixtureDBA && u.Path != fixtureDBB && u.Path != fixtureDBT && u.Path != fixtureDBL && u.Path != fixtureDBAV && u.Path != fixtureDBBV && u.Path != fixtureDBAF && u.Path != fixtureDBBF && u.Path != fixtureDBAD && u.Path != fixtureDBBD && u.Path != fixtureDBAP && u.Path != fixtureDBBP && u.Path != fixtureDBAPV && u.Path != fixtureDBBPV && u.Path != fixtureDBAPA && u.Path != fixtureDBBPA && u.Path != fixtureDBAA && u.Path != fixtureDBBA && u.Path != fixtureDBAAV && u.Path != fixtureDBBAV && u.Path != fixtureDBAR && u.Path != fixtureDBBR && u.Path != fixtureDBAC && u.Path != fixtureDBBC && u.Path != fixtureDBANA && u.Path != fixtureDBANB && u.Path != fixtureDBCUA) || u.RawPath != "" || u.Fragment != "" || u.Opaque != "" ||
+		u.User == nil || u.User.Username() != "lottery_test" || (len(adminPassword) < 16 || len(adminPassword) > 30 || len(userPassword) < 16 || len(userPassword) > 30) && requirePasswords {
 		return errors.New("explicit owned synthetic commission database required")
 	}
 	if pw, ok := u.User.Password(); !ok || pw == "" {
@@ -121,13 +122,13 @@ func main() {
 func run() error {
 	command := "init"
 	if len(os.Args) > 2 {
-		return errors.New("usage: commission-fixture [init|advance|discover|pay|notify|verify|prepare-corrections|execute-corrections|freeze-corrections|unfreeze-corrections|verify-corrections]")
+		return errors.New("usage: commission-fixture [init|advance|discover|pay|notify|verify|prepare-corrections|execute-corrections|freeze-corrections|unfreeze-corrections|verify-corrections|prepare-manual-payment]")
 	}
 	if len(os.Args) == 2 {
 		command = os.Args[1]
 	}
-	if command != "init" && command != "advance" && command != "discover" && command != "pay" && command != "notify" && command != "verify" && command != "prepare-corrections" && command != "execute-corrections" && command != "freeze-corrections" && command != "unfreeze-corrections" && command != "verify-corrections" {
-		return errors.New("usage: commission-fixture [init|advance|discover|pay|notify|verify|prepare-corrections|execute-corrections|freeze-corrections|unfreeze-corrections|verify-corrections]")
+	if command != "init" && command != "advance" && command != "discover" && command != "pay" && command != "notify" && command != "verify" && command != "prepare-corrections" && command != "execute-corrections" && command != "freeze-corrections" && command != "unfreeze-corrections" && command != "verify-corrections" && command != "prepare-manual-payment" {
+		return errors.New("usage: commission-fixture [init|advance|discover|pay|notify|verify|prepare-corrections|execute-corrections|freeze-corrections|unfreeze-corrections|verify-corrections|prepare-manual-payment]")
 	}
 	dsn := os.Getenv("DATABASE_URL")
 	if err := safeFixtureURL(dsn, os.Getenv("APP_ENV"), os.Getenv("COMMISSION_FIXTURE_CONFIRM"),
@@ -194,6 +195,12 @@ func run() error {
 			return errors.New("fixture verification failed")
 		}
 		return json.NewEncoder(os.Stdout).Encode(out)
+	case "prepare-manual-payment":
+		out, e := prepareManualPayment(ctx, db, adminID, os.Getenv("COMMISSION_FIXTURE_USER_PASSWORD"))
+		if e != nil {
+			return e
+		}
+		return json.NewEncoder(os.Stdout).Encode(out)
 	case "prepare-corrections":
 		if len(os.Getenv("COMMISSION_FIXTURE_USER_PASSWORD")) < 16 {
 			return errors.New("owned synthetic correction user password required")
@@ -258,7 +265,7 @@ func initialize(ctx context.Context, db *pgxpool.Pool, adminPassword, userPasswo
 	if err != nil {
 		return out, errors.New("fixture administrator password rejected")
 	}
-	var reviewerSecret [32]byte
+	var reviewerSecret [12]byte
 	if _, err = rand.Read(reviewerSecret[:]); err != nil {
 		return out, errors.New("reviewer credential generation failed")
 	}
@@ -274,7 +281,7 @@ func initialize(ctx context.Context, db *pgxpool.Pool, adminPassword, userPasswo
 	adminPerms := []string{
 		"game.write.brand", "rule.write.brand", "rule.validate.brand", "rule.submit.brand", "draw.manual_create.brand",
 		"settlement_policy.write.brand", "settlement.run.brand", "settlement.approve.brand", "wallet.view.brand", "wallet.adjust.brand", "brand.view.brand",
-		"agent_policy.write.brand", "agent.write.brand", "join_code.write.brand", "commission_policy.write.brand",
+		"agent_policy.view.brand", "agent_policy.write.brand", "agent.view.brand", "agent.write.brand", "join_code.write.brand", "commission_policy.view.brand", "commission_policy.write.brand",
 		"commission.view.brand", "commission.run.brand", "commission.retry.brand",
 		"commission_payment.approve.brand", "commission_payment.retry.brand", "commission_payment_policy.write.brand", "commission_adjustment.write.brand",
 		"report_commission.view.brand", "report_commission.export.brand",
@@ -320,7 +327,7 @@ func initialize(ctx context.Context, db *pgxpool.Pool, adminPassword, userPasswo
 	var agentPolicy agency.Policy
 	if err = inTx(ctx, db, func(tx pgx.Tx) error {
 		var e error
-		agentPolicy, e = agents.SavePolicy(ctx, tx, fixtureBrand, admin, agency.PolicyInput{Version: 1, Config: agency.PolicyConfig{Enabled: true, MaxDepth: 3, RatioCap: "0.3", Mode: "loss", Cycle: "weekly"}, Reason: "enable owned synthetic weekly loss commission"}, meta(adminID))
+		agentPolicy, e = agents.SavePolicy(ctx, tx, fixtureBrand, admin, agency.PolicyInput{Version: 1, Config: agency.PolicyConfig{Enabled: true, MaxDepth: 3, LossRatioCap: "0.3", TurnoverRatioCap: "0.3", Mode: "loss", Cycle: "weekly"}, Reason: "enable owned synthetic weekly loss commission"}, meta(adminID))
 		return e
 	}); err != nil {
 		return out, errors.New("fixture agent policy failed")
@@ -328,7 +335,7 @@ func initialize(ctx context.Context, db *pgxpool.Pool, adminPassword, userPasswo
 	var root agency.Node
 	if err = inTx(ctx, db, func(tx pgx.Tx) error {
 		var e error
-		root, e = agents.Create(ctx, tx, fixtureBrand, admin, agency.CreateInput{PolicyVersion: agentPolicy.Version, MemberID: ownerSession.Member.ID, Config: agency.NodeConfig{Ratio: "0.3", Status: "active", CanCreateChildren: true}, Reason: "owned synthetic root commission beneficiary"}, meta(adminID))
+		root, e = agents.Create(ctx, tx, fixtureBrand, admin, agency.CreateInput{PolicyVersion: agentPolicy.Version, MemberID: ownerSession.Member.ID, Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0.3", Status: "active", CanCreateChildren: true}, Reason: "owned synthetic root commission beneficiary"}, meta(adminID))
 		return e
 	}); err != nil {
 		return out, errors.New("fixture root agent creation failed")
@@ -555,10 +562,10 @@ func runPeriod(ctx context.Context, db *pgxpool.Pool, admin access.Account, game
 	if _, err = finance.ProcessDiscovery(ctx, 100); err != nil {
 		return result, diagnostic("period.discovery_schedule", "FIXTURE_DISCOVERY_SCHEDULE_FAILED")
 	}
-	if err = waitUntil(ctx, boundary, 5*time.Second); err != nil {
+	if err = waitUntil(ctx, db, boundary, 5*time.Second); err != nil {
 		return result, diagnostic("period.boundary_wait", "FIXTURE_BOUNDARY_WAIT_FAILED")
 	}
-	if err = waitUntil(ctx, period.DrawAt, 3*time.Second); err != nil {
+	if err = waitUntil(ctx, db, period.DrawAt, 3*time.Second); err != nil {
 		return result, diagnostic("period.draw_wait", "FIXTURE_DRAW_WAIT_FAILED")
 	}
 	if _, err = periodStore.Tick(ctx); err != nil {
@@ -829,22 +836,16 @@ func assertDiscoveryState(ctx context.Context, db *pgxpool.Pool, order, state, c
 	return nil
 }
 
-func waitUntil(ctx context.Context, target time.Time, max time.Duration) error {
-	d := time.Until(target)
-	if d < 0 {
-		return nil
+func waitUntil(ctx context.Context, db *pgxpool.Pool, target time.Time, max time.Duration) error {
+	var seconds float64
+	if err := db.QueryRow(ctx, `SELECT GREATEST(0,EXTRACT(EPOCH FROM ($1::timestamptz-clock_timestamp())))::float8`, target).Scan(&seconds); err != nil {
+		return err
 	}
-	if d > max {
+	if seconds > max.Seconds() {
 		return errors.New("fixture timing boundary exceeded maximum wait")
 	}
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
+	_, err := db.Exec(ctx, `SELECT pg_sleep($1)`, seconds)
+	return err
 }
 
 func requireFixtureAdmin(ctx context.Context, db *pgxpool.Pool) (string, error) {
@@ -891,7 +892,7 @@ func verify(ctx context.Context, db *pgxpool.Pool, adminID string) (map[string]a
 // single SQL snapshot. Keep the raw business evidence inside the database.
 func commissionBusinessFingerprint(ctx context.Context, db *pgxpool.Pool) (string, error) {
 	tables := []string{
-		"brand_commission_policies", "commission_policy_revisions",
+		"brand_commission_policies",
 		"commission_discovery", "commission_cycles", "commission_cycle_targets",
 		"commission_runs", "commission_cycle_steps", "commission_calculations",
 		"commission_allocations", "commission_earnings",

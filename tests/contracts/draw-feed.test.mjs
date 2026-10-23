@@ -1,0 +1,57 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
+const doc=JSON.parse(readFileSync(new URL('../../docs/openapi.json',import.meta.url),'utf8'));
+const ajv=new Ajv2020({strict:false});addFormats(ajv);ajv.addFormat('int64',{type:'number',validate:Number.isInteger});ajv.addSchema({$id:'urn:lottery:draw-feed',components:doc.components});
+const check=name=>ajv.compile({$ref:`urn:lottery:draw-feed#/components/schemas/${name}`});
+test('mapped sources describe JSON and DOM fields without lottery-specific names',()=>{
+ const valid=check('DrawFeedMapping');
+ const m={format:'html',schedule:'source',time_format:'rfc3339',time_layout:'',timezone:'',period:{path:'#issue',attribute:''},draw_time:{path:'time.result',attribute:'datetime'},regular:{path:'.ball',attribute:'',separator:'',offset:0,count:6},special:{path:'.special',attribute:'data-number',separator:'',offset:0,count:1},digits:null,next_period:{path:'#next',attribute:''},next_draw_time:{path:'time.next',attribute:'datetime'},complete:null,period_query:'',game_query:''};
+ assert.equal(valid(m),true,JSON.stringify(valid.errors));
+ assert.equal(valid({...m,format:'browser_script'}),false);
+ assert.equal(valid({...m,script:'return 7'}),false);
+ assert.equal(valid({...m,format:'browser'}),false);
+ assert.equal(valid({...m,format:'browser',browser:{wait_selector:'#ready',timeout_ms:5000}}),true);
+ assert.equal(valid({...m,format:'browser',browser:{wait_selector:'#ready',timeout_ms:0}}),false);
+ const browser={wait_selector:'#ready',timeout_ms:5000,entry_url:'https://draw.example/entry',max_redirects:2,ignored_requests:['https://draw.example/telemetry'],json_requests:[{id:'history',url:'https://draw.example/history',method:'POST',body:'top=1'}]};
+ assert.equal(valid({...m,format:'browser',browser,next_period:null,next_draw_time:null,time_period:{path:'/data/0/issue',attribute:'',response:'history'},draw_time:{path:'/data/0/time',attribute:'',response:'history'},regular:{...m.regular,attribute:'class',capture:'ball_([0-9]+)'}}),true,JSON.stringify(valid.errors));
+ assert.equal(valid({...m,format:'browser',browser:{...browser,json_requests:[{...browser.json_requests[0],method:'DELETE'}]}}),false);
+ assert.equal(valid({...m,regular:{...m.regular,count:0}}),false);
+ assert.equal(valid({...m,format:'json',period:{path:'/rows/0/issue',attribute:''}}),true);
+ const plan=check('AutomationPlan');assert.equal(plan({source_type:'mapped',version:0,enabled:false,anchor_draw_at:null,anchor_period_no:null,interval_seconds:null,close_before_seconds:0,source_url:'https://draw.example/results?lang=en',credential_ref:'',mapping:m}),true,JSON.stringify(plan.errors));
+});
+test('source preview is platform scoped, read-only and has no idempotent publication contract',()=>{
+ const path='/api/v1/platform/platform-games/{id}/draw-source-preview',op=doc.paths[path].post;
+ assert.deepEqual(op['x-permissions'],['platform_game.write.platform']);
+ assert.equal(op['x-idempotent-operation'],false);
+ assert.equal(doc.paths[path.replace('/platform/','/admin/')],undefined);
+ assert.match(op.description,/never publishes or settles/);
+ assert.match(op.description,/executes page JavaScript/);
+ assert.match(op.description,/never falls back/);
+ const result=check('DrawFeedReading');assert.equal(result({completed:{period_no:'DOM-1',drawn_at:'2026-10-20T04:00:00Z',result:{regular:[1,2,3,4,5,6],special:[31],digits:[]}},next_period_no:null,next_draw_at:null}),true,JSON.stringify(result.errors));
+});
+test('new source writes require mappings while historical plans remain readable',()=>{
+ const read=check('AutomationPlan'),write=check('DrawSourcePlanInput');
+ const old={source_type:'interval_json',version:1,enabled:true,anchor_draw_at:'2026-10-20T04:00:00Z',anchor_period_no:'000001',interval_seconds:120,close_before_seconds:10,source_url:'https://draw.example/feed',credential_ref:''};
+ assert.equal(read(old),true,JSON.stringify(read.errors));
+ assert.equal(write(old),false);
+ const hk={...old,source_type:'hk_marksix_6hch',anchor_draw_at:null,anchor_period_no:null,interval_seconds:null};
+ assert.equal(read(hk),true,JSON.stringify(read.errors));
+ assert.equal(write(hk),false);
+ const mapping={format:'json',schedule:'interval',time_format:'rfc3339',time_layout:'',timezone:'',period:{path:'/period',attribute:''},draw_time:{path:'/time',attribute:''},regular:null,special:null,digits:{path:'/digits',attribute:'',separator:'',offset:0,count:3},next_period:null,next_draw_time:null,complete:null,period_query:'',game_query:''};
+ assert.equal(write({...old,source_type:'mapped',mapping}),true,JSON.stringify(write.errors));
+ assert.equal(write({...old,source_type:'mapped'}),false);
+ const scheduled={...old,source_type:'mapped',anchor_draw_at:null,anchor_period_no:null,interval_seconds:null,mapping:{...mapping,schedule:'source',next_period:{path:'/next',attribute:''},next_draw_time:{path:'/next_time',attribute:''}}};
+ assert.equal(write(scheduled),true,JSON.stringify(write.errors));
+ assert.equal(write({...scheduled,interval_seconds:120}),false);
+ const save=doc.paths['/api/v1/platform/platform-games/{id}/draw-sources'].post;
+ assert.equal(save.requestBody.content['application/json'].schema.properties.plan.$ref,'#/components/schemas/DrawSourcePlanInput');
+});
+test('source observations preserve actual legacy attributes without requiring fabricated ones',()=>{
+ const valid=check('DrawSourceObservation');
+ const result={period_no:'000001',drawn_at:'2026-10-20T04:00:00Z',result:{regular:[],special:[],digits:[1,2,3]}};
+ assert.equal(valid(result),true,JSON.stringify(valid.errors));
+ assert.equal(valid({...result,attributes:{waves:{'07':'red'},zodiac:{'07':'horse'},elements:{'07':'fire'}}}),true,JSON.stringify(valid.errors));
+});

@@ -28,7 +28,7 @@ func complianceConfig(t *testing.T, p *pgxpool.Pool, admin, brand string, enable
 		t.Fatal(e)
 	}
 	defer tx.Rollback(ctx)
-	a := access.Account{ID: admin, Type: access.AccountAdmin, BrandIDs: []string{brand}, Roles: []access.Role{{BrandID: brand, Permissions: []access.Permission{{Resource: "compliance_policy", Action: "write", Scope: access.ScopeBrand}}}}}
+	a := access.Account{ID: admin, SuperAdmin: true, Type: access.AccountAdmin, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "compliance_policy", Action: "write", Scope: access.ScopePlatform}}}}}
 	cfg := compliance.DefaultConfig()
 	cfg.IdentityEnabled = enabled
 	_, e = s.Update(ctx, tx, brand, a, compliance.Input{Version: v.Version, Config: cfg, Reason: "Configure identity admission fixture"}, points.Metadata{ActorType: "admin", ActorID: admin, RequestID: "identity-fixture-policy"})
@@ -105,6 +105,13 @@ func TestComplianceRegistrationJoinPendingAndOperatorDoNotBypass(t *testing.T) {
 	if r = run(operatorTestBrand, "compliance-existing-login", login(operatorTestBrand, false)); r.Status != 200 {
 		t.Fatal("existing login blocked", r)
 	}
+	// Continue the compliance read check with the new, uniquely valid session.
+	if _, e = s.Authenticate(ctx, operatorTestBrand, auth.AccessToken); e != ErrSession {
+		t.Fatal("new login did not revoke the registration session", e)
+	}
+	if e = json.Unmarshal(r.Data, &auth); e != nil {
+		t.Fatal(e)
+	}
 	complianceConfig(t, p, admin, operatorTestOtherBrand, true)
 	if r = run(operatorTestOtherBrand, "compliance-newbrand-join", login(operatorTestOtherBrand, true)); r.Status != 409 || r.Error.Code != "COMPLIANCE_REVIEW_REQUIRED" {
 		t.Fatal(r)
@@ -130,7 +137,7 @@ func TestComplianceRegistrationJoinPendingAndOperatorDoNotBypass(t *testing.T) {
 		t.Fatal("pending consent bypassed", accepted, e)
 	}
 	if _, e = s.Authenticate(ctx, operatorTestBrand, auth.AccessToken); e != nil {
-		t.Fatal("old session reads blocked", e)
+		t.Fatal("current session reads blocked", e)
 	}
 }
 func TestComplianceTelegramNewIdentityAndCrossBrandJoin(t *testing.T) {

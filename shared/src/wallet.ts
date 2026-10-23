@@ -1,3 +1,5 @@
+import { copyAssociationNames } from './association-names';
+
 export const WALLET_SOURCES = ["recharge", "winning", "gift", "commission"] as const;
 export type WalletSource = (typeof WALLET_SOURCES)[number];
 
@@ -124,9 +126,11 @@ export function normalizeLedgerSnapshots<T>(value: T): T | (T & {
   const delta = normalizeSourceBuckets(value.delta_snapshot, true);
   const after = normalizeSourceBuckets(value.after_snapshot);
   if (!before || !delta || !after) return null;
-  return { ...value, before_snapshot: before, delta_snapshot: delta, after_snapshot: after } as T & {
+  const result = { ...value, before_snapshot: before, delta_snapshot: delta, after_snapshot: after } as T & {
     before_snapshot: SourceBuckets;
     delta_snapshot: SourceBuckets;
     after_snapshot: SourceBuckets;
   };
+  copyAssociationNames(value,result);
+  return result;
 }

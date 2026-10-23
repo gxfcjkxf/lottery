@@ -1,13 +1,29 @@
 <script setup lang="ts">
+import ManagementTable from "@lottery/shared/ManagementTable.vue"
+import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
+import { AssociationName } from '@lottery/shared';
+import { usePlatformI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import SiteIcon from "@lottery/shared/SiteIcon";
+import { vRefreshButton } from '@lottery/shared';
+import { vInlineValidation } from '@lottery/shared'
+import { usePlatformI18n } from "./i18n"
+const ui = usePlatformI18n().t
 import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, ref, watch } from 'vue'
 import { WALLET_SOURCES, WALLET_STATES } from '@lottery/shared'
 import { PlatformApiError } from './platform-api'
 import { createPlatformWalletApi, type Wallet, type LedgerEntry } from './wallet-api'
 import RechargesPanel from './RechargesPanel.vue'
+import type { PlatformDisplaySettings } from './platform-format'
+import { formatPlatformDateTime } from './platform-format'
 import ReportsPanel from './ReportsPanel.vue'
+import { lookupPlatformMember } from './member-lookup'
 
-const props = defineProps<{ brandId: string; memberId: string; locale: 'en' | 'zh-CN' }>()
+const props = defineProps<{ brandId: string; memberId: string; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings; view: 'wallet' | 'recharges' | 'reports' }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
 const api = createPlatformWalletApi()
 const inputMember = ref('')
@@ -18,50 +34,32 @@ const selected = ref<LedgerEntry | null>(null)
 const offset = ref(0)
 const more = ref(false)
 const loading = ref(false)
-const error = ref('')
-const financeSection = ref<'wallet' | 'recharges' | 'reports'>('wallet')
-const financeMember = ref('')
+const error = ref<string | import("@lottery/shared").LocalizedMessage>("")
 let generation = 0
 const copy = computed(() => props.locale === 'en' ? {
-  title: 'Member points', readOnly: 'Read-only wallet and immutable ledger', member: 'Member ID', load: 'Load wallet', refresh: 'Refresh', available: 'Available', frozen: 'Frozen', withdrawal: 'Withdrawal pending', display: 'Display points', version: 'Version', source: 'Source', recharge: 'Recharge', winning: 'Winning', gift: 'Gift', commission: 'Commission', manual_frozen: 'Manual freeze', system_frozen: 'System freeze', ledger: 'Point ledger', entry: 'Entry', type: 'Type', reason: 'Reason', date: 'Date', previous: 'Previous page', next: 'Next page', detail: 'Ledger entry detail', before: 'Before', delta: 'Change', after: 'After', state: 'State', empty: 'No ledger entries.', loading: 'Loading…',
+  member: ui('platform.copy.098b8e97'), memberPlaceholder: ui('platform.copy.13a7c871'), load: ui('platform.copy.93a53cd3'), refresh: ui('platform.copy.256fe8b3'), available: ui('platform.copy.529adfaa'), frozen: ui('platform.copy.4958de92'), withdrawal: ui('platform.copy.5e6ce513'), display: ui('platform.copy.bea6e46d'), version: ui('platform.copy.59405491'), source: ui('platform.copy.4fe341a5'), recharge: ui('platform.copy.3420a04d'), winning: ui('platform.copy.57e492c6'), gift: ui('platform.copy.c8d77732'), commission: ui('platform.copy.648ed708'), manual_frozen: ui('platform.copy.2ce7e185'), system_frozen: ui('platform.copy.1659fc95'), ledger: ui('platform.copy.3c5a4352'), entry: ui('platform.copy.a7b66898'), type: ui('platform.copy.e34df49d'), reason: ui('platform.copy.f3f300a4'), date: ui('platform.copy.7069c6b9'), previous: ui('platform.copy.7f5aba9a'), next: ui('platform.copy.282be575'), detail: ui('platform.copy.57d101e7'), close: ui('platform.copy.27b2fd29'), before: ui('platform.copy.e8d73caa'), delta: ui('platform.copy.f5fae35f'), after: ui('platform.copy.2be93f0a'), state: ui('platform.copy.274ae047'), empty: ui('platform.copy.9eaaa95f'),
 } : {
-  title: '会员积分', readOnly: '只读钱包及不可变积分流水', member: '会员编号', load: '查询钱包', refresh: '刷新', available: '可用积分', frozen: '冻结积分', withdrawal: '提现中积分', display: '显示积分', version: '版本', source: '来源', recharge: '充值', winning: '中奖', gift: '赠送', commission: '佣金', manual_frozen: '人工冻结', system_frozen: '系统冻结', ledger: '积分流水', entry: '分录', type: '类型', reason: '原因', date: '时间', previous: '上一页', next: '下一页', detail: '流水详情', before: '之前', delta: '变动', after: '之后', state: '状态', empty: '暂无积分流水。', loading: '加载中…',
+  member: ui('platform.copy.098b8e97'), memberPlaceholder: ui('platform.copy.13a7c871'), load: ui('platform.copy.93a53cd3'), refresh: ui('platform.copy.256fe8b3'), available: ui('platform.copy.529adfaa'), frozen: ui('platform.copy.4958de92'), withdrawal: ui('platform.copy.5e6ce513'), display: ui('platform.copy.bea6e46d'), version: ui('platform.copy.59405491'), source: ui('platform.copy.4fe341a5'), recharge: ui('platform.copy.3420a04d'), winning: ui('platform.copy.57e492c6'), gift: ui('platform.copy.c8d77732'), commission: ui('platform.copy.648ed708'), manual_frozen: ui('platform.copy.2ce7e185'), system_frozen: ui('platform.copy.1659fc95'), ledger: ui('platform.copy.3c5a4352'), entry: ui('platform.copy.a7b66898'), type: ui('platform.copy.e34df49d'), reason: ui('platform.copy.f3f300a4'), date: ui('platform.copy.7069c6b9'), previous: ui('platform.copy.7f5aba9a'), next: ui('platform.copy.282be575'), detail: ui('platform.copy.57d101e7'), close: ui('platform.copy.27b2fd29'), before: ui('platform.copy.e8d73caa'), delta: ui('platform.copy.f5fae35f'), after: ui('platform.copy.2be93f0a'), state: ui('platform.copy.274ae047'), empty: ui('platform.copy.9eaaa95f'),
 })
 function clear() {
   generation++
   wallet.value = null; entries.value = []; selected.value = null
   offset.value = 0; more.value = false; activeMember.value = ''; loading.value = false; error.value = ''
 }
-function showRecharges() {
-  if (financeSection.value === 'recharges') return
-  financeMember.value = activeMember.value || financeMember.value || props.memberId
-  clear()
-  financeSection.value = 'recharges'
-}
-function showReports() {
-  if (financeSection.value === 'reports') return
-  financeMember.value = activeMember.value || financeMember.value || props.memberId
-  clear()
-  financeSection.value = 'reports'
-}
-function showWallet() {
-  financeSection.value = 'wallet'
-  if (financeMember.value) {
-    inputMember.value = financeMember.value
-    void load()
-  }
-}
+const financeMember = computed(() => activeMember.value || props.memberId)
 function report(cause: unknown) {
   if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause)
-  else error.value = cause instanceof Error ? cause.message : String(cause)
+  else error.value = cause instanceof Error ? publicErrorMessage(cause) : publicErrorMessage(cause)
 }
 async function load() {
   clear()
   const request = generation
   const brandId = props.brandId
-  const memberId = inputMember.value.trim()
+  const username = inputMember.value.trim()
+  let memberId = ''
   loading.value = true
   try {
+    memberId = (await lookupPlatformMember(brandId, username)).id
     const [current, rows] = await Promise.all([api.wallet(brandId, memberId), api.ledger(brandId, memberId, 51, 0)])
     if (request !== generation || brandId !== props.brandId) return
     wallet.value = current; entries.value = rows.slice(0, 50); more.value = rows.length > 50; activeMember.value = memberId
@@ -82,38 +80,28 @@ async function page(nextOffset: number) {
   finally { if (request === generation) loading.value = false }
 }
 watch(() => [props.brandId, props.memberId], () => {
-  financeSection.value = 'wallet'; financeMember.value = ''
-  clear(); inputMember.value = props.memberId
-  if (props.brandId && props.memberId) void load()
+  clear(); inputMember.value = ''
 }, { immediate: true, flush: 'sync' })
 </script>
 
 <template>
-  <div class="wallet-pagination" data-testid="platform-finance-tabs">
-    <button class="secondary" :aria-pressed="financeSection === 'wallet'" @click="showWallet">{{ locale === 'en' ? 'Wallet' : '钱包' }}</button>
-    <button class="secondary" :aria-pressed="financeSection === 'recharges'" @click="showRecharges">{{ locale === 'en' ? 'Recharge records' : '充值记录' }}</button>
-    <button class="secondary" :aria-pressed="financeSection === 'reports'" @click="showReports">{{ locale === 'en' ? 'Financial reports' : '财务报表' }}</button>
-  </div>
-  <RechargesPanel v-if="financeSection === 'recharges'" :brand-id="brandId" :member-id="financeMember" :locale="locale" @failure="emit('failure', $event)" />
-  <ReportsPanel v-else-if="financeSection === 'reports'" :brand-id="brandId" :member-id="financeMember" :locale="locale" @failure="emit('failure', $event)" />
+    <RechargesPanel v-if="view === 'recharges'" :brand-id="brandId" :member-id="financeMember" :locale="locale" :display-settings="displaySettings" @failure="emit('failure', $event)" />
+  <ReportsPanel v-else-if="view === 'reports'" :brand-id="brandId" :member-id="financeMember" :locale="locale" :display-settings="displaySettings" @failure="emit('failure', $event)" />
   <template v-else>
   <div data-testid="platform-wallet">
-    <div class="page-heading"><div><div class="eyebrow">{{ copy.readOnly }}</div><h1>{{ copy.title }}</h1></div></div>
-    <form class="panel wallet-query" @submit.prevent="load">
+    <form novalidate v-inline-validation class="panel wallet-query" @submit.prevent="withGlobalLoading(load)">
       <label class="query-field">
-        <span class="field-label">{{ copy.member }}</span>
         <div class="input-with-icon">
-          <span class="input-icon">👤</span>
-          <input v-model="inputMember" required :disabled="loading || !brandId" autocomplete="off" :placeholder="locale === 'en' ? 'Enter member UUID' : '输入会员 UUID'" />
+          <span class="input-icon"> <SiteIcon name="user" /> </span>
+          <input v-model="inputMember" required :disabled="loading || !brandId" autocomplete="off" :aria-label="copy.member" :placeholder="copy.memberPlaceholder" />
         </div>
       </label>
-      <button class="primary" :disabled="loading || !brandId">{{ copy.load }}</button>
+      <button class="button button-primary" :disabled="loading || !brandId">{{ copy.load }}</button>
     </form>
-    <p v-if="error" class="message error" role="alert">{{ error }}</p>
-    <p v-if="loading" class="loading-line">{{ copy.loading }}</p>
+    <p v-if="error" class="message error" role="alert">{{ displayPublicError(error) }}</p>
     <template v-if="wallet">
       <section class="panel" data-testid="platform-wallet-balances">
-        <div class="panel-heading"><h2>{{ activeMember }}</h2><span>{{ copy.version }} {{ wallet.version }}</span></div>
+        <div class="panel-heading"><h2><AssociationName :record="wallet" kind="member" :id="activeMember" :locale="locale" /></h2></div>
         <dl class="confirm-list reward-fields">
           <div><dt>{{ copy.display }}</dt><dd>{{ wallet.display_points }}</dd></div>
           <div><dt>{{ copy.available }}</dt><dd>{{ wallet.available_points }}</dd></div>
@@ -125,17 +113,16 @@ watch(() => [props.brandId, props.memberId], () => {
         </tbody></table></div>
       </section>
       <section class="panel reward-detail" data-testid="platform-wallet-ledger">
-        <div class="panel-heading"><h2>{{ copy.ledger }}</h2><button class="secondary" :disabled="loading" @click="load">{{ copy.refresh }}</button></div>
-        <div class="table-wrap"><table><thead><tr><th>{{ copy.entry }}</th><th>{{ copy.type }}</th><th>{{ copy.reason }}</th><th>{{ copy.date }}</th></tr></thead><tbody>
-          <tr v-for="entry in entries" :key="entry.id"><td><button class="row-action" @click="selected = entry">{{ entry.id }}</button></td><td>{{ entry.entry_type }}</td><td>{{ entry.reason }}</td><td>{{ entry.created_at }}</td></tr>
-          <tr v-if="!entries.length"><td colspan="4" class="empty-state">{{ copy.empty }}</td></tr>
-        </tbody></table></div>
-        <div class="wallet-pagination" data-testid="platform-wallet-pages"><button class="secondary" :disabled="loading || offset === 0" @click="page(offset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(offset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !more" @click="page(offset + 50)">{{ copy.next }}</button></div>
+        <div class="panel-heading"><h2>{{ copy.ledger }}</h2></div>
+        <ManagementTable :entries="entries" :columns="[{key:'entry',label:copy.entry},{key:'type',label:copy.type},{key:'reason',label:copy.reason},{key:'date',label:copy.date}]" :empty="!entries.length" :empty-label="copy.empty">
+          <template #entry="{entry}"><button class="text-button" @click="selected=entry">{{entry.id}}</button></template><template #type="{entry}">{{entry.entry_type}}</template><template #reason="{entry}">{{entry.reason}}</template><template #date="{entry}">{{formatPlatformDateTime(entry.created_at, props.displaySettings, props.locale)}}</template>
+        </ManagementTable>
+        <div class="wallet-pagination" data-testid="platform-wallet-pages"><button class="button button-secondary" :disabled="loading || offset === 0" @click="withGlobalLoading(page, offset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(offset / 50) + 1 }}</span><button class="button button-secondary" :disabled="loading || !more" @click="withGlobalLoading(page, offset + 50)">{{ copy.next }}</button><button v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load)">{{ copy.refresh }}</button></div>
       </section>
-      <DetailModal v-if="selected" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="selected = null">
-<section v-if="selected" class="panel reward-detail" data-testid="platform-wallet-entry">
-        <div class="panel-heading"><div><h2>{{ copy.detail }}</h2><p class="mono">{{ selected.id }}</p><p>{{ selected.reason }}</p></div></div>
-        <div class="table-wrap"><table><thead><tr><th>{{ copy.source }}</th><th>{{ copy.state }}</th><th>{{ copy.before }}</th><th>{{ copy.delta }}</th><th>{{ copy.after }}</th></tr></thead><tbody>
+      <DetailModal v-if="selected" :title="copy.detail" :close-label="copy.close" @close="selected = null">
+<section v-if="selected" class="detail-section" data-testid="platform-wallet-entry">
+        <div class="detail-summary"><p class="mono">{{ selected.id }}</p><p>{{ selected.reason }}</p></div>
+        <div class="table-wrap"><table><thead><tr><th>{{ copy.source }}</th><th><BusinessDetails :value="copy.state" :locale="props.locale" /></th><th>{{ copy.before }}</th><th>{{ copy.delta }}</th><th>{{ copy.after }}</th></tr></thead><tbody>
           <template v-for="source in WALLET_SOURCES" :key="source"><tr v-for="state in WALLET_STATES" :key="state"><td>{{ copy[source] }}</td><td>{{ copy[state] }}</td><td>{{ selected.before_snapshot[source][state] }}</td><td>{{ selected.delta_snapshot[source][state] }}</td><td>{{ selected.after_snapshot[source][state] }}</td></tr></template>
         </tbody></table></div>
       </section>

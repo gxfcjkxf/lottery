@@ -8,8 +8,8 @@ const admin = `${origin}/api/v1/admin`;
 const unique = () => crypto.randomUUID();
 
 type Envelope<T> = { success: boolean; data: T; error?: unknown };
-type BrandOperation = { brand_id: string; version: number; name: string; status: "active" | "paused"; updated_at: string; audit_log_id?: string };
-type Revision = { id: string; brand_id: string; version: number; previous_status: "active" | "paused"; status: "active" | "paused"; changed_by: string; reason: string; audit_log_id: string; created_at: string };
+type BrandOperation = { brand_id: string; version: number; name: string; status: "active" | "paused" | "disabled"; updated_at: string; audit_log_id?: string };
+type Revision = { id: string; brand_id: string; version: number; previous_status: "active" | "paused" | "disabled"; status: "active" | "paused" | "disabled"; changed_by: string; reason: string; audit_log_id: string; created_at: string };
 
 async function envelope<T>(response: Awaited<ReturnType<import("@playwright/test").APIRequestContext["get"]>>, label: string): Promise<T> {
   const text = await response.text();
@@ -116,7 +116,6 @@ test("Harbor operation pause survives a dropped acknowledgment, records once, an
     });
 
     await page.goto(origin);
-    await page.getByLabel("选择真实后台品牌", { exact: true }).selectOption(harbor);
     if (info.project.name === "mobile") {
       await page.locator(".mobile-nav button").nth(4).click();
       await page.locator(".mobile-more-menu").getByRole("button", { name: /品牌和域名/ }).click();
@@ -127,9 +126,9 @@ test("Harbor operation pause survives a dropped acknowledgment, records once, an
     const panel = page.locator(".brand-operation");
     await expect(panel.getByRole("heading", { name: "品牌运行状态", exact: true })).toBeVisible();
     await panel.getByLabel("目标状态", { exact: true }).selectOption("paused");
-    await panel.getByLabel("操作原因", { exact: true }).fill("Verify Harbor pause and same-key retry after a lost acknowledgment");
+    await expect(panel.getByRole("textbox")).toHaveCount(0);
     await panel.getByRole("button", { name: "核对状态变更", exact: true }).click();
-    await panel.getByRole("button", { name: "确认提交", exact: true }).click();
+    await panel.getByRole("button", { name: "提交", exact: true }).click();
     // The unknown-intent control appears as soon as a write starts. Wait for
     // actual server acceptance and the deliberately lost ACK before retrying.
     await expect.poll(() => firstStatus).toBe(200);
@@ -143,11 +142,11 @@ test("Harbor operation pause survives a dropped acknowledgment, records once, an
     expect(pauseEvents).toHaveLength(1);
     expect(pauseEvents[0]).toMatchObject({ previous_status: "active", status: "paused" });
 
-    await panel.getByRole("button", { name: "重新读取状态", exact: true }).click();
+    await panel.getByRole("button", { name: "重新读取", exact: true }).click();
     await expect(panel.getByRole("button", { name: "使用原键重试", exact: true })).toBeVisible();
     await expect(panel.getByLabel("目标状态", { exact: true })).toBeDisabled();
     await panel.getByRole("button", { name: "刷新记录", exact: true }).click();
-    await expect(panel.locator(".brand-operation__history-list")).toContainText("Verify Harbor pause and same-key retry after a lost acknowledgment");
+    expect((await history()).items.find(item => item.version === ownPauseVersion)?.reason).toBe("");
     await expect(panel.getByRole("button", { name: "使用原键重试", exact: true })).toBeVisible();
     await expect(panel.getByLabel("目标状态", { exact: true })).toBeDisabled();
 
@@ -167,7 +166,7 @@ test("Harbor operation pause survives a dropped acknowledgment, records once, an
     await expect(page.getByRole("heading", { name: "品牌和域名", exact: true })).toBeVisible();
     await expect(panel.getByRole("button", { name: "使用原键重试", exact: true })).toBeVisible();
     await expect(panel.getByLabel("目标状态", { exact: true })).toBeDisabled();
-    await expect(panel.locator(".brand-operation__history-list")).toContainText("Verify Harbor pause and same-key retry after a lost acknowledgment");
+    expect((await history()).items.find(item => item.version === ownPauseVersion)?.reason).toBe("");
 
     await panel.getByRole("button", { name: "使用原键重试", exact: true }).click();
     await expect(panel.getByRole("button", { name: "使用原键重试", exact: true })).toHaveCount(0);
@@ -177,6 +176,7 @@ test("Harbor operation pause survives a dropped acknowledgment, records once, an
     await expect(panel.getByLabel("目标状态", { exact: true })).toBeEnabled();
     expect(writes).toHaveLength(2);
     expect(writes[0]).toEqual(writes[1]);
+    expect(JSON.parse(writes[0].body!).reason).toBe("");
     expect((await getContext("harbor.localhost:5173")).brand).toMatchObject({ id: harbor, status: "paused" });
     expect((await getContext("localhost:5173")).brand).toMatchObject({ name: "Aurora", status: "active" });
 
@@ -202,13 +202,12 @@ test("Harbor operation pause survives a dropped acknowledgment, records once, an
 
     const pausedOperation = await operation();
     await panel.getByLabel("目标状态", { exact: true }).selectOption("active");
-    await panel.getByLabel("操作原因", { exact: true }).fill("Restore Harbor after pause verification");
     await panel.getByRole("button", { name: "核对状态变更", exact: true }).click();
     const resumeResponse = page.waitForResponse((response) => {
       const request = response.request();
       return request.method() === "PATCH" && new URL(response.url()).pathname === "/api/v1/admin/brand-operation" && response.status() === 200;
     });
-    await panel.getByRole("button", { name: "确认提交", exact: true }).click();
+    await panel.getByRole("button", { name: "提交", exact: true }).click();
     await resumeResponse;
     await expect(panel.getByRole("button", { name: "使用原键重试", exact: true })).toHaveCount(0);
     const resumed = await operation();

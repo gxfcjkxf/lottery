@@ -18,6 +18,21 @@ import (
 )
 
 type Service struct{ DB *pgxpool.Pool }
+
+// Validate returns eligibility only; source identities are never public.
+func (s Service) Validate(ctx context.Context, brand, agent, referral string) (bool, error) {
+	if s.DB == nil || !idsValid(brand) {
+		return false, ErrInvalid
+	}
+	kind, code, err := Normalize(agent, referral)
+	if err != nil || code == "" {
+		return false, nil
+	}
+	var valid bool
+	err = s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM join_codes c WHERE c.brand_id=$1 AND c.kind=$2 AND c.code=$3 AND join_code_usable(c))`, brand, kind, code).Scan(&valid)
+	return valid, err
+}
+
 type querier interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
@@ -87,7 +102,7 @@ func (s Service) Create(ctx context.Context, tx pgx.Tx, brand string, a access.A
 		return Code{}, e
 	}
 	var owner bool
-	if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$2)`, brand, in.OwnerMemberID).Scan(&owner); e != nil {
+	if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wallet_owners WHERE brand_id=$1 AND id=$2 AND kind=$3)`, brand, in.OwnerMemberID, map[string]string{"agent": "agent", "referral": "member"}[in.Kind]).Scan(&owner); e != nil {
 		return Code{}, e
 	}
 	if !owner {
@@ -169,7 +184,7 @@ func (s Service) List(ctx context.Context, brand string, kind, owner *string, li
 	var valid bool
 	var raw []byte
 	e := s.DB.QueryRow(ctx, `WITH selected AS(SELECT c.*,join_code_usable(c) AS usable FROM join_codes c WHERE c.brand_id=$1 AND ($2::text IS NULL OR c.kind=$2) AND ($3::uuid IS NULL OR c.owner_member_id=$3)),page AS(SELECT * FROM selected ORDER BY created_at,id LIMIT $4 OFFSET $5)
- SELECT EXISTS(SELECT 1 FROM brands WHERE id=$1) AND ($3::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$3)),(SELECT count(*)::text FROM selected),COALESCE((SELECT jsonb_agg(to_jsonb(page)-'created_by' ORDER BY created_at,id)FROM page),'[]'::jsonb)`, brand, kind, owner, limit, offset).Scan(&valid, &out.TotalCount, &raw)
+ SELECT EXISTS(SELECT 1 FROM brands WHERE id=$1) AND ($3::uuid IS NULL OR EXISTS(SELECT 1 FROM wallet_owners WHERE brand_id=$1 AND id=$3)),(SELECT count(*)::text FROM selected),COALESCE((SELECT jsonb_agg(to_jsonb(page)-'created_by' ORDER BY created_at,id)FROM page),'[]'::jsonb)`, brand, kind, owner, limit, offset).Scan(&valid, &out.TotalCount, &raw)
 	if e == nil && !valid {
 		e = ErrNotFound
 	}

@@ -18,6 +18,7 @@ import (
 
 // ErrConflict reports a stale version or a unique-value collision.
 var ErrConflict = errors.New("administrative resource conflict")
+var ErrRoleAssigned = errors.New("role is assigned to an account")
 
 type RoleRecord struct {
 	ID          string   `json:"id"`
@@ -131,6 +132,26 @@ func (s Store) ListPermissions(ctx context.Context, actor access.Account, brand 
 		return nil, ErrDenied
 	}
 	rows, err := s.DB.Query(ctx, `SELECT key FROM permissions WHERE split_part(key,'.',3)='brand' ORDER BY key`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	permissions := make([]string, 0)
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		permissions = append(permissions, key)
+	}
+	return permissions, rows.Err()
+}
+
+func (s Store) ListPlatformPermissions(ctx context.Context, actor access.Account) ([]string, error) {
+	if !platformManagementAllowed(actor, "role", "view") {
+		return nil, ErrDenied
+	}
+	rows, err := s.DB.Query(ctx, `SELECT key FROM permissions WHERE split_part(key,'.',3)='platform' ORDER BY key`)
 	if err != nil {
 		return nil, err
 	}
@@ -262,6 +283,49 @@ func (s Store) WriteRole(ctx context.Context, tx pgx.Tx, actor access.Account, b
 	}
 	record.AuditLogID = change
 	return record, nil
+}
+
+func (s Store) DeleteRole(ctx context.Context, tx pgx.Tx, actor access.Account, brand, id string, version int64, meta identity.Metadata) (string, error) {
+	if tx == nil || !validUUID(brand) || !validUUID(id) || version < 1 {
+		return "", ErrInvalid
+	}
+	if !ManagementAllowed(actor, "role", "delete", brand) {
+		return "", ErrDenied
+	}
+	var record RoleRecord
+	err := tx.QueryRow(ctx, `SELECT id::text,brand_id::text,code,name,status,version,is_bootstrap FROM roles WHERE id=$1 AND brand_id=$2 FOR UPDATE`, id, brand).
+		Scan(&record.ID, &record.BrandID, &record.Code, &record.Name, &record.Status, &record.Version, &record.IsBootstrap)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if record.IsBootstrap {
+		return "", ErrDenied
+	}
+	if record.Version != version {
+		return "", ErrConflict
+	}
+	var assigned bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM admin_account_roles WHERE role_id=$1)`, id).Scan(&assigned); err != nil {
+		return "", err
+	}
+	if assigned {
+		return "", ErrRoleAssigned
+	}
+	before := map[string]any{"code": record.Code, "name": record.Name, "status": record.Status, "version": record.Version}
+	if _, err = tx.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1`, id); err != nil {
+		return "", err
+	}
+	command, err := tx.Exec(ctx, `DELETE FROM roles WHERE id=$1 AND brand_id=$2 AND version=$3`, id, brand, version)
+	if err != nil {
+		return "", err
+	}
+	if command.RowsAffected() != 1 {
+		return "", ErrConflict
+	}
+	return audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: actor.ID, Action: "role.delete", ResourceType: "role", ResourceID: id, RequestID: meta.RequestID, IP: meta.IP, Before: before})
 }
 
 func (s Store) CreateAdmin(ctx context.Context, tx pgx.Tx, actor access.Account, brand string, in AdminInput, passwordHash string, meta identity.Metadata) (AdminRecord, error) {
@@ -397,6 +461,60 @@ func (s Store) UpdateAdmin(ctx context.Context, tx pgx.Tx, actor access.Account,
 	return record, err
 }
 
+func (s Store) DeleteAdmin(ctx context.Context, tx pgx.Tx, actor access.Account, brand, id string, version int64, meta identity.Metadata) (string, error) {
+	if tx == nil || !validUUID(brand) || !validUUID(id) || version < 1 {
+		return "", ErrInvalid
+	}
+	if actor.ID == id || !ManagementAllowed(actor, "admin", "delete", brand) {
+		return "", ErrDenied
+	}
+	var record AdminRecord
+	if err := tx.QueryRow(ctx, `SELECT id::text,username,status,version,is_super_admin FROM admin_accounts WHERE id=$1 FOR UPDATE`, id).
+		Scan(&record.ID, &record.Username, &record.Status, &record.Version, &record.SuperAdmin); errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	} else if err != nil {
+		return "", err
+	}
+	if record.SuperAdmin || record.Version != version {
+		if record.SuperAdmin {
+			return "", ErrDenied
+		}
+		return "", ErrConflict
+	}
+	var err error
+	record.BrandIDs, err = accountBrands(ctx, tx, id)
+	if err != nil {
+		return "", err
+	}
+	platform := ManagementAllowed(actor, "admin", "delete", "")
+	if !containsString(record.BrandIDs, brand) || (!platform && len(record.BrandIDs) != 1) {
+		return "", ErrDenied
+	}
+	roles, err := loadAccountRoles(ctx, tx, id)
+	if err != nil {
+		return "", err
+	}
+	roleIDs := roleIDsFrom(roles)
+	before := map[string]any{"username": record.Username, "status": record.Status, "version": record.Version, "brand_ids": record.BrandIDs, "role_ids": roleIDs}
+	if _, err = tx.Exec(ctx, `DELETE FROM sessions WHERE admin_id=$1`, id); err != nil {
+		return "", err
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM admin_account_roles WHERE account_id=$1`, id); err != nil {
+		return "", err
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM admin_brand_scopes WHERE account_id=$1`, id); err != nil {
+		return "", err
+	}
+	command, err := tx.Exec(ctx, `DELETE FROM admin_accounts WHERE id=$1 AND version=$2`, id, version)
+	if err != nil {
+		return "", err
+	}
+	if command.RowsAffected() != 1 {
+		return "", ErrConflict
+	}
+	return audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: actor.ID, Action: "admin.delete", ResourceType: "admin", ResourceID: id, RequestID: meta.RequestID, IP: meta.IP, Before: before})
+}
+
 func (s Store) ResetAdminPassword(ctx context.Context, tx pgx.Tx, actor access.Account, brand, id string, version int64, hash, reason string, meta identity.Metadata) (string, error) {
 	reason, err := cleanReason(reason)
 	if err != nil || tx == nil || !validUUID(brand) || !validUUID(id) || version < 1 || strings.TrimSpace(hash) == "" {
@@ -468,7 +586,7 @@ func cleanReason(reason string) (string, error) {
 		return "", ErrInvalid
 	}
 	reason = strings.TrimSpace(reason)
-	if len(reason) < 1 || len(reason) > 500 {
+	if len(reason) > 500 {
 		return "", ErrInvalid
 	}
 	return reason, nil
@@ -479,6 +597,23 @@ func cleanPermissions(values []string) ([]string, error) {
 	for _, value := range values {
 		parts := strings.Split(value, ".")
 		if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] != "brand" {
+			return nil, ErrInvalid
+		}
+		set[value] = struct{}{}
+	}
+	result := make([]string, 0, len(set))
+	for value := range set {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+func cleanPlatformPermissions(values []string) ([]string, error) {
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		parts := strings.Split(value, ".")
+		if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] != "platform" {
 			return nil, ErrInvalid
 		}
 		set[value] = struct{}{}

@@ -1,6 +1,6 @@
 # 佣金金融政策与投注快照
 
-0047接入品牌金融政策、不可变历史、管理API及每笔新投注的私有金融快照。修改该经济政策本身不入账、不创建周期批次；0048/0049另行接入[周期核算与发现](17-commission-cycles.md)。0050独立运行开关开启后按保存的人工/自动模式授权并实际入账；运行开关所有品牌默认关闭，不能仅配置automatic就启动派发。独立调整和已派发更正补偿仍需实现。
+品牌金融政策提供当前配置、管理 API 及每笔新投注的私有金融快照，不再记录策略变更历史。修改该经济政策本身不入账、不创建周期批次；0048/0049另行接入[周期核算与发现](17-commission-cycles.md)。0050独立运行开关开启后按保存的人工/自动模式授权并实际入账；运行开关所有品牌默认关闭，不能仅配置automatic就启动派发。独立调整和已派发更正补偿仍需实现。
 
 ## 已确认的结佣口径
 
@@ -12,19 +12,18 @@
 
 ## 品牌金融政策
 
-`brand_commission_policies`保存brand_id、递增version、config、created_at和updated_at。config严格包含enabled、calendar、payout_mode。安装时为`false/null/manual`；不擅自选择周期边界或开启金融流程。calendar为null只允许disabled；非空必须包含timezone、cycle、boundary_time、weekday、month_day、short_month。
+`brand_commission_policies`保存 brand_id、递增 version、config、当前配置标识 revision_id、created_at 和 updated_at。config严格包含enabled、calendar、payout_mode。安装时为`false/null/manual`；不擅自选择周期边界或开启金融流程。calendar为null只允许disabled；非空必须包含timezone、cycle、boundary_time、weekday、month_day、short_month。
 
-周周期要求weekday为0至6，month_day为null，short_month为空；月周期要求weekday为null、month_day为1至31、short_month为last_day或skip。使用有效时区和严格HH:mm:ss本地边界，日历计算拒绝夏令时不存在/重复边界。启用金融政策还要求代理管理已启用且周期类型一致。修改代理周期或关闭代理管理前，必须先关闭金融政策，防止两个配置悄悄漂移；历史快照不受影响。
+周周期要求weekday为0至6，month_day为null，short_month为空；月周期要求weekday为null、month_day为1至31、short_month为last_day或skip。使用有效时区和严格HH:mm:ss本地边界，日历计算拒绝夏令时不存在/重复边界。代理功能默认启用，不再提供独立开关；佣金结算由金融政策自己的 enabled 控制，周期只在佣金结算的日历中配置。保存时数据库在同一事务内同步代理配置中的派生周期并推进其版本，代理规则不提供周期设置；历史快照不受影响。
 
-`commission_policy_revisions`保存每次配置、品牌/版本、changed_by、原因、audit_log_id和时间。初始禁用版本允许操作者/审计为空；后续修订必须匹配真实管理员、动作、品牌、配置、版本和修订编号的审计。当前版本必须有匹配历史，孤立的未来修订不能提交；记录禁止更新或删除。配置、修订和审计在同事务提交。
+不再创建 `commission_policy_revisions`，品牌代理策略也不再写入 `agent_config_revisions` 或配置变更审计。两组策略只保存当前配置，version 用于并发控制；revision_id 仅标识当前配置，更新时替换，不对应历史表。代理节点自己的修订、资金流水及幂等回执保留。
 
 ## 管理接口与权限
 
 - GET `/api/v1/admin/commission-policy`读取当前品牌政策。
 - PUT相同路径完整替换version、config、reason，要求Idempotency-Key。相同键和正文返回原回执，正文变化冲突；重放前重新核验当前会话及品牌权限。
-- GET `/api/v1/admin/commission-policy/history`按版本降序读取历史，limit默认20、上限100，offset上限1000000。
 
-读取使用commission_policy.view.brand；超级管理员须显式commission_policy.view.platform，只查看不写。修改要求commission_policy.write.brand，超级管理员和平台写权限不能代替品牌授权。管理页面提供中英配置与历史；写请求先冻结版本/正文/键，未知结果只用原意图重试，切换账号/品牌不能让迟到回调污染新视图。配置页面明确不提供已完成派发或虚构收益。
+读取使用commission_policy.view.brand；超级管理员须显式commission_policy.view.platform，只查看不写。修改要求commission_policy.write.brand，超级管理员和平台写权限不能代替品牌授权。品牌后台在“代理设置”中分“代理规则”和“佣金结算”两组，分别保存，提供中英文配置且不展示历史；写请求先冻结版本/正文/键，未知结果只用原意图重试，切换账号/品牌不能让迟到回调污染新视图。配置页面明确不提供已完成派发或虚构收益。
 
 ## 新投注的私有快照
 
@@ -32,12 +31,12 @@
 
 快照schema_version为1，保存brand_id、member_id、captured_at等于placed_at；financial_policy和agency_policy各保存revision_id、字符串version和完整config。agent_path按祖先到直属代理排序，每节点保存id、member_id、parent_id、depth、revision_id、字符串version、config和effective_mode。无代理路径保存空数组；停用节点仍保留，不能静默移除。
 
-`Source.PolicySnapshotTx`必须在调用者事务内读取可信品牌和注单。它校验封闭形状、规范版本/UUID、购买时间、父子链、深度、比例上限/递减及同模式，再核验每个不可变修订的品牌/身份/版本/配置/创建时间，最后与原购买归属绑定。读取不按今天的比例重建；当前节点仅用于核验不可变身份/父级/深度，不用当前可变配置。
+`Source.PolicySnapshotTx`必须在调用者事务内读取可信品牌和注单。它校验封闭形状、规范版本/UUID、购买时间、父子链、深度、比例上限/递减及同模式，与原购买归属绑定；代理节点仍校验其不可变修订的品牌、身份、版本、配置和创建时间。全局策略不再查询历史修订；结算证据必须与原注单不可变 commission_rule_snapshot 完全一致。读取不按今天的比例重建；当前节点仅用于核验不可变身份/父级/深度，不用当前可变配置。
 
-未知或跨品牌注单返回ErrNotFound；参数错误返回ErrInvalid；旧NULL、缺失修订或配置/归属/时间不匹配返回ErrPolicyEvidence，不降级为零额佣金或默认授权。字段不进入用户订单DTO、事件和公开归属接口。
+未知或跨品牌注单返回ErrNotFound；参数错误返回ErrInvalid；旧 NULL、缺失代理节点修订或配置/归属/时间不匹配返回ErrPolicyEvidence，不降级为零额佣金或默认授权。字段不进入用户订单DTO、事件和公开归属接口。
 
 ## 事务与部署边界
 
-政策写入与代理操作使用金融政策→品牌代理政策的锁顺序。投注先锁金融和代理政策及提现政策，再锁钱包；提交时数据库捕获相应修订。幂等投注重放仍返回旧订单，不按新配置重新捕获。财务读事实时沿用期次NOWAIT锁约束，见[最终注单事实](14-commission-facts.md)。
+政策写入与代理操作使用金融政策→品牌代理政策的锁顺序。投注先锁金融和代理政策及提现政策，再锁钱包；提交时数据库在持有策略锁的事务内捕获完整配置。幂等投注重放仍返回旧订单，不按新配置重新捕获。财务读事实时沿用期次NOWAIT锁约束，见[最终注单事实](14-commission-facts.md)。
 
-0047至0049为追加迁移，须与新后端协调升级，不修改已提交迁移摘要。隔离测试不自动升级原开发服务或生产。周期身份、自动发现、分页及相关更正代次已有核算实现；幂等派发、审核、调整和金融补偿仍待完成，不能将政策或ready核算视为完整佣金闭环。
+DEV 阶段统一合并到 `backend/migrations/0001_baseline.up.sql`。已有开发库先备份并在副本验证迁移后结构与新基线一致、业务数据完整，再同步迁移记录；不可清库或仅修改 checksum。此次移除的策略历史可从迁移前备份恢复，已有注单、核算、资金和幂等回执数据保持原样。

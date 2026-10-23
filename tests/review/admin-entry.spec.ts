@@ -34,13 +34,13 @@ test('independent platform entry has no public menu, restores its own cookie and
   await page.goto(platformOrigin);
   await expect(page.locator('.login-card')).toBeVisible();
   await expect(page.locator('.sidebar, .nav-item, .app-frame')).toHaveCount(0);
-  await page.getByLabel('Username', { exact: true }).fill('review_operator');
+  await page.getByLabel('Account', { exact: true }).fill('review_operator');
   await page.getByLabel('Password', { exact: true }).fill(password);
   const denied = page.waitForResponse(r => r.url().endsWith('/api/v1/platform/auth/login'));
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   expect((await denied).status()).toBe(403);
   await expect(page.locator('.app-frame')).toHaveCount(0);
-  await page.getByLabel('Username', { exact: true }).fill(reviewPlatformUsername());
+  await page.getByLabel('Account', { exact: true }).fill(reviewPlatformUsername());
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.locator('.app-frame')).toBeVisible();
@@ -51,8 +51,9 @@ test('independent platform entry has no public menu, restores its own cookie and
   expect(cookies.some(c => c.name === 'lottery_admin')).toBe(false);
   await page.reload();
   await expect(page.locator('.app-frame')).toBeVisible();
-  await page.locator('.nav-item').filter({ hasText: 'Brand members' }).click();
-  await page.locator('.brand-picker select').selectOption(aurora);
+  if (await page.locator('button[aria-controls="platform-brand-tabs"]').getAttribute('aria-expanded') === 'false') await page.locator('button[aria-controls="platform-brand-tabs"]').click()
+  await page.locator('.nav-subitem').filter({ hasText: 'Member list' }).click();
+  await page.locator('.topbar-brand-picker select').selectOption(aurora);
   await expect(page.locator('.loading-line')).toHaveCount(0);
   await expect(page.locator('.panel')).toContainText('Read-only membership details');
   expect((await page.request.get(`${platformOrigin}/api/v1/platform/users?limit=100&offset=0`, { headers: { 'X-Brand-ID': aurora } })).status()).toBe(200);
@@ -61,6 +62,7 @@ test('independent platform entry has no public menu, restores its own cookie and
   await page.screenshot({ path: info.outputPath('platform-members.png'), fullPage: true });
   const auditRead = page.waitForResponse(r => r.url().endsWith('/api/v1/platform/audit?limit=51&offset=0'));
   await page.locator('.nav-item').filter({ hasText: 'Audit and operations' }).click();
+  await page.getByTestId('platform-operations-tabs').getByRole('button', { name: 'Audit log', exact: true }).click();
   expect((await auditRead).status()).toBe(200);
   await expect(page.getByTestId('platform-audit-pages')).toBeVisible();
   await expect(page.locator('.global-message.error')).toHaveCount(0);

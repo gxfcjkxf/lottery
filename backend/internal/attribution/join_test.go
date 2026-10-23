@@ -48,20 +48,12 @@ func TestFirstJoinCodeSnapshotsAndDisabledSourceReplay(t *testing.T) {
 	}
 	a := access.Account{ID: admin, Type: access.AccountAdmin, BrandIDs: []string{brand}, Roles: []access.Role{{BrandID: brand, Permissions: []access.Permission{{Resource: "join_code", Action: "write", Scope: access.ScopeBrand}}}}}
 	s := attribution.Service{DB: db}
-	var code attribution.Code
-	tx, e := db.Begin(ctx)
-	if e != nil {
-		t.Fatal(e)
+	self, e := s.SelfCodes(ctx, brand, owner.Member.ID, 20, 0)
+	if e != nil || len(self.Items) != 1 {
+		t.Fatal(self, e)
 	}
-	code, e = s.Create(ctx, tx, brand, a, attribution.CreateInput{Kind: "referral", OwnerMemberID: owner.Member.ID, Reason: "create test referral"}, points.Metadata{RequestID: ids.New()})
-	if e == nil {
-		e = tx.Commit(ctx)
-	} else {
-		_ = tx.Rollback(ctx)
-	}
-	if e != nil {
-		t.Fatal(e)
-	}
+	code := self.Items[0]
+	var tx pgx.Tx
 	input := identity.RegisterInput{Username: "join_source_child", Password: "a-test-only-password-2026", Privacy: "dev-1", Terms: "dev-1", ReferralCode: strings.ToLower(code.Code)}
 	register := func(tx pgx.Tx) (mutation.Result, error) {
 		return users.Register(ctx, tx, brand, input, identity.Metadata{Domain: "aurora.localhost"})

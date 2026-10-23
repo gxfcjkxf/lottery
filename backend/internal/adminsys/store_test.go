@@ -8,6 +8,7 @@ import (
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
+	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -37,7 +38,8 @@ func seedFixture(t *testing.T, p *pgxpool.Pool) fixture {
 		VALUES($1,$2,$3,'Member display','private note','domain','1','1')`, v.id, v.brand, f.user); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.Exec(ctx, `INSERT INTO sessions(id,token_hash,user_id,member_id,brand_id,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '1 day')`, ids.New(), ids.New(), f.user, v.id, v.brand); err != nil {
+		// One global user has one active session. Brand B starts as history.
+		if _, err := p.Exec(ctx, `INSERT INTO sessions(id,token_hash,user_id,member_id,brand_id,expires_at,revoked_at) VALUES($1,$2,$3,$4,$5,now()+interval '1 day',CASE WHEN $6 THEN now() ELSE NULL END)`, ids.New(), ids.New(), f.user, v.id, v.brand, v.brand == f.brandB); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -109,14 +111,14 @@ func TestPlatformViewListsAcrossBrandsWithoutBrandScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	members, err := store.ListMembers(context.Background(), a, "", 10, 0)
+	members, err := store.ListMembers(context.Background(), a, "", MemberFilter{}, 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(members) != 2 || members[0].BrandID == members[1].BrandID {
+	if len(members.Items) != 2 || members.Items[0].BrandID == members.Items[1].BrandID {
 		t.Fatalf("platform view did not list both brand memberships: %+v", members)
 	}
-	if got := members[0]; got.Username != "adminsys_member" || got.Phone != "+10000000000" || got.DisplayName != "Member display" || got.Notes != "private note" {
+	if got := members.Items[0]; got.Username != "adminsys_member" || got.Phone != "+10000000000" || got.DisplayName != "Member display" || got.Notes != "private note" {
 		t.Fatalf("member fields not loaded: %+v", got)
 	}
 }
@@ -202,6 +204,25 @@ func TestKickIsBrandLocalAndPasswordResetIsGlobal(t *testing.T) {
 		t.Fatal(err)
 	}
 	var activeA, activeB int
+	if err := p.QueryRow(ctx, `SELECT count(*) FILTER(WHERE brand_id=$1 AND revoked_at IS NULL),count(*) FILTER(WHERE brand_id=$2 AND revoked_at IS NULL) FROM sessions WHERE user_id=$3`, f.brandA, f.brandB, f.user).Scan(&activeA, &activeB); err != nil || activeA != 0 || activeB != 0 {
+		t.Fatalf("kick did not revoke brand A's active session: A=%d B=%d err=%v", activeA, activeB, err)
+	}
+	// A later brand B login must not be revoked by a brand A kick.
+	if _, err := p.Exec(ctx, `INSERT INTO sessions(id,token_hash,user_id,member_id,brand_id,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '1 day')`, ids.New(), ids.New(), f.user, f.memberB, f.brandB); err != nil {
+		t.Fatal(err)
+	}
+	tx, err = p.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.Kick(ctx, tx, a, f.brandA, f.memberA, "brand-local kick", "req-kick-again", "")
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if err := p.QueryRow(ctx, `SELECT count(*) FILTER(WHERE brand_id=$1 AND revoked_at IS NULL),count(*) FILTER(WHERE brand_id=$2 AND revoked_at IS NULL) FROM sessions WHERE user_id=$3`, f.brandA, f.brandB, f.user).Scan(&activeA, &activeB); err != nil || activeA != 0 || activeB != 1 {
 		t.Fatalf("kick active sessions A=%d B=%d err=%v", activeA, activeB, err)
 	}
@@ -273,5 +294,99 @@ func TestInvalidMutationDoesNotWrite(t *testing.T) {
 	_ = tx.Rollback(context.Background())
 	if !errors.Is(err, ErrInvalid) {
 		t.Fatalf("invalid status err=%v, want ErrInvalid", err)
+	}
+}
+
+func TestMemberDirectorySearchPresencePaginationAndWalletPermissions(t *testing.T) {
+	p := isolated(t)
+	f := seedFixture(t, p)
+	ctx := context.Background()
+	store := Store{DB: p}
+	actor, err := store.Account(ctx, f.admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor.Roles = []access.Role{{BrandID: f.brandA, Permissions: []access.Permission{{Resource: "user", Action: "view", Scope: access.ScopeBrand}}}}
+	searchUser, searchMember := ids.New(), ids.New()
+	if _, err = p.Exec(ctx, `INSERT INTO global_users(id,username,phone) VALUES($1,'directory_target','+123456789')`, searchUser); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,display_name,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'Member 100% loyal','domain','1','1')`, searchMember, f.brandA, searchUser); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.Exec(ctx, `UPDATE brand_members SET terms_accepted=true WHERE id=$1`, f.memberA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.Exec(ctx, `INSERT INTO session_activity(session_id) SELECT id FROM sessions WHERE member_id=$1 AND revoked_at IS NULL`, f.memberA); err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.ListMembers(ctx, actor, f.brandA, MemberFilter{}, 1, 0)
+	if err != nil || page.TotalCount != "2" || len(page.Items) != 1 || page.Items[0].ID != searchMember || page.Items[0].Online || page.Items[0].DisplayPoints != nil {
+		t.Fatal(page, err)
+	}
+	for _, query := range []string{"adminsys_", "+1000000", "Member display"} {
+		page, err = store.ListMembers(ctx, actor, f.brandA, MemberFilter{Search: query}, 1, 0)
+		if err != nil || page.TotalCount != "1" || len(page.Items) != 1 || page.Items[0].ID != f.memberA {
+			t.Fatal(query, page, err)
+		}
+	}
+	page, err = store.ListMembers(ctx, actor, f.brandA, MemberFilter{Username: "DIRECTORY_TARGET"}, 1, 0)
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != searchMember {
+		t.Fatal(page, err)
+	}
+	online := true
+	page, err = store.ListMembers(ctx, actor, f.brandA, MemberFilter{Online: &online}, 100, 0)
+	if err != nil || page.TotalCount != "1" || page.Items[0].ID != f.memberA {
+		t.Fatal(page, err)
+	}
+	online = false
+	page, err = store.ListMembers(ctx, actor, f.brandA, MemberFilter{Online: &online}, 100, 0)
+	if err != nil || page.TotalCount != "1" || page.Items[0].ID != searchMember {
+		t.Fatal(page, err)
+	}
+	if _, err = store.ListMembers(ctx, actor, f.brandB, MemberFilter{}, 100, 0); !errors.Is(err, ErrDenied) {
+		t.Fatal("foreign brand readable", err)
+	}
+	if _, err = p.Exec(ctx, `UPDATE session_activity SET last_seen_at=now()-interval '6 minutes'`); err != nil {
+		t.Fatal(err)
+	}
+	online = true
+	page, err = store.ListMembers(ctx, actor, f.brandA, MemberFilter{Online: &online}, 100, 0)
+	if err != nil || page.TotalCount != "0" || len(page.Items) != 0 {
+		t.Fatal(page, err)
+	}
+	account := ids.New()
+	if _, err = p.Exec(ctx, `INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, account, f.brandA, f.memberA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.Exec(ctx, `INSERT INTO point_buckets(brand_id,account_id,source,state) SELECT $1,$2,s,t FROM unnest(ARRAY['recharge','winning','gift'])s CROSS JOIN unnest(ARRAY['available','manual_frozen','system_frozen','withdrawal'])t`, f.brandA, account); err != nil {
+		t.Fatal(err)
+	}
+	var delta points.Balance
+	delta[0][0] = 70
+	delta[1][1] = 10
+	delta[2][3] = 20
+	tx, err := p.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger := points.Store{DB: p}
+	_, err = ledger.Post(ctx, tx, points.Change{BrandID: f.brandA, MemberID: f.memberA, EntryType: "adjustment", ReferenceType: "test", OperationKey: "directory-points", ActorType: "system", RequestID: "directory-points", Delta: delta, Allocation: []points.Allocation{{Source: "recharge", State: "available", Points: 70}, {Source: "winning", State: "manual_frozen", Points: 10}, {Source: "gift", State: "withdrawal", Points: 20}}})
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// The list must retain the wallet's exact displayed balance and its read boundary.
+	page, err = store.ListMembers(ctx, actor, f.brandA, MemberFilter{Username: "adminsys_member"}, 100, 0)
+	if err != nil || page.Items[0].DisplayPoints != nil {
+		t.Fatal(page, err)
+	}
+	actor.Roles = append(actor.Roles, access.Role{BrandID: f.brandA, Permissions: []access.Permission{{Resource: "wallet", Action: "view", Scope: access.ScopeBrand}}})
+	page, err = store.ListMembers(ctx, actor, f.brandA, MemberFilter{Username: "adminsys_member"}, 100, 0)
+	if err != nil || page.Items[0].DisplayPoints == nil || *page.Items[0].DisplayPoints != "80" {
+		t.Fatal(page, err)
 	}
 }

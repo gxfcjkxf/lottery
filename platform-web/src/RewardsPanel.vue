@@ -1,18 +1,31 @@
 <script setup lang="ts">
+import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
+import { usePlatformI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName } from "@lottery/shared";
+import { usePlatformI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import { usePlatformI18n } from "./i18n"
+const ui = usePlatformI18n().t
 import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformRewardsApi, type RewardAction, type RewardOrder } from './rewards-api'
+import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform-format'
 
-const props = defineProps<{ brandId: string; brandName: string; locale: 'en' | 'zh-CN' }>()
+const props = defineProps<{ brandId: string; brandName: string; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
 const api = createPlatformRewardsApi()
 const copy = computed(() => props.locale === 'en' ? {
-  title: 'Manual rewards', description: 'Read-only history of manually issued rewards for the selected brand.', brand: 'Brand', select: 'Select a brand', listTitle: 'Reward orders', detail: 'Reward order detail', refresh: 'Refresh',
-  order: 'Order', member: 'Member', points: 'Points', state: 'State', version: 'Version', created: 'Created', reason: 'Reason', history: 'History', operation: 'Operation', actor: 'Actor', ledger: 'Ledger entry', grantLedger: 'Grant ledger entry', reversalLedger: 'Reversal ledger entry', policy: 'Point policy version', empty: 'No reward orders found.', noHistory: 'No history found.', loading: 'Loading…', revoked: 'Revoked', granted: 'Granted', pending: 'Revocation pending', grant: 'Grant', revoke: 'Revoke', retry: 'Retry', readOnly: 'Read-only',
+  title: ui('platform.copy.25982fc9'), brand: ui('platform.copy.d5b68c0f'), select: ui('platform.copy.1c0a1845'), detail: ui('platform.copy.3e9a2354'), close: ui('platform.copy.27b2fd29'), refresh: ui('platform.copy.256fe8b3'),
+  order: ui('platform.copy.68419640'), member: ui('platform.copy.da8480f3'), points: ui('platform.copy.a1f74153'), state: ui('platform.copy.274ae047'), version: ui('platform.copy.59405491'), created: ui('platform.copy.00e7cdbe'), reason: ui('platform.copy.f3f300a4'), history: ui('platform.copy.c78082da'), operation: ui('platform.copy.412ae2c3'), actor: ui('platform.copy.3177f27f'), ledger: ui('platform.copy.bed1cc9b'), grantLedger: ui('platform.copy.ff2a40e6'), reversalLedger: ui('platform.copy.80166e37'), policy: ui('platform.copy.94038b59'), empty: ui('platform.copy.c5dc63d8'), noHistory: ui('platform.copy.a0610689'), revoked: ui('platform.copy.97fc3c9b'), granted: ui('platform.copy.21e83e2d'), pending: ui('platform.copy.a701ca64'), grant: ui('platform.copy.44defe04'), revoke: ui('platform.copy.3804e055'), retry: ui('platform.copy.5ef43f95'),
 } : {
-  title: '人工奖励', description: '查看所选品牌的人工奖励记录（只读）。', brand: '品牌', select: '请选择品牌', listTitle: '奖励订单', detail: '奖励订单详情', refresh: '刷新',
-  order: '订单', member: '会员', points: '积分', state: '状态', version: '版本', created: '创建时间', reason: '原因', history: '历史记录', operation: '操作', actor: '操作人', ledger: '账本分录', grantLedger: '发放账本分录', reversalLedger: '撤销账本分录', policy: '积分规则版本', empty: '暂无奖励订单。', noHistory: '暂无历史记录。', loading: '加载中…', revoked: '已撤销', granted: '已发放', pending: '等待撤销', grant: '发放', revoke: '撤销', retry: '重试', readOnly: '只读',
+  title: ui('platform.copy.25982fc9'), brand: ui('platform.copy.d5b68c0f'), select: ui('platform.copy.1c0a1845'), detail: ui('platform.copy.3e9a2354'), close: ui('platform.copy.27b2fd29'), refresh: ui('platform.copy.256fe8b3'),
+  order: ui('platform.copy.68419640'), member: ui('platform.copy.da8480f3'), points: ui('platform.copy.a1f74153'), state: ui('platform.copy.274ae047'), version: ui('platform.copy.59405491'), created: ui('platform.copy.00e7cdbe'), reason: ui('platform.copy.f3f300a4'), history: ui('platform.copy.c78082da'), operation: ui('platform.copy.412ae2c3'), actor: ui('platform.copy.3177f27f'), ledger: ui('platform.copy.bed1cc9b'), grantLedger: ui('platform.copy.ff2a40e6'), reversalLedger: ui('platform.copy.80166e37'), policy: ui('platform.copy.94038b59'), empty: ui('platform.copy.c5dc63d8'), noHistory: ui('platform.copy.a0610689'), revoked: ui('platform.copy.97fc3c9b'), granted: ui('platform.copy.21e83e2d'), pending: ui('platform.copy.a701ca64'), grant: ui('platform.copy.44defe04'), revoke: ui('platform.copy.3804e055'), retry: ui('platform.copy.5ef43f95'),
 })
 const orders = ref<RewardOrder[]>([])
 const selected = ref<RewardOrder | null>(null)
@@ -23,20 +36,20 @@ const orderOffset = ref(0)
 const orderTotal = ref('0')
 const historyOffset = ref(0)
 const historyTotal = ref('0')
-const previousLabel = computed(() => props.locale === 'en' ? 'Previous page' : '上一页')
-const nextLabel = computed(() => props.locale === 'en' ? 'Next page' : '下一页')
-const totalLabel = computed(() => props.locale === 'en' ? 'Total' : '总计')
+const previousLabel = computed(() => ui('platform.pagination.previous'))
+const nextLabel = computed(() => ui('platform.pagination.next'))
+const totalLabel = computed(() => ui('platform.pagination.total'))
 const hasNextOrders = computed(() => BigInt(orderOffset.value + pageSize) < BigInt(orderTotal.value))
 const hasNextHistory = computed(() => BigInt(historyOffset.value + pageSize) < BigInt(historyTotal.value))
 const loading = ref(false)
-const error = ref('')
+const error = ref<string | import("@lottery/shared").LocalizedMessage>("")
 let generation = 0
 const stateLabel = (state: RewardOrder['state']) => state === 'revoked' ? copy.value.revoked : state === 'granted' ? copy.value.granted : copy.value.pending
 const operationLabel = (operation: RewardAction['operation']) => operation === 'grant' ? copy.value.grant : operation === 'revoke' ? copy.value.revoke : copy.value.retry
 
 function report(cause: unknown) {
   if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause)
-  else error.value = cause instanceof Error ? cause.message : 'Something went wrong'
+  else error.value = cause instanceof Error ? publicErrorMessage(cause) : ui('platform.error.unexpected')
 }
 async function refresh(offset = 0) {
   const request = ++generation
@@ -110,47 +123,45 @@ async function loadHistory(offset: number) {
     if (request === generation) loading.value = false
   }
 }
-watch(() => props.brandId, () => { void refresh() }, { immediate: true, flush: 'sync' })
+watch(() => props.brandId, () => { void withGlobalLoading(refresh) }, { immediate: true, flush: 'sync' })
 </script>
 
 <template>
   <div data-testid="platform-rewards">
-    <div class="page-heading"><div><div class="eyebrow">{{ copy.readOnly }}</div><h1>{{ copy.title }}</h1><p>{{ copy.description }}</p></div></div>
-    <div class="brand-picker"><label>{{ copy.brand }}<span class="reward-brand">{{ props.brandName || copy.select }}</span></label></div>
-    <div v-if="error" class="message error global-message">{{ error }}</div>
-    <div v-if="loading" class="loading-line">{{ copy.loading }}</div>
+    <div v-if="error" class="message error global-message">{{ displayPublicError(error) }}</div>
     <section class="panel">
-      <div class="panel-heading"><div><h2>{{ copy.listTitle }} <span v-if="props.brandName" class="subtle">/ {{ props.brandName }}</span></h2><p>{{ copy.readOnly }}</p></div><div class="reward-list-actions"><span class="count-chip">{{ totalLabel }} {{ orderTotal }}</span><button class="secondary" data-testid="platform-reward-refresh" :disabled="loading || !props.brandId" @click="refresh()">{{ copy.refresh }}</button></div></div>
-      <div class="table-wrap"><table><thead><tr><th>{{ copy.order }}</th><th>{{ copy.member }}</th><th>{{ copy.points }}</th><th>{{ copy.state }}</th><th>{{ copy.version }}</th></tr></thead><tbody>
-        <tr v-for="order in orders" :key="order.id"><td><button class="row-action mono reward-order-link" @click="openOrder(order)">{{ order.id }}</button><small>{{ order.created_at }}</small></td><td class="mono">{{ order.member_id }}</td><td>{{ order.points }}</td><td><span :class="['status-pill', order.state]">{{ stateLabel(order.state) }}</span></td><td>v{{ order.version }}</td></tr>
-        <tr v-if="!orders.length"><td colspan="5" class="empty-state">{{ copy.empty }}</td></tr>
+      <div class="table-wrap"><table><thead><tr><th>{{ copy.order }}</th><th>{{ copy.member }}</th><th>{{ copy.points }}</th><th><BusinessDetails :value="copy.state" :locale="associationLocale" /></th></tr></thead><tbody>
+        <tr v-for="order in orders" :key="order.id"><td><button class="row-action mono reward-order-link" @click="withGlobalLoading(openOrder, order)">{{ order.id }}</button><small>{{ formatPlatformDateTime(order.created_at, props.displaySettings, props.locale) }}</small></td><td class="mono"><AssociationName :record="order" kind="member" :id="order.member_id" :locale="associationLocale" /></td><td>{{ order.points }}</td><td><span :class="['status-pill', order.state]">{{ stateLabel(order.state) }}</span></td></tr>
+        <tr v-if="!orders.length"><td colspan="4" class="empty-state">{{ copy.empty }}</td></tr>
       </tbody></table></div>
       <div class="reward-list-actions" data-testid="platform-reward-pages">
-        <button class="secondary" :disabled="loading || orderOffset === 0" @click="refresh(orderOffset - pageSize)">{{ previousLabel }}</button>
+        <span>{{ totalLabel }} {{ orderTotal }}</span>
+        <button class="button button-secondary" :disabled="loading || orderOffset === 0" @click="withGlobalLoading(refresh, orderOffset - pageSize)">{{ previousLabel }}</button>
         <span>{{ Math.floor(orderOffset / pageSize) + 1 }}</span>
-        <button class="secondary" :disabled="loading || !hasNextOrders" @click="refresh(orderOffset + pageSize)">{{ nextLabel }}</button>
+        <button class="button button-secondary" :disabled="loading || !hasNextOrders" @click="withGlobalLoading(refresh, orderOffset + pageSize)">{{ nextLabel }}</button>
+        <button v-refresh-button="copy.refresh" class="button button-secondary" data-testid="platform-reward-refresh" :disabled="loading || !props.brandId" @click="withGlobalLoading(refresh)">{{ copy.refresh }}</button>
       </div>
     </section>
-    <DetailModal v-if="selected" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="selected = null">
-<section v-if="selected" class="panel reward-detail" data-testid="platform-reward-detail">
-      <div class="panel-heading"><div><h2>{{ copy.detail }}</h2><p class="mono">{{ selected.id }}</p></div><span v-if="detail" class="count-chip">{{ stateLabel(detail.state) }} · v{{ detail.version }}</span></div>
+    <DetailModal v-if="selected" :title="copy.detail" :close-label="copy.close" @close="selected = null">
+<section v-if="selected" class="detail-section" data-testid="platform-reward-detail">
+      <div class="detail-summary"><p v-if="!detail" class="mono">{{ selected.id }}</p><span v-if="detail" class="count-chip">{{ stateLabel(detail.state) }}</span></div>
       <dl v-if="detail" class="confirm-list reward-fields">
-        <div><dt>{{ copy.order }}</dt><dd class="mono">{{ detail.id }}</dd></div><div><dt>{{ copy.member }}</dt><dd class="mono">{{ detail.member_id }}</dd></div>
-        <div><dt>{{ copy.points }}</dt><dd>{{ detail.points }}</dd></div><div><dt>{{ copy.state }}</dt><dd>{{ stateLabel(detail.state) }} · v{{ detail.version }}</dd></div>
-        <div><dt>{{ copy.reason }}</dt><dd>{{ detail.reason }}</dd></div><div><dt>{{ copy.created }}</dt><dd>{{ detail.created_at }}</dd></div>
+        <div><dt>{{ copy.order }}</dt><dd class="mono">{{ detail.id }}</dd></div><div><dt>{{ copy.member }}</dt><dd class="mono"><AssociationName :record="detail" kind="member" :id="detail.member_id" :locale="associationLocale" /></dd></div>
+        <div><dt>{{ copy.points }}</dt><dd>{{ detail.points }}</dd></div><div><dt><BusinessDetails :value="copy.state" :locale="associationLocale" /></dt><dd>{{ stateLabel(detail.state) }}</dd></div>
+        <div><dt v-if="detail.reason">{{ copy.reason }}</dt><dd v-if="detail.reason">{{ detail.reason }}</dd></div><div><dt>{{ copy.created }}</dt><dd>{{ formatPlatformDateTime(detail.created_at, props.displaySettings, props.locale) }}</dd></div>
         <div><dt>{{ copy.grantLedger }}</dt><dd class="mono">{{ detail.grant_ledger_entry_id }}</dd></div>
         <div><dt>{{ copy.reversalLedger }}</dt><dd class="mono">{{ detail.revoke_ledger_entry_id || '—' }}</dd></div>
-        <div><dt>{{ copy.policy }}</dt><dd>{{ detail.point_policy_version }}</dd></div>
+
       </dl>
-      <div v-if="detail" class="table-wrap"><table><thead><tr><th>{{ copy.history }}</th><th>{{ copy.state }}</th><th>{{ copy.actor }}</th><th>{{ copy.reason }}</th><th>{{ copy.ledger }}</th><th>{{ copy.created }}</th></tr></thead><tbody>
-        <tr v-for="action in history" :key="action.id"><td><strong>{{ operationLabel(action.operation) }}</strong><small>{{ action.id }} · v{{ action.version }}</small></td><td>{{ action.state_before ? `${stateLabel(action.state_before)} → ` : '' }}{{ stateLabel(action.state_after) }}</td><td class="mono">{{ action.actor_id }}</td><td>{{ action.reason }}</td><td class="mono">{{ action.ledger_entry_id || '—' }}</td><td>{{ action.created_at }}</td></tr>
+      <div v-if="detail" class="table-wrap"><table><thead><tr><th>{{ copy.history }}</th><th><BusinessDetails :value="copy.state" :locale="associationLocale" /></th><th>{{ copy.actor }}</th><th>{{ copy.reason }}</th><th>{{ copy.ledger }}</th><th>{{ copy.created }}</th></tr></thead><tbody>
+        <tr v-for="action in history" :key="action.id"><td><strong>{{ operationLabel(action.operation) }}</strong><small>{{ action.id }}</small></td><td>{{ action.state_before ? `${stateLabel(action.state_before)} → ` : '' }}{{ stateLabel(action.state_after) }}</td><td class="mono"><AssociationName :record="action" kind="actor" :id="action.actor_id" :locale="associationLocale" /></td><td>{{ action.reason }}</td><td class="mono">{{ action.ledger_entry_id || '—' }}</td><td>{{ formatPlatformDateTime(action.created_at, props.displaySettings, props.locale) }}</td></tr>
         <tr v-if="!history.length"><td colspan="6" class="empty-state">{{ copy.noHistory }}</td></tr>
       </tbody></table></div>
       <div v-if="detail" class="reward-list-actions" data-testid="platform-reward-history-pages">
         <span>{{ totalLabel }} {{ historyTotal }}</span>
-        <button class="secondary" :disabled="loading || historyOffset === 0" @click="loadHistory(historyOffset - pageSize)">{{ previousLabel }}</button>
+        <button class="button button-secondary" :disabled="loading || historyOffset === 0" @click="withGlobalLoading(loadHistory, historyOffset - pageSize)">{{ previousLabel }}</button>
         <span>{{ Math.floor(historyOffset / pageSize) + 1 }}</span>
-        <button class="secondary" :disabled="loading || !hasNextHistory" @click="loadHistory(historyOffset + pageSize)">{{ nextLabel }}</button>
+        <button class="button button-secondary" :disabled="loading || !hasNextHistory" @click="withGlobalLoading(loadHistory, historyOffset + pageSize)">{{ nextLabel }}</button>
       </div>
     </section>
 </DetailModal>

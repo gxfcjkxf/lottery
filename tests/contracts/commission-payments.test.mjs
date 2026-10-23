@@ -37,12 +37,12 @@ test('commission payment schemas are closed, precise and omit target details', (
   for (const name of ['CommissionPaymentPolicy', 'CommissionPaymentPolicyInput', 'CommissionPayment', 'CommissionPaymentPage', 'CommissionPaymentAction']) {
     assert.equal(schemas[name].additionalProperties, false, `${name} should be closed`);
   }
-  assert.deepEqual(schemas.CommissionPaymentPolicyInput.required, ['version', 'enabled', 'reason']);
+  assert.deepEqual(schemas.CommissionPaymentPolicyInput.required, ['version', 'enabled']);
   assert.deepEqual(schemas.CommissionPaymentPolicy.properties.audit_log_id.anyOf, [
     { $ref: '#/components/schemas/UUID' },
     { type: 'string', const: '' },
   ]);
-  assert.deepEqual(schemas.CommissionPaymentAction.required, ['version', 'reason']);
+  assert.deepEqual(schemas.CommissionPaymentAction.required, ['version']);
   assert.deepEqual(schemas.CommissionPayment.properties.state.enum, ['awaiting_approval', 'paying', 'paid', 'failed', 'stale', 'blocked']);
   assert.deepEqual(schemas.CommissionPayment.properties.payout_mode.enum, ['manual', 'automatic', 'mixed', 'none']);
   for (const field of ['total_points', 'paid_points', 'target_count', 'paid_count']) {

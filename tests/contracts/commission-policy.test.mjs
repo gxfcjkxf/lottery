@@ -14,7 +14,7 @@ test('commission policy routes expose exact permission scopes and frozen-write c
   const policyPaths = Object.entries(doc.paths).filter(([p]) => /^\/api\/v1\/admin\/commission-policy(?:\/|$)/.test(p));
   assert.ok(!policyPaths.some(([p]) => /(?:payout|approve)/.test(p)));
   assert.ok(!policyPaths.some(([, path]) => Object.values(path).some(operation => (operation['x-permissions'] ?? []).some(permission => permission.startsWith('commission_payment')))));
-  assert.deepEqual(schemas.CommissionPolicyInput.required, ['version', 'config', 'reason']);
+  assert.deepEqual(schemas.CommissionPolicyInput.required, ['version', 'config']);
 });
 test('commission calendar contract rejects incomplete and mixed cycle shapes', () => {
   const ajv = new Ajv({ strict: false });

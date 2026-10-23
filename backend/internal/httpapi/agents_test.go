@@ -3,6 +3,9 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"github.com/gxfcjkxf/lottery/backend/internal/identity"
+	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
+	"strings"
 	"testing"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/agency"
@@ -47,10 +50,10 @@ func newNormalAgentMemberInBrand(t *testing.T, f managementHTTP, brand, suffix s
 }
 
 func agentPolicyBody(enabled bool, maxDepth int, cap string) map[string]any {
-	return map[string]any{"version": 1, "config": map[string]any{"enabled": enabled, "max_depth": maxDepth, "ratio_cap": cap, "mode": "loss", "cycle": "weekly"}, "reason": "agent policy test"}
+	return map[string]any{"version": 1, "config": map[string]any{"enabled": enabled, "max_depth": maxDepth, "loss_ratio_cap": cap, "turnover_ratio_cap": cap, "mode": "loss", "cycle": "weekly"}, "reason": "agent policy test"}
 }
 func agentNodeBody(policyVersion int64, member string, parent *string, parentVersion *int64, ratio string) map[string]any {
-	return map[string]any{"policy_version": policyVersion, "member_id": member, "parent_id": parent, "parent_version": parentVersion, "config": map[string]any{"ratio": ratio, "mode": nil, "status": "active", "can_create_children": true}, "reason": "agent node test"}
+	return map[string]any{"policy_version": policyVersion, "username": testdb.AgentUsername(member), "password": "agent123", "parent_id": parent, "parent_version": parentVersion, "config": map[string]any{"ratio": ratio, "mode": "loss", "status": "active", "can_create_children": true}, "reason": "agent node test"}
 }
 
 func TestAgentAdminPolicyTreeHistoryAndLimits(t *testing.T) {
@@ -66,9 +69,10 @@ func TestAgentAdminPolicyTreeHistoryAndLimits(t *testing.T) {
 	}
 	var p agentPolicy
 	managedData(t, defaultPolicy, &p)
-	if p.Config.Enabled || p.Config.MaxDepth != 5 || p.Config.RatioCap != "0" || p.Config.Mode != "loss" || p.Config.Cycle != "monthly" {
+	if !p.Config.Enabled || p.Config.MaxDepth != 5 || p.Config.LossRatioCap != "0" || p.Config.Mode != "loss" || p.Config.Cycle != "monthly" {
 		t.Fatalf("bad default policy: %+v", p)
 	}
+	mustStatus(t, f.call("PUT", "/api/v1/admin/agent-policy", "agent-policy-disable-removed-001", f.token, managedBrand, agentPolicyBody(false, 5, "0")), 400)
 	if got := f.call("PUT", "/api/v1/admin/agent-policy", "agent-policy-enable-001", f.token, managedBrand, agentPolicyBody(true, 3, "0.1")); got.Code != 200 {
 		t.Fatal(got.Code, got.Body.String())
 	}
@@ -98,7 +102,7 @@ func TestAgentAdminPolicyTreeHistoryAndLimits(t *testing.T) {
 		t.Fatalf("ratio above parent plus cap status=%d body=%s", resp.Code, resp.Body.String())
 	}
 	foreignMember := newNormalAgentMemberInBrand(t, f.managementHTTP, pointsBrandB, "foreign")
-	if resp := f.call("POST", "/api/v1/admin/agents", "agent-create-foreign-member-001", f.token, managedBrand, agentNodeBody(2, foreignMember, nil, nil, "0.01")); resp.Code != 404 {
+	if resp := f.call("POST", "/api/v1/admin/agents", "agent-create-foreign-member-001", f.token, managedBrand, agentNodeBody(2, foreignMember, nil, nil, "0.01")); resp.Code != 201 {
 		t.Fatalf("cross-brand member status=%d body=%s", resp.Code, resp.Body.String())
 	}
 	missingParent := ids.New()
@@ -111,7 +115,7 @@ func TestAgentAdminPolicyTreeHistoryAndLimits(t *testing.T) {
 	if resp := f.call("GET", "/api/v1/admin/agents/tree?parent_id=0199a000-0000-7000-8000-000000000099", "", f.token, managedBrand, nil); resp.Code != 404 {
 		t.Fatalf("false parent status=%d body=%s", resp.Code, resp.Body.String())
 	}
-	changed := map[string]any{"version": 1, "policy_version": 2, "parent_version": nil, "config": map[string]any{"ratio": "0.01", "mode": nil, "status": "active", "can_create_children": true}, "reason": "lower parent"}
+	changed := map[string]any{"version": 1, "policy_version": 2, "parent_version": nil, "config": map[string]any{"ratio": "0.01", "mode": "loss", "status": "active", "can_create_children": true}, "reason": "lower parent"}
 	if resp := f.call("PUT", "/api/v1/admin/agents/"+root.ID, "agent-update-parent-lower-001", f.token, managedBrand, changed); resp.Code != 409 {
 		t.Fatalf("parent lowering invalidating child status=%d body=%s", resp.Code, resp.Body.String())
 	}
@@ -125,7 +129,7 @@ func TestAgentAdminPolicyTreeHistoryAndLimits(t *testing.T) {
 	if resp := f.call("POST", "/api/v1/admin/agents", "agent-create-too-deep-001", f.token, managedBrand, tooDeep); resp.Code != 409 {
 		t.Fatalf("beyond policy max depth status=%d body=%s", resp.Code, resp.Body.String())
 	}
-	disableRoot := map[string]any{"version": 1, "policy_version": 3, "parent_version": nil, "config": map[string]any{"ratio": "0.08", "mode": nil, "status": "disabled", "can_create_children": true}, "reason": "disable root for admission test"}
+	disableRoot := map[string]any{"version": 1, "policy_version": 3, "parent_version": nil, "config": map[string]any{"ratio": "0.08", "mode": "loss", "status": "disabled", "can_create_children": true}, "reason": "disable root for admission test"}
 	if resp := f.call("PUT", "/api/v1/admin/agents/"+root.ID, "agent-disable-root-admission-001", f.token, managedBrand, disableRoot); resp.Code != 200 {
 		t.Fatalf("disable root status=%d body=%s", resp.Code, resp.Body.String())
 	}
@@ -153,20 +157,15 @@ func TestAgentAdminPolicyTreeHistoryAndLimits(t *testing.T) {
 	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM point_accounts`).Scan(&afterAccounts); err != nil {
 		t.Fatal(err)
 	}
-	if afterAccounts != beforeAccounts {
+	if afterAccounts != beforeAccounts+3 {
 		t.Fatalf("agent writes changed point-account count %d -> %d", beforeAccounts, afterAccounts)
 	}
-	policyHist := f.call("GET", "/api/v1/admin/agent-policy/history", "", f.token, managedBrand, nil)
-	if policyHist.Code != 200 {
-		t.Fatal(policyHist.Code, policyHist.Body.String())
+	mustStatus(t, f.call("GET", "/api/v1/admin/agent-policy/history", "", f.token, managedBrand, nil), 404)
+	var historyCount int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM agent_config_revisions WHERE brand_id=$1 AND agent_id IS NULL`, managedBrand).Scan(&historyCount); err != nil || historyCount != 0 {
+		t.Fatalf("brand policy history was recorded: %d %v", historyCount, err)
 	}
-	var policyPage struct {
-		Items []agentRevision `json:"items"`
-	}
-	managedData(t, policyHist, &policyPage)
-	if len(policyPage.Items) != 3 {
-		t.Fatalf("expected default and two policy revisions, got %d", len(policyPage.Items))
-	}
+
 }
 
 func TestAgentPublicCanOnlyUpdateDirectChildAndRechecksSession(t *testing.T) {
@@ -188,20 +187,28 @@ func TestAgentPublicCanOnlyUpdateDirectChildAndRechecksSession(t *testing.T) {
 	}
 	var child agentNode
 	managedData(t, childResp, &child)
+	login := f.call("POST", "/api/v1/agent/login", "", "", managedBrand, identity.AgentLoginInput{Username: testdb.AgentUsername(f.memberID), Password: "agent123"})
+	mustStatus(t, login, 200)
+	var agentToken string
+	for _, cookie := range login.Result().Cookies() {
+		if cookie.Name == agentCookieName(managedBrand) {
+			agentToken = cookie.Value
+		}
+	}
 	path := "/api/v1/agent/children/" + child.ID + "/config"
 	wrong := map[string]any{"version": 1, "policy_version": 2, "parent_version": 1, "ratio": "0.03", "mode": "turnover", "reason": "reject mode differing from parent"}
 	var beforeRevisions, afterRevisions int
 	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM agent_config_revisions WHERE agent_id=$1`, child.ID).Scan(&beforeRevisions); err != nil {
 		t.Fatal(err)
 	}
-	if denied := pointsCall(f.managementHTTP, "PUT", path, "agent-user-wrong-mode-001", f.userToken, managedBrand, "", wrong); denied.Code != 400 {
+	if denied := pointsCall(f.managementHTTP, "PUT", path, "agent-user-wrong-mode-001", agentToken, managedBrand, "", wrong); denied.Code != 400 {
 		t.Fatalf("mixed child mode accepted: %d %s", denied.Code, denied.Body.String())
 	}
 	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM agent_config_revisions WHERE agent_id=$1`, child.ID).Scan(&afterRevisions); err != nil || afterRevisions != beforeRevisions {
 		t.Fatal("rejected child mode wrote a revision", beforeRevisions, afterRevisions, err)
 	}
 	body := map[string]any{"version": 1, "policy_version": 2, "parent_version": 1, "ratio": "0.03", "mode": "loss", "reason": "direct child adjustment"}
-	updated := pointsCall(f.managementHTTP, "PUT", path, "agent-user-child-config-001", f.userToken, managedBrand, "", body)
+	updated := pointsCall(f.managementHTTP, "PUT", path, "agent-user-child-config-001", agentToken, managedBrand, "", body)
 	if updated.Code != 200 {
 		t.Fatal(updated.Code, updated.Body.String())
 	}
@@ -211,34 +218,36 @@ func TestAgentPublicCanOnlyUpdateDirectChildAndRechecksSession(t *testing.T) {
 		t.Fatalf("unexpected user child update: %+v", got)
 	}
 	closedFields := map[string]any{"version": 2, "policy_version": 2, "parent_version": 1, "ratio": "0.03", "mode": "turnover", "status": "disabled", "reason": "attempt status change"}
-	if invalid := pointsCall(f.managementHTTP, "PUT", path, "agent-user-status-field-001", f.userToken, managedBrand, "", closedFields); invalid.Code != 400 {
+	if invalid := pointsCall(f.managementHTTP, "PUT", path, "agent-user-status-field-001", agentToken, managedBrand, "", closedFields); invalid.Code != 400 {
 		t.Fatalf("public status field accepted: status=%d body=%s", invalid.Code, invalid.Body.String())
 	}
-	self := pointsCall(f.managementHTTP, "PUT", "/api/v1/agent/children/"+root.ID+"/config", "agent-user-own-rate-001", f.userToken, managedBrand, "", map[string]any{"version": 1, "policy_version": 2, "parent_version": 1, "ratio": "0.02", "mode": nil, "reason": "own rate"})
+	self := pointsCall(f.managementHTTP, "PUT", "/api/v1/agent/children/"+root.ID+"/config", "agent-user-own-rate-001", agentToken, managedBrand, "", map[string]any{"version": 1, "policy_version": 2, "parent_version": 1, "ratio": "0.02", "mode": nil, "reason": "own rate"})
 	if self.Code != 403 {
 		t.Fatalf("self rate status=%d body=%s", self.Code, self.Body.String())
 	}
-	read := pointsCall(f.managementHTTP, "GET", "/api/v1/agent/me", "", f.userToken, managedBrand, "", nil)
+	read := pointsCall(f.managementHTTP, "GET", "/api/v1/agent/me", "", agentToken, managedBrand, "", nil)
 	if read.Code != 200 {
 		t.Fatal(read.Code, read.Body.String())
 	}
-	var selfNode agentNode
+	var selfNode struct {
+		Agent agentNode `json:"agent"`
+	}
 	managedData(t, read, &selfNode)
-	if selfNode.ID != root.ID {
+	if selfNode.Agent.ID != root.ID {
 		t.Fatalf("unexpected /agent/me: %+v", selfNode)
 	}
-	rootUpdate := map[string]any{"version": 1, "policy_version": 2, "parent_version": nil, "config": map[string]any{"ratio": "0.08", "mode": nil, "status": "disabled", "can_create_children": true}, "reason": "disable owner agent"}
+	rootUpdate := map[string]any{"version": 1, "policy_version": 2, "parent_version": nil, "config": map[string]any{"ratio": "0.08", "mode": "loss", "status": "disabled", "can_create_children": true}, "reason": "disable owner agent"}
 	if disabled := f.call("PUT", "/api/v1/admin/agents/"+root.ID, "agent-disable-owner-001", f.token, managedBrand, rootUpdate); disabled.Code != 200 {
 		t.Fatalf("disable owner agent status=%d body=%s", disabled.Code, disabled.Body.String())
 	}
-	ownerDisabledReplay := pointsCall(f.managementHTTP, "PUT", path, "agent-user-child-config-001", f.userToken, managedBrand, "", body)
-	if ownerDisabledReplay.Code != 403 {
+	ownerDisabledReplay := pointsCall(f.managementHTTP, "PUT", path, "agent-user-child-config-001", agentToken, managedBrand, "", body)
+	if ownerDisabledReplay.Code != 401 {
 		t.Fatalf("cached child receipt after owner deactivation status=%d body=%s", ownerDisabledReplay.Code, ownerDisabledReplay.Body.String())
 	}
 	if _, err := f.pool.Exec(context.Background(), `UPDATE brand_members SET status='disabled' WHERE id=$1`, f.memberID); err != nil {
 		t.Fatal(err)
 	}
-	replay := pointsCall(f.managementHTTP, "PUT", path, "agent-user-child-config-001", f.userToken, managedBrand, "", body)
+	replay := pointsCall(f.managementHTTP, "PUT", path, "agent-user-child-config-001", agentToken, managedBrand, "", body)
 	if replay.Code != 401 {
 		t.Fatalf("revoked member replay status=%d body=%s", replay.Code, replay.Body.String())
 	}
@@ -248,7 +257,7 @@ func TestAgentPublicCanOnlyUpdateDirectChildAndRechecksSession(t *testing.T) {
 	}
 }
 
-func TestAgentAdminIdempotencyFreshGrantAndAuditRollback(t *testing.T) {
+func TestAgentAdminIdempotencyFreshGrantWithoutPolicyHistory(t *testing.T) {
 	f := pointsFixture(t)
 	agentGrantRoot(t, f.managementHTTP)
 	ctx := context.Background()
@@ -292,8 +301,8 @@ func TestAgentAdminIdempotencyFreshGrantAndAuditRollback(t *testing.T) {
 	}
 	failing := agentPolicyBody(true, 4, "0.1")
 	failing["version"] = 2
-	if got := f.call("PUT", "/api/v1/admin/agent-policy", "agent-policy-audit-fail-001", f.token, managedBrand, failing); got.Code != 503 {
-		t.Fatalf("audit failure status=%d body=%s", got.Code, got.Body.String())
+	if got := f.call("PUT", "/api/v1/admin/agent-policy", "agent-policy-audit-fail-001", f.token, managedBrand, failing); got.Code != 200 {
+		t.Fatalf("current policy update depended on removed history: status=%d body=%s", got.Code, got.Body.String())
 	}
 	policy := f.call("GET", "/api/v1/admin/agent-policy", "", f.token, managedBrand, nil)
 	if policy.Code != 200 {
@@ -301,8 +310,12 @@ func TestAgentAdminIdempotencyFreshGrantAndAuditRollback(t *testing.T) {
 	}
 	var current agentPolicy
 	managedData(t, policy, &current)
-	if current.Version != 2 || current.Config.MaxDepth != 3 {
-		t.Fatalf("audit failure committed policy: %+v", current)
+	if current.Version != 3 || current.Config.MaxDepth != 4 {
+		t.Fatalf("current policy was not replaced: %+v", current)
+	}
+	var audits int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE brand_id=$1 AND action='agent.policy.update'`, managedBrand).Scan(&audits); err != nil || audits != 0 {
+		t.Fatalf("policy change audit was written: %d %v", audits, err)
 	}
 }
 
@@ -335,6 +348,7 @@ func TestAgentSuperAdminNeedsPlatformViewGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	if got := f.call("GET", "/api/v1/platform/agent-policy", "", platformToken, managedBrand, nil); got.Code != 200 {
 		t.Fatalf("platform-granted super read status=%d body=%s", got.Code, got.Body.String())
 	}
@@ -343,5 +357,129 @@ func TestAgentSuperAdminNeedsPlatformViewGrant(t *testing.T) {
 	}
 	if got := f.call("GET", "/api/v1/platform/agent-policy", "", platformToken, managedBrand, nil); got.Code != 403 {
 		t.Fatalf("super read without platform grant status=%d body=%s", got.Code, got.Body.String())
+	}
+}
+
+func TestAgentListAllLevelsPaginationAndBrandPermission(t *testing.T) {
+	f := pointsFixture(t)
+	agentGrantRoot(t, f.managementHTTP)
+	if resp := f.call("PUT", "/api/v1/admin/agent-policy", "agent-list-policy", f.token, managedBrand, agentPolicyBody(true, 3, "0.1")); resp.Code != 200 {
+		t.Fatal(resp.Code, resp.Body.String())
+	}
+	var root, child agentNode
+	managedData(t, f.call("POST", "/api/v1/admin/agents", "agent-list-root", f.token, managedBrand, agentNodeBody(2, f.memberID, nil, nil, "0.08")), &root)
+	childMember := newNormalAgentMember(t, f.managementHTTP, "listchild")
+	managedData(t, f.call("POST", "/api/v1/admin/agents", "agent-list-child", f.token, managedBrand, agentNodeBody(2, childMember, &root.ID, &root.Version, "0.04")), &child)
+	var page agency.AgentList
+	managedData(t, f.call("GET", "/api/v1/admin/agents?limit=1&offset=1", "", f.token, managedBrand, nil), &page)
+	if page.BrandID != managedBrand || page.TotalCount != "2" || len(page.Items) != 1 || page.Items[0].ID != child.ID || page.Items[0].Depth != 2 {
+		t.Fatalf("bad agent list page: %+v", page)
+	}
+
+	// Search all levels before pagination, including a child outside the first page.
+	managedData(t, f.call("GET", "/api/v1/admin/agents?q="+strings.ToUpper(testdb.AgentUsername(childMember))+"&limit=1&offset=0", "", f.token, managedBrand, nil), &page)
+	if page.TotalCount != "1" || len(page.Items) != 1 || page.Items[0].ID != child.ID || page.Items[0].Username != testdb.AgentUsername(childMember) {
+		t.Fatalf("bad search: %+v", page)
+	}
+	ctx := context.Background()
+	if _, err := f.pool.Exec(ctx, `UPDATE session_activity SET last_seen_at=now()-interval '6 minutes'`); err != nil {
+		t.Fatal(err)
+	}
+	login := f.call("POST", "/api/v1/agent/login", "", "", managedBrand, identity.AgentLoginInput{Username: testdb.AgentUsername(childMember), Password: "agent123"})
+	mustStatus(t, login, 200)
+	managedData(t, f.call("GET", "/api/v1/admin/agents?online=true", "", f.token, managedBrand, nil), &page)
+	if page.TotalCount != "1" || page.Items[0].ID != child.ID || !page.Items[0].Online {
+		t.Fatalf("bad presence: %+v", page)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE agent_sessions SET revoked_at=now() WHERE agent_account_id=$1`, child.MemberID); err != nil {
+		t.Fatal(err)
+	}
+	managedData(t, f.call("GET", "/api/v1/admin/agents?online=true", "", f.token, managedBrand, nil), &page)
+	if page.TotalCount != "0" {
+		t.Fatalf("revoked session online: %+v", page)
+	}
+	managedData(t, f.call("GET", "/api/v1/admin/agents?online=false", "", f.token, managedBrand, nil), &page)
+	if page.TotalCount != "2" {
+		t.Fatalf("offline count: %+v", page)
+	}
+	for _, suffix := range []string{"online=1", "online=true&online=false", "unknown=x"} {
+		if got := f.call("GET", "/api/v1/admin/agents?"+suffix, "", f.token, managedBrand, nil); got.Code != 400 {
+			t.Fatal(got.Code, got.Body.String())
+		}
+	}
+	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE permission_key IN ('wallet.view.brand','wallet.view.platform')`); err != nil {
+		t.Fatal(err)
+	}
+	managedData(t, f.call("GET", "/api/v1/admin/agents", "", f.token, managedBrand, nil), &page)
+	for _, item := range page.Items {
+		if item.DisplayPoints != nil {
+			t.Fatal("wallet permission bypass")
+		}
+	}
+	if resp := f.call("GET", "/api/v1/admin/agents", "", f.token, pointsBrandB, nil); resp.Code != 403 {
+		t.Fatalf("foreign brand list: %d %s", resp.Code, resp.Body.String())
+	}
+	if _, err := f.pool.Exec(context.Background(), `DELETE FROM role_permissions WHERE permission_key='agent.view.brand'`); err != nil {
+		t.Fatal(err)
+	}
+	if resp := f.call("GET", "/api/v1/admin/agents", "", f.token, managedBrand, nil); resp.Code != 403 {
+		t.Fatalf("list without agent grant: %d %s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestAgentWholeLineModeChangeIdempotencyAndBrandIsolation(t *testing.T) {
+	f := pointsFixture(t)
+	agentGrantRoot(t, f.managementHTTP)
+	ctx := context.Background()
+	mustStatus(t, f.call("PUT", "/api/v1/admin/agent-policy", "mode-policy-enable", f.token, managedBrand, agentPolicyBody(true, 3, "0.1")), 200)
+	rootResp := f.call("POST", "/api/v1/admin/agents", "mode-root-create", f.token, managedBrand, agentNodeBody(2, f.memberID, nil, nil, "0.08"))
+	mustStatus(t, rootResp, 201)
+	var root agentNode
+	managedData(t, rootResp, &root)
+	childMember := newNormalAgentMember(t, f.managementHTTP, "mode_child_"+ids.New())
+	childResp := f.call("POST", "/api/v1/admin/agents", "mode-child-create", f.token, managedBrand, agentNodeBody(2, childMember, &root.ID, &root.Version, "0.04"))
+	mustStatus(t, childResp, 201)
+	var child agentNode
+	managedData(t, childResp, &child)
+	route := "/api/v1/admin/agents/" + root.ID + "/mode-change"
+	scope := f.call("GET", route, "", f.token, managedBrand, nil)
+	mustStatus(t, scope, 200)
+	var line agency.ModeChangeScope
+	managedData(t, scope, &line)
+	if len(line.Items) != 2 {
+		t.Fatal(line)
+	}
+	in := agency.ModeChangeInput{PolicyVersion: 2, Mode: "turnover", Items: []agency.ModeRatioInput{{AgentID: root.ID, Version: root.Version, Ratio: "0.03"}, {AgentID: child.ID, Version: child.Version, Ratio: "0.02"}}}
+	missingCalendar := f.call("POST", route, "mode-missing-calendar", f.token, managedBrand, in)
+	mustStatus(t, missingCalendar, 409)
+	if _, err := f.pool.Exec(ctx, `UPDATE brand_commission_policies SET version=version+1,config='{"enabled":false,"calendar":{"timezone":"Asia/Singapore","cycle":"weekly","boundary_time":"00:00:00","weekday":1,"month_day":null,"short_month":""},"payout_mode":"manual"}' WHERE brand_id=$1`, managedBrand); err != nil {
+		t.Fatal(err)
+	}
+	first := f.call("POST", route, "mode-schedule-once", f.token, managedBrand, in)
+	mustStatus(t, first, 200)
+	retry := f.call("POST", route, "mode-schedule-once", f.token, managedBrand, in)
+	mustStatus(t, retry, 200)
+	var one, two agency.ModeChangeReceipt
+	managedData(t, first, &one)
+	managedData(t, retry, &two)
+	if one.ID != two.ID || !one.EffectiveAt.Equal(two.EffectiveAt) {
+		t.Fatal(one, two)
+	}
+	different := in
+	different.Items = append([]agency.ModeRatioInput{}, in.Items...)
+	different.Items[0].Ratio = "0.04"
+	mustStatus(t, f.call("POST", route, "mode-schedule-once", f.token, managedBrand, different), 409)
+	mustStatus(t, f.call("GET", route, "", f.token, pointsBrandB, nil), 403)
+	mustStatus(t, f.call("POST", route, "mode-foreign-brand", f.token, pointsBrandB, in), 403)
+	var count int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM agent_mode_changes WHERE brand_id=$1`, managedBrand).Scan(&count); err != nil || count != 1 {
+		t.Fatal(count, err)
+	}
+	nodeResp := f.call("GET", "/api/v1/admin/agents/"+child.ID, "", f.token, managedBrand, nil)
+	mustStatus(t, nodeResp, 200)
+	var current agentNode
+	managedData(t, nodeResp, &current)
+	if current.EffectiveMode != "loss" || current.Config.Ratio != "0.04" || current.PendingChange == nil || current.PendingChange.Ratio != "0.02" {
+		t.Fatal(current)
 	}
 }

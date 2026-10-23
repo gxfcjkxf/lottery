@@ -53,13 +53,13 @@ func snapshotVersion(s string) bool {
 
 // ParseBetSnapshot validates closed shapes, chronology and tree arithmetic;
 // it alone is not a financial authorization. PolicySnapshotTx additionally
-// binds every referenced revision and immutable attribution in PostgreSQL.
+// reads the immutable order snapshot and verifies its attribution and agent nodes.
 func ParseBetSnapshot(raw []byte, brand, member string, placed time.Time) (BetSnapshot, error) {
 	var out BetSnapshot
 	if closedObject(raw, "schema_version", "brand_id", "member_id", "captured_at", "financial_policy", "agency_policy", "agent_path") != nil ||
 		json.Unmarshal(raw, &out) != nil || out.SchemaVersion != 1 || !canonicalUUID(out.BrandID) || !canonicalUUID(out.MemberID) ||
 		out.BrandID != brand || out.MemberID != member || placed.IsZero() || !out.CapturedAt.Equal(placed) ||
-		!canonicalUUID(out.Financial.RevisionID) || !snapshotVersion(out.Financial.Version) ||
+		!canonicalUUID(out.Financial.RevisionID) || !snapshotVersion(out.Financial.Version) || out.Financial.Config.Validate() != nil ||
 		!canonicalUUID(out.Agency.RevisionID) || !snapshotVersion(out.Agency.Version) || !out.Agency.Config.Valid() || out.Path == nil {
 		return BetSnapshot{}, ErrPolicyEvidence
 	}
@@ -69,7 +69,7 @@ func ParseBetSnapshot(raw []byte, brand, member string, placed time.Time) (BetSn
 		closedObject(fields["agency_policy"], "revision_id", "version", "config") != nil {
 		return BetSnapshot{}, ErrPolicyEvidence
 	}
-	if out.Financial.Config.Enabled && (!out.Agency.Config.Enabled || out.Financial.Config.Calendar == nil || out.Financial.Config.Calendar.Cycle != out.Agency.Config.Cycle) {
+	if out.Financial.Config.Enabled && (out.Financial.Config.Calendar == nil || out.Financial.Config.Calendar.Cycle != out.Agency.Config.Cycle) {
 		return BetSnapshot{}, ErrPolicyEvidence
 	}
 	if len(out.Path) > out.Agency.Config.MaxDepth {
@@ -77,7 +77,7 @@ func ParseBetSnapshot(raw []byte, brand, member string, placed time.Time) (BetSn
 	}
 	var rawPath []json.RawMessage
 	_ = json.Unmarshal(fields["agent_path"], &rawPath)
-	cap, _ := agency.RatioMicros(out.Agency.Config.RatioCap)
+	var cap int64
 	mode := out.Agency.Config.Mode
 	seenID, seenMember := map[string]bool{}, map[string]bool{}
 	for i, n := range out.Path {
@@ -88,6 +88,17 @@ func ParseBetSnapshot(raw []byte, brand, member string, placed time.Time) (BetSn
 			return BetSnapshot{}, ErrPolicyEvidence
 		}
 		seenID[n.ID], seenMember[n.MemberID] = true, true
+		if i == 0 {
+			effective := mode
+			if n.Config.Mode != nil {
+				effective = *n.Config.Mode
+			}
+			var err error
+			cap, err = out.Agency.Config.CapMicros(effective)
+			if err != nil {
+				return BetSnapshot{}, ErrPolicyEvidence
+			}
+		}
 		rate, _ := agency.RatioMicros(n.Config.Ratio)
 		if rate > cap {
 			return BetSnapshot{}, ErrPolicyEvidence
@@ -155,17 +166,7 @@ func (Source) PolicySnapshotTx(ctx context.Context, tx pgx.Tx, brand, order stri
 			return BetSnapshot{}, ErrPolicyEvidence
 		}
 	}
-	financial, _ := json.Marshal(snapshot.Financial.Config)
-	agencyConfig, _ := json.Marshal(snapshot.Agency.Config)
 	var matched bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM commission_policy_revisions WHERE brand_id=$1 AND id=$2 AND version::text=$3 AND config=$4::jsonb AND created_at<=$5) AND
- EXISTS(SELECT 1 FROM agent_config_revisions WHERE brand_id=$1 AND agent_id IS NULL AND id=$6 AND version::text=$7 AND config=$8::jsonb AND created_at<=$5)`, brand, snapshot.Financial.RevisionID, snapshot.Financial.Version, financial, placed, snapshot.Agency.RevisionID, snapshot.Agency.Version, agencyConfig).Scan(&matched)
-	if err != nil {
-		return BetSnapshot{}, err
-	}
-	if !matched {
-		return BetSnapshot{}, ErrPolicyEvidence
-	}
 	for _, n := range snapshot.Path {
 		config, _ := json.Marshal(n.Config)
 		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM agent_config_revisions r JOIN agent_nodes a ON a.brand_id=r.brand_id AND a.id=r.agent_id

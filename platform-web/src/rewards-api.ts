@@ -1,3 +1,5 @@
+import { readPlatformEnvelope } from './platform-api'
+
 import { PlatformApiError } from './platform-api'
 
 export type RewardState = 'granted' | 'revocation_pending' | 'revoked'
@@ -63,7 +65,7 @@ const isObj = (value: unknown): value is Obj => Boolean(value && typeof value ==
 const keysAre = (value: Obj, keys: readonly string[]) => Object.keys(value).length === keys.length && keys.every(key => key in value)
 const isUuid = (value: unknown): value is string => typeof value === 'string' && UUID.test(value)
 const isDateTime = (value: unknown): value is string => typeof value === 'string' && DATE_TIME.test(value) && Number.isFinite(Date.parse(value))
-const isReason = (value: unknown): value is string => typeof value === 'string' && value.length > 0
+const isReason = (value: unknown): value is string => typeof value === 'string'
 const states: readonly string[] = ['granted', 'revocation_pending', 'revoked']
 const orderKeys = ['id', 'brand_id', 'member_id', 'points', 'state', 'version', 'grant_ledger_entry_id', 'revoke_ledger_entry_id', 'creation_audit_log_id', 'last_audit_log_id', 'last_error_code', 'created_by', 'reason', 'point_policy_version', 'created_at', 'updated_at', 'revoked_at']
 const actionKeys = ['id', 'brand_id', 'order_id', 'version', 'operation', 'state_before', 'state_after', 'actor_id', 'reason', 'audit_log_id', 'ledger_entry_id', 'created_at']
@@ -110,14 +112,7 @@ export function createPlatformRewardsApi(fetcher: typeof fetch = fetch) {
     } catch (cause) {
       throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true)
     }
-    let envelope: unknown
-    try { envelope = await response.json() } catch {
-      throw new PlatformApiError(response.ok ? 'Invalid server response' : `Request failed (${response.status})`, response.status, 'INVALID_RESPONSE')
-    }
-    if (!isObj(envelope) || envelope.success !== true || envelope.data === undefined || !response.ok) {
-      const error = isObj(envelope) && isObj(envelope.error) ? envelope.error : undefined
-      throw new PlatformApiError(typeof error?.message === 'string' ? error.message : `Request failed (${response.status})`, response.status, typeof error?.code === 'string' ? error.code : undefined)
-    }
+    const envelope = await readPlatformEnvelope<unknown>(response);
     return envelope.data
   }
   return {

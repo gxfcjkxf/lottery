@@ -127,7 +127,7 @@ func (in PolicyInput) Validate() error {
 }
 
 func validPolicyReason(reason string) bool {
-	return strings.TrimSpace(reason) != "" && len([]byte(reason)) <= 500 && utf8.ValidString(reason) && !strings.ContainsRune(reason, '\x00')
+	return (reason == "" || strings.TrimSpace(reason) != "") && len([]byte(reason)) <= 500 && utf8.ValidString(reason) && !strings.ContainsRune(reason, '\x00')
 }
 
 // closedObject rejects missing, repeated, unknown, and trailing JSON fields.
@@ -161,8 +161,13 @@ func closedObject(data []byte, required ...string) error {
 		}
 	}
 	tok, err = d.Token()
-	if err != nil || tok != json.Delim('}') || len(seen) != len(want) {
+	if err != nil || tok != json.Delim('}') {
 		return ErrInvalid
+	}
+	for key := range want {
+		if key != "reason" && !seen[key] {
+			return ErrInvalid
+		}
 	}
 	var trailing any
 	if d.Decode(&trailing) != io.EOF {

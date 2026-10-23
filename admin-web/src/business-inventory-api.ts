@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { reconciliationPermissions } from "./reconciliation-api";
 
@@ -184,19 +186,7 @@ export function createBusinessInventoryApi(fetchImpl: typeof fetch = fetch): Bus
       } catch (cause) {
         throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR");
       }
-      let envelope: unknown;
-      try { envelope = await response.json(); }
-      catch {
-        if (!response.ok) throw new AdminApiError(`Request failed (${response.status})`, response.status);
-        invalidResponse();
-      }
-      if (!response.ok || !isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
-        const detail = isRecord(envelope) && isRecord(envelope.error) ? envelope.error : undefined;
-        if (isRecord(envelope) && typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-        const error = typeof detail?.message === "string" ? detail.message : `Request failed (${response.status})`;
-        if (!response.ok) throw new AdminApiError(error, response.status, typeof detail?.code === "string" ? detail.code : undefined);
-        invalidResponse();
-      }
+      const envelope = await readAdminEnvelope<unknown>(response);
       return validateInventory(envelope.data, brandId);
     },
   };

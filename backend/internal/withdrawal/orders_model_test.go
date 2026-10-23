@@ -60,12 +60,15 @@ func TestValidateActionInput(t *testing.T) {
 	if err := ValidateActionInput(valid); err != nil {
 		t.Fatalf("valid action input: %v", err)
 	}
+	valid.Reason = ""
+	if err := ValidateActionInput(valid); err != nil {
+		t.Fatal(err)
+	}
 	for name, input := range map[string]ActionInput{
 		"zero version":       {Version: 0, ClientKey: "client_123", Reason: "review"},
 		"negative version":   {Version: -1, ClientKey: "client_123", Reason: "review"},
 		"unsafe version":     {Version: maxSafeInteger + 1, ClientKey: "client_123", Reason: "review"},
 		"invalid client key": {Version: 1, ClientKey: "bad key!", Reason: "review"},
-		"blank reason":       {Version: 1, ClientKey: "client_123", Reason: " \t\n"},
 		"reason too long":    {Version: 1, ClientKey: "client_123", Reason: strings.Repeat("x", 501)},
 		"invalid utf8":       {Version: 1, ClientKey: "client_123", Reason: string([]byte{0xff})},
 	} {

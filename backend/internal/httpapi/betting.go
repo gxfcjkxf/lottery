@@ -40,6 +40,8 @@ func betError(data any, err error) (mutation.Result, error) {
 		return mutation.Fail(404, "BET_RESOURCE_NOT_FOUND", "未找到对应投注记录"), nil
 	case errors.Is(err, betting.ErrVersion):
 		return mutation.Fail(409, "BET_VERSION_CONFLICT", "投注配置或记录已变化，请刷新后重试"), nil
+	case errors.Is(err, betting.ErrLegacyPeriod):
+		return mutation.Fail(409, "BET_LEGACY_PERIOD", "This period has historical dedicated tickets; new sales begin with the next period"), nil
 	case errors.Is(err, betting.ErrClosed):
 		return mutation.Fail(409, "BET_PERIOD_CLOSED", "当前投注期不接受此操作"), nil
 	case errors.Is(err, betting.ErrLimit):
@@ -101,7 +103,7 @@ func checkedBetWrite(w http.ResponseWriter, r *http.Request, d Dependencies, bra
 				return identity.ErrSession
 			}
 			if err == nil {
-				if operation == "bet.order.place" && subtle.ConstantTimeCompare([]byte(expectedContext), []byte(betActorContext(d, brand, fresh))) != 1 {
+				if (operation == "bet.order.place" || operation == "mark_six.place") && subtle.ConstantTimeCompare([]byte(expectedContext), []byte(betActorContext(d, brand, fresh))) != 1 {
 					return betting.ErrDenied
 				}
 				freshSession = fresh
@@ -235,7 +237,7 @@ func registerBetRoutes(mux routeRegistrar, d Dependencies) {
 				failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
 				return
 			}
-			items, err := betService(d).Orders(r.Context(), brand.ID, session.Member.ID, limit, offset)
+			items, err := betService(d).Orders(r.Context(), brand.ID, session.Member.ID, "", limit, offset)
 			result, e := betError(map[string]any{"items": items}, err)
 			outputMutation(w, r, result, e)
 		})
@@ -427,6 +429,11 @@ func registerBetAdminRoutes(handle func(string, string, http.HandlerFunc), d Dep
 			return
 		}
 		member := r.URL.Query().Get("member_id")
+		game := r.URL.Query().Get("game_id")
+		if values, present := r.URL.Query()["game_id"]; present && (len(values) != 1 || !uuidPattern.MatchString(game)) {
+			failure(w, r, 400, "REQUEST_INVALID", "彩种编号不正确")
+			return
+		}
 		if member != "" && !uuidPattern.MatchString(member) {
 			failure(w, r, 400, "REQUEST_INVALID", "成员编号不正确")
 			return
@@ -436,7 +443,7 @@ func registerBetAdminRoutes(handle func(string, string, http.HandlerFunc), d Dep
 			failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
 			return
 		}
-		items, err := s.Orders(r.Context(), brand, member, limit, offset)
+		items, err := s.Orders(r.Context(), brand, member, game, limit, offset)
 		if err == nil && !adminReadAudit(w, r, d, a, brand, "bet.view") {
 			return
 		}

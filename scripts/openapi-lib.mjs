@@ -1,11 +1,12 @@
 export const commonSchemas = {
+  AssociationDisplayName: {type:'object',additionalProperties:false,required:['name'],properties:{name:{type:'string'},built_in:{type:'boolean'},from:{type:'string',format:'date-time'},to:{type:'string',format:'date-time'}}},
   UUID: { type: "string", format: "uuid" },
   DateTime: { type: "string", format: "date-time" },
   Int64String: { type: "string", pattern: "^(0|-?[1-9][0-9]*)$", description: "Exact signed int64 decimal string, within -9223372036854775808..9223372036854775807. Server enforces the numeric bound; the schema checks canonical decimal syntax. Never convert financial values to JavaScript Number." },
   NonnegativeInt64String: { type: "string", pattern: "^(0|[1-9][0-9]*)$", description: "Exact decimal integer string in 0..9223372036854775807." },
   PositiveInt64String: { type: "string", pattern: "^[1-9][0-9]*$", description: "Exact decimal integer string in 1..9223372036854775807." },
   PositiveInteger: { type: "integer", minimum: 1, format: "int64", description: "Positive JSON integer; server enforces int64 bounds. Numeric versions are not financial amounts." },
-  Reason: { type: "string", minLength: 1, maxLength: 500, description: "Nonblank valid UTF-8; limit is 500 bytes, not characters. Leading/trailing spaces are normalized by the applicable handler." },
+  Reason: { type: "string", maxLength: 500, description: "Optional audit note; empty is accepted. Limit is 500 UTF-8 bytes, not characters. Leading/trailing spaces are normalized by the applicable handler." },
   EmptyObject: { type: "object", additionalProperties: false },
   ArbitraryJSON: { description: "Opaque JSON explicitly accepted/emitted by the relevant domain. This does not imply arbitrary financial writes or configurable rules outside the handler's validation." },
   ErrorResponse: { type: "object", required: ["success", "error", "request_id"], additionalProperties: false,
@@ -17,7 +18,7 @@ const responseHeaders = {
   "Cache-Control": { description: "Dynamic API responses are not cacheable.", schema: { type: "string", const: "no-store" } },
 };
 function success(data) { return { type: "object", required: ["success", "data", "request_id"], additionalProperties: false,
-  properties: { success: { const: true }, data, request_id: { type: "string" } } }; }
+  properties: { success: { const: true }, data, request_id: { type: "string" }, associations: {type:'object',additionalProperties:ref('AssociationDisplayName'),description:'Display-only names for structured references already in this authorized response. Keys are entity-kind:UUID. Original business data and CSV are unchanged; do not persist this metadata or submit it in mutations.'}, association_error:{type:'boolean',description:'Display-name projection unavailable. Does not invalidate the acknowledged business response.'} } }; }
 export function operationKey(method, path) { return `${method.toUpperCase()} ${path}`; }
 export function documentedRoutes(doc) { return Object.entries(doc.paths).flatMap(([path, item]) => Object.keys(item).filter(k=>["get","post","put","patch","delete"].includes(k)).map(method=>operationKey(method,path))).sort(); }
 export function composeDocument(fragments, routes) {
@@ -37,9 +38,9 @@ const doc={openapi:"3.1.1",info:{title:"Lottery Platform Implemented API",versio
     if(source.brandHeader)params.push({name:"X-Brand-ID",in:"header",required:true,schema:ref("UUID"),description:"Selected brand; server revalidates current administrative scope and permission."});
     if(source.idempotency)params.push({name:"Idempotency-Key",in:"header",required:true,schema:{type:"string",pattern:"^[A-Za-z0-9_:.-]{8,128}$"},description:"Unique operation intent. Unknown result retries preserve this key and exactly the same body. Same key/different body returns409; successful cached receipts describe the original result, not live state."});
     if(method!=="get")params.push({name:"Origin",in:"header",required:false,schema:{type:"string"},description:"Required when any Cookie is sent: must match the original request Host and accepted scheme. Bearer-only nonbrowser requests may omit it. Client must not forge forwarded Host/IP."});
-    if(!["public","user","admin","session"].includes(source.auth))throw new Error(`Invalid auth ${source.auth}`);
+    if(!["public","user","admin","session","agent"].includes(source.auth))throw new Error(`Invalid auth ${source.auth}`);
     const paramKeys=new Set();for(const p of params){const key=`${p.in}:${p.name.toLowerCase()}`;if(paramKeys.has(key))throw new Error(`Duplicate parameter ${opId} ${key}`);paramKeys.add(key)}
-    const security=source.auth==="public"?[]:source.auth==="admin"?[{adminBearer:[]},{[path.startsWith("/api/v1/platform/")?"platformAdminCookie":"adminCookie"]:[]}]:[{userBearer:[]}];
+    const security=source.auth==="public"?[]:source.auth==="admin"?[{adminBearer:[]},{[path.startsWith("/api/v1/platform/")?"platformAdminCookie":"adminCookie"]:[]}] : source.auth==="agent"?[{agentBearer:[]}]:[{userBearer:[]}];
     const status=String(source.successStatus??200),responses={};
     responses[status]={description:source.successDescription??"Matching successful receipt/data. Writes are acknowledged before independent reads of current state.",headers:{...responseHeaders,...(source.successHeaders??{})},content:hasSuccessContent?source.successContent:{"application/json":{schema:success(source.data)}}};
     const errorDescriptions={400:"Invalid input",401:"Session unavailable",403:"Permission/scope/origin rejected",404:"Resource or route unavailable",409:"Version/state/idempotency conflict",413:"Requested export exceeds its size or group limit",415:"JSON content type required",422:"Size limit exceeded; returns a JSON error with the operation-specific error code and no partial data",429:"Persistent authentication or admission rate limit",500:"Internal error",503:"Service or storage unavailable"};
@@ -47,21 +48,26 @@ const doc={openapi:"3.1.1",info:{title:"Lottery Platform Implemented API",versio
       if(!errorDescriptions[code])throw new Error(`Invalid additional error status ${code} for ${opId}`);
       responses[code]={description:errorDescriptions[code],headers:responseHeaders,content:{"application/json":{schema:ref("ErrorResponse")}}};
     }
-    const op={operationId:opId,summary:source.summary,tags:[source.tag],description:source.description??"",security,parameters:params,responses,"x-implemented":true,"x-permissions":source.permissions??[],"x-idempotent-operation":Boolean(source.idempotency)};
-    if(source.requestBody)op.requestBody={required:true,description:"Exactly one JSON object, at most16KiB; unknown fields rejected where documented. JSON Schema cannot represent duplicate-member rejection; see handler contract.",content:{"application/json":{schema:source.requestBody}}};
-    if(method!=="get"&&!source.requestBody)throw new Error(`Missing request schema ${opId}`);
+    const op={operationId:opId,summary:source.summary,tags:[source.tag],description:(source.auth==="admin"&&source.path.startsWith("/api/v1/platform/")?"Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. ":"")+(source.description??""),security,parameters:params,responses,"x-implemented":true,"x-permissions":source.permissions??[],"x-idempotent-operation":Boolean(source.idempotency)};
+    if(source.requestBody)op.requestBody={required:true,description:source.requestBodyDescription??"Exactly one JSON object, at most16KiB; unknown fields rejected where documented. JSON Schema cannot represent duplicate-member rejection; see handler contract.",content:{"application/json":{schema:source.requestBody}}};
+    if(source.requestContent) {
+      if(source.requestBody) throw new Error(`Conflicting request content ${opId}`);
+      op.requestBody={required:true,description:source.requestBodyDescription??"Binary image upload.",content:source.requestContent};
+    }
+    if(method!=="get"&&!source.requestBody&&!source.requestContent)throw new Error(`Missing request schema ${opId}`);
     if(doc.paths[path]?.[method])throw new Error(`Duplicate operation ${operationKey(method,path)}`);(doc.paths[path]??={})[method]=op;
   }
+  doc.components.securitySchemes.agentBearer={type:"http",scheme:"bearer",description:"Independent agent token. Browser agents use the separate lottery_agent_<brand UUID without dashes> HttpOnly cookie."};
   doc.components.securitySchemes.platformAdminCookie={type:"apiKey",in:"cookie",name:"lottery_platform_admin",description:"Independent platform-only HttpOnly cookie, restricted to /api/v1/platform; only super administrator accounts are accepted."};
   for(const source of ops){
     append(source,source.path,false);
     if(source.path.startsWith("/api/v1/admin/")){
       const path=source.path.replace("/api/v1/admin/","/api/v1/platform/");
-      if(routes.some(route=>route.method===source.method&&route.path===path)){
-        append({...source,operationId:source.operationId+"Platform",summary:"Platform: "+source.summary,description:"Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Only platform-scoped grants are considered. Platform business reads remain permission checked. Account and role management are registered explicitly; brand member edits, approvals and financial mutations remain unregistered. "+(source.path==="/api/v1/admin/brand-operation"&&source.method==="PATCH"?"Brand pause/resume is also registered explicitly, requires brand_operation.write.platform, and retains version checks, idempotent receipts and audited status history. Paused brands may still log in and withdraw; new bets are rejected and existing orders continue. ":"")+(source.description??"")},path,false);
+      if(routes.some(route=>route.method===source.method&&route.path===path)&&!ops.some(op=>op.method===source.method&&op.path===path)){
+        append({...source,operationId:source.operationId+"Platform",summary:"Platform: "+source.summary,description:"Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Only platform-scoped grants are considered. Platform business reads remain permission checked. Account and role management are registered explicitly; brand member edits, approvals and financial mutations remain unregistered. "+(source.path==="/api/v1/admin/brand-operation"&&source.method==="PATCH"?"Brand enable/pause/stop and scheduled pause are also registered explicitly, requires brand_operation.write.platform, and retains version checks, idempotent receipts and audited status history. Paused brands may still log in and withdraw; new bets are rejected and existing orders continue. ":"")+(source.description??"")},path,false);
       }
       doc.paths[source.path][source.method.toLowerCase()].description="Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. "+(source.description??"");
-    }else if(source.path.startsWith("/api/v1/")&&!source.path.startsWith("/api/v1/platform/")){
+    }else if(source.brandAlias!==false&&source.path.startsWith("/api/v1/")&&!source.path.startsWith("/api/v1/platform/")){
       append(source,source.path.replace("/api/v1/","/api/v1/b/{brandCode}/"),true);
     }
   }

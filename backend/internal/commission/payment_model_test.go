@@ -16,9 +16,12 @@ func TestPaymentPolicyInputIsClosedAndRequiresSafeVersion(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"version":9007199254740991,"enabled":false,"reason":"keep payouts disabled"}`), &input); err != nil || input.Validate() != nil {
 		t.Fatalf("valid explicit disabled policy rejected: %+v, %v", input, err)
 	}
+	var withoutReason PaymentPolicyInput
+	if err := json.Unmarshal([]byte(`{"version":1,"enabled":true}`), &withoutReason); err != nil || withoutReason.Validate() != nil {
+		t.Fatalf("optional reason rejected: %+v, %v", withoutReason, err)
+	}
 	for _, raw := range []string{
 		`{}`, `null`,
-		`{"version":1,"enabled":true}`, // reason is required
 		`{"version":0,"enabled":true,"reason":"enable"}`,
 		`{"version":9007199254740992,"enabled":true,"reason":"enable"}`,
 		`{"version":1.5,"enabled":true,"reason":"enable"}`,

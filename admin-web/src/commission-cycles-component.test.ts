@@ -1,3 +1,5 @@
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createRenderer, h, nextTick, ref, type Component } from "vue";
@@ -51,7 +53,15 @@ function compileComponent() {
   const descriptor = parse(source, { filename: "CommissionCyclesManagement.vue" }).descriptor;
   const compiled = compileScript(descriptor, { id: "commission-cycles-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(compiled, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = {  "@lottery/shared": DisplayShared,
+    // Exercise the parent's filter binding without the selector's directory request.
+    "@lottery/shared/FilterAssociationSelect.vue": {
+      props: ["modelValue", "label"],
+      setup: (props: { modelValue: string; label: string }, { emit }: { emit: (event: string, value: string) => void }) => () => h("select", {
+        value: props.modelValue, "aria-label": props.label,
+        "onUpdate:modelValue": (value: string) => emit("update:modelValue", value),
+      }),
+    },
     // Business tests use a host renderer; native dialog behavior is checked in Chrome.
     "@lottery/shared/DetailModal.vue": { inheritAttrs: false, setup: (_props: unknown, context: { slots: { default?: () => unknown } }) => () => context.slots.default?.() }, vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-cycles-api": CommissionCyclesApi, "./commission-cycles-state": CommissionCyclesState };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => {
@@ -61,7 +71,7 @@ function compileComponent() {
     if (!(specifier in modules)) throw new Error(`Unmapped component import: ${specifier}`);
     return `const ${binding} = __modules[${JSON.stringify(specifier)}];`;
   }).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 
 function cycle(brandId: string, evidenceCurrent = true, state: "ready" | "failed" | "enumerating" = "ready", version = 2) {
@@ -70,7 +80,7 @@ function cycle(brandId: string, evidenceCurrent = true, state: "ready" | "failed
     calendar: { timezone: "UTC", cycle: "weekly", boundary_time: "00:00:00", weekday: 1, month_day: null, short_month: "" },
     state, version, target_count: "3", scan_complete: true, current_run_id: runA, current_generation: "9007199254740999", evidence_epoch: "4",
     evidence_current: evidenceCurrent, calculated_count: "3", earning_count: "2", total_points: "9007199254740992", created_by: actorA,
-    creation_actor_type: "admin", reason: "Monthly review", created_at: timestamp, updated_at: timestamp, last_error_code: state === "failed" ? "CALCULATION_FAILED" : null,
+    creation_actor_type: "admin", reason: "", created_at: timestamp, updated_at: timestamp, last_error_code: state === "failed" ? "CALCULATION_FAILED" : null,
     creation_audit_log_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   };
 }
@@ -127,7 +137,8 @@ describe("CommissionCyclesManagement", () => {
     vi.spyOn(CommissionCyclesApi, "createCommissionCyclesApi").mockReturnValue(reads as unknown as CommissionCyclesApi.CommissionCyclesApi);
     const mounted = mount(baseAccount, brandA); await flush();
     expect(textOf(mounted.container)).toContain("证据已过期");
-    expect(textOf(mounted.container)).toContain("ORDER_NOT_READY");
+    expect(textOf(mounted.container)).toContain("服务暂时不可用，请稍后再试。");
+    expect(textOf(mounted.container)).not.toContain("ORDER_NOT_READY");
     expect(buttonTexts(mounted.container).some((label) => /确认审核|确认派发|Approve commission|Pay out/i.test(label))).toBe(false);
     const cycleRow = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes(cycleId));
     (cycleRow!.props.onClick as () => void)(); await flush();
@@ -138,7 +149,7 @@ describe("CommissionCyclesManagement", () => {
     expect(reads.runEarnings).toHaveBeenCalledWith(brandA, cycleId, runB, 20, 0);
     expect(reads.allocations).toHaveBeenCalledWith(brandA, cycleId, runB, { limit: 20, offset: 0 });
     expect(textOf(mounted.container)).toContain("未舍入分配明细");
-    expect(textOf(mounted.container)).toContain("每位代理的整周期收入只舍入一次");
+    expect(textOf(mounted.container)).toContain("按代理汇总整个周期的收入后统一舍入");
     expect(textOf(mounted.container)).toContain("整周期舍入积分 2");
     expect(textOf(mounted.container)).toContain("整周期精确合计 3/2");
     expect(textOf(mounted.container)).toContain("9007199254740999");
@@ -173,7 +184,7 @@ describe("CommissionCyclesManagement", () => {
     (cycleRow!.props.onClick as () => void)(); await flush();
     const secondRun = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-run-id"] === runB);
     (secondRun!.props.onClick as () => void)(); await flush();
-    const agentInput = findNode(mounted.container, (node) => node.tag === "input" && node.props["aria-label"] === "代理编号筛选");
+    const agentInput = findNode(mounted.container, (node) => node.tag === "select" && node.props["aria-label"] === "代理账号");
     const updateAgent = agentInput!.props["onUpdate:modelValue"] as ((value: string) => void) | Array<(value: string) => void>;
     for (const update of Array.isArray(updateAgent) ? updateAgent : [updateAgent]) update(actorA); await nextTick();
     delayed.resolve({ brand_id: brandA, cycle_id: cycleId, run_id: runB, agent_id: null, order_id: null,
@@ -214,7 +225,7 @@ describe("CommissionCyclesManagement", () => {
     const secondRun = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-run-id"] === runB);
     (secondRun!.props.onClick as () => void)(); await flush();
     oldRunRead.reject(new AdminApiError("expired old run", 401)); await flush();
-    const agentInput = findNode(mounted.container, (node) => node.tag === "input" && node.props["aria-label"] === "代理编号筛选");
+    const agentInput = findNode(mounted.container, (node) => node.tag === "select" && node.props["aria-label"] === "代理账号");
     const updateAgent = agentInput!.props["onUpdate:modelValue"] as ((value: string) => void) | Array<(value: string) => void>;
     const update = (value: string) => { for (const setter of Array.isArray(updateAgent) ? updateAgent : [updateAgent]) setter(value); };
     update(actorA); await nextTick();
@@ -236,22 +247,20 @@ describe("CommissionCyclesManagement", () => {
       if (method === "POST" && url.endsWith("/commission-cycles")) {
         requests.push({ body: String(init?.body), key: new Headers(init?.headers).get("Idempotency-Key") ?? "" });
         if (firstWrite) { firstWrite = false; return Promise.resolve(error(503, "temporarily unavailable")); }
-        return Promise.resolve(ok({ ...cycle(brandId, false, "enumerating", 1), anchor_order_id: anchorId, reason: "Checked anchor", creation_actor_type: "admin", created_by: actorA }, 201));
+        return Promise.resolve(ok({ ...cycle(brandId, false, "enumerating", 1), anchor_order_id: anchorId, reason: "", creation_actor_type: "admin", created_by: actorA }, 201));
       }
       return defaultFetch(input, init);
     }));
     const first = mount(baseAccount, brandA); await flush();
     const anchor = findNode(first.container, (node) => node.tag === "input");
-    (anchor!.props["onUpdate:modelValue"] as (value: string) => void)(anchorId);
-    const reason = findNode(first.container, (node) => node.tag === "textarea");
-    (reason!.props["onUpdate:modelValue"] as (value: string) => void)("Checked anchor"); await nextTick();
+    (anchor!.props["onUpdate:modelValue"] as (value: string) => void)(anchorId); await nextTick();
     const review = findNode(first.container, (node) => node.tag === "button" && textOf(node).includes("检查并确认登记"));
     (review!.props.onClick as () => void)(); await nextTick();
     const checkbox = findNode(first.container, (node) => node.tag === "input" && node.props.type === "checkbox");
     (checkbox!.props["onUpdate:modelValue"] as (value: boolean) => void)(true); await nextTick();
-    const submit = findNode(first.container, (node) => node.tag === "button" && textOf(node).includes("确认并提交"));
+    const submit = findNode(first.container, (node) => node.tag === "button" && textOf(node).includes("提交"));
     (submit!.props.onClick as () => void)(); await flush();
-    expect(textOf(first.container)).toContain("写入结果未知");
+    expect(textOf(first.container)).toContain("暂未确认操作结果");
     expect(requests).toHaveLength(1);
     first.app.unmount();
 
@@ -261,12 +270,13 @@ describe("CommissionCyclesManagement", () => {
     expect(recover).not.toBeNull(); (recover!.props.onClick as () => void)(); await nextTick();
     const replayCheck = findNode(second.container, (node) => node.tag === "input" && node.props.type === "checkbox");
     (replayCheck!.props["onUpdate:modelValue"] as (value: boolean) => void)(true); await nextTick();
-    const replay = findNode(second.container, (node) => node.tag === "button" && textOf(node).includes("确认并提交"));
+    const replay = findNode(second.container, (node) => node.tag === "button" && textOf(node).includes("提交"));
     (replay!.props.onClick as () => void)(); await flush();
     expect(requests).toHaveLength(2); expect(requests[1]).toEqual(requests[0]);
     expect(textOf(second.container)).toContain("服务器确认的原始回执");
-    expect(textOf(second.container)).toContain("回执状态 / 版本");
-    expect(textOf(second.container)).toContain("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    expect(textOf(second.container)).toContain("回执状态");
+    expect(textOf(second.container)).toContain("登记中");
+    expect(textOf(second.container)).not.toContain("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     second.app.unmount();
   });
 
@@ -308,10 +318,7 @@ describe("CommissionCyclesManagement", () => {
     expect(create?.props.disabled).toBe(true);
     const card = findNode(mounted.container, (node) => node.tag === "button" && node.props["data-cycle-id"] === cycleId);
     (card!.props.onClick as () => void)(); await flush();
-    const retry = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("检查并确认重试"));
-    const retryLabel = findNode(mounted.container, (node) => node.tag === "label" && textOf(node).includes("重试原因"));
-    const retryField = findNode(retryLabel!, (node) => node.tag === "textarea");
-    (retryField!.props["onUpdate:modelValue"] as (value: string) => void)("Retry failed cycle"); await nextTick();
+    const retry = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("检查并确认重试")); await nextTick();
     expect(retry).not.toBeNull(); expect(retry!.props.disabled).toBe(false);
     mounted.app.unmount();
   });
@@ -337,18 +344,16 @@ describe("CommissionCyclesManagement", () => {
     }));
     const mounted = mount(baseAccount, brandA); await flush();
     const anchor = findNode(mounted.container, (node) => node.tag === "input");
-    (anchor!.props["onUpdate:modelValue"] as (value: string) => void)(anchorId);
-    const reason = findNode(mounted.container, (node) => node.tag === "textarea");
-    (reason!.props["onUpdate:modelValue"] as (value: string) => void)("Reviewed anchor"); await nextTick();
+    (anchor!.props["onUpdate:modelValue"] as (value: string) => void)(anchorId); await nextTick();
     const reviewButton = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("检查并确认登记"));
     (reviewButton!.props.onClick as () => void)(); await nextTick();
     const check = findNode(mounted.container, (node) => node.tag === "input" && node.props.type === "checkbox");
     (check!.props["onUpdate:modelValue"] as (value: boolean) => void)(true); await nextTick();
-    const submit = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("确认并提交"));
+    const submit = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("提交"));
     (submit!.props.onClick as () => void)(); await flush();
     const discardBeforeReload = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("重新读取并审阅后，明确丢弃"));
     expect(discardBeforeReload).toBeNull();
-    const reload = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("明确重新读取目标状态"));
+    const reload = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("重新读取"));
     (reload!.props.onClick as () => void)(); await flush();
     const discard = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("重新读取并审阅后，明确丢弃"));
     expect(discard).not.toBeNull(); expect(discard!.props.disabled).toBe(true);
@@ -369,33 +374,32 @@ describe("CommissionCyclesManagement", () => {
       if (String(input).includes("/commission-cycles?")) {
         lists++;
         if (conflictReload && lists === 2) return delayed.promise;
-        if (conflictReload) return Promise.resolve(ok(page(brandA, [{ ...cycle(brandA, false), version: 99 }])));
+        if (conflictReload) return Promise.resolve(ok(page(brandA, [{ ...cycle(brandA, false), version: 99, current_generation: "99" }])));
       }
       return defaultFetch(input, init);
     });
     vi.stubGlobal("fetch", fetcher);
     const mounted = mount(baseAccount, brandA); await flush();
     const anchor = findNode(mounted.container, node => node.tag === "input");
-    (anchor!.props["onUpdate:modelValue"] as (value: string) => void)(anchorId);
-    const reason = findNode(mounted.container, node => node.tag === "textarea");
-    (reason!.props["onUpdate:modelValue"] as (value: string) => void)("Reviewed conflict anchor"); await nextTick();
+    (anchor!.props["onUpdate:modelValue"] as (value: string) => void)(anchorId); await nextTick();
     const review = findNode(mounted.container, node => node.tag === "button" && textOf(node).includes("检查并确认登记"));
     (review!.props.onClick as () => void)(); await nextTick();
     const check = findNode(mounted.container, node => node.tag === "input" && node.props.type === "checkbox");
     (check!.props["onUpdate:modelValue"] as (value: boolean) => void)(true); await nextTick();
-    const submit = findNode(mounted.container, node => node.tag === "button" && textOf(node).includes("确认并提交"));
+    const submit = findNode(mounted.container, node => node.tag === "button" && textOf(node).includes("提交"));
     (submit!.props.onClick as () => void)(); await flush();
     conflictReload = true;
-    const reload = findNode(mounted.container, node => node.tag === "button" && textOf(node).includes("明确重新读取目标状态"));
+    const reload = findNode(mounted.container, node => node.tag === "button" && textOf(node).includes("重新读取"));
     (reload!.props.onClick as () => void)(); await nextTick();
     expect(reload!.props.disabled).toBe(true);
     (reload!.props.onClick as () => void)(); await nextTick();
     expect(lists).toBe(2);
     const refresh = findNode(mounted.container, node => node.tag === "button" && textOf(node) === "刷新");
-    (refresh!.props.onClick as () => void)(); await flush();
-    expect(textOf(mounted.container)).toContain("版本 99");
-    delayed.resolve(ok(page(brandA, [{ ...cycle(brandA, false), version: 2 }]))); await flush();
-    expect(textOf(mounted.container)).toContain("版本 99");
+    await (refresh!.props.onClick as () => Promise<void>)(); await flush();
+    expect(textOf(mounted.container)).toContain("代次 99");
+    delayed.resolve(ok(page(brandA, [{ ...cycle(brandA, false), version: 2, current_generation: "2" }]))); await flush();
+    expect(textOf(mounted.container)).toContain("代次 99");
+    expect(textOf(mounted.container)).not.toContain("代次 2");
     expect(findNode(mounted.container, node => node.tag === "button" && textOf(node).includes("重新读取并审阅后，明确丢弃"))).toBeNull();
     expect(CommissionCyclesState.listPendingCommissionCycleWrites(actorA, brandA)).toHaveLength(1);
     mounted.app.unmount();
@@ -413,7 +417,7 @@ describe("CommissionCyclesManagement", () => {
     expect(textOf(mounted.container)).toContain("所选发现记录");
     removeDiscovery = true;
     const refresh = findNode(mounted.container, node => node.tag === "button" && textOf(node) === "刷新");
-    (refresh!.props.onClick as () => void)(); await flush();
+    await (refresh!.props.onClick as () => Promise<void>)(); await flush();
     expect(textOf(mounted.container)).not.toContain("所选发现记录");
     expect(findNode(mounted.container, node => node.tag === "button" && textOf(node).includes("检查并确认重试发现记录"))).toBeNull();
     mounted.app.unmount();

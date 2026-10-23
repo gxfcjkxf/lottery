@@ -115,6 +115,7 @@ func TestCommissionReportExplicitPlatformPermissionAndDisabledBrand(t *testing.T
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	platformJSON := strings.Replace(commissionReportPath, "/api/v1/admin", "/api/v1/platform", 1)
 	platformCSV := strings.Replace(commissionReportCSVPath, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("GET", commissionReportURL(platformJSON, from, to), "", platformToken, managedBrand, nil), 200)

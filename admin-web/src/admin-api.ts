@@ -1,3 +1,6 @@
+import { readApiEnvelope, readApiRejection } from '@lottery/shared'
+
+import { notifySessionReplaced } from '@lottery/shared'
 export type MemberStatus =
   | "normal"
   | "frozen"
@@ -7,6 +10,7 @@ export type MemberStatus =
 
 export interface AdminAccount {
   id: string;
+  username?: string;
   super_admin: boolean;
   brand_ids: string[];
   permissions: string[];
@@ -33,6 +37,8 @@ export interface Member {
   joined_at: string;
   brand_id: string;
   tags: string[];
+  online: boolean;
+  display_points: string | null;
 }
 
 export interface AdminAuditRecord {
@@ -40,6 +46,7 @@ export interface AdminAuditRecord {
   action: string;
   actor_type: string;
   actor_id: string;
+  actor_username: string;
   resource_type: string;
   resource_id: string;
   reason: string;
@@ -50,12 +57,6 @@ export interface AdminAuditRecord {
   after_json: unknown;
 }
 
-interface Envelope<T> {
-  success: boolean;
-  data?: T;
-  error?: { code: string; message: string } | null;
-}
-
 export class AdminApiError extends Error {
   constructor(
     message: string,
@@ -64,6 +65,7 @@ export class AdminApiError extends Error {
   ) {
     super(message);
     this.name = "AdminApiError";
+    notifySessionReplaced(code)
   }
 }
 
@@ -74,6 +76,13 @@ export function createIdempotencyKey(): string {
   if (!uuid)
     throw new Error("crypto.randomUUID is required to create an idempotency key");
   return uuid;
+}
+
+export function readAdminEnvelope<T = unknown>(response: Response) {
+  return readApiEnvelope<T>(response, (message, status, code) => new AdminApiError(message, status, code));
+}
+export async function readAdminErrorResponse(response: Response): Promise<AdminApiError> {
+  return await readApiRejection(response, (message, status, code) => new AdminApiError(message, status, code)) as AdminApiError;
 }
 
 export function createAdminApi(fetcher: FetchLike = fetch) {
@@ -100,36 +109,9 @@ export function createAdminApi(fetcher: FetchLike = fetch) {
         ? {}
         : { body: JSON.stringify(options.body) }),
     });
-    let envelope: Envelope<T>;
-    try {
-      envelope = (await response.json()) as Envelope<T>;
-    } catch {
-      throw new AdminApiError(
-        "Invalid server response; operation result is unconfirmed",
-        502,
-        "INVALID_RESPONSE",
-      );
-    }
-    if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+    const envelope = await readAdminEnvelope<T>(response);
+    if (envelope.data == null || typeof envelope.data !== "object" || Array.isArray(envelope.data))
       throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
-    }
-    const error = envelope.error;
-    if (
-      !response.ok && envelope.success === false && error &&
-      typeof error === "object" && !Array.isArray(error) &&
-      typeof error.code === "string" && error.code.trim().length > 0 &&
-      typeof error.message === "string" && error.message.trim().length > 0
-    ) {
-      throw new AdminApiError(error.message, response.status, error.code);
-    }
-    if (
-      !response.ok ||
-      envelope.success !== true ||
-      envelope.data == null ||
-      typeof envelope.data !== "object" || Array.isArray(envelope.data)
-    ) {
-      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
-    }
     return envelope.data;
   }
 
@@ -153,17 +135,30 @@ export function createAdminApi(fetcher: FetchLike = fetch) {
         idempotencyKey,
       });
     },
+    changePassword(currentPassword: string, newPassword: string, idempotencyKey = createIdempotencyKey()) {
+      return request<unknown>('/api/v1/admin/me/password', {
+        method: 'POST',
+        body: { current_password: currentPassword, new_password: newPassword },
+        idempotencyKey,
+      });
+    },
     me() {
       return request<{ account: AdminAccount }>("/api/v1/admin/me");
     },
     brands() {
       return request<{ items: AdminBrand[] }>("/api/v1/admin/brands");
     },
-    users(brandId: string, limit = 100, offset = 0) {
-      return request<{ items: Member[] }>(
-        `/api/v1/admin/users?limit=${limit}&offset=${offset}`,
-        { brandId },
-      );
+    async users(brandId: string, limit = 100, offset = 0, username = "", filters: { query?: string; online?: 'true' | 'false' | '' } = {}) {
+      const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (username.trim()) query.set("username", username.trim());
+      if (filters.query?.trim()) query.set("q", filters.query.trim());
+      if (filters.online) query.set("online", filters.online);
+      const result = await request<{ items: Member[]; limit: number; offset: number; total_count: string }>(`/api/v1/admin/users?${query}`, { brandId });
+      if (!Array.isArray(result.items) || result.limit !== limit || result.offset !== offset || typeof result.total_count !== 'string' || !/^(0|[1-9]\d*)$/.test(result.total_count) ||
+          result.items.some(item => item.brand_id !== brandId || typeof item.online !== 'boolean' || !(item.display_points === null || typeof item.display_points === 'string' && /^(0|[1-9]\d*)$/.test(item.display_points)))) {
+        throw new AdminApiError('Invalid member page', 502, 'INVALID_RESPONSE');
+      }
+      return result;
     },
     audit(brandId: string, limit = 100, offset = 0) {
       return request<{ items: AdminAuditRecord[] }>(

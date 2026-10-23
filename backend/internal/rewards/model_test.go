@@ -78,8 +78,18 @@ func TestActionInputVersionSafeIntegerBounds(t *testing.T) {
 func TestInputJSONRequiresClosedCompleteNonNullObjects(t *testing.T) {
 	grantValid := `{"member_id":"` + testMember + `","points":"1","reason":"ok"}`
 	actionValid := `{"version":1,"reason":"ok"}`
+	for _, raw := range []string{`{"member_id":"` + testMember + `","points":"1"}`, `{"member_id":"` + testMember + `","points":"1","reason":""}`} {
+		if err := json.Unmarshal([]byte(raw), &GrantInput{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, raw := range []string{`{"version":1}`, `{"version":1,"reason":""}`} {
+		if err := json.Unmarshal([]byte(raw), &ActionInput{}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	grantBad := []string{
-		`null`, `[]`, `{}`, `{"member_id":"` + testMember + `","points":"1"}`,
+		`null`, `[]`, `{}`,
 		strings.TrimSuffix(grantValid, "}") + `,"extra":true}`,
 		strings.TrimSuffix(grantValid, "}") + `,"member_id":"` + testMember + `"}`,
 		`{"member_id":null,"points":"1","reason":"ok"}`,
@@ -95,7 +105,7 @@ func TestInputJSONRequiresClosedCompleteNonNullObjects(t *testing.T) {
 		})
 	}
 	actionBad := []string{
-		`null`, `[]`, `{}`, `{"version":1}`, `{"version":1,"reason":"ok","extra":0}`,
+		`null`, `[]`, `{}`, `{"version":1,"reason":"ok","extra":0}`,
 		`{"version":1,"version":1,"reason":"ok"}`,
 		`{"version":null,"reason":"ok"}`, `{"version":1,"reason":null}`,
 		actionValid + ` true`,
@@ -123,7 +133,7 @@ func TestInputValidationCanonicalIDsAndReasons(t *testing.T) {
 			t.Errorf("accepted invalid member ID %q", id)
 		}
 	}
-	for _, reason := range []string{"", " ", " leading", "trailing ", "line\nbreak", "tab\there", "nul\x00", "unicode\u0085control", strings.Repeat("x", 501)} {
+	for _, reason := range []string{" ", " leading", "trailing ", "line\nbreak", "tab\there", "nul\x00", "unicode\u0085control", strings.Repeat("x", 501)} {
 		in := base
 		in.Reason = reason
 		if in.Validate() == nil {

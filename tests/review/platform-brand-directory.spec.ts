@@ -11,7 +11,7 @@ test('brand directory filters genuine brands without changing records', async ({
   expect(brands.length).toBeGreaterThan(0);
   await page.goto(origin);
   const panel = page.getByTestId('platform-brand-list');
-  const rows = panel.locator('tbody tr.clickable-row');
+  const rows = panel.locator('tbody tr').filter({ has: panel.locator('td strong') });
   await expect(rows).toHaveCount(brands.length);
   const writes: string[] = [];
   page.on('request', request => { if (request.url().includes('/api/v1/platform/') && request.method() !== 'GET') writes.push(request.url()); });

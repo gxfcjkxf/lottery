@@ -138,19 +138,6 @@ export function passwordByteLength(value: string): number {
   return new TextEncoder().encode(value).length;
 }
 
-export function authErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 401)
-      return "The username, phone number, or password is incorrect.";
-    if (error.status === 404)
-      return "Authentication service is not available yet. Please try again later.";
-    return error.message;
-  }
-  return error instanceof Error
-    ? error.message
-    : "Something went wrong. Please try again.";
-}
-
 export function discardAccessToken(session: AuthSession): AuthProfile {
   return { user: session.user, member: session.member };
 }

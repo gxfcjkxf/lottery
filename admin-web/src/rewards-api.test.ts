@@ -1,3 +1,4 @@
+import { associationLabel } from "@lottery/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   createRewardsApi,
@@ -80,7 +81,7 @@ function actionPage(items: RewardAction[], overrides: Partial<RewardActionPage> 
 }
 
 function ok(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify({ success: true, data, request_id: requestID }), { status });
+  return new Response(JSON.stringify({ success: true, data, request_id: requestID, associations: { ["member:" + member]: { name: "reward_user" } } }), { status });
 }
 
 function fail(code: string, status = 409): Response {
@@ -186,7 +187,7 @@ describe("rewards API", () => {
       { version: 1.5, reason: "fractional version" },
       { version: Number.MAX_SAFE_INTEGER, reason: "cannot increment safely" },
       { version: 1, reason: "extra field", extra: true },
-      { version: 1, reason: "" },
+      { version: 1, reason: null as never },
     ]) {
       await expect(api.retryRevocation(brand, orderID, body, "reward-retry-key-001"))
         .rejects.toBeInstanceOf(RewardsApiError);
@@ -348,7 +349,7 @@ describe("rewards API", () => {
       .resolves.toMatchObject({ items: [], offset: 200 });
   });
 
-  it("preserves only safe REWARD_ and AUTH_ server codes and rejects malformed envelopes", async () => {
+  it("preserves current structured server errors and rejects malformed envelopes", async () => {
     await expect(createRewardsApi(async () => fail("REWARD_VERSION_CONFLICT")).read(brand, orderID))
       .rejects.toMatchObject({ code: "REWARD_VERSION_CONFLICT", status: 409 });
     await expect(createRewardsApi(async () => fail("AUTH_SESSION_REVOKED", 401)).read(brand, orderID))
@@ -361,10 +362,10 @@ describe("rewards API", () => {
       new Response(JSON.stringify({ success: false, error: { code: "bad code", message: "x" }, request_id: requestID }), { status: 401 }),
     ]) {
       await expect(createRewardsApi(async () => malformed401).read(brand, orderID))
-        .rejects.toMatchObject({ status: 401, code: "AUTH_UNAUTHENTICATED" });
+        .rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     }
     await expect(createRewardsApi(async () => fail("internal.stack.trace", 500)).read(brand, orderID))
-      .rejects.toMatchObject({ code: "API_ERROR", status: 500 });
+      .rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 502 });
     await expect(createRewardsApi(async () => new Response(JSON.stringify({ success: true, data: order(), request_id: requestID, debug: "extra" })))
       .read(brand, orderID)).rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 502 });
     await expect(createRewardsApi(async () => new Response("not json")).read(brand, orderID))
@@ -372,4 +373,11 @@ describe("rewards API", () => {
     await expect(createRewardsApi(async () => { throw new Error("secret network detail"); }).read(brand, orderID))
       .rejects.toMatchObject({ code: "NETWORK_ERROR", status: 0 });
   });
+});
+
+it("retains authorized member names on validated reward reads", async () => {
+  const api = createRewardsApi(vi.fn<typeof fetch>().mockResolvedValue(ok(orderPage([order({reason: ""})]))), actor);
+  const result = await api.list(brand);
+  expect(associationLabel(result.items[0], "member", member, "zh-CN")).toBe("reward_user");
+  expect(Object.keys(result.items[0])).not.toContain("associations");
 });

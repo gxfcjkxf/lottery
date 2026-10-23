@@ -441,3 +441,23 @@ func TestAllowedTemplateRequiresExactGrantAndScope(t *testing.T) {
 		t.Fatal("platform grant scope is incorrect")
 	}
 }
+
+func TestSystemTemplateReferencesAreIdentityOnly(t *testing.T) {
+	content := Content{I18nKey: "member.joined", I18nVersion: 1}
+	if err := ValidateContent("member.joined", content); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(content)
+	if err != nil || string(raw) != `{"i18n_key":"member.joined","i18n_version":1}` {
+		t.Fatalf("reference leaked copy: %s, %v", raw, err)
+	}
+	for _, bad := range []Content{
+		{I18nKey: "recharge.confirmed", I18nVersion: 1},
+		{I18nKey: "member.joined", I18nVersion: 2},
+		{I18nKey: "member.joined", I18nVersion: 1, En: Copy{Title: "Extra", Body: "Extra"}},
+	} {
+		if ValidateContent("member.joined", bad) == nil {
+			t.Fatalf("accepted invalid reference: %+v", bad)
+		}
+	}
+}

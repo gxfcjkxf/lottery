@@ -28,11 +28,11 @@ type archiveHTTPInput struct{ reportarchive.Input }
 
 func (in *archiveHTTPInput) UnmarshalJSON(raw []byte) error {
 	fields, err := reconciliationClosedObject(raw, map[string]bool{"kind": true, "period_key": true, "expected_revision": true, "reason": true})
-	if err != nil || len(fields) != 4 {
+	if err != nil || len(fields) != 3 && len(fields) != 4 {
 		return reportarchive.ErrInvalid
 	}
 	var next reportarchive.Input
-	if json.Unmarshal(fields["kind"], &next.Kind) != nil || json.Unmarshal(fields["period_key"], &next.PeriodKey) != nil || json.Unmarshal(fields["expected_revision"], &next.ExpectedRevision) != nil || json.Unmarshal(fields["reason"], &next.Reason) != nil || next.ExpectedRevision < 0 || next.ExpectedRevision >= 9007199254740991 || next.Reason == "" || len(next.Reason) > 500 || strings.TrimSpace(next.Reason) != next.Reason {
+	if json.Unmarshal(fields["kind"], &next.Kind) != nil || json.Unmarshal(fields["period_key"], &next.PeriodKey) != nil || json.Unmarshal(fields["expected_revision"], &next.ExpectedRevision) != nil || (fields["reason"] != nil && json.Unmarshal(fields["reason"], &next.Reason) != nil) || next.ExpectedRevision < 0 || next.ExpectedRevision >= 9007199254740991 || len(next.Reason) > 500 || strings.TrimSpace(next.Reason) != next.Reason {
 		return reportarchive.ErrInvalid
 	}
 	for _, c := range next.Reason {

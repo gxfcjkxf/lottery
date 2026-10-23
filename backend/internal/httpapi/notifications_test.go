@@ -141,6 +141,7 @@ func TestNotificationAdminFailedRetryAuditFreshPermissionsAndSuperReadOnly(t *te
 		t.Fatal(e)
 	}
 	platformToken := platformAdminToken(t, f.managementHTTP)
+	f.token = platformToken
 	platformBase := strings.Replace(base, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("GET", base, "", f.token, managedBrand, nil), 403)
 	mustStatus(t, f.call("GET", platformBase, "", platformToken, managedBrand, nil), 403)

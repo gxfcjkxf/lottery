@@ -1,4 +1,14 @@
 <script setup lang="ts">
+import { vWriteGuard } from "@lottery/shared";
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import { vGlobalLoading } from "@lottery/shared";
+import { vInlineValidation } from '@lottery/shared'
 import { computed, onMounted, ref, watch } from "vue";
 import type { AdminAccount } from "./admin-api";
 import {
@@ -21,7 +31,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createPointPolicyApi();
-const { t, message } = useAdminI18n();
+const { locale, t, message, display } = useAdminI18n();
 const policy = ref<PointPolicy | null>(null);
 const draft = ref({
   max_balance_points: "",
@@ -54,7 +64,6 @@ const canSave = computed(
     canWrite.value &&
     policy.value !== null &&
     validLimits.value &&
-    Boolean(draft.value.reason.trim()) &&
     !loading.value &&
     !saving.value,
 );
@@ -82,7 +91,7 @@ async function loadPolicy() {
     const result = await api.getPointPolicy(brandId);
     if (!current(generation, brandId)) return;
     if (result.brand_id !== brandId) {
-      error.value = message("策略响应与当前品牌不匹配，请重新读取。", "The policy response does not match the current brand. Reload the policy.");
+      error.value = message('admin.copy.701e9a9e');
       policy.value = null;
       return;
     }
@@ -96,11 +105,7 @@ async function loadPolicy() {
     policy.value = null;
     if (cause instanceof AdminApiError && cause.status === 401)
       emit("session-invalid");
-    error.value = cause instanceof AdminApiError && cause.status === 409
-      ? cause.message
-        ? message("{serverError}；策略版本已变化，请刷新后重试。", "{serverError} The policy version changed. Refresh and try again.", { serverError: cause.message })
-        : message("策略版本已变化，请刷新后重试。", "The policy version changed. Refresh and try again.")
-      : cause instanceof Error ? cause.message : message("读取积分策略失败。", "Failed to load the points policy.");
+    error.value = publicErrorMessage(cause);
   } finally {
     if (current(generation, brandId)) loading.value = false;
   }
@@ -126,7 +131,7 @@ async function savePolicy() {
     const result = await api.updatePointPolicy(brandId, body, idempotencyKey);
     if (!current(generation, brandId)) return;
     if (result.brand_id !== brandId) {
-      error.value = message("保存响应与当前品牌不匹配；请重新读取确认结果。", "The save response does not match the current brand. Reload to confirm the result.");
+      error.value = message('admin.copy.6b3f515b');
       return;
     }
     policy.value = result;
@@ -134,16 +139,12 @@ async function savePolicy() {
     draft.value.max_recharge_points = result.max_recharge_points ?? "";
     draft.value.max_adjustment_points = result.max_adjustment_points ?? "";
     draft.value.reason = "";
-    notice.value = message("积分策略已保存并立即生效。", "Points policy saved and applied immediately.");
+    notice.value = message('admin.copy.a41b44f9');
   } catch (cause) {
     if (!current(generation, brandId)) return;
     if (cause instanceof AdminApiError && cause.status === 401)
       emit("session-invalid");
-    error.value = cause instanceof AdminApiError && cause.status === 409
-      ? cause.message
-        ? message("{serverError}；版本冲突，未覆盖当前表单。请刷新后再处理。", "{serverError} Version conflict. The current form was not overwritten. Refresh before continuing.", { serverError: cause.message })
-        : message("版本冲突，未覆盖当前表单。请刷新后再处理。", "Version conflict. The current form was not overwritten. Refresh before continuing.")
-      : cause instanceof Error ? cause.message : message("保存积分策略失败，当前策略未更新。", "Failed to save the points policy. The current policy was not changed.");
+    error.value = publicErrorMessage(cause);
   } finally {
     if (current(generation, brandId)) saving.value = false;
   }
@@ -174,120 +175,108 @@ watch(
   <section class="point-policy-settings">
     <header class="policy-head">
       <div>
-        <p class="eyebrow">{{ t("POINT POLICY", "POINT POLICY") }}</p>
-        <h2>{{ t("积分限额策略", "Points policy settings") }}</h2>
-        <p>{{ t("仅设置积分余额、充值和调整限额；不会直接编辑会员余额。", "Set limits for point balances, recharges, and adjustments; this does not directly edit member balances.") }}</p>
+        <h2>{{ t('admin.copy.b127d28a') }}</h2>
       </div>
-      <span class="brand-tag">{{ t("品牌 · {brand}", "Brand · {brand}", { brand: brandId || t("未选择", "Not selected") }) }}</span>
+      <span class="brand-tag">{{ t('admin.copy.9c32661d') }} · <AssociationName kind="brand" :id="brandId" :locale="locale" /></span>
     </header>
 
     <p class="server-note">
-      {{ t("页面权限仅控制操作入口；服务端授权与版本校验始终有效。限额留空表示不限。", "Page permissions control access to the controls only; server authorization and version checks always apply. Leave a limit blank for no limit.") }}
+      {{ t('admin.copy.68d54c01') }}
     </p>
     <p v-if="!canView" class="callout">
-      {{ t("当前账号缺少 point_policy.view 权限，无法读取此品牌策略。", "This account lacks the point_policy.view permission and cannot read this brand's policy.") }}
+      {{ t('admin.copy.c47f4b0a') }}
     </p>
     <template v-else>
       <div v-if="error" class="notice error" role="alert">
-        {{ t(error) }}
-        <button type="button" :disabled="loading || saving" @click="loadPolicy">
-          {{ t("重新读取", "Reload") }}
+        {{ display(error) }}
+        <button v-refresh-button="t('admin.copy.deca021e')" type="button" :disabled="loading || saving" @click="withGlobalLoading(loadPolicy)">
+          {{ t('admin.copy.deca021e') }}
         </button>
       </div>
-      <p v-if="notice" class="notice success" role="status">{{ t(notice) }}</p>
-      <div v-if="loading && !policy" class="callout" role="status">
-        {{ t("正在读取当前品牌策略…", "Loading the current brand policy…") }}
+        <p v-if="notice" class="notice success" role="status">{{ display(notice) }}</p>
+      <div v-global-loading v-if="loading && !policy" class="callout" role="status">
+        {{ t('admin.copy.dc40b640') }}
       </div>
       <section v-if="policy" class="policy-card">
         <div class="card-head">
           <div>
-            <h3>{{ t("当前策略", "Current policy") }}</h3>
-            <p>{{ t("版本 {version} · {brand}", "Version {version} · {brand}", { version: policy.version, brand: policy.brand_id }) }}</p>
+            <h3>{{ t('admin.copy.477adee5') }}</h3>
+            <p> · <AssociationName :record="policy" kind="brand" :id="policy.brand_id" :locale="locale" /></p>
           </div>
-          <button
+          <button v-refresh-button="t('admin.copy.894e2a7d')"
             type="button"
-            class="secondary"
+            class="button button-secondary"
             :disabled="loading || saving"
-            @click="loadPolicy"
+            @click="withGlobalLoading(loadPolicy)"
           >
-            {{ t("刷新", "Refresh") }}
+            {{ t('admin.copy.894e2a7d') }}
           </button>
         </div>
         <dl class="current-limits">
           <div>
-            <dt>{{ t("余额上限", "Balance limit") }}</dt>
-            <dd>{{ policy.max_balance_points ?? t("不限", "No limit") }}</dd>
+            <dt>{{ t('admin.copy.3b96f2f6') }}</dt>
+            <dd>{{ policy.max_balance_points ?? t('admin.copy.bd97fa74') }}</dd>
           </div>
           <div>
-            <dt>{{ t("单笔充值上限", "Per-recharge limit") }}</dt>
-            <dd>{{ policy.max_recharge_points ?? t("不限", "No limit") }}</dd>
+            <dt>{{ t('admin.copy.81ed90dd') }}</dt>
+            <dd>{{ policy.max_recharge_points ?? t('admin.copy.bd97fa74') }}</dd>
           </div>
           <div>
-            <dt>{{ t("单次调整上限", "Per-adjustment limit") }}</dt>
-            <dd>{{ policy.max_adjustment_points ?? t("不限", "No limit") }}</dd>
+            <dt>{{ t('admin.copy.0237942c') }}</dt>
+            <dd>{{ policy.max_adjustment_points ?? t('admin.copy.bd97fa74') }}</dd>
           </div>
         </dl>
-        <p v-if="policy.audit_log_id" class="audit-id">
-          {{ t("审计记录：{id}", "Audit record: {id}", { id: policy.audit_log_id }) }}
-        </p>
+
       </section>
 
       <p v-if="!canWrite && policy" class="callout">
-        {{ t("当前账号仅有读取权限；无法修改积分策略。", "This account has read-only access and cannot change the points policy.") }}
+        {{ t('admin.copy.80bb8df5') }}
       </p>
-      <form
+      <form v-write-guard="saving" novalidate v-inline-validation
         v-if="canWrite && policy"
         class="policy-card policy-form"
-        @submit.prevent="savePolicy"
+        @submit.prevent="withGlobalLoading(savePolicy)"
       >
         <div class="card-head">
           <div>
-            <h3>{{ t("编辑限额", "Edit limits") }}</h3>
-            <p>{{ t("提交时使用当前版本执行并发校验；保存后立即生效。", "The current version is checked when submitted; changes take effect immediately after saving.") }}</p>
+            <h3>{{ t('admin.copy.112fc68f') }}</h3>
+            <p>{{ t('admin.copy.2389d9f0') }}</p>
           </div>
         </div>
         <label
-          >{{ t("余额上限（正整数；留空表示不限）", "Balance limit (positive integer; blank means no limit)") }}
+          >{{ t('admin.copy.48b813d8') }}
           <input
             v-model.trim="draft.max_balance_points"
             inputmode="numeric"
             autocomplete="off"
-            :placeholder="t('不限', 'No limit')"
+            :placeholder="t('admin.copy.bd97fa74')"
           />
-          <small>{{ t("只能输入规范正整数，不接受 0、小数、正负号或前导零。", "Enter a canonical positive integer. Zero, decimals, signs, and leading zeros are not accepted.") }}</small>
+          <small>{{ t('admin.copy.8e3b7fe0') }}</small>
         </label>
         <label
-          >{{ t("单笔充值上限（正整数；留空表示不限）", "Per-recharge limit (positive integer; blank means no limit)") }}
+          >{{ t('admin.copy.17cf892f') }}
           <input
             v-model.trim="draft.max_recharge_points"
             inputmode="numeric"
             autocomplete="off"
-            :placeholder="t('不限', 'No limit')"
+            :placeholder="t('admin.copy.bd97fa74')"
           />
         </label>
         <label
-          >{{ t("单次调整上限（正整数；留空表示不限）", "Per-adjustment limit (positive integer; blank means no limit)") }}
+          >{{ t('admin.copy.09ef0918') }}
           <input
             v-model.trim="draft.max_adjustment_points"
             inputmode="numeric"
             autocomplete="off"
-            :placeholder="t('不限', 'No limit')"
+            :placeholder="t('admin.copy.bd97fa74')"
           />
         </label>
-        <label
-          >{{ t("变更原因（必填）", "Reason for change (required)") }}
-          <textarea
-            v-model.trim="draft.reason"
-            rows="3"
-            maxlength="500"
-            required
-          />
-        </label>
+
         <p v-if="!validLimits" class="field-error" role="alert">
-          {{ t("限额必须是规范的正整数，或留空表示不限。", "Each limit must be a canonical positive integer, or blank for no limit.") }}
+          {{ t('admin.copy.d51ced59') }}
         </p>
-        <button class="primary" type="submit" :disabled="!canSave">
-          {{ saving ? t("保存中…", "Saving…") : t("保存策略", "Save policy") }}
+        <button class="button button-primary" type="submit" :disabled="!canSave">
+          {{ saving ? t('admin.copy.2462134b') : t('admin.copy.780ef330') }}
         </button>
       </form>
     </template>
@@ -313,7 +302,7 @@ watch(
 }
 .policy-head p {
   margin: 0;
-  color: #737b8c;
+  color: var(--muted);
   font-size: 11px;
   line-height: 1.55;
 }
@@ -343,8 +332,8 @@ watch(
   margin: 12px 0;
 }
 .policy-card {
-  background: #fff;
-  border: 1px solid #e9ebf0;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 11px;
   padding: 16px;
   min-width: 0;
@@ -365,7 +354,7 @@ watch(
 .card-head p,
 .audit-id {
   font-size: 11px;
-  color: #737b8c;
+  color: var(--muted);
   line-height: 1.55;
   margin: 0;
   overflow-wrap: anywhere;
@@ -377,14 +366,14 @@ watch(
   margin: 0;
 }
 .current-limits div {
-  border: 1px solid #eceef3;
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 11px;
   min-width: 0;
 }
 .current-limits dt {
   font-size: 11px;
-  color: #737b8c;
+  color: var(--muted);
 }
 .current-limits dd {
   font-size: 16px;
@@ -414,7 +403,7 @@ watch(
   min-width: 0;
   border: 1px solid #dfe3eb;
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   padding: 9px 10px;
   color: #252a36;
   font: inherit;
@@ -427,27 +416,27 @@ watch(
   font-weight: 400;
   color: #8991a0;
 }
-.primary,
-.secondary {
+.button-primary,
+.button-secondary {
   border-radius: 7px;
   padding: 9px 12px;
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
-.primary {
+.button-primary {
   justify-self: start;
   border: 0;
-  background: #5969df;
-  color: #fff;
+  background: var(--primary);
+  color: var(--surface);
 }
-.secondary {
+.button-secondary {
   border: 1px solid #e0e3ea;
   background: white;
   color: #586174;
 }
-.primary:disabled,
-.secondary:disabled {
+.button-primary:disabled,
+.button-secondary:disabled {
   opacity: 0.48;
   cursor: not-allowed;
 }

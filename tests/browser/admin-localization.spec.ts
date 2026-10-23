@@ -18,6 +18,7 @@ async function signedIn(page: Page, context: BrowserContext, info: TestInfo) {
   }
   await navigate(page, info, 'Users and members')
   await page.locator('.directory-brand-bar select').selectOption(brandId)
+  await page.locator('.console-page-actions').getByRole('button', { name: 'Create brand member', exact: true }).click()
   await expect(page.locator('.provision')).toBeVisible()
   await rememberAdminSession(context, username!, origin)
 }
@@ -78,13 +79,13 @@ test('real authenticated member and permission drafts survive language changes w
   const writes: string[] = []
   page.on('request', request => { if (request.method() !== 'GET' && request.url().includes('/api/')) writes.push(request.url()) })
   const provision = page.locator('.provision')
-  const memberName = provision.getByLabel('Username', { exact: false })
+  const memberName = provision.getByLabel('Account', { exact: false })
   await memberName.fill('unsent_member_draft')
   await provision.getByLabel(/Initial password/).fill('synthetic-member-draft-2026')
   await provision.getByLabel(/Creation reason/).fill('中文原因 must remain unchanged')
   await switchLanguage(page, 'zh-CN')
   await expect(provision.getByRole('heading', { name: '新建品牌成员' })).toBeVisible()
-  await expect(provision.getByLabel(/用户名/)).toHaveValue('unsent_member_draft')
+  await expect(provision.getByLabel(/账号/)).toHaveValue('unsent_member_draft')
   await expect(provision.getByLabel(/创建原因/)).toHaveValue('中文原因 must remain unchanged')
   await switchLanguage(page, 'en')
   await expect(provision.getByRole('heading', { name: 'Create brand member' })).toBeVisible()
@@ -132,7 +133,7 @@ test('English member submission preserves Chinese business text and its receipt 
   await signedIn(page, context, info)
   const provision = page.locator('.provision')
   const identifier = `lang_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`
-  await provision.getByLabel('Username', { exact: false }).fill(identifier)
+  await provision.getByLabel('Account', { exact: false }).fill(identifier)
   await provision.getByLabel(/Initial password/).fill('synthetic-language-member-2026')
   await provision.getByLabel(/Display name/).fill('角色权限')
   await provision.getByLabel(/Creation reason/).fill('中文原因 must not be translated')

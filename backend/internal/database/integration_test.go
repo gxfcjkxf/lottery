@@ -6,8 +6,10 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
+	"github.com/gxfcjkxf/lottery/backend/migrations"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"io/fs"
 	"os"
 	"strings"
 	"testing"
@@ -64,8 +66,15 @@ func TestMigrationsAndSeedRepeatable(t *testing.T) {
 	if err := p.QueryRow(ctx, `SELECT count(*) FROM schema_migrations WHERE name='0001_baseline.up.sql'`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("single baseline count %d err %v", count, err)
 	}
-	if err := p.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != 1 {
-		t.Fatalf("unexpected incremental migration history: %d err %v", count, err)
+	files, err := fs.Glob(migrations.Files, "*.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != len(files) {
+		t.Fatalf("unexpected baseline migration history: %d err %v", count, err)
+	}
+	if err := database.CheckMigrations(ctx, p); err != nil {
+		t.Fatal(err)
 	}
 	if err := p.QueryRow(ctx, "SELECT count(*) FROM brands").Scan(&count); err != nil || count != 2 {
 		t.Fatalf("seed count %d err %v", count, err)
@@ -93,14 +102,14 @@ func TestMigrationsAndSeedRepeatable(t *testing.T) {
 func TestBaselineRefusesOldMigrationHistoryWithoutChangingIt(t *testing.T) {
 	p := isolated(t)
 	ctx := context.Background()
-	if _, err := p.Exec(ctx, `CREATE TABLE schema_migrations(name text PRIMARY KEY,checksum text NOT NULL,applied_at timestamptz NOT NULL DEFAULT now()); INSERT INTO schema_migrations(name,checksum) VALUES('0041_withdrawal_reports.up.sql','old-test-only')`); err != nil {
+	if _, err := p.Exec(ctx, `CREATE TABLE schema_migrations(name text PRIMARY KEY,checksum text NOT NULL,applied_at timestamptz NOT NULL DEFAULT now()); INSERT INTO schema_migrations(name,checksum) VALUES('9998_unsupported.up.sql','old-test-only')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Migrate(ctx, p); err == nil {
 		t.Fatal("old migration history was accepted")
 	}
 	var count int
-	if err := p.QueryRow(ctx, `SELECT count(*) FROM schema_migrations WHERE name='0041_withdrawal_reports.up.sql' AND checksum='old-test-only'`).Scan(&count); err != nil || count != 1 {
+	if err := p.QueryRow(ctx, `SELECT count(*) FROM schema_migrations WHERE name='9998_unsupported.up.sql' AND checksum='old-test-only'`).Scan(&count); err != nil || count != 1 {
 		t.Fatal("old metadata changed", count, err)
 	}
 	var brands *string

@@ -101,7 +101,7 @@ func TestCommissionPaymentHTTPRequiresAdminSessionAndClosedBodies(t *testing.T) 
 
 	for _, raw := range []string{
 		`{}`, `null`,
-		`{"version":1,"enabled":true}`,
+		`{"version":1,"reason":"enable payments"}`,
 		`{"version":1,"enabled":null,"reason":"enable payments"}`,
 		`{"version":1,"enabled":true,"reason":"enable payments","extra":true}`,
 	} {

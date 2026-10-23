@@ -26,7 +26,8 @@ test('WebKit functional scope is explicit, serial, and separate from service-wor
   assert.match(config, /workers: 1/)
   assert.match(config, /retries: 0/)
   assert.match(config, /width: 1440, height: 900/)
-  assert.match(config, /width: 360, height: 800/)
+  assert.match(config, /devices\['iPhone 13'\]/)
+  assert.doesNotMatch(config, /width: 360, height: 800/)
   assert.equal((config.match(/reuseExistingServer: false/g) ?? []).length, 3)
 })
 

@@ -2,18 +2,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import { brandDomainsSessionGeneration, classifyBrandDomainsFailure, clearAllPendingBrandDomainsWrites, clearPendingBrandDomainsWrite, createBrandDomainsRequestGuard, getBrandDomainsDraft, getPendingBrandDomainsWrite, retainPendingBrandDomainsWrite, setBrandDomainsDraft, setPendingBrandDomainsWrite, updatePendingBrandDomainsPhase, type PendingBrandDomainsWrite } from "./brand-domains-state";
 
 const scope = { accountId: "00000000-0000-4000-8000-000000000001", brandId: "00000000-0000-4000-8000-000000000002" };
-const intent: PendingBrandDomainsWrite = { ...scope, operation: "add", body: { version: 3, domain: "shop.example.com", enabled: true, is_primary: true, reason: "Launch" }, key: "domain-key-0001", phase: "unknown" };
+const intent: PendingBrandDomainsWrite = { ...scope, operation: "add", body: { version: 3, domain: "shop.example.com", enabled: true, reason: "Launch" }, key: "domain-key-0001", phase: "unknown" };
 afterEach(() => clearAllPendingBrandDomainsWrites());
 
 describe("brand domains scoped write state", () => {
   it("retains detached frozen writes and editable drafts across remounts within the same account and brand", () => {
-    const mutable = { ...intent.body } as { version: number; domain: string; enabled: boolean; is_primary: boolean; reason: string };
+    const mutable = { ...intent.body } as { version: number; domain: string; enabled: boolean; reason: string };
     setPendingBrandDomainsWrite(scope, { ...intent, body: mutable });
     mutable.domain = "changed.example.com";
     const stored = getPendingBrandDomainsWrite(scope);
     expect(stored).toEqual(intent); expect(Object.isFrozen(stored)).toBe(true); expect(Object.isFrozen(stored?.body)).toBe(true);
     expect(getPendingBrandDomainsWrite({ ...scope, brandId: "00000000-0000-4000-8000-000000000003" })).toBeNull();
-    const draft = { ...scope, operation: "edit" as const, domainId: "00000000-0000-4000-8000-000000000004", domain: "legacy.localhost", enabled: false, is_primary: false, reason: "Retire" };
+    const draft = { ...scope, operation: "edit" as const, domainId: "00000000-0000-4000-8000-000000000004", domain: "legacy.localhost", enabled: false, reason: "Retire" };
     setBrandDomainsDraft(draft);
     expect(getBrandDomainsDraft(scope)).toEqual(draft);
     expect(getBrandDomainsDraft({ ...scope, accountId: "00000000-0000-4000-8000-000000000005" })).toBeNull();
@@ -27,7 +27,7 @@ describe("brand domains scoped write state", () => {
     clearPendingBrandDomainsWrite(scope, replacement.key); expect(getPendingBrandDomainsWrite(scope)).toBeNull();
   });
   it("does not retain hostile keys and restores an edit with its frozen target", () => {
-    const edit: PendingBrandDomainsWrite = { ...scope, operation: "edit", domainId: "00000000-0000-4000-8000-000000000005", body: { version: 4, enabled: false, is_primary: false, reason: "Retire" }, key: "stable-key_02:.-", phase: "unknown" };
+    const edit: PendingBrandDomainsWrite = { ...scope, operation: "edit", domainId: "00000000-0000-4000-8000-000000000005", body: { version: 4, enabled: false, reason: "Retire" }, key: "stable-key_02:.-", phase: "unknown" };
     setPendingBrandDomainsWrite(scope, edit);
     expect(getPendingBrandDomainsWrite(scope)).toEqual(edit);
     setPendingBrandDomainsWrite(scope, { ...edit, key: "hostile/key!!" });
@@ -55,4 +55,12 @@ describe("brand domains scoped write state", () => {
     const session = brandDomainsSessionGeneration(); clearAllPendingBrandDomainsWrites();
     expect(brandDomainsSessionGeneration()).toBe(session + 1); expect(guard.isCurrent(current)).toBe(false);
   });
+});
+
+it('retains a deletion name and exact version-only body across remounts',()=>{
+ const deletion:PendingBrandDomainsWrite={...scope,operation:'delete',domainId:'00000000-0000-4000-8000-000000000003',domainName:'old.example.com',body:{version:8},key:'delete-original-key',phase:'unknown'};
+ setPendingBrandDomainsWrite(scope,deletion);
+ expect(getPendingBrandDomainsWrite(scope)).toEqual(deletion);
+ expect(retainPendingBrandDomainsWrite(scope,{...deletion,body:{version:9}},'unknown')).toBe(false);
+ expect(getPendingBrandDomainsWrite(scope)?.body).toEqual({version:8});
 });

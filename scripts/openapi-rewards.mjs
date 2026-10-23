@@ -1,5 +1,5 @@
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
-const obj = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
+const obj = (properties, required = Object.keys(properties)) => ({ type: 'object', properties, required, additionalProperties: false });
 const nullable = schema => ({ anyOf: [schema, { type: 'null' }] });
 const version = { type: 'integer', minimum: 1, maximum: 9007199254740991 };
 const reason = { ...ref('Reason'), description: 'Valid UTF-8, at most 500 bytes, no leading/trailing whitespace or Unicode control characters. Not normalized on write.' };
@@ -11,8 +11,8 @@ const page = [
 const pageFields = item => ({ brand_id: ref('UUID'), items: { type: 'array', items: ref(item), maxItems: 100 }, total_count: { type: 'string', pattern: '^(0|[1-9][0-9]*)$' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, offset: { type: 'integer', minimum: 0, maximum: 1000000 } });
 const when = (key, value, properties) => ({ if: { properties: { [key]: { const: value } }, required: [key] }, then: { properties } });
 export const schemas = {
-  RewardGrantInput: obj({ member_id: ref('UUID'), points: ref('PositiveInt64String'), reason }),
-  RewardActionInput: obj({ version, reason }),
+  RewardGrantInput: obj({ member_id: ref('UUID'), points: ref('PositiveInt64String'), reason }, ["member_id", "points"]),
+  RewardActionInput: obj({ version, reason }, ["version"]),
   RewardOrder: {
     ...obj({ id: ref('UUID'), brand_id: ref('UUID'), member_id: ref('UUID'), points: ref('PositiveInt64String'), state: { type: 'string', enum: ['granted', 'revocation_pending', 'revoked'] }, version,
       grant_ledger_entry_id: ref('UUID'), revoke_ledger_entry_id: nullable(ref('UUID')), creation_audit_log_id: ref('UUID'), last_audit_log_id: ref('UUID'),

@@ -6,7 +6,7 @@ export const test = base.extend<{}, { platformAccountPrefix: string; platformSes
   platformAccountPrefix: ['review_platform', { scope: 'worker', option: true }],
   operatorSession: [async ({ playwright }, use, info) => {
     const project = info.project.name;
-    if (project !== 'desktop1440' && project !== 'mobile360') throw new Error(`Unsupported review viewport: ${project}`);
+    if (project !== 'desktop1440' && project !== 'mobilepixel7') throw new Error(`Unsupported review viewport: ${project}`);
     const password = process.env.TEST_REVIEW_ADMIN_PASSWORD;
     if (!password) throw new Error('TEST_REVIEW_ADMIN_PASSWORD is required');
     const origin = 'http://127.0.0.1:5184';
@@ -27,7 +27,7 @@ export const test = base.extend<{}, { platformAccountPrefix: string; platformSes
   }, { scope: 'worker' }],
   platformSession: [async ({ playwright, platformAccountPrefix }, use, info) => {
     const project = info.project.name;
-    if (project !== 'desktop1440' && project !== 'mobile360') throw new Error(`Unsupported review viewport: ${project}`);
+    if (project !== 'desktop1440' && project !== 'mobilepixel7') throw new Error(`Unsupported review viewport: ${project}`);
     const password = process.env.TEST_REVIEW_ADMIN_PASSWORD;
     if (!password) throw new Error('TEST_REVIEW_ADMIN_PASSWORD is required');
     const origin = 'http://127.0.0.1:5185';

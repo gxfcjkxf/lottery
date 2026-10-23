@@ -1,4 +1,5 @@
-import { AdminApiError } from "./admin-api";
+import { readAdminEnvelope } from './admin-api'
+
 import type { SourceBuckets } from "./finance-api";
 import { normalizeSourceBuckets } from "@lottery/shared";
 export interface RepairPreview {
@@ -54,13 +55,7 @@ export function createRepairApi(fetcher: typeof fetch = fetch) {
         body: body === undefined ? undefined : JSON.stringify(body),
       },
     );
-    const out = await r.json();
-    if (!r.ok || !out.success)
-      throw new AdminApiError(
-        out.error?.message || "差错处理暂不可用",
-        r.status,
-        out.error?.code,
-      );
+    const out = await readAdminEnvelope<T>(r);
     return out.data;
   }
   return {

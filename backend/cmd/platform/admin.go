@@ -28,8 +28,8 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 		return errors.New("invalid admin username")
 	}
 	password := os.Getenv("BOOTSTRAP_ADMIN_PASSWORD")
-	if len(password) < 16 || len(password) > 128 {
-		return errors.New("BOOTSTRAP_ADMIN_PASSWORD must contain 16-128 bytes")
+	if len(password) < 6 || len(password) > 30 {
+		return errors.New("BOOTSTRAP_ADMIN_PASSWORD must contain 6-30 bytes")
 	}
 	hash, err := authcrypto.HashPassword(password)
 	if err != nil {
@@ -53,19 +53,35 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 	if _, err = tx.Exec(ctx, "INSERT INTO admin_accounts(id,username,password_hash,is_super_admin) VALUES($1,$2,$3,$4)", admin, *username, hash, *super); err != nil {
 		return errors.New("cannot create admin; account may already exist")
 	}
-	if err := grantBootstrapAdmin(ctx, tx, admin, brandID, *super, "explicit server-owner bootstrap"); err != nil {
+	if err := grantBootstrapAdmin(ctx, tx, admin, brandID, *super, *super && *username == "admin", "explicit server-owner bootstrap"); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
-func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, super bool, reason string) error {
+func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, super, canDeletePlatformAdmin bool, reason string) error {
 	role := ids.New()
 	var err error
-	if _, err = tx.Exec(ctx, "INSERT INTO roles(id,brand_id,code,name,is_bootstrap) VALUES($1,NULLIF($2,'')::uuid,$3,$4,true)", role, brandID, "bootstrap_"+role, "Bootstrap administrator"); err != nil {
-		return err
+	if brandID != "" {
+		err = tx.QueryRow(ctx, "SELECT id::text FROM roles WHERE brand_id=$1 AND is_bootstrap FOR UPDATE", brandID).Scan(&role)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if _, err = tx.Exec(ctx, "INSERT INTO roles(id,brand_id,code,name,is_bootstrap) VALUES($1,$2,$3,$4,true)", role, brandID, "bootstrap_"+role, "Bootstrap administrator"); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+	} else {
+		err = tx.QueryRow(ctx, "SELECT id::text FROM roles WHERE brand_id IS NULL AND is_bootstrap FOR UPDATE").Scan(&role)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if _, err = tx.Exec(ctx, "INSERT INTO roles(id,brand_id,code,name,is_bootstrap) VALUES($1,NULL,$2,$3,true)", role, "bootstrap_"+role, "Bootstrap administrator"); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
 	}
-	permissions := []string{"user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "audit.view.brand", "brand.view.brand", "user.create.brand", "role.view.brand", "role.write.brand", "admin.view.brand", "admin.write.brand", "auth_config.view.brand", "auth_config.write.brand", "wallet.view.brand", "wallet.freeze.brand", "wallet.adjust.brand", "recharge.view.brand", "recharge.write.brand", "point_policy.view.brand", "point_policy.write.brand", "wallet.repair.brand", "join_code.view.brand", "join_code.write.brand"}
+	permissions := []string{"overview.view.brand", "user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "audit.view.brand", "brand.view.brand", "user.create.brand", "role.view.brand", "role.write.brand", "role.delete.brand", "admin.view.brand", "admin.write.brand", "auth_config.view.brand", "auth_config.write.brand", "wallet.view.brand", "wallet.freeze.brand", "wallet.adjust.brand", "recharge.view.brand", "recharge.write.brand", "point_policy.view.brand", "point_policy.write.brand", "wallet.repair.brand", "join_code.view.brand", "join_code.write.brand"}
 	permissions = append(permissions, "brand_operation.view.brand", "brand_operation.write.brand")
 	permissions = append(permissions, "brand_presentation.view.brand", "brand_presentation.write.brand")
 	permissions = append(permissions, "brand_domains.view.brand", "brand_domains.write.brand")
@@ -81,14 +97,21 @@ func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, 
 	permissions = append(permissions, "compliance_policy.view.brand", "compliance_policy.write.brand", "compliance_check.view.brand", "compliance_check.run.brand")
 	if super {
 		permissions = []string{"user.view.platform", "audit.view.platform", "brand.view.platform", "role.view.platform", "role.write.platform", "admin.view.platform", "admin.write.platform", "auth_config.view.platform", "auth_config.write.platform", "wallet.view.platform", "recharge.view.platform", "point_policy.view.platform"}
+		permissions = append(permissions, "role.delete.platform")
+		permissions = append(permissions, "platform_settings.view.platform", "platform_settings.write.platform")
 		permissions = append(permissions, "brand_operation.view.platform", "brand_operation.write.platform")
 		permissions = append(permissions, "brand_presentation.view.platform", "brand_presentation.write.platform")
 		permissions = append(permissions, "brand_domains.view.platform", "brand_domains.write.platform")
 		permissions = append(permissions, "audit.export.platform")
 	}
 	if super {
+		permissions = append(permissions, "overview.view.platform")
+		permissions = append(permissions, "platform_game.view.platform", "platform_game.write.platform")
 		permissions = append(permissions, "rule.simulate.platform")
-		permissions = append(permissions, "brand.create.platform")
+		permissions = append(permissions, "brand.create.platform", "brand.delete.platform")
+		if canDeletePlatformAdmin {
+			permissions = append(permissions, "admin.delete.platform")
+		}
 		permissions = append(permissions, "compliance_policy.view.platform", "compliance_check.view.platform")
 		permissions = append(permissions, "report_betting.export.platform", "report_ledger.export.platform")
 		permissions = append(permissions, "report_commission.view.platform", "report_commission.export.platform")
@@ -103,6 +126,7 @@ func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, 
 		permissions = append(permissions, "withdrawal_policy.view.platform", "withdrawal.view.platform")
 		permissions = append(permissions, "join_code.view.platform")
 		permissions = append(permissions, "notification.view.platform")
+		permissions = append(permissions, "user.delete.platform")
 		permissions = append(permissions, "report_betting.view.platform", "report_ledger.view.platform")
 		permissions = append(permissions, "report_withdrawal.view.platform", "report_withdrawal.export.platform")
 		permissions = append(permissions, "agent.view.platform", "agent_policy.view.platform")
@@ -112,6 +136,8 @@ func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, 
 		permissions = append(permissions, "settlement.view.platform")
 		permissions = append(permissions, "settlement_policy.view.platform")
 	} else {
+		permissions = append(permissions, "platform_game.view.brand", "platform_game.connect.brand", "platform_game.sell.brand")
+		permissions = append(permissions, "user.delete.brand")
 		permissions = append(permissions, "rule.simulate.brand")
 		permissions = append(permissions, "game.view.brand", "game.write.brand", "rule.view.brand", "rule.write.brand", "rule.validate.brand", "rule.submit.brand", "rule.review.brand")
 		permissions = append(permissions, "schedule.view.brand", "schedule.write.brand", "period.view.brand", "period.generate.brand", "period.cancel.brand", "period.cancel_retry.brand")
@@ -138,7 +164,7 @@ func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, 
 		if _, err = tx.Exec(ctx, "INSERT INTO permissions(key) VALUES($1) ON CONFLICT DO NOTHING", permission); err != nil {
 			return err
 		}
-		if _, err = tx.Exec(ctx, "INSERT INTO role_permissions(role_id,permission_key) VALUES($1,$2)", role, permission); err != nil {
+		if _, err = tx.Exec(ctx, "INSERT INTO role_permissions(role_id,permission_key) VALUES($1,$2) ON CONFLICT DO NOTHING", role, permission); err != nil {
 			return err
 		}
 	}

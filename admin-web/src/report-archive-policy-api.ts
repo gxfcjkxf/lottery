@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 import { reportArchiveTasksPermissions, type ReportArchivePolicy } from "./report-archive-tasks-api";
@@ -10,7 +12,7 @@ export interface UpdateReportArchivePolicyInput {
   version: number;
   daily_enabled: boolean;
   monthly_enabled: boolean;
-  reason: string;
+  reason?: string;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -36,11 +38,12 @@ function validateBrand(brand: string): void {
 }
 
 function validateInput(input: UpdateReportArchivePolicyInput): void {
-  if (!record(input) || !exact(input, ["version", "daily_enabled", "monthly_enabled", "reason"]) ||
+  if (!record(input) || !(exact(input, ["version", "daily_enabled", "monthly_enabled", "reason"]) || exact(input, ["version", "daily_enabled", "monthly_enabled"])) ||
     !Number.isSafeInteger(input.version) || Number(input.version) < 1 || Number(input.version) >= MAX_SAFE ||
-    typeof input.daily_enabled !== "boolean" || typeof input.monthly_enabled !== "boolean" || typeof input.reason !== "string") invalidInput();
+    typeof input.daily_enabled !== "boolean" || typeof input.monthly_enabled !== "boolean") invalidInput();
   const reason = input.reason;
-  if (!reason || reason.trim() !== reason || /[\u0000-\u001f\u007f-\u009f]/u.test(reason) ||
+  if (reason === undefined) return;
+  if (typeof reason !== "string" || reason.trim() !== reason || /[\u0000-\u001f\u007f-\u009f]/u.test(reason) ||
     /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(reason) ||
     new TextEncoder().encode(reason).byteLength > 500) invalidInput();
 }
@@ -107,7 +110,7 @@ export function createReportArchivePolicyApi(fetcher: typeof fetch = fetch) {
         version: input.version,
         daily_enabled: input.daily_enabled,
         monthly_enabled: input.monthly_enabled,
-        reason: input.reason,
+        ...(input.reason === undefined ? {} : { reason: input.reason }),
       });
       const headers = new Headers({
         Accept: "application/json",
@@ -123,12 +126,7 @@ export function createReportArchivePolicyApi(fetcher: typeof fetch = fetch) {
         unknownWrite();
       }
       if ((response.status < 200 || response.status >= 300) && (response.status < 400 || response.status >= 500)) unknownWrite();
-      let envelope: unknown;
-      try { envelope = await response.json(); } catch { unknownWrite(); }
-      if (!response.ok) {
-        const detail = record(envelope) && record(envelope.error) ? envelope.error : undefined;
-        throw new AdminApiError(typeof detail?.message === "string" ? detail.message : `Request failed (${response.status})`, response.status, typeof detail?.code === "string" ? detail.code : undefined);
-      }
+      const envelope = await readAdminEnvelope<unknown>(response);
       if (response.status !== 200 || !record(envelope) || envelope.success !== true || envelope.data === undefined || !validPolicy(envelope.data, brand, snapshot)) unknownWrite();
       return envelope.data;
     },

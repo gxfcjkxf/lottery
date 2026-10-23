@@ -72,4 +72,9 @@ func TestUserAndSuperAdminRestrictions(t *testing.T) {
 			t.Errorf("super administrator was authorized for user %q", action)
 		}
 	}
+	superAdmin.Roles = append(superAdmin.Roles, Role{Permissions: []Permission{{Resource: "user", Action: "delete", Scope: ScopePlatform}, {Resource: "user", Action: "delete", Scope: ScopeBrand}}})
+	superAdmin.BrandIDs = []string{"brand-a"}
+	if !Authorize(superAdmin, "user", "delete", ScopePlatform, "") || Authorize(superAdmin, "user", "delete", ScopeBrand, "brand-a") {
+		t.Fatal("global deletion must not authorize brand membership mutation")
+	}
 }

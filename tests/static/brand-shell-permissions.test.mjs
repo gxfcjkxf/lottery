@@ -7,5 +7,8 @@ test('brand member controls use mapped brand grants without legacy flat permissi
   assert.match(helper, /brandPermissionSet\(account.value, selectedBrandId.value\).has\(permission\)/);
   assert.doesNotMatch(helper, /account.value.permissions/);
   assert.doesNotMatch(source, /permissions_by_brand\s*\?\?\s*account.value\?\.permissions/);
-  for (const name of ['canEditUsers', 'canKickUsers', 'canResetPasswords']) assert.match(source, new RegExp(`:disabled="!${name}"`));
+  assert.match(source, /:disabled="!canEditUsers && !canResetPasswords"/);
+  assert.match(source, /v-if="m.online && canKickUsers"[^>]*@click="openKick\(m\)"/);
+  assert.match(source, /v-if="canResetPasswords"[^>]*@click="openReset\(editTarget\)"/);
+  assert.match(source, /:disabled="!canEditUsers"/);
 });

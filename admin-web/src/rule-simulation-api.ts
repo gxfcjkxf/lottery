@@ -1,4 +1,6 @@
-import { AdminApiError, createIdempotencyKey } from "./admin-api";
+import { readAdminEnvelope } from './admin-api'
+
+import { createIdempotencyKey } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
 const ENDPOINT = "/api/v1/admin/rule-simulations";
@@ -658,12 +660,6 @@ function isPositiveDecimalString(value: string): boolean {
   return BigInt(value.replace(".", "")) > 0n;
 }
 
-type Envelope<T> = {
-  success?: boolean;
-  data?: T;
-  error?: { code?: string; message?: string } | null;
-};
-
 export function createRuleSimulationApi(fetcher: typeof fetch = fetch) {
   return {
     async simulate(
@@ -682,33 +678,7 @@ export function createRuleSimulationApi(fetcher: typeof fetch = fetch) {
         }),
         body: JSON.stringify(body),
       });
-      let envelope: Envelope<RuleSimulation>;
-      try {
-        envelope = (await response.json()) as Envelope<RuleSimulation>;
-      } catch {
-        throw new AdminApiError(
-          response.ok
-            ? "Invalid server response"
-            : `Request failed (${response.status})`,
-          response.status,
-        );
-      }
-      if (
-        !response.ok ||
-        envelope.success !== true ||
-        envelope.data === undefined
-      ) {
-        const detail =
-          typeof envelope.error === "object" && envelope.error
-            ? envelope.error
-            : undefined;
-        if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-        throw new AdminApiError(
-          detail?.message ?? `Request failed (${response.status})`,
-          response.status,
-          detail?.code,
-        );
-      }
+      const envelope = await readAdminEnvelope<RuleSimulation>(response);
       return envelope.data;
     },
   };

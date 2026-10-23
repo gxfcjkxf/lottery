@@ -69,8 +69,8 @@ test('correction schemas are closed and the exact request and numeric contracts 
     assert.doesNotThrow(() => validate(name), `${name} compiles`);
     assert.ok(!Object.keys(schema.properties ?? {}).some(field => /signature|scope/i.test(field)), `${name} must not expose signature or scope fields`);
   }
-  assert.deepEqual(schemas.CommissionCorrectionExecutionPolicyInput.required, ['version', 'enabled', 'reason']);
-  assert.deepEqual(schemas.CommissionCorrectionAction.required, ['version', 'reason']);
+  assert.deepEqual(schemas.CommissionCorrectionExecutionPolicyInput.required, ['version', 'enabled']);
+  assert.deepEqual(schemas.CommissionCorrectionAction.required, ['version']);
   for (const input of [schemas.CommissionCorrectionExecutionPolicyInput, schemas.CommissionCorrectionAction]) {
     assert.equal(input.properties.version.maximum, Number.MAX_SAFE_INTEGER);
     assert.match(input.properties.reason.description, /UTF-8 bytes/);
@@ -78,10 +78,12 @@ test('correction schemas are closed and the exact request and numeric contracts 
     const maxVersion = input === schemas.CommissionCorrectionAction
       ? { version: Number.MAX_SAFE_INTEGER, reason: 'maximum safe version' }
       : { version: Number.MAX_SAFE_INTEGER, enabled: false, reason: 'maximum safe version' };
+    assert.ok(check({ ...maxVersion, reason: '' }));
+    const omitted = { ...maxVersion }; delete omitted.reason; assert.ok(check(omitted));
     assert.ok(check(maxVersion), 'MAX_SAFE_INTEGER passes input decoding');
     const tooLargeVersion = { ...maxVersion, version: Number.MAX_SAFE_INTEGER + 1 };
     assert.ok(!check(tooLargeVersion), 'versions above MAX_SAFE_INTEGER fail closed input validation');
-    for (const invalid of ['', '   ', ' leading', 'trailing ', '\nline', 'line\n', 'line\tbreak', 'line\u0085break']) {
+    for (const invalid of ['   ', ' leading', 'trailing ', '\nline', 'line\n', 'line\tbreak', 'line\u0085break']) {
       const value = input === schemas.CommissionCorrectionAction ? { version: 1, reason: invalid } : { version: 1, enabled: false, reason: invalid };
       assert.ok(!check(value), `accepted invalid reason ${JSON.stringify(invalid)}`);
     }

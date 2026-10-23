@@ -26,7 +26,7 @@ function environment(viewport, psqlBin, output) {
     POSTGRES_PSQL_BIN: psqlBin,
     AUTH_KEY_FILE: authKeyFile,
     TEST_ARCHIVE_POLICY_ADMIN_USERNAME: `archive_policy_browser_${viewport}`,
-    TEST_ARCHIVE_POLICY_ADMIN_PASSWORD: 'archive-policy-static-synthetic-admin-password',
+    TEST_ARCHIVE_POLICY_ADMIN_PASSWORD: 'archive-policy-static-2026',
     PSQL_FIXTURE_OUTPUT: output,
   };
 }

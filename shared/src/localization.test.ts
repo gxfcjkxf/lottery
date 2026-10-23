@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { localizedMessage, supportedLocale, translateMessage } from './localization'
+import { createCatalogI18n, localizedMessage, nativeLocaleName, supportedLocale, translateMessage } from './localization'
 
 describe('plain-text bilingual messages', () => {
   it('keeps business data and unknown server errors opaque', () => {
@@ -23,5 +23,37 @@ describe('plain-text bilingual messages', () => {
   })
   it.each(['zh', 'EN', '', null, {}, 'fr'])('rejects unsupported locale %s', value => {
     expect(supportedLocale(value)).toBeNull()
+  })
+})
+
+describe('catalog i18n provider', () => {
+  const catalog = {
+    en: { greeting: 'Hello {name}' },
+    'zh-CN': { greeting: '你好，{name}' },
+  } as const
+
+  it('renders the selected catalog language and parameters', () => {
+    const i18n = createCatalogI18n(catalog, 'en')
+    expect(i18n.t('greeting', { name: 'Ada' })).toBe('Hello Ada')
+    expect(i18n.setLocale('zh-CN')).toBe(true)
+    expect(i18n.t('greeting', { name: 'Ada' })).toBe('你好，Ada')
+  })
+
+  it('rejects unsupported locale changes and missing catalog keys', () => {
+    const i18n = createCatalogI18n(catalog)
+    expect(i18n.setLocale('fr')).toBe(false)
+    expect(i18n.locale.value).toBe('zh-CN')
+    expect(() => i18n.t('missing')).toThrow('Missing zh-CN translation key: missing')
+  })
+
+  it('rejects catalogs whose language keys are not identical', () => {
+    expect(() => createCatalogI18n({ en: { onlyEnglish: 'x' }, 'zh-CN': { onlyChinese: 'x' } })).toThrow('Translation catalog key mismatch')
+  })
+})
+
+describe('native locale names', () => {
+  it('keeps each language option in its own language', () => {
+    expect(nativeLocaleName('en')).toBe('English')
+    expect(nativeLocaleName('zh-CN')).toBe('简体中文')
   })
 })

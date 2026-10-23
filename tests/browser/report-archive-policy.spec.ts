@@ -28,10 +28,11 @@ async function data<T>(response: Pick<APIResponse, 'text' | 'status'>, status = 
   return envelope.data as T;
 }
 
-async function navigate(page: Page, project: string, name: string) {
-  if (project === 'mobile' && name === 'Dashboard') {
+async function navigate(page: Page, _project: string, name: string) {
+  const mobileNavigation = page.viewportSize()!.width <= 700;
+  if (mobileNavigation && name === 'Dashboard') {
     await page.locator('.mobile-nav').getByRole('button', { name: /Dashboard/ }).click();
-  } else if (project === 'mobile') {
+  } else if (mobileNavigation) {
     await page.locator('.mobile-nav button').nth(4).click();
     await page.locator('.mobile-more-menu').getByRole('button', { name: new RegExp(name) }).click();
   } else {
@@ -86,7 +87,7 @@ test('real archive policy activation recovers the original receipt after a later
 
   const member = await post<{ member_id: string }>('/users', {
     username: `normalmember_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`,
-    password: 'owned-archive-policy-member-password-2026',
+    password: 'owned-archive-policy-2026',
     display_name: 'Normal member for archive policy verification',
     reason: 'Create real member for archive policy economic fingerprint',
   }, crypto.randomUUID(), 201);
@@ -134,9 +135,9 @@ test('real archive policy activation recovers the original receipt after a later
     await route.fulfill({ response });
   });
 
-  await page.addInitScript(() => localStorage.setItem('lottery.admin.locale', 'en'));
   await page.goto(origin!);
-  await page.getByLabel(/Select live admin brand/, { exact: true }).selectOption(brand);
+  await page.locator('.directory-brand-bar select').selectOption(brand);
+  await selectLanguage(page, 'en');
   await navigate(page, info.project.name, 'Automatic archive tasks');
   let panel = page.locator('.archive-tasks');
   await expect(panel.getByTestId('archive-tasks-policy')).toBeVisible();
@@ -147,8 +148,7 @@ test('real archive policy activation recovers the original receipt after a later
   await expect(panel.getByTestId('archive-policy-monthly')).not.toBeChecked();
   await panel.getByTestId('archive-policy-daily').check();
   await panel.getByTestId('archive-policy-monthly').check();
-  const reason = 'Activate daily and monthly archives from this server date';
-  await panel.getByTestId('archive-policy-reason').fill(reason);
+  await expect(panel.getByTestId('archive-policy-reason')).toHaveCount(0);
   await panel.getByTestId('archive-policy-save').click();
   const review = page.getByTestId('archive-policy-review');
   await expect(review).toBeVisible();
@@ -165,7 +165,7 @@ test('real archive policy activation recovers the original receipt after a later
   expect(frozenRequest.actor).toBe(me.account.id);
   expect(frozenRequest.key).toMatch(/^[A-Za-z0-9_:.-]{8,128}$/);
   const frozenBody = JSON.parse(frozenRequest.body!);
-  expect(frozenBody).toEqual({ version: 1, daily_enabled: true, monthly_enabled: true, reason });
+  expect(frozenBody).toEqual({ version: 1, daily_enabled: true, monthly_enabled: true, reason: '' });
   expect(reviewDetails).toContain(me.account.id);
   expect(reviewDetails).toContain(frozenRequest.key!);
   await expect(panel.getByTestId('archive-policy-replay')).toBeDisabled();
@@ -205,7 +205,7 @@ test('real archive policy activation recovers the original receipt after a later
   await expect(livePolicy.locator('dd').nth(5)).toHaveText(originalReceipt!.monthly_start_period!);
   await expect(panel.getByTestId('archive-policy-daily')).not.toBeChecked();
   await expect(panel.getByTestId('archive-policy-monthly')).not.toBeChecked();
-  await expect(panel.getByTestId('archive-policy-frozen')).toContainText(reason);
+  await expect(panel.getByTestId('archive-policy-frozen')).toContainText(frozenRequest.key!);
   expect(writes).toHaveLength(1);
 
   await panel.getByTestId('archive-policy-replay-check').check();
@@ -232,7 +232,12 @@ test('real archive policy activation recovers the original receipt after a later
   await selectLanguage(page, 'en');
   await expect(panel.getByRole('heading', { name: 'Automatic archive tasks', exact: true })).toBeVisible();
   const width = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: innerWidth }));
-  expect(width.document).toBeLessThanOrEqual(width.viewport);
+  await info.attach('viewport-layout', { contentType: 'application/json', body: JSON.stringify(await page.evaluate(() => ({
+    viewport: { width: innerWidth, height: innerHeight, screenWidth: screen.width, screenHeight: screen.height, dpr: devicePixelRatio },
+    overflow: [...document.querySelectorAll('*')].filter(node => node.getBoundingClientRect().right > innerWidth + 1).map(node => ({ tag: node.tagName, class: node.className, text: node.textContent?.slice(0, 100), right: node.getBoundingClientRect().right })),
+  })), null, 2) });
+  expect(width.document).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(width.viewport).toBe(page.viewportSize()!.width);
   expect(errors).toEqual([]);
-  await page.screenshot({ path: `.local/report-archive-policy-${info.project.name}.png`, fullPage: true });
+  await page.screenshot({ path: info.outputPath(`report-archive-policy-${info.project.name}.png`), fullPage: true });
 });

@@ -107,7 +107,7 @@ test("persisted rules validate and allow creator review with audited immediate a
       r.url().endsWith("/api/v1/admin/rule-versions") &&
       r.request().method() === "POST",
   );
-  await editor.getByRole("button", { name: "保存新草稿", exact: true }).click();
+  await editor.getByRole("button", { name: "保存草稿", exact: true }).click();
   const createResponse = await createReply;
   expect(createResponse.status(), await createResponse.text()).toBe(201);
   const ruleId = (await createResponse.json()).data.id;
@@ -128,7 +128,7 @@ test("persisted rules validate and allow creator review with audited immediate a
       r.request().method() === "POST",
   );
   await editor
-    .getByRole("button", { name: "验证已保存草稿并保存报告", exact: true })
+    .getByRole("button", { name: "验证草稿", exact: true })
     .click();
   const validation = await validationReply;
   expect(validation.status(), await validation.text()).toBe(200);
@@ -145,7 +145,7 @@ test("persisted rules validate and allow creator review with audited immediate a
       r.request().method() === "POST",
   );
   await editor
-    .getByRole("button", { name: "提交审核（需服务端验证通过）", exact: true })
+    .getByRole("button", { name: "提交审核", exact: true })
     .click();
   expect((await submitReply).status()).toBe(200);
   await expect(panel.locator(".review")).not.toContainText("不能批准或拒绝自己的版本");
@@ -227,7 +227,7 @@ test("persisted rules validate and allow creator review with audited immediate a
     });
     // A second approved version must remain queued, not replace the active one.
     await panel
-      .getByRole("button", { name: "刷新版本历史", exact: true })
+      .getByRole("button", { name: "刷新", exact: true })
       .click();
     await panel
       .getByRole("button", { name: "新建规则草稿", exact: true })
@@ -244,7 +244,7 @@ test("persisted rules validate and allow creator review with audited immediate a
         r.request().method() === "POST",
     );
     await editor
-      .getByRole("button", { name: "保存新草稿", exact: true })
+      .getByRole("button", { name: "保存草稿", exact: true })
       .click();
     const nextResponse = await nextCreate;
     expect(nextResponse.status(), await nextResponse.text()).toBe(201);
@@ -266,7 +266,7 @@ test("persisted rules validate and allow creator review with audited immediate a
         r.request().method() === "POST",
     );
     await editor
-      .getByRole("button", { name: "验证已保存草稿并保存报告", exact: true })
+      .getByRole("button", { name: "验证草稿", exact: true })
       .click();
     expect((await nextValidate).status()).toBe(200);
     await editor
@@ -279,13 +279,13 @@ test("persisted rules validate and allow creator review with audited immediate a
     );
     await editor
       .getByRole("button", {
-        name: "提交审核（需服务端验证通过）",
+        name: "提交审核",
         exact: true,
       })
       .click();
     expect((await nextSubmit).status()).toBe(200);
     await reviewPanel
-      .getByRole("button", { name: "刷新版本历史", exact: true })
+      .getByRole("button", { name: "刷新", exact: true })
       .click();
     await reviewPanel
       .locator(".version-list")

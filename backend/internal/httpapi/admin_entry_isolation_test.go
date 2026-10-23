@@ -16,7 +16,7 @@ func TestAdministrativeEntriesRejectOtherAccountTypeAndSeparateCookies(t *testin
 	f := managedFixture(t)
 	ctx := context.Background()
 	id, role := ids.New(), ids.New()
-	hash, err := authcrypto.HashPassword("platform-entry-test-password-2026")
+	hash, err := authcrypto.HashPassword("platform-entry-test-pass-2026")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,13 +39,13 @@ func TestAdministrativeEntriesRejectOtherAccountTypeAndSeparateCookies(t *testin
 	}
 	wrongPlatform := f.call("POST", "/api/v1/platform/auth/login", "entry-wrong-platform", "", "", map[string]string{"identifier": "managed_root", "password": "root-test-password-2026"})
 	mustStatus(t, wrongPlatform, 403)
-	wrongBrand := f.call("POST", "/api/v1/admin/auth/login", "entry-wrong-brand", "", "", map[string]string{"identifier": "platform_entry", "password": "platform-entry-test-password-2026"})
+	wrongBrand := f.call("POST", "/api/v1/admin/auth/login", "entry-wrong-brand", "", "", map[string]string{"identifier": "platform_entry", "password": "platform-entry-test-pass-2026"})
 	mustStatus(t, wrongBrand, 403)
 	var sessions int
 	if err = f.pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE admin_id=$1`, id).Scan(&sessions); err != nil || sessions != 0 {
 		t.Fatal("wrong entry created a session", sessions, err)
 	}
-	login := f.call("POST", "/api/v1/platform/auth/login", "entry-platform-login", "", "", map[string]string{"identifier": "platform_entry", "password": "platform-entry-test-password-2026"})
+	login := f.call("POST", "/api/v1/platform/auth/login", "entry-platform-login", "", "", map[string]string{"identifier": "platform_entry", "password": "platform-entry-test-pass-2026"})
 	mustStatus(t, login, 200)
 	var auth identity.AdminAuthentication
 	managedData(t, login, &auth)
@@ -76,6 +76,8 @@ func TestAdministrativeEntriesRejectOtherAccountTypeAndSeparateCookies(t *testin
 	mustStatus(t, w, 401)
 	brandLogin := f.call("POST", "/api/v1/admin/auth/login", "entry-brand-login", "", "", map[string]string{"identifier": "managed_root", "password": "root-test-password-2026"})
 	mustStatus(t, brandLogin, 200)
+	managedData(t, brandLogin, &auth)
+	f.token = auth.AccessToken
 	brandCookies := brandLogin.Result().Cookies()
 	if len(brandCookies) != 1 || brandCookies[0].Name != adminCookie || brandCookies[0].Path != "/api/v1/admin" {
 		t.Fatal("brand cookie boundary", brandCookies)

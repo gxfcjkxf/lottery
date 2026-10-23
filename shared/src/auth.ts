@@ -108,6 +108,12 @@ export function createAuthClient(options: ApiClientOptions = {}) {
       };
     },
     getChallenge: () => api.request<AuthChallenge>(`${base}/auth/challenge`),
+    validateJoinCode: async (fields: { agent_code?: string; referral_code?: string }) => {
+      const query = new URLSearchParams(normalizeJoinCodeFields(fields));
+      const result = await api.request<{ valid: boolean }>(`${base}/join-codes/validate?${query}`);
+      if (typeof result.valid !== 'boolean') throw new TypeError('Invalid join code validation response');
+      return result.valid;
+    },
     getTelegramChallenge: () =>
       api.request<TelegramChallenge>(`${base}/auth/telegram/challenge`),
     register: async (input: RegisterInput) =>

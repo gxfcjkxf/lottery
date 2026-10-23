@@ -44,9 +44,9 @@ test('new brand receives its first administrator with the complete registered br
   await panel.getByRole('button', { name: 'New account', exact: true }).click();
   dialog = page.getByRole('dialog');
   const username = `brandadmin_${suffix}`;
-  const password = 'owned-brand-onboarding-password-2026';
-  await dialog.getByLabel('Username', { exact: true }).fill(username);
-  await dialog.getByLabel('Password (16–128 bytes)', { exact: true }).fill(password);
+  const password = 'brand-onboard-pass-2026';
+  await dialog.getByLabel('Account', { exact: true }).fill(username);
+  await dialog.getByLabel('Password (6–30 bytes)', { exact: true }).fill(password);
   await dialog.getByRole('checkbox', { name: new RegExp(roleCode) }).check();
   await dialog.getByLabel('Reason', { exact: true }).fill('Create first owned brand administrator');
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();

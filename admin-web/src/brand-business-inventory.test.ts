@@ -1,3 +1,5 @@
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRenderer, h, nextTick, reactive, type Component } from "vue";
@@ -60,13 +62,13 @@ function compileComponent(api: unknown): Component {
   const script = compileScript(parse(source, { filename: "BrandBusinessInventory.vue" }).descriptor, { id: "brand-business-inventory-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
   const inventoryModule = { ...InventoryApi, createBusinessInventoryApi: () => api };
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = {  "@lottery/shared": DisplayShared,
     vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n,
     "./business-inventory-api": inventoryModule, "./reconciliation-state": ReconciliationState,
   };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) =>
     `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 
 function sample(patch: Partial<BrandBusinessInventory> = {}): BrandBusinessInventory {

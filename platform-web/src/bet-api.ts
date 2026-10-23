@@ -1,3 +1,5 @@
+import { readPlatformEnvelope } from './platform-api'
+
 import { PlatformApiError } from './platform-api'
 import type { RuleDefinition, RuleTicketSelection } from '../../shared/src/rules'
 
@@ -97,21 +99,19 @@ export function createPlatformBetApi(fetcher: typeof fetch = fetch) {
     let response: Response
     try { response = await fetcher(path, { method: 'GET', credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Brand-ID': brandId } }) }
     catch (cause) { throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true) }
-    let envelope: unknown
-    try { envelope = await response.json() } catch { throw new PlatformApiError(response.ok ? 'Invalid server response' : `Request failed (${response.status})`, response.status, 'INVALID_RESPONSE') }
-    if (!isObj(envelope) || envelope.success !== true || envelope.data === undefined || !response.ok) {
-      const error = isObj(envelope) && isObj(envelope.error) ? envelope.error : undefined
-      throw new PlatformApiError(text(error?.message) ? error.message : `Request failed (${response.status})`, response.status, text(error?.code) ? error.code : undefined)
-    }
+    const envelope = await readPlatformEnvelope<unknown>(response);
     return envelope.data
   }
   return {
-    async list(brandId: string, memberId = '', limit = 51, offset = 0): Promise<BetOrder[]> {
+    async list(brandId: string, memberId = '', limit = 51, offset = 0, gameId = ''): Promise<BetOrder[]> {
+      if (gameId && !uuid(gameId)) throw new PlatformApiError('A valid game ID is required', 400, 'INVALID_INPUT')
       const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
       if (memberId) query.set('member_id', memberId)
+      if (gameId) query.set('game_id', gameId)
       const value = await get(brandId, `${BASE}?${query}`)
       if (!isObj(value) || !exactKeys(value, ['items']) || !Array.isArray(value.items) || value.items.length > limit || !value.items.every(item => validOrder(item, brandId, memberId || undefined))) throw new PlatformApiError('Invalid bet orders response', 0, 'INVALID_RESPONSE')
       if (new Set(value.items.map(item => (item as BetOrder).id)).size !== value.items.length) throw new PlatformApiError('Invalid bet orders response', 0, 'INVALID_RESPONSE')
+      if (gameId && value.items.some(item => (item as BetOrder).game_id !== gameId)) throw new PlatformApiError('Bet orders do not match the selected game', 0, 'INVALID_RESPONSE')
       return value.items as BetOrder[]
     },
     async read(brandId: string, orderId: string): Promise<BetOrder> {

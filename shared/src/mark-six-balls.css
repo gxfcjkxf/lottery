@@ -1,0 +1,17 @@
+/* Semantic Mark Six wave colors; these tokens never replace the brand palette. */
+:root {
+ --lottery-wave-red: #dc2626;
+ --lottery-wave-red-light: #fee2e2;
+ --lottery-wave-blue: #2563eb;
+ --lottery-wave-blue-light: #dbeafe;
+ --lottery-wave-green: #059669;
+ --lottery-wave-green-light: #d1fae5;
+ --lottery-ball-ink: #ffffff;
+}
+.mark-six-ball { display:inline-grid;place-items:center;flex-shrink:0;box-sizing:border-box;width:34px;height:34px;border-radius:50%;font-size:14px;font-weight:750;color:var(--lottery-ball-ink);font-variant-numeric:tabular-nums;background:radial-gradient(circle at 32% 26%,var(--wave-light) 0%,var(--wave-color) 48%,var(--wave-color) 100%);box-shadow:inset 0 -2px 3px rgb(0 0 0 / 12%),0 2px 4px rgb(0 0 0 / 10%); }
+.mark-six-ball.red,.lottery-wave-red { --wave-color:var(--lottery-wave-red);--wave-light:var(--lottery-wave-red-light); }
+.mark-six-ball.blue,.lottery-wave-blue { --wave-color:var(--lottery-wave-blue);--wave-light:var(--lottery-wave-blue-light); }
+.mark-six-ball.green,.lottery-wave-green { --wave-color:var(--lottery-wave-green);--wave-light:var(--lottery-wave-green-light); }
+.mark-six-ball.special { outline:2px solid var(--accent);outline-offset:2px; }
+.mark-six-ball.small { width:26px;height:26px;font-size:12px; }
+@media(max-width:620px){.mark-six-ball{width:30px;height:30px}}

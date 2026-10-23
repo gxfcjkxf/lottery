@@ -1,20 +1,27 @@
 <script setup lang="ts">
+import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
+import { usePlatformI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName } from "@lottery/shared";
+import { usePlatformI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import SiteIcon from "@lottery/shared/SiteIcon";
+import { vInlineValidation } from '@lottery/shared'
+import { usePlatformI18n } from "./i18n"
+const ui = usePlatformI18n().t
 import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformBetApi, type BetOrder } from './bet-api'
-import LotteryPanel from './LotteryPanel.vue'
+import { lookupPlatformMember } from './member-lookup'
+import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform-format'
 
-const props = defineProps<{ brandId: string; locale: 'en' | 'zh-CN' }>()
+const props = defineProps<{ brandId: string; gameId: string; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings }>()
 const emit = defineEmits<{ failure: [cause: unknown] }>()
 const api = createPlatformBetApi()
-const catalogue = ref(false)
-function chooseTab(value: boolean) {
-  catalogue.value = value
-  ++generation
-  orders.value = []; detail.value = null; more.value = false; error.value = ''; loading.value = false
-  if (!value) void load()
-}
 const draftMember = ref('')
 const memberFilter = ref('')
 const orders = ref<BetOrder[]>([])
@@ -22,25 +29,37 @@ const detail = ref<BetOrder | null>(null)
 const offset = ref(0)
 const more = ref(false)
 const loading = ref(false)
-const error = ref('')
+const error = ref<string | import("@lottery/shared").LocalizedMessage>("")
 let generation = 0
+async function submitMemberQuery() {
+  const request = ++generation, brandId = props.brandId, gameId = props.gameId
+  const username = draftMember.value.trim()
+  orders.value = []; detail.value = null; more.value = false; error.value = ''; loading.value = true
+  try {
+    const member = username ? (await lookupPlatformMember(brandId, username)).id : ''
+    if (request !== generation || brandId !== props.brandId || gameId !== props.gameId) return
+    await load(0, member)
+  } catch (cause) { if (request === generation) report(cause) }
+  finally { if (request === generation) loading.value = false }
+}
 const copy = computed(() => props.locale === 'en' ? {
-  title: 'Bet orders', note: 'Read-only orders and original betting snapshots', member: 'Member ID (optional)', query: 'Query orders', order: 'Order', points: 'Bet points', state: 'State', period: 'Period', date: 'Placed at', previous: 'Previous page', next: 'Next page', empty: 'No bet orders.', detail: 'Order detail', game: 'Game', play: 'Play', version: 'Order version', prize: 'Prize points', unit: 'Unit points', combinations: 'Combinations', multiplier: 'Multiplier', rule: 'Rule version', hash: 'Definition hash', snapshots: 'Original snapshots', selection: 'Selection', normalized: 'Normalized selection', expanded: 'Expanded bets', definition: 'Rule definition', policy: 'Bet policy', allocation: 'Deduction allocation', loading: 'Loading…',
+  title: ui('platform.copy.7ce4e2b7'), member: ui('platform.copy.3c207805'), query: ui('platform.copy.af1775f6'), order: ui('platform.copy.68419640'), points: ui('platform.copy.6b08271d'), state: ui('platform.copy.274ae047'), period: ui('platform.copy.af748127'), date: ui('platform.copy.9b57c1f0'), previous: ui('platform.copy.7f5aba9a'), next: ui('platform.copy.282be575'), empty: ui('platform.copy.9aec450c'), detail: ui('platform.copy.ca30a55c'), close: ui('platform.copy.27b2fd29'), game: ui('platform.copy.e9964c8b'), play: ui('platform.copy.aba170ff'), version: ui('platform.copy.073d61ac'), prize: ui('platform.copy.af7a2edc'), unit: ui('platform.copy.37ca364a'), combinations: ui('platform.copy.d061bced'), multiplier: ui('platform.copy.c7c39827'), rule: ui('platform.copy.095bcc1e'), hash: ui('platform.copy.2b7420cc'), snapshots: ui('platform.copy.176bea8d'), selection: ui('platform.copy.5fc847bd'), normalized: ui('platform.copy.f8ab27bb'), expanded: ui('platform.copy.f3856e26'), definition: ui('platform.copy.c2f17b2e'), policy: ui('platform.copy.34a28248'), allocation: ui('platform.copy.2407aee6'),
 } : {
-  title: '投注订单', note: '只读订单及投注时的原始快照', member: '会员编号（可选）', query: '查询订单', order: '订单', points: '投注积分', state: '状态', period: '期次编号', date: '投注时间', previous: '上一页', next: '下一页', empty: '暂无投注订单。', detail: '订单详情', game: '彩种', play: '玩法', version: '订单版本', prize: '中奖积分', unit: '单注积分', combinations: '组合数', multiplier: '倍数', rule: '规则版本', hash: '规则摘要', snapshots: '原始快照', selection: '原始选号', normalized: '规范选号', expanded: '展开注项', definition: '规则定义', policy: '投注规则', allocation: '扣款来源', loading: '加载中…',
+  title: ui('platform.copy.7ce4e2b7'), member: ui('platform.copy.3c207805'), query: ui('platform.copy.af1775f6'), order: ui('platform.copy.68419640'), points: ui('platform.copy.6b08271d'), state: ui('platform.copy.274ae047'), period: ui('platform.copy.af748127'), date: ui('platform.copy.9b57c1f0'), previous: ui('platform.copy.7f5aba9a'), next: ui('platform.copy.282be575'), empty: ui('platform.copy.9aec450c'), detail: ui('platform.copy.ca30a55c'), close: ui('platform.copy.27b2fd29'), game: ui('platform.copy.e9964c8b'), play: ui('platform.copy.aba170ff'), version: ui('platform.copy.073d61ac'), prize: ui('platform.copy.af7a2edc'), unit: ui('platform.copy.37ca364a'), combinations: ui('platform.copy.d061bced'), multiplier: ui('platform.copy.c7c39827'), rule: ui('platform.copy.095bcc1e'), hash: ui('platform.copy.2b7420cc'), snapshots: ui('platform.copy.176bea8d'), selection: ui('platform.copy.5fc847bd'), normalized: ui('platform.copy.f8ab27bb'), expanded: ui('platform.copy.f3856e26'), definition: ui('platform.copy.c2f17b2e'), policy: ui('platform.copy.34a28248'), allocation: ui('platform.copy.2407aee6'),
 })
 function report(cause: unknown) {
   if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause)
-  else error.value = cause instanceof Error ? cause.message : String(cause)
+  else error.value = cause instanceof Error ? publicErrorMessage(cause) : publicErrorMessage(cause)
 }
 async function load(nextOffset = 0, filter = memberFilter.value) {
   const request = ++generation
   const brandId = props.brandId
+  const gameId = props.gameId
   orders.value = []; detail.value = null; more.value = false; error.value = ''
   if (!brandId) { loading.value = false; return }
   loading.value = true
   try {
-    const rows = await api.list(brandId, filter, 51, nextOffset)
+    const rows = await api.list(brandId, filter, 51, nextOffset, gameId)
     if (request !== generation || brandId !== props.brandId) return
     orders.value = rows.slice(0, 50); more.value = rows.length > 50
     offset.value = nextOffset; memberFilter.value = filter
@@ -59,63 +78,54 @@ async function read(order: BetOrder) {
 }
 const json = (value: unknown) => JSON.stringify(value, null, 2)
 const stateLabel = (state: BetOrder['status']) => (props.locale === 'en' ? {
-  placed: 'Placed', bet_cancelled: 'Bet cancelled', judged_cancelled: 'Judged cancelled', abnormal: 'Abnormal order', won: 'Won', lost: 'Lost',
+  placed: ui('platform.copy.d8c3d45b'), bet_cancelled: ui('platform.copy.ad8a78ee'), judged_cancelled: ui('platform.copy.00a52a01'), abnormal: ui('platform.copy.d217c9e6'), won: ui('platform.copy.9dcd1df2'), lost: ui('platform.copy.74170da6'),
 } : {
-  placed: '已投注', bet_cancelled: '投注取消', judged_cancelled: '判定取消', abnormal: '异常注单', won: '中奖', lost: '未中奖',
+  placed: ui('platform.copy.d8c3d45b'), bet_cancelled: ui('platform.copy.ad8a78ee'), judged_cancelled: ui('platform.copy.00a52a01'), abnormal: ui('platform.copy.d217c9e6'), won: ui('platform.copy.9dcd1df2'), lost: ui('platform.copy.74170da6'),
 })[state]
-watch(() => props.brandId, () => {
-  catalogue.value = false
-  draftMember.value = ''; memberFilter.value = ''; offset.value = 0
-  void load()
+watch(() => [props.brandId, props.gameId] as const, ([brand], previous) => {
+  if (!previous || brand !== previous[0]) { draftMember.value = ''; memberFilter.value = '' }
+  offset.value = 0
+  void withGlobalLoading(load)
 }, { immediate: true, flush: 'sync' })
 </script>
 
 <template>
   <div data-testid="platform-bets">
-    <div class="wallet-pagination" data-testid="platform-bet-tabs">
-      <button :class="catalogue ? 'secondary' : 'primary'" @click="chooseTab(false)">{{ copy.title }}</button>
-      <button :class="catalogue ? 'primary' : 'secondary'" @click="chooseTab(true)">{{ locale === 'en' ? 'Games and draws' : '彩种与开奖' }}</button>
-    </div>
-    <LotteryPanel v-if="catalogue" :brand-id="brandId" :locale="locale" @failure="emit('failure', $event)" />
-    <template v-else>
-    <div class="page-heading"><div><div class="eyebrow">{{ copy.note }}</div><h1>{{ copy.title }}</h1></div></div>
-    <form class="panel wallet-query" @submit.prevent="load(0, draftMember.trim())">
+    <form novalidate v-inline-validation class="panel wallet-query" @submit.prevent="withGlobalLoading(submitMemberQuery)">
       <label class="query-field">
-        <span class="field-label">{{ copy.member }}</span>
         <div class="input-with-icon">
-          <span class="input-icon">👤</span>
-          <input v-model="draftMember" :disabled="loading || !brandId" autocomplete="off" :placeholder="locale === 'en' ? 'Filter by member UUID' : '按会员 UUID 筛选'" />
+          <span class="input-icon"> <SiteIcon name="user" /> </span>
+          <input v-model="draftMember" :disabled="loading || !brandId" autocomplete="off" :aria-label="copy.member" :placeholder="copy.member" />
         </div>
       </label>
-      <button class="primary" :disabled="loading || !brandId">{{ copy.query }}</button>
+      <button class="button button-primary" :disabled="loading || !brandId">{{ copy.query }}</button>
     </form>
-    <p v-if="error" class="message error" role="alert">{{ error }}</p><p v-if="loading" class="loading-line">{{ copy.loading }}</p>
+    <p v-if="error" class="message error" role="alert">{{ displayPublicError(error) }}</p>
     <section class="panel reward-detail">
-      <div class="table-wrap"><table><thead><tr><th>{{ copy.order }}</th><th>{{ copy.period }}</th><th>{{ copy.points }}</th><th>{{ copy.state }}</th><th>{{ copy.date }}</th></tr></thead><tbody>
-        <tr v-for="order in orders" :key="order.id"><td><button class="row-action" @click="read(order)">{{ order.id }}</button><small>{{ order.brand_member_id }}</small></td><td>{{ order.period_id }}</td><td>{{ order.total_points }}</td><td>{{ stateLabel(order.status) }}</td><td>{{ order.placed_at }}</td></tr>
+      <div class="table-wrap"><table><thead><tr><th>{{ copy.order }}</th><th>{{ copy.period }}</th><th>{{ copy.points }}</th><th><BusinessDetails :value="copy.state" :locale="associationLocale" /></th><th>{{ copy.date }}</th></tr></thead><tbody>
+        <tr v-for="order in orders" :key="order.id"><td><button class="row-action" @click="withGlobalLoading(read, order)">{{ order.id }}</button><small><AssociationName :record="order" kind="member" :id="order.brand_member_id" :locale="associationLocale" /></small></td><td><AssociationName :record="order" kind="period" :id="order.period_id" :locale="associationLocale" /></td><td>{{ order.total_points }}</td><td>{{ stateLabel(order.status) }}</td><td>{{ formatPlatformDateTime(order.placed_at, props.displaySettings, props.locale) }}</td></tr>
         <tr v-if="!orders.length"><td colspan="5" class="empty-state">{{ copy.empty }}</td></tr>
       </tbody></table></div>
-      <div class="wallet-pagination" data-testid="platform-bet-pages"><button class="secondary" :disabled="loading || offset === 0 || !brandId" @click="load(offset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(offset / 50) + 1 }}</span><button class="secondary" :disabled="loading || !more" @click="load(offset + 50)">{{ copy.next }}</button></div>
+      <div class="wallet-pagination" data-testid="platform-bet-pages"><button class="button button-secondary" :disabled="loading || offset === 0 || !brandId" @click="withGlobalLoading(load, offset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(offset / 50) + 1 }}</span><button class="button button-secondary" :disabled="loading || !more" @click="withGlobalLoading(load, offset + 50)">{{ copy.next }}</button></div>
     </section>
-    <DetailModal v-if="detail" :title="locale === 'en' ? 'Details' : '详情'" :close-label="locale === 'en' ? 'Close' : '关闭'" @close="detail = null">
-<section v-if="detail" class="panel reward-detail" data-testid="platform-bet-detail">
-      <div class="panel-heading"><h2>{{ copy.detail }}</h2><span>{{ stateLabel(detail.status) }}</span></div>
+    <DetailModal v-if="detail" :title="copy.detail" :close-label="copy.close" @close="detail = null">
+<section v-if="detail" class="detail-section" data-testid="platform-bet-detail">
+      <div class="detail-summary"><span class="status-pill" :class="detail.status">{{ stateLabel(detail.status) }}</span></div>
       <dl class="confirm-list reward-fields">
-        <div><dt>{{ copy.order }}</dt><dd>{{ detail.id }}</dd></div><div><dt>{{ copy.version }}</dt><dd>{{ detail.version }}</dd></div>
-        <div><dt>{{ copy.game }}</dt><dd>{{ detail.game_id }}</dd></div><div><dt>{{ copy.period }}</dt><dd>{{ detail.period_id }}</dd></div><div><dt>{{ copy.play }}</dt><dd>{{ detail.play_id }}</dd></div>
+        <div><dt>{{ copy.order }}</dt><dd>{{ detail.id }}</dd></div>
+        <div><dt>{{ copy.game }}</dt><dd><AssociationName :record="detail" kind="game" :id="detail.game_id" :locale="associationLocale" /></dd></div><div><dt>{{ copy.period }}</dt><dd><AssociationName :record="detail" kind="period" :id="detail.period_id" :locale="associationLocale" /></dd></div><div><dt>{{ copy.play }}</dt><dd><AssociationName :record="detail" kind="play" :id="detail.play_id" :locale="associationLocale" /></dd></div>
         <div><dt>{{ copy.unit }}</dt><dd>{{ detail.unit_points }}</dd></div><div><dt>{{ copy.combinations }}</dt><dd>{{ detail.combination_count }}</dd></div><div><dt>{{ copy.multiplier }}</dt><dd>{{ detail.multiplier }}</dd></div>
-        <div><dt>{{ copy.points }}</dt><dd>{{ detail.total_points }}</dd></div><div><dt>{{ copy.prize }}</dt><dd>{{ detail.prize_points }}</dd></div><div><dt>{{ copy.rule }}</dt><dd>{{ detail.rule_version_id }}</dd></div><div><dt>{{ copy.hash }}</dt><dd>{{ detail.definition_hash }}</dd></div>
+        <div><dt>{{ copy.points }}</dt><dd>{{ detail.total_points }}</dd></div><div><dt>{{ copy.prize }}</dt><dd>{{ detail.prize_points }}</dd></div><div><dt>{{ copy.rule }}</dt><dd>{{ detail.rule_version_id }}</dd></div>
       </dl>
       <div class="bet-snapshots"><h3>{{ copy.snapshots }}</h3>
-        <details><summary>{{ copy.selection }}</summary><pre>{{ json(detail.selection_raw) }}</pre></details>
-        <details><summary>{{ copy.normalized }}</summary><pre>{{ json(detail.selection_normalized) }}</pre></details>
-        <details><summary>{{ copy.expanded }}</summary><pre>{{ json(detail.expanded_bets) }}</pre></details>
-        <details><summary>{{ copy.definition }}</summary><pre>{{ json(detail.definition_snapshot) }}</pre></details>
-        <details><summary>{{ copy.policy }}</summary><pre>{{ json({ config: detail.policy_snapshot, versions: detail.policy_versions }) }}</pre></details>
-        <details><summary>{{ copy.allocation }}</summary><pre>{{ json(detail.deduction_allocation) }}</pre></details>
+        <details><summary>{{ copy.selection }}</summary><BusinessDetails :value="detail.selection_raw" :locale="associationLocale" /></details>
+        <details><summary>{{ copy.normalized }}</summary><BusinessDetails :value="detail.selection_normalized" :locale="associationLocale" /></details>
+        <details><summary>{{ copy.expanded }}</summary><BusinessDetails :value="detail.expanded_bets" :locale="associationLocale" /></details>
+        <details><summary>{{ copy.definition }}</summary><BusinessDetails :value="detail.definition_snapshot" :locale="associationLocale" /></details>
+        <details><summary>{{ copy.policy }}</summary><BusinessDetails :value="detail.policy_snapshot" :locale="associationLocale" /></details>
+        <details><summary>{{ copy.allocation }}</summary><BusinessDetails :value="detail.deduction_allocation" :locale="associationLocale" /></details>
       </div>
     </section>
 </DetailModal>
-    </template>
   </div>
 </template>

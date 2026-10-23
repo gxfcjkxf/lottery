@@ -1,3 +1,6 @@
+import { BusinessDetailsTestComponent as BusinessDetails } from "./business-details-test-helper";
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRenderer, h, nextTick, ref, type Component } from "vue";
 import * as VueRuntime from "vue";
@@ -20,6 +23,7 @@ const taskId = "44444444-4444-4444-8444-444444444444";
 const permissions = ["report_archive.view.brand", "report_archive_task.retry.brand"];
 const account: AdminAccount = { id: actor, super_admin: false, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: permissions } };
 const calls: Array<{ method: string; args: unknown[] }> = [];
+const mountedApps: Array<{ unmount: () => void }> = [];
 let nextRetry: (() => Promise<unknown>) | null = null;
 let policyFailure: unknown = null, listFailure: unknown = null, readFailure: unknown = null;
 let listResult: { brand_id: string; items: ReportArchiveTask[]; total_count: string; limit: number; offset: number };
@@ -58,11 +62,11 @@ function compileComponent(): Component {
   const descriptor = parse(source, { filename: "ReportArchiveTasksManagement.vue" }).descriptor;
   const compiled = compileScript(descriptor, { id: "report-archive-tasks-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(compiled, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = { "@lottery/shared/BusinessDetails.vue": { default: BusinessDetails },  "@lottery/shared": DisplayShared,
     // Business tests use a host renderer; native dialog behavior is checked in Chrome.
     "@lottery/shared/DetailModal.vue": { default: { inheritAttrs: false, setup: (_props: unknown, context: { slots: { default?: () => unknown } }) => () => context.slots.default?.() } }, vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./report-archive-tasks-api": TasksApi, "./report-archive-tasks-state": TasksState, "./report-archive-policy-api": PolicyApi, "./report-archive-policy-state": PolicyState };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => { if (!(specifier in modules)) throw new Error(`Unmapped import ${specifier}`); return `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`; }).replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => { if (!(specifier in modules)) throw new Error(`Unmapped import ${specifier}`); return `const ${binding}=__modules[${JSON.stringify(specifier)}].default;`; }).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 vi.spyOn(TasksApi, "createReportArchiveTasksApi").mockImplementation(() => apiStub() as never);
 vi.spyOn(AdminApi, "createIdempotencyKey").mockImplementation(() => `archive-retry-key-${String(++keyCounter).padStart(3, "0")}`);
@@ -76,13 +80,13 @@ function mount(user = account, brandId = brand) {
   vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
   const scope = ref({ account: user, brandId }), container = element("root"), emitted: string[] = [], i18n = createAdminI18n();
   const app = renderer.createApp({ setup: () => () => h(ComponentUnderTest, { ...scope.value, onSessionInvalid: () => emitted.push("session-invalid") }) });
-  app.provide(adminI18nKey, i18n); app.mount(container); return { app, scope, container, emitted, i18n };
+  app.provide(adminI18nKey, i18n); app.mount(container); mountedApps.push(app); return { app, scope, container, emitted, i18n };
 }
 async function flush() { for (let i = 0; i < 16; i++) await Promise.resolve(); await nextTick(); }
-async function selectFailedAndReview(mounted: ReturnType<typeof mount>, reason = "Verified source data") {
+async function selectFailedAndReview(mounted: ReturnType<typeof mount>) {
   const row = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes(taskId));
   click(row); await flush();
-  model(byTestId(mounted.container, "archive-tasks-reason"), reason); await flush();
+  expect(byTestId(mounted.container, "archive-tasks-reason")).toBeNull(); await flush();
   click(byTestId(mounted.container, "archive-tasks-retry")); await flush();
   expect(byTestId(mounted.container, "archive-tasks-review")).not.toBeNull();
 }
@@ -91,24 +95,24 @@ async function confirmAndSubmit(mounted: ReturnType<typeof mount>) {
   click(byTestId(mounted.container, "archive-tasks-submit")); await flush();
 }
 beforeEach(() => { fresh(); TasksState.clearAllReportArchiveTaskRetryIntents(); PolicyState.clearAllReportArchivePolicyIntents(); vi.mocked(TasksApi.createReportArchiveTasksApi).mockImplementation(() => apiStub() as never); });
-afterEach(() => { TasksState.clearAllReportArchiveTaskRetryIntents(); PolicyState.clearAllReportArchivePolicyIntents(); calls.length = 0; vi.clearAllMocks(); vi.unstubAllGlobals(); });
+afterEach(async () => { for (const app of mountedApps.splice(0)) app.unmount(); TasksState.clearAllReportArchiveTaskRetryIntents(); PolicyState.clearAllReportArchivePolicyIntents(); await flush(); calls.length = 0; vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 describe("ReportArchiveTasksManagement SFC contract", () => {
   it("freezes unknown retries across unmount and locale changes, and replays only on explicit action", async () => {
     const first = mount(); await flush(); await selectFailedAndReview(first);
     const detail = textOf(byTestId(first.container, "archive-tasks-review")!);
-    expect(detail).toContain(actor); expect(detail).toContain(brand); expect(detail).toContain(taskId); expect(detail).toContain("4"); expect(detail).toContain("Verified source data"); expect(detail).toContain("archive-retry-key-001");
+    expect(detail).not.toContain(actor); expect(detail).not.toContain(brand); expect(detail).toContain(taskId); expect(detail).toContain("4"); expect(detail).not.toContain("archive-retry-key-001");
     nextRetry = async () => { throw new TypeError("response lost"); };
     await confirmAndSubmit(first);
     const originalArgs = calls.find((call) => call.method === "retry")!.args;
-    expect(originalArgs).toEqual([brand, taskId, { version: 4, reason: "Verified source data" }, "archive-retry-key-001", actor]);
+    expect(originalArgs).toEqual([brand, taskId, { version: 4, reason: "" }, "archive-retry-key-001", actor]);
     expect(byTestId(first.container, "archive-tasks-frozen")).not.toBeNull();
     first.app.unmount();
     const second = mount(); await flush();
     const count = calls.filter((call) => call.method === "retry").length;
     second.i18n.setLocale("en"); await flush();
     expect(textOf(second.container)).toContain("Automatic archive tasks");
-    expect(textOf(byTestId(second.container, "archive-tasks-frozen")!)).toContain("The account, brand, task, version, reason and original idempotency key stay in current-session memory.");
+    expect(textOf(byTestId(second.container, "archive-tasks-frozen")!)).toContain("The retry outcome is unknown. Review and retry the original operation.");
     expect(calls.filter((call) => call.method === "retry")).toHaveLength(count);
     expect(byTestId(second.container, "archive-tasks-replay")!.props.disabled).toBe(true);
     expect(byTestId(second.container, "archive-tasks-replay-check")).not.toBeNull();
@@ -144,25 +148,25 @@ describe("ReportArchiveTasksManagement SFC contract", () => {
     expect(byTestId(mounted.container, "archive-tasks-detail-error")).not.toBeNull();
     expect(byTestId(mounted.container, "archive-tasks-frozen")).not.toBeNull();
     expect(TasksState.getReportArchiveTaskRetryIntent(actor, brand, taskId)?.phase).toBe("acknowledged");
-    expect(textOf(byTestId(mounted.container, "archive-tasks-ack-receipt")!)).toContain("pending");
+    expect(textOf(byTestId(mounted.container, "archive-tasks-ack-receipt")!)).toContain("待处理");
     expect(textOf(byTestId(mounted.container, "archive-tasks-frozen")!)).not.toContain("Retry outcome unknown");
     expect(calls.filter((call) => call.method === "retry")).toHaveLength(1);
     mounted.app.unmount();
   });
 
   it("restores the exact retry after a lost ACK and keeps its pending ACK separate from a completed worker query", async () => {
-    const first = mount(); await flush(); await selectFailedAndReview(first, "Reconcile archive source");
+    const first = mount(); await flush(); await selectFailedAndReview(first);
     nextRetry = async () => { throw new TypeError("retry response was lost"); };
     await confirmAndSubmit(first);
     const originalArgs = calls.find((call) => call.method === "retry")!.args;
-    expect(TasksState.getReportArchiveTaskRetryIntent(actor, brand, taskId)).toMatchObject({ phase: "unknown", version: 4, reason: "Reconcile archive source", key: "archive-retry-key-001" });
+    expect(TasksState.getReportArchiveTaskRetryIntent(actor, brand, taskId)).toMatchObject({ phase: "unknown", version: 4, reason: "", key: "archive-retry-key-001" });
     first.app.unmount();
 
     const completed = task({ state: "completed", version: 5, attempt_count: 3, archive_id: "88888888-8888-4888-8888-888888888888", last_error_code: null });
     listResult = { brand_id: brand, items: [completed], total_count: "21", limit: 20, offset: 0 };
     readResult = completed;
     const returnVisit = mount(); returnVisit.i18n.setLocale("en"); await flush();
-    expect(textOf(returnVisit.container)).toContain("completed · v5");
+    expect(textOf(returnVisit.container)).toContain("Completed");
     expect(byTestId(returnVisit.container, "archive-tasks-list")?.props["aria-label"]).toContain("Automatic archive task list");
     expect(findNode(returnVisit.container, (node) => node.tag === "button" && textOf(node).includes(taskId))?.props["aria-label"]).toContain(taskId);
     expect(TasksState.getReportArchiveTaskRetryIntent(actor, brand, taskId)?.phase).toBe("unknown");
@@ -176,12 +180,14 @@ describe("ReportArchiveTasksManagement SFC contract", () => {
     click(byTestId(returnVisit.container, "archive-tasks-replay")); await flush();
     expect(calls.filter((call) => call.method === "retry")).toHaveLength(2);
     expect(calls.filter((call) => call.method === "retry").at(-1)?.args).toEqual(originalArgs);
-    expect(TasksState.getReportArchiveTaskRetryIntent(actor, brand, taskId)).toMatchObject({ phase: "acknowledged", version: 4, reason: "Reconcile archive source", key: "archive-retry-key-001" });
+    expect(TasksState.getReportArchiveTaskRetryIntent(actor, brand, taskId)).toMatchObject({ phase: "acknowledged", version: 4, reason: "", key: "archive-retry-key-001" });
     expect(textOf(byTestId(returnVisit.container, "archive-tasks-frozen")!)).toContain("Original retry acknowledged");
+    expect(textOf(byTestId(returnVisit.container, "archive-tasks-frozen")!)).toContain("The retry is confirmed.");
+    expect(textOf(byTestId(returnVisit.container, "archive-tasks-frozen")!)).not.toContain("The retry outcome is unknown.");
     const ack = byTestId(returnVisit.container, "archive-tasks-receipt")!;
-    expect(textOf(ack)).toContain("pending"); expect(textOf(ack)).toContain("5");
-    expect(textOf(byTestId(returnVisit.container, "archive-tasks-detail")!)).toContain("completed");
-    expect(textOf(ack)).toContain("current task query shows a later worker state");
+    expect(textOf(ack)).toContain("Pending"); expect(TasksState.getReportArchiveTaskRetryIntent(actor, brand, taskId)?.receipt?.version).toBe(5);
+    expect(textOf(byTestId(returnVisit.container, "archive-tasks-detail")!)).toContain("Completed");
+    expect(textOf(ack)).toContain("The retry was submitted. Refresh to view job progress.");
     expect(textOf(returnVisit.container)).toContain("The original retry request was acknowledged.");
     expect(calls.filter((call) => call.method === "read").at(-1)?.args).toEqual([brand, taskId]);
 
@@ -243,7 +249,7 @@ describe("ReportArchiveTasksManagement SFC contract", () => {
       return stub as never;
     });
     const mounted = mount(); mounted.i18n.setLocale("en"); await flush();
-    expect(textOf(mounted.container)).toContain("Statuses below describe this page only");
+    expect(textOf(mounted.container)).toContain("Total tasks: 21 · Current page: 0–1");
     expect(textOf(mounted.container)).not.toContain("All tasks completed");
     delay = true; click(byTestId(mounted.container, "archive-tasks-refresh")); await flush();
     listResult = { brand_id: "22222222-2222-4222-8222-222222222222", items: [], total_count: "0", limit: 20, offset: 0 };

@@ -72,9 +72,14 @@ test("financial syntax stays exact, negative deltas differ from balances, and re
   assert.ok(validate("FinanceAdjust")({source:"recharge",delta:"8",reason:"test"}));
 });
 test("full-replacement finance requests require explicit nullable fields",()=>{
-  const id="11111111-1111-4111-8111-111111111111";
-  const input={policy_version:1,member_id:id,parent_id:null,parent_version:null,config:{ratio:"0",mode:null,status:"active",can_create_children:false},reason:"test"};
+  const input={policy_version:1,username:"agent_account",password:"agent-password",parent_id:null,parent_version:null,config:{ratio:"0",mode:"loss",status:"active",can_create_children:false},reason:"test"};
   assert.ok(validate("FinanceAgentCreateInput")(input));
+  const legacyMember={...input,member_id:"11111111-1111-4111-8111-111111111111"};
+  assert.ok(!validate("FinanceAgentCreateInput")(legacyMember));
+  for(const field of ["username","password"]){
+    const missingCredential=structuredClone(input);delete missingCredential[field];
+    assert.ok(!validate("FinanceAgentCreateInput")(missingCredential));
+  }
   const missingParent=structuredClone(input);delete missingParent.parent_id;
   assert.ok(!validate("FinanceAgentCreateInput")(missingParent));
   assert.ok(validate("FinanceWithdrawalGameConfig")({turnover_multiple:null}));

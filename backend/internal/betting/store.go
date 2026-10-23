@@ -260,12 +260,21 @@ func (s Service) Order(ctx context.Context, brand, member, id string) (Order, er
 	}
 	return scanOrder(s.DB.QueryRow(ctx, `SELECT `+orderFields+` FROM bet_orders WHERE brand_id=$1 AND id=$2 AND ($3::text='' OR brand_member_id=NULLIF($3,'')::uuid)`, brand, id, member))
 }
-func (s Service) Orders(ctx context.Context, brand, member string, limit, offset int) ([]Order, error) {
+func (s Service) Orders(ctx context.Context, brand, member, game string, limit, offset int) ([]Order, error) {
 	out := []Order{}
-	if s.DB == nil || !validIDs(brand) || member != "" && !validIDs(member) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
+	if s.DB == nil || !validIDs(brand) || member != "" && !validIDs(member) || game != "" && !validIDs(game) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
 		return out, ErrInvalid
 	}
-	rows, e := s.DB.Query(ctx, `SELECT `+orderFields+` FROM bet_orders WHERE brand_id=$1 AND ($2::text='' OR brand_member_id=NULLIF($2,'')::uuid) ORDER BY placed_at DESC,id DESC LIMIT $3 OFFSET $4`, brand, member, limit, offset)
+	if game != "" {
+		var exists bool
+		if e := s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM games WHERE brand_id=$1 AND id=$2)`, brand, game).Scan(&exists); e != nil {
+			return out, e
+		}
+		if !exists {
+			return out, ErrNotFound
+		}
+	}
+	rows, e := s.DB.Query(ctx, `SELECT `+orderFields+` FROM bet_orders WHERE brand_id=$1 AND ($2::text='' OR brand_member_id=NULLIF($2,'')::uuid) AND ($3::text='' OR game_id=NULLIF($3,'')::uuid) ORDER BY placed_at DESC,id DESC LIMIT $4 OFFSET $5`, brand, member, game, limit, offset)
 	if e != nil {
 		return out, e
 	}
@@ -277,7 +286,38 @@ func (s Service) Orders(ctx context.Context, brand, member string, limit, offset
 		}
 		out = append(out, o)
 	}
-	return out, rows.Err()
+	if e = rows.Err(); e != nil || len(out) == 0 {
+		return out, e
+	}
+	rows.Close()
+	periodIDs := make([]string, len(out))
+	for i := range out {
+		periodIDs[i] = out[i].PeriodID
+	}
+	periods, e := s.DB.Query(ctx, `SELECT id::text,period_no FROM periods WHERE brand_id=$1 AND id=ANY($2::uuid[])`, brand, periodIDs)
+	if e != nil {
+		return nil, e
+	}
+	defer periods.Close()
+	numbers := make(map[string]string)
+	for periods.Next() {
+		var id, number string
+		if e = periods.Scan(&id, &number); e != nil {
+			return nil, e
+		}
+		numbers[id] = number
+	}
+	if e = periods.Err(); e != nil {
+		return nil, e
+	}
+	for i := range out {
+		number, exists := numbers[out[i].PeriodID]
+		if !exists {
+			return nil, ErrNotFound
+		}
+		out[i].PeriodNo = number
+	}
+	return out, nil
 }
 func existingOrder(ctx context.Context, tx pgx.Tx, brand, member, key string, in Input) (Order, error) {
 	o, e := scanOrder(tx.QueryRow(ctx, `SELECT `+orderFields+` FROM bet_orders WHERE brand_id=$1 AND brand_member_id=$2 AND client_key=$3`, brand, member, key))

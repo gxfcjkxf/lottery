@@ -34,10 +34,11 @@ async function data<T>(response: Pick<APIResponse, "text" | "status">, status = 
   return envelope.data as T;
 }
 
-async function navigate(page: Page, project: string, destination: string): Promise<void> {
-  if (project === "mobile" && destination === "工作台|Dashboard") {
+async function navigate(page: Page, _project: string, destination: string): Promise<void> {
+  const mobileNavigation = page.viewportSize()!.width <= 700;
+  if (mobileNavigation && destination === "工作台|Dashboard") {
     await page.locator(".mobile-nav").getByRole("button", { name: new RegExp(destination) }).click();
-  } else if (project === "mobile") {
+  } else if (mobileNavigation) {
     await page.locator(".mobile-nav button").nth(4).click();
     await page.locator(".mobile-more-menu").getByRole("button", { name: new RegExp(destination) }).click();
   } else {
@@ -86,7 +87,7 @@ test("real report archives recover a lost committed receipt and keep old version
 
   const member = await post<{ member_id: string }>("/users", {
     username: `archive_${info.project.name}_${crypto.randomUUID().replaceAll("-", "").slice(0, 10)}`,
-    password: "owned-report-archive-member-password-2026",
+    password: "owned-archive-member-2026",
     display_name: "Owned report archive member",
     reason: "Create the real member used by the report archive browser flow",
   }, 201);
@@ -107,14 +108,14 @@ test("real report archives recover a lost committed receipt and keep old version
   const beforeFirstArchive = await economicState();
 
   await page.goto(origin!);
-  await page.getByLabel(/选择真实后台品牌|Select live admin brand/, { exact: true }).selectOption(brand);
+  await page.locator('.directory-brand-bar select').selectOption(brand);
+  await selectLanguage(page, 'zh-CN');
   await navigate(page, info.project.name, "日月归档|Daily and monthly archives");
   let panel = page.locator(".archives");
   await expect(panel.getByRole("heading", { name: "日月归档", exact: true })).toBeVisible();
   await expect(panel.getByTestId("archive-list")).toBeVisible();
 
   const periodKey = "2026-09";
-  const reason = "Committed monthly snapshot after a genuine lost browser response";
   const writes: Array<{ body: string | null; key: string | undefined; actor: string | undefined }> = [];
   let first!: Archive;
   await page.route("**/api/v1/admin/report-archives", async route => {
@@ -137,21 +138,22 @@ test("real report archives recover a lost committed receipt and keep old version
     }
   });
 
-  const fillCreate = async (expectedRevision: number, actionReason: string) => {
+  const fillCreate = async (expectedRevision: number) => {
     await panel.getByTestId("archive-kind").selectOption("monthly");
     await panel.getByTestId("archive-period-key").fill(periodKey);
-    await panel.getByTestId("archive-reason").fill(actionReason);
+    await expect(panel.getByTestId("archive-reason")).toHaveCount(0);
     await panel.getByTestId("archive-expected-revision").fill(String(expectedRevision));
     await panel.getByTestId("archive-review-button").click();
   };
 
-  await fillCreate(0, reason);
+  await fillCreate(0);
   await confirmArchive(page);
   await expect(panel.getByRole("alert")).toContainText("写入结果未知");
   await expect(panel.getByTestId("archive-unknown")).toBeVisible();
   expect(writes).toHaveLength(1);
   expect(writes[0]?.key).toMatch(/^[0-9a-f-]{36}$/i);
-  expect(JSON.parse(writes[0]!.body!)).toEqual({ kind: "monthly", period_key: periodKey, expected_revision: 0, reason });
+  expect(JSON.parse(writes[0]!.body!)).toEqual({ kind: "monthly", period_key: periodKey, expected_revision: 0 });
+  expect(first.reason).toBe("");
   expect(first.revision).toBe(1);
   expect(first.previous_id).toBeNull();
   expect(first.snapshot.wallet_snapshot.balances.available_points).toBe("37");
@@ -177,8 +179,9 @@ test("real report archives recover a lost committed receipt and keep old version
   await createRecharge("11", "Real additional report archive funding");
   expect((await wallet()).available_points).toBe("48");
   const beforeSecondArchive = await economicState();
-  const secondReason = "Second immutable monthly snapshot after genuine recharge";
-  await fillCreate(1, secondReason);
+  await expect(panel.getByTestId("archive-detail")).toContainText(first.id);
+  await panel.getByTestId("archive-back").click();
+  await fillCreate(1);
   const secondResponse = page.waitForResponse(response => response.request().method() === "POST" && response.url() === `${browserAdmin}/report-archives`);
   await confirmArchive(page);
   const second = await data<Archive>(await secondResponse, 201);
@@ -189,6 +192,8 @@ test("real report archives recover a lost committed receipt and keep old version
   expect(await economicState()).toBe(beforeSecondArchive);
   await page.unroute("**/api/v1/admin/report-archives");
 
+  await expect(panel.getByTestId("archive-detail")).toContainText(second.id);
+  await panel.getByTestId("archive-back").click();
   await panel.getByTestId("archive-list").getByRole("button", { name: /2026-09 · monthly · v1/ }).click();
   await expect(panel.getByTestId("archive-detail")).toContainText(first.id);
   await expect(panel.getByTestId("archive-detail")).toContainText("37");
@@ -215,6 +220,11 @@ test("real report archives recover a lost committed receipt and keep old version
   expect(await economicState()).toBe(beforeSecondArchive);
 
   const configuredWidth = page.viewportSize()!.width;
+  await info.attach('viewport-layout', { contentType: 'application/json', body: JSON.stringify(await page.evaluate(() => ({
+    viewport: { width: innerWidth, height: innerHeight, screenWidth: screen.width, screenHeight: screen.height, dpr: devicePixelRatio },
+    documentWidth: document.documentElement.scrollWidth,
+    overflow: [...document.querySelectorAll('*')].filter(node => node.getBoundingClientRect().right > innerWidth + 1).map(node => ({ tag: node.tagName, class: node.className, text: node.textContent?.slice(0, 100), right: node.getBoundingClientRect().right })),
+  })), null, 2) });
   await expect.poll(() => page.evaluate(width => document.documentElement.scrollWidth <= width && innerWidth <= width, configuredWidth)).toBe(true);
   await panel.screenshot({ path: info.outputPath(`report-archives-${info.project.name}.png`) });
   await page.screenshot({ path: info.outputPath(`report-archives-${info.project.name}-viewport.png`) });

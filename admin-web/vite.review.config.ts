@@ -6,6 +6,7 @@ export default mergeConfig(config, {
     host: '127.0.0.1',
     port: 5184,
     strictPort: true,
+    allowedHosts: [],
     proxy: { '/api': { target: 'http://127.0.0.1:8085', changeOrigin: false } },
   },
 })

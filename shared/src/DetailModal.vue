@@ -4,6 +4,7 @@ let savedOverflow = ""
 </script>
 
 <script setup lang="ts">
+import SiteIcon from "./SiteIcon";
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
@@ -49,11 +50,12 @@ onBeforeUnmount(() => { dialog.value?.close(); unlock() })
 
 <template>
     <dialog ref="dialog" class="detail-modal" :aria-label="title" aria-modal="true" @cancel.prevent="emit('close')" @click="backdrop">
-      <header class="detail-modal-heading">
+      <header class="modal-heading detail-modal-heading">
         <h2>{{ title }}</h2>
-        <button type="button" class="detail-modal-close" autofocus @click="emit('close')">{{ closeLabel }} <span aria-hidden="true">×</span></button>
+        <button type="button" class="icon-button detail-modal-close" :aria-label="closeLabel" autofocus @click="emit('close')"><SiteIcon name="close" /></button>
       </header>
       <div class="detail-modal-content"><slot /></div>
+      <div v-if="$slots.footer" class="detail-modal-footer"><slot name="footer" /></div>
     </dialog>
 </template>
 
@@ -70,9 +72,12 @@ onBeforeUnmount(() => { dialog.value?.close(); unlock() })
   background: var(--surface);
   color: var(--ink);
   box-shadow: var(--shadow-lg);
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
+.detail-modal:not([open]) { display: none; }
 .detail-modal::backdrop { background: rgb(15 23 42 / 45%); backdrop-filter: blur(4px); }
 .detail-modal-heading {
   position: sticky;
@@ -87,10 +92,17 @@ onBeforeUnmount(() => { dialog.value?.close(); unlock() })
   background: var(--surface);
 }
 .detail-modal-heading h2 { margin: 0; font-size: 20px; font-weight: 750; overflow-wrap: anywhere; }
-.detail-modal-close { display: inline-flex; align-items: center; gap: 12px; flex-shrink: 0; min-height: 44px; padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
-.detail-modal-close:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.detail-modal-close span { font-size: 22px; }
-.detail-modal-content { min-width: 0; padding: 20px 24px; overflow-wrap: anywhere; }
+.detail-modal-close { flex-shrink: 0; }
+.detail-modal-content { flex: 1 1 auto; min-width: 0; min-height: 0; padding: 20px 24px; overflow: auto; overflow-wrap: anywhere; }
+.detail-modal-footer {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
 .detail-modal-content :deep(> *) { max-width: 100%; margin-top: 0; margin-bottom: 0; }
 .detail-modal-content :deep(dd) { min-width: 0; overflow-wrap: anywhere; }
 .detail-modal-content :deep(pre) { max-width: 100%; overflow: auto; }
@@ -100,5 +112,6 @@ onBeforeUnmount(() => { dialog.value?.close(); unlock() })
   .detail-modal-heading { padding: 12px 14px; gap: 8px; }
   .detail-modal-heading h2 { font-size: 18px; }
   .detail-modal-content { padding: 14px; }
+  .detail-modal-footer { padding: 12px 14px; }
 }
 </style>

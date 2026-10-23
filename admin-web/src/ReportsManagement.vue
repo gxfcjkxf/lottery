@@ -1,4 +1,19 @@
 <script setup lang="ts">
+import FilterAssociationSelect from "@lottery/shared/FilterAssociationSelect.vue";
+import { filterDateBoundary } from "@lottery/shared";
+import { associationGroupLabel } from "@lottery/shared";
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import PlatformTemporalInput from "@lottery/shared/PlatformTemporalInput.vue";
+import { vGlobalLoading } from "@lottery/shared";
+import { formatDisplayDateTime } from "@lottery/shared";
+const displayLocale = useAdminI18n().locale;
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { createReportsApi, reportsPermissions } from "./reports-api";
@@ -8,95 +23,11 @@ import CommissionReport from "./CommissionReport.vue";
 import CommissionAnalysisReport from "./CommissionAnalysisReport.vue";
 import RewardReports from "./RewardReports.vue";
 import AttributionReport from "./AttributionReportManagement.vue";
-import { useAdminI18n } from "./i18n";
+import { adminKey, useAdminI18n } from "./i18n";
+import { dateRangePreset, type DateRangePreset } from "@lottery/shared";
 
-const { t, locale } = useAdminI18n();
-const englishUi: Record<string, string> = {
-  "只读统计 · 按品牌隔离": "Read-only statistics · Brand scoped",
-  "运营报表": "Operational reports",
-  "只读刷新报表": "Refresh reports (read only)",
-  "报表类型": "Report type",
-  "投注报表": "Betting report",
-  "账本报表": "Ledger report",
-  "报表筛选": "Report filters",
-  "时间范围快捷选项": "Quick date ranges",
-  "今天（设备时区）": "Today (device timezone)",
-  "近 7 天": "Last 7 days",
-  "近 30 天": "Last 30 days",
-  "报表开始时间": "Report start time",
-  "报表结束时间": "Report end time",
-  "会员筛选 UUID": "Member UUID filter",
-  "彩种筛选 UUID": "Game UUID filter",
-  "可留空": "Optional",
-  "投注分组": "Betting grouping",
-  "账本分组": "Ledger grouping",
-  "按天": "By day",
-  "按彩种": "By game",
-  "按会员": "By member",
-  "按账本类型": "By ledger entry type",
-  "时间按本机时区输入，并以显式 UTC RFC3339 发送；修改筛选草稿不会改变当前已显示结果，点击查询后才会提交。": "Enter times in the device timezone; requests use explicit UTC RFC3339. Editing draft filters does not change displayed results until you query.",
-  "查询报表": "Query reports",
-  "超级管理员仍须分别获得对应品牌级或平台级查看与导出授权。": "Super administrators still need separate brand or platform view and export permissions.",
-  "报表汇总是当前投影结果，不代表财务关账。用 Excel 查看 CSV 时，请将数值列作为文本导入，以免超过 15 位的整数被舍入。": "Report totals are current projections, not closed financial accounts. Import CSV numeric columns as text in Excel to avoid rounding integers longer than 15 digits.",
-  "投注按注单提交时间落入半开区间 [from, to)。": "Bets are selected by submission time in the half-open interval [from, to).",
-  "账本按实际创建及入账时间落入半开区间 [from, to)。": "Ledger entries are selected by actual creation and posting time in the half-open interval [from, to).",
-  "读取中…": "Loading…",
-  "导出中…": "Exporting…",
-  "导出全部分组 CSV": "Export all groups as CSV",
-  "品牌": "Brand",
-  "快照": "Snapshot",
-  "时区": "Timezone",
-  "区间 [": "Interval [",
-  "分组": "Group",
-  "会员": "Member",
-  "彩种": "Game",
-  "全部": "All",
-  "标签": "Label",
-  "已结算仅计入期间已完成且无待处理更正的最终结算；未结算含已放置、部分派奖及待处理更正，不含异常和取消。当前最终代次奖金仅计入当前最终代次，不是历史累计派奖。历史更正会重算旧注单 cohort。": "Settled amounts include final settlements without pending corrections. Unsettled includes placed bets, partial payouts and pending corrections, excluding abnormal and cancelled bets. Prizes reflect the current final generation, not historical cumulative payouts. Corrections recompute the original bet cohort.",
-  "账本统计按实际入账时间，不按注单创建时间。派奖入账、派奖冲正和净变动分开显示；全部来源状态的账本 delta 求和为净变动（统一16分项），冻结与解冻转移的净变动为零。下方余额为快照时品牌/会员当前余额，不受查询时间范围限制；不代表全账本已完成对账。": "Ledger statistics use posting time, not bet creation time. Prize credits, reversals and net changes are separate. Net change sums all source/state deltas (16 current buckets); freeze/unfreeze transfers have zero net change. Balances below are current brand/member balances at the snapshot, independent of the date range, not proof of full reconciliation.",
-  "当前余额快照（范围外）": "Current balance snapshot (outside date range)",
-  "此页没有分组记录。": "No groups on this page.",
-  "第": "Items",
-  "项，共": "of",
-  "组": "groups",
-  "上一页": "Previous",
-  "下一页": "Next",
-  "设置筛选条件后查询投注报表。": "Set filters and query the betting report.",
-  "设置筛选条件后查询账本报表。": "Set filters and query the ledger report.",
-  "注单数": "Bet orders",
-  "投注积分": "Stake points",
-  "已放置": "Placed",
-  "已中奖": "Won",
-  "已未中奖": "Lost",
-  "异常": "Abnormal",
-  "已取消": "Cancelled",
-  "退款积分": "Refund points",
-  "已结算投注": "Settled stakes",
-  "未结算投注": "Unsettled stakes",
-  "异常投注": "Abnormal stakes",
-  "当前最终代次奖金": "Current final-generation prizes",
-  "未完成更正数": "Open corrections",
-  "账本笔数": "Ledger entries",
-  "净变动": "Net change",
-  "充值入账": "Recharge credits",
-  "派奖入账": "Prize credits",
-  "派奖冲正": "Prize reversals",
-  "退款": "Refunds",
-  "账户数": "Accounts",
-  "可用积分": "Available points",
-  "冻结积分": "Frozen points",
-  "提现中积分": "Withdrawal-pending points",
-  "当前积分合计": "Current total points",
-  "读取失败，请重试。": "Read failed. Please try again.",
-  "请选择有效的报表开始时间和结束时间。": "Choose valid report start and end times.",
-  "报表结束时间必须晚于开始时间。": "The report end must be later than the start.",
-  "查询时间范围不能超过 93 天。": "The report window cannot exceed 93 days.",
-  "会员筛选 UUID 格式无效。": "The member filter UUID is invalid.",
-  "彩种筛选 UUID 格式无效。": "The game filter UUID is invalid.",
-  "缺少 report_betting.view.brand 或 report_betting.view.platform 查看权限。": "Requires report_betting.view.brand or report_betting.view.platform permission.",
-  "缺少 report_ledger.view.brand 或 report_ledger.view.platform 查看权限。": "Requires report_ledger.view.brand or report_ledger.view.platform permission.",
-};
-function ui(value: string) { return t(value, englishUi[value] ?? value); }
+const { t, locale, display } = useAdminI18n();
+const ui = (key: string) => t(adminKey(key));
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
@@ -115,14 +46,14 @@ const fromDraft = ref("");
 const toDraft = ref("");
 const bettingResult = ref<Awaited<ReturnType<typeof api.betting>> | null>(null);
 const ledgerResult = ref<Awaited<ReturnType<typeof api.ledger>> | null>(null);
-const bettingError = ref("");
-const ledgerError = ref("");
+const bettingError = ref<string | import("@lottery/shared").LocalizedMessage>("");
+const ledgerError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const bettingBusy = ref(false);
 const ledgerBusy = ref(false);
 const bettingExportBusy = ref(false);
 const ledgerExportBusy = ref(false);
-const bettingExportError = ref("");
-const ledgerExportError = ref("");
+const bettingExportError = ref<string | import("@lottery/shared").LocalizedMessage>("");
+const ledgerExportError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const bettingOffset = ref(0);
 const ledgerOffset = ref(0);
 let requestTicket = 0;
@@ -149,19 +80,11 @@ function localDateTime(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
-function setPreset(days: 0 | 7 | 30) {
-  const end = new Date();
-  end.setMilliseconds(0);
-  const start = new Date(end);
-  if (days === 0) start.setHours(0, 0, 0, 0);
-  else start.setDate(start.getDate() - days);
-  fromDraft.value = localDateTime(start);
-  toDraft.value = localDateTime(end);
-}
-function toUtc(value: string): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+function setPreset(preset: DateRangePreset) {
+  const range = dateRangePreset(preset);
+  fromDraft.value = localDateTime(range.from).slice(0,10);
+  const inclusiveEnd = new Date(range.to); if (['yesterday', 'last-week', 'last-month'].includes(preset)) inclusiveEnd.setDate(inclusiveEnd.getDate()-1);
+  toDraft.value = localDateTime(inclusiveEnd).slice(0,10);
 }
 function clearResults() {
   bettingResult.value = null;
@@ -174,9 +97,9 @@ function clearResults() {
 function current(ticket: number, scope: string): boolean {
   return alive && requestTicket === ticket && scopeKey.value === scope && committedScope === scope;
 }
-function errorText(cause: unknown): string {
-  if (cause instanceof AdminApiError) return cause.message;
-  return cause instanceof Error ? cause.message : "读取失败，请重试。";
+function errorText(cause: unknown): string | import("@lottery/shared").LocalizedMessage {
+  if (cause instanceof AdminApiError) return publicErrorMessage(cause, 'read');
+  return cause instanceof Error ? publicErrorMessage(cause) : "读取失败，请重试。";
 }
 function handle401(cause: unknown, ticket: number, scope: string) {
   if (cause instanceof AdminApiError && cause.status === 401 && current(ticket, scope)) {
@@ -189,16 +112,16 @@ function handle401(cause: unknown, ticket: number, scope: string) {
   }
 }
 
-function queryValues(from: string, to: string, memberId: string, gameId: string) {
-  const start = toUtc(from);
-  const end = toUtc(to);
+async function queryValues(from: string, to: string, memberUsername: string, gameId: string) {
+  const start = filterDateBoundary(from, false, 'local').toISOString();
+  const end = filterDateBoundary(to, true, 'local').toISOString();
   if (!start || !end) throw new Error("请选择有效的报表开始时间和结束时间。");
   if (Date.parse(end) <= Date.parse(start)) throw new Error("报表结束时间必须晚于开始时间。");
   if (Date.parse(end) - Date.parse(start) > 93 * 24 * 60 * 60 * 1000) throw new Error("查询时间范围不能超过 93 天。");
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  if (memberId && !uuid.test(memberId)) throw new Error("会员筛选 UUID 格式无效。");
   if (gameId && !uuid.test(gameId)) throw new Error("彩种筛选 UUID 格式无效。");
-  return { from: start, to: end, memberId: memberId || null, gameId: gameId || null };
+  const member = memberUsername ? { id: memberUsername } : null;
+  return { from: start, to: end, memberId: member?.id ?? null, gameId: gameId || null };
 }
 
 async function loadReports(offsets: { betting: number; ledger: number }, filters: ReportFilters, groups: ReportGroups) {
@@ -241,7 +164,7 @@ async function loadReports(offsets: { betting: number; ledger: number }, filters
 
 async function queryReports() {
   try {
-    const filters = queryValues(fromDraft.value, toDraft.value, memberDraft.value.trim(), activeReport.value === "betting" ? gameDraft.value.trim() : "");
+    const filters = await queryValues(fromDraft.value, toDraft.value, memberDraft.value.trim(), activeReport.value === "betting" ? gameDraft.value.trim() : "");
     const groups = { betting: bettingGroup.value, ledger: ledgerGroup.value };
     await loadReports({ betting: 0, ledger: 0 }, filters, groups);
   } catch (cause) {
@@ -254,11 +177,6 @@ async function queryReports() {
     if (permissions.value.betting) bettingError.value = errorText(cause);
     if (permissions.value.ledger) ledgerError.value = errorText(cause);
   }
-}
-
-async function refreshReports() {
-  if (!committedQuery.value) return queryReports();
-  await loadReports({ betting: bettingOffset.value, ledger: ledgerOffset.value }, committedQuery.value.filters, committedQuery.value.groups);
 }
 
 async function exportReport(kind: "betting" | "ledger") {
@@ -334,33 +252,30 @@ function formatInteger(value: string): string {
     return `${negative ? "−" : ""}${digits}`;
   } catch { return value; }
 }
-function formatDate(value: string): string {
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleString(locale.value === "en" ? "en-US" : "zh-CN") : value;
-}
+function formatDate(value: string): string{ return formatDisplayDateTime(value, displayLocale.value); }
 function hasNext(total: string, offset: number, count: number): boolean {
   try { return BigInt(offset) + BigInt(count) < BigInt(total); } catch { return false; }
 }
 function bettingMetrics(totals: NonNullable<typeof bettingResult.value>["summary"]) {
   return [
-    ["注单数", totals.order_count], ["投注积分", totals.stake_points], ["已放置", totals.placed_count],
-    ["已中奖", totals.won_count], ["已未中奖", totals.lost_count], ["异常", totals.abnormal_count],
-    ["已取消", totals.cancelled_count], ["退款积分", totals.refund_points], ["已结算投注", totals.settled_stake_points],
-    ["未结算投注", totals.unfinalized_stake_points], ["异常投注", totals.abnormal_stake_points],
-    ["当前最终代次奖金", totals.current_prize_points], ["未完成更正数", totals.correction_open_count],
+    ["order_count", totals.order_count], ["stake_points", totals.stake_points], ["placed_count", totals.placed_count],
+    ["won_count", totals.won_count], ["lost_count", totals.lost_count], ["abnormal_count", totals.abnormal_count],
+    ["cancelled_count", totals.cancelled_count], ["refund_points", totals.refund_points], ["settled_stake_points", totals.settled_stake_points],
+    ["unfinalized_stake_points", totals.unfinalized_stake_points], ["abnormal_stake_points", totals.abnormal_stake_points],
+    ["current_prize_points", totals.current_prize_points], ["correction_open_count", totals.correction_open_count],
   ] as const;
 }
 function ledgerMetrics(totals: NonNullable<typeof ledgerResult.value>["summary"]) {
   return [
-    ["账本笔数", totals.entry_count], ["净变动", totals.net_points], ["充值入账", totals.recharge_points],
-    ["派奖入账", totals.prize_credit_points], ["派奖冲正", totals.prize_reversal_points], ["退款", totals.refund_points],
+    ["entry_count", totals.entry_count], ["net_points", totals.net_points], ["recharge_points", totals.recharge_points],
+    ["prize_credit_points", totals.prize_credit_points], ["prize_reversal_points", totals.prize_reversal_points], ["refund_points", totals.refund_points],
   ] as const;
 }
 function balanceMetrics(result: NonNullable<typeof ledgerResult.value>) {
   return [
-    ["账户数", result.balances.account_count], ["可用积分", result.balances.available_points],
-    ["冻结积分", result.balances.frozen_points], ["提现中积分", result.balances.withdrawal_points],
-    ["当前积分合计", result.balances.total_points],
+    ["account_count", result.balances.account_count], ["available_points", result.balances.available_points],
+    ["frozen_points", result.balances.frozen_points], ["withdrawal_points", result.balances.withdrawal_points],
+    ["total_points", result.balances.total_points],
   ] as const;
 }
 function rowValues(totals: object): [string, string][] {
@@ -368,14 +283,16 @@ function rowValues(totals: object): [string, string][] {
 }
 function labelFor(key: string): string {
   const labels: Record<string, string> = {
-    order_count: "注单数", stake_points: "投注积分", placed_count: "已放置", won_count: "已中奖", lost_count: "已未中奖",
-    abnormal_count: "异常", cancelled_count: "已取消", refund_points: "退款积分", settled_stake_points: "已结算投注",
-    unfinalized_stake_points: "未结算投注", abnormal_stake_points: "异常投注", current_prize_points: "当前最终代次奖金",
-    correction_open_count: "未完成更正数", entry_count: "账本笔数", net_points: "净变动", recharge_points: "充值入账",
-    prize_credit_points: "派奖入账", prize_reversal_points: "派奖冲正", available_points: "可用积分", frozen_points: "冻结积分",
-    withdrawal_points: "提现中积分", total_points: "当前积分合计",
+    order_count: "admin.copy.57a81d6e", stake_points: "admin.copy.33ae8fea", placed_count: "admin.copy.96f50da6", won_count: "admin.copy.6de62356", lost_count: "admin.copy.1a44472c",
+    abnormal_count: "admin.copy.242b6072", cancelled_count: "admin.copy.c320e9ec", refund_points: "admin.copy.32dff627", settled_stake_points: "admin.copy.fa05625e",
+    unfinalized_stake_points: "admin.copy.4a69124d", abnormal_stake_points: "admin.copy.9c70a235", current_prize_points: "admin.copy.006c120b",
+    correction_open_count: "admin.copy.c4cdafbd", entry_count: "admin.copy.e0c59808", net_points: "admin.copy.3195be70", recharge_points: "admin.copy.cbf177ce",
+    prize_credit_points: "admin.copy.2b9638d8", prize_reversal_points: "admin.copy.4b205d41", available_points: "admin.copy.5b7ceca3", frozen_points: "admin.copy.7c11c5d7",
+    account_count: "admin.copy.64df0e2b", withdrawal_points: "admin.copy.4a6bf99f", total_points: "admin.copy.cb6f8f43",
   };
-  return ui(labels[key] ?? key);
+  const label = labels[key];
+  if (!label) throw new Error(`Unsupported report metric: ${key}`);
+  return ui(label);
 }
 function setErrorForPermission() {
   if (!permissions.value.betting) bettingError.value = "缺少 report_betting.view.brand 或 report_betting.view.platform 查看权限。";
@@ -408,7 +325,7 @@ watch(activeReport, () => {
   ledgerExportError.value = "";
 }, { flush: "sync" });
 onMounted(() => {
-  setPreset(7);
+  setPreset("today");
   setErrorForPermission();
 });
 onBeforeUnmount(() => { alive = false; exportGeneration++; exportTickets.betting++; exportTickets.ledger++; requestTicket++; });
@@ -417,67 +334,68 @@ onBeforeUnmount(() => { alive = false; exportGeneration++; exportTickets.betting
 <template>
   <section class="reports-management" aria-labelledby="reports-title">
     <header class="reports-heading">
-      <div><p class="reports-eyebrow">{{ ui("只读统计 · 按品牌隔离") }}</p><h2 id="reports-title">{{ ui("运营报表") }}</h2></div>
-      <button class="reports-button secondary" type="button" :disabled="bettingBusy || ledgerBusy" @click="refreshReports">{{ ui("只读刷新报表") }}</button>
+      <div><h2 id="reports-title">{{ t('admin.copy.76514f50') }}</h2></div>
+
     </header>
 
-    <nav class="reports-tabs" :aria-label="ui('报表类型')">
-      <button type="button" :aria-pressed="activeReport === 'betting'" @click="activeReport = 'betting'">{{ ui("投注报表") }}</button>
-      <button type="button" :aria-pressed="activeReport === 'ledger'" @click="activeReport = 'ledger'">{{ ui("账本报表") }}</button>
+    <nav class="reports-tabs" :aria-label="t('admin.copy.9dd4dae0')">
+      <button type="button" :aria-pressed="activeReport === 'betting'" @click="activeReport = 'betting'">{{ t('admin.copy.b30b1af4') }}</button>
+      <button type="button" :aria-pressed="activeReport === 'ledger'" @click="activeReport = 'ledger'">{{ t('admin.copy.5a74ef63') }}</button>
     </nav>
 
-    <section class="reports-panel reports-filters" :aria-label="ui('报表筛选')">
-      <div class="reports-presets" :aria-label="ui('时间范围快捷选项')">
-        <button class="reports-button secondary" type="button" @click="setPreset(0)">{{ ui("今天（设备时区）") }}</button>
-        <button class="reports-button secondary" type="button" @click="setPreset(7)">{{ ui("近 7 天") }}</button>
-        <button class="reports-button secondary" type="button" @click="setPreset(30)">{{ ui("近 30 天") }}</button>
+    <section class="reports-panel reports-filters" :aria-label="t('admin.copy.5cfbfc91')">
+      <div class="reports-presets" :aria-label="t('admin.copy.56549499')">
+        <button class="reports-button button-secondary" type="button" @click="setPreset('today')">{{ t('admin.report.today') }}</button>
+        <button class="reports-button button-secondary" type="button" @click="setPreset('yesterday')">{{ t('admin.report.yesterday') }}</button>
+        <button class="reports-button button-secondary" type="button" @click="setPreset('last-week')">{{ t('admin.report.lastWeek') }}</button>
+        <button class="reports-button button-secondary" type="button" @click="setPreset('this-month')">{{ t('admin.report.thisMonth') }}</button>
+        <button class="reports-button button-secondary" type="button" @click="setPreset('last-month')">{{ t('admin.report.lastMonth') }}</button>
       </div>
       <div class="reports-filter-grid">
-        <label>{{ ui("报表开始时间") }}<input v-model="fromDraft" type="datetime-local" step="1" /></label>
-        <label>{{ ui("报表结束时间") }}<input v-model="toDraft" type="datetime-local" step="1" /></label>
-        <label>{{ ui("会员筛选 UUID") }}<input v-model.trim="memberDraft" type="text" inputmode="text" autocomplete="off" :placeholder="ui('可留空')" /></label>
-        <label v-if="activeReport === 'betting'">{{ ui("彩种筛选 UUID") }}<input v-model.trim="gameDraft" type="text" inputmode="text" autocomplete="off" :placeholder="ui('可留空')" /></label>
-        <label v-if="activeReport === 'betting'">{{ ui("投注分组") }}<select v-model="bettingGroup" :aria-label="ui('投注分组')"><option value="day">{{ ui("按天") }}</option><option value="game">{{ ui("按彩种") }}</option><option value="member">{{ ui("按会员") }}</option></select></label>
-        <label v-else>{{ ui("账本分组") }}<select v-model="ledgerGroup" :aria-label="ui('账本分组')"><option value="day">{{ ui("按天") }}</option><option value="entry_type">{{ ui("按账本类型") }}</option></select></label>
+        <label>{{ t('filter.fromDate') }}<PlatformTemporalInput v-model="fromDraft" type="date" :locale="displayLocale" /></label>
+        <label>{{ t('filter.toDate') }}<PlatformTemporalInput v-model="toDraft" type="date" :locale="displayLocale" /></label>
+        <label>{{ t('admin.copy.b43d1eaf') }}<FilterAssociationSelect v-model="memberDraft" :brand-id="brandId" surface="admin" :enabled="activeReport === 'betting' ? permissions.betting : permissions.ledger" :resource="`report_${activeReport}`" kind="member" :label="t('filter.member')" :locale="displayLocale" :scope-key="JSON.stringify(account)" /></label>
+        <label v-if="activeReport === 'betting'">{{ t('admin.report.game') }}<FilterAssociationSelect v-model="gameDraft" :brand-id="brandId" surface="admin" :enabled="permissions.betting" resource="report_betting" kind="game" :label="t('filter.game')" :locale="displayLocale" :scope-key="JSON.stringify(account)" /></label>
+        <label v-if="activeReport === 'betting'">{{ t('admin.report.dimension') }}<select v-model="bettingGroup" :aria-label="t('admin.report.dimension')"><option value="day">{{ t('admin.report.byDate') }}</option><option value="game">{{ t('admin.copy.ef04a723') }}</option><option value="member">{{ t('admin.copy.93a783ef') }}</option></select></label>
+        <label v-else>{{ t('admin.copy.c9058d43') }}<select v-model="ledgerGroup" :aria-label="t('admin.copy.c9058d43')"><option value="day">{{ t('admin.copy.f91541ed') }}</option><option value="entry_type">{{ t('admin.copy.5ea104fa') }}</option></select></label>
+        <button class="reports-button button button-primary" type="button" :disabled="bettingBusy || ledgerBusy" @click="withGlobalLoading(queryReports)">{{ t('admin.copy.6db5d760') }}</button>
       </div>
-      <p class="reports-note">{{ ui("时间按本机时区输入，并以显式 UTC RFC3339 发送；修改筛选草稿不会改变当前已显示结果，点击查询后才会提交。") }}</p>
-      <div class="reports-actions"><button class="reports-button primary" type="button" :disabled="bettingBusy || ledgerBusy" @click="queryReports">{{ ui("查询报表") }}</button></div>
     </section>
 
-    <p v-if="props.account.super_admin" class="reports-note">{{ ui("超级管理员仍须分别获得对应品牌级或平台级查看与导出授权。") }}</p>
-    <p class="reports-pending" role="note">{{ ui("报表汇总是当前投影结果，不代表财务关账。用 Excel 查看 CSV 时，请将数值列作为文本导入，以免超过 15 位的整数被舍入。") }}</p>
+    <p v-if="props.account.super_admin" class="reports-note">{{ t('admin.copy.6a77d8e0') }}</p>
+    <p class="reports-pending" role="note">{{ t('admin.copy.0a7586a4') }}</p>
 
     <section v-show="activeReport === 'betting'" class="reports-panel" aria-labelledby="betting-title">
-      <div class="reports-section-heading"><div><h3 id="betting-title">{{ ui("投注报表") }}</h3><p>{{ ui("投注按注单提交时间落入半开区间 [from, to)。") }}</p></div><div class="reports-export-actions"><span v-if="bettingBusy" class="reports-state">{{ ui("读取中…") }}</span><button class="reports-button secondary" type="button" :disabled="!exportPermissions.betting || !committedQuery || bettingExportBusy" @click="exportReport('betting')">{{ ui(bettingExportBusy ? '导出中…' : '导出全部分组 CSV') }}</button></div></div>
-      <p v-if="bettingExportError" class="reports-error" role="alert">{{ ui(bettingExportError) }}</p>
-      <p v-if="bettingError" class="reports-error" role="alert">{{ ui(bettingError) }}</p>
+      <div class="reports-section-heading"><div><h3 id="betting-title">{{ t('admin.copy.b30b1af4') }}</h3></div><div class="reports-export-actions"><span v-global-loading v-if="bettingBusy" class="reports-state">{{ t('admin.copy.27342bf3') }}</span><button class="reports-button button-secondary" type="button" :disabled="!exportPermissions.betting || !committedQuery || bettingExportBusy" @click="withGlobalLoading(exportReport, 'betting')">{{ bettingExportBusy ? t('admin.copy.1c800a70') : t('admin.copy.800c75fc') }}</button></div></div>
+      <p v-if="bettingExportError" class="reports-error" role="alert">{{ display(bettingExportError) }}</p>
+      <p v-if="bettingError" class="reports-error" role="alert">{{ display(bettingError) }}</p>
       <template v-if="bettingResult">
-        <div class="reports-context"><span>{{ ui("品牌") }} {{ bettingResult.brand_id }}</span><span>{{ ui("快照") }} {{ formatDate(bettingResult.snapshot_at) }}</span><span>{{ ui("时区") }} {{ bettingResult.timezone }}</span><span>{{ ui("区间 [") }}{{ formatDate(bettingResult.query.from) }}, {{ formatDate(bettingResult.query.to) }})</span><span>{{ ui("分组") }} {{ bettingResult.query.group_by }}</span><span>{{ ui("会员") }} {{ bettingResult.query.member_id ?? ui('全部') }}</span><span>{{ ui("彩种") }} {{ bettingResult.query.game_id ?? ui('全部') }}</span></div>
-        <p class="reports-definition">{{ ui("已结算仅计入期间已完成且无待处理更正的最终结算；未结算含已放置、部分派奖及待处理更正，不含异常和取消。当前最终代次奖金仅计入当前最终代次，不是历史累计派奖。历史更正会重算旧注单 cohort。") }}</p>
-        <div class="reports-summary"><div v-for="metric in bettingMetrics(bettingResult.summary)" :key="metric[0]"><span>{{ ui(metric[0]) }}</span><strong>{{ formatInteger(metric[1]) }}</strong></div></div>
-        <div v-if="bettingResult.items.length" class="reports-table-wrap"><table class="reports-table"><thead><tr><th>{{ ui("分组") }}</th><th>{{ ui("标签") }}</th><th v-for="metric in bettingMetrics(bettingResult.items[0].totals)" :key="metric[0]">{{ ui(metric[0]) }}</th></tr></thead><tbody><tr v-for="item in bettingResult.items" :key="item.key"><td>{{ item.key }}</td><td>{{ item.label }}</td><td v-for="metric in bettingMetrics(item.totals)" :key="metric[0]">{{ formatInteger(metric[1]) }}</td></tr></tbody></table></div>
-        <div v-if="bettingResult.items.length" class="reports-cards"><article v-for="item in bettingResult.items" :key="item.key"><h4>{{ item.label }}</h4><p class="reports-key">{{ item.key }}</p><dl><div v-for="[key, value] in rowValues(item.totals)" :key="key"><dt>{{ labelFor(key) }}</dt><dd>{{ formatInteger(value) }}</dd></div></dl></article></div>
-        <p v-if="!bettingResult.items.length" class="reports-note">{{ ui("此页没有分组记录。") }}</p>
-        <div class="reports-pagination"><span>{{ ui("第") }} {{ bettingOffset + 1 }}–{{ bettingOffset + bettingResult.items.length }} {{ ui("项，共") }} {{ formatInteger(bettingResult.total_groups) }} {{ ui("组") }}</span><button class="reports-button secondary" type="button" :disabled="bettingOffset === 0 || bettingBusy || ledgerBusy" @click="pageReport('betting', -1)">{{ ui("上一页") }}</button><button class="reports-button secondary" type="button" :disabled="!hasNext(bettingResult.total_groups, bettingOffset, bettingResult.items.length) || bettingBusy || ledgerBusy" @click="pageReport('betting', 1)">{{ ui("下一页") }}</button></div>
+        <div class="reports-context"><span>{{ t('admin.copy.f676f47d') }} <AssociationName :record="bettingResult" kind="brand" :id="bettingResult.brand_id" :locale="associationLocale" /></span><span>{{ t('admin.copy.82d4e9bd') }} {{ formatDate(bettingResult.snapshot_at) }}</span><span>{{ t('admin.copy.f257539c') }} {{ bettingResult.timezone }}</span><span>{{ t('admin.copy.8b5d46a2') }}{{ formatDate(bettingResult.query.from) }}, {{ formatDate(bettingResult.query.to) }})</span><span>{{ t('admin.copy.e4bcc7b2') }} {{ bettingResult.query.group_by }}</span><span>{{ t('admin.copy.56b2d19b') }} <template v-if="bettingResult.query.member_id"><AssociationName :record="bettingResult.query" kind="member" :id="bettingResult.query.member_id" :locale="associationLocale" /></template><span v-else>{{ t('admin.copy.ef22c1d2') }}</span></span><span>{{ t('admin.copy.7492bbfb') }} <template v-if="bettingResult.query.game_id"><AssociationName :record="bettingResult.query" kind="game" :id="bettingResult.query.game_id" :locale="associationLocale" /></template><span v-else>{{ t('admin.copy.ef22c1d2') }}</span></span></div>
+        <p class="reports-definition">{{ t('admin.copy.172616ca') }}</p>
+        <div class="reports-summary"><div v-for="metric in bettingMetrics(bettingResult.summary)" :key="metric[0]"><span>{{ labelFor(metric[0]) }}</span><strong>{{ formatInteger(metric[1]) }}</strong></div></div>
+        <div v-if="bettingResult.items.length" class="reports-table-wrap"><table class="reports-table"><thead><tr><th>{{ t('admin.copy.b96f43c6') }}</th><th v-for="metric in bettingMetrics(bettingResult.items[0].totals)" :key="metric[0]">{{ labelFor(metric[0]) }}</th></tr></thead><tbody><tr v-for="item in bettingResult.items" :key="item.key"><td>{{ associationGroupLabel(item, bettingResult.query.group_by, item.key, item.label, associationLocale) }}</td><td v-for="metric in bettingMetrics(item.totals)" :key="metric[0]">{{ formatInteger(metric[1]) }}</td></tr></tbody></table></div>
+        <div v-if="bettingResult.items.length" class="reports-cards"><article v-for="item in bettingResult.items" :key="item.key"><h4>{{ associationGroupLabel(item, bettingResult.query.group_by, item.key, item.label, associationLocale) }}</h4><dl><div v-for="[key, value] in rowValues(item.totals)" :key="key"><dt>{{ labelFor(key) }}</dt><dd>{{ formatInteger(value) }}</dd></div></dl></article></div>
+        <p v-if="!bettingResult.items.length" class="reports-note empty-state">{{ t('admin.copy.ae99ca74') }}</p>
+        <div class="reports-pagination"><span>{{ t('admin.copy.d116a312') }} {{ bettingOffset + 1 }}–{{ bettingOffset + bettingResult.items.length }} {{ t('admin.copy.32904ee4') }} {{ formatInteger(bettingResult.total_groups) }} {{ t('admin.copy.e2daf069') }}</span><button class="reports-button button-secondary" type="button" :disabled="bettingOffset === 0 || bettingBusy || ledgerBusy" @click="withGlobalLoading(pageReport, 'betting', -1)">{{ t('admin.copy.dbe7a5d7') }}</button><button class="reports-button button-secondary" type="button" :disabled="!hasNext(bettingResult.total_groups, bettingOffset, bettingResult.items.length) || bettingBusy || ledgerBusy" @click="withGlobalLoading(pageReport, 'betting', 1)">{{ t('admin.copy.ee97c955') }}</button></div>
       </template>
-      <p v-else-if="!bettingBusy && !bettingError && permissions.betting" class="reports-note">{{ ui("设置筛选条件后查询投注报表。") }}</p>
+      <p v-else-if="!bettingBusy && !bettingError && permissions.betting" class="reports-note">{{ t('admin.copy.ebf1a4dd') }}</p>
     </section>
 
     <section v-show="activeReport === 'ledger'" class="reports-panel" aria-labelledby="ledger-title">
-      <div class="reports-section-heading"><div><h3 id="ledger-title">{{ ui("账本报表") }}</h3><p>{{ ui("账本按实际创建及入账时间落入半开区间 [from, to)。") }}</p></div><div class="reports-export-actions"><span v-if="ledgerBusy" class="reports-state">{{ ui("读取中…") }}</span><button class="reports-button secondary" type="button" :disabled="!exportPermissions.ledger || !committedQuery || ledgerExportBusy" @click="exportReport('ledger')">{{ ui(ledgerExportBusy ? '导出中…' : '导出全部分组 CSV') }}</button></div></div>
-      <p v-if="ledgerExportError" class="reports-error" role="alert">{{ ui(ledgerExportError) }}</p>
-      <p v-if="ledgerError" class="reports-error" role="alert">{{ ui(ledgerError) }}</p>
+      <div class="reports-section-heading"><div><h3 id="ledger-title">{{ t('admin.copy.5a74ef63') }}</h3></div><div class="reports-export-actions"><span v-global-loading v-if="ledgerBusy" class="reports-state">{{ t('admin.copy.27342bf3') }}</span><button class="reports-button button-secondary" type="button" :disabled="!exportPermissions.ledger || !committedQuery || ledgerExportBusy" @click="withGlobalLoading(exportReport, 'ledger')">{{ ledgerExportBusy ? t('admin.copy.1c800a70') : t('admin.copy.800c75fc') }}</button></div></div>
+      <p v-if="ledgerExportError" class="reports-error" role="alert">{{ display(ledgerExportError) }}</p>
+      <p v-if="ledgerError" class="reports-error" role="alert">{{ display(ledgerError) }}</p>
       <template v-if="ledgerResult">
-        <div class="reports-context"><span>{{ ui("品牌") }} {{ ledgerResult.brand_id }}</span><span>{{ ui("快照") }} {{ formatDate(ledgerResult.snapshot_at) }}</span><span>{{ ui("时区") }} {{ ledgerResult.timezone }}</span><span>{{ ui("区间 [") }}{{ formatDate(ledgerResult.query.from) }}, {{ formatDate(ledgerResult.query.to) }})</span><span>{{ ui("分组") }} {{ ledgerResult.query.group_by }}</span><span>{{ ui("会员") }} {{ ledgerResult.query.member_id ?? ui('全部') }}</span></div>
-        <p class="reports-definition">{{ ui("账本统计按实际入账时间，不按注单创建时间。派奖入账、派奖冲正和净变动分开显示；全部来源状态的账本 delta 求和为净变动（统一16分项），冻结与解冻转移的净变动为零。下方余额为快照时品牌/会员当前余额，不受查询时间范围限制；不代表全账本已完成对账。") }}</p>
-        <div class="reports-summary"><div v-for="metric in ledgerMetrics(ledgerResult.summary)" :key="metric[0]"><span>{{ ui(metric[0]) }}</span><strong>{{ formatInteger(metric[1]) }}</strong></div></div>
-        <div class="reports-balance"><h4>{{ ui("当前余额快照（范围外）") }}</h4><div class="reports-summary"> <div v-for="metric in balanceMetrics(ledgerResult)" :key="metric[0]"><span>{{ ui(metric[0]) }}</span><strong>{{ formatInteger(metric[1]) }}</strong></div></div></div>
-        <div v-if="ledgerResult.items.length" class="reports-table-wrap"><table class="reports-table"><thead><tr><th>{{ ui("分组") }}</th><th>{{ ui("标签") }}</th><th v-for="metric in ledgerMetrics(ledgerResult.items[0].totals)" :key="metric[0]">{{ ui(metric[0]) }}</th></tr></thead><tbody><tr v-for="item in ledgerResult.items" :key="item.key"><td>{{ item.key }}</td><td>{{ item.label }}</td><td v-for="metric in ledgerMetrics(item.totals)" :key="metric[0]">{{ formatInteger(metric[1]) }}</td></tr></tbody></table></div>
-        <div v-if="ledgerResult.items.length" class="reports-cards"><article v-for="item in ledgerResult.items" :key="item.key"><h4>{{ item.label }}</h4><p class="reports-key">{{ item.key }}</p><dl><div v-for="[key, value] in rowValues(item.totals)" :key="key"><dt>{{ labelFor(key) }}</dt><dd>{{ formatInteger(value) }}</dd></div></dl></article></div>
-        <p v-if="!ledgerResult.items.length" class="reports-note">{{ ui("此页没有分组记录。") }}</p>
-        <div class="reports-pagination"><span>{{ ui("第") }} {{ ledgerOffset + 1 }}–{{ ledgerOffset + ledgerResult.items.length }} {{ ui("项，共") }} {{ formatInteger(ledgerResult.total_groups) }} {{ ui("组") }}</span><button class="reports-button secondary" type="button" :disabled="ledgerOffset === 0 || bettingBusy || ledgerBusy" @click="pageReport('ledger', -1)">{{ ui("上一页") }}</button><button class="reports-button secondary" type="button" :disabled="!hasNext(ledgerResult.total_groups, ledgerOffset, ledgerResult.items.length) || bettingBusy || ledgerBusy" @click="pageReport('ledger', 1)">{{ ui("下一页") }}</button></div>
+        <div class="reports-context"><span>{{ t('admin.copy.f676f47d') }} <AssociationName :record="ledgerResult" kind="brand" :id="ledgerResult.brand_id" :locale="associationLocale" /></span><span>{{ t('admin.copy.82d4e9bd') }} {{ formatDate(ledgerResult.snapshot_at) }}</span><span>{{ t('admin.copy.f257539c') }} {{ ledgerResult.timezone }}</span><span>{{ t('admin.copy.8b5d46a2') }}{{ formatDate(ledgerResult.query.from) }}, {{ formatDate(ledgerResult.query.to) }})</span><span>{{ t('admin.copy.e4bcc7b2') }} {{ ledgerResult.query.group_by }}</span><span>{{ t('admin.copy.56b2d19b') }} <template v-if="ledgerResult.query.member_id"><AssociationName :record="ledgerResult.query" kind="member" :id="ledgerResult.query.member_id" :locale="associationLocale" /></template><span v-else>{{ t('admin.copy.ef22c1d2') }}</span></span></div>
+        <p class="reports-definition">{{ t('admin.copy.c330f5e7') }}</p>
+        <div class="reports-summary"><div v-for="metric in ledgerMetrics(ledgerResult.summary)" :key="metric[0]"><span>{{ labelFor(metric[0]) }}</span><strong>{{ formatInteger(metric[1]) }}</strong></div></div>
+        <div class="reports-balance"><h4>{{ t('admin.copy.fda22cd7') }}</h4><div class="reports-summary"> <div v-for="metric in balanceMetrics(ledgerResult)" :key="metric[0]"><span>{{ labelFor(metric[0]) }}</span><strong>{{ formatInteger(metric[1]) }}</strong></div></div></div>
+        <div v-if="ledgerResult.items.length" class="reports-table-wrap"><table class="reports-table"><thead><tr><th>{{ t('admin.copy.b96f43c6') }}</th><th v-for="metric in ledgerMetrics(ledgerResult.items[0].totals)" :key="metric[0]">{{ labelFor(metric[0]) }}</th></tr></thead><tbody><tr v-for="item in ledgerResult.items" :key="item.key"><td>{{ associationGroupLabel(item, ledgerResult.query.group_by, item.key, item.label, associationLocale) }}</td><td v-for="metric in ledgerMetrics(item.totals)" :key="metric[0]">{{ formatInteger(metric[1]) }}</td></tr></tbody></table></div>
+        <div v-if="ledgerResult.items.length" class="reports-cards"><article v-for="item in ledgerResult.items" :key="item.key"><h4>{{ associationGroupLabel(item, ledgerResult.query.group_by, item.key, item.label, associationLocale) }}</h4><dl><div v-for="[key, value] in rowValues(item.totals)" :key="key"><dt>{{ labelFor(key) }}</dt><dd>{{ formatInteger(value) }}</dd></div></dl></article></div>
+        <p v-if="!ledgerResult.items.length" class="reports-note empty-state">{{ t('admin.copy.ae99ca74') }}</p>
+        <div class="reports-pagination"><span>{{ t('admin.copy.d116a312') }} {{ ledgerOffset + 1 }}–{{ ledgerOffset + ledgerResult.items.length }} {{ t('admin.copy.32904ee4') }} {{ formatInteger(ledgerResult.total_groups) }} {{ t('admin.copy.e2daf069') }}</span><button class="reports-button button-secondary" type="button" :disabled="ledgerOffset === 0 || bettingBusy || ledgerBusy" @click="withGlobalLoading(pageReport, 'ledger', -1)">{{ t('admin.copy.dbe7a5d7') }}</button><button class="reports-button button-secondary" type="button" :disabled="!hasNext(ledgerResult.total_groups, ledgerOffset, ledgerResult.items.length) || bettingBusy || ledgerBusy" @click="withGlobalLoading(pageReport, 'ledger', 1)">{{ t('admin.copy.ee97c955') }}</button></div>
       </template>
-      <p v-else-if="!ledgerBusy && !ledgerError && permissions.ledger" class="reports-note">{{ ui("设置筛选条件后查询账本报表。") }}</p>
+      <p v-else-if="!ledgerBusy && !ledgerError && permissions.ledger" class="reports-note">{{ t('admin.copy.6552b4c8') }}</p>
     </section>
     <WithdrawalReport :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />
     <CommissionReport :key="`commission-report:${props.account.id}:${props.brandId}`" :account="props.account" :brand-id="props.brandId" @session-invalid="emit('session-invalid')" />
@@ -488,7 +406,7 @@ onBeforeUnmount(() => { alive = false; exportGeneration++; exportTickets.betting
 </template>
 
 <style scoped>
-.reports-management{display:grid;gap:16px;color:#172033;min-width:0}.reports-heading,.reports-section-heading,.reports-actions,.reports-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px}.reports-heading h2{margin:2px 0 0;font-size:1.25rem}.reports-eyebrow{margin:0;color:#68758a;font-size:.78rem}.reports-tabs,.reports-presets,.reports-actions{display:flex;gap:8px;flex-wrap:wrap}.reports-tabs button{border:1px solid #cbd3df;border-radius:8px;background:#fff;padding:9px 14px;color:inherit;font:inherit;cursor:pointer}.reports-tabs button[aria-pressed=true]{background:#254a83;border-color:#254a83;color:#fff}.reports-panel{display:grid;gap:14px;min-width:0;border:1px solid #d9e0ea;border-radius:12px;padding:16px;background:#fff}.reports-filters{background:#f8fafc}.reports-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.reports-filter-grid label{display:grid;gap:6px;min-width:0;font-size:.88rem}.reports-filter-grid input,.reports-filter-grid select{box-sizing:border-box;width:100%;min-width:0;border:1px solid #cbd3df;border-radius:8px;padding:9px 10px;background:#fff;font:inherit}.reports-button{min-height:40px;border:1px solid #c5ceda;border-radius:8px;padding:8px 12px;font:inherit;cursor:pointer;background:#fff;color:inherit}.reports-button.primary{background:#254a83;border-color:#254a83;color:#fff}.reports-button:disabled{opacity:.5;cursor:not-allowed}.reports-section-heading h3{margin:0}.reports-section-heading p,.reports-definition,.reports-note,.reports-pending,.reports-state{margin:4px 0 0;color:#667085;font-size:.88rem}.reports-definition{line-height:1.55}.reports-context{display:flex;flex-wrap:wrap;gap:6px 14px;color:#475467;font-size:.82rem;overflow-wrap:anywhere}.reports-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}.reports-summary>div{display:grid;gap:5px;min-width:0;border:1px solid #e5eaf0;border-radius:9px;padding:10px}.reports-summary span{color:#667085;font-size:.8rem}.reports-summary strong{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.reports-balance{display:grid;gap:8px;border-top:1px solid #e8ecf2;padding-top:12px}.reports-balance h4{margin:0}.reports-table-wrap{width:100%;overflow-x:auto;border:1px solid #e2e7ef;border-radius:9px}.reports-table{width:100%;min-width:730px;border-collapse:collapse;font-variant-numeric:tabular-nums}.reports-table th,.reports-table td{height:46px;box-sizing:border-box;padding:8px 10px;border-bottom:1px solid #edf0f4;text-align:left;white-space:nowrap}.reports-table th{position:sticky;top:0;background:#f7f9fc;color:#475467;font-size:.82rem}.reports-table tr:last-child td{border-bottom:0}.reports-pagination{justify-content:flex-end;flex-wrap:wrap}.reports-pagination span{margin-right:auto;color:#667085;font-size:.86rem}.reports-error{margin:0;border-radius:8px;padding:10px 12px;background:#fff0ee;color:#a32e1a}.reports-note,.reports-pending{margin:0}.reports-pending{border-left:3px solid #d8a62c;padding:8px 10px;background:#fff9eb}.reports-cards{display:none}.reports-key{overflow-wrap:anywhere;color:#667085;font-size:.8rem}.reports-cards article{border:1px solid #e2e7ef;border-radius:9px;padding:12px}.reports-cards h4{margin:0}.reports-cards dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 0}.reports-cards dl div{min-width:0}.reports-cards dt{color:#667085;font-size:.78rem}.reports-cards dd{margin:3px 0 0;font-weight:550;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.reports-management{display:grid;gap:16px;color:var(--ink);min-width:0}.reports-heading,.reports-section-heading,.reports-actions,.reports-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px}.reports-heading h2{margin:2px 0 0;font-size:1.25rem}.reports-eyebrow{margin:0;color:#68758a;font-size:.78rem}.reports-tabs,.reports-presets,.reports-actions{display:flex;gap:8px;flex-wrap:wrap}.reports-tabs button{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:9px 14px;color:inherit;font:inherit;cursor:pointer}.reports-tabs button[aria-pressed=true]{background:#254a83;border-color:#254a83;color:var(--surface)}.reports-panel{display:grid;gap:14px;min-width:0;border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--surface)}.reports-filters{background:var(--canvas)}.reports-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.reports-filter-grid label{display:grid;gap:6px;min-width:0;font-size:.88rem}.reports-filter-grid input,.reports-filter-grid select{box-sizing:border-box;width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;padding:9px 10px;background:var(--surface);font:inherit}.reports-button{min-height:40px;border:1px solid #c5ceda;border-radius:8px;padding:8px 12px;font:inherit;cursor:pointer;background:var(--surface);color:inherit}.reports-button.primary{background:#254a83;border-color:#254a83;color:var(--surface)}.reports-button:disabled{opacity:.5;cursor:not-allowed}.reports-section-heading h3{margin:0}.reports-section-heading p,.reports-definition,.reports-note,.reports-pending,.reports-state{margin:4px 0 0;color:var(--muted);font-size:.88rem}.reports-definition{line-height:1.55}.reports-context{display:flex;flex-wrap:wrap;gap:6px 14px;color:#475467;font-size:.82rem;overflow-wrap:anywhere}.reports-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}.reports-summary>div{display:grid;gap:5px;min-width:0;border:1px solid #e5eaf0;border-radius:9px;padding:10px}.reports-summary span{color:var(--muted);font-size:.8rem}.reports-summary strong{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.reports-balance{display:grid;gap:8px;border-top:1px solid #e8ecf2;padding-top:12px}.reports-balance h4{margin:0}.reports-table-wrap{width:100%;overflow-x:auto;border:1px solid #e2e7ef;border-radius:9px}.reports-table{width:100%;min-width:730px;border-collapse:collapse;font-variant-numeric:tabular-nums}.reports-table th,.reports-table td{height:46px;box-sizing:border-box;padding:8px 10px;border-bottom:1px solid var(--line-subtle);text-align:left;white-space:nowrap}.reports-table th{position:sticky;top:0;background:var(--canvas);color:#475467;font-size:.82rem}.reports-table tr:last-child td{border-bottom:0}.reports-pagination{justify-content:flex-end;flex-wrap:wrap}.reports-pagination span{margin-right:auto;color:var(--muted);font-size:.86rem}.reports-error{margin:0;border-radius:8px;padding:10px 12px;background:#fff0ee;color:#a32e1a}.reports-note,.reports-pending{margin:0}.reports-pending{border-left:3px solid #d8a62c;padding:8px 10px;background:#fff9eb}.reports-cards{display:none}.reports-key{overflow-wrap:anywhere;color:var(--muted);font-size:.8rem}.reports-cards article{border:1px solid #e2e7ef;border-radius:9px;padding:12px}.reports-cards h4{margin:0}.reports-cards dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 0}.reports-cards dl div{min-width:0}.reports-cards dt{color:var(--muted);font-size:.78rem}.reports-cards dd{margin:3px 0 0;font-weight:550;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 .reports-export-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 @media(max-width:700px){.reports-management{gap:12px}.reports-heading{align-items:flex-start}.reports-panel{padding:12px}.reports-filter-grid{grid-template-columns:minmax(0,1fr)}.reports-actions .reports-button{width:100%}.reports-table-wrap{display:none}.reports-cards{display:grid;gap:9px}.reports-pagination{justify-content:center}.reports-pagination span{flex-basis:100%;text-align:center}.reports-pagination .reports-button{flex:1;min-width:0}.reports-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.reports-section-heading{align-items:flex-start}.reports-context{display:grid;gap:4px}}
 </style>

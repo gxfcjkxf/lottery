@@ -121,7 +121,7 @@ test('real manual rewards recover original receipts without duplicate money and 
   await data(await page.request.post(`${platform}/auth/login`,{headers:{Origin:platformOrigin,'Idempotency-Key':crypto.randomUUID()},data:{identifier:'reward_s22_reader',password:process.env.TEST_REWARD_SUPER_PASSWORD}}));
   await page.goto(platformOrigin);
   await page.locator('.nav-item').filter({hasText:'Manual rewards'}).click();
-  await page.locator('.brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   panel=page.getByTestId('platform-rewards');
   await expect(panel.getByRole('heading',{name:'Manual rewards',exact:true})).toBeVisible();
   await expect(panel.getByTestId('rewards-receipt')).toHaveCount(0);

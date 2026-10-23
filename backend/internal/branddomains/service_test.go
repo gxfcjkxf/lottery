@@ -50,7 +50,7 @@ func TestDomainGlobalReservationAndConcurrentVersion(t *testing.T) {
 				return
 			}
 			defer tx.Rollback(ctx)
-			_, e = s.Change(ctx, tx, brand, a, "", Input{Version: r.Version, Domain: host, Enabled: true, Primary: true, Reason: "race brand shared version"}, points.Metadata{ActorType: "admin", ActorID: a.ID, RequestID: ids.New()})
+			_, e = s.Change(ctx, tx, brand, a, "", Input{Version: r.Version, Domain: host, Enabled: true, Reason: "race brand shared version"}, points.Metadata{ActorType: "admin", ActorID: a.ID, RequestID: ids.New()})
 			if e == nil {
 				e = tx.Commit(ctx)
 			}
@@ -148,13 +148,13 @@ func TestDomainInputClosedAndCanonical(t *testing.T) {
 			t.Fatal("accepted", host)
 		}
 	}
-	for _, raw := range []string{`{"version":1,"domain":"a.example","enabled":true,"is_primary":false,"reason":"test"}`, `{"version":1,"enabled":true,"is_primary":false,"reason":"test"}`} {
+	for _, raw := range []string{`{"version":1,"domain":"a.example","enabled":true,"reason":"test"}`, `{"version":1,"enabled":true,"reason":"test"}`} {
 		var in Input
 		if json.Unmarshal([]byte(raw), &in) != nil {
 			t.Fatal(raw)
 		}
 	}
-	for _, raw := range []string{`{"version":1,"enabled":null,"is_primary":false,"reason":"test"}`, `{"version":1,"enabled":true,"reason":"test"}`, `{"version":1,"version":1,"enabled":true,"is_primary":false,"reason":"test"}`, `{"version":1,"enabled":true,"is_primary":false,"reason":"test","extra":1}`} {
+	for _, raw := range []string{`{"version":1,"enabled":null,"reason":"test"}`, `{"version":1,"reason":"test"}`, `{"version":1,"version":1,"enabled":true,"reason":"test"}`, `{"version":1,"enabled":true,"reason":"test","extra":1}`} {
 		var in Input
 		if json.Unmarshal([]byte(raw), &in) == nil {
 			t.Fatal("accepted", raw)
@@ -168,21 +168,17 @@ func TestDomainChangesResolveAndPreserveAuditedSnapshots(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	next, e := change(t, s, a, "", Input{Version: before.Version, Domain: "new.example.test", Enabled: true, Primary: true, Reason: "bind new primary"})
+	next, e := change(t, s, a, "", Input{Version: before.Version, Domain: "new.example.test", Enabled: true, Reason: "bind new domain"})
 	if e != nil || next.Version != before.Version+1 || next.AuditLogID == "" {
 		t.Fatal(next, e)
 	}
 	var added Domain
-	primary := 0
 	for _, d := range next.Domains {
 		if d.Domain == "new.example.test" {
 			added = d
 		}
-		if d.Primary && d.Enabled {
-			primary++
-		}
 	}
-	if primary != 1 || added.ID == "" {
+	if added.ID == "" {
 		t.Fatal(next)
 	}
 	resolved, e := (tenant.Store{DB: s.DB}).Resolve(ctx, "new.example.test:443", "")
@@ -193,7 +189,7 @@ func TestDomainChangesResolveAndPreserveAuditedSnapshots(t *testing.T) {
 	if e != nil || len(history) != 1 || len(history[0].BeforeDomains) != len(before.Domains) || len(history[0].Domains) != len(next.Domains) {
 		t.Fatal(history, e)
 	}
-	off, e := change(t, s, a, added.ID, Input{Version: next.Version, Enabled: false, Primary: false, Reason: "disable binding"})
+	off, e := change(t, s, a, added.ID, Input{Version: next.Version, Enabled: false, Reason: "disable binding"})
 	if e != nil || off.Version != next.Version+1 {
 		t.Fatal(off, e)
 	}
@@ -289,6 +285,119 @@ func TestDomainAuthorizationVersionStateAndRollback(t *testing.T) {
 		t.Fatal(e)
 	}
 	if _, e = change(t, s, a, "", in); !errors.Is(e, ErrState) {
+		t.Fatal(e)
+	}
+}
+
+func TestDomainDeleteReleasesOwnershipAndPreservesHistory(t *testing.T) {
+	s, a := fixture(t)
+	ctx := context.Background()
+	before, e := s.Read(ctx, brand)
+	if e != nil {
+		t.Fatal(e)
+	}
+	added, e := change(t, s, a, "", Input{Version: before.Version, Domain: "release.example.test", Enabled: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	var target string
+	for _, d := range added.Domains {
+		if d.Domain == "release.example.test" {
+			target = d.ID
+		}
+	}
+	remove := func(actor access.Account, b string, v int64) (Record, error) {
+		tx, e := s.DB.Begin(ctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer tx.Rollback(ctx)
+		out, e := s.Remove(ctx, tx, b, actor, target, v, points.Metadata{ActorType: "admin", ActorID: actor.ID, RequestID: ids.New()})
+		if e != nil {
+			return out, e
+		}
+		return out, tx.Commit(ctx)
+	}
+	if _, e = s.DB.Exec(ctx, `DELETE FROM brand_domains WHERE id=$1`, target); e == nil {
+		t.Fatal("unaudited deletion succeeded")
+	}
+	denied := a
+	denied.Roles = nil
+	if _, e = remove(denied, brand, added.Version); !errors.Is(e, ErrDenied) {
+		t.Fatal(e)
+	}
+	if _, e = remove(a, brand, added.Version-1); !errors.Is(e, ErrVersion) {
+		t.Fatal(e)
+	}
+	foreign := "0199a000-0000-7000-8000-000000000001"
+	actor := a
+	actor.BrandIDs = append(actor.BrandIDs, foreign)
+	actor.Roles = append(actor.Roles, access.Role{BrandID: foreign, Permissions: []access.Permission{{Resource: "brand_domains", Action: "write", Scope: access.ScopeBrand}}})
+	foreignBefore, e := s.Read(ctx, foreign)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = remove(actor, foreign, foreignBefore.Version); !errors.Is(e, ErrNotFound) {
+		t.Fatal(e)
+	}
+	if _, e = s.DB.Exec(ctx, `CREATE FUNCTION reject_delete_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='brand_domains.update' THEN RAISE EXCEPTION 'audit rejected';END IF;RETURN NEW;END $$;CREATE TRIGGER reject_delete_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_delete_audit()`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = remove(a, brand, added.Version); e == nil {
+		t.Fatal("audit failure ignored")
+	}
+	same, e := s.Read(ctx, brand)
+	if e != nil || same.Version != added.Version || len(same.Domains) != len(added.Domains) {
+		t.Fatal(same, e)
+	}
+	if _, e = s.DB.Exec(ctx, `DROP TRIGGER reject_delete_audit ON audit_logs;DROP FUNCTION reject_delete_audit()`); e != nil {
+		t.Fatal(e)
+	}
+	removed, e := remove(a, brand, added.Version)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if removed.Version != added.Version+1 || removed.AuditLogID == "" {
+		t.Fatal(removed)
+	}
+	for _, d := range removed.Domains {
+		if d.ID == target {
+			t.Fatal("domain retained")
+		}
+	}
+	if _, e = (tenant.Store{DB: s.DB}).Resolve(ctx, "release.example.test", ""); !errors.Is(e, tenant.ErrNotFound) {
+		t.Fatal(e)
+	}
+	tx, e := s.DB.Begin(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback(ctx)
+	rebound, e := s.Change(ctx, tx, foreign, actor, "", Input{Version: foreignBefore.Version, Domain: "release.example.test", Enabled: true}, points.Metadata{ActorType: "admin", ActorID: actor.ID, RequestID: ids.New()})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = tx.Commit(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if rebound.BrandID != foreign {
+		t.Fatal(rebound)
+	}
+	resolved, e := (tenant.Store{DB: s.DB}).Resolve(ctx, "release.example.test", "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if resolved.ID != foreign {
+		t.Fatal(resolved)
+	}
+	history, e := s.History(ctx, brand, 20, 0)
+	if e != nil || len(history) < 2 {
+		t.Fatal(history, e)
+	}
+	if history[0].AuditLogID != removed.AuditLogID || len(history[0].BeforeDomains) != len(added.Domains) || len(history[0].Domains) != len(removed.Domains) {
+		t.Fatal(history)
+	}
+	if _, e = remove(a, brand, removed.Version); !errors.Is(e, ErrNotFound) {
 		t.Fatal(e)
 	}
 }

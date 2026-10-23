@@ -20,7 +20,7 @@ const joined: NotificationItem = {
   template_version: 1,
   content: {
     en: { title: "Welcome", body: "Your membership is ready. Welcome aboard." },
-    "zh-CN": { title: "欢迎", body: "您的会员账户已准备就绪，欢迎加入。" },
+    "zh-CN": { title: "欢迎", body: "您的会员账号已准备就绪，欢迎加入。" },
   },
   payload: { resource_id: memberId, points: null },
   created_at: createdAt,
@@ -48,6 +48,14 @@ const ok = (data: unknown) =>
   new Response(JSON.stringify({ success: true, data }), { status: 200 });
 
 describe("user notification API", () => {
+  it("resolves stored system i18n references while preserving notification identity and event facts", async () => {
+    const stored = { ...joined, content: { i18n_key: "member.joined", i18n_version: 1 } };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok(page({ items: [stored] })));
+    const result = await createNotificationApi({ fetch: fetcher }).list();
+    expect(result.items[0]).toEqual(joined);
+    expect(stored.content).toEqual({ i18n_key: "member.joined", i18n_version: 1 });
+  });
+
   it("lists a strict page using the brand route and included cookie credentials", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok(page()));
     const api = createNotificationApi({ brandCode: "north star", fetch: fetcher });
@@ -602,8 +610,8 @@ describe("user notification API", () => {
       } as Response),
     });
     await expect(interruptedResponse.list()).rejects.toMatchObject({
-      status: 0,
-      code: "network_error",
+      status: 502,
+      code: "invalid_response",
     });
 
     const httpError = createNotificationApi({

@@ -1,3 +1,6 @@
+import { readAdminEnvelope } from './admin-api'
+import { readAdminErrorResponse } from './admin-api'
+import { copyAssociationNames } from "@lottery/shared"
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -198,7 +201,6 @@ export function rewardReportPermissions(account: AdminAccount, brand: string) {
 }
 
 export function createRewardReportApi(fetcher: FetchLike = fetch) {
-  async function requestError(response: Response): Promise<never> { throw new AdminApiError(`Request failed (${response.status})`, response.status); }
   async function read(kind: RewardReportKind, brand: string, query: RewardReportQuery, signal?: AbortSignal): Promise<RewardReport> {
     if (!isKind(kind)) return input("奖励报表类型无效。");
     if (!UUID.test(brand)) return input("品牌 UUID 无效。");
@@ -206,10 +208,11 @@ export function createRewardReportApi(fetcher: FetchLike = fetch) {
     for (const [key, value] of Object.entries(q)) if (value !== null) params.set(key, String(value));
     const path = kind === "rewards" ? BASE : `${BASE.replace(/rewards$/, "reward-orders")}`;
     const response = await fetcher(`${path}?${params}`, { method: "GET", credentials: "same-origin", headers: { "X-Brand-ID": brandId, Accept: "application/json" }, ...(signal ? { signal } : {}) });
-    if (!response.ok) return requestError(response);
-    let body: unknown; try { body = await response.json(); } catch { body = null; }
-    if (!record(body) || !exact(body, ["success", "data", "request_id"]) || body.success !== true || typeof body.request_id !== "string" || !/^[A-Za-z0-9_.:-]{1,80}$/.test(body.request_id)) return invalid();
-    return validatePage(body.data, brandId, kind, q);
+    const body = await readAdminEnvelope(response);
+    if (!record(body) || Object.keys(body).some(key => !["success", "data", "request_id", "associations", "association_error"].includes(key)) || body.success !== true || typeof body.request_id !== "string" || !/^[A-Za-z0-9_.:-]{1,80}$/.test(body.request_id)) return invalid();
+    const checked = validatePage(body.data, brandId, kind, q);
+    copyAssociationNames(body.data, checked);
+    return checked;
   }
   async function exportCsv(kind: RewardReportKind, brand: string, query: RewardReportQuery, signal?: AbortSignal) {
     if (!isKind(kind)) return input("奖励报表类型无效。");
@@ -218,7 +221,7 @@ export function createRewardReportApi(fetcher: FetchLike = fetch) {
     for (const k of ["from", "to", "group_by", "member_id", "order_id"] as const) { const v = q[k]; if (v !== null) params.set(k, String(v)); }
     const path = `${kind === "rewards" ? BASE : BASE.replace(/rewards$/, "reward-orders")}.csv`;
     const response = await fetcher(`${path}?${params}`, { method: "GET", credentials: "same-origin", headers: { "X-Brand-ID": brandId, Accept: "text/csv" }, ...(signal ? { signal } : {}) });
-    if (!response.ok) return requestError(response);
+    if (!response.ok) throw await readAdminErrorResponse(response);
     const length = response.headers.get("Content-Length");
     if (!length || !UINT.test(length) || Number(length) > MAX_BYTES) return invalid("CSV 文件大小无效。");
     const bytes = new Uint8Array(await response.arrayBuffer());

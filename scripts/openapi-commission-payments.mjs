@@ -16,7 +16,7 @@ const admin = (method, suffix, operationId, summary, data, extra = {}) => ({
 });
 export const schemas = {
   CommissionPaymentPolicy: obj({ brand_id: ref('UUID'), version, enabled: { type: 'boolean' }, audit_log_id: { anyOf: [ref('UUID'), { type: 'string', const: '' }] }, updated_at: ref('DateTime') }),
-  CommissionPaymentPolicyInput: obj({ version, enabled: { type: 'boolean' }, reason: ref('Reason') }),
+  CommissionPaymentPolicyInput: obj({ version, enabled: { type: 'boolean' }, reason: ref('Reason') }, ["version", "enabled"]),
   CommissionPayment: {
     ...obj({
       id: ref('UUID'), brand_id: ref('UUID'), cycle_id: ref('UUID'), run_id: ref('UUID'),
@@ -29,13 +29,13 @@ export const schemas = {
     description: 'Payout progress projection. Exact totals and counts are decimal strings. Payment targets are never exposed. payout_mode is the immutable historical bet snapshot identity and remains mixed. Awaiting approval is valid for manual or mixed mode only when paid_points and paid_count are both zero and last_error_code is null. A mixed cycle with any manual bet snapshot requires brand administrator approval for the entire cycle; its automatic portion is never split out. Blocked correction or evidence records are not approvable.',
   },
   CommissionPaymentPage: obj({ brand_id: ref('UUID'), ...pageFields('CommissionPayment') }),
-  CommissionPaymentAction: obj({ version, reason: ref('Reason') }),
+  CommissionPaymentAction: obj({ version, reason: ref('Reason') }, ["version"]),
 };
 export const operations = [
   admin('GET', '/commission-payment-policy', 'getCommissionPaymentPolicy', 'Read commission payout policy', ref('CommissionPaymentPolicy')),
   admin('PUT', '/commission-payment-policy', 'updateCommissionPaymentPolicy', 'Update commission payout policy', ref('CommissionPaymentPolicy'), {
     permissions: ['commission_payment_policy.write.brand'], parameters:[actorHeader], requestBody: ref('CommissionPaymentPolicyInput'), idempotency: true,
-    description: 'Requires commission view plus commission_payment_policy.write.brand; super-admin writes are denied. The default is disabled and enabling requires an explicit version and audit reason. Session and permission are checked before receipt replay.',
+    description: 'Requires commission view plus commission_payment_policy.write.brand; super-admin writes are denied. The default is disabled and enabling requires an explicit version; audit reason is optional. Session and permission are checked before receipt replay.',
   }),
   admin('GET', '/commission-payments', 'listCommissionPayments', 'List commission payout records', ref('CommissionPaymentPage'), { parameters: page }),
   admin('GET', '/commission-payments/{id}', 'getCommissionPayment', 'Read a commission payout record', ref('CommissionPayment')),

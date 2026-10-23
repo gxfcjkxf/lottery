@@ -1,3 +1,5 @@
+import { readApiEnvelope } from '@lottery/shared'
+
 import type {
   RuleDefinition,
   RuleTicketSelection,
@@ -118,11 +120,6 @@ export interface BetOrder {
 export interface BettingApiErrorEnvelope {
   code?: string;
   message?: string;
-}
-interface Envelope<T> {
-  success?: boolean;
-  data?: T;
-  error?: BettingApiErrorEnvelope | null;
 }
 
 export class BettingApiError extends Error {
@@ -268,17 +265,8 @@ export function createBettingApi(
         0,
       );
     }
-    let envelope: Envelope<T>;
-    try {
-      envelope = (await response.json()) as Envelope<T>;
-    } catch { invalidResponse(); }
-    if (!envelope || typeof envelope !== 'object') invalidResponse();
-    if (!response.ok) {
-      if (envelope.success !== false || typeof envelope.error?.code !== 'string' ||
-        typeof envelope.error?.message !== 'string') invalidResponse();
-      throw new BettingApiError(envelope.error.message, response.status, envelope.error.code);
-    }
-    if (envelope.success !== true || envelope.data == null) invalidResponse();
+    const envelope = await readApiEnvelope<T>(response,(message,status,code)=>new BettingApiError(message,status,code === 'INVALID_RESPONSE' ? 'invalid_response' : code));
+    if (envelope.data == null) invalidResponse();
     return envelope.data;
   }
   const pageQuery = (limit: number, offset: number) =>
@@ -306,9 +294,9 @@ export function createBettingApi(
       ).then(checkedOrder);
     },
     orders(limit = 50, offset = 0) {
-      return request<{ items: BetOrder[] }>(
+      return request<{ items: Array<BetOrder & { period_no: string }> }>(
         `/bet-orders?${pageQuery(limit, offset)}`,
-      ).then(value => { checkedPage(value); value.items.forEach(checkedOrder); return value; });
+      ).then(value => { checkedPage(value); value.items.forEach(order => { checkedOrder(order); if(typeof order.period_no !== 'string' || !order.period_no) invalidResponse(); }); return value; });
     },
     order(id: string) {
       return request<BetOrder>(`/bet-orders/${encodeURIComponent(id)}`).then(checkedOrder);

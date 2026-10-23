@@ -18,17 +18,17 @@ test('platform resumes and pauses an owned brand with audited original-request r
   const row = page.getByTestId('platform-brand-list').locator('tr').filter({ hasText: code });
   await row.getByRole('button', { name: 'Manage status', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Brand operating status', exact: true });
-  await expect(dialog).toContainText('Paused · v1');
-  await expect(dialog.getByRole('button', { name: 'Confirm status change', exact: true })).toBeDisabled();
-  await dialog.getByLabel('Reason', { exact: true }).fill('Enable this owned brand');
+  await expect(dialog).toContainText('Paused');
+  await expect(dialog).not.toContainText('Configuration version');
+  await expect(dialog.getByRole('button', { name: 'Confirm status change', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('textbox')).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Confirm status change', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(row.locator('.status-pill')).toHaveText('Active');
 
   await row.getByRole('button', { name: 'Manage status', exact: true }).click();
-  await expect(dialog).toContainText('Active · v2');
-  const reason = 'Pause owned brand while existing orders continue';
-  await dialog.getByLabel('Reason', { exact: true }).fill(reason);
+  await expect(dialog).toContainText('Active');
+  const reason = '';
   const attempts: Array<{ body: string | null; key: string | undefined; brand: string | undefined }> = [];
   let receipt: { version: number; audit_log_id: string } | undefined;
   await page.route('**/api/v1/platform/brand-operation', async route => {
@@ -42,7 +42,7 @@ test('platform resumes and pauses an owned brand with audited original-request r
   });
   await dialog.getByRole('button', { name: 'Confirm status change', exact: true }).click();
   await expect(dialog.getByRole('button', { name: 'Retry the same request', exact: true })).toBeVisible();
-  await expect(dialog).toContainText(reason);
+  expect(JSON.parse(attempts[0].body!).reason).toBe(reason);
   await dialog.getByRole('button', { name: 'Close', exact: true }).last().click();
   await expect(dialog).toHaveCount(0);
   await row.getByRole('button', { name: 'Manage status', exact: true }).click();
@@ -59,7 +59,7 @@ test('platform resumes and pauses an owned brand with audited original-request r
   const items = (await history.json()).data.items;
   expect(items).toHaveLength(2);
   expect(items[0]).toMatchObject({ status: 'paused', reason, audit_log_id: receipt!.audit_log_id, changed_by: me.id });
-  expect(items[1]).toMatchObject({ status: 'active', reason: 'Enable this owned brand' });
+  expect(items[1]).toMatchObject({ status: 'active', reason: '' });
   const forbidden = await page.request.post(`${api}/withdrawals/${crypto.randomUUID()}/approve`, {
     headers: { Origin: origin, 'X-Brand-ID': brand.id, 'Idempotency-Key': crypto.randomUUID() }, data: {},
   });

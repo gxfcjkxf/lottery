@@ -126,7 +126,7 @@ func Allowed(a access.Account, brand, action string) bool {
 	return (action == "run" || action == "retry") && view && !a.SuperAdmin && access.Authorize(a, "wallet", "reconcile", access.ScopeBrand, brand)
 }
 func validReason(s string) bool {
-	return utf8.ValidString(s) && strings.TrimSpace(s) == s && s != "" && len(s) <= 500 && !strings.ContainsAny(s, "\x00\r\n")
+	return utf8.ValidString(s) && strings.TrimSpace(s) == s && len(s) <= 500 && !strings.ContainsAny(s, "\x00\r\n")
 }
 func validPage(brand string, limit, offset int) bool {
 	return uuid.MatchString(brand) && limit >= 1 && limit <= 100 && offset >= 0 && offset <= 1000000

@@ -17,7 +17,7 @@ const content = {
   "zh-CN": { title: "积分", body: "获得 {points}" },
 };
 const intent: PendingNotificationTemplateWrite = {
-  ...scope, body: { version: 2, content, reason: "retain this exact reason" }, key: "stable-template-key",
+  ...scope, body: { version: 2, content, reason: "" }, key: "stable-template-key",
 };
 
 afterEach(() => {
@@ -27,7 +27,7 @@ afterEach(() => {
 
 describe("page-session notification template write state", () => {
   it("freezes a detached copy of the complete put body", () => {
-    const form = reactive({ version: 2, content: { en: { ...content.en }, "zh-CN": { ...content["zh-CN"] } }, reason: "retain this exact reason" });
+    const form = reactive({ version: 2, content: { en: { ...content.en }, "zh-CN": { ...content["zh-CN"] } }, reason: "" });
     const body = freezeNotificationTemplateBody(form);
     form.content.en.body = "mutated";
     form.reason = "mutated";

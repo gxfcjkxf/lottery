@@ -14,8 +14,7 @@ export function reasonByteLength(value: string): number {
 }
 
 export function validBetReason(value: string): boolean {
-  return (
-    Boolean(value.trim()) &&
+  return (value === "" || value.trim().length > 0) && (
     reasonByteLength(value) <= BET_REASON_MAX_UTF8_BYTES
   );
 }

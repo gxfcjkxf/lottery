@@ -27,7 +27,7 @@ test('platform catalogue pages games, reads periods and results without write co
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Bet orders' }).click();
-  await page.locator('.brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   await page.getByTestId('platform-bet-tabs').getByRole('button', { name: 'Games and draws' }).click();
   const panel = page.getByTestId('platform-lottery');
   await expect(panel.locator('tbody tr')).toHaveCount(50);
@@ -40,7 +40,7 @@ test('platform catalogue pages games, reads periods and results without write co
   await expect(panel.getByRole('button', { name: /Approve|Manual draw|Settle|Edit/i })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('platform-lottery.png'), fullPage: true });
-  await page.locator('.brand-picker select').selectOption('');
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(panel).toHaveCount(0);
   await expect(page.getByTestId('platform-bet-detail')).toHaveCount(0);
 });
@@ -49,7 +49,7 @@ test('platform catalogue uses the real games endpoint and has no manual draw rou
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Bet orders' }).click();
-  await page.locator('.brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   const response = page.waitForResponse(r => r.url().endsWith('/api/v1/platform/games?limit=51&offset=0'));
   await page.getByTestId('platform-bet-tabs').getByRole('button', { name: 'Games and draws' }).click();
   expect((await response).status()).toBe(200);
@@ -112,7 +112,7 @@ test('platform reads a genuine brand-created period and manual result without ch
     await page.goto(origin);
     await expect(page.locator('.app-frame')).toBeVisible();
     await page.locator('.nav-item').filter({ hasText: 'Bet orders' }).click();
-    await page.locator('.brand-picker select').selectOption(brand);
+    await page.locator('.topbar-brand-picker select').selectOption(brand);
     await page.getByTestId('platform-bet-tabs').getByRole('button', { name: 'Games and draws' }).click();
     await page.getByTestId('platform-lottery').getByRole('button', { name, exact: true }).click();
     await page.getByTestId('platform-game-periods').getByRole('button', { name: ready.period_no, exact: true }).click();

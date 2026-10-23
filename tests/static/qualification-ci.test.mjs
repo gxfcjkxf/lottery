@@ -11,7 +11,8 @@ test('qualification CI uses real synthetic stakes and isolated no-retry financia
   assert.match(job,/playwright test --config playwright\.qualification\.config\.ts/);
   assert.match(job,/PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH/);
   const config=readFileSync(new URL('../../playwright.qualification.config.ts',import.meta.url),'utf8');
-  for (const width of [360,768,1024,1440]) assert.ok(config.includes(`width: ${width},`));
+  assert.match(config, /devices\['Pixel 7'\]/);
+  for (const width of [768,1024,1440]) assert.ok(config.includes(`width: ${width},`));
   assert.match(config,/workers: 1/);
   assert.match(config,/retries: 0/);
   assert.match(config,/fullyParallel: false/);

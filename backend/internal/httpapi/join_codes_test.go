@@ -47,16 +47,38 @@ func TestJoinCodeAdminLifecyclePublicPrivacyAndNoFunds(t *testing.T) {
 	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM point_ledger_entries`).Scan(&ledgerBefore); err != nil {
 		t.Fatal(err)
 	}
-	body := joinCodeCreateBody(f.memberID)
+	duplicate := f.call("POST", "/api/v1/admin/join-codes", "join-existing-member-001", f.token, managedBrand, joinCodeCreateBody(f.memberID))
+	if duplicate.Code != 409 {
+		t.Fatalf("automatic referral duplicated: status=%d body=%s", duplicate.Code, duplicate.Body.String())
+	}
+	owner := newNormalAgentMember(t, f.managementHTTP, "manual_referral_lifecycle")
+	body := joinCodeCreateBody(owner)
 	created := f.call("POST", "/api/v1/admin/join-codes", "join-create-replay-001", f.token, managedBrand, body)
 	if created.Code != 201 {
 		t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
 	}
 	var code attribution.Code
 	managedData(t, created, &code)
-	if len(code.Code) != 24 || code.Kind != "referral" || code.OwnerMemberID != f.memberID || code.Status != "active" || code.Version != 1 || code.AuditLogID == "" {
+	if len(code.Code) != 24 || code.Kind != "referral" || code.OwnerMemberID != owner || code.Status != "active" || code.Version != 1 || code.AuditLogID == "" {
 		t.Fatalf("unexpected created code: %+v", code)
 	}
+	validatePublic := func(path string, want bool) {
+		t.Helper()
+		response := pointsCall(f.managementHTTP, "GET", path, "", "", managedBrand, "", nil)
+		if response.Code != 200 || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("public validation status=%d body=%s", response.Code, response.Body.String())
+		}
+		var data map[string]bool
+		managedData(t, response, &data)
+		if len(data) != 1 || data["valid"] != want {
+			t.Fatalf("validation must return eligibility only: %+v", data)
+		}
+	}
+	validationPath := "/api/v1/b/aurora/join-codes/validate?referral_code=" + code.Code
+	validatePublic(validationPath, true)
+	validatePublic("/api/v1/b/harbor/join-codes/validate?referral_code="+code.Code, false)
+	validatePublic(validationPath+"&agent_code=bad", false)
+	validatePublic("/api/v1/b/aurora/join-codes/validate?agent_code="+code.Code, false)
 	replayed := f.call("POST", "/api/v1/admin/join-codes", "join-create-replay-001", f.token, managedBrand, body)
 	var replay attribution.Code
 	if replayed.Code != 201 {
@@ -76,13 +98,13 @@ func TestJoinCodeAdminLifecyclePublicPrivacyAndNoFunds(t *testing.T) {
 	if got.Code != 200 {
 		t.Fatalf("get status=%d body=%s", got.Code, got.Body.String())
 	}
-	list := f.call("GET", "/api/v1/admin/join-codes?kind=referral&owner_member_id="+f.memberID+"&limit=20", "", f.token, managedBrand, nil)
+	list := f.call("GET", "/api/v1/admin/join-codes?kind=referral&owner_member_id="+owner+"&limit=20", "", f.token, managedBrand, nil)
 	if list.Code != 200 {
 		t.Fatalf("list status=%d body=%s", list.Code, list.Body.String())
 	}
 	var page attribution.Page
 	managedData(t, list, &page)
-	if len(page.Items) != 1 || page.Items[0].ID != code.ID || page.Kind == nil || *page.Kind != "referral" || page.OwnerMemberID == nil || *page.OwnerMemberID != f.memberID || page.TotalCount != "1" {
+	if len(page.Items) != 1 || page.Items[0].ID != code.ID || page.Kind == nil || *page.Kind != "referral" || page.OwnerMemberID == nil || *page.OwnerMemberID != owner || page.TotalCount != "1" {
 		t.Fatalf("unexpected list response: %+v", page)
 	}
 	for _, query := range []string{"?unknown=1", "?kind=referral&kind=agent", "?limit=0", "?owner_member_id=bad"} {
@@ -96,7 +118,7 @@ func TestJoinCodeAdminLifecyclePublicPrivacyAndNoFunds(t *testing.T) {
 	}
 	var revisions attribution.History
 	managedData(t, history, &revisions)
-	if len(revisions.Items) != 1 || revisions.Items[0].Reason != "join-code HTTP test" || revisions.Items[0].ActorID != f.root {
+	if len(revisions.Items) != 1 || revisions.Items[0].Reason != "join-code HTTP test" || revisions.Items[0].ActorID == nil || *revisions.Items[0].ActorID != f.root {
 		t.Fatalf("unexpected initial history: %+v", revisions)
 	}
 	update := map[string]any{"version": code.Version, "status": "disabled", "starts_at": nil, "expires_at": nil, "reason": "disable test code"}
@@ -109,6 +131,7 @@ func TestJoinCodeAdminLifecyclePublicPrivacyAndNoFunds(t *testing.T) {
 	if disabled.Status != "disabled" || disabled.Version != code.Version+1 || disabled.AuditLogID == "" {
 		t.Fatalf("unexpected update response: %+v", disabled)
 	}
+	validatePublic(validationPath, false)
 	if response := f.call("PUT", "/api/v1/admin/join-codes/"+code.ID, "join-update-replay-001", f.token, managedBrand, update); response.Code != 200 {
 		t.Fatalf("update replay status=%d body=%s", response.Code, response.Body.String())
 	}
@@ -119,7 +142,7 @@ func TestJoinCodeAdminLifecyclePublicPrivacyAndNoFunds(t *testing.T) {
 	}
 	var self attribution.SelfPage
 	managedData(t, publicCodes, &self)
-	if self.MemberID != f.memberID || len(self.Items) != 1 || self.Items[0].ID != code.ID {
+	if self.MemberID != f.memberID || len(self.Items) != 1 || self.Items[0].ID == code.ID || self.Items[0].Kind != "referral" || !self.Items[0].Usable {
 		t.Fatalf("unexpected self-code response: %+v", self)
 	}
 	var publicEnvelope map[string]any
@@ -221,6 +244,7 @@ func TestJoinCodeFreshPermissionAuditRollbackAndPlatformReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	if view := f.call("GET", "/api/v1/platform/join-codes", "", platformToken, managedBrand, nil); view.Code != 200 {
 		t.Fatalf("platform reader with explicit grant status=%d body=%s", view.Code, view.Body.String())
 	}
@@ -294,12 +318,16 @@ func TestAuthHTTPJoinCodeRegistrationReplayAndIsolation(t *testing.T) {
 	grantJoinCodeRoot(t, f.managementHTTP)
 	ctx := context.Background()
 
-	created := f.call("POST", "/api/v1/admin/join-codes", "auth-join-code-create-001", f.token, managedBrand, joinCodeCreateBody(f.memberID))
-	if created.Code != 201 {
-		t.Fatalf("create referral code status=%d body=%s", created.Code, created.Body.String())
+	response := pointsCall(f.managementHTTP, "GET", "/api/v1/me/join-codes", "", f.userToken, managedBrand, "", nil)
+	if response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
 	}
-	var code attribution.Code
-	managedData(t, created, &code)
+	var self attribution.SelfPage
+	managedData(t, response, &self)
+	if len(self.Items) != 1 {
+		t.Fatal(self)
+	}
+	code := self.Items[0]
 	privacyVersion, termsVersion := currentAuthTerms(t, f.managementHTTP, "/api/v1/context")
 
 	registerBody := map[string]any{

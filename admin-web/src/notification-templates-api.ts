@@ -1,3 +1,6 @@
+import { resolveNotificationContent } from '@lottery/shared'
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -128,7 +131,6 @@ function validRevision(value: unknown, brand: string, key: NotificationTemplateK
 }
 function invalidInput(): never { throw new AdminApiError("通知模板参数无效。", 400, "INVALID_INPUT"); }
 function invalidResponse(write = false): never { throw new AdminApiError("通知模板响应格式无效。", write ? 0 : 502, "INVALID_RESPONSE"); }
-type Envelope = { success?: unknown; data?: unknown; error?: unknown };
 
 export function createNotificationTemplatesApi(fetchImpl: typeof fetch = fetch): NotificationTemplatesApi {
   async function request(path: string, brandId: string, options: { method?: "GET" | "PUT"; body?: unknown; key?: string; write?: boolean } = {}): Promise<unknown> {
@@ -143,20 +145,15 @@ export function createNotificationTemplatesApi(fetchImpl: typeof fetch = fetch):
     } catch (cause) {
       throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR");
     }
-    let envelope: Envelope;
-    try { envelope = await response.json() as Envelope; }
-    catch {
-      if (!response.ok) throw new AdminApiError(`Request failed (${response.status})`, response.status);
-      invalidResponse(Boolean(options.write));
-    }
-    if (!response.ok || !isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
-      const error = isRecord(envelope?.error) ? envelope.error : undefined;
-      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      const message = typeof error?.message === "string" ? error.message : `Request failed (${response.status})`;
-      if (!response.ok) throw new AdminApiError(message, response.status, typeof error?.code === "string" ? error.code : undefined);
-      invalidResponse(Boolean(options.write));
-    }
-    return envelope.data;
+    const envelope = await readAdminEnvelope<unknown>(response);
+    const resolveRecord = (item: unknown): unknown => {
+      if (!isRecord(item) || !Object.hasOwn(item, "content")) return item;
+      try { return { ...item, content: resolveNotificationContent(item.content, String(item.key)) }; }
+      catch { return invalidResponse(options.write); }
+    };
+    const data = envelope.data;
+    return isRecord(data) && Array.isArray(data.items)
+      ? { ...data, items: data.items.map(resolveRecord) } : resolveRecord(data);
   }
   return {
     async list(brandId) {
@@ -176,7 +173,7 @@ export function createNotificationTemplatesApi(fetchImpl: typeof fetch = fetch):
     async put(key, brandId, body, idempotencyKey) {
       if (!validKey(key) || !isRecord(body) || !exactKeys(body, ["version", "content", "reason"]) || !validVersion(body.version) ||
         body.version >= MAX_SAFE_VERSION || !validNotificationTemplateContent(body.content, key) ||
-        typeof body.reason !== "string" || body.reason.trim() !== body.reason || !body.reason.trim() || bytes(body.reason) > 500 ||
+        typeof body.reason !== "string" || body.reason.trim() !== body.reason || bytes(body.reason) > 500 ||
         /[\u0000-\u001f\u007f-\u009f\uD800-\uDFFF]/u.test(body.reason) || typeof idempotencyKey !== "string" || !/^[A-Za-z0-9_:.-]{8,128}$/.test(idempotencyKey)) invalidInput();
       const value = await request(`${BASE}/${encodeURIComponent(key)}`, brandId, { method: "PUT", body, key: idempotencyKey, write: true });
       if (!validTemplate(value, brandId, key) || value.version !== body.version + 1 || !sameContent(value.content, body.content)) invalidResponse(true);

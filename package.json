@@ -13,6 +13,9 @@
     "review:user": "pnpm --filter @lottery/user-web exec vite --config vite.review.config.ts",
     "review:admin": "pnpm --filter @lottery/admin-web exec vite --config vite.review.config.ts",
     "review:platform": "pnpm --filter @lottery/platform-web exec vite --config vite.review.config.ts",
+    "review:preview:user": "pnpm --filter @lottery/user-web exec vite preview --config vite.review.config.ts --port 5183 --strictPort",
+    "review:preview:admin": "pnpm --filter @lottery/admin-web exec vite preview --config vite.review.config.ts --port 5184 --strictPort",
+    "review:preview:platform": "pnpm --filter @lottery/platform-web exec vite preview --config vite.review.config.ts --port 5185 --strictPort",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test && pnpm test:static",
@@ -28,14 +31,21 @@
     "test:capacity-mixed-models": "node scripts/check-capacity-mixed-models.mjs",
     "test:e2e": "playwright test",
     "test:webkit": "playwright test --config playwright.webkit.config.ts",
+    "test:layout": "playwright test --config playwright.layout.config.ts",
+    "test:agent": "node scripts/test-agent-portal.mjs",
     "test:responsive": "playwright test --config playwright.responsive.config.ts",
     "test:commission-responsive": "node scripts/run-commission-responsive.mjs",
-    "test:pwa": "pnpm build && playwright test --config playwright.pwa.config.ts"
+    "test:pwa": "pnpm build && playwright test --config playwright.pwa.config.ts",
+    "test:draw-browser": "node --test tests/draw-browser/*.test.mjs && node scripts/test-draw-browser.mjs",
+    "dev:agent": "pnpm --filter @lottery/agent-web dev"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
     "@redocly/cli": "^2.57.0",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1"
+  },
+  "dependencies": {
+    "playwright": "1.62.1"
   }
 }

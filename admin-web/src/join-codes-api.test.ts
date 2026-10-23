@@ -53,6 +53,13 @@ describe("join codes admin API", () => {
       .rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
   });
 
+  it("accepts system allocation history only for the initial revision", async () => {
+    const item = { id: actor, brand_id: brand, code_id: id, version: 1, status: 'active', starts_at: null, expires_at: null, actor_id: null, reason: 'Automatic member referral allocation', audit_log_id: owner, created_at: at };
+    const history = { brand_id: brand, code_id: id, items: [item], limit: 20, offset: 0, total_count: '1' };
+    await expect(createJoinCodesApi(vi.fn<typeof fetch>().mockResolvedValue(ok(history))).history(brand, id)).resolves.toEqual(history);
+    await expect(createJoinCodesApi(vi.fn<typeof fetch>().mockResolvedValue(ok({ ...history, items: [{ ...item, version: 2 }] }))).history(brand, id)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+
   it("creates only matching active version-one receipts and preserves exact request fields", async () => {
     const body = { kind: "agent" as const, owner_member_id: owner, agent_id: agent, starts_at: "2026-10-06T04:00:00.123400Z", expires_at: null, reason: "new campaign" };
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok({ ...code, starts_at: "2026-10-06T12:00:00.1234+08:00", version: 1 }));

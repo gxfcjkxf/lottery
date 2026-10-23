@@ -153,12 +153,12 @@ test("real reconciliation keeps an unknown create pending until the original req
     await route.continue();
   });
 
-  await panel.getByRole("button", { name: "检查并确认提交", exact: true }).click();
+  await panel.getByRole("button", { name: "提交", exact: true }).click();
   const confirmation = page.getByRole("dialog");
   await expect(confirmation.getByRole("heading", { name: "确认唯一操作员提交", exact: true })).toBeVisible();
   await expect(confirmation).toContainText(reason);
   await confirmation.getByRole("checkbox", { name: "我已核对范围与原因，确认由我提交此请求。", exact: true }).check();
-  await confirmation.getByRole("button", { name: "确认并提交", exact: true }).click();
+  await confirmation.getByRole("button", { name: "提交", exact: true }).click();
 
   await expect(panel.getByRole("alert")).toContainText("写入结果未知");
   await expect(panel.getByRole("heading", { name: "尚未确定的写入", exact: true })).toBeVisible();
@@ -166,7 +166,7 @@ test("real reconciliation keeps an unknown create pending until the original req
   expect(firstJobId).toBeTruthy();
 
   // A read refresh must leave the unresolved create intent available.
-  await panel.getByRole("button", { name: "刷新任务", exact: true }).click();
+  await panel.getByRole("button", { name: "刷新", exact: true }).click();
   await expect(panel.getByRole("heading", { name: "尚未确定的写入", exact: true })).toBeVisible();
   const jobs = await getData<{ items: Job[]; total_count: string }>(page,
     "/reconciliations?limit=100&offset=0");
@@ -177,20 +177,20 @@ test("real reconciliation keeps an unknown create pending until the original req
   await navigateTo(page, info.project.name, "报表和对账");
   const returnedPanel = await navigateTo(page, info.project.name, "批量对账");
   await expect(returnedPanel.getByRole("heading", { name: "尚未确定的写入", exact: true })).toBeVisible();
-  await expect(returnedPanel.getByRole("button", { name: "确认并重放原创建请求", exact: true })).toBeVisible();
+  await expect(returnedPanel.getByRole("button", { name: "重试创建", exact: true })).toBeVisible();
 
   // An explicit, separately confirmed replay uses the byte-for-byte request
   // and key retained after the malformed 201 response.
-  await returnedPanel.getByRole("button", { name: "确认并重放原创建请求", exact: true }).click();
+  await returnedPanel.getByRole("button", { name: "重试创建", exact: true }).click();
   const replayDialog = page.getByRole("dialog");
   await expect(replayDialog).toContainText(reason);
   await replayDialog.getByRole("checkbox", { name: "我已核对范围与原因，确认由我提交此请求。", exact: true }).check();
-  await replayDialog.getByRole("button", { name: "确认并提交", exact: true }).click();
+  await replayDialog.getByRole("button", { name: "提交", exact: true }).click();
 
   const receiptPanel = returnedPanel.locator(".receipt-panel");
   await expect(receiptPanel.getByRole("heading", { name: "服务器已确认请求回执", exact: true })).toBeVisible();
   await expect(receiptPanel.locator(".tag")).toHaveText("回执 v1");
-  await expect(receiptPanel).toContainText("范围 3 个账户 · 待处理 3");
+  await expect(receiptPanel).toContainText("范围 3 个账号 · 待处理 3");
   expect(createPosts).toBe(2);
 
   const jobId = firstJobId!;
@@ -281,20 +281,20 @@ test("real reconciliation keeps an unknown create pending until the original req
     expect(route.request().headers()["idempotency-key"]).toBe(fullKey);
     await route.continue();
   });
-  await returnedPanel.getByRole("button", { name: "检查并确认提交", exact: true }).click();
+  await returnedPanel.getByRole("button", { name: "提交", exact: true }).click();
   let fullDialog = page.getByRole("dialog");
   await expect(fullDialog).toContainText(/钱包.*业务关联/);
   await fullDialog.getByRole("checkbox", { name: "我已核对范围与原因，确认由我提交此请求。", exact: true }).check();
-  await fullDialog.getByRole("button", { name: "确认并提交", exact: true }).click();
+  await fullDialog.getByRole("button", { name: "提交", exact: true }).click();
   await expect(returnedPanel.getByRole("alert")).toContainText("写入结果未知");
   await expect(returnedPanel.getByLabel("检查范围", { exact: true })).toBeDisabled();
-  await returnedPanel.getByRole("button", { name: "刷新任务", exact: true }).click();
+  await returnedPanel.getByRole("button", { name: "刷新", exact: true }).click();
   await expect(returnedPanel.getByRole("heading", { name: "尚未确定的写入", exact: true })).toBeVisible();
-  await returnedPanel.getByRole("button", { name: "确认并重放原创建请求", exact: true }).click();
+  await returnedPanel.getByRole("button", { name: "重试创建", exact: true }).click();
   fullDialog = page.getByRole("dialog");
   await expect(fullDialog).toContainText(/钱包.*业务关联/);
   await fullDialog.getByRole("checkbox", { name: "我已核对范围与原因，确认由我提交此请求。", exact: true }).check();
-  await fullDialog.getByRole("button", { name: "确认并提交", exact: true }).click();
+  await fullDialog.getByRole("button", { name: "提交", exact: true }).click();
   expect(fullPosts).toBe(2);
   await expect.poll(async () => (await getData<Job>(page, `/reconciliations/${fullId}`)).state, { timeout: 45_000 }).toBe("completed");
   const fullJob = await getData<Job>(page, `/reconciliations/${fullId}`);

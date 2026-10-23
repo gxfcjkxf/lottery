@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -189,18 +191,8 @@ export function createWorkbenchApi(fetchImpl: typeof fetch = fetch) {
         if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
         throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR");
       }
-      let envelope: unknown;
-      try { envelope = await response.json(); }
-      catch {
-        if (!response.ok) throw new AdminApiError(`Request failed (${response.status})`, response.status);
-        throw new AdminApiError("运营工作台响应格式无效。", 502, "INVALID_RESPONSE");
-      }
-      if (!response.ok) {
-        const error = record(envelope) && record(envelope.error) ? envelope.error : null;
-        throw new AdminApiError(typeof error?.message === "string" ? error.message : `Request failed (${response.status})`, response.status,
-          typeof error?.code === "string" ? error.code : undefined);
-      }
-      if (!record(envelope) || !Object.keys(envelope).every(key => ["success", "data", "request_id"].includes(key)) ||
+      const envelope = await readAdminEnvelope<unknown>(response);
+      if (!record(envelope) || !Object.keys(envelope).every(key => ["success", "data", "request_id", "associations", "association_error"].includes(key)) ||
         envelope.success !== true || !(envelope.request_id === undefined || typeof envelope.request_id === "string") || !validWorkbenchSnapshot(envelope.data, brandId)) {
         throw new AdminApiError("运营工作台响应格式无效。", 502, "INVALID_RESPONSE");
       }

@@ -1,3 +1,6 @@
+import { resolveNotificationContent } from '@lottery/shared'
+import { readPlatformEnvelope } from './platform-api'
+
 import { PlatformApiError } from './platform-api'
 
 const BASE = '/api/v1/platform'
@@ -107,17 +110,15 @@ export function createPlatformNotificationsApi(fetcher: typeof fetch = fetch) {
     } catch (cause) {
       throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true)
     }
-    let envelope: unknown
-    try { envelope = await response.json() } catch {
-      if (!response.ok) throw new PlatformApiError(`Request failed (${response.status})`, response.status)
-      invalid('notification')
+    const envelope = await readPlatformEnvelope<unknown>(response);
+    const resolveRecord = (item: unknown): unknown => {
+      if (!record(item) || !Object.hasOwn(item, 'content')) return item
+      try { return { ...item, content: resolveNotificationContent(item.content, String(item.key)) } }
+      catch { return invalid('notification translation content') }
     }
-    if (!record(envelope) || envelope.success !== true || envelope.data === undefined || !response.ok) {
-      const error = record(envelope) && record(envelope.error) ? envelope.error : undefined
-      const message = typeof error?.message === 'string' ? error.message : `Request failed (${response.status})`
-      throw new PlatformApiError(message, response.status, typeof error?.code === 'string' ? error.code : undefined)
-    }
-    return envelope.data
+    const data = envelope.data
+    return record(data) && Array.isArray(data.items)
+      ? { ...data, items: data.items.map(resolveRecord) } : resolveRecord(data)
   }
   return {
     async deliveries(brandId: string, limit = 51, offset = 0): Promise<Delivery[]> {

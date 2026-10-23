@@ -91,7 +91,7 @@ test("admin read and write scopes, statuses, and action bodies are exact",()=>{
     const permission=action==="mark-paid"?"withdrawal.mark_paid.brand":`withdrawal.${action}.brand`;
     assert.deepEqual(op["x-permissions"],[permission]);
     assert.ok(op.responses["200"]);
-    assert.deepEqual(schemas.WithdrawalActionRequest.required,["version","reason"]);
+    assert.deepEqual(schemas.WithdrawalActionRequest.required,["version"]);
     assert.equal(schemas.WithdrawalActionRequest.additionalProperties,false);
     assert.match(op.description,/SUPER_ADMIN status never authorize writes/);
   }

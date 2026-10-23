@@ -22,7 +22,7 @@ describe('platform access API', () => {
       { success: false, error: { code: ' ', message: 'Missing code' } },
       null,
     ]
-    const create = { username: 'new_ops', password: 'a sufficiently long password', role_ids: [roleId], reason: 'Create owned account' }
+    const create = { username: 'new_ops', password: 'safe-pass-6', role_ids: [roleId], reason: 'Create owned account' }
     for (const body of bodies) {
       const api = createPlatformAccessApi(async () => new Response(JSON.stringify(body), { status: 400 }))
       await expect(api.platformAccounts()).rejects.toMatchObject({ status: 502, code: 'INVALID_RESPONSE' })
@@ -36,7 +36,7 @@ describe('platform access API', () => {
   it('uses UTF-8 byte limits for passwords in both account families', async () => {
     const createdBrand = { ...account, version: 1, audit_log_id: auditId }
     const createdPlatform = { ...platformAccount, version: 1, audit_log_id: auditId }
-    for (const password of ['密'.repeat(6), '密'.repeat(42), 'a'.repeat(16), 'a'.repeat(128)]) {
+    for (const password of ['密'.repeat(6), '密'.repeat(10), 'a'.repeat(6), 'a'.repeat(30)]) {
       const fetcher = vi.fn<typeof fetch>()
         .mockResolvedValueOnce(reply(createdBrand, 201))
         .mockResolvedValueOnce(reply(createdPlatform, 201))
@@ -52,7 +52,7 @@ describe('platform access API', () => {
       expect(fetcher).toHaveBeenCalledTimes(4)
       for (const [, init] of fetcher.mock.calls) expect(JSON.parse(String(init?.body)).password).toBe(password)
     }
-    for (const password of ['密'.repeat(5), '密'.repeat(43), 'a'.repeat(15), 'a'.repeat(129)]) {
+    for (const password of ['密'.repeat(1), '密'.repeat(11), 'a'.repeat(5), 'a'.repeat(31)]) {
       const fetcher = vi.fn<typeof fetch>()
       const api = createPlatformAccessApi(fetcher)
       const create = { username: 'new_ops', password, role_ids: [roleId], reason: 'Create owned account' }
@@ -155,22 +155,25 @@ describe('platform access API', () => {
       .mockResolvedValueOnce(reply({ audit_log_id: auditId }))
       .mockResolvedValueOnce(reply(createdRole, 201))
       .mockResolvedValueOnce(reply(updatedRole))
+      .mockResolvedValueOnce(reply({ audit_log_id: auditId }))
     const api = createPlatformAccessApi(fetcher)
-    const createAccountBody = { username: 'new_ops', password: 'a sufficiently long password', role_ids: [roleId], reason: 'Provision operations account' }
+    const createAccountBody = { username: 'new_ops', password: 'safe-pass-6', role_ids: [roleId], reason: 'Provision operations account' }
     const updateAccountBody = { version: 2, status: 'disabled' as const, role_ids: [roleId], reason: 'Disable operations account' }
     const createRoleBody = { code: 'new_ops', name: 'New Operations', status: 'active' as const, permissions: ['user.view.brand'], reason: 'Add operations role' }
     const updateRoleBody = { version: 3, name: 'Operations Updated', status: 'active' as const, permissions: ['user.view.brand'], reason: 'Update operations role' }
     await expect(api.createAccount(brand, createAccountBody, key)).resolves.toEqual(createdAccount)
     await expect(api.updateAccount(brand, accountId, updateAccountBody, key)).resolves.toEqual(updatedAccount)
-    await expect(api.resetPassword(brand, accountId, { version: 2, password: 'another sufficiently long password', reason: 'Reset operations password' }, key)).resolves.toEqual({ audit_log_id: auditId })
+    await expect(api.resetPassword(brand, accountId, { version: 2, password: 'reset-pass-6', reason: 'Reset operations password' }, key)).resolves.toEqual({ audit_log_id: auditId })
     await expect(api.createRole(brand, createRoleBody, key)).resolves.toEqual(createdRole)
     await expect(api.updateRole(brand, roleId, updateRoleBody, key)).resolves.toEqual(updatedRole)
+    await expect(api.deleteRole(brand, roleId, { version: 4 }, key)).resolves.toEqual({ audit_log_id: auditId })
     expect(fetcher.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
       ['/api/v1/platform/accounts', 'POST'],
       [`/api/v1/platform/accounts/${accountId}`, 'PATCH'],
       [`/api/v1/platform/accounts/${accountId}/reset-password`, 'POST'],
       ['/api/v1/platform/roles', 'POST'],
       [`/api/v1/platform/roles/${roleId}`, 'PATCH'],
+      [`/api/v1/platform/roles/${roleId}/delete`, 'POST'],
     ])
     for (const [, init] of fetcher.mock.calls) {
       const headers = new Headers(init?.headers)
@@ -182,23 +185,27 @@ describe('platform access API', () => {
     expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual(createAccountBody)
     expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toEqual(updateAccountBody)
     expect(JSON.parse(String(fetcher.mock.calls[4]?.[1]?.body))).toEqual(updateRoleBody)
+    expect(JSON.parse(String(fetcher.mock.calls[5]?.[1]?.body))).toEqual({ version: 4 })
   })
 
   it('writes platform accounts without a brand header and requires audit receipts', async () => {
     const created = { ...platformAccount, version: 1, audit_log_id: auditId }
     const updated = { ...platformAccount, version: 3, audit_log_id: auditId }
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(created, 201)).mockResolvedValueOnce(reply(updated)).mockResolvedValueOnce(reply({ audit_log_id: auditId }))
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(created, 201)).mockResolvedValueOnce(reply(updated)).mockResolvedValueOnce(reply({ audit_log_id: auditId })).mockResolvedValueOnce(reply({ audit_log_id: auditId }))
     const api = createPlatformAccessApi(fetcher)
-    const createBody = { username: 'platform_new', password: 'a sufficiently long password', role_ids: [roleId], reason: 'Create platform operator' }
+    const createBody = { username: 'platform_new', password: 'safe-pass-6', role_ids: [roleId], reason: 'Create platform operator' }
     const updateBody = { version: 2, status: 'disabled' as const, role_ids: [roleId], reason: 'Disable platform operator' }
     await expect(api.createPlatformAccount(createBody, key)).resolves.toEqual(created)
     await expect(api.updatePlatformAccount(accountId, updateBody, key)).resolves.toEqual(updated)
-    await expect(api.resetPlatformPassword(accountId, { version: 2, password: 'another sufficiently long password', reason: 'Reset platform password' }, key)).resolves.toEqual({ audit_log_id: auditId })
+    await expect(api.resetPlatformPassword(accountId, { version: 2, password: 'reset-pass-6', reason: 'Reset platform password' }, key)).resolves.toEqual({ audit_log_id: auditId })
+    await expect(api.deletePlatformAccount(accountId, { version: 3 }, key)).resolves.toEqual({ audit_log_id: auditId })
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       '/api/v1/platform/platform-accounts',
       `/api/v1/platform/platform-accounts/${accountId}`,
       `/api/v1/platform/platform-accounts/${accountId}/reset-password`,
+      `/api/v1/platform/platform-accounts/${accountId}/delete`,
     ])
+    expect(JSON.parse(String(fetcher.mock.calls[3][1]?.body))).toEqual({ version: 3 })
     for (const [, init] of fetcher.mock.calls) {
       const headers = new Headers(init?.headers)
       expect(headers.has('X-Brand-ID')).toBe(false)
@@ -214,16 +221,35 @@ describe('platform access API', () => {
     const apiFor = (fetcher: typeof fetch) => createPlatformAccessApi(fetcher)
     await expect(apiFor(async () => reply({ ...account, version: 1, audit_log_id: auditId })).createAccount(brand, createBody, key)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
     await expect(apiFor(async () => reply({ ...account, version: 2, audit_log_id: auditId }, 201)).updateAccount(brand, accountId, { version: 2, status: 'active', role_ids: [roleId], reason: 'Update account' }, key)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(apiFor(async () => reply({})).resetPassword(brand, accountId, { version: 2, password: 'another sufficiently long password', reason: 'Reset password' }, key)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(apiFor(async () => reply({})).resetPassword(brand, accountId, { version: 2, password: 'reset-pass-6', reason: 'Reset password' }, key)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
     await expect(apiFor(async () => { throw new Error('offline') }).platformAccounts()).rejects.toMatchObject({ code: 'NETWORK_ERROR', status: 0 })
     await expect(apiFor(async () => new Response(JSON.stringify({ success: false, error: { code: 'TEMPORARY_FAILURE', message: 'Try again' } }), { status: 503 })).platformAccounts()).rejects.toMatchObject({ code: 'TEMPORARY_FAILURE', status: 503, message: 'Try again' })
     await expect(apiFor(async () => new Response('not json', { status: 200 })).platformAccounts()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
 
+  it('creates platform roles without brand scope and validates permission scope and receipts', async () => {
+    const body = { code: 'platform_reader', name: 'Platform reader', status: 'active' as const, permissions: ['admin.view.platform'] }
+    const created = { ...platformRole, ...body, version: 1, audit_log_id: auditId }
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(reply(created, 201))
+    await expect(createPlatformAccessApi(fetcher).createPlatformRole(body, key)).resolves.toEqual(created)
+    expect(fetcher.mock.calls[0][0]).toBe('/api/v1/platform/platform-roles')
+    const init = fetcher.mock.calls[0][1]
+    expect(init).toMatchObject({ method: 'POST', credentials: 'same-origin', body: JSON.stringify(body) })
+    expect(new Headers(init?.headers).has('X-Brand-ID')).toBe(false)
+    expect(new Headers(init?.headers).get('Idempotency-Key')).toBe(key)
+    fetcher.mockClear()
+    await expect(createPlatformAccessApi(fetcher).createPlatformRole({ ...body, permissions: ['user.view.brand'] }, key)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    expect(fetcher).not.toHaveBeenCalled()
+    for (const receipt of [{ ...created, brand_id: brand }, { ...created, permissions: ['user.view.brand'] }, { ...created, version: 2 }, { ...created, audit_log_id: undefined }]) {
+      await expect(createPlatformAccessApi(async () => reply(receipt, 201)).createPlatformRole(body, key)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    }
+    await expect(createPlatformAccessApi(async () => reply(created, 200)).createPlatformRole(body, key)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+
   it('validates write keys, versions, role scope, and credentials before sending', async () => {
     const fetcher = vi.fn(async () => reply({}))
     const api = createPlatformAccessApi(fetcher)
-    const validCreate = { username: 'new_ops', password: 'a sufficiently long password', role_ids: [roleId], reason: 'Create operations account' }
+    const validCreate = { username: 'new_ops', password: 'safe-pass-6', role_ids: [roleId], reason: 'Create operations account' }
     await expect(api.createAccount(brand, validCreate, 'short')).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
     await expect(api.updateAccount(brand, accountId, { version: 0, status: 'active', role_ids: [roleId], reason: 'Update account' }, key)).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
     await expect(api.createRole(brand, { code: 'brand_ops', name: 'Brand Operations', status: 'active', permissions: ['admin.view.platform'], reason: 'Wrong permission scope' }, key)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })

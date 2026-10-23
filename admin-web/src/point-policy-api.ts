@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, createIdempotencyKey } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -25,12 +27,6 @@ export interface UpdatePointPolicyBody {
   max_adjustment_points: string | null;
   reason: string;
 }
-
-type Envelope<T> = {
-  success?: boolean;
-  data?: T;
-  error?: { code: string; message: string } | null;
-};
 
 export function effectiveBrandPermissions(
   account: PointPolicyAccount,
@@ -99,28 +95,9 @@ export function createPointPolicyApi(fetcher: typeof fetch = fetch) {
         ? {}
         : { body: JSON.stringify(options.body) }),
     });
-    let envelope: Envelope<T>;
-    try {
-      envelope = (await response.json()) as Envelope<T>;
-    } catch {
+    const envelope = await readAdminEnvelope<T>(response);
+    if (envelope.data == null || typeof envelope.data !== "object" || Array.isArray(envelope.data))
       throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
-    }
-    if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
-      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
-    }
-    const detail = envelope.error;
-    if (!response.ok && envelope.success === false && detail && typeof detail === "object" && !Array.isArray(detail)
-      && typeof detail.code === "string" && detail.code.trim()
-      && typeof detail.message === "string" && detail.message.trim()) {
-      throw new AdminApiError(detail.message, response.status, detail.code);
-    }
-    if (
-      !response.ok ||
-      envelope.success !== true ||
-      envelope.data == null || typeof envelope.data !== "object" || Array.isArray(envelope.data)
-    ) {
-      throw new AdminApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
-    }
     return envelope.data;
   }
 

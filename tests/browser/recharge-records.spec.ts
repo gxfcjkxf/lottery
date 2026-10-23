@@ -23,13 +23,13 @@ test("real member recharge records reflect manual confirmation and cancellation 
   });
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.goto(`${userOrigin}/register`);
-  await page.getByLabel("Choose a username or phone", { exact: true }).fill(`recharge_${uid().replaceAll("-", "").slice(0, 12)}`);
+  await page.getByLabel("Account", { exact: true }).fill(`recharge_${uid().replaceAll("-", "").slice(0, 12)}`);
   await page.getByLabel("Password", { exact: true }).fill("recharge-owned-user-password-2026");
-  await page.locator('.auth-form input[type="checkbox"]').nth(0).check(); await page.locator('.auth-form input[type="checkbox"]').nth(1).check();
+  await page.locator('.auth-form input[type="checkbox"]').check();
   const registered = page.waitForResponse(response => response.url().endsWith("/auth/register") && response.request().method() === "POST");
-  await page.getByRole("button", { name: /Continue/ }).click(); const response = await registered; expect(response.status()).toBe(201);
+  await page.getByRole("button", { name: /^Register$/ }).click(); const response = await registered; expect(response.status()).toBe(201);
   const member = (await response.json()).data.member;
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/$/);
   await page.goto(`${userOrigin}/recharge`);
   const panel = page.locator(".recharge-page");
   await expect(panel).toContainText("No recharge records yet.");

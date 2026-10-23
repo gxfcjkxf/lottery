@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -61,7 +63,7 @@ export interface CorrectionExecutionPage { brand_id: string; items: CorrectionEx
 export interface CorrectionExecutionTargetPage { brand_id: string; execution_id: string; items: CorrectionExecutionTarget[]; total_count: string; limit: number; offset: number }
 
 type Obj = Record<string, unknown>;
-type Envelope = Obj & { success?: unknown; data?: unknown; error?: unknown };
+
 const PLAN_KEYS = ["id", "brand_id", "cycle_id", "payment_id", "run_id", "state", "payout_mode", "version", "evidence_epoch", "before_points", "calculated_points", "credit_points", "debit_points", "net_points", "target_count", "planned_count", "creation_audit_log_id", "last_audit_log_id", "last_error_code", "created_at", "updated_at"] as const;
 const PLAN_TARGET_KEYS = ["id", "brand_id", "plan_id", "agent_id", "member_id", "original_target_id", "earning_id", "adjustment_version", "previous_correction_target_id", "financial_version", "points_before", "points_after", "delta_points", "creation_audit_log_id", "created_at"] as const;
 const EXECUTION_KEYS = ["id", "brand_id", "cycle_id", "plan_id", "run_id", "payout_mode", "state", "version", "plan_version", "evidence_epoch", "credit_points", "debit_points", "net_points", "applied_credit_points", "applied_debit_points", "target_count", "applied_count", "paused_plan_target_id", "last_error_code", "creation_audit_log_id", "last_audit_log_id", "approved_by", "approval_actor_type", "approval_audit_log_id", "cycle_hold_active", "created_at", "updated_at"] as const;
@@ -91,7 +93,7 @@ function instantNs(value: string): bigint {
   return BigInt(Math.floor(Date.parse(`${m[1]}${m[3]}`) / 1000)) * 1_000_000_000n + BigInt((m[2] ?? "").padEnd(9, "0"));
 }
 function validReason(value: unknown): value is string {
-  if (typeof value !== "string" || !value || value.trim() !== value || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
+  if (typeof value !== "string" || value.trim() !== value || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
   for (let i = 0; i < value.length; i++) { const c = value.charCodeAt(i); if (c >= 0xd800 && c <= 0xdbff) { const n = value.charCodeAt(++i); if (!(n >= 0xdc00 && n <= 0xdfff)) return false; } else if (c >= 0xdc00 && c <= 0xdfff) return false; }
   return new TextEncoder().encode(value).length <= 500;
 }
@@ -168,11 +170,6 @@ function compareTarget<T extends { agent_id: string; id: string }>(left: T, righ
   return left.agent_id === right.agent_id ? left.id < right.id ? -1 : left.id > right.id ? 1 : 0 : left.agent_id < right.agent_id ? -1 : 1;
 }
 function validBrand(brand: string): void { if (!uuid(brand)) invalidInput(); }
-function safeErrorCode(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  if (["COMMISSION_CORRECTION_BUSY", "COMMISSION_CORRECTION_INPUT_INVALID", "COMMISSION_CORRECTION_NOT_FOUND", "COMMISSION_CORRECTION_STATE_CONFLICT", "COMMISSION_CORRECTION_VERSION_CONFLICT", "COMMISSION_CORRECTION_EVIDENCE_CONFLICT", "COMMISSION_CORRECTION_LIMIT"].includes(value)) return value;
-  return /^(?:AUTH_[A-Z0-9_]{1,80}|PERMISSION_DENIED|CSRF_REJECTED|CONTENT_TYPE_INVALID|REQUEST_INVALID)$/.test(value) ? value : undefined;
-}
 
 export function commissionCorrectionPermissions(account: AdminAccount, brand: string) {
   const member = account.brand_ids.includes(brand);
@@ -202,13 +199,7 @@ export function createCommissionCorrectionsApi(fetcher: typeof fetch = fetch, ac
     let response: Response;
     try { response = await fetcher(path, { method, credentials: "same-origin", headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); }
     catch (cause) { throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR"); }
-    let decoded: unknown;
-    try { decoded = await response.json(); } catch { throw new AdminApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`, response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : undefined); }
-    if (!response.ok || !isObj(decoded) || decoded.success !== true || decoded.data === undefined) {
-      const detail = isObj((decoded as Envelope | null)?.error) ? (decoded as Envelope).error as Obj : undefined;
-      if (!response.ok && detail && safeErrorCode(detail.code) === undefined) throw new AdminApiError(`Request failed (${response.status})`, response.status, "API_ERROR");
-      throw new AdminApiError(typeof (decoded as Envelope | null)?.error === "string" ? (decoded as Envelope).error as string : (typeof detail?.message === "string" ? detail.message : `Request failed (${response.status})`), response.ok ? 502 : response.status, safeErrorCode(detail?.code));
-    }
+    const decoded = await readAdminEnvelope<unknown>(response);
     return decoded.data;
   }
   function query(limit: number, offset: number): string {

@@ -4,17 +4,13 @@ import test from 'node:test';
 const read = path => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 test('user shell has one live betting route and no obsolete demo balances or local orders', () => {
   const source = read('user-web/src/Page.vue');
-  assert.match(source, /<BettingPanel\s+v-if="isBettingRoute"/);
-  assert.match(source, /<HomeWalletCard/);
+  const catalog = read('user-web/src/i18n-catalog-ui.ts');
+  assert.match(source, /<BettingPanel\s+v-(?:else-)?if="isBettingRoute"/);
+  assert.match(source, /class="workspace-game-trigger"/);
+  assert.match(source, /loadWorkspaceGames/);
+  assert.match(source, /embeddedGameId:/);
+  assert.doesNotMatch(source, /class="home-lobby"/);
+  assert.doesNotMatch(source, /<HomeWalletCard|class="hero"|class="lower-grid"/);
   assert.doesNotMatch(source, /placeDemoOrder|readDraft|luma-demo-|12840|Classic 6\/49/);
-  assert.match(source, /Platform points · payments not connected/);
-});
-test('home wallet clears old values and uses the verified wallet reader without fabricated amounts', () => {
-  const source = read('user-web/src/HomeWalletCard.vue');
-  assert.match(source, /createWalletApi/);
-  assert.match(source, /formatIntegerAmount\(wallet.display_points\)/);
-  assert.match(source, /wallet.value = null/);
-  assert.match(source, /request !== generation/);
-  assert.match(source, /onBeforeUnmount/);
-  assert.doesNotMatch(source, /Number\(.*points|parseFloat|localStorage|sessionStorage/);
+  assert.match(catalog, /Platform points · payments not connected/);
 });

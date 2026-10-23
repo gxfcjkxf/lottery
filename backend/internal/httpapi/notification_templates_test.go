@@ -30,6 +30,13 @@ func templateHTTPRecord(t *testing.T, f managementHTTP, key string) notification
 	t.Fatal("missing template", key)
 	return notification.Template{}
 }
+func authoredNotificationCopy(key string) notification.Content {
+	body := "{points}"
+	if key == "member.joined" {
+		body = "Welcome {resource_id}"
+	}
+	return notification.Content{En: notification.Copy{Title: "Notice", Body: body}, ZhCN: notification.Copy{Title: "通知", Body: body}}
+}
 func TestNotificationTemplateHTTPCheckedReplayValidationAndAudit(t *testing.T) {
 	f := managedFixture(t)
 	ctx := context.Background()
@@ -57,7 +64,7 @@ func TestNotificationTemplateHTTPCheckedReplayValidationAndAudit(t *testing.T) {
 		mustStatus(t, f.call("GET", base+q, "", f.token, managedBrand, nil), 400)
 	}
 	current := templateHTTPRecord(t, f, "recharge.confirmed")
-	in := notification.UpdateInput{Version: current.Version, Content: current.Content, Reason: "update notification wording"}
+	in := notification.UpdateInput{Version: current.Version, Content: authoredNotificationCopy(current.Key), Reason: "update notification wording"}
 	in.Content.En.Body = "Recorded {points} points; reference {resource_id}."
 	mustStatus(t, f.call("PUT", path, "template-accepted-001", f.token, managedBrand, in), 403)
 	grantReportPermission(t, f, "notification_template.write.brand")
@@ -104,6 +111,7 @@ func TestNotificationTemplateHTTPCheckedReplayValidationAndAudit(t *testing.T) {
 	mustStatus(t, f.call("PUT", path, "template-accepted-001", f.token, managedBrand, in), 403)
 	grantReportPermission(t, f, "notification_template.view.platform")
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	platformBase := strings.Replace(base, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("GET", base, "", f.token, pointsBrandB, nil), 403)
 	mustStatus(t, f.call("GET", platformBase, "", platformToken, pointsBrandB, nil), 200)
@@ -115,7 +123,7 @@ func TestNotificationTemplateHTTPAuditFailureAndDisabledReplay(t *testing.T) {
 	grantReportPermission(t, f, "notification_template.view.brand")
 	grantReportPermission(t, f, "notification_template.write.brand")
 	cur := templateHTTPRecord(t, f, "member.joined")
-	in := notification.UpdateInput{Version: 1, Content: cur.Content, Reason: "test template audit"}
+	in := notification.UpdateInput{Version: 1, Content: authoredNotificationCopy(cur.Key), Reason: "test template audit"}
 	in.Content.En.Body = "A new welcome for {resource_id}."
 	if _, e := f.pool.Exec(ctx, `CREATE FUNCTION reject_template_http_audit() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN IF NEW.action LIKE 'notification.template.%' THEN RAISE EXCEPTION 'injected';END IF;RETURN NEW;END$$;CREATE TRIGGER reject_template_http_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_template_http_audit()`); e != nil {
 		t.Fatal(e)
@@ -150,12 +158,12 @@ func TestNotificationTemplateHTTPRealRegistrationGetsImmutableCurrentCopy(t *tes
 		t.Fatal(e)
 	}
 	first, e := service.List(ctx, managedBrand, f.memberID, 20, 0)
-	if e != nil || len(first.Items) != 1 || first.Items[0].Content.En.Title == "" || first.Items[0].TemplateVersion != 1 {
+	if e != nil || len(first.Items) != 1 || first.Items[0].Content != (notification.Content{I18nKey: "member.joined", I18nVersion: 1}) || first.Items[0].TemplateVersion != 1 {
 		t.Fatal(first, e)
 	}
 	beforeWallet := pointWallet(t, f)
 	old := templateHTTPRecord(t, f.managementHTTP, "member.joined")
-	content := old.Content
+	content := authoredNotificationCopy(old.Key)
 	content.En.Title = "Brand welcome"
 	content.En.Body = "Hello member {resource_id}."
 	content.ZhCN.Title = "品牌欢迎"
@@ -165,7 +173,7 @@ func TestNotificationTemplateHTTPRealRegistrationGetsImmutableCurrentCopy(t *tes
 	mustStatus(t, r, 200)
 	var updated notification.Template
 	managedData(t, r, &updated)
-	registered := f.call("POST", "/api/v1/auth/register", "template-user-new-002", "", managedBrand, map[string]any{"username": "template_notification_user", "password": "template-notification-test-only-password", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"})
+	registered := f.call("POST", "/api/v1/auth/register", "template-user-new-002", "", managedBrand, map[string]any{"username": "template_notification_user", "password": "template-notification-pass", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"})
 	mustStatus(t, registered, 201)
 	var auth identity.Authentication
 	managedData(t, registered, &auth)

@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -134,7 +135,7 @@ func adminResult(auditID string, err error) (mutation.Result, error) {
 		return mutation.Fail(404, "MEMBER_NOT_FOUND", "品牌成员不存在"), nil
 	}
 	if errors.Is(err, adminsys.ErrInvalid) {
-		return mutation.Fail(400, "REQUEST_INVALID", "操作需要有效状态和原因"), nil
+		return mutation.Fail(400, "REQUEST_INVALID", "操作参数不正确"), nil
 	}
 	if err != nil {
 		return mutation.Result{}, err
@@ -152,7 +153,7 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 		prefix = "/api/v1/platform"
 	}
 	handle := func(method, path string, fn http.HandlerFunc) {
-		if platform && method != "GET" && path != "/auth/login" && path != "/auth/logout" && !(method == "POST" && path == "/brands") && !(method == "PATCH" && path == "/brand-operation") && !platformAccountWriteRoute(method, path) {
+		if platform && method != "GET" && path != "/auth/login" && path != "/auth/logout" && path != "/me/password" && !(method == "POST" && path == "/brands") && !(method == "DELETE" && path == "/brands/{id}") && !(method == "PATCH" && path == "/brand-operation") && !(method == "PATCH" && path == "/platform-settings") && !(method == "POST" && path == "/global-users/{id}/delete") && !platformSecurityWriteRoute(method, path) && !platformAccountWriteRoute(method, path) && !platformLotteryWriteRoute(method, path) {
 			return
 		}
 		mux.HandleFunc(method+" "+prefix+path, func(w http.ResponseWriter, r *http.Request) {
@@ -169,10 +170,14 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 			fn(w, r.WithContext(ctx))
 		})
 	}
+	registerAssociationLookup(handle, d)
+	registerFilterOptions(handle, d)
 	registerRuleSimulationRoutes(handle, d)
 	registerRuleBookRoutes(handle, d)
+	registerPlatformLotteryRoutes(handle, d, platform)
 	registerBrandOperationRoutes(handle, d)
 	registerBrandPresentationRoutes(handle, d)
+	registerBrandLogoUpload(handle, d)
 	registerBrandDomainRoutes(handle, d)
 	registerBrandCreationRoutes(handle, d)
 	registerComplianceRoutes(handle, d)
@@ -245,6 +250,35 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 		}
 		outputMutation(w, r, result, err)
 	})
+	handle("POST", "/me/password", func(w http.ResponseWriter, r *http.Request) {
+		account, ok := adminAccount(w, r, d)
+		if !ok {
+			return
+		}
+		var in struct {
+			CurrentPassword string `json:"current_password"`
+			NewPassword     string `json:"new_password"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		encoded, _ := json.Marshal(in)
+		run := func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
+			return d.Identity.AdminChangePassword(ctx, tx, account.ID, in.CurrentPassword, in.NewPassword, meta(r))
+		}
+		check := func(ctx context.Context, tx pgx.Tx) error {
+			_, err := freshAdmin(ctx, tx, r, d, account, true)
+			return err
+		}
+		result, err := d.Mutations.ExecuteChecked(r.Context(), "", "admin:"+account.ID, "admin.password_change", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(string(encoded)), check, run)
+		if errors.Is(err, identity.ErrSession) || errors.Is(err, adminsys.ErrDenied) {
+			result, err = mutation.Fail(401, "AUTH_SESSION_REVOKED", "请重新登录"), nil
+		}
+		if err == nil && result.Error == nil {
+			issueAdministrativeCookie(w, r, "", time.Unix(1, 0), d.SecureCookies)
+		}
+		outputMutation(w, r, result, err)
+	})
 	handle("GET", "/me", func(w http.ResponseWriter, r *http.Request) {
 		account, ok := adminAccount(w, r, d)
 		if !ok {
@@ -257,7 +291,7 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 		if !adminReadAudit(w, r, d, account, "", "admin.me") {
 			return
 		}
-		respond(w, r, 200, map[string]any{"account": map[string]any{"id": account.ID, "super_admin": account.SuperAdmin, "brand_ids": brands, "permissions": permissionNames(account), "version": account.Version, "permissions_by_brand": permissionsByBrand(account), "platform_permissions": platformPermissions(account)}})
+		respond(w, r, 200, map[string]any{"account": map[string]any{"id": account.ID, "username": account.Username, "super_admin": account.SuperAdmin, "brand_ids": brands, "permissions": permissionNames(account), "version": account.Version, "permissions_by_brand": permissionsByBrand(account), "platform_permissions": platformPermissions(account)}})
 	})
 	handle("GET", "/brands", func(w http.ResponseWriter, r *http.Request) {
 		a, ok := adminAccount(w, r, d)
@@ -308,7 +342,16 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 			failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
 			return
 		}
-		items, err := d.Admins.ListMembers(r.Context(), a, brand, limit, offset)
+		filter := adminsys.MemberFilter{Username: strings.TrimSpace(r.URL.Query().Get("username")), Search: strings.TrimSpace(r.URL.Query().Get("q"))}
+		if values, exists := r.URL.Query()["online"]; exists {
+			if len(values) != 1 || (values[0] != "true" && values[0] != "false") {
+				failure(w, r, 400, "REQUEST_INVALID", "在线筛选参数不正确")
+				return
+			}
+			online := values[0] == "true"
+			filter.Online = &online
+		}
+		items, err := d.Admins.ListMembers(r.Context(), a, brand, filter, limit, offset)
 		if err != nil {
 			if errors.Is(err, adminsys.ErrDenied) {
 				rejectAdmin(w, r, d, a, brand, "user.view")
@@ -321,7 +364,7 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 		if !adminReadAudit(w, r, d, a, brand, "user.view") {
 			return
 		}
-		respond(w, r, 200, map[string]any{"items": items})
+		respond(w, r, 200, items)
 	})
 	type memberInput struct {
 		Status   string `json:"status"`
@@ -329,13 +372,16 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 		Reason   string `json:"reason"`
 		Password string `json:"password,omitempty"`
 	}
-	for _, operation := range []string{"write", "kick", "password_reset"} {
+	for _, operation := range []string{"write", "kick", "password_reset", "delete"} {
 		method, path := "POST", "/users/{id}/kick"
 		if operation == "write" {
 			method, path = "PATCH", "/users/{id}"
 		}
 		if operation == "password_reset" {
 			path = "/users/{id}/reset-password"
+		}
+		if operation == "delete" {
+			path = "/users/{id}/delete"
 		}
 		handle(method, path, func(w http.ResponseWriter, r *http.Request) {
 			a, ok := adminAccount(w, r, d)
@@ -351,11 +397,15 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 			if !decodeBody(w, r, &in) {
 				return
 			}
-			if len(in.Notes) > 2000 || len(in.Reason) > 500 || len(in.Reason) == 0 {
-				failure(w, r, 400, "REQUEST_INVALID", "原因必填且不超过 500 字符，备注不超过 2000 字符")
+			if operation != "delete" && (len(in.Notes) > 2000 || len(in.Reason) > 500) {
+				failure(w, r, 400, "REQUEST_INVALID", "备注不超过 2000 字符，审计附注不超过 500 字符")
 				return
 			}
-			if !access.Authorize(a, "user", operation, access.ScopeBrand, brand) {
+			if operation == "delete" && !access.Authorize(a, "user", operation, access.ScopeBrand, brand) && !access.Authorize(a, "user", operation, access.ScopePlatform, "") {
+				rejectAdmin(w, r, d, a, brand, "user.delete")
+				return
+			}
+			if operation != "delete" && !access.Authorize(a, "user", operation, access.ScopeBrand, brand) {
 				rejectAdmin(w, r, d, a, brand, "user."+operation)
 				return
 			}
@@ -378,9 +428,11 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 					var hash string
 					hash, err = d.Identity.PasswordHash(ctx, in.Password)
 					if err != nil {
-						return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 10-128 字节"), nil
+						return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字节"), nil
 					}
 					auditID, err = d.Admins.ResetPassword(ctx, tx, fresh, brand, id, hash, in.Reason, requestID(r), meta(r).IP)
+				case "delete":
+					auditID, err = d.Admins.DeleteMember(ctx, tx, fresh, brand, id, requestID(r), meta(r).IP)
 				}
 				return adminResult(auditID, err)
 			})
@@ -391,7 +443,13 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 	registerCommissionAnalysisReportRoutes(handle, d)
 	registerAdminManagementRoutes(handle, d)
 	if platform {
+		registerPlatformOverview(handle, d)
 		registerPlatformAccountRoutes(handle, d)
+		registerPlatformUserDelete(handle, d)
+		registerPlatformSettingsRoutes(handle, d)
+	}
+	if !platform {
+		registerBrandOverview(handle, d)
 	}
 	registerPointAdminRoutes(handle, d)
 	registerBetAdminRoutes(handle, d)

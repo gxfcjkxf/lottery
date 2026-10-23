@@ -8,14 +8,7 @@ export function points(value: string | bigint | number): Points {
   return BigInt(raw).toString() as Points
 }
 
-export function addPoints(...values: Array<Points | string | bigint>): Points {
-  return values.reduce<bigint>((sum, value) => sum + BigInt(value), 0n).toString() as Points
-}
 
-export function multiplyPoints(value: Points | string | bigint, multiplier: number): Points {
-  if (!Number.isSafeInteger(multiplier) || multiplier < 0) throw new RangeError('Multiplier must be a non-negative safe integer')
-  return (BigInt(value) * BigInt(multiplier)).toString() as Points
-}
 
 export function formatPoints(value: Points | string | bigint, locale = 'en'): string {
   return new Intl.NumberFormat(locale).format(BigInt(value))

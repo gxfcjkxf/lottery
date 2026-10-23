@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -62,7 +64,7 @@ function timestamp(value: unknown): value is string {
   const zoneHour = match[8] ? Number(match[8]) : 0, zoneMinute = match[9] ? Number(match[9]) : 0;
   return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days && Number(match[4]) <= 23 && Number(match[5]) <= 59 && Number(match[6]) <= 59 && zoneHour <= 23 && zoneMinute <= 59 && Number.isFinite(Date.parse(value));
 }
-export function validComplianceReason(value: unknown): value is string { return typeof value === "string" && value.length > 0 && value.trim() === value && !/\p{Cc}/u.test(value) && new TextEncoder().encode(value).length <= 500; }
+export function validComplianceReason(value: unknown): value is string { return typeof value === "string" && value.trim() === value && !/\p{Cc}/u.test(value) && new TextEncoder().encode(value).length <= 500; }
 export function validComplianceConfig(value: unknown): value is ComplianceConfig {
   if (!record(value) || !exact(value, ["age_enabled", "minimum_age", "region_enabled", "allowed_countries", "identity_enabled", "account_risk_enabled", "betting_risk_enabled", "exclusion_enabled", "responsible_gambling_enabled"])) return false;
   if (!["age_enabled", "region_enabled", "identity_enabled", "account_risk_enabled", "betting_risk_enabled", "exclusion_enabled", "responsible_gambling_enabled"].every((key) => typeof value[key] === "boolean")) return false;
@@ -115,7 +117,6 @@ function validGateRecord(value: unknown, brandId: string): value is ComplianceGa
 }
 function invalid(write: boolean): never { throw new AdminApiError("合规接口响应格式无效。", write ? 0 : 502, "INVALID_RESPONSE"); }
 function input(): never { throw new AdminApiError("合规请求参数无效。", 400, "INVALID_INPUT"); }
-type Envelope = { success?: unknown; data?: unknown; error?: unknown };
 
 export function createCompliancePolicyApi(fetchImpl: typeof fetch = fetch): CompliancePolicyApi {
   async function request(path: string, brandId: string, method: "GET" | "PUT" | "POST" = "GET", body?: unknown, key?: string, expectedStatus = 200): Promise<unknown> {
@@ -126,15 +127,7 @@ export function createCompliancePolicyApi(fetchImpl: typeof fetch = fetch): Comp
     let response: Response;
     try { response = await fetchImpl(path, { method, credentials: "same-origin", headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); }
     catch (cause) { throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR"); }
-    let envelope: Envelope;
-    try { envelope = await response.json() as Envelope; } catch { if (!response.ok) throw new AdminApiError(`Request failed (${response.status})`, response.status); invalid(method !== "GET"); }
-    if (!response.ok || !record(envelope) || envelope.success !== true || envelope.data === undefined) {
-      const error = record(envelope?.error) ? envelope.error : undefined;
-      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      const message = typeof error?.message === "string" ? error.message : `Request failed (${response.status})`;
-      if (!response.ok) throw new AdminApiError(message, response.status, typeof error?.code === "string" ? error.code : undefined);
-      invalid(method !== "GET");
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     if (response.status !== expectedStatus) invalid(method !== "GET");
     return envelope.data;
   }

@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -99,7 +101,7 @@ function validCorrection(v: unknown): v is Correction {
   const total = BigInt(v.pending_count as number) + BigInt(v.reversed_count as number) + BigInt(v.unchanged_count as number) + BigInt(v.excluded_count as number) + BigInt(v.failed_count as number);
   return validUuid(v.id) && validUuid(v.brand_id) && validUuid(v.game_id) && validUuid(v.period_id) && validUuid(v.previous_draw_result_id) && validUuid(v.draw_result_id) && validArrays(v.result) && positive(v.period_version) &&
     (v.previous_job_id === null || validUuid(v.previous_job_id)) && (v.new_job_id === null || validUuid(v.new_job_id)) && (v.policy_version === null || positive(v.policy_version)) && validMode(v.mode) &&
-    ["reversing", "resettling", "failed", "completed"].includes(String(v.state)) && positive(v.version) && total === BigInt(v.target_count as number) && validUuid(v.created_by) && nonempty(v.reason) && validDate(v.created_at) &&
+    ["reversing", "resettling", "failed", "completed"].includes(String(v.state)) && positive(v.version) && total === BigInt(v.target_count as number) && validUuid(v.created_by) && (typeof v.reason === "string") && validDate(v.created_at) &&
     (v.completed_at === null || validDate(v.completed_at)) && (v.last_error_code === null || typeof v.last_error_code === "string") && validAmount(v.reverse_points) && validAmount(v.reversed_points) && typeof v.can_retry === "boolean" &&
     (v.new_job_state === null || nonempty(v.new_job_state)) && (v.new_job_version === null || positive(v.new_job_version)) && (v.new_job_error_code === null || typeof v.new_job_error_code === "string");
 }
@@ -126,15 +128,7 @@ export function createCorrectionApi(fetcher: typeof fetch = fetch) {
     let response: Response;
     try { response = await fetcher(BASE + path, { method: body === undefined ? "GET" : "POST", credentials: "include", headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); }
     catch (cause) { throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR"); }
-    let envelope: unknown;
-    try { envelope = await response.json(); } catch {
-      if (response.ok) invalidResponse();
-      throw new AdminApiError("Invalid server response", response.status);
-    }
-    if (!response.ok) {
-      const error = isRecord(envelope) && isRecord(envelope.error) ? envelope.error : null;
-      throw new AdminApiError(typeof error?.message === "string" ? error.message : "Request failed (" + response.status + ")", response.status, typeof error?.code === "string" ? error.code : undefined);
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     if (response.status !== successStatus || !isRecord(envelope) || envelope.success !== true || !("data" in envelope)) invalidResponse();
     return envelope.data as T;
   }
@@ -148,7 +142,7 @@ export function createCorrectionApi(fetcher: typeof fetch = fetch) {
     /** Return the cached start receipt. The caller owns frozen intent and subsequent reads. */
     async create(brandId: string, drawResultId: string, body: CorrectionBody, key: string, expected?: CorrectionExpected): Promise<Correction> {
       if (!validUuid(drawResultId) || !positive(body?.version) || body.version === Number.MAX_SAFE_INTEGER ||
-        !(body.policy_version === null || positive(body.policy_version)) || !validArrays(body.result) || !nonempty(body.reason) || !nonempty(key) ||
+        !(body.policy_version === null || positive(body.policy_version)) || !validArrays(body.result) || !(typeof body.reason === "string") || !nonempty(key) ||
         (expected !== undefined && (!validUuid(expected.periodId) || !validUuid(expected.accountId) || !validMode(expected.mode) ||
           (body.policy_version === null ? expected.mode !== null : expected.mode === null)))) invalidInput("更正请求参数无效。");
       // Snapshot plain fields before awaiting; input may be a Vue proxy or later edited by its caller.
@@ -177,7 +171,7 @@ export function createCorrectionApi(fetcher: typeof fetch = fetch) {
       if (!validCorrection(value) || !sameUuid(value.brand_id, brandId) || !sameUuid(value.id, correctionId)) invalidResponse(); return value;
     },
     async retry(brandId: string, correctionId: string, body: CorrectionActionBody, key: string): Promise<Correction> {
-      if (!validUuid(correctionId) || !positive(body?.version) || body.version === Number.MAX_SAFE_INTEGER || !nonempty(body.reason) || !nonempty(key)) invalidInput("重试请求参数无效。");
+      if (!validUuid(correctionId) || !positive(body?.version) || body.version === Number.MAX_SAFE_INTEGER || !(typeof body.reason === "string") || !nonempty(key)) invalidInput("重试请求参数无效。");
       const payload = { version: body.version, reason: body.reason };
       const receipt = await request<unknown>(brandId, "/corrections/" + encodeURIComponent(correctionId) + "/retry", payload, key);
       // Retry actor/reason live in audit records; these fields remain those of the original correction.

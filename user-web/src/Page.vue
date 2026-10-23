@@ -1,33 +1,50 @@
 <script setup lang="ts">
+import LoginEntry from '@lottery/shared/LoginEntry.vue'
+import LoginCredentials from '@lottery/shared/LoginCredentials.vue'
+import { vWriteGuard } from "@lottery/shared";
+import { useUserI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import SiteIcon from "@lottery/shared/SiteIcon";
+import { vRefreshButton } from '@lottery/shared';
+import { useSessionReplacement, vGlobalLoading, formatDisplayDateTime } from "@lottery/shared";
 import LanguageSwitcher from '@lottery/shared/LanguageSwitcher.vue';
+import DetailModal from '@lottery/shared/DetailModal.vue';
+import BettingPreferencesSettings from './BettingPreferencesSettings.vue';
+import PolicyContent from './PolicyContent.vue';
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   createApiClient,
   defaultBrand,
   applyBrandPresentation,
+  nativeLocaleName,
   type Language,
 } from "@lottery/shared";
 import WithdrawalPanel from "./WithdrawalPanel.vue";
 import WalletSummary from "./WalletSummary.vue";
-import HomeWalletCard from "./HomeWalletCard.vue";
+import HeaderPoints from './HeaderPoints.vue';
+import UserOverview from './UserOverview.vue';
+import { loadUserGames, gamePath, rememberGame, recalledGame, type UserGame } from './user-games';
 import RechargePanel from "./RechargePanel.vue";
+import ConfiguredBetting from './ConfiguredBetting.vue';
 import BettingPanel from "./BettingPanel.vue";
-import DrawResultsPanel from "./DrawResultsPanel.vue";
+import DrawArchive from './DrawArchive.vue';
 import NotificationsPanel from "./NotificationsPanel.vue";
-import AgentPanel from "./AgentPanel.vue";
 import JoinCodesPanel from "./JoinCodesPanel.vue";
-import { clearAllAgentUpdates } from "./agent-state";
+import { setUserLocale, useUserI18n } from "./i18n";
+import { parentUserPage } from './navigation';
+import { resolveJoinLink, joinLinkFields, joinLinkKey, type JoinLink } from './join-attribution';
 import {
   createAuthClient,
-  normalizeJoinCodeFields,
   type AuthChallenge,
   type AuthFeatures,
   type TelegramChallenge,
 } from "../../shared/src/auth";
 import {
   ApiError,
-  authErrorMessage,
   discardAccessToken,
   isBrandJoinRequired,
   isTelegramClientIdConfigured,
@@ -41,9 +58,12 @@ import {
 const route = useRoute();
 const walletBrandCode = import.meta.env.VITE_BRAND_CODE || undefined;
 const router = useRouter();
-const savedLanguage = localStorage.getItem("luma-language");
-const validSavedLanguage = savedLanguage === "en" || savedLanguage === "zh" ? savedLanguage : null;
-const locale = ref<Language>(validSavedLanguage || "en");
+const i18n = useUserI18n();
+const localeCode = i18n.locale;
+const locale = computed<Language>(() => localeCode.value === "zh-CN" ? "zh" : "en");
+const ui = i18n.t;
+function setLocale(value: string) { setUserLocale(i18n, value === "zh" ? "zh-CN" : value); }
+function languageLabel(code: Language) { return nativeLocaleName(code === "en" ? "en" : "zh-CN"); }
 const api = createApiClient({
   brandCode: import.meta.env.VITE_BRAND_CODE || undefined,
 });
@@ -51,7 +71,7 @@ const authApi = createAuthClient({
   brandCode: import.meta.env.VITE_BRAND_CODE || undefined,
 });
 const connection = ref<"checking" | "connected" | "offline">("checking");
-const connectionMessage = ref("Checking service");
+const connectionMessage = ref(ui('user.page.checking'));
 const brandName = ref(defaultBrand.name);
 const brandLogoText = ref(defaultBrand.logoText);
 const brandLogoUrl = ref<string | null>(null);
@@ -60,16 +80,21 @@ const availableLanguages = ref<Language[]>([]);
 const contextLoaded = ref(false);
 const brandContent = ref(defaultBrand.content!);
 const brandPaused = ref(false);
-const mobileMenu = ref(false);
 const notice = ref("");
 const agreed = ref(false);
 const privacyAgreed = ref(false);
 const serviceTermsAgreed = ref(false);
+const policiesAgreed = computed({ get: () => privacyAgreed.value && serviceTermsAgreed.value, set: value => { privacyAgreed.value = value; serviceTermsAgreed.value = value; } });
+const policyDialog = ref<'privacy' | 'terms' | null>(null);
 const joinTermsAgreed = ref(false);
 const joinTermsPrompt = ref(false);
 const joinAttributionFixed = ref(false);
-const joinSource = ref<"none" | "agent" | "referral">("none");
-const joinCode = ref("");
+const activeJoinLink = ref<JoinLink | null>(null);
+const joinLinkBrand = ref('');
+const joinLinkChecking = ref(true);
+const joinLinkFailed = ref(false);
+const joinLinkUnavailable = ref(false);
+let joinLinkGeneration = 0;
 const pendingBrandJoin = ref<{
   identifier: string;
   password: string;
@@ -77,22 +102,21 @@ const pendingBrandJoin = ref<{
   fields: { agent_code?: string; referral_code?: string };
 } | null>(null);
 const authBusy = ref(false);
-const authError = ref("");
+const authError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const identifier = ref("");
 const password = ref("");
 const authProfile = ref<AuthProfile | null>(null);
+const headerPoints = ref<{ brandId: string; memberId: string; amount: string; description: string } | null>(null);
+const profilePoints = computed(() => headerPoints.value?.brandId === authProfile.value?.member.brand_id && headerPoints.value?.memberId === authProfile.value?.member.id ? headerPoints.value : null);
 let profileReadGeneration = 0;
 const notificationUnreadCount = ref<string | null>(null);
-const profileLoading = ref(false);
+const profileLoading = ref(true);
 const profileSaving = ref(false);
 const profileUsername = ref("");
 const profilePhone = ref("");
-const profileError = ref("");
+const profileError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const profileNotice = ref("");
-const termsVersions = ref({
-  privacy_policy_version: "dev-1",
-  service_terms_version: "dev-1",
-});
+const termsVersions = ref<{ privacy_policy_version: string; service_terms_version: string } | null>(null);
 const authConfiguration = ref<AuthFeatures>({
   captcha_enabled: false,
   telegram_enabled: false,
@@ -104,7 +128,7 @@ const captchaAnswer = ref("");
 const captchaLoading = ref(false);
 const telegramChallenge = ref<TelegramChallenge | null>(null);
 const telegramSdkReady = ref(false);
-const telegramError = ref("");
+const telegramError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const tick = ref(0);
 const captchaImageSource = computed(() =>
   captchaChallenge.value
@@ -137,100 +161,58 @@ const telegramReady = computed(() => {
     Date.parse(telegramChallenge.value?.expires_at ?? "") > Date.now()
   );
 });
+let workspaceSyncTimer: ReturnType<typeof setInterval> | undefined;
 let tickTimer: ReturnType<typeof setInterval> | undefined;
 let pageGeneration = 0;
 onUnmounted(() => {
   pageGeneration++;
+  joinLinkGeneration++;
   if (tickTimer) clearInterval(tickTimer);
+  if (workspaceSyncTimer) clearInterval(workspaceSyncTimer);
 });
 
-const copy = {
-  en: {
-    home: "Home",
-    orders: "My orders",
-    wallet: "Points wallet",
-    results: "Results",
-    notifications: "Updates",
-    help: "Help centre",
-    login: "Sign in",
-    register: "Create account",
-    games: "Games",
-    play: "Play now",
-    pointsPayments: "Platform points · payments not connected",
-    online: "Service connected",
-    offline: "Service unavailable",
-    checking: "Checking service",
-    welcome: "A little luck, a brighter day.",
-    subtitle: "Pick your numbers. Keep it light.",
-    featured: "Today’s picks",
-    viewAll: "Explore all games",
-    announcement: "A calmer way to play",
-    announcementBody: "Set your pace, check the rules, and enjoy the moment.",
-    choose: "Choose your numbers",
-    notices: "You’re all caught up",
-    helpTitle: "Play with clarity",
-    loginTitle: "Welcome back",
-    registerTitle: "Make yourself at home",
-    username: "Username or mobile",
-    password: "Password",
-    telegram: "Telegram (optional)",
-    verification: "Verification code enabled",
-    terms: "I agree to the terms and play responsibly.",
-    continue: "Continue",
-    invites: "Join codes",
-    joinSourceLabel: "Optional join source",
-    joinSourceNone: "No code",
-    joinSourceAgent: "Agent code",
-    joinSourceReferral: "Referral code",
-    joinCodeLabel: "24-character code",
-    joinSourceRequired: "Enter a 24-character hexadecimal code, or choose no code.",
-    joinSourceReview: "Join source to apply",
-    joinSourceNoCode: "No code selected",
-  },
-  zh: {
-    home: "首页",
-    orders: "我的注单",
-    wallet: "积分钱包",
-    results: "开奖结果",
-    notifications: "消息",
-    help: "帮助中心",
-    login: "登录",
-    register: "创建账户",
-    games: "彩种",
-    play: "立即选号",
-    pointsPayments: "平台积分 · 支付尚未接入",
-    online: "服务已连接",
-    offline: "服务暂不可用",
-    checking: "正在检查服务",
-    welcome: "一点好运，让今天更明亮。",
-    subtitle: "选好号码，轻松享受。",
-    featured: "今日推荐",
-    viewAll: "浏览全部彩种",
-    announcement: "更从容的娱乐方式",
-    announcementBody: "量力而行，了解规则，享受当下。",
-    choose: "选择号码",
-    notices: "目前没有新消息",
-    helpTitle: "清晰地享受娱乐",
-    loginTitle: "欢迎回来",
-    registerTitle: "欢迎加入",
-    username: "用户名或手机号",
-    password: "密码",
-    telegram: "Telegram（选填）",
-    verification: "启用验证码",
-    terms: "我同意相关条款并承诺理性参与。",
-    continue: "继续",
-    invites: "加入码",
-    joinSourceLabel: "可选加入来源",
-    joinSourceNone: "不使用代码",
-    joinSourceAgent: "代理码",
-    joinSourceReferral: "推荐码",
-    joinCodeLabel: "24 位代码",
-    joinSourceRequired: "请输入 24 位十六进制代码，或选择不使用代码。",
-    joinSourceReview: "将使用的加入来源",
-    joinSourceNoCode: "未选择代码",
-  },
-};
-const t = computed(() => copy[locale.value]);
+const t = computed(() => ({
+  home: ui('user.page.home'),
+  orders: ui('user.page.orders'),
+  wallet: ui('user.page.wallet'),
+  results: ui('user.page.results'),
+  notifications: ui('user.page.notifications'),
+  help: ui('user.page.help'),
+  login: ui('user.page.login'),
+  register: ui('user.page.register'),
+  games: ui('user.page.games'),
+  play: ui('user.page.play'),
+  pointsPayments: ui('user.page.pointsPayments'),
+  online: ui('user.page.online'),
+  offline: ui('user.page.offline'),
+  checking: ui('user.page.checking'),
+  welcome: ui('user.page.welcome'),
+  subtitle: ui('user.page.subtitle'),
+  featured: ui('user.page.featured'),
+  viewAll: ui('user.page.viewAll'),
+  announcement: ui('user.page.announcement'),
+  announcementBody: ui('user.page.announcementBody'),
+  choose: ui('user.page.choose'),
+  notices: ui('user.page.notices'),
+  helpTitle: ui('user.page.helpTitle'),
+  loginTitle: ui('user.page.loginTitle'),
+  registerTitle: ui('user.page.registerTitle'),
+  username: ui('user.page.username'),
+  password: ui('user.page.password'),
+  telegram: ui('user.page.telegram'),
+  verification: ui('user.page.verification'),
+  terms: ui('user.page.terms'),
+  continue: ui('user.page.continue'),
+  invites: ui('user.page.invites'),
+  joinSourceLabel: ui('user.page.joinSourceLabel'),
+  joinSourceNone: ui('user.page.joinSourceNone'),
+  joinSourceAgent: ui('user.page.joinSourceAgent'),
+  joinSourceReferral: ui('user.page.joinSourceReferral'),
+  joinCodeLabel: ui('user.page.joinCodeLabel'),
+  joinSourceRequired: ui('user.page.joinSourceRequired'),
+  joinSourceReview: ui('user.page.joinSourceReview'),
+  joinSourceNoCode: ui('user.page.joinSourceNoCode'),
+}));
 const localizedBrandContent = computed(() => brandContent.value[locale.value] ?? { tagline: "", announcement: "" });
 const displayTagline = computed(() => localizedBrandContent.value.tagline);
 const displayAnnouncement = computed(() => localizedBrandContent.value.announcement);
@@ -243,22 +225,120 @@ function encodeBase64(value: string): string {
   return btoa(binary);
 }
 watch(locale, (value) => {
-  localStorage.setItem("luma-language", value);
   document.documentElement.lang = value === "zh" ? "zh-CN" : "en";
 });
 
 const nav = computed(() => [
-  { to: "/", label: t.value.home, icon: "⌂" },
-  { to: "/orders", label: t.value.orders, icon: "▤" },
-  { to: "/wallet", label: t.value.wallet, icon: "◈" },
-  { to: "/results", label: t.value.results, icon: "◷" },
-  { to: "/notifications", label: t.value.notifications, icon: "◌" },
-  { to: "/agent", label: locale.value === "en" ? "Agent settings" : "代理设置", icon: "⌘" },
-  { to: "/invites", label: t.value.invites, icon: "⌁" },
-  { to: "/help", label: t.value.help, icon: "?" },
+  { to: "/", label: t.value.home, icon: "home" as const },
+  { to: "/orders", label: t.value.orders, icon: "ticket" as const },
+  { to: "/wallet", label: t.value.wallet, icon: "wallet" as const },
+  { to: "/results", label: t.value.results, icon: "calendar" as const },
+  { to: "/notifications", label: t.value.notifications, icon: "bell" as const },
+  { to: "/invites", label: t.value.invites, icon: "link" as const },
+  { to: "/help", label: t.value.help, icon: "help" as const },
 ]);
+const mobileNav = computed(() => [
+  { to: '/', label: ui('user.nav.home'), icon: "home" as const },
+  { to: '/orders', label: ui('user.nav.orders'), icon: "ticket" as const },
+  { to: '/wallet', label: ui('user.nav.wallet'), icon: "wallet" as const },
+  { to: '/account', label: ui('user.nav.personal'), icon: "user" as const },
+]);
+const desktopNav = computed(() => [...nav.value, mobileNav.value[3]!]);
+const accountTools = computed(() => nav.value.filter(item => ['/invites', '/help'].includes(item.to)));
+const helpFaqs = [
+  ['user.help.bettingQuestion', 'user.help.bettingAnswer'],
+  ['common.numberPicksQuestion', 'common.numberPicksAnswer'],
+  ['user.help.ordersQuestion', 'user.help.ordersAnswer'],
+  ['common.pointsQuestion', 'user.help.pointsAnswer'],
+  ['user.help.referralQuestion', 'user.help.referralAnswer'],
+  ['common.withdrawalQuestion', 'common.withdrawalAnswer'],
+] as const;
+const bettingGameTitle = ref('');
+const pageTitle = computed(() => {
+  const path = route.path;
+  const item = nav.value.find(item => item.to === path);
+  if (item) return item.label;
+  if (path === '/account') return ui('user.nav.personal');
+  if (path === '/login') return t.value.login;
+  if (path === '/register') return ui('user.auth.registerAction');
+  if (path === '/terms') return ui('common.serviceTerms');
+  if (path === '/privacy') return ui('common.privacyPolicy');
+  if (path === '/recharge') return ui('user.recharge.title');
+  if (path === '/withdraw') return ui('user.withdrawal.title');
+  if (path === '/wallet/buckets') return ui('user.wallet.buckets');
+  if (path === '/wallet/ledger') return ui('user.wallet.ledger');
+  if (path.startsWith('/orders/')) return t.value.orders;
+  if (path === '/games') return t.value.games;
+  if (path.startsWith('/configured/')) return bettingGameTitle.value;
+  if (path.startsWith('/games/') || path === '/bet/confirm') return t.value.choose;
+  throw new Error(`Unsupported user page: ${path}`);
+});
 const isAuth = computed(() => ["/login", "/register"].includes(route.path));
+
+const allUserGames = ref<UserGame[]>([]);
+const chosenGame = ref<UserGame | null>(null);
+const gamesError = ref<string | import("@lottery/shared").LocalizedMessage>("");
+const gamesReady = ref(false);
+const gamePickerOpen = ref(false);
+const menuOpen = ref(false);
+const overviewOpen = ref(false);
+const currentGame = computed(() => {
+  const id = route.params.gameId ?? (route.path === '/results' ? route.query.platform_game_id ?? route.query.game_id : undefined);
+  return id ? allUserGames.value.find(game => game.id === id) ?? null : chosenGame.value;
+});
+const resultsGame = computed(() => {
+  if (route.query.platform_game_id !== undefined) return { id: typeof route.query.platform_game_id === 'string' ? route.query.platform_game_id : '', kind: 'configured' as const };
+  if (route.query.game_id !== undefined) return { id: typeof route.query.game_id === 'string' ? route.query.game_id : '', kind: 'standard' as const };
+  return currentGame.value;
+});
+async function loadWorkspaceGames() {
+  const profile = authProfile.value;
+  if (!profile) return;
+  gamesError.value = '';
+  try {
+    const games = await loadUserGames(walletBrandCode);
+    if (authProfile.value !== profile) return;
+    allUserGames.value = games;
+    const routeGame = games.find(g => g.id === String(route.params.gameId ?? ''));
+    const stored = localStorage.getItem(`lottery:last-game:${joinLinkBrand.value}`);
+    const saved = recalledGame(localStorage, joinLinkBrand.value, games);
+    if (routeGame) chosenGame.value = routeGame;
+    else if (saved) chosenGame.value = saved;
+    else if (stored !== null) chosenGame.value = null;
+    else chosenGame.value = games[0] ?? null;
+    if (chosenGame.value) rememberGame(localStorage, joinLinkBrand.value, chosenGame.value);
+    gamesReady.value = true;
+  } catch { gamesError.value = ui('workspace.gamesFailed'); }
+}
+function selectWorkspaceGame(game: UserGame) {
+  chosenGame.value = game;
+  rememberGame(localStorage, joinLinkBrand.value, game);
+  gamePickerOpen.value = false; gamesError.value = '';
+  if (route.path === '/results') void router.push({ path: '/results', query: game.kind === 'configured' ? { platform_game_id: game.id } : { game_id: game.id } });
+  else if (route.path !== '/') void router.push(gamePath(game));
+}
+function workspaceParent() {
+  menuOpen.value = false; gamePickerOpen.value = false;
+  void router.push(['/orders','/wallet','/account'].includes(route.path) ? '/' : parentUserPage(route.path));
+}
+watch(() => [contextLoaded.value, isAuth.value, authProfile.value], () => {
+  if (contextLoaded.value && !isAuth.value && authProfile.value && !gamesReady.value) void withGlobalLoading(loadWorkspaceGames);
+});
+watch(() => route.fullPath, () => {
+  menuOpen.value = false; gamePickerOpen.value = false;
+  const game = allUserGames.value.find(g => g.id === String(route.params.gameId ?? ''));
+  if (game) { chosenGame.value = game; rememberGame(localStorage, joinLinkBrand.value, game); }
+});
+
 const activePage = computed(() => route.path);
+function isNavItemActive(path: string, includeAccountTools = true) {
+  return activePage.value === path ||
+    (includeAccountTools && path === '/account' && accountTools.value.some(item => item.to === activePage.value)) ||
+    (path === '/' && (activePage.value === '/games' || activePage.value.startsWith('/games/') || activePage.value.startsWith('/configured/') || activePage.value === '/bet/confirm')) ||
+    (path === "/games" && activePage.value.startsWith("/games/")) ||
+    (path === "/orders" && activePage.value.startsWith("/orders/")) ||
+    (path === "/wallet" && (activePage.value.startsWith("/wallet/") || ['/recharge', '/withdraw'].includes(activePage.value)));
+}
 const isBettingRoute = computed(
   () =>
     route.path === "/games" ||
@@ -268,6 +348,7 @@ const isBettingRoute = computed(
     route.path.startsWith("/orders/"),
 );
 function authTerms() {
+  if (!termsVersions.value) throw new Error('Policy versions have not loaded');
   return { ...termsVersions.value };
 }
 async function refreshCaptcha() {
@@ -283,7 +364,7 @@ async function refreshCaptcha() {
   try {
     captchaChallenge.value = await authApi.getChallenge();
   } catch (error) {
-    authError.value = authErrorMessage(error);
+    authError.value = publicErrorMessage(error);
   } finally {
     captchaLoading.value = false;
   }
@@ -309,7 +390,7 @@ async function loadAuthFeatures() {
       } catch (error) {
         telegramSdkReady.value = false;
         telegramChallenge.value = null;
-        telegramError.value = authErrorMessage(error);
+        telegramError.value = publicErrorMessage(error);
       }
     } else {
       telegramSdkReady.value = false;
@@ -317,7 +398,7 @@ async function loadAuthFeatures() {
       telegramError.value = "";
     }
   } catch (error) {
-    authError.value = authErrorMessage(error);
+    authError.value = publicErrorMessage(error);
   } finally {
     authConfigurationLoading.value = false;
   }
@@ -333,7 +414,7 @@ async function refreshTelegramChallenge() {
     telegramChallenge.value = await authApi.getTelegramChallenge();
     telegramError.value = "";
   } catch (error) {
-    telegramError.value = authErrorMessage(error);
+    telegramError.value = publicErrorMessage(error);
   }
 }
 function captchaInput() {
@@ -344,25 +425,36 @@ function captchaInput() {
       }
     : {};
 }
-function captureJoinChoice() {
-  if (joinSource.value === "none") return { source: "none" as const, fields: {} };
-  const field = joinSource.value === "agent" ? "agent_code" : "referral_code";
+async function refreshJoinLink() {
+  const generation = ++joinLinkGeneration;
+  joinLinkChecking.value = true;
+  joinLinkFailed.value = false;
+  joinLinkUnavailable.value = false;
+  activeJoinLink.value = null;
   try {
-    const fields = normalizeJoinCodeFields({ [field]: joinCode.value });
-    if (!fields.agent_code && !fields.referral_code) {
-      throw new TypeError(t.value.joinSourceRequired);
+    const result = await resolveJoinLink(window.localStorage, joinLinkBrand.value, new URLSearchParams(window.location.search), async link => {
+      const valid = await authApi.validateJoinCode(joinLinkFields(link));
+      if (generation !== joinLinkGeneration) throw new Error('Invitation check was superseded');
+      return valid;
+    });
+    if (generation === joinLinkGeneration) {
+      activeJoinLink.value = result.link;
+      joinLinkUnavailable.value = result.unavailable;
     }
-    return { source: joinSource.value, fields };
   } catch {
-    throw new TypeError(t.value.joinSourceRequired);
+    if (generation === joinLinkGeneration) joinLinkFailed.value = true;
+  } finally {
+    if (generation === joinLinkGeneration) joinLinkChecking.value = false;
   }
+}
+function captureJoinChoice() {
+  if (joinLinkChecking.value || joinLinkFailed.value) throw new Error(ui('user.auth.joinLinkFailed'));
+  if (joinLinkUnavailable.value) throw new Error(ui('user.auth.joinLinkUnavailable'));
+  return { source: activeJoinLink.value?.kind ?? 'none' as 'none' | 'agent' | 'referral', fields: joinLinkFields(activeJoinLink.value) };
 }
 function passwordError() {
   const bytes = passwordByteLength(password.value);
-  if (bytes < 10 || bytes > 128)
-    return locale.value === "en"
-      ? "Password must be 10–128 bytes."
-      : "密码长度须为 10 至 128 字节。";
+  if (bytes < 6 || bytes > 30) return ui('user.auth.passwordBytes');
   return "";
 }
 function handleAuthError(error: unknown) {
@@ -372,18 +464,13 @@ function handleAuthError(error: unknown) {
     if (pending) {
       identifier.value = pending.identifier;
       password.value = pending.password;
-      joinSource.value = pending.source;
-      joinCode.value = pending.fields.agent_code || pending.fields.referral_code || "";
     }
     joinTermsPrompt.value = true;
     joinTermsAgreed.value = false;
-    authError.value =
-      locale.value === "en"
-        ? "Please review and accept this brand’s current terms to join."
-        : "请阅读并同意当前品牌条款后加入。";
+    authError.value = ui('user.auth.joinTerms');
     return;
   }
-  authError.value = authErrorMessage(error);
+  authError.value = publicErrorMessage(error);
 }
 async function finishAuth(
   session: import("../../shared/src/auth").AuthSession,
@@ -393,18 +480,25 @@ async function finishAuth(
   joinAttributionFixed.value = false;
   password.value = "";
   authProfile.value = discardAccessToken(session);
-  await router.push("/account");
+  await router.replace("/");
 }
 async function authSubmit() {
+  sessionReplaced.value = false;
   if (joinTermsPrompt.value) return;
   authError.value = "";
   joinAttributionFixed.value = false;
   joinTermsPrompt.value = false;
   if (!authConfigurationLoaded.value) {
-    authError.value =
-      locale.value === "en"
-        ? "Authentication settings are unavailable. Retry loading them before continuing."
-        : "身份验证配置暂不可用，请重试加载后继续。";
+    authError.value = ui('user.auth.settingsUnavailable');
+    return;
+  }
+  const normalized = normalizeIdentifier(identifier.value);
+  if (!normalized.identifier) {
+    authError.value = ui('user.auth.identifier');
+    return;
+  }
+  if (!password.value) {
+    authError.value = ui('user.auth.passwordRequired');
     return;
   }
   const lengthError = passwordError();
@@ -413,35 +507,21 @@ async function authSubmit() {
     return;
   }
   if (!captchaReady.value) {
-    authError.value =
-      locale.value === "en"
-        ? "Load the verification image and enter its code."
-        : "请加载验证码图片并输入验证码。";
+    authError.value = ui('user.auth.captcha');
     return;
   }
   if (
     route.path === "/register" &&
     (!privacyAgreed.value || !serviceTermsAgreed.value)
   ) {
-    authError.value =
-      locale.value === "en"
-        ? "Accept both policies to create your account."
-        : "创建账户前请同意隐私政策和服务条款。";
-    return;
-  }
-  const normalized = normalizeIdentifier(identifier.value);
-  if (!normalized.identifier) {
-    authError.value =
-      locale.value === "en"
-        ? "Enter a username or phone number."
-        : "请输入用户名或手机号。";
+    authError.value = ui('user.auth.acceptPolicies');
     return;
   }
   let choice: ReturnType<typeof captureJoinChoice>;
   try {
     choice = captureJoinChoice();
   } catch (error) {
-    authError.value = error instanceof Error ? error.message : t.value.joinSourceRequired;
+    authError.value = error instanceof Error ? publicErrorMessage(error) : t.value.joinSourceRequired;
     return;
   }
   if (route.path === "/login") {
@@ -472,7 +552,9 @@ async function authSubmit() {
     await finishAuth(session);
   } catch (error) {
     if (isBrandJoinRequired(error) && route.path === "/login") handleAuthError(error);
-    else authError.value = authErrorMessage(error);
+    else if (route.path === "/register" && error instanceof ApiError && error.code === "IDENTITY_EXISTS")
+      authError.value = ui('user.auth.accountExists');
+    else authError.value = publicErrorMessage(error);
     await refreshCaptcha();
   } finally {
     authBusy.value = false;
@@ -481,25 +563,16 @@ async function authSubmit() {
 async function acceptBrandTermsAndLogin() {
   if (!joinTermsAgreed.value) return;
   if (!authConfigurationLoaded.value) {
-    authError.value =
-      locale.value === "en"
-        ? "Authentication settings are unavailable. Retry loading them before continuing."
-        : "身份验证配置暂不可用，请重试加载后继续。";
+    authError.value = ui('user.auth.settingsUnavailable');
     return;
   }
   if (!captchaReady.value) {
-    authError.value =
-      locale.value === "en"
-        ? "Load a new verification image and enter its code."
-        : "请加载新的验证码图片并输入验证码。";
+    authError.value = ui('user.auth.captchaRetry');
     return;
   }
   const pending = pendingBrandJoin.value;
   if (!pending) {
-    authError.value =
-      locale.value === "en"
-        ? "Please sign in again before joining this brand."
-        : "请重新登录后再加入此品牌。";
+    authError.value = ui('user.auth.signInAgain');
     joinTermsPrompt.value = false;
     return;
   }
@@ -521,42 +594,50 @@ async function acceptBrandTermsAndLogin() {
       error.code?.toUpperCase() === "JOIN_ATTRIBUTION_FIXED"
     ) {
       joinAttributionFixed.value = true;
-      authError.value =
-        locale.value === "en"
-          ? "This membership already has a fixed join source. Cancel this attempt to start a new sign-in without a code; its existing attribution will remain unchanged."
-          : "此会员已有固定加入来源。取消本次操作后可不使用代码重新登录；现有归属不会更改。";
+      authError.value = ui('user.auth.joinFixed');
     } else if (isBrandJoinRequired(error)) {
       handleAuthError(error);
     } else {
-      authError.value = authErrorMessage(error);
+      authError.value = publicErrorMessage(error);
     }
     await refreshCaptcha();
   } finally {
     authBusy.value = false;
   }
 }
+async function useDirectEntry() {
+  try {
+    window.localStorage.removeItem(joinLinkKey(joinLinkBrand.value));
+  } catch {
+    joinLinkFailed.value = true;
+    return;
+  }
+  activeJoinLink.value = null;
+  joinLinkUnavailable.value = false;
+  const query = {...route.query};
+  delete query.agent_code;
+  delete query.referral_code;
+  await router.replace({path: route.path, query});
+}
 function cancelBrandJoin(): void {
   pendingBrandJoin.value = null;
   joinTermsPrompt.value = false;
   joinTermsAgreed.value = false;
   joinAttributionFixed.value = false;
-  joinSource.value = "none";
-  joinCode.value = "";
+  void useDirectEntry();
   authError.value = "";
 }
 async function startTelegramAuth() {
-  if (!telegramReady.value || authBusy.value) return;
+  sessionReplaced.value = false;
+  if (!telegramReady.value || authBusy.value || joinLinkChecking.value || joinLinkFailed.value || joinLinkUnavailable.value) return;
   if (!privacyAgreed.value || !serviceTermsAgreed.value) {
-    authError.value =
-      locale.value === "en"
-        ? "Accept both policies before continuing with Telegram."
-        : "使用 Telegram 前请同意隐私政策和服务条款。";
+    authError.value = ui('user.auth.acceptTelegramPolicies');
     return;
   }
   authBusy.value = true;
   authError.value = "";
   try {
-    const choice = captureJoinChoice();
+    const choice = route.path === '/register' ? captureJoinChoice() : { source: 'none' as const, fields: {} };
     const challenge = telegramChallenge.value!;
     const idToken = await requestTelegramIdToken(
       authConfiguration.value.telegram_client_id!,
@@ -571,7 +652,7 @@ async function startTelegramAuth() {
     });
     await finishAuth(session);
   } catch (error) {
-    telegramError.value = authErrorMessage(error);
+    telegramError.value = publicErrorMessage(error);
     await refreshTelegramChallenge();
   } finally {
     authBusy.value = false;
@@ -591,13 +672,11 @@ async function loadProfile() {
     profilePhone.value = profile.user.phone ?? "";
   } catch (error) {
     if (requestGeneration !== profileReadGeneration || mountedGeneration !== pageGeneration) return;
-    authProfile.value = null;
-    if (error instanceof Error && "status" in error && error.status === 401)
-      profileError.value =
-        locale.value === "en"
-          ? "Sign in to view your account."
-          : "请登录以查看账户。";
-    else profileError.value = authErrorMessage(error);
+    if (error instanceof Error && "status" in error && error.status === 401) {
+      authProfile.value = null;
+      profileError.value = ui('user.auth.profileSignIn');
+      await router.replace({ path: '/login', query: route.query });
+    } else profileError.value = publicErrorMessage(error);
   } finally {
     if (requestGeneration === profileReadGeneration && mountedGeneration === pageGeneration) profileLoading.value = false;
   }
@@ -610,6 +689,21 @@ function expireRechargeProfile() {
   profileUsername.value = "";
   profilePhone.value = "";
 }
+watch(authProfile, profile => {
+  if (profile) return;
+  allUserGames.value = [];
+  chosenGame.value = null;
+  gamesReady.value = false;
+  gamePickerOpen.value = false;
+  menuOpen.value = false;
+  if (!['/login', '/register', '/terms', '/privacy'].includes(route.path)) {
+    void router.replace({ path: '/login', query: route.query });
+  }
+}, { flush: 'sync' });
+const sessionReplaced = useSessionReplacement(() => !!authProfile.value, () => authApi.me(), () => {
+  expireRechargeProfile();
+  void router.replace('/login');
+});
 async function saveProfile() {
   profileError.value = "";
   profileNotice.value = "";
@@ -619,19 +713,13 @@ async function saveProfile() {
   if (!authProfile.value?.user.phone && profilePhone.value.trim()) {
     const normalized = normalizeIdentifier(profilePhone.value);
     if (!normalized.phone) {
-      profileError.value =
-        locale.value === "en"
-          ? "Enter a valid phone number."
-          : "请输入有效手机号。";
+      profileError.value = ui('user.auth.phone');
       return;
     }
     next.phone = normalized.phone;
   }
   if (!Object.keys(next).length) {
-    profileNotice.value =
-      locale.value === "en"
-        ? "There are no profile details to add."
-        : "没有需要补充的资料。";
+    profileNotice.value = ui('user.auth.profileEmpty');
     return;
   }
   profileSaving.value = true;
@@ -641,10 +729,9 @@ async function saveProfile() {
     authProfile.value = profile;
     profileUsername.value = profile.user.username ?? "";
     profilePhone.value = profile.user.phone ?? "";
-    profileNotice.value =
-      locale.value === "en" ? "Profile updated." : "资料已更新。";
+    profileNotice.value = ui('user.auth.profileUpdated');
   } catch (error) {
-    profileError.value = authErrorMessage(error);
+    profileError.value = publicErrorMessage(error);
   } finally {
     profileSaving.value = false;
   }
@@ -653,17 +740,16 @@ async function logout() {
   profileError.value = "";
   try {
     await authApi.logout();
-    clearAllAgentUpdates();
     authProfile.value = null;
     await router.push("/login");
   } catch (error) {
-    profileError.value = authErrorMessage(error);
+    profileError.value = publicErrorMessage(error);
   }
 }
 function closeNotice() {
   notice.value = "";
 }
-onMounted(async () => {
+onMounted(() => withGlobalLoading(async () => {
   const generation = ++pageGeneration;
   try {
     const context = await api.getContext();
@@ -681,24 +767,28 @@ onMounted(async () => {
     availableLanguages.value = context.brand.languages;
     contextLoaded.value = true;
     brandPaused.value = context.paused;
-    if (context.terms) termsVersions.value = context.terms;
-    locale.value = validSavedLanguage && context.brand.languages.includes(validSavedLanguage)
-      ? validSavedLanguage
+    if (!context.terms) throw new Error('Missing policy versions');
+    termsVersions.value = context.terms;
+    const requestedLanguage: Language = localeCode.value === "zh-CN" ? "zh" : "en";
+    const selectedLanguage = context.brand.languages.includes(requestedLanguage)
+      ? requestedLanguage
       : context.brand.defaultLanguage;
+    setUserLocale(i18n, selectedLanguage === "zh" ? "zh-CN" : "en");
     applyBrandPresentation(context);
+    if (!context.brand.id) throw new Error('Missing brand identity');
+    joinLinkBrand.value = context.brand.id;
+    await refreshJoinLink();
     await loadAuthFeatures();
     if (generation !== pageGeneration) return;
   } catch (error) {
     if (generation !== pageGeneration) return;
     connection.value = "offline";
-    connectionMessage.value =
-      error instanceof Error
-        ? `${t.value.offline} · ${error.message}`
-        : t.value.offline;
+    connectionMessage.value = publicErrorI18n.errorText(error);
   }
-  if (route.path === "/account" || route.path === "/notifications" || route.path === "/withdraw" || route.path === "/recharge") void loadProfile();
+  if (!isAuth.value) void loadProfile();
   tickTimer = setInterval(() => tick.value++, 1000);
-});
+  workspaceSyncTimer = setInterval(() => { if (authProfile.value && !isAuth.value && document.visibilityState === 'visible') void loadWorkspaceGames(); }, 5000);
+}));
 watch(locale, () => {
   connectionMessage.value =
     connection.value === "connected"
@@ -707,18 +797,19 @@ watch(locale, () => {
         ? t.value.offline
         : t.value.checking;
 });
+watch(() => route.fullPath, () => { if (joinLinkBrand.value) void refreshJoinLink(); });
 watch(
   () => route.path,
   (path) => {
+    policyDialog.value = null;
+    bettingGameTitle.value = '';
     if (path !== "/login") {
       pendingBrandJoin.value = null;
       joinTermsPrompt.value = false;
       joinTermsAgreed.value = false;
       joinAttributionFixed.value = false;
-      joinSource.value = "none";
-      joinCode.value = "";
     }
-    if (path === "/account" || path === "/notifications" || path === "/withdraw" || path === "/recharge") void loadProfile();
+    if (path !== '/login' && path !== '/register') void loadProfile();
     if (path === "/login" || path === "/register") {
       if (authConfigurationLoaded.value) void refreshCaptcha();
       else void loadAuthFeatures();
@@ -731,257 +822,32 @@ watch(
 </script>
 
 <template>
-  <div class="app-frame" :class="{ 'auth-frame': isAuth }">
-    <aside
-      v-if="!isAuth"
-      class="sidebar"
-      :class="{ 'sidebar-open': mobileMenu }"
-      @keydown.esc="mobileMenu = false"
-    >
-      <button class="drawer-close" type="button" aria-label="Close navigation" @click="mobileMenu = false">×</button>
-      <RouterLink to="/" class="brand" @click="mobileMenu = false"
-        ><span class="brand-mark" :class="{ 'brand-mark-text': !displayLogoUrl && longLogoText }"><img v-if="displayLogoUrl" :src="displayLogoUrl" :alt="brandLogoText" crossorigin="anonymous" referrerpolicy="no-referrer" @error="brandLogoFailed = true" /><template v-else>{{ brandLogoText }}</template></span
-        ><span>{{ brandName }}</span></RouterLink
-      >
-      <div class="nav-label">MENU</div>
-      <nav aria-label="Main navigation" class="side-nav">
-        <RouterLink
-          v-for="item in nav"
-          :key="item.to"
-          :to="item.to"
-          :class="{
-            active:
-              activePage === item.to ||
-              (item.to === '/wallet' && activePage.startsWith('/wallet')),
-          }"
-          @click="mobileMenu = false"
-          ><span class="nav-icon" aria-hidden="true">{{ item.icon }}</span
-          >{{ item.label
-          }}<span
-            v-if="item.to === '/notifications' && notificationUnreadCount !== null && notificationUnreadCount !== '0'"
-            class="nav-dot"
-            :aria-label="locale === 'en' ? `${notificationUnreadCount} unread notifications` : `${notificationUnreadCount} 条未读消息`"
-          ></span
-        ></RouterLink>
-      </nav>
-      <div class="sidebar-bottom">
-        <div class="responsible-mark">✳</div>
-        <p>
-          {{
-            locale === "en"
-              ? "A good time starts with balance."
-              : "理性参与，享受乐趣。"
-          }}
-        </p>
-        <RouterLink to="/help"
-          >{{ locale === "en" ? "Play responsibly" : "理性娱乐" }}
-          <span aria-hidden="true">↗</span></RouterLink
-        >
-      </div>
-      <div class="sidebar-footer">© 2026 {{ brandName }}</div>
-    </aside>
-
-    <div class="main-column">
-      <header class="topbar">
-        <button
-          v-if="!isAuth"
-          class="menu-toggle icon-button"
-          aria-label="Open navigation"
-          :aria-expanded="mobileMenu"
-          @click="mobileMenu = !mobileMenu"
-        >
-          ☰
-        </button>
-        <div class="breadcrumbs">
-          <RouterLink to="/">{{ t.home }}</RouterLink
-          ><span v-if="route.path !== '/'">/</span
-          ><span v-if="route.path !== '/'">{{
-            route.meta.label ||
-            (route.path.includes("bet")
-              ? t.choose
-              : route.path.slice(1).split("/").filter(Boolean).join(" · "))
-          }}</span>
-        </div>
-        <div class="top-actions">
-          <span
-            class="connection-pill"
-            :class="connection"
-            :title="connectionMessage"
-            ><i></i
-            ><span>{{
-              connection === "connected"
-                ? t.online
-                : connection === "checking"
-                  ? t.checking
-                  : t.offline
-            }}</span></span
-          >
-          <LanguageSwitcher
-            v-if="contextLoaded && availableLanguages.length > 1"
-            class="language-button"
-            :model-value="locale"
-            :label="locale === 'en' ? 'Language' : '语言'"
-            :options="availableLanguages.map(code => ({ code, label: code === 'en' ? 'English' : '简体中文' }))"
-            @update:model-value="locale = $event as Language"
-          />
-          <RouterLink
-            class="avatar-link"
-            :to="authProfile ? '/account' : '/login'"
-            :aria-label="
-              authProfile ? (locale === 'en' ? 'Account' : '账户') : t.login
-            "
-            ><span class="avatar">{{
-              authProfile?.user.username?.slice(0, 1).toUpperCase() || "L"
-            }}</span
-            ><span class="avatar-name">{{
-              authProfile ? (locale === "en" ? "Account" : "账户") : t.login
-            }}</span></RouterLink
-          ><div v-if="authProfile" class="account-menu" tabindex="0"><div class="account-popover" role="menu"><strong>{{ authProfile.user.username }}</strong><span>{{ locale === "en" ? "Signed in account" : "当前登录账号" }}</span><RouterLink to="/account" role="menuitem">{{ locale === "en" ? "Profile" : "个人信息" }}</RouterLink><RouterLink to="/account" role="menuitem">{{ locale === "en" ? "Change password" : "修改密码" }}</RouterLink><button type="button" role="menuitem" class="popover-logout" @click="logout">{{ locale === "en" ? "Sign out" : "退出登录" }}</button></div></div>
-          >
-        </div>
-      </header>
-
-      <main id="main-content" class="content" @click="mobileMenu = false">
-        <div
-          v-if="connection === 'offline' || brandPaused"
-          class="connection-alert"
-          role="status"
-        >
-          <strong>{{
-            brandPaused
-              ? locale === "en"
-                ? "Brand paused"
-                : "品牌已暂停"
-              : t.offline
-          }}</strong
-          ><span>{{
-            brandPaused
-              ? locale === "en"
-                ? "This brand is temporarily unavailable for play."
-                : "当前品牌暂时无法参与。"
-              : connectionMessage
-          }}</span>
-        </div>
-        <div v-if="notice" class="toast" role="status">
-          <span>{{ notice }}</span
-          ><button @click="closeNotice" aria-label="Dismiss message">×</button>
-        </div>
-
-        <BettingPanel
-          v-if="isBettingRoute"
-          :locale="locale"
-          :brand-code="walletBrandCode"
-          :auth="authProfile"
-          @auth-expired="authProfile = null"
-        />
-
-        <section
-          v-else-if="route.path === '/login' || route.path === '/register'"
-          class="auth-layout"
-        >
-          <div class="auth-visual">
-            <RouterLink to="/" class="brand brand-light"
-            ><span class="brand-mark" :class="{ 'brand-mark-text': !displayLogoUrl && longLogoText }"><img v-if="displayLogoUrl" :src="displayLogoUrl" :alt="brandLogoText" crossorigin="anonymous" referrerpolicy="no-referrer" @error="brandLogoFailed = true" /><template v-else>{{ brandLogoText }}</template></span
-              ><span>{{ brandName }}</span></RouterLink
-            >
-            <div class="auth-copy">
-              <div class="eyebrow">A MOMENT FOR YOU</div>
-              <h1>{{ displayTagline }}</h1>
-              <p>{{ t.subtitle }}</p>
-            </div>
-            <div class="auth-orbit orbit-one"></div>
-            <div class="auth-orbit orbit-two"></div>
-            <span class="auth-stamp">LUCK<br />LOOKS<br />GOOD ON YOU</span>
-          </div>
-          <div class="auth-form-wrap">
-            <form class="auth-form" @submit.prevent="authSubmit">
-              <div class="eyebrow">
-                {{ brandName.toUpperCase() }} ·
-                {{ route.path === "/login" ? t.login : t.register }}
-              </div>
-              <h2>
-                {{ route.path === "/login" ? t.loginTitle : t.registerTitle }}
-              </h2>
-              <p class="form-subtitle">
-                {{
-                  locale === "en"
-                    ? "Sign in securely with your username or phone number."
-                    : "使用用户名或手机号安全登录。"
-                }}
-              </p>
-              <label
-                >{{
-                  route.path === "/login"
-                    ? locale === "en"
-                      ? "Username or phone"
-                      : "用户名或手机号"
-                    : locale === "en"
-                      ? "Choose a username or phone"
-                      : "用户名或手机号"
-                }}<input
-                  v-model="identifier"
-                  required
-                  autocomplete="username"
-                  :readonly="joinTermsPrompt"
-                  :placeholder="
-                    locale === 'en'
-                      ? 'Username or +65 8123 4567'
-                      : '用户名或 +65 8123 4567'
-                  "
-              /></label>
-              <label
-                >{{ t.password
-                }}<input
-                  v-model="password"
-                  required
-                  type="password"
-                  autocomplete="current-password"
-                  :readonly="joinTermsPrompt"
-                  maxlength="128"
-                  placeholder="••••••••••"
-              /></label>
-              <div class="join-code-choice">
-                <label
-                  >{{ t.joinSourceLabel }}
-                  <select v-model="joinSource" :disabled="joinTermsPrompt">
-                    <option value="none">{{ t.joinSourceNone }}</option>
-                    <option value="agent">{{ t.joinSourceAgent }}</option>
-                    <option value="referral">{{ t.joinSourceReferral }}</option>
-                  </select>
-                </label>
-                <label v-if="joinSource !== 'none'">
-                  {{ t.joinCodeLabel }}
-                  <input
-                    v-model="joinCode"
-                    :readonly="joinTermsPrompt"
-                    autocomplete="off"
-                    autocapitalize="characters"
-                    spellcheck="false"
-                    maxlength="64"
-                    inputmode="text"
-                    placeholder="A1B2C3D4E5F607182930ABCD"
-                  />
-                </label>
-              </div>
+  <GlobalLoadingOverlay :active="!isAuth && (profileLoading || profileSaving)" :label="route.path === '/account' && profileLoading ? ui('common.loadingAccount') : profileSaving ? ui('common.saving') : ui('common.loading')" />
+  <LoginEntry v-if="isAuth" :brand-name="brandName" :logo-text="brandLogoText" :logo-url="displayLogoUrl" :title="pageTitle" title-id="user-login-title" :locale="locale" :language-label="ui('common.language')" :languages="contextLoaded ? availableLanguages.map(code => ({code,label:languageLabel(code)})) : []" @update:locale="setLocale" @logo-error="brandLogoFailed = true">
+    <template #status>
+      <div v-if="connection === 'offline' || brandPaused" class="connection-alert" role="status"><strong class="footer-online">{{brandPaused ? ui('common.brandPaused') : t.offline}}</strong><span>{{brandPaused ? ui('common.brandUnavailable') : connectionMessage}}</span></div>
+      <div v-if="notice" class="toast" role="status"><span>{{notice}}</span><button @click="closeNotice" :aria-label="ui('common.dismissMessage')"><SiteIcon name="close" /></button></div>
+    </template>
+            <form v-write-guard="authBusy" class="auth-form" novalidate :aria-describedby="authError || sessionReplaced ? 'auth-feedback' : undefined" @submit.prevent="withGlobalLoading(authSubmit)">
+              <LoginCredentials v-model:identifier="identifier" v-model:password="password" :identifier-label="ui('user.auth.accountLabel')" :password-label="t.password" :readonly="joinTermsPrompt" :password-maxlength="128" />
+              <template v-if="route.path === '/register' || joinTermsPrompt || joinLinkUnavailable || joinLinkFailed">
+                <p v-global-loading v-if="joinLinkChecking" class="tiny-note" role="status">{{ ui('user.auth.joinLinkChecking') }}</p>
+                <div v-if="joinLinkUnavailable" class="auth-error" role="alert">{{ ui('user.auth.joinLinkUnavailable') }}<button type="button" class="captcha-refresh" @click="withGlobalLoading(useDirectEntry)">{{ ui('user.auth.useDirectEntry') }}</button></div>
+                <div v-if="joinLinkFailed" class="auth-error" role="alert">{{ ui('user.auth.joinLinkFailed') }}<button type="button" class="captcha-refresh" @click="withGlobalLoading(refreshJoinLink)">{{ ui('user.auth.joinLinkRetry') }}</button></div>
+              </template>
               <div v-if="authConfiguration.captcha_enabled" class="captcha-box">
                 <div class="captcha-heading">
                   <strong>{{
-                    locale === "en" ? "Security check" : "安全验证"
+                    ui("common.securityCheck")
                   }}</strong
-                  ><button
+                  ><button v-refresh-button="captchaLoading ? ui('common.loading') : ui('common.refreshImage')"
                     type="button"
                     class="captcha-refresh"
                     :disabled="captchaLoading"
-                    @click="refreshCaptcha"
+                    @click="withGlobalLoading(refreshCaptcha)"
                   >
                     {{
-                      captchaLoading
-                        ? locale === "en"
-                          ? "Loading…"
-                          : "加载中…"
-                        : locale === "en"
-                          ? "Refresh image"
-                          : "刷新图片"
+                      captchaLoading ? ui("common.loading") : ui("common.refreshImage")
                     }}
                   </button>
                 </div>
@@ -990,21 +856,17 @@ watch(
                   class="captcha-image"
                   :src="captchaImageSource"
                   :alt="
-                    locale === 'en' ? 'Verification code image' : '验证码图片'
+                    ui('common.verificationImage')
                   "
                 />
-                <p v-else class="muted">
+                <p v-global-loading v-else-if="captchaLoading" class="muted">
                   {{
-                    locale === "en"
-                      ? "Loading verification image…"
-                      : "正在加载验证码图片…"
+                    ui("common.loadingVerification")
                   }}
                 </p>
                 <label
                   >{{
-                    locale === "en"
-                      ? "Enter the characters shown"
-                      : "输入图中字符"
+                    ui("common.enterVerification")
                   }}<input
                     v-model="captchaAnswer"
                     required
@@ -1013,9 +875,7 @@ watch(
                     maxlength="16"
                 /></label>
                 <small>{{
-                  locale === "en"
-                    ? `Expires ${captchaChallenge?.expires_at || ""}. A new image is required after an unsuccessful attempt.`
-                    : `有效期至 ${captchaChallenge?.expires_at || ""}。提交失败后请使用新图片。`
+                  ui("common.captchaExpiry", { expires: formatDisplayDateTime(captchaChallenge?.expires_at, localeCode) })
                 }}</small>
               </div>
               <template
@@ -1027,28 +887,19 @@ watch(
                     ))
                 "
               >
-                <label class="check-row"
-                  ><input v-model="privacyAgreed" type="checkbox" />{{
-                    locale === "en" ? "I accept the" : "我已阅读并同意"
+                <label class="check-row combined-terms"
+                  ><input v-model="policiesAgreed" type="checkbox" /><span>{{
+                    ui("common.accept")
                   }}
-                  <RouterLink to="/privacy" target="_blank">{{
-                    locale === "en" ? "Privacy Policy" : "隐私政策"
-                  }}</RouterLink>
-                  <span
-                    >({{ termsVersions.privacy_policy_version }})</span
-                  ></label
-                >
-                <label class="check-row"
-                  ><input v-model="serviceTermsAgreed" type="checkbox" />{{
-                    locale === "en" ? "I accept the" : "我已阅读并同意"
-                  }}
-                  <RouterLink to="/terms" target="_blank">{{
-                    locale === "en" ? "Service Terms" : "服务条款"
-                  }}</RouterLink>
-                  <span
-                    >({{ termsVersions.service_terms_version }})</span
-                  ></label
-                >
+                  <a href="/privacy" class="policy-trigger" aria-haspopup="dialog" @click.stop.prevent="policyDialog = 'privacy'">{{
+                    ui("common.privacyPolicy")
+                  }}</a>
+                  {{ ui('user.auth.and') }}
+                  <a href="/terms" class="policy-trigger" aria-haspopup="dialog" @click.stop.prevent="policyDialog = 'terms'">{{
+                    ui("common.serviceTerms")
+                  }}</a>
+                  </span>
+                </label>
               </template>
               <div
                 v-if="route.path === '/login' && joinTermsPrompt"
@@ -1056,9 +907,7 @@ watch(
               >
                 <p>
                   {{
-                    locale === "en"
-                      ? "This account already exists. Joining this brand requires accepting its terms:"
-                      : "此账户已存在。加入当前品牌需同意以下条款："
+                    ui("common.existingAccountTerms")
                   }}
                 </p>
                 <div class="join-source-review">
@@ -1068,32 +917,32 @@ watch(
                 </div>
                 <label class="check-row"
                   ><input v-model="joinTermsAgreed" type="checkbox" />{{
-                    locale === "en" ? "I accept the" : "我已阅读并同意"
+                    ui("common.accept")
                   }}
-                  <RouterLink to="/terms" target="_blank">{{
-                    locale === "en"
-                      ? "Privacy Policy and Service Terms"
-                      : "隐私政策和服务条款"
-                  }}</RouterLink>
+                  <a href="/terms" class="policy-trigger" aria-haspopup="dialog" @click.stop.prevent="policyDialog = 'terms'">{{
+                    ui("common.joinTermsLink")
+                  }}</a>
                   <span
-                    >({{ termsVersions.privacy_policy_version }} ·
-                    {{ termsVersions.service_terms_version }})</span
+                    >({{ termsVersions?.privacy_policy_version }} ·
+                    {{ termsVersions?.service_terms_version }})</span
                   ></label
                 >
                 <button
+                  v-write-guard="authBusy"
                   type="button"
                   class="button button-secondary full-button"
-                  :disabled="!joinTermsAgreed || authBusy || !captchaReady"
-                  @click="acceptBrandTermsAndLogin"
+                :disabled="!joinTermsAgreed || authBusy || !captchaReady || joinLinkChecking || joinLinkFailed || joinLinkUnavailable"
+                  @click="withGlobalLoading(acceptBrandTermsAndLogin)"
                 >
                   {{
-                    locale === "en" ? "Accept and join brand" : "同意并加入品牌"
+                    ui("common.acceptAndJoin")
                   }}
                   <span>→</span>
                 </button>
               </div>
-              <p v-if="authError" class="auth-error" role="alert">
-                {{ authError }}
+              <p v-if="sessionReplaced" id="auth-feedback" class="auth-error" role="alert">{{ ui('auth.sessionReplaced') }}</p>
+              <p v-else-if="authError" id="auth-feedback" class="auth-error" role="alert">
+                {{ displayPublicError(authError) }}
               </p>
               <button
                 v-if="route.path === '/login' && joinTermsPrompt"
@@ -1104,12 +953,8 @@ watch(
               >
                 {{
                   joinAttributionFixed
-                    ? locale === "en"
-                      ? "Cancel and choose no code"
-                      : "取消并选择不使用代码"
-                    : locale === "en"
-                      ? "Cancel and clear join choice"
-                      : "取消并清除加入来源"
+                      ? ui("common.cancelNoCode")
+                      : ui("common.cancelJoinChoice")
                 }}
               </button>
               <button
@@ -1117,66 +962,42 @@ watch(
                 type="button"
                 class="button button-secondary full-button"
                 :disabled="authConfigurationLoading"
-                @click="loadAuthFeatures"
+                @click="withGlobalLoading(loadAuthFeatures)"
               >
                 {{
                   authConfigurationLoading
-                    ? locale === "en"
-                      ? "Loading settings…"
-                      : "正在加载配置…"
-                    : locale === "en"
-                      ? "Retry loading sign-in settings"
-                      : "重试加载登录配置"
+                    ? ui("common.loadingSettings")
+                    : ui("common.retrySignInSettings")
                 }}
               </button>
+              <div v-if="!joinTermsPrompt" class="auth-actions" :class="{ 'auth-login-actions': route.path === '/login' }">
               <button
-                v-if="!joinTermsPrompt"
                 class="button button-primary full-button"
                 type="submit"
-                :disabled="authBusy || !captchaReady"
+                :disabled="authBusy || !authConfigurationLoaded || captchaLoading || joinLinkChecking || joinLinkFailed || joinLinkUnavailable"
               >
                 {{
                   authBusy
-                    ? locale === "en"
-                      ? "Please wait…"
-                      : "请稍候…"
-                    : t.continue
+                    ? ui("common.pleaseWait")
+                    : route.path === '/login' ? ui('user.auth.loginAction') : ui('user.auth.registerAction')
                 }}
-                <span>→</span>
               </button>
+              <RouterLink v-if="route.path === '/login'" to="/register" class="button button-secondary auth-register-button">{{ ui('user.auth.registerAction') }}</RouterLink>
+              <RouterLink v-else to="/login" class="button button-secondary auth-login-button">{{ ui('user.auth.loginAction') }}</RouterLink>
+              </div>
               <button
                 v-if="telegramReady"
                 class="button button-secondary full-button"
                 type="button"
-                :disabled="authBusy || !privacyAgreed || !serviceTermsAgreed || joinTermsPrompt"
-                @click="startTelegramAuth"
+                :disabled="authBusy || !privacyAgreed || !serviceTermsAgreed || joinTermsPrompt || joinLinkChecking || joinLinkFailed || joinLinkUnavailable"
+                v-write-guard="authBusy" @click="withGlobalLoading(startTelegramAuth)"
               >
                 {{
-                  locale === "en"
-                    ? "Continue with Telegram"
-                    : "使用 Telegram 登录"
+                  ui("common.continueTelegram")
                 }}
-                <span>↗</span>
+                <SiteIcon name="external" />
               </button>
-              <button
-                v-else
-                class="button button-secondary full-button"
-                type="button"
-                disabled
-                :title="
-                  telegramError ||
-                  (locale === 'en'
-                    ? 'Bot authorization is not configured.'
-                    : 'Telegram 尚未配置机器人授权。')
-                "
-              >
-                {{
-                  locale === "en"
-                    ? "Telegram sign-in unavailable"
-                    : "Telegram 登录暂不可用"
-                }}
-              </button>
-              <button
+              <button v-refresh-button="ui('common.refreshTelegram')"
                 v-if="
                   authConfiguration.telegram_enabled &&
                   isTelegramClientIdConfigured(
@@ -1187,43 +1008,104 @@ watch(
                 class="captcha-refresh"
                 type="button"
                 :disabled="authBusy"
-                @click="refreshTelegramChallenge"
+                @click="withGlobalLoading(refreshTelegramChallenge)"
               >
                 {{
-                  locale === "en"
-                    ? "Refresh Telegram challenge"
-                    : "刷新 Telegram 授权挑战"
+                  ui("common.refreshTelegram")
                 }}
               </button>
-              <p v-if="!telegramReady" class="tiny-note">
+              <p v-if="authConfiguration.telegram_enabled && isTelegramClientIdConfigured(authConfiguration.telegram_client_id) && !telegramReady" class="tiny-note">
                 {{
-                  locale === "en"
-                    ? "Telegram sign-in requires configured bot authorization. A Telegram username alone cannot sign you in."
-                    : "Telegram 登录需要配置机器人授权。仅凭 Telegram 用户名不能登录。"
+                  ui("common.telegramRequirement")
                 }}
               </p>
-              <p v-else class="tiny-note">
+              <p v-else-if="telegramReady" class="tiny-note">
                 {{
-                  locale === "en"
-                    ? `Telegram challenge expires ${telegramChallenge?.expires_at || ""}. Accept both current policies before opening the authorization popup.`
-                    : `Telegram 验证挑战有效期至 ${telegramChallenge?.expires_at || ""}。打开授权窗口前请同意当前条款。`
+                  ui("common.telegramExpiry", { expires: formatDisplayDateTime(telegramChallenge?.expires_at, localeCode) })
                 }}
               </p>
               <p v-if="telegramError" class="auth-error" role="alert">
-                {{ telegramError }}
-              </p>
-              <p class="auth-switch">
-                {{ route.path === "/login" ? t.registerTitle : t.loginTitle }}
-                <RouterLink
-                  :to="route.path === '/login' ? '/register' : '/login'"
-                  >{{
-                    route.path === "/login" ? t.register : t.login
-                  }}</RouterLink
-                >
+                {{ displayPublicError(telegramError) }}
               </p>
             </form>
-          </div>
-        </section>
+  </LoginEntry>
+  <div v-else class="app-frame workspace-frame">
+    <aside class="workspace-sidebar">
+      <RouterLink to="/" class="workspace-sidebar-brand">
+        <img v-if="displayLogoUrl" :src="displayLogoUrl" alt="" @error="brandLogoFailed = true" />
+        <strong>{{ brandName }}</strong>
+      </RouterLink>
+      <nav class="side-nav" :aria-label="ui('user.nav.primary')">
+        <RouterLink v-for="item in desktopNav" :key="item.to" :to="item.to" :class="{ active: isNavItemActive(item.to, false) }" :aria-current="isNavItemActive(item.to, false) ? 'page' : undefined">
+          <span class="nav-icon" aria-hidden="true"><SiteIcon :name="item.icon" /></span>
+          <span>{{ item.label }}</span>
+        </RouterLink>
+      </nav>
+    </aside>
+    <div class="main-column">
+      <header v-if="!isAuth" class="workspace-topbar" :class="{ 'workspace-guest': !profileLoading && !authProfile }">
+        <div class="workspace-leading"><span v-if="route.path === '/'" class="workspace-brand">{{ brandName }}</span><button v-else class="icon-button" type="button" :aria-label="ui('user.nav.back')" @click="workspaceParent"><SiteIcon name="back" /></button></div>
+        <div class="workspace-game-heading"><button type="button" class="workspace-game-trigger" :aria-label="ui('workspace.games')" :aria-expanded="gamePickerOpen" @click="gamePickerOpen = !gamePickerOpen; menuOpen = false"><strong>{{ currentGame?.name ?? ui('workspace.games') }}</strong><SiteIcon name="down" /></button><div id="user-game-help"></div></div>
+        <RouterLink v-if="!profileLoading && !authProfile" to="/login" class="button button-quiet workspace-login">{{ t.login }}</RouterLink>
+        <button type="button" class="icon-button" :aria-label="ui('workspace.menu')" :aria-expanded="menuOpen" @click="menuOpen = true; gamePickerOpen = false"><SiteIcon name="menu" /></button>
+        <div v-if="gamePickerOpen" class="workspace-game-picker"><button v-for="game in allUserGames" :key="game.id" type="button" :aria-pressed="currentGame?.id === game.id" @click="selectWorkspaceGame(game)">{{ game.name }}</button><p v-if="gamesReady && !allUserGames.length" class="empty-state workspace-game-empty">{{ ui('betting.noGames') }}</p></div>
+      </header>
+
+      <template v-if="!isAuth">
+        <template v-if="authProfile">
+        <div v-show="overviewOpen" class="workspace-overview">
+          <UserOverview :brand-code="walletBrandCode" :brand-id="authProfile.member.brand_id" :member-id="authProfile.member.id">
+            <HeaderPoints :brand-code="walletBrandCode" :brand-id="authProfile.member.brand_id" :member-id="authProfile.member.id" :route-key="route.fullPath" @points-change="headerPoints = $event" @auth-expired="authProfile = null" />
+          </UserOverview>
+        </div>
+        <div class="workspace-overview-control"><button type="button" class="workspace-overview-toggle" :aria-label="ui('workspace.overview')" :aria-expanded="overviewOpen" @click="overviewOpen = !overviewOpen"><SiteIcon name="down" :class="{ expanded: overviewOpen }" /></button></div>
+        </template>
+        <div v-show="menuOpen" class="workspace-menu-layer" role="dialog" :aria-modal="menuOpen ? true : undefined" :aria-label="ui('workspace.menu')" @keydown.esc="menuOpen = false">
+          <button type="button" class="workspace-menu-backdrop" :aria-label="ui('draw.close')" @click="menuOpen = false"></button>
+          <aside class="workspace-menu" :aria-label="ui('workspace.menu')"><div class="workspace-menu-heading"><strong>{{ brandName }}</strong><div class="workspace-menu-actions"><div class="workspace-menu-tools"><LanguageSwitcher v-if="contextLoaded && availableLanguages.length > 1" :model-value="locale" :label="ui('common.language')" :options="availableLanguages.map(code => ({code,label:languageLabel(code)}))" @update:model-value="setLocale" /><div id="user-page-refresh" class="user-page-refresh"></div></div><button type="button" class="icon-button workspace-menu-close" :aria-label="ui('draw.close')" @click="menuOpen = false"><SiteIcon name="close" /></button></div></div>
+            <RouterLink v-if="currentGame" :to="{path:'/results',query:currentGame.kind === 'standard' ? {game_id:currentGame.id} : {platform_game_id:currentGame.id}}"><SiteIcon name="calendar" />{{ ui('draw.results') }}</RouterLink>
+            <RouterLink to="/notifications"><SiteIcon name="bell" />{{ t.notifications }}</RouterLink>
+            <RouterLink to="/help"><SiteIcon name="help" />{{ t.help }}</RouterLink>
+          </aside>
+        </div>
+      </template>
+
+      <main id="main-content" class="content" :class="{ 'compact-content': route.path === '/' || route.path.startsWith('/configured/') }">
+        <div
+          v-if="connection === 'offline' || brandPaused"
+          class="connection-alert"
+          role="status"
+        >
+          <strong class="footer-online">{{
+            brandPaused
+              ? ui("common.brandPaused")
+              : t.offline
+          }}</strong
+          ><span>{{
+            brandPaused
+              ? ui("common.brandUnavailable")
+              : connectionMessage
+          }}</span>
+        </div>
+        <div v-if="notice" class="toast" role="status">
+          <span>{{ notice }}</span
+          ><button @click="closeNotice" :aria-label="ui('common.dismissMessage')"><SiteIcon name="close" /></button>
+        </div>
+
+        <template v-if="route.path === '/'">
+          <div v-if="gamesError" class="message error" role="alert"><span>{{ displayPublicError(gamesError) }}</span> <button type="button" class="button button-secondary" @click="withGlobalLoading(loadWorkspaceGames)">{{ ui('betting.retry') }}</button></div>
+          <p v-else-if="gamesReady && !currentGame" class="empty-state">{{ ui('betting.noGames') }}</p>
+          <component :is="currentGame.kind === 'configured' ? ConfiguredBetting : BettingPanel" v-if="currentGame" :key="currentGame.id" v-bind="currentGame.kind === 'standard' ? { embeddedGameId: currentGame.id } : { gameId: currentGame.id }" :brand-code="walletBrandCode" :locale="locale" :auth="authProfile" @game-title="bettingGameTitle = $event" @auth-expired="authProfile = null" />
+        </template>
+        <ConfiguredBetting v-else-if="route.path.startsWith('/configured/')" :game-id="String(route.params.gameId)" :brand-code="walletBrandCode" :locale="locale" :auth="authProfile" @game-title="bettingGameTitle=$event" @auth-expired="authProfile=null" />
+        <BettingPanel
+          v-else-if="isBettingRoute"
+          :locale="locale"
+          :brand-code="walletBrandCode"
+          :auth="authProfile"
+          @auth-expired="authProfile = null"
+        />
+
 
         <section
           v-else-if="route.path === '/invites'"
@@ -1240,39 +1122,14 @@ watch(
           v-else-if="route.path === '/account'"
           class="page-section narrow-page account-page"
         >
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">
-                {{ locale === "en" ? "YOUR ACCOUNT" : "账户信息" }}
-              </div>
-              <h1>{{ locale === "en" ? "Account" : "账户" }}</h1>
-              <p>
-                {{
-                  locale === "en"
-                    ? "Your profile details for this brand."
-                    : "当前品牌的账户资料。"
-                }}
-              </p>
-            </div>
-            <button
-              v-if="authProfile"
-              class="button button-secondary"
-              :disabled="authBusy"
-              @click="logout"
-            >
-              {{ locale === "en" ? "Sign out" : "退出登录" }}
-            </button>
-          </div>
-          <div v-if="profileLoading" class="detail-panel">
-            {{ locale === "en" ? "Loading account…" : "正在读取账户…" }}
-          </div>
-          <div v-else-if="!authProfile" class="detail-panel">
-            <p class="auth-error" role="status">{{ profileError }}</p>
+          <div class="page-heading"><h1>{{ ui('common.accountTitle') }}</h1></div>
+          <div v-if="!profileLoading && !authProfile" class="detail-panel">
+            <p v-if="profileError" class="auth-error" role="status">{{ displayPublicError(profileError) }}</p>
             <RouterLink to="/login" class="button button-primary"
-              >{{ t.login }} →</RouterLink
+              >{{ t.login }} <SiteIcon name="next" /> </RouterLink
             >
           </div>
-          <div v-else class="detail-panel">
+          <div v-else-if="!profileLoading && authProfile" class="detail-panel">
             <div class="account-identity">
               <span class="avatar">{{
                 authProfile.user.username?.slice(0, 1).toUpperCase() || "L"
@@ -1282,72 +1139,33 @@ watch(
                   authProfile.member.display_name ||
                   authProfile.user.username ||
                   authProfile.user.phone
-                }}</strong
-                ><small
-                  >{{ authProfile.member.status }} ·
-                  {{
-                    authProfile.member.joined_at
-                      ? new Date(
-                          authProfile.member.joined_at,
-                        ).toLocaleDateString()
-                      : ""
-                  }}</small
-                >
+                }}</strong><small>{{ brandName }}</small>
               </div>
             </div>
-            <label class="field-label"
-              >{{ locale === "en" ? "Username" : "用户名"
-              }}<input
-                v-model="profileUsername"
-                autocomplete="username"
-                :disabled="Boolean(authProfile.user.username)"
-                :placeholder="
-                  locale === 'en' ? 'Add a username' : '添加用户名'
-                " /></label
-            ><label class="field-label"
-              >{{ locale === "en" ? "Phone" : "手机号"
-              }}<input
-                v-model="profilePhone"
-                autocomplete="tel"
-                :disabled="Boolean(authProfile.user.phone)"
-                :placeholder="
-                  locale === 'en' ? 'Add a phone number' : '添加手机号'
-                "
-            /></label>
-            <p
-              v-if="!authProfile.user.username || !authProfile.user.phone"
-              class="muted"
-            >
-              {{
-                locale === "en"
-                  ? "Missing details can be added once. Saved details cannot be changed here."
-                  : "尚未填写的资料可补充一次，保存后不可在此更改。"
-              }}
-            </p>
+            <dl class="account-details">
+              <div v-if="authProfile.user.username"><dt>{{ ui('user.auth.accountLabel') }}</dt><dd>{{ authProfile.user.username }}</dd></div>
+              <div class="account-points"><dt>{{ ui('user.account.points') }}</dt><dd role="status" :aria-label="profilePoints?.description ?? ui('user.wallet.reading')"><strong>{{ profilePoints?.amount ?? '…' }}</strong></dd></div>
+              <div v-if="authProfile.user.phone"><dt>{{ ui('common.phone') }}</dt><dd>{{ authProfile.user.phone }}</dd></div>
+            </dl>
+            <details v-if="!authProfile.user.username || !authProfile.user.phone" class="account-complete">
+              <summary>{{ ui('user.account.completeProfile') }}</summary>
+              <label v-if="!authProfile.user.username" class="field-label">{{ ui('user.auth.accountLabel') }}<input v-model="profileUsername" autocomplete="username" :placeholder="ui('common.addUsername')" /></label>
+              <label v-if="!authProfile.user.phone" class="field-label">{{ ui('common.phone') }}<input v-model="profilePhone" autocomplete="tel" :placeholder="ui('common.addPhone')" /></label>
+              <button v-write-guard="profileSaving" type="button" class="button button-primary full-button" :disabled="profileSaving" @click="withGlobalLoading(saveProfile)">{{ profileSaving ? ui('common.saving') : ui('common.saveProfile') }}</button>
+            </details>
             <p v-if="profileError" class="auth-error" role="alert">
-              {{ profileError }}
+              {{ displayPublicError(profileError) }}
             </p>
             <p v-if="profileNotice" class="success-note" role="status">
               {{ profileNotice }}
             </p>
-            <button
-              v-if="!authProfile.user.username || !authProfile.user.phone"
-              class="button button-primary full-button"
-              :disabled="profileSaving"
-              @click="saveProfile"
-            >
-              {{
-                profileSaving
-                  ? locale === "en"
-                    ? "Saving…"
-                    : "正在保存…"
-                  : locale === "en"
-                    ? "Save profile"
-                    : "保存资料"
-              }}
-              <span>→</span>
-            </button>
+
           </div>
+          <BettingPreferencesSettings :brand-code="walletBrandCode" v-if="authProfile" :brand-id="authProfile.member.brand_id" :member-id="authProfile.member.id" :locale="localeCode" />
+          <nav class="account-tools" :aria-label="ui('user.nav.services')">
+            <RouterLink v-for="item in accountTools" :key="item.to" :to="item.to"><span class="account-tool-icon" aria-hidden="true"><SiteIcon :name="item.icon" /></span><span>{{ item.label }}</span><SiteIcon name="next" /></RouterLink>
+          </nav>
+          <button v-write-guard="authBusy" v-if="authProfile" type="button" class="button button-secondary account-signout" :disabled="authBusy" @click="withGlobalLoading(logout)">{{ ui('common.signOut') }}</button>
         </section>
 
         <section
@@ -1358,154 +1176,48 @@ watch(
             <div>
               <div class="eyebrow">
                 {{
-                  route.path === "/terms" ? "SERVICE TERMS" : "PRIVACY POLICY"
+                  route.path === "/terms" ? ui("common.serviceTermsUpper") : ui("common.privacyPolicyUpper")
                 }}
                 ·
                 {{
                   route.path === "/terms"
-                    ? termsVersions.service_terms_version
-                    : termsVersions.privacy_policy_version
+                    ? termsVersions?.service_terms_version
+                    : termsVersions?.privacy_policy_version
                 }}
               </div>
               <h1>
                 {{
                   route.path === "/terms"
-                    ? locale === "en"
-                      ? "Service Terms"
-                      : "服务条款"
-                    : locale === "en"
-                      ? "Privacy Policy"
-                      : "隐私政策"
+                    ? ui("common.serviceTerms")
+                    : ui("common.privacyPolicy")
                 }}
               </h1>
-              <p>
-                {{
-                  locale === "en"
-                    ? "Current mock version dev-1"
-                    : "当前模拟版本 dev-1"
-                }}
-              </p>
             </div>
           </div>
           <div class="detail-panel policy-copy">
-            <p>
-              {{
-                locale === "en"
-                  ? "This page is a development placeholder so you can review the version attached to your consent. The production policy text will be provided by the service."
-                  : "此页面为开发占位内容，供您查看本次同意所关联的版本。正式政策文本将由服务提供。"
-              }}
-            </p>
-            <p>
-              {{
-                locale === "en"
-                  ? "No real account, payment, or lottery transaction is simulated by this policy page."
-                  : "本政策页面不会模拟真实账户、支付或彩票交易。"
-              }}
-            </p>
+            <PolicyContent />
             <RouterLink to="/register" class="text-link"
               >{{
-                locale === "en" ? "Back to account creation" : "返回创建账户"
-              }}
-              →</RouterLink
+                ui("common.backToAccount")
+              }} <SiteIcon name="next" /> </RouterLink
             >
           </div>
         </section>
 
-        <template v-else-if="route.path === '/'">
-          <section class="hero">
-            <div class="hero-copy">
-              <div class="eyebrow">
-                <span class="eyebrow-dot"></span> YOUR DAILY MOMENT
-              </div>
-              <h1>{{ displayTagline }}</h1>
-              <p>{{ t.subtitle }}</p>
-              <RouterLink to="/games" class="button button-dark"
-                >{{ t.play }} <span>↗</span></RouterLink
-              >
-              <div v-if="displayAnnouncement" class="hero-note">
-                <span v-if="displayAnnouncement" class="tiny-spark">✳</span><template v-if="displayAnnouncement">{{ displayAnnouncement }}</template>
-              </div>
-            </div>
-            <div class="hero-art" aria-hidden="true">
-              <div class="hero-sun"></div>
-              <div class="hero-ball ball-a">7</div>
-              <div class="hero-ball ball-b">18</div>
-              <div class="hero-ball ball-c">32</div>
-              <div class="hero-ball ball-d">✳</div>
-              <div class="hero-arc"></div>
-              <div class="hero-art-label">
-                A BRIGHTER<br />WAY TO PLAY <span>↗</span>
-              </div>
-            </div>
-            <div class="hero-count"><strong>01</strong><span>—</span> 03</div>
-          </section>
-          <section class="section-block">
-            <div class="section-heading">
-              <div>
-                <div class="eyebrow">A GOOD PLACE TO START</div>
-                <h2>{{ t.featured }}</h2>
-              </div>
-              <RouterLink to="/games" class="text-link"
-                >{{ t.viewAll }} <span>→</span></RouterLink
-              >
-            </div>
-            <BettingPanel
-              :locale="locale"
-              :brand-code="walletBrandCode"
-              :auth="authProfile"
-              embedded-catalog
-              @auth-expired="authProfile = null"
-            />
-          </section>
-          <section v-if="displayAnnouncement" class="announcement">
-            <div class="announcement-icon">✳</div>
-            <div>
-              <div class="eyebrow">{{ locale === 'en' ? 'ANNOUNCEMENT' : '公告' }}</div>
-              <h3>{{ displayAnnouncement }}</h3>
-            </div>
-            <RouterLink
-              to="/help"
-              class="announcement-link"
-              :aria-label="t.help"
-              >→</RouterLink
-            >
-          </section>
-          <section class="lower-grid">
-            <HomeWalletCard :brand-code="walletBrandCode" :locale="locale" @auth-expired="authProfile = null" />
-            <div class="mini-panel responsible-panel">
-              <div class="eyebrow">A QUICK REMINDER</div>
-              <h3>
-                {{
-                  locale === "en"
-                    ? "Play for the joy of it."
-                    : "享受过程，量力而行。"
-                }}
-              </h3>
-              <p>
-                {{
-                  locale === "en"
-                    ? "Keep it fun, set a limit, and take breaks."
-                    : "保持乐趣，设定限额，适时休息。"
-                }}
-              </p>
-              <RouterLink to="/help" class="text-link"
-                >{{ t.help }} <span>→</span></RouterLink
-              >
-            </div>
-          </section>
-        </template>
+
 
         <section
           v-else-if="
-            route.path === '/wallet' || route.path === '/wallet/ledger'
+            route.path === '/wallet' || route.path === '/wallet/buckets' || route.path === '/wallet/ledger'
           "
           class="page-section"
         >
-          <WalletSummary :brand-code="walletBrandCode" :locale="locale" />
+          <WalletSummary :key="route.path" :view="route.path === '/wallet' ? 'overview' : route.path === '/wallet/buckets' ? 'buckets' : 'ledger'" :brand-code="walletBrandCode" :locale="locale" />
         </section>
 
+        <template v-else-if="route.path === '/recharge'">
         <RechargePanel
-          v-else-if="route.path === '/recharge'"
+          v-if="!profileLoading"
           :key="`${authProfile?.member.brand_id ?? 'signed-out'}:${authProfile?.member.id ?? 'signed-out'}`"
           :locale="locale"
           :brand-code="walletBrandCode"
@@ -1513,22 +1225,24 @@ watch(
           @auth-expired="expireRechargeProfile"
           @sign-in="router.push('/login')"
         />
+        </template>
 
+        <template v-else-if="route.path === '/withdraw'">
         <WithdrawalPanel
-          v-else-if="route.path === '/withdraw'"
+          v-if="!profileLoading"
           :key="`${authProfile?.member.brand_id ?? 'signed-out'}:${authProfile?.member.id ?? 'signed-out'}`"
           :locale="locale"
           :brand-code="walletBrandCode"
           :member="authProfile?.member ?? null"
           @auth-expired="authProfile = null"
-          @context-changed="loadProfile"
+          @context-changed="withGlobalLoading(loadProfile)"
         />
+        </template>
 
-        <DrawResultsPanel
-          v-else-if="route.path === '/results'"
-          :locale="locale"
-          :brand-code="walletBrandCode"
-        />
+        <template v-else-if="route.path === '/results'">
+        <DrawArchive v-if="resultsGame" :key="`${resultsGame.kind}:${resultsGame.id}`" :game-id="resultsGame.id" :kind="resultsGame.kind" :brand-code="walletBrandCode" :locale="locale" />
+        <p v-else-if="gamesReady" class="empty-state">{{ ui('draw.chooseGame') }}</p>
+        </template>
 
         <NotificationsPanel
           v-else-if="route.path === '/notifications'"
@@ -1538,165 +1252,47 @@ watch(
           @auth-expired="authProfile = null"
         />
 
-        <AgentPanel v-else-if="route.path === '/agent'" :brand-code="walletBrandCode" :locale="locale"
-          @auth-expired="authProfile = null" />
-
-        <section v-else-if="route.path === '/help'" class="page-section">
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">HERE WHEN YOU NEED US</div>
-              <h1>{{ t.helpTitle }}</h1>
-              <p>{{ t.announcementBody }}</p>
-            </div>
+<section v-else-if="route.path === '/help'" class="page-section narrow-page help-page" :aria-label="pageTitle">
+          <div class="faq-list">
+            <details v-for="([question, answer], index) in helpFaqs" :key="question" :open="index === 0">
+              <summary>{{ ui(question) }}<SiteIcon name="down" /></summary>
+              <p>{{ ui(answer) }}</p>
+            </details>
           </div>
-          <div class="help-layout">
-            <div class="help-intro">
-              <div class="help-symbol">✳</div>
-              <h2>
-                {{
-                  locale === "en" ? "Keep it enjoyable." : "让娱乐保持轻松。"
-                }}
-              </h2>
-              <p>
-                {{
-                  locale === "en"
-                    ? "Lottery play is for adults and should remain entertainment. Only spend what you can afford, decide on a limit before you play, and step away if it stops being fun."
-                    : "彩票仅供成年人参与，并应以娱乐为目的。请量力而行，提前设定限额；如果不再感到愉快，请暂停参与。"
-                }}
-              </p>
-              <a href="mailto:support@example.invalid" class="text-link"
-                >{{
-                  locale === "en" ? "Contact support" : "联系支持团队"
-                }}
-                ↗</a
-              >
-            </div>
-            <div class="faq-list">
-              <details open>
-                <summary>
-                  {{
-                    locale === "en" ? "How do number picks work?" : "如何选号？"
-                  }}
-                </summary>
-                <p>
-                  {{
-                    locale === "en"
-                      ? "X+Y and M-select-N games use the configured ordinary and special-number pools. In digit-position games, choose digits from 0–9 for each position; the game rules decide whether repeated digits such as 111 are allowed. Extra selections form compound bets. Check the server quote for the combination count, multiplier and total points before submitting. Attribute, feature and exclusion picks follow the selected play rules."
-                      : "X+Y 和 M选N 玩法按配置的普通号、特别号号码池选号。数字位玩法为每一位选择 0–9，是否允许 111 这样的重复数字由游戏规则决定。多选形成复式；提交前请核对服务器报价中的注数、倍数和总积分。属性、特征和排除选号按所选玩法规则执行。"
-                  }}
-                </p>
-              </details>
-              <details>
-                <summary>
-                  {{ locale === "en" ? "What are points?" : "什么是积分？" }}
-                </summary>
-                <p>
-                  {{
-                    locale === "en"
-                      ? "Points are a platform unit shown as whole numbers. Current balances and source breakdowns come from the live wallet module. Points are not cash, and external payments are not connected."
-                      : "积分是平台单位，以整数显示。当前余额和来源明细来自实时钱包模块。积分不代表现金，外部支付尚未接入。"
-                  }}
-                </p>
-              </details>
-              <details>
-                <summary>
-                  {{
-                    locale === "en"
-                      ? "How does withdrawal eligibility work?"
-                      : "提现资格如何计算？"
-                  }}
-                </summary>
-                <p>
-                  {{
-                    locale === "en"
-                      ? "Eligibility depends on point source and turnover requirements shown for your account. You can submit an internal withdrawal request and follow its status. First-phase processing is internal; external payments are not connected."
-                      : "提现资格取决于账户显示的积分来源和流水要求。你可以提交内部提现申请并查看处理状态。第一阶段采用内部处理，外部支付尚未接入。"
-                  }}
-                </p>
-              </details>
-              <details>
-                <summary>
-                  {{
-                    locale === "en"
-                      ? "How do I play responsibly?"
-                      : "如何理性参与？"
-                  }}
-                </summary>
-                <p>
-                  {{
-                    locale === "en"
-                      ? "Set a time and spending limit, never chase losses, take regular breaks, and ask for support if play affects your wellbeing."
-                      : "设定时间和支出限额，不要追逐损失，定期休息。如果参与影响身心健康，请寻求帮助。"
-                  }}
-                </p>
-              </details>
-            </div>
-          </div>
+          <p class="help-responsible">{{ ui('user.help.responsibleReminder') }}</p>
         </section>
       </main>
 
-      <footer v-if="!isAuth" class="page-footer">
-        <span
-          >© 2026 {{ brandName
-          }}<template v-if="isBettingRoute">
-            · {{ t.pointsPayments }}</template
-          ><template v-else-if="route.path === '/results'">
-            ·
-            {{
-              locale === "en" ? "Live public draw records" : "真实公开开奖记录"
-            }} </template
-          ><template v-else-if="route.path === '/notifications'">
-            · {{ locale === "en" ? "Live in-app inbox" : "真实站内消息" }}
-          </template><template v-else>
-            · {{ t.pointsPayments }}</template
-          ></span
+      <nav v-if="!isAuth" class="mobile-primary-nav" :aria-label="ui('user.nav.primary')">
+        <RouterLink
+          v-for="item in mobileNav"
+          :key="item.to"
+          :to="item.to"
+          :class="{ active: isNavItemActive(item.to) }"
+          :aria-current="isNavItemActive(item.to) ? 'page' : undefined"
         >
-        <nav>
-          <RouterLink to="/help">{{ t.help }}</RouterLink
-          ><RouterLink to="/help">{{
-            locale === "en" ? "Responsible play" : "理性娱乐"
-          }}</RouterLink
-          ><span class="footer-online"
-            ><i></i
-            >{{ connection === "connected" ? t.online : t.offline }}</span
-          >
-        </nav>
-      </footer>
+          <span class="mobile-primary-nav-icon" aria-hidden="true">
+            <SiteIcon :name="item.icon" />
+          </span>
+          <span>{{ item.label }}</span>
+        </RouterLink>
+      </nav>
     </div>
   </div>
+  <DetailModal v-if="policyDialog" class="policy-modal" :title="policyDialog === 'privacy' ? ui('common.privacyPolicy') : ui('common.serviceTerms')" :close-label="ui('user.auth.closePolicy')" @close="policyDialog = null">
+    <PolicyContent />
+  </DetailModal>
 </template>
 
 <style scoped>
-.join-code-choice {
-  display: grid;
-  gap: 10px;
-  margin: 14px 0;
-}
-.join-code-choice label {
-  display: grid;
-  gap: 7px;
-  color: var(--ink-secondary, #334155);
-  font-size: 11px;
-  font-weight: 600;
-}
-.join-code-choice select {
-  width: 100%;
-  min-height: 42px;
-  padding: 0 12px;
-  border: 1px solid var(--line, #e2e8f0);
-  border-radius: 9px;
-  background: #fff;
-  color: var(--ink, #0f172a);
-  font-size: 13px;
-}
 .join-source-review {
   display: grid;
   gap: 6px;
   margin: 10px 0 12px;
   padding: 10px;
   border-radius: 9px;
-  background: var(--line-subtle, #f1f5f9);
-  color: var(--ink, #0f172a);
+  background: var(--line-subtle);
+  color: var(--ink);
   font-size: 11px;
   overflow-wrap: anywhere;
 }

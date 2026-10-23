@@ -11,15 +11,15 @@ if (!executablePath || !path.isAbsolute(executablePath)) {
 }
 
 const targets = [
-  { app: 'user-web', background: '#20594c', size: 192, filename: 'icon-192.png' },
-  { app: 'user-web', background: '#20594c', size: 512, filename: 'icon-512.png' },
-  { app: 'user-web', background: '#20594c', size: 180, filename: 'apple-touch-icon.png' },
-  { app: 'admin-web', background: '#263f67', size: 192, filename: 'icon-192.png' },
-  { app: 'admin-web', background: '#263f67', size: 512, filename: 'icon-512.png' },
-  { app: 'admin-web', background: '#263f67', size: 180, filename: 'apple-touch-icon.png' },
-  { app: 'platform-web', background: '#17365c', size: 192, filename: 'icon-192.png' },
-  { app: 'platform-web', background: '#17365c', size: 512, filename: 'icon-512.png' },
-  { app: 'platform-web', background: '#17365c', size: 180, filename: 'apple-touch-icon.png' },
+  { app: 'user-web', background: '#059669', size: 192, filename: 'icon-192.png' },
+  { app: 'user-web', background: '#059669', size: 512, filename: 'icon-512.png' },
+  { app: 'user-web', background: '#059669', size: 180, filename: 'apple-touch-icon.png' },
+  { app: 'admin-web', background: '#059669', size: 192, filename: 'icon-192.png' },
+  { app: 'admin-web', background: '#059669', size: 512, filename: 'icon-512.png' },
+  { app: 'admin-web', background: '#059669', size: 180, filename: 'apple-touch-icon.png' },
+  { app: 'platform-web', background: '#059669', size: 192, filename: 'icon-192.png' },
+  { app: 'platform-web', background: '#059669', size: 512, filename: 'icon-512.png' },
+  { app: 'platform-web', background: '#059669', size: 180, filename: 'apple-touch-icon.png' },
 ]
 
 const browser = await chromium.launch({ executablePath })

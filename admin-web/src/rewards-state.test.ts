@@ -74,7 +74,7 @@ describe("reward intent state", () => {
     for (const invalidKey of ["short", "invalid/key", "", "x".repeat(129)]) {
       expect(createRewardIntent(scope, { version: 1, reason: "Retry" }, invalidKey)).toBeNull();
     }
-    for (const invalidReason of ["", " padded ", "line\nbreak", "\ud800", "界".repeat(167)]) {
+    for (const invalidReason of [ " padded ", "line\nbreak", "\ud800", "界".repeat(167)]) {
       expect(createRewardIntent(scope, { version: 1, reason: invalidReason }, key)).toBeNull();
     }
   });

@@ -170,7 +170,7 @@ func TestMarkExceptionRejectsMissingAuthorityForeignBrandsAndStaleVersions(t *te
 		{"no grant", f.brand, "reason", access.Account{ID: actor.ID, Type: access.AccountAdmin, BrandIDs: actor.BrandIDs}, 1, ErrDenied},
 		{"platform readonly", f.brand, "reason", func() access.Account { a := actor; a.SuperAdmin = true; return a }(), 1, ErrDenied},
 		{"stale", f.brand, "reason", actor, 2, ErrVersion},
-		{"missing reason", f.brand, "", actor, 1, ErrInvalid},
+		{"omitted reason", f.brand, "", actor, 1, nil},
 		{"foreign brand", storeTestOtherBrand, "reason", func() access.Account {
 			a := actor
 			a.BrandIDs = []string{storeTestOtherBrand}

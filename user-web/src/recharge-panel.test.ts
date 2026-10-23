@@ -1,9 +1,14 @@
-import { createRenderer, h, nextTick, reactive, ssrContextKey } from "vue";
+import { createRenderer, h, nextTick, reactive, ssrContextKey, watch } from "vue";
 import { describe, expect, it, vi } from "vitest";
 import RechargePanel from "./RechargePanel.vue";
+import { createUserI18n, userI18nKey } from './i18n';
+import { setPlatformDisplaySettings } from '@lottery/shared';
+setPlatformDisplaySettings({ timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' });
 
 type Node = { type: string; text: string; props: Record<string, unknown>; children: Node[]; parent: Node | null };
+const refreshTarget: Node = { type: 'nav', text: '', props: {}, children: [], parent: null };
 const host = {
+  querySelector: () => refreshTarget,
   createElement: (type: string): Node => ({ type, text: "", props: {}, children: [], parent: null }),
   createText: (text: string): Node => ({ type: "#text", text, props: {}, children: [], parent: null }),
   createComment: (text: string): Node => ({ type: "#comment", text, props: {}, children: [], parent: null }),
@@ -45,6 +50,10 @@ function mount(fetcher: typeof fetch, props: Record<string, unknown> = {}) {
   const mountedComponent = Object.assign({}, RechargePanel, { render: () => null });
   const app = renderer.createApp({ render: () => h(mountedComponent, { ...state, onVnodeMounted: (vnode) => { instance = vnode.component; }, onVnodeUpdated: (vnode) => { instance = vnode.component; }, onAuthExpired: () => emitted.push("auth-expired"), onSignIn: () => emitted.push("sign-in") }) });
   app.provide(ssrContextKey, { modules: new Set<string>() });
+  const i18n = createUserI18n();
+  i18n.setLocale(state.locale === "zh" ? "zh-CN" : "en");
+  app.provide(userI18nKey, i18n);
+  watch(() => state.locale, (locale) => { i18n.setLocale(locale === "zh" ? "zh-CN" : "en"); });
   app.mount(root);
   const render = () => {
     let output = "";
@@ -62,8 +71,8 @@ describe("RechargePanel Vue rendering and async scope", () => {
     app.render();
     expect(text(app.root)).toContain("Recharge records");
     expect(text(app.root)).toContain("No recharge records yet.");
-    expect(text(app.root)).toContain("No real payment is initiated here.");
-    expect(text(app.root)).toContain("current status only");
+    expect(text(app.root)).toContain("This page does not initiate payments.");
+    expect(text(app.root)).toContain("Recharges are recorded by support.");
     app.state.member = null;
     await flush();
     app.render();
@@ -100,12 +109,11 @@ describe("RechargePanel Vue rendering and async scope", () => {
     expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain(`/recharges/${finalPageId}`);
     expect(text(app.root)).toContain("Confirmed");
     expect(text(app.root)).toContain("9,007,199,254,740,993 pts");
-    expect(text(app.root)).toContain("Version");
+    expect(text(app.root)).not.toContain("Version");
     expect(text(app.root)).toContain(finalPageId);
-    expect(text(app.root)).toMatch(/Version<\/dt><dd[^>]*>1<\/dd>/);
     expect(text(app.root)).toContain("Ledger entry");
     expect(text(app.root)).toContain("55555555-5555-4555-8555-555555555555");
-    expect(text(app.root)).toContain("UTC");
+    expect(text(app.root)).toContain('2026-10-07 20:00:00');
     expect(text(app.root)).toContain("Queried at");
   });
 
@@ -139,11 +147,11 @@ describe("RechargePanel Vue rendering and async scope", () => {
     app.state.locale = "zh";
     await nextTick();
     app.render();
-    expect(text(app.root)).toContain("请重新登录以查看正确账户");
+    expect(text(app.root)).toContain("请重新登录以查看正确账号");
   });
 
   it("emits auth-expired on 401 and clears the record view", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ success: false, error: { message: "Sign in required" } }), { status: 401 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ success: false, error: { code: "AUTH_UNAUTHENTICATED", message: "Sign in required" } }), { status: 401 }));
     const app = mount(fetcher);
     await flush();
     app.render();
@@ -170,7 +178,7 @@ describe("RechargePanel Vue rendering and async scope", () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async (input) => {
       call++;
       if (String(input).includes(`/recharges/${id}`)) return delayedDetail;
-      if (call === 3) return new Response(JSON.stringify({ success: false, error: { message: "Sign in required" } }), { status: 401 });
+      if (call === 3) return new Response(JSON.stringify({ success: false, error: { code: "AUTH_UNAUTHENTICATED", message: "Sign in required" } }), { status: 401 });
       return ok(page([row()]));
     });
     const app = mount(fetcher);
@@ -202,12 +210,12 @@ describe("RechargePanel Vue rendering and async scope", () => {
     expect(text(app.root)).toContain("9,007,199,254,740,993 积分");
   });
 
-  it("localizes built-in validation errors but leaves a server message unchanged", async () => {
+  it("localizes validation and server errors without exposing raw details", async () => {
     let call = 0;
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => {
       call++;
       if (call === 1) return ok({ ...page(), internal_reason: "closed DTO violation" });
-      return new Response(JSON.stringify({ success: false, error: { message: "Exact upstream maintenance detail" } }), { status: 503 });
+      return new Response(JSON.stringify({ success: false, error: { code: "INTERNAL_ERROR", message: "Exact upstream maintenance detail" } }), { status: 503 });
     });
     const app = mount(fetcher);
     await flush();
@@ -218,10 +226,12 @@ describe("RechargePanel Vue rendering and async scope", () => {
     void app.setup.load();
     await flush();
     app.render();
-    expect(text(app.root)).toContain("Exact upstream maintenance detail");
+    expect(text(app.root)).toContain("暂时无法确认操作结果");
+    expect(text(app.root)).not.toContain("Exact upstream maintenance detail");
     app.state.locale = "en";
     await nextTick();
     app.render();
-    expect(text(app.root)).toContain("Exact upstream maintenance detail");
+    expect(text(app.root)).toContain("The result could not be confirmed.");
+    expect(text(app.root)).not.toContain("Exact upstream maintenance detail");
   });
 });

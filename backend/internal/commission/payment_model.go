@@ -3,7 +3,6 @@ package commission
 import (
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
@@ -115,8 +114,4 @@ func validPaymentPage(brand string, limit, offset int) bool {
 
 func validPaymentPayoutMode(mode string) bool {
 	return mode == PayoutManual || mode == PayoutAutomatic || mode == "mixed" || mode == "none"
-}
-
-func validPaymentReason(reason string) bool {
-	return strings.TrimSpace(reason) == reason && validCycleReason(reason)
 }

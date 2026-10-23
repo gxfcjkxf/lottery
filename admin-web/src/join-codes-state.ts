@@ -1,3 +1,4 @@
+import { copyAssociationNames } from '@lottery/shared';
 import { validJoinCodeDate, validJoinCodeDateRange, type CreateJoinCodeBody, type JoinCodeKind, type JoinCodeStatus, type UpdateJoinCodeBody } from "./join-codes-api";
 
 export type JoinCodeWriteOperation = "create" | "update";
@@ -32,7 +33,7 @@ function resolveScope(scope: string | JoinCodeWriteScope): (JoinCodeWriteScope &
   return null;
 }
 function validRange(start: unknown, end: unknown): boolean { return (start === null || validJoinCodeDate(start)) && (end === null || validJoinCodeDate(end)) && validJoinCodeDateRange(start as string | null, end as string | null); }
-function validReason(value: unknown): boolean { return typeof value === "string" && value.trim().length > 0 && new TextEncoder().encode(value).length <= 500; }
+function validReason(value: unknown): boolean { return value === undefined || typeof value === "string" && new TextEncoder().encode(value).length <= 500; }
 function validBody(operation: JoinCodeWriteOperation, value: unknown): value is JoinCodeWriteBody {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const b = value as Record<string, unknown>;
@@ -62,7 +63,7 @@ function validIntent(value: unknown, scope: JoinCodeWriteScope): value is Pendin
 /** JSON round-tripping unwraps Vue proxies and creates a detached immutable snapshot. */
 export function freezeJoinCodeBody<T extends object>(body: T): Readonly<T> {
   let copy: T;
-  try { copy = JSON.parse(JSON.stringify(body)) as T; }
+  try { copy = JSON.parse(JSON.stringify(body)) as T; copyAssociationNames(body,copy); }
   catch { throw new TypeError("Join code write body must be JSON serializable"); }
   const freeze = (value: unknown): void => {
     if (!value || typeof value !== "object" || Object.isFrozen(value)) return;
@@ -71,7 +72,9 @@ export function freezeJoinCodeBody<T extends object>(body: T): Readonly<T> {
   freeze(copy); return copy;
 }
 function copyIntent(intent: PendingJoinCodeWrite): PendingJoinCodeWrite {
-  return Object.freeze({ ...intent, identity: Object.freeze({ ...intent.identity }), body: freezeJoinCodeBody(intent.body) });
+  const identity = {...intent.identity};
+  copyAssociationNames(intent.identity,identity);
+  return Object.freeze({ ...intent, identity: Object.freeze(identity), body: freezeJoinCodeBody(intent.body) });
 }
 export function getPendingJoinCodeWrite(scope: string | JoinCodeWriteScope): PendingJoinCodeWrite | null {
   const resolved = resolveScope(scope);

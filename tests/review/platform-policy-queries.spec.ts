@@ -9,8 +9,8 @@ const kinds = [['points', 'point-policy'], ['withdrawal', 'withdrawal-policy'], 
 async function operations(page: any, tab: string) {
   await page.goto(origin);
   await page.getByRole('button', { name: 'Audit and operations', exact: true }).click();
-  await page.locator('.content > .brand-picker select').selectOption(brand);
   await page.getByTestId('platform-operations-tabs').getByRole('button', { name: tab, exact: true }).click();
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
 }
 
 test('platform reads genuine archive and financial policies without enabling or changing them', async ({ page }, info) => {
@@ -51,7 +51,7 @@ test('platform reads genuine archive and financial policies without enabling or 
     expect(response.status()).toBe(200);
     expect((await response.json()).data).toEqual(data);
   }
-  await page.locator('.content > .brand-picker select').selectOption('');
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(page.getByTestId('platform-financial-policy-detail')).toHaveCount(0);
 });
 
@@ -92,7 +92,7 @@ test('synthetic archive task paging preserves saved policy versions and clears d
   await page.getByTestId('platform-archive-task-list').getByText(items[50].id, { exact: true }).click();
   await expect(detail.getByRole('alert')).toContainText('Task unavailable');
   await expect(detail).not.toContainText(items[50].archive_id!);
-  await page.locator('.content > .brand-picker select').selectOption('');
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(page.getByTestId('platform-archive-policy')).toHaveCount(0);
   await expect(page.getByTestId('platform-archive-task-list')).toHaveCount(0);
 });

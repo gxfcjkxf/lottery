@@ -31,11 +31,13 @@ test('platform member and audit pages paginate and clear scope without write con
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   for (const [section, testId, marker] of [
-    ['Brand members', 'platform-member-pages', 'member_page_50'],
+    ['Member list', 'platform-member-pages', 'member_page_50'],
     ['Audit and operations', 'platform-audit-pages', 'audit_page_50'],
   ]) {
-    await page.locator('.nav-item').filter({ hasText: section }).click();
-    await page.locator('.brand-picker select').selectOption(brand);
+    if (await page.locator('button[aria-controls="platform-brand-tabs"]').getAttribute('aria-expanded') === 'false') await page.locator('button[aria-controls="platform-brand-tabs"]').click()
+    await page.locator(section === 'Member list' ? '.nav-subitem' : '.nav-item').filter({ hasText: section }).click();
+    if (section === 'Audit and operations') await page.getByTestId('platform-operations-tabs').getByRole('button', { name: 'Audit log', exact: true }).click();
+    await page.locator('.topbar-brand-picker select').selectOption(brand);
     const pages = page.getByTestId(testId);
     await expect(pages.getByRole('button', { name: 'Previous page' })).toBeDisabled();
     await expect(pages.getByRole('button', { name: 'Next page' })).toBeEnabled();
@@ -50,7 +52,7 @@ test('platform member and audit pages paginate and clear scope without write con
     await expect(page.locator('.global-message')).toContainText('Page read unavailable');
     await pages.getByRole('button', { name: 'Refresh' }).click();
     await expect(pages.getByRole('button', { name: 'Next page' })).toBeEnabled();
-    await page.locator('.brand-picker select').selectOption('');
+    await page.locator('.topbar-brand-picker select').selectOption('');
     await expect(pages).toHaveCount(0);
     await expect(page.locator('.content')).not.toContainText(marker);
   }

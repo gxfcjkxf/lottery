@@ -46,7 +46,11 @@ test("closed input schema rejects extra fields, invalid versions, flags, and rea
   const valid = { version: 4, daily_enabled: true, monthly_enabled: false, reason: "Enable daily archives" };
   assert.ok(check(valid), JSON.stringify(check.errors));
   assert.equal(schema.additionalProperties, false);
-  assert.deepEqual(schema.required, ["version", "daily_enabled", "monthly_enabled", "reason"]);
+  assert.deepEqual(schema.required, ["version", "daily_enabled", "monthly_enabled"]);
+  assert.ok(check({ version: 4, daily_enabled: true, monthly_enabled: false }));
+  assert.ok(check({ ...valid, reason: "" }));
+  assert.ok(!check({ ...valid, reason: null }));
+  assert.ok(!check({ ...valid, reason: 1 }));
   assert.equal(schema.properties.version.maximum, 9007199254740990);
   assert.equal(schema.properties.daily_enabled.type, "boolean");
   assert.equal(schema.properties.monthly_enabled.type, "boolean");

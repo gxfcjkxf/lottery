@@ -34,41 +34,41 @@ func TestHashAndVerifyPassword(t *testing.T) {
 }
 
 func TestPasswordByteBounds(t *testing.T) {
-	for _, password := range []string{"123456789", strings.Repeat("x", 129)} {
+	for _, password := range []string{"12345", strings.Repeat("x", 31)} {
 		if _, err := HashPassword(password); err != ErrInvalidPassword {
 			t.Errorf("HashPassword(%d bytes) err=%v, want ErrInvalidPassword", len(password), err)
 		}
 	}
-	if _, err := HashPassword("1234567890"); err != nil {
+	if _, err := HashPassword("123456"); err != nil {
 		t.Fatalf("minimum length password rejected: %v", err)
 	}
-	if _, err := HashPassword(strings.Repeat("x", 128)); err != nil {
+	if _, err := HashPassword(strings.Repeat("x", 30)); err != nil {
 		t.Fatalf("maximum length password rejected: %v", err)
 	}
-	if ok, err := VerifyPassword("123456789", "$invalid"); ok || err != ErrInvalidPassword {
+	if ok, err := VerifyPassword("12345", "$invalid"); ok || err != ErrInvalidPassword {
 		t.Fatalf("VerifyPassword did not enforce password bounds: ok=%v err=%v", ok, err)
 	}
 }
 
-func TestDevelopmentAdminPasswordUsesArgon2WithoutChangingNormalBounds(t *testing.T) {
-	if _, err := HashPassword("admin123"); err != ErrInvalidPassword {
-		t.Fatalf("ordinary HashPassword accepted short password: %v", err)
+func TestPasswordBoundsApplyToDefaultAdminPassword(t *testing.T) {
+	if _, err := HashPassword("short"); err != ErrInvalidPassword {
+		t.Fatalf("ordinary HashPassword accepted too-short password: %v", err)
 	}
-	if _, err := VerifyPassword("admin123", "$invalid"); err != ErrInvalidPassword {
-		t.Fatalf("ordinary VerifyPassword accepted short password: %v", err)
+	if _, err := VerifyPassword("short", "$invalid"); err != ErrInvalidPassword {
+		t.Fatalf("ordinary VerifyPassword accepted too-short password: %v", err)
 	}
-	hash, err := HashDevelopmentAdminPassword()
+	hash, err := HashPassword("admin123")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(hash, "$argon2id$v=19$") {
 		t.Fatalf("development hash is not Argon2id: %q", hash)
 	}
-	if ok, err := VerifyDevelopmentAdminPassword(hash); err != nil || !ok {
-		t.Fatalf("development password verification failed: ok=%v err=%v", ok, err)
+	if ok, err := VerifyPassword("admin123", hash); err != nil || !ok {
+		t.Fatalf("default admin password verification failed: ok=%v err=%v", ok, err)
 	}
-	if ok, err := VerifyDevelopmentAdminPassword("$invalid"); err != ErrInvalidHash || ok {
-		t.Fatalf("malformed development hash accepted: ok=%v err=%v", ok, err)
+	if ok, err := VerifyPassword("admin123", "$invalid"); err != ErrInvalidHash || ok {
+		t.Fatalf("malformed password hash accepted: ok=%v err=%v", ok, err)
 	}
 }
 

@@ -76,7 +76,7 @@ func TestCommissionAdjustmentHTTPRejectsClosedBodyAndMalformedPagination(t *test
 	f := managedFixture(t)
 	for _, body := range []string{
 		`{}`, `null`,
-		`{"version":1,"points":"1"}`,
+		`{"version":1,"reason":"manual"}`,
 		`{"version":1,"points":"1","reason":"manual","ignored":true}`,
 		`{"version":1,"version":1,"points":"1","reason":"manual"}`,
 	} {
@@ -102,7 +102,7 @@ func TestCommissionAdjustmentHTTPCommitReplayAfterHeadAdvanceAndHistoricalReadOn
 		grantCommissionAdjustment(t, f.managementHTTP)
 		agentGrantRoot(t, f.managementHTTP)
 		mustStatus(t, f.call("PUT", "/api/v1/admin/agent-policy", "adjustment-http-agent-policy-01", f.token, managedBrand,
-			map[string]any{"version": 1, "config": map[string]any{"enabled": true, "max_depth": 3, "ratio_cap": "1", "mode": "turnover", "cycle": "weekly"}, "reason": "enable actual adjustment beneficiary"}), 200)
+			map[string]any{"version": 1, "config": map[string]any{"enabled": true, "max_depth": 3, "loss_ratio_cap": "1", "turnover_ratio_cap": "1", "mode": "turnover", "cycle": "weekly"}, "reason": "enable actual adjustment beneficiary"}), 200)
 		agentResponse := f.call("POST", "/api/v1/admin/agents", "adjustment-http-agent-create-01", f.token, managedBrand,
 			agentNodeBody(2, f.memberID, nil, nil, "1"))
 		mustStatus(t, agentResponse, 201)
@@ -110,12 +110,12 @@ func TestCommissionAdjustmentHTTPCommitReplayAfterHeadAdvanceAndHistoricalReadOn
 		managedData(t, agentResponse, &agent)
 		grantJoinCodeRoot(t, f.managementHTTP)
 		codeResponse := f.call("POST", "/api/v1/admin/join-codes", "adjustment-http-agent-code-01", f.token, managedBrand,
-			map[string]any{"kind": "agent", "owner_member_id": f.memberID, "agent_id": agent.ID, "starts_at": nil, "expires_at": nil, "reason": "attribute actual adjustment test bettor"})
+			map[string]any{"kind": "agent", "owner_member_id": agent.MemberID, "agent_id": agent.ID, "starts_at": nil, "expires_at": nil, "reason": "attribute actual adjustment test bettor"})
 		mustStatus(t, codeResponse, 201)
 		var code attribution.Code
 		managedData(t, codeResponse, &code)
 		registered := f.call("POST", "/api/v1/auth/register", "adjustment-http-agent-member-01", "", managedBrand,
-			map[string]string{"username": "adjustment_http_" + strings.ReplaceAll(ids.New(), "-", "")[:12], "password": "adjustment-http-member-password-2026", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1", "agent_code": code.Code})
+			map[string]string{"username": "adjustment_http_" + strings.ReplaceAll(ids.New(), "-", "")[:12], "password": "adjustment-http-memb-test-2026", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1", "agent_code": code.Code})
 		mustStatus(t, registered, 201)
 		var user struct {
 			AccessToken string `json:"access_token"`

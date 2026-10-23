@@ -6,7 +6,7 @@ const aggregate = { type: 'string', pattern: '^(0|[1-9][0-9]*)$', description: '
 const net = { type: 'string', pattern: '^(0|-?[1-9][0-9]*)$', description: 'Exact signed decimal net aggregate; database numeric totals may exceed int64.' };
 const version = { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER, description: 'Positive database int64 version. JavaScript clients must reject values above the safe integer limit rather than round them.' };
 const epoch = { type: 'string', format: 'nonnegative-int64-string', pattern: '^(0|[1-9][0-9]*)$', maxLength: 19, description: 'Canonical nonnegative decimal evidence epoch. Clients must register the custom format nonnegative-int64-string to enforce the exact 0..9223372036854775807 int64 bound; generic OpenAPI readers apply only canonical syntax and length here. Never convert to a JavaScript Number.' };
-const reason = { type: 'string', minLength: 1, maxLength: 500, pattern: '^(?=\\S)(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])(?:[\\s\\S]*\\S)?$', description: 'Valid UTF-8 reason, nonblank, with no leading or trailing whitespace and no Unicode control characters (Unicode category Cc); maximum 500 UTF-8 bytes.' };
+const reason = { type: 'string', maxLength: 500, pattern: '^$|^(?=\\S)(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])(?:[\\s\\S]*\\S)?$', description: 'Valid UTF-8 audit note, empty allowed, with no leading or trailing whitespace and no Unicode control characters (Unicode category Cc); maximum 500 UTF-8 bytes.' };
 const actorHeader = { name: 'X-Commission-Correction-Actor-ID', in: 'header', required: true, schema: ref('UUID'), description: 'Administrator UUID for this reviewed financial action; must match the freshly authenticated actor, including on receipt replay.' };
 const page = [
   { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
@@ -27,8 +27,8 @@ const action = (permission, requestBody, summary) => ({
 
 export const schemas = {
   CommissionCorrectionExecutionPolicy: obj({ brand_id: ref('UUID'), version, enabled: { type: 'boolean' }, audit_log_id: { anyOf: [ref('UUID'), { type: 'string', const: '' }] }, updated_at: ref('DateTime') }),
-  CommissionCorrectionExecutionPolicyInput: obj({ version, enabled: { type: 'boolean' }, reason }),
-  CommissionCorrectionAction: obj({ version, reason }),
+  CommissionCorrectionExecutionPolicyInput: obj({ version, enabled: { type: 'boolean' }, reason }, ["version", "enabled"]),
+  CommissionCorrectionAction: obj({ version, reason }, ["version"]),
   CommissionCorrectionPlan: {
     ...obj({
       id: ref('UUID'), brand_id: ref('UUID'), cycle_id: ref('UUID'), payment_id: ref('UUID'), run_id: ref('UUID'),

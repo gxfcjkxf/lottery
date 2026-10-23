@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 import type { BettingTotals, LedgerTotals } from "./reports-api";
@@ -60,7 +62,7 @@ export interface ReportArchivePage {
   brand_id: string; items: ReportArchiveRecord[]; total_count: string; limit: number; offset: number;
 }
 export interface ReportArchiveCreateInput {
-  kind: "daily" | "monthly"; period_key: string; expected_revision: number; reason: string;
+  kind: "daily" | "monthly"; period_key: string; expected_revision: number; reason?: string;
 }
 export interface ReportArchiveDownload {
   bytes: Uint8Array; metadata: { sha256: string; revision: number; format_version: 1; filename: string };
@@ -222,16 +224,16 @@ function hasLoneSurrogate(value: string): boolean {
   return false;
 }
 function validStoredReason(v: unknown): v is string {
-  return typeof v === "string" && v.length > 0 && v.trim() === v && !hasLoneSurrogate(v) &&
+  return typeof v === "string" && v.trim() === v && !hasLoneSurrogate(v) &&
     new TextEncoder().encode(v).length <= 500 && !/[\u0000\r\n]/u.test(v);
 }
 function validCreateReason(v: unknown): v is string {
   return validStoredReason(v) && !/[\u0000-\u001f\u007f-\u009f]/u.test(v);
 }
 function validateCreateInput(input: ReportArchiveCreateInput): void {
-  if (!isRecord(input) || !exact(input, ["kind", "period_key", "expected_revision", "reason"]) ||
+  if (!isRecord(input) || !(exact(input, ["kind", "period_key", "expected_revision", "reason"]) || exact(input, ["kind", "period_key", "expected_revision"])) ||
     !(input.kind === "daily" || input.kind === "monthly") || typeof input.period_key !== "string" ||
-    !Number.isSafeInteger(input.expected_revision) || input.expected_revision < 0 || input.expected_revision >= MAX_REVISION || !validCreateReason(input.reason)) invalidInput();
+    !Number.isSafeInteger(input.expected_revision) || input.expected_revision < 0 || input.expected_revision >= MAX_REVISION || input.reason !== undefined && !validCreateReason(input.reason)) invalidInput();
   const re = input.kind === "daily" ? /^(\d{4})-(\d{2})-(\d{2})$/ : /^(\d{4})-(\d{2})$/;
   const m = re.exec(input.period_key);
   if (!m || (input.kind === "daily" ? !validCalendarDay(input.period_key) : Number(m[1]) < 1 || Number(m[1]) > 9998 || Number(m[2]) < 1 || Number(m[2]) > 12)) invalidInput();
@@ -255,18 +257,13 @@ function contentLength(response: Response, actual: number): boolean {
   return header !== null && /^(0|[1-9][0-9]*)$/.test(header) && BigInt(header) === BigInt(actual);
 }
 async function envelope(response: Response, write: boolean): Promise<unknown> {
-  let body: unknown;
-  if (!response.ok) {
-    try { body = await response.json(); } catch { body = undefined; }
-    const e = isRecord(body) && isRecord(body.error) ? body.error : undefined;
-    if (isRecord(body) && typeof body.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-    if (write && (response.status < 400 || response.status >= 500)) unknownWrite();
-    throw new AdminApiError(typeof e?.message === "string" ? e.message : `Request failed (${response.status})`, response.status, typeof e?.code === "string" ? e.code : undefined);
+  try { return (await readAdminEnvelope(response)).data; }
+  catch (cause) {
+    if (write && (response.ok || response.status < 400 || response.status >= 500)) unknownWrite();
+    throw cause;
   }
-  try { body = await response.json(); } catch { if (write) unknownWrite(); invalidResponse(); }
-  if (!isRecord(body) || body.success !== true || body.data === undefined) { if (write) unknownWrite(); invalidResponse(); }
-  return body.data;
 }
+
 function ensureBrand(brand: string): void { if (!uuid(brand)) invalidInput(); }
 
 export function reportArchivesPermissions(account: AdminAccount, brandId: string): { view: boolean; create: boolean; download: boolean } {
@@ -313,7 +310,7 @@ export function createReportArchivesApi(fetcher: typeof fetch = fetch): ReportAr
       const data = await request(BASE, brandId, { method: "POST", body: intent, key, actor: expectedActor, write: true, successStatus: 201 });
       if (!validRecord(data, brandId, undefined, expectedActor) || data.revision !== intent.expected_revision + 1 ||
         (intent.expected_revision === 0 ? data.previous_id !== null : data.previous_id === null) ||
-        data.window.kind !== intent.kind || data.window.period_key !== intent.period_key || data.reason !== intent.reason) invalidResponse(true);
+        data.window.kind !== intent.kind || data.window.period_key !== intent.period_key) invalidResponse(true);
       return data;
     },
     async download(brandId, id, previousRecord) {

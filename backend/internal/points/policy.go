@@ -113,7 +113,7 @@ func (in *PolicyInput) UnmarshalJSON(data []byte) error {
 	if _, err = decoder.Token(); err != nil {
 		return fmt.Errorf("%w: malformed policy object", ErrInvalid)
 	}
-	for _, present := range seen {
+	for _, present := range seen[:4] {
 		if !present {
 			return fmt.Errorf("%w: policy replacement is missing a field", ErrInvalid)
 		}
@@ -190,7 +190,7 @@ func (s Store) UpdatePolicy(ctx context.Context, tx pgx.Tx, brand string, in Pol
 	reason := strings.TrimSpace(in.Reason)
 	if tx == nil || !uuidPattern.MatchString(brand) || in.Version <= 0 ||
 		!validPolicyCap(in.MaxBalancePoints) || !validPolicyCap(in.MaxRechargePoints) || !validPolicyCap(in.MaxAdjustmentPoints) ||
-		reason == "" || len([]byte(reason)) > 500 || !utf8.ValidString(reason) ||
+		len([]byte(reason)) > 500 || !utf8.ValidString(reason) ||
 		meta.ActorType != "admin" || !validActorUUID(meta.ActorID) || meta.RequestID == "" || len([]byte(meta.RequestID)) > 80 || !utf8.ValidString(meta.RequestID) {
 		return Policy{}, ErrInvalid
 	}

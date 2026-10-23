@@ -45,7 +45,7 @@ async function fileResponse(body: string, rev = 1, headers: Record<string, strin
 
 describe('platform archives API', () => {
   it('lists and reads current manual and automatic records with brand and paging checks', async () => {
-    const manual = record()
+    const manual = record({ reason: '' })
     const automatic = record({ id: '66666666-6666-4666-8666-666666666666', created_by: null, automation: { task_id: task, policy_version: 2 } })
     const f = vi.fn<typeof fetch>().mockResolvedValueOnce(envelope(page([manual, automatic]))).mockResolvedValueOnce(envelope(automatic))
     const api = createPlatformArchivesApi(f)

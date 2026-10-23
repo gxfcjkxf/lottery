@@ -58,6 +58,16 @@ func bettingTx(t *testing.T, db interface {
 	}
 }
 
+// Period admission is judged by PostgreSQL's clock, including in test fixtures.
+func bettingDatabaseNow(t *testing.T, db *pgxpool.Pool) time.Time {
+	t.Helper()
+	var now time.Time
+	if err := db.QueryRow(context.Background(), `SELECT clock_timestamp()`).Scan(&now); err != nil {
+		t.Fatal(err)
+	}
+	return now.UTC()
+}
+
 func bettingRuleActor(id, brand string, actions ...string) access.Account {
 	a := access.Account{ID: id, Type: access.AccountAdmin, BrandIDs: []string{brand}}
 	r := access.Role{BrandID: brand}
@@ -98,11 +108,11 @@ func newBettingFixtureWithDBWindow(t *testing.T, db *pgxpool.Pool, brand string,
 	f := bettingFixture{db: db, service: Service{DB: db}, brand: brand}
 	creatorID, reviewerID, userID, memberID := ids.New(), ids.New(), ids.New(), ids.New()
 	for i, id := range []string{creatorID, reviewerID} {
-		if _, err := db.Exec(ctx, `INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'test-only')`, id, fmt.Sprintf("bet_rule_%s_%d", id[:8], i)); err != nil {
+		if _, err := db.Exec(ctx, `INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'test-only')`, id, fmt.Sprintf("bet_rule_%s_%d", id[24:], i)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'test-only')`, userID, "bet_user_"+userID[:8]); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO global_users(id,username,password_hash) VALUES($1,$2,'test-only')`, userID, "bet_user_"+userID[24:]); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(ctx, `INSERT INTO brand_members(id,brand_id,global_user_id,join_method,privacy_policy_version,service_terms_version) VALUES($1,$2,$3,'domain','test-1','test-1')`, memberID, brand, userID); err != nil {
@@ -176,7 +186,10 @@ func newBettingFixtureWithDBWindow(t *testing.T, db *pgxpool.Pool, brand string,
 		f.version, e = rs.Review(ctx, tx, brand, reviewer, f.version.ID, f.version.Version, true, true, "approve test rule", points.Metadata{})
 		return e
 	})
-	now := time.Now().UTC()
+	var now time.Time
+	if err := db.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
+		t.Fatal(err)
+	}
 	bettingTx(t, db, func(tx pgx.Tx) error {
 		var e error
 		f.period, e = rs.OpenPeriod(ctx, tx, brand, f.game.ID, "bet-"+creatorID[:8], now.Add(-time.Minute), now.Add(betWindow), now.Add(drawWindow))
@@ -210,6 +223,9 @@ func fundBettingWallet(t *testing.T, f bettingFixture, amounts ...points.Amount)
 	ctx := context.Background()
 	ps := points.Store{DB: f.db}
 	for i, amount := range amounts {
+		if amount == 0 {
+			continue
+		}
 		var delta points.Balance
 		delta[i][0] = amount
 		allocation := []points.Allocation{{Source: []string{"recharge", "winning", "gift", "commission"}[i], State: "available", Points: amount}}
@@ -267,6 +283,14 @@ func TestPlaceDeductsInSourceOrderAndCancelRestoresExactAllocation(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	listed, err := f.service.Orders(context.Background(), f.brand, f.member, "", 50, 0)
+	if err != nil || len(listed) != 1 || listed[0].PeriodNo != f.period.PeriodNo {
+		t.Fatalf("order list must include its real period number: %+v, %v", listed, err)
+	}
+	foreign, err := f.service.Orders(context.Background(), storeTestOtherBrand, "", "", 50, 0)
+	if err != nil || len(foreign) != 0 {
+		t.Fatalf("order summary must not expose another brand's periods: %+v, %v", foreign, err)
+	}
 	wallet := walletBySource(t, f)
 	if wallet[0][0] != 0 || wallet[1][0] != 0 || wallet[2][0] != 5 {
 		t.Fatalf("unexpected post-debit buckets: %+v", wallet)
@@ -279,7 +303,7 @@ func TestPlaceDeductsInSourceOrderAndCancelRestoresExactAllocation(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cancelled, err := f.service.Cancel(context.Background(), tx, f.brand, f.user, order.ID, order.Version, "user changed mind", points.Metadata{RequestID: ids.New()})
+	cancelled, err := f.service.Cancel(context.Background(), tx, f.brand, f.user, order.ID, order.Version, "", points.Metadata{RequestID: ids.New()})
 	if err != nil {
 		_ = tx.Rollback(context.Background())
 		t.Fatal(err)
@@ -419,7 +443,7 @@ func openShortBettingPeriod(t *testing.T, f *bettingFixture, duration time.Durat
 	finishUnusedBettingPeriod(t, *f)
 	ctx := context.Background()
 	rs := rulebook.Store{DB: f.db}
-	now := time.Now().UTC()
+	now := bettingDatabaseNow(t, f.db)
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		var err error
 		f.period, err = rs.OpenPeriod(ctx, tx, f.brand, f.game.ID, "short-"+ids.New()[:8], now.Add(-time.Minute), now.Add(duration), now.Add(duration+time.Hour))

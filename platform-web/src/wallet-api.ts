@@ -1,3 +1,5 @@
+import { readPlatformEnvelope } from './platform-api'
+
 import { isWalletDTO, normalizeLedgerSnapshots, type SourceBuckets, type WalletDTO, type WalletSource, type WalletState } from '@lottery/shared'
 import { PlatformApiError } from './platform-api'
 
@@ -71,14 +73,7 @@ export function createPlatformWalletApi(fetcher: typeof fetch = fetch) {
     } catch (cause) {
       throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true)
     }
-    let envelope: unknown
-    try { envelope = await response.json() } catch {
-      throw new PlatformApiError(response.ok ? 'Invalid server response' : `Request failed (${response.status})`, response.status, 'INVALID_RESPONSE')
-    }
-    if (!isObj(envelope) || envelope.success !== true || envelope.data === undefined || !response.ok) {
-      const error = isObj(envelope) && isObj(envelope.error) ? envelope.error : undefined
-      throw new PlatformApiError(isText(error?.message) ? error.message : `Request failed (${response.status})`, response.status, isText(error?.code) ? error.code : undefined)
-    }
+    const envelope = await readPlatformEnvelope<unknown>(response);
     return envelope.data
   }
 

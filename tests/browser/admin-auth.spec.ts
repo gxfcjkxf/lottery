@@ -56,7 +56,7 @@ test("admin directory writes a real brand member and kick revokes its session", 
   await dialog.getByRole("combobox").selectOption("frozen");
   await dialog.getByLabel("备注", { exact: true }).fill("browser verification");
   await dialog.getByLabel(/操作原因/).fill("browser freeze verification");
-  await dialog.getByRole("button", { name: "保存到后台", exact: true }).click();
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(row).toContainText("冻结");
   await expect(row).toContainText("browser verification");

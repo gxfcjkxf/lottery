@@ -83,7 +83,7 @@ func TestRewardNotificationsHTTPPreserveOriginalReceiptsAndPrivateEvidence(t *te
 		}
 		kinds[item.EventType]++
 		ids = append(ids, item.ID)
-		if item.Content.En.Title == "" || item.Payload.ResourceID != order.ID || item.Payload.Points == nil || *item.Payload.Points != "40" {
+		if item.Content != (notification.Content{I18nKey: item.EventType, I18nVersion: 1}) || item.Payload.ResourceID != order.ID || item.Payload.Points == nil || *item.Payload.Points != "40" {
 			t.Fatal(item)
 		}
 	}

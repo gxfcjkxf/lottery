@@ -1,56 +1,65 @@
 <script setup lang="ts">
+import FilterAssociationSelect from "@lottery/shared/FilterAssociationSelect.vue";
+import { filterDateBoundary } from "@lottery/shared";
+import { associationGroupLabel } from "@lottery/shared";
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import PlatformTemporalInput from "@lottery/shared/PlatformTemporalInput.vue";
+import { vGlobalLoading } from "@lottery/shared";
+const displayDate = (value: string | null | undefined) => formatDisplayDateTime(value, displayLocale.value);
+import { formatDisplayDateTime } from "@lottery/shared";
+const displayLocale = useAdminI18n().locale;
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { AdminApiError, type AdminAccount } from "./admin-api";
-import { useAdminI18n } from "./i18n";
+import { adminKey, useAdminI18n } from "./i18n";
 import { createRewardReportApi, rewardReportPermissions, type RewardReport, type RewardReportKind, type RewardReportQuery } from "./reward-report-api";
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
-const { t } = useAdminI18n(), api = createRewardReportApi();
+const { t, display } = useAdminI18n(), api = createRewardReportApi();
 const permissions = computed(() => rewardReportPermissions(props.account, props.brandId));
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const utcInput = (date: Date) => `${date.toISOString().slice(0, 19)}`;
-const end = new Date(Math.ceil(Date.now() / 60_000) * 60_000), start = new Date(end.getTime() - 7 * 86_400_000);
-const fromDraft = ref(utcInput(start)), toDraft = ref(utcInput(end)), memberDraft = ref(""), orderDraft = ref("");
+const end = new Date(Math.ceil(Date.now() / 60_000) * 60_000), start = new Date(end.getTime() - 6 * 86_400_000);
+const fromDraft = ref(utcInput(start).slice(0,10)), toDraft = ref(utcInput(end).slice(0,10)), memberDraft = ref(""), orderDraft = ref("");
 const mode = ref<RewardReportKind>("rewards"), groupDraft = ref<RewardReportQuery["group_by"]>("day");
 const committed = ref<{ kind: RewardReportKind; query: RewardReportQuery } | null>(null), result = ref<RewardReport | null>(null);
-const error = ref(""), exportError = ref(""), busy = ref(false), exportBusy = ref(false);
+const error = ref<string | import("@lottery/shared").LocalizedMessage>(""), exportError = ref<string | import("@lottery/shared").LocalizedMessage>(""), busy = ref(false), exportBusy = ref(false);
 let readGeneration = 0, exportGeneration = 0, alive = true, readController: AbortController | undefined, exportController: AbortController | undefined;
 const scopeKey = computed(() => JSON.stringify({ brand: props.brandId, actor: props.account.id, super: props.account.super_admin, brands: [...(props.account.brand_ids ?? [])].sort(), permissions: [...(props.account.permissions ?? [])].sort(), platform: [...(props.account.platform_permissions ?? [])].sort(), byBrand: [...(props.account.permissions_by_brand?.[props.brandId] ?? [])].sort(), allowed: permissions.value }));
 const groups = computed(() => mode.value === "rewards" ? ["day", "member", "order"] : ["day", "member", "state"]);
 function abortRead() { readGeneration++; readController?.abort(); readController = undefined; busy.value = false; }
 function abortExport() { exportGeneration++; exportController?.abort(); exportController = undefined; exportBusy.value = false; }
 function clearScope() { abortRead(); abortExport(); committed.value = null; result.value = null; error.value = ""; exportError.value = ""; }
-function validDate(value: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
-  if (!m) throw new Error(t("请输入有效的 UTC 日期和时间。", "Enter a valid UTC date and time."));
-  const [, ys, ms, ds, hs, mins, secs = "0"] = m, y = Number(ys), mo = Number(ms), d = Number(ds), h = Number(hs), mi = Number(mins), s = Number(secs);
-  const days = mo === 2 ? (y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : 28) : ([4, 6, 9, 11].includes(mo) ? 30 : 31);
-  if (y < 1 || mo < 1 || mo > 12 || d < 1 || d > days || h > 23 || mi > 59 || s > 59) throw new Error(t("请输入有效的 UTC 日期和时间。", "Enter a valid UTC date and time."));
-  return `${ys}-${ms}-${ds}T${hs}:${mins}:${String(s).padStart(2, "0")}Z`;
-}
-function queryDraft(): RewardReportQuery {
-  const from = validDate(fromDraft.value), to = validDate(toDraft.value), fromMs = Date.parse(from), toMs = Date.parse(to);
-  if (toMs <= fromMs || toMs - fromMs > 93 * 86_400_000) throw new Error(t("时间范围必须大于零且不超过 93 天。", "Choose a valid range no longer than 93 days."));
+async function queryDraft(): Promise<RewardReportQuery> {
+  const from = filterDateBoundary(fromDraft.value, false, 'utc').toISOString(), to = filterDateBoundary(toDraft.value, true, 'utc').toISOString(), fromMs = Date.parse(from), toMs = Date.parse(to);
+  if (toMs <= fromMs || toMs - fromMs > 93 * 86_400_000) throw new Error(t('admin.copy.bddf70ec'));
   const member = memberDraft.value.trim(), order = orderDraft.value.trim();
-  if (member && !uuid.test(member) || order && !uuid.test(order)) throw new Error(t("筛选 UUID 格式无效。", "Enter valid UUIDs for the optional filters."));
-  return { from, to, group_by: groupDraft.value, limit: 20, offset: 0, ...(member ? { member_id: member } : {}), ...(order ? { order_id: order } : {}) };
+  if (order && !uuid.test(order)) throw new Error(t('admin.copy.864d220e'));
+  const memberId = member;
+  return { from, to, group_by: groupDraft.value, limit: 20, offset: 0, ...(memberId ? { member_id: memberId } : {}), ...(order ? { order_id: order } : {}) };
 }
 function current(generation: number, scope: string) { return alive && generation === readGeneration && scope === scopeKey.value; }
 async function run(saved?: { kind: RewardReportKind; query: RewardReportQuery }) {
   abortRead(); abortExport(); result.value = null; error.value = ""; exportError.value = "";
   const generation = readGeneration, scope = scopeKey.value;
-  if (!permissions.value.view) { error.value = t("缺少奖励报表查看权限。", "Missing report_reward.view.brand or .platform grant."); return; }
+  if (!permissions.value.view) { error.value = t('admin.copy.56ef8abd'); return; }
   let request: { kind: RewardReportKind; query: RewardReportQuery };
-  try { request = saved ? { kind: saved.kind, query: { ...saved.query } } : { kind: mode.value, query: queryDraft() }; }
-  catch (cause) { error.value = cause instanceof Error ? cause.message : t("筛选无效。", "Invalid filters."); return; }
+  try { request = saved ? { kind: saved.kind, query: { ...saved.query } } : { kind: mode.value, query: await queryDraft() }; }
+  catch (cause) { error.value = cause instanceof Error ? publicErrorMessage(cause, 'read') : t('admin.copy.98ceb525'); return; }
   committed.value = request; busy.value = true; readController = new AbortController();
   try {
     const report = await api.read(request.kind, props.brandId, request.query, readController.signal);
     if (current(generation, scope) && report.brand_id.toLowerCase() === props.brandId.toLowerCase() && JSON.stringify(committed.value) === JSON.stringify(request)) result.value = report;
   } catch (cause) {
     if (!current(generation, scope)) return;
-    error.value = cause instanceof Error ? cause.message : t("读取失败。", "Unable to load report.");
+    error.value = cause instanceof Error ? publicErrorMessage(cause, 'read') : t('admin.copy.c3026898');
     if (cause instanceof AdminApiError && cause.status === 401) { committed.value = null; emit("session-invalid"); }
   } finally { if (current(generation, scope)) { busy.value = false; readController = undefined; } }
 }
@@ -66,58 +75,57 @@ async function exportAll() {
     anchor.href = url; anchor.download = file.filename; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 0);
   } catch (cause) {
     if (!alive || generation !== exportGeneration || scope !== scopeKey.value || snapshot !== committed.value) return;
-    exportError.value = cause instanceof Error ? cause.message : t("导出失败。", "Export failed.");
+    exportError.value = cause instanceof Error ? publicErrorMessage(cause, 'read') : t('admin.copy.8e66aa98');
     if (cause instanceof AdminApiError && cause.status === 401) { clearScope(); emit("session-invalid"); }
   } finally { if (generation === exportGeneration) { exportBusy.value = false; exportController = undefined; } }
 }
 const fields = computed(() => mode.value === "rewards" ? ["entry_count", "grant_entry_count", "grant_points", "reversal_entry_count", "reversal_points", "net_points"] : ["order_count", "original_points", "granted_count", "granted_points", "pending_count", "pending_points", "revoked_count", "revoked_points"]);
-const names: Record<string, [string, string]> = {
-  entry_count: ["入账条目", "Posting entries"], grant_entry_count: ["发放条目", "Grant entries"], grant_points: ["发放积分", "Granted points"], reversal_entry_count: ["撤销条目", "Reversal entries"], reversal_points: ["撤销积分", "Reversed points"], net_points: ["净积分变化", "Net points"],
-  order_count: ["订单数", "Orders"], original_points: ["原始积分", "Original points"], granted_count: ["已发放订单", "Granted orders"], granted_points: ["已发放积分", "Granted points"], pending_count: ["待处理订单", "Pending orders"], pending_points: ["待处理积分", "Pending points"], revoked_count: ["已撤销订单", "Revoked orders"], revoked_points: ["已撤销积分", "Revoked points"],
+const names: Record<string, string> = {
+  entry_count: 'admin.copy.1d7e7e9b', grant_entry_count: 'admin.copy.a9b90197', grant_points: 'admin.copy.b83d5c43', reversal_entry_count: 'admin.copy.0bc0ad18', reversal_points: 'admin.copy.3089b321', net_points: 'admin.copy.a0bee852',
+  order_count: 'admin.copy.c2179a71', original_points: 'admin.copy.dea61704', granted_count: 'admin.copy.facb8181', granted_points: 'admin.copy.43c77853', pending_count: 'admin.copy.458ea6d1', pending_points: 'admin.copy.a8473f43', revoked_count: 'admin.copy.44e2367f', revoked_points: 'admin.copy.6b110769',
 };
-function metric(field: string) { return t(...names[field]!); }
+ function metric(field: string) { return t(adminKey(names[field]!)); }
 function exact(value: string) { try { const n = BigInt(value), neg = n < 0n, digits = (neg ? -n : n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ","); return `${neg ? "−" : ""}${digits}`; } catch { return value; } }
 function count(totals: RewardReport["summary"], field: string) { return exact((totals as unknown as Record<string, string>)[field]!); }
-function groupLabel(group: string) { return group === "day" ? t("按天", "Day") : group === "member" ? t("按会员", "Member") : group === "order" ? t("按订单", "Order") : t("按当前状态", "Current state"); }
-function stateLabel(key: string) { return key === "granted" ? t("已发放", "Granted") : key === "revocation_pending" ? t("撤销待处理", "Revocation pending") : key === "revoked" ? t("已撤销", "Revoked") : key; }
+function groupLabel(group: string) { return group === "day" ? t('admin.copy.f91541ed') : group === "member" ? t('admin.copy.5073d20c') : group === "order" ? t('admin.copy.2e709a31') : t('admin.copy.70a80209'); }
+function stateLabel(key: string) { return key === "granted" ? t('admin.copy.86b01b91') : key === "revocation_pending" ? t('admin.copy.2b729ea1') : key === "revoked" ? t('admin.copy.176004df') : key; }
 function hasNext(report: RewardReport) { return BigInt(report.query.offset) + BigInt(report.items.length) < BigInt(report.total_groups) && report.query.offset + 20 <= 1_000_000; }
-function page(offset: number) { if (committed.value) void run({ kind: committed.value.kind, query: { ...committed.value.query, limit: 20, offset } }); }
+async function page(offset: number) { if (committed.value) await run({ kind: committed.value.kind, query: { ...committed.value.query, limit: 20, offset } }); }
 watch(mode, () => { groupDraft.value = "day"; clearScope(); }, { flush: "sync" });
-watch(scopeKey, () => { clearScope(); if (!permissions.value.view) error.value = t("缺少奖励报表查看权限。", "Missing report_reward.view.brand or .platform grant."); }, { flush: "sync" });
+watch(scopeKey, () => { clearScope(); if (!permissions.value.view) error.value = t('admin.copy.56ef8abd'); }, { flush: "sync" });
 onBeforeUnmount(() => { alive = false; clearScope(); });
 </script>
 
 <template>
   <section class="reward-reports" aria-labelledby="reward-reports-title">
-    <header><div><h3 id="reward-reports-title">{{ t("奖励报表", "Reward reports") }}</h3><p>{{ t("只读报表", "Read-only reports") }}</p></div><button type="button" data-testid="reward-report-query" :disabled="busy || !permissions.view" @click="run()">{{ t("查询", "Query") }}</button></header>
-    <div class="modes" role="tablist" :aria-label="t('报表类型', 'Report mode')">
-      <button type="button" role="tab" data-testid="reward-report-mode-postings" :aria-selected="mode === 'rewards'" @click="mode = 'rewards'">{{ t("实际奖励入账", "Actual reward postings") }}</button>
-      <button type="button" role="tab" data-testid="reward-report-mode-orders" :aria-selected="mode === 'reward_orders'" @click="mode = 'reward_orders'">{{ t("当前奖励订单", "Current reward orders") }}</button>
+    <header><div><h3 id="reward-reports-title">{{ t('admin.copy.1d928afb') }}</h3></div></header>
+    <div class="modes" role="tablist" :aria-label="t('admin.copy.397de89b')">
+      <button type="button" role="tab" data-testid="reward-report-mode-postings" :aria-selected="mode === 'rewards'" @click="mode = 'rewards'">{{ t('admin.copy.15791d7e') }}</button>
+      <button type="button" role="tab" data-testid="reward-report-mode-orders" :aria-selected="mode === 'reward_orders'" @click="mode = 'reward_orders'">{{ t('admin.copy.3bc61630') }}</button>
     </div>
-    <p class="definition">{{ mode === "rewards" ? t("按奖励实际入账时间筛选，统计账本发放与撤销。", "Filters by actual reward posting time and counts ledger grants and reversals.") : t("按订单创建时间筛选 cohort，并展示当前状态投影；日期范围不代表状态变更发生时间。", "Filters an order cohort by creation time and shows its current state. The date range is not the time of a state change.") }}</p>
-    <p class="definition">{{ mode === "reward_orders" ? t("待撤销只表示当前订单状态，不会预留或提取资金。两种报表均为只读，不会更改奖励或钱包。日期筛选使用 UTC。", "Pending revocation is only the current order state; it does not reserve or withdraw funds. Both reports are read-only and never change rewards or wallets. Date filters use UTC.") : t("按入账时间统计不可变的奖励账本分录，不代表当前钱包余额。报表只读，不会更改奖励或钱包。日期筛选使用 UTC。", "Counts immutable reward ledger postings by posting time and does not represent current wallet balance. This report is read-only and never changes rewards or wallets. Date filters use UTC.") }}</p>
+    <p class="definition">{{ mode === "rewards" ? t('admin.copy.a5481a8b') : t('admin.copy.13c75e69') }}</p>
     <div class="filters" data-testid="reward-report-filters">
-      <label>{{ t("开始时间（UTC）", "From (UTC)") }}<input v-model="fromDraft" type="datetime-local" step="1"></label>
-      <label>{{ t("结束时间（UTC）", "To (UTC)") }}<input v-model="toDraft" type="datetime-local" step="1"></label>
-      <label>{{ t("会员 UUID（可选）", "Member UUID (optional)") }}<input v-model.trim="memberDraft" autocomplete="off"></label>
-      <label>{{ t("订单 UUID（可选）", "Order UUID (optional)") }}<input v-model.trim="orderDraft" autocomplete="off"></label>
-      <label>{{ t("分组", "Group by") }}<select v-model="groupDraft" data-testid="reward-report-group"><option v-for="group in groups" :key="group" :value="group">{{ groupLabel(group) }}</option></select></label>
+      <label>{{ t('filter.fromDateUTC') }}<PlatformTemporalInput v-model="fromDraft" type="date" :locale="displayLocale" /></label>
+      <label>{{ t('filter.toDateUTC') }}<PlatformTemporalInput v-model="toDraft" type="date" :locale="displayLocale" /></label>
+      <label>{{ t('filter.member') }}<FilterAssociationSelect v-model="memberDraft" :brand-id="props.brandId" surface="admin" :enabled="permissions.view" resource="report_rewards" kind="member" :label="t('filter.member')" :locale="displayLocale" :scope-key="JSON.stringify(props.account)" /></label>
+      <label>{{ t('filter.reward_order') }}<FilterAssociationSelect v-model="orderDraft" :brand-id="props.brandId" surface="admin" :enabled="permissions.view" resource="report_rewards" kind="reward_order" :label="t('filter.reward_order')" :locale="displayLocale" :scope-key="JSON.stringify(props.account)" /></label>
+      <label>{{ t('admin.copy.6cc02c91') }}<select v-model="groupDraft" data-testid="reward-report-group"><option v-for="group in groups" :key="group" :value="group">{{ groupLabel(group) }}</option></select></label>
+    <button class="button button-primary" type="button" data-testid="reward-report-query" :disabled="busy || !permissions.view" @click="withGlobalLoading(run)">{{ t('admin.copy.2bd50b3e') }}</button>
     </div>
-    <p v-if="props.account.super_admin" class="definition">{{ t("超级管理员也必须明确获得奖励报表查看和导出授权；导出还需单独的导出权限。", "Super admins also need explicit reward report view and export grants; export requires its own grant.") }}</p>
-    <p v-if="error" class="error" role="alert">{{ error }}</p><p v-if="exportError" class="error" role="alert">{{ exportError }}</p>
+
+    <p v-if="error" class="error" role="alert">{{ displayPublicError(error) }}</p><p v-if="exportError" class="error" role="alert">{{ displayPublicError(exportError) }}</p>
     <template v-if="result && committed">
-      <div class="context"><span>{{ t("报表", "Report") }} {{ committed.kind === 'rewards' ? t("实际奖励入账", "Actual reward postings") : t("当前奖励订单", "Current reward orders") }}</span><span>{{ t("品牌", "Brand") }} {{ result.brand_id }}</span><span>{{ t("快照", "Snapshot") }} {{ result.snapshot_at }}</span><span>{{ t("品牌时区", "Brand timezone") }} {{ result.timezone }}</span><span>{{ t("分组", "Grouped by") }} {{ groupLabel(result.query.group_by) }}</span><span>{{ t("区间 UTC", "UTC range") }} [{{ result.query.from }}, {{ result.query.to }})</span><span>{{ t("会员", "Member") }}: {{ result.query.member_id ?? t("全部", "All") }}</span><span>{{ t("订单", "Order") }}: {{ result.query.order_id ?? t("全部", "All") }}</span><span>{{ t("总分组", "Groups") }} {{ exact(result.total_groups) }}</span></div>
-      <p class="definition">{{ t("导出使用最近一次已提交查询的筛选范围，不使用尚未查询的编辑内容。", "Export uses the last submitted query scope, not unsubmitted edits.") }}</p>
-      <div class="actions"><button type="button" data-testid="reward-report-refresh" :disabled="busy" @click="run(committed!)">{{ t("刷新已提交范围", "Refresh committed scope") }}</button><button type="button" data-testid="reward-report-export" :disabled="!permissions.view || !permissions.export || exportBusy" @click="exportAll">{{ exportBusy ? t("导出中…", "Exporting…") : t("导出完整 CSV", "Export full CSV") }}</button><span v-if="!permissions.export">{{ t("需要独立奖励报表导出授权", "Separate reward report export grant required") }}</span></div>
+      <div class="context"><span>{{ t('admin.copy.c79f8452') }} {{ committed.kind === 'rewards' ? t('admin.copy.15791d7e') : t('admin.copy.3bc61630') }}</span><span>{{ t('admin.copy.9c32661d') }} <AssociationName :record="result" kind="brand" :id="result.brand_id" :locale="associationLocale" /></span><span>{{ t('admin.copy.82d4e9bd') }} {{ displayDate(result.snapshot_at) }}</span><span>{{ t('admin.copy.c6bf9750') }} {{ result.timezone }}</span><span>{{ t('admin.copy.e4bcc7b2') }} {{ groupLabel(result.query.group_by) }}</span><span>{{ t('admin.copy.4f2fb666') }} [{{ displayDate(result.query.from) }}, {{ displayDate(result.query.to) }})</span><span>{{ t('admin.copy.56b2d19b') }}: <template v-if="result.query.member_id"><AssociationName :record="result.query" kind="member" :id="result.query.member_id" :locale="associationLocale" /></template><span v-else>{{ t('admin.copy.ef22c1d2') }}</span></span><span>{{ t('admin.copy.69dfdfc8') }}: {{ result.query.order_id ?? t('admin.copy.ef22c1d2') }}</span><span>{{ t('admin.copy.a0c04ae0') }} {{ exact(result.total_groups) }}</span></div>
+      <div class="actions"><button type="button" data-testid="reward-report-export" :disabled="!permissions.view || !permissions.export || exportBusy" @click="withGlobalLoading(exportAll)">{{ exportBusy ? t('admin.copy.1c800a70') : t('admin.copy.800c75fc') }}</button><span v-if="!permissions.export">{{ t('admin.copy.02995907') }}</span></div>
       <div class="metrics" data-testid="reward-report-summary"><div v-for="field in fields" :key="field"><span>{{ metric(field) }}</span><strong>{{ count(result.summary, field) }}</strong></div></div>
-      <div v-if="result.items.length" class="table-wrap"><table><thead><tr><th>{{ t("分组键", "Key") }}</th><th>{{ result.query.group_by === 'state' ? t("当前状态", "Current state") : t("标签", "Label") }}</th><th v-for="field in fields" :key="field">{{ metric(field) }}</th></tr></thead><tbody><tr v-for="item in result.items" :key="item.key"><td>{{ item.key }}</td><td>{{ result.query.group_by === 'state' ? stateLabel(item.label) : item.label }}</td><td v-for="field in fields" :key="field">{{ count(item.totals, field) }}</td></tr></tbody></table></div>
-      <p v-else class="definition">{{ t("本页没有分组；汇总仍表示完整筛选范围。", "No groups on this page. The summary covers the full filter range.") }}</p>
-      <nav class="pages" :aria-label="t('奖励报表分页', 'Reward report pages')"><span>{{ result.query.offset + 1 }}–{{ result.query.offset + result.items.length }} / {{ exact(result.total_groups) }}</span><button type="button" :disabled="busy || result.query.offset === 0" @click="page(Math.max(0, result.query.offset - 20))">{{ t("上一页", "Previous") }}</button><button type="button" :disabled="busy || !hasNext(result)" @click="page(result.query.offset + 20)">{{ t("下一页", "Next") }}</button></nav>
+      <div v-if="result.items.length" class="table-wrap"><table><thead><tr><th>{{ result.query.group_by === 'state' ? t('admin.copy.5d42f3a0') : t('admin.copy.b96f43c6') }}</th><th v-for="field in fields" :key="field">{{ metric(field) }}</th></tr></thead><tbody><tr v-for="item in result.items" :key="item.key"><td>{{ result.query.group_by === 'state' ? stateLabel(item.label) : associationGroupLabel(item, result.query.group_by, item.key, item.label, associationLocale) }}</td><td v-for="field in fields" :key="field">{{ count(item.totals, field) }}</td></tr></tbody></table></div>
+      <p v-else class="definition empty-state">{{ t('admin.copy.473e3420') }}</p>
+      <nav class="pages" :aria-label="t('admin.copy.b81942bf')"><span>{{ result.query.offset + 1 }}–{{ result.query.offset + result.items.length }} / {{ exact(result.total_groups) }}</span><button type="button" :disabled="busy || result.query.offset === 0" @click="withGlobalLoading(page, Math.max(0, result.query.offset - 20))">{{ t('admin.copy.dbe7a5d7') }}</button><button type="button" :disabled="busy || !hasNext(result)" @click="withGlobalLoading(page, result.query.offset + 20)">{{ t('admin.copy.2e9c9e7a') }}</button></nav>
     </template>
-    <p v-else-if="busy" class="definition" aria-live="polite">{{ t("读取中…", "Loading…") }}</p>
+    <p v-global-loading v-else-if="busy" class="definition" aria-live="polite">{{ t('admin.copy.27342bf3') }}</p>
   </section>
 </template>
 
 <style scoped>
-.reward-reports{display:grid;gap:12px;min-width:0;border:1px solid #d9e0ea;border-radius:12px;padding:16px;background:#fff;color:#172033}.reward-reports header,.actions,.pages{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.reward-reports h3,.reward-reports header p{margin:0}.reward-reports header p,.definition,.context,.actions span{color:#667085;font-size:.86rem;line-height:1.55}.modes{display:flex;gap:8px;flex-wrap:wrap}.modes button[aria-selected="true"]{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}.filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.filters label{display:grid;gap:5px;min-width:0;font-size:.86rem}.filters input,.filters select{box-sizing:border-box;width:100%;min-width:0;padding:9px;border:1px solid #cbd3df;border-radius:8px;font:inherit}.reward-reports button{min-height:40px;padding:8px 12px;border:1px solid #c5ceda;border-radius:8px;background:#fff;color:inherit;font:inherit}.reward-reports button:disabled{opacity:.5}.context{display:flex;flex-wrap:wrap;gap:4px 14px;overflow-wrap:anywhere}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px}.metrics div{display:grid;gap:5px;min-width:0;border:1px solid #e5eaf0;border-radius:8px;padding:10px}.metrics span{color:#667085;font-size:.8rem}.metrics strong{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.table-wrap{overflow:auto;border:1px solid #e2e7ef;border-radius:8px}table{border-collapse:collapse;min-width:900px;width:100%;font-variant-numeric:tabular-nums}th,td{padding:8px;border-bottom:1px solid #edf0f4;text-align:left;white-space:nowrap}th{position:sticky;top:0;background:#f7f9fc}.error{margin:0;padding:10px;border-radius:8px;background:#fff0ee;color:#a32e1a}@media(max-width:700px){.reward-reports{padding:12px}.filters{grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.table-wrap{max-height:60vh}.actions button{width:100%}}
+.reward-reports{display:grid;gap:12px;min-width:0;border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--surface);color:var(--ink)}.reward-reports header,.actions,.pages{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.reward-reports h3,.reward-reports header p{margin:0}.reward-reports header p,.definition,.context,.actions span{color:var(--muted);font-size:.86rem;line-height:1.55}.modes{display:flex;gap:8px;flex-wrap:wrap}.modes button[aria-selected="true"]{border-color:var(--primary);background:var(--primary-light);color:var(--primary-dark)}.filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.filters label{display:grid;gap:5px;min-width:0;font-size:.86rem}.filters input,.filters select{box-sizing:border-box;width:100%;min-width:0;padding:9px;border:1px solid var(--line);border-radius:8px;font:inherit}.reward-reports button{min-height:40px;padding:8px 12px;border:1px solid #c5ceda;border-radius:8px;background:var(--surface);color:inherit;font:inherit}.reward-reports button:disabled{opacity:.5}.context{display:flex;flex-wrap:wrap;gap:4px 14px;overflow-wrap:anywhere}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px}.metrics div{display:grid;gap:5px;min-width:0;border:1px solid #e5eaf0;border-radius:8px;padding:10px}.metrics span{color:var(--muted);font-size:.8rem}.metrics strong{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.table-wrap{overflow:auto;border:1px solid #e2e7ef;border-radius:8px}table{border-collapse:collapse;min-width:900px;width:100%;font-variant-numeric:tabular-nums}th,td{padding:8px;border-bottom:1px solid var(--line-subtle);text-align:left;white-space:nowrap}th{position:sticky;top:0;background:var(--canvas)}.error{margin:0;padding:10px;border-radius:8px;background:#fff0ee;color:#a32e1a}@media(max-width:700px){.reward-reports{padding:12px}.filters{grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.table-wrap{max-height:60vh}.actions button{width:100%}}
 </style>

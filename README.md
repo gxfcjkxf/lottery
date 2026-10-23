@@ -2,13 +2,15 @@
 
 多品牌彩票运营平台，尚未发布。用户端、品牌后台与总后台是三个独立 Vue 项目；Go 后端的 API 和 worker 分别运行。第一期仅处理内部整数积分，不接银行、虚拟资产钱包或链上转账，不上架应用市场。
 
-开发遵循 [AGENTS.md](AGENTS.md)：不写旧版本兼容或 fallback，保持 KISS。业务账本、结果更正、审计和不可变归档版本必须保留，它们不是版本兼容。
+开发遵循 [AGENTS.md](AGENTS.md)：不写旧版本兼容或 fallback，保持 KISS。业务账本、结果更正、审计和不可变归档版本必须保留，它们不是版本兼容。全仓删除项与保留依赖已记录在[清理收尾清单](docs/59-configurable-mark-six-rule-design.md#1516-全仓清理收尾与明确保留项2026-10-20)。
 
 ## 当前业务与交接
 
-当前包含全局身份及品牌会员、角色权限、四来源账本、人工充值、投注/取消、玩法审核、期次、人工开奖、结算/更正、内部提现、代理佣金、人工奖励、站内通知、报表及对账。外部开奖 API/DOM 与身份检查按一期范围保留伪适配器，不宣称已对接真实供应商。
+当前包含全局身份及品牌会员、角色权限、四来源账本、人工充值、投注/取消、玩法审核、期次、人工开奖、结算/更正、内部提现、代理佣金、人工奖励、站内通知、报表及对账。共享彩种已支持可配置 JSON、HTML 和执行 JavaScript 的 DOM 开奖来源；普通品牌彩种 API/DOM 来源及身份检查仍有一期伪适配器，不能视为真实验证。
 
 积分按充值→中奖→佣金→赠送扣除，取消原路退款。同品牌同彩种上期已结算或取消全部退款后才能开放下期，错过窗口直接跳过。提现按占用前全部可用充值＋赠送余额与投注时 N 快照判断，成功后按申请提交时间切换流水周期。首页、钱包和订单使用真实接口，没有本地假订单或示例余额。
+
+配置式规则经编辑、验证、审核和发布后，由品牌明确保存销售价格、开关及限额；不再提供旧规则/赔率转换导入或首次发布时自动搬运旧销售配置。六合彩和加拿大彩的新投注统一使用 `/configured/:gameId` 与配置式 API；专用目录、报价、下单及旧规则/销售写入已移除。旧注单查询、原快照结算和资金记录继续保留。已有彩种需明确发布配置式规则并由品牌保存销售配置，不自动迁移旧销售。平台自动开奖通过“保存命名来源修订 → 明确启用”发布，旧平台 POST automation 直接发布入口已删除。新来源仅接受 `mapped` 字段映射；旧 `interval_json`、`hk_marksix_6hch` 不能保存或重新启用。已存旧版本继续执行原日程、采集及未结单收尾，不转换历史结果与资金，详见[旧开奖清理边界](docs/59-configurable-mark-six-rule-design.md#1515-旧开奖入口收敛与统一发布2026-10-20)。
 
 以 [交接索引](docs/README.md)、[业务规格](docs/01-product-spec.md) 和 [验收及未决事项](docs/08-acceptance-and-open-items.md) 为依据。[实施记录](docs/implementation-progress.md)保存阶段证据，早期增量升级或未接入说明不能作为当前安装步骤。
 
@@ -27,7 +29,9 @@
 
 需要 Go 1.26+、Node 24+、pnpm 11.19.0、PostgreSQL 17。当前业务实际用 PostgreSQL 保存会话、限流、幂等和持久任务；Redis、NATS与对象存储尚未接入，不是API/worker启动依赖。
 
-当前只有 `backend/migrations/0001_baseline.up.sql`，数据库必须为UTF8。使用新空库，不升级、清空或修复旧开发库。服务启动只核验基线与checksum，不自动迁移。
+数据库必须为 UTF8。正式版本发布前，`backend/migrations/` 统一维护一份 `0001_baseline.up.sql`，新空库执行 `migrate`。发布前的结构变更可合并到该基线；已有开发库须先备份，在副本验证结构与目标基线一致、业务数据完整后，显式同步迁移记录，不能直接重放建表 SQL，也不能仅改 checksum 绕过校验。正式版本发布后冻结已发布迁移及其 checksum，后续结构变更使用增量迁移。API 和 worker 启动始终核验完整迁移集合，不自动迁移或修复记录，不清空现有数据库。
+
+写入型浏览器回归不得使用共享开发库。`playwright.review.config.ts` 要求 `APP_ENV=test`，数据库必须为 `lottery_admin_entries_desktop1440`、`lottery_admin_entries_mobilepixel7` 或明确新建的 `lottery_admin_entries_local_*`；在该库初始化匹配版本服务和独立测试账号后运行。规则自检另外创建专属临时品牌，结束或失败时通过正常 API 清理；不得将测试彩种写入日常使用的 Aurora 等品牌。
 
 以下用于首次安装；已有.env或认证密钥时保留它们，不重复生成：
 
@@ -59,11 +63,13 @@ go run ./cmd/platform worker
 
 分别在三个终端从仓库根目录运行 `pnpm dev:user`、`pnpm dev:admin`、`pnpm dev:platform`。用户端localhost:5173、品牌后台localhost:5174、总后台localhost:5175；API localhost:8080，存活/就绪分别为 /health/live、/health/ready。
 
+使用现有 8085 后端时，总后台运行 `pnpm --filter @lottery/platform-web dev:review`，访问 `http://127.0.0.1:5185`。这是 Vite 开发模式，保存 Vue、TypeScript、CSS 后页面自动更新，不需要执行 build。`vite preview` 只提供上一次构建的 dist，不监听源码；不要用它进行日常页面开发。同一端口只能启动一个服务，切换模式前先停止旧进程。Go 后端改动仍需重新编译、重启，并通过数据库迁移一致性检查。
+
 ## 账号与安全
 
 开发环境执行seed后，可用`admin / admin123`登录独立总后台；这不是品牌管理员，不能进入品牌后台。已存在admin时不会覆盖，请使用其已有密码。固定短密码仅在development总后台登录时接受，不放宽普通用户、账号创建或密码重置规则；不可用于公网或正式部署。
 
-test/production不自动创建管理员。服务器拥有者安全注入BOOTSTRAP_ADMIN_PASSWORD（16–128字节），从backend显式创建，随后清除环境变量。实际部署密码不放入命令参数、日志或仓库：
+test/production不自动创建管理员。服务器拥有者安全注入BOOTSTRAP_ADMIN_PASSWORD（6–30字节），从backend显式创建，随后清除环境变量。实际部署密码不放入命令参数、日志或仓库：
 
 ```sh
 go run ./cmd/platform create-admin --username operator --brand aurora
@@ -86,7 +92,7 @@ go run ./cmd/platform create-admin --username platform_reader --super
 
 ```sh
 go -C backend vet ./...
-go -C backend test -race -count=1 ./...
+bash scripts/test-go-regression.sh
 pnpm typecheck
 pnpm test
 pnpm build
@@ -94,13 +100,15 @@ pnpm api:check
 pnpm test:contracts
 ```
 
+本地全量Go脚本要求已设置 `TEST_DATABASE_URL`，完整运行 `./...`，开启race且禁用测试结果缓存；包间串行、包内最多4项并行，避免迁移锁与真实Argon2计算争用。每包20分钟与现有数据库CI一致，包含整包累计的迁移、准备及真实期次等待；不修改业务请求时限，也不筛掉慢测试。回归须对应固定源码；同一工作区有并行编辑时，从包含未提交改动的独立快照运行相同命令，并保存源码校验值。浏览器开奖、报表容量边界等显式构建标签仍按对应专项命令验收。
+
 Go与Node须同时在PATH；API检查核对实际Go路由。OpenAPI仅列当前可调用接口，未来设计不代表已经可用。
 
 ### CI运行方式
 
-日常push和pull_request只运行三组快检：前端类型检查/单测/静态检查/构建、接口契约，以及后端vet/单测/构建。后端快检不连接PostgreSQL、不启用race，数据库集成测试会跳过；快检绿色不代表资金、权限或浏览器全量验收通过。
+日常push和pull_request运行四组检查：前端类型检查/单测/静态检查/构建、接口契约、后端vet/单测/构建，以及 Chromium/WebKit 多设备布局检查。后端快检不连接PostgreSQL、不启用race，数据库集成测试会跳过；快检绿色不代表资金、权限或浏览器全量验收通过。
 
-阶段完成或准备交付时，在[Actions的check工作流](https://github.com/gxfcjkxf/lottery/actions/workflows/ci.yaml)点击Run workflow，选择待验收分支并运行。手动运行启用完整39项任务，保留真实数据库、race、资金流程、各尺寸浏览器、PWA/WebKit和报表边界检查。确认通过的提交SHA后再交付，不把旧提交的全量结果套给新提交。
+阶段完成或准备交付时，在[Actions的check工作流](https://github.com/gxfcjkxf/lottery/actions/workflows/ci.yaml)点击Run workflow，选择待验收分支并运行。手动运行启用完整40项任务，保留真实数据库、race、资金流程、各尺寸浏览器、PWA/WebKit和报表边界检查。确认通过的提交SHA后再交付，不把旧提交的全量结果套给新提交。
 
 同一ref的新push/PR会取消旧快检。手动全量使用独立并发组，不会被新快检取消。涉及积分、投注、提现、佣金或权限的改动，开发时仍运行相关真实数据库及并发测试；阶段交付前执行手动全量回归。没有定时全量任务，也不使用复杂的文件依赖分类。
 
@@ -139,7 +147,7 @@ pnpm test:e2e --project=mobile --shard=2/2 --workers=1 --retries=0
 ```text
 backend/cmd/platform     API、worker、迁移、seed及账号引导
 backend/internal         领域服务和基础设施
-backend/migrations       当前完整数据库基线
+backend/migrations       正式发布前的单一基线；发布后追加增量迁移
 user-web                 用户端独立Vue PWA
 admin-web                品牌后台独立Vue PWA
 platform-web             总后台独立Vue PWA
@@ -150,3 +158,16 @@ docs                     实现规格、交接与验收
 ```
 
 关键业务与授权走主库。从库通过DATABASE_READ_URLS显式配置，仅支持已实现的不可变历史白名单；节点不合格报错，不回退主库，未配置从库时正常使用主库。本地复制/恢复不等于自动故障切换、生产PITR或客户灾备验收。
+
+
+### 移动端布局验证
+
+移动端不固定为 `360×800`。`pnpm test:layout` 使用 Pixel / iPhone 设备预设视口、横竖屏和不同宽高，在 Chromium 与 WebKit 验证三端登录入口、用户端开奖/投注和弹窗，并覆盖中英文。首次运行先执行 `pnpm exec playwright install chromium webkit`。完整范围、业务回归与真机试用的区别见 [UI 规范第 6 节](docs/48-ui-architecture-and-design-system.md#6-移动端适配与布局验收)。
+
+### 代理管理
+
+运行 `pnpm dev:agent`，本地 DEV 入口为 `http://127.0.0.1:5186/?brand=aurora`；使用品牌后台直接创建的代理账号登录。所有层级共用此入口，会员账号与后台账号均不能用于代理端登录。默认连接本地后端 8085；独立测试可通过 `AGENT_API_URL` 显式指定测试 API。
+
+代理管理的个人信息提供用户端注册链接、复制链接和二维码 PNG 保存，二维码也支持手机长按保存。它与用户端推荐链接共用展示组件和地址生成方法，代理使用 `agent_code`，推荐使用 `referral_code`。代理管理的 `VITE_USER_APP_ORIGIN` 必须指向所属品牌的用户端站点；开发配置 `agent-web/.env.development` 明确使用 `http://127.0.0.1:5183`。构建部署时显式设置该变量（参见 `agent-web/.env.example`），不根据代理端域名或端口猜测用户端地址。地址未配置或无效时显示不可生成提示，不提供错误链接。
+
+代理端真实浏览器回归使用 `TEST_DATABASE_URL=postgres://.../lottery_agent_portal_test_local pnpm test:agent`，数据库名称必须含 `_test_` 且由本次测试独占。入口依次为每个设备创建独立 schema/API，运行中英文创建会员、下级代理、范围查询及修改密码后重新登录，结束或失败时由 Go 测试清理 schema。每个设备保留真实认证限流，不共用累计认证额度、不伪造 IP；测试账号均在自有临时品牌中。

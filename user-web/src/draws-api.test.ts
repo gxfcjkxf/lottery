@@ -53,9 +53,14 @@ const page = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 const ok = (body: unknown) =>
-  new Response(JSON.stringify(body), { status: 200 });
+  new Response(JSON.stringify({success:true,data:body}), { status: 200 });
 
 describe("public draws API", () => {
+  it("rejects retired bare response data", async () => {
+    const fetcher=vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(page())));
+    await expect(createDrawsApi(undefined,fetcher).listResults()).rejects.toMatchObject({status:502,code:"invalid_response"});
+  });
+
   it("reads a valid result, preserves zero-leading digits, and uses included cookie credentials", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok(page()));
     const api = createDrawsApi("north star", fetcher);
@@ -82,7 +87,7 @@ describe("public draws API", () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        ok({ success: true, data: page({ brand_status: "paused" }) }),
+        ok(page({ brand_status: "paused" })),
       )
       .mockResolvedValueOnce(ok(page({ items: [], brand_status: "paused" })));
     const api = createDrawsApi(undefined, fetcher);
@@ -134,7 +139,7 @@ describe("public draws API", () => {
         .mockResolvedValue(
           new Response(
             JSON.stringify({
-              error: { code: "not_found", message: "Not found" },
+              success: false, error: { code: "not_found", message: "Not found" },
             }),
             { status: 404 },
           ),

@@ -1,3 +1,5 @@
+import { readPlatformEnvelope } from './platform-api'
+
 import { PlatformApiError } from './platform-api'
 
 const BASE = '/api/v1/platform'
@@ -9,7 +11,7 @@ type Obj = Record<string, unknown>
 export interface AgentNode {
   id: string
   brand_id: string
-  member_id: string
+  agent_account_id: string
   parent_id: string | null
   depth: number
   path: string[]
@@ -25,10 +27,10 @@ export interface AgentNode {
   audit_log_id?: string
 }
 
+export interface AgentDirectoryNode extends AgentNode { username: string; online: boolean; display_points: string | null }
 export interface AgentPage {
   brand_id: string
-  parent_id: string | null
-  items: AgentNode[]
+  items: AgentDirectoryNode[]
   limit: number
   offset: number
   total_count: string
@@ -122,7 +124,7 @@ function idArg(id: string, label: string, canonical = false) {
   if (!uuid(id) || canonical && id !== id.toLowerCase()) input(`A valid ${label} ID is required`)
 }
 function isAgent(value: unknown, brandId: string): value is AgentNode {
-  if (!object(value) || !uuid(value.id) || !sameBrand(value.brand_id, brandId) || !uuid(value.member_id) ||
+  if (!object(value) || !uuid(value.id) || !sameBrand(value.brand_id, brandId) || !uuid(value.agent_account_id) ||
     !(value.parent_id === null || uuid(value.parent_id)) || !integer(value.depth) || !Array.isArray(value.path) ||
     !value.path.every(uuid) || value.path.length !== value.depth || value.path.at(-1) !== value.id ||
     !integer(value.version, 1) || !object(value.config) || !string(value.config.ratio) || !RATIO.test(value.config.ratio) ||
@@ -172,23 +174,18 @@ export function createPlatformCommissionApi(fetcher: typeof fetch = fetch) {
     } catch (cause) {
       throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true)
     }
-    let envelope: unknown
-    try { envelope = await response.json() } catch {
-      throw new PlatformApiError(response.ok ? 'Invalid server response' : `Request failed (${response.status})`, response.status, 'INVALID_RESPONSE')
-    }
-    if (!response.ok || !object(envelope) || envelope.success !== true || !('data' in envelope)) {
-      const error = object(envelope) && object(envelope.error) ? envelope.error : undefined
-      throw new PlatformApiError(typeof error?.message === 'string' ? error.message : `Request failed (${response.status})`, response.status, typeof error?.code === 'string' ? error.code : undefined)
-    }
+    const envelope = await readPlatformEnvelope<unknown>(response);
     return envelope.data
   }
   return {
-    async tree(brandId: string, limit = 50, offset = 0): Promise<AgentPage> {
+    async list(brandId: string, limit = 50, offset = 0, filters: { query?: string; online?: '' | 'true' | 'false' } = {}): Promise<AgentPage> {
       pageArgs(limit, offset)
-      const value = await get(`/agents/tree?limit=${limit}&offset=${offset}`, brandId)
-      if (!object(value) || !sameBrand(value.brand_id, brandId) || value.parent_id !== null || !Array.isArray(value.items) ||
-        value.items.length > limit || value.limit !== limit || value.offset !== offset || !decimal(value.total_count)) invalid('agent tree')
-      return value.items.every(item => isAgent(item, brandId)) ? value as unknown as AgentPage : invalid('agent tree item')
+      const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+      if (filters.query?.trim()) query.set('q', filters.query.trim())
+      if (filters.online) query.set('online', filters.online)
+      const value = await get(`/agents?${query}`, brandId)
+      if (!object(value) || !sameBrand(value.brand_id, brandId) || !Array.isArray(value.items) || value.items.length > limit || value.limit !== limit || value.offset !== offset || !decimal(value.total_count)) invalid('agent list')
+      return value.items.every(item => isAgent(item, brandId) && object(item) && string(item.username) && typeof item.online === 'boolean' && (item.display_points === null || decimal(item.display_points))) ? value as unknown as AgentPage : invalid('agent list item')
     },
     async agent(brandId: string, id: string): Promise<AgentNode> {
       idArg(id, 'agent')

@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   assignableRoles,
   canEditAccountScope,
-  canManage,
   canView,
   canWrite,
   createBodyKeyTracker,
@@ -153,7 +152,7 @@ describe("management API", () => {
     expect([...effectivePermissions(account, "b")]).toEqual([]);
     expect(canView(account, "b", "role")).toBe(false);
     expect(canWrite(account, "b", "role")).toBe(false);
-    expect(canManage({ ...account, permissions_by_brand: undefined }, "a", "role")).toBe(false);
+    expect(canView({ ...account, permissions_by_brand: undefined }, "a", "role")).toBe(false);
     expect(canWrite({ ...account, brand_ids: ["b"], permissions_by_brand: undefined }, "b", "role")).toBe(false);
   });
 
@@ -165,13 +164,13 @@ describe("management API", () => {
       permissions: ["role.view.brand", "admin.write.brand"],
       permissions_by_brand: { "brand-a": ["admin.write.brand", "role.write.brand"] },
     };
-    expect(canManage(writer, "brand-a", "admin")).toBe(false);
+    expect(canView(writer, "brand-a", "admin")).toBe(false);
     expect(canWrite(writer, "brand-a", "admin")).toBe(true);
-    expect(canManage(writer, "brand-a", "role")).toBe(false);
+    expect(canView(writer, "brand-a", "role")).toBe(false);
     expect(canWrite(writer, "brand-a", "role")).toBe(true);
     expect(canView(writer, "brand-a", "role")).toBe(false);
     const superAdmin = { ...writer, super_admin: true, permissions_by_brand: { "brand-a": ["role.view.brand", "role.write.brand", "admin.write.brand"] } };
-    expect(canManage(superAdmin, "brand-a", "role")).toBe(false);
+    expect(canView(superAdmin, "brand-a", "role")).toBe(false);
     expect(canWrite(superAdmin, "brand-a", "admin")).toBe(false);
   });
 

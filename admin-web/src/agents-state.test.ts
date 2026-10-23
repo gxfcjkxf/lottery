@@ -27,7 +27,7 @@ function policyIntent(overrides: Partial<PendingAgentWrite> = {}): PendingAgentW
     resourceId: null,
     body: {
       version: 4,
-      config: { enabled: true, max_depth: 5, ratio_cap: "0.25", mode: "loss", cycle: "monthly" },
+      config: { enabled: true, max_depth: 5, loss_ratio_cap: "0.25", turnover_ratio_cap: "0.25", mode: "loss", cycle: "monthly" },
       reason: "reviewed policy",
     },
     key: "stable-policy-key",
@@ -55,16 +55,16 @@ describe("page-session agent write state", () => {
   it("freezes a detached Vue reactive body snapshot without changing the source", () => {
     const form = reactive({
       version: 4,
-      config: { enabled: true, max_depth: 5, ratio_cap: "0.25", mode: "loss", cycle: "monthly" },
+      config: { enabled: true, max_depth: 5, loss_ratio_cap: "0.25", turnover_ratio_cap: "0.25", mode: "loss", cycle: "monthly" },
       reason: "reviewed policy",
     });
     const snapshot = freezeAgentBody(form);
     form.version = 9;
-    form.config.ratio_cap = "0.5";
+    form.config.loss_ratio_cap = "0.5";
     form.reason = "different request";
     expect(snapshot).toEqual({
       version: 4,
-      config: { enabled: true, max_depth: 5, ratio_cap: "0.25", mode: "loss", cycle: "monthly" },
+      config: { enabled: true, max_depth: 5, loss_ratio_cap: "0.25", turnover_ratio_cap: "0.25", mode: "loss", cycle: "monthly" },
       reason: "reviewed policy",
     });
     expect(Object.isFrozen(snapshot)).toBe(true);
@@ -98,7 +98,7 @@ describe("page-session agent write state", () => {
     expect(getPendingAgentWrite(scope)).toBeNull();
     setPendingAgentWrite(scope, policyIntent({ body: {
       version: 4,
-      config: { enabled: true, max_depth: 5, ratio_cap: "0.25", mode: "loss", cycle: "monthly" },
+      config: { enabled: true, max_depth: 5, loss_ratio_cap: "0.25", turnover_ratio_cap: "0.25", mode: "loss", cycle: "monthly" },
       reason: "x".repeat(501),
     } }));
     expect(getPendingAgentWrite(scope)).toBeNull();
@@ -125,7 +125,7 @@ describe("page-session agent write state", () => {
     const first = policyIntent();
     const replacement = policyIntent({ key: "replacement-key", body: {
       version: 5,
-      config: { enabled: true, max_depth: 5, ratio_cap: "0.3", mode: "loss", cycle: "monthly" },
+      config: { enabled: true, max_depth: 5, loss_ratio_cap: "0.3", turnover_ratio_cap: "0.3", mode: "loss", cycle: "monthly" },
       reason: "new policy edit",
     } });
     setPendingAgentWrite(scope, first);
@@ -136,4 +136,16 @@ describe("page-session agent write state", () => {
     clearPendingAgentWrite(scope, replacement.key);
     expect(getPendingAgentWrite(scope)).toBeNull();
   });
+});
+
+it('freezes the complete mode change and retains it only in the matching account and brand', () => {
+  const body = reactive({ policy_version: 4, mode: 'turnover' as const, items: [{ agent_id: agentId, version: 2, ratio: '0.03' }] });
+  const intent: PendingAgentWrite = { accountId: accountA, brandId: brandA, operation: 'mode-change', resourceId: agentId, key: 'mode-key', body };
+  setPendingAgentWrite({ accountId: accountA, brandId: brandA }, intent);
+  body.items[0]!.ratio = '0.09';
+  const pending = getPendingAgentWrite({ accountId: accountA, brandId: brandA });
+  expect(pending?.body).toEqual({ policy_version: 4, mode: 'turnover', items: [{ agent_id: agentId, version: 2, ratio: '0.03' }] });
+  expect(Object.isFrozen((pending!.body as typeof body).items[0])).toBe(true);
+  expect(getPendingAgentWrite({ accountId: accountB, brandId: brandA })).toBeNull();
+  expect(getPendingAgentWrite({ accountId: accountA, brandId: brandB })).toBeNull();
 });

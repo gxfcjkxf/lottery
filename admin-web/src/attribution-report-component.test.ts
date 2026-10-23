@@ -1,3 +1,6 @@
+import { h as temporalTestH } from "vue";
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRenderer, h, nextTick, ref, type Component } from "vue";
 import * as VueRuntime from "vue";
@@ -24,9 +27,9 @@ const renderer = createRenderer<Node, Node>({
 function component(): Component {
   const source = readFileSync(new URL("./AttributionReportManagement.vue", import.meta.url), "utf8"), descriptor = parse(source, { filename: "AttributionReportManagement.vue" }).descriptor;
   const javascript = ts.transpileModule(compileScript(descriptor, { id: "attribution-report-component-test", inlineTemplate: true }).content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./attribution-report-api": AttributionApi };
+  const modules: Record<string, unknown> = { "@lottery/shared/FilterAssociationSelect.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("select", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) },  "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": DisplayShared,  vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./attribution-report-api": AttributionApi, "./member-lookup": { lookupAdminMember: async () => { throw new Error("Member lookup failed"); } } };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 function payload(query: Record<string, unknown>, key = "2026-10-07", label = key) {
   const totals = { order_count: "1", stake_points: huge, placed_count: "0", won_count: "0", lost_count: "1", abnormal_count: "0", cancelled_count: "0", refund_points: "0", settled_stake_points: huge, unfinalized_stake_points: "0", abnormal_stake_points: "0", current_prize_points: "0", correction_open_count: "0", final_lost_stake_points: huge };
@@ -86,12 +89,13 @@ describe("AttributionReportManagement real Vue component", () => {
     const mounted = mount(); click(testId(mounted.root, "attribution-query")); await flush(); click(testId(mounted.root, "attribution-export")); await flush();
     const exported = new URL(calls.at(-1)!, "http://local");
     expect(exported.pathname).toBe("/api/v1/admin/reports/attribution/export"); expect(exported.searchParams.has("limit")).toBe(false); expect(exported.searchParams.has("offset")).toBe(false);
-    expect(text(mounted.root)).toContain("Export unavailable"); mounted.app.unmount();
+    expect(text(mounted.root)).toContain("暂时无法读取最新数据");
+    expect(text(mounted.root)).not.toContain("Export unavailable"); mounted.app.unmount();
   });
   it("rejects an impossible calendar date before sending a request", async () => {
     const fetcher = vi.fn<typeof fetch>(); vi.stubGlobal("fetch", fetcher); vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
-    const mounted = mount(); const start = inputByType(mounted.root, "datetime-local"); expect(start).not.toBeNull();
-    (start!.props["onUpdate:modelValue"] as ((value: string) => void))("2026-02-30T12:00:00"); await flush(); click(testId(mounted.root, "attribution-query")); await flush();
+    const mounted = mount(); const start = inputByType(mounted.root, "date"); expect(start).not.toBeNull();
+    (start!.props["onUpdate:modelValue"] as ((value: string) => void))("2026-02-30"); await flush(); click(testId(mounted.root, "attribution-query")); await flush();
     expect(fetcher).not.toHaveBeenCalled(); expect(find(mounted.root, (n) => n.props.role === "alert")).not.toBeNull(); mounted.app.unmount();
   });
   it("labels the agent-none group and offers only current join methods", async () => {
@@ -110,11 +114,11 @@ describe("AttributionReportManagement real Vue component", () => {
     await selectGroup("agent"); expect(text(mounted.root)).toContain("No agent"); expect(text(mounted.root)).not.toContain("No identity");
     const joinMethodSelect = testId(mounted.root, "attribution-join-method");
     expect(joinMethodSelect!.options.map((option) => option.value)).not.toContain("legacy");
-    key = actor; label = actor;
-    await selectGroup("member"); expect(text(mounted.root)).toContain(actor); expect(text(mounted.root)).not.toContain("No identity");
+    key = actor; label = "member_named";
+    await selectGroup("member"); expect(text(mounted.root)).toContain("member_named"); expect(text(mounted.root)).not.toContain(actor); expect(text(mounted.root)).not.toContain("No identity");
     mounted.app.unmount();
   });
-  it("shows an honest zero range for an empty result and explains the two timezones", async () => {
+  it("shows an honest zero range and localized attribution scope", async () => {
     const zero = { order_count: "0", stake_points: "0", placed_count: "0", won_count: "0", lost_count: "0", abnormal_count: "0", cancelled_count: "0", refund_points: "0", settled_stake_points: "0", unfinalized_stake_points: "0", abnormal_stake_points: "0", current_prize_points: "0", correction_open_count: "0", final_lost_stake_points: "0" };
     const fetcher = vi.fn<typeof fetch>(async (input) => {
       const q = new URL(String(input), "http://local").searchParams;
@@ -124,10 +128,10 @@ describe("AttributionReportManagement real Vue component", () => {
     });
     vi.stubGlobal("fetch", fetcher); vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
     const mounted = mount(); await flush();
-    expect(text(mounted.root)).toContain("时间按设备本地时区输入并转换为 UTC；按天分组使用品牌时区。");
+    expect(text(mounted.root)).toContain("按投注时的归因快照统计，不随当前代理关系变化。");
     click(testId(mounted.root, "attribution-query")); await flush();
     expect(text(mounted.root)).toContain("0–0"); expect(text(mounted.root)).toContain("0 组");
-    mounted.i18n.setLocale("en"); await flush(); expect(text(mounted.root)).toContain("Enter dates in the device timezone; requests use UTC, and day groups use the brand timezone.");
+    mounted.i18n.setLocale("en"); await flush(); expect(text(mounted.root)).toContain("Uses attribution saved when the bet was placed; later agent changes do not alter it.");
     mounted.app.unmount();
   });
 });

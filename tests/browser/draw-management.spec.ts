@@ -136,12 +136,12 @@ test("source revisions, worker attempt evidence and manual draw persist in the r
         r.request().method() === "PUT",
     );
     await panel
-      .getByRole("button", { name: "保存新修订", exact: true })
+      .getByRole("button", { name: "保存", exact: true })
       .click();
     const reply = await replyPromise;
     expect(reply.status(), await reply.text()).toBe(200);
     await expect(
-      panel.getByRole("button", { name: "保存新修订", exact: true }),
+      panel.getByRole("button", { name: "保存", exact: true }),
     ).toBeVisible();
     return (await reply.json()).data;
   };
@@ -187,7 +187,7 @@ test("source revisions, worker attempt evidence and manual draw persist in the r
   expect(
     attempts.attempts.map((a: { source_id: string }) => a.source_id),
   ).toEqual(second.sources.map((s: { id: string }) => s.id));
-  await panel.getByRole("button", { name: "刷新期数", exact: true }).click();
+  await panel.getByRole("button", { name: "刷新", exact: true }).click();
   await panel.getByLabel(/数字位置/).fill("0,1,0");
   await panel.getByLabel(/开奖时间/).fill(drawAt.toISOString());
   await panel
@@ -200,7 +200,7 @@ test("source revisions, worker attempt evidence and manual draw persist in the r
       r.request().method() === "POST",
   );
   await panel
-    .getByRole("button", { name: "确认并持久保存", exact: true })
+    .getByRole("button", { name: "保存", exact: true })
     .click();
   const manual = await manualPromise;
   expect(manual.status(), await manual.text()).toBe(201);
@@ -389,7 +389,7 @@ test("source revisions, worker attempt evidence and manual draw persist in the r
     await resultsPanel
       .getByRole("button", { name: "Refresh", exact: true })
       .click();
-    await expect(resultCard).toContainText("not a valid outcome or payout");
+    await expect(resultCard).toContainText("cancelled");
     await expect(resultCard.locator(".dr-digit-positions .dr-ball")).toHaveText(
       ["0", "1", "0"],
     );
@@ -528,7 +528,7 @@ test("source revisions, worker attempt evidence and manual draw persist in the r
       "1",
       "0",
     ]);
-    await expect(compact).toContainText("not a valid outcome or payout");
+    await expect(compact).toContainText("cancelled");
     expect(
       await publicPage.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,

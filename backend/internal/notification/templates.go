@@ -54,8 +54,10 @@ type Copy struct {
 }
 
 type Content struct {
-	En   Copy `json:"en"`
-	ZhCN Copy `json:"zh-CN"`
+	I18nKey     string `json:"i18n_key,omitempty"`
+	I18nVersion int    `json:"i18n_version,omitempty"`
+	En          Copy   `json:"en,omitzero"`
+	ZhCN        Copy   `json:"zh-CN,omitzero"`
 }
 
 type Template struct {
@@ -106,6 +108,12 @@ func sortSearchTemplateKey(key string) int {
 func ValidateContent(key string, content Content) error {
 	if !ValidTemplateKey(key) {
 		return ErrInvalid
+	}
+	if content.I18nKey != "" || content.I18nVersion != 0 {
+		if content.I18nKey != key || content.I18nVersion != 1 || content.En != (Copy{}) || content.ZhCN != (Copy{}) {
+			return ErrInvalid
+		}
+		return nil
 	}
 	if !validCopyText(content.En.Title, 120, false) || !validCopyText(content.En.Body, 1200, true) ||
 		!validCopyText(content.ZhCN.Title, 120, false) || !validCopyText(content.ZhCN.Body, 1200, true) {
@@ -310,7 +318,7 @@ func templateHistory(ctx context.Context, q templateQueryer, brand, key string, 
 }
 
 func validTemplateReason(reason string) bool {
-	if !utf8.ValidString(reason) || len(strings.TrimSpace(reason)) < 1 || len(strings.TrimSpace(reason)) > 500 {
+	if !utf8.ValidString(reason) || len(strings.TrimSpace(reason)) > 500 {
 		return false
 	}
 	for _, r := range reason {

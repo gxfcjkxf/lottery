@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { withGlobalLoading } from '@lottery/shared';
+import SiteIcon from "@lottery/shared/SiteIcon";
+import { vRefreshButton } from '@lottery/shared';
+import { vGlobalLoading } from "@lottery/shared";
 import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onUnmounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
@@ -17,6 +21,7 @@ import {
   resultNumberGroups,
   shiftedPageOffset,
 } from "./draw-results-state";
+import { useUserI18n } from "./i18n";
 
 const props = withDefaults(
   defineProps<{
@@ -29,7 +34,8 @@ const props = withDefaults(
 );
 
 const route = useRoute();
-const zh = computed(() => props.locale === "zh");
+const ui = useUserI18n().t;
+const detailLabels = computed(() => ({ title: ui("draw.details"), close: ui("draw.close"), result: ui("draw.resultDetails") }));
 const activeTab = ref<"results" | "history">("results");
 const selectedGameId = ref("");
 const periodInput = ref("");
@@ -126,24 +132,14 @@ function resetResults() {
 function apiErrorMessage(cause: unknown): string {
   const status = (cause as { status?: number } | null)?.status;
   if (status === 400)
-    return zh.value
-      ? "筛选参数无效，请检查期号后重试。"
-      : "The filter is invalid. Check the period number and try again.";
+    return ui("draw.invalidFilter");
   if (status === 404)
-    return zh.value
-      ? "品牌、彩种或结果不存在或当前不可用。"
-      : "The brand, game, or result was not found or is unavailable.";
+    return ui("draw.notFound");
   if (status === 503)
-    return zh.value
-      ? "开奖结果服务暂时不可用，请稍后重试。"
-      : "The results service is temporarily unavailable. Please try again.";
+    return ui("draw.serviceUnavailable");
   if (status === 0)
-    return zh.value
-      ? "网络连接失败，请检查连接后重试。"
-      : "Network request failed. Check your connection and retry.";
-  return zh.value
-    ? "暂时无法读取公开开奖结果，请重试。"
-    : "Public results could not be loaded. Please retry.";
+    return ui("draw.networkFailed");
+  return ui("draw.unavailable");
 }
 
 async function loadGames(generation: number) {
@@ -206,16 +202,12 @@ async function loadCurrent() {
   ) {
     error.value =
       gameFilterError.value ||
-      (zh.value
-        ? "彩种 ID 无效，请选择有效彩种后重试。"
-        : "The game ID is invalid. Choose a valid game and try again.");
+      ui("draw.invalidGame");
     loading.value = false;
     return;
   }
   if (invalidInitialPeriod.value || !filterValid.value) {
-    periodError.value = zh.value
-      ? "期号须为空或包含非空白字符，且不超过 80 个 UTF-8 字节。"
-      : "Period must be empty or contain a non-whitespace character, and use at most 80 UTF-8 bytes.";
+    periodError.value = ui("draw.invalidPeriod");
     loading.value = false;
     return;
   }
@@ -317,48 +309,50 @@ function closeDetail() {
   detailLoading.value = false;
 }
 
-function changeTab(tab: "results" | "history") {
+async function changeTab(tab: "results" | "history") {
   activeTab.value = tab;
   pageOffset.value = 0;
   detailGeneration++;
   detail.value = null;
   detailError.value = "";
-  void loadCurrent();
+  await loadCurrent();
 }
 
-function setPeriod(value: string) {
+async function setPeriod(value: string) {
   // Enter and the subsequent blur/change can submit the same filter. Do not
   // restart a live read for an unchanged value (Refresh is the explicit retry).
   if (value === periodInput.value && !invalidInitialPeriod.value) return;
   periodInput.value = value;
   invalidInitialPeriod.value = false;
   pageOffset.value = 0;
-  void loadCurrent();
+  await loadCurrent();
 }
 
-function setGame(value: string) {
+async function setGame(value: string) {
   gameFilterError.value = "";
   selectedGameId.value = isUuid(value) ? value : "";
   pageOffset.value = 0;
   detailGeneration++;
   detail.value = null;
   detailError.value = "";
-  void loadCurrent();
+  await loadCurrent();
 }
 
-function movePage(direction: -1 | 1) {
+async function movePage(direction: -1 | 1) {
   if (
     (direction < 0 && !canPrevious.value) ||
     (direction > 0 && !canNext.value)
   )
     return;
   pageOffset.value = shiftedPageOffset(pageOffset.value, direction, pageSize);
-  void loadCurrent();
+  await loadCurrent();
 }
 
-function retry() {
-  if (catalogError.value) void loadGames(contextGeneration);
-  void loadCurrent();
+async function retry() {
+  const reads: Promise<void>[] = [];
+  if (catalogError.value) reads.push(loadGames(contextGeneration));
+  reads.push(loadCurrent());
+  await Promise.all(reads);
 }
 
 watch(
@@ -379,14 +373,10 @@ watch(
     selectedGameId.value = filters.gameId;
     periodInput.value = filters.periodNo;
     gameFilterError.value = filters.invalidGame
-      ? zh.value
-        ? "彩种 ID 无效，请选择有效彩种后重试。"
-        : "The game ID is invalid. Choose a valid game and try again."
+      ? ui("draw.invalidGame")
       : "";
     periodError.value = filters.invalidPeriod
-      ? zh.value
-        ? "期号须为空或包含非空白字符，且不超过 80 个 UTF-8 字节。"
-        : "Period must be empty or contain a non-whitespace character, and use at most 80 UTF-8 bytes."
+      ? ui("draw.invalidPeriod")
       : "";
     invalidInitialPeriod.value = filters.invalidPeriod;
     activeTab.value = "results";
@@ -407,9 +397,7 @@ watch(
       periodError.value &&
       (invalidInitialPeriod.value || !filterValid.value)
     ) {
-      periodError.value = zh.value
-        ? "期号最多可输入 80 个 UTF-8 字节。"
-        : "Period numbers can contain up to 80 UTF-8 bytes.";
+      periodError.value = ui("draw.periodTooLong");
     }
   },
 );
@@ -427,65 +415,64 @@ onUnmounted(() => {
   <section class="draw-results" :class="{ 'draw-results--compact': compact }">
     <header class="dr-header">
       <div>
-        <p class="dr-eyebrow">{{ zh ? "公开信息" : "PUBLIC INFORMATION" }}</p>
-        <h2>{{ zh ? "开奖结果" : "Draw results" }}</h2>
+        <h2>{{ ui("draw.results") }}</h2>
       </div>
-      <button
+      <Teleport defer to="#user-page-refresh" :disabled="compact"><button v-refresh-button="loading ? ui('draw.loading') : ui('draw.refresh')"
         class="dr-button dr-refresh"
         type="button"
         :disabled="loading"
-        @click="retry"
+        @click="withGlobalLoading(retry)"
       >
-        {{ loading ? (zh ? "读取中…" : "Loading…") : zh ? "刷新" : "Refresh" }}
-      </button>
+        {{ loading ? (ui("draw.loading")) : ui("draw.refresh") }}
+      </button></Teleport>
     </header>
 
     <div v-if="!compact" class="dr-controls">
       <div
         class="dr-tabs"
         role="tablist"
-        :aria-label="zh ? '开奖结果视图' : 'Results view'"
+        :aria-label="ui('draw.resultsView')"
       >
         <button
           type="button"
           role="tab"
           :aria-selected="activeTab === 'results'"
           :class="{ 'is-active': activeTab === 'results' }"
-          @click="changeTab('results')"
+          @click="withGlobalLoading(changeTab, 'results')"
         >
-          {{ zh ? "开奖结果" : "Results" }}
+          {{ ui("draw.resultsTab") }}
         </button>
         <button
           type="button"
           role="tab"
           :aria-selected="activeTab === 'history'"
           :class="{ 'is-active': activeTab === 'history' }"
-          @click="changeTab('history')"
+          @click="withGlobalLoading(changeTab, 'history')"
         >
-          {{ zh ? "历史期次" : "History" }}
+          {{ ui("draw.historyTab") }}
         </button>
       </div>
       <label class="dr-field">
-        <span>{{ zh ? "彩种" : "Game" }}</span>
         <select
           :value="selectedGameId"
-          @change="setGame(($event.target as HTMLSelectElement).value)"
+          :aria-label="ui('draw.game')"
+          @change="withGlobalLoading(setGame, ($event.target as HTMLSelectElement).value)"
         >
-          <option value="">{{ zh ? "全部彩种" : "All games" }}</option>
+          <option value="">{{ ui("draw.allGames") }}</option>
           <option v-for="game in games" :key="game.id" :value="game.id">
-            {{ game.name }} · {{ game.code }}
+            {{ game.name }}
           </option>
         </select>
       </label>
       <label class="dr-field dr-period-field">
-        <span>{{ zh ? "精确期号" : "Exact period" }}</span>
         <input
           :value="periodInput"
+          :aria-label="ui('draw.exactPeriod')"
           type="text"
           maxlength="80"
-          :placeholder="zh ? '输入完整期号' : 'Enter the full period number'"
-          @change="setPeriod(($event.target as HTMLInputElement).value)"
-          @keydown.enter="setPeriod(($event.target as HTMLInputElement).value)"
+          :placeholder="ui('draw.periodPlaceholder')"
+          @change="withGlobalLoading(setPeriod, ($event.target as HTMLInputElement).value)"
+          @keydown.enter="withGlobalLoading(setPeriod, ($event.target as HTMLInputElement).value)"
         />
       </label>
     </div>
@@ -495,9 +482,9 @@ onUnmounted(() => {
       <button
         class="dr-inline-button"
         type="button"
-        @click="loadGames(contextGeneration)"
+        @click="withGlobalLoading(loadGames, contextGeneration)"
       >
-        {{ zh ? "重试彩种目录" : "Retry game catalog" }}
+        {{ ui("draw.retryCatalog") }}
       </button>
     </p>
     <p v-if="periodError" class="dr-message dr-error" role="alert">
@@ -508,55 +495,51 @@ onUnmounted(() => {
     </p>
     <p v-if="brandStatus === 'paused'" class="dr-message dr-paused">
       {{
-        zh
-          ? "品牌服务已暂停；以下为可读取的公开记录。"
-          : "Brand service is paused; these public records remain readable."
+        ui("draw.brandPaused")
       }}
     </p>
     <p v-if="error" class="dr-message dr-error" role="alert">
       {{ error }}
-      <button class="dr-inline-button" type="button" @click="retry">
-        {{ zh ? "重试" : "Retry" }}
+      <button class="dr-inline-button" type="button" @click="withGlobalLoading(retry)">
+        {{ ui("betting.retry") }}
       </button>
     </p>
 
-    <div v-if="loading" class="dr-state" role="status">
-      {{ zh ? "正在读取公开记录…" : "Loading public records…" }}
+    <div v-global-loading v-if="loading" class="dr-state" role="status">
+      {{ ui("draw.loadingPublicRecords") }}
     </div>
-    <div
+    <div v-global-loading
       v-else-if="catalogLoading && !compact && !games.length && !catalogError"
       class="dr-state"
       role="status"
     >
-      {{ zh ? "正在读取彩种目录…" : "Loading game catalog…" }}
+      {{ ui("draw.loadingCatalog") }}
     </div>
     <div
       v-else-if="
         !error && !periodError && activeTab === 'history' && !selectedGameId
       "
-      class="dr-state"
+      class="dr-state empty-state"
     >
       {{
-        zh
-          ? "请先选择彩种以查看历史期次。"
-          : "Choose a game to view its period history."
+        ui("draw.chooseGameHistory")
       }}
     </div>
     <div
       v-else-if="
         !error && !periodError && activeTab === 'history' && !periods.length
       "
-      class="dr-state"
+      class="dr-state empty-state"
     >
-      {{ zh ? "暂无符合条件的历史期次。" : "No matching period history." }}
+      {{ ui("draw.noHistory") }}
     </div>
     <div
       v-else-if="
         !error && !periodError && activeTab === 'results' && !rows.length
       "
-      class="dr-state"
+      class="dr-state empty-state"
     >
-      {{ zh ? "暂无符合条件的开奖结果。" : "No matching draw results." }}
+      {{ ui("draw.noResults") }}
     </div>
 
     <div
@@ -570,28 +553,24 @@ onUnmounted(() => {
       class="dr-list"
     >
       <article v-for="item in rows" :key="item.id" class="dr-card">
-        <button class="dr-card-main" type="button" @click="openResult(item.id)">
+        <button class="dr-card-main" type="button" @click="withGlobalLoading(openResult, item.id)">
           <span class="dr-card-heading">
             <span class="dr-game-name">{{
-              item.game.name || item.game.code
+              item.game.name
             }}</span>
             <span class="dr-period">{{ item.period.period_no }}</span>
           </span>
           <span class="dr-meta">
             <span
-              >{{ zh ? "计划开奖" : "Scheduled draw" }}:
+              >{{ ui("draw.scheduled") }}:
               {{
-                formatDrawDateTime(
-                  item.period.draw_at,
-                  item.game.timezone,
-                  locale,
-                )
+                formatDrawDateTime(item.period.draw_at, locale)
               }}</span
             >
             <span
-              >{{ zh ? "实际开奖" : "Drawn at" }}:
+              >{{ ui("draw.drawnAt") }}:
               {{
-                formatDrawDateTime(item.drawn_at, item.game.timezone, locale)
+                formatDrawDateTime(item.drawn_at, locale)
               }}</span
             >
           </span>
@@ -624,7 +603,7 @@ onUnmounted(() => {
                   class="dr-position"
                 >
                   <span class="dr-position-label">{{
-                    zh ? `位置 ${index + 1}` : `Position ${index + 1}`
+                    ui("draw.position", { position: index + 1 })
                   }}</span>
                   <span class="dr-balls"
                     ><span class="dr-ball">{{ number }}</span></span
@@ -655,29 +634,21 @@ onUnmounted(() => {
         <div class="dr-card-main">
           <span class="dr-card-heading">
             <span class="dr-game-name">{{
-              selectedGame?.name || selectedGame?.code
+              selectedGame?.name
             }}</span>
             <span class="dr-period">{{ entry.period.period_no }}</span>
           </span>
           <span class="dr-meta">
             <span
-              >{{ zh ? "计划开奖" : "Scheduled draw" }}:
+              >{{ ui("draw.scheduled") }}:
               {{
-                formatDrawDateTime(
-                  entry.period.draw_at,
-                  selectedGame?.timezone ?? "UTC",
-                  locale,
-                )
+                formatDrawDateTime(entry.period.draw_at, locale)
               }}</span
             >
             <span v-if="entry.draw"
-              >{{ zh ? "实际开奖" : "Drawn at" }}:
+              >{{ ui("draw.drawnAt") }}:
               {{
-                formatDrawDateTime(
-                  entry.draw.drawn_at,
-                  entry.draw.game.timezone,
-                  locale,
-                )
+                formatDrawDateTime(entry.draw.drawn_at, locale)
               }}</span
             >
           </span>
@@ -692,13 +663,11 @@ onUnmounted(() => {
             v-if="entry.draw"
             class="dr-link-button"
             type="button"
-            @click="openResult(entry.draw.id)"
+            @click="withGlobalLoading(openResult, entry.draw.id)"
           >
             {{
-              zh ? "查看当前公开结果详情" : "View current public result details"
-            }}
-            →
-          </button>
+              ui("draw.viewResultDetails")
+            }} <SiteIcon name="next" /> </button>
         </div>
       </article>
     </div>
@@ -708,15 +677,15 @@ onUnmounted(() => {
         !compact && !error && !periodError && (rows.length || periods.length)
       "
       class="dr-pagination"
-      :aria-label="zh ? '分页' : 'Pagination'"
+      :aria-label="ui('draw.pagination')"
     >
       <button
         type="button"
         class="dr-button"
         :disabled="!canPrevious"
-        @click="movePage(-1)"
+        @click="withGlobalLoading(movePage, -1)"
       >
-        {{ zh ? "上一页" : "Previous" }}
+        {{ ui("draw.previous") }}
       </button>
       <span
         >{{ pageOffset + 1 }}–{{
@@ -727,9 +696,9 @@ onUnmounted(() => {
         type="button"
         class="dr-button"
         :disabled="!canNext"
-        @click="movePage(1)"
+        @click="withGlobalLoading(movePage, 1)"
       >
-        {{ zh ? "下一页" : "Next" }}
+        {{ ui("draw.next") }}
       </button>
     </nav>
 
@@ -737,24 +706,24 @@ onUnmounted(() => {
       v-if="compact && isUuid(gameId)"
       class="dr-history-link"
       :to="`/results?game_id=${encodeURIComponent(gameId)}`"
-      >{{ zh ? "查看历史期次" : "View period history" }} →</RouterLink
+      >{{ ui("draw.viewHistory") }} <SiteIcon name="next" /> </RouterLink
     >
 
-    <DetailModal v-if="detailLoading || !!detailError || !!detail" :title="props.locale === 'en' ? 'Details' : '详情'" :close-label="props.locale === 'en' ? 'Close' : '关闭'" @close="closeDetail()">
+    <DetailModal v-if="detailLoading || !!detailError || !!detail" :title="detailLabels.title" :close-label="detailLabels.close" @close="closeDetail()">
 <div
       v-if="detailLoading || detailError || detail"
       class="dr-detail"
       aria-live="polite"
     >
       <div class="dr-detail-heading">
-        <h3>{{ zh ? "开奖结果详情" : "Result details" }}</h3>
+        <h3>{{ detailLabels.result }}</h3>
         <button type="button" class="dr-inline-button" @click="closeDetail">
-          {{ zh ? "关闭" : "Close" }}
+          {{ ui("draw.close") }}
         </button>
       </div>
-      <p v-if="detailLoading" class="dr-state">
+      <p v-global-loading v-if="detailLoading" class="dr-state">
         {{
-          zh ? "正在验证当前公开结果…" : "Verifying the current public result…"
+          ui("draw.verifying")
         }}
       </p>
       <p v-else-if="detailError" class="dr-message dr-error" role="alert">
@@ -762,31 +731,27 @@ onUnmounted(() => {
         <button
           class="dr-inline-button"
           type="button"
-          @click="openResult(selectedResultId)"
+          @click="withGlobalLoading(openResult, selectedResultId)"
         >
-          {{ zh ? "重试" : "Retry" }}
+          {{ ui("betting.retry") }}
         </button>
       </p>
       <template v-else-if="detail">
         <p class="dr-detail-period">
-          {{ detail.game.name || detail.game.code }} ·
+          {{ detail.game.name }} ·
           {{ detail.period.period_no }}
         </p>
         <p class="dr-detail-id">
-          <span>{{ zh ? "公开记录编号" : "Public record ID" }}</span
+          <span>{{ ui("draw.publicRecordId") }}</span
           ><code>{{ detail.id }}</code>
         </p>
         <p class="dr-meta">
-          {{ zh ? "计划开奖" : "Scheduled draw" }}:
+          {{ ui("draw.scheduled") }}:
           {{
-            formatDrawDateTime(
-              detail.period.draw_at,
-              detail.game.timezone,
-              locale,
-            )
-          }}<br />{{ zh ? "实际开奖" : "Drawn at" }}:
+            formatDrawDateTime(detail.period.draw_at, locale)
+          }}<br />{{ ui("draw.drawnAt") }}:
           {{
-            formatDrawDateTime(detail.drawn_at, detail.game.timezone, locale)
+            formatDrawDateTime(detail.drawn_at, locale)
           }}
         </p>
         <div class="dr-result-groups">
@@ -810,7 +775,7 @@ onUnmounted(() => {
                 :key="index"
                 class="dr-position"
                 ><span class="dr-position-label">{{
-                  zh ? `位置 ${index + 1}` : `Position ${index + 1}`
+                  ui("draw.position", { position: index + 1 })
                 }}</span
                 ><span class="dr-balls"
                   ><span class="dr-ball">{{ number }}</span></span
@@ -831,23 +796,16 @@ onUnmounted(() => {
     </div>
 </DetailModal>
 
-    <p class="dr-disclaimer">
-      {{
-        zh
-          ? "公开开奖结果信息；不代表中奖判定、结算或派奖。"
-          : "Public draw information only; it does not indicate a win, settlement, or payout."
-      }}
-    </p>
   </section>
 </template>
 
 <style scoped>
 .draw-results {
-  --dr-ink: #0f172a;
-  --dr-muted: #64748b;
-  --dr-border: #e2e8f0;
+  --dr-ink: var(--ink);
+  --dr-muted: var(--muted);
+  --dr-border: var(--line);
   --dr-accent: #059669;
-  --dr-surface: #ffffff;
+  --dr-surface: var(--surface);
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -874,7 +832,7 @@ onUnmounted(() => {
 .dr-eyebrow {
   margin: 0 0 4px;
   color: var(--dr-accent);
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.13em;
 }
@@ -928,7 +886,7 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 .dr-tabs button.is-active {
-  color: #fff;
+  color: var(--surface);
   background: var(--dr-accent);
 }
 .dr-field {
@@ -946,7 +904,7 @@ onUnmounted(() => {
   padding: 8px 10px;
   border: 1px solid var(--dr-border);
   border-radius: 9px;
-  background: #fff;
+  background: var(--surface);
   color: var(--dr-ink);
   font: inherit;
 }
@@ -1056,7 +1014,7 @@ onUnmounted(() => {
   place-items: center;
   border-radius: 50%;
   border: none;
-  color: #ffffff;
+  color: var(--surface);
   background: radial-gradient(circle at 35% 35%, #ecfdf5 0%, #10b981 60%, #059669 100%);
   font-size: 0.95rem;
   font-weight: 800;
@@ -1064,7 +1022,7 @@ onUnmounted(() => {
   box-shadow: 0 4px 10px rgba(5, 150, 105, 0.35);
 }
 .dr-number-group:nth-child(2) .dr-ball {
-  color: #ffffff;
+  color: var(--surface);
   border: none;
   background: radial-gradient(circle at 35% 35%, #fffbeb 0%, #f59e0b 60%, #d97706 100%);
   box-shadow: 0 4px 10px rgba(245, 158, 11, 0.35);
@@ -1137,11 +1095,264 @@ onUnmounted(() => {
 .dr-period-status.is-cancelled {
   color: #8e342d;
 }
-.dr-disclaimer {
-  margin: 18px 0 0;
+.draw-results--compact .dr-header {
+  margin-bottom: 12px;
+}
+@media (max-width: 680px) {
+  .dr-controls {
+    grid-template-columns: 1fr 1fr;
+  }
+  .dr-tabs {
+    grid-column: 1 / -1;
+    width: fit-content;
+    max-width: 100%;
+  }
+  .dr-period-field {
+    grid-column: 1 / -1;
+  }
+  .dr-card-main {
+    padding: 13px;
+  }
+}
+@media (max-width: 390px) {
+  .dr-controls {
+    grid-template-columns: 1fr;
+  }
+  .dr-tabs,
+  .dr-period-field {
+    grid-column: auto;
+  }
+  .dr-card-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .dr-period {
+    text-align: start;
+  }
+  .dr-refresh {
+    padding-inline: 10px;
+  }
+}
+.dr-tabs button {
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 9px;
   color: var(--dr-muted);
-  font-size: 0.75rem;
-  line-height: 1.5;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dr-tabs button.is-active {
+  color: var(--surface);
+  background: var(--dr-accent);
+}
+.dr-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--dr-muted);
+  font-size: 0.78rem;
+}
+.dr-field select,
+.dr-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--dr-border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--dr-ink);
+  font: inherit;
+}
+.dr-state,
+.dr-message {
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--dr-border);
+  border-radius: 12px;
+  color: var(--dr-muted);
+  background: #f8fbfa;
+}
+.dr-error {
+  color: #8e342d;
+  border-color: #efd0cb;
+  background: #fff8f6;
+}
+.dr-paused {
+  color: #705614;
+  border-color: #eadba9;
+  background: #fffaf0;
+}
+.dr-inline-button,
+.dr-link-button {
+  padding: 0;
+  border: 0;
+  color: var(--dr-accent);
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.dr-inline-button {
+  margin-inline-start: 8px;
+}
+.dr-list {
+  display: grid;
+  gap: 10px;
+}
+.dr-card {
+  min-width: 0;
+  border: 1px solid var(--dr-border);
+  border-radius: 14px;
+  background: var(--dr-surface);
+  box-shadow: 0 3px 12px rgb(24 43 42 / 4%);
+}
+.dr-card-main {
+  display: grid;
+  width: 100%;
+  gap: 12px;
+  padding: 16px;
+  border: 0;
+  border-radius: inherit;
+  color: inherit;
+  text-align: start;
+  background: transparent;
+  cursor: pointer;
+}
+.dr-history-card .dr-card-main {
+  cursor: default;
+}
+.dr-game-name {
+  min-width: 0;
+  font-weight: 700;
+}
+.dr-period {
+  min-width: 0;
+  color: var(--dr-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+.dr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 18px;
+  color: var(--dr-muted);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+.dr-result-groups {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.dr-number-group {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.dr-group-label,
+.dr-position-label {
+  color: var(--dr-muted);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+.dr-balls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dr-ball {
+  display: inline-grid;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  place-items: center;
+  border-radius: 50%;
+  border: none;
+  color: var(--surface);
+  background: radial-gradient(circle at 35% 35%, #ecfdf5 0%, #10b981 60%, #059669 100%);
+  font-size: 0.95rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 10px rgba(5, 150, 105, 0.35);
+}
+.dr-number-group:nth-child(2) .dr-ball {
+  color: var(--surface);
+  border: none;
+  background: radial-gradient(circle at 35% 35%, #fffbeb 0%, #f59e0b 60%, #d97706 100%);
+  box-shadow: 0 4px 10px rgba(245, 158, 11, 0.35);
+}
+.dr-digit-positions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.dr-position {
+  display: grid;
+  gap: 6px;
+}
+.dr-pagination {
+  justify-content: center;
+  margin: 16px 0;
+  color: var(--dr-muted);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+.dr-history-link {
+  display: inline-block;
+  margin: 14px 0;
+  color: var(--dr-accent);
+  font-weight: 650;
+  text-underline-offset: 3px;
+}
+.dr-detail {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #b9d9d2;
+  border-radius: 14px;
+  background: #f7fcfa;
+}
+.dr-detail-heading h3 {
+  font-size: 1rem;
+}
+.dr-detail-period {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.dr-detail-id {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  color: var(--dr-muted);
+  font-size: 0.76rem;
+}
+.dr-detail-id code {
+  color: var(--dr-ink);
+  font:
+    0.8rem/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.dr-detail .dr-meta {
+  display: block;
+}
+.dr-period-status {
+  color: var(--dr-accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.dr-period-status.is-cancelled {
+  color: #8e342d;
 }
 .draw-results--compact .dr-header {
   margin-bottom: 12px;
@@ -1181,5 +1392,8 @@ onUnmounted(() => {
   .dr-refresh {
     padding-inline: 10px;
   }
+}
+@media (max-width: 620px) {
+  .draw-results:not(.draw-results--compact) > .dr-header { display: none; }
 }
 </style>

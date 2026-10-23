@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
+	"github.com/gxfcjkxf/lottery/backend/internal/brandops"
 	"github.com/gxfcjkxf/lottery/backend/internal/commission"
 	"github.com/gxfcjkxf/lottery/backend/internal/drawfeed"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
 	"github.com/gxfcjkxf/lottery/backend/internal/observability"
+	"github.com/gxfcjkxf/lottery/backend/internal/platformlottery"
 	"github.com/gxfcjkxf/lottery/backend/internal/reconciliation"
 	"github.com/gxfcjkxf/lottery/backend/internal/reportarchive"
 	"github.com/gxfcjkxf/lottery/backend/internal/rulebook"
@@ -32,6 +34,17 @@ func observedWork(ctx context.Context, component string, work func(context.Conte
 
 func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger) error {
 	store := rulebook.Store{DB: db}
+	sources, e := platformlottery.LoadAutomationSources()
+	if e != nil {
+		return e
+	}
+	autoCtx, stopAuto := context.WithCancel(ctx)
+	autoDone := make(chan struct{})
+	go func() {
+		defer close(autoDone)
+		runSharedAutomation(autoCtx, platformlottery.Service{DB: db}, sources, logger)
+	}()
+	defer func() { stopAuto(); <-autoDone }()
 	// Draw I/O has its own bounded loop; slow future adapters must not delay the
 	// one-second period clock. Exactly one collector loop lives per worker.
 	drawCtx, stopDraw := context.WithCancel(ctx)
@@ -46,6 +59,10 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 	settleDone := make(chan struct{})
 	go func() { defer close(settleDone); runSettlementWorker(settleCtx, betting.Service{DB: db}, logger) }()
 	defer func() { stopSettle(); <-settleDone }()
+	markSixCtx, stopMarkSix := context.WithCancel(ctx)
+	markSixDone := make(chan struct{})
+	go func() { defer close(markSixDone); runMarkSixWorker(markSixCtx, betting.Service{DB: db}, logger) }()
+	defer func() { stopMarkSix(); <-markSixDone }()
 	correctionCtx, stopCorrection := context.WithCancel(ctx)
 	correctionDone := make(chan struct{})
 	go func() {
@@ -78,6 +95,27 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 		runCommissionWorker(commissionCtx, commission.Service{DB: db}, logger)
 	}()
 	defer func() { stopCommission(); <-commissionDone }()
+	pauseCtx, stopPause := context.WithCancel(ctx)
+	pauseDone := make(chan struct{})
+	go func() {
+		defer close(pauseDone)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			run, cancel := context.WithTimeout(pauseCtx, 10*time.Second)
+			_, err := (brandops.Service{DB: db}).Tick(run)
+			cancel()
+			if err != nil && pauseCtx.Err() == nil {
+				logger.Error("brand pause transition failed", "error", err)
+			}
+			select {
+			case <-pauseCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	defer func() { stopPause(); <-pauseDone }()
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	fill := time.NewTicker(time.Minute)
@@ -298,7 +336,11 @@ func runSettlementWorker(ctx context.Context, service betting.Service, logger *s
 			return
 		case <-tick.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, e := observedWork(run, "settlement", func(ctx context.Context) (int, error) { return service.ProcessSettlements(ctx, 20) })
+			n, e := observedWork(run, "settlement", func(ctx context.Context) (int, error) {
+				legacyCount, legacyErr := service.ProcessSettlements(ctx, 20)
+				configuredCount, configuredErr := service.ProcessConfiguredSettlements(ctx, 20)
+				return legacyCount + configuredCount, errors.Join(legacyErr, configuredErr)
+			})
 			cancel()
 			if e != nil && ctx.Err() == nil {
 				logger.Error("settlement processing failed", "error", e, "committed_steps", n)
@@ -365,6 +407,67 @@ func runDrawWorker(ctx context.Context, store rulebook.Store, logger *slog.Logge
 			} else if n > 0 {
 				logger.Info("draw results locked", "count", n)
 			}
+		}
+	}
+}
+
+func runMarkSixWorker(ctx context.Context, service betting.Service, logger *slog.Logger) {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			run, cancel := context.WithTimeout(ctx, 10*time.Second)
+			_, canadaErr := service.ProcessCanadaSettlements(run, 20)
+			if canadaErr != nil {
+				logger.Error("Canada settlement failed", "error", canadaErr)
+			}
+			n, e := observedWork(run, "mark_six_settlement", func(ctx context.Context) (int, error) { return service.ProcessMarkSixSettlements(ctx, 20) })
+			cancel()
+			if e != nil && ctx.Err() == nil {
+				logger.Error("Mark Six settlement failed", "error", e, "committed_orders", n)
+			}
+		}
+	}
+}
+
+func runSharedAutomation(ctx context.Context, s platformlottery.Service, sources platformlottery.AutomationSources, logger *slog.Logger) {
+	collectCtx, stop := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tick := time.NewTicker(time.Second)
+		defer tick.Stop()
+		for {
+			select {
+			case <-collectCtx.Done():
+				return
+			case <-tick.C:
+				run, cancel := context.WithTimeout(collectCtx, 40*time.Second)
+				_, e := s.CollectAutomaticDraws(run, sources)
+				cancel()
+				if e != nil && collectCtx.Err() == nil {
+					logger.Error("shared draw collection failed", "error", e)
+				}
+			}
+		}
+	}()
+	defer func() { stop(); <-done }()
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		run, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, e := s.GenerateAutomaticPeriods(run)
+		cancel()
+		if e != nil && ctx.Err() == nil {
+			logger.Error("shared period generation failed", "error", e)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
 		}
 	}
 }

@@ -7,7 +7,7 @@ const context = {
     theme: {
       display_name: 'Harbor 🌅', logo_text: '海', logo_url: 'https://cdn.example/logo.png', favicon_url: '/brand-assets/favicon.webp',
       primary_color: '#123456', accent_color: '#abcdef', success_color: '#123456', warning_color: '#654321', danger_color: '#abcdef',
-      font_family: 'serif', font_scale: 'large', radius: 'soft', shadow: 'lifted', default_locale: 'zh-CN', available_locales: ['en', 'zh-CN'],
+      font_family: 'serif', font_scale: 'standard', radius: 'soft', shadow: 'lifted', default_locale: 'zh-CN', available_locales: ['en', 'zh-CN'],
       content: { en: { tagline: 'Play gently', announcement: 'A note' }, 'zh-CN': { tagline: '轻松参与', announcement: '' } },
     }, config_version: 7,
   },
@@ -28,7 +28,7 @@ describe('API envelope and tenant context', () => {
 
     expect(fetcher).toHaveBeenCalledWith('/api/v1/b/luma/context', expect.objectContaining({ credentials: 'same-origin' }))
     expect(result.brand).toMatchObject({ id: 'brand-1', code: 'luma', name: 'Harbor 🌅', primary: '#123456', accent: '#abcdef', defaultLanguage: 'zh', version: '7' })
-    expect(result.brand).toMatchObject({ logoText: '海', logoUrl: 'https://cdn.example/logo.png', faviconUrl: '/brand-assets/favicon.webp', success: '#123456', warning: '#654321', danger: '#abcdef', fontFamily: 'serif', fontScale: 'large', radius: 'soft', shadow: 'lifted' })
+    expect(result.brand).toMatchObject({ logoText: '海', logoUrl: 'https://cdn.example/logo.png', faviconUrl: '/brand-assets/favicon.webp', success: '#123456', warning: '#654321', danger: '#abcdef', fontFamily: 'serif', fontScale: 'standard', radius: 'soft', shadow: 'lifted' })
     expect(result.brand.content).toEqual({ en: { tagline: 'Play gently', announcement: 'A note' }, zh: { tagline: '轻松参与', announcement: '' } })
     expect(result.availableLanguages).toEqual(['en', 'zh-CN'])
     expect(result.brand.languages).toEqual(['en', 'zh'])
@@ -86,6 +86,6 @@ describe('API envelope and tenant context', () => {
     null,
   ])('rejects response bodies outside the standard success envelope %#', async body => {
     const { api } = clientFor(body)
-    await expect(api.getContext()).rejects.toThrow('Invalid API response')
+    await expect(api.getContext()).rejects.toMatchObject({status:502,code:'INVALID_RESPONSE'})
   })
 })

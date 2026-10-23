@@ -1,8 +1,11 @@
+import { readApiEnvelope } from '@lottery/shared'
+
 import { isWalletDTO, normalizeLedgerSnapshots, type WalletDTO, type WalletSource, type WalletState, type SourceBuckets } from "@lottery/shared";
 
 export type { WalletSource, WalletState, SourceBuckets };
 
 export type Wallet = WalletDTO;
+export const WALLET_SNAPSHOT_EVENT = 'lottery:wallet-snapshot';
 
 export interface SourceAllocation {
   source: WalletSource;
@@ -30,12 +33,6 @@ export interface LedgerEntry {
   reversal_of?: string;
   version: number;
   created_at: string;
-}
-
-interface Envelope<T> {
-  success?: boolean;
-  data?: T;
-  error?: string | { code?: string; message?: string } | null;
 }
 
 export class WalletApiError extends Error {
@@ -86,34 +83,7 @@ export function createWalletApi(
         0,
       );
     }
-    let envelope: Envelope<T>;
-    try {
-      envelope = (await response.json()) as Envelope<T>;
-    } catch {
-      throw new WalletApiError(
-        response.ok
-          ? "服务器返回了无法读取的数据"
-          : `Request failed (${response.status})`,
-        response.status,
-      );
-    }
-    if (
-      !response.ok ||
-      envelope.success !== true ||
-      envelope.data === undefined
-    ) {
-      const detail =
-        typeof envelope.error === "object" && envelope.error
-          ? envelope.error
-          : undefined;
-      throw new WalletApiError(
-        typeof envelope.error === "string"
-          ? envelope.error
-          : (detail?.message ?? `Request failed (${response.status})`),
-        response.status,
-        detail?.code,
-      );
-    }
+    const envelope = await readApiEnvelope<T>(response,(message,status,code)=>new WalletApiError(message,status,code));
     return envelope.data;
   }
 
@@ -121,6 +91,7 @@ export function createWalletApi(
     async wallet() {
       const value = await request<unknown>("/wallet");
       if (!isWalletDTO(value)) throw new WalletApiError("The server returned an invalid wallet response.", 502, "INVALID_RESPONSE");
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(WALLET_SNAPSHOT_EVENT, { detail: value }));
       return value;
     },
     async ledger(limit = 50, offset = 0) {

@@ -14,6 +14,7 @@ import (
 )
 
 func TestCommissionPaymentMixedOriginalModesRequireWholeCycleManualApproval(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	ctx := context.Background()
 	policy, err := f.service.Policy(ctx, f.betting.brand)

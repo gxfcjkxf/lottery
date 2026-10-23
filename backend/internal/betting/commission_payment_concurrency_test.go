@@ -14,6 +14,7 @@ import (
 )
 
 func TestCommissionPaymentConcurrentWorkersWalletContentionAndDeferredStep(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	ctx := context.Background()
 	p := prepareManualCommissionPayment(t, f)

@@ -235,13 +235,13 @@ func TestWithdrawalHTTPChangedUserContextCannotReplayOrReadAnotherMember(t *test
 	f.http = withdrawalHTTP(t, f, withdrawalHTTPChecker{})
 	oldContext := withdrawalHTTPAvailability(t, f).ActorContext
 	order := withdrawalHTTPCreate(t, f, "first-member-intent")
-	created := f.call("POST", "/api/v1/admin/users", "second-withdrawal-member", f.token, managedBrand, map[string]string{"username": "withdrawal_other", "password": "withdrawal-other-test-password-2026", "reason": "separate synthetic account"})
+	created := f.call("POST", "/api/v1/admin/users", "second-withdrawal-member", f.token, managedBrand, map[string]string{"username": "withdrawal_other", "password": "withdrawal-other-tes-test-2026", "reason": "separate synthetic account"})
 	mustStatus(t, created, 201)
 	var member struct {
 		MemberID string `json:"member_id"`
 	}
 	managedData(t, created, &member)
-	login := f.call("POST", "/api/v1/auth/login", "second-withdrawal-login", "", managedBrand, map[string]string{"identifier": "withdrawal_other", "password": "withdrawal-other-test-password-2026", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"})
+	login := f.call("POST", "/api/v1/auth/login", "second-withdrawal-login", "", managedBrand, map[string]string{"identifier": "withdrawal_other", "password": "withdrawal-other-tes-test-2026", "privacy_policy_version": "dev-1", "service_terms_version": "dev-1"})
 	mustStatus(t, login, 200)
 	var auth identity.Authentication
 	managedData(t, login, &auth)
@@ -296,6 +296,7 @@ func TestWithdrawalHTTPForeignOriginClosedActionsAndNoImplicitPlatformRead(t *te
 	}
 	mustStatus(t, f.call("GET", "/api/v1/admin/withdrawals", "", f.token, pointsBrandB, nil), 401)
 	platformToken := platformAdminToken(t, f.managementHTTP)
+	f.token = platformToken
 	mustStatus(t, f.call("GET", "/api/v1/platform/withdrawals", "", platformToken, pointsBrandB, nil), 403)
 	grantPlatformPermission(t, f.managementHTTP, "withdrawal.view.platform")
 	mustStatus(t, f.call("GET", "/api/v1/admin/withdrawals", "", f.token, pointsBrandB, nil), 401)

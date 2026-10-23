@@ -68,6 +68,26 @@ func archiveRead(t *testing.T, s Service, id string) Record {
 	return r
 }
 
+func TestArchiveAllowsEmptyReasonAndRetainsExactAudit(t *testing.T) {
+	s, actor := archiveFixture(t)
+	in := pastInput()
+	in.Reason = ""
+	first := archiveCreate(t, s, actor, in)
+	if first.Reason != "" || first.Revision != 1 {
+		t.Fatalf("unexpected empty-reason archive: %+v", first)
+	}
+	var reason string
+	if err := s.DB.QueryRow(context.Background(), `SELECT reason FROM audit_logs WHERE id=$1`, first.AuditLogID).Scan(&reason); err != nil || reason != "" {
+		t.Fatalf("audit must retain empty reason, got %q: %v", reason, err)
+	}
+	in.ExpectedRevision = 1
+	in.Reason = "append another observation"
+	second := archiveCreate(t, s, actor, in)
+	if second.Revision != 2 || archiveRead(t, s, first.ID).Reason != "" {
+		t.Fatal("appending must retain the immutable empty-reason first version")
+	}
+}
+
 func TestArchiveLocksSerializeOnlyWithinTheOwningSchema(t *testing.T) {
 	first, firstActor := archiveFixture(t)
 	second, secondActor := archiveFixture(t)

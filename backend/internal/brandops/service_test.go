@@ -20,6 +20,10 @@ const brandID = "0199a000-0000-7000-8000-000000000001"
 func TestInputIsClosedAndValidated(t *testing.T) {
 	for _, raw := range []string{
 		`{"version":1,"status":"paused","reason":"maintenance"}`,
+		`{"version":1,"status":"paused"}`,
+		`{"version":1,"status":"paused","reason":""}`,
+		`{"version":1,"status":"paused","reason":"` + strings.Repeat("维", 500) + `"}`,
+		`{"version":1,"status":"paused","reason":"` + strings.Repeat("😀", 500) + `"}`,
 	} {
 		var in Input
 		if err := json.Unmarshal([]byte(raw), &in); err != nil || in.Version != 1 || in.Status != "paused" {
@@ -34,11 +38,28 @@ func TestInputIsClosedAndValidated(t *testing.T) {
 		`{"version":0,"status":"paused","reason":"ok"}`,
 		`{"version":1,"status":"paused","reason":"  "}`,
 		`{"version":1,"status":"paused","reason":"` + strings.Repeat("x", 501) + `"}`,
-		`{"version":1,"status":"paused"}`,
+		`{"version":1,"status":"paused","reason":"` + strings.Repeat("维", 501) + `"}`,
+		`{"version":1,"status":"paused","reason":"` + strings.Repeat("😀", 501) + `"}`,
+		`{"version":1,"status":"paused","reason":"ok","pause_starts_at":null}`,
+		`{"version":1,"status":"paused","reason":"ok","pause_starts_at":"2030-01-01T00:00:00Z"}`,
+		`{"version":1,"status":"active","reason":"ok","pause_starts_at":"2030-01-01T00:00:00Z","pause_ends_at":"2030-01-01T01:00:00Z"}`,
+		`{"version":1,"status":"paused","reason":"ok","pause_starts_at":"2030-01-01T01:00:00Z","pause_ends_at":"2030-01-01T00:00:00Z"}`,
 	} {
 		var in Input
 		if err := json.Unmarshal([]byte(raw), &in); err == nil {
 			t.Errorf("invalid input accepted: %s", raw)
+		}
+	}
+}
+
+func TestOptionalReasonForAllOperationTargets(t *testing.T) {
+	for _, status := range []string{"active", "paused", "disabled"} {
+		for _, reason := range []string{"", `,"reason":""`, `,"reason":"maintenance"`} {
+			raw := `{"version":1,"status":"` + status + `"` + reason + `}`
+			var in Input
+			if err := json.Unmarshal([]byte(raw), &in); err != nil || in.Status != status {
+				t.Fatalf("valid target and optional reason rejected: %s: %+v %v", raw, in, err)
+			}
 		}
 	}
 }
@@ -79,12 +100,13 @@ func TestUpdateWritesAtomicAuditAndImmutableHistory(t *testing.T) {
 	if rows, err := svc.History(ctx, brandID, 20, 0); err != nil || rows == nil || len(rows) != 0 {
 		t.Fatalf("initial history should be empty and nonnil: %#v err=%v", rows, err)
 	}
-	meta := points.Metadata{ActorType: "admin", ActorID: adminID, Reason: "maintenance", IP: "127.0.0.1", RequestID: "brandops-test"}
+	longReason := strings.Repeat("维护😀", 166) + "完成"
+	meta := points.Metadata{ActorType: "admin", ActorID: adminID, Reason: longReason, IP: "127.0.0.1", RequestID: "brandops-test"}
 	tx, err := p.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, err := svc.Update(ctx, tx, brandID, actor, Input{Version: 1, Status: "paused", Reason: "maintenance"}, meta)
+	updated, err := svc.Update(ctx, tx, brandID, actor, Input{Version: 1, Status: "paused", Reason: longReason}, meta)
 	if err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)
@@ -100,7 +122,7 @@ func TestUpdateWritesAtomicAuditAndImmutableHistory(t *testing.T) {
 		t.Fatalf("read mismatch record=%+v update=%+v err=%v", record, updated, err)
 	}
 	history, err := svc.History(ctx, brandID, 20, 0)
-	if err != nil || len(history) != 1 || history[0].Version != 2 || history[0].PreviousStatus != "active" || history[0].Status != "paused" || history[0].ChangedBy != adminID || history[0].Reason != "maintenance" || history[0].AuditLogID != updated.AuditLogID {
+	if err != nil || len(history) != 1 || history[0].Version != 2 || history[0].PreviousStatus != "active" || history[0].Status != "paused" || history[0].ChangedBy != adminID || history[0].Reason != longReason || history[0].AuditLogID != updated.AuditLogID {
 		t.Fatalf("unexpected history: %+v err=%v", history, err)
 	}
 	var action, resource, reason, beforeStatus, afterStatus string
@@ -108,7 +130,7 @@ func TestUpdateWritesAtomicAuditAndImmutableHistory(t *testing.T) {
 	if err := p.QueryRow(ctx, `SELECT action,resource_type,reason,before_json->>'status',after_json->>'status',(before_json->>'version')::bigint,(after_json->>'version')::bigint FROM audit_logs WHERE id=$1`, updated.AuditLogID).Scan(&action, &resource, &reason, &beforeStatus, &afterStatus, &beforeVersion, &afterVersion); err != nil {
 		t.Fatal(err)
 	}
-	if action != "brand_operation.update" || resource != "brand_operation" || reason != "maintenance" || beforeStatus != "active" || afterStatus != "paused" || beforeVersion != 1 || afterVersion != 2 {
+	if action != "brand_operation.update" || resource != "brand_operation" || reason != longReason || beforeStatus != "active" || afterStatus != "paused" || beforeVersion != 1 || afterVersion != 2 {
 		t.Fatalf("audit witness mismatch: %s %s %s %s->%s %d->%d", action, resource, reason, beforeStatus, afterStatus, beforeVersion, afterVersion)
 	}
 	if _, err := p.Exec(ctx, `UPDATE brand_operation_revisions SET reason='tampered' WHERE brand_id=$1`, brandID); err == nil {
@@ -153,7 +175,7 @@ func TestUpdateRejectsStateAndRollsBackWithCallerTransaction(t *testing.T) {
 	for _, test := range []struct {
 		in   Input
 		want error
-	}{{Input{Version: 1, Status: "active", Reason: "noop"}, ErrState}, {Input{Version: 1, Status: "disabled", Reason: "disable"}, ErrInvalid}} {
+	}{{Input{Version: 1, Status: "active", Reason: "noop"}, ErrState}, {Input{Version: 1, Status: "disabled", Reason: "disable"}, ErrDenied}} {
 		tx, err = p.Begin(ctx)
 		if err != nil {
 			t.Fatal(err)

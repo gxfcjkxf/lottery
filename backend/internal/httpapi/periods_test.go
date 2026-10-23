@@ -123,6 +123,7 @@ func TestPeriodHTTPFreshRevocationAndSuperReadOnly(t *testing.T) {
 		t.Fatal(e)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	platformBase := strings.Replace(base, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("GET", base+"/schedule", "", f.token, managedBrand, nil), 403)
 	mustStatus(t, f.call("GET", platformBase+"/schedule", "", platformToken, managedBrand, nil), 403)

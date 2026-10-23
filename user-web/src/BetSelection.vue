@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useUserI18n } from "./i18n";
+
+const ui = useUserI18n().t;
 import { computed, ref } from "vue";
 import { emptyBetSelection, exclusionPoolValues, randomBetSelection, rulePoolValues } from "./selection-actions";
 import type {
@@ -15,7 +18,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:modelValue": [value: RuleTicketSelection];
 }>();
-const zh = computed(() => props.locale === "zh");
 const mode = computed(() => props.definition.selection.mode);
 const numberLabels = computed(() => {
   const labels = new Map<number, string[]>();
@@ -113,12 +115,12 @@ function toggleFeature(name: string, value: number) {
 </script>
 
 <template>
-  <div class="selection-editor" :aria-label="zh ? '投注选择' : 'Bet selection'">
+  <div class="selection-editor" :aria-label="ui('user.copy.1a444e9d')">
     <div class="selection-actions">
-      <button type="button" :disabled="disabled" @click="clearSelection">{{ zh ? '清空选号' : 'Clear selection' }}</button>
-      <button type="button" :disabled="disabled" @click="randomSelection">{{ zh ? '随机选号' : 'Random selection' }}</button>
+      <button type="button" :disabled="disabled" @click="clearSelection">{{ ui('user.copy.5c6c8acf') }}</button>
+      <button type="button" :disabled="disabled" @click="randomSelection">{{ ui('user.copy.724bebe9') }}</button>
     </div>
-    <p v-if="actionError" role="alert">{{ zh ? '无法根据当前玩法生成选号，请手动选择。' : 'Unable to generate a selection for this play. Please choose manually.' }}</p>
+    <p v-if="actionError" role="alert">{{ ui('user.copy.24441f17') }}</p>
     <template v-if="mode === 'numbers'">
       <fieldset
         v-if="definition.model.model === 'DIGITS_0_9'"
@@ -126,9 +128,7 @@ function toggleFeature(name: string, value: number) {
       >
         <legend>
           {{
-            zh
-              ? "每个位置可选一个或多个数字"
-              : "Choose one or more candidates for each position"
+            ui('user.copy.f7216c0c')
           }}
         </legend>
         <div
@@ -137,97 +137,79 @@ function toggleFeature(name: string, value: number) {
           class="position-group"
         >
           <strong>{{
-            zh ? `位置 ${position}` : `Position ${position}`
+            ui("user.selection.position", { position })
           }}</strong>
           <div class="choice-grid">
-            <label v-for="value in digitPool" :key="value" class="choice-chip">
-              <input
-                type="checkbox"
-                :aria-label="
-                  zh
-                    ? `位置 ${position} 选择数字 ${value}`
-                    : `Choose digit ${value} for position ${position}`
-                "
-                :checked="modelValue.digits?.[position - 1]?.includes(value)"
+            <button v-for="value in digitPool" :key="value" class="choice-chip"
+                type="button"
+                :aria-label="ui('user.selection.digit', { value, position })"
+                :aria-pressed="modelValue.digits?.[position - 1]?.includes(value) ?? false"
                 :disabled="disabled"
-                @change="toggleDigit(position - 1, value)"
-              />
+                @click="toggleDigit(position - 1, value)"
+              >
               <span>{{ value }}</span>
-              <small v-if="numberLabels.has(value)" class="number-attributes">{{ numberLabels.get(value)?.join(' · ') }}</small>
-            </label>
+
+            </button>
           </div>
         </div>
       </fieldset>
       <fieldset v-else-if="regularPool.length" class="selection-group">
         <legend>
           {{
-            zh
-              ? `普通号码（需选 ${definition.selection.regular_count} 个）`
-              : `Regular numbers (choose ${definition.selection.regular_count})`
+            ui("user.selection.regularCount", { count: definition.selection.regular_count })
           }}
         </legend>
         <div class="choice-grid">
-          <label v-for="value in regularPool" :key="value" class="choice-chip">
-            <input
-              type="checkbox"
-              :aria-label="
-                zh ? `选择普通号码 ${value}` : `Choose regular number ${value}`
-              "
-              :checked="modelValue.regular?.includes(value)"
+          <button v-for="value in regularPool" :key="value" class="choice-chip"
+              type="button"
+              :aria-label="ui('user.selection.regularNumber', { value })"
+              :aria-pressed="modelValue.regular?.includes(value) ?? false"
               :disabled="disabled"
-              @change="toggle('regular', value)"
-            /><span>{{ value }}</span>
-            <small v-if="numberLabels.has(value)" class="number-attributes">{{ numberLabels.get(value)?.join(' · ') }}</small>
-          </label>
+              @click="toggle('regular', value)"
+            ><span>{{ value }}</span>
+
+          </button>
         </div>
       </fieldset>
       <fieldset v-if="specialPool.length" class="selection-group">
         <legend>
           {{
-            zh
-              ? `特别号码（需选 ${definition.selection.special_count} 个）`
-              : `Special numbers (choose ${definition.selection.special_count})`
+            ui("user.selection.specialCount", { count: definition.selection.special_count })
           }}
         </legend>
         <div class="choice-grid">
-          <label v-for="value in specialPool" :key="value" class="choice-chip">
-            <input
-              type="checkbox"
-              :aria-label="
-                zh ? `选择特别号码 ${value}` : `Choose special number ${value}`
-              "
-              :checked="modelValue.special?.includes(value)"
+          <button v-for="value in specialPool" :key="value" class="choice-chip"
+              type="button"
+              :aria-label="ui('user.selection.specialNumber', { value })"
+              :aria-pressed="modelValue.special?.includes(value) ?? false"
               :disabled="disabled"
-              @change="toggle('special', value)"
-            /><span>{{ value }}</span>
-            <small v-if="numberLabels.has(value)" class="number-attributes">{{ numberLabels.get(value)?.join(' · ') }}</small>
-          </label>
+              @click="toggle('special', value)"
+            ><span>{{ value }}</span>
+
+          </button>
         </div>
       </fieldset>
     </template>
     <fieldset v-else-if="mode === 'exclude'" class="selection-group">
       <legend>
         {{
-          zh
-            ? `排除号码（需选 ${definition.selection.exclude_count} 个）`
-            : `Exclude numbers (choose ${definition.selection.exclude_count})`
+          ui("user.selection.excludeCount", { count: definition.selection.exclude_count })
         }}
       </legend>
       <div class="choice-grid">
-        <label v-for="value in excludePool" :key="value" class="choice-chip">
-          <input
-            type="checkbox"
-            :aria-label="zh ? `排除号码 ${value}` : `Exclude number ${value}`"
-            :checked="modelValue.exclude?.includes(value)"
+        <button v-for="value in excludePool" :key="value" class="choice-chip"
+            type="button"
+            :aria-label="ui('user.selection.excludeNumber', { value })"
+            :aria-pressed="modelValue.exclude?.includes(value) ?? false"
             :disabled="disabled"
-            @change="toggle('exclude', value)"
-          /><span>{{ value }}</span>
-          <small v-if="numberLabels.has(value)" class="number-attributes">{{ numberLabels.get(value)?.join(' · ') }}</small>
-        </label>
+            @click="toggle('exclude', value)"
+          ><span>{{ value }}</span>
+
+        </button>
       </div>
     </fieldset>
     <fieldset v-else-if="mode === 'attributes'" class="selection-group">
-      <legend>{{ zh ? "选择号码属性" : "Choose number attributes" }}</legend>
+      <legend>{{ ui('user.copy.2d9a36e3') }}</legend>
       <div
         v-for="group in definition.selection.attribute_groups ?? []"
         :key="group"
@@ -235,30 +217,25 @@ function toggleFeature(name: string, value: number) {
       >
         <strong>{{ group }}</strong>
         <div class="choice-grid">
-          <label
+          <button
             v-for="value in Object.keys(
               definition.number_attributes?.[group] ?? {},
             )"
             :key="value"
             class="choice-chip"
-          >
-            <input
-              type="checkbox"
-              :aria-label="
-                zh
-                  ? `选择属性 ${group}：${value}`
-                  : `Choose attribute ${group}: ${value}`
-              "
-              :checked="modelValue.attributes?.[group]?.includes(value)"
+
+              type="button"
+              :aria-label="ui('user.selection.attribute', { group, value })"
+              :aria-pressed="modelValue.attributes?.[group]?.includes(value) ?? false"
               :disabled="disabled"
-              @change="toggleAttribute(group, value)"
-            /><span>{{ value }}</span>
-          </label>
+              @click="toggleAttribute(group, value)"
+            ><span>{{ value }}</span>
+          </button>
         </div>
       </div>
     </fieldset>
     <fieldset v-else-if="mode === 'features'" class="selection-group">
-      <legend>{{ zh ? "选择玩法特征" : "Choose feature values" }}</legend>
+      <legend>{{ ui('user.copy.53f6fe56') }}</legend>
       <div
         v-for="(values, name) in definition.selection.feature_choices ?? {}"
         :key="name"
@@ -266,25 +243,20 @@ function toggleFeature(name: string, value: number) {
       >
         <strong>{{ name }}</strong>
         <div class="choice-grid">
-          <label v-for="value in values" :key="value" class="choice-chip">
-            <input
-              type="checkbox"
-              :aria-label="
-                zh
-                  ? `选择特征 ${name}：${value}`
-                  : `Choose feature ${name}: ${value}`
-              "
-              :checked="modelValue.features?.[name]?.includes(value)"
+          <button v-for="value in values" :key="value" class="choice-chip"
+              type="button"
+              :aria-label="ui('user.selection.feature', { name, value })"
+              :aria-pressed="modelValue.features?.[name]?.includes(value) ?? false"
               :disabled="disabled"
-              @change="toggleFeature(name, value)"
-            /><span>{{ value }}</span>
-          </label>
+              @click="toggleFeature(name, value)"
+            ><span>{{ value }}</span>
+          </button>
         </div>
       </div>
     </fieldset>
     <p v-else role="alert">
       {{
-        zh ? "暂不支持此选号模式。" : "This selection mode is not supported."
+        ui('user.copy.596e5b48')
       }}
     </p>
   </div>
@@ -299,10 +271,10 @@ function toggleFeature(name: string, value: number) {
 .selection-actions button {
   min-height: 44px;
   padding: 0.5rem 1rem;
-  border: 1px solid var(--line, #e2e8f0);
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: #ffffff;
-  color: var(--brand-primary, #059669);
+  background: var(--surface);
+  color: var(--brand-primary);
   font-weight: 700;
   font-size: 13px;
   cursor: pointer;
@@ -310,8 +282,8 @@ function toggleFeature(name: string, value: number) {
   transition: all 0.15s ease;
 }
 .selection-actions button:hover:not(:disabled) {
-  background: var(--primary-light, #ecfdf5);
-  border-color: var(--brand-primary, #059669);
+  background: var(--primary-light);
+  border-color: var(--brand-primary);
   transform: translateY(-1px);
 }
 .selection-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -319,15 +291,15 @@ function toggleFeature(name: string, value: number) {
   min-width: 0;
   margin: 0;
   padding: 1.25rem;
-  border: 1px solid var(--line, #e2e8f0);
+  border: 1px solid var(--line);
   border-radius: 16px;
-  background: #ffffff;
+  background: var(--surface);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 .selection-group legend {
   padding: 0 0.5rem;
   font-weight: 750;
-  color: var(--ink, #0f172a);
+  color: var(--ink);
   font-size: 14px;
 }
 .position-group,
@@ -346,10 +318,10 @@ function toggleFeature(name: string, value: number) {
   display: grid;
   place-items: center;
   min-height: 44px;
-  border: 1.5px solid var(--line, #e2e8f0);
+  border: 1.5px solid var(--line);
   border-radius: 12px;
-  background: #ffffff;
-  color: var(--ink-secondary, #334155);
+  background: var(--surface);
+  color: var(--ink-secondary);
   cursor: pointer;
   font-variant-numeric: tabular-nums;
   font-size: 14px;
@@ -359,36 +331,28 @@ function toggleFeature(name: string, value: number) {
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
-.choice-chip:hover {
-  border-color: var(--brand-primary, #059669);
-  background: var(--primary-light, #ecfdf5);
-  color: var(--brand-primary, #059669);
+.choice-chip:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--canvas);
+  color: var(--ink-secondary);
   transform: translateY(-1px);
 }
 .number-attributes { max-width: 100%; font-size: 11px; line-height: 1.2; overflow-wrap: anywhere; text-align: center; }
-.choice-chip:has(input:checked) {
-  border-color: var(--brand-primary, #059669) !important;
-  background: linear-gradient(135deg, var(--brand-primary, #059669) 0%, var(--primary-dark, #047857) 100%) !important;
-  color: #ffffff !important;
+.choice-chip[aria-pressed="true"] {
+  border-color: var(--brand-primary) !important;
+  background: var(--primary-light) !important;
+  color: var(--primary-dark) !important;
   font-weight: 800;
   box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35);
-  transform: scale(1.02);
 }
-.choice-chip input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-}
+.choice-chip:disabled { cursor: not-allowed; opacity: .5; }
 .choice-chip:focus-within {
-  outline: 2px solid var(--brand-primary, #059669);
+  outline: 2px solid var(--brand-primary);
   outline-offset: 2px;
 }
 @media (max-width: 420px) {
   .choice-grid {
-    grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
     gap: 0.4rem;
   }
   .selection-group {

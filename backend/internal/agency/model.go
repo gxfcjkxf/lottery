@@ -19,6 +19,9 @@ var ErrNotFound = errors.New("agent resource not found")
 var ErrDenied = errors.New("agent operation denied")
 var ErrVersion = errors.New("agent version changed")
 var ErrLimit = errors.New("agent hierarchy/ratio limit")
+var ErrModePending = errors.New("agent line has a scheduled mode change")
+var ErrCalendarRequired = errors.New("commission calendar required for agent mode change")
+var ErrExists = errors.New("agent account exists")
 var ErrState = errors.New("agent state conflict")
 var uuid = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 var ratio = regexp.MustCompile(`^(0|1|0\.[0-9]{0,5}[1-9])$`)
@@ -37,20 +40,34 @@ func RatioMicros(s string) (int64, error) {
 }
 func validMode(s string) bool { return s == "loss" || s == "turnover" }
 func validReason(s string) bool {
-	return len(strings.TrimSpace(s)) > 0 && len(s) <= 500 && utf8.ValidString(s)
+	return s == "" || (len(strings.TrimSpace(s)) > 0 && len(s) <= 500 && utf8.ValidString(s))
 }
 
 type PolicyConfig struct {
-	Enabled  bool   `json:"enabled"`
-	MaxDepth int    `json:"max_depth"`
-	RatioCap string `json:"ratio_cap"`
-	Mode     string `json:"mode"`
-	Cycle    string `json:"cycle"`
+	Enabled          bool   `json:"enabled"`
+	MaxDepth         int    `json:"max_depth"`
+	LossRatioCap     string `json:"loss_ratio_cap"`
+	TurnoverRatioCap string `json:"turnover_ratio_cap"`
+	Mode             string `json:"mode"`
+	Cycle            string `json:"cycle"`
 }
 
 func (c PolicyConfig) Valid() bool {
-	_, e := RatioMicros(c.RatioCap)
-	return e == nil && c.MaxDepth >= 1 && c.MaxDepth <= 32 && validMode(c.Mode) && (c.Cycle == "weekly" || c.Cycle == "monthly")
+	_, e := RatioMicros(c.LossRatioCap)
+	_, turnoverErr := RatioMicros(c.TurnoverRatioCap)
+	return e == nil && turnoverErr == nil && c.MaxDepth >= 1 && c.MaxDepth <= 32 && validMode(c.Mode) && (c.Cycle == "weekly" || c.Cycle == "monthly")
+}
+
+// CapMicros selects the explicit brand limit for the line's effective mode.
+func (c PolicyConfig) CapMicros(mode string) (int64, error) {
+	switch mode {
+	case "loss":
+		return RatioMicros(c.LossRatioCap)
+	case "turnover":
+		return RatioMicros(c.TurnoverRatioCap)
+	default:
+		return 0, ErrInvalid
+	}
 }
 
 type NodeConfig struct {
@@ -73,22 +90,23 @@ type Policy struct {
 	AuditLogID string       `json:"audit_log_id,omitempty"`
 }
 type Node struct {
-	ID                string     `json:"id"`
-	BrandID           string     `json:"brand_id"`
-	MemberID          string     `json:"member_id"`
-	ParentID          *string    `json:"parent_id"`
-	Depth             int        `json:"depth"`
-	Path              []string   `json:"path"`
-	Version           int64      `json:"version"`
-	Config            NodeConfig `json:"config"`
-	EffectiveMode     string     `json:"effective_mode"`
-	ModeSourceAgentID *string    `json:"mode_source_agent_id"`
-	PolicyVersion     int64      `json:"policy_version"`
-	ParentVersion     *int64     `json:"parent_version"`
-	CreatedBy         string     `json:"created_by"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
-	AuditLogID        string     `json:"audit_log_id,omitempty"`
+	PendingChange     *PendingModeChange `json:"pending_change,omitempty"`
+	ID                string             `json:"id"`
+	BrandID           string             `json:"brand_id"`
+	MemberID          string             `json:"agent_account_id"`
+	ParentID          *string            `json:"parent_id"`
+	Depth             int                `json:"depth"`
+	Path              []string           `json:"path"`
+	Version           int64              `json:"version"`
+	Config            NodeConfig         `json:"config"`
+	EffectiveMode     string             `json:"effective_mode"`
+	ModeSourceAgentID *string            `json:"mode_source_agent_id"`
+	PolicyVersion     int64              `json:"policy_version"`
+	ParentVersion     *int64             `json:"parent_version"`
+	CreatedBy         string             `json:"created_by"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedAt         time.Time          `json:"updated_at"`
+	AuditLogID        string             `json:"audit_log_id,omitempty"`
 }
 type PolicyInput struct {
 	Version int64        `json:"version"`
@@ -97,7 +115,8 @@ type PolicyInput struct {
 }
 type CreateInput struct {
 	PolicyVersion int64      `json:"policy_version"`
-	MemberID      string     `json:"member_id"`
+	Username      string     `json:"username"`
+	Password      string     `json:"password"`
 	ParentID      *string    `json:"parent_id"`
 	ParentVersion *int64     `json:"parent_version"`
 	Config        NodeConfig `json:"config"`
@@ -117,6 +136,24 @@ type ChildInput struct {
 	Ratio         string  `json:"ratio"`
 	Mode          *string `json:"mode"`
 	Reason        string  `json:"reason"`
+}
+type DirectoryFilter struct {
+	Search     string
+	Online     *bool
+	ViewPoints bool
+}
+type DirectoryNode struct {
+	Node
+	Username      string  `json:"username"`
+	Online        bool    `json:"online"`
+	DisplayPoints *string `json:"display_points"`
+}
+type AgentList struct {
+	BrandID    string          `json:"brand_id"`
+	Items      []DirectoryNode `json:"items"`
+	Limit      int             `json:"limit"`
+	Offset     int             `json:"offset"`
+	TotalCount string          `json:"total_count"`
 }
 type Tree struct {
 	BrandID    string  `json:"brand_id"`
@@ -177,8 +214,13 @@ func closed(data []byte, keys ...string) error {
 		}
 	}
 	t, e = d.Token()
-	if e != nil || t != json.Delim('}') || len(seen) != len(keys) {
+	if e != nil || t != json.Delim('}') {
 		return ErrInvalid
+	}
+	for _, key := range keys {
+		if key != "reason" && !seen[key] {
+			return ErrInvalid
+		}
 	}
 	var tail any
 	if d.Decode(&tail) != io.EOF {
@@ -187,7 +229,7 @@ func closed(data []byte, keys ...string) error {
 	return nil
 }
 func (c *PolicyConfig) UnmarshalJSON(b []byte) error {
-	if closed(b, "enabled", "max_depth", "ratio_cap", "mode", "cycle") != nil {
+	if closed(b, "enabled", "max_depth", "loss_ratio_cap", "turnover_ratio_cap", "mode", "cycle") != nil {
 		return ErrInvalid
 	}
 	type plain PolicyConfig
@@ -222,14 +264,14 @@ func (c *PolicyInput) UnmarshalJSON(b []byte) error {
 	}
 	type plain PolicyInput
 	var p plain
-	if json.Unmarshal(b, &p) != nil {
+	if json.Unmarshal(b, &p) != nil || !p.Config.Enabled {
 		return ErrInvalid
 	}
 	*c = PolicyInput(p)
 	return nil
 }
 func (c *CreateInput) UnmarshalJSON(b []byte) error {
-	if closed(b, "policy_version", "member_id", "parent_id", "parent_version", "config", "reason") != nil {
+	if closed(b, "policy_version", "username", "password", "parent_id", "parent_version", "config", "reason") != nil {
 		return ErrInvalid
 	}
 	type plain CreateInput

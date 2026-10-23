@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiteIcon from "./SiteIcon";
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 const props = defineProps<{
@@ -32,16 +33,13 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', closeOutside))
     @focusout="!root?.contains($event.relatedTarget as Node | null) && (open = false)">
     <button ref="trigger" type="button" class="locale-picker__trigger" :aria-label="label"
       :title="label" :aria-expanded="open" @click="open = !open">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
-        stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M3 5h12M9 3v2M5 5c1 5 4 8 9 10M13 5c-1 5-4 8-9 10M13 21l4-10 4 10M14.5 17h5" />
-      </svg>
+      <SiteIcon name="language" />
     </button>
     <div v-if="open" class="locale-picker__list" :aria-label="label">
       <button v-for="option in props.options" :key="option.code" type="button"
         class="locale-picker__option" :data-code="option.code" :aria-pressed="modelValue === option.code"
         :lang="option.code === 'zh' ? 'zh-CN' : option.code" @click="select(option.code)">
-        <span>{{ option.label }}</span><span v-if="modelValue === option.code" aria-hidden="true">✓</span>
+        <span>{{ option.label }}</span><SiteIcon v-if="modelValue === option.code" name="check" />
       </button>
     </div>
   </div>
@@ -49,8 +47,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', closeOutside))
 
 <style scoped>
 .locale-picker { position: relative; display: inline-flex; flex-shrink: 0; color: var(--ink, #0f172a); }
-.locale-picker__trigger { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: var(--canvas, #f8fafc); color: inherit; cursor: pointer; }
-.locale-picker__trigger:hover { background: var(--line, #e2e8f0); }
+.locale-picker__trigger { display: grid; place-items: center; width: var(--icon-control-size, 44px); height: var(--icon-control-size, 44px); padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: inherit; cursor: pointer; }
+.locale-picker__trigger:hover { background: var(--primary-light); color: var(--primary); }
 .locale-picker__list { position: absolute; top: calc(100% + 6px); right: 0; z-index: 100; width: 154px; padding: 4px; border: 1px solid var(--line, #e2e8f0); border-radius: 10px; background: var(--surface, #ffffff); box-shadow: 0 10px 25px rgb(15 23 42 / 12%); }
 .locale-picker__option { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
 .locale-picker__option:hover, .locale-picker__option[aria-pressed="true"] { background: var(--canvas, #f8fafc); }

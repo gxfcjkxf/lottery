@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -260,7 +262,7 @@ function isNonnegativeDecimal(value: unknown): value is string {
 }
 
 function isReason(value: unknown): value is string {
-  if (typeof value !== "string" || value.length === 0 || value.trim() !== value || value.includes("\0")) return false;
+  if (typeof value !== "string" || value.trim() !== value || value.includes("\0")) return false;
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff) {
@@ -527,20 +529,11 @@ export function createCommissionCyclesApi(fetcher: typeof fetch = fetch): Commis
       throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR");
     }
 
-    if (!response.ok) {
-      let error: unknown;
-      try { error = await response.json(); } catch { error = undefined; }
-      const detail = isRecord(error) && isRecord(error.error) ? error.error : undefined;
-      if (isRecord(error) && typeof error.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      if (options.write && (response.status < 400 || response.status >= 500)) unknownWriteStatus();
-      const message = (typeof detail?.message === "string" && detail.message) || `Request failed (${response.status})`;
-      throw new AdminApiError(message, response.status, typeof detail?.code === "string" ? detail.code : undefined);
-    }
-
-    let envelope: unknown;
-    try { envelope = await response.json(); } catch {
-      if (options.write) unknownWriteStatus();
-      invalidReadResponse();
+    let envelope;
+    try { envelope = await readAdminEnvelope(response); }
+    catch (cause) {
+      if (options.write && (response.ok || response.status < 400 || response.status >= 500)) unknownWriteStatus();
+      throw cause;
     }
     if (!isRecord(envelope) || envelope.success !== true || envelope.data === undefined ||
       (options.successStatus !== undefined && response.status !== options.successStatus) || !validate(envelope.data)) {

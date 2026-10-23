@@ -23,7 +23,7 @@ func actor(t *testing.T, s Service) access.Account {
 	if _, e := s.DB.Exec(context.Background(), `INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'not-a-login-hash')`, id, "compliance_"+id); e != nil {
 		t.Fatal(e)
 	}
-	return access.Account{ID: id, Type: access.AccountAdmin, BrandIDs: []string{testBrand}, Roles: []access.Role{{BrandID: testBrand, Permissions: []access.Permission{{Resource: "compliance_policy", Action: "view", Scope: access.ScopeBrand}, {Resource: "compliance_policy", Action: "write", Scope: access.ScopeBrand}, {Resource: "compliance_check", Action: "run", Scope: access.ScopeBrand}}}}}
+	return access.Account{ID: id, SuperAdmin: true, Type: access.AccountAdmin, BrandIDs: []string{testBrand}, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "compliance_policy", Action: "view", Scope: access.ScopePlatform}, {Resource: "compliance_policy", Action: "write", Scope: access.ScopePlatform}, {Resource: "compliance_check", Action: "run", Scope: access.ScopePlatform}}}}}
 }
 func update(t *testing.T, s Service, a access.Account, in Input) (Policy, error) {
 	t.Helper()
@@ -146,15 +146,15 @@ func TestPermissionsVersionsAndAuditFailureAreAtomic(t *testing.T) {
 	cfg.IdentityEnabled = true
 	in := Input{Version: 1, Config: cfg, Reason: "Enable identity adapter configuration"}
 	denied := a
-	denied.SuperAdmin = true
+	denied.SuperAdmin = false
 	if _, e := update(t, s, denied, in); !errors.Is(e, ErrDenied) {
-		t.Fatal("super wrote", e)
+		t.Fatal("brand operator wrote", e)
 	}
 	if _, e := check(t, s, denied, CheckInput{Version: 1, Operation: "betting", Reason: "should refuse"}); !errors.Is(e, ErrDenied) {
-		t.Fatal("super ran", e)
+		t.Fatal("brand operator ran", e)
 	}
 	denied = a
-	denied.BrandIDs = nil
+	denied.Roles = nil
 	if _, e := update(t, s, denied, in); !errors.Is(e, ErrDenied) {
 		t.Fatal("no brand scope wrote", e)
 	}

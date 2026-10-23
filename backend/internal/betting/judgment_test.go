@@ -63,7 +63,7 @@ func TestJudgmentPreservesDrawSnapshotAndRejectsSettlingPeriod(t *testing.T) {
 	actor := judgeActor(f)
 	actor.Roles[0].Permissions = append(actor.Roles[0].Permissions, access.Permission{Resource: "draw", Action: "manual_create", Scope: access.ScopeBrand})
 	rs := rulebook.Store{DB: f.db}
-	now := time.Now().UTC()
+	now := bettingDatabaseNow(t, f.db)
 	var p rulebook.Period
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		var e error

@@ -36,8 +36,8 @@ test('platform ledger reports preserve signed totals, paginate and clear failed 
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Member points' }).click();
-  await page.locator('.brand-picker select').selectOption(brand);
-  await page.getByTestId('platform-finance-tabs').getByRole('button', { name: 'Financial reports', exact: true }).click();
+  await page.getByTestId('platform-wallet-tabs').getByRole('button', { name: 'Financial reports', exact: true }).click();
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   const panel = page.getByTestId('platform-reports');
   await panel.getByLabel('Report type', { exact: true }).selectOption('ledger');
   await panel.getByLabel('From (UTC)', { exact: true }).fill('2026-08-01T00:00');
@@ -56,21 +56,21 @@ test('platform ledger reports preserve signed totals, paginate and clear failed 
   await expect(page.getByTestId('platform-reports-summary')).toHaveCount(0);
   await expect(page.getByTestId('platform-reports-balances')).toHaveCount(0);
   await selectLanguage(page, 'zh-CN');
-  await expect(panel.getByRole('heading', { name: '运营报表', exact: true })).toBeVisible();
-  await page.locator('.brand-picker select').selectOption('');
+  await expect(panel.getByRole('heading', { name: '财务报表', exact: true })).toBeVisible();
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(panel).toHaveCount(0);
 });
 
 test('platform reads all six genuine report endpoints and actual recharge postings without changing funds', async ({ page, playwright, operatorSession }) => {
   await page.goto('http://127.0.0.1:5183/register');
-  await page.getByLabel('Choose a username or phone', { exact: true }).fill(`report_review_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`);
+  await page.getByLabel('Choose an account or phone', { exact: true }).fill(`report_review_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`);
   await page.getByLabel('Password', { exact: true }).fill('owned-report-review-password-2026');
   await page.locator('.auth-form input[type="checkbox"]').nth(0).check();
   await page.locator('.auth-form input[type="checkbox"]').nth(1).check();
   const registered = page.waitForResponse(r => r.url() === 'http://127.0.0.1:5183/api/v1/auth/register');
   await page.getByRole('button', { name: /Continue/ }).click();
   expect((await registered).status()).toBe(201);
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/$/);
   const me = await page.request.get('http://127.0.0.1:5183/api/v1/me');
   expect(me.status()).toBe(200);
   const member = (await me.json()).data.member.id;
@@ -99,8 +99,8 @@ test('platform reads all six genuine report endpoints and actual recharge postin
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Member points' }).click();
-  await page.locator('.brand-picker select').selectOption(brand);
-  await page.getByTestId('platform-finance-tabs').getByRole('button', { name: 'Financial reports', exact: true }).click();
+  await page.getByTestId('platform-wallet-tabs').getByRole('button', { name: 'Financial reports', exact: true }).click();
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   const panel = page.getByTestId('platform-reports');
   const today = new Date();
   const tomorrow = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1));

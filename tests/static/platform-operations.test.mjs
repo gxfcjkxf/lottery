@@ -20,13 +20,14 @@ test('platform operations clients expose only scoped read methods', () => {
 test('archive original file is verified before download and reports capture-time balances', () => {
   const client = read('platform-web/src/archives-api.ts');
   const panel = read('platform-web/src/ArchivesPanel.vue');
+  const catalog = read('platform-web/src/i18n-catalog.ts');
   assert.match(client, /crypto\.subtle\.digest\('SHA-256'/);
   assert.match(client, /snapshotsMatch\(payload, selectedRecord.snapshot\)/);
   assert.match(client, /return \{ bytes, filename/);
   assert.ok(panel.indexOf('await api.download') < panel.indexOf('URL.createObjectURL'));
   assert.match(panel, /brand !== props.brandId/);
   assert.match(panel, /onBeforeUnmount/);
-  assert.match(panel, /not balances at the end of the report window/);
+  assert.match(catalog, /not balances at the end of the report window/);
   assert.doesNotMatch(panel, /v-html|Number\(.*points|parseFloat/);
 });
 

@@ -126,6 +126,7 @@ func TestRewardReportForeignScopeAndSuperAdminRequireExplicitReportRights(t *tes
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f.managementHTTP)
+	f.token = platformToken
 	platformPath := strings.Replace(path, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, rewardReportCall(f.managementHTTP, "GET", platformPath, platformToken, managedBrand, ""), 403)
 }

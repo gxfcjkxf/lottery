@@ -78,8 +78,8 @@ func SimulateContext(ctx context.Context, in SimulationInput) (Simulation, error
 		}
 		result := LineResult{Selection: line, Hits: []TierHit{}}
 		rawAmounts := make([]*big.Rat, len(d.PrizeTiers))
-		exclusiveHit := false
-		bestAll, bestExclusive := -1, -1
+		matched := make([]bool, len(d.PrizeTiers))
+		exclusive := make([]bool, len(d.PrizeTiers))
 		for i, tier := range d.PrizeTiers {
 			trace, e := Evaluate(d, tier.Condition, line, in.Draw)
 			if e != nil {
@@ -102,31 +102,15 @@ func SimulateContext(ctx context.Context, in SimulationInput) (Simulation, error
 			rawAmounts[i] = raw
 			rounded := roundedInteger(raw).String()
 			result.Hits = append(result.Hits, TierHit{Code: tier.Code, Exclusive: tier.Exclusive, Matched: trace.Matched, RawPoints: rawText, CappedPoints: cappedText, Points: rounded, Trace: trace})
-			if trace.Matched {
-				if bestAll < 0 || raw.Cmp(rawAmounts[bestAll]) > 0 {
-					bestAll = i
-				}
-				if tier.Exclusive {
-					exclusiveHit = true
-					if bestExclusive < 0 || raw.Cmp(rawAmounts[bestExclusive]) > 0 {
-						bestExclusive = i
-					}
-				}
-			}
+			matched[i], exclusive[i] = trace.Matched, tier.Exclusive
 		}
+		selectedTiers := selectTierAmounts(rawAmounts, matched, exclusive, d.MixedTierPolicy)
 		lineTotal := new(big.Rat)
-		for i, tier := range d.PrizeTiers {
+		for i := range d.PrizeTiers {
 			if !result.Hits[i].Matched {
 				continue
 			}
-			selected := true
-			if exclusiveHit {
-				if d.MixedTierPolicy == "max_exclusive_plus_additive" {
-					selected = !tier.Exclusive || i == bestExclusive
-				} else {
-					selected = i == bestAll
-				}
-			}
+			selected := selectedTiers[i]
 			result.Hits[i].Selected = selected
 			if selected {
 				out.Won = true

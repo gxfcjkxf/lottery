@@ -4,9 +4,10 @@ import { readFileSync, readdirSync } from 'node:fs'
 
 const read = path => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
-test('current handover uses the single baseline and independent platform creation route', () => {
+test('current handover uses the pre-release single baseline and independent platform creation route', () => {
   const readme = read('README.md')
-  assert.match(readme, /0001_baseline\.up\.sql/)
+  assert.match(readme, /正式版本发布前.*0001_baseline\.up\.sql/);
+  assert.match(readme, /正式版本发布后冻结已发布迁移及其 checksum/)
   assert.match(readme, /POST \/api\/v1\/platform\/brands/)
   assert.doesNotMatch(readme, /POST \/api\/v1\/admin\/brands|migrate至00\d\d|0018–0020|原型演示订单|用户投注\/提现与业务订单仍待/)
   assert.match(readme, /platform-web\s+总后台/)
@@ -56,16 +57,18 @@ test('commission handovers use current formats rather than removed recovery flow
   const backlog = read('docs/09-implementation-backlog.md')
   assert.doesNotMatch(backlog, /历史未决计划|历史计划恢复|复用0006结构|0071升级/)
   assert.match(backlog, /真实技术失败的显式审计重试/)
-  assert.match(backlog, /当前单份完整基线/)
+  assert.match(backlog, /正式发布前合并到单一基线.*发布后新增迁移/)
 })
 
 test('brand administration metadata and authenticated header do not label real operations as a prototype', () => {
   const html = read('admin-web/index.html')
-  assert.match(html, /<title>Brand administration<\/title>/)
+  assert.match(html, /<title><\/title>/)
+  assert.match(read('shared/src/presentation.ts'), /document\.title = name/)
+  assert.doesNotMatch(read('admin-web/src/App.vue'), /Northstar admin|<b>northstar<\/b>/)
   assert.doesNotMatch(html, /演示|原型|所有数据仅/)
   const app = read('admin-web/src/App.vue')
-  assert.match(app, /ui\("品牌后台"\)/)
-  assert.doesNotMatch(app, /ui\("演示原型"\)/)
+  assert.match(app, /const navLabel = \(value: string\) => t\(adminKey\(navLabels\[value\]!\)\)/)
+  assert.doesNotMatch(app, /演示原型/)
 })
 
 test('current UI handover describes implemented modules and confirmed withdrawal rules', () => {

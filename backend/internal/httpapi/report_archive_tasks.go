@@ -29,13 +29,17 @@ type archivePolicyActivationHTTPInput reportarchive.AutomaticActivationInput
 
 func (in *archivePolicyActivationHTTPInput) UnmarshalJSON(raw []byte) error {
 	fields, err := reconciliationClosedObject(raw, map[string]bool{"version": true, "daily_enabled": true, "monthly_enabled": true, "reason": true})
-	if err != nil || len(fields) != 4 {
+	if err != nil || len(fields) != 3 && len(fields) != 4 {
 		return reportarchive.ErrInvalid
 	}
 	// Reuse the exact version/reason validation of task retry. Booleans must be
 	// present and non-null; json.Unmarshal(null, *bool) alone would accept null.
 	var base archiveTaskRetryHTTPInput
-	closed, err := json.Marshal(map[string]json.RawMessage{"version": fields["version"], "reason": fields["reason"]})
+	baseFields := map[string]json.RawMessage{"version": fields["version"]}
+	if reason, ok := fields["reason"]; ok {
+		baseFields["reason"] = reason
+	}
+	closed, err := json.Marshal(baseFields)
 	if err != nil || json.Unmarshal(closed, &base) != nil {
 		return reportarchive.ErrInvalid
 	}
@@ -49,11 +53,11 @@ func (in *archivePolicyActivationHTTPInput) UnmarshalJSON(raw []byte) error {
 
 func (in *archiveTaskRetryHTTPInput) UnmarshalJSON(raw []byte) error {
 	fields, err := reconciliationClosedObject(raw, map[string]bool{"version": true, "reason": true})
-	if err != nil || len(fields) != 2 {
+	if err != nil || len(fields) != 1 && len(fields) != 2 {
 		return reportarchive.ErrInvalid
 	}
 	var next archiveTaskRetryHTTPInput
-	if json.Unmarshal(fields["version"], &next.Version) != nil || json.Unmarshal(fields["reason"], &next.Reason) != nil || next.Version < 1 || next.Version >= 9007199254740991 || next.Reason == "" || len(next.Reason) > 500 || strings.TrimSpace(next.Reason) != next.Reason {
+	if json.Unmarshal(fields["version"], &next.Version) != nil || fields["reason"] != nil && json.Unmarshal(fields["reason"], &next.Reason) != nil || next.Version < 1 || next.Version >= 9007199254740991 || len(next.Reason) > 500 || strings.TrimSpace(next.Reason) != next.Reason {
 		return reportarchive.ErrInvalid
 	}
 	for _, c := range next.Reason {

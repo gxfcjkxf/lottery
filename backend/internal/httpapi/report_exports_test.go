@@ -27,7 +27,7 @@ func TestPlatformWithdrawalExportRequiresExplicitPlatformGrant(t *testing.T) {
 	f := managedFixture(t)
 	ctx := context.Background()
 	account, role := ids.New(), ids.New()
-	password := "platform-report-export-test-2026"
+	password := "platform-export-test-2026"
 	hash, err := authcrypto.HashPassword(password)
 	if err != nil {
 		t.Fatal(err)
@@ -125,6 +125,7 @@ func TestReportExportNeedsIndependentReadAndExportScope(t *testing.T) {
 		t.Fatal(e)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	platformPath := strings.Replace(path, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("GET", platformPath, "", platformToken, managedBrand, nil), 403)
 	grantPlatformPermission(t, f, "report_ledger.view.platform")

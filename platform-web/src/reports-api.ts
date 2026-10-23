@@ -1,3 +1,5 @@
+import { readPlatformEnvelope } from './platform-api'
+
 import { PlatformApiError } from './platform-api'
 
 export type ReportKind = 'betting' | 'ledger' | 'withdrawal' | 'commission' | 'rewards' | 'reward_orders'
@@ -191,14 +193,7 @@ export function createPlatformReportsApi(fetcher: typeof fetch = fetch) {
       } catch (cause) {
         throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true)
       }
-      let envelope: unknown
-      try { envelope = await response.json() } catch {
-        throw new PlatformApiError(response.ok ? 'Invalid server response' : `Request failed (${response.status})`, response.status, 'INVALID_RESPONSE')
-      }
-      if (!response.ok || !isObj(envelope) || envelope.success !== true || envelope.data === undefined) {
-        const error = isObj(envelope) && isObj(envelope.error) ? envelope.error : undefined
-        throw new PlatformApiError(typeof error?.message === 'string' ? error.message : `Request failed (${response.status})`, response.status, typeof error?.code === 'string' ? error.code : undefined)
-      }
+      const envelope = await readPlatformEnvelope<unknown>(response);
       return validateReport(envelope.data, brand, kind, q)
     },
   }

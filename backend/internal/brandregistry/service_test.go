@@ -59,7 +59,7 @@ func TestCreationInitializesIsolatedConfigurationWithoutFinancialOrAccountEffect
 		t.Fatal("invalid creation receipt", out)
 	}
 	var configurations, scope, financial, creation int
-	var disabled bool
+	var agentEnabled bool
 	var mode *string
 	var locale string
 	err = db.QueryRow(ctx, `SELECT
@@ -69,9 +69,9 @@ func TestCreationInitializesIsolatedConfigurationWithoutFinancialOrAccountEffect
  (SELECT count(*) FROM brand_creation_records WHERE brand_id=$1),
  (SELECT (config->>'enabled')::boolean FROM brand_agent_policies WHERE brand_id=$1),
  (SELECT mode FROM brand_settlement_policies WHERE brand_id=$1),
- (SELECT config->>'default_locale' FROM brand_presentations WHERE brand_id=$1)`, out.ID).Scan(&configurations, &scope, &financial, &creation, &disabled, &mode, &locale)
-	if err != nil || configurations != 7 || scope != 0 || financial != 0 || creation != 1 || disabled || mode != nil || locale != in.DefaultLocale {
-		t.Fatalf("initialization configs=%d scopes=%d effects=%d history=%d agent=%v mode=%v locale=%s err=%v", configurations, scope, financial, creation, disabled, mode, locale, err)
+ (SELECT config->>'default_locale' FROM brand_presentations WHERE brand_id=$1)`, out.ID).Scan(&configurations, &scope, &financial, &creation, &agentEnabled, &mode, &locale)
+	if err != nil || configurations != 7 || scope != 0 || financial != 0 || creation != 1 || !agentEnabled || mode != nil || locale != in.DefaultLocale {
+		t.Fatalf("initialization configs=%d scopes=%d effects=%d history=%d agent=%v mode=%v locale=%s err=%v", configurations, scope, financial, creation, agentEnabled, mode, locale, err)
 	}
 	var after string
 	if err = db.QueryRow(ctx, `SELECT md5(jsonb_agg(to_jsonb(b) ORDER BY id)::text) FROM brands b WHERE id<>$1`, out.ID).Scan(&after); err != nil || after != before {

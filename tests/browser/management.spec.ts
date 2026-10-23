@@ -57,8 +57,9 @@ test("operator creates real member; user personally accepts current brand terms"
 }, info) => {
   const name = `new_${unique()}`;
   await login(page, info);
+  await page.locator(".console-page-actions").getByRole("button", { name: "新建品牌成员", exact: true }).click();
   const provision = page.locator(".provision");
-  await provision.getByLabel("用户名", { exact: false }).fill(name);
+  await provision.getByLabel("账号", { exact: false }).fill(name);
   await provision.getByLabel(/初始密码/).fill("member-test-only-password-2026");
   await provision
     .getByLabel(/创建原因/)
@@ -72,16 +73,17 @@ test("operator creates real member; user personally accepts current brand terms"
   await fits(page);
   const user = await context.newPage();
   await user.goto("http://localhost:5173/login");
-  await user.getByLabel("Username or phone", { exact: true }).fill(name);
+  await user.getByLabel("Account", { exact: true }).fill(name);
   await user
     .getByLabel("Password", { exact: true })
     .fill("member-test-only-password-2026");
-  await user.getByRole("button", { name: /Continue/ }).click();
+  await user.getByRole("button", { name: /^Log in$/ }).click();
   await expect(user.locator(".join-terms")).toBeVisible();
   await user.locator(".join-terms input[type=checkbox]").check();
   await user.getByRole("button", { name: /^Accept and join brand/ }).click();
-  await expect(user).toHaveURL(/\/account$/);
-  await expect(user.getByLabel("Username", { exact: true })).toHaveValue(name);
+  await expect(user).toHaveURL(/\/$/);
+  await user.goto(new URL("/account", user.url()).href);
+  await expect(user.getByLabel("Account", { exact: true })).toHaveValue(name);
   await fits(user);
 });
 
@@ -113,8 +115,8 @@ test("real role and account creation persist; new account has only assigned gran
     page.locator(".access-page").getByText(role, { exact: true }).first(),
   ).toBeVisible();
   await page.getByRole("tab", { name: "管理员账号", exact: true }).click();
-  await page.getByLabel(/用户名（最多/).fill(username);
-  await page.getByLabel(/初始密码（16/).fill("staff-test-only-password-2026");
+  await page.getByLabel(/账号（最多/).fill(username);
+  await page.getByLabel(/初始密码（6–30/).fill("staff-test-only-password-2026");
   await page.getByLabel(new RegExp(role)).check();
   await page
     .getByLabel("变更原因", { exact: true })

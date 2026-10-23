@@ -49,7 +49,7 @@ func TestReportArchivePolicyActivationFirstStartsRetentionReplayAndNoBackfill(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	activateBody := activationBody(1, true, true, "begin automatic report archives")
+	activateBody := `{"version":1,"daily_enabled":true,"monthly_enabled":true}`
 	first := activationRequest(f, "archive-policy-activate-first", f.token, managedBrand, f.root, activateBody)
 	mustStatus(t, first, 200)
 	var v2 reportarchive.AutomaticPolicy
@@ -117,7 +117,7 @@ func TestReportArchivePolicyActivationStrictInputAndAuthorizationGates(t *testin
 		`{}`, `null`, `{"version":null,"daily_enabled":true,"monthly_enabled":false,"reason":"valid reason"}`,
 		`{"version":1,"daily_enabled":true,"monthly_enabled":false,"reason":"valid reason","extra":true}`,
 		`{"version":1,"version":1,"daily_enabled":true,"monthly_enabled":false,"reason":"valid reason"}`,
-		`{"version":1,"daily_enabled":true,"monthly_enabled":false}`,
+		`{"version":1,"daily_enabled":true,"monthly_enabled":false,"reason":null}`,
 		`{"version":1,"daily_enabled":true,"monthly_enabled":false,"reason":" leading"}`,
 		`{"version":1,"daily_enabled":true,"monthly_enabled":false,"reason":"line\nbreak"}`,
 		`{"version":0,"daily_enabled":true,"monthly_enabled":false,"reason":"valid reason"}`,

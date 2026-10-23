@@ -1,290 +1,157 @@
 <script setup lang="ts">
-import type { BrandPresentationConfig, BrandPresentationEffective, BrandPresentationLocale } from "./brand-presentation-api";
-import { useAdminI18n } from "./i18n";
+import { vWriteGuard } from "@lottery/shared";
+import { computed, ref } from 'vue';
+import { withGlobalLoading, buildBrandCssTokens } from '@lottery/shared';
+import { AdminApiError, readAdminEnvelope } from './admin-api';
+import type { BrandPresentationConfig, BrandPresentationEffective, BrandPresentationLocale } from './brand-presentation-api';
+import { useAdminI18n } from './i18n';
 
-const { t } = useAdminI18n();
-
-const props = defineProps<{
-  config: BrandPresentationConfig;
-  effective: BrandPresentationEffective;
-  disabled: boolean;
-}>();
-const emit = defineEmits<{ "update:config": [value: BrandPresentationConfig] }>();
-
-type NullableScalar = Exclude<keyof BrandPresentationConfig, "available_locales" | "content">;
-type LocalizedField = "tagline" | "announcement";
-
-function cloneCompleteConfig(source: BrandPresentationConfig): BrandPresentationConfig {
-  return {
-    ...source,
-    available_locales: source.available_locales === null ? null : [...source.available_locales],
-    content: source.content === null ? null : {
-      en: { tagline: source.content.en.tagline, announcement: source.content.en.announcement },
-      "zh-CN": { tagline: source.content["zh-CN"].tagline, announcement: source.content["zh-CN"].announcement },
-    },
-  };
+const props = defineProps<{ config: BrandPresentationConfig; defaults: BrandPresentationEffective; brandId: string; disabled: boolean }>();
+const emit = defineEmits<{ 'update:config': [value: BrandPresentationConfig]; 'session-invalid': []; 'uploading': [value: boolean] }>();
+const { t, locale, message, errorMessage, displayError } = useAdminI18n();
+const uploading = ref(false), uploadError = ref<ReturnType<typeof errorMessage> | null>(null);
+const advanced = ref(false), resetConfirm = ref(false);
+const preview = computed<BrandPresentationEffective>(() => ({
+  ...Object.fromEntries(Object.entries(props.defaults).map(([key, value]) => [key, props.config[key as keyof BrandPresentationConfig] ?? value])),
+  logo_text: props.config.logo_text ?? Array.from(props.config.display_name ?? props.defaults.display_name)[0],
+  content: Object.fromEntries((['en', 'zh-CN'] as const).map(language => [language, {
+    tagline: props.config.content?.[language].tagline ?? props.defaults.content[language].tagline,
+    announcement: props.config.content?.[language].announcement ?? props.defaults.content[language].announcement,
+  }])),
+}) as BrandPresentationEffective);
+const previewTokens = computed(() => buildBrandCssTokens({
+ primary:preview.value.primary_color, accent:preview.value.accent_color, success:preview.value.success_color,
+ warning:preview.value.warning_color, danger:preview.value.danger_color, fontFamily:preview.value.font_family,
+ fontScale:preview.value.font_scale, radius:preview.value.radius, shadow:preview.value.shadow,
+}));
+const locked = computed(() => props.disabled || uploading.value);
+const text = (event: Event) => (event.target as HTMLInputElement).value;
+function update(key: keyof BrandPresentationConfig, value: unknown) {
+  emit('update:config', { ...props.config, [key]: value });
 }
-
-function updateField(key: NullableScalar, value: BrandPresentationConfig[NullableScalar]): void {
-  const next = cloneCompleteConfig(props.config);
-  Object.assign(next, { [key]: value });
-  emit("update:config", next);
+function localized(language: BrandPresentationLocale, field: 'tagline' | 'announcement', value: string) {
+  const content = props.config.content ?? { en: { tagline: null, announcement: null }, 'zh-CN': { tagline: null, announcement: null } };
+  update('content', { ...content, [language]: { ...content[language], [field]: value } });
 }
-
-function setInherited(key: NullableScalar, event: Event): void {
-  const checked = (event.target as HTMLInputElement).checked;
-  const value = checked ? null : key === "logo_url" ? props.effective.logo_url ?? "" : key === "favicon_url" ? props.effective.favicon_url ?? "" : props.effective[key];
-  updateField(key, value);
+function languageEnabled(language: BrandPresentationLocale, event: Event) {
+  const values = preview.value.available_locales.filter(value => value !== language);
+  if ((event.target as HTMLInputElement).checked) values.push(language);
+  update('available_locales', values);
 }
-
-function textValue(event: Event): string {
-  return (event.target as HTMLInputElement).value;
+function defaultLanguage(event: Event) {
+  const language = text(event) as BrandPresentationLocale;
+  emit('update:config', { ...props.config, default_locale: language, available_locales: [...new Set([...preview.value.available_locales, language])] });
 }
-
-function setAvailableLocalesInherited(event: Event): void {
-  const checked = (event.target as HTMLInputElement).checked;
-  const locales = checked ? null : [...props.effective.available_locales];
-  const next = cloneCompleteConfig(props.config);
-  next.available_locales = locales;
-  emit("update:config", next);
+const themes = [
+  { name: 'forest', primary_color: '#20594c', accent_color: '#d9ef9b' },
+  { name: 'ocean', primary_color: '#274c75', accent_color: '#c9e4f5' },
+  { name: 'plum', primary_color: '#694477', accent_color: '#e8d5ef' },
+] as const;
+function chooseTheme(theme: typeof themes[number]) { emit('update:config', { ...props.config, primary_color: theme.primary_color, accent_color: theme.accent_color }); }
+function reset() {
+  emit('update:config', Object.fromEntries(Object.keys(props.config).map(key => [key, null])) as unknown as BrandPresentationConfig);
+  resetConfirm.value = false;
+  uploadError.value = null;
 }
-
-function setLocaleEnabled(locale: BrandPresentationLocale, event: Event): void {
-  const checked = (event.target as HTMLInputElement).checked;
-  const current = props.config.available_locales ?? [];
-  const locales = current.filter((item) => item !== locale);
-  if (checked) locales.push(locale);
-  const next = cloneCompleteConfig(props.config);
-  next.available_locales = locales;
-  emit("update:config", next);
-}
-
-function setContentInherited(event: Event): void {
-  const checked = (event.target as HTMLInputElement).checked;
-  const content = checked ? null : {
-    en: { tagline: props.effective.content.en.tagline, announcement: props.effective.content.en.announcement },
-    "zh-CN": { tagline: props.effective.content["zh-CN"].tagline, announcement: props.effective.content["zh-CN"].announcement },
-  };
-  const next = cloneCompleteConfig(props.config);
-  next.content = content;
-  emit("update:config", next);
-}
-
-function setLocalizedInherited(locale: BrandPresentationLocale, field: LocalizedField, event: Event): void {
-  if (!props.config.content) return;
-  const checked = (event.target as HTMLInputElement).checked;
-  setLocalizedValue(locale, field, checked ? null : props.effective.content[locale][field]);
-}
-
-function setLocalizedValue(locale: BrandPresentationLocale, field: LocalizedField, value: string | null): void {
-  if (!props.config.content) return;
-  const next = cloneCompleteConfig(props.config);
-  if (!next.content) return;
-  next.content[locale] = { ...next.content[locale], [field]: value };
-  emit("update:config", next);
-}
-
-function isLocalizedInherited(locale: BrandPresentationLocale, field: LocalizedField): boolean {
-  return props.config.content === null || props.config.content[locale][field] === null;
+async function upload(event: Event) {
+  const input = event.target as HTMLInputElement, file = input.files?.[0];
+  if (!file || locked.value) return;
+  uploadError.value = null;
+  if (!['image/png', 'image/jpeg'].includes(file.type) || file.size > 1024 * 1024) {
+    uploadError.value = message('presentation.uploadInvalid');
+    input.value = ''; return;
+  }
+  const brand = props.brandId;
+  uploading.value = true; emit('uploading', true);
+  try {
+    const response = await fetch('/api/v1/admin/brand-presentation/logo', { method: 'POST', credentials: 'same-origin', headers: { 'X-Brand-ID': brand, 'Content-Type': file.type }, body: file });
+    const { data } = await readAdminEnvelope(response);
+    if (!data || typeof data !== 'object' || !('url' in data) || typeof data.url !== 'string' || !/^\/api\/v1\/brand-assets\/[a-f0-9]{64}\.(png|jpg)$/.test(data.url)) throw new AdminApiError('Invalid upload receipt', 502, 'INVALID_RESPONSE');
+    if (brand === props.brandId) update('logo_url', data.url);
+  } catch (cause) {
+    if (brand === props.brandId) {
+      uploadError.value = errorMessage(cause);
+      if (cause instanceof AdminApiError && cause.status === 401) emit('session-invalid');
+    }
+  } finally { uploading.value = false; emit('uploading', false); input.value = ''; }
 }
 </script>
 
 <template>
-  <div class="presentation-fields" :aria-disabled="disabled">
-    <fieldset class="field-group">
-      <legend>{{ t("身份", "Identity") }}</legend>
-      <label class="field">
-        <span>{{ t("展示名称", "Display name") }}</span>
-        <input :value="config.display_name ?? ''" :placeholder="effective.display_name" :disabled="disabled || config.display_name === null" type="text" :aria-label="t('展示名称', 'Display name')" @input="updateField('display_name', textValue($event))">
-      </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.display_name === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('展示名称', 'Display name') })" @change="setInherited('display_name', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
-
-      <label class="field">
-        <span>{{ t("标志文字", "Logo text") }}</span>
-        <input :value="config.logo_text ?? ''" :placeholder="effective.logo_text" :disabled="disabled || config.logo_text === null" type="text" :aria-label="t('标志文字', 'Logo text')" @input="updateField('logo_text', textValue($event))">
-      </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.logo_text === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('标志文字', 'Logo text') })" @change="setInherited('logo_text', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
-
-      <label class="field">
-        <span>{{ t("Logo地址", "Logo URL") }}</span>
-        <input :value="config.logo_url ?? ''" :placeholder="effective.logo_url ?? t('未设置', 'Not set')" :disabled="disabled || config.logo_url === null" type="text" inputmode="url" autocomplete="off" :aria-label="t('Logo地址', 'Logo URL')" @input="updateField('logo_url', textValue($event))">
-      </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.logo_url === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('Logo地址', 'Logo URL') })" @change="setInherited('logo_url', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
-
-      <label class="field">
-        <span>{{ t("favicon地址", "Favicon URL") }}</span>
-        <input :value="config.favicon_url ?? ''" :placeholder="effective.favicon_url ?? t('未设置', 'Not set')" :disabled="disabled || config.favicon_url === null" type="text" inputmode="url" autocomplete="off" :aria-label="t('favicon地址', 'Favicon URL')" @input="updateField('favicon_url', textValue($event))">
-      </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.favicon_url === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('favicon地址', 'Favicon URL') })" @change="setInherited('favicon_url', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
-    </fieldset>
-
-    <fieldset class="field-group">
-      <legend>{{ t("颜色", "Colors") }}</legend>
-      <div v-for="item in [
-        { key: 'primary_color', label: t('主色', 'Primary color') },
-        { key: 'accent_color', label: t('辅助色', 'Accent color') },
-        { key: 'success_color', label: t('成功色', 'Success color') },
-        { key: 'warning_color', label: t('警告色', 'Warning color') },
-        { key: 'danger_color', label: t('错误色', 'Error color') },
-      ]" :key="item.key" class="field color-field">
-        <span>{{ item.label }}</span>
-        <input :value="(config[item.key as keyof BrandPresentationConfig] as string | null) ?? effective[item.key as keyof BrandPresentationEffective] as string" :disabled="disabled || config[item.key as keyof BrandPresentationConfig] === null" type="color" :aria-label="item.label" @input="updateField(item.key as NullableScalar, textValue($event))">
-        <span class="color-value">{{ config[item.key as keyof BrandPresentationConfig] ?? effective[item.key as keyof BrandPresentationEffective] }}</span>
-        <label class="inherit-toggle"><input type="checkbox" :checked="config[item.key as keyof BrandPresentationConfig] === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: item.label })" @change="setInherited(item.key as NullableScalar, $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
+  <div class="presentation-fields" :aria-disabled="locked">
+    <div class="presentation-basic">
+      <label class="field brand-name-field"><span>{{ t('presentation.name') }}</span><input type="text" :value="preview.display_name" :disabled="locked" @input="update('display_name', text($event))"></label>
+      <div class="logo-editor">
+        <div class="logo-preview" :style="{ background: preview.primary_color }"><img v-if="preview.logo_url" :src="preview.logo_url" :alt="t('presentation.logoPreview')"><span v-else>{{ preview.logo_text }}</span></div>
+        <div class="field"><span>{{ t('presentation.logo') }}</span><div class="logo-controls"><label class="button button-secondary logo-upload"><span>{{ t('presentation.uploadLogo') }}</span><input v-write-guard="uploading" type="file" accept="image/png,image/jpeg" :aria-label="t('presentation.uploadLogo')" :disabled="locked" @change="withGlobalLoading(upload, $event)"></label><button v-if="preview.logo_url" class="button button-secondary" type="button" :disabled="locked" @click="update('logo_url', null)">{{ t('presentation.removeLogo') }}</button></div><small>{{ t('presentation.uploadHint') }}</small></div>
       </div>
-    </fieldset>
-
-    <fieldset class="field-group">
-      <legend>{{ t("样式", "Style") }}</legend>
-      <label class="field">
-        <span>{{ t("字体预设", "Font preset") }}</span>
-        <select :value="config.font_family ?? ''" :disabled="disabled || config.font_family === null" :aria-label="t('字体预设', 'Font preset')" @change="updateField('font_family', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['font_family'])">
-          <option value="">{{ t("继承默认", "Inherit default") }}（{{ effective.font_family }}）</option><option value="system">{{ t("系统", "System") }}</option><option value="serif">{{ t("衬线", "Serif") }}</option><option value="mono">{{ t("等宽", "Monospace") }}</option>
-        </select>
-      </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.font_family === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('字体预设', 'Font preset') })" @change="setInherited('font_family', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
-
-      <label class="field">
-        <span>{{ t("字号预设", "Font size preset") }}</span>
-        <select :value="config.font_scale ?? ''" :disabled="disabled || config.font_scale === null" :aria-label="t('字号预设', 'Font size preset')" @change="updateField('font_scale', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['font_scale'])">
-          <option value="">{{ t("继承默认", "Inherit default") }}（{{ effective.font_scale }}）</option><option value="compact">{{ t("紧凑", "Compact") }}</option><option value="standard">{{ t("标准", "Standard") }}</option><option value="large">{{ t("大号", "Large") }}</option>
-        </select>
-      </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.font_scale === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('字号预设', 'Font size preset') })" @change="setInherited('font_scale', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
-
-      <label class="field">
-        <span>{{ t("圆角预设", "Corner radius preset") }}</span>
-        <select :value="config.radius ?? ''" :disabled="disabled || config.radius === null" :aria-label="t('圆角预设', 'Corner radius preset')" @change="updateField('radius', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['radius'])">
-          <option value="">{{ t("继承默认", "Inherit default") }}（{{ effective.radius }}）</option><option value="square">{{ t("直角", "Square") }}</option><option value="soft">{{ t("柔和", "Soft") }}</option><option value="round">{{ t("圆润", "Rounded") }}</option>
-        </select>
-      </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.radius === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('圆角预设', 'Corner radius preset') })" @change="setInherited('radius', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
-
-      <label class="field">
-        <span>{{ t("阴影预设", "Shadow preset") }}</span>
-        <select :value="config.shadow ?? ''" :disabled="disabled || config.shadow === null" :aria-label="t('阴影预设', 'Shadow preset')" @change="updateField('shadow', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['shadow'])">
-          <option value="">{{ t("继承默认", "Inherit default") }}（{{ effective.shadow }}）</option><option value="none">{{ t("无", "None") }}</option><option value="subtle">{{ t("轻微", "Subtle") }}</option><option value="lifted">{{ t("明显", "Prominent") }}</option>
-        </select>
-      </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.shadow === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('阴影预设', 'Shadow preset') })" @change="setInherited('shadow', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
-    </fieldset>
-
-    <fieldset class="field-group">
-      <legend>{{ t("语言", "Language") }}</legend>
-      <label class="field">
-        <span>{{ t("默认语言", "Default language") }}</span>
-        <select :value="config.default_locale ?? ''" :disabled="disabled || config.default_locale === null" :aria-label="t('默认语言', 'Default language')" @change="updateField('default_locale', ($event.target as HTMLSelectElement).value as BrandPresentationConfig['default_locale'])">
-          <option value="">{{ t("继承默认", "Inherit default") }}（{{ effective.default_locale }}）</option><option value="en">English</option><option value="zh-CN">简体中文</option>
-        </select>
-      </label>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.default_locale === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('默认语言', 'Default language') })" @change="setInherited('default_locale', $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
-
-      <div class="locale-field">
-        <span>{{ t("可用语言", "Available languages") }}</span>
-        <label class="inherit-toggle"><input type="checkbox" :checked="config.available_locales === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('可用语言', 'Available languages') })" @change="setAvailableLocalesInherited($event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
-        <div class="locale-options" :aria-disabled="disabled || config.available_locales === null">
-          <label class="choice"><input type="checkbox" :checked="(config.available_locales ?? effective.available_locales).includes('en')" :disabled="disabled || config.available_locales === null" :aria-label="t('启用{locale}', 'Enable {locale}', { locale: 'English' })" @change="setLocaleEnabled('en', $event)"><span>English</span></label>
-          <label class="choice"><input type="checkbox" :checked="(config.available_locales ?? effective.available_locales).includes('zh-CN')" :disabled="disabled || config.available_locales === null" :aria-label="t('启用{locale}', 'Enable {locale}', { locale: t('简体中文', 'Simplified Chinese') })" @change="setLocaleEnabled('zh-CN', $event)"><span>简体中文</span></label>
-        </div>
+      <p v-if="uploadError" role="alert" class="message error">{{ displayError(uploadError) }}</p>
+      <fieldset class="theme-options"><legend>{{ t('presentation.theme') }}</legend><button v-for="theme in themes" :key="theme.name" class="button button-secondary theme-choice" type="button" :disabled="locked" :aria-pressed="preview.primary_color === theme.primary_color && preview.accent_color === theme.accent_color" @click="chooseTheme(theme)"><i :style="{ background: theme.primary_color }" aria-hidden="true" />{{ t(`presentation.theme.${theme.name}`) }}</button></fieldset>
+      <div class="language-settings">
+        <label class="field"><span>{{ t('admin.copy.ba3233b5') }}</span><select :value="preview.default_locale" :disabled="locked" @change="defaultLanguage"><option value="en">{{ t('admin.copy.61f7e041') }}</option><option value="zh-CN">{{ t('admin.copy.07a5470d') }}</option></select></label>
+        <fieldset><legend>{{ t('admin.copy.bdd2c4f3') }}</legend><label v-for="language in (['en', 'zh-CN'] as const)" :key="language" class="choice"><input type="checkbox" :checked="preview.available_locales.includes(language)" :disabled="locked || preview.default_locale === language" @change="languageEnabled(language, $event)"><span>{{ language === 'en' ? t('admin.copy.61f7e041') : t('admin.copy.07a5470d') }}</span></label></fieldset>
       </div>
-    </fieldset>
-
-    <fieldset class="field-group copy-group">
-      <legend>{{ t("文案", "Copy") }}</legend>
-      <label class="inherit-toggle"><input type="checkbox" :checked="config.content === null" :disabled="disabled" :aria-label="t('{field}继承默认', '{field} inherit default', { field: t('文案', 'Copy') })" @change="setContentInherited($event)"><span>{{ t("文案继承默认", "Inherit default copy") }}</span></label>
-      <template v-for="locale in (['en', 'zh-CN'] as const)" :key="locale">
-        <template v-for="field in (['tagline', 'announcement'] as const)" :key="`${locale}-${field}`">
-          <label class="field localized-field">
-            <span>{{ t('{locale}{field}', '{locale} {field}', { locale: locale === 'en' ? t('英文', 'English') : t('中文', 'Chinese'), field: field === 'tagline' ? t('标语', 'tagline') : t('公告', 'announcement') }) }}</span>
-            <textarea :value="config.content?.[locale][field] ?? ''" :placeholder="effective.content[locale][field]" :disabled="disabled || config.content === null || config.content[locale][field] === null" :aria-label="t('{locale}{field}', '{locale} {field}', { locale: locale === 'en' ? t('英文', 'English') : t('中文', 'Chinese'), field: field === 'tagline' ? t('标语', 'tagline') : t('公告', 'announcement') })" rows="3" @input="setLocalizedValue(locale, field, textValue($event))" />
-            <label class="inherit-toggle"><input type="checkbox" :checked="isLocalizedInherited(locale, field)" :disabled="disabled || config.content === null" :aria-label="t('{label}继承默认', '{label} inherit default', { label: t('{locale}{field}', '{locale} {field}', { locale: locale === 'en' ? t('英文', 'English') : t('中文', 'Chinese'), field: field === 'tagline' ? t('标语', 'tagline') : t('公告', 'announcement') }) })" @change="setLocalizedInherited(locale, field, $event)"><span>{{ t("继承默认", "Inherit default") }}</span></label>
-          </label>
-        </template>
-      </template>
-    </fieldset>
+      <label v-for="language in (['en', 'zh-CN'] as const)" :key="language" class="field"><span>{{ t('admin.copy.8c339889', { locale: language === 'en' ? t('admin.copy.61f7e041') : t('admin.copy.07a5470d'), field: t('admin.copy.e6c15e4e') }) }}</span><textarea :value="preview.content[language].announcement" rows="3" :disabled="locked" @input="localized(language, 'announcement', text($event))" /></label>
+    </div>
+    <aside class="presentation-preview" :aria-label="t('presentation.preview')">
+      <span class="preview-caption">{{ t('presentation.preview') }}</span>
+      <div class="preview-card" :style="previewTokens">
+        <div class="preview-heading"><div class="logo-preview" :style="{ background: preview.primary_color }"><img v-if="preview.logo_url" :src="preview.logo_url" :alt="t('presentation.logoPreview')"><span v-else>{{ preview.logo_text }}</span></div><strong>{{ preview.display_name }}</strong></div>
+        <p>{{ preview.content[locale].tagline }}</p><p class="preview-announcement">{{ preview.content[locale].announcement }}</p><span class="preview-action">{{ t('presentation.previewAction') }}</span>
+      </div>
+    </aside>
+    <details class="advanced-settings" :open="advanced" @toggle="advanced = ($event.target as HTMLDetailsElement).open">
+      <summary>{{ t('presentation.advanced') }}</summary>
+      <div class="advanced-grid">
+        <label class="field"><span>{{ t('admin.copy.9b05d29b') }}</span><input :value="preview.logo_text" :disabled="locked" @input="update('logo_text', text($event))"></label>
+        <label class="field"><span>{{ t('admin.copy.ea7330c6') }}</span><input :value="preview.favicon_url ?? ''" :disabled="locked" @input="update('favicon_url', text($event) || null)"></label>
+        <label v-for="field in (['primary_color', 'accent_color', 'success_color', 'warning_color', 'danger_color'] as const)" :key="field" class="field"><span>{{ t(`presentation.${field}`) }}</span><input type="color" :value="preview[field]" :disabled="locked" @input="update(field, text($event))"></label>
+        <label class="field"><span>{{ t('admin.copy.5f4c4d51') }}</span><select :value="preview.font_family" :disabled="locked" @change="update('font_family', text($event))"><option value="system">{{ t('admin.copy.532e2e04') }}</option><option value="serif">{{ t('admin.copy.f6dcd251') }}</option><option value="mono">{{ t('admin.copy.7d2288e0') }}</option></select></label>
+        <label class="field"><span>{{ t('admin.copy.1d853666') }}</span><select :value="preview.font_scale" :disabled="locked" @change="update('font_scale', text($event))"><option value="compact">{{ t('admin.copy.766ee6d8') }}</option><option value="standard">{{ t('admin.copy.0d292885') }}</option></select></label>
+        <label class="field"><span>{{ t('admin.copy.db91572d') }}</span><select :value="preview.radius" :disabled="locked" @change="update('radius', text($event))"><option value="square">{{ t('admin.copy.b8447f2a') }}</option><option value="soft">{{ t('admin.copy.ff51352b') }}</option><option value="round">{{ t('admin.copy.3c75314c') }}</option></select></label>
+        <label class="field"><span>{{ t('admin.copy.ee99116b') }}</span><select :value="preview.shadow" :disabled="locked" @change="update('shadow', text($event))"><option value="none">{{ t('admin.copy.c2b41b33') }}</option><option value="subtle">{{ t('admin.copy.8f131d41') }}</option><option value="lifted">{{ t('admin.copy.92aee827') }}</option></select></label>
+        <label v-for="language in (['en', 'zh-CN'] as const)" :key="language" class="field"><span>{{ t('admin.copy.8c339889', { locale: language === 'en' ? t('admin.copy.61f7e041') : t('admin.copy.07a5470d'), field: t('admin.copy.5018d51b') }) }}</span><input :value="preview.content[language].tagline" :disabled="locked" @input="localized(language, 'tagline', text($event))"></label>
+      </div>
+    </details>
+    <div class="reset-settings"><button v-if="!resetConfirm" class="button button-secondary" type="button" :disabled="locked" @click="resetConfirm = true">{{ t('presentation.reset') }}</button><template v-else><p>{{ t('presentation.resetHint') }}</p><button class="button button-secondary" type="button" @click="resetConfirm = false">{{ t('admin.copy.96f851ea') }}</button><button class="button button-secondary" type="button" :disabled="locked" @click="reset">{{ t('presentation.confirmReset') }}</button></template><slot name="actions" /></div>
   </div>
 </template>
 
 <style scoped>
-.presentation-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
-  gap: 14px;
-  min-width: 0;
-}
-.field-group {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-content: start;
-  gap: 8px 12px;
-  min-width: 0;
-  margin: 0;
-  padding: 14px;
-  border: 1px solid #d8dee8;
-  border-radius: 10px;
-  background: #fff;
-}
-.field-group legend {
-  padding: 0 6px;
-  color: #344054;
-  font-weight: 650;
-}
-.field {
-  display: grid;
-  grid-column: 1 / -1;
-  gap: 5px;
-  min-width: 0;
-  height: auto;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: #344054;
-  font-size: 0.9rem;
-}
-.field input:not([type="checkbox"]), .field select, .field textarea {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: 9px 10px;
-  border: 1px solid #cbd2dc;
-  border-radius: 7px;
-  background: #fff;
-  color: #17202e;
-  font: inherit;
-}
-.field textarea { resize: vertical; }
-.field input::placeholder, .field textarea::placeholder { color: #737f90; opacity: 1; }
-.field input:disabled, .field select:disabled, .field textarea:disabled { background: #f2f4f7; color: #667085; }
-.inherit-toggle, .choice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  color: #475467;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-.inherit-toggle { grid-column: 1 / -1; justify-self: start; }
-.inherit-toggle input, .choice input {
-  width: 44px;
-  height: 44px;
-  margin: 0;
-  accent-color: #315f9d;
-  flex: 0 0 auto;
-}
-.color-field { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
-.color-field > span:first-child { grid-column: 1 / -1; }
-.color-field input[type="color"] { width: 48px; height: 44px; padding: 4px; border: 1px solid #cbd2dc; border-radius: 7px; }
-.color-value { color: #667085; font: 0.82rem ui-monospace, monospace; }
-.color-field .inherit-toggle { grid-column: 1 / -1; }
-.locale-field { grid-column: 1 / -1; display: grid; gap: 4px; color: #344054; font-size: 0.9rem; }
-.locale-options { display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.copy-group > .inherit-toggle { margin-bottom: 2px; }
-.localized-field { padding-top: 4px; }
-@media (max-width: 360px) {
-  .field-group { padding: 11px; }
-  .presentation-fields { grid-template-columns: minmax(0, 1fr); }
-}
+.presentation-fields { display:grid; grid-template-columns:minmax(0, 1.5fr) minmax(0, 1fr); gap:16px; min-width:0; }
+.presentation-basic, .advanced-grid { display:grid; gap:12px; min-width:0; }
+.field { align-self:start; align-content:start; height:auto; padding:0; border:0; border-radius:0; background:transparent; display:grid; gap:6px; min-width:0; color:var(--ink); }
+.field input, .field textarea, .field select { width:100%; min-width:0; box-sizing:border-box; font:inherit; }
+.brand-name-field { width:min(100%, 28ch); }
+.field textarea { resize:vertical; }
+.field small, .preview-caption { color:var(--muted); }
+.logo-editor { display:flex; align-items:center; gap:12px; min-width:0; }
+.logo-editor .field { flex:1; }
+.logo-controls { display:flex; flex-wrap:wrap; gap:8px; }
+.logo-upload { position:relative; overflow:hidden; }
+.logo-upload input[type=file] { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+.logo-upload:focus-within { outline:2px solid var(--primary); outline-offset:2px; }
+.logo-preview { display:grid; place-items:center; width:56px; height:56px; flex:0 0 56px; border-radius:var(--radius-sm); color:var(--surface); font-weight:700; overflow:hidden; }
+.logo-preview img { width:100%; height:100%; object-fit:contain; }
+fieldset { margin:0; padding:0; border:0; min-width:0; }
+.theme-options { display:flex; flex-wrap:wrap; gap:8px; }
+.theme-options legend { margin-bottom:6px; }
+.theme-choice { display:flex; align-items:center; gap:8px; }
+.theme-choice[aria-pressed="true"] { border-color:var(--primary); }
+.theme-choice i { width:18px; height:18px; border-radius:50%; }
+.language-settings { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.choice { display:inline-flex; align-items:center; gap:8px; min-height:44px; margin-right:12px; }
+.choice input { width:18px; height:18px; min-height:18px; margin:0; accent-color:var(--primary); }
+.presentation-preview { min-width:0; }
+.preview-card { font-family:var(--font-family); font-size:var(--font-scale); box-shadow:var(--shadow); padding:16px; margin-top:8px; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); overflow-wrap:anywhere; }
+.preview-heading { display:flex; align-items:center; gap:12px; }
+.preview-card p { white-space:pre-wrap; }
+.preview-action { display:inline-block; padding:8px 16px; background:var(--primary); color:var(--surface); border-radius:var(--radius-sm); }
+.advanced-settings, .reset-settings { grid-column:1/-1; }
+.advanced-settings summary { cursor:pointer; min-height:44px; box-sizing:border-box; padding:12px 0; color:var(--primary); }
+.advanced-grid { grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); }
+.reset-settings { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.reset-settings p { flex-basis:100%; }
+@media (max-width:700px) { .presentation-fields { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:360px) { .language-settings { grid-template-columns:minmax(0,1fr); } }
 </style>

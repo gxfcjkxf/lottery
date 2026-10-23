@@ -75,7 +75,8 @@ func TestAllocationProjectionZeroAndLargeExactAmounts(t *testing.T) {
 	if err := json.Unmarshal(r.Snapshot, &s); err != nil {
 		t.Fatal(err)
 	}
-	s.Agency.Config.RatioCap = "1"
+	s.Agency.Config.LossRatioCap = "1"
+	s.Agency.Config.TurnoverRatioCap = "1"
 	s.Path[0].Config.Ratio = "0.999999"
 	s.Path[1].Config.Ratio = "0"
 	r.Snapshot, _ = json.Marshal(s)

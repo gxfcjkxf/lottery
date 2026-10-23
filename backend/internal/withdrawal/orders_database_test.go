@@ -64,9 +64,9 @@ func TestWithdrawalConfiguredComplianceCannotBeBypassedByEligibilityChecker(t *t
 	allocation := []points.Allocation{{Source: "recharge", State: "available", Points: 25}}
 	f.fund(t, allocation)
 	ctx := context.Background()
-	actor := f.admin
+	actor := f.super
 	actor.Roles = append([]access.Role(nil), actor.Roles...)
-	actor.Roles = append(actor.Roles, access.Role{BrandID: orderTestBrand, Permissions: []access.Permission{{Resource: "compliance_policy", Action: "write", Scope: access.ScopeBrand}}})
+	actor.Roles = append(actor.Roles, access.Role{Permissions: []access.Permission{{Resource: "compliance_policy", Action: "write", Scope: access.ScopePlatform}}})
 	tx, err := f.db.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)

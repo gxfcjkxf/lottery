@@ -1,22 +1,51 @@
 <script setup lang="ts">
+import ConsoleTabs from "@lottery/shared/ConsoleTabs.vue"
+import AgentRatioField from "@lottery/shared/AgentRatioField.vue"
+import AccountCreateFields from "@lottery/shared/AccountCreateFields.vue"
+import DirectorySearch from "@lottery/shared/DirectorySearch.vue"
+import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
+import { vWriteGuard } from "@lottery/shared";
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName, associationLabel } from "@lottery/shared";
+
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import { vRefreshButton } from '@lottery/shared';
+import { vGlobalLoading } from "@lottery/shared";
+const displayDate = (value: string | null | undefined) => formatDisplayDateTime(value, displayLocale.value);
+import { formatDisplayDateTime } from "@lottery/shared";
+const displayLocale = useAdminI18n().locale;
+import { vInlineValidation } from '@lottery/shared'
+import { joinCodePermissions } from "./join-codes-api";
+import JoinCodeManagement from "./JoinCodeManagement.vue";
+import MemberActionsMenu from '@lottery/shared/MemberActionsMenu.vue'
+import TablePagination from '@lottery/shared/TablePagination.vue'
 import DetailModal from "@lottery/shared/DetailModal.vue"
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
-import { agentsPermissions, createAgentsApi, type AgentNode, type AgentPolicy, type CreateAgentBody, type NodeConfig, type PolicyConfig, type Revision, type SaveAgentPolicyBody, type UpdateAgentBody } from "./agents-api";
+import { agentsPermissions, createAgentsApi, type ModeChangeBody, type ModeChangeReceipt, type AgentDirectoryNode, type AgentNode, type AgentPolicy, type CreateAgentBody, type NodeConfig, type PolicyConfig, type Revision, type SaveAgentPolicyBody, type UpdateAgentBody } from "./agents-api";
 import { allowedChildModes, classifyAgentFailure, clearAllPendingAgentWrites, clearPendingAgentWrite, freezeAgentBody, getPendingAgentWrite, parentModeVerified, setPendingAgentWrite, type AgentWriteOperation, type AgentWriteBody, type PendingAgentWrite } from "./agents-state";
-import { useAdminI18n } from "./i18n";
+import { adminKey, useAdminI18n } from "./i18n";
+
+import { agentPercentageToRatio, agentRatioToPercentage, validAgentPercentage } from "./agent-percentage";
 
 type Mode = "loss" | "turnover";
-const props = defineProps<{ account: AdminAccount; brandId: string }>();
-const { t } = useAdminI18n();
+const props = withDefaults(defineProps<{ account: AdminAccount; brandId: string; mode?: 'directory' | 'settings' }>(), { mode: 'directory' });
+const viewMode = ref<'list' | 'hierarchy'>('list');
+const { t, display } = useAdminI18n();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createAgentsApi();
+const agentPassword = ref("");
 const permissionSet = computed(() => agentsPermissions(props.account, props.brandId));
 const canViewPolicy = computed(() => permissionSet.value.policyView);
 const canViewAgents = computed(() => permissionSet.value.view);
 const canWritePolicy = computed(() => permissionSet.value.policyWrite);
 const canWriteAgents = computed(() => permissionSet.value.write);
-const canView = computed(() => canViewPolicy.value || canViewAgents.value);
+const canView = computed(() => props.mode === 'settings' ? canViewPolicy.value : canViewAgents.value);
 const canWrite = computed(() => canWritePolicy.value || canWriteAgents.value);
 const permissionSignature = computed(() => JSON.stringify({
   accountId: props.account.id,
@@ -27,50 +56,78 @@ const permissionSignature = computed(() => JSON.stringify({
   platformPermissions: [...(props.account.platform_permissions ?? [])].sort(),
 }));
 const policy = ref<AgentPolicy | null>(null);
-const policyDraft = ref<PolicyConfig>({ enabled: false, max_depth: 5, ratio_cap: "0", mode: "loss", cycle: "monthly" });
-const policyReason = ref("");
+const policyDraft = ref<PolicyConfig>({ enabled: true, max_depth: 5, loss_ratio_cap: "0", turnover_ratio_cap: "0", mode: "loss", cycle: "monthly" });
+const policyLossPercentage = ref("0"), policyTurnoverPercentage = ref("0");
 const nodes = ref<AgentNode[]>([]);
+const directoryNodes = ref<AgentDirectoryNode[]>([]);
+const search = ref(''), query = ref('');
+const onlineFilter = ref<'' | 'true' | 'false'>(''), onlineQuery = ref<'' | 'true' | 'false'>('');
+async function searchAgents() { query.value = search.value.trim(); onlineQuery.value = onlineFilter.value; offset.value = 0; await loadTree(); }
+async function clearSearch() { search.value = ''; onlineFilter.value = ''; await searchAgents(); }
+const hasNext = computed(() => BigInt(offset.value) + BigInt(nodes.value.length) < BigInt(total.value));
 const total = ref("0");
 const offset = ref(0);
 const parentId = ref<string | null>(null);
 const parentNode = ref<AgentNode | null>(null);
 const selected = ref<AgentNode | null>(null);
+const detailOpen = ref(false);
+const modeLine = ref<AgentNode[]>([]);
+const modeRatios = ref<Record<string,string>>({});
+const modeScopeLoading = ref(false);
+let modeScopeGeneration = 0;
 const selectedParentMode = ref<Mode | null>(null);
 const selectedParentReady = ref(false);
-const form = ref({ member_id: "", ratio: "0", mode: "" as "" | Mode, status: "active" as "active" | "disabled", can_create_children: false, reason: "" });
+const form = ref({ agent_account_id: "", loss_ratio: "", turnover_ratio: "", mode: "" as "" | Mode, status: "active" as "active" | "disabled", can_create_children: false });
+const agentUsername = ref('');
 const history = ref<Revision[]>([]);
-const policyHistory = ref<Revision[]>([]);
-const policyHistoryTotal = ref("0");
-const policyHistoryOffset = ref(0);
-const policyHistoryShown = ref(false);
 const showNodeHistory = ref(false);
 const loading = ref(false);
 const writing = ref(false);
-const error = ref("");
+const error = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const notice = ref("");
-const review = ref(false);
+const createOpen = ref(false), policyEditorOpen = ref(false);
+function editPolicy() { if (!policy.value || !canWritePolicy.value) return; policyDraft.value = { ...policy.value.config }; policyLossPercentage.value = agentRatioToPercentage(policy.value.config.loss_ratio_cap); policyTurnoverPercentage.value = agentRatioToPercentage(policy.value.config.turnover_ratio_cap); policyEditorOpen.value = true; }
 const pending = ref<PendingAgentWrite | null>(null);
 let generation = 0;
 let writeGeneration = 0;
 let disposed = false;
 let activeAccountId = props.account.id;
 const pageSize = 20;
-const ratioValid = (s: string) => /^(?:0|1|0\.(?=.{1,6}$)0*[1-9](?:[0-9]*[1-9])?)$/.test(s);
-const policyRatioValid = computed(() => ratioValid(policyDraft.value.ratio_cap));
-const nodeRatioValid = computed(() => ratioValid(form.value.ratio));
+const policyRatioValid = computed(() => validAgentPercentage(policyLossPercentage.value) && validAgentPercentage(policyTurnoverPercentage.value));
+const nodeRatioValid = computed(() => Boolean(draftMode.value) && validAgentPercentage(draftRatio.value));
 const nodeParentMode = computed<Mode | null | undefined>(() => selected.value ? (selected.value.parent_id ? (selectedParentReady.value ? selectedParentMode.value ?? undefined : undefined) : policy.value?.config.mode) : (parentNode.value ? parentNode.value.effective_mode : parentId.value ? undefined : null));
-const allowedModes = computed(() => selected.value?.parent_id === null || (!selected.value && !parentId.value) ? ["loss", "turnover"] as Mode[] : allowedChildModes(nodeParentMode.value));
+const isFirstLevel = computed(() => selected.value ? selected.value.parent_id === null : !parentId.value);
+const draftMode = computed(() => form.value.mode || (isFirstLevel.value ? null : nodeParentMode.value));
+const draftRatio = computed(() => draftMode.value === 'loss' ? form.value.loss_ratio : draftMode.value === 'turnover' ? form.value.turnover_ratio : '');
+const createRatioLimit = computed(() => parentId.value ? (parentNode.value ? agentRatioToPercentage(parentNode.value.config.ratio) : null) : (policy.value ? agentRatioToPercentage(draftMode.value === 'loss' ? policy.value.config.loss_ratio_cap : policy.value.config.turnover_ratio_cap) : null));
+const createRatioExceeded = computed(() => validAgentPercentage(draftRatio.value) && createRatioLimit.value !== null && Number(draftRatio.value) > Number(createRatioLimit.value));
+const allowedModes = computed(() => selected.value?.parent_id === null || (!selected.value && !parentId.value) ? ['loss', 'turnover'] as Mode[] : allowedChildModes(nodeParentMode.value));
+const changingMode = computed(() => Boolean(selected.value && !selected.value.parent_id && form.value.mode && form.value.mode !== selected.value.effective_mode));
+const modeLineReady = computed(() => !modeScopeLoading.value && modeLine.value.length > 0 && modeLine.value.every(node => node.id === selected.value?.id || validAgentPercentage(modeRatios.value[node.id] ?? '')));
+watch(changingMode, async change => {
+  const ticket = ++modeScopeGeneration;
+  modeLine.value = []; modeRatios.value = {}; modeScopeLoading.value = false;
+  if (!change || !selected.value) return;
+  const id = selected.value.id, brand = props.brandId, accountId = props.account.id;
+  modeScopeLoading.value = true;
+  try {
+    const scope = await api.modeScope(brand,id);
+    if (ticket !== modeScopeGeneration || brand !== props.brandId || accountId !== props.account.id || selected.value?.id !== id) return;
+    if (scope.policy_version !== policy.value?.version || scope.items.some(node => node.pending_change) || scope.items.find(node => node.id === id)?.version !== selected.value.version) throw new AdminApiError('Mode scope changed',409,'AGENT_VERSION_CONFLICT');
+    modeLine.value = scope.items;
+  } catch(cause) { if(ticket === modeScopeGeneration) handleError(cause); }
+  finally { if(ticket === modeScopeGeneration) modeScopeLoading.value = false; }
+});
 const sameScope = (g: number, brand: string, account: string) => g === generation && brand === props.brandId && account === props.account.id;
 function currentWrite(ticket: number, accountId: string, brandId: string, permissions: string, operation: AgentWriteOperation) {
   return !disposed && ticket === writeGeneration && props.account.id === accountId && props.brandId === brandId &&
     permissionSignature.value === permissions && (operation === "policy" ? canWritePolicy.value : canWriteAgents.value);
 }
 
-function restoreIntent() { pending.value = getPendingAgentWrite({ accountId: props.account.id, brandId: props.brandId }); review.value = false; }
+function restoreIntent() { pending.value = getPendingAgentWrite({ accountId: props.account.id, brandId: props.brandId }); }
 function handleError(cause: unknown) {
   if (cause instanceof AdminApiError && cause.status === 401) { clearAllPendingAgentWrites(); pending.value = null; emit("session-invalid"); }
-  error.value = cause instanceof Error ? cause.message : "请求失败";
-  if (cause instanceof AdminApiError && cause.code) error.value = cause.code + ": " + error.value;
+  error.value = cause instanceof Error ? publicErrorMessage(cause) : "请求失败";
 }
 async function loadPolicy(g = ++generation, brand = props.brandId, account = props.account.id) {
   if (!canViewPolicy.value || !brand) { policy.value = null; return; }
@@ -78,21 +135,21 @@ async function loadPolicy(g = ++generation, brand = props.brandId, account = pro
     const result = await api.policy(brand);
     if (!sameScope(g, brand, account)) return;
     if (result.brand_id !== brand) throw new Error("策略响应与当前品牌不匹配。");
-    policy.value = result; policyDraft.value = { ...result.config }; policyReason.value = "";
+    policy.value = result; policyDraft.value = { ...result.config }; policyLossPercentage.value = agentRatioToPercentage(result.config.loss_ratio_cap); policyTurnoverPercentage.value = agentRatioToPercentage(result.config.turnover_ratio_cap);
   } catch (cause) { if (sameScope(g, brand, account)) handleError(cause); }
 }
 async function loadTree(g = ++generation, brand = props.brandId, account = props.account.id) {
   if (!canViewAgents.value || !brand) { nodes.value = []; return; }
-  loading.value = true; error.value = ""; nodes.value = []; total.value = "0"; parentNode.value = null;
+  loading.value = true; error.value = ""; nodes.value = []; directoryNodes.value = []; total.value = "0"; parentNode.value = null;
   try {
-    const [result, parent] = await Promise.all([api.tree(brand, parentId.value, pageSize, offset.value), parentId.value ? api.node(brand, parentId.value) : Promise.resolve(null)]);
+    const [result, parent] = await Promise.all([viewMode.value === 'list' ? api.list(brand, pageSize, offset.value, { query: query.value, online: onlineQuery.value }) : api.tree(brand, parentId.value, pageSize, offset.value), parentId.value ? api.node(brand, parentId.value) : Promise.resolve(null)]);
     if (!sameScope(g, brand, account)) return;
-    if (result.brand_id !== brand || (result.parent_id ?? null) !== parentId.value) throw new Error("代理目录响应与当前查询范围不匹配。");
-    nodes.value = result.items; total.value = result.total_count; parentNode.value = parent; restoreIntent();
+    if (result.brand_id !== brand || (viewMode.value === 'hierarchy' && (!('parent_id' in result) || result.parent_id !== parentId.value))) throw new Error("代理目录响应与当前查询范围不匹配。");
+    nodes.value = result.items; directoryNodes.value = !('parent_id' in result) ? result.items : []; total.value = result.total_count; parentNode.value = parent; restoreIntent();
   } catch (cause) { if (sameScope(g, brand, account)) handleError(cause); }
   finally { if (sameScope(g, brand, account)) loading.value = false; }
 }
-async function loadAll() { const g = ++generation; const b = props.brandId; const a = props.account.id; await Promise.all([loadPolicy(g, b, a), loadTree(g, b, a)]); }
+async function loadAll() { const g = ++generation; const b = props.brandId; const a = props.account.id; await Promise.all([loadPolicy(g, b, a), ...(props.mode === 'settings' ? [] : [loadTree(g, b, a)])]); }
 async function selectNode(n: AgentNode) {
   const b = props.brandId, a = props.account.id, g = ++generation;
   error.value = "";
@@ -100,8 +157,8 @@ async function selectNode(n: AgentNode) {
     const detail = await api.node(b, n.id);
     if (!sameScope(g, b, a)) return;
     if (detail.id !== n.id || detail.brand_id !== b) throw new Error("代理详情响应与当前代理或品牌不匹配。");
-    selected.value = detail;
-    form.value = { member_id: detail.member_id, ratio: detail.config.ratio, mode: detail.config.mode ?? "", status: detail.config.status, can_create_children: detail.config.can_create_children, reason: "" };
+    selected.value = detail; detailOpen.value = true;
+    form.value = { agent_account_id: detail.agent_account_id, loss_ratio: detail.effective_mode === "loss" ? agentRatioToPercentage(detail.config.ratio) : "", turnover_ratio: detail.effective_mode === "turnover" ? agentRatioToPercentage(detail.config.ratio) : "", mode: detail.parent_id ? detail.config.mode ?? "" : detail.effective_mode, status: detail.config.status, can_create_children: detail.config.can_create_children };
     selectedParentReady.value = !detail.parent_id; selectedParentMode.value = null;
     history.value = []; showNodeHistory.value = false; restoreIntent();
     if (detail.parent_id) {
@@ -118,9 +175,14 @@ async function selectNode(n: AgentNode) {
     }
   } catch (cause) { if (sameScope(g, b, a)) handleError(cause); }
 }
-function closeDetail() { selected.value = null; selectedParentMode.value = null; selectedParentReady.value = false; form.value = { member_id: "", ratio: "0", mode: "", status: "active", can_create_children: false, reason: "" }; restoreIntent(); }
-function startCreate() { closeDetail(); }
-async function openChildren(n: AgentNode) { parentId.value = n.id; offset.value = 0; closeDetail(); await loadTree(); }
+function closeDetail() { modeScopeGeneration++; modeScopeLoading.value = false; modeLine.value = []; modeRatios.value = {}; createOpen.value = false; detailOpen.value = false; selected.value = null; selectedParentMode.value = null; selectedParentReady.value = false; form.value = { agent_account_id: "", loss_ratio: "", turnover_ratio: "", mode: "", status: "active", can_create_children: false }; restoreIntent(); }
+function startCreate() { if (writing.value || pending.value) return; closeDetail(); agentUsername.value=""; agentPassword.value=""; error.value = ""; createOpen.value = true; }
+async function switchView(mode: 'list' | 'hierarchy') {
+  viewMode.value = mode; parentId.value = null; parentNode.value = null; offset.value = 0;
+  search.value = ''; query.value = ''; onlineFilter.value = ''; onlineQuery.value = '';
+  closeDetail(); await loadAll();
+}
+async function openChildren(n: AgentNode) { viewMode.value = 'hierarchy'; parentId.value = n.id; offset.value = 0; closeDetail(); await loadTree(); }
 async function goBack() {
   if (!parentNode.value) { parentId.value = null; offset.value = 0; }
   else { parentId.value = parentNode.value.parent_id; offset.value = 0; }
@@ -132,19 +194,13 @@ async function loadNodeHistory() {
   try { const r = await api.nodeHistory(b, id, pageSize, 0); if (!sameScope(g, b, a) || selected.value?.id !== id) return; if (r.brand_id !== b || r.agent_id !== id) throw new Error("代理历史响应范围不匹配。"); history.value = r.items; showNodeHistory.value = true; }
   catch (cause) { if (sameScope(g, b, a)) handleError(cause); }
 }
-async function loadPolicyHistory() {
-  const b = props.brandId, a = props.account.id, g = ++generation;
-  if (!canViewPolicy.value) return;
-  try { const r = await api.policyHistory(b, pageSize, policyHistoryOffset.value); if (!sameScope(g, b, a)) return; if (r.brand_id !== b || r.agent_id !== null) throw new Error("政策历史响应范围不匹配。"); policyHistory.value = r.items; policyHistoryTotal.value = r.total_count; policyHistoryShown.value = true; }
-  catch (cause) { if (sameScope(g, b, a)) handleError(cause); }
-}
-function freeze(operation: AgentWriteOperation, resourceId: string | null, body: AgentWriteBody) {
+function freeze(operation: AgentWriteOperation, resourceId: string | null, body: AgentWriteBody): boolean {
   const scope = { accountId: props.account.id, brandId: props.brandId };
   const old = getPendingAgentWrite(scope);
   if (old && (old.operation !== operation || old.resourceId !== resourceId || JSON.stringify(old.body) !== JSON.stringify(body))) {
     pending.value = old;
     error.value = "此账号和品牌已有未确认结果的冻结请求；请先核对并按原键重试。";
-    return;
+    return false;
   }
   const intent: PendingAgentWrite = old ?? {
     ...scope,
@@ -155,35 +211,45 @@ function freeze(operation: AgentWriteOperation, resourceId: string | null, body:
   };
   setPendingAgentWrite(scope, intent);
   pending.value = getPendingAgentWrite(scope);
-  review.value = true;
-  notice.value = "请核对冻结请求内容后确认提交。";
+  return true;
 }
-function preparePolicy() {
-  if (!policy.value || !canWritePolicy.value || !policyRatioValid.value || !policyReason.value.trim() || !Number.isInteger(policyDraft.value.max_depth) || policyDraft.value.max_depth < 1 || policyDraft.value.max_depth > 32) return;
-  const body: SaveAgentPolicyBody = { version: policy.value.version, config: { ...policyDraft.value }, reason: policyReason.value.trim() };
-  freeze("policy", null, body);
+async function preparePolicy() {
+  if (writing.value || pending.value) return;
+  if (!policy.value || !canWritePolicy.value || !policyRatioValid.value || !Number.isInteger(policyDraft.value.max_depth) || policyDraft.value.max_depth < 1 || policyDraft.value.max_depth > 32) return;
+  const body: SaveAgentPolicyBody = { version: policy.value.version, config: { ...policyDraft.value, enabled: true, loss_ratio_cap: agentPercentageToRatio(policyLossPercentage.value), turnover_ratio_cap: agentPercentageToRatio(policyTurnoverPercentage.value) } };
+  if (freeze("policy", null, body)) await confirmWrite();
 }
-function prepareNode() {
-  if (!policy.value || !canWriteAgents.value || !nodeRatioValid.value || !form.value.reason.trim()) return;
+async function prepareNode() {
+  if (writing.value || pending.value) return;
+  if (!policy.value || !canWriteAgents.value || (!selected.value && createRatioExceeded.value) || !nodeRatioValid.value || (isFirstLevel.value && !form.value.mode) || selected.value?.pending_change) return;
+  if (changingMode.value && selected.value && form.value.mode) {
+    if (!modeLineReady.value) return;
+    const body: ModeChangeBody = { policy_version: policy.value.version, mode: form.value.mode,
+      items: modeLine.value.map(node => ({ agent_id: node.id, version: node.version, ratio: agentPercentageToRatio(node.id === selected.value!.id ? draftRatio.value : modeRatios.value[node.id]!) })) };
+    if (freeze('mode-change', selected.value.id, body)) await confirmWrite();
+    return;
+  }
   const parentIdForWrite = selected.value?.parent_id ?? parentNode.value?.id ?? null;
   if (!parentModeVerified(parentIdForWrite, selected.value ? selectedParentReady.value : Boolean(parentNode.value) || !parentId.value)) { error.value = "父级生效模式尚未验证，当前不能创建或提交此代理变更。请重新读取父级或代理详情。"; return; }
   if (form.value.mode && !allowedModes.value.includes(form.value.mode)) { error.value = "代理模式必须沿用父级生效模式或与其保持一致；请先读取父级模式。"; return; }
-  const config: NodeConfig = { ratio: form.value.ratio, mode: form.value.mode || null, status: form.value.status, can_create_children: form.value.can_create_children };
+  const config: NodeConfig = { ratio: agentPercentageToRatio(draftRatio.value), mode: form.value.mode || null, status: form.value.status, can_create_children: form.value.can_create_children };
   if (selected.value) {
     const n = selected.value;
     const pVersion = n.parent_id ? (parentNode.value?.id === n.parent_id ? parentNode.value.version : n.parent_version) : null;
-    const body: UpdateAgentBody = { version: n.version, policy_version: policy.value.version, parent_version: pVersion, config, reason: form.value.reason.trim() };
-    freeze("update", n.id, body);
+    const body: UpdateAgentBody = { version: n.version, policy_version: policy.value.version, parent_version: pVersion, config };
+    if (freeze("update", n.id, body)) await confirmWrite();
   } else {
     if (parentId.value && !parentNode.value) { error.value = "父级代理尚未读取，无法确认其版本。"; return; }
-    const memberId = form.value.member_id.trim();
-    const body: CreateAgentBody = { policy_version: policy.value.version, member_id: memberId, parent_id: parentNode.value?.id ?? null, parent_version: parentNode.value?.version ?? null, config, reason: form.value.reason.trim() };
-    freeze("create", null, body);
+    const username = agentUsername.value.trim().toLowerCase();
+    if (!/^[a-z][a-z0-9_]{2,31}$/.test(username) || agentPassword.value.length < 6 || agentPassword.value.length > 30) { error.value = publicErrorMessage({status:400}); return; }
+    const body: CreateAgentBody = { policy_version: policy.value.version, username, password: agentPassword.value, parent_id: parentNode.value?.id ?? null, parent_version: parentNode.value?.version ?? null, config };
+    error.value = "";
+    if (freeze("create", null, body)) await confirmWrite();
   }
 }
 async function confirmWrite() {
   const i = pending.value;
-  if (!i || writing.value || !review.value || i.accountId !== props.account.id || i.brandId !== props.brandId || (i.operation === "policy" ? !canWritePolicy.value : !canWriteAgents.value)) return;
+  if (!i || writing.value || i.accountId !== props.account.id || i.brandId !== props.brandId || (i.operation === "policy" ? !canWritePolicy.value : !canWriteAgents.value)) return;
   const ticket = ++writeGeneration;
   const accountId = i.accountId;
   const brandId = i.brandId;
@@ -192,18 +258,22 @@ async function confirmWrite() {
   const sharedScope = { accountId, brandId };
   writing.value = true; error.value = ""; notice.value = "";
   try {
-    let receipt: AgentPolicy | AgentNode;
+    let receipt: AgentPolicy | AgentNode | ModeChangeReceipt;
     if (i.operation === "policy") receipt = await api.savePolicy(i.brandId, i.body as SaveAgentPolicyBody, i.key);
     else if (i.operation === "create") receipt = await api.createNode(i.brandId, i.body as CreateAgentBody, i.key);
+    else if (i.operation === 'mode-change') receipt = await api.scheduleMode(i.brandId,i.resourceId!,i.body as ModeChangeBody,i.key);
     else receipt = await api.updateNode(i.brandId, i.resourceId!, i.body as UpdateAgentBody, i.key);
     // A validated SDK receipt acknowledges only this frozen key; it cannot clear a replacement intent.
     clearPendingAgentWrite(sharedScope, i.key);
     if (!isCurrentWrite()) return;
     pending.value = getPendingAgentWrite(sharedScope);
-    notice.value = "已收到与冻结请求匹配的成功回执；正在独立读取当前状态。";
-    if (i.operation === "policy") await loadPolicy();
+    notice.value = i.operation === "create" ? "代理账号已创建。" : "已收到与冻结请求匹配的成功回执；正在独立读取当前状态。";
+    if (i.operation === "create") { agentPassword.value = ""; createOpen.value = false; }
+    if (i.operation === "policy") { policyEditorOpen.value = false; await loadPolicy(); }
+    else if (i.operation === "create") await loadTree();
+    else if (i.operation === 'mode-change') { const root = await api.node(i.brandId,i.resourceId!); await selectNode(root); if (!isCurrentWrite()) return; await loadTree(); }
     else { await selectNode(receipt as AgentNode); if (!isCurrentWrite()) return; await loadTree(); }
-    if (isCurrentWrite()) notice.value = "写入已确认；页面显示的是随后读取的当前状态。";
+    if (isCurrentWrite()) notice.value = i.operation === "create" ? "代理账号已创建。" : "写入已确认；页面显示的是随后读取的当前状态。";
   } catch (cause) {
     if (!isCurrentWrite()) return;
     const status = cause instanceof AdminApiError ? cause.status : undefined;
@@ -214,99 +284,128 @@ async function confirmWrite() {
     }
     if (classifyAgentFailure(status) === "uncertain") {
       pending.value = getPendingAgentWrite(sharedScope);
-      review.value = true;
-      notice.value = "写入结果未知。冻结请求和幂等键已保留，只能按原请求重试。";
-      error.value = cause instanceof Error ? cause.message : "请求结果未知。";
+      notice.value = i.operation === "create" ? "暂未确认创建结果，请重试。系统会避免重复创建。" : "写入结果未知。冻结请求和幂等键已保留，只能按原请求重试。";
+      error.value = cause instanceof Error ? publicErrorMessage(cause) : "请求结果未知。";
     } else {
       clearPendingAgentWrite(sharedScope, i.key);
       pending.value = getPendingAgentWrite(sharedScope);
-      error.value = cause instanceof Error ? cause.message : "服务器拒绝了请求。";
-      if (cause instanceof AdminApiError && cause.code) error.value = cause.code + ": " + error.value;
+      error.value = cause instanceof Error ? publicErrorMessage(cause) : "服务器拒绝了请求。";
     }
   } finally { if (isCurrentWrite()) writing.value = false; }
 }
-function retryFrozen() { review.value = true; void confirmWrite(); }
-function configText(c: PolicyConfig | NodeConfig) { return JSON.stringify(c, null, 2); }
-function modeLabel(value: string | null | undefined) { return value === "loss" ? t("输赢", "Loss") : value === "turnover" ? t("流水", "Turnover") : t("继承", "Inherit"); }
-function pendingSummary(i: PendingAgentWrite) {
-  if (i.operation === "policy") return t("保存代理政策 · 品牌政策", "Save agent policy · brand policy");
-  if (i.operation === "create") return t("创建代理 · 目标父级", "Create agent · target parent") + " " + ((i.body as CreateAgentBody).parent_id ?? t("根节点", "Root")) + " · " + t("会员", "Member") + " " + (i.body as CreateAgentBody).member_id;
-  return t("保存代理变更 · 代理", "Save agent change · agent") + " " + i.resourceId;
-}
-function localizedAgentMessage(value: string): string {
-  const translations: Record<string, [string, string]> = {
-    "此账号和品牌已有未确认结果的冻结请求；请先核对并按原键重试。": ["此账号和品牌已有未确认结果的冻结请求；请先核对并按原键重试。", "An unresolved frozen request already exists for this account and brand. Review it and retry with its original key."],
-    "请核对冻结请求内容后确认提交。": ["请核对冻结请求内容后确认提交。", "Review the frozen request content before confirming submission."],
-    "父级生效模式尚未验证，当前不能创建或提交此代理变更。请重新读取父级或代理详情。": ["父级生效模式尚未验证，当前不能创建或提交此代理变更。请重新读取父级或代理详情。", "The parent's effective mode has not been verified. Reload the parent or agent details before creating or submitting this change."],
-    "代理模式必须沿用父级生效模式或与其保持一致；请先读取父级模式。": ["代理模式必须沿用父级生效模式或与其保持一致；请先读取父级模式。", "The agent mode must inherit or match the parent's effective mode. Load the parent mode first."],
-    "父级代理尚未读取，无法确认其版本。": ["父级代理尚未读取，无法确认其版本。", "The parent agent has not been loaded, so its version cannot be confirmed."],
-    "已收到与冻结请求匹配的成功回执；正在独立读取当前状态。": ["已收到与冻结请求匹配的成功回执；正在独立读取当前状态。", "The receipt matches the frozen request. Reading current state independently."],
-    "写入已确认；页面显示的是随后读取的当前状态。": ["写入已确认；页面显示的是随后读取的当前状态。", "The write was confirmed; the page shows the current state read afterward."],
-    "写入结果未知。冻结请求和幂等键已保留，只能按原请求重试。": ["写入结果未知。冻结请求和幂等键已保留，只能按原请求重试。", "The write outcome is unknown. The frozen request and idempotency key are retained; retry only the original request."],
+async function retryFrozen() { await confirmWrite(); }
+function configText(c: PolicyConfig | NodeConfig) { return c; }
+function modeLabel(value: string | null | undefined) { return value === "loss" ? t('admin.copy.a13e79ef') : value === "turnover" ? t('admin.copy.89fd862d') : t('admin.copy.b8bd227c'); }
+function localizedAgentMessage(value: string | import("@lottery/shared").LocalizedMessage): string {
+  if (typeof value !== "string") return displayPublicError(value);
+  const translations: Record<string, string> = {
+    "代理账号已创建。": "admin.agents.created",
+    "暂未确认创建结果，请重试。系统会避免重复创建。": "admin.agents.createUnknown",
+    "此账号和品牌已有未确认结果的冻结请求；请先核对并按原键重试。": 'admin.copy.48a6af2c',
+    "请核对冻结请求内容后确认提交。": 'admin.copy.0784fa6e',
+    "父级生效模式尚未验证，当前不能创建或提交此代理变更。请重新读取父级或代理详情。": 'admin.copy.1e15f14f',
+    "代理模式必须沿用父级生效模式或与其保持一致；请先读取父级模式。": 'admin.copy.a596a9b7',
+    "父级代理尚未读取，无法确认其版本。": 'admin.copy.421b0a6c',
+    "已收到与冻结请求匹配的成功回执；正在独立读取当前状态。": 'admin.copy.6a656cc2',
+    "写入已确认；页面显示的是随后读取的当前状态。": 'admin.copy.06415e47',
+    "写入结果未知。冻结请求和幂等键已保留，只能按原请求重试。": 'admin.copy.bad148c4',
   };
   const pair = translations[value];
-  return pair ? t(pair[0], pair[1]) : value;
+  return pair ? t(adminKey(pair)) : value;
 }
-function changePage(d: number) { offset.value = Math.max(0, offset.value + d * pageSize); void loadTree(); }
+async function changePage(d: number) { offset.value = Math.max(0, offset.value + d * pageSize); await loadTree(); }
 onMounted(() => { restoreIntent(); void loadAll(); });
-onBeforeUnmount(() => { disposed = true; generation++; writeGeneration++; });
-watch(() => [props.brandId, props.account.id, permissionSignature.value] as const, () => {
+onBeforeUnmount(() => { disposed = true; generation++; writeGeneration++; modeScopeGeneration++; });
+watch(() => [props.brandId, props.account.id, permissionSignature.value, props.mode] as const, () => {
   if (activeAccountId !== props.account.id) {
     clearAllPendingAgentWrites();
     activeAccountId = props.account.id;
   }
-  generation++; writeGeneration++; policy.value = null; nodes.value = []; selected.value = null; parentId.value = null; parentNode.value = null; offset.value = 0; error.value = ""; notice.value = ""; loading.value = false; writing.value = false; history.value = []; policyHistory.value = []; policyHistoryShown.value = false; policyHistoryOffset.value = 0; restoreIntent(); if (canView.value) void loadAll();
+  modeScopeGeneration++; modeScopeLoading.value = false; modeLine.value = []; modeRatios.value = {};
+  viewMode.value = 'list';
+  search.value = ''; query.value = ''; onlineFilter.value = ''; onlineQuery.value = ''; directoryNodes.value = [];
+  generation++; writeGeneration++; policy.value = null; policyEditorOpen.value = false; nodes.value = []; createOpen.value = false; selected.value = null; detailOpen.value = false; parentId.value = null; parentNode.value = null; offset.value = 0; error.value = ""; notice.value = ""; loading.value = false; writing.value = false; history.value = []; restoreIntent(); if (canView.value) void loadAll();
 }, { flush: "sync" });
 </script>
 
 <template>
   <section class="agent-management">
-    <header class="am-head"><div><p class="am-eyebrow">AGENT CONFIGURATION</p><h2>{{ t("代理管理", "Agent management") }}</h2><p>{{ t("配置代理关系和比例。此页面不计算或发放佣金，也不提供推荐码加入。", "Configure agent relationships and ratios. This page does not calculate or pay commissions and does not support referral-code enrollment.") }}</p></div><span class="am-brand">{{ t("品牌", "Brand") }} · {{ brandId || t("未选择", "None selected") }}</span></header>
-    <p class="am-note">{{ t("比例按原始分数显示，例如 0.1 表示 10%。配置只定义上限、模式和层级关系；不代表收益、佣金计算或派发。", "Ratios are shown as decimals: 0.1 means 10%. Configuration defines caps, mode, and hierarchy only; it does not represent earnings, commission calculation, or payout.") }}</p>
+    <header v-if="mode !== 'settings' || !policy" class="am-head"><div><h2>{{ t(mode === 'settings' ? 'admin.agents.rules' : 'admin.nav.agentList') }}</h2></div></header>
     <div v-if="error" class="am-message is-error" role="alert">{{ localizedAgentMessage(error) }}</div><p v-if="notice" class="am-message is-ok" role="status">{{ localizedAgentMessage(notice) }}</p>
-    <p v-if="!canView" class="am-note">{{ t("当前账号缺少此品牌的代理查看权限。", "This account does not have agent view access for this brand.") }}</p>
+    <p v-if="!canView" class="am-note">{{ t('admin.copy.07a2166b') }}</p>
     <template v-else>
-      <section v-if="policy" class="am-card"><div class="am-card-head"><div><h3>{{ t("品牌代理政策", "Brand agent policy") }}</h3><p>{{ t("版本", "Version") }} {{ policy.version }} · {{ t("更新于", "Updated") }} {{ policy.updated_at }}</p></div><button type="button" class="am-secondary" @click="loadAll">{{ t("查询", "Reload") }}</button></div>
-        <dl class="am-facts"><div><dt>{{ t("代理配置", "Agent configuration") }}</dt><dd>{{ policy.config.enabled ? t("已启用", "Enabled") : t("已停用", "Disabled") }}</dd></div><div><dt>{{ t("最大层级", "Maximum depth") }}</dt><dd>{{ policy.config.max_depth }}</dd></div><div><dt>{{ t("品牌比例上限", "Brand ratio cap") }}</dt><dd>{{ policy.config.ratio_cap }}</dd></div><div><dt>{{ t("品牌佣金模式", "Brand commission mode") }}</dt><dd>{{ policy.config.mode === "loss" ? t("输赢", "Loss") : t("流水", "Turnover") }}</dd></div><div><dt>{{ t("周期", "Cycle") }}</dt><dd>{{ policy.config.cycle === "weekly" ? t("每周", "Weekly") : t("每月", "Monthly") }}</dd></div></dl>
-        <p v-if="policy.audit_log_id" class="am-meta">{{ t("审计记录：", "Audit record: ") }}{{ policy.audit_log_id }}</p>
+      <section v-if="mode === 'settings' && policy" class="panel"><div class="am-card-head"><div><h2>{{ t('admin.agents.rules') }}</h2></div><button v-refresh-button="t('admin.copy.1935ecf7')" type="button" class="am-secondary button button-secondary" @click="withGlobalLoading(loadAll)">{{ t('admin.copy.1935ecf7') }}</button></div>
+        <dl class="am-facts"><div><dt>{{ t('admin.copy.eae52028') }}</dt><dd>{{ policy.config.max_depth }}</dd></div><div><dt>{{ t('admin.agents.lossRatioCap') }}</dt><dd>{{ agentRatioToPercentage(policy.config.loss_ratio_cap) }}%</dd></div><div><dt>{{ t('admin.agents.turnoverRatioCap') }}</dt><dd>{{ agentRatioToPercentage(policy.config.turnover_ratio_cap) }}%</dd></div><div><dt>{{ t('admin.copy.60850269') }}</dt><dd>{{ policy.config.mode === "loss" ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d') }}</dd></div></dl>
+        <div class="am-actions"><button v-if="mode === 'settings' && canWritePolicy && policy" class="button button-secondary" type="button" :disabled="writing || !!pending" @click="editPolicy">{{ t('admin.copy.24dfbf6c') }}</button></div>
       </section>
-      <section v-if="canWritePolicy && policy" class="am-card"><h3>{{ t("编辑品牌政策", "Edit brand policy") }}</h3><form class="am-form" @submit.prevent="preparePolicy">
-        <label class="am-check"><input v-model="policyDraft.enabled" type="checkbox" :aria-label="t('代理管理启用', 'Enable agent management')">{{ t("代理管理启用", "Enable agent management") }}</label>
-        <label>{{ t("代理最大层级", "Maximum agent depth") }}<input v-model.number="policyDraft.max_depth" type="number" min="1" max="32" step="1" :aria-label="t('代理最大层级', 'Maximum agent depth')"></label>
-        <label>{{ t("品牌比例上限", "Brand ratio cap") }}<input v-model.trim="policyDraft.ratio_cap" inputmode="decimal" autocomplete="off" :aria-label="t('品牌比例上限', 'Brand ratio cap')"><small>{{ t("原始分数 0–1，最多 6 位小数；0.1 表示 10%。", "Decimal from 0 to 1, up to 6 decimal places; 0.1 means 10%.") }}</small></label>
-        <label>{{ t("品牌佣金模式", "Brand commission mode") }}<select v-model="policyDraft.mode" :aria-label="t('品牌佣金模式', 'Brand commission mode')"><option value="loss">{{ t("输赢", "Loss") }}</option><option value="turnover">{{ t("流水", "Turnover") }}</option></select></label>
-        <label>{{ t("佣金周期", "Commission cycle") }}<select v-model="policyDraft.cycle" :aria-label="t('佣金周期', 'Commission cycle')"><option value="weekly">{{ t("每周", "Weekly") }}</option><option value="monthly">{{ t("每月", "Monthly") }}</option></select></label>
-        <label>{{ t("代理政策变更原因", "Agent policy change reason") }}<textarea v-model.trim="policyReason" rows="3" maxlength="500" required :aria-label="t('代理政策变更原因', 'Agent policy change reason')"></textarea></label>
-        <p v-if="!policyRatioValid" class="am-field-error">{{ t("请输入规范比例：0、1，或不带末尾零的最多 6 位小数。", "Enter a canonical ratio: 0, 1, or up to 6 decimals without trailing zeros.") }}</p><button class="am-primary" type="submit" :disabled="writing || !policyRatioValid || !policyReason.trim()">{{ t("核对并保存", "Review and save") }}</button>
-      </form></section><p v-else-if="policy && canViewPolicy" class="am-note">{{ t("当前账号仅有读取权限，或属于只读超级管理员；不能修改代理配置。", "This account is read-only or is a read-only super admin; agent configuration cannot be changed.") }}</p>
-      <section v-if="canViewAgents" class="am-card"><div class="am-card-head"><div><h3>{{ t("代理树", "Agent tree") }}</h3><p>{{ parentId ? t("当前父级", "Current parent") + " " + parentId : t("当前范围：根代理", "Current scope: root agents") }} · {{ t("共", "Total") }} {{ total }}</p></div><div class="am-actions"><button v-if="parentId" type="button" class="am-secondary" :disabled="loading" @click="goBack">{{ t("返回上级", "Back to parent") }}</button><button v-if="canWriteAgents && policy" type="button" class="am-secondary" @click="startCreate">{{ t("新建代理", "Create agent") }}</button></div></div>
-        <div v-if="loading" class="am-note" role="status">{{ t("正在读取代理目录…", "Loading agent directory…") }}</div><div class="am-node-list">
-          <article v-for="node in nodes" :key="node.id" class="am-node"><div class="am-node-main"><strong>{{ node.member_id }}</strong><span>{{ t("代理 ID", "Agent ID") }} <code>{{ node.id }}</code></span><span>{{ t("层级", "Depth") }} {{ node.depth }} · {{ t("比例", "Ratio") }} {{ node.config.ratio }} · {{ node.config.status === "active" ? t("启用", "Enabled") : t("停用", "Disabled") }}</span><small>{{ t("生效模式：", "Effective mode: ") }}{{ node.effective_mode === "loss" ? t("输赢", "Loss") : t("流水", "Turnover") }} · {{ t("路径", "Path") }} {{ node.path.join(" › ") }}</small></div><div class="am-actions"><button type="button" class="am-secondary" @click="selectNode(node)">{{ t("详情", "Details") }}</button><button type="button" class="am-secondary" @click="openChildren(node)">{{ t("下级", "Children") }}</button></div></article>
-          <p v-if="!loading && nodes.length === 0" class="am-note">{{ t("此范围暂无代理。", "No agents in this scope.") }}</p></div><div class="am-pager"><button type="button" class="am-secondary" :disabled="loading || offset === 0" @click="changePage(-1)">{{ t("上一页", "Previous") }}</button><span>{{ total === "0" ? 0 : offset + 1 }}–{{ Math.min(offset + pageSize, Number(total)) }} / {{ total }}</span><button type="button" class="am-secondary" :disabled="loading || offset + pageSize >= Number(total)" @click="changePage(1)">{{ t("下一页", "Next") }}</button></div>
-      </section><p v-else class="am-note">{{ t("当前账号没有代理树查看权限。", "This account does not have agent tree view access.") }}</p>
-      <section v-if="canWriteAgents && policy && canViewAgents && !selected" class="am-card"><h3>{{ parentId ? t("创建直属代理", "Create direct agent") : t("创建根代理", "Create root agent") }}</h3><p v-if="parentNode" class="am-note">{{ t("父级", "Parent") }} {{ parentNode.id }} · {{ t("版本", "Version") }} {{ parentNode.version }} · {{ t("层级", "Depth") }} {{ parentNode.depth }} · {{ t("上限由服务端校验。新代理须与父级生效模式一致。", "Limits are validated by the server. A new agent must use the parent's effective mode.") }}</p><p v-else-if="parentId" class="am-note">{{ t("父级模式尚未读取；目前只能选择继承。", "The parent mode has not been loaded; only inheritance is available.") }}</p><form class="am-form" @submit.prevent="prepareNode">
-        <label>{{ t("代理会员 UUID", "Agent member UUID") }}<input v-model.trim="form.member_id" autocomplete="off" required :aria-label="t('代理会员 UUID', 'Agent member UUID')"></label><label>{{ t("代理比例", "Agent ratio") }}<input v-model.trim="form.ratio" inputmode="decimal" autocomplete="off" required :aria-label="t('代理比例', 'Agent ratio')"><small>{{ t("原始分数；服务器校验父级和品牌上限。", "Decimal value; the server validates parent and brand caps.") }}</small></label>
-        <label>{{ t("代理模式", "Agent mode") }}<select v-model="form.mode" :aria-label="t('代理模式', 'Agent mode')"><option value="">{{ t("继承", "Inherit") }}</option><option v-for="mode in allowedModes" :key="mode" :value="mode">{{ mode === "loss" ? t("输赢", "Loss") : t("流水", "Turnover") }}</option></select></label><label>{{ t("代理状态", "Agent status") }}<select v-model="form.status" :aria-label="t('代理状态', 'Agent status')"><option value="active">{{ t("启用", "Enabled") }}</option><option value="disabled">{{ t("停用", "Disabled") }}</option></select></label><label class="am-check"><input v-model="form.can_create_children" type="checkbox" :aria-label="t('允许发展下级', 'Allow child agents')">{{ t("允许发展下级", "Allow child agents") }}</label><label>{{ t("代理变更原因", "Agent change reason") }}<textarea v-model.trim="form.reason" rows="3" maxlength="500" required :aria-label="t('代理变更原因', 'Agent change reason')"></textarea></label>
-        <p v-if="!nodeRatioValid" class="am-field-error">{{ t("请输入规范比例：0、1，或不带末尾零的最多 6 位小数。", "Enter a canonical ratio: 0, 1, or up to 6 decimals without trailing zeros.") }}</p><button class="am-primary" type="submit" :disabled="writing || !nodeRatioValid || !form.member_id.trim() || !form.reason.trim() || (Boolean(parentId) && !parentNode)">{{ t("核对并创建", "Review and create") }}</button></form></section>
-      <DetailModal v-if="canViewAgents && !!selected" :title="t('详情', 'Details')" :close-label="t('关闭', 'Close')" @close="closeDetail()">
-<section v-if="canViewAgents && selected" class="am-card"><div class="am-card-head"><div><h3>{{ t("代理详情与配置", "Agent details and configuration") }}</h3><p><code>{{ selected.id }}</code> · {{ t("成员", "Member") }} {{ selected.member_id }} · {{ t("版本", "Version") }} {{ selected.version }}</p></div><button type="button" class="am-secondary" @click="closeDetail">{{ t("关闭详情", "Close details") }}</button></div>
-        <p class="am-note">{{ t("父级关系不可更改。当前父级：", "Parent relationships cannot be changed. Current parent: ") }}{{ selected.parent_id ?? t("根代理", "Root agent") }}。{{ t("有效模式：", "Effective mode: ") }}{{ selected.effective_mode === "loss" ? t("输赢", "Loss") : t("流水", "Turnover") }}{{ selected.mode_source_agent_id ? " · " + t("来源", "Source") + " " + selected.mode_source_agent_id : " · " + t("品牌默认", "Brand default") }}。</p>
-        <p v-if="selected.parent_id && !selectedParentReady" class="am-message is-error" role="status">{{ t("父级生效模式尚未验证，暂不能提交新的代理变更；请重新读取代理详情。", "The parent's effective mode has not been verified. Agent changes cannot be submitted yet; reload the agent details.") }}</p>
-        <dl v-if="!canWriteAgents" class="am-facts"><div><dt>{{ t("代理比例", "Agent ratio") }}</dt><dd>{{ selected.config.ratio }}</dd></div><div><dt>{{ t("代理模式", "Agent mode") }}</dt><dd>{{ modeLabel(selected.config.mode) }}</dd></div><div><dt>{{ t("代理状态", "Agent status") }}</dt><dd>{{ selected.config.status === "active" ? t("启用", "Active") : t("停用", "Disabled") }}</dd></div><div><dt>{{ t("允许发展下级", "Can create child agents") }}</dt><dd>{{ selected.config.can_create_children ? t("是", "Yes") : t("否", "No") }}</dd></div><div><dt>{{ t("层级", "Depth") }}</dt><dd>{{ selected.depth }}</dd></div></dl>
-        <form v-if="canWriteAgents" class="am-form" @submit.prevent="prepareNode">
-          <label>{{ t("代理会员 UUID", "Agent member UUID") }}<input :value="form.member_id" readonly :aria-label="t('代理会员 UUID', 'Agent member UUID')"></label><label>{{ t("代理比例", "Agent ratio") }}<input v-model.trim="form.ratio" inputmode="decimal" autocomplete="off" required :aria-label="t('代理比例', 'Agent ratio')"></label><label>{{ t("代理模式", "Agent mode") }}<select v-model="form.mode" :aria-label="t('代理模式', 'Agent mode')"><option value="">{{ t("继承", "Inherit") }}</option><option v-for="mode in allowedModes" :key="mode" :value="mode">{{ mode === "loss" ? t("输赢", "Loss") : t("流水", "Turnover") }}</option><option v-if="form.mode && !allowedModes.includes(form.mode)" :value="form.mode" disabled>{{ t("历史模式（仅查看）：", "Historical mode (view only): ") }}{{ form.mode === "loss" ? t("输赢", "Loss") : t("流水", "Turnover") }}</option></select><small>{{ t("下级必须与父级生效模式一致；沿用即继承该模式。", "A child must use the parent's effective mode; inheriting keeps that mode.") }}</small></label><label>{{ t("代理状态", "Agent status") }}<select v-model="form.status" :aria-label="t('代理状态', 'Agent status')"><option value="active">{{ t("启用", "Enabled") }}</option><option value="disabled">{{ t("停用", "Disabled") }}</option></select></label><label class="am-check"><input v-model="form.can_create_children" type="checkbox" :aria-label="t('允许发展下级', 'Allow child agents')">{{ t("允许发展下级", "Allow child agents") }}</label><label>{{ t("代理变更原因", "Agent change reason") }}<textarea v-model.trim="form.reason" rows="3" maxlength="500" required :aria-label="t('代理变更原因', 'Agent change reason')"></textarea></label>
-          <p v-if="!nodeRatioValid" class="am-field-error">{{ t("请输入规范比例：0、1，或不带末尾零的最多 6 位小数。", "Enter a canonical ratio: 0, 1, or up to 6 decimals without trailing zeros.") }}</p><div class="am-actions"><button class="am-primary" type="submit" :disabled="writing || !nodeRatioValid || !form.reason.trim() || (Boolean(selected.parent_id) && !selectedParentReady)">{{ t("核对并保存", "Review and save") }}</button><button type="button" class="am-secondary" @click="loadNodeHistory">{{ t("查看变更历史", "View change history") }}</button></div></form>
-        <button v-if="!canWriteAgents" type="button" class="am-secondary" @click="loadNodeHistory">{{ t("查看变更历史", "View change history") }}</button>
-        <div v-if="showNodeHistory" class="am-history"><h4>{{ t("代理变更历史", "Agent change history") }}</h4><article v-for="item in history" :key="item.version + ':' + item.created_at" class="am-revision"><strong>{{ t("版本", "Version") }} {{ item.version }} · {{ item.actor_type }}</strong><span>{{ item.created_at }} · {{ item.actor_id ?? t("系统", "System") }}</span><code>{{ configText(item.config) }}</code><span>{{ t("原因：", "Reason: ") }}{{ item.reason }}</span><span v-if="item.audit_log_id">{{ t("审计", "Audit") }} {{ item.audit_log_id }}</span></article></div>
+      <DetailModal class="agent-dialog" v-if="mode === 'settings' && canWritePolicy && policy && policyEditorOpen" :open="!pending" :title="t('admin.nav.agentSettings')" :close-label="t('association.close')" @close="!writing && (policyEditorOpen = false)">
+        <p v-if="error" class="am-message is-error" role="alert">{{ localizedAgentMessage(error) }}</p>
+      <section v-if="canWritePolicy && policy" class="am-card"><form v-write-guard="writing" novalidate v-inline-validation class="am-form" @submit.prevent="withGlobalLoading(preparePolicy)">
+        <label>{{ t('admin.copy.96b469dc') }}<input v-model.number="policyDraft.max_depth" type="number" min="1" max="32" step="1" :aria-label="t('admin.copy.96b469dc')"></label>
+        <label>{{ t('admin.agents.lossRatioCap') }}<span class="am-ratio-input"><input v-model.trim="policyLossPercentage" inputmode="decimal" autocomplete="off" :aria-label="t('admin.agents.lossRatioCap')"><span aria-hidden="true">%</span></span><small>{{ t('admin.copy.90be9d11') }}</small></label>
+        <label>{{ t('admin.agents.turnoverRatioCap') }}<span class="am-ratio-input"><input v-model.trim="policyTurnoverPercentage" inputmode="decimal" autocomplete="off" :aria-label="t('admin.agents.turnoverRatioCap')"><span aria-hidden="true">%</span></span><small>{{ t('admin.copy.90be9d11') }}</small></label>
+        <label>{{ t('admin.copy.60850269') }}<select v-model="policyDraft.mode" :aria-label="t('admin.copy.60850269')"><option value="loss">{{ t('admin.copy.a13e79ef') }}</option><option value="turnover">{{ t('admin.copy.89fd862d') }}</option></select></label>
+        <p v-if="!policyRatioValid" class="am-field-error">{{ t('admin.copy.379b3171') }}</p><button class="am-primary button button-primary" type="submit" :disabled="writing || !policyRatioValid">{{ t('admin.copy.ea2d7203') }}</button>
+      </form></section>
+      </DetailModal>
+      <ConsoleTabs v-if="mode!=='settings'&&canViewAgents" class="am-view-switch" :items="[{id:'list',label:t('admin.agents.allLevels')},{id:'hierarchy',label:t('admin.agents.byHierarchy')}]" :value="viewMode" :disabled="writing" :select="switchView" />
+      <section v-if="mode !== 'settings' && canViewAgents" class="am-card"><div class="am-card-head"><div><p>{{ viewMode === 'list' ? t('admin.agents.allLevels') : parentId ? t('admin.copy.5ad5e615') + " " + associationLabel(parentNode, 'agent', parentId, associationLocale) : t('admin.copy.8645d7e9') }}</p></div><div class="am-actions"><button v-if="viewMode === 'hierarchy' && parentId" type="button" class="am-secondary button button-secondary" :disabled="loading" @click="withGlobalLoading(goBack)">{{ t('admin.copy.2fbcdb10') }}</button><button v-if="canWriteAgents && policy" type="button" class="am-secondary button button-secondary" :disabled="writing || !!pending || Boolean(parentNode?.pending_change)" @click="startCreate">{{ t('admin.copy.b8713ea7') }}</button></div></div>
+        <DirectorySearch v-if="viewMode==='list'" v-model="search" :label="t('admin.members.search')" :query-label="t('admin.members.query')" :clear-label="t('admin.copy.b089734d')" :busy="loading" :active="Boolean(search||onlineFilter)" :search="searchAgents" :clear="clearSearch"><select v-model="onlineFilter" :aria-label="t('admin.members.onlineStatus')"><option value="">{{t('admin.members.allOnline')}}</option><option value="true">{{t('admin.members.online')}}</option><option value="false">{{t('admin.members.offline')}}</option></select></DirectorySearch>
+        <div v-if="viewMode === 'list'" class="table-wrap"><table class="agent-directory-table console-table console-responsive-table"><thead><tr><th>{{ t('admin.copy.851c6121') }}</th><th>{{ t('admin.members.onlineStatus') }}</th><th>{{ t('admin.members.points') }}</th><th>{{ t('admin.copy.ac22afab') }}</th><th>{{ t('admin.copy.4f39e60b') }}</th><th>{{ t('admin.copy.602b68c2') }}</th><th>{{ t('admin.copy.cf6d9c6d') }}</th><th>{{ t('admin.copy.d21fcbef') }}</th></tr></thead><tbody><tr v-for="node in directoryNodes" :key="node.id"><td :data-label="t('admin.copy.851c6121')"><button class="text-button member-account" type="button" @click="withGlobalLoading(selectNode, node)">{{ node.username || t('association.unnamed') }}</button></td><td :data-label="t('admin.members.onlineStatus')"><span class="member-presence" :class="{ 'is-online': node.online }"><i aria-hidden="true" />{{ t(node.online ? 'admin.members.online' : 'admin.members.offline') }}</span></td><td class="member-points" :data-label="t('admin.members.points')">{{ node.display_points === null ? t('admin.members.pointsRestricted') : node.display_points }}</td><td :data-label="t('admin.copy.ac22afab')">{{ node.depth }}</td><td :data-label="t('admin.copy.4f39e60b')">{{ agentRatioToPercentage(node.config.ratio) }}%</td><td :data-label="t('admin.copy.602b68c2')">{{ modeLabel(node.effective_mode) }}</td><td :data-label="t('admin.copy.cf6d9c6d')">{{ t(node.config.status === 'active' ? 'admin.copy.5eb01613' : 'admin.copy.5e3326db') }}</td><td :data-label="t('admin.copy.d21fcbef')"><MemberActionsMenu :id="`agent-actions-${node.id}`" :label="t('admin.agents.actions', { account: node.username })"><button role="menuitem" type="button" @click="withGlobalLoading(selectNode, node)">{{ t('admin.copy.01db40da') }}</button><button role="menuitem" type="button" @click="withGlobalLoading(openChildren, node)">{{ t('admin.copy.2e035a42') }}</button></MemberActionsMenu></td></tr></tbody></table><p v-if="!loading && !directoryNodes.length" class="empty-state">{{ t('admin.copy.a59f8381') }}</p></div>
+        <template v-else><div v-global-loading v-if="loading" class="am-note" role="status">{{ t('admin.copy.fed96ce5') }}</div><div class="am-node-list">
+          <article v-for="node in nodes" :key="node.id" class="am-node"><div class="am-node-main"><strong><AssociationName :record="node" kind="agent" :id="node.id" :locale="associationLocale" /></strong><span>{{ t('admin.copy.ac22afab') }} {{ node.depth }} · {{ t('admin.copy.4f39e60b') }} {{ agentRatioToPercentage(node.config.ratio) }}% · {{ node.config.status === "active" ? t('admin.copy.5eb01613') : t('admin.copy.5e3326db') }}</span><small>{{ t('admin.copy.602b68c2') }}{{ node.effective_mode === "loss" ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d') }}</small></div><div class="am-actions"><button type="button" class="am-secondary button button-secondary" @click="withGlobalLoading(selectNode, node)">{{ t('admin.copy.01db40da') }}</button><button v-if="viewMode === 'hierarchy'" type="button" class="am-secondary button button-secondary" @click="withGlobalLoading(openChildren, node)">{{ t('admin.copy.2e035a42') }}</button></div></article>
+          <p v-if="!loading && nodes.length === 0" class="am-note empty-state">{{ t('admin.copy.a59f8381') }}</p></div></template><TablePagination :summary="t('admin.agents.page', { page: String(Math.floor(offset / pageSize) + 1), count: String(nodes.length), total })"><template #actions><button type="button" class="button button-secondary" :disabled="loading || offset === 0" @click="withGlobalLoading(changePage, -1)">{{ t('admin.copy.dbe7a5d7') }}</button><button type="button" class="button button-secondary" :disabled="loading || !hasNext" @click="withGlobalLoading(changePage, 1)">{{ t('admin.copy.2e9c9e7a') }}</button></template></TablePagination>
+      </section><p v-else-if="mode !== 'settings'" class="am-note">{{ t('admin.copy.5d517450') }}</p>
+      <DetailModal class="agent-dialog" v-if="canWriteAgents && policy && canViewAgents && !selected && createOpen" :title="parentId ? t('admin.copy.512d8003') : t('admin.copy.fd71461b')" :close-label="t('association.close')" @close="!writing && (createOpen = false)">
+        <p v-if="error" class="am-message is-error" role="alert">{{ localizedAgentMessage(error) }}</p>
+      <section v-if="canWriteAgents && policy && canViewAgents && !selected && createOpen" class="am-card"><p v-if="parentNode" class="am-note">{{ t('admin.copy.ceac0bce') }} <AssociationName :record="parentNode" kind="agent" :id="parentNode.id" :locale="associationLocale" /> {{ t('admin.copy.ac22afab') }} {{ parentNode.depth }} · {{ t('admin.copy.ac8583ba') }}</p><p v-else-if="parentId" class="am-note">{{ t('admin.copy.87e0d696') }}</p><form v-write-guard="writing" novalidate v-inline-validation class="am-form" @submit.prevent="withGlobalLoading(prepareNode)"><fieldset class="am-form am-edit-fields" :disabled="writing || !!pending">
+        <AccountCreateFields v-model:account="agentUsername" v-model:password="agentPassword" :account-label="t('admin.copy.61c7d845')" :password-label="t('admin.agents.password')" :account-required="true" :account-placeholder="t('admin.agents.accountPlaceholder')" :password-minlength="6" :password-maxlength="30" />
+        <label>{{ t('admin.copy.94fca494') }}<select v-model="form.mode" :aria-label="t('admin.copy.94fca494')" :required="isFirstLevel"><option value="" :disabled="isFirstLevel">{{ isFirstLevel ? t('admin.agents.selectMode') : t('admin.copy.b8bd227c') }}</option><option v-for="mode in allowedModes" :key="mode" :value="mode">{{ mode === "loss" ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d') }}</option></select></label><AgentRatioField v-if="draftMode==='loss'" v-model="form.loss_ratio" :label="t('admin.agents.lossRatio')" :help="t('admin.copy.5f569342')" />
+        <AgentRatioField v-if="draftMode==='turnover'" v-model="form.turnover_ratio" :label="t('admin.agents.turnoverRatio')" :help="t('admin.copy.5f569342')" /><p v-if="draftMode && createRatioLimit !== null" class="am-note">{{ t(parentId ? 'admin.agents.parentRatioLimit' : draftMode === 'loss' ? 'admin.agents.lossRatioLimit' : 'admin.agents.turnoverRatioLimit', { ratio: createRatioLimit }) }}</p><p v-if="createRatioExceeded" class="am-field-error" role="alert">{{ t('admin.agents.ratioExceeded', { ratio: createRatioLimit! }) }}</p><label>{{ t('admin.copy.054393be') }}<select v-model="form.status" :disabled="changingMode" :aria-label="t('admin.copy.054393be')"><option value="active">{{ t('admin.copy.5eb01613') }}</option><option value="disabled">{{ t('admin.copy.5e3326db') }}</option></select></label><label class="am-check"><input v-model="form.can_create_children" :disabled="changingMode" type="checkbox" :aria-label="t('admin.copy.a78c6c73')">{{ t('admin.copy.a78c6c73') }}</label>
+        <p v-if="draftMode && draftRatio && !nodeRatioValid" class="am-field-error">{{ t('admin.copy.379b3171') }}</p></fieldset><p v-if="pending?.operation === 'create' && !writing" class="am-note" role="status">{{ t('admin.agents.createUnknown') }}</p><button v-write-guard="writing" v-if="pending?.operation === 'create'" class="button button-primary" type="button" :disabled="writing" @click="withGlobalLoading(retryFrozen)">{{ t('admin.agents.retryCreate') }}</button><button v-else class="am-primary button button-primary" type="submit" :disabled="writing || !nodeRatioValid || createRatioExceeded || !agentUsername.trim() || (Boolean(parentId) && !parentNode)">{{ t('admin.agents.create') }}</button></form></section>
+      </DetailModal>
+      <DetailModal class="agent-dialog" v-if="canViewAgents && !!selected && detailOpen" :title="t('admin.copy.01db40da')" :close-label="t('admin.copy.2bb2cb1d')" @close="closeDetail()">
+<p v-if="error" class="am-message is-error" role="alert">{{ localizedAgentMessage(error) }}</p>
+<section v-if="canViewAgents && selected" class="am-card"><div class="am-card-head"><div><h3>{{ t('admin.copy.3af6ab5e') }}</h3><p><code><AssociationName :record="selected" kind="agent" :id="selected.id" :locale="associationLocale" /></code> {{ t('admin.copy.86d0a04d') }} <AssociationName :record="selected" kind="agent" :id="selected.id" :locale="associationLocale" /></p></div><button type="button" class="am-secondary button button-secondary" @click="closeDetail">{{ t('admin.copy.61fb1fee') }}</button></div>
+        <p class="am-note">{{ t('admin.copy.176c3806') }}<AssociationName v-if="selected.parent_id" :record="selected" kind="agent" :id="selected.parent_id" :locale="associationLocale" /><span v-else>{{ t('admin.copy.b0760966') }}</span>。{{ t('admin.copy.9174910c') }}{{ selected.effective_mode === "loss" ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d') }}{{ selected.mode_source_agent_id ? " · " + t('admin.copy.d2089b75') + " " + associationLabel(selected, 'agent', selected.mode_source_agent_id, associationLocale) : " · " + t('admin.copy.a70308e4') }}。</p>
+        <p v-if="selected.parent_id && !selectedParentReady" class="am-message is-error" role="status">{{ t('admin.copy.c202b758') }}</p>
+        <dl v-if="!canWriteAgents" class="am-facts"><div><dt>{{ t('admin.copy.94fca494') }}</dt><dd>{{ modeLabel(selected.parent_id ? selected.config.mode : selected.effective_mode) }}</dd></div><div><dt>{{ t(selected.effective_mode === 'loss' ? 'admin.agents.lossRatio' : 'admin.agents.turnoverRatio') }}</dt><dd>{{ agentRatioToPercentage(selected.config.ratio) }}%</dd></div><div><dt>{{ t('admin.copy.054393be') }}</dt><dd>{{ selected.config.status === "active" ? t('admin.copy.98d24810') : t('admin.copy.5e3326db') }}</dd></div><div><dt>{{ t('admin.copy.59e9ba82') }}</dt><dd>{{ selected.config.can_create_children ? t('admin.copy.1a264f45') : t('admin.copy.b92bb6e0') }}</dd></div><div><dt>{{ t('admin.copy.ac22afab') }}</dt><dd>{{ selected.depth }}</dd></div></dl>
+        <p v-if="selected.pending_change" class="am-note" role="status">{{ t('admin.agents.scheduled', { mode: modeLabel(selected.pending_change.mode), ratio: agentRatioToPercentage(selected.pending_change.ratio) + "%", time: displayDate(selected.pending_change.effective_at) }) }}</p>
+        <form v-write-guard="writing" novalidate v-inline-validation v-if="canWriteAgents" class="am-form" @submit.prevent="withGlobalLoading(prepareNode)"><fieldset :disabled="writing || !!pending || Boolean(selected.pending_change)" class="am-form am-edit-fields">
+          <label>{{ t('admin.copy.61c7d845') }}<input :value="associationLabel(selected, 'agent', selected.id, associationLocale)" readonly :aria-label="t('admin.copy.61c7d845')"></label><label>{{ t('admin.copy.94fca494') }}<select v-model="form.mode" :aria-label="t('admin.copy.94fca494')" :required="isFirstLevel"><option value="" :disabled="isFirstLevel">{{ isFirstLevel ? t('admin.agents.selectMode') : t('admin.copy.b8bd227c') }}</option><option v-for="mode in allowedModes" :key="mode" :value="mode">{{ mode === "loss" ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d') }}</option><option v-if="form.mode && !allowedModes.includes(form.mode)" :value="form.mode" disabled>{{ t('admin.copy.7a1e57b8') }}{{ form.mode === "loss" ? t('admin.copy.a13e79ef') : t('admin.copy.89fd862d') }}</option></select><small v-if="!isFirstLevel">{{ t('admin.copy.42f30b77') }}</small></label><AgentRatioField v-if="draftMode==='loss'" v-model="form.loss_ratio" :label="t('admin.agents.lossRatio')" :help="t('admin.copy.5f569342')" />
+        <AgentRatioField v-if="draftMode==='turnover'" v-model="form.turnover_ratio" :label="t('admin.agents.turnoverRatio')" :help="t('admin.copy.5f569342')" /><label>{{ t('admin.copy.054393be') }}<select v-model="form.status" :disabled="changingMode" :aria-label="t('admin.copy.054393be')"><option value="active">{{ t('admin.copy.5eb01613') }}</option><option value="disabled">{{ t('admin.copy.5e3326db') }}</option></select></label><label class="am-check"><input v-model="form.can_create_children" :disabled="changingMode" type="checkbox" :aria-label="t('admin.copy.a78c6c73')">{{ t('admin.copy.a78c6c73') }}</label>
+          <section v-if="changingMode" class="am-mode-line">
+            <p class="am-note">{{ t('admin.agents.changeHelp') }}</p>
+            <p v-global-loading v-if="modeScopeLoading" role="status">{{ t('admin.copy.fed96ce5') }}</p>
+            <label v-for="node in modeLine.filter(item => item.id !== selected!.id)" :key="node.id">
+              <AssociationName :record="node" kind="agent" :id="node.id" :locale="associationLocale" />
+              <span>{{ t(form.mode === 'loss' ? 'admin.agents.lossRatio' : 'admin.agents.turnoverRatio') }}</span>
+              <span class="am-ratio-input"><input v-model.trim="modeRatios[node.id]" inputmode="decimal" autocomplete="off" required :aria-label="t('admin.agents.newRatioFor', { account: associationLabel(node, 'agent', node.id, associationLocale) })"><span aria-hidden="true">%</span></span>
+            </label>
+          </section>
+          </fieldset>
+          <p v-if="draftMode && draftRatio && !nodeRatioValid" class="am-field-error">{{ t('admin.copy.379b3171') }}</p><div class="am-actions"><button v-if="pending && (pending.operation === 'update' || pending.operation === 'mode-change')" v-write-guard="writing" class="button button-primary" type="button" :disabled="writing" @click="withGlobalLoading(retryFrozen)">{{ t('admin.settings.retryOperation') }}</button><button v-else class="am-primary button button-primary" type="submit" :disabled="writing || !!pending || Boolean(selected.pending_change) || (changingMode && !modeLineReady) || !nodeRatioValid || (Boolean(selected.parent_id) && !selectedParentReady)">{{ t('admin.copy.ea2d7203') }}</button><button type="button" class="am-secondary button button-secondary" @click="withGlobalLoading(loadNodeHistory)">{{ t('admin.copy.2460ea6a') }}</button></div></form>
+        <button v-if="!canWriteAgents" type="button" class="am-secondary button button-secondary" @click="withGlobalLoading(loadNodeHistory)">{{ t('admin.copy.2460ea6a') }}</button>
+        <div v-if="showNodeHistory" class="am-history"><h4>{{ t('admin.copy.489686f7') }}</h4><article v-for="item in history" :key="item.version + ':' + item.created_at" class="am-revision"><span>{{ displayDate(item.created_at) }} · {{ item.actor_type === "system" ? t('admin.copy.532e2e04') : item.actor_type === "user" ? t('admin.copy.689b5703') : t('admin.copy.37b47e95') }}</span><BusinessDetails :value="configText(item.config)" :locale="associationLocale" /><span v-if="item.reason">{{ t('admin.copy.2809a1e6') }}{{ item.reason }}</span></article></div>
       </section>
+        <JoinCodeManagement v-if="selected && joinCodePermissions(account, brandId).view" :key="selected.id" :account="account" :brand-id="brandId" :member-id="selected.agent_account_id" :agent-id="selected.id" kind="agent" :owner-record="selected" @session-invalid="emit('session-invalid')" />
 </DetailModal>
-      <section v-if="canViewPolicy" class="am-card"><div class="am-card-head"><div><h3>{{ t("政策变更历史", "Policy change history") }}</h3><p>{{ t("不可变修订记录", "Immutable revision records") }}</p></div><button class="am-secondary" type="button" @click="loadPolicyHistory">{{ policyHistoryShown ? t("刷新历史", "Refresh history") : t("查询历史", "Load history") }}</button></div><div v-if="policyHistoryShown" class="am-history"><article v-for="item in policyHistory" :key="item.version + ':' + item.created_at" class="am-revision"><strong>{{ t("版本", "Version") }} {{ item.version }} · {{ item.actor_type }}</strong><span>{{ item.created_at }} · {{ item.actor_id ?? t("系统", "System") }}</span><code>{{ configText(item.config) }}</code><span>{{ t("原因：", "Reason: ") }}{{ item.reason }}</span><span v-if="item.audit_log_id">{{ t("审计", "Audit") }} {{ item.audit_log_id }}</span></article><p v-if="!policyHistory.length" class="am-note">{{ t("暂无政策历史。", "No policy history.") }}</p><div class="am-pager"><button class="am-secondary" type="button" :disabled="policyHistoryOffset === 0" @click="policyHistoryOffset = Math.max(0, policyHistoryOffset - pageSize); loadPolicyHistory()">{{ t("上一页", "Previous") }}</button><span>{{ policyHistoryTotal }} {{ t("条", "records") }}</span><button class="am-secondary" type="button" :disabled="policyHistoryOffset + pageSize >= Number(policyHistoryTotal)" @click="policyHistoryOffset += pageSize; loadPolicyHistory()">{{ t("下一页", "Next") }}</button></div></div></section>
-      <section v-if="pending && pending.accountId === account.id && pending.brandId === brandId" class="am-card am-review"><div class="am-card-head"><div><h3>{{ t("核对并确认写入", "Review and confirm write") }}</h3><p>{{ pendingSummary(pending) }}</p></div><span class="am-pending">{{ t("冻结请求", "Frozen request") }}</span></div><p class="am-note">{{ t("范围：账号", "Scope: account") }} {{ pending.accountId }} · {{ t("品牌", "brand") }} {{ pending.brandId }}。{{ t("结果未知时，只能按相同请求体和幂等键重试；读取当前状态不能确认旧写入。", "If the outcome is unknown, retry only with the same request body and idempotency key; reading current state cannot confirm an earlier write.") }}</p><pre class="am-json">{{ JSON.stringify(pending.body, null, 2) }}</pre><p class="am-meta">Idempotency-Key: <code>{{ pending.key }}</code></p><label class="am-check am-confirm"><input v-model="review" type="checkbox">{{ t("我已核对以上冻结请求", "I reviewed the frozen request above") }}</label><div class="am-actions"><button class="am-primary" type="button" :disabled="!review || writing || (pending.operation === 'policy' ? !canWritePolicy : !canWriteAgents)" @click="confirmWrite">{{ writing ? t("提交中…", "Submitting…") : t("确认", "Confirm") }}</button><button v-if="!writing" class="am-secondary" type="button" @click="retryFrozen">{{ t("按原键重试", "Retry with original key") }}</button><button class="am-secondary" type="button" :disabled="writing" @click="review = false">{{ t("收起核对", "Hide review") }}</button></div></section>
+      <div v-if="pending?.operation === 'create' && !createOpen" class="am-actions"><button v-write-guard="writing" class="button button-primary" type="button" :disabled="writing || !canWriteAgents" @click="withGlobalLoading(retryFrozen)">{{ t('admin.agents.retryCreate') }}</button></div>
+      <div v-if="pending?.operation === 'policy'" class="am-actions"><button v-write-guard="writing" class="button button-primary" type="button" :disabled="writing || !canWritePolicy" @click="withGlobalLoading(retryFrozen)">{{ t('admin.settings.retryOperation') }}</button></div>
+      <div v-if="pending && (pending.operation === 'update' || pending.operation === 'mode-change') && !detailOpen" class="am-actions"><button v-write-guard="writing" class="button button-primary" type="button" :disabled="writing || !canWriteAgents" @click="withGlobalLoading(retryFrozen)">{{ t('admin.settings.retryOperation') }}</button></div>
     </template>
   </section>
 </template>
 
 <style scoped>
-.agent-management{width:100%;min-width:0;color:#252a36}.am-head,.am-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.am-head{margin:4px 0 16px}.am-head h2{font-size:20px;margin:3px 0 5px}.am-head p,.am-card-head p{margin:0;color:#737b8c;font-size:13px;line-height:1.55;overflow-wrap:anywhere}.am-eyebrow{font-size:12px!important;letter-spacing:1.1px;color:#8991a2!important;font-weight:700}.am-brand,.am-pending{border-radius:20px;background:#f1f3f8;padding:8px 12px;color:#626b7c;font-size:13px;white-space:nowrap}.am-note,.am-message{border-radius:8px;background:#f4f6fc;color:#626b7c;padding:11px 13px;font-size:13px;line-height:1.6;overflow-wrap:anywhere;margin:12px 0}.am-message.is-error{background:#fff1f0;color:#a12d25}.am-message.is-ok{background:#eef8f3;color:#287554}.am-card{background:#fff;border:1px solid #e9ebf0;border-radius:11px;padding:16px;min-width:0;box-shadow:0 2px 8px #1e2a5008;margin:13px 0}.am-card h3{font-size:16px;margin:0 0 12px}.am-card-head{margin-bottom:14px}.am-card-head h3{margin:0 0 4px}.am-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin:0}.am-facts div{border:1px solid #eceef3;border-radius:8px;padding:12px;min-width:0}.am-facts dt{font-size:13px;color:#737b8c}.am-facts dd{font-size:16px;font-weight:700;margin:6px 0 0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.am-meta{font-size:13px;color:#737b8c;overflow-wrap:anywhere}.am-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.am-form label{display:grid;gap:6px;font-size:13px;font-weight:600;min-width:0}.am-form input:not([type=checkbox]),.am-form select,.am-form textarea{box-sizing:border-box;width:100%;min-width:0;border:1px solid #dfe3eb;border-radius:7px;background:#fff;padding:10px 11px;color:#252a36;font:inherit}.am-form small{font-size:12px;font-weight:400;color:#737b8c;line-height:1.5}.am-form .am-check,.am-check{display:flex;align-items:center;gap:9px;min-height:40px;font-size:14px}.am-check input{width:18px;height:18px;flex:none}.am-form textarea{resize:vertical}.am-field-error{grid-column:1/-1;color:#a12d25;font-size:13px;margin:0}.am-primary,.am-secondary{border-radius:7px;padding:9px 13px;font-size:14px;min-height:40px}.am-primary{border:1px solid #5969df;background:#5969df;color:white}.am-secondary{border:1px solid #dfe3eb;background:#fff;color:#41495a}.am-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.am-node-list{display:grid;gap:9px}.am-node{display:flex;justify-content:space-between;gap:12px;border:1px solid #eceef3;border-radius:9px;padding:12px;min-width:0}.am-node-main{display:grid;gap:4px;min-width:0}.am-node-main strong{font-size:15px;overflow-wrap:anywhere}.am-node-main span,.am-node-main small{font-size:13px;color:#626b7c;overflow-wrap:anywhere}.am-node code,.am-card code,.am-meta code{overflow-wrap:anywhere;word-break:break-word}.am-pager{display:flex;justify-content:center;align-items:center;gap:12px;margin-top:13px;flex-wrap:wrap}.am-pager span{font-size:13px;color:#626b7c}.am-history{display:grid;gap:9px;margin-top:16px}.am-history h4{margin:0;font-size:15px}.am-revision{display:grid;gap:6px;background:#f9fafc;border:1px solid #eceef3;border-radius:8px;padding:11px;min-width:0;font-size:13px;overflow-wrap:anywhere}.am-revision span{color:#626b7c}.am-revision code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}.am-review{border-color:#cdd3ff}.am-json{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-height:320px;overflow:auto;background:#f7f8fb;border-radius:8px;padding:12px;font-size:13px;line-height:1.5}.am-confirm{margin:12px 0;font-size:14px}
+.agent-management{width:100%;min-width:0;color:var(--ink)}.am-head,.am-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.am-head{margin:4px 0 16px}.am-head h2{font-size:20px;margin:3px 0 5px}.am-head p,.am-card-head p{margin:0;color:var(--muted);font-size:13px;line-height:1.55;overflow-wrap:anywhere}.am-eyebrow{font-size:12px!important;letter-spacing:1.1px;color:var(--muted-light)!important;font-weight:700}.am-brand,.am-pending{border-radius:20px;background:var(--canvas);padding:8px 12px;color:var(--muted);font-size:13px;white-space:nowrap}.am-note,.am-message{border-radius:8px;background:var(--canvas);color:var(--muted);padding:11px 13px;font-size:13px;line-height:1.6;overflow-wrap:anywhere;margin:12px 0}.am-message.is-error{background:var(--danger-bg);color:var(--danger)}.am-message.is-ok{background:var(--primary-light);color:var(--primary-dark)}.am-card{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:16px;min-width:0;box-shadow:var(--shadow-sm);margin:13px 0}.am-card h3{font-size:16px;margin:0 0 12px}.am-card-head{margin-bottom:14px}.am-card-head h3{margin:0 0 4px}.am-card-head h2{margin:0 0 4px}.am-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin:0}.am-facts div{border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0}.am-facts dt{font-size:13px;color:var(--muted)}.am-facts + .am-actions{margin-top:12px}.am-ratio-input{display:flex;align-items:center;gap:8px;min-width:0}.am-ratio-input input{flex:1 1 0;min-width:0}.am-ratio-input > span{flex:none;color:var(--muted)}.am-facts dd{font-size:16px;font-weight:700;margin:6px 0 0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.am-meta{font-size:13px;color:var(--muted);overflow-wrap:anywhere}.am-form{display:grid;grid-template-columns:minmax(0,1fr);gap:13px}.am-form label{display:grid;gap:6px;font-size:13px;font-weight:600;min-width:0}.am-form input:not([type=checkbox]),.am-form select,.am-form textarea{box-sizing:border-box;min-width:0}.am-form textarea{width:100%}.am-form small{font-size:12px;font-weight:400;color:var(--muted);line-height:1.5}.am-form .am-check,.am-check{display:flex;align-items:center;gap:9px;min-height:44px;font-size:14px}.am-check input{width:18px;height:18px;flex:none}.am-form textarea{resize:vertical}.am-field-error{grid-column:1/-1;color:var(--danger);font-size:13px;margin:0}.am-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.am-node-list{display:grid;gap:9px}.am-node{display:flex;justify-content:space-between;gap:12px;border:1px solid var(--line);border-radius:9px;padding:12px;min-width:0}.am-node-main{display:grid;gap:4px;min-width:0}.am-node-main strong{font-size:15px;overflow-wrap:anywhere}.am-node-main span,.am-node-main small{font-size:13px;color:var(--muted);overflow-wrap:anywhere}.am-node code,.am-card code,.am-meta code{overflow-wrap:anywhere;word-break:break-word}.am-pager{display:flex;justify-content:center;align-items:center;gap:12px;margin-top:13px;flex-wrap:wrap}.am-pager span{font-size:13px;color:var(--muted)}.am-history{display:grid;gap:9px;margin-top:16px}.am-history h4{margin:0;font-size:15px}.am-revision{display:grid;gap:6px;background:var(--canvas);border:1px solid var(--line);border-radius:8px;padding:11px;min-width:0;font-size:13px;overflow-wrap:anywhere}.am-revision span{color:var(--muted)}.am-revision code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}.am-review{border-color:var(--primary)}.am-json{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-height:320px;overflow:auto;background:var(--canvas);border-radius:8px;padding:12px;font-size:13px;line-height:1.5}.am-confirm{margin:12px 0;font-size:14px}
 @media(max-width:640px){.am-head,.am-card-head,.am-node{flex-direction:column}.am-form{grid-template-columns:minmax(0,1fr)}.am-brand{white-space:normal}.am-actions{width:100%}.am-actions button{flex:1}.am-card{padding:14px}.am-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.agent-management .agent-dialog { width:min(520px,calc(100vw - 24px)); }
+.am-edit-fields{border:0;padding:0;margin:0;min-width:0}.am-mode-line{display:grid;gap:12px;min-width:0}
+.agent-dialog .am-form { grid-template-columns:minmax(0,1fr); }
+.agent-dialog .am-form > label { justify-items:start; }
+.agent-dialog .am-facts { grid-template-columns:minmax(0,1fr); }
+.agent-dialog .am-card { margin:0; padding:0; border:0; box-shadow:none; }
+@media(max-width:900px),(pointer:coarse){.am-form input:not([type=checkbox]){width:100%}}
 </style>

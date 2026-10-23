@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -38,7 +40,7 @@ function validDate(value: unknown): value is string {
 }
 function validDecimal(value: unknown): value is string { return typeof value === "string" && DECIMAL.test(value); }
 function validReason(value: unknown): value is string {
-  if (typeof value !== "string" || !value || value.trim() !== value || new TextEncoder().encode(value).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
+  if (typeof value !== "string" || value.trim() !== value || new TextEncoder().encode(value).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff) { const next = value.charCodeAt(++i); if (!(next >= 0xdc00 && next <= 0xdfff)) return false; }
@@ -96,7 +98,6 @@ export function commissionPaymentPermissions(account: AdminAccount, brand: strin
   };
 }
 
-type Envelope = { success?: unknown; data?: unknown; error?: { code?: string; message?: string } | null };
 // Actor is captured when the account-scoped client is created, not reread from
 // a mutable cookie/session at retry time. Reads may use an unbound client.
 export function createCommissionPaymentsApi(fetcher: typeof fetch = fetch, actorId?: string) {
@@ -111,14 +112,7 @@ export function createCommissionPaymentsApi(fetcher: typeof fetch = fetch, actor
     let response: Response;
     try { response = await fetcher(path, { method: options.method ?? "GET", credentials: "same-origin", headers, ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }) }); }
     catch (cause) { throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR"); }
-    let envelope: Envelope;
-    try { envelope = await response.json() as Envelope; }
-    catch { throw new AdminApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`, response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : undefined); }
-    if (!response.ok || !isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
-      const detail = isRecord(envelope?.error) ? envelope.error : undefined;
-      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError((typeof detail?.message === "string" && detail.message) || `Request failed (${response.status})`, response.ok ? 502 : response.status, typeof detail?.code === "string" ? detail.code : undefined);
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     return envelope.data;
   }
   return {

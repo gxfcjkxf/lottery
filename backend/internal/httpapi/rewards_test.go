@@ -194,7 +194,7 @@ func TestRewardsHTTPClosedBodiesQueriesAndTargetValidation(t *testing.T) {
 	f := rewardFixture(t)
 	grantRewardPermission(t, f.managementHTTP, "reward.grant.brand", "reward.revoke.brand")
 	for i, body := range []string{
-		`{}`, `null`, `{"member_id":"` + f.memberID + `","points":"1"}`,
+		`{}`, `null`, `{"member_id":"` + f.memberID + `","reason":"ok"}`,
 		`{"member_id":"` + f.memberID + `","points":"1","reason":"ok","extra":true}`,
 		`{"member_id":"` + f.memberID + `","member_id":"` + f.memberID + `","points":"1","reason":"ok"}`,
 		`{"member_id":"` + f.memberID + `","points":"1","reason":"ok"} {}`,
@@ -283,6 +283,7 @@ func TestRewardsHTTPNoPermissionInheritanceAndSuperAdminMutationDenied(t *testin
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f.managementHTTP)
+	f.token = platformToken
 	platformPath := strings.Replace(rewardOrdersHTTPPath, "/api/v1/admin", "/api/v1/platform", 1)
 	read = rewardRawCall(f.managementHTTP, "GET", platformPath, "", platformToken, managedBrand, "", "")
 	if read.Code != 200 {

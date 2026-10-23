@@ -25,7 +25,7 @@ func TestDomainHTTPCheckedReplayAndRealAuthority(t *testing.T) {
 	domainGrant(t, f)
 	var before branddomains.Record
 	managedData(t, f.call("GET", domainPath, "", f.token, managedBrand, nil), &before)
-	in := branddomains.Input{Version: before.Version, Domain: "http.example.test", Enabled: true, Primary: true, Reason: "create real authority"}
+	in := branddomains.Input{Version: before.Version, Domain: "http.example.test", Enabled: true, Reason: "create real authority"}
 	first := f.call("POST", domainPath, "domain-create-0001", f.token, managedBrand, in)
 	mustStatus(t, first, 201)
 	var next branddomains.Record
@@ -37,7 +37,7 @@ func TestDomainHTTPCheckedReplayAndRealAuthority(t *testing.T) {
 	for _, d := range next.Domains {
 		if d.Domain == in.Domain {
 			target = d.ID
-			if !d.Enabled || !d.Primary {
+			if !d.Enabled {
 				t.Fatal(d)
 			}
 		}
@@ -61,7 +61,7 @@ func TestDomainHTTPCheckedReplayAndRealAuthority(t *testing.T) {
 	f.http.ServeHTTP(w, r)
 	mustStatus(t, w, 200)
 	mustStatus(t, f.call("PATCH", domainPath+"/"+target, "domain-cross-0001", f.token, "0199a000-0000-7000-8000-000000000002", branddomains.Input{Version: next.Version, Reason: "foreign"}), 403)
-	off := branddomains.Input{Version: next.Version, Enabled: false, Primary: false, Reason: "disable authority"}
+	off := branddomains.Input{Version: next.Version, Enabled: false, Reason: "disable authority"}
 	mustStatus(t, f.call("PATCH", domainPath+"/"+target, "domain-disable-01", f.token, managedBrand, off), 200)
 	w = httptest.NewRecorder()
 	f.http.ServeHTTP(w, r)
@@ -103,7 +103,7 @@ func TestDomainHTTPCheckedReplayAndRealAuthority(t *testing.T) {
 func TestDomainHTTPClosedInputAndQuery(t *testing.T) {
 	f := managedFixture(t)
 	domainGrant(t, f)
-	for i, body := range []map[string]any{{"version": 1, "domain": "new.example.test", "enabled": nil, "is_primary": false, "reason": "test"}, {"version": 1, "domain": "https://example.test", "enabled": true, "is_primary": false, "reason": "test"}, {"version": 1, "domain": "new.example.test", "enabled": false, "is_primary": true, "reason": "test"}, {"version": 1, "domain": "new.example.test", "enabled": true, "is_primary": false, "reason": "test", "unknown": 1}} {
+	for i, body := range []map[string]any{{"version": 1, "domain": "new.example.test", "enabled": nil, "reason": "test"}, {"version": 1, "domain": "https://example.test", "enabled": true, "reason": "test"}, {"version": 1, "domain": "new.example.test", "enabled": false, "is_primary": true, "reason": "test"}, {"version": 1, "domain": "new.example.test", "enabled": true, "reason": "test", "unknown": 1}} {
 		mustStatus(t, f.call("POST", domainPath, "domain-invalid-0"+string(rune('0'+i)), f.token, managedBrand, body), 400)
 	}
 	for _, query := range []string{"?unknown=1", "?limit=0", "?limit=1&limit=2", "?offset=-1", "?offset=1000001", "?limit=%", "?limit=1;offset=0"} {
@@ -111,4 +111,50 @@ func TestDomainHTTPClosedInputAndQuery(t *testing.T) {
 	}
 	mustStatus(t, f.call("GET", domainPath+"?ignored=1", "", f.token, managedBrand, nil), 400)
 	mustStatus(t, f.call("GET", domainPath+"/history?limit=20&offset=0", "", f.token, managedBrand, nil), 200)
+}
+
+func TestDomainDeleteHTTPReplayAndReleasedReservation(t *testing.T) {
+	f := managedFixture(t)
+	domainGrant(t, f)
+	var before branddomains.Record
+	managedData(t, f.call("GET", domainPath, "", f.token, managedBrand, nil), &before)
+	var added branddomains.Record
+	managedData(t, f.call("POST", domainPath, "delete-domain-create", f.token, managedBrand, branddomains.Input{Version: before.Version, Domain: "delete-http.example.test", Enabled: true}), &added)
+	var target string
+	for _, d := range added.Domains {
+		if d.Domain == "delete-http.example.test" {
+			target = d.ID
+		}
+	}
+	path := domainPath + "/" + target
+	body := map[string]any{"version": added.Version}
+	mustStatus(t, f.call("DELETE", path, "delete-domain-stale", f.token, managedBrand, map[string]any{"version": before.Version}), 409)
+	mustStatus(t, f.call("DELETE", path, "delete-domain-foreign", f.token, "0199a000-0000-7000-8000-000000000002", body), 403)
+	var removed branddomains.Record
+	managedData(t, f.call("DELETE", path, "delete-domain-stable", f.token, managedBrand, body), &removed)
+	var replay branddomains.Record
+	managedData(t, f.call("DELETE", path, "delete-domain-stable", f.token, managedBrand, body), &replay)
+	if removed.Version != added.Version+1 || replay.AuditLogID != removed.AuditLogID || replay.Version != removed.Version {
+		t.Fatal(removed, replay)
+	}
+	for _, d := range removed.Domains {
+		if d.ID == target {
+			t.Fatal("binding remains")
+		}
+	}
+	mustStatus(t, f.call("DELETE", path, "delete-domain-again", f.token, managedBrand, map[string]any{"version": removed.Version}), 404)
+	mustStatus(t, f.call("POST", domainPath, "delete-domain-rebind", f.token, managedBrand, branddomains.Input{Version: removed.Version, Domain: "delete-http.example.test", Enabled: true}), 201)
+	var count int
+	if e := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM brand_domain_revisions WHERE audit_log_id=$1`, removed.AuditLogID).Scan(&count); e != nil || count != 1 {
+		t.Fatal(count, e)
+	}
+	if _, e := f.pool.Exec(context.Background(), `UPDATE brands SET status='disabled' WHERE id=$1`, managedBrand); e != nil {
+		t.Fatal(e)
+	}
+	mustStatus(t, f.call("DELETE", path, "delete-domain-stable", f.token, managedBrand, body), 409)
+	_, e := f.pool.Exec(context.Background(), `DELETE FROM role_permissions WHERE role_id IN(SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key='brand_domains.write.brand'`, f.root)
+	if e != nil {
+		t.Fatal(e)
+	}
+	mustStatus(t, f.call("DELETE", path, "delete-domain-stable", f.token, managedBrand, body), 403)
 }

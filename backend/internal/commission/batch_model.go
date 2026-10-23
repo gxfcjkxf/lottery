@@ -77,7 +77,7 @@ func (in RetryCycleInput) Validate() error {
 }
 
 func validCycleReason(reason string) bool {
-	return utf8.ValidString(reason) && reason != "" && reason == strings.TrimSpace(reason) &&
+	return utf8.ValidString(reason) && reason == strings.TrimSpace(reason) &&
 		len([]byte(reason)) <= 500 && !strings.ContainsRune(reason, '\x00')
 }
 

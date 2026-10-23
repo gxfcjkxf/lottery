@@ -6,7 +6,7 @@ const FONT_FAMILIES = {
   serif: 'Georgia, "Times New Roman", serif',
   mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
 } as const
-const FONT_SCALES = { compact: '14px', standard: '16px', large: '18px' } as const
+const FONT_SCALES = { compact: '14px', standard: '16px' } as const
 const RADII = { square: '2px', soft: '8px', round: '16px' } as const
 const SHADOWS = {
   none: 'none',
@@ -44,7 +44,7 @@ export function safeBrandAssetUrl(value: unknown): string | null {
       return null
     }
   }
-  if (!value.startsWith('/icons/') && !value.startsWith('/brand-assets/')) return null
+  if (!value.startsWith('/icons/') && !value.startsWith('/brand-assets/') && !value.startsWith('/api/v1/brand-assets/')) return null
   const extension = value.slice(value.lastIndexOf('.')).toLowerCase()
   if (!ALLOWED_ASSET_EXTENSIONS.has(extension) || /[?#]/.test(value)) return null
   return value
@@ -62,18 +62,23 @@ export function buildBrandCssTokens(theme: Pick<BrandTheme, 'primary' | 'accent'
   const success = safeBrandColor(theme.success)
   const warning = safeBrandColor(theme.warning)
   const danger = safeBrandColor(theme.danger)
-  const family = Object.hasOwn(FONT_FAMILIES, theme.fontFamily) ? FONT_FAMILIES[theme.fontFamily as keyof typeof FONT_FAMILIES] : FONT_FAMILIES.system
-  const scale = theme.fontScale && Object.hasOwn(FONT_SCALES, theme.fontScale) ? FONT_SCALES[theme.fontScale as keyof typeof FONT_SCALES] : FONT_SCALES.standard
-  const scaleFactor = theme.fontScale === 'compact' ? '0.875' : theme.fontScale === 'large' ? '1.125' : '1'
-  const radius = Object.hasOwn(RADII, theme.radius) ? RADII[theme.radius as keyof typeof RADII] : RADII.round
-  const shadow = Object.hasOwn(SHADOWS, theme.shadow) ? SHADOWS[theme.shadow as keyof typeof SHADOWS] : SHADOWS.subtle
+  if (!Object.hasOwn(FONT_FAMILIES, theme.fontFamily) || !Object.hasOwn(FONT_SCALES, theme.fontScale) ||
+      !Object.hasOwn(RADII, theme.radius) || !Object.hasOwn(SHADOWS, theme.shadow)) throw new TypeError('Invalid brand presentation')
+  const family = FONT_FAMILIES[theme.fontFamily]
+  const scale = FONT_SCALES[theme.fontScale]
+  const scaleFactor = theme.fontScale === 'compact' ? '0.875' : '1'
+  const radius = RADII[theme.radius]
+  const shadow = SHADOWS[theme.shadow]
   return {
     '--primary': primary,
     '--primary-dark': darken(primary),
+    '--primary-light': `color-mix(in srgb, ${primary} 8%, white)`,
+    '--primary-ring': `color-mix(in srgb, ${primary} 22%, transparent)`,
     '--green': success,
     '--brand-primary': primary,
     '--accent': accent,
     '--brand-accent': accent,
+    '--accent-light': `color-mix(in srgb, ${accent} 8%, white)`,
     '--brand-success': success,
     '--brand-warning': warning,
     '--brand-danger': danger,
@@ -90,19 +95,19 @@ export function buildBrandCssTokens(theme: Pick<BrandTheme, 'primary' | 'accent'
 
 export function applyBrandPresentation(context: PlatformContext, root: HTMLElement = document.documentElement): void {
   for (const [token, value] of Object.entries(buildBrandCssTokens(context.brand))) root.style.setProperty(token, value)
-  const favicon = safeBrandAssetUrl(context.brand.faviconUrl)
-  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"][data-brand-favicon]')
-  if (favicon) {
-    if (!link) {
-      link = document.createElement('link')
-      link.rel = 'icon'
-      link.dataset.brandFavicon = 'true'
-      link.crossOrigin = 'anonymous'
-      link.referrerPolicy = 'no-referrer'
-      document.head.append(link)
-    }
-    link.href = favicon
-  } else if (link) {
-    link.remove()
-  }
+  applyBrowserBranding(context.brand.name, context.brand.logoText, safeBrandAssetUrl(context.brand.faviconUrl), context.brand.primary)
+}
+
+/** Browser tabs use the same configured identity as the visible brand lockup. */
+export function applyBrowserBranding(name: string, logoText: string, iconUrl: string | null, primary: string): void {
+  document.title = name
+  const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="${escape(primary)}"/><text x="32" y="34" text-anchor="middle" dominant-baseline="middle" font-family="system-ui,sans-serif" font-size="${Array.from(logoText).length > 2 ? 20 : 34}" font-weight="700" fill="white">${escape(logoText)}</text></svg>`
+  const link = document.createElement('link')
+  link.rel = 'icon'
+  link.dataset.brandFavicon = 'true'
+  if (iconUrl) { link.href = iconUrl; link.referrerPolicy = 'no-referrer' }
+  else { link.type = 'image/svg+xml'; link.href = `data:image/svg+xml,${encodeURIComponent(svg)}` }
+  document.querySelectorAll('link[rel="icon"]').forEach(current => current.remove())
+  document.head.append(link)
 }

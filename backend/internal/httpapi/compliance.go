@@ -25,7 +25,7 @@ func complianceActor(w http.ResponseWriter, r *http.Request, d Dependencies, res
 		failure(w, r, 400, "REQUEST_INVALID", "必须选择有效品牌")
 		return a, brand, false
 	}
-	if !compliance.Allowed(a, brand, resource, action) {
+	if !a.SuperAdmin || !compliance.Allowed(a, brand, resource, action) {
 		rejectAdmin(w, r, d, a, brand, resource+"."+action)
 		return a, brand, false
 	}

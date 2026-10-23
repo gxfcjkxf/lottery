@@ -172,7 +172,7 @@ func (in *Input) UnmarshalJSON(data []byte) error {
 		return ErrInvalid
 	}
 	next := Input(out)
-	if next.Version < 1 || !validText(next.Reason, 500, false) || strings.TrimSpace(next.Reason) == "" {
+	if next.Version < 1 || !validText(next.Reason, 500, false) {
 		return ErrInvalid
 	}
 	if _, e := Resolve("Brand", next.Config); e != nil {
@@ -220,7 +220,7 @@ func ValidAssetURI(value string) bool {
 		return false
 	}
 	if u.Scheme == "" && u.Host == "" {
-		return strings.HasPrefix(value, "/icons/") || strings.HasPrefix(value, "/brand-assets/")
+		return strings.HasPrefix(value, "/icons/") || strings.HasPrefix(value, "/brand-assets/") || strings.HasPrefix(value, "/api/v1/brand-assets/")
 	}
 	host := strings.ToLower(u.Hostname())
 	parts := strings.Split(host, ".")
@@ -282,7 +282,7 @@ func Resolve(baseName string, c Config) (Effective, error) {
 		value   *string
 		dest    *string
 		options []string
-	}{{c.FontFamily, &e.FontFamily, []string{"system", "serif", "mono"}}, {c.FontScale, &e.FontScale, []string{"compact", "standard", "large"}}, {c.Radius, &e.Radius, []string{"square", "soft", "round"}}, {c.Shadow, &e.Shadow, []string{"none", "subtle", "lifted"}}, {c.DefaultLocale, &e.DefaultLocale, []string{"en", "zh-CN"}}} {
+	}{{c.FontFamily, &e.FontFamily, []string{"system", "serif", "mono"}}, {c.FontScale, &e.FontScale, []string{"compact", "standard"}}, {c.Radius, &e.Radius, []string{"square", "soft", "round"}}, {c.Shadow, &e.Shadow, []string{"none", "subtle", "lifted"}}, {c.DefaultLocale, &e.DefaultLocale, []string{"en", "zh-CN"}}} {
 		if item.value != nil {
 			if !enum(*item.value, item.options...) {
 				return e, ErrInvalid

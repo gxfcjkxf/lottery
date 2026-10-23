@@ -9,12 +9,42 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 )
 
+func TestBootstrapSharedLotteryPermissionsAndRepeatedRoleGrants(t *testing.T) {
+	db := testdb.New(t)
+	ctx := context.Background()
+	before := os.Args
+	t.Cleanup(func() { os.Args = before })
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-pass-2026")
+	for _, tc := range []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{"configured_platform_one", []string{"--super"}, []string{"platform_game.view.platform", "platform_game.write.platform"}},
+		{"configured_platform_two", []string{"--super"}, []string{"platform_game.view.platform", "platform_game.write.platform"}},
+		{"configured_brand_one", []string{"--brand", "aurora"}, []string{"platform_game.connect.brand", "platform_game.sell.brand", "platform_game.view.brand"}},
+		{"configured_brand_two", []string{"--brand", "aurora"}, []string{"platform_game.connect.brand", "platform_game.sell.brand", "platform_game.view.brand"}},
+	} {
+		os.Args = append([]string{"platform", "create-admin", "--username", tc.name}, tc.args...)
+		if err := createAdmin(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		if err := db.QueryRow(ctx, `SELECT array_agg(permission_key ORDER BY permission_key) FROM role_permissions rp JOIN admin_account_roles ar ON ar.role_id=rp.role_id JOIN admin_accounts a ON a.id=ar.account_id WHERE a.username=$1 AND permission_key LIKE 'platform_game.%'`, tc.name).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestBootstrapPlatformWithdrawalPermissionIsReadOnly(t *testing.T) {
 	db := testdb.New(t)
 	ctx := context.Background()
 	before := os.Args
 	t.Cleanup(func() { os.Args = before })
-	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-owned-test-only-password-2026")
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-pass-2026")
 	os.Args = []string{"platform", "create-admin", "--username", "platform_withdrawal_reader", "--super"}
 	if err := createAdmin(ctx, db); err != nil {
 		t.Fatal(err)
@@ -45,7 +75,7 @@ func TestBootstrapPlatformWithdrawalReportPermissionsAreExplicitAndReadOnly(t *t
 	ctx := context.Background()
 	before := os.Args
 	t.Cleanup(func() { os.Args = before })
-	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-owned-test-only-password-2026")
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-pass-2026")
 	os.Args = []string{"platform", "create-admin", "--username", "platform_report_reader", "--super"}
 	if err := createAdmin(ctx, db); err != nil {
 		t.Fatal(err)
@@ -76,7 +106,7 @@ func TestBootstrapCommissionPolicyPermissionsAreExplicitAndScoped(t *testing.T) 
 	ctx := context.Background()
 	before := os.Args
 	t.Cleanup(func() { os.Args = before })
-	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-owned-test-only-password-2026")
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-pass-2026")
 	for _, tc := range []struct {
 		username string
 		args     []string
@@ -133,7 +163,7 @@ func TestBootstrapRewardPermissionsAreExplicitAndScoped(t *testing.T) {
 	ctx := context.Background()
 	before := os.Args
 	t.Cleanup(func() { os.Args = before })
-	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-reward-owned-test-password-2026")
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-reward-own-test-2026")
 	for _, tc := range []struct {
 		name string
 		args []string
@@ -161,7 +191,7 @@ func TestBootstrapRewardReportRightsAreExplicitAndScoped(t *testing.T) {
 	ctx := context.Background()
 	before := os.Args
 	t.Cleanup(func() { os.Args = before })
-	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-reward-report-owned-test-password-2026")
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-reward-rep-test-2026")
 	for _, tc := range []struct {
 		name  string
 		args  []string
@@ -190,7 +220,7 @@ func TestBootstrapReportArchiveRightsAreExplicitAndScoped(t *testing.T) {
 	ctx := context.Background()
 	before := os.Args
 	t.Cleanup(func() { os.Args = before })
-	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-report-archive-owned-test-password-2026")
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-report-arc-test-2026")
 	for _, tc := range []struct {
 		name string
 		args []string

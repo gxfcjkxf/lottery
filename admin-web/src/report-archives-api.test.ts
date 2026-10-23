@@ -39,6 +39,18 @@ function page(items: ReportArchiveRecord[] = [record()]) { return { brand_id: br
 function fetcher(data: unknown, status = 200) { return vi.fn<typeof fetch>().mockResolvedValue(response(data, status)); }
 
 describe("report archives API", () => {
+  it("accepts optional empty reasons in create receipts, list pages and detail reads", async () => {
+    const saved = record({ reason: "" });
+    await expect(createReportArchivesApi(fetcher(page([saved]))).list(brand)).resolves.toMatchObject({ items: [{ reason: "" }] });
+    await expect(createReportArchivesApi(fetcher(saved)).read(brand, archiveId)).resolves.toMatchObject({ reason: "" });
+    const base = { kind: "daily" as const, period_key: "0001-01-01", expected_revision: 0 };
+    for (const input of [base, { ...base, reason: "" }]) {
+      const post = fetcher(saved, 201);
+      await expect(createReportArchivesApi(post).create(brand, input, "archive-key-0001", actor)).resolves.toMatchObject({ reason: "" });
+      expect(JSON.parse(String(post.mock.calls[0]![1]?.body))).toEqual(input);
+    }
+  });
+
   it("models all four routes, sends the exact brand and actor headers, and validates records/pages", async () => {
     const f = fetcher(page());
     const api = createReportArchivesApi(f);

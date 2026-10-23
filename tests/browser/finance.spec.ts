@@ -55,6 +55,7 @@ test("manual recharge, freeze, original-source unfreeze and adjustment reconcile
   await finance.getByLabel("会员 UUID", { exact: true }).fill(member);
   await finance.getByRole("button", { name: "查询会员", exact: true }).click();
   await expect(finance.locator(".wallet-panel")).toBeVisible();
+  await page.locator(".console-tabs").getByRole("button", { name: "充值记录", exact: true }).click();
   const recharge = finance
     .locator(".form-panel")
     .filter({ has: page.getByRole("heading", { name: /创建.*充值/ }) });
@@ -64,6 +65,7 @@ test("manual recharge, freeze, original-source unfreeze and adjustment reconcile
     .fill("browser recharge create");
   await recharge.getByRole("button", { name: /创建待确认充值单/ }).click();
   await expect(finance.getByRole("status")).toContainText("充值单已创建");
+  await finance.locator(".console-recharges-table").getByRole("button", { name: "详情", exact: true }).first().click();
   const order = finance.locator(".recharge-row").first();
   await expect(order).toContainText("待确认");
   await expect(
@@ -72,11 +74,12 @@ test("manual recharge, freeze, original-source unfreeze and adjustment reconcile
   await order
     .getByLabel("确认原因", { exact: true })
     .fill("browser recharge confirm");
-  await order.getByRole("button", { name: "确认并入账", exact: true }).click();
+  await order.getByRole("button", { name: "入账", exact: true }).click();
   await expect(order).toContainText("已确认");
   await expect(
     finance.locator(".wallet-panel .total.prominent strong"),
   ).toHaveText("100");
+  await page.locator(".console-tabs").getByRole("button", { name: "会员积分与账本", exact: true }).click();
   const freeze = finance
     .locator("form")
     .filter({

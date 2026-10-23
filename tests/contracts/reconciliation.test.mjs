@@ -1,3 +1,14 @@
+import * as bettingHistory from '../../scripts/openapi-betting-history.mjs';
+import * as configuredBusiness from "../../scripts/openapi-configured-business.mjs";
+import * as configuredPreview from "../../scripts/openapi-configured-preview.mjs";
+import * as platformShared from "../../scripts/openapi-platform-lottery.mjs";
+import * as markSix from "../../scripts/openapi-mark-six.mjs";
+import * as canada from "../../scripts/openapi-canada.mjs";
+import * as sharedAutomation from "../../scripts/openapi-platform-automation.mjs";
+import * as platformSettings from "../../scripts/openapi-platform-settings.mjs";
+import * as memberSummary from "../../scripts/openapi-member-summary.mjs";
+import * as associationNames from "../../scripts/openapi-association-names.mjs";
+import * as filterOptions from "../../scripts/openapi-filter-options.mjs";
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
@@ -27,6 +38,7 @@ import * as reportArchiveTasks from "../../scripts/openapi-report-archive-tasks.
 import * as reportArchivePolicy from "../../scripts/openapi-report-archive-policy.mjs";
 import * as attributionReports from "../../scripts/openapi-attribution-reports.mjs";
 import * as businessInventory from "../../scripts/openapi-business-inventory.mjs";
+import * as agentPortal from "../../scripts/openapi-agent-portal.mjs";
 
 const root=new URL("../../",import.meta.url);
 const go=process.env.LOTTERY_GO_BIN??"go";
@@ -51,7 +63,7 @@ test("reconciliation contract keeps five durable task routes alongside the stand
   const result=spawnSync(go,["run","-buildvcs=false","./cmd/route-inventory"],{cwd:new URL("../../backend/",import.meta.url),encoding:"utf8",env:{...process.env,CGO_ENABLED:"0"}});
   assert.equal(result.status,0,result.stderr||result.error?.message);
   const actual=new Set(JSON.parse(result.stdout).map(({method,path})=>`${method} ${path}`));
-  const fullDocument=composeDocument([
+  const fullDocument=composeDocument([bettingHistory,
     {schemas:identitySchemas,operations:identityOperations},
     {schemas,operations},
     {schemas:lotterySchemas,operations:lotteryOperations},
@@ -73,7 +85,7 @@ test("reconciliation contract keeps five durable task routes alongside the stand
     reportArchives,
     reportArchiveTasks,
     reportArchivePolicy,
-    attributionReports,
+    attributionReports,platformShared,configuredPreview,configuredBusiness,markSix,canada,sharedAutomation,platformSettings,memberSummary,associationNames,filterOptions,agentPortal,
   ],JSON.parse(result.stdout));
   assert.ok(actual.has("GET /api/v1/admin/reconciliations/business-inventory"));
   assert.ok(fullDocument.paths["/api/v1/admin/reconciliations/business-inventory"].get);
@@ -156,7 +168,7 @@ test("reconciliation permissions, primary reads, strict pagination, and idempote
     assert.match(operation.description,/explicit brand membership/);
   }
   assert.deepEqual(create.requestBody,{ $ref:"#/components/schemas/FinanceReconciliationCreateInput" });
-  assert.deepEqual(schemas.FinanceReconciliationCreateInput.required,["reason","check_scope"]);
+  assert.deepEqual(schemas.FinanceReconciliationCreateInput.required,["check_scope"]);
   assert.deepEqual(Object.keys(schemas.FinanceReconciliationCreateInput.properties),["reason","check_scope"]);
   assert.deepEqual(schemas.FinanceReconciliationCreateInput.properties.check_scope.enum,["wallet","wallet_and_business"]);
   assert.equal(schemas.FinanceReconciliationCreateInput.properties.check_scope.default,undefined);
@@ -207,8 +219,8 @@ test("reconciliation schemas enforce canonical bounded versions, exact counters,
   assert.ok(!validate("FinanceReconciliationCreateInput")({reason:"check",check_scope:null}));
   assert.ok(!validate("FinanceReconciliationCreateInput")({reason:"check",check_scope:"all"}));
   assert.ok(!validate("FinanceReconciliationCreateInput")({reason:"check",check_scope:"wallet",extra:true}));
-  for(const reason of ["", " leading", "trailing ", "line\nbreak", "line\rbreak", "nul\u0000byte"]){
-    assert.ok(!validate("FinanceReconciliationCreateInput")({reason}),`accepted invalid reason ${JSON.stringify(reason)}`);
+  for(const reason of [" leading", "trailing ", "line\nbreak", "line\rbreak", "nul\u0000byte"]){
+    assert.ok(!validate("FinanceReconciliationCreateInput")({reason,check_scope:"wallet"}),`accepted invalid reason ${JSON.stringify(reason)}`);
   }
   const page=validate("FinanceReconciliationJobPage");
   const example={brand_id:"11111111-1111-4111-8111-111111111111",items:[],total_count:"10000000000000000000",limit:20,offset:0};

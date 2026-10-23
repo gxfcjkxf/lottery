@@ -83,10 +83,18 @@ func TestPersistentAuthBrandMembershipAndReplay(t *testing.T) {
 	if joined.Data.User.ID != registered.Data.User.ID || joined.Data.Member.ID == registered.Data.Member.ID {
 		t.Fatal("global identity/brand snapshot mismatch")
 	}
-	if r := call("PATCH", "/api/v1/me/profile", "profile-first-001", token, map[string]string{"phone": "+639171234567"}); r.Code != 200 {
+	oldSession := call("GET", "/api/v1/me", "", token, nil)
+	if oldSession.Code != 401 || !bytes.Contains(oldSession.Body.Bytes(), []byte("AUTH_SESSION_REPLACED")) {
+		t.Fatal("old terminal did not receive replacement reason", oldSession.Code, oldSession.Body.String())
+	}
+	oldWrite := call("PATCH", "/api/v1/me/profile", "profile-old-session", token, map[string]string{"phone": "+639171234567"})
+	if oldWrite.Code != 401 || !bytes.Contains(oldWrite.Body.Bytes(), []byte("AUTH_SESSION_REPLACED")) {
+		t.Fatal("old session could write or lost replacement reason", oldWrite.Code, oldWrite.Body.String())
+	}
+	if r := call("PATCH", "/api/v1/b/harbor/me/profile", "profile-first-001", joined.Data.AccessToken, map[string]string{"phone": "+639171234567"}); r.Code != 200 {
 		t.Fatal(r.Code, r.Body.String())
 	}
-	if r := call("PATCH", "/api/v1/me/profile", "profile-again-002", token, map[string]string{"phone": "+639181234567"}); r.Code != 409 {
+	if r := call("PATCH", "/api/v1/b/harbor/me/profile", "profile-again-002", joined.Data.AccessToken, map[string]string{"phone": "+639181234567"}); r.Code != 409 {
 		t.Fatal("second profile update accepted", r.Code)
 	}
 	if r := call("POST", "/api/v1/auth/logout", "logout-00001", token, map[string]string{}); r.Code != 200 {

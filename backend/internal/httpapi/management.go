@@ -16,6 +16,9 @@ import (
 )
 
 func managementAllowed(a access.Account, resource, action, brand string) bool {
+	if resource == "auth_config" {
+		return a.SuperAdmin && access.Authorize(a, resource, action, access.ScopePlatform, "")
+	}
 	if resource == "bet" || resource == "bet_policy" || resource == "game" || resource == "schedule" || resource == "period" || resource == "draw" || resource == "draw_source" || (resource == "rule" && action != "simulate") {
 		return rulebook.Allowed(a, brand, resource, action)
 	}
@@ -94,8 +97,8 @@ func validRoleIDs(ids []string) bool {
 	return true
 }
 func managementPassword(ctx context.Context, d Dependencies, password string) (string, mutation.Result, error) {
-	if len(password) < 16 || len(password) > 128 {
-		return "", mutation.Fail(400, "PASSWORD_INVALID", "管理密码须为 16-128 字节"), nil
+	if len(password) < 6 || len(password) > 30 {
+		return "", mutation.Fail(400, "PASSWORD_INVALID", "管理密码须为 6-30 字节"), nil
 	}
 	hash, err := d.Identity.PasswordHash(ctx, password)
 	if err != nil {
@@ -176,6 +179,37 @@ func registerAdminManagementRoutes(handle func(string, string, http.HandlerFunc)
 			})
 		})
 	}
+	handle("POST", "/roles/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+		a, brand, ok := managementActor(w, r, d, "role", "delete")
+		if !ok {
+			return
+		}
+		id := r.PathValue("id")
+		if !uuidPattern.MatchString(id) {
+			failure(w, r, 400, "REQUEST_INVALID", "角色编号不正确")
+			return
+		}
+		var in struct {
+			Version int64 `json:"version"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if in.Version < 1 {
+			failure(w, r, 400, "REQUEST_INVALID", "角色版本不正确")
+			return
+		}
+		managementWrite(w, r, d, a, brand, "role", "delete", "admin.role.delete", id, in, true, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+			auditID, err := d.Admins.DeleteRole(ctx, tx, fresh, brand, id, in.Version, meta(r))
+			if errors.Is(err, adminsys.ErrRoleAssigned) {
+				return mutation.Fail(409, "ROLE_ASSIGNED", "角色仍被账号使用，请先移除角色后再删除"), nil
+			}
+			if err != nil {
+				return managementError(err)
+			}
+			return mutation.OK(200, map[string]string{"audit_log_id": auditID}), nil
+		})
+	})
 	handle("POST", "/accounts", func(w http.ResponseWriter, r *http.Request) {
 		a, brand, ok := managementActor(w, r, d, "admin", "write")
 		if !ok {
@@ -226,6 +260,30 @@ func registerAdminManagementRoutes(handle func(string, string, http.HandlerFunc)
 				return managementError(err)
 			}
 			return mutation.OK(200, record), nil
+		})
+	})
+	handle("POST", "/accounts/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+		a, brand, ok := managementActor(w, r, d, "admin", "delete")
+		if !ok {
+			return
+		}
+		id := r.PathValue("id")
+		var in struct {
+			Version int64 `json:"version"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if !uuidPattern.MatchString(id) || in.Version < 1 {
+			failure(w, r, 400, "REQUEST_INVALID", "账号编号或版本不正确")
+			return
+		}
+		managementWrite(w, r, d, a, brand, "admin", "delete", "admin.account.delete", id, in, true, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+			auditID, err := d.Admins.DeleteAdmin(ctx, tx, fresh, brand, id, in.Version, meta(r))
+			if err != nil {
+				return managementError(err)
+			}
+			return mutation.OK(200, map[string]string{"audit_log_id": auditID}), nil
 		})
 	})
 	handle("POST", "/accounts/{id}/reset-password", func(w http.ResponseWriter, r *http.Request) {
@@ -295,7 +353,7 @@ func registerAdminManagementRoutes(handle func(string, string, http.HandlerFunc)
 			return
 		}
 		in.Reason = strings.TrimSpace(in.Reason)
-		managementWrite(w, r, d, a, brand, "auth_config", "write", "admin.auth_config.update", "", in, false, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+		authSettingsWrite(w, r, d, a, brand, in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
 			return d.Identity.UpdateAuthSettings(ctx, tx, brand, fresh.ID, in, meta(r))
 		})
 	})

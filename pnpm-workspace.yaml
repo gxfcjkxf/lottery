@@ -3,5 +3,6 @@ packages:
   - admin-web
   - platform-web
   - shared
+  - agent-web
 allowBuilds:
   esbuild: true

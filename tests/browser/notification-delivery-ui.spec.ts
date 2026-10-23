@@ -35,7 +35,7 @@ test("notification retry UI retains unknown intent across remount (mocked delive
   await panel.locator(".nd-confirm").getByRole("checkbox").check();
   await panel.getByRole("button",{name:"确认重试",exact:true}).click();
   await expect(panel.locator(".nd-pending")).toBeVisible();
-  await panel.getByRole("button",{name:"只读刷新通知投递记录",exact:true}).click();
+  await panel.getByRole("button",{name:"刷新",exact:true}).click();
   await expect(panel.locator(".status-sent")).toBeVisible();
   await expect(panel.locator(".nd-pending")).toBeVisible();
   // Remount through real navigation, not a reload that would discard page memory.

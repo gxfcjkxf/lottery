@@ -1,3 +1,5 @@
+import { readApiEnvelope } from '@lottery/shared'
+
 import { ApiError, createApiClient } from "@lottery/shared";
 import {
   isWithdrawalAvailability,
@@ -80,17 +82,9 @@ export function createWithdrawalOrdersApi(options: {
           headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey, "X-Withdrawal-Actor-Context": actorContext },
           body: JSON.stringify(body),
         });
-        let raw: unknown;
-        try { raw = await fetched.json(); } catch {
-          throw new WithdrawalUnknownIntentError("The server returned an unreadable withdrawal receipt.");
-        }
-        if (!fetched.ok) {
-          const envelope = isEnvelope(raw) ? raw : undefined;
-          if (!envelope || envelope.success !== false || !envelope.error || typeof envelope.error.code !== "string" || typeof envelope.error.message !== "string") throw new WithdrawalUnknownIntentError("The server did not provide a confirmed rejection.");
-          throw new ApiError(envelope?.error?.message ?? envelope?.message ?? `Request failed (${fetched.status})`, fetched.status, envelope?.error?.code ?? envelope?.code);
-        }
+        const raw = await readApiEnvelope(fetched,(message,status,code)=>new ApiError(message,status,code));
         if (fetched.status !== 201) throw new WithdrawalUnknownIntentError("The server returned an unexpected creation status.");
-        const data = isEnvelope(raw) && raw.success === true && Object.hasOwn(raw, "data") ? raw.data : undefined;
+        const data = raw.data;
         if (!isWithdrawalOrder(data) || data.points !== body.points || data.source_allocation.length !== body.source_allocation.length || data.source_allocation.some((allocation, index) => allocation.source !== body.source_allocation[index]?.source || allocation.state !== body.source_allocation[index]?.state || allocation.points !== body.source_allocation[index]?.points) || !((data.state === "reviewing" && data.version === 1) || (data.state === "processing" && data.version === 2))) throw new WithdrawalUnknownIntentError("The server returned a receipt that does not match the submitted withdrawal intent.");
         response = data;
       } catch (cause) {
@@ -105,8 +99,4 @@ export function createWithdrawalOrdersApi(options: {
 
 function isEnvelopeData(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function isEnvelope(value: unknown): value is { success?: boolean; data?: unknown; message?: string; code?: string; error?: { message?: string; code?: string } } {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value) && "success" in value);
 }

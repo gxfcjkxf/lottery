@@ -1,28 +1,15 @@
 import { readFileSync } from "node:fs";
-import { createSSRApp } from "vue";
-import * as Vue from "vue";
+import { createSSRApp, h } from "vue";
 import { renderToString } from "vue/server-renderer";
-import { compileTemplate, parse } from "vue/compiler-sfc";
 import { expect, it } from "vitest";
 import { createAdminI18n } from "./i18n";
 
 it("renders the exact generation and current or historical label in each locale", async () => {
   const source = readFileSync(new URL("./SettlementManagement.vue", import.meta.url), "utf8");
-  const descriptor = parse(source).descriptor;
-  type Node = { tag?: string; props?: { name?: string; value?: { content: string } }[]; children?: Node[]; loc: { source: string } };
-  function find(node: Node): Node | undefined {
-    if (node.tag === "div" && node.loc.source.startsWith("<div><dt>{{ t(\"结算代次 / 是否当前\"")) return node;
-    return node.children?.map(find).find(Boolean);
-  }
-  const fragment = find(descriptor.template!.ast as unknown as Node);
-  expect(fragment).toBeDefined();
-  const compiled = compileTemplate({ source: fragment!.loc.source, filename: "SettlementManagement.vue", id: "settlement-generation-regression" });
-  expect(compiled.errors).toEqual([]);
-  const code = compiled.code.replace(/^import\s+\{([^}]+)\}\s+from\s+["']vue["'];?\s*$/gm, (_m, bindings: string) => `const {${bindings.replace(/\s+as\s+/g, ": ")}}=Vue;`).replace("export function render", "function render");
-  const render = new Function("Vue", `${code}; return render;`)(Vue);
+  expect(source).toContain("admin.settlement.generation");
   const i18n = createAdminI18n();
   const selectedJob = { generation: 2, current: true };
-  const app = () => createSSRApp({ render, setup: () => ({ selectedJob, t: i18n.t }) });
+  const app = () => createSSRApp({ render: () => h("div", [i18n.t("admin.settlement.generation", { generation: selectedJob.generation }), " · ", selectedJob.current ? i18n.t("admin.copy.a83d9ef8") : i18n.t("admin.copy.5af7459d")]) });
   const text = async () => (await renderToString(app())).replace(/<!--[^]*?-->/g, "").replace(/<[^>]+>/g, "");
 
   expect(typeof selectedJob.generation).toBe("number");

@@ -1,3 +1,5 @@
+import { readPlatformEnvelope } from './platform-api'
+
 import { PlatformApiError } from './platform-api'
 
 export interface AdminRecord {
@@ -24,11 +26,13 @@ export interface RoleRecord {
   audit_log_id?: string
 }
 
-export interface AccountCreateBody { username: string; password: string; role_ids: string[]; reason: string }
-export interface AccountUpdateBody { version: number; status: 'active' | 'disabled'; role_ids: string[]; reason: string }
-export interface PasswordResetBody { version: number; password: string; reason: string }
-export interface RoleCreateBody { code: string; name: string; status: 'active' | 'disabled'; permissions: string[]; reason: string }
-export interface RoleUpdateBody { version: number; name: string; status: 'active' | 'disabled'; permissions: string[]; reason: string }
+export interface AccountCreateBody { username: string; password: string; role_ids: string[]; reason?: string }
+export interface AccountUpdateBody { version: number; status: 'active' | 'disabled'; role_ids: string[]; reason?: string }
+export interface PasswordResetBody { version: number; password: string; reason?: string }
+export interface AccountDeleteBody { version: number }
+export interface RoleCreateBody { code: string; name: string; status: 'active' | 'disabled'; permissions: string[]; reason?: string }
+export interface RoleUpdateBody { version: number; name: string; status: 'active' | 'disabled'; permissions: string[]; reason?: string }
+export interface RoleDeleteBody { version: number }
 
 export class PlatformAccessApiError extends PlatformApiError {
   constructor(message: string, status: number, code?: string) {
@@ -84,9 +88,12 @@ function validKey(key: string) {
   if (!IDEMPOTENCY_KEY.test(key)) throw new PlatformAccessApiError('A valid idempotency key is required', 400, 'REQUEST_INVALID')
 }
 function validReason(reason: string) {
-  if (typeof reason !== 'string' || !reason.trim() || new TextEncoder().encode(reason).length > 500) {
+  if (typeof reason !== 'string' || new TextEncoder().encode(reason).length > 500) {
     throw new PlatformAccessApiError('A valid reason is required', 400, 'REQUEST_INVALID')
   }
+}
+function validOptionalReason(reason: string | undefined) {
+  if (reason !== undefined) validReason(reason)
 }
 function validVersion(version: number) {
   if (!Number.isSafeInteger(version) || version < 1 || version >= Number.MAX_SAFE_INTEGER) {
@@ -100,11 +107,11 @@ function validRoleIds(roleIds: string[]) {
 }
 function validPassword(password: string) {
   if (typeof password !== 'string') {
-    throw new PlatformAccessApiError('Password must be between 16 and 128 UTF-8 bytes', 400, 'REQUEST_INVALID')
+    throw new PlatformAccessApiError('Password must be between 6 and 30 UTF-8 bytes', 400, 'REQUEST_INVALID')
   }
   const bytes = new TextEncoder().encode(password).length
-  if (bytes < 16 || bytes > 128) {
-    throw new PlatformAccessApiError('Password must be between 16 and 128 UTF-8 bytes', 400, 'REQUEST_INVALID')
+  if (bytes < 6 || bytes > 30) {
+    throw new PlatformAccessApiError('Password must be between 6 and 30 UTF-8 bytes', 400, 'REQUEST_INVALID')
   }
 }
 
@@ -123,13 +130,7 @@ export function createPlatformAccessApi(fetcher: typeof fetch = fetch) {
     } catch (cause) {
       throw new PlatformAccessApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR')
     }
-    let envelope: unknown
-    try { envelope = await response.json() } catch { invalid() }
-    if (!response.ok) {
-      if (!isObj(envelope) || envelope.success !== false || !isObj(envelope.error) ||
-        !isText(envelope.error.code) || !envelope.error.code.trim() || !isText(envelope.error.message) || !envelope.error.message.trim()) invalid()
-      throw new PlatformAccessApiError(envelope.error.message, response.status, envelope.error.code)
-    }
+    const envelope = await readPlatformEnvelope<unknown>(response);
     if (!isObj(envelope) || envelope.success !== true || envelope.data === undefined) invalid()
     if (response.status !== (options.expectedStatus ?? 200)) invalid()
     return envelope.data
@@ -151,6 +152,10 @@ export function createPlatformAccessApi(fetcher: typeof fetch = fetch) {
   }
   function roleReceipt(data: unknown, brand: string, expectedVersion: number): RoleRecord {
     if (!isRole(data, brand) || !isObj(data) || !isUUID(data.audit_log_id) || data.version !== expectedVersion) invalid()
+    return data as unknown as RoleRecord
+  }
+  function platformRoleReceipt(data: unknown, expectedVersion: number): RoleRecord {
+    if (!isPlatformRole(data) || !isObj(data) || !isUUID(data.audit_log_id) || data.version !== expectedVersion) invalid()
     return data as unknown as RoleRecord
   }
   return {
@@ -184,47 +189,84 @@ export function createPlatformAccessApi(fetcher: typeof fetch = fetch) {
       if (!isObj(data) || !Array.isArray(data.items) || !data.items.every(isPlatformRole) || data.items.length > limit) invalid()
       return data.items
     },
+    async platformPermissions(): Promise<string[]> {
+      const data = await request('/platform-permissions')
+      if (!isObj(data) || !Array.isArray(data.items) || !data.items.every(value => isText(value) && MACHINE_KEY.test(value) && value.endsWith('.platform'))) invalid()
+      return data.items
+    },
     async createAccount(brand: string, body: AccountCreateBody, key: string): Promise<AdminRecord> {
-      validBrand(brand); validRoleIds(body.role_ids); validPassword(body.password); validReason(body.reason)
+      validBrand(brand); validRoleIds(body.role_ids); validPassword(body.password); validOptionalReason(body.reason)
       if (!/^[a-z][a-z0-9_]{2,31}$/.test(body.username)) throw new PlatformAccessApiError('A valid username is required', 400, 'REQUEST_INVALID')
       return adminReceipt(await request('/accounts', writeOptions(brand, body, key, 201)), brand, 1)
     },
     async updateAccount(brand: string, id: string, body: AccountUpdateBody, key: string): Promise<AdminRecord> {
-      validBrand(brand); validVersion(body.version); validRoleIds(body.role_ids); validReason(body.reason)
+      validBrand(brand); validVersion(body.version); validRoleIds(body.role_ids); validOptionalReason(body.reason)
       if (!isUUID(id) || (body.status !== 'active' && body.status !== 'disabled')) invalid()
       return adminReceipt(await request(`/accounts/${id}`, { ...writeOptions(brand, body, key), method: 'PATCH' }), brand, body.version + 1)
     },
     async resetPassword(brand: string, id: string, body: PasswordResetBody, key: string): Promise<{ audit_log_id: string }> {
-      validBrand(brand); validVersion(body.version); validPassword(body.password); validReason(body.reason)
+      validBrand(brand); validVersion(body.version); validPassword(body.password); validOptionalReason(body.reason)
       if (!isUUID(id)) invalid()
       return auditReceipt(await request(`/accounts/${id}/reset-password`, writeOptions(brand, body, key)))
     },
+    async deleteAccount(brand: string, id: string, body: AccountDeleteBody, key: string): Promise<{ audit_log_id: string }> {
+      validBrand(brand); validVersion(body.version)
+      if (!isUUID(id)) invalid()
+      return auditReceipt(await request(`/accounts/${id}/delete`, writeOptions(brand, body, key)))
+    },
     async createPlatformAccount(body: AccountCreateBody, key: string): Promise<AdminRecord> {
-      validRoleIds(body.role_ids); validPassword(body.password); validReason(body.reason)
+      validRoleIds(body.role_ids); validPassword(body.password); validOptionalReason(body.reason)
       if (!/^[a-z][a-z0-9_]{2,31}$/.test(body.username)) throw new PlatformAccessApiError('A valid username is required', 400, 'REQUEST_INVALID')
       return adminReceipt(await request('/platform-accounts', writeOptions(undefined, body, key, 201)), undefined, 1)
     },
     async updatePlatformAccount(id: string, body: AccountUpdateBody, key: string): Promise<AdminRecord> {
-      validVersion(body.version); validRoleIds(body.role_ids); validReason(body.reason)
+      validVersion(body.version); validRoleIds(body.role_ids); validOptionalReason(body.reason)
       if (!isUUID(id) || (body.status !== 'active' && body.status !== 'disabled')) invalid()
       return adminReceipt(await request(`/platform-accounts/${id}`, { ...writeOptions(undefined, body, key), method: 'PATCH' }), undefined, body.version + 1)
     },
     async resetPlatformPassword(id: string, body: PasswordResetBody, key: string): Promise<{ audit_log_id: string }> {
-      validVersion(body.version); validPassword(body.password); validReason(body.reason)
+      validVersion(body.version); validPassword(body.password); validOptionalReason(body.reason)
       if (!isUUID(id)) invalid()
       return auditReceipt(await request(`/platform-accounts/${id}/reset-password`, writeOptions(undefined, body, key)))
     },
+    async deletePlatformAccount(id: string, body: AccountDeleteBody, key: string): Promise<{ audit_log_id: string }> {
+      validVersion(body.version)
+      if (!isUUID(id)) invalid()
+      return auditReceipt(await request(`/platform-accounts/${id}/delete`, writeOptions(undefined, body, key)))
+    },
     async createRole(brand: string, body: RoleCreateBody, key: string): Promise<RoleRecord> {
-      validBrand(brand); validReason(body.reason)
+      validBrand(brand); validOptionalReason(body.reason)
       if (!/^[a-z][a-z0-9_]{2,47}$/.test(body.code) || !body.name.trim() || body.name.length > 120 ||
         !Array.isArray(body.permissions) || !body.permissions.every(value => isText(value) && value.endsWith('.brand') && MACHINE_KEY.test(value))) invalid()
       return roleReceipt(await request('/roles', writeOptions(brand, body, key, 201)), brand, 1)
     },
     async updateRole(brand: string, id: string, body: RoleUpdateBody, key: string): Promise<RoleRecord> {
-      validBrand(brand); validVersion(body.version); validReason(body.reason)
+      validBrand(brand); validVersion(body.version); validOptionalReason(body.reason)
       if (!isUUID(id) || !body.name.trim() || body.name.length > 120 || (body.status !== 'active' && body.status !== 'disabled') ||
         !Array.isArray(body.permissions) || !body.permissions.every(value => isText(value) && value.endsWith('.brand') && MACHINE_KEY.test(value))) invalid()
       return roleReceipt(await request(`/roles/${id}`, { ...writeOptions(brand, body, key), method: 'PATCH' }), brand, body.version + 1)
+    },
+    async deleteRole(brand: string, id: string, body: RoleDeleteBody, key: string): Promise<{ audit_log_id: string }> {
+      validBrand(brand); validVersion(body.version)
+      if (!isUUID(id)) invalid()
+      return auditReceipt(await request(`/roles/${id}/delete`, writeOptions(brand, body, key)))
+    },
+    async createPlatformRole(body: RoleCreateBody, key: string): Promise<RoleRecord> {
+      validOptionalReason(body.reason)
+      if (!/^[a-z][a-z0-9_]{2,47}$/.test(body.code) || !body.name.trim() || body.name.length > 120 || (body.status !== 'active' && body.status !== 'disabled') ||
+        !Array.isArray(body.permissions) || !body.permissions.every(value => isText(value) && value.endsWith('.platform') && MACHINE_KEY.test(value))) invalid()
+      return platformRoleReceipt(await request('/platform-roles', writeOptions(undefined, body, key, 201)), 1)
+    },
+    async updatePlatformRole(id: string, body: RoleUpdateBody, key: string): Promise<RoleRecord> {
+      validVersion(body.version); validOptionalReason(body.reason)
+      if (!isUUID(id) || !body.name.trim() || body.name.length > 120 || (body.status !== 'active' && body.status !== 'disabled') ||
+        !Array.isArray(body.permissions) || !body.permissions.every(value => isText(value) && value.endsWith('.platform') && MACHINE_KEY.test(value))) invalid()
+      return platformRoleReceipt(await request(`/platform-roles/${id}`, { ...writeOptions(undefined, body, key), method: 'PATCH' }), body.version + 1)
+    },
+    async deletePlatformRole(id: string, body: RoleDeleteBody, key: string): Promise<{ audit_log_id: string }> {
+      validVersion(body.version)
+      if (!isUUID(id)) invalid()
+      return auditReceipt(await request(`/platform-roles/${id}/delete`, writeOptions(undefined, body, key)))
     },
   }
 }

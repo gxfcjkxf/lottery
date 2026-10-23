@@ -94,7 +94,7 @@ export const schemas = {
     points: positiveAmount,
     source_allocation: { type: "array", items: ref("WithdrawalSourceAllocation"), minItems: 1, maxItems: 4 },
   }),
-  WithdrawalActionRequest: obj({ version: safeVersion, reason: ref("Reason") }),
+  WithdrawalActionRequest: obj({ version: safeVersion, reason: ref("Reason") }, ["version"]),
 };
 schemas.WithdrawalCreateRequest.properties.source_allocation.description = "Positive available allocations only. Sources must be unique, sorted recharge then winning then gift then commission, and sum exactly to points.";
 

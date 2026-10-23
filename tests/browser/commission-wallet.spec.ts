@@ -119,7 +119,7 @@ test("Harbor commission wallet source is manual, visible, frozen in debit order,
   const commissionBucket = walletPanel.locator(".bucket-source").filter({ has: user.getByRole("heading", { name: /佣金|Commission/ }) });
   await expect(commissionBucket).toBeVisible();
   await expect(commissionBucket.locator("dl div").filter({ hasText: /可用|Available/ }).locator("dd")).toHaveText("9");
-  await expect(walletPanel).toContainText(/16 个积分桶|16 points buckets/);
+  await expect(walletPanel.getByRole("heading", { name: /积分明细|Points breakdown/ })).toBeVisible();
   await fits(user);
 
   const ledgerBefore = await adminCall<{ items: Array<{ id: string; entry_type: string; reference_type: string; actor_type: string; reason: string }> }>(`/wallets/${memberId}/ledger?limit=100&offset=0`, "GET");

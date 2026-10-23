@@ -31,7 +31,7 @@ function validIntent(value: unknown, scope: NotificationTemplateWriteScope): val
     notificationTemplateKeys.includes(scope.templateKey) &&
     Number.isSafeInteger(request.version) && Number(request.version) > 0 && Number(request.version) < Number.MAX_SAFE_INTEGER &&
     validNotificationTemplateContent(request.content, scope.templateKey) && typeof request.reason === "string" &&
-    request.reason.trim() === request.reason && request.reason.trim().length > 0 && new TextEncoder().encode(request.reason).length <= 500 &&
+    request.reason.trim() === request.reason && new TextEncoder().encode(request.reason).length <= 500 &&
     typeof candidate.key === "string" && /^[A-Za-z0-9_:.-]{8,128}$/.test(candidate.key);
 }
 function copyIntent(value: PendingNotificationTemplateWrite): PendingNotificationTemplateWrite {

@@ -37,20 +37,8 @@ func runCommissionPayment(t *testing.T, f commissionBatchFixture, payment commis
 	return payment
 }
 
-func finishManualCommissionPayment(t *testing.T, f commissionBatchFixture, payment commission.Payment) commission.Payment {
-	t.Helper()
-	actor := commissionPaymentActor(f)
-	if err := commissionPaymentCallTx(t, f, func(tx pgx.Tx) error {
-		_, err := f.service.ApprovePaymentTx(context.Background(), tx, f.betting.brand, payment.ID, actor,
-			commission.RetryCycleInput{Version: payment.Version, Reason: "approve actual commission notification fixture"}, commissionPaymentMeta(actor))
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-	return runCommissionPayment(t, f, commissionPaymentRead(t, f, payment.ID))
-}
-
 func TestCommissionNotificationsFollowOnlyCommittedLedgerAndAdjustments(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	ctx := context.Background()
 	payment := prepareManualCommissionPayment(t, f)

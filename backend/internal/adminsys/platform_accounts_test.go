@@ -58,6 +58,81 @@ func platformTestName(prefix string) string {
 	return fmt.Sprintf("%s_%s", prefix, id[len(id)-8:])
 }
 
+func TestPlatformBuiltinRoleIsReadOnly(t *testing.T) {
+	f := newPlatformAccountsFixture(t)
+	ctx := context.Background()
+	for _, action := range []string{"write", "delete"} {
+		key := "role." + action + ".platform"
+		if _, err := f.store.DB.Exec(ctx, `INSERT INTO permissions(key) VALUES($1) ON CONFLICT DO NOTHING`, key); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.store.DB.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key) VALUES($1,$2)`, f.role, key); err != nil {
+			t.Fatal(err)
+		}
+		f.actor.Roles[0].Permissions = append(f.actor.Roles[0].Permissions, access.Permission{Resource: "role", Action: action, Scope: access.ScopePlatform})
+	}
+	id, _ := addPlatformRole(t, f, "role.view.platform")
+	if _, err := f.store.DB.Exec(ctx, `UPDATE roles SET is_bootstrap=true WHERE id=$1`, id); err != nil {
+		t.Fatal(err)
+	}
+	meta := identity.Metadata{RequestID: "builtin-role-readonly"}
+	for _, input := range []RoleInput{
+		{Version: 1, Name: "Renamed", Status: "active", Permissions: []string{"role.view.platform"}},
+		{Version: 1, Name: "Test platform role", Status: "disabled", Permissions: []string{"role.view.platform"}},
+		{Version: 1, Name: "Test platform role", Status: "active", Permissions: []string{}},
+		{Version: 1, Name: "Test platform role", Status: "active", Permissions: []string{"role.view.platform"}},
+	} {
+		tx, err := f.store.DB.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = f.store.UpdatePlatformRole(ctx, tx, f.actor, id, input, meta)
+		_ = tx.Rollback(ctx)
+		if !errors.Is(err, ErrDenied) {
+			t.Fatalf("builtin edit allowed or wrong error: %v", err)
+		}
+	}
+	tx, err := f.store.DB.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.store.DeletePlatformRole(ctx, tx, f.actor, id, 1, meta)
+	_ = tx.Rollback(ctx)
+	if !errors.Is(err, ErrDenied) {
+		t.Fatalf("builtin delete: %v", err)
+	}
+	roles, err := f.store.ListPlatformRoles(ctx, f.actor, 100, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, role := range roles {
+		if role.ID == id {
+			found = true
+			if role.Name != "Test platform role" || role.Status != "active" || role.Version != 1 || len(role.Permissions) != 1 {
+				t.Fatal(role)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("builtin role must remain viewable")
+	}
+	var auditCount int
+	if err := f.store.DB.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE resource_id=$1`, id).Scan(&auditCount); err != nil || auditCount != 0 {
+		t.Fatalf("readonly attempts wrote audits: %d %v", auditCount, err)
+	}
+	ordinary, _ := addPlatformRole(t, f, "role.view.platform")
+	tx, err = f.store.DB.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	updated, err := f.store.UpdatePlatformRole(ctx, tx, f.actor, ordinary, RoleInput{Version: 1, Name: "Editable role", Status: "active", Permissions: []string{"role.view.platform"}}, meta)
+	if err != nil || updated.Version != 2 {
+		t.Fatalf("ordinary role edit changed: %+v %v", updated, err)
+	}
+}
+
 func addPlatformRole(t *testing.T, f platformAccountsFixture, permissions ...string) (string, string) {
 	return addScopedTestRole(t, f, "", permissions...)
 }

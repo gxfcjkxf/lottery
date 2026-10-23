@@ -137,6 +137,7 @@ func TestRuleBookHTTPExplicitRevocationAndSuperReadonly(t *testing.T) {
 	mustStatus(t, r, 403)
 	mustStatus(t, f.call("GET", "/api/v1/admin/games", "", f.token, managedBrand, nil), 403)
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	mustStatus(t, f.call("GET", "/api/v1/platform/games", "", platformToken, managedBrand, nil), 403)
 	grantPlatformPermission(t, f, "game.view.platform")
 	mustStatus(t, f.call("GET", "/api/v1/platform/games", "", platformToken, managedBrand, nil), 200)

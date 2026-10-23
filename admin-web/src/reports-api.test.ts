@@ -1,3 +1,4 @@
+import { associationLabel } from "@lottery/shared";
 import { describe, expect, it, vi } from "vitest";
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import {
@@ -196,4 +197,12 @@ describe("reports API", () => {
     await expect(result).rejects.toBeInstanceOf(AdminApiError);
     await expect(result).rejects.toMatchObject({ status: 403, code: "FORBIDDEN", message: "denied" });
   });
+});
+
+it("preserves authorized association names after report validation rebuilds the DTO", async () => {
+  const responseBody = { success: true, data: payload("betting"), associations: { ["brand:" + brand]: { name: "Aurora" } } };
+  const api = createReportsApi(vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(responseBody))));
+  const report = await api.betting(brand, query);
+  expect(associationLabel(report, "brand", brand, "zh-CN")).toBe("Aurora");
+  expect(Object.keys(report)).not.toContain("associations");
 });

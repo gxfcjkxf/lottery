@@ -1,3 +1,8 @@
+import { BusinessDetailsTestComponent as BusinessDetails } from "./business-details-test-helper";
+import { h as temporalTestH } from "vue";
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
+import * as FormValidation from '../../shared/src/form-validation';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { createRenderer, h, nextTick, ref, type Component } from "vue";
 import * as VueRuntime from "vue";
@@ -16,7 +21,7 @@ const actor = "33333333-3333-4333-8333-333333333333";
 const id = "44444444-4444-4444-8444-444444444444";
 const account: AdminAccount = { id: actor, super_admin: false, brand_ids: [brand, otherBrand], permissions: [], permissions_by_brand: { [brand]: ["audit.view.brand", "audit.export.brand"], [otherBrand]: ["audit.view.brand", "audit.export.brand"] } };
 type RecordRow = AuditApi.AdminAuditRecord;
-const row: RecordRow = { id, brand_id: brand, action: "user.update", actor_type: "admin", actor_id: actor, resource_type: "user", resource_id: "resource-1", reason: "reviewed", request_id: "req-1", created_at: "2026-10-01T12:00:00Z", ip_address: "127.0.0.1", before_json: { email: "old@example.test", password: "secret" }, after_json: { email: "new@example.test" } };
+const row: RecordRow = { id, brand_id: brand, action: "user.update", actor_type: "admin", actor_id: actor, actor_username: "admin", resource_type: "user", resource_id: "resource-1", reason: "reviewed", request_id: "req-1", created_at: "2026-10-01T12:00:00Z", ip_address: "127.0.0.1", before_json: { display_name: "旧昵称", email: "old@example.test", password: "secret" }, after_json: { display_name: "新昵称", email: "new@example.test" } };
 let apiStub: { list: Mock<(...args: any[]) => Promise<{ items: RecordRow[] }>>; exportCsv: Mock<(...args: any[]) => Promise<unknown>> };
 let apps: Array<{ unmount: () => void }> = [];
 
@@ -38,9 +43,9 @@ function compileComponent(): Component {
   const descriptor = parse(source, { filename: "AuditManagement.vue" }).descriptor;
   const content = compileScript(descriptor, { id: "audit-management-component-test", inlineTemplate: true }).content;
   const js = ts.transpileModule(content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./audit-api": AuditApi, "./i18n": AdminI18n };
+  const modules: Record<string, unknown> = { "@lottery/shared/BusinessDetails.vue": BusinessDetails, "@lottery/shared/FilterAssociationSelect.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("select", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) },  "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": { ...DisplayShared, ...FormValidation }, vue: VueRuntime, "./admin-api": AdminApi, "./audit-api": AuditApi, "./i18n": AdminI18n };
   const body = js.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 let ComponentUnderTest: Component;
 const mounted: Array<{ root: HostNode; scope: ReturnType<typeof ref>; i18n: ReturnType<typeof createAdminI18n>; emitted: number[] }> = [];
@@ -55,11 +60,12 @@ function mount() {
   vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
   const scope = ref<{ account: AdminAccount; brandId: string }>({ account, brandId: brand });
   const root = element("root"), i18n = createAdminI18n(), emitted: number[] = [];
+  i18n.setLocale("zh-CN");
   const app = renderer.createApp({ setup: () => () => h(ComponentUnderTest, { ...scope.value, onSessionInvalid: () => emitted.push(1) }) });
   app.provide(adminI18nKey, i18n); app.mount(root); apps.push(app);
   const mountedScope = { root, scope, i18n, emitted }; mounted.push(mountedScope); return mountedScope;
 }
-function fillDateRange(root: HostNode) { const dates = all(root).filter(node => node.tag === "input" && node.props.type === "datetime-local"); setInput(dates[0]!, "2026-10-01T00:00:00"); setInput(dates[1]!, "2026-10-02T00:00:00"); }
+function fillDateRange(root: HostNode) { const dates = all(root).filter(node => node.tag === "input" && node.props.type === "date"); setInput(dates[0]!, "2026-10-01"); setInput(dates[1]!, "2026-10-02"); }
 function submit(root: HostNode) { const form = find(root, node => node.tag === "form")!; (form.props.onSubmit as (event: { preventDefault: () => void }) => void)({ preventDefault() {} }); }
 
 beforeEach(() => {
@@ -76,10 +82,10 @@ describe("audit management UI", () => {
     fillDateRange(view.root); submit(view.root); await flush();
     expect(apiStub.list).toHaveBeenCalledTimes(1);
     expect(apiStub.list.mock.calls[0]![0]).toBe(brand);
-    expect(apiStub.list.mock.calls[0]![1]).toMatchObject({ from: "2026-10-01T00:00:00.000Z", to: "2026-10-02T00:00:00.000Z", limit: 100, offset: 0 });
-    expect(text(view.root)).toContain("user.update");
+    expect(apiStub.list.mock.calls[0]![1]).toMatchObject({ from: "2026-10-01T00:00:00.000Z", to: "2026-10-03T00:00:00.000Z", limit: 100, offset: 0 });
+    expect(text(view.root)).toContain("会员 · 编辑");
     const details = all(view.root).find(node => node.tag === "details");
-    expect(text(details!)).toContain("[REDACTED]");
+    expect(text(details!)).toContain("旧昵称");
     expect(text(details!)).not.toContain("secret");
     expect(all(view.root).some(node => node.tag === "button" && text(node).includes("导出完整 CSV"))).toBe(true);
   });
@@ -93,7 +99,7 @@ describe("audit management UI", () => {
     expect(text(view.root)).toContain("Audit log");
     view.scope.value = { account, brandId: otherBrand }; await flush();
     resolve({ items: [{ ...row, brand_id: otherBrand }] }); await flush();
-    expect(text(view.root)).not.toContain("user.update");
+    expect(text(view.root)).not.toContain("会员 · 编辑");
     expect(text(view.root)).toContain("Query audit records");
   });
 
@@ -106,7 +112,8 @@ describe("audit management UI", () => {
     view.i18n.setLocale("zh-CN"); await flush();
     fillDateRange(view.root); submit(view.root); await flush();
     expect(apiStub.list).toHaveBeenCalledTimes(1);
-    expect(text(view.root)).toContain("network unavailable");
+    expect(text(view.root)).toContain("操作未能完成，请检查填写内容和当前状态后再试。");
+    expect(text(view.root)).not.toContain("network unavailable");
     await flush(); expect(apiStub.list).toHaveBeenCalledTimes(1);
     expect(view.emitted).toHaveLength(0);
   });
@@ -119,19 +126,19 @@ describe("audit management UI", () => {
     expect(apiStub.list).not.toHaveBeenCalled();
   });
 
-  it("treats datetime-local values as UTC and rejects calendar rollover dates", async () => {
+  it("treats day filters as UTC and rejects calendar rollover dates", async () => {
     const oldTimezone = process.env.TZ;
     process.env.TZ = "America/Los_Angeles";
     try {
       const view = mount(); await flush();
       view.i18n.setLocale("en"); await flush();
-      const dates = all(view.root).filter(node => node.tag === "input" && node.props.type === "datetime-local");
-      setInput(dates[0]!, "2025-02-29T00:00:00"); setInput(dates[1]!, "2025-03-01T00:00:00"); submit(view.root); await flush();
+      const dates = all(view.root).filter(node => node.tag === "input" && node.props.type === "date");
+      setInput(dates[0]!, "2025-02-29"); setInput(dates[1]!, "2025-03-01"); submit(view.root); await flush();
       expect(apiStub.list).not.toHaveBeenCalled();
       expect(text(view.root)).toContain("Choose a valid start and end within 31 days.");
-      setInput(dates[0]!, "2024-02-29T00:00:00"); setInput(dates[1]!, "2024-03-01T00:00:00"); submit(view.root); await flush();
+      setInput(dates[0]!, "2024-02-29"); setInput(dates[1]!, "2024-03-01"); submit(view.root); await flush();
       expect(apiStub.list).toHaveBeenCalledTimes(1);
-      expect(apiStub.list.mock.calls[0]![1]).toMatchObject({ from: "2024-02-29T00:00:00.000Z", to: "2024-03-01T00:00:00.000Z" });
+      expect(apiStub.list.mock.calls[0]![1]).toMatchObject({ from: "2024-02-29T00:00:00.000Z", to: "2024-03-02T00:00:00.000Z" });
     } finally {
       if (oldTimezone === undefined) delete process.env.TZ;
       else process.env.TZ = oldTimezone;

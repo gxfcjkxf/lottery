@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
+	"github.com/gxfcjkxf/lottery/backend/internal/rulebook"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/jackc/pgx/v5"
 )
@@ -29,6 +31,7 @@ func newAutomaticCommissionBatchFixture(t *testing.T) commissionBatchFixture {
 
 func newAutomaticCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixture) commissionBatchFixture {
 	t.Helper()
+	agentToken := f.token
 	ctx := context.Background()
 	actor := access.Account{
 		ID: f.version.CreatedBy, Type: access.AccountAdmin, BrandIDs: []string{f.brand},
@@ -52,7 +55,7 @@ func newAutomaticCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixtur
 		var err error
 		agentPolicy, err = agents.SavePolicy(ctx, tx, f.brand, actor, agency.PolicyInput{
 			Version: 1,
-			Config:  agency.PolicyConfig{Enabled: true, MaxDepth: 3, RatioCap: "0.3", Mode: "loss", Cycle: "weekly"},
+			Config:  agency.PolicyConfig{Enabled: true, MaxDepth: 3, LossRatioCap: "0.3", TurnoverRatioCap: "0.3", Mode: "loss", Cycle: "weekly"},
 			Reason:  "automatic commission payment fixture agent policy",
 		}, points.Metadata{RequestID: ids.New()})
 		return err
@@ -60,21 +63,33 @@ func newAutomaticCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixtur
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		var err error
 		root, err = agents.Create(ctx, tx, f.brand, actor, agency.CreateInput{
-			PolicyVersion: agentPolicy.Version, MemberID: f.member,
-			Config: agency.NodeConfig{Ratio: "0.3", Status: "active", CanCreateChildren: true},
+			PolicyVersion: agentPolicy.Version, Username: testdb.AgentUsername(f.member), Password: "agent123",
+			Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0.3", Status: "active", CanCreateChildren: true},
 			Reason: "automatic commission payment fixture beneficiary",
 		}, points.Metadata{RequestID: ids.New()})
 		return err
 	})
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		var err error
-		code, err = codes.Create(ctx, tx, f.brand, actor, attribution.CreateInput{Kind: "agent", OwnerMemberID: f.member, AgentID: &root.ID, Reason: "automatic commission fixture registration code"}, points.Metadata{RequestID: ids.New()})
+		code, err = codes.Create(ctx, tx, f.brand, actor, attribution.CreateInput{Kind: "agent", OwnerMemberID: root.MemberID, AgentID: &root.ID, Reason: "automatic commission fixture registration code"}, points.Metadata{RequestID: ids.New()})
 		return err
 	})
 	users, err := identity.New(f.db)
 	if err != nil {
 		t.Fatal(err)
 	}
+	var agentAuth identity.AgentAuthentication
+	bettingTx(t, f.db, func(tx pgx.Tx) error {
+		out, e := users.AgentLogin(ctx, tx, f.brand, identity.AgentLoginInput{Username: testdb.AgentUsername(f.member), Password: "agent123"})
+		if e != nil {
+			return e
+		}
+		if out.Status != 200 {
+			t.Fatalf("agent login failed: %d", out.Status)
+		}
+		return json.Unmarshal(out.Data, &agentAuth)
+	})
+	agentToken = agentAuth.AccessToken
 	var session identity.Authentication
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		out, err := users.Register(ctx, tx, f.brand, identity.RegisterInput{
@@ -94,6 +109,16 @@ func newAutomaticCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixtur
 		t.Fatal(err)
 	}
 	f.member, f.token = session.Member.ID, session.AccessToken
+
+	// Start the real admission window after account creation and password hashing.
+	finishUnusedBettingPeriod(t, f)
+	bettingTx(t, f.db, func(tx pgx.Tx) error {
+		var err error
+		now := bettingDatabaseNow(t, f.db)
+		f.period, err = (rulebook.Store{DB: f.db}).OpenPeriod(ctx, tx, f.brand, f.game.ID, "commission-auto-"+ids.New(), now.Add(-time.Minute), now.Add(20*time.Second), now.Add(22*time.Second))
+		return err
+	})
+	f.input.PeriodID = f.period.ID
 
 	boundary := f.period.BetEndAt.UTC().Truncate(time.Second).Add(-3 * time.Second)
 	weekday := int(boundary.Weekday())
@@ -130,7 +155,7 @@ func newAutomaticCommissionBatchFixtureFromBetting(t *testing.T, f bettingFixtur
 		_, err := f.service.CancelAdmin(ctx, tx, f.brand, judgeActor(f), cancelled.ID, cancelled.Version, "cancelled stake excluded from automatic payout", policyMeta(actor.ID))
 		return err
 	})
-	return commissionBatchFixture{betting: f, service: financial, actor: actor, node: root, orders: []Order{first, second, cancelled}, boundary: boundary}
+	return commissionBatchFixture{betting: f, service: financial, actor: actor, node: root, orders: []Order{first, second, cancelled}, boundary: boundary, agentToken: agentToken}
 }
 
 func commissionPaymentActor(f commissionBatchFixture) access.Account {
@@ -256,6 +281,7 @@ func prepareManualCommissionPayment(t *testing.T, f commissionBatchFixture) comm
 }
 
 func TestCommissionPaymentManualApprovalIsAtomicAndRetryable(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	ctx := context.Background()
 	actor := commissionPaymentActor(f)
@@ -496,6 +522,7 @@ func TestCommissionPaymentManualApprovalIsAtomicAndRetryable(t *testing.T) {
 }
 
 func TestCommissionPaymentListIsBrandScoped(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	page := commissionPayments(t, f)
 	if page.BrandID != f.betting.brand || len(page.Items) != 0 {
@@ -512,6 +539,7 @@ func TestCommissionPaymentListIsBrandScoped(t *testing.T) {
 }
 
 func TestCommissionPaymentAutomaticRequiresExplicitGateAndSavedAutomaticSnapshot(t *testing.T) {
+	t.Parallel()
 	f := newAutomaticCommissionBatchFixture(t)
 	ctx := context.Background()
 	waitCommissionBoundary(t, f.boundary)
@@ -596,6 +624,7 @@ func TestCommissionPaymentAutomaticRequiresExplicitGateAndSavedAutomaticSnapshot
 }
 
 func TestCommissionPaymentStaleUncreditedRunCanBeSupersededAfterCorrection(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	ctx := context.Background()
 	oldPayment := prepareManualCommissionPayment(t, f)

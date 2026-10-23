@@ -17,7 +17,7 @@ func snapshotFixture() BetSnapshot {
 	return BetSnapshot{
 		SchemaVersion: 1, BrandID: ids.New(), MemberID: ids.New(), CapturedAt: time.Date(2026, 10, 7, 10, 0, 0, 0, time.UTC),
 		Financial: FinancialRule{ids.New(), "2", PolicyConfig{true, &Calendar{Timezone: "UTC", Cycle: "weekly", BoundaryTime: "00:00:00", Weekday: &d}, PayoutManual}},
-		Agency:    AgencyRule{ids.New(), "2", agency.PolicyConfig{Enabled: true, MaxDepth: 5, RatioCap: "0.2", Mode: "loss", Cycle: "weekly"}},
+		Agency:    AgencyRule{ids.New(), "2", agency.PolicyConfig{Enabled: true, MaxDepth: 5, LossRatioCap: "0.2", TurnoverRatioCap: "0.2", Mode: "loss", Cycle: "weekly"}},
 		Path: []AgentRule{
 			{ID: root, MemberID: ids.New(), Depth: 1, RevisionID: ids.New(), Version: "1", Config: agency.NodeConfig{Ratio: "0.1", Status: "disabled"}, EffectiveMode: "loss"},
 			{ID: child, MemberID: ids.New(), ParentID: &root, Depth: 2, RevisionID: ids.New(), Version: "1", Config: agency.NodeConfig{Ratio: "0.05", Status: "active"}, EffectiveMode: "loss"},
@@ -46,14 +46,13 @@ func TestParseBetSnapshotStrictEvidenceAndDisabledEarnings(t *testing.T) {
 		"overflow version":     func(s *BetSnapshot) { s.Financial.Version = "9223372036854775808" },
 		"nil path":             func(s *BetSnapshot) { s.Path = nil },
 		"ratio increase":       func(s *BetSnapshot) { s.Path[1].Config.Ratio = "0.2" },
-		"ratio cap":            func(s *BetSnapshot) { s.Agency.Config.RatioCap = "0.05" },
+		"ratio cap":            func(s *BetSnapshot) { s.Agency.Config.LossRatioCap = "0.05"; s.Agency.Config.TurnoverRatioCap = "0.05" },
 		"depth":                func(s *BetSnapshot) { s.Path[1].Depth = 3 },
 		"duplicate member":     func(s *BetSnapshot) { s.Path[1].MemberID = s.Path[0].MemberID },
 		"duplicate agent":      func(s *BetSnapshot) { s.Path[1].ID = s.Path[0].ID },
 		"mixed mode":           func(s *BetSnapshot) { v := "turnover"; s.Path[1].Config.Mode = &v; s.Path[1].EffectiveMode = v },
 		"wrong effective mode": func(s *BetSnapshot) { s.Path[1].EffectiveMode = "turnover" },
 		"missing parent":       func(s *BetSnapshot) { s.Path[1].ParentID = nil },
-		"disabled agency":      func(s *BetSnapshot) { s.Agency.Config.Enabled = false },
 		"different cycle":      func(s *BetSnapshot) { s.Agency.Config.Cycle = "monthly" },
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -80,5 +79,25 @@ func TestParseBetSnapshotStrictEvidenceAndDisabledEarnings(t *testing.T) {
 	raw, _ = json.Marshal(valid)
 	if _, err = ParseBetSnapshot(raw, valid.BrandID, valid.MemberID, valid.CapturedAt); err != nil {
 		t.Fatal("unattributed member rejected", err)
+	}
+}
+
+func TestSnapshotUsesEffectiveModeCap(t *testing.T) {
+	s := snapshotFixture()
+	s.Agency.Config.LossRatioCap = "0.01"
+	s.Agency.Config.TurnoverRatioCap = "0.2"
+	mode := "turnover"
+	s.Path[0].Config.Mode = &mode
+	for i := range s.Path {
+		s.Path[i].EffectiveMode = mode
+	}
+	raw, _ := json.Marshal(s)
+	if _, err := ParseBetSnapshot(raw, s.BrandID, s.MemberID, s.CapturedAt); err != nil {
+		t.Fatal("turnover incorrectly used default loss cap", err)
+	}
+	s.Agency.Config.TurnoverRatioCap = "0.09"
+	raw, _ = json.Marshal(s)
+	if _, err := ParseBetSnapshot(raw, s.BrandID, s.MemberID, s.CapturedAt); !errors.Is(err, ErrPolicyEvidence) {
+		t.Fatal("turnover snapshot cap ignored", err)
 	}
 }

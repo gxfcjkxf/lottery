@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -31,14 +33,14 @@ export interface CreateJoinCodeBody {
   agent_id: string | null;
   starts_at: string | null;
   expires_at: string | null;
-  reason: string;
+  reason?: string;
 }
 export interface UpdateJoinCodeBody {
   version: number;
   status: JoinCodeStatus;
   starts_at: string | null;
   expires_at: string | null;
-  reason: string;
+  reason?: string;
 }
 export interface JoinCodePage {
   brand_id: string;
@@ -57,7 +59,7 @@ export interface JoinCodeHistoryItem {
   status: JoinCodeStatus;
   starts_at: string | null;
   expires_at: string | null;
-  actor_id: string;
+  actor_id: string | null;
   reason: string;
   audit_log_id: string;
   created_at: string;
@@ -70,7 +72,6 @@ export interface JoinCodeHistoryPage {
   offset: number;
   total_count: string;
 }
-type Envelope = { success?: unknown; data?: unknown; error?: { code?: string; message?: string } | null };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -116,7 +117,10 @@ function sameNullableInstant(actual: unknown, expected: string | null): boolean 
     joinCodeInstantMicros(actual) === joinCodeInstantMicros(expected);
 }
 function validReason(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0 && new TextEncoder().encode(value).length <= 500;
+  return typeof value === "string" && new TextEncoder().encode(value).length <= 500;
+}
+function validOptionalReason(value: unknown): value is string | undefined {
+  return value === undefined || validReason(value);
 }
 function invalidInput(message: string): never {
   throw new AdminApiError(message, 0, "JOIN_CODE_INPUT_INVALID");
@@ -149,7 +153,8 @@ function validPage(value: unknown, brand: string, kind: JoinCodeKind | null, own
 function validHistoryItem(value: unknown, brand: string, codeId: string): value is JoinCodeHistoryItem {
   return isRecord(value) && validUuid(value.id) && value.brand_id === brand && value.code_id === codeId && positiveInt(value.version) &&
     validStatus(value.status) && (value.starts_at === null || validJoinCodeDate(value.starts_at)) && (value.expires_at === null || validJoinCodeDate(value.expires_at)) &&
-    validJoinCodeDateRange(value.starts_at as string | null, value.expires_at as string | null) && validUuid(value.actor_id) && validReason(value.reason) &&
+    validJoinCodeDateRange(value.starts_at as string | null, value.expires_at as string | null) &&
+    (validUuid(value.actor_id) || (value.actor_id === null && value.version === 1)) && validReason(value.reason) &&
     validUuid(value.audit_log_id) && validJoinCodeDate(value.created_at);
 }
 
@@ -181,15 +186,7 @@ export function createJoinCodesApi(fetchImpl: typeof fetch = fetch) {
       response = await fetchImpl(path, { method: options.method ?? "GET", credentials: "same-origin", headers,
         ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }) });
     } catch (error) { throw standardJoinCodeApiError(error); }
-    let envelope: Envelope;
-    try { envelope = await response.json() as Envelope; }
-    catch { throw new AdminApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`, response.ok && write ? 0 : response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : undefined); }
-    if (!response.ok || envelope.success !== true || envelope.data === undefined) {
-      const detail = typeof envelope.error === "object" && envelope.error ? envelope.error : undefined;
-      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError(detail?.message ?? `Request failed (${response.status})`,
-        response.ok && write ? 0 : response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : detail?.code);
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     return envelope.data;
   }
   return {
@@ -223,11 +220,11 @@ export function createJoinCodesApi(fetchImpl: typeof fetch = fetch) {
       return value as unknown as JoinCodeHistoryPage;
     },
     async create(brand: string, body: CreateJoinCodeBody, key: string): Promise<JoinCode> {
-      if (!isRecord(body) || !exactKeys(body, ["kind", "owner_member_id", "agent_id", "starts_at", "expires_at", "reason"]) ||
+      if (!isRecord(body) || !(exactKeys(body, ["kind", "owner_member_id", "agent_id", "starts_at", "expires_at", "reason"]) || exactKeys(body, ["kind", "owner_member_id", "agent_id", "starts_at", "expires_at"])) ||
           !validKind(body.kind) || !validUuid(body.owner_member_id) ||
           !(body.agent_id === null || validUuid(body.agent_id)) || (body.kind === "agent" ? !validUuid(body.agent_id) : body.agent_id !== null) ||
           !(body.starts_at === null || validJoinCodeDate(body.starts_at)) || !(body.expires_at === null || validJoinCodeDate(body.expires_at)) ||
-          !validJoinCodeDateRange(body.starts_at, body.expires_at) || !validReason(body.reason)) invalidInput("Join code creation request is invalid");
+          !validJoinCodeDateRange(body.starts_at, body.expires_at) || !validOptionalReason(body.reason)) invalidInput("Join code creation request is invalid");
       const value = await request(BASE, brand, { method: "POST", body, key });
       if (!validCode(value, brand, { kind: body.kind, owner_member_id: body.owner_member_id, agent_id: body.agent_id,
         status: "active", starts_at: body.starts_at, expires_at: body.expires_at, version: 1 }, true)) invalidResponse(true);
@@ -236,10 +233,10 @@ export function createJoinCodesApi(fetchImpl: typeof fetch = fetch) {
     async update(brand: string, id: string, identity: { kind: JoinCodeKind; code: string | null; owner_member_id: string; agent_id: string | null }, body: UpdateJoinCodeBody, key: string): Promise<JoinCode> {
       if (!validUuid(id) || !validKind(identity.kind) || typeof identity.code !== "string" || !CODE_RE.test(identity.code) || !validUuid(identity.owner_member_id) ||
           !(identity.agent_id === null || validUuid(identity.agent_id))) invalidInput("Join code identity is invalid");
-      if (!isRecord(body) || !exactKeys(body, ["version", "status", "starts_at", "expires_at", "reason"]) ||
+      if (!isRecord(body) || !(exactKeys(body, ["version", "status", "starts_at", "expires_at", "reason"]) || exactKeys(body, ["version", "status", "starts_at", "expires_at"])) ||
           !positiveInt(body.version) || body.version >= Number.MAX_SAFE_INTEGER || !validStatus(body.status) ||
           !(body.starts_at === null || validJoinCodeDate(body.starts_at)) || !(body.expires_at === null || validJoinCodeDate(body.expires_at)) ||
-          !validJoinCodeDateRange(body.starts_at, body.expires_at) || !validReason(body.reason)) invalidInput("Join code update request is invalid");
+          !validJoinCodeDateRange(body.starts_at, body.expires_at) || !validOptionalReason(body.reason)) invalidInput("Join code update request is invalid");
       const value = await request(`${BASE}/${encodeURIComponent(id)}`, brand, { method: "PUT", body, key });
       if (!validCode(value, brand, { id, kind: identity.kind, code: identity.code, owner_member_id: identity.owner_member_id,
         agent_id: identity.agent_id, status: body.status, starts_at: body.starts_at, expires_at: body.expires_at, version: body.version + 1 }, true)) invalidResponse(true);

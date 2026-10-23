@@ -31,21 +31,24 @@ type Service struct {
 }
 
 type Recharge struct {
-	ID             string     `json:"id"`
-	BrandID        string     `json:"brand_id"`
-	MemberID       string     `json:"member_id"`
-	AccountID      string     `json:"account_id"`
-	Points         string     `json:"points"`
-	State          string     `json:"state"`
-	ProofReference string     `json:"proof_reference"`
-	Remark         string     `json:"remark"`
-	CreatedBy      string     `json:"created_by"`
-	ConfirmedBy    string     `json:"confirmed_by,omitempty"`
-	Version        int64      `json:"version"`
-	CreatedAt      time.Time  `json:"created_at"`
-	ConfirmedAt    *time.Time `json:"confirmed_at,omitempty"`
-	LedgerEntryID  string     `json:"ledger_entry_id,omitempty"`
-	AuditLogID     string     `json:"audit_log_id,omitempty"`
+	ID              string     `json:"id"`
+	BrandID         string     `json:"brand_id"`
+	MemberID        string     `json:"member_id"`
+	MemberUsername  string     `json:"member_username"`
+	AccountID       string     `json:"account_id"`
+	Points          string     `json:"points"`
+	State           string     `json:"state"`
+	ProofReference  string     `json:"proof_reference"`
+	Remark          string     `json:"remark"`
+	CreatedBy       string     `json:"created_by"`
+	CreatedByName   string     `json:"created_by_name"`
+	ConfirmedBy     string     `json:"confirmed_by,omitempty"`
+	ConfirmedByName string     `json:"confirmed_by_name"`
+	Version         int64      `json:"version"`
+	CreatedAt       time.Time  `json:"created_at"`
+	ConfirmedAt     *time.Time `json:"confirmed_at,omitempty"`
+	LedgerEntryID   string     `json:"ledger_entry_id,omitempty"`
+	AuditLogID      string     `json:"audit_log_id,omitempty"`
 }
 
 func (s Service) CreateRecharge(ctx context.Context, tx pgx.Tx, brand, member string, amount points.Amount, proof, remark, reason string, meta points.Metadata) (Recharge, error) {
@@ -87,9 +90,14 @@ func (s Service) ConfirmRecharge(ctx context.Context, tx pgx.Tx, brand, id strin
 	if err != nil || tx == nil || !financeUUIDPattern.MatchString(brand) || !financeUUIDPattern.MatchString(id) || version < 1 {
 		return Recharge{}, points.ErrInvalid
 	}
-	record, err := scanRecharge(tx.QueryRow(ctx, `SELECT id::text,brand_id::text,member_id::text,account_id::text,points,state,proof_reference,remark,created_by::text,
-		COALESCE(confirmed_by::text,''),version,created_at,confirmed_at,COALESCE(ledger_entry_id::text,'')
-		FROM recharge_orders WHERE brand_id=$1 AND id=$2 FOR UPDATE`, brand, id))
+	record, err := scanRecharge(tx.QueryRow(ctx, `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
+		COALESCE(r.confirmed_by::text,''),COALESCE(qa.username,''),r.version,r.created_at,r.confirmed_at,COALESCE(r.ledger_entry_id::text,'')
+		FROM recharge_orders r
+		LEFT JOIN brand_members bm ON bm.brand_id=r.brand_id AND bm.id=r.member_id
+		LEFT JOIN global_users gu ON gu.id=bm.global_user_id
+		LEFT JOIN admin_accounts ca ON ca.id=r.created_by
+		LEFT JOIN admin_accounts qa ON qa.id=r.confirmed_by
+		WHERE r.brand_id=$1 AND r.id=$2 FOR UPDATE OF r`, brand, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Recharge{}, points.ErrNotFound
 	}
@@ -157,9 +165,14 @@ func (s Service) CancelRecharge(ctx context.Context, tx pgx.Tx, brand, id string
 	if err != nil || tx == nil || !financeUUIDPattern.MatchString(brand) || !financeUUIDPattern.MatchString(id) || version < 1 {
 		return Recharge{}, points.ErrInvalid
 	}
-	record, err := scanRecharge(tx.QueryRow(ctx, `SELECT id::text,brand_id::text,member_id::text,account_id::text,points,state,proof_reference,remark,created_by::text,
-		COALESCE(confirmed_by::text,''),version,created_at,confirmed_at,COALESCE(ledger_entry_id::text,'')
-		FROM recharge_orders WHERE brand_id=$1 AND id=$2 FOR UPDATE`, brand, id))
+	record, err := scanRecharge(tx.QueryRow(ctx, `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
+		COALESCE(r.confirmed_by::text,''),COALESCE(qa.username,''),r.version,r.created_at,r.confirmed_at,COALESCE(r.ledger_entry_id::text,'')
+		FROM recharge_orders r
+		LEFT JOIN brand_members bm ON bm.brand_id=r.brand_id AND bm.id=r.member_id
+		LEFT JOIN global_users gu ON gu.id=bm.global_user_id
+		LEFT JOIN admin_accounts ca ON ca.id=r.created_by
+		LEFT JOIN admin_accounts qa ON qa.id=r.confirmed_by
+		WHERE r.brand_id=$1 AND r.id=$2 FOR UPDATE OF r`, brand, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Recharge{}, points.ErrNotFound
 	}
@@ -204,14 +217,24 @@ func (s Service) ListRecharges(ctx context.Context, brand, member string, limit,
 			return nil, points.ErrNotFound
 		}
 	}
-	query := `SELECT id::text,brand_id::text,member_id::text,account_id::text,points,state,proof_reference,remark,created_by::text,
-		COALESCE(confirmed_by::text,''),version,created_at,confirmed_at,COALESCE(ledger_entry_id::text,'')
-		FROM recharge_orders WHERE brand_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`
+	query := `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
+		COALESCE(r.confirmed_by::text,''),COALESCE(qa.username,''),r.version,r.created_at,r.confirmed_at,COALESCE(r.ledger_entry_id::text,'')
+		FROM recharge_orders r
+		LEFT JOIN brand_members bm ON bm.brand_id=r.brand_id AND bm.id=r.member_id
+		LEFT JOIN global_users gu ON gu.id=bm.global_user_id
+		LEFT JOIN admin_accounts ca ON ca.id=r.created_by
+		LEFT JOIN admin_accounts qa ON qa.id=r.confirmed_by
+		WHERE r.brand_id=$1 ORDER BY r.created_at DESC,r.id DESC LIMIT $2 OFFSET $3`
 	args := []any{brand, limit, offset}
 	if member != "" {
-		query = `SELECT id::text,brand_id::text,member_id::text,account_id::text,points,state,proof_reference,remark,created_by::text,
-			COALESCE(confirmed_by::text,''),version,created_at,confirmed_at,COALESCE(ledger_entry_id::text,'')
-			FROM recharge_orders WHERE brand_id=$1 AND member_id=$2 ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4`
+		query = `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
+			COALESCE(r.confirmed_by::text,''),COALESCE(qa.username,''),r.version,r.created_at,r.confirmed_at,COALESCE(r.ledger_entry_id::text,'')
+			FROM recharge_orders r
+			LEFT JOIN brand_members bm ON bm.brand_id=r.brand_id AND bm.id=r.member_id
+			LEFT JOIN global_users gu ON gu.id=bm.global_user_id
+			LEFT JOIN admin_accounts ca ON ca.id=r.created_by
+			LEFT JOIN admin_accounts qa ON qa.id=r.confirmed_by
+			WHERE r.brand_id=$1 AND r.member_id=$2 ORDER BY r.created_at DESC,r.id DESC LIMIT $3 OFFSET $4`
 		args = []any{brand, member, limit, offset}
 	}
 	rows, err := s.DB.Query(ctx, query, args...)
@@ -235,8 +258,8 @@ type rechargeScanner interface{ Scan(...any) error }
 func scanRecharge(row rechargeScanner) (Recharge, error) {
 	var record Recharge
 	var amount int64
-	err := row.Scan(&record.ID, &record.BrandID, &record.MemberID, &record.AccountID, &amount, &record.State,
-		&record.ProofReference, &record.Remark, &record.CreatedBy, &record.ConfirmedBy, &record.Version,
+	err := row.Scan(&record.ID, &record.BrandID, &record.MemberID, &record.MemberUsername, &record.AccountID, &amount, &record.State,
+		&record.ProofReference, &record.Remark, &record.CreatedBy, &record.CreatedByName, &record.ConfirmedBy, &record.ConfirmedByName, &record.Version,
 		&record.CreatedAt, &record.ConfirmedAt, &record.LedgerEntryID)
 	record.Points = strconv.FormatInt(amount, 10)
 	return record, err
@@ -254,7 +277,7 @@ func validReason(value string) (string, error) {
 		return "", points.ErrInvalid
 	}
 	value = strings.TrimSpace(value)
-	if len(value) < 1 || len(value) > 500 {
+	if len(value) > 500 {
 		return "", points.ErrInvalid
 	}
 	return value, nil

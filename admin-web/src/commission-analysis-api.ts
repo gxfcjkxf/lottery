@@ -1,4 +1,6 @@
-import { AdminApiError, type AdminAccount } from "./admin-api";
+import { readAdminEnvelope } from './admin-api'
+import { copyAssociationNames } from "@lottery/shared"
+import { AdminApiError, readAdminErrorResponse, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/reports/commission-analysis";
@@ -172,11 +174,7 @@ function validateCsv(csv: string, brand: string, q: Omit<CanonicalQuery, "limit"
   assertAggregate(groups, summaryTotals, summaryCoverage, q.group_by);
   return { filename, groupCount: count };
 }
-async function parseError(response: Response): Promise<never> {
-  let message = `Request failed (${response.status})`, code: string | undefined;
-  try { const body: unknown = await response.json(); if (isRecord(body) && isRecord(body.error)) { if (typeof body.error.message === "string") message = body.error.message; if (typeof body.error.code === "string") code = body.error.code; } } catch { /* retain status fallback */ }
-  throw new AdminApiError(message, response.status, code);
-}
+
 export function commissionAnalysisPermissions(account: AdminAccount, brand: string) {
   const valid = UUID.test(account.id) && UUID.test(brand);
   const grants = brandPermissionSet(account, brand.toLowerCase());
@@ -191,8 +189,7 @@ export function createCommissionAnalysisApi(fetcher: FetchLike = fetch) {
     const brandId = brand.toLowerCase(), q = canonical(input), params = new URLSearchParams();
     for (const key of ["from", "to", "group_by", "limit", "offset", ...UUID_FIELDS] as const) { const value = q[key]; if (value !== null && value !== undefined) params.set(key, String(value)); }
     const response = await fetcher(`${BASE}?${params}`, { method: "GET", credentials: "same-origin", headers: { Accept: "application/json", "X-Brand-ID": brandId }, signal });
-    if (!response.ok) return parseError(response);
-    let body: unknown; try { body = await response.json(); } catch { return fail("佣金周期分析 JSON 无效。"); }
+    const body = await readAdminEnvelope(response);
     if (!isRecord(body) || body.success !== true || !isRecord(body.data)) return fail("佣金周期分析 JSON 无效。");
     const d = body.data;
     if (!exactKeys(d, ["brand_id", "snapshot_at", "timezone", "query", "coverage", "summary", "items", "total_groups"]) || typeof d.brand_id !== "string" || d.brand_id.toLowerCase() !== brandId || !validSnapshot(d.snapshot_at) || !validTimezone(d.timezone) || !isRecord(d.query) || !exactKeys(d.query, ["from", "to", "group_by", "limit", "offset", ...UUID_FIELDS])) return fail();
@@ -209,7 +206,9 @@ export function createCommissionAnalysisApi(fetcher: FetchLike = fetch) {
     const groupTotals = items.map((i) => i.totals);
     assertCoverageSummary(groupTotals, summary, cov, q.group_by, d.total_groups);
     if ((q.offset === 0 || d.total_groups === "0") && BigInt(items.length) === BigInt(d.total_groups)) assertAggregate(groupTotals, summary, cov, q.group_by);
-    return { brand_id: brandId, snapshot_at: d.snapshot_at, timezone: d.timezone, query: echo as CanonicalQuery, coverage: cov, summary, items, total_groups: d.total_groups };
+    const checked = { brand_id: brandId, snapshot_at: d.snapshot_at, timezone: d.timezone, query: echo as CanonicalQuery, coverage: cov, summary, items, total_groups: d.total_groups };
+    copyAssociationNames(d, checked);
+    return checked;
   }
   async function exportCsv(brand: string, input: CommissionAnalysisQuery, signal?: AbortSignal): Promise<CommissionAnalysisExport> {
     if (!UUID.test(brand)) return bad("品牌 UUID 无效。");
@@ -217,7 +216,7 @@ export function createCommissionAnalysisApi(fetcher: FetchLike = fetch) {
     const brandId = brand.toLowerCase(), q = canonical(input), params = new URLSearchParams();
     for (const key of ["from", "to", "group_by", ...UUID_FIELDS] as const) { const value = q[key]; if (value !== null && value !== undefined) params.set(key, String(value)); }
     const response = await fetcher(`${BASE}.csv?${params}`, { method: "GET", credentials: "same-origin", headers: { Accept: "text/csv", "X-Brand-ID": brandId }, signal });
-    if (!response.ok) return parseError(response);
+    if (!response.ok) throw await readAdminErrorResponse(response);
     const length = response.headers.get("Content-Length");
     if (!length || !UNSIGNED.test(length) || Number(length) > MAX_BYTES) return fail("佣金分析 CSV 文件大小无效。");
     const bytes = new Uint8Array(await response.arrayBuffer());

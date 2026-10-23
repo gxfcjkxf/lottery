@@ -76,6 +76,11 @@ test("archive operations preserve exact scope, paging, mutation, and download ru
   const validateInput = validate("ReportArchiveCreateInput");
   const validInput = { kind: "daily", period_key: "2026-10-07", expected_revision: 0, reason: "monthly reporting" };
   assert.ok(validateInput(validInput), JSON.stringify(validateInput.errors));
+  assert.deepEqual(schemas.ReportArchiveCreateInput.required, ["kind", "period_key", "expected_revision"]);
+  assert.ok(validateInput({ kind: "daily", period_key: "2026-10-07", expected_revision: 0 }));
+  assert.ok(validateInput({ ...validInput, reason: "" }));
+  assert.ok(!validateInput({ ...validInput, reason: null }));
+  assert.ok(!validateInput({ ...validInput, reason: 1 }));
   assert.ok(!validateInput({ ...validInput, from: "2026-10-07T00:00:00Z", to: "2026-10-08T00:00:00Z" }));
   assert.ok(!validateInput({ ...validInput, kind: "monthly" }));
   assert.ok(!validateInput({ ...validInput, expected_revision: 9007199254740991 }));

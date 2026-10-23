@@ -17,6 +17,17 @@ const order: BetOrder = {
 const ok = (data: unknown) => new Response(JSON.stringify({ success: true, data }), { status: 200 })
 
 describe('platform bet API', () => {
+  it('combines game and member filters, validates game scope, and omits all-games filtering', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => ok({ items: [order] }))
+    const api = createPlatformBetApi(fetcher)
+    await expect(api.list(brand, member, 51, 50, order.game_id)).resolves.toEqual([order])
+    expect(String(fetcher.mock.calls[0][0])).toBe(`/api/v1/platform/bet-orders?limit=51&offset=50&member_id=${member}&game_id=${order.game_id}`)
+    await expect(api.list(brand, member, 51, 0, 'bad')).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await expect(api.list(brand, member, 51, 0, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await api.list(brand, '', 51, 0, '')
+    expect(String(fetcher.mock.calls.at(-1)![0])).not.toContain('game_id')
+  })
   it('requires current settlement fields and rejects non-wallet allocation sources', async () => {
     const { prize_points: _prize, ...missing } = order
     await expect(createPlatformBetApi(async () => ok(missing)).read(brand, orderId)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })

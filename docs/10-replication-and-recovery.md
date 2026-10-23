@@ -41,15 +41,15 @@ CGO_ENABLED=0 go test -tags recovery -buildvcs=false ./internal/recovery \
 
 ## 函数查找路径
 
-当前完整基线将应用函数的search_path固定为pg_catalog、所属schema、pg_temp。pg_restore使用空会话查找路径时，嵌套配置校验及触发器仍能找到同schema的函数和表，调用方临时同名对象不能优先遮蔽它们。演练核验当前单份基线校验和，不执行旧迁移链升级，也不关闭账本约束。
+当前迁移集合将应用函数的search_path固定为pg_catalog、所属schema、pg_temp。pg_restore使用空会话查找路径时，嵌套配置校验及触发器仍能找到同schema的函数和表，调用方临时同名对象不能优先遮蔽它们。当前演练核验完整迁移集合及校验和，不执行旧迁移链升级，也不关闭账本约束。
 
 以后新增数据库函数也须固定到所属schema，兼容随机schema测试和public部署。不能把public硬编码到所有测试函数，不能依赖客户端连接默认search_path。恢复回归会验证空路径下合法代理配置仍通过、临时同名函数不能改变判断，以及应用函数都有固定路径。
 
 ## 当前证据与待交付事项
 
-最新[2026年10月10日复制恢复证据](performance/current-recovery-baseline-20261010.json)复跑当前代码：PostgreSQL17.11、120张表、322行、一份完整基线及合成会员账本/审计。两从库只读及全表摘要一致；旧主停止后手动提升、额外入账、另一从库重新连接、逻辑备份恢复及不可变约束均通过。备份1,139,271字节，原开发库前后摘要相同，演练节点已停止；本地追平/提升/恢复分别约0.108/0.110/1.094秒。其他业务表包含结构，不代表完整投注、提现、佣金实际数据经过灾备负载演练。[10月9日报告](performance/current-physical-restore-20261009.json)及[早期报告](performance/s7g-replication-recovery.json)保留为各自执行记录，不覆盖旧证据。
+最新[2026年10月10日复制恢复证据](performance/current-recovery-baseline-20261010.json)复跑当时的代码：PostgreSQL17.11、120张表、322行、一份完整基线及合成会员账本/审计。两从库只读及全表摘要一致；旧主停止后手动提升、额外入账、另一从库重新连接、逻辑备份恢复及不可变约束均通过。备份1,139,271字节，原开发库前后摘要相同，演练节点已停止；本地追平/提升/恢复分别约0.108/0.110/1.094秒。其他业务表包含结构，不代表完整投注、提现、佣金实际数据经过灾备负载演练。[10月9日报告](performance/current-physical-restore-20261009.json)及[早期报告](performance/s7g-replication-recovery.json)保留为各自执行记录，不覆盖旧证据。
 
-在仓库根目录运行`node scripts/check-recovery-evidence.mjs recovery REPORT.json`，独立核对整表摘要清单及总摘要、恢复前后表/行/单份基线数量、两台从库、旧主隔离、恢复保护及原库未变声明；不接受自动切换、PITR、密钥恢复或生产验收声明。两份当前原始报告和篡改/缺失证据用例进入静态回归。
+在仓库根目录运行`node scripts/check-recovery-evidence.mjs recovery REPORT.json`，独立核对整表摘要清单及总摘要、恢复前后表/行/单份基线数量、两台从库、旧主隔离、恢复保护及原库未变声明；不接受自动切换、PITR、密钥恢复或生产验收声明。两份历史原始报告和篡改/缺失证据用例进入静态回归。
 
 replica_catchup_seconds从主库新增测试流水到两台从库全部表摘要匹配，包含本地提交和摘要查询成本，不是持续复制延迟指标。promotion_seconds仅为已关闭旧主库后的手动提升及恢复状态确认，不包含检测故障、应用重连或端点切换。restore_seconds包含创建恢复节点、恢复和首次完整摘要检查；这些小数据、同机测量不应设置为生产RTO或RPO。
 

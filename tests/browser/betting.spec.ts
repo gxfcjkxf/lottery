@@ -472,54 +472,54 @@ async function chooseSelection(
         await positions
           .nth(i)
           .getByLabel(`Choose digit 1 for position ${i + 1}`, { exact: true })
-          .check();
+          .click();
         await positions
           .nth(i)
           .getByLabel(`Choose digit 2 for position ${i + 1}`, { exact: true })
-          .check();
+          .click();
       }
     } else {
       const groups = panel.locator(".selection-group");
       await groups
         .nth(0)
         .getByLabel("Choose regular number 1", { exact: true })
-        .check();
+        .click();
       await groups
         .nth(0)
         .getByLabel("Choose regular number 2", { exact: true })
-        .check();
+        .click();
       await groups
         .nth(1)
         .getByLabel(
           `Choose special number ${modelType === "M_SELECT_N" ? "3" : "10"}`,
           { exact: true },
         )
-        .check();
+        .click();
       if (modelType === "X_PLUS_Y")
         await groups
           .nth(1)
           .getByLabel("Choose special number 11", { exact: true })
-          .check();
+          .click();
     }
   } else if (mode === "exclude") {
     await panel
       .locator(".selection-group")
       .getByLabel("Exclude number 6", { exact: true })
-      .check();
+      .click();
   } else if (mode === "attributes") {
     await panel
       .locator(".selection-group")
       .getByLabel("Choose attribute color: red", { exact: true })
-      .check();
+      .click();
   } else {
     await panel
       .locator(".selection-group")
       .getByLabel("Choose feature odd_count: 2", { exact: true })
-      .check();
+      .click();
     await panel
       .locator(".selection-group")
       .getByLabel("Choose feature odd_count: 1", { exact: true })
-      .check();
+      .click();
   }
 }
 
@@ -734,7 +734,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
   );
 
   await page.goto(`${harborSite}/login`);
-  await page.getByLabel("Username or phone", { exact: true }).fill(username);
+  await page.getByLabel("Account", { exact: true }).fill(username);
   await page.getByLabel("Password", { exact: true }).fill(password);
   const captchaImage = page.getByRole("img", {
     name: "Verification code image",
@@ -752,8 +752,8 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
       .getByLabel("Enter the characters shown", { exact: true })
       .fill(answer);
   }
-  await page.getByRole("button", { name: /Continue/ }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  await page.getByRole("button", { name: /^Log in$/ }).click();
+  await expect(page).toHaveURL(/\/$/);
 
   // The actual public hostname resolves through Chromium's *.localhost loopback mapping.
   const periodStatus = async (gameId: string) => {
@@ -840,7 +840,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     .locator(".position-group")
     .first()
     .getByLabel("Choose digit 2 for position 1", { exact: true })
-    .uncheck();
+    .click();
   releaseStaleQuote();
   await expect(stalePanel.getByTestId("bet-quote")).toHaveCount(0);
   await expect(stalePanel.getByTestId("preview-button")).toBeEnabled();
@@ -1241,7 +1241,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     // version. Only a definitive version conflict permits a new UI confirmation.
     for (let attempt = 0; attempt < 3; attempt++) {
       const save = policyPanel.getByRole("button", {
-        name: "保存品牌策略",
+        name: "保存",
         exact: true,
       });
       await expect(save).toBeEnabled();
@@ -1315,7 +1315,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
         response.request().method() === "PUT",
     );
     await policyPanel
-      .getByRole("button", { name: "保存彩种策略", exact: true })
+      .getByRole("button", { name: "保存", exact: true })
       .click();
     const gameSavedResponse = await gameSave;
     const gameSavedEnvelope =
@@ -1513,7 +1513,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     await expect(abnormalDialog.getByRole("textbox")).toBeDisabled();
     await captureS5Admin("s5-a3-admin-abnormal-confirmation.png");
     await abnormalDialog
-      .getByRole("button", { name: "确认并提交", exact: true })
+      .getByRole("button", { name: "提交", exact: true })
       .click();
     const abnormalOnce = await abnormalCommit;
     expect(abnormalOnce.status).toBe(200);
@@ -1665,7 +1665,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
         response.request().method() === "POST",
     );
     await cancelDialog
-      .getByRole("button", { name: "确认并提交", exact: true })
+      .getByRole("button", { name: "提交", exact: true })
       .click();
     const adminCancelResponse = await adminCancel;
     const adminCancelEnvelope =
@@ -2295,7 +2295,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     ).toBeDisabled();
     await expect(singleDialog).toContainText(singleReason);
     const confirmSingleJudge = singleDialog.getByRole("button", {
-      name: "确认并提交",
+      name: "提交",
       exact: true,
     });
     const singleJudgeRoute = `**/api/v1/admin/bet-orders/${singleOrder.id}/judge-cancel`;
@@ -2609,7 +2609,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     await computation.getByRole("button",{name:"核对本次预览",exact:true}).click();
     const review=computation.locator(".sp-confirm");
     await review.getByRole("checkbox").check();
-    await review.getByRole("button",{name:"确认保存只读预览",exact:true}).click();
+    await review.getByRole("button",{name:"保存预览",exact:true}).click();
     await expect(computation.locator(".sp-pending")).toContainText("预览写入结果未知");
     await computation.getByRole("button",{name:"重新读取",exact:true}).click();
     await expect(computation).toContainText(committedPreviewId);
@@ -2643,7 +2643,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     await computation.getByLabel("核对原因（UTF-8 不超过 500 字节）",{exact:true}).fill(postReceiptReason);
     await computation.getByRole("button",{name:"核对本次预览",exact:true}).click();
     await computation.locator(".sp-confirm").getByRole("checkbox").check();
-    await computation.locator(".sp-confirm").getByRole("button",{name:"确认保存只读预览",exact:true}).click();
+    await computation.locator(".sp-confirm").getByRole("button",{name:"保存预览",exact:true}).click();
     await expect(computation).toContainText("预览已由服务端确认保存，但后续读取失败");
     await expect(computation.locator(".sp-pending")).toHaveCount(0);
     await adminPage.unroute(previewRoute);
@@ -2666,7 +2666,7 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     await computation.getByLabel("核对原因（UTF-8 不超过 500 字节）",{exact:true}).fill(`S5-c1 ${info.project.name}: acknowledgement precedes real logout`);
     await computation.getByRole("button",{name:"核对本次预览",exact:true}).click();
     await computation.locator(".sp-confirm").getByRole("checkbox").check();
-    await computation.locator(".sp-confirm").getByRole("button",{name:"确认保存只读预览",exact:true}).click();
+    await computation.locator(".sp-confirm").getByRole("button",{name:"保存预览",exact:true}).click();
     await expect(adminPage.getByTestId("bet-order-management")).toHaveCount(0);
     await expect(adminPage.getByRole("button",{name:"退出登录",exact:true})).toHaveCount(0);
     await adminPage.unroute(previewRoute);
@@ -2689,11 +2689,11 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
     await settlement.getByLabel("操作原因（UTF-8 不超过 500 字节）",{exact:true}).fill(`S5-c2 ${info.project.name}: explicit isolated manual mode`);
     await settlement.getByRole("button",{name:"核对配置变更",exact:true}).click();
     await settlement.locator(".sm-confirm").getByRole("checkbox").check();
-    await settlement.getByRole("button",{name:"确认提交结算操作",exact:true}).click();
+    await settlement.getByRole("button",{name:"提交",exact:true}).click();
     await expect(settlement).toContainText("服务器已确认写入");
     await settlement.getByLabel("期次 ID",{exact:true}).fill(previewPeriodId);
     await expect(settlement).toContainText(previewDraw.id);
-    await expect(settlement.getByRole("button",{name:"核对并启动新结算任务",exact:true})).toBeDisabled();
+    await expect(settlement.getByRole("button",{name:"启动结算",exact:true})).toBeDisabled();
     await settlement.getByLabel("启动原因（UTF-8 不超过 500 字节）",{exact:true}).fill(`S5-c2 ${info.project.name}: purchased snapshot batch`);
     const settleRequests:Array<{key:string;body:string|null}>=[];
     const settleRoute=`**/periods/${previewPeriodId}/settle`;
@@ -2705,9 +2705,9 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
       settlementId=(await response.json()).data.id;
       if(settleRequests.length===1)await route.abort("failed");else await route.fulfill({response});
     });
-    await settlement.getByRole("button",{name:"核对并启动新结算任务",exact:true}).click();
+    await settlement.getByRole("button",{name:"启动结算",exact:true}).click();
     await settlement.locator(".sm-confirm").getByRole("checkbox").check();
-    await settlement.getByRole("button",{name:"确认提交结算操作",exact:true}).click();
+    await settlement.getByRole("button",{name:"提交",exact:true}).click();
     await expect(settlement.locator(".sm-pending")).toContainText("写入结果未知");
     await expect.poll(async()=> (await api<{state:string}>(page.request,`${adminBase}/settlement-jobs/${settlementId}`,"GET",reviewer)).state,{timeout:10_000}).toBe("awaiting_approval");
     await settlement.getByRole("button",{name:"重新读取",exact:true}).click();
@@ -2729,9 +2729,9 @@ test("real Harbor catalog quotes, places and cancels an audited bet", async ({
       await route.fulfill({response});
     });
     await settlement.getByLabel("运营批准原因（UTF-8 不超过 500 字节）",{exact:true}).fill(`S5-c2 ${info.project.name}: approve verified integer winnings`);
-    await settlement.getByRole("button",{name:"核对并批准，允许 worker 入账",exact:true}).click();
+    await settlement.getByRole("button",{name:"批准",exact:true}).click();
     await settlement.locator(".sm-confirm").getByRole("checkbox").check();
-    await settlement.getByRole("button",{name:"确认提交结算操作",exact:true}).click();
+    await settlement.getByRole("button",{name:"提交",exact:true}).click();
     await expect(settlement).toContainText("服务器已确认写入，但后续读取失败");
     await expect(settlement.locator(".sm-pending")).toHaveCount(0);
     await adminPage.unroute(approvalRoute);await adminPage.unroute(jobRoute);

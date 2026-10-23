@@ -26,7 +26,7 @@ test('brand member actions reject synthetic missing and foreign mappings despite
     await expect(page.locator('.app-shell')).toBeVisible();
     await page.getByLabel(/^(选择真实后台品牌|Select live admin brand)$/).selectOption(brand);
     await page.getByRole('combobox', { name: /^(Language|语言)$/ }).selectOption('zh-CN');
-    if (info.project.name === 'mobile360') await page.locator('.mobile-nav').getByRole('button', { name: /用户/ }).click();
+    if (info.project.name === 'mobilepixel7') await page.locator('.mobile-nav').getByRole('button', { name: /用户/ }).click();
     else await page.getByRole('button', { name: /用户和成员/ }).click();
     await expect(page.locator('.member-actions').first()).toContainText('编辑');
     for (const label of ['编辑', '踢出', '重置密码']) {

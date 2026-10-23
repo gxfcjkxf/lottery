@@ -234,7 +234,7 @@ test("Harbor presentation survives a lost acknowledgment, renders safely, and re
     await panel.getByLabel("中文公告", { exact: true }).fill(announcement);
     await panel.getByLabel("操作原因", { exact: true }).fill("Verify Harbor presentation and same-key retry after lost acknowledgment");
     await panel.getByRole("button", { name: "核对展示配置", exact: true }).click();
-    await panel.getByRole("button", { name: "确认提交", exact: true }).click();
+    await panel.getByRole("button", { name: "提交", exact: true }).click();
     await expect.poll(() => firstStatus).toBe(200);
     await expect(panel.getByRole("button", { name: "使用原键重试", exact: true })).toBeVisible();
     await expect(panel.getByRole("button", { name: "使用原键重试", exact: true })).toBeEnabled();
@@ -292,33 +292,28 @@ test("Harbor presentation survives a lost acknowledgment, renders safely, and re
     const userErrors: string[] = [];
     user.on("pageerror", (error) => userErrors.push(error.message));
     await user.goto("http://harbor.localhost:5173/");
-    await expect(user.locator(".hero h1")).toHaveText("港湾品牌展示验证");
-    await expect(user.locator(".announcement h3")).toHaveText(announcement);
+    await expect(user.locator(".home-tagline")).toHaveText("港湾品牌展示验证");
+    await expect(user.locator(".home-announcement p")).toHaveText(announcement);
     await expect(user.locator(".announcement img, .announcement script")).toHaveCount(0);
     expect(await user.evaluate(() => (window as Window & { __brandPresentationXss?: unknown }).__brandPresentationXss)).toBeUndefined();
     const languageSwitch = user.locator('.locale-picker__trigger');
     await expect(languageSwitch).toBeVisible();
     await selectLanguage(user, 'en');
-    await expect(user.locator(".hero h1")).toHaveText("Harbor English preview");
-    await expect(user.locator(".announcement h3")).toHaveText("Harbor presentation browser verification");
+    await expect(user.locator(".home-tagline")).toHaveText("Harbor English preview");
+    await expect(user.locator(".home-announcement p")).toHaveText("Harbor presentation browser verification");
     await selectLanguage(user, 'zh-CN');
-    await expect(user.locator(".hero h1")).toHaveText("港湾品牌展示验证");
-    await expect(user.locator(".announcement h3")).toHaveText(announcement);
+    await expect(user.locator(".home-tagline")).toHaveText("港湾品牌展示验证");
+    await expect(user.locator(".home-announcement p")).toHaveText(announcement);
     await expect(user.locator(".announcement img, .announcement script")).toHaveCount(0);
-    const brandLink = user.locator(".sidebar .brand");
-    if (info.project.name === "mobile") {
-      await user.getByRole("button", { name: "Open navigation", exact: true }).click();
-    }
+    const brandLink = user.locator(info.project.name === 'mobile' ? '.mobile-page-identity' : '.sidebar .brand');
     await expect(brandLink).toBeVisible();
     await expect(brandLink).toContainText("Harbor Brand Preview");
-    const logoMark = brandLink.locator(".brand-mark");
+    const logoMark = brandLink.locator(info.project.name === 'mobile' ? '.mobile-brand-mark' : '.brand-mark');
     await expect(logoMark.locator("img")).toHaveCount(0);
     await expect(logoMark).toHaveText("HARBOR PREVIEW");
     if (info.project.name === "mobile") {
-      const navigation = user.getByRole("button", { name: "Open navigation", exact: true });
-      await user.getByRole("button", { name: "Close navigation", exact: true }).click();
-      await expect(navigation).toHaveAttribute("aria-expanded", "false");
-      await expect.poll(() => user.locator(".sidebar").evaluate((drawer) => drawer.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
+      await expect(user.locator('.sidebar')).toBeHidden();
+      await expect(user.locator('.mobile-primary-nav > a')).toHaveCount(4);
     }
 
     // This repository has no allowed raster file in public/; serve a tiny PNG
@@ -342,7 +337,7 @@ test("Harbor presentation survives a lost acknowledgment, renders safely, and re
     await panel.getByRole("button", { name: "核对展示配置", exact: true }).click();
     const assetPublish = page.waitForResponse((response) => response.request().method() === "PUT" &&
       new URL(response.url()).pathname === "/api/v1/admin/brand-presentation" && response.status() === 200);
-    await panel.getByRole("button", { name: "确认提交", exact: true }).click();
+    await panel.getByRole("button", { name: "提交", exact: true }).click();
     await assetPublish;
     expect(writes).toHaveLength(3);
     expect(JSON.parse(writes[2].body ?? "{}")).toMatchObject({ config: { ...updated, logo_url: logoAssetPath, favicon_url: logoAssetPath } });
@@ -359,21 +354,16 @@ test("Harbor presentation survives a lost acknowledgment, renders safely, and re
     await page.unroute(routePattern);
 
     await user.reload();
-    if (info.project.name === "mobile") {
-      await user.getByRole("button", { name: "Open navigation", exact: true }).click();
-    }
-    const renderedLogo = user.locator(".sidebar .brand .brand-mark img");
+    const renderedLogo = user.locator(info.project.name === 'mobile' ? '.mobile-brand-mark img' : '.sidebar .brand .brand-mark img');
     await expect(renderedLogo).toHaveAttribute("src", logoAssetPath);
-    await expect(renderedLogo).toHaveAttribute("alt", "HARBOR PREVIEW");
+    await expect(renderedLogo).toHaveAttribute("alt", info.project.name === 'mobile' ? '' : 'HARBOR PREVIEW');
     await expect.poll(() => renderedLogo.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(1);
     const favicon = user.locator('link[data-brand-favicon]');
     await expect(favicon).toHaveAttribute("href", logoAssetPath);
     expect(await favicon.evaluate((link: HTMLLinkElement) => link.href)).toBe(new URL(logoAssetPath, user.url()).href);
     if (info.project.name === "mobile") {
-      const navigation = user.getByRole("button", { name: "Open navigation", exact: true });
-      await user.getByRole("button", { name: "Close navigation", exact: true }).click();
-      await expect(navigation).toHaveAttribute("aria-expanded", "false");
-      await expect.poll(() => user.locator(".sidebar").evaluate((drawer) => drawer.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
+      await expect(user.locator('.sidebar')).toBeHidden();
+      await expect(user.locator('.mobile-primary-nav > a')).toHaveCount(4);
     }
     const rendered = await user.evaluate(() => ({
       primary: getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),

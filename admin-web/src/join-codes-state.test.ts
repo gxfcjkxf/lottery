@@ -38,6 +38,16 @@ describe("join code write state", () => {
     expect(getPendingJoinCodeWrite({ accountId, brandId: otherBrand })).toMatchObject({ operation: "update" });
   });
 
+  it("retains create and update requests with the optional operation reason omitted", () => {
+    for (const intent of [createIntent(), updateIntent()]) {
+      const body = {...intent.body}; delete body.reason;
+      setPendingJoinCodeWrite(scope, {...intent, body});
+      expect(getPendingJoinCodeWrite(scope)).toMatchObject({operation: intent.operation, body});
+      expect(getPendingJoinCodeWrite(scope)?.body).not.toHaveProperty('reason');
+      clearPendingJoinCodeWrite(scope);
+    }
+  });
+
   it("rejects malformed, foreign scope, or mismatched immutable identity intents", () => {
     setPendingJoinCodeWrite(scope, createIntent({ accountId: otherAccount }));
     expect(getPendingJoinCodeWrite(scope)).toBeNull();

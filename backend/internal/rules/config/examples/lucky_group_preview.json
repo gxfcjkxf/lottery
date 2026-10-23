@@ -1,0 +1,142 @@
+{
+  "catalog": {
+    "schema_version": 2,
+    "semantics_version": 1,
+    "model": {
+      "model": "X_PLUS_Y",
+      "regular_pool": {
+        "min": 1,
+        "max": 49,
+        "allow_repeat": false
+      },
+      "special_pool": {
+        "min": 1,
+        "max": 49,
+        "allow_repeat": false
+      },
+      "regular_count": 6,
+      "special_count": 1,
+      "pool_size": 0,
+      "total_count": 0,
+      "length": 0,
+      "allow_repeat": false,
+      "ordered": true
+    },
+    "disjoint_draw_groups": false,
+    "max_lines": 1000,
+    "price_min": "0.01",
+    "price_max": "1000",
+    "plates": [
+      "A",
+      "B"
+    ],
+    "attributes": [],
+    "domains": {
+      "lucky": {
+        "options": [
+          {
+            "id": "lucky",
+            "label": {
+              "en": "Lucky group",
+              "zh-CN": "幸运组"
+            },
+            "mapping": {
+              "kind": "numbers",
+              "numbers": [
+                2,
+                7,
+                19,
+                31
+              ]
+            },
+            "price_key": "lucky_price"
+          }
+        ]
+      }
+    },
+    "plays": [
+      {
+        "id": "operator_new_play",
+        "group": "custom",
+        "label": {
+          "en": "Lucky group",
+          "zh-CN": "幸运组"
+        },
+        "selection": {
+          "domain": "lucky",
+          "mode": "singles",
+          "per_line": 1,
+          "min": 1,
+          "max": 1,
+          "distinct_slot": false
+        },
+        "stake_mode": "per_line",
+        "max_multiplier": "1",
+        "settlement": "tiers",
+        "push_when": {
+          "op": "equals",
+          "left": {
+            "op": "raw_value",
+            "scope": {
+              "target": "regular",
+              "positions": [
+                2
+              ]
+            }
+          },
+          "right": {
+            "op": "constant",
+            "value": 49
+          }
+        },
+        "tiers": [
+          {
+            "id": "hit",
+            "when": {
+              "op": "at_least",
+              "left": {
+                "op": "match_count",
+                "scope": {
+                  "target": "regular",
+                  "positions": [
+                    2
+                  ]
+                },
+                "counting": "occurrences"
+              },
+              "right": {
+                "op": "constant",
+                "value": 1
+              }
+            },
+            "price": {
+              "kind": "option"
+            },
+            "payout": {
+              "kind": "fixed_return"
+            },
+            "exclusive": true
+          }
+        ],
+        "mixed_tier_policy": "",
+        "rounding": "half_up",
+        "rounding_scope": "line"
+      }
+    ]
+  },
+  "bindings": {
+    "version": "draft-attributes",
+    "attributes": {}
+  },
+  "prices": {
+    "version": "synthetic-prices",
+    "plates": {
+      "A": {
+        "lucky_price": "2.5"
+      },
+      "B": {
+        "lucky_price": "3.5"
+      }
+    }
+  }
+}

@@ -1,3 +1,6 @@
+import { readAdminErrorResponse } from './admin-api'
+import { readAdminEnvelope } from './admin-api'
+import { copyAssociationNames } from "@lottery/shared"
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -95,9 +98,8 @@ export function createWithdrawalReportApi(fetcher:FetchLike=fetch) {
     const params=new URLSearchParams();
     for(const [k,v] of Object.entries(requested)) if(v!==null) params.set(k,String(v));
     const response=await fetcher(`${BASE}${exporting?"/export":""}?${params}`,{method:"GET",credentials:"same-origin",headers:{"X-Brand-ID":brand,Accept:"application/json"}});
-    let body:unknown; try{body=await response.json()}catch{body=null}
-    if(!response.ok) { const error=isObject(body)&&isObject(body.error)?body.error:{}; throw new AdminApiError(typeof error.message==="string"?error.message:`Request failed (${response.status})`,response.status,typeof error.code==="string"?error.code:undefined); }
-    if(!isObject(body)||!exactKeys(body,["success","data","request_id"])||body.success!==true||typeof body.request_id!=="string"||!/^[a-zA-Z0-9_.:-]{1,80}$/.test(body.request_id)||!isObject(body.data)) return invalid();
+    const body = await readAdminEnvelope<unknown>(response);
+    if(!isObject(body)||Object.keys(body).some(key=>!["success","data","request_id","associations","association_error"].includes(key))||body.success!==true||typeof body.request_id!=="string"||!/^[a-zA-Z0-9_.:-]{1,80}$/.test(body.request_id)||!isObject(body.data)) return invalid();
     const d=body.data;
     if(!exactKeys(d,["brand_id","snapshot_at","timezone","query","summary","items","total_groups"])||d.brand_id!==brand||typeof d.snapshot_at!=="string"||!Number.isFinite(Date.parse(d.snapshot_at))||typeof d.timezone!=="string"||!d.timezone||!isObject(d.query)||!Array.isArray(d.items)||typeof d.total_groups!=="string"||!INTEGER.test(d.total_groups)) return invalid();
     try{new Intl.DateTimeFormat("en",{timeZone:d.timezone})}catch{return invalid("提现报表时区无效。")}
@@ -114,7 +116,9 @@ export function createWithdrawalReportApi(fetcher:FetchLike=fetch) {
     const sums=fields.map(()=>0n);
     for(let i=0;i<items.length;i++) { const item=items[i]!; if(i&&items[i-1]!.key>=item.key) return invalid(); fields.forEach((f,j)=>sums[j]+=BigInt(item.totals[f])); }
     if(requested.offset===0&&BigInt(items.length)===BigInt(d.total_groups)&&fields.some((f,j)=>sums[j]!==BigInt(summary[f]))) return invalid("提现分组与汇总不一致。");
-    return {brand_id:d.brand_id,snapshot_at:d.snapshot_at,timezone:d.timezone,query:echo as WithdrawalReport["query"],summary,items,total_groups:d.total_groups};
+    const checked = {brand_id:d.brand_id,snapshot_at:d.snapshot_at,timezone:d.timezone,query:echo as WithdrawalReport["query"],summary,items,total_groups:d.total_groups};
+    copyAssociationNames(d, checked);
+    return checked;
   }
   async function exportCsv(brand:string,q:WithdrawalReportQuery) {
     if(!UUID.test(brand)) bad("品牌 UUID 无效。");
@@ -122,7 +126,7 @@ export function createWithdrawalReportApi(fetcher:FetchLike=fetch) {
     if(q.limit!==undefined||q.offset!==undefined) bad("CSV 导出不接受分页参数。");
     const params=new URLSearchParams(); for(const [k,v] of Object.entries(requested)) if(v!==null&&k!=="limit"&&k!=="offset") params.set(k,String(v));
     const response=await fetcher(`${BASE}/export?${params}`,{method:"GET",credentials:"same-origin",headers:{"X-Brand-ID":brand,Accept:"text/csv"}});
-    if(!response.ok){let message=`Request failed (${response.status})`,code:string|undefined;try{const b:unknown=await response.json();if(isObject(b)&&isObject(b.error)){if(typeof b.error.message==="string")message=b.error.message;if(typeof b.error.code==="string")code=b.error.code}}catch{}throw new AdminApiError(message,response.status,code)}
+    if(!response.ok) throw await readAdminErrorResponse(response);
     const headers=response.headers,bytes=new Uint8Array(await response.arrayBuffer());
     const digest=await crypto.subtle.digest("SHA-256",bytes);const hex=[...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,"0")).join("");
     const snapshot=headers.get("X-Report-Snapshot-At")??"",groups=headers.get("X-Report-Group-Count")??"",audit=headers.get("X-Report-Audit-ID")??"";

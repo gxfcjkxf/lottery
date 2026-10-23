@@ -1,3 +1,5 @@
+import { readPlatformEnvelope } from './platform-api'
+
 import { PlatformApiError } from './platform-api'
 
 export interface ArchiveTasksPolicy {
@@ -94,15 +96,7 @@ export function createPlatformArchiveTasksApi(fetcher: typeof fetch = fetch) {
     } catch (cause) {
       throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true)
     }
-    let envelope: unknown
-    try { envelope = await response.json() } catch {
-      if (!response.ok) throw new PlatformApiError(`Request failed (${response.status})`, response.status)
-      throw new PlatformApiError('Invalid server response', response.status, 'INVALID_RESPONSE')
-    }
-    if (!isObj(envelope) || envelope.success !== true || envelope.data === undefined || !response.ok) {
-      const err = isObj(envelope) && isObj(envelope.error) ? envelope.error : undefined
-      throw new PlatformApiError(text(err?.message) ? err.message : `Request failed (${response.status})`, response.status, text(err?.code) ? err.code : undefined)
-    }
+    const envelope = await readPlatformEnvelope<unknown>(response);
     if (response.status !== 200) invalid()
     return envelope.data
   }

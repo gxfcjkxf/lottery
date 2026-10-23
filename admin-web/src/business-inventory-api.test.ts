@@ -166,7 +166,7 @@ describe("brand business inventory SDK", () => {
   it("returns localized-friendly AdminApiErrors for network, HTTP, and invalid payload failures", async () => {
     await expect(createBusinessInventoryApi(vi.fn<typeof fetch>().mockRejectedValue(new Error("offline"))).read(brand))
       .rejects.toBeInstanceOf(AdminApiError);
-    await expect(createBusinessInventoryApi(vi.fn<typeof fetch>().mockResolvedValue(response({ message: "denied" }, 403))).read(brand))
+    await expect(createBusinessInventoryApi(vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ success: false, error: { code: "PERMISSION_DENIED", message: "denied" } }), {status:403}))).read(brand))
       .rejects.toMatchObject({ status: 403 });
     await expect(createBusinessInventoryApi(vi.fn<typeof fetch>().mockResolvedValue(response({}))).read(brand))
       .rejects.toMatchObject({ code: "INVALID_RESPONSE" });

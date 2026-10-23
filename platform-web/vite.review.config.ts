@@ -7,7 +7,7 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5185,
     strictPort: true,
-    allowedHosts: ['thirstily-subway-flashbulb.ngrok-free.dev'],
-    proxy: { '/api': { target: 'http://localhost:8085', changeOrigin: false } },
+    allowedHosts: [],
+    proxy: { '/api': { target: 'http://127.0.0.1:8085', changeOrigin: false } },
   },
 })

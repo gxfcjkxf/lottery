@@ -16,15 +16,21 @@ test('platform archive and financial policy clients are scoped GET-only readers'
 test('policy readers preserve integer strings and isolate late requests without write buttons', () => {
   const finance = read('platform-web/src/FinancialPoliciesPanel.vue');
   const tasks = read('platform-web/src/ArchiveTasksPanel.vue');
+  const catalog = read('platform-web/src/i18n-catalog.ts');
   for (const panel of [finance, tasks]) {
     assert.match(panel, /onBeforeUnmount/);
     assert.match(panel, /flush: 'sync'/);
     assert.doesNotMatch(panel, /v-html|parseFloat|Number\(.*points|api\.(retry|update|create)/);
   }
-  assert.match(finance, /a game override takes precedence/);
+  assert.match(catalog, /a game override takes precedence/);
   assert.match(finance, /selected.value === kind/);
-  assert.match(tasks, /separate snapshots/);
-  assert.match(tasks, /does not mean this task produced a new archive/);
+  assert.match(catalog, /separate snapshots/);
+  // Skipped tasks reuse an existing archive; check both current translations
+  // and their conditional UI binding rather than an obsolete English sentence.
+  assert.match(catalog, /"platform\.copy\.21b6cf9c": "This skipped task is linked to an existing archive\."/);
+  assert.match(catalog, /"platform\.copy\.21b6cf9c": "此跳过任务关联了已有归档。"/);
+  assert.match(tasks, /skippedNote: ui\('platform\.copy\.21b6cf9c'\)/);
+  assert.match(tasks, /<p v-if="detail\.state === 'skipped'" class="message">\{\{ copy\.skippedNote \}\}<\/p>/);
   assert.match(tasks, /detailLoading.value = false/);
 });
 

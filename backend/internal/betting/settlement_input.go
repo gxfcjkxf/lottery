@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// All write fields are required. In particular missing mode is not permission
+// Business write fields are required; audit reason is optional. In particular missing mode is not permission
 // to unset a policy, and duplicate fields cannot change idempotency semantics.
 func decodeSettlementInput(raw []byte, out any, nullable string, fields ...string) error {
 	d := json.NewDecoder(bytes.NewReader(raw))
@@ -34,8 +34,13 @@ func decodeSettlementInput(raw []byte, out any, nullable string, fields ...strin
 			return ErrInvalid
 		}
 	}
-	if _, e = d.Token(); e != nil || len(seen) != len(fields) {
+	if _, e = d.Token(); e != nil {
 		return ErrInvalid
+	}
+	for _, field := range fields {
+		if field != "reason" && !seen[field] {
+			return ErrInvalid
+		}
 	}
 	var extra any
 	if d.Decode(&extra) != io.EOF {

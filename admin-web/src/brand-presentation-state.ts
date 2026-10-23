@@ -27,7 +27,7 @@ function valid(value: unknown, scope: BrandPresentationScope): value is PendingB
   const body = value.body;
   return value.accountId === scope.accountId && value.brandId === scope.brandId && UUID_RE.test(scope.accountId) && UUID_RE.test(scope.brandId) &&
     typeof value.key === "string" && /^[A-Za-z0-9_:.-]{8,128}$/.test(value.key) && ["review", "unknown", "conflict"].includes(String(value.phase)) &&
-    Number.isSafeInteger(body.version) && Number(body.version) >= 1 && validBrandPresentationConfig(body.config) && typeof body.reason === "string" && body.reason.trim().length > 0 && new TextEncoder().encode(body.reason).length <= 500;
+    Number.isSafeInteger(body.version) && Number(body.version) >= 1 && validBrandPresentationConfig(body.config) && typeof body.reason === "string" && new TextEncoder().encode(body.reason).length <= 500;
 }
 function cloneConfig(config: BrandPresentationConfig): BrandPresentationConfig {
   return {
@@ -55,22 +55,18 @@ export function getPendingBrandPresentationWrite(scope: string | BrandPresentati
   const value = pending.get(resolved.key);
   return value && valid(value, resolved) ? value : null;
 }
-export const getPendingPresentationWrite = getPendingBrandPresentationWrite;
 export function setPendingBrandPresentationWrite(scope: string | BrandPresentationScope, value: PendingBrandPresentationWrite): void {
   const resolved = scopeFrom(scope);
   if (resolved && valid(value, resolved)) pending.set(resolved.key, copy(value));
 }
-export const setPendingPresentationWrite = setPendingBrandPresentationWrite;
 export function updatePendingBrandPresentationPhase(scope: string | BrandPresentationScope, key: string, phase: PendingBrandPresentationPhase): void {
   const resolved = scopeFrom(scope), current = resolved ? pending.get(resolved.key) : undefined;
   if (resolved && current?.key === key && ["review", "unknown", "conflict"].includes(phase)) pending.set(resolved.key, copy({ ...current, phase }));
 }
-export const updatePendingPresentationPhase = updatePendingBrandPresentationPhase;
 export function clearPendingBrandPresentationWrite(scope: string | BrandPresentationScope, expectedKey?: string): void {
   const resolved = scopeFrom(scope), current = resolved ? pending.get(resolved.key) : undefined;
   if (resolved && (expectedKey === undefined || current?.key === expectedKey)) pending.delete(resolved.key);
 }
-export const clearPendingPresentationWrite = clearPendingBrandPresentationWrite;
 export function clearAllPendingPresentationWrites(): void { pending.clear(); sessionGeneration += 1; requestGeneration += 1; }
 export function brandPresentationSessionGeneration(): number { return sessionGeneration; }
 export function classifyBrandPresentationFailure(status: number | undefined): "unknown" | "conflict" | "definitive" {
@@ -78,7 +74,6 @@ export function classifyBrandPresentationFailure(status: number | undefined): "u
   if (status === 409) return "conflict";
   return "definitive";
 }
-export const classifyPresentationFailure = classifyBrandPresentationFailure;
 export function createBrandPresentationRequestGuard() {
   let current = 0;
   const bornInSession = sessionGeneration;

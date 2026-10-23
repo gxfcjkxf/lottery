@@ -69,7 +69,7 @@ func main() {
 	// Unlike sparse rule input, financial configuration replacements require
 	// every field, including explicit nulls. Pointer types alone do not imply
 	// that the HTTP decoder accepts omission.
-	agentInput := agency.CreateInput{PolicyVersion: 1, MemberID: id, Config: agency.NodeConfig{Ratio: "0", Status: "active"}, Reason: "contract example"}
+	agentInput := agency.CreateInput{PolicyVersion: 1, Username: "example_agent", Password: "agent123", Config: agency.NodeConfig{Mode: new("loss"), Ratio: "0", Status: "active"}, Reason: "contract example"}
 	agentJSON, err := json.Marshal(agentInput)
 	if err != nil {
 		log.Fatal(err)
@@ -164,12 +164,12 @@ func main() {
 		log.Fatal(err)
 	}
 	values := map[string]any{
-		"AdminBrandDomain":                 branddomains.Domain{ID: id, Domain: "brand.example.test", Enabled: true, Primary: true},
-		"AdminBrandDomainRecord":           branddomains.Record{BrandID: id, Version: 2, Status: "active", Domains: []branddomains.Domain{{ID: id, Domain: "brand.example.test", Enabled: true, Primary: true}}, UpdatedAt: now},
-		"AdminBrandDomainReceipt":          branddomains.Record{BrandID: id, Version: 2, Status: "active", Domains: []branddomains.Domain{{ID: id, Domain: "brand.example.test", Enabled: true, Primary: true}}, UpdatedAt: now, AuditLogID: id},
-		"AdminBrandDomainCreateRequest":    branddomains.Input{Version: 1, Domain: "brand.example.test", Enabled: true, Primary: true, Reason: "contract example"},
-		"AdminBrandDomainUpdateRequest":    branddomains.Input{Version: 1, Enabled: true, Primary: true, Reason: "contract example"},
-		"AdminBrandDomainRevision":         branddomains.Revision{ID: id, BrandID: id, Version: 2, ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now, BeforeDomains: []branddomains.Domain{}, Domains: []branddomains.Domain{{ID: id, Domain: "brand.example.test", Enabled: true, Primary: true}}},
+		"AdminBrandDomain":                 branddomains.Domain{ID: id, Domain: "brand.example.test", Enabled: true},
+		"AdminBrandDomainRecord":           branddomains.Record{BrandID: id, Version: 2, Status: "active", Domains: []branddomains.Domain{{ID: id, Domain: "brand.example.test", Enabled: true}}, UpdatedAt: now},
+		"AdminBrandDomainReceipt":          branddomains.Record{BrandID: id, Version: 2, Status: "active", Domains: []branddomains.Domain{{ID: id, Domain: "brand.example.test", Enabled: true}}, UpdatedAt: now, AuditLogID: id},
+		"AdminBrandDomainCreateRequest":    branddomains.Input{Version: 1, Domain: "brand.example.test", Enabled: true, Reason: "contract example"},
+		"AdminBrandDomainUpdateRequest":    branddomains.Input{Version: 1, Enabled: true, Reason: "contract example"},
+		"AdminBrandDomainRevision":         branddomains.Revision{ID: id, BrandID: id, Version: 2, ChangedBy: id, Reason: "contract example", AuditLogID: id, CreatedAt: now, BeforeDomains: []branddomains.Domain{}, Domains: []branddomains.Domain{{ID: id, Domain: "brand.example.test", Enabled: true}}},
 		"IdentityContextBrand":             tenant.Brand{ID: id, Code: "example", Name: presentationEffective.DisplayName, Status: "active", DefaultLocale: presentationEffective.DefaultLocale, Timezone: "Asia/Manila", Theme: publicTheme, ConfigVersion: 2},
 		"AdminBrandPresentationConfig":     presentationConfig,
 		"AdminBrandPresentationEffective":  presentationEffective,

@@ -438,7 +438,7 @@ func runHistoryHTTPDrill(t *testing.T, primary *pgxpool.Pool, replicas []*pgxpoo
 	if err != nil {
 		t.Fatal("could not initialize synthetic HTTP identity store")
 	}
-	const password = "history-routing-drill-password-2026"
+	const password = "history-routing-dril-test-2026"
 	hash, err := users.PasswordHash(ctx, password)
 	if err != nil {
 		t.Fatal("could not hash synthetic HTTP administrator password")

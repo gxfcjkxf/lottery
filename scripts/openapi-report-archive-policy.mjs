@@ -1,18 +1,17 @@
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
 const uuid = ref("UUID");
-const obj = properties => ({
+const obj = (properties, required = Object.keys(properties)) => ({
   type: "object",
-  required: Object.keys(properties),
+  required,
   additionalProperties: false,
   properties,
 });
 
 const reason = {
   type: "string",
-  minLength: 1,
   maxLength: 500,
-  pattern: "^(?=.*\\S)(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]*$",
-  description: "Trimmed nonempty valid UTF-8, at most 500 UTF-8 bytes; C0/C1 controls are rejected by the handler.",
+  pattern: "^(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]*$",
+  description: "Optional; empty string is allowed. Otherwise trimmed valid UTF-8, at most 500 UTF-8 bytes; C0/C1 controls are rejected by the handler.",
 };
 
 export const schemas = {
@@ -21,7 +20,7 @@ export const schemas = {
     daily_enabled: { type: "boolean" },
     monthly_enabled: { type: "boolean" },
     reason,
-  }),
+  }, ["version", "daily_enabled", "monthly_enabled"]),
 };
 
 export const operations = [

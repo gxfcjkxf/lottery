@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -20,7 +22,7 @@ export interface BrandPresentationConfig {
   warning_color: string | null;
   danger_color: string | null;
   font_family: "system" | "serif" | "mono" | null;
-  font_scale: "compact" | "standard" | "large" | null;
+  font_scale: "compact" | "standard" | null;
   radius: "square" | "soft" | "round" | null;
   shadow: "none" | "subtle" | "lifted" | null;
   default_locale: BrandPresentationLocale | null;
@@ -38,7 +40,7 @@ export interface EffectiveBrandPresentationConfig extends Omit<BrandPresentation
   warning_color: string;
   danger_color: string;
   font_family: "system" | "serif" | "mono";
-  font_scale: "compact" | "standard" | "large";
+  font_scale: "compact" | "standard";
   radius: "square" | "soft" | "round";
   shadow: "none" | "subtle" | "lifted";
   default_locale: BrandPresentationLocale;
@@ -60,6 +62,7 @@ export interface BrandPresentationHistoryPage { items: BrandPresentationRevision
 export interface BrandPresentationPutBody { version: number; config: BrandPresentationConfig; reason: string }
 export interface BrandPresentationApi {
   get(brandId: string): Promise<BrandPresentationRecord>;
+  defaults(brandId: string): Promise<BrandPresentationEffective>;
   history(brandId: string, limit?: number, offset?: number): Promise<BrandPresentationHistoryPage>;
   put(brandId: string, body: BrandPresentationPutBody, idempotencyKey: string): Promise<BrandPresentationReceipt>;
 }
@@ -100,7 +103,7 @@ function validAssetUri(value: unknown): value is string | null {
   if (value === null) return true;
   if (typeof value !== "string" || !value || byteLength(value) > 512 || value.trim() !== value || /[\\%\s\p{Cc}]/u.test(value) || value.includes("..") || /[?#]/.test(value)) return false;
   if (!ASSET_EXT_RE.test(value.slice(value.lastIndexOf("/") + 1))) return false;
-  if (value.startsWith("/") && !value.startsWith("//")) return value.startsWith("/icons/") || value.startsWith("/brand-assets/");
+  if (value.startsWith("/") && !value.startsWith("//")) return value.startsWith("/icons/") || value.startsWith("/brand-assets/") || value.startsWith("/api/v1/brand-assets/");
   if (!value.startsWith("https://")) return false;
   try {
     const url = new URL(value);
@@ -136,7 +139,7 @@ function validConfig(value: unknown, effective = false): boolean {
     (effective ? string(value.success_color) && COLOR_RE.test(value.success_color) : value.success_color === null || typeof value.success_color === "string" && COLOR_RE.test(value.success_color)) &&
     (effective ? string(value.warning_color) && COLOR_RE.test(value.warning_color) : value.warning_color === null || typeof value.warning_color === "string" && COLOR_RE.test(value.warning_color)) &&
     (effective ? string(value.danger_color) && COLOR_RE.test(value.danger_color) : value.danger_color === null || typeof value.danger_color === "string" && COLOR_RE.test(value.danger_color)) &&
-    enumValue(value.font_family, ["system", "serif", "mono"]) && enumValue(value.font_scale, ["compact", "standard", "large"]) &&
+    enumValue(value.font_family, ["system", "serif", "mono"]) && enumValue(value.font_scale, ["compact", "standard"]) &&
     enumValue(value.radius, ["square", "soft", "round"]) && enumValue(value.shadow, ["none", "subtle", "lifted"]) &&
     (effective ? LOCALES.includes(value.default_locale as BrandPresentationLocale) : value.default_locale === null || LOCALES.includes(value.default_locale as BrandPresentationLocale)) &&
     (localeNullable || localeListValid) && (!effective || localeListValid) &&
@@ -151,7 +154,7 @@ function validRecord(value: unknown, brandId: string): value is BrandPresentatio
     (value.audit_log_id === undefined || validUuid(value.audit_log_id));
 }
 function validRevision(value: unknown, brandId: string): value is BrandPresentationRevision {
-  return isRecord(value) && exactKeys(value, ["id", "brand_id", "version", "config", "effective", "changed_by", "reason", "audit_log_id", "created_at"]) && validUuid(value.id) && value.brand_id === brandId && validVersion(value.version) && validConfig(value.config) && validConfig(value.effective, true) && effectiveMatchesConfig(value.config, value.effective) && validUuid(value.changed_by) && validText(value.reason, 500, false, true) && validUuid(value.audit_log_id) && validDateTime(value.created_at);
+  return isRecord(value) && exactKeys(value, ["id", "brand_id", "version", "config", "effective", "changed_by", "reason", "audit_log_id", "created_at"]) && validUuid(value.id) && value.brand_id === brandId && validVersion(value.version) && validConfig(value.config) && validConfig(value.effective, true) && effectiveMatchesConfig(value.config, value.effective) && validUuid(value.changed_by) && validText(value.reason, 500, false) && validUuid(value.audit_log_id) && validDateTime(value.created_at);
 }
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -179,7 +182,6 @@ function effectiveMatchesConfig(config: unknown, effective: unknown): boolean {
 }
 function invalidInput(): never { throw new AdminApiError("品牌展示配置参数无效。", 400, "INVALID_INPUT"); }
 function invalidResponse(write: boolean): never { throw new AdminApiError("品牌展示配置响应格式无效。", write ? 0 : 502, "INVALID_RESPONSE"); }
-type Envelope = { success?: unknown; data?: unknown; error?: unknown };
 
 export function createBrandPresentationApi(fetchImpl: typeof fetch = fetch): BrandPresentationApi {
   async function request(path: string, brandId: string, options: { method?: "GET" | "PUT"; body?: unknown; key?: string; write?: boolean } = {}): Promise<unknown> {
@@ -190,20 +192,12 @@ export function createBrandPresentationApi(fetchImpl: typeof fetch = fetch): Bra
     let response: Response;
     try { response = await fetchImpl(path, { method: options.method ?? "GET", credentials: "same-origin", headers, ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }) }); }
     catch (cause) { throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR"); }
-    let envelope: Envelope;
-    try { envelope = await response.json() as Envelope; }
-    catch { if (!response.ok) throw new AdminApiError(`Request failed (${response.status})`, response.status); invalidResponse(Boolean(options.write)); }
-    if (response.status !== 200 && response.ok) invalidResponse(Boolean(options.write));
-    if (!response.ok || !isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
-      const error = isRecord(envelope?.error) ? envelope.error : undefined;
-      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      const message = typeof error?.message === "string" ? error.message : `Request failed (${response.status})`;
-      if (!response.ok) throw new AdminApiError(message, response.status, typeof error?.code === "string" ? error.code : undefined);
-      invalidResponse(Boolean(options.write));
-    }
+    const envelope = await readAdminEnvelope(response);
+    if (response.status !== 200) invalidResponse(Boolean(options.write));
     return envelope.data;
   }
   return {
+    async defaults(brandId) { const data = await request(`${BASE}/defaults`, brandId); if (!validConfig(data, true)) invalidResponse(false); return data as BrandPresentationEffective; },
     async get(brandId) { const data = await request(BASE, brandId); if (!validRecord(data, brandId)) invalidResponse(false); return data; },
     async history(brandId, limit = 20, offset = 0) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) invalidInput();
@@ -212,7 +206,7 @@ export function createBrandPresentationApi(fetchImpl: typeof fetch = fetch): Bra
       return data as unknown as BrandPresentationHistoryPage;
     },
     async put(brandId, body, idempotencyKey) {
-      if (!validUuid(brandId) || !isRecord(body) || !exactKeys(body, ["version", "config", "reason"]) || !validVersion(body.version) || !validBrandPresentationConfig(body.config) || !validText(body.reason, 500, false) || !body.reason.trim() || typeof idempotencyKey !== "string" || !/^[A-Za-z0-9_:.-]{8,128}$/.test(idempotencyKey)) invalidInput();
+      if (!validUuid(brandId) || !isRecord(body) || !exactKeys(body, ["version", "config", "reason"]) || !validVersion(body.version) || !validBrandPresentationConfig(body.config) || !validText(body.reason, 500, false) || (body.reason !== "" && !body.reason.trim()) || typeof idempotencyKey !== "string" || !/^[A-Za-z0-9_:.-]{8,128}$/.test(idempotencyKey)) invalidInput();
       const data = await request(BASE, brandId, { method: "PUT", body, key: idempotencyKey, write: true });
       if (!isRecord(data) || !validRecord(data, brandId) || !exactKeys(data, ["brand_id", "version", "status", "base_name", "config", "effective", "updated_at", "audit_log_id"]) || data.version !== body.version + 1 || !validUuid(data.audit_log_id) || !deepEqual(data.config, body.config)) invalidResponse(true);
       return data as BrandPresentationReceipt;

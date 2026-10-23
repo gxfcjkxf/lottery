@@ -362,12 +362,6 @@ export function parseEditorNumbers(
   return result;
 }
 
-function poolHas(pool: RulePool, value: number): boolean {
-  return pool.values.length > 0
-    ? pool.values.includes(value)
-    : value >= pool.min && value <= pool.max;
-}
-
 function validateDefinitionSelection(definition: RuleDefinition): void {
   const { model, selection, number_attributes: attrs } = definition;
   if (!isRecord(selection)) invalid("投注方式格式无效。");
@@ -935,8 +929,4 @@ export function validateEditorDefinition(definition: RuleDefinition): void {
   }
   if (exclusive && additive && definition.mixed_tier_policy === "")
     invalid("同时存在排他和非排他奖级时必须显式选择 mixed_tier_policy。");
-}
-
-export function editorDefinitionBytes(definition: RuleDefinition): number {
-  return new TextEncoder().encode(JSON.stringify(definition)).length;
 }

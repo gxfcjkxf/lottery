@@ -5,7 +5,7 @@ import { brandDomainsPermissions, createBrandDomainsApi, isCanonicalBrandDomain,
 const brand = "00000000-0000-4000-8000-000000000001", other = "00000000-0000-4000-8000-000000000002";
 const actor = "00000000-0000-4000-8000-000000000003", audit = "00000000-0000-4000-8000-000000000004";
 const at = "2026-10-06T04:00:00Z";
-const domain1 = { id: actor, domain: "legacy.localhost", enabled: true, is_primary: true };
+const domain1 = { id: actor, domain: "legacy.localhost", enabled: true };
 function record(overrides: Partial<BrandDomainsRecord> = {}): BrandDomainsRecord { return { brand_id: brand, version: 8, status: "active", domains: [domain1], updated_at: at, ...overrides }; }
 function response(data: unknown, status = 200): Response { return new Response(JSON.stringify({ success: true, data }), { status }); }
 function account(overrides: Partial<AdminAccount> = {}): AdminAccount { return { id: actor, super_admin: false, brand_ids: [brand], permissions: [], ...overrides }; }
@@ -35,8 +35,8 @@ describe("brand domains API", () => {
     expect(new Headers(init?.headers).has("X-Admin-Brand-ID")).toBe(false);
   });
   it("posts a new binding and verifies the required 201 receipt", async () => {
-    const body = { version: 8, domain: "shop.example.com", enabled: true, is_primary: true, reason: "Launch storefront" };
-    const created = { id: other, domain: body.domain, enabled: true, is_primary: true };
+    const body = { version: 8, domain: "shop.example.com", enabled: true, reason: "Launch storefront" };
+    const created = { id: other, domain: body.domain, enabled: true };
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ ...record({ version: 9, domains: [created], audit_log_id: audit }) }, 201));
     await expect(createBrandDomainsApi(fetcher).post(brand, body, "domain-key-0001")).resolves.toEqual({ ...record({ version: 9, domains: [created], audit_log_id: audit }) });
     const [url, init] = fetcher.mock.calls[0];
@@ -45,8 +45,8 @@ describe("brand domains API", () => {
     expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("domain-key-0001");
   });
   it("patches by binding id without sending a replacement domain and accepts legacy local/IP values", async () => {
-    const body = { version: 8, enabled: false, is_primary: false, reason: "Retire legacy host" };
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ ...record({ version: 9, domains: [{ ...domain1, enabled: false, is_primary: false }], audit_log_id: audit }) }));
+    const body = { version: 8, enabled: false, reason: "Retire legacy host" };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ ...record({ version: 9, domains: [{ ...domain1, enabled: false }], audit_log_id: audit }) }));
     await createBrandDomainsApi(fetcher).patch(brand, actor, body, "domain-key-0002");
     const [url, init] = fetcher.mock.calls[0];
     expect(url).toBe(`/api/v1/admin/brand-domains/${actor}`); expect(init?.method).toBe("PATCH");
@@ -54,11 +54,11 @@ describe("brand domains API", () => {
     expect(JSON.parse(String(init?.body))).not.toHaveProperty("domain");
   });
   it("requires exact receipt scope, version, target state, audit id, and method status", async () => {
-    const body = { version: 8, enabled: false, is_primary: false, reason: "Retire legacy host" };
-    const good = { ...record({ version: 9, domains: [{ ...domain1, enabled: false, is_primary: false }], audit_log_id: audit }) };
+    const body = { version: 8, enabled: false, reason: "Retire legacy host" };
+    const good = { ...record({ version: 9, domains: [{ ...domain1, enabled: false }], audit_log_id: audit }) };
     for (const bad of [
       { ...good, brand_id: other }, { ...good, version: 10 }, { ...good, audit_log_id: undefined },
-      { ...good, domains: [{ ...domain1, enabled: true, is_primary: true }] },
+      { ...good, domains: [{ ...domain1, enabled: true }] },
     ]) await expect(createBrandDomainsApi(vi.fn<typeof fetch>().mockResolvedValue(response(bad))).patch(brand, actor, body, "domain-key-0003")).rejects.toMatchObject({ status: 0, code: "INVALID_RESPONSE" });
     await expect(createBrandDomainsApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...good, audit_log_id: audit }, 201))).patch(brand, actor, body, "domain-key-0003")).rejects.toMatchObject({ status: 0, code: "INVALID_RESPONSE" });
   });
@@ -70,14 +70,14 @@ describe("brand domains API", () => {
     await expect(createBrandDomainsApi(vi.fn<typeof fetch>().mockResolvedValue(response({ items: [{ ...item, brand_id: other }], limit: 20, offset: 0 }))).history(brand)).rejects.toMatchObject({ status: 502 });
   });
   it("preserves server conflicts and treats network failures as unknown", async () => {
-    const body = { version: 8, enabled: false, is_primary: false, reason: "Retire legacy host" };
+    const body = { version: 8, enabled: false, reason: "Retire legacy host" };
     const conflict = new Response(JSON.stringify({ success: false, error: { code: "VERSION_CONFLICT", message: "Reload" } }), { status: 409 });
     await expect(createBrandDomainsApi(vi.fn<typeof fetch>().mockResolvedValue(conflict)).patch(brand, actor, body, "domain-key-0004")).rejects.toMatchObject({ status: 409, code: "VERSION_CONFLICT" });
     await expect(createBrandDomainsApi(vi.fn<typeof fetch>().mockRejectedValue(new Error("offline"))).patch(brand, actor, body, "domain-key-0004")).rejects.toMatchObject({ status: 0, code: "NETWORK_ERROR" });
     await expect(createBrandDomainsApi(vi.fn<typeof fetch>()).post(brand, { ...body, domain: "bad" } as never, "domain-key-0004")).rejects.toBeInstanceOf(AdminApiError);
   });
   it("accepts only server-compatible idempotency key characters", async () => {
-    const body = { version: 8, enabled: false, is_primary: false, reason: "Retire legacy host" };
+    const body = { version: 8, enabled: false, reason: "Retire legacy host" };
     for (const key of ["domain/key-0001", "domain key-0001", "domain$key-0001", "domain\nkey-0001"]) {
       const fetcher = vi.fn<typeof fetch>();
       await expect(createBrandDomainsApi(fetcher).patch(brand, actor, body, key)).rejects.toMatchObject({ status: 400, code: "BRAND_DOMAIN_INPUT_INVALID" });
@@ -86,10 +86,18 @@ describe("brand domains API", () => {
   });
   it("rejects extra keys on both write shapes instead of silently stripping them", async () => {
     const fetcher = vi.fn<typeof fetch>();
-    const patchBody = { version: 8, enabled: false, is_primary: false, reason: "Retire legacy host", domain: "rename.example.com" };
-    const postBody = { version: 8, domain: "shop.example.com", enabled: false, is_primary: false, reason: "Add disabled", target: actor };
+    const patchBody = { version: 8, enabled: false, reason: "Retire legacy host", domain: "rename.example.com" };
+    const postBody = { version: 8, domain: "shop.example.com", enabled: false, reason: "Add disabled", target: actor };
     await expect(createBrandDomainsApi(fetcher).patch(brand, actor, patchBody as never, "domain-key-0005")).rejects.toMatchObject({ status: 400, code: "BRAND_DOMAIN_INPUT_INVALID" });
     await expect(createBrandDomainsApi(fetcher).post(brand, postBody as never, "domain-key-0006")).rejects.toMatchObject({ status: 400, code: "BRAND_DOMAIN_INPUT_INVALID" });
     expect(fetcher).not.toHaveBeenCalled();
   });
+});
+
+it('deletes with a version-only request and verifies the binding is absent from the receipt', async () => {
+ const before=record();const receipt={...before,version:before.version+1,domains:[],audit_log_id:audit};
+ const fetcher=vi.fn<typeof fetch>().mockResolvedValue(response(receipt));
+ await expect(createBrandDomainsApi(fetcher).remove(brand,actor,{version:before.version},'delete-stable-key')).resolves.toEqual(receipt);
+ expect(fetcher.mock.calls[0][1]?.method).toBe('DELETE');expect(JSON.parse(fetcher.mock.calls[0][1]?.body as string)).toEqual({version:before.version});
+ await expect(createBrandDomainsApi(vi.fn<typeof fetch>().mockResolvedValue(response({...receipt,domains:before.domains}))).remove(brand,actor,{version:before.version},'delete-stable-key')).rejects.toMatchObject({status:0});
 });

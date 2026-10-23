@@ -129,9 +129,9 @@ test('setup command allows five minutes for browser downloads and rejects unboun
   assert.match(source, /timeoutMs = 300_000/);
 });
 
-test('fourteen browser CI preparation steps use the bounded Chromium command', () => {
+test('fifteen browser CI preparation steps use the bounded Chromium command', () => {
   const blocks = [...workflow.matchAll(/^      - name: Prepare and verify Chromium\n        timeout-minutes: (\d+)\n        run: (.+)$/gm)];
-  assert.equal(blocks.length, 14);
+  assert.equal(blocks.length, 15);
   for (const [, timeout, command] of blocks) {
     assert.equal(timeout, '7');
     assert.equal(command, 'node scripts/prepare-ci-browser.mjs');

@@ -1,5 +1,5 @@
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
-const obj = properties => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+const obj = (properties, required = Object.keys(properties)) => ({ type: "object", properties, required, additionalProperties: false });
 const uuid = ref("UUID"), date = ref("DateTime"), nullable = schema => ({ anyOf: [schema, { type: "null" }] });
 const safeVersion = { type: "integer", minimum: 1, maximum: 9007199254740991 };
 const windowSchema = obj({
@@ -52,8 +52,8 @@ export const schemas = {
   ReportArchiveTaskPage: page,
   ReportArchiveTaskRetryInput: obj({
     version: { type: "integer", minimum: 1, maximum: 9007199254740990 },
-    reason: { type: "string", minLength: 1, maxLength: 500, pattern: "^(?=.*\\S)(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]*$", description: "Trimmed nonempty UTF-8, at most 500 UTF-8 bytes; C0/C1 controls are forbidden. Byte length is enforced by the handler." },
-  }),
+    reason: { type: "string", maxLength: 500, pattern: "^(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]*$", description: "Optional; empty string is allowed. Otherwise trimmed UTF-8, at most 500 UTF-8 bytes; C0/C1 controls are forbidden. Byte length is enforced by the handler." },
+  }, ["version"]),
 };
 
 export const operations = [

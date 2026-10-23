@@ -1,3 +1,5 @@
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRenderer, h, nextTick, ref, type Component } from "vue";
 import * as VueRuntime from "vue";
@@ -12,6 +14,8 @@ import { adminI18nKey, createAdminI18n } from "./i18n";
 import * as ArchiveApi from "./report-archives-api";
 import type { ReportArchiveCreateInput, ReportArchiveRecord } from "./report-archives-api";
 import * as ArchiveState from "./report-archives-state";
+import * as SharedLocalization from '../../shared/src/localization';
+import * as ArchiveReport from '../../shared/src/archive-report';
 
 const brand = "11111111-1111-4111-8111-111111111111";
 const actor = "33333333-3333-4333-8333-333333333333";
@@ -71,16 +75,18 @@ const renderer = createRenderer<HostNode, HostNode>({
   remove: (node) => { if (!node.parent) return; const i = node.parent.children.indexOf(node); if (i >= 0) node.parent.children.splice(i, 1); node.parent = undefined; },
   parentNode: (node) => node.parent ?? null, nextSibling: (node) => node.parent ? node.parent.children[node.parent.children.indexOf(node) + 1] ?? null : null,
 });
-function compileComponent(): Component {
-  const source = readFileSync(new URL("./ReportArchivesManagement.vue", import.meta.url), "utf8");
+function compileComponent(file = './ReportArchivesManagement.vue'): Component {
+  const source = readFileSync(new URL(file, import.meta.url), "utf8");
   const descriptor = parse(source, { filename: "ReportArchivesManagement.vue" }).descriptor;
   const compiled = compileScript(descriptor, { id: "report-archives-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(compiled, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
   const modules: Record<string, unknown> = {
+    '@lottery/shared': { ...DisplayShared, ...ArchiveReport }, './association-names': DisplayShared, './localization': SharedLocalization, './archive-report': ArchiveReport,
+    '@lottery/shared/ArchiveReport.vue': { default: file === './ReportArchivesManagement.vue' ? compileComponent('../../shared/src/ArchiveReport.vue') : undefined },
     // Business tests use a host renderer; native dialog behavior is checked in Chrome.
     "@lottery/shared/DetailModal.vue": { default: { inheritAttrs: false, setup: (_props: unknown, context: { slots: { default?: () => unknown } }) => () => context.slots.default?.() } }, vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./report-archives-api": ArchiveApi, "./report-archives-state": ArchiveState };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => { if (!(specifier in modules)) throw new Error(`Unmapped import ${specifier}`); return `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`; }).replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => { if (!(specifier in modules)) throw new Error(`Unmapped import ${specifier}`); return `const ${binding}=__modules[${JSON.stringify(specifier)}].default;`; }).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 const ComponentApi = vi.spyOn(ArchiveApi, "createReportArchivesApi").mockImplementation(() => apiStub() as never);
 vi.spyOn(AdminApi, "createIdempotencyKey").mockReturnValue("archive-idempotency-001");
@@ -95,15 +101,16 @@ function checked(node: HostNode | null, value: boolean) { model(node, value); }
 function setInput(node: HostNode | null, value: string) { model(node, value); }
 function deferred<T>() { let resolve!: (value: T) => void, reject!: (reason?: unknown) => void; const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; }); return { promise, resolve, reject }; }
 async function flush() { for (let i = 0; i < 16; i++) await Promise.resolve(); await nextTick(); }
+const mountedApps: Array<{ unmount: () => void }> = [];
 function mount(user = account, brandId = brand) {
   vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
   const scope = ref({ account: user, brandId }), container = element("root"), emitted: string[] = [], i18n = createAdminI18n();
   const app = renderer.createApp({ setup: () => () => h(ComponentUnderTest, { ...scope.value, onSessionInvalid: () => emitted.push("session-invalid") }) });
-  app.provide(adminI18nKey, i18n); app.mount(container); return { app, scope, container, emitted, i18n };
+  app.provide(adminI18nKey, i18n); app.mount(container); mountedApps.push(app); return { app, scope, container, emitted, i18n };
 }
-function prepareCreate(root: HostNode, reason = "Finance review for October") {
+function prepareCreate(root: HostNode) {
   setInput(byTestId(root, "archive-period-key"), "2026-10-01");
-  setInput(byTestId(root, "archive-reason"), reason);
+  expect(byTestId(root, "archive-reason")).toBeNull();
 }
 async function reviewAndSubmit(mounted: ReturnType<typeof mount>) {
   click(button(mounted.container, "archive-review-button")); await flush();
@@ -111,19 +118,43 @@ async function reviewAndSubmit(mounted: ReturnType<typeof mount>) {
   checked(byTestId(mounted.container, "archive-confirm"), true); await flush();
   click(button(mounted.container, "archive-submit")); await flush();
 }
-beforeEach(() => { fresh(); ArchiveState.clearAllArchiveIntents(); });
-afterEach(() => { ArchiveState.clearAllArchiveIntents(); calls.length = 0; vi.clearAllMocks(); vi.unstubAllGlobals(); });
+beforeEach(() => { vi.stubGlobal('Document', class {}); vi.stubGlobal('ShadowRoot', class {}); fresh(); ArchiveState.clearAllArchiveIntents(); });
+afterEach(async () => { for (const app of mountedApps.splice(0)) app.unmount(); ArchiveState.clearAllArchiveIntents(); await flush(); calls.length = 0; vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 describe("ReportArchivesManagement", () => {
+  it('shows a business-first inline report, folds technical data and preserves the list on return', async () => {
+    const mounted = mount(); await flush();
+    const initialCalls = calls.filter(call => call.method === 'list').length;
+    click(findNode(mounted.container, node => node.tag === 'button' && textOf(node).includes('2026-10-01'))); await flush();
+    expect(byTestId(mounted.container, 'archive-list')).toBeNull();
+    const detail = byTestId(mounted.container, 'archive-detail')!;
+    expect(textOf(detail)).toContain('业务概览');
+    expect(findNode(detail, node => node.tag === 'dialog')).toBeNull();
+    expect(textOf(detail)).not.toContain(record.payload_sha256);
+    expect(textOf(detail)).not.toContain('技术');
+    expect(textOf(detail)).toContain(record.reason);
+    const orders = findNode(detail, node => node.tag === 'table' && textOf(node).includes('合计'))!;
+    expect(textOf(orders)).toContain('订单数'); expect(textOf(orders)).toContain('积分');
+    const requestsBeforeLocale = calls.length;
+    mounted.i18n.setLocale('en'); await flush();
+    expect(textOf(detail)).toContain('Business overview');
+    expect(textOf(detail)).not.toContain('Technical and audit information');
+    expect(calls).toHaveLength(requestsBeforeLocale);
+    click(button(mounted.container, 'archive-back')); await flush();
+    expect(byTestId(mounted.container, 'archive-detail')).toBeNull();
+    expect(byTestId(mounted.container, 'archive-list')).not.toBeNull();
+    expect(calls.filter(call => call.method === 'list')).toHaveLength(initialCalls);
+    mounted.app.unmount();
+  });
   it("freezes the reviewed body, actor and key, and keeps an unknown write across unmount and refresh", async () => {
     const first = mount(); await flush(); prepareCreate(first.container); await flush(); click(button(first.container, "archive-review-button")); await flush();
     const reviewedText = textOf(byTestId(first.container, "archive-review")!);
-    expect(reviewedText).toContain(actor); expect(reviewedText).toContain("archive-idempotency-001"); expect(reviewedText).toContain("Finance review for October");
+    expect(reviewedText).not.toContain(actor); expect(reviewedText).not.toContain("archive-idempotency-001"); expect(reviewedText).toContain("2026-10-01");
     checked(byTestId(first.container, "archive-confirm"), true); await flush();
     nextCreate = async () => { throw new TypeError("connection dropped after submit"); };
     click(button(first.container, "archive-submit")); await flush();
     const createCall = calls.find((call) => call.method === "create")!;
-    expect(createCall.args).toEqual([brand, { kind: "daily", period_key: "2026-10-01", expected_revision: 0, reason: "Finance review for October" }, "archive-idempotency-001", actor]);
+    expect(createCall.args).toEqual([brand, { kind: "daily", period_key: "2026-10-01", expected_revision: 0 }, "archive-idempotency-001", actor]);
     expect(Object.isFrozen(ArchiveState.getArchiveIntent(actor, brand))).toBe(true);
     expect(Object.isFrozen(ArchiveState.getArchiveIntent(actor, brand)?.body)).toBe(true);
     expect(byTestId(first.container, "archive-unknown")).not.toBeNull();
@@ -131,7 +162,7 @@ describe("ReportArchivesManagement", () => {
     first.app.unmount();
     const second = mount(); await flush();
     expect(byTestId(second.container, "archive-unknown")).not.toBeNull();
-    expect(textOf(byTestId(second.container, "archive-unknown")!)).toContain("archive-idempotency-001");
+    expect(textOf(byTestId(second.container, "archive-unknown")!)).not.toContain("archive-idempotency-001");
     expect(button(second.container, "archive-review-button")?.props.disabled).toBe(true);
     second.app.unmount();
   });
@@ -142,9 +173,11 @@ describe("ReportArchivesManagement", () => {
     await reviewAndSubmit(mounted);
     expect(byTestId(mounted.container, "archive-receipt")).not.toBeNull();
     expect(textOf(byTestId(mounted.container, "archive-receipt")!)).toContain(archiveId);
-    expect(textOf(byTestId(mounted.container, "archive-list-error")!)).toContain("list follow-up failed");
-    expect(textOf(byTestId(mounted.container, "archive-record-error")!)).toContain("detail follow-up failed");
-    expect(textOf(byTestId(mounted.container, "archive-receipt")!)).toContain("Monthly finance review");
+    expect(textOf(byTestId(mounted.container, "archive-list-error")!)).toContain("暂时无法读取最新数据");
+    expect(textOf(byTestId(mounted.container, "archive-record-error")!)).toContain("暂时无法读取最新数据");
+    expect(textOf(mounted.container)).not.toMatch(/list follow-up failed|detail follow-up failed/);
+    expect(textOf(byTestId(mounted.container, "archive-receipt")!)).not.toContain("v1");
+    expect(byTestId(mounted.container, "archive-unknown")).toBeNull();
     expect(ArchiveState.getArchiveIntent(actor, brand)).toBeNull();
     expect(calls.filter((call) => call.method === "create")).toHaveLength(1);
     mounted.app.unmount();
@@ -252,7 +285,7 @@ describe("ReportArchivesManagement", () => {
         // The first selection remains selected after its successful download.
       }
       click(button(currentMount.container, "archive-download")); await flush();
-      if (change === "selection") { const row = findNode(currentMount.container, (node) => node.tag === "button" && textOf(node).includes("2026-10-01")); click(row); await flush(); }
+      if (change === "selection") { click(button(currentMount.container, 'archive-back')); await flush(); const row = findNode(currentMount.container, (node) => node.tag === "button" && textOf(node).includes("2026-10-01")); click(row); await flush(); }
       if (change === "brand") { currentMount.scope.value = { account, brandId: "22222222-2222-4222-8222-222222222222" }; await flush(); }
       if (change === "permissions") { currentMount.scope.value = { account: { ...account, permissions_by_brand: { [brand]: ["report_archive.view.brand"] } }, brandId: brand }; await flush(); }
       if (change === "unmount") currentMount.app.unmount();
@@ -271,15 +304,16 @@ describe("ReportArchivesManagement", () => {
     const mounted = mount(); await flush();
     const before = calls.length; mounted.i18n.setLocale("en"); await flush();
     expect(textOf(mounted.container)).toContain("Daily and monthly archives");
-    expect(textOf(mounted.container)).toContain("Create a new observation version");
+    expect(textOf(mounted.container)).toContain("Create archive snapshot");
     expect(textOf(mounted.container)).toContain("Archive history");
     expect(textOf(mounted.container)).toContain("Unresolved creation request");
-    expect(textOf(mounted.container)).toContain("Refreshing or leaving does not clear the original request.");
+    expect(textOf(mounted.container)).toContain("The request is still unconfirmed. Retry the original operation.");
     expect(textOf(mounted.container)).toContain("Archive type");
     expect(textOf(mounted.container)).toContain("Archive period");
-    expect(textOf(mounted.container)).toContain("Confirmed previous latest revision");
-    expect(textOf(mounted.container)).toContain("Reason for operation");
-    expect(textOf(mounted.container)).toContain("Review and replay original request");
+    expect(textOf(mounted.container)).not.toContain("Confirmed previous latest revision");
+    expect(textOf(mounted.container)).not.toContain("Reason for operation");
+    expect(byTestId(mounted.container, "archive-reason")).toBeNull();
+    expect(textOf(mounted.container)).toContain("Retry original request");
     expect(textOf(mounted.container)).not.toContain("日月归档");
     expect(calls).toHaveLength(before);
     mounted.app.unmount();

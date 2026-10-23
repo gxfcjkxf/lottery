@@ -1,0 +1,248 @@
+import type { LocaleCode } from './brand'
+
+export type NotificationCopy = { title: string; body: string }
+export type NotificationTranslations = Record<LocaleCode, NotificationCopy>
+
+/** Version 1 of system notification translations. Database records store references and event parameters. */
+export const notificationCatalog = {
+  "member.joined": {
+    "en": {
+      "title": "Welcome",
+      "body": "Your membership is ready. Welcome aboard."
+    },
+    "zh-CN": {
+      "title": "欢迎",
+      "body": "您的会员账号已准备就绪，欢迎加入。"
+    }
+  },
+  "recharge.confirmed": {
+    "en": {
+      "title": "Recharge confirmed",
+      "body": "Recharge confirmed: {points} points."
+    },
+    "zh-CN": {
+      "title": "充值已确认",
+      "body": "充值已确认：{points} 积分。"
+    }
+  },
+  "reward.order.granted": {
+    "en": {
+      "title": "Reward grant recorded",
+      "body": "Historical record: {points} points were credited to your gift available balance. This records a past grant, not your current wallet balance or an external payment. Check your current wallet; this record is retained."
+    },
+    "zh-CN": {
+      "title": "奖励发放记录",
+      "body": "历史记录：{points} 积分曾记入赠送可用积分。此记录表示过去的发放，不代表当前钱包余额或外部付款。请查看当前钱包；此记录会保留。"
+    }
+  },
+  "reward.order.revocation_pending": {
+    "en": {
+      "title": "Reward revocation pending recorded",
+      "body": "Historical record: a full reward reversal of {points} points was requested and recorded as awaiting operator handling. No points moved in this attempt. It does not retry, unfreeze or deduct automatically; check the current wallet."
+    },
+    "zh-CN": {
+      "title": "奖励撤销待处理记录",
+      "body": "历史记录：曾申请全额撤销 {points} 积分奖励，并记录为待运营处理。本次没有积分变动，不会自动重试、解冻或扣除；请查看当前钱包。"
+    }
+  },
+  "reward.order.revoked": {
+    "en": {
+      "title": "Reward reversal recorded",
+      "body": "Historical record: the full original reward of {points} points was reversed from your gift available balance. This records a past reversal, not your current wallet balance or an external payment. Check your current wallet; this record is retained."
+    },
+    "zh-CN": {
+      "title": "奖励撤销记录",
+      "body": "历史记录：原奖励全额 {points} 积分曾从赠送可用积分撤销。此记录表示过去的撤销，不代表当前钱包余额或外部付款。请查看当前钱包；此记录会保留。"
+    }
+  },
+  "bet.order.placed": {
+    "en": {
+      "title": "Order submitted",
+      "body": "Order submitted: {points} points."
+    },
+    "zh-CN": {
+      "title": "注单已提交",
+      "body": "注单已提交，涉及 {points} 积分。"
+    }
+  },
+  "bet.order.cancelled": {
+    "en": {
+      "title": "Order cancelled",
+      "body": "Cancelled. {points} points were returned to your original balance."
+    },
+    "zh-CN": {
+      "title": "注单已取消",
+      "body": "注单已取消，{points} 积分已原路退回。"
+    }
+  },
+  "bet.order.judged_cancelled": {
+    "en": {
+      "title": "Order cancelled after review",
+      "body": "Cancelled after review. {points} points were returned to your original balance."
+    },
+    "zh-CN": {
+      "title": "注单已判定取消",
+      "body": "注单经判定已取消，{points} 积分已原路退回。"
+    }
+  },
+  "bet.order.abnormal": {
+    "en": {
+      "title": "Order needs review",
+      "body": "Your order needs manual review. Points involved: {points}."
+    },
+    "zh-CN": {
+      "title": "注单待人工处理",
+      "body": "您的注单需要人工处理，涉及积分：{points}。"
+    }
+  },
+  "bet.order.won": {
+    "en": {
+      "title": "Prize credit recorded",
+      "body": "Historical record: {points} points were credited as this order's prize. This records the credit, not your current wallet balance or a guaranteed final outcome. Any correction will appear as a separate prize event; this record is retained."
+    },
+    "zh-CN": {
+      "title": "派奖入账记录",
+      "body": "历史记录：此注单的 {points} 积分奖金已记入账本。此记录仅表示该笔入账，不代表当前钱包余额，也不保证最终结果。任何更正都会作为单独的奖金事件记录；此记录会保留。"
+    }
+  },
+  "bet.order.prize_reversed": {
+    "en": {
+      "title": "Prize reversal recorded",
+      "body": "Historical record: the full original prize amount of {points} points for this order was reversed. This records the reversal, not your current wallet balance. Any later prize correction will appear as a separate event; this record is retained."
+    },
+    "zh-CN": {
+      "title": "奖金冲正记录",
+      "body": "历史记录：此注单原奖金全额 {points} 积分已冲回。此记录仅表示该笔冲正，不代表当前钱包余额。之后如有奖金更正，会作为单独事件记录；此记录会保留。"
+    }
+  },
+  "commission.paid": {
+    "en": {
+      "title": "Commission credit recorded",
+      "body": "Historical record: {points} points were credited to your commission wallet. This records a past credit, not new income or an external payment forecast. Check your current wallet balance; this record is retained."
+    },
+    "zh-CN": {
+      "title": "佣金入账记录",
+      "body": "历史记录：{points} 积分曾记入佣金钱包。此记录表示过去的入账，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。"
+    }
+  },
+  "commission.corrected": {
+    "en": {
+      "title": "Commission correction recorded",
+      "body": "Historical record: a commission correction of {points} points was posted to your commission available balance. Positive points record a past additional credit; negative points record a past recovery. This is not your current balance, new income or an external payment. Check your current wallet; this record is retained."
+    },
+    "zh-CN": {
+      "title": "佣金更正记录",
+      "body": "历史记录：佣金可用积分曾发生 {points} 积分更正。正数表示过去的补发，负数表示过去的追回；不代表当前余额、新收入或外部付款。请查看当前钱包；此记录会保留。"
+    }
+  },
+  "draw.result.published": {
+    "en": {
+      "title": "Draw result published",
+      "body": "Historical result ID {resource_id}: the result published for this period. This is not a guarantee of a win or prize payment. View the actual result in the app; users cannot edit this notice."
+    },
+    "zh-CN": {
+      "title": "开奖结果已公布",
+      "body": "历史开奖结果 ID：{resource_id}，表示本期已公布的结果，不代表中奖或派奖保证。请在应用中查看实际结果；用户不能编辑此通知。"
+    }
+  },
+  "draw.result.corrected": {
+    "en": {
+      "title": "Draw result corrected",
+      "body": "Historical result ID {resource_id}: the corrected result for this period. This is not a guarantee of a win or prize payment. View the actual result in the app; users cannot edit this notice."
+    },
+    "zh-CN": {
+      "title": "开奖结果已更正",
+      "body": "历史开奖结果 ID：{resource_id}，表示本期已更正的结果，不代表中奖或派奖保证。请在应用中查看实际结果；用户不能编辑此通知。"
+    }
+  },
+  "commission.adjusted": {
+    "en": {
+      "title": "Commission adjustment recorded",
+      "body": "Historical record: a commission adjustment of {points} points was recorded. This records a past adjustment, not new income or an external payment forecast. Check your current wallet balance; this record is retained."
+    },
+    "zh-CN": {
+      "title": "佣金调整记录",
+      "body": "历史记录：曾调整 {points} 积分。此记录表示过去的调整，不是新收入预测或外部付款承诺。请查看当前钱包余额；此记录会保留。"
+    }
+  },
+  "withdrawal.order.reviewing": {
+    "en": {
+      "title": "Withdrawal status recorded",
+      "body": "Historical withdrawal status: reviewing. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state."
+    },
+    "zh-CN": {
+      "title": "提现状态记录",
+      "body": "历史提现状态：审核中，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。"
+    }
+  },
+  "withdrawal.order.processing": {
+    "en": {
+      "title": "Withdrawal status recorded",
+      "body": "Historical withdrawal status: processing. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state."
+    },
+    "zh-CN": {
+      "title": "提现状态记录",
+      "body": "历史提现状态：提现中，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。"
+    }
+  },
+  "withdrawal.order.paid": {
+    "en": {
+      "title": "Withdrawal status recorded",
+      "body": "Historical withdrawal status: paid. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state."
+    },
+    "zh-CN": {
+      "title": "提现状态记录",
+      "body": "历史提现状态：已提现，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。"
+    }
+  },
+  "withdrawal.order.rejected": {
+    "en": {
+      "title": "Withdrawal status recorded",
+      "body": "Historical withdrawal status: rejected. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state."
+    },
+    "zh-CN": {
+      "title": "提现状态记录",
+      "body": "历史提现状态：已驳回，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。"
+    }
+  },
+  "withdrawal.order.failed": {
+    "en": {
+      "title": "Withdrawal status recorded",
+      "body": "Historical withdrawal status: failed. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state."
+    },
+    "zh-CN": {
+      "title": "提现状态记录",
+      "body": "历史提现状态：失败，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。"
+    }
+  },
+  "withdrawal.order.cancelled": {
+    "en": {
+      "title": "Withdrawal status recorded",
+      "body": "Historical withdrawal status: cancelled. Points involved: {points}. This is an internal points record, not proof of an external transfer. Check the withdrawal order for its current state."
+    },
+    "zh-CN": {
+      "title": "提现状态记录",
+      "body": "历史提现状态：已取消，涉及 {points} 积分。此为内部积分记录，不证明外部转账；请查询提现订单的最新状态。"
+    }
+  }
+} as const satisfies Record<string, NotificationTranslations>
+
+export function resolveNotificationContent(value: unknown, eventKey: string): NotificationTranslations {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new RangeError('Invalid notification content')
+  const source = value as Record<string, unknown>
+  if ('i18n_key' in source || 'i18n_version' in source) {
+    if (Object.keys(source).length !== 2 || source.i18n_key !== eventKey || source.i18n_version !== 1 || !Object.hasOwn(notificationCatalog, eventKey)) {
+      throw new RangeError('Unsupported notification translation reference')
+    }
+    const copy = notificationCatalog[eventKey as keyof typeof notificationCatalog]
+    return { en: { ...copy.en }, 'zh-CN': { ...copy['zh-CN'] } }
+  }
+  if (Object.keys(source).length !== 2 || !Object.hasOwn(source, 'en') || !Object.hasOwn(source, 'zh-CN')) throw new RangeError('Invalid custom notification translations')
+  for (const locale of ['en', 'zh-CN'] as const) {
+    const copy = source[locale] as Record<string, unknown> | null
+    if (!copy || typeof copy !== 'object' || Array.isArray(copy) || Object.keys(copy).length !== 2 || typeof copy.title !== 'string' || typeof copy.body !== 'string') {
+      throw new RangeError('Invalid custom notification copy')
+    }
+  }
+  return value as NotificationTranslations
+}

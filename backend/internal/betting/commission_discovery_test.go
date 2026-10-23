@@ -105,6 +105,7 @@ func processCommissionDiscoveriesUntilRegistered(t *testing.T, f commissionBatch
 }
 
 func TestCommissionDiscoveryAutoRegistersSavedWindowsAndSettlesWithoutPayment(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixtureWithWindow(t, 8*time.Second, 10*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -209,6 +210,7 @@ func TestCommissionDiscoveryAutoRegistersSavedWindowsAndSettlesWithoutPayment(t 
 }
 
 func TestCommissionDiscoveryLinksToExistingManualRegistration(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixtureWithWindow(t, 8*time.Second, 10*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -264,6 +266,7 @@ func TestCommissionDiscoveryLinksToExistingManualRegistration(t *testing.T) {
 }
 
 func TestCommissionDiscoveryFailureRollsBackAndAllowsGuardedManualRetry(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixtureWithWindow(t, 8*time.Second, 10*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

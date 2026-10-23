@@ -2,7 +2,7 @@ import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5185';
 const brand = '0199a000-0000-7000-8000-000000000001';
-// Fewer than 16 characters but at least 16 UTF-8 bytes, as required by the server.
+// The browser fixture uses the same 6–30 UTF-8 byte password contract as the server.
 const password = '本地账号测试密码';
 
 for (const fault of ['network', 'legacy-error'] as const) {
@@ -16,8 +16,8 @@ test(`platform manages both account types with explicit roles and original-reque
   await expect(panel.getByRole('tab', { name: 'Accounts', exact: true })).toBeVisible();
   await panel.getByRole('button', { name: 'New account', exact: true }).click();
   let dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Username', { exact: true }).fill(`platform_${suffix}`);
-  await dialog.getByLabel('Password (16–128 bytes)', { exact: true }).fill(password);
+  await dialog.getByLabel('Account', { exact: true }).fill(`platform_${suffix}`);
+  await dialog.getByLabel('Password (6–30 bytes)', { exact: true }).fill(password);
   await expect(dialog.locator('.access-options input[type=checkbox]').first()).toBeVisible();
   await dialog.locator('.access-options input[type=checkbox]').first().check();
   await dialog.getByLabel('Reason', { exact: true }).fill('Create owned phase-one platform account');
@@ -62,7 +62,7 @@ test(`platform manages both account types with explicit roles and original-reque
   await panel.getByRole('button', { name: 'Reset password', exact: true }).click();
   dialog = page.getByRole('dialog');
   const newPassword = '更换账号测试密码';
-  await dialog.getByLabel('Password (16–128 bytes)', { exact: true }).fill(newPassword);
+  await dialog.getByLabel('Password (6–30 bytes)', { exact: true }).fill(newPassword);
   await dialog.getByLabel('Reason', { exact: true }).fill('Reset owned platform account password');
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(dialog).toHaveCount(0);
@@ -74,7 +74,7 @@ test(`platform manages both account types with explicit roles and original-reque
   } finally { await platformLogin.dispose(); }
 
   await scopes.getByRole('button', { name: 'Brand staff', exact: true }).click();
-  await page.locator('.content > .brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   await panel.getByRole('tab', { name: 'Roles', exact: true }).click();
   await panel.getByRole('button', { name: 'New role', exact: true }).click();
   dialog = page.getByRole('dialog');
@@ -98,8 +98,8 @@ test(`platform manages both account types with explicit roles and original-reque
   await panel.getByRole('button', { name: 'New account', exact: true }).click();
   dialog = page.getByRole('dialog');
   const staffUsername = `staff_${suffix}`;
-  await dialog.getByLabel('Username', { exact: true }).fill(staffUsername);
-  await dialog.getByLabel('Password (16–128 bytes)', { exact: true }).fill(password);
+  await dialog.getByLabel('Account', { exact: true }).fill(staffUsername);
+  await dialog.getByLabel('Password (6–30 bytes)', { exact: true }).fill(password);
   await dialog.getByRole('checkbox', { name: new RegExp(roleCode) }).check();
   await dialog.getByLabel('Reason', { exact: true }).fill('Create owned brand staff');
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();
@@ -109,7 +109,7 @@ test(`platform manages both account types with explicit roles and original-reque
   await panel.getByRole('button', { name: `List snapshot details: ${staffUsername}`, exact: true }).click();
   await panel.getByRole('button', { name: 'Reset password', exact: true }).click();
   dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Password (16–128 bytes)', { exact: true }).fill(newPassword);
+  await dialog.getByLabel('Password (6–30 bytes)', { exact: true }).fill(newPassword);
   await dialog.getByLabel('Reason', { exact: true }).fill('Reset owned brand staff password');
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(dialog).toHaveCount(0);

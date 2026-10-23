@@ -1,4 +1,5 @@
 import {test} from "node:test";
+import { notificationCatalog } from "../../shared/src/notification-catalog.ts";
 import assert from "node:assert/strict";
 import {execFileSync} from "node:child_process";
 import {readFileSync} from "node:fs";
@@ -7,7 +8,8 @@ import addFormats from "ajv-formats";
 import {operations,schemas} from "../../docs/openapi/lottery.mjs";
 
 const built=JSON.parse(readFileSync(new URL("../../docs/openapi.json",import.meta.url),"utf8"));
-const defaults=JSON.parse(readFileSync(new URL("../../backend/internal/notification/template_defaults.json",import.meta.url),"utf8"));
+const references=JSON.parse(readFileSync(new URL("../../backend/internal/notification/template_defaults.json",import.meta.url),"utf8"));
+const defaults=notificationCatalog;
 const baseline=readFileSync(new URL("../../backend/migrations/0001_baseline.up.sql",import.meta.url),"utf8");
 const componentSchemas={...built.components.schemas,...schemas};
 const ajv=new Ajv2020({strict:false,allErrors:true});
@@ -61,10 +63,10 @@ test("all notification template components compile and routes match the implemen
   assert.deepEqual(schemas.LotteryNotificationTemplate.properties.key.enum,[...notificationKeys].sort());
 });
 
-test("the actual backend JSON preserves the previous defaults and contains exactly twenty-two keys",()=>{
+test("the shared i18n catalog defines all twenty-two bilingual system notifications",()=>{
   assert.deepEqual(Object.keys(defaults).sort(),[...notificationKeys].sort());
   const originalDefaults={
-    "member.joined":{en:{title:"Welcome",body:"Your membership is ready. Welcome aboard."},"zh-CN":{title:"欢迎",body:"您的会员账户已准备就绪，欢迎加入。"}},
+    "member.joined":{en:{title:"Welcome",body:"Your membership is ready. Welcome aboard."},"zh-CN":{title:"欢迎",body:"您的会员账号已准备就绪，欢迎加入。"}},
     "recharge.confirmed":{en:{title:"Recharge confirmed",body:"Recharge confirmed: {points} points."},"zh-CN":{title:"充值已确认",body:"充值已确认：{points} 积分。"}},
     "bet.order.placed":{en:{title:"Order submitted",body:"Order submitted: {points} points."},"zh-CN":{title:"注单已提交",body:"注单已提交，涉及 {points} 积分。"}},
     "bet.order.cancelled":{en:{title:"Order cancelled",body:"Cancelled. {points} points were returned to your original balance."},"zh-CN":{title:"注单已取消",body:"注单已取消，{points} 积分已原路退回。"}},
@@ -111,21 +113,23 @@ test("the actual backend JSON preserves the previous defaults and contains exact
   for(const key of notificationKeys.slice(0,8))assert.ok(defaults[key],`preserved default ${key}`);
 });
 
-test("current baseline owns all defaults and notification validation functions",()=>{
-  const literal=/CREATE FUNCTION notification_template_defaults\(\) RETURNS jsonb[\s\S]*?AS \$\$SELECT '((?:[^']|'')*)'::jsonb\s*\$\$;/.exec(baseline);
-  assert.ok(literal,"the consolidated baseline must define notification defaults");
-  const baselineDefaults=JSON.parse(literal[1].replaceAll("''","'"));
-  assert.deepEqual(baselineDefaults,defaults);
-  for(const name of [
-    "valid_notification_template_content", "guard_notification_template_snapshot",
-    "emit_commission_correction_notification", "emit_reward_notification", "enqueue_in_app_event",
-  ]) assert.match(baseline,new RegExp(`CREATE FUNCTION ${name}\\(`),`${name} is in the consolidated baseline`);
+test("system templates contain only i18n identities and the migration converts stored defaults",()=>{
+  assert.deepEqual(Object.keys(references).sort(),[...notificationKeys].sort());
+  for(const key of notificationKeys) assert.deepEqual(references[key],{i18n_key:key,i18n_version:1});
+  const migration=readFileSync(new URL("../../backend/migrations/0001_baseline.up.sql",import.meta.url),"utf8");
+  assert.match(migration,/jsonb_build_object\('i18n_key',k,'i18n_version',1\)/);
+  assert.match(migration,/UPDATE notifications SET content=notification_template_defaults\(\)->template_key WHERE template_version=1/);
+  const check=validate("LotteryNotificationTemplateContent");
+  for(const key of notificationKeys) assert.ok(check(references[key]));
+  assert.ok(!check({i18n_key:"missing",i18n_version:1}));
+  assert.ok(!check({i18n_key:"member.joined",i18n_version:2}));
+  assert.ok(!check({...references["member.joined"],en:defaults["member.joined"].en}));
 });
 
-test("actual backend JSON contains three reward defaults with the required historical meaning",()=>{
+test("shared i18n catalog contains three reward defaults with the required historical meaning",()=>{
   const rewardKeys=["reward.order.granted","reward.order.revocation_pending","reward.order.revoked"];
   const check=validate("LotteryNotificationTemplateContent");
-  for(const [label,source] of [["actual backend JSON",defaults]]){
+  for(const [label,source] of [["shared i18n catalog",defaults]]){
     assert.deepEqual(Object.keys(source).filter(key=>key.startsWith("reward.order.")).sort(),rewardKeys,label);
     for(const key of rewardKeys){
       assert.ok(Object.hasOwn(source,key),`${label} owns ${key}`);
@@ -307,7 +311,7 @@ test("template copy schemas reject unknown placeholders and private fields",()=>
 
   const joined={en:{title:"Welcome",body:"Membership ready."},"zh-CN":{title:"欢迎",body:"会员已就绪。"}};
   assert.ok(check(joined),JSON.stringify(check.errors));
-  assert.match(schemas.LotteryNotificationTemplateContent.description,/nineteen event templates require \{points\} in each language body/);
+  assert.match(schemas.LotteryNotificationCustomContent.description,/nineteen event templates require \{points\} in each language body/);
   assert.match(schemas.LotteryNotificationTemplateCopy.properties.title.description,/120 UTF-8 bytes/);
   assert.match(schemas.LotteryNotificationTemplateCopy.properties.body.description,/1200 UTF-8 bytes/);
 });

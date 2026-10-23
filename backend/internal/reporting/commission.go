@@ -112,7 +112,7 @@ func (s Service) commission(ctx context.Context, runner rowQuerier, brand string
 	// evidence/state: later draw corrections must retain past posting facts.
 	sql := `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1), validity AS (
  SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM agent_nodes WHERE brand_id=$1 AND id=$4)) AND
- ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$5)) AND
+ ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM agent_accounts WHERE brand_id=$1 AND id=$5)) AND
  ($6::uuid IS NULL OR EXISTS(SELECT 1 FROM commission_cycles WHERE brand_id=$1 AND id=$6)) AS valid),
  facts AS (
  SELECT l.id,l.created_at AS posted_at,t.agent_id,t.member_id,p.cycle_id,'paid'::text AS kind,

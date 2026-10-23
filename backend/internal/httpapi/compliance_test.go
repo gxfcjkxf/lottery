@@ -3,33 +3,36 @@ package httpapi
 import (
 	"context"
 	"github.com/gxfcjkxf/lottery/backend/internal/compliance"
+	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"strings"
 	"testing"
 )
 
 func grantCompliance(t *testing.T, f managementHTTP) string {
+	return grantPlatformPermission(t, f, "compliance_policy.view.platform", "compliance_policy.write.platform", "compliance_check.view.platform", "compliance_check.run.platform")
+}
+func securityOperator(t *testing.T, f managementHTTP) managementHTTP {
 	t.Helper()
 	ctx := context.Background()
-	role := ids.New()
-	if _, e := f.pool.Exec(ctx, `INSERT INTO roles(id,brand_id,code,name)VALUES($1,$2,$3,'Compliance operator')`, role, managedBrand, "compliance_"+role); e != nil {
-		t.Fatal(e)
+	operator := f
+	operator.root = ids.New()
+	username := "security_" + operator.root
+	if _, err := f.pool.Exec(ctx, `INSERT INTO admin_accounts(id,username,password_hash,is_super_admin) SELECT $1,$2,password_hash,true FROM admin_accounts WHERE id=$3`, operator.root, username, f.root); err != nil {
+		t.Fatal(err)
 	}
-	if _, e := f.pool.Exec(ctx, `INSERT INTO admin_account_roles(account_id,role_id)VALUES($1,$2)`, f.root, role); e != nil {
-		t.Fatal(e)
-	}
-	for _, key := range []string{"compliance_policy.view.brand", "compliance_policy.write.brand", "compliance_check.view.brand", "compliance_check.run.brand"} {
-		if _, e := f.pool.Exec(ctx, `INSERT INTO role_permissions(role_id,permission_key)VALUES($1,$2)`, role, key); e != nil {
-			t.Fatal(e)
-		}
-	}
-	return role
+	response := f.call("POST", "/api/v1/platform/auth/login", "security-login-"+operator.root, "", "", map[string]string{"identifier": username, "password": "root-test-password-2026"})
+	mustStatus(t, response, 200)
+	var auth identity.AdminAuthentication
+	managedData(t, response, &auth)
+	operator.token = auth.AccessToken
+	return operator
 }
 func TestComplianceHTTPCheckedReplayHistoryAndScope(t *testing.T) {
-	f := managedFixture(t)
+	f := securityOperator(t, managedFixture(t))
 	ctx := context.Background()
-	const policy = "/api/v1/admin/compliance-policy"
-	const checks = "/api/v1/admin/compliance-checks"
+	const policy = "/api/v1/platform/compliance-policy"
+	const checks = "/api/v1/platform/compliance-checks"
 	mustStatus(t, f.call("GET", policy, "", f.token, managedBrand, nil), 403)
 	role := grantCompliance(t, f)
 	cfg := compliance.DefaultConfig()
@@ -74,7 +77,7 @@ func TestComplianceHTTPCheckedReplayHistoryAndScope(t *testing.T) {
 	for _, path := range []string{policy + "?unused=1", checks + "?operation=unknown", checks + "?operation=betting&operation=betting", checks + "?limit=", policy + "/history?limit=1&limit=1"} {
 		mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 400)
 	}
-	mustStatus(t, f.call("GET", policy, "", f.token, "0199a000-0000-7000-8000-000000000002", nil), 403)
+	mustStatus(t, f.call("GET", policy, "", f.token, "0199a000-0000-7000-8000-000000000002", nil), 200)
 	changed := in
 	changed.Operation = "withdrawal"
 	mustStatus(t, f.call("POST", checks, "compliance-check-http-01", f.token, managedBrand, changed), 409)
@@ -90,18 +93,18 @@ func TestComplianceHTTPCheckedReplayHistoryAndScope(t *testing.T) {
 		t.Fatal("old decision lost snapshot")
 	}
 	mustStatus(t, f.call("POST", checks, "compliance-check-http-stale", f.token, managedBrand, in), 409)
-	if _, e := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key IN('compliance_check.run.brand','compliance_policy.write.brand')`, role); e != nil {
+	if _, e := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1 AND permission_key IN('compliance_check.run.platform','compliance_policy.write.platform')`, role); e != nil {
 		t.Fatal(e)
 	}
 	mustStatus(t, f.call("POST", checks, "compliance-check-http-01", f.token, managedBrand, in), 403)
 	mustStatus(t, f.call("PUT", policy, "compliance-policy-http-01", f.token, managedBrand, body), 403)
 }
 func TestComplianceClosedInputAndDisabledReplay(t *testing.T) {
-	f := managedFixture(t)
+	f := securityOperator(t, managedFixture(t))
 	grantCompliance(t, f)
-	const path = "/api/v1/admin/compliance-policy"
-	const checks = "/api/v1/admin/compliance-checks"
-	for _, body := range []map[string]any{{"version": 1, "config": compliance.DefaultConfig()}, {"version": 1, "config": compliance.DefaultConfig(), "reason": "test", "subject_member_id": ids.New()}} {
+	const path = "/api/v1/platform/compliance-policy"
+	const checks = "/api/v1/platform/compliance-checks"
+	for _, body := range []map[string]any{{"version": 1, "reason": "test"}, {"version": 1, "config": compliance.DefaultConfig(), "reason": "test", "subject_member_id": ids.New()}} {
 		mustStatus(t, f.call("PUT", path, "compliance-invalid-01", f.token, managedBrand, body), 400)
 	}
 	in := compliance.CheckInput{Version: 1, Operation: "betting", Reason: "Disabled brand replay test"}
@@ -111,7 +114,7 @@ func TestComplianceClosedInputAndDisabledReplay(t *testing.T) {
 	}
 	mustStatus(t, f.call("POST", checks, "compliance-disabled-01", f.token, managedBrand, in), 409)
 	mustStatus(t, f.call("GET", path, "", f.token, managedBrand, nil), 200)
-	if _, e := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); e != nil {
+	if _, e := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); e != nil {
 		t.Fatal(e)
 	}
 	mustStatus(t, f.call("POST", checks, "compliance-disabled-01", f.token, managedBrand, in), 403)

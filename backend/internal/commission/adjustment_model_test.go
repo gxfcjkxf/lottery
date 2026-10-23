@@ -16,9 +16,12 @@ func TestAdjustmentInputIsClosedAndValidatesNetAmount(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"version":9007199254740991,"points":"9223372036854775807","reason":"manual review"}`), &input); err != nil || input.Validate() != nil {
 		t.Fatalf("valid maximum adjustment input rejected: %+v, %v", input, err)
 	}
+	var withoutReason AdjustmentInput
+	if err := json.Unmarshal([]byte(`{"version":1,"points":"0"}`), &withoutReason); err != nil || withoutReason.Validate() != nil {
+		t.Fatalf("optional reason rejected: %+v, %v", withoutReason, err)
+	}
 	for _, raw := range []string{
 		`{}`, `null`,
-		`{"version":1,"points":"0"}`, // reason required
 		`{"version":0,"points":"1","reason":"manual"}`,
 		`{"version":9007199254740992,"points":"1","reason":"manual"}`,
 		`{"version":1.5,"points":"1","reason":"manual"}`,

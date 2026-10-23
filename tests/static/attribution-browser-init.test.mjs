@@ -32,7 +32,7 @@ function environment(viewport = 'desktop', port = '55432') {
     POSTGRES_PSQL_BIN: psqlAlias,
     AUTH_KEY_FILE: authKeyFile,
     TEST_ATTRIBUTION_ADMIN_USERNAME: `attribution_browser_${viewport}`,
-    TEST_ATTRIBUTION_ADMIN_PASSWORD: 'attribution-static-synthetic-admin-password',
+    TEST_ATTRIBUTION_ADMIN_PASSWORD: 'attr-static-admin-2026',
   };
 }
 
@@ -182,7 +182,7 @@ test('CLI refuses unowned execution and never echoes configured secrets', () => 
   assert.doesNotMatch(result.stderr, /sentinel|attribution-static|postgres:\/\//);
 });
 
-test('dedicated desktop and 360px mobile browser coverage exercises real saved attribution and export', () => {
+test('dedicated desktop and Pixel 7 mobile browser coverage exercises real saved attribution and export', () => {
   assert.match(browserConfig, /testMatch: 'attribution-reports\.spec\.ts'/);
   assert.match(browserConfig, /timeout: 60_000/);
   assert.match(browserConfig, /timeout: 10_000/);
@@ -193,7 +193,7 @@ test('dedicated desktop and 360px mobile browser coverage exercises real saved a
   assert.match(browserConfig, /url: 'http:\/\/localhost:5174'/);
   assert.match(browserConfig, /reuseExistingServer: !process\.env\.CI/);
   assert.match(baseBrowserConfig, /name: 'desktop',[\s\S]*?width: 1440, height: 900/);
-  assert.match(baseBrowserConfig, /name: 'mobile',[\s\S]*?width: 360, height: 800/);
+  assert.match(baseBrowserConfig, /name: 'mobile',[\s\S]*?devices\['Pixel 7'\]/);
   assert.match(browserSpec, /real attribution reports preserve saved agent scope and export unique order totals/);
   assert.match(browserSpec, /test\('real attribution reports preserve saved agent scope and export unique order totals',[\s\S]*?assertAttributionFixtureEnvironment\(\);[\s\S]*?loginAdmin\(/);
   assert.match(browserSpec, /REPORT_ATTRIBUTION_FIXTURE_CONFIRM/);

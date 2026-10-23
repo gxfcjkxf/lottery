@@ -1,3 +1,5 @@
+import { readPlatformEnvelope } from './platform-api'
+
 import type { RuleModel } from "../../shared/src/rules";
 import { PlatformApiError } from "./platform-api";
 
@@ -71,7 +73,6 @@ export interface DrawHistoryPage {
   offset: number;
 }
 
-type Envelope = { success?: unknown; data?: unknown; error?: unknown };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const string = (v: unknown): v is string => typeof v === "string" && v.length > 0;
@@ -115,13 +116,7 @@ export function createPlatformLotteryApi(fetcher: typeof fetch = fetch) {
     } catch (cause) {
       throw new PlatformApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR", true);
     }
-    let envelope: Envelope;
-    try { envelope = await response.json() as Envelope; }
-    catch { throw new PlatformApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`, response.status, "INVALID_RESPONSE"); }
-    if (!response.ok || !record(envelope) || envelope.success !== true || !("data" in envelope)) {
-      const detail = record(envelope?.error) ? envelope.error : undefined;
-      throw new PlatformApiError(typeof detail?.message === "string" ? detail.message : typeof envelope?.error === "string" ? envelope.error : `Request failed (${response.status})`, response.status, typeof detail?.code === "string" ? detail.code : undefined);
-    }
+    const envelope = await readPlatformEnvelope<unknown>(response);
     return envelope.data;
   }
   function page(limit: number, offset: number, max = 100) {

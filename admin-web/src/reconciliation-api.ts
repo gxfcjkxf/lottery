@@ -1,12 +1,13 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, createIdempotencyKey, type AdminAccount } from "./admin-api";
-import type { FinanceAccount, SourceBuckets, WalletSource, WalletState } from "./finance-api";
+import type { FinanceAccount, WalletSource, WalletState } from "./finance-api";
 import { brandPermissionSet } from "./brand-permissions";
 import type { RepairPreview } from "./repair-api";
 import { normalizeSourceBuckets, WALLET_SOURCES } from "@lottery/shared";
 
 const BASE = "/api/v1/admin/reconciliations";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const SAFE_CODE_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
 const MAX_PAGE_SIZE = 100;
 const MAX_OFFSET = 1_000_000;
 const SOURCES: readonly WalletSource[] = WALLET_SOURCES;
@@ -96,7 +97,7 @@ function validDate(value: unknown): value is string {
     (oh === undefined || Number(oh) < 14 || (Number(oh) === 14 && Number(om) === 0)) && (oh === undefined || Number(om) <= 59) && Number.isFinite(Date.parse(value));
 }
 function validStoredReason(value: unknown): value is string {
-  return typeof value === "string" && value.trim() === value && value.length > 0 && new TextEncoder().encode(value).length <= 500 &&
+  return typeof value === "string" && value.trim() === value && new TextEncoder().encode(value).length <= 500 &&
     !/[\u0000\r\n]/.test(value) && !hasLoneSurrogate(value);
 }
 function safeReason(value: unknown): value is string {
@@ -213,7 +214,6 @@ function validTarget(value: unknown, brand: string, job: string): value is Recon
 function invalidInput(): never { throw new AdminApiError("Reconciliation request parameters are invalid.", 0, "INVALID_INPUT"); }
 function invalidResponse(uncertain = false): never { throw new AdminApiError("Reconciliation response is invalid.", uncertain ? 0 : 502, "INVALID_RESPONSE"); }
 function pageArgs(limit: number, offset: number): void { if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_PAGE_SIZE || !Number.isSafeInteger(offset) || offset < 0 || offset > MAX_OFFSET) invalidInput(); }
-type Envelope = { success?: unknown; data?: unknown; error?: unknown };
 
 export function createReconciliationApi(fetchImpl: typeof fetch = fetch): ReconciliationApi {
   async function request(path: string, brand: string, options: { method?: "GET" | "POST"; body?: unknown; key?: string; write?: boolean } = {}): Promise<unknown> {
@@ -224,16 +224,7 @@ export function createReconciliationApi(fetchImpl: typeof fetch = fetch): Reconc
     let response: Response;
     try { response = await fetchImpl(path, { method: options.method ?? "GET", credentials: "same-origin", headers, ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }) }); }
     catch (cause) { throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR"); }
-    let envelope: Envelope;
-    try { envelope = await response.json() as Envelope; }
-    catch { if (!response.ok) throw new AdminApiError(`Request failed (${response.status})`, response.status); invalidResponse(Boolean(options.write)); }
-    if (!response.ok || !isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
-      const detail = isRecord(envelope?.error) ? envelope.error : undefined;
-      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      const message = typeof detail?.message === "string" ? detail.message : `Request failed (${response.status})`;
-      if (!response.ok) throw new AdminApiError(message, response.status, typeof detail?.code === "string" ? detail.code : undefined);
-      invalidResponse(Boolean(options.write));
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     return envelope.data;
   }
   return {

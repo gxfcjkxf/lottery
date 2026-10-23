@@ -261,7 +261,7 @@ describe("settlement job API", () => {
       .rejects.toMatchObject({ status: 0, code: "NETWORK_ERROR" });
     await expect(createSettlementJobApi({ fetch: vi.fn<typeof fetch>().mockResolvedValue(new Response("{}", { status: 503 })) }).retry(
       brand, jobId, { version: 4, reason: "recover" }, "retry",
-    )).rejects.toMatchObject({ status: 503 });
+    )).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
   });
 
   it("rejects invalid local resource scopes before making a request", async () => {

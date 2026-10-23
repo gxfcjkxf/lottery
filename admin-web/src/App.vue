@@ -1,36 +1,67 @@
 <script setup lang="ts">
+import ManagementTable from "@lottery/shared/ManagementTable.vue"
+import DirectorySearch from "@lottery/shared/DirectorySearch.vue"
+import PaginationControls from "@lottery/shared/PaginationControls.vue"
+import ManagementFrame from "@lottery/shared/ManagementFrame.vue"
+import AccountProfileDialog from "@lottery/shared/AccountProfileDialog.vue"
+import ChangePasswordDialog from "@lottery/shared/ChangePasswordDialog.vue"
+import BrandLockup from '@lottery/shared/BrandLockup.vue'
+import AccountMenu from "@lottery/shared/AccountMenu.vue";
+import LoginEntry from '@lottery/shared/LoginEntry.vue'
+import LoginCredentials from '@lottery/shared/LoginCredentials.vue'
+import { vWriteGuard } from "@lottery/shared";
+import { readAdminEnvelope } from './admin-api'
+import { associationContextKey } from '@lottery/shared';
+import { provide as provideAssociationContext } from 'vue';
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import SiteIcon, { type SiteIconName } from "@lottery/shared/SiteIcon";
+import { vRefreshButton } from '@lottery/shared';
+import { vGlobalLoading } from '@lottery/shared';
+import { formatDisplayDateTime } from "@lottery/shared";
+const displayLocale = useAdminI18n().locale;
+import { vInlineValidation } from '@lottery/shared'
+import { useSessionReplacement } from "@lottery/shared";
+import TablePagination from "@lottery/shared/TablePagination.vue";
+import DetailModal from "@lottery/shared/DetailModal.vue";
 import LanguageSwitcher from '@lottery/shared/LanguageSwitcher.vue';
 import {
   computed,
   defineAsyncComponent,
   onMounted,
+  nextTick,
   ref,
 } from "vue";
 import { brandPermissionSet } from "./brand-permissions";
 import { canViewWallet } from "./finance-api";
 const AccessManagement = defineAsyncComponent(() => import("./AccessManagement.vue"));
+import MemberActionsMenu from "@lottery/shared/MemberActionsMenu.vue";
 import MemberProvision from "./MemberProvision.vue";
-import AuthSettings from "./AuthSettings.vue";
 import BrandOperation from "./BrandOperation.vue";
 import BrandPresentation from "./BrandPresentation.vue";
-import CompliancePolicy from "./CompliancePolicy.vue";
 import { clearAllPendingComplianceIntents } from "./compliance-state";
 const BrandDomains = defineAsyncComponent(() => import("./BrandDomains.vue"));
 import {clearAllPendingBrandDomainsWrites} from "./brand-domains-state";
-import {watch} from "vue";
-import {buildBrandCssTokens,defaultBrand,safeBrandAssetUrl,applyBrandPresentation,type BrandTheme} from "@lottery/shared";
+import {watch,watchEffect} from "vue";
+import {buildBrandCssTokens,defaultBrand,safeBrandAssetUrl,applyBrandPresentation,applyBrowserBranding,nativeLocaleName,type BrandTheme} from "@lottery/shared";
 import {createBrandPresentationApi,brandPresentationPermissions,type BrandPresentationRecord} from "./brand-presentation-api";
 import {clearAllPendingPresentationWrites} from "./brand-presentation-state";
 const FinanceManagement = defineAsyncComponent(() => import("./FinanceManagement.vue"));
 const WithdrawalManagement = defineAsyncComponent(() => import("./WithdrawalManagement.vue"));
 import BalanceRepair from "./BalanceRepair.vue";
-const RuleSimulator = defineAsyncComponent(() => import("./RuleSimulator.vue"));
+
 import PeriodSchedules from "./PeriodSchedules.vue";
 import DrawManagement from "./DrawManagement.vue";
 import BetOrderManagement from "./BetOrderManagement.vue";
 import BetPolicySettings from "./BetPolicySettings.vue";
 import PeriodCancellation from "./PeriodCancellation.vue";
-import OperationsWorkbench from "./OperationsWorkbench.vue";
+import OverviewPanel from "./OverviewPanel.vue";
 const SettlementManagement = defineAsyncComponent(() => import("./SettlementManagement.vue"));
 const CorrectionManagement = defineAsyncComponent(() => import("./CorrectionManagement.vue"));
 const NotificationDeliveries = defineAsyncComponent(() => import("./NotificationDeliveries.vue"));
@@ -62,8 +93,8 @@ import { clearAllPendingDeliveryRetries } from "./notification-delivery-state";
 import { clearAllPendingTemplateWrites } from "./notification-templates-state";
 import { clearAllPendingBrandOperationWrites } from "./brand-operation-state";
 import { clearAllPendingCommissionWrites } from "./commission-policy-state";
-import { useAdminI18n } from "./i18n";
-const RuleVersions = defineAsyncComponent(() => import("./RuleVersions.vue"));
+import { adminKey, useAdminI18n } from "./i18n";
+const RulesPage = defineAsyncComponent(() => import("./RulesPage.vue"));
 const WithdrawalPolicySettings = defineAsyncComponent(
   () => import("./WithdrawalPolicySettings.vue"),
 );
@@ -77,76 +108,34 @@ import {
   type MemberStatus,
 } from "./admin-api";
 
-const { t, message, locale, availableLocales, setLocale, configure, resetBrand } = useAdminI18n();
-const englishUi: Record<string, string> = {
-  "请先登录后台账号查看佣金周期。": "Sign in to view commission cycles.",
-  "控制台包含已接入流程与原型。提现资格与状态流程已接入，品牌策略默认关闭且不支持真实支付；佣金核算与独立派发后台已接入，真实派发策略默认关闭。": "The console combines connected workflows and prototypes. Withdrawal qualification and status are connected; brand policy is disabled by default and real payments are unavailable. Commission calculations and the separate payout console are connected; live payout policy is disabled by default.",
-  "此页显示真实成员；账号权限、积分账本、认证设置和投注已接入。": "This page shows live members. Account permissions, the points ledger, authentication settings, and betting are connected.",
-  "成员创建与管理为真实操作；投注已接入。": "Member creation and management are live operations. Betting is connected.",
-  "审计日志为真实后台数据；投注已接入，提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。": "Audit logs are live admin data; betting and withdrawal qualification/status are connected; brand policy is disabled by default and real payments are unavailable.",
-  "账号与角色变更为真实操作；投注已接入，提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。": "Account and role changes are live operations; betting and withdrawal qualification/status are connected; brand policy is disabled by default and real payments are unavailable.",
-  "认证、品牌展示及域名绑定为真实配置；提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。": "Authentication, brand presentation, and domain binding are live settings; withdrawal qualification/status are connected; brand policy is disabled by default and real payments are unavailable.",
-  "人工充值、冻结、调整与账本为真实操作；提现资格与状态流程已接入，品牌策略默认关闭且无真实支付。": "Manual deposits, freezes, adjustments, and ledger actions are live; withdrawal qualification/status are connected; brand policy is disabled by default and real payments are unavailable.",
-  "内部积分，未接入真实支付": "Internal points · No real payments",
-  "切换品牌": "Switch brand", "真实品牌": "Live brand", "选择品牌": "Select a brand",
-  "没有可访问的品牌": "No accessible brands", "主导航": "Main navigation",
-  "概览": "Overview", "平台": "Platform", "运营": "Operations", "资金": "Finance", "管理": "Management",
-  "帮助与反馈": "Help & feedback", "超级管理员": "Super administrator", "管理员": "Administrator",
-  "退出登录": "Sign out", "退出": "Sign out", "运营控制台": "Operations console", "品牌后台": "Brand administration",
-  "搜索用户、注单、期次": "Search users, orders, periods", "搜索": "Search", "通知": "Notifications", "帮助中心": "Help center", "关闭说明": "Dismiss notice",
-  "后端品牌上下文": "Backend brand context", "正在读取 GET /api/v1/context": "Reading GET /api/v1/context", "平台品牌上下文": "Platform brand context",
-  "当前入口没有可用的公开用户品牌上下文；后台管理认证独立，不受影响。请选择需要管理的品牌。": "No public user brand context is available at this entry point. Admin authentication is independent. Select a brand to manage.",
-  "后端品牌上下文未连接": "Backend brand context unavailable", "暂不可用；该接口仅用于只读配置状态，不影响管理员认证和真实用户目录。": "is unavailable. This read-only endpoint reports configuration and does not affect admin authentication or the live user directory.",
-  "只读接口 GET /api/v1/context": "Read-only endpoint GET /api/v1/context", "配置版本": "Config version", "真实后台品牌": "Live admin brand", "选择真实后台品牌": "Select live admin brand", "请选择品牌": "Select a brand",
-  "运营工作台": "Operations workbench", "请先登录后台账号查看运营工作台。": "Sign in to view the operations workbench.", "请先选择真实后台品牌查看运营工作台。": "Select a live admin brand to view the operations workbench.",
-  "分": "points", "提现": "Withdrawals", "异常注单": "Abnormal order", "待开奖": "Awaiting draw", "注单": "Orders", "投注中": "Betting open", "待处理": "Pending",
-  "投注趋势": "Betting trend", "每日总投注积分": "Daily betting points", "趋势时间范围": "Trend time range", "近 7 天": "Last 7 days", "近 30 天": "Last 30 days", "近七日投注量趋势": "Betting volume over the last seven days", "开奖源健康": "Draw source health", "正常": "Normal", "主开奖源": "Primary draw source", "备用开奖源": "Backup draw source", "最近检查": "Last checked", "连续可用": "Uptime",
-  "请先选择真实品牌。": "Select a live brand first.", "请先登录后台账号并选择真实品牌。": "Sign in to the admin account and select a live brand.",
-  "品牌和域名": "Brands & domains", "真实品牌列表、运行状态、展示与域名绑定": "Live brands, operating status, presentation, and domain binding", "选择一个品牌": "Choose a brand", "选择下方真实品牌后，可查看其运行状态与操作记录。": "Select a live brand below to view its status and activity.", "来自管理员品牌接口": "From the admin brands API", "刷新列表": "Refresh list", "正在读取品牌…": "Loading brands…", "当前账号未返回可管理品牌。": "This account has no manageable brands.", "运行中": "Running", "已暂停": "Paused", "已停用": "Disabled", "当前品牌": "Current brand", "查看运行状态 →": "View status →",
-  "管理员登录": "Admin sign in", "使用后台管理员账号登录。": "Sign in with an admin account.", "账号": "Account", "密码": "Password", "登录中…": "Signing in…", "登录并加载真实成员": "Sign in and load members", "请选择真实品牌": "Select a live brand", "成员请求不会使用后端默认品牌。请从侧栏品牌选择器中选择一个有权访问的品牌。": "Member requests never use the backend's default brand. Choose an accessible brand from the sidebar selector.", "进入管理员登录": "Go to admin sign in", "正在检查管理员登录状态…": "Checking admin sign-in…", "平台超级管理员请使用平台管理入口。": "Platform super administrators must use the platform admin portal.", "平台管理入口": "Platform admin portal", "品牌管理员 · 运营 · 财务 · 客服": "Brand administrators · Operations · Finance · Support", "已登录": "Signed in", "当前真实品牌": "Current live brand", "读取中…": "Loading…", "刷新成员": "Refresh members", "品牌成员": "Brand members", "条本页": "on this page", "搜索用户名 / 手机号 / ID": "Search username / phone / ID", "搜索成员": "Search members", "正在读取品牌成员…": "Loading brand members…", "该品牌当前没有可显示的成员。": "This brand has no members to display.", "成员": "Member", "成员 ID": "Member ID", "手机号": "Phone", "状态": "Status", "加入时间": "Joined", "备注": "Notes", "标签": "Tags", "操作": "Actions", "编辑": "Edit", "踢出": "Remove", "重置密码": "Reset password", "上一页": "Previous", "下一页": "Next", "每页最多": "Up to", "条": "records",
-  "代理管理": "Agent management", "代理树": "Agent tree", "加入码管理": "Join code management", "规则配置": "Rule configuration", "期次和开奖": "Periods & draws", "注单和异常": "Orders & exceptions", "资金与账本": "Funds & ledger", "批量对账": "Bulk reconciliation", "佣金和奖励": "Commissions & rewards", "佣金派发": "Commission payouts", "报表和对账": "Reports & reconciliation", "账号与权限": "Accounts and permissions", "审计日志": "Audit log", "通知投递": "Notification delivery", "通知模板": "Notification templates", "风控与合规": "Risk & compliance", "工作台": "Dashboard", "用户和成员": "Users and members",
-  "请先登录后台账号查看真实佣金派发记录。": "Sign in to view live commission payout records.",
-  "人工奖励": "Manual rewards", "请先登录后台账号查看人工奖励订单。": "Sign in to view manual reward orders.",
-  "佣金更正": "Commission corrections", "请先登录后台账号查看佣金更正计划和执行。": "Sign in to view commission correction plans and executions.",
-  "刷新日志": "Refresh log", "按选中品牌读取真实后台日志。": "Load live admin logs for the selected brand.", "请先从侧栏选择品牌；审计请求始终携带明确的 X-Brand-ID。": "Select a brand in the sidebar. Audit requests always include an explicit X-Brand-ID.", "正在读取审计日志…": "Loading audit log…", "所选品牌没有可显示的审计记录。": "No audit records are available for this brand.", "资源": "Resource", "操作人": "Actor", "原因": "Reason", "时间": "Time", "演示日志不会显示为真实后台记录。": "Demo logs are not shown as live admin records.",
-  "关闭": "Close", "取消": "Cancel", "必填": "Required", "保存中…": "Saving…", "保存到后台": "Save to admin", "处理中…": "Processing…", "确认踢出": "Confirm removal", "确认重置全局密码": "Confirm global password reset", "编辑成员状态和备注": "Edit member status and notes", "踢出品牌会话": "Revoke brand session", "重置全局密码": "Reset global password", "这会调用后台踢出接口，撤销该用户在当前品牌的会话。": "This calls the admin removal API and revokes this user's session for the current brand.", "新密码": "New password", "重置原因": "Reset reason", "我确认此重置影响该全局账号在所有品牌的密码和会话。": "I understand this resets the global account password and sessions across all brands.",
-  "申请积分": "Requested points", "积分来源": "Points source", "来源": "Source", "特别号码": "Special numbers", "开奖来源": "Draw source",
-  "全部管理页面": "All admin pages", "关闭导航": "Close navigation", "移动端主导航": "Mobile main navigation", "用户": "Users", "期次": "Periods", "审核": "Review", "更多": "More",
-  "域名绑定不配置 DNS、证书或重定向；展示仅支持固定预设与中英文文案，不支持任意 CSS、HTML 或上传素材。": "Domain binding does not configure DNS, certificates, or redirects. Presentation supports fixed presets and bilingual copy, not arbitrary CSS, HTML, or uploaded assets.",
-  "品牌": "Brand", "时区": "Time zone",
-  "此页显示真实成员；账号权限、积分账本、认证设置和投注已接入，提现仍为原型。": "This page shows live members. Account permissions, the points ledger, authentication settings, and betting are connected; withdrawals remain a prototype.", "会话由同源 HttpOnly Cookie 维护，此页面不会保存访问令牌。": "The session uses a same-origin HttpOnly cookie. This page does not store access tokens.", "请先登录后台账号。": "Sign in to the admin account first.", "请先登录后台账号查看代理配置。": "Sign in to view agent settings.", "当前账号没有此品牌的加入码查看权限。": "This account cannot view join codes for this brand.", "请先登录后台账号，才能配置站内通知模板。": "Sign in to configure in-app notification templates.", "请先登录后台账号，才能查看真实运营报表。": "Sign in to view live operations reports.", "请先登录后台账号，才能查看真实投递记录。": "Sign in to view live delivery records.", "请先登录后台账号，才能管理真实角色和权限。": "Sign in to manage live roles and permissions.", "请登录并选择有钱包查看权限的品牌。": "Sign in and select a brand with wallet viewing permission.", "请选择一个有权访问的品牌以查看注单。": "Choose an accessible brand to view orders.", "请先登录后台账号。投注策略和注单均从真实 API 读取，不使用演示数据。": "Sign in first. Betting policies and orders load from the live API; demo data is not used.", "前往登录": "Go to sign in",
-  "真实规则模拟": "Live rule simulation", "请先登录后台并选择品牌，才能查看真实规则版本和模拟。": "Sign in and select a brand to view live rule versions and simulations.",   "真实期次计划": "Live period plan", "请先登录后台账号并选择品牌，才能保存计划、生成和查询期次。": "Sign in and select a brand to save plans, generate, and view periods.", "查看期次时间线、来源校验与开奖操作": "View period timeline, source checks, and draw actions", "人工开奖": "Manual draw", "生成期次": "Generate period", "复制期次编号": "Copy period ID", "投注开始": "Betting opens", "投注截止": "Betting closes", "开奖时间": "Draw time", "结算完成": "Settlement complete", "投注订单": "Bet orders", "投注积分": "Bet points", "关联规则": "Linked rule", "品牌时区": "Brand time zone", "优先级与最近检查时间": "Priority and last check", "切换记录": "Change history", "主来源 · API": "Primary source · API", "备用来源 · API": "Backup source · API", "上次校验": "Last checked", "健康": "Healthy", "单人操作，必须记录审计原因": "Single operator; an audit reason is required", "录入": "Enter result", "当前开奖结果": "Current draw result", "上一期": "Previous period", "已确认": "Confirmed", "来源：主开奖源": "Source: primary draw source", "校验项：号码范围 ✓　重复校验 ✓　签名 ✓": "Checks: number range ✓ duplicates ✓ signature ✓", "确认时间": "Confirmed at", "确认并结算 →": "Confirm and settle →", "状态时间线": "Status timeline", "开奖结果已确认": "Draw result confirmed", "来源结果通过校验": "Source result passed validation", "期次投注已截止": "Period betting closed", "人工开奖和结果纠正均属于高风险演示操作。确认前必须查看影响范围并填写原因。": "Manual draws and result corrections are high-risk demos. Review the impact and enter a reason before confirming.",
-  "周期规则、试算与记录调整概览": "Overview of cycle rules, estimates, and record adjustments", "新建佣金规则": "Create commission rule", "本周期预计佣金": "Estimated commission this cycle", "待结算记录": "Records awaiting settlement", "覆盖 142 位代理": "Covers 142 agents", "已结算佣金": "Settled commission", "本月累计 · 演示数据": "Month to date · demo data", "佣金规则版本": "Commission rule versions", "修改会创建新版本，已结算历史记录保留原始金额": "Changes create a new version; settled history retains original amounts", "版本历史 →": "Version history →", "只计算有效输钱注单 · 品牌范围": "Counts eligible losing orders only · brand scope", "输赢模式": "Win/loss model", "比例": "Rate", "周期": "Cycle", "每周": "Weekly", "每月": "Monthly", "生效中 · v4": "Active · v4", "生效中 · v2": "Active · v2", "详情 →": "Details →", "基于有效投注流水 · 品牌范围": "Based on eligible betting turnover · brand scope", "流水模式": "Turnover model", "近期佣金记录": "Recent commission records", "人工修正会建立独立 adjustment 记录": "Manual corrections create a separate adjustment record", "导出 ↓": "Export ↓", "代理": "Agent", "模式": "Model", "计算基数": "Calculation base", "佣金积分": "Commission points", "待结算": "Pending settlement", "已结算": "Settled",
-  "真实代理配置与历史记录；佣金核算已接入，审核和派发尚未实现。": "Live agent settings and history; commission calculations are connected, but approval and payouts are not implemented.", "真实注单结果及账本流水；汇总余额不是完整逐账户对账证明。": "Live order results and ledger entries; aggregate balances are not a complete account-by-account reconciliation.", "真实站内通知投递记录；外部发送渠道尚未接入。": "Live in-app notification delivery records; external channels are not connected.", "真实版本化站内通知模板；已生成消息保留原文案，不触发新通知或资金变化。": "Live versioned in-app notification templates; generated messages retain their original copy and do not send notifications or change funds.", "人工充值、冻结、调整与账本为真实操作；提现尚未接入。": "Manual deposits, freezes, adjustments, and ledger actions are live; withdrawals are not connected.",
-  "加入码": "Join codes", "冻结": "Frozen", "已过期": "Expired", "已注销": "Cancelled", "待审核": "Awaiting review", "已通过": "Approved", "已驳回": "Rejected",
-  "已登录管理员账号": "Signed in as admin", "已退出管理员账号": "Signed out of admin", "成员资料已更新": "Member details updated", "该成员的品牌会话已踢出": "The member's brand session was revoked", "全局密码已重置，所有品牌会话已撤销": "Global password reset; sessions revoked across all brands", "审核失败": "Review failed", "提交失败": "Submission failed",
-  "帮助服务尚未连接。": "Help is unavailable because no help service is connected.", "页面范围以各模块状态为准；积分为站内内部积分，不接入外部支付。": "Scope varies by module. Points are internal to the platform; external payments are not connected.", "认证设置、品牌展示和域名绑定为真实配置；积分为站内内部积分，不接入外部支付。": "Authentication, brand presentation, and domain binding are live settings. Points are internal to the platform; external payments are not connected.", "充值、冻结、调整和账本是后台操作；资金使用站内内部积分，不接入外部支付。提现资格和状态流程已接入。": "Deposits, freezes, adjustments, and ledger entries are admin operations using internal points; external payments are not connected. Withdrawal qualification and status workflows are connected.", "审计日志读取当前品牌的真实后台记录。": "Audit logs load live admin records for the selected brand.", "账号和角色权限按当前品牌权限执行真实后台变更。": "Account and role changes use the permissions for the selected brand.",
-  "安全 / 审计轨迹": "SECURITY / AUDIT TRAIL", "平台 / 品牌配置": "PLATFORM / BRAND CONFIG", "操作控制台": "OPERATIONS CONSOLE",
+const { t, message, display, locale, availableLocales, setLocale, configure, resetBrand } = useAdminI18n();
+const ui = (key: string) => t(adminKey(key));
+const navLabels: Record<string, string> = {
+  "首页": "overview.home",
+  "系统管理": "admin.console.group.7",
+  "佣金与奖励": "admin.console.group.6",
+  "报表与归档": "admin.console.group.5",
+  "资金管理": "admin.console.group.4",
+  "彩种与投注": "admin.console.group.3",
+  "会员与推广": "admin.console.group.2",
+  "品牌设置": "admin.settings.title", "用户和成员": "admin.nav.users",
+  "代理管理": "admin.nav.agents", "代理列表": "admin.nav.agentList", "代理设置": "admin.nav.agentSettings", "规则配置": "admin.copy.db7e35eb",
+  "期次和开奖": "admin.copy.051cdfc6", "注单和异常": "admin.copy.f7a666c3", "资金与账本": "admin.copy.783ae8f1",
+  "批量对账": "admin.copy.2b3decaf", "日月归档": "admin.copy.d8f53155", "自动归档任务": "admin.copy.6477d963",
+  "佣金和奖励": "admin.copy.5c8e261e", "佣金派发": "admin.copy.61a05916", "佣金更正": "admin.copy.b095cecc",
+  "人工奖励": "admin.copy.3fecab01", "报表和对账": "admin.copy.931e1e2b", "账号与权限": "admin.copy.9c6ee39c",
+  "审计日志": "admin.copy.315a9366", "通知投递": "admin.copy.63871b72", "通知模板": "admin.copy.e4f1dc7c",
+ "平台": "admin.copy.ed823559",
+  "运营": "admin.copy.4b7fa234", "资金": "admin.copy.c9a0911c", "管理": "admin.copy.0f05b3f1",
 };
-Object.assign(englishUi, {
-  "日月归档": "Daily and monthly archives",
-  "自动归档任务": "Automatic archive tasks",
-  "请登录并选择有归档查看权限的品牌。": "Sign in and choose a brand with archive viewing permission.",
-  "演": "D", "品": "B",
-  "请先选择真实后台品牌。": "Select a live admin brand first.",
-  "请先登录后台账号，才能查看和操作真实积分。": "Sign in with an administrator account to view and manage live points.",
-  "帮助中心 ↗": "Help center ↗",
-  "只读接口 GET /api/v1/context 暂不可用；该接口仅用于只读配置状态，不影响管理员认证和真实用户目录。": "Read-only GET /api/v1/context is unavailable. It reports configuration only and does not affect admin authentication or the live user directory.",
-  "已登录 ·": "Signed in ·",
-  "使用后台管理员账号登录。会话由同源 HttpOnly Cookie 维护，此页面不会保存访问令牌。": "Sign in with an administrator account. The session uses a same-origin HttpOnly cookie; this page does not store access tokens.",
-  "第": "Page", "页 · 每页最多 100 条": "· up to 100 records per page",
-  "用户 ID": "User ID", "操作原因": "Reason for operation", "全局用户 ID": "Global user ID", "开奖结果": "Draw result",
-  "此密码属于全局用户，将影响该用户在所有品牌的登录，并撤销其全部会话。后台要求你对该用户加入的每个品牌都有密码重置权限，否则拒绝操作。": "This global password affects sign-in across all brands and revokes all sessions. The backend requires password-reset permission for every brand the user has joined; otherwise it rejects the operation.",
-});
-const shellCopy = (key: string) => Object.prototype.hasOwnProperty.call(englishUi, key) ? englishUi[key] : undefined;
-const ui = (key: string) => t(key, shellCopy(key));
+const navLabel = (value: string) => t(adminKey(navLabels[value]!));
 
 type Page =
-  | "工作台"
-  | "品牌和域名"
+  | "首页"
+  | "品牌设置"
   | "用户和成员"
-  | "代理树"
-  | "加入码"
+  | "代理列表"
+  | "代理设置"
   | "规则配置"
   | "期次和开奖"
   | "注单和异常"
@@ -162,45 +151,79 @@ type Page =
   | "账号与权限"
   | "审计日志"
   | "通知投递"
-  | "通知模板"
-  | "风控与合规";
-const nav: { name: Page; icon: string; group: string }[] = [
-  { name: "工作台", icon: "▦", group: "概览" },
-  { name: "品牌和域名", icon: "◇", group: "平台" },
-  { name: "用户和成员", icon: "♙", group: "平台" },
-  { name: "代理树", icon: "⌘", group: "平台" },
-  { name: "加入码", icon: "⌁", group: "平台" },
-  { name: "规则配置", icon: "⌗", group: "运营" },
-  { name: "期次和开奖", icon: "◷", group: "运营" },
-  { name: "注单和异常", icon: "▤", group: "运营" },
-  { name: "资金与账本", icon: "◈", group: "资金" },
-  { name: "批量对账", icon: "≋", group: "资金" },
-  { name: "日月归档", icon: "▣", group: "管理" },
-  { name: "自动归档任务", icon: "◷", group: "管理" },
-  { name: "佣金和奖励", icon: "↗", group: "资金" },
-  { name: "佣金派发", icon: "⇧", group: "资金" },
-  { name: "佣金更正", icon: "⇄", group: "资金" },
-  { name: "人工奖励", icon: "✧", group: "资金" },
-  { name: "报表和对账", icon: "▥", group: "管理" },
-  { name: "账号与权限", icon: "♧", group: "管理" },
-  { name: "审计日志", icon: "≡", group: "管理" },
-  { name: "通知投递", icon: "♧", group: "管理" },
-  { name: "通知模板", icon: "♧", group: "管理" },
-  { name: "风控与合规", icon: "⚖", group: "管理" },
+  | "通知模板";
+const nav: { name: Page; icon: SiteIconName; group: string | null }[] = [
+  { name: "首页", icon: "home", group: null },
+  { name: "品牌设置", icon: "brands", group: null },
+  { name: "用户和成员", icon: "users", group: null },
+  { name: "代理列表", icon: "network", group: "代理管理" },
+  { name: "代理设置", icon: "settings", group: "代理管理" },
+  { name: "规则配置", icon: "rules", group: "彩种与投注" },
+  { name: "期次和开奖", icon: "calendar", group: "彩种与投注" },
+  { name: "注单和异常", icon: "ticket", group: "彩种与投注" },
+  { name: "资金与账本", icon: "wallet", group: "资金管理" },
+  { name: "批量对账", icon: "reconcile", group: "资金管理" },
+  { name: "日月归档", icon: "archive", group: "报表与归档" },
+  { name: "自动归档任务", icon: "schedule", group: "报表与归档" },
+  { name: "佣金和奖励", icon: "trend", group: "佣金与奖励" },
+  { name: "佣金派发", icon: "send", group: "佣金与奖励" },
+  { name: "佣金更正", icon: "transfer", group: "佣金与奖励" },
+  { name: "人工奖励", icon: "gift", group: "佣金与奖励" },
+  { name: "报表和对账", icon: "chart", group: "报表与归档" },
+  { name: "账号与权限", icon: "shield", group: "系统管理" },
+  { name: "审计日志", icon: "audit", group: "系统管理" },
+  { name: "通知投递", icon: "send", group: "系统管理" },
+  { name: "通知模板", icon: "mail", group: "系统管理" },
 ];
-const page = ref<Page>("工作台");
-const brandMenu = ref(false);
+const page = ref<Page>("首页");
+const agentRulesRevision = ref(0);
+const financeView = ref<'wallet' | 'recharges' | 'withdrawals' | 'policies' | 'repair'>('wallet');
+const memberCreateOpen = ref(false);
+const brandSettingsView = ref<'operation' | 'presentation' | 'domains'>('operation');
+const periodView = ref<'schedules' | 'draws' | 'settlement' | 'correction' | 'cancellation'>('schedules');
+const brandSettingsTabs = computed(() => [
+  { id: 'operation', label: t('admin.copy.febb1b95') },
+  { id: 'presentation', label: t('admin.copy.5f829ca8') },
+  { id: 'domains', label: t('admin.copy.802d25a8') },
+] as const);
+const periodTabs = computed(() => [
+  { id: 'schedules', label: t('admin.copy.18d26d2c') },
+  { id: 'draws', label: t('admin.copy.26bac4a5') },
+  { id: 'settlement', label: t('admin.copy.a215c7cc') },
+  { id: 'correction', label: t('admin.copy.fc54e9ea') },
+  { id: 'cancellation', label: t('admin.copy.7ed0de73') },
+] as const);
+const financeTabs = computed(() => [
+  { id: 'wallet', label: t('admin.console.wallet') },
+  { id: 'recharges', label: t('admin.console.recharges') },
+  { id: 'withdrawals', label: t('admin.withdrawal.title') },
+  { id: 'policies', label: t('admin.console.financialPolicies') },
+  { id: 'repair', label: t('admin.console.balanceRepair') },
+] as const);
+const brandsLoading = ref(false);
 const mobileMore = ref(false);
+const mobileMenu = ref<HTMLElement | null>(null);
+watch(mobileMore, async open => {
+  if (open) { await nextTick(); mobileMenu.value?.focus(); }
+});
 const search = ref("");
-const pageSearch = ref("");
 const notice = ref<ReturnType<typeof message> | string>("");
 const api = createAdminApi();
 const account = ref<AdminAccount | null>(null);
+provideAssociationContext(associationContextKey, computed(() => account.value));
+const accountProfileOpen = ref(false);
+const changePasswordOpen = ref(false);
+const currentPassword = ref("");
+const newPassword = ref("");
+const confirmPassword = ref("");
+const passwordBusy = ref(false);
+const passwordError = ref<string | ReturnType<typeof message>>("");
 const authLoading = ref(true);
 const authError = ref<string | ReturnType<typeof message>>("");
 const loginIdentifier = ref("");
 const loginPassword = ref("");
 const loginBusy = ref(false);
+const logoutBusy = ref(false);
 const loginIdempotencyKey = ref(createIdempotencyKey());
 watch([loginIdentifier, loginPassword], () => {
   // Editing credentials is a new login intent, not a replay of the old body.
@@ -210,11 +233,11 @@ const adminBrands = ref<AdminBrand[]>([]);
 const selectedBrandId = ref("");
 const financeMemberId = ref("");
 let adminBrandLoadGeneration = 0;
-const correctionSettlementPeriod = ref<{brandId:string;periodId:string;nonce:number}|null>(null);
+const selectedOperationPeriod = ref<{brandId:string;periodId:string;nonce:number}|null>(null);
 const brand = computed(
   () =>
     adminBrands.value.find((item) => item.id === selectedBrandId.value)?.name ??
-    ui("请选择品牌"),
+    t('admin.copy.0cf7b8b5'),
 );
 const selectedBrand = computed(() => adminBrands.value.find((item) => item.id === selectedBrandId.value) ?? null);
 const presentationApi=createBrandPresentationApi();
@@ -232,8 +255,12 @@ watch(() => [account.value?.id, selectedBrandId.value, JSON.stringify(account.va
       hideCommissionCorrectionIntentsForScope(previous[0], previous[1]);
     }
   });
-function skinTheme():BrandTheme|null{const e=skin.value;return e?{...defaultBrand,name:e.display_name,logoText:e.logo_text,logoUrl:e.logo_url??undefined,faviconUrl:e.favicon_url??undefined,primary:e.primary_color,accent:e.accent_color,success:e.success_color,warning:e.warning_color,danger:e.danger_color,fontFamily:e.font_family,fontScale:e.font_scale,radius:e.radius,shadow:e.shadow}:null}
-const skinStyle=computed(()=>{const theme=skinTheme();return theme?{...buildBrandCssTokens(theme),fontFamily:"var(--font-family)",fontSize:"calc(13px * var(--brand-font-scale-factor, 1))"}:{}});
+function skinTheme(): BrandTheme | null {
+  const presentation = skin.value;
+  return presentation ? { ...defaultBrand, name: presentation.display_name, logoText: presentation.logo_text,
+    logoUrl: presentation.logo_url, faviconUrl: presentation.favicon_url } : null;
+}
+const skinStyle=computed(()=>{const theme=skinTheme();return theme?{...buildBrandCssTokens(theme),fontFamily:"var(--font-family)",fontSize:"calc(14px * var(--brand-font-scale-factor, 1))"}:{}});
 const skinLogo=computed(()=>safeBrandAssetUrl(skin.value?.logo_url));
 const failedSkinLogo=ref<string|null>(null);
 watch(skinLogo,()=>{failedSkinLogo.value=null});
@@ -241,14 +268,15 @@ function skinLogoError(event:Event){if(event.target instanceof HTMLImageElement&
 function acceptPresentation(value:{accountId:string;record:BrandPresentationRecord}){if(account.value?.id!==value.accountId||selectedBrandId.value!==value.record.brand_id)return;if(presentationSkin.value?.accountId===value.accountId&&presentationSkin.value.record.brand_id===value.record.brand_id&&presentationSkin.value.record.version>value.record.version)return;presentationSkin.value=value;const theme=skinTheme();if(theme)applyBrandPresentation({brand:theme,paused:value.record.status==='paused',availableLanguages:value.record.effective.available_locales},document.querySelector<HTMLElement>('.app-shell')??document.documentElement)}
 watch(()=>[account.value?.id,selectedBrandId.value],()=>{const generation=++presentationReadGeneration;presentationSkin.value=null;document.querySelector('link[rel="icon"][data-brand-favicon]')?.remove();const current=account.value,id=selectedBrandId.value;if(!current||!id||!brandPresentationPermissions(current,id).view)return;void presentationApi.get(id).then(record=>{if(generation===presentationReadGeneration&&account.value?.id===current.id&&selectedBrandId.value===id)acceptPresentation({accountId:current.id,record})}).catch(cause=>{if(generation===presentationReadGeneration&&account.value?.id===current.id&&selectedBrandId.value===id&&cause instanceof AdminApiError&&cause.status===401)clearAdminData()})});
 const members = ref<Member[]>([]);
-const filteredMembers = computed(() => {
-  const query = search.value.trim().toLowerCase();
-  return members.value.filter((item) => !query ||
-    `${item.display_name} ${item.username} ${item.phone} ${item.id} ${item.global_user_id}`.toLowerCase().includes(query));
-});
+const membersTotal = ref('0');
+const memberOnlineFilter = ref<'' | 'true' | 'false'>('');
+const memberQuery = ref(''), memberOnlineQuery = ref<'' | 'true' | 'false'>('');
+const memberHasNext = computed(() => BigInt(memberOffset.value) + BigInt(members.value.length) < BigInt(membersTotal.value));
+const memberActionError = ref<string | ReturnType<typeof message>>('');
 const membersLoading = ref(false);
 const membersError = ref<string | ReturnType<typeof message>>("");
 const memberOffset = ref(0);
+let memberReadGeneration = 0;
 const editTarget = ref<Member | null>(null);
 const editStatus = ref<MemberStatus>("normal");
 const editNotes = ref("");
@@ -276,19 +304,21 @@ interface ContextBrand {
   config_version: number;
 }
 const contextBrand = ref<ContextBrand | null>(null);
+watchEffect(()=>{if(!skin.value){const brand=contextBrand.value;if(brand)applyBrowserBranding(brand.name,brand.name.slice(0,1),null,defaultBrand.primary);else document.title=t('admin.ui.administration')}});
+
 const contextState = ref<"loading" | "connected" | "unavailable">("loading");
 const loadBrandContext = async () => {
+  contextBrand.value = null;
+  contextState.value = "loading";
   try {
     const response = await fetch("/api/v1/context", {
       headers: { Accept: "application/json" },
       credentials: "same-origin",
     });
-    const body = (await response.json()) as {
-      success?: boolean;
-      data?: { brand?: ContextBrand };
-    };
-    if (!response.ok || body.success === false || !body.data?.brand)
-      throw new Error("品牌上下文不可用");
+    const body = await readAdminEnvelope<{brand: ContextBrand}>(response);
+    if (!response.ok || body.success !== true || !body.data?.brand ||
+      typeof body.data.brand.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.data.brand.id))
+      throw new Error("Brand context is unavailable");
     contextBrand.value = body.data.brand;
     contextState.value = "connected";
   } catch {
@@ -296,20 +326,44 @@ const loadBrandContext = async () => {
     contextState.value = "unavailable";
   }
 };
+const brandScopeLoading = computed(() => authLoading.value || brandsLoading.value || contextState.value === 'loading');
+watch([account, contextBrand, adminBrands], () => {
+  const current = account.value;
+  const context = contextBrand.value;
+  const authorized = current && !current.super_admin && context &&
+    current.brand_ids.includes(context.id) && adminBrands.value.some(item => item.id === context.id);
+  const id = authorized ? context.id : '';
+  if (selectedBrandId.value === id) return;
+  selectedBrandId.value = id;
+  memberReadGeneration++;
+  financeMemberId.value = '';
+  search.value = ''; memberQuery.value = ''; memberOnlineFilter.value = ''; memberOnlineQuery.value = ''; membersTotal.value = '0';
+  memberCreateOpen.value = false;
+  memberOffset.value = 0;
+  members.value = [];
+  if (id && current && brandPermissionSet(current, id).has('user.view.brand')) void loadMembers();
+});
+async function retryBrandScope() {
+  await loadBrandContext();
+  if (account.value) await loadBrands();
+}
 onMounted(() => {
   void loadBrandContext();
   void restoreAdminSession();
 });
-const groups = computed(() => [...new Set(nav.map((item) => item.group))]);
+const groups = computed(() => [...new Set(visibleNav.value.map((item) => item.group).filter(group => group !== null))]);
 const canViewJoinCodes = computed(() => {
   if (!account.value || !selectedBrandId.value) return false;
   return brandPermissionSet(account.value, selectedBrandId.value).has("join_code.view.brand");
 });
-const visibleNav = computed(() => nav.filter((item) => item.name !== "加入码" || canViewJoinCodes.value));
+const visibleNav = computed(() => nav);
+const memberDetail = ref<Member | null>(null);
+watch(() => [account.value?.id, selectedBrandId.value], () => { memberDetail.value = null; editTarget.value = null; kickTarget.value = null; resetTarget.value = null; memberActionError.value = ''; });
 const go = (target: Page) => {
   page.value = target;
+  if (target === "资金与账本") financeView.value = "wallet";
+  memberCreateOpen.value = false;
   if (target !== "资金与账本") financeMemberId.value = "";
-  pageSearch.value = "";
   notice.value = "";
   mobileMore.value = false;
 };
@@ -319,17 +373,8 @@ function openMemberWallet(member: Member) {
   financeMemberId.value = member.id;
   go("资金与账本");
 }
-function openSearchedPage() {
-  const query = pageSearch.value.trim().toLowerCase();
-  const target = visibleNav.value.find((item) => ui(item.name).toLowerCase() === query);
-  if (target) go(target.name);
-}
-const navigateWorkbench = (destination: string) => {
-  const target = nav.find((item) => item.name === destination);
-  if (target) go(target.name);
-};
-const toast = (text: string | ReturnType<typeof message>, english?: string) => {
-  const next = typeof text === 'string' ? message(text, english ?? shellCopy(text) ?? text) : text;
+const toast = (text: string | ReturnType<typeof message>) => {
+  const next = text;
   notice.value = next;
   const expected = notice.value;
   window.setTimeout(() => {
@@ -361,13 +406,13 @@ const canResetPasswords = computed(() =>
       hasPermission("user.password_reset.brand"),
   ),
 );
-const statusLabel: Record<MemberStatus, string> = {
-  normal: "正常",
-  frozen: "冻结",
-  disabled: "已停用",
-  expired: "已过期",
-  cancelled: "已注销",
-};
+const statusLabel = {
+  normal: "admin.member.status.normal",
+  frozen: "admin.member.status.frozen",
+  disabled: "admin.member.status.disabled",
+  expired: "admin.member.status.expired",
+  cancelled: "admin.member.status.cancelled",
+} satisfies Record<MemberStatus, import("./i18n").AdminTranslationKey>;
 const statusClass = (status: MemberStatus) =>
   status === "normal"
     ? "badge-success"
@@ -375,8 +420,11 @@ const statusClass = (status: MemberStatus) =>
       ? "badge-danger"
       : "badge-neutral";
 const apiErrorText = (error: unknown) =>
-  error instanceof Error ? message(error.message, error.message) : message("请求失败，请重试", "Request failed. Please try again.");
+  error instanceof Error ? publicErrorMessage(error) : display(message('admin.copy.5dabb92e'));
 const clearAdminData = () => {
+  page.value = "首页";
+  memberReadGeneration++;
+  brandsLoading.value = false;
 	clearAllArchiveIntents();
 	clearAllReportArchiveTaskRetryIntents();
 	clearAllReportArchivePolicyIntents();
@@ -397,8 +445,7 @@ const clearAdminData = () => {
   clearAllPendingTemplateWrites();
   clearPendingReconciliationWrites();
   clearAllPendingBrandOperationWrites();
-  correctionSettlementPeriod.value = null;
-  pageSearch.value = "";
+  selectedOperationPeriod.value = null;
   search.value = "";
   financeMemberId.value = "";
   account.value = null;
@@ -406,11 +453,13 @@ const clearAdminData = () => {
   selectedBrandId.value = "";
   members.value = [];
 };
+const sessionReplaced = useSessionReplacement(() => !!account.value, () => api.me(), clearAdminData);
 const loadBrands = async () => {
   const requestedAccountId = account.value?.id;
   const generation = ++adminBrandLoadGeneration;
   if (!requestedAccountId) return;
   authError.value = "";
+  brandsLoading.value = true;
   try {
     const result = await api.brands();
     if (generation !== adminBrandLoadGeneration || account.value?.id !== requestedAccountId) return;
@@ -420,6 +469,8 @@ const loadBrands = async () => {
     if (error instanceof AdminApiError && error.status === 401)
       clearAdminData();
     authError.value = apiErrorText(error);
+  } finally {
+    if (generation === adminBrandLoadGeneration) brandsLoading.value = false;
   }
 };
 const restoreAdminSession = async () => {
@@ -428,7 +479,7 @@ const restoreAdminSession = async () => {
     const result = await api.me();
     if (result.account.super_admin) {
       clearAdminData();
-      authError.value = message("平台超级管理员请使用平台管理入口。", "Platform super administrators must use the platform admin portal.");
+      authError.value = message('admin.copy.51a5468e');
       return;
     }
     if (account.value?.id !== result.account.id) {
@@ -448,6 +499,7 @@ const restoreAdminSession = async () => {
       clearAllPendingTemplateWrites();
       clearPendingReconciliationWrites();
     }
+    page.value = "首页";
     account.value = result.account;
     await loadBrands();
   } catch (error) {
@@ -460,6 +512,7 @@ const restoreAdminSession = async () => {
 };
 const login = async () => {
   if (loginBusy.value) return;
+  sessionReplaced.value = false;
   loginBusy.value = true;
   authError.value = "";
   try {
@@ -472,7 +525,7 @@ const login = async () => {
     const result = await api.me();
     if (result.account.super_admin) {
       clearAdminData();
-      authError.value = message("平台超级管理员请使用平台管理入口。", "Platform super administrators must use the platform admin portal.");
+      authError.value = message('admin.copy.51a5468e');
       return;
     }
     if (account.value?.id !== result.account.id) {
@@ -492,6 +545,7 @@ const login = async () => {
       clearAllPendingTemplateWrites();
       clearPendingReconciliationWrites();
     }
+    page.value = "首页";
     account.value = result.account;
     selectedBrandId.value = "";
     loginIdempotencyKey.value = createIdempotencyKey();
@@ -500,7 +554,7 @@ const login = async () => {
   } catch (error) {
     clearAdminData();
     authError.value = error instanceof AdminApiError && error.code === "ADMIN_ENTRY_MISMATCH"
-      ? message("平台超级管理员请使用平台管理入口。", "Platform super administrators must use the platform admin portal.")
+      ? message('admin.copy.51a5468e')
       : apiErrorText(error);
   } finally {
     loginBusy.value = false;
@@ -510,6 +564,8 @@ const onBrandOperationChanged = (change: { accountId: string }) => {
   if (account.value?.id === change.accountId) void loadBrands();
 };
 const logout = async () => {
+  if (logoutBusy.value) return;
+  logoutBusy.value = true;
   const key = createIdempotencyKey();
   // Invalidate mounted views and their pending downloads immediately. A slow
   // server revocation must not keep an old authenticated view alive locally.
@@ -518,36 +574,48 @@ const logout = async () => {
     await api.logout(key);
   } catch (error) {
     authError.value = apiErrorText(error);
-  }
+  } finally { logoutBusy.value = false; }
   toast("已退出管理员账号");
 };
-const selectBrand = async (brandId: string) => {
-  selectedBrandId.value = brandId;
-  financeMemberId.value = "";
-  search.value = "";
-  brandMenu.value = false;
-  memberOffset.value = 0;
-  members.value = [];
-  await loadMembers();
+const submitPasswordChange = async () => {
+  passwordError.value = "";
+  const bytes = new TextEncoder().encode(newPassword.value).length;
+  if (!currentPassword.value || bytes < 6 || bytes > 30 || newPassword.value !== confirmPassword.value) {
+    passwordError.value = message('admin.console.invalidPassword');
+    return;
+  }
+  passwordBusy.value = true;
+  try {
+    await api.changePassword(currentPassword.value, newPassword.value);
+    currentPassword.value = ""; newPassword.value = ""; confirmPassword.value = "";
+    changePasswordOpen.value = false;
+    clearAdminData();
+  } catch (error) {
+    passwordError.value = apiErrorText(error);
+  } finally { passwordBusy.value = false; }
 };
 const loadMembers = async () => {
-  if (!account.value || !selectedBrandId.value) return;
+  const current = account.value, brandId = selectedBrandId.value;
+  if (!current || !brandId) return;
+  const generation = ++memberReadGeneration;
+  const isCurrent = () => generation === memberReadGeneration && account.value?.id === current.id && selectedBrandId.value === brandId;
   membersLoading.value = true;
   membersError.value = "";
   try {
-    members.value = (
-      await api.users(selectedBrandId.value, 100, memberOffset.value)
-    ).items;
+    const result = await api.users(brandId, 100, memberOffset.value, "", { query: memberQuery.value, online: memberOnlineQuery.value });
+    if (isCurrent()) { members.value = result.items; membersTotal.value = result.total_count; }
   } catch (error) {
+    if (!isCurrent()) return;
     membersError.value = apiErrorText(error);
-    if (error instanceof AdminApiError && error.status === 401)
-      clearAdminData();
+    if (error instanceof AdminApiError && error.status === 401) clearAdminData();
   } finally {
-    membersLoading.value = false;
+    if (isCurrent()) membersLoading.value = false;
   }
 };
+const searchMembers = async () => { memberOffset.value = 0; memberQuery.value = search.value.trim(); memberOnlineQuery.value = memberOnlineFilter.value; await loadMembers(); };
+const clearMemberSearch = async () => { search.value = ''; memberOnlineFilter.value = ''; await searchMembers(); };
 const openEdit = (member: Member) => {
-  editTarget.value = member;
+  memberActionError.value = ""; editTarget.value = member;
   editStatus.value = member.status;
   editNotes.value = member.notes;
   editReason.value = "";
@@ -556,8 +624,7 @@ const openEdit = (member: Member) => {
 const saveMember = async () => {
   if (
     !editTarget.value ||
-    !selectedBrandId.value ||
-    !editReason.value.trim() ||
+    !selectedBrandId.value  ||
     editBusy.value
   )
     return;
@@ -575,23 +642,23 @@ const saveMember = async () => {
     );
     editTarget.value = null;
     await loadMembers();
-    toast("成员资料已更新");
+    toast(message('admin.members.saved'));
   } catch (error) {
-    toast(apiErrorText(error));
+    memberActionError.value = apiErrorText(error);
   } finally {
     editBusy.value = false;
   }
 };
 const openKick = (member: Member) => {
-  kickTarget.value = member;
+  if (!member.online || !canKickUsers.value) return;
+  memberActionError.value = ""; kickTarget.value = member;
   kickReason.value = "";
   kickIdempotencyKey.value = createIdempotencyKey();
 };
 const kickMember = async () => {
   if (
     !kickTarget.value ||
-    !selectedBrandId.value ||
-    !kickReason.value.trim() ||
+    !selectedBrandId.value  ||
     kickBusy.value
   )
     return;
@@ -605,15 +672,15 @@ const kickMember = async () => {
     );
     kickTarget.value = null;
     await loadMembers();
-    toast("该成员的品牌会话已踢出");
+    toast(message('admin.members.kicked'));
   } catch (error) {
-    toast(apiErrorText(error));
+    memberActionError.value = apiErrorText(error);
   } finally {
     kickBusy.value = false;
   }
 };
 const openReset = (member: Member) => {
-  resetTarget.value = member;
+  memberActionError.value = ""; resetTarget.value = member;
   resetPasswordValue.value = "";
   resetReason.value = "";
   resetImpactConfirmed.value = false;
@@ -623,8 +690,7 @@ const resetMemberPassword = async () => {
   if (
     !resetTarget.value ||
     !selectedBrandId.value ||
-    !resetPasswordValue.value ||
-    !resetReason.value.trim() ||
+    !resetPasswordValue.value  ||
     !resetImpactConfirmed.value ||
     resetBusy.value
   )
@@ -640,9 +706,9 @@ const resetMemberPassword = async () => {
     );
     resetTarget.value = null;
     await loadMembers();
-    toast("全局密码已重置，所有品牌会话已撤销");
+    toast(message('admin.members.passwordReset'));
   } catch (error) {
-    toast(apiErrorText(error));
+    memberActionError.value = apiErrorText(error);
   } finally {
     resetBusy.value = false;
   }
@@ -654,220 +720,83 @@ const changeMemberPage = async (direction: -1 | 1) => {
 </script>
 
 <template>
-  <div v-if="authLoading || !account" class="login-entry">
-    <header class="login-entry__topbar">
-      <a class="login-entry__brand" href="#" aria-label="Northstar admin">
-        <span class="login-entry__mark" aria-hidden="true">N</span>
-        <span><b>northstar</b><small>ADMINISTRATION</small></span>
-      </a>
-      <LanguageSwitcher data-testid="admin-language" :model-value="locale" :label="t('语言', 'Language')"
-        :options="availableLocales.map(code => ({ code, label: code === 'en' ? 'English' : '简体中文' }))"
-        @update:model-value="setLocale" />
-    </header>
-    <main class="login-entry__main">
-      <section v-if="authLoading" class="login-entry__loading" role="status" aria-live="polite">
-        <span class="login-entry__spinner" aria-hidden="true"></span>
-        <p>{{ ui("正在检查管理员登录状态…") }}</p>
-      </section>
-      <article v-else class="login-entry__card" aria-labelledby="admin-login-title">
-        <div class="login-entry__eyebrow">ADMINISTRATION</div>
-        <h1 id="admin-login-title">{{ ui("管理员登录") }}</h1>
-        <p class="login-entry__description">{{ ui("使用后台管理员账号登录。会话由同源 HttpOnly Cookie 维护，此页面不会保存访问令牌。") }}</p>
-        <form class="login-entry__form" @submit.prevent="login">
-          <label class="login-entry__field">{{ ui("账号") }}<input v-model="loginIdentifier" class="field" autocomplete="username" required /></label>
-          <label class="login-entry__field">{{ ui("密码") }}<input v-model="loginPassword" class="field" type="password" autocomplete="current-password" required /></label>
-          <p v-if="authError" class="form-error" role="alert">{{ t(authError) }}</p>
+  <GlobalLoadingOverlay :active="authLoading" :label="t('admin.copy.3f7a199d')" />
+  <LoginEntry v-if="authLoading || !account" :ready="!authLoading" language-test-id="admin-language" :brand-name="contextBrand?.name ?? t('admin.ui.administration')" :logo-text="contextBrand?.name.slice(0,1)" :subtitle="t('admin.ui.administration')" :title="t('admin.copy.5b5aac39')" title-id="admin-login-title" :locale="locale" :language-label="t('admin.copy.65749d82')" :languages="availableLocales.map(code => ({code,label:nativeLocaleName(code)}))" @update:locale="setLocale">
+        <form v-write-guard="loginBusy" novalidate v-inline-validation class="login-entry__form" @submit.prevent="withGlobalLoading(login)">
+          <LoginCredentials v-model:identifier="loginIdentifier" v-model:password="loginPassword" :identifier-label="t('admin.copy.851c6121')" :password-label="t('admin.copy.66467891')" />
+          <p v-if="sessionReplaced" class="form-error" role="alert">{{ t('auth.sessionReplaced') }}</p>
+          <p v-else-if="authError" class="form-error" role="alert">{{ display(authError) }}</p>
           <button class="button button-primary" :disabled="loginBusy">
-            {{ loginBusy ? ui("登录中…") : ui("登录并加载真实成员") }}
+            {{ loginBusy ? t('admin.copy.488b07c6') : t('admin.copy.a182c1e1') }}
           </button>
         </form>
-      </article>
-      <p class="login-entry__footer">{{ ui("品牌管理员 · 运营 · 财务 · 客服") }}</p>
-    </main>
-  </div>
-  <div v-else class="app-shell" :style="skinStyle">
-    <aside class="sidebar">
-      <a class="brand-lockup" href="#" @click.prevent="go('工作台')"
-        ><img v-if="skinLogo&&failedSkinLogo!==skinLogo" class="presentation-logo" :src="skinLogo" :alt="skin?.logo_text" crossorigin="anonymous" referrerpolicy="no-referrer" @error="skinLogoError"/>
-        <span v-else class="brand-mark">{{skin?.logo_text??'N'}}</span>
-        <span><b>{{skin?.display_name??'northstar'}}</b><small>OPERATIONS CONSOLE</small></span></a
-      >
-      <div v-if="page !== '工作台'" class="demo-chip">
-        <span class="pulse"></span>{{ ui("内部积分，未接入真实支付") }} <span class="demo-chip-end">·</span>
-      </div>
-      <div class="brand-switch-wrap">
-        <button
-          class="brand-switch"
-          @click="brandMenu = !brandMenu"
-          :aria-label="ui('切换品牌')"
-        >
-          <span class="brand-avatar">{{ brand.slice(0, 1) }}</span
-          ><span class="brand-switch-text"
-            ><small>{{ ui("真实品牌") }}</small
-            ><b>{{ !selectedBrandId ? ui("请选择品牌") : brand }}</b></span
-          ><span class="chevron">⌄</span>
+  </LoginEntry>
+  <ManagementFrame v-else :style="skinStyle" @keydown.esc="mobileMore = false">
+    <template #sidebar>
+      <BrandLockup href="#" :name="skin?.display_name??contextBrand?.name??t('admin.ui.administration')" :logo-text="skin?.logo_text??contextBrand?.name.slice(0,1)" :logo-url="skinLogo&&failedSkinLogo!==skinLogo?skinLogo:null" @logo-error="skinLogoError" @click.prevent="go('首页')"/>
+      <nav class="side-nav" :aria-label="t('admin.copy.f4627e31')">
+        <button v-for="item in visibleNav.filter(entry => entry.group === null)" :key="item.name" class="nav-item" :aria-label="navLabel(item.name)" :title="navLabel(item.name)" :class="{ active: page === item.name }" @click="go(item.name)">
+          <span class="nav-icon"><SiteIcon :name="item.icon" /></span><span>{{ navLabel(item.name) }}</span>
         </button>
-        <div v-if="brandMenu" class="brand-dropdown">
-          ><button
-              v-for="item in adminBrands"
-              :key="item.id"
-              @click="selectBrand(item.id)"
-            >
-              {{ item.name }} <span v-if="selectedBrandId === item.id">✓</span
-              ><small>{{ item.code }} · {{ item.status }}</small>
-            </button>
-            <p v-if="!adminBrands.length">{{ ui("没有可访问的品牌") }}</p>
-        </div>
-      </div>
-      <nav class="side-nav" :aria-label="ui('主导航')">
-        <template v-for="group in groups" :key="group"
-          ><p class="nav-heading">{{ ui(group) }}</p>
+        <details v-for="group in groups" :key="group" class="console-nav-group" open>
+          <summary>{{ navLabel(group) }}<SiteIcon name="down" /></summary>
           <button
             v-for="item in visibleNav.filter((entry) => entry.group === group)"
             :key="item.name"
             class="nav-item"
-            :aria-label="ui(item.name)"
-            :title="ui(item.name)"
+            :aria-label="navLabel(item.name)"
+            :title="navLabel(item.name)"
             :class="{ active: page === item.name }"
             @click="go(item.name)"
           >
-            <span class="nav-icon">{{ item.icon }}</span
-            ><span>{{ ui(item.name) }}</span
+            <span class="nav-icon"><SiteIcon :name="item.icon" /></span
+            ><span>{{ navLabel(item.name) }}</span
             >
-          </button></template
-        >
+          </button></details>
       </nav>
-      <div class="sidebar-bottom">
-        <button class="support-link" @click="toast('帮助服务尚未连接。')">
-          ◌ <span>{{ ui("帮助与反馈") }}</span><span class="external">↗</span>
-        </button>
-        <div class="profile">
-          <div class="profile-avatar">{{ account.id.slice(0, 1).toUpperCase() }}</div>
-          <span class="profile-name"
-            ><b>{{ account.id }}</b
-            ><small>{{ account.super_admin ? ui("超级管理员") : ui("管理员") }}</small></span
-          ><button
-            class="dots"
-            :aria-label="ui('退出登录')"
-            @click="logout"
-          > {{ ui("退出") }}</button
-          >
-        </div>
-      </div>
-    </aside>
+    </template>
 
-    <main class="main-shell">
+    <template #main>
       <header class="topbar">
         <div class="breadcrumbs">
-          <span>{{ ui("运营控制台") }}</span><span class="crumb-slash">/</span
-          ><b>{{ ui(page) }}</b
-          ><span class="prototype-badge">{{ ui("品牌后台") }}</span>
+          <span>{{ contextBrand?.name ?? t('admin.copy.6bf26efc') }}</span><span class="crumb-slash">/</span
+          ><b>{{ navLabel(page) }}</b
+          >
         </div>
         <div class="top-actions">
-          <LanguageSwitcher data-testid="admin-language" :model-value="locale" :label="t('语言', 'Language')"
-            :options="availableLocales.map(code => ({ code, label: code === 'en' ? 'English' : '简体中文' }))"
+          <LanguageSwitcher data-testid="admin-language" :model-value="locale" :label="t('admin.copy.65749d82')"
+            :options="availableLocales.map(code => ({ code, label: nativeLocaleName(code) }))"
             @update:model-value="setLocale" />
-          <label class="search-box"
-            ><span>⌕</span
-            ><input
-              v-model="pageSearch"
-              list="admin-page-options"
-              :placeholder="t('查找管理页面', 'Find an admin page')"
-              :aria-label="t('查找管理页面', 'Find an admin page')"
-              @change="openSearchedPage"
-              @keydown.enter.prevent="openSearchedPage"
-              @keydown.esc="pageSearch = ''"
-            />
-            <datalist id="admin-page-options">
-              <option v-for="item in visibleNav" :key="item.name" :value="ui(item.name)" />
-            </datalist></label
-          ><button
+          <button
             class="icon-button"
-            :aria-label="ui('通知')"
+            :aria-label="t('admin.copy.e118a5cc')"
             @click="go('通知投递')"
           >
-            ♧</button
+            <SiteIcon name="bell" /></button
           ><span class="top-divider"></span
-          ><button class="help-button" @click="toast('帮助服务尚未连接。')"> {{ ui("帮助中心 ↗") }} </button><div class="account-menu" tabindex="0"><button class="account-trigger" type="button"><span class="account-avatar">{{ account.id.slice(0, 1).toUpperCase() }}</span><span>{{ account.id }}</span><span aria-hidden="true">⌄</span></button><div class="account-popover" role="menu"><strong>{{ account.id }}</strong><span>{{ ui("管理员") }}</span><button type="button" role="menuitem">{{ ui("个人信息") }}</button><button type="button" role="menuitem">{{ ui("修改密码") }}</button><button type="button" role="menuitem" class="popover-logout" @click="logout">{{ ui("退出登录") }}</button></div></div>
+          ><AccountMenu :username="account.username || t('association.unnamed')"><button type="button" role="menuitem" @click="accountProfileOpen = true">{{ t('admin.copy.55de09a4') }}</button><button type="button" role="menuitem" @click="changePasswordOpen = true">{{ t('admin.copy.14ce8ba8') }}</button><button v-write-guard="logoutBusy" type="button" role="menuitem" class="popover-logout" @click="withGlobalLoading(logout)">{{ t('admin.copy.6824d914') }}</button></AccountMenu>
         </div>
       </header>
-      <div v-if="locale === 'en'" class="admin-locale-coverage" role="status">
-        {{ t("部分功能面板来自独立模块，可能仍显示中文。", "Some feature panels are provided by separate modules and may still appear in Chinese.") }}
-      </div>
-      <div class="context-strip" :class="contextState">
-        <span class="context-indicator"></span
-        ><template v-if="contextState === 'connected' && contextBrand"
-          ><b>{{ ui("后端品牌上下文") }}</b
-          ><span>{{ contextBrand.name }} · {{ contextBrand.code }}</span
-          ><span>{{ contextBrand.status }}</span
-          ><span>{{ contextBrand.default_locale }}</span
-          ><span>{{ contextBrand.timezone }}</span
-          ><span>{{ ui("配置版本") }} {{ contextBrand.config_version }}</span></template
-        ><template v-else-if="contextState === 'loading'"
-          ><b>{{ ui("后端品牌上下文") }}</b
-          ><span>{{ ui("正在读取 GET /api/v1/context") }}</span></template
-        ><template v-else-if="account && !authLoading && !authError"
-          ><b>{{ ui("平台品牌上下文") }}</b
-          ><span>{{ ui("当前入口没有可用的公开用户品牌上下文；后台管理认证独立，不受影响。请选择需要管理的品牌。") }}</span></template
-        >
-      </div>
-      <div class="directory-brand-bar">
-        <span>{{ ui("真实后台品牌") }}</span
-        ><select
-          :value="selectedBrandId"
-          :aria-label="ui('选择真实后台品牌')"
-          @change="selectBrand(($event.target as HTMLSelectElement).value)"
-        >
-          <option value="" disabled>{{ ui("请选择品牌") }}</option>
-          <option v-for="item in adminBrands" :key="item.id" :value="item.id">
-            {{ item.name }} · {{ item.code }}
-          </option></select
-        ><small v-if="selectedBrandId">X-Brand-ID: {{ selectedBrandId }}</small
-        ><button class="text-button" @click="logout">{{ ui("退出登录") }}</button>
-      </div>
-      <div v-if="notice" class="toast" role="status">✓ &nbsp;{{ t(notice) }}</div>
-
-      <section v-if="page === '工作台'" class="page-content">
-        <OperationsWorkbench
-          v-if="account && selectedBrandId"
-          :key="account.id + ':' + selectedBrandId"
-          :account="account"
-          :brand-id="selectedBrandId"
-          @session-invalid="clearAdminData"
-          @navigate="navigateWorkbench"
-        />
-        <article v-else class="panel directory-state">
-          <h1>{{ ui("运营工作台") }}</h1>
-          <p v-if="authLoading">{{ ui("正在检查管理员登录状态…") }}</p>
-          <template v-else-if="!account">
-            <p>{{ ui("请先登录后台账号查看运营工作台。") }}</p>
-            <button class="button button-primary" @click="go('用户和成员')">{{ ui("进入管理员登录") }}</button>
-          </template>
-          <p v-else>{{ adminBrands.length ? ui("请先选择真实后台品牌查看运营工作台。") : ui("当前账号未返回可管理品牌。") }}</p>
+      <section v-if="!selectedBrandId" v-global-loading="brandScopeLoading" class="page-content console-brand-scope">
+        <article v-if="!brandScopeLoading" class="panel directory-state" role="alert">
+          <h1>{{ t('admin.console.brandUnavailable') }}</h1>
+          <p>{{ authError ? display(authError) : contextState === 'unavailable' ? t('admin.console.brandContextFailed') : t('admin.console.brandUnauthorized') }}</p>
+          <button type="button" v-refresh-button="t('admin.copy.855b9442')" class="button button-secondary" @click="withGlobalLoading(retryBrandScope)">{{ t('admin.copy.855b9442') }}</button>
         </article>
       </section>
+      <div v-if="notice" class="toast" role="status"><SiteIcon name="check" /> {{ display(notice) }}</div>
 
-      <section v-else-if="page === '风控与合规'" class="page-content">
-        <CompliancePolicy v-if="account && selectedBrandId" :key="'compliance:' + account.id + ':' + selectedBrandId" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
-        <article v-else class="panel directory-state"><h2>{{ ui("选择品牌") }}</h2><p>{{ account ? ui("请先选择真实品牌。") : ui("请先登录后台账号并选择真实品牌。") }}</p></article>
+      <template v-if="selectedBrandId">
+      <section v-if="page === '首页'" class="page-content">
+        <OverviewPanel v-if="account" :key="account.id + ':' + selectedBrandId" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
       </section>
-      <section v-else-if="page === '品牌和域名'" class="page-content">
-        <AuthSettings
-          v-if="account && selectedBrandId"
-          :key="selectedBrandId"
-          :account="account"
-          :brand-id="selectedBrandId"
-          @session-invalid="clearAdminData"
-        />
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow">PLATFORM / BRAND CONFIG</div>
-              <h1>{{ ui("品牌和域名") }}</h1>
-              <p>{{ ui("真实品牌列表、运行状态、展示与域名绑定") }}</p>
-            </div>
-          </div>
+      <section v-else-if="page === '品牌设置'" class="page-content">
+        <div class="page-heading"><h1>{{ t('admin.settings.title') }}</h1></div>
+        <nav class="console-tabs" :aria-label="t('admin.settings.title')">
+          <button v-for="tab in brandSettingsTabs" :key="tab.id" type="button" :class="{ selected: brandSettingsView === tab.id }" :aria-current="brandSettingsView === tab.id ? 'page' : undefined" @click="brandSettingsView = tab.id">{{ tab.label }}</button>
+        </nav>
           <BrandOperation
-            v-if="selectedBrandId"
+            v-if="selectedBrandId && brandSettingsView === 'operation'"
             :key="`${account.id}:${selectedBrandId}`"
             :account="account"
             :brand-id="selectedBrandId"
@@ -875,32 +804,13 @@ const changeMemberPage = async (direction: -1 | 1) => {
             @session-invalid="clearAdminData"
             @changed="onBrandOperationChanged"
           />
-          <article v-else class="panel brand-operation-empty">
-            <h2>{{ ui("选择一个品牌") }}</h2>
-            <p>{{ ui("选择下方真实品牌后，可查看其运行状态与操作记录。") }}</p>
+          <article v-if="!selectedBrandId" class="panel brand-operation-empty">
+            <h2>{{ t('admin.copy.93b5af0f') }}</h2>
+            <p>{{ t('admin.copy.8f6f2f3a') }}</p>
           </article>
-          <BrandPresentation v-if="selectedBrandId" :key="`${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" @loaded="acceptPresentation"/>
-          <BrandDomains v-if="selectedBrandId" :key="`domains:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData"/>
-          <article class="panel brand-operation-brands">
-            <div class="panel-header">
-              <div><h2>{{ ui("真实品牌") }}</h2><p>{{ ui("来自管理员品牌接口") }}</p></div>
-              <button class="button button-secondary" @click="loadBrands">{{ ui("刷新列表") }}</button>
-            </div>
-            <p class="brand-operation-unavailable">{{ ui("域名绑定不配置 DNS、证书或重定向；展示仅支持固定预设与中英文文案，不支持任意 CSS、HTML 或上传素材。") }}</p>
-            <p v-if="authLoading" class="directory-state">{{ ui("正在读取品牌…") }}</p>
-            <p v-else-if="authError" class="directory-state" role="alert">{{ t(authError) }}</p>
-            <p v-else-if="!adminBrands.length" class="directory-state">{{ ui("当前账号未返回可管理品牌。") }}</p>
-            <ul v-else class="brand-operation-list">
-              <li v-for="item in adminBrands" :key="item.id">
-                <div class="brand-operation-list__identity">
-                  <span class="brand-operation-list__mark" aria-hidden="true">{{ item.name.slice(0, 1) || ui("品") }}</span>
-                  <span><strong>{{ item.name }}</strong><small>{{ item.code }} · {{ item.id }}</small></span>
-                </div>
-                <span class="badge" :class="item.status === 'active' ? 'badge-success' : 'badge-neutral'">{{ item.status === 'active' ? ui("运行中") : item.status === 'paused' ? ui("已暂停") : item.status === 'disabled' ? ui("已停用") : item.status }}</span>
-                <button class="text-button" type="button" :aria-pressed="selectedBrandId === item.id" @click="selectBrand(item.id)">{{ selectedBrandId === item.id ? ui("当前品牌") : ui("查看运行状态 →") }}</button>
-              </li>
-            </ul>
-          </article>
+          <BrandPresentation v-if="selectedBrandId && brandSettingsView === 'presentation'" :key="`${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" @loaded="acceptPresentation"/>
+          <BrandDomains v-if="selectedBrandId && brandSettingsView === 'domains'" :key="`domains:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData"/>
+
       </section>
 
       <section
@@ -909,243 +819,89 @@ const changeMemberPage = async (direction: -1 | 1) => {
       >
         <div class="page-heading">
           <div>
-            <div class="eyebrow">MEMBERS / LIVE DIRECTORY</div>
-            <h1>{{ ui("用户和成员") }}</h1>
-            <p> {{ ui("此页显示真实成员；账号权限、积分账本、认证设置和投注已接入。") }} </p>
+            <h1>{{ t('admin.nav.users') }}</h1>
           </div>
-          <span v-if="account" class="live-pill"
-            >{{ ui("已登录 ·") }} {{ account.id }}</span
-          >
+          <div class="console-page-actions">
+
+          <button v-if="hasPermission('user.create.brand')" type="button" class="button button-primary" :aria-expanded="memberCreateOpen" aria-controls="member-create-form" @click="memberCreateOpen = !memberCreateOpen"><SiteIcon :name="memberCreateOpen ? 'close' : 'plus'" />{{ t('admin.copy.40acb767') }}</button>
+          </div>
         </div>
           <div v-if="authError" class="directory-error" role="alert">
-            {{ t(authError) }}
+            {{ display(authError) }}
           </div>
-          <div v-if="!selectedBrandId" class="panel directory-state">
-            <b>{{ ui("请选择真实品牌") }}</b
-            ><span
-              >{{ ui("成员请求不会使用后端默认品牌。请从侧栏品牌选择器中选择一个有权访问的品牌。") }}</span
-            ><button class="button button-secondary" @click="brandMenu = true"> {{ ui("选择品牌") }} </button>
-          </div>
-          <template v-else>
-            <MemberProvision
-              :key="selectedBrandId"
-              :account="account"
-              :brand-id="selectedBrandId"
-              @created="loadMembers"
-              @session-invalid="clearAdminData"
-            />
-            <div class="directory-toolbar">
-              <div>
-                <span>{{ ui("当前真实品牌") }}</span><b>{{ brand }}</b
-                ><small>{{ selectedBrandId }}</small>
-              </div>
-              <button
-                class="button button-secondary"
-                :disabled="membersLoading"
-                @click="loadMembers"
-              >
-                {{ membersLoading ? ui("读取中…") : ui("刷新成员") }}
-              </button>
-            </div>
+          <template v-if="selectedBrandId">
+            <DetailModal v-if="selectedBrandId" id="member-create-form" :open="memberCreateOpen" :title="t('admin.copy.40acb767')" :close-label="t('association.close')" @close="memberCreateOpen = false">
+              <MemberProvision :key="selectedBrandId" :account="account" :brand-id="selectedBrandId" @created="withGlobalLoading(loadMembers)" @session-invalid="clearAdminData" />
+            </DetailModal>
             <div v-if="membersError" class="directory-error" role="alert">
-              {{ t(membersError) }}
+              {{ display(membersError) }}
             </div>
-            <article class="panel">
-              <div class="table-toolbar">
-                <div class="filter-tabs">
-                  <span class="selected"
-                    >{{ ui("品牌成员") }} <span>{{ members.length }} {{ ui("条本页") }}</span></span
-                  >
-                </div>
-                <div class="toolbar-controls">
-                  <input
-                    class="field search-field"
-                    :placeholder="ui('搜索用户名 / 手机号 / ID')"
-                    v-model="search"
-                    :aria-label="ui('搜索成员')"
-                    aria-describedby="member-search-scope"
-                  />
-                  <button v-if="search" type="button" class="button button-secondary" @click="search = ''">{{ t('清除筛选', 'Clear filter') }}</button>
-                </div>
-              </div>
-              <p id="member-search-scope" class="member-search-note">{{ t('仅筛选当前已加载页面的成员；可翻页查看其他成员。', 'Filters members on the currently loaded page only. Use pagination to view other members.') }}</p>
-              <div v-if="membersLoading" class="directory-state"> {{ ui("正在读取品牌成员…") }} </div>
-              <div v-else-if="!members.length" class="directory-state"> {{ ui("该品牌当前没有可显示的成员。") }} </div>
-              <div v-else-if="!filteredMembers.length" class="directory-state" role="status">{{ t('本页没有匹配的成员，请修改或清除筛选。', 'No matching members on this page. Change or clear the filter.') }}</div>
-              <div v-else class="table-wrap">
-                <table class="member-directory-table">
-                  <thead>
-                    <tr>
-                      <th>{{ ui("成员") }}</th>
-                      <th>{{ ui("成员 ID") }}</th>
-                      <th>{{ ui("手机号") }}</th>
-                      <th>{{ ui("状态") }}</th>
-                      <th>{{ ui("加入时间") }}</th>
-                      <th>{{ ui("备注") }}</th>
-                      <th>{{ ui("标签") }}</th>
-                      <th>{{ ui("操作") }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="m in filteredMembers"
-                      :key="m.id"
-                    >
-                      <td>
-                        <span class="member-cell"
-                          ><i>{{
-                            (m.display_name || m.username || "?").slice(0, 1)
-                          }}</i
-                          ><span
-                            ><b>{{ m.display_name || m.username }}</b
-                            ><small
-                              >@{{ m.username }} · {{ m.global_user_id }}</small
-                            ></span
-                          ></span
-                        >
-                      </td>
-                      <td class="mono">{{ m.id }}</td>
-                      <td>{{ m.phone || "—" }}</td>
-                      <td>
-                        <span class="badge" :class="statusClass(m.status)">{{
-                          ui(statusLabel[m.status])
-                        }}</span>
-                      </td>
-                      <td>{{ new Date(m.joined_at).toLocaleString() }}</td>
-                      <td class="member-notes">{{ m.notes || "—" }}</td>
-                      <td>
-                        <span
-                          v-for="tag in m.tags"
-                          :key="tag"
-                          class="member-tag"
-                          >{{ tag }}</span
-                        ><span v-if="!m.tags.length">—</span>
-                      </td>
-                      <td>
-                        <div class="member-actions">
-                          <button
-                            class="text-button"
-                            :disabled="!canEditUsers"
-                            :title="
-                              account.super_admin
-                                ? '超级管理员不可编辑成员状态或备注'
-                                : !canEditUsers
-                                  ? '缺少 user.write.brand 权限'
-                                  : ''
-                            "
-                            @click="openEdit(m)"
-                          > {{ ui("编辑") }}</button
-                          ><button v-if="canViewMemberWallet" class="text-button" @click="openMemberWallet(m)">{{ t('查看积分', 'View points') }}</button
-                          ><button
-                            class="text-button"
-                            :disabled="!canKickUsers"
-                            :title="
-                              account.super_admin
-                                ? '超级管理员不可踢出成员'
-                                : !canKickUsers
-                                  ? '缺少 user.kick.brand 权限'
-                                  : ''
-                            "
-                            @click="openKick(m)"
-                          > {{ ui("踢出") }}</button
-                          ><button
-                            class="text-button"
-                            :disabled="!canResetPasswords"
-                            :title="
-                              !canResetPasswords
-                                ? '缺少 user.password_reset.brand 权限'
-                                : ''
-                            "
-                            @click="openReset(m)"
-                          > {{ ui("重置密码") }} </button>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div class="pagination">
-                <span
-                  >{{ ui("第") }} {{ Math.floor(memberOffset / 100) + 1 }} {{ ui("页 · 每页最多 100 条") }}</span
-                ><button
-                  :disabled="memberOffset === 0 || membersLoading"
-                  @click="changeMemberPage(-1)"
-                > {{ ui("上一页") }}</button
-                ><button
-                  :disabled="members.length < 100 || membersLoading"
-                  @click="changeMemberPage(1)"
-                > {{ ui("下一页") }} </button>
-              </div>
+            <article class="panel console-panel console-stack">
+              <DirectorySearch v-model="search" :label="t('admin.members.search')" :query-label="t('admin.members.query')" :clear-label="t('admin.copy.b089734d')" :busy="membersLoading" :active="Boolean(search||memberOnlineFilter)" :search="searchMembers" :clear="clearMemberSearch"><select v-model="memberOnlineFilter" :aria-label="t('admin.members.onlineStatus')"><option value="">{{t('admin.members.allOnline')}}</option><option value="true">{{t('admin.members.online')}}</option><option value="false">{{t('admin.members.offline')}}</option></select></DirectorySearch>
+              <p v-if="!members.length" class="directory-state empty-state">{{ t('admin.copy.ef8be9d6') }}</p>
+              <ManagementTable v-else table-class="member-directory-table" :entries="members" :columns="[{key:'account',label:t('admin.copy.851c6121')},{key:'online',label:t('admin.members.onlineStatus')},{key:'points',label:t('admin.members.points'),cellClass:'member-points'},{key:'phone',label:t('admin.copy.d794da3d')},{key:'status',label:t('admin.copy.cf6d9c6d')},{key:'joined',label:t('admin.copy.ac08e5ed')},{key:'notes',label:t('admin.copy.fd2d2c8b'),cellClass:'member-notes'},{key:'tags',label:t('admin.copy.b96f43c6')},{key:'actions',label:t('admin.copy.d21fcbef')}]" :empty="false" :empty-label="t('admin.copy.ef8be9d6')">
+                <template #account="{entry:m}"><button type="button" class="text-button member-account" @click="memberDetail=m">{{m.username || m.phone || t('association.unnamed')}}</button></template>
+                <template #online="{entry:m}"><span class="member-presence" :class="{'is-online':m.online}"><i aria-hidden="true" />{{t(m.online?'admin.members.online':'admin.members.offline')}}</span></template>
+                <template #points="{entry:m}">{{m.display_points===null?t('admin.members.pointsRestricted'):m.display_points}}</template>
+                <template #phone="{entry:m}">{{m.phone || '—'}}</template>
+                <template #status="{entry:m}"><span class="badge" :class="statusClass(m.status)">{{t(adminKey(statusLabel[m.status]))}}</span></template>
+                <template #joined="{entry:m}">{{formatDisplayDateTime(m.joined_at,displayLocale)}}</template>
+                <template #notes="{entry:m}">{{m.notes || '—'}}</template>
+                <template #tags="{entry:m}"><span v-for="tag in m.tags" :key="tag" class="member-tag">{{tag}}</span><span v-if="!m.tags.length">—</span></template>
+                <template #actions="{entry:m}"><MemberActionsMenu :id="`member-actions-${m.id}`" :label="t('admin.members.actions',{account:m.username || m.phone})"><button type="button" role="menuitem" :disabled="!canEditUsers && !canResetPasswords" @click="openEdit(m)">{{t('admin.copy.24dfbf6c')}}</button><button v-if="m.online && canKickUsers" type="button" role="menuitem" @click="openKick(m)">{{t('admin.copy.d192029b')}}</button></MemberActionsMenu></template>
+              </ManagementTable>
+              <PaginationControls :summary="t('admin.members.page',{page:String(Math.floor(memberOffset/100)+1),count:String(members.length),total:membersTotal})" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.ee97c955')" :busy="membersLoading" :has-previous="memberOffset>0" :has-next="memberHasNext" :previous="()=>changeMemberPage(-1)" :next="()=>changeMemberPage(1)" />
             </article>
           </template>
       </section>
 
-      <section v-else-if="page === '代理树'" class="page-content">
-        <AgentManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
-          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
-        <CommissionPolicySettings v-if="account && selectedBrandId" :key="`commission-policy:${account.id}:${selectedBrandId}`"
-          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
-        <div v-else class="panel directory-state"><h1>{{ ui("代理管理") }}</h1>
-          <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号查看代理配置。") }}</p>
-          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">{{ ui("进入管理员登录") }}</button>
-        </div>
-      </section>
-
-      <section v-else-if="page === '加入码'" class="page-content">
-        <JoinCodeManagement v-if="account && selectedBrandId && canViewJoinCodes" :key="account.id + ':' + selectedBrandId"
-          :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
-        <div v-else class="panel directory-state"><h1>{{ ui("加入码管理") }}</h1>
-          <p>{{ !account ? ui("请先登录后台账号。") : !selectedBrandId ? ui("请先选择真实后台品牌。") : ui("当前账号没有此品牌的加入码查看权限。") }}</p>
-          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">{{ ui("进入管理员登录") }}</button>
-        </div>
+      <section v-else-if="page === '代理列表' || page === '代理设置'" class="page-content" :class="{ 'agent-settings-page': page === '代理设置' }">
+        <template v-if="account && selectedBrandId">
+          <AgentManagement :key="account.id + ':' + selectedBrandId + ':' + page + ':' + agentRulesRevision" :mode="page === '代理设置' ? 'settings' : 'directory'" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
+          <CommissionPolicySettings v-if="page === '代理设置'" :key="`commission-policy:${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" @saved="agentRulesRevision++" />
+        </template>
+        <div v-else class="panel directory-state"><h1>{{ navLabel(page) }}</h1><p>{{ account ? t('admin.copy.8d09da6f') : t('admin.copy.49ccc3b3') }}</p></div>
       </section>
 
       <section v-else-if="page === '规则配置'" class="page-content">
-        <RuleVersions
-          v-if="account && selectedBrandId"
-          :key="`rule-versions-${selectedBrandId}`"
-          :account="account"
-          :brand-id="selectedBrandId"
-          @session-invalid="clearAdminData"
-        />
-        <RuleSimulator
-          v-if="account && selectedBrandId"
-          :key="`rule-simulator-${selectedBrandId}`"
-          :account="account"
-          :brand-id="selectedBrandId"
-          @session-invalid="clearAdminData"
-        />
+        <RulesPage v-if="account && selectedBrandId" :key="`${account.id}:${selectedBrandId}`" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
         <div v-else class="panel directory-state">
-          <h2>{{ ui("真实规则模拟") }}</h2>
-          <p>{{ ui("请先登录后台并选择品牌，才能查看真实规则版本和模拟。") }}</p>
+          <h2>{{ t('admin.copy.bc4357ba') }}</h2>
+          <p>{{ t('admin.copy.6b0d5c12') }}</p>
         </div>
       </section>
 
       <section v-else-if="page === '期次和开奖'" class="page-content">
+        <nav class="console-tabs" :aria-label="t('admin.copy.051cdfc6')">
+          <button v-for="tab in periodTabs" :key="tab.id" type="button" :class="{ selected: periodView === tab.id }" :aria-current="periodView === tab.id ? 'page' : undefined" @click="periodView = tab.id">{{ tab.label }}</button>
+        </nav>
         <CorrectionManagement
-          v-if="account && selectedBrandId"
+          v-if="account && selectedBrandId && periodView === 'correction'"
           :key="`correction-${account.id}`"
           :account="account"
           :brand-id="selectedBrandId"
+          :initial-period-id="selectedOperationPeriod?.brandId === selectedBrandId ? selectedOperationPeriod.periodId : undefined"
           @session-invalid="clearAdminData"
-          @open-settlement="periodId => { correctionSettlementPeriod = { brandId:selectedBrandId,periodId,nonce:(correctionSettlementPeriod?.nonce ?? 0)+1 }; }"
+          @open-settlement="periodId => { periodView = 'settlement'; selectedOperationPeriod = { brandId:selectedBrandId,periodId,nonce:(selectedOperationPeriod?.nonce ?? 0)+1 }; }"
         />
         <SettlementManagement
-          v-if="account && selectedBrandId"
-          :key="`settlement-${account.id}-${correctionSettlementPeriod?.nonce ?? 0}`"
+          v-if="account && selectedBrandId && periodView === 'settlement'"
+          :key="`settlement-${account.id}-${selectedOperationPeriod?.nonce ?? 0}`"
           :account="account"
           :brand-id="selectedBrandId"
-          :initial-period-id="correctionSettlementPeriod?.brandId === selectedBrandId ? correctionSettlementPeriod.periodId : undefined"
+          :initial-period-id="selectedOperationPeriod?.brandId === selectedBrandId ? selectedOperationPeriod.periodId : undefined"
           @session-invalid="clearAdminData"
         />
         <PeriodCancellation
-          v-if="account && selectedBrandId"
+          v-if="account && selectedBrandId && periodView === 'cancellation'"
           :key="`period-cancel-${account.id}`"
           :account="account"
           :brand-id="selectedBrandId"
+          :initial-period-id="selectedOperationPeriod?.brandId === selectedBrandId ? selectedOperationPeriod.periodId : undefined"
           @session-invalid="clearAdminData"
         />
         <PeriodSchedules
+          v-show="periodView === 'schedules'"
           v-if="account && selectedBrandId"
           :key="`periods-${selectedBrandId}`"
           :account="account"
@@ -1153,31 +909,27 @@ const changeMemberPage = async (direction: -1 | 1) => {
           @session-invalid="clearAdminData"
         />
         <div v-else class="panel directory-state">
-          <h1>{{ ui("真实期次计划") }}</h1>
-          <p>{{ ui("请先登录后台账号并选择品牌，才能保存计划、生成和查询期次。") }}</p>
+          <h1>{{ t('admin.copy.6318b767') }}</h1>
+          <p>{{ t('admin.copy.fb856775') }}</p>
           <button
             v-if="!account"
             class="button button-primary"
             @click="go('用户和成员')"
-          > {{ ui("进入管理员登录") }} </button>
+          > {{ t('admin.copy.5fc0fd8e') }} </button>
         </div>
         <DrawManagement
+          v-show="periodView === 'draws'"
           v-if="account && selectedBrandId"
           :key="`draws-${selectedBrandId}`"
+          :active="periodView === 'draws'"
           :account="account"
           :brand-id="selectedBrandId"
+          @select-period="periodId => { if (periodId !== selectedOperationPeriod?.periodId || selectedOperationPeriod?.brandId !== selectedBrandId) selectedOperationPeriod = periodId ? { brandId:selectedBrandId,periodId,nonce:(selectedOperationPeriod?.nonce ?? 0)+1 } : null; }"
           @session-invalid="clearAdminData"
         />
       </section>
 
       <section v-else-if="page === '注单和异常'" class="page-content">
-        <BetPolicySettings
-          v-if="account && selectedBrandId"
-          :key="`bet-policy-${account.id}`"
-          :account="account"
-          :brand-id="selectedBrandId"
-          @session-invalid="clearAdminData"
-        />
         <BetOrderManagement
           v-if="account && selectedBrandId"
           :key="`bet-orders-${account.id}`"
@@ -1185,31 +937,45 @@ const changeMemberPage = async (direction: -1 | 1) => {
           :brand-id="selectedBrandId"
           @session-invalid="clearAdminData"
         />
-        <div v-else-if="account" class="panel directory-state"> {{ ui("请选择一个有权访问的品牌以查看注单。") }} </div>
-        <div v-else class="panel directory-state"> {{ ui("请先登录后台账号。投注策略和注单均从真实 API 读取，不使用演示数据。") }} <button class="button button-secondary" @click="go('用户和成员')"> {{ ui("前往登录") }} </button>
+        <div v-else-if="account" class="panel directory-state"> {{ t('admin.copy.5f930822') }} </div>
+        <div v-else class="panel directory-state"> {{ t('admin.copy.93fc2a9d') }} <button class="button button-secondary" @click="go('用户和成员')"> {{ t('admin.copy.9cb30737') }} </button>
         </div>
+        <details class="console-disclosure"><summary>{{ t('admin.console.betPolicies') }}<SiteIcon name="down" /></summary>
+        <BetPolicySettings
+          v-if="account && selectedBrandId"
+          :key="`bet-policy-${account.id}`"
+          :account="account"
+          :brand-id="selectedBrandId"
+          @session-invalid="clearAdminData"
+        />
+        </details>
       </section>
 
       <section v-else-if="page === '批量对账'" class="page-content">
         <ReconciliationManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
-        <div v-else class="panel directory-state">{{ ui("请登录并选择有钱包查看权限的品牌。") }}</div>
+        <div v-else class="panel directory-state">{{ t('admin.copy.e415d2fb') }}</div>
       </section>
 
       <section v-else-if="page === '日月归档'" class="page-content">
         <ReportArchivesManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
-        <div v-else class="panel directory-state">{{ ui("请登录并选择有归档查看权限的品牌。") }}</div>
+        <div v-else class="panel directory-state">{{ t('admin.copy.44fb2a96') }}</div>
       </section>
 
       <section v-else-if="page === '自动归档任务'" class="page-content">
         <ReportArchiveTasksManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
-        <div v-else class="panel directory-state">{{ ui("请登录并选择有归档查看权限的品牌。") }}</div>
+        <div v-else class="panel directory-state">{{ t('admin.copy.44fb2a96') }}</div>
       </section>
 
       <section v-else-if="page === '资金与账本'" class="page-content">
+        <nav class="console-tabs" :aria-label="t('admin.console.financeNavigation')">
+          <button v-for="tab in financeTabs" :key="tab.id" type="button" :class="{ selected: financeView === tab.id }" :aria-current="financeView === tab.id ? 'page' : undefined" @click="financeView = tab.id">{{ tab.label }}</button>
+        </nav>
         <WithdrawalManagement
+          v-show="financeView === 'withdrawals'"
+          :active="financeView === 'withdrawals'"
           v-if="account && selectedBrandId"
           :key="`withdrawals:${account.id}:${selectedBrandId}`"
           :account="account"
@@ -1217,14 +983,18 @@ const changeMemberPage = async (direction: -1 | 1) => {
           @session-invalid="clearAdminData"
         />
         <FinanceManagement
+          v-show="['wallet', 'recharges', 'policies'].includes(financeView)"
+          :view="financeView === 'recharges' ? 'recharges' : financeView === 'policies' ? 'policy' : 'wallet'"
           v-if="account && selectedBrandId"
           :key="selectedBrandId"
           :account="account"
           :brand-id="selectedBrandId"
           :initial-member-id="financeMemberId"
+          :initial-member-username="members.find(member => member.id === financeMemberId)?.username"
           @session-invalid="clearAdminData"
         />
         <BalanceRepair
+          v-show="financeView === 'repair'"
           v-if="account && selectedBrandId"
           :key="`repair-${selectedBrandId}`"
           :account="account"
@@ -1232,6 +1002,7 @@ const changeMemberPage = async (direction: -1 | 1) => {
           @session-invalid="clearAdminData"
         />
         <WithdrawalPolicySettings
+          v-show="financeView === 'policies'"
           v-if="account && selectedBrandId"
           :key="`withdrawal-policy-${selectedBrandId}`"
           :account="account"
@@ -1239,19 +1010,19 @@ const changeMemberPage = async (direction: -1 | 1) => {
           @session-invalid="clearAdminData"
         />
         <div v-else class="panel directory-state">
-          <h1>{{ ui("资金与账本") }}</h1>
+          <h1>{{ t('admin.copy.783ae8f1') }}</h1>
           <p>
             {{
               account
-                ? ui("请先选择真实后台品牌。")
-                : ui("请先登录后台账号，才能查看和操作真实积分。")
+                ? t('admin.copy.8d09da6f')
+                : t('admin.copy.cc1c32a0')
             }}
           </p>
           <button
             v-if="!account"
             class="button button-primary"
             @click="go('用户和成员')"
-          > {{ ui("进入管理员登录") }} </button>
+          > {{ t('admin.copy.5fc0fd8e') }} </button>
         </div>
       </section>
 
@@ -1259,50 +1030,50 @@ const changeMemberPage = async (direction: -1 | 1) => {
         <CommissionCyclesManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
         <div v-else class="panel directory-state">
-          <h1>{{ ui("佣金和奖励") }}</h1>
-          <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号查看佣金周期。") }}</p>
+          <h1>{{ t('admin.copy.5c8e261e') }}</h1>
+          <p>{{ account ? t('admin.copy.8d09da6f') : t('admin.copy.ea2574e4') }}</p>
         </div>
       </section>
 
       <section v-else-if="page === '佣金派发'" class="page-content">
         <CommissionPaymentsManagement v-if="account && selectedBrandId" :key="`commission-payments:${account.id}:${selectedBrandId}`"
           :account="account" :brand-id="selectedBrandId" :brand-status="selectedBrand?.status" @session-invalid="clearAdminData" />
-        <div v-else class="panel directory-state"><h1>{{ ui("佣金派发") }}</h1>
-          <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号查看真实佣金派发记录。") }}</p>
+        <div v-else class="panel directory-state"><h1>{{ t('admin.copy.61a05916') }}</h1>
+          <p>{{ account ? t('admin.copy.8d09da6f') : t('admin.copy.a015944d') }}</p>
         </div>
       </section>
 
       <section v-else-if="page === '佣金更正'" class="page-content">
         <CommissionCorrectionsManagement v-if="account && selectedBrandId" :key="`commission-corrections:${account.id}:${selectedBrandId}`"
           :account="account" :brand-id="selectedBrandId" :brand-status="selectedBrand?.status" @session-invalid="clearAdminData" />
-        <div v-else class="panel directory-state"><h1>{{ ui("佣金更正") }}</h1>
-          <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号查看佣金更正计划和执行。") }}</p>
+        <div v-else class="panel directory-state"><h1>{{ t('admin.copy.b095cecc') }}</h1>
+          <p>{{ account ? t('admin.copy.8d09da6f') : t('admin.copy.9e480e11') }}</p>
         </div>
       </section>
 
       <section v-else-if="page === '人工奖励'" class="page-content">
         <RewardsManagement v-if="account && selectedBrandId" :key="`rewards:${account.id}:${selectedBrandId}`"
           :account="account" :brand-id="selectedBrandId" :brand-status="selectedBrand?.status" @session-invalid="clearAdminData" />
-        <div v-else class="panel directory-state"><h1>{{ ui("人工奖励") }}</h1>
-          <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号查看人工奖励订单。") }}</p>
+        <div v-else class="panel directory-state"><h1>{{ t('admin.copy.3fecab01') }}</h1>
+          <p>{{ account ? t('admin.copy.8d09da6f') : t('admin.copy.197fd776') }}</p>
         </div>
       </section>
 
       <section v-else-if="page === '通知模板'" class="page-content">
         <NotificationTemplates v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
-        <div v-else class="panel directory-state"><h1>{{ ui("通知模板") }}</h1>
-          <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号，才能配置站内通知模板。") }}</p>
-          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">{{ ui("进入管理员登录") }}</button>
+        <div v-else class="panel directory-state"><h1>{{ t('admin.copy.e4f1dc7c') }}</h1>
+          <p>{{ account ? t('admin.copy.8d09da6f') : t('admin.copy.4436f1d3') }}</p>
+          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">{{ t('admin.copy.5fc0fd8e') }}</button>
         </div>
       </section>
 
       <section v-else-if="page === '报表和对账'" class="page-content">
         <ReportsManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
-        <div v-else class="panel directory-state"><h1>{{ ui("报表和对账") }}</h1>
-          <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号，才能查看真实运营报表。") }}</p>
-          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">{{ ui("进入管理员登录") }}</button>
+        <div v-else class="panel directory-state"><h1>{{ t('admin.copy.931e1e2b') }}</h1>
+          <p>{{ account ? t('admin.copy.8d09da6f') : t('admin.copy.d9310eab') }}</p>
+          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">{{ t('admin.copy.5fc0fd8e') }}</button>
         </div>
       </section>
 
@@ -1315,269 +1086,161 @@ const changeMemberPage = async (direction: -1 | 1) => {
           @session-invalid="clearAdminData"
         />
         <div v-else class="panel directory-state">
-          <h1>{{ ui("账号与权限") }}</h1>
+          <h1>{{ t('admin.copy.9c6ee39c') }}</h1>
           <p>
             {{
               account
-                ? ui("请先选择真实后台品牌。")
-                : ui("请先登录后台账号，才能管理真实角色和权限。")
+                ? t('admin.copy.8d09da6f')
+                : t('admin.copy.d9c0555a')
             }}
           </p>
           <button
             v-if="!account"
             class="button button-primary"
             @click="go('用户和成员')"
-          > {{ ui("进入管理员登录") }} </button>
+          > {{ t('admin.copy.5fc0fd8e') }} </button>
         </div>
       </section>
 
       <section v-else-if="page === '通知投递'" class="page-content">
         <NotificationDeliveries v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId"
           :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
-        <div v-else class="panel directory-state"><h1>{{ ui("通知投递") }}</h1>
-          <p>{{ account ? ui("请先选择真实后台品牌。") : ui("请先登录后台账号，才能查看真实投递记录。") }}</p>
-          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">{{ ui("进入管理员登录") }}</button>
+        <div v-else class="panel directory-state"><h1>{{ t('admin.copy.63871b72') }}</h1>
+          <p>{{ account ? t('admin.copy.8d09da6f') : t('admin.copy.9007bb20') }}</p>
+          <button v-if="!account" class="button button-primary" @click="go('用户和成员')">{{ t('admin.copy.5fc0fd8e') }}</button>
         </div>
       </section>
 
       <section v-else class="page-content">
         <AuditManagement v-if="account && selectedBrandId" :key="account.id + ':' + selectedBrandId" :account="account" :brand-id="selectedBrandId" @session-invalid="clearAdminData" />
-        <div v-else-if="account" class="panel directory-state"><h1>{{ ui("审计日志") }}</h1><p>{{ ui("请先从侧栏选择品牌；审计请求始终携带明确的 X-Brand-ID。") }}</p></div>
+        <div v-else-if="account" class="panel directory-state"><h1>{{ t('admin.copy.315a9366') }}</h1><p>{{ t('admin.copy.f82425eb') }}</p></div>
       </section>
 
-      <footer v-if="page !== '加入码' && page !== '工作台'" class="page-footer">
-        <span>{{ brand }} {{ ui("运营控制台") }} <b>·</b> {{ ui("内部积分，未接入真实支付") }}</span
-        ><span>{{
-          page === "用户和成员"
-              ? ui("成员创建与管理为真实操作；投注已接入。")
-            : page === "代理树"
-              ? t("真实代理配置与历史记录；佣金核算和独立派发后台已接入，派发运行开关默认关闭。", "Live agent settings and history; commission calculations and the separate payout console are connected, with its runtime switch off by default.")
-            : page === "报表和对账"
-              ? ui("真实注单结果及账本流水；汇总余额不是完整逐账户对账证明。")
-            : page === "通知投递"
-              ? ui("真实站内通知投递记录；外部发送渠道尚未接入。")
-            : page === "通知模板"
-              ? ui("真实版本化站内通知模板；已生成消息保留原文案，不触发新通知或资金变化。")
-            : page === "审计日志"
-              ? ui("审计日志读取当前品牌的真实后台记录。")
-            : page === "账号与权限"
-              ? ui("账号和角色权限按当前品牌权限执行真实后台变更。")
-            : page === "品牌和域名"
-              ? ui("认证设置、品牌展示和域名绑定为真实配置；积分为站内内部积分，不接入外部支付。")
-            : page === "资金与账本"
-              ? ui("充值、冻结、调整和账本是后台操作；资金使用站内内部积分，不接入外部支付。提现资格和状态流程已接入。")
-            : ui("页面范围以各模块状态为准；积分为站内内部积分，不接入外部支付。")
-        }}</span>
-      </footer>
-      <div
-        v-if="editTarget"
-        class="modal-backdrop"
-        @click.self="editTarget = null"
-      >
-        <section
-          class="modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="member-edit-title"
-        >
-          <div class="modal-heading">
-            <div>
-              <span class="eyebrow">REAL MEMBER · {{ selectedBrandId }}</span>
-              <h2 id="member-edit-title">{{ ui("编辑成员状态和备注") }}</h2>
-            </div>
-            <button
-              class="modal-close"
-              :aria-label="ui('关闭')"
-              @click="editTarget = null"
-            >
-              ×
-            </button>
-          </div>
-          <div class="modal-summary">
-            <div>
-              <small>{{ ui("成员") }}</small
-              ><b>{{ editTarget.display_name || editTarget.username }}</b>
-            </div>
-            <div>
-              <small>{{ ui("用户 ID") }}</small><b>{{ editTarget.global_user_id }}</b>
-            </div>
-          </div>
+      </template>
+      <DetailModal v-if="memberDetail && account && selectedBrandId" :title="t('admin.members.details')" :close-label="t('association.close')" @close="memberDetail = null">
+        <dl class="confirm-list member-details">
+          <div><dt>{{ t('admin.copy.851c6121') }}</dt><dd>{{ memberDetail.username || memberDetail.phone || t('association.unnamed') }}</dd></div>
+          <div><dt>{{ t('admin.copy.b60e278d') }}</dt><dd>{{ memberDetail.display_name || '—' }}</dd></div>
+          <div><dt>{{ t('admin.members.onlineStatus') }}</dt><dd>{{ t(memberDetail.online ? 'admin.members.online' : 'admin.members.offline') }}</dd></div>
+          <div><dt>{{ t('admin.members.points') }}</dt><dd>{{ memberDetail.display_points === null ? t('admin.members.pointsRestricted') : memberDetail.display_points }}</dd></div>
+          <div><dt>{{ t('admin.copy.d794da3d') }}</dt><dd>{{ memberDetail.phone || '—' }}</dd></div>
+          <div><dt>{{ t('admin.copy.cf6d9c6d') }}</dt><dd>{{ t(adminKey(statusLabel[memberDetail.status])) }}</dd></div>
+          <div><dt>{{ t('admin.copy.ac08e5ed') }}</dt><dd>{{ formatDisplayDateTime(memberDetail.joined_at, displayLocale) }}</dd></div>
+          <div><dt>{{ t('admin.copy.fd2d2c8b') }}</dt><dd>{{ memberDetail.notes || '—' }}</dd></div>
+          <div><dt>{{ t('admin.copy.b96f43c6') }}</dt><dd>{{ memberDetail.tags.join(' · ') || '—' }}</dd></div>
+        </dl>
+        <button v-if="canViewMemberWallet" type="button" class="button button-secondary" @click="openMemberWallet(memberDetail); memberDetail = null">{{ t('admin.copy.91b1cc2c') }}</button>
+        <JoinCodeManagement v-if="canViewJoinCodes" :key="account.id + ':' + selectedBrandId + ':' + memberDetail.id" :account="account" :brand-id="selectedBrandId" :member-id="memberDetail.id" kind="referral" :owner-record="memberDetail" @session-invalid="clearAdminData" />
+      </DetailModal>
+      <DetailModal v-if="editTarget" :open="!resetTarget" class="console-member-dialog" :title="t('admin.copy.0ebe57dc')" :close-label="t('association.close')" @close="!editBusy && (editTarget = null)">
+          <p>{{ editTarget.username || editTarget.phone || t('association.unnamed') }}</p>
           <label class="modal-label"
-            >{{ ui("状态") }}<select v-model="editStatus" class="field">
+            >{{ t('admin.copy.cf6d9c6d') }}<select v-model="editStatus" class="field" :disabled="!canEditUsers">
               <option
                 v-for="(label, status) in statusLabel"
                 :key="status"
                 :value="status"
               >
-                {{ ui(label) }}
+                {{ t(adminKey(label)) }}
               </option>
             </select></label
           ><label class="modal-label"
-            >{{ ui("备注") }}<textarea
-              v-model="editNotes"
+            >{{ t('admin.copy.fd2d2c8b') }}<textarea
+              v-model="editNotes" :disabled="!canEditUsers"
               rows="3"
               maxlength="2000"
             ></textarea></label
-          ><label class="modal-label"
-            >{{ ui("操作原因") }} <span>{{ ui("必填") }}</span
-            ><textarea v-model="editReason" rows="2" required></textarea>
-          </label>
+          >
+          <button v-if="canResetPasswords" type="button" class="button button-secondary" :disabled="editBusy" @click="openReset(editTarget)">{{ t('admin.copy.d1e2ba79') }}</button>
+          <p v-if="memberActionError" class="message error" role="alert">{{ display(memberActionError) }}</p>
           <div class="modal-actions">
-            <button class="button button-secondary" @click="editTarget = null"> {{ ui("取消") }}</button
+            <button class="button button-secondary" :disabled="editBusy" @click="editTarget = null"> {{ t('admin.copy.e2f391e7') }}</button
             ><button
+              v-write-guard="editBusy"
               class="button button-primary"
-              :disabled="editBusy || !editReason.trim()"
-              @click="saveMember"
+              :disabled="editBusy || !canEditUsers"
+              @click="withGlobalLoading(saveMember)"
             >
-              {{ editBusy ? ui("保存中…") : ui("保存到后台") }}
+              {{ editBusy ? t('admin.copy.2462134b') : t('admin.copy.7eeb35b3') }}
             </button>
           </div>
-        </section>
-      </div>
-      <div
-        v-if="kickTarget"
-        class="modal-backdrop"
-        @click.self="kickTarget = null"
-      >
-        <section
-          class="modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="member-kick-title"
-        >
-          <div class="modal-heading">
-            <div>
-              <span class="eyebrow">REAL MEMBER · {{ selectedBrandId }}</span>
-              <h2 id="member-kick-title">{{ ui("踢出品牌会话") }}</h2>
-            </div>
-            <button
-              class="modal-close"
-              :aria-label="ui('关闭')"
-              @click="kickTarget = null"
-            >
-              ×
-            </button>
-          </div>
-          <p class="danger-note"> {{ ui("这会调用后台踢出接口，撤销该用户在当前品牌的会话。") }} </p>
-          <label class="modal-label"
-            >{{ ui("原因") }} <span>{{ ui("必填") }}</span
-            ><textarea v-model="kickReason" rows="3" required></textarea>
-          </label>
+      </DetailModal>
+      <DetailModal v-if="kickTarget" class="console-member-dialog" :title="t('admin.copy.b7cf2b50')" :close-label="t('association.close')" @close="!kickBusy && (kickTarget = null)">
+          <p>{{ kickTarget.username || kickTarget.phone || t('association.unnamed') }}</p>
+          <p class="danger-note"> {{ t('admin.copy.cf1837eb') }} </p>
+
+          <p v-if="memberActionError" class="message error" role="alert">{{ display(memberActionError) }}</p>
           <div class="modal-actions">
-            <button class="button button-secondary" @click="kickTarget = null"> {{ ui("取消") }}</button
+            <button class="button button-secondary" :disabled="kickBusy" @click="kickTarget = null"> {{ t('admin.copy.e2f391e7') }}</button
             ><button
+              v-write-guard="kickBusy"
               class="button button-danger"
-              :disabled="kickBusy || !kickReason.trim()"
-              @click="kickMember"
+              :disabled="kickBusy "
+              @click="withGlobalLoading(kickMember)"
             >
-              {{ kickBusy ? ui("处理中…") : ui("确认踢出") }}
+              {{ kickBusy ? t('admin.copy.57f408ff') : t('admin.copy.6f261b8f') }}
             </button>
           </div>
-        </section>
-      </div>
-      <div
-        v-if="resetTarget"
-        class="modal-backdrop"
-        @click.self="resetTarget = null"
-      >
-        <section
-          class="modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="member-reset-title"
-        >
-          <div class="modal-heading">
-            <div>
-              <span class="eyebrow">GLOBAL PASSWORD · HIGH IMPACT</span>
-              <h2 id="member-reset-title">{{ ui("重置全局密码") }}</h2>
-            </div>
-            <button
-              class="modal-close"
-              :aria-label="ui('关闭')"
-              @click="resetTarget = null"
-            >
-              ×
-            </button>
-          </div>
-          <div class="danger-note"> {{ ui("此密码属于全局用户，将影响该用户在所有品牌的登录，并撤销其全部会话。后台要求你对该用户加入的每个品牌都有密码重置权限，否则拒绝操作。") }} </div>
-          <div class="modal-summary">
-            <div>
-              <small>{{ ui("成员") }}</small
-              ><b>{{ resetTarget.display_name || resetTarget.username }}</b>
-            </div>
-            <div>
-              <small>{{ ui("全局用户 ID") }}</small><b>{{ resetTarget.global_user_id }}</b>
-            </div>
-          </div>
+      </DetailModal>
+      <DetailModal v-if="resetTarget" class="console-member-dialog" :title="t('admin.copy.c608f380')" :close-label="t('association.close')" @close="!resetBusy && (resetTarget = null)">
+          <p>{{ resetTarget.username || resetTarget.phone || t('association.unnamed') }}</p>
+          <div class="danger-note"> {{ t('admin.copy.b042a9e3') }} </div>
           <label class="modal-label"
-            >{{ ui("新密码") }} <span>{{ ui("必填") }}</span
+            >{{ t('admin.copy.6b88b89d') }} <span>{{ t('admin.copy.2ed0ac9e') }}</span
             ><input
               v-model="resetPasswordValue"
               class="field"
               type="password"
               autocomplete="new-password"
               required /></label
-          ><label class="modal-label"
-            >{{ ui("重置原因") }} <span>{{ ui("必填") }}</span
-            ><textarea
-              v-model="resetReason"
-              rows="2"
-              required
-            ></textarea></label
           ><label class="impact-confirm"
             ><input
               v-model="resetImpactConfirmed"
               type="checkbox"
-            />{{ ui("我确认此重置影响该全局账号在所有品牌的密码和会话。") }}</label
+            />{{ t('admin.copy.22cd3a6c') }}</label
           >
+          <p v-if="memberActionError" class="message error" role="alert">{{ display(memberActionError) }}</p>
           <div class="modal-actions">
-            <button class="button button-secondary" @click="resetTarget = null"> {{ ui("取消") }}</button
+            <button class="button button-secondary" :disabled="resetBusy" @click="resetTarget = null"> {{ t('admin.copy.e2f391e7') }}</button
             ><button
+              v-write-guard="resetBusy"
               class="button button-danger"
               :disabled="
                 resetBusy ||
-                !resetPasswordValue ||
-                !resetReason.trim() ||
+                !resetPasswordValue  ||
                 !resetImpactConfirmed
               "
-              @click="resetMemberPassword"
+              @click="withGlobalLoading(resetMemberPassword)"
             >
-              {{ resetBusy ? ui("处理中…") : ui("确认重置全局密码") }}
+              {{ resetBusy ? t('admin.copy.57f408ff') : t('admin.copy.db124c4e') }}
             </button>
           </div>
-        </section>
-      </div>
-    </main>
+      </DetailModal>
+    </template>
 
     <div
       v-if="mobileMore"
       class="mobile-more-backdrop"
       @click.self="mobileMore = false"
     >
-      <nav class="mobile-more-menu" :aria-label="ui('全部管理页面')">
+      <nav ref="mobileMenu" tabindex="-1" class="mobile-more-menu" :aria-label="t('admin.copy.1106fe21')">
         <div>
-          <b>{{ ui("全部管理页面") }}</b
-          ><button :aria-label="ui('关闭导航')" @click="mobileMore = false">×</button>
+          <b>{{ t('admin.copy.1106fe21') }}</b
+          ><button :aria-label="t('admin.copy.c621342b')" @click="mobileMore = false"><SiteIcon name="close" /></button>
         </div>
-        <button
-          v-for="item in visibleNav.filter(
-            (entry) =>
-              !(
-                ['工作台', '用户和成员', '期次和开奖', '资金与账本'] as Page[]
-              ).includes(entry.name),
-          )"
-          :key="item.name"
-          @click="go(item.name)"
-        >
-          <span>{{ item.icon }}</span
-          >{{ ui(item.name) }}<i>›</i>
-        </button>
+        <section class="console-mobile-group">
+          <button v-for="item in visibleNav.filter(entry => entry.group === null)" :key="item.name" type="button" :class="{ active: page === item.name }" :aria-current="page === item.name ? 'page' : undefined" @click="go(item.name)"><SiteIcon :name="item.icon" /><span>{{ navLabel(item.name) }}</span><SiteIcon name="next" /></button>
+        </section>
+        <details v-for="group in groups" :key="group" class="console-nav-group console-mobile-group" open>
+          <summary>{{ navLabel(group) }}<SiteIcon name="down" /></summary>
+          <button v-for="item in visibleNav.filter(entry => entry.group === group)" :key="item.name" type="button" :class="{ active: page === item.name }" :aria-current="page === item.name ? 'page' : undefined" @click="go(item.name)"><SiteIcon :name="item.icon" /><span>{{ navLabel(item.name) }}</span><SiteIcon name="next" /></button>
+        </details>
       </nav>
     </div>
-    <nav class="mobile-nav" :aria-label="ui('移动端主导航')">
+    <nav class="mobile-nav" :aria-label="t('admin.copy.12b204e9')">
       <button
         v-for="target in [
-          '工作台',
+          '首页',
           '用户和成员',
           '期次和开奖',
           '资金与账本',
@@ -1586,51 +1249,22 @@ const changeMemberPage = async (direction: -1 | 1) => {
         :class="{ active: page === target }"
         @click="go(target)"
       >
-        <span>{{ nav.find((item) => item.name === target)?.icon }}</span
-        ><small>{{ ui(
-          target === "用户和成员"
-            ? "用户"
-            : target === "期次和开奖"
-              ? "期次"
-              : target === "资金与账本"
-                ? "审核"
-                : target)
-        }}</small></button
+        <span><SiteIcon :name="nav.find((item) => item.name === target)!.icon" /></span
+        ><small>{{ target === "用户和成员" ? t('admin.nav.users') : target === "期次和开奖" ? t('admin.copy.ce59921f') : target === "资金与账本" ? t('admin.copy.c9a0911c') : navLabel(target) }}</small></button
       ><button
         :class="{ active: mobileMore }"
+        :aria-expanded="mobileMore"
         @click="mobileMore = !mobileMore"
       >
-        <span>☰</span><small>{{ ui("更多") }}</small>
+        <span><SiteIcon name="menu" /></span><small>{{ t('admin.copy.258d2d94') }}</small>
       </button>
     </nav>
-
-  </div>
+    <AccountProfileDialog v-if="accountProfileOpen" :title="t('admin.copy.55de09a4')" :close-label="t('association.close')" :fields="[{label:t('admin.copy.851c6121'),value:account.username || t('association.unnamed')},{label:t('admin.copy.d48825ff'),value:account.super_admin ? t('admin.copy.543831fc') : t('admin.copy.d48825ff')}]" @close="accountProfileOpen=false" />
+    <ChangePasswordDialog v-if="changePasswordOpen" v-model:current="currentPassword" v-model:next="newPassword" v-model:confirmation="confirmPassword" :title="t('admin.copy.14ce8ba8')" :close-label="t('association.close')" :current-label="t('admin.copy.7e7f11f6')" :new-label="t('admin.copy.683caabd')" :confirm-label="t('admin.copy.edc96e77')" :cancel-label="t('admin.copy.e2f391e7')" :submit-label="passwordBusy ? t('admin.copy.2462134b') : t('admin.copy.e93fc68f')" :busy="passwordBusy" @close="changePasswordOpen=false" :submit="submitPasswordChange"><p v-if="passwordError" class="form-error" role="alert">{{ display(passwordError) }}</p></ChangePasswordDialog>
+  </ManagementFrame>
 </template>
 
 <style scoped>
-.login-entry { min-height: 100vh; color: #20283a; background: radial-gradient(ellipse at 50% 0, #edf2ff 0, #f7f8fc 44%, #f8f9fb 100%); }
-.login-entry__topbar { display: flex; min-height: 76px; align-items: center; justify-content: space-between; gap: 16px; padding: 14px clamp(20px, 5vw, 72px); border-bottom: 1px solid #e6eaf2; background: rgba(255,255,255,.78); }
-.login-entry__brand { display: flex; align-items: center; gap: 11px; color: inherit; text-decoration: none; }
-.login-entry__mark { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 13px; background: linear-gradient(145deg,#6879ee,#4658ce); color: white; font-size: 21px; font-weight: 800; box-shadow: 0 5px 15px #5969df30; }
-.login-entry__brand b,.login-entry__brand small { display: block; }
-.login-entry__brand b { font-size: 16px; letter-spacing: -.5px; }
-.login-entry__brand small { margin-top: 3px; color: #8992a4; font-size: 11px; letter-spacing: 1.2px; }
-.login-entry__main { display: grid; min-height: calc(100vh - 77px); align-content: center; justify-items: center; gap: 24px; padding: 42px 20px 64px; }
-.login-entry__card { width: min(100%, 430px); padding: clamp(25px, 5vw, 38px); border: 1px solid #e8ebf2; border-radius: 18px; background: white; box-shadow: 0 18px 55px rgba(37,49,88,.09); }
-.login-entry__eyebrow { color: #6372d8; font-size: 11px; font-weight: 700; letter-spacing: 1.55px; }
-.login-entry__card h1 { margin: 10px 0 8px; color: #20283a; font-size: clamp(23px, 5vw, 28px); letter-spacing: -.7px; }
-.login-entry__description { margin: 0; color: #737b8c; line-height: 1.65; }
-.login-entry__form { display: grid; gap: 17px; margin-top: 27px; }
-.login-entry__field { display: grid; gap: 8px; color: #394256; font-size: 13px; font-weight: 600; }
-.login-entry__field .field { width: 100%; min-height: 44px; }
-.login-entry__form .form-error { margin: -3px 0 0; }
-.login-entry__form .button { width: 100%; min-height: 45px; margin-top: 2px; }
-.login-entry__loading { display: grid; justify-items: center; gap: 14px; color: #687287; }
-.login-entry__loading p { margin: 0; }
-.login-entry__spinner { width: 24px; height: 24px; border: 2px solid #dfe4f1; border-top-color: #5969df; border-radius: 50%; animation: login-entry-spin .75s linear infinite; }
-.login-entry__footer { margin: 0; color: #8992a4; font-size: 12px; text-align: center; }
-@keyframes login-entry-spin { to { transform: rotate(360deg); } }
-@media (max-width: 480px) { .login-entry__topbar { min-height: 66px; padding-inline: 17px; } .login-entry__main { min-height: calc(100vh - 67px); padding: 30px 16px 44px; } .login-entry__card { border-radius: 15px; } }
 .brand-operation-empty { margin: 14px 0; padding: 18px; }
 .brand-operation-empty h2 { margin: 0 0 6px; }
 .brand-operation-empty p { margin: 0; color: #718096; }

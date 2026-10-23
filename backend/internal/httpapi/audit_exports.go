@@ -108,21 +108,24 @@ func parseAuditQuery(r *http.Request, export bool) (auditQuery, error) {
 }
 
 // AdminAuditRecord is the actual read projection shared with contract examples.
-// It contains stored, already-redacted audit facts, never live credentials.
+// ActorUsername is the human-facing administrator label; ActorID remains the
+// technical audit relationship and is not the primary display value.
+// The projection contains stored, already-redacted audit facts, never credentials.
 type AdminAuditRecord struct {
-	ID           string          `json:"id"`
-	BrandID      *string         `json:"brand_id"`
-	Action       string          `json:"action"`
-	ActorType    string          `json:"actor_type"`
-	ActorID      string          `json:"actor_id"`
-	ResourceType string          `json:"resource_type"`
-	ResourceID   string          `json:"resource_id"`
-	Reason       string          `json:"reason"`
-	RequestID    string          `json:"request_id"`
-	CreatedAt    time.Time       `json:"created_at"`
-	IP           string          `json:"ip_address"`
-	Before       json.RawMessage `json:"before_json"`
-	After        json.RawMessage `json:"after_json"`
+	ID            string          `json:"id"`
+	BrandID       *string         `json:"brand_id"`
+	Action        string          `json:"action"`
+	ActorType     string          `json:"actor_type"`
+	ActorID       string          `json:"actor_id"`
+	ActorUsername string          `json:"actor_username"`
+	ResourceType  string          `json:"resource_type"`
+	ResourceID    string          `json:"resource_id"`
+	Reason        string          `json:"reason"`
+	RequestID     string          `json:"request_id"`
+	CreatedAt     time.Time       `json:"created_at"`
+	IP            string          `json:"ip_address"`
+	Before        json.RawMessage `json:"before_json"`
+	After         json.RawMessage `json:"after_json"`
 }
 
 type auditItem = AdminAuditRecord
@@ -132,7 +135,7 @@ type auditItem = AdminAuditRecord
 // export body. Oversized records fail the whole request, never get truncated.
 func auditItems(r *http.Request, tx pgx.Tx, brand string, q auditQuery, export bool) ([]auditItem, time.Time, error) {
 	rows, e := tx.Query(r.Context(), `WITH bounds AS (SELECT statement_timestamp() AS at)
- SELECT b.at,a.id::text,a.brand_id::text,a.action,a.actor_type,coalesce(a.actor_id::text,''),a.resource_type,coalesce(a.resource_id::text,''),a.reason,a.request_id,a.created_at,coalesce(a.ip_address,''),
+ SELECT b.at,a.id::text,a.brand_id::text,a.action,a.actor_type,coalesce(a.actor_id::text,''),coalesce(actor.username,''),a.resource_type,coalesce(a.resource_id::text,''),a.reason,a.request_id,a.created_at,coalesce(a.ip_address,''),
  CASE WHEN octet_length(coalesce(a.before_json,'null'::jsonb)::text)<=$11 THEN coalesce(a.before_json,'null'::jsonb) ELSE NULL END,
  CASE WHEN octet_length(coalesce(a.after_json,'null'::jsonb)::text)<=$11 THEN coalesce(a.after_json,'null'::jsonb) ELSE NULL END
  FROM bounds b LEFT JOIN LATERAL (
@@ -141,7 +144,7 @@ func auditItems(r *http.Request, tx pgx.Tx, brand string, q auditQuery, export b
  AND created_at <= b.at AND ($4='' OR action=$4) AND ($5='' OR actor_id=NULLIF($5,'')::uuid)
  AND ($6='' OR resource_type=$6) AND ($7='' OR resource_id=NULLIF($7,'')::uuid) AND ($8='' OR request_id=$8)
  ORDER BY created_at DESC,id DESC LIMIT $9 OFFSET $10
- ) a ON TRUE ORDER BY a.created_at DESC,a.id DESC`, brand, q.From, q.To, q.Action, q.ActorID, q.ResourceType, q.ResourceID, q.RequestID, q.Limit, q.Offset, auditExportBytes)
+	 ) a ON TRUE LEFT JOIN admin_accounts actor ON actor.id=a.actor_id ORDER BY a.created_at DESC,a.id DESC`, brand, q.From, q.To, q.Action, q.ActorID, q.ResourceType, q.ResourceID, q.RequestID, q.Limit, q.Offset, auditExportBytes)
 	if e != nil {
 		return nil, time.Time{}, e
 	}
@@ -154,10 +157,10 @@ func auditItems(r *http.Request, tx pgx.Tx, brand string, q auditQuery, export b
 		// The left join's empty row supplies a snapshot even for zero matches.
 		var id *string
 		var item auditItem
-		var action, actorType, actorID, resource, resourceID, reason, requestID, ip *string
+		var action, actorType, actorID, actorUsername, resource, resourceID, reason, requestID, ip *string
 		var created *time.Time
 		var before, after []byte
-		e = rows.Scan(&snapshot, &id, &item.BrandID, &action, &actorType, &actorID, &resource, &resourceID, &reason, &requestID, &created, &ip, &before, &after)
+		e = rows.Scan(&snapshot, &id, &item.BrandID, &action, &actorType, &actorID, &actorUsername, &resource, &resourceID, &reason, &requestID, &created, &ip, &before, &after)
 		if e != nil {
 			return nil, snapshot, e
 		}
@@ -167,7 +170,7 @@ func auditItems(r *http.Request, tx pgx.Tx, brand string, q auditQuery, export b
 		if before == nil || after == nil {
 			return nil, snapshot, errAuditExportLarge
 		}
-		item.ID, item.Action, item.ActorType, item.ActorID, item.ResourceType, item.ResourceID, item.Reason, item.RequestID, item.CreatedAt, item.IP, item.Before, item.After = *id, *action, *actorType, *actorID, *resource, *resourceID, *reason, *requestID, created.UTC(), *ip, before, after
+		item.ID, item.Action, item.ActorType, item.ActorID, item.ActorUsername, item.ResourceType, item.ResourceID, item.Reason, item.RequestID, item.CreatedAt, item.IP, item.Before, item.After = *id, *action, *actorType, *actorID, *actorUsername, *resource, *resourceID, *reason, *requestID, created.UTC(), *ip, before, after
 		raw, e = json.Marshal(item)
 		if e != nil {
 			return nil, snapshot, e

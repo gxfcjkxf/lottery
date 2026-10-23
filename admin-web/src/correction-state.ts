@@ -135,7 +135,7 @@ export function correctionReasonByteLength(value: string): number {
   return new TextEncoder().encode(value).length;
 }
 export function validCorrectionReason(value: string): boolean {
-  return Boolean(value.trim()) && correctionReasonByteLength(value) <= CORRECTION_REASON_MAX_BYTES;
+  return (value === "" || value.trim().length > 0) && correctionReasonByteLength(value) <= CORRECTION_REASON_MAX_BYTES;
 }
 
 export function correctionCountsMatch(correction: {

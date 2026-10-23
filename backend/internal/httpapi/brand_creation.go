@@ -77,4 +77,35 @@ func registerBrandCreationRoutes(handle func(string, string, http.HandlerFunc), 
 		}
 		finishAdminMutation(w, r, d, actor, "", "brand.create.platform", result, err)
 	})
+	handle("DELETE", "/brands/{id}", func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := adminAccount(w, r, d)
+		if !ok {
+			return
+		}
+		if !brandregistry.DeleteAllowed(actor) {
+			rejectAdmin(w, r, d, actor, "", "brand.delete.platform")
+			return
+		}
+		if r.URL.RawQuery != "" || r.Header.Get("X-Brand-ID") != "" {
+			failure(w, r, 400, "REQUEST_INVALID", "删除品牌为平台操作，不接受品牌头或查询参数")
+			return
+		}
+		id := r.PathValue("id")
+		result, err := d.Mutations.ExecuteChecked(r.Context(), "", actor.ID, "admin.brand.delete", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(id), func(ctx context.Context, tx pgx.Tx) error { _, e := freshAdmin(ctx, tx, r, d, actor, false); return e }, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
+			err := brandregistry.Delete(ctx, tx, actor, id, r.Header.Get("X-Request-ID"), meta(r).IP)
+			switch {
+			case errors.Is(err, brandregistry.ErrInvalid):
+				return mutation.Fail(400, "REQUEST_INVALID", "删除品牌请求不正确"), nil
+			case errors.Is(err, brandregistry.ErrDenied):
+				return mutation.Fail(403, "PERMISSION_DENIED", "无平台品牌删除权限"), nil
+			case errors.Is(err, brandregistry.ErrNotFound):
+				return mutation.Fail(404, "BRAND_NOT_FOUND", "品牌不存在"), nil
+			case err != nil:
+				return mutation.Result{}, err
+			default:
+				return mutation.OK(200, map[string]string{"id": id}), nil
+			}
+		})
+		finishAdminMutation(w, r, d, actor, "", "brand.delete.platform", result, err)
+	})
 }

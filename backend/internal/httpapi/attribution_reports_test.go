@@ -83,6 +83,7 @@ func TestAttributionReportHTTPRequiresSeparateExplicitRightsAndAuditsBeforeRelea
 	platformReadURL := strings.Replace(readURL, "/api/v1/admin", "/api/v1/platform", 1)
 	platformExportURL := strings.Replace(exportURL, "/api/v1/admin", "/api/v1/platform", 1)
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	if _, err := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE permission_key LIKE 'report_attribution.%' AND role_id IN(SELECT role_id FROM admin_account_roles WHERE account_id=$1)`, f.root); err != nil {
 		t.Fatal(err)
 	}

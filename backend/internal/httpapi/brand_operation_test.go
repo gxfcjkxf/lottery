@@ -93,6 +93,7 @@ func TestBrandOperationSuperAdministratorNeedsExplicitPlatformPermission(t *test
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	mustStatus(t, f.call("GET", path, "", platformToken, other, nil), 403)
 	grantPlatformPermission(t, f, "brand_operation.view.platform")
 	initial := f.call("GET", path, "", platformToken, other, nil)
@@ -101,7 +102,7 @@ func TestBrandOperationSuperAdministratorNeedsExplicitPlatformPermission(t *test
 		Version int64 `json:"version"`
 	}
 	managedData(t, initial, &state)
-	body := map[string]any{"version": state.Version, "status": "paused", "reason": "explicit platform operator pause"}
+	body := map[string]any{"version": state.Version, "status": "paused"}
 	mustStatus(t, f.call("PATCH", path, "brand-super-no-write-01", platformToken, other, body), 403)
 	role := grantPlatformPermission(t, f, "brand_operation.write.platform")
 	paused := f.call("PATCH", path, "brand-super-write-01", platformToken, other, body)
@@ -126,8 +127,16 @@ func TestBrandOperationSuperAdministratorNeedsExplicitPlatformPermission(t *test
 		t.Fatal("replay changed operation", receipt)
 	}
 	mustStatus(t, f.call("PATCH", path, "brand-super-stale-01", platformToken, other, body), 409)
-	resume := map[string]any{"version": after.Version, "status": "active", "reason": "platform resume"}
+	resume := map[string]any{"version": after.Version, "status": "active", "reason": ""}
 	mustStatus(t, f.call("PATCH", path, "brand-super-resume-01", platformToken, other, resume), 200)
+	stop := map[string]any{"version": after.Version + 1, "status": "disabled"}
+	stopped := f.call("PATCH", path, "brand-super-stop-01", platformToken, other, stop)
+	mustStatus(t, stopped, 200)
+	managedData(t, stopped, &after)
+	if after.Status != "disabled" {
+		t.Fatal("platform stop did not stop brand", after)
+	}
+	mustStatus(t, f.call("PATCH", path, "brand-super-restart-01", platformToken, other, map[string]any{"version": after.Version, "status": "active", "reason": ""}), 200)
 	var status string
 	if err := f.pool.QueryRow(ctx, `SELECT status FROM brands WHERE id=$1`, managedBrand).Scan(&status); err != nil || status != "active" {
 		t.Fatal("platform pause affected another brand", status, err)
@@ -187,7 +196,7 @@ func TestBrandOperationHTTPHistoryFreshReplayAndIsolation(t *testing.T) {
 	mustStatus(t, f.call("GET", path+"/history?limit=2&limit=3", "", f.token, managedBrand, nil), 400)
 	mustStatus(t, f.call("GET", path+"/history?unknown=x", "", f.token, managedBrand, nil), 400)
 	mustStatus(t, f.rawCall("PATCH", path, "brand-pause-duplicate-01", f.token, managedBrand, `{"version":2,"version":2,"status":"paused","reason":"invalid"}`), 400)
-	mustStatus(t, f.call("PATCH", path, "brand-pause-disabled-01", f.token, managedBrand, map[string]any{"version": paused.Version, "status": "disabled", "reason": "not offered"}), 400)
+	mustStatus(t, f.call("PATCH", path, "brand-pause-disabled-01", f.token, managedBrand, map[string]any{"version": paused.Version, "status": "disabled", "reason": "not offered"}), 403)
 	resume := f.call("PATCH", path, "brand-resume-first-001", f.token, managedBrand, map[string]any{"version": paused.Version, "status": "active", "reason": "resume new bets"})
 	mustStatus(t, resume, 200)
 	// The old successful receipt remains the original pause, not current state.

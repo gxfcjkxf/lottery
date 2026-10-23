@@ -209,6 +209,7 @@ func TestReportArchiveTaskHTTPStrictInputsAuthorizationAndReadScopes(t *testing.
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	platformPath := strings.Replace(archiveTaskPath, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, archiveTaskRequest(f, "GET", platformPath, "", platformToken, managedBrand, "", ""), 200)
 }
@@ -223,6 +224,7 @@ func TestReportArchiveTaskHTTPReadPaginationAndRetryReceiptLifecycle(t *testing.
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	platformTaskPath := strings.Replace(archiveTaskPath, "/api/v1/admin", "/api/v1/platform", 1)
 	platformPolicyPath := strings.Replace(archivePolicyPath, "/api/v1/admin", "/api/v1/platform", 1)
 	foreign := archiveTaskRequest(f, "GET", platformTaskPath+"/"+task.ID, "", platformToken, pointsBrandB, "", "")
@@ -254,6 +256,13 @@ func TestReportArchiveTaskHTTPReadPaginationAndRetryReceiptLifecycle(t *testing.
 	if _, err := f.pool.Exec(context.Background(), `UPDATE admin_accounts SET is_super_admin=false WHERE id=$1`, f.root); err != nil {
 		t.Fatal(err)
 	}
+	login := f.call("POST", "/api/v1/admin/auth/login", "archive-task-admin-login", "", managedBrand, map[string]string{"identifier": "managed_root", "password": "root-test-password-2026"})
+	mustStatus(t, login, 200)
+	var auth struct {
+		AccessToken string `json:"access_token"`
+	}
+	managedData(t, login, &auth)
+	f.token = auth.AccessToken
 	key := "archive-task-retry-receipt-01"
 	body := archiveRetryBody(task.Version, "retry after isolated capture failure")
 	missingActor := archiveTaskRequest(f, "POST", archiveTaskPath+"/"+task.ID+"/retry", "archive-task-retry-no-actor", f.token, managedBrand, "", body)

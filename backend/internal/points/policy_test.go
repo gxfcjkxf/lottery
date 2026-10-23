@@ -43,12 +43,17 @@ func TestPolicyInputRequiresCompleteCanonicalReplacementJSON(t *testing.T) {
 	if roundTrip.Version != input.Version || roundTrip.Reason != input.Reason || roundTrip.MaxBalancePoints == nil || *roundTrip.MaxBalancePoints != *input.MaxBalancePoints || roundTrip.MaxRechargePoints != nil || roundTrip.MaxAdjustmentPoints == nil || *roundTrip.MaxAdjustmentPoints != *input.MaxAdjustmentPoints {
 		t.Fatalf("policy input round trip differs: got=%+v want=%+v", roundTrip, input)
 	}
+	for _, raw := range []string{`{"version":1,"max_balance_points":null,"max_recharge_points":null,"max_adjustment_points":null}`, `{"version":1,"max_balance_points":null,"max_recharge_points":null,"max_adjustment_points":null,"reason":""}`} {
+		var withoutReason PolicyInput
+		if err := json.Unmarshal([]byte(raw), &withoutReason); err != nil || withoutReason.Reason != "" {
+			t.Fatalf("optional audit reason rejected: %s: %v", raw, err)
+		}
+	}
 	invalid := []struct {
 		name string
 		json string
 	}{
 		{name: "missing version", json: `{"max_balance_points":null,"max_recharge_points":null,"max_adjustment_points":null,"reason":"x"}`},
-		{name: "missing reason", json: `{"version":1,"max_balance_points":null,"max_recharge_points":null,"max_adjustment_points":null}`},
 		{name: "missing balance cap", json: `{"version":1,"max_recharge_points":null,"max_adjustment_points":null,"reason":"x"}`},
 		{name: "missing recharge cap", json: `{"version":1,"max_balance_points":null,"max_adjustment_points":null,"reason":"x"}`},
 		{name: "missing adjustment cap", json: `{"version":1,"max_balance_points":null,"max_recharge_points":null,"reason":"x"}`},
@@ -236,7 +241,6 @@ func TestPolicyUpdateRejectsInvalidCapsAndReason(t *testing.T) {
 	}{
 		{name: "zero cap", input: PolicyInput{Version: 1, MaxRechargePoints: amountLimit(0), Reason: "valid reason"}},
 		{name: "negative cap", input: PolicyInput{Version: 1, MaxAdjustmentPoints: amountLimit(-1), Reason: "valid reason"}},
-		{name: "empty reason", input: PolicyInput{Version: 1, Reason: "  "}},
 		{name: "long reason", input: PolicyInput{Version: 1, Reason: string(make([]byte, 501))}},
 		{name: "invalid version", input: PolicyInput{Version: 0, Reason: "valid reason"}},
 	} {

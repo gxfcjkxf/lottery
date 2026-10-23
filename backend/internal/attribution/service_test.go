@@ -90,7 +90,11 @@ func TestJoinCodeClosedInputsAndNormalization(t *testing.T) {
 			t.Fatal(v)
 		}
 	}
-	for _, raw := range []string{`{"version":1,"status":"active","starts_at":null,"expires_at":null,"reason":"x","version":2}`, `{"version":1,"status":"active","starts_at":null,"expires_at":null}`, `{"version":1,"status":"active","starts_at":null,"expires_at":null,"reason":null}`} {
+	var optional attribution.UpdateInput
+	if e := json.Unmarshal([]byte(`{"version":1,"status":"active","starts_at":null,"expires_at":null}`), &optional); e != nil || optional.Reason != "" {
+		t.Fatal(e)
+	}
+	for _, raw := range []string{`{"version":1,"status":"active","starts_at":null,"expires_at":null,"reason":"x","version":2}`, `{"version":1,"status":"active","starts_at":null,"expires_at":null,"reason":null}`} {
 		var in attribution.UpdateInput
 		if e := json.Unmarshal([]byte(raw), &in); e == nil {
 			t.Fatal(raw)

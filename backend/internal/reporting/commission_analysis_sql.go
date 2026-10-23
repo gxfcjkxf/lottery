@@ -38,7 +38,7 @@ func commissionAnalysisSQL(group string) string {
 	summaryComplete := "NOT EXISTS(SELECT 1 FROM cohort WHERE NOT ready)"
 	return `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1), validity AS (
  SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM agent_nodes WHERE brand_id=$1 AND id=$4))
- AND ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$5))
+ AND ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM agent_accounts WHERE brand_id=$1 AND id=$5))
  AND ($6::uuid IS NULL OR EXISTS(SELECT 1 FROM commission_cycles WHERE brand_id=$1 AND id=$6)) AS valid),
  selected AS MATERIALIZED (
  SELECT c.*,coalesce(commission_payment_evidence_current($1,c.id,c.current_run_id,c.evidence_epoch),false) AS current_evidence

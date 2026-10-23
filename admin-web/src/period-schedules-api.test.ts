@@ -131,7 +131,7 @@ describe("period schedule API", () => {
     });
   });
 
-  it("validates schedule fields, canonical integer inputs, dates, weekdays and required reasons", () => {
+  it("validates schedule fields, canonical integer inputs, dates, weekdays and optional audit reasons", () => {
     expect(validateScheduleSpec(spec)).toEqual(spec);
     expect(() => validateScheduleSpec({ ...spec, mode: "cron" } as never)).toThrow();
     expect(() => validateScheduleSpec({ ...spec, timezone: "Not/AZone" })).toThrow();
@@ -163,7 +163,7 @@ describe("period schedule API", () => {
     expect(() => validateScheduleSpec({ ...interval, interval_seconds: 3600, busy_windows: Array.from({ length: 129 }, () => ({ start: "08:00:00", end: "09:00:00", interval_seconds: 3600 })) })).toThrow();
     expect(validateScheduleSpec({ ...interval, busy_windows: [] }).interval_seconds).toBe(3600);
     expect(() => buildUpdateScheduleBody(0, spec, "reason")).toThrow();
-    expect(() => buildUpdateScheduleBody(4, spec, "  ")).toThrow();
+    expect(buildUpdateScheduleBody(4, spec, "").reason).toBe("");
     expect(buildUpdateScheduleBody(4, spec, "  调整  ").reason).toBe("调整");
   });
 
@@ -296,7 +296,7 @@ describe("period schedule API", () => {
       {
         from: "2026-10-05T16:00:00.000Z",
         to: "2026-10-06T16:00:00.000Z",
-        reason: "page aggregate",
+        reason: "",
       },
       game.timezone,
       "key",

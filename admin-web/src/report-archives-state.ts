@@ -48,7 +48,7 @@ function validPeriod(kind: unknown, periodKey: unknown): boolean {
 }
 
 function validReason(value: unknown): value is string {
-  if (typeof value !== "string" || value.length === 0 || value.trim() !== value || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
+  if (typeof value !== "string" || value.trim() !== value || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff) {
@@ -63,9 +63,9 @@ function validBody(body: unknown): body is ReportArchiveCreateInput {
   if (body === null || typeof body !== "object" || Array.isArray(body)) return false;
   const value = body as Record<string, unknown>;
   const keys = Object.keys(value).sort();
-  return keys.length === 4 && keys[0] === "expected_revision" && keys[1] === "kind" && keys[2] === "period_key" && keys[3] === "reason" &&
+  return (keys.length === 3 && keys[0] === "expected_revision" && keys[1] === "kind" && keys[2] === "period_key" || keys.length === 4 && keys[0] === "expected_revision" && keys[1] === "kind" && keys[2] === "period_key" && keys[3] === "reason") &&
     validPeriod(value.kind, value.period_key) && Number.isSafeInteger(value.expected_revision) &&
-    (value.expected_revision as number) >= 0 && (value.expected_revision as number) < Number.MAX_SAFE_INTEGER && validReason(value.reason);
+    (value.expected_revision as number) >= 0 && (value.expected_revision as number) < Number.MAX_SAFE_INTEGER && (value.reason === undefined || validReason(value.reason));
 }
 
 function copyIntent(actorId: string, brandId: string, body: ReportArchiveCreateInput, key: string): ArchiveIntent {

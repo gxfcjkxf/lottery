@@ -49,6 +49,15 @@ describe("workbench SDK", () => {
     expect(Object.keys(init ?? {}).sort()).toEqual(["credentials", "headers", "method", "signal"].sort());
   });
 
+  it("accepts the current association envelope while rejecting unknown envelope fields", async () => {
+    const value = snapshot();
+    const associations = { [`brand:${brand}`]: { name: 'Example' } };
+    const wire = (extra: object) => new Response(JSON.stringify({ success: true, data: value, ...extra }), { status: 200 });
+    await expect(createWorkbenchApi(vi.fn<typeof fetch>().mockResolvedValue(wire({ associations }))).get(brand)).resolves.toEqual(value);
+    await expect(createWorkbenchApi(vi.fn<typeof fetch>().mockResolvedValue(wire({ association_error: true }))).get(brand)).resolves.toEqual(value);
+    await expect(createWorkbenchApi(vi.fn<typeof fetch>().mockResolvedValue(wire({ associations, surprise: true }))).get(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+
   it("keeps large financial values as decimal strings and permits signed ledger net only", async () => {
     const value = snapshot();
     expect(validWorkbenchSnapshot(value, brand)).toBe(true);
@@ -176,7 +185,7 @@ describe("workbench SDK", () => {
     await expect(createWorkbenchApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...snapshot(), extra: true }))).get(brand))
       .rejects.toMatchObject({ code: "INVALID_RESPONSE", status: 502 });
     await expect(createWorkbenchApi(vi.fn<typeof fetch>().mockResolvedValue(new Response("{}", { status: 503 }))).get(brand))
-      .rejects.toMatchObject({ status: 503 });
+      .rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     const abort = new DOMException("Aborted", "AbortError");
     await expect(createWorkbenchApi(vi.fn<typeof fetch>().mockRejectedValue(abort)).get(brand)).rejects.toBe(abort);
     await expect(createWorkbenchApi(vi.fn<typeof fetch>().mockRejectedValue(new Error("offline"))).get(brand))

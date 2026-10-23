@@ -1,4 +1,19 @@
 <script setup lang="ts">
+import { vWriteGuard } from "@lottery/shared";
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+import SiteIcon from "@lottery/shared/SiteIcon";
+import { vRefreshButton } from '@lottery/shared';
+const displayDate = (value: string | null | undefined) => formatDisplayDateTime(value, displayLocale.value);
+import { formatDisplayDateTime } from "@lottery/shared";
+const displayLocale = useAdminI18n().locale;
+import { vInlineValidation } from '@lottery/shared'
 import { computed, onMounted, ref, watch } from "vue";
 import type { LocalizedMessage } from "@lottery/shared";
 import type { AdminAccount } from "./admin-api";
@@ -23,14 +38,17 @@ import {
 import PointPolicySettings from "./PointPolicySettings.vue";
 import { canViewPointPolicy } from "./point-policy-api";
 import { useAdminI18n } from "./i18n";
+import { lookupAdminMember } from "./member-lookup";
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   account: AdminAccount & Partial<FinanceAccount>;
   brandId: string;
   initialMemberId?: string;
-}>();
+  initialMemberUsername?: string;
+  view?: 'wallet' | 'recharges' | 'policy';
+}>(), { view: 'wallet' });
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
-const { t, message } = useAdminI18n();
+const { t, message, display } = useAdminI18n();
 const PAGE_SIZE = 50;
 const api = createFinanceApi();
 const sources: WalletSource[] = ["recharge", "winning", "gift", "commission"];
@@ -42,26 +60,60 @@ const states: WalletState[] = [
 ];
 function sourceName(source: WalletSource) {
   return source === "recharge"
-    ? t("充值", "Recharge")
+    ? t('admin.copy.6ffe1179')
     : source === "winning"
-      ? t("中奖", "Winnings")
-      : source === "gift" ? t("赠送", "Gift") : source === "commission" ? t("佣金", "Commission") : source;
+      ? t('admin.copy.99c31497')
+      : source === "gift" ? t('admin.copy.2b8ae17c') : source === "commission" ? t('admin.copy.101e2e66') : source;
 }
 function stateName(state: WalletState) {
   return state === "available"
-    ? t("可用", "Available")
+    ? t('admin.copy.e9231c7d')
     : state === "manual_frozen"
-      ? t("人工冻结", "Manually frozen")
+      ? t('admin.copy.3817714f')
       : state === "system_frozen"
-        ? t("系统冻结", "System frozen")
-        : state === "withdrawal" ? t("提现中", "Withdrawal pending") : state;
+        ? t('admin.copy.c4073e10')
+        : state === "withdrawal" ? t('admin.copy.f56770cc') : state;
 }
-const memberId = ref(props.initialMemberId ?? "");
+const entryTypeKeys = {
+  recharge: 'admin.finance.entry.recharge',
+  freeze: 'admin.finance.entry.freeze',
+  unfreeze: 'admin.finance.entry.unfreeze',
+  adjust: 'admin.finance.entry.adjust',
+  adjustment: 'admin.finance.entry.adjustment',
+  bet: 'admin.finance.entry.bet',
+  refund: 'admin.finance.entry.refund',
+  prize: 'admin.finance.entry.prize',
+  prize_reversal: 'admin.finance.entry.prize_reversal',
+  reversal: 'admin.finance.entry.reversal',
+  reward_grant: 'admin.finance.entry.reward_grant',
+  reward_reversal: 'admin.finance.entry.reward_reversal',
+  commission: 'admin.finance.entry.commission',
+  commission_adjustment: 'admin.finance.entry.commission_adjustment',
+  commission_correction: 'admin.finance.entry.commission_correction',
+  withdrawal_reserve: 'admin.finance.entry.withdrawal_reserve',
+  withdrawal_release: 'admin.finance.entry.withdrawal_release',
+  withdrawal_paid: 'admin.finance.entry.withdrawal_paid',
+ } as const;
+function entryTypeName(type: string) {
+  if (!(type in entryTypeKeys)) return t('admin.finance.unknownEntry', { type });
+  return t(entryTypeKeys[type as keyof typeof entryTypeKeys]);
+}
+function actorName(actorType: string) {
+  return actorType === "system"
+    ? t('admin.copy.532e2e04')
+    : actorType === "user"
+      ? t('admin.copy.689b5703')
+      : t('admin.copy.37b47e95');
+}
+const memberId = ref("");
 const loadedMemberId = ref("");
+const loadedMemberUsername = ref("");
+const fullSnapshotEntryIds = ref<string[]>([]);
 const wallet = ref<Wallet | null>(null);
 const entries = ref<LedgerEntry[]>([]);
 const reconciliation = ref<Reconciliation | null>(null);
 const recharges = ref<Recharge[]>([]);
+const expandedRechargeId = ref('');
 const ledgerOffset = ref(0);
 const rechargeOffset = ref(0);
 const loading = ref(false);
@@ -154,24 +206,7 @@ const hasNextLedger = computed(() => entries.value.length === PAGE_SIZE);
 const hasNextRecharge = computed(() => recharges.value.length === PAGE_SIZE);
 
 function messageFor(cause: unknown): string | LocalizedMessage {
-  if (cause instanceof FinanceApiError) {
-    if (cause.status === 409)
-      return message(
-        "{serverError}；数据版本已变化，请刷新后重试。",
-        "{serverError} The data version changed; refresh and try again.",
-        { serverError: cause.message },
-      );
-    if (cause.status === 403)
-      return message(
-        "{serverError}（服务端权限校验仍为最终依据。）",
-        "{serverError} Server authorization remains authoritative.",
-        { serverError: cause.message },
-      );
-    return cause.message;
-  }
-  return cause instanceof Error
-    ? cause.message
-    : message("请求失败，请重试。", "Request failed. Please try again.");
+  return publicErrorMessage(cause);
 }
 function handleFailure(
   cause: unknown,
@@ -185,6 +220,9 @@ function handleFailure(
   else error.value = message;
 }
 function clearData() {
+  fullSnapshotEntryIds.value = [];
+  expandedRechargeId.value = '';
+  loadedMemberUsername.value = '';
   loadedMemberId.value = "";
   wallet.value = null;
   entries.value = [];
@@ -194,18 +232,24 @@ function clearData() {
   rechargeError.value = "";
 }
 async function inspectMember() {
-  const id = memberId.value.trim();
-  if (!id || loading.value) return;
-  if (loadedMemberId.value !== id) {
-    wallet.value = null;
-    entries.value = [];
-    reconciliation.value = null;
-    recharges.value = [];
+  const username = memberId.value.trim();
+  if (!username || loading.value) return;
+  try {
+    const id = (await lookupAdminMember(props.brandId, username)).id;
+    if (loadedMemberId.value !== id) {
+      wallet.value = null;
+      entries.value = [];
+      reconciliation.value = null;
+      recharges.value = [];
+    }
+    loadedMemberId.value = id;
+    loadedMemberUsername.value = username;
+    ledgerOffset.value = 0;
+    rechargeOffset.value = 0;
+    await reloadData();
+  } catch (cause) {
+    handleFailure(cause);
   }
-  loadedMemberId.value = id;
-  ledgerOffset.value = 0;
-  rechargeOffset.value = 0;
-  await reloadData();
 }
 async function reloadData() {
   const targetId = loadedMemberId.value;
@@ -230,9 +274,7 @@ async function reloadData() {
           if (value.brand_id === requestBrandId && value.member_id === targetId)
             wallet.value = value;
           else
-            walletError.value = message(
-              "钱包响应与当前品牌或会员不匹配。",
-              "The wallet response does not match the current brand or member.",
+            walletError.value = message('admin.copy.51c898aa',
             );
         })
         .catch((cause: unknown) => {
@@ -253,9 +295,7 @@ async function reloadData() {
           )
             entries.value = result.items;
           else
-            walletError.value = message(
-              "流水响应与当前品牌或会员不匹配。",
-              "The ledger response does not match the current brand or member.",
+            walletError.value = message('admin.copy.d9a774cd',
             );
         })
         .catch((cause: unknown) => {
@@ -292,9 +332,7 @@ async function reloadData() {
           )
             recharges.value = result.items;
           else
-            rechargeError.value = message(
-              "充值单响应与当前品牌或会员不匹配。",
-              "The recharge response does not match the current brand or member.",
+            rechargeError.value = message('admin.copy.e7defc16',
             );
         })
         .catch((cause: unknown) => {
@@ -307,9 +345,21 @@ async function reloadData() {
   await Promise.all(jobs);
   if (isCurrent()) loading.value = false;
 }
+async function inspectInitialMember() {
+  if (!props.initialMemberId) return;
+  clearData();
+  memberId.value = props.initialMemberUsername ?? '';
+  loadedMemberUsername.value = memberId.value;
+  loadedMemberId.value = props.initialMemberId;
+  ledgerOffset.value = 0;
+  rechargeOffset.value = 0;
+  await reloadData();
+}
+watch(() => props.initialMemberId, id => { if (id) void withGlobalLoading(inspectInitialMember); });
 onMounted(() => {
-  if (memberId.value && viewWallet.value) void inspectMember();
-  else if (viewRecharges.value && !viewWallet.value) void loadRechargeQueue();
+  if (props.initialMemberId) void withGlobalLoading(inspectInitialMember);
+  else if (memberId.value && viewWallet.value) void withGlobalLoading(inspectMember);
+  else if (viewRecharges.value && (props.view === 'recharges' || !viewWallet.value)) void withGlobalLoading(loadRechargeQueue);
 });
 watch(
   () => props.brandId,
@@ -320,10 +370,13 @@ watch(
     clearData();
     ledgerOffset.value = 0;
     rechargeOffset.value = 0;
-    if (viewRecharges.value && !viewWallet.value) void loadRechargeQueue();
+    if (viewRecharges.value && (props.view === 'recharges' || !viewWallet.value)) void withGlobalLoading(loadRechargeQueue);
   },
 );
 
+watch(() => props.view, value => {
+  if (value === 'recharges' && !loadedMemberId.value && viewRecharges.value) void withGlobalLoading(loadRechargeQueue);
+});
 async function loadRechargeQueue() {
   if (!viewRecharges.value) return;
   const requestBrandId = props.brandId;
@@ -417,8 +470,7 @@ async function mutate(
 async function createRecharge() {
   if (
     !loadedMemberId.value ||
-    !isPositiveAmount(rechargeForm.value.points) ||
-    !rechargeForm.value.reason.trim()
+    !isPositiveAmount(rechargeForm.value.points)
   )
     return;
   const body: {
@@ -443,7 +495,7 @@ async function createRecharge() {
         body,
         rechargeKeyFor({ brand_id: props.brandId, ...body }),
       ),
-    message("充值单已创建；实际入账须确认后完成。", "Recharge created. Confirm it to complete the credit."),
+    message('admin.copy.2c1b91f0'),
     () => rechargeKeyFor.clear(),
   );
   if (!error.value)
@@ -456,7 +508,6 @@ async function createRecharge() {
 }
 async function confirmRecharge(recharge: Recharge) {
   const reason = rechargeReasonById.value[recharge.id]?.trim() ?? "";
-  if (!reason) return;
   const body = { version: recharge.version, reason };
   await mutate(
     () =>
@@ -466,13 +517,13 @@ async function confirmRecharge(recharge: Recharge) {
         body,
         confirmKeyFor({ brand_id: props.brandId, id: recharge.id, ...body }),
       ),
-    message("充值单已确认，正在读取最新钱包状态。", "Recharge confirmed. Loading the latest wallet state."),
+    message('admin.copy.5342718a'),
     () => confirmKeyFor.clear(),
   );
 }
 async function cancelRecharge(recharge: Recharge) {
   const reason = cancelReasonById.value[recharge.id]?.trim() ?? "";
-  if (recharge.state !== "pending" || !reason) return;
+  if (recharge.state !== "pending") return;
   const body = { version: recharge.version, reason };
   await mutate(
     () =>
@@ -482,7 +533,7 @@ async function cancelRecharge(recharge: Recharge) {
         body,
         cancelKeyFor({ brand_id: props.brandId, id: recharge.id, ...body }),
       ),
-    message("充值单已取消。", "Recharge cancelled."),
+    message('admin.copy.2d33cb11'),
     () => cancelKeyFor.clear(),
   );
   if (!error.value) cancelReasonById.value[recharge.id] = "";
@@ -490,8 +541,7 @@ async function cancelRecharge(recharge: Recharge) {
 async function freezePoints() {
   if (
     !loadedMemberId.value ||
-    !isPositiveAmount(freezeForm.value.points) ||
-    !freezeForm.value.reason.trim()
+    !isPositiveAmount(freezeForm.value.points)
   )
     return;
   const body = {
@@ -510,13 +560,13 @@ async function freezePoints() {
           ...body,
         }),
       ),
-    message("人工冻结请求已成功，正在读取最新账本。", "Manual freeze request succeeded. Loading the latest ledger."),
+    message('admin.copy.6954dc9c'),
     () => freezeKeyFor.clear(),
   );
   if (!error.value) freezeForm.value = { points: "", reason: "" };
 }
 async function unfreeze(entry: LedgerEntry) {
-  if (!loadedMemberId.value || !unfreezeReason.value.trim()) return;
+  if (!loadedMemberId.value ) return;
   const body = { entry_id: entry.id, reason: unfreezeReason.value.trim() };
   await mutate(
     () =>
@@ -530,7 +580,7 @@ async function unfreeze(entry: LedgerEntry) {
           ...body,
         }),
       ),
-    message("整笔原路解冻请求已成功，正在读取最新账本。", "Full reversal unfreeze request succeeded. Loading the latest ledger."),
+    message('admin.copy.6d969245'),
     () => unfreezeKeyFor.clear(),
   );
   if (!error.value) unfreezeReason.value = "";
@@ -538,8 +588,7 @@ async function unfreeze(entry: LedgerEntry) {
 async function adjustPoints() {
   if (
     !loadedMemberId.value ||
-    !isSignedAmount(adjustForm.value.delta) ||
-    !adjustForm.value.reason.trim()
+    !isSignedAmount(adjustForm.value.delta)
   )
     return;
   const body = {
@@ -559,7 +608,7 @@ async function adjustPoints() {
           ...body,
         }),
       ),
-    message("积分调整请求已成功，正在读取最新账本。", "Points adjustment succeeded. Loading the latest ledger."),
+    message('admin.copy.21b7927d'),
     () => adjustKeyFor.clear(),
   );
   if (!error.value)
@@ -579,114 +628,116 @@ function sourceSnapshotValue(
   <section class="finance-management">
     <header class="page-head">
       <div>
-        <p class="eyebrow">{{ t("财务操作", "FINANCE OPERATIONS") }}</p>
-        <h1>{{ t("钱包与财务", "Funds and ledger") }}</h1>
-        <p>{{ t("账本金额以整数点数读取；所有变更由服务端授权、校验并记录审计。", "Ledger amounts are read as whole points. The server authorizes, validates, and audits every change.") }}</p>
+        <h1>{{ view === 'recharges' ? t('admin.console.recharges') : view === 'policy' ? t('admin.console.financialPolicies') : t('admin.console.wallet') }}</h1>
       </div>
-      <span class="brand-tag">{{ t("品牌 · ", "Brand · ") }}{{ brandId || t("未选择", "Not selected") }}</span>
+      <span class="brand-tag">{{ t('admin.copy.55bdd7a5') }}<AssociationName kind="brand" :id="brandId" :locale="associationLocale" /></span>
     </header>
-    <div class="server-note">
-      {{ t("页面权限仅用于显示操作入口，服务端权限校验始终为最终依据。超级管理员在此只读。", "Page permissions only control which actions are shown; server-side authorization is authoritative. Super administrators have read-only access here.") }}
+    <div v-if="account.super_admin" class="server-note">
+      {{ t('admin.copy.034cebc9') }}
     </div>
     <PointPolicySettings
+      v-show="view === 'policy'"
       v-if="canViewPolicy"
       :account="account"
       :brand-id="brandId"
       @session-invalid="emit('session-invalid')"
     />
-    <form
+    <form novalidate v-inline-validation
+      v-show="view !== 'policy'"
       v-if="canSearch || writeRecharge || writeFreeze || writeAdjust"
       class="lookup"
-      @submit.prevent="inspectMember"
+      @submit.prevent="withGlobalLoading(inspectMember)"
     >
       <label class="query-field">
-        <span class="field-label">{{ t("会员 UUID", "Member ID") }}</span>
+        <span class="field-label">{{ t('admin.copy.92c59de3') }}</span>
         <div class="input-with-icon">
-          <span class="input-icon">👤</span>
+          <span class="input-icon"> <SiteIcon name="user" /> </span>
           <input
             v-model.trim="memberId"
             required
             autocomplete="off"
-            :placeholder="t('输入当前品牌的 member_id', 'Enter the member_id for this brand')"
+            :placeholder="t('admin.copy.b41d30df')"
           />
         </div>
       </label>
-      <button class="primary" :disabled="loading || !memberId.trim()">
-        {{ loading ? t("读取中…", "Loading…") : t("查询会员", "Load wallet") }}
+      <button class="button button-primary" :disabled="loading || !memberId.trim()">
+        {{ loading ? t('admin.copy.27342bf3') : t('admin.copy.a3f96ba5') }}
       </button>
     </form>
     <p
       v-if="!canSearch && !(writeRecharge || writeFreeze || writeAdjust)"
       class="callout"
     >
-      {{ t("当前账号没有此品牌的钱包或充值查看权限。", "This account cannot view wallets or recharges for this brand.") }}
+      {{ t('admin.copy.1bc43da5') }}
     </p>
     <p v-if="error" class="notice error" role="alert">
-      {{ t(error) }}
-      <button
+      {{ display(error) }}
+      <button v-refresh-button="t('admin.copy.894e2a7d')"
         type="button"
-        @click="loadedMemberId ? reloadData() : loadRechargeQueue()"
+        @click="withGlobalLoading(async () => { loadedMemberId ? await reloadData() : await loadRechargeQueue() })"
         >
-        {{ t("刷新", "Refresh") }}
+        {{ t('admin.copy.894e2a7d') }}
       </button>
     </p>
-    <p v-if="notice" class="notice success" role="status">{{ t(notice) }}</p>
+    <p v-if="notice" class="notice success" role="status">{{ display(notice) }}</p>
     <p v-if="walletError" class="notice error" role="alert">
-      {{ t(walletError) }}
-      <button type="button" @click="reloadData">{{ t("刷新钱包", "Refresh wallet") }}</button>
+      {{ display(walletError) }}
+      <button v-refresh-button="t('admin.copy.bfd9564c')" type="button" @click="withGlobalLoading(reloadData)">{{ t('admin.copy.bfd9564c') }}</button>
     </p>
     <p v-if="rechargeError" class="notice error" role="alert">
-      {{ t(rechargeError) }}
-      <button
+      {{ display(rechargeError) }}
+      <button v-refresh-button="t('admin.copy.547bccbf')"
         type="button"
-        @click="loadedMemberId ? reloadData() : loadRechargeQueue()"
+        @click="withGlobalLoading(async () => { loadedMemberId ? await reloadData() : await loadRechargeQueue() })"
       >
-        {{ t("刷新充值单", "Refresh recharges") }}
+        {{ t('admin.copy.547bccbf') }}
       </button>
     </p>
 
     <template v-if="loadedMemberId">
+      <div v-show="view === 'wallet'">
       <section v-if="viewWallet && wallet" class="panel wallet-panel">
         <div class="panel-title">
           <div>
-            <h2>{{ t("会员钱包", "Member wallet") }}</h2>
+            <h2>{{ t('admin.copy.aadb5e3a') }}</h2>
             <p>
-              {{ t("会员 ID", "Member ID") }} {{ wallet.member_id }} · {{ t("账户", "Account") }} {{ wallet.account_id }} · {{ t("版本", "Version") }}
-              {{ wallet.version }}
+              {{ t('admin.copy.92c59de3') }} <AssociationName :record="wallet" kind="member" :id="wallet.member_id" :locale="associationLocale" />
             </p>
           </div>
-          <button
+          <button v-refresh-button="t('admin.copy.894e2a7d')"
             type="button"
-            class="secondary"
+            class="button button-secondary"
             :disabled="loading"
-            @click="reloadData"
+            @click="withGlobalLoading(reloadData)"
           >
-            {{ t("刷新", "Refresh") }}
+            {{ t('admin.copy.894e2a7d') }}
           </button>
         </div>
         <div class="totals">
           <article class="total prominent">
-            <span>{{ t("显示积分", "Displayed points") }}</span
+            <span>{{ t('admin.copy.628e6b32') }}</span
             ><strong>{{ formatIntegerAmount(wallet.display_points) }}</strong>
           </article>
           <article class="total">
-            <span>{{ t("可用", "Available") }}</span
+            <span>{{ t('admin.copy.e9231c7d') }}</span
             ><strong>{{ formatIntegerAmount(wallet.available_points) }}</strong>
           </article>
           <article class="total">
-            <span>{{ t("冻结", "Frozen") }}</span
+            <span>{{ t('admin.copy.4816eabf') }}</span
             ><strong>{{ formatIntegerAmount(wallet.frozen_points) }}</strong>
           </article>
           <article class="total">
-            <span>{{ t("提现中", "Withdrawal pending") }}</span
+            <span>{{ t('admin.copy.f56770cc') }}</span
             ><strong>{{
               formatIntegerAmount(wallet.withdrawal_points)
             }}</strong>
           </article>
         </div>
+        <details class="finance-breakdown">
+          <summary>{{ t('admin.console.sourceBreakdown') }}<SiteIcon name="down" /></summary>
         <div class="bucket-table">
           <div class="table-head">
-            <span>{{ t("来源", "Source") }}</span><span>{{ t("状态", "State") }}</span><span>{{ t("积分", "Points") }}</span>
+            <span>{{ t('admin.copy.d2089b75') }}</span><span>{{ t('admin.copy.cf6d9c6d') }}</span><span>{{ t('admin.copy.ec082fa7') }}</span>
           </div>
           <div
             v-for="bucket in walletBucketRows"
@@ -698,27 +749,27 @@ function sourceSnapshotValue(
             ><strong>{{ formatIntegerAmount(bucket.value) }}</strong>
           </div>
         </div>
+        </details>
       </section>
       <p v-else-if="viewWallet && !wallet && !walletError" class="callout">
-        {{ t("正在读取会员钱包…", "Loading member wallet…") }}
+        {{ t('admin.copy.3a487e0e') }}
       </p>
       <p v-else-if="!viewWallet" class="callout">
-        {{ t("缺少 wallet.view 权限；不会请求或展示该会员钱包、流水与对账。", "Missing wallet.view permission. This member's wallet, ledger, and reconciliation will not be requested or shown.") }}
+        {{ t('admin.copy.e09d18b4') }}
       </p>
 
       <section v-if="viewWallet && reconciliation" class="panel">
         <div class="panel-title">
           <div>
-            <h2>{{ t("账本对账", "Ledger reconciliation") }}</h2>
+            <h2>{{ t('admin.copy.0ff02f56') }}</h2>
             <p>
-              {{ t("版本", "Version") }} {{ reconciliation.version }} ·
-              {{ t("{count} 条流水", "{count} ledger entries", { count: String(reconciliation.entry_count) }) }}
+               {{ t('admin.copy.be598abe', { count: String(reconciliation.entry_count) }) }}
             </p>
           </div>
           <span
             class="status"
             :class="reconciliation.consistent ? 'good' : 'bad'"
-            >{{ reconciliation.consistent ? t("一致", "Consistent") : t("存在差异", "Discrepancies found") }}</span
+            >{{ reconciliation.consistent ? t('admin.copy.f97b639f') : t('admin.copy.4d1960ba') }}</span
           >
         </div>
         <ul v-if="reconciliation.issues.length" class="issues">
@@ -726,9 +777,11 @@ function sourceSnapshotValue(
             {{ issue }}
           </li>
         </ul>
+        <details class="finance-breakdown" :open="!reconciliation.consistent">
+          <summary>{{ t('admin.console.reconciliationDetails') }}<SiteIcon name="down" /></summary>
         <div class="recon-table">
           <div class="table-head">
-            <span>{{ t("来源 / 状态", "Source / state") }}</span><span>{{ t("期望", "Expected") }}</span><span>{{ t("实际", "Actual") }}</span>
+            <span>{{ t('admin.copy.4aa12ed7') }}</span><span>{{ t('admin.copy.4682e661') }}</span><span>{{ t('admin.copy.bcecdbf2') }}</span>
           </div>
           <div
             v-for="row in reconciliationRows"
@@ -740,27 +793,94 @@ function sourceSnapshotValue(
             ><span>{{ formatIntegerAmount(row.actual) }}</span>
           </div>
         </div>
+        </details>
       </section>
+
+    <section
+      v-show="view === 'wallet'"
+      v-if="loadedMemberId && (writeFreeze || writeAdjust)"
+      class="operations-grid"
+    >
+      <form v-write-guard="mutating" novalidate v-inline-validation
+        v-if="writeFreeze"
+        class="panel form-panel"
+        @submit.prevent="withGlobalLoading(freezePoints)"
+      >
+        <div class="panel-title">
+          <div>
+            <h2>{{ t('admin.copy.2c6ca5bf') }}</h2>
+            <p>{{ t('admin.copy.66997ca8') }}</p>
+          </div>
+        </div>
+        <label
+          >{{ t('admin.copy.b912f1a9') }}<input
+            v-model.trim="freezeForm.points"
+            inputmode="numeric"
+            required /></label
+        ><button
+          class="button button-primary"
+          :disabled="
+            mutating ||
+            !isPositiveAmount(freezeForm.points)
+          "
+        >
+          {{ t('admin.copy.239b2c58') }}
+        </button>
+      </form>
+      <form v-write-guard="mutating" novalidate v-inline-validation
+        v-if="writeAdjust"
+        class="panel form-panel"
+        @submit.prevent="withGlobalLoading(adjustPoints)"
+      >
+        <div class="panel-title">
+          <div>
+            <h2>{{ t('admin.copy.f9f97fca') }}</h2>
+            <p>{{ t('admin.copy.f4b46d95') }}</p>
+          </div>
+        </div>
+        <label
+          >{{ t('admin.copy.56bc02a1') }}<select v-model="adjustForm.source">
+            <option value="recharge">{{ t('admin.copy.6ffe1179') }}</option>
+            <option value="winning">{{ t('admin.copy.99c31497') }}</option>
+            <option value="gift">{{ t('admin.copy.2b8ae17c') }}</option>
+            <option value="commission">{{ t('admin.copy.101e2e66') }}</option>
+          </select></label
+        ><label
+          >{{ t('admin.copy.10025d7b') }}<input
+            v-model.trim="adjustForm.delta"
+            inputmode="text"
+            required
+            :placeholder="t('admin.copy.9a348780')" /></label
+        ><button
+          class="button button-primary"
+          :disabled="
+            mutating ||
+            !isSignedAmount(adjustForm.delta)
+          "
+        >
+          {{ t('admin.copy.cb99f7c9') }}
+        </button>
+      </form>
+    </section>
 
       <section v-if="viewWallet" class="panel">
         <div class="panel-title">
           <div>
-            <h2>{{ t("钱包流水", "Wallet ledger") }}</h2>
-            <p>{{ t("每笔展示全部 16 桶变更前、变动额与变更后金额。", "Each entry shows the before, change, and after amounts for all 16 buckets.") }}</p>
+            <h2>{{ t('admin.copy.de1c63a8') }}</h2>
           </div>
         </div>
-        <p v-if="!entries.length" class="muted">{{ t("当前页没有流水。", "No ledger entries on this page.") }}</p>
+        <p v-if="!entries.length" class="muted empty-state">{{ t('admin.copy.8249da4b') }}</p>
         <article v-for="entry in entries" :key="entry.id" class="ledger-entry">
           <div class="entry-head">
             <div>
-              <b>{{ entry.entry_type }}</b
-              ><small>{{ entry.created_at }} · {{ t("版本", "Version") }} {{ entry.version }}</small>
+              <b>{{ entryTypeName(entry.entry_type) }}</b
+              ><small>{{ displayDate(entry.created_at) }}</small>
             </div>
             <code>{{ entry.id }}</code>
           </div>
-          <p class="reason-text">{{ entry.reason }}</p>
+          <p v-if="entry.reason" class="reason-text">{{ entry.reason }}</p>
           <p v-if="entry.source_allocation.length" class="allocation">
-            {{ t("分摊：", "Allocation: ") }}{{
+            {{ t('admin.copy.3169ecbf') }}{{
               entry.source_allocation
                 .map(
                   (item) =>
@@ -769,14 +889,15 @@ function sourceSnapshotValue(
                 .join(" · ")
             }}
           </p>
+          <label class="snapshot-toggle"><input v-model="fullSnapshotEntryIds" type="checkbox" :value="entry.id" />{{ t('admin.finance.fullSnapshot') }}</label>
           <div class="snapshot-grid">
-          <span class="snapshot-heading">{{ t("积分桶", "Points bucket") }}</span
-            ><span class="snapshot-heading">{{ t("变更前", "Before") }}</span
-            ><span class="snapshot-heading">{{ t("变动", "Change") }}</span
-            ><span class="snapshot-heading">{{ t("变更后", "After") }}</span
+          <span class="snapshot-heading">{{ t('admin.copy.3aeb0ec1') }}</span
+            ><span class="snapshot-heading">{{ t('admin.copy.f85d9f7f') }}</span
+            ><span class="snapshot-heading">{{ t('admin.copy.574031a3') }}</span
+            ><span class="snapshot-heading">{{ t('admin.copy.6db1d337') }}</span
             ><template v-for="source in sources" :key="`${entry.id}-${source}`"
               ><template
-                v-for="state in states"
+                v-for="state in states.filter(state => fullSnapshotEntryIds.includes(entry.id) || entry.delta_snapshot[source][state] !== '0')"
                 :key="`${entry.id}-${source}-${state}`"
                 ><b>{{ sourceName(source) }} · {{ stateName(state) }}</b
                 ><span>{{
@@ -792,17 +913,8 @@ function sourceSnapshotValue(
             >
           </div>
           <details>
-            <summary>{{ t("审计与引用信息", "Audit and reference details") }}</summary>
-            <p>
-              {{ t("引用：", "Reference: ") }}{{ entry.reference_type }} / {{ entry.reference_id
-              }}<br />{{ t("操作键：", "Operation key: ") }}{{ entry.operation_key }}<br />{{ t("操作者：", "Actor: ") }}{{
-                entry.actor_type
-              }}
-              / {{ entry.actor_id }}<br />{{ t("请求：", "Request: ") }}{{ entry.request_id
-              }}<span v-if="entry.reversal_of"
-                ><br />{{ t("冲正原流水：", "Reversed ledger entry: ") }}{{ entry.reversal_of }}</span
-              >
-            </p>
+            <summary>{{ t('admin.copy.927756e7') }}</summary>
+
           </details>
           <div
             v-if="
@@ -811,263 +923,172 @@ function sourceSnapshotValue(
             "
             class="unfreeze-row"
           >
-            <label
-              >{{ t("整笔原路解冻原因", "Reason for full reversal unfreeze") }}<input
-                v-model.trim="unfreezeReason"
-                required
-                maxlength="500" /></label
-            ><button
+            <button
+              v-write-guard="mutating"
               type="button"
-              class="secondary"
-              :disabled="mutating || !unfreezeReason.trim()"
-              @click="unfreeze(entry)"
+              class="button button-secondary"
+              :disabled="mutating "
+              @click="withGlobalLoading(unfreeze, entry)"
             >
-              {{ t("整笔原路解冻", "Unfreeze entire original amount") }}
+              {{ t('admin.copy.f5c98e2d') }}
             </button>
           </div>
         </article>
         <footer class="pager">
-          <span>{{ t("第 {page} 页", "Page {page}", { page: String(ledgerOffset / PAGE_SIZE + 1) }) }}</span>
+          <span>{{ t('admin.copy.f3d61d27', { page: String(ledgerOffset / PAGE_SIZE + 1) }) }}</span>
           <div>
             <button
               type="button"
               :disabled="ledgerOffset === 0 || loading"
-              @click="moveLedgerPage(-1)"
+              @click="withGlobalLoading(moveLedgerPage, -1)"
             >
-              {{ t("上一页", "Previous") }}</button
+              {{ t('admin.copy.dbe7a5d7') }}</button
             ><button
               type="button"
               :disabled="!hasNextLedger || loading"
-              @click="moveLedgerPage(1)"
+              @click="withGlobalLoading(moveLedgerPage, 1)"
             >
-              {{ t("下一页", "Next") }}
+              {{ t('admin.copy.2e9c9e7a') }}
             </button>
           </div>
         </footer>
       </section>
+      </div>
     </template>
 
-    <section v-if="viewRecharges" class="panel">
+    <section v-show="view === 'recharges'" v-if="viewRecharges" class="panel">
       <div class="panel-title">
         <div>
-          <h2>{{ t("充值单", "Recharges") }}</h2>
+          <h2>{{ t('admin.copy.ae419781') }}</h2>
           <p>
-            {{ loadedMemberId ? `${t("会员", "Member")} ${loadedMemberId}` : t("当前品牌充值单", "Brand recharges") }} ·
-            {{ t("每页 {count} 条", "{count} per page", { count: "50" }) }}
+            {{ loadedMemberId ? `${t('admin.copy.56b2d19b')} ${loadedMemberUsername}` : t('admin.copy.42010bdb') }} ·
+            {{ t('admin.copy.90badab0', { count: "50" }) }}
           </p>
         </div>
-        <button
+        <button v-refresh-button="t('admin.copy.855b9442')"
           v-if="!loadedMemberId"
           type="button"
-          class="secondary"
+          class="button button-secondary"
           :disabled="loading"
-          @click="loadRechargeQueue"
+          @click="withGlobalLoading(loadRechargeQueue)"
         >
-          {{ t("刷新列表", "Refresh list") }}
+          {{ t('admin.copy.855b9442') }}
         </button>
       </div>
-      <p v-if="!recharges.length" class="muted">{{ t("当前页没有充值单。", "No recharges on this page.") }}</p>
-      <article
-        v-for="recharge in recharges"
-        :key="recharge.id"
-        class="recharge-row"
-      >
+      <p v-if="!recharges.length" class="muted empty-state">{{ t('admin.copy.dcbdb099') }}</p>
+      <div v-if="recharges.length" class="table-wrap"><table class="console-recharges-table console-responsive-table"><thead><tr>
+        <th>{{ t('admin.console.rechargeOrder') }}</th><th>{{ t('admin.copy.92c59de3') }}</th><th>{{ t('admin.console.points') }}</th><th>{{ t('admin.console.state') }}</th><th>{{ t('admin.console.created') }}</th><th>{{ t('admin.console.actions') }}</th>
+      </tr></thead><tbody><template v-for="recharge in recharges" :key="recharge.id"><tr>
+        <td :data-label="t('admin.console.rechargeOrder')">{{ recharge.id }}</td><td :data-label="t('admin.copy.92c59de3')"><AssociationName :record="recharge" kind="member" :id="recharge.member_id" :locale="associationLocale" /></td>
+        <td :data-label="t('admin.console.points')">{{ formatIntegerAmount(recharge.points) }}</td><td :data-label="t('admin.console.state')"><span class="status" :class="recharge.state">{{ recharge.state === 'pending' ? t('admin.copy.7746bbe1') : recharge.state === 'confirmed' ? t('admin.copy.5f313d26') : t('admin.copy.a454aa98') }}</span></td>
+        <td :data-label="t('admin.console.created')">{{ displayDate(recharge.created_at) }}</td><td :data-label="t('admin.console.actions')"><button type="button" class="text-button" :aria-expanded="expandedRechargeId === recharge.id" @click="expandedRechargeId = expandedRechargeId === recharge.id ? '' : recharge.id">{{ t('admin.copy.01db40da') }}</button></td>
+      </tr>
+      <tr v-show="expandedRechargeId === recharge.id" class="console-recharge-detail"><td colspan="6"><article class="recharge-row">
         <div class="recharge-head">
           <div>
-            <b>{{ formatIntegerAmount(recharge.points) }} {{ t("分", "points") }}</b
-            ><small>{{ recharge.member_id }} · {{ recharge.created_at }}</small>
+            <b>{{ formatIntegerAmount(recharge.points) }} {{ t('admin.console.points') }}</b
+            ><small><AssociationName :record="recharge" kind="member" :id="recharge.member_id" :locale="associationLocale" /> {{ displayDate(recharge.created_at) }}</small>
           </div>
           <span class="status" :class="recharge.state">{{
             recharge.state === "pending"
-              ? t("待确认", "Pending")
+              ? t('admin.copy.7746bbe1')
               : recharge.state === "confirmed"
-                ? t("已确认", "Confirmed")
-                : t("已取消", "Cancelled")
+                ? t('admin.copy.5f313d26')
+                : t('admin.copy.a454aa98')
           }}</span>
         </div>
         <p v-if="recharge.proof_reference">
-          {{ t("凭证：", "Proof: ") }}{{ recharge.proof_reference }}
+          {{ t('admin.copy.bb54d12f') }}{{ recharge.proof_reference }}
         </p>
-        <p v-if="recharge.remark">{{ t("备注：", "Remark: ") }}{{ recharge.remark }}</p>
+        <p v-if="recharge.remark">{{ t('admin.copy.d19e55e6') }}{{ recharge.remark }}</p>
         <p>
-          {{ t("创建人", "Created by") }} {{ recharge.created_by
-          }}<span v-if="recharge.confirmed_by">
-            · {{ t("确认人", "Confirmed by") }} {{ recharge.confirmed_by }}</span
+          {{ t('admin.copy.6a2d3973') }} <AssociationName :record="recharge" kind="admin" :id="recharge.created_by" :locale="associationLocale" /><span v-if="recharge.confirmed_by">
+            {{ t('admin.copy.faa0379b') }} <AssociationName :record="recharge" kind="admin" :id="recharge.confirmed_by" :locale="associationLocale" /></span
           ><span v-if="recharge.ledger_entry_id">
-            · {{ t("流水", "Ledger entry") }} {{ recharge.ledger_entry_id }}</span
+            {{ t('admin.copy.0fc64455') }} {{ recharge.ledger_entry_id }}</span
           >
         </p>
-        <label v-if="writeRecharge && recharge.state === 'pending'"
-          >{{ t("确认原因", "Confirmation reason") }}<input
-            v-model.trim="rechargeReasonById[recharge.id]"
-            required
-            maxlength="500" /></label
-        ><button
+        <button
+          v-write-guard="mutating"
           v-if="writeRecharge && recharge.state === 'pending'"
           type="button"
-          class="primary small-button"
-          :disabled="mutating || !rechargeReasonById[recharge.id]?.trim()"
-          @click="confirmRecharge(recharge)"
+          class="button button-primary small-button"
+          :disabled="mutating "
+          @click="withGlobalLoading(confirmRecharge, recharge)"
         >
-          {{ t("确认并入账", "Confirm and credit") }}
+          {{ t('admin.copy.6a4e9f46') }}
         </button>
-        <label v-if="writeRecharge && recharge.state === 'pending'"
-          >{{ t("取消原因", "Cancellation reason") }}<input
-            v-model.trim="cancelReasonById[recharge.id]"
-            required
-            maxlength="500" /></label
-        ><button
+        <button
+          v-write-guard="mutating"
           v-if="writeRecharge && recharge.state === 'pending'"
           type="button"
-          class="secondary small-button"
-          :disabled="mutating || !cancelReasonById[recharge.id]?.trim()"
-          @click="cancelRecharge(recharge)"
+          class="button button-secondary small-button"
+          :disabled="mutating "
+          @click="withGlobalLoading(cancelRecharge, recharge)"
         >
-          {{ t("取消充值单", "Cancel recharge") }}
+          {{ t('admin.copy.d1072032') }}
         </button>
-      </article>
+      </article></td></tr>
+      </template></tbody></table></div>
       <footer class="pager">
-        <span>{{ t("第 {page} 页", "Page {page}", { page: String(rechargeOffset / PAGE_SIZE + 1) }) }}</span>
+        <span>{{ t('admin.copy.f3d61d27', { page: String(rechargeOffset / PAGE_SIZE + 1) }) }}</span>
         <div>
           <button
             type="button"
             :disabled="rechargeOffset === 0 || loading"
-            @click="moveRechargePage(-1)"
+            @click="withGlobalLoading(moveRechargePage, -1)"
           >
-            {{ t("上一页", "Previous") }}</button
+            {{ t('admin.copy.dbe7a5d7') }}</button
           ><button
             type="button"
             :disabled="!hasNextRecharge || loading"
-            @click="moveRechargePage(1)"
+            @click="withGlobalLoading(moveRechargePage, 1)"
           >
-            {{ t("下一页", "Next") }}
+            {{ t('admin.copy.2e9c9e7a') }}
           </button>
         </div>
       </footer>
     </section>
 
-    <section v-if="writeRecharge && loadedMemberId" class="panel form-panel">
+    <section v-show="view === 'recharges'" v-if="writeRecharge && loadedMemberId" class="panel form-panel">
       <div class="panel-title">
         <div>
-          <h2>{{ t("创建充值单", "Create recharge") }}</h2>
-          <p>{{ t("这里只创建待确认充值单；确认后服务端才执行真实入账。", "This creates a pending recharge only. The server credits it after confirmation.") }}</p>
+          <h2>{{ t('admin.copy.17bc097d') }}</h2>
+          <p>{{ t('admin.copy.539fc0f2') }}</p>
         </div>
       </div>
-      <form class="form-grid" @submit.prevent="createRecharge">
+      <form v-write-guard="mutating" novalidate v-inline-validation class="form-grid" @submit.prevent="withGlobalLoading(createRecharge)">
         <label
-          >{{ t("充值积分（正整数）", "Recharge points (positive whole number)") }}<input
+          >{{ t('admin.copy.8870d6d7') }}<input
             v-model.trim="rechargeForm.points"
             inputmode="numeric"
             required
-          /><small>{{ t("大额金额按十进制字符串提交，不经浮点数转换。", "Large amounts are submitted as decimal strings without floating-point conversion.") }}</small></label
+          /><small>{{ t('admin.copy.fbd67a6f') }}</small></label
         ><label
-          >{{ t("凭证编号（可选）", "Proof reference (optional)") }}<input
+          >{{ t('admin.copy.fd3b3477') }}<input
             v-model.trim="rechargeForm.proof_reference"
             maxlength="200" /></label
         ><label class="wide"
-          >{{ t("备注（可选）", "Remark (optional)") }}<input
+          >{{ t('admin.copy.412d293a') }}<input
             v-model.trim="rechargeForm.remark"
             maxlength="500" /></label
-        ><label class="wide"
-          >{{ t("原因", "Reason") }}<input
-            v-model.trim="rechargeForm.reason"
-            required
-            maxlength="500" /></label
         ><button
-          class="primary"
+          class="button button-primary"
           :disabled="
             mutating ||
-            !isPositiveAmount(rechargeForm.points) ||
-            !rechargeForm.reason.trim()
+            !isPositiveAmount(rechargeForm.points)
           "
         >
-          {{ t("创建待确认充值单", "Create pending recharge") }}
+          {{ t('admin.copy.d6ee7013') }}
         </button>
       </form>
     </section>
 
-    <section
-      v-if="loadedMemberId && (writeFreeze || writeAdjust)"
-      class="operations-grid"
-    >
-      <form
-        v-if="writeFreeze"
-        class="panel form-panel"
-        @submit.prevent="freezePoints"
-      >
-        <div class="panel-title">
-          <div>
-            <h2>{{ t("人工冻结", "Manual freeze") }}</h2>
-            <p>{{ t("只冻结指定积分；系统冻结和投注冻结不提供操作入口。", "Freeze only the specified points. System freezes and betting freezes cannot be changed here.") }}</p>
-          </div>
-        </div>
-        <label
-          >{{ t("冻结积分（正整数）", "Points to freeze (positive whole number)") }}<input
-            v-model.trim="freezeForm.points"
-            inputmode="numeric"
-            required /></label
-        ><label
-          >{{ t("原因", "Reason") }}<input
-            v-model.trim="freezeForm.reason"
-            required
-            maxlength="500" /></label
-        ><button
-          class="primary"
-          :disabled="
-            mutating ||
-            !isPositiveAmount(freezeForm.points) ||
-            !freezeForm.reason.trim()
-          "
-        >
-          {{ t("冻结积分", "Freeze points") }}
-        </button>
-      </form>
-      <form
-        v-if="writeAdjust"
-        class="panel form-panel"
-        @submit.prevent="adjustPoints"
-      >
-        <div class="panel-title">
-          <div>
-            <h2>{{ t("来源积分调整", "Adjust points by source") }}</h2>
-            <p>{{ t("可调整充值、中奖、赠送或佣金来源；人工积分调整不代表周期佣金派发。没有通用冲正或系统冻结入口。", "Recharge, Winnings, Gift, or Commission sources can be adjusted. Manual point adjustments are not cycle commission payouts. There is no general reversal or system-freeze action.") }}</p>
-          </div>
-        </div>
-        <label
-          >{{ t("积分来源", "Points source") }}<select v-model="adjustForm.source">
-            <option value="recharge">{{ t("充值", "Recharge") }}</option>
-            <option value="winning">{{ t("中奖", "Winnings") }}</option>
-            <option value="gift">{{ t("赠送", "Gift") }}</option>
-            <option value="commission">{{ t("佣金", "Commission") }}</option>
-          </select></label
-        ><label
-          >{{ t("调整额（非零有符号整数）", "Adjustment (nonzero signed whole number)") }}<input
-            v-model.trim="adjustForm.delta"
-            inputmode="text"
-            required
-            :placeholder="t('例如 250 或 -30', 'For example, 250 or -30')" /></label
-        ><label
-          >{{ t("原因", "Reason") }}<input
-            v-model.trim="adjustForm.reason"
-            required
-            maxlength="500" /></label
-        ><button
-          class="primary"
-          :disabled="
-            mutating ||
-            !isSignedAmount(adjustForm.delta) ||
-            !adjustForm.reason.trim()
-          "
-        >
-          {{ t("提交来源调整", "Submit source adjustment") }}
-        </button>
-      </form>
-    </section>
     <p
       v-if="loadedMemberId && !(writeRecharge || writeFreeze || writeAdjust)"
       class="callout"
     >
-      {{ t("当前账号在此品牌只有财务查看权限；不会显示写操作。", "This account has read-only finance access for this brand; write actions are hidden.") }}
+      {{ t('admin.copy.196bbdcd') }}
     </p>
   </section>
 </template>
@@ -1076,7 +1097,7 @@ function sourceSnapshotValue(
 .finance-management {
   width: 100%;
   min-width: 0;
-  color: #252a36;
+  color: var(--ink);
 }
 .page-head {
   display: flex;
@@ -1092,32 +1113,32 @@ function sourceSnapshotValue(
 }
 .page-head p {
   margin: 0;
-  color: #737b8c;
-  font-size: 11px;
+  color: var(--muted);
+  font-size: 13px;
   line-height: 1.55;
 }
 .eyebrow {
-  font-size: 11px !important;
+  font-size: 13px !important;
   letter-spacing: 1.2px;
-  color: #8991a2 !important;
+  color: var(--muted) !important;
   font-weight: 700;
 }
 .brand-tag,
 .status {
   border-radius: 20px;
-  background: #f1f3f8;
+  background: var(--line-subtle);
   padding: 7px 11px;
-  color: #626b7c;
-  font-size: 11px;
+  color: var(--ink-secondary);
+  font-size: 13px;
   white-space: nowrap;
 }
 .server-note,
 .callout {
   border-radius: 8px;
-  background: #f4f6fc;
-  color: #626b7c;
+  background: var(--canvas);
+  color: var(--ink-secondary);
   padding: 10px 12px;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.6;
   overflow-wrap: anywhere;
   margin: 12px 0;
@@ -1135,7 +1156,7 @@ function sourceSnapshotValue(
 .unfreeze-row label {
   display: grid;
   gap: 6px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   min-width: 0;
 }
@@ -1152,40 +1173,40 @@ function sourceSnapshotValue(
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  border: 1px solid #dfe3eb;
+  border: 1px solid var(--line);
   border-radius: 7px;
-  background: white;
+  background: var(--surface);
   padding: 9px 10px;
-  color: #252a36;
+  color: var(--ink);
   font: inherit;
 }
-.primary,
-.secondary {
+.button-primary,
+.button-secondary {
   border-radius: 7px;
   padding: 9px 12px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
 }
-.primary {
+.button-primary {
   border: 0;
-  background: #5969df;
-  color: #fff;
+  background: var(--primary);
+  color: var(--surface);
 }
-.secondary {
-  border: 1px solid #e0e3ea;
-  background: white;
-  color: #586174;
+.button-secondary {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-secondary);
 }
-.primary:disabled,
-.secondary:disabled {
+.button-primary:disabled,
+.button-secondary:disabled {
   opacity: 0.48;
   cursor: not-allowed;
 }
 .notice {
   border-radius: 8px;
   padding: 10px 12px;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
   overflow-wrap: anywhere;
   margin: 10px 0;
@@ -1198,20 +1219,20 @@ function sourceSnapshotValue(
   margin-left: 6px;
 }
 .error {
-  background: #fff0ef;
-  color: #a83d36;
+  background: var(--danger-bg);
+  color: var(--danger-text);
 }
 .success {
-  background: #edf8f2;
-  color: #287553;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 .panel {
-  background: white;
-  border: 1px solid #e9ebf0;
-  border-radius: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   padding: 16px;
   min-width: 0;
-  box-shadow: 0 2px 8px #1e2a5008;
+  box-shadow: var(--shadow-sm);
   margin: 13px 0;
 }
 .panel-title {
@@ -1227,9 +1248,9 @@ function sourceSnapshotValue(
 }
 .panel-title p,
 .muted {
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.55;
-  color: #737b8c;
+  color: var(--muted);
   margin: 0;
 }
 .totals {
@@ -1241,14 +1262,14 @@ function sourceSnapshotValue(
 .total {
   display: grid;
   gap: 6px;
-  border: 1px solid #eceef3;
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 11px;
   min-width: 0;
 }
 .total span {
-  font-size: 11px;
-  color: #737b8c;
+  font-size: 13px;
+  color: var(--muted);
 }
 .total strong {
   font-size: 18px;
@@ -1256,13 +1277,13 @@ function sourceSnapshotValue(
   font-variant-numeric: tabular-nums;
 }
 .total.prominent {
-  background: #f1f3ff;
+  background: var(--primary-light);
 }
 .bucket-table,
 .recon-table {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
-  font-size: 11px;
+  font-size: 13px;
 }
 .table-head,
 .bucket-row,
@@ -1270,15 +1291,15 @@ function sourceSnapshotValue(
   display: contents;
 }
 .table-head span {
-  background: #f7f8fa;
+  background: var(--line-subtle);
   padding: 8px;
   font-weight: 700;
-  color: #687183;
+  color: var(--muted);
 }
 .bucket-row > *,
 .recon-row > * {
   padding: 8px;
-  border-bottom: 1px solid #f0f1f4;
+  border-bottom: 1px solid var(--line-subtle);
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -1292,29 +1313,29 @@ function sourceSnapshotValue(
 }
 .status.good,
 .status.confirmed {
-  background: #e9f6f0;
-  color: #258763;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 .status.bad,
 .status.cancelled {
-  background: #fff0ef;
-  color: #a83d36;
+  background: var(--danger-bg);
+  color: var(--danger-text);
 }
 .status.pending {
-  background: #fff6e7;
-  color: #a66a13;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 .issues {
-  background: #fff7e9;
-  color: #875b1b;
-  font-size: 11px;
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-size: 13px;
   line-height: 1.6;
   border-radius: 7px;
   padding: 10px 10px 10px 28px;
 }
 .ledger-entry,
 .recharge-row {
-  border-top: 1px solid #eff0f4;
+  border-top: 1px solid var(--line-subtle);
   padding: 13px 0;
   min-width: 0;
 }
@@ -1324,7 +1345,7 @@ function sourceSnapshotValue(
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  font-size: 11px;
+  font-size: 13px;
 }
 .entry-head > div,
 .recharge-head > div {
@@ -1334,34 +1355,35 @@ function sourceSnapshotValue(
 }
 .entry-head small,
 .recharge-head small {
-  font-size: 11px;
-  color: #8991a0;
+  font-size: 13px;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 .entry-head code {
-  font-size: 11px;
-  color: #8b92a0;
+  font-size: 13px;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 .reason-text,
 .allocation,
 .recharge-row > p {
-  font-size: 11px;
-  color: #626b7c;
+  font-size: 13px;
+  color: var(--ink-secondary);
   overflow-wrap: anywhere;
   line-height: 1.55;
 }
+.snapshot-toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; color: var(--muted); font-size: 13px; }
 .snapshot-grid {
   display: grid;
   grid-template-columns: minmax(120px, 1.2fr) repeat(3, minmax(0, 1fr));
   gap: 6px 8px;
   align-items: baseline;
-  font-size: 11px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .snapshot-grid > b {
   font-weight: 500;
-  color: #626b7c;
+  color: var(--ink-secondary);
   overflow-wrap: anywhere;
 }
 .snapshot-grid > span {
@@ -1369,13 +1391,13 @@ function sourceSnapshotValue(
   overflow-wrap: anywhere;
 }
 .snapshot-heading {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
-  color: #858c99;
+  color: var(--muted);
 }
 .ledger-entry details {
-  font-size: 11px;
-  color: #737b8c;
+  font-size: 13px;
+  color: var(--muted);
   margin-top: 9px;
   overflow-wrap: anywhere;
 }
@@ -1402,20 +1424,20 @@ function sourceSnapshotValue(
   justify-content: space-between;
   align-items: center;
   padding-top: 12px;
-  color: #737b8c;
-  font-size: 11px;
+  color: var(--muted);
+  font-size: 13px;
 }
 .pager > div {
   display: flex;
   gap: 7px;
 }
 .pager button {
-  border: 1px solid #e1e4eb;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: white;
+  background: var(--surface);
   padding: 6px 9px;
-  color: #50596a;
-  font-size: 11px;
+  color: var(--ink-secondary);
+  font-size: 13px;
 }
 .pager button:disabled {
   opacity: 0.45;
@@ -1426,14 +1448,14 @@ function sourceSnapshotValue(
   gap: 12px;
 }
 .form-grid small {
-  font-size: 11px;
-  color: #8991a0;
+  font-size: 13px;
+  color: var(--muted);
   font-weight: 400;
 }
 .form-grid .wide {
   grid-column: 1/-1;
 }
-.form-grid .primary {
+.form-grid .button-primary {
   justify-self: start;
 }
 .form-panel > label {
@@ -1447,7 +1469,7 @@ function sourceSnapshotValue(
 .operations-grid .panel {
   margin: 0;
 }
-.operations-grid .primary {
+.operations-grid .button-primary {
   margin-top: 12px;
 }
 .callout {
@@ -1479,10 +1501,10 @@ function sourceSnapshotValue(
   .snapshot-grid {
     grid-template-columns: minmax(94px, 1fr) repeat(3, minmax(0, 0.8fr));
     gap: 6px 4px;
-    font-size: 11px;
+    font-size: 13px;
   }
   .snapshot-heading {
-    font-size: 11px;
+    font-size: 13px;
   }
   .unfreeze-row {
     align-items: stretch;
@@ -1493,7 +1515,12 @@ function sourceSnapshotValue(
   }
   .bucket-table,
   .recon-table {
-    font-size: 11px;
+    font-size: 13px;
   }
 }
+.finance-breakdown { margin-top: 12px; }
+.finance-breakdown > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; cursor: pointer; color: var(--ink-secondary); font-weight: 600; list-style: none; }
+.finance-breakdown > summary::-webkit-details-marker { display: none; }
+.finance-breakdown[open] > summary { margin-bottom: 8px; }
+.finance-breakdown[open] > summary :deep(svg) { transform: rotate(180deg); }
 </style>

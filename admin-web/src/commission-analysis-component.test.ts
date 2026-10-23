@@ -1,3 +1,6 @@
+import { h as temporalTestH } from "vue";
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createRenderer, h, nextTick, ref, type Component } from "vue";
@@ -16,9 +19,9 @@ const account: AdminAccount = { id: actor, super_admin: false, brand_ids: [brand
 function component(): Component {
   const source = readFileSync(new URL("./CommissionAnalysisReport.vue", import.meta.url), "utf8"), descriptor = parse(source, { filename: "CommissionAnalysisReport.vue" }).descriptor;
   const js = ts.transpileModule(compileScript(descriptor, { id: "commission-analysis-component-test", inlineTemplate: true }).content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-analysis-api": AnalysisApi };
+  const modules: Record<string, unknown> = { "@lottery/shared/FilterAssociationSelect.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("select", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) },  "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": DisplayShared,  vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-analysis-api": AnalysisApi, "./member-lookup": { lookupAdminMember: async () => { throw new Error("Member lookup failed"); } } };
   const body = js.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 type Node = { tag: string; props: Record<string, unknown>; children: Node[]; text: string; parent?: Node; value?: string; addEventListener: (...args: unknown[]) => void; removeEventListener: (...args: unknown[]) => void; getRootNode: () => Node; options: Node[] };
 function element(tag: string): Node { return { tag, props: {}, children: [], text: "", value: "", addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((c) => c.tag === "option"); } }; }
@@ -52,14 +55,14 @@ describe("CommissionAnalysisReport real compiled Vue child", () => {
     vi.stubGlobal("fetch", fetcher); vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
     const mounted = mount(); await flush();
     expect(fetcher).not.toHaveBeenCalled();
-    expect(text(mounted.root)).toContain("按保存周期的 window_to 选择完整周期");
+    expect(text(mounted.root)).toContain("按周期结束时间筛选完整周期");
     click(testId(mounted.root, "commission-analysis-query")); await flush();
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(text(mounted.root)).toContain("922,337,203,685,477,580,812,345,678,901,234,567,890");
     expect(text(mounted.root)).toContain("完整筛选汇总");
     expect(testId(mounted.root, "commission-analysis-summary")).not.toBeNull();
     const input = find(mounted.root, (n) => n.tag === "input"); expect(input).not.toBeNull();
-    (input!.props["onUpdate:modelValue"] as (value: string) => void)("2026-01-03T00:00:00"); await flush();
+    (input!.props["onUpdate:modelValue"] as (value: string) => void)("2026-01-03"); await flush();
     expect(testId(mounted.root, "commission-analysis-summary")).toBeNull();
     expect(testId(mounted.root, "commission-analysis-export")).toBeNull();
     mounted.app.unmount();
@@ -69,12 +72,12 @@ describe("CommissionAnalysisReport real compiled Vue child", () => {
     const delayed = new Promise<Response>((resolve) => { finish = resolve; });
     const fetcher = vi.fn<typeof fetch>(async (input) => {
       if (first) { first = false; return delayed; }
-      return new Response(JSON.stringify({ error: { code: "SESSION_EXPIRED", message: "expired" } }), { status: 401 });
+      return new Response(JSON.stringify({ success: false, error: { code: "SESSION_EXPIRED", message: "expired" } }), { status: 401 });
     });
     vi.stubGlobal("fetch", fetcher); vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
     const mounted = mount(); click(testId(mounted.root, "commission-analysis-query")); await flush();
     mounted.scope.value = { account: { ...account, id: "33333333-3333-4333-8333-333333333333" }, brandId: brand }; await flush();
-    finish(new Response(JSON.stringify({ error: { code: "SESSION_EXPIRED", message: "expired" } }), { status: 401 })); await flush();
+    finish(new Response(JSON.stringify({ success: false, error: { code: "SESSION_EXPIRED", message: "expired" } }), { status: 401 })); await flush();
     expect(mounted.emitted).toEqual([]);
     click(testId(mounted.root, "commission-analysis-query")); await flush();
     expect(mounted.emitted).toEqual(["session-invalid"]);

@@ -7,6 +7,7 @@ import (
 )
 
 func TestCommissionDiscoveryEnqueueFailureRollsBackActualBetAndDebit(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixtureWithWindow(t, 20*time.Second, 22*time.Second)
 	ctx := context.Background()
 	fingerprint := func() string {

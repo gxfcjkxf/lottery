@@ -5,7 +5,6 @@ package compliance
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -58,24 +57,6 @@ type Check struct {
 	ReasonCode string `json:"reason_code"`
 }
 
-// Adapter is reserved for a future explicit integration boundary. Evaluate
-// intentionally does not accept an Adapter, so caller supplied behavior cannot
-// turn this stub evaluator into a production identity or eligibility decision.
-type Adapter interface {
-	Check(context.Context, string, Config) (Check, error)
-}
-
-// StubAdapter describes the current non-integrated behavior. It never reads
-// personal data and always returns review for enabled checks.
-type StubAdapter struct{}
-
-func (StubAdapter) Check(_ context.Context, name string, _ Config) (Check, error) {
-	if !validCheckName(name) {
-		return Check{}, ErrInvalid
-	}
-	return Check{Check: name, Enabled: true, Decision: "review", ReasonCode: "ADAPTER_NOT_CONFIGURED"}, nil
-}
-
 func DefaultConfig() Config {
 	return Config{AllowedCountries: []string{}}
 }
@@ -101,7 +82,7 @@ func ValidConfig(c Config) bool {
 }
 
 func ValidReason(reason string) bool {
-	if !utf8.ValidString(reason) || len(reason) == 0 || len(reason) > 500 || strings.TrimSpace(reason) != reason {
+	if !utf8.ValidString(reason) || len(reason) > 500 || strings.TrimSpace(reason) != reason {
 		return false
 	}
 	for _, r := range reason {
@@ -115,15 +96,6 @@ func ValidReason(reason string) bool {
 func ValidOperation(operation string) bool {
 	switch operation {
 	case "registration", "betting", "withdrawal":
-		return true
-	default:
-		return false
-	}
-}
-
-func ValidDecision(decision string) bool {
-	switch decision {
-	case "allow", "review", "deny", "freeze":
 		return true
 	default:
 		return false
@@ -236,23 +208,17 @@ func closedJSON(data []byte, keys []string, nullable map[string]bool) error {
 			return ErrInvalid
 		}
 	}
-	if token, err = d.Token(); err != nil || token != json.Delim('}') || len(seen) != len(keys) {
+	if token, err = d.Token(); err != nil || token != json.Delim('}') {
 		return ErrInvalid
+	}
+	for _, key := range keys {
+		if key != "reason" && !seen[key] {
+			return ErrInvalid
+		}
 	}
 	var trailing any
 	if d.Decode(&trailing) != io.EOF {
 		return ErrInvalid
 	}
 	return nil
-}
-
-func validCheckName(name string) bool {
-	switch name {
-	case "age", "region", "identity":
-		return true
-	case "account_risk", "betting_risk", "exclusion", "responsible_gambling":
-		return true
-	default:
-		return false
-	}
 }

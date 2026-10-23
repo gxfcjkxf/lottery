@@ -63,15 +63,24 @@ func historyPaths() []string {
 func TestHistoryHTTPRejectsInvalidConfiguredReplicaWithoutFallback(t *testing.T) {
 	f, _ := historyFixture(t)
 	grantHistoryReads(t, f)
+	operator := securityOperator(t, f)
+	grantPlatformPermission(t, operator, "compliance_policy.view.platform")
+	read := func(path string) *httptest.ResponseRecorder {
+		if strings.Contains(path, "/compliance-policy") {
+			return operator.call("GET", strings.Replace(path, "/admin/", "/platform/", 1), "", operator.token, managedBrand, nil)
+		}
+		return f.call("GET", path, "", f.token, managedBrand, nil)
+	}
+
 	for _, path := range historyPaths() {
-		r := f.call("GET", path, "", f.token, managedBrand, nil)
+		r := read(path)
 		mustStatus(t, r, 503)
 		if r.Header().Get("X-Read-Source") != "" || r.Header().Get("X-Read-Replica") != "" || strings.Contains(r.Body.String(), `"items"`) {
 			t.Fatal(path, r.Header())
 		}
 	}
 	for _, path := range []string{"/api/v1/admin/notification-templates", "/api/v1/admin/compliance-policy", "/api/v1/admin/brand-operation", "/api/v1/admin/brand-presentation", "/api/v1/admin/brand-domains", "/api/v1/admin/me"} {
-		r := f.call("GET", path, "", f.token, managedBrand, nil)
+		r := read(path)
 		mustStatus(t, r, 200)
 		if r.Header().Get("X-Read-Source") != "" {
 			t.Fatal("current read entered history router", path)
@@ -81,12 +90,21 @@ func TestHistoryHTTPRejectsInvalidConfiguredReplicaWithoutFallback(t *testing.T)
 func TestHistoryHTTPAuditFailureDoesNotReleasePayload(t *testing.T) {
 	f, _ := historyFixture(t)
 	grantHistoryReads(t, f)
+	operator := securityOperator(t, f)
+	grantPlatformPermission(t, operator, "compliance_policy.view.platform")
+	read := func(path string) *httptest.ResponseRecorder {
+		if strings.Contains(path, "/compliance-policy") {
+			return operator.call("GET", strings.Replace(path, "/admin/", "/platform/", 1), "", operator.token, managedBrand, nil)
+		}
+		return f.call("GET", path, "", f.token, managedBrand, nil)
+	}
+
 	_, e := f.pool.Exec(context.Background(), `CREATE FUNCTION reject_history_audit() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN IF NEW.action IN ('audit.view','notification.template.history','compliance_policy.history.view','brand_operation.history','brand_presentation.history','brand_domains.history') THEN RAISE EXCEPTION 'injected audit failure'; END IF; RETURN NEW; END$$;CREATE TRIGGER reject_history_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_history_audit()`)
 	if e != nil {
 		t.Fatal(e)
 	}
 	for _, path := range historyPaths() {
-		r := f.call("GET", path, "", f.token, managedBrand, nil)
+		r := read(path)
 		mustStatus(t, r, 503)
 		if strings.Contains(r.Body.String(), `"items"`) || r.Header().Get("X-Read-Source") != "" {
 			t.Fatal("unaudited history released", path, r.Body.String())

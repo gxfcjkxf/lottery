@@ -106,9 +106,6 @@ func writableBrand(ctx context.Context, tx pgx.Tx, brand string) error {
 	}
 	return nil
 }
-func (s Service) Create(ctx context.Context, tx pgx.Tx, brand string, a access.Account, reason string, meta points.Metadata) (Job, error) {
-	return s.CreateScoped(ctx, tx, brand, a, ScopeWallet, reason, meta)
-}
 func (s Service) CreateScoped(ctx context.Context, tx pgx.Tx, brand string, a access.Account, scope, reason string, meta points.Metadata) (Job, error) {
 	var out Job
 	if tx == nil || !uuid.MatchString(brand) || !ValidScope(scope) || !validReason(reason) || !validMeta(a, meta) {

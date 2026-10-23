@@ -87,7 +87,7 @@ describe("rule simulation API", () => {
         buildRuleSimulationRequest("special", DEFAULT_RULE_SIMULATION_FORM),
         "k",
       ),
-    ).rejects.toMatchObject({ status: 200 });
+    ).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
   });
 
   it("grants only mapped staff simulation permission", () => {

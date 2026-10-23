@@ -7,17 +7,17 @@ test("real registration, cookie restoration, one-time profile fill and logout", 
   const username = `web_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
   await page.goto("http://localhost:5173/register");
   await page
-    .getByLabel("Choose a username or phone", { exact: true })
+    .getByLabel("Account", { exact: true })
     .fill(username);
   await page
     .getByLabel("Password", { exact: true })
     .fill("用户测试密码"); // 18 UTF-8 bytes; native character minimum must not reject it.
   expect(await page.getByLabel("Password", { exact: true }).evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(true);
   await page.locator('.auth-form input[type="checkbox"]').nth(0).check();
-  await page.locator('.auth-form input[type="checkbox"]').nth(1).check();
-  await page.getByRole("button", { name: /Continue/ }).click();
-  await expect(page).toHaveURL(/\/account$/);
-  await expect(page.getByLabel("Username", { exact: true })).toHaveValue(
+  await page.getByRole("button", { name: /^Register$/ }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto(new URL("/account", page.url()).href);
+  await expect(page.getByLabel("Account", { exact: true })).toHaveValue(
     username,
   );
   const cookies = await context.cookies();
@@ -35,7 +35,7 @@ test("real registration, cookie restoration, one-time profile fill and logout", 
     ),
   ).toBe(false);
   await page.reload();
-  await expect(page.getByLabel("Username", { exact: true })).toHaveValue(
+  await expect(page.getByLabel("Account", { exact: true })).toHaveValue(
     username,
   );
   await page

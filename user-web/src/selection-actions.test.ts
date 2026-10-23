@@ -4,6 +4,15 @@ import { renderToString } from 'vue/server-renderer';
 import BetSelection from './BetSelection.vue';
 import type { RuleDefinition } from '../../shared/src/rules';
 import { emptyBetSelection, exclusionPoolValues, randomBetSelection } from './selection-actions';
+import { createUserI18n, userI18nKey } from './i18n';
+
+async function renderSelection(props: Record<string, unknown>) {
+  const app = createSSRApp(BetSelection, props);
+  const i18n = createUserI18n();
+  i18n.setLocale(props.locale === 'zh' ? 'zh-CN' : 'en');
+  app.provide(userI18nKey, i18n);
+  return renderToString(app);
+}
 
 const definition = (): RuleDefinition => ({
   schema_version: 1,
@@ -16,25 +25,35 @@ afterEach(() => vi.restoreAllMocks());
 describe('editable selection actions', () => {
   it('renders both controls in English and Chinese without submitting a form', async () => {
     for (const [locale, clear, random] of [['en', 'Clear selection', 'Random selection'], ['zh', '清空选号', '随机选号']] as const) {
-      const html = await renderToString(createSSRApp(BetSelection, { definition: definition(), modelValue: emptyBetSelection(), locale }));
+      const html = await renderSelection({ definition: definition(), modelValue: emptyBetSelection(), locale });
       expect(html).toContain(clear); expect(html).toContain(random);
       expect(html.match(/<button type="button"/g)).toHaveLength(2);
     }
   });
   it('disables both controls when the selection is locked', async () => {
-    const html = await renderToString(createSSRApp(BetSelection, { definition: definition(), modelValue: emptyBetSelection(), locale: 'en', disabled: true }));
+    const html = await renderSelection({ definition: definition(), modelValue: emptyBetSelection(), locale: 'en', disabled: true });
     expect(html.match(/<button type="button" disabled/g)).toHaveLength(2);
   });
-  it('shows all configured attributes beside regular and special numbers without inventing labels', async () => {
+  it('keeps number cards concise without attribute annotations', async () => {
     const rule = definition();
     rule.number_attributes = { color: { red: [1, 7] }, parity: { odd: [1, 3, 7] } };
-    const html = await renderToString(createSSRApp(BetSelection, { definition: rule, modelValue: emptyBetSelection(), locale: 'en' }));
-    const labels = html.split('</label>');
+    const html = await renderSelection({ definition: rule, modelValue: emptyBetSelection(), locale: 'en' });
+    const labels = html.split('</button>');
     for (const choice of ['Choose regular number 1', 'Choose special number 7']) {
       const label = labels.find(value => value.includes(`aria-label="${choice}"`));
-      expect(label).toContain('color: red'); expect(label).toContain('parity: odd');
+      expect(label).toBeDefined();
+      expect(label).not.toContain('color: red'); expect(label).not.toContain('parity: odd');
     }
     expect(labels.find(value => value.includes('aria-label="Choose regular number 2"'))).not.toContain('number-attributes');
+  });
+  it('uses pressed buttons for the whole card with no checkbox or submitted form',async()=>{
+    const selected={...emptyBetSelection(),regular:[1],special:[7]};
+    const html=await renderSelection({definition:definition(),modelValue:selected,locale:'en',disabled:true});
+    expect(html).not.toContain('type="checkbox"');
+    const cards=html.match(/<button[^>]*class="choice-chip"[^>]*>/g)!;
+    expect(cards).toHaveLength(10);
+    expect(cards.filter(card=>card.includes('aria-pressed="true"'))).toHaveLength(2);
+    for(const card of cards){expect(card).toContain('type="button"');expect(card).toContain('disabled');}
   });
   it('clears every selection field using independent arrays and maps', () => {
     const first = emptyBetSelection();
@@ -65,7 +84,7 @@ describe('editable selection actions', () => {
     expect(randomBetSelection(rule).exclude).toEqual([1]);
     rule.model.regular_pool = JSON.parse('{"max":6,"allow_repeat":false}');
     expect(randomBetSelection(rule).exclude).toEqual([0]);
-    const html = await renderToString(createSSRApp(BetSelection, { definition: rule, modelValue: emptyBetSelection(), locale: 'en' }));
+    const html = await renderSelection({ definition: rule, modelValue: emptyBetSelection(), locale: 'en' });
     expect(html).toContain('aria-label="Exclude number 0"');
   });
   it('keeps M-select-N regular and special numbers distinct across one pool', () => {

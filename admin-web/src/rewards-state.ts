@@ -25,7 +25,7 @@ function validScope(scope: RewardIntentScope): boolean {
     : (scope.operation === "revoke" || scope.operation === "retry") && typeof scope.targetId === "string" && UUID.test(scope.targetId));
 }
 function validReason(reason: unknown): reason is string {
-  if (typeof reason !== "string" || !reason || reason.trim() !== reason || new TextEncoder().encode(reason).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(reason)) return false;
+  if (typeof reason !== "string" || reason.trim() !== reason || new TextEncoder().encode(reason).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(reason)) return false;
   for (let i = 0; i < reason.length; i++) {
     const code = reason.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff) { const next = reason.charCodeAt(++i); if (!(next >= 0xdc00 && next <= 0xdfff)) return false; }

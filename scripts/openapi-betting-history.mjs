@@ -1,0 +1,9 @@
+const ref=name=>({$ref:`#/components/schemas/${name}`});
+const obj=properties=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
+const text={type:'string'},uuid=ref('UUID');
+const common={id:uuid,game_id:uuid,game_name:text,period_no:text,placed_at:ref('DateTime')};
+export const schemas={
+ MemberBettingHistoryItem:{oneOf:[['standard','LotteryBetOrder'],['configured','ConfiguredOrder'],['mark-six','MarkSixOrder'],['canada','CanadaOrder']].map(([kind,order])=>obj({...common,kind:{type:'string',const:kind},order:ref(order)}))},
+ MemberBettingHistoryPage:obj({brand_id:uuid,member_id:uuid,game_id:{type:'string',description:'Selected game UUID, or empty for all games.'},games:{type:'array',items:obj({id:uuid,name:text})},items:{type:'array',items:ref('MemberBettingHistoryItem'),maxItems:100},limit:{type:'integer',minimum:1,maximum:100},next_cursor:{anyOf:[text,{type:'null'}]}})
+};
+export const operations=[{method:'GET',path:'/api/v1/betting-history',operationId:'memberBettingHistory',summary:'Read unified member betting history',tag:'betting',auth:'user',data:ref('MemberBettingHistoryPage'),parameters:[{name:'game_id',in:'query',schema:uuid},{name:'cursor',in:'query',schema:text},{name:'limit',in:'query',schema:{type:'integer',minimum:1,maximum:100,default:20}}],description:'Authenticated brand member only. All four historical order stores participate even for unavailable games. Actual game-name options come from this member’s history. Sorted by placed_at, storage kind, and ID descending, using one repeatable-read transaction. Cursor is bound to brand, member and game filter. New orders do not shift later pages. No offset, member_id or brand_id overrides are accepted. Original ticket snapshots and exact point strings are preserved; this endpoint never writes orders or balances.'}];

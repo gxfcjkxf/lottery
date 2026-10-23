@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -12,7 +14,8 @@ export type AgentStatus = "active" | "disabled";
 export interface PolicyConfig {
   enabled: boolean;
   max_depth: number;
-  ratio_cap: string;
+  loss_ratio_cap: string;
+ turnover_ratio_cap: string;
   mode: AgentMode;
   cycle: "weekly" | "monthly";
 }
@@ -33,9 +36,10 @@ export interface AgentPolicy {
 }
 
 export interface AgentNode {
+  pending_change?: PendingModeChange | null;
   id: string;
   brand_id: string;
-  member_id: string;
+  agent_account_id: string;
   parent_id: string | null;
   depth: number;
   path: string[];
@@ -51,13 +55,20 @@ export interface AgentNode {
   audit_log_id?: string | null;
 }
 
+export interface PendingModeChange { id: string; root_id: string; mode: AgentMode; ratio: string; effective_at: string }
+export interface ModeRatioInput { agent_id: string; version: number; ratio: string }
+export interface ModeChangeBody { policy_version: number; mode: AgentMode; items: ModeRatioInput[] }
+export interface ModeChangeScope { brand_id: string; root_id: string; policy_version: number; items: AgentNode[] }
+export interface ModeChangeReceipt { id: string; brand_id: string; root_id: string; mode: AgentMode; effective_at: string; items: ModeRatioInput[] }
+
 export interface CreateAgentBody {
   policy_version: number;
-  member_id: string;
+  username: string;
+  password: string;
   parent_id: string | null;
   parent_version: number | null;
   config: NodeConfig;
-  reason: string;
+  reason?: string;
 }
 
 export interface UpdateAgentBody {
@@ -65,13 +76,13 @@ export interface UpdateAgentBody {
   policy_version: number;
   parent_version: number | null;
   config: NodeConfig;
-  reason: string;
+  reason?: string;
 }
 
 export interface SaveAgentPolicyBody {
   version: number;
   config: PolicyConfig;
-  reason: string;
+  reason?: string;
 }
 
 export interface Revision {
@@ -86,6 +97,10 @@ export interface Revision {
   audit_log_id: string | null;
 }
 
+export interface AgentDirectoryNode extends AgentNode { username: string; online: boolean; display_points: string | null }
+export interface AgentList {
+  brand_id: string; items: AgentDirectoryNode[]; limit: number; offset: number; total_count: string;
+}
 export interface AgentTree {
   brand_id: string;
   parent_id: string | null;
@@ -103,12 +118,6 @@ export interface AgentRevisionPage {
   offset: number;
   total_count: string;
 }
-
-type Envelope = {
-  success?: unknown;
-  data?: unknown;
-  error?: { code?: string; message?: string } | null;
-};
 
 export function standardAdminApiError(
   error: unknown,
@@ -129,9 +138,7 @@ function validUuid(value: unknown): value is string {
 function positiveInt(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 1;
 }
-function nonnegativeInt(value: unknown): value is number {
-  return Number.isSafeInteger(value) && Number(value) >= 0;
-}
+
 function canonicalRatio(value: unknown): value is string {
   return typeof value === "string" &&
     /^(?:0|1|0\.(?:[0-9]{0,5}[1-9]))$/.test(value) &&
@@ -156,9 +163,9 @@ function validDate(value: unknown): value is string {
   return Number.isFinite(Date.parse(value));
 }
 function validPolicyConfig(value: unknown): value is PolicyConfig {
-  return isRecord(value) && typeof value.enabled === "boolean" &&
+  return isRecord(value) && value.enabled === true &&
     Number.isSafeInteger(value.max_depth) && Number(value.max_depth) >= 1 && Number(value.max_depth) <= 32 &&
-    canonicalRatio(value.ratio_cap) && validMode(value.mode) &&
+    canonicalRatio(value.loss_ratio_cap) && canonicalRatio(value.turnover_ratio_cap) && validMode(value.mode) &&
     (value.cycle === "weekly" || value.cycle === "monthly");
 }
 function validNodeConfig(value: unknown): value is NodeConfig {
@@ -182,8 +189,8 @@ function validNode(value: unknown, brandId: string, expected?: {
   config?: NodeConfig;
 }): value is AgentNode {
   if (!isRecord(value) || !validUuid(value.id) || (expected?.id !== undefined && value.id !== expected.id) ||
-      value.brand_id !== brandId || !validUuid(value.member_id) ||
-      (expected?.memberId !== undefined && value.member_id !== expected.memberId) ||
+      value.brand_id !== brandId || !validUuid(value.agent_account_id) ||
+      (expected?.memberId !== undefined && value.agent_account_id !== expected.memberId) ||
       !(value.parent_id === null || validUuid(value.parent_id)) ||
       (expected && "parentId" in expected && value.parent_id !== expected.parentId) ||
       !positiveInt(value.depth) || value.depth > 32 || !Array.isArray(value.path) || value.path.length === 0 ||
@@ -201,6 +208,10 @@ function validNode(value: unknown, brandId: string, expected?: {
       (value.parent_id === null ? value.parent_version !== null : value.parent_version === null) ||
       !validUuid(value.created_by) || !validDate(value.created_at) || !validDate(value.updated_at) ||
       (value.audit_log_id !== undefined && value.audit_log_id !== null && !validUuid(value.audit_log_id))) return false;
+  if (value.pending_change !== undefined && value.pending_change !== null) {
+    const change = value.pending_change;
+    if (!isRecord(change) || !validUuid(change.id) || change.root_id !== value.path[0] || !validMode(change.mode) || change.mode === value.effective_mode || !canonicalRatio(change.ratio) || !validDate(change.effective_at)) return false;
+  }
   return true;
 }
 function validPolicy(value: unknown, brandId: string, expected?: { version: number; config: PolicyConfig }): value is AgentPolicy {
@@ -247,10 +258,6 @@ export function agentsPermissions(account: AdminAccount, brand: string): {
   };
 }
 
-export function standardAgentApiError(error: unknown, fallback?: string): AdminApiError {
-  return standardAdminApiError(error, fallback ?? "Agent request failed");
-}
-
 export function createAgentsApi(fetchImpl: typeof fetch = fetch) {
   async function request(path: string, brand: string, options: {
     method?: "GET" | "PUT" | "POST";
@@ -275,21 +282,7 @@ export function createAgentsApi(fetchImpl: typeof fetch = fetch) {
     } catch (error) {
       throw standardAdminApiError(error);
     }
-    let envelope: Envelope;
-    try {
-      envelope = await response.json() as Envelope;
-    } catch {
-      throw new AdminApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`,
-        response.ok && write ? 0 : response.ok ? 502 : response.status,
-        response.ok ? "INVALID_RESPONSE" : undefined);
-    }
-    if (!response.ok || envelope.success !== true || envelope.data === undefined) {
-      const detail = typeof envelope.error === "object" && envelope.error ? envelope.error : undefined;
-      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError(detail?.message ?? `Request failed (${response.status})`,
-        response.ok && write ? 0 : response.ok ? 502 : response.status,
-        response.ok ? "INVALID_RESPONSE" : detail?.code);
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     return envelope.data;
   }
 
@@ -298,12 +291,16 @@ export function createAgentsApi(fetchImpl: typeof fetch = fetch) {
     if (!validPolicy(value, brand)) invalidResponse(false);
     return value;
   }
-  async function policyHistory(brand: string, limit = 20, offset = 0): Promise<AgentRevisionPage> {
+  async function list(brand: string, limit = 20, offset = 0, filters: { query?: string; online?: '' | 'true' | 'false' } = {}): Promise<AgentList> {
     pageArgs(limit, offset);
     const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-    const value = await request(`${BASE}/agent-policy/history?${query}`, brand);
-    if (!validPage(value, brand, null, limit, offset)) invalidResponse(false);
-    return value;
+    if (filters.query?.trim()) query.set('q', filters.query.trim());
+    if (filters.online) query.set('online', filters.online);
+    const value = await request(`${BASE}/agents?${query}`, brand);
+    if (!isRecord(value) || value.brand_id !== brand || !Array.isArray(value.items) || value.items.length > limit ||
+        !value.items.every(item => validNode(item, brand) && isRecord(item) && typeof item.username === "string" && typeof item.online === "boolean" && (item.display_points === null || typeof item.display_points === "string" && /^(0|[1-9]\d*)$/.test(item.display_points))) || value.limit !== limit || value.offset !== offset ||
+        typeof value.total_count !== "string" || !/^(0|[1-9]\d*)$/.test(value.total_count)) invalidResponse(false);
+    return value as unknown as AgentList;
   }
   async function tree(brand: string, parentId: string | null = null, limit = 20, offset = 0): Promise<AgentTree> {
     pageArgs(limit, offset);
@@ -337,23 +334,39 @@ export function createAgentsApi(fetchImpl: typeof fetch = fetch) {
     policy,
     async savePolicy(brand: string, body: SaveAgentPolicyBody, key: string): Promise<AgentPolicy> {
       if (!isRecord(body) || !positiveInt(body.version) || body.version >= Number.MAX_SAFE_INTEGER ||
-          !validPolicyConfig(body.config) || !validReason(body.reason))
+          !validPolicyConfig(body.config) || !validOptionalReason(body.reason))
         invalidInput("Agent policy request is invalid");
       const value = await request(`${BASE}/agent-policy`, brand, { method: "PUT", body, key });
       if (!validPolicy(value, brand, { version: body.version + 1, config: body.config })) invalidResponse(true);
       return value;
     },
-    policyHistory,
+    async modeScope(brand: string, id: string): Promise<ModeChangeScope> {
+      if (!validUuid(id)) invalidInput('Agent ID must be a UUID');
+      const value = await request(`${BASE}/agents/${id}/mode-change`, brand);
+      if (!isRecord(value) || value.brand_id !== brand || value.root_id !== id || !positiveInt(value.policy_version) || !Array.isArray(value.items) || !value.items.length ||
+        !value.items.every(item => validNode(item, brand) && item.path[0] === id) || new Set(value.items.map(item => (item as AgentNode).id)).size !== value.items.length ||
+        !(value.items as AgentNode[]).some(item => item.id === id && item.parent_id === null)) invalidResponse(false);
+      return value as unknown as ModeChangeScope;
+    },
+    async scheduleMode(brand: string, id: string, body: ModeChangeBody, key: string): Promise<ModeChangeReceipt> {
+      if (!validUuid(id) || !positiveInt(body.policy_version) || !validMode(body.mode) || !Array.isArray(body.items) || !body.items.length ||
+        !body.items.every(item => validUuid(item.agent_id) && positiveInt(item.version) && canonicalRatio(item.ratio)) || new Set(body.items.map(item => item.agent_id)).size !== body.items.length) invalidInput('Invalid mode change request');
+      const value = await request(`${BASE}/agents/${id}/mode-change`, brand, { method: 'POST', body, key });
+      if (!isRecord(value) || !validUuid(value.id) || value.brand_id !== brand || value.root_id !== id || value.mode !== body.mode || !validDate(value.effective_at) || !Array.isArray(value.items) ||
+        value.items.length !== body.items.length || new Set(value.items.map(item => isRecord(item) ? item.agent_id : null)).size !== value.items.length || !value.items.every(item => isRecord(item) && body.items.some(expected => expected.agent_id === item.agent_id && expected.version === item.version && expected.ratio === item.ratio))) invalidResponse(true);
+      return value as unknown as ModeChangeReceipt;
+    },
     tree,
+    list,
     node,
     async createNode(brand: string, body: CreateAgentBody, key: string): Promise<AgentNode> {
-      if (!isRecord(body) || !positiveInt(body.policy_version) || !validUuid(body.member_id) ||
+      if (!isRecord(body) || !positiveInt(body.policy_version) || (typeof body.username !== "string" || !/^[a-z][a-z0-9_]{2,31}$/.test(body.username) || typeof body.password !== "string" || body.password.length < 6 || body.password.length > 30) ||
           !(body.parent_id === null || validUuid(body.parent_id)) ||
           !(body.parent_version === null || positiveInt(body.parent_version)) ||
           (body.parent_id === null ? body.parent_version !== null : body.parent_version === null) ||
-          !validNodeConfig(body.config) || !validReason(body.reason)) invalidInput("Agent creation request is invalid");
+          !validNodeConfig(body.config) || !validOptionalReason(body.reason)) invalidInput("Agent creation request is invalid");
       const value = await request(`${BASE}/agents`, brand, { method: "POST", body, key });
-      if (!validNode(value, brand, { memberId: body.member_id, parentId: body.parent_id, version: 1, policyVersion: body.policy_version,
+      if (!validNode(value, brand, { parentId: body.parent_id, version: 1, policyVersion: body.policy_version,
         parentVersion: body.parent_version, config: body.config })) invalidResponse(true);
       return value;
     },
@@ -361,7 +374,7 @@ export function createAgentsApi(fetchImpl: typeof fetch = fetch) {
       if (!validUuid(id)) invalidInput("Agent ID must be a UUID");
       if (!isRecord(body) || !positiveInt(body.version) || body.version >= Number.MAX_SAFE_INTEGER || !positiveInt(body.policy_version) ||
           !(body.parent_version === null || positiveInt(body.parent_version)) ||
-          !validNodeConfig(body.config) || !validReason(body.reason)) invalidInput("Agent update request is invalid");
+          !validNodeConfig(body.config) || !validOptionalReason(body.reason)) invalidInput("Agent update request is invalid");
       const value = await request(`${BASE}/agents/${encodeURIComponent(id)}`, brand, { method: "PUT", body, key });
       if (!validNode(value, brand, { id, version: body.version + 1,
         policyVersion: body.policy_version, parentVersion: body.parent_version, config: body.config })) invalidResponse(true);
@@ -372,7 +385,11 @@ export function createAgentsApi(fetchImpl: typeof fetch = fetch) {
 }
 
 function validReason(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0 && new TextEncoder().encode(value).length <= 500;
+  return typeof value === "string" && new TextEncoder().encode(value).length <= 500;
+}
+
+function validOptionalReason(value: unknown): value is string | undefined {
+  return value === undefined || validReason(value);
 }
 
 export type AgentsApi = ReturnType<typeof createAgentsApi>;

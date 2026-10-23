@@ -1,6 +1,8 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { createIdempotencyKey } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
-import { isWalletDTO, normalizeLedgerSnapshots, normalizeSourceBuckets, type WalletDTO, type WalletSource as SharedWalletSource, type WalletState as SharedWalletState, type SourceBuckets as SharedSourceBuckets } from "@lottery/shared";
+import { isWalletDTO, normalizeLedgerSnapshots, type WalletDTO, type WalletSource as SharedWalletSource, type WalletState as SharedWalletState, type SourceBuckets as SharedSourceBuckets } from "@lottery/shared";
 
 const BASE = "/api/v1/admin";
 
@@ -74,12 +76,6 @@ export interface FinanceAccount {
   permissions_by_brand?: Record<string, string[]>;
   platform_permissions?: string[];
 }
-
-type Envelope<T> = {
-  success?: boolean;
-  data?: T;
-  error?: { code: string; message: string } | null;
-};
 
 export class FinanceApiError extends Error {
   constructor(
@@ -195,28 +191,8 @@ export function createFinanceApi(fetcher: FetchLike = fetch) {
         ? {}
         : { body: JSON.stringify(options.body) }),
     });
-    let envelope: Envelope<T>;
-    try {
-      envelope = (await response.json()) as Envelope<T>;
-    } catch {
-      throw new FinanceApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
-    }
-    if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
-      throw new FinanceApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
-    }
-    const detail = envelope.error;
-    if (!response.ok && envelope.success === false && detail && typeof detail === "object" && !Array.isArray(detail)
-      && typeof detail.code === "string" && detail.code.trim()
-      && typeof detail.message === "string" && detail.message.trim()) {
-      throw new FinanceApiError(detail.message, response.status, detail.code);
-    }
-    if (
-      !response.ok ||
-      envelope.success !== true ||
-      envelope.data == null || typeof envelope.data !== "object" || Array.isArray(envelope.data)
-    ) {
-      throw new FinanceApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
-    }
+    const envelope = await readAdminEnvelope<T>(response);
+    if (envelope.data == null || typeof envelope.data !== "object" || Array.isArray(envelope.data)) throw new FinanceApiError("Invalid server response; operation result is unconfirmed", 502, "INVALID_RESPONSE");
     const data = envelope.data;
     if (data && typeof data === "object" && !Array.isArray(data) &&
       ["before_snapshot", "delta_snapshot", "after_snapshot"].every((key) => Object.hasOwn(data, key))) {

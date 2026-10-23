@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import {
   AdminApiError,
   createIdempotencyKey,
@@ -507,7 +509,7 @@ export function buildSourceSetBody(
   reason: string,
 ) {
   if (!safeInt(version, 1)) fail("彩种版本无效，请重新读取。");
-  if (!reason.trim() || utf8Length(reason.trim()) > 500)
+  if (utf8Length(reason.trim()) > 500)
     fail("保存来源前必须填写不超过 500 个 UTF-8 字节的原因。");
   if (!Array.isArray(sources) || sources.length > 16)
     fail("开奖来源最多可配置 16 个。");
@@ -604,7 +606,7 @@ export function buildManualDrawBody(args: {
   if (!safeInt(args.version, 1) || args.version !== args.period.version)
     fail("期数版本无效，请重新读取。");
   if (!args.confirmed) fail("请先明确确认手动录入开奖结果。");
-  if (!args.reason.trim() || utf8Length(args.reason.trim()) > 500)
+  if (utf8Length(args.reason.trim()) > 500)
     fail("手动录入必须填写不超过 500 个 UTF-8 字节的原因。");
   if (!isUtcIsoTimestamp(args.drawnAt))
     fail("开奖时间须为有效的 UTC RFC3339 时间。");
@@ -714,11 +716,6 @@ function stableJson(value: unknown): string {
         : input;
   return JSON.stringify(sorted(value));
 }
-type Envelope<T> = {
-  success?: boolean;
-  data?: T;
-  error?: { code?: string; message?: string } | null;
-};
 
 export function createDrawManagementApi(fetcher: typeof fetch = fetch) {
   async function request<T>(
@@ -748,28 +745,7 @@ export function createDrawManagementApi(fetcher: typeof fetch = fetch) {
         ? {}
         : { body: JSON.stringify(options.body) }),
     });
-    let envelope: Envelope<unknown> | null;
-    try {
-      envelope = await response.json();
-    } catch {
-      throw new AdminApiError("服务器未返回有效 JSON。", response.status);
-    }
-    if (
-      !response.ok ||
-      !isRecord(envelope) ||
-      envelope.success !== true ||
-      !("data" in envelope)
-    ) {
-      const detail = isRecord(envelope?.error) ? envelope.error : undefined;
-      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError(
-        typeof detail?.message === "string"
-            ? detail.message
-            : `请求失败（${response.status}）`,
-        response.status,
-        typeof detail?.code === "string" ? detail.code : undefined,
-      );
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     return parse(envelope.data);
   }
   const id = encodeURIComponent;
@@ -886,8 +862,7 @@ export function createDrawManagementApi(fetcher: typeof fetch = fetch) {
         !safeInt(body.version, 1) ||
         body.version !== period.version ||
         !nonempty(body.period_no) ||
-        body.period_no !== period.period_no ||
-        !body.reason.trim() ||
+        body.period_no !== period.period_no  ||
         utf8Length(body.reason.trim()) > 500 ||
         !isUtcIsoTimestamp(body.drawn_at) ||
         Date.parse(body.drawn_at) < Date.parse(period.draw_at) ||

@@ -1,3 +1,5 @@
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createRenderer, h, nextTick, ref, type Component } from "vue";
@@ -38,12 +40,12 @@ function compileComponent(): Component {
   const descriptor = parse(source, { filename: "OperationsWorkbench.vue" }).descriptor;
   const compiled = compileScript(descriptor, { id: "operations-workbench-commission-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(compiled, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = { vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./reports-api": ReportsApi, "./workbench-api": WorkbenchApi };
+  const modules: Record<string, unknown> = {  "@lottery/shared": DisplayShared,  vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./reports-api": ReportsApi, "./workbench-api": WorkbenchApi };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => {
     if (!(specifier in modules)) throw new Error(`Unmapped component import: ${specifier}`);
     return `const {${bindings.replace(/\s+as\s+/g, ": ")}} = __modules[${JSON.stringify(specifier)}];`;
   }).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 function snapshot(brandId: string, commissionStatus: "ready" | "forbidden" = "ready") {
   const ready = <T>(data: T) => ({ status: "ready", data });

@@ -24,7 +24,7 @@ function environment(viewport = 'desktop') {
     PLATFORM_BIN: process.execPath,
     POSTGRES_PSQL_BIN: process.execPath,
     TEST_ARCHIVE_ADMIN_USERNAME: `archive_browser_${viewport}`,
-    TEST_ARCHIVE_ADMIN_PASSWORD: 'archive-static-owned-harbor-admin-password',
+    TEST_ARCHIVE_ADMIN_PASSWORD: 'archive-static-admin-2026',
   };
 }
 

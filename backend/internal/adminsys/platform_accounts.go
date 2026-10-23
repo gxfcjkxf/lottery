@@ -79,6 +79,165 @@ func (s Store) ListPlatformRoles(ctx context.Context, actor access.Account, limi
 	return result, rows.Err()
 }
 
+func (s Store) CreatePlatformRole(ctx context.Context, tx pgx.Tx, actor access.Account, in RoleInput, meta identity.Metadata) (RoleRecord, error) {
+	reason, err := cleanReason(in.Reason)
+	if err != nil || tx == nil || in.Version != 0 || !roleCodePattern.MatchString(in.Code) {
+		return RoleRecord{}, ErrInvalid
+	}
+	if !platformManagementAllowed(actor, "role", "write") {
+		return RoleRecord{}, ErrDenied
+	}
+	if in.Status == "" {
+		in.Status = "active"
+	}
+	if !validRoleFields(in.Name, in.Status) {
+		return RoleRecord{}, ErrInvalid
+	}
+	permissions, err := cleanPlatformPermissions(in.Permissions)
+	if err != nil {
+		return RoleRecord{}, err
+	}
+	if !actorHasPlatformRolePermissions(actor, []platformRole{{Permissions: permissions}}) {
+		return RoleRecord{}, ErrDenied
+	}
+	for _, key := range permissions {
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM permissions WHERE key=$1 AND split_part(key,'.',3)='platform')`, key).Scan(&exists); err != nil {
+			return RoleRecord{}, err
+		}
+		if !exists {
+			return RoleRecord{}, ErrInvalid
+		}
+	}
+	record := RoleRecord{ID: ids.New(), Code: in.Code, Name: in.Name, Status: in.Status, Version: 1, Permissions: permissions}
+	_, err = tx.Exec(ctx, `INSERT INTO roles(id,code,name,status,version,is_bootstrap) VALUES($1,$2,$3,$4,1,false)`, record.ID, record.Code, record.Name, record.Status)
+	if isUniqueViolation(err) {
+		return RoleRecord{}, ErrConflict
+	}
+	if err != nil {
+		return RoleRecord{}, err
+	}
+	if err := replaceRolePermissions(ctx, tx, record.ID, permissions); err != nil {
+		return RoleRecord{}, err
+	}
+	record.AuditLogID, err = audit.Append(ctx, tx, audit.Record{ActorType: "admin", ActorID: actor.ID, Action: "platform.role.create", ResourceType: "role", ResourceID: record.ID, Reason: reason, RequestID: meta.RequestID, IP: meta.IP, After: map[string]any{"code": record.Code, "name": record.Name, "status": record.Status, "version": record.Version, "permissions": permissions}})
+	return record, err
+}
+
+func (s Store) UpdatePlatformRole(ctx context.Context, tx pgx.Tx, actor access.Account, id string, in RoleInput, meta identity.Metadata) (RoleRecord, error) {
+	reason, err := cleanReason(in.Reason)
+	if err != nil || tx == nil || !validUUID(id) || in.Version < 1 {
+		return RoleRecord{}, ErrInvalid
+	}
+	if !platformManagementAllowed(actor, "role", "write") {
+		return RoleRecord{}, ErrDenied
+	}
+	if !validRoleFields(in.Name, in.Status) {
+		return RoleRecord{}, ErrInvalid
+	}
+	permissions, err := cleanPlatformPermissions(in.Permissions)
+	if err != nil {
+		return RoleRecord{}, err
+	}
+	if !actorHasPlatformRolePermissions(actor, []platformRole{{Permissions: permissions}}) {
+		return RoleRecord{}, ErrDenied
+	}
+	for _, key := range permissions {
+		var exists bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM permissions WHERE key=$1 AND split_part(key,'.',3)='platform')`, key).Scan(&exists); err != nil {
+			return RoleRecord{}, err
+		}
+		if !exists {
+			return RoleRecord{}, ErrInvalid
+		}
+	}
+
+	var record RoleRecord
+	err = tx.QueryRow(ctx, `SELECT id::text,COALESCE(brand_id::text,''),code,name,status,version,is_bootstrap FROM roles WHERE id=$1 AND brand_id IS NULL FOR UPDATE`, id).
+		Scan(&record.ID, &record.BrandID, &record.Code, &record.Name, &record.Status, &record.Version, &record.IsBootstrap)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return RoleRecord{}, ErrNotFound
+	}
+	if err != nil {
+		return RoleRecord{}, err
+	}
+	if record.IsBootstrap {
+		return RoleRecord{}, ErrDenied
+	}
+	if in.Code != "" && in.Code != record.Code {
+		return RoleRecord{}, ErrInvalid
+	}
+	if record.Version != in.Version {
+		return RoleRecord{}, ErrConflict
+	}
+	beforePermissions, err := loadRolePermissions(ctx, tx, id)
+	if err != nil {
+		return RoleRecord{}, err
+	}
+	before := map[string]any{"code": record.Code, "name": record.Name, "status": record.Status, "version": record.Version, "permissions": beforePermissions}
+	command, err := tx.Exec(ctx, `UPDATE roles SET name=$2,status=$3,version=version+1 WHERE id=$1 AND brand_id IS NULL AND version=$4`, id, in.Name, in.Status, in.Version)
+	if err != nil {
+		return RoleRecord{}, err
+	}
+	if command.RowsAffected() != 1 {
+		return RoleRecord{}, ErrConflict
+	}
+	if err := replaceRolePermissions(ctx, tx, id, permissions); err != nil {
+		return RoleRecord{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE admin_accounts a SET version=version+1 FROM admin_account_roles ar WHERE ar.role_id=$1 AND ar.account_id=a.id`, id); err != nil {
+		return RoleRecord{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE sessions SET revoked_at=now() WHERE revoked_at IS NULL AND admin_id IN (SELECT account_id FROM admin_account_roles WHERE role_id=$1)`, id); err != nil {
+		return RoleRecord{}, err
+	}
+	record.Name, record.Status, record.Version, record.Permissions = in.Name, in.Status, record.Version+1, permissions
+	record.AuditLogID, err = audit.Append(ctx, tx, audit.Record{ActorType: "admin", ActorID: actor.ID, Action: "role.update", ResourceType: "role", ResourceID: record.ID, Reason: reason, RequestID: meta.RequestID, IP: meta.IP, Before: before, After: map[string]any{"code": record.Code, "name": record.Name, "status": record.Status, "version": record.Version, "permissions": permissions}})
+	return record, err
+}
+
+func (s Store) DeletePlatformRole(ctx context.Context, tx pgx.Tx, actor access.Account, id string, version int64, meta identity.Metadata) (string, error) {
+	if tx == nil || !validUUID(id) || version < 1 {
+		return "", ErrInvalid
+	}
+	if !platformManagementAllowed(actor, "role", "delete") {
+		return "", ErrDenied
+	}
+	var record RoleRecord
+	err := tx.QueryRow(ctx, `SELECT id::text,code,name,status,version,is_bootstrap FROM roles WHERE id=$1 AND brand_id IS NULL FOR UPDATE`, id).
+		Scan(&record.ID, &record.Code, &record.Name, &record.Status, &record.Version, &record.IsBootstrap)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if record.IsBootstrap {
+		return "", ErrDenied
+	}
+	if record.Version != version {
+		return "", ErrConflict
+	}
+	var assigned bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM admin_account_roles WHERE role_id=$1)`, id).Scan(&assigned); err != nil {
+		return "", err
+	}
+	if assigned {
+		return "", ErrRoleAssigned
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM role_permissions WHERE role_id=$1`, id); err != nil {
+		return "", err
+	}
+	command, err := tx.Exec(ctx, `DELETE FROM roles WHERE id=$1 AND brand_id IS NULL AND version=$2`, id, version)
+	if err != nil {
+		return "", err
+	}
+	if command.RowsAffected() != 1 {
+		return "", ErrConflict
+	}
+	return audit.Append(ctx, tx, audit.Record{ActorType: "admin", ActorID: actor.ID, Action: "role.delete", ResourceType: "role", ResourceID: id, RequestID: meta.RequestID, IP: meta.IP, Before: map[string]any{"code": record.Code, "name": record.Name, "status": record.Status, "version": record.Version}})
+}
+
 func (s Store) CreatePlatformAdmin(ctx context.Context, tx pgx.Tx, actor access.Account, in AdminInput, passwordHash string, meta identity.Metadata) (AdminRecord, error) {
 	reason, err := cleanReason(in.Reason)
 	if err != nil || tx == nil || strings.TrimSpace(passwordHash) == "" {
@@ -209,6 +368,43 @@ func (s Store) ResetPlatformAdminPassword(ctx context.Context, tx pgx.Tx, actor 
 	after["password"] = "redacted"
 	return audit.Append(ctx, tx, audit.Record{ActorType: "admin", ActorID: actor.ID, Action: "admin.password_reset", ResourceType: "admin", ResourceID: id, Reason: reason, RequestID: meta.RequestID, IP: meta.IP,
 		Before: before, After: after})
+}
+
+func (s Store) DeletePlatformAdmin(ctx context.Context, tx pgx.Tx, actor access.Account, id string, version int64, meta identity.Metadata) (string, error) {
+	if tx == nil || !validUUID(id) || version < 1 {
+		return "", ErrInvalid
+	}
+	if actor.ID == id {
+		return "", ErrDenied
+	}
+	if !platformManagementAllowed(actor, "admin", "delete") {
+		return "", ErrDenied
+	}
+	record, roles, err := lockPlatformAdmin(ctx, tx, id)
+	if err != nil {
+		return "", err
+	}
+	if record.Version != version {
+		return "", ErrConflict
+	}
+	before := platformAdminAuditSnapshot(record, platformRoleIDs(roles))
+	if _, err = tx.Exec(ctx, `DELETE FROM sessions WHERE admin_id=$1`, id); err != nil {
+		return "", err
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM admin_account_roles WHERE account_id=$1`, id); err != nil {
+		return "", err
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM admin_brand_scopes WHERE account_id=$1`, id); err != nil {
+		return "", err
+	}
+	command, err := tx.Exec(ctx, `DELETE FROM admin_accounts WHERE id=$1 AND version=$2`, id, version)
+	if err != nil {
+		return "", err
+	}
+	if command.RowsAffected() != 1 {
+		return "", ErrConflict
+	}
+	return audit.Append(ctx, tx, audit.Record{ActorType: "admin", ActorID: actor.ID, Action: "admin.delete", ResourceType: "admin", ResourceID: id, Reason: "", RequestID: meta.RequestID, IP: meta.IP, Before: before})
 }
 
 func platformManagementAllowed(actor access.Account, resource, action string) bool {

@@ -52,7 +52,7 @@ test("Harbor authentication editor loads real settings; desktop enables captcha"
       .getByLabel("变更原因", { exact: true })
       .fill("browser captcha enable verification");
     await settings
-      .getByRole("button", { name: "保存并立即生效", exact: true })
+      .getByRole("button", { name: "保存", exact: true })
       .click();
     await expect(settings.getByRole("status")).toContainText(
       "配置已保存并立即生效",
@@ -96,7 +96,7 @@ test("Harbor authentication editor loads real settings; desktop enables captcha"
       .getByLabel("变更原因", { exact: true })
       .fill("restore isolated browser fixture");
     await settings
-      .getByRole("button", { name: "保存并立即生效", exact: true })
+      .getByRole("button", { name: "保存", exact: true })
       .click();
     await expect(settings.getByRole("status")).toContainText(
       "配置已保存并立即生效",

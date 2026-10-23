@@ -7,40 +7,26 @@ import {
   normalizeRuleCase,
   validateRuleCases,
 } from "./rule-cases-editor";
-import { useAdminI18n } from "./i18n";
-const { t } = useAdminI18n();
-const ui = (zh: string, en: string = zh) => t(zh, en);
+import { adminKey, useAdminI18n } from "./i18n";
+const { t, display } = useAdminI18n();
 const localError = (value: string) => {
   const pairs: Record<string, string> = {
-    "Invalid validation cases.": "验证用例无效。",
-    "Provide between 1 and 32 validation cases.": "请提供 1 至 32 个验证用例。",
-    "A validation case must include a name.": "验证用例必须填写名称。",
-    "Validation case names must be unique.": "验证用例名称必须唯一。",
-    "Digit selections must contain one candidate list per position.": "数字选号必须为每个位置提供一个候选列表。",
-    "Digit candidates must be from 0 to 9.": "数字候选必须在 0 至 9 之间。",
-    "Number selections contain fields that do not apply to this mode.": "数字选号包含当前模式不适用的字段。",
-    "Exclude selection contains fields that do not apply to this mode.": "排除选号包含当前模式不适用的字段。",
-    "Excluded candidates contain values outside the model pools.": "排除候选包含号码池之外的值。",
-    "Select values for every configured attribute group.": "请为每个已配置的属性组选择值。",
-    "Select values for every configured feature.": "请为每个已配置的特征选择值。",
-    "The definition pool cannot satisfy the draw count.": "规则号码池无法满足开奖数量。",
-    "The definition pool is empty.": "规则号码池为空。",
-    "A validation case is required.": "必须提供验证用例。",
-    "Expected won must be true or false.": "预期中奖状态必须为 true 或 false。",
-    "Multiplier exceeds the definition limit.": "倍投超过规则定义的上限。",
-    "A complete rule definition is required.": "必须提供完整的规则定义。",
-    "M-select pools and model cannot allow repeated numbers.": "M 选 N 的号码池和模型均不能允许号码重复。",
-    "Unsupported rule model.": "不支持的号码模型。",
-    "Digit number selection cannot use regular or special counts.": "数字选号不能配置普通号或特别号数量。",
-    "Draw digits must be from 0 to 9.": "开奖数字必须在 0 至 9 之间。",
-    "A number draw cannot contain digit positions.": "号码型开奖不能包含数字位置。",
-    "M-select regular and special draw values must be distinct.": "M 选 N 的普通号与特别号开奖结果不能重复。",
-    "Case names must be unique.": "用例名称必须唯一。",
-    "M-select definition pool cannot supply distinct draw values.": "M 选 N 的定义号码池无法提供互不重复的开奖结果。",
-    "Feature selection contains fields that do not apply to this mode.": "特征选号包含当前模式不适用的字段。",
+    "Invalid validation cases.": "admin.rule.case.invalid", "Provide between 1 and 32 validation cases.": "admin.rule.case.limit",
+    "A validation case must include a name.": "admin.rule.case.nameRequired", "Validation case names must be unique.": "admin.rule.case.uniqueNames",
+    "Digit selections must contain one candidate list per position.": "admin.rule.case.positionCandidates", "Digit candidates must be from 0 to 9.": "admin.rule.case.digits",
+    "Number selections contain fields that do not apply to this mode.": "admin.rule.case.numberFields", "Exclude selection contains fields that do not apply to this mode.": "admin.rule.case.excludeFields",
+    "Excluded candidates contain values outside the model pools.": "admin.rule.case.poolValues", "Select values for every configured attribute group.": "admin.rule.case.attributes",
+    "Select values for every configured feature.": "admin.rule.case.features", "The definition pool cannot satisfy the draw count.": "admin.rule.case.drawCount",
+    "The definition pool is empty.": "admin.rule.case.emptyPool", "A validation case is required.": "admin.rule.case.required",
+    "Expected won must be true or false.": "admin.rule.case.expectedWon", "Multiplier exceeds the definition limit.": "admin.rule.case.multiplier",
+    "A complete rule definition is required.": "admin.rule.case.definitionRequired", "M-select pools and model cannot allow repeated numbers.": "admin.rule.case.repeat",
+    "Unsupported rule model.": "admin.rule.case.unsupportedModel", "Digit number selection cannot use regular or special counts.": "admin.rule.case.digitsCounts",
+    "Draw digits must be from 0 to 9.": "admin.rule.case.drawDigits", "A number draw cannot contain digit positions.": "admin.rule.case.numberDraw",
+    "M-select regular and special draw values must be distinct.": "admin.rule.case.distinctDraw", "Case names must be unique.": "admin.rule.case.uniqueCaseNames",
+    "M-select definition pool cannot supply distinct draw values.": "admin.rule.case.distinctPool", "Feature selection contains fields that do not apply to this mode.": "admin.rule.case.featureFields",
   };
   const known = pairs[value];
-  if (known) return t(known, value);
+  if (known) return t(adminKey(known));
   const label = value.match(/^(.+?): (.+)$/);
   if (label) {
     const labels: Record<string, string> = {
@@ -54,11 +40,11 @@ const localError = (value: string) => {
       "单项输入最长 2000 字符。": "单项输入最长 2000 个字符。", "单项最多 100 个输入值。": "单项最多可输入 100 个值。",
       "enter comma-separated canonical non-negative integers.": "请输入逗号分隔的规范非负整数。", "values must be safe integers.": "所有值必须是安全整数。",
     };
-    return t(`${zh}：${replacements[rest] ?? rest}`, `${label[1]}: ${rest}`);
+    return t('admin.rule.case.fieldError', { field: label[1]!, message: replacements[rest] ?? rest });
   }
   const digitCount = value.match(/^Digit draw must contain exactly (\d+) digits\.$/);
-  if (digitCount) return t(`开奖数字必须正好包含 ${digitCount[1]} 位。`, value);
-  return value;
+  if (digitCount) return t('admin.rule.case.digitCount', { count: digitCount[1]! });
+  return display(value);
 };
 
 const props = defineProps<{
@@ -432,28 +418,25 @@ defineExpose({ localErrors, casesValid });
   >
     <header class="cases-header">
       <div>
-        <h3>{{ t("完整验证用例（最多 32 组）", "Complete validation cases (up to 32)") }}</h3>
-        <p>
-          {{ t("预期值由运营独立填写，服务器实际计算核对；初始占位值不代表验证通过。", "Operators enter expected values independently; the server checks its actual calculation. Initial placeholder values do not indicate a passing validation.") }}
-        </p>
+        <h3>{{ t('admin.copy.1c84021e') }}</h3>
       </div>
       <button
         type="button"
         :disabled="disabled || drafts.length >= caseLimit"
         @click="addCase"
       >
-        {{ t("新增用例", "Add case") }} <span>({{ drafts.length }}/{{ caseLimit }})</span>
+        {{ t('admin.copy.f6a8b69f') }} <span>({{ drafts.length }}/{{ caseLimit }})</span>
       </button>
     </header>
 
-    <p v-if="!drafts.length" class="empty-cases">
-      {{ t("暂无用例。草稿准备好后可新增用例。", "No cases yet. Add one when the draft is ready.") }}
+    <p v-if="!drafts.length" class="empty-cases empty-state">
+      {{ t('admin.copy.e16c2384') }}
     </p>
 
     <article v-for="(draft, index) in drafts" :key="index" class="case-card">
       <header class="case-card-header">
         <label class="wide-field"
-          >{{ t("用例名称", "Case name") }}
+          >{{ t('admin.copy.3c80afee') }}
           <input
             :value="draft.value.name"
             maxlength="120"
@@ -473,10 +456,10 @@ defineExpose({ localErrors, casesValid });
             :disabled="disabled || drafts.length >= caseLimit"
             @click="cloneCase(index)"
           >
-            {{ t("复制用例", "Duplicate case") }}
+            {{ t('admin.copy.4b5ae6be') }}
           </button>
           <button type="button" :disabled="disabled" @click="removeCase(index)">
-            {{ t("删除用例", "Remove case") }}
+            {{ t('admin.copy.5958bfc4') }}
           </button>
         </div>
       </header>
@@ -486,11 +469,11 @@ defineExpose({ localErrors, casesValid });
         class="case-grid"
       >
         <label v-for="position in model.length" :key="position"
-          >{{ ui(`第 ${position} 位候选数字（逗号分隔）`, `Position ${position} candidate digits (comma-separated)`) }}
+          >{{ t('admin.rule.case.position', { index: position }) }}
           <input
             :value="draft.digitCandidates[position - 1] ?? ''"
             :disabled="disabled"
-            :placeholder="t('例如 0,3,8', 'e.g. 0,3,8')"
+            :placeholder="t('admin.copy.b902c584')"
             @input="
               digitCandidate(
                 index,
@@ -504,11 +487,11 @@ defineExpose({ localErrors, casesValid });
 
       <div v-else-if="selection.mode === 'numbers'" class="case-grid">
         <label v-if="selection.regular_count"
-          >{{ ui(`普通号候选（单线选 ${selection.regular_count} 个）`, `Regular candidates (choose ${selection.regular_count} per line)`) }}
+          >{{ t('admin.rule.case.regularCandidates', { count: selection.regular_count }) }}
           <input
             :value="draft.regularCandidates"
             :disabled="disabled"
-            :placeholder="t('逗号分隔的号码池值', 'comma-separated pool values')"
+            :placeholder="t('admin.copy.ade60702')"
             @input="
               csvField(
                 index,
@@ -519,11 +502,11 @@ defineExpose({ localErrors, casesValid });
           />
         </label>
         <label v-if="selection.special_count"
-          >{{ ui(`特别号候选（单线选 ${selection.special_count} 个）`, `Special candidates (choose ${selection.special_count} per line)`) }}
+          >{{ t('admin.rule.case.specialCandidates', { count: selection.special_count }) }}
           <input
             :value="draft.specialCandidates"
             :disabled="disabled"
-            :placeholder="t('逗号分隔的号码池值', 'comma-separated pool values')"
+            :placeholder="t('admin.copy.ade60702')"
             @input="
               csvField(
                 index,
@@ -537,11 +520,11 @@ defineExpose({ localErrors, casesValid });
 
       <div v-else-if="selection.mode === 'exclude'" class="case-grid">
         <label
-          >{{ ui(`排除号码（恰好 ${selection.exclude_count} 个）`, `Excluded numbers (exactly ${selection.exclude_count})`) }}
+          >{{ t('admin.rule.case.excludeCandidates', { count: selection.exclude_count }) }}
           <input
             :value="draft.excludeCandidates"
             :disabled="disabled"
-            :placeholder="t('逗号分隔的号码池值', 'comma-separated pool values')"
+            :placeholder="t('admin.copy.ade60702')"
             @input="
               csvField(
                 index,
@@ -585,11 +568,11 @@ defineExpose({ localErrors, casesValid });
 
       <div v-else-if="selection.mode === 'features'" class="case-grid">
         <label v-for="key in featureKeys" :key="key"
-          >{{ ui(`特征 ${key} 候选值（允许：${featureChoices(key).join(", ")}）`, `Feature ${key} candidates (allowed: ${featureChoices(key).join(", ")})`) }}
+          >{{ t('admin.rule.case.featureCandidates', { key, values: featureChoices(key).join(", ") }) }}
           <input
             :value="draft.featureCandidates[key] ?? ''"
             :disabled="disabled"
-            :placeholder="t('逗号分隔的允许值', 'comma-separated allowed values')"
+            :placeholder="t('admin.copy.f126ba8f')"
             @input="
               featureCandidate(
                 index,
@@ -603,11 +586,11 @@ defineExpose({ localErrors, casesValid });
 
       <div v-if="model.model === 'DIGITS_0_9'" class="case-grid">
         <label
-          >{{ ui(`开奖数字（${model.length} 位，逗号分隔）`, `Draw digits (${model.length} positions, comma-separated)`) }}
+          >{{ t('admin.rule.case.drawDigitsLabel', { count: model.length }) }}
           <input
             :value="draft.digitDraw"
             :disabled="disabled"
-            :placeholder="t('例如 0,3,8', 'e.g. 0,3,8')"
+            :placeholder="t('admin.copy.b902c584')"
             @input="
               csvField(
                 index,
@@ -620,11 +603,11 @@ defineExpose({ localErrors, casesValid });
       </div>
       <div v-else class="case-grid">
         <label v-if="model.regular_count"
-          >{{ ui(`开奖普通号（${model.regular_count} 个）`, `Regular draw (${model.regular_count} numbers)`) }}
+          >{{ t('admin.rule.case.regularDraw', { count: model.regular_count }) }}
           <input
             :value="draft.regularDraw"
             :disabled="disabled"
-            :placeholder="t('逗号分隔的开奖结果', 'comma-separated draw values')"
+            :placeholder="t('admin.copy.b7352d8f')"
             @input="
               csvField(
                 index,
@@ -635,11 +618,11 @@ defineExpose({ localErrors, casesValid });
           />
         </label>
         <label v-if="model.special_count"
-          >{{ ui(`开奖特别号（${model.special_count} 个）`, `Special draw (${model.special_count} numbers)`) }}
+          >{{ t('admin.rule.case.specialDraw', { count: model.special_count }) }}
           <input
             :value="draft.specialDraw"
             :disabled="disabled"
-            :placeholder="t('逗号分隔的开奖结果', 'comma-separated draw values')"
+            :placeholder="t('admin.copy.b7352d8f')"
             @input="
               csvField(
                 index,
@@ -653,7 +636,7 @@ defineExpose({ localErrors, casesValid });
 
       <div class="case-grid expected-fields">
         <label
-          >{{ ui(`验证倍投（1–${definition.limits.max_multiplier}）`, `Validation multiplier (1–${definition.limits.max_multiplier})`) }}
+          >{{ t('admin.rule.case.multiplierRange', { max: definition.limits.max_multiplier }) }}
           <input
             :value="draft.value.multiplier"
             inputmode="numeric"
@@ -668,7 +651,7 @@ defineExpose({ localErrors, casesValid });
           />
         </label>
         <label
-          >{{ t("预期投注积分", "Expected bet points") }}
+          >{{ t('admin.copy.aa8c440a') }}
           <input
             :value="draft.value.expected_bet_points"
             inputmode="numeric"
@@ -683,7 +666,7 @@ defineExpose({ localErrors, casesValid });
           />
         </label>
         <label
-          >{{ t("预期中奖积分", "Expected prize points") }}
+          >{{ t('admin.copy.25addb19') }}
           <input
             :value="draft.value.expected_prize_points"
             inputmode="numeric"
@@ -703,7 +686,7 @@ defineExpose({ localErrors, casesValid });
             :checked="draft.value.expected_won"
             :disabled="disabled"
             @change="setWon(index, ($event.target as HTMLInputElement).checked)"
-          />{{ t("预期中奖", "Expected win") }}</label
+          />{{ t('admin.copy.4197ed7b') }}</label
         >
       </div>
     </article>
@@ -730,10 +713,9 @@ defineExpose({ localErrors, casesValid });
   margin: 0;
   font-size: 1rem;
 }
-.cases-header p,
-.empty-cases {
+.cases-header p{
   margin: 4px 0 0;
-  color: var(--muted, #687386);
+  color: var(--muted);
   font-size: 0.88rem;
 }
 .case-card {

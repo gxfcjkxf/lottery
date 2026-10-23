@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -212,7 +214,7 @@ function validJob(value: unknown, brandId: string, expected?: { jobId?: string; 
     (value.generation === 1 ? value.previous_job_id !== null || value.correction_id !== null : value.previous_job_id === null || value.correction_id === null) ||
     !nonnegativeInt(value.target_count) || !validUuid(value.created_by) ||
     (expected?.accountId !== undefined && !sameUuid(value.created_by, expected.accountId)) ||
-    !(value.approved_by === null || validUuid(value.approved_by)) || !nonempty(value.reason) ||
+    !(value.approved_by === null || validUuid(value.approved_by)) || !(typeof value.reason === "string") ||
     !validIsoDateTime(value.created_at) || !(value.completed_at === null || validIsoDateTime(value.completed_at)) ||
     !(value.last_error_code === null || nonempty(value.last_error_code)) ||
     !nonnegativeInt(value.pending_count) || !nonnegativeInt(value.ready_count) || !nonnegativeInt(value.paid_count) ||
@@ -238,8 +240,6 @@ function validTarget(value: unknown): value is SettlementTarget {
     (value.error_code === null || nonempty(value.error_code));
 }
 
-type Envelope = { success?: unknown; data?: unknown; error?: { code?: string; message?: string } | null };
-
 export function createSettlementJobApi({ fetch: fetcher = fetch }: { fetch?: typeof fetch } = {}): SettlementJobApi {
   async function request(path: string, brandId: string, options: { method?: "GET" | "POST" | "PUT"; body?: unknown; key?: string; successStatus?: number } = {}): Promise<unknown> {
     if (!validUuid(brandId)) invalidInput("品牌编号必须是 UUID。");
@@ -256,16 +256,7 @@ export function createSettlementJobApi({ fetch: fetcher = fetch }: { fetch?: typ
       throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR");
     }
     if (response.ok && response.status !== (options.successStatus ?? 200)) invalidResponse();
-    let envelope: Envelope;
-    try { envelope = await response.json() as Envelope; }
-    catch {
-      throw new AdminApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`, response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : undefined);
-    }
-    if (!response.ok || envelope.success !== true || envelope.data === undefined) {
-      const error = typeof envelope.error === "object" && envelope.error ? envelope.error : undefined;
-      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError(error?.message || `Request failed (${response.status})`, response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : error?.code);
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     return envelope.data;
   }
   function requireId(value: string, label: string): void {
@@ -279,7 +270,7 @@ export function createSettlementJobApi({ fetch: fetcher = fetch }: { fetch?: typ
       return value;
     },
     async savePolicy(brandId, body, key) {
-      if (!positiveVersion(body.version) || body.version >= Number.MAX_SAFE_INTEGER || !validMode(body.mode) || !nonempty(body.reason) || !nonempty(key)) invalidInput("结算策略请求参数无效。");
+      if (!positiveVersion(body.version) || body.version >= Number.MAX_SAFE_INTEGER || !validMode(body.mode) || !(typeof body.reason === "string") || !nonempty(key)) invalidInput("结算策略请求参数无效。");
       const value = await request(`${BASE}/settlement-policy`, brandId, { method: "PUT", body, key });
       if (!validPolicy(value, brandId) || value.version !== body.version + 1 || value.mode !== body.mode ||
         !isRecord(value) || !validUuid(value.audit_log_id)) invalidResponse();
@@ -305,21 +296,21 @@ export function createSettlementJobApi({ fetch: fetcher = fetch }: { fetch?: typ
     },
     async start(brandId, periodId, body, key, expectedAccountId) {
       requireId(periodId, "期次编号");
-      if (!positiveVersion(body.version) || !positiveVersion(body.policy_version) || !validUuid(body.draw_result_id) || !nonempty(body.reason) || !nonempty(key) || (expectedAccountId !== undefined && !validUuid(expectedAccountId))) invalidInput("启动结算请求参数无效。");
+      if (!positiveVersion(body.version) || !positiveVersion(body.policy_version) || !validUuid(body.draw_result_id) || !(typeof body.reason === "string") || !nonempty(key) || (expectedAccountId !== undefined && !validUuid(expectedAccountId))) invalidInput("启动结算请求参数无效。");
       const value = await request(`${BASE}/periods/${encodeURIComponent(periodId)}/settle`, brandId, { method: "POST", body, key, successStatus: 201 });
       if (!validJob(value, brandId, { periodId, drawId: body.draw_result_id, policyVersion: body.policy_version, accountId: expectedAccountId }) || value.period_version !== body.version + 1 || value.state !== "processing" || value.version !== 1) invalidResponse();
       return value;
     },
     async approve(brandId, jobId, body, key) {
       requireId(jobId, "结算任务编号");
-      if (!positiveVersion(body.version) || !nonempty(body.reason) || !nonempty(key)) invalidInput("审批请求参数无效。");
+      if (!positiveVersion(body.version) || !(typeof body.reason === "string") || !nonempty(key)) invalidInput("审批请求参数无效。");
       const value = await request(`${BASE}/settlement-jobs/${encodeURIComponent(jobId)}/approve`, brandId, { method: "POST", body, key });
       if (!validJob(value, brandId, { jobId }) || value.version !== body.version + 1 || value.state !== "paying" || value.mode !== "manual") invalidResponse();
       return value;
     },
     async retry(brandId, jobId, body, key) {
       requireId(jobId, "结算任务编号");
-      if (!positiveVersion(body.version) || !nonempty(body.reason) || !nonempty(key)) invalidInput("重试请求参数无效。");
+      if (!positiveVersion(body.version) || !(typeof body.reason === "string") || !nonempty(key)) invalidInput("重试请求参数无效。");
       const value = await request(`${BASE}/settlement-jobs/${encodeURIComponent(jobId)}/retry`, brandId, { method: "POST", body, key });
       if (!validJob(value, brandId, { jobId }) || value.version !== body.version + 1 || !["processing", "paying"].includes(value.state)) invalidResponse();
       return value;

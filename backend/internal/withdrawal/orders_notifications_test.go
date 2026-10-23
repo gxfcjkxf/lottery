@@ -54,14 +54,14 @@ func TestWithdrawalNotificationHistorySurvivesLaterStateAndConcurrentDelivery(t 
 			found := map[string]bool{}
 			for _, n := range page.Items {
 				found[n.EventType] = true
-				if n.MemberID != f.member || n.Payload.ResourceID != original.ID || n.Payload.Points == nil || *n.Payload.Points != "40" || n.Content.En.Title == "" {
+				if n.MemberID != f.member || n.Payload.ResourceID != original.ID || n.Payload.Points == nil || *n.Payload.Points != "40" || n.Content != (notification.Content{I18nKey: n.EventType, I18nVersion: 1}) {
 					t.Fatal(n)
 				}
 				raw, _ := json.Marshal(n)
 				if strings.Contains(string(raw), "private operational reason") || strings.Contains(string(raw), f.adminID) {
 					t.Fatalf("private data leaked: %s", raw)
 				}
-				if !strings.Contains(n.Content.En.Body, "not proof of an external transfer") {
+				if n.Content.En != (notification.Copy{}) || n.Content.ZhCN != (notification.Copy{}) {
 					t.Fatal(n.Content)
 				}
 			}

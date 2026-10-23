@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ func TestFixtureGuardAcceptsOnlyNamedLocalSyntheticDatabases(t *testing.T) {
 	if err := safeFixtureURL(second, "test", fixtureAck, validAdminPass, validUserPass, true); err != nil {
 		t.Fatalf("second explicitly owned local database rejected: %v", err)
 	}
-	for _, dsn := range []string{verifiedDesktopDSN, verifiedMobileDSN, finalDesktopDSN, finalMobileDSN, correctionDesktopDSN, correctionMobileDSN,
+	for _, dsn := range []string{"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_cua_20261020?sslmode=disable", verifiedDesktopDSN, verifiedMobileDSN, finalDesktopDSN, finalMobileDSN, correctionDesktopDSN, correctionMobileDSN,
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_tablet768_s16?sslmode=disable",
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_ui_laptop1024_s16?sslmode=disable",
 		"postgres://lottery_test:local_test_password@127.0.0.1:55432/lottery_commission_analysis_desktop_s56?sslmode=disable",
@@ -75,6 +76,8 @@ func TestFixtureGuardAcceptsOnlyNamedLocalSyntheticDatabases(t *testing.T) {
 		{"connection override", validFixtureDSN + "&search_path=public", "test", fixtureAck, validAdminPass, validUserPass},
 		{"duplicate sslmode", validFixtureDSN + "&sslmode=disable", "test", fixtureAck, validAdminPass, validUserPass},
 		{"ssl enabled", "postgres://lottery_test:pw@127.0.0.1:55432/lottery_commission_ui_desktop_s16?sslmode=require", "test", fixtureAck, validAdminPass, validUserPass},
+		{"long admin secret", validFixtureDSN, "test", fixtureAck, strings.Repeat("a", 31), validUserPass},
+		{"long user secret", validFixtureDSN, "test", fixtureAck, validAdminPass, strings.Repeat("u", 31)},
 		{"short admin secret", validFixtureDSN, "test", fixtureAck, "short", validUserPass},
 		{"short user secret", validFixtureDSN, "test", fixtureAck, validAdminPass, "short"},
 	}
@@ -147,6 +150,30 @@ func TestFixtureInitializesAllThreeActualCommissionWorkflows(t *testing.T) {
 	}
 	if _, err = initialize(ctx, db, validAdminPass, validUserPass); err == nil {
 		t.Fatal("fixture initialization overwrote occupied identities")
+	}
+	manual, err := prepareManualPayment(ctx, db, out.AdminID, validUserPass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manual["state"] != "awaiting_approval" || manual["total_points"] != "1" {
+		t.Fatalf("manual fixture=%v", manual)
+	}
+	if _, err = (commission.Service{DB: db}).ProcessPayments(ctx, 100); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	var entries int
+	if err = db.QueryRow(ctx, `SELECT state FROM commission_payments WHERE id=$1`, manual["payment_id"]).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRow(ctx, `SELECT count(*) FROM point_ledger_entries WHERE reference_id=$1`, manual["payment_id"]).Scan(&entries); err != nil {
+		t.Fatal(err)
+	}
+	if state != "awaiting_approval" || entries != 0 {
+		t.Fatal("manual fixture bypassed approval")
+	}
+	if _, err = prepareManualPayment(ctx, db, out.AdminID, validUserPass); err == nil {
+		t.Fatal("manual fixture overwrote its existing case")
 	}
 }
 

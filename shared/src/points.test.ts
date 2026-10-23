@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { addPoints, formatPoints, multiplyPoints, points } from './points'
+import { formatPoints, points } from './points'
 
 describe('integer points', () => {
-  it('keeps large balances exact across arithmetic', () => {
+  it('keeps large balances exact when formatting', () => {
     const amount = points('9007199254740993')
-    expect(addPoints(amount, '7')).toBe('9007199254741000')
-    expect(multiplyPoints(amount, 3)).toBe('27021597764222979')
+    expect(amount).toBe('9007199254740993')
+    expect(formatPoints(amount)).toBe('9,007,199,254,740,993')
   })
 
   it('rejects decimals and formats whole points', () => {

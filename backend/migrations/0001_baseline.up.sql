@@ -1,4 +1,10 @@
--- Current schema for fresh installations only. No upgrade or data backfill.
+-- Pre-release baseline for fresh installations.
+-- Consolidated current schema, permissions and database guards.
+-- Existing databases require a verified, explicit history rebaseline; do not replay this file.
+
+-- 0001_baseline
+
+
 
 
 SET LOCAL statement_timeout = 0;
@@ -52,9 +58,8 @@ CREATE FUNCTION agent_revision_committed() RETURNS trigger
     AS $$
 DECLARE v bigint;
 BEGIN
- IF NEW.agent_id IS NULL THEN SELECT version INTO v FROM brand_agent_policies WHERE brand_id=NEW.brand_id;
- ELSE SELECT version INTO v FROM agent_nodes WHERE brand_id=NEW.brand_id AND id=NEW.agent_id; END IF;
- IF NOT FOUND OR v<NEW.version THEN RAISE EXCEPTION 'orphan agent revision'; END IF;RETURN NULL;
+ SELECT version INTO v FROM agent_nodes WHERE brand_id=NEW.brand_id AND id=NEW.agent_id;
+ IF NOT FOUND OR (v<NEW.version AND NOT EXISTS(SELECT 1 FROM agent_mode_change_targets t JOIN agent_mode_changes c ON c.id=t.change_id AND c.brand_id=t.brand_id WHERE t.brand_id=NEW.brand_id AND t.agent_id=NEW.agent_id AND t.version=NEW.version AND t.config=NEW.config AND c.applied_at IS NULL)) THEN RAISE EXCEPTION 'orphan agent revision'; END IF;RETURN NULL;
 END $$;
 
 CREATE FUNCTION brand_business_inventory(b uuid) RETURNS jsonb
@@ -68,7 +73,7 @@ DECLARE
 WITH source_rows AS MATERIALIZED (SELECT ''bet_order_exceptions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM bet_order_exceptions s WHERE s.brand_id=$1 UNION ALL SELECT ''bet_order_judgments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM bet_order_judgments s WHERE s.brand_id=$1 UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM bet_orders s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_adjustment_heads''::text AS source_table, concat_ws(''/'',s.target_id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_adjustment_heads s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_adjustments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_adjustments s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_allocations''::text AS source_table, concat_ws(''/'',s.run_id::text,s.order_id::text,s.agent_id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_allocations s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_calculations s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_correction_balance_heads''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.agent_id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_correction_balance_heads s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_correction_cycle_holds''::text AS source_table, concat_ws(''/'',s.cycle_id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_correction_cycle_holds s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_correction_execution_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_correction_execution_steps s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_correction_execution_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_correction_execution_targets s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_correction_executions s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_correction_plan_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_correction_plan_steps s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_correction_plan_targets s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_correction_plans''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_correction_plans s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_cycle_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_cycle_steps s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_cycle_targets''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.order_id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_cycle_targets s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_cycles''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_cycles s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_earnings''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_earnings s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_payment_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_payment_targets s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_payments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_payments s WHERE s.brand_id=$1 UNION ALL SELECT ''commission_runs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM commission_runs s WHERE s.brand_id=$1 UNION ALL SELECT ''draw_correction_failures''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM draw_correction_failures s WHERE s.brand_id=$1 UNION ALL SELECT ''draw_correction_targets''::text AS source_table, concat_ws(''/'',s.correction_id::text,s.order_id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM draw_correction_targets s WHERE s.brand_id=$1 UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM draw_corrections s WHERE s.brand_id=$1 UNION ALL SELECT ''period_cancellation_targets''::text AS source_table, concat_ws(''/'',s.cancellation_id::text,s.order_id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM period_cancellation_targets s WHERE s.brand_id=$1 UNION ALL SELECT ''period_cancellations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM period_cancellations s WHERE s.brand_id=$1 UNION ALL SELECT ''point_accounts''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM point_accounts s WHERE s.brand_id=$1 UNION ALL SELECT ''point_buckets''::text AS source_table, concat_ws(''/'',s.brand_id::text,s.account_id::text,s.source::text,s.state::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM point_buckets s WHERE s.brand_id=$1 UNION ALL SELECT ''point_ledger_entries''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM point_ledger_entries s WHERE s.brand_id=$1 UNION ALL SELECT ''recharge_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM recharge_orders s WHERE s.brand_id=$1 UNION ALL SELECT ''reward_order_actions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM reward_order_actions s WHERE s.brand_id=$1 UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM reward_orders s WHERE s.brand_id=$1 UNION ALL SELECT ''settlement_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM settlement_calculations s WHERE s.brand_id=$1 UNION ALL SELECT ''settlement_failures''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM settlement_failures s WHERE s.brand_id=$1 UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM settlement_jobs s WHERE s.brand_id=$1 UNION ALL SELECT ''settlement_targets''::text AS source_table, concat_ws(''/'',s.job_id::text,s.order_id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM settlement_targets s WHERE s.brand_id=$1 UNION ALL SELECT ''withdrawal_operation_receipts''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM withdrawal_operation_receipts s WHERE s.brand_id=$1 UNION ALL SELECT ''withdrawal_order_transitions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM withdrawal_order_transitions s WHERE s.brand_id=$1 UNION ALL SELECT ''withdrawal_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM withdrawal_orders s WHERE s.brand_id=$1 UNION ALL SELECT ''withdrawal_turnover_cycles''::text AS source_table, concat_ws(''/'',s.brand_id::text,s.member_id::text) AS source_id, encode(pg_catalog.sha256(convert_to(to_jsonb(s)::text,''UTF8'')),''hex'') AS row_hash FROM withdrawal_turnover_cycles s WHERE s.brand_id=$1),
 refs AS MATERIALIZED (
     SELECT source_table,source_id,''MISSING_PARENT_REFERENCE''::text AS code,
-           reference_key,parent_table,missing FROM (SELECT ''bet_order_exceptions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_exceptions_brand_id_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.id=s.job_id AND p.brand_id=$1) AS missing FROM bet_order_exceptions s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.job_id IS NOT NULL UNION ALL SELECT ''bet_order_exceptions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_exceptions_brand_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM bet_order_exceptions s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''bet_order_exceptions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_exceptions_marked_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.marked_by) AS missing FROM bet_order_exceptions s WHERE s.brand_id=$1 AND s.marked_by IS NOT NULL UNION ALL SELECT ''bet_order_judgments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_judgments_brand_id_game_id_period_id_draw_result_fkey''::text AS reference_key, ''draw_results''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_results p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.period_id=s.period_id AND p.id=s.draw_result_id AND p.brand_id=$1) AS missing FROM bet_order_judgments s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL AND s.draw_result_id IS NOT NULL UNION ALL SELECT ''bet_order_judgments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_judgments_brand_id_game_id_period_id_fkey''::text AS reference_key, ''periods''::text AS parent_table, NOT EXISTS (SELECT 1 FROM periods p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.id=s.period_id AND p.brand_id=$1) AS missing FROM bet_order_judgments s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL UNION ALL SELECT ''bet_order_judgments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_judgments_brand_id_period_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM bet_order_judgments s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''bet_order_judgments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_judgments_judged_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.judged_by) AS missing FROM bet_order_judgments s WHERE s.brand_id=$1 AND s.judged_by IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_account_id_brand_member_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_member_id=s.brand_member_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.brand_member_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_account_id_debit_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.debit_entry_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.debit_entry_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_account_id_refund_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.refund_entry_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.refund_entry_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_brand_member_id_global_user_id_fkey''::text AS reference_key, ''brand_members''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brand_members p WHERE p.brand_id=s.brand_id AND p.id=s.brand_member_id AND p.global_user_id=s.global_user_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.brand_member_id IS NOT NULL AND s.global_user_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_game_id_period_id_fkey''::text AS reference_key, ''periods''::text AS parent_table, NOT EXISTS (SELECT 1 FROM periods p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.id=s.period_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_game_id_play_id_rule_version_id_fkey''::text AS reference_key, ''rule_versions''::text AS parent_table, NOT EXISTS (SELECT 1 FROM rule_versions p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.play_id=s.play_id AND p.id=s.rule_version_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.play_id IS NOT NULL AND s.rule_version_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_id_settlement_calculation_id_fkey''::text AS reference_key, ''settlement_calculations''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_calculations p WHERE p.brand_id=s.brand_id AND p.order_id=s.id AND p.id=s.settlement_calculation_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.id IS NOT NULL AND s.settlement_calculation_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_payout_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.payout_entry_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.payout_entry_id IS NOT NULL UNION ALL SELECT ''commission_adjustment_heads''::text AS source_table, concat_ws(''/'',s.target_id::text) AS source_id, ''commission_adjustment_heads_brand_id_target_id_fkey''::text AS reference_key, ''commission_payment_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_payment_targets p WHERE p.brand_id=s.brand_id AND p.id=s.target_id AND p.brand_id=$1) AS missing FROM commission_adjustment_heads s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.target_id IS NOT NULL UNION ALL SELECT ''commission_adjustment_heads''::text AS source_table, concat_ws(''/'',s.target_id::text) AS source_id, ''commission_adjustment_heads_brand_id_target_id_last_adjust_fkey''::text AS reference_key, ''commission_adjustments''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_adjustments p WHERE p.brand_id=s.brand_id AND p.target_id=s.target_id AND p.id=s.last_adjustment_id AND p.brand_id=$1) AS missing FROM commission_adjustment_heads s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.target_id IS NOT NULL AND s.last_adjustment_id IS NOT NULL UNION ALL SELECT ''commission_adjustments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_adjustments_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_adjustments s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_adjustments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_adjustments_brand_id_payment_id_fkey''::text AS reference_key, ''commission_payments''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_payments p WHERE p.brand_id=s.brand_id AND p.id=s.payment_id AND p.brand_id=$1) AS missing FROM commission_adjustments s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.payment_id IS NOT NULL UNION ALL SELECT ''commission_adjustments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_adjustments_brand_id_target_id_fkey''::text AS reference_key, ''commission_adjustment_heads''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_adjustment_heads p WHERE p.brand_id=s.brand_id AND p.target_id=s.target_id AND p.brand_id=$1) AS missing FROM commission_adjustments s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.target_id IS NOT NULL UNION ALL SELECT ''commission_adjustments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_adjustments_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM commission_adjustments s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''commission_adjustments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_adjustments_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.ledger_entry_id AND p.brand_id=$1) AS missing FROM commission_adjustments s WHERE s.brand_id=$1 AND s.ledger_entry_id IS NOT NULL UNION ALL SELECT ''commission_allocations''::text AS source_table, concat_ws(''/'',s.run_id::text,s.order_id::text,s.agent_id::text) AS source_id, ''commission_allocations_brand_id_agent_id_fkey''::text AS reference_key, ''agent_nodes''::text AS parent_table, NOT EXISTS (SELECT 1 FROM agent_nodes p WHERE p.brand_id=s.brand_id AND p.id=s.agent_id AND p.brand_id=$1) AS missing FROM commission_allocations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.agent_id IS NOT NULL UNION ALL SELECT ''commission_allocations''::text AS source_table, concat_ws(''/'',s.run_id::text,s.order_id::text,s.agent_id::text) AS source_id, ''commission_allocations_brand_id_cycle_id_run_id_calculatio_fkey''::text AS reference_key, ''commission_calculations''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_calculations p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.run_id=s.run_id AND p.id=s.calculation_id AND p.brand_id=$1) AS missing FROM commission_allocations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.run_id IS NOT NULL AND s.calculation_id IS NOT NULL UNION ALL SELECT ''commission_allocations''::text AS source_table, concat_ws(''/'',s.run_id::text,s.order_id::text,s.agent_id::text) AS source_id, ''commission_allocations_brand_id_member_id_fkey''::text AS reference_key, ''brand_members''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brand_members p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM commission_allocations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_calculations_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_calculations s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_calculations_brand_id_account_id_member_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_member_id=s.member_id AND p.brand_id=$1) AS missing FROM commission_calculations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_calculations_brand_id_cycle_id_order_id_fkey''::text AS reference_key, ''commission_cycle_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_cycle_targets p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.order_id=s.order_id AND p.brand_id=$1) AS missing FROM commission_calculations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''commission_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_calculations_brand_id_cycle_id_run_id_fkey''::text AS reference_key, ''commission_runs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_runs p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.run_id AND p.brand_id=$1) AS missing FROM commission_calculations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.run_id IS NOT NULL UNION ALL SELECT ''commission_correction_balance_heads''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.agent_id::text) AS source_id, ''commission_correction_balance__brand_id_original_target_id_fkey''::text AS reference_key, ''commission_payment_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_payment_targets p WHERE p.brand_id=s.brand_id AND p.id=s.original_target_id AND p.brand_id=$1) AS missing FROM commission_correction_balance_heads s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.original_target_id IS NOT NULL UNION ALL SELECT ''commission_correction_balance_heads''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.agent_id::text) AS source_id, ''commission_correction_balance_brand_id_last_execution_targ_fkey''::text AS reference_key, ''commission_correction_execution_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_execution_targets p WHERE p.brand_id=s.brand_id AND p.id=s.last_execution_target_id AND p.brand_id=$1) AS missing FROM commission_correction_balance_heads s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.last_execution_target_id IS NOT NULL UNION ALL SELECT ''commission_correction_balance_heads''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.agent_id::text) AS source_id, ''commission_correction_balance_heads_brand_id_cycle_id_fkey''::text AS reference_key, ''commission_cycles''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_cycles p WHERE p.brand_id=s.brand_id AND p.id=s.cycle_id AND p.brand_id=$1) AS missing FROM commission_correction_balance_heads s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL UNION ALL SELECT ''commission_correction_balance_heads''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.agent_id::text) AS source_id, ''commission_correction_balance_heads_brand_id_member_id_fkey''::text AS reference_key, ''brand_members''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brand_members p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM commission_correction_balance_heads s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_correction_cycle_holds''::text AS source_table, concat_ws(''/'',s.cycle_id::text) AS source_id, ''commission_correction_cycle_holds_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_cycle_holds s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_cycle_holds''::text AS source_table, concat_ws(''/'',s.cycle_id::text) AS source_id, ''commission_correction_cycle_holds_blocked_execution_id_fkey''::text AS reference_key, ''commission_correction_executions''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_executions p WHERE p.id=s.blocked_execution_id AND p.brand_id=$1) AS missing FROM commission_correction_cycle_holds s WHERE s.brand_id=$1 AND s.blocked_execution_id IS NOT NULL UNION ALL SELECT ''commission_correction_cycle_holds''::text AS source_table, concat_ws(''/'',s.cycle_id::text) AS source_id, ''commission_correction_cycle_holds_brand_id_cycle_id_fkey''::text AS reference_key, ''commission_cycles''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_cycles p WHERE p.brand_id=s.brand_id AND p.id=s.cycle_id AND p.brand_id=$1) AS missing FROM commission_correction_cycle_holds s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_step_brand_id_execution_id_fkey''::text AS reference_key, ''commission_correction_executions''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_executions p WHERE p.brand_id=s.brand_id AND p.id=s.execution_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_steps s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.execution_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_step_paused_plan_target_id_fkey''::text AS reference_key, ''commission_correction_plan_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_plan_targets p WHERE p.id=s.paused_plan_target_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_steps s WHERE s.brand_id=$1 AND s.paused_plan_target_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_steps_actor_id_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.actor_id) AS missing FROM commission_correction_execution_steps s WHERE s.brand_id=$1 AND s.actor_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_steps_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_steps s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_steps_target_id_fkey''::text AS reference_key, ''commission_correction_execution_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_execution_targets p WHERE p.id=s.target_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_steps s WHERE s.brand_id=$1 AND s.target_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executi_brand_id_cycle_id_execution__fkey''::text AS reference_key, ''commission_correction_executions''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_executions p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.execution_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.execution_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_targets_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_targets s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_targets_brand_id_member_id_fkey''::text AS reference_key, ''brand_members''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brand_members p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_targets_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.ledger_entry_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_targets s WHERE s.brand_id=$1 AND s.ledger_entry_id IS NOT NULL UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executions_approval_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.approval_audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_executions s WHERE s.brand_id=$1 AND s.approval_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executions_approved_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.approved_by) AS missing FROM commission_correction_executions s WHERE s.brand_id=$1 AND s.approved_by IS NOT NULL UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executions_brand_id_cycle_id_plan_id_fkey''::text AS reference_key, ''commission_correction_plans''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_plans p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.plan_id AND p.brand_id=$1) AS missing FROM commission_correction_executions s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.plan_id IS NOT NULL UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executions_creation_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.creation_audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_executions s WHERE s.brand_id=$1 AND s.creation_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executions_last_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.last_audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_executions s WHERE s.brand_id=$1 AND s.last_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executions_paused_plan_target_id_fkey''::text AS reference_key, ''commission_correction_plan_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_plan_targets p WHERE p.id=s.paused_plan_target_id AND p.brand_id=$1) AS missing FROM commission_correction_executions s WHERE s.brand_id=$1 AND s.paused_plan_target_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_steps_actor_id_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.actor_id) AS missing FROM commission_correction_plan_steps s WHERE s.brand_id=$1 AND s.actor_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_steps_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_steps s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_steps_brand_id_plan_id_fkey''::text AS reference_key, ''commission_correction_plans''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_plans p WHERE p.brand_id=s.brand_id AND p.id=s.plan_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_steps s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.plan_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_ta_brand_id_previous_correction_fkey''::text AS reference_key, ''commission_correction_execution_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_execution_targets p WHERE p.brand_id=s.brand_id AND p.id=s.previous_correction_target_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.previous_correction_target_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_tar_brand_id_original_target_id_fkey''::text AS reference_key, ''commission_payment_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_payment_targets p WHERE p.brand_id=s.brand_id AND p.id=s.original_target_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.original_target_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_targets_brand_id_member_id_fkey''::text AS reference_key, ''brand_members''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brand_members p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_targets_brand_id_plan_id_fkey''::text AS reference_key, ''commission_correction_plans''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_plans p WHERE p.brand_id=s.brand_id AND p.id=s.plan_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.plan_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_targets_creation_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.creation_audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_targets s WHERE s.brand_id=$1 AND s.creation_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_targets_earning_id_fkey''::text AS reference_key, ''commission_earnings''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_earnings p WHERE p.id=s.earning_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_targets s WHERE s.brand_id=$1 AND s.earning_id IS NOT NULL UNION ALL SELECT ''commission_correction_plans''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plans_brand_id_cycle_id_run_id_fkey''::text AS reference_key, ''commission_runs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_runs p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.run_id AND p.brand_id=$1) AS missing FROM commission_correction_plans s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.run_id IS NOT NULL UNION ALL SELECT ''commission_correction_plans''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plans_brand_id_payment_id_fkey''::text AS reference_key, ''commission_payments''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_payments p WHERE p.brand_id=s.brand_id AND p.id=s.payment_id AND p.brand_id=$1) AS missing FROM commission_correction_plans s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.payment_id IS NOT NULL UNION ALL SELECT ''commission_correction_plans''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plans_creation_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.creation_audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_plans s WHERE s.brand_id=$1 AND s.creation_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_plans''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plans_last_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.last_audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_plans s WHERE s.brand_id=$1 AND s.last_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_cycle_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycle_steps_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_cycle_steps s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_cycle_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycle_steps_brand_id_cycle_id_fkey''::text AS reference_key, ''commission_cycles''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_cycles p WHERE p.brand_id=s.brand_id AND p.id=s.cycle_id AND p.brand_id=$1) AS missing FROM commission_cycle_steps s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL UNION ALL SELECT ''commission_cycle_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycle_steps_brand_id_cycle_id_run_id_fkey''::text AS reference_key, ''commission_runs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_runs p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.run_id AND p.brand_id=$1) AS missing FROM commission_cycle_steps s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.run_id IS NOT NULL UNION ALL SELECT ''commission_cycle_targets''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.order_id::text) AS source_id, ''commission_cycle_targets_brand_id_cycle_id_fkey''::text AS reference_key, ''commission_cycles''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_cycles p WHERE p.brand_id=s.brand_id AND p.id=s.cycle_id AND p.brand_id=$1) AS missing FROM commission_cycle_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL UNION ALL SELECT ''commission_cycle_targets''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.order_id::text) AS source_id, ''commission_cycle_targets_brand_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM commission_cycle_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''commission_cycles''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycles_brand_id_anchor_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.id=s.anchor_order_id AND p.brand_id=$1) AS missing FROM commission_cycles s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.anchor_order_id IS NOT NULL UNION ALL SELECT ''commission_cycles''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycles_brand_id_fkey''::text AS reference_key, ''brands''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brands p WHERE p.id=s.brand_id) AS missing FROM commission_cycles s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL UNION ALL SELECT ''commission_cycles''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycles_brand_id_id_current_run_id_fkey''::text AS reference_key, ''commission_runs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_runs p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.id AND p.id=s.current_run_id AND p.brand_id=$1) AS missing FROM commission_cycles s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.id IS NOT NULL AND s.current_run_id IS NOT NULL UNION ALL SELECT ''commission_cycles''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycles_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM commission_cycles s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''commission_cycles''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycles_creation_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.creation_audit_log_id AND p.brand_id=$1) AS missing FROM commission_cycles s WHERE s.brand_id=$1 AND s.creation_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_earnings''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_earnings_brand_id_agent_id_fkey''::text AS reference_key, ''agent_nodes''::text AS parent_table, NOT EXISTS (SELECT 1 FROM agent_nodes p WHERE p.brand_id=s.brand_id AND p.id=s.agent_id AND p.brand_id=$1) AS missing FROM commission_earnings s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.agent_id IS NOT NULL UNION ALL SELECT ''commission_earnings''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_earnings_brand_id_cycle_id_run_id_fkey''::text AS reference_key, ''commission_runs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_runs p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.run_id AND p.brand_id=$1) AS missing FROM commission_earnings s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.run_id IS NOT NULL UNION ALL SELECT ''commission_earnings''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_earnings_brand_id_member_id_fkey''::text AS reference_key, ''brand_members''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brand_members p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM commission_earnings s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_payment_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payment_targets_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_payment_targets s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_payment_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payment_targets_brand_id_member_id_fkey''::text AS reference_key, ''brand_members''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brand_members p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM commission_payment_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_payment_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payment_targets_brand_id_payment_id_fkey''::text AS reference_key, ''commission_payments''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_payments p WHERE p.brand_id=s.brand_id AND p.id=s.payment_id AND p.brand_id=$1) AS missing FROM commission_payment_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.payment_id IS NOT NULL UNION ALL SELECT ''commission_payment_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payment_targets_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.ledger_entry_id AND p.brand_id=$1) AS missing FROM commission_payment_targets s WHERE s.brand_id=$1 AND s.ledger_entry_id IS NOT NULL UNION ALL SELECT ''commission_payments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payments_approval_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.approval_audit_log_id AND p.brand_id=$1) AS missing FROM commission_payments s WHERE s.brand_id=$1 AND s.approval_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_payments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payments_approved_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.approved_by) AS missing FROM commission_payments s WHERE s.brand_id=$1 AND s.approved_by IS NOT NULL UNION ALL SELECT ''commission_payments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payments_brand_id_cycle_id_run_id_fkey''::text AS reference_key, ''commission_runs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_runs p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.run_id AND p.brand_id=$1) AS missing FROM commission_payments s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.run_id IS NOT NULL UNION ALL SELECT ''commission_payments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payments_creation_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.creation_audit_log_id AND p.brand_id=$1) AS missing FROM commission_payments s WHERE s.brand_id=$1 AND s.creation_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_payments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payments_last_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.last_audit_log_id AND p.brand_id=$1) AS missing FROM commission_payments s WHERE s.brand_id=$1 AND s.last_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_runs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_runs_brand_id_cycle_id_fkey''::text AS reference_key, ''commission_cycles''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_cycles p WHERE p.brand_id=s.brand_id AND p.id=s.cycle_id AND p.brand_id=$1) AS missing FROM commission_runs s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL UNION ALL SELECT ''draw_correction_failures''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_correction_failures_brand_id_correction_id_fkey''::text AS reference_key, ''draw_corrections''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_corrections p WHERE p.brand_id=s.brand_id AND p.id=s.correction_id AND p.brand_id=$1) AS missing FROM draw_correction_failures s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.correction_id IS NOT NULL UNION ALL SELECT ''draw_correction_failures''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_correction_failures_correction_id_order_id_fkey''::text AS reference_key, ''draw_correction_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_correction_targets p WHERE p.correction_id=s.correction_id AND p.order_id=s.order_id AND p.brand_id=$1) AS missing FROM draw_correction_failures s WHERE s.brand_id=$1 AND s.correction_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''draw_correction_targets''::text AS source_table, concat_ws(''/'',s.correction_id::text,s.order_id::text) AS source_id, ''draw_correction_targets_brand_id_old_payout_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.id=s.old_payout_entry_id AND p.brand_id=$1) AS missing FROM draw_correction_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.old_payout_entry_id IS NOT NULL UNION ALL SELECT ''draw_correction_targets''::text AS source_table, concat_ws(''/'',s.correction_id::text,s.order_id::text) AS source_id, ''draw_correction_targets_brand_id_order_id_old_calculation__fkey''::text AS reference_key, ''settlement_calculations''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_calculations p WHERE p.brand_id=s.brand_id AND p.order_id=s.order_id AND p.id=s.old_calculation_id AND p.brand_id=$1) AS missing FROM draw_correction_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL AND s.old_calculation_id IS NOT NULL UNION ALL SELECT ''draw_correction_targets''::text AS source_table, concat_ws(''/'',s.correction_id::text,s.order_id::text) AS source_id, ''draw_correction_targets_brand_id_period_id_correction_id_fkey''::text AS reference_key, ''draw_corrections''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_corrections p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.correction_id AND p.brand_id=$1) AS missing FROM draw_correction_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.correction_id IS NOT NULL UNION ALL SELECT ''draw_correction_targets''::text AS source_table, concat_ws(''/'',s.correction_id::text,s.order_id::text) AS source_id, ''draw_correction_targets_brand_id_period_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM draw_correction_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''draw_correction_targets''::text AS source_table, concat_ws(''/'',s.correction_id::text,s.order_id::text) AS source_id, ''draw_correction_targets_brand_id_reversal_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.id=s.reversal_entry_id AND p.brand_id=$1) AS missing FROM draw_correction_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.reversal_entry_id IS NOT NULL UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_corrections_brand_id_game_id_period_id_draw_result_id_fkey''::text AS reference_key, ''draw_results''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_results p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.period_id=s.period_id AND p.id=s.draw_result_id AND p.brand_id=$1) AS missing FROM draw_corrections s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL AND s.draw_result_id IS NOT NULL UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_corrections_brand_id_game_id_period_id_previous_draw__fkey''::text AS reference_key, ''draw_results''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_results p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.period_id=s.period_id AND p.id=s.previous_draw_result_id AND p.brand_id=$1) AS missing FROM draw_corrections s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL AND s.previous_draw_result_id IS NOT NULL UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_corrections_brand_id_period_id_new_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.new_job_id AND p.brand_id=$1) AS missing FROM draw_corrections s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.new_job_id IS NOT NULL UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_corrections_brand_id_period_id_previous_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.previous_job_id AND p.brand_id=$1) AS missing FROM draw_corrections s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.previous_job_id IS NOT NULL UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_corrections_brand_id_policy_version_fkey''::text AS reference_key, ''settlement_policy_history''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_policy_history p WHERE p.brand_id=s.brand_id AND p.version=s.policy_version AND p.brand_id=$1) AS missing FROM draw_corrections s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.policy_version IS NOT NULL UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_corrections_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM draw_corrections s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''period_cancellation_targets''::text AS source_table, concat_ws(''/'',s.cancellation_id::text,s.order_id::text) AS source_id, ''period_cancellation_targets_brand_id_period_id_cancellatio_fkey''::text AS reference_key, ''period_cancellations''::text AS parent_table, NOT EXISTS (SELECT 1 FROM period_cancellations p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.cancellation_id AND p.brand_id=$1) AS missing FROM period_cancellation_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.cancellation_id IS NOT NULL UNION ALL SELECT ''period_cancellation_targets''::text AS source_table, concat_ws(''/'',s.cancellation_id::text,s.order_id::text) AS source_id, ''period_cancellation_targets_brand_id_period_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM period_cancellation_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''period_cancellation_targets''::text AS source_table, concat_ws(''/'',s.cancellation_id::text,s.order_id::text) AS source_id, ''period_cancellation_targets_refund_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.refund_entry_id AND p.brand_id=$1) AS missing FROM period_cancellation_targets s WHERE s.brand_id=$1 AND s.refund_entry_id IS NOT NULL UNION ALL SELECT ''period_cancellations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''period_cancellations_brand_id_game_id_period_id_draw_resul_fkey''::text AS reference_key, ''draw_results''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_results p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.period_id=s.period_id AND p.id=s.draw_result_id AND p.brand_id=$1) AS missing FROM period_cancellations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL AND s.draw_result_id IS NOT NULL UNION ALL SELECT ''period_cancellations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''period_cancellations_brand_id_game_id_period_id_fkey''::text AS reference_key, ''periods''::text AS parent_table, NOT EXISTS (SELECT 1 FROM periods p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.id=s.period_id AND p.brand_id=$1) AS missing FROM period_cancellations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL UNION ALL SELECT ''period_cancellations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''period_cancellations_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM period_cancellations s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''point_accounts''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''point_accounts_brand_id_brand_member_id_fkey''::text AS reference_key, ''brand_members''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brand_members p WHERE p.brand_id=s.brand_id AND p.id=s.brand_member_id AND p.brand_id=$1) AS missing FROM point_accounts s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.brand_member_id IS NOT NULL UNION ALL SELECT ''point_buckets''::text AS source_table, concat_ws(''/'',s.brand_id::text,s.account_id::text,s.source::text,s.state::text) AS source_id, ''point_buckets_brand_id_account_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_id=$1) AS missing FROM point_buckets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL UNION ALL SELECT ''point_ledger_entries''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''ledger_account_member_fk''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_member_id=s.member_id AND p.brand_id=$1) AS missing FROM point_ledger_entries s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''point_ledger_entries''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''ledger_reversal_same_brand''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.reversal_of AND p.brand_id=$1) AS missing FROM point_ledger_entries s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.reversal_of IS NOT NULL UNION ALL SELECT ''point_ledger_entries''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''point_ledger_entries_brand_id_account_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_id=$1) AS missing FROM point_ledger_entries s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL UNION ALL SELECT ''point_ledger_entries''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''point_ledger_entries_reversal_of_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.reversal_of AND p.brand_id=$1) AS missing FROM point_ledger_entries s WHERE s.brand_id=$1 AND s.reversal_of IS NOT NULL UNION ALL SELECT ''recharge_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''recharge_orders_brand_id_account_id_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.ledger_entry_id AND p.brand_id=$1) AS missing FROM recharge_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.ledger_entry_id IS NOT NULL UNION ALL SELECT ''recharge_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''recharge_orders_brand_id_account_id_member_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_member_id=s.member_id AND p.brand_id=$1) AS missing FROM recharge_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''recharge_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''recharge_orders_confirmed_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.confirmed_by) AS missing FROM recharge_orders s WHERE s.brand_id=$1 AND s.confirmed_by IS NOT NULL UNION ALL SELECT ''recharge_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''recharge_orders_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM recharge_orders s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''reward_order_actions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_order_actions_actor_id_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.actor_id) AS missing FROM reward_order_actions s WHERE s.brand_id=$1 AND s.actor_id IS NOT NULL UNION ALL SELECT ''reward_order_actions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_order_actions_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM reward_order_actions s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''reward_order_actions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_order_actions_brand_id_order_id_fkey''::text AS reference_key, ''reward_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM reward_orders p WHERE p.brand_id=s.brand_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM reward_order_actions s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''reward_order_actions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_order_actions_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.ledger_entry_id AND p.brand_id=$1) AS missing FROM reward_order_actions s WHERE s.brand_id=$1 AND s.ledger_entry_id IS NOT NULL UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_orders_brand_id_member_id_fkey''::text AS reference_key, ''brand_members''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brand_members p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM reward_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_orders_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM reward_orders s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_orders_creation_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.creation_audit_log_id AND p.brand_id=$1) AS missing FROM reward_orders s WHERE s.brand_id=$1 AND s.creation_audit_log_id IS NOT NULL UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_orders_grant_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.grant_ledger_entry_id AND p.brand_id=$1) AS missing FROM reward_orders s WHERE s.brand_id=$1 AND s.grant_ledger_entry_id IS NOT NULL UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_orders_last_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.last_audit_log_id AND p.brand_id=$1) AS missing FROM reward_orders s WHERE s.brand_id=$1 AND s.last_audit_log_id IS NOT NULL UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_orders_revoke_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.revoke_ledger_entry_id AND p.brand_id=$1) AS missing FROM reward_orders s WHERE s.brand_id=$1 AND s.revoke_ledger_entry_id IS NOT NULL UNION ALL SELECT ''settlement_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_calculations_brand_id_period_id_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.job_id AND p.brand_id=$1) AS missing FROM settlement_calculations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.job_id IS NOT NULL UNION ALL SELECT ''settlement_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_calculations_brand_id_period_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM settlement_calculations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''settlement_failures''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_failures_brand_id_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.id=s.job_id AND p.brand_id=$1) AS missing FROM settlement_failures s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.job_id IS NOT NULL UNION ALL SELECT ''settlement_failures''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_failures_job_id_order_id_fkey''::text AS reference_key, ''settlement_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_targets p WHERE p.job_id=s.job_id AND p.order_id=s.order_id AND p.brand_id=$1) AS missing FROM settlement_failures s WHERE s.brand_id=$1 AND s.job_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_jobs_approved_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.approved_by) AS missing FROM settlement_jobs s WHERE s.brand_id=$1 AND s.approved_by IS NOT NULL UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_jobs_brand_id_game_id_period_id_draw_result_id_fkey''::text AS reference_key, ''draw_results''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_results p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.period_id=s.period_id AND p.id=s.draw_result_id AND p.brand_id=$1) AS missing FROM settlement_jobs s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL AND s.draw_result_id IS NOT NULL UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_jobs_brand_id_period_id_correction_id_fkey''::text AS reference_key, ''draw_corrections''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_corrections p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.correction_id AND p.brand_id=$1) AS missing FROM settlement_jobs s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.correction_id IS NOT NULL UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_jobs_brand_id_period_id_previous_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.previous_job_id AND p.brand_id=$1) AS missing FROM settlement_jobs s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.previous_job_id IS NOT NULL UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_jobs_brand_id_policy_version_fkey''::text AS reference_key, ''settlement_policy_history''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_policy_history p WHERE p.brand_id=s.brand_id AND p.version=s.policy_version AND p.brand_id=$1) AS missing FROM settlement_jobs s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.policy_version IS NOT NULL UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_jobs_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM settlement_jobs s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''settlement_targets''::text AS source_table, concat_ws(''/'',s.job_id::text,s.order_id::text) AS source_id, ''settlement_targets_brand_id_order_id_calculation_id_fkey''::text AS reference_key, ''settlement_calculations''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_calculations p WHERE p.brand_id=s.brand_id AND p.order_id=s.order_id AND p.id=s.calculation_id AND p.brand_id=$1) AS missing FROM settlement_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL AND s.calculation_id IS NOT NULL UNION ALL SELECT ''settlement_targets''::text AS source_table, concat_ws(''/'',s.job_id::text,s.order_id::text) AS source_id, ''settlement_targets_brand_id_period_id_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.job_id AND p.brand_id=$1) AS missing FROM settlement_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.job_id IS NOT NULL UNION ALL SELECT ''settlement_targets''::text AS source_table, concat_ws(''/'',s.job_id::text,s.order_id::text) AS source_id, ''settlement_targets_brand_id_period_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM settlement_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''settlement_targets''::text AS source_table, concat_ws(''/'',s.job_id::text,s.order_id::text) AS source_id, ''settlement_targets_payout_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.payout_entry_id AND p.brand_id=$1) AS missing FROM settlement_targets s WHERE s.brand_id=$1 AND s.payout_entry_id IS NOT NULL UNION ALL SELECT ''withdrawal_operation_receipts''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_operation_receipts_brand_id_order_id_fkey''::text AS reference_key, ''withdrawal_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM withdrawal_orders p WHERE p.brand_id=s.brand_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM withdrawal_operation_receipts s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''withdrawal_order_transitions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_order_transitions_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM withdrawal_order_transitions s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''withdrawal_order_transitions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_order_transitions_brand_id_order_id_fkey''::text AS reference_key, ''withdrawal_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM withdrawal_orders p WHERE p.brand_id=s.brand_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM withdrawal_order_transitions s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''withdrawal_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_orders_brand_id_account_id_member_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_member_id=s.member_id AND p.brand_id=$1) AS missing FROM withdrawal_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''withdrawal_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_orders_brand_id_account_id_paid_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.paid_entry_id AND p.brand_id=$1) AS missing FROM withdrawal_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.paid_entry_id IS NOT NULL UNION ALL SELECT ''withdrawal_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_orders_brand_id_account_id_release_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.release_entry_id AND p.brand_id=$1) AS missing FROM withdrawal_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.release_entry_id IS NOT NULL UNION ALL SELECT ''withdrawal_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_orders_brand_id_account_id_reserve_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.reserve_entry_id AND p.brand_id=$1) AS missing FROM withdrawal_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.reserve_entry_id IS NOT NULL UNION ALL SELECT ''withdrawal_turnover_cycles''::text AS source_table, concat_ws(''/'',s.brand_id::text,s.member_id::text) AS source_id, ''withdrawal_turnover_cycles_brand_id_account_id_member_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_member_id=s.member_id AND p.brand_id=$1) AS missing FROM withdrawal_turnover_cycles s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''withdrawal_turnover_cycles''::text AS source_table, concat_ws(''/'',s.brand_id::text,s.member_id::text) AS source_id, ''withdrawal_turnover_cycles_brand_id_last_paid_order_id_fkey''::text AS reference_key, ''withdrawal_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM withdrawal_orders p WHERE p.brand_id=s.brand_id AND p.id=s.last_paid_order_id AND p.brand_id=$1) AS missing FROM withdrawal_turnover_cycles s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.last_paid_order_id IS NOT NULL) fk_refs
+           reference_key,parent_table,missing FROM (SELECT ''bet_order_exceptions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_exceptions_brand_id_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.id=s.job_id AND p.brand_id=$1) AS missing FROM bet_order_exceptions s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.job_id IS NOT NULL UNION ALL SELECT ''bet_order_exceptions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_exceptions_brand_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM bet_order_exceptions s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''bet_order_exceptions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_exceptions_marked_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.marked_by) AS missing FROM bet_order_exceptions s WHERE s.brand_id=$1 AND s.marked_by IS NOT NULL UNION ALL SELECT ''bet_order_judgments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_judgments_brand_id_game_id_period_id_draw_result_fkey''::text AS reference_key, ''draw_results''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_results p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.period_id=s.period_id AND p.id=s.draw_result_id AND p.brand_id=$1) AS missing FROM bet_order_judgments s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL AND s.draw_result_id IS NOT NULL UNION ALL SELECT ''bet_order_judgments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_judgments_brand_id_game_id_period_id_fkey''::text AS reference_key, ''periods''::text AS parent_table, NOT EXISTS (SELECT 1 FROM periods p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.id=s.period_id AND p.brand_id=$1) AS missing FROM bet_order_judgments s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL UNION ALL SELECT ''bet_order_judgments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_judgments_brand_id_period_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM bet_order_judgments s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''bet_order_judgments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_order_judgments_judged_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.judged_by) AS missing FROM bet_order_judgments s WHERE s.brand_id=$1 AND s.judged_by IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_account_id_brand_member_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_member_id=s.brand_member_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.brand_member_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_account_id_debit_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.debit_entry_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.debit_entry_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_account_id_refund_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.refund_entry_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.refund_entry_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_brand_member_id_global_user_id_fkey''::text AS reference_key, ''brand_members''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brand_members p WHERE p.brand_id=s.brand_id AND p.id=s.brand_member_id AND p.global_user_id=s.global_user_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.brand_member_id IS NOT NULL AND s.global_user_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_game_id_period_id_fkey''::text AS reference_key, ''periods''::text AS parent_table, NOT EXISTS (SELECT 1 FROM periods p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.id=s.period_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_game_id_play_id_rule_version_id_fkey''::text AS reference_key, ''rule_versions''::text AS parent_table, NOT EXISTS (SELECT 1 FROM rule_versions p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.play_id=s.play_id AND p.id=s.rule_version_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.play_id IS NOT NULL AND s.rule_version_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_brand_id_id_settlement_calculation_id_fkey''::text AS reference_key, ''settlement_calculations''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_calculations p WHERE p.brand_id=s.brand_id AND p.order_id=s.id AND p.id=s.settlement_calculation_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.id IS NOT NULL AND s.settlement_calculation_id IS NOT NULL UNION ALL SELECT ''bet_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''bet_orders_payout_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.payout_entry_id AND p.brand_id=$1) AS missing FROM bet_orders s WHERE s.brand_id=$1 AND s.payout_entry_id IS NOT NULL UNION ALL SELECT ''commission_adjustment_heads''::text AS source_table, concat_ws(''/'',s.target_id::text) AS source_id, ''commission_adjustment_heads_brand_id_target_id_fkey''::text AS reference_key, ''commission_payment_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_payment_targets p WHERE p.brand_id=s.brand_id AND p.id=s.target_id AND p.brand_id=$1) AS missing FROM commission_adjustment_heads s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.target_id IS NOT NULL UNION ALL SELECT ''commission_adjustment_heads''::text AS source_table, concat_ws(''/'',s.target_id::text) AS source_id, ''commission_adjustment_heads_brand_id_target_id_last_adjust_fkey''::text AS reference_key, ''commission_adjustments''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_adjustments p WHERE p.brand_id=s.brand_id AND p.target_id=s.target_id AND p.id=s.last_adjustment_id AND p.brand_id=$1) AS missing FROM commission_adjustment_heads s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.target_id IS NOT NULL AND s.last_adjustment_id IS NOT NULL UNION ALL SELECT ''commission_adjustments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_adjustments_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_adjustments s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_adjustments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_adjustments_brand_id_payment_id_fkey''::text AS reference_key, ''commission_payments''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_payments p WHERE p.brand_id=s.brand_id AND p.id=s.payment_id AND p.brand_id=$1) AS missing FROM commission_adjustments s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.payment_id IS NOT NULL UNION ALL SELECT ''commission_adjustments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_adjustments_brand_id_target_id_fkey''::text AS reference_key, ''commission_adjustment_heads''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_adjustment_heads p WHERE p.brand_id=s.brand_id AND p.target_id=s.target_id AND p.brand_id=$1) AS missing FROM commission_adjustments s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.target_id IS NOT NULL UNION ALL SELECT ''commission_adjustments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_adjustments_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM commission_adjustments s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''commission_adjustments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_adjustments_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.ledger_entry_id AND p.brand_id=$1) AS missing FROM commission_adjustments s WHERE s.brand_id=$1 AND s.ledger_entry_id IS NOT NULL UNION ALL SELECT ''commission_allocations''::text AS source_table, concat_ws(''/'',s.run_id::text,s.order_id::text,s.agent_id::text) AS source_id, ''commission_allocations_brand_id_agent_id_fkey''::text AS reference_key, ''agent_nodes''::text AS parent_table, NOT EXISTS (SELECT 1 FROM agent_nodes p WHERE p.brand_id=s.brand_id AND p.id=s.agent_id AND p.brand_id=$1) AS missing FROM commission_allocations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.agent_id IS NOT NULL UNION ALL SELECT ''commission_allocations''::text AS source_table, concat_ws(''/'',s.run_id::text,s.order_id::text,s.agent_id::text) AS source_id, ''commission_allocations_brand_id_cycle_id_run_id_calculatio_fkey''::text AS reference_key, ''commission_calculations''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_calculations p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.run_id=s.run_id AND p.id=s.calculation_id AND p.brand_id=$1) AS missing FROM commission_allocations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.run_id IS NOT NULL AND s.calculation_id IS NOT NULL UNION ALL SELECT ''commission_allocations''::text AS source_table, concat_ws(''/'',s.run_id::text,s.order_id::text,s.agent_id::text) AS source_id, ''commission_allocations_brand_id_member_id_fkey''::text AS reference_key, ''agent_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM agent_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM commission_allocations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_calculations_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_calculations s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_calculations_brand_id_account_id_member_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_member_id=s.member_id AND p.brand_id=$1) AS missing FROM commission_calculations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_calculations_brand_id_cycle_id_order_id_fkey''::text AS reference_key, ''commission_cycle_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_cycle_targets p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.order_id=s.order_id AND p.brand_id=$1) AS missing FROM commission_calculations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''commission_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_calculations_brand_id_cycle_id_run_id_fkey''::text AS reference_key, ''commission_runs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_runs p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.run_id AND p.brand_id=$1) AS missing FROM commission_calculations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.run_id IS NOT NULL UNION ALL SELECT ''commission_correction_balance_heads''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.agent_id::text) AS source_id, ''commission_correction_balance__brand_id_original_target_id_fkey''::text AS reference_key, ''commission_payment_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_payment_targets p WHERE p.brand_id=s.brand_id AND p.id=s.original_target_id AND p.brand_id=$1) AS missing FROM commission_correction_balance_heads s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.original_target_id IS NOT NULL UNION ALL SELECT ''commission_correction_balance_heads''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.agent_id::text) AS source_id, ''commission_correction_balance_brand_id_last_execution_targ_fkey''::text AS reference_key, ''commission_correction_execution_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_execution_targets p WHERE p.brand_id=s.brand_id AND p.id=s.last_execution_target_id AND p.brand_id=$1) AS missing FROM commission_correction_balance_heads s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.last_execution_target_id IS NOT NULL UNION ALL SELECT ''commission_correction_balance_heads''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.agent_id::text) AS source_id, ''commission_correction_balance_heads_brand_id_cycle_id_fkey''::text AS reference_key, ''commission_cycles''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_cycles p WHERE p.brand_id=s.brand_id AND p.id=s.cycle_id AND p.brand_id=$1) AS missing FROM commission_correction_balance_heads s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL UNION ALL SELECT ''commission_correction_balance_heads''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.agent_id::text) AS source_id, ''commission_correction_balance_heads_brand_id_member_id_fkey''::text AS reference_key, ''agent_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM agent_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM commission_correction_balance_heads s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_correction_cycle_holds''::text AS source_table, concat_ws(''/'',s.cycle_id::text) AS source_id, ''commission_correction_cycle_holds_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_cycle_holds s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_cycle_holds''::text AS source_table, concat_ws(''/'',s.cycle_id::text) AS source_id, ''commission_correction_cycle_holds_blocked_execution_id_fkey''::text AS reference_key, ''commission_correction_executions''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_executions p WHERE p.id=s.blocked_execution_id AND p.brand_id=$1) AS missing FROM commission_correction_cycle_holds s WHERE s.brand_id=$1 AND s.blocked_execution_id IS NOT NULL UNION ALL SELECT ''commission_correction_cycle_holds''::text AS source_table, concat_ws(''/'',s.cycle_id::text) AS source_id, ''commission_correction_cycle_holds_brand_id_cycle_id_fkey''::text AS reference_key, ''commission_cycles''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_cycles p WHERE p.brand_id=s.brand_id AND p.id=s.cycle_id AND p.brand_id=$1) AS missing FROM commission_correction_cycle_holds s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_step_brand_id_execution_id_fkey''::text AS reference_key, ''commission_correction_executions''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_executions p WHERE p.brand_id=s.brand_id AND p.id=s.execution_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_steps s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.execution_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_step_paused_plan_target_id_fkey''::text AS reference_key, ''commission_correction_plan_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_plan_targets p WHERE p.id=s.paused_plan_target_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_steps s WHERE s.brand_id=$1 AND s.paused_plan_target_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_steps_actor_id_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.actor_id) AS missing FROM commission_correction_execution_steps s WHERE s.brand_id=$1 AND s.actor_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_steps_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_steps s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_steps_target_id_fkey''::text AS reference_key, ''commission_correction_execution_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_execution_targets p WHERE p.id=s.target_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_steps s WHERE s.brand_id=$1 AND s.target_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executi_brand_id_cycle_id_execution__fkey''::text AS reference_key, ''commission_correction_executions''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_executions p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.execution_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.execution_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_targets_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_targets s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_targets_brand_id_member_id_fkey''::text AS reference_key, ''agent_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM agent_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_correction_execution_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_execution_targets_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.ledger_entry_id AND p.brand_id=$1) AS missing FROM commission_correction_execution_targets s WHERE s.brand_id=$1 AND s.ledger_entry_id IS NOT NULL UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executions_approval_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.approval_audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_executions s WHERE s.brand_id=$1 AND s.approval_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executions_approved_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.approved_by) AS missing FROM commission_correction_executions s WHERE s.brand_id=$1 AND s.approved_by IS NOT NULL UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executions_brand_id_cycle_id_plan_id_fkey''::text AS reference_key, ''commission_correction_plans''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_plans p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.plan_id AND p.brand_id=$1) AS missing FROM commission_correction_executions s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.plan_id IS NOT NULL UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executions_creation_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.creation_audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_executions s WHERE s.brand_id=$1 AND s.creation_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executions_last_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.last_audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_executions s WHERE s.brand_id=$1 AND s.last_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_executions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_executions_paused_plan_target_id_fkey''::text AS reference_key, ''commission_correction_plan_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_plan_targets p WHERE p.id=s.paused_plan_target_id AND p.brand_id=$1) AS missing FROM commission_correction_executions s WHERE s.brand_id=$1 AND s.paused_plan_target_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_steps_actor_id_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.actor_id) AS missing FROM commission_correction_plan_steps s WHERE s.brand_id=$1 AND s.actor_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_steps_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_steps s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_steps_brand_id_plan_id_fkey''::text AS reference_key, ''commission_correction_plans''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_plans p WHERE p.brand_id=s.brand_id AND p.id=s.plan_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_steps s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.plan_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_ta_brand_id_previous_correction_fkey''::text AS reference_key, ''commission_correction_execution_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_execution_targets p WHERE p.brand_id=s.brand_id AND p.id=s.previous_correction_target_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.previous_correction_target_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_tar_brand_id_original_target_id_fkey''::text AS reference_key, ''commission_payment_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_payment_targets p WHERE p.brand_id=s.brand_id AND p.id=s.original_target_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.original_target_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_targets_brand_id_member_id_fkey''::text AS reference_key, ''agent_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM agent_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_targets_brand_id_plan_id_fkey''::text AS reference_key, ''commission_correction_plans''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_correction_plans p WHERE p.brand_id=s.brand_id AND p.id=s.plan_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.plan_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_targets_creation_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.creation_audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_targets s WHERE s.brand_id=$1 AND s.creation_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_plan_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plan_targets_earning_id_fkey''::text AS reference_key, ''commission_earnings''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_earnings p WHERE p.id=s.earning_id AND p.brand_id=$1) AS missing FROM commission_correction_plan_targets s WHERE s.brand_id=$1 AND s.earning_id IS NOT NULL UNION ALL SELECT ''commission_correction_plans''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plans_brand_id_cycle_id_run_id_fkey''::text AS reference_key, ''commission_runs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_runs p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.run_id AND p.brand_id=$1) AS missing FROM commission_correction_plans s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.run_id IS NOT NULL UNION ALL SELECT ''commission_correction_plans''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plans_brand_id_payment_id_fkey''::text AS reference_key, ''commission_payments''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_payments p WHERE p.brand_id=s.brand_id AND p.id=s.payment_id AND p.brand_id=$1) AS missing FROM commission_correction_plans s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.payment_id IS NOT NULL UNION ALL SELECT ''commission_correction_plans''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plans_creation_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.creation_audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_plans s WHERE s.brand_id=$1 AND s.creation_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_correction_plans''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_correction_plans_last_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.last_audit_log_id AND p.brand_id=$1) AS missing FROM commission_correction_plans s WHERE s.brand_id=$1 AND s.last_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_cycle_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycle_steps_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_cycle_steps s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_cycle_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycle_steps_brand_id_cycle_id_fkey''::text AS reference_key, ''commission_cycles''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_cycles p WHERE p.brand_id=s.brand_id AND p.id=s.cycle_id AND p.brand_id=$1) AS missing FROM commission_cycle_steps s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL UNION ALL SELECT ''commission_cycle_steps''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycle_steps_brand_id_cycle_id_run_id_fkey''::text AS reference_key, ''commission_runs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_runs p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.run_id AND p.brand_id=$1) AS missing FROM commission_cycle_steps s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.run_id IS NOT NULL UNION ALL SELECT ''commission_cycle_targets''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.order_id::text) AS source_id, ''commission_cycle_targets_brand_id_cycle_id_fkey''::text AS reference_key, ''commission_cycles''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_cycles p WHERE p.brand_id=s.brand_id AND p.id=s.cycle_id AND p.brand_id=$1) AS missing FROM commission_cycle_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL UNION ALL SELECT ''commission_cycle_targets''::text AS source_table, concat_ws(''/'',s.cycle_id::text,s.order_id::text) AS source_id, ''commission_cycle_targets_brand_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM commission_cycle_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''commission_cycles''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycles_brand_id_anchor_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.id=s.anchor_order_id AND p.brand_id=$1) AS missing FROM commission_cycles s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.anchor_order_id IS NOT NULL UNION ALL SELECT ''commission_cycles''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycles_brand_id_fkey''::text AS reference_key, ''brands''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brands p WHERE p.id=s.brand_id) AS missing FROM commission_cycles s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL UNION ALL SELECT ''commission_cycles''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycles_brand_id_id_current_run_id_fkey''::text AS reference_key, ''commission_runs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_runs p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.id AND p.id=s.current_run_id AND p.brand_id=$1) AS missing FROM commission_cycles s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.id IS NOT NULL AND s.current_run_id IS NOT NULL UNION ALL SELECT ''commission_cycles''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycles_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM commission_cycles s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''commission_cycles''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_cycles_creation_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.creation_audit_log_id AND p.brand_id=$1) AS missing FROM commission_cycles s WHERE s.brand_id=$1 AND s.creation_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_earnings''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_earnings_brand_id_agent_id_fkey''::text AS reference_key, ''agent_nodes''::text AS parent_table, NOT EXISTS (SELECT 1 FROM agent_nodes p WHERE p.brand_id=s.brand_id AND p.id=s.agent_id AND p.brand_id=$1) AS missing FROM commission_earnings s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.agent_id IS NOT NULL UNION ALL SELECT ''commission_earnings''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_earnings_brand_id_cycle_id_run_id_fkey''::text AS reference_key, ''commission_runs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_runs p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.run_id AND p.brand_id=$1) AS missing FROM commission_earnings s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.run_id IS NOT NULL UNION ALL SELECT ''commission_earnings''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_earnings_brand_id_member_id_fkey''::text AS reference_key, ''agent_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM agent_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM commission_earnings s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_payment_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payment_targets_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM commission_payment_targets s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''commission_payment_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payment_targets_brand_id_member_id_fkey''::text AS reference_key, ''agent_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM agent_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM commission_payment_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''commission_payment_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payment_targets_brand_id_payment_id_fkey''::text AS reference_key, ''commission_payments''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_payments p WHERE p.brand_id=s.brand_id AND p.id=s.payment_id AND p.brand_id=$1) AS missing FROM commission_payment_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.payment_id IS NOT NULL UNION ALL SELECT ''commission_payment_targets''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payment_targets_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.ledger_entry_id AND p.brand_id=$1) AS missing FROM commission_payment_targets s WHERE s.brand_id=$1 AND s.ledger_entry_id IS NOT NULL UNION ALL SELECT ''commission_payments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payments_approval_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.approval_audit_log_id AND p.brand_id=$1) AS missing FROM commission_payments s WHERE s.brand_id=$1 AND s.approval_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_payments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payments_approved_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.approved_by) AS missing FROM commission_payments s WHERE s.brand_id=$1 AND s.approved_by IS NOT NULL UNION ALL SELECT ''commission_payments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payments_brand_id_cycle_id_run_id_fkey''::text AS reference_key, ''commission_runs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_runs p WHERE p.brand_id=s.brand_id AND p.cycle_id=s.cycle_id AND p.id=s.run_id AND p.brand_id=$1) AS missing FROM commission_payments s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL AND s.run_id IS NOT NULL UNION ALL SELECT ''commission_payments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payments_creation_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.creation_audit_log_id AND p.brand_id=$1) AS missing FROM commission_payments s WHERE s.brand_id=$1 AND s.creation_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_payments''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_payments_last_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.last_audit_log_id AND p.brand_id=$1) AS missing FROM commission_payments s WHERE s.brand_id=$1 AND s.last_audit_log_id IS NOT NULL UNION ALL SELECT ''commission_runs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''commission_runs_brand_id_cycle_id_fkey''::text AS reference_key, ''commission_cycles''::text AS parent_table, NOT EXISTS (SELECT 1 FROM commission_cycles p WHERE p.brand_id=s.brand_id AND p.id=s.cycle_id AND p.brand_id=$1) AS missing FROM commission_runs s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.cycle_id IS NOT NULL UNION ALL SELECT ''draw_correction_failures''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_correction_failures_brand_id_correction_id_fkey''::text AS reference_key, ''draw_corrections''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_corrections p WHERE p.brand_id=s.brand_id AND p.id=s.correction_id AND p.brand_id=$1) AS missing FROM draw_correction_failures s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.correction_id IS NOT NULL UNION ALL SELECT ''draw_correction_failures''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_correction_failures_correction_id_order_id_fkey''::text AS reference_key, ''draw_correction_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_correction_targets p WHERE p.correction_id=s.correction_id AND p.order_id=s.order_id AND p.brand_id=$1) AS missing FROM draw_correction_failures s WHERE s.brand_id=$1 AND s.correction_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''draw_correction_targets''::text AS source_table, concat_ws(''/'',s.correction_id::text,s.order_id::text) AS source_id, ''draw_correction_targets_brand_id_old_payout_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.id=s.old_payout_entry_id AND p.brand_id=$1) AS missing FROM draw_correction_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.old_payout_entry_id IS NOT NULL UNION ALL SELECT ''draw_correction_targets''::text AS source_table, concat_ws(''/'',s.correction_id::text,s.order_id::text) AS source_id, ''draw_correction_targets_brand_id_order_id_old_calculation__fkey''::text AS reference_key, ''settlement_calculations''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_calculations p WHERE p.brand_id=s.brand_id AND p.order_id=s.order_id AND p.id=s.old_calculation_id AND p.brand_id=$1) AS missing FROM draw_correction_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL AND s.old_calculation_id IS NOT NULL UNION ALL SELECT ''draw_correction_targets''::text AS source_table, concat_ws(''/'',s.correction_id::text,s.order_id::text) AS source_id, ''draw_correction_targets_brand_id_period_id_correction_id_fkey''::text AS reference_key, ''draw_corrections''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_corrections p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.correction_id AND p.brand_id=$1) AS missing FROM draw_correction_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.correction_id IS NOT NULL UNION ALL SELECT ''draw_correction_targets''::text AS source_table, concat_ws(''/'',s.correction_id::text,s.order_id::text) AS source_id, ''draw_correction_targets_brand_id_period_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM draw_correction_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''draw_correction_targets''::text AS source_table, concat_ws(''/'',s.correction_id::text,s.order_id::text) AS source_id, ''draw_correction_targets_brand_id_reversal_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.id=s.reversal_entry_id AND p.brand_id=$1) AS missing FROM draw_correction_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.reversal_entry_id IS NOT NULL UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_corrections_brand_id_game_id_period_id_draw_result_id_fkey''::text AS reference_key, ''draw_results''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_results p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.period_id=s.period_id AND p.id=s.draw_result_id AND p.brand_id=$1) AS missing FROM draw_corrections s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL AND s.draw_result_id IS NOT NULL UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_corrections_brand_id_game_id_period_id_previous_draw__fkey''::text AS reference_key, ''draw_results''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_results p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.period_id=s.period_id AND p.id=s.previous_draw_result_id AND p.brand_id=$1) AS missing FROM draw_corrections s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL AND s.previous_draw_result_id IS NOT NULL UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_corrections_brand_id_period_id_new_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.new_job_id AND p.brand_id=$1) AS missing FROM draw_corrections s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.new_job_id IS NOT NULL UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_corrections_brand_id_period_id_previous_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.previous_job_id AND p.brand_id=$1) AS missing FROM draw_corrections s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.previous_job_id IS NOT NULL UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_corrections_brand_id_policy_version_fkey''::text AS reference_key, ''settlement_policy_history''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_policy_history p WHERE p.brand_id=s.brand_id AND p.version=s.policy_version AND p.brand_id=$1) AS missing FROM draw_corrections s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.policy_version IS NOT NULL UNION ALL SELECT ''draw_corrections''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''draw_corrections_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM draw_corrections s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''period_cancellation_targets''::text AS source_table, concat_ws(''/'',s.cancellation_id::text,s.order_id::text) AS source_id, ''period_cancellation_targets_brand_id_period_id_cancellatio_fkey''::text AS reference_key, ''period_cancellations''::text AS parent_table, NOT EXISTS (SELECT 1 FROM period_cancellations p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.cancellation_id AND p.brand_id=$1) AS missing FROM period_cancellation_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.cancellation_id IS NOT NULL UNION ALL SELECT ''period_cancellation_targets''::text AS source_table, concat_ws(''/'',s.cancellation_id::text,s.order_id::text) AS source_id, ''period_cancellation_targets_brand_id_period_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM period_cancellation_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''period_cancellation_targets''::text AS source_table, concat_ws(''/'',s.cancellation_id::text,s.order_id::text) AS source_id, ''period_cancellation_targets_refund_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.refund_entry_id AND p.brand_id=$1) AS missing FROM period_cancellation_targets s WHERE s.brand_id=$1 AND s.refund_entry_id IS NOT NULL UNION ALL SELECT ''period_cancellations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''period_cancellations_brand_id_game_id_period_id_draw_resul_fkey''::text AS reference_key, ''draw_results''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_results p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.period_id=s.period_id AND p.id=s.draw_result_id AND p.brand_id=$1) AS missing FROM period_cancellations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL AND s.draw_result_id IS NOT NULL UNION ALL SELECT ''period_cancellations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''period_cancellations_brand_id_game_id_period_id_fkey''::text AS reference_key, ''periods''::text AS parent_table, NOT EXISTS (SELECT 1 FROM periods p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.id=s.period_id AND p.brand_id=$1) AS missing FROM period_cancellations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL UNION ALL SELECT ''period_cancellations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''period_cancellations_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM period_cancellations s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''point_accounts''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''point_accounts_wallet_owner_fkey''::text AS reference_key, ''wallet_owners''::text AS parent_table, NOT EXISTS (SELECT 1 FROM wallet_owners p WHERE p.brand_id=s.brand_id AND p.id=s.brand_member_id AND p.brand_id=$1) AS missing FROM point_accounts s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.brand_member_id IS NOT NULL UNION ALL SELECT ''point_buckets''::text AS source_table, concat_ws(''/'',s.brand_id::text,s.account_id::text,s.source::text,s.state::text) AS source_id, ''point_buckets_brand_id_account_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_id=$1) AS missing FROM point_buckets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL UNION ALL SELECT ''point_ledger_entries''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''ledger_account_member_fk''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_member_id=s.member_id AND p.brand_id=$1) AS missing FROM point_ledger_entries s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''point_ledger_entries''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''ledger_reversal_same_brand''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.reversal_of AND p.brand_id=$1) AS missing FROM point_ledger_entries s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.reversal_of IS NOT NULL UNION ALL SELECT ''point_ledger_entries''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''point_ledger_entries_brand_id_account_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_id=$1) AS missing FROM point_ledger_entries s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL UNION ALL SELECT ''point_ledger_entries''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''point_ledger_entries_reversal_of_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.reversal_of AND p.brand_id=$1) AS missing FROM point_ledger_entries s WHERE s.brand_id=$1 AND s.reversal_of IS NOT NULL UNION ALL SELECT ''recharge_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''recharge_orders_brand_id_account_id_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.ledger_entry_id AND p.brand_id=$1) AS missing FROM recharge_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.ledger_entry_id IS NOT NULL UNION ALL SELECT ''recharge_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''recharge_orders_brand_id_account_id_member_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_member_id=s.member_id AND p.brand_id=$1) AS missing FROM recharge_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''recharge_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''recharge_orders_confirmed_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.confirmed_by) AS missing FROM recharge_orders s WHERE s.brand_id=$1 AND s.confirmed_by IS NOT NULL UNION ALL SELECT ''recharge_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''recharge_orders_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM recharge_orders s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''reward_order_actions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_order_actions_actor_id_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.actor_id) AS missing FROM reward_order_actions s WHERE s.brand_id=$1 AND s.actor_id IS NOT NULL UNION ALL SELECT ''reward_order_actions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_order_actions_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM reward_order_actions s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''reward_order_actions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_order_actions_brand_id_order_id_fkey''::text AS reference_key, ''reward_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM reward_orders p WHERE p.brand_id=s.brand_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM reward_order_actions s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''reward_order_actions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_order_actions_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.ledger_entry_id AND p.brand_id=$1) AS missing FROM reward_order_actions s WHERE s.brand_id=$1 AND s.ledger_entry_id IS NOT NULL UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_orders_brand_id_member_id_fkey''::text AS reference_key, ''brand_members''::text AS parent_table, NOT EXISTS (SELECT 1 FROM brand_members p WHERE p.brand_id=s.brand_id AND p.id=s.member_id AND p.brand_id=$1) AS missing FROM reward_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_orders_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM reward_orders s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_orders_creation_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.creation_audit_log_id AND p.brand_id=$1) AS missing FROM reward_orders s WHERE s.brand_id=$1 AND s.creation_audit_log_id IS NOT NULL UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_orders_grant_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.grant_ledger_entry_id AND p.brand_id=$1) AS missing FROM reward_orders s WHERE s.brand_id=$1 AND s.grant_ledger_entry_id IS NOT NULL UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_orders_last_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.last_audit_log_id AND p.brand_id=$1) AS missing FROM reward_orders s WHERE s.brand_id=$1 AND s.last_audit_log_id IS NOT NULL UNION ALL SELECT ''reward_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''reward_orders_revoke_ledger_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.revoke_ledger_entry_id AND p.brand_id=$1) AS missing FROM reward_orders s WHERE s.brand_id=$1 AND s.revoke_ledger_entry_id IS NOT NULL UNION ALL SELECT ''settlement_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_calculations_brand_id_period_id_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.job_id AND p.brand_id=$1) AS missing FROM settlement_calculations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.job_id IS NOT NULL UNION ALL SELECT ''settlement_calculations''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_calculations_brand_id_period_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM settlement_calculations s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''settlement_failures''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_failures_brand_id_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.id=s.job_id AND p.brand_id=$1) AS missing FROM settlement_failures s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.job_id IS NOT NULL UNION ALL SELECT ''settlement_failures''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_failures_job_id_order_id_fkey''::text AS reference_key, ''settlement_targets''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_targets p WHERE p.job_id=s.job_id AND p.order_id=s.order_id AND p.brand_id=$1) AS missing FROM settlement_failures s WHERE s.brand_id=$1 AND s.job_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_jobs_approved_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.approved_by) AS missing FROM settlement_jobs s WHERE s.brand_id=$1 AND s.approved_by IS NOT NULL UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_jobs_brand_id_game_id_period_id_draw_result_id_fkey''::text AS reference_key, ''draw_results''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_results p WHERE p.brand_id=s.brand_id AND p.game_id=s.game_id AND p.period_id=s.period_id AND p.id=s.draw_result_id AND p.brand_id=$1) AS missing FROM settlement_jobs s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.game_id IS NOT NULL AND s.period_id IS NOT NULL AND s.draw_result_id IS NOT NULL UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_jobs_brand_id_period_id_correction_id_fkey''::text AS reference_key, ''draw_corrections''::text AS parent_table, NOT EXISTS (SELECT 1 FROM draw_corrections p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.correction_id AND p.brand_id=$1) AS missing FROM settlement_jobs s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.correction_id IS NOT NULL UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_jobs_brand_id_period_id_previous_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.previous_job_id AND p.brand_id=$1) AS missing FROM settlement_jobs s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.previous_job_id IS NOT NULL UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_jobs_brand_id_policy_version_fkey''::text AS reference_key, ''settlement_policy_history''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_policy_history p WHERE p.brand_id=s.brand_id AND p.version=s.policy_version AND p.brand_id=$1) AS missing FROM settlement_jobs s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.policy_version IS NOT NULL UNION ALL SELECT ''settlement_jobs''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''settlement_jobs_created_by_fkey''::text AS reference_key, ''admin_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM admin_accounts p WHERE p.id=s.created_by) AS missing FROM settlement_jobs s WHERE s.brand_id=$1 AND s.created_by IS NOT NULL UNION ALL SELECT ''settlement_targets''::text AS source_table, concat_ws(''/'',s.job_id::text,s.order_id::text) AS source_id, ''settlement_targets_brand_id_order_id_calculation_id_fkey''::text AS reference_key, ''settlement_calculations''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_calculations p WHERE p.brand_id=s.brand_id AND p.order_id=s.order_id AND p.id=s.calculation_id AND p.brand_id=$1) AS missing FROM settlement_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL AND s.calculation_id IS NOT NULL UNION ALL SELECT ''settlement_targets''::text AS source_table, concat_ws(''/'',s.job_id::text,s.order_id::text) AS source_id, ''settlement_targets_brand_id_period_id_job_id_fkey''::text AS reference_key, ''settlement_jobs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM settlement_jobs p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.job_id AND p.brand_id=$1) AS missing FROM settlement_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.job_id IS NOT NULL UNION ALL SELECT ''settlement_targets''::text AS source_table, concat_ws(''/'',s.job_id::text,s.order_id::text) AS source_id, ''settlement_targets_brand_id_period_id_order_id_fkey''::text AS reference_key, ''bet_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM bet_orders p WHERE p.brand_id=s.brand_id AND p.period_id=s.period_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM settlement_targets s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.period_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''settlement_targets''::text AS source_table, concat_ws(''/'',s.job_id::text,s.order_id::text) AS source_id, ''settlement_targets_payout_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.id=s.payout_entry_id AND p.brand_id=$1) AS missing FROM settlement_targets s WHERE s.brand_id=$1 AND s.payout_entry_id IS NOT NULL UNION ALL SELECT ''withdrawal_operation_receipts''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_operation_receipts_brand_id_order_id_fkey''::text AS reference_key, ''withdrawal_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM withdrawal_orders p WHERE p.brand_id=s.brand_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM withdrawal_operation_receipts s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''withdrawal_order_transitions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_order_transitions_audit_log_id_fkey''::text AS reference_key, ''audit_logs''::text AS parent_table, NOT EXISTS (SELECT 1 FROM audit_logs p WHERE p.id=s.audit_log_id AND p.brand_id=$1) AS missing FROM withdrawal_order_transitions s WHERE s.brand_id=$1 AND s.audit_log_id IS NOT NULL UNION ALL SELECT ''withdrawal_order_transitions''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_order_transitions_brand_id_order_id_fkey''::text AS reference_key, ''withdrawal_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM withdrawal_orders p WHERE p.brand_id=s.brand_id AND p.id=s.order_id AND p.brand_id=$1) AS missing FROM withdrawal_order_transitions s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.order_id IS NOT NULL UNION ALL SELECT ''withdrawal_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_orders_brand_id_account_id_member_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_member_id=s.member_id AND p.brand_id=$1) AS missing FROM withdrawal_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''withdrawal_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_orders_brand_id_account_id_paid_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.paid_entry_id AND p.brand_id=$1) AS missing FROM withdrawal_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.paid_entry_id IS NOT NULL UNION ALL SELECT ''withdrawal_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_orders_brand_id_account_id_release_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.release_entry_id AND p.brand_id=$1) AS missing FROM withdrawal_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.release_entry_id IS NOT NULL UNION ALL SELECT ''withdrawal_orders''::text AS source_table, concat_ws(''/'',s.id::text) AS source_id, ''withdrawal_orders_brand_id_account_id_reserve_entry_id_fkey''::text AS reference_key, ''point_ledger_entries''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_ledger_entries p WHERE p.brand_id=s.brand_id AND p.account_id=s.account_id AND p.id=s.reserve_entry_id AND p.brand_id=$1) AS missing FROM withdrawal_orders s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.reserve_entry_id IS NOT NULL UNION ALL SELECT ''withdrawal_turnover_cycles''::text AS source_table, concat_ws(''/'',s.brand_id::text,s.member_id::text) AS source_id, ''withdrawal_turnover_cycles_brand_id_account_id_member_id_fkey''::text AS reference_key, ''point_accounts''::text AS parent_table, NOT EXISTS (SELECT 1 FROM point_accounts p WHERE p.brand_id=s.brand_id AND p.id=s.account_id AND p.brand_member_id=s.member_id AND p.brand_id=$1) AS missing FROM withdrawal_turnover_cycles s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.account_id IS NOT NULL AND s.member_id IS NOT NULL UNION ALL SELECT ''withdrawal_turnover_cycles''::text AS source_table, concat_ws(''/'',s.brand_id::text,s.member_id::text) AS source_id, ''withdrawal_turnover_cycles_brand_id_last_paid_order_id_fkey''::text AS reference_key, ''withdrawal_orders''::text AS parent_table, NOT EXISTS (SELECT 1 FROM withdrawal_orders p WHERE p.brand_id=s.brand_id AND p.id=s.last_paid_order_id AND p.brand_id=$1) AS missing FROM withdrawal_turnover_cycles s WHERE s.brand_id=$1 AND s.brand_id IS NOT NULL AND s.last_paid_order_id IS NOT NULL) fk_refs
     UNION ALL
     SELECT source_table,source_id,''MISSING_REQUIRED_LEDGER_REFERENCE''::text AS code,
            reference_key,parent_table,missing
@@ -169,7 +174,7 @@ CREATE FUNCTION capture_bet_commission_snapshot() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 DECLARE f brand_commission_policies; p brand_agent_policies; m brand_members; n agent_nodes;
- financial_revision uuid; agency_revision uuid; chain jsonb; expected_count int; captured_count int;
+ chain jsonb; expected_count int; captured_count int;
 BEGIN
  IF TG_OP='UPDATE' THEN
   IF NEW.commission_rule_snapshot IS DISTINCT FROM OLD.commission_rule_snapshot THEN RAISE EXCEPTION 'bet commission snapshot immutable'; END IF;
@@ -179,11 +184,7 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'commission financial policy missing'; END IF;
  SELECT * INTO p FROM brand_agent_policies WHERE brand_id=NEW.brand_id FOR SHARE;
  IF NOT FOUND THEN RAISE EXCEPTION 'commission agency policy missing'; END IF;
- SELECT id INTO financial_revision FROM commission_policy_revisions WHERE brand_id=NEW.brand_id AND version=f.version AND config=f.config AND created_at<=NEW.placed_at;
- IF NOT FOUND THEN RAISE EXCEPTION 'commission financial revision missing'; END IF;
- SELECT id INTO agency_revision FROM agent_config_revisions WHERE brand_id=NEW.brand_id AND agent_id IS NULL AND version=p.version AND config=p.config AND created_at<=NEW.placed_at;
- IF NOT FOUND THEN RAISE EXCEPTION 'commission agency revision missing'; END IF;
- IF f.config->'enabled'='true'::jsonb AND (p.config->'enabled'<>'true'::jsonb OR f.config->'calendar'->>'cycle' IS DISTINCT FROM p.config->>'cycle') THEN
+ IF f.config->'enabled'='true'::jsonb AND (f.config->'calendar'->>'cycle' IS DISTINCT FROM p.config->>'cycle') THEN
   RAISE EXCEPTION 'commission calendar inconsistent'; END IF;
  SELECT * INTO m FROM brand_members WHERE brand_id=NEW.brand_id AND id=NEW.brand_member_id;
  IF NOT FOUND THEN RAISE EXCEPTION 'commission order member missing'; END IF;
@@ -194,18 +195,18 @@ BEGIN
   expected_count:=cardinality(n.path);
   SELECT count(*),jsonb_agg(jsonb_build_object('id',a.id,'member_id',a.member_id,'parent_id',a.parent_id,'depth',a.depth,
    'revision_id',r.id,'version',a.version::text,'config',a.config,
-   'effective_mode',agent_effective_mode_for_path(a.brand_id,a.path,NULL,NULL,p.config->>'mode')) ORDER BY a.depth)
-  INTO captured_count,chain FROM agent_nodes a JOIN agent_config_revisions r ON r.brand_id=a.brand_id AND r.agent_id=a.id AND r.version=a.version AND r.config=a.config AND r.created_at<=NEW.placed_at
+   'effective_mode',agent_effective_mode_at_path(a.brand_id,a.path,NULL,NULL,p.config->>'mode',NEW.placed_at)) ORDER BY a.depth)
+  INTO captured_count,chain FROM agent_nodes_at(NEW.brand_id,NEW.placed_at) a JOIN agent_config_revisions r ON r.brand_id=a.brand_id AND r.agent_id=a.id AND r.version=a.version AND r.config=a.config AND r.created_at<=NEW.placed_at
    WHERE a.brand_id=NEW.brand_id AND a.id=ANY(n.path);
   IF captured_count<>expected_count THEN RAISE EXCEPTION 'commission agent revision missing'; END IF;
   IF EXISTS(SELECT 1 FROM agent_nodes a JOIN agent_nodes parent ON parent.brand_id=a.brand_id AND parent.id=a.parent_id
    WHERE a.brand_id=NEW.brand_id AND a.id=ANY(n.path) AND
-    agent_effective_mode_for_path(a.brand_id,a.path,NULL,NULL,p.config->>'mode') IS DISTINCT FROM
-    agent_effective_mode_for_path(parent.brand_id,parent.path,NULL,NULL,p.config->>'mode')) THEN RAISE EXCEPTION 'commission chain mode mismatch'; END IF;
+    agent_effective_mode_at_path(a.brand_id,a.path,NULL,NULL,p.config->>'mode',NEW.placed_at) IS DISTINCT FROM
+    agent_effective_mode_at_path(parent.brand_id,parent.path,NULL,NULL,p.config->>'mode',NEW.placed_at)) THEN RAISE EXCEPTION 'commission chain mode mismatch'; END IF;
  END IF;
  NEW.commission_rule_snapshot:=jsonb_build_object('schema_version',1,'brand_id',NEW.brand_id,'member_id',NEW.brand_member_id,
-  'captured_at',NEW.placed_at,'financial_policy',jsonb_build_object('revision_id',financial_revision,'version',f.version::text,'config',f.config),
-  'agency_policy',jsonb_build_object('revision_id',agency_revision,'version',p.version::text,'config',p.config),'agent_path',chain);
+  'captured_at',NEW.placed_at,'financial_policy',jsonb_build_object('revision_id',f.revision_id,'version',f.version::text,'config',f.config),
+  'agency_policy',jsonb_build_object('revision_id',p.revision_id,'version',p.version::text,'config',p.config),'agent_path',chain);
  RETURN NEW;
 END $$;
 
@@ -315,9 +316,13 @@ BEGIN
   SELECT * INTO policy FROM brand_agent_policies WHERE brand_id=NEW.brand_id FOR SHARE;
   SELECT * INTO c FROM join_codes WHERE brand_id=NEW.brand_id AND join_codes.code=selected_code AND join_codes.kind=selected_kind FOR SHARE;
   IF NOT FOUND OR NOT join_code_usable(c) OR EXISTS(SELECT 1 FROM brand_members WHERE brand_id=NEW.brand_id AND id=c.owner_member_id AND global_user_id=NEW.global_user_id) THEN RAISE EXCEPTION 'join code unavailable' USING ERRCODE='23514',CONSTRAINT='join_code_unavailable';END IF;
+  IF selected_kind='referral' THEN
   SELECT global_user_id INTO source_user FROM brand_members WHERE brand_id=NEW.brand_id AND id=c.owner_member_id;
   PERFORM 1 FROM global_users WHERE id=source_user FOR SHARE;
   PERFORM 1 FROM brand_members WHERE brand_id=NEW.brand_id AND id=c.owner_member_id FOR SHARE;
+  ELSE
+   PERFORM 1 FROM agent_accounts WHERE brand_id=NEW.brand_id AND id=c.owner_member_id FOR SHARE;
+  END IF;
   join_time:=clock_timestamp();
   IF NOT join_code_usable_at(c,join_time) THEN RAISE EXCEPTION 'join code unavailable' USING ERRCODE='23514',CONSTRAINT='join_code_unavailable';END IF;
   IF selected_kind='agent' THEN
@@ -344,7 +349,7 @@ BEGIN
  SELECT * INTO p FROM brand_agent_policies WHERE brand_id=NEW.brand_id FOR SHARE;
  IF m.attribution_snapshot->>'agent_id' IS NOT NULL THEN
   SELECT * INTO n FROM agent_nodes WHERE brand_id=NEW.brand_id AND id=(m.attribution_snapshot->>'agent_id')::uuid;
-  SELECT jsonb_agg(jsonb_build_object('id',a.id,'parent_id',a.parent_id,'depth',a.depth,'version',a.version,'config',a.config) ORDER BY a.depth) INTO chain FROM agent_nodes a WHERE a.brand_id=NEW.brand_id AND a.id=ANY(n.path);
+  SELECT jsonb_agg(jsonb_build_object('id',a.id,'parent_id',a.parent_id,'depth',a.depth,'version',a.version,'config',a.config) ORDER BY a.depth) INTO chain FROM agent_nodes_at(NEW.brand_id,NEW.placed_at) a WHERE a.brand_id=NEW.brand_id AND a.id=ANY(n.path);
  END IF;
  NEW.attribution_snapshot:=jsonb_build_object('schema_version',1,'member_attribution',m.attribution_snapshot,'agent_policy',jsonb_build_object('version',p.version,'config',p.config),'agent_configs_at_bet',coalesce(chain,'[]'::jsonb),'captured_at',clock_timestamp(),'commission_policy',NULL);
  RETURN NEW;
@@ -389,10 +394,7 @@ BEGIN
    OR x.rule_snapshot->'schema_version' IS DISTINCT FROM '1'::jsonb
    OR x.rule_snapshot->>'brand_id' IS DISTINCT FROM b::text OR x.rule_snapshot->>'member_id' IS DISTINCT FROM x.member_id::text
    OR (x.rule_snapshot->>'captured_at')::timestamptz IS DISTINCT FROM o.placed_at
-   OR NOT EXISTS(SELECT 1 FROM commission_policy_revisions r WHERE r.brand_id=b AND r.id=(x.rule_snapshot->'financial_policy'->>'revision_id')::uuid
-    AND r.version::text=x.rule_snapshot->'financial_policy'->>'version' AND r.config=x.rule_snapshot->'financial_policy'->'config' AND r.created_at<=o.placed_at)
-   OR NOT EXISTS(SELECT 1 FROM agent_config_revisions r WHERE r.brand_id=b AND r.agent_id IS NULL AND r.id=(x.rule_snapshot->'agency_policy'->>'revision_id')::uuid
-    AND r.version::text=x.rule_snapshot->'agency_policy'->>'version' AND r.config=x.rule_snapshot->'agency_policy'->'config' AND r.created_at<=o.placed_at)
+   OR x.rule_snapshot IS DISTINCT FROM o.commission_rule_snapshot
    OR x.rule_snapshot->'agency_policy'->'config' IS DISTINCT FROM o.attribution_snapshot->'agent_policy'->'config'
    OR x.rule_snapshot->'agency_policy'->>'version' IS DISTINCT FROM o.attribution_snapshot->'agent_policy'->>'version'
    OR jsonb_array_length(x.rule_snapshot->'agent_path') IS DISTINCT FROM jsonb_array_length(o.attribution_snapshot->'agent_configs_at_bet')
@@ -614,15 +616,6 @@ CREATE FUNCTION commission_payment_mode(rid uuid) RETURNS text
  FROM commission_calculations WHERE run_id=rid AND reason='eligible'
 $$;
 
-CREATE FUNCTION commission_policy_revision_committed() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
- IF NOT EXISTS(SELECT 1 FROM brand_commission_policies WHERE brand_id=NEW.brand_id AND version>=NEW.version) THEN
-  RAISE EXCEPTION 'orphan commission policy revision'; END IF;
- RETURN NULL;
-END $$;
-
 CREATE FUNCTION compliance_stub_checks(v jsonb) RETURNS jsonb
     LANGUAGE sql IMMUTABLE
     AS $$
@@ -681,7 +674,7 @@ END $$;
 CREATE FUNCTION default_agent_policy() RETURNS jsonb
     LANGUAGE sql IMMUTABLE
     AS $$
- SELECT '{"enabled":false,"max_depth":5,"ratio_cap":"0","mode":"loss","cycle":"monthly"}'::jsonb
+ SELECT '{"enabled":true,"max_depth":5,"loss_ratio_cap":"0","turnover_ratio_cap":"0","mode":"loss","cycle":"monthly"}'::jsonb
 $$;
 
 CREATE FUNCTION default_brand_bet_policy() RETURNS jsonb
@@ -815,9 +808,8 @@ CREATE FUNCTION guard_agency_commission_calendar() RETURNS trigger
 DECLARE c jsonb;
 BEGIN
  SELECT config INTO c FROM brand_commission_policies WHERE brand_id=NEW.brand_id FOR SHARE;
- IF c->'enabled'='true'::jsonb AND
-  (NEW.config->'enabled'<>'true'::jsonb OR NEW.config->>'cycle' IS DISTINCT FROM c->'calendar'->>'cycle') THEN
-  RAISE EXCEPTION 'disable financial commission policy before changing agency cycle';
+ IF c->'calendar'<>'null'::jsonb AND NEW.config->>'cycle' IS DISTINCT FROM c->'calendar'->>'cycle' THEN
+  RAISE EXCEPTION 'commission cycle must be configured in the commission calendar';
  END IF;
  RETURN NEW;
 END $$;
@@ -830,20 +822,25 @@ BEGIN
  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'agent identity cannot be deleted'; END IF;
  SELECT config INTO p FROM brand_agent_policies WHERE brand_id=NEW.brand_id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'agent policy missing'; END IF;
+ IF EXISTS(SELECT 1 FROM agent_mode_changes WHERE brand_id=NEW.brand_id AND root_id=NEW.path[1] AND applied_at IS NULL AND effective_at>statement_timestamp()) THEN RAISE EXCEPTION 'agent line has a pending mode change'; END IF;
+ IF NEW.parent_id IS NULL AND NEW.config->'mode'='null'::jsonb THEN RAISE EXCEPTION 'level 1 agent mode required'; END IF;
+ IF TG_OP='UPDATE' AND NEW.parent_id IS NULL AND NEW.config->>'mode' IS DISTINCT FROM coalesce(OLD.config->>'mode',p->>'mode') AND NOT EXISTS(
+ SELECT 1 FROM agent_mode_changes c JOIN agent_mode_change_targets t ON t.change_id=c.id AND t.brand_id=c.brand_id
+ WHERE c.brand_id=NEW.brand_id AND t.agent_id=NEW.id AND t.config=NEW.config AND t.version=NEW.version AND c.applied_at IS NULL AND c.effective_at<=statement_timestamp()) THEN RAISE EXCEPTION 'agent mode requires a scheduled whole-line change'; END IF;
  IF TG_OP='INSERT' THEN
-  IF NEW.version<>1 OR p->'enabled'<>'true'::jsonb OR NOT EXISTS(SELECT 1 FROM brand_members WHERE brand_id=NEW.brand_id AND id=NEW.member_id AND status='normal') THEN RAISE EXCEPTION 'agent admission invalid'; END IF;
+  IF NEW.version<>1 OR p->'enabled'<>'true'::jsonb OR NOT EXISTS(SELECT 1 FROM agent_accounts WHERE brand_id=NEW.brand_id AND id=NEW.member_id) THEN RAISE EXCEPTION 'agent admission invalid'; END IF;
  ELSE
   IF (to_jsonb(NEW)-ARRAY['version','config','updated_at']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['version','config','updated_at']) OR NEW.version<>OLD.version+1 THEN RAISE EXCEPTION 'agent identity/path/parent immutable'; END IF;
  END IF;
- IF NEW.depth>(p->>'max_depth')::int OR (NEW.config->>'ratio')::numeric>(p->>'ratio_cap')::numeric THEN RAISE EXCEPTION 'agent exceeds policy limit'; END IF;
+ IF NEW.depth>(p->>'max_depth')::int OR (NEW.config->>'ratio')::numeric>(p->>CASE WHEN coalesce(NEW.config->>'mode',agent_effective_mode_for_path(NEW.brand_id,NEW.path,NULL,NULL,p->>'mode'))='loss' THEN 'loss_ratio_cap' ELSE 'turnover_ratio_cap' END)::numeric THEN RAISE EXCEPTION 'agent exceeds policy limit'; END IF;
  IF NEW.parent_id IS NULL THEN
   IF NEW.depth<>1 OR NEW.path<>ARRAY[NEW.id] THEN RAISE EXCEPTION 'invalid root lineage'; END IF;
  ELSE
-  SELECT * INTO parent FROM agent_nodes WHERE brand_id=NEW.brand_id AND id=NEW.parent_id;
+  SELECT * INTO parent FROM agent_nodes_at(NEW.brand_id,statement_timestamp()) WHERE brand_id=NEW.brand_id AND id=NEW.parent_id;
   IF NOT FOUND OR NEW.depth<>parent.depth+1 OR NEW.path<>array_append(parent.path,NEW.id) OR (NEW.config->>'ratio')::numeric>(parent.config->>'ratio')::numeric THEN RAISE EXCEPTION 'invalid child lineage or ratio'; END IF;
   IF TG_OP='INSERT' AND (parent.config->>'status'<>'active' OR parent.config->'can_create_children'<>'true'::jsonb OR EXISTS(SELECT 1 FROM agent_nodes WHERE brand_id=NEW.brand_id AND id=ANY(parent.path) AND config->>'status'<>'active')) THEN RAISE EXCEPTION 'parent cannot develop children'; END IF;
  END IF;
- IF EXISTS(SELECT 1 FROM agent_nodes WHERE brand_id=NEW.brand_id AND parent_id=NEW.id AND (config->>'ratio')::numeric>(NEW.config->>'ratio')::numeric) THEN RAISE EXCEPTION 'existing child exceeds new ratio'; END IF;
+ IF EXISTS(SELECT 1 FROM agent_nodes_at(NEW.brand_id,statement_timestamp()) WHERE brand_id=NEW.brand_id AND parent_id=NEW.id AND (config->>'ratio')::numeric>(NEW.config->>'ratio')::numeric) THEN RAISE EXCEPTION 'existing child exceeds new ratio'; END IF;
  NEW.updated_at:=clock_timestamp();RETURN NEW;
 END $$;
 
@@ -852,11 +849,12 @@ CREATE FUNCTION guard_agent_policy() RETURNS trigger
     AS $$
 BEGIN
  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'agent policies cannot be deleted'; END IF;
- IF TG_OP='INSERT' THEN IF NEW.version<>1 OR NEW.config<>default_agent_policy() THEN RAISE EXCEPTION 'initial disabled agent policy required'; END IF;
+ IF TG_OP='INSERT' THEN IF NEW.version<>1 OR NEW.config<>default_agent_policy() THEN RAISE EXCEPTION 'initial agent policy required'; END IF;
  ELSE
-  IF (to_jsonb(NEW)-ARRAY['version','config','updated_at']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['version','config','updated_at']) OR NEW.version<>OLD.version+1 THEN RAISE EXCEPTION 'agent policy identity/version immutable'; END IF;
-  IF EXISTS(SELECT 1 FROM agent_nodes WHERE brand_id=NEW.brand_id AND ((config->>'ratio')::numeric>(NEW.config->>'ratio_cap')::numeric OR depth>(NEW.config->>'max_depth')::int)) THEN RAISE EXCEPTION 'existing agents exceed new policy'; END IF;
+  IF (to_jsonb(NEW)-ARRAY['version','config','updated_at','revision_id']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['version','config','updated_at','revision_id']) OR NEW.version<>OLD.version+1 THEN RAISE EXCEPTION 'agent policy identity/version immutable'; END IF;
+  IF EXISTS(SELECT 1 FROM agent_nodes WHERE brand_id=NEW.brand_id AND ((config->>'ratio')::numeric>(NEW.config->>CASE WHEN agent_effective_mode_for_path(brand_id,path,NULL,NULL,NEW.config->>'mode')='loss' THEN 'loss_ratio_cap' ELSE 'turnover_ratio_cap' END)::numeric OR depth>(NEW.config->>'max_depth')::int)) THEN RAISE EXCEPTION 'existing agents exceed new policy'; END IF;
  END IF;
+ IF TG_OP='UPDATE' THEN NEW.revision_id:=gen_random_uuid(); END IF;
  NEW.updated_at:=clock_timestamp();RETURN NEW;
 END $$;
 
@@ -866,14 +864,13 @@ CREATE FUNCTION guard_agent_revision() RETURNS trigger
 DECLARE v bigint; cfg jsonb; a audit_logs;
 BEGIN
  IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'agent configuration history immutable'; END IF;
- IF NEW.agent_id IS NULL THEN SELECT version,config INTO v,cfg FROM brand_agent_policies WHERE brand_id=NEW.brand_id;
- ELSE SELECT version,config INTO v,cfg FROM agent_nodes WHERE brand_id=NEW.brand_id AND id=NEW.agent_id; END IF;
+ SELECT version,config INTO v,cfg FROM agent_nodes WHERE brand_id=NEW.brand_id AND id=NEW.agent_id;
  IF NOT FOUND OR (NEW.version=1 AND (v<>1 OR cfg<>NEW.config)) OR (NEW.version>1 AND v<>NEW.version-1) THEN RAISE EXCEPTION 'agent revision must belong to current/next version'; END IF;
  IF NEW.actor_type<>'system' THEN
   SELECT * INTO a FROM audit_logs WHERE id=NEW.audit_log_id;
   IF NOT FOUND OR a.brand_id<>NEW.brand_id OR a.actor_type<>NEW.actor_type OR a.actor_id IS DISTINCT FROM NEW.actor_id OR
-   a.resource_type<>(CASE WHEN NEW.agent_id IS NULL THEN 'agent_policy' ELSE 'agent_node' END) OR
-   a.resource_id IS DISTINCT FROM coalesce(NEW.agent_id,NEW.brand_id) OR a.reason<>NEW.reason OR
+   a.resource_type<>'agent_node' OR
+   a.resource_id IS DISTINCT FROM NEW.agent_id OR a.reason<>NEW.reason OR
    (a.after_json->>'version') IS DISTINCT FROM NEW.version::text OR (a.after_json->'config') IS DISTINCT FROM NEW.config THEN RAISE EXCEPTION 'agent revision needs matching audit'; END IF;
  END IF;
  NEW.created_at:=clock_timestamp();RETURN NEW;
@@ -1007,8 +1004,8 @@ CREATE FUNCTION guard_brand_domain_binding() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
- IF TG_OP='DELETE' OR NEW.id IS DISTINCT FROM OLD.id OR NEW.brand_id IS DISTINCT FROM OLD.brand_id OR NEW.domain IS DISTINCT FROM OLD.domain THEN RAISE EXCEPTION 'domain binding immutable';END IF;
- IF NEW.is_primary AND NOT NEW.enabled THEN RAISE EXCEPTION 'primary domain must be enabled';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ IF NEW.id IS DISTINCT FROM OLD.id OR NEW.brand_id IS DISTINCT FROM OLD.brand_id OR NEW.domain IS DISTINCT FROM OLD.domain THEN RAISE EXCEPTION 'domain binding immutable';END IF;
  RETURN NEW;
 END $$;
 
@@ -1020,7 +1017,7 @@ BEGIN
  IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'domain history immutable';END IF;
  SELECT * INTO b FROM brands WHERE id=NEW.brand_id;
  SELECT * INTO a FROM audit_logs WHERE id=NEW.audit_log_id;
- SELECT coalesce(jsonb_agg(jsonb_build_object('id',d.id,'domain',d.domain,'enabled',d.enabled,'is_primary',d.is_primary) ORDER BY d.domain,d.id),'[]'::jsonb) INTO projection FROM brand_domains d WHERE brand_id=NEW.brand_id;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',d.id,'domain',d.domain,'enabled',d.enabled) ORDER BY d.domain,d.id),'[]'::jsonb) INTO projection FROM brand_domains d WHERE brand_id=NEW.brand_id;
  IF NOT FOUND OR b.id IS NULL OR a.id IS NULL OR b.config_version IS DISTINCT FROM NEW.version
  OR NEW.domains IS DISTINCT FROM projection OR a.brand_id IS DISTINCT FROM NEW.brand_id OR a.actor_type IS DISTINCT FROM 'admin'
  OR a.actor_id IS DISTINCT FROM NEW.changed_by OR a.action IS DISTINCT FROM 'brand_domains.update' OR a.resource_type IS DISTINCT FROM 'brand_domains'
@@ -1828,36 +1825,15 @@ BEGIN
  IF TG_OP='INSERT' THEN
   IF NEW.version<>1 OR NEW.config<>default_commission_policy() THEN RAISE EXCEPTION 'initial disabled commission policy required'; END IF;
  ELSE
-  IF (to_jsonb(NEW)-ARRAY['version','config','updated_at']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['version','config','updated_at']) OR
+  IF (to_jsonb(NEW)-ARRAY['version','config','updated_at','revision_id']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['version','config','updated_at','revision_id']) OR
    NEW.version<>OLD.version+1 THEN RAISE EXCEPTION 'commission policy identity/version immutable'; END IF;
  END IF;
  SELECT config INTO agency FROM brand_agent_policies WHERE brand_id=NEW.brand_id FOR SHARE;
- IF NEW.config->'enabled'='true'::jsonb AND
-  (NOT FOUND OR agency->'enabled'<>'true'::jsonb OR NEW.config->'calendar'->>'cycle' IS DISTINCT FROM agency->>'cycle') THEN
-  RAISE EXCEPTION 'commission policy needs matching enabled agency policy';
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'commission agency policy missing';
  END IF;
+ IF TG_OP='UPDATE' THEN NEW.revision_id:=gen_random_uuid(); END IF;
  NEW.updated_at:=clock_timestamp(); RETURN NEW;
-END $$;
-
-CREATE FUNCTION guard_commission_policy_revision() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-DECLARE p brand_commission_policies; a audit_logs;
-BEGIN
- IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'commission policy history immutable'; END IF;
- SELECT * INTO p FROM brand_commission_policies WHERE brand_id=NEW.brand_id;
- IF NOT FOUND OR (NEW.version=1 AND (p.version<>1 OR p.config<>NEW.config)) OR
-  (NEW.version>1 AND p.version<>NEW.version-1) THEN RAISE EXCEPTION 'commission revision must belong to current/next version'; END IF;
- IF NEW.version>1 THEN
-  SELECT * INTO a FROM audit_logs WHERE id=NEW.audit_log_id;
-  IF NOT FOUND OR a.brand_id IS DISTINCT FROM NEW.brand_id OR a.actor_type<>'admin' OR a.actor_id IS DISTINCT FROM NEW.changed_by OR
-   a.action<>'commission.policy.update' OR a.resource_type<>'commission_policy' OR a.resource_id IS DISTINCT FROM NEW.brand_id OR
-   a.reason<>NEW.reason OR (a.after_json->>'version') IS DISTINCT FROM NEW.version::text OR
-   a.after_json->'config' IS DISTINCT FROM NEW.config OR a.after_json->>'revision_id' IS DISTINCT FROM NEW.id::text THEN
-   RAISE EXCEPTION 'commission policy revision needs matching audit';
-  END IF;
- END IF;
- NEW.created_at:=clock_timestamp(); RETURN NEW;
 END $$;
 
 CREATE FUNCTION guard_commission_run() RETURNS trigger
@@ -2136,10 +2112,15 @@ BEGIN
  -- Creating/enabling is not permitted for a disabled source. Expiration itself
  -- can be in the past; it simply prevents use, rather than rewriting history.
  IF NEW.status='active' THEN
+  IF NEW.kind='referral' THEN
   SELECT global_user_id INTO source_user FROM brand_members WHERE brand_id=NEW.brand_id AND id=NEW.owner_member_id;
   PERFORM 1 FROM global_users WHERE id=source_user FOR SHARE;
   PERFORM 1 FROM brand_members m JOIN global_users u ON u.id=m.global_user_id JOIN brands b ON b.id=m.brand_id WHERE m.brand_id=NEW.brand_id AND m.id=NEW.owner_member_id AND m.status='normal' AND u.status='active' AND b.status<>'disabled' FOR SHARE OF m;
   IF NOT FOUND THEN RAISE EXCEPTION 'join-code source unavailable' USING ERRCODE='23514',CONSTRAINT='join_code_unavailable';END IF;
+  ELSE
+   PERFORM 1 FROM agent_accounts a JOIN brands b ON b.id=a.brand_id WHERE a.brand_id=NEW.brand_id AND a.id=NEW.owner_member_id AND b.status<>'disabled' FOR SHARE OF a;
+   IF NOT FOUND THEN RAISE EXCEPTION 'agent source unavailable' USING ERRCODE='23514',CONSTRAINT='join_code_unavailable';END IF;
+  END IF;
   IF NEW.kind='agent' THEN
    SELECT config INTO p FROM brand_agent_policies WHERE brand_id=NEW.brand_id;
    IF p->'enabled'<>'true'::jsonb OR NOT EXISTS(SELECT 1 FROM agent_nodes n WHERE n.brand_id=NEW.brand_id AND n.id=NEW.agent_id AND n.member_id=NEW.owner_member_id AND NOT EXISTS(SELECT 1 FROM agent_nodes a WHERE a.brand_id=n.brand_id AND a.id=ANY(n.path) AND a.config->>'status'<>'active')) THEN RAISE EXCEPTION 'join-code source unavailable' USING ERRCODE='23514',CONSTRAINT='join_code_unavailable';END IF;
@@ -3006,13 +2987,6 @@ CREATE FUNCTION initialize_agent_policy() RETURNS trigger
     LANGUAGE plpgsql
     AS $$ BEGIN INSERT INTO brand_agent_policies(brand_id) VALUES(NEW.id);RETURN NULL;END $$;
 
-CREATE FUNCTION initialize_agent_policy_revision() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
- INSERT INTO agent_config_revisions(brand_id,version,config,actor_type,reason) VALUES(NEW.brand_id,1,NEW.config,'system','Initial disabled agent policy');RETURN NULL;
-END $$;
-
 CREATE FUNCTION initialize_bet_policy() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -3084,13 +3058,6 @@ CREATE FUNCTION initialize_commission_policy() RETURNS trigger
     AS $$
 BEGIN INSERT INTO brand_commission_policies(brand_id) VALUES(NEW.id); RETURN NULL; END $$;
 
-CREATE FUNCTION initialize_commission_policy_revision() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
- INSERT INTO commission_policy_revisions(brand_id,version,config,reason) VALUES(NEW.brand_id,1,NEW.config,'Initial disabled commission financial policy'); RETURN NULL;
-END $$;
-
 CREATE FUNCTION initialize_report_archive_policy() RETURNS trigger
     LANGUAGE plpgsql
     AS $$ BEGIN INSERT INTO brand_report_archive_policies(brand_id,timezone) VALUES(NEW.id,NEW.timezone); RETURN NULL; END $$;
@@ -3147,8 +3114,8 @@ CREATE FUNCTION join_code_usable_at(c join_codes, at_time timestamp with time zo
     LANGUAGE sql
     AS $$
  SELECT c.status='active' AND (c.starts_at IS NULL OR c.starts_at<=at_time) AND (c.expires_at IS NULL OR c.expires_at>at_time)
- AND EXISTS(SELECT 1 FROM brand_members m JOIN global_users u ON u.id=m.global_user_id JOIN brands b ON b.id=m.brand_id WHERE m.brand_id=c.brand_id AND m.id=c.owner_member_id AND m.status='normal' AND u.status='active' AND b.status<>'disabled')
- AND (c.kind='referral' OR EXISTS(SELECT 1 FROM agent_nodes n JOIN brand_agent_policies p ON p.brand_id=n.brand_id WHERE n.brand_id=c.brand_id AND n.id=c.agent_id AND n.member_id=c.owner_member_id AND p.config->'enabled'='true'::jsonb AND NOT EXISTS(SELECT 1 FROM agent_nodes a WHERE a.brand_id=n.brand_id AND a.id=ANY(n.path) AND a.config->>'status'<>'active')))
+ AND ((c.kind='referral' AND EXISTS(SELECT 1 FROM brand_members m JOIN global_users u ON u.id=m.global_user_id JOIN brands b ON b.id=m.brand_id WHERE m.brand_id=c.brand_id AND m.id=c.owner_member_id AND m.status='normal' AND u.status='active' AND b.status<>'disabled')) OR (c.kind='agent' AND EXISTS(SELECT 1 FROM agent_accounts a JOIN brands b ON b.id=a.brand_id WHERE a.brand_id=c.brand_id AND a.id=c.owner_member_id AND b.status<>'disabled')))
+ AND (c.kind='referral' OR EXISTS(SELECT 1 FROM agent_nodes n JOIN brand_agent_policies p ON p.brand_id=n.brand_id WHERE n.brand_id=c.brand_id AND n.id=c.agent_id AND n.member_id=c.owner_member_id AND NOT EXISTS(SELECT 1 FROM agent_nodes a WHERE a.brand_id=n.brand_id AND a.id=ANY(n.path) AND a.config->>'status'<>'active')))
 $$;
 
 CREATE FUNCTION lottery_business_allocation_delta(v jsonb, negative boolean) RETURNS jsonb
@@ -4033,11 +4000,12 @@ END $$;
 CREATE FUNCTION require_brand_domain_history() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-DECLARE projection jsonb;v bigint;
+DECLARE projection jsonb;v bigint;brand uuid;
 BEGIN
- SELECT config_version INTO v FROM brands WHERE id=NEW.brand_id;
- SELECT coalesce(jsonb_agg(jsonb_build_object('id',d.id,'domain',d.domain,'enabled',d.enabled,'is_primary',d.is_primary) ORDER BY d.domain,d.id),'[]'::jsonb) INTO projection FROM brand_domains d WHERE brand_id=NEW.brand_id;
- IF NOT EXISTS(SELECT 1 FROM brand_domain_revisions h WHERE h.brand_id=NEW.brand_id AND h.version=v AND h.domains=projection) THEN RAISE EXCEPTION 'domain change requires audited history';END IF;
+ IF TG_OP='DELETE' THEN brand:=OLD.brand_id;ELSE brand:=NEW.brand_id;END IF;
+ SELECT config_version INTO v FROM brands WHERE id=brand;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',d.id,'domain',d.domain,'enabled',d.enabled) ORDER BY d.domain,d.id),'[]'::jsonb) INTO projection FROM brand_domains d WHERE brand_id=brand;
+ IF NOT EXISTS(SELECT 1 FROM brand_domain_revisions h WHERE h.brand_id=brand AND h.version=v AND h.domains=projection) THEN RAISE EXCEPTION 'domain change requires audited history';END IF;
  RETURN NULL;
 END $$;
 
@@ -4179,15 +4147,6 @@ BEGIN
   l.entry_type='commission' AND l.reference_type='commission_payment_target' AND l.reference_id=NEW.id AND l.operation_key='commission-payment:'||NEW.id::text) THEN RAISE EXCEPTION 'paid commission target missing credit'; END IF; RETURN NULL;
 END $$;
 
-CREATE FUNCTION require_commission_policy_revision() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
- IF NOT EXISTS(SELECT 1 FROM commission_policy_revisions WHERE brand_id=NEW.brand_id AND version=NEW.version AND config=NEW.config) THEN
-  RAISE EXCEPTION 'commission current version needs revision'; END IF;
- RETURN NULL;
-END $$;
-
 CREATE FUNCTION require_commission_run_commit() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -4318,10 +4277,11 @@ CREATE FUNCTION valid_agent_config(v jsonb, brand_scope boolean) RETURNS boolean
 BEGIN
  IF jsonb_typeof(v)<>'object' THEN RETURN false; END IF;
  IF brand_scope THEN
-  RETURN (SELECT count(*)=5 FROM jsonb_object_keys(v)) AND v ?& ARRAY['enabled','max_depth','ratio_cap','mode','cycle']
-   AND jsonb_typeof(v->'enabled')='boolean' AND jsonb_typeof(v->'max_depth')='number'
+  RETURN (SELECT count(*)=6 FROM jsonb_object_keys(v)) AND v ?& ARRAY['enabled','max_depth','loss_ratio_cap','turnover_ratio_cap','mode','cycle']
+   AND v->'enabled'='true'::jsonb AND jsonb_typeof(v->'max_depth')='number'
    AND v->>'max_depth' ~ '^[1-9][0-9]?$' AND (v->>'max_depth')::int<=32
-   AND jsonb_typeof(v->'ratio_cap')='string' AND valid_agent_ratio(v->>'ratio_cap')
+   AND jsonb_typeof(v->'loss_ratio_cap')='string' AND valid_agent_ratio(v->>'loss_ratio_cap')
+   AND jsonb_typeof(v->'turnover_ratio_cap')='string' AND valid_agent_ratio(v->>'turnover_ratio_cap')
    AND v->>'mode' IN ('loss','turnover') AND v->>'cycle' IN ('weekly','monthly');
  END IF;
  RETURN (SELECT count(*)=4 FROM jsonb_object_keys(v)) AND v ?& ARRAY['ratio','mode','status','can_create_children']
@@ -4937,7 +4897,7 @@ CREATE TABLE admin_brand_scopes (
 CREATE TABLE agent_config_revisions (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     brand_id uuid NOT NULL,
-    agent_id uuid,
+    agent_id uuid NOT NULL,
     version bigint NOT NULL,
     config jsonb NOT NULL,
     actor_type text NOT NULL,
@@ -5113,6 +5073,7 @@ CREATE TABLE brand_agent_policies (
     version bigint DEFAULT 1 NOT NULL,
     config jsonb DEFAULT default_agent_policy() NOT NULL,
     updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    revision_id uuid DEFAULT gen_random_uuid() NOT NULL,
     CONSTRAINT brand_agent_policies_config_check CHECK ((valid_agent_config(config, true) IS TRUE)),
     CONSTRAINT brand_agent_policies_version_check CHECK ((version > 0))
 );
@@ -5150,6 +5111,7 @@ CREATE TABLE brand_commission_policies (
     config jsonb DEFAULT default_commission_policy() NOT NULL,
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    revision_id uuid DEFAULT gen_random_uuid() NOT NULL,
     CONSTRAINT brand_commission_policies_config_check CHECK ((valid_commission_policy(config) IS TRUE)),
     CONSTRAINT brand_commission_policies_version_check CHECK ((version > 0))
 );
@@ -5204,7 +5166,6 @@ CREATE TABLE brand_domains (
     id uuid NOT NULL,
     brand_id uuid NOT NULL,
     domain text NOT NULL,
-    is_primary boolean DEFAULT false NOT NULL,
     enabled boolean DEFAULT true NOT NULL,
     CONSTRAINT brand_domains_domain_check CHECK ((domain = lower(domain)))
 );
@@ -5217,6 +5178,7 @@ CREATE TABLE brand_members (
     display_name text DEFAULT ''::text NOT NULL,
     notes text DEFAULT ''::text NOT NULL,
     profile_snapshot jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT brand_members_betting_quick_amounts_check CHECK (cardinality(betting_quick_amounts) <= 5 AND 0 < ALL(betting_quick_amounts) AND array_position(betting_quick_amounts, NULL) IS NULL),
     join_method text NOT NULL,
     join_domain text,
     attribution_snapshot jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -5226,6 +5188,7 @@ CREATE TABLE brand_members (
     joined_at timestamp with time zone DEFAULT now() NOT NULL,
     terms_accepted boolean DEFAULT true NOT NULL,
     created_by uuid,
+    betting_quick_amounts bigint[] DEFAULT '{}'::bigint[] NOT NULL,
     CONSTRAINT brand_members_join_method_check CHECK ((join_method = ANY (ARRAY['domain'::text, 'agent_code'::text, 'referral_code'::text, 'operator'::text]))),
     CONSTRAINT brand_members_status_check CHECK ((status = ANY (ARRAY['normal'::text, 'frozen'::text, 'disabled'::text, 'expired'::text, 'cancelled'::text]))),
     CONSTRAINT member_consent_consistent CHECK (((terms_accepted AND (accepted_at IS NOT NULL)) OR ((NOT terms_accepted) AND (accepted_at IS NULL))))
@@ -5788,22 +5751,6 @@ CREATE TABLE commission_payments (
     CONSTRAINT commission_payments_target_count_check CHECK ((target_count >= 0)),
     CONSTRAINT commission_payments_total_points_check CHECK (((total_points >= (0)::numeric) AND (scale(total_points) = 0))),
     CONSTRAINT commission_payments_version_check CHECK (((version >= 1) AND (version <= '9007199254740991'::bigint)))
-);
-
-CREATE TABLE commission_policy_revisions (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    brand_id uuid NOT NULL,
-    version bigint NOT NULL,
-    config jsonb NOT NULL,
-    changed_by uuid,
-    reason text NOT NULL,
-    audit_log_id uuid,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT commission_policy_revisions_check CHECK (((version = 1) = ((changed_by IS NULL) AND (audit_log_id IS NULL)))),
-    CONSTRAINT commission_policy_revisions_check1 CHECK (((version = 1) OR ((changed_by IS NOT NULL) AND (audit_log_id IS NOT NULL)))),
-    CONSTRAINT commission_policy_revisions_config_check CHECK ((valid_commission_policy(config) IS TRUE)),
-    CONSTRAINT commission_policy_revisions_reason_check CHECK (((length(TRIM(BOTH FROM reason)) > 0) AND (octet_length(reason) <= 500))),
-    CONSTRAINT commission_policy_revisions_version_check CHECK ((version > 0))
 );
 
 CREATE TABLE commission_runs (
@@ -7174,15 +7121,6 @@ ALTER TABLE ONLY commission_payments
 ALTER TABLE ONLY commission_payments
     ADD CONSTRAINT commission_payments_pkey PRIMARY KEY (id);
 
-ALTER TABLE ONLY commission_policy_revisions
-    ADD CONSTRAINT commission_policy_revisions_brand_id_id_key UNIQUE (brand_id, id);
-
-ALTER TABLE ONLY commission_policy_revisions
-    ADD CONSTRAINT commission_policy_revisions_brand_id_version_key UNIQUE (brand_id, version);
-
-ALTER TABLE ONLY commission_policy_revisions
-    ADD CONSTRAINT commission_policy_revisions_pkey PRIMARY KEY (id);
-
 ALTER TABLE ONLY commission_runs
     ADD CONSTRAINT commission_runs_brand_id_cycle_id_id_key UNIQUE (brand_id, cycle_id, id);
 
@@ -7657,7 +7595,6 @@ CREATE INDEX bet_orders_report_placed ON bet_orders USING btree (brand_id, place
 
 CREATE INDEX brand_operation_history ON brand_operation_revisions USING btree (brand_id, version DESC);
 
-CREATE UNIQUE INDEX brand_primary_domain ON brand_domains USING btree (brand_id) WHERE (is_primary AND enabled);
 
 CREATE INDEX business_reconciliation_point_audit_idx ON audit_logs USING btree (brand_id, ((after_json ->> 'ledger_entry_id'::text)), action, resource_id) WHERE (resource_type = 'point_account'::text);
 
@@ -7819,8 +7756,6 @@ CREATE TRIGGER admin_scope_assignment_guard BEFORE DELETE OR UPDATE ON admin_bra
 
 CREATE CONSTRAINT TRIGGER agent_node_revision_required AFTER INSERT OR UPDATE ON agent_nodes DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_agent_revision();
 
-CREATE CONSTRAINT TRIGGER agent_policy_revision_required AFTER INSERT OR UPDATE ON brand_agent_policies DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_agent_revision();
-
 CREATE CONSTRAINT TRIGGER agent_revision_committed AFTER INSERT ON agent_config_revisions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION agent_revision_committed();
 
 CREATE TRIGGER audit_immutable BEFORE DELETE OR UPDATE ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
@@ -7917,10 +7852,6 @@ CREATE TRIGGER commission_period_epoch AFTER UPDATE ON periods FOR EACH ROW EXEC
 
 CREATE TRIGGER commission_point_buckets AFTER INSERT ON point_accounts FOR EACH ROW EXECUTE FUNCTION initialize_commission_point_buckets();
 
-CREATE CONSTRAINT TRIGGER commission_policy_revision_required AFTER INSERT OR UPDATE ON brand_commission_policies DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_commission_policy_revision();
-
-CREATE CONSTRAINT TRIGGER commission_revision_committed AFTER INSERT ON commission_policy_revisions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION commission_policy_revision_committed();
-
 CREATE CONSTRAINT TRIGGER commission_run_commit AFTER INSERT ON commission_runs DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_commission_run_commit();
 
 CREATE CONSTRAINT TRIGGER commission_step_commit AFTER INSERT ON commission_cycle_steps DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_commission_step_commit();
@@ -7937,7 +7868,7 @@ CREATE TRIGGER current_calculation_guard BEFORE INSERT ON settlement_calculation
 
 CREATE TRIGGER current_payout_guard BEFORE UPDATE ON bet_orders FOR EACH ROW EXECUTE FUNCTION guard_current_settlement_write();
 
-CREATE CONSTRAINT TRIGGER domain_history_required AFTER UPDATE ON brand_domains DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_brand_domain_history();
+CREATE CONSTRAINT TRIGGER domain_history_required AFTER DELETE OR UPDATE ON brand_domains DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_brand_domain_history();
 
 CREATE CONSTRAINT TRIGGER draw_notification_publication_commit AFTER INSERT ON draw_notification_publications DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_draw_notification_publication_commit();
 
@@ -8020,8 +7951,6 @@ CREATE TRIGGER guarded_commission_payment_policy_revision BEFORE INSERT OR DELET
 CREATE TRIGGER guarded_commission_payment_target BEFORE INSERT OR DELETE OR UPDATE ON commission_payment_targets FOR EACH ROW EXECUTE FUNCTION guard_commission_payment_target();
 
 CREATE TRIGGER guarded_commission_policy BEFORE INSERT OR DELETE OR UPDATE ON brand_commission_policies FOR EACH ROW EXECUTE FUNCTION guard_commission_policy();
-
-CREATE TRIGGER guarded_commission_revision BEFORE INSERT OR DELETE OR UPDATE ON commission_policy_revisions FOR EACH ROW EXECUTE FUNCTION guard_commission_policy_revision();
 
 CREATE TRIGGER guarded_commission_run BEFORE INSERT OR DELETE OR UPDATE ON commission_runs FOR EACH ROW EXECUTE FUNCTION guard_commission_run();
 
@@ -8155,11 +8084,7 @@ CREATE TRIGGER immutable_settlement_policy_history BEFORE DELETE OR UPDATE ON se
 
 CREATE TRIGGER immutable_settlement_preview BEFORE DELETE OR UPDATE ON settlement_previews FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
 
-CREATE TRIGGER initial_agent_policy_revision AFTER INSERT ON brand_agent_policies FOR EACH ROW EXECUTE FUNCTION initialize_agent_policy_revision();
-
 CREATE TRIGGER initial_brand_withdrawal_policy_revision AFTER INSERT ON brand_withdrawal_policies FOR EACH ROW EXECUTE FUNCTION initialize_withdrawal_policy_revision();
-
-CREATE TRIGGER initial_commission_revision AFTER INSERT ON brand_commission_policies FOR EACH ROW EXECUTE FUNCTION initialize_commission_policy_revision();
 
 CREATE TRIGGER initial_game_withdrawal_policy_revision AFTER INSERT ON game_withdrawal_policies FOR EACH ROW EXECUTE FUNCTION initialize_withdrawal_policy_revision();
 
@@ -8636,15 +8561,6 @@ ALTER TABLE ONLY commission_payments
 
 ALTER TABLE ONLY commission_payments
     ADD CONSTRAINT commission_payments_last_audit_log_id_fkey FOREIGN KEY (last_audit_log_id) REFERENCES audit_logs(id);
-
-ALTER TABLE ONLY commission_policy_revisions
-    ADD CONSTRAINT commission_policy_revisions_audit_log_id_fkey FOREIGN KEY (audit_log_id) REFERENCES audit_logs(id);
-
-ALTER TABLE ONLY commission_policy_revisions
-    ADD CONSTRAINT commission_policy_revisions_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES brands(id);
-
-ALTER TABLE ONLY commission_policy_revisions
-    ADD CONSTRAINT commission_policy_revisions_changed_by_fkey FOREIGN KEY (changed_by) REFERENCES admin_accounts(id);
 
 ALTER TABLE ONLY commission_runs
     ADD CONSTRAINT commission_runs_brand_id_cycle_id_fkey FOREIGN KEY (brand_id, cycle_id) REFERENCES commission_cycles(brand_id, id);
@@ -9367,4 +9283,2380 @@ DO $pin$ DECLARE app_schema text:=current_schema(); f record; BEGIN
  FOR f IN SELECT p.oid::regprocedure AS signature FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=app_schema LOOP
   EXECUTE format('ALTER FUNCTION %s SET search_path TO pg_catalog, %I, pg_temp',f.signature,app_schema);
  END LOOP;
+END $pin$;
+
+-- 0002_brand_delete_cascade
+
+INSERT INTO permissions VALUES ('brand.delete.platform');
+INSERT INTO role_permissions(role_id, permission_key)
+SELECT id, 'brand.delete.platform' FROM roles WHERE is_bootstrap AND brand_id IS NULL
+ON CONFLICT DO NOTHING;
+
+DO $$
+DECLARE
+  fk record;
+  parent_has_brand boolean;
+  definition text;
+BEGIN
+  FOR fk IN
+    SELECT c.oid, c.conname, c.conrelid, c.confrelid,
+           child_ns.nspname AS child_schema, child_cls.relname AS child_table,
+           parent_ns.nspname AS parent_schema, parent_cls.relname AS parent_table
+    FROM pg_constraint c
+    JOIN pg_class child_cls ON child_cls.oid = c.conrelid
+    JOIN pg_namespace child_ns ON child_ns.oid = child_cls.relnamespace
+    JOIN pg_class parent_cls ON parent_cls.oid = c.confrelid
+    JOIN pg_namespace parent_ns ON parent_ns.oid = parent_cls.relnamespace
+    WHERE c.contype = 'f'
+      AND child_ns.nspname = current_schema()
+      AND parent_ns.nspname = current_schema()
+  LOOP
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = fk.parent_schema AND table_name = fk.parent_table AND column_name = 'brand_id'
+    ) INTO parent_has_brand;
+    IF fk.parent_table = 'brands' OR parent_has_brand THEN
+      definition := pg_get_constraintdef(fk.oid);
+      EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I', fk.child_schema, fk.child_table, fk.conname);
+      IF definition ~* '\s+DEFERRABLE' THEN
+        definition := regexp_replace(definition, '\s+(DEFERRABLE.*)$', ' ON DELETE CASCADE \1', 'i');
+      ELSE
+        definition := definition || ' ON DELETE CASCADE';
+      END IF;
+      EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I %s', fk.child_schema, fk.child_table, fk.conname, definition);
+    END IF;
+  END LOOP;
+END $$;
+
+-- 0003_platform_admin_delete
+
+INSERT INTO permissions VALUES ('admin.delete.platform');
+INSERT INTO role_permissions(role_id, permission_key)
+SELECT id, 'admin.delete.platform' FROM roles WHERE is_bootstrap AND brand_id IS NULL
+ON CONFLICT DO NOTHING;
+
+-- 0004_platform_admin_delete_scope
+
+DELETE FROM role_permissions
+WHERE permission_key = 'admin.delete.platform'
+  AND role_id NOT IN (
+    SELECT ar.role_id
+    FROM admin_accounts a
+    JOIN admin_account_roles ar ON ar.account_id = a.id
+    WHERE a.username = 'admin' AND a.is_super_admin
+  );
+
+INSERT INTO role_permissions(role_id, permission_key)
+SELECT ar.role_id, 'admin.delete.platform'
+FROM admin_accounts a
+JOIN admin_account_roles ar ON ar.account_id = a.id
+WHERE a.username = 'admin' AND a.is_super_admin
+ON CONFLICT DO NOTHING;
+
+-- 0005_brand_bootstrap_roles
+
+INSERT INTO permissions(key) VALUES ('role.delete.brand') ON CONFLICT DO NOTHING;
+
+DO $$
+DECLARE
+    brand uuid;
+    keeper uuid;
+BEGIN
+    FOR brand IN
+        SELECT brand_id
+        FROM roles
+        WHERE is_bootstrap AND brand_id IS NOT NULL
+        GROUP BY brand_id
+        HAVING count(*) > 1
+    LOOP
+        SELECT id INTO keeper
+        FROM roles
+        WHERE is_bootstrap AND brand_id=brand
+        ORDER BY id
+        LIMIT 1;
+
+        INSERT INTO role_permissions(role_id, permission_key)
+        SELECT keeper, permission_key
+        FROM role_permissions rp
+        JOIN roles r ON r.id=rp.role_id
+        WHERE r.is_bootstrap AND r.brand_id=brand
+        ON CONFLICT DO NOTHING;
+
+        INSERT INTO admin_account_roles(account_id, role_id)
+        SELECT account_id, keeper
+        FROM admin_account_roles ar
+        JOIN roles r ON r.id=ar.role_id
+        WHERE r.is_bootstrap AND r.brand_id=brand AND ar.role_id<>keeper
+        ON CONFLICT DO NOTHING;
+
+        DELETE FROM admin_account_roles
+        WHERE role_id IN (SELECT id FROM roles WHERE is_bootstrap AND brand_id=brand AND id<>keeper);
+        DELETE FROM role_permissions
+        WHERE role_id IN (SELECT id FROM roles WHERE is_bootstrap AND brand_id=brand AND id<>keeper);
+        DELETE FROM roles
+        WHERE is_bootstrap AND brand_id=brand AND id<>keeper;
+    END LOOP;
+END $$;
+
+INSERT INTO role_permissions(role_id, permission_key)
+SELECT r.id, p.key
+FROM roles r
+JOIN permissions p ON p.key LIKE '%.brand'
+WHERE r.is_bootstrap AND r.brand_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+CREATE UNIQUE INDEX roles_one_brand_bootstrap
+    ON roles(brand_id)
+    WHERE is_bootstrap AND brand_id IS NOT NULL;
+
+-- 0006_role_delete_platform
+
+INSERT INTO permissions(key) VALUES ('role.delete.platform') ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions(role_id, permission_key)
+SELECT r.id, 'role.delete.platform'
+FROM roles r
+WHERE r.is_bootstrap AND r.brand_id IS NULL
+ON CONFLICT DO NOTHING;
+
+-- 0007_platform_bootstrap_role
+
+DO $$
+DECLARE
+    keeper uuid;
+BEGIN
+    SELECT id INTO keeper
+    FROM roles
+    WHERE is_bootstrap AND brand_id IS NULL
+    ORDER BY id
+    LIMIT 1;
+
+    IF keeper IS NOT NULL THEN
+        INSERT INTO role_permissions(role_id, permission_key)
+        SELECT keeper, permission_key
+        FROM role_permissions
+        WHERE role_id IN (SELECT id FROM roles WHERE is_bootstrap AND brand_id IS NULL)
+        ON CONFLICT DO NOTHING;
+
+        INSERT INTO admin_account_roles(account_id, role_id)
+        SELECT account_id, keeper
+        FROM admin_account_roles
+        WHERE role_id IN (SELECT id FROM roles WHERE is_bootstrap AND brand_id IS NULL AND id <> keeper)
+        ON CONFLICT DO NOTHING;
+
+        DELETE FROM admin_account_roles
+        WHERE role_id IN (SELECT id FROM roles WHERE is_bootstrap AND brand_id IS NULL AND id <> keeper);
+        DELETE FROM role_permissions
+        WHERE role_id IN (SELECT id FROM roles WHERE is_bootstrap AND brand_id IS NULL AND id <> keeper);
+        DELETE FROM roles
+        WHERE is_bootstrap AND brand_id IS NULL AND id <> keeper;
+    END IF;
+END $$;
+
+CREATE UNIQUE INDEX roles_one_platform_bootstrap
+    ON roles(is_bootstrap)
+    WHERE is_bootstrap AND brand_id IS NULL;
+
+-- 0008_member_delete_permissions
+
+INSERT INTO permissions(key) VALUES ('user.delete.brand'), ('user.delete.platform') ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions(role_id, permission_key)
+SELECT r.id, p.key
+FROM roles r
+JOIN permissions p ON p.key = CASE WHEN r.brand_id IS NULL THEN 'user.delete.platform' ELSE 'user.delete.brand' END
+WHERE r.is_bootstrap
+ON CONFLICT DO NOTHING;
+
+-- 0009_platform_settings
+
+CREATE TABLE platform_settings (
+    id boolean PRIMARY KEY DEFAULT true,
+    version bigint NOT NULL DEFAULT 1,
+    display_name text NOT NULL DEFAULT 'Northstar',
+    logo_text text NOT NULL DEFAULT 'N',
+    logo_url text NOT NULL DEFAULT '',
+    timezone text NOT NULL DEFAULT 'Asia/Singapore',
+    date_format text NOT NULL DEFAULT 'YYYY-MM-DD',
+    time_format text NOT NULL DEFAULT 'HH:mm:ss',
+    updated_by uuid,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT platform_settings_singleton CHECK (id),
+    CONSTRAINT platform_settings_version_check CHECK (version > 0),
+    CONSTRAINT platform_settings_date_format_check CHECK (date_format IN ('YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY')),
+    CONSTRAINT platform_settings_time_format_check CHECK (time_format IN ('HH:mm:ss', 'hh:mm:ss A'))
+);
+
+INSERT INTO platform_settings(id) VALUES (true);
+INSERT INTO permissions(key) VALUES ('platform_settings.view.platform'), ('platform_settings.write.platform') ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions(role_id, permission_key)
+SELECT r.id, p.key
+FROM roles r
+JOIN permissions p ON p.key IN ('platform_settings.view.platform', 'platform_settings.write.platform')
+WHERE r.is_bootstrap AND r.brand_id IS NULL
+ON CONFLICT DO NOTHING;
+
+-- 0010_platform_lottery
+
+CREATE TABLE platform_games (
+    id uuid PRIMARY KEY,
+    code text NOT NULL UNIQUE CHECK (code ~ '^[a-z][a-z0-9_]{0,47}$'),
+    name text NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
+    model jsonb NOT NULL CHECK (jsonb_typeof(model) = 'object'),
+    timezone text NOT NULL,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    created_by uuid NOT NULL REFERENCES admin_accounts(id),
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE brand_platform_games (
+    brand_id uuid NOT NULL REFERENCES brands(id),
+    game_id uuid NOT NULL REFERENCES platform_games(id),
+    connected_by uuid NOT NULL REFERENCES admin_accounts(id),
+    connected_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (brand_id, game_id)
+);
+
+CREATE TABLE platform_game_plays (
+    id uuid PRIMARY KEY,
+    game_id uuid NOT NULL REFERENCES platform_games(id),
+    code text NOT NULL CHECK (code ~ '^[a-z][a-z0-9_]{0,47}$'),
+    name text NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
+    definition jsonb NOT NULL CHECK (jsonb_typeof(definition) = 'object'),
+    definition_hash text NOT NULL,
+    created_by uuid NOT NULL REFERENCES admin_accounts(id),
+    UNIQUE (game_id, code)
+);
+
+CREATE TABLE platform_game_periods (
+    id uuid PRIMARY KEY,
+    game_id uuid NOT NULL REFERENCES platform_games(id),
+    period_no text NOT NULL CHECK (length(period_no) BETWEEN 1 AND 100),
+    bet_start_at timestamptz NOT NULL,
+    bet_end_at timestamptz NOT NULL,
+    draw_at timestamptz NOT NULL,
+    result jsonb,
+    published_at timestamptz,
+    published_by uuid REFERENCES admin_accounts(id),
+    UNIQUE (game_id, period_no),
+    CHECK (bet_start_at < bet_end_at AND bet_end_at <= draw_at),
+    CHECK ((result IS NULL AND published_at IS NULL AND published_by IS NULL)
+        OR (jsonb_typeof(result) = 'object' AND published_at IS NOT NULL AND published_by IS NOT NULL))
+);
+
+CREATE INDEX platform_period_history ON platform_game_periods(game_id, draw_at DESC, id DESC);
+
+CREATE FUNCTION guard_platform_game_period() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'DELETE' OR OLD.result IS NOT NULL
+       OR (NEW.id, NEW.game_id, NEW.period_no, NEW.bet_start_at, NEW.bet_end_at, NEW.draw_at)
+          IS DISTINCT FROM (OLD.id, OLD.game_id, OLD.period_no, OLD.bet_start_at, OLD.bet_end_at, OLD.draw_at) THEN
+        RAISE EXCEPTION 'Platform period and published result are immutable';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER immutable_platform_period BEFORE UPDATE OR DELETE ON platform_game_periods
+FOR EACH ROW EXECUTE FUNCTION guard_platform_game_period();
+CREATE TRIGGER immutable_platform_play BEFORE UPDATE OR DELETE ON platform_game_plays
+FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+
+INSERT INTO permissions(key) VALUES
+('platform_game.view.platform'), ('platform_game.write.platform'),
+('platform_game.view.brand'), ('platform_game.connect.brand');
+INSERT INTO role_permissions(role_id, permission_key)
+SELECT r.id, p.key FROM roles r JOIN permissions p ON
+(r.brand_id IS NULL AND p.key IN ('platform_game.view.platform','platform_game.write.platform'))
+OR (r.brand_id IS NOT NULL AND p.key IN ('platform_game.view.brand','platform_game.connect.brand'))
+WHERE r.is_bootstrap ON CONFLICT DO NOTHING;
+
+-- 0011_optional_presentation_template_reasons
+
+-- Cosmetic presentation and message copy edits do not require an operator reason.
+-- Keep revision/audit records and all historical reason text.
+ALTER TABLE brand_presentation_revisions DROP CONSTRAINT brand_presentation_revisions_reason_check;
+ALTER TABLE brand_presentation_revisions ADD CONSTRAINT brand_presentation_revisions_reason_check CHECK (octet_length(reason) <= 500);
+ALTER TABLE notification_template_revisions DROP CONSTRAINT notification_template_revisions_reason_check;
+ALTER TABLE notification_template_revisions ADD CONSTRAINT notification_template_revisions_reason_check CHECK (octet_length(reason) <= 500);
+
+-- 0012_mark_six
+
+-- Canonical platform games and periods remain shared; sales and money are brand-scoped.
+CREATE TABLE platform_mark_six_versions (
+ game_id uuid NOT NULL REFERENCES platform_games(id), version bigint NOT NULL CHECK(version>0),
+ odds jsonb NOT NULL CHECK(jsonb_typeof(odds)='object'), created_by uuid NOT NULL REFERENCES admin_accounts(id),
+ created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(game_id,version)
+);
+CREATE TRIGGER immutable_mark_six_rules BEFORE UPDATE OR DELETE ON platform_mark_six_versions FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+CREATE TABLE platform_mark_six_settings (
+ game_id uuid PRIMARY KEY REFERENCES platform_games(id), version bigint NOT NULL,
+ FOREIGN KEY(game_id,version) REFERENCES platform_mark_six_versions(game_id,version)
+);
+CREATE TABLE brand_mark_six_sales (
+ brand_id uuid NOT NULL, game_id uuid NOT NULL, version bigint NOT NULL CHECK(version>0),
+ rule_version bigint NOT NULL, enabled boolean NOT NULL, odds jsonb NOT NULL,
+ min_points bigint NOT NULL CHECK(min_points>0), max_points bigint NOT NULL CHECK(max_points>=min_points),
+ max_period_points bigint NOT NULL CHECK(max_period_points>=max_points),
+ max_user_period_points bigint NOT NULL CHECK(max_user_period_points>=max_points),
+ updated_by uuid NOT NULL REFERENCES admin_accounts(id), updated_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(brand_id,game_id), FOREIGN KEY(brand_id,game_id) REFERENCES brand_platform_games(brand_id,game_id),
+ FOREIGN KEY(game_id,rule_version) REFERENCES platform_mark_six_versions(game_id,version)
+);
+ALTER TABLE platform_game_periods ADD CONSTRAINT platform_period_game_identity UNIQUE(game_id,id);
+CREATE TABLE platform_mark_six_orders (
+ id uuid PRIMARY KEY, brand_id uuid NOT NULL, member_id uuid NOT NULL, user_id uuid NOT NULL REFERENCES global_users(id),
+ game_id uuid NOT NULL, period_id uuid NOT NULL, rule_version bigint NOT NULL, sales_version bigint NOT NULL,
+ items jsonb NOT NULL CHECK(jsonb_typeof(items)='array'), sales_snapshot jsonb NOT NULL,
+ total_points bigint NOT NULL CHECK(total_points>0), prize_points bigint NOT NULL DEFAULT 0 CHECK(prize_points>=0),
+ refund_points bigint NOT NULL DEFAULT 0 CHECK(refund_points>=0), effective_points bigint NOT NULL DEFAULT 0 CHECK(effective_points>=0),
+ allocation jsonb NOT NULL, debit_entry_id uuid NOT NULL REFERENCES point_ledger_entries(id),
+ payout_entry_id uuid REFERENCES point_ledger_entries(id), refund_entry_id uuid REFERENCES point_ledger_entries(id),
+ status text NOT NULL DEFAULT 'placed' CHECK(status IN ('placed','settled')),
+ placed_at timestamptz NOT NULL DEFAULT clock_timestamp(), settled_at timestamptz,
+ FOREIGN KEY(brand_id,member_id) REFERENCES brand_members(brand_id,id),
+ FOREIGN KEY(brand_id,game_id) REFERENCES brand_platform_games(brand_id,game_id),
+ FOREIGN KEY(game_id,period_id) REFERENCES platform_game_periods(game_id,id),
+ FOREIGN KEY(game_id,rule_version) REFERENCES platform_mark_six_versions(game_id,version),
+ CHECK((status='placed' AND settled_at IS NULL AND payout_entry_id IS NULL AND refund_entry_id IS NULL AND prize_points=0 AND refund_points=0 AND effective_points=0) OR
+       (status='settled' AND settled_at IS NOT NULL AND (prize_points=0)=(payout_entry_id IS NULL) AND (refund_points=0)=(refund_entry_id IS NULL))),
+ CHECK(effective_points+refund_points<=total_points)
+);
+CREATE INDEX mark_six_order_history ON platform_mark_six_orders(brand_id,member_id,placed_at DESC,id);
+CREATE INDEX mark_six_pending_settlement ON platform_mark_six_orders(period_id,id) WHERE status='placed';
+CREATE FUNCTION guard_mark_six_order() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE debit point_ledger_entries; credit point_ledger_entries; expected numeric;
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Mark Six orders cannot be deleted'; END IF;
+ IF TG_OP='UPDATE' THEN
+  IF OLD.status<>'placed' OR NEW.status<>'settled' OR
+   (NEW.id,NEW.brand_id,NEW.member_id,NEW.user_id,NEW.game_id,NEW.period_id,NEW.rule_version,NEW.sales_version,NEW.sales_snapshot,NEW.total_points,NEW.allocation,NEW.debit_entry_id,NEW.placed_at)
+   IS DISTINCT FROM
+   (OLD.id,OLD.brand_id,OLD.member_id,OLD.user_id,OLD.game_id,OLD.period_id,OLD.rule_version,OLD.sales_version,OLD.sales_snapshot,OLD.total_points,OLD.allocation,OLD.debit_entry_id,OLD.placed_at)
+  THEN RAISE EXCEPTION 'Mark Six purchase snapshots are immutable'; END IF;
+  IF (SELECT jsonb_agg(value-'outcome'-'payout' ORDER BY ordinality) FROM jsonb_array_elements(NEW.items) WITH ORDINALITY)
+    IS DISTINCT FROM (SELECT jsonb_agg(value-'outcome'-'payout' ORDER BY ordinality) FROM jsonb_array_elements(OLD.items) WITH ORDINALITY)
+   THEN RAISE EXCEPTION 'Mark Six purchased items are immutable'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND result IS NOT NULL) THEN RAISE EXCEPTION 'Mark Six result not published'; END IF;
+  SELECT * INTO debit FROM point_ledger_entries WHERE id=OLD.debit_entry_id;
+  IF NEW.effective_points+NEW.refund_points<>NEW.total_points THEN RAISE EXCEPTION 'Mark Six effective stake mismatch'; END IF;
+  IF NEW.prize_points>0 THEN
+   SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.payout_entry_id;
+   IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR
+    credit.entry_type<>'prize' OR credit.reference_type<>'mark_six_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'mark-six-prize:'||NEW.id::text OR
+    credit.source_allocation<>jsonb_build_array(jsonb_build_object('source','winning','state','available','points',NEW.prize_points::text))
+   THEN RAISE EXCEPTION 'Mark Six payout evidence mismatch'; END IF;
+  END IF;
+  IF NEW.refund_points>0 THEN
+   SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.refund_entry_id;
+   IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR
+    credit.entry_type<>'refund' OR credit.reference_type<>'mark_six_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'mark-six-refund:'||NEW.id::text
+   THEN RAISE EXCEPTION 'Mark Six refund evidence mismatch'; END IF;
+   SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(credit.source_allocation);
+   IF expected IS DISTINCT FROM NEW.refund_points OR EXISTS(SELECT 1 FROM jsonb_array_elements(credit.source_allocation) r WHERE
+    (r->>'points')::numeric>coalesce((SELECT (d->>'points')::numeric FROM jsonb_array_elements(OLD.allocation) d WHERE d->>'source'=r->>'source'),0))
+   THEN RAISE EXCEPTION 'Mark Six refund source mismatch'; END IF;
+  END IF;
+ ELSE
+  IF jsonb_array_length(NEW.items) NOT BETWEEN 1 AND 57 OR
+   (SELECT count(DISTINCT value->>'code') FROM jsonb_array_elements(NEW.items))<>jsonb_array_length(NEW.items) OR
+   EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.items) i WHERE i->>'odds' IS DISTINCT FROM NEW.sales_snapshot->'odds'->>(i->>'code') OR
+    i->>'points' !~ '^[1-9][0-9]*$' OR i->>'outcome'<>'' OR i->>'payout'<>'0') THEN RAISE EXCEPTION 'Mark Six item snapshot mismatch'; END IF;
+  SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(NEW.items);
+  IF expected IS DISTINCT FROM NEW.total_points THEN RAISE EXCEPTION 'Mark Six batch total mismatch'; END IF;
+  SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(NEW.allocation);
+  IF expected IS DISTINCT FROM NEW.total_points THEN RAISE EXCEPTION 'Mark Six allocation mismatch'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND game_id=NEW.game_id AND result IS NULL AND bet_start_at<=clock_timestamp() AND bet_end_at>clock_timestamp()) THEN RAISE EXCEPTION 'Mark Six betting closed'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.debit_entry_id AND brand_id=NEW.brand_id AND member_id=NEW.member_id AND reference_type='mark_six_order' AND reference_id=NEW.id AND entry_type='bet' AND source_allocation=NEW.allocation) THEN RAISE EXCEPTION 'Mark Six debit mismatch'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER mark_six_order_guard BEFORE INSERT OR UPDATE OR DELETE ON platform_mark_six_orders FOR EACH ROW EXECUTE FUNCTION guard_mark_six_order();
+INSERT INTO permissions(key) VALUES ('platform_game.sell.brand');
+INSERT INTO role_permissions(role_id,permission_key) SELECT id,'platform_game.sell.brand' FROM roles WHERE brand_id IS NOT NULL AND is_bootstrap ON CONFLICT DO NOTHING;
+
+-- Bind platform tickets to the existing ledger reconciliation surface.
+CREATE FUNCTION point_mark_six_business_witnesses(b uuid,a uuid)
+RETURNS TABLE(family text,source_id uuid,ledger_id uuid,source_valid boolean,expected_entry_type text)
+LANGUAGE sql STABLE AS $$
+ SELECT e.kind,o.id,e.ledger,
+ COALESCE(l.brand_id=o.brand_id AND l.member_id=o.member_id AND l.account_id=a AND
+ l.reference_type='mark_six_order' AND l.reference_id=o.id AND l.entry_type=e.kind AND
+ l.operation_key='mark-six-'||e.operation||':'||o.id::text AND l.reversal_of IS NULL AND
+ lottery_business_ledger_applied(l,b,a) AND
+ validated_point_snapshot(l.delta_snapshot)=lottery_business_allocation_delta(l.source_allocation,e.kind='bet') AND
+ (SELECT sum((x->>'points')::numeric) FROM jsonb_array_elements(l.source_allocation) x)=e.points AND
+ CASE WHEN e.kind='bet' THEN l.source_allocation=o.allocation AND l.actor_type='user' AND l.actor_id=o.user_id
+ ELSE o.status='settled' AND l.actor_type='system' AND l.actor_id IS NULL END AND
+ EXISTS(SELECT 1 FROM audit_logs q WHERE q.brand_id=b AND q.resource_type='mark_six_order' AND q.resource_id=o.id AND
+ q.action=CASE WHEN e.kind='bet' THEN 'mark_six.place' ELSE 'mark_six.settle' END AND q.request_id=l.request_id),false),e.kind
+ FROM platform_mark_six_orders o
+ JOIN point_accounts pa ON pa.brand_id=o.brand_id AND pa.brand_member_id=o.member_id
+ CROSS JOIN LATERAL (VALUES ('bet'::text,o.debit_entry_id,o.total_points,'bet'::text),
+ ('prize',o.payout_entry_id,o.prize_points,'prize'),('refund',o.refund_entry_id,o.refund_points,'refund')) e(kind,ledger,points,operation)
+ LEFT JOIN point_ledger_entries l ON l.id=e.ledger
+ WHERE o.brand_id=b AND pa.id=a AND e.points>0
+$$;
+
+CREATE OR REPLACE FUNCTION point_business_preview(b uuid, account uuid) RETURNS jsonb
+    LANGUAGE sql STABLE
+    AS $$
+ WITH scope AS MATERIALIZED (
+  SELECT id,brand_member_id,version FROM point_accounts WHERE brand_id=b AND id=account
+ ), ledgers AS MATERIALIZED (
+  SELECT l.*,point_business_family(l.entry_type) AS family FROM point_ledger_entries l
+  JOIN scope s ON s.id=l.account_id WHERE l.brand_id=b
+ ), witnesses AS MATERIALIZED (
+  SELECT * FROM point_lottery_business_witnesses(b,account)
+  UNION ALL SELECT * FROM point_mark_six_business_witnesses(b,account)
+  UNION ALL SELECT * FROM point_finance_business_witnesses(b,account)
+  UNION ALL
+  SELECT 'manual',l.id,l.id,
+   (SELECT count(*)=1 FROM audit_logs a
+    WHERE a.brand_id=b AND a.actor_type=l.actor_type AND a.actor_id IS NOT DISTINCT FROM l.actor_id
+     AND a.action='points.'||l.entry_type AND a.resource_type='point_account' AND a.resource_id=account
+     AND a.reason=l.reason AND a.request_id=l.request_id
+     AND a.after_json->>'ledger_entry_id'=l.id::text
+     AND a.before_json=l.before_snapshot AND a.after_json=jsonb_build_object('ledger_entry_id',l.id,'version',l.version,'balance',l.after_snapshot)),
+   l.entry_type FROM ledgers l WHERE l.family='manual'
+ ), problems AS MATERIALIZED (
+  SELECT l.family,'UNSUPPORTED_LEDGER_TYPE'::text AS code,l.entry_type,l.id AS ledger_id,
+   'ledger'::text AS resource_type,l.id AS resource_id FROM ledgers l WHERE l.family='unknown'
+  UNION ALL
+  SELECT l.family,'INVALID_BUSINESS_BINDING',l.entry_type,l.id,'ledger',l.id FROM ledgers l
+   WHERE l.family<>'manual' AND (SELECT count(*) FROM audit_logs a
+    WHERE a.brand_id=b AND a.actor_type=l.actor_type AND a.actor_id IS NOT DISTINCT FROM l.actor_id
+     AND a.action='points.'||l.entry_type AND a.resource_type='point_account' AND a.resource_id=account
+     AND a.reason=l.reason AND a.request_id=l.request_id AND a.after_json->>'ledger_entry_id'=l.id::text
+     AND a.before_json=l.before_snapshot AND a.after_json=jsonb_build_object('ledger_entry_id',l.id,'version',l.version,'balance',l.after_snapshot))<>1
+  UNION ALL
+  SELECT l.family,'MISSING_BUSINESS_RECORD',l.entry_type,l.id,'ledger',l.id FROM ledgers l
+   WHERE l.family NOT IN('unknown','manual') AND NOT EXISTS(SELECT 1 FROM witnesses w WHERE w.ledger_id=l.id)
+  UNION ALL
+  SELECT w.family,'MISSING_LEDGER_ENTRY',w.expected_entry_type,w.ledger_id,w.family,w.source_id FROM witnesses w
+   WHERE w.ledger_id IS NULL OR NOT EXISTS(SELECT 1 FROM ledgers l WHERE l.id=w.ledger_id)
+  UNION ALL
+  SELECT w.family,CASE WHEN w.family='manual' THEN 'INVALID_MANUAL_AUDIT' ELSE 'INVALID_BUSINESS_BINDING' END,
+   w.expected_entry_type,w.ledger_id,w.family,w.source_id FROM witnesses w
+   WHERE w.ledger_id IS NOT NULL AND w.source_valid IS DISTINCT FROM true AND EXISTS(SELECT 1 FROM ledgers l WHERE l.id=w.ledger_id)
+  UNION ALL
+  SELECT l.family,'DUPLICATE_BUSINESS_BINDING',l.entry_type,l.id,'ledger',l.id FROM ledgers l
+   WHERE (SELECT count(*) FROM witnesses w WHERE w.ledger_id=l.id)>1
+ ), families AS (
+  SELECT unnest(ARRAY['bet','commission','commission_adjustment','commission_correction','manual','prize','prize_reversal','recharge','refund','reward','unknown','withdrawal']) AS family
+ ), coverage AS (
+  SELECT f.family,(SELECT count(*)::text FROM ledgers l WHERE l.family=f.family) AS ledger_entry_count,
+   (SELECT count(*)::text FROM witnesses w WHERE w.family=f.family) AS business_reference_count,
+   (SELECT count(*)::text FROM problems p WHERE p.family=f.family) AS issue_count FROM families f
+ ), limited AS (
+  SELECT code,entry_type,ledger_id AS ledger_entry_id,resource_type,resource_id FROM problems
+  ORDER BY code COLLATE "C",resource_type COLLATE "C",coalesce(resource_id::text,''),coalesce(ledger_id::text,''),entry_type COLLATE "C" LIMIT 100
+ ), material AS (
+  SELECT jsonb_build_object('brand_id',b,'account_id',account,'account_version',(SELECT version FROM scope),
+   'ledgers',coalesce((SELECT jsonb_agg(to_jsonb(l) ORDER BY version,id) FROM ledgers l),'[]'::jsonb),
+   'witnesses',coalesce((SELECT jsonb_agg(to_jsonb(w) ORDER BY family COLLATE "C",source_id,ledger_id,expected_entry_type COLLATE "C") FROM witnesses w),'[]'::jsonb),
+   'problems',coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY code COLLATE "C",resource_type COLLATE "C",resource_id,ledger_id,entry_type COLLATE "C") FROM problems p),'[]'::jsonb)) AS data
+ )
+ SELECT jsonb_build_object('account_id',s.id,'member_id',s.brand_member_id,'account_version',s.version,
+  'ledger_entry_count',(SELECT count(*)::text FROM ledgers),'business_reference_count',(SELECT count(*)::text FROM witnesses),
+  'issue_count',(SELECT count(*)::text FROM problems),'issues_truncated',(SELECT count(*)>100 FROM problems),
+  'consistent',NOT EXISTS(SELECT 1 FROM problems),'fingerprint',encode(sha256(convert_to(material.data::text,'UTF8')),'hex'),
+  'issues',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY code COLLATE "C",resource_type COLLATE "C",coalesce(resource_id::text,''),coalesce(ledger_entry_id::text,''),entry_type COLLATE "C") FROM limited x),'[]'::jsonb),
+  'coverage',(SELECT jsonb_agg(to_jsonb(c) ORDER BY family COLLATE "C") FROM coverage c))
+ FROM scope s CROSS JOIN material
+$$;
+
+-- 0013_mark_six_annual_attributes
+
+CREATE TABLE platform_mark_six_attributes (
+ id uuid PRIMARY KEY,
+ game_id uuid NOT NULL REFERENCES platform_games(id),
+ year integer NOT NULL CHECK(year BETWEEN 1900 AND 9999),
+ version bigint NOT NULL CHECK(version>0),
+ effective_at timestamptz NOT NULL,
+ expires_at timestamptz NOT NULL CHECK(expires_at>effective_at),
+ zodiac jsonb NOT NULL CHECK(jsonb_typeof(zodiac)='object'),
+ elements jsonb NOT NULL CHECK(jsonb_typeof(elements)='object'),
+ waves jsonb NOT NULL CHECK(jsonb_typeof(waves)='object'),
+ created_by uuid NOT NULL REFERENCES admin_accounts(id),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(game_id,year,version), UNIQUE(game_id,id)
+);
+CREATE TRIGGER immutable_mark_six_attributes BEFORE UPDATE OR DELETE ON platform_mark_six_attributes FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+CREATE TABLE platform_mark_six_period_attributes (
+ period_id uuid PRIMARY KEY,
+ game_id uuid NOT NULL,
+ attribute_id uuid NOT NULL,
+ UNIQUE(period_id,attribute_id),
+ FOREIGN KEY(game_id,period_id) REFERENCES platform_game_periods(game_id,id),
+ FOREIGN KEY(game_id,attribute_id) REFERENCES platform_mark_six_attributes(game_id,id)
+);
+CREATE TRIGGER immutable_mark_six_period_attributes BEFORE UPDATE OR DELETE ON platform_mark_six_period_attributes FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+
+-- Convert the unreleased 2026 trial's explicitly defined mapping to a profile.
+-- This is a data migration, not a runtime default for another game or year.
+INSERT INTO platform_mark_six_attributes(id,game_id,year,version,effective_at,expires_at,zodiac,elements,waves,created_by)
+SELECT gen_random_uuid(),g.id,2026,1,'2026-02-17T00:00:00+08:00','2027-02-06T00:00:00+08:00',
+ (SELECT jsonb_object_agg(lpad(n::text,2,'0'),(ARRAY['horse','snake','dragon','rabbit','tiger','ox','rat','pig','dog','rooster','monkey','goat'])[((n-1)%12)+1]) FROM generate_series(1,49) n),
+ (SELECT jsonb_object_agg(lpad(n::text,2,'0'),CASE
+ WHEN n=ANY(ARRAY[4,5,12,13,26,27,34,35,42,43]) THEN 'metal'
+ WHEN n=ANY(ARRAY[8,9,16,17,24,25,38,39,46,47]) THEN 'wood'
+ WHEN n=ANY(ARRAY[1,14,15,22,23,30,31,44,45]) THEN 'water'
+ WHEN n=ANY(ARRAY[2,3,10,11,18,19,32,33,40,41,48,49]) THEN 'fire'
+ ELSE 'earth' END) FROM generate_series(1,49) n),
+ (SELECT jsonb_object_agg(lpad(n::text,2,'0'),CASE
+  WHEN n=ANY(ARRAY[1,2,7,8,12,13,18,19,23,24,29,30,34,35,40,45,46]) THEN 'red'
+  WHEN n=ANY(ARRAY[3,4,9,10,14,15,20,25,26,31,36,37,41,42,47,48]) THEN 'blue'
+  ELSE 'green' END) FROM generate_series(1,49) n),g.created_by
+FROM platform_games g JOIN platform_mark_six_settings s ON s.game_id=g.id;
+INSERT INTO platform_mark_six_period_attributes(period_id,game_id,attribute_id)
+SELECT p.id,p.game_id,a.id FROM platform_game_periods p JOIN platform_games g ON g.id=p.game_id
+JOIN platform_mark_six_attributes a ON a.game_id=g.id AND a.year=EXTRACT(YEAR FROM p.draw_at AT TIME ZONE g.timezone)::integer;
+
+ALTER TABLE platform_mark_six_orders ADD COLUMN attribute_id uuid;
+ALTER TABLE platform_mark_six_orders ADD COLUMN attribute_snapshot jsonb;
+ALTER TABLE platform_mark_six_orders DISABLE TRIGGER mark_six_order_guard;
+UPDATE platform_mark_six_orders o SET attribute_id=a.id,attribute_snapshot=jsonb_build_object('waves',a.waves,'zodiac',a.zodiac,'elements',a.elements)
+FROM platform_mark_six_period_attributes p JOIN platform_mark_six_attributes a ON a.id=p.attribute_id WHERE p.period_id=o.period_id;
+ALTER TABLE platform_mark_six_orders ENABLE TRIGGER mark_six_order_guard;
+ALTER TABLE platform_mark_six_orders ALTER COLUMN attribute_id SET NOT NULL;
+ALTER TABLE platform_mark_six_orders ALTER COLUMN attribute_snapshot SET NOT NULL;
+ALTER TABLE platform_mark_six_orders ADD FOREIGN KEY(period_id,attribute_id) REFERENCES platform_mark_six_period_attributes(period_id,attribute_id);
+
+CREATE FUNCTION guard_mark_six_attribute_snapshot() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP='UPDATE' THEN
+  IF (NEW.attribute_id,NEW.attribute_snapshot) IS DISTINCT FROM (OLD.attribute_id,OLD.attribute_snapshot) THEN RAISE EXCEPTION 'Purchased Mark Six attributes are immutable'; END IF;
+ ELSE
+  IF NOT EXISTS(SELECT 1 FROM platform_mark_six_period_attributes p JOIN platform_mark_six_attributes a ON a.id=p.attribute_id
+   WHERE p.period_id=NEW.period_id AND p.game_id=NEW.game_id AND a.id=NEW.attribute_id AND jsonb_build_object('waves',a.waves,'zodiac',a.zodiac,'elements',a.elements)=NEW.attribute_snapshot)
+  THEN RAISE EXCEPTION 'Mark Six period attribute snapshot mismatch'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER mark_six_attribute_snapshot_guard BEFORE INSERT OR UPDATE ON platform_mark_six_orders FOR EACH ROW EXECUTE FUNCTION guard_mark_six_attribute_snapshot();
+
+-- 0014_mark_six_attribute_bets
+
+-- Extend batch admission to 49 numbers, 8 sides, 3 waves, 12 zodiac and 5 elements.
+CREATE OR REPLACE FUNCTION guard_mark_six_order() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE debit point_ledger_entries; credit point_ledger_entries; expected numeric;
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Mark Six orders cannot be deleted'; END IF;
+ IF TG_OP='UPDATE' THEN
+  IF OLD.status<>'placed' OR NEW.status<>'settled' OR
+   (NEW.id,NEW.brand_id,NEW.member_id,NEW.user_id,NEW.game_id,NEW.period_id,NEW.rule_version,NEW.sales_version,NEW.sales_snapshot,NEW.total_points,NEW.allocation,NEW.debit_entry_id,NEW.placed_at)
+   IS DISTINCT FROM
+   (OLD.id,OLD.brand_id,OLD.member_id,OLD.user_id,OLD.game_id,OLD.period_id,OLD.rule_version,OLD.sales_version,OLD.sales_snapshot,OLD.total_points,OLD.allocation,OLD.debit_entry_id,OLD.placed_at)
+  THEN RAISE EXCEPTION 'Mark Six purchase snapshots are immutable'; END IF;
+  IF (SELECT jsonb_agg(value-'outcome'-'payout' ORDER BY ordinality) FROM jsonb_array_elements(NEW.items) WITH ORDINALITY)
+    IS DISTINCT FROM (SELECT jsonb_agg(value-'outcome'-'payout' ORDER BY ordinality) FROM jsonb_array_elements(OLD.items) WITH ORDINALITY)
+   THEN RAISE EXCEPTION 'Mark Six purchased items are immutable'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND result IS NOT NULL) THEN RAISE EXCEPTION 'Mark Six result not published'; END IF;
+  SELECT * INTO debit FROM point_ledger_entries WHERE id=OLD.debit_entry_id;
+  IF NEW.effective_points+NEW.refund_points<>NEW.total_points THEN RAISE EXCEPTION 'Mark Six effective stake mismatch'; END IF;
+  IF NEW.prize_points>0 THEN
+   SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.payout_entry_id;
+   IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR
+    credit.entry_type<>'prize' OR credit.reference_type<>'mark_six_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'mark-six-prize:'||NEW.id::text OR
+    credit.source_allocation<>jsonb_build_array(jsonb_build_object('source','winning','state','available','points',NEW.prize_points::text))
+   THEN RAISE EXCEPTION 'Mark Six payout evidence mismatch'; END IF;
+  END IF;
+  IF NEW.refund_points>0 THEN
+   SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.refund_entry_id;
+   IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR
+    credit.entry_type<>'refund' OR credit.reference_type<>'mark_six_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'mark-six-refund:'||NEW.id::text
+   THEN RAISE EXCEPTION 'Mark Six refund evidence mismatch'; END IF;
+   SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(credit.source_allocation);
+   IF expected IS DISTINCT FROM NEW.refund_points OR EXISTS(SELECT 1 FROM jsonb_array_elements(credit.source_allocation) r WHERE
+    (r->>'points')::numeric>coalesce((SELECT (d->>'points')::numeric FROM jsonb_array_elements(OLD.allocation) d WHERE d->>'source'=r->>'source'),0))
+   THEN RAISE EXCEPTION 'Mark Six refund source mismatch'; END IF;
+  END IF;
+ ELSE
+  IF jsonb_array_length(NEW.items) NOT BETWEEN 1 AND 77 OR
+   (SELECT count(DISTINCT value->>'code') FROM jsonb_array_elements(NEW.items))<>jsonb_array_length(NEW.items) OR
+   EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.items) i WHERE i->>'odds' IS DISTINCT FROM NEW.sales_snapshot->'odds'->>(i->>'code') OR
+    i->>'points' !~ '^[1-9][0-9]*$' OR i->>'outcome'<>'' OR i->>'payout'<>'0') THEN RAISE EXCEPTION 'Mark Six item snapshot mismatch'; END IF;
+  SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(NEW.items);
+  IF expected IS DISTINCT FROM NEW.total_points THEN RAISE EXCEPTION 'Mark Six batch total mismatch'; END IF;
+  SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(NEW.allocation);
+  IF expected IS DISTINCT FROM NEW.total_points THEN RAISE EXCEPTION 'Mark Six allocation mismatch'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND game_id=NEW.game_id AND result IS NULL AND bet_start_at<=clock_timestamp() AND bet_end_at>clock_timestamp()) THEN RAISE EXCEPTION 'Mark Six betting closed'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.debit_entry_id AND brand_id=NEW.brand_id AND member_id=NEW.member_id AND reference_type='mark_six_order' AND reference_id=NEW.id AND entry_type='bet' AND source_allocation=NEW.allocation) THEN RAISE EXCEPTION 'Mark Six debit mismatch'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+
+-- 0015_mark_six_combination_bets
+
+-- Expanded combination lines retain their own selections and purchased tier odds.
+CREATE OR REPLACE FUNCTION guard_mark_six_order() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE debit point_ledger_entries; credit point_ledger_entries; expected numeric;
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Mark Six orders cannot be deleted'; END IF;
+ IF TG_OP='UPDATE' THEN
+  IF OLD.status<>'placed' OR NEW.status<>'settled' OR
+   (NEW.id,NEW.brand_id,NEW.member_id,NEW.user_id,NEW.game_id,NEW.period_id,NEW.rule_version,NEW.sales_version,NEW.sales_snapshot,NEW.total_points,NEW.allocation,NEW.debit_entry_id,NEW.placed_at)
+   IS DISTINCT FROM
+   (OLD.id,OLD.brand_id,OLD.member_id,OLD.user_id,OLD.game_id,OLD.period_id,OLD.rule_version,OLD.sales_version,OLD.sales_snapshot,OLD.total_points,OLD.allocation,OLD.debit_entry_id,OLD.placed_at)
+  THEN RAISE EXCEPTION 'Mark Six purchase snapshots are immutable'; END IF;
+  IF (SELECT jsonb_agg(value-'outcome'-'payout'-'winning_odds' ORDER BY ordinality) FROM jsonb_array_elements(NEW.items) WITH ORDINALITY)
+    IS DISTINCT FROM (SELECT jsonb_agg(value-'outcome'-'payout'-'winning_odds' ORDER BY ordinality) FROM jsonb_array_elements(OLD.items) WITH ORDINALITY)
+   THEN RAISE EXCEPTION 'Mark Six purchased items are immutable'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND result IS NOT NULL) THEN RAISE EXCEPTION 'Mark Six result not published'; END IF;
+  SELECT * INTO debit FROM point_ledger_entries WHERE id=OLD.debit_entry_id;
+  IF NEW.effective_points+NEW.refund_points<>NEW.total_points THEN RAISE EXCEPTION 'Mark Six effective stake mismatch'; END IF;
+  IF NEW.prize_points>0 THEN
+   SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.payout_entry_id;
+   IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR
+    credit.entry_type<>'prize' OR credit.reference_type<>'mark_six_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'mark-six-prize:'||NEW.id::text OR
+    credit.source_allocation<>jsonb_build_array(jsonb_build_object('source','winning','state','available','points',NEW.prize_points::text))
+   THEN RAISE EXCEPTION 'Mark Six payout evidence mismatch'; END IF;
+  END IF;
+  IF NEW.refund_points>0 THEN
+   SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.refund_entry_id;
+   IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR
+    credit.entry_type<>'refund' OR credit.reference_type<>'mark_six_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'mark-six-refund:'||NEW.id::text
+   THEN RAISE EXCEPTION 'Mark Six refund evidence mismatch'; END IF;
+   SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(credit.source_allocation);
+   IF expected IS DISTINCT FROM NEW.refund_points OR EXISTS(SELECT 1 FROM jsonb_array_elements(credit.source_allocation) r WHERE
+    (r->>'points')::numeric>coalesce((SELECT (d->>'points')::numeric FROM jsonb_array_elements(OLD.allocation) d WHERE d->>'source'=r->>'source'),0))
+   THEN RAISE EXCEPTION 'Mark Six refund source mismatch'; END IF;
+  END IF;
+ ELSE
+  IF jsonb_array_length(NEW.items) NOT BETWEEN 1 AND 1000 OR
+   (SELECT count(DISTINCT jsonb_build_array(value->>'code',coalesce(value->'selection','[]'::jsonb))) FROM jsonb_array_elements(NEW.items))<>jsonb_array_length(NEW.items) OR
+   EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.items) i WHERE i->>'odds' IS DISTINCT FROM NEW.sales_snapshot->'odds'->>coalesce(i->>'odds_code',i->>'code') OR
+    i->>'odds_full' IS DISTINCT FROM CASE WHEN i->>'code'='linked_3_2' THEN NEW.sales_snapshot->'odds'->>'linked_3_2_full' ELSE NULL END OR
+    i->>'points' !~ '^[1-9][0-9]*$' OR i->>'outcome'<>'' OR i->>'payout'<>'0') THEN RAISE EXCEPTION 'Mark Six item snapshot mismatch'; END IF;
+  SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(NEW.items);
+  IF expected IS DISTINCT FROM NEW.total_points THEN RAISE EXCEPTION 'Mark Six batch total mismatch'; END IF;
+  SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(NEW.allocation);
+  IF expected IS DISTINCT FROM NEW.total_points THEN RAISE EXCEPTION 'Mark Six allocation mismatch'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND game_id=NEW.game_id AND result IS NULL AND bet_start_at<=clock_timestamp() AND bet_end_at>clock_timestamp()) THEN RAISE EXCEPTION 'Mark Six betting closed'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.debit_entry_id AND brand_id=NEW.brand_id AND member_id=NEW.member_id AND reference_type='mark_six_order' AND reference_id=NEW.id AND entry_type='bet' AND source_allocation=NEW.allocation) THEN RAISE EXCEPTION 'Mark Six debit mismatch'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+
+-- 0016_canada_betting
+
+-- Canonical platform games and periods remain shared; sales and money are brand-scoped.
+CREATE TABLE platform_canada_versions (
+ game_id uuid NOT NULL REFERENCES platform_games(id), version bigint NOT NULL CHECK(version>0),
+ profile text NOT NULL, odds jsonb NOT NULL CHECK(jsonb_typeof(odds)='object'), created_by uuid NOT NULL REFERENCES admin_accounts(id),
+ created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(game_id,version)
+);
+CREATE TRIGGER immutable_canada_rules BEFORE UPDATE OR DELETE ON platform_canada_versions FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+CREATE TABLE platform_canada_settings (
+ game_id uuid PRIMARY KEY REFERENCES platform_games(id), version bigint NOT NULL,
+ FOREIGN KEY(game_id,version) REFERENCES platform_canada_versions(game_id,version)
+);
+CREATE TABLE brand_canada_sales (
+ brand_id uuid NOT NULL, game_id uuid NOT NULL, version bigint NOT NULL CHECK(version>0),
+ profile text NOT NULL, rule_version bigint NOT NULL, enabled boolean NOT NULL, odds jsonb NOT NULL,
+ min_points bigint NOT NULL CHECK(min_points>0), max_points bigint NOT NULL CHECK(max_points>=min_points),
+ max_period_points bigint NOT NULL CHECK(max_period_points>=max_points),
+ max_user_period_points bigint NOT NULL CHECK(max_user_period_points>=max_points),
+ updated_by uuid NOT NULL REFERENCES admin_accounts(id), updated_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(brand_id,game_id), FOREIGN KEY(brand_id,game_id) REFERENCES brand_platform_games(brand_id,game_id),
+ FOREIGN KEY(game_id,rule_version) REFERENCES platform_canada_versions(game_id,version)
+);
+
+CREATE TABLE platform_canada_orders (
+ id uuid PRIMARY KEY, brand_id uuid NOT NULL, member_id uuid NOT NULL, user_id uuid NOT NULL REFERENCES global_users(id),
+ game_id uuid NOT NULL, period_id uuid NOT NULL, rule_version bigint NOT NULL, sales_version bigint NOT NULL,
+ profile text NOT NULL, items jsonb NOT NULL CHECK(jsonb_typeof(items)='array'), sales_snapshot jsonb NOT NULL,
+ total_points bigint NOT NULL CHECK(total_points>0), prize_points bigint NOT NULL DEFAULT 0 CHECK(prize_points>=0),
+ refund_points bigint NOT NULL DEFAULT 0 CHECK(refund_points>=0), effective_points bigint NOT NULL DEFAULT 0 CHECK(effective_points>=0),
+ allocation jsonb NOT NULL, debit_entry_id uuid NOT NULL REFERENCES point_ledger_entries(id),
+ payout_entry_id uuid REFERENCES point_ledger_entries(id), refund_entry_id uuid REFERENCES point_ledger_entries(id),
+ status text NOT NULL DEFAULT 'placed' CHECK(status IN ('placed','settled')),
+ placed_at timestamptz NOT NULL DEFAULT clock_timestamp(), settled_at timestamptz,
+ FOREIGN KEY(brand_id,member_id) REFERENCES brand_members(brand_id,id),
+ FOREIGN KEY(brand_id,game_id) REFERENCES brand_platform_games(brand_id,game_id),
+ FOREIGN KEY(game_id,period_id) REFERENCES platform_game_periods(game_id,id),
+ FOREIGN KEY(game_id,rule_version) REFERENCES platform_canada_versions(game_id,version),
+ CHECK((status='placed' AND settled_at IS NULL AND payout_entry_id IS NULL AND refund_entry_id IS NULL AND prize_points=0 AND refund_points=0 AND effective_points=0) OR
+       (status='settled' AND settled_at IS NOT NULL AND (prize_points=0)=(payout_entry_id IS NULL) AND (refund_points=0)=(refund_entry_id IS NULL))),
+ CHECK(effective_points<=total_points AND refund_points<=total_points)
+);
+CREATE INDEX canada_order_history ON platform_canada_orders(brand_id,member_id,placed_at DESC,id);
+CREATE INDEX canada_pending_settlement ON platform_canada_orders(period_id,id) WHERE status='placed';
+CREATE FUNCTION guard_canada_order() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE debit point_ledger_entries; credit point_ledger_entries; expected numeric;
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Canada orders cannot be deleted'; END IF;
+ IF TG_OP='UPDATE' THEN
+  IF OLD.status<>'placed' OR NEW.status<>'settled' OR
+   (NEW.id,NEW.brand_id,NEW.member_id,NEW.user_id,NEW.game_id,NEW.period_id,NEW.rule_version,NEW.sales_version,NEW.profile,NEW.sales_snapshot,NEW.total_points,NEW.allocation,NEW.debit_entry_id,NEW.placed_at)
+   IS DISTINCT FROM
+   (OLD.id,OLD.brand_id,OLD.member_id,OLD.user_id,OLD.game_id,OLD.period_id,OLD.rule_version,OLD.sales_version,OLD.profile,OLD.sales_snapshot,OLD.total_points,OLD.allocation,OLD.debit_entry_id,OLD.placed_at)
+  THEN RAISE EXCEPTION 'Canada purchase snapshots are immutable'; END IF;
+  IF (SELECT jsonb_agg(value-'outcome'-'payout'-'winning_odds'-'effective' ORDER BY ordinality) FROM jsonb_array_elements(NEW.items) WITH ORDINALITY)
+    IS DISTINCT FROM (SELECT jsonb_agg(value-'outcome'-'payout'-'winning_odds'-'effective' ORDER BY ordinality) FROM jsonb_array_elements(OLD.items) WITH ORDINALITY)
+   THEN RAISE EXCEPTION 'Canada purchased items are immutable'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND result IS NOT NULL) THEN RAISE EXCEPTION 'Canada result not published'; END IF;
+  SELECT * INTO debit FROM point_ledger_entries WHERE id=OLD.debit_entry_id;
+  IF NEW.effective_points>NEW.total_points OR NEW.refund_points>NEW.total_points THEN RAISE EXCEPTION 'Canada effective stake mismatch'; END IF;
+  IF NEW.prize_points>0 THEN
+   SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.payout_entry_id;
+   IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR
+    credit.entry_type<>'prize' OR credit.reference_type<>'canada_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'canada-prize:'||NEW.id::text OR
+    credit.source_allocation<>jsonb_build_array(jsonb_build_object('source','winning','state','available','points',NEW.prize_points::text))
+   THEN RAISE EXCEPTION 'Canada payout evidence mismatch'; END IF;
+  END IF;
+  IF NEW.refund_points>0 THEN
+   SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.refund_entry_id;
+   IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR
+    credit.entry_type<>'refund' OR credit.reference_type<>'canada_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'canada-refund:'||NEW.id::text
+   THEN RAISE EXCEPTION 'Canada refund evidence mismatch'; END IF;
+   SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(credit.source_allocation);
+   IF expected IS DISTINCT FROM NEW.refund_points OR EXISTS(SELECT 1 FROM jsonb_array_elements(credit.source_allocation) r WHERE
+    (r->>'points')::numeric>coalesce((SELECT (d->>'points')::numeric FROM jsonb_array_elements(OLD.allocation) d WHERE d->>'source'=r->>'source'),0))
+   THEN RAISE EXCEPTION 'Canada refund source mismatch'; END IF;
+  END IF;
+ ELSE
+  IF jsonb_array_length(NEW.items) NOT BETWEEN 1 AND 200 OR
+   (SELECT count(DISTINCT value->>'code') FROM jsonb_array_elements(NEW.items))<>jsonb_array_length(NEW.items) OR
+   EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.items) i WHERE i->>'odds' IS DISTINCT FROM NEW.sales_snapshot->'odds'->>(i->>'code') OR
+    (i ? 'special_odds' AND i->>'special_odds' IS DISTINCT FROM NEW.sales_snapshot->'odds'->>(CASE WHEN NEW.profile='canada_vip' AND position('_' in (i->>'code'))>0 THEN 'special_combo' ELSE 'special_side' END)) OR i->>'points' !~ '^[1-9][0-9]*$' OR i->>'outcome'<>'' OR i->>'payout'<>'0') THEN RAISE EXCEPTION 'Canada item snapshot mismatch'; END IF;
+  SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(NEW.items);
+  IF expected IS DISTINCT FROM NEW.total_points THEN RAISE EXCEPTION 'Canada batch total mismatch'; END IF;
+  SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(NEW.allocation);
+  IF expected IS DISTINCT FROM NEW.total_points THEN RAISE EXCEPTION 'Canada allocation mismatch'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND game_id=NEW.game_id AND result IS NULL AND bet_start_at<=clock_timestamp() AND bet_end_at>clock_timestamp()) THEN RAISE EXCEPTION 'Canada betting closed'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.debit_entry_id AND brand_id=NEW.brand_id AND member_id=NEW.member_id AND reference_type='canada_order' AND reference_id=NEW.id AND entry_type='bet' AND source_allocation=NEW.allocation) THEN RAISE EXCEPTION 'Canada debit mismatch'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER canada_order_guard BEFORE INSERT OR UPDATE OR DELETE ON platform_canada_orders FOR EACH ROW EXECUTE FUNCTION guard_canada_order();
+-- Bind platform tickets to the existing ledger reconciliation surface.
+CREATE FUNCTION point_canada_business_witnesses(b uuid,a uuid)
+RETURNS TABLE(family text,source_id uuid,ledger_id uuid,source_valid boolean,expected_entry_type text)
+LANGUAGE sql STABLE AS $$
+ SELECT e.kind,o.id,e.ledger,
+ COALESCE(l.brand_id=o.brand_id AND l.member_id=o.member_id AND l.account_id=a AND
+ l.reference_type='canada_order' AND l.reference_id=o.id AND l.entry_type=e.kind AND
+ l.operation_key='canada-'||e.operation||':'||o.id::text AND l.reversal_of IS NULL AND
+ lottery_business_ledger_applied(l,b,a) AND
+ validated_point_snapshot(l.delta_snapshot)=lottery_business_allocation_delta(l.source_allocation,e.kind='bet') AND
+ (SELECT sum((x->>'points')::numeric) FROM jsonb_array_elements(l.source_allocation) x)=e.points AND
+ CASE WHEN e.kind='bet' THEN l.source_allocation=o.allocation AND l.actor_type='user' AND l.actor_id=o.user_id
+ ELSE o.status='settled' AND l.actor_type='system' AND l.actor_id IS NULL END AND
+ EXISTS(SELECT 1 FROM audit_logs q WHERE q.brand_id=b AND q.resource_type='canada_order' AND q.resource_id=o.id AND
+ q.action=CASE WHEN e.kind='bet' THEN 'canada.place' ELSE 'canada.settle' END AND q.request_id=l.request_id),false),e.kind
+ FROM platform_canada_orders o
+ JOIN point_accounts pa ON pa.brand_id=o.brand_id AND pa.brand_member_id=o.member_id
+ CROSS JOIN LATERAL (VALUES ('bet'::text,o.debit_entry_id,o.total_points,'bet'::text),
+ ('prize',o.payout_entry_id,o.prize_points,'prize'),('refund',o.refund_entry_id,o.refund_points,'refund')) e(kind,ledger,points,operation)
+ LEFT JOIN point_ledger_entries l ON l.id=e.ledger
+ WHERE o.brand_id=b AND pa.id=a AND e.points>0
+$$;
+
+CREATE OR REPLACE FUNCTION point_business_preview(b uuid, account uuid) RETURNS jsonb
+    LANGUAGE sql STABLE
+    AS $$
+ WITH scope AS MATERIALIZED (
+  SELECT id,brand_member_id,version FROM point_accounts WHERE brand_id=b AND id=account
+ ), ledgers AS MATERIALIZED (
+  SELECT l.*,point_business_family(l.entry_type) AS family FROM point_ledger_entries l
+  JOIN scope s ON s.id=l.account_id WHERE l.brand_id=b
+ ), witnesses AS MATERIALIZED (
+  SELECT * FROM point_lottery_business_witnesses(b,account)
+  UNION ALL SELECT * FROM point_mark_six_business_witnesses(b,account)
+  UNION ALL SELECT * FROM point_canada_business_witnesses(b,account)
+  UNION ALL SELECT * FROM point_finance_business_witnesses(b,account)
+  UNION ALL
+  SELECT 'manual',l.id,l.id,
+   (SELECT count(*)=1 FROM audit_logs a
+    WHERE a.brand_id=b AND a.actor_type=l.actor_type AND a.actor_id IS NOT DISTINCT FROM l.actor_id
+     AND a.action='points.'||l.entry_type AND a.resource_type='point_account' AND a.resource_id=account
+     AND a.reason=l.reason AND a.request_id=l.request_id
+     AND a.after_json->>'ledger_entry_id'=l.id::text
+     AND a.before_json=l.before_snapshot AND a.after_json=jsonb_build_object('ledger_entry_id',l.id,'version',l.version,'balance',l.after_snapshot)),
+   l.entry_type FROM ledgers l WHERE l.family='manual'
+ ), problems AS MATERIALIZED (
+  SELECT l.family,'UNSUPPORTED_LEDGER_TYPE'::text AS code,l.entry_type,l.id AS ledger_id,
+   'ledger'::text AS resource_type,l.id AS resource_id FROM ledgers l WHERE l.family='unknown'
+  UNION ALL
+  SELECT l.family,'INVALID_BUSINESS_BINDING',l.entry_type,l.id,'ledger',l.id FROM ledgers l
+   WHERE l.family<>'manual' AND (SELECT count(*) FROM audit_logs a
+    WHERE a.brand_id=b AND a.actor_type=l.actor_type AND a.actor_id IS NOT DISTINCT FROM l.actor_id
+     AND a.action='points.'||l.entry_type AND a.resource_type='point_account' AND a.resource_id=account
+     AND a.reason=l.reason AND a.request_id=l.request_id AND a.after_json->>'ledger_entry_id'=l.id::text
+     AND a.before_json=l.before_snapshot AND a.after_json=jsonb_build_object('ledger_entry_id',l.id,'version',l.version,'balance',l.after_snapshot))<>1
+  UNION ALL
+  SELECT l.family,'MISSING_BUSINESS_RECORD',l.entry_type,l.id,'ledger',l.id FROM ledgers l
+   WHERE l.family NOT IN('unknown','manual') AND NOT EXISTS(SELECT 1 FROM witnesses w WHERE w.ledger_id=l.id)
+  UNION ALL
+  SELECT w.family,'MISSING_LEDGER_ENTRY',w.expected_entry_type,w.ledger_id,w.family,w.source_id FROM witnesses w
+   WHERE w.ledger_id IS NULL OR NOT EXISTS(SELECT 1 FROM ledgers l WHERE l.id=w.ledger_id)
+  UNION ALL
+  SELECT w.family,CASE WHEN w.family='manual' THEN 'INVALID_MANUAL_AUDIT' ELSE 'INVALID_BUSINESS_BINDING' END,
+   w.expected_entry_type,w.ledger_id,w.family,w.source_id FROM witnesses w
+   WHERE w.ledger_id IS NOT NULL AND w.source_valid IS DISTINCT FROM true AND EXISTS(SELECT 1 FROM ledgers l WHERE l.id=w.ledger_id)
+  UNION ALL
+  SELECT l.family,'DUPLICATE_BUSINESS_BINDING',l.entry_type,l.id,'ledger',l.id FROM ledgers l
+   WHERE (SELECT count(*) FROM witnesses w WHERE w.ledger_id=l.id)>1
+ ), families AS (
+  SELECT unnest(ARRAY['bet','commission','commission_adjustment','commission_correction','manual','prize','prize_reversal','recharge','refund','reward','unknown','withdrawal']) AS family
+ ), coverage AS (
+  SELECT f.family,(SELECT count(*)::text FROM ledgers l WHERE l.family=f.family) AS ledger_entry_count,
+   (SELECT count(*)::text FROM witnesses w WHERE w.family=f.family) AS business_reference_count,
+   (SELECT count(*)::text FROM problems p WHERE p.family=f.family) AS issue_count FROM families f
+ ), limited AS (
+  SELECT code,entry_type,ledger_id AS ledger_entry_id,resource_type,resource_id FROM problems
+  ORDER BY code COLLATE "C",resource_type COLLATE "C",coalesce(resource_id::text,''),coalesce(ledger_id::text,''),entry_type COLLATE "C" LIMIT 100
+ ), material AS (
+  SELECT jsonb_build_object('brand_id',b,'account_id',account,'account_version',(SELECT version FROM scope),
+   'ledgers',coalesce((SELECT jsonb_agg(to_jsonb(l) ORDER BY version,id) FROM ledgers l),'[]'::jsonb),
+   'witnesses',coalesce((SELECT jsonb_agg(to_jsonb(w) ORDER BY family COLLATE "C",source_id,ledger_id,expected_entry_type COLLATE "C") FROM witnesses w),'[]'::jsonb),
+   'problems',coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY code COLLATE "C",resource_type COLLATE "C",resource_id,ledger_id,entry_type COLLATE "C") FROM problems p),'[]'::jsonb)) AS data
+ )
+ SELECT jsonb_build_object('account_id',s.id,'member_id',s.brand_member_id,'account_version',s.version,
+  'ledger_entry_count',(SELECT count(*)::text FROM ledgers),'business_reference_count',(SELECT count(*)::text FROM witnesses),
+  'issue_count',(SELECT count(*)::text FROM problems),'issues_truncated',(SELECT count(*)>100 FROM problems),
+  'consistent',NOT EXISTS(SELECT 1 FROM problems),'fingerprint',encode(sha256(convert_to(material.data::text,'UTF8')),'hex'),
+  'issues',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY code COLLATE "C",resource_type COLLATE "C",coalesce(resource_id::text,''),coalesce(ledger_entry_id::text,''),entry_type COLLATE "C") FROM limited x),'[]'::jsonb),
+  'coverage',(SELECT jsonb_agg(to_jsonb(c) ORDER BY family COLLATE "C") FROM coverage c))
+ FROM scope s CROSS JOIN material
+$$;
+
+-- 0017_canada_niuniu_reserves
+
+-- Niu reserves the maximum loss in system_frozen; other Canada games debit fixed stakes.
+ALTER TABLE platform_canada_orders ADD COLUMN reserved_points bigint NOT NULL DEFAULT 0 CHECK(reserved_points>=0), ADD COLUMN lost_points bigint NOT NULL DEFAULT 0 CHECK(lost_points>=0), ADD COLUMN loss_entry_id uuid REFERENCES point_ledger_entries(id);
+DO $$ DECLARE c record; BEGIN FOR c IN SELECT conname FROM pg_constraint WHERE conrelid='platform_canada_orders'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%effective_points <= total_points%' LOOP EXECUTE format('ALTER TABLE platform_canada_orders DROP CONSTRAINT %I',c.conname); END LOOP; END $$;
+ALTER TABLE platform_canada_orders ADD CONSTRAINT canada_money_totals CHECK(effective_points<=total_points AND refund_points<=CASE WHEN profile='canada_niuniu' THEN reserved_points ELSE total_points END AND lost_points<=reserved_points);
+CREATE FUNCTION canada_transfer_delta(v jsonb,from_state text,to_state text) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE expected jsonb:=point_zero_snapshot();item jsonb;src text;amount text;
+BEGIN FOR item IN SELECT value FROM jsonb_array_elements(v) LOOP src:=item->>'source';amount:=item->>'points';expected:=jsonb_set(expected,ARRAY[src,from_state],to_jsonb(('-'||amount)::text),false);expected:=jsonb_set(expected,ARRAY[src,to_state],to_jsonb(amount),false);END LOOP;RETURN expected;END $$;
+CREATE OR REPLACE FUNCTION guard_canada_order() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE debit point_ledger_entries; credit point_ledger_entries; expected numeric;
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Canada orders cannot be deleted'; END IF;
+ IF TG_OP='UPDATE' THEN
+  IF OLD.status<>'placed' OR NEW.status<>'settled' OR
+   (NEW.id,NEW.brand_id,NEW.member_id,NEW.user_id,NEW.game_id,NEW.period_id,NEW.rule_version,NEW.sales_version,NEW.reserved_points,NEW.profile,NEW.sales_snapshot,NEW.total_points,NEW.allocation,NEW.debit_entry_id,NEW.placed_at)
+   IS DISTINCT FROM
+   (OLD.id,OLD.brand_id,OLD.member_id,OLD.user_id,OLD.game_id,OLD.period_id,OLD.rule_version,OLD.sales_version,OLD.reserved_points,OLD.profile,OLD.sales_snapshot,OLD.total_points,OLD.allocation,OLD.debit_entry_id,OLD.placed_at)
+  THEN RAISE EXCEPTION 'Canada purchase snapshots are immutable'; END IF;
+  IF (SELECT jsonb_agg(value-'outcome'-'payout'-'winning_odds'-'effective'-'loss_points' ORDER BY ordinality) FROM jsonb_array_elements(NEW.items) WITH ORDINALITY)
+    IS DISTINCT FROM (SELECT jsonb_agg(value-'outcome'-'payout'-'winning_odds'-'effective'-'loss_points' ORDER BY ordinality) FROM jsonb_array_elements(OLD.items) WITH ORDINALITY)
+   THEN RAISE EXCEPTION 'Canada purchased items are immutable'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND result IS NOT NULL) THEN RAISE EXCEPTION 'Canada result not published'; END IF;
+  SELECT * INTO debit FROM point_ledger_entries WHERE id=OLD.debit_entry_id;
+  IF NEW.effective_points>NEW.total_points OR NEW.refund_points>(CASE WHEN NEW.profile='canada_niuniu' THEN NEW.reserved_points ELSE NEW.total_points END) THEN RAISE EXCEPTION 'Canada effective stake mismatch'; END IF;
+  IF NEW.profile='canada_niuniu' THEN
+   IF NEW.refund_points+NEW.lost_points<>NEW.reserved_points THEN RAISE EXCEPTION 'Niu risk settlement mismatch';END IF;
+   IF NEW.lost_points>0 THEN
+    SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.loss_entry_id;
+    IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR credit.entry_type<>'bet' OR credit.reference_type<>'canada_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'canada-loss:'||NEW.id::text OR (SELECT sum((x->>'points')::numeric) FROM jsonb_array_elements(credit.source_allocation)x) IS DISTINCT FROM NEW.lost_points::numeric THEN RAISE EXCEPTION 'Niu loss evidence mismatch';END IF;
+   ELSIF NEW.loss_entry_id IS NOT NULL THEN RAISE EXCEPTION 'Niu loss evidence without loss'; END IF;
+  ELSIF NEW.lost_points<>0 OR NEW.loss_entry_id IS NOT NULL THEN RAISE EXCEPTION 'Fixed stake game cannot consume Niu risk';END IF;
+  IF NEW.prize_points>0 THEN
+   SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.payout_entry_id;
+   IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR
+    credit.entry_type<>'prize' OR credit.reference_type<>'canada_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'canada-prize:'||NEW.id::text OR
+    credit.source_allocation<>jsonb_build_array(jsonb_build_object('source','winning','state','available','points',NEW.prize_points::text))
+   THEN RAISE EXCEPTION 'Canada payout evidence mismatch'; END IF;
+  END IF;
+  IF NEW.refund_points>0 THEN
+   SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.refund_entry_id;
+   IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR
+    credit.entry_type<>'refund' OR credit.reference_type<>'canada_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'canada-refund:'||NEW.id::text
+   THEN RAISE EXCEPTION 'Canada refund evidence mismatch'; END IF;
+   SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(credit.source_allocation);
+   IF expected IS DISTINCT FROM NEW.refund_points OR EXISTS(SELECT 1 FROM jsonb_array_elements(credit.source_allocation) r WHERE
+    (r->>'points')::numeric>coalesce((SELECT (d->>'points')::numeric FROM jsonb_array_elements(OLD.allocation) d WHERE d->>'source'=r->>'source'),0))
+   THEN RAISE EXCEPTION 'Canada refund source mismatch'; END IF;
+  END IF;
+ ELSE
+  IF NEW.profile IS DISTINCT FROM NEW.sales_snapshot->>'profile' THEN RAISE EXCEPTION 'Canada profile mismatch';END IF;
+  IF NEW.profile='canada_niuniu' AND (NEW.reserved_points IS DISTINCT FROM (SELECT sum((i->>'risk_points')::numeric) FROM jsonb_array_elements(NEW.items)i) OR EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.items)i WHERE (i->>'risk_points')::numeric IS DISTINCT FROM (i->>'points')::numeric * CASE WHEN i->>'code' IN('a','b') THEN 10 WHEN i->>'code' IN('aa','bb') THEN 20 WHEN i->>'code' IN('allin_a','allin_b') THEN 1 ELSE NULL END)) THEN RAISE EXCEPTION 'Niu reserve mismatch';END IF;
+  IF jsonb_array_length(NEW.items) NOT BETWEEN 1 AND 200 OR
+   (SELECT count(DISTINCT value->>'code') FROM jsonb_array_elements(NEW.items))<>jsonb_array_length(NEW.items) OR
+   EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.items) i WHERE i->>'odds' IS DISTINCT FROM NEW.sales_snapshot->'odds'->>(i->>'code') OR
+    (i ? 'special_odds' AND i->>'special_odds' IS DISTINCT FROM NEW.sales_snapshot->'odds'->>(CASE WHEN NEW.profile='canada_vip' AND position('_' in (i->>'code'))>0 THEN 'special_combo' ELSE 'special_side' END)) OR i->>'points' !~ '^[1-9][0-9]*$' OR i->>'outcome'<>'' OR i->>'payout'<>'0') THEN RAISE EXCEPTION 'Canada item snapshot mismatch'; END IF;
+  SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(NEW.items);
+  IF expected IS DISTINCT FROM NEW.total_points THEN RAISE EXCEPTION 'Canada batch total mismatch'; END IF;
+  SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(NEW.allocation);
+  IF expected IS DISTINCT FROM (CASE WHEN NEW.profile='canada_niuniu' THEN NEW.reserved_points ELSE NEW.total_points END)::numeric THEN RAISE EXCEPTION 'Canada allocation mismatch'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND game_id=NEW.game_id AND result IS NULL AND bet_start_at<=clock_timestamp() AND bet_end_at>clock_timestamp()) THEN RAISE EXCEPTION 'Canada betting closed'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.debit_entry_id AND brand_id=NEW.brand_id AND member_id=NEW.member_id AND reference_type='canada_order' AND reference_id=NEW.id AND entry_type='bet' AND source_allocation=NEW.allocation) THEN RAISE EXCEPTION 'Canada debit mismatch'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE OR REPLACE FUNCTION point_canada_business_witnesses(b uuid,a uuid)
+RETURNS TABLE(family text,source_id uuid,ledger_id uuid,source_valid boolean,expected_entry_type text)
+LANGUAGE sql STABLE AS $$
+ SELECT e.kind,o.id,e.ledger,
+ COALESCE(l.brand_id=o.brand_id AND l.member_id=o.member_id AND l.account_id=a AND
+ l.reference_type='canada_order' AND l.reference_id=o.id AND l.entry_type=e.kind AND
+ l.operation_key='canada-'||e.operation||':'||o.id::text AND l.reversal_of IS NULL AND
+ lottery_business_ledger_applied(l,b,a) AND
+ validated_point_snapshot(l.delta_snapshot)=CASE WHEN o.profile='canada_niuniu' AND e.operation='bet' THEN canada_transfer_delta(l.source_allocation,'available','system_frozen') WHEN o.profile='canada_niuniu' AND e.kind='refund' THEN canada_transfer_delta(l.source_allocation,'system_frozen','available') ELSE lottery_business_allocation_delta(l.source_allocation,e.kind='bet') END AND
+ (SELECT sum((x->>'points')::numeric) FROM jsonb_array_elements(l.source_allocation) x)=e.points AND
+ CASE WHEN e.operation='bet' THEN l.source_allocation=o.allocation AND l.actor_type='user' AND l.actor_id=o.user_id
+ ELSE o.status='settled' AND l.actor_type='system' AND l.actor_id IS NULL END AND
+ EXISTS(SELECT 1 FROM audit_logs q WHERE q.brand_id=b AND q.resource_type='canada_order' AND q.resource_id=o.id AND
+ q.action=CASE WHEN e.operation='bet' THEN 'canada.place' ELSE 'canada.settle' END AND q.request_id=l.request_id),false),e.kind
+ FROM platform_canada_orders o
+ JOIN point_accounts pa ON pa.brand_id=o.brand_id AND pa.brand_member_id=o.member_id
+ CROSS JOIN LATERAL (VALUES ('bet'::text,o.debit_entry_id,CASE WHEN o.profile='canada_niuniu' THEN o.reserved_points ELSE o.total_points END,'bet'::text),('bet',o.loss_entry_id,o.lost_points,'loss'),
+ ('prize',o.payout_entry_id,o.prize_points,'prize'),('refund',o.refund_entry_id,o.refund_points,'refund')) e(kind,ledger,points,operation)
+ LEFT JOIN point_ledger_entries l ON l.id=e.ledger
+ WHERE o.brand_id=b AND pa.id=a AND e.points>0
+$$;
+
+-- 0018_shared_game_automation
+
+CREATE TABLE platform_automation_versions (
+ game_id uuid NOT NULL REFERENCES platform_games(id), version bigint NOT NULL CHECK(version>0),
+ enabled boolean NOT NULL, anchor_draw_at timestamptz NOT NULL, anchor_period_no text NOT NULL CHECK(anchor_period_no ~ '^[0-9]{1,40}$'),
+ interval_seconds integer NOT NULL CHECK(interval_seconds BETWEEN 10 AND 31536000),
+ close_before_seconds integer NOT NULL CHECK(close_before_seconds>=0 AND close_before_seconds<interval_seconds),
+ source_url text NOT NULL, credential_ref text NOT NULL, created_by uuid NOT NULL REFERENCES admin_accounts(id),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY(game_id,version)
+);
+CREATE TRIGGER immutable_platform_automation BEFORE UPDATE OR DELETE ON platform_automation_versions FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+CREATE TABLE platform_automation_settings(game_id uuid PRIMARY KEY,version bigint NOT NULL, FOREIGN KEY(game_id,version) REFERENCES platform_automation_versions(game_id,version));
+CREATE TABLE brand_automation_settings (
+ brand_id uuid NOT NULL,game_id uuid NOT NULL,version bigint NOT NULL CHECK(version>0),rule_version bigint NOT NULL,
+ enabled boolean NOT NULL,close_before_seconds integer NOT NULL CHECK(close_before_seconds>=0),
+ PRIMARY KEY(brand_id,game_id),FOREIGN KEY(brand_id,game_id) REFERENCES brand_platform_games(brand_id,game_id),
+ FOREIGN KEY(game_id,rule_version) REFERENCES platform_automation_versions(game_id,version)
+);
+ALTER TABLE platform_game_periods ADD COLUMN automation_version bigint;
+ALTER TABLE platform_game_periods ADD CONSTRAINT platform_period_automation FOREIGN KEY(game_id,automation_version) REFERENCES platform_automation_versions(game_id,version);
+CREATE TABLE platform_automation_attempts (
+ period_id uuid PRIMARY KEY REFERENCES platform_game_periods(id),last_attempt_at timestamptz NOT NULL,
+ code text NOT NULL CHECK(code IN('published','no_data','invalid_result','source_error','credential_missing')),
+ attempts integer NOT NULL DEFAULT 1
+);
+CREATE FUNCTION shared_automation_accepts(b uuid,period_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $$
+ SELECT CASE WHEN p.automation_version IS NULL THEN NOT EXISTS(SELECT 1 FROM platform_automation_settings s JOIN platform_automation_versions v USING(game_id,version) WHERE s.game_id=p.game_id AND v.enabled)
+ ELSE EXISTS(SELECT 1 FROM brand_automation_settings s JOIN platform_automation_versions v ON v.game_id=p.game_id AND v.version=p.automation_version WHERE s.brand_id=b AND s.game_id=p.game_id AND s.enabled AND s.rule_version=p.automation_version AND clock_timestamp()<p.draw_at-make_interval(secs=>greatest(v.close_before_seconds,s.close_before_seconds))) END
+ FROM platform_game_periods p WHERE p.id=period_id
+$$;
+CREATE FUNCTION guard_shared_automation_bet() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NOT shared_automation_accepts(NEW.brand_id,NEW.period_id) THEN RAISE EXCEPTION 'Shared automatic betting closed'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER automatic_mark_six_gate BEFORE INSERT ON platform_mark_six_orders FOR EACH ROW EXECUTE FUNCTION guard_shared_automation_bet();
+CREATE TRIGGER automatic_canada_gate BEFORE INSERT ON platform_canada_orders FOR EACH ROW EXECUTE FUNCTION guard_shared_automation_bet();
+CREATE OR REPLACE FUNCTION guard_platform_game_period() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP='DELETE' OR OLD.result IS NOT NULL OR
+ (NEW.id,NEW.game_id,NEW.period_no,NEW.bet_start_at,NEW.bet_end_at,NEW.draw_at,NEW.automation_version) IS DISTINCT FROM
+ (OLD.id,OLD.game_id,OLD.period_no,OLD.bet_start_at,OLD.bet_end_at,OLD.draw_at,OLD.automation_version)
+ THEN RAISE EXCEPTION 'Platform period and published result are immutable'; END IF;
+ RETURN NEW;
+END $$;
+
+-- 0019_brand_automatic_sealing
+
+CREATE TABLE brand_automation_periods (
+ brand_id uuid NOT NULL,game_id uuid NOT NULL,period_id uuid NOT NULL,
+ close_before_seconds integer NOT NULL CHECK(close_before_seconds>=0),
+ PRIMARY KEY(brand_id,period_id),
+ FOREIGN KEY(brand_id,game_id) REFERENCES brand_platform_games(brand_id,game_id),
+ FOREIGN KEY(game_id,period_id) REFERENCES platform_game_periods(game_id,id)
+);
+CREATE TRIGGER immutable_brand_automatic_seal BEFORE UPDATE OR DELETE ON brand_automation_periods FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+INSERT INTO brand_automation_periods(brand_id,game_id,period_id,close_before_seconds)
+ SELECT b.brand_id,p.game_id,p.id,greatest(v.close_before_seconds,b.close_before_seconds)
+ FROM platform_game_periods p JOIN platform_automation_versions v ON v.game_id=p.game_id AND v.version=p.automation_version
+ JOIN brand_automation_settings b ON b.game_id=p.game_id AND b.rule_version=p.automation_version;
+CREATE OR REPLACE FUNCTION shared_automation_accepts(b uuid,period_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $$
+ SELECT CASE WHEN p.automation_version IS NULL THEN NOT EXISTS(SELECT 1 FROM platform_automation_settings s JOIN platform_automation_versions v USING(game_id,version) WHERE s.game_id=p.game_id AND v.enabled)
+ ELSE EXISTS(SELECT 1 FROM brand_automation_settings s JOIN brand_automation_periods seal ON seal.brand_id=s.brand_id AND seal.game_id=s.game_id WHERE s.brand_id=b AND s.game_id=p.game_id AND s.enabled AND seal.period_id=p.id AND clock_timestamp()<p.draw_at-make_interval(secs=>seal.close_before_seconds)) END
+ FROM platform_game_periods p WHERE p.id=period_id
+$$;
+
+-- 0020_explicit_automatic_mode
+
+CREATE OR REPLACE FUNCTION shared_automation_accepts(b uuid,period_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $$
+ SELECT CASE WHEN p.automation_version IS NULL THEN NOT EXISTS(SELECT 1 FROM platform_automation_settings s WHERE s.game_id=p.game_id)
+ ELSE EXISTS(SELECT 1 FROM brand_automation_settings s JOIN brand_automation_periods seal ON seal.brand_id=s.brand_id AND seal.game_id=s.game_id WHERE s.brand_id=b AND s.game_id=p.game_id AND s.enabled AND seal.period_id=p.id AND clock_timestamp()<p.draw_at-make_interval(secs=>seal.close_before_seconds)) END
+ FROM platform_game_periods p WHERE p.id=period_id
+$$;
+
+-- 0021_platform_game_lifecycle
+
+-- Lifecycle changes preserve every period, purchase snapshot and ledger entry.
+ALTER TABLE platform_games ADD COLUMN status text NOT NULL DEFAULT 'active' CHECK(status IN ('active','offline','deleted'));
+ALTER TABLE brand_platform_games ADD COLUMN enabled boolean NOT NULL DEFAULT true;
+ALTER TABLE brand_platform_games ADD COLUMN version bigint NOT NULL DEFAULT 1 CHECK(version>0);
+
+CREATE FUNCTION shared_game_accepts(b uuid,g uuid) RETURNS boolean LANGUAGE plpgsql AS $$
+DECLARE state text; available boolean;
+BEGIN
+ SELECT status INTO state FROM platform_games WHERE id=g FOR SHARE;
+ IF state IS DISTINCT FROM 'active' THEN RETURN false; END IF;
+ SELECT enabled INTO available FROM brand_platform_games WHERE brand_id=b AND game_id=g FOR SHARE;
+ RETURN available IS TRUE;
+END $$;
+CREATE FUNCTION guard_shared_game_admission() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NOT shared_game_accepts(NEW.brand_id,NEW.game_id) THEN RAISE EXCEPTION 'Shared game is unavailable'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER lifecycle_canada_admission BEFORE INSERT ON platform_canada_orders FOR EACH ROW EXECUTE FUNCTION guard_shared_game_admission();
+CREATE TRIGGER lifecycle_mark_six_admission BEFORE INSERT ON platform_mark_six_orders FOR EACH ROW EXECUTE FUNCTION guard_shared_game_admission();
+
+-- 0022_hong_kong_draw_source
+
+ALTER TABLE platform_automation_versions ADD COLUMN source_type text NOT NULL DEFAULT 'interval_json' CHECK(source_type IN ('interval_json','hk_marksix_6hch'));
+ALTER TABLE platform_automation_versions ALTER COLUMN anchor_draw_at DROP NOT NULL;
+ALTER TABLE platform_automation_versions ALTER COLUMN anchor_period_no DROP NOT NULL;
+ALTER TABLE platform_automation_versions ALTER COLUMN interval_seconds DROP NOT NULL;
+ALTER TABLE platform_automation_versions DROP CONSTRAINT platform_automation_versions_check;
+ALTER TABLE platform_automation_versions ADD CHECK (
+ (source_type='interval_json' AND anchor_draw_at IS NOT NULL AND anchor_period_no IS NOT NULL AND interval_seconds IS NOT NULL AND close_before_seconds>=0 AND close_before_seconds<interval_seconds)
+ OR (source_type='hk_marksix_6hch' AND anchor_draw_at IS NULL AND anchor_period_no IS NULL AND interval_seconds IS NULL AND close_before_seconds BETWEEN 0 AND 86400 AND credential_ref='')
+);
+CREATE TABLE platform_hk_source_checks (
+ game_id uuid NOT NULL,version bigint NOT NULL,checked_at timestamptz NOT NULL,
+ code text NOT NULL CHECK(code IN ('ready','waiting_result','source_error','invalid_result','schedule_conflict','attributes_missing')),
+ next_period_no text,next_draw_at timestamptz,last_result jsonb,
+ PRIMARY KEY(game_id,version),FOREIGN KEY(game_id,version) REFERENCES platform_automation_versions(game_id,version)
+);
+
+CREATE OR REPLACE FUNCTION shared_automation_accepts(b uuid,period_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $$
+ SELECT CASE WHEN p.automation_version IS NULL THEN NOT EXISTS(SELECT 1 FROM platform_automation_settings s WHERE s.game_id=p.game_id)
+ ELSE EXISTS(SELECT 1 FROM brand_automation_settings s JOIN brand_automation_periods seal ON seal.brand_id=s.brand_id AND seal.game_id=s.game_id JOIN platform_automation_versions pv ON pv.game_id=p.game_id AND pv.version=p.automation_version JOIN platform_automation_settings current ON current.game_id=p.game_id JOIN platform_automation_versions cv ON cv.game_id=current.game_id AND cv.version=current.version WHERE s.brand_id=b AND s.game_id=p.game_id AND s.enabled AND seal.period_id=p.id AND pv.source_type=cv.source_type AND NOT EXISTS(SELECT 1 FROM platform_hk_source_checks hc WHERE hc.game_id=p.game_id AND hc.version=p.automation_version AND hc.code='schedule_conflict') AND clock_timestamp()<p.draw_at-make_interval(secs=>seal.close_before_seconds)) END
+ FROM platform_game_periods p WHERE p.id=period_id
+$$;
+
+-- 0023_single_active_session
+
+ALTER TABLE sessions ADD COLUMN replaced_by_login boolean NOT NULL DEFAULT false;
+
+-- Resolve existing sessions before enforcing account-wide uniqueness.
+UPDATE sessions SET revoked_at=clock_timestamp()
+WHERE revoked_at IS NULL AND expires_at<=clock_timestamp();
+WITH ranked AS (
+    SELECT id, row_number() OVER (
+        PARTITION BY user_id,admin_id ORDER BY created_at DESC,id DESC
+    ) AS position FROM sessions WHERE revoked_at IS NULL
+)
+UPDATE sessions s SET revoked_at=clock_timestamp(),replaced_by_login=true
+FROM ranked r WHERE s.id=r.id AND r.position>1;
+
+CREATE UNIQUE INDEX sessions_one_active_user ON sessions(user_id)
+WHERE user_id IS NOT NULL AND revoked_at IS NULL;
+CREATE UNIQUE INDEX sessions_one_active_admin ON sessions(admin_id)
+WHERE admin_id IS NOT NULL AND revoked_at IS NULL;
+
+-- 0024_member_referral_allocation
+
+-- A referral belongs to one brand membership; agent codes remain independent.
+LOCK TABLE brand_members, join_codes IN SHARE ROW EXCLUSIVE MODE;
+CREATE UNIQUE INDEX join_codes_one_referral_per_member
+ ON join_codes(brand_id,owner_member_id) WHERE kind='referral';
+
+ALTER TABLE join_codes ALTER COLUMN created_by DROP NOT NULL;
+ALTER TABLE join_codes ADD CONSTRAINT join_codes_system_referral_only
+ CHECK(created_by IS NOT NULL OR kind IN('referral','agent'));
+ALTER TABLE join_code_revisions ALTER COLUMN actor_id DROP NOT NULL;
+
+CREATE OR REPLACE FUNCTION guard_join_code_revision() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE c join_codes; a audit_logs;
+BEGIN
+ IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'join-code history immutable'; END IF;
+ SELECT * INTO c FROM join_codes WHERE brand_id=NEW.brand_id AND id=NEW.code_id;
+ IF NOT FOUND OR ROW(c.version,c.status,c.starts_at,c.expires_at) IS DISTINCT FROM ROW(NEW.version,NEW.status,NEW.starts_at,NEW.expires_at) THEN RAISE EXCEPTION 'join-code history does not match current version'; END IF;
+ SELECT * INTO a FROM audit_logs WHERE id=NEW.audit_log_id;
+ IF NOT FOUND OR a.brand_id IS DISTINCT FROM NEW.brand_id OR a.actor_id IS DISTINCT FROM NEW.actor_id
+ OR a.resource_type<>'join_code' OR a.resource_id IS DISTINCT FROM NEW.code_id OR a.reason<>NEW.reason
+ OR a.action IS DISTINCT FROM (CASE WHEN NEW.version=1 THEN 'join_code.create' ELSE 'join_code.update' END)
+ OR (NEW.version=1 AND NEW.actor_id IS DISTINCT FROM c.created_by)
+ OR (NEW.actor_id IS NULL AND NOT(a.actor_type='system' AND NEW.version=1 AND c.kind IN('referral','agent') AND c.created_by IS NULL))
+ OR (NEW.actor_id IS NOT NULL AND a.actor_type<>'admin')
+ OR a.after_json->>'id' IS DISTINCT FROM c.id::text OR a.after_json->>'brand_id' IS DISTINCT FROM c.brand_id::text
+ OR a.after_json->>'kind' IS DISTINCT FROM c.kind OR a.after_json->>'code' IS DISTINCT FROM c.code
+ OR a.after_json->>'owner_member_id' IS DISTINCT FROM c.owner_member_id::text OR (a.after_json->>'agent_id')::uuid IS DISTINCT FROM c.agent_id
+ OR (a.after_json->>'version')::bigint IS DISTINCT FROM NEW.version OR a.after_json->>'status' IS DISTINCT FROM NEW.status
+ OR (a.after_json->>'starts_at')::timestamptz IS DISTINCT FROM NEW.starts_at OR (a.after_json->>'expires_at')::timestamptz IS DISTINCT FROM NEW.expires_at
+ THEN RAISE EXCEPTION 'join-code audit witness missing'; END IF;
+ RETURN NEW;
+END $$;
+
+-- Called by the central membership creation transaction and by this backfill.
+-- Locking the membership and the unique index make repeated/concurrent calls idempotent.
+CREATE FUNCTION ensure_member_referral(p_brand uuid,p_member uuid) RETURNS uuid
+LANGUAGE plpgsql AS $$
+DECLARE c join_codes; existing uuid; log_id uuid; initial_status text;
+ allocation_reason constant text := 'Automatic member referral allocation';
+BEGIN
+ PERFORM 1 FROM brand_agent_policies WHERE brand_id=p_brand FOR SHARE;
+ PERFORM 1 FROM brand_members WHERE brand_id=p_brand AND id=p_member FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'brand member not found' USING ERRCODE='23503'; END IF;
+ SELECT id INTO existing FROM join_codes WHERE brand_id=p_brand AND owner_member_id=p_member AND kind='referral';
+ IF FOUND THEN RETURN existing; END IF;
+ SELECT CASE WHEN m.status='normal' AND u.status='active' AND b.status<>'disabled' THEN 'active' ELSE 'disabled' END
+ INTO initial_status FROM brand_members m JOIN global_users u ON u.id=m.global_user_id JOIN brands b ON b.id=m.brand_id
+ WHERE m.brand_id=p_brand AND m.id=p_member;
+ INSERT INTO join_codes(id,brand_id,kind,code,owner_member_id,agent_id,status,created_by)
+ VALUES(gen_random_uuid(),p_brand,'referral',upper(substr(replace(gen_random_uuid()::text,'-',''),1,24)),p_member,NULL,initial_status,NULL)
+ RETURNING * INTO c;
+ log_id := gen_random_uuid();
+ INSERT INTO audit_logs(id,brand_id,actor_type,actor_id,action,resource_type,resource_id,reason,after_json,request_id)
+ VALUES(log_id,p_brand,'system',NULL,'join_code.create','join_code',c.id,allocation_reason,to_jsonb(c),'member-referral:'||p_member::text);
+ INSERT INTO join_code_revisions(id,brand_id,code_id,version,status,starts_at,expires_at,actor_id,reason,audit_log_id)
+ VALUES(gen_random_uuid(),p_brand,c.id,1,c.status,NULL,NULL,NULL,allocation_reason,log_id);
+ RETURN c.id;
+END $$;
+
+SELECT ensure_member_referral(brand_id,id) FROM brand_members ORDER BY brand_id,id;
+
+-- 0025_brand_operation_details
+
+-- Scheduled pause windows are processed by the period worker.
+ALTER TABLE brands ADD COLUMN pause_starts_at timestamptz, ADD COLUMN pause_ends_at timestamptz;
+ALTER TABLE brands ADD CONSTRAINT brands_pause_window_check CHECK (
+  (pause_starts_at IS NULL AND pause_ends_at IS NULL) OR
+  (status IN ('active','paused') AND pause_starts_at IS NOT NULL AND pause_ends_at IS NOT NULL AND pause_ends_at>pause_starts_at)
+);
+ALTER TABLE brand_operation_revisions ADD COLUMN pause_starts_at timestamptz, ADD COLUMN pause_ends_at timestamptz;
+ALTER TABLE brand_operation_revisions ADD CONSTRAINT brand_operation_pause_window_check CHECK (
+  (pause_starts_at IS NULL AND pause_ends_at IS NULL) OR
+  (status IN ('active','paused') AND pause_starts_at IS NOT NULL AND pause_ends_at IS NOT NULL AND pause_ends_at>pause_starts_at)
+);
+ALTER TABLE brand_operation_revisions DROP CONSTRAINT brand_operation_revisions_previous_status_check;
+ALTER TABLE brand_operation_revisions DROP CONSTRAINT brand_operation_revisions_status_check;
+ALTER TABLE brand_operation_revisions ADD CONSTRAINT brand_operation_revisions_previous_status_check CHECK (previous_status IN ('active','paused','disabled'));
+ALTER TABLE brand_operation_revisions ADD CONSTRAINT brand_operation_revisions_status_check CHECK (status IN ('active','paused','disabled'));
+
+ALTER TABLE brand_operation_revisions DROP CONSTRAINT brand_operation_revisions_check;
+-- Same-state revisions record scheduling, replacement or cancellation of a window.
+CREATE OR REPLACE FUNCTION guard_brand_operation_revision() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE b brands; a audit_logs;
+BEGIN
+ IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'brand operation history is immutable'; END IF;
+ SELECT * INTO b FROM brands WHERE id=NEW.brand_id;
+ SELECT * INTO a FROM audit_logs WHERE id=NEW.audit_log_id;
+ IF NOT FOUND OR b.id IS NULL OR b.config_version<>NEW.version OR b.status<>NEW.status OR
+    a.brand_id IS DISTINCT FROM NEW.brand_id OR ((a.actor_type='admin' AND a.actor_id=NEW.changed_by) OR (a.actor_type='system' AND a.actor_id IS NULL)) IS DISTINCT FROM TRUE OR
+    a.action IS DISTINCT FROM 'brand_operation.update' OR a.resource_type IS DISTINCT FROM 'brand_operation' OR a.resource_id IS DISTINCT FROM NEW.brand_id OR a.reason IS DISTINCT FROM NEW.reason OR
+    a.before_json->>'brand_id' IS DISTINCT FROM NEW.brand_id::text OR
+    a.before_json->>'version' IS DISTINCT FROM (NEW.version-1)::text OR
+    a.before_json->>'status' IS DISTINCT FROM NEW.previous_status OR
+    a.before_json->>'name' IS DISTINCT FROM b.name OR
+    a.after_json->>'brand_id' IS DISTINCT FROM NEW.brand_id::text OR
+    a.after_json->>'version' IS DISTINCT FROM NEW.version::text OR
+    a.after_json->>'status' IS DISTINCT FROM NEW.status OR
+    a.after_json->>'name' IS DISTINCT FROM b.name OR
+    (a.after_json->>'updated_at')::timestamptz IS DISTINCT FROM b.updated_at OR
+    (a.after_json->>'pause_starts_at')::timestamptz IS DISTINCT FROM NEW.pause_starts_at OR
+    (a.after_json->>'pause_ends_at')::timestamptz IS DISTINCT FROM NEW.pause_ends_at OR
+    b.pause_starts_at IS DISTINCT FROM NEW.pause_starts_at OR b.pause_ends_at IS DISTINCT FROM NEW.pause_ends_at THEN
+  RAISE EXCEPTION 'brand operation history requires matching current brand and audit witness';
+ END IF;
+ NEW.created_at:=clock_timestamp();
+ RETURN NEW;
+END $$;
+
+-- 0026_brand_operation_reason_characters
+
+-- Status-change reasons count Unicode characters, not encoded bytes.
+ALTER TABLE brand_operation_revisions DROP CONSTRAINT brand_operation_revisions_reason_check;
+ALTER TABLE brand_operation_revisions ADD CONSTRAINT brand_operation_revisions_reason_check
+    CHECK (length(TRIM(BOTH FROM reason)) > 0 AND char_length(reason) <= 500);
+
+-- 0027_optional_archive_reasons
+
+-- Preserve the applied baseline checksum. Archive reason optionality is an
+-- additive schema change; no historical audit or archive row is rewritten.
+ALTER TABLE report_archives DROP CONSTRAINT report_archives_reason_check;
+ALTER TABLE report_archives ADD CONSTRAINT report_archives_reason_check
+ CHECK (octet_length(reason)<=500 AND btrim(reason)=reason AND reason !~ '[\r\n]');
+
+CREATE OR REPLACE FUNCTION guard_report_archive_policy() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE a audit_logs; expected jsonb;
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'archive policy cannot be deleted'; END IF;
+ IF NEW.timezone='Local' OR NOT EXISTS(SELECT 1 FROM pg_timezone_names WHERE name=NEW.timezone) THEN RAISE EXCEPTION 'invalid archive policy timezone'; END IF;
+ IF NEW.daily_start_period IS NOT NULL THEN
+  IF NEW.daily_start_period !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' OR substring(NEW.daily_start_period,1,4)::integer NOT BETWEEN 1 AND 9998 THEN RAISE EXCEPTION 'invalid daily activation'; END IF;
+  PERFORM make_date(substring(NEW.daily_start_period,1,4)::integer,substring(NEW.daily_start_period,6,2)::integer,substring(NEW.daily_start_period,9,2)::integer);
+ END IF;
+ IF NEW.monthly_start_period IS NOT NULL THEN
+  IF NEW.monthly_start_period !~ '^[0-9]{4}-[0-9]{2}$' OR substring(NEW.monthly_start_period,1,4)::integer NOT BETWEEN 1 AND 9998 THEN RAISE EXCEPTION 'invalid monthly activation'; END IF;
+  PERFORM make_date(substring(NEW.monthly_start_period,1,4)::integer,substring(NEW.monthly_start_period,6,2)::integer,1);
+ END IF;
+ IF TG_OP='INSERT' THEN
+  IF NEW.version<>1 OR NEW.daily_enabled OR NEW.monthly_enabled OR NEW.daily_start_period IS NOT NULL OR NEW.monthly_start_period IS NOT NULL OR NEW.audit_log_id IS NOT NULL OR NOT EXISTS(SELECT 1 FROM brands WHERE id=NEW.brand_id AND timezone=NEW.timezone) THEN RAISE EXCEPTION 'archive policy initializes disabled only'; END IF;
+  RETURN NEW;
+ END IF;
+ IF NEW.brand_id<>OLD.brand_id OR NEW.version<>OLD.version+1 OR NEW.updated_at IS DISTINCT FROM statement_timestamp() THEN RAISE EXCEPTION 'archive policy requires next version'; END IF;
+ SELECT * INTO a FROM audit_logs WHERE id=NEW.audit_log_id;
+ expected:=jsonb_build_object('brand_id',NEW.brand_id,'version',NEW.version,'daily_enabled',NEW.daily_enabled,'monthly_enabled',NEW.monthly_enabled,'daily_start_period',NEW.daily_start_period,'monthly_start_period',NEW.monthly_start_period,'timezone',NEW.timezone);
+ IF a.id IS NULL OR a.brand_id IS DISTINCT FROM NEW.brand_id OR a.actor_type<>'admin' OR a.actor_id IS NULL OR a.action<>'report_archive.policy.update' OR a.resource_type<>'report_archive_policy' OR a.resource_id IS DISTINCT FROM NEW.brand_id OR a.reason IS NULL OR btrim(a.reason)<>a.reason OR octet_length(a.reason)>500 OR a.reason ~ '[[:cntrl:]]' OR
+  (a.before_json-'updated_at') IS DISTINCT FROM (to_jsonb(OLD)-'updated_at') OR (a.before_json->>'updated_at')::timestamptz IS DISTINCT FROM OLD.updated_at OR a.after_json IS DISTINCT FROM expected THEN RAISE EXCEPTION 'archive policy requires exact audited intent'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM brands WHERE id=NEW.brand_id AND status<>'disabled' AND timezone=NEW.timezone) THEN RAISE EXCEPTION 'archive policy requires current enabled brand'; END IF;
+ RETURN NEW;
+END $$;
+
+-- 0028_mark_six_complete_plays
+
+-- A/B change prices only; a submitted order keeps its explicit plate and price snapshots.
+ALTER TABLE platform_mark_six_versions ADD COLUMN odds_b jsonb NOT NULL DEFAULT '{}'::jsonb CHECK(jsonb_typeof(odds_b)='object');
+ALTER TABLE brand_mark_six_sales ADD COLUMN odds_b jsonb NOT NULL DEFAULT '{}'::jsonb CHECK(jsonb_typeof(odds_b)='object');
+ALTER TABLE platform_mark_six_orders ADD COLUMN plate text NOT NULL DEFAULT 'A' CHECK(plate IN ('A','B'));
+ALTER TABLE platform_mark_six_orders ALTER COLUMN plate DROP DEFAULT;
+-- Expanded combination lines retain their own selections and purchased tier odds.
+CREATE OR REPLACE FUNCTION guard_mark_six_order() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE debit point_ledger_entries; credit point_ledger_entries; expected numeric; book jsonb; item jsonb; leg integer; leg_index integer; leg_code text; product numeric; used_positions integer[]; attributes text[] := ARRAY['big','small','odd','even','big_odd','big_even','small_odd','small_even','sum_odd','sum_even','sum_big','sum_small','tail_big','tail_small','wave_red','wave_blue','wave_green'];
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Mark Six orders cannot be deleted'; END IF;
+ IF TG_OP='UPDATE' THEN
+  IF OLD.status<>'placed' OR NEW.status<>'settled' OR
+   (NEW.id,NEW.brand_id,NEW.member_id,NEW.user_id,NEW.game_id,NEW.period_id,NEW.rule_version,NEW.sales_version,NEW.sales_snapshot,NEW.plate,NEW.total_points,NEW.allocation,NEW.debit_entry_id,NEW.placed_at)
+   IS DISTINCT FROM
+   (OLD.id,OLD.brand_id,OLD.member_id,OLD.user_id,OLD.game_id,OLD.period_id,OLD.rule_version,OLD.sales_version,OLD.sales_snapshot,OLD.plate,OLD.total_points,OLD.allocation,OLD.debit_entry_id,OLD.placed_at)
+  THEN RAISE EXCEPTION 'Mark Six purchase snapshots are immutable'; END IF;
+  IF (SELECT jsonb_agg(value-'outcome'-'payout'-'winning_odds'-'hit_count' ORDER BY ordinality) FROM jsonb_array_elements(NEW.items) WITH ORDINALITY)
+    IS DISTINCT FROM (SELECT jsonb_agg(value-'outcome'-'payout'-'winning_odds'-'hit_count' ORDER BY ordinality) FROM jsonb_array_elements(OLD.items) WITH ORDINALITY)
+   THEN RAISE EXCEPTION 'Mark Six purchased items are immutable'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND result IS NOT NULL) THEN RAISE EXCEPTION 'Mark Six result not published'; END IF;
+  SELECT * INTO debit FROM point_ledger_entries WHERE id=OLD.debit_entry_id;
+  IF NEW.effective_points+NEW.refund_points<>NEW.total_points THEN RAISE EXCEPTION 'Mark Six effective stake mismatch'; END IF;
+  IF NEW.prize_points>0 THEN
+   SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.payout_entry_id;
+   IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR
+    credit.entry_type<>'prize' OR credit.reference_type<>'mark_six_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'mark-six-prize:'||NEW.id::text OR
+    credit.source_allocation<>jsonb_build_array(jsonb_build_object('source','winning','state','available','points',NEW.prize_points::text))
+   THEN RAISE EXCEPTION 'Mark Six payout evidence mismatch'; END IF;
+  END IF;
+  IF NEW.refund_points>0 THEN
+   SELECT * INTO credit FROM point_ledger_entries WHERE id=NEW.refund_entry_id;
+   IF credit.id IS NULL OR credit.brand_id<>NEW.brand_id OR credit.account_id<>debit.account_id OR credit.member_id<>NEW.member_id OR
+    credit.entry_type<>'refund' OR credit.reference_type<>'mark_six_order' OR credit.reference_id<>NEW.id OR credit.operation_key<>'mark-six-refund:'||NEW.id::text
+   THEN RAISE EXCEPTION 'Mark Six refund evidence mismatch'; END IF;
+   SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(credit.source_allocation);
+   IF expected IS DISTINCT FROM NEW.refund_points OR EXISTS(SELECT 1 FROM jsonb_array_elements(credit.source_allocation) r WHERE
+    (r->>'points')::numeric>coalesce((SELECT (d->>'points')::numeric FROM jsonb_array_elements(OLD.allocation) d WHERE d->>'source'=r->>'source'),0))
+   THEN RAISE EXCEPTION 'Mark Six refund source mismatch'; END IF;
+  END IF;
+ ELSE
+  book := CASE NEW.plate WHEN 'A' THEN NEW.sales_snapshot->'odds' WHEN 'B' THEN NEW.sales_snapshot->'odds_b' END;
+  IF book IS NULL OR jsonb_typeof(book)<>'object' OR jsonb_array_length(NEW.items) NOT BETWEEN 1 AND 1000 OR
+   (SELECT count(DISTINCT jsonb_build_array(value->>'code',coalesce(value->'selection','[]'::jsonb))) FROM jsonb_array_elements(NEW.items))<>jsonb_array_length(NEW.items)
+  THEN RAISE EXCEPTION 'Mark Six item snapshot mismatch'; END IF;
+  FOR item IN SELECT value FROM jsonb_array_elements(NEW.items) LOOP
+   IF item->>'points' !~ '^[1-9][0-9]*$' OR item->>'outcome'<>'' OR item->>'payout'<>'0' OR item ? 'hit_count' OR item ? 'winning_odds'
+   THEN RAISE EXCEPTION 'Mark Six purchase result must be empty'; END IF;
+   IF item->>'code'='parlay' THEN
+    IF jsonb_typeof(item->'selection') IS DISTINCT FROM 'array' OR jsonb_typeof(item->'leg_odds') IS DISTINCT FROM 'array' OR jsonb_array_length(item->'selection') NOT BETWEEN 2 AND 6 OR jsonb_array_length(item->'leg_odds')<>jsonb_array_length(item->'selection')
+    THEN RAISE EXCEPTION 'Mark Six parlay length invalid'; END IF;
+    product:=1; used_positions:=ARRAY[]::integer[];leg_index:=0;
+    FOR leg IN SELECT value::integer FROM jsonb_array_elements_text(item->'selection') LOOP
+     IF leg/100 NOT BETWEEN 1 AND 6 OR leg%100 NOT BETWEEN 0 AND 16 OR leg/100=ANY(used_positions)
+     THEN RAISE EXCEPTION 'Mark Six parlay positions invalid'; END IF;
+     used_positions:=array_append(used_positions,leg/100);
+     leg_code:='position_attribute_'||(leg/100)::text||'_'||attributes[leg%100+1];
+     IF book->>leg_code IS NULL OR item->'leg_odds'->>leg_index IS DISTINCT FROM book->>leg_code
+     THEN RAISE EXCEPTION 'Mark Six parlay price mismatch'; END IF;
+     product:=product*(book->>leg_code)::numeric;leg_index:=leg_index+1;
+    END LOOP;
+    IF (item->>'odds')::numeric IS DISTINCT FROM product OR item ? 'odds_full' OR item ? 'odds_code'
+    THEN RAISE EXCEPTION 'Mark Six parlay product mismatch'; END IF;
+   ELSE
+    IF book->>coalesce(item->>'odds_code',item->>'code') IS NULL OR item->>'odds' IS DISTINCT FROM book->>coalesce(item->>'odds_code',item->>'code') OR item ? 'leg_odds' OR
+     item->>'odds_full' IS DISTINCT FROM (CASE WHEN item->>'code'='linked_3_2' THEN book->>'linked_3_2_full' WHEN item->>'code'='linked_2_special' THEN book->>'linked_2_special_hit' ELSE NULL END)
+    THEN RAISE EXCEPTION 'Mark Six item snapshot mismatch'; END IF;
+   END IF;
+  END LOOP;
+  SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(NEW.items);
+  IF expected IS DISTINCT FROM NEW.total_points THEN RAISE EXCEPTION 'Mark Six batch total mismatch'; END IF;
+  SELECT sum((value->>'points')::numeric) INTO expected FROM jsonb_array_elements(NEW.allocation);
+  IF expected IS DISTINCT FROM NEW.total_points THEN RAISE EXCEPTION 'Mark Six allocation mismatch'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND game_id=NEW.game_id AND result IS NULL AND bet_start_at<=clock_timestamp() AND bet_end_at>clock_timestamp()) THEN RAISE EXCEPTION 'Mark Six betting closed'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.debit_entry_id AND brand_id=NEW.brand_id AND member_id=NEW.member_id AND reference_type='mark_six_order' AND reference_id=NEW.id AND entry_type='bet' AND source_allocation=NEW.allocation) THEN RAISE EXCEPTION 'Mark Six debit mismatch'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+
+-- 0029_optional_operation_reasons
+
+-- Operator audit reasons are optional. Historical rows and business cause enums stay intact.
+
+ALTER TABLE report_archives DROP CONSTRAINT report_archives_reason_check;
+ALTER TABLE report_archives ADD CONSTRAINT report_archives_reason_check CHECK ((((octet_length(reason) <= 500)) AND (btrim(reason) = reason) AND (reason !~ '[\r\n]'::text)));
+
+ALTER TABLE agent_config_revisions DROP CONSTRAINT agent_config_revisions_reason_check;
+ALTER TABLE agent_config_revisions ADD CONSTRAINT agent_config_revisions_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE bet_order_exceptions DROP CONSTRAINT bet_order_exceptions_reason_check;
+ALTER TABLE bet_order_exceptions ADD CONSTRAINT bet_order_exceptions_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE bet_order_judgments DROP CONSTRAINT bet_order_judgments_reason_check;
+ALTER TABLE bet_order_judgments ADD CONSTRAINT bet_order_judgments_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE brand_creation_records DROP CONSTRAINT brand_creation_records_reason_check;
+ALTER TABLE brand_creation_records ADD CONSTRAINT brand_creation_records_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE brand_domain_revisions DROP CONSTRAINT brand_domain_revisions_reason_check;
+ALTER TABLE brand_domain_revisions ADD CONSTRAINT brand_domain_revisions_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE brand_operation_revisions DROP CONSTRAINT brand_operation_revisions_reason_check;
+ALTER TABLE brand_operation_revisions ADD CONSTRAINT brand_operation_revisions_reason_check CHECK (char_length(reason) <= 500);
+
+ALTER TABLE brand_presentation_revisions DROP CONSTRAINT brand_presentation_revisions_reason_check;
+ALTER TABLE brand_presentation_revisions ADD CONSTRAINT brand_presentation_revisions_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE commission_adjustments DROP CONSTRAINT commission_adjustments_reason_check;
+ALTER TABLE commission_adjustments ADD CONSTRAINT commission_adjustments_reason_check CHECK ((((octet_length(reason) <= 500)) AND (reason = TRIM(BOTH FROM reason))));
+
+ALTER TABLE commission_correction_execution_steps DROP CONSTRAINT commission_correction_execution_steps_reason_check;
+ALTER TABLE commission_correction_execution_steps ADD CONSTRAINT commission_correction_execution_steps_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE commission_correction_plan_steps DROP CONSTRAINT commission_correction_plan_steps_reason_check;
+ALTER TABLE commission_correction_plan_steps ADD CONSTRAINT commission_correction_plan_steps_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE commission_cycle_steps DROP CONSTRAINT commission_cycle_steps_reason_check;
+ALTER TABLE commission_cycle_steps ADD CONSTRAINT commission_cycle_steps_reason_check CHECK ((((octet_length(reason) <= 500)) AND (TRIM(BOTH FROM reason) = reason)));
+
+ALTER TABLE commission_cycles DROP CONSTRAINT commission_cycles_reason_check;
+ALTER TABLE commission_cycles ADD CONSTRAINT commission_cycles_reason_check CHECK ((((octet_length(reason) <= 500)) AND (TRIM(BOTH FROM reason) = reason)));
+
+
+ALTER TABLE compliance_decisions DROP CONSTRAINT compliance_decisions_reason_check;
+ALTER TABLE compliance_decisions ADD CONSTRAINT compliance_decisions_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE compliance_policy_revisions DROP CONSTRAINT compliance_policy_revisions_reason_check;
+ALTER TABLE compliance_policy_revisions ADD CONSTRAINT compliance_policy_revisions_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE draw_corrections DROP CONSTRAINT draw_corrections_reason_check;
+ALTER TABLE draw_corrections ADD CONSTRAINT draw_corrections_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE join_code_revisions DROP CONSTRAINT join_code_revisions_reason_check;
+ALTER TABLE join_code_revisions ADD CONSTRAINT join_code_revisions_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE notification_template_revisions DROP CONSTRAINT notification_template_revisions_reason_check;
+ALTER TABLE notification_template_revisions ADD CONSTRAINT notification_template_revisions_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE period_cancellations DROP CONSTRAINT period_cancellations_reason_check;
+ALTER TABLE period_cancellations ADD CONSTRAINT period_cancellations_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE point_reconciliation_jobs DROP CONSTRAINT point_reconciliation_jobs_reason_check;
+ALTER TABLE point_reconciliation_jobs ADD CONSTRAINT point_reconciliation_jobs_reason_check CHECK ((((octet_length(reason) <= 500)) AND (TRIM(BOTH FROM reason) = reason)));
+
+ALTER TABLE point_reconciliation_retries DROP CONSTRAINT point_reconciliation_retries_reason_check;
+ALTER TABLE point_reconciliation_retries ADD CONSTRAINT point_reconciliation_retries_reason_check CHECK ((((octet_length(reason) <= 500)) AND (TRIM(BOTH FROM reason) = reason)));
+
+ALTER TABLE reward_order_actions DROP CONSTRAINT reward_order_actions_reason_check;
+ALTER TABLE reward_order_actions ADD CONSTRAINT reward_order_actions_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE reward_orders DROP CONSTRAINT reward_orders_reason_check;
+ALTER TABLE reward_orders ADD CONSTRAINT reward_orders_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE settlement_jobs DROP CONSTRAINT settlement_jobs_reason_check;
+ALTER TABLE settlement_jobs ADD CONSTRAINT settlement_jobs_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE settlement_previews DROP CONSTRAINT settlement_previews_reason_check;
+ALTER TABLE settlement_previews ADD CONSTRAINT settlement_previews_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE withdrawal_order_transitions DROP CONSTRAINT withdrawal_order_transitions_reason_check;
+ALTER TABLE withdrawal_order_transitions ADD CONSTRAINT withdrawal_order_transitions_reason_check CHECK (((octet_length(reason) <= 500)));
+
+ALTER TABLE withdrawal_orders DROP CONSTRAINT withdrawal_orders_decision_reason_check;
+ALTER TABLE withdrawal_orders ADD CONSTRAINT withdrawal_orders_decision_reason_check CHECK ((octet_length(decision_reason) <= 500));
+
+ALTER TABLE withdrawal_policy_revisions DROP CONSTRAINT withdrawal_policy_revisions_reason_check;
+ALTER TABLE withdrawal_policy_revisions ADD CONSTRAINT withdrawal_policy_revisions_reason_check CHECK (((octet_length(reason) <= 500)));
+
+CREATE OR REPLACE FUNCTION guard_bet_order() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE p periods; r rule_versions; l point_ledger_entries;
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'bet history cannot be deleted'; END IF;
+ IF TG_OP='INSERT' THEN
+  IF NEW.status<>'placed' OR NEW.version<>1 OR NEW.refund_entry_id IS NOT NULL OR NEW.cancel_reason<>'' THEN RAISE EXCEPTION 'invalid initial bet state'; END IF;
+  SELECT * INTO p FROM periods WHERE id=NEW.period_id;
+  IF p.status<>'betting' OR NEW.placed_at<p.bet_start_at OR NEW.placed_at>=p.bet_end_at OR NEW.placed_at>clock_timestamp() OR clock_timestamp()<p.bet_start_at OR clock_timestamp()>=p.bet_end_at THEN RAISE EXCEPTION 'bet outside period window'; END IF;
+  SELECT * INTO r FROM rule_versions WHERE id=NEW.rule_version_id;
+  IF r.status<>'active' OR r.definition<>NEW.definition_snapshot OR r.definition_sha256<>NEW.definition_hash OR NOT EXISTS(SELECT 1 FROM play_definitions WHERE id=NEW.play_id AND active_version_id=NEW.rule_version_id AND status='active') THEN RAISE EXCEPTION 'bet rule snapshot mismatch'; END IF;
+  SELECT * INTO l FROM point_ledger_entries WHERE id=NEW.debit_entry_id;
+  IF l.entry_type<>'bet' OR l.reference_type<>'bet_order' OR l.reference_id IS DISTINCT FROM NEW.id OR l.member_id<>NEW.brand_member_id OR l.source_allocation<>NEW.deduction_allocation OR l.actor_type<>'user' OR l.actor_id IS DISTINCT FROM NEW.global_user_id THEN RAISE EXCEPTION 'bet debit reference mismatch'; END IF;
+  IF (SELECT sum((a->>'points')::numeric) FROM jsonb_array_elements(NEW.deduction_allocation) a) IS DISTINCT FROM NEW.total_points::numeric OR EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.deduction_allocation) a WHERE a->>'state'<>'available') THEN RAISE EXCEPTION 'invalid bet source allocation'; END IF;
+  IF (SELECT sum((s.value->>'available')::numeric) FROM jsonb_each(l.delta_snapshot) s) IS DISTINCT FROM -NEW.total_points::numeric OR EXISTS(SELECT 1 FROM jsonb_each(l.delta_snapshot) s WHERE (s.value->>'manual_frozen')::numeric<>0 OR (s.value->>'system_frozen')::numeric<>0 OR (s.value->>'withdrawal')::numeric<>0) THEN RAISE EXCEPTION 'bet must debit available points only'; END IF;
+ ELSE
+  IF (to_jsonb(NEW)-ARRAY['status','version','refund_entry_id','cancelled_at','cancel_reason']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['status','version','refund_entry_id','cancelled_at','cancel_reason']) OR NEW.version<>OLD.version+1 THEN RAISE EXCEPTION 'immutable bet identity or invalid version'; END IF;
+  IF OLD.status='placed' AND NEW.status='abnormal' THEN
+   IF NEW.refund_entry_id IS DISTINCT FROM OLD.refund_entry_id OR NEW.cancelled_at IS DISTINCT FROM OLD.cancelled_at OR NEW.cancel_reason IS DISTINCT FROM OLD.cancel_reason OR NOT EXISTS(SELECT 1 FROM bet_order_exceptions WHERE brand_id=NEW.brand_id AND order_id=NEW.id AND order_version=NEW.version) THEN RAISE EXCEPTION 'invalid exception classification'; END IF;
+   RETURN NEW;
+  END IF;
+  IF NOT (OLD.status IN ('placed','abnormal') AND NEW.status IN ('bet_cancelled','judged_cancelled')) THEN RAISE EXCEPTION 'invalid bet transition'; END IF;
+  IF NEW.status='judged_cancelled' AND NOT EXISTS(SELECT 1 FROM bet_order_judgments WHERE brand_id=NEW.brand_id AND order_id=NEW.id AND order_version=NEW.version AND reason=NEW.cancel_reason) AND NOT EXISTS(SELECT 1 FROM period_cancellation_targets t JOIN period_cancellations c ON c.id=t.cancellation_id JOIN periods phase ON phase.id=c.period_id WHERE t.brand_id=NEW.brand_id AND t.order_id=NEW.id AND t.state='pending' AND c.mode='judged_cancelled' AND c.state='processing' AND phase.status=c.mode AND phase.version=c.period_version) THEN RAISE EXCEPTION 'judged refund needs individual or period judgment witness'; END IF;
+  SELECT * INTO l FROM point_ledger_entries WHERE id=NEW.refund_entry_id;
+  IF l.entry_type<>'refund' OR l.reference_type<>'bet_order' OR l.reference_id IS DISTINCT FROM OLD.id OR l.reversal_of IS DISTINCT FROM OLD.debit_entry_id OR l.source_allocation<>OLD.deduction_allocation THEN RAISE EXCEPTION 'invalid bet refund evidence'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION guard_settlement_bet_update() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE l point_ledger_entries; c settlement_calculations; j settlement_jobs;
+BEGIN
+ IF (to_jsonb(NEW)-ARRAY['status','version','refund_entry_id','cancelled_at','cancel_reason','settlement_calculation_id','payout_entry_id','prize_points','settled_at']) IS DISTINCT FROM
+ (to_jsonb(OLD)-ARRAY['status','version','refund_entry_id','cancelled_at','cancel_reason','settlement_calculation_id','payout_entry_id','prize_points','settled_at']) OR NEW.version<>OLD.version+1 THEN RAISE EXCEPTION 'immutable bet identity or invalid version'; END IF;
+ IF OLD.status IN ('won','lost') AND NEW.status='placed' THEN
+  IF NEW.refund_entry_id IS DISTINCT FROM OLD.refund_entry_id OR NEW.cancelled_at IS DISTINCT FROM OLD.cancelled_at OR NEW.cancel_reason IS DISTINCT FROM OLD.cancel_reason OR NEW.settlement_calculation_id IS NOT NULL OR NEW.payout_entry_id IS NOT NULL OR NEW.prize_points<>0 OR NEW.settled_at IS NOT NULL OR NOT EXISTS(
+   SELECT 1 FROM draw_correction_targets t JOIN draw_corrections dc ON dc.id=t.correction_id JOIN periods p ON p.id=dc.period_id
+   WHERE t.brand_id=OLD.brand_id AND t.order_id=OLD.id AND t.old_order_version=OLD.version AND t.old_order_status=OLD.status AND t.old_calculation_id=OLD.settlement_calculation_id AND t.old_payout_entry_id IS NOT DISTINCT FROM OLD.payout_entry_id AND t.old_prize_points=OLD.prize_points AND t.state='reversed' AND t.reset_order_version=NEW.version AND dc.state='reversing' AND p.current_correction_id=dc.id AND p.draw_result_id=dc.previous_draw_result_id AND correction_reversal_is_applied(t) IS TRUE AND
+   (t.old_prize_points=0 OR EXISTS(SELECT 1 FROM point_ledger_entries le JOIN point_accounts pa ON pa.id=le.account_id WHERE le.id=t.reversal_entry_id AND pa.version=le.version AND (SELECT count(*) FROM point_buckets pb WHERE pb.brand_id=le.brand_id AND pb.account_id=le.account_id AND pb.points::numeric=(validated_point_snapshot(le.after_snapshot)->pb.source->>pb.state)::numeric)=16)))
+   THEN RAISE EXCEPTION 'order reset requires applied full reversal'; END IF;
+  RETURN NEW;
+ END IF;
+ IF OLD.status='placed' AND NEW.status IN ('won','lost') THEN
+  SELECT * INTO c FROM settlement_calculations WHERE brand_id=NEW.brand_id AND order_id=NEW.id AND id=NEW.settlement_calculation_id;
+  SELECT * INTO j FROM settlement_jobs WHERE id=c.job_id;
+  IF c.id IS NULL OR c.order_version<>OLD.version OR c.definition_hash<>OLD.definition_hash OR NEW.prize_points<>c.prize_points OR NEW.status<>(CASE WHEN c.won THEN 'won' ELSE 'lost' END) OR j.state<>'paying' OR NOT EXISTS(SELECT 1 FROM periods WHERE id=j.period_id AND status='settling' AND draw_result_id=j.draw_result_id) OR NEW.refund_entry_id IS NOT NULL OR NEW.cancelled_at IS NOT NULL OR NEW.cancel_reason<>'' THEN RAISE EXCEPTION 'invalid payout calculation evidence'; END IF;
+  IF c.prize_points>0 THEN
+   SELECT * INTO l FROM point_ledger_entries WHERE id=NEW.payout_entry_id;
+   IF l.id IS NULL OR l.brand_id<>NEW.brand_id OR l.member_id<>NEW.brand_member_id OR l.entry_type<>'prize' OR l.reference_type<>'settlement_calculation' OR l.reference_id IS DISTINCT FROM c.id OR l.actor_type<>'system' OR l.reversal_of IS NOT NULL OR l.source_allocation<>jsonb_build_array(jsonb_build_object('source','winning','state','available','points',c.prize_points::text)) OR
+   (l.delta_snapshot->'winning'->>'available')::numeric<>c.prize_points OR EXISTS(SELECT 1 FROM jsonb_each(l.delta_snapshot) s WHERE (s.value->>'manual_frozen')::numeric<>0 OR (s.value->>'system_frozen')::numeric<>0 OR (s.value->>'withdrawal')::numeric<>0 OR (s.key<>'winning' AND (s.value->>'available')::numeric<>0)) THEN RAISE EXCEPTION 'invalid winning ledger evidence'; END IF;
+  END IF;
+  RETURN NEW;
+ END IF;
+ IF NEW.settlement_calculation_id IS DISTINCT FROM OLD.settlement_calculation_id OR NEW.payout_entry_id IS DISTINCT FROM OLD.payout_entry_id OR NEW.prize_points<>OLD.prize_points OR NEW.settled_at IS DISTINCT FROM OLD.settled_at THEN RAISE EXCEPTION 'settlement fields are immutable outside payout'; END IF;
+ IF OLD.status='placed' AND NEW.status='abnormal' THEN
+  IF NEW.refund_entry_id IS DISTINCT FROM OLD.refund_entry_id OR NEW.cancelled_at IS DISTINCT FROM OLD.cancelled_at OR NEW.cancel_reason IS DISTINCT FROM OLD.cancel_reason OR NOT EXISTS(SELECT 1 FROM bet_order_exceptions WHERE brand_id=NEW.brand_id AND order_id=NEW.id AND order_version=NEW.version) THEN RAISE EXCEPTION 'invalid exception classification'; END IF;
+  RETURN NEW;
+ END IF;
+ IF NOT (OLD.status IN ('placed','abnormal') AND NEW.status IN ('bet_cancelled','judged_cancelled')) THEN RAISE EXCEPTION 'invalid bet transition'; END IF;
+ IF NEW.status='judged_cancelled' AND NOT EXISTS(SELECT 1 FROM bet_order_judgments WHERE brand_id=NEW.brand_id AND order_id=NEW.id AND order_version=NEW.version AND reason=NEW.cancel_reason) AND NOT EXISTS(SELECT 1 FROM period_cancellation_targets t JOIN period_cancellations pc ON pc.id=t.cancellation_id JOIN periods phase ON phase.id=pc.period_id WHERE t.brand_id=NEW.brand_id AND t.order_id=NEW.id AND t.state='pending' AND pc.mode='judged_cancelled' AND pc.state='processing' AND phase.status=pc.mode AND phase.version=pc.period_version) THEN RAISE EXCEPTION 'judged refund needs individual or period judgment witness'; END IF;
+ SELECT * INTO l FROM point_ledger_entries WHERE id=NEW.refund_entry_id;
+ IF l.entry_type<>'refund' OR l.reference_type<>'bet_order' OR l.reference_id IS DISTINCT FROM OLD.id OR l.reversal_of IS DISTINCT FROM OLD.debit_entry_id OR l.source_allocation<>OLD.deduction_allocation THEN RAISE EXCEPTION 'invalid bet refund evidence'; END IF;
+ RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION point_lottery_business_witnesses(b uuid, a uuid) RETURNS TABLE(family text, source_id uuid, ledger_id uuid, source_valid boolean, expected_entry_type text)
+    LANGUAGE sql STABLE
+    AS $$
+ WITH recharge_edges AS (
+  SELECT 'recharge'::text AS family,r.id AS source_id,r.ledger_entry_id AS ledger_id,'recharge'::text AS expected_entry_type,
+   COALESCE(r.state='confirmed' AND r.confirmed_at IS NOT NULL AND r.confirmed_by IS NOT NULL AND
+    pa.brand_member_id=r.member_id AND l.id IS NOT NULL AND l.brand_id=r.brand_id AND l.account_id=r.account_id AND l.member_id=r.member_id AND
+    l.entry_type='recharge' AND l.reference_type='recharge' AND l.reference_id=r.id AND l.operation_key='recharge-confirm:'||r.id::text AND
+    l.actor_type='admin' AND l.actor_id=r.confirmed_by AND l.reversal_of IS NULL AND
+    l.source_allocation=jsonb_build_array(jsonb_build_object('source','recharge','state','available','points',r.points::text)) AND
+    validated_point_snapshot(l.delta_snapshot)=lottery_business_allocation_delta(l.source_allocation,false) AND
+    lottery_business_ledger_applied(l,b,a) AND
+    (SELECT count(*)=1 FROM point_ledger_entries x WHERE x.brand_id=b AND x.entry_type='recharge' AND x.reference_type='recharge' AND x.reference_id=r.id AND x.id=r.ledger_entry_id) AND
+    EXISTS(SELECT 1 FROM audit_logs x WHERE x.brand_id=b AND x.actor_type='admin' AND x.actor_id=r.confirmed_by AND x.action='finance.recharge.confirm' AND
+     x.resource_type='recharge_order' AND x.resource_id=r.id AND x.request_id=l.request_id AND x.reason=l.reason AND x.after_json->>'id'=r.id::text AND
+     x.after_json->>'brand_id'=r.brand_id::text AND x.after_json->>'member_id'=r.member_id::text AND x.after_json->>'account_id'=r.account_id::text AND
+     x.after_json->>'confirmed_by'=r.confirmed_by::text AND x.after_json->>'state'='confirmed' AND x.after_json->>'points'=r.points::text AND
+     x.after_json->>'ledger_entry_id'=l.id::text),false) AS source_valid
+  FROM recharge_orders r
+  LEFT JOIN point_accounts pa ON pa.brand_id=r.brand_id AND pa.id=r.account_id
+  LEFT JOIN point_ledger_entries l ON l.id=r.ledger_entry_id
+  WHERE r.brand_id=b AND r.account_id=a AND r.state='confirmed'
+ ), bet_edges AS (
+  SELECT 'bet'::text AS family,o.id AS source_id,o.debit_entry_id AS ledger_id,'bet'::text AS expected_entry_type,
+   COALESCE(pa.brand_member_id=o.brand_member_id AND l.id IS NOT NULL AND l.brand_id=o.brand_id AND l.account_id=o.account_id AND l.member_id=o.brand_member_id AND
+    l.entry_type='bet' AND l.reference_type='bet_order' AND l.reference_id=o.id AND l.operation_key='bet:'||o.id::text AND
+    l.actor_type='user' AND l.actor_id=o.global_user_id AND l.reason='user confirmed lottery stake' AND l.reversal_of IS NULL AND
+    l.source_allocation=o.deduction_allocation AND
+    validated_point_snapshot(l.delta_snapshot)=lottery_business_allocation_delta(o.deduction_allocation,true) AND
+    CASE WHEN lottery_business_allocation_delta(o.deduction_allocation,true) IS NOT NULL THEN
+     (SELECT sum((x->>'points')::numeric) FROM jsonb_array_elements(o.deduction_allocation) x)
+     ELSE NULL END=o.total_points AND
+    lottery_business_ledger_applied(l,b,a) AND
+    (SELECT count(*)=1 FROM point_ledger_entries x WHERE x.brand_id=b AND x.entry_type='bet' AND x.reference_type='bet_order' AND x.reference_id=o.id AND x.id=o.debit_entry_id) AND
+    EXISTS(SELECT 1 FROM audit_logs x WHERE x.brand_id=b AND x.actor_type='user' AND x.actor_id=o.global_user_id AND x.action='bet.place' AND
+     x.resource_type='bet_order' AND x.resource_id=o.id AND x.request_id=l.request_id AND x.after_json->>'order_id'=o.id::text AND
+     x.after_json->>'points'=o.total_points::text AND x.after_json->>'debit_entry_id'=l.id::text),false) AS source_valid
+  FROM bet_orders o
+  LEFT JOIN point_accounts pa ON pa.brand_id=o.brand_id AND pa.id=o.account_id
+  LEFT JOIN point_ledger_entries l ON l.id=o.debit_entry_id
+  WHERE o.brand_id=b AND o.account_id=a
+ ), refund_edges AS (
+  SELECT 'refund'::text AS family,o.id AS source_id,o.refund_entry_id AS ledger_id,'refund'::text AS expected_entry_type,
+   COALESCE(o.status IN('bet_cancelled','judged_cancelled') AND o.refund_entry_id IS NOT NULL AND pa.brand_member_id=o.brand_member_id AND
+    debit.id IS NOT NULL AND l.id IS NOT NULL AND l.brand_id=o.brand_id AND l.account_id=o.account_id AND l.member_id=o.brand_member_id AND
+    l.entry_type='refund' AND l.reference_type='bet_order' AND l.reference_id=o.id AND l.operation_key='bet-refund:'||o.id::text AND
+    l.actor_type IN('user','admin') AND (l.actor_type<>'user' OR l.actor_id=o.global_user_id) AND l.reason=o.cancel_reason AND
+    l.reversal_of=o.debit_entry_id AND l.source_allocation=o.deduction_allocation AND l.source_allocation=debit.source_allocation AND
+    validated_point_snapshot(l.delta_snapshot)=lottery_business_negate_snapshot(debit.delta_snapshot) AND lottery_business_ledger_applied(l,b,a) AND
+    (SELECT count(*)=1 FROM point_ledger_entries x WHERE x.brand_id=b AND x.entry_type='refund' AND x.reference_type='bet_order' AND x.reference_id=o.id AND x.id=o.refund_entry_id) AND
+    EXISTS(SELECT 1 FROM audit_logs x WHERE x.brand_id=b AND x.actor_type=l.actor_type AND x.actor_id IS NOT DISTINCT FROM l.actor_id AND
+     x.action IN('bet.cancel','bet.judge_cancel') AND x.resource_type='bet_order' AND x.resource_id=o.id AND x.request_id=l.request_id AND
+     x.after_json->>'status'=o.status AND x.after_json->>'refund_entry_id'=l.id::text) AND
+    NOT EXISTS(SELECT 1 FROM period_cancellation_targets t LEFT JOIN period_cancellations c ON c.brand_id=t.brand_id AND c.period_id=t.period_id AND c.id=t.cancellation_id
+     WHERE t.brand_id=o.brand_id AND t.period_id=o.period_id AND t.order_id=o.id AND
+      (c.id IS NULL OR c.period_version<2 OR t.version<2 OR t.state NOT IN('refunded','already_refunded') OR
+       t.refund_entry_id IS DISTINCT FROM o.refund_entry_id)),false) AS source_valid
+  FROM bet_orders o
+  LEFT JOIN point_accounts pa ON pa.brand_id=o.brand_id AND pa.id=o.account_id
+  LEFT JOIN point_ledger_entries l ON l.id=o.refund_entry_id
+  LEFT JOIN point_ledger_entries debit ON debit.id=o.debit_entry_id
+  WHERE o.brand_id=b AND o.account_id=a AND (o.status IN('bet_cancelled','judged_cancelled') OR o.refund_entry_id IS NOT NULL)
+ ), prize_edges AS (
+  SELECT 'prize'::text AS family,coalesce(c.id,t.order_id) AS source_id,t.payout_entry_id AS ledger_id,'prize'::text AS expected_entry_type,
+   COALESCE(t.state='paid' AND c.prize_points>0 AND c.won AND j.id IS NOT NULL AND j.brand_id=t.brand_id AND j.period_id=t.period_id AND
+    c.brand_id=t.brand_id AND c.job_id=t.job_id AND c.period_id=t.period_id AND c.order_id=t.order_id AND c.id=t.calculation_id AND
+    c.definition_hash=o.definition_hash AND c.order_version>0 AND j.game_id=o.game_id AND
+    o.brand_id=t.brand_id AND o.id=t.order_id AND o.period_id=t.period_id AND pa.brand_member_id=o.brand_member_id AND
+    l.id IS NOT NULL AND l.brand_id=t.brand_id AND l.account_id=o.account_id AND l.member_id=o.brand_member_id AND
+    l.entry_type='prize' AND l.reference_type='settlement_calculation' AND l.reference_id=c.id AND l.operation_key='settlement-payout:'||c.id::text AND
+    l.actor_type='system' AND l.actor_id IS NULL AND l.reason='lottery winnings' AND l.request_id='settlement:'||j.id::text AND l.reversal_of IS NULL AND
+    l.source_allocation=jsonb_build_array(jsonb_build_object('source','winning','state','available','points',c.prize_points::text)) AND
+    validated_point_snapshot(l.delta_snapshot)=lottery_business_allocation_delta(l.source_allocation,false) AND lottery_business_ledger_applied(l,b,a) AND
+    (SELECT count(*)=1 FROM point_ledger_entries x WHERE x.brand_id=b AND x.entry_type='prize' AND x.reference_type='settlement_calculation' AND x.reference_id=c.id AND x.id=t.payout_entry_id),false) AS source_valid
+  FROM settlement_targets t
+  LEFT JOIN settlement_calculations c ON c.brand_id=t.brand_id AND c.job_id=t.job_id AND c.period_id=t.period_id AND c.order_id=t.order_id AND c.id=t.calculation_id
+  LEFT JOIN settlement_jobs j ON j.brand_id=t.brand_id AND j.period_id=t.period_id AND j.id=t.job_id
+  JOIN bet_orders o ON o.brand_id=t.brand_id AND o.period_id=t.period_id AND o.id=t.order_id
+  LEFT JOIN point_accounts pa ON pa.brand_id=o.brand_id AND pa.id=o.account_id
+  LEFT JOIN point_ledger_entries l ON l.id=t.payout_entry_id
+  WHERE t.brand_id=b AND o.account_id=a AND t.state='paid' AND (c.id IS NULL OR c.prize_points>0 OR t.payout_entry_id IS NOT NULL)
+ ), reversal_edges AS (
+  SELECT 'prize_reversal'::text AS family,t.order_id AS source_id,t.reversal_entry_id AS ledger_id,'prize_reversal'::text AS expected_entry_type,
+   COALESCE(t.state='reversed' AND t.old_prize_points>0 AND dc.id IS NOT NULL AND dc.brand_id=t.brand_id AND dc.period_id=t.period_id AND
+    c.id=t.old_calculation_id AND c.brand_id=t.brand_id AND c.period_id=t.period_id AND c.order_id=t.order_id AND c.prize_points=t.old_prize_points AND c.won AND
+    old_target.state='paid' AND old_target.calculation_id=t.old_calculation_id AND old_target.payout_entry_id=t.old_payout_entry_id AND
+    original.id IS NOT NULL AND original.entry_type='prize' AND original.reference_type='settlement_calculation' AND original.reference_id=c.id AND
+    original.operation_key='settlement-payout:'||c.id::text AND original.actor_type='system' AND original.actor_id IS NULL AND
+    original.source_allocation=jsonb_build_array(jsonb_build_object('source','winning','state','available','points',c.prize_points::text)) AND
+    validated_point_snapshot(original.delta_snapshot)=lottery_business_allocation_delta(original.source_allocation,false) AND
+    lottery_business_ledger_applied(original,b,a) AND
+    l.id IS NOT NULL AND lottery_business_ledger_applied(l,b,a) AND validated_point_snapshot(l.delta_snapshot)=lottery_business_negate_snapshot(original.delta_snapshot) AND
+    l.source_allocation=original.source_allocation AND correction_reversal_is_applied(t) IS TRUE AND
+    l.reference_id=dc.id AND l.reference_type='draw_correction' AND l.operation_key='draw-correction:'||dc.id::text||':'||t.order_id::text AND
+    l.actor_type='system' AND l.actor_id IS NULL AND l.request_id='correction:'||dc.id::text AND l.reason='corrected lottery result reverses original prize' AND
+    (SELECT count(*)=1 FROM point_ledger_entries x WHERE x.brand_id=b AND x.operation_key=l.operation_key AND x.id=t.reversal_entry_id),false) AS source_valid
+  FROM draw_correction_targets t
+  LEFT JOIN draw_corrections dc ON dc.brand_id=t.brand_id AND dc.period_id=t.period_id AND dc.id=t.correction_id
+  JOIN bet_orders o ON o.brand_id=t.brand_id AND o.period_id=t.period_id AND o.id=t.order_id
+  LEFT JOIN settlement_calculations c ON c.brand_id=t.brand_id AND c.period_id=t.period_id AND c.order_id=t.order_id AND c.id=t.old_calculation_id
+  LEFT JOIN settlement_targets old_target ON old_target.brand_id=t.brand_id AND old_target.period_id=t.period_id AND old_target.order_id=t.order_id AND old_target.calculation_id=t.old_calculation_id
+  LEFT JOIN point_ledger_entries original ON original.brand_id=t.brand_id AND original.id=t.old_payout_entry_id
+  LEFT JOIN point_ledger_entries l ON l.id=t.reversal_entry_id
+  WHERE t.brand_id=b AND o.account_id=a AND t.old_prize_points>0 AND (t.state='reversed' OR t.reversal_entry_id IS NOT NULL)
+ )
+ SELECT family,source_id,ledger_id,COALESCE(source_valid,false),expected_entry_type FROM recharge_edges
+ UNION ALL SELECT family,source_id,ledger_id,COALESCE(source_valid,false),expected_entry_type FROM bet_edges
+ UNION ALL SELECT family,source_id,ledger_id,COALESCE(source_valid,false),expected_entry_type FROM refund_edges
+ UNION ALL SELECT family,source_id,ledger_id,COALESCE(source_valid,false),expected_entry_type FROM prize_edges
+ UNION ALL SELECT family,source_id,ledger_id,COALESCE(source_valid,false),expected_entry_type FROM reversal_edges
+$$;
+
+DO $pin$ DECLARE app_schema text:=current_schema(); f record; BEGIN
+ FOR f IN SELECT p.oid::regprocedure AS signature FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=app_schema AND p.proname IN ('guard_bet_order','guard_settlement_bet_update','point_lottery_business_witnesses') LOOP
+  EXECUTE format('ALTER FUNCTION %s SET search_path TO pg_catalog, %I, pg_temp',f.signature,app_schema);
+ END LOOP;
+END $pin$;
+
+-- 0030_pin_schema_function_paths
+
+-- Functions added or replaced after the baseline retain the same schema-bound
+-- lookup order as baseline guards, including during pg_restore's empty path.
+DO $pin$ DECLARE app_schema text:=current_schema(); f record; BEGIN
+ FOR f IN SELECT p.oid::regprocedure AS signature FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=app_schema LOOP
+  EXECUTE format('ALTER FUNCTION %s SET search_path TO pg_catalog, %I, pg_temp',f.signature,app_schema);
+ END LOOP;
+END $pin$;
+
+-- 0031_configured_rules
+
+-- Schema-v2 publications are immutable, and never reinterpret existing orders.
+CREATE TABLE configured_rule_versions (
+ id uuid PRIMARY KEY, game_id uuid NOT NULL REFERENCES platform_games(id), revision bigint NOT NULL DEFAULT 1,
+ snapshot jsonb NOT NULL, snapshot_hash text NOT NULL, cases jsonb NOT NULL,
+ status text NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','validated','submitted','approved','rejected','published','retired')),
+ validation jsonb, created_by uuid NOT NULL REFERENCES admin_accounts(id), reviewed_by uuid REFERENCES admin_accounts(id),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(), UNIQUE(game_id,id)
+);
+CREATE TABLE configured_rule_heads (
+ game_id uuid PRIMARY KEY REFERENCES platform_games(id), version_id uuid NOT NULL,
+ FOREIGN KEY(game_id,version_id) REFERENCES configured_rule_versions(game_id,id)
+);
+CREATE TABLE configured_sales (
+ brand_id uuid NOT NULL, game_id uuid NOT NULL, version bigint NOT NULL, rule_id uuid NOT NULL,
+ enabled boolean NOT NULL, prices jsonb NOT NULL, min_points bigint NOT NULL CHECK(min_points>0),
+ max_points bigint NOT NULL CHECK(max_points>=min_points), max_period_points bigint NOT NULL CHECK(max_period_points>=max_points),
+ max_user_period_points bigint NOT NULL CHECK(max_user_period_points>=max_points),
+ PRIMARY KEY(brand_id,game_id), FOREIGN KEY(brand_id,game_id) REFERENCES brand_platform_games(brand_id,game_id),
+ FOREIGN KEY(game_id,rule_id) REFERENCES configured_rule_versions(game_id,id)
+);
+CREATE TABLE configured_orders (
+ id uuid PRIMARY KEY, brand_id uuid NOT NULL, member_id uuid NOT NULL, user_id uuid NOT NULL,
+ game_id uuid NOT NULL, period_id uuid NOT NULL, rule_id uuid NOT NULL, sales_version bigint NOT NULL,
+ snapshot jsonb NOT NULL, quote jsonb NOT NULL, sales_snapshot jsonb NOT NULL, total_points bigint NOT NULL CHECK(total_points>0),
+ allocation jsonb NOT NULL, debit_entry_id uuid NOT NULL REFERENCES point_ledger_entries(id),
+ payout_entry_id uuid REFERENCES point_ledger_entries(id), refund_entry_id uuid REFERENCES point_ledger_entries(id),
+ result jsonb, status text NOT NULL DEFAULT 'placed' CHECK(status IN('placed','settled')),
+ placed_at timestamptz NOT NULL DEFAULT clock_timestamp(), settled_at timestamptz,
+ FOREIGN KEY(brand_id,member_id,user_id) REFERENCES brand_members(brand_id,id,global_user_id),
+ FOREIGN KEY(brand_id,game_id) REFERENCES brand_platform_games(brand_id,game_id),
+ FOREIGN KEY(game_id,period_id) REFERENCES platform_game_periods(game_id,id),
+ FOREIGN KEY(game_id,rule_id) REFERENCES configured_rule_versions(game_id,id),
+ CHECK((status='placed' AND result IS NULL AND settled_at IS NULL) OR (status='settled' AND result IS NOT NULL AND settled_at IS NOT NULL))
+);
+CREATE INDEX configured_orders_pending ON configured_orders(period_id,id) WHERE status='placed';
+CREATE INDEX configured_orders_member ON configured_orders(brand_id,member_id,placed_at DESC,id);
+CREATE FUNCTION guard_configured_rule() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Rule evidence cannot be deleted'; END IF;
+ IF NEW.game_id<>OLD.game_id OR NEW.id<>OLD.id OR NEW.created_by<>OLD.created_by OR NEW.created_at<>OLD.created_at OR NEW.revision<>OLD.revision+1 THEN RAISE EXCEPTION 'Rule identity or revision changed'; END IF;
+ IF OLD.status NOT IN('draft','validated','rejected') AND (NEW.snapshot,NEW.snapshot_hash,NEW.cases) IS DISTINCT FROM (OLD.snapshot,OLD.snapshot_hash,OLD.cases) THEN RAISE EXCEPTION 'Submitted rule content is immutable'; END IF;
+ IF NOT ((OLD.status IN('draft','validated','rejected') AND NEW.status IN('draft','validated')) OR
+  (OLD.status='validated' AND NEW.status='submitted') OR (OLD.status='submitted' AND NEW.status IN('approved','rejected')) OR
+  (OLD.status='approved' AND NEW.status='published') OR (OLD.status='published' AND NEW.status='retired')) THEN RAISE EXCEPTION 'Invalid rule transition'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER configured_rule_guard BEFORE UPDATE OR DELETE ON configured_rule_versions FOR EACH ROW EXECUTE FUNCTION guard_configured_rule();
+CREATE FUNCTION guard_configured_order() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE d point_ledger_entries; l point_ledger_entries;
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Orders cannot be deleted'; END IF;
+ SELECT * INTO d FROM point_ledger_entries WHERE id=NEW.debit_entry_id;
+ IF d.brand_id IS DISTINCT FROM NEW.brand_id OR d.member_id IS DISTINCT FROM NEW.member_id OR d.entry_type<>'bet' OR d.reference_type<>'configured_order' OR d.reference_id<>NEW.id OR d.operation_key<>'configured-bet:'||NEW.id::text OR d.source_allocation IS DISTINCT FROM NEW.allocation THEN RAISE EXCEPTION 'Debit evidence mismatch'; END IF;
+ IF (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(NEW.allocation) v) IS DISTINCT FROM NEW.total_points::numeric OR (NEW.quote->>'bet_points')::numeric IS DISTINCT FROM NEW.total_points::numeric THEN RAISE EXCEPTION 'Stake mismatch'; END IF;
+ IF TG_OP='INSERT' THEN
+  IF NEW.status<>'placed' OR NOT shared_game_accepts(NEW.brand_id,NEW.game_id) OR NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND game_id=NEW.game_id AND result IS NULL AND bet_start_at<=clock_timestamp() AND bet_end_at>clock_timestamp()) THEN RAISE EXCEPTION 'Betting closed'; END IF;
+ ELSE
+  IF OLD.status<>'placed' OR NEW.status<>'settled' OR
+   (NEW.id,NEW.brand_id,NEW.member_id,NEW.user_id,NEW.game_id,NEW.period_id,NEW.rule_id,NEW.sales_version,NEW.snapshot,NEW.quote,NEW.sales_snapshot,NEW.total_points,NEW.allocation,NEW.debit_entry_id,NEW.placed_at) IS DISTINCT FROM
+   (OLD.id,OLD.brand_id,OLD.member_id,OLD.user_id,OLD.game_id,OLD.period_id,OLD.rule_id,OLD.sales_version,OLD.snapshot,OLD.quote,OLD.sales_snapshot,OLD.total_points,OLD.allocation,OLD.debit_entry_id,OLD.placed_at) THEN RAISE EXCEPTION 'Purchase snapshot is immutable'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND result IS NOT NULL) OR (NEW.result->>'effective_points')::numeric+(NEW.result->>'refund_points')::numeric<>NEW.total_points THEN RAISE EXCEPTION 'Settlement evidence mismatch'; END IF;
+  FOR l IN SELECT * FROM point_ledger_entries WHERE id IN(NEW.payout_entry_id,NEW.refund_entry_id) LOOP
+   IF l.brand_id<>NEW.brand_id OR l.member_id<>NEW.member_id OR l.account_id<>d.account_id OR l.reference_type<>'configured_order' OR l.reference_id<>NEW.id THEN RAISE EXCEPTION 'Credit scope mismatch'; END IF;
+  END LOOP;
+  IF (NEW.result->>'prize_points')::bigint>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.payout_entry_id AND entry_type='prize' AND operation_key='configured-prize:'||NEW.id::text AND source_allocation=jsonb_build_array(jsonb_build_object('source','winning','state','available','points',NEW.result->>'prize_points'))) THEN RAISE EXCEPTION 'Prize mismatch'; END IF;
+  IF (NEW.result->>'refund_points')::bigint>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.refund_entry_id AND entry_type='refund' AND operation_key='configured-refund:'||NEW.id::text AND (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(source_allocation) v)=(NEW.result->>'refund_points')::numeric AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(source_allocation) r WHERE (r->>'points')::numeric>coalesce((SELECT (a->>'points')::numeric FROM jsonb_array_elements(NEW.allocation) a WHERE a->>'source'=r->>'source'),0))) THEN RAISE EXCEPTION 'Refund mismatch'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER configured_order_guard BEFORE INSERT OR UPDATE OR DELETE ON configured_orders FOR EACH ROW EXECUTE FUNCTION guard_configured_order();
+
+CREATE FUNCTION point_configured_business_witnesses(b uuid,a uuid)
+RETURNS TABLE(family text,source_id uuid,ledger_id uuid,source_valid boolean,expected_entry_type text)
+LANGUAGE sql STABLE AS $$
+ SELECT e.kind,o.id,e.ledger,
+ COALESCE(l.brand_id=o.brand_id AND l.member_id=o.member_id AND l.account_id=a AND
+ l.reference_type='configured_order' AND l.reference_id=o.id AND l.entry_type=e.kind AND
+ l.operation_key='configured-'||e.operation||':'||o.id::text AND l.reversal_of IS NULL AND
+ lottery_business_ledger_applied(l,b,a) AND
+ validated_point_snapshot(l.delta_snapshot)=lottery_business_allocation_delta(l.source_allocation,e.kind='bet') AND
+ (SELECT sum((x->>'points')::numeric) FROM jsonb_array_elements(l.source_allocation) x)=e.points AND
+ CASE WHEN e.kind='bet' THEN l.source_allocation=o.allocation AND l.actor_type='user' AND l.actor_id=o.user_id
+ ELSE o.status='settled' AND l.actor_type='system' AND l.actor_id IS NULL END AND
+ EXISTS(SELECT 1 FROM audit_logs q WHERE q.brand_id=b AND q.resource_type='configured_order' AND q.resource_id=o.id AND
+ q.action=CASE WHEN e.kind='bet' THEN 'configured.place' ELSE 'configured.settle' END AND q.request_id=l.request_id),false),e.kind
+ FROM configured_orders o
+ JOIN point_accounts pa ON pa.brand_id=o.brand_id AND pa.brand_member_id=o.member_id
+ CROSS JOIN LATERAL (VALUES ('bet'::text,o.debit_entry_id,o.total_points,'bet'::text),
+ ('prize',o.payout_entry_id,coalesce((o.result->>'prize_points')::bigint,0),'prize'),('refund',o.refund_entry_id,coalesce((o.result->>'refund_points')::bigint,0),'refund')) e(kind,ledger,points,operation)
+ LEFT JOIN point_ledger_entries l ON l.id=e.ledger
+ WHERE o.brand_id=b AND pa.id=a AND e.points>0
+$$;
+
+
+CREATE OR REPLACE FUNCTION point_business_preview(b uuid, account uuid) RETURNS jsonb
+    LANGUAGE sql STABLE
+    AS $$
+ WITH scope AS MATERIALIZED (
+  SELECT id,brand_member_id,version FROM point_accounts WHERE brand_id=b AND id=account
+ ), ledgers AS MATERIALIZED (
+  SELECT l.*,point_business_family(l.entry_type) AS family FROM point_ledger_entries l
+  JOIN scope s ON s.id=l.account_id WHERE l.brand_id=b
+ ), witnesses AS MATERIALIZED (
+  SELECT * FROM point_lottery_business_witnesses(b,account)
+  UNION ALL SELECT * FROM point_mark_six_business_witnesses(b,account)
+  UNION ALL SELECT * FROM point_canada_business_witnesses(b,account)
+  UNION ALL SELECT * FROM point_configured_business_witnesses(b,account)
+  UNION ALL SELECT * FROM point_finance_business_witnesses(b,account)
+  UNION ALL
+  SELECT 'manual',l.id,l.id,
+   (SELECT count(*)=1 FROM audit_logs a
+    WHERE a.brand_id=b AND a.actor_type=l.actor_type AND a.actor_id IS NOT DISTINCT FROM l.actor_id
+     AND a.action='points.'||l.entry_type AND a.resource_type='point_account' AND a.resource_id=account
+     AND a.reason=l.reason AND a.request_id=l.request_id
+     AND a.after_json->>'ledger_entry_id'=l.id::text
+     AND a.before_json=l.before_snapshot AND a.after_json=jsonb_build_object('ledger_entry_id',l.id,'version',l.version,'balance',l.after_snapshot)),
+   l.entry_type FROM ledgers l WHERE l.family='manual'
+ ), problems AS MATERIALIZED (
+  SELECT l.family,'UNSUPPORTED_LEDGER_TYPE'::text AS code,l.entry_type,l.id AS ledger_id,
+   'ledger'::text AS resource_type,l.id AS resource_id FROM ledgers l WHERE l.family='unknown'
+  UNION ALL
+  SELECT l.family,'INVALID_BUSINESS_BINDING',l.entry_type,l.id,'ledger',l.id FROM ledgers l
+   WHERE l.family<>'manual' AND (SELECT count(*) FROM audit_logs a
+    WHERE a.brand_id=b AND a.actor_type=l.actor_type AND a.actor_id IS NOT DISTINCT FROM l.actor_id
+     AND a.action='points.'||l.entry_type AND a.resource_type='point_account' AND a.resource_id=account
+     AND a.reason=l.reason AND a.request_id=l.request_id AND a.after_json->>'ledger_entry_id'=l.id::text
+     AND a.before_json=l.before_snapshot AND a.after_json=jsonb_build_object('ledger_entry_id',l.id,'version',l.version,'balance',l.after_snapshot))<>1
+  UNION ALL
+  SELECT l.family,'MISSING_BUSINESS_RECORD',l.entry_type,l.id,'ledger',l.id FROM ledgers l
+   WHERE l.family NOT IN('unknown','manual') AND NOT EXISTS(SELECT 1 FROM witnesses w WHERE w.ledger_id=l.id)
+  UNION ALL
+  SELECT w.family,'MISSING_LEDGER_ENTRY',w.expected_entry_type,w.ledger_id,w.family,w.source_id FROM witnesses w
+   WHERE w.ledger_id IS NULL OR NOT EXISTS(SELECT 1 FROM ledgers l WHERE l.id=w.ledger_id)
+  UNION ALL
+  SELECT w.family,CASE WHEN w.family='manual' THEN 'INVALID_MANUAL_AUDIT' ELSE 'INVALID_BUSINESS_BINDING' END,
+   w.expected_entry_type,w.ledger_id,w.family,w.source_id FROM witnesses w
+   WHERE w.ledger_id IS NOT NULL AND w.source_valid IS DISTINCT FROM true AND EXISTS(SELECT 1 FROM ledgers l WHERE l.id=w.ledger_id)
+  UNION ALL
+  SELECT l.family,'DUPLICATE_BUSINESS_BINDING',l.entry_type,l.id,'ledger',l.id FROM ledgers l
+   WHERE (SELECT count(*) FROM witnesses w WHERE w.ledger_id=l.id)>1
+ ), families AS (
+  SELECT unnest(ARRAY['bet','commission','commission_adjustment','commission_correction','manual','prize','prize_reversal','recharge','refund','reward','unknown','withdrawal']) AS family
+ ), coverage AS (
+  SELECT f.family,(SELECT count(*)::text FROM ledgers l WHERE l.family=f.family) AS ledger_entry_count,
+   (SELECT count(*)::text FROM witnesses w WHERE w.family=f.family) AS business_reference_count,
+   (SELECT count(*)::text FROM problems p WHERE p.family=f.family) AS issue_count FROM families f
+ ), limited AS (
+  SELECT code,entry_type,ledger_id AS ledger_entry_id,resource_type,resource_id FROM problems
+  ORDER BY code COLLATE "C",resource_type COLLATE "C",coalesce(resource_id::text,''),coalesce(ledger_id::text,''),entry_type COLLATE "C" LIMIT 100
+ ), material AS (
+  SELECT jsonb_build_object('brand_id',b,'account_id',account,'account_version',(SELECT version FROM scope),
+   'ledgers',coalesce((SELECT jsonb_agg(to_jsonb(l) ORDER BY version,id) FROM ledgers l),'[]'::jsonb),
+   'witnesses',coalesce((SELECT jsonb_agg(to_jsonb(w) ORDER BY family COLLATE "C",source_id,ledger_id,expected_entry_type COLLATE "C") FROM witnesses w),'[]'::jsonb),
+   'problems',coalesce((SELECT jsonb_agg(to_jsonb(p) ORDER BY code COLLATE "C",resource_type COLLATE "C",resource_id,ledger_id,entry_type COLLATE "C") FROM problems p),'[]'::jsonb)) AS data
+ )
+ SELECT jsonb_build_object('account_id',s.id,'member_id',s.brand_member_id,'account_version',s.version,
+  'ledger_entry_count',(SELECT count(*)::text FROM ledgers),'business_reference_count',(SELECT count(*)::text FROM witnesses),
+  'issue_count',(SELECT count(*)::text FROM problems),'issues_truncated',(SELECT count(*)>100 FROM problems),
+  'consistent',NOT EXISTS(SELECT 1 FROM problems),'fingerprint',encode(sha256(convert_to(material.data::text,'UTF8')),'hex'),
+  'issues',coalesce((SELECT jsonb_agg(to_jsonb(x) ORDER BY code COLLATE "C",resource_type COLLATE "C",coalesce(resource_id::text,''),coalesce(ledger_entry_id::text,''),entry_type COLLATE "C") FROM limited x),'[]'::jsonb),
+  'coverage',(SELECT jsonb_agg(to_jsonb(c) ORDER BY family COLLATE "C") FROM coverage c))
+ FROM scope s CROSS JOIN material
+$$;
+
+-- Functions added or replaced after the baseline retain the same schema-bound
+-- lookup order as baseline guards, including during pg_restore's empty path.
+DO $pin$ DECLARE app_schema text:=current_schema(); f record; BEGIN
+ FOR f IN SELECT p.oid::regprocedure AS signature FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=app_schema LOOP
+  EXECUTE format('ALTER FUNCTION %s SET search_path TO pg_catalog, %I, pg_temp',f.signature,app_schema);
+ END LOOP;
+END $pin$;
+
+-- 0032_platform_draw_sources
+
+CREATE TABLE platform_draw_sources (
+ id uuid PRIMARY KEY, game_id uuid NOT NULL REFERENCES platform_games(id),
+ name text NOT NULL CHECK(length(btrim(name)) BETWEEN 1 AND 120),
+ revision bigint NOT NULL CHECK(revision>0), plan jsonb NOT NULL CHECK(jsonb_typeof(plan)='object'),
+ created_by uuid NOT NULL REFERENCES admin_accounts(id), updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ UNIQUE(game_id,id), UNIQUE(game_id,name)
+);
+CREATE TABLE platform_draw_source_activations (
+ game_id uuid NOT NULL, automation_version bigint NOT NULL,
+ source_id uuid NOT NULL, source_revision bigint NOT NULL CHECK(source_revision>0),
+ PRIMARY KEY(game_id,automation_version),
+ FOREIGN KEY(game_id,automation_version) REFERENCES platform_automation_versions(game_id,version),
+ FOREIGN KEY(game_id,source_id) REFERENCES platform_draw_sources(game_id,id)
+);
+CREATE TRIGGER immutable_draw_source_activation BEFORE UPDATE OR DELETE ON platform_draw_source_activations
+ FOR EACH ROW EXECUTE FUNCTION reject_immutable_change();
+-- Existing current plans become explicit named sources during migration.
+INSERT INTO platform_draw_sources(id,game_id,name,revision,plan,created_by)
+SELECT gen_random_uuid(),v.game_id,left(v.source_url,120),1,
+ jsonb_build_object('source_type',v.source_type,'version',0,'enabled',v.enabled,'anchor_draw_at',v.anchor_draw_at,
+ 'anchor_period_no',v.anchor_period_no,'interval_seconds',v.interval_seconds,'close_before_seconds',v.close_before_seconds,
+ 'source_url',v.source_url,'credential_ref',v.credential_ref),v.created_by
+FROM platform_automation_settings s JOIN platform_automation_versions v USING(game_id,version);
+INSERT INTO platform_draw_source_activations(game_id,automation_version,source_id,source_revision)
+SELECT s.game_id,s.version,d.id,d.revision FROM platform_automation_settings s JOIN platform_draw_sources d USING(game_id);
+
+-- 0033_configurable_draw_feed
+
+ALTER TABLE platform_automation_versions ADD COLUMN mapping jsonb;
+ALTER TABLE platform_automation_versions DROP CONSTRAINT platform_automation_versions_source_type_check;
+ALTER TABLE platform_automation_versions ADD CHECK(source_type IN ('interval_json','hk_marksix_6hch','mapped'));
+ALTER TABLE platform_automation_versions DROP CONSTRAINT platform_automation_versions_check;
+ALTER TABLE platform_automation_versions ADD CHECK (
+ (source_type='interval_json' AND anchor_draw_at IS NOT NULL AND anchor_period_no IS NOT NULL AND interval_seconds IS NOT NULL AND close_before_seconds>=0 AND close_before_seconds<interval_seconds)
+ OR (source_type='hk_marksix_6hch' AND anchor_draw_at IS NULL AND anchor_period_no IS NULL AND interval_seconds IS NULL AND close_before_seconds BETWEEN 0 AND 86400 AND credential_ref='')
+ OR (source_type='mapped' AND mapping IS NOT NULL AND jsonb_typeof(mapping)='object' AND (
+  (mapping->>'schedule'='interval' AND anchor_draw_at IS NOT NULL AND anchor_period_no IS NOT NULL AND interval_seconds IS NOT NULL AND close_before_seconds>=0 AND close_before_seconds<interval_seconds)
+  OR (mapping->>'schedule'='source' AND anchor_draw_at IS NULL AND anchor_period_no IS NULL AND interval_seconds IS NULL AND close_before_seconds BETWEEN 0 AND 86400)
+ ))
+);
+-- Frozen published versions remain immutable. Saved definitions are explicitly
+-- converted to mappings; selecting one still requires a new activation.
+UPDATE platform_draw_sources SET revision=revision+1,updated_at=clock_timestamp(),plan=jsonb_set(jsonb_set(plan,'{source_type}','"mapped"'),'{mapping}',
+ CASE WHEN plan->>'source_type'='interval_json' THEN
+ '{"format":"json","schedule":"interval","time_format":"rfc3339","time_layout":"","timezone":"","period":{"path":"/period_no","attribute":""},"draw_time":{"path":"/drawn_at","attribute":""},"regular":{"path":"/result/regular","attribute":"","separator":"","offset":0,"count":6},"special":{"path":"/result/special","attribute":"","separator":"","offset":0,"count":1},"digits":null,"next_period":null,"next_draw_time":null,"complete":null,"period_query":"period_no","game_query":"game_code"}'::jsonb
+ ELSE
+ '{"format":"json","schedule":"source","time_format":"custom","time_layout":"2006-01-02 15:04:05","timezone":"Asia/Hong_Kong","period":{"path":"/result/data/preDrawIssue","attribute":""},"draw_time":{"path":"/result/data/preDrawTime","attribute":""},"regular":{"path":"/result/data/preDrawCode","attribute":"","separator":",","offset":0,"count":6},"special":{"path":"/result/data/preDrawCode","attribute":"","separator":",","offset":6,"count":1},"digits":null,"next_period":{"path":"/result/data/drawIssue","attribute":""},"next_draw_time":{"path":"/result/data/drawTime","attribute":""},"complete":{"path":"/result/data/type","attribute":"","equals":"8"},"period_query":"","game_query":""}'::jsonb END)
+WHERE plan->>'source_type' IN ('interval_json','hk_marksix_6hch');
+-- Replace interval number mappings with the configured model's scopes.
+UPDATE platform_draw_sources d SET plan=jsonb_set(d.plan,'{mapping}',d.plan->'mapping' || jsonb_build_object(
+ 'regular',CASE WHEN (g.model->>'regular_count')::int>0 THEN jsonb_build_object('path','/result/regular','attribute','','separator','','offset',0,'count',(g.model->>'regular_count')::int) ELSE 'null'::jsonb END,
+ 'special',CASE WHEN (g.model->>'special_count')::int>0 THEN jsonb_build_object('path','/result/special','attribute','','separator','','offset',0,'count',(g.model->>'special_count')::int) ELSE 'null'::jsonb END,
+ 'digits',CASE WHEN (g.model->>'length')::int>0 THEN jsonb_build_object('path','/result/digits','attribute','','separator','','offset',0,'count',(g.model->>'length')::int) ELSE 'null'::jsonb END))
+FROM platform_games g WHERE d.game_id=g.id AND d.plan->'mapping'->>'schedule'='interval';
+
+-- 0034_configured_funding
+
+-- Funding is selected by the frozen rule configuration, never a game name.
+-- Existing purchases, sales snapshots and ledger entries are not rewritten.
+ALTER TABLE configured_orders ADD COLUMN loss_entry_id uuid REFERENCES point_ledger_entries(id);
+
+CREATE FUNCTION configured_funding_delta(v jsonb, from_state text, to_state text) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE expected jsonb:=point_zero_snapshot(); item jsonb; src text; amount text;
+BEGIN
+ FOR item IN SELECT value FROM jsonb_array_elements(v) LOOP
+  src:=item->>'source'; amount:=item->>'points';
+  IF from_state<>'' THEN expected:=jsonb_set(expected,ARRAY[src,from_state],to_jsonb(('-'||amount)::text),false); END IF;
+  IF to_state<>'' THEN expected:=jsonb_set(expected,ARRAY[src,to_state],to_jsonb(amount),false); END IF;
+ END LOOP;
+ RETURN expected;
+END $$;
+
+CREATE OR REPLACE FUNCTION guard_configured_order() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE d point_ledger_entries; credit point_ledger_entries; reserved boolean; funding numeric;
+ consumed numeric; refund numeric; prize numeric; effective numeric; frozen_state text;
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Orders cannot be deleted'; END IF;
+ reserved:=coalesce(NEW.snapshot->'catalog'->>'funding','')='reserve';
+ frozen_state:=CASE WHEN reserved THEN 'system_frozen' ELSE '' END;
+ funding:=CASE WHEN reserved THEN (NEW.quote->>'reserved_points')::numeric ELSE NEW.total_points::numeric END;
+ IF funding IS NULL OR funding<=0 OR funding>9223372036854775807 THEN RAISE EXCEPTION 'Invalid configured funding'; END IF;
+ SELECT * INTO d FROM point_ledger_entries WHERE id=NEW.debit_entry_id;
+ IF d.brand_id IS DISTINCT FROM NEW.brand_id OR d.member_id IS DISTINCT FROM NEW.member_id OR d.entry_type<>'bet' OR d.reference_type<>'configured_order' OR d.reference_id<>NEW.id OR d.operation_key<>'configured-bet:'||NEW.id::text OR d.source_allocation IS DISTINCT FROM NEW.allocation OR
+  validated_point_snapshot(d.delta_snapshot) IS DISTINCT FROM configured_funding_delta(NEW.allocation,'available',frozen_state)
+ THEN RAISE EXCEPTION 'Debit evidence mismatch'; END IF;
+ IF (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(NEW.allocation) v) IS DISTINCT FROM funding OR
+  (NEW.quote->>'bet_points')::numeric IS DISTINCT FROM NEW.total_points::numeric OR
+  (SELECT sum((v->>'stake')::numeric) FROM jsonb_array_elements(NEW.quote->'lines') v) IS DISTINCT FROM NEW.total_points::numeric
+ THEN RAISE EXCEPTION 'Stake mismatch'; END IF;
+ IF TG_OP='INSERT' THEN
+  IF NEW.status<>'placed' OR NEW.loss_entry_id IS NOT NULL OR NEW.payout_entry_id IS NOT NULL OR NEW.refund_entry_id IS NOT NULL OR
+   NOT shared_game_accepts(NEW.brand_id,NEW.game_id) OR NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND game_id=NEW.game_id AND result IS NULL AND bet_start_at<=clock_timestamp() AND bet_end_at>clock_timestamp())
+  THEN RAISE EXCEPTION 'Betting closed'; END IF;
+ ELSE
+  IF OLD.status<>'placed' OR NEW.status<>'settled' OR
+   (NEW.id,NEW.brand_id,NEW.member_id,NEW.user_id,NEW.game_id,NEW.period_id,NEW.rule_id,NEW.sales_version,NEW.snapshot,NEW.quote,NEW.sales_snapshot,NEW.total_points,NEW.allocation,NEW.debit_entry_id,NEW.placed_at) IS DISTINCT FROM
+   (OLD.id,OLD.brand_id,OLD.member_id,OLD.user_id,OLD.game_id,OLD.period_id,OLD.rule_id,OLD.sales_version,OLD.snapshot,OLD.quote,OLD.sales_snapshot,OLD.total_points,OLD.allocation,OLD.debit_entry_id,OLD.placed_at)
+  THEN RAISE EXCEPTION 'Purchase snapshot is immutable'; END IF;
+  consumed:=CASE WHEN reserved THEN (NEW.result->>'consumed_points')::numeric ELSE 0 END;
+  -- Consumed points may be zero and omitted by the result DTO.
+  IF reserved AND NOT (NEW.result ? 'consumed_points') THEN consumed:=0; END IF;
+  refund:=(NEW.result->>'refund_points')::numeric; prize:=(NEW.result->>'prize_points')::numeric; effective:=(NEW.result->>'effective_points')::numeric;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND result IS NOT NULL) OR
+   (NEW.result->>'bet_points')::numeric IS DISTINCT FROM NEW.total_points::numeric OR
+   refund IS NULL OR refund<0 OR refund>funding OR prize IS NULL OR prize<0 OR effective IS NULL OR effective<0 OR effective>NEW.total_points OR
+   (reserved AND (consumed IS NULL OR consumed<0 OR consumed+refund<>funding)) OR
+   (SELECT sum((v->>'refund_points')::numeric) FROM jsonb_array_elements(NEW.result->'lines') v) IS DISTINCT FROM refund OR
+   (SELECT sum((v->>'effective_points')::numeric) FROM jsonb_array_elements(NEW.result->'lines') v) IS DISTINCT FROM effective
+  THEN RAISE EXCEPTION 'Settlement evidence mismatch'; END IF;
+  IF (prize=0) IS DISTINCT FROM (NEW.payout_entry_id IS NULL) OR (refund=0) IS DISTINCT FROM (NEW.refund_entry_id IS NULL) OR
+   (NOT reserved AND NEW.loss_entry_id IS NOT NULL) OR (reserved AND (consumed=0) IS DISTINCT FROM (NEW.loss_entry_id IS NULL))
+  THEN RAISE EXCEPTION 'Unexpected settlement ledger'; END IF;
+  FOR credit IN SELECT * FROM point_ledger_entries WHERE id IN(NEW.payout_entry_id,NEW.refund_entry_id,NEW.loss_entry_id) LOOP
+   IF credit.brand_id IS DISTINCT FROM NEW.brand_id OR credit.member_id IS DISTINCT FROM NEW.member_id OR credit.account_id IS DISTINCT FROM d.account_id OR credit.reference_type<>'configured_order' OR credit.reference_id<>NEW.id
+   THEN RAISE EXCEPTION 'Credit scope mismatch'; END IF;
+  END LOOP;
+  IF prize>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.payout_entry_id AND entry_type='prize' AND operation_key='configured-prize:'||NEW.id::text AND
+   source_allocation=jsonb_build_array(jsonb_build_object('source','winning','state','available','points',NEW.result->>'prize_points')) AND validated_point_snapshot(delta_snapshot)=configured_funding_delta(source_allocation,'','available'))
+  THEN RAISE EXCEPTION 'Prize mismatch'; END IF;
+  IF refund>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.refund_entry_id AND entry_type='refund' AND operation_key='configured-refund:'||NEW.id::text AND
+   validated_point_snapshot(delta_snapshot)=configured_funding_delta(source_allocation,frozen_state,'available') AND
+   (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(source_allocation) v)=refund AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(source_allocation) r WHERE (r->>'points')::numeric>coalesce((SELECT (a->>'points')::numeric FROM jsonb_array_elements(NEW.allocation) a WHERE a->>'source'=r->>'source'),0)))
+  THEN RAISE EXCEPTION 'Refund mismatch'; END IF;
+  IF reserved AND consumed>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.loss_entry_id AND entry_type='bet' AND operation_key='configured-loss:'||NEW.id::text AND
+   validated_point_snapshot(delta_snapshot)=configured_funding_delta(source_allocation,'system_frozen','') AND
+   (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(source_allocation) v)=consumed)
+  THEN RAISE EXCEPTION 'Reserved loss mismatch'; END IF;
+  IF reserved AND EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.allocation) a WHERE (a->>'points')::numeric IS DISTINCT FROM
+   (SELECT coalesce(sum((x->>'points')::numeric),0) FROM point_ledger_entries l CROSS JOIN LATERAL jsonb_array_elements(l.source_allocation) x WHERE l.id IN(NEW.loss_entry_id,NEW.refund_entry_id) AND x->>'source'=a->>'source'))
+  THEN RAISE EXCEPTION 'Reserved source allocation mismatch'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION point_configured_business_witnesses(b uuid,a uuid)
+RETURNS TABLE(family text,source_id uuid,ledger_id uuid,source_valid boolean,expected_entry_type text)
+LANGUAGE sql STABLE AS $$
+ SELECT e.kind,o.id,e.ledger,
+ COALESCE(l.brand_id=o.brand_id AND l.member_id=o.member_id AND l.account_id=a AND
+ l.reference_type='configured_order' AND l.reference_id=o.id AND l.entry_type=e.kind AND
+ l.operation_key='configured-'||e.operation||':'||o.id::text AND l.reversal_of IS NULL AND
+ lottery_business_ledger_applied(l,b,a) AND
+ validated_point_snapshot(l.delta_snapshot)=configured_funding_delta(l.source_allocation,
+  CASE WHEN e.operation='bet' THEN 'available' WHEN e.operation='loss' OR e.operation='refund' AND o.snapshot->'catalog'->>'funding'='reserve' THEN 'system_frozen' ELSE '' END,
+  CASE WHEN e.operation='bet' AND o.snapshot->'catalog'->>'funding'='reserve' THEN 'system_frozen' WHEN e.operation IN('prize','refund') THEN 'available' ELSE '' END) AND
+ (SELECT sum((x->>'points')::numeric) FROM jsonb_array_elements(l.source_allocation) x)=e.points AND
+ CASE WHEN e.operation='bet' THEN l.source_allocation=o.allocation AND l.actor_type='user' AND l.actor_id=o.user_id
+ ELSE o.status='settled' AND l.actor_type='system' AND l.actor_id IS NULL END AND
+ EXISTS(SELECT 1 FROM audit_logs q WHERE q.brand_id=b AND q.resource_type='configured_order' AND q.resource_id=o.id AND
+ q.action=CASE WHEN e.operation='bet' THEN 'configured.place' ELSE 'configured.settle' END AND q.request_id=l.request_id),false),e.kind
+ FROM configured_orders o
+ JOIN point_accounts pa ON pa.brand_id=o.brand_id AND pa.brand_member_id=o.member_id
+ CROSS JOIN LATERAL (VALUES
+ ('bet'::text,o.debit_entry_id,CASE WHEN o.snapshot->'catalog'->>'funding'='reserve' THEN (o.quote->>'reserved_points')::bigint ELSE o.total_points END,'bet'::text),
+ ('bet',o.loss_entry_id,CASE WHEN o.snapshot->'catalog'->>'funding'='reserve' THEN coalesce((o.result->>'consumed_points')::bigint,0) ELSE 0 END,'loss'),
+ ('prize',o.payout_entry_id,coalesce((o.result->>'prize_points')::bigint,0),'prize'),
+ ('refund',o.refund_entry_id,coalesce((o.result->>'refund_points')::bigint,0),'refund')) e(kind,ledger,points,operation)
+ LEFT JOIN point_ledger_entries l ON l.id=e.ledger
+ WHERE o.brand_id=b AND pa.id=a AND e.points>0
+$$;
+
+DO $$ DECLARE f regprocedure; BEGIN
+ FOR f IN SELECT p.oid::regprocedure FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname=current_schema() AND p.proname IN('configured_funding_delta','guard_configured_order','point_configured_business_witnesses')
+ LOOP EXECUTE format('ALTER FUNCTION %s SET search_path = pg_catalog, %I, pg_temp', f, current_schema()); END LOOP;
+END $$;
+
+-- 0035_configured_funding_guard_alias
+
+-- Distinguish the settlement table alias from the PL/pgSQL record variable l.
+-- Keep the original funding migration and all financial evidence unchanged.
+CREATE OR REPLACE FUNCTION guard_configured_order() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE d point_ledger_entries; l point_ledger_entries; reserved boolean; funding numeric;
+ consumed numeric; refund numeric; prize numeric; effective numeric; frozen_state text;
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Orders cannot be deleted'; END IF;
+ reserved:=coalesce(NEW.snapshot->'catalog'->>'funding','')='reserve';
+ frozen_state:=CASE WHEN reserved THEN 'system_frozen' ELSE '' END;
+ funding:=CASE WHEN reserved THEN (NEW.quote->>'reserved_points')::numeric ELSE NEW.total_points::numeric END;
+ IF funding IS NULL OR funding<=0 OR funding>9223372036854775807 THEN RAISE EXCEPTION 'Invalid configured funding'; END IF;
+ SELECT * INTO d FROM point_ledger_entries WHERE id=NEW.debit_entry_id;
+ IF d.brand_id IS DISTINCT FROM NEW.brand_id OR d.member_id IS DISTINCT FROM NEW.member_id OR d.entry_type<>'bet' OR d.reference_type<>'configured_order' OR d.reference_id<>NEW.id OR d.operation_key<>'configured-bet:'||NEW.id::text OR d.source_allocation IS DISTINCT FROM NEW.allocation OR
+  validated_point_snapshot(d.delta_snapshot) IS DISTINCT FROM configured_funding_delta(NEW.allocation,'available',frozen_state)
+ THEN RAISE EXCEPTION 'Debit evidence mismatch'; END IF;
+ IF (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(NEW.allocation) v) IS DISTINCT FROM funding OR
+  (NEW.quote->>'bet_points')::numeric IS DISTINCT FROM NEW.total_points::numeric OR
+  (SELECT sum((v->>'stake')::numeric) FROM jsonb_array_elements(NEW.quote->'lines') v) IS DISTINCT FROM NEW.total_points::numeric
+ THEN RAISE EXCEPTION 'Stake mismatch'; END IF;
+ IF TG_OP='INSERT' THEN
+  IF NEW.status<>'placed' OR NEW.loss_entry_id IS NOT NULL OR NEW.payout_entry_id IS NOT NULL OR NEW.refund_entry_id IS NOT NULL OR
+   NOT shared_game_accepts(NEW.brand_id,NEW.game_id) OR NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND game_id=NEW.game_id AND result IS NULL AND bet_start_at<=clock_timestamp() AND bet_end_at>clock_timestamp())
+  THEN RAISE EXCEPTION 'Betting closed'; END IF;
+ ELSE
+  IF OLD.status<>'placed' OR NEW.status<>'settled' OR
+   (NEW.id,NEW.brand_id,NEW.member_id,NEW.user_id,NEW.game_id,NEW.period_id,NEW.rule_id,NEW.sales_version,NEW.snapshot,NEW.quote,NEW.sales_snapshot,NEW.total_points,NEW.allocation,NEW.debit_entry_id,NEW.placed_at) IS DISTINCT FROM
+   (OLD.id,OLD.brand_id,OLD.member_id,OLD.user_id,OLD.game_id,OLD.period_id,OLD.rule_id,OLD.sales_version,OLD.snapshot,OLD.quote,OLD.sales_snapshot,OLD.total_points,OLD.allocation,OLD.debit_entry_id,OLD.placed_at)
+  THEN RAISE EXCEPTION 'Purchase snapshot is immutable'; END IF;
+  consumed:=CASE WHEN reserved THEN (NEW.result->>'consumed_points')::numeric ELSE 0 END;
+  -- Consumed points may be zero and omitted by the result DTO.
+  IF reserved AND NOT (NEW.result ? 'consumed_points') THEN consumed:=0; END IF;
+  refund:=(NEW.result->>'refund_points')::numeric; prize:=(NEW.result->>'prize_points')::numeric; effective:=(NEW.result->>'effective_points')::numeric;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND result IS NOT NULL) OR
+   (NEW.result->>'bet_points')::numeric IS DISTINCT FROM NEW.total_points::numeric OR
+   refund IS NULL OR refund<0 OR refund>funding OR prize IS NULL OR prize<0 OR effective IS NULL OR effective<0 OR effective>NEW.total_points OR
+   (reserved AND (consumed<0 OR consumed+refund<>funding)) OR
+   (SELECT sum((v->>'refund_points')::numeric) FROM jsonb_array_elements(NEW.result->'lines') v) IS DISTINCT FROM refund OR
+   (SELECT sum((v->>'effective_points')::numeric) FROM jsonb_array_elements(NEW.result->'lines') v) IS DISTINCT FROM effective
+  THEN RAISE EXCEPTION 'Settlement evidence mismatch'; END IF;
+  IF (prize=0) IS DISTINCT FROM (NEW.payout_entry_id IS NULL) OR (refund=0) IS DISTINCT FROM (NEW.refund_entry_id IS NULL) OR
+   (NOT reserved AND NEW.loss_entry_id IS NOT NULL) OR (reserved AND (consumed=0) IS DISTINCT FROM (NEW.loss_entry_id IS NULL))
+  THEN RAISE EXCEPTION 'Unexpected settlement ledger'; END IF;
+  FOR l IN SELECT * FROM point_ledger_entries WHERE id IN(NEW.payout_entry_id,NEW.refund_entry_id,NEW.loss_entry_id) LOOP
+   IF l.brand_id IS DISTINCT FROM NEW.brand_id OR l.member_id IS DISTINCT FROM NEW.member_id OR l.account_id IS DISTINCT FROM d.account_id OR l.reference_type<>'configured_order' OR l.reference_id<>NEW.id
+   THEN RAISE EXCEPTION 'Credit scope mismatch'; END IF;
+  END LOOP;
+  IF prize>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.payout_entry_id AND entry_type='prize' AND operation_key='configured-prize:'||NEW.id::text AND
+   source_allocation=jsonb_build_array(jsonb_build_object('source','winning','state','available','points',NEW.result->>'prize_points')) AND validated_point_snapshot(delta_snapshot)=configured_funding_delta(source_allocation,'','available'))
+  THEN RAISE EXCEPTION 'Prize mismatch'; END IF;
+  IF refund>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.refund_entry_id AND entry_type='refund' AND operation_key='configured-refund:'||NEW.id::text AND
+   validated_point_snapshot(delta_snapshot)=configured_funding_delta(source_allocation,frozen_state,'available') AND
+   (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(source_allocation) v)=refund AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(source_allocation) r WHERE (r->>'points')::numeric>coalesce((SELECT (a->>'points')::numeric FROM jsonb_array_elements(NEW.allocation) a WHERE a->>'source'=r->>'source'),0)))
+  THEN RAISE EXCEPTION 'Refund mismatch'; END IF;
+  IF reserved AND consumed>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.loss_entry_id AND entry_type='bet' AND operation_key='configured-loss:'||NEW.id::text AND
+   validated_point_snapshot(delta_snapshot)=configured_funding_delta(source_allocation,'system_frozen','') AND
+   (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(source_allocation) v)=consumed)
+  THEN RAISE EXCEPTION 'Reserved loss mismatch'; END IF;
+  IF reserved AND EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.allocation) a WHERE (a->>'points')::numeric IS DISTINCT FROM
+   (SELECT coalesce(sum((x->>'points')::numeric),0) FROM point_ledger_entries settlement_ledger CROSS JOIN LATERAL jsonb_array_elements(settlement_ledger.source_allocation) x WHERE settlement_ledger.id IN(NEW.loss_entry_id,NEW.refund_entry_id) AND x->>'source'=a->>'source'))
+  THEN RAISE EXCEPTION 'Reserved source allocation mismatch'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+
+DO $$ BEGIN
+ EXECUTE format('ALTER FUNCTION guard_configured_order() SET search_path = pg_catalog, %I, pg_temp', current_schema());
+END $$;
+
+-- 0036_configured_funding_evidence_guard
+
+-- Preserve explicit missing-loss rejection from the concurrent funding guard update.
+-- Apply it forward without changing previously installed migration checksums.
+CREATE OR REPLACE FUNCTION guard_configured_order() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE d point_ledger_entries; credit point_ledger_entries; reserved boolean; funding numeric;
+ consumed numeric; refund numeric; prize numeric; effective numeric; frozen_state text;
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Orders cannot be deleted'; END IF;
+ reserved:=coalesce(NEW.snapshot->'catalog'->>'funding','')='reserve';
+ frozen_state:=CASE WHEN reserved THEN 'system_frozen' ELSE '' END;
+ funding:=CASE WHEN reserved THEN (NEW.quote->>'reserved_points')::numeric ELSE NEW.total_points::numeric END;
+ IF funding IS NULL OR funding<=0 OR funding>9223372036854775807 THEN RAISE EXCEPTION 'Invalid configured funding'; END IF;
+ SELECT * INTO d FROM point_ledger_entries WHERE id=NEW.debit_entry_id;
+ IF d.brand_id IS DISTINCT FROM NEW.brand_id OR d.member_id IS DISTINCT FROM NEW.member_id OR d.entry_type<>'bet' OR d.reference_type<>'configured_order' OR d.reference_id<>NEW.id OR d.operation_key<>'configured-bet:'||NEW.id::text OR d.source_allocation IS DISTINCT FROM NEW.allocation OR
+  validated_point_snapshot(d.delta_snapshot) IS DISTINCT FROM configured_funding_delta(NEW.allocation,'available',frozen_state)
+ THEN RAISE EXCEPTION 'Debit evidence mismatch'; END IF;
+ IF (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(NEW.allocation) v) IS DISTINCT FROM funding OR
+  (NEW.quote->>'bet_points')::numeric IS DISTINCT FROM NEW.total_points::numeric OR
+  (SELECT sum((v->>'stake')::numeric) FROM jsonb_array_elements(NEW.quote->'lines') v) IS DISTINCT FROM NEW.total_points::numeric
+ THEN RAISE EXCEPTION 'Stake mismatch'; END IF;
+ IF TG_OP='INSERT' THEN
+  IF NEW.status<>'placed' OR NEW.loss_entry_id IS NOT NULL OR NEW.payout_entry_id IS NOT NULL OR NEW.refund_entry_id IS NOT NULL OR
+   NOT shared_game_accepts(NEW.brand_id,NEW.game_id) OR NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND game_id=NEW.game_id AND result IS NULL AND bet_start_at<=clock_timestamp() AND bet_end_at>clock_timestamp())
+  THEN RAISE EXCEPTION 'Betting closed'; END IF;
+ ELSE
+  IF OLD.status<>'placed' OR NEW.status<>'settled' OR
+   (NEW.id,NEW.brand_id,NEW.member_id,NEW.user_id,NEW.game_id,NEW.period_id,NEW.rule_id,NEW.sales_version,NEW.snapshot,NEW.quote,NEW.sales_snapshot,NEW.total_points,NEW.allocation,NEW.debit_entry_id,NEW.placed_at) IS DISTINCT FROM
+   (OLD.id,OLD.brand_id,OLD.member_id,OLD.user_id,OLD.game_id,OLD.period_id,OLD.rule_id,OLD.sales_version,OLD.snapshot,OLD.quote,OLD.sales_snapshot,OLD.total_points,OLD.allocation,OLD.debit_entry_id,OLD.placed_at)
+  THEN RAISE EXCEPTION 'Purchase snapshot is immutable'; END IF;
+  consumed:=CASE WHEN reserved THEN (NEW.result->>'consumed_points')::numeric ELSE 0 END;
+  -- Consumed points may be zero and omitted by the result DTO.
+  IF reserved AND NOT (NEW.result ? 'consumed_points') THEN consumed:=0; END IF;
+  refund:=(NEW.result->>'refund_points')::numeric; prize:=(NEW.result->>'prize_points')::numeric; effective:=(NEW.result->>'effective_points')::numeric;
+  IF NOT EXISTS(SELECT 1 FROM platform_game_periods WHERE id=NEW.period_id AND result IS NOT NULL) OR
+   (NEW.result->>'bet_points')::numeric IS DISTINCT FROM NEW.total_points::numeric OR
+   refund IS NULL OR refund<0 OR refund>funding OR prize IS NULL OR prize<0 OR effective IS NULL OR effective<0 OR effective>NEW.total_points OR
+   (reserved AND (consumed IS NULL OR consumed<0 OR consumed+refund<>funding)) OR
+   (SELECT sum((v->>'refund_points')::numeric) FROM jsonb_array_elements(NEW.result->'lines') v) IS DISTINCT FROM refund OR
+   (SELECT sum((v->>'effective_points')::numeric) FROM jsonb_array_elements(NEW.result->'lines') v) IS DISTINCT FROM effective
+  THEN RAISE EXCEPTION 'Settlement evidence mismatch'; END IF;
+  IF (prize=0) IS DISTINCT FROM (NEW.payout_entry_id IS NULL) OR (refund=0) IS DISTINCT FROM (NEW.refund_entry_id IS NULL) OR
+   (NOT reserved AND NEW.loss_entry_id IS NOT NULL) OR (reserved AND (consumed=0) IS DISTINCT FROM (NEW.loss_entry_id IS NULL))
+  THEN RAISE EXCEPTION 'Unexpected settlement ledger'; END IF;
+  FOR credit IN SELECT * FROM point_ledger_entries WHERE id IN(NEW.payout_entry_id,NEW.refund_entry_id,NEW.loss_entry_id) LOOP
+   IF credit.brand_id IS DISTINCT FROM NEW.brand_id OR credit.member_id IS DISTINCT FROM NEW.member_id OR credit.account_id IS DISTINCT FROM d.account_id OR credit.reference_type<>'configured_order' OR credit.reference_id<>NEW.id
+   THEN RAISE EXCEPTION 'Credit scope mismatch'; END IF;
+  END LOOP;
+  IF prize>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.payout_entry_id AND entry_type='prize' AND operation_key='configured-prize:'||NEW.id::text AND
+   source_allocation=jsonb_build_array(jsonb_build_object('source','winning','state','available','points',NEW.result->>'prize_points')) AND validated_point_snapshot(delta_snapshot)=configured_funding_delta(source_allocation,'','available'))
+  THEN RAISE EXCEPTION 'Prize mismatch'; END IF;
+  IF refund>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.refund_entry_id AND entry_type='refund' AND operation_key='configured-refund:'||NEW.id::text AND
+   validated_point_snapshot(delta_snapshot)=configured_funding_delta(source_allocation,frozen_state,'available') AND
+   (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(source_allocation) v)=refund AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(source_allocation) r WHERE (r->>'points')::numeric>coalesce((SELECT (a->>'points')::numeric FROM jsonb_array_elements(NEW.allocation) a WHERE a->>'source'=r->>'source'),0)))
+  THEN RAISE EXCEPTION 'Refund mismatch'; END IF;
+  IF reserved AND consumed>0 AND NOT EXISTS(SELECT 1 FROM point_ledger_entries WHERE id=NEW.loss_entry_id AND entry_type='bet' AND operation_key='configured-loss:'||NEW.id::text AND
+   validated_point_snapshot(delta_snapshot)=configured_funding_delta(source_allocation,'system_frozen','') AND
+   (SELECT sum((v->>'points')::numeric) FROM jsonb_array_elements(source_allocation) v)=consumed)
+  THEN RAISE EXCEPTION 'Reserved loss mismatch'; END IF;
+  IF reserved AND EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.allocation) a WHERE (a->>'points')::numeric IS DISTINCT FROM
+   (SELECT coalesce(sum((x->>'points')::numeric),0) FROM point_ledger_entries settlement_ledger CROSS JOIN LATERAL jsonb_array_elements(settlement_ledger.source_allocation) x WHERE settlement_ledger.id IN(NEW.loss_entry_id,NEW.refund_entry_id) AND x->>'source'=a->>'source'))
+  THEN RAISE EXCEPTION 'Reserved source allocation mismatch'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+
+DO $$ BEGIN
+ EXECUTE format('ALTER FUNCTION guard_configured_order() SET search_path = pg_catalog, %I, pg_temp', current_schema());
+END $$;
+
+-- 0037_notification_i18n_references
+
+-- System notification copy lives in the shared frontend i18n catalog.
+-- Keep only its translation identity in default templates and materialized messages.
+CREATE OR REPLACE FUNCTION notification_template_defaults() RETURNS jsonb
+ LANGUAGE sql IMMUTABLE SET search_path FROM CURRENT
+ AS $$ SELECT jsonb_object_agg(k,jsonb_build_object('i18n_key',k,'i18n_version',1))
+ FROM unnest(ARRAY['member.joined','recharge.confirmed','reward.order.granted','reward.order.revocation_pending','reward.order.revoked','bet.order.placed','bet.order.cancelled','bet.order.judged_cancelled','bet.order.abnormal','bet.order.won','bet.order.prize_reversed','commission.paid','commission.corrected','draw.result.published','draw.result.corrected','commission.adjusted','withdrawal.order.reviewing','withdrawal.order.processing','withdrawal.order.paid','withdrawal.order.rejected','withdrawal.order.failed','withdrawal.order.cancelled']) AS keys(k) $$;
+
+CREATE OR REPLACE FUNCTION valid_notification_template_content(k text, v jsonb) RETURNS boolean
+    LANGUAGE plpgsql IMMUTABLE SET search_path FROM CURRENT
+    AS $$
+DECLARE lang text; c jsonb; title text; body text; rest text;
+BEGIN
+ IF jsonb_typeof(v)='object' AND (v ? 'i18n_key' OR v ? 'i18n_version') THEN
+  RETURN (SELECT count(*) FROM jsonb_object_keys(v))=2
+   AND v=notification_template_defaults()->k;
+ END IF;
+ IF NOT(notification_template_defaults() ? k) OR jsonb_typeof(v)<>'object'
+ OR (SELECT count(*) FROM jsonb_object_keys(v))<>2 OR NOT(v ?& ARRAY['en','zh-CN']) THEN RETURN false; END IF;
+ FOREACH lang IN ARRAY ARRAY['en','zh-CN'] LOOP
+  c:=v->lang;
+  IF jsonb_typeof(c)<>'object' OR (SELECT count(*) FROM jsonb_object_keys(c))<>2
+  OR NOT(c ?& ARRAY['title','body']) OR jsonb_typeof(c->'title')<>'string' OR jsonb_typeof(c->'body')<>'string' THEN RETURN false; END IF;
+  title:=c->>'title'; body:=c->>'body';
+  IF title<>btrim(title) OR body<>btrim(body) OR octet_length(title) NOT BETWEEN 1 AND 120 OR octet_length(body) NOT BETWEEN 1 AND 1200
+  OR title ~ '[[:cntrl:]<>]' OR replace(replace(body,chr(10),''),chr(9),'') ~ '[[:cntrl:]<>]'
+  OR (title||body) ~* '(https?:|javascript:|data:|www[.])' THEN RETURN false; END IF;
+  rest:=replace(replace(title||body,'{points}',''),'{resource_id}','');
+  IF rest ~ '[{}]' THEN RETURN false; END IF;
+  IF k IN('draw.result.published','draw.result.corrected') THEN
+   IF position('{points}' IN title||body)>0 OR position('{resource_id}' IN body)=0 THEN RETURN false; END IF;
+  ELSIF (k='member.joined' AND position('{points}' IN title||body)>0)
+  OR (k<>'member.joined' AND position('{points}' IN body)=0) THEN RETURN false;
+  END IF;
+ END LOOP;
+ RETURN true;
+EXCEPTION WHEN OTHERS THEN RETURN false;
+END $$;
+
+-- Convert existing initial templates and their message references atomically.
+ALTER TABLE notification_templates DISABLE TRIGGER USER;
+ALTER TABLE notification_template_revisions DISABLE TRIGGER USER;
+ALTER TABLE notifications DISABLE TRIGGER USER;
+UPDATE notification_templates SET content=notification_template_defaults()->template_key WHERE version=1;
+UPDATE notification_template_revisions SET content=notification_template_defaults()->template_key WHERE version=1;
+UPDATE notifications SET content=notification_template_defaults()->template_key WHERE template_version=1;
+ALTER TABLE notification_templates ENABLE TRIGGER USER;
+ALTER TABLE notification_template_revisions ENABLE TRIGGER USER;
+ALTER TABLE notifications ENABLE TRIGGER USER;
+
+-- Platform overview: per-session activity is operational data, not financial history.
+CREATE TABLE session_activity (
+    session_id uuid PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    last_seen_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX session_activity_recent ON session_activity(last_seen_at);
+INSERT INTO permissions(key) VALUES('overview.view.platform');
+INSERT INTO role_permissions(role_id,permission_key)
+SELECT id,'overview.view.platform' FROM roles WHERE brand_id IS NULL AND is_bootstrap;
+
+-- Brand dashboard is authorized separately from cross-brand platform overview.
+INSERT INTO permissions(key) VALUES('overview.view.brand');
+INSERT INTO role_permissions(role_id,permission_key)
+SELECT id,'overview.view.brand' FROM roles WHERE brand_id IS NOT NULL AND is_bootstrap;
+
+-- Operator-friendly presentation assets and platform-owned security settings.
+CREATE TABLE brand_logo_assets (
+ id text PRIMARY KEY CHECK (id ~ '^[a-f0-9]{64}$'),
+ brand_id uuid NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+ media_type text NOT NULL CHECK (media_type IN ('image/png','image/jpeg')),
+ content bytea NOT NULL CHECK (octet_length(content) BETWEEN 1 AND 1048576),
+ created_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO permissions(key) VALUES ('compliance_policy.write.platform'),('compliance_check.run.platform');
+INSERT INTO role_permissions(role_id,permission_key)
+SELECT r.id,p.key FROM roles r CROSS JOIN permissions p
+WHERE r.is_bootstrap AND r.brand_id IS NULL AND p.key IN ('compliance_policy.write.platform','compliance_check.run.platform');
+
+
+-- Whole-line mode changes keep the current period untouched. Targets contain
+-- audited future revisions, and snapshots resolve them by the bet timestamp.
+CREATE TABLE agent_mode_changes (
+ id uuid PRIMARY KEY,
+ brand_id uuid NOT NULL REFERENCES brands(id),
+ root_id uuid NOT NULL,
+ mode text NOT NULL CHECK(mode IN ('loss','turnover')),
+ effective_at timestamptz NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ applied_at timestamptz,
+ UNIQUE(brand_id,id),
+ FOREIGN KEY(brand_id,root_id) REFERENCES agent_nodes(brand_id,id)
+);
+CREATE UNIQUE INDEX agent_mode_change_pending_root ON agent_mode_changes(brand_id,root_id) WHERE applied_at IS NULL;
+CREATE TABLE agent_mode_change_targets (
+ brand_id uuid NOT NULL,
+ change_id uuid NOT NULL,
+ agent_id uuid NOT NULL,
+ version bigint NOT NULL CHECK(version>1),
+ config jsonb NOT NULL CHECK(valid_agent_config(config,false)),
+ PRIMARY KEY(change_id,agent_id),
+ FOREIGN KEY(brand_id,change_id) REFERENCES agent_mode_changes(brand_id,id),
+ FOREIGN KEY(brand_id,agent_id,version) REFERENCES agent_config_revisions(brand_id,agent_id,version) DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE FUNCTION agent_nodes_at(b uuid, at_time timestamptz) RETURNS SETOF agent_nodes
+ LANGUAGE sql STABLE SET search_path FROM CURRENT AS $$
+ SELECT CASE WHEN t.agent_id IS NULL THEN n
+ ELSE jsonb_populate_record(n,jsonb_build_object('config',t.config,'version',t.version,'updated_at',c.effective_at)) END
+ FROM agent_nodes n
+ LEFT JOIN agent_mode_changes c ON c.brand_id=n.brand_id AND c.root_id=n.path[1] AND c.applied_at IS NULL AND c.effective_at<=at_time
+ LEFT JOIN agent_mode_change_targets t ON t.change_id=c.id AND t.agent_id=n.id
+ WHERE n.brand_id=b
+$$;
+
+CREATE FUNCTION agent_effective_mode_at_path(b uuid, p_path uuid[], override_id uuid, override_config jsonb, policy_mode text, at_time timestamptz) RETURNS text
+ LANGUAGE sql STABLE SET search_path FROM CURRENT AS $$
+ SELECT coalesce((SELECT CASE WHEN a.id=override_id THEN override_config->>'mode' ELSE a.config->>'mode' END
+ FROM agent_nodes_at(b,at_time) a WHERE a.id=ANY(p_path)
+ AND CASE WHEN a.id=override_id THEN override_config->'mode' ELSE a.config->'mode' END<>'null'::jsonb
+ ORDER BY depth DESC LIMIT 1),policy_mode)
+$$;
+CREATE OR REPLACE FUNCTION agent_effective_mode_for_path(p_brand uuid,p_path uuid[],p_override_id uuid,p_override_config jsonb,p_policy_mode text) RETURNS text
+ LANGUAGE sql STABLE SET search_path FROM CURRENT AS $$
+ SELECT agent_effective_mode_at_path(p_brand,p_path,p_override_id,p_override_config,p_policy_mode,statement_timestamp())
+$$;
+
+CREATE FUNCTION agent_pending_mode_change(b uuid, agent uuid) RETURNS jsonb
+ LANGUAGE sql STABLE SET search_path FROM CURRENT AS $$
+ SELECT jsonb_build_object('id',c.id,'root_id',c.root_id,'mode',c.mode,'ratio',t.config->>'ratio','effective_at',c.effective_at)
+ FROM agent_mode_changes c JOIN agent_mode_change_targets t ON t.change_id=c.id AND t.brand_id=c.brand_id
+ WHERE c.brand_id=b AND t.agent_id=agent AND c.applied_at IS NULL AND c.effective_at>statement_timestamp()
+$$;
+
+CREATE FUNCTION guard_agent_mode_change() RETURNS trigger LANGUAGE plpgsql SET search_path FROM CURRENT AS $$
+BEGIN
+ IF TG_OP='DELETE' OR (TG_OP='UPDATE' AND (OLD.applied_at IS NOT NULL OR NEW.applied_at IS NULL OR NEW.applied_at<OLD.effective_at OR (to_jsonb(NEW)-'applied_at')<>(to_jsonb(OLD)-'applied_at'))) THEN
+  RAISE EXCEPTION 'agent mode change immutable';
+ END IF;
+ IF NEW.applied_at IS NOT NULL AND EXISTS(SELECT 1 FROM agent_mode_change_targets t JOIN agent_nodes n ON n.brand_id=t.brand_id AND n.id=t.agent_id WHERE t.change_id=NEW.id AND (n.version<>t.version OR n.config<>t.config)) THEN RAISE EXCEPTION 'agent mode targets are not applied'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER guarded_agent_mode_change BEFORE UPDATE OR DELETE ON agent_mode_changes FOR EACH ROW EXECUTE FUNCTION guard_agent_mode_change();
+CREATE FUNCTION guard_agent_mode_target() RETURNS trigger LANGUAGE plpgsql SET search_path FROM CURRENT AS $$
+BEGIN
+ IF TG_OP<>'INSERT' OR NOT EXISTS(SELECT 1 FROM agent_mode_changes c JOIN agent_nodes n ON n.brand_id=c.brand_id AND n.path[1]=c.root_id
+ WHERE c.id=NEW.change_id AND c.brand_id=NEW.brand_id AND c.applied_at IS NULL AND c.effective_at>statement_timestamp()
+ AND n.id=NEW.agent_id AND NEW.version=n.version+1) THEN RAISE EXCEPTION 'agent mode target invalid or immutable'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER guarded_agent_mode_target BEFORE INSERT OR UPDATE OR DELETE ON agent_mode_change_targets FOR EACH ROW EXECUTE FUNCTION guard_agent_mode_target();
+
+CREATE FUNCTION validate_agent_mode_change() RETURNS trigger LANGUAGE plpgsql SET search_path FROM CURRENT AS $$
+DECLARE cap numeric; current_mode text; calendar jsonb; expected_at timestamptz;
+BEGIN
+ IF NEW.applied_at IS NOT NULL THEN RETURN NULL; END IF;
+ SELECT (p.config->>CASE WHEN NEW.mode='loss' THEN 'loss_ratio_cap' ELSE 'turnover_ratio_cap' END)::numeric,agent_effective_mode_for_path(n.brand_id,n.path,NULL,NULL,p.config->>'mode')
+ INTO cap,current_mode FROM agent_nodes n JOIN brand_agent_policies p ON p.brand_id=n.brand_id
+ WHERE n.brand_id=NEW.brand_id AND n.id=NEW.root_id AND n.parent_id IS NULL;
+ IF NOT FOUND OR current_mode=NEW.mode THEN RAISE EXCEPTION 'mode switch requires a level 1 agent and a different mode'; END IF;
+ SELECT config->'calendar' INTO calendar FROM brand_commission_policies WHERE brand_id=NEW.brand_id;
+ IF calendar IS NULL OR calendar='null'::jsonb THEN RAISE EXCEPTION 'commission calendar required'; END IF;
+ SELECT window_to INTO expected_at FROM commission_calendar_window(calendar,NEW.created_at);
+ IF NEW.effective_at IS DISTINCT FROM expected_at THEN RAISE EXCEPTION 'agent mode must start at next commission boundary'; END IF;
+ IF EXISTS(SELECT 1 FROM agent_nodes n LEFT JOIN agent_mode_change_targets t ON t.brand_id=n.brand_id AND t.change_id=NEW.id AND t.agent_id=n.id
+ WHERE n.brand_id=NEW.brand_id AND n.path[1]=NEW.root_id AND (t.agent_id IS NULL OR t.version<>n.version+1 OR
+ (t.config->>'ratio')::numeric>cap OR (n.parent_id IS NULL AND t.config->>'mode' IS DISTINCT FROM NEW.mode) OR
+ (n.parent_id IS NOT NULL AND t.config->'mode'<>'null'::jsonb) OR
+ (t.config-ARRAY['ratio','mode'])<>(n.config-ARRAY['ratio','mode']))) OR
+ EXISTS(SELECT 1 FROM agent_mode_change_targets t JOIN agent_nodes n ON n.brand_id=t.brand_id AND n.id=t.agent_id
+ JOIN agent_mode_change_targets parent ON parent.change_id=t.change_id AND parent.agent_id=n.parent_id
+ WHERE t.change_id=NEW.id AND (t.config->>'ratio')::numeric>(parent.config->>'ratio')::numeric) THEN
+ RAISE EXCEPTION 'agent mode change must include valid new ratios for the whole line'; END IF;
+ RETURN NULL;
+END $$;
+CREATE CONSTRAINT TRIGGER valid_agent_mode_change AFTER INSERT ON agent_mode_changes DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION validate_agent_mode_change();
+
+CREATE FUNCTION apply_due_agent_mode_changes(b uuid) RETURNS void LANGUAGE plpgsql SET search_path FROM CURRENT AS $$
+DECLARE c agent_mode_changes; t record;
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM agent_mode_changes WHERE brand_id=b AND applied_at IS NULL AND effective_at<=statement_timestamp()) THEN RETURN; END IF;
+ PERFORM 1 FROM brand_commission_policies WHERE brand_id=b FOR SHARE;
+ PERFORM 1 FROM brand_agent_policies WHERE brand_id=b FOR UPDATE;
+ FOR c IN SELECT * FROM agent_mode_changes WHERE brand_id=b AND applied_at IS NULL AND effective_at<=statement_timestamp() ORDER BY effective_at,id FOR UPDATE LOOP
+  FOR t IN SELECT targets.* FROM agent_mode_change_targets targets JOIN agent_nodes n ON n.brand_id=targets.brand_id AND n.id=targets.agent_id WHERE targets.change_id=c.id ORDER BY n.depth,n.id LOOP
+   UPDATE agent_nodes SET config=t.config,version=t.version WHERE brand_id=b AND id=t.agent_id AND version=t.version-1;
+   IF NOT FOUND THEN RAISE EXCEPTION 'scheduled agent configuration changed'; END IF;
+  END LOOP;
+  UPDATE agent_mode_changes SET applied_at=clock_timestamp() WHERE id=c.id;
+ END LOOP;
+END $$;
+
+CREATE FUNCTION guard_pending_agent_calendar() RETURNS trigger LANGUAGE plpgsql SET search_path FROM CURRENT AS $$
+BEGIN
+ IF NEW.config IS DISTINCT FROM OLD.config AND EXISTS(SELECT 1 FROM agent_mode_changes WHERE brand_id=NEW.brand_id AND applied_at IS NULL) THEN
+ RAISE EXCEPTION 'agent mode change must be applied before changing commission policy'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER pending_agent_calendar BEFORE UPDATE OF config ON brand_commission_policies FOR EACH ROW EXECUTE FUNCTION guard_pending_agent_calendar();
+CREATE TRIGGER pending_agent_policy BEFORE UPDATE OF config ON brand_agent_policies FOR EACH ROW EXECUTE FUNCTION guard_pending_agent_calendar();
+
+-- The financial calendar owns the cycle. The agency copy is derived snapshot
+-- metadata and changes atomically with the calendar, including its version.
+CREATE FUNCTION sync_agency_commission_cycle() RETURNS trigger
+ LANGUAGE plpgsql SET search_path FROM CURRENT AS $$
+DECLARE cycle text:=NEW.config->'calendar'->>'cycle';
+BEGIN
+ IF cycle IS NULL THEN RETURN NULL; END IF;
+ UPDATE brand_agent_policies
+ SET config=jsonb_set(config,'{cycle}',to_jsonb(cycle)),version=version+1
+ WHERE brand_id=NEW.brand_id AND config->>'cycle' IS DISTINCT FROM cycle;
+ RETURN NULL;
+END $$;
+CREATE TRIGGER sync_agency_commission_cycle AFTER INSERT OR UPDATE OF config ON brand_commission_policies
+ FOR EACH ROW EXECUTE FUNCTION sync_agency_commission_cycle();
+DO $pin$ BEGIN
+ EXECUTE format('ALTER FUNCTION sync_agency_commission_cycle() SET search_path TO pg_catalog, %I, pg_temp',current_schema());
+END $pin$;
+
+-- Independent agent credentials and sessions. Wallet ownership is shared by
+-- both identity kinds; the two login namespaces and balances remain separate.
+CREATE TABLE agent_accounts (
+ id uuid PRIMARY KEY, brand_id uuid NOT NULL REFERENCES brands(id),
+ username text NOT NULL CHECK(username ~ '^[a-z][a-z0-9_]{2,31}$'),
+ password_hash text NOT NULL, display_name text NOT NULL DEFAULT '',
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ UNIQUE(brand_id,id), UNIQUE(brand_id,username)
+);
+CREATE TABLE agent_sessions (
+ id uuid PRIMARY KEY, brand_id uuid NOT NULL, agent_account_id uuid NOT NULL,
+ token_hash bytea UNIQUE NOT NULL CHECK(octet_length(token_hash)=32),
+ expires_at timestamptz NOT NULL, revoked_at timestamptz,
+ last_seen_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ FOREIGN KEY(brand_id,agent_account_id) REFERENCES agent_accounts(brand_id,id)
+);
+CREATE UNIQUE INDEX agent_sessions_one_active ON agent_sessions(brand_id,agent_account_id) WHERE revoked_at IS NULL;
+CREATE TABLE wallet_owners (
+ brand_id uuid NOT NULL REFERENCES brands(id), id uuid NOT NULL, kind text NOT NULL CHECK(kind IN('member','agent')),
+ member_id uuid, agent_account_id uuid,
+ PRIMARY KEY(brand_id,id),
+ CHECK((kind='member' AND member_id IS NOT NULL AND member_id=id AND agent_account_id IS NULL) OR (kind='agent' AND agent_account_id IS NOT NULL AND agent_account_id=id AND member_id IS NULL)),
+ FOREIGN KEY(brand_id,member_id) REFERENCES brand_members(brand_id,id),
+ FOREIGN KEY(brand_id,agent_account_id) REFERENCES agent_accounts(brand_id,id)
+);
+INSERT INTO wallet_owners(brand_id,id,kind,member_id) SELECT brand_id,id,'member',id FROM brand_members;
+CREATE FUNCTION register_wallet_owner() RETURNS trigger LANGUAGE plpgsql SET search_path FROM CURRENT AS $$
+BEGIN
+ IF TG_TABLE_NAME='brand_members' THEN
+  INSERT INTO wallet_owners(brand_id,id,kind,member_id) VALUES(NEW.brand_id,NEW.id,'member',NEW.id);
+ ELSE
+  INSERT INTO wallet_owners(brand_id,id,kind,agent_account_id) VALUES(NEW.brand_id,NEW.id,'agent',NEW.id);
+ END IF;
+ RETURN NULL;
+END $$;
+CREATE TRIGGER register_member_wallet_owner AFTER INSERT ON brand_members FOR EACH ROW EXECUTE FUNCTION register_wallet_owner();
+CREATE TRIGGER register_agent_wallet_owner AFTER INSERT ON agent_accounts FOR EACH ROW EXECUTE FUNCTION register_wallet_owner();
+ALTER TABLE point_accounts DROP CONSTRAINT point_accounts_brand_id_brand_member_id_fkey;
+ALTER TABLE point_accounts ADD CONSTRAINT point_accounts_wallet_owner_fkey FOREIGN KEY(brand_id,brand_member_id) REFERENCES wallet_owners(brand_id,id);
+ALTER TABLE agent_nodes DROP CONSTRAINT agent_nodes_brand_id_member_id_fkey;
+ALTER TABLE agent_nodes ADD CONSTRAINT agent_nodes_account_fkey FOREIGN KEY(brand_id,member_id) REFERENCES agent_accounts(brand_id,id);
+ALTER TABLE join_codes DROP CONSTRAINT join_codes_brand_id_owner_member_id_fkey;
+ALTER TABLE join_codes ADD CONSTRAINT join_codes_owner_fkey FOREIGN KEY(brand_id,owner_member_id) REFERENCES wallet_owners(brand_id,id);
+ALTER TABLE notifications DROP CONSTRAINT notifications_brand_id_member_id_fkey;
+ALTER TABLE notifications ADD CONSTRAINT notifications_wallet_owner_fkey FOREIGN KEY(brand_id,member_id) REFERENCES wallet_owners(brand_id,id);
+ALTER TABLE commission_allocations DROP CONSTRAINT commission_allocations_brand_id_member_id_fkey;
+ALTER TABLE commission_allocations ADD CONSTRAINT commission_allocations_brand_id_member_id_fkey FOREIGN KEY(brand_id,member_id) REFERENCES agent_accounts(brand_id,id);
+ALTER TABLE commission_correction_balance_heads DROP CONSTRAINT commission_correction_balance_heads_brand_id_member_id_fkey;
+ALTER TABLE commission_correction_balance_heads ADD CONSTRAINT commission_correction_balance_heads_brand_id_member_id_fkey FOREIGN KEY(brand_id,member_id) REFERENCES agent_accounts(brand_id,id);
+ALTER TABLE commission_correction_execution_targets DROP CONSTRAINT commission_correction_execution_targets_brand_id_member_id_fkey;
+ALTER TABLE commission_correction_execution_targets ADD CONSTRAINT commission_correction_execution_targets_brand_id_member_id_fkey FOREIGN KEY(brand_id,member_id) REFERENCES agent_accounts(brand_id,id);
+ALTER TABLE commission_correction_plan_targets DROP CONSTRAINT commission_correction_plan_targets_brand_id_member_id_fkey;
+ALTER TABLE commission_correction_plan_targets ADD CONSTRAINT commission_correction_plan_targets_brand_id_member_id_fkey FOREIGN KEY(brand_id,member_id) REFERENCES agent_accounts(brand_id,id);
+ALTER TABLE commission_earnings DROP CONSTRAINT commission_earnings_brand_id_member_id_fkey;
+ALTER TABLE commission_earnings ADD CONSTRAINT commission_earnings_brand_id_member_id_fkey FOREIGN KEY(brand_id,member_id) REFERENCES agent_accounts(brand_id,id);
+ALTER TABLE commission_payment_targets DROP CONSTRAINT commission_payment_targets_brand_id_member_id_fkey;
+ALTER TABLE commission_payment_targets ADD CONSTRAINT commission_payment_targets_brand_id_member_id_fkey FOREIGN KEY(brand_id,member_id) REFERENCES agent_accounts(brand_id,id);
+ALTER TABLE audit_logs DROP CONSTRAINT audit_logs_actor_type_check;
+ALTER TABLE audit_logs ADD CONSTRAINT audit_logs_actor_type_check CHECK(actor_type IN('user','admin','agent','system'));
+ALTER TABLE agent_config_revisions DROP CONSTRAINT agent_config_revisions_actor_type_check;
+ALTER TABLE agent_config_revisions ADD CONSTRAINT agent_config_revisions_actor_type_check CHECK(actor_type IN('user','admin','agent','system'));
+
+DO $pin$ BEGIN EXECUTE format('ALTER FUNCTION register_wallet_owner() SET search_path TO pg_catalog, %I, pg_temp',current_schema()); END $pin$;
+
+ALTER TABLE agent_nodes DROP CONSTRAINT agent_nodes_created_by_fkey;
+CREATE FUNCTION guard_agent_creator() RETURNS trigger LANGUAGE plpgsql SET search_path FROM CURRENT AS $$
+BEGIN
+ IF EXISTS(SELECT 1 FROM admin_accounts WHERE id=NEW.created_by AND NOT is_super_admin) THEN RETURN NEW; END IF;
+ IF NOT EXISTS(SELECT 1 FROM agent_nodes p WHERE p.brand_id=NEW.brand_id AND p.id=NEW.parent_id AND p.member_id=NEW.created_by AND p.config->>'status'='active' AND p.config->'can_create_children'='true'::jsonb) THEN RAISE EXCEPTION 'agent creator is not authorized';END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER guard_agent_creator BEFORE INSERT ON agent_nodes FOR EACH ROW EXECUTE FUNCTION guard_agent_creator();
+CREATE FUNCTION ensure_agent_code(b uuid,a uuid) RETURNS uuid LANGUAGE plpgsql SET search_path FROM CURRENT AS $$
+DECLARE c join_codes; n agent_nodes; log_id uuid;
+BEGIN
+ SELECT * INTO n FROM agent_nodes WHERE brand_id=b AND id=a FOR SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'agent not found'; END IF;
+ SELECT * INTO c FROM join_codes WHERE brand_id=b AND agent_id=a ORDER BY created_at,id LIMIT 1;
+ IF FOUND THEN RETURN c.id;END IF;
+ INSERT INTO join_codes(id,brand_id,kind,code,owner_member_id,agent_id,status,created_by) VALUES(gen_random_uuid(),b,'agent',upper(substr(replace(gen_random_uuid()::text,'-',''),1,24)),n.member_id,n.id,CASE WHEN n.config->>'status'='active' THEN 'active' ELSE 'disabled' END,NULL) RETURNING * INTO c;
+ log_id:=gen_random_uuid();
+ INSERT INTO audit_logs(id,brand_id,actor_type,action,resource_type,resource_id,after_json,request_id) VALUES(log_id,b,'system','join_code.create','join_code',c.id,to_jsonb(c),'agent-code:'||n.id::text);
+ INSERT INTO join_code_revisions(id,brand_id,code_id,version,status,actor_id,reason,audit_log_id) VALUES(gen_random_uuid(),b,c.id,1,c.status,NULL,'',log_id);
+ RETURN c.id;
+END $$;
+DO $pin$ BEGIN
+ EXECUTE format('ALTER FUNCTION guard_agent_creator() SET search_path TO pg_catalog, %I, pg_temp',current_schema());
+ EXECUTE format('ALTER FUNCTION ensure_agent_code(uuid,uuid) SET search_path TO pg_catalog, %I, pg_temp',current_schema());
 END $pin$;

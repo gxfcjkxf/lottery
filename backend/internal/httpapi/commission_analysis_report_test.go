@@ -186,6 +186,7 @@ func TestCommissionAnalysisHTTPRequiresBothExplicitPermissionFamilies(t *testing
 	}
 	platformPath := strings.Replace(path, "/api/v1/admin", "/api/v1/platform", 1)
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	if out := commissionAnalysisHTTPCallAs(f, platformPath, "", false, platformToken); out.Code != http.StatusForbidden {
 		t.Fatalf("super-admin identity alone granted analysis: status=%d body=%s", out.Code, out.Body.String())
 	}

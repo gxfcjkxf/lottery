@@ -91,7 +91,7 @@ describe("notification delivery API", () => {
     for (const body of [
       { attempt_count: 0, reason: "retry" },
       { attempt_count: 1.5, reason: "retry" },
-      { attempt_count: 1, reason: "  " },
+      { attempt_count: 1, reason: null as never },
       { attempt_count: 1, reason: "x".repeat(501) },
     ]) {
       await expect(api.retry(brand, eventID, body, "key")).rejects.toMatchObject({ status: 0, code: "INVALID_INPUT" });

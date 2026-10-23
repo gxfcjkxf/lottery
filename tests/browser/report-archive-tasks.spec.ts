@@ -19,10 +19,11 @@ async function data<T>(response: Pick<APIResponse, 'text' | 'status'>, status = 
   expect(envelope.success).toBe(true);
   return envelope.data as T;
 }
-async function navigate(page: Page, project: string, name: string) {
-  if (project === 'mobile' && name === '工作台|Dashboard') {
+async function navigate(page: Page, _project: string, name: string) {
+  const mobileNavigation = page.viewportSize()!.width <= 700;
+  if (mobileNavigation && name === '工作台|Dashboard') {
     await page.locator('.mobile-nav').getByRole('button', { name: new RegExp(name) }).click();
-  } else if (project === 'mobile') {
+  } else if (mobileNavigation) {
     await page.locator('.mobile-nav button').nth(4).click();
     await page.locator('.mobile-more-menu').getByRole('button', { name: new RegExp(name) }).click();
   } else {
@@ -70,7 +71,7 @@ test('real automatic archive tasks recover the original retry receipt after work
   expect(original).toMatchObject({ state: 'failed', version: 2, attempt_count: 1, archive_id: null });
   expect((await get<{ items: unknown[] }>('/report-archives?limit=100&offset=0')).items).toEqual([]);
   const member = await post<{ member_id: string }>('/users', {
-    username: `archive_task_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`, password: 'owned-archive-task-member-password-2026',
+    username: `archive_task_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`, password: 'owned-archive-task-2026',
     display_name: 'Owned archive task member', reason: 'Create real member for automatic archive browser verification',
   }, 201);
   const recharge = await post<{ id: string; version: number }>('/recharges', {
@@ -91,14 +92,14 @@ test('real automatic archive tasks recover the original retry receipt after work
     if (requests.length === 1) { firstReceipt = receipt; await route.abort('failed'); }
     else { expect(receipt).toEqual(firstReceipt); await route.fulfill({ response }); }
   });
-  await page.addInitScript(() => localStorage.setItem('lottery.admin.locale', 'zh-CN'));
   await page.goto(origin!);
-  await page.getByLabel(/选择真实后台品牌|Select live admin brand/, { exact: true }).selectOption(brand);
+  await page.locator('.directory-brand-bar select').selectOption(brand);
+  await selectLanguage(page, 'zh-CN');
   await navigate(page, info.project.name, '自动归档任务|Automatic archive tasks');
   let panel = page.locator('.archive-tasks');
   await expect(panel.getByTestId('archive-tasks-policy')).toBeVisible();
   await panel.locator('.task-list').getByRole('button', { name: new RegExp(original.id) }).click();
-  await panel.getByTestId('archive-tasks-reason').fill('Investigated synthetic capture failure; explicitly retry original task');
+  await expect(panel.getByTestId('archive-tasks-reason')).toHaveCount(0);
   await panel.getByTestId('archive-tasks-retry').click();
   await expect(panel.getByTestId('archive-tasks-review')).toBeVisible();
   await panel.getByTestId('archive-tasks-confirm').check();
@@ -109,6 +110,7 @@ test('real automatic archive tasks recover the original retry receipt after work
   expect(firstReceipt).toMatchObject({ id: original.id, state: 'pending', version: 3, attempt_count: 1, archive_id: null });
   expect(requests).toHaveLength(1);
   await expect(panel.getByTestId('archive-tasks-replay')).toBeDisabled();
+  await panel.locator('dialog[open] .detail-modal-close').click();
   await panel.getByTestId('archive-tasks-refresh').click();
   expect(requests).toHaveLength(1);
   await navigate(page, info.project.name, '工作台|Dashboard');
@@ -121,13 +123,17 @@ test('real automatic archive tasks recover the original retry receipt after work
   expect(requests).toHaveLength(1);
   await panel.locator('.task-list').getByRole('button', { name: new RegExp(original.id) }).click();
   await expect(panel.getByTestId('archive-tasks-detail')).toContainText(/completed|已完成/);
+  await panel.locator('dialog[open] .detail-modal-close').click();
   await panel.getByTestId('archive-tasks-replay-check').check();
   await panel.getByTestId('archive-tasks-replay').click();
   await expect(panel.getByTestId('archive-tasks-receipt')).toContainText('pending');
   expect(requests).toHaveLength(2);
   expect(requests[1]).toEqual(requests[0]);
   expect(requests[0]!.actor).toBe(me.account.id);
+  expect(JSON.parse(requests[0]!.body!)).toEqual({ version: original.version, reason: '' });
   await expect(panel.getByTestId('archive-tasks-detail')).toContainText(/completed|已完成/);
+  await panel.locator('dialog[open] .detail-modal-close').click();
+  await expect(panel.getByTestId('archive-tasks-receipt')).toBeVisible();
   expect(await economics()).toBe(before);
   const final = fixture('verify');
   expect(final).toMatchObject({ task_id: original.id, state: 'completed', archive_count: '1', ledger_count: '1', total_points: '37' });
@@ -139,7 +145,8 @@ test('real automatic archive tasks recover the original retry receipt after work
   await expect(panel.getByRole('heading', { name: 'Automatic archive tasks', exact: true })).toBeVisible();
   expect(requests).toHaveLength(2);
   const width = await page.evaluate(() => ({ body: document.documentElement.scrollWidth, viewport: innerWidth }));
-  expect(width.body).toBeLessThanOrEqual(width.viewport);
+  expect(width.body).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(width.viewport).toBe(page.viewportSize()!.width);
   expect(errors).toEqual([]);
-  await page.screenshot({ path: `.local/report-archive-tasks-${info.project.name}.png`, fullPage: true });
+  await page.screenshot({ path: info.outputPath(`report-archive-tasks-${info.project.name}.png`), fullPage: true });
 });

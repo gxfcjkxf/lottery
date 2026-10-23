@@ -1,4 +1,17 @@
 <script setup lang="ts">
+import { vWriteGuard } from "@lottery/shared";
+import FilterAssociationSelect from "@lottery/shared/FilterAssociationSelect.vue";
+import { useAdminI18n as useAssociationI18n } from "./i18n";
+const associationLocale = useAssociationI18n().locale;
+import { AssociationName } from "@lottery/shared";
+import { useAdminI18n as usePublicErrorI18n } from "./i18n";
+const publicErrorI18n = usePublicErrorI18n();
+const publicErrorMessage = publicErrorI18n.errorMessage;
+const displayPublicError = publicErrorI18n.displayError;
+import { withGlobalLoading } from '@lottery/shared';
+const displayDate = (value: string | null | undefined) => formatDisplayDateTime(value, displayLocale.value);
+import { formatDisplayDateTime } from "@lottery/shared";
+const displayLocale = useAdminI18n().locale;
 import type { LocalizedMessage } from "@lottery/shared";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useAdminI18n } from "./i18n";
@@ -14,9 +27,9 @@ import {
 } from "./period-cancellation-api";
 import { createPeriodSchedulesApi, type Period } from "./period-schedules-api";
 
-const props = defineProps<{ account: AdminAccount; brandId: string }>();
+const props = defineProps<{ account: AdminAccount; brandId: string; initialPeriodId?: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
-const { t, message: localized } = useAdminI18n();
+const { t, message: localized, display } = useAdminI18n();
 
 const api = createPeriodCancellationApi();
 const periodsApi = createPeriodSchedulesApi();
@@ -58,6 +71,7 @@ const cancellation = ref<Cancellation | null>(null);
 const summaryLoaded = ref(false);
 const loadingPeriods = ref(false);
 const loadingSummary = ref(false);
+let summaryPolling: object | null = null;
 const writing = ref(false);
 const error = ref<string | LocalizedMessage>("");
 const notice = ref<string | LocalizedMessage>("");
@@ -74,7 +88,6 @@ const mode = ref<CancelMode>("bet_cancelled");
 const cause = ref<CancelCause>("operator_cancel");
 const reason = ref("");
 const retryReason = ref("");
-const retryVersionInput = ref("");
 const confirmStage = ref<"idle" | "review" | "retry-review">("idle");
 
 type PendingWrite = {
@@ -162,7 +175,7 @@ const reviewedWrite = ref<{
   operation: PendingWrite["operation"];
   body: PendingWrite["body"];
 } | null>(null);
-const periodId = ref(pendingWrite.value?.periodId ?? "");
+const periodId = ref(pendingWrite.value?.periodId ?? props.initialPeriodId ?? "");
 const periodVersion = ref(
   pendingWrite.value?.operation === "cancel"
     ? String(pendingWrite.value.body.version)
@@ -196,6 +209,7 @@ function invalidateReads() {
   guard.invalidate("summary");
   loadingPeriods.value = false;
   loadingSummary.value = false;
+  summaryPolling = null;
 }
 function clearSelection() {
   invalidateReads();
@@ -208,36 +222,36 @@ function clearSelection() {
   notice.value = "";
   error.value = "";
 }
-function reportError(problem: unknown) {
+function reportError(problem: unknown, operation: "read" | "write" = "write") {
   if (problem instanceof AdminApiError && problem.status === 401)
     emit("session-invalid");
   error.value =
-    problem instanceof Error ? problem.message : localized("请求失败，请重试。", "Request failed. Please try again.");
+    problem instanceof Error ? publicErrorMessage(problem, operation) : localized('admin.copy.4fb9cc4e');
 }
 function checkRecord(record: Cancellation) {
   if (record.brand_id !== props.brandId || record.period_id !== periodId.value)
-    throw new Error(t("取消任务响应与当前品牌或期次不匹配，请重新读取。", "The cancellation response does not match the current brand or period. Reload and try again."));
+    throw new Error(t('admin.copy.3d0cf675'));
   return record;
 }
 function modeLabel(value: CancelMode) {
-  return value === "bet_cancelled" ? t("投注取消", "Betting cancelled") : t("判定取消", "Judgment cancelled");
+  return value === "bet_cancelled" ? t('admin.copy.a1834cc2') : t('admin.copy.46a60c2c');
 }
 function causeLabel(value: CancelCause) {
   return value === "operator_cancel"
-    ? t("运营取消", "Operator cancellation")
+    ? t('admin.copy.644b3753')
     : value === "no_result"
-      ? t("无开奖结果", "No draw result")
-      : t("开奖结果无效", "Invalid draw result");
+      ? t('admin.copy.ced2d172')
+      : t('admin.copy.9aec2fe0');
 }
 function periodStatusMessage(value: string): LocalizedMessage {
   const labels: Record<string, LocalizedMessage> = {
-    pending: localized("待开始", "Pending"), betting: localized("投注中", "Betting open"),
-    closed: localized("已截止", "Closed"), waiting_draw: localized("待开奖", "Awaiting draw"),
-    drawn: localized("已开奖", "Drawn"), settling: localized("结算中", "Settling"),
-    settled: localized("已结算", "Settled"), bet_cancelled: localized("投注取消", "Betting cancelled"),
-    judged_cancelled: localized("判定取消", "Judgment cancelled"),
+    pending: localized('admin.copy.997b3d22'), betting: localized('admin.copy.3a20b720'),
+    closed: localized('admin.copy.3198ad9b'), waiting_draw: localized('admin.copy.aab1777a'),
+    drawn: localized('admin.copy.a16e8013'), settling: localized('admin.copy.01f90196'),
+    settled: localized('admin.copy.037164c2'), bet_cancelled: localized('admin.copy.a1834cc2'),
+    judged_cancelled: localized('admin.copy.46a60c2c'),
   };
-  return labels[value] ?? localized(value, value);
+  return labels[value] ?? display(value);
 }
 function periodStatusLabel(value: string) {
   return t(periodStatusMessage(value));
@@ -263,7 +277,7 @@ const canCancel = computed(
   () =>
     rights.value.cancel &&
     formReady.value &&
-    (!rights.value.view || (summaryLoaded.value && !cancellation.value)) &&
+    rights.value.view && summaryLoaded.value && !cancellation.value &&
     !writing.value &&
     !pendingWrite.value,
 );
@@ -271,9 +285,7 @@ const canRetry = computed(
   () =>
     rights.value.retry &&
     validUuid(periodId.value) &&
-    (rights.value.view
-      ? cancellation.value?.state === "failed"
-      : positiveVersion(retryVersionInput.value) !== null) &&
+    rights.value.view && cancellation.value?.state === "failed" &&
     !writing.value &&
     !pendingWrite.value,
 );
@@ -343,16 +355,16 @@ async function readPeriods() {
     if (!current(ticket, rights.value.view)) return;
     for (const item of result.periods) {
       if (item.brand_id !== brandId || item.game_id !== selectedGameId)
-        throw new Error(t("期次列表包含其他品牌或彩种的数据。", "The period list contains records from another brand or game."));
+        throw new Error(t('admin.copy.4a571ca7'));
     }
     periods.value = result.periods;
     if (!result.periods.some((item) => item.id === periodId.value)) {
       periodId.value = "";
       periodVersion.value = "";
     }
-    notice.value = localized("已读取 {count} 个期次。", "Loaded {count} periods.", { count: result.periods.length });
+    notice.value = localized('admin.copy.231a79ff', { count: result.periods.length });
   } catch (problem) {
-    if (current(ticket, rights.value.view)) reportError(problem);
+    if (current(ticket, rights.value.view)) reportError(problem, "read");
   } finally {
     if (current(ticket, rights.value.view)) loadingPeriods.value = false;
   }
@@ -374,64 +386,65 @@ async function readPeriod() {
     directPeriod.value = item;
     periodVersion.value = String(item.version);
     const status = periodStatusMessage(item.status);
-    notice.value = localized(
-      "已读取期次 {periodNo}, 状态 {statusZh}, 版本 {version}.",
-      "Loaded period {periodNo}, status {statusEn}, version {version}.",
+    notice.value = localized('admin.copy.53980742',
       { periodNo: item.period_no, statusZh: status.zh, statusEn: status.en, version: item.version },
     );
   } catch (problem) {
-    if (current(ticket, rights.value.view)) reportError(problem);
+    if (current(ticket, rights.value.view)) reportError(problem, "read");
   } finally {
     if (current(ticket, true)) loadingPeriod.value = false;
   }
 }
 
 async function loadSummary(quiet = false) {
-  if (!rights.value.view || !validUuid(periodId.value) || loadingSummary.value)
+  if (!rights.value.view || !validUuid(periodId.value) || loadingSummary.value || (quiet && summaryPolling))
     return;
   const brandId = props.brandId;
   const id = periodId.value.trim();
   guard.invalidate("summary");
   const ticket = guard.capture("summary", scope("summary"));
-  loadingSummary.value = true;
+  if (quiet) summaryPolling = ticket;
+  else loadingSummary.value = true;
   if (!quiet) error.value = "";
   try {
     const response = await api.getCancellation(brandId, id);
     if (!current(ticket, rights.value.view)) return;
     const result = response.cancellation;
     if (result && (result.brand_id !== brandId || result.period_id !== id))
-      throw new Error(t("取消摘要与当前品牌或期次不匹配。", "The cancellation summary does not match the current brand or period."));
+      throw new Error(t('admin.copy.d8b99df2'));
     cancellation.value = result;
     summaryLoaded.value = true;
     if (!quiet)
-      notice.value = result ? localized("已读取取消任务摘要。", "Cancellation summary loaded.") : localized("该期次没有取消任务。", "This period has no cancellation task.");
+      notice.value = result ? localized('admin.copy.f67ff579') : localized('admin.copy.b0f26080');
     schedulePoll();
   } catch (problem) {
     if (current(ticket, rights.value.view)) {
       summaryLoaded.value = false;
-      reportError(problem);
+      reportError(problem, "read");
     }
   } finally {
-    if (current(ticket, rights.value.view)) loadingSummary.value = false;
+    if (quiet) {
+      if (summaryPolling === ticket) summaryPolling = null;
+    } else if (current(ticket, rights.value.view)) loadingSummary.value = false;
   }
 }
 
 function validateCancel(): PeriodCancellationBody {
   const version = positiveVersion(periodVersion.value);
   const cleanReason = reason.value.trim();
-  if (!validUuid(periodId.value)) throw new Error(t("请输入有效的期次 UUID。", "Enter a valid period UUID."));
-  if (version === null) throw new Error(t("期次 version 必须是正整数。", "Period version must be a positive integer."));
-  if (!cleanReason || reasonLength.value > 500)
-    throw new Error(t("原因不能为空，且 UTF-8 长度不能超过 500 字节。", "Reason is required and must not exceed 500 UTF-8 bytes."));
+  if (!validUuid(periodId.value)) throw new Error(t('admin.copy.ec713d85'));
+  if (version === null) throw new Error(t('admin.copy.6776f3a2'));
+  if (reasonLength.value > 500)
+    throw new Error(t('admin.copy.5d042c77'));
   if (!canUseCancelForm.value)
-    throw new Error(t("当前期次状态与取消模式或原因不匹配，请核对期次状态。", "The period status does not match the selected cancellation mode or cause. Review the period status."));
+    throw new Error(t('admin.copy.f7292a6a'));
   return { version, mode: mode.value, cause: cause.value, reason: cleanReason };
 }
 function reviewCancel() {
   try {
     const body = validateCancel();
     if (rights.value.view && !summaryLoaded.value)
-      throw new Error(t("请先读取取消摘要。", "Read the cancellation summary first."));
+      throw new Error(t('admin.copy.af900b56'));
     confirmStage.value = "review";
     reviewedWrite.value = {
       operation: "cancel",
@@ -444,27 +457,17 @@ function reviewCancel() {
 }
 function reviewRetry() {
   if (!validUuid(periodId.value)) {
-    error.value = localized("请输入有效的期次 UUID，以指定要重试的取消任务。", "Enter a valid period UUID to identify the cancellation task to retry.");
+    error.value = localized('admin.copy.ceeffa3b');
     return;
   }
   const cleanReason = retryReason.value.trim();
-  if (!cleanReason || retryReasonLength.value > 500) {
-    error.value = localized("重试原因不能为空，且 UTF-8 长度不能超过 500 字节。", "Retry reason is required and must not exceed 500 UTF-8 bytes.");
+  if (retryReasonLength.value > 500) {
+    error.value = localized('admin.copy.068b3baf');
     return;
   }
-  if (
-    rights.value.view &&
-    (!cancellation.value || cancellation.value.state !== "failed")
-  )
-    return;
-  if (!rights.value.view && positiveVersion(retryVersionInput.value) === null) {
-    error.value = localized("请输入有效的取消任务 version。", "Enter a valid cancellation task version.");
-    return;
-  }
+  if (!rights.value.view || !cancellation.value || cancellation.value.state !== "failed") return;
   confirmStage.value = "retry-review";
-  const version =
-    cancellation.value?.version ?? positiveVersion(retryVersionInput.value);
-  if (version === null) return;
+  const version = cancellation.value.version;
   reviewedWrite.value = {
     operation: "retry",
     body: Object.freeze({ version, reason: cleanReason }),
@@ -500,7 +503,7 @@ async function submitPending() {
     return;
   writing.value = true;
   error.value = "";
-  notice.value = localized("正在提交取消任务…", "Submitting cancellation task…");
+  notice.value = localized('admin.copy.26e61dfc');
   const lane = `write-${attempt.operation}`;
   const ticket = guard.capture(lane, scope(lane));
   try {
@@ -536,10 +539,10 @@ async function submitPending() {
     retryReason.value = "";
     notice.value =
       result.state === "processing"
-        ? localized("取消任务已受理。期次已停止；原来源退款将异步逐笔处理，完成前不会显示退款完成。", "Cancellation accepted. The period has stopped; refunds will be processed asynchronously against their original sources and will not show as complete until processing finishes.")
+        ? localized('admin.copy.c76a306f')
         : result.state === "completed"
-          ? localized("取消任务已完成。", "Cancellation task completed.")
-          : localized("取消任务失败，请核对错误码后人工重试。", "Cancellation task failed. Review the error code before retrying manually.");
+          ? localized('admin.copy.78edb334')
+          : localized('admin.copy.e5d08c9a');
     stopPolling();
     schedulePoll();
   } catch (problem) {
@@ -557,8 +560,8 @@ async function submitPending() {
       confirmStage.value = "idle";
       notice.value =
         attempt.operation === "cancel"
-          ? localized("期次版本冲突。已读取最新取消摘要；请重新核对并手动填写最新期次 version，再次确认。", "Period version conflict. The latest cancellation summary has been loaded; review it, enter the latest period version, and confirm again.")
-          : localized("取消任务版本冲突。已读取最新摘要，请核对当前任务 version 后重新确认重试。", "Cancellation task version conflict. The latest summary has been loaded; review the task version and confirm the retry again.");
+          ? localized('admin.copy.6de1b196')
+          : localized('admin.copy.7792806f');
       reportError(problem);
       await loadSummary(true);
     } else if (
@@ -572,7 +575,7 @@ async function submitPending() {
     } else {
       // Network failures and 5xx leave the immutable body/key available for exact retry.
       reportError(problem);
-      notice.value = localized("写入结果未知。原请求已冻结；只能用相同内容和幂等键重试，勿另建请求。", "Write outcome unknown. The original request is frozen; retry only with the same body and idempotency key. Do not create another request.");
+      notice.value = localized('admin.copy.f9ed225d');
     }
   } finally {
     if (current(ticket, true)) writing.value = false;
@@ -639,7 +642,6 @@ watch(
     periodVersion.value,
     reason.value,
     retryReason.value,
-    retryVersionInput.value,
   ],
   () => {
     confirmStage.value = "idle";
@@ -681,6 +683,12 @@ watch(
   },
   { flush: "sync" },
 );
+watch(() => props.initialPeriodId, async (id) => {
+  if (!id || pendingWrite.value) return;
+  periodId.value = id;
+  await readPeriod();
+  if (directPeriod.value?.id === periodId.value) await loadSummary();
+}, { immediate: true });
 onBeforeUnmount(() => {
   alive = false;
   guard.invalidate();
@@ -696,25 +704,22 @@ onBeforeUnmount(() => {
   >
     <header class="heading">
       <div>
-        <p class="eyebrow">{{ t("期次与开奖 · 高风险操作", "Periods and draws · High impact action") }}</p>
-        <h2 id="period-cancel-title">{{ t("期次取消与退款", "Period cancellation and refunds") }}</h2>
-        <p>
-          {{ t("取消会立即停止期次。原来源退款逐笔异步处理，任务完成后才代表退款完成。", "Cancellation stops the period immediately. Refunds are processed asynchronously against their original sources; refunds are complete only when the task completes.") }}
-        </p>
+        <h2 id="period-cancel-title">{{ t('admin.copy.7ed0de73') }}</h2>
       </div>
-      <span class="brand-tag">{{ t("品牌", "Brand") }} {{ brandId || t("未选择", "Not selected") }}</span>
+      <span class="brand-tag">{{ t('admin.copy.9c32661d') }} <AssociationName kind="brand" :id="brandId" :locale="associationLocale" /></span>
     </header>
 
     <p v-if="!rights.view" class="callout">
-      {{ t("当前账号没有读取取消摘要的权限。读取权限与写入权限相互独立。", "This account cannot read cancellation summaries. Read and write permissions are independent.") }}
+      {{ t('admin.copy.60800d78') }}
     </p>
     <div v-if="pendingWrite" class="panel pending">
-      <b>{{ t("有一项写入结果待确认，原请求内容和幂等键已冻结。", "A write outcome is unresolved. The original request body and idempotency key are frozen.") }}</b>
+      <b>{{ t('admin.copy.adce7dcd') }}</b>
       <p>
-        {{ t("请切回原账号、品牌和期次后按原请求重试，以确认服务端结果。不要另建请求。", "Return to the original account, brand, and period, then retry the original request to resolve the server outcome. Do not create a new request.") }}
+        {{ t('admin.copy.14eebfb4') }}
       </p>
       <button
-        class="primary"
+        v-write-guard="writing"
+        class="button button-primary"
         type="button"
         :disabled="
           writing ||
@@ -723,40 +728,37 @@ onBeforeUnmount(() => {
           pendingWrite.periodId !== periodId ||
           !(pendingWrite.operation === 'cancel' ? rights.cancel : rights.retry)
         "
-        @click="submitPending"
+        @click="withGlobalLoading(submitPending)"
       >
-        {{ writing ? t("正在按原请求重试…", "Retrying the original request…") : t("使用原请求重试", "Retry original request") }}
+        {{ writing ? t('admin.copy.45d732b2') : t('admin.copy.c6a6aa0c') }}
       </button>
     </div>
     <template v-if="rights.view">
       <div class="panel">
         <div class="section-head">
-          <h3>{{ t("期次", "Period") }}</h3>
-          <span class="muted">{{ t("支持直接输入 UUID 和期次 version", "You can enter a UUID and period version directly") }}</span>
+          <h3>{{ t('admin.copy.30efb4b6') }}</h3>
+          <span class="muted">{{ t('admin.period.selectionGuide') }}</span>
         </div>
+
+        <details :open="!initialPeriodId">
+          <summary>{{ t('filter.selectPeriod') }}</summary>
         <div class="field-grid">
           <label
-            >{{ t("彩种 UUID（仅用于读取列表）", "Game UUID (used only to read the list)") }}
-            <input
-              v-model="gameId"
-              inputmode="text"
-              autocomplete="off"
-              placeholder="game UUID"
-              :disabled="Boolean(pendingWrite)"
-            />
+            >{{ t('admin.copy.b50f74d5') }}
+            <FilterAssociationSelect v-model="gameId" :brand-id="brandId" surface="admin" resource="period" kind="game" :label="t('filter.game')" :locale="displayLocale" :scope-key="JSON.stringify(account)" :disabled="Boolean(pendingWrite)" />
           </label>
           <button
-            class="secondary"
+            class="button button-secondary"
             type="button"
             :disabled="
               !validUuid(gameId) || loadingPeriods || Boolean(pendingWrite)
             "
-            @click="readPeriods"
+            @click="withGlobalLoading(readPeriods)"
           >
-            {{ loadingPeriods ? t("读取中…", "Loading…") : t("读取期次列表", "Read period list") }}
+            {{ loadingPeriods ? t('admin.copy.27342bf3') : t('admin.copy.73a00766') }}
           </button>
           <label v-if="periods.length" class="wide"
-            >{{ t("选择期次", "Select period") }}
+            >{{ t('admin.copy.72743752') }}
             <select
               :value="periodId"
               :disabled="Boolean(pendingWrite)"
@@ -771,14 +773,14 @@ onBeforeUnmount(() => {
                 }
               "
             >
-              <option value="">{{ t("选择读取到的期次", "Select a loaded period") }}</option>
+              <option value="">{{ t('admin.copy.14ddb4bf') }}</option>
               <option v-for="item in periods" :key="item.id" :value="item.id">
-                {{ item.period_no }} · {{ periodStatusLabel(item.status) }} · v{{ item.version }}
+                {{ item.period_no }} · {{ periodStatusLabel(item.status) }}
               </option>
             </select>
           </label>
           <label
-            >{{ t("期次 UUID", "Period UUID") }}
+            >{{ t('admin.copy.c506752c') }}
             <input
               v-model="periodId"
               autocomplete="off"
@@ -787,134 +789,118 @@ onBeforeUnmount(() => {
               :disabled="Boolean(pendingWrite)"
             />
           </label>
-          <label
-            >{{ t("期次 version", "Period version") }}
-            <input
-              v-model="periodVersion"
-              inputmode="numeric"
-              autocomplete="off"
-              :placeholder="t('正整数', 'Positive integer')"
-              :disabled="Boolean(pendingWrite)"
-            />
-          </label>
           <button
-            class="secondary"
+            class="button button-secondary"
             type="button"
             :disabled="
               !validUuid(periodId) || loadingPeriod || Boolean(pendingWrite)
             "
-            @click="readPeriod"
+            @click="withGlobalLoading(readPeriod)"
           >
-            {{ loadingPeriod ? t("读取中…", "Loading…") : t("读取期次详情", "Read period details") }}
+            {{ loadingPeriod ? t('admin.copy.27342bf3') : t('admin.copy.59a78f76') }}
           </button>
           <button
-            class="primary"
+            class="button button-primary"
             type="button"
             :disabled="!canRead"
-            @click="loadSummary()"
+            @click="withGlobalLoading(loadSummary)"
           >
-            {{ loadingSummary ? t("读取中…", "Loading…") : t("读取取消摘要", "Read cancellation summary") }}
+            {{ loadingSummary ? t('admin.copy.27342bf3') : t('admin.copy.35a3005a') }}
           </button>
         </div>
+        </details>
       </div>
 
-      <p v-if="error" class="message error" role="alert">{{ t(error) }}</p>
-      <p v-if="notice" class="message notice" role="status">{{ t(notice) }}</p>
+      <p v-if="error" class="message error" role="alert">{{ display(error) }}</p>
+      <p v-if="notice" class="message notice" role="status">{{ display(notice) }}</p>
 
       <div v-if="summaryLoaded" class="panel">
         <div class="section-head">
-          <h3>{{ t("取消任务摘要", "Cancellation summary") }}</h3>
+          <h3>{{ t('admin.copy.418dd66f') }}</h3>
           <span
             v-if="cancellation"
             class="state"
             :class="`state-${cancellation.state}`"
             >{{
               cancellation.state === "processing"
-                ? t("处理中", "Processing")
+                ? t('admin.copy.395f62f9')
                 : cancellation.state === "failed"
-                  ? t("失败", "Failed")
-                  : t("已完成", "Completed")
+                  ? t('admin.copy.1feabec0')
+                  : t('admin.copy.293e79cc')
             }}</span
-          ><span v-else class="state state-empty">{{ t("无取消任务", "No cancellation task") }}</span>
+          ><span v-else class="state state-empty">{{ t('admin.copy.ebb87c5c') }}</span>
         </div>
-          <p v-if="!cancellation" class="muted">{{ t("当前期次没有取消任务记录。", "There is no cancellation task for this period.") }}</p>
+          <p v-if="!cancellation" class="muted empty-state">{{ t('admin.copy.082d6a87') }}</p>
         <template v-else>
           <dl class="details">
             <div>
-              <dt>{{ t("任务 ID", "Task ID") }}</dt>
+              <dt>{{ t('admin.copy.5e0d3d70') }}</dt>
               <dd>{{ cancellation.id }}</dd>
             </div>
+
             <div>
-              <dt>{{ t("取消后期次 version", "Period version after cancellation") }}</dt>
-              <dd>{{ cancellation.period_version }}</dd>
-            </div>
-            <div>
-              <dt>{{ t("取消任务 version", "Cancellation task version") }}</dt>
-              <dd>{{ cancellation.version }}</dd>
-            </div>
-            <div>
-              <dt>{{ t("模式 / 原因", "Mode / cause") }}</dt>
+              <dt>{{ t('admin.copy.0474d950') }}</dt>
               <dd>
                 {{ modeLabel(cancellation.mode) }} /
                 {{ causeLabel(cancellation.cause) }}
               </dd>
             </div>
-            <div>
-              <dt>{{ t("创建原因", "Request reason") }}</dt>
+            <div v-if="cancellation.reason">
+              <dt>{{ t('admin.copy.ead40fc2') }}</dt>
               <dd>{{ cancellation.reason }}</dd>
             </div>
             <div>
-              <dt>{{ t("操作人", "Operator") }}</dt>
-              <dd>{{ cancellation.created_by }}</dd>
+              <dt>{{ t('admin.copy.262c7356') }}</dt>
+              <dd><AssociationName :record="cancellation" kind="admin" :id="cancellation.created_by" :locale="associationLocale" /></dd>
             </div>
             <div>
-              <dt>{{ t("创建时间", "Created at") }}</dt>
-              <dd>{{ cancellation.created_at }}</dd>
+              <dt>{{ t('admin.copy.165ebd73') }}</dt>
+              <dd>{{ displayDate(cancellation.created_at) }}</dd>
             </div>
             <div>
-              <dt>{{ t("完成时间", "Completed at") }}</dt>
-              <dd>{{ cancellation.completed_at || "—" }}</dd>
+              <dt>{{ t('admin.copy.670c5f97') }}</dt>
+              <dd>{{ displayDate(cancellation.completed_at) }}</dd>
             </div>
           </dl>
-          <div class="counts" :aria-label="t('取消与退款数量', 'Cancellation and refund counts')">
+          <div class="counts" :aria-label="t('admin.copy.35c12d6c')">
             <div>
-              <span>{{ t("总数", "Total") }}</span><b>{{ cancellation.total_count }}</b>
+              <span>{{ t('admin.copy.aeb697d4') }}</span><b>{{ cancellation.total_count }}</b>
             </div>
             <div>
-              <span>{{ t("待处理", "Pending") }}</span><b>{{ cancellation.pending_count }}</b>
+              <span>{{ t('admin.copy.99f247fd') }}</span><b>{{ cancellation.pending_count }}</b>
             </div>
             <div>
-              <span>{{ t("已退款", "Refunded") }}</span><b>{{ cancellation.refunded_count }}</b>
+              <span>{{ t('admin.copy.f5e49aba') }}</span><b>{{ cancellation.refunded_count }}</b>
             </div>
             <div>
-              <span>{{ t("原已退款", "Already refunded") }}</span
+              <span>{{ t('admin.copy.5d511341') }}</span
               ><b>{{ cancellation.already_refunded_count }}</b>
             </div>
             <div>
-              <span>{{ t("失败", "Failed") }}</span><b>{{ cancellation.failed_count }}</b>
+              <span>{{ t('admin.copy.1feabec0') }}</span><b>{{ cancellation.failed_count }}</b>
             </div>
           </div>
           <p v-if="cancellation.last_error_code" class="callout error-code">
-            {{ t("最后错误码：", "Last error code: ") }}<code>{{ cancellation.last_error_code }}</code
-            >{{ t("。请运营核对后人工重试。", ". Have an operator review it before retrying manually.") }}
+            {{ t('admin.copy.326cb409') }}<code>{{ cancellation.last_error_code ? displayPublicError(publicErrorMessage({ code: cancellation.last_error_code })) : "—" }}</code
+            >{{ t('admin.copy.1ce44f67') }}
           </p>
           <p v-if="cancellation.state === 'processing'" class="muted">
-            {{ t("退款逐笔异步处理；处理中不代表退款已完成，页面每 10 秒读取一次，最多 6 次。", "Refunds are processed asynchronously, one by one. Processing does not mean refunds are complete. This page polls every 10 seconds, up to 6 times.") }}
+            {{ t('admin.copy.5de9b627') }}
           </p>
           <p v-if="cancellation.state === 'completed'" class="muted">
-            {{ t("任务已完成，服务端已确认本任务退款处理完成。", "The task is complete; the server has confirmed refund processing for this task.") }}
+            {{ t('admin.copy.f92acd02') }}
           </p>
         </template>
       </div>
 
       <div v-if="rights.cancel && summaryLoaded && !cancellation" class="panel">
-        <div class="section-head"><h3>{{ t("发起期次取消", "Start period cancellation") }}</h3></div>
+        <div class="section-head"><h3>{{ t('admin.copy.5d24429f') }}</h3></div>
         <div class="field-grid">
           <label
-            >{{ t("取消模式", "Cancellation mode") }}
+            >{{ t('admin.copy.328ec45d') }}
             <select
               v-model="mode"
-              :aria-label="t('取消模式', 'Cancellation mode')"
+              :aria-label="t('admin.copy.328ec45d')"
               :disabled="Boolean(pendingWrite)"
               @change="
                 cause =
@@ -922,69 +908,59 @@ onBeforeUnmount(() => {
                 confirmStage = 'idle';
               "
             >
-              <option value="bet_cancelled">{{ t("投注取消", "Betting cancelled") }}</option>
+              <option value="bet_cancelled">{{ t('admin.copy.a1834cc2') }}</option>
               <option value="judged_cancelled">
-                {{ t("未结算期次取消（保留开奖历史，不撤销结算）", "Cancel unsettled period (preserve draw history; do not reverse settlement)") }}
+                {{ t('admin.copy.6782f607') }}
               </option>
             </select>
           </label>
           <label
-            >{{ t("取消原因", "Cancellation cause") }}
+            >{{ t('admin.copy.5670d7e8') }}
             <select
               v-model="cause"
-              :aria-label="t('取消原因', 'Cancellation cause')"
+              :aria-label="t('admin.copy.5670d7e8')"
               :disabled="Boolean(pendingWrite)"
               @change="confirmStage = 'idle'"
             >
               <option v-if="mode === 'bet_cancelled'" value="operator_cancel">
-                {{ t("运营取消", "Operator cancellation") }}
+                {{ t('admin.copy.644b3753') }}
               </option>
               <template v-else>
-                <option value="no_result">{{ t("无开奖结果", "No draw result") }}</option>
-                <option value="invalid_result">{{ t("开奖结果无效", "Invalid draw result") }}</option>
+                <option value="no_result">{{ t('admin.copy.ced2d172') }}</option>
+                <option value="invalid_result">{{ t('admin.copy.9aec2fe0') }}</option>
               </template>
             </select>
           </label>
           <p v-if="mode === 'bet_cancelled'" class="hint wide">
-            {{ t("投注取消仅适用于状态为 betting 的期次，且原因必须为运营取消。", "Betting cancellation applies only to periods in betting status and requires the operator_cancel cause.") }}
+            {{ t('admin.copy.bc05fb72') }}
           </p>
           <p v-else class="hint wide">
-            {{ t("仅用于未结算期次。已有开奖结果历史会保留，取消不会撤销结算。", "For unsettled periods only. Existing draw history is preserved, and cancellation does not reverse settlement.") }}
+            {{ t('admin.copy.c7d0879a') }}
           </p>
-          <label class="wide"
-            >{{ t("操作原因（UTF-8 不超过 500 字节）", "Reason (up to 500 UTF-8 bytes)") }}
-            <textarea
-              :aria-label="t('操作原因（UTF-8 不超过 500 字节）', 'Reason (up to 500 UTF-8 bytes)')"
-              v-model="reason"
-              rows="3"
-              maxlength="500"
-              :disabled="Boolean(pendingWrite)"
-              @input="confirmStage = 'idle'"
-            />
-            <small>{{ reasonLength }} / {{ t("500 字节", "500 bytes") }}</small>
-          </label>
+
         </div>
         <div class="actions">
           <button
             v-if="confirmStage !== 'review'"
-            class="secondary"
+            class="button button-secondary"
             type="button"
             :disabled="!canCancel || !canUseCancelForm || Boolean(pendingWrite)"
             @click="reviewCancel"
           >
-            {{ t("检查并确认影响", "Review and confirm impact") }}
+            {{ t('admin.copy.ac1bb6b5') }}
           </button>
           <template v-else>
             <p class="confirm-note">
-              {{ t("即将停止期次并建立异步退款任务。请核对请求使用的期次 version、模式、原因和操作说明。取消后期次 version 将递增，任务 version 独立。", "This will stop the period and create an asynchronous refund task. Review the period version, mode, cause, and reason. Cancellation increments the period version; the task has its own version.") }}
+              {{ t('admin.copy.6bf8c111') }}
             </p>
             <button
-              class="primary danger"
+              v-write-guard="writing"
+              class="button button-primary button-danger"
               type="button"
               :disabled="!canCancel || !canUseCancelForm"
               @click="confirmWrite"
             >
-              {{ writing ? t("提交中…", "Submitting…") : t("确认取消期次", "Confirm period cancellation") }}
+              {{ writing ? t('admin.copy.46511dc0') : t('admin.copy.cace7851') }}
             </button>
           </template>
         </div>
@@ -994,199 +970,43 @@ onBeforeUnmount(() => {
         v-if="rights.retry && cancellation?.state === 'failed'"
         class="panel"
       >
-        <div class="section-head"><h3>{{ t("人工重试失败任务", "Retry failed task manually") }}</h3></div>
+        <div class="section-head"><h3>{{ t('admin.copy.b757e351') }}</h3></div>
         <p class="hint">
-          {{ t("重试使用当前取消任务 version（", "Retry uses the current cancellation task version (") }}{{
-            cancellation.version
-          }}{{ t("）；这与发起取消所需的期次 version 不同。", "); this differs from the period version required to start cancellation.") }}
+          {{ t('admin.versionDisplay.confirmRetry') }}
         </p>
-        <label
-          >{{ t("重试原因（UTF-8 不超过 500 字节）", "Retry reason (up to 500 UTF-8 bytes)") }}
-          <textarea
-            v-model="retryReason"
-            rows="2"
-            maxlength="500"
-            :disabled="Boolean(pendingWrite)"
-            @input="confirmStage = 'idle'"
-          />
-          <small>{{ retryReasonLength }} / {{ t("500 字节", "500 bytes") }}</small>
-        </label>
+
         <div class="actions">
           <button
             v-if="confirmStage !== 'retry-review'"
-            class="secondary"
+            class="button button-secondary"
             type="button"
             :disabled="!canRetry || Boolean(pendingWrite)"
             @click="reviewRetry"
           >
-            {{ t("检查并确认重试", "Review and confirm retry") }}
+            {{ t('admin.copy.a6f031a3') }}
           </button>
           <template v-else>
-            <p class="confirm-note">
-              {{ t("将以取消任务 version", "Refund processing will retry with cancellation task version") }} {{ cancellation.version }}。
-            </p>
+            <p class="confirm-note">{{ t('admin.versionDisplay.confirmRetry') }}</p>
             <button
-              class="primary"
+              v-write-guard="writing"
+              class="button button-primary"
               type="button"
               :disabled="!canRetry"
               @click="confirmWrite"
             >
-              {{ writing ? t("提交中…", "Submitting…") : t("确认重试任务", "Confirm task retry") }}
+              {{ writing ? t('admin.copy.46511dc0') : t('admin.copy.0927cf24') }}
             </button>
           </template>
         </div>
       </div>
     </template>
 
-    <template v-if="!rights.view && (rights.cancel || rights.retry)">
-      <div class="panel">
-        <div class="section-head"><h3>{{ t("手动指定期次", "Specify period manually") }}</h3></div>
-        <p class="hint">
-          {{ t("当前账号没有取消摘要读取权。本页不会调用 GET；请核对期次及版本后再提交。", "This account cannot read cancellation summaries. This page will not make a GET request; verify the period and version before submitting.") }}
-        </p>
-        <div class="field-grid">
-          <label
-            >{{ t("期次 UUID", "Period UUID") }}<input
-              v-model="periodId"
-              autocomplete="off"
-              spellcheck="false"
-              :disabled="Boolean(pendingWrite)"
-          /></label>
-          <label
-            >{{ t("期次 version", "Period version") }}<input
-              v-model="periodVersion"
-              inputmode="numeric"
-              autocomplete="off"
-              :disabled="Boolean(pendingWrite)"
-          /></label>
-        </div>
-      </div>
-      <p v-if="error" class="message error" role="alert">{{ t(error) }}</p>
-      <p v-if="notice" class="message notice" role="status">{{ t(notice) }}</p>
-      <div v-if="rights.cancel" class="panel">
-        <div class="section-head"><h3>{{ t("发起期次取消", "Start period cancellation") }}</h3></div>
-        <p class="hint">
-          {{ t("投注取消仅适用于 betting 状态并使用“运营取消”；未结算期次取消会保留开奖结果历史，且不撤销结算。", "Betting cancellation applies only in betting status and uses the operator_cancel cause. Unsettled period cancellation preserves draw history and does not reverse settlement.") }}
-        </p>
-        <div class="field-grid">
-          <label
-            >{{ t("取消模式", "Cancellation mode") }}<select
-              v-model="mode"
-              :disabled="Boolean(pendingWrite)"
-              @change="
-                cause =
-                  mode === 'bet_cancelled' ? 'operator_cancel' : 'no_result';
-                confirmStage = 'idle';
-              "
-            >
-              <option value="bet_cancelled">{{ t("投注取消", "Betting cancelled") }}</option>
-              <option value="judged_cancelled">{{ t("未结算期次取消", "Unsettled period cancellation") }}</option>
-            </select></label
-          >
-          <label
-            >{{ t("取消原因", "Cancellation cause") }}<select
-              v-model="cause"
-              :disabled="Boolean(pendingWrite)"
-              @change="confirmStage = 'idle'"
-            >
-              <option v-if="mode === 'bet_cancelled'" value="operator_cancel">
-                {{ t("运营取消", "Operator cancellation") }}
-              </option>
-              <template v-else
-                ><option value="no_result">{{ t("无开奖结果", "No draw result") }}</option>
-                <option value="invalid_result">{{ t("开奖结果无效", "Invalid draw result") }}</option></template
-              >
-            </select></label
-          >
-          <label class="wide"
-            >{{ t("操作原因（UTF-8 不超过 500 字节）", "Reason (up to 500 UTF-8 bytes)") }}<textarea
-              :aria-label="t('操作原因（UTF-8 不超过 500 字节）', 'Reason (up to 500 UTF-8 bytes)')"
-              v-model="reason"
-              rows="3"
-              maxlength="500"
-              :disabled="Boolean(pendingWrite)"
-              @input="confirmStage = 'idle'"
-            /><small>{{ reasonLength }} / {{ t("500 字节", "500 bytes") }}</small></label
-          >
-        </div>
-        <div class="actions">
-          <button
-            v-if="confirmStage !== 'review'"
-            class="secondary"
-            type="button"
-            :disabled="!canCancel || !canUseCancelForm"
-            @click="reviewCancel"
-          >
-            {{ t("检查并确认影响", "Review and confirm impact") }}
-          </button>
-          <template v-else
-            ><p class="confirm-note">
-              {{ t("请核对期次 UUID、期次 version、模式和原因。提交将立即停止期次并启动逐笔退款任务。", "Review the period UUID, period version, mode, and reason. Submission immediately stops the period and starts the per-order refund task.") }}
-            </p>
-            <button
-              class="primary danger"
-              type="button"
-              :disabled="!canCancel || !canUseCancelForm"
-              @click="confirmWrite"
-            >
-              {{ t("确认取消期次", "Confirm period cancellation") }}
-            </button></template
-          >
-        </div>
-      </div>
-      <div v-if="rights.retry" class="panel">
-        <div class="section-head"><h3>{{ t("人工重试失败任务", "Retry failed task manually") }}</h3></div>
-        <p class="hint">
-          {{ t("请先确认任务处于失败状态，并从摘要取得取消任务 version；它不同于期次 version。", "Confirm the task is failed and obtain the cancellation task version from its summary. This is separate from the period version.") }}
-        </p>
-        <div class="field-grid">
-          <label
-            >{{ t("取消任务 version", "Cancellation task version") }}<input
-              v-model="retryVersionInput"
-              inputmode="numeric"
-              autocomplete="off"
-              :disabled="Boolean(pendingWrite)"
-          /></label>
-          <label class="wide"
-            >{{ t("重试原因（UTF-8 不超过 500 字节）", "Retry reason (up to 500 UTF-8 bytes)") }}<textarea
-              v-model="retryReason"
-              rows="2"
-              maxlength="500"
-              :disabled="Boolean(pendingWrite)"
-              @input="confirmStage = 'idle'"
-            /><small>{{ retryReasonLength }} / {{ t("500 字节", "500 bytes") }}</small></label
-          >
-        </div>
-        <div class="actions">
-          <button
-            v-if="confirmStage !== 'retry-review'"
-            class="secondary"
-            type="button"
-            :disabled="!canRetry"
-            @click="reviewRetry"
-          >
-            {{ t("检查并确认重试", "Review and confirm retry") }}
-          </button>
-          <template v-else
-            ><p class="confirm-note">
-              {{ t("将以取消任务 version", "Retry with cancellation task version") }} {{ retryVersionInput }}{{ t("重试，请确认该任务当前为失败状态。", "; confirm that the task is currently failed.") }}
-            </p>
-            <button
-              class="primary"
-              type="button"
-              :disabled="!canRetry"
-              @click="confirmWrite"
-            >
-              {{ t("确认重试任务", "Confirm task retry") }}
-            </button></template
-          >
-        </div>
-      </div>
-    </template>
+    <p v-if="!rights.view && (rights.cancel || rights.retry)" class="hint">{{ t('admin.versionDisplay.readRequired') }}</p>
   </section>
 </template>
 
 <style scoped>
+details > summary { min-height:44px; padding:10px 0; box-sizing:border-box; cursor:pointer; }
 .period-cancellation {
   display: grid;
   gap: 14px;
@@ -1212,14 +1032,14 @@ onBeforeUnmount(() => {
 .heading p:last-child,
 .muted,
 .hint {
-  color: #737b8c;
+  color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
   margin: 5px 0 0;
   overflow-wrap: anywhere;
 }
 .eyebrow {
-  color: #5969df;
+  color: var(--primary);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 1px;
@@ -1237,9 +1057,9 @@ onBeforeUnmount(() => {
 .panel {
   min-width: 0;
   padding: 16px;
-  border: 1px solid #e9ebf0;
+  border: 1px solid var(--line);
   border-radius: 9px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 2px 8px #1e2a8008;
 }
 .field-grid {
@@ -1264,7 +1084,7 @@ textarea {
   border: 1px solid #dfe2e9;
   border-radius: 6px;
   padding: 9px;
-  background: #fff;
+  background: var(--surface);
   color: #252a36;
   font: inherit;
 }
@@ -1283,15 +1103,15 @@ button {
   font-weight: 650;
   cursor: pointer;
 }
-.primary {
-  color: #fff;
+.button-primary {
+  color: var(--surface);
   background: #405bd6;
 }
-.secondary {
+.button-secondary {
   color: #455064;
   background: #eef1f7;
 }
-.danger {
+.button-danger {
   background: #b42332;
 }
 button:disabled {
@@ -1304,7 +1124,7 @@ button:disabled {
   padding: 10px 12px;
   border: 1px solid #e4e7ee;
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   font-size: 12px;
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -1330,10 +1150,10 @@ button:disabled {
   min-width: 0;
   padding: 9px;
   border-radius: 6px;
-  background: #f7f8fb;
+  background: var(--canvas);
 }
 .details dt {
-  color: #737b8c;
+  color: var(--muted);
   font-size: 11px;
 }
 .details dd {
@@ -1351,12 +1171,12 @@ button:disabled {
   gap: 5px;
   min-width: 0;
   padding: 10px 8px;
-  border: 1px solid #e9ebf0;
+  border: 1px solid var(--line);
   border-radius: 7px;
   text-align: center;
 }
 .counts span {
-  color: #737b8c;
+  color: var(--muted);
   font-size: 11px;
   overflow-wrap: anywhere;
 }
@@ -1402,7 +1222,7 @@ button:disabled {
   line-height: 1.6;
 }
 small {
-  color: #737b8c;
+  color: var(--muted);
   text-align: right;
 }
 @media (max-width: 520px) {

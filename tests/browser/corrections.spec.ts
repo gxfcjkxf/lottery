@@ -217,7 +217,7 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   await expect(correction).toContainText(draw.id);
   await correction.getByLabel("数字结果（逗号分隔）", { exact: true }).fill("1,2,2");
   await correction.getByLabel("操作原因（UTF-8 不超过 500 字节）", { exact: true }).fill("Correct the recorded third digit after source reconciliation.");
-  await correction.getByRole("button", { name: "核对并更正、重新结算", exact: true }).click();
+  await correction.getByRole("button", { name: "更正并结算", exact: true }).click();
   await correction.locator(".cm-confirm").getByRole("checkbox").check();
 
   const correctionRequests: Array<{ key: string; body: string | null }> = [];
@@ -240,7 +240,7 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
     if (correctionRequests.length === 1) await route.abort("failed");
     else await route.fulfill({ response });
   });
-  await correction.getByRole("button", { name: "确认提交", exact: true }).click();
+  await correction.getByRole("button", { name: "提交", exact: true }).click();
   await expect(correction.locator(".cm-pending")).toContainText("写入结果未知");
   await correction.getByRole("button", { name: "只读刷新", exact: true }).click();
   await expect(correction.locator(".cm-pending")).toContainText("写入结果未知");
@@ -320,9 +320,9 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   expect(childTargets.items).toHaveLength(1);
   expect(childTargets.items[0]).toMatchObject({ order_id: order.id, won: false, prize_points: "0", payout_entry_id: null });
   await settlement.getByLabel("运营批准原因（UTF-8 不超过 500 字节）", { exact: true }).fill("Approve the corrected losing result after ledger reversal.");
-  await settlement.getByRole("button", { name: "核对并批准，允许 worker 入账", exact: true }).click();
+  await settlement.getByRole("button", { name: "批准", exact: true }).click();
   await settlement.locator(".sm-confirm").getByRole("checkbox").check();
-  await settlement.getByRole("button", { name: "确认提交结算操作", exact: true }).click();
+  await settlement.getByRole("button", { name: "提交", exact: true }).click();
   await expect.poll(async () => (await api<{ state: string }>(page.request, `/settlement-jobs/${childJob.settlement.id}`, "GET", creator)).state, { timeout: 15_000 }).toBe("completed");
   expect((await api<CorrectionData>(page.request,`/corrections/${correctionId}`,"GET",creator)).state).toBe("completed");
   expect(await api<{status:string;prize_points:string}>(page.request,`/bet-orders/${order.id}`,"GET",creator)).toMatchObject({status:"lost",prize_points:"0"});
@@ -381,7 +381,7 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   const deliveries=adminPage.locator(".notification-deliveries");
   await expect(deliveries.getByRole("heading",{name:"通知投递记录",exact:true})).toBeVisible();
   await expect(deliveries.locator(".status-sent").first()).toBeVisible();
-  await deliveries.getByRole("button",{name:"只读刷新通知投递记录",exact:true}).click();
+  await deliveries.getByRole("button",{name:"刷新",exact:true}).click();
   await expect(deliveries.locator(".status-sent").first()).toBeVisible();
   expect(await adminPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await deliveries.screenshot({path:info.outputPath("s6-c-deliveries.png")});
@@ -407,11 +407,12 @@ test("real Harbor winning settlement can be corrected, reversed, and manually re
   await expect(betReport.locator(".reports-context")).toContainText(game.id);
   expect(await adminPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await betReport.screenshot({path:info.outputPath("s6-d-betting-report.png")});
-  // Draft changes do not silently alter the displayed cohort or a read-only refresh.
+  // Draft changes leave the displayed cohort unchanged until the next query.
   await reports.getByLabel("彩种筛选 UUID",{exact:true}).fill(brandId);
-  await reports.getByRole("button",{name:"只读刷新报表",exact:true}).click();
   await expect(betReport.locator(".reports-context")).toContainText(game.id);
   await reports.getByLabel("彩种筛选 UUID",{exact:true}).fill(game.id);
+  await reports.getByRole("button",{name:"查询报表",exact:true}).click();
+  await expect(betReport.locator(".reports-context")).toContainText(game.id);
   await reports.getByRole("button",{name:"账本报表",exact:true}).click();
   await reports.getByLabel("账本分组",{exact:true}).selectOption("entry_type");
   await reports.getByRole("button",{name:"查询报表",exact:true}).click();

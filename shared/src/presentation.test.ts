@@ -9,7 +9,7 @@ describe('brand presentation', () => {
     expect(() => safeBrandColor(undefined)).toThrow('Invalid brand color')
   })
 
-  it('maps configured values to bounded CSS tokens and compatibility aliases', () => {
+  it('maps configured values to the shared design system CSS tokens', () => {
     const tokens = buildBrandCssTokens({
       ...defaultBrand,
       primary: '#123456', accent: '#abcdef', success: '#287b59', warning: '#a96d20', danger: '#bc4b43',
@@ -23,24 +23,14 @@ describe('brand presentation', () => {
     expect(tokens['--font-family']).toContain('ui-monospace')
   })
 
-  it('scales standard text proportionally and bounds forged enum values', () => {
-    const large = buildBrandCssTokens({ ...defaultBrand, fontScale: 'large' })
-    expect(large['--brand-font-scale-factor']).toBe('1.125')
+  it('keeps standard text at the base scale and rejects unsupported theme values', () => {
     expect(buildBrandCssTokens({ ...defaultBrand, fontScale: 'standard' })['--brand-font-scale-factor']).toBe('1')
-
-    const invalid = buildBrandCssTokens({
-      ...defaultBrand,
-      fontFamily: 'system; color: red' as never,
-      fontScale: 'giant' as never,
-      radius: '999px' as never,
-      shadow: 'url(javascript:alert(1))' as never,
-    })
-    expect(invalid).toMatchObject({
-      '--font-family': expect.stringContaining('system-ui'),
-      '--font-scale': '16px', '--brand-font-scale-factor': '1', '--radius': '16px',
-      '--shadow': '0 18px 55px rgba(28, 54, 44, .08)',
-    })
-    expect(Object.values(invalid).join(' ')).not.toContain('javascript:')
+    for (const [key, value] of [
+      ['fontFamily', 'system; color: red'], ['fontScale', 'giant'],
+      ['radius', '999px'], ['shadow', 'url(javascript:alert(1))'], ['fontScale', undefined],
+    ]) {
+      expect(() => buildBrandCssTokens({ ...defaultBrand, [key!]: value })).toThrow('Invalid brand presentation')
+    }
   })
 
   it.each([
@@ -64,4 +54,22 @@ describe('brand presentation', () => {
   it('limits asset URIs by UTF-8 byte length', () => {
     expect(safeBrandAssetUrl(`/icons/${'é'.repeat(253)}.png`)).toBeNull()
   })
+})
+
+it('replaces stale browser icons and uses the configured name and escaped logo text', async () => {
+  const { applyBrowserBranding } = await import('./presentation')
+  const { vi } = await import('vitest')
+  let icons: any[] = [{ remove() { icons.splice(icons.indexOf(this), 1) } }]
+  const doc = { title: '', createElement() { return { dataset: {}, remove() { icons.splice(icons.indexOf(this), 1) } } }, querySelectorAll() { return [...icons] }, head: { append(link: unknown) { icons.push(link) } } }
+  vi.stubGlobal('document', doc)
+  try {
+    applyBrowserBranding('Configured platform', 'Z<&', null, '#059669')
+    expect(doc.title).toBe('Configured platform')
+    expect(icons).toHaveLength(1)
+    expect(decodeURIComponent(icons[0].href)).toContain('Z&lt;&amp;')
+    applyBrowserBranding('Other brand', 'B', '/brand-assets/brand/icon.png', '#123456')
+    expect(doc.title).toBe('Other brand')
+    expect(icons).toHaveLength(1)
+    expect(icons[0].href).toBe('/brand-assets/brand/icon.png')
+  } finally { vi.unstubAllGlobals() }
 })

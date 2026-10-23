@@ -17,7 +17,7 @@ function environment(viewport = 'desktop') {
     POSTGRES_PSQL_BIN: process.execPath,
     ARCHIVE_TASKS_FIXTURE_BIN: process.execPath,
     TEST_ARCHIVE_TASKS_ADMIN_USERNAME: `archive_tasks_browser_${viewport}`,
-    TEST_ARCHIVE_TASKS_ADMIN_PASSWORD: 'owned-synthetic-archive-admin-password',
+    TEST_ARCHIVE_TASKS_ADMIN_PASSWORD: 'archive-tasks-static-2026',
   };
 }
 const emptySchema = viewport => `${database(viewport)}|lottery_test|0\n`;

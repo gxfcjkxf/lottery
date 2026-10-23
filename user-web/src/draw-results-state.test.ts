@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { setPlatformDisplaySettings } from '@lottery/shared';
 import {
   formatDrawDateTime,
   isCancelledPeriodStatus,
@@ -60,9 +61,9 @@ describe("draw results display helpers", () => {
     }
     for (const status of ["bet_cancelled", "judged_cancelled"]) {
       expect(isCancelledPeriodStatus(status)).toBe(true);
-      expect(periodStatusLabel(status, "zh")).toContain("不用于有效判定或派奖");
+      expect(periodStatusLabel(status, "zh")).toContain("已取消");
       expect(periodStatusLabel(status, "en")).toContain(
-        "not a valid outcome or payout",
+        "cancelled",
       );
     }
   });
@@ -73,10 +74,11 @@ describe("draw results display helpers", () => {
     expect(shiftedPageOffset(0, -1, 50)).toBe(0);
   });
 
-  it("formats times in the game's timezone", () => {
+  it("formats all displayed times using platform settings rather than the game or device timezone", () => {
+    setPlatformDisplaySettings({ timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' });
     expect(
-      formatDrawDateTime("2026-10-06T00:00:00Z", "Asia/Singapore", "en"),
+      formatDrawDateTime("2026-10-06T00:00:00Z", "en"),
     ).toMatch(/8:00:00/);
-    expect(formatDrawDateTime("bad date", "UTC", "zh")).toBe("bad date");
+    expect(() => formatDrawDateTime("bad date", "zh")).toThrow();
   });
 });

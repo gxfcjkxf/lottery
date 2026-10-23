@@ -1,4 +1,6 @@
-import { AdminApiError, type AdminAccount } from "./admin-api";
+import { readAdminEnvelope } from './admin-api'
+import { copyAssociationNames } from "@lottery/shared"
+import { AdminApiError, readAdminErrorResponse, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
 const BASE = "/api/v1/admin/reports/commission";
@@ -136,20 +138,14 @@ export function commissionReportPermissions(account: AdminAccount, brand: string
 }
 
 export function createCommissionReportApi(fetcher: FetchLike = fetch) {
-  async function errorResponse(response: Response): Promise<never> {
-    let message = `Request failed (${response.status})`, code: string | undefined;
-    try { const body: unknown = await response.json(); if (isRecord(body) && isRecord(body.error)) { if (typeof body.error.message === "string") message = body.error.message; if (typeof body.error.code === "string") code = body.error.code; } } catch { /* Keep the status fallback for non-JSON errors. */ }
-    throw new AdminApiError(message, response.status, code);
-  }
   async function report(brand: string, input: CommissionReportQuery): Promise<CommissionReport> {
     if (!UUID.test(brand)) return bad("品牌 UUID 无效。");
     const brandId = brand.toLowerCase();
     const q = canonical(input), params = new URLSearchParams();
     for (const [key, value] of Object.entries(q)) if (value !== null) params.set(key, String(value));
     const response = await fetcher(`${BASE}?${params}`, { method: "GET", credentials: "same-origin", headers: { "X-Brand-ID": brandId, Accept: "application/json" } });
-    if (!response.ok) return errorResponse(response);
-    let body: unknown; try { body = await response.json(); } catch { body = null; }
-    if (!isRecord(body) || !exactKeys(body, ["success", "data", "request_id"]) || body.success !== true || typeof body.request_id !== "string" || !/^[a-zA-Z0-9_.:-]{1,80}$/.test(body.request_id) || !isRecord(body.data)) return fail();
+    const body = await readAdminEnvelope(response);
+    if (!isRecord(body) || Object.keys(body).some(key => !["success", "data", "request_id", "associations", "association_error"].includes(key)) || body.success !== true || typeof body.request_id !== "string" || !/^[a-zA-Z0-9_.:-]{1,80}$/.test(body.request_id) || !isRecord(body.data)) return fail();
     const d = body.data;
     if (!exactKeys(d, ["brand_id", "snapshot_at", "timezone", "query", "summary", "items", "total_groups"]) || typeof d.brand_id !== "string" || d.brand_id.toLowerCase() !== brandId || typeof d.snapshot_at !== "string" || !validSnapshot(d.snapshot_at) || typeof d.timezone !== "string" || !validTimezone(d.timezone) || !isRecord(d.query) || !Array.isArray(d.items) || typeof d.total_groups !== "string" || !UNSIGNED.test(d.total_groups)) return fail();
     const echo = d.query;
@@ -164,7 +160,9 @@ export function createCommissionReportApi(fetcher: FetchLike = fetch) {
     const sums = FIELDS.map(() => 0n);
     for (let i = 0; i < items.length; i++) { if (i && items[i - 1]!.key >= items[i]!.key) return fail(); FIELDS.forEach((f, j) => sums[j] += BigInt(items[i]!.totals[f])); }
     if (q.offset === 0 && BigInt(items.length) === BigInt(d.total_groups) && FIELDS.some((f, i) => sums[i] !== BigInt(summary[f]))) return fail("佣金分组与汇总不一致。");
-    return { brand_id: brandId, snapshot_at: d.snapshot_at as string, timezone: d.timezone, query: echo as CommissionReport["query"], summary, items, total_groups: d.total_groups };
+    const checked = { brand_id: brandId, snapshot_at: d.snapshot_at as string, timezone: d.timezone, query: echo as CommissionReport["query"], summary, items, total_groups: d.total_groups };
+    copyAssociationNames(d, checked);
+    return checked;
   }
   async function exportCsv(brand: string, input: CommissionReportQuery) {
     if (!UUID.test(brand)) return bad("品牌 UUID 无效。");
@@ -173,7 +171,7 @@ export function createCommissionReportApi(fetcher: FetchLike = fetch) {
     const q = canonical(input), params = new URLSearchParams();
     for (const key of ["from", "to", "group_by", "agent_id", "member_id", "cycle_id"] as const) { const value = q[key]; if (value !== null) params.set(key, String(value)); }
     const response = await fetcher(`${BASE}.csv?${params}`, { method: "GET", credentials: "same-origin", headers: { "X-Brand-ID": brandId, Accept: "text/csv" } });
-    if (!response.ok) return errorResponse(response);
+    if (!response.ok) throw await readAdminErrorResponse(response);
     const length = response.headers.get("Content-Length");
     if (!length || !UNSIGNED.test(length) || Number(length) > MAX_BYTES) return fail("佣金 CSV 文件大小无效。");
     const bytes = new Uint8Array(await response.arrayBuffer());

@@ -151,6 +151,7 @@ func openCommissionAnalysisSecondPeriod(t *testing.T, f commissionBatchFixture) 
 }
 
 func TestCommissionAnalysisActualMulticycleMultilevelCoveragePaginationAndCSV(t *testing.T) {
+	t.Parallel()
 	f := newCommissionBatchFixture(t)
 	f, childID := addActualChildAgentBeneficiary(t, f, 10)
 	ctx := context.Background()

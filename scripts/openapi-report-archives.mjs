@@ -58,21 +58,21 @@ record.oneOf = [
 ];
 record.description = "Manual records retain their exact 12-field JSON shape. Automatic records have those fields plus automation, with created_by null. No other metadata is accepted.";
 const strictControlFreeReason = {
-  type: "string", minLength: 1, maxLength: 500,
-  pattern: "^(?=.*\\S)(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]*$",
-  description: "Trimmed nonempty UTF-8, at most 500 UTF-8 bytes, with no C0/C1 control characters. The byte bound is enforced by the handler; JSON Schema maxLength counts characters.",
+  type: "string", maxLength: 500,
+  pattern: "^(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]*$",
+  description: "Optional; empty string is allowed. Otherwise trimmed UTF-8, at most 500 UTF-8 bytes, with no C0/C1 control characters. The byte bound is enforced by the handler; JSON Schema maxLength counts characters.",
 };
 const input = obj({
   kind: { type: "string", enum: ["daily", "monthly"] },
   period_key: { type: "string", description: "Canonical YYYY-MM-DD for daily or YYYY-MM for monthly; no caller-supplied from/to interval." },
   expected_revision: { type: "integer", minimum: 0, maximum: 9007199254740990 },
   reason: strictControlFreeReason,
-});
+}, ["kind", "period_key", "expected_revision"]);
 input.allOf = [
   { if: { properties: { kind: { const: "daily" } }, required: ["kind"] }, then: { properties: { period_key: { pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" } } } },
   { if: { properties: { kind: { const: "monthly" } }, required: ["kind"] }, then: { properties: { period_key: { pattern: "^[0-9]{4}-[0-9]{2}$" } } } },
 ];
-input.description = "Exactly these four members are accepted. Unknown members, including from/to, are rejected.";
+input.description = "Three required members and optional reason are accepted. Unknown members, including from/to, are rejected.";
 const window = obj({
   kind: { type: "string", enum: ["daily", "monthly"] },
   period_key: { type: "string", pattern: "^(?:[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{4}-[0-9]{2})$" },

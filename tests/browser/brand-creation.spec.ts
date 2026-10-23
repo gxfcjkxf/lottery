@@ -50,8 +50,9 @@ test(`platform brand creation retains an uncertain committed request across navi
   await expect(dialog.getByRole('button', { name: 'Retry same request', exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await page.locator('.nav-item').filter({ hasText: 'Brand members' }).click();
-  await page.locator('.nav-item').filter({ hasText: 'Brands' }).click();
+  if (await page.locator('button[aria-controls="platform-brand-tabs"]').getAttribute('aria-expanded') === 'false') await page.locator('button[aria-controls="platform-brand-tabs"]').click()
+  await page.locator('.nav-subitem').filter({ hasText: 'Member list' }).click();
+  await page.locator('.nav-subitem').filter({ hasText: 'Brand list' }).click();
   await page.getByRole('button', { name: /New brand/ }).click();
   await expect(dialog).toContainText(code);
   await dialog.getByRole('button', { name: 'Retry same request', exact: true }).click();

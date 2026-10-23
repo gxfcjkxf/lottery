@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import {
   AdminApiError,
   createIdempotencyKey,
@@ -189,11 +191,6 @@ export function createBetMutationKeyTracker() {
   };
 }
 
-type Envelope<T> = {
-  success?: boolean;
-  data?: T;
-  error?: { code?: string; message?: string } | null;
-};
 function invalidResponse(): never {
   throw new AdminApiError("投注管理响应格式无效。", 502, "INVALID_RESPONSE");
 }
@@ -318,34 +315,7 @@ export function createBetManagementApi(fetcher: typeof fetch = fetch) {
         "NETWORK_ERROR",
       );
     }
-    let envelope: Envelope<T>;
-    try {
-      envelope = (await response.json()) as Envelope<T>;
-    } catch {
-      throw new AdminApiError(
-        response.ok
-          ? "Invalid server response"
-          : `Request failed (${response.status})`,
-        response.ok ? 502 : response.status,
-        response.ok ? "INVALID_RESPONSE" : undefined,
-      );
-    }
-    if (
-      !response.ok ||
-      envelope.success !== true ||
-      envelope.data === undefined
-    ) {
-      const error =
-        typeof envelope.error === "object" && envelope.error
-          ? envelope.error
-          : undefined;
-      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError(
-        error?.message || `Request failed (${response.status})`,
-        response.ok ? 502 : response.status,
-        error?.code,
-      );
-    }
+    const envelope = await readAdminEnvelope<T>(response);
     return envelope.data;
   }
   const readOrder = async (
@@ -461,8 +431,7 @@ export function createBetManagementApi(fetcher: typeof fetch = fetch) {
         (j.cause !== "no_result" && j.cause !== "invalid_result") ||
         typeof j.draw_result_id !== "string" ||
         !nonempty(j.judged_by) ||
-        typeof j.reason !== "string" ||
-        !j.reason.trim() ||
+        typeof j.reason !== "string"  ||
         new TextEncoder().encode(j.reason).length > 500 ||
         !nonempty(j.created_at) ||
         !nonempty(j.refund_entry_id)

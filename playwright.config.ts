@@ -17,7 +17,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
-    { name: 'mobile', use: { ...devices['Desktop Chrome'], viewport: { width: 360, height: 800 }, isMobile: true, hasTouch: true } },
+    { name: 'mobile', use: { ...devices['Pixel 7'], contextOptions: { screen: devices['Pixel 7'].screen } } },
   ],
   webServer: [
     { command: 'pnpm dev:user -- --host 127.0.0.1', url: 'http://localhost:5173', reuseExistingServer: !process.env.CI },

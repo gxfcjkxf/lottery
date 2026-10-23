@@ -3,7 +3,6 @@ import { reactive } from "vue";
 import { ruleDefinitionSignature } from "./rule-versions-api";
 import {
   defaultRuleDefinition,
-  editorDefinitionBytes,
   normalizeEditorDefinition,
   parseEditorNumbers,
   validateEditorDefinition,
@@ -433,10 +432,16 @@ describe("editor helpers", () => {
     expect(definition.selection.attribute_groups).toBeNull();
   });
 
-  it("reports UTF-8 JSON bytes", () => {
-    const definition = validDefinition();
-    expect(editorDefinitionBytes(definition)).toBe(
-      new TextEncoder().encode(JSON.stringify(definition)).length,
-    );
-  });
+});
+
+it("validates server null collections for locked clone saves without rewriting their hash input", () => {
+  const source = JSON.parse(JSON.stringify(defaultRuleDefinition(digits)));
+  source.selection.attribute_groups = null;
+  source.selection.feature_choices = null;
+  source.number_attributes = null;
+  source.model.regular_pool = {allow_repeat:false};
+  source.model.special_pool = {allow_repeat:false};
+  const frozen = JSON.stringify(source);
+  expect(() => validateEditorDefinition(normalizeEditorDefinition(source))).not.toThrow();
+  expect(JSON.stringify(source)).toBe(frozen);
 });

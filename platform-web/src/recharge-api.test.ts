@@ -5,7 +5,7 @@ import { createPlatformRechargeApi, type Recharge } from './recharge-api'
 const brand = '11111111-1111-4111-8111-111111111111'
 const member = '33333333-3333-4333-8333-333333333333'
 const at = '2026-10-07T12:00:00Z'
-const pending: Recharge = { id: '22222222-2222-4222-8222-222222222222', brand_id: brand, member_id: member, account_id: '55555555-5555-4555-8555-555555555555', points: '9007199254740993', state: 'pending', proof_reference: 'receipt', remark: '', created_by: '66666666-6666-4666-8666-666666666666', version: 1, created_at: at }
+const pending: Recharge = { id: '22222222-2222-4222-8222-222222222222', brand_id: brand, member_id: member, member_username: 'member_one', account_id: '55555555-5555-4555-8555-555555555555', points: '9007199254740993', state: 'pending', proof_reference: 'receipt', remark: '', created_by: '66666666-6666-4666-8666-666666666666', created_by_name: 'admin', confirmed_by_name: '', version: 1, created_at: at }
 const confirmed: Recharge = { ...pending, id: '77777777-7777-4777-8777-777777777777', points: '25', state: 'confirmed', confirmed_by: '88888888-8888-4888-8888-888888888888', confirmed_at: at, ledger_entry_id: '99999999-9999-4999-8999-999999999999', audit_log_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', version: 2 }
 const ok = (items: unknown[]) => new Response(JSON.stringify({ success: true, data: { items } }), { status: 200 })
 

@@ -57,7 +57,7 @@ func TestStoredValidationSurvivesEmptyRestoreSearchPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	var valid bool
-	query := `SELECT ` + pgx.Identifier{schema, "valid_agent_config"}.Sanitize() + `('{"enabled":false,"max_depth":5,"ratio_cap":"0","mode":"loss","cycle":"monthly"}'::jsonb,true)`
+	query := `SELECT ` + pgx.Identifier{schema, "valid_agent_config"}.Sanitize() + `('{"enabled":true,"max_depth":5,"loss_ratio_cap": "0", "turnover_ratio_cap": "0","mode":"loss","cycle":"monthly"}'::jsonb,true)`
 	if err = tx.QueryRow(ctx, query).Scan(&valid); err != nil || !valid {
 		t.Fatalf("legitimate policy rejected under pg_restore search_path: valid=%v err=%v", valid, err)
 	}
@@ -98,7 +98,7 @@ func TestStoredValidatorIgnoresCallerTemporaryShadow(t *testing.T) {
 		}
 	}
 	var valid bool
-	query := `SELECT ` + pgx.Identifier{schema, "valid_agent_config"}.Sanitize() + `('{"enabled":false,"max_depth":5,"ratio_cap":"0","mode":"loss","cycle":"monthly"}'::jsonb,true)`
+	query := `SELECT ` + pgx.Identifier{schema, "valid_agent_config"}.Sanitize() + `('{"enabled":true,"max_depth":5,"loss_ratio_cap": "0", "turnover_ratio_cap": "0","mode":"loss","cycle":"monthly"}'::jsonb,true)`
 	if err = tx.QueryRow(ctx, query).Scan(&valid); err != nil || !valid {
 		t.Fatalf("caller shadow changed stored validator: valid=%v err=%v", valid, err)
 	}

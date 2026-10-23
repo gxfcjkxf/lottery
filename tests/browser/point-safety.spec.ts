@@ -49,6 +49,7 @@ test("brand point policy persists; pending recharge cancellation does not credit
   );
   expect(created.status()).toBe(201);
   const member = (await created.json()).data.member_id;
+  await page.locator(".console-tabs").getByRole("button", { name: "资金策略", exact: true }).click();
   const policy = page.locator(".point-policy-settings");
   await expect(
     policy.getByRole("heading", { name: "当前策略", exact: true }),
@@ -61,10 +62,12 @@ test("brand point policy persists; pending recharge cancellation does not credit
   await expect(policy.getByRole("status")).toContainText("已保存");
   await policy.getByRole("button", { name: "刷新", exact: true }).click();
   await expect(policy.getByLabel(/^单笔充值上限/)).toHaveValue("50");
+  await page.locator(".console-tabs").getByRole("button", { name: "会员积分与账本", exact: true }).click();
   const finance = page.locator(".finance-management");
   await finance.getByLabel("会员 UUID", { exact: true }).fill(member);
   await finance.getByRole("button", { name: "查询会员", exact: true }).click();
   await expect(finance.locator(".wallet-panel")).toBeVisible();
+  await page.locator(".console-tabs").getByRole("button", { name: "充值记录", exact: true }).click();
   const form = finance
     .locator(".form-panel")
     .filter({ has: page.getByRole("heading", { name: /创建.*充值/ }) });
@@ -79,6 +82,7 @@ test("brand point policy persists; pending recharge cancellation does not credit
     .getByLabel("原因", { exact: true })
     .fill("pending order to cancel");
   await form.getByRole("button", { name: /创建待确认充值单/ }).click();
+  await finance.locator(".console-recharges-table").getByRole("button", { name: "详情", exact: true }).first().click();
   const order = finance.locator(".recharge-row").first();
   await expect(order).toContainText("待确认");
   await order.getByLabel("取消原因", { exact: true }).fill("unverified proof");
@@ -87,6 +91,7 @@ test("brand point policy persists; pending recharge cancellation does not credit
   await expect(
     finance.locator(".wallet-panel .total.prominent strong"),
   ).toHaveText("0");
+  await page.locator(".console-tabs").getByRole("button", { name: "余额修复", exact: true }).click();
   const repair = page.locator(".balance-repair");
   await repair.getByLabel("差错会员 UUID", { exact: true }).fill(member);
   await repair
@@ -161,7 +166,7 @@ test("brand point policy persists; pending recharge cancellation does not credit
     } else await route.continue();
   });
   await wp
-    .getByRole("button", { name: "核对品牌配置并继续", exact: true })
+    .getByRole("button", { name: "继续", exact: true })
     .click();
   const confirmation = wp.getByRole("region", {
     name: "请核对将要保存的配置",
@@ -226,12 +231,12 @@ test("brand point policy persists; pending recharge cancellation does not credit
     .getByLabel(/^彩种：变更原因/)
     .fill("positive fractional override configuration");
   await expect(
-    wp.getByRole("button", { name: "核对彩种配置并继续", exact: true }),
+    wp.getByRole("button", { name: "继续", exact: true }),
   ).toBeDisabled();
   await expect(effectiveN).toHaveText("2.5");
   await wp.getByLabel(/^彩种：流水倍数 N/).fill("0.25");
   await wp
-    .getByRole("button", { name: "核对彩种配置并继续", exact: true })
+    .getByRole("button", { name: "继续", exact: true })
     .click();
   await confirmation
     .getByRole("button", { name: "确认并提交冻结请求", exact: true })
@@ -243,7 +248,7 @@ test("brand point policy persists; pending recharge cancellation does not credit
     .getByLabel(/^品牌：变更原因/)
     .fill("new default preserves the saved game override");
   await wp
-    .getByRole("button", { name: "核对品牌配置并继续", exact: true })
+    .getByRole("button", { name: "继续", exact: true })
     .click();
   await confirmation
     .getByRole("button", { name: "确认并提交冻结请求", exact: true })
@@ -257,7 +262,7 @@ test("brand point policy persists; pending recharge cancellation does not credit
     .getByLabel(/^彩种：变更原因/)
     .fill("restore inheritance using the current persisted brand default");
   await wp
-    .getByRole("button", { name: "核对彩种配置并继续", exact: true })
+    .getByRole("button", { name: "继续", exact: true })
     .click();
   await confirmation
     .getByRole("button", { name: "确认并提交冻结请求", exact: true })

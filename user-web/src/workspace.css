@@ -1,0 +1,61 @@
+.workspace-frame{--configured-dock-left:0px;--configured-dock-bottom:var(--workspace-nav-height);--workspace-nav-height:max(64px,calc(51px + env(safe-area-inset-bottom)))}
+.workspace-sidebar{display:none}
+/* User game workspace: one chrome, one selection surface, no empty betting dock. */
+.workspace-frame .main-column{margin-left:0;min-width:0}
+.workspace-topbar{position:sticky;top:0;z-index:25;display:grid;grid-template-columns:minmax(60px,1fr) minmax(0,3fr) 44px;align-items:center;gap:8px;min-height:52px;padding:0 max(10px,env(safe-area-inset-right)) 0 max(10px,env(safe-area-inset-left));background:var(--surface);border-bottom:1px solid var(--line)}
+.workspace-topbar.workspace-guest{grid-template-columns:minmax(60px,1fr) minmax(0,3fr) auto 44px;gap:4px}.workspace-login{min-width:44px;min-height:44px;padding:6px;font-size:14px;white-space:nowrap}
+.workspace-leading{min-width:0}.workspace-brand{font-size:16px;font-weight:750;color:var(--primary-dark);overflow-wrap:anywhere}
+.workspace-game-heading{display:flex;align-items:center;justify-content:center;min-width:0}.workspace-game-heading #user-game-help:empty{display:none}.workspace-game-heading .bet-help{margin:0;flex-shrink:0}.workspace-game-trigger{display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;min-height:44px;border:0;background:transparent;color:var(--ink);font-size:16px;cursor:pointer}.workspace-game-trigger strong{min-width:0;overflow-wrap:anywhere}
+.workspace-game-picker{position:absolute;top:100%;left:0;right:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:12px;background:var(--surface);border-bottom:1px solid var(--line);box-shadow:var(--shadow-lg);max-height:60dvh;overflow:auto}
+.workspace-game-picker button{min-height:44px;border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px;background:var(--surface);color:var(--ink);overflow-wrap:anywhere;cursor:pointer}.workspace-game-picker button[aria-pressed=true]{border-color:var(--primary);color:var(--primary-dark);background:var(--primary-light)}
+.workspace-game-empty{grid-column:1/-1}
+.workspace-overview-control{position:relative;height:30px}.workspace-overview-toggle{position:absolute;top:-7px;left:50%;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;width:56px;min-height:44px;padding:0;border:0;background:transparent;color:var(--primary-dark);cursor:pointer;isolation:isolate}.workspace-overview-toggle::before{content:"";position:absolute;inset:12px 0;background:var(--primary-light);border:1px solid var(--line);border-radius:0 0 10px 10px;z-index:-1}.workspace-overview-toggle .expanded{transform:rotate(180deg)}
+.workspace-overview .header-points{max-width:100%;height:auto;text-align:center}.workspace-overview .header-points>strong{overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;font-size:16px}
+.workspace-menu-layer{position:fixed;inset:0;z-index:60}.workspace-menu-backdrop{position:absolute;inset:0;border:0;background:rgb(15 23 42 / 45%);width:100%;height:100%}.workspace-menu{position:absolute;inset:0 auto 0 0;width:50%;box-sizing:border-box;padding:12px;background:var(--surface);box-shadow:var(--shadow-lg);overflow:auto;animation:workspace-menu-in .18s ease-out}
+.workspace-menu-heading{position:relative;display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:8px;overflow-wrap:anywhere}.workspace-menu-heading>strong{min-width:0}.workspace-menu-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}.workspace-menu>a{display:flex;align-items:center;gap:8px;min-height:48px;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line)}.workspace-menu-close{width:44px;min-width:44px;height:44px;min-height:44px;flex:0 0 44px}.workspace-menu-tools{display:flex;align-items:center;gap:4px}.workspace-menu-tools .locale-picker{position:static}.workspace-menu-tools .locale-picker__list{left:0;right:0;top:calc(100% + 6px);width:auto;max-width:100%;box-sizing:border-box}
+.workspace-frame .content{box-sizing:border-box;width:100%;max-width:1100px;margin:0 auto;padding:12px 12px calc(88px + env(safe-area-inset-bottom));min-width:0}.workspace-frame .compact-content{padding-top:8px}
+.workspace-frame .workspace-redundant-heading{display:none}
+.workspace-frame .compact-betting .betting-layout{display:block}
+.workspace-frame .compact-betting .selection-panel{padding:0;overflow:visible;min-width:0;box-sizing:border-box;width:100%}
+.lottery-play-layout{display:grid;grid-template-columns:clamp(76px,22%,150px) minmax(0,1fr);align-items:start;min-width:0}
+.workspace-frame .compact-betting .play-tabs{display:flex;flex-direction:column;flex-wrap:nowrap;gap:0;padding:0;border:0;border-right:1px solid var(--line);background:var(--canvas);min-width:0}
+.workspace-frame .compact-betting .play-tabs button{width:100%;min-width:0;min-height:48px;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:10px 6px;font-size:13px;overflow-wrap:anywhere;background:transparent;cursor:pointer}
+.workspace-frame .compact-betting .play-tabs button.active{border-left:3px solid var(--primary);background:var(--primary-light);color:var(--primary-dark)}
+.lottery-play-options{min-width:0;padding:8px}.workspace-frame .compact-betting .bet-option-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.workspace-frame .compact-betting .play-tabs,.workspace-standard .standard-play-groups{position:sticky;top:52px;max-height:calc(100dvh - 136px);overflow-y:auto}
+.workspace-frame .compact-betting .option-select{display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:72px;gap:5px;position:relative;text-align:center;overflow-wrap:anywhere}
+.workspace-frame .compact-betting .bet-option{padding:6px;min-width:0;width:100%;font:inherit;color:var(--ink)}
+.workspace-frame .compact-betting .bet-option small{font-weight:700}
+.workspace-frame .compact-betting .bet-option:disabled{opacity:.5;cursor:not-allowed}
+.workspace-frame .compact-betting .bet-option:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.selection-reopen{position:fixed;bottom:calc(80px + env(safe-area-inset-bottom));right:max(12px,env(safe-area-inset-right));z-index:12;box-shadow:var(--shadow-md)}
+.workspace-standard .standard-play-layout{display:grid;grid-template-columns:clamp(76px,22%,150px) minmax(0,1fr);align-items:start;gap:8px}
+.standard-play-groups{display:flex;flex-direction:column;min-width:0}.standard-play-groups button{min-height:48px;padding:8px 6px;border:0;border-bottom:1px solid var(--line);background:var(--canvas);color:var(--ink);font-size:13px;overflow-wrap:anywhere;cursor:pointer}.standard-play-groups button[aria-pressed=true]{background:var(--primary-light);color:var(--primary-dark);border-left:3px solid var(--primary)}
+.standard-play-options{min-width:0}.workspace-standard .standard-result-ball{display:inline-grid;place-items:center;min-width:28px;height:28px;background:var(--primary-light);color:var(--primary-dark);border-radius:50%;font-weight:700}
+.sheet-summary{display:grid;gap:12px}.sheet-summary>div:first-child{display:grid;gap:6px}.sheet-summary .dock-actions{display:flex;flex-wrap:wrap;gap:12px}.sheet-summary button{min-height:44px}
+.workspace-frame .compact-betting .canada-ball{min-width:28px;width:28px;height:28px;font-size:13px}
+.workspace-frame .mobile-primary-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));position:fixed;left:0;right:0;bottom:0;z-index:30;box-sizing:border-box;height:var(--workspace-nav-height);min-height:var(--workspace-nav-height);background:var(--surface);border-top:1px solid var(--line);padding:6px 8px max(6px,env(safe-area-inset-bottom))}
+.workspace-frame .mobile-primary-nav a{display:grid;min-width:0;min-height:44px;place-items:center;align-content:center;gap:2px;border-radius:var(--radius-sm);color:var(--muted);font-size:11px;font-weight:600;line-height:1.2;text-align:center;text-decoration:none}
+.workspace-frame .mobile-primary-nav a.active{color:var(--brand-primary);background:var(--primary-light)}
+.workspace-frame .mobile-primary-nav-icon{display:grid;place-items:center;width:28px;height:28px}
+@keyframes workspace-menu-in{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+@media(prefers-reduced-motion:reduce){.workspace-menu{animation:none}}
+@media(max-width:620px){.workspace-menu{padding:10px}.workspace-menu-heading{flex-wrap:wrap}.workspace-menu-heading>strong{flex-basis:100%}.workspace-menu-actions{margin-left:auto}}
+@media(max-width:360px){.workspace-frame .content{padding-inline:6px}.lottery-play-layout{grid-template-columns:68px minmax(0,1fr)}.lottery-play-options{padding:6px}.workspace-frame .compact-betting .bet-option-grid{gap:4px}.workspace-topbar{grid-template-columns:64px minmax(0,1fr) 44px;gap:4px}}
+
+/* A persistent navigation column fits alongside the game surface at 1000 CSS px. */
+@media(min-width:1000px){
+  .workspace-frame{--configured-dock-left:220px;--configured-dock-bottom:0px}
+  .workspace-sidebar{display:flex;flex-direction:column;gap:20px;position:fixed;inset:0 auto 0 0;z-index:30;box-sizing:border-box;width:220px;padding:20px 14px;background:var(--surface);border-right:1px solid var(--line);overflow-y:auto}
+  .workspace-sidebar-brand{display:flex;align-items:center;gap:10px;min-height:44px;color:var(--ink);font-size:18px;text-decoration:none;overflow-wrap:anywhere}
+  .workspace-sidebar-brand img{width:36px;height:36px;object-fit:contain;flex-shrink:0}
+  .workspace-sidebar-brand strong{min-width:0}
+  .workspace-frame .main-column{margin-left:220px}
+  .workspace-frame .mobile-primary-nav{display:none}
+  .workspace-frame .content{padding:12px 24px 24px}
+  .workspace-topbar{padding-inline:24px;grid-template-columns:minmax(120px,1fr) minmax(0,2fr) 44px}
+  .workspace-topbar.workspace-guest{grid-template-columns:minmax(120px,1fr) minmax(0,2fr) auto 44px}
+  .workspace-menu{left:auto;right:0;width:320px}
+  .workspace-game-picker{left:24px;right:24px;grid-template-columns:repeat(4,minmax(0,1fr))}
+  .workspace-frame .compact-betting .bet-option-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+}

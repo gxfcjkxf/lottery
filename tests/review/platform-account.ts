@@ -4,6 +4,6 @@ import { test } from '@playwright/test';
 // isolate login counters rather than disable production authentication limits.
 export function reviewPlatformUsername() {
   const project = test.info().project.name;
-  if (project !== 'desktop1440' && project !== 'mobile360') throw new Error(`Unsupported review viewport: ${project}`);
+  if (project !== 'desktop1440' && project !== 'mobilepixel7') throw new Error(`Unsupported review viewport: ${project}`);
   return `review_platform_${project}`;
 }

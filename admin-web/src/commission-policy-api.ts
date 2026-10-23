@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -34,27 +36,10 @@ export interface CommissionPolicy {
   audit_log_id?: string;
 }
 
-export interface CommissionPolicyRevision {
-  id: string;
-  brand_id: string;
-  version: number;
-  config: CommissionPolicyConfig;
-  changed_by: string | null;
-  reason: string;
-  audit_log_id: string | null;
-  created_at: string;
-}
-
 export interface UpdateCommissionPolicyBody {
   version: number;
   config: CommissionPolicyConfig;
   reason: string;
-}
-
-export interface CommissionPolicyHistory {
-  items: CommissionPolicyRevision[];
-  limit: number;
-  offset: number;
 }
 
 export function commissionPolicyPermissions(
@@ -144,20 +129,7 @@ function validPolicy(value: unknown, brand: string): value is CommissionPolicy {
   return value.brand_id === brand && isCanonicalUuid(value.brand_id) && isVersion(value.version) &&
     isValidCommissionPolicyConfig(value.config) && isDateTime(value.created_at) && isDateTime(value.updated_at) &&
     isCanonicalUuid(value.revision_id) && Date.parse(value.updated_at) >= Date.parse(value.created_at) &&
-    (value.audit_log_id === undefined
-      ? value.version === 1
-      : isCanonicalUuid(value.audit_log_id));
-}
-
-function validRevision(value: unknown, brand: string): value is CommissionPolicyRevision {
-  return isRecord(value) && hasOnlyKeys(value, ["id", "brand_id", "version", "config", "changed_by", "reason", "audit_log_id", "created_at"]) &&
-    isCanonicalUuid(value.id) && value.brand_id === brand && isCanonicalUuid(value.brand_id) && isVersion(value.version) &&
-    isValidCommissionPolicyConfig(value.config) &&
-    (value.version === 1
-      ? value.changed_by === null && value.audit_log_id === null
-      : isCanonicalUuid(value.changed_by) && isCanonicalUuid(value.audit_log_id)) &&
-    typeof value.reason === "string" && value.reason.trim().length > 0 && new TextEncoder().encode(value.reason).length <= 500 &&
-    isDateTime(value.created_at);
+    (value.audit_log_id === undefined || isCanonicalUuid(value.audit_log_id));
 }
 
 function invalidResponse(): never {
@@ -174,12 +146,10 @@ function validateBrand(brand: string): void {
 
 function validateBody(body: UpdateCommissionPolicyBody): void {
   if (!isRecord(body) || !hasOnlyKeys(body, ["version", "config", "reason"]) || !isVersion(body.version) || body.version >= Number.MAX_SAFE_INTEGER || !isValidCommissionPolicyConfig(body.config) ||
-    typeof body.reason !== "string" || !body.reason.trim() || new TextEncoder().encode(body.reason).length > 500 || body.reason.includes("\0")) {
+    typeof body.reason !== "string"  || new TextEncoder().encode(body.reason).length > 500 || body.reason.includes("\0")) {
     invalidInput("佣金策略输入无效。");
   }
 }
-
-type Envelope<T> = { success?: boolean; data?: T; error?: { code?: string; message?: string } | null };
 
 export function createCommissionPolicyApi(fetcher: typeof fetch = fetch) {
   async function request<T>(brand: string, path: string, options: { method?: "GET" | "PUT"; body?: unknown; key?: string } = {}): Promise<T> {
@@ -197,21 +167,7 @@ export function createCommissionPolicyApi(fetcher: typeof fetch = fetch) {
     } catch (cause) {
       throw new AdminApiError(cause instanceof Error ? cause.message : "Network request failed", 0, "NETWORK_ERROR");
     }
-    let envelope: Envelope<T>;
-    try {
-      envelope = await response.json() as Envelope<T>;
-    } catch {
-      throw new AdminApiError(response.ok ? "Invalid server response" : `Request failed (${response.status})`, response.ok ? 502 : response.status, response.ok ? "INVALID_RESPONSE" : undefined);
-    }
-    if (!response.ok || !isRecord(envelope) || envelope.success !== true || envelope.data === undefined) {
-      const detail = isRecord(envelope?.error) ? envelope.error : undefined;
-      if (typeof envelope?.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError(
-        (typeof detail?.message === "string" && detail.message) || `Request failed (${response.status})`,
-        response.ok ? 502 : response.status,
-        typeof detail?.code === "string" ? detail.code : undefined,
-      );
-    }
+    const envelope = await readAdminEnvelope<T>(response);
     return envelope.data;
   }
 
@@ -221,17 +177,6 @@ export function createCommissionPolicyApi(fetcher: typeof fetch = fetch) {
       const value = await request<unknown>(brand, BASE);
       if (!validPolicy(value, brand)) invalidResponse();
       return value;
-    },
-    async getHistory(brand: string, limit = 20, offset = 0): Promise<CommissionPolicyHistory> {
-      validateBrand(brand);
-      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) invalidInput("历史分页参数无效。");
-      const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-      const value = await request<unknown>(brand, `${BASE}/history?${query}`);
-      if (!isRecord(value) || !hasOnlyKeys(value, ["items", "limit", "offset"]) || value.limit !== limit || value.offset !== offset ||
-        !Array.isArray(value.items) || value.items.length > limit || !value.items.every((item) => validRevision(item, brand)) ||
-        new Set(value.items.map((item) => (item as CommissionPolicyRevision).id)).size !== value.items.length ||
-        !value.items.every((item, index, items) => index === 0 || (item as CommissionPolicyRevision).version < (items[index - 1] as CommissionPolicyRevision).version)) invalidResponse();
-      return value as unknown as CommissionPolicyHistory;
     },
     async updatePolicy(brand: string, body: Readonly<UpdateCommissionPolicyBody>, key: string): Promise<CommissionPolicy> {
       validateBrand(brand);

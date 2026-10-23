@@ -73,7 +73,7 @@ func create(t *testing.T, s Service, a access.Account, brand string) Job {
 		t.Fatal(e)
 	}
 	defer tx.Rollback(ctx)
-	j, e := s.Create(ctx, tx, brand, a, "check captured wallets", points.Metadata{ActorType: "admin", ActorID: a.ID, RequestID: ids.New()})
+	j, e := s.CreateScoped(ctx, tx, brand, a, ScopeWallet, "check captured wallets", points.Metadata{ActorType: "admin", ActorID: a.ID, RequestID: ids.New()})
 	if e != nil {
 		t.Fatal(e)
 	}

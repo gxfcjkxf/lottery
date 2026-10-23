@@ -38,10 +38,12 @@ type Dependencies struct {
 }
 type requestKey struct{}
 type envelope struct {
-	Success   bool      `json:"success"`
-	Data      any       `json:"data,omitempty"`
-	Error     *apiError `json:"error,omitempty"`
-	RequestID string    `json:"request_id"`
+	Success          bool                       `json:"success"`
+	Data             any                        `json:"data,omitempty"`
+	Error            *apiError                  `json:"error,omitempty"`
+	RequestID        string                     `json:"request_id"`
+	Associations     map[string]associationName `json:"associations,omitempty"`
+	AssociationError bool                       `json:"association_error,omitempty"`
 }
 type apiError struct {
 	Code    string `json:"code"`
@@ -51,7 +53,10 @@ type apiError struct {
 var requestPattern = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,80}$`)
 
 func New(d Dependencies) http.Handler {
-	handler := middleware(d.Logger, d.TrustedProxies, buildRouter(d))
+	router := buildRouter(d)
+	handler := middleware(d.Logger, d.TrustedProxies, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		router.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionIdentityKey{}, d)))
+	}))
 	if d.Telemetry != nil {
 		return d.Telemetry.WrapHTTP(handler)
 	}
@@ -59,6 +64,7 @@ func New(d Dependencies) http.Handler {
 }
 func buildRouter(d Dependencies) *routeMux {
 	mux := newRouteMux()
+	registerBrandLogoRoutes(mux, d)
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) { respond(w, r, 200, map[string]string{"status": "alive"}) })
 	mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -95,21 +101,34 @@ func buildRouter(d Dependencies) *routeMux {
 	}
 	mux.HandleFunc("GET /api/v1/context", contextHandler)
 	mux.HandleFunc("GET /api/v1/b/{brandCode}/context", contextHandler)
+	registerPublicDisplaySettings(mux, d)
 	registerAuthRoutes(mux, d)
 	registerAdminRoutes(mux, d)
 	registerTelegramRoutes(mux, d)
 	registerPointRoutes(mux, d)
 	registerBetRoutes(mux, d)
+	registerBettingHistory(mux, d)
+	registerMarkSixRoutes(mux, d)
+	registerConfiguredBetRoutes(mux, d)
+	registerCanadaRoutes(mux, d)
 	registerBetCatalogRoutes(mux, d)
 	registerPublicDrawRoutes(mux, d)
+	registerPublicPlatformLotteryRoutes(mux, d)
 	registerNotificationRoutes(mux, d)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { failure(w, r, 404, "NOT_FOUND", "接口不存在") })
 	return mux
 }
 func respond(w http.ResponseWriter, r *http.Request, status int, data any) {
-	write(w, status, envelope{Success: true, Data: data, RequestID: requestID(r)})
+	names, nameError := responseAssociationNames(r, data)
+	write(w, status, envelope{Success: true, Data: data, RequestID: requestID(r), Associations: names, AssociationError: nameError})
 }
 func failure(w http.ResponseWriter, r *http.Request, status int, code, message string) {
+	if status == http.StatusUnauthorized && code == "AUTH_SESSION_REVOKED" {
+		code, message = sessionFailure(r, code, message)
+		if code == "SERVICE_UNAVAILABLE" {
+			status = http.StatusServiceUnavailable
+		}
+	}
 	write(w, status, envelope{Success: false, Error: &apiError{code, message}, RequestID: requestID(r)})
 }
 func write(w http.ResponseWriter, status int, data envelope) {

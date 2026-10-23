@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { createBetMutationKeyTracker } from "./bet-management-api";
 import type { Period } from "./period-schedules-api";
@@ -101,10 +103,10 @@ function validCancellation(value: unknown): value is Cancellation {
       "brand_id",
       "game_id",
       "period_id",
-      "reason",
       "created_by",
       "created_at",
     ].every((key) => nonempty(value[key])) &&
+    typeof value.reason === "string" &&
     Number.isSafeInteger(value.period_version) &&
     Number(value.period_version) >= 1 &&
     Number.isSafeInteger(value.version) &&
@@ -130,11 +132,6 @@ function validCancellation(value: unknown): value is Cancellation {
 function invalidResponse(): never {
   throw new AdminApiError("期次撤销响应格式无效。", 502, "INVALID_RESPONSE");
 }
-type Envelope = {
-  success?: boolean;
-  data?: unknown;
-  error?: { code?: string; message?: string } | null;
-};
 
 export function createPeriodCancellationApi(fetcher: typeof fetch = fetch) {
   async function request(
@@ -166,34 +163,7 @@ export function createPeriodCancellationApi(fetcher: typeof fetch = fetch) {
         "NETWORK_ERROR",
       );
     }
-    let envelope: Envelope;
-    try {
-      envelope = (await response.json()) as Envelope;
-    } catch {
-      throw new AdminApiError(
-        response.ok
-          ? "Invalid server response"
-          : `Request failed (${response.status})`,
-        response.ok ? 502 : response.status,
-        response.ok ? "INVALID_RESPONSE" : undefined,
-      );
-    }
-    if (
-      !response.ok ||
-      envelope.success !== true ||
-      envelope.data === undefined
-    ) {
-      const error =
-        typeof envelope.error === "object" && envelope.error
-          ? envelope.error
-          : undefined;
-      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError(
-        error?.message || `Request failed (${response.status})`,
-        response.ok ? 502 : response.status,
-        error?.code,
-      );
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     return envelope.data;
   }
   function checked(value: unknown, brandId: string): Cancellation {

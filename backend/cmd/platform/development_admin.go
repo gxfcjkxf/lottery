@@ -15,7 +15,7 @@ func seedDevelopmentAdmin(ctx context.Context, db *pgxpool.Pool, environment str
 	if environment != "development" {
 		return nil
 	}
-	hash, err := authcrypto.HashDevelopmentAdminPassword()
+	hash, err := authcrypto.HashPassword("admin123")
 	if err != nil {
 		return err
 	}
@@ -33,7 +33,7 @@ func seedDevelopmentAdmin(ctx context.Context, db *pgxpool.Pool, environment str
 	if err != nil {
 		return err
 	}
-	if err := grantBootstrapAdmin(ctx, tx, admin, "", true, "development seed bootstrap"); err != nil {
+	if err := grantBootstrapAdmin(ctx, tx, admin, "", true, true, "development seed bootstrap"); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

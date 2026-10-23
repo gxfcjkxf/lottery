@@ -76,5 +76,5 @@ func Allowed(a access.Account, brand, action string) bool {
 	return action == "create" && view && !a.SuperAdmin && brandView && access.Authorize(a, "report_archive", "create", access.ScopeBrand, brand)
 }
 func validReason(s string) bool {
-	return utf8.ValidString(s) && s != "" && len(s) <= 500 && strings.TrimSpace(s) == s && !strings.ContainsAny(s, "\x00\r\n")
+	return s == "" || (utf8.ValidString(s) && len(s) <= 500 && strings.TrimSpace(s) == s && !strings.ContainsAny(s, "\x00\r\n"))
 }

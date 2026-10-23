@@ -1,14 +1,16 @@
 # Lottery 实现交接文档
 
-当前未发布版本仅使用一份完整基线迁移。旧版本兼容、旧账本补零、旧版本状态恢复、离线升级和失败时切换实现已移除；正常业务历史、结果更正、备份恢复和审计仍保留。开发约束以仓库根目录的AGENTS.md为准。
+当前未发布版本统一维护单一 `0001_baseline.up.sql`，正式发布后才冻结迁移并追加增量。旧版本兼容、旧账本补零、旧版本状态恢复、离线升级和失败时切换实现已移除；正常业务历史、结果更正、备份恢复和审计仍保留。开发约束以仓库根目录的AGENTS.md为准。
 
-当前安装以根目录[空库安装步骤](../README.md#空库安装)为准，新UTF8空库仅应用 `0001_baseline.up.sql`，旧开发库不升级或清空。模块说明中的旧阶段编号和历史验证记录不对应当前可执行增量迁移，不能据此创建旧升级流程。
+全仓清理已核对三端、共享SDK、后端及工具/测试。删除项和逐项保留原因见[59号第15.16节](59-configurable-mark-six-rule-design.md#1516-全仓清理收尾与明确保留项2026-10-20)；普通品牌投注、历史查询、旧单结算、来源快照及资金记录仍是有效业务，不作为兼容代码删除。
+
+当前安装以根目录[空库安装步骤](../README.md#空库安装)为准，新 UTF8 空库执行 `migrate`，应用单一 `0001_baseline.up.sql`。已有开发库先备份，在副本验证结构一致及业务数据完整后显式同步迁移记录，不自动升级或清空。文档中的旧阶段迁移编号仅用于追溯，对应内容已合并到当前基线；安装及变更规则以根目录 README 为准。
 
 品牌后台和总后台现在分别使用`admin-web`和`platform-web`，未登录仅显示登录入口，账号类型、Cookie和权限范围由服务端隔离。当前交接与体验环境见[42-administration-entries.md](42-administration-entries.md)。
 
 > 用途：交给第三方开发人员或 AI 作为第一阶段实现依据。  
-> 基线日期：2026-10-05  
-> 状态：实现规格草案，业务未决项集中列在 `08-acceptance-and-open-items.md`。
+> 当前状态核对：2026-10-20
+> 状态：实现合同与分阶段验收记录，业务未决项集中列在 `08-acceptance-and-open-items.md`。
 
 ## 文档优先级
 
@@ -18,9 +20,13 @@
 
 ## 文档索引
 
+- [61-brand-overview.md](61-brand-overview.md)：品牌后台默认首页、品牌隔离汇总、共用仪表盘与独立环境验证。
+
+- [60-platform-overview.md](60-platform-overview.md)：总后台默认首页、跨品牌真实汇总、在线会话口径、独立权限与布局验证。
+
 - [48-ui-architecture-and-design-system.md](48-ui-architecture-and-design-system.md)：全平台 UI 架构、设计系统令牌（Tokens）、字号排版阶梯与通用组件规范。
 
-- [47-first-phase-handover.md](47-first-phase-handover.md)：一期试用交付范围、源码及回归证据、本机入口、伪适配器和待人工审核事项。
+- [47-first-phase-handover.md](47-first-phase-handover.md)：2026-10-10 的历史交付范围、试用环境及回归证据。
 
 - [46-webkit-functional-verification.md](46-webkit-functional-verification.md)：WebKit真实账号/后台双视口专项、锁定引擎与明确凭据；不替代Safari/iPhone真机或PWA离线验收。
 
@@ -68,6 +74,23 @@
 - [39-commission-manual-recalculation-policy.md](39-commission-manual-recalculation-policy.md)：人工修正后新核算覆盖政策、差额执行、批准、余额不足暂停及当前基线验收。
 - [40-zero-original-commission-evidence.md](40-zero-original-commission-evidence.md)：零原派发后的实际人工入账保护、按真实净额更正和零差额不生成流水。
 
+- [58-mobile-mark-six-continuous-selection.md](58-mobile-mark-six-continuous-selection.md)：旧专用前端的历史交互验收；新销售已移至配置式页面，当前流程见59号第15.13节。
+
+- [59-configurable-mark-six-rule-design.md](59-configurable-mark-six-rule-design.md)：配置式规则设计及已接入的编辑、发布、销售、结算和 JSON/DOM 来源，当前状态见第15节；六合彩、加拿大新销售统一及历史保留边界见15.13节，旧开奖入口及历史执行保留边界见15.15节。
+
+- [11-report-csv-exports.md](11-report-csv-exports.md)：报表CSV导出合同。
+- [12-notification-templates.md](12-notification-templates.md)：站内通知模板与历史修订。
+- [43-current-capacity-baselines.md](43-current-capacity-baselines.md)：标注日期的历史合成容量报告。
+- [49-platform-lottery.md](49-platform-lottery.md)：共享彩种与品牌目录及当前规则入口。
+- [50-mark-six-trial.md](50-mark-six-trial.md)：六合彩专用协议试用记录。
+- [51-canada-games-trial.md](51-canada-games-trial.md)：加拿大专用协议试用记录。
+- [52-nine-game-regression.md](52-nine-game-regression.md)：九彩种历史回归证据。
+- [53-shared-automatic-draws.md](53-shared-automatic-draws.md)：自动开奖早期试用及当前来源入口。
+- [54-contract-repair-and-nine-game-regression.md](54-contract-repair-and-nine-game-regression.md)：接口修复及历史回归记录。
+- [55-platform-game-lifecycle.md](55-platform-game-lifecycle.md)：彩种生命周期，最新删除条件见59号第15.6节。
+- [56-6hch-draw-source-research.md](56-6hch-draw-source-research.md)：参考站开奖来源研究记录。
+- [57-hong-kong-live-draw-source.md](57-hong-kong-live-draw-source.md)：公开香港来源接入证据与旧冻结协议。
+
 ## 第一阶段实现顺序
 
 1. 工程骨架、环境配置、数据库迁移、品牌上下文和审计基础设施。
@@ -75,7 +98,7 @@
 3. 积分账户、账本、人工充值、冻结/解冻和并发控制。
 4. 彩种、玩法版本、期次生成、品牌暂停和投注限额。
 5. 选号、确认、下注、取消、幂等和注单查询。
-6. 外部开奖适配器伪实现、人工开奖、结果校验和结果锁定。
+6. 配置式 JSON/DOM 开奖来源、普通品牌彩种来源边界、人工开奖及结果校验。
 7. 中奖判断、结算、派奖、异常注单和结果纠正回溯。
 8. 提现申请、审核、内部出款模拟、原路退回和流水周期。
 9. 代理关系、佣金/奖励、周结/月结和报表。

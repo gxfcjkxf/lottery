@@ -1,3 +1,6 @@
+import { resolveNotificationContent } from '@lottery/shared'
+import { readApiEnvelope } from '@lottery/shared'
+
 import { walletBasePath } from "./wallet-api";
 
 export type NotificationEventType =
@@ -71,12 +74,6 @@ export interface NotificationReadReceipt {
   ids: string[];
   changed: number;
   unread_count: string;
-}
-
-interface Envelope<T> {
-  success?: boolean;
-  data?: T;
-  error?: string | { code?: string; message?: string } | null;
 }
 
 export class NotificationApiError extends Error {
@@ -239,7 +236,9 @@ function safeTemplateText(
 }
 
 function parseTemplateContent(value: unknown, eventType: NotificationEventType): NotificationTemplateContent {
-  const content = object(value, "notification.content");
+  let resolved: unknown;
+  try { resolved = resolveNotificationContent(value, eventType); } catch { return malformed("Unsupported notification translation content"); }
+  const content = object(resolved, "notification.content");
   exactKeys(content, ["en", "zh-CN"], "notification.content");
   const parsed = {} as NotificationTemplateContent;
   for (const locale of ["en", "zh-CN"] as const) {
@@ -501,42 +500,7 @@ export function createNotificationApi(
         0,
       );
     }
-    let envelope: Envelope<T>;
-    try {
-      envelope = (await response.json()) as Envelope<T>;
-    } catch (cause) {
-      if (cause instanceof TypeError || (cause instanceof DOMException && cause.name === "AbortError")) {
-        throw new NotificationApiError(
-          cause instanceof Error ? cause.message : "Network response was interrupted",
-          0,
-          "network_error",
-        );
-      }
-      if (response.ok) return malformed("server returned malformed JSON");
-      throw new NotificationApiError(`Request failed (${response.status})`, response.status);
-    }
-    if (!response.ok) {
-      const error =
-        typeof envelope?.error === "object" && envelope.error
-          ? envelope.error
-          : undefined;
-      throw new NotificationApiError(
-        typeof envelope?.error === "string"
-          ? envelope.error
-          : (error?.message ?? `Request failed (${response.status})`),
-        response.status,
-        error?.code,
-      );
-    }
-    if (
-      !envelope ||
-      typeof envelope !== "object" ||
-      Array.isArray(envelope) ||
-      envelope.success !== true ||
-      envelope.data === undefined
-    ) {
-      return malformed("successful HTTP response must contain a valid success envelope");
-    }
+    const envelope = await readApiEnvelope<T>(response,(message,status,code)=>new NotificationApiError(message,status,code === 'INVALID_RESPONSE' ? 'invalid_response' : code === 'NETWORK_ERROR' ? 'network_error' : code));
     return envelope.data;
   }
 

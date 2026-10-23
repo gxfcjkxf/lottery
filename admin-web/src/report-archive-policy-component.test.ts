@@ -1,3 +1,6 @@
+import { BusinessDetailsTestComponent as BusinessDetails } from "./business-details-test-helper";
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRenderer, h, nextTick, ref, type Component } from "vue";
 import * as VueRuntime from "vue";
@@ -37,7 +40,7 @@ function policy(version = 1, overrides: Partial<ReportArchivePolicy> = {}): Repo
     brand_id: brand, version, daily_enabled: enabled, monthly_enabled: false,
     daily_start_period: enabled ? "2026-10-09" : null, monthly_start_period: null,
     timezone: "Asia/Singapore", audit_log_id: enabled ? audit : null,
-    updated_at: "2026-10-09T00:00:00Z", ...overrides,
+    updated_at: new Date(Date.parse("2026-10-09T00:00:00Z") + version * 60_000).toISOString(), ...overrides,
   };
 }
 
@@ -94,7 +97,7 @@ function compileComponent(): Component {
   const descriptor = parse(source, { filename: "ReportArchiveTasksManagement.vue" }).descriptor;
   const compiled = compileScript(descriptor, { id: "report-archive-policy-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(compiled, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = { "@lottery/shared/BusinessDetails.vue": { default: BusinessDetails },  "@lottery/shared": DisplayShared,
     // Business tests use a host renderer; native dialog behavior is checked in Chrome.
     "@lottery/shared/DetailModal.vue": { default: { inheritAttrs: false, setup: (_props: unknown, context: { slots: { default?: () => unknown } }) => () => context.slots.default?.() } },
     vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n,
@@ -111,7 +114,7 @@ function compileComponent(): Component {
       return `const ${binding}=__modules[${JSON.stringify(specifier)}].default;`;
     })
     .replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body)(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 
 vi.spyOn(TasksApi, "createReportArchiveTasksApi").mockImplementation(() => tasksApiStub() as never);
@@ -144,11 +147,11 @@ function mount(user = account, brandId = brand) {
 async function flush() { for (let i = 0; i < 16; i++) await Promise.resolve(); await nextTick(); }
 function currentIntent() { return PolicyState.getReportArchivePolicyIntent(actor, brand); }
 function updateCalls() { return calls.filter(call => call.method === "update"); }
-async function startReview(mounted: ReturnType<typeof mount>, daily = true, monthly = false, reason = "Reviewed archive schedule") {
+async function startReview(mounted: ReturnType<typeof mount>, daily = true, monthly = false) {
   click(byTestId(mounted.container, "archive-policy-editor")); await flush();
   model(byTestId(mounted.container, "archive-policy-daily"), daily);
   model(byTestId(mounted.container, "archive-policy-monthly"), monthly);
-  model(byTestId(mounted.container, "archive-policy-reason"), reason); await flush();
+  expect(byTestId(mounted.container, "archive-policy-reason")).toBeNull(); await flush();
   expect(byTestId(mounted.container, "archive-policy-save")!.props.disabled).toBe(false);
   click(byTestId(mounted.container, "archive-policy-save")); await flush();
   const review = byTestId(mounted.container, "archive-policy-review");
@@ -165,7 +168,7 @@ beforeEach(() => {
   vi.mocked(TasksApi.createReportArchiveTasksApi).mockImplementation(() => tasksApiStub() as never);
   vi.mocked(PolicyApi.createReportArchivePolicyApi).mockImplementation(() => policyApiStub() as never);
 });
-afterEach(() => { for (const app of mountedApps.splice(0)) app.unmount(); PolicyState.clearAllReportArchivePolicyIntents(); TasksState.clearAllReportArchiveTaskRetryIntents(); calls.length = 0; vi.clearAllMocks(); vi.unstubAllGlobals(); });
+afterEach(async () => { for (const app of mountedApps.splice(0)) app.unmount(); PolicyState.clearAllReportArchivePolicyIntents(); TasksState.clearAllReportArchiveTaskRetryIntents(); await flush(); calls.length = 0; vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 describe("ReportArchiveTasksManagement archive policy editor contract", () => {
   it("keeps the existing policy view, starts disabled, and performs no automatic PUT", async () => {
@@ -181,33 +184,35 @@ describe("ReportArchiveTasksManagement archive policy editor contract", () => {
     mounted.app.unmount();
   });
 
-  it("requires reason, review and explicit confirmation, then sends the exact actor-brand snapshot", async () => {
-    const mounted = mount(); await flush(); await startReview(mounted, true, true, "Enable daily and monthly archive");
+  it("requires review and explicit confirmation without a reason input, then sends the exact actor-brand snapshot", async () => {
+    const mounted = mount(); await flush(); await startReview(mounted, true, true);
     const review = byTestId(mounted.container, "archive-policy-review")!;
-    expect(textOf(review)).toContain(actor); expect(textOf(review)).toContain(brand); expect(textOf(review)).toContain("1");
-    expect(textOf(review)).toContain("Enable daily and monthly archive");
+    expect(textOf(review)).not.toContain(actor); expect(textOf(review)).not.toContain(brand); expect(textOf(review)).toContain("1");
+    expect(findNode(review, node => node.tag === "textarea")).toBeNull();
     expect(textOf(review)).toContain("2026-10-09"); expect(textOf(review)).toContain("2026-10");
     expect(updateCalls()).toHaveLength(0);
     expect((byTestId(mounted.container, "archive-policy-submit")!.props.disabled)).toBe(true);
     await submitReviewed(mounted);
     expect(updateCalls()).toHaveLength(1);
-    expect(updateCalls()[0]!.args).toEqual([brand, { version: 1, daily_enabled: true, monthly_enabled: true, reason: "Enable daily and monthly archive" }, "archive-policy-key-01", actor]);
+    expect(updateCalls()[0]!.args).toEqual([brand, { version: 1, daily_enabled: true, monthly_enabled: true, reason: "" }, "archive-policy-key-01", actor]);
     expect(byTestId(mounted.container, "archive-policy-receipt")).not.toBeNull();
+    expect(textOf(byTestId(mounted.container, "archive-policy-frozen")!)).toContain("策略更新已确认");
+    expect(textOf(byTestId(mounted.container, "archive-policy-frozen")!)).not.toContain("操作结果未知");
     mounted.app.unmount();
   });
 
   it("freezes an unknown write across a newer off-policy GET and replays only the original request on explicit confirmation", async () => {
-    const first = mount(); await flush(); await startReview(first, true, false, "Enable daily archive");
+    const first = mount(); await flush(); await startReview(first, true, false);
     nextUpdate = async () => { throw new TypeError("response lost"); };
     await submitReviewed(first);
     const original = updateCalls()[0]!.args;
-    expect(currentIntent()).toMatchObject({ phase: "unknown", version: 1, daily_enabled: true, monthly_enabled: false, reason: "Enable daily archive", key: "archive-policy-key-01" });
+    expect(currentIntent()).toMatchObject({ phase: "unknown", version: 1, daily_enabled: true, monthly_enabled: false, reason: "", key: "archive-policy-key-01" });
     expect(byTestId(first.container, "archive-policy-frozen")).not.toBeNull();
     first.app.unmount();
 
     policyResult = policy(3, { daily_enabled: false, monthly_enabled: false, daily_start_period: "2026-10-09", monthly_start_period: null });
     const returned = mount(); await flush();
-    expect(textOf(byTestId(returned.container, "archive-policy-frozen")!)).toContain("archive-policy-key-01");
+    expect(textOf(byTestId(returned.container, "archive-policy-frozen")!)).not.toContain("archive-policy-key-01");
     expect(currentIntent()?.version).toBe(1);
     expect(byTestId(returned.container, "archive-policy-replay")!.props.disabled).toBe(true);
     model(byTestId(returned.container, "archive-policy-replay-check"), true); await flush();
@@ -220,7 +225,7 @@ describe("ReportArchiveTasksManagement archive policy editor contract", () => {
   });
 
   it("preserves a valid ACK receipt when the follow-up GET fails", async () => {
-    const mounted = mount(); await flush(); await startReview(mounted, true, false, "Enable archive");
+    const mounted = mount(); await flush(); await startReview(mounted, true, false);
     policyFailure = new AdminApiError("latest policy unavailable", 503);
     await submitReviewed(mounted);
     expect(currentIntent()).toMatchObject({ phase: "acknowledged", version: 1, key: "archive-policy-key-01", receipt: { version: 2, daily_enabled: true, audit_log_id: audit } });
@@ -231,7 +236,7 @@ describe("ReportArchiveTasksManagement archive policy editor contract", () => {
   });
 
   it("requires fresh policy reload and explicit discard after 409", async () => {
-    const mounted = mount(); await flush(); await startReview(mounted, true, false, "Enable archive");
+    const mounted = mount(); await flush(); await startReview(mounted, true, false);
     updateFailure = new AdminApiError("policy conflict", 409);
     await submitReviewed(mounted);
     expect(currentIntent()?.phase).toBe("conflict");
@@ -282,7 +287,7 @@ describe("ReportArchiveTasksManagement archive policy editor contract", () => {
     await flush(); pending.resolve(policy(99)); await flush();
     const rendered = textOf(mounted.container);
     expect(rendered).not.toContain("99");
-    if (change !== "permission") expect(rendered).toContain("7");
+    if (change !== "permission") expect(rendered).toContain("08:07:00");
     mounted.app.unmount();
   });
 
@@ -313,7 +318,7 @@ describe("ReportArchiveTasksManagement archive policy editor contract", () => {
   it("does not attach a late successful ACK to policy or task intents from a newer session", async () => {
     const pendingAck = deferred<ReportArchivePolicy>();
     nextUpdate = () => pendingAck.promise;
-    const mounted = mount(); await flush(); await startReview(mounted, true, false, "Enable archive");
+    const mounted = mount(); await flush(); await startReview(mounted, true, false);
     await submitReviewed(mounted);
     expect(currentIntent()).toMatchObject({ phase: "unknown", version: 1, key: "archive-policy-key-01" });
 
@@ -333,14 +338,14 @@ describe("ReportArchiveTasksManagement archive policy editor contract", () => {
   });
 
   it("keeps English labels after locale changes and does not automatically write or rebind a late conflict", async () => {
-    const mounted = mount(); await flush(); await startReview(mounted, true, false, "Enable daily archive");
+    const mounted = mount(); await flush(); await startReview(mounted, true, false);
     const pendingWrite = deferred<ReportArchivePolicy>(); nextUpdate = () => pendingWrite.promise;
     await submitReviewed(mounted);
     expect(currentIntent()?.phase).toBe("unknown");
     const count = updateCalls().length;
     mounted.i18n.setLocale("en"); await flush();
     expect(textOf(mounted.container)).toContain("Automatic archive policy");
-    expect(textOf(byTestId(mounted.container, "archive-policy-frozen")!)).toContain("archive-policy-key-01");
+    expect(textOf(byTestId(mounted.container, "archive-policy-frozen")!)).not.toContain("archive-policy-key-01");
     expect(updateCalls()).toHaveLength(count);
     PolicyState.clearAllReportArchivePolicyIntents();
     const replacement = PolicyState.createReportArchivePolicyIntent(actor, brand, 8, false, true, "Replacement request", "replacement-key")!;

@@ -38,7 +38,7 @@ func TestDevelopmentSeedCreatesOneAuditedPlatformAdmin(t *testing.T) {
 	if accounts != 1 || roles != 1 || audits != 1 || scopes != 0 {
 		t.Fatal(accounts, roles, audits, scopes)
 	}
-	for _, key := range []string{"brand.create.platform", "brand_operation.write.platform", "admin.write.platform", "role.write.platform"} {
+	for _, key := range []string{"platform_game.view.platform", "platform_game.write.platform", "brand.create.platform", "brand_operation.write.platform", "admin.write.platform", "role.write.platform", "platform_settings.view.platform", "platform_settings.write.platform"} {
 		var found bool
 		if err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM role_permissions rp JOIN admin_account_roles ar ON ar.role_id=rp.role_id JOIN admin_accounts a ON a.id=ar.account_id WHERE a.username='admin' AND rp.permission_key=$1)`, key).Scan(&found); err != nil || !found {
 			t.Fatal(key, found, err)
@@ -89,13 +89,13 @@ func TestDevelopmentSeedAuditFailureRollsBackAccountAndGrants(t *testing.T) {
 	}
 }
 
-func TestExplicitBootstrapStillRejectsTheDevelopmentShortPassword(t *testing.T) {
+func TestExplicitBootstrapRejectsPasswordBelowCurrentMinimum(t *testing.T) {
 	db := testdb.New(t)
 	args := os.Args
 	t.Cleanup(func() { os.Args = args })
 	os.Args = []string{"platform", "create-admin", "--username", "admin", "--super"}
-	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "admin123")
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "short")
 	if err := createAdmin(context.Background(), db); err == nil {
-		t.Fatal("explicit account creation accepted the short development password")
+		t.Fatal("explicit account creation accepted a password below six bytes")
 	}
 }

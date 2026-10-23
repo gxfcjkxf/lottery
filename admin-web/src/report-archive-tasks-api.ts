@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
@@ -19,7 +21,7 @@ export interface ReportArchiveTask {
   last_audit_log_id: string; created_at: string; updated_at: string;
 }
 export interface ReportArchiveTaskPage { brand_id: string; items: ReportArchiveTask[]; total_count: string; limit: number; offset: number }
-export interface ReportArchiveTaskRetryInput { version: number; reason: string }
+export interface ReportArchiveTaskRetryInput { version: number; reason?: string }
 
 function record(v: unknown): v is Record<string, unknown> { return v !== null && typeof v === "object" && !Array.isArray(v); }
 function exact(v: Record<string, unknown>, fields: readonly string[]): boolean {
@@ -132,9 +134,10 @@ function validPage(v: unknown, brand: string, limit: number, offset: number): v 
 function validateBrand(brand: string): void { if (!uuid(brand)) invalidInput(); }
 function validatePage(limit: number, offset: number): void { if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) invalidInput(); }
 function validateRetry(input: ReportArchiveTaskRetryInput): void {
-  if (!record(input) || !exact(input, ["version", "reason"]) || !version(input.version) || BigInt(input.version) >= MAX_SAFE || typeof input.reason !== "string") invalidInput();
+  if (!record(input) || !(exact(input, ["version", "reason"]) || exact(input, ["version"])) || !version(input.version) || BigInt(input.version) >= MAX_SAFE) invalidInput();
   const reason = input.reason;
-  if (reason.length === 0 || reason.trim() !== reason || /[\u0000-\u001f\u007f-\u009f]/u.test(reason) || /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(reason) || new TextEncoder().encode(reason).byteLength > 500) invalidInput();
+  if (reason === undefined) return;
+  if (typeof reason !== "string" || reason.trim() !== reason || /[\u0000-\u001f\u007f-\u009f]/u.test(reason) || /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(reason) || new TextEncoder().encode(reason).byteLength > 500) invalidInput();
 }
 function validateKey(key: string): void { if (typeof key !== "string" || !/^[A-Za-z0-9_:.-]{8,128}$/.test(key)) invalidInput(); }
 
@@ -153,12 +156,9 @@ export function createReportArchiveTasksApi(fetcher: typeof fetch = fetch) {
     try { response = await fetcher(path, { method: body === undefined ? "GET" : "POST", credentials: "same-origin", headers: requestHeaders, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); }
     catch { if (write) unknownWrite(); throw new AdminApiError("Network request failed.", 0, "NETWORK_ERROR"); }
     if (write && (response.status < 200 || response.status >= 300) && (response.status < 400 || response.status >= 500)) unknownWrite();
-    let envelope: unknown;
-    try { envelope = await response.json(); } catch { if (write) unknownWrite(); invalidResponse(); }
-    if (!response.ok) {
-      const detail = record(envelope) && record(envelope.error) ? envelope.error : undefined;
-      throw new AdminApiError(typeof detail?.message === "string" ? detail.message : `Request failed (${response.status})`, response.status, typeof detail?.code === "string" ? detail.code : undefined);
-    }
+    let envelope;
+    try { envelope = await readAdminEnvelope(response); }
+    catch (cause) { if (write && response.ok) unknownWrite(); throw cause; }
     if (response.status !== 200 || !record(envelope) || envelope.success !== true || envelope.data === undefined || !valid(envelope.data)) { if (write) unknownWrite(); invalidResponse(); }
     return envelope.data;
   }
@@ -174,8 +174,9 @@ export function createReportArchiveTasksApi(fetcher: typeof fetch = fetch) {
     },
     retry(brand: string, id: string, input: ReportArchiveTaskRetryInput, key: string, expectedActor: string) {
       validateBrand(brand); if (!uuid(id) || !uuid(expectedActor)) invalidInput(); validateRetry(input); validateKey(key);
+      const snapshot: ReportArchiveTaskRetryInput = Object.freeze({ version: input.version, ...(input.reason === undefined ? {} : { reason: input.reason }) });
       const headers = new Headers({ "Idempotency-Key": key, "X-Report-Archive-Actor-ID": expectedActor });
-      return request(brand, `${BASE}/${id}/retry`, (data): data is ReportArchiveTask => validTask(data, brand) && data.id.toLowerCase() === id.toLowerCase() && data.version === input.version + 1 && data.state === "pending" && data.archive_id === null && data.last_error_code === null, true, headers, input);
+      return request(brand, `${BASE}/${id}/retry`, (data): data is ReportArchiveTask => validTask(data, brand) && data.id.toLowerCase() === id.toLowerCase() && data.version === snapshot.version + 1 && data.state === "pending" && data.archive_id === null && data.last_error_code === null, true, headers, snapshot);
     },
   };
 }

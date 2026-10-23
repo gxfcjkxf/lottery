@@ -52,6 +52,9 @@ func safeOrigin(r *http.Request) bool {
 	return strings.EqualFold(u.Host, r.Host) && (u.Scheme == scheme || (u.Scheme == "https" && scheme == "http"))
 }
 func decodeBody(w http.ResponseWriter, r *http.Request, destination any) bool {
+	return decodeBodyLimit(w, r, destination, 16<<10)
+}
+func decodeBodyLimit(w http.ResponseWriter, r *http.Request, destination any, limit int64) bool {
 	if !safeOrigin(r) {
 		failure(w, r, 403, "CSRF_REJECTED", "请求来源不可信")
 		return false
@@ -61,7 +64,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request, destination any) bool {
 		failure(w, r, 415, "CONTENT_TYPE_INVALID", "需要 application/json")
 		return false
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err = decoder.Decode(destination); err != nil {
@@ -140,6 +143,10 @@ func registerAuthRoutes(mux routeRegistrar, d Dependencies) {
 			}
 			if err != nil {
 				failure(w, r, 503, "SERVICE_UNAVAILABLE", "服务暂不可用")
+				return
+			}
+			if err := d.Identity.RecordActivity(r.Context(), v.ID); err != nil {
+				failure(w, r, 503, "SERVICE_UNAVAILABLE", "Service unavailable")
 				return
 			}
 			respond(w, r, 200, v.View)

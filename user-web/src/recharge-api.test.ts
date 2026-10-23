@@ -115,9 +115,9 @@ describe("member recharge read API", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("requires readable successful envelopes and preserves HTTP status", async () => {
+  it("requires readable current envelopes and rejects unreadable error responses", async () => {
     const api = createRechargeApi({ fetcher: vi.fn<typeof fetch>().mockResolvedValue(new Response("gateway", { status: 503 })) });
-    await expect(api.list(scope)).rejects.toMatchObject({ status: 503 });
+    await expect(api.list(scope)).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     const invalid = createRechargeApi({ fetcher: vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ success: false, data: page }))) });
     await expect(invalid.list(scope)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
     const unexpectedSuccessStatus = createRechargeApi({ fetcher: vi.fn<typeof fetch>().mockResolvedValue(response(page, 201)) });

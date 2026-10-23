@@ -297,12 +297,31 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	if order.ID == "" || order.Status != "placed" || order.Total != 8 {
 		t.Fatalf("unexpected placed order: %+v", order)
 	}
+	combined := betRequest(h, "GET", "/api/v1/betting-history", f.userToken, "", "")
+	mustStatus(t, combined, 200)
+	var combinedPage struct {
+		Items []struct {
+			Kind  string        `json:"kind"`
+			Order betting.Order `json:"order"`
+		} `json:"items"`
+	}
+	decodeBetData(t, combined, &combinedPage)
+	if len(combinedPage.Items) != 1 || combinedPage.Items[0].Kind != "standard" || combinedPage.Items[0].Order.ID != order.ID || combinedPage.Items[0].Order.TotalPoints != order.Total {
+		t.Fatal("unified standard history", combinedPage)
+	}
+	foreignHistory := betRequest(h, "GET", "/api/v1/betting-history", secondAuth.AccessToken, "", "")
+	mustStatus(t, foreignHistory, 200)
+	decodeBetData(t, foreignHistory, &combinedPage)
+	if len(combinedPage.Items) != 0 {
+		t.Fatal("foreign member ticket exposed", combinedPage)
+	}
 	// The confirmation was issued while disabled. Enabling an unconfigured
 	// check must still reject the actual next Place, not just hide the UI.
-	grantCompliance(t, f.managementHTTP)
+	operator := securityOperator(t, f.managementHTTP)
+	grantCompliance(t, operator)
 	complianceConfig := compliance.DefaultConfig()
 	complianceConfig.IdentityEnabled = true
-	mustStatus(t, f.call("PUT", "/api/v1/admin/compliance-policy", "bet-compliance-enable", f.token, managedBrand, compliance.Input{Version: 1, Config: complianceConfig, Reason: "Require real adapter before new bets"}), 200)
+	mustStatus(t, operator.call("PUT", "/api/v1/platform/compliance-policy", "bet-compliance-enable", operator.token, managedBrand, compliance.Input{Version: 1, Config: complianceConfig, Reason: "Require real adapter before new bets"}), 200)
 	walletBefore, err := (points.Store{DB: f.pool}).Read(ctx, managedBrand, f.memberID)
 	if err != nil {
 		t.Fatal(err)
@@ -327,7 +346,7 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 		t.Fatal("partial business or duplicate gate evidence", orderCount, gateCount, err)
 	}
 	var gatePage compliance.GatePage
-	gateList := f.call("GET", "/api/v1/admin/compliance-gates?operation=betting", "", f.token, managedBrand, nil)
+	gateList := operator.call("GET", "/api/v1/platform/compliance-gates?operation=betting", "", operator.token, managedBrand, nil)
 	mustStatus(t, gateList, 200)
 	managedData(t, gateList, &gatePage)
 	if gatePage.TotalCount != "2" || len(gatePage.Items) != 2 || gatePage.Items[0].Action != "bet_place" {
@@ -382,7 +401,7 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	}
 	// Replays recover historical failures, not a new admission decision. A new
 	// business intent requires a new key after an operator changes the policy.
-	mustStatus(t, f.call("PUT", "/api/v1/admin/compliance-policy", "bet-compliance-disable", f.token, managedBrand, compliance.Input{Version: 2, Config: compliance.DefaultConfig(), Reason: "Restore disabled test configuration"}), 200)
+	mustStatus(t, operator.call("PUT", "/api/v1/platform/compliance-policy", "bet-compliance-disable", operator.token, managedBrand, compliance.Input{Version: 2, Config: compliance.DefaultConfig(), Reason: "Restore disabled test configuration"}), 200)
 	mustStatus(t, betRequestWithKey(h, "POST", "/api/v1/bet-orders", f.userToken, "", "bet-compliance-reject", body), 409)
 
 	// The administrative exception workflow uses the same real order fixture,
@@ -435,6 +454,7 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	}
 	grantReportPermission(t, f.managementHTTP, "bet.view.platform")
 	platformToken := platformAdminToken(t, f.managementHTTP)
+	f.token = platformToken
 	platformPath := strings.Replace(path, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("POST", path+"/abnormal", "exception-mark-idempotent", f.token, managedBrand, markBody), 403)
 	mustStatus(t, f.call("GET", path+"/exception", "", f.token, managedBrand, nil), 403)
@@ -500,6 +520,7 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	}
 	grantReportPermission(t, f.managementHTTP, "bet.view.platform")
 	platformToken = platformAdminToken(t, f.managementHTTP)
+	f.token = platformToken
 	platformJudgePath := strings.Replace(judgePath, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("POST", judgePath+"/judge-cancel", "single-judge-idempotent", f.token, managedBrand, judgeBody), 403)
 	mustStatus(t, f.call("GET", judgePath+"/judgment", "", f.token, managedBrand, nil), 403)
@@ -554,6 +575,7 @@ func TestBettingHTTPPlaceReplayCancelRefundAndMemberIsolation(t *testing.T) {
 	}
 	grantReportPermission(t, f.managementHTTP, "period.view.platform")
 	platformToken = platformAdminToken(t, f.managementHTTP)
+	f.token = platformToken
 	platformPeriodPath := strings.Replace(periodPath, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("POST", periodPath+"/cancel", "period-cancel-idempotent", f.token, managedBrand, periodBody), 403)
 	mustStatus(t, f.call("GET", periodPath+"/cancellation", "", f.token, managedBrand, nil), 403)

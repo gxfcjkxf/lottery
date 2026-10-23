@@ -1,3 +1,5 @@
+import { readAdminEnvelope } from './admin-api'
+
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 import type { RuleTicketSelection } from "../../shared/src/rules";
@@ -338,7 +340,7 @@ function validPreview(
     !validUuid(value.created_by) ||
     (expected?.accountId !== undefined && value.created_by !== expected.accountId) ||
     !validIsoDateTime(value.created_at) ||
-    !nonempty(value.reason) ||
+    !(typeof value.reason === "string") ||
     !validUuid(value.audit_log_id) ||
     typeof value.current !== "boolean" ||
     value.applied !== false
@@ -460,12 +462,6 @@ function validatePage(limit: number, offset: number): void {
     invalidInput("分页参数超出允许范围。");
 }
 
-type Envelope = {
-  success?: unknown;
-  data?: unknown;
-  error?: { code?: string; message?: string } | null;
-};
-
 export function createSettlementPreviewApi({ fetch: fetcher = fetch }: { fetch?: typeof fetch } = {}): SettlementPreviewApi {
   async function request(
     brandId: string,
@@ -498,25 +494,7 @@ export function createSettlementPreviewApi({ fetch: fetcher = fetch }: { fetch?:
     }
     if (response.ok && response.status !== (options.successStatus ?? 200))
       invalidResponse();
-    let envelope: Envelope;
-    try {
-      envelope = (await response.json()) as Envelope;
-    } catch {
-      throw new AdminApiError(
-        response.ok ? "Invalid server response" : `Request failed (${response.status})`,
-        response.ok ? 502 : response.status,
-        response.ok ? "INVALID_RESPONSE" : undefined,
-      );
-    }
-    if (!response.ok || envelope.success !== true || envelope.data === undefined) {
-      const error = typeof envelope.error === "object" && envelope.error ? envelope.error : undefined;
-      if (typeof envelope.error === "string") throw new AdminApiError("Invalid server response", 502, "INVALID_RESPONSE");
-      throw new AdminApiError(
-        error?.message || `Request failed (${response.status})`,
-        response.ok ? 502 : response.status,
-        response.ok ? "INVALID_RESPONSE" : error?.code,
-      );
-    }
+    const envelope = await readAdminEnvelope<unknown>(response);
     return envelope.data;
   }
 
@@ -543,7 +521,7 @@ export function createSettlementPreviewApi({ fetch: fetcher = fetch }: { fetch?:
       return value as unknown as Awaited<ReturnType<SettlementPreviewApi["history"]>>;
     },
     async create(brandId, orderId, body, key, expectedAccountId) {
-      if (!validUuid(orderId) || !nonempty(key) || !nonempty(body.reason) ||
+      if (!validUuid(orderId) || !nonempty(key) || !(typeof body.reason === "string") ||
         !positiveVersion(body.version) || !positiveVersion(body.period_version) || !validUuid(body.draw_result_id) ||
         (expectedAccountId !== undefined && !validUuid(expectedAccountId)))
         invalidInput("核算预览请求参数无效。");

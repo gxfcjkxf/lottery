@@ -8,6 +8,28 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 jobs:
+  mobile-layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare and verify Chromium
+        timeout-minutes: 7
+        run: node scripts/prepare-ci-browser.mjs
+      - name: Install WebKit and Linux dependencies
+        timeout-minutes: 7
+        run: pnpm exec playwright install --with-deps webkit
+      - run: pnpm test:layout
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-layout
+          path: test-results/layout/
   webkit-functional:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -114,7 +136,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        viewport: [desktop1440, mobile360]
+        viewport: [desktop1440, mobilepixel7]
     services:
       postgres:
         image: postgres:17.5-alpine
@@ -129,9 +151,9 @@ jobs:
       DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_admin_entries_${{ matrix.viewport }}?sslmode=disable
       HTTP_ADDR: 127.0.0.1:8085
       AUTH_KEY_FILE: ${{ github.workspace }}/.local/review-auth.key
-      TEST_REVIEW_ADMIN_PASSWORD: ci-owned-review-entry-password-2026
+      TEST_REVIEW_ADMIN_PASSWORD: ci-owned-review-pw-2026
       TEST_PLATFORM_ADMIN_USERNAME: review_platform_{project}
-      TEST_PLATFORM_ADMIN_PASSWORD: ci-owned-review-entry-password-2026
+      TEST_PLATFORM_ADMIN_PASSWORD: ci-owned-review-pw-2026
       TEST_PLATFORM_ADMIN_ORIGIN: http://127.0.0.1:5185
     steps:
       - uses: actions/checkout@v4
@@ -157,14 +179,14 @@ jobs:
           .local/review-platform seed
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_operator --brand aurora
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_operator_desktop1440 --brand aurora
-          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_operator_mobile360 --brand aurora
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_operator_mobilepixel7 --brand aurora
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform --super
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform_desktop1440 --super
-          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform_mobile360 --super
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_platform_mobilepixel7 --super
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_reports_desktop1440 --super
-          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_reports_mobile360 --super
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_reports_mobilepixel7 --super
           BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_exports_desktop1440 --super
-          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_exports_mobile360 --super
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_REVIEW_ADMIN_PASSWORD" .local/review-platform create-admin --username review_exports_mobilepixel7 --super
           .local/review-platform serve > .local/review-api.log 2>&1 &
           .local/review-platform worker > .local/review-worker.log 2>&1 &
           pnpm review:user > .local/review-user.log 2>&1 &
@@ -213,7 +235,7 @@ jobs:
       REPORT_ATTRIBUTION_FIXTURE_CONFIRM: owned_synthetic_database
       TEST_AUDIT_ADMIN_ORIGIN: http://localhost:5174
       TEST_ATTRIBUTION_ADMIN_USERNAME: attribution_browser_${{ matrix.viewport }}
-      TEST_ATTRIBUTION_ADMIN_PASSWORD: attribution-owned-harbor-admin-password-2026
+      TEST_ATTRIBUTION_ADMIN_PASSWORD: attribution-owned-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -278,7 +300,7 @@ jobs:
       TEST_DRAW_NOTICE_ADMIN_ORIGIN: http://localhost:5174
       TEST_DRAW_NOTICE_USER_ORIGIN: http://localhost:5173
       TEST_ATTRIBUTION_ADMIN_USERNAME: attribution_browser_${{ matrix.viewport }}
-      TEST_ATTRIBUTION_ADMIN_PASSWORD: attribution-owned-harbor-admin-password-2026
+      TEST_ATTRIBUTION_ADMIN_PASSWORD: attribution-owned-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -345,7 +367,7 @@ jobs:
       TEST_ATTRIBUTION_ORIGIN: http://localhost:5174
       TEST_ATTRIBUTION_API_ORIGIN: http://127.0.0.1:8080
       TEST_ATTRIBUTION_ADMIN_USERNAME: attribution_browser_${{ matrix.viewport }}
-      TEST_ATTRIBUTION_ADMIN_PASSWORD: attribution-owned-harbor-admin-password-2026
+      TEST_ATTRIBUTION_ADMIN_PASSWORD: attribution-owned-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -413,7 +435,7 @@ jobs:
       TEST_ARCHIVE_POLICY_ORIGIN: http://localhost:5174
       TEST_ARCHIVE_POLICY_API_ORIGIN: http://127.0.0.1:8080
       TEST_ARCHIVE_POLICY_ADMIN_USERNAME: archive_policy_browser_${{ matrix.viewport }}
-      TEST_ARCHIVE_POLICY_ADMIN_PASSWORD: archive-policy-owned-harbor-admin-password-2026
+      TEST_ARCHIVE_POLICY_ADMIN_PASSWORD: archive-policy-owned-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -480,7 +502,7 @@ jobs:
       TEST_ARCHIVE_TASKS_ORIGIN: http://localhost:5174
       TEST_ARCHIVE_TASKS_API_ORIGIN: http://127.0.0.1:8080
       TEST_ARCHIVE_TASKS_ADMIN_USERNAME: archive_tasks_browser_${{ matrix.viewport }}
-      TEST_ARCHIVE_TASKS_ADMIN_PASSWORD: archive-tasks-owned-harbor-admin-password-2026
+      TEST_ARCHIVE_TASKS_ADMIN_PASSWORD: archive-tasks-owned-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -547,7 +569,7 @@ jobs:
       TEST_ARCHIVE_ORIGIN: http://localhost:5174
       TEST_ARCHIVE_API_ORIGIN: http://127.0.0.1:8080
       TEST_ARCHIVE_ADMIN_USERNAME: archive_browser_${{ matrix.viewport }}
-      TEST_ARCHIVE_ADMIN_PASSWORD: archive-browser-owned-harbor-admin-password-2026
+      TEST_ARCHIVE_ADMIN_PASSWORD: archive-browser-owned-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -612,8 +634,8 @@ jobs:
       REWARD_UI_FIXTURE_CONFIRM: owned_synthetic_database
       TEST_ADMIN_ORIGIN: http://localhost:5174
       # These separate credentials exist only in the fresh synthetic service.
-      TEST_REWARD_ADMIN_PASSWORD: reward-s22-owned-operator-password-2026
-      TEST_REWARD_SUPER_PASSWORD: reward-s22-owned-reader-password-2026
+      TEST_REWARD_ADMIN_PASSWORD: reward-s22-operator-2026
+      TEST_REWARD_SUPER_PASSWORD: reward-s22-reader-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -700,10 +722,10 @@ jobs:
       HTTP_ADDR: 127.0.0.1:8080
       AUTH_KEY_FILE: .local/auth.key
       COMMISSION_FIXTURE_CONFIRM: owned_synthetic_database
-      COMMISSION_FIXTURE_ADMIN_PASSWORD: commission-ui-owned-admin-password-2026
-      COMMISSION_FIXTURE_USER_PASSWORD: commission-ui-owned-user-password-2026
+      COMMISSION_FIXTURE_ADMIN_PASSWORD: commission-ui-admin-pw-2026
+      COMMISSION_FIXTURE_USER_PASSWORD: commission-ui-user-pw-2026
       COMMISSION_FIXTURE_BIN: backend/bin/commission-fixture
-      TEST_COMMISSION_ADMIN_PASSWORD: commission-ui-owned-admin-password-2026
+      TEST_COMMISSION_ADMIN_PASSWORD: commission-ui-admin-pw-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -773,10 +795,10 @@ jobs:
       HTTP_ADDR: 127.0.0.1:8080
       AUTH_KEY_FILE: .local/auth.key
       COMMISSION_FIXTURE_CONFIRM: owned_synthetic_database
-      COMMISSION_FIXTURE_ADMIN_PASSWORD: commission-ui-owned-admin-password-2026
-      COMMISSION_FIXTURE_USER_PASSWORD: commission-ui-owned-user-password-2026
+      COMMISSION_FIXTURE_ADMIN_PASSWORD: commission-ui-admin-pw-2026
+      COMMISSION_FIXTURE_USER_PASSWORD: commission-ui-user-pw-2026
       COMMISSION_FIXTURE_BIN: backend/bin/commission-fixture
-      TEST_COMMISSION_ADMIN_PASSWORD: commission-ui-owned-admin-password-2026
+      TEST_COMMISSION_ADMIN_PASSWORD: commission-ui-admin-pw-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -834,11 +856,11 @@ jobs:
       AUTH_KEY_FILE: .local/auth.key
       # Credentials belong only to this disposable synthetic PostgreSQL service.
       WITHDRAWAL_FIXTURE_CONFIRM: owned_synthetic_database
-      WITHDRAWAL_FIXTURE_ADMIN_PASSWORD: ci-withdrawal-test-only-password-2026
-      WITHDRAWAL_FIXTURE_USER_PASSWORD: ci-withdrawal-test-only-password-2026
+      WITHDRAWAL_FIXTURE_ADMIN_PASSWORD: ci-withdrawal-admin-pw-2026
+      WITHDRAWAL_FIXTURE_USER_PASSWORD: ci-withdrawal-user-pw-2026
       TEST_WITHDRAWAL_ADMIN_USERNAME: withdraw_admin
-      TEST_WITHDRAWAL_ADMIN_PASSWORD: ci-withdrawal-test-only-password-2026
-      TEST_WITHDRAWAL_USER_PASSWORD: ci-withdrawal-test-only-password-2026
+      TEST_WITHDRAWAL_ADMIN_PASSWORD: ci-withdrawal-admin-pw-2026
+      TEST_WITHDRAWAL_USER_PASSWORD: ci-withdrawal-user-pw-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -892,11 +914,11 @@ jobs:
       HTTP_ADDR: 127.0.0.1:8080
       AUTH_KEY_FILE: .local/auth.key
       WITHDRAWAL_QUAL_FIXTURE_CONFIRM: owned_synthetic_database
-      WITHDRAWAL_QUAL_FIXTURE_ADMIN_PASSWORD: ci-qualification-fixture-admin-2026
-      WITHDRAWAL_QUAL_FIXTURE_USER_PASSWORD: ci-qualification-fixture-user-2026
+      WITHDRAWAL_QUAL_FIXTURE_ADMIN_PASSWORD: ci-qualification-admin-pw-2026
+      WITHDRAWAL_QUAL_FIXTURE_USER_PASSWORD: ci-qualification-user-pw-2026
       TEST_QUAL_ADMIN_USERNAME: qual_admin
-      TEST_QUAL_ADMIN_PASSWORD: ci-qualification-fixture-admin-2026
-      TEST_QUAL_USER_PASSWORD: ci-qualification-fixture-user-2026
+      TEST_QUAL_ADMIN_PASSWORD: ci-qualification-admin-pw-2026
+      TEST_QUAL_USER_PASSWORD: ci-qualification-user-pw-2026
       TEST_QUAL_USER_ORIGIN: http://localhost:5173
       TEST_QUAL_ADMIN_ORIGIN: http://localhost:5174
     steps:
@@ -956,8 +978,8 @@ jobs:
       AUTH_KEY_FILE: .local/auth.key
       RECONCILIATION_FIXTURE_CONFIRM: owned_synthetic_database
       TEST_RECONCILIATION_ADMIN_USERNAME: ci_reconciliation_operator
-      TEST_RECONCILIATION_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
-      BOOTSTRAP_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_RECONCILIATION_ADMIN_PASSWORD: ci-isolated-test-pw-2026
+      BOOTSTRAP_ADMIN_PASSWORD: ci-isolated-test-pw-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -1150,22 +1172,22 @@ jobs:
       AUTH_KEY_FILE: .local/auth.key
       # These credentials exist only in this ephemeral CI PostgreSQL database.
       TEST_ADMIN_USERNAME: ci_test_operator
-      TEST_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_ADMIN_PASSWORD: ci-isolated-test-pw-2026
       TEST_HARBOR_ADMIN_USERNAME: ci_harbor_operator
-      TEST_HARBOR_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_HARBOR_ADMIN_PASSWORD: ci-isolated-test-pw-2026
       TEST_RULE_REVIEWER_USERNAME: ci_rule_reviewer
-      TEST_RULE_REVIEWER_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_RULE_REVIEWER_PASSWORD: ci-isolated-test-pw-2026
       TEST_PLATFORM_ADMIN_USERNAME: ci_platform_operator
-      TEST_PLATFORM_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_PLATFORM_ADMIN_PASSWORD: ci-isolated-test-pw-2026
       TEST_COMPLIANCE_ADMIN_USERNAME: ci_compliance_operator
-      TEST_COMPLIANCE_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_COMPLIANCE_ADMIN_PASSWORD: ci-isolated-test-pw-2026
       TEST_EXPORT_ADMIN_USERNAME: ci_export_operator
-      TEST_EXPORT_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_EXPORT_ADMIN_PASSWORD: ci-isolated-test-pw-2026
       TEST_EXPORT_PLATFORM_USERNAME: ci_export_platform
-      TEST_EXPORT_PLATFORM_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_EXPORT_PLATFORM_PASSWORD: ci-isolated-test-pw-2026
       TEST_TEMPLATE_ADMIN_USERNAME: ci_template_operator
-      TEST_TEMPLATE_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
-      BOOTSTRAP_ADMIN_PASSWORD: ci-isolated-test-only-password-2026
+      TEST_TEMPLATE_ADMIN_PASSWORD: ci-isolated-test-pw-2026
+      BOOTSTRAP_ADMIN_PASSWORD: ci-isolated-test-pw-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

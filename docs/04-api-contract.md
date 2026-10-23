@@ -1,5 +1,14 @@
 # API 与异步任务契约
 
+## 统一操作原因规则（2026-10-19）
+
+所有管理写操作统一取消人工填写“操作原因”。请求的 `reason` 审计附注字段可省略或传空字符串，前端不再提供输入，也不生成固定文案替代人工原因。旧记录及已有冻结请求中的原因按原值保留，未知结果仍以原正文、原幂等键重试。非空附注继续遵守各接口的长度、编码和格式限制。
+
+此调整覆盖成员/账号、品牌/域名、规则/排期/开奖、积分/充值/提现、结算/更正/退款、代理/佣金/奖励、通知和归档。操作人、时间、动作、目标资源、版本、变更前后快照和审计/账本关联继续原样记录；权限、品牌隔离、状态门禁、金额及幂等校验不变。`cause` 等业务原因类别、自动失败原因、风险判断及佣金排除原因不属于人工操作原因，继续保留。
+
+当前 `0001_baseline.up.sql` 已包含可选原因约束及对应充值/退款证据检查；已有开发库按 README 备份验证后显式同步迁移记录，保留业务历史及审计见证。本文下方各历史接口条目中“原因必填”的描述由本节统一替代。
+
+
 新增只读`GET /api/v1/admin/reconciliations/business-inventory`：明确wallet.view品牌/平台授权、固定41表来源及完整引用计数，100项问题样本与完整摘要。无正文/查询参数，源总量超限或来源/审计失败关闭，不授权自动修复；旧五条持久对账任务接口不变，见[37号合同](37-brand-business-inventory.md)。
 
 佣金周期增加明确run的`GET /commission-cycles/{id}/runs/{runID}/earnings`与`/allocations`。沿用commission.view品牌/平台授权，主库读取/会话复核/审计；保存比例、精确分数与整周期舍入值分别显示，不返回完整金融快照或授权资金动作。分页、筛选、历史保持及失败边界见[35号合同](35-commission-allocation-history.md)。
@@ -76,7 +85,7 @@ commissions使用独立commission.view.brand/platform权限，返回19项规范�
 - 用户路径同时支持 `/api/v1/...` 和平台入口 `/api/v1/b/{brandCode}/...`。路径品牌仅在已配置的平台入口可选；普通品牌域名不能借此访问另一品牌。
 - 用户 Cookie 名为 `lottery_user_<无连字符品牌UUID>`，管理 Cookie 名为 `lottery_admin`；二者互不授予权限。用户会话 24 小时，管理会话 12 小时，无刷新端点。
 - 所有变更请求要求 `application/json`。携带任何 Cookie 的变更请求须带同 Host 的 `Origin`；无 Cookie 的非浏览器 Bearer 客户端可不带 Origin。未知 JSON 字段、超过 16 KiB、尾随对象均拒绝。
-- 注册须提供 username 或 phone 至少一项；用户端表单择一填写，API 允许同时提供两者。用户名为 3–32 个字符、首字符为字母，后续允许字母、数字和下划线，并规范为小写。手机号使用明确的 E.164 `+` 国家码。密码为 10–128 UTF-8 字节。
+- 注册须提供 username 或 phone 至少一项；用户端表单择一填写，API 允许同时提供两者。用户名为 3–32 个字符、首字符为字母，后续允许字母、数字和下划线，并规范为小写。手机号使用明确的 E.164 `+` 国家码。密码为 6–30 UTF-8 字节。
 - 注册/首次加入品牌的政策版本必须匹配 `/context` 当前值，不允许客户端省略或提交历史版本。`dev-1` 仅为开发占位版本。
 - 注册返回 201；登录返回 200，数据包括 `user`、`member`、`access_token`、`token_type`、`expires_at`。令牌仅供非浏览器客户端使用，浏览器使用响应 Cookie。
 - 已有全局账号首次在另一品牌登录时返回 409 `BRAND_JOIN_REQUIRED`；用户接受该品牌条款后重新提交新的幂等操作，创建不同成员资料但共用全局凭证。
@@ -84,6 +93,8 @@ commissions使用独立commission.view.brand/platform权限，返回19项规范�
 - 验证码请求字段为 `captcha_id`、`captcha_answer`；错误答案或错误密码均消耗挑战，五分钟过期，跨品牌不能使用。
 - Telegram 请求字段为 `id_token`、`challenge_id`、`nonce`、两项政策版本；可通过 `bind: true` 将验证身份绑定到当前已登录全局账号。禁止换绑/解绑，不接收任意用户名作为授权证据。真实应用配置未提供时默认关闭。
 - 认证限流持久化到主库，多实例共享；初始每 IP 30 次、每标识账号 10 次/5 分钟。同一幂等操作重放不重复计数。代理 IP 仅信任显式配置的代理网段。
+- 三端按账号只保留一个未撤销会话：用户端以全局用户 ID（跨品牌）为单位，品牌后台和总后台以管理员 ID 为单位；同名的用户与管理员属于独立账号。新登录成功时，在同一事务中撤销旧会话并创建新会话；账号行锁串行化并发登录，数据库部分唯一索引强制唯一。登录失败或事务回滚不影响原会话。升级迁移撤销过期会话，并在已有多条会话时仅保留最近创建的一条。
+- 被新登录替换的旧会话访问受保护接口时返回 401 `AUTH_SESSION_REPLACED`，三端显示“账号已在其他终端登录，请重新登录”的本地化提示并清除已登录页面状态；普通退出或过期仍为 `AUTH_SESSION_REVOKED`。在线页面每 15 秒及窗口重新获得焦点时检查会话；浏览器后台可能延迟定时器，下一次请求仍由服务端拒绝。
 - 幂等摘要使用 HMAC，最终响应加密保存。相同键同内容重放原结果；同键不同内容返回 409。会话已撤销/过期后重放登录响应不会让旧会话恢复有效。
 
 注册示例：
@@ -190,7 +201,7 @@ GET `/admin/bet-orders/{id}/judgment` 需显式 bet.view.brand / bet.view.platfo
 
 单条记录严格为 `{id,brand_id,member_id,points,state,version,created_at,confirmed_at,ledger_entry_id}`。points/version 是正 int64 十进制字符串，不经浮点数转换；时间为 UTC RFC3339。仅 confirmed 有非空 confirmed_at 和 ledger_entry_id，其余状态显式返回 null。列表严格为 `{brand_id,member_id,snapshot_at,state,items,limit,offset,total_count}`，全部状态的 state 为 null，空 items 为数组，总数为精确非负字符串。创建时间降序、UUID降序排列；页、总数和查询时间来自单条SQL的同一快照。翻页是新的当前状态查询，不承诺跨页冻结历史快照。
 
-用户投影不包含 account_id、proof_reference、remark、created_by/confirmed_by、操作理由、内部审计ID或完整账本。confirmed 表示曾经人工确认并记入平台积分，不是外部付款凭证或当前余额。成功查询与合法404提交脱敏 `finance.recharge.user.view/detail` 审计，其他人的编号不写入资源ID。审计写入等待后再次按实际时钟复核会话，提交后才释放DTO；失效返回401，审计/存储故障返回503且不返回数据。查询不改变订单、余额或积分流水。复用0006表及现有会员/时间索引，无新增迁移。
+用户投影不包含 account_id、proof_reference、remark、created_by/confirmed_by、操作理由、内部审计ID或完整账本。confirmed 表示曾经人工确认并记入平台积分，不是外部付款凭证或当前余额。成功查询与合法404提交脱敏 `finance.recharge.user.view/detail` 审计，其他人的编号不写入资源ID。审计写入等待后再次按实际时钟复核会话，提交后才释放DTO；失效返回401，审计/存储故障返回503且不返回数据。查询不改变订单、余额或积分流水。复用当前基线中的表及现有会员/时间索引，无需单独执行迁移。
 
 上述提现用户接口都有 `/b/{brandCode}` 等价路径，只允许当前会话品牌会员读取自己的记录，不接受member_id查询或客户端品牌覆盖。POST正文恰好为 `{points,source_allocation}`；金额为正int64十进制字符串，来源分配为1至4项 `{source,state:"available",points}`，按recharge/winning/gift/commission排序、来源唯一且精确合计。没有隐含的提现来源扣除优先级。必须发送Idempotency-Key、同源Origin以及从GET入口取得的X-Withdrawal-Actor-Context；上下文绑定品牌、全局用户和品牌会员，换账号后不能重放旧确认。
 
@@ -232,7 +243,7 @@ PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提�
 | POST | /admin/auth/logout | 撤销当前管理会话 |
 | GET | /admin/me | 当前管理账号、品牌范围、多个角色去重后的权限 |
 | GET | /admin/brands | 仅列出已授权品牌，平台查看权限可跨品牌 |
-| GET | /admin/users | `user.view.brand` 或 `user.view.platform` |
+| GET | /admin/users | `user.view.brand` 或 `user.view.platform`；可选 `username` 精确匹配当前品牌会员用户名（不区分大小写） |
 | PATCH | /admin/users/{id} | `user.write.brand`；status、notes、reason |
 | POST | /admin/users/{id}/kick | `user.kick.brand`；reason 必填，仅撤销该品牌成员会话 |
 | POST | /admin/users/{id}/reset-password | `user.password_reset.brand`；password、reason，修改全局密码并撤销该用户全部品牌会话 |
@@ -270,7 +281,7 @@ PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提�
 - 角色绑定单个品牌；角色归属和 code 在数据库层不可迁移。品牌角色不能把权限传播给同一管理员所属的其他品牌。平台角色由服务器端维护，不在品牌角色编辑器创建。
 - 品牌操作者只能授予自己在目标品牌已拥有的权限，包括分配已有角色；也不能修改旧权限超出自身的角色，或通过状态修改/重置密码接管更高权限管理员。平台对应 write 权限可管理品牌角色和普通账号，但仍不能编辑自身账号、自身所用角色、引导角色或超级管理员账号。
 - 品牌管理员只能管理单品牌目标管理账号；多品牌账号由具有平台管理权限的操作者管理。跨品牌/平台角色的目标账号不能被局部品牌权限接管。普通 API 不创建超级管理员，不修改账号品牌范围；显式服务器 CLI 引导无默认密码。
-- 管理账号密码 16–128 字节；username 匹配 `[a-z][a-z0-9_]{2,31}`，role code 匹配 `[a-z][a-z0-9_]{2,47}`，角色名最多 120 UTF-8 字节；原因 1–500 字节，账号角色编号数组最多100项。角色权限数组去重后逐项核验已注册品牌权限，不再固定限制100项，支持当前完整品牌权限目录。
+- 管理账号密码 6–30 字节；username 匹配 `[a-z][a-z0-9_]{2,31}`，role code 匹配 `[a-z][a-z0-9_]{2,47}`，角色名最多 120 UTF-8 字节；原因 1–500 字节，账号角色编号数组最多100项。角色权限数组去重后逐项核验已注册品牌权限，不再固定限制100项，支持当前完整品牌权限目录。
 - `/admin/me` 的 `permissions_by_brand` 与 `platform_permissions` 是授权显示的权威字段；`permissions` 是扁平并集，不能用它推导任意品牌可写。
 - 写事务在权限读写锁内重查当前角色和会话：普通业务管理写取共享锁，角色/账号权限变更取排他锁。此锁不用于用户投注，不能由此推导业务吞吐。权限变更后会话实时读取最新权限；账号角色/状态/密码变更同时撤销目标会话。
 - 已认证但无权限的请求写独立 `access.denied` 审计，不记录请求正文、密码、令牌或无权访问对象内容；业务回滚后拒绝审计仍保留。
@@ -647,19 +658,19 @@ S7-k 接入 GET `/api/v1/admin/reports/betting/export` 与 `/api/v1/admin/report
 
 | 方法 | 路径 | 合同 |
 |---|---|---|
-| GET | /brand-operation | `{brand_id,version,name,status,updated_at,audit_log_id?}`；返回真实品牌当前状态与共享配置版本 |
-| PATCH | /brand-operation | `{version,status,reason}`，status 仅 active/paused；200 返回原操作回执及 audit_log_id；必须有幂等键 |
+| GET | /brand-operation | `{brand_id,version,name,status,updated_at,audit_log_id?,pause_starts_at?,pause_ends_at?}`；返回真实品牌当前状态与共享配置版本 |
+| PATCH | /brand-operation | `{version,status,reason?,pause_starts_at?,pause_ends_at?}`，status 为 active/paused/disabled；停止与重新启用已停止品牌仅允许平台写权限；200 返回原操作回执及 audit_log_id；必须有幂等键 |
 | GET | /brand-operation/history | `{items:[{id,brand_id,version,previous_status,status,changed_by,reason,audit_log_id,created_at}],limit,offset}`；默认20，limit1..100，offset0..1000000 |
 
-变更立即生效，不要求双人审批。提交前后及原键缓存重放均重新验证当前管理会话和权限。请求拒绝未知、缺失、重复和 null 字段；原因必须为非空白 UTF-8 且不超过500字节。查询拒绝未知、重复或空分页参数；当前状态 GET 和 PATCH 不接受查询参数。
+未指定时间范围的变更立即生效，不要求双人审批。暂停可同时提供 RFC3339 开始/结束时间；结束须晚于开始和当前时间。未来预约仅允许当前 active 品牌，回执仍为 active；开始已过则立即 paused。已停用品牌不能设置定时暂停；任何从 disabled 转出或转入 disabled 的操作均要求平台写权限。period worker 每秒在品牌行锁内执行到点暂停/到期恢复；错过整个窗口则清除预约、保持 active。手动恢复、停止或重新安排会替换/取消旧计划。品牌配置及历史记录可附带 pause_starts_at/pause_ends_at；预约、自动执行与取消均递增共享版本并写入审计和不可变历史。同状态历史用于记录预约或取消。自动执行的审计 actor_type=system、actor_id=null；历史 changed_by 保留创建预约的管理员，用于追溯来源。提交前后及原键缓存重放均重新验证当前管理会话和权限。请求拒绝未知、缺失必填字段、重复和 null 字段；version 与 status 必填，原因可省略或为空字符串，非空原因必须去除首尾空白，最多 500 个 Unicode 字符（中文和单个 emoji 均计一个，不按 UTF-8 字节计数）。时间窗口必须成对提供且仅用于 status=paused。当前品牌后台与总后台均不提供原因输入框，界面提交空原因。查询拒绝未知、重复或空分页参数；当前状态 GET 和 PATCH 不接受查询参数。
 
 运行状态版本与认证配置共享，因此验证码或 Telegram 配置变化也可能造成版本冲突。PATCH 在品牌行独占锁下检查版本和状态，状态、版本、审计及历史同事务提交；已有持有品牌共享锁的用户操作先完成，暂停成功之后的新投注不得扣分。暂停不撤销登录会话，不自动取消订单、期次或阻止原路退款和已有开奖结果结算，不代表尚未实现的提现出款已经可用。
 
-同状态重复操作或禁用品牌的切换返回409 BRAND_OPERATION_STATE_CONFLICT；无效输入400 BRAND_OPERATION_INPUT_INVALID；旧版本409 BRAND_OPERATION_VERSION_CONFLICT；无权限403 PERMISSION_DENIED。未知结果始终用原正文与原键重试。历史成功回执可能早于最新状态，核对回执后须独立 GET；不得把旧的暂停回执当成品牌现在仍暂停。
+无预约的同状态重复操作返回409 BRAND_OPERATION_STATE_CONFLICT；正文解析或字段校验失败400 REQUEST_INVALID，服务层无效输入400 BRAND_OPERATION_INPUT_INVALID；旧版本409 BRAND_OPERATION_VERSION_CONFLICT；无权限403 PERMISSION_DENIED。未知结果始终用原正文与原键重试。历史成功回执可能早于最新状态，核对回执后须独立 GET；不得把旧的暂停回执当成品牌现在仍暂停。
 
 ## 4.5 S6-e 代理身份、层级与配置（不计算佣金）
 
-后台权限分别为 `agent.view.brand/platform`、`agent.write.brand`、`agent_policy.view.brand/platform`、`agent_policy.write.brand`；超级管理员只能显式平台读取。默认政策 `{enabled:false,max_depth:5,ratio_cap:"0",mode:"loss",cycle:"monthly"}` 仅提供初始配置，不代表已选择生产佣金方案；enabled 只启用代理配置管理，绝不启用派发。
+后台权限分别为 `agent.view.brand/platform`、`agent.write.brand`、`agent_policy.view.brand/platform`、`agent_policy.write.brand`；超级管理员只能显式平台读取。默认政策 `{enabled:true,max_depth:5,loss_ratio_cap:"0",turnover_ratio_cap:"0",mode:"loss",cycle:"monthly"}` 仅提供初始配置，不代表已选择生产佣金方案；代理功能默认启用；佣金结算和派发使用各自开关。
 
 | 方法 | 后台路径 | 合同 |
 |---|---|---|
@@ -671,7 +682,7 @@ S7-k 接入 GET `/api/v1/admin/reports/betting/export` 与 `/api/v1/admin/report
 | PUT | /admin/agents/{id} | `{version,policy_version,parent_version,config,reason}`，200 |
 | GET | /admin/agents/{id}/history | 节点不可改写配置历史 |
 
-政策返回 `{brand_id,version,config:{enabled,max_depth,ratio_cap,mode,cycle},updated_at,audit_log_id?}`。max_depth 1–32是配置/工程安全界限；ratio_cap 是0–1最多6位规范小数字符串，0.1=10%，不接受多余末尾0、正号、数字型JSON。mode loss/turnover（输赢/流水）、cycle weekly/monthly；周期仅保存设置，尚不生成周/月结任务。
+政策返回 `{brand_id,version,config:{enabled,max_depth,loss_ratio_cap,turnover_ratio_cap,mode,cycle},updated_at,audit_log_id?}`。max_depth 1–32是配置/工程安全界限；loss_ratio_cap（占成上限）和 turnover_ratio_cap（佣金上限）是0–1最多6位规范小数字符串，0.1=10%，不接受多余末尾0、正号、数字型JSON。mode loss/turnover（输赢/流水）、cycle weekly/monthly；周期仅保存设置，尚不生成周/月结任务。
 
 节点返回 `{id,brand_id,member_id,parent_id,depth,path,version,config:{ratio,mode,status,can_create_children},effective_mode,mode_source_agent_id,policy_version,parent_version,created_by,created_at,updated_at,audit_log_id?}`。parent_id/parent_version 根为显式null，子为UUID/正版本；path为根到自身UUID数组。mode为null（最近祖先或品牌继承）/loss/turnover；effective_mode与来源是读取时或首次回执时的派生信息，不是不可变财务基数。status active/disabled，发展下级标志只控制新增，不等同所有财务权限。每品牌会员最多一个代理节点，父/成员/路径不可直接重写；新增须正常品牌成员、启用政策、活跃祖先且直接父级允许发展。
 
@@ -683,7 +694,7 @@ S7-k 接入 GET `/api/v1/admin/reports/betting/export` 与 `/api/v1/admin/report
 
 | 方法 | 用户路径 | 范围 |
 |---|---|---|
-| GET | /agent/me | 自己的品牌成员对应节点，无代理404 |
+| GET | /agent/me | 独立代理会话及代理节点，拒绝会员/管理员会话 |
 | GET | /agent/children | 仅自己的直属节点，只有分页参数，拒绝任意parent_id |
 | PUT | /agent/children/{id}/config | `{version,policy_version,parent_version,ratio,mode,reason}`，只改直属下级比例/模式 |
 
@@ -695,13 +706,18 @@ API当前不写积分、不生成佣金/奖励记录，不修改加入归属或�
 
 ### 4.6 S6-f 加入码与归属（已接入）
 
+- 每个品牌会员自动分配一枚专属推荐码：注册、首次跨品牌加入、运营创建、Telegram 首次加入均在会员创建事务中执行。当前 `0001_baseline.up.sql` 包含会员推荐码分配与约束；已有推荐码保留，禁用/过期码不自动替换或重新启用。唯一约束为 `(brand_id,owner_member_id) WHERE kind='referral'`，重复创建返回409；代理码不受此唯一约束影响。补齐不改变加入归属、代理节点、钱包或历史注单。系统首次分配的历史 `actor_id:null`，审计 `actor_type:system`；后续人工修改仍使用管理员 UUID。
+
 - 后台 GET/POST `/api/v1/admin/join-codes`、GET/PUT `/join-codes/{id}`、GET `/join-codes/{id}/history`；独立 `join_code.view.brand/platform` 与 `join_code.write.brand`，超管只读。所有写入有幂等、原因、版本、不可改写历史与审计。
-- Code DTO：`{id,brand_id,kind:"agent"|"referral",code,owner_member_id,agent_id:null|UUID,status:"active"|"disabled",starts_at:null|RFC3339,expires_at:null|RFC3339,version,usable:boolean,created_at,updated_at,audit_log_id?}`。code为服务器生成的24位大写十六进制字符串；身份/文本/类型/会员/代理不可换绑，需创建新码再停用旧码。usable仅为查询时状态，提交仍重新验证。
+- Code DTO：`{id,brand_id,kind:"agent"|"referral",code,owner_member_id,agent_id:null|UUID,status:"active"|"disabled",starts_at:null|RFC3339,expires_at:null|RFC3339,version,usable:boolean,created_at,updated_at,audit_log_id?}`。code为服务器生成的24位大写十六进制字符串；身份/文本/类型/会员/代理不可换绑。推荐码在同品牌会员下唯一，停用后不会生成替代码；代理码可另行创建并停用旧码。usable仅为查询时状态，提交仍重新验证。
 - POST body：`{kind,owner_member_id,agent_id:null|UUID,starts_at:null|RFC3339,expires_at:null|RFC3339,reason}`；agent必须属于同品牌owner会员，referral的agent_id必须null；初始active、version1，成功201。PUT body：`{version,status,starts_at,expires_at,reason}`，成功200和version+1。日期允许显式null，起止均有值时要求start<expire；精度最多微秒，开始含/到期不含。回执日期按同一微秒时刻匹配，允许等价时区和尾零表示，不能按毫秒抹去真实差异；写回执必须含有效audit_log_id，GET可省略。
 - 列表 query仅 `kind`/`owner_member_id`/`limit`/`offset`，前两项可省；响应 `{brand_id,kind:null|kind,owner_member_id:null|UUID,items,limit,offset,total_count:string}`。分页默认20、limit1–100、offset0–1000000；未知/重复筛选拒绝。
 - 历史响应 `{brand_id,code_id,items:[{id,brand_id,code_id,version,status,starts_at,expires_at,actor_id,reason,audit_log_id,created_at}],limit,offset,total_count:string}`；仅limit/offset分页。
 - 用户 GET `/me/join-codes?limit&offset` 返回自身会员的Code分页 `{brand_id,member_id,items,limit,offset,total_count:string}`，不公开其他人的编码、审核理由或管理员资料。GET `/me/attribution` 返回 `{brand_id,member_id,join_method,joined_at,code_id:null|UUID,source_code:null|string,legacy:boolean}`，不公开上级配置和私人树。
 - register/login首次加入及telegram首入增加可选 `agent_code` 或 `referral_code`，互斥；空字段等同未选，非空规范为去首尾空白并大写。编码必须属于当前品牌、在有效期内且启用；来源会员/全局身份正常，agent还须品牌代理政策及全部祖先启用。无效/外品牌/禁用/过期均统一 `JOIN_CODE_UNAVAILABLE`，不泄露来源身份。
+
+- 公开 GET `/api/v1/join-codes/validate`（亦支持品牌前缀）按当前品牌校验 URL 加入码，只返回 `{valid:boolean}`，不泄露来源身份，响应 `no-store`。查询使用 `agent_code`/`referral_code`，两者同时提供时仅校验代理码，不回退推荐码。此接口不加入会员、不改变归属、不触及钱包；真正加入仍由注册/首次加入事务重新验证。
+- 用户端将校验通过的 URL 加入码按品牌 ID 保存于 localStorage，固定7天到期；刷新/无参数返回不续期，新的有效码可替换。每次恢复均重新校验可用性；过期清除，失效码清除并明确提示，不以推荐码兜底；服务或缓存读取失败明确提示并禁止继续。已有会员登录不携带加入码重绑。分享链接直接携带对应参数。
 - 已存在品牌成员携带非空加入码时返回409 `JOIN_ATTRIBUTION_FIXED`，不能换归属；重新正常登录需用户去掉编码并提交新操作。未接受品牌条款不能入品牌，运营新增成员仍需本人首次同意。运营新增可选上述编码，但join_method仍operator，快照记录code_kind及来源；不代同意、不改全局身份。
 - 加入码不自动晋升代理，不覆盖旧成员或旧注单；停用编码仅阻止新的归属建立。会员初始归属与新注单的提交时代理政策/路径/配置版本由数据库保存不可改写快照；历史缺失只标legacy，不补造代理/佣金事实。此阶段无资金入账、奖励或佣金任务。
 - 错误：`JOIN_CODE_INPUT_INVALID`400、`JOIN_CODE_NOT_FOUND`404、`JOIN_CODE_DENIED`403、`JOIN_CODE_VERSION_CONFLICT`409、`JOIN_CODE_STATE_CONFLICT`409、存储失败503。Code读写与原请求确认分开，断网/畸形回执保留原正文/键，单纯GET不能替代原回执；换品牌/会话及迟到回调隔离。
@@ -849,3 +865,45 @@ POST 回执保存首次结果，SDK 不在写方法内重新取上下文/改写�
 GET `/api/v1/admin/reports/commission-analysis`及`.csv`读取保存整周期的核算、有效目标与全历史实际入账。from/to按cycle.window_to半开93天窗口筛选，group_by仅cycle/agent；可选受益agent_id/member_id/cycle_id，JSON默认limit20/max100、offset上限1000000，CSV拒绝分页和GET正文，未知/重复/空或非规范参数拒绝。查看同时要求commission.view和report_commission.view，各可为明确品牌/平台权限，导出还需report_commission.export；超管身份不推导授权。
 
 单条主库SQL同时产生四个覆盖计数、十八项精确/null总计、分页及完整分组数；核算未就绪不等于零，实际净額不是余额或支付授权。current核算与资金见证损坏409，筛选资源404、权限403、会话失效401、导出超过10000组/4MiB为413、未能完整查询/审计为503。每次请求15秒限时，保存点处理查询失败，查询后及审计后再复核当前授权，审计提交前不释放结果。CSV版本1/34列带BOM、摘要、品牌/kind=commission_analysis、时区、组数及审计ID，字段及来源合同见[38号](38-commission-cycle-analysis.md)。旧入账时间报告继续版本2/22列，不被本模块替代。
+
+### 总后台登录页展示配置
+
+品牌后台默认首页使用 `GET /api/v1/admin/overview`，要求 `overview.view.brand` 及与当前品牌入口一致的品牌头；会员新增按加入当前品牌时间归日。品牌隔离与统计口径见 [61-brand-overview.md](61-brand-overview.md)。
+
+总后台登录后的默认页为经营总览。跨品牌汇总接口 `GET /api/v1/platform/overview` 要求独立 `overview.view.platform` 权限，不接受品牌头或查询参数；汇总范围、在线活动、积分精度和日界线口径见 [60-platform-overview.md](60-platform-overview.md)。
+
+`GET /api/v1/platform/presentation` 无需登录，成功返回 `data: { display_name, logo_text, logo_url }`，仅公开平台名称与 Logo，响应设置 `Cache-Control: no-store`。配置不可读取时返回 503 `SERVICE_UNAVAILABLE`，不返回默认品牌或管理、审计字段。登录页读取失败允许明确重试，不发起登录请求。
+
+### 关联筛选选项
+
+`GET /api/v1/{admin|platform}/filter-options?resource=...&kind=...&limit=100&offset=0` 使用当前管理会话及 `X-Brand-ID`。`resource` 只接受已支持页面（报表、审计、佣金、期次及开奖），`kind` 限该页面允许的关联类型；检查目标页面的读取权限，不授予其他管理权限。成功返回 `{ brand_id, items: [{ id, name }], limit, offset }`，名称为账号、彩种名称、期号或可识别的记录摘要，设置 `Cache-Control: no-store`。不支持的组合或重复参数返回 400，未授权返回 403，不跨品牌返回选项。前端只展示名称，选择后以内部 ID 继续调用原查询接口。
+
+
+### 用户统一投注记录
+
+`GET /api/v1/betting-history`（同样支持品牌路径）汇总当前登录会员在当前品牌的全部投注记录。`game_id` 可选，省略时显示全部；`limit` 默认 20、最大 100；`cursor` 为上一页返回的 `next_cursor`，为空值表示没有下一页。不接受 `member_id`、`brand_id` 或 `offset` 覆盖会话范围。
+
+响应包含 `brand_id, member_id, game_id, games, items, limit, next_cursor`。`games` 从该会员所有历史注单取实际名称，包含已下架彩种。`items` 含彩种名称、期号、投注时间和原注单快照，四类存储在服务端以 `placed_at DESC, kind DESC, id DESC` 统一排序后分页。游标绑定品牌、会员和彩种筛选；切换筛选或账号从首页开始。翻页采用稳定时间/来源/编号边界，期间新增投注不会导致后续页面挤位重复或漏单。页面显示业务彩种名，不把存储来源作为分类入口；历史规则、选号、派彩、退回和风险冻结/释放等原始字段保持原义。读取不修改订单和资金。
+
+### 代理线模式预约切换
+
+- `GET /admin/agents/{id}/mode-change` 要求 `agent.view.brand`，只允许一级代理，返回当前品牌该线完整节点和政策版本。
+- `POST /admin/agents/{id}/mode-change` 要求 `agent.write.brand`、品牌可写及 `Idempotency-Key`。请求为 `{policy_version, mode, items:[{agent_id,version,ratio}]}`，必须列出一级代理及全部下级，不能重复、跨品牌、缺失或携带过期版本。比例沿用精确 0–1 分数语义，最多六位小数；每一项不得超过品牌上限及对应新父级比例。
+- 服务端依据当前佣金日历计算下个周期边界。回执返回 `{id,brand_id,root_id,mode,effective_at,items}`，未知结果保留原请求和原幂等键重试。全线一起生效，当前周期配置保持不变，新增普通配置接口不允许直接切换一级代理模式。
+- 节点可含 `pending_change:{id,root_id,mode,ratio,effective_at}`，当前 `config`、`effective_mode` 始终表示当前生效值。预约期间全线禁止编辑和新增下级，佣金日历及代理政策保持锁定。未配置日历返回 `AGENT_COMMISSION_CALENDAR_REQUIRED`，待生效编辑返回 `AGENT_MODE_PENDING`。历史投注快照不可重写。
+
+### 独立代理账号与代理端
+
+品牌后台 `POST /api/v1/admin/agents` 直接接收 `username,password,policy_version,parent_id,parent_version,config`，不接收会员编号。独立代理账号、节点、钱包和初始代理码在同一事务创建；不会创建 `global_users` 或 `brand_members`。代理节点的公开身份字段为 `agent_account_id`。
+
+`POST /agent/login` 和 `/agent/logout` 使用独立代理会话及 `lottery_agent_<brand-id去连字符>` HttpOnly Cookie；登录命名空间按品牌隔离，不复用会员或后台 Cookie。各层级使用相同入口。
+
+`GET /agent/me` 返回代理身份、节点和可用代理码；`GET /agent/wallet` 返回当前代理钱包。`GET /agent/members` 按直属会员或整条代理线分页查询会员，并返回所选范围的完整汇总，`GET /agent/members/{id}/summary` 返回积分、未结算积分及已结算总净输赢，`GET /agent/members/{id}/bets` 复用四种投注存储的统一游标历史。所有会员读取先验证当前品牌和当前会话代理的直属或下级归属，不允许指定任意代理。
+
+`POST /agent/members` 创建独立会员，归属码由服务端从当前代理读取，不能由客户端改派；`POST /agent/children` 仅创建当前代理的直属下级，要求允许发展下级，沿用层级、比例及模式限制。两者要求幂等键，同一键与不同正文冲突；重放前仍校验当前会话。
+
+内部金融流水统一通过 `wallet_owners` 明确区分会员与代理账户。原金融字段 `member_id` 在佣金受益行中表示独立代理账户编号，其外键已指向 `agent_accounts`；投注者会员字段仍指向 `brand_members`，没有双读或会员身份回退。
+
+代理端会员范围统一使用 `scope=direct|line`，默认为直属会员；整条代理线包含当前代理及其所有下级发展的会员。会员列表、搜索和汇总使用同一范围，详情和注单也校验范围及品牌。积分按会员独立汇总，注单按实际订单独立汇总，禁止累加各层代理汇总。汇总覆盖完整查询结果，与分页无关；列表显示归属代理。
+
+品牌代理规则分别配置占成比例上限和佣金比例上限。创建、编辑、代理线切换模式及投注快照校验均按代理线有效模式选择上限，不能使用品牌默认模式代替节点实际模式；下级仍不得超过上级。旧单上限字段不再接受。

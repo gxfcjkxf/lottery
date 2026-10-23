@@ -7,8 +7,6 @@ import (
 	"io"
 	"math/big"
 	"regexp"
-	"strings"
-	"unicode/utf8"
 )
 
 var namePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,47}$`)
@@ -235,7 +233,4 @@ func Warnings(d Definition) []string {
 		conditions[key] = true
 	}
 	return out
-}
-func ValidateReason(reason string) bool {
-	return strings.TrimSpace(reason) != "" && len(reason) <= 500 && utf8.ValidString(reason)
 }

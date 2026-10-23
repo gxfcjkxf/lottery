@@ -23,8 +23,7 @@ function validIntent(value: unknown, scope: ReconciliationWriteScope): value is 
     typeof item.brandId === "string" && item.brandId.toLowerCase() === scope.brandId.toLowerCase() && item.operation === scope.operation &&
     (item.jobId === undefined && scope.jobId === undefined || typeof item.jobId === "string" && scope.jobId !== undefined && item.jobId.toLowerCase() === scope.jobId.toLowerCase()) &&
     UUID_RE.test(scope.accountId) && UUID_RE.test(scope.brandId) &&
-    typeof body.reason === "string" && body.reason.trim() === body.reason && body.reason.length > 0 &&
-    new TextEncoder().encode(body.reason).length <= 500 && !/[\u0000-\u001f\u007f-\u009f]/u.test(body.reason) && !hasLoneSurrogate(body.reason) &&
+    typeof body.reason === "string" && body.reason.trim() === body.reason && new TextEncoder().encode(body.reason).length <= 500 && !/[\u0000-\u001f\u007f-\u009f]/u.test(body.reason) && !hasLoneSurrogate(body.reason) &&
     typeof item.key === "string" && KEY_RE.test(item.key);
   if (!common) return false;
   if (scope.operation === "create") return scope.jobId === undefined && Object.keys(body).length === 2 && Object.hasOwn(body, "check_scope") &&

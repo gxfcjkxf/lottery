@@ -64,6 +64,13 @@ const quote: BetQuote = {
 };
 
 describe("betting API", () => {
+  it('requires a real period number in ticket list summaries', async () => {
+    const order = { unit_points: '1', multiplier: '1', total_points: '10', prize_points: '0', period_no: '20261017' };
+    const api = createBettingApi({ fetcher: vi.fn<typeof fetch>().mockResolvedValue(ok({ items: [order] })) });
+    expect((await api.orders()).items[0]?.period_no).toBe('20261017');
+    const missing = createBettingApi({ fetcher: vi.fn<typeof fetch>().mockResolvedValue(ok({ items: [{ ...order, period_no: undefined }] })) });
+    await expect(missing.orders()).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+  });
   it('accepts current empty pages and explicit zero prize strings without replacements', async () => {
     const pages = createBettingApi({ fetcher: vi.fn<typeof fetch>().mockImplementation(async () => ok({ items: [], limit: 50, offset: 0 })) });
     expect((await pages.games()).items).toEqual([]);

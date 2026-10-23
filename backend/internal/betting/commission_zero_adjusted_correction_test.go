@@ -14,7 +14,7 @@ import (
 func zeroOriginalManualOnlyFixture(t *testing.T) (commissionBatchFixture, commission.Payment, commission.Target, commission.Adjustment) {
 	t.Helper()
 	db := testdb.New(t)
-	f := newCommissionBatchFixtureFromBetting(t, newBettingFixtureWithDBWindow(t, db, storeTestBrand, 20*time.Second, 22*time.Second))
+	f := newCommissionBatchFixtureFromBetting(t, newBettingFixtureWithDBWindow(t, db, storeTestBrand, 20*time.Second, 22*time.Second), 20*time.Second, 22*time.Second)
 	ctx := context.Background()
 	waitCommissionBoundary(t, f.boundary)
 	c := createCommissionCycle(t, f)

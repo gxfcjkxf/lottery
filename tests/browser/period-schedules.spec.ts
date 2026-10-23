@@ -92,13 +92,13 @@ test("schedule revisions and generated periods persist without activating future
         r.request().method() === "PUT",
     );
     await scheduleSection
-      .getByRole("button", { name: "保存新修订版", exact: true })
+      .getByRole("button", { name: "保存", exact: true })
       .click();
     const reply = await response;
     expect(reply.status(), await reply.text()).toBe(200);
     await expect(
       scheduleSection.getByRole("button", {
-        name: "保存新修订版",
+        name: "保存",
         exact: true,
       }),
     ).toBeVisible();

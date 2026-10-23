@@ -1,3 +1,7 @@
+import { h as temporalTestH } from "vue";
+import * as DisplayShared from "@lottery/shared";
+DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
+import * as FormValidation from '../../shared/src/form-validation';
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createRenderer, h, nextTick, ref, type Component } from "vue";
@@ -74,7 +78,7 @@ function compileClientComponent() {
   const descriptor = parse(source, { filename: "CommissionPolicySettings.vue" }).descriptor;
   const compiled = compileScript(descriptor, { id: "commission-policy-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(compiled, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = { "@lottery/shared/TimeZoneSelect.vue": { props: ["modelValue", "locale", "disabled", "required"], setup: (p: any, { emit }: any) => () => h("select", { "data-timezone-select": true, value: p.modelValue, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": { ...DisplayShared, ...FormValidation },
     vue: VueRuntime,
     "./admin-api": AdminApi,
     "./i18n": AdminI18n,
@@ -88,11 +92,11 @@ function compileClientComponent() {
       return `const {${bindings.replace(/\s+as\s+/g, ": ")}} = __modules[${JSON.stringify(pattern)}];`;
     })
     .replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", moduleBody)(modules) as Component;
+  return new Function("__modules", moduleBody.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 
 function policy(brandId: string, version: number): CommissionPolicy {
-  return { brand_id: brandId, version, config: { enabled: false, calendar: null, payout_mode: "manual" }, created_at: timestamp, updated_at: timestamp, revision_id: revisionId, ...(version > 1 ? { audit_log_id: auditId } : {}) };
+  return { brand_id: brandId, version, config: { enabled: false, calendar: null, payout_mode: "manual" }, created_at: timestamp, updated_at: new Date(Date.parse(timestamp) + version * 60_000).toISOString(), revision_id: revisionId };
 }
 
 function ok(data: unknown) { return new Response(JSON.stringify({ success: true, data }), { status: 200 }); }
@@ -126,7 +130,6 @@ describe("CommissionPolicySettings stale-scope handling", () => {
     let firstPolicyRead = true;
     vi.stubGlobal("fetch", vi.fn<typeof fetch>((input, init) => {
       const url = String(input);
-      if (url.includes("/history?")) return Promise.resolve(ok({ items: [], limit: 20, offset: 0 }));
       const requestedBrand = new Headers(init?.headers).get("X-Brand-ID") ?? brandA;
       if (firstPolicyRead) { firstPolicyRead = false; return pendingRead.promise; }
       return Promise.resolve(ok(policy(requestedBrand, requestedBrand === brandB ? 7 : 4)));
@@ -140,8 +143,8 @@ describe("CommissionPolicySettings stale-scope handling", () => {
     pendingRead.resolve(ok(policy(brandA, 99)));
     await flush();
     const rendered = textOf(mounted.container);
-    if (change === "brand") expect(rendered).toContain("版本 7");
-    else if (change === "account") expect(rendered).toContain("版本 4");
+    if (change === "brand") expect(rendered).toContain("08:07:00");
+    else if (change === "account") expect(rendered).toContain("08:04:00");
     else expect(rendered).not.toContain("99");
     mounted.app.unmount();
   });
@@ -155,21 +158,17 @@ describe("CommissionPolicySettings stale-scope handling", () => {
     vi.stubGlobal("fetch", vi.fn<typeof fetch>((input, init) => {
       const url = String(input);
       if (init?.method === "PUT") { writeStarted.resolve(); return write.promise; }
-      if (url.includes("/history?")) return Promise.resolve(ok({ items: [], limit: 20, offset: 0 }));
       const requestedBrand = new Headers(init?.headers).get("X-Brand-ID") ?? brandA;
       policyReads++;
       return Promise.resolve(ok(policy(requestedBrand, policyReads === 1 ? 1 : requestedBrand === brandB ? 7 : 4)));
     }));
     const mounted = mount(baseAccount, brandA);
     await flush();
-    const textarea = findNode(mounted.container, (node) => node.tag === "textarea");
-    expect(textarea).not.toBeNull();
-    (textarea!.props["onUpdate:modelValue"] as (value: string) => void)("Reviewed commission policy");
     await nextTick();
     const form = findNode(mounted.container, (node) => node.tag === "form");
     (form!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} });
     await nextTick();
-    const confirm = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("确认提交"));
+    const confirm = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("提交"));
     expect(confirm).not.toBeNull();
     (confirm!.props.onClick as () => void)();
     await writeStarted.promise;
@@ -178,11 +177,11 @@ describe("CommissionPolicySettings stale-scope handling", () => {
     if (change === "account") mounted.scope.value = { account: { ...baseAccount, id: actorB }, brandId: brandA };
     if (change === "permission") mounted.scope.value = { account: { ...baseAccount, permissions_by_brand: { [brandA]: [], [brandB]: [] } }, brandId: brandA };
     await flush();
-    write.resolve(ok({ ...policy(brandA, 2), audit_log_id: auditId }));
+    write.resolve(ok({ ...policy(brandA, 2) }));
     await flush();
     const rendered = textOf(mounted.container);
-    if (change === "brand") expect(rendered).toContain("版本 7");
-    else if (change === "account") expect(rendered).toContain("版本 4");
+    if (change === "brand") expect(rendered).toContain("08:07:00");
+    else if (change === "account") expect(rendered).toContain("08:04:00");
     else expect(rendered).not.toContain("2");
     mounted.app.unmount();
   });
@@ -196,18 +195,17 @@ describe("CommissionPolicySettings stale-scope handling", () => {
       if (init?.method === "PUT") {
         const body = JSON.parse(String(init.body)) as Record<string, any>;
         submitted.value = body;
-        return Promise.resolve(ok({ ...policy(brandA, 2), config: body.config, audit_log_id: auditId }));
+        return Promise.resolve(ok({ ...policy(brandA, 2), config: body.config }));
       }
-      if (url.includes("/history?")) return Promise.resolve(ok({ items: [], limit: 20, offset: 0 }));
       return Promise.resolve(ok(policy(brandA, 1)));
     }));
     const mounted = mount(baseAccount, brandA);
     await flush();
-    const configure = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("明确配置日历"));
+    const configure = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("配置周期"));
     (configure!.props.onClick as () => void)();
     await nextTick();
 
-    const timezone = findNode(mounted.container, (node) => node.tag === "input" && String(node.props.placeholder).includes("Asia/Singapore"));
+    const timezone = findNode(mounted.container, (node) => node.tag === "select" && node.props["data-timezone-select"] === true);
     (timezone!.props["onUpdate:modelValue"] as (value: string) => void)("Asia/Singapore");
     const cycle = findNode(mounted.container, (node) => node.tag === "select" && node.children.some((child) => child.props.value === "weekly") && node.children.some((child) => child.props.value === "monthly"));
     (cycle!.props["onUpdate:modelValue"] as (value: string) => void)("weekly");
@@ -218,26 +216,28 @@ describe("CommissionPolicySettings stale-scope handling", () => {
     (weekday!.props["onUpdate:modelValue"] as (value: string) => void)("1");
     const enabled = findNode(mounted.container, (node) => node.tag === "input" && node.props.type === "checkbox");
     (enabled!.props["onUpdate:modelValue"] as (value: boolean) => void)(true);
-    const textarea = findNode(mounted.container, (node) => node.tag === "textarea");
-    (textarea!.props["onUpdate:modelValue"] as (value: string) => void)("Reviewed weekly commission settings");
     await nextTick();
 
     const form = findNode(mounted.container, (node) => node.tag === "form");
     (form!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} });
     await nextTick();
     const confirmation = findNode(mounted.container, (node) => node.tag === "section" && textOf(node).includes("确认佣金策略变更"));
+    expect(findNode(confirmation!, node => node.tag === "dt" && textOf(node) === "提交版本")).toBeNull();
+    expect(findNode(confirmation!, node => node.tag === "dt" && textOf(node) === "原因")).toBeNull();
     expect(textOf(confirmation!)).toContain("已启用");
     expect(textOf(confirmation!)).toContain("人工");
     expect(textOf(confirmation!)).toContain("Asia/Singapore");
     expect(textOf(confirmation!)).toContain("每周");
     expect(textOf(confirmation!)).toContain("18:30:00");
     expect(textOf(confirmation!)).toContain("星期一");
-    expect(textOf(confirmation!)).toContain("Reviewed weekly commission settings");
-    const confirm = findNode(confirmation!, (node) => node.tag === "button" && textOf(node).includes("确认提交"));
+    expect(findNode(mounted.container, node => node.tag === "textarea")).toBeNull();
+    const confirm = findNode(confirmation!, (node) => node.tag === "button" && textOf(node).includes("提交"));
     (confirm!.props.onClick as () => void)();
     await flush();
     expect(submitted.value?.config.calendar.boundary_time).toBe("18:30:00");
     expect(submitted.value?.config.calendar.weekday).toBe(1);
+    expect(textOf(mounted.container)).not.toContain("策略历史");
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/history"))).toBe(false);
     mounted.app.unmount();
   });
 });

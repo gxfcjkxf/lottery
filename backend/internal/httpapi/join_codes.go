@@ -218,6 +218,38 @@ func registerJoinCodeUser(mux routeRegistrar, d Dependencies) {
 	}
 	s := attribution.Service{DB: readDB}
 	for _, prefix := range []string{"/api/v1", "/api/v1/b/{brandCode}"} {
+		mux.HandleFunc("GET "+prefix+"/join-codes/validate", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store")
+			if readDB == nil {
+				failure(w, r, 503, "JOIN_CODE_UNAVAILABLE", "加入码服务尚未配置")
+				return
+			}
+			brand, ok := resolveBrand(w, r, d)
+			if !ok {
+				return
+			}
+			query, err := url.ParseQuery(r.URL.RawQuery)
+			if err != nil || len(query) == 0 || len(query) > 2 {
+				failure(w, r, 400, "JOIN_CODE_INPUT_INVALID", "加入码参数不正确")
+				return
+			}
+			for key, values := range query {
+				if key != "agent_code" && key != "referral_code" || len(values) != 1 {
+					failure(w, r, 400, "JOIN_CODE_INPUT_INVALID", "加入码参数不正确")
+					return
+				}
+			}
+			agent, referral := query.Get("agent_code"), query.Get("referral_code")
+			if query.Has("agent_code") {
+				referral = ""
+			}
+			valid, err := s.Validate(r.Context(), brand.ID, agent, referral)
+			if err != nil {
+				failure(w, r, 503, "JOIN_CODE_UNAVAILABLE", "加入码校验暂不可用")
+				return
+			}
+			respond(w, r, 200, map[string]bool{"valid": valid})
+		})
 		mux.HandleFunc("GET "+prefix+"/me/join-codes", func(w http.ResponseWriter, r *http.Request) {
 			if d.Identity == nil || readDB == nil {
 				failure(w, r, 503, "JOIN_CODE_UNAVAILABLE", "加入码服务尚未配置")

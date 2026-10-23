@@ -259,7 +259,7 @@ func validatePolicyWrite(tx pgx.Tx, brand string, account access.Account, versio
 }
 
 func validPolicyReason(reason string) bool {
-	return strings.TrimSpace(reason) != "" && utf8.ValidString(reason) && len([]byte(reason)) <= 500 && strings.IndexByte(reason, 0) < 0
+	return (reason == "" || strings.TrimSpace(reason) != "") && utf8.ValidString(reason) && len([]byte(reason)) <= 500 && strings.IndexByte(reason, 0) < 0
 }
 
 func WriteBrandPolicy(ctx context.Context, tx pgx.Tx, brand string, account access.Account, version int64, config BrandPolicyConfig, reason string, meta points.Metadata) (BrandPolicyRecord, error) {

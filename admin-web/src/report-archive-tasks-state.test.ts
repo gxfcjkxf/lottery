@@ -37,6 +37,15 @@ describe("report archive task retry intent state", () => {
     expect(getReportArchiveTaskRetryIntent(actor, brand, task)?.key).toBe("archive-retry-key-001");
   });
 
+  it("preserves an empty optional reason through retry confirmation and acknowledgement", () => {
+    const intent = make(task, "");
+    expect(intent).not.toBeNull();
+    expect(setReportArchiveTaskRetryIntent(intent)).toBe(true);
+    expect(getReportArchiveTaskRetryIntent(actor, brand, task)?.reason).toBe("");
+    expect(markReportArchiveTaskRetryAcknowledged(intent, receipt)).toBe(true);
+    expect(getReportArchiveTaskRetryIntent(actor, brand, task)).toMatchObject({ reason: "", phase: "acknowledged", receipt });
+  });
+
   it("retains the original key through conflict and acknowledged states", () => {
     const intent = make(); setReportArchiveTaskRetryIntent(intent);
     expect(markReportArchiveTaskRetryConflict(intent)).toBe(true);

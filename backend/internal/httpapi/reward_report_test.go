@@ -307,6 +307,7 @@ func TestRewardReportPermissionIsIndependentAndExplicitlyScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	platformToken := platformAdminToken(t, f.managementHTTP)
+	f.token = platformToken
 	platformJSON := strings.Replace(jsonURL, "/api/v1/admin", "/api/v1/platform", 1)
 	platformCSV := strings.Replace(rewardReportQueryURL(rewardReportCSVPath, from, to, "day"), "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, rewardReportCall(f.managementHTTP, "GET", platformJSON, platformToken, pointsBrandB, ""), 200)

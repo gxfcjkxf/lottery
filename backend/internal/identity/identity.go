@@ -145,17 +145,6 @@ func (s *Store) verify(ctx context.Context, password, hash string) (bool, error)
 		return false, ErrBusy
 	}
 }
-func (s *Store) verifyDevelopmentAdmin(ctx context.Context, hash string) (bool, error) {
-	select {
-	case s.slots <- struct{}{}:
-		defer func() { <-s.slots }()
-		return authcrypto.VerifyDevelopmentAdminPassword(hash)
-	case <-ctx.Done():
-		return false, ctx.Err()
-	default:
-		return false, ErrBusy
-	}
-}
 func (s *Store) Settings(ctx context.Context, brand string) (Settings, error) {
 	var raw []byte
 	var cfg Settings
@@ -197,9 +186,18 @@ func (s *Store) issue(ctx context.Context, tx pgx.Tx, v View, meta Metadata, act
 	if err != nil {
 		return mutation.Result{}, err
 	}
+	// All issuance paths hold the global user row lock (or inserted the user).
+	// Revoke and insert in the same transaction; failed login leaves old sessions intact.
+	if _, err = tx.Exec(ctx, `UPDATE sessions SET revoked_at=clock_timestamp(),replaced_by_login=(expires_at>clock_timestamp()) WHERE user_id=$1 AND revoked_at IS NULL`, v.User.ID); err != nil {
+		return mutation.Result{}, err
+	}
 	expiry := time.Now().UTC().Add(s.TTL)
-	_, err = tx.Exec(ctx, `INSERT INTO sessions(id,token_hash,user_id,member_id,brand_id,expires_at) VALUES($1,$2,$3,$4,$5,$6)`, ids.New(), tokenHash(token), v.User.ID, v.Member.ID, v.Member.BrandID, expiry)
+	sessionID := ids.New()
+	_, err = tx.Exec(ctx, `INSERT INTO sessions(id,token_hash,user_id,member_id,brand_id,expires_at) VALUES($1,$2,$3,$4,$5,$6)`, sessionID, tokenHash(token), v.User.ID, v.Member.ID, v.Member.BrandID, expiry)
 	if err != nil {
+		return mutation.Result{}, err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO session_activity(session_id) VALUES($1)`, sessionID); err != nil {
 		return mutation.Result{}, err
 	}
 	_, err = audit.Append(ctx, tx, audit.Record{BrandID: v.Member.BrandID, ActorType: "user", ActorID: v.User.ID, Action: action, ResourceType: "member", ResourceID: v.Member.ID, RequestID: meta.RequestID, IP: meta.IP, After: map[string]string{"status": v.Member.Status}})
@@ -241,7 +239,7 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 		return mutation.Fail(429, "AUTH_BUSY", "登录繁忙，请稍后重试"), nil
 	}
 	if err == authcrypto.ErrInvalidPassword {
-		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 10-128 字节"), nil
+		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字节"), nil
 	}
 	if err != nil {
 		return mutation.Result{}, err
@@ -267,9 +265,6 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 	result, err := s.issue(ctx, tx, View{u, m}, meta, "user.register")
 	result.Status = 201
 	return result, err
-}
-func (s *Store) join(ctx context.Context, tx pgx.Tx, brand, user, privacy, terms string, meta Metadata) (Member, error) {
-	return s.createMember(ctx, tx, brand, user, privacy, terms, meta, memberCreateOptions{joinMethod: "domain", termsAccepted: true})
 }
 func (s *Store) joinCode(ctx context.Context, tx pgx.Tx, brand, user, privacy, terms, kind, code string, meta Metadata) (Member, error) {
 	method := "domain"
@@ -313,6 +308,9 @@ func (s *Store) createMember(ctx context.Context, tx pgx.Tx, brand, user, privac
 		return m, err
 	}
 	account := ids.New()
+	if _, err = tx.Exec(ctx, `SELECT ensure_member_referral($1,$2)`, brand, m.ID); err != nil {
+		return m, err
+	}
 	if _, err = tx.Exec(ctx, `INSERT INTO point_accounts(id,brand_id,brand_member_id) VALUES($1,$2,$3)`, account, brand, m.ID); err != nil {
 		return m, err
 	}

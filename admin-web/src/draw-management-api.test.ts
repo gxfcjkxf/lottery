@@ -213,7 +213,7 @@ describe("model-aware manual draw builders", () => {
     expect(() => buildManualDrawBody({ ...args, confirmed: false })).toThrow(
       /确认/,
     );
-    expect(() => buildManualDrawBody({ ...args, reason: " " })).toThrow(/原因/);
+    expect(buildManualDrawBody({ ...args, reason: "" }).reason).toBe("");
     expect(
       buildManualDrawBody({ ...args, drawnAt: "2026-10-06T01:00:00Z" })
         .drawn_at,

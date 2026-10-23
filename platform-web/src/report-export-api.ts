@@ -1,3 +1,5 @@
+import { readApiRejection } from '@lottery/shared'
+
 import { PlatformApiError } from './platform-api'
 import { REPORT_FIELDS, normalizeReportQuery, type ReportKind, type ReportQuery } from './reports-api'
 
@@ -215,20 +217,7 @@ export function createPlatformReportExportApi(fetcher: typeof fetch = fetch) {
       } catch (cause) {
         throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true)
       }
-      if (!response.ok) {
-        let message = `Request failed (${response.status})`, code: string | undefined
-        try {
-          const body: unknown = await response.json()
-          if (body && typeof body === 'object' && 'error' in body) {
-            const error = (body as { error?: unknown }).error
-            if (error && typeof error === 'object') {
-              if (typeof (error as { message?: unknown }).message === 'string') message = (error as { message: string }).message
-              if (typeof (error as { code?: unknown }).code === 'string') code = (error as { code: string }).code
-            }
-          }
-        } catch { /* Non-JSON errors retain their HTTP status. */ }
-        throw new PlatformApiError(message, response.status, code)
-      }
+      if (!response.ok) throw await readApiRejection(response,(message,status,code)=>new PlatformApiError(message,status,code))
       if (response.status !== 200) fail('Report export requires a complete HTTP 200 response')
       const contentType = header(response.headers, 'Content-Type').toLowerCase()
       if (!contentType.startsWith('text/csv;') || !contentType.includes('charset=utf-8') || header(response.headers, 'Cache-Control').toLowerCase().split(',').map(v => v.trim()).indexOf('no-store') < 0 || header(response.headers, 'X-Content-Type-Options').toLowerCase() !== 'nosniff') fail()

@@ -18,7 +18,7 @@ test('platform reads six genuine operational policies without writes or verifica
   }
   await page.goto(origin);
   await page.getByRole('button', { name: 'Audit and operations', exact: true }).click();
-  await page.locator('.content > .brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   await page.getByTestId('platform-operations-tabs').getByRole('button', { name: 'Operational policies', exact: true }).click();
   const panel = page.getByTestId('platform-operational-policies');
   for (const [kind] of kinds) {
@@ -43,7 +43,7 @@ test('platform reads six genuine operational policies without writes or verifica
     expect(response.status()).toBe(200);
     expect((await response.json()).data).toEqual(data);
   }
-  await page.locator('.content > .brand-picker select').selectOption('');
+  await page.locator('.topbar-brand-picker select').selectOption('');
   await expect(page.getByTestId('platform-operational-policy-detail')).toHaveCount(0);
 });
 
@@ -60,7 +60,7 @@ test('operational policy views preserve exact caps, null settlement and fail clo
   });
   await page.goto(origin);
   await page.getByRole('button', { name: 'Audit and operations', exact: true }).click();
-  await page.locator('.content > .brand-picker select').selectOption(brand);
+  await page.locator('.topbar-brand-picker select').selectOption(brand);
   await page.getByTestId('platform-operations-tabs').getByRole('button', { name: 'Operational policies', exact: true }).click();
   const panel = page.getByTestId('platform-operational-policies');
   await expect(panel).toContainText(amount);

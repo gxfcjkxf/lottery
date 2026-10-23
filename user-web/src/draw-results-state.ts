@@ -1,4 +1,6 @@
 import type { PublicDrawResult } from "./draws-api";
+import { formatDisplayDateTime } from '@lottery/shared';
+import { userUiCatalog } from './i18n-catalog-ui';
 
 export interface ResultNumberGroup {
   key: "regular" | "special" | "digits";
@@ -36,25 +38,26 @@ export function resultNumberGroups(
   result: PublicDrawResult["result"],
   locale: "zh" | "en",
 ): ResultNumberGroup[] {
+  const messages: Record<string, string> = userUiCatalog[locale === 'zh' ? 'zh-CN' : 'en'];
   const groups: ResultNumberGroup[] = [];
   if (result.regular.length) {
     groups.push({
       key: "regular",
-      label: locale === "zh" ? "普通号码" : "Regular",
+      label: messages['user.draw.group.regular'],
       positions: [...result.regular],
     });
   }
   if (result.special.length) {
     groups.push({
       key: "special",
-      label: locale === "zh" ? "特别号码" : "Special",
+      label: messages['user.draw.group.special'],
       positions: [...result.special],
     });
   }
   if (result.digits.length) {
     groups.push({
       key: "digits",
-      label: locale === "zh" ? "位置数字" : "Position digits",
+      label: messages['user.draw.group.digits'],
       // Digit order and repetition are meaningful, and zero is a real digit.
       positions: [...result.digits],
     });
@@ -64,20 +67,9 @@ export function resultNumberGroups(
 
 export function formatDrawDateTime(
   value: string,
-  timezone: string,
   locale: "zh" | "en",
 ): string {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return value;
-  try {
-    return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en", {
-      dateStyle: "medium",
-      timeStyle: "medium",
-      timeZone: timezone,
-    }).format(date);
-  } catch {
-    return date.toISOString();
-  }
+  return formatDisplayDateTime(value, locale);
 }
 
 export function isCancelledPeriodStatus(status: string): boolean {
@@ -90,30 +82,10 @@ export function isCancelledPeriodStatus(status: string): boolean {
 }
 
 export function periodStatusLabel(status: string, locale: "zh" | "en"): string {
-  const labels: Record<string, { zh: string; en: string }> = {
-    pending: { zh: "待开始", en: "Pending" },
-    betting: { zh: "销售中", en: "Betting open" },
-    closed: { zh: "销售已截止", en: "Betting closed" },
-    waiting_draw: { zh: "等待开奖", en: "Waiting for draw" },
-    drawn: { zh: "已开奖", en: "Drawn" },
-    settling: { zh: "结算处理中", en: "Settlement in progress" },
-    settled: { zh: "已结算", en: "Settled" },
-    bet_cancelled: {
-      zh: "投注已取消：结果仅作记录，不用于有效判定或派奖",
-      en: "Bet cancelled: result is for record only, not a valid outcome or payout",
-    },
-    judged_cancelled: {
-      zh: "期次已取消：结果仅作记录，不用于有效判定或派奖",
-      en: "Period cancelled: result is for record only, not a valid outcome or payout",
-    },
-    cancelled: {
-      zh: "已取消：结果仅作记录，不用于有效判定或派奖",
-      en: "Cancelled: result is for record only, not a valid outcome or payout",
-    },
-    canceled: {
-      zh: "已取消：结果仅作记录，不用于有效判定或派奖",
-      en: "Cancelled: result is for record only, not a valid outcome or payout",
-    },
+  const messages: Record<string, string> = userUiCatalog[locale === 'zh' ? 'zh-CN' : 'en'];
+  const keys: Record<string, string> = {
+    pending: 'user.draw.state.pending', betting: 'user.draw.state.betting', closed: 'user.draw.state.closed', waiting_draw: 'user.draw.state.waitingDraw', drawn: 'user.draw.state.drawn', settling: 'user.draw.state.settling', settled: 'user.draw.state.settled', bet_cancelled: 'user.draw.state.betCancelled', judged_cancelled: 'user.draw.state.judgedCancelled', cancelled: 'user.draw.state.cancelled', canceled: 'user.draw.state.cancelled',
   };
-  return labels[status]?.[locale] ?? status;
+  const key = keys[status];
+  return key ? messages[key] : status;
 }

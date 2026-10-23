@@ -15,6 +15,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+func TestPreReleaseUsesSingleBaseline(t *testing.T) {
+	names, err := fs.Glob(migrations.Files, "*.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(names, []string{"0001_baseline.up.sql"}) {
+		t.Fatalf("pre-release migrations must be consolidated into one baseline: %v", names)
+	}
+}
+
 func TestCheckMigrationsCurrentSchemaIsReadOnly(t *testing.T) {
 	db := testdb.New(t)
 	ctx := context.Background()
@@ -174,27 +184,6 @@ func jsonTableSnapshot(t *testing.T, ctx context.Context, db *pgxpool.Pool, tabl
 	query := `SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text)::text, '[]') FROM ` + pgx.Identifier{table}.Sanitize() + ` AS r`
 	if err := db.QueryRow(ctx, query).Scan(&snapshot); err != nil {
 		t.Fatalf("snapshot %s: %v", table, err)
-	}
-	return snapshot
-}
-
-func schemaCatalogSnapshot(t *testing.T, ctx context.Context, db *pgxpool.Pool) string {
-	t.Helper()
-	var snapshot string
-	err := db.QueryRow(ctx, `
-		SELECT COALESCE(jsonb_agg(jsonb_build_object(
-			'relation', c.relname,
-			'kind', c.relkind,
-			'column', a.attname,
-			'type', pg_catalog.format_type(a.atttypid, a.atttypmod),
-			'not_null', a.attnotnull
-		) ORDER BY c.relname, a.attnum)::text, '[]')
-		FROM pg_catalog.pg_class c
-		JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
-		LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum > 0 AND NOT a.attisdropped
-		WHERE n.nspname=current_schema() AND c.relkind IN ('r','p','v','m','S')`).Scan(&snapshot)
-	if err != nil {
-		t.Fatalf("snapshot schema catalog: %v", err)
 	}
 	return snapshot
 }

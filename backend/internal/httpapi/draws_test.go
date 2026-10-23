@@ -183,6 +183,7 @@ func TestDrawHTTPPermissionsBrandOriginAndSession(t *testing.T) {
 	}
 	mustStatus(t, f.call("GET", sourcePath, "", f.token, managedBrand, nil), 403)
 	platformToken := platformAdminToken(t, f)
+	f.token = platformToken
 	platformSourcePath := strings.Replace(sourcePath, "/api/v1/admin", "/api/v1/platform", 1)
 	mustStatus(t, f.call("GET", platformSourcePath, "", platformToken, managedBrand, nil), 403)
 	grantPlatformPermission(t, f, "draw_source.view.platform")

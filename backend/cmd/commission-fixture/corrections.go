@@ -75,8 +75,8 @@ type correctionFixtureVerifyOutput struct {
 func prepareCorrections(ctx context.Context, db *pgxpool.Pool, adminID, password string) (correctionPrepareOutput, error) {
 	var out correctionPrepareOutput
 	out.BrandID = fixtureBrand
-	if len(password) < 16 {
-		return out, errors.New("owned synthetic correction user password required")
+	if len([]byte(password)) < 6 || len([]byte(password)) > 30 {
+		return out, errors.New("owned synthetic correction user password must be 6-30 bytes")
 	}
 	var occupied bool
 	if err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM global_users WHERE username=$1)
