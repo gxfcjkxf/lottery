@@ -22,6 +22,29 @@ async function review(page:Page,info:TestInfo,label:string){
  }
  if(info.project.name.endsWith('reflow'))await page.setViewportSize(preset)
 }
+test('refresh waits for session restoration before rendering user pages', async ({page}) => {
+ await setup(page, 'zh-CN')
+ await page.route('**/api/v1/me/referrals?*', r => r.fulfill({json:{success:true,data:{brand_id:gameId,member_id:gameId,items:[],limit:20,offset:0,total_count:'0'}}}))
+ await page.route('**/api/v1/recharges?*', r => r.fulfill({json:{success:true,data:{brand_id:gameId,member_id:gameId,snapshot_at:at,state:null,items:[],limit:20,offset:0,total_count:'0'}}}))
+ await page.route('**/api/v1/withdrawals?*', r => r.fulfill({json:{success:true,data:{brand_id:gameId,items:[],limit:20,offset:0,has_more:false,total_count:'0'}}}))
+ for (const path of ['/orders', `/configured/${gameId}`, '/wallet/ledger', '/invites', '/notifications', '/recharge', '/withdraw']) {
+  let release!: () => void
+  let started!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const requested = new Promise<void>(resolve => { started = resolve })
+  let reads = 0
+  const handler = async (route: import('@playwright/test').Route) => { if (++reads === 2) { started(); await gate } await route.fallback() }
+  await page.route('**/api/v1/me', handler)
+  try {
+   await page.goto(origins.user + path)
+   await requested
+   await expect(page.locator('#main-content')).toHaveCount(0)
+   await expect(page.locator('.global-loading-overlay')).toBeVisible()
+  } finally { release() }
+  await expect(page.locator('#main-content')).toBeVisible()
+  await page.unroute('**/api/v1/me', handler)
+ }
+})
 for(const locale of ['en','zh-CN'] as const){
  test(`user record lists retain successful empty pagination (${locale})`,async({page},info)=>{
   const zh=locale==='zh-CN',errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await setup(page,locale)

@@ -1062,7 +1062,7 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
         </div>
       </template>
 
-      <main id="main-content" class="content" :class="{ 'compact-content': route.path === '/' || route.path.startsWith('/configured/') }">
+      <main v-if="!profileLoading || authProfile" id="main-content" class="content" :class="{ 'compact-content': route.path === '/' || route.path.startsWith('/configured/') }">
         <div
           v-if="connection === 'offline' || brandPaused"
           class="connection-alert"
