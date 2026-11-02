@@ -21,7 +21,7 @@ function clientComponent(filename: string, modules: Record<string, unknown>): Co
     .replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, binding: string, path: string) => `const ${binding}=__modules[${JSON.stringify(path)}];`).replace(/export\s+default\s+/, 'return ')
   return new Function('__modules', body)(modules) as Component
 }
-const TablePagination = clientComponent('../../shared/src/TablePagination.vue', {vue: VueRuntime, './localization': Localization, './pagination-catalog': PaginationCatalog, './global-loading': Shared, './SelectControl.vue': { props: ['modelValue', 'options', 'label'], emits: ['change'], render() { return h('size-control', { onChange: (size: number) => this.$emit('change', size) }) } }})
+const TablePagination = clientComponent('../../shared/src/TablePagination.vue', {vue: VueRuntime, './localization': Localization, './pagination-catalog': PaginationCatalog, './global-loading': Shared, './SelectControl.vue': { props: ['modelValue', 'options', 'label'], emits: ['change'], setup(_props: unknown, { emit }: { emit: (event: string, size: number) => void }) { return () => h('size-control', { onChange: (size: number) => emit('change', size) }) } }})
 const commonModules = { '@lottery/shared/TablePagination.vue': TablePagination, vue: VueRuntime, '@lottery/shared': Shared, './i18n': UserI18n }
 const OrderHistoryLayout = clientComponent('./OrderHistoryLayout.vue', commonModules)
 const BettingHistoryTable = clientComponent('./BettingHistoryTable.vue', { ...commonModules, 'vue-router': RouterRuntime,
