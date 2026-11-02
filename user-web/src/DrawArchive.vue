@@ -110,7 +110,7 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
           </template>
         </div>
       </article>
-      <p v-if="archive && !loading && !archive.items.length" class="empty-state">{{ t('draw.noResults') }}</p>
+      <p v-if="archive && !archive.items.length" class="empty-state">{{ t('draw.noResults') }}</p>
     </div>
     <TablePagination show-empty v-if="archive" class="page-actions" :total="archive?.total_count ?? '0'" :page="Math.floor(offset / 50 + 1)" :count="archive?.items.length ?? 0" :locale="locale === 'en' ? 'en' : 'zh-CN'" :page-size="50" :previous-disabled="loading || offset === 0" :next-disabled="loading || !archive?.has_more" :previous-label="t('draw.previous')" :next-label="t('draw.next')" :go-to="(target: number) => load((target - 1) * 50)" />
   </section>

@@ -2686,7 +2686,6 @@ th:last-child, td:last-child { position: sticky; right: 0; z-index: 1; backgroun
 /* Record lists share one surface; their business rows retain their own layout. */
 #app .user-record-list { min-width:0; max-width:100%; margin:0; padding:0; gap:0; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); box-shadow:var(--shadow-sm); }
 #app .user-record-list > .ui-filter-bar { margin:0; padding:12px; }
-#app .user-record-list .empty-state { border:0!important; border-radius:0!important; background:transparent!important; }
 #app .user-record-list .table-pagination { margin:0; }
 #app .user-record-list :is(.recharge-record,.ledger-entry,.withdrawal-order) { margin:0; padding-inline:12px; min-width:0; }
 #app .user-record-list .recharge-record > div { flex-wrap:wrap; }
@@ -2697,3 +2696,4 @@ th:last-child, td:last-child { position: sticky; right: 0; z-index: 1; backgroun
 #app .user-record-list .join-code-card + .join-code-card { border-top:1px solid var(--line); }
 #app .user-record-list .notifications-toolbar { padding:12px; margin:0; }
 #app .user-record-list .notifications-toolbar:not(:has(> button)) { display:none; }
+#app .user-record-list .recharge-snapshot { margin:0; padding:0 12px 12px; }

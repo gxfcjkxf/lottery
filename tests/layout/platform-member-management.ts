@@ -1,6 +1,7 @@
+import { expectRealEntry, expectListLayout } from './real-page-review'
 import { selectControl } from '../select-control'
 import { test, expect } from '@playwright/test'
-import { gameId, origins, installLayoutApi, openPlatformBrandList, expectInsideViewport, expectNoPageOverflow } from './fixture'
+import { gameId, origins, installLayoutApi, openPlatformBrandList, expectInsideViewport } from './fixture'
 
 export function registerPlatformMemberManagementTests(reflow = false) {
   for (const locale of ['en', 'zh-CN'] as const) test(`platform member directory uses full search, presence and shared actions (${locale})`, async ({ page }, info) => {
@@ -94,7 +95,7 @@ export function registerPlatformMemberManagementTests(reflow = false) {
     expect(queries).toHaveLength(beforeWallet)
     const presetWallet=page.viewportSize()!
     if(reflow)await page.setViewportSize({width:320,height:720})
-    await expectNoPageOverflow(page)
+    await expectRealEntry(page,'platform');await expectListLayout(page)
     await page.screenshot({path:info.outputPath(`member-wallet-${locale}.png`),fullPage:true})
     if(reflow)await page.setViewportSize(presetWallet)
     await page.keyboard.press('Escape')
@@ -111,7 +112,7 @@ export function registerPlatformMemberManagementTests(reflow = false) {
     await expect(rows().first()).toContainText(zh ? '需要积分查看权限' : 'Points view permission required')
     await rows().first().locator('.member-menu-trigger').click(); await expect(menu.getByRole('menuitem')).toHaveCount(1); await page.keyboard.press('Escape')
     const preset = page.viewportSize()!
-    for (const width of reflow ? [320, 640, 900, 1440] : [preset.width]) { if (reflow) await page.setViewportSize({ width, height: preset.height }); await expectNoPageOverflow(page) }
+    for (const width of reflow ? [320, 640, 900, 1440] : [preset.width]) { if (reflow) await page.setViewportSize({ width, height: preset.height }); await expectRealEntry(page,'platform');await expectListLayout(page) }
     await page.screenshot({ path: info.outputPath(`platform-members-${locale}.png`) }); expect(errors).toEqual([])
   })
 }

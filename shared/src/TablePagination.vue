@@ -4,12 +4,13 @@ import { withGlobalLoading } from './global-loading'
 import type { LocaleCode } from './brand'
 import { createCatalogI18n } from './localization'
 import { paginationCatalog } from './pagination-catalog'
+import SelectControl from './SelectControl.vue'
 
 const props = defineProps<{
   page: number; count: number; total: string; locale: LocaleCode; ariaLabel?: string
   pageSize?: number; previousDisabled?: boolean; nextDisabled?: boolean
   previousLabel?: string; nextLabel?: string; goTo?: (page: number) => unknown
-  showEmpty?: boolean; reachablePage?: number
+  showEmpty?: boolean; reachablePage?: number; pageSizeOptions?: number[]; changePageSize?: (size: number) => unknown; compactMobile?: boolean
 }>()
 const i18n = createCatalogI18n(paginationCatalog, props.locale)
 watch(() => props.locale, value => i18n.setLocale(value))
@@ -38,7 +39,7 @@ async function navigate(page: number) {
 </script>
 
 <template>
-  <nav v-if="(count > 0 && total !== '0') || showEmpty" class="table-pagination" :aria-label="ariaLabel ?? i18n.t('navigation')">
+  <nav v-if="(count > 0 && total !== '0') || showEmpty" class="table-pagination" :class="{ 'compact-mobile': compactMobile }" :aria-label="ariaLabel ?? i18n.t('navigation')">
     <span class="table-pagination-summary">{{ summary }}</span>
     <div v-if="goTo && pageSize" class="table-pagination-actions">
       <div class="table-pagination-pages">
@@ -53,7 +54,8 @@ async function navigate(page: number) {
         <label><span>{{ i18n.t('jump') }}</span><input :value="jump" @input="jump = ($event.target as HTMLInputElement).value" class="table-pagination-input" type="text" inputmode="numeric" @keydown.enter.prevent="canJump && withGlobalLoading(navigate, jumpPage)" :aria-label="i18n.t('jumpPage')" :disabled="disabled" /><span>{{ i18n.t('pageUnit') }}</span></label>
         <button type="button" class="button button-secondary" :disabled="!canJump" @click="canJump && withGlobalLoading(navigate, jumpPage)">{{ i18n.t('go') }}</button>
       </div>
-      <span class="table-pagination-size">{{ i18n.t('pageSize', { count: pageSize }) }}</span>
+      <SelectControl v-if="pageSizeOptions && changePageSize" :model-value="pageSize" :options="pageSizeOptions.map(size => ({ value: size, label: i18n.t('pageSize', { count: size }) }))" :label="i18n.t('pageSizeLabel')" :disabled="pending" @change="(size) => withGlobalLoading(changePageSize!, Number(size))" />
+      <span v-else class="table-pagination-size">{{ i18n.t('pageSize', { count: pageSize }) }}</span>
     </div>
   </nav>
 </template>
@@ -71,6 +73,7 @@ nav.table-pagination .table-pagination-jump label { display:flex; flex-direction
 #app .table-pagination .table-pagination-input { --input-width:52px; box-sizing:border-box; width:52px; min-width:0; height:var(--control-height); margin:0; padding:4px 6px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--surface); color:var(--ink); font-size:var(--body-font-size); text-align:center; }
 .table-pagination-size { white-space:nowrap; padding:4px 8px; border:1px solid var(--line); border-radius:var(--radius-sm); color:var(--ink-secondary); }
 @media(max-width:640px) { nav.table-pagination { align-items:stretch; flex-direction:column; } .table-pagination > .table-pagination-actions { width:100%; justify-content:flex-start; } }
+@media(max-width:640px) { nav.table-pagination.compact-mobile { gap:4px; } .compact-mobile .table-pagination-pages .table-pagination-page:not(.is-current) { display:none !important; } .compact-mobile .table-pagination-gap, .compact-mobile .table-pagination-jump { display:none; } .compact-mobile > .table-pagination-actions { gap:8px; } }
 @media(max-width:900px), (pointer:coarse) { #app .table-pagination .table-pagination-input { --input-width:52px; font-size:16px; } }
 @media(min-width:901px) and (pointer:fine) { nav.table-pagination { padding:6px 12px; gap:8px; } }
 </style>

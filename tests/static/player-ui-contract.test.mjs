@@ -16,10 +16,26 @@ test('user and agent business dialogs use the shared modal shell',()=>check((nod
  if(node.tag==='dialog'||node.props.some(prop=>prop.name==='role'&&prop.value?.content==='dialog')&&!classes.includes('workspace-menu-layer'))errors.push(`${path}:${node.loc.start.line}`)
  if(node.tag==='details'&&classes.some(value=>['ledger-details','account-complete'].includes(value)))errors.push(`${path}:${node.loc.start.line}`)
 }))
-test('user list pagination reuses the shared component',()=>{
- for(const file of ['WalletSummary','BettingHistory','NotificationsPanel','RechargePanel','JoinCodesPanel','DrawArchive']){
-  const source=readFileSync(`user-web/src/${file}.vue`,'utf8')
-  assert.match(source,/<TablePagination\b/,file)
-  assert.doesNotMatch(source,/<(?:nav|footer|div)\b[^>]*class="(?:pager|history-pagination|notifications-pagination|recharge-pagination|join-code-pagination|page-actions)"/,file)
+test('all user record sources are registered, including sublists without their own pager',()=>{
+ const audit=readFileSync('docs/48-user-list-audit.md','utf8'),missing=[]
+ for(const path of vueFiles('user-web/src')){
+  const {descriptor}=parse(readFileSync(path,'utf8'));let collection=false
+  if(descriptor.template)walk(descriptor.template.ast,node=>{
+   if(['TablePagination','PaginationControls','table'].includes(node.tag)||['li','article','tr'].includes(node.tag)&&node.props.some(prop=>prop.name==='for'))collection=true
+  })
+  if(collection&&!audit.includes(path.split('/').at(-1)))missing.push(path)
  }
+ assert.deepEqual(missing,[])
+})
+test('user pagination is an actual template component with a working navigation callback',()=>{
+ const missing=[]
+ for(const path of vueFiles('user-web/src')){
+  const {descriptor}=parse(readFileSync(path,'utf8'))
+  if(descriptor.template)walk(descriptor.template.ast,node=>{
+   if(!['TablePagination','PaginationControls'].includes(node.tag))return
+   const bindings=node.props.filter(prop=>prop.type===7&&prop.name==='bind').map(prop=>prop.arg?.content)
+   if(!['page','count','total','locale','page-size','go-to'].every(prop=>bindings.includes(prop)))missing.push(`${path}:${node.loc.start.line}`)
+  })
+ }
+ assert.deepEqual(missing,[])
 })

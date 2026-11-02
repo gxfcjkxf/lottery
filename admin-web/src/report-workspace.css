@@ -117,3 +117,6 @@
 .reports-management .report-panel :is(.report-metrics, .commission-metrics, .coverage dl) dt {
   white-space: nowrap;
 }
+
+/* Empty reports have no mobile cards; retain their result surface and headers. */
+.reports-management .reports-table-wrap:has(> .console-responsive-table) { display:block; }

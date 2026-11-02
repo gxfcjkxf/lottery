@@ -8371,3 +8371,7 @@ DO $$ DECLARE f regprocedure; BEGIN
  WHERE n.nspname=current_schema() AND p.proname IN ('initial_compliance_config','guard_compliance_policy','guard_compliance_revision','initialize_brand_compliance')
  LOOP EXECUTE format('ALTER FUNCTION %s SET search_path = pg_catalog, %I, pg_temp',f,current_schema()); END LOOP;
 END $$;
+
+-- Manual historical results share the immutable draw archive.
+ALTER TABLE platform_draw_history DROP CONSTRAINT platform_draw_history_source_check;
+ALTER TABLE platform_draw_history ADD CONSTRAINT platform_draw_history_source_check CHECK (source IN ('hkjc','6hch_123565_agreement','manual'));

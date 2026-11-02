@@ -214,7 +214,7 @@ test('draw overview polling stays quiet while refresh, year and pagination reads
     expect(url.pathname).toBe(`/api/v1/platform/platform-games/${gameId}/draw-overview`)
     reads++
     if (blocked) await gate
-    return route.fulfill({ json: { success: true, data: { years: ['2026', '2025'], year: url.searchParams.get('year') || '2026', items: [], has_more: url.searchParams.get('offset') === '0', pending: [], pending_has_more: false , total_count: '0'} } })
+    return route.fulfill({ json: { success: true, data: { years: ['2026', '2025'], year: url.searchParams.get('year') || '2026', items: [], has_more: url.searchParams.get('offset') === '0', pending: [], pending_has_more: false , total_count: '100'} } })
   })
   await page.route('**/__draw-overview-progress', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app" class="management-console"></div><script type="module">import{createApp,h}from'/node_modules/.vite/deps/vue.js';import C from'/@fs${resolve('shared/src/PlatformDrawOverview.vue')}';import Loading from'/@fs${resolve('shared/src/LoadingOverlay.vue')}';import{setPlatformDisplaySettings}from'/@fs${resolve('shared/src/display-settings.ts')}';import'/@fs${resolve('shared/src/styles.css')}';import'/@fs${resolve('shared/src/management.css')}';import'/@fs${resolve('shared/src/controls.css')}';import'/@fs${resolve('shared/src/refresh-button.css')}';setPlatformDisplaySettings({timezone:'UTC',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'});createApp({render:()=>h('main',[h(C,{gameId:'${gameId}',locale:'en',canManage:false}),h(Loading,{label:'Loading…'})])}).mount('#app')</script></body></html>` }))
   await page.goto(origins.user + '/__draw-overview-progress')
@@ -237,7 +237,7 @@ test('draw overview polling stays quiet while refresh, year and pagination reads
     try {
       await action()
       await expect(overlay).toBeVisible()
-      await expect(overview.getByText('Draw history', { exact: true })).toBeVisible()
+      await expect(overview.getByRole('table')).toBeVisible()
     } finally { blocked = false; release() }
     await expect(overlay).toBeHidden()
   }

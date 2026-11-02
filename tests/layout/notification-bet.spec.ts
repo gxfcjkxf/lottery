@@ -1,12 +1,14 @@
+import { expectRealEntry, expectListLayout } from './real-page-review'
 import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { configuredDemo } from '../../shared/src/configured-rules'
 import { configuredTicketLabel as ticketLabel } from '../../shared/src/configured-business'
 import { notificationCatalog } from '../../shared/src/notification-catalog'
-import { installLayoutApi, installOrdersLayoutApi, origins, gameId, expectNoPageOverflow, expectInsideViewport } from './fixture'
+import { installLayoutApi, installOrdersLayoutApi, origins, gameId, expectInsideViewport } from './fixture'
 
 for (const locale of ['en', 'zh-CN'] as const) {
   test(`readable purchased ticket in notification (${locale})`, async ({ page }, info) => {
+    page.setDefaultTimeout(8000)
     await installLayoutApi(page, locale)
     await installOrdersLayoutApi(page)
     const snapshot = configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json', 'utf8')))
@@ -18,7 +20,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
       expect(route.request().method()).toBe('GET')
       const query = new URL(route.request().url()).searchParams
       return route.fulfill({ json: { success: true, data: {
-        brand_id: gameId, member_id: gameId, unread_count: '0', limit: Number(query.get('limit')), offset: Number(query.get('offset')),
+        brand_id: gameId, member_id: gameId, unread_count: '0', total_count: '1', limit: Number(query.get('limit')), offset: Number(query.get('offset')),
         items: [{ id: 'aaaaaaaa-aaaa-4aaa-8aaa-000000000043', brand_id: gameId, member_id: gameId, event_type: 'bet.order.placed', template_key: 'bet.order.placed', template_version: 1,
           content: notificationCatalog['bet.order.placed'], payload: { resource_id: orderId, points: '25' }, created_at: '2026-10-28T14:14:05Z', read_at: '2026-10-28T14:15:00Z' }],
       } } })
@@ -47,7 +49,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     for (const width of info.project.name.includes('reflow') ? [320, 400, 620, 700, 1000, 1440] : [preset.width]) {
       if (info.project.name.includes('reflow')) await page.setViewportSize({ width, height: width === 620 ? 480 : 800 })
       await expectInsideViewport(dialog)
-      await expectNoPageOverflow(page)
+      await expectRealEntry(page,'user');await expectListLayout(page)
       const measurements = await dialog.evaluate(node => ({
         overflow: node.scrollWidth > node.clientWidth + 1,
         contentOverflow: [...node.querySelectorAll('table,td,dd')].some(element => element.scrollWidth > element.clientWidth + 1),
@@ -58,7 +60,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await page.screenshot({ path: info.outputPath(`notification-bet-${locale}.png`), fullPage: true })
     await dialog.locator('.bet-review-table tbody tr').last().scrollIntoViewIfNeeded()
     await expectInsideViewport(dialog.locator('.bet-review-table tbody tr').last())
-    await dialog.getByRole('button', { name: locale === 'en' ? 'Close' : '关闭', exact: true }).click()
+    await dialog.locator('.detail-modal-close').click()
     await expect(dialog).toHaveCount(0)
     expect(errors).toEqual([])
   })

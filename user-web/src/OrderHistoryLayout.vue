@@ -14,7 +14,7 @@ const ui = useUserI18n().t;
         {{ ui('betting.refresh') }}
       </button></Teleport>
     <slot name="filters" />
-    <p v-if="!loading && empty" class="order-history-empty empty-state">{{ ui('betting.noOrders') }}</p>
+    <p v-if="empty" class="order-history-empty empty-state">{{ ui('betting.noOrders') }}</p>
     <slot v-else />
     <slot name="pagination" />
   </section>

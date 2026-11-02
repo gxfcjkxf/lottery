@@ -3,6 +3,7 @@ import { readPaginationTotal } from './pagination'
 const catalogTotal = ref('0')
 
 import ManagementList from './ManagementList.vue'
+import ManagementTable from './ManagementTable.vue'
 import TablePagination from "./TablePagination.vue"
 import SelectControl from './SelectControl.vue'
 import { useOperationToast } from "@lottery/shared";
@@ -25,6 +26,7 @@ import DrawScheduleSettings from './DrawScheduleSettings.vue'
 import AutomationSettings from './AutomationSettings.vue'
 import PlatformDrawOverview from './PlatformDrawOverview.vue'
 import PeriodOpeningDialog from './PeriodOpeningDialog.vue'
+import DrawResultInputs from './DrawResultInputs.vue'
 import { lotteryLocalTimeToISO } from './lottery-time'
 import type { PlatformDisplaySettings } from './date-time'
 import { createCatalogI18n } from './localization'
@@ -71,14 +73,17 @@ const formKind = ref<'name' | 'game' | 'connect' | 'period' | 'result' | 'model'
 const salesGame = ref<PlatformGame|null>(null), salesLocked=ref(false)
 const openingPeriod = ref<PlatformPeriod|null>(null)
 const target = ref<PlatformGame | PlatformPeriod | null>(null)
-const form = ref({ name: '', code: '', timezone: 'Asia/Singapore', reason: '', periodNo: '', startDate: '', startTime: '', endDate: '', endTime: '', drawDate: '', drawTime: '', regular: '', special: '', digits: '' })
+const form = ref({ name: '', code: '', timezone: 'Asia/Singapore', reason: '', periodNo: '', startDate: '', startTime: '', endDate: '', endTime: '', drawDate: '', drawTime: '' })
 const pending = ref<{ path: string; body: unknown; key: string } | null>(null)
 const defaultModel = (): RuleModel => ({ model: 'DIGITS_0_9', regular_pool: { allow_repeat: false }, special_pool: { allow_repeat: false }, regular_count: 0, special_count: 0, pool_size: 0, total_count: 0, length: 3, allow_repeat: true, ordered: true })
 const modelDraft = ref<RuleModel>(defaultModel())
 const resultModel = computed(() => detail.value?.game.model)
-const resultHasRegular = computed(() => !!resultModel.value && ['X_PLUS_Y', 'M_SELECT_N'].includes(resultModel.value.model) && resultModel.value.regular_count > 0)
-const resultHasSpecial = computed(() => !!resultModel.value && ['X_PLUS_Y', 'M_SELECT_N'].includes(resultModel.value.model) && resultModel.value.special_count > 0)
-const resultHasDigits = computed(() => resultModel.value?.model === 'DIGITS_0_9' && resultModel.value.length > 0)
+const drawInputs = ref<InstanceType<typeof DrawResultInputs> | null>(null)
+const drawOverview = ref<InstanceType<typeof PlatformDrawOverview> | null>(null)
+function manualResult() {
+ form.value.periodNo = ''; form.value.drawDate = ''
+ begin('result')
+}
 const modelLocked = computed(() => !!detail.value && (detail.value.game.rule_published || detail.value.periods.length > 0))
 const lifecycleAction = ref<'active' | 'offline' | 'deleted'>('offline')
 const availabilityEnabled = ref(false)
@@ -89,7 +94,7 @@ const actionLabel = computed(() => formKind.value === 'connect' ? t('enableGame'
 const actionHint = computed(() => formKind.value==='connect' ? t('enableHint') : formKind.value==='availability' ? t(availabilityEnabled.value?'enableHint':'brandDisableHint') : lifecycleAction.value==='deleted' ? '' : t(lifecycleAction.value==='offline'?'offlineHint':'enableHint'))
 let generation = 0
 let alive = true
-const dialogTitle = computed(() => isConfirmation.value ? props.surface === 'admin' ? t('gameActionTitle', { action: actionLabel.value, name: target.value && 'name' in target.value ? target.value.name : '' }) : actionLabel.value : formKind.value ? t(({ name: 'editName', game: 'create', connect: 'connect', period: 'createPeriod', result: 'publish', model: 'editModel', lifecycle: 'lifecycleConfirm', availability: 'lifecycleConfirm' } as const)[formKind.value]) : '')
+const dialogTitle = computed(() => isConfirmation.value ? props.surface === 'admin' ? t('gameActionTitle', { action: actionLabel.value, name: target.value && 'name' in target.value ? target.value.name : '' }) : actionLabel.value : formKind.value ? t(({ name: 'editName', game: 'create', connect: 'connect', period: 'createPeriod', result: 'manualAdd', model: 'editModel', lifecycle: 'lifecycleConfirm', availability: 'lifecycleConfirm' } as const)[formKind.value]) : '')
 const shownError = computed(() => error.value ? (error.value in platformLotteryCatalog.en ? t(error.value) : i18n.errorText({ code: error.value.replace(/^error\./, '') })) : '')
 function report(cause: unknown) {
   if (cause instanceof PlatformLotteryError) { error.value = `error.${cause.code}`; if (cause.status === 401) emit('failure', cause) }
@@ -134,7 +139,6 @@ async function closeDetail() {
 }
 function begin(kind: NonNullable<typeof formKind.value>, row?: PlatformGame | PlatformPeriod) {
   if (kind === 'name') form.value.name = (row as PlatformGame).name
-  if (kind === 'result') { form.value.regular = ''; form.value.special = ''; form.value.digits = '' }
   if (kind === 'game') { modelDraft.value = defaultModel(); form.value.name = ''; form.value.code = '' }
   if (kind === 'model') modelDraft.value = JSON.parse(JSON.stringify(detail.value!.game.model))
   if (kind === 'period') {
@@ -146,7 +150,6 @@ function begin(kind: NonNullable<typeof formKind.value>, row?: PlatformGame | Pl
   }
   formKind.value = kind; target.value = row ?? null; form.value.reason = ''; error.value = ''; notice.value = false
 }
-function numbers(value: string) { if (!value.trim()) return []; const values = value.split(',').map(s => Number(s.trim())); if (values.some(n => !Number.isSafeInteger(n))) throw new Error(); return values }
 function formatTime(value: string) {
   return formatDisplayDateTime(value, props.locale)
 }
@@ -170,7 +173,11 @@ async function submit() {
         case 'model': path = `/${selectedId.value}/model`; body = { model: modelDraft.value, expected_version: detail.value!.game.version }; break
         case 'connect': path = `/${target.value!.id}/connect`; body = {}; break
         case 'period': path = `/${selectedId.value}/periods`; body = { period_no: f.periodNo, bet_start_at: inputTime(f.startDate, f.startTime), bet_end_at: inputTime(f.endDate, f.endTime), draw_at: inputTime(f.drawDate, f.drawTime) }; break
-        case 'result': path = `/periods/${target.value!.id}/result`; body = { result: { regular: resultHasRegular.value ? numbers(f.regular) : [], special: resultHasSpecial.value ? numbers(f.special) : [], digits: resultHasDigits.value ? numbers(f.digits) : [] }, reason: f.reason }; break
+        case 'result': {
+          const result = drawInputs.value?.result()
+          if (!result) return
+          path = `/${selectedId.value}/results`; body = { period_no: f.periodNo, draw_date: f.drawDate, result }; break
+        }
         default: throw new Error()
       }
       pending.value = { path, body, key: crypto.randomUUID() }
@@ -182,6 +189,7 @@ async function submit() {
     await api.write(snapshot.path, snapshot.body, snapshot.key)
     if (!alive || request !== generation) return
     pending.value = null; formKind.value = null; notice.value = true
+    if (snapshot.path.endsWith('/results')) await drawOverview.value?.load((snapshot.body as {draw_date: string}).draw_date.slice(0, 4), 0)
     if (snapshot.path.endsWith('/name') || snapshot.path.endsWith('/lifecycle') || snapshot.path.endsWith('/availability')) await load(offset.value)
     else if (current) await open(current, nextView, periodOffset.value); else await load(offset.value)
   } catch (cause) {
@@ -220,37 +228,32 @@ useOperationToast(shownError, value => value, 'error');
     <div v-if="surface === 'user'" class="platform-lottery-toolbar"><h2 v-if="!unifiedCatalog">{{t('title')}}</h2></div>
 
 
-    <div v-if="surface === 'admin'" class="brand-lottery-grid">
-      <article v-for="game in brandCatalogGames" :key="game.id" class="brand-lottery-card">
-        <h3>{{ game.name }}</h3>
-        <p v-if="game.connected" class="muted">{{t(game.sales_status==='ready'?'salesReady':game.sales_status==='outdated'?'salesOutdated':game.sales_status==='disabled'?'salesDisabled':'salesUnconfigured')}}</p>
-        <div class="brand-lottery-card-footer">
-          <span class="status-chip" :class="{ 'brand-lottery-enabled': game.status === 'active' && game.connected && game.brand_enabled }">{{ t(game.status === 'offline' ? 'offline' : game.connected && game.brand_enabled ? 'shortEnabled' : 'shortDisabled') }}</span>
-          <div class="brand-lottery-card-actions">
-          <button v-if="!game.connected && canConnect && game.status === 'active'" type="button" class="button button-secondary" :disabled="loading" @click="begin('connect', game)">{{ t('shortEnable') }}</button>
-          <button v-else-if="canSell && game.connected" type="button" class="button button-secondary" :disabled="loading" @click="changeAvailability(game)">{{ t(game.brand_enabled ? 'shortDisable' : 'shortEnable') }}</button>
-          <button v-if="game.connected" type="button" class="button button-secondary" :disabled="loading" @click="salesGame=game">{{t('salesConfiguration')}}</button>
-          </div>
-        </div>
-      </article>
-      <p v-global-loading="loading || brandLoading" v-if="!error && !brandCatalogGames.length" class="empty-state">{{ loading || brandLoading ? t('loading') : t('empty') }}</p>
-    </div>
+    <ManagementTable v-if="surface === 'admin'" table-class="brand-lottery-table" :entries="brandCatalogGames" :columns="[{key:'name',label:t('name')},{key:'sales',label:t('salesConfiguration')},{key:'status',label:t('status')},...(canConnect || canSell ? [{key:'actions',label:t('actions')}] : [])]" :empty="!loading && !brandLoading && !error && !brandCatalogGames.length" :empty-label="t('empty')">
+      <template #name="{entry:game}">{{game.name}}</template>
+      <template #sales="{entry:game}">{{game.connected ? t(game.sales_status==='ready'?'salesReady':game.sales_status==='outdated'?'salesOutdated':game.sales_status==='disabled'?'salesDisabled':'salesUnconfigured') : '—'}}</template>
+      <template #status="{entry:game}">{{t(game.status === 'offline' ? 'offline' : game.connected && game.brand_enabled ? 'shortEnabled' : 'shortDisabled')}}</template>
+      <template #actions="{entry:game}"><MemberActionsMenu v-if="game.connected && canSell || !game.connected && canConnect && game.status === 'active'" :id="`brand-lottery-actions-${game.id}`" :label="t('actions')">
+        <button v-if="canSell && game.connected" type="button" role="menuitem" :disabled="loading" @click="salesGame=game">{{t('salesConfiguration')}}</button>
+        <button v-if="!game.connected && canConnect && game.status === 'active'" type="button" role="menuitem" :disabled="loading" @click="begin('connect', game)">{{t('shortEnable')}}</button>
+        <button v-else-if="canSell && game.connected" type="button" role="menuitem" :disabled="loading" @click="changeAvailability(game)">{{t(game.brand_enabled ? 'shortDisable' : 'shortEnable')}}</button>
+      </MemberActionsMenu></template>
+    </ManagementTable>
     <div v-else class="table-wrap"><table class="console-table platform-lottery-catalog-table console-responsive-table"><thead><tr><th>{{ t('name') }}</th><th v-if="unifiedCatalog">{{ t('ownership') }}</th><th>{{ t('periods') }}</th><th>{{ t('plays') }}</th><th v-if="surface === 'platform'">{{ t('timeSettings') }}</th><th v-if="surface === 'platform'">{{ t('drawSources') }}</th><th>{{ t('model') }}</th><th v-if="surface !== 'user'">{{ t('status') }}</th><th v-if="canManagePlatform">{{ t('actions') }}</th></tr></thead><tbody>
       <tr v-for="row in visibleRows" :key="`${row.source}:${row.game.id}`"><td :data-label="String(t('name'))">{{ row.game.name }}</td><td :data-label="String(t('ownership'))" v-if="unifiedCatalog">{{ row.source === 'platform' ? t('platformOwner') : brandName }}</td><td :data-label="String(t('periods'))"><button class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'periods')">{{ t('periods') }}</button></td><td :data-label="String(t('plays'))"><button class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'plays')">{{ t('plays') }}</button></td><td :data-label="String(t('timeSettings'))" v-if="surface === 'platform'"><button v-if="row.source === 'platform'&&row.game.model.model==='X_PLUS_Y'&&row.game.model.regular_count===6&&row.game.model.special_count===1" class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'schedule')">{{t('timeSettings')}}</button><span v-else>—</span></td><td :data-label="String(t('drawSources'))" v-if="surface === 'platform'"><button v-if="row.source === 'platform'" class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'automation')">{{ t('drawSources') }}</button><span v-else>—</span></td><td :data-label="String(t('model'))"><button class="text-button row-action text-link" @click="withGlobalLoading(openRow, row, 'model')">{{ t('model') }}</button></td><td :data-label="String(t('status'))" v-if="surface !== 'user'"><span v-if="row.source==='platform'" class="status-chip">{{ row.game.status==='offline'?t('offline'):t('active') }}</span></td><td :data-label="String(t('actions'))" v-if="canManagePlatform"><div v-if="row.source==='platform'" class="platform-lottery-actions"><MemberActionsMenu v-if="canManagePlatform" :id="`lottery-actions-${row.game.id}`" :label="t('actions')"><button type="button" role="menuitem" :disabled="loading" @click="begin('name', row.game)">{{ t('editName') }}</button><button type="button" role="menuitem" :disabled="loading" @click="changeLifecycle(row.game,row.game.status==='active'?'offline':'active')">{{ t(row.game.status==='active'?'takeOffline':'relist') }}</button><button type="button" role="menuitem" class="danger-text" :disabled="loading || !row.game.deletable" :title="row.game.deletable ? undefined : t('cannotDelete')" @click="changeLifecycle(row.game,'deleted')">{{ t('deleteGame') }}</button></MemberActionsMenu></div></td></tr>
       <tr v-global-loading="loading || brandLoading" v-if="!error && !visibleRows.length"><td :colspan="catalogColumnCount" class="empty-state">{{ loading || brandLoading ? t('loading') : t('empty') }}</td></tr>
     </tbody></table></div>
     <template v-if="surface !== 'user'" #pagination><TablePagination :show-empty="!loading && !error" class="wallet-pagination page-actions" :total="String(filteredRows.length)" :page="Math.floor(offset / 50 + 1)" :count="visibleRows.length" :locale="locale" :page-size="50" :previous-disabled="loading || brandLoading || offset === 0" :next-disabled="loading || brandLoading || !hasNext" :previous-label="t('previous')" :next-label="t('next')" :go-to="(target: number) => goPage((target - 1) * 50)" /></template>
-    <TablePagination v-if="surface === 'user'" :show-empty="!loading && !error" class="wallet-pagination page-actions" :total="catalogTotal" :page="Math.floor(offset / 50 + 1)" :count="visibleRows.length" :locale="locale" :page-size="50" :previous-disabled="loading || brandLoading || offset === 0" :next-disabled="loading || brandLoading || !hasNext" :previous-label="t('previous')" :next-label="t('next')" :go-to="(target: number) => goPage((target - 1) * 50)" />
     </component>
+    <TablePagination v-if="surface === 'user' && !detailPage && !drawsOnly" :show-empty="!loading && !error" class="wallet-pagination page-actions" :total="catalogTotal" :page="Math.floor(offset / 50 + 1)" :count="visibleRows.length" :locale="locale" :page-size="50" :previous-disabled="loading || brandLoading || offset === 0" :next-disabled="loading || brandLoading || !hasNext" :previous-label="t('previous')" :next-label="t('next')" :go-to="(target: number) => goPage((target - 1) * 50)" />
     <component :is="detailPage ? 'section' : DetailModal" v-if="selectedId" :class="{ 'lottery-detail-page': detailPage }" v-bind="detailPage ? { 'aria-label': detailTitle } : { title: detailTitle, closeLabel: t('close'), open: !formKind }" @close="closeDetail">
-      <header v-if="detailPage" class="lottery-detail-page-heading">
+      <header v-if="detailPage && !drawsOnly" class="lottery-detail-page-heading">
         <button v-if="!drawsOnly" type="button" class="button button-secondary" :disabled="loading || !!pending || !!formKind" @click="closeDetail">{{ t('backToGames') }}</button>
         <h2>{{ detailTitle }}</h2>
       </header>
 
 
       <template v-if="detail">
-        <PlatformDrawOverview v-if="view === 'draws' && surface === 'platform'" :game-id="detail.game.id" :locale="locale" :can-manage="canManagePlatform&&detail.game.rule_published" :can-edit-opening="!markSix" :show-sale-times="!markSix" :can-create-period="!markSix" @failure="emit('failure', $event)" @opening="openingPeriod=$event" @create="begin('period')" @publish="begin('result', $event)" />
+        <PlatformDrawOverview ref="drawOverview" v-if="view === 'draws' && surface === 'platform'" :game-id="detail.game.id" :locale="locale" :can-manage="canManagePlatform&&detail.game.rule_published" @failure="emit('failure', $event)" @manual="manualResult" />
         <DrawScheduleSettings v-if="view==='schedule'&&surface==='platform'&&markSix" :game-id="detail.game.id" :timezone="detail.game.timezone" :locale="locale" :can-write="canManagePlatform" @failure="emit('failure',$event)" />
         <slot v-if="view==='schedule'&&detail.game.timezone==='Asia/Hong_Kong'" name="calendar" />
         <AutomationSettings v-if="view === 'automation' && surface !== 'user'" :surface="surface" :game-id="detail.game.id" :brand-id="brandId" :locale="locale" :can-write="canManagePlatform" @failure="emit('failure', $event)" />
@@ -271,8 +274,8 @@ useOperationToast(shownError, value => value, 'error');
       <ConfiguredPublishing surface="admin" :brand-id="brandId" :game-id="salesGame.id" :locale="locale" :snapshot="null" :can-write="!!canSell" @locked="salesLocked=$event" @saved="withGlobalLoading(load)" @failure="emit('failure',$event)" />
     </DetailModal>
     <PeriodOpeningDialog v-if="openingPeriod" :key="openingPeriod.id" :period="openingPeriod" :locale="locale" @close="openingPeriod=null" @saved="openingPeriod=null;withGlobalLoading(open,detail!.game,view,periodOffset)" @failure="emit('failure',$event)" />
-    <DetailModal v-if="formKind" :class="{ 'platform-lottery-confirm-modal': isConfirmation }" :title="dialogTitle" :close-label="t('close')" :close-disabled="loading||!!pending" @close="!loading && !pending && (formKind = null)">
-      <form v-write-guard="loading" novalidate v-inline-validation class="brand-form platform-lottery-form ui-form" @submit.prevent="withGlobalLoading(submit)"><fieldset :class="{ 'confirmation-form-fields': isConfirmation, 'period-form-fields': formKind === 'period' }" :disabled="loading || !!pending">
+    <DetailModal v-if="formKind" :class="{ 'platform-lottery-confirm-modal': isConfirmation, 'ui-form-dialog': formKind === 'result' }" :title="dialogTitle" :close-label="t('close')" :close-disabled="loading||!!pending" @close="!loading && !pending && (formKind = null)">
+      <form v-write-guard="loading" novalidate v-inline-validation class="brand-form platform-lottery-form ui-form" @submit.prevent="withGlobalLoading(submit)"><fieldset :class="{ 'confirmation-form-fields': isConfirmation, 'period-form-fields': formKind === 'period', 'result-form-fields': formKind === 'result' }" :disabled="loading || !!pending">
         <div v-if="isConfirmation" class="platform-lottery-confirm-copy"><p class="platform-lottery-confirm-prompt">{{ t('gameActionPrompt', { action: actionLabel, name: target && 'name' in target ? target.name : '' }) }}</p><p v-if="actionHint" class="platform-lottery-note">{{ actionHint }}</p></div>
         <label v-if="formKind === 'name'">{{ t('name') }}<input v-model.trim="form.name" required maxlength="120" /></label><template v-if="formKind === 'game'"><label>{{ t('name') }}<input v-model.trim="form.name" required maxlength="120" /></label><label>{{ t('code') }}<input v-model.trim="form.code" pattern="[a-z][a-z0-9_]{0,47}" :data-validation-format="formValidationText('codeFormat', {min: 1, max: 48})" required /></label></template>
         <template v-if="formKind === 'game'"><label>{{ t('timezone') }}<SelectControl v-model="form.timezone" class="lottery-timezone" required :label="String(t('timezone'))" :options="(timezones).map((zone) => ({ value: zone, label: (String(zone)).trim() }))" /></label><NumberModelEditor v-model="modelDraft" :locale="locale" :disabled="loading || !!pending" /></template><NumberModelEditor v-if="formKind === 'model'" v-model="modelDraft" :locale="locale" :disabled="loading || !!pending" />
@@ -286,7 +289,11 @@ useOperationToast(shownError, value => value, 'error');
             </span>
           </div>
         </template>
-        <template v-if="formKind === 'result'"><label v-if="resultHasRegular">{{ t('regular') }}<input v-model="form.regular" /></label><label v-if="resultHasSpecial">{{ t('special') }}<input v-model="form.special" /></label><label v-if="resultHasDigits">{{ t('digits') }}<input v-model="form.digits" /></label><p>{{ t('numbers') }}</p></template>
+        <template v-if="formKind === 'result'">
+          <label>{{ t('periodNo') }}<input v-model.trim="form.periodNo" required maxlength="100" /></label>
+          <label>{{ t('drawDate') }}<PlatformDateInput v-model="form.drawDate" :display-settings="displaySettings!" :locale="locale" :label="t('drawDate')" editable required /></label>
+          <DrawResultInputs v-if="resultModel" ref="drawInputs" :model="resultModel" :locale="locale" />
+        </template>
 
       </fieldset><p v-if="pending">{{ t('awaiting') }}</p><div class="platform-lottery-form-actions ui-form-actions" :class="{ 'confirmation-actions': isConfirmation }"><button class="button" :class="formKind === 'lifecycle' && lifecycleAction === 'deleted' ? 'button-danger' : 'button-primary'" :disabled="loading" type="submit">{{ pending ? t('retry') : isConfirmation ? actionLabel : t('save') }}</button></div></form>
     </DetailModal>
@@ -298,12 +305,6 @@ useOperationToast(shownError, value => value, 'error');
 .brand-sales-modal :deep(.configured-publishing>h3){display:none}
 
 .lottery-detail-page{min-width:0;padding:16px}.lottery-detail-page-heading{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px}.lottery-detail-page-heading h2{margin:0;overflow-wrap:anywhere;font-size:18px}.lottery-detail-page-heading .button{min-height:var(--control-height)}
-.brand-lottery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:12px;padding:12px}
-.brand-lottery-card{display:flex;flex-direction:column;gap:12px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface)}
-.brand-lottery-card h3{margin:0;font-size:var(--body-font-size);font-weight:650;line-height:1.5;overflow-wrap:anywhere}
-.brand-lottery-card-footer{flex-wrap:wrap;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto}
-.brand-lottery-card-actions{display:flex;flex-wrap:wrap;gap:8px}.brand-lottery-card p{margin:0}.brand-lottery-card-footer .button{flex:none;width:auto}
-.brand-lottery-enabled{color:var(--primary)}
 .platform-lottery{text-align:left}
 .platform-lottery-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
 .platform-lottery-toolbar h2{margin:0 auto 0 0}
@@ -317,6 +318,7 @@ useOperationToast(shownError, value => value, 'error');
 .platform-lottery-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .platform-lottery-form fieldset { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px 20px; width: 100%; box-sizing: border-box; min-width: 0; }
 .platform-lottery-form .period-form-fields { grid-template-columns: minmax(0, 1fr); }
+.platform-lottery-form .result-form-fields > label > input { width: 100%; }
 .detail-modal.platform-lottery-confirm-modal { width: min(480px, calc(100vw - 24px)); max-width: calc(100vw - 24px); }
 .platform-lottery-form .confirmation-form-fields { grid-template-columns: minmax(0, 1fr); }
 .platform-lottery-confirm-copy { display: grid; gap: 8px; min-width: 0; }

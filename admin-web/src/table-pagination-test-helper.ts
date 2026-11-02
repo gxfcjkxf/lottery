@@ -14,7 +14,7 @@ const compiled = ts.transpileModule(compileScript(descriptor, { id: filename, in
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 }).outputText
 const modules: Record<string, unknown> = { './global-loading': GlobalLoading, vue: Vue, './localization': Localization, './pagination-catalog': PaginationCatalog }
-const body = compiled.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+['"]([^'"]+)['"];?\s*$/gm,
+const body = compiled.replace(/^import SelectControl from .*$/m, 'const SelectControl = { render: () => null };').replace(/^import\s+\{([\s\S]*?)\}\s+from\s+['"]([^'"]+)['"];?\s*$/gm,
   (_match, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ': ')}} = __modules[${JSON.stringify(specifier)}];`)
   .replace(/export\s+default\s+/, 'return ')
 export const TablePaginationTestComponent = new Function('__modules', body)(modules) as Component

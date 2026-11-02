@@ -21,7 +21,7 @@ function clientComponent(filename: string, modules: Record<string, unknown>): Co
     .replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, binding: string, path: string) => `const ${binding}=__modules[${JSON.stringify(path)}];`).replace(/export\s+default\s+/, 'return ')
   return new Function('__modules', body)(modules) as Component
 }
-const TablePagination = clientComponent('../../shared/src/TablePagination.vue', {vue: VueRuntime, './localization': Localization, './pagination-catalog': PaginationCatalog, './global-loading': Shared})
+const TablePagination = clientComponent('../../shared/src/TablePagination.vue', {vue: VueRuntime, './localization': Localization, './pagination-catalog': PaginationCatalog, './global-loading': Shared, './SelectControl.vue': { props: ['modelValue', 'options', 'label'], emits: ['change'], render() { return h('size-control', { onChange: (size: number) => this.$emit('change', size) }) } }})
 const commonModules = { '@lottery/shared/TablePagination.vue': TablePagination, vue: VueRuntime, '@lottery/shared': Shared, './i18n': UserI18n }
 const OrderHistoryLayout = clientComponent('./OrderHistoryLayout.vue', commonModules)
 const BettingHistoryTable = clientComponent('./BettingHistoryTable.vue', { ...commonModules, 'vue-router': RouterRuntime,
@@ -74,6 +74,7 @@ describe('unified betting history', () => {
       return ok(page([], { game_id: id, games: []  ,total_count: '0'}))
     })
     const m = await mount(fetcher, game)
+    expect(find(m.root, n => n.tag === 'nav')).toBeUndefined()
     expect(find(m.root, n => n.tag === 'select-control')).toBeUndefined()
     expect(String(fetcher.mock.calls.at(-1)![0])).toContain(`game_id=${game}`)
     m.selectedGameId.value = other; await flush()
@@ -106,6 +107,17 @@ describe('unified betting history', () => {
     m.selectedGameId.value = game; await flush()
     expect(String(fetcher.mock.calls.at(-1)![0])).toContain(`game_id=${game}`); expect(text(m.root)).toContain('Page 1')
     expect(String(fetcher.mock.calls.at(-1)![0])).not.toContain('cursor=')
+  })
+  it('reloads from the first page with the selected size', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async input => {
+      const q = new URL(String(input), 'http://local').searchParams
+      return ok(page([entry()], { limit: Number(q.get('limit')), next_cursor: 'next', total_count: '101' }))
+    })
+    const m = await mount(fetcher)
+    click(find(m.root, n => n.tag === 'button' && n.props['aria-label'] === 'Next')); await flush()
+    find(m.root, n => n.tag === 'size-control')!.props.onChange(50); await flush()
+    const q = new URL(String(fetcher.mock.calls.at(-1)![0]), 'http://local').searchParams
+    expect(q.get('limit')).toBe('50'); expect(q.has('cursor')).toBe(false); expect(text(m.root)).toContain('Page 1')
   })
   it('rejects late responses after account changes and never renders the previous member’s tickets', async () => {
     let resolve!: (value: Response) => void

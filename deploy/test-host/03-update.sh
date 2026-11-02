@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Build a source snapshot locally, then activate a release over SSH.
 set -Eeuo pipefail
-[[ $# == 1 || ( $# == 2 && $2 == --upgrade-fixed-entries ) || ( $# == 3 && $2 == --initial ) ]] || {
-  echo "Usage: $0 SSH_HOST [--upgrade-fixed-entries]   (first deployment: 02-deploy.sh SSH_HOST CONFIG.json)" >&2; exit 1;
+[[ $# == 1 || ( $# == 2 && $2 == --upgrade-fixed-entries ) || ( $# == 2 && $2 == --upgrade-manual-results ) || ( $# == 3 && $2 == --initial ) ]] || {
+  echo "Usage: $0 SSH_HOST [--upgrade-fixed-entries|--upgrade-manual-results]   (first deployment: 02-deploy.sh SSH_HOST CONFIG.json)" >&2; exit 1;
 }
 host=$1
 [[ $host =~ ^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$ ]] || { echo 'Invalid SSH host.' >&2; exit 1; }
 mode=update
 consolidate=false
 if [[ $# == 3 ]]; then mode=initial; elif [[ $# == 2 ]]; then consolidate=true; fi
+upgrade_script=upgrade-fixed-entries.py
+if [[ $# == 2 && $2 == --upgrade-manual-results ]]; then upgrade_script=upgrade-manual-results.py; fi
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -77,18 +79,19 @@ done
   -ldflags "-s -w -X main.buildVersion=$release" -o "$work/release/platform" ./cmd/platform)
 cp -R deploy/systemd "$work/release/systemd"
 mkdir "$work/release/ops"
-cp deploy/test-host/namecom-dns.py deploy/test-host/render-nginx.py deploy/test-host/upgrade-fixed-entries.py "$work/release/ops/"
+cp deploy/test-host/namecom-dns.py deploy/test-host/render-nginx.py deploy/test-host/upgrade-fixed-entries.py deploy/test-host/upgrade-manual-results.py "$work/release/ops/"
 cp backend/migrations/0001_baseline.up.sql "$work/release/ops/"
 (cd "$work/release" && COPYFILE_DISABLE=1 tar --no-xattrs -czf "$work/release.tgz" .)
 shasum -a 256 "$work/release.tgz" | awk '{print $1}' > "$work/release.sha256"
 scp -o IPQoS=none "$work/release.tgz" "$host:/opt/lottery/incoming/$release.tgz"
 scp -o IPQoS=none "$work/release.sha256" "$host:/opt/lottery/incoming/$release.sha256"
-ssh -o BatchMode=yes "$host" "bash -s -- $release $mode $consolidate" <<'REMOTE'
+ssh -o BatchMode=yes "$host" "bash -s -- $release $mode $consolidate $upgrade_script" <<'REMOTE'
 set -Eeuo pipefail
 umask 077
 release=$1
 mode=$2
 consolidate=$3
+upgrade_script=$4
 exec 9>/run/lock/lottery-deploy.lock
 flock -n 9 || { echo 'Another deployment is running.' >&2; exit 1; }
 candidate=/opt/lottery/releases/$release
@@ -176,7 +179,7 @@ else
     systemctl stop lottery-api lottery-worker
     install -d -m 700 -o postgres -g postgres /var/lib/postgresql/lottery-fixed-entry-backups
     install -d -m 700 /var/backups/lottery/fixed-entries
-    runuser -u postgres -- env PGDATABASE=lottery python3 "$candidate/ops/upgrade-fixed-entries.py" \
+    runuser -u postgres -- env PGDATABASE=lottery python3 "$candidate/ops/$upgrade_script" \
       --baseline "$candidate/ops/0001_baseline.up.sql" \
       --backup-dir "/var/lib/postgresql/lottery-fixed-entry-backups/$release"
     mv "/var/lib/postgresql/lottery-fixed-entry-backups/$release" "/var/backups/lottery/fixed-entries/$release"

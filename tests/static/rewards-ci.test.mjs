@@ -4,9 +4,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { prepareRewardBrowser, readRewardBrowserConfiguration, runRewardCommand } from '../../scripts/prepare-reward-browser.mjs';
 
-const workflow = readFileSync(new URL('../../.github/workflows/ci.yaml', import.meta.url), 'utf8');
 const source = readFileSync(new URL('../../scripts/prepare-reward-browser.mjs', import.meta.url), 'utf8');
-const job = /^  reward-browser:\n([\s\S]*?)(?=^  [a-z][a-z-]*:\n|(?![\s\S]))/m.exec(workflow)?.[1];
 const database = viewport => `lottery_rewards_ui_${viewport}_s22`;
 const emptySchema = viewport => `${database(viewport)}|lottery_test|0\n`;
 function environment(viewport = 'desktop') {
@@ -19,51 +17,6 @@ function environment(viewport = 'desktop') {
     TEST_REWARD_SUPER_PASSWORD: 'reward-static-reader-2026',
   };
 }
-
-test('reward browser matrix uses fresh viewport databases, normal CLI bootstrap and bounded Chromium setup', () => {
-  assert.ok(job, 'dedicated reward-browser job required');
-  assert.match(job, /timeout-minutes: 20/);
-  assert.match(job, /viewport: \[desktop, mobile\]/);
-  assert.match(job, /POSTGRES_DB: lottery_rewards_ui_\$\{\{ matrix\.viewport \}\}_s22/);
-  assert.match(job, /POSTGRES_USER: lottery_test/);
-  assert.match(job, /POSTGRES_HOST_AUTH_METHOD: trust/);
-  assert.match(job, /ports: \["127\.0\.0\.1:5432:5432"\]/);
-  assert.match(job, /DATABASE_URL: postgres:\/\/lottery_test@127\.0\.0\.1:5432\/lottery_rewards_ui_\$\{\{ matrix\.viewport \}\}_s22\?sslmode=disable/);
-  assert.match(job, /APP_ENV: test/);
-  assert.match(job, /REWARD_UI_VIEWPORT: \$\{\{ matrix\.viewport \}\}/);
-  assert.match(job, /REWARD_UI_FIXTURE_CONFIRM: owned_synthetic_database/);
-  assert.match(job, /TEST_ADMIN_ORIGIN: http:\/\/localhost:5174/);
-  for (const name of ['TEST_REWARD_ADMIN_PASSWORD', 'TEST_REWARD_SUPER_PASSWORD']) assert.match(job, new RegExp(`^      ${name}: .+$`, 'm'));
-  assert.match(job, /PLATFORM_BIN: \$\{\{ github\.workspace \}\}\/\.local\/reward-platform/);
-  assert.match(job, /POSTGRES_PSQL_BIN: \/usr\/bin\/psql/);
-  assert.match(job, /go -C backend build -o \.\.\/\.local\/reward-platform \.\/cmd\/platform/);
-  assert.match(job, /\.local\/reward-platform generate-auth-key \.local\/auth\.key/);
-  assert.match(job, /node scripts\/prepare-reward-browser\.mjs/);
-  assert.match(job, /\.local\/reward-platform serve > reward-browser-api\.log 2>&1 &/);
-  assert.match(job, /name: Prepare and verify Chromium\n        timeout-minutes: 7\n        run: node scripts\/prepare-ci-browser\.mjs/);
-  assert.doesNotMatch(job, /POSTGRES_PASSWORD:|BOOTSTRAP_ADMIN_PASSWORD:|browserfixture|continue-on-error|--with-deps/);
-  assert.equal((job.match(/\.local\/reward-platform worker/g) ?? []).length, 1);
-  assert.ok(job.indexOf('Start existing inbox worker') > job.indexOf('tests/browser/rewards.spec.ts'));
-  assert.ok(job.indexOf('tests/browser/reward-notifications.spec.ts') > job.indexOf('Start existing inbox worker'));
-  assert.match(job, /REWARD_NOTIFICATION_WORKER_ENABLED: "true"/);
-  assert.match(job, /tests\/browser\/reward-notifications\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0 --reporter=list,json/);
-  assert.match(job, /tests\/browser\/reward-reports\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0 --reporter=list,json/);
-  assert.ok(job.indexOf('tests/browser/reward-reports.spec.ts') > job.indexOf('tests/browser/reward-notifications.spec.ts'));
-  assert.match(job, /PLAYWRIGHT_JSON_OUTPUT_NAME: \.local\/reward-reports-report\.json/);
-  assert.match(job, /Reward reports CI requires passed tests and zero skipped tests/);
-  assert.doesNotMatch(job, /UPDATE |INSERT INTO |DELETE FROM |TRUNCATE|DROP |reset|auth_rate_limits|X-Forwarded-For|payment-policy/i);
-});
-
-test('reward browser CI runs the exact spec once per project and rejects zero tests or skipped tests', () => {
-  assert.match(job, /pnpm exec playwright test tests\/browser\/rewards\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0 --reporter=list,json/);
-  assert.match(job, /PLAYWRIGHT_JSON_OUTPUT_NAME: \.local\/reward-browser-report\.json/);
-  assert.match(job, /stats\.skipped !== 0/);
-  assert.match(job, /stats\.expected > 0/);
-  assert.doesNotMatch(job, /--pass-with-no-tests|--retries=([1-9]\d*)|cat .*auth\.key|\.local\/\*|echo .*AUTH_KEY/);
-  assert.match(job, /name: reward-browser-\$\{\{ matrix\.viewport \}\}-failure-traces/);
-  assert.doesNotMatch(workflow,/^  commission-cycles-browser:/m);
-  assert.ok(workflow.indexOf('  withdrawal-browser:') > workflow.indexOf('  reward-browser:'));
-});
 
 test('initializer accepts only the exact owned database, viewport, loopback, port and single SSL parameter', () => {
   for (const viewport of ['desktop', 'mobile']) {

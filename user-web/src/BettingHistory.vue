@@ -16,19 +16,19 @@ const i18n = useUserI18n(), ui = i18n.t
 const localeCode = computed(() => props.locale === 'en' ? 'en' : 'zh-CN')
 const selectedGame = ref(''), loading = ref(false), error = ref<LocalizedMessage | null>(null)
 const page = shallowRef<HistoryPage | null>(null)
-const cursors = ref<Array<string | null>>([null]), pageIndex = ref(0)
+const cursors = ref<Array<string | null>>([null]), pageIndex = ref(0), pageSize = ref(20)
 let generation = 0, controller: AbortController | null = null
 const scope = computed(() => JSON.stringify([props.brandCode, props.auth?.member.brand_id, props.auth?.member.id]))
-async function load(index = pageIndex.value, cursor = cursors.value[index] ?? null, passive = false) {
+async function load(index = pageIndex.value, cursor = cursors.value[index] ?? null, passive = false, limit = pageSize.value) {
   const token = ++generation
   controller?.abort(); controller = new AbortController()
   error.value = null; if (!passive) loading.value = true
   const profile = props.auth
   if (!profile) { page.value = null; loading.value = false; return }
   try {
-    const value = await readBettingHistory(props.brandCode, { brand_id: profile.member.brand_id, member_id: profile.member.id }, selectedGame.value, cursor, controller.signal)
+    const value = await readBettingHistory(props.brandCode, { brand_id: profile.member.brand_id, member_id: profile.member.id }, selectedGame.value, cursor, controller.signal, limit)
     if (token !== generation) return
-    page.value = value; emit('games', value.games); pageIndex.value = index
+    page.value = value; emit('games', value.games); pageIndex.value = index; pageSize.value = limit
     cursors.value = [...cursors.value.slice(0, index), cursor]
   } catch (cause) {
     if (token !== generation) return
@@ -38,6 +38,7 @@ async function load(index = pageIndex.value, cursor = cursors.value[index] ?? nu
 }
 function resetPage() { generation++; controller?.abort(); page.value = null; pageIndex.value = 0; cursors.value = [null] }
 function refresh() { return load() }
+function changePageSize(size: number) { return load(0, null, false, size) }
 watch(() => [scope.value, props.gameId] as const, ([nextScope, gameId], previous) => {
   const changedScope = nextScope !== previous?.[0]
   if (!changedScope && selectedGame.value === gameId) return
@@ -60,7 +61,7 @@ useOperationToast(error, value => i18n.displayError(value), 'error');
 
       <BettingHistoryTable v-if="page?.items.length" :items="page.items" :locale="localeCode" :show-game="!gameId" />
       <template #pagination>
-        <TablePagination :show-empty="Boolean(page)" v-if="auth && page" class="history-pagination" :aria-label="ui('user.orders.pages')" :total="page?.total_count ?? '0'" :page="Math.floor(pageIndex + 1)" :count="page?.items.length ?? 0" :locale="localeCode" :page-size="20" :previous-disabled="loading || pageIndex === 0" :next-disabled="loading || !page?.next_cursor" :previous-label="ui('user.orders.previous')" :next-label="ui('user.orders.next')" :go-to="(target: number) => load(target - 1, target === pageIndex + 2 ? page!.next_cursor : cursors[target - 1])" :reachable-page="pageIndex + (page?.next_cursor ? 2 : 1)" />
+        <TablePagination v-if="auth && page" compact-mobile class="history-pagination" :aria-label="ui('user.orders.pages')" :total="page.total_count" :page="pageIndex + 1" :count="page.items.length" :locale="localeCode" :page-size="pageSize" :page-size-options="[10, 20, 50, 100]" :change-page-size="changePageSize" :previous-disabled="loading || pageIndex === 0" :next-disabled="loading || !page.next_cursor" :previous-label="ui('user.orders.previous')" :next-label="ui('user.orders.next')" :go-to="(target: number) => load(target - 1, target === pageIndex + 2 ? page!.next_cursor : cursors[target - 1])" :reachable-page="pageIndex + (page.next_cursor ? 2 : 1)" />
       </template>
     </OrderHistoryLayout>
   </section>

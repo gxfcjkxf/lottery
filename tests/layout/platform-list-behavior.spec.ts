@@ -1,8 +1,9 @@
+import { expectRealEntry, expectListLayout } from './real-page-review'
 import { selectLanguage } from '../language-switcher'
 import { notificationCatalog } from '../../shared/src/notification-catalog'
 import { selectControl } from '../select-control'
 import { test, expect } from '@playwright/test'
-import { gameId, origins, installLayoutApi, expectNoPageOverflow, expectInsideViewport } from './fixture'
+import { gameId, origins, installLayoutApi, expectInsideViewport } from './fixture'
 import { REPORT_FIELDS, type ReportKind } from '../../platform-web/src/reports-api'
 import { registerPlatformMemberManagementTests } from './platform-member-management'
 registerPlatformMemberManagementTests(false)
@@ -86,7 +87,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
   const preset = page.viewportSize()!
   for (const width of info.project.name.includes('reflow') ? [320, 640, 900, 901, 1440] : [preset.width]) {
     if (info.project.name.includes('reflow')) await page.setViewportSize({ width, height: preset.height })
-    await expectNoPageOverflow(page)
+    await expectRealEntry(page,'platform');await expectListLayout(page)
     await expect(query).toBeVisible()
     await page.screenshot({ path: info.outputPath(`platform-wallet-list-${locale}-${width}.png`) })
   }
@@ -118,7 +119,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
       await expect(entry).not.toContainText(ids(350))
       for (const width of info.project.name.includes('reflow') ? [320,1440] : [preset.width]) {
         if (info.project.name.includes('reflow')) await page.setViewportSize({width,height:preset.height})
-        await expectInsideViewport(entry); await expectNoPageOverflow(page)
+        await expectInsideViewport(entry); await expectRealEntry(page,'platform');await expectListLayout(page)
         expect(await entry.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true)
         await page.screenshot({path:info.outputPath(`platform-ledger-entry-${locale}-${width}.png`)})
       }
@@ -127,7 +128,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
     }
     for (const width of info.project.name.includes('reflow') ? [320,640,900,901,1440] : [preset.width]) {
       if (info.project.name.includes('reflow')) await page.setViewportSize({width,height:preset.height})
-      await expectInsideViewport(dialog); await expectNoPageOverflow(page)
+      await expectInsideViewport(dialog); await expectRealEntry(page,'platform');await expectListLayout(page)
       expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true)
       await page.screenshot({path:info.outputPath(`platform-member-${content}-${locale}-${width}.png`)})
     }
@@ -152,7 +153,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
     await expect.poll(() => reportReads.at(-1)!.pathname.split('/').at(-1)).toBe(kind.replace('reward_orders', 'reward-orders'))
     await expect(reports.getByTestId('platform-reports-summary').first()).toBeVisible()
   }
-  await expectNoPageOverflow(page)
+  await expectRealEntry(page,'platform');await expectListLayout(page)
   await page.screenshot({ path: info.outputPath(`platform-default-reports-${locale}.png`) })
   await openNavigation()
   const operations = page.locator('.sidebar').getByRole('button', { name: zh ? '运营' : 'Operations', exact: true })
@@ -170,7 +171,7 @@ for (const locale of ['en', 'zh-CN'] as const) test(`platform default lists pres
   await expect(detail.locator('.detail-modal-close')).toBeVisible()
   await expect(detail.locator('.archive-report-record')).toContainText(zh ? '平台只读浏览器验证' : 'Platform read-only browser verification')
   await expect(detail.locator('.archive-report-record')).not.toContainText('Owned read-only platform browser verification')
-  await expectInsideViewport(detail); await expectNoPageOverflow(page)
+  await expectInsideViewport(detail); await expectRealEntry(page,'platform');await expectListLayout(page)
   await page.screenshot({ path: info.outputPath(`platform-archive-dialog-${locale}.png`) })
   await page.keyboard.press('Escape'); await expect(detail).toHaveCount(0)
   await expect(archiveList.locator('tbody tr')).toHaveCount(1)
@@ -292,7 +293,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`notification template names
   const rows=page.locator('.template-table .row-action')
   await expect(rows).toHaveText(expectedNames)
   expect(new Set(expectedNames).size).toBe(keys.length)
-  await expectNoPageOverflow(page)
+  await expectRealEntry(page,'platform');await expectListLayout(page)
   await page.screenshot({path:info.outputPath(`template-names-${locale}.png`)})
   const withdrawalIndex=keys.indexOf('withdrawal.order.reviewing')
   await rows.nth(withdrawalIndex).click()
@@ -320,7 +321,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`notification template names
   const preset=page.viewportSize()!
   for(const width of info.project.name.includes('reflow')?[320,1040,1440]:[preset.width]){
     if(info.project.name.includes('reflow'))await page.setViewportSize({width,height:preset.height})
-    await expectNoPageOverflow(page)
+    await expectRealEntry(page,'platform');await expectListLayout(page)
     await page.screenshot({path:info.outputPath(`current-template-${locale}-${width}.png`)})
   }
   await dialog.getByRole('button',{name:locale==='en'?'Close':'关闭',exact:true}).click()

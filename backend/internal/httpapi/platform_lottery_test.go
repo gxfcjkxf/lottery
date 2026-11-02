@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/platformlottery"
@@ -121,12 +122,59 @@ func TestPlatformLotteryHTTPPermissionsReplayAndSharedRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustStatus(t, f.call("POST", "/api/v1/platform/platform-games/"+game.ID+"/configured/rules", "platform-save-rules", auth.AccessToken, "", platformlottery.ConfiguredRulesInput{Snapshot: engine.Snapshot()}), 200)
+	manualPath := "/api/v1/platform/platform-games/" + game.ID + "/results"
+	historical := platformlottery.ManualResultInput{PeriodNo: "1999001", DrawDate: "1999-01-02", Result: rules.Draw{Digits: []int{1, 2, 3}}}
+	mustStatus(t, f.call("POST", manualPath, "history-brand-denied", f.token, "", historical), 403)
+	mustStatus(t, f.call("POST", strings.Replace(manualPath, "/platform/", "/admin/", 1), "history-brand-no-route", f.token, managedBrand, historical), 404)
+	firstHistory := f.call("POST", manualPath, "manual-history", auth.AccessToken, "", historical)
+	mustStatus(t, firstHistory, 201)
+	mustStatus(t, f.call("POST", manualPath, "manual-history", auth.AccessToken, "", historical), 201)
+	mustStatus(t, f.call("POST", manualPath, "manual-history-duplicate", auth.AccessToken, "", historical), 409)
+	var archived platformlottery.DrawHistoryItem
+	managedData(t, firstHistory, &archived)
+	if archived.DrawDate == nil || *archived.DrawDate != "1999-01-02" || archived.Source != "manual" {
+		t.Fatalf("historical record %#v", archived)
+	}
+	var historyCount, periodCount int
+	if e := f.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM platform_draw_history WHERE game_id=$1),(SELECT count(*) FROM platform_game_periods WHERE game_id=$1)`, game.ID).Scan(&historyCount, &periodCount); e != nil {
+		t.Fatal(e)
+	}
+	if historyCount != 1 || periodCount != 0 {
+		t.Fatalf("history=%d periods=%d", historyCount, periodCount)
+	}
+	for i, date := range []string{"1999-02-30", "2999-01-01"} {
+		invalid := historical
+		invalid.PeriodNo = "bad-date"
+		invalid.DrawDate = date
+		mustStatus(t, f.call("POST", manualPath, fmt.Sprintf("manual-date-%d", i), auth.AccessToken, "", invalid), 400)
+	}
+	invalidNumbers := historical
+	invalidNumbers.PeriodNo = "bad-numbers"
+	invalidNumbers.Result.Digits = []int{1, 1, 11}
+	mustStatus(t, f.call("POST", manualPath, "manual-numbers", auth.AccessToken, "", invalidNumbers), 400)
+	historyRead := f.call("GET", overviewPath+"?year=1999", "", auth.AccessToken, "", nil)
+	mustStatus(t, historyRead, 200)
+	var historyOverview platformlottery.DrawOverview
+	managedData(t, historyRead, &historyOverview)
+	if len(historyOverview.Items) != 1 || historyOverview.Items[0].PeriodNo != historical.PeriodNo {
+		t.Fatal("manual history missing")
+	}
 	now := time.Now().UTC()
 	futureBody := platformlottery.PeriodInput{PeriodNo: "opening-edit", BetStartAt: now.Add(time.Hour), BetEndAt: now.Add(3 * time.Hour), DrawAt: now.Add(4 * time.Hour)}
 	futureResponse := f.call("POST", "/api/v1/platform/platform-games/"+game.ID+"/periods", "opening-period-create", auth.AccessToken, "", futureBody)
 	mustStatus(t, futureResponse, 201)
 	var future platformlottery.Period
 	managedData(t, futureResponse, &future)
+	var platformZone string
+	if e := f.pool.QueryRow(ctx, `SELECT timezone FROM platform_settings WHERE id=true`).Scan(&platformZone); e != nil {
+		t.Fatal(e)
+	}
+	loc, e := time.LoadLocation(platformZone)
+	if e != nil {
+		t.Fatal(e)
+	}
+	manualFuture := platformlottery.ManualResultInput{PeriodNo: future.PeriodNo, DrawDate: future.DrawAt.In(loc).Format("2006-01-02"), Result: rules.Draw{Digits: []int{1, 2, 3}}}
+	mustStatus(t, f.call("POST", manualPath, "manual-future", auth.AccessToken, "", manualFuture), 409)
 	openingPath := "/api/v1/platform/platform-games/periods/" + future.ID + "/opening"
 	openingBody := platformlottery.PeriodOpeningInput{BetStartAt: now.Add(2 * time.Hour), ExpectedBetStartAt: future.BetStartAt}
 	mustStatus(t, f.call("POST", openingPath, "brand-opening-denied", f.token, "", openingBody), 403)
@@ -148,8 +196,14 @@ func TestPlatformLotteryHTTPPermissionsReplayAndSharedRead(t *testing.T) {
 	mustStatus(t, createdPeriod, 201)
 	var period platformlottery.Period
 	managedData(t, createdPeriod, &period)
+	manualExisting := platformlottery.ManualResultInput{PeriodNo: period.PeriodNo, DrawDate: "1999-01-02", Result: rules.Draw{Digits: []int{1, 2, 3}}}
+	mustStatus(t, f.call("POST", manualPath, "manual-existing-date-mismatch", auth.AccessToken, "", manualExisting), 400)
+	manualExisting.DrawDate = period.DrawAt.In(loc).Format("2006-01-02")
+	mustStatus(t, f.call("POST", manualPath, "manual-existing-publish", auth.AccessToken, "", manualExisting), 201)
+	mustStatus(t, f.call("POST", manualPath, "manual-existing-publish", auth.AccessToken, "", manualExisting), 201)
+	mustStatus(t, f.call("POST", manualPath, "manual-existing-duplicate", auth.AccessToken, "", manualExisting), 409)
 	resultBody := map[string]any{"result": rules.Draw{Digits: []int{1, 2, 3}}, "reason": "Publish shared result"}
-	mustStatus(t, f.call("POST", "/api/v1/platform/platform-games/periods/"+period.ID+"/result", "platform-publish-result", auth.AccessToken, "", resultBody), 201)
+	mustStatus(t, f.call("POST", "/api/v1/platform/platform-games/periods/"+period.ID+"/result", "platform-publish-result", auth.AccessToken, "", resultBody), 409)
 	modelBody.ExpectedVersion = 2
 	locked := f.call("POST", "/api/v1/platform/platform-games/"+game.ID+"/model", "platform-used-model", auth.AccessToken, "", modelBody)
 	mustStatus(t, locked, 409)

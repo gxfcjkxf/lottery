@@ -17,8 +17,8 @@ for(const locale of ['en','zh-CN'] as const)test(`management empty lists retain 
    const query={from:q.get('from'),to:q.get('to'),group_by:q.get('group_by'),limit:Number(q.get('limit')),offset:Number(q.get('offset')),member_id:q.get('member_id'),...(kind==='commission'?{agent_id:q.get('agent_id'),cycle_id:q.get('cycle_id')}:kind==='withdrawal'?{game_id:null}:{order_id:q.get('order_id')})}
    return reply({brand_id:brand,snapshot_at:'2026-11-02T00:00:00Z',timezone:'Asia/Singapore',query,summary:Object.fromEntries(fields[kind].map(key=>[key,'0'])),items:[],total_groups:'0'})
   }
-  if(url.pathname==='/api/v1/platform/recharges')return reply({items:[],total_count:'0'})
-  return reply({brand_id:brand,items:[],total_count:'0',...(url.pathname.endsWith('/withdrawals')?{has_more:false}:{}),limit:Number(q.get('limit')??50),offset:0})
+  if(['/api/v1/admin/audit','/api/v1/admin/reward-orders','/api/v1/platform/reward-orders','/api/v1/admin/withdrawals','/api/v1/platform/withdrawals','/api/v1/admin/recharges'].includes(url.pathname))return reply({brand_id:brand,items:[],total_count:'0',...(url.pathname.endsWith('/withdrawals')?{has_more:false}:{}),limit:Number(q.get('limit')??50),offset:0})
+  throw Error('Unconfigured empty-list component request: '+url.pathname)
  })
  const source=await(await page.request.get(origins.brand+'/src/RewardsManagement.vue')).text(),vue=source.match(/from "([^"]*deps\/vue\.js[^"]*)"/)![1]
  for(const view of ['audit','reward-report','commission-report','withdrawal-report','brand-rewards','brand-withdrawals','brand-recharges','platform-rewards','platform-withdrawals','platform-recharges']){

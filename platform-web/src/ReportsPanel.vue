@@ -3,6 +3,7 @@ import { nextTick } from 'vue'
 const filterReset = ref(0)
 
 import ManagementList from "@lottery/shared/ManagementList.vue"
+import SummaryFacts from "@lottery/shared/SummaryFacts.vue"
 import TablePagination from "@lottery/shared/TablePagination.vue"
 const agentFilterSearchPending = ref(false);
 import FilterAssociationSearch from "@lottery/shared/FilterAssociationSearch.vue";
@@ -218,17 +219,15 @@ useOperationToast(error, value => displayPublicError(value), 'error');
 
       <section class="management-list-summary" data-testid="platform-reports-summary">
         <div class="panel-heading"><div><h2>{{ copy.summary }}</h2></div></div>
-        <dl class="confirm-list reward-fields">
-          <div v-for="field in fields" :key="field"><dt>{{ label(metricLabels, field) }}</dt><dd>{{ report.summary[field] }}</dd></div>
-        </dl>
+        <SummaryFacts :fields="fields.map(field=>({label:label(metricLabels,field),value:report!.summary[field]}))" />
       </section>
       <section v-if="report.balances" class="management-list-summary" data-testid="platform-reports-balances">
         <div class="panel-heading"><div><h2>{{ copy.balances }}</h2></div></div>
-        <dl class="confirm-list reward-fields"><div v-for="field in balanceFields" :key="field"><dt>{{ label(metricLabels, field) }}</dt><dd>{{ report.balances[field] }}</dd></div></dl>
+        <SummaryFacts :fields="balanceFields.map(field=>({label:label(metricLabels,field),value:report!.balances![field]}))" />
       </section>
       <div data-testid="platform-reports-list">
         <div class="panel-heading"><h2>{{ copy.groups }}</h2></div>
-        <div class="table-wrap"><table class="console-table"><thead><tr><th>{{ label(groupLabels, submitted.query.group_by) }}</th><th v-for="field in fields" :key="field">{{ label(metricLabels, field) }}</th></tr></thead><tbody>
+        <div class="table-wrap"><table class="console-table" :class="{'console-responsive-table':!report.items.length}"><thead><tr><th>{{ label(groupLabels, submitted.query.group_by) }}</th><th v-for="field in fields" :key="field">{{ label(metricLabels, field) }}</th></tr></thead><tbody>
           <tr v-for="item in report.items" :key="item.key"><td :data-label="String(label(groupLabels, submitted.query.group_by))">{{ submitted.query.group_by === 'state' ? label(groupLabels, item.key) : associationGroupLabel(item, submitted.query.group_by, item.key, item.label, associationLocale) }}</td><td :data-label="String(label(metricLabels, field))" v-for="field in fields" :key="field">{{ item.totals[field] }}</td></tr>
           <tr v-if="!report.items.length"><td :colspan="fields.length + 1" class="empty-state">{{ copy.empty }}</td></tr>
         </tbody></table></div>

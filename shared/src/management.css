@@ -379,7 +379,7 @@
 .member-presence i { width:8px; height:8px; flex:0 0 8px; border-radius:50%; background:var(--muted-light); }
 .member-presence.is-online { color:var(--success-text); }
 .member-presence.is-online i { background:var(--success); }
-.member-points { font-variant-numeric:tabular-nums; }
+.member-points { font-variant-numeric:tabular-nums; white-space:nowrap; }
 .management-console .member-account { min-height:var(--console-control-height); min-width:0; max-width:100%; padding:0; border:0; background:transparent; color:var(--primary); font:inherit; font-weight:700; text-align:start; white-space:normal; overflow-wrap:anywhere; }
 
 /* List pages share compact headings and rows; touch targets keep their size. */
@@ -498,3 +498,9 @@
 .management-console .management-list > :is(.console-stack, .report-results, .audit-results) { display: block; margin: 0; padding: 0; border: 0; box-shadow: none; }
 .management-console .management-list .report-metrics { margin: 0; padding: 0 12px 12px; }
 .management-console .management-list > :is(.report-results, .audit-results) > .table-wrap { border: 0; border-radius: 0; box-shadow: none; }
+
+.management-console .management-list-records { display:grid; gap:12px; min-width:0; padding:0 12px 12px; }
+/* Query totals retain whole amounts in compact, unboxed rows. */
+.management-console .management-list-summary > .console-facts { grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); gap:8px 12px; }
+.management-console .management-list-summary > .console-facts > div { grid-template-columns:auto minmax(max-content,1fr) !important; }
+.management-console .management-list-summary > .console-facts dd { white-space:nowrap !important; }

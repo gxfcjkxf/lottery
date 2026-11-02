@@ -303,6 +303,24 @@ func registerPlatformLotteryRoutes(register func(string, string, http.HandlerFun
 		})
 	})
 
+	handle("POST", "/platform-games/{id}/results", func(w http.ResponseWriter, r *http.Request) {
+		a, b, ok := platformLotteryActor(w, r, d, "write")
+		if !ok {
+			return
+		}
+		id, ok := ruleID(w, r, "id")
+		if !ok {
+			return
+		}
+		var in platformlottery.ManualResultInput
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		platformLotteryWrite(w, r, d, a, b, "write", "platform.game.result.manual", in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+			out, e := s.AddManualResult(ctx, tx, fresh, id, in, pointMeta(r, fresh))
+			return platformLotteryResult(201, out, e)
+		})
+	})
 	handle("POST", "/platform-games/periods/{id}/result", func(w http.ResponseWriter, r *http.Request) {
 		a, b, ok := platformLotteryActor(w, r, d, "write")
 		if !ok {

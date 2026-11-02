@@ -100,7 +100,8 @@ for(const locale of ['en','zh-CN'] as const){
    throw Error('Unexpected read '+url.pathname)
   })
   await openHarness(page,kind,locale)
-  await expect(page.locator('.management-list .table-pagination')).toBeVisible()
+  if(kind==='agent-children')await expect(page.locator('.management-list .table-pagination')).toHaveCount(0)
+  else await expect(page.locator('.management-list .table-pagination')).toBeVisible()
   if(kind!=='agent-children')await expect(page.locator('.management-list tbody tr:has(td:not(.empty-state))')).toHaveCount(1)
   await expect(page.locator('.member-batch-toolbar')).toHaveCount(0)
   await review(page,info,kind);expect(errors).toEqual([])
@@ -149,7 +150,7 @@ for(const locale of ['en','zh-CN'] as const){
   await list.locator('.button[data-refresh-button]').click();await expect(rows).toHaveCount(20);expect(reads.at(-1)!.searchParams.get('q')).toBe('')
   const scope=list.getByRole('button',{name:zh?'全代理线':'Full agent line',exact:true});fail=true;await scope.click();await expect(scope).toHaveAttribute('aria-pressed','false');await expect(rows).toHaveCount(20)
   await list.locator('.button[data-refresh-button]').click();await expect(scope).toHaveAttribute('aria-pressed','true');expect(reads.at(-1)!.searchParams.get('scope')).toBe('line')
-  await search.fill('missing');await query.click();await expect(list.locator('td.empty-state')).toBeVisible();await expect(pager).toContainText(zh?'共 0 条':'Total: 0');await review(page,info,'agent-empty')
+  await search.fill('missing');await query.click();await expect(list.locator('td.empty-state')).toBeVisible();await expect(pager).toHaveCount(0);await review(page,info,'agent-empty')
  })
 }
 

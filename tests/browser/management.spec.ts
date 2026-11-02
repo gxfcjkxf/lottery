@@ -114,8 +114,8 @@ test("real role and account creation persist; new account has only assigned gran
     page.locator(".access-page").getByText(role, { exact: true }).first(),
   ).toBeVisible();
   await page.getByRole("tab", { name: "管理账号", exact: true }).click();
-  await page.getByLabel(/账号（最多/).fill(username);
-  await page.getByLabel(/初始密码（6–30/).fill("staff-test-only-password-2026");
+  await page.getByLabel("账号", { exact: true }).fill(username);
+  await page.getByLabel("初始密码", { exact: true }).fill("staff-test-only-password-2026");
   await page.getByLabel(new RegExp(role)).check();
   await page
     .getByLabel("变更原因", { exact: true })

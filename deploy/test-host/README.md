@@ -191,3 +191,14 @@ Certbot 保存了 DNS auth/cleanup hook 和 root 域名，沿用 `certbot.timer`
 已发布 `20261101T140440Z-f9e9d7c5`。品牌基础目录按账号已分配的 `admin_brand_scopes` 返回，不额外要求 `brand.view.brand`；通用管理入口的首页允许账号已授权品牌，继续要求 `overview.view.brand`。专属品牌域名限制、跨品牌拒绝、业务权限和总后台目录授权保持有效。本次不修改数据库结构，也不修改 `yx001` 或其角色权限。
 
 独立测试库真实HTTP回归通过；普通账号仅有首页查看权限的12项真实浏览器用例通过，覆盖中英文、安卓/iOS横竖屏、320px及桌面，从登录到品牌发现、首页、刷新恢复、403权限检查和退出均使用真实接口。类型及前端构建随部署通过，OpenAPI校验通过。本地DEV已用原配置编译重启并完成实际来源读取和就绪检查；测试数据库及临时schema已清理。测试机API/worker运行正常，readiness通过，只读确认 `yx001` 为普通账号、1个品牌范围且有首页权限，未登录该使用中账号。证据位于 `.local/brand-scope-fix/`。
+
+
+### 2026-11-02 手动历史结果基线升级与本地版本部署
+
+本地工作区快照（含未提交源码）发布为 `20261102T044346Z-df77a06e`。新增一次性入口 `03-update.sh lottery --upgrade-manual-results`，只接受旧基线 `d63a4186…` 和目标基线 `a65ec6f3…`；本次升级后继续使用普通 `03-update.sh lottery`，不可重跑一次性升级。
+
+变更仅放宽 `platform_draw_history.source` 约束以接受 `manual`。停写后先备份、恢复独立副本，验证所有业务表逐行哈希不变，并与新基线空库结构比较，通过后对原库应用相同 DDL 并显式同步迁移记录。远端证据沿用现有升级备份目录：`/var/backups/lottery/fixed-entries/20261102T044346Z-df77a06e/`，其中 `verification.json` 确认数据未变且结构一致；临时验证数据库已清理。常规更新前数据库备份为 `/var/backups/lottery/20261102T044346Z-df77a06e.dump`。
+
+共享组件 224 项单元测试、独立测试库的 3 项彩种 HTTP 权限/重试/隔离测试、OpenAPI 校验以及四端类型检查和生产构建通过。本地 DEV 按 `.local/review.env` 重编译重启，来源读取及 readiness 通过。测试机 API/worker active，重启计数为 0，readiness 和三个实际开奖源读取通过。未登录共享账号或向正常品牌写入测试对象。构建仍有部分 JavaScript 包超过 500 kB 的提示。
+
+线上浏览器 26 个 HTTPS 视图检查通过，覆盖六个域名桌面，以及用户端和三个管理入口的 Android/iOS 横竖屏与 320 CSS px；无页面脚本异常、静态资源失败或横向溢出。检查未登录账号。桌面和 320px 截图及验证日志保存在本地 `.local/deploy-20261102/`。

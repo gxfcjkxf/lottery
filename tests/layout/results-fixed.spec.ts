@@ -1,5 +1,6 @@
+import { expectRealEntry, expectListLayout } from './real-page-review'
 import { test, expect } from '@playwright/test'
-import { installLayoutApi, installOrdersLayoutApi, origins, gameId, expectNoPageOverflow } from './fixture'
+import { installLayoutApi, installOrdersLayoutApi, origins, gameId } from './fixture'
 
 for (const locale of ['zh-CN', 'en'] as const) {
   test(`results controls stay visible while records scroll (${locale})`, async ({ page }, info) => {
@@ -56,11 +57,12 @@ for (const locale of ['zh-CN', 'en'] as const) {
       expect((await toolbar.boundingBox())!.y).toBe(top.y)
       expect((await pagination.boundingBox())!.y).toBe(bottom.y)
       await expect(list.locator('.archive-row').last()).toBeInViewport()
-      await expectNoPageOverflow(page)
+      await expectRealEntry(page,'user');await expectListLayout(page)
     }
     await page.screenshot({ path: info.outputPath(`results-fixed-${locale}.png`) })
+    const scrollBeforePage = await list.evaluate(node => node.scrollTop)
     await pagination.getByRole('button', { name: locale === 'en' ? 'Next' : '下一页', exact: true }).click()
     await expect(list.locator('.archive-period').first()).toHaveText('2026000')
-    expect(await list.evaluate(node => node.scrollTop)).toBe(0)
+    expect(await list.evaluate(node => node.scrollTop)).toBe(scrollBeforePage)
   })
 }

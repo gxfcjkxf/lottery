@@ -1,11 +1,13 @@
 import { expect, test } from '@playwright/test'
-import { resolve } from 'node:path'
-import { origins, gameId, expectInsideViewport, expectNoPageOverflow } from './fixture'
+import {installConsoleSession,openPlatformPage} from './real-console-session'
+import {expectRealEntry,expectListLayout} from './real-page-review'
+import { origins, gameId, expectInsideViewport } from './fixture'
 
 export function registerCompactListTests(reflow = false) {
   for (const locale of ['en', 'zh-CN'] as const) {
     for (const component of ['NotificationTemplatesPanel', 'CommissionPanel'] as const) {
       test(`compact ${component} keeps operational information and opens details (${locale})`, async ({ page }, info) => {
+        page.setDefaultTimeout(8000)
         const errors: string[] = [], at = '2026-10-21T00:00:00Z'
         page.on('pageerror', error => errors.push(error.message))
         const agent = { id: gameId, brand_id: gameId, agent_account_id: gameId, parent_id: null, depth: 1, path: [gameId], version: 1, config: { ratio: '0.1', mode: 'loss', status: 'active', can_create_children: true }, effective_mode: 'loss', mode_source_agent_id: null, policy_version: 1, parent_version: null, created_by: gameId, created_at: at, updated_at: at }
@@ -20,9 +22,14 @@ export function registerCompactListTests(reflow = false) {
           if (path.endsWith(`/agents/${gameId}`)) return reply(agent)
           throw Error(`Unexpected compact list read: ${path}`)
         })
-        const props = { view: 'templates', accountId:gameId, canManage:true, brands:[], brandId: gameId, locale, displaySettings: { timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' } }
-        await page.route('**/__compact-list', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body><div id="app" class="management-console"></div><script id="harness-data" type="application/json">${JSON.stringify({component,props,locale})}</script><script type="module" src="/@fs${resolve('platform-web/tests/layout-harness.ts')}"></script></body></html>` }))
-        await page.goto(origins.platform + '/__compact-list')
+        await installConsoleSession(page,'platform',locale,gameId,['agent.view.platform','notification_template.write.platform'],gameId)
+        await page.goto(origins.platform);await expect(page.locator('.management-console')).toBeVisible()
+        if(component==='NotificationTemplatesPanel'){
+          await openPlatformPage(page,locale==='en'?'Operations':'运营');await openPlatformPage(page,locale==='en'?'Notification templates':'通知模板')
+        }else{
+          await openPlatformPage(page,locale==='en'?'Commission':'佣金');await openPlatformPage(page,locale==='en'?'Agents':'代理',gameId)
+        }
+        await expectRealEntry(page,'platform')
         const notification = component === 'NotificationTemplatesPanel'
         const list = page.getByTestId(notification ? 'platform-template-list' : 'platform-commission-list')
         await expect(list.locator('thead th')).toHaveCount(notification ? 2 : 9)
@@ -34,7 +41,7 @@ export function registerCompactListTests(reflow = false) {
         const preset = page.viewportSize()!
         for (const width of reflow ? [320, 640, 900, 1440] : [preset.width]) {
           if (reflow) await page.setViewportSize({ width, height: preset.height })
-          await expectNoPageOverflow(page)
+          await expectListLayout(page)
         }
         await page.screenshot({ path: info.outputPath(`compact-table-${component}-${locale}.png`) })
         await list.getByRole('button', { name: notification ? locale === 'en' ? 'Member · Welcome' : '会员 · 欢迎加入' : 'compact_operator', exact: true }).click()
@@ -48,7 +55,7 @@ export function registerCompactListTests(reflow = false) {
           await expect(detail.locator('.template-languages textarea').nth(1)).toHaveValue('Member {resource_id}')
         }else await expect(detail).toContainText('compact_operator')
         await expectInsideViewport(detail)
-        await expectNoPageOverflow(page)
+        await expectListLayout(page)
         await page.screenshot({ path: info.outputPath(`compact-list-${component}-${locale}.png`) })
         expect(errors).toEqual([])
       })

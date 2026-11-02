@@ -1,5 +1,6 @@
+import { expectRealEntry, expectListLayout } from './real-page-review'
 import { test, expect } from '@playwright/test'
-import { installLayoutApi, installWalletLayoutApi, origins, gameId, expectNoPageOverflow } from './fixture'
+import { installLayoutApi, installWalletLayoutApi, origins, gameId } from './fixture'
 
 for (const locale of ['en', 'zh-CN'] as const) {
   test(`referral tabs show own invitees first (${locale})`, async ({ page }, info) => {
@@ -30,7 +31,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     const widths = info.project.name.includes('reflow') ? [320,620,999,1000,1001,1440] : [preset.width]
     for (const width of widths) {
       if (info.project.name.includes('reflow')) await page.setViewportSize({width,height:720})
-      await expectNoPageOverflow(page)
+      await expectRealEntry(page,'user');await expectListLayout(page)
       const alignment = await page.locator('.join-codes-page').evaluate(section => {
         const content = section.closest('main')!;
         const bounds = content.getBoundingClientRect(), pageBounds = section.getBoundingClientRect();
@@ -48,7 +49,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await codeTab.click()
     await expect(page.locator('.registration-link')).toContainText('referral_code=A1B2C3D4E5F607182930ABCD')
     await expect(page.locator('.registration-qr')).toBeVisible()
-    await expectNoPageOverflow(page)
+    await expectRealEntry(page,'user');await expectListLayout(page)
     await page.screenshot({path:info.outputPath(`referral-code-${locale}.png`),fullPage:true,animations:'disabled'})
     mode='empty'; await listTab.click()
     await expect(page.getByRole('tabpanel')).toContainText(locale==='en'?'You have not referred any users yet.':'暂无推荐用户。')

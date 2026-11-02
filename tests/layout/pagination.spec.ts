@@ -1,6 +1,17 @@
 import { expect, test } from '@playwright/test'
 import { resolve } from 'node:path'
+import { selectControl } from '../select-control'
 const origin='http://127.0.0.1:15473', id='aaaaaaaa-aaaa-4aaa-8aaa-000000000001'
+test('compact pagination offers page sizes without overflow', async ({page}, info) => {
+  await page.route('**/__pagination?*', route => route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import C from'/@fs${resolve('tests/layout/PaginationHarness.vue')}';createApp(C).mount('#app')</script></html>`}))
+  await page.goto(`${origin}/__pagination?kind=compact&locale=zh`)
+  const nav = page.getByRole('navigation')
+  await selectControl(nav.getByRole('combobox'), '50')
+  await expect(nav.getByRole('combobox')).toContainText('50 条/页')
+  if (page.viewportSize()!.width <= 640) { await expect(nav.locator('.table-pagination-jump')).toBeHidden(); await expect(nav.locator('.table-pagination-page:visible')).toHaveCount(1) }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+  await page.screenshot({path:info.outputPath('compact.png')})
+})
 for(const locale of ['zh','en']) for(const kind of ['draw','recharges']) {
  test(`${kind} pagination retains content until the response is applied (${locale})`,async({page},info)=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))

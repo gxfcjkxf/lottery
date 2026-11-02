@@ -11,16 +11,16 @@ export interface HistoryPage { total_count: string;
 }
 export interface HistoryScope { brand_id: string; member_id: string }
 const decimal = (value: unknown): value is string => typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value)
-export async function readBettingHistory(brandCode: string | undefined, scope: HistoryScope, gameId = '', cursor: string | null = null, signal?: AbortSignal): Promise<HistoryPage> {
-  const query = new URLSearchParams({ limit: '20' })
+export async function readBettingHistory(brandCode: string | undefined, scope: HistoryScope, gameId = '', cursor: string | null = null, signal?: AbortSignal, limit = 20): Promise<HistoryPage> {
+  const query = new URLSearchParams({ limit: String(limit) })
   if (gameId) query.set('game_id', gameId)
   if (cursor) query.set('cursor', cursor)
   const base = `/api/v1${brandCode ? `/b/${encodeURIComponent(brandCode)}` : ''}`
   const page = await createApiClient({ brandCode }).request<HistoryPage>(`${base}/betting-history?${query}`, { signal })
-  if (!page || page.brand_id !== scope.brand_id || page.member_id !== scope.member_id || page.game_id !== gameId || page.limit !== 20 ||
+  if (!page || page.brand_id !== scope.brand_id || page.member_id !== scope.member_id || page.game_id !== gameId || page.limit !== limit ||
     !(page.next_cursor === null || typeof page.next_cursor === 'string' && page.next_cursor.length > 0) ||
     !Array.isArray(page.games) || page.games.some(g => !g || typeof g.id !== 'string' || !g.id || typeof g.name !== 'string' || !g.name.trim()) ||
-    !Array.isArray(page.items) || page.items.length > 20) throw new Error('Invalid betting history response')
+    !Array.isArray(page.items) || page.items.length > limit) throw new Error('Invalid betting history response')
   const ids = new Set<string>()
   for (const item of page.items) {
     if (!item || item.kind !== 'configured' || typeof item.id !== 'string' || !item.id ||

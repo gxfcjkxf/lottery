@@ -1,7 +1,8 @@
 import { selectControl } from '../select-control'
 import { expect, test } from '@playwright/test'
-import { resolve } from 'node:path'
-import { origins, expectInsideViewport, expectNoPageOverflow } from './fixture'
+import {installConsoleSession,openPlatformPage} from './real-console-session'
+import {expectRealEntry,expectListLayout} from './real-page-review'
+import { origins, expectInsideViewport } from './fixture'
 
 export function registerPlatformSettingsEditorTests(reflow = false) {
  for (const locale of ['en', 'zh-CN'] as const) {
@@ -27,8 +28,8 @@ export function registerPlatformSettingsEditorTests(reflow = false) {
     writes.push(body)
     return route.fulfill({json: {success: true, data: {...initial, ...body, version: 4}}})
    })
-   await page.route('**/__settings-editor', route => route.fulfill({contentType: 'text/html', body: `<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body><div id="app" class="management-console"></div><script id="harness-data" type="application/json">${JSON.stringify({component:'PlatformSettingsPanel',props:{initial,locale,canManage:true,brandId:'',brandStatus:'',account:{id:'settings-review',username:'settings_review',super_admin:false,platform_permissions:[]}},locale})}</script><script type="module" src="/@fs${resolve('platform-web/tests/layout-harness.ts')}"></script></body></html>`}))
-   await page.goto(origins.platform + '/__settings-editor')
+   await installConsoleSession(page,'platform',locale,'aaaaaaaa-aaaa-4aaa-8aaa-000000000001',['platform_settings.write.platform'],'22222222-2222-4222-8222-222222222222',initial)
+   await page.goto(origins.platform);await expect(page.locator('.management-console')).toBeVisible();await openPlatformPage(page,zh?'设置':'Settings');await expectRealEntry(page,'platform')
    const tabs = page.locator('.platform-settings-tabs')
    await expect(tabs.getByRole('button')).toHaveCount(3)
    await expect(tabs.getByRole('button', {name: zh ? '基础' : 'General', exact:true})).toHaveAttribute('aria-pressed', 'true')
@@ -47,7 +48,7 @@ export function registerPlatformSettingsEditorTests(reflow = false) {
    for (const width of reflow ? [320, 640, 900, 1440] : [preset.width]) {
     if (reflow) await page.setViewportSize({width, height: preset.height})
     await expectInsideViewport(dialog)
-    await expectNoPageOverflow(page)
+    await expectListLayout(page)
    }
    await page.screenshot({path: info.outputPath(`platform-settings-editor-${locale}.png`)})
    await name.fill('Updated platform')
@@ -70,7 +71,7 @@ export function registerPlatformSettingsEditorTests(reflow = false) {
    await tabs.getByRole('button', {name: zh ? '佣金结算' : 'Commission settlement', exact:true}).click()
    await expect(page.locator('.commission-fields')).toBeVisible()
    await expect(page.locator('.confirm-list')).not.toBeVisible()
-   await expectNoPageOverflow(page)
+   await expectListLayout(page)
    await page.screenshot({path: info.outputPath(`platform-settings-commission-${locale}.png`)})
    await tabs.getByRole('button', {name: zh ? '基础' : 'General', exact:true}).click()
    await expect(page.locator('.confirm-list')).toContainText('Updated platform')
@@ -96,15 +97,15 @@ export function registerTemplateEditorTests(reflow = false) {
    writes++
    return route.fulfill({json:{success:true,data:{...item,content:req.postDataJSON().content,version:2}}})
   })
-  const props={accountId:id,canManage:true,locale,displaySettings:{timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}}
-  await page.route('**/__template-editor',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script id="harness-data" type="application/json">${JSON.stringify({component:'NotificationTemplatesPanel',props,locale})}</script><script type="module" src="/@fs${resolve('platform-web/tests/layout-harness.ts')}"></script></html>`}))
-  await page.goto(origins.platform+'/__template-editor')
+  await installConsoleSession(page,'platform',locale,id,['notification_template.view.platform','notification_template.write.platform'],id)
+  await page.goto(origins.platform);await expect(page.locator('.management-console')).toBeVisible()
+  await openPlatformPage(page,locale==='en'?'Operations':'运营');await openPlatformPage(page,locale==='en'?'Notification templates':'通知模板');await expectRealEntry(page,'platform')
   await page.locator('.template-table .row-action').click()
   const dialog=page.getByRole('dialog'),submit=dialog.locator('button[type=submit]'),preset=page.viewportSize()!
   for(const width of reflow?[320,640,900,1440]:[preset.width]){
    if(reflow)await page.setViewportSize({width,height:preset.height})
    await submit.scrollIntoViewIfNeeded();await expect(submit).toBeInViewport()
-   await expectInsideViewport(dialog);await expectNoPageOverflow(page)
+   await expectInsideViewport(dialog);await expectListLayout(page)
    await page.screenshot({path:info.outputPath(`template-actions-${locale}-${width}.png`)})
   }
   await dialog.locator('input').last().fill('Updated welcome')

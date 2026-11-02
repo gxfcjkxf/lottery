@@ -19,6 +19,7 @@ const platform = createPlatformI18n(); platform.setLocale(locale); provide(platf
 const display = { timezone:'Asia/Singapore', date_format:'YYYY-MM-DD', time_format:'HH:mm:ss' } as const
 setPlatformDisplaySettings(display)
 const currentPage = ref(1), total = ref('731')
+const size = ref(20)
 const count = computed(() => Math.min(50, Math.max(0, Number(total.value) - (currentPage.value - 1) * 50)))
 async function goTo(target: number) { currentPage.value = target }
 const id = ref('aaaaaaaa-aaaa-4aaa-8aaa-000000000001')
@@ -31,6 +32,7 @@ const id = ref('aaaaaaaa-aaaa-4aaa-8aaa-000000000001')
       <button id="empty-list" @click="total = '0'">Empty</button>
       <TablePagination :page="currentPage" :count="count" :total="total" :locale="locale" :page-size="50" :previous-disabled="currentPage === 1" :next-disabled="currentPage === 15" :go-to="goTo" />
     </template>
+    <TablePagination v-else-if="query.get('kind')==='compact'" compact-mobile :page="currentPage" :count="size" :total="total" :locale="locale" :page-size="size" :page-size-options="[10,20,50,100]" :change-page-size="(value: number) => { size = value; currentPage = 1 }" :go-to="goTo" />
     <DrawArchive v-else-if="query.get('kind')==='draw'" :game-id="id" kind="standard" :locale="locale==='en'?'en':'zh'" />
     <Recharges v-else :brand-id="id" member-id="" :locale="locale" :display-settings="display" />
     <LoadingOverlay :label="locale==='en'?'Loading…':'加载中…'" />

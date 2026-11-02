@@ -134,7 +134,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
       if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'availability_reviewer', super_admin: false, brand_ids: [gameId], permissions_by_brand: { [gameId]: grants } } })
       if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, code: 'layout', allow_custom_games: true, name: 'Aurora', status: 'active', member_count: '0', agent_count: '0', recharge_quota_available: '0', created_at: '2026-10-25T00:00:00Z' }] })
       expect(req.headers()['x-brand-id']).toBe(gameId)
-      if (path.endsWith('/platform-games') && req.method() === 'GET') { platformReads++; return reply({ games, limit: 50, offset: 0 }) }
+      if (path.endsWith('/platform-games') && req.method() === 'GET') { platformReads++; return reply({ games, limit: 50, offset: 0, total_count: String(games.length) }) }
       if (path.endsWith('/games') && req.method() === 'GET') { brandReads++; return reply({ games: [] }) }
       if (req.method() === 'POST') {
         expect(req.headers()['idempotency-key']).toBeTruthy()
@@ -161,10 +161,10 @@ for (const locale of ['zh-CN', 'en'] as const) {
     await expect(page.getByTestId('brand-rules-page')).toHaveCount(0)
     await expect(page.getByRole('button', { name: zh ? '自有彩种规则' : 'Own game rules', exact: true })).toHaveCount(0)
     expect(brandReads).toBe(0)
-    const table = page.locator('.brand-lottery-grid'), rows = table.locator('.brand-lottery-card')
-    await expect(page.locator('.platform-lottery-catalog-table, .platform-lottery .wallet-pagination')).toHaveCount(0)
+    const table = page.locator('.brand-lottery-table'), rows = table.locator('tbody tr')
+    await expect(page.locator('.platform-lottery-catalog-table')).toHaveCount(0);await expect(page.locator('.platform-lottery .table-pagination')).toBeVisible()
     await expect(rows).toHaveCount(3)
-    await expect(table.getByRole('button')).toHaveText(zh ? ['停用', '启用', '启用'] : ['Disable', 'Enable', 'Enable'])
+    await expect(table.locator('.member-menu-trigger')).toHaveCount(3)
     await expect(page.locator('.lottery-detail-page, [data-testid=automation-settings], [data-testid=configured-workbench]')).toHaveCount(0)
     const preset = page.viewportSize()!
     for (const width of info.project.name.includes('reflow') ? [320, 640, 820, 900, 901, 1440] : [preset.width]) {
@@ -173,7 +173,9 @@ for (const locale of ['zh-CN', 'en'] as const) {
       await page.screenshot({ path: info.outputPath(`brand-game-availability-${locale}-${width}.png`), fullPage: true })
     }
     for (const rowIndex of [0, 0, 2]) {
-      await rows.nth(rowIndex).getByRole('button').click()
+      await rows.nth(rowIndex).locator('.member-menu-trigger').click()
+      const gameAction = games[rowIndex].connected && games[rowIndex].brand_enabled ? (zh ? '停用' : 'Disable') : (zh ? '启用' : 'Enable')
+      await page.getByRole('menuitem',{name:gameAction,exact:true}).click()
       const dialog = page.getByRole('dialog')
       await expect(dialog).toBeVisible()
       const game = games[rowIndex], action = game.connected && game.brand_enabled ? (zh ? '停用' : 'Disable') : (zh ? '启用' : 'Enable')
@@ -194,6 +196,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
     grants.splice(1)
     await enter()
     await expect(table.getByRole('button')).toHaveCount(0)
+    await expect(table.getByRole('columnheader',{name:zh?'操作':'Actions',exact:true})).toHaveCount(0)
     await expect(rows).toHaveCount(3)
     expect(errors).toEqual([])
   })

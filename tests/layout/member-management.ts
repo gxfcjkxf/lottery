@@ -1,6 +1,7 @@
+import { expectRealEntry, expectListLayout } from './real-page-review'
 import { selectControl } from '../select-control'
 import {test,expect} from '@playwright/test'
-import {gameId,origins,installLayoutApi,expectNoPageOverflow,expectInsideViewport} from './fixture'
+import {gameId,origins,installLayoutApi,expectInsideViewport} from './fixture'
 export function registerMemberManagementTests(reflow=false){
  for(const locale of ['en','zh-CN'] as const)test(`member directory searches all pages and manages online accounts (${locale})`,async({page},info)=>{
   const zh=locale==='zh-CN';await installLayoutApi(page,locale)
@@ -70,7 +71,7 @@ export function registerMemberManagementTests(reflow=false){
   const detailViewport=page.viewportSize()!
   for(const width of reflow?[320,640,900,1440]:[detailViewport.width]){
    if(reflow)await page.setViewportSize({width,height:detailViewport.height})
-   await expectInsideViewport(detail);await expectNoPageOverflow(page)
+   await expectInsideViewport(detail);await expectRealEntry(page,'brand');await expectListLayout(page)
    await page.screenshot({path:info.outputPath(`member-details-${locale}-${width}.png`)})
   }
   if(reflow)await page.setViewportSize(detailViewport)
@@ -87,14 +88,14 @@ export function registerMemberManagementTests(reflow=false){
    await page.setViewportSize({width:320,height:800})
    await createSubmit.scrollIntoViewIfNeeded()
    await expect(createSubmit).toBeVisible()
-   await expectInsideViewport(creation);await expectNoPageOverflow(page)
+   await expectInsideViewport(creation);await expectRealEntry(page,'brand');await expectListLayout(page)
    await page.screenshot({path:info.outputPath(`member-create-${locale}-320.png`)})
    await page.setViewportSize(detailViewport)
   }
   await expect(creation.getByLabel(zh?'昵称':'Display name',{exact:true})).toHaveCount(0)
   await createSubmit.scrollIntoViewIfNeeded()
   await expect(createSubmit).toBeVisible()
-  await expectInsideViewport(creation);await expectNoPageOverflow(page)
+  await expectInsideViewport(creation);await expectRealEntry(page,'brand');await expectListLayout(page)
   await page.screenshot({path:info.outputPath(`member-create-${locale}.png`)})
   await page.keyboard.press('Escape')
   const menuButton=()=>rows.first().getByRole('button',{name:zh?'member001 的操作':'Actions for member001',exact:true})
@@ -107,7 +108,7 @@ export function registerMemberManagementTests(reflow=false){
   await expect(edit).toBeVisible();await edit.locator('textarea').fill('updated member notes')
   await edit.getByRole('button',{name:zh?'重置密码':'Reset password',exact:true}).click()
   const reset=page.getByRole('dialog',{name:zh?'重置密码':'Reset password',exact:true})
-  await expect(reset).toBeVisible();await expect(edit).not.toBeVisible();await reset.locator('input[type=password]').fill('member-password-2026');await expect(reset.getByRole('checkbox')).toHaveCount(0);await expect(reset.locator('.danger-note')).toHaveCount(0);await expectInsideViewport(reset);await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`member-reset-${locale}.png`)})
+  await expect(reset).toBeVisible();await expect(edit).not.toBeVisible();await reset.locator('input[type=password]').fill('member-password-2026');await expect(reset.getByRole('checkbox')).toHaveCount(0);await expect(reset.locator('.danger-note')).toHaveCount(0);await expectInsideViewport(reset);await expectRealEntry(page,'brand');await expectListLayout(page);await page.screenshot({path:info.outputPath(`member-reset-${locale}.png`)})
   await reset.getByRole('button',{name:zh?'确认重置密码':'Confirm reset',exact:true}).click()
   await expect(reset).not.toBeVisible();await expect(edit).toBeVisible()
   await edit.getByRole('button',{name:zh?'保存':'Save',exact:true}).click()
@@ -120,7 +121,7 @@ export function registerMemberManagementTests(reflow=false){
   await expect(third.locator('.member-presence')).toContainText(zh?'离线':'Offline')
   expect(writes).toHaveLength(3);expect(new Set(writes.map(w=>w.key)).size).toBe(3)
   const preset=page.viewportSize()!
-  for(const width of reflow?[320,640,900,1440]:[preset.width]){if(reflow)await page.setViewportSize({width,height:preset.height});await expectNoPageOverflow(page)}
+  for(const width of reflow?[320,640,900,1440]:[preset.width]){if(reflow)await page.setViewportSize({width,height:preset.height});await expectRealEntry(page,'brand');await expectListLayout(page)}
   await page.screenshot({path:info.outputPath(`member-management-${locale}.png`)})
   expect(errors).toEqual([])
  })

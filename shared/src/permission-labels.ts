@@ -111,6 +111,7 @@ const auditOperations: Record<string, [string, string]> = {
   withdrawal_reserve: ['占用提现积分', 'Reserve withdrawal points'], withdrawal_paid: ['扣除已付提现积分', 'Debit paid withdrawal points'], withdrawal_release: ['退还提现占用积分', 'Release withdrawal points'],
   reward_grant: ['奖励入账', 'Credit reward'], reward_reversal: ['撤销奖励积分', 'Reverse reward points'],
 
+  manual: ['补录开奖结果', 'Add historical draw result'],
   result: ['发布开奖结果', 'Publish draw result'],
   post: ['入账', 'Post'], invalidate: ['标记失效', 'Invalidate'], register: ['登记', 'Register'], failure: ['执行失败', 'Execution failed'],
   page: ['处理批次', 'Process batch'], apply: ['执行调整', 'Apply adjustment'], start_run: ['开始核算批次', 'Start calculation run'],

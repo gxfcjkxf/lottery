@@ -5,7 +5,7 @@ import type { PlatformDisplaySettings } from './date-time'
 import { createCatalogI18n } from './localization'
 import { platformLotteryCatalog } from './platform-lottery'
 
-const props = defineProps<{ modelValue: string; displaySettings: PlatformDisplaySettings; label: string; locale: 'en' | 'zh-CN'; disabled?: boolean; placeholder?: string }>()
+const props = defineProps<{ modelValue: string; displaySettings: PlatformDisplaySettings; label: string; locale: 'en' | 'zh-CN'; disabled?: boolean; placeholder?: string; editable?: boolean; required?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const i18n = createCatalogI18n(platformLotteryCatalog, props.locale)
 watch(() => props.locale, value => i18n.setLocale(value))
@@ -23,6 +23,23 @@ const displayValue = computed(() => {
   if (props.displaySettings.date_format === 'MM/DD/YYYY') return `${month}/${day}/${year}`
   return `${year}-${month}-${day}`
 })
+const draft = ref('')
+watch(displayValue, value => { if (!props.editable || value) draft.value = value }, { immediate: true })
+function edit(event: Event) {
+ const input = event.target as HTMLInputElement
+ draft.value = input.value
+ const format = props.displaySettings.date_format
+ const match = (format === 'YYYY-MM-DD' ? /^(\d{4})-(\d{2})-(\d{2})$/ : /^(\d{2})\/(\d{2})\/(\d{4})$/).exec(input.value)
+ let value = ''
+ if (match) {
+  value = format === 'YYYY-MM-DD' ? input.value : format === 'DD/MM/YYYY' ? `${match[3]}-${match[2]}-${match[1]}` : `${match[3]}-${match[1]}-${match[2]}`
+  const date = new Date(`${value}T00:00:00Z`)
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) value = ''
+ }
+ input.setCustomValidity(input.value && !value ? t('invalid') : '')
+ emit('update:modelValue', value)
+ // Keep partially typed text while the canonical value remains empty.
+}
 function today() {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en', { timeZone: props.displaySettings.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map(part => [part.type, part.value]))
   return `${parts.year}-${parts.month}-${parts.day}`
@@ -67,14 +84,18 @@ function moveMonth(offset: number) {
   year.value = next.getUTCFullYear(); month.value = next.getUTCMonth()
 }
 function dateValue(day: number) { return `${year.value}-${String(month.value + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` }
-function choose(value: string) { if (props.disabled) return; emit('update:modelValue', value); close(); trigger.value!.focus() }
+function choose(value: string) {
+  if (props.disabled) return
+  if (props.editable) control.value!.querySelector('input')!.setCustomValidity('')
+  emit('update:modelValue', value); close(); trigger.value!.focus()
+}
 watch(() => props.disabled, value => { if (value && expanded.value) close() })
 </script>
 
 <template>
   <span class="platform-date-input" :lang="locale" @keydown.esc.stop.prevent="close">
     <span ref="control" class="platform-date-input-control">
-      <input class="platform-date-input-display" :value="displayValue" :placeholder="placeholder ?? displaySettings.date_format" type="text" :aria-label="label" readonly tabindex="-1" @click="toggle" />
+      <input class="platform-date-input-display" :value="editable ? draft : displayValue" :placeholder="placeholder ?? displaySettings.date_format" type="text" :aria-label="label" :readonly="!editable" :tabindex="editable ? 0 : -1" :required="required" :disabled="disabled" @input="edit" @click="!editable && toggle()" />
       <button ref="trigger" class="platform-date-input-button" type="button" :disabled="disabled" :aria-label="label" :aria-expanded="expanded" @click="toggle"><SiteIcon name="calendar" /></button>
     </span>
     <span ref="calendar" popover="auto" class="platform-calendar" :style="position" role="group" :aria-label="label" @toggle="syncPopover">
@@ -89,6 +110,7 @@ watch(() => props.disabled, value => { if (value && expanded.value) close() })
 .platform-date-input { display: block; width: 100%; min-width: 0; }
 .platform-date-input-control { display: block; position: relative; }
 .platform-date-input-display { width: 100%; min-width: 0; min-height: 40px; box-sizing: border-box; padding: 8px 44px 8px 8px; font: inherit; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); cursor: pointer; }
+.platform-date-input-display:not([readonly]) { cursor: text; }
 .platform-date-input-button { position: absolute; top: 0; right: 0; bottom: 0; width: 40px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-secondary); cursor: pointer; }
 .platform-calendar { position: fixed; inset: auto; box-sizing: border-box; width: min(340px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; margin: 0; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); }
 .platform-calendar:popover-open { display: block; }

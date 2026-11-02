@@ -13,7 +13,7 @@ import * as Shared from '@lottery/shared';
 function localComponent(filename: string, modules: Record<string, unknown>) {
   const descriptor = parse(readFileSync(new URL(filename, import.meta.url), 'utf8')).descriptor;
   const compiled = ts.transpileModule(compileScript(descriptor, { id: filename, inlineTemplate: true }).content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const body = compiled.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings, specifier) => `const {${bindings.replace(/\s+as\s+/g, ': ')}}=modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, 'return ');
+  const body = compiled.replace(/^import SelectControl from .*$/m, 'const SelectControl = { render: () => null };').replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings, specifier) => `const {${bindings.replace(/\s+as\s+/g, ': ')}}=modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, 'return ');
   return new Function('modules', body)(modules);
 }
 const ConfiguredBetReviewTable = localComponent('./ConfiguredBetReviewTable.vue', {vue: Vue, '@lottery/shared': Shared, './i18n': I18n});

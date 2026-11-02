@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
-import { resolve } from 'node:path'
+import { installConsoleSession, openBrandPage } from './real-console-session'
+import { expectRealEntry, expectListLayout } from './real-page-review'
 import { origins } from './fixture'
-const origin = origins.brand
 const brand = '11111111-1111-4111-8111-111111111111'
 const event = '33333333-3333-4333-8333-333333333333'
 for (const locale of ['en', 'zh-CN'] as const) {
@@ -15,11 +15,9 @@ for (const locale of ['en', 'zh-CN'] as const) {
    if(path.includes('filter-options')) return respond({brand_id:brand,items:[],limit:100,offset:0, total_count: '0'})
    throw Error(`Unexpected request ${path}`)
   })
-  const source = await (await page.request.get(origin + '/src/AuditManagement.vue')).text()
-  const vuePath = source.match(/from "([^"]*deps\/vue\.js[^"]*)"/)![1]
-  const surface = 'audit'
-   await page.route(`${origin}/__brand-logs-${surface}`, route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'${vuePath}';import Harness from'/@fs/${resolve('tests/layout/BrandLogsHarness.vue')}';import'/@fs/${resolve('shared/src/styles.css')}';import'/src/style.css';import'/@fs/${resolve('shared/src/controls.css')}';import'/@fs/${resolve('shared/src/management.css')}';import'/@fs/${resolve('shared/src/key-value.css')}';createApp(Harness,${JSON.stringify({locale})}).mount('#app')</script></html>`}))
-   await page.goto(`${origin}/__brand-logs-${surface}`)
+  await installConsoleSession(page,'brand',locale,brand,['audit.view.brand'])
+  await page.goto(origins.brand);await expect(page.locator('.management-console')).toBeVisible()
+  await openBrandPage(page,locale==='en'?'Audit log':'审计日志');await expectRealEntry(page,'brand')
    const table = page.locator('.audit-table')
    await expect(table).toBeVisible()
    await expect(page.locator('.audit-pagination .table-pagination-summary')).toHaveText(locale==='en'?'Page 1 · 1 record on this page · Total: 1':'第 1 页 · 本页 1 条 · 共 1 条')
@@ -35,7 +33,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     expect(overflow.scroll, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.width+1)
     for(const header of await table.locator('th').all()) if(await header.isVisible()) await expect(header).toHaveCSS('background-color','rgb(241, 245, 249)')
    }
-   await page.screenshot({path:info.outputPath(`${surface}-${locale}.png`),fullPage:true})
+   await expectListLayout(page);await page.screenshot({path:info.outputPath(`audit-${locale}.png`),fullPage:true})
    await page.keyboard.press('Escape')
    await expect(page.locator('.audit-snapshots')).toHaveCount(0)
   expect(errors).toEqual([])

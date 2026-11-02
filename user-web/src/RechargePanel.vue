@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vInlineValidation } from "@lottery/shared"
 import TablePagination from "@lottery/shared/TablePagination.vue"
 import SelectControl from '@lottery/shared/SelectControl.vue'
 import { useOperationToast } from "@lottery/shared";
@@ -172,7 +173,7 @@ useOperationToast(error, value => displayPublicError(value), 'error');
     <p class="muted" role="note">{{ labels.manual }}</p>
     <div v-if="!member" class="detail-panel" role="status"><p>{{ labels.signIn }}</p><button type="button" class="button button-secondary" @click="emit('sign-in')">{{ labels.signInAction }}</button><slot name="sign-in" /></div>
     <div v-else class="user-record-list" :aria-busy="loading">
-      <form class="ui-filter-bar" @submit.prevent="withGlobalLoading(search)"><label class="field-label recharge-filter">{{ labels.status }}
+      <form novalidate v-inline-validation class="ui-filter-bar" @submit.prevent="withGlobalLoading(search)"><label class="field-label recharge-filter">{{ labels.status }}
         <SelectControl :model-value="selectedState" :disabled="loading" @change="selectedState = $event as RechargeState | ''" :label="String(labels.status)" :options="[{ value: '', label: (String(labels.all)).trim() }, { value: 'pending', label: (String(labels.pending)).trim() }, { value: 'confirmed', label: (String(labels.confirmed)).trim() }, { value: 'cancelled', label: (String(labels.cancelled)).trim() }]" />
       </label><button type="submit" class="button button-primary" :disabled="loading">{{ ui('user.lists.search') }}</button><button v-if="selectedState || appliedState" type="button" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(clearFilters)">{{ ui('user.lists.clear') }}</button></form>
       <p v-global-loading v-if="loading" class="detail-panel" role="status">{{ labels.loading }}</p>

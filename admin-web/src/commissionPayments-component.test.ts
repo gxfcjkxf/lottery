@@ -119,7 +119,7 @@ describe("CommissionPaymentsManagement", () => {
     const installed = installFetch();
     const mounted = mount(baseAccount, brand, "active", cycleId); await flush();
     expect(findNode(mounted.container, node => node.tag === "select-control" && node.props["aria-label"] === "周期")).toBeNull();
-    click(button(mounted.container, "重置")); await flush();
+    click(button(mounted.container, "清空")); await flush();
     click(button(mounted.container, "待审核")); await flush();
     const reads = installed.calls.filter(call => call.url.includes("/commission-payments?"));
     expect(reads.length).toBeGreaterThanOrEqual(3);

@@ -39,6 +39,11 @@ onBeforeUnmount(() => { close(); cleanup() })
   <div ref="menu" :id="id" popover="auto" class="member-action-menu" role="menu" :aria-label="props.label" @toggle="syncOpen" @keydown="navigate" @click="close"><slot /></div>
 </template>
 <style scoped>
+.member-menu-trigger { display:inline-flex; align-items:center; justify-content:center; flex:none; box-sizing:border-box; width:var(--control-height); height:var(--control-height); min-height:var(--control-height); padding:0; border:0; border-radius:var(--radius-sm); background:transparent; color:var(--muted); cursor:pointer; }
+.member-menu-trigger:hover, .member-menu-trigger[aria-expanded="true"] { color:var(--primary-dark); background:var(--primary-light); }
+.member-menu-trigger:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+.member-menu-trigger:disabled { cursor:default; opacity:.5; }
+
 .member-action-menu { position:fixed; inset:auto; margin:0; padding:6px; width:max-content; max-width:calc(100vw - 24px); border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--surface); color:var(--ink); box-shadow:var(--shadow-lg); }
 .member-action-menu:popover-open { display:grid; gap:4px; }
 .member-action-menu :deep(button) { display:flex; align-items:center; width:100%; min-height:var(--control-height); box-sizing:border-box; padding:4px 12px; border:0; border-radius:var(--radius-sm); background:transparent; color:inherit; font:inherit; line-height:22px; text-align:start; }

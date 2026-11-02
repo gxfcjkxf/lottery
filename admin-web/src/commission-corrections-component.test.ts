@@ -106,7 +106,7 @@ describe("CommissionCorrectionsManagement",()=>{
   beforeEach(freshData);
   it("keeps correction queries scoped to the selected calculation after reset and queue changes", async () => {
     const mounted = mount(baseAccount, brand, "active", cycleId); await flush();
-    click(button(mounted.container, "重置")); await flush();
+    click(button(mounted.container, "清空")); await flush();
     click(button(mounted.container, "待处理")); await flush();
     const reads = calls.filter(call => call.method === "listCases");
     expect(reads.length).toBeGreaterThanOrEqual(3);

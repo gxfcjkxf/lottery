@@ -3,6 +3,7 @@ import DetailModal from './DetailModal.vue'
 import ManagementTable from './ManagementTable.vue'
 import SelectControl from './SelectControl.vue'
 import BusinessDetails from './BusinessDetails.vue'
+import { bindingText, bindingErrors, parseBindingNumbers, configuredPriceRows } from './configured-rule-editor'
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { withGlobalLoading } from './global-loading'
 import ConfiguredNodeEditor from './ConfiguredNodeEditor.vue'
@@ -32,6 +33,9 @@ const templates = ['mark_six','canada_28','canada_996','canada_vip','canada_42',
 const regular = ref('1,2,3,4,5,6'), special = ref('7'), digits = ref('')
 const groupNameEn = ref(''), groupNameZh = ref(''), groupNumbers = ref(''), groupTarget = ref<'all' | 'regular' | 'special'>('special'), groupPosition = ref(''), groupPush = ref('')
 const groupPrices = ref<Record<string, string>>({})
+const addMode = ref<'copy' | 'group'>('copy')
+const attributeId = ref('')
+const bindingTexts = ref<Record<string, Record<string, string>>>({})
 const modalDraft = shallowRef<ConfiguredSnapshot | null>(null)
 const savedSnapshot = ref('')
 const modal = ref<'play' | 'add' | 'bindings' | 'prices' | 'domain' | null>(null)
@@ -49,19 +53,39 @@ const basicKeys = ['label','group','selection','stake_mode','unit_points','max_m
 const basic = computed(() => Object.fromEntries(basicKeys.filter(key=>play.value && key in play.value).map(key=>[key,(play.value as unknown as Record<string,unknown>)[key]])))
 const settlement = computed(() => Object.fromEntries(Object.entries(play.value ?? {}).filter(([key]) => !basicKeys.includes(key) && !['id','source_code'].includes(key))))
 defineExpose({ confirmLeave: () => !(dirty.value || modalChanged.value) || window.confirm(String(t('discardRules'))) })
-const modalChanged = computed(() => !!modalDraft.value && JSON.stringify(modalDraft.value) !== JSON.stringify(draft.value))
+const attribute = computed(() => modalDraft.value?.catalog.attributes.find(item => item.id === attributeId.value))
+const bindingsChanged = computed(() => modal.value === 'bindings' && !!modalDraft.value && JSON.stringify(bindingTexts.value) !== JSON.stringify(bindingText(modalDraft.value)))
+const bindingIssues = computed(() => modal.value === 'bindings' && modalDraft.value ? bindingErrors(modalDraft.value.catalog, bindingTexts.value) : {})
+const invalidBindings = computed(() => Object.values(bindingIssues.value).some(rows => Object.keys(rows).length > 0))
+const attributeRows = computed(() => attribute.value?.labels.map(id => ({ id })) ?? [])
+const attributeName = (id: string) => `attribute.${id}` in configuredRuleCatalog.en ? String(t(`attribute.${id}`)) : id
+const bindingName = (id: string) => `binding.${id}` in configuredRuleCatalog.en ? String(t(`binding.${id}`)) : id
+const priceRows = computed(() => {
+  if (modal.value !== 'prices' || !modalDraft.value) return []
+  const rows = configuredPriceRows(modalDraft.value, props.locale)
+  return rows.map((row, index) => ({ ...row, label: rows.filter(item => item.label === row.label).length > 1 ? String(t('oddsNumber', { name: row.label, index: rows.slice(0, index + 1).filter(item => item.label === row.label).length })) : row.label }))
+})
+const priceColumns = computed(() => [{ key: 'name', label: String(t('priceItem')) }, ...modalDraft.value!.catalog.plates.map(plate => ({ key: plate, label: plate }))])
+const addChanged = computed(() => modal.value === 'add' && !!(newId.value || groupNameEn.value || groupNameZh.value || groupNumbers.value || groupPosition.value || groupPush.value || Object.values(groupPrices.value).some(Boolean)))
+const modalChanged = computed(() => !!modalDraft.value && (JSON.stringify(modalDraft.value) !== JSON.stringify(draft.value) || bindingsChanged.value || addChanged.value))
 function invalidate() { verified.value = null; result.value = null; error.value = ''; remoteError.value = null; generation++ }
 watch(modalDraft, invalidate, {deep:true,flush:'sync'})
 function openEditor(kind: NonNullable<typeof modal.value>, id = editId.value) {
  if (!draft.value) return
  editId.value = id; modalDraft.value = copy(draft.value); modal.value = kind; tab.value = 'basic'; invalidate()
+ if (kind === 'add') { addMode.value = 'copy'; newId.value = ''; groupNameEn.value = ''; groupNameZh.value = ''; groupNumbers.value = ''; groupPosition.value = ''; groupPush.value = ''; groupTarget.value = 'special'; groupPrices.value = {} }
+ if (kind === 'bindings') { bindingTexts.value = bindingText(modalDraft.value); attributeId.value = modalDraft.value.catalog.attributes[0]?.id ?? '' }
 }
 function closeEditor() {
  if (modalChanged.value && !window.confirm(String(t('discardChanges')))) return
  modal.value = null; modalDraft.value = null; invalidate()
 }
 function applyEditor() {
- if (!modalDraft.value) return
+ if (!modalDraft.value || !editable.value || locked.value) return
+ if (modal.value === 'bindings') {
+   if (invalidBindings.value) return
+   modalDraft.value = { ...modalDraft.value, bindings: { ...modalDraft.value.bindings, attributes: Object.fromEntries(Object.entries(bindingTexts.value).map(([id, rows]) => [id, Object.fromEntries(Object.entries(rows).map(([label, text]) => [label, parseBindingNumbers(text)!]))])) } }
+ }
  draft.value = modalDraft.value; modalDraft.value = null; modal.value = null
 }
 function patchPlay(value: RuleNode) { if (play.value) editPlay({...play.value,...value as object} as unknown as RuleNode) }
@@ -100,11 +124,11 @@ function exportDraft() {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 function duplicate() {
-  if (!modalDraft.value || !play.value) return
+  if (!modalDraft.value || !play.value || !editable.value || locked.value) return
   try { const next = copy(modalDraft.value); const added = cloneConfiguredPlay(next, play.value, newId.value); modalDraft.value = next; editId.value = added.id; modal.value = 'play'; request.value = { ...request.value, play_id: added.id, options: [] }; newId.value = '' } catch { error.value = 'invalid' }
 }
 function createGroup() {
-  if (!modalDraft.value) return
+  if (!modalDraft.value || !editable.value || locked.value) return
   try {
     const next = copy(modalDraft.value)
     const position = String(groupPosition.value).trim(), push = String(groupPush.value).trim()
@@ -114,7 +138,12 @@ function createGroup() {
   } catch { error.value = 'invalid' }
 }
 function editPlay(value: RuleNode) { if (!modalDraft.value || !play.value) return; const index = modalDraft.value.catalog.plays.indexOf(play.value); const next = copy(modalDraft.value); next.catalog.plays[index] = value as unknown as ConfiguredPlay; modalDraft.value = next; editId.value = next.catalog.plays[index]!.id }
-function editPart(part: 'bindings' | 'prices' | 'domain', value: RuleNode) { if (!modalDraft.value) return; const next = copy(modalDraft.value); if (part === 'domain' && play.value) next.catalog.domains[play.value.selection.domain] = value as unknown as ConfiguredSnapshot['catalog']['domains'][string]; else if (part === 'bindings') next.bindings = value as unknown as ConfiguredSnapshot['bindings']; else if (part === 'prices') next.prices = value as unknown as ConfiguredSnapshot['prices']; modalDraft.value = next }
+function editPart(part: 'domain', value: RuleNode) { if (!modalDraft.value) return; const next = copy(modalDraft.value); if (part === 'domain' && play.value) next.catalog.domains[play.value.selection.domain] = value as unknown as ConfiguredSnapshot['catalog']['domains'][string]; modalDraft.value = next }
+function editPrice(plate: string, key: string, value: string) {
+  if (!modalDraft.value || !editable.value || locked.value) return
+  const prices = modalDraft.value.prices
+  modalDraft.value = { ...modalDraft.value, prices: { ...prices, plates: { ...prices.plates, [plate]: { ...prices.plates[plate], [key]: value } } } }
+}
 function parseNumbers(text: string) { if (!text.trim()) return []; if (!/^\d+(?:[\s,]+\d+)*$/.test(text.trim())) throw new Error('Invalid draw'); return text.trim().split(/[\s,]+/).map(Number) }
 async function calculate(settle: boolean) {
   if (!verified.value) return
@@ -154,7 +183,7 @@ async function calculate(settle: boolean) {
       </ManagementTable>
       <p v-if="dirty" class="rule-dirty" role="status">{{ t('unsavedRules') }}</p>
     </template>
-    <DetailModal v-if="modal && modalDraft" :title="String(modal === 'play' ? play?.label[locale] : t(modal === 'add' ? 'addPlay' : modal))" :close-label="String(t('closeEditor'))" :close-disabled="locked" @close="closeEditor">
+    <DetailModal class="rule-workbench-modal" :class="{'rule-flat-modal': modal === 'add' || modal === 'bindings' || modal === 'prices'}" v-if="modal && modalDraft" :title="String(modal === 'play' ? play?.label[locale] : t(modal === 'add' ? 'addPlay' : modal))" :close-label="String(t('closeEditor'))" :close-disabled="locked" @close="closeEditor">
       <div class="configured-fields rule-editor" data-testid="rule-editor">
         <p v-if="error" class="message error" role="alert">{{ t(error) }}</p>
         <p v-if="remoteError" class="message error" role="alert">{{ i18n.displayError(remoteError) }}</p>
@@ -185,23 +214,61 @@ async function calculate(settle: boolean) {
 
           </fieldset>
         </template>
-        <fieldset v-else-if="modal==='add'" class="configured-fields" :disabled="locked">
-          <label>{{ t('copySource') }}<SelectControl v-model="editId" :label="String(t('copySource'))" :options="modalDraft.catalog.plays.map(p=>({value:p.id,label:p.label[locale]}))" /></label>
-      <div class="configured-actions"><label>{{ t('newId') }}<input v-model.trim="newId" /></label><button type="button" class="button button-secondary" @click="duplicate">{{ t('copy') }}</button></div>
-      <details><summary>{{ t('newGroup') }}</summary><div class="configured-fields"><label>{{ t('nameEn') }}<input v-model="groupNameEn" /></label><label>{{ t('nameZh') }}<input v-model="groupNameZh" /></label><label>{{ t('groupNumbers') }}<input v-model="groupNumbers" /></label><label>{{ t('groupTarget') }}<SelectControl v-model="groupTarget" :label="String(t('groupTarget'))" :options="[{ value: 'special', label: (String(t('special'))).trim() }, { value: 'regular', label: (String(t('regular'))).trim() }, { value: 'all', label: (String(t('all'))).trim() }]" /></label><label>{{ t('groupPosition') }}<input v-model="groupPosition" type="number" min="1" step="1" /></label><label>{{ t('groupPush') }}<input v-model="groupPush" type="number" min="1" step="1" /></label><label v-for="plate in modalDraft.catalog.plates" :key="plate">{{ t('groupPrice', { plate }) }}<input v-model="groupPrices[plate]" inputmode="decimal" /></label><button type="button" class="button button-primary" @click="createGroup">{{ t('createGroup') }}</button></div></details>
-
+        <fieldset v-else-if="modal==='add'" class="configured-fields" :disabled="locked || !editable">
+          <div class="console-tabs" :aria-label="String(t('creationMethod'))">
+            <button v-for="method in (['copy','group'] as const)" :key="method" type="button" :class="{selected:addMode===method}" :aria-pressed="addMode===method" @click="addMode=method">{{ t(method === 'copy' ? 'copyPlay' : 'numberGroupPlay') }}</button>
+          </div>
+          <div class="rule-flat-fields">
+            <label v-if="addMode==='copy'" class="rule-full-width">{{ t('copySource') }}<SelectControl v-model="editId" :label="String(t('copySource'))" :options="modalDraft.catalog.plays.map(p=>({value:p.id,label:p.label[locale]}))" /></label>
+            <label class="rule-full-width">{{ t('newPlayId') }}<input v-model.trim="newId" /></label>
+            <template v-if="addMode==='group'">
+              <label>{{ t('nameZh') }}<input v-model="groupNameZh" /></label>
+              <label>{{ t('nameEn') }}<input v-model="groupNameEn" /></label>
+              <label class="rule-full-width">{{ t('groupNumbers') }}<textarea v-model="groupNumbers" rows="2" /></label>
+              <label>{{ t('groupTarget') }}<SelectControl v-model="groupTarget" :label="String(t('groupTarget'))" :options="[{ value: 'special', label: String(t('special')) }, { value: 'regular', label: String(t('regular')) }, { value: 'all', label: String(t('all')) }]" /></label>
+              <label>{{ t('groupPosition') }}<input v-model="groupPosition" type="number" min="1" step="1" /></label>
+              <label class="rule-full-width">{{ t('groupPush') }}<input v-model="groupPush" type="number" min="0" step="1" /></label>
+              <div class="configured-fields rule-full-width">
+                <h3 class="rule-field-heading">{{ t('initialOdds') }}</h3>
+                <div class="rule-initial-prices">
+                  <label v-for="plate in modalDraft.catalog.plates" :key="plate">{{ t('groupPrice', { plate }) }}<input v-model="groupPrices[plate]" inputmode="decimal" /></label>
+                </div>
+              </div>
+            </template>
+          </div>
+        </fieldset>
+        <fieldset v-else-if="modal==='bindings'" class="configured-fields" :disabled="locked">
+          <label v-if="modalDraft.catalog.attributes.length">{{ t('attribute') }}<SelectControl v-model="attributeId" :label="String(t('attribute'))" :options="modalDraft.catalog.attributes.map(item=>({value:item.id,label:attributeName(item.id)}))" /></label>
+          <ManagementTable :entries="attributeRows" :columns="[{key:'name',label:String(t('group'))},{key:'numbers',label:String(t('boundNumbers'))}]" :empty="!attributeRows.length" :empty-label="String(t('noAttributes'))" table-class="rule-binding-table">
+            <template #name="{entry}">{{ bindingName(entry.id) }}</template>
+            <template #numbers="{entry}">
+              <div class="rule-binding-field">
+                <input :aria-label="String(t('bindingNumbersFor', {name:bindingName(entry.id)}))" :readonly="!editable" v-model="bindingTexts[attributeId]![entry.id]" :aria-invalid="!!bindingIssues[attributeId]?.[entry.id]" :aria-describedby="bindingIssues[attributeId]?.[entry.id] ? `binding-error-${entry.id}` : undefined" />
+              </div>
+              <span v-if="bindingIssues[attributeId]?.[entry.id]" :id="`binding-error-${entry.id}`" class="rule-field-error" role="alert">{{ t(bindingIssues[attributeId]![entry.id]!) }}</span>
+            </template>
+          </ManagementTable>
+          <p v-if="bindingIssues[attributeId]?.['']" class="rule-field-error" role="alert">{{ t('bindingIncomplete') }}</p>
+        </fieldset>
+        <fieldset v-else-if="modal==='prices'" class="configured-fields" :disabled="locked || !editable">
+          <ManagementTable :style="{'--rule-price-columns':Math.min(3,modalDraft.catalog.plates.length)}" :entries="priceRows" :columns="priceColumns" :empty="!priceRows.length" :empty-label="String(t('noPrices'))" table-class="rule-price-table">
+            <template #name="{entry}">{{ entry.label }}</template>
+            <template v-for="plate in modalDraft.catalog.plates" :key="plate" #[plate]="{entry}">
+              <input :value="modalDraft.prices.plates[plate]![entry.id]" @input="editPrice(plate,entry.id,($event.target as HTMLInputElement).value)" inputmode="decimal" :aria-label="String(t('priceFor', {name:entry.label,plate}))" />
+            </template>
+          </ManagementTable>
         </fieldset>
         <fieldset v-else class="configured-fields" :disabled="locked || !editable">
           <template v-if="modal==='domain' && play">
             <p class="rule-shared-notice" role="status">{{ t('sharedDomainNotice', {plays:modalDraft.catalog.plays.filter(p=>p.selection.domain===play!.selection.domain).map(p=>p.label[locale]).join('、')}) }}</p>
             <ConfiguredNodeEditor :model-value="node(modalDraft.catalog.domains[play.selection.domain])" :locale="locale" expanded-objects @update:model-value="editPart('domain',$event)" />
           </template>
-          <ConfiguredNodeEditor v-else-if="modal==='bindings' || modal==='prices'" :model-value="node(modalDraft[modal])" :locale="locale" expanded-objects @update:model-value="editPart(modal as 'bindings'|'prices',$event)" />
         </fieldset>
       </div>
       <template v-if="editable||modal==='domain'" #footer>
         <button v-if="modal==='domain'" type="button" class="button button-secondary" :disabled="locked" @click="modal='play'">{{ t('backToPlay') }}</button>
-        <button v-if="editable" type="button" class="button button-primary" :disabled="locked || !modalChanged" @click="applyEditor">{{ t('apply') }}</button>
+        <button v-if="editable && modal==='add'" type="button" class="button button-primary" :disabled="locked" @click="addMode==='copy' ? duplicate() : createGroup()">{{ t('continueSetup') }}</button>
+        <button v-else-if="editable" type="button" class="button button-primary" :disabled="locked || !modalChanged || invalidBindings" @click="applyEditor">{{ t('apply') }}</button>
       </template>
     </DetailModal>
     <p v-if="!draft && surface === 'platform'" class="empty-state">{{ t('empty') }}</p>
@@ -215,4 +282,37 @@ async function calculate(settle: boolean) {
 <style scoped>
 .rule-toolbar{display:flex;align-items:end;flex-wrap:wrap;gap:12px}.rule-toolbar>label{display:grid;gap:6px;min-width:0}.rule-search{flex:0 1 260px}.rule-search input{width:100%;min-width:0}.rule-tools{margin-left:auto;gap:8px}.rule-editor{gap:16px}.rule-editor .console-tabs{flex-wrap:wrap}.rule-editor :deep(.configured-node input){min-height:var(--control-height);width:100%;max-width:none}.rule-editor :deep(.select-control){width:100%;max-width:none}.rule-editor :deep(.configured-node summary){min-height:var(--control-height);align-content:center}.rule-dirty{color:var(--warning-text)!important}.rule-domain-link{justify-self:start}.rule-save-bar{position:sticky;bottom:0;z-index:1;padding:12px 0;background:var(--surface);border-top:1px solid var(--line)}.rule-shared-notice{color:var(--ink-secondary)!important}.rule-directory :deep(td){vertical-align:middle}
 @media(max-width:620px){.rule-toolbar>label{flex:1 1 100%;width:100%}.rule-tools{margin-left:0;width:100%}.rule-tools>.button{flex:1 1 auto}}
+</style>
+
+<style scoped>
+.rule-flat-modal.detail-modal{width:min(760px,calc(100vw - 24px));max-width:calc(100vw - 24px)}
+.rule-flat-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0}
+.rule-full-width{grid-column:1/-1}
+.rule-initial-prices{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,120px),1fr));gap:12px}
+.rule-field-heading{font-size:var(--body-font-size);font-weight:600;margin:0}
+.rule-flat-modal textarea{font-family:var(--font-family);resize:vertical}
+.rule-binding-field{width:100%}
+.rule-binding-field input{--input-width:100%}
+:global(#app .rule-flat-modal .rule-binding-table :is(th,td)){text-align:left}
+:global(#app .rule-flat-modal .rule-price-table th:not(:first-child)){text-align:right}
+.rule-flat-modal :deep(.rule-price-table input){--input-width:100%}
+.rule-field-error{color:var(--danger-text)!important;font-size:var(--body-font-size)}
+.rule-flat-modal :deep(.console-table){width:100%;table-layout:fixed}
+.rule-flat-modal :deep(.console-table td){white-space:normal;overflow-wrap:anywhere;vertical-align:middle}
+.rule-flat-modal :deep(.rule-binding-table th:first-child){width:100px}
+.rule-flat-modal :deep(.rule-price-table th:first-child){width:42%}
+.rule-flat-modal :deep(.rule-price-table input){text-align:right;font-variant-numeric:tabular-nums}
+@media(max-width:620px){.rule-flat-fields{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:1080px){
+.rule-flat-modal :deep(.console-responsive-table tbody){display:block}
+.rule-flat-modal :deep(.console-responsive-table tbody>tr){display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,100px),1fr));border:0;border-bottom:1px solid var(--line);border-radius:0;padding:8px 0;gap:8px}
+.rule-flat-modal :deep(.console-responsive-table td){padding:0}
+.rule-flat-modal :deep(.console-responsive-table td:first-child){grid-column:1/-1}
+.rule-flat-modal :deep(.rule-price-table tbody>tr){grid-template-columns:repeat(var(--rule-price-columns),minmax(0,1fr))}
+.rule-flat-modal :deep(.rule-price-table td:first-child::before){content:none}
+.rule-flat-modal :deep(.console-responsive-table td:last-child){grid-column:auto}
+.rule-flat-modal :deep(.rule-binding-table tbody>tr){grid-template-columns:64px minmax(0,1fr)}
+.rule-flat-modal :deep(.rule-binding-table td:first-child){grid-column:auto}
+.rule-flat-modal :deep(.rule-binding-table td::before){content:none}
+}
 </style>

@@ -31,11 +31,16 @@ describe('one user order history layout', () => {
     });
   }
   it('does not show an empty state during loading, errors or populated content', async () => {
-    const loading = await render('en', true);
+    const loading = await render('en', true, false);
     expect(loading).not.toContain('order-history-empty');
     expect(loading).toMatch(/<button[^>]*disabled/);
     for (const html of [loading, await render('en', false, false)]) expect(html).toContain('order-content');
     expect(await render('en', false, false)).not.toContain('order-history-empty');
+  });
+  it('keeps a confirmed empty page visible while refreshing', async () => {
+    const html = await render('en', true, true);
+    expect(html).toContain('order-history-empty');
+    expect(html).toContain('history-pages');
   });
   it('uses one history layout and centered empty styling', () => {
     for (const name of ['BettingHistory']) {

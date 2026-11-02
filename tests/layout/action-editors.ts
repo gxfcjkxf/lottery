@@ -21,7 +21,7 @@ export function registerActionEditorTests(reflow = false) {
      const req = route.request(), url = new URL(req.url()), path = url.pathname
      if (req.method() !== 'GET') writes++
      expect(req.method()).toBe('GET')
-     const reply = (data: unknown) => route.fulfill({ json: { success: true, data, associations: { [`member:${gameId}`]: { name: 'modal_member' }, [`agent:${gameId}`]: { name: 'modal_agent' } } } })
+     const reply = (data: unknown) => route.fulfill({ json: { success: true, data, associations: { [`member:${gameId}`]: { name: 'modal_member' }, [`agent:${gameId}`]: { name: 'modal_agent' }, [`agent:${targetId}`]: { name: 'modal_agent' } } } })
      if (path.endsWith('/roles')) return reply({items:[role],total_count:'1'})
      if (path.endsWith('/accounts')) return reply({items:[account],total_count:'1'})
      if (path.endsWith('/permissions')) return reply({items: permissions})
@@ -29,7 +29,7 @@ export function registerActionEditorTests(reflow = false) {
      if (path.endsWith('/agents')) return reply({brand_id:gameId,items:[node],limit:20,offset:0,total_count:'1'})
      if (path.endsWith('/agents/tree')) return reply({brand_id:gameId,parent_id:null,items:[node],limit:20,offset:0,total_count:'1'})
      if (path.endsWith('/agents/'+targetId)) return reply(node)
-     if (path.endsWith('/join-codes')) return reply({brand_id: gameId, kind: 'agent', owner_member_id: gameId, items: [code], limit: 20, offset: 0, total_count: '1'})
+     if (path.endsWith('/join-codes')) return reply({brand_id: gameId, kind: 'agent', owner_member_id: url.searchParams.get('owner_member_id'), items: [{...code, owner_member_id: url.searchParams.get('owner_member_id'),agent_id:targetId}], limit: 20, offset: 0, total_count: '1'})
      if (path.endsWith(`/join-codes/${gameId}`)) return reply(code)
      throw Error(`Unexpected editor request: ${path}`)
     })
@@ -67,6 +67,7 @@ export function registerActionEditorTests(reflow = false) {
       await expectInsideViewport(dialog)
       await expectNoPageOverflow(page)
       await page.screenshot({path:info.outputPath(`action-editor-${name}-${locale}-${width}.png`)})
+      if (name === 'agent-edit') await dialog.screenshot({path:info.outputPath(`agent-detail-${locale}-${width}.png`)})
      }
      if(reflow) await page.setViewportSize(preset)
     }

@@ -1,6 +1,7 @@
+import { expectRealEntry, expectListLayout } from './real-page-review'
 import { selectControl } from '../select-control'
 import { test, expect } from '@playwright/test'
-import { gameId, origins, installLayoutApi, openPlatformBrandList, expectInsideViewport, expectNoPageOverflow } from './fixture'
+import { gameId, origins, installLayoutApi, openPlatformBrandList, expectInsideViewport } from './fixture'
 export function registerAgentDirectoryTests(reflow = false) {
  for (const surface of ['brand', 'platform'] as const) for (const locale of ['en', 'zh-CN'] as const) test(`agent directory supports full search and presence (${surface}, ${locale})`, async ({ page }, info) => {
   const zh = locale === 'zh-CN', platform = surface === 'platform', size = platform ? 50 : 20, at = '2026-10-21T00:00:00Z'
@@ -65,7 +66,7 @@ export function registerAgentDirectoryTests(reflow = false) {
   await expectInsideViewport(menu); await expect(menu.getByRole('menuitem')).toHaveCount(platform ? 1 : 2); await menu.getByRole('menuitem').first().click()
   const detail = page.getByRole('dialog'); await expectInsideViewport(detail); await page.keyboard.press('Escape')
   const preset = page.viewportSize()!
-  for (const width of reflow ? [320,640,900,1440] : [preset.width]) { if (reflow) await page.setViewportSize({ width, height: preset.height }); await expectNoPageOverflow(page) }
+  for (const width of reflow ? [320,640,900,1440] : [preset.width]) { if (reflow) await page.setViewportSize({ width, height: preset.height }); await expectRealEntry(page,surface);await expectListLayout(page) }
   await page.screenshot({ path: info.outputPath(`agents-${surface}-${locale}.png`) }); expect(errors).toEqual([])
  })
 }
