@@ -81,7 +81,7 @@ func TestBatchHistorySerializersExposeOnlyApprovedFields(t *testing.T) {
 	}
 	assertJSONKeys(t, calc, []string{
 		"id", "brand_id", "cycle_id", "run_id", "order_id", "member_id", "reason", "status",
-		"stake_points", "prize_points", "base_points", "job_id", "calculation_id", "generation",
+		"stake_points", "prize_points", "base_points",
 		"audit_log_id", "created_at",
 	})
 	for _, forbidden := range []string{"rule_snapshot", "agent_path", "account_id", "credential", "current_run", "payout"} {
@@ -89,7 +89,7 @@ func TestBatchHistorySerializersExposeOnlyApprovedFields(t *testing.T) {
 			t.Errorf("history DTO leaked forbidden field %q", forbidden)
 		}
 	}
-	if !jsonContains(calc, `"stake_points":"9007199254740993"`) || !jsonContains(calc, `"generation":null`) {
+	if !jsonContains(calc, `"stake_points":"9007199254740993"`) {
 		t.Fatalf("calculation JSON lost exact/null representation: %s", calc)
 	}
 }

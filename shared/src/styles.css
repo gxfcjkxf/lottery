@@ -1,5 +1,6 @@
 :root {
   --body-font-size: 14px;
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   --brand-primary: #059669;
   --brand-accent: #f59e0b;
   --brand-success: #10b981;
@@ -18,6 +19,9 @@
   --accent-light: #fffbeb;
   --success: #10b981;
   --warning: #f59e0b;
+  --info: #2563eb;
+  --info-bg: #dbeafe;
+  --info-text: #1d4ed8;
   --danger: #ef4444;
   --danger-bg: #fef2f2;
   --danger-text: #b91c1c;
@@ -28,6 +32,7 @@
   --ink-secondary: #334155;
   --muted-light: #94a3b8;
   --line-subtle: #f1f5f9;
+  --table-header-bg: var(--line-subtle);
   --surface-card: var(--surface);
   --radius-sm: 8px;
   --radius: 16px;
@@ -46,10 +51,39 @@
 }
 
 * { box-sizing: border-box; }
+small { font-size: inherit; }
 body { margin: 0; min-width: 320px; min-height: 100dvh; }
-button, input, select, textarea { font: inherit; }
+button, input, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 a { color: inherit; }
 ::selection { background: #d1fae5; color: #065f46; }
 
+/* Keep motion preferences consistent in every application, including consoles. */
+@media (prefers-reduced-motion: reduce) {
+  #app *, #app *::before, #app *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+
+/* One header treatment for all four apps, including dialogs and sticky columns.
+   Body row headings and responsive field labels keep their existing appearance. */
+#app table > thead > tr > :is(th, td),
+#app :is(.bucket-table, .recon-table) > .table-head > span {
+  background: var(--table-header-bg);
+  color: var(--ink-secondary);
+  font-weight: 650;
+  border-bottom: 1px solid var(--line);
+}
+#app [role="table"] [role="row"]:has(> [role="columnheader"]) {
+  background: var(--table-header-bg);
+  border-bottom: 1px solid var(--line);
+}
+#app [role="table"] [role="columnheader"] {
+  color: var(--ink-secondary);
+  font-weight: 650;
+}

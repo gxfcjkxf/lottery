@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { readPaginationTotal } from '@lottery/shared'
+
+import TablePagination from "@lottery/shared/TablePagination.vue"
 import { vWriteGuard } from "@lottery/shared";
 import { withGlobalLoading } from '@lottery/shared';
 import SiteIcon from "@lottery/shared/SiteIcon";
@@ -6,6 +9,9 @@ import { vRefreshButton } from '@lottery/shared';
 import { vGlobalLoading, formatDisplayDateTime } from "@lottery/shared";
 import { useUserI18n } from "./i18n";
 import DetailModal from '@lottery/shared/DetailModal.vue';
+import ConfiguredBetReviewTable from './ConfiguredBetReviewTable.vue';
+import type { ConfiguredLiveOrder } from '@lottery/shared';
+import { readNotificationOrder } from './notification-order';
 
 const ui = useUserI18n().t;
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -23,14 +29,13 @@ const emit = defineEmits<{
 }>();
 
 type Context = { brand_id: string; member_id: string };
-type PendingIntent = {
-  ids: string[];
-  context: Context;
-  idempotencyKey: string;
-};
 
 const items = ref<NotificationItem[]>([]);
 const selected = ref<NotificationItem | null>(null);
+const betOrder = ref<ConfiguredLiveOrder | null>(null);
+const betOrderError = ref<'unavailable' | 'failed' | null>(null);
+let orderGeneration = 0;
+function isBetNotification(item: NotificationItem) { return item.event_type.startsWith('bet.order.'); }
 const confirmedRead = ref(new Set<string>());
 const isMobile = ref(false);
 const loadSentinel = ref<HTMLElement>();
@@ -41,11 +46,10 @@ let media: MediaQueryList;
 const context = ref<Context | null>(null);
 const limit = 20;
 const offset = ref(0);
-const total = ref<number | null>(null);
+const total = ref<string | null>(null);
 const loading = ref(false);
 const writing = ref(false);
 const error = ref("");
-const pending = ref<PendingIntent | null>(null);
 const scopeGeneration = ref(0);
 const listGeneration = ref(0);
 const disposed = ref(false);
@@ -53,7 +57,7 @@ const api = ref(createNotificationApi({ brandCode: props.brandCode }));
 const pageNumber = computed(() => Math.floor(offset.value / limit) + 1);
 const hasPrevious = computed(() => offset.value > 0);
 const hasNext = computed(
-  () => total.value !== null && offset.value + limit < total.value,
+  () => total.value !== null && BigInt(offset.value + limit) < BigInt(total.value),
 );
 function isRead(item: NotificationItem) { return !!item.read_at || confirmedRead.value.has(item.id); }
 const unreadOnPage = computed(() => items.value.filter((item) => !isRead(item)));
@@ -77,7 +81,6 @@ function clearAccountState() {
   loadMoreError.value = false;
   loadedMore.value = false;
   context.value = null;
-  pending.value = null;
   offset.value = 0;
   total.value = null;
   emit("unread-count", null);
@@ -117,7 +120,7 @@ async function loadPage(options: { resetError?: boolean; afterWrite?: boolean; a
   if (writing.value && !options.afterWrite) return;
   const generation = scopeGeneration.value;
   const request = ++listGeneration.value;
-  if (options.resetError !== false && !pending.value) error.value = "";
+  if (options.resetError !== false) error.value = "";
   loading.value = true;
   loadMoreError.value = false;
   const requestOffset = options.offset ?? (options.append ? offset.value + limit : isMobile.value ? 0 : offset.value);
@@ -127,8 +130,7 @@ async function loadPage(options: { resetError?: boolean; afterWrite?: boolean; a
     const nextContext = { brand_id: result.brand_id, member_id: result.member_id };
     if (context.value && !sameContext(context.value, nextContext)) {
       // An account change invalidates any unresolved write identity.
-      pending.value = null;
-      items.value = [];
+          items.value = [];
       selected.value = null;
       confirmedRead.value = new Set();
       offset.value = 0;
@@ -148,8 +150,8 @@ async function loadPage(options: { resetError?: boolean; afterWrite?: boolean; a
     } else items.value = result.items;
     offset.value = result.offset;
     loadedMore.value = !!options.append && requestOffset > 0;
-    total.value = result.offset + result.items.length + (result.items.length === limit ? 1 : 0);
-    if (!pending.value) error.value = "";
+    total.value = readPaginationTotal(result);
+    error.value = "";
   } catch (cause) {
     if (!isCurrent(generation) || request !== listGeneration.value) return;
     const err = cause as { status?: number };
@@ -160,65 +162,30 @@ async function loadPage(options: { resetError?: boolean; afterWrite?: boolean; a
   }
 }
 
-function createKey(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-async function submitIntent(intent: PendingIntent) {
-  if (writing.value || loading.value || !isCurrent(scopeGeneration.value)) return;
-  // Ignore any list response started before this write; it must not overwrite its receipt.
+async function markRead(ids: string[]) {
+  if (loading.value || writing.value || ids.length === 0 || !context.value) return;
+  const capturedContext = { ...context.value }, generation = scopeGeneration.value;
   listGeneration.value++;
   writing.value = true;
   error.value = "";
-  const generation = scopeGeneration.value;
   try {
-    const result = await api.value.markRead(
-      [...intent.ids],
-      { ...intent.context },
-      intent.idempotencyKey,
-    );
+    const result = await api.value.markRead([...ids], capturedContext, crypto.randomUUID());
     if (!isCurrent(generation)) return;
-    if (!sameContext(intent.context, { brand_id: result.brand_id, member_id: result.member_id })) {
+    if (!sameContext(capturedContext, { brand_id: result.brand_id, member_id: result.member_id })) {
       clearAccountState();
       error.value = ui('user.copy.b6aff54e');
       return;
     }
-    pending.value = null;
     emit("unread-count", result.unread_count);
-    // A validated receipt confirms these IDs are read without inventing a timestamp.
-    // Preserve the accumulated mobile list and scroll position.
     confirmedRead.value = new Set([...confirmedRead.value, ...result.ids]);
     if (!isMobile.value) await loadPage({ resetError: false, afterWrite: true });
   } catch (cause) {
     if (!isCurrent(generation)) return;
-    const err = cause as { status?: number };
-    if (err?.status === 401) {
-      pending.value = null;
-      handleAuthExpired();
-    } else {
-      // Preserve the exact ids/context/key for an explicit same-request retry.
-      if (err?.status !== undefined && err.status > 0 && err.status < 500) {
-        pending.value = null;
-        error.value = ui('user.copy.45032eb2');
-      } else {
-        pending.value = intent;
-        error.value = errorMessage(cause);
-      }
-    }
+    if ((cause as { status?: number })?.status === 401) handleAuthExpired();
+    else error.value = errorMessage(cause);
   } finally {
     if (isCurrent(generation)) writing.value = false;
   }
-}
-
-async function markRead(ids: string[]) {
-  if (loading.value || writing.value || pending.value || ids.length === 0 || !context.value) return;
-  const intent: PendingIntent = {
-    ids: [...ids],
-    context: { ...context.value },
-    idempotencyKey: createKey(),
-  };
-  await submitIntent(intent);
 }
 
 function openMessage(item: NotificationItem) {
@@ -226,26 +193,44 @@ function openMessage(item: NotificationItem) {
   if (!isRead(item)) markRead([item.id]);
 }
 
-async function retryPending() {
-  if (pending.value && !writing.value && !loading.value) await submitIntent(pending.value);
+async function loadBetOrder() {
+  const item = selected.value, capturedContext = context.value, generation = scopeGeneration.value;
+  const request = ++orderGeneration;
+  betOrder.value = null;
+  betOrderError.value = null;
+  if (!item || !isBetNotification(item) || !capturedContext) return;
+  try {
+    const order = await readNotificationOrder(props.brandCode, capturedContext, item.payload.resource_id);
+    if (!isCurrent(generation) || request !== orderGeneration || selected.value?.id !== item.id) return;
+    betOrder.value = order;
+  } catch (cause) {
+    if (!isCurrent(generation) || request !== orderGeneration || selected.value?.id !== item.id) return;
+    const status = (cause as { status?: number }).status;
+    if (status === 401) handleAuthExpired();
+    else betOrderError.value = status === 404 ? 'unavailable' : 'failed';
+  }
 }
+watch(selected, item => {
+  if (item && isBetNotification(item)) void withGlobalLoading(loadBetOrder);
+  else { orderGeneration++; betOrder.value = null; betOrderError.value = null; }
+}, { flush: 'sync' });
 
 async function changePage(nextOffset: number) {
-  if (pending.value || writing.value || loading.value) return;
+  if (writing.value || loading.value) return;
   await loadPage({ offset: Math.max(0, nextOffset) });
 }
 
 async function loadMore(retry = false) {
-  if (!isMobile.value || !hasNext.value || loading.value || writing.value || pending.value || (error.value && !retry)) return;
+  if (!isMobile.value || !hasNext.value || loading.value || writing.value || (error.value && !retry)) return;
   await loadPage({ append: true });
 }
 function changeViewport(event: MediaQueryListEvent) {
   isMobile.value = event.matches;
-  if (!pending.value && !writing.value) void loadPage({ offset: 0 });
+  if (!writing.value) void loadPage({ offset: 0 });
 }
-watch([loadSentinel, isMobile, hasNext, loading, writing, pending, error], () => {
+watch([loadSentinel, isMobile, hasNext, loading, writing, error], () => {
   observer?.disconnect();
-  if (isMobile.value && loadSentinel.value && hasNext.value && !loading.value && !writing.value && !pending.value && !error.value) observer?.observe(loadSentinel.value);
+  if (isMobile.value && loadSentinel.value && hasNext.value && !loading.value && !writing.value && !error.value) observer?.observe(loadSentinel.value);
 }, { flush: 'post' });
 
 watch(
@@ -280,7 +265,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="notifications-panel">
+  <section class="notifications-panel user-record-list" :aria-busy="loading">
     <div class="notifications-toolbar">
       <Teleport defer to="#user-page-refresh"><button v-refresh-button="ui('user.copy.8a197e0a')"
         class="button button-secondary notification-tool"
@@ -299,27 +284,15 @@ onBeforeUnmount(() => {
         type="button"
         :aria-label="batchLabel"
         :title="batchLabel"
-        :disabled="loading || writing || !!pending"
+        :disabled="loading || writing"
         @click="withGlobalLoading(markRead, unreadBatch.map((item) => item.id))"
       >
         <SiteIcon name="read" />
       </button>
     </div>
 
-    <p v-if="error && !pending && !loadMoreError" class="notifications-message notifications-error" role="alert">
+    <p v-if="error && !loadMoreError" class="notifications-message notifications-error" role="alert">
       {{ error }}
-    </p>
-    <p v-if="pending" class="notifications-message notifications-error" role="alert">
-      {{ ui('user.copy.39040996') }}
-      <button
-        v-write-guard="writing"
-        type="button"
-        class="notifications-inline-button"
-        :disabled="writing || loading"
-        @click="withGlobalLoading(retryPending)"
-      >
-        {{ ui('user.copy.4da8cfa4') }}
-      </button>
     </p>
     <p v-global-loading v-if="loading && !items.length" class="notifications-message" role="status">
       {{ ui('user.copy.c8ac0a56') }}
@@ -327,7 +300,7 @@ onBeforeUnmount(() => {
     <p v-global-loading v-else-if="loading && !isMobile" class="notifications-message" role="status">
       {{ ui('user.copy.c36a8e93') }}
     </p>
-    <div v-else-if="!items.length && !error" class="notifications-empty empty-state">
+    <div v-else-if="total !== null && !items.length && !error" class="notifications-empty empty-state">
       {{ ui('user.notifications.empty') }}
     </div>
 
@@ -338,7 +311,7 @@ onBeforeUnmount(() => {
         class="notification-card"
         :class="{ 'read-card': isRead(item) }"
       >
-        <button type="button" class="notification-summary" aria-haspopup="dialog" :disabled="loading || writing || !!pending" @click="openMessage(item)">
+        <button type="button" class="notification-summary" aria-haspopup="dialog" :disabled="loading || writing" @click="openMessage(item)">
           <span class="notification-status" role="img" :aria-label="isRead(item) ? ui('user.notifications.read') : ui('user.copy.25fe7670')" :title="isRead(item) ? ui('user.notifications.read') : ui('user.copy.25fe7670')"><span class="notification-marker" aria-hidden="true"></span></span>
           <strong class="notification-title">{{ presentation(item).title }}</strong>
           <time :datetime="item.created_at">{{ presentation(item).createdAt }}</time>
@@ -349,42 +322,35 @@ onBeforeUnmount(() => {
     <div v-if="isMobile && items.length && (hasNext || loadedMore || loadMoreError || loading)" ref="loadSentinel" class="notifications-load-more">
       <template v-if="loadMoreError">
         <p class="notifications-error" role="alert">{{ error }}</p>
-        <button type="button" class="button button-secondary" :disabled="loading || writing || !!pending" @click="withGlobalLoading(loadMore, true)">{{ ui('user.notifications.retryMore') }}</button>
+        <button type="button" class="button button-secondary" :disabled="loading || writing" @click="withGlobalLoading(loadMore, true)">{{ ui('user.notifications.retryMore') }}</button>
       </template>
       <span v-global-loading v-else-if="loading" role="status">{{ ui('user.notifications.loadingMore') }}</span>
       <span v-else-if="loadedMore && !hasNext">{{ ui('user.notifications.noMore') }}</span>
     </div>
 
-    <div v-if="!isMobile && (items.length || total !== null)" class="notifications-pagination">
-      <button
-        class="button button-secondary"
-        type="button"
-        :disabled="!hasPrevious || loading || writing || !!pending"
-        @click="withGlobalLoading(changePage, offset - limit)"
-      >
-        {{ ui('user.copy.d1c7b375') }}
-      </button>
-      <span>{{ ui("user.pagination.page", { page: pageNumber }) }}</span>
-      <button
-        class="button button-secondary"
-        type="button"
-        :disabled="!hasNext || loading || writing || !!pending"
-        @click="withGlobalLoading(changePage, offset + limit)"
-      >
-        {{ ui('user.copy.2d3bed9a') }}
-      </button>
-    </div>
+    <TablePagination show-empty v-if="!isMobile && total !== null" class="notifications-pagination" :total="total ?? '0'" :page="Math.floor(pageNumber)" :count="items.length" :locale="locale === 'en' ? 'en' : 'zh-CN'" :page-size="limit" :previous-disabled="!hasPrevious || loading || writing" :next-disabled="!hasNext || loading || writing" :previous-label="ui('user.copy.d1c7b375')" :next-label="ui('user.copy.2d3bed9a')" :go-to="(target: number) => changePage((target - 1) * limit)" />
     <DetailModal v-if="selected" :title="presentation(selected).title" :close-label="ui('user.notifications.close')" @close="selected = null">
       <div class="notification-detail">
         <div class="notification-meta"><span>{{ isRead(selected) ? ui('user.notifications.read') : ui('user.copy.25fe7670') }}</span><time :datetime="selected.created_at">{{ presentation(selected).createdAt }}</time></div>
-        <p class="notification-body">{{ presentation(selected).body }}</p>
+        <p v-if="selected.event_type !== 'bet.order.placed'" class="notification-body">{{ presentation(selected).body }}</p>
+        <template v-if="betOrder">
+          <dl class="notification-bet-summary">
+            <div><dt>{{ ui('user.notifications.betGame') }}</dt><dd>{{ betOrder.game_name }}</dd></div>
+            <div><dt>{{ ui('user.orders.column.period') }}</dt><dd>{{ betOrder.period_no }}</dd></div>
+            <div><dt>{{ ui('user.orders.column.stake') }}</dt><dd>{{ betOrder.quote.bet_points }}</dd></div>
+            <div v-if="selected.event_type !== 'bet.order.placed'"><dt>{{ ui('user.orders.column.time') }}</dt><dd>{{ formatDisplayDateTime(betOrder.placed_at, locale) }}</dd></div>
+          </dl>
+          <ConfiguredBetReviewTable :snapshot="betOrder.snapshot" :lines="betOrder.quote.lines" :locale="locale === 'en' ? 'en' : 'zh-CN'" />
+        </template>
+        <div v-if="betOrderError" class="notification-bet-error">
+          <p class="notifications-error" role="alert">{{ ui(betOrderError === 'unavailable' ? 'user.notifications.betUnavailable' : 'user.notifications.betLoadFailure') }}</p>
+          <button v-if="betOrderError === 'failed'" type="button" class="button button-secondary" @click="withGlobalLoading(loadBetOrder)">{{ ui('user.notifications.betRetry') }}</button>
+        </div>
         <p v-if="presentation(selected).protectedNote && presentation(selected).protectedNote !== presentation(selected).body">{{ presentation(selected).protectedNote }}</p>
-        <p v-if="presentation(selected).reference" class="notification-reference">{{ ui('user.copy.c7f9efbc') }}: {{ presentation(selected).reference }}</p>
+        <p v-if="!isBetNotification(selected) && presentation(selected).reference" class="notification-reference">{{ ui('user.copy.c7f9efbc') }}: {{ presentation(selected).reference }}</p>
         <p v-if="error && !loadMoreError" class="notifications-error" role="alert">{{ error }}</p>
-        <button v-write-guard="writing" v-if="pending" type="button" class="button button-secondary" :disabled="writing || loading" @click="withGlobalLoading(retryPending)">{{ ui('user.copy.4da8cfa4') }}</button>
       </div>
-      <template #footer><button type="button" class="button button-primary" @click="selected = null">{{ ui('user.notifications.closeAction') }}</button></template>
-    </DetailModal>
+      </DetailModal>
   </section>
 </template>
 
@@ -392,9 +358,7 @@ onBeforeUnmount(() => {
 .notifications-panel {
   min-width: 0;
 }
-.notifications-toolbar:not(:has(> button)) { display: none; }
-.notifications-toolbar,
-.notifications-pagination {
+.notifications-toolbar:not(:has(> button)) { display: none; }.notifications-toolbar {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -402,17 +366,11 @@ onBeforeUnmount(() => {
   gap: 10px;
   padding: 0 17px 12px;
 }
-.notifications-pagination {
-  justify-content: center;
-  padding: 14px 17px;
-  color: var(--muted);
-  font-size: 12px;
-}
 .notifications-message {
   margin: 0;
   padding: 18px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--body-font-size);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -427,7 +385,7 @@ onBeforeUnmount(() => {
 .notification-reference {
   margin-top: 2px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--body-font-size);
   overflow-wrap: anywhere;
 }
 .notifications-inline-button {
@@ -437,18 +395,19 @@ onBeforeUnmount(() => {
   background: transparent;
   color: var(--primary);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--body-font-size);
   font-weight: 700;
   text-align: left;
   cursor: pointer;
-  min-height: 44px;
+  min-height: var(--control-height);
+  box-sizing: border-box;
+  padding-block: 4px;
+  line-height: 22px;
 }
 .notifications-inline-button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-}
-.notifications-pagination .button:disabled,
-.notifications-toolbar .button:disabled {
+}.notifications-toolbar .button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -458,16 +417,22 @@ onBeforeUnmount(() => {
 .notification-summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; width: 100%; min-height: 64px; padding: 16px; border: 0; background: var(--surface); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
 .notification-summary:hover { background: var(--canvas); }
 .notification-summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
-.notification-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.notification-status { display: inline-flex; align-items: center; gap: 7px; font-size: var(--body-font-size); color: var(--muted); white-space: nowrap; }
 .notification-marker { width: 8px; height: 8px; margin: 0; background: var(--danger); box-shadow: none; flex-shrink: 0; }
 .read-card .notification-marker { background: var(--success); }
 .notification-title { min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.notification-summary time { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.notification-summary time { font-size: var(--body-font-size); color: var(--muted); white-space: nowrap; }
 .notification-detail { display: grid; gap: 16px; min-width: 0; overflow-wrap: anywhere; }
 .notification-detail p { margin: 0; }
+.notification-bet-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0; font-size: var(--body-font-size); }
+.notification-bet-summary > div { min-width: 0; }
+.notification-bet-summary dt { color: var(--muted); }
+.notification-bet-summary dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.notification-bet-error { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 400px) { .notification-bet-summary { grid-template-columns: minmax(0, 1fr); } }
 .notification-body { white-space: pre-wrap; line-height: 1.7; }
-.notification-detail .notification-meta { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 12px; }
-.notifications-load-more { min-height: 44px; padding: 16px; text-align: center; color: var(--muted); font-size: 13px; }
+.notification-detail .notification-meta { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: var(--body-font-size); }
+.notifications-load-more { min-height: 44px; padding: 16px; text-align: center; color: var(--muted); font-size: var(--body-font-size); }
 @media (max-width: 620px) {
   .notifications-toolbar {
     padding-right: 12px;
@@ -477,15 +442,9 @@ onBeforeUnmount(() => {
     padding: 0;
   }
   .notification-summary { gap: 10px; padding: 14px; }
-  .notifications-pagination {
-    gap: 7px;
-    padding-right: 12px;
-    padding-left: 12px;
-  }
-  .notifications-pagination .button {
-    min-width: 0;
-    padding-right: 10px;
-    padding-left: 10px;
-  }
+}
+@media (min-width: 901px) and (pointer: fine) {
+  :global(#app .notifications-panel .notification-tool) { width: var(--control-height) !important; min-width: var(--control-height); padding: 0 !important; }
+  .notification-summary { min-height: 48px; padding: 8px 12px; gap: 8px; }
 }
 </style>

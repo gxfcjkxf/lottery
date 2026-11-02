@@ -181,18 +181,7 @@ func SnapshotDB(ctx context.Context, pool *pgxpool.Pool) (DBSnapshot, error) {
 			count(*) FILTER (WHERE status = 'sent'),
 			count(*) FILTER (WHERE status = 'failed'), 0
 			FROM %s`},
-		{name: "period_cancellations", countSQL: `SELECT
-			count(*) FILTER (WHERE state = 'processing'), 0, 0,
-			count(*) FILTER (WHERE state = 'failed'),
-			count(*) FILTER (WHERE state = 'completed') FROM %s`},
-		{name: "settlement_jobs", countSQL: `SELECT
-			count(*) FILTER (WHERE state IN ('processing','paying','awaiting_approval')), 0, 0,
-			count(*) FILTER (WHERE state = 'failed'),
-			count(*) FILTER (WHERE state = 'completed') FROM %s`},
-		{name: "draw_corrections", countSQL: `SELECT
-			count(*) FILTER (WHERE state IN ('reversing','resettling')), 0, 0,
-			count(*) FILTER (WHERE state = 'failed'),
-			count(*) FILTER (WHERE state = 'completed') FROM %s`},
+		{name: "configured_orders", countSQL: `SELECT count(*) FILTER(WHERE status='placed'),0,0,0,count(*) FILTER(WHERE status='settled') FROM %s`},
 	}
 	for _, spec := range queueSpecs {
 		qualified := pgx.Identifier{schemaFilter, spec.name}.Sanitize()

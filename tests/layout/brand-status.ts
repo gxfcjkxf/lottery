@@ -36,7 +36,7 @@ export function registerBrandStatusTests(reflow = false) {
         }
         expect(request.method()).toBe('GET')
         if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'status_reviewer', super_admin: false, brand_ids: [gameId], permissions: [], permissions_by_brand: { [gameId]: ['brand_operation.view.brand', 'brand_operation.write.brand'] }, platform_permissions: [] } })
-        if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status: 'active' }] })
+        if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z' }] })
         throw Error(`Unexpected status request: ${path}`)
       })
       await page.goto(origins.brand)

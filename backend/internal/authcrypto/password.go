@@ -9,13 +9,14 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
 )
 
 const (
-	passwordMinBytes = 6
-	passwordMaxBytes = 30
+	passwordMinCharacters = 6
+	passwordMaxCharacters = 30
 
 	argonVersion     = 19
 	argonMemoryKiB   = 64 * 1024
@@ -34,7 +35,7 @@ const (
 )
 
 var (
-	ErrInvalidPassword = errors.New("password must be between 6 and 30 bytes")
+	ErrInvalidPassword = errors.New("password must be between 6 and 30 characters")
 	ErrInvalidHash     = errors.New("invalid password hash")
 )
 
@@ -78,7 +79,7 @@ func verifyPassword(password, encodedHash string) (bool, error) {
 }
 
 func validPassword(password string) bool {
-	return len([]byte(password)) >= passwordMinBytes && len([]byte(password)) <= passwordMaxBytes
+	return utf8.ValidString(password) && utf8.RuneCountInString(password) >= passwordMinCharacters && utf8.RuneCountInString(password) <= passwordMaxCharacters
 }
 
 type parsedHash struct {

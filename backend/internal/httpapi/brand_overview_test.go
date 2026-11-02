@@ -64,17 +64,14 @@ func TestBrandOverviewSQLAllSourcesStayWithinBrand(t *testing.T) {
 		`CREATE TEMP TABLE platform_settings(id boolean,timezone text); INSERT INTO platform_settings VALUES(true,'Pacific/Kiritimati')`,
 		`CREATE TEMP TABLE global_users(id text,status text,created_at timestamptz); INSERT INTO global_users VALUES('shared','active',now()-interval '50 days'),('other','active',now()),('deleted','deleted',now())`,
 		`CREATE TEMP TABLE brands(id text,name text,status text); INSERT INTO brands VALUES('a','Alpha','active'),('b','Beta','active')`,
-		`CREATE TEMP TABLE brand_members(id text,brand_id text,global_user_id text,status text,terms_accepted boolean,joined_at timestamptz); INSERT INTO brand_members VALUES('ma','a','shared','normal',true,now()-interval '1 day'),('mb','b','shared','normal',true,now()),('mo','b','other','normal',true,now()),('md','a','deleted','cancelled',true,now())`,
+		`CREATE TEMP TABLE brand_members(id text,brand_id text,global_user_id text,status text,terms_accepted boolean,joined_at timestamptz); INSERT INTO brand_members VALUES('ma','a','shared','normal',true,now()-interval '1 day'),('mb','b','shared','normal',true,now()),('mo','b','other','normal',true,now()),('md','a','deleted','cancelled',true,now()),('mc','a','other','cancelled',true,now())`,
 		`CREATE TEMP TABLE sessions(id text,user_id text,member_id text,brand_id text,revoked_at timestamptz,expires_at timestamptz); INSERT INTO sessions VALUES('sa','shared','ma','a',NULL,now()+interval '1 day'),('sb','shared','mb','b',NULL,now()+interval '1 day')`,
 		`CREATE TEMP TABLE session_activity(session_id text,last_seen_at timestamptz); INSERT INTO session_activity VALUES('sa',now()-interval '6 minutes'),('sb',now())`,
-		`CREATE TEMP TABLE point_buckets(brand_id text,state text,points numeric); INSERT INTO point_buckets VALUES('a','available',9007199254740993),('a','manual_frozen',10),('a','system_frozen',20),('b','available',999999),('b','system_frozen',999999)`,
+		`CREATE TEMP TABLE point_accounts(id text,brand_id text,brand_member_id text); INSERT INTO point_accounts VALUES('pa','a','ma'),('pb','b','mb'),('pd','a','md'),('pc','a','mc')`,
+		`CREATE TEMP TABLE point_buckets(account_id text,brand_id text,state text,points numeric); INSERT INTO point_buckets VALUES('pa','a','available',9007199254740993),('pa','a','manual_frozen',10),('pa','a','system_frozen',20),('pb','b','available',999999),('pb','b','system_frozen',999999),('pd','a','available',66313),('pd','a','manual_frozen',111),('pc','a','available',28),('pc','a','system_frozen',222)`,
 		`CREATE TEMP TABLE withdrawal_orders(brand_id text,state text,points numeric); INSERT INTO withdrawal_orders VALUES('a','reviewing',50),('b','reviewing',999999),('a','paid',200)`,
-		`CREATE TEMP TABLE settlement_jobs(brand_id text,state text); INSERT INTO settlement_jobs VALUES('a','failed'),('b','failed')`,
-		`CREATE TEMP TABLE period_cancellations(brand_id text,state text); INSERT INTO period_cancellations VALUES('a','processing'),('a','failed'),('b','failed')`,
-		`CREATE TEMP TABLE bet_orders(brand_id text,global_user_id text,total_points numeric,prize_points numeric,status text,placed_at timestamptz,settled_at timestamptz,cancelled_at timestamptz); INSERT INTO bet_orders VALUES('a','shared',9007199254740993,0,'abnormal',now(),NULL,NULL),('a','shared',10,25,'won',now(),now(),NULL),('a','shared',20,0,'bet_cancelled',now(),NULL,now()),('b','other',999999,0,'abnormal',now(),NULL,NULL)`,
-		`CREATE TEMP TABLE platform_mark_six_orders(brand_id text,user_id text,total_points numeric,prize_points numeric,refund_points numeric,status text,placed_at timestamptz,settled_at timestamptz); INSERT INTO platform_mark_six_orders VALUES('a','shared',100,0,100,'settled',now(),now()),('b','other',999999,0,999999,'settled',now(),now())`,
-		`CREATE TEMP TABLE platform_canada_orders(brand_id text,user_id text,total_points numeric,prize_points numeric,refund_points numeric,lost_points numeric,profile text,status text,placed_at timestamptz,settled_at timestamptz); INSERT INTO platform_canada_orders VALUES('a','shared',10,0,170,30,'canada_niuniu','settled',now(),now()),('b','other',999999,0,0,999999,'canada_niuniu','settled',now(),now())`,
-		`CREATE TEMP TABLE configured_orders(brand_id text,user_id text,total_points numeric,status text,snapshot jsonb,result jsonb,placed_at timestamptz,settled_at timestamptz); INSERT INTO configured_orders VALUES('a','shared',10,'settled','{"catalog":{"funding":"reserve"}}','{"prize_points":"50","refund_points":"200"}',now(),now()),('a','shared',30,'settled','{"catalog":{"funding":"debit"}}','{"prize_points":"20","refund_points":"10"}',now(),now()),('b','other',999999,'settled','{"catalog":{"funding":"debit"}}','{"prize_points":"0","refund_points":"0"}',now(),now())`,
+		`CREATE TEMP TABLE betting_financial_facts(brand_id text,global_user_id text,total_points numeric,consumed_points numeric,prize_points numeric,status text,placed_at timestamptz,settled_at timestamptz,refund_points numeric DEFAULT 0,snapshot jsonb DEFAULT '{}')`,
+		`INSERT INTO betting_financial_facts VALUES('a','shared',9007199254740993,0,0,'placed',now(),NULL,0,'{}'),('a','shared',10,10,25,'won',now(),now(),0,'{}'),('a','shared',100,0,0,'lost',now(),now(),100,'{}'),('a','shared',10,30,0,'lost',now(),now(),0,'{"catalog":{"funding":"reserve"}}'),('a','shared',10,0,50,'won',now(),now(),0,'{"catalog":{"funding":"reserve"}}'),('a','shared',30,20,20,'won',now(),now(),10,'{}'),('b','other',999999,0,0,'placed',now(),NULL,0,'{}')`,
 	}
 	for _, q := range statements {
 		if _, err := tx.Exec(ctx, q); err != nil {
@@ -93,14 +90,14 @@ func TestBrandOverviewSQLAllSourcesStayWithinBrand(t *testing.T) {
 		return out
 	}
 	out := read()
-	for key, want := range map[string]string{"brand_id": "a", "total_members": "1", "online_members": "0", "available_points": "9007199254740993", "frozen_points": "30", "withdrawal_points": "50", "withdrawal_count": "1", "unsettled_points": "9007199254740993", "abnormal_count": "1", "failed_settlement_count": "1", "cancellation_count": "2"} {
+	for key, want := range map[string]string{"brand_id": "a", "total_members": "1", "online_members": "0", "available_points": "9007199254740993", "frozen_points": "30", "withdrawal_points": "50", "withdrawal_count": "1", "unsettled_points": "9007199254740993"} {
 		if out[key] != want {
 			t.Fatalf("%s=%v want %s", key, out[key], want)
 		}
 	}
 	days := out["days"].([]any)
 	today := days[6].(map[string]any)
-	for key, want := range map[string]string{"stake_points": "9007199254741173", "net_points": "-35", "refund_points": "130", "order_count": "7", "bettor_count": "1", "new_members": "0"} {
+	for key, want := range map[string]string{"stake_points": "9007199254741153", "net_points": "-35", "refund_points": "110", "order_count": "6", "bettor_count": "1", "new_members": "0"} {
 		if today[key] != want {
 			t.Fatalf("today %s=%v want %s", key, today[key], want)
 		}
@@ -121,7 +118,7 @@ func TestBrandOverviewSQLAllSourcesStayWithinBrand(t *testing.T) {
 		t.Fatal("revoked local session counted")
 	}
 	// The same platform-local midnight boundary applies to this brand's orders.
-	if _, err := tx.Exec(ctx, `TRUNCATE bet_orders,platform_mark_six_orders,platform_canada_orders,configured_orders; INSERT INTO bet_orders VALUES('a','shared',11,0,'lost',date_trunc('day',now() AT TIME ZONE 'Pacific/Kiritimati') AT TIME ZONE 'Pacific/Kiritimati',now(),NULL),('a','shared',13,0,'lost',(date_trunc('day',now() AT TIME ZONE 'Pacific/Kiritimati') AT TIME ZONE 'Pacific/Kiritimati')-interval '1 microsecond',now(),NULL)`); err != nil {
+	if _, err := tx.Exec(ctx, `TRUNCATE betting_financial_facts; INSERT INTO betting_financial_facts(brand_id,global_user_id,total_points,consumed_points,prize_points,status,placed_at,settled_at) VALUES ('a','shared',11,11,0,'lost',date_trunc('day',now() AT TIME ZONE 'Pacific/Kiritimati') AT TIME ZONE 'Pacific/Kiritimati',now()),('a','shared',13,13,0,'lost',(date_trunc('day',now() AT TIME ZONE 'Pacific/Kiritimati') AT TIME ZONE 'Pacific/Kiritimati')-interval '1 microsecond',now())`); err != nil {
 		t.Fatal(err)
 	}
 	days = read()["days"].([]any)

@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { expect, test } from "@playwright/test";
 
 const userOrigin = "http://127.0.0.1:5183";
@@ -78,7 +79,7 @@ test("Aurora operator sees Aurora only and cannot read Harbor members", async ({
 
   await page.goto(adminOrigin);
   await expect(page.getByLabel("选择真实后台品牌", { exact: true })).toBeVisible();
-  await page.getByLabel("选择真实后台品牌", { exact: true }).selectOption(auroraBrandId);
+  await selectControl(page.getByLabel("选择真实后台品牌", { exact: true }), auroraBrandId);
   if (test.info().project.name === "mobilepixel7") {
     await page.locator(".mobile-nav button").nth(1).click();
   } else {

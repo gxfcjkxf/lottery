@@ -51,12 +51,6 @@ func TestPostgresSnapshotEmptyThenActualNotificationWork(t *testing.T) {
 	if value, ok := collectedMetric(t, c, "lottery_work_pending", "notification"); !ok || value != 0 {
 		t.Fatalf("empty database notification count = %v, present=%v", value, ok)
 	}
-	if value, ok := collectedMetric(t, c, "lottery_reconciliation_observed", ""); !ok || value != 0 {
-		t.Fatalf("empty database must report no captured business reconciliation, not a healthy-wallet assertion: value=%v present=%v", value, ok)
-	}
-	if value, ok := collectedMetric(t, c, "lottery_reconciliation_discrepancies", ""); !ok || value != 0 {
-		t.Fatalf("empty database discrepancy count = %v, present=%v", value, ok)
-	}
 	if value, ok := collectedMetric(t, c, "lottery_replication_stats_visible", ""); !ok || (value != 0 && value != 1) {
 		t.Fatalf("replication stats visibility should be explicit: value=%v present=%v", value, ok)
 	}
@@ -109,7 +103,7 @@ func TestPostgresSnapshotEmptyThenActualNotificationWork(t *testing.T) {
 	if value, ok := collectedMetric(t, c, "lottery_ops_snapshot_success", ""); !ok || value != 0 {
 		t.Fatal("broken source was exposed as a successful snapshot")
 	}
-	for _, metric := range []string{"lottery_work_pending", "lottery_work_failed", "lottery_reconciliation_discrepancies", "lottery_replication_lag_bytes"} {
+	for _, metric := range []string{"lottery_work_pending", "lottery_work_failed", "lottery_replication_lag_bytes"} {
 		if _, ok := collectedMetric(t, c, metric, ""); ok {
 			t.Fatalf("failed source exposed last-good or synthetic-zero %s", metric)
 		}

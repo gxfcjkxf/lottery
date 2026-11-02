@@ -1,3 +1,4 @@
+import { commissionListParameters } from './commission-list-parameters.mjs';
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
 const obj = (properties, required = Object.keys(properties)) => ({ type: 'object', properties, required, additionalProperties: false });
 const nullable = schema => ({ anyOf: [schema, { type: 'null' }] });
@@ -17,7 +18,7 @@ const admin = (method, suffix, operationId, summary, data, extra = {}) => ({
 });
 
 export const schemas = {
-  CommissionAdjustmentInput: { ...obj({ version, points: ref('NonnegativeInt64String'), reason: ref('Reason') }, ["version", "points"]), description: 'Reason must be valid UTF-8 with no leading or trailing whitespace and at most 500 UTF-8 bytes.' },
+  CommissionAdjustmentInput: { ...obj({ version, points: ref('NonnegativeInt64String'), reason: ref('Reason') }, ["version", "points"]), description: 'Reason must be valid UTF-8 with no leading or trailing whitespace and at most 500 characters.' },
   CommissionPaymentTarget: obj({
     id: ref('UUID'), brand_id: ref('UUID'), payment_id: ref('UUID'), earning_id: ref('UUID'), agent_id: ref('UUID'), member_id: ref('UUID'),
     original_points: ref('NonnegativeInt64String'), state: { type: 'string', enum: ['pending', 'paid'] }, ledger_entry_id: nullable(ref('UUID')), paid_at: nullable(ref('DateTime')),
@@ -34,7 +35,7 @@ export const schemas = {
 };
 
 export const operations = [
-  admin('GET', '/commission-payments/{id}/targets', 'listCommissionPaymentTargets', 'List targets for a commission payment', ref('CommissionPaymentTargetPage'), { parameters: page }),
+  admin('GET', '/commission-payments/{id}/targets', 'listCommissionPaymentTargets', 'List targets for a commission payment', ref('CommissionPaymentTargetPage'), { parameters: [...page,...commissionListParameters('target')] }),
   admin('GET', '/commission-payment-targets/{id}/adjustments', 'listCommissionTargetAdjustments', 'List manual commission adjustments for a target', ref('CommissionAdjustmentPage'), { parameters: page }),
   admin('POST', '/commission-payment-targets/{id}/adjustments', 'createCommissionTargetAdjustment', 'Correct a paid commission target', ref('CommissionAdjustment'), {
     successStatus: 201, permissions: ['commission_adjustment.write.brand'], parameters: [actorHeader], requestBody: ref('CommissionAdjustmentInput'), idempotency: true,

@@ -37,23 +37,19 @@ func TestConfiguredBrowserDOMAutomaticDrawAndSettlement(t *testing.T) {
 	}))
 	defer server.Close()
 	mapping := &platformlottery.FeedMapping{Format: "browser", Browser: &platformlottery.FeedBrowser{WaitSelector: "[data-ready=yes]", TimeoutMS: 5000}, Schedule: "source", TimeFormat: "rfc3339", Period: platformlottery.FeedField{Path: "#issue"}, DrawTime: platformlottery.FeedField{Path: "#time", Attribute: "datetime"}, Regular: &platformlottery.FeedNumbers{FeedField: platformlottery.FeedField{Path: ".ball"}, Count: 6}, Special: &platformlottery.FeedNumbers{FeedField: platformlottery.FeedField{Path: ".ball"}, Offset: 6, Count: 1}, NextPeriod: &platformlottery.FeedField{Path: "#next"}, NextDrawTime: &platformlottery.FeedField{Path: "#next-time", Attribute: "datetime"}}
+	opening := 3600
 	var source platformlottery.DrawSource
 	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
 		var e error
-		source, e = c.s.SaveDrawSource(ctx, tx, c.a, c.g.ID, platformlottery.DrawSourceInput{DrawSource: platformlottery.DrawSource{Name: "Dynamic DOM", Plan: platformlottery.AutomationPlan{SourceType: "mapped", Mapping: mapping, Enabled: true, SourceURL: server.URL}}}, points.Metadata{})
+		source, e = c.s.SaveDrawSource(ctx, tx, c.a, c.g.ID, platformlottery.DrawSourceInput{DrawSource: platformlottery.DrawSource{Name: "Dynamic DOM", Plan: platformlottery.AutomationPlan{SourceType: "mapped", Mapping: mapping, OpenBeforeSeconds: &opening, Enabled: true, SourceURL: server.URL}}}, points.Metadata{})
 		return e
 	})
-	var active platformlottery.AutomationPlan
 	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
 		var e error
-		active, e = c.s.ActivateDrawSource(ctx, tx, c.a, c.g.ID, source.ID, platformlottery.DrawSourceActivation{Revision: 1}, points.Metadata{})
+		_, e = c.s.ActivateDrawSource(ctx, tx, c.a, c.g.ID, source.ID, platformlottery.DrawSourceActivation{Revision: 1}, points.Metadata{})
 		return e
 	})
-	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
-		_, e := c.s.WriteBrandAutomation(ctx, tx, c.b, c.f.brand, c.g.ID, platformlottery.BrandAutomationInput{BrandAutomation: platformlottery.BrandAutomation{RuleVersion: active.Version, Enabled: true}}, points.Metadata{})
-		return e
-	})
-	sources := platformlottery.AutomationSources{Origins: []string{server.URL}, Client: server.Client()}
+
 	if n, e := c.s.CollectAutomaticDraws(ctx, sources); e != nil || n != 0 {
 		t.Fatal("initial dynamic schedule", n, e)
 	}

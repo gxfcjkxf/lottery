@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { expect, test } from '@playwright/test'
 import { origins, gameId, installLayoutApi, expectNoPageOverflow } from './fixture'
 
@@ -20,12 +21,12 @@ export function registerBuiltinRoleTests() {
     if(path==='/api/v1/platform/presentation')return reply({display_name:'Layout',logo_text:'L',logo_url:''})
     if(path==='/api/v1/platform/me')return reply({account:{id:gameId,username:'platform_admin',super_admin:true,platform_permissions:grants}})
     if(path==='/api/v1/platform/platform-settings')return reply({timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',display_name:'Layout',logo_text:'L',logo_url:'',version:1,updated_at:'2026-10-18T00:00:00Z'})
-    if(path==='/api/v1/admin/brands'||path==='/api/v1/platform/brands')return reply({items:[{id:gameId,code:'aurora',name:'Aurora',status:'active'}]})
+    if(path==='/api/v1/admin/brands'||path==='/api/v1/platform/brands')return reply({items:[{id:gameId,code:'aurora',name:'Aurora',status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z'}], total_count: '1'})
     if(path==='/api/v1/admin/users')return reply({items:[],limit:100,offset:0,total_count:'0'})
-    if(path==='/api/v1/platform/accounts'||path==='/api/v1/platform/platform-accounts')return reply({items:[]})
+    if(path==='/api/v1/platform/accounts'||path==='/api/v1/platform/platform-accounts')return reply({items:[], total_count: '0'})
     if(path==='/api/v1/admin/workbench')return route.fulfill({status:403,json:{success:false,error:{code:'PERMISSION_DENIED',message:'No workbench grant'}}})
-    if(path.endsWith('/roles')||path.endsWith('/platform-roles'))return reply({items:roles})
-    if(path.endsWith('/permissions')||path.endsWith('/platform-permissions'))return reply({items:[permission]})
+    if(path.endsWith('/roles')||path.endsWith('/platform-roles'))return reply({items:roles, total_count: String((roles).length)})
+    if(path.endsWith('/permissions')||path.endsWith('/platform-permissions'))return reply({items:[permission], total_count: '1'})
     return route.fallback()
    })
    await page.goto(brandEntry?origins.brand:origins.platform)
@@ -40,7 +41,7 @@ export function registerBuiltinRoleTests() {
       await Promise.all(el.getAnimations().map(animation=>animation.finished))
      })
      await expectNoPageOverflow(page)
-     await expect(page.locator('.topbar .locale-picker__trigger')).toHaveCSS('height',width>900?'36px':'44px')
+     await expect(page.locator('.topbar .locale-picker__trigger')).toHaveCSS('height',width>900?'32px':'44px')
     }
     await page.setViewportSize(viewport)
     await page.locator('.topbar .locale-picker__trigger').evaluate(async el=>{
@@ -51,7 +52,7 @@ export function registerBuiltinRoleTests() {
    const label=zh?'系统管理员':'System administrator',note=zh?'系统内置角色，不可修改':'System built-in role. Changes are not allowed.'
    if(brandEntry){
     await expect(page.locator('.app-shell')).toBeVisible()
-    const name=zh?'账号与权限':'Accounts and permissions'
+    const name=zh?'角色权限':'Roles and permissions'
     if(await page.locator('.mobile-nav').isVisible()){
      await page.locator('.mobile-nav button').last().click()
      await page.locator('.mobile-more-menu').getByRole('button',{name:new RegExp(name)}).click()
@@ -67,10 +68,29 @@ export function registerBuiltinRoleTests() {
     if (!platformRole && await page.locator('button[aria-controls="platform-brand-tabs"]').getAttribute('aria-expanded') === 'false') await page.locator('button[aria-controls="platform-brand-tabs"]').click()
     const name=platformRole?(zh?'管理账号':'Admin accounts'):(zh?'后台账号':'Back-office accounts')
     await page.getByRole('button',{name,exact:true}).filter({visible:true}).click()
-    if(!platformRole)await page.locator('.topbar-brand-picker select').selectOption(gameId)
+    if(!platformRole)await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), gameId)
     await page.getByRole('tab',{name:zh?'角色':'Roles',exact:true}).click()
    }
    const list=brandEntry?page.locator('.access-page .listing'):page.getByTestId('platform-access-list')
+   if(brandEntry){
+    const pagination=list.locator('.table-pagination'),actions=pagination.locator('.table-pagination-actions')
+    const viewport=page.viewportSize()!
+    const sizes=info.project.name.includes('reflow')?[viewport,{width:320,height:568}]:[viewport]
+    for(const size of sizes){
+     await page.setViewportSize(size)
+     await expect(pagination).toBeVisible()
+     await expect(pagination).toHaveCSS('display','flex')
+     await expect(actions).toHaveCSS('gap','8px')
+     await expect(actions.getByRole('button')).toHaveCount(2)
+     for(const button of await actions.getByRole('button').all()){
+      await expect(button).toBeDisabled()
+      await expect(button).toHaveCSS('height',size.width>900&&!await page.evaluate(()=>matchMedia('(pointer: coarse)').matches)?'32px':'44px')
+     }
+     await expectNoPageOverflow(page)
+     await list.screenshot({path:info.outputPath(`role-pagination-${locale}-${size.width}.png`)})
+    }
+    await page.setViewportSize(viewport)
+   }
    const row=list.locator(brandEntry?'article.record':'tbody tr').filter({has:page.getByRole('button',{name:label,exact:true})})
    await expect(row.getByRole('button')).toHaveCount(1)
    await row.getByRole('button',{name:label,exact:true}).click()
@@ -78,7 +98,7 @@ export function registerBuiltinRoleTests() {
    await expect(list).not.toContainText(note)
    await expect(dialog).not.toContainText(note);await expect(dialog).toContainText(label)
    await expect(dialog).not.toContainText(zh?'引导角色':'Bootstrap role')
-   await expect(dialog.locator('input,select,textarea')).toHaveCount(0)
+   await expect(dialog.locator("input,.select-control-trigger,textarea")).toHaveCount(0)
    await expect(dialog.getByRole('button')).toHaveCount(1)
    await expectNoPageOverflow(page)
    await page.screenshot({path:info.outputPath(`builtin-role-${surface}-${locale}.png`)})

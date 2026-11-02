@@ -16,8 +16,10 @@ test('agent management uses design primitives that are also used by the existing
   for (const css of ['management', 'controls', 'key-value', 'empty-state', 'login-entry']) assert.ok(entry.includes(`@lottery/shared/${css}.css`))
   for (const file of ['admin-web/src/App.vue', 'platform-web/src/CommissionPanel.vue']) {
     const source = read(file)
-    for (const cls of ['console-panel', 'console-stack']) assert.ok(source.includes(cls), file + ': shared primitive not actually used: ' + cls)
+    assert.ok(source.includes('@lottery/shared/ManagementList.vue'), file + ': shared list shell must be imported')
+    assert.ok(source.includes('<ManagementList'), file + ': shared list shell must actually be rendered')
   }
+  assert.match(read('shared/src/ManagementList.vue'), /class="panel console-panel management-list"/)
   assert.ok(read('admin-web/src/App.vue').includes('@lottery/shared/BrandLockup.vue'))
   assert.ok(read('shared/src/ManagementShell.vue').includes('./BrandLockup.vue'))
   assert.equal(parse(read('shared/src/ManagementShell.vue')).descriptor.styles.length, 0)
@@ -32,16 +34,20 @@ test('account dialogs, order records and ledger tables are actually shared with 
     }
     assert.doesNotMatch(source, /<DetailModal[^>]+class="console-account-dialog"/)
   }
-  for(const file of ['user-web/src/BettingHistory.vue','agent-web/src/pages/MemberBetsPage.vue']) assert.ok(read(file).includes('@lottery/shared/OrderHistoryRecord.vue'))
+  assert.ok(read('user-web/src/BettingHistory.vue').includes('./BettingHistoryTable.vue'))
+  assert.ok(read('agent-web/src/pages/MemberBetsPage.vue').includes('@lottery/shared/OrderHistoryRecord.vue'))
   for(const file of ['platform-web/src/WalletPanel.vue','agent-web/src/pages/CommissionPage.vue']) assert.ok(read(file).includes('@lottery/shared/ManagementTable.vue'))
   const dialog=read('shared/src/ChangePasswordDialog.vue')
   assert.match(dialog,/v-write-guard="busy"/)
   assert.ok(dialog.includes('WriteFormActions'))
-  assert.match(read('shared/src/WriteFormActions.vue'),/:disabled="busy\|\|frozen"/)
+  assert.match(dialog,/:close-disabled="busy \|\| frozen"/)
+  assert.match(read('shared/src/WriteFormActions.vue'),/:disabled="busy\|\|invalid"/)
+  assert.doesNotMatch(read('shared/src/WriteFormActions.vue'),/cancelLabel|emit\('cancel'\)/)
 })
 
 test('agent UI has no private table, paging, filter, or creation field renderer', () => {
   const pairs=[
+    ['ManagementList','agent-web/src/pages/MembersPage.vue','admin-web/src/App.vue','platform-web/src/App.vue'],
     ['ManagementFrame','shared/src/ManagementShell.vue','admin-web/src/App.vue'],
     ['ManagementTable','agent-web/src/pages/MembersPage.vue','admin-web/src/App.vue'],
     ['ManagementTable','agent-web/src/pages/ChildrenPage.vue','platform-web/src/WalletPanel.vue'],
@@ -73,7 +79,9 @@ test('agent UI has no private table, paging, filter, or creation field renderer'
 test('agent invitations reuse the referral link renderer and the user register protocol', () => {
   const agent=read('agent-web/src/App.vue'),user=read('user-web/src/JoinCodesPanel.vue'),component=read('shared/src/RegistrationLink.vue')
   for(const source of [agent,user])assert.ok(source.includes('@lottery/shared/RegistrationLink.vue'))
-  assert.ok(agent.includes("registrationShareLink(import.meta.env.VITE_USER_APP_ORIGIN,'agent',me.value.code)"))
+  assert.ok(agent.includes("registrationShareLink(me.value.user_origin,'agent',me.value.code)"))
+  assert.match(agent, /if\(!me\.value\?\.code\|\|!me\.value\.user_origin\)return null/)
+  assert.doesNotMatch(agent, /VITE_USER_APP_ORIGIN/)
   assert.ok(user.includes("registrationShareLink(window.location.origin,'referral',code.code)"))
   assert.doesNotMatch(agent,/navigator\.clipboard|navigator\.share/)
   assert.ok(component.includes('navigator.clipboard.writeText(props.url)'))
@@ -90,7 +98,7 @@ test('background fetch is not globally intercepted and explicit UI operations ow
   const loading = read('shared/src/global-loading.ts')
   assert.match(loading, /finally\s*\{\s*foregroundOperations\.value--/)
   assert.deepEqual(loadingActionCandidates().map(({ path, prop }) => `${path}:${prop.loc.start.line}`), [])
-  assert.match(read('user-web/src/BettingPanel.vue'), /void loadCatalog\(true\)/)
+  assert.match(read('user-web/src/ConfiguredBetting.vue'), /withGlobalLoading\(preview\)/)
   assert.match(read('user-web/src/BettingHistory.vue'), /void load\(pageIndex\.value, cursors\.value\[pageIndex\.value\] \?\? null, true\)/)
   assert.doesNotMatch(read('shared/src/session-replacement.ts'), /withGlobalLoading/)
   assert.doesNotMatch(read('user-web/src/HeaderPoints.vue'), /withGlobalLoading/)
@@ -137,6 +145,26 @@ test('pure page loading placeholders must publish through the global status dire
 test('account refresh starts loading rather than showing an empty error container', () => {
   const page = read('user-web/src/Page.vue')
   assert.match(page, /const profileLoading = ref\(true\)/)
-  assert.match(page, /<p v-if="profileError" class="auth-error"/)
+  assert.match(page, /useOperationToast\(profileError, value => displayPublicError\(value\), 'error'\)/)
   assert.doesNotMatch(page, /<div v-if="profileLoading" class="detail-panel"/)
+})
+
+test('global loading status directives cannot hide lists or tables with business rows', () => {
+  const walk = dir => readdirSync(new URL('../../' + dir, import.meta.url), { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? walk(dir + '/' + entry.name) : [dir + '/' + entry.name])
+  const containsRows = node => node.type === 1 && (
+    node.props.some(prop => prop.type === 7 && prop.name === 'for') ||
+    ['table', 'ManagementTable', 'OrderHistoryRecord'].includes(node.tag)
+  ) || (node.children ?? []).some(containsRows)
+  const inspect = (node, file) => {
+    if (node.type === 1 && node.props.some(prop => prop.type === 7 && prop.name === 'global-loading')) {
+      assert.equal(containsRows(node), false, `${file}:${node.loc.start.line}: progress status must be separate from business rows`)
+    }
+    for (const child of node.children ?? []) inspect(child, file)
+  }
+  for (const dir of ['user-web', 'admin-web', 'platform-web', 'agent-web', 'shared']) {
+    for (const file of walk(dir + '/src').filter(path => path.endsWith('.vue'))) {
+      const ast = parse(read(file)).descriptor.template?.ast
+      if (ast) inspect(ast, file)
+    }
+  }
 })

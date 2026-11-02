@@ -288,8 +288,8 @@ func TestFreshSchemaContainsNotificationPermissions(t *testing.T) {
 	var n int
 	if e := s.DB.QueryRow(ctx, `SELECT count(*) FROM permissions WHERE key = ANY($1::text[])`, []string{
 		"notification.view.brand", "notification.retry.brand", "notification.view.platform",
-		"notification_template.view.brand", "notification_template.view.platform", "notification_template.write.brand",
-	}).Scan(&n); e != nil || n != 6 {
+		"notification_template.view.platform", "notification_template.write.platform",
+	}).Scan(&n); e != nil || n != 5 {
 		t.Fatal(n, e)
 	}
 }

@@ -1,0 +1,49 @@
+.commission-workspace { display: grid; gap: 12px; min-width: 0; color: var(--ink); }
+.commission-workspace *, .commission-detail * { min-width: 0; box-sizing: border-box; }
+.commission-heading, .commission-toolbar, .commission-actions, .commission-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.commission-heading { justify-content: space-between; }
+.commission-heading h1, .commission-heading h2 { margin: 0; }
+.commission-toolbar { align-items: end; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.commission-toolbar label { display: grid; grid-template-columns: minmax(0,1fr); gap: 4px; max-width: 100%; color: var(--ink-secondary); }
+.commission-toolbar .association-filter { width: 100%; }
+.commission-workspace .table-wrap { min-width: 0; }
+.commission-workspace .console-table td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.commission-workspace .console-table td { overflow-wrap: anywhere; }
+.commission-link { border: 0; background: transparent; color: var(--primary); font: inherit; text-align: left; cursor: pointer; padding: 0; overflow-wrap: anywhere; }
+.commission-status { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; background: var(--canvas); color: var(--ink-secondary); }
+.commission-status.ready, .commission-status.paid { color: var(--primary-dark); background: var(--primary-light); }
+.commission-status.failed, .commission-status.blocked { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }
+.commission-status.stale, .commission-status.awaiting_approval { color: var(--ink); background: var(--accent-light); }
+.commission-tabs { border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.commission-tabs button[aria-selected=true] { background: var(--primary-light); border-color: var(--primary); color: var(--primary-dark); }
+.commission-detail { display: grid; gap: 12px; min-width: 0; }
+.commission-detail .panel { margin: 0; }
+.commission-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 8px; }
+.commission-metrics > div { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.commission-metrics dt { color: var(--muted); }
+.commission-metrics dd { margin: 6px 0 0; font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.commission-note { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.commission-warning { padding: 10px 12px; border-left: 3px solid var(--warning); background: var(--accent-light); overflow-wrap: anywhere; }
+.commission-technical { color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px; overflow-wrap: anywhere; }
+.commission-technical summary { cursor: pointer; }
+.commission-facts { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 6px 12px; }
+.commission-facts dt { color: var(--muted); }
+.commission-facts dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+ .commission-workspace .console-table td.numeric { text-align: left; }
+ .commission-heading { align-items: flex-start; }
+ .commission-toolbar label { flex: 1 1 180px; }
+ .commission-toolbar label:has(>.select-control), .commission-toolbar label:has(>.association-filter) { flex: 0 1 auto; }
+ .commission-toolbar > .commission-actions { flex-basis: 100%; }
+ .commission-tabs { gap: 4px; }
+}
+
+/* Shared summary and expanded metrics for cycle reconciliation and posting activity. */
+.report-view .totals { display: grid; gap: 8px; min-width: 0; }
+.report-view .totals dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 8px; margin: 0; }
+.report-view .totals dl > div { display: grid; gap: 5px; min-width: 0; border: 1px solid var(--line-subtle); border-radius: 8px; padding: 10px; }
+.report-view .totals dt { color: var(--muted); font-size: var(--body-font-size); }
+.report-view .totals dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) {
+ .report-view .totals dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

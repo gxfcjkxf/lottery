@@ -20,6 +20,8 @@ export interface AdminAccount {
 }
 
 export interface AdminBrand {
+  allow_custom_games: boolean;
+  has_custom_games: boolean;
   id: string;
   code: string;
   name: string;
@@ -120,11 +122,12 @@ export function createAdminApi(fetcher: FetchLike = fetch) {
       identifier: string,
       password: string,
       idempotencyKey = createIdempotencyKey(),
+      captcha: { captcha_id?: string; captcha_answer?: string } = {},
     ) {
       // The response is intentionally discarded: the browser session is the HttpOnly cookie.
       return request<unknown>("/api/v1/admin/auth/login", {
         method: "POST",
-        body: { identifier, password },
+        body: { identifier, password, ...captcha },
         idempotencyKey,
       });
     },
@@ -177,6 +180,15 @@ export function createAdminApi(fetcher: FetchLike = fetch) {
         { method: "PATCH", brandId, body, idempotencyKey },
       );
     },
+    async deleteMember(brandId: string, memberId: string, idempotencyKey: string) {
+      const data = await request<{ audit_log_id: string }>(`/api/v1/admin/users/${encodeURIComponent(memberId)}/delete`, {
+        method: 'POST', brandId, body: {}, idempotencyKey,
+      });
+      if (!data || typeof data.audit_log_id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.audit_log_id)) {
+        throw new AdminApiError('Invalid deletion receipt', 502, 'INVALID_RESPONSE');
+      }
+      return data;
+    },
     kickUser(
       brandId: string,
       memberId: string,
@@ -202,5 +214,3 @@ export function createAdminApi(fetcher: FetchLike = fetch) {
     },
   };
 }
-
-export type AdminApi = ReturnType<typeof createAdminApi>;

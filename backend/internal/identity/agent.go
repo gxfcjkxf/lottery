@@ -20,8 +20,10 @@ type AgentSession struct {
 	Username  string `json:"username"`
 }
 type AgentLoginInput struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	CaptchaID     string `json:"captcha_id,omitempty"`
+	CaptchaAnswer string `json:"captcha_answer,omitempty"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
 }
 type AgentPasswordInput struct {
 	CurrentPassword string `json:"current_password"`
@@ -45,7 +47,7 @@ func (s *Store) AgentChangePassword(ctx context.Context, tx pgx.Tx, session Agen
 		return mutation.Fail(429, "AUTH_BUSY", "登录繁忙，请稍后重试"), nil
 	}
 	if errors.Is(err, authcrypto.ErrInvalidPassword) {
-		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字节"), nil
+		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字符"), nil
 	}
 	if err != nil {
 		return mutation.Result{}, err
@@ -72,7 +74,7 @@ type AgentAuthentication struct {
 func (s *Store) AgentLogin(ctx context.Context, tx pgx.Tx, brand string, in AgentLoginInput) (mutation.Result, error) {
 	var v AgentSession
 	var hash string
-	err := tx.QueryRow(ctx, `SELECT id::text,brand_id::text,username,password_hash FROM agent_accounts WHERE brand_id=$1 AND username=$2 FOR UPDATE`, brand, strings.ToLower(strings.TrimSpace(in.Username))).Scan(&v.AccountID, &v.BrandID, &v.Username, &hash)
+	err := tx.QueryRow(ctx, `SELECT id::text,brand_id::text,username,password_hash FROM agent_accounts WHERE (NULLIF($1,'')::uuid IS NULL OR brand_id=NULLIF($1,'')::uuid) AND username=$2 FOR UPDATE`, brand, strings.ToLower(strings.TrimSpace(in.Username))).Scan(&v.AccountID, &v.BrandID, &v.Username, &hash)
 	found := err == nil
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return mutation.Result{}, err
@@ -87,6 +89,7 @@ func (s *Store) AgentLogin(ctx context.Context, tx pgx.Tx, brand string, in Agen
 	if !found || !valid || err != nil {
 		return mutation.Fail(401, "AUTH_INVALID_CREDENTIALS", "账号或密码不正确"), nil
 	}
+	brand = v.BrandID
 	var active bool
 	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM agent_nodes n JOIN brands b ON b.id=n.brand_id WHERE n.brand_id=$1 AND n.member_id=$2 AND b.status<>'disabled' AND NOT EXISTS(SELECT 1 FROM agent_nodes a WHERE a.brand_id=n.brand_id AND a.id=ANY(n.path) AND a.config->>'status'<>'active'))`, brand, v.AccountID).Scan(&active); err != nil {
 		return mutation.Result{}, err
@@ -115,7 +118,7 @@ func (s *Store) AgentAuthenticateTx(ctx context.Context, tx pgx.Tx, brand, token
 		return v, ErrSession
 	}
 	digest := authcrypto.DigestSessionToken(token)
-	err := tx.QueryRow(ctx, `SELECT s.id::text,a.id::text,a.brand_id::text,a.username FROM agent_sessions s JOIN agent_accounts a ON a.id=s.agent_account_id AND a.brand_id=s.brand_id JOIN agent_nodes n ON n.member_id=a.id AND n.brand_id=a.brand_id JOIN brands b ON b.id=a.brand_id WHERE s.brand_id=$1 AND s.token_hash=decode($2,'hex') AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND b.status<>'disabled' AND NOT EXISTS(SELECT 1 FROM agent_nodes p WHERE p.brand_id=n.brand_id AND p.id=ANY(n.path) AND p.config->>'status'<>'active') FOR UPDATE OF s`, brand, hex.EncodeToString(digest[:])).Scan(&v.ID, &v.AccountID, &v.BrandID, &v.Username)
+	err := tx.QueryRow(ctx, `SELECT s.id::text,a.id::text,a.brand_id::text,a.username FROM agent_sessions s JOIN agent_accounts a ON a.id=s.agent_account_id AND a.brand_id=s.brand_id JOIN agent_nodes n ON n.member_id=a.id AND n.brand_id=a.brand_id JOIN brands b ON b.id=a.brand_id WHERE (NULLIF($1,'')::uuid IS NULL OR s.brand_id=NULLIF($1,'')::uuid) AND s.token_hash=decode($2,'hex') AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND b.status<>'disabled' AND NOT EXISTS(SELECT 1 FROM agent_nodes p WHERE p.brand_id=n.brand_id AND p.id=ANY(n.path) AND p.config->>'status'<>'active') FOR UPDATE OF s`, brand, hex.EncodeToString(digest[:])).Scan(&v.ID, &v.AccountID, &v.BrandID, &v.Username)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return v, ErrSession
 	}

@@ -14,6 +14,6 @@ test('platform detail dialogs do not nest page cards or repeat their modal title
   }
   assert.ok(dialogs >= 11)
   const recharge = readFileSync(new URL('RechargesPanel.vue', root), 'utf8')
-  assert.match(recharge, /<details class="detail-technical">/)
+  assert.doesNotMatch(recharge, /<details class="detail-technical">/)
   assert.doesNotMatch(recharge.slice(recharge.indexOf('<DetailModal')), /\{\{ copy\.member \}\}/)
 })

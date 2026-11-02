@@ -10,6 +10,6 @@ defineEmits<{ close: [] }>()
   </DetailModal>
 </template>
 <style>
-dialog.detail-modal.betting-sheet{width:min(680px,100%);max-width:100%;max-height:calc(100dvh - 16px);margin:auto auto 0;border-radius:var(--radius) var(--radius) 0 0}
+dialog.detail-modal.betting-sheet{width:min(680px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px)}
 .betting-sheet .detail-modal-content{display:grid;gap:8px;padding-bottom:max(12px,env(safe-area-inset-bottom))}
 </style>

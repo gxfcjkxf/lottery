@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/andybalholm/cascadia"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
@@ -69,11 +70,11 @@ type FeedReading struct {
 }
 
 func (m FeedMapping) Validate() error {
-	if m.Format != "json" && m.Format != "html" && m.Format != "browser" || m.Schedule != "interval" && m.Schedule != "source" {
+	if m.Format != "json" && m.Format != "html" && m.Format != "browser" || m.Schedule != "interval" && m.Schedule != "source" && m.Schedule != "game" {
 		return ErrInvalid
 	}
 	if m.Format == "browser" {
-		if m.Browser == nil || m.Browser.TimeoutMS < 1000 || m.Browser.TimeoutMS > 10000 || len(m.Browser.WaitSelector) > 512 {
+		if m.Browser == nil || m.Browser.TimeoutMS < 1000 || m.Browser.TimeoutMS > 10000 || utf8.RuneCountInString(m.Browser.WaitSelector) > 512 {
 			return ErrInvalid
 		}
 		if _, e := cascadia.Compile(m.Browser.WaitSelector); e != nil || m.Browser.WaitSelector == "" {
@@ -437,8 +438,8 @@ func parseFeed(m FeedMapping, body []byte, responses map[string]json.RawMessage)
 	return out, nil
 }
 func FetchMappedFeed(ctx context.Context, s AutomationSources, p AutomationPlan, period, game string) (FeedReading, error) {
-	if p.Mapping == nil || p.Mapping.Validate() != nil || !s.Allows(p.SourceURL) {
-		return FeedReading{}, ErrInvalid
+	if err := validateSourceRuntime(s, p); err != nil {
+		return FeedReading{}, err
 	}
 	u, e := url.Parse(p.SourceURL)
 	if e != nil {
@@ -456,7 +457,7 @@ func FetchMappedFeed(ctx context.Context, s AutomationSources, p AutomationPlan,
 	if p.CredentialRef != "" {
 		token = os.Getenv(p.CredentialRef)
 		if token == "" {
-			return FeedReading{}, ErrInvalid
+			return FeedReading{}, &FeedError{Reason: "credential_missing"}
 		}
 	}
 	if p.Mapping.Format == "browser" {
@@ -464,7 +465,11 @@ func FetchMappedFeed(ctx context.Context, s AutomationSources, p AutomationPlan,
 		if e != nil {
 			return FeedReading{}, e
 		}
-		return parseFeed(*p.Mapping, []byte(body.HTML), body.Responses)
+		reading, err := parseFeed(*p.Mapping, []byte(body.HTML), body.Responses)
+		if err != nil {
+			return FeedReading{}, &FeedError{Reason: "response_invalid", Cause: err}
+		}
+		return reading, nil
 	}
 	req, e := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 	if e != nil {
@@ -477,17 +482,21 @@ func FetchMappedFeed(ctx context.Context, s AutomationSources, p AutomationPlan,
 	}
 	resp, e := s.Client.Do(req)
 	if e != nil {
-		return FeedReading{}, e
+		return FeedReading{}, &FeedError{Reason: "network_error"}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return FeedReading{}, ErrInvalid
+		return FeedReading{}, &FeedError{Reason: "http_status_" + strconv.Itoa(resp.StatusCode)}
 	}
 	body, e := io.ReadAll(io.LimitReader(resp.Body, 1048577))
 	if e != nil {
-		return FeedReading{}, e
+		return FeedReading{}, &FeedError{Reason: "network_error"}
 	}
-	return ParseFeed(*p.Mapping, body)
+	reading, err := ParseFeed(*p.Mapping, body)
+	if err != nil {
+		return FeedReading{}, &FeedError{Reason: "response_invalid", Cause: err}
+	}
+	return reading, nil
 }
 
 func validateMappingModel(p AutomationPlan, model rules.Model) error {

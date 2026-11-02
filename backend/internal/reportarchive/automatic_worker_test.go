@@ -33,7 +33,7 @@ func automaticPolicy(t *testing.T, s Service, a access.Account, in AutomaticPoli
 }
 func automaticPast(t *testing.T, s Service, a access.Account, days int) AutomaticPolicy {
 	key := automaticBrandNow(t, s).AddDate(0, 0, -days).Format("2006-01-02")
-	return automaticPolicy(t, s, a, AutomaticPolicyInput{Version: 1, DailyEnabled: true, DailyStartPeriod: &key, Reason: "explicit saved start for isolated core proof"})
+	return automaticPolicy(t, s, a, AutomaticPolicyInput{AutomaticSchedule: AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1}, Version: 1, DailyEnabled: true, DailyStartPeriod: &key, Reason: "explicit saved start for isolated core proof"})
 }
 
 // Discovery uses the database clock and brand civil calendar, not the test
@@ -123,7 +123,7 @@ func TestAutomaticArchiveMonthlyConcurrentDiscoveryAndDisabledBrand(t *testing.T
 	// Start at the previous calendar month, not a fixed number of elapsed days.
 	now := automaticBrandNow(t, s)
 	key := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, -1, 0).Format("2006-01")
-	automaticPolicy(t, s, a, AutomaticPolicyInput{Version: 1, MonthlyEnabled: true, MonthlyStartPeriod: &key, Reason: "explicit monthly core proof"})
+	automaticPolicy(t, s, a, AutomaticPolicyInput{AutomaticSchedule: AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1}, Version: 1, MonthlyEnabled: true, MonthlyStartPeriod: &key, Reason: "explicit monthly core proof"})
 	var wg sync.WaitGroup
 	results := make(chan int, 2)
 	failures := make(chan error, 2)
@@ -176,15 +176,15 @@ func TestAutomaticArchiveExistingManualSkippedAndPolicyPausePreservesQueue(t *te
 	ctx := context.Background()
 	manual := archiveCreate(t, s, a, pastInput())
 	key := manual.Window.PeriodKey
-	p := automaticPolicy(t, s, a, AutomaticPolicyInput{Version: 1, DailyEnabled: true, DailyStartPeriod: &key, Reason: "existing retained archive core proof"})
+	p := automaticPolicy(t, s, a, AutomaticPolicyInput{AutomaticSchedule: AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1}, Version: 1, DailyEnabled: true, DailyStartPeriod: &key, Reason: "existing retained archive core proof"})
 	if n, e := s.DiscoverAutomatic(ctx, 1); e != nil || n != 1 {
 		t.Fatal(n, e)
 	}
-	p = automaticPolicy(t, s, a, AutomaticPolicyInput{Version: p.Version, DailyStartPeriod: p.DailyStartPeriod, Reason: "pause automatic processing"})
+	p = automaticPolicy(t, s, a, AutomaticPolicyInput{AutomaticSchedule: AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1}, Version: p.Version, DailyStartPeriod: p.DailyStartPeriod, Reason: "pause automatic processing"})
 	if n, e := s.ProcessAutomatic(ctx, 20); e != nil || n != 0 {
 		t.Fatal("disabled policy processed", n, e)
 	}
-	p = automaticPolicy(t, s, a, AutomaticPolicyInput{Version: p.Version, DailyEnabled: true, DailyStartPeriod: p.DailyStartPeriod, Reason: "resume pending saved scopes"})
+	p = automaticPolicy(t, s, a, AutomaticPolicyInput{AutomaticSchedule: AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1}, Version: p.Version, DailyEnabled: true, DailyStartPeriod: p.DailyStartPeriod, Reason: "resume pending saved scopes"})
 	if n, e := s.ProcessAutomatic(ctx, 20); e != nil || n != 1 {
 		t.Fatal(n, e)
 	}
@@ -202,11 +202,15 @@ func TestAutomaticArchiveSkippedCivilDateKeepsPrecedingPeriod(t *testing.T) {
 	t.Parallel()
 	s, a := archiveFixture(t)
 	ctx := context.Background()
-	if _, err := s.DB.Exec(ctx, `UPDATE brands SET timezone='Pacific/Apia' WHERE id=$1`, testBrand); err != nil {
+	if _, err := s.DB.Exec(ctx, `UPDATE platform_settings SET timezone='Pacific/Apia' WHERE id=true AND $1::uuid IS NOT NULL`, testBrand); err != nil {
+		t.Fatal(err)
+	}
+	var policyVersion int64
+	if err := s.DB.QueryRow(ctx, `SELECT version FROM brand_report_archive_policies WHERE brand_id=$1`, testBrand).Scan(&policyVersion); err != nil {
 		t.Fatal(err)
 	}
 	key := "2011-12-29"
-	automaticPolicy(t, s, a, AutomaticPolicyInput{Version: 1, DailyEnabled: true, DailyStartPeriod: &key, Reason: "synthetic skipped civil date proof"})
+	automaticPolicy(t, s, a, AutomaticPolicyInput{AutomaticSchedule: AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1}, Version: policyVersion, DailyEnabled: true, DailyStartPeriod: &key, Reason: "synthetic skipped civil date proof"})
 	if n, err := s.DiscoverAutomatic(ctx, 2); err != nil || n != 2 {
 		t.Fatal("skipped-date bounded discovery", n, err)
 	}
@@ -224,7 +228,10 @@ func TestAutomaticArchiveSkippedCivilDateKeepsPrecedingPeriod(t *testing.T) {
 	if !keys["2011-12-29"] || !keys["2011-12-31"] || keys["2011-12-30"] {
 		t.Fatal("valid date lost or nonexistent date manufactured", keys)
 	}
-	// The manually requested first version uses the same corrected boundaries.
+	// Manual archive ranges still follow the brand timezone.
+	if _, err := s.DB.Exec(ctx, `UPDATE brands SET timezone='Pacific/Apia' WHERE id=$1`, testBrand); err != nil {
+		t.Fatal(err)
+	}
 	manual := archiveCreate(t, s, a, Input{Kind: Daily, PeriodKey: "2011-12-28", Reason: "manual boundary parity"})
 	if manual.Window.To.UTC().Format(time.RFC3339) != "2011-12-29T10:00:00Z" {
 		t.Fatal(manual.Window)
@@ -307,7 +314,7 @@ func TestAutomaticArchivePolicyAuditAndPermissionsFailClosed(t *testing.T) {
 	s, a := archiveFixture(t)
 	ctx := context.Background()
 	key := automaticBrandNow(t, s).Format("2006-01-02")
-	in := AutomaticPolicyInput{Version: 1, DailyEnabled: true, DailyStartPeriod: &key, Reason: "current activation core proof"}
+	in := AutomaticPolicyInput{AutomaticSchedule: AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1}, Version: 1, DailyEnabled: true, DailyStartPeriod: &key, Reason: "current activation core proof"}
 	platformViewOnly := automaticActor(a)
 	platformViewOnly.Roles = []access.Role{{BrandID: testBrand, Permissions: []access.Permission{{Resource: "report_archive_policy", Action: "write", Scope: access.ScopeBrand}}}, {Permissions: []access.Permission{{Resource: "report_archive", Action: "view", Scope: access.ScopePlatform}}}}
 	for _, actor := range []access.Account{a, platformViewOnly, func() access.Account { v := automaticActor(a); v.SuperAdmin = true; return v }()} {

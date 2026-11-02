@@ -344,6 +344,38 @@ func TestAuthHTTPJoinCodeRegistrationReplayAndIsolation(t *testing.T) {
 	if auth.User.Username != "join_auth_success" || auth.Member.BrandID != managedBrand || auth.AccessToken == "" {
 		t.Fatalf("unexpected registration response: %+v", auth)
 	}
+	// Only the current member's direct referrals within the current brand are public.
+	referrals := pointsCall(f.managementHTTP, "GET", "/api/v1/me/referrals?limit=1&offset=0", "", f.userToken, managedBrand, "", nil)
+	var referred attribution.ReferralPage
+	managedData(t, referrals, &referred)
+	if referrals.Code != 200 || referred.BrandID != managedBrand || referred.MemberID != f.memberID || referred.TotalCount != "1" || len(referred.Items) != 1 || referred.Items[0].ID != auth.Member.ID || referred.Items[0].DisplayName != auth.User.Username {
+		t.Fatalf("unexpected referrals: %d %+v", referrals.Code, referred)
+	}
+	for _, private := range []string{"global_user_id", "phone", "password", "attribution_snapshot"} {
+		if strings.Contains(referrals.Body.String(), private) {
+			t.Fatalf("referral privacy leak: %s", private)
+		}
+	}
+	ownReferrals := pointsCall(f.managementHTTP, "GET", "/api/v1/me/referrals", "", auth.AccessToken, managedBrand, "", nil)
+	managedData(t, ownReferrals, &referred)
+	if ownReferrals.Code != 200 || referred.TotalCount != "0" || len(referred.Items) != 0 {
+		t.Fatalf("referrals leaked across members: %s", ownReferrals.Body.String())
+	}
+	nextReferrals := pointsCall(f.managementHTTP, "GET", "/api/v1/me/referrals?limit=1&offset=1", "", f.userToken, managedBrand, "", nil)
+	managedData(t, nextReferrals, &referred)
+	if nextReferrals.Code != 200 || referred.TotalCount != "1" || len(referred.Items) != 0 {
+		t.Fatal(nextReferrals.Body.String())
+	}
+	for _, query := range []string{"?member_id=" + auth.Member.ID, "?brand_id=" + managedBrand, "?limit=0", "?offset=-1"} {
+		denied := pointsCall(f.managementHTTP, "GET", "/api/v1/me/referrals"+query, "", f.userToken, managedBrand, "", nil)
+		if denied.Code != 400 {
+			t.Fatalf("query accepted: %s %d", query, denied.Code)
+		}
+	}
+	foreignReferrals := pointsCall(f.managementHTTP, "GET", "/api/v1/b/harbor/me/referrals", "", f.userToken, pointsBrandB, "", nil)
+	if foreignReferrals.Code != 401 && foreignReferrals.Code != 403 {
+		t.Fatalf("foreign brand accepted: %d %s", foreignReferrals.Code, foreignReferrals.Body.String())
+	}
 	attributionResponse := pointsCall(f.managementHTTP, "GET", "/api/v1/me/attribution", "", auth.AccessToken, managedBrand, "", nil)
 	if attributionResponse.Code != 200 {
 		t.Fatalf("registered member attribution status=%d body=%s", attributionResponse.Code, attributionResponse.Body.String())

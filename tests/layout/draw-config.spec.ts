@@ -1,7 +1,8 @@
+import { selectControl } from '../select-control'
 import {test,expect} from '@playwright/test'
 import {resolve} from 'node:path'
 import {readFileSync} from 'node:fs'
-const origin='http://127.0.0.1:15273',id='aaaaaaaa-aaaa-4aaa-8aaa-000000000001'
+const origin=`http://127.0.0.1:${process.env.LOTTERY_LAYOUT_PORT_BASE??15273}`,id='aaaaaaaa-aaaa-4aaa-8aaa-000000000001'
 for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','admin'] as const){
  test(`unified rules and draw configuration ${surface} ${locale}`,async({page},info)=>{
   const zh=locale==='zh-CN',errors:string[]=[],writes:any[]=[];page.on('pageerror',e=>errors.push(e.message))
@@ -13,16 +14,17 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
    const r=route.request(),path=new URL(r.url()).pathname,ok=(data:any,status=200)=>route.fulfill({status,json:{success:true,data}})
    if(r.method()==='GET'){
     if(path.endsWith('/configured/sales'))return route.fulfill({status:404,json:{success:false,error:{code:'RESOURCE_NOT_FOUND'}}})
-    if(path.endsWith('/configured/versions')||path.endsWith('/configured/orders'))return ok({items:[]})
+    if(path.endsWith('/configured/rules'))return ok(null)
+    if(path.endsWith('/draw-overview')){expect(props.drawsOnly).toBe(true);return ok({years:['2026'],year:'2026',items:[],has_more:false,pending:[],pending_has_more:false})}
     if(path.endsWith('/draw-sources'))return ok(registry)
     if(path.endsWith('/automation'))return ok({plan,brand:null,allowed_origins:['https://1680660.com','https://second.example'],attempts:[],source_check:null})
-    if(path.endsWith('/platform-games'))return ok({games:[game],limit:50,offset:0})
-    if(path.endsWith('/'+id))return ok({game,rule_protocol:'configured',mark_six_configured:false,plays:[],periods:[period]})
+    if(path.endsWith('/platform-games'))return ok({games:[game],limit:50,offset:0,total_count:'1'})
+    if(path.endsWith('/'+id))return ok({game,rule_protocol:'configured',mark_six_configured:false,plays:[],periods:[period],total_count:'1'})
     throw new Error('Unexpected GET '+path)
    }
    const body=r.postDataJSON(),key=r.headers()['idempotency-key'];writes.push({path,body,key});expect(key).toBeTruthy()
    if(path.endsWith('/draw-source-preview')){expect(body.plan.mapping.format).toBeTruthy();return ok({completed:{period_no:'sample-1',drawn_at:'2026-10-20T00:01:00Z',result:{regular:[1,2,3,4,5,6],special:[7],digits:[]}},next_period_no:'sample-2',next_draw_at:'2026-10-21T00:00:00Z'})}
-   if(path.endsWith('/draw-sources')){const item={...body,id:crypto.randomUUID(),revision:1};registry.items.push(item);return ok(item)}
+   if(path.endsWith('/draw-sources')){expect(body.plan.open_before_seconds).toBe(3600);const item={...body,id:crypto.randomUUID(),revision:1};registry.items.push(item);return ok(item)}
    if(path.endsWith('/activate')){
     if(receipts.has(key!))return ok(receipts.get(key!))
     const item=registry.items.find(x=>path.includes(x.id));expect(body).toEqual({revision:item.revision,version:registry.version});registry.version++;registry.active_source_id=item.id;registry.active_source_revision=item.revision;plan={...item.plan,version:registry.version};receipts.set(key!,plan)
@@ -32,21 +34,47 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
    if(path.endsWith('/result')){expect(body.result).toEqual({regular:[1,2,3,4,5,6],special:[7],digits:[]});period.result=body.result;return ok({...period,published_at:'2026-10-20T00:02:00Z'},201)}
    throw new Error('Unexpected POST '+path)
   })
-  const props={surface,locale,brandId:surface==='admin'?id:'',canManage:surface==='platform',canConnect:surface==='admin',canSell:surface==='admin',displaySettings:{timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}}
-  await page.route('**/__draw-config',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import Component from'/@fs/${resolve('shared/src/PlatformLottery.vue')}';import{setPlatformDisplaySettings}from'/@fs/${resolve('shared/src/index.ts')}';setPlatformDisplaySettings(${JSON.stringify(props.displaySettings)});import'/@fs/${resolve('shared/src/styles.css')}';import'/@fs/${resolve(surface+'-web/src/style.css')}';import'/@fs/${resolve('shared/src/controls.css')}';createApp(Component,${JSON.stringify(props)}).mount('#app')</script></html>`}))
+  const props={drawsOnly:false,surface,locale,brandId:surface==='admin'?id:'',canManage:surface==='platform',canConnect:surface==='admin',canSell:surface==='admin',displaySettings:{timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}}
+  await page.route('**/__draw-config',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><main id="app" class="management-console"></main><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import Component from'/@fs/${resolve('shared/src/PlatformLottery.vue')}';import{setPlatformDisplaySettings}from'/@fs/${resolve('shared/src/index.ts')}';setPlatformDisplaySettings(${JSON.stringify(props.displaySettings)});import'/@fs/${resolve('shared/src/styles.css')}';import'/@fs/${resolve(surface+'-web/src/style.css')}';import'/@fs/${resolve('shared/src/management.css')}';import'/@fs/${resolve('shared/src/controls.css')}';createApp(Component,${JSON.stringify(props)}).mount('#app')</script></html>`}))
   await page.goto(origin+'/__draw-config')
+  if(surface==='admin') {
+   const table=page.locator('.brand-lottery-grid')
+   await expect(table.locator('.brand-lottery-card')).toHaveCount(1)
+   await expect(table.getByRole('button')).toHaveText(zh?['停用','投注配置']:['Disable','Betting configuration'])
+   await expect(page.getByTestId('automation-settings')).toHaveCount(0)
+   await expect(page.locator('.lottery-detail-page')).toHaveCount(0)
+   expect(writes).toEqual([])
+   return
+  }
   const row=page.getByRole('row').filter({hasText:game.name});await expect(row.getByRole('button',{name:zh?'玩法规则':'Play rules',exact:true})).toHaveCount(1)
   await expect(row).not.toContainText(zh?'加拿大投注':'Canada betting');await expect(row).not.toContainText(zh?'自动开奖':'Automatic draws')
+  await row.getByRole('button',{name:zh?'期次':'Periods',exact:true}).click()
+  await expect(page.locator('.lottery-detail-page')).toContainText(period.period_no)
+  await expect(page.getByTestId('lottery-catalog-page')).not.toBeVisible()
+  await expect(page.getByRole('columnheader',{name:zh?'开奖结果':'Result',exact:true})).toHaveCount(0)
+  await page.screenshot({path:info.outputPath('periods.png'),fullPage:true})
+  await expect(page.getByTestId('automation-settings')).toHaveCount(0)
+  await page.getByRole('button',{name:zh?'返回彩种列表':'Back to game list',exact:true}).click()
+  await row.getByRole('button',{name:zh?'号码模型':'Number model',exact:true}).click()
+  await expect(page.locator('.number-model-table')).toBeVisible()
+  await expect(page.getByTestId('lottery-catalog-page')).not.toBeVisible()
+  await expect(page.locator('.number-model-editor')).toHaveCount(0)
+  await page.screenshot({path:info.outputPath('model.png'),fullPage:true})
+  await page.getByRole('button',{name:zh?'返回彩种列表':'Back to game list',exact:true}).click()
   await row.getByRole('button',{name:zh?'玩法规则':'Play rules',exact:true}).click();await expect(page.getByTestId('configured-workbench').last()).toBeVisible();await expect(page.getByTestId('mark-six-settings')).toHaveCount(0)
   await page.getByRole('button',{name:zh?'返回彩种列表':'Back to game list',exact:true}).click()
-  await row.getByRole('button',{name:zh?'开奖配置':'Draw configuration',exact:true}).click()
+  await row.getByRole('button',{name:zh?'开奖数据源':'Data sources',exact:true}).click()
+  await expect(page.locator('.draw-config-tabs')).toHaveCount(0)
+  await expect(page.getByTestId('draw-overview')).toHaveCount(0)
+  await expect(page.getByTestId('automation-settings')).toBeVisible()
   if(surface==='platform'){
    for(const name of ['Source A','Source B']){
     if(name==='Source B')await page.getByRole('button',{name:zh?'新增数据源':'Add data source',exact:true}).click()
     await page.getByLabel(zh?'数据源名称':'Source name',{exact:true}).fill(name)
     const dom=name==='Source B'
-    await page.getByRole('combobox',{name:zh?'期次排期方式':'Period schedule',exact:true}).selectOption('source')
-    await page.getByRole('combobox',{name:zh?'响应格式':'Response format',exact:true}).selectOption(dom?'html':'json')
+    await selectControl(page.getByRole('combobox',{name:zh?'期次排期方式':'Period schedule',exact:true}), 'source')
+    await selectControl(page.getByRole('combobox',{name:zh?'响应格式':'Response format',exact:true}), dom?'html':'json')
+    await page.getByLabel(zh?'开奖前开盘（秒）':'Open before draw (seconds)',{exact:true}).fill('3600')
     await page.getByLabel(zh?'数据源地址':'Source URL',{exact:true}).fill(dom?'https://second.example/results':'https://1680660.com/api/results')
     const pathLabel=zh?'字段路径 / CSS 选择器':'Path / CSS selector'
     for(const [zhName,enName,path] of [['开奖结果期号','Result period number',dom?'#issue':'/issue'],['开奖结果时间','Result draw time',dom?'time.result':'/time'],['下期期号','Next period number',dom?'#next':'/next/id'],['下期开奖时间','Next draw time',dom?'time.next':'/next/time']])await page.getByLabel((zh?zhName:enName)+' · '+pathLabel,{exact:true}).fill(path)
@@ -59,7 +87,7 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
     await page.getByRole('button',{name:zh?'解析样例':'Parse sample',exact:true}).click()
     await expect(page.getByTestId('feed-preview')).toContainText('sample-1')
     if(dom){
-     await page.getByRole('combobox',{name:zh?'响应格式':'Response format',exact:true}).selectOption('browser')
+     await selectControl(page.getByRole('combobox',{name:zh?'响应格式':'Response format',exact:true}), 'browser')
      await page.getByLabel(zh?'就绪元素 CSS 选择器':'Ready element CSS selector',{exact:true}).fill('[data-ready=yes]')
      await page.getByLabel(zh?'渲染超时（毫秒）':'Render timeout (milliseconds)',{exact:true}).fill('5000')
      await page.getByLabel(zh?'会话入口地址（选填）':'Session entry URL (optional)',{exact:true}).fill('https://second.example/entry')
@@ -68,15 +96,15 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
      await page.getByRole('button',{name:zh?'添加 JSON 查询':'Add JSON request',exact:true}).click()
      await page.getByLabel(zh?'响应名称':'Response name',{exact:true}).fill('history')
      await page.getByLabel(zh?'查询地址':'Query URL',{exact:true}).fill('https://second.example/history')
-     await page.getByRole('combobox',{name:zh?'查询方法':'Query method',exact:true}).selectOption('POST')
+     await selectControl(page.getByRole('combobox',{name:zh?'查询方法':'Query method',exact:true}), 'POST')
      await page.getByLabel(zh?'表单正文（URL 编码）':'Form body (URL encoded)',{exact:true}).fill('top=1')
-     await page.getByRole('combobox',{name:(zh?'开奖结果时间':'Result draw time')+' · '+(zh?'取值来源':'Value source'),exact:true}).selectOption('history')
+     await selectControl(page.getByRole('combobox',{name:(zh?'开奖结果时间':'Result draw time')+' · '+(zh?'取值来源':'Value source'),exact:true}), 'history')
      await page.getByLabel((zh?'开奖结果时间':'Result draw time')+' · '+pathLabel,{exact:true}).fill('/data/0/time')
-     await page.getByRole('combobox',{name:zh?'来源时间格式':'Source time format',exact:true}).selectOption('custom')
+     await selectControl(page.getByRole('combobox',{name:zh?'来源时间格式':'Source time format',exact:true}), 'custom')
      await page.getByLabel(zh?'时间格式模板（Go 参考时间）':'Time layout (Go reference time)',{exact:true}).fill('2006-01-02 15:04:05')
      await page.getByLabel(zh?'来源时区（IANA）':'Source timezone (IANA)',{exact:true}).fill('Asia/Shanghai')
      await page.getByRole('checkbox',{name:zh?'校验时间与开奖结果期号一致':'Verify the time belongs to the result period',exact:true}).check()
-     await page.getByRole('combobox',{name:(zh?'时间响应中的期号':'Time response period number')+' · '+(zh?'取值来源':'Value source'),exact:true}).selectOption('history')
+     await selectControl(page.getByRole('combobox',{name:(zh?'时间响应中的期号':'Time response period number')+' · '+(zh?'取值来源':'Value source'),exact:true}), 'history')
      await page.getByLabel((zh?'时间响应中的期号':'Time response period number')+' · '+pathLabel,{exact:true}).fill('/data/0/issue')
      await page.getByRole('checkbox',{name:zh?'读取下期公告（关闭则只采集已建期次）':'Read the next-period announcement (off: collect existing periods only)',exact:true}).uncheck()
      await page.getByLabel((zh?'普通号码':'Regular numbers')+' · '+(zh?'HTML 属性（选填）':'HTML attribute (optional)'),{exact:true}).fill('class')
@@ -85,23 +113,26 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
      await page.getByRole('button',{name:zh?'抓取并预览':'Fetch and preview',exact:true}).click()
      await expect(page.getByTestId('feed-preview')).toContainText('sample-1')
     }
-    await page.getByRole('button',{name:zh?'保存数据源':'Save data source',exact:true}).click();await expect(page.locator('.draw-source-list')).toContainText(name)
+    await page.getByRole('button',{name:zh?'保存数据源':'Save data source',exact:true}).click();await expect(page.getByTestId('draw-source-directory')).toContainText(name)
    }
    expect(registry.active_source_id).toBe('')
    expect(registry.items[1].plan.mapping.browser.json_requests).toEqual([{id:'history',url:'https://second.example/history',method:'POST',body:'top=1'}])
    expect(registry.items[1].plan.mapping.draw_time.response).toBe('history')
    expect(registry.items[1].plan.mapping.next_period).toBeNull()
    expect(registry.items[1].plan.mapping.regular.capture).toBe('ball_([0-9]+)')
-   await page.locator('.draw-source-list article').filter({hasText:'Source A'}).getByRole('button',{name:zh?'使用此版本':'Use this revision',exact:true}).click()
+   await page.getByTestId('draw-source-directory').locator('tbody tr').filter({hasText:'Source A'}).locator('.member-menu-trigger').click();await page.getByTestId('draw-source-directory').locator('tbody tr').filter({hasText:'Source A'}).getByRole('menuitem',{name:zh?'使用此版本':'Use this revision',exact:true}).click()
    await page.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true}).click()
    const calls=writes.filter(x=>x.path.endsWith('/activate'));expect(calls).toHaveLength(2);expect(calls[1]).toEqual(calls[0])
-   await page.locator('.draw-source-list article').filter({hasText:'Source B'}).getByRole('button',{name:zh?'使用此版本':'Use this revision',exact:true}).click();await expect(page.locator('.automation-settings')).toContainText((zh?'当前数据源':'Current data source')+': Source B')
+   await page.getByTestId('draw-source-directory').locator('tbody tr').filter({hasText:'Source B'}).locator('.member-menu-trigger').click();await page.getByTestId('draw-source-directory').locator('tbody tr').filter({hasText:'Source B'}).getByRole('menuitem',{name:zh?'使用此版本':'Use this revision',exact:true}).click();await expect(page.locator('.automation-settings')).toContainText((zh?'当前数据源':'Current data source')+': Source B')
    await page.screenshot({path:info.outputPath(`sources-${locale}.png`),fullPage:true})
+   await page.locator('.automation-fields').screenshot({path:info.outputPath(`schedule-${locale}.png`)})
   }else await expect(page.getByRole('button',{name:zh?'新增数据源':'Add data source',exact:true})).toHaveCount(0)
-  await page.getByRole('button',{name:zh?'手动开奖结果':'Manual results',exact:true}).click()
   if(surface==='platform'){
-   const publish=page.getByRole('button',{name:zh?'发布开奖结果':'Publish result',exact:true}).filter({visible:true});await publish.click()
-   await page.getByLabel(zh?'普通号码':'Regular numbers',{exact:true}).fill('1,2,3,4,5,6');await page.getByLabel(zh?'特别号码':'Special numbers',{exact:true}).fill('7');await page.getByRole('button',{name:zh?'保存':'Save',exact:true}).click();await expect(page.locator('.lottery-detail-page')).toContainText('1, 2, 3, 4, 5, 6, 7')
+   props.drawsOnly=true
+   Object.assign(props,{initialGameId:id})
+   await page.reload()
+   await expect(page.getByTestId('draw-overview')).toBeVisible()
+   await expect(page.getByRole('button',{name:zh?'手动开奖结果':'Manual results',exact:true})).toHaveCount(0)
   }else await expect(page.getByRole('button',{name:zh?'发布开奖结果':'Publish result',exact:true})).toHaveCount(0)
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)
   await page.screenshot({path:info.outputPath(`manual-${locale}.png`),fullPage:true});expect(errors).toEqual([])
@@ -119,17 +150,24 @@ for(const locale of ['en','zh-CN'] as const)test(`retired draw source is read-on
   throw new Error('Unexpected read '+path)
  })
  const props={surface:'platform',gameId:id,brandId:'',locale,canWrite:true}
- await page.route('**/__retired-source',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><main id="app" class="management-console"></main><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import Component from'/@fs/${resolve('shared/src/AutomationSettings.vue')}';import'/@fs/${resolve('shared/src/styles.css')}';import'/@fs/${resolve('platform-web/src/style.css')}';import'/@fs/${resolve('shared/src/controls.css')}';createApp(Component,${JSON.stringify(props)}).mount('#app')</script></html>`}))
+ await page.route('**/__retired-source',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><main id="app" class="management-console"></main><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import Component from'/@fs/${resolve('shared/src/AutomationSettings.vue')}';import'/@fs/${resolve('shared/src/styles.css')}';import'/@fs/${resolve('platform-web/src/style.css')}';import'/@fs/${resolve('shared/src/management.css')}';import'/@fs/${resolve('shared/src/controls.css')}';createApp(Component,${JSON.stringify(props)}).mount('#app')</script></html>`}))
  await page.goto(origin+'/__retired-source')
- await expect(page.getByRole('status')).toContainText(zh?'已退役协议':'retired protocol')
+ await expect(page.getByRole('status')).toContainText(zh?'该来源协议已停止执行':'This source protocol is no longer executed')
  await expect(page.getByLabel(zh?'数据源名称':'Source name',{exact:true})).toBeDisabled()
- await expect(page.getByRole('button',{name:zh?'使用此版本':'Use this revision',exact:true})).toBeDisabled()
- await expect(page.getByText('2026001 · 01, 02, 03, 04, 05, 06, 07',{exact:true})).toBeVisible()
+ await page.getByTestId('draw-source-directory').locator('.member-menu-trigger').click();await expect(page.getByRole('menuitem',{name:zh?'使用此版本':'Use this revision',exact:true})).toBeDisabled();await page.keyboard.press('Escape')
  await page.getByRole('button',{name:zh?'新增数据源':'Add data source',exact:true}).click()
  await expect(page.getByLabel(zh?'数据源名称':'Source name',{exact:true})).toBeEnabled()
- await expect(page.getByRole('combobox',{name:zh?'响应格式':'Response format',exact:true})).toHaveValue('json')
- await expect(page.getByRole('status')).toHaveCount(0)
+ await expect(page.getByRole('combobox',{name:zh?'响应格式':'Response format',exact:true})).toHaveAttribute('data-value','json')
  expect(writes).toEqual([])
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)
  await page.screenshot({path:info.outputPath(`retired-source-${locale}.png`),fullPage:true})
+})
+
+test('user history retains its draw results',async({page})=>{
+ const period={period_no:'2026001',result:{regular:[],special:[],digits:[1,2,3]},drawn_at:'2026-10-25T01:00:00Z',draw_date:'2026-10-25',regular_order:null,attributes:{}}
+ await page.route('**/api/**',route=>{expect(route.request().method()).toBe('GET');return route.fulfill({json:{success:true,data:{game_id:id,game_name:'History game',timezone:'UTC',mark_six:false,daily:false,choices:['2026'],selected:'2026',items:[period],has_more:false,total_count:'1'}}})})
+ await page.route('**/__user-draw-history',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><div id="user-page-refresh"></div><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import Component from'/@fs${resolve('user-web/src/DrawArchive.vue')}';import{createUserI18n,userI18nKey}from'/src/i18n.ts';import{setPlatformDisplaySettings}from'/@fs${resolve('shared/src/index.ts')}';setPlatformDisplaySettings({timezone:'UTC',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'});import'/@fs${resolve('shared/src/styles.css')}';import'/@fs${resolve('shared/src/controls.css')}';const ui=createUserI18n();ui.setLocale('en');createApp(Component,{gameId:'${id}',kind:'configured',locale:'en'}).provide(userI18nKey,ui).mount('#app')</script></html>`}))
+ await page.goto(origin+'/__user-draw-history')
+ await expect(page.locator('.draw-archive')).toContainText('2026001')
+ await expect(page.locator('.archive-number')).toHaveCount(3)
 })

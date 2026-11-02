@@ -21,11 +21,11 @@ func complianceActor(w http.ResponseWriter, r *http.Request, d Dependencies, res
 		return a, "", false
 	}
 	brand := strings.ToLower(r.Header.Get("X-Brand-ID"))
-	if !uuidPattern.MatchString(brand) {
+	if !(resource == "compliance_policy" && platformAdminEntry(r) && brand == "") && !uuidPattern.MatchString(brand) {
 		failure(w, r, 400, "REQUEST_INVALID", "必须选择有效品牌")
 		return a, brand, false
 	}
-	if !a.SuperAdmin || !compliance.Allowed(a, brand, resource, action) {
+	if !a.SuperAdmin || !(brand == "" && resource == "compliance_policy" && access.Authorize(a, resource, action, access.ScopePlatform, "") || compliance.Allowed(a, brand, resource, action)) {
 		rejectAdmin(w, r, d, a, brand, resource+"."+action)
 		return a, brand, false
 	}
@@ -69,8 +69,11 @@ func complianceWrite(w http.ResponseWriter, r *http.Request, d Dependencies, a a
 		if e != nil {
 			return e
 		}
-		if !compliance.Allowed(fresh, brand, resource, action) {
+		if !(brand == "" && resource == "compliance_policy" && access.Authorize(fresh, resource, action, access.ScopePlatform, "") || compliance.Allowed(fresh, brand, resource, action)) {
 			return compliance.ErrDenied
+		}
+		if brand == "" {
+			return checkPlatformAdminEntry(ctx, tx, r)
 		}
 		var state string
 		if e = tx.QueryRow(ctx, `SELECT status FROM brands WHERE id=$1 FOR SHARE`, brand).Scan(&state); errors.Is(e, pgx.ErrNoRows) {
@@ -157,7 +160,13 @@ func registerComplianceRoutes(handle func(string, string, http.HandlerFunc), d D
 			return
 		}
 		complianceWrite(w, r, d, a, brand, "compliance_policy", "write", "admin.compliance.policy.update", in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
-			out, e := s.Update(ctx, tx, brand, fresh, in, pointMeta(r, fresh))
+			var out compliance.Policy
+			var e error
+			if brand == "" {
+				out, e = s.UpdatePlatform(ctx, tx, fresh, in, pointMeta(r, fresh))
+			} else {
+				out, e = s.Update(ctx, tx, brand, fresh, in, pointMeta(r, fresh))
+			}
 			return complianceResult(out, e)
 		})
 	})

@@ -56,6 +56,9 @@ func newFinanceFixture(t *testing.T) financeFixture {
 			}
 		}
 	}
+	if _, err := p.Exec(ctx, `INSERT INTO brand_recharge_quotas(brand_id,available) VALUES($1,1000000)`, financeBrandA); err != nil {
+		t.Fatal(err)
+	}
 	return financeFixture{pool: p, service: Service{DB: p, Points: points.Store{DB: p}}, brandID: financeBrandA, otherBrand: financeBrandB, memberID: memberID, adminID: adminID, accountID: accountID}
 }
 

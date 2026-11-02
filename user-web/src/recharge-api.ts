@@ -2,6 +2,7 @@ import { readApiEnvelope } from '@lottery/shared'
 export type RechargeState = "pending" | "confirmed" | "cancelled";
 
 export interface MemberRecharge {
+  method: "manual" | "automatic";
   id: string;
   brand_id: string;
   member_id: string;
@@ -121,8 +122,8 @@ function isNonNegativeInt64(value: unknown): value is string {
 }
 
 export function isMemberRecharge(value: unknown): value is MemberRecharge {
-  if (!isRecord(value) || !hasExactKeys(value, ["id", "brand_id", "member_id", "points", "state", "version", "created_at", "confirmed_at", "ledger_entry_id"])) return false;
-  if (!isUUID(value.id) || !isUUID(value.brand_id) || !isUUID(value.member_id) || !isPositiveInt64(value.points) || !isPositiveInt64(value.version) || !isTimestamp(value.created_at) || !states.has(value.state as RechargeState)) return false;
+  if (!isRecord(value) || !hasExactKeys(value, ["method", "id", "brand_id", "member_id", "points", "state", "version", "created_at", "confirmed_at", "ledger_entry_id"])) return false;
+  if (!["manual", "automatic"].includes(String(value.method)) || !isUUID(value.id) || !isUUID(value.brand_id) || !isUUID(value.member_id) || !isPositiveInt64(value.points) || !isPositiveInt64(value.version) || !isTimestamp(value.created_at) || !states.has(value.state as RechargeState)) return false;
   if (value.state === "confirmed") return isTimestamp(value.confirmed_at) && isUUID(value.ledger_entry_id);
   return value.confirmed_at === null && value.ledger_entry_id === null;
 }
@@ -192,5 +193,3 @@ export function createRechargeApi(options: { brandCode?: string; fetcher?: typeo
     },
   };
 }
-
-export type RechargeApi = ReturnType<typeof createRechargeApi>;

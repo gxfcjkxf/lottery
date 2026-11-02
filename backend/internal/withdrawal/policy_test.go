@@ -12,7 +12,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
-	"github.com/gxfcjkxf/lottery/backend/internal/rulebook"
+	"github.com/gxfcjkxf/lottery/backend/internal/platformlottery"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"github.com/jackc/pgx/v5"
@@ -30,10 +30,15 @@ func fixture(t *testing.T) (Service, access.Account, string) {
 		t.Fatal(e)
 	}
 	a := access.Account{ID: id, Type: access.AccountAdmin, BrandIDs: []string{policyBrand}, Roles: []access.Role{{BrandID: policyBrand, Permissions: []access.Permission{{Resource: "withdrawal_policy", Action: "write", Scope: access.ScopeBrand}, {Resource: "game", Action: "write", Scope: access.ScopeBrand}}}}}
-	var game rulebook.Game
+	var game platformlottery.Game
 	transact(t, Service{DB: db}, func(tx pgx.Tx) error {
 		var e error
-		game, e = (rulebook.Store{DB: db}).CreateGame(ctx, tx, policyBrand, a, "withdraw_policy_digits", "Withdrawal policy model", rules.Model{Type: "DIGITS_0_9", Length: 3, AllowRepeat: true, Ordered: true}, "UTC", "policy fixture", metadata(a.ID))
+		platformActor:=access.Account{ID:a.ID,Type:access.AccountAdmin,SuperAdmin:true,Roles:[]access.Role{{Permissions:[]access.Permission{{Resource:"platform_game",Action:"write",Scope:access.ScopePlatform}}}}}
+        svc:=platformlottery.Service{DB:db}
+        game,e=svc.Create(ctx,tx,platformActor,platformlottery.GameInput{Code:"withdraw_policy_digits",Name:"Withdrawal policy model",Timezone:"UTC",Model:rules.Model{Type:"DIGITS_0_9",Length:3,AllowRepeat:true,Ordered:true}},metadata(a.ID))
+        if e!=nil{return e}
+        connector:=a;connector.Roles[0].Permissions=append(connector.Roles[0].Permissions,access.Permission{Resource:"platform_game",Action:"connect",Scope:access.ScopeBrand})
+        _,e=svc.Connect(ctx,tx,connector,policyBrand,game.ID,"",metadata(a.ID))
 		return e
 	})
 	return Service{DB: db}, a, game.ID
@@ -76,10 +81,16 @@ func TestConfigParsingIsExactClosedAndCanonical(t *testing.T) {
 	if ValidateGameConfig(GameConfig{}) != nil {
 		t.Fatal("blank game override must continue to inherit")
 	}
-	raw := `{"version":1,"config":{"enabled":false,"min_points":"1","max_points":null,"allowed_sources":["recharge","winning","gift"],"review_mode":"manual","turnover_multiple":"1"},"reason":"configured"}`
+	raw := `{"points_step":"1","version":1,"config":{"enabled":false,"min_points":"1","max_points":null,"allowed_sources":["recharge","winning","gift"],"review_mode":"manual","turnover_multiple":"1"},"reason":"configured"}`
 	var in BrandInput
 	if e := json.Unmarshal([]byte(raw), &in); e != nil {
 		t.Fatal(e)
+	}
+	for _, bad := range []string{strings.Replace(raw, `"points_step":"1",`, "", 1), strings.Replace(raw, `"points_step":"1"`, `"points_step":"0"`, 1), strings.Replace(raw, `"points_step":"1"`, `"points_step":10`, 1)} {
+		var invalid BrandInput
+		if json.Unmarshal([]byte(bad), &invalid) == nil {
+			t.Fatal("missing, zero or numeric withdrawal increment accepted")
+		}
 	}
 	if got := DefaultBrandConfig().AllowedSources; strings.Join(got, ",") != "recharge,winning,gift" {
 		t.Fatalf("default authorization changed: %v", got)
@@ -153,7 +164,7 @@ func TestPoliciesInitializeResolveExactOverridesAndKeepImmutableHistory(t *testi
 	c.AllowedSources = []string{"recharge", "winning"}
 	transact(t, s, func(tx pgx.Tx) error {
 		var e error
-		b, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{Version: 1, Config: c, Reason: "first brand policy"}, metadata(a.ID))
+		b, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{PointsStep: 1, Version: 1, Config: c, Reason: "first brand policy"}, metadata(a.ID))
 		return e
 	})
 	if b.Version != 2 || b.AuditLogID == "" {
@@ -170,7 +181,7 @@ func TestPoliciesInitializeResolveExactOverridesAndKeepImmutableHistory(t *testi
 	c.TurnoverMultiple = "4.5"
 	transact(t, s, func(tx pgx.Tx) error {
 		var e error
-		b, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{Version: 2, Config: c, Reason: "new default preserves override"}, metadata(a.ID))
+		b, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{PointsStep: 1, Version: 2, Config: c, Reason: "new default preserves override"}, metadata(a.ID))
 		return e
 	})
 	g, e = s.GamePolicy(ctx, policyBrand, game)
@@ -204,7 +215,7 @@ func TestPoliciesInitializeResolveExactOverridesAndKeepImmutableHistory(t *testi
 		t.Fatal(old, e)
 	}
 	var entries, orders int
-	if e = s.DB.QueryRow(ctx, `SELECT (SELECT count(*) FROM point_ledger_entries),(SELECT count(*) FROM bet_orders)`).Scan(&entries, &orders); e != nil || entries != 0 || orders != 0 {
+	if e = s.DB.QueryRow(ctx, `SELECT (SELECT count(*) FROM point_ledger_entries),(SELECT count(*) FROM configured_orders)`).Scan(&entries, &orders); e != nil || entries != 0 || orders != 0 {
 		t.Fatal(entries, orders, e)
 	}
 	if _, e = s.GamePolicy(ctx, policyOther, game); !errors.Is(e, ErrNotFound) {
@@ -231,7 +242,7 @@ func TestPolicyConcurrentWritersHaveOneWinnerAndRollbackAuditFailure(t *testing.
 			defer tx.Rollback(ctx)
 			c := DefaultBrandConfig()
 			c.TurnoverMultiple = n
-			_, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{Version: 1, Config: c, Reason: "concurrent update"}, metadata(a.ID))
+			_, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{PointsStep: 1, Version: 1, Config: c, Reason: "concurrent update"}, metadata(a.ID))
 			if e == nil {
 				e = tx.Commit(ctx)
 			}
@@ -270,7 +281,7 @@ func TestPolicyConcurrentWritersHaveOneWinnerAndRollbackAuditFailure(t *testing.
 	}
 	c := DefaultBrandConfig()
 	c.TurnoverMultiple = "5"
-	_, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{Version: before.Version, Config: c, Reason: "must rollback"}, metadata(a.ID))
+	_, e = s.UpdateBrand(ctx, tx, policyBrand, a, BrandInput{PointsStep: 1, Version: before.Version, Config: c, Reason: "must rollback"}, metadata(a.ID))
 	_ = tx.Rollback(ctx)
 	if e == nil {
 		t.Fatal("audit failure not propagated")
@@ -334,7 +345,7 @@ func TestDatabaseRejectsOrphanRevisionUnwitnessedConfigAndHistoryMutation(t *tes
 func TestPolicyWriteDeniesSuperMissingGrantForeignScopeAndStaleVersions(t *testing.T) {
 	s, a, game := fixture(t)
 	ctx := context.Background()
-	in := BrandInput{Version: 1, Config: DefaultBrandConfig(), Reason: "checked update"}
+	in := BrandInput{PointsStep: 1, Version: 1, Config: DefaultBrandConfig(), Reason: "checked update"}
 	for _, actor := range []access.Account{func() access.Account { v := a; v.SuperAdmin = true; return v }(), {ID: a.ID, Type: access.AccountAdmin, BrandIDs: []string{policyBrand}}, func() access.Account {
 		v := a
 		v.BrandIDs = []string{policyOther}

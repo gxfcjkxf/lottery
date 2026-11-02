@@ -69,7 +69,7 @@ func validate(in Input) error {
 }
 
 func validText(value string, max int) bool {
-	return utf8.ValidString(value) && len(value) <= max && !strings.ContainsAny(value, "\r\n")
+	return utf8.ValidString(value) && utf8.RuneCountInString(value) <= max && !strings.ContainsAny(value, "\r\n")
 }
 
 const selectSQL = `SELECT version,display_name,logo_text,logo_url,timezone,date_format,time_format,updated_at,COALESCE((SELECT id::text FROM audit_logs WHERE action='platform_settings.update' ORDER BY created_at DESC,id DESC LIMIT 1),'') FROM platform_settings WHERE id=true`

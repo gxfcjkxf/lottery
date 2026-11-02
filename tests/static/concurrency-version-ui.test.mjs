@@ -21,7 +21,9 @@ for (const directory of ['user-web/src', 'admin-web/src', 'platform-web/src', 's
         // Vue keys, disabled expressions and request bodies still need the tokens.
         if (node.type === 5) {
           const expression = node.content.content.replace(/\b(?:copy|labels)\.version\b/g, '').replace(/(['"])(?:\\.|(?!\1).)*\1/g, '');
-          assert.doesNotMatch(expression, technicalVersion, `${filename}: ${node.loc.source}`);
+          // Archive revisions identify immutable snapshots selected by operators, rather than mutable configuration concurrency tokens.
+          const rendered = filename === 'shared/src/ArchiveReport.vue' && expression === 'record.revision' ? '' : expression;
+          assert.doesNotMatch(rendered, technicalVersion, `${filename}: ${node.loc.source}`);
         }
         for (const prop of node.props ?? []) {
           if (prop.name === 'model') assert.doesNotMatch(prop.exp?.content ?? '', /version|revision/i, filename);

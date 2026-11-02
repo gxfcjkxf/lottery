@@ -19,9 +19,6 @@ export interface OverviewSummary {
   frozen_points: string
   withdrawal_points: string
   withdrawal_count: string
-  abnormal_count: string
-  failed_settlement_count: string
-  cancellation_count: string
   yesterday_same_time_stake: string
   days: OverviewDay[]
   brands?: OverviewBrand[]

@@ -1,14 +1,23 @@
 <script setup lang="ts">
+import { readPaginationTotal } from '@lottery/shared'
+const rolesTotal = ref('0')
+const accountsTotal = ref('0')
+
+import SelectControl from '@lottery/shared/SelectControl.vue'
+import { useOperationToast } from "@lottery/shared";
 import { vWriteGuard } from "@lottery/shared";
 import { AssociationName } from '@lottery/shared'
 import { permissionLabel } from '@lottery/shared'
 import DetailModal from '@lottery/shared/DetailModal.vue'
 import PermissionPicker from '@lottery/shared/PermissionPicker.vue'
+import ManagementList from "@lottery/shared/ManagementList.vue"
+import MemberActionsMenu from "@lottery/shared/MemberActionsMenu.vue"
+import ManagementTable from '@lottery/shared/ManagementTable.vue'
+import PaginationControls from '@lottery/shared/PaginationControls.vue'
 const associationLocale = useAdminI18n().locale;
 import { useAdminI18n as usePublicErrorI18n } from "./i18n";
 const publicErrorI18n = usePublicErrorI18n();
 const publicErrorMessage = publicErrorI18n.errorMessage;
-const displayPublicError = publicErrorI18n.displayError;
 import { withGlobalLoading } from '@lottery/shared';
 import { vRefreshButton } from '@lottery/shared';
 import { vInlineValidation } from '@lottery/shared'
@@ -34,6 +43,7 @@ import {
 const props = defineProps<{
   account: AdminAccount & Partial<ManagementAccount>;
   brandId: string;
+  section: "roles" | "accounts";
 }>();
 const emit = defineEmits<{
   (event: "session-invalid"): void;
@@ -41,18 +51,14 @@ const emit = defineEmits<{
 }>();
 const api = createManagementApi();
 const { t, message, display } = useAdminI18n();
-const section = ref<"roles" | "accounts">(
-  canView(props.account, props.brandId, "role") ||
-    canWrite(props.account, props.brandId, "role")
-    ? "roles"
-    : "accounts",
-);
+const section = computed(() => props.section);
 const roleEditorOpen = ref(false);
 const accountEditorOpen = ref(false);
 function startRole() { newRole(); error.value = ""; roleEditorOpen.value = true; }
 function startAccount() { newAccount(); error.value = ""; accountEditorOpen.value = true; }
 const roles = ref<RoleRecord[]>([]);
 const viewedRole = ref<RoleRecord | null>(null);
+const viewedAccount = ref<AdminRecord | null>(null);
 const accounts = ref<AdminRecord[]>([]);
 const registeredPermissions = ref<string[]>([]);
 const roleCatalogLoaded = ref(false);
@@ -79,8 +85,8 @@ const accountForm = ref({
   status: "active",
   reset: false,
 });
-const accountPasswordBytes = computed(
-  () => new TextEncoder().encode(accountForm.value.password).length,
+const accountPasswordCharacters = computed(
+  () => Array.from(accountForm.value.password).length,
 );
 const roleKeyFor = createBodyKeyTracker();
 const accountKeyFor = createBodyKeyTracker();
@@ -111,8 +117,8 @@ const assignableRoles = computed(() =>
 );
 const pageHasNext = computed(() =>
   section.value === "roles"
-    ? roles.value.length === 50
-    : accounts.value.length === 50,
+    ? BigInt(offset.value + roles.value.length) < BigInt(rolesTotal.value)
+    : BigInt(offset.value + accounts.value.length) < BigInt(accountsTotal.value),
 );
 const editableAccount = (target: AdminRecord) =>
   canEditAccountScope(props.account, props.brandId, target) &&
@@ -134,8 +140,8 @@ const editableRole = (role: RoleRecord) =>
   role.permissions.every((permission) =>
     actorPermissions.value.has(permission),
   );
-const roleNameBytes = computed(
-  () => new TextEncoder().encode(roleForm.value.name).length,
+const roleNameCharacters = computed(
+  () => Array.from(roleForm.value.name).length,
 );
 const selectedRoles = computed(() =>
   roles.value.filter((role) => accountForm.value.role_ids.includes(role.id)),
@@ -161,7 +167,7 @@ function handleError(cause: unknown) {
     emit("session-invalid");
   error.value = publicErrorMessage(cause);
 }
-async function load() {
+async function load(requestedOffset = offset.value) {
   const requestBrandId = props.brandId;
   if (
     !requestBrandId ||
@@ -179,17 +185,17 @@ async function load() {
     if (canRoles.value) {
       try {
         const [listed, perms] = await Promise.all([
-          api.roles(requestBrandId, 50, offset.value),
+          api.roles(requestBrandId, 50, requestedOffset),
           api.permissions(requestBrandId),
         ]);
         if (props.brandId !== requestBrandId) return;
-        roles.value = listed.items;
+        [roles.value, rolesTotal.value] = [listed.items, readPaginationTotal(listed)];
+        offset.value = requestedOffset;
         registeredPermissions.value = perms.items;
         roleCatalogLoaded.value = true;
         roleCatalogMessage.value = "";
       } catch (cause) {
         if (props.brandId !== requestBrandId) return;
-        roles.value = [];
         registeredPermissions.value = [];
         roleCatalogLoaded.value = false;
         roleCatalogMessage.value = message('admin.copy.afb348bc',
@@ -197,7 +203,7 @@ async function load() {
         handleError(cause);
       }
     } else {
-      roles.value = [];
+      [roles.value,rolesTotal.value]=[[],'0'];
       registeredPermissions.value = [];
       roleCatalogLoaded.value = false;
       roleCatalogMessage.value = message('admin.copy.56c87a94',
@@ -209,9 +215,9 @@ async function load() {
     if (canAccounts.value)
       tasks.push(
         api
-          .accounts(requestBrandId, 50, offset.value)
+          .accounts(requestBrandId, 50, requestedOffset)
           .then((listed) => {
-            if (props.brandId === requestBrandId) accounts.value = listed.items;
+            if (props.brandId === requestBrandId) { [accounts.value, accountsTotal.value] = [listed.items, readPaginationTotal(listed)]; offset.value = requestedOffset; }
           })
           .catch((cause: unknown) => {
             if (props.brandId === requestBrandId) handleError(cause);
@@ -235,7 +241,7 @@ async function load() {
           }),
       );
     } else {
-      roles.value = [];
+      [roles.value,rolesTotal.value]=[[],'0'];
       roleCatalogLoaded.value = false;
       roleCatalogMessage.value = message('admin.copy.48fe4041',
       );
@@ -257,8 +263,8 @@ watch(
   () => props.brandId,
   () => {
     viewedRole.value = null;
-    roles.value = [];
-    accounts.value = [];
+    [roles.value,rolesTotal.value]=[[],'0'];
+    [accounts.value,accountsTotal.value]=[[],'0'];
     registeredPermissions.value = [];
     roleCatalogLoaded.value = false;
     roleCatalogMessage.value = "";
@@ -305,7 +311,7 @@ async function saveRole() {
     !writeRoles.value ||
     !roleCatalogLoaded.value ||
     !form.name.trim() ||
-    roleNameBytes.value > 120 ||
+    roleNameCharacters.value > 120 ||
     (!form.id && form.code.trim().length > 48)
   )
     return;
@@ -455,140 +461,78 @@ async function saveAccount() {
     busy.value = false;
   }
 }
-async function changePage(direction: -1 | 1) {
-  offset.value = Math.max(0, offset.value + direction * 50);
-  await load();
+async function changePage(direction: number) {
+  await load(Math.max(0, offset.value + direction * 50));
 }
+
+useOperationToast(() => error.value, value => display(value), 'error');
+useOperationToast(() => notice.value, value => display(value), 'success');
 </script>
 
 <template>
   <section class="access-page">
-    <header class="heading">
+    <header class="console-page-heading heading">
       <div>
-        <h1>{{ t('admin.copy.9c6ee39c') }}</h1>
+        <h1 class="console-page-title">{{ section === 'roles' ? t('admin.copy.78c84d5e') : t('admin.copy.f8e4afe4') }}</h1>
       </div>
     </header>
-    <div class="tabs" role="tablist">
-      <button
-        role="tab"
-        :aria-selected="section === 'roles'"
-        :disabled="!(canRoles || writeRoles)"
-        @click="section = 'roles'"
-      >
-        {{ t('admin.copy.78c84d5e') }}</button
-      ><button
-        role="tab"
-        :aria-selected="section === 'accounts'"
-        :disabled="!(canAccounts || writeAccounts)"
-        @click="section = 'accounts'"
-      >
-        {{ t('admin.copy.f8e4afe4') }}
-      </button>
-    </div>
     <p
       v-if="!(canRoles || writeRoles || canAccounts || writeAccounts)"
       class="callout"
     >
       {{ t('admin.copy.ce325bac') }}
     </p>
-    <p v-if="error && !roleEditorOpen && !accountEditorOpen" class="message error" role="alert">
-      {{ display(error) }} <button v-refresh-button="t('admin.copy.894e2a7d')" type="button" @click="withGlobalLoading(load)">{{ t('admin.copy.894e2a7d') }}</button>
+    <p v-if="error && !roleEditorOpen && !accountEditorOpen" class="operation-recovery-actions">
+       <button class="button button-secondary" v-refresh-button="t('admin.copy.894e2a7d')" type="button" @click="withGlobalLoading(load)">{{ t('admin.copy.894e2a7d') }}</button>
     </p>
-    <p v-if="notice" class="message success" role="status">{{ display(notice) }}</p>
 
     <template v-if="section === 'roles' && (canRoles || writeRoles)">
       <div class="columns">
         <button v-if="writeRoles && !canRoles" class="button button-secondary" type="button" @click="startRole">{{ t('admin.copy.8c7fddfb') }}</button>
-        <DetailModal v-if="writeRoles && roleEditorOpen" :title="roleForm.id ? t('admin.copy.0233b2e8') : t('admin.copy.8c7fddfb')" :close-label="t('association.close')" @close="!busy && (roleEditorOpen = false)">
-          <p v-if="error" class="message error" role="alert">{{ display(error) }}</p>
-        <form v-write-guard="busy" novalidate v-inline-validation v-if="writeRoles" class="panel form" @submit.prevent="withGlobalLoading(saveRole)">
-          <label v-if="!roleForm.id"
-            >{{ t('admin.copy.8c47c503') }}<input
-              v-model.trim="roleForm.code"
-              required
-              maxlength="48"
-              autocomplete="off" /></label
-          ><label
-            >{{ t('admin.copy.6404dc43') }}<input
-              v-model.trim="roleForm.name"
-              required
-            /><small>{{ roleNameBytes }} / 120 {{ t('admin.copy.b2ca2f37') }}</small></label
-          >
+        <DetailModal v-if="writeRoles && roleEditorOpen" :title="roleForm.id ? t('admin.copy.0233b2e8') : t('admin.copy.8c7fddfb')" :close-label="t('association.close')" :close-disabled="busy" @close="!busy && (roleEditorOpen = false)">
+
+        <form id="brand-role-editor" v-write-guard="busy" novalidate v-inline-validation class="form role-form ui-form" @submit.prevent="withGlobalLoading(saveRole)">
+          <div class="role-identity">
+            <label>{{ t('admin.copy.6404dc43') }}
+              <input v-model.trim="roleForm.name" required />
+              <small>{{ roleNameCharacters }} / 120 {{ t('admin.copy.b2ca2f37') }}</small>
+            </label>
+            <label v-if="!roleForm.id">{{ t('admin.copy.8c47c503') }}
+              <input v-model.trim="roleForm.code" required maxlength="48" autocomplete="off" />
+            </label>
+            <label v-if="roleForm.id">{{ t('admin.copy.a765b3ca') }}
+              <SelectControl v-model="roleForm.status" :label="String(t('admin.copy.a765b3ca'))" :options="[{ value: 'active', label: (String(t('admin.copy.98d24810'))).trim() }, { value: 'disabled', label: (String(t('admin.copy.5e3326db'))).trim() }]" />
+            </label>
+          </div>
           <PermissionPicker v-model="roleForm.permissions" :options="roleChoices" :locale="associationLocale" />
-          <label v-if="roleForm.id"
-            >{{ t('admin.copy.a765b3ca') }}<select v-model="roleForm.status">
-              <option value="active">{{ t('admin.copy.98d24810') }}</option>
-              <option value="disabled">{{ t('admin.copy.5e3326db') }}</option>
-            </select></label>
+        </form>
+        <template #footer>
           <button
+            form="brand-role-editor"
+            type="submit"
             class="button button-primary"
-            :disabled="
-              busy ||
-              loading ||
-              !roleCatalogLoaded ||
-              !roleForm.name.trim() ||
-              roleNameBytes > 120 ||
-              (!roleForm.id && !roleForm.code.trim())
-            "
+            :disabled="busy || loading || !roleCatalogLoaded || !roleForm.name.trim() || roleNameCharacters > 120 || (!roleForm.id && !roleForm.code.trim())"
           >
             {{ busy ? t('admin.copy.2462134b') : roleForm.id ? t('admin.copy.383c86a7') : t('admin.copy.80f397e0') }}
           </button>
-        </form>
+        </template>
         </DetailModal>
-        <div v-if="canRoles" class="panel listing">
-          <div class="panel-title">
-            <div>
-              <h2>{{ t('admin.copy.efb1fda4') }}</h2>
-            </div>
-            <button
-              v-if="writeRoles"
-              class="text-button"
-              type="button"
-              @click="startRole"
-            >
-              {{ t('admin.copy.8c7fddfb') }}
-            </button>
-          </div>
-          <p v-if="!roles.length" class="muted empty-state">{{ t('admin.copy.5c979929') }}</p>
-          <article v-for="role in roles" :key="role.id" class="record">
-            <div class="record-top">
-              <div>
-                <button type="button" class="text-button" @click="viewedRole = role"><AssociationName :record="role" kind="role" :id="role.id" :locale="associationLocale" /></button>
-              </div>
-              <span class="pill" :class="role.status">{{
-                 role.status === "active"
-                    ? t('admin.copy.98d24810')
-                    : t('admin.copy.5e3326db')
-              }}</span>
-            </div>
-            <div class="record-bottom">
-              <button
-                v-if="editableRole(role)"
-                class="text-button"
-                type="button"
-                @click="editRole(role)"
-              >
-                {{ t('admin.copy.24dfbf6c') }}</button
-              >
-            </div>
-          </article>
-          <footer class="pager">
-            <span>{{ t('admin.copy.f3d61d27', { page: offset / 50 + 1 }) }}</span>
-            <div>
-              <button
-                :disabled="offset === 0 || loading"
-                @click="withGlobalLoading(changePage, -1)"
-              >
-                {{ t('admin.withdrawal.previous') }}</button
-              ><button
-                :disabled="!pageHasNext || loading"
-                @click="withGlobalLoading(changePage, 1)"
-              >
-                {{ t('admin.withdrawal.next') }}
-              </button>
-            </div>
-          </footer>
-        </div>
+        <ManagementList v-if="canRoles" :busy="loading" class="listing">
+          <template #actions><button v-if="writeRoles" class="button button-primary" type="button" @click="startRole">{{ t('admin.copy.8c7fddfb') }}</button><button v-refresh-button="t('admin.copy.894e2a7d')" class="button button-secondary" :disabled="loading || busy" @click="withGlobalLoading(load)">{{ t('admin.copy.894e2a7d') }}</button></template>
+          <ManagementTable :entries="roles" :columns="[{key:'name',label:t('admin.copy.6404dc43')},{key:'status',label:t('admin.copy.a765b3ca')},{key:'actions',label:t('admin.copy.d21fcbef')}]" :empty="!loading && !error && !roles.length" :empty-label="t('admin.copy.5c979929')">
+            <template #name="{entry:role}"><button type="button" class="text-button" @click="viewedRole = role"><AssociationName :record="role" kind="role" :id="role.id" :locale="associationLocale" /></button></template>
+            <template #status="{entry:role}"><span class="status-pill" :class="role.status">{{ role.status === 'active' ? t('admin.copy.98d24810') : t('admin.copy.5e3326db') }}</span></template>
+            <template #actions="{entry:role}"><MemberActionsMenu :id="'brand-role-actions-' + role.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" @click="viewedRole = role">{{ t('admin.copy.01db40da') }}</button><button v-if="editableRole(role)" type="button" role="menuitem" @click="editRole(role)">{{ t('admin.copy.24dfbf6c') }}</button></MemberActionsMenu></template>
+          </ManagementTable>
+
+        <template #pagination><PaginationControls :show-empty="!loading && !error"
+            :total="rolesTotal" :page="Math.floor(offset / 50 + 1)" :count="roles.length" :locale="associationLocale"
+            :previous-label="t('admin.copy.dbe7a5d7')"
+            :next-label="t('admin.copy.2e9c9e7a')"
+            :busy="loading"
+            :has-previous="offset > 0"
+            :has-next="pageHasNext"
+           :page-size="50" :go-to="(target: number) => changePage(target - (Math.floor(offset / 50 + 1)))" /></template></ManagementList>
         <p v-else class="callout">
           {{
             display(roleCatalogMessage || message('admin.copy.4f2155ad'))
@@ -602,11 +546,11 @@ async function changePage(direction: -1 | 1) {
     >
       <div class="columns">
         <button v-if="writeAccounts && !canAccounts && roleCatalogLoaded" class="button button-secondary" type="button" @click="startAccount">{{ t('admin.copy.0f043095') }}</button>
-        <DetailModal v-if="writeAccounts && accountEditorOpen && (roleCatalogLoaded || accountForm.reset)" :title="accountForm.id ? accountForm.reset ? t('admin.copy.1945c635') : t('admin.copy.b74a3dd7') : t('admin.copy.d2a40bda')" :close-label="t('association.close')" @close="!busy && (accountEditorOpen = false)">
-          <p v-if="error" class="message error" role="alert">{{ display(error) }}</p>
+        <DetailModal v-if="writeAccounts && accountEditorOpen && (roleCatalogLoaded || accountForm.reset)" :title="accountForm.id ? accountForm.reset ? t('admin.copy.1945c635') : t('admin.copy.b74a3dd7') : t('admin.copy.d2a40bda')" :close-label="t('association.close')" :close-disabled="busy" @close="!busy && (accountEditorOpen = false)">
+
         <form v-write-guard="busy" novalidate v-inline-validation
           v-if="writeAccounts && (roleCatalogLoaded || accountForm.reset)"
-          class="panel form"
+          class="panel form ui-form"
           @submit.prevent="withGlobalLoading(saveAccount)"
         >
           <template v-if="!accountForm.id"
@@ -618,21 +562,21 @@ async function changePage(direction: -1 | 1) {
                 autocomplete="username" /></label
             ><label
               >{{ t('admin.copy.f1a553c9') }}<input
-                v-model="accountForm.password"
+                v-model="accountForm.password" data-min-characters="6" data-max-characters="30"
                 type="password"
                 required
                 autocomplete="new-password"
-              /><small>{{ accountPasswordBytes }} {{ t('admin.copy.b2ca2f37') }}</small></label
+              /><small>{{ accountPasswordCharacters }} / 30 {{ t('admin.console.characters') }}</small></label
             ></template
           >
           <template v-else-if="accountForm.reset"
             ><label
               >{{ t('admin.copy.683caabd') }}<input
-                v-model="accountForm.password"
+                v-model="accountForm.password" data-min-characters="6" data-max-characters="30"
                 type="password"
                 required
                 autocomplete="new-password"
-              /><small>{{ accountPasswordBytes }} {{ t('admin.copy.b2ca2f37') }}</small></label
+              /><small>{{ accountPasswordCharacters }} / 30 {{ t('admin.console.characters') }}</small></label
             ></template
           >
           <template v-else
@@ -640,10 +584,7 @@ async function changePage(direction: -1 | 1) {
               {{ t('admin.copy.851c6121') }}: <b>{{ accountForm.username }}</b>
             </p>
             <label
-              >{{ t('admin.copy.a765b3ca') }}<select v-model="accountForm.status">
-                <option value="active">{{ t('admin.copy.98d24810') }}</option>
-                <option value="disabled">{{ t('admin.copy.5e3326db') }}</option>
-              </select></label
+              >{{ t('admin.copy.a765b3ca') }}<SelectControl v-model="accountForm.status" :label="String(t('admin.copy.a765b3ca'))" :options="[{ value: 'active', label: (String(t('admin.copy.98d24810'))).trim() }, { value: 'disabled', label: (String(t('admin.copy.5e3326db'))).trim() }]" /></label
             ></template
           >
           <fieldset v-if="!accountForm.reset" class="permissions">
@@ -666,8 +607,6 @@ async function changePage(direction: -1 | 1) {
                 ? selectedRolePermissionUnion.map(permission => permissionLabel(permission, associationLocale)).join(" · ")
                 : t('admin.copy.d04292ff')
             }}</span
-            ><small
-              >{{ t('admin.copy.ebec9012') }}</small
             >
           </div>
           <button
@@ -675,7 +614,7 @@ async function changePage(direction: -1 | 1) {
             :disabled="
               busy ||
               ((!accountForm.id || accountForm.reset) &&
-                (accountPasswordBytes < 6 || accountPasswordBytes > 30))
+                (accountPasswordCharacters < 6 || accountPasswordCharacters > 30))
             "
           >
             {{
@@ -701,81 +640,39 @@ async function changePage(direction: -1 | 1) {
         <p v-if="writeAccounts && !canAccounts" class="callout">
           {{ t('admin.copy.f738dce4') }}
         </p>
-        <div v-if="canAccounts" class="panel listing">
-          <div class="panel-title">
-            <div>
-              <h2>{{ t('admin.copy.09cda972') }}</h2>
-            </div>
-            <button
-              v-if="writeAccounts && roleCatalogLoaded"
-              class="text-button"
-              type="button"
-              @click="startAccount"
-            >
-              {{ t('admin.copy.0f043095') }}
-            </button>
-          </div>
-          <p v-if="!accounts.length" class="muted empty-state">{{ t('admin.copy.3a1d4b47') }}</p>
-          <article v-for="target in accounts" :key="target.id" class="record">
-            <div class="record-top">
-              <div>
-                <b>{{ target.username }}</b
-                >
-              </div>
-              <span class="pill" :class="target.status">{{
-                target.status === "active" ? t('admin.copy.98d24810') : t('admin.copy.5e3326db')
-              }}</span>
-            </div>
-            <p class="permission-summary">
-              {{ t('admin.copy.cebd8508') }}: <span v-for="roleId in target.role_ids" :key="roleId" class="role-name"><AssociationName :record="target" kind="role" :id="roleId" :locale="associationLocale" /> </span><span v-if="!target.role_ids.length">{{ t('admin.copy.1b957d47') }}</span>
-            </p>
-            <details class="permission-summary">
-              <summary>{{ t('admin.copy.abc7e339') }}</summary>
-              <p>{{ accountPermissionDisplay(target) }}</p>
-            </details>
-            <div class="record-bottom">
+        <ManagementList v-if="canAccounts" :busy="loading" class="listing">
+          <template #actions><button v-if="writeAccounts && roleCatalogLoaded" class="button button-primary" type="button" @click="startAccount">{{ t('admin.copy.0f043095') }}</button><button v-refresh-button="t('admin.copy.894e2a7d')" class="button button-secondary" :disabled="loading || busy" @click="withGlobalLoading(load)">{{ t('admin.copy.894e2a7d') }}</button></template>
+          <ManagementTable
+            table-class="account-directory-table"
+            :entries="accounts"
+            :columns="[
+              { key: 'account', label: t('admin.copy.851c6121') },
+              { key: 'roles', label: t('admin.copy.cebd8508') },
+              { key: 'status', label: t('admin.copy.a765b3ca') },
+              { key: 'actions', label: t('admin.copy.d21fcbef') },
+            ]"
+            :empty="!loading && !error && !accounts.length"
+            :empty-label="t('admin.copy.3a1d4b47')"
+          >
+            <template #account="{ entry: target }"><button type="button" class="text-button" @click="viewedAccount = target">{{ target.username }}</button></template>
+            <template #roles="{ entry: target }">
+              <div v-for="roleId in target.role_ids" :key="roleId"><AssociationName :record="target" kind="role" :id="roleId" :locale="associationLocale" /></div>
+              <span v-if="!target.role_ids.length">{{ t('admin.copy.1b957d47') }}</span>
+            </template>
+            <template #status="{ entry: target }">
+              <span class="status-pill" :class="target.status">{{ target.status === 'active' ? t('admin.copy.98d24810') : t('admin.copy.5e3326db') }}</span>
+            </template>
+            <template #actions="{ entry: target }"><MemberActionsMenu :id="'brand-account-actions-' + target.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" @click="viewedAccount = target">{{ t('admin.copy.01db40da') }}</button><button v-if="writeAccounts && editableAccount(target)" type="button" role="menuitem" @click="editAccount(target)">{{ t('admin.copy.24dfbf6c') }}</button><button v-if="writeAccounts && canResetTarget(target)" type="button" role="menuitem" @click="editAccount(target, true)">{{ t('admin.copy.d1e2ba79') }}</button></MemberActionsMenu></template>
+          </ManagementTable>
 
-              <div v-if="writeAccounts" class="inline-actions">
-                <button
-                  v-if="editableAccount(target)"
-                  class="text-button"
-                  type="button"
-                  @click="editAccount(target)"
-                >
-                  {{ t('admin.copy.24dfbf6c') }}</button
-                ><button
-                  v-if="canResetTarget(target)"
-                  class="text-button"
-                  type="button"
-                  @click="editAccount(target, true)"
-                >
-                  {{ t('admin.copy.d1e2ba79') }}</button
-                ><span
-                  v-if="!editableAccount(target) && !canResetTarget(target)"
-                  class="muted"
-                  >{{ t('admin.copy.9be4e033') }}</span
-                >
-              </div>
-              <span v-else class="muted">{{ t('admin.copy.9be4e033') }}</span>
-            </div>
-          </article>
-          <footer class="pager">
-            <span>{{ t('admin.copy.f3d61d27', { page: offset / 50 + 1 }) }}</span>
-            <div>
-              <button
-                :disabled="offset === 0 || loading"
-                @click="withGlobalLoading(changePage, -1)"
-              >
-                {{ t('admin.copy.dbe7a5d7') }}</button
-              ><button
-                :disabled="!pageHasNext || loading"
-                @click="withGlobalLoading(changePage, 1)"
-              >
-                {{ t('admin.copy.2e9c9e7a') }}
-              </button>
-            </div>
-          </footer>
-        </div>
+        <template #pagination><PaginationControls :show-empty="!loading && !error"
+            :total="accountsTotal" :page="Math.floor(offset / 50 + 1)" :count="accounts.length" :locale="associationLocale"
+            :previous-label="t('admin.copy.dbe7a5d7')"
+            :next-label="t('admin.copy.2e9c9e7a')"
+            :busy="loading"
+            :has-previous="offset > 0"
+            :has-next="pageHasNext"
+           :page-size="50" :go-to="(target: number) => changePage(target - (Math.floor(offset / 50 + 1)))" /></template></ManagementList>
         <p v-else class="callout">
           {{ t('admin.copy.1a880f7b') }}
         </p>
@@ -789,9 +686,12 @@ async function changePage(direction: -1 | 1) {
       </dl>
     </DetailModal>
   </section>
+    <DetailModal v-if="viewedAccount" :title="viewedAccount.username" :close-label="t('association.close')" @close="viewedAccount = null"><dl class="console-facts"><div><dt>{{ t('admin.copy.cebd8508') }}</dt><dd><div v-for="roleId in viewedAccount.role_ids" :key="roleId"><AssociationName :record="viewedAccount" kind="role" :id="roleId" :locale="associationLocale" /></div></dd></div><div><dt>{{ t('admin.copy.abc7e339') }}</dt><dd>{{ accountPermissionDisplay(viewedAccount) }}</dd></div><div><dt>{{ t('admin.copy.a765b3ca') }}</dt><dd>{{ viewedAccount.status === 'active' ? t('admin.copy.98d24810') : t('admin.copy.5e3326db') }}</dd></div></dl></DetailModal>
+
 </template>
 
 <style scoped>
+
 .access-page {
   --ink: #252a36;
   --sub: var(--muted);
@@ -819,7 +719,7 @@ async function changePage(direction: -1 | 1) {
   margin: 0;
 }
 .eyebrow {
-  font-size: 11px;
+  font-size: var(--body-font-size);
   letter-spacing: 1.2px;
   color: #8991a2;
   font-weight: 700;
@@ -830,27 +730,10 @@ async function changePage(direction: -1 | 1) {
   background: #f1f3f8;
   padding: 7px 11px;
   color: #626b7c;
-  font-size: 11px;
+  font-size: var(--body-font-size);
   white-space: nowrap;
 }
-.tabs {
-  display: flex;
-  gap: 6px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 16px;
-}
-.tabs button {
-  border: 0;
-  background: none;
-  padding: 11px 14px;
-  color: var(--sub);
-  border-bottom: 2px solid transparent;
-}
-.tabs button[aria-selected="true"] {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
-  font-weight: 700;
-}
+
 .columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -899,12 +782,10 @@ async function changePage(direction: -1 | 1) {
 .form > label {
   display: grid;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--body-font-size);
   font-weight: 600;
 }
-.form input:not([type="checkbox"]),
-.form select,
-.form textarea {
+.form input:not([type="checkbox"]), .form textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid #dfe3eb;
@@ -916,6 +797,16 @@ async function changePage(direction: -1 | 1) {
 .form textarea {
   resize: vertical;
 }
+.role-form { min-width: 0; }
+.role-identity { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.role-identity > label { display: grid; gap: 6px; min-width: 0; }
+.role-identity small { color: var(--muted); font-weight: 400; }
+.role-record { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; }
+.access-page .role-record .record-bottom { margin: 0; }
+.role-record .text-button { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.role-record .pill { background: var(--canvas); color: var(--muted); padding: 4px 10px; }
+.role-record .pill.active { background: var(--success-bg); color: var(--success-text); }
+@media (max-width: 620px) { .role-identity { grid-template-columns: minmax(0, 1fr); } }
 .permissions {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -927,7 +818,7 @@ async function changePage(direction: -1 | 1) {
   overflow: auto;
 }
 .permissions legend {
-  font-size: 11px;
+  font-size: var(--body-font-size);
   font-weight: 700;
   padding: 0 4px;
 }
@@ -936,7 +827,7 @@ async function changePage(direction: -1 | 1) {
   align-items: flex-start;
   gap: 7px;
   min-width: 0;
-  font-size: 11px;
+  font-size: var(--body-font-size);
   overflow-wrap: anywhere;
 }
 .check input {
@@ -945,7 +836,7 @@ async function changePage(direction: -1 | 1) {
 }
 .check code,
 code {
-  font-size: 11px;
+  font-size: var(--body-font-size);
   color: #777f90;
   overflow-wrap: anywhere;
 }
@@ -965,7 +856,7 @@ code {
   background: none;
   color: var(--primary);
   padding: 4px;
-  font-size: 11px;
+  font-size: var(--body-font-size);
   white-space: nowrap;
 }
 .record {
@@ -988,10 +879,10 @@ code {
   flex-wrap: wrap;
 }
 .record-top b {
-  font-size: 12px;
+  font-size: var(--body-font-size);
 }
 .permission-summary {
-  font-size: 11px;
+  font-size: var(--body-font-size);
   line-height: 1.55;
   color: #626b7c;
   overflow-wrap: anywhere;
@@ -999,7 +890,7 @@ code {
 }
 .record-bottom small {
   color: #969dac;
-  font-size: 11px;
+  font-size: var(--body-font-size);
   overflow-wrap: anywhere;
 }
 .pill.active {
@@ -1010,34 +901,15 @@ code {
   background: #f3f3f5;
   color: #818896;
 }
-.pager {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 13px;
-  color: var(--sub);
-  font-size: 11px;
-}
-.pager div,
 .inline-actions {
   display: flex;
   gap: 8px;
-}
-.pager button {
-  border: 1px solid var(--line);
-  background: white;
-  border-radius: 6px;
-  padding: 6px 9px;
-  font-size: 11px;
-}
-.pager button:disabled {
-  opacity: 0.45;
 }
 .message,
 .callout {
   border-radius: 8px;
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: var(--body-font-size);
   overflow-wrap: anywhere;
 }
 .message button {
@@ -1048,7 +920,7 @@ code {
   text-decoration: underline;
 }
 .error {
-  background: #fff0ef;
+  background: var(--danger-bg);
   color: #a83d36;
 }
 .success {
@@ -1065,7 +937,7 @@ code {
   border-radius: 8px;
   padding: 11px;
   background: #f6f7fc;
-  font-size: 11px;
+  font-size: var(--body-font-size);
   overflow-wrap: anywhere;
 }
 .union span {
@@ -1077,7 +949,7 @@ code {
   line-height: 1.5;
 }
 .readonly {
-  font-size: 11px;
+  font-size: var(--body-font-size);
   margin: 0;
 }
 @media (max-width: 760px) {

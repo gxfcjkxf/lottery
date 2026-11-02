@@ -40,8 +40,8 @@ func TestAdjustmentInputIsClosedAndValidatesNetAmount(t *testing.T) {
 			t.Errorf("invalid adjustment input accepted: %s", raw)
 		}
 	}
-	if (AdjustmentInput{Version: 1, Points: 1, Reason: strings.Repeat("界", 167)}).Validate() == nil {
-		t.Fatal("reason longer than 500 UTF-8 bytes accepted")
+	if (AdjustmentInput{Version: 1, Points: 1, Reason: strings.Repeat("界", 501)}).Validate() == nil {
+		t.Fatal("reason longer than 500 characters accepted")
 	}
 	if (AdjustmentInput{Version: 1, Points: 1, Reason: "x\x00y"}).Validate() == nil {
 		t.Fatal("reason containing NUL accepted")

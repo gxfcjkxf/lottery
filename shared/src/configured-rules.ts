@@ -144,32 +144,32 @@ export function configuredOptionWave(snapshot: ConfiguredSnapshot, option: Confi
   return waves.size === 1 ? [...waves][0] : undefined
 }
 
-/** Display potential tier prices only; the engine determines the actual price of each expanded entry. */
-export function configuredOptionPrices(snapshot: ConfiguredSnapshot, play: ConfiguredPlay, option: ConfiguredOption, plate: string): string[] {
+/** Resolve the same price references for player display and brand editing. */
+export function configuredOptionPriceKeys(snapshot: ConfiguredSnapshot, play: ConfiguredPlay, option: ConfiguredOption): string[] {
   if (option.reference) {
     const target = snapshot.catalog.plays.find(p => p.id === option.reference!.play_id)
     const leg = target && snapshot.catalog.domains[target.selection.domain]?.options.find(o => o.id === option.reference!.option_id)
     if (!target || !leg || leg.reference) throw new Error('Invalid leg reference')
-    return configuredOptionPrices(snapshot, target, leg, plate)
+    return configuredOptionPriceKeys(snapshot, target, leg)
   }
-  const values = new Set<string>()
-  if (play.settlement === 'decision_table') {
-    for (const key of new Set((play.decisions?.outcomes ?? []).flatMap(outcome => outcome.price_key ? [outcome.price_key] : []))) {
-      const price = snapshot.prices.plates[plate]?.[key]
-      if (!price) throw new Error('Missing price')
-      values.add(price)
-    }
-    return [...values]
-  }
+  if (play.settlement === 'decision_table') return [...new Set((play.decisions?.outcomes ?? []).flatMap(outcome => outcome.price_key ? [outcome.price_key] : []))]
   if (play.settlement !== 'tiers' || !play.tiers?.length) throw new Error('Missing tier configuration')
-  for (const raw of play.tiers) {
-    const tier = raw as { price: { kind: string; key?: string; cases?: Array<{ key: string }> } }
-    const p = tier.price
-    const keys = p.kind === 'fixed' ? [p.key!] : p.kind === 'option' ? [option.price_key!] : p.kind === 'cases' ? p.cases!.map(c => c.key) : []
+  const keys = play.tiers.flatMap(raw => {
+    const { price } = raw as { price: { kind: string; key?: string; cases?: Array<{ key: string }> } }
+    const keys = price.kind === 'fixed' ? [price.key!] : price.kind === 'option' ? [option.price_key!] : price.kind === 'cases' ? price.cases!.map(c => c.key) : []
     if (!keys.length) throw new Error('Unsupported price')
-    for (const key of keys) { const price = snapshot.prices.plates[plate]?.[key]; if (!price) throw new Error('Missing price'); values.add(price) }
-  }
-  return [...values]
+    return keys
+  })
+  return [...new Set(keys)]
+}
+
+/** Display potential tier prices only; the engine determines the actual price of each expanded entry. */
+export function configuredOptionPrices(snapshot: ConfiguredSnapshot, play: ConfiguredPlay, option: ConfiguredOption, plate: string): string[] {
+  return [...new Set(configuredOptionPriceKeys(snapshot, play, option).map(key => {
+    const price = snapshot.prices.plates[plate]?.[key]
+    if (!price) throw new Error('Missing price')
+    return price
+  }))]
 }
 
 /** Create an independent copy, including its option domain; editing it cannot alter the source play. */

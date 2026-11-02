@@ -64,6 +64,10 @@ func newDatabase(t *testing.T, seed bool) *pgxpool.Pool {
 		if err = database.Seed(ctx, p, "test"); err != nil {
 			t.Fatal(err)
 		}
+		// Existing workflow fixtures explicitly opt in; new brands keep the schema default.
+		if _, err = p.Exec(ctx, `UPDATE brands SET allow_custom_games=true`); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return p
 }

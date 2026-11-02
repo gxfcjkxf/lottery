@@ -1,4 +1,15 @@
 <script setup lang="ts">
+import { nextTick } from 'vue'
+const filterReset = ref(0)
+
+import ManagementList from "@lottery/shared/ManagementList.vue"
+import TablePagination from "@lottery/shared/TablePagination.vue"
+const agentFilterSearchPending = ref(false);
+import FilterAssociationSearch from "@lottery/shared/FilterAssociationSearch.vue";
+const memberSearchPending = ref(false);
+import SelectControl from '@lottery/shared/SelectControl.vue'
+import { useOperationToast } from "@lottery/shared";
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { associationGroupLabel } from "@lottery/shared";
 import { usePlatformI18n as useAssociationI18n } from "./i18n";
 const associationLocale = useAssociationI18n().locale;
@@ -48,15 +59,9 @@ let generation = 0
 const kinds: ReportKind[] = ['betting', 'ledger', 'withdrawal', 'commission', 'rewards', 'reward_orders']
 const balanceFields = ['account_count', 'available_points', 'frozen_points', 'withdrawal_points', 'total_points'] as const
 const copy = computed(() => props.locale === 'en' ? {
-  type: ui('platform.copy.9accfb74'), from: ui('platform.copy.b29db694'), to: ui('platform.copy.52606ad4'), group: ui('platform.copy.936e4b65'), member: ui('filter.member'), game: ui('common.games'), agent: ui('filter.agent'), cycle: ui('filter.cycle'), order: ui('filter.reward_order'), run: ui('platform.copy.e479a50e'), snapshot: ui('platform.copy.54dce63b'), timezone: ui('platform.copy.323b7aa3'), summary: ui('platform.copy.d4e4c9cf'), groups: ui('platform.copy.355f0b33'), empty: ui('platform.copy.b797f882'), previous: ui('platform.copy.7f5aba9a'), next: ui('platform.copy.282be575'), page: ui('platform.copy.6695ff1c'), total: ui('platform.copy.2ba27d4c'), balances: ui('platform.copy.0d70e750'), balanceNote: ui('platform.copy.74c6280f'), bettingNote: ui('platform.copy.44d13134'), withdrawalNote: ui('platform.copy.8af3e706'), rewardOrdersNote: ui('platform.copy.7e5a2d6d'), commissionNote: ui('platform.copy.571b221b'), rewardsNote: ui('platform.copy.5c4eeedb'), ledgerNote: ui('platform.copy.81fd66fd'),
-  rewardPendingNote: ui('platform.copy.2cc9bfe1'),
-  export: ui('platform.copy.40108cb4'), exportTitle: ui('platform.copy.01e8cbab'), exportNote: ui('platform.copy.6a3cc60a'),
-  brand: ui('platform.copy.8a866cb7'), cancel: ui('platform.copy.2230b1a7'), confirm: ui('platform.copy.9e4b7496'), exporting: ui('platform.copy.3d2ced1c'), exported: ui('platform.copy.c26d8333'), audit: ui('platform.copy.18bb6f26'),
+  type: ui('platform.copy.9accfb74'), from: ui('platform.copy.b29db694'), to: ui('platform.copy.52606ad4'), group: ui('platform.copy.936e4b65'), member: ui('filter.member'), game: ui('common.games'), agent: ui('filter.agent'), cycle: ui('filter.cycle'), order: ui('filter.reward_order'), run: ui('platform.copy.e479a50e'), summary: ui('platform.copy.d4e4c9cf'), groups: ui('platform.copy.355f0b33'), empty: ui('platform.copy.b797f882'), previous: ui('platform.copy.7f5aba9a'), next: ui('platform.copy.282be575'), page: ui('platform.copy.6695ff1c'), total: ui('platform.copy.2ba27d4c'), balances: ui('platform.copy.0d70e750'), export: ui('platform.copy.40108cb4'), exportTitle: ui('platform.copy.01e8cbab'), brand: ui('platform.copy.8a866cb7'), cancel: ui('platform.copy.2230b1a7'), confirm: ui('platform.copy.9e4b7496'), exporting: ui('platform.copy.3d2ced1c'), exported: ui('platform.copy.c26d8333'), audit: ui('platform.copy.18bb6f26'),
 } : {
-  type: ui('platform.copy.9accfb74'), from: ui('platform.copy.b29db694'), to: ui('platform.copy.52606ad4'), group: ui('platform.copy.936e4b65'), member: ui('filter.member'), game: ui('common.games'), agent: ui('filter.agent'), cycle: ui('filter.cycle'), order: ui('filter.reward_order'), run: ui('platform.copy.e479a50e'), snapshot: ui('platform.copy.54dce63b'), timezone: ui('platform.copy.323b7aa3'), summary: ui('platform.copy.d4e4c9cf'), groups: ui('platform.copy.355f0b33'), empty: ui('platform.copy.b797f882'), previous: ui('platform.copy.7f5aba9a'), next: ui('platform.copy.282be575'), page: ui('platform.copy.6695ff1c'), total: ui('platform.copy.2ba27d4c'), balances: ui('platform.copy.0d70e750'), balanceNote: ui('platform.copy.74c6280f'), bettingNote: ui('platform.copy.44d13134'), withdrawalNote: ui('platform.copy.8af3e706'), rewardOrdersNote: ui('platform.copy.7e5a2d6d'), commissionNote: ui('platform.copy.571b221b'), rewardsNote: ui('platform.copy.5c4eeedb'), ledgerNote: ui('platform.copy.81fd66fd'),
-  rewardPendingNote: ui('platform.copy.2cc9bfe1'),
-  export: ui('platform.copy.40108cb4'), exportTitle: ui('platform.copy.01e8cbab'), exportNote: ui('platform.copy.6a3cc60a'),
-  brand: ui('platform.copy.8a866cb7'), cancel: ui('platform.copy.2230b1a7'), confirm: ui('platform.copy.9e4b7496'), exporting: ui('platform.copy.3d2ced1c'), exported: ui('platform.copy.c26d8333'), audit: ui('platform.copy.18bb6f26'),
+  type: ui('platform.copy.9accfb74'), from: ui('platform.copy.b29db694'), to: ui('platform.copy.52606ad4'), group: ui('platform.copy.936e4b65'), member: ui('filter.member'), game: ui('common.games'), agent: ui('filter.agent'), cycle: ui('filter.cycle'), order: ui('filter.reward_order'), run: ui('platform.copy.e479a50e'), summary: ui('platform.copy.d4e4c9cf'), groups: ui('platform.copy.355f0b33'), empty: ui('platform.copy.b797f882'), previous: ui('platform.copy.7f5aba9a'), next: ui('platform.copy.282be575'), page: ui('platform.copy.6695ff1c'), total: ui('platform.copy.2ba27d4c'), balances: ui('platform.copy.0d70e750'), export: ui('platform.copy.40108cb4'), exportTitle: ui('platform.copy.01e8cbab'), brand: ui('platform.copy.8a866cb7'), cancel: ui('platform.copy.2230b1a7'), confirm: ui('platform.copy.9e4b7496'), exporting: ui('platform.copy.3d2ced1c'), exported: ui('platform.copy.c26d8333'), audit: ui('platform.copy.18bb6f26'),
 })
 
 const kindLabels: Record<ReportKind, string> = {
@@ -67,22 +72,31 @@ const groupLabels: Record<string, string> = {
   day: 'platform.copy.8a8d787b', game: 'platform.copy.20fdabb8', member: 'platform.copy.da8480f3', entry_type: 'platform.copy.53b1f7cc',
   state: 'platform.copy.78182fb4', agent: 'platform.copy.e592fcdf', cycle: 'platform.copy.f6f6ceea', order: 'platform.copy.68419640',
   reviewing: 'platform.copy.1be3df4b', processing: 'platform.copy.c0805393', paid: 'platform.copy.35188d0b', rejected: 'platform.copy.152a0128',
-  failed: 'platform.copy.f628af96', cancelled: 'platform.copy.d9b0562c', granted: 'platform.copy.21e83e2d', revocation_pending: 'platform.copy.02e5e19d', revoked: 'platform.copy.97fc3c9b',
+  failed: 'platform.copy.f628af96', cancelled: 'platform.copy.d9b0562c', granted: 'platform.copy.21e83e2d', revoked: 'platform.copy.97fc3c9b',
 }
 const groupOptions = computed(() => REPORT_GROUPS[kind.value].map(value => ({ value, label: label(groupLabels, value) })))
-const note = computed(() => ({ betting: copy.value.bettingNote, withdrawal: copy.value.withdrawalNote, reward_orders: copy.value.rewardOrdersNote, commission: copy.value.commissionNote, rewards: copy.value.rewardsNote, ledger: copy.value.ledgerNote })[kind.value])
 function label(labels: Record<string, string>, key: string) {
   const translationKey = labels[key]
   if (!translationKey) throw new Error(`Unsupported report label: ${key}`)
   return ui(translationKey)
 }
 function clearReport() { generation++; report.value = null; submitted.value = null; offset.value = 0; loading.value = false; error.value = ''; exportRequest.value = null; exporting.value = false; exportNotice.value = '' }
-function edited() { if (report.value || submitted.value || loading.value) clearReport() }
-watch(kind, () => { groupBy.value = 'day'; gameFilter.value = ''; agentFilter.value = ''; cycleFilter.value = ''; orderFilter.value = ''; edited() })
-watch(() => props.brandId, () => {
-  clearReport(); from.value = ''; to.value = ''; groupBy.value = 'day'
+async function clearFilters() { filterReset.value++;
+  from.value = new Date().toISOString().slice(0, 10); to.value = from.value; groupBy.value = 'day'
   memberFilter.value = ''; gameFilter.value = ''; agentFilter.value = ''; cycleFilter.value = ''; orderFilter.value = ''
-}, { flush: 'sync' })
+  await nextTick(); await load(0)
+}
+function edited() { if (report.value || submitted.value || loading.value) clearReport() }
+watch(() => [from.value, to.value, groupBy.value, memberFilter.value, gameFilter.value, agentFilter.value, cycleFilter.value, orderFilter.value], edited, { flush: 'sync' })
+watch(kind, () => {
+  groupBy.value = 'day'; gameFilter.value = ''; agentFilter.value = ''; cycleFilter.value = ''; orderFilter.value = ''; clearReport()
+  if (props.brandId) void withGlobalLoading(load, 0)
+})
+watch(() => props.brandId, () => {
+  clearReport(); from.value = new Date().toISOString().slice(0, 10); to.value = from.value; groupBy.value = 'day'
+  memberFilter.value = ''; gameFilter.value = ''; agentFilter.value = ''; cycleFilter.value = ''; orderFilter.value = ''
+  if (props.brandId) void withGlobalLoading(load, 0)
+}, { immediate: true, flush: 'sync' })
 onBeforeUnmount(() => { generation++; exportRequest.value = null })
 
 async function makeQuery(pageOffset: number): Promise<ReportQuery> {
@@ -95,13 +109,14 @@ async function makeQuery(pageOffset: number): Promise<ReportQuery> {
   return query
 }
 async function load(nextOffset = 0) {
+  if (memberSearchPending.value || agentFilterSearchPending.value) return
   if (!props.brandId || !from.value || !to.value || !groupBy.value) return
   const request = ++generation
   exportRequest.value = null; exportNotice.value = ''
   const brand = props.brandId
   const requestKind = kind.value
   const previousQuery = submitted.value?.query
-  report.value = null; submitted.value = null; offset.value = nextOffset; error.value = ''; loading.value = true
+  error.value = ''; loading.value = true
   try {
     const query = previousQuery && nextOffset !== 0 ? { ...previousQuery, offset: nextOffset } : await makeQuery(nextOffset)
     if (request !== generation || brand !== props.brandId) return
@@ -136,7 +151,7 @@ async function confirmExport() {
     link.href = url; link.download = result.filename
     document.body.append(link); link.click(); link.remove()
     setTimeout(() => URL.revokeObjectURL(url), 0)
-    exportNotice.value = `${copy.value.exported}: ${result.filename} · ${copy.value.total}: ${result.groupCount} · ${copy.value.snapshot}: ${formatPlatformDateTime(result.snapshotAt, props.displaySettings, props.locale)} · ${copy.value.audit}: ${result.auditLogId}`
+    exportNotice.value = `${copy.value.exported}: ${result.filename} · ${copy.value.total}: ${result.groupCount} · ${copy.value.audit}: ${result.auditLogId}`
     exportRequest.value = null
   } catch (cause) {
     if (request !== generation) return
@@ -147,80 +162,80 @@ async function confirmExport() {
 }
 const fields = computed(() => REPORT_FIELDS[report.value ? submitted.value!.kind : kind.value])
 const hasNextPage = computed(() => report.value !== null && BigInt(offset.value + report.value.items.length) < BigInt(report.value.total_groups))
+useOperationToast(exportNotice, value => value, 'success');
+
+useOperationToast(error, value => displayPublicError(value), 'error');
 </script>
 
 <template>
-  <div data-testid="platform-reports">
-    <form novalidate v-inline-validation class="panel wallet-query report-filters" @submit.prevent="withGlobalLoading(load, 0)">
+  <ManagementList data-testid="platform-reports" :busy="loading">
+    <template v-if="report && submitted" #actions><button type="button" class="button button-secondary" :disabled="loading || exporting" @click="reviewExport">{{ copy.export }}</button></template>
+    <template #filters><form novalidate v-inline-validation class="wallet-query report-filters ui-filter-bar" @submit.prevent="withGlobalLoading(load, 0)">
       <label class="query-field">
-        <span class="field-label">{{ copy.type }}</span>
-        <select v-model="kind" :aria-label="copy.type" :disabled="loading">
-          <option v-for="option in kinds" :key="option" :value="option">{{ label(kindLabels, option) }}</option>
-        </select>
+
+        <SelectControl :placeholder="copy.type" v-model="kind" :label="copy.type" :disabled="loading" :options="(kinds).map((option) => ({ value: option, label: (String(label(kindLabels, option))).trim() }))" />
       </label>
       <label class="query-field report-date-field">
-        <span class="field-label">{{ ui('platform.reports.fromDate') }}</span>
-        <PlatformTemporalInput v-model="from" type="date" :aria-label="ui('platform.reports.fromDate')" :locale="locale" required :disabled="loading" @update:model-value="edited" />
+
+        <PlatformTemporalInput :label="ui('platform.reports.fromDate')" :placeholder="ui('platform.reports.fromDate')" v-model="from" type="date" :aria-label="ui('platform.reports.fromDate')" :locale="locale" required :disabled="loading" />
       </label>
       <label class="query-field report-date-field">
-        <span class="field-label">{{ ui('platform.reports.toDate') }}</span>
-        <PlatformTemporalInput v-model="to" type="date" :aria-label="ui('platform.reports.toDate')" :locale="locale" required :disabled="loading" @update:model-value="edited" />
+
+        <PlatformTemporalInput :label="ui('platform.reports.toDate')" :placeholder="ui('platform.reports.toDate')" v-model="to" type="date" :aria-label="ui('platform.reports.toDate')" :locale="locale" required :disabled="loading" />
       </label>
       <label class="query-field">
-        <span class="field-label">{{ copy.group }}</span>
-        <select v-model="groupBy" :aria-label="copy.group" required :disabled="loading" @change="edited">
-          <option v-for="option in groupOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-        </select>
+
+        <SelectControl :placeholder="copy.group" v-model="groupBy" :label="copy.group" required :disabled="loading" :options="(groupOptions).map((option) => ({ value: option.value, label: (String(option.label)).trim() }))" />
       </label>
       <label class="query-field report-member-field">
-        <span class="field-label">{{ ui('filter.member') }}</span>
-        <FilterAssociationSelect v-model="memberFilter" :brand-id="brandId" surface="platform" :resource="`report_${kind}`" kind="member" :label="ui('filter.member')" :locale="locale" :disabled="loading" @update:model-value="edited" />
+
+        <FilterAssociationSearch :reset-key="filterReset" v-model="memberFilter" v-model:pending="memberSearchPending" :brand-id="brandId" surface="platform" :resource="`report_${kind}`" :label="ui('filter.member')" :locale="locale" :disabled="loading" />
       </label>
       <label v-if="kind === 'betting'" class="query-field">
-        <span class="field-label">{{ ui('filter.game') }}</span>
-        <FilterAssociationSelect v-model="gameFilter" :brand-id="brandId" surface="platform" :resource="`report_${kind}`" kind="game" :label="ui('filter.game')" :locale="locale" :disabled="loading" @update:model-value="edited" />
+
+        <FilterAssociationSelect v-model="gameFilter" :brand-id="brandId" surface="platform" :resource="`report_${kind}`" kind="game" :label="ui('filter.game')" :locale="locale" :disabled="loading" />
       </label>
       <label v-if="kind === 'commission'" class="query-field">
-        <span class="field-label">{{ ui('filter.agent') }}</span>
-        <FilterAssociationSelect v-model="agentFilter" :brand-id="brandId" surface="platform" :resource="`report_${kind}`" kind="agent" :label="ui('filter.agent')" :locale="locale" :disabled="loading" @update:model-value="edited" />
+
+        <FilterAssociationSearch :reset-key="filterReset" v-model="agentFilter" v-model:pending="agentFilterSearchPending" :brand-id="brandId" surface="platform" :resource="`report_${kind}`" kind="agent" :label="ui('filter.agent')" :locale="locale" :disabled="loading" />
       </label>
       <label v-if="kind === 'commission'" class="query-field">
-        <span class="field-label">{{ ui('filter.cycle') }}</span>
-        <FilterAssociationSelect v-model="cycleFilter" :brand-id="brandId" surface="platform" :resource="`report_${kind}`" kind="cycle" :label="ui('filter.cycle')" :locale="locale" :disabled="loading" @update:model-value="edited" />
+
+        <FilterAssociationSelect v-model="cycleFilter" :brand-id="brandId" surface="platform" :resource="`report_${kind}`" kind="cycle" :label="ui('filter.cycle')" :locale="locale" :disabled="loading" />
       </label>
       <label v-if="kind === 'rewards' || kind === 'reward_orders'" class="query-field">
-        <span class="field-label">{{ ui('filter.reward_order') }}</span>
-        <FilterAssociationSelect v-model="orderFilter" :brand-id="brandId" surface="platform" :resource="`report_${kind}`" kind="reward_order" :label="ui('filter.reward_order')" :locale="locale" :disabled="loading" @update:model-value="edited" />
+
+        <FilterAssociationSelect v-model="orderFilter" :brand-id="brandId" surface="platform" :resource="`report_${kind}`" kind="reward_order" :label="ui('filter.reward_order')" :locale="locale" :disabled="loading" />
       </label>
-      <button class="button button-primary" :disabled="loading || !brandId">{{ copy.run }}</button>
-    </form>
-    <p v-if="error" class="message error" role="alert">{{ displayPublicError(error) }}</p>
-    <p v-if="exportNotice" class="message success" role="status" data-testid="platform-report-export-receipt">{{ exportNotice }}</p>
+      <button class="button button-primary" :disabled="loading || !brandId || memberSearchPending || agentFilterSearchPending">{{ copy.run }}</button>
+      <button type="button" class="button button-secondary" :disabled="loading || !brandId" @click="withGlobalLoading(clearFilters)">{{ ui('admin.copy.b089734d') }}</button>
+    </form></template>
+
+
     <template v-if="report && submitted">
-      <p class="message" role="note">{{ note }}</p>
-      <div class="wallet-pagination"><button class="button button-secondary" :disabled="loading || exporting" @click="reviewExport">{{ copy.export }}</button></div>
-      <p v-if="submitted.kind === 'reward_orders'" class="message" role="note">{{ copy.rewardPendingNote }}</p>
-      <section class="panel reward-detail" data-testid="platform-reports-summary">
-        <div class="panel-heading"><div><h2>{{ copy.summary }}</h2><p>{{ copy.snapshot }}: {{ formatPlatformDateTime(report.snapshot_at, props.displaySettings, props.locale) }} · {{ copy.timezone }}: {{ report.timezone }}</p></div></div>
+
+
+
+      <section class="management-list-summary" data-testid="platform-reports-summary">
+        <div class="panel-heading"><div><h2>{{ copy.summary }}</h2></div></div>
         <dl class="confirm-list reward-fields">
           <div v-for="field in fields" :key="field"><dt>{{ label(metricLabels, field) }}</dt><dd>{{ report.summary[field] }}</dd></div>
         </dl>
       </section>
-      <section v-if="report.balances" class="panel reward-detail" data-testid="platform-reports-balances">
-        <div class="panel-heading"><div><h2>{{ copy.balances }}</h2><p>{{ copy.balanceNote }}</p></div></div>
+      <section v-if="report.balances" class="management-list-summary" data-testid="platform-reports-balances">
+        <div class="panel-heading"><div><h2>{{ copy.balances }}</h2></div></div>
         <dl class="confirm-list reward-fields"><div v-for="field in balanceFields" :key="field"><dt>{{ label(metricLabels, field) }}</dt><dd>{{ report.balances[field] }}</dd></div></dl>
       </section>
-      <section class="panel reward-detail" data-testid="platform-reports-list">
+      <div data-testid="platform-reports-list">
         <div class="panel-heading"><h2>{{ copy.groups }}</h2></div>
-        <div class="table-wrap"><table><thead><tr><th>{{ label(groupLabels, submitted.query.group_by) }}</th><th v-for="field in fields" :key="field">{{ label(metricLabels, field) }}</th></tr></thead><tbody>
-          <tr v-for="item in report.items" :key="item.key"><td>{{ submitted.query.group_by === 'state' ? label(groupLabels, item.key) : associationGroupLabel(item, submitted.query.group_by, item.key, item.label, associationLocale) }}</td><td v-for="field in fields" :key="field">{{ item.totals[field] }}</td></tr>
+        <div class="table-wrap"><table class="console-table"><thead><tr><th>{{ label(groupLabels, submitted.query.group_by) }}</th><th v-for="field in fields" :key="field">{{ label(metricLabels, field) }}</th></tr></thead><tbody>
+          <tr v-for="item in report.items" :key="item.key"><td :data-label="String(label(groupLabels, submitted.query.group_by))">{{ submitted.query.group_by === 'state' ? label(groupLabels, item.key) : associationGroupLabel(item, submitted.query.group_by, item.key, item.label, associationLocale) }}</td><td :data-label="String(label(metricLabels, field))" v-for="field in fields" :key="field">{{ item.totals[field] }}</td></tr>
           <tr v-if="!report.items.length"><td :colspan="fields.length + 1" class="empty-state">{{ copy.empty }}</td></tr>
         </tbody></table></div>
-        <div class="wallet-pagination" data-testid="platform-reports-pages"><span>{{ copy.total }}: {{ report.total_groups }}</span><button class="button button-secondary" :disabled="loading || offset === 0" @click="withGlobalLoading(page, Math.max(0, offset - 50))">{{ copy.previous }}</button><span>{{ Math.floor(offset / 50) + 1 }}</span><button class="button button-secondary" :disabled="loading || !hasNextPage" @click="withGlobalLoading(page, offset + 50)">{{ copy.next }}</button></div>
-      </section>
+
+      </div>
     </template>
-    <div v-if="exportRequest" class="modal-scrim"><section class="modal-card" role="dialog" aria-modal="true" :aria-label="copy.exportTitle">
-      <h2>{{ copy.exportTitle }}</h2><p class="modal-intro">{{ copy.exportNote }}</p>
+    <DetailModal class="confirmation-dialog" v-if="exportRequest" :title="copy.exportTitle" :close-label="ui('platform.copy.27b2fd29')" :close-disabled="exporting" @close="!exporting && (exportRequest = null)">
       <dl class="confirm-list">
         <div><dt>{{ copy.brand }}</dt><dd><AssociationName kind="brand" :id="exportRequest.brandId" :locale="associationLocale" /></dd></div>
         <div><dt>{{ copy.type }}</dt><dd>{{ label(kindLabels, exportRequest.kind) }}</dd></div>
@@ -231,22 +246,24 @@ const hasNextPage = computed(() => report.value !== null && BigInt(offset.value 
         <div v-if="exportRequest.query.agent_id"><dt>{{ copy.agent }}</dt><dd><AssociationName :record="exportRequest.query" kind="agent" :id="exportRequest.query.agent_id" :locale="associationLocale" /></dd></div>
         <div v-if="exportRequest.query.cycle_id"><dt>{{ copy.cycle }}</dt><dd><AssociationName :record="report?.query" kind="cycle" :id="exportRequest.query.cycle_id" :locale="associationLocale" /></dd></div>
         <div v-if="exportRequest.query.order_id"><dt>{{ copy.order }}</dt><dd>{{ exportRequest.query.order_id }}</dd></div>
-      </dl><div class="form-actions"><button class="button button-secondary" :disabled="exporting" @click="exportRequest = null">{{ copy.cancel }}</button><button class="button button-primary" :disabled="exporting" @click="withGlobalLoading(confirmExport)">{{ exporting ? copy.exporting : copy.confirm }}</button></div>
-    </section></div>
-  </div>
+      </dl><div class="form-actions ui-form-actions"><button class="button button-primary" :disabled="exporting" @click="withGlobalLoading(confirmExport)">{{ exporting ? copy.exporting : copy.confirm }}</button></div>
+    </DetailModal>
+  <template #pagination v-if="(report && submitted)"><TablePagination :show-empty="Boolean(report)" class="wallet-pagination" data-testid="platform-reports-pages" :total="report.total_groups" :page="Math.floor(offset / 50 + 1)" :count="report.items.length" :locale="locale" :page-size="50" :previous-disabled="loading || offset === 0" :next-disabled="loading || !hasNextPage" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => page((target - 1) * 50)" /></template></ManagementList>
 </template>
 
 <style scoped>
-.report-filters.wallet-query { gap: 10px; padding: 14px; }
+.report-filters.wallet-query { gap: 10px; }
 .report-filters.wallet-query .query-field { flex: 0 0 auto !important; min-width: 0 !important; max-width: 100%; }
 .report-filters.wallet-query .report-date-field { width: 148px; }
-.report-filters.wallet-query .report-member-field { width: 168px; }
+.report-filters.wallet-query .report-member-field { width: auto; }
 .report-filters.wallet-query .input-with-icon { flex: 1 1 auto !important; width: 100% !important; }
 .report-filters.wallet-query .query-field > input { width: 168px; max-width: 100%; }
-.report-filters :deep(.platform-date-input-display) { height: 36px; min-height: 36px; padding-right: 34px; font-size: 14px; }
+.report-filters :deep(.platform-date-input-display) { height: var(--control-height); min-height: var(--control-height); padding-right: 34px; font-size: 14px; }
 .report-filters :deep(.platform-date-input-button) { width: 32px; }
 .report-filters > .button { flex-shrink: 0; }
 @media (max-width: 480px) {
-  .report-filters.wallet-query .query-field { flex: 1 1 130px !important; }
+  .report-filters.wallet-query .query-field { flex: 0 1 auto !important; }
 }
+/* Date endpoints and an All-only selection need visible captions. */
+.report-filters.wallet-query .query-field:has(.platform-temporal-input, .association-filter) { flex-direction: column !important; align-items: flex-start; gap: 6px !important; }
 </style>

@@ -27,16 +27,15 @@ const (
 )
 
 var workKinds = []string{
-	"notification", "settlement", "period_refund", "draw_correction",
+	"notification", "settlement",
 	"commission_cycle", "commission_payment", "commission_correction",
 	"report_archive", "withdrawal",
 }
 
 // Source semantics: notification uses due notification_deliveries; settlement
-// uses settlement_jobs and failed settlement_targets; period_refund uses
-// processing period_cancellations with pending/failed targets;
-// draw_correction uses reversing work and resettling work whose linked
-// settlement job is itself worker-actionable; commission_cycle uses
+// uses placed configured orders with published platform results. Calculation
+// failures remain pending and are recorded by worker error counters/logs.
+// commission_cycle uses
 // due worker states of commission_cycles; commission_payment uses pending targets only
 // while paying; commission_correction uses pending targets only while applying
 // (awaiting approval and paused insufficient-funds executions are excluded);
@@ -55,8 +54,6 @@ type snapshot struct {
 	workPending             map[string]float64
 	workOldest              map[string]float64
 	workFailed              map[string]float64
-	discrepancy             sourceValue
-	reconciliationObserved  float64
 	replicationObserved     float64
 	replicationStatsVisible float64
 	replicationLag          sourceValue
@@ -84,8 +81,7 @@ type Collector struct {
 	databaseUp   bool
 
 	databaseUpDesc, snapshotSuccessDesc, snapshotTimestampDesc, snapshotDurationDesc *prometheus.Desc
-	workPendingDesc, workOldestDesc, workFailedDesc, reconciliationDesc              *prometheus.Desc
-	reconciliationObservedDesc                                                       *prometheus.Desc
+	workPendingDesc, workOldestDesc, workFailedDesc                                  *prometheus.Desc
 	replicationObservedDesc, replicationLagDesc                                      *prometheus.Desc
 	replicationStatsVisibleDesc                                                      *prometheus.Desc
 	poolAcquiredDesc, poolIdleDesc, poolTotalDesc, poolMaxDesc                       *prometheus.Desc
@@ -105,8 +101,6 @@ func New(primary *pgxpool.Pool, replicas []*pgxpool.Pool) *Collector {
 	c.workPendingDesc = prometheus.NewDesc("lottery_work_pending", "Pending operational or background work.", []string{"kind"}, nil)
 	c.workOldestDesc = prometheus.NewDesc("lottery_work_oldest_pending_age_seconds", "Age of the oldest actionable background work item.", []string{"kind"}, nil)
 	c.workFailedDesc = prometheus.NewDesc("lottery_work_failed", "Background work items in explicit technical failure states.", []string{"kind"}, nil)
-	c.reconciliationDesc = prometheus.NewDesc("lottery_reconciliation_discrepancies", "Recorded issue count from each brand's latest completed business reconciliation.", nil, nil)
-	c.reconciliationObservedDesc = prometheus.NewDesc("lottery_reconciliation_observed", "Whether any completed business reconciliation has been recorded.", nil, nil)
 	c.replicationObservedDesc = prometheus.NewDesc("lottery_replication_observed", "Whether live streaming replication lag was observable on the primary.", nil, nil)
 	c.replicationStatsVisibleDesc = prometheus.NewDesc("lottery_replication_stats_visible", "Whether the database role can see complete replication statistics; zero means unknown, not healthy.", nil, nil)
 	c.replicationLagDesc = prometheus.NewDesc("lottery_replication_lag_bytes", "Maximum current WAL byte distance among live streaming replicas.", nil, nil)
@@ -119,7 +113,7 @@ func New(primary *pgxpool.Pool, replicas []*pgxpool.Pool) *Collector {
 
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	for _, d := range []*prometheus.Desc{c.databaseUpDesc, c.snapshotSuccessDesc, c.snapshotTimestampDesc, c.snapshotDurationDesc,
-		c.workPendingDesc, c.workOldestDesc, c.workFailedDesc, c.reconciliationDesc, c.reconciliationObservedDesc,
+		c.workPendingDesc, c.workOldestDesc, c.workFailedDesc,
 		c.replicationObservedDesc, c.replicationStatsVisibleDesc, c.replicationLagDesc, c.poolAcquiredDesc, c.poolIdleDesc, c.poolTotalDesc, c.poolMaxDesc} {
 		ch <- d
 	}
@@ -224,10 +218,6 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(c.workFailedDesc, prometheus.GaugeValue, v, kind)
 		}
 	}
-	if last.discrepancy.valid {
-		ch <- prometheus.MustNewConstMetric(c.reconciliationDesc, prometheus.GaugeValue, last.discrepancy.value)
-	}
-	ch <- prometheus.MustNewConstMetric(c.reconciliationObservedDesc, prometheus.GaugeValue, last.reconciliationObserved)
 	ch <- prometheus.MustNewConstMetric(c.replicationObservedDesc, prometheus.GaugeValue, last.replicationObserved)
 	ch <- prometheus.MustNewConstMetric(c.replicationStatsVisibleDesc, prometheus.GaugeValue, last.replicationStatsVisible)
 	if last.replicationLag.valid {
@@ -283,8 +273,8 @@ func readSnapshot(ctx context.Context, pool *pgxpool.Pool) (snapshot, error) {
 	err = tx.QueryRow(ctx, `SELECT n.nspname, NOT pg_catalog.pg_is_in_recovery()
  FROM pg_catalog.pg_namespace n
  JOIN pg_catalog.pg_class b ON b.relnamespace=n.oid AND b.relname='brands' AND b.relkind IN ('r','p')
- JOIN pg_catalog.pg_class p ON p.relnamespace=n.oid AND p.relname='periods' AND p.relkind IN ('r','p')
- JOIN pg_catalog.pg_class j ON j.relnamespace=n.oid AND j.relname='settlement_jobs' AND j.relkind IN ('r','p')
+ JOIN pg_catalog.pg_class p ON p.relnamespace=n.oid AND p.relname='platform_game_periods' AND p.relkind IN ('r','p')
+ JOIN pg_catalog.pg_class j ON j.relnamespace=n.oid AND j.relname='configured_orders' AND j.relkind IN ('r','p')
  JOIN pg_catalog.pg_class m ON m.relnamespace=n.oid AND m.relname='schema_migrations' AND m.relkind IN ('r','p')
  WHERE n.nspname = ANY(pg_catalog.current_schemas(false))
    AND n.nspname <> 'pg_catalog' AND n.nspname <> 'information_schema'
@@ -309,9 +299,8 @@ func readSnapshot(ctx context.Context, pool *pgxpool.Pool) (snapshot, error) {
 	for rows.Next() {
 		var kind string
 		var pending, oldest, failed int64
-		var discrepancy *float64
-		var visible, reconciliationObserved bool
-		if err = rows.Scan(&kind, &pending, &oldest, &failed, &discrepancy, &reconciliationObserved, &visible); err != nil {
+		var visible bool
+		if err = rows.Scan(&kind, &pending, &oldest, &failed, &visible); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -321,10 +310,6 @@ func readSnapshot(ctx context.Context, pool *pgxpool.Pool) (snapshot, error) {
 		}
 		out.workOldest[kind] = float64(oldest)
 		out.workFailed[kind] = float64(failed)
-		if discrepancy != nil {
-			out.discrepancy = sourceValue{value: *discrepancy, valid: true}
-		}
-		out.reconciliationObserved = boolFloat(reconciliationObserved)
 		out.replicationStatsVisible = boolFloat(visible)
 	}
 	if err = rows.Err(); err != nil {
@@ -362,20 +347,9 @@ func operationalQuery(s string) string {
    count(*) FILTER (WHERE d.status='failed') failed
  FROM %s.notification_deliveries d JOIN %s.outbox_events e ON e.id=d.event_id
  UNION ALL
- SELECT 'settlement', count(DISTINCT j.id) FILTER (WHERE j.state IN('processing','paying')),
-   coalesce(floor(extract(epoch FROM clock_timestamp()-min(j.created_at) FILTER (WHERE j.state IN('processing','paying')))), -1)::bigint,
-	   count(DISTINCT j.id) FILTER (WHERE j.state='failed') + count(t.order_id) FILTER (WHERE t.state='failed')
- FROM %s.settlement_jobs j LEFT JOIN %s.settlement_targets t ON t.job_id=j.id
- UNION ALL
- SELECT 'period_refund', count(t.order_id) FILTER (WHERE j.state='processing' AND t.state='pending'),
-   coalesce(floor(extract(epoch FROM clock_timestamp()-min(j.created_at) FILTER (WHERE j.state='processing' AND t.state='pending'))),-1)::bigint,
-   count(DISTINCT j.id) FILTER (WHERE j.state='failed') + count(t.order_id) FILTER (WHERE t.state='failed')
- FROM %s.period_cancellations j LEFT JOIN %s.period_cancellation_targets t ON t.cancellation_id=j.id
- UNION ALL
-	 SELECT 'draw_correction', count(*) FILTER (WHERE j.state='reversing' OR (j.state='resettling' AND s.state IN('processing','paying'))),
-	   coalesce(floor(extract(epoch FROM clock_timestamp()-min(j.created_at) FILTER (WHERE j.state='reversing' OR (j.state='resettling' AND s.state IN('processing','paying'))))),-1)::bigint,
-	   count(*) FILTER (WHERE j.state='failed')
-	 FROM %s.draw_corrections j LEFT JOIN %s.settlement_jobs s ON s.id=j.new_job_id
+ SELECT 'settlement', count(*),
+ coalesce(floor(extract(epoch FROM clock_timestamp()-min(p.published_at))),-1)::bigint,0::bigint
+ FROM %s.configured_orders o JOIN %s.platform_game_periods p ON p.id=o.period_id WHERE o.status='placed' AND p.result IS NOT NULL
  UNION ALL
 	 SELECT 'commission_cycle', count(*) FILTER (WHERE (j.state IN('enumerating','waiting','calculating','summarizing') AND j.next_work_at<=clock_timestamp()) OR (j.state='ready' AND r.evidence_epoch<>j.evidence_epoch)),
 	   coalesce(floor(extract(epoch FROM clock_timestamp()-min(j.created_at) FILTER (WHERE (j.state IN('enumerating','waiting','calculating','summarizing') AND j.next_work_at<=clock_timestamp()) OR (j.state='ready' AND r.evidence_epoch<>j.evidence_epoch)))),-1)::bigint,
@@ -401,23 +375,13 @@ func operationalQuery(s string) string {
    coalesce(floor(extract(epoch FROM clock_timestamp()-min(j.created_at) FILTER (WHERE j.state='processing'))),-1)::bigint,
 	   0::bigint
 	 FROM %s.withdrawal_orders j
-), latest_business_reconciliation AS (
- SELECT DISTINCT ON (j.brand_id) j.brand_id,j.id
- FROM %s.point_reconciliation_jobs j
- WHERE j.check_scope='wallet_and_business' AND j.state='completed'
- ORDER BY j.brand_id,j.completed_at DESC,j.id DESC
-), reconciliation AS (
- SELECT coalesce(sum((r.business_preview->>'issue_count')::bigint),0)::double precision discrepancies,
-   EXISTS(SELECT 1 FROM latest_business_reconciliation) observed
- FROM latest_business_reconciliation latest
- LEFT JOIN %s.point_reconciliation_results r ON r.brand_id=latest.brand_id AND r.job_id=latest.id AND r.business_preview IS NOT NULL
 ), replication AS (
 	 SELECT (current_setting('is_superuser')='on'
       OR pg_catalog.pg_has_role(current_user,'pg_read_all_stats','MEMBER')
       OR pg_catalog.pg_has_role(current_user,'pg_monitor','MEMBER'))
 	      AND pg_catalog.has_table_privilege(current_user,'pg_catalog.pg_stat_replication','SELECT') visible
 )
-SELECT w.kind,w.pending,w.oldest,w.failed,c.discrepancies,c.observed,r.visible
-FROM work w CROSS JOIN reconciliation c CROSS JOIN replication r`,
-		s, s, s, s, s, s, s, s, s, s, s, s, s, s, s, s, s, s)
+SELECT w.kind,w.pending,w.oldest,w.failed,r.visible
+FROM work w CROSS JOIN replication r`,
+		s, s, s, s, s, s, s, s, s, s, s, s)
 }

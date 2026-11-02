@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SelectControl from '@lottery/shared/SelectControl.vue'
+import { useOperationToast } from "@lottery/shared";
 import { vWriteGuard } from "@lottery/shared";
 import { computed, ref } from 'vue';
 import { withGlobalLoading, buildBrandCssTokens } from '@lottery/shared';
@@ -38,8 +40,8 @@ function languageEnabled(language: BrandPresentationLocale, event: Event) {
   if ((event.target as HTMLInputElement).checked) values.push(language);
   update('available_locales', values);
 }
-function defaultLanguage(event: Event) {
-  const language = text(event) as BrandPresentationLocale;
+function defaultLanguage(value: string) {
+  const language = value as BrandPresentationLocale;
   emit('update:config', { ...props.config, default_locale: language, available_locales: [...new Set([...preview.value.available_locales, language])] });
 }
 const themes = [
@@ -75,6 +77,8 @@ async function upload(event: Event) {
     }
   } finally { uploading.value = false; emit('uploading', false); input.value = ''; }
 }
+
+useOperationToast(() => uploadError.value, value => displayError(value), 'error');
 </script>
 
 <template>
@@ -85,10 +89,10 @@ async function upload(event: Event) {
         <div class="logo-preview" :style="{ background: preview.primary_color }"><img v-if="preview.logo_url" :src="preview.logo_url" :alt="t('presentation.logoPreview')"><span v-else>{{ preview.logo_text }}</span></div>
         <div class="field"><span>{{ t('presentation.logo') }}</span><div class="logo-controls"><label class="button button-secondary logo-upload"><span>{{ t('presentation.uploadLogo') }}</span><input v-write-guard="uploading" type="file" accept="image/png,image/jpeg" :aria-label="t('presentation.uploadLogo')" :disabled="locked" @change="withGlobalLoading(upload, $event)"></label><button v-if="preview.logo_url" class="button button-secondary" type="button" :disabled="locked" @click="update('logo_url', null)">{{ t('presentation.removeLogo') }}</button></div><small>{{ t('presentation.uploadHint') }}</small></div>
       </div>
-      <p v-if="uploadError" role="alert" class="message error">{{ displayError(uploadError) }}</p>
+
       <fieldset class="theme-options"><legend>{{ t('presentation.theme') }}</legend><button v-for="theme in themes" :key="theme.name" class="button button-secondary theme-choice" type="button" :disabled="locked" :aria-pressed="preview.primary_color === theme.primary_color && preview.accent_color === theme.accent_color" @click="chooseTheme(theme)"><i :style="{ background: theme.primary_color }" aria-hidden="true" />{{ t(`presentation.theme.${theme.name}`) }}</button></fieldset>
       <div class="language-settings">
-        <label class="field"><span>{{ t('admin.copy.ba3233b5') }}</span><select :value="preview.default_locale" :disabled="locked" @change="defaultLanguage"><option value="en">{{ t('admin.copy.61f7e041') }}</option><option value="zh-CN">{{ t('admin.copy.07a5470d') }}</option></select></label>
+        <label class="field"><span>{{ t('admin.copy.ba3233b5') }}</span><SelectControl :model-value="preview.default_locale" :disabled="locked" @change="defaultLanguage" :label="String(t('admin.copy.ba3233b5'))" :options="[{ value: 'en', label: (String(t('admin.copy.61f7e041'))).trim() }, { value: 'zh-CN', label: (String(t('admin.copy.07a5470d'))).trim() }]" /></label>
         <fieldset><legend>{{ t('admin.copy.bdd2c4f3') }}</legend><label v-for="language in (['en', 'zh-CN'] as const)" :key="language" class="choice"><input type="checkbox" :checked="preview.available_locales.includes(language)" :disabled="locked || preview.default_locale === language" @change="languageEnabled(language, $event)"><span>{{ language === 'en' ? t('admin.copy.61f7e041') : t('admin.copy.07a5470d') }}</span></label></fieldset>
       </div>
       <label v-for="language in (['en', 'zh-CN'] as const)" :key="language" class="field"><span>{{ t('admin.copy.8c339889', { locale: language === 'en' ? t('admin.copy.61f7e041') : t('admin.copy.07a5470d'), field: t('admin.copy.e6c15e4e') }) }}</span><textarea :value="preview.content[language].announcement" rows="3" :disabled="locked" @input="localized(language, 'announcement', text($event))" /></label>
@@ -106,14 +110,14 @@ async function upload(event: Event) {
         <label class="field"><span>{{ t('admin.copy.9b05d29b') }}</span><input :value="preview.logo_text" :disabled="locked" @input="update('logo_text', text($event))"></label>
         <label class="field"><span>{{ t('admin.copy.ea7330c6') }}</span><input :value="preview.favicon_url ?? ''" :disabled="locked" @input="update('favicon_url', text($event) || null)"></label>
         <label v-for="field in (['primary_color', 'accent_color', 'success_color', 'warning_color', 'danger_color'] as const)" :key="field" class="field"><span>{{ t(`presentation.${field}`) }}</span><input type="color" :value="preview[field]" :disabled="locked" @input="update(field, text($event))"></label>
-        <label class="field"><span>{{ t('admin.copy.5f4c4d51') }}</span><select :value="preview.font_family" :disabled="locked" @change="update('font_family', text($event))"><option value="system">{{ t('admin.copy.532e2e04') }}</option><option value="serif">{{ t('admin.copy.f6dcd251') }}</option><option value="mono">{{ t('admin.copy.7d2288e0') }}</option></select></label>
-        <label class="field"><span>{{ t('admin.copy.1d853666') }}</span><select :value="preview.font_scale" :disabled="locked" @change="update('font_scale', text($event))"><option value="compact">{{ t('admin.copy.766ee6d8') }}</option><option value="standard">{{ t('admin.copy.0d292885') }}</option></select></label>
-        <label class="field"><span>{{ t('admin.copy.db91572d') }}</span><select :value="preview.radius" :disabled="locked" @change="update('radius', text($event))"><option value="square">{{ t('admin.copy.b8447f2a') }}</option><option value="soft">{{ t('admin.copy.ff51352b') }}</option><option value="round">{{ t('admin.copy.3c75314c') }}</option></select></label>
-        <label class="field"><span>{{ t('admin.copy.ee99116b') }}</span><select :value="preview.shadow" :disabled="locked" @change="update('shadow', text($event))"><option value="none">{{ t('admin.copy.c2b41b33') }}</option><option value="subtle">{{ t('admin.copy.8f131d41') }}</option><option value="lifted">{{ t('admin.copy.92aee827') }}</option></select></label>
+        <label class="field"><span>{{ t('admin.copy.5f4c4d51') }}</span><SelectControl :model-value="preview.font_family" :disabled="locked" @change="update('font_family', $event)" :label="String(t('admin.copy.5f4c4d51'))" :options="[{ value: 'system', label: (String(t('admin.copy.532e2e04'))).trim() }, { value: 'serif', label: (String(t('admin.copy.f6dcd251'))).trim() }, { value: 'mono', label: (String(t('admin.copy.7d2288e0'))).trim() }]" /></label>
+        <label class="field"><span>{{ t('admin.copy.1d853666') }}</span><SelectControl :model-value="preview.font_scale" :disabled="locked" @change="update('font_scale', $event)" :label="String(t('admin.copy.1d853666'))" :options="[{ value: 'compact', label: (String(t('admin.copy.766ee6d8'))).trim() }, { value: 'standard', label: (String(t('admin.copy.0d292885'))).trim() }]" /></label>
+        <label class="field"><span>{{ t('admin.copy.db91572d') }}</span><SelectControl :model-value="preview.radius" :disabled="locked" @change="update('radius', $event)" :label="String(t('admin.copy.db91572d'))" :options="[{ value: 'square', label: (String(t('admin.copy.b8447f2a'))).trim() }, { value: 'soft', label: (String(t('admin.copy.ff51352b'))).trim() }, { value: 'round', label: (String(t('admin.copy.3c75314c'))).trim() }]" /></label>
+        <label class="field"><span>{{ t('admin.copy.ee99116b') }}</span><SelectControl :model-value="preview.shadow" :disabled="locked" @change="update('shadow', $event)" :label="String(t('admin.copy.ee99116b'))" :options="[{ value: 'none', label: (String(t('admin.copy.c2b41b33'))).trim() }, { value: 'subtle', label: (String(t('admin.copy.8f131d41'))).trim() }, { value: 'lifted', label: (String(t('admin.copy.92aee827'))).trim() }]" /></label>
         <label v-for="language in (['en', 'zh-CN'] as const)" :key="language" class="field"><span>{{ t('admin.copy.8c339889', { locale: language === 'en' ? t('admin.copy.61f7e041') : t('admin.copy.07a5470d'), field: t('admin.copy.5018d51b') }) }}</span><input :value="preview.content[language].tagline" :disabled="locked" @input="localized(language, 'tagline', text($event))"></label>
       </div>
     </details>
-    <div class="reset-settings"><button v-if="!resetConfirm" class="button button-secondary" type="button" :disabled="locked" @click="resetConfirm = true">{{ t('presentation.reset') }}</button><template v-else><p>{{ t('presentation.resetHint') }}</p><button class="button button-secondary" type="button" @click="resetConfirm = false">{{ t('admin.copy.96f851ea') }}</button><button class="button button-secondary" type="button" :disabled="locked" @click="reset">{{ t('presentation.confirmReset') }}</button></template><slot name="actions" /></div>
+    <div class="reset-settings ui-form-actions"><button v-if="!resetConfirm" class="button button-secondary" type="button" :disabled="locked" @click="resetConfirm = true">{{ t('presentation.reset') }}</button><template v-else><p>{{ t('presentation.resetHint') }}</p><button class="button button-secondary" type="button" @click="resetConfirm = false">{{ t('admin.copy.96f851ea') }}</button><button class="button button-secondary" type="button" :disabled="locked" @click="reset">{{ t('presentation.confirmReset') }}</button></template><slot name="actions" /></div>
   </div>
 </template>
 
@@ -121,7 +125,7 @@ async function upload(event: Event) {
 .presentation-fields { display:grid; grid-template-columns:minmax(0, 1.5fr) minmax(0, 1fr); gap:16px; min-width:0; }
 .presentation-basic, .advanced-grid { display:grid; gap:12px; min-width:0; }
 .field { align-self:start; align-content:start; height:auto; padding:0; border:0; border-radius:0; background:transparent; display:grid; gap:6px; min-width:0; color:var(--ink); }
-.field input, .field textarea, .field select { width:100%; min-width:0; box-sizing:border-box; font:inherit; }
+.field input, .field textarea { width:100%; min-width:0; box-sizing:border-box; font:inherit; }
 .brand-name-field { width:min(100%, 28ch); }
 .field textarea { resize:vertical; }
 .field small, .preview-caption { color:var(--muted); }
@@ -150,7 +154,6 @@ fieldset { margin:0; padding:0; border:0; min-width:0; }
 .advanced-settings, .reset-settings { grid-column:1/-1; }
 .advanced-settings summary { cursor:pointer; min-height:44px; box-sizing:border-box; padding:12px 0; color:var(--primary); }
 .advanced-grid { grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); }
-.reset-settings { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .reset-settings p { flex-basis:100%; }
 @media (max-width:700px) { .presentation-fields { grid-template-columns:minmax(0,1fr); } }
 @media (max-width:360px) { .language-settings { grid-template-columns:minmax(0,1fr); } }

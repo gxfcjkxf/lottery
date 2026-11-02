@@ -6,12 +6,12 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
-	"github.com/gxfcjkxf/lottery/backend/internal/rulebook"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -20,7 +20,10 @@ func managementAllowed(a access.Account, resource, action, brand string) bool {
 		return a.SuperAdmin && access.Authorize(a, resource, action, access.ScopePlatform, "")
 	}
 	if resource == "bet" || resource == "bet_policy" || resource == "game" || resource == "schedule" || resource == "period" || resource == "draw" || resource == "draw_source" || (resource == "rule" && action != "simulate") {
-		return rulebook.Allowed(a, brand, resource, action)
+		if action == "view" {
+			return access.Authorize(a, resource, action, access.ScopeBrand, brand) || access.Authorize(a, resource, action, access.ScopePlatform, "")
+		}
+		return !a.SuperAdmin && access.Authorize(a, resource, action, access.ScopeBrand, brand)
 	}
 	if resource == "user" {
 		return access.Authorize(a, resource, action, access.ScopeBrand, brand)
@@ -33,7 +36,7 @@ func managementActor(w http.ResponseWriter, r *http.Request, d Dependencies, res
 		return a, "", false
 	}
 	brand := r.Header.Get("X-Brand-ID")
-	if !uuidPattern.MatchString(brand) {
+	if !(resource == "auth_config" && platformAdminEntry(r) && brand == "") && !uuidPattern.MatchString(brand) {
 		failure(w, r, 400, "REQUEST_INVALID", "必须选择有效品牌")
 		return a, brand, false
 	}
@@ -41,6 +44,7 @@ func managementActor(w http.ResponseWriter, r *http.Request, d Dependencies, res
 		rejectAdmin(w, r, d, a, brand, resource+"."+action)
 		return a, brand, false
 	}
+
 	return a, brand, true
 }
 func managementError(err error) (mutation.Result, error) {
@@ -80,6 +84,7 @@ func managementWrite(w http.ResponseWriter, r *http.Request, d Dependencies, a a
 		if !managementAllowed(fresh, resource, action, brand) {
 			return mutation.Fail(403, "PERMISSION_DENIED", "无操作权限"), nil
 		}
+
 		return run(ctx, tx, fresh)
 	})
 	finishAdminMutation(w, r, d, a, brand, resource+"."+action, result, err)
@@ -97,8 +102,8 @@ func validRoleIDs(ids []string) bool {
 	return true
 }
 func managementPassword(ctx context.Context, d Dependencies, password string) (string, mutation.Result, error) {
-	if len(password) < 6 || len(password) > 30 {
-		return "", mutation.Fail(400, "PASSWORD_INVALID", "管理密码须为 6-30 字节"), nil
+	if utf8.RuneCountInString(password) < 6 || utf8.RuneCountInString(password) > 30 {
+		return "", mutation.Fail(400, "PASSWORD_INVALID", "管理密码须为 6-30 字符"), nil
 	}
 	hash, err := d.Identity.PasswordHash(ctx, password)
 	if err != nil {
@@ -134,12 +139,19 @@ func registerAdminManagementRoutes(handle func(string, string, http.HandlerFunc)
 			case "accounts":
 				items, err = d.Admins.ListAdmins(r.Context(), a, brand, limit, offset)
 			}
+			data := map[string]any{"items": items}
+			if err == nil && kind == "roles" {
+				data, err = countedItems(r.Context(), d.Admins.DB, items, `SELECT count(*)::text FROM roles WHERE brand_id=$1`, brand)
+			}
+			if err == nil && kind == "accounts" {
+				data, err = countedItems(r.Context(), d.Admins.DB, items, `SELECT count(*)::text FROM admin_accounts a JOIN admin_brand_scopes target ON target.account_id=a.id AND target.brand_id=$1 WHERE a.status <> 'deleted' AND ($2::boolean OR (NOT a.is_super_admin AND (SELECT count(*) FROM admin_brand_scopes s WHERE s.account_id=a.id)=1))`, brand, adminsys.ManagementAllowed(a, "admin", "view", ""))
+			}
 			if err != nil {
 				managementFailure(w, r, d, a, brand, resource+".view", err)
 				return
 			}
 			if adminReadAudit(w, r, d, a, brand, resource+".view") {
-				respond(w, r, 200, map[string]any{"items": items})
+				respond(w, r, 200, data)
 			}
 		})
 	}

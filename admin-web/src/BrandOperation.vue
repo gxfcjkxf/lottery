@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import { useOperationToast } from "@lottery/shared";
 import { vWriteGuard } from "@lottery/shared";
 import { useAdminI18n as usePublicErrorI18n } from "./i18n";
 const publicErrorI18n = usePublicErrorI18n();
 const publicErrorMessage = publicErrorI18n.errorMessage;
-const displayPublicError = publicErrorI18n.displayError;
 import { withGlobalLoading } from '@lottery/shared';
 import { vGlobalLoading } from "@lottery/shared";
 import DetailModal from '@lottery/shared/DetailModal.vue'
@@ -197,6 +197,9 @@ onUnmounted(() => {
   recordGuard.invalidate();
   writeGuard.invalidate();
 });
+
+useOperationToast(() => error.value, value => display(value), 'error');
+useOperationToast(() => notice.value, value => display(value), 'success');
 </script>
 
 <template>
@@ -213,23 +216,22 @@ onUnmounted(() => {
         <button v-else-if="nextStatus && permissions.write && !readonlyBrand" class="button" :class="nextStatus === 'paused' ? 'button-secondary' : 'button-primary'" type="button" :disabled="!canWrite" @click="reviewChange">{{ actionLabel }}</button>
       </div>
       <p v-if="readonlyBrand" class="message" role="status">{{ t('admin.copy.57ab1456') }}</p>
-      <p v-if="error && !confirmationOpen" class="message error" role="alert">{{ display(error) }}</p>
-      <p v-if="notice" class="message" role="status">{{ display(notice) }}</p>
+
       <button v-if="readFailed && !confirmationOpen" class="button button-secondary" type="button" :disabled="loading" @click="withGlobalLoading(reloadCurrent)">{{ t('brandOperation.readLatest') }}</button>
     </template>
 
-    <DetailModal v-if="pending && confirmationOpen" class="brand-operation-dialog" :title="t('admin.copy.5ce8c984')" :close-label="t('association.close')" @close="closeConfirmation">
+    <DetailModal v-if="pending && confirmationOpen" class="brand-operation-dialog" :title="t('admin.copy.5ce8c984')" :close-label="t('association.close')" :close-disabled="busy" @close="closeConfirmation">
       <div class="brand-operation__confirmation">
         <p v-if="record">{{ t('brandOperation.confirm', { brand: record.name, status: statusText(pending.body.status) }) }}</p>
         <p v-else>{{ t('admin.copy.4e32f6b1', { status: statusText(pending.body.status) }) }}</p>
         <p v-if="reviewing">{{ pending.body.status === 'paused' ? t('brandOperation.pauseEffect') : t('brandOperation.enableEffect') }}</p>
         <p v-if="pending.body.reason">{{ pending.body.reason }}</p>
-        <p v-if="error && !unknownWrite && !conflictedWrite" class="message error" role="alert">{{ display(error) }}</p>
+
         <p v-if="unknownWrite && !busy" class="message" role="alert">{{ t('brandOperation.unknown') }}</p>
         <p v-else-if="conflictedWrite" class="message" role="alert">{{ t('brandOperation.conflict') }}</p>
       </div>
       <template #footer>
-        <button v-if="reviewing" class="button button-secondary" type="button" :disabled="busy" @click="cancelReview">{{ t('admin.copy.96f851ea') }}</button>
+
         <button v-write-guard="busy" v-if="reviewing" class="button button-primary" type="button" :disabled="busy || !permissions.write || readonlyBrand" @click="withGlobalLoading(sendFrozenIntent, false)">{{ t('admin.copy.a1a8013d') }}</button>
         <button v-write-guard="busy" v-if="unknownWrite" class="button button-primary" type="button" :disabled="busy || !permissions.write || readonlyBrand" @click="withGlobalLoading(sendFrozenIntent, true)">{{ t('brandOperation.retry') }}</button>
         <template v-if="conflictedWrite">

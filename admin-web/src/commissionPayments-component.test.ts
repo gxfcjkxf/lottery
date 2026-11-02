@@ -1,3 +1,10 @@
+import {ManagementListTestComponent,MemberActionsMenuTestComponent} from "./management-list-test-helper"
+import {TablePaginationTestComponent} from "./table-pagination-test-helper"
+import { SelectControlTestComponent } from './select-control-test-helper'
+import {ManagementTableTestComponent as ManagementTableForTest} from './management-table-test-helper';
+import * as CommissionQueryForTest from './commission-list-query';
+import { operationToastText } from "./operation-toast-test-helper";
+import { DetailModalTestComponent } from "./detail-modal-test-helper";
 import * as DisplayShared from "@lottery/shared";
 DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -43,18 +50,23 @@ function compileComponent(): Component {
   const javascript = transpileScript(compiled);
   // Child behavior has its own real component tests and browser workflow;
   // isolate these payout control tests from the child's additional reads.
-  const modules: Record<string, unknown> = {  "@lottery/shared": DisplayShared,
+  const modules: Record<string, unknown> = {"@lottery/shared/ManagementList.vue":{default:ManagementListTestComponent},"@lottery/shared/MemberActionsMenu.vue":{default:MemberActionsMenuTestComponent}, "@lottery/shared/TablePagination.vue": {default:TablePaginationTestComponent},  "@lottery/shared/SelectControl.vue": SelectControlTestComponent, "./SelectControl.vue": SelectControlTestComponent,
+    './commission-list-query': CommissionQueryForTest,
+    '@lottery/shared/ManagementTable.vue': {default:ManagementTableForTest},
+    '@lottery/shared/PlatformTemporalInput.vue': {default:{props:['modelValue'],setup:(props:any,{emit}:any)=>()=>h('input',{value:props.modelValue,'onUpdate:modelValue':(value:string)=>emit('update:modelValue',value)})}},
+    '@lottery/shared/FilterAssociationSelect.vue': {default:{props:['modelValue','label'],setup:(props:any,{emit}:any)=>()=>h('select-control',{'aria-label':props.label,value:props.modelValue,'onUpdate:modelValue':(value:string)=>emit('update:modelValue',value)})}},
+    './CommissionPaymentTargets.vue': {default:{render:()=>null}},  "@lottery/shared": {...DisplayShared, vInlineValidation: {}, vRefreshButton: {}, vGlobalLoading: {}},
     // Business tests use a host renderer; native dialog behavior is checked in Chrome.
-    "@lottery/shared/DetailModal.vue": { default: { inheritAttrs: false, setup: (_props: unknown, context: { slots: { default?: () => unknown } }) => () => context.slots.default?.() } }, vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commissionPayments-api": PaymentApi, "./commissionPayments-state": PaymentState,
+    "@lottery/shared/DetailModal.vue": { default: DetailModalTestComponent }, vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commissionPayments-api": PaymentApi, "./commissionPayments-state": PaymentState,
     "./CommissionAdjustmentsManagement.vue": { default: { render: () => null } } };
-  const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) => {
+  modules['@lottery/shared/FilterAssociationSearch.vue'] = modules['@lottery/shared/FilterAssociationSelect.vue']; const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) => {
     if (!(specifier in modules)) throw new Error(`Unmapped test import: ${specifier}`);
     return `const {${bindings.replace(/\s+as\s+/g, ": ")}} = __modules[${JSON.stringify(specifier)}];`;
   }).replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, binding: string, specifier: string) => {
     if (!(specifier in modules)) throw new Error(`Unmapped test import: ${specifier}`);
     return `const ${binding} = __modules[${JSON.stringify(specifier)}].default;`;
   }).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
+  return new Function("__modules", body.replace(/^import\s+["'][^"']+\.css["'];?\s*$/gm, "").replace(/^import\s+["'][^"']+\.css["'];?\s*$/gm, "").replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 
 // Import compiler helpers here to keep the SFC test in the same no-DOM renderer used by sibling tests.
@@ -72,19 +84,19 @@ function deferred<T>() { let resolve!: (value: T) => void; const promise = new P
 function textOf(node: HostNode): string { return node.text + node.children.map(textOf).join(""); }
 function findNode(node: HostNode, match: (candidate: HostNode) => boolean): HostNode | null { if (match(node)) return node; for (const child of node.children) { const found = findNode(child, match); if (found) return found; } return null; }
 function byTestId(root: HostNode, id: string): HostNode | null { return findNode(root, (node) => node.props["data-testid"] === id); }
-function button(root: HostNode, text: string): HostNode | null { return findNode(root, (node) => node.tag === "button" && textOf(node).includes(text)); }
+function button(root: HostNode, text: string): HostNode | null { return findNode(root, (node) => node.tag === "button" && (textOf(node).includes(text) || node.props["data-payment-id"]===text)); }
 function click(node: HostNode | null) { expect(node).not.toBeNull(); (node!.props.onClick as (() => void) | undefined)?.(); }
 function setModel(node: HostNode | null, value: unknown) { expect(node).not.toBeNull(); (node!.props["onUpdate:modelValue"] as ((next: unknown) => void) | undefined)?.(value); }
 async function flush() { await new Promise(resolve => setTimeout(resolve, 0)); await nextTick(); }
-function mount(account: AdminAccount, brandId = brand, brandStatus = "active") {
-  const scope = ref({ account, brandId, brandStatus }), container = element("root"), emitted: string[] = [];
+function mount(account: AdminAccount, brandId = brand, brandStatus = "active", cycleId?: string) {
+  const scope = ref({ account, brandId, brandStatus, cycleId }), container = element("root"), emitted: string[] = [];
   const app = renderer.createApp({ setup: () => () => h(PaymentComponent, { ...scope.value, onSessionInvalid: () => emitted.push("session-invalid") }) });
   app.provide(adminI18nKey, createAdminI18n()); app.mount(container);
   return { app, container, scope, emitted };
 }
-function installFetch(options: { current?: CommissionPayment; onRetry?: (call: { url: string; init?: RequestInit }) => Promise<Response> | Response; onPolicyPut?: (body: unknown) => Response; delayFirstDetail?: ReturnType<typeof deferred<Response>> } = {}) {
+function installFetch(options: { current?: CommissionPayment; onRetry?: (call: { url: string; init?: RequestInit }) => Promise<Response> | Response; onPolicyPut?: (body: unknown) => Response; delayFirstDetail?: ReturnType<typeof deferred<Response>>; policyEnabled?: boolean } = {}) {
   vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
-  let current = options.current ?? payment(), policyValue = policy(), detailReads = 0;
+  let current = options.current ?? payment(), policyValue = policy(options.policyEnabled ?? true), detailReads = 0;
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   const fetcher = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input), method = init?.method ?? "GET"; calls.push({ url, init });
@@ -103,48 +115,69 @@ function installFetch(options: { current?: CommissionPayment; onRetry?: (call: {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); PaymentState.clearAllCommissionPaymentIntents(); });
 
 describe("CommissionPaymentsManagement", () => {
+  it("keeps the selected calculation cycle through queue changes and reset", async () => {
+    const installed = installFetch();
+    const mounted = mount(baseAccount, brand, "active", cycleId); await flush();
+    expect(findNode(mounted.container, node => node.tag === "select-control" && node.props["aria-label"] === "周期")).toBeNull();
+    click(button(mounted.container, "重置")); await flush();
+    click(button(mounted.container, "待审核")); await flush();
+    const reads = installed.calls.filter(call => call.url.includes("/commission-payments?"));
+    expect(reads.length).toBeGreaterThanOrEqual(3);
+    for (const call of reads) expect(new URL(call.url, "http://local").searchParams.get("cycle_id")).toBe(cycleId);
+    expect(installed.calls.some(call => call.init?.method === "POST")).toBe(false);
+    mounted.app.unmount();
+  });
+
+  it("rejects a payout list for another calculation cycle", async () => {
+    installFetch();
+    const mounted = mount(baseAccount, brand, "active", "99999999-9999-4999-8999-999999999999"); await flush();
+    expect(button(mounted.container, paymentId)).toBeNull();
+    mounted.app.unmount();
+  });
+
+  it("shows the platform payout state without a brand switch or save action", async () => {
+    installFetch(); const mounted = mount(baseAccount); await flush();
+    expect(byTestId(mounted.container, 'commission-payment-policy-enabled')).toBeNull();
+    expect(byTestId(mounted.container, 'commission-payment-policy-review')).toBeNull();
+    mounted.app.unmount();
+  });
+
   it("denies unscoped users without issuing financial reads", async () => {
     const server = installFetch();
     const mounted = mount({ ...baseAccount, permissions_by_brand: { [brand]: [] } }); await flush();
-    expect(textOf(mounted.container)).toContain("没有此品牌的佣金查看权限");
+    expect(textOf(mounted.container) + operationToastText()).toContain("没有此品牌的佣金查看权限");
     expect(server.calls).toHaveLength(0);
     mounted.app.unmount();
   });
 
   it("loads the real policy and payout jobs and never infers paid from calculation state", async () => {
-    const server = installFetch(); const mounted = mount(baseAccount); await flush();
-    expect(textOf(mounted.container)).toContain("真实派发已关闭");
-    expect(textOf(mounted.container)).toContain("派发任务");
-    expect(textOf(mounted.container)).toContain("失败");
+    const server = installFetch({policyEnabled:false}); const mounted = mount(baseAccount); await flush();
+    expect(textOf(mounted.container) + operationToastText()).toContain("平台已关闭派发");
+    expect(textOf(mounted.container) + operationToastText()).toContain("计划派发积分");
+    expect(textOf(mounted.container) + operationToastText()).toContain("失败");
     expect(server.calls.some((call) => call.url.includes("/commission-payments?limit=20&offset=0"))).toBe(true);
     expect(byTestId(mounted.container, "commission-payment-receipt")).toBeNull();
     mounted.app.unmount();
   });
 
-  it("requires a double review for enabling, warns about historical automatic credits, and permits paused-brand finance operations", async () => {
-    const server = installFetch(); const mounted = mount(baseAccount, brand, "paused"); await flush();
-    setModel(byTestId(mounted.container, "commission-payment-policy-enabled"), true); await flush();
-     await flush();
-    click(byTestId(mounted.container, "commission-payment-policy-review")); await flush();
-    expect(textOf(mounted.container)).toContain("历史 ready 且未派发周期");
-    expect(textOf(mounted.container)).toContain("无需逐任务审批");
-    const review = byTestId(mounted.container, "commission-payment-review");
-    const labels = review!.children.filter((node) => node.tag === "dl").flatMap((dl) => dl.children.map((child) => child.tag));
-    expect(labels.filter((tag) => tag === "dt")).toHaveLength(labels.filter((tag) => tag === "dd").length);
-    setModel(byTestId(mounted.container, "commission-payment-review-confirmed"), true); await flush();
-    click(byTestId(mounted.container, "commission-payment-confirm-submit")); await flush();
-    const put = server.calls.find((call) => call.init?.method === "PUT");
-    expect(put).toBeDefined();
-    expect(JSON.parse(String(put!.init?.body))).toEqual({ version: 1, enabled: true, reason: "" });
-    mounted.app.unmount();
+
+  it("prevents approval and retry while the platform payout gate is off", async () => {
+    for (const state of ["awaiting_approval", "failed"] as const) {
+      const server=installFetch({policyEnabled:false,current:payment({state,payout_mode:"mixed",last_error_code:state === "failed" ? "POST_FAILED" : null})});
+      const mounted=mount(baseAccount);await flush();click(button(mounted.container,paymentId));await flush();
+      const action=byTestId(mounted.container,state === "failed" ? "commission-payment-retry" : "commission-payment-approve");
+      expect(action?.props.disabled).toBe(true);expect(textOf(mounted.container)).toContain("平台已关闭派发");
+      expect(server.calls.filter(call=>call.init?.method === "POST")).toHaveLength(0);mounted.app.unmount();
+    }
   });
 
   it("allows failed partial-payment retry so the backend can resume only unfinished targets", async () => {
-    const server = installFetch({ current: payment({ paid_count: "1", paid_points: "5" }) }); const mounted = mount(baseAccount); await flush();
+    installFetch({ current: payment({ paid_count: "1", paid_points: "5" }) });
+    const mounted = mount(baseAccount); await flush();
     click(button(mounted.container, paymentId)); await flush();
      await flush();
     expect(byTestId(mounted.container, "commission-payment-retry")?.props.disabled).toBe(false);
-    expect(textOf(mounted.container)).toContain("重试仅处理未完成目标");
+    expect(textOf(mounted.container) + operationToastText()).toContain("重试仅处理未完成目标");
     mounted.app.unmount();
   });
 
@@ -152,13 +185,13 @@ describe("CommissionPaymentsManagement", () => {
     const server = installFetch({ current: payment({ state: "failed", payout_mode: "mixed", version: 7, paid_count: "1", paid_points: "5", last_error_code: "POST_FAILED" }) });
     const mounted = mount(baseAccount); await flush();
     click(button(mounted.container, paymentId)); await flush();
-    expect(textOf(mounted.container)).toContain("混合（整周期人工审核）");
+    expect(textOf(mounted.container) + operationToastText()).toContain("混合（整周期人工审核）");
      await flush();
     expect(byTestId(mounted.container, "commission-payment-retry")?.props.disabled).toBe(false);
     click(byTestId(mounted.container, "commission-payment-retry")); await flush();
     const review = byTestId(mounted.container, "commission-payment-review")!;
-    expect(textOf(review)).toContain("审核并重试");
-    expect(textOf(review)).not.toContain("v7");
+    expect(textOf(review) + operationToastText()).toContain("审核并重试");
+    expect(textOf(review) + operationToastText()).not.toContain("v7");
 
     setModel(byTestId(mounted.container, "commission-payment-review-confirmed"), true); await flush();
     click(byTestId(mounted.container, "commission-payment-confirm-submit")); await flush();
@@ -166,8 +199,8 @@ describe("CommissionPaymentsManagement", () => {
     expect(retries).toHaveLength(1);
     expect(JSON.parse(String(retries[0].init?.body))).toEqual({ version: 7, reason: "" });
     expect(new Headers(retries[0].init?.headers).get("X-Commission-Payment-Actor-ID")).toBe(actor);
-    expect(textOf(mounted.container)).toContain("混合（整周期人工审核）");
-    expect(textOf(mounted.container)).toContain("操作回执");
+    expect(textOf(mounted.container) + operationToastText()).toContain("混合（整周期人工审核）");
+    expect(textOf(mounted.container) + operationToastText()).toContain("操作回执");
     mounted.app.unmount();
   });
 
@@ -175,8 +208,8 @@ describe("CommissionPaymentsManagement", () => {
     const snapshot = payment({ state: "awaiting_approval", payout_mode: "mixed", last_error_code: null });
     const server = installFetch({ current: snapshot }); const mounted = mount(baseAccount); await flush();
     click(button(mounted.container, paymentId)); await flush();
-    expect(textOf(mounted.container)).toContain("混合（整周期人工审核）");
-    expect(textOf(mounted.container)).toContain("混合周期须整期审批");
+    expect(textOf(mounted.container) + operationToastText()).toContain("混合（整周期人工审核）");
+    expect(textOf(mounted.container) + operationToastText()).toContain("混合周期须整期审批");
      await flush();
     expect(byTestId(mounted.container, "commission-payment-approve")?.props.disabled).toBe(false);
     click(byTestId(mounted.container, "commission-payment-approve")); await flush();
@@ -186,7 +219,7 @@ describe("CommissionPaymentsManagement", () => {
     expect(approvals).toHaveLength(1);
     expect(JSON.parse(String(approvals[0].init?.body))).toEqual({ version: 2, reason: "" });
     expect(new Headers(approvals[0].init?.headers).get("X-Commission-Payment-Actor-ID")).toBe(actor);
-    expect(textOf(mounted.container)).toContain("操作回执");
+    expect(textOf(mounted.container) + operationToastText()).toContain("操作回执");
     mounted.app.unmount();
   });
 
@@ -208,35 +241,37 @@ describe("CommissionPaymentsManagement", () => {
     const oldDetail = deferred<Response>(); const server = installFetch({ delayFirstDetail: oldDetail }); const mounted = mount(baseAccount); await flush();
     click(button(mounted.container, paymentId)); await flush();
     server.current = payment({ state: "paying", version: 5, last_error_code: null });
-    click(byTestId(mounted.container, "commission-payments-refresh")); await flush();
-    expect(textOf(mounted.container)).not.toContain("v5");
+    click(button(mounted.container,"返回列表"));await flush();
+    (findNode(mounted.container, node => node.tag === "form" && String(node.props.class).includes("commission-toolbar"))!.props.onSubmit as (event: Event) => void)({preventDefault(){}} as Event); await flush();
+    click(button(mounted.container,paymentId));await flush();
+    expect(textOf(mounted.container) + operationToastText()).not.toContain("v5");
     oldDetail.resolve(ok(payment({ version: 2 }))); await flush();
-    expect(textOf(mounted.container)).not.toContain("v5");
-    expect(textOf(mounted.container)).toContain("派发中");
+    expect(textOf(mounted.container) + operationToastText()).not.toContain("v5");
+    expect(textOf(mounted.container) + operationToastText()).toContain("派发中");
     mounted.app.unmount();
   });
 
-  it("restores unknown intent across remount and replays its old version, body, and key only after a second review", async () => {
-    let attempts = 0; const server = installFetch({ onRetry: ({ init }) => {
+  it.each([undefined, cycleId])("restores unknown intent across remount and replays its old version, body, and key only after a second review (cycle %s)", async (cycleScope) => {
+    let attempts = 0; const server = installFetch({ onRetry: ({ }) => {
       attempts++;
       if (attempts === 1) throw new Error("response lost after commit");
       return ok(payment({ state: "paying", version: 3, last_error_code: null }));
     } });
-    let mounted = mount(baseAccount); await flush(); click(button(mounted.container, paymentId)); await flush();
+    let mounted = mount(baseAccount, brand, "active", cycleScope); await flush(); click(button(mounted.container, paymentId)); await flush();
      await flush();
     click(byTestId(mounted.container, "commission-payment-retry")); await flush();
     setModel(byTestId(mounted.container, "commission-payment-review-confirmed"), true); await flush();
     click(byTestId(mounted.container, "commission-payment-confirm-submit")); await flush();
-    expect(textOf(mounted.container)).toContain("暂未确认操作结果");
+    expect(textOf(mounted.container) + operationToastText()).toContain("暂未确认操作结果");
     mounted.app.unmount();
 
     server.current = payment({ state: "paid", version: 4, paid_count: "2", paid_points: "10", last_error_code: null });
-    mounted = mount(baseAccount); await flush();
-    expect(textOf(mounted.container)).toContain("待确认请求");
+    mounted = mount(baseAccount, brand, "active", cycleScope); await flush();
+    expect(textOf(mounted.container) + operationToastText()).toContain("待确认请求");
     click(button(mounted.container, "使用原请求重试")); await flush();
 
     expect(byTestId(mounted.container, "commission-payment-review-key")).toBeNull();
-    click(button(byTestId(mounted.container, "commission-payment-review")!, "取消")); await flush();
+    click(button(byTestId(mounted.container, "commission-payment-review")!, "关闭")); await flush();
     expect(button(mounted.container, "使用原请求重试")?.props.disabled).toBe(false);
     click(button(mounted.container, "使用原请求重试")); await flush();
     expect(byTestId(mounted.container, "commission-payment-review-key")).toBeNull();
@@ -247,8 +282,8 @@ describe("CommissionPaymentsManagement", () => {
     expect(retries.map((call) => call.init?.body)).toEqual(['{"version":2,"reason":""}', '{"version":2,"reason":""}']);
     expect(retries.map((call) => new Headers(call.init?.headers).get("Idempotency-Key"))).toEqual([expect.any(String), expect.any(String)]);
     expect(new Headers(retries[0].init?.headers).get("Idempotency-Key")).toBe(new Headers(retries[1].init?.headers).get("Idempotency-Key"));
-    expect(textOf(mounted.container)).toContain("操作回执");
-    expect(textOf(mounted.container)).toContain("已入账");
+    expect(textOf(mounted.container) + operationToastText()).toContain("操作回执");
+    expect(textOf(mounted.container) + operationToastText()).toContain("已入账");
     mounted.app.unmount();
   });
 
@@ -259,7 +294,7 @@ describe("CommissionPaymentsManagement", () => {
     click(byTestId(mounted.container, "commission-payment-retry")); await flush();
     setModel(byTestId(mounted.container, "commission-payment-review-confirmed"), true); await flush();
     click(byTestId(mounted.container, "commission-payment-confirm-submit")); await flush();
-    expect(textOf(mounted.container)).toContain("暂未确认操作结果");
+    expect(textOf(mounted.container) + operationToastText()).toContain("暂未确认操作结果");
     mounted.scope.value = { ...mounted.scope.value, account: { ...baseAccount, permissions_by_brand: { [brand]: ["commission.view.brand"] } } };
     await flush();
     expect(button(mounted.container, "使用原请求重试")?.props.disabled).toBe(true);
@@ -270,41 +305,7 @@ describe("CommissionPaymentsManagement", () => {
     mounted.app.unmount();
   });
 
-  it("holds a 409 intent until manual refresh, explicit discard, and a new review", async () => {
-    let puts = 0; const server = installFetch({ onPolicyPut: () => { puts++; return failure(409); } }); const mounted = mount(baseAccount); await flush();
-    setModel(byTestId(mounted.container, "commission-payment-policy-enabled"), true); await flush();
-     await flush();
-    click(byTestId(mounted.container, "commission-payment-policy-review")); await flush();
-    setModel(byTestId(mounted.container, "commission-payment-review-confirmed"), true); await flush();
-    click(byTestId(mounted.container, "commission-payment-confirm-submit")); await flush();
-    expect(textOf(mounted.container)).toContain("内容已更新");
-    expect(byTestId(mounted.container, "commission-payment-conflict")).not.toBeNull();
-    click(button(mounted.container, "手动刷新当前状态")); await flush();
-    const reviewCheckbox = byTestId(mounted.container, "commission-payment-conflict")!.children.find((node) => node.tag === "label")!.children[0];
-    setModel(reviewCheckbox, true); await flush();
-    click(button(mounted.container, "确认丢弃并允许重新审核")); await flush();
-    expect(textOf(mounted.container)).toContain("确认丢弃旧请求");
-    expect(puts).toBe(1);
-    mounted.app.unmount();
-  });
 
-  it("does not let delayed conflict refresh unlock discard after a newer ordinary refresh", async () => {
-    const slow = deferred<Response>();
-    const server = installFetch({onPolicyPut: () => failure(409)});
-    const mounted = mount(baseAccount); await flush();
-    setModel(byTestId(mounted.container, "commission-payment-policy-enabled"), true);
-     await flush();
-    click(byTestId(mounted.container, "commission-payment-policy-review")); await flush();
-    setModel(byTestId(mounted.container, "commission-payment-review-confirmed"), true); await flush();
-    click(byTestId(mounted.container, "commission-payment-confirm-submit")); await flush();
-    server.fetcher.mockImplementationOnce(() => slow.promise);
-    click(button(mounted.container, "手动刷新当前状态")); await flush();
-    click(byTestId(mounted.container, "commission-payments-refresh")); await flush();
-    slow.resolve(ok(policy())); await flush();
-    expect(button(mounted.container, "确认丢弃并允许重新审核")?.props.disabled).toBe(true);
-    expect(textOf(mounted.container)).toContain("内容已更新");
-    mounted.app.unmount();
-  });
 
   it("rejects late prior-account reads and clears visible financial authority", async () => {
     const slow = deferred<Response>();
@@ -313,8 +314,8 @@ describe("CommissionPaymentsManagement", () => {
     click(button(mounted.container, paymentId)); await flush();
     mounted.scope.value = {...mounted.scope.value,account:{...baseAccount,id:"88888888-8888-4888-8888-888888888888",brand_ids:[],permissions_by_brand:{}}}; await flush();
     slow.resolve(ok(payment({state:"paying",version:8,last_error_code:null}))); await flush();
-    expect(textOf(mounted.container)).toContain("没有此品牌的佣金查看权限");
-    expect(textOf(mounted.container)).not.toContain("v8");
+    expect(textOf(mounted.container) + operationToastText()).toContain("没有此品牌的佣金查看权限");
+    expect(textOf(mounted.container) + operationToastText()).not.toContain("v8");
     expect(byTestId(mounted.container,"commission-payment-retry")).toBeNull();
     expect(server.calls.filter(call=>call.init?.method==='POST')).toHaveLength(0);
     mounted.app.unmount();

@@ -20,7 +20,7 @@ function ok(data: unknown, status = 200) { return new Response(JSON.stringify({ 
 
 describe("commission payments API", () => {
   it("keeps payment permissions brand scoped and denies super-admin writes", () => {
-    expect(commissionPaymentPermissions(base, brand)).toEqual({ view: true, policyWrite: true, approve: true, retry: true });
+    expect(commissionPaymentPermissions(base, brand)).toEqual({ view: true, policyWrite: false, approve: true, retry: true });
     expect(commissionPaymentPermissions(base, otherBrand).view).toBe(false);
     expect(commissionPaymentPermissions({ ...base, super_admin: true, platform_permissions: ["commission.view.platform"], permissions_by_brand: { [brand]: base.permissions_by_brand![brand] } }, brand)).toEqual({ view: false, policyWrite: false, approve: false, retry: false });
     expect(commissionPaymentPermissions({ ...base, permissions: ["commission.view.brand", "commission_payment_policy.write.brand"], permissions_by_brand: undefined }, brand)).toEqual({ view: false, policyWrite: false, approve: false, retry: false });
@@ -43,7 +43,7 @@ describe("commission payments API", () => {
     await api.updatePolicy(brand, Object.freeze({ version: 1, enabled: true, reason: "Enable reviewed policy" }), "policy-key-0001");
     await api.approve(brand, id, Object.freeze({ version: 2, reason: "Approved after review" }), "approve-key-01");
     await api.retry(brand, id, Object.freeze({ version: 2, reason: "Resume unfinished targets" }), "retry-key-0001");
-    for (const [input, init] of fetcher.mock.calls) expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
+    for (const [, init] of fetcher.mock.calls) expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
     const writes = fetcher.mock.calls.filter(([, init]) => init?.method === "PUT" || init?.method === "POST");
     for (const [, init] of writes) expect(new Headers(init?.headers).get("X-Commission-Payment-Actor-ID")).toBe(actor);
     expect(writes.map(([, init]) => [init?.method, new Headers(init?.headers).get("Idempotency-Key"), init?.body])).toEqual([
@@ -148,3 +148,17 @@ describe("commission payments API", () => {
       .resolves.toMatchObject({ items: [], offset: 40 });
   });
 });
+
+describe('payment history projection',()=>{
+ it('reads paginated operations and rejects foreign history',async()=>{
+  const brand='11111111-1111-4111-8111-111111111111',payment='22222222-2222-4222-8222-222222222222';
+  const page={brand_id:brand,payment_id:payment,items:[{id:'33333333-3333-4333-8333-333333333333',actor_type:'system',actor_id:null,operation:'create',state:'awaiting_approval',created_at:'2026-10-27T00:00:00Z'}],total_count:'1',limit:20,offset:0};
+  const api=createCommissionPaymentsApi(async()=>new Response(JSON.stringify({success:true,data:page})));
+  expect((await api.history(brand,payment)).items[0].operation).toBe('create');
+  page.items[0] = {...page.items[0], operation:'adjustment', state:null as unknown as string};
+  expect((await api.history(brand,payment)).items[0]).toMatchObject({operation:'adjustment',state:null});
+  page.items[0] = {...page.items[0], state:'paid'};
+  await expect(api.history(brand,payment)).rejects.toMatchObject({code:'INVALID_RESPONSE'});
+  page.brand_id=payment;await expect(api.history(brand,payment)).rejects.toMatchObject({code:'INVALID_RESPONSE'});
+ })
+})

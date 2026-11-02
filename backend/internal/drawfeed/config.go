@@ -13,11 +13,11 @@ import (
 var ErrLimit = errors.New("draw feed limit exceeded")
 
 const (
-	maxConfigNameBytes     = 120
-	maxConfigEndpointBytes = 2048
-	maxConfigSelectorBytes = 500
-	maxConfigCredentialRef = 120
-	maxConfigPriority      = 10000
+	maxConfigNameCharacters     = 120
+	maxConfigEndpointCharacters = 2048
+	maxConfigSelectorCharacters = 500
+	maxConfigCredentialRef      = 120
+	maxConfigPriority           = 10000
 )
 
 var (
@@ -63,7 +63,7 @@ func ValidateSources(configs []SourceConfig) error {
 		if !utf8.ValidString(config.Name) || strings.TrimSpace(config.Name) == "" || strings.IndexByte(config.Name, 0) >= 0 {
 			return ErrInvalid
 		}
-		if len(config.Name) > maxConfigNameBytes {
+		if utf8.RuneCountInString(config.Name) > maxConfigNameCharacters {
 			return ErrLimit
 		}
 		if config.Type != "api" && config.Type != "dom" {
@@ -94,7 +94,7 @@ func ValidateSources(configs []SourceConfig) error {
 			if strings.TrimSpace(config.Selector) == "" {
 				return ErrInvalid
 			}
-			if len(config.Selector) > maxConfigSelectorBytes {
+			if utf8.RuneCountInString(config.Selector) > maxConfigSelectorCharacters {
 				return ErrLimit
 			}
 		}
@@ -102,7 +102,7 @@ func ValidateSources(configs []SourceConfig) error {
 		if !utf8.ValidString(config.CredentialRef) {
 			return ErrInvalid
 		}
-		if len(config.CredentialRef) > maxConfigCredentialRef {
+		if utf8.RuneCountInString(config.CredentialRef) > maxConfigCredentialRef {
 			return ErrLimit
 		}
 		if config.CredentialRef != "" && !credentialPattern.MatchString(config.CredentialRef) {
@@ -131,7 +131,7 @@ func validateEndpoint(endpoint string) error {
 	if !utf8.ValidString(endpoint) || endpoint == "" {
 		return ErrInvalid
 	}
-	if len(endpoint) > maxConfigEndpointBytes {
+	if utf8.RuneCountInString(endpoint) > maxConfigEndpointCharacters {
 		return ErrLimit
 	}
 	parsed, err := url.Parse(endpoint)

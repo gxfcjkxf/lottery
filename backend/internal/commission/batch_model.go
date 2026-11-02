@@ -78,7 +78,7 @@ func (in RetryCycleInput) Validate() error {
 
 func validCycleReason(reason string) bool {
 	return utf8.ValidString(reason) && reason == strings.TrimSpace(reason) &&
-		len([]byte(reason)) <= 500 && !strings.ContainsRune(reason, '\x00')
+		utf8.RuneCountInString(reason) <= 500 && !strings.ContainsRune(reason, '\x00')
 }
 
 // AllowedCycle applies the commission cycle action policy. Viewing can be

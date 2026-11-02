@@ -1,5 +1,7 @@
 # 运维可观测性交接
 
+> 2026-10-28 执行范围更新：投注、结算、佣金／提现事实与经营统计均以[统一配置化链路](65-unified-configured-betting.md)及当前 OpenAPI 为准。文中的旧品牌期次、专用订单、结算任务、旧夹具与旧容量结果是历史设计或证据，不代表当前可用接口。
+
 本阶段提供 API/worker 的独立保护端口、Prometheus 指标、有界只读数据库快照和可选 OpenTelemetry 链路。不新增业务接口、权限、迁移、资金开关或自动重试。发布与恢复见[34号手册](34-release-and-operations.md)；生产部署、告警接收人、容量、RTO/RPO 和客户人工审核仍需验收。
 
 ## 配置与保护端口
@@ -10,7 +12,7 @@
 | --- | --- |
 | `API_METRICS_ADDR` | API端口，仅字面回环IP，例127.0.0.1:9091 |
 | `WORKER_METRICS_ADDR` | worker端口，仅字面回环IP，例127.0.0.1:9092 |
-| `METRICS_TOKEN_FILE` | 任一监听启用时必填；普通非符号链接文件，仅0400/0600权限，令牌32–128字节 |
+| `METRICS_TOKEN_FILE` | 任一监听启用时必填；普通非符号链接文件，仅0400/0600权限，令牌32–128字符 |
 | `TRACE_OTLP_ENDPOINT` | 明确OTLP/HTTP地址；HTTPS，或仅字面回环IP的HTTP；禁止URL凭证、query、fragment |
 | `TRACE_SAMPLE_RATIO` | 有限数0–1，默认0.1 |
 

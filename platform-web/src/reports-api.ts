@@ -23,7 +23,7 @@ export const REPORT_FIELDS: Record<ReportKind, readonly string[]> = {
   withdrawal: ['order_count', 'requested_points', 'reviewing_count', 'reviewing_points', 'processing_count', 'processing_points', 'paid_count', 'paid_points', 'rejected_count', 'rejected_points', 'failed_count', 'failed_points', 'cancelled_count', 'cancelled_points'],
   commission: ['entry_count', 'paid_entry_count', 'paid_points', 'adjustment_entry_count', 'adjustment_credit_points', 'adjustment_debit_points', 'correction_entry_count', 'correction_credit_points', 'correction_debit_points', 'net_points'],
   rewards: ['entry_count', 'grant_entry_count', 'grant_points', 'reversal_entry_count', 'reversal_points', 'net_points'],
-  reward_orders: ['order_count', 'original_points', 'granted_count', 'granted_points', 'pending_count', 'pending_points', 'revoked_count', 'revoked_points'],
+  reward_orders: ['order_count', 'original_points', 'granted_count', 'granted_points', 'revoked_count', 'revoked_points'],
 }
 
 export const REPORT_GROUPS: Record<ReportKind, readonly string[]> = {
@@ -84,9 +84,9 @@ function invalidInput(message: string): never { throw new PlatformApiError(messa
 function invalidResponse(): never { throw new PlatformApiError('Invalid report response', 502, 'INVALID_RESPONSE') }
 
 function utcSecond(value: unknown): number {
-  if (typeof value !== 'string') return invalidInput('Report dates must be UTC timestamps with whole-second precision')
+  if (typeof value !== 'string') return invalidInput('Report dates must be timestamps with whole-second precision')
   const match = UTC_SECOND.exec(value)
-  if (!match) return invalidInput('Report dates must be UTC timestamps with whole-second precision')
+  if (!match) return invalidInput('Report dates must be timestamps with whole-second precision')
   const [, ys, mos, ds, hs, mis, ss] = match
   const year = Number(ys), month = Number(mos), day = Number(ds), hour = Number(hs), minute = Number(mis), second = Number(ss)
   const date = new Date(`${ys}-${mos}-${ds}T${hs}:${mis}:${ss}Z`)
@@ -163,7 +163,7 @@ function validateReport(value: unknown, brandId: string, kind: ReportKind, q: Re
     if (q.group_by === 'day' && (!/^\d{4}-\d{2}-\d{2}$/.test(key) || raw.label !== key)) invalidResponse()
     if (['game', 'member', 'agent', 'cycle', 'order'].includes(q.group_by) && !UUID.test(key)) invalidResponse()
     if (q.group_by === 'entry_type' && (!/^[a-zA-Z0-9_.:-]{1,200}$/.test(key) || raw.label !== key)) invalidResponse()
-    if (q.group_by === 'state' && !(kind === 'withdrawal' ? ['reviewing', 'processing', 'paid', 'rejected', 'failed', 'cancelled'] : ['granted', 'revocation_pending', 'revoked']).includes(key)) invalidResponse()
+    if (q.group_by === 'state' && !(kind === 'withdrawal' ? ['reviewing', 'processing', 'paid', 'rejected', 'failed', 'cancelled'] : ['granted', 'revoked']).includes(key)) invalidResponse()
     if (['member', 'order', 'game', 'agent', 'cycle'].includes(q.group_by) && q.filters[`${q.group_by}_id`] && key.toLowerCase() !== q.filters[`${q.group_by}_id`]) invalidResponse()
     if (q.group_by === 'member' && raw.label !== key) invalidResponse()
     return { key, label: raw.label, totals: validateTotals(raw.totals, kind) }

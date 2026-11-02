@@ -5,6 +5,11 @@ const credentials = readFileSync(new URL("../../shared/src/LoginCredentials.vue"
 const source = readFileSync(new URL("./App.vue", import.meta.url), "utf8");
 
 describe("admin login entry", () => {
+  it("loads without the retired brand notification modules", () => {
+    expect(source).not.toMatch(/import\(["']\.\/(?:NotificationTemplates|NotificationDeliveries)\.vue["']\)/);
+    expect(source).not.toContain('notification-templates-state');
+    expect(source).not.toContain('notification-templates-api');
+  });
   it("keeps the complete app shell behind a resolved brand-admin session", () => {
     expect(source).toMatch(
       /<LoginEntry v-if="authLoading \|\| !account"[\s\S]*?<ManagementFrame v-else/,

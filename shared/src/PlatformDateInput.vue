@@ -5,7 +5,7 @@ import type { PlatformDisplaySettings } from './date-time'
 import { createCatalogI18n } from './localization'
 import { platformLotteryCatalog } from './platform-lottery'
 
-const props = defineProps<{ modelValue: string; displaySettings: PlatformDisplaySettings; label: string; locale: 'en' | 'zh-CN'; disabled?: boolean }>()
+const props = defineProps<{ modelValue: string; displaySettings: PlatformDisplaySettings; label: string; locale: 'en' | 'zh-CN'; disabled?: boolean; placeholder?: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const i18n = createCatalogI18n(platformLotteryCatalog, props.locale)
 watch(() => props.locale, value => i18n.setLocale(value))
@@ -74,7 +74,7 @@ watch(() => props.disabled, value => { if (value && expanded.value) close() })
 <template>
   <span class="platform-date-input" :lang="locale" @keydown.esc.stop.prevent="close">
     <span ref="control" class="platform-date-input-control">
-      <input class="platform-date-input-display" :value="displayValue" :placeholder="displaySettings.date_format" type="text" :aria-label="label" readonly tabindex="-1" @click="toggle" />
+      <input class="platform-date-input-display" :value="displayValue" :placeholder="placeholder ?? displaySettings.date_format" type="text" :aria-label="label" readonly tabindex="-1" @click="toggle" />
       <button ref="trigger" class="platform-date-input-button" type="button" :disabled="disabled" :aria-label="label" :aria-expanded="expanded" @click="toggle"><SiteIcon name="calendar" /></button>
     </span>
     <span ref="calendar" popover="auto" class="platform-calendar" :style="position" role="group" :aria-label="label" @toggle="syncPopover">
@@ -92,11 +92,11 @@ watch(() => props.disabled, value => { if (value && expanded.value) close() })
 .platform-date-input-button { position: absolute; top: 0; right: 0; bottom: 0; width: 40px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-secondary); cursor: pointer; }
 .platform-calendar { position: fixed; inset: auto; box-sizing: border-box; width: min(340px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; margin: 0; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); }
 .platform-calendar:popover-open { display: block; }
-.platform-calendar-heading { display: flex; align-items: center; justify-content: space-between; gap: 4px; font-size: 13px; }
-.platform-calendar button { min-width: 0; min-height: 36px; padding: 4px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
-.platform-calendar-heading button { width: 36px; }
-.platform-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; font-size: 13px; }
-.platform-calendar-weekday { padding: 8px 0; text-align: center; color: var(--muted); font-size: 11px; }
+.platform-calendar-heading { display: flex; align-items: center; justify-content: space-between; gap: 4px; font-size: var(--body-font-size); }
+.platform-calendar button { min-width: 0; min-height: var(--control-height); padding: 4px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+.platform-calendar-heading button { width: var(--control-height); }
+.platform-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; font-size: var(--body-font-size); }
+.platform-calendar-weekday { padding: 8px 0; text-align: center; color: var(--muted); font-size: var(--body-font-size); }
 .platform-calendar button:hover { background: var(--primary-light); }
 .platform-calendar button[aria-pressed="true"] { background: var(--primary); color: var(--surface); }
 .platform-calendar .platform-calendar-today { width: 100%; margin-top: 4px; color: var(--primary); }

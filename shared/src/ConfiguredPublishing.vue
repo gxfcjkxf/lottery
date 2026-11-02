@@ -1,73 +1,102 @@
 <script setup lang="ts">
-import BusinessDetails from './BusinessDetails.vue'
-import { vWriteGuard } from "@lottery/shared";
+import { useOperationToast } from "@lottery/shared";
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
-import { createCatalogI18n, type LocalizedMessage } from './localization'
+import { vWriteGuard } from './write-guard'
 import { withGlobalLoading } from './global-loading'
+import { createCatalogI18n, type LocalizedMessage } from './localization'
 import { configuredRuleCatalog } from './configured-rule-catalog'
-import { createConfiguredBusinessClient,configuredTicketLabel,configuredTicketPrices,type ConfiguredLiveOrder, type ConfiguredVersion, type ConfiguredSales, type ConfiguredCase } from './configured-business'
-import type { ConfiguredSnapshot, RuleNode } from './configured-rules'
-import MarkSixOrders from './MarkSixOrders.vue'
-import CanadaOrders from './CanadaOrders.vue'
-import {createMarkSixClient,type MarkSixOrder} from './mark-six'
-import {createCanadaClient,type CanadaOrder} from './canada'
-import ConfiguredNodeEditor from './ConfiguredNodeEditor.vue'
-const props=defineProps<{surface:'platform'|'admin';brandId:string;gameId:string;locale:'en'|'zh-CN';snapshot:ConfiguredSnapshot|null;sample?:Pick<ConfiguredCase,'requests'|'draw'>}>()
-const emit=defineEmits<{load:[snapshot:ConfiguredSnapshot]}>()
-const i18n=createCatalogI18n(configuredRuleCatalog,props.locale);watch(()=>props.locale,v=>i18n.setLocale(v));const t=i18n.t
-const api=computed(()=>createConfiguredBusinessClient(props.surface,props.brandId));const rows=shallowRef<ConfiguredVersion[]>([]),selected=ref(''),casesJson=ref('[]'),error=ref<LocalizedMessage|null>(null),busy=ref(false),sales=shallowRef<ConfiguredSales|null>(null),salesMissing=ref(false)
-const orders=shallowRef<ConfiguredLiveOrder[]>([]),orderOffset=ref(0)
-async function orderPage(delta:number){orderOffset.value+=delta;await load()}
-const legacyMarkSix=shallowRef<MarkSixOrder[]>([]),legacyCanada=shallowRef<CanadaOrder[]>([]),legacyLoaded=ref(false),legacyOffset=ref(0)
-async function legacyPage(delta=0){const token=generation;busy.value=true;error.value=null;const next=legacyOffset.value+delta;try{const mark=await createMarkSixClient('admin',()=>props.brandId).orders(props.gameId,next);const canada=await createCanadaClient('admin',()=>props.brandId).orders(props.gameId,next);if(token===generation){legacyMarkSix.value=mark.items;legacyCanada.value=canada.items;legacyOffset.value=next;legacyLoaded.value=true}}catch(e){if(token===generation)report(e)}finally{if(token===generation)busy.value=false}}
-const expectedBet=ref(''),expectedPrize=ref(''),expectedRefund=ref('')
+import { createConfiguredBusinessClient, type ConfiguredVersion, type ConfiguredSales } from './configured-business'
+import type { ConfiguredSnapshot } from './configured-rules'
+import ConfiguredSalesPrices from './ConfiguredSalesPrices.vue'
+const props=defineProps<{surface:'platform'|'admin';brandId:string;gameId:string;locale:'en'|'zh-CN';snapshot:ConfiguredSnapshot|null;canWrite?:boolean}>()
+const emit=defineEmits<{load:[snapshot:ConfiguredSnapshot];locked:[value:boolean];failure:[cause:unknown];saved:[]}>()
+const i18n=createCatalogI18n(configuredRuleCatalog,props.locale)
+watch(()=>props.locale,value=>i18n.setLocale(value))
+const t=i18n.t,api=computed(()=>createConfiguredBusinessClient(props.surface,props.brandId))
+const current=shallowRef<ConfiguredVersion|null>(null),sales=shallowRef<ConfiguredSales|null>(null)
+const pricesOpen=ref(false)
+const busy=ref(false),ready=ref(false),saved=ref(false),error=ref<LocalizedMessage|null>(null)
 const pending=shallowRef<{path:string;body:unknown;key:string}|null>(null)
-const version=computed(()=>rows.value.find(v=>v.id===selected.value));let generation=0;onUnmounted(()=>generation++)
-const salesNode=computed(()=>{if(!sales.value)return null;const {version,rule_id,...fields}=sales.value;return fields as unknown as RuleNode})
-function editSales(value:RuleNode){if(sales.value)sales.value={...sales.value,...value as unknown as Omit<ConfiguredSales,'version'|'rule_id'>}}
-const editable=computed(()=>!version.value||['draft','validated','rejected'].includes(version.value.status))
-function report(cause:unknown){error.value=i18n.errorMessage(cause)}
+let generation=0
+onUnmounted(()=>generation++)
+watch([busy,pending],()=>emit('locked',busy.value||!!pending.value),{flush:'sync'})
+const limitFields=['min_points','max_points','max_period_points','max_user_period_points'] as const
+const salesValid=computed(()=>{
+ if(!sales.value)return false
+ if(!limitFields.every(key=>/^[1-9][0-9]*$/.test(sales.value![key])&&BigInt(sales.value![key])<=9223372036854775807n))return false
+ const v=sales.value;return BigInt(v.max_points)>=BigInt(v.min_points)&&BigInt(v.max_period_points)>=BigInt(v.max_points)&&BigInt(v.max_user_period_points)>=BigInt(v.max_points)
+})
+function editLimit(key:typeof limitFields[number],value:string){if(sales.value)sales.value={...sales.value,[key]:value}}
+function editPrices(value:ConfiguredSales['prices']){if(sales.value)sales.value={...sales.value,prices:value}}
+function report(cause:unknown){error.value=i18n.errorMessage(cause);if((cause as {status?:number}).status===401)emit('failure',cause)}
 async function load(){
- const token=++generation;busy.value=true;error.value=null
+ const token=++generation;busy.value=true;ready.value=false;error.value=null
  try{
-  const response=await api.value.versions(props.gameId);if(token!==generation)return;rows.value=response.items
-  if(!selected.value || !rows.value.some(v=>v.id===selected.value)){selected.value=(rows.value.find(v=>v.status==='published')??rows.value[0])?.id??'';choose()}
-  if(props.surface==='admin'){
-   try{const current=await api.value.sales(props.gameId);if(token===generation){sales.value=current;salesMissing.value=false}}
-   catch(e){if((e as {code?:string}).code!=='RESOURCE_NOT_FOUND')throw e;if(token===generation){sales.value=null;salesMissing.value=true}}
-   if(token!==generation)return
-   const page=await api.value.adminOrders(props.gameId,orderOffset.value);if(token===generation)orders.value=page.items
+  const rules=await api.value.rules(props.gameId)
+  if(token!==generation)return
+  current.value=rules
+  if(rules)emit('load',JSON.parse(JSON.stringify(rules.snapshot)))
+  if(props.surface==='admin'&&rules){
+   try{const value=await api.value.sales(props.gameId);if(token!==generation)return;sales.value=value}
+   catch(cause){if((cause as {code?:string}).code!=='RESOURCE_NOT_FOUND')throw cause;if(token!==generation)return;sales.value={version:0,rule_id:rules.id,enabled:false,prices:JSON.parse(JSON.stringify(rules.snapshot.prices)),min_points:'1',max_points:'100',max_period_points:'10000',max_user_period_points:'5000'}}
   }
- }catch(e){if(token===generation)report(e)}finally{if(token===generation)busy.value=false}
+  ready.value=true
+ }catch(cause){if(token===generation)report(cause)}finally{if(token===generation)busy.value=false}
 }
-watch(()=>[props.gameId,props.brandId,props.surface],()=>{legacyLoaded.value=false;legacyOffset.value=0;legacyMarkSix.value=[];legacyCanada.value=[];selected.value='';pending.value=null;rows.value=[];sales.value=null;orders.value=[];orderOffset.value=0;casesJson.value='[]';void load()},{immediate:true})
-function choose(){if(!version.value)return;emit('load',JSON.parse(JSON.stringify(version.value.snapshot)));casesJson.value=JSON.stringify(version.value.cases,null,2)}
-function addCase(){try{if(!props.sample||![expectedBet.value,expectedPrize.value,expectedRefund.value].every(s=>/^(0|[1-9][0-9]*)$/.test(s)))throw new Error('Expected amounts required');const cases=JSON.parse(casesJson.value) as ConfiguredCase[];cases.push({...props.sample,bet_points:expectedBet.value,prize_points:expectedPrize.value,refund_points:expectedRefund.value});casesJson.value=JSON.stringify(cases,null,2);error.value=null}catch{report({code:'RULE_INVALID'})}}
-async function send<T=unknown>(path?:string,body?:unknown):Promise<T|undefined>{
- if(!pending.value){if(!path)return;pending.value={path,body:JSON.parse(JSON.stringify(body)),key:crypto.randomUUID()}}
- busy.value=true;error.value=null;const token=generation
- try{const receipt=await api.value.request<T>(pending.value.path,pending.value.body,pending.value.key);if(token!==generation)return;pending.value=null;await load();return receipt}
- catch(e){if(token!==generation)return;const status=(e as {status?:number}).status;if(status&&status>=400&&status<500)pending.value=null;report(e)}finally{if(token===generation)busy.value=false}
+watch(()=>[props.gameId,props.brandId,props.surface],()=>{pricesOpen.value=false;current.value=null;sales.value=null;pending.value=null;saved.value=false;void withGlobalLoading(load)},{immediate:true})
+async function save(){
+ if(!props.canWrite||!ready.value||(!pending.value&&props.surface==='admin'&&!salesValid.value))return
+ if(!pending.value){
+  const body=props.surface==='platform'?{id:current.value?.id??'',revision:current.value?.revision??0,snapshot:props.snapshot}:sales.value&&current.value?{...sales.value,rule_id:current.value.id}:null
+  if(!body||(props.surface==='platform'&&!props.snapshot))return
+  pending.value={path:`/${props.gameId}/configured/${props.surface==='platform'?'rules':'sales'}`,body:JSON.parse(JSON.stringify(body)),key:crypto.randomUUID()}
+ }
+ const token=generation;busy.value=true;error.value=null;saved.value=false
+ try{
+  await api.value.request(pending.value.path,pending.value.body,pending.value.key)
+  if(token!==generation)return
+  pending.value=null;await load();saved.value=ready.value;if(ready.value)emit('saved')
+ }catch(cause){if(token!==generation)return;const status=(cause as {status?:number}).status;if(status&&status>=400&&status<500){pending.value=null;if(status===409)ready.value=false}report(cause)}finally{if(token===generation)busy.value=false}
 }
-async function save(){try{if(!props.snapshot)throw new Error('Snapshot required');const cases=JSON.parse(casesJson.value);if(!Array.isArray(cases))throw new Error('Cases required');const receipt=await send<ConfiguredVersion>(`/${props.gameId}/configured/versions`,{id:version.value?.id??'',revision:version.value?.revision??0,snapshot:props.snapshot,cases});if(receipt){if(!rows.value.some(row=>row.id===receipt.id))rows.value=[receipt,...rows.value];selected.value=receipt.id;choose()}}catch{report({code:'RULE_INVALID'})}}
-async function action(action:string){if(!version.value)return;await send(`/${props.gameId}/configured/versions/${version.value.id}`,{revision:version.value.revision,action})}
-function newSales(){if(!version.value||version.value.status!=='published'||(!sales.value&&!salesMissing.value))return;sales.value={version:sales.value?.version??0,rule_id:version.value.id,enabled:false,prices:JSON.parse(JSON.stringify(version.value.snapshot.prices)),min_points:'1',max_points:'100',max_period_points:'10000',max_user_period_points:'5000'}}
+useOperationToast(saved, () => t(props.surface==='admin'?'salesSaved':'rulesSaved'), 'success');
+
+useOperationToast(error, value => i18n.displayError(value), 'error');
 </script>
 <template>
- <section class="configured-publishing"><h3>{{t('publication')}}</h3><p v-if="error" class="message error" role="alert">{{i18n.displayError(error)}}</p><p v-if="pending">{{t('unknownWrite')}}</p>
- <button type="button" class="button button-secondary" :disabled="busy||!!pending" @click="withGlobalLoading(load)">{{t('refreshVersions')}}</button>
- <button v-write-guard="busy" v-if="pending" type="button" class="button button-primary" :disabled="busy" @click="withGlobalLoading(send)">{{t('retryWrite')}}</button>
- <fieldset :disabled="busy||!!pending"><label>{{t('savedVersions')}}<select v-model="selected" @change="choose"><option value="">{{t('newDraft')}}</option><option v-for="v in rows" :key="v.id" :value="v.id">{{v.snapshot.catalog.plays[0]?.label[locale]}} · {{t(`state.${v.status}`)}}</option></select></label>
- <template v-if="surface==='platform'"><p>{{t('caseHint')}}</p><template v-if="sample"><label>{{t('expectedBet')}}<input v-model="expectedBet" inputmode="numeric" /></label><label>{{t('expectedPrize')}}<input v-model="expectedPrize" inputmode="numeric" /></label><label>{{t('expectedRefund')}}<input v-model="expectedRefund" inputmode="numeric" /></label><button type="button" class="button button-secondary" :disabled="!editable" @click="addCase">{{t('addCase')}}</button></template><label>{{t('validationCases')}}<BusinessDetails :value="JSON.parse(casesJson)" :locale="props.locale" /></label>
- <button v-write-guard="busy" type="button" class="button button-primary" :disabled="!snapshot||!editable" @click="withGlobalLoading(save)">{{t('saveDraft')}}</button>
- <div v-if="version" class="configured-actions"><button v-write-guard="busy" v-if="['draft','validated','rejected'].includes(version.status)" type="button" class="button button-secondary" @click="withGlobalLoading(action,'validate')">{{t('validateSaved')}}</button><button v-write-guard="busy" v-if="version.status==='validated'" type="button" class="button button-secondary" @click="withGlobalLoading(action,'submit')">{{t('submitReview')}}</button><template v-if="version.status==='submitted'"><button v-write-guard="busy" type="button" class="button button-primary" @click="withGlobalLoading(action,'approve')">{{t('approve')}}</button><button v-write-guard="busy" type="button" class="button button-secondary" @click="withGlobalLoading(action,'reject')">{{t('reject')}}</button></template><button v-write-guard="busy" v-if="version.status==='approved'" type="button" class="button button-primary" @click="withGlobalLoading(action,'publish')">{{t('publishRules')}}</button></div>
- </template>
- <template v-else><p>{{t('brandSalesHint')}}</p><div class="configured-actions"><button type="button" class="button button-secondary" :disabled="(!salesMissing&&!sales)||version?.status!=='published'" @click="newSales">{{t('initializeSales')}}</button></div><template v-if="sales"><ConfiguredNodeEditor :model-value="salesNode" :locale="locale" @update:model-value="editSales" /><button v-write-guard="busy" type="button" class="button button-primary" @click="withGlobalLoading(send,`/${gameId}/configured/sales`,sales)">{{t('saveSales')}}</button></template></template>
- </fieldset>
- <template v-if="surface==='admin'"><h3>{{t('brandOrders')}}</h3><article v-for="order in orders" :key="order.id"><p>{{order.member_name}} · {{order.period_no}} · {{order.quote.bet_points}} · {{t(order.status==='settled'?'state.settled':'state.placed')}}</p><p v-for="(line,index) in order.quote.lines" :key="index">{{configuredTicketLabel(order.snapshot,line,locale)}} · {{line.stake}} · {{configuredTicketPrices(order.snapshot,line,locale).join(' / ')}}</p><p v-if="order.quote.reserved_points">{{t('reserved')}}: {{order.quote.reserved_points}}</p><p v-if="order.result?.consumed_points">{{t('consumed')}}: {{order.result.consumed_points}}</p><p v-if="order.result">{{t('prize')}}: {{order.result.prize_points}} · {{t(order.snapshot.catalog.funding==='reserve'?'release':'refund')}}: {{order.result.refund_points}}</p></article><p v-if="!orders.length" class="empty-state">{{t('emptyOrders')}}</p><div class="configured-actions"><button type="button" class="button button-secondary" :disabled="busy||!!pending||orderOffset===0" @click="withGlobalLoading(orderPage,-50)">{{t('previousOrders')}}</button><button type="button" class="button button-secondary" :disabled="busy||!!pending||orders.length<50" @click="withGlobalLoading(orderPage,50)">{{t('nextOrders')}}</button></div></template>
- <section v-if="surface==='admin'"><h3>{{t('legacyOrders')}}</h3><button type="button" class="button button-secondary" :disabled="busy" @click="withGlobalLoading(legacyPage,0)">{{t('loadLegacyOrders')}}</button><template v-if="legacyLoaded"><MarkSixOrders v-if="legacyMarkSix.length" :orders="legacyMarkSix" :locale="locale" /><CanadaOrders v-if="legacyCanada.length" :orders="legacyCanada" :locale="locale" /><p v-if="!legacyMarkSix.length&&!legacyCanada.length" class="empty-state">{{t('legacyEmpty')}}</p><div class="configured-actions"><button type="button" class="button button-secondary" :disabled="busy||legacyOffset===0" @click="withGlobalLoading(legacyPage,-50)">{{t('previousOrders')}}</button><button type="button" class="button button-secondary" :disabled="busy||(legacyMarkSix.length<50&&legacyCanada.length<50)" @click="withGlobalLoading(legacyPage,50)">{{t('nextOrders')}}</button></div></template></section>
+ <section class="configured-publishing">
+
+  <p v-if="pending" role="status">{{t('unknownWrite')}}</p>
+
+  <p v-if="ready&&!current&&surface==='admin'" class="empty-state">{{t('rulesEmpty')}}</p>
+
+  <template v-if="surface==='admin'&&ready&&current&&sales">
+   <h3>{{t('brandSales')}}</h3>
+   <p v-if="sales.version===0" class="muted" role="status">{{t('salesUnsaved')}}</p>
+   <p v-else-if="sales.rule_id!==current.id" role="status">{{t('salesOutdated')}}</p>
+   <fieldset v-if="canWrite||sales.version>0" :disabled="busy||!!pending||!canWrite" class="configured-sales-form">
+    <label class="sales-toggle">
+     <span :class="{'sales-toggle-active':!sales.enabled}">{{t('salesDisabled')}}</span>
+     <span class="sales-switch">
+      <input type="checkbox" role="switch" :aria-label="t('salesEnabled')" :checked="sales.enabled" @change="sales={...sales,enabled:($event.target as HTMLInputElement).checked}" />
+      <span class="sales-switch-track" aria-hidden="true"></span>
+     </span>
+     <span :class="{'sales-toggle-active':sales.enabled}">{{t('salesEnabled')}}</span>
+    </label>
+    <div class="configured-sales-limits"><label v-for="field in limitFields" :key="field">{{t(field)}}<input inputmode="numeric" :value="sales[field]" @input="editLimit(field,($event.target as HTMLInputElement).value)" /></label></div>
+    <p v-if="!salesValid" role="alert">{{t('salesLimitsInvalid')}}</p>
+   </fieldset>
+   <button v-if="canWrite||sales.version>0" type="button" class="button button-secondary configured-odds-entry" :disabled="busy||!!pending" @click="pricesOpen=true">{{t('salesOdds')}}</button>
+  </template>
+
+  <ConfiguredSalesPrices v-if="pricesOpen&&current&&sales" :snapshot="current.snapshot" :model-value="sales.prices" :locale="locale" :disabled="busy||!!pending||!canWrite" @update:model-value="editPrices" @close="pricesOpen=false" />
+  <div class="configured-actions ui-form-actions">
+   <button v-if="canWrite&&(surface==='platform'||sales)" v-write-guard="busy" type="button" class="button button-primary" :disabled="busy||!ready||(surface==='platform'&&!snapshot)||(surface==='admin'&&!pending&&!salesValid)" @click="withGlobalLoading(save)">{{t(pending?'retryWrite':surface==='admin'?'saveSales':'saveRules')}}</button>
+   <button v-if="error&&!pending" type="button" class="button button-secondary" :disabled="busy" @click="withGlobalLoading(load)">{{t('retryRead')}}</button>
+  </div>
  </section>
 </template>
 <style scoped>
-.configured-publishing{border-top:1px solid var(--line);padding-top:16px;min-width:0;font-size:14px}.configured-publishing fieldset{border:0;padding:0;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}.configured-publishing label{display:grid;gap:6px;min-width:0}.configured-publishing input,.configured-publishing select,.configured-publishing .button{justify-self:start;max-width:100%;white-space:normal;height:auto;min-height:44px;overflow-wrap:anywhere}.configured-publishing textarea{min-width:0;width:100%;min-height:44px;box-sizing:border-box}.configured-publishing .button{justify-self:start;max-width:100%;white-space:normal;height:auto;min-height:44px;overflow-wrap:anywhere}.configured-publishing textarea{font:13px monospace}.configured-actions{display:flex;flex-wrap:wrap;gap:8px}
+.configured-odds-entry{margin-bottom:12px}.configured-publishing{min-width:0;font-size:14px}.configured-publishing fieldset{border:0;padding:0;margin:0 0 12px;min-width:0}.configured-publishing p{margin:0 0 8px}
+.configured-sales-limits{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.configured-sales-form label{display:grid;gap:4px}.configured-sales-form .sales-toggle{display:flex;align-items:center;gap:8px;min-height:44px}.sales-toggle{width:fit-content;color:var(--muted);cursor:pointer}.sales-toggle-active{color:var(--ink);font-weight:600}.sales-switch{position:relative;display:flex;align-items:center;flex:0 0 44px;width:44px;height:44px}.sales-switch input{position:absolute;inset:0;width:44px;height:44px;margin:0;opacity:0;cursor:pointer}.sales-switch-track{pointer-events:none;display:block;width:44px;height:24px;box-sizing:border-box;padding:3px;border-radius:999px;background:var(--muted-light)}.sales-switch-track::before{content:'';display:block;width:18px;height:18px;border-radius:50%;background:var(--surface)}.sales-switch input:checked+.sales-switch-track{background:var(--primary)}.sales-switch input:checked+.sales-switch-track::before{transform:translateX(20px)}.sales-switch input:focus-visible+.sales-switch-track{outline:2px solid var(--primary);outline-offset:3px}.sales-toggle:has(input:disabled){cursor:default;opacity:.6}.sales-switch input:disabled{cursor:default}.configured-sales-form input{min-width:0;box-sizing:border-box}.configured-sales-limits input{width:100%}.configured-publishing h3{margin:0 0 8px;font-size:var(--body-font-size)}
+@media(max-width:480px){.configured-sales-limits{grid-template-columns:minmax(0,1fr)}}
 </style>

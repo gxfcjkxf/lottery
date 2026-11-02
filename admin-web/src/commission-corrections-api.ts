@@ -1,3 +1,4 @@
+import { commissionListParams, type CommissionListQuery } from './commission-list-query'
 import { readAdminEnvelope } from './admin-api'
 
 import { AdminApiError, type AdminAccount } from "./admin-api";
@@ -37,6 +38,8 @@ export interface CorrectionPlan {
   credit_points: string | null; debit_points: string | null; net_points: string | null; target_count: string; planned_count: string;
   creation_audit_log_id: string; last_audit_log_id: string; last_error_code: string | null; created_at: string; updated_at: string;
 }
+export interface CorrectionCase {id:string;plan:CorrectionPlan;execution_id:string|null;execution_state:CorrectionExecutionState|null;queue:'pending'|'processing'|'history'}
+export interface CorrectionCasePage {brand_id:string;items:CorrectionCase[];total_count:string;limit:number;offset:number}
 export interface CorrectionPlanTarget {
   id: string; brand_id: string; plan_id: string; agent_id: string; member_id: string; original_target_id: string | null;
   earning_id: string | null; adjustment_version: number | null; previous_correction_target_id: string | null;
@@ -95,7 +98,7 @@ function instantNs(value: string): bigint {
 function validReason(value: unknown): value is string {
   if (typeof value !== "string" || value.trim() !== value || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
   for (let i = 0; i < value.length; i++) { const c = value.charCodeAt(i); if (c >= 0xd800 && c <= 0xdbff) { const n = value.charCodeAt(++i); if (!(n >= 0xdc00 && n <= 0xdfff)) return false; } else if (c >= 0xdc00 && c <= 0xdfff) return false; }
-  return new TextEncoder().encode(value).length <= 500;
+  return Array.from(value).length <= 500;
 }
 function validKey(value: string): boolean { return typeof value === "string" && /^[A-Za-z0-9._:-]{8,128}$/.test(value); }
 function validPageArgs(limit: number, offset: number): boolean { return Number.isSafeInteger(limit) && limit >= 1 && limit <= 100 && Number.isSafeInteger(offset) && offset >= 0 && offset <= 1_000_000; }
@@ -212,6 +215,16 @@ export function createCommissionCorrectionsApi(fetcher: typeof fetch = fetch, ac
       validBrand(brand); if (!reasonBody(body, true) || !validKey(key)) invalidInput(); const snapshot = { version: body.version, enabled: body.enabled, reason: body.reason };
       const data = await request(brand, POLICY, "PUT", snapshot, key);
       if (!validPolicy(data, brand) || data.version !== snapshot.version + 1 || data.enabled !== snapshot.enabled || !uuid(data.audit_log_id)) invalidResponse(); return data;
+    },
+    async listCases(brand:string,limit=20,offset=0,filter:Readonly<CommissionListQuery>={}):Promise<CorrectionCasePage> {
+      validBrand(brand);const query=commissionListParams(limit,offset,filter,'correction');
+      const data=await request(brand, `${ROOT}/commission-correction-cases?${query}`);
+      if(!isObj(data)||!exact(data,['brand_id','items','total_count','limit','offset'])||data.brand_id!==brand||!integerString(data.total_count)||data.limit!==limit||data.offset!==offset||!Array.isArray(data.items)||data.items.length>limit||
+       !data.items.every(row=>isObj(row)&&exact(row,['id','plan','execution_id','execution_state','queue'])&&validPlan(row.plan,brand)&&row.id===row.plan.id&&
+        (row.execution_id===null&&row.execution_state===null||uuid(row.execution_id)&&['awaiting_approval','applying','completed','paused','failed','stale'].includes(String(row.execution_state)))&&
+        ['pending','processing','history'].includes(String(row.queue))&&(!filter.state||row.queue===filter.state)&&(!filter.cycle_id||row.plan.cycle_id===filter.cycle_id))||
+       new Set(data.items.map((row:any)=>row.id)).size!==data.items.length||(data.items.length>0&&BigInt(data.total_count)<BigInt(offset+data.items.length)))invalidResponse();
+      return data as unknown as CorrectionCasePage;
     },
     async listPlans(brand: string, limit = 20, offset = 0): Promise<CorrectionPlanPage> {
       validBrand(brand); const q = query(limit, offset), data = await request(brand, `${PLANS}?${q}`);

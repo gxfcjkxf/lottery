@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import {test,expect} from '@playwright/test'
 import {gameId,origins,installLayoutApi,expectNoPageOverflow,expectInsideViewport} from './fixture'
 export function registerAgentModeChangeTests(reflow=false){
@@ -12,7 +13,7 @@ export function registerAgentModeChangeTests(reflow=false){
    const req=route.request(),path=new URL(req.url()).pathname
    const reply=(data:unknown)=>route.fulfill({json:{success:true,data,associations:{[`member:${gameId}`]:{name:'level1_agent'},[`member:${childId}`]:{name:'child_agent'},[`agent:${gameId}`]:{name:'level1_agent'},[`agent:${childId}`]:{name:'child_agent'}}}})
    if(path.endsWith('/me'))return reply({account:{id:gameId,username:'mode_reviewer',super_admin:false,brand_ids:[gameId],permissions_by_brand:{[gameId]:grants}}})
-   if(path.endsWith('/brands'))return reply({items:[{id:gameId,name:'Aurora',code:'aurora',status:'active'}]})
+   if(path.endsWith('/brands'))return reply({items:[{id:gameId,name:'Aurora',code:'aurora',status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z'}]})
    expect(req.headers()['x-brand-id']).toBe(gameId)
    if(path.endsWith('/agent-policy'))return reply({brand_id:gameId,version:1,config:{enabled:true,max_depth:5,loss_ratio_cap: '0.3', turnover_ratio_cap: '0.3',mode:'loss',cycle:'monthly'},updated_at:at})
    if(path.endsWith('/mode-change')){
@@ -33,8 +34,8 @@ export function registerAgentModeChangeTests(reflow=false){
   await item.click();await page.getByRole('button',{name:'level1_agent',exact:true}).click()
   const detail=page.getByRole('dialog'),mode=detail.getByRole('combobox',{name:zh?'代理模式':'Agent mode',exact:true})
   await expect(detail.getByRole('textbox',{name:zh?'占成比例':'Profit share ratio',exact:true})).toHaveValue('20')
-  await expect(mode).toHaveValue('loss');await expect(mode.locator('option')).toHaveText(zh?['选择模式','输赢','流水']:['Select mode','Loss','Turnover'])
-  await mode.selectOption('turnover')
+  await expect(mode).toHaveAttribute('data-value', 'loss');await expect(mode.locator('option')).toHaveText(zh?['选择模式','输赢','流水']:['Select mode','Loss','Turnover'])
+  await selectControl(mode, 'turnover')
   const rootRatio=detail.getByRole('textbox',{name:zh?'佣金比例':'Commission ratio',exact:true}),childRatio=detail.getByRole('textbox',{name:zh?'child_agent 的新比例':'New ratio for child_agent',exact:true})
   await expect(rootRatio).toHaveValue('');await rootRatio.fill('20');await expect(childRatio).toHaveValue('')
   const submit=detail.locator('button[type=submit]');await expect(submit).toBeDisabled();await childRatio.fill('10');await expect(submit).toBeEnabled()

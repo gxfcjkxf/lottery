@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SelectControl from './SelectControl.vue'
 import { computed } from 'vue'
 import { timeZoneCatalog, timeZoneOptions, timezoneOffset } from './time-zones'
 const props = defineProps<{ modelValue: string; locale: 'en' | 'zh-CN'; disabled?: boolean; required?: boolean }>()
@@ -10,8 +11,5 @@ const options = computed(() => timeZoneOptions.map(([value, name]) => ({
 </script>
 
 <template>
-  <select :value="modelValue" :disabled="disabled" :required="required" @change="emit('update:modelValue', ($event.target as HTMLSelectElement).value)">
-    <option value="" disabled>{{ copy.choose }}</option>
-    <option v-for="zone in options" :key="zone.value" :value="zone.value">{{ zone.label }}</option>
-  </select>
+  <SelectControl :model-value="modelValue" :disabled="disabled" :required="required" @change="emit('update:modelValue', $event)" :label="copy.choose" :options="[{ value: '', label: (String(copy.choose)).trim(), disabled: true }, ...((options).map((zone) => ({ value: zone.value, label: (String(zone.label)).trim() })))]" />
 </template>

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -21,7 +22,7 @@ func registerAssociationLookup(handle func(string, string, http.HandlerFunc), d 
 		}
 		kind, resource, action, username := q.Get("kind"), q.Get("resource"), q.Get("action"), strings.ToLower(strings.TrimSpace(q.Get("username")))
 		allowed := resource == "reward" && action == "grant" && kind == "member" || resource == "agent" && action == "write" || resource == "join_code" && action == "write" || resource == "commission" && action == "view" || resource == "report_commission" && action == "view" || resource == "report_attribution" && action == "view"
-		if len(q) != 4 || !allowed || (kind != "member" && kind != "agent") || username == "" || len(username) > 100 {
+		if len(q) != 4 || !allowed || (kind != "member" && kind != "agent") || username == "" || utf8.RuneCountInString(username) > 100 {
 			failure(w, r, 400, "REQUEST_INVALID", "关联账号选择参数无效")
 			return
 		}

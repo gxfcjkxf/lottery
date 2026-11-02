@@ -1,3 +1,9 @@
+import {ManagementListTestComponent,MemberActionsMenuTestComponent} from "./management-list-test-helper"
+import {TablePaginationTestComponent} from "./table-pagination-test-helper"
+import { SelectControlTestComponent } from './select-control-test-helper'
+import * as CommissionListQuery from './commission-list-query';
+import {ManagementTableTestComponent} from './management-table-test-helper';
+import { operationToastText } from "./operation-toast-test-helper";
 import * as DisplayShared from "@lottery/shared";
 DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,15 +27,17 @@ const timestamp = "2026-10-07T00:00:00Z";
 const privileges = ["commission.view.brand", "commission_correction_policy.write.brand", "commission_correction.retry.brand", "commission_correction.approve.brand", "commission_correction.continue.brand", "commission_correction.execute_retry.brand"];
 const baseAccount: AdminAccount = { id: actor, super_admin: false, brand_ids: [brand], permissions: [], permissions_by_brand: { [brand]: privileges } };
 const calls: Array<{ method: string; args: unknown[] }> = [];
+let paymentGateValue = true, failExecutionTargetPage = false;
 let policyValue: any, planValue: any, executionValue: any, planTargetValue: any, executionTargetValue: any;
 let nextWrite: (() => Promise<unknown>) | null = null, failRefresh = false, delayPlan: ReturnType<typeof deferred<any>> | null = null, delayExecutionTargets: ReturnType<typeof deferred<any>> | null = null, executionTargetCount = "1";
 
 function freshData() {
-  policyValue = { brand_id: brand, version: 1, enabled: false, audit_log_id: "", updated_at: timestamp };
+  policyValue = { brand_id: brand, version: 1, enabled: true, audit_log_id: "", updated_at: timestamp };
   planValue = { id: planId, brand_id: brand, cycle_id: cycleId, payment_id: paymentId, run_id: runId, state: "ready", payout_mode: "manual", version: 3, evidence_epoch: "8", before_points: "10", calculated_points: "8", credit_points: "0", debit_points: "2", net_points: "-2", target_count: "1", planned_count: "1", creation_audit_log_id: auditId, last_audit_log_id: auditId, last_error_code: null, created_at: timestamp, updated_at: timestamp };
   executionValue = { id: executionId, brand_id: brand, cycle_id: cycleId, plan_id: planId, run_id: runId, payout_mode: "manual", state: "awaiting_approval", version: 1, plan_version: 3, evidence_epoch: "8", credit_points: "0", debit_points: "2", net_points: "-2", applied_credit_points: "0", applied_debit_points: "0", target_count: "1", applied_count: "0", paused_plan_target_id: null, last_error_code: null, creation_audit_log_id: auditId, last_audit_log_id: auditId, approved_by: null, approval_actor_type: null, approval_audit_log_id: null, cycle_hold_active: false, created_at: timestamp, updated_at: timestamp };
   planTargetValue = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", brand_id: brand, plan_id: planId, agent_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", member_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", original_target_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", earning_id: null, adjustment_version: 2, previous_correction_target_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", financial_version: 4, points_before: "10", points_after: "8", delta_points: "-2", creation_audit_log_id: auditId, created_at: timestamp };
   executionTargetValue = { id: "ffffffff-ffff-4fff-8fff-ffffffffffff", brand_id: brand, execution_id: executionId, plan_target_id: planTargetValue.id, agent_id: planTargetValue.agent_id, member_id: planTargetValue.member_id, points_before: "10", points_after: "8", delta_points: "-2", state: "pending", ledger_entry_id: null, audit_log_id: null, financial_version: null, created_at: timestamp, applied_at: null };
+  paymentGateValue = true; failExecutionTargetPage = false;
   calls.length = 0; nextWrite = null; failRefresh = false; delayPlan = null; delayExecutionTargets = null; executionTargetCount = "1";
 }
 function page<T>(items: T[], brandId = brand, offset = 0) { return { brand_id: brandId, items, total_count: String(items.length), limit: 20, offset }; }
@@ -37,13 +45,14 @@ function createApi() {
   return {
     getPolicy: async (...args: unknown[]) => { calls.push({ method: "getPolicy", args }); if (failRefresh) throw new AdminApiError("GET failed", 503); return policyValue; },
     updatePolicy: async (...args: unknown[]) => { calls.push({ method: "updatePolicy", args }); if (nextWrite) return nextWrite(); return { ...policyValue, version: 2, enabled: true, audit_log_id: auditId }; },
+    listCases: async (...args: unknown[]) => { calls.push({ method: "listCases", args }); if (failRefresh) throw new AdminApiError("GET failed", 503); if (delayPlan) return delayPlan.promise; return page([{id: planId, plan: planValue, execution_id: executionId, execution_state: executionValue.state, queue: "pending"}], String(args[0]), Number(args[2])); },
     listPlans: async (...args: unknown[]) => { calls.push({ method: "listPlans", args }); if (failRefresh) throw new AdminApiError("GET failed", 503); if (delayPlan) return delayPlan.promise; return page([planValue], String(args[0]), Number(args[2])); },
     readPlan: async (...args: unknown[]) => { calls.push({ method: "readPlan", args }); if (failRefresh) throw new AdminApiError("GET failed", 503); return planValue; },
     listPlanTargets: async (...args: unknown[]) => { calls.push({ method: "listPlanTargets", args }); if (failRefresh) throw new AdminApiError("GET failed", 503); return planValue.state === "blocked" ? { brand_id: brand, plan_id: planId, items: [], total_count: "0", limit: 100, offset: 0 } : { brand_id: brand, plan_id: planId, items: [planTargetValue], total_count: "1", limit: 100, offset: 0 }; },
     retryPlan: async (...args: unknown[]) => { calls.push({ method: "retryPlan", args }); if (nextWrite) return nextWrite(); return planValue; },
     listExecutions: async (...args: unknown[]) => { calls.push({ method: "listExecutions", args }); if (failRefresh) throw new AdminApiError("GET failed", 503); return page([executionValue], String(args[0]), Number(args[2])); },
     readExecution: async (...args: unknown[]) => { calls.push({ method: "readExecution", args }); if (failRefresh) throw new AdminApiError("GET failed", 503); return executionValue; },
-    listExecutionTargets: async (...args: unknown[]) => { calls.push({ method: "listExecutionTargets", args }); if (failRefresh) throw new AdminApiError("GET failed", 503); if (delayExecutionTargets && Number(args[3]) > 0) return delayExecutionTargets.promise; return { brand_id: brand, execution_id: executionId, items: [executionTargetValue], total_count: executionTargetCount, limit: 100, offset: Number(args[3]) }; },
+    listExecutionTargets: async (...args: unknown[]) => { calls.push({ method: "listExecutionTargets", args }); if (failRefresh) throw new AdminApiError("GET failed", 503); if (failExecutionTargetPage && Number(args[3]) > 0) throw new AdminApiError("GET failed", 503); if (delayExecutionTargets && Number(args[3]) > 0) return delayExecutionTargets.promise; return { brand_id: brand, execution_id: executionId, items: [executionTargetValue], total_count: executionTargetCount, limit: 100, offset: Number(args[3]) }; },
     approve: async (...args: unknown[]) => { calls.push({ method: "approve", args }); if (nextWrite) return nextWrite(); return executionValue; },
     continue: async (...args: unknown[]) => { calls.push({ method: "continue", args }); if (nextWrite) return nextWrite(); return executionValue; },
     retry: async (...args: unknown[]) => { calls.push({ method: "retry", args }); if (nextWrite) return nextWrite(); return executionValue; },
@@ -51,7 +60,7 @@ function createApi() {
 }
 const api = createApi();
 vi.spyOn(CorrectionApi, "createCommissionCorrectionsApi").mockReturnValue(api as never);
-vi.spyOn(PaymentApi, "createCommissionPaymentsApi").mockReturnValue({ read: async (...args: unknown[]) => { calls.push({ method: "readOriginalPayment", args }); return { run_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }; } } as never);
+vi.spyOn(PaymentApi, "createCommissionPaymentsApi").mockReturnValue({ getPolicy: async () => ({brand_id:brand,version:1,enabled:paymentGateValue,audit_log_id:"",updated_at:timestamp}) } as never);
 vi.spyOn(CorrectionApi, "commissionCorrectionPermissions").mockImplementation((account: AdminAccount, brandId: string) => {
   const listed = account.permissions_by_brand?.[brandId] ?? [];
   const member = account.brand_ids.includes(brandId) && !account.super_admin;
@@ -67,11 +76,15 @@ function compileComponent(): Component {
   const descriptor = parseVue(source, { filename: "CommissionCorrectionsManagement.vue" }).descriptor;
   const compiled = compileVueScript(descriptor, { id: "commission-corrections-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(compiled, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = {  "@lottery/shared": DisplayShared,
+  const modules: Record<string, unknown> = {"@lottery/shared/ManagementList.vue":{default:ManagementListTestComponent},"@lottery/shared/MemberActionsMenu.vue":{default:MemberActionsMenuTestComponent}, "@lottery/shared/TablePagination.vue": {default:TablePaginationTestComponent},  "@lottery/shared/SelectControl.vue": SelectControlTestComponent, "./SelectControl.vue": SelectControlTestComponent,
+ './commission-list-query': CommissionListQuery,
+ '@lottery/shared/ManagementTable.vue': {default:ManagementTableTestComponent},
+ '@lottery/shared/FilterAssociationSelect.vue': {default:{props:['modelValue','label'],setup:(p:any,{emit}:any)=>()=>h('select-control',{value:p.modelValue,'aria-label':p.label,'onUpdate:modelValue':(v:string)=>emit('update:modelValue',v)})}},
+ '@lottery/shared/PlatformTemporalInput.vue': {default:{props:['modelValue'],setup:(p:any,{emit}:any)=>()=>h('input',{value:p.modelValue,'onUpdate:modelValue':(v:string)=>emit('update:modelValue',v)})}},  "@lottery/shared": {...DisplayShared, vInlineValidation: {}, vRefreshButton: {}, vGlobalLoading: {}},
     // Business tests use a host renderer; native dialog behavior is checked in Chrome.
-    "@lottery/shared/DetailModal.vue": { default: { inheritAttrs: false, props: ["open"], emits: ["close"], setup: (_props: unknown, context: { slots: { default?: () => VNodeChild }, emit: (event: "close") => void }) => () => h("section", {}, [h("button", { "data-testid": "close-detail", onClick: () => context.emit("close") }, "Close detail"), context.slots.default?.()]) } }, vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-corrections-api": CorrectionApi, "./commission-corrections-state": CorrectionState, "./commissionPayments-api": PaymentApi };
-  const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => { if (!(specifier in modules)) throw new Error(`Unmapped import ${specifier}`); return `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`; }).replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m,binding: string,specifier: string)=>{if(!(specifier in modules))throw new Error(`Unmapped import ${specifier}`);return `const ${binding}=__modules[${JSON.stringify(specifier)}].default;`;}).replace(/export\s+default\s+/, "return ");
-  return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
+    "@lottery/shared/DetailModal.vue": { default: { inheritAttrs: false, props: ["open"], emits: ["close"], setup: (_props: unknown, context: { attrs: Record<string, unknown>, slots: { default?: () => VNodeChild }, emit: (event: "close") => void }) => () => h("section", context.attrs, [h("button", { "data-testid": "close-detail", onClick: () => context.emit("close") }, "Close detail"), context.slots.default?.()]) } }, vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./commission-corrections-api": CorrectionApi, "./commission-corrections-state": CorrectionState, "./commissionPayments-api": PaymentApi };
+  modules['@lottery/shared/FilterAssociationSearch.vue'] = modules['@lottery/shared/FilterAssociationSelect.vue']; const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => { if (!(specifier in modules)) throw new Error(`Unmapped import ${specifier}`); return `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`; }).replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m,binding: string,specifier: string)=>{if(!(specifier in modules))throw new Error(`Unmapped import ${specifier}`);return `const ${binding}=__modules[${JSON.stringify(specifier)}].default;`;}).replace(/export\s+default\s+/, "return ");
+  return new Function("__modules", body.replace(/^import\s+["'][^"']+\.css["'];?\s*$/gm, "").replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
 import { compileScript as compileVueScript, parse as parseVue } from "vue/compiler-sfc";
 import ts from "typescript";
@@ -80,49 +93,79 @@ function textOf(node: HostNode): string { return node.text + node.children.map(t
 let lastRoot: HostNode | null = null;
 function findNode(node: HostNode, match: (n: HostNode) => boolean): HostNode | null { if(match(node))return node;for(const child of node.children){const found=findNode(child,match);if(found)return found;}return null; }
 function byTestId(root: HostNode,id: string): HostNode|null{return findNode(root,(node)=>node.props["data-testid"]===id);}
-function button(root: HostNode,text: string):HostNode|null{return findNode(root,(node)=>node.tag==="button"&&textOf(node).includes(text));}
+function button(root: HostNode,text: string):HostNode|null{return findNode(root,(node)=>node.tag==="button"&&((text===planId||text===executionId)?node.props["data-case-id"]===planId:(textOf(node).includes(text)||node.props["aria-label"]===text)));}
 function click(node:HostNode|null){expect(node,`button was missing in: ${lastRoot?textOf(lastRoot):""}`).not.toBeNull();(node!.props.onClick as (()=>void)|undefined)?.();}
 function setModel(node:HostNode|null,value:unknown){expect(node).not.toBeNull();(node!.props["onUpdate:modelValue"] as ((next:unknown)=>void)|undefined)?.(value);}
 function setChecked(node:HostNode|null,value:boolean){expect(node).not.toBeNull();(node!.props.onChange as ((event:unknown)=>void)|undefined)?.({target:{checked:value}});}
 function deferred<T>(){let resolve!:(value:T)=>void,reject!:(reason?:unknown)=>void;const promise=new Promise<T>((done,fail)=>{resolve=done;reject=fail;});return{promise,resolve,reject};}
 async function flush(){for(let i=0;i<16;i++)await Promise.resolve();await nextTick();}
-function mount(account=baseAccount,brandId=brand,status="active") { vi.stubGlobal("Document",class {});vi.stubGlobal("ShadowRoot",class {});const scope=ref({account,brandId,brandStatus:status}),container=element("root"),emitted:string[]=[],i18n=createAdminI18n();lastRoot=container;const app=renderer.createApp({setup:()=>()=>h(ComponentUnderTest,{...scope.value,onSessionInvalid:()=>emitted.push("session-invalid")})});app.provide(adminI18nKey,i18n);app.mount(container);return{app,scope,container,emitted,i18n}; }
+function mount(account=baseAccount,brandId=brand,status="active",cycleId?:string) { vi.stubGlobal("Document",class {});vi.stubGlobal("ShadowRoot",class {});const scope=ref({account,brandId,brandStatus:status,cycleId}),container=element("root"),emitted:string[]=[],i18n=createAdminI18n();lastRoot=container;const app=renderer.createApp({setup:()=>()=>h(ComponentUnderTest,{...scope.value,onSessionInvalid:()=>emitted.push("session-invalid")})});app.provide(adminI18nKey,i18n);app.mount(container);return{app,scope,container,emitted,i18n}; }
 afterEach(()=>{CorrectionState.clearAllCommissionCorrectionIntents();calls.length=0;failRefresh=false;nextWrite=null;delayPlan=null;delayExecutionTargets=null;executionTargetCount="1";vi.clearAllMocks();vi.stubGlobal("Document",class {});vi.stubGlobal("ShadowRoot",class {});});
 
 describe("CommissionCorrectionsManagement",()=>{
   beforeEach(freshData);
+  it("keeps correction queries scoped to the selected calculation after reset and queue changes", async () => {
+    const mounted = mount(baseAccount, brand, "active", cycleId); await flush();
+    click(button(mounted.container, "重置")); await flush();
+    click(button(mounted.container, "待处理")); await flush();
+    const reads = calls.filter(call => call.method === "listCases");
+    expect(reads.length).toBeGreaterThanOrEqual(3);
+    for (const read of reads) expect(read.args[3]).toMatchObject({ cycle_id: cycleId });
+    expect(calls.some(call => ["approve", "retry", "continue", "retryPlan"].includes(call.method))).toBe(false);
+    mounted.app.unmount();
+  });
+
   it("does not reopen a closed plan or execution when refreshing or submitting another action", async () => {
     const mounted = mount(); await flush();
     click(button(mounted.container, planId)); await flush();
     expect(byTestId(mounted.container, "cc-plan-detail")).not.toBeNull();
-    click(byTestId(mounted.container, "close-detail")); await flush();
-    click(byTestId(mounted.container, "cc-refresh")); await flush();
+    click(button(mounted.container, "返回列表")); await flush();
+    (findNode(mounted.container, node => node.tag === "form" && String(node.props.class).includes("commission-toolbar"))!.props.onSubmit as (event: Event) => void)({preventDefault(){}} as Event); await flush();
     expect(byTestId(mounted.container, "cc-plan-detail")).toBeNull();
     click(button(mounted.container, executionId)); await flush();
     click(byTestId(mounted.container, "cc-approve")); await flush();
     const review = byTestId(mounted.container, "cc-review")!;
-    expect(textOf(review)).toContain("批准此更正计划");
+    expect(textOf(review) + operationToastText()).toContain("批准此更正计划");
     expect(findNode(review, node => node.tag === "dt" && textOf(node).includes("原因"))).toBeNull();
     setChecked(byTestId(mounted.container, "cc-confirm-check"), true); await flush();
     click(byTestId(mounted.container, "cc-submit")); await flush();
-    expect(byTestId(mounted.container, "cc-plan-detail")).toBeNull();
+    expect(byTestId(mounted.container, "cc-plan-detail")).not.toBeNull();
     expect(calls.filter(call => call.method === "approve")).toHaveLength(1);
-    click(byTestId(mounted.container, "close-detail")); await flush();
-    click(byTestId(mounted.container, "cc-refresh")); await flush();
+    click(button(mounted.container, "返回列表")); await flush();
+    (findNode(mounted.container, node => node.tag === "form" && String(node.props.class).includes("commission-toolbar"))!.props.onSubmit as (event: Event) => void)({preventDefault(){}} as Event); await flush();
     expect(byTestId(mounted.container, "cc-execution-detail")).toBeNull();
     mounted.app.unmount();
   });
 
   it("shows a separate default-off gate, frozen plan versus applied execution, provenance, inherited hold and zero delta",async()=>{
+    policyValue={...policyValue,enabled:false};
     executionValue={...executionValue,state:"paused",cycle_hold_active:true,approved_by:actor,approval_actor_type:"admin",approval_audit_log_id:auditId,applied_count:"1",applied_debit_points:"2"};
     executionTargetValue={...executionTargetValue,state:"applied",delta_points:"0",ledger_entry_id:null,audit_log_id:auditId,financial_version:5};
     const mounted=mount(baseAccount,brand,"paused");await flush();
-    expect(textOf(mounted.container)).toContain("真实资金执行已关闭");expect(textOf(mounted.container)).toContain("新核算覆盖旧人工修正目标");
-    click(button(mounted.container,planId));await flush();click(button(mounted.container,executionId));await flush();
-    expect(textOf(mounted.container)).toContain("沿用此前批次");expect(textOf(mounted.container)).not.toContain(auditId);expect(textOf(mounted.container)).toContain("零差额已见证");await flush();
-    expect((byTestId(mounted.container,"cc-continue")?.props.disabled)).toBe(false);expect((byTestId(mounted.container,"cc-approve")?.props.disabled)).toBe(true);
-    expect(readFileSync(new URL("./CommissionCorrectionsManagement.vue",import.meta.url),"utf8")).toContain("@media(max-width:700px)");
+    click(button(mounted.container,"更正设置"));await flush();expect(textOf(mounted.container) + operationToastText()).toContain("真实资金执行已关闭");click(byTestId(mounted.container,"close-detail"));await flush();
+    click(button(mounted.container,planId));await flush();expect(textOf(mounted.container) + operationToastText()).toContain("新核算覆盖旧人工修正目标");
+    click(button(mounted.container,"执行结果"));await flush();expect(textOf(mounted.container) + operationToastText()).toContain("零差额已见证");
+    expect((byTestId(mounted.container,"cc-continue")?.props.disabled)).toBe(true);expect(byTestId(mounted.container,"cc-approve")).toBeNull();
     mounted.app.unmount();
+  });
+  it("blocks execution when either financial gate is disabled", async () => {
+    for (const gate of ["payout", "correction"] as const) {
+      freshData(); if (gate === "payout") paymentGateValue=false; else policyValue={...policyValue,enabled:false};
+      const mounted=mount();await flush();click(button(mounted.container,executionId));await flush();
+      expect(byTestId(mounted.container,"cc-approve")?.props.disabled).toBe(true);
+      expect(textOf(mounted.container)).toContain(gate === "payout" ? "平台已关闭派发" : "真实资金执行已关闭");
+      expect(calls.filter(call=>call.method==="approve")).toHaveLength(0);mounted.app.unmount();
+    }
+  });
+  it("shows execution detail read failures and retries the failed page", async () => {
+    executionTargetCount="200";const mounted=mount();await flush();click(button(mounted.container,executionId));await flush();
+    click(button(mounted.container,"执行结果"));await flush();failExecutionTargetPage=true;
+    click(button(mounted.container,"下一页"));await flush();
+    expect(byTestId(mounted.container,"cc-approve")?.props.disabled).toBe(true);
+    expect(textOf(mounted.container)).toContain("重新读取");failExecutionTargetPage=false;
+    click(button(mounted.container,"重新读取"));await flush();
+    expect(calls.filter(call=>call.method==="listExecutionTargets" && call.args[3]===100)).toHaveLength(2);
+    expect(byTestId(mounted.container,"cc-approve")?.props.disabled).toBe(false);mounted.app.unmount();
   });
   it("requires complete approval provenance and an actively held cycle before continue",async()=>{
     executionValue={...executionValue,state:"paused",cycle_hold_active:false,approved_by:actor,approval_actor_type:"admin",approval_audit_log_id:auditId};
@@ -133,68 +176,68 @@ describe("CommissionCorrectionsManagement",()=>{
   });
   it("disables stale actions while a detail/target read is pending",async()=>{
     const targetRead=deferred<any>();executionTargetCount="200";
-    const mounted=mount();await flush();click(button(mounted.container,executionId));await flush();delayExecutionTargets=targetRead;click(button(mounted.container,"下一页目标"));await flush();
-    expect(byTestId(mounted.container,"cc-continue")?.props.disabled).toBe(true);expect(byTestId(mounted.container,"cc-approve")?.props.disabled).toBe(true);
+    const mounted=mount();await flush();click(button(mounted.container,executionId));await flush();click(button(mounted.container,"执行结果"));await flush();delayExecutionTargets=targetRead;click(button(mounted.container,"下一页"));await flush();
+    expect(byTestId(mounted.container,"cc-continue")).toBeNull();expect(byTestId(mounted.container,"cc-approve")?.props.disabled).toBe(true);
     targetRead.resolve({brand_id:brand,execution_id:executionId,items:[executionTargetValue],total_count:"200",limit:100,offset:100});await flush();delayExecutionTargets=null;mounted.app.unmount();
   });
-  it("requires explicit review before write, preserves an unknown intent across unmount, and replays identical request only after review",async()=>{
-    const first=mount();await flush();click(button(first.container,executionId));await flush();
+  it.each([undefined, cycleId])("requires explicit review before write, preserves an unknown intent across unmount, and replays identical request only after review (cycle %s)",async(cycleScope)=>{
+    const first=mount(baseAccount,brand,"active",cycleScope);await flush();click(button(first.container,executionId));await flush();
     await flush();click(byTestId(first.container,"cc-approve"));await flush();
     expect(calls.filter((call)=>call.method==="approve")).toHaveLength(0);
     const checkbox=byTestId(first.container,"cc-confirm-check");expect(checkbox).not.toBeNull();
     nextWrite=async()=>{throw new TypeError("response lost");};setChecked(checkbox,true);await flush();click(byTestId(first.container,"cc-submit"));await flush();
-    expect(textOf(first.container)).toContain("暂未确认操作结果");expect(calls.filter((call)=>call.method==="approve")).toHaveLength(1);
-    first.scope.value={...first.scope.value,account:{...baseAccount,permissions_by_brand:{[brand]:["commission.view.brand"]}}};await flush();expect(button(first.container,"查看原请求并重试")?.props.disabled).toBe(true);expect(byTestId(first.container,"cc-policy-review")?.props.disabled).toBe(true);
+    expect(textOf(first.container) + operationToastText()).toContain("暂未确认操作结果");expect(calls.filter((call)=>call.method==="approve")).toHaveLength(1);
+    first.scope.value={...first.scope.value,account:{...baseAccount,permissions_by_brand:{[brand]:["commission.view.brand"]}}};await flush();expect(button(first.container,"查看原请求并重试")?.props.disabled).toBe(true);expect(byTestId(first.container,"cc-policy-review")).toBeNull();
     first.scope.value={...first.scope.value,account:baseAccount};await flush();expect(button(first.container,"查看原请求并重试")?.props.disabled).toBe(false);expect(calls.filter((call)=>call.method==="approve")).toHaveLength(1);first.app.unmount();
     nextWrite=async()=>({ ...executionValue,state:"applying",version:2 });
-    const second=mount();await flush();expect(textOf(second.container)).toContain("待人工复核");
-    click(button(second.container,"查看原请求并重试"));await flush();const before=textOf(byTestId(second.container,"cc-review")!);setChecked(byTestId(second.container,"cc-confirm-check"),true);await flush();click(byTestId(second.container,"cc-submit"));await flush();
-    const retries=calls.filter((call)=>call.method==="approve");expect(retries).toHaveLength(2);expect(retries[0].args.slice(1)).toEqual(retries[1].args.slice(1));expect(textOf(second.container)).toContain("操作结果");second.app.unmount();
+    const second=mount(baseAccount,brand,"active",cycleScope);await flush();expect(textOf(second.container) + operationToastText()).toContain("待人工复核");
+    click(button(second.container,"查看原请求并重试"));await flush();setChecked(byTestId(second.container,"cc-confirm-check"),true);await flush();click(byTestId(second.container,"cc-submit"));await flush();
+    const retries=calls.filter((call)=>call.method==="approve");expect(retries).toHaveLength(2);expect(retries[0].args.slice(1)).toEqual(retries[1].args.slice(1));expect(textOf(second.container) + operationToastText()).toContain("操作结果");second.app.unmount();
   });
   it("keeps a success ACK as a receipt when follow-up GET fails and never resends",async()=>{
     const mounted=mount();await flush();click(button(mounted.container,executionId));await flush();await flush();click(byTestId(mounted.container,"cc-approve"));await flush();setChecked(byTestId(mounted.container,"cc-confirm-check"),true);await flush();
     nextWrite=async()=>({ ...executionValue,state:"applying",version:2 });failRefresh=true;click(byTestId(mounted.container,"cc-submit"));await flush();
-    expect(byTestId(mounted.container,"cc-receipt")).not.toBeNull();expect(textOf(mounted.container)).toContain("暂时无法读取最新数据");expect(textOf(mounted.container)).not.toContain("GET failed");expect(textOf(mounted.container)).not.toContain("暂未确认操作结果");expect(byTestId(mounted.container,"cc-execution-detail")).toBeNull();expect(calls.filter((call)=>call.method==="approve")).toHaveLength(1);
-    mounted.i18n.setLocale("en");await flush();expect(textOf(mounted.container)).toContain("The server confirmed the operation receipt.");expect(textOf(mounted.container)).not.toContain("服务器已确认操作回执");expect(calls.filter((call)=>call.method==="approve")).toHaveLength(1);mounted.app.unmount();
+    expect(byTestId(mounted.container,"cc-receipt")).not.toBeNull();expect(textOf(mounted.container) + operationToastText()).toContain("暂时无法读取最新数据");expect(textOf(mounted.container) + operationToastText()).not.toContain("GET failed");expect(textOf(mounted.container) + operationToastText()).not.toContain("暂未确认操作结果");expect(byTestId(mounted.container,"cc-execution-detail")).toBeNull();expect(calls.filter((call)=>call.method==="approve")).toHaveLength(1);
+    mounted.i18n.setLocale("en");await flush();expect(textOf(mounted.container) + operationToastText()).toContain("The server confirmed the operation receipt.");expect(textOf(mounted.container) + operationToastText()).not.toContain("服务器已确认操作回执");expect(calls.filter((call)=>call.method==="approve")).toHaveLength(1);mounted.app.unmount();
   });
   it("retains a 409 until every related query succeeds and human discard is checked",async()=>{
-    const mounted=mount();await flush();await flush();setModel(byTestId(mounted.container,"cc-policy-toggle"),true);await flush();click(byTestId(mounted.container,"cc-policy-review"));await flush();setChecked(byTestId(mounted.container,"cc-confirm-check"),true);await flush();nextWrite=async()=>{throw new AdminApiError("conflict",409);};click(byTestId(mounted.container,"cc-submit"));await flush();
+    const mounted=mount();await flush();await flush();click(button(mounted.container,"更正设置"));await flush();setModel(byTestId(mounted.container,"cc-policy-toggle"),true);await flush();click(byTestId(mounted.container,"cc-policy-review"));await flush();setChecked(byTestId(mounted.container,"cc-confirm-check"),true);await flush();nextWrite=async()=>{throw new AdminApiError("conflict",409);};click(byTestId(mounted.container,"cc-submit"));await flush();
     expect(byTestId(mounted.container,"cc-conflict")).not.toBeNull();failRefresh=true;click(button(byTestId(mounted.container,"cc-conflict")!,"刷新"));await flush();expect(button(mounted.container,"确认放弃上次操作")?.props.disabled).toBe(true);
     failRefresh=false;click(button(byTestId(mounted.container,"cc-conflict")!,"刷新"));await flush();const check=findNode(byTestId(mounted.container,"cc-conflict")!,n=>n.tag==="input");setChecked(check,true);await flush();click(button(mounted.container,"确认放弃上次操作"));await flush();expect(byTestId(mounted.container,"cc-conflict")).toBeNull();mounted.app.unmount();
   });
   it("separates plan retry from execution retry and blocks super-admin writes",async()=>{
     const noExec={...baseAccount,permissions_by_brand:{[brand]:["commission.view.brand","commission_correction.retry.brand"]}};const mounted=mount(noExec);await flush();
     planValue={...planValue,state:"failed",last_error_code:"PLAN_FAILED"};await flush();click(button(mounted.container,planId));await flush();await flush();expect(byTestId(mounted.container,"cc-plan-retry")?.props.disabled).toBe(false);expect(byTestId(mounted.container,"cc-execute-retry")).toBeNull();
-    mounted.scope.value={...mounted.scope.value,account:{...baseAccount,super_admin:true}};await flush();click(button(mounted.container,planId));await flush();expect(byTestId(mounted.container,"cc-plan-retry")?.props.disabled).toBe(true);mounted.app.unmount();
+    mounted.scope.value={...mounted.scope.value,account:{...baseAccount,super_admin:true}};await flush();click(button(mounted.container,planId));await flush();expect(byTestId(mounted.container,"cc-plan-retry")).toBeNull();mounted.app.unmount();
   });
   it("states the recalculation rule and retries current failed preparations",async()=>{
-    const mounted=mount();await flush();mounted.i18n.setLocale("en");await flush();expect(textOf(mounted.container)).toContain("New calculations replace earlier manual targets");expect(textOf(mounted.container)).toContain("A ready plan does not mean approval or posting");
+    const mounted=mount();await flush();mounted.i18n.setLocale("en");await flush();expect(textOf(mounted.container) + operationToastText()).toContain("Awaiting approval");
     freshData();planValue={...planValue,state:"failed",last_error_code:"PLAN_FAILED"};await flush();click(button(mounted.container,planId));await flush();await flush();expect(byTestId(mounted.container,"cc-plan-retry")?.props.disabled).toBe(false);mounted.app.unmount();
   });
   it("clears a definitive 400 request without retaining an unknown intent",async()=>{
     const mounted=mount();await flush();click(button(mounted.container,executionId));await flush();await flush();click(byTestId(mounted.container,"cc-approve"));await flush();setChecked(byTestId(mounted.container,"cc-confirm-check"),true);await flush();nextWrite=async()=>{throw new AdminApiError("Invalid request",400);};click(byTestId(mounted.container,"cc-submit"));await flush();
-    expect(byTestId(mounted.container,"cc-unknown")).toBeNull();expect(CorrectionState.listPendingCommissionCorrectionIntents(actor,brand)).toEqual([]);expect(textOf(mounted.container)).toContain("操作未能完成");expect(textOf(mounted.container)).not.toContain("Invalid request");mounted.app.unmount();
+    expect(byTestId(mounted.container,"cc-unknown")).toBeNull();expect(CorrectionState.listPendingCommissionCorrectionIntents(actor,brand)).toEqual([]);expect(textOf(mounted.container) + operationToastText()).toContain("操作未能完成");expect(textOf(mounted.container) + operationToastText()).not.toContain("Invalid request");mounted.app.unmount();
   });
   it("clears all in-memory intents and emits session-invalid on 401",async()=>{
-    const mounted=mount();await flush();await flush();setModel(byTestId(mounted.container,"cc-policy-toggle"),true);await flush();click(byTestId(mounted.container,"cc-policy-review"));await flush();setChecked(byTestId(mounted.container,"cc-confirm-check"),true);await flush();nextWrite=async()=>{throw new AdminApiError("Session expired",401);};click(byTestId(mounted.container,"cc-submit"));await flush();
+    const mounted=mount();await flush();await flush();click(button(mounted.container,"更正设置"));await flush();setModel(byTestId(mounted.container,"cc-policy-toggle"),true);await flush();click(byTestId(mounted.container,"cc-policy-review"));await flush();setChecked(byTestId(mounted.container,"cc-confirm-check"),true);await flush();nextWrite=async()=>{throw new AdminApiError("Session expired",401);};click(byTestId(mounted.container,"cc-submit"));await flush();
     expect(mounted.emitted).toContain("session-invalid");expect(CorrectionState.listPendingCommissionCorrectionIntents(actor,brand)).toEqual([]);mounted.app.unmount();
   });
   it("retains a matching deferred 409 across exit and return without exposing it in an unauthorized scope",async()=>{
-    const delayed=deferred<unknown>();const mounted=mount();await flush();await flush();setModel(byTestId(mounted.container,"cc-policy-toggle"),true);await flush();click(byTestId(mounted.container,"cc-policy-review"));await flush();setChecked(byTestId(mounted.container,"cc-confirm-check"),true);await flush();nextWrite=()=>delayed.promise;click(byTestId(mounted.container,"cc-submit"));await flush();
+    const delayed=deferred<unknown>();const mounted=mount();await flush();await flush();click(button(mounted.container,"更正设置"));await flush();setModel(byTestId(mounted.container,"cc-policy-toggle"),true);await flush();click(byTestId(mounted.container,"cc-policy-review"));await flush();setChecked(byTestId(mounted.container,"cc-confirm-check"),true);await flush();nextWrite=()=>delayed.promise;click(byTestId(mounted.container,"cc-submit"));await flush();
     mounted.scope.value={...mounted.scope.value,account:{...baseAccount,permissions_by_brand:{[brand]:[]}}};await flush();delayed.reject(new AdminApiError("late conflict",409));await flush();
-    expect(byTestId(mounted.container,"cc-conflict")).toBeNull();expect(textOf(mounted.container)).toContain("没有此品牌的佣金查看权限");
+    expect(byTestId(mounted.container,"cc-conflict")).toBeNull();expect(textOf(mounted.container) + operationToastText()).toContain("没有此品牌的佣金查看权限");
     mounted.scope.value={...mounted.scope.value,account:baseAccount};await flush();expect(byTestId(mounted.container,"cc-conflict")).not.toBeNull();expect(CorrectionState.listPendingCommissionCorrectionIntents(actor,brand)).toHaveLength(1);expect(calls.filter((call)=>call.method==="updatePolicy")).toHaveLength(1);mounted.app.unmount();
   });
   it("does not let a delayed old-session 401 clear a new session's pending intent",async()=>{
-    const delayed=deferred<unknown>();const mounted=mount();await flush();await flush();setModel(byTestId(mounted.container,"cc-policy-toggle"),true);await flush();click(byTestId(mounted.container,"cc-policy-review"));await flush();setChecked(byTestId(mounted.container,"cc-confirm-check"),true);await flush();nextWrite=()=>delayed.promise;click(byTestId(mounted.container,"cc-submit"));await flush();
+    const delayed=deferred<unknown>();const mounted=mount();await flush();await flush();click(button(mounted.container,"更正设置"));await flush();setModel(byTestId(mounted.container,"cc-policy-toggle"),true);await flush();click(byTestId(mounted.container,"cc-policy-review"));await flush();setChecked(byTestId(mounted.container,"cc-confirm-check"),true);await flush();nextWrite=()=>delayed.promise;click(byTestId(mounted.container,"cc-submit"));await flush();
     CorrectionState.clearAllCommissionCorrectionIntents();const replacement=CorrectionState.createCommissionCorrectionIntent({actorId:actor,brandId:brand,operation:"policy"},{version:9,enabled:false,reason: ""},"new-session-key-0001");expect(replacement).not.toBeNull();CorrectionState.setPendingCommissionCorrectionIntent({actorId:actor,brandId:brand,operation:"policy"},replacement!);
     delayed.reject(new AdminApiError("old session expired",401));await flush();
     expect(CorrectionState.listPendingCommissionCorrectionIntents(actor,brand).map((intent)=>intent.key)).toEqual(["new-session-key-0001"]);expect(mounted.emitted).not.toContain("session-invalid");mounted.app.unmount();
   });
   it("ignores late prior-brand/account responses and keeps permission read-only",async()=>{
-    const delayed=deferred<any>();delayPlan=delayed;const mounted=mount();await flush();mounted.scope.value={...mounted.scope.value,brandId:"22222222-2222-4222-8222-222222222222",account:{...baseAccount,id:"88888888-8888-4888-8888-888888888888",brand_ids:[],permissions_by_brand:{}}};await flush();delayPlan=null;delayed.resolve(page([{...planValue,id:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}],brand));await flush();expect(textOf(mounted.container)).toContain("没有此品牌的佣金查看权限");expect(textOf(mounted.container)).not.toContain("10 / 8");expect(calls.filter((call)=>["approve","continue","retry","retryPlan","updatePolicy"].includes(call.method))).toHaveLength(0);mounted.app.unmount();
+    const delayed=deferred<any>();delayPlan=delayed;const mounted=mount();await flush();mounted.scope.value={...mounted.scope.value,brandId:"22222222-2222-4222-8222-222222222222",account:{...baseAccount,id:"88888888-8888-4888-8888-888888888888",brand_ids:[],permissions_by_brand:{}}};await flush();delayPlan=null;delayed.resolve(page([{...planValue,id:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}],brand));await flush();expect(textOf(mounted.container) + operationToastText()).toContain("没有此品牌的佣金查看权限");expect(textOf(mounted.container) + operationToastText()).not.toContain("10 / 8");expect(calls.filter((call)=>["approve","continue","retry","retryPlan","updatePolicy"].includes(call.method))).toHaveLength(0);mounted.app.unmount();
   });
   it("uses locale provider translations and keeps locale reactive",async()=>{
-    const mounted=mount();await flush();expect(textOf(mounted.container)).toContain("佣金更正差额");mounted.i18n.setLocale("en");await flush();expect(textOf(mounted.container)).toContain("Commission correction");mounted.app.unmount();
+    const mounted=mount();await flush();expect(textOf(mounted.container) + operationToastText()).toContain("佣金更正");mounted.i18n.setLocale("en");await flush();expect(textOf(mounted.container) + operationToastText()).toContain("Commission correction");mounted.app.unmount();
   });
 });

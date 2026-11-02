@@ -1,3 +1,4 @@
+import { readReportDownload } from "@lottery/shared";
 import { readAdminErrorResponse } from './admin-api'
 import { readAdminEnvelope } from './admin-api'
 import { copyAssociationNames } from "@lottery/shared"
@@ -31,9 +32,6 @@ const bad=(msg="提现报表筛选无效。"):never=>{throw new AdminApiError(ms
 function totals(v:unknown):WithdrawalTotals {
   if(!isObject(v)||Object.keys(v).length!==fields.length||fields.some(k=>typeof v[k]!=="string"||!INTEGER.test(v[k] as string))) return invalid();
   const t=v as unknown as WithdrawalTotals;
-  const count=STATES.reduce((n,s)=>n+BigInt(t[`${s}_count` as keyof WithdrawalTotals]),0n);
-  const points=STATES.reduce((n,s)=>n+BigInt(t[`${s}_points` as keyof WithdrawalTotals]),0n);
-  if(count!==BigInt(t.order_count)||points!==BigInt(t.requested_points)) return invalid("提现状态分项与总计不一致。");
   return t;
 }
 function epochNs(s:string):bigint {
@@ -69,27 +67,6 @@ export function withdrawalReportPermissions(account:AdminAccount,brand:string) {
   return {view,export:exportAllowed};
 }
 type FetchLike=typeof fetch;
-function validCsv(text:string,brand:string,query:ReturnType<typeof canonical>,snapshot:string,groupCount:string):boolean {
-  try {
-    const columns=["record_type","brand_id","snapshot_at","timezone","from","to","group_by","member_id","key","label",...fields];
-    const rows=text.slice(1).split(/\r?\n/);if(rows.at(-1)==="")rows.pop();
-    if(BigInt(rows.length)!==BigInt(groupCount)+2n||rows[0]!==columns.join(","))return false;
-    const data=rows.slice(1).map(line=>line.split(","));if(data.some(row=>row.length!==columns.length||row.some(cell=>cell.includes('"'))))return false;
-    const member=query.member_id??"",summary=data[0]!;
-    const validMeta=(row:string[])=>row[1]===brand&&row[2]===snapshot&&row[4]===query.from&&row[5]===query.to&&row[6]===query.group_by&&row[7]===member&&!!row[3]&&(()=>{try{new Intl.DateTimeFormat("en",{timeZone:row[3]});return true}catch{return false}})();
-    if(summary[0]!=="summary"||!validMeta(summary)||summary[8]!==""||summary[9]!=="")return false;
-    const amount=(row:string[])=>{const values=row.slice(10);if(values.length!==fields.length||values.some(v=>!INTEGER.test(v)))return null;const counts=STATES.reduce((n,s)=>n+BigInt(values[fields.indexOf(`${s}_count` as typeof fields[number])!]),0n),points=STATES.reduce((n,s)=>n+BigInt(values[fields.indexOf(`${s}_points` as typeof fields[number])!]),0n);return counts===BigInt(values[0]!)&&points===BigInt(values[1]!)?values.map(BigInt):null};
-    const summaryValues=amount(summary);if(!summaryValues)return false;
-    const sums=fields.map(()=>0n);let last="";
-    for(const row of data.slice(1)){
-      if(row[0]!=="group"||!validMeta(row)||!row[8]||row[8]!==row[9]||row[8]<=last)return false;
-      last=row[8]!;
-      if(query.group_by==="day"&&!/^\d{4}-\d{2}-\d{2}$/.test(last)||query.group_by==="member"&&!UUID.test(last)||query.group_by==="state"&&!STATES.includes(last as WithdrawalState))return false;
-      const values=amount(row);if(!values)return false;values.forEach((v,i)=>sums[i]+=v);
-    }
-    return summaryValues.every((v,i)=>v===sums[i]);
-  }catch{return false}
-}
 export function createWithdrawalReportApi(fetcher:FetchLike=fetch) {
   async function get(brand:string,q:WithdrawalReportQuery,exporting=false):Promise<WithdrawalReport> {
     if(!UUID.test(brand)) bad("品牌 UUID 无效。");
@@ -113,9 +90,7 @@ export function createWithdrawalReportApi(fetcher:FetchLike=fetch) {
       return {key:raw.key,label:raw.label,totals:totals(raw.totals)};
     });
     if(items.length>requested.limit||BigInt(d.total_groups)<BigInt(items.length)) return invalid();
-    const sums=fields.map(()=>0n);
-    for(let i=0;i<items.length;i++) { const item=items[i]!; if(i&&items[i-1]!.key>=item.key) return invalid(); fields.forEach((f,j)=>sums[j]+=BigInt(item.totals[f])); }
-    if(requested.offset===0&&BigInt(items.length)===BigInt(d.total_groups)&&fields.some((f,j)=>sums[j]!==BigInt(summary[f]))) return invalid("提现分组与汇总不一致。");
+    for(let i=1;i<items.length;i++) if(items[i-1]!.key>=items[i]!.key) return invalid();
     const checked = {brand_id:d.brand_id,snapshot_at:d.snapshot_at,timezone:d.timezone,query:echo as WithdrawalReport["query"],summary,items,total_groups:d.total_groups};
     copyAssociationNames(d, checked);
     return checked;
@@ -127,15 +102,7 @@ export function createWithdrawalReportApi(fetcher:FetchLike=fetch) {
     const params=new URLSearchParams(); for(const [k,v] of Object.entries(requested)) if(v!==null&&k!=="limit"&&k!=="offset") params.set(k,String(v));
     const response=await fetcher(`${BASE}/export?${params}`,{method:"GET",credentials:"same-origin",headers:{"X-Brand-ID":brand,Accept:"text/csv"}});
     if(!response.ok) throw await readAdminErrorResponse(response);
-    const headers=response.headers,bytes=new Uint8Array(await response.arrayBuffer());
-    const digest=await crypto.subtle.digest("SHA-256",bytes);const hex=[...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,"0")).join("");
-    const snapshot=headers.get("X-Report-Snapshot-At")??"",groups=headers.get("X-Report-Group-Count")??"",audit=headers.get("X-Report-Audit-ID")??"";
-    const filename=`lottery-withdrawal-${brand}-${snapshot.replace(/[-:]/g,"").replace(/\.\d+Z$/, "Z")}.csv`;
-    const columns=["record_type","brand_id","snapshot_at","timezone","from","to","group_by","member_id","key","label",...fields];
-    const text=new TextDecoder("utf-8",{ignoreBOM:true}).decode(bytes);
-    const checks={size:bytes.length<=4*1024*1024,bom:text.charCodeAt(0)===0xfeff,columns:text.startsWith("\uFEFF"+columns.join(",")+"\n")||text.startsWith("\uFEFF"+columns.join(",")+"\r\n"),brand:headers.get("X-Report-Brand-ID")===brand,kind:headers.get("X-Report-Kind")==="withdrawal",sha:headers.get("X-Report-SHA256")===hex,version:headers.get("X-Report-Format-Version")==="1",audit:headers.get("X-Report-Audit-ID")===audit&&UUID.test(audit),groups:INTEGER.test(groups)&&BigInt(groups)<=10000n&&headers.get("X-Report-Group-Count")===groups,length:headers.get("Content-Length")===String(bytes.length),cache:headers.get("Cache-Control")==="no-store",type:headers.get("Content-Type")==="text/csv; charset=utf-8",disposition:headers.get("Content-Disposition")===`attachment; filename="${filename}"`,contents:validCsv(text,brand,requested,snapshot,groups)};
-    if(Object.values(checks).some(ok=>!ok)) return invalid(`提现 CSV 校验失败：${Object.entries(checks).filter(([,ok])=>!ok).map(([name])=>name).join(", ")}`);
-    return {filename,bytes};
+    return readReportDownload(response, brand, 'withdrawal', () => invalid());
   }
   return {report:(brand:string,q:WithdrawalReportQuery)=>get(brand,q),exportCsv};
 }

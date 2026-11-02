@@ -34,7 +34,7 @@ func TestAdministrativePasswordChangeChecksSessionAndRevokesOldCredentials(t *te
 			var auth identity.AdminAuthentication
 			managedData(t, login, &auth)
 			token := auth.AccessToken
-			newPassword := "changed-test-pass-2026"
+			newPassword := strings.Repeat("密😀", 15)
 			body := map[string]string{"current_password": oldPassword, "new_password": newPassword}
 			result := f.call("POST", prefix+"/me/password", "password-change-001", token, "", body)
 			mustStatus(t, result, 200)

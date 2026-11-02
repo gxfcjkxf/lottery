@@ -61,7 +61,7 @@ test("archive operations preserve exact scope, paging, mutation, and download ru
     assert.equal(operation.requestBody, undefined, "GET must have no body");
     assert.equal(declaredDoc.paths[operation.path].get.requestBody, undefined, "GET must have no body");
   }
-  assert.deepEqual(list.parameters.filter(p => p.in === "query").map(p => p.name), ["limit", "offset"]);
+  assert.deepEqual(list.parameters.filter(p => p.in === "query").map(p => p.name), ["kind", "limit", "offset"]);
   assert.deepEqual(list.parameters.find(p => p.name === "limit").schema, { type: "integer", minimum: 1, maximum: 100, default: 20 });
   assert.equal(list.parameters.find(p => p.name === "offset").schema.maximum, 1000000);
   assert.equal(create.successStatus, 201);
@@ -128,7 +128,7 @@ func main() {
   zeroWithdrawal := reporting.WithdrawalTotals{OrderCount:"0",RequestedPoints:"0",ReviewingCount:"0",ReviewingPoints:"0",ProcessingCount:"0",ProcessingPoints:"0",PaidCount:"0",PaidPoints:"0",RejectedCount:"0",RejectedPoints:"0",FailedCount:"0",FailedPoints:"0",CancelledCount:"0",CancelledPoints:"0"}
   zeroCommission := reporting.CommissionTotals{EntryCount:"0",PaidEntryCount:"0",PaidPoints:"0",AdjustmentEntryCount:"0",AdjustmentCreditPoints:"0",AdjustmentDebitPoints:"0",CorrectionEntryCount:"0",CorrectionCreditPoints:"0",CorrectionDebitPoints:"0",NetPoints:"-2"}
   zeroReward := reporting.RewardTotals{EntryCount:"0",GrantEntryCount:"0",GrantPoints:"0",ReversalEntryCount:"0",ReversalPoints:"0",NetPoints:"-3"}
-  zeroRewardOrders := reporting.RewardOrderTotals{OrderCount:"0",OriginalPoints:"0",GrantedCount:"0",GrantedPoints:"0",PendingCount:"0",PendingPoints:"0",RevokedCount:"0",RevokedPoints:"0"}
+  zeroRewardOrders := reporting.RewardOrderTotals{OrderCount:"0",OriginalPoints:"0",GrantedCount:"0",GrantedPoints:"0",RevokedCount:"0",RevokedPoints:"0"}
   snapshot := reporting.ArchiveSnapshot{BrandID:id,FormatVersion:1,SnapshotAt:now,Timezone:"Asia/Singapore",From:now.Add(-24*time.Hour),To:now,Betting:zeroBetting,Ledger:zeroLedger,WalletSnapshot:reporting.ArchiveWallet{AtSnapshot:now,Balances:zeroBalances},Withdrawals:zeroWithdrawal,Commissions:zeroCommission,Rewards:zeroReward,RewardOrders:zeroRewardOrders}
   manualRecord := reportarchive.Record{ID:id,BrandID:id,Window:reportarchive.Window{Kind:"daily",PeriodKey:"2026-10-07",Timezone:"Asia/Singapore",From:snapshot.From,To:snapshot.To},Revision:1,PreviousID:nil,SnapshotAt:now,CreatedBy:&id,Reason:"contract example",PayloadSHA256:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",AuditLogID:id,CreatedAt:now,Snapshot:snapshot}
   automaticRecord := reportarchive.Record{ID:"22222222-2222-4222-8222-222222222222",BrandID:id,Window:manualRecord.Window,Revision:1,PreviousID:nil,SnapshotAt:now,CreatedBy:nil,Automation:&reportarchive.AutomationEvidence{TaskID:id,PolicyVersion:1},Reason:"automatic archive",PayloadSHA256:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",AuditLogID:id,CreatedAt:now,Snapshot:snapshot}

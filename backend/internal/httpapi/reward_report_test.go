@@ -64,7 +64,7 @@ func newRewardReportFixture(t *testing.T) rewardReportFixture {
 		t.Fatalf("wallet freeze did not persist a normal freeze ledger entry: %+v", freezeLedger)
 	}
 	pendingRevoke := rewardRawCall(f.managementHTTP, "POST", rewardOrdersHTTPPath+"/"+pending["id"].(string)+"/revoke", "reward-report-pending-revoke-01", f.token, managedBrand, f.root, `{"version":1,"reason":"report fixture pending reversal"}`)
-	if pendingRevoke.Code != 200 || !strings.Contains(pendingRevoke.Body.String(), `"state":"revocation_pending"`) {
+	if pendingRevoke.Code != 422 || !strings.Contains(pendingRevoke.Body.String(), `REWARD_AVAILABLE_INSUFFICIENT`) {
 		t.Fatalf("fixture pending revoke status=%d body=%s", pendingRevoke.Code, pendingRevoke.Body.String())
 	}
 	var reversalAt time.Time
@@ -155,17 +155,17 @@ func TestRewardReportsHTTPRealTotalsStrictQueriesAndCompleteCSV(t *testing.T) {
 		t.Fatal(err)
 	}
 	os := orderEnvelope.Data.Summary
-	if os.OrderCount != "3" || os.OriginalPoints != "41" || os.GrantedCount != "1" || os.GrantedPoints != "11" || os.PendingCount != "1" || os.PendingPoints != "17" || os.RevokedCount != "1" || os.RevokedPoints != "13" {
+	if os.OrderCount != "3" || os.OriginalPoints != "41" || os.GrantedCount != "2" || os.GrantedPoints != "28" || os.RevokedCount != "1" || os.RevokedPoints != "13" {
 		t.Fatalf("wrong current order-state report: %+v", os)
 	}
-	if len(orderEnvelope.Data.Items) != 3 {
+	if len(orderEnvelope.Data.Items) != 2 {
 		t.Fatalf("state report groups=%+v", orderEnvelope.Data.Items)
 	}
 	states := map[string]bool{}
 	for _, item := range orderEnvelope.Data.Items {
 		states[item.Key] = true
 	}
-	if !states["granted"] || !states["revoked"] || !states["revocation_pending"] {
+	if !states["granted"] || !states["revoked"] {
 		t.Fatalf("state groups do not represent granted/revoked/pending: %+v", states)
 	}
 
@@ -201,7 +201,7 @@ func TestRewardReportsHTTPRealTotalsStrictQueriesAndCompleteCSV(t *testing.T) {
 		headers    []string
 	}{
 		{rewardReportCSVPath, "rewards", []string{"record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "member_id", "order_id", "key", "label", "entry_count", "grant_entry_count", "grant_points", "reversal_entry_count", "reversal_points", "net_points"}},
-		{rewardOrdersReportCSVPath, "reward_orders", []string{"record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "member_id", "order_id", "key", "label", "order_count", "original_points", "granted_count", "granted_points", "pending_count", "pending_points", "revoked_count", "revoked_points"}},
+		{rewardOrdersReportCSVPath, "reward_orders", []string{"record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "member_id", "order_id", "key", "label", "order_count", "original_points", "granted_count", "granted_points", "revoked_count", "revoked_points"}},
 	} {
 		csvURL := rewardReportQueryURL(tc.path, from, to, "day") + "&order_id=" + f.grantedID
 		out := rewardReportCall(f.managementHTTP, "GET", csvURL, f.token, managedBrand, "")

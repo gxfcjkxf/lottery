@@ -1,7 +1,10 @@
 import { createRenderer, h, nextTick, reactive, ssrContextKey, watch } from "vue";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import RechargePanel from "./RechargePanel.vue";
 import { createUserI18n, userI18nKey } from './i18n';
+import { operationToasts, dismissOperationToast } from "../../shared/src/operation-toast";
+afterEach(() => dismissOperationToast());
+const toastText = () => operationToasts.value.map(notice => notice.text()).join(" ");
 import { setPlatformDisplaySettings } from '@lottery/shared';
 setPlatformDisplaySettings({ timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' });
 
@@ -33,7 +36,7 @@ const otherMember = "33333333-3333-4333-8333-333333333333";
 const at = "2026-10-07T12:00:00Z";
 const id = "44444444-4444-4444-8444-444444444444";
 const finalPageId = "00000000-0000-4000-8000-000000000000";
-const row = (overrides: Record<string, unknown> = {}) => ({ id, brand_id: brand, member_id: member, points: "9007199254740993", state: "pending", version: "1", created_at: at, confirmed_at: null, ledger_entry_id: null, ...overrides });
+const row = (overrides: Record<string, unknown> = {}) => ({ method: "manual", id, brand_id: brand, member_id: member, points: "9007199254740993", state: "pending", version: "1", created_at: at, confirmed_at: null, ledger_entry_id: null, ...overrides });
 const page = (items: unknown[] = [], overrides: Record<string, unknown> = {}) => ({ brand_id: brand, member_id: member, snapshot_at: at, state: null, items, limit: 20, offset: 0, total_count: String(items.length), ...overrides });
 const ok = (data: unknown) => new Response(JSON.stringify({ success: true, data }), { status: 200 });
 function text(node: Node): string { return node.text + node.children.map(text).join(""); }
@@ -69,9 +72,8 @@ describe("RechargePanel Vue rendering and async scope", () => {
     const app = mount(fetcher);
     await flush();
     app.render();
-    expect(text(app.root)).toContain("Recharge records");
+    expect(text(app.root)).not.toContain("Recharge records");
     expect(text(app.root)).toContain("No recharge records yet.");
-    expect(text(app.root)).toContain("This page does not initiate payments.");
     expect(text(app.root)).toContain("Recharges are recorded by support.");
     app.state.member = null;
     await flush();
@@ -95,11 +97,12 @@ describe("RechargePanel Vue rendering and async scope", () => {
     app.render();
     expect(text(app.root)).toContain("9,007,199,254,740,993 pts");
     app.setup.selectedState = "confirmed";
+    await app.setup.search();
     await flush();
     app.render();
     expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain("state=confirmed");
     expect(text(app.root)).toContain("Confirmed");
-    app.setup.nextPage();
+    await app.setup.load(20);
     await flush();
     app.render();
     expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain("offset=20");
@@ -110,9 +113,11 @@ describe("RechargePanel Vue rendering and async scope", () => {
     expect(text(app.root)).toContain("Confirmed");
     expect(text(app.root)).toContain("9,007,199,254,740,993 pts");
     expect(text(app.root)).not.toContain("Version");
-    expect(text(app.root)).toContain(finalPageId);
-    expect(text(app.root)).toContain("Ledger entry");
-    expect(text(app.root)).toContain("55555555-5555-4555-8555-555555555555");
+    expect(text(app.root)).not.toContain(finalPageId);
+    expect(text(app.root)).toContain("Recharge method");
+    expect(text(app.root)).toContain("Manual recharge");
+    expect(text(app.root)).not.toContain("Ledger entry");
+    expect(text(app.root)).not.toContain("55555555-5555-4555-8555-555555555555");
     expect(text(app.root)).toContain('2026-10-07 20:00:00');
     expect(text(app.root)).toContain("Queried at");
   });
@@ -143,11 +148,11 @@ describe("RechargePanel Vue rendering and async scope", () => {
     await flush();
     app.render();
     expect(app.emitted).toContain("auth-expired");
-    expect(text(app.root)).toContain("Sign in again");
+    expect(toastText()).toContain("Sign in again");
     app.state.locale = "zh";
     await nextTick();
     app.render();
-    expect(text(app.root)).toContain("请重新登录以查看正确账号");
+    expect(toastText()).toContain("请重新登录以查看正确账号");
   });
 
   it("emits auth-expired on 401 and clears the record view", async () => {
@@ -222,16 +227,16 @@ describe("RechargePanel Vue rendering and async scope", () => {
     app.state.locale = "zh";
     await nextTick();
     app.render();
-    expect(text(app.root)).toContain("无法读取充值记录。");
+    expect(toastText()).toContain("无法读取充值记录。");
     void app.setup.load();
     await flush();
     app.render();
-    expect(text(app.root)).toContain("暂时无法确认操作结果");
-    expect(text(app.root)).not.toContain("Exact upstream maintenance detail");
+    expect(toastText()).toContain("暂时无法确认操作结果");
+    expect(toastText()).not.toContain("Exact upstream maintenance detail");
     app.state.locale = "en";
     await nextTick();
     app.render();
-    expect(text(app.root)).toContain("The result could not be confirmed.");
-    expect(text(app.root)).not.toContain("Exact upstream maintenance detail");
+    expect(toastText()).toContain("The result could not be confirmed.");
+    expect(toastText()).not.toContain("Exact upstream maintenance detail");
   });
 });

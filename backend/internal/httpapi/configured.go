@@ -14,6 +14,28 @@ import (
 
 func registerConfiguredAdminRoutes(register func(string, string, http.HandlerFunc), d Dependencies, platform bool) {
 	svc := platformlottery.Service{DB: d.Admins.DB}
+	register("GET", "/configured-orders", func(w http.ResponseWriter, r *http.Request) {
+		a, brand, ok := managementActor(w, r, d, "bet", "view")
+		if !ok {
+			return
+		}
+		_, offset, ok := pageParams(r)
+		if !ok {
+			failure(w, r, 400, "REQUEST_INVALID", "Invalid paging")
+			return
+		}
+		rows, err := betService(d).ConfiguredOrders(r.Context(), brand, r.URL.Query().Get("member_id"), r.URL.Query().Get("game_id"), offset)
+		var page map[string]any
+		if err == nil {
+			page, err = countedItems(r.Context(), d.Admins.DB, rows, `SELECT count(*)::text FROM configured_orders WHERE brand_id=$1 AND ($2='' OR member_id::text=$2) AND ($3='' OR game_id::text=$3)`, brand, r.URL.Query().Get("member_id"), r.URL.Query().Get("game_id"))
+		}
+		if err == nil && !adminReadAudit(w, r, d, a, brand, "bet.view") {
+			return
+		}
+		out, err := configuredResult(page, err)
+		outputMutation(w, r, out, err)
+	})
+
 	if !platform {
 		register("GET", "/platform-games/{id}/configured/orders", func(w http.ResponseWriter, r *http.Request) {
 			a, b, ok := platformLotteryActor(w, r, d, "view")
@@ -35,14 +57,18 @@ func registerConfiguredAdminRoutes(register func(string, string, http.HandlerFun
 				return
 			}
 			orders, e := betService(d).ConfiguredOrders(r.Context(), b, "", id, offset)
+			var page map[string]any
+			if e == nil {
+				page, e = countedItems(r.Context(), d.Admins.DB, orders, `SELECT count(*)::text FROM configured_orders WHERE brand_id=$1 AND game_id=$2`, b, id)
+			}
 			if e == nil && !adminReadAudit(w, r, d, a, b, "platform_game.view") {
 				return
 			}
-			out, e := configuredResult(map[string]any{"items": orders}, e)
+			out, e := configuredResult(page, e)
 			outputMutation(w, r, out, e)
 		})
 	}
-	register("GET", "/platform-games/{id}/configured/versions", func(w http.ResponseWriter, r *http.Request) {
+	register("GET", "/platform-games/{id}/configured/rules", func(w http.ResponseWriter, r *http.Request) {
 		a, b, ok := platformLotteryActor(w, r, d, "view")
 		if !ok {
 			return
@@ -51,11 +77,11 @@ func registerConfiguredAdminRoutes(register func(string, string, http.HandlerFun
 		if !ok {
 			return
 		}
-		rows, e := svc.ConfiguredVersions(r.Context(), b, id)
+		current, e := svc.ConfiguredRules(r.Context(), b, id)
 		if e == nil && !adminReadAudit(w, r, d, a, b, "platform_game.view") {
 			return
 		}
-		result, e := platformLotteryResult(200, map[string]any{"items": rows}, e)
+		result, e := platformLotteryResult(200, current, e)
 		outputMutation(w, r, result, e)
 	})
 	register("GET", "/platform-games/{id}/configured/sales", func(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +107,7 @@ func registerConfiguredAdminRoutes(register func(string, string, http.HandlerFun
 		outputMutation(w, r, out, e)
 	})
 	if platform {
-		register("POST", "/platform-games/{id}/configured/versions", func(w http.ResponseWriter, r *http.Request) {
+		register("POST", "/platform-games/{id}/configured/rules", func(w http.ResponseWriter, r *http.Request) {
 			a, b, ok := platformLotteryActor(w, r, d, "write")
 			if !ok {
 				return
@@ -90,41 +116,20 @@ func registerConfiguredAdminRoutes(register func(string, string, http.HandlerFun
 			if !ok {
 				return
 			}
-			var in platformlottery.ConfiguredDraftInput
+			var in platformlottery.ConfiguredRulesInput
 			if !decodeBodyLimit(w, r, &in, 4<<20) {
 				return
 			}
 			platformLotteryWrite(w, r, d, a, b, "write", "configured_rule.save", in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
-				out, e := svc.SaveConfiguredDraft(ctx, tx, fresh, id, in, pointMeta(r, fresh))
-				return platformLotteryResult(200, out, e)
-			})
-		})
-		register("POST", "/platform-games/{id}/configured/versions/{versionId}", func(w http.ResponseWriter, r *http.Request) {
-			a, b, ok := platformLotteryActor(w, r, d, "write")
-			if !ok {
-				return
-			}
-			id, ok := ruleID(w, r, "id")
-			if !ok {
-				return
-			}
-			version, ok := ruleID(w, r, "versionId")
-			if !ok {
-				return
-			}
-			var in platformlottery.ConfiguredAction
-			if !decodeBody(w, r, &in) {
-				return
-			}
-			platformLotteryWrite(w, r, d, a, b, "write", "configured_rule.action", in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
-				out, e := svc.ActConfiguredRule(ctx, tx, fresh, id, version, in, pointMeta(r, fresh))
+				out, e := svc.SaveConfiguredRules(ctx, tx, fresh, id, in, pointMeta(r, fresh))
 				return platformLotteryResult(200, out, e)
 			})
 		})
 		return
 	}
+
 	register("POST", "/platform-games/{id}/configured/sales", func(w http.ResponseWriter, r *http.Request) {
-		a, b, ok := platformLotteryActor(w, r, d, "sell")
+		a, brand, ok := platformLotteryActor(w, r, d, "sell")
 		if !ok {
 			return
 		}
@@ -136,11 +141,12 @@ func registerConfiguredAdminRoutes(register func(string, string, http.HandlerFun
 		if !decodeBodyLimit(w, r, &in, 4<<20) {
 			return
 		}
-		platformLotteryWrite(w, r, d, a, b, "sell", "configured_sales.write", in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
-			out, e := svc.WriteConfiguredSales(ctx, tx, fresh, b, id, in, pointMeta(r, fresh))
+		platformLotteryWrite(w, r, d, a, brand, "sell", "configured_sales.write", in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+			out, e := svc.WriteConfiguredSales(ctx, tx, fresh, brand, id, in, pointMeta(r, fresh))
 			return platformLotteryResult(200, out, e)
 		})
 	})
+
 }
 func registerConfiguredBetRoutes(mux routeRegistrar, d Dependencies) {
 	for _, prefix := range []string{"/api/v1/configured", "/api/v1/b/{brandCode}/configured"} {
@@ -195,6 +201,23 @@ func registerConfiguredBetRoutes(mux routeRegistrar, d Dependencies) {
 			out, e := betService(d).ConfiguredOrders(r.Context(), b.ID, v.Member.ID, id, offset)
 			result, e := betError(map[string]any{"items": out}, e)
 			outputMutation(w, r, result, e)
+		})
+		handle("GET", "/orders/{id}", func(w http.ResponseWriter, r *http.Request) {
+			b, ok := resolveBrand(w, r, d)
+			if !ok {
+				return
+			}
+			v, ok := currentBetSession(w, r, d, b.ID)
+			if !ok {
+				return
+			}
+			id, ok := ruleID(w, r, "id")
+			if !ok {
+				return
+			}
+			order, err := betService(d).ConfiguredOrder(r.Context(), b.ID, v.Member.ID, id)
+			result, err := betError(map[string]any{"brand_id": b.ID, "member_id": v.Member.ID, "order": order}, err)
+			outputMutation(w, r, result, err)
 		})
 		handle("GET", "/orders", func(w http.ResponseWriter, r *http.Request) {
 			b, ok := resolveBrand(w, r, d)

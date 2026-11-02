@@ -5,38 +5,52 @@ function reply(data: unknown, status = 200) {
   return new Response(JSON.stringify({ success: true, data }), { status, headers: { 'Content-Type': 'application/json' } })
 }
 const account = { id: 'admin-1', super_admin: true, platform_permissions: ['admin.view.platform', 'admin.write.platform'] }
-const brand = { id: 'b-1', code: 'luma', name: 'Luma', status: 'active' }
+const brand = { id: 'b-1', code: 'luma', name: 'Luma', status: 'active', member_count: '12', agent_count: '3', recharge_quota_available: '9007199254740993', created_at: '2026-10-24T00:00:00Z' }
 const validInput: BrandCreateInput = { code: 'northstar', name: 'Northstar Shop', default_locale: 'en', timezone: 'Asia/Singapore', reason: 'Launch a new market' }
 const member = { id: 'm1', global_user_id: 'g1', username: 'member_one', phone: '+6500000000', display_name: 'Member One', notes: '', status: 'normal', joined_at: '2026-10-09T01:02:03Z', brand_id: 'b-1', tags: ['new'], online: true, display_points: '9007199254740993' }
 
 describe('platform API boundary', () => {
-  it('deletes the global account without a brand header and requires a matching named receipt', async () => {
+  it('saves platform commission settings with the frozen key and rejects incomplete receipts', async () => {
+    const config = {enabled: true, payout_mode: 'automatic' as const, calendar: {timezone:'Asia/Singapore',cycle:'weekly' as const,boundary_time:'00:00:00',weekday:1,month_day:null,short_month:'' as const}}
+    const receipt = {version:2,config,payouts_enabled:false}
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(reply(receipt))
+    await expect(createPlatformApi(fetcher).updateCommissionSettings({version:1,config,payouts_enabled:true},'frozen-key')).resolves.toEqual(receipt)
+    const [url,init] = fetcher.mock.calls[0]!
+    expect(url).toBe('/api/v1/platform/commission-settings')
+    expect(init?.method).toBe('PUT')
+    expect(new Headers(init?.headers).has('X-Brand-ID')).toBe(false)
+    expect(new Headers(init?.headers).get('Idempotency-Key')).toBe('frozen-key')
+    expect(JSON.parse(String(init?.body))).toEqual({version:1,config,payouts_enabled:true,reason:''})
+    await expect(createPlatformApi(async () => reply({version:2,config})).commissionSettings()).rejects.toMatchObject({code:'INVALID_RESPONSE'})
+  })
+
+  it('deletes access to the selected brand without a brand header and requires a matching named receipt', async () => {
     const id = '00000000-0000-4000-8000-000000000001', audit = '00000000-0000-4000-8000-000000000002'
     const receipt = { id, account_name: 'test001', audit_log_id: audit }
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(reply(receipt))
-    await expect(createPlatformApi(fetcher).deleteMemberAccount(id, 'stable-delete-key')).resolves.toEqual(receipt)
+    await expect(createPlatformApi(fetcher).deleteMemberAccount(id, audit, 'stable-delete-key')).resolves.toEqual(receipt)
     const [url, init] = fetcher.mock.calls[0]!
     expect(url).toBe(`/api/v1/platform/global-users/${id}/delete`)
     expect(init?.method).toBe('POST')
     expect(new Headers(init?.headers).has('X-Brand-ID')).toBe(false)
     expect(new Headers(init?.headers).get('Idempotency-Key')).toBe('stable-delete-key')
-    expect(init?.body).toBe('{}')
+    expect(JSON.parse(String(init?.body))).toEqual({ brand_id: audit })
     for (const invalid of [{ ...receipt, id: audit }, { ...receipt, account_name: '' }, { audit_log_id: audit }]) {
-      await expect(createPlatformApi(async () => reply(invalid)).deleteMemberAccount(id, 'stable-delete-key')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+      await expect(createPlatformApi(async () => reply(invalid)).deleteMemberAccount(id, audit, 'stable-delete-key')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
     }
   })
   it('uses explicit member and audit pagination and rejects cross-brand rows', async () => {
     const audit = { id: 'a1', brand_id: 'b-1', action: 'member.view', actor_type: 'admin', actor_id: 'admin-1', actor_username: 'admin', resource_type: 'member', resource_id: 'm1', reason: '', request_id: 'request-1', created_at: '2026-10-09T01:02:03Z', ip_address: '', before_json: null, after_json: null }
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(reply({ items: [member], limit: 51, offset: 50, total_count: '101' }))
-      .mockResolvedValueOnce(reply({ items: [audit] }))
+      .mockResolvedValueOnce(reply({ items: [audit]  ,total_count: '1'}))
     const api = createPlatformApi(fetcher)
     await api.users('b-1', 51, 50)
     await api.audit('b-1', 51, 50)
     expect(fetcher.mock.calls.map(call => call[0])).toEqual(['/api/v1/platform/users?limit=51&offset=50', '/api/v1/platform/audit?limit=51&offset=50'])
-    await expect(createPlatformApi(async () => reply({ items: [{ ...member, brand_id: 'b-2' }] })).users('b-1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(createPlatformApi(async () => reply({ items: [{ ...audit, brand_id: 'b-2' }] })).audit('b-1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(createPlatformApi(async () => reply({ items: [member, member] })).users('b-1', 1)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformApi(async () => reply({ items: [{ ...member, brand_id: 'b-2' }]  ,total_count: '1'})).users('b-1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformApi(async () => reply({ items: [{ ...audit, brand_id: 'b-2' }]  ,total_count: '1'})).audit('b-1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformApi(async () => reply({ items: [member, member]  ,total_count: '2'})).users('b-1', 1)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
 
   it('queries all members before pagination and retains exact points and presence', async () => {
@@ -47,11 +61,11 @@ describe('platform API boundary', () => {
     const url = new URL(String(fetcher.mock.calls[0][0]), 'https://example.test');
     expect(Object.fromEntries(url.searchParams)).toEqual({ limit: '10', offset: '20', q: 'member 100%', online: 'false' });
     expect(new Headers(fetcher.mock.calls[0][1]?.headers).get('X-Brand-ID')).toBe('b-1');
-    for (const invalid of [{ ...data, total_count: 101 }, { ...data, offset: 0 }, { ...data, items: [{ ...member, display_points: 9007199254740992 }] }, { ...data, items: [{ ...member, online: 'true' }] }, { ...data, items: [{ ...member, brand_id: 'b-2' }] }]) {
+    for (const invalid of [{ ...data, total_count: 101 }, { ...data, offset: 0 }, { ...data, items: [{ ...member, display_points: 9007199254740992 }]  ,total_count: '1'}, { ...data, items: [{ ...member, online: 'true' }]  ,total_count: '1'}, { ...data, items: [{ ...member, brand_id: 'b-2' }]  ,total_count: '1'}]) {
       fetcher.mockResolvedValueOnce(reply(invalid));
       await expect(api.users('b-1', 10, 20)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
     }
-    fetcher.mockResolvedValueOnce(reply({ ...data, items: [{ ...member, display_points: null }] }));
+    fetcher.mockResolvedValueOnce(reply({ ...data, items: [{ ...member, display_points: null }]  ,total_count: '1'}));
     expect((await api.users('b-1', 10, 20)).items[0].display_points).toBeNull();
   });
 
@@ -84,13 +98,13 @@ describe('platform API boundary', () => {
   })
 
   it('validates list DTOs and rejects malformed current-format data', async () => {
-    const api = createPlatformApi(async () => reply({ items: [brand] }))
+    const api = createPlatformApi(async () => reply({ items: [brand]  ,total_count: '1'}))
     await expect(api.brands()).resolves.toEqual([brand])
-    await expect(createPlatformApi(async () => reply({ items: [{ id: 'b-1', name: 'Missing fields' }] })).brands()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(createPlatformApi(async () => reply({ items: [{ ...brand, timezone: 'UTC' }] })).brands()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(createPlatformApi(async () => reply({ items: [{ id: 'u1', username: 'staff', status: 'active', role_codes: ['operator'] }] })).users('b-1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformApi(async () => reply({ items: [{ id: 'b-1', name: 'Missing fields' }]  ,total_count: '1'})).brands()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformApi(async () => reply({ items: [{ ...brand, timezone: 'UTC' }]  ,total_count: '1'})).brands()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformApi(async () => reply({ items: [{ id: 'u1', username: 'staff', status: 'active', role_codes: ['operator'] }]  ,total_count: '1'})).users('b-1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
     await expect(createPlatformApi(async () => reply({ items: [member], limit: 100, offset: 0, total_count: '1' })).users('b-1')).resolves.toEqual({ items: [member], limit: 100, offset: 0, total_count: '1' })
-    await expect(createPlatformApi(async () => reply({ items: [{ ...member, role_codes: ['fictional'] }] })).users('b-1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformApi(async () => reply({ items: [{ ...member, role_codes: ['fictional'] }]  ,total_count: '1'})).users('b-1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
 
   it('requires a selected brand and sends X-Brand-ID for member reads', async () => {
@@ -103,8 +117,8 @@ describe('platform API boundary', () => {
 
   it('requires a selected brand and sends X-Brand-ID for audit reads', async () => {
     const audit = { id: 'a1', brand_id: 'b-1', action: 'member.view', actor_type: 'admin', actor_id: 'admin-1', actor_username: 'admin', resource_type: 'member', resource_id: 'm1', reason: '', request_id: 'request-1', created_at: '2026-10-09T01:02:03Z', ip_address: '', before_json: null, after_json: null }
-    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => reply({ items: [audit] }))
-    await expect(createPlatformApi(fetcher).audit('b-1')).resolves.toEqual([audit])
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => reply({ items: [audit]  ,total_count: '1'}))
+    await expect(createPlatformApi(fetcher).audit('b-1')).resolves.toMatchObject({items:[audit]})
     expect(fetcher.mock.calls[0][0]).toBe('/api/v1/platform/audit?limit=100&offset=0')
     expect(new Headers(fetcher.mock.calls[0][1]?.headers).get('X-Brand-ID')).toBe('b-1')
   })
@@ -140,7 +154,7 @@ describe('platform API boundary', () => {
 
   it('exposes only the intended platform API methods', async () => {
     const api = createPlatformApi()
-    expect(Object.keys(api).sort()).toEqual(['audit', 'brands', 'changePassword', 'createBrand', 'deleteBrand', 'deleteMemberAccount', 'login', 'logout', 'me', 'platformSettings', 'presentation', 'updatePlatformSettings', 'users'])
+    expect(Object.keys(api).sort()).toEqual(['audit', 'brands', 'changePassword', 'commissionSettings', 'createBrand', 'deleteBrand', 'deleteMemberAccount', 'login', 'logout', 'me', 'platformSettings', 'presentation', 'updateCommissionSettings', 'updatePlatformSettings', 'users'])
     expect(PlatformApiError).toBeDefined()
   })
   it('reads public branding before authentication and rejects incomplete or private fields', async () => {
@@ -152,4 +166,12 @@ describe('platform API boundary', () => {
       await expect(createPlatformApi(async () => reply(invalid)).presentation()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
     }
   })
+})
+
+it('requires precise brand summary fields and allows quota only as an explicit value or permission-limited null',async()=>{
+ const fetcher=vi.fn<typeof fetch>().mockResolvedValueOnce(reply({items:[brand] ,total_count: '1'})).mockResolvedValueOnce(reply({items:[{...brand,recharge_quota_available:null}] ,total_count: '1'})).mockResolvedValueOnce(reply({items:[{id:brand.id,code:brand.code,name:brand.name,status:brand.status}] ,total_count: '1'}))
+ const api=createPlatformApi(fetcher)
+ await expect(api.brands()).resolves.toEqual([brand])
+ await expect(api.brands()).resolves.toEqual([{...brand,recharge_quota_available:null}])
+ await expect(api.brands()).rejects.toMatchObject({code:'INVALID_RESPONSE'})
 })

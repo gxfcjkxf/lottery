@@ -56,6 +56,9 @@ func pointsFixture(t *testing.T) pointsHTTPFixture {
 	}
 	var auth identity.Authentication
 	managedData(t, login, &auth)
+	if _, err := f.pool.Exec(ctx, `INSERT INTO brand_recharge_quotas(brand_id,available) VALUES($1,1000000)`, managedBrand); err != nil {
+		t.Fatal(err)
+	}
 	return pointsHTTPFixture{managementHTTP: f, memberID: member.MemberID, userToken: auth.AccessToken}
 }
 

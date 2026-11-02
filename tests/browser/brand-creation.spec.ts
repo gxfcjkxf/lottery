@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect } from '@playwright/test';
 
 const origin = process.env.TEST_PLATFORM_ADMIN_ORIGIN ?? 'http://127.0.0.1:5175';
@@ -21,13 +22,13 @@ test(`platform brand creation retains an uncertain committed request across navi
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.getByLabel('Find a brand', { exact: true }).fill('hide-existing-brands-for-creation');
-  await page.getByRole('combobox', { name: 'Brand status', exact: true }).selectOption('active');
+  await selectControl(page.getByRole('combobox', { name: 'Brand status', exact: true }), 'active');
   await page.getByRole('button', { name: /New brand/, exact: false }).click();
   const dialog = page.getByRole('dialog');
   const code = `brand_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   await dialog.getByLabel('Brand code', { exact: true }).fill(code);
   await dialog.getByLabel('Brand name', { exact: true }).fill('Independent platform creation test');
-  await dialog.getByRole('combobox').selectOption('zh-CN');
+  await selectControl(dialog.getByRole('combobox'), 'zh-CN');
   await dialog.getByLabel('Timezone', { exact: true }).fill('Asia/Manila');
   await dialog.getByLabel('Reason for creation', { exact: true }).fill('Verify real audited platform creation');
   await dialog.getByRole('button', { name: /Review request/ }).click();
@@ -59,7 +60,7 @@ test(`platform brand creation retains an uncertain committed request across navi
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('.message.success')).toContainText('Brand created in paused status.');
   await expect(page.getByLabel('Find a brand', { exact: true })).toHaveValue('');
-  await expect(page.getByRole('combobox', { name: 'Brand status', exact: true })).toHaveValue('');
+  await expect(page.getByRole('combobox', { name: 'Brand status', exact: true })).toHaveAttribute('data-value', '');
   await expect(page.getByTestId('platform-brand-list').locator('tr').filter({ hasText: code })).toHaveCount(1);
   expect(attempts).toHaveLength(2);
   expect(attempts[1]).toEqual(attempts[0]);

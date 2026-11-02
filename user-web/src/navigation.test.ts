@@ -5,19 +5,18 @@ import { backUserPage, parentUserPage, showsPageBack } from './navigation';
 describe('mobile back navigation', () => {
   it('keeps primary pages and authentication entry branding without back buttons', () => {
     for (const path of ['/', '/orders', '/wallet', '/account', '/login', '/register']) expect(showsPageBack(path)).toBe(false);
-    for (const path of ['/invites', '/help', '/results', '/orders/123', '/games/123/bet']) expect(showsPageBack(path)).toBe(true);
+    for (const path of ['/invites', '/help', '/results', '/configured/123']) expect(showsPageBack(path)).toBe(true);
   });
   const parents = {
     '/invites': '/account', '/help': '/account', '/notifications': '/account',
     '/wallet/buckets': '/wallet', '/wallet/ledger': '/wallet', '/recharge': '/wallet', '/withdraw': '/wallet',
-    '/orders/123': '/orders', '/privacy': '/register', '/terms': '/register',
-    '/games': '/', '/games/123': '/', '/games/123/bet': '/games/123',
-    '/mark-six/123': '/', '/canada/123': '/', '/results': '/', '/bet/confirm': '/',
+    '/privacy': '/register', '/terms': '/register',
+    '/configured/123': '/', '/results': '/',
   };
   for (const [path, parent] of Object.entries(parents)) it(`direct ${path} entry returns to ${parent}`, () => {
     expect(parentUserPage(path)).toBe(parent);
   });
-  it('rejects undefined parent relationships', () => expect(() => parentUserPage('/unknown')).toThrow());
+  it('rejects removed and undefined parent relationships', () => {for(const path of ['/unknown','/games','/games/123/bet','/mark-six/123','/canada/123','/bet/confirm','/orders/123'])expect(()=>parentUserPage(path)).toThrow()});
   function router(previous: unknown) {
     return {
       options: { history: { state: { back: previous } } },

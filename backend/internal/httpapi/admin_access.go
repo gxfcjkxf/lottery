@@ -17,7 +17,7 @@ func permissionsByBrand(a access.Account) map[string][]string {
 	for _, brand := range a.BrandIDs {
 		out[brand] = []string{}
 		for _, p := range access.UnionPermissions(a.Roles...) {
-			if p.Scope == access.ScopeBrand && access.Authorize(a, p.Resource, p.Action, p.Scope, brand) {
+			if p.Scope == access.ScopeBrand && p.Resource != "brand_domains" && access.Authorize(a, p.Resource, p.Action, p.Scope, brand) {
 				out[brand] = append(out[brand], p.Resource+"."+p.Action+".brand")
 			}
 		}

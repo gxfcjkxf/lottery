@@ -8,7 +8,7 @@ const id = "44444444-4444-4444-8444-444444444444";
 const otherId = "66666666-6666-4666-8666-666666666666";
 const ledgerId = "55555555-5555-4555-8555-555555555555";
 const at = "2026-10-07T12:00:00Z";
-const pending = { id, brand_id: brand, member_id: member, points: "9007199254740993", state: "pending", version: "1", created_at: at, confirmed_at: null, ledger_entry_id: null };
+const pending = { method: "manual", id, brand_id: brand, member_id: member, points: "9007199254740993", state: "pending", version: "1", created_at: at, confirmed_at: null, ledger_entry_id: null };
 const confirmed = { ...pending, state: "confirmed", version: "2", confirmed_at: at, ledger_entry_id: ledgerId };
 const page = { brand_id: brand, member_id: member, snapshot_at: at, state: null, items: [pending], limit: 20, offset: 0, total_count: "9007199254740993" };
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ success: true, data }), { status });

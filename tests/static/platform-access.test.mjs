@@ -29,7 +29,7 @@ test('account and role deletion notices identify the deleted target and remain l
   const catalog = read('platform-web/src/i18n-catalog.ts');
   assert.match(panel, /key: 'access.accountDeleted', name: target.username/);
   assert.match(panel, /key: 'access.roleDeleted', name: target.name/);
-  assert.match(panel, /:message="ui\(notice.key, \{ name: notice.name \}\)"/);
+  assert.match(panel, /useOperationToast\(notice, value => ui\(value.key, \{ name: value.name \}\), 'success'\)/);
   assert.match(catalog, /删除账号「\{name\}」成功/);
   assert.match(catalog, /Account “\{name\}” deleted successfully/);
 });

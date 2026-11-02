@@ -3,7 +3,7 @@ import { origins, gameId, openPlatformBrandList, expectInsideViewport, expectNoP
 
 export function registerMemberDeleteTests(reflow = false) {
   for (const locale of ['en', 'zh-CN'] as const) {
-    test(`platform deletes the global account with a named receipt and exact retry (${locale})`, async ({ page }, info) => {
+    test(`platform removes access to the selected brand with a named receipt and exact retry (${locale})`, async ({ page }, info) => {
       await page.context().addCookies([{ name: 'lottery-locale', value: locale, url: origins.platform }])
       const userId = 'bbbbbbbb-bbbb-4bbb-8bbb-000000000001'
       const member = { id: gameId, global_user_id: userId, brand_id: gameId, username: 'test001', phone: '', display_name: '', notes: '', status: 'normal', joined_at: '2026-10-18T00:00:00Z', tags: [], online: false, display_points: null }
@@ -17,7 +17,7 @@ export function registerMemberDeleteTests(reflow = false) {
         if (path === '/api/v1/display-settings') return reply(settings)
         if (path === '/api/v1/platform/me') return reply({ account: { id: gameId, username: 'layout', super_admin: true, platform_permissions: allowed ? ['user.view.platform', 'user.delete.platform'] : ['user.view.platform'] } })
         if (path === '/api/v1/platform/platform-settings') return reply({ ...settings, display_name: 'Layout', logo_text: 'L', logo_url: '', version: 1, updated_at: '2026-10-18T00:00:00Z' })
-        if (path === '/api/v1/platform/brands') return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status: 'active' }] })
+        if (path === '/api/v1/platform/brands') return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z' }] })
         if (path === '/api/v1/platform/users') { const url = new URL(req.url()); return reply({ items: deleted ? [] : [member], limit: Number(url.searchParams.get('limit')), offset: Number(url.searchParams.get('offset')), total_count: deleted ? '0' : '1' }) }
         if (path === `/api/v1/platform/global-users/${userId}/delete`) {
           expect(req.method()).toBe('POST')
@@ -31,12 +31,13 @@ export function registerMemberDeleteTests(reflow = false) {
       })
       await page.goto(origins.platform)
       await openPlatformBrandList(page, locale)
-      await page.getByRole('button', { name: locale === 'en' ? 'View members' : '查看会员', exact: true }).filter({ visible: true }).click()
-      const label = locale === 'en' ? 'Delete member account' : '删除会员账号'
+      await page.getByTestId('platform-brand-list').locator('.member-menu-trigger').first().click()
+      await page.getByRole('menuitem', { name: locale === 'en' ? 'Members' : '会员', exact: true }).click()
+      const label = locale === 'en' ? 'Delete account' : '删除账号'
       await page.locator('.member-menu-trigger').filter({ visible: true }).click()
       await page.getByRole('menuitem', { name: label, exact: true }).click()
       const dialog = page.getByRole('dialog', { name: label, exact: true })
-      await expect(dialog).toContainText(locale === 'en' ? 'all brands' : '所有品牌')
+      await expect(dialog.locator('.modal-intro')).toHaveCount(0)
       await expect(dialog).toContainText('test001')
       if (reflow) {
         for (const width of [320, 480, 768, 1440]) {
@@ -56,13 +57,14 @@ export function registerMemberDeleteTests(reflow = false) {
       await expect(page.locator('.toast-message')).toHaveText(locale === 'en' ? 'Account “test001” deleted successfully.' : '删除账号「test001」成功。')
       expect(attempts).toHaveLength(2)
       expect(attempts[1]).toEqual(attempts[0])
-      expect(attempts[0].body).toBe('{}')
+      expect(JSON.parse(attempts[0].body!)).toEqual({ brand_id: gameId })
       await page.screenshot({ path: info.outputPath(`global-account-deleted-${locale}.png`) })
       // A read-only platform account must not receive a deletion entry.
       allowed = false; deleted = false
       await page.reload()
       await openPlatformBrandList(page, locale)
-      await page.getByRole('button', { name: locale === 'en' ? 'View members' : '查看会员', exact: true }).filter({ visible: true }).click()
+      await page.getByTestId('platform-brand-list').locator('.member-menu-trigger').first().click()
+      await page.getByRole('menuitem', { name: locale === 'en' ? 'Members' : '会员', exact: true }).click()
       await expect(page.getByRole('button', { name: 'test001', exact: true }).first()).toBeVisible()
       await page.locator('.member-menu-trigger').filter({ visible: true }).click()
       await expect(page.getByRole('menu', { name: /test001/ }).filter({ visible: true })).toBeVisible()

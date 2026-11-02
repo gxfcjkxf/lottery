@@ -134,7 +134,7 @@ var betAggregates = []aggregate{
 	{"placed_count", "count(*) FILTER(WHERE status='placed')"}, {"won_count", "count(*) FILTER(WHERE status='won')"},
 	{"lost_count", "count(*) FILTER(WHERE status='lost')"}, {"abnormal_count", "count(*) FILTER(WHERE status='abnormal')"},
 	{"cancelled_count", "count(*) FILTER(WHERE status IN ('bet_cancelled','judged_cancelled'))"},
-	{"refund_points", "coalesce(sum(total_points::numeric) FILTER(WHERE refund_entry_id IS NOT NULL),0)"},
+	{"refund_points", "coalesce(sum(refund_points::numeric),0)"},
 	{"settled_stake_points", "coalesce(sum(total_points::numeric) FILTER(WHERE final),0)"},
 	{"unfinalized_stake_points", "coalesce(sum(total_points::numeric) FILTER(WHERE NOT final AND status IN ('placed','won','lost')),0)"},
 	{"abnormal_stake_points", "coalesce(sum(total_points::numeric) FILTER(WHERE status='abnormal'),0)"},
@@ -158,7 +158,7 @@ func aggregateJSON(fields []aggregate) string {
 }
 
 const scopedBrand = `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1), validity AS (
- SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM games WHERE brand_id=$1 AND id=$4)) AND
+ SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_platform_games WHERE brand_id=$1 AND game_id=$4)) AND
  ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$5)) AS valid)`
 
 func reportTail(agg string, extra string) string {
@@ -194,12 +194,8 @@ func (s Service) betting(ctx context.Context, runner rowQuerier, brand string, q
 		group, label = `o.brand_member_id::text`, `o.brand_member_id::text`
 	}
 	sql := scopedBrand + `, facts AS (SELECT o.*,` + group + ` AS key,` + label + ` AS label,
- EXISTS(SELECT 1 FROM draw_corrections d WHERE d.brand_id=o.brand_id AND d.period_id=o.period_id AND d.state<>'completed') AS correction_open,
- (o.status IN ('won','lost') AND p.status='settled' AND j.state='completed' AND c.id IS NOT NULL) AS finalized
- FROM bet_orders o JOIN scope b ON b.id=o.brand_id JOIN games g ON g.brand_id=o.brand_id AND g.id=o.game_id
- JOIN periods p ON p.brand_id=o.brand_id AND p.id=o.period_id
- LEFT JOIN settlement_jobs j ON j.brand_id=o.brand_id AND j.id=p.current_settlement_job_id
- LEFT JOIN settlement_calculations c ON c.brand_id=o.brand_id AND c.id=o.settlement_calculation_id AND c.job_id=j.id AND c.order_id=o.id
+ false AS correction_open,o.status IN('won','lost') AS finalized
+ FROM betting_financial_facts o JOIN scope b ON b.id=o.brand_id JOIN platform_games g ON g.id=o.game_id
  WHERE o.placed_at >= $2 AND o.placed_at < $3 AND ($4::uuid IS NULL OR o.game_id=$4) AND ($5::uuid IS NULL OR o.brand_member_id=$5)),
  base AS (SELECT facts.*,coalesce(finalized,false) AND NOT correction_open AS final FROM facts)` + reportTail(aggregateJSON(betAggregates), "")
 	var valid bool

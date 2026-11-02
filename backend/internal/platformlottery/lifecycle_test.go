@@ -2,12 +2,14 @@ package platformlottery
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
+	"os"
 	"testing"
 	"time"
 )
@@ -16,6 +18,14 @@ func TestGameLifecycleDeletionAvailabilityAndIsolation(t *testing.T) {
 	db := testdb.New(t)
 	s := Service{DB: db}
 	ctx := context.Background()
+	raw, err := os.ReadFile("../rules/config/examples/lucky_group_preview.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot rules.ConfiguredSnapshot
+	if err = json.Unmarshal(raw, &snapshot); err != nil {
+		t.Fatal(err)
+	}
 	brand := "0199a000-0000-7000-8000-000000000001"
 	other := "0199a000-0000-7000-8000-000000000002"
 	a := access.Account{ID: ids.New(), Type: access.AccountAdmin, SuperAdmin: true, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "platform_game", Action: "write", Scope: access.ScopePlatform}}}}}
@@ -44,7 +54,7 @@ func TestGameLifecycleDeletionAvailabilityAndIsolation(t *testing.T) {
 	if _, e = readGame(ctx, tx, g.ID); !errors.Is(e, ErrNotFound) {
 		t.Fatal("deleted game still reachable", e)
 	}
-	g, e = s.Create(ctx, tx, a, GameInput{Code: "offline_trial", Name: "Offline trial", Model: rules.Model{Type: "DIGITS_0_9", Length: 3, AllowRepeat: true, Ordered: true}, Timezone: "UTC"}, points.Metadata{})
+	g, e = s.Create(ctx, tx, a, GameInput{Code: "offline_trial", Name: "Offline trial", Model: snapshot.Catalog.Model, Timezone: "UTC"}, points.Metadata{})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -53,6 +63,9 @@ func TestGameLifecycleDeletionAvailabilityAndIsolation(t *testing.T) {
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO brand_platform_games(brand_id,game_id,connected_by) VALUES($1,$2,$3)`, other, g.ID, a.ID); e != nil {
 		t.Fatal(e)
+	}
+	if _, err = s.SaveConfiguredRules(ctx, tx, a, g.ID, ConfiguredRulesInput{Snapshot: raw}, points.Metadata{}); err != nil {
+		t.Fatal(err)
 	}
 	p, e := s.CreatePeriod(ctx, tx, a, g.ID, PeriodInput{PeriodNo: "1", BetStartAt: time.Now().Add(-time.Hour), BetEndAt: time.Now().Add(time.Hour), DrawAt: time.Now().Add(time.Hour)}, points.Metadata{})
 	if e != nil {
@@ -99,15 +112,18 @@ func TestGameLifecycleDeletionAvailabilityAndIsolation(t *testing.T) {
 	}
 	gate(brand, true)
 	// Completed periods without orders no longer prevent catalogue deletion.
-	completed, e := s.Create(ctx, tx, a, GameInput{Code: "completed_trial", Name: "Completed trial", Model: rules.Model{Type: "DIGITS_0_9", Length: 3, AllowRepeat: true, Ordered: true}, Timezone: "UTC"}, points.Metadata{})
+	completed, e := s.Create(ctx, tx, a, GameInput{Code: "completed_trial", Name: "Completed trial", Model: snapshot.Catalog.Model, Timezone: "UTC"}, points.Metadata{})
 	if e != nil {
 		t.Fatal(e)
+	}
+	if _, err = s.SaveConfiguredRules(ctx, tx, a, completed.ID, ConfiguredRulesInput{Snapshot: raw}, points.Metadata{}); err != nil {
+		t.Fatal(err)
 	}
 	past, e := s.CreatePeriod(ctx, tx, a, completed.ID, PeriodInput{PeriodNo: "completed-1", BetStartAt: time.Now().Add(-3 * time.Hour), BetEndAt: time.Now().Add(-2 * time.Hour), DrawAt: time.Now().Add(-time.Hour)}, points.Metadata{})
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.Publish(ctx, tx, a, past.ID, rules.Draw{Digits: []int{1, 2, 3}}, "", points.Metadata{}); e != nil {
+	if _, e = s.Publish(ctx, tx, a, past.ID, rules.Draw{Regular: []int{1, 2, 3, 4, 5, 6}, Special: []int{7}}, "", points.Metadata{}); e != nil {
 		t.Fatal(e)
 	}
 	eligible, e := readGame(ctx, tx, completed.ID)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
 	"github.com/gxfcjkxf/lottery/backend/internal/database"
+	"github.com/gxfcjkxf/lottery/backend/internal/hkjccalendar"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
@@ -21,17 +22,19 @@ import (
 )
 
 type Dependencies struct {
-	Brands         tenant.Resolver
-	Ready          func(context.Context) error
-	Logger         *slog.Logger
-	Identity       *identity.Store
-	Mutations      *mutation.Engine
-	SecureCookies  bool
-	Admins         adminsys.Store
-	Telegram       telegramauth.Verifier
-	TrustedProxies []*net.IPNet
-	HistoryReads   *database.HistoryRouter
-	Telemetry      *observability.Runtime
+	// Tests can supply a deterministic collector. Runtime uses the official source.
+	OfficialCalendarSource hkjccalendar.Fetcher
+	Brands                 tenant.Resolver
+	Ready                  func(context.Context) error
+	Logger                 *slog.Logger
+	Identity               *identity.Store
+	Mutations              *mutation.Engine
+	SecureCookies          bool
+	Admins                 adminsys.Store
+	Telegram               telegramauth.Verifier
+	TrustedProxies         []*net.IPNet
+	HistoryReads           *database.HistoryRouter
+	Telemetry              *observability.Runtime
 	// Server-owned adapter boundary. Production leaves this nil until the
 	// qualification policy is confirmed; requests cannot configure a checker.
 	WithdrawalEligibility withdrawal.EligibilityChecker
@@ -106,12 +109,8 @@ func buildRouter(d Dependencies) *routeMux {
 	registerAdminRoutes(mux, d)
 	registerTelegramRoutes(mux, d)
 	registerPointRoutes(mux, d)
-	registerBetRoutes(mux, d)
 	registerBettingHistory(mux, d)
-	registerMarkSixRoutes(mux, d)
 	registerConfiguredBetRoutes(mux, d)
-	registerCanadaRoutes(mux, d)
-	registerBetCatalogRoutes(mux, d)
 	registerPublicDrawRoutes(mux, d)
 	registerPublicPlatformLotteryRoutes(mux, d)
 	registerNotificationRoutes(mux, d)

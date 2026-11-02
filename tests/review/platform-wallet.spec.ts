@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import type { Page } from '@playwright/test';
 import { test, expect } from './platform-fixture';
 
@@ -41,7 +42,7 @@ test('wallet UI preserves exact points, displays before/change/after and paginat
   await signIn(page);
   await page.locator('.nav-item').filter({ hasText: 'Member points' }).click();
   await page.getByTestId('platform-wallet-tabs').getByRole('button', { name: 'Wallet', exact: true }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   await page.getByLabel('Member ID', { exact: true }).fill(member);
   await page.getByRole('button', { name: 'Load wallet', exact: true }).click();
   await expect(page.getByTestId('platform-wallet-balances')).toContainText(amount);
@@ -69,7 +70,7 @@ test('wallet UI preserves exact points, displays before/change/after and paginat
   await page.getByTestId('platform-wallet-tabs').getByRole('button', { name: 'Wallet', exact: true }).click();
   await expect(page.getByTestId('platform-wallet-balances')).toContainText(amount);
   await expect(page.getByTestId('platform-wallet-ledger').locator('tbody tr')).toHaveCount(50);
-  await page.locator('.topbar-brand-picker select').selectOption('');
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), '');
   await expect(page.getByTestId('platform-wallet-balances')).toHaveCount(0);
   await expect(page.getByTestId('platform-wallet-ledger')).toHaveCount(0);
 });
@@ -105,7 +106,7 @@ test('real platform member wallet query does not change its wallet or ledger', a
   const beforeLedger = await read(ledgerUrl);
   if (await page.locator('button[aria-controls="platform-brand-tabs"]').getAttribute('aria-expanded') === 'false') await page.locator('button[aria-controls="platform-brand-tabs"]').click()
   await page.locator('.nav-subitem').filter({ hasText: 'Member list' }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   const visibleRows = page.locator('.desktop-table tbody tr, .mobile-cards .user-card').filter({ hasText: id });
   await visibleRows.locator('button').filter({ hasText: 'Member points' }).filter({ visible: true }).click();
   await expect(page.getByTestId('platform-wallet-balances')).toContainText(before.available_points);

@@ -58,23 +58,12 @@ func TestConfiguredModelDrivesAutomationAndDrawValidation(t *testing.T) {
 	anchor := time.Now().UTC().Add(time.Hour)
 	number := "0001"
 	interval := 120
-	in := AutomationInput{AutomationPlan: AutomationPlan{Enabled: true, SourceType: "mapped", Mapping: &FeedMapping{Format: "json", Schedule: "interval", TimeFormat: "rfc3339", Period: FeedField{Path: "/period_no"}, DrawTime: FeedField{Path: "/drawn_at"}, Regular: &FeedNumbers{FeedField: FeedField{Path: "/result/regular"}, Count: 2}, Special: &FeedNumbers{FeedField: FeedField{Path: "/result/special"}, Count: 1}}, SourceURL: "https://draw.example.test/feed", AnchorDrawAt: &anchor, AnchorPeriodNo: &number, IntervalSeconds: &interval, CloseBeforeSeconds: 15}}
+	in := AutomationInput{AutomationPlan: AutomationPlan{Enabled: true, SourceType: "mapped", Mapping: &FeedMapping{Format: "json", Schedule: "interval", TimeFormat: "rfc3339", Period: FeedField{Path: "/period_no"}, DrawTime: FeedField{Path: "/drawn_at"}, Regular: &FeedNumbers{FeedField: FeedField{Path: "/result/regular"}, Count: 2}, Special: &FeedNumbers{FeedField: FeedField{Path: "/result/special"}, Count: 1}}, SourceURL: "https://draw.example.test/feed", AnchorDrawAt: &anchor, AnchorPeriodNo: &number, IntervalSeconds: &interval, OpenBeforeSeconds: &interval, CloseBeforeSeconds: 15}}
 	if _, err = publishTestAutomation(ctx, s, tx, actor, game.ID, in, points.Metadata{}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("unpublished rules accepted: %v", err)
 	}
-	cases := []ConfiguredCase{{Requests: []rules.ConfiguredRequest{{PlayID: "operator_new_play", Options: []string{"lucky"}, Plate: "A", Points: 10, Multiplier: 1}}, Draw: rules.Draw{Regular: []int{1, 7}, Special: []int{2}, Digits: []int{}}, Bet: 10, Prize: 25}}
-	version, err := s.SaveConfiguredDraft(ctx, tx, actor, game.ID, ConfiguredDraftInput{Snapshot: raw, Cases: cases}, points.Metadata{})
-	if err != nil {
+	if _, err = s.SaveConfiguredRules(ctx, tx, actor, game.ID, ConfiguredRulesInput{Snapshot: raw}, points.Metadata{}); err != nil {
 		t.Fatal(err)
-	}
-	if _, err = publishTestAutomation(ctx, s, tx, actor, game.ID, in, points.Metadata{}); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("draft treated as publication: %v", err)
-	}
-	for _, action := range []string{"validate", "submit", "approve", "publish"} {
-		version, err = s.ActConfiguredRule(ctx, tx, actor, game.ID, version.ID, ConfiguredAction{Revision: version.Revision, Action: action}, points.Metadata{})
-		if err != nil {
-			t.Fatalf("%s: %v", action, err)
-		}
 	}
 	hk := AutomationInput{AutomationPlan: AutomationPlan{Enabled: true, SourceType: "hk_marksix_6hch", SourceURL: "https://draw.example.test/smallSix/findSmallSixInfo.do", CloseBeforeSeconds: 15}}
 	if _, err = publishTestAutomation(ctx, s, tx, actor, game.ID, hk, points.Metadata{}); !errors.Is(err, ErrInvalid) {
@@ -90,17 +79,17 @@ func TestConfiguredModelDrivesAutomationAndDrawValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	invalid := cases[0].Draw
+	invalid := rules.Draw{Regular: []int{1, 7}, Special: []int{2}}
 	invalid.Regular = []int{1, 7, 8}
 	if _, err = s.Publish(ctx, tx, actor, period.ID, invalid, "", points.Metadata{}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("wrong configured count accepted: %v", err)
 	}
-	invalid = cases[0].Draw
+	invalid = rules.Draw{Regular: []int{1, 7}, Special: []int{2}}
 	invalid.Special = []int{61}
 	if _, err = s.Publish(ctx, tx, actor, period.ID, invalid, "", points.Metadata{}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("outside configured pool accepted: %v", err)
 	}
-	if _, err = s.Publish(ctx, tx, actor, period.ID, cases[0].Draw, "", points.Metadata{}); err != nil {
+	if _, err = s.Publish(ctx, tx, actor, period.ID, rules.Draw{Regular: []int{1, 7}, Special: []int{2}}, "", points.Metadata{}); err != nil {
 		t.Fatalf("configured draw rejected: %v", err)
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -108,5 +97,41 @@ func TestConfiguredModelDrivesAutomationAndDrawValidation(t *testing.T) {
 	}
 	if count, err := s.GenerateAutomaticPeriods(ctx); err != nil || count != 2 {
 		t.Fatalf("configured automatic periods: count=%d err=%v", count, err)
+	}
+}
+
+func TestUnpublishedGameCanDisableMappedSource(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.New(t)
+	s := Service{DB: db}
+	actor := systemAutomationActor(ids.New())
+	if _, err := db.Exec(ctx, `INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'test-only')`, actor.ID, "source_disable_"+actor.ID); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	game, err := s.Create(ctx, tx, actor, GameInput{Code: "disabled_source", Name: "Disabled source", Timezone: "UTC", Model: rules.Model{Type: "DIGITS_0_9", Length: 3, AllowRepeat: true, Ordered: true}}, points.Metadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opening := 60
+	plan := AutomationPlan{SourceType: "mapped", Enabled: false, OpenBeforeSeconds: &opening, SourceURL: "https://draw.example.test/feed", Mapping: &FeedMapping{Format: "json", Schedule: "source", TimeFormat: "rfc3339", Period: FeedField{Path: "/issue"}, DrawTime: FeedField{Path: "/time"}, Digits: &FeedNumbers{FeedField: FeedField{Path: "/digits"}, Count: 3}}}
+	source, err := s.SaveDrawSource(ctx, tx, actor, game.ID, DrawSourceInput{DrawSource: DrawSource{Name: "Disabled", Plan: plan}}, points.Metadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.ActivateDrawSource(ctx, tx, actor, game.ID, source.ID, DrawSourceActivation{Revision: 1}, points.Metadata{}); err != nil {
+		t.Fatal("disable must not require rules", err)
+	}
+	source.Plan.Enabled = true
+	source, err = s.SaveDrawSource(ctx, tx, actor, game.ID, DrawSourceInput{DrawSource: source}, points.Metadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.ActivateDrawSource(ctx, tx, actor, game.ID, source.ID, DrawSourceActivation{Revision: source.Revision, Version: 1}, points.Metadata{}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("enable without rules", err)
 	}
 }

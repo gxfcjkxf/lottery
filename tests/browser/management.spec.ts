@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
 
 const brandId = "0199a000-0000-7000-8000-000000000001";
@@ -30,9 +31,8 @@ async function login(page: Page, info: TestInfo) {
     .getByRole("button", { name: "登录并加载真实成员", exact: true })
     .click();
   await navigate(page, info, "用户和成员");
-  await page
-    .getByLabel("选择真实后台品牌", { exact: true })
-    .selectOption(brandId);
+  await selectControl(page
+    .getByLabel("选择真实后台品牌", { exact: true }), brandId);
 }
 function unique() {
   return crypto.randomUUID().replaceAll("-", "").slice(0, 12);
@@ -107,14 +107,13 @@ test("real role and account creation persist; new account has only assigned gran
   await expect(page.getByRole("status")).toContainText("角色已创建");
   await page.reload();
   // The shell does not persist the selected page; return to the live role directory.
-  await page
-    .getByLabel("选择真实后台品牌", { exact: true })
-    .selectOption(brandId);
+  await selectControl(page
+    .getByLabel("选择真实后台品牌", { exact: true }), brandId);
   await navigate(page, info, "账号与权限");
   await expect(
     page.locator(".access-page").getByText(role, { exact: true }).first(),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "管理员账号", exact: true }).click();
+  await page.getByRole("tab", { name: "管理账号", exact: true }).click();
   await page.getByLabel(/账号（最多/).fill(username);
   await page.getByLabel(/初始密码（6–30/).fill("staff-test-only-password-2026");
   await page.getByLabel(new RegExp(role)).check();
@@ -122,7 +121,7 @@ test("real role and account creation persist; new account has only assigned gran
     .getByLabel("变更原因", { exact: true })
     .fill("browser account creation");
   await page.getByRole("button", { name: "创建管理员", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("管理员账号已创建");
+  await expect(page.getByRole("status")).toContainText("管理账号已创建");
   await expect(page.locator(".page-footer")).toContainText(
     "账号和角色权限按当前品牌权限执行真实后台变更。",
   );
@@ -157,9 +156,8 @@ test("real role and account creation persist; new account has only assigned gran
   const staff = await context.newPage();
   await staff.goto("http://localhost:5174");
   await navigate(staff, info, "用户和成员");
-  await staff
-    .getByLabel("选择真实后台品牌", { exact: true })
-    .selectOption(brandId);
+  await selectControl(staff
+    .getByLabel("选择真实后台品牌", { exact: true }), brandId);
   await expect(staff.locator(".provision")).toContainText(
     "没有此品牌的成员创建权限",
   );

@@ -36,16 +36,6 @@ export interface AdminRecord {
   role_codes: string[];
 }
 
-export interface AuthSettings {
-  version: number;
-  captcha_enabled: boolean;
-  telegram_enabled: boolean;
-  telegram_client_id: string;
-  privacy_policy_version: string;
-  service_terms_version: string;
-  audit_log_id?: string;
-}
-
 export interface CreatedMember {
   user_id: string;
   member_id: string;
@@ -180,7 +170,7 @@ export function createManagementApi(fetcher: FetchLike = fetch) {
       return request<{ items: string[] }>("/permissions", { brandId });
     },
     roles(brandId: string, limit = 50, offset = 0) {
-      return request<{ items: RoleRecord[] }>(
+      return request<{ items: RoleRecord[]; total_count: string }>(
         `/roles?limit=${limit}&offset=${offset}`,
         { brandId },
       );
@@ -222,7 +212,7 @@ export function createManagementApi(fetcher: FetchLike = fetch) {
       });
     },
     accounts(brandId: string, limit = 50, offset = 0) {
-      return request<{ items: AdminRecord[] }>(
+      return request<{ items: AdminRecord[]; total_count: string }>(
         `/accounts?limit=${limit}&offset=${offset}`,
         { brandId },
       );
@@ -292,28 +282,5 @@ export function createManagementApi(fetcher: FetchLike = fetch) {
         idempotencyKey: key,
       });
     },
-    authSettings(brandId: string) {
-      return request<AuthSettings>("/auth-settings", { brandId });
-    },
-    updateAuthSettings(
-      brandId: string,
-      body: {
-        version: number;
-        captcha_enabled: boolean;
-        telegram_enabled: boolean;
-        telegram_client_id: string;
-        reason: string;
-      },
-      key: string,
-    ) {
-      return request<AuthSettings>("/auth-settings", {
-        method: "PATCH",
-        brandId,
-        body,
-        idempotencyKey: key,
-      });
-    },
   };
 }
-
-export type ManagementApi = ReturnType<typeof createManagementApi>;

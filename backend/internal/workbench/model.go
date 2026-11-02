@@ -20,16 +20,7 @@ type Brand struct {
 	Code  string `json:"code"`
 	State string `json:"state"`
 }
-type Periods struct {
-	Pending       string `json:"pending"`
-	Betting       string `json:"betting"`
-	Closed        string `json:"closed"`
-	WaitingDraw   string `json:"waiting_draw"`
-	Drawn         string `json:"drawn"`
-	Settling      string `json:"settling"`
-	RefundPending string `json:"refund_pending"`
-	RefundFailed  string `json:"refund_failed"`
-}
+
 type Orders struct {
 	Placed   string `json:"placed"`
 	Abnormal string `json:"abnormal"`
@@ -40,12 +31,7 @@ type TodayBets struct {
 	CancelledCount string `json:"cancelled_count"`
 	AbnormalCount  string `json:"abnormal_count"`
 }
-type Settlement struct {
-	Processing       string `json:"processing"`
-	AwaitingApproval string `json:"awaiting_approval"`
-	Paying           string `json:"paying"`
-	Failed           string `json:"failed"`
-}
+
 type Recharges struct {
 	PendingCount  string `json:"pending_count"`
 	PendingPoints string `json:"pending_points"`
@@ -76,7 +62,6 @@ type Withdrawals struct {
 // successful revocation attempts, or today's ledger posting amounts.
 type Rewards struct {
 	GrantedCount string `json:"granted_count"`
-	PendingCount string `json:"pending_count"`
 	RevokedCount string `json:"revoked_count"`
 }
 
@@ -102,55 +87,28 @@ type Commissions struct {
 	ExecutionPausedCount           string `json:"execution_paused_count"`
 	ExecutionFailedCount           string `json:"execution_failed_count"`
 }
-type ReconciliationJob struct {
-	ID              string     `json:"id"`
-	State           string     `json:"state"`
-	CreatedAt       time.Time  `json:"created_at"`
-	CompletedAt     *time.Time `json:"completed_at"`
-	TargetCount     string     `json:"target_count"`
-	CheckedCount    string     `json:"checked_count"`
-	RepairableCount string     `json:"repairable_count"`
-	CorruptCount    string     `json:"corrupt_count"`
-	FailedCount     string     `json:"failed_count"`
-}
-type Reconciliation struct {
-	LatestJob *ReconciliationJob `json:"latest_job"`
-}
-type Sources struct {
-	AdapterState      string     `json:"adapter_state"`
-	ConfiguredGames   string     `json:"configured_games"`
-	EnabledAPISources string     `json:"enabled_api_sources"`
-	EnabledDOMSources string     `json:"enabled_dom_sources"`
-	AttemptsToday     string     `json:"attempts_today"`
-	FailedToday       string     `json:"failed_today"`
-	NoDataToday       string     `json:"no_data_today"`
-	LastAttemptAt     *time.Time `json:"last_attempt_at"`
-}
+
 type Snapshot struct {
-	BrandID        string                  `json:"brand_id"`
-	SnapshotAt     time.Time               `json:"snapshot_at"`
-	Timezone       string                  `json:"timezone"`
-	DayFrom        time.Time               `json:"day_from"`
-	Brand          Section[Brand]          `json:"brand"`
-	Periods        Section[Periods]        `json:"periods"`
-	Orders         Section[Orders]         `json:"orders"`
-	TodayBets      Section[TodayBets]      `json:"today_bets"`
-	Settlement     Section[Settlement]     `json:"settlement"`
-	Recharges      Section[Recharges]      `json:"recharges"`
-	Ledger         Section[Ledger]         `json:"ledger"`
-	Balances       Section[Balances]       `json:"balances"`
-	Reconciliation Section[Reconciliation] `json:"reconciliation"`
-	Sources        Section[Sources]        `json:"sources"`
-	Withdrawals    Section[Withdrawals]    `json:"withdrawals"`
-	Commissions    Section[Commissions]    `json:"commissions"`
-	Rewards        Section[Rewards]        `json:"rewards"`
+	BrandID     string               `json:"brand_id"`
+	SnapshotAt  time.Time            `json:"snapshot_at"`
+	Timezone    string               `json:"timezone"`
+	DayFrom     time.Time            `json:"day_from"`
+	Brand       Section[Brand]       `json:"brand"`
+	Orders      Section[Orders]      `json:"orders"`
+	TodayBets   Section[TodayBets]   `json:"today_bets"`
+	Recharges   Section[Recharges]   `json:"recharges"`
+	Ledger      Section[Ledger]      `json:"ledger"`
+	Balances    Section[Balances]    `json:"balances"`
+	Withdrawals Section[Withdrawals] `json:"withdrawals"`
+	Commissions Section[Commissions] `json:"commissions"`
+	Rewards     Section[Rewards]     `json:"rewards"`
 }
 
 func CanView(a access.Account, brand, resource string) bool {
 	return access.Authorize(a, resource, "view", access.ScopeBrand, brand) || access.Authorize(a, resource, "view", access.ScopePlatform, "")
 }
 func Allowed(a access.Account, brand string) bool {
-	for _, resource := range []string{"brand", "period", "bet", "report_betting", "settlement", "recharge", "report_ledger", "wallet", "draw_source", "withdrawal", "reward", "commission"} {
+	for _, resource := range []string{"brand", "bet", "report_betting", "recharge", "report_ledger", "wallet", "withdrawal", "reward", "commission"} {
 		if CanView(a, brand, resource) {
 			return true
 		}

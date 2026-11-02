@@ -1,3 +1,4 @@
+import * as bettingPreferences from '../../scripts/openapi-betting-preferences.mjs';
 import * as bettingHistory from '../../scripts/openapi-betting-history.mjs';
 import * as configuredBusiness from "../../scripts/openapi-configured-business.mjs";
 import * as configuredPreview from "../../scripts/openapi-configured-preview.mjs";
@@ -34,11 +35,10 @@ import * as reportArchives from "../../scripts/openapi-report-archives.mjs";
 import * as reportArchiveTasks from "../../scripts/openapi-report-archive-tasks.mjs";
 import * as reportArchivePolicy from "../../scripts/openapi-report-archive-policy.mjs";
 import * as attributionReports from "../../scripts/openapi-attribution-reports.mjs";
-import * as businessInventory from "../../scripts/openapi-business-inventory.mjs";
 import * as agentPortal from "../../scripts/openapi-agent-portal.mjs";
 
 const modules=[identity,finance,lottery,withdrawals,withdrawalReports,workbench,commissionPolicies,commissionCycles,commissionDiscovery,commissionPayments,commissionAdjustments,commissionCorrections,commissionReports,commissionAnalysis,rechargeUser,rewards,rewardReports,reportArchives,reportArchiveTasks,reportArchivePolicy,attributionReports];
-modules.push(bettingHistory,businessInventory,platformShared,configuredPreview,configuredBusiness,markSix,canada,sharedAutomation,platformSettings,memberSummary,associationNames,filterOptions,agentPortal);
+modules.push(bettingPreferences,bettingHistory,platformShared,configuredPreview,configuredBusiness,markSix,canada,sharedAutomation,platformSettings,memberSummary,associationNames,filterOptions,agentPortal);
 const go=process.env.LOTTERY_GO_BIN??"go";
 const operation={method:"POST",path:"/api/v1/me/action",operationId:"performAction",summary:"Submit action",tag:"identity",auth:"user",idempotency:true,requestBody:{$ref:"#/components/schemas/EmptyObject"},data:{$ref:"#/components/schemas/EmptyObject"}};
 const routes=[{method:"POST",path:"/api/v1/me/action"},{method:"POST",path:"/api/v1/b/{brandCode}/me/action"}];
@@ -62,6 +62,8 @@ test("composes the explicit API module list against real registered routes, incl
     "GET /api/v1/admin/commission-payment-policy",
     "GET /api/v1/admin/commission-payments",
     "GET /api/v1/admin/commission-payments/{id}",
+    "GET /api/v1/admin/commission-payments/{id}/beneficiaries",
+    "GET /api/v1/admin/commission-payments/{id}/history",
     "GET /api/v1/admin/commission-payments/{id}/targets",
     "GET /api/v1/admin/commission-payment-targets/{id}/adjustments",
     "POST /api/v1/admin/commission-payment-targets/{id}/adjustments",
@@ -74,6 +76,8 @@ test("composes the explicit API module list against real registered routes, incl
     "GET /api/v1/platform/commission-payment-policy",
     "GET /api/v1/platform/commission-payments",
     "GET /api/v1/platform/commission-payments/{id}",
+    "GET /api/v1/platform/commission-payments/{id}/beneficiaries",
+    "GET /api/v1/platform/commission-payments/{id}/history",
     "GET /api/v1/platform/commission-payments/{id}/targets",
     "GET /api/v1/platform/commission-payment-targets/{id}/adjustments",
   ].sort());

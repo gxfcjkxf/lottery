@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect } from './platform-fixture';
 
 test('brand role creation waits for a successfully loaded permission catalog', async ({ page, context, operatorSession }, info) => {
@@ -14,7 +15,7 @@ test('brand role creation waits for a successfully loaded permission catalog', a
     await route.continue();
   });
   await page.goto('http://127.0.0.1:5184');
-  await page.getByLabel('选择真实后台品牌', { exact: true }).selectOption('0199a000-0000-7000-8000-000000000001');
+  await selectControl(page.getByLabel('选择真实后台品牌', { exact: true }), '0199a000-0000-7000-8000-000000000001');
   if (info.project.name === 'mobilepixel7') {
     await page.locator('.mobile-nav button').last().click();
     await page.getByRole('navigation', { name: '全部管理页面' }).getByRole('button', { name: /账号与权限/ }).click();
@@ -33,7 +34,7 @@ test('brand role creation waits for a successfully loaded permission catalog', a
   await expect(save).toBeEnabled();
   expect(writes).toBe(0);
   // A later failed read must also invalidate the previously loaded catalog.
-  await panel.getByRole('tab', { name: '管理员账号', exact: true }).click();
+  await panel.getByRole('tab', { name: '管理账号', exact: true }).click();
   unavailable = true;
   await panel.getByRole('tab', { name: '角色权限', exact: true }).click();
   await expect(panel.getByRole('alert')).toContainText('Permission catalog unavailable');

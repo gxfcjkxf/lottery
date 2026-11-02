@@ -1,0 +1,16 @@
+import type { TranslationCatalog } from './localization'
+
+export const paginationCatalog = {
+  en: {
+    navigation: 'Pagination', previous: 'Previous page', next: 'Next page',
+    page: 'Page {page}', jump: 'Go to', jumpPage: 'Go to page', pageUnit: 'page', go: 'GO', pageSize: '{count} / page',
+    summary: 'Page {page} · {count} records on this page · Total: {total}',
+    summarySingle: 'Page {page} · {count} record on this page · Total: {total}',
+  },
+  'zh-CN': {
+    navigation: '分页', previous: '上一页', next: '下一页',
+    page: '第 {page} 页', jump: '跳至', jumpPage: '跳转页码', pageUnit: '页', go: 'GO', pageSize: '{count} 条/页',
+    summary: '第 {page} 页 · 本页 {count} 条 · 共 {total} 条',
+    summarySingle: '第 {page} 页 · 本页 {count} 条 · 共 {total} 条',
+  },
+} satisfies TranslationCatalog

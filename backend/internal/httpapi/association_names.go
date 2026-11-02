@@ -132,8 +132,8 @@ var associationQueries = map[string]string{
 	"user":   `SELECT id::text,COALESCE(username,''),false FROM global_users WHERE id=ANY($1::uuid[])`,
 	"admin":  `SELECT id::text,username,false FROM admin_accounts WHERE id=ANY($1::uuid[])`,
 	"agent":  `SELECT n.id::text,a.username,false FROM agent_nodes n JOIN agent_accounts a ON a.id=n.member_id AND a.brand_id=n.brand_id WHERE n.id=ANY($1::uuid[])`,
-	"game":   `SELECT id::text,name,false FROM games WHERE id=ANY($1::uuid[]) UNION ALL SELECT id::text,name,false FROM platform_games WHERE id=ANY($1::uuid[])`,
-	"period": `SELECT id::text,period_no,false FROM periods WHERE id=ANY($1::uuid[]) UNION ALL SELECT id::text,period_no,false FROM platform_game_periods WHERE id=ANY($1::uuid[])`,
+	"game":   `SELECT id::text,name,false FROM platform_games WHERE id=ANY($1::uuid[])`,
+	"period": `SELECT id::text,period_no,false FROM platform_game_periods WHERE id=ANY($1::uuid[])`,
 	"play":   `SELECT id::text,name,false FROM play_definitions WHERE id=ANY($1::uuid[]) UNION ALL SELECT id::text,name,false FROM platform_game_plays WHERE id=ANY($1::uuid[])`,
 }
 

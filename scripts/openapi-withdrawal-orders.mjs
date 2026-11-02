@@ -75,6 +75,7 @@ export const schemas = {
   WithdrawalTransition: transition,
   WithdrawalHistory: obj({ brand_id: uuid, order_id: uuid, items: { type: "array", items: ref("WithdrawalTransition"), maxItems: 3 } }),
   WithdrawalAvailability: obj({
+    points_step: positiveAmount, available_points: amount, source_balances: { type: "array", items: ref("WithdrawalSourceAllocation"), maxItems: 4 },
     brand_id: uuid, member_id: uuid, policy_enabled: { type: "boolean" }, eligibility_configured: { type: "boolean" },
     can_apply: { type: "boolean" },
     reason_code: { type: "string", enum: ["AVAILABLE", "WITHDRAWAL_DISABLED", "WITHDRAWAL_ELIGIBILITY_NOT_CONFIGURED", "WITHDRAWAL_ACCOUNT_RESTRICTED"] },

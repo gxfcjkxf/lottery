@@ -1,6 +1,7 @@
 export const workspaceCatalog = {
   en: {
     'workspace.clear': 'Clear',
+    'workspace.expandSidebar': 'Expand menu', 'workspace.collapseSidebar': 'Collapse menu',
     'workspace.loginDraftUnavailable': 'Unable to restore these selections for this brand and game. Return to the game and choose again.', 'workspace.loginDraftRestored': 'Selections restored. Review them before confirming your bet.',
     'workspace.unfinishedCombination': 'Unfinished combination', 'workspace.discardCombination': 'These combination selections have not been added. Discard them and switch plays?', 'workspace.discardAndSwitch': 'Discard and switch',
     'workspace.expandPicks': 'Expand selected bets', 'workspace.collapsePicks': 'Collapse selected bets',
@@ -12,13 +13,14 @@ export const workspaceCatalog = {
     'workspace.removeItem': 'Remove {name}',
     'workspace.games': 'Choose game', 'workspace.menu': 'Menu', 'workspace.overview': 'Account overview',
     'workspace.points': 'Points', 'workspace.unsettled': 'Unsettled', 'workspace.today': 'Today’s net',
-    'workspace.closeAt': 'Closes', 'workspace.drawAt': 'Draws', 'workspace.closeCountdown': 'Closes in', 'workspace.drawCountdown': 'Draws in',
+    'workspace.openAt': 'Opens', 'workspace.openCountdown': 'Opens in', 'workspace.notOpen': 'Betting has not opened yet.', 'workspace.closeAt': 'Closes', 'workspace.drawAt': 'Draws', 'workspace.closeCountdown': 'Closes in', 'workspace.drawCountdown': 'Draws in',
     'workspace.period': '{number}', 'workspace.continue': 'Continue choosing', 'workspace.selected': '{count} selected',
     'workspace.failed': 'Unable to load account overview.', 'workspace.gamesFailed': 'Unable to load games. Please retry.',
     'workspace.betSuccess':'Bet placed successfully.',
   },
   'zh-CN': {
     'workspace.clear': '清空',
+    'workspace.expandSidebar': '展开左侧菜单', 'workspace.collapseSidebar': '收起左侧菜单',
     'workspace.loginDraftUnavailable': '无法为当前品牌和彩种恢复选号，请返回彩种重新选择。', 'workspace.loginDraftRestored': '已恢复选号，请核对后再确认投注。',
     'workspace.unfinishedCombination': '组合尚未加入', 'workspace.discardCombination': '当前组合选号尚未加入投注，是否放弃这些号码并切换玩法？', 'workspace.discardAndSwitch': '放弃并切换',
     'workspace.expandPicks': '展开已选投注', 'workspace.collapsePicks': '收起已选投注',
@@ -30,7 +32,7 @@ export const workspaceCatalog = {
     'workspace.removeItem': '删除 {name}',
     'workspace.games': '选择彩种', 'workspace.menu': '菜单', 'workspace.overview': '账号概览',
     'workspace.points': '积分', 'workspace.unsettled': '未结金额', 'workspace.today': '今日输赢',
-    'workspace.closeAt': '封盘', 'workspace.drawAt': '开奖', 'workspace.closeCountdown': '封盘倒计时', 'workspace.drawCountdown': '开奖倒计时',
+    'workspace.openAt': '开盘', 'workspace.openCountdown': '开盘倒计时', 'workspace.notOpen': '尚未开盘，暂不可投注。', 'workspace.closeAt': '封盘', 'workspace.drawAt': '开奖', 'workspace.closeCountdown': '封盘倒计时', 'workspace.drawCountdown': '开奖倒计时',
     'workspace.period': '{number}期', 'workspace.continue': '继续选号', 'workspace.selected': '已选 {count} 项',
     'workspace.failed': '无法读取账号概览。', 'workspace.gamesFailed': '无法读取彩种，请重试。',
     'workspace.betSuccess':'投注成功。',

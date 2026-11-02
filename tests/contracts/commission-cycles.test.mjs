@@ -35,7 +35,7 @@ test('financial cycle DTOs preserve exact/null fields and omit private witness d
   }
   assert.deepEqual(s.CommissionCycleCreate.required,['anchor_order_id']);
   assert.deepEqual(s.CommissionCycleRetry.required,['version']);
-  assert.equal(s.CommissionCalculation.properties.generation.anyOf[1].type,'null');
+  for(const key of ['job_id','calculation_id','generation'])assert.equal(s.CommissionCalculation.properties[key],undefined);
   assert.equal(s.CommissionCycle.properties.total_points.type,'string');
   assert.equal(s.CommissionExactAmount.properties.denominator.pattern,'^[1-9][0-9]*$');
   assert.equal(s.CommissionCycle.properties.created_by.anyOf[1].type,'null');

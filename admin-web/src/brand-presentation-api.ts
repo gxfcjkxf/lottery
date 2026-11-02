@@ -10,7 +10,7 @@ const LOCALES = ["en", "zh-CN"] as const;
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 export type BrandPresentationLocale = (typeof LOCALES)[number];
-export interface BrandPresentationLocaleContent { en: { tagline: string | null; announcement: string | null }; "zh-CN": { tagline: string | null; announcement: string | null } }
+interface BrandPresentationLocaleContent { en: { tagline: string | null; announcement: string | null }; "zh-CN": { tagline: string | null; announcement: string | null } }
 export interface BrandPresentationConfig {
   display_name: string | null;
   logo_text: string | null;
@@ -48,18 +48,18 @@ export interface EffectiveBrandPresentationConfig extends Omit<BrandPresentation
   content: { en: { tagline: string; announcement: string }; "zh-CN": { tagline: string; announcement: string } };
 }
 export type BrandPresentationEffective = EffectiveBrandPresentationConfig;
-export type BrandPresentationStatus = "active" | "paused" | "disabled";
+type BrandPresentationStatus = "active" | "paused" | "disabled";
 export interface BrandPresentationRecord {
   brand_id: string; version: number; status: BrandPresentationStatus; base_name: string;
   config: BrandPresentationConfig; effective: EffectiveBrandPresentationConfig; updated_at: string; audit_log_id?: string;
 }
-export interface BrandPresentationReceipt extends BrandPresentationRecord { audit_log_id: string }
-export interface BrandPresentationRevision {
+interface BrandPresentationReceipt extends BrandPresentationRecord { audit_log_id: string }
+interface BrandPresentationRevision {
   id: string; brand_id: string; version: number; config: BrandPresentationConfig; effective: EffectiveBrandPresentationConfig;
   changed_by: string; reason: string; audit_log_id: string; created_at: string;
 }
-export interface BrandPresentationHistoryPage { items: BrandPresentationRevision[]; limit: number; offset: number }
-export interface BrandPresentationPutBody { version: number; config: BrandPresentationConfig; reason: string }
+interface BrandPresentationHistoryPage { items: BrandPresentationRevision[]; limit: number; offset: number }
+interface BrandPresentationPutBody { version: number; config: BrandPresentationConfig; reason: string }
 export interface BrandPresentationApi {
   get(brandId: string): Promise<BrandPresentationRecord>;
   defaults(brandId: string): Promise<BrandPresentationEffective>;
@@ -94,14 +94,14 @@ function validDateTime(value: unknown): value is string {
 }
 const HOST_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
 const ASSET_EXT_RE = /\.(?:png|jpe?g|webp|ico)$/i;
-function byteLength(value: string): number { return new TextEncoder().encode(value).length; }
-function validText(value: unknown, maxBytes: number, oneLine: boolean, nonblank = false): value is string {
-  return typeof value === "string" && byteLength(value) <= maxBytes && (!nonblank || value.trim().length > 0) &&
+function characterLength(value: string): number { return Array.from(value).length; }
+function validText(value: unknown, maxCharacters: number, oneLine: boolean, nonblank = false): value is string {
+  return typeof value === "string" && characterLength(value) <= maxCharacters && (!nonblank || value.trim().length > 0) &&
     (!oneLine || !/[\u0000-\u001f\u007f-\u009f]/.test(value));
 }
 function validAssetUri(value: unknown): value is string | null {
   if (value === null) return true;
-  if (typeof value !== "string" || !value || byteLength(value) > 512 || value.trim() !== value || /[\\%\s\p{Cc}]/u.test(value) || value.includes("..") || /[?#]/.test(value)) return false;
+  if (typeof value !== "string" || !value || characterLength(value) > 512 || value.trim() !== value || /[\\%\s\p{Cc}]/u.test(value) || value.includes("..") || /[?#]/.test(value)) return false;
   if (!ASSET_EXT_RE.test(value.slice(value.lastIndexOf("/") + 1))) return false;
   if (value.startsWith("/") && !value.startsWith("//")) return value.startsWith("/icons/") || value.startsWith("/brand-assets/") || value.startsWith("/api/v1/brand-assets/");
   if (!value.startsWith("https://")) return false;

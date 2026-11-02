@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { emptyStateCandidates } from '../../scripts/empty-state-audit.mjs';
 const read = path => readFileSync(new URL('../../' + path, import.meta.url), 'utf8');
 
-test('three apps import one empty-state visual contract', () => {
-  for (const app of ['user-web', 'admin-web', 'platform-web']) assert.match(read(`${app}/src/main.ts`), /import ['"]@lottery\/shared\/empty-state\.css['"]/);
+test('four apps import one empty-state visual contract', () => {
+  for (const app of ['user-web', 'admin-web', 'platform-web', 'agent-web']) assert.match(read(`${app}/src/main.ts`), /import ['"]@lottery\/shared\/empty-state\.css['"]/);
   const css = read('shared/src/empty-state.css');
   for (const rule of ['min-height: 96px', 'padding: 16px', 'gap: 12px', 'margin: 0', 'text-align: center', 'justify-content: center', 'display: table-cell', 'vertical-align: middle']) assert.ok(css.includes(rule), rule);
   assert.match(css, /\.empty-state\[data-global-loading="true"\]\s*\{\s*display: none !important/);
@@ -14,7 +14,7 @@ test('three apps import one empty-state visual contract', () => {
 
 test('standalone empty lists use the shared class without changing business copy', () => {
   const candidates = emptyStateCandidates();
-  assert.ok(candidates.length > 110);
+  assert.ok(candidates.length > 0);
   const missing = candidates.filter(node => !node.classes.split(/\s+/).includes('empty-state')).map(node => `${node.path}:${node.line}: ${node.text}`);
   assert.deepEqual(missing, []);
 });

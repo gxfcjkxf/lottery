@@ -121,7 +121,7 @@ func run() error {
 	const brand = "0199a000-0000-7000-8000-000000000001"
 	policy := withdrawal.DefaultBrandConfig()
 	policy.Enabled = true
-	if _, err = (withdrawal.Service{DB: db}).UpdateBrand(ctx, tx, brand, actor, withdrawal.BrandInput{Version: 1, Config: policy, Reason: "synthetic UI fixture; eligibility adapter not enabled in API"}, points.Metadata{ActorType: "admin", ActorID: admin, RequestID: ids.New()}); err != nil {
+	if _, err = (withdrawal.Service{DB: db}).UpdateBrand(ctx, tx, brand, actor, withdrawal.BrandInput{PointsStep: 1, Version: 1, Config: policy, Reason: "synthetic UI fixture; eligibility adapter not enabled in API"}, points.Metadata{ActorType: "admin", ActorID: admin, RequestID: ids.New()}); err != nil {
 		return err
 	}
 	type result struct{ Username, MemberID, OrderID string }

@@ -11,7 +11,7 @@ export function registerManagementButtonTests(){
   await page.goto((surface==='admin'?origins.brand:origins.platform)+'/__button-check')
   await page.locator('.configured-workbench > summary').click()
   await page.getByRole('button',{name:'载入通用示例配置',exact:true}).click()
-  const button=page.getByRole('button',{name:'验证配置',exact:true});await button.scrollIntoViewIfNeeded()
+  const button=page.getByRole('button',{name:'添加玩法',exact:true});await button.scrollIntoViewIfNeeded()
   const before=await button.boundingBox();expect(before).toBeTruthy();expect(before!.width).toBeLessThan(240)
   const styles=await button.evaluate(el=>({image:getComputedStyle(el).backgroundImage,transition:getComputedStyle(el).transitionProperty}))
   expect(styles.image).toBe('none');expect(styles.transition).not.toContain('all')

@@ -30,7 +30,6 @@ test('write contracts make audit notes optional without relaxing business fields
   for (const [path, method, required] of [
     ['/api/v1/admin/point-policy','put',['version','max_balance_points','max_recharge_points','max_adjustment_points']],
     ['/api/v1/platform/brand-operation','patch',['version','status']],
-    ['/api/v1/admin/platform-games/{id}/configured/sales','post',['version','rule_id','enabled','prices','min_points','max_points','max_period_points','max_user_period_points']],
   ]) {
     const schema = resolve(doc.paths[path][method].requestBody.content['application/json'].schema);
     for (const field of required) assert.ok(schema.required.includes(field), `${path} lost required ${field}`);

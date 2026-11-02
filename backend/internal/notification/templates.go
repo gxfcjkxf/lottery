@@ -38,7 +38,6 @@ var templateKeys = [...]string{
 	"member.joined",
 	"recharge.confirmed",
 	"reward.order.granted",
-	"reward.order.revocation_pending",
 	"reward.order.revoked",
 	"withdrawal.order.cancelled",
 	"withdrawal.order.failed",
@@ -61,7 +60,6 @@ type Content struct {
 }
 
 type Template struct {
-	BrandID    string    `json:"brand_id"`
 	Key        string    `json:"key"`
 	Version    int64     `json:"version"`
 	Content    Content   `json:"content"`
@@ -71,7 +69,6 @@ type Template struct {
 
 type Revision struct {
 	ID         string    `json:"id"`
-	BrandID    string    `json:"brand_id"`
 	Key        string    `json:"key"`
 	Version    int64     `json:"version"`
 	Content    Content   `json:"content"`
@@ -141,8 +138,8 @@ func validTemplateVersion(version int64) bool {
 }
 
 // validCopyText verifies canonical, safe plain text and supported placeholders.
-func validCopyText(value string, maxBytes int, body bool) bool {
-	if !utf8.ValidString(value) || value == "" || strings.TrimSpace(value) != value || len(value) > maxBytes ||
+func validCopyText(value string, maxCharacters int, body bool) bool {
+	if !utf8.ValidString(value) || value == "" || strings.TrimSpace(value) != value || utf8.RuneCountInString(value) > maxCharacters ||
 		strings.ContainsAny(value, "<>") || templateURL.MatchString(value) {
 		return false
 	}
@@ -173,29 +170,21 @@ func validCopyText(value string, maxBytes int, body bool) bool {
 	return true
 }
 
-func AllowedTemplate(a access.Account, brand, action string) bool {
-	if !uuid.MatchString(brand) {
+func AllowedTemplate(a access.Account, action string) bool {
+	if action != "view" && action != "write" {
 		return false
 	}
-	switch action {
-	case "write":
-		return !a.SuperAdmin && access.Authorize(a, "notification_template", "write", access.ScopeBrand, brand)
-	case "view":
-		return access.Authorize(a, "notification_template", "view", access.ScopeBrand, brand) ||
-			access.Authorize(a, "notification_template", "view", access.ScopePlatform, "")
-	default:
-		return false
-	}
+	return access.Authorize(a, "notification_template", action, access.ScopePlatform, "")
 }
 
-const templateFields = `brand_id::text,template_key,version,content,updated_at,
- COALESCE((SELECT r.audit_log_id::text FROM notification_template_revisions r WHERE r.brand_id=t.brand_id AND r.template_key=t.template_key AND r.version=t.version),'')`
+const templateFields = `template_key,version,content,updated_at,
+ COALESCE((SELECT r.audit_log_id::text FROM platform_notification_template_revisions r WHERE r.template_key=t.template_key AND r.version=t.version),'')`
 
 func scanTemplate(row pgx.Row) (Template, error) {
 	var out Template
 	var raw []byte
 	var auditID string
-	if err := row.Scan(&out.BrandID, &out.Key, &out.Version, &raw, &out.UpdatedAt, &auditID); err != nil {
+	if err := row.Scan(&out.Key, &out.Version, &raw, &out.UpdatedAt, &auditID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Template{}, ErrNotFound
 		}
@@ -216,22 +205,22 @@ type templateQueryer interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
-func (s Service) Templates(ctx context.Context, brand string) ([]Template, error) {
-	if s.DB == nil || !uuid.MatchString(brand) {
+func (s Service) Templates(ctx context.Context) ([]Template, error) {
+	if s.DB == nil {
 		return nil, ErrInvalid
 	}
-	return templates(ctx, s.DB, brand)
+	return templates(ctx, s.DB)
 }
 
-func (s Service) TemplatesTx(ctx context.Context, tx pgx.Tx, brand string) ([]Template, error) {
-	if tx == nil || !uuid.MatchString(brand) {
+func (s Service) TemplatesTx(ctx context.Context, tx pgx.Tx) ([]Template, error) {
+	if tx == nil {
 		return nil, ErrInvalid
 	}
-	return templates(ctx, tx, brand)
+	return templates(ctx, tx)
 }
 
-func templates(ctx context.Context, q templateQueryer, brand string) ([]Template, error) {
-	rows, err := q.Query(ctx, `SELECT `+templateFields+` FROM notification_templates t WHERE brand_id=$1 ORDER BY template_key COLLATE "C"`, brand)
+func templates(ctx context.Context, q templateQueryer) ([]Template, error) {
+	rows, err := q.Query(ctx, `SELECT `+templateFields+` FROM platform_notification_templates t ORDER BY template_key COLLATE "C"`)
 	if err != nil {
 		return nil, err
 	}
@@ -247,56 +236,48 @@ func templates(ctx context.Context, q templateQueryer, brand string) ([]Template
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	if len(out) == 0 {
-		var exists bool
-		if err = q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM brands WHERE id=$1)`, brand).Scan(&exists); err != nil {
-			return nil, err
-		}
-		if !exists {
-			return nil, ErrNotFound
-		}
-	}
+
 	return out, nil
 }
 
-func (s Service) Template(ctx context.Context, brand, key string) (Template, error) {
-	if s.DB == nil || !uuid.MatchString(brand) || !ValidTemplateKey(key) {
+func (s Service) Template(ctx context.Context, key string) (Template, error) {
+	if s.DB == nil || !ValidTemplateKey(key) {
 		return Template{}, ErrInvalid
 	}
-	return scanTemplate(s.DB.QueryRow(ctx, `SELECT `+templateFields+` FROM notification_templates t WHERE brand_id=$1 AND template_key=$2`, brand, key))
+	return scanTemplate(s.DB.QueryRow(ctx, `SELECT `+templateFields+` FROM platform_notification_templates t WHERE template_key=$1`, key))
 }
 
-func (s Service) TemplateTx(ctx context.Context, tx pgx.Tx, brand, key string, lock bool) (Template, error) {
-	if tx == nil || !uuid.MatchString(brand) || !ValidTemplateKey(key) {
+func (s Service) TemplateTx(ctx context.Context, tx pgx.Tx, key string, lock bool) (Template, error) {
+	if tx == nil || !ValidTemplateKey(key) {
 		return Template{}, ErrInvalid
 	}
-	query := `SELECT ` + templateFields + ` FROM notification_templates t WHERE brand_id=$1 AND template_key=$2`
+	query := `SELECT ` + templateFields + ` FROM platform_notification_templates t WHERE template_key=$1`
 	if lock {
 		query += ` FOR SHARE OF t`
 	}
-	return scanTemplate(tx.QueryRow(ctx, query, brand, key))
+	return scanTemplate(tx.QueryRow(ctx, query, key))
 }
 
-func (s Service) TemplateHistory(ctx context.Context, brand, key string, limit, offset int) ([]Revision, error) {
-	if s.DB == nil || !uuid.MatchString(brand) || !ValidTemplateKey(key) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
+func (s Service) TemplateHistory(ctx context.Context, key string, limit, offset int) ([]Revision, error) {
+	if s.DB == nil || !ValidTemplateKey(key) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
 		return nil, ErrInvalid
 	}
-	return templateHistory(ctx, s.DB, brand, key, limit, offset)
+	return templateHistory(ctx, s.DB, key, limit, offset)
 }
 
-func (s Service) TemplateHistoryTx(ctx context.Context, tx pgx.Tx, brand, key string, limit, offset int) ([]Revision, error) {
-	if tx == nil || !uuid.MatchString(brand) || !ValidTemplateKey(key) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
+func (s Service) TemplateHistoryTx(ctx context.Context, tx pgx.Tx, key string, limit, offset int) ([]Revision, error) {
+	if tx == nil || !ValidTemplateKey(key) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
 		return nil, ErrInvalid
 	}
-	return templateHistory(ctx, tx, brand, key, limit, offset)
+	return templateHistory(ctx, tx, key, limit, offset)
 }
 
-func templateHistory(ctx context.Context, q templateQueryer, brand, key string, limit, offset int) ([]Revision, error) {
-	if _, err := scanTemplate(q.QueryRow(ctx, `SELECT `+templateFields+` FROM notification_templates t WHERE brand_id=$1 AND template_key=$2`, brand, key)); err != nil {
+func templateHistory(ctx context.Context, q templateQueryer, key string, limit, offset int) ([]Revision, error) {
+	if _, err := scanTemplate(q.QueryRow(ctx, `SELECT `+templateFields+` FROM platform_notification_templates t WHERE template_key=$1`, key)); err != nil {
 		return nil, err
 	}
-	rows, err := q.Query(ctx, `SELECT id::text,brand_id::text,template_key,version,content,changed_by::text,reason,audit_log_id::text,created_at
- FROM notification_template_revisions WHERE brand_id=$1 AND template_key=$2 ORDER BY version DESC LIMIT $3 OFFSET $4`, brand, key, limit, offset)
+	rows, err := q.Query(ctx, `SELECT id::text,template_key,version,content,changed_by::text,reason,audit_log_id::text,created_at
+ FROM platform_notification_template_revisions WHERE template_key=$1 ORDER BY version DESC LIMIT $2 OFFSET $3`, key, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +286,7 @@ func templateHistory(ctx context.Context, q templateQueryer, brand, key string, 
 	for rows.Next() {
 		var item Revision
 		var raw []byte
-		if err = rows.Scan(&item.ID, &item.BrandID, &item.Key, &item.Version, &raw, &item.ChangedBy, &item.Reason, &item.AuditLogID, &item.CreatedAt); err != nil {
+		if err = rows.Scan(&item.ID, &item.Key, &item.Version, &raw, &item.ChangedBy, &item.Reason, &item.AuditLogID, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		if err = json.Unmarshal(raw, &item.Content); err != nil {
@@ -318,7 +299,7 @@ func templateHistory(ctx context.Context, q templateQueryer, brand, key string, 
 }
 
 func validTemplateReason(reason string) bool {
-	if !utf8.ValidString(reason) || len(strings.TrimSpace(reason)) > 500 {
+	if !utf8.ValidString(reason) || utf8.RuneCountInString(strings.TrimSpace(reason)) > 500 {
 		return false
 	}
 	for _, r := range reason {
@@ -329,27 +310,17 @@ func validTemplateReason(reason string) bool {
 	return true
 }
 
-func (s Service) UpdateTemplate(ctx context.Context, tx pgx.Tx, brand, key string, a access.Account, in UpdateInput, meta points.Metadata) (Template, error) {
-	if tx == nil || !uuid.MatchString(brand) || !ValidTemplateKey(key) || !validTemplateVersion(in.Version) || !validTemplateReason(in.Reason) {
+func (s Service) UpdateTemplate(ctx context.Context, tx pgx.Tx, key string, a access.Account, in UpdateInput, meta points.Metadata) (Template, error) {
+	if tx == nil || !ValidTemplateKey(key) || !validTemplateVersion(in.Version) || !validTemplateReason(in.Reason) {
 		return Template{}, ErrInvalid
 	}
-	if !AllowedTemplate(a, brand, "write") {
+	if !AllowedTemplate(a, "write") {
 		return Template{}, ErrDenied
 	}
 	if !uuid.MatchString(a.ID) || meta.ActorType != "admin" || meta.ActorID != a.ID || meta.RequestID == "" {
 		return Template{}, ErrInvalid
 	}
-	var status string
-	if err := tx.QueryRow(ctx, `SELECT status FROM brands WHERE id=$1 FOR SHARE`, brand).Scan(&status); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return Template{}, ErrNotFound
-		}
-		return Template{}, err
-	}
-	if status == "disabled" {
-		return Template{}, ErrState
-	}
-	before, err := scanTemplate(tx.QueryRow(ctx, `SELECT `+templateFields+` FROM notification_templates t WHERE brand_id=$1 AND template_key=$2 FOR UPDATE OF t`, brand, key))
+	before, err := scanTemplate(tx.QueryRow(ctx, `SELECT `+templateFields+` FROM platform_notification_templates t WHERE template_key=$1 FOR UPDATE OF t`, key))
 	if err != nil {
 		return Template{}, err
 	}
@@ -366,9 +337,9 @@ func (s Service) UpdateTemplate(ctx context.Context, tx pgx.Tx, brand, key strin
 	var after Template
 	var afterRaw []byte
 	var updatedAt time.Time
-	if err = tx.QueryRow(ctx, `UPDATE notification_templates SET version=version+1,content=$3,updated_at=clock_timestamp()
- WHERE brand_id=$1 AND template_key=$2 RETURNING brand_id::text,template_key,version,content,updated_at`, brand, key, raw).
-		Scan(&after.BrandID, &after.Key, &after.Version, &afterRaw, &updatedAt); err != nil {
+	if err = tx.QueryRow(ctx, `UPDATE platform_notification_templates SET version=version+1,content=$2,updated_at=clock_timestamp()
+ WHERE template_key=$1 RETURNING template_key,version,content,updated_at`, key, raw).
+		Scan(&after.Key, &after.Version, &afterRaw, &updatedAt); err != nil {
 		return Template{}, err
 	}
 	if err = json.Unmarshal(afterRaw, &after.Content); err != nil {
@@ -376,18 +347,18 @@ func (s Service) UpdateTemplate(ctx context.Context, tx pgx.Tx, brand, key strin
 	}
 	after.UpdatedAt = updatedAt.UTC()
 	reason := strings.TrimSpace(in.Reason)
-	beforeJSON := map[string]any{"brand_id": before.BrandID, "key": before.Key, "version": before.Version, "content": before.Content}
-	afterJSON := map[string]any{"brand_id": after.BrandID, "key": after.Key, "version": after.Version, "content": after.Content}
+	beforeJSON := map[string]any{"key": before.Key, "version": before.Version, "content": before.Content}
+	afterJSON := map[string]any{"key": after.Key, "version": after.Version, "content": after.Content}
 	auditID, err := audit.Append(ctx, tx, audit.Record{
-		BrandID: brand, ActorType: "admin", ActorID: a.ID, Action: "notification.template.update",
-		ResourceType: "notification_template", ResourceID: brand, Reason: reason,
+		ActorType: "admin", ActorID: a.ID, Action: "notification.template.update",
+		ResourceType: "notification_template", Reason: reason,
 		RequestID: meta.RequestID, IP: meta.IP, Before: beforeJSON, After: afterJSON,
 	})
 	if err != nil {
 		return Template{}, err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO notification_template_revisions(id,brand_id,template_key,version,content,changed_by,reason,audit_log_id)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, ids.New(), brand, key, after.Version, raw, a.ID, reason, auditID); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO platform_notification_template_revisions(id,template_key,version,content,changed_by,reason,audit_log_id)
+ VALUES($1,$2,$3,$4,$5,$6,$7)`, ids.New(), key, after.Version, raw, a.ID, reason, auditID); err != nil {
 		return Template{}, err
 	}
 	after.AuditLogID = &auditID

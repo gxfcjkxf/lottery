@@ -225,7 +225,6 @@ type Order struct {
 	RevokeLedgerEntryID *string       `json:"revoke_ledger_entry_id"`
 	CreationAuditLogID  string        `json:"creation_audit_log_id"`
 	LastAuditLogID      string        `json:"last_audit_log_id"`
-	LastErrorCode       *string       `json:"last_error_code"`
 	CreatedBy           string        `json:"created_by"`
 	Reason              string        `json:"reason"`
 	PointPolicyVersion  string        `json:"point_policy_version"`
@@ -275,7 +274,7 @@ func Allowed(a access.Account, brand, action string) bool {
 	if action == "view" {
 		return view
 	}
-	if action != "grant" && action != "revoke" && action != "retry" || a.Type != access.AccountAdmin || a.SuperAdmin || !view {
+	if action != "grant" && action != "revoke" || a.Type != access.AccountAdmin || a.SuperAdmin || !view {
 		return false
 	}
 	return access.Authorize(a, "reward", action, access.ScopeBrand, brand)
@@ -286,7 +285,7 @@ func canonicalUUID(s string) bool { return uuidPattern.MatchString(s) }
 func validID(s string) bool { return canonicalUUID(s) }
 
 func validReason(s string) bool {
-	if !utf8.ValidString(s) || strings.TrimSpace(s) != s || len(s) > 500 {
+	if !utf8.ValidString(s) || strings.TrimSpace(s) != s || utf8.RuneCountInString(s) > 500 {
 		return false
 	}
 	for _, r := range s {

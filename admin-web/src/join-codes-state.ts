@@ -1,9 +1,9 @@
 import { copyAssociationNames } from '@lottery/shared';
-import { validJoinCodeDate, validJoinCodeDateRange, type CreateJoinCodeBody, type JoinCodeKind, type JoinCodeStatus, type UpdateJoinCodeBody } from "./join-codes-api";
+import { validJoinCodeDate, validJoinCodeDateRange, type CreateJoinCodeBody, type JoinCodeKind, type UpdateJoinCodeBody } from "./join-codes-api";
 
-export type JoinCodeWriteOperation = "create" | "update";
-export type JoinCodeWriteBody = CreateJoinCodeBody | UpdateJoinCodeBody;
-export interface JoinCodeIdentity {
+type JoinCodeWriteOperation = "create" | "update";
+type JoinCodeWriteBody = CreateJoinCodeBody | UpdateJoinCodeBody;
+interface JoinCodeIdentity {
   kind: JoinCodeKind;
   code: string | null;
   owner_member_id: string;
@@ -33,7 +33,7 @@ function resolveScope(scope: string | JoinCodeWriteScope): (JoinCodeWriteScope &
   return null;
 }
 function validRange(start: unknown, end: unknown): boolean { return (start === null || validJoinCodeDate(start)) && (end === null || validJoinCodeDate(end)) && validJoinCodeDateRange(start as string | null, end as string | null); }
-function validReason(value: unknown): boolean { return value === undefined || typeof value === "string" && new TextEncoder().encode(value).length <= 500; }
+function validReason(value: unknown): boolean { return value === undefined || typeof value === "string" && Array.from(value).length <= 500; }
 function validBody(operation: JoinCodeWriteOperation, value: unknown): value is JoinCodeWriteBody {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const b = value as Record<string, unknown>;
@@ -96,4 +96,4 @@ export type JoinCodeWriteFailure = "uncertain" | "definitive";
 export function classifyJoinCodeWriteFailure(status: number | undefined): JoinCodeWriteFailure {
   return status === undefined || status === 0 || status >= 500 ? "uncertain" : "definitive";
 }
-export type { JoinCodeStatus };
+;

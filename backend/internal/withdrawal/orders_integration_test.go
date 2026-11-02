@@ -128,7 +128,7 @@ func (f orderIntegrationFixture) updatePolicy(t *testing.T, enabled bool, max *p
 		t.Fatal(err)
 	}
 	defer tx.Rollback(context.Background())
-	_, err = s.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{Version: policy.Version, Config: config, Reason: "integration fixture policy"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
+	_, err = s.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{PointsStep: 1, Version: policy.Version, Config: config, Reason: "integration fixture policy"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestCommissionWithdrawalRequiresExplicitPolicyAndUsesSavedRuleSnapshot(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy, err = policyService.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{Version: policy.Version, Config: configured, Reason: "explicitly authorize commission withdrawals"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
+	policy, err = policyService.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{PointsStep: 1, Version: policy.Version, Config: configured, Reason: "explicitly authorize commission withdrawals"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
 	if err != nil {
 		_ = tx.Rollback(context.Background())
 		t.Fatal(err)
@@ -331,7 +331,7 @@ func TestCommissionWithdrawalRequiresExplicitPolicyAndUsesSavedRuleSnapshot(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = policyService.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{Version: current.Version, Config: currentConfig, Reason: "remove commission for future orders"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}); err != nil {
+	if _, err = policyService.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{PointsStep: 1, Version: current.Version, Config: currentConfig, Reason: "remove commission for future orders"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}); err != nil {
 		_ = tx.Rollback(context.Background())
 		t.Fatal(err)
 	}
@@ -419,7 +419,7 @@ func TestOrderAutomaticReviewReturnsProcessingReceiptWithoutPaying(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{Version: policy.Version, Config: config, Reason: "test automatic review"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
+	_, err = s.UpdateBrand(context.Background(), tx, orderTestBrand, f.admin, BrandInput{PointsStep: 1, Version: policy.Version, Config: config, Reason: "test automatic review"}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
 	if err != nil {
 		_ = tx.Rollback(context.Background())
 		t.Fatal(err)
@@ -867,4 +867,61 @@ func createOrderResult(f orderIntegrationFixture, in OrderInput) (Order, error) 
 
 func oneRechargeAllocation(amount points.Amount) []points.Allocation {
 	return []points.Allocation{{Source: "recharge", State: "available", Points: amount}}
+}
+
+func TestWithdrawalStepAndAvailableSources(t *testing.T) {
+	f := newOrderIntegrationFixture(t, true, true)
+	ctx := context.Background()
+	f.fund(t, []points.Allocation{{Source: "recharge", State: "available", Points: 500}, {Source: "commission", State: "available", Points: 200}})
+	policies := Service{DB: f.db}
+	policy, err := policies.BrandPolicy(ctx, orderTestBrand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy.Config.MinPoints = 100
+	transact(t, policies, func(tx pgx.Tx) error {
+		_, e := policies.UpdateBrand(ctx, tx, orderTestBrand, f.admin, BrandInput{Version: policy.Version, PointsStep: 100, Config: policy.Config}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
+		return e
+	})
+	tx, err := f.db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	available, err := f.service.AvailabilityTx(ctx, tx, orderTestBrand, f.member)
+	tx.Rollback(ctx)
+	if err != nil || available.PointsStep != 100 || available.AvailablePoints != 500 || len(available.SourceBalances) != 1 {
+		t.Fatalf("availability=%+v error=%v", available, err)
+	}
+	for _, amount := range []points.Amount{50, 150, 600} {
+		_, err = createOrderResult(f, OrderInput{Points: amount, SourceAllocation: oneRechargeAllocation(amount), ClientKey: fmt.Sprintf("step-reject-%d", amount)})
+		if amount == 600 {
+			if !errors.Is(err, points.ErrInsufficient) {
+				t.Fatal(err)
+			}
+		} else if !errors.Is(err, ErrIneligible) {
+			t.Fatal(err)
+		}
+	}
+	wallet, err := f.points.Read(ctx, orderTestBrand, f.member)
+	if err != nil || wallet.AvailablePoints != 700 || wallet.WithdrawalPoints != 0 {
+		t.Fatalf("invalid request reserved points: %+v %v", wallet, err)
+	}
+	accepted := createOrder(t, f, 200, "step-accepted", oneRechargeAllocation(200))
+	currentPolicy, err := policies.BrandPolicy(ctx, orderTestBrand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transact(t, policies, func(tx pgx.Tx) error {
+		_, e := policies.UpdateBrand(ctx, tx, orderTestBrand, f.admin, BrandInput{Version: currentPolicy.Version, PointsStep: 1000, Config: currentPolicy.Config}, points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()})
+		return e
+	})
+
+	replay, err := createOrderResult(f, OrderInput{Points: 200, SourceAllocation: oneRechargeAllocation(200), ClientKey: "step-accepted"})
+	if err != nil || replay.ID != accepted.ID {
+		t.Fatalf("receipt replay=%+v %v", replay, err)
+	}
+	wallet, err = f.points.Read(ctx, orderTestBrand, f.member)
+	if err != nil || wallet.AvailablePoints != 500 || wallet.WithdrawalPoints != 200 {
+		t.Fatalf("withdrawal reserved more than once: %+v %v", wallet, err)
+	}
 }

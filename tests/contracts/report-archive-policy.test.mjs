@@ -1,64 +1,21 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import Ajv2020 from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
-import { composeDocument } from "../../scripts/openapi-lib.mjs";
-import { operations, schemas } from "../../scripts/openapi-report-archive-policy.mjs";
-import { schemas as taskSchemas } from "../../scripts/openapi-report-archive-tasks.mjs";
-
-const route = "PUT /api/v1/admin/report-archive-policy";
-const doc = composeDocument([{ schemas: { ...taskSchemas, ...schemas }, operations }], [route].map(value => {
-  const [method, path] = value.split(" "); return { method, path };
-}));
-const ajv = new Ajv2020({ strict: false, allErrors: true });
-addFormats(ajv);
-ajv.addSchema({ $id: "urn:lottery:report-archive-policy", components: { schemas: { ...taskSchemas, ...schemas } } });
-const validate = name => ajv.compile({ $ref: `urn:lottery:report-archive-policy#/components/schemas/${name}` });
-
-test("policy write fragment documents only the scoped idempotent PUT", () => {
-  assert.deepEqual(operations.map(({ method, path }) => `${method} ${path}`), [route]);
-  assert.deepEqual(Object.keys(schemas), ["ReportArchivePolicyUpdateInput"]);
-  const operation = doc.paths["/api/v1/admin/report-archive-policy"].put;
-  assert.equal(operation.operationId, "updateReportArchiveAutomaticPolicy");
-  assert.deepEqual(operation.security, [{ adminBearer: [] }, { adminCookie: [] }]);
-  assert.deepEqual(operation["x-permissions"], ["report_archive.view.brand", "report_archive_policy.write.brand"]);
-  assert.equal(operation["x-idempotent-operation"], true);
-  assert.equal(operation.responses["200"].content["application/json"].schema.properties.data.$ref, "#/components/schemas/ReportArchivePolicy");
-  assert.equal(operation.parameters.find(parameter => parameter.name === "X-Brand-ID").required, true);
-  assert.equal(operation.parameters.find(parameter => parameter.name === "Idempotency-Key").required, true);
-  assert.equal(operation.parameters.find(parameter => parameter.name === "X-Report-Archive-Actor-ID").required, true);
-  assert.match(operation.description, /current brand membership/i);
-  assert.match(operation.description, /non-super-admin/i);
-  assert.match(operation.description, /version\+1/i);
-  assert.match(operation.description, /same body and idempotency key/i);
-  assert.match(operation.description, /does not automatically replay/i);
-  assert.match(operation.description, /database clock/i);
-  assert.match(operation.description, /current brand-local day/i);
-  assert.match(operation.description, /current brand-local month/i);
-  assert.match(operation.description, /only after that period ends/i);
-  assert.match(operation.description, /first activation does not backfill earlier periods/i);
-  assert.match(operation.description, /retains any existing starts/i);
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
+import {schemas,operations} from '../../scripts/openapi-report-archive-policy.mjs';
+const schedule={version:1,daily_enabled:true,monthly_enabled:true,daily_execution_time:'07:30',daily_period_offset:2,monthly_execution_day:5,monthly_execution_time:'06:00',monthly_period_offset:2};
+const ajv=new Ajv2020({strict:false});addFormats(ajv);ajv.addSchema({$id:'urn:lottery:global-archives',components:{schemas:{...schemas,DateTime:{type:'string',format:'date-time'},UUID:{type:'string',format:'uuid'}}}});
+const validate=name=>ajv.compile({$ref:`urn:lottery:global-archives#/components/schemas/${name}`});
+test('archive configuration is a global platform read/write endpoint without brand scope',()=>{
+ assert.deepEqual(operations.map(o=>`${o.method} ${o.path}`),['GET /api/v1/platform/report-archive-policy','PUT /api/v1/platform/report-archive-policy']);
+ assert.deepEqual(operations[0].permissions,['platform_settings.view.platform']);assert.deepEqual(operations[1].permissions,['platform_settings.write.platform']);assert.equal(operations[1].idempotency,true);
+ assert.ok(operations.every(o=>!o.brandHeader));assert.match(operations[1].description,/every brand atomically/);
 });
-
-test("closed input schema rejects extra fields, invalid versions, flags, and reasons", () => {
-  const schema = schemas.ReportArchivePolicyUpdateInput;
-  const check = validate("ReportArchivePolicyUpdateInput");
-  const valid = { version: 4, daily_enabled: true, monthly_enabled: false, reason: "Enable daily archives" };
-  assert.ok(check(valid), JSON.stringify(check.errors));
-  assert.equal(schema.additionalProperties, false);
-  assert.deepEqual(schema.required, ["version", "daily_enabled", "monthly_enabled"]);
-  assert.ok(check({ version: 4, daily_enabled: true, monthly_enabled: false }));
-  assert.ok(check({ ...valid, reason: "" }));
-  assert.ok(!check({ ...valid, reason: null }));
-  assert.ok(!check({ ...valid, reason: 1 }));
-  assert.equal(schema.properties.version.maximum, 9007199254740990);
-  assert.equal(schema.properties.daily_enabled.type, "boolean");
-  assert.equal(schema.properties.monthly_enabled.type, "boolean");
-  for (const value of [
-    { ...valid, extra: true }, { version: 0, daily_enabled: true, monthly_enabled: false, reason: "Reason" },
-    { ...valid, version: 9007199254740991 }, { ...valid, daily_enabled: 1 }, { ...valid, monthly_enabled: "false" },
-    { ...valid, reason: " padded " }, { ...valid, reason: "control\u0085" }, { ...valid, reason: "x".repeat(501) },
-  ]) assert.ok(!check(value), JSON.stringify({ value, errors: check.errors }));
-  assert.match(schema.properties.reason.description, /500 UTF-8 bytes/);
-  assert.deepEqual(Object.keys(schema.properties), ["version", "daily_enabled", "monthly_enabled", "reason"]);
+test('global archive input remains closed and enforces schedule bounds',()=>{
+ const check=validate('ReportArchivePolicyUpdateInput');assert.ok(check(schedule),JSON.stringify(check.errors));assert.ok(check({...schedule,reason:''}));
+ for(const value of [{...schedule,brand_id:'11111111-1111-4111-8111-111111111111'},{...schedule,monthly_execution_day:32},{...schedule,monthly_period_offset:0},{...schedule,daily_execution_time:'24:00'},{...schedule,reason:' padded '},{...schedule,version:0}])assert.equal(check(value),false);
+});
+test('global response contains one schedule and next executions without a brand identity',()=>{
+ const check=validate('PlatformReportArchivePolicy');const result={...schedule,timezone:'Asia/Singapore',next_runs:{daily:null,monthly:{execute_at:'2026-11-04T22:00:00Z',period_key:'2026-09'}},updated_at:'2026-10-27T00:00:00Z'};
+ assert.ok(check(result),JSON.stringify(check.errors));assert.equal(check({...result,brand_id:'11111111-1111-4111-8111-111111111111'}),false);
 });

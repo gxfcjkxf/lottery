@@ -37,9 +37,9 @@
   line-height: 1;
   pointer-events: none;
 }
-[data-refresh-icon] > svg { display: block; width: 20px; height: 20px; }
+[data-refresh-icon] > svg { display: block; width: var(--refresh-icon-size, 20px); height: var(--refresh-icon-size, 20px); }
 [data-refresh-button]:hover:not(:disabled) { background: var(--primary-light) !important; color: var(--primary) !important; }
 [data-refresh-button]:focus-visible { outline: 2px solid var(--primary) !important; outline-offset: 3px !important; }
 [data-refresh-button]:disabled { opacity: .5 !important; cursor: not-allowed; }
-/* Only the containing action group is affected, not the surrounding page grid. */
-:has(> [data-refresh-button]) { gap: 12px !important; }
+/* Pagination keeps its shared action spacing when it includes refresh. */
+:not(.table-pagination-actions):has(> [data-refresh-button]) { gap: 12px !important; }

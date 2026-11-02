@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5185';
@@ -50,7 +51,7 @@ test(`platform manages both account types with explicit roles and original-reque
     await panel.getByRole('button', { name: 'Edit status and roles', exact: true }).click();
     dialog = page.getByRole('dialog');
     await expect(dialog.locator('.access-options input[type=checkbox]').first()).toBeVisible();
-    await dialog.getByRole('combobox', { name: 'Status', exact: true }).selectOption(status);
+    await selectControl(dialog.getByRole('combobox', { name: 'Status', exact: true }), status);
     await dialog.getByLabel('Reason', { exact: true }).fill(`Set owned account ${status}`);
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(dialog).toHaveCount(0);
@@ -74,7 +75,7 @@ test(`platform manages both account types with explicit roles and original-reque
   } finally { await platformLogin.dispose(); }
 
   await scopes.getByRole('button', { name: 'Brand staff', exact: true }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   await panel.getByRole('tab', { name: 'Roles', exact: true }).click();
   await panel.getByRole('button', { name: 'New role', exact: true }).click();
   dialog = page.getByRole('dialog');

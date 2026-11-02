@@ -12,8 +12,6 @@ var ErrGameInUse = errors.New("game has unpublished periods or unsettled orders"
 
 // Shared by catalogue eligibility and the locked write check.
 const gameDeletionBlockers = `EXISTS(SELECT 1 FROM platform_game_periods p WHERE p.game_id=g.id AND p.result IS NULL)
- OR EXISTS(SELECT 1 FROM platform_canada_orders o WHERE o.game_id=g.id AND o.status='placed')
- OR EXISTS(SELECT 1 FROM platform_mark_six_orders o WHERE o.game_id=g.id AND o.status='placed')
  OR EXISTS(SELECT 1 FROM configured_orders o WHERE o.game_id=g.id AND o.status='placed')`
 
 type LifecycleInput struct {
@@ -53,12 +51,13 @@ func (s Service) SetLifecycle(ctx context.Context, tx pgx.Tx, a access.Account, 
 			return g, ErrGameInUse
 		}
 	}
+	before := g
 	if _, e = tx.Exec(ctx, `UPDATE platform_games SET status=$2,version=version+1 WHERE id=$1`, id, in.Status); e != nil {
 		return g, e
 	}
 	g.Status = in.Status
 	g.Version++
-	return g, record(ctx, tx, a, "", "platform_game.lifecycle", id, in.Reason, meta, g)
+	return g, record(ctx, tx, a, "", "platform_game.lifecycle", id, in.Reason, meta, before, g)
 }
 func (s Service) SetAvailability(ctx context.Context, tx pgx.Tx, a access.Account, brand, id string, in AvailabilityInput, meta points.Metadata) (Game, error) {
 	if !Allowed(a, brand, "sell") {
@@ -81,11 +80,13 @@ func (s Service) SetAvailability(ctx context.Context, tx pgx.Tx, a access.Accoun
 	if g.BrandVersion != in.ExpectedVersion {
 		return g, ErrVersionConflict
 	}
+	g.Connected = true
+	before := g
 	if _, e = tx.Exec(ctx, `UPDATE brand_platform_games SET enabled=$3,version=version+1 WHERE brand_id=$1 AND game_id=$2`, brand, id, *in.Enabled); e != nil {
 		return g, e
 	}
 	g.Connected = true
 	g.BrandEnabled = *in.Enabled
 	g.BrandVersion++
-	return g, record(ctx, tx, a, brand, "brand.platform_game.availability", id, in.Reason, meta, g)
+	return g, record(ctx, tx, a, brand, "brand.platform_game.availability", id, in.Reason, meta, before, g)
 }

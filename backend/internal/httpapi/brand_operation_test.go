@@ -3,9 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
-	"github.com/gxfcjkxf/lottery/backend/internal/betting"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
-	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"testing"
 )
 
@@ -72,16 +70,7 @@ func TestBrandOperationHTTPPausePreservesLoginAndAuditFailureRollsBack(t *testin
 	if contextData.Brand.Status != "paused" {
 		t.Fatal(contextData)
 	}
-	preview := f.call("POST", "/api/v1/bet-previews", "", auth.AccessToken, managedBrand, betting.Input{PeriodID: managedBrand, PlayID: managedBrand, RuleVersionID: managedBrand, Selection: rules.Selection{Special: []int{7}}, Multiplier: 1})
-	mustStatus(t, preview, 403)
-	var denied struct {
-		Error struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(preview.Body.Bytes(), &denied); err != nil || denied.Error.Code != "BRAND_PAUSED" {
-		t.Fatal(denied, err)
-	}
+
 }
 
 func TestBrandOperationSuperAdministratorNeedsExplicitPlatformPermission(t *testing.T) {
@@ -225,7 +214,7 @@ func TestBrandOperationHTTPHistoryFreshReplayAndIsolation(t *testing.T) {
 	}
 	mustStatus(t, f.call("PATCH", path, "brand-pause-first-001", f.token, managedBrand, body), 403)
 	var ledger, orders int
-	if err := f.pool.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM point_ledger_entries),(SELECT count(*) FROM bet_orders)`).Scan(&ledger, &orders); err != nil || ledger != 0 || orders != 0 {
+	if err := f.pool.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM point_ledger_entries),(SELECT count(*) FROM configured_orders)`).Scan(&ledger, &orders); err != nil || ledger != 0 || orders != 0 {
 		t.Fatal(ledger, orders, err)
 	}
 }

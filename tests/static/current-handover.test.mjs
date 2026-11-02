@@ -22,7 +22,7 @@ test('current module handovers do not instruct installation of removed increment
   for (const name of readdirSync(new URL('../../docs/', import.meta.url)).filter(name => name.endsWith('.md') && !historical.has(name))) {
     assert.doesNotMatch(read(`docs/${name}`), /migrate\s*(?:至|到)\s*00\d\d|升级至\s*00\d\d|正常迁移\s*00\d\d/, name)
   }
-  for (const name of ['19-commission-posting-reports', '21-reward-reports', '23-commission-correction-execution', '25-commission-correction-observability', '26-report-archive-core', '27-automatic-report-archive-core', '28-report-archive-task-management', '29-report-archive-activation', '37-brand-business-inventory', '38-commission-cycle-analysis']) {
+  for (const name of ['19-commission-posting-reports', '21-reward-reports', '23-commission-correction-execution', '25-commission-correction-observability', '26-report-archive-core', '27-automatic-report-archive-core', '28-report-archive-task-management', '29-report-archive-activation', '38-commission-cycle-analysis']) {
     assert.match(read(`docs/${name}.md`), /0001_baseline\.up\.sql/)
     assert.match(read(`docs/${name}.md`), /README\.md#空库安装/)
   }
@@ -39,7 +39,6 @@ test('commission handovers use current formats rather than removed recovery flow
   const workbench = read('docs/36-commission-workbench.md')
   assert.match(workbench, /旧not_implemented\/null快照不受支持/)
   assert.doesNotMatch(workbench, /保留可读兼容|历史blocked计划可能保留原未决政策错误码/)
-  assert.match(read('admin-web/src/workbench-api.ts'), /const STATUSES = \["ready", "forbidden"\]/)
 
   const analysis = read('docs/38-commission-cycle-analysis.md')
   const csvSource = read('backend/internal/reporting/commission_analysis_csv.go')
@@ -75,7 +74,9 @@ test('current UI handover describes implemented modules and confirmed withdrawal
   const spec = read('docs/05-ui-spec.md')
   assert.match(spec, /管理平台管理员与品牌员工账号及品牌角色/)
   assert.match(spec, /佣金与奖励报表、不可变日\/月归档已接入/)
-  assert.match(spec, /自动归档配置、任务查询和失败人工重试已接入/)
+  assert.match(spec, /归档统一位于总后台，品牌后台不提供归档入口/)
+  assert.match(spec, /任务查询和失败人工重试保留在品牌授权 API/)
+  assert.match(spec, /未知回执原键重试/)
   assert.match(spec, /接入二十二类事件/)
   assert.match(spec, /N 必须大于0，null 表示继承，0不是有效配置/)
   assert.match(spec, /充值、中奖、佣金、赠送来源/)
@@ -86,7 +87,7 @@ test('current UI handover describes implemented modules and confirmed withdrawal
   assert.doesNotMatch(read('docs/01-product-spec.md'), /彩种配置可覆盖并须审核/)
   assert.match(read('docs/09-implementation-backlog.md'), /Redis、外部消息队列、对象存储为后续扩展/)
   assert.doesNotMatch(spec, /佣金\/奖励及不可变日月结仍未接入|自动任务仍未接入|接入八类事件|金额分配明确使用三种来源|旧not_implemented\/null快照/)
-  assert.match(read('admin-web/src/ReportsManagement.vue'), /<CommissionReport[\s\S]*<RewardReports/)
-  assert.match(read('admin-web/src/App.vue'), /<ReportArchivesManagement[\s\S]*<ReportArchiveTasksManagement/)
+  assert.doesNotMatch(read('admin-web/src/App.vue'), /<ReportArchivesManagement|<ReportArchiveTasksManagement/)
+  assert.match(read('platform-web/src/App.vue'), /<ArchivesPanel[\s\S]*<ArchiveTasksPanel/)
   assert.match(read('user-web/src/WithdrawalPanel.vue'), /const sources: WithdrawalSource\[\] = \["recharge", "winning", "gift", "commission"\]/)
 })

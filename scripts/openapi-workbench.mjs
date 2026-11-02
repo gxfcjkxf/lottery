@@ -25,16 +25,11 @@ const section = (name, permission, data) => ({
 });
 
 const brand = obj({ name: str, code: str, state: { type: "string", enum: ["active", "paused", "disabled"] } });
-const periods = obj({ pending: count, betting: count, closed: count, waiting_draw: count, drawn: count, settling: count, refund_pending: count, refund_failed: count });
 const orders = obj({ placed: count, abnormal: count });
 const todayBets = obj({ order_count: count, stake_points: amount, cancelled_count: count, abnormal_count: count });
-const settlement = obj({ processing: count, awaiting_approval: count, paying: count, failed: count });
 const recharges = obj({ pending_count: count, pending_points: amount });
 const ledger = obj({ entry_count: count, net_points: { type: "string", pattern: "^(0|-?[1-9][0-9]*)$", description: "Canonical signed decimal integer string with no int64 aggregate bound." }, recharge_points: amount, prize_credit_points: amount, prize_reversal_points: amount, refund_points: amount });
 const balances = obj({ account_count: count, available_points: amount, frozen_points: amount, withdrawal_points: amount, total_points: amount });
-const reconciliationJob = obj({ id: uuid, state: { type: "string", enum: ["pending", "running", "completed", "failed"] }, created_at: dateTime, completed_at: nullable(dateTime), target_count: count, checked_count: count, repairable_count: count, corrupt_count: count, failed_count: count });
-const reconciliation = obj({ latest_job: nullable(ref("AdminWorkbenchReconciliationJob")) });
-const sources = obj({ adapter_state: { type: "string", const: "stub" }, configured_games: count, enabled_api_sources: count, enabled_dom_sources: count, attempts_today: count, failed_today: count, no_data_today: count, last_attempt_at: nullable(dateTime) });
 const withdrawals = obj({ reviewing_count: count, reviewing_points: amount, processing_count: count, processing_points: amount });
 const commissions = obj({
   discovery_pending_count: count,
@@ -59,39 +54,30 @@ const commissions = obj({
 
 export const schemas = {
   AdminWorkbenchBrand: brand,
-  AdminWorkbenchPeriods: periods,
   AdminWorkbenchOrders: orders,
   AdminWorkbenchTodayBets: todayBets,
-  AdminWorkbenchSettlement: settlement,
   AdminWorkbenchRecharges: recharges,
   AdminWorkbenchLedger: ledger,
   AdminWorkbenchBalances: balances,
-  AdminWorkbenchReconciliationJob: reconciliationJob,
-  AdminWorkbenchReconciliation: reconciliation,
-  AdminWorkbenchSources: sources,
   AdminWorkbenchWithdrawals: withdrawals,
   AdminWorkbenchCommissions: commissions,
-  AdminWorkbenchRewards: obj({ granted_count: count, pending_count: count, revoked_count: count }),
+  AdminWorkbenchRewards: obj({ granted_count: count, revoked_count: count }),
   AdminWorkbenchSnapshot: obj({
     brand_id: uuid, snapshot_at: dateTime, timezone: str, day_from: dateTime,
-    brand: ref("AdminWorkbenchBrandSection"), periods: ref("AdminWorkbenchPeriodsSection"),
+    brand: ref("AdminWorkbenchBrandSection"),
     orders: ref("AdminWorkbenchOrdersSection"), today_bets: ref("AdminWorkbenchTodayBetsSection"),
-    settlement: ref("AdminWorkbenchSettlementSection"), recharges: ref("AdminWorkbenchRechargesSection"),
+    recharges: ref("AdminWorkbenchRechargesSection"),
     ledger: ref("AdminWorkbenchLedgerSection"), balances: ref("AdminWorkbenchBalancesSection"),
-    reconciliation: ref("AdminWorkbenchReconciliationSection"), sources: ref("AdminWorkbenchSourcesSection"),
+
     withdrawals: ref("AdminWorkbenchWithdrawalsSection"), commissions: ref("AdminWorkbenchCommissionsSection"),
     rewards: ref("AdminWorkbenchRewardsSection"),
   }),
   AdminWorkbenchBrandSection: section("brand", "brand", ref("AdminWorkbenchBrand")),
-  AdminWorkbenchPeriodsSection: section("periods", "period", ref("AdminWorkbenchPeriods")),
   AdminWorkbenchOrdersSection: section("orders", "bet", ref("AdminWorkbenchOrders")),
   AdminWorkbenchTodayBetsSection: section("today_bets", "report_betting", ref("AdminWorkbenchTodayBets")),
-  AdminWorkbenchSettlementSection: section("settlement", "settlement", ref("AdminWorkbenchSettlement")),
   AdminWorkbenchRechargesSection: section("recharges", "recharge", ref("AdminWorkbenchRecharges")),
   AdminWorkbenchLedgerSection: section("ledger", "report_ledger", ref("AdminWorkbenchLedger")),
   AdminWorkbenchBalancesSection: section("balances", "report_ledger", ref("AdminWorkbenchBalances")),
-  AdminWorkbenchReconciliationSection: section("reconciliation", "wallet", ref("AdminWorkbenchReconciliation")),
-  AdminWorkbenchSourcesSection: section("sources", "draw_source", ref("AdminWorkbenchSources")),
   AdminWorkbenchWithdrawalsSection: section("withdrawals", "withdrawal", ref("AdminWorkbenchWithdrawals")),
   AdminWorkbenchCommissionsSection: section("commissions", "commission", ref("AdminWorkbenchCommissions")),
   AdminWorkbenchRewardsSection: section("rewards", "reward", ref("AdminWorkbenchRewards")),
@@ -102,5 +88,5 @@ export const operations = [{
   method: "GET", path: "/api/v1/admin/workbench", operationId: "adminGetWorkbench",
   summary: "Read the selected brand's operations workbench", tag: "workbench", auth: "admin",
   data: ref("AdminWorkbenchSnapshot"), brandHeader: true, permissions: [...permissions, "reward.view.brand", "reward.view.platform", "commission.view.brand", "commission.view.platform"],
-  description: "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Withdrawals reports only current reviewing and processing order counts and order points; it does not infer eligibility, actual payment, or profit. Rewards counts all current reward orders in granted, revocation_pending and revoked states; not today's postings, attempt counts, wallet balance or reserved funds. Commissions reports all-current discovery, cycle, payment, plan and execution task counts, not today's earnings, wallet values or payout authorization. cycle_ready_count includes only ready runs matching the current evidence epoch; cycle_stale_count includes ready runs without matching proof and is disjoint. discovery_pending_count includes future waiting work. A blocked payment reflects its saved state, which can persist after correction and does not establish that funds are owed. Current commission responses are ready with aggregate counts or forbidden with null data. Fresh authorization is rechecked after audit waits before releasing data. Aggregate counts and amounts are exact canonical decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
+  description: "Requires an authenticated administrator and X-Brand-ID. Each section independently requires its corresponding CanView resource grant for the exact selected brand or an explicit platform grant; platform identity or super-admin status alone grants no access. The brand must be valid and is never inferred from administrator identity. All sections are read from one primary-database snapshot; no query parameters or read-routing headers are supported. Withdrawals reports only current reviewing and processing order counts and order points; it does not infer eligibility, actual payment, or profit. Rewards counts all current reward orders in granted and revoked states; not today's postings, attempt counts, wallet balance or reserved funds. Commissions reports all-current discovery, cycle, payment, plan and execution task counts, not today's earnings, wallet values or payout authorization. cycle_ready_count includes only ready runs matching the current evidence epoch; cycle_stale_count includes ready runs without matching proof and is disjoint. discovery_pending_count includes future waiting work. A blocked payment reflects its saved state, which can persist after correction and does not establish that funds are owed. Current commission responses are ready with aggregate counts or forbidden with null data. Fresh authorization is rechecked after audit waits before releasing data. Aggregate counts and amounts are exact canonical decimal strings without an int64 bound; ledger.net_points is a canonical signed decimal string.",
 }];

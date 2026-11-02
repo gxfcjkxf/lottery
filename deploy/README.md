@@ -7,3 +7,7 @@ Install the reviewed binary under `/opt/lottery/releases/<release-id>/platform`,
 The API sample binds to loopback at `127.0.0.1:8080` for an ingress proxy on the same host. Choose the actual API bind address and `TRUSTED_PROXY_CIDRS` only after the customer has approved the ingress topology. Metrics are disabled by empty service-specific addresses. If enabled, set `API_METRICS_ADDR` in the API unit or `WORKER_METRICS_ADDR` in the worker unit to a literal loopback address and port, and set `METRICS_TOKEN_FILE` in the protected common environment file. A private token file is mandatory for either listener. Non-loopback binds are rejected because these listeners do not provide TLS; remote collection requires an explicitly secured proxy or local forwarding, not plaintext private-LAN exposure.
 
 Before installation, review [`docs/34-release-and-operations.md`](../docs/34-release-and-operations.md) for release ordering, schema checks, secret handling, health behavior, backup, restore, and financial-task recovery limits. The examples do not activate financial gates or perform database commands.
+
+## 单机测试机脚本
+
+本次 `ssh lottery` 的检查结果、基础设施初始化、首次部署与日常更新见 [test-host/README.md](test-host/README.md)。

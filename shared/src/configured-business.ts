@@ -7,7 +7,7 @@ export interface ConfiguredSales {version:number;rule_id:string;enabled:boolean;
 export interface ConfiguredLiveInput {period_id:string;rule_id:string;sales_version:number;snapshot_hash:string;actor_context:string;requests:ConfiguredRequest[]}
 export interface ConfiguredLiveQuote extends NonNullable<ConfiguredPreviewResult['quote']>{game_id:string;period_id:string;rule_id:string;sales_version:number;definition_hash:string;snapshot_hash:string;actor_context:string}
 export interface ConfiguredLiveOrder {game_name:string;id:string;member_name:string;game_id:string;period_id:string;period_no:string;rule_id:string;sales_version:number;snapshot:ConfiguredSnapshot;quote:NonNullable<ConfiguredPreviewResult['quote']>;result:ConfiguredPreviewResult['result']|null;status:string;placed_at:string;settled_at:string|null}
-export interface ConfiguredLiveCatalog {game:{id:string;name:string;status:string;brand_enabled:boolean};snapshot:ConfiguredSnapshot;rule_id:string;sales:ConfiguredSales;snapshot_hash:string;period:{id:string;period_no:string;bet_start_at:string;bet_end_at:string;draw_at:string}|null}
+export interface ConfiguredLiveCatalog {game:{id:string;name:string;status:string;brand_enabled:boolean};snapshot:ConfiguredSnapshot;rule_id:string;sales:ConfiguredSales;snapshot_hash:string;previous_draw:{period_no:string;result:{regular:number[];special:number[];digits:number[]};regular_order:number[]|null;attributes:Record<string,{wave:string;zodiac:string;element:string}>}|null;period:{id:string;period_no:string;bet_start_at:string;bet_end_at:string;draw_at:string}|null}
 export function createConfiguredBusinessClient(surface:'platform'|'admin'|'user',brandId:string,brandCode?:string,fetcher:typeof fetch=fetch){
  const base=surface==='user'?`/api/v1${brandCode?`/b/${encodeURIComponent(brandCode)}`:''}/configured`:`/api/v1/${surface}/platform-games`
  async function request<T>(path:string,body?:unknown,key?:string):Promise<T>{
@@ -21,7 +21,7 @@ export function createConfiguredBusinessClient(surface:'platform'|'admin'|'user'
   allOrders:(offset=0)=>request<{items:ConfiguredLiveOrder[]}>(`/orders?offset=${offset}`),
   orders:(id:string,offset=0)=>request<{items:ConfiguredLiveOrder[]}>(`/games/${encodeURIComponent(id)}/orders?offset=${offset}`),
   preview:(input:ConfiguredLiveInput)=>request<ConfiguredLiveQuote>('/preview',input),place:(input:ConfiguredLiveInput,key:string)=>request<ConfiguredLiveOrder>('/orders',input,key),
-  versions:(id:string)=>request<{items:ConfiguredVersion[]}>(`/${encodeURIComponent(id)}/configured/versions`),
+  rules:(id:string)=>request<ConfiguredVersion|null>(`/${encodeURIComponent(id)}/configured/rules`),
   sales:(id:string)=>request<ConfiguredSales>(`/${encodeURIComponent(id)}/configured/sales`),
   adminOrders:(id:string,offset=0)=>request<{items:ConfiguredLiveOrder[]}>(`/${encodeURIComponent(id)}/configured/orders?offset=${offset}`),
  }

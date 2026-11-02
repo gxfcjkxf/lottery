@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import { test, expect } from '@playwright/test'
 
@@ -18,7 +19,7 @@ test('workbench displays real scoped financial data, explicit gaps, and clears s
   await page.getByRole('button', { name: 'Sign in and load members', exact: true }).click()
   if (info.project.name === 'mobile') await page.locator('.mobile-nav button').nth(1).click()
   else await page.locator('.side-nav').getByRole('button', { name: /Users and members/ }).click()
-  await page.locator('.directory-brand-bar select').selectOption(brand)
+  await selectControl(page.locator(".directory-brand-bar .select-control-trigger"), brand)
   const live = await page.request.get(`${origin}/api/v1/admin/workbench`, { headers: { 'X-Brand-ID': brand } })
   expect(live.status()).toBe(200)
   const { data } = await live.json()

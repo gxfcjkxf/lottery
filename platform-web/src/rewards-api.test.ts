@@ -10,7 +10,7 @@ const timestamp = '2026-10-09T10:00:00Z'
 const order = {
   id: orderId, brand_id: brandId, member_id: memberId, points: '250', state: 'revoked', version: 3,
   grant_ledger_entry_id: grantEntry, revoke_ledger_entry_id: actionId, creation_audit_log_id: actionId,
-  last_audit_log_id: actionId, last_error_code: null, created_by: memberId, reason: 'Campaign award',
+  last_audit_log_id: actionId, created_by: memberId, reason: 'Campaign award',
   point_policy_version: '4', created_at: timestamp, updated_at: timestamp, revoked_at: timestamp,
 }
 const action = {

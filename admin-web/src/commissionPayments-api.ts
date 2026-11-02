@@ -1,3 +1,4 @@
+import { commissionListParams, type CommissionListQuery } from './commission-list-query'
 import { readAdminEnvelope } from './admin-api'
 
 import { AdminApiError, type AdminAccount } from "./admin-api";
@@ -19,6 +20,8 @@ export interface CommissionPayment {
   last_error_code: string | null; created_at: string; updated_at: string;
 }
 export interface CommissionPaymentPage { brand_id: string; items: CommissionPayment[]; total_count: string; limit: number; offset: number }
+export interface CommissionPaymentHistoryRecord {id:string;actor_type:'admin'|'system';actor_id:string|null;operation:'create'|'approve'|'retry'|'post'|'complete'|'invalidate'|'fail'|'adjustment';state:CommissionPaymentState|null;created_at:string}
+export interface CommissionPaymentHistoryPage {brand_id:string;payment_id:string;items:CommissionPaymentHistoryRecord[];total_count:string;limit:number;offset:number}
 export interface CommissionPaymentPolicyBody { version: number; enabled: boolean; reason: string }
 export interface CommissionPaymentActionBody { version: number; reason: string }
 
@@ -40,7 +43,7 @@ function validDate(value: unknown): value is string {
 }
 function validDecimal(value: unknown): value is string { return typeof value === "string" && DECIMAL.test(value); }
 function validReason(value: unknown): value is string {
-  if (typeof value !== "string" || value.trim() !== value || new TextEncoder().encode(value).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
+  if (typeof value !== "string" || value.trim() !== value || Array.from(value).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff) { const next = value.charCodeAt(++i); if (!(next >= 0xdc00 && next <= 0xdfff)) return false; }
@@ -92,7 +95,7 @@ export function commissionPaymentPermissions(account: AdminAccount, brand: strin
   const view = validUuid(account.id) && validUuid(brand) && member && brandPermissions.has("commission.view.brand");
   return {
     view,
-    policyWrite: Boolean(view && member && !account.super_admin && brandPermissions.has("commission_payment_policy.write.brand")),
+    policyWrite: false,
     approve: Boolean(view && member && !account.super_admin && brandPermissions.has("commission_payment.approve.brand")),
     retry: Boolean(view && member && !account.super_admin && brandPermissions.has("commission_payment.retry.brand")),
   };
@@ -123,10 +126,17 @@ export function createCommissionPaymentsApi(fetcher: typeof fetch = fetch, actor
       if (!validPolicy(data, brand) || data.version !== body.version + 1 || data.enabled !== body.enabled || !validUuid(data.audit_log_id)) invalidResponse();
       return data;
     },
-    async list(brand: string, limit = 20, offset = 0): Promise<CommissionPaymentPage> {
+    async list(brand: string, limit = 20, offset = 0, filter: Readonly<CommissionListQuery> = {}): Promise<CommissionPaymentPage> {
       validBrand(brand); if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) invalidInput();
-      const query = new URLSearchParams({ limit: String(limit), offset: String(offset) }); const data = await request(brand, `${PAYMENTS}?${query}`);
+      const query = commissionListParams(limit, offset, filter, "payment"); const data = await request(brand, `${PAYMENTS}?${query}`);
       if (!validPage(data, brand, limit, offset)) invalidResponse(); return data;
+    },
+    async history(brand:string,id:string,limit=20,offset=0):Promise<CommissionPaymentHistoryPage> {
+      validBrand(brand);if(!validUuid(id))invalidInput();const query=commissionListParams(limit,offset,{},'target');
+      const data=await request(brand,`${PAYMENTS}/${id}/history?${query}`);
+      if(!isRecord(data)||!hasKeys(data,['brand_id','payment_id','items','total_count','limit','offset'])||data.brand_id!==brand||data.payment_id!==id||data.limit!==limit||data.offset!==offset||!validDecimal(data.total_count)||!Array.isArray(data.items)||data.items.length>limit||
+      !data.items.every(row=>isRecord(row)&&hasKeys(row,['id','actor_type','actor_id','operation','state','created_at'])&&validUuid(row.id)&&['admin','system'].includes(String(row.actor_type))&&(row.actor_id===null||validUuid(row.actor_id))&&['create','approve','retry','post','complete','invalidate','fail','adjustment'].includes(String(row.operation))&&(row.operation==='adjustment'?row.state===null:['awaiting_approval','paying','paid','failed','stale','blocked'].includes(String(row.state)))&&validDate(row.created_at))||new Set(data.items.map((row:any)=>row.id)).size!==data.items.length||(data.items.length>0&&BigInt(data.total_count)<BigInt(offset+data.items.length)))invalidResponse();
+      return data as unknown as CommissionPaymentHistoryPage;
     },
     async read(brand: string, id: string): Promise<CommissionPayment> { validBrand(brand); if (!validUuid(id)) invalidInput(); const data = await request(brand, `${PAYMENTS}/${encodeURIComponent(id)}`); if (!validPayment(data, brand) || data.id !== id) invalidResponse(); return data; },
     async approve(brand: string, id: string, body: Readonly<CommissionPaymentActionBody>, key: string): Promise<CommissionPayment> { return action("approve", brand, id, body, key); },

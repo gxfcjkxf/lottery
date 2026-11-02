@@ -224,9 +224,9 @@ func registerCommissionCycleRoutes(handle func(string, string, http.HandlerFunc)
 		if !ok {
 			return
 		}
-		limit, offset, ok := commissionCyclePage(r)
+		limit, offset, filter, ok := commissionListFilter(r, "cycle")
 		if !ok {
-			failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
+			failure(w, r, 400, "REQUEST_INVALID", "查询参数不正确")
 			return
 		}
 		initial, ok := adminAccount(w, r, d)
@@ -234,7 +234,7 @@ func registerCommissionCycleRoutes(handle func(string, string, http.HandlerFunc)
 			return
 		}
 		out, err := commissionCycleRead(w, r, d, initial, brand, "view", "commission.cycle.list", func(tx pgx.Tx) (any, error) {
-			return s.CyclesTx(r.Context(), tx, brand, limit, offset)
+			return s.CyclesTx(r.Context(), tx, brand, limit, offset, filter)
 		})
 		if commissionCycleReadFailure(w, r, err) {
 			return

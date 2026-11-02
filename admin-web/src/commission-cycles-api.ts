@@ -1,3 +1,4 @@
+import { commissionListParams, type CommissionListQuery } from './commission-list-query'
 import { readAdminEnvelope } from './admin-api'
 
 import { AdminApiError, type AdminAccount } from "./admin-api";
@@ -10,7 +11,7 @@ const DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d
 const MAX_INT64 = 9_223_372_036_854_775_807n;
 const MAX_SAFE_VERSION = BigInt(Number.MAX_SAFE_INTEGER);
 
-export interface CommissionCycleCalendar {
+interface CommissionCycleCalendar {
   timezone: string;
   cycle: "weekly" | "monthly";
   boundary_time: string;
@@ -54,7 +55,7 @@ export interface CommissionCyclePage {
   offset: number;
 }
 
-export interface CommissionEarning {
+interface CommissionEarning {
   id: string;
   brand_id: string;
   cycle_id: string;
@@ -75,7 +76,7 @@ export interface CommissionEarningPage {
   offset: number;
 }
 
-export interface CommissionAllocation {
+interface CommissionAllocation {
   brand_id: string;
   cycle_id: string;
   run_id: string;
@@ -156,9 +157,6 @@ export interface CommissionCalculation {
   stake_points: string;
   prize_points: string;
   base_points: string;
-  job_id: string | null;
-  calculation_id: string | null;
-  generation: string | null;
   audit_log_id: string;
   created_at: string;
 }
@@ -207,7 +205,7 @@ export interface CommissionRetryBody {
 }
 
 export interface CommissionCyclesApi {
-  list(brand: string, limit?: number, offset?: number): Promise<CommissionCyclePage>;
+  list(brand: string, limit?: number, offset?: number, filter?: Readonly<CommissionListQuery>): Promise<CommissionCyclePage>;
   read(brand: string, id: string): Promise<CommissionCycleRecord>;
   earnings(brand: string, id: string, limit?: number, offset?: number): Promise<CommissionEarningPage>;
   runEarnings(brand: string, cycle: string, run: string, limit?: number, offset?: number): Promise<CommissionRunEarningPage>;
@@ -271,7 +269,7 @@ function isReason(value: unknown): value is string {
       i++;
     } else if (code >= 0xdc00 && code <= 0xdfff) return false;
   }
-  return new TextEncoder().encode(value).length <= 500;
+  return Array.from(value).length <= 500;
 }
 
 function isDateTime(value: unknown): value is string {
@@ -437,12 +435,12 @@ function validRun(value: unknown, brand: string, cycle: string): value is Commis
 }
 
 function validCalculation(value: unknown, brand: string, cycle: string, run: string): value is CommissionCalculation {
-  if (!exactKeys(value, ["id", "brand_id", "cycle_id", "run_id", "order_id", "member_id", "reason", "status", "stake_points", "prize_points", "base_points", "job_id", "calculation_id", "generation", "audit_log_id", "created_at"]) ||
+  if (!exactKeys(value, ["id", "brand_id", "cycle_id", "run_id", "order_id", "member_id", "reason", "status", "stake_points", "prize_points", "base_points", "audit_log_id", "created_at"]) ||
     !(isCanonicalUuid(value.id) && value.brand_id === brand && isCanonicalUuid(value.brand_id) && value.cycle_id === cycle && isCanonicalUuid(value.cycle_id) && value.run_id === run && isCanonicalUuid(value.run_id) &&
     isCanonicalUuid(value.order_id) && isCanonicalUuid(value.member_id) && ["eligible", "policy_disabled", "unattributed", "other_cycle", "cancelled", "abnormal"].includes(String(value.reason)) &&
-    ["won", "lost", "abnormal", "bet_cancelled", "judged_cancelled"].includes(String(value.status)) && isDecimal(value.stake_points, true) && isDecimal(value.prize_points) && isDecimal(value.base_points) &&
-    isNullableUuid(value.job_id) && isNullableUuid(value.calculation_id) && (value.generation === null || isDecimal(value.generation, true)) && isCanonicalUuid(value.audit_log_id) && isDateTime(value.created_at))) return false;
-  return (value.job_id === null) === (value.calculation_id === null) && (value.job_id === null) === (value.generation === null);
+    ["won", "lost", "abnormal", "bet_cancelled", "judged_cancelled"].includes(String(value.status)) && isDecimal(value.stake_points) && isDecimal(value.prize_points) && isDecimal(value.base_points) &&
+    isCanonicalUuid(value.audit_log_id) && isDateTime(value.created_at))) return false;
+  return true;
 }
 
 function validDiscovery(value: unknown, brand: string): value is CommissionDiscovery {
@@ -479,7 +477,7 @@ function validatePage(limit: number, offset: number): void {
 }
 
 function validateReason(reason: unknown): void {
-  if (!isReason(reason)) invalidInput("原因必须是有效 UTF-8 文本且不超过 500 字节。");
+  if (!isReason(reason)) invalidInput("原因必须是有效 UTF-8 文本且不超过 500 字符。");
 }
 
 function validateRetry(body: Readonly<CommissionRetryBody>): void {
@@ -549,9 +547,9 @@ export function createCommissionCyclesApi(fetcher: typeof fetch = fetch): Commis
   }
 
   return {
-    async list(brand, limit = 20, offset = 0) {
+    async list(brand, limit = 20, offset = 0, filter = {}) {
       validateBrand(brand);
-      const query = pageQuery(limit, offset);
+      const query = commissionListParams(limit, offset, filter, "cycle");
       return request(brand, `${CYCLES}?${query}`, {}, (value): value is CommissionCyclePage => validCyclePage(value, brand, limit, offset));
     },
     async read(brand, id) {

@@ -253,165 +253,6 @@ func rewardPageItems(t *testing.T, page any) []reflect.Value {
 	return items
 }
 
-func TestRewardImmediateFullRevokeAndDuplicateConflict(t *testing.T) {
-	f := newRewardFixture(t)
-	order := rewardGrant(t, f, 90)
-	grantRows := rewardLedgerRows(t, f, rewardID(t, order))
-	if len(grantRows) != 1 {
-		t.Fatalf("grant ledger rows=%+v", grantRows)
-	}
-	revoked, err := rewardRevoke(t, f, order, f.actor, "approved full reversal")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertRewardOrder(t, revoked, "revoked", 2)
-	rows := rewardLedgerRows(t, f, rewardID(t, order))
-	if len(rows) != 2 || rows[0].reversalOf != "" || rows[1].reversalOf != rows[0].id || rows[1].amount != -rows[0].amount || rows[1].entryType != "reward_reversal" {
-		t.Fatalf("revoke must append one exact full reversal of its grant: %+v", rows)
-	}
-	if after := rewardBalance(t, f); after[2][0] != 0 {
-		t.Fatalf("full revoke left gift.available=%d", after[2][0])
-	}
-	tx := rewardTx(t, f.db)
-	_, err = f.service.RevokeTx(context.Background(), tx, f.brand, rewardID(t, order), f.actor, ActionInput{Version: 2, Reason: "duplicate revoke"}, rewardMeta(f.admin))
-	_ = tx.Rollback(context.Background())
-	if !errors.Is(err, ErrState) {
-		t.Fatalf("duplicate revoke error=%v, want rewards.ErrState", err)
-	}
-	tx = rewardTx(t, f.db)
-	_, err = f.service.RetryRevocationTx(context.Background(), tx, f.brand, rewardID(t, order), f.actor, ActionInput{Version: 2, Reason: "retry completed revoke"}, rewardMeta(f.admin))
-	_ = tx.Rollback(context.Background())
-	if !errors.Is(err, ErrState) {
-		t.Fatalf("retry of non-pending order error=%v, want rewards.ErrState", err)
-	}
-	if rows = rewardLedgerRows(t, f, rewardID(t, order)); len(rows) != 2 {
-		t.Fatalf("duplicate revoke changed ledger: %+v", rows)
-	}
-}
-
-type rewardLedgerRow struct {
-	id, entryType, reversalOf string
-	amount                    int64
-}
-
-func rewardLedgerRows(t *testing.T, f rewardFixture, orderID string) []rewardLedgerRow {
-	t.Helper()
-	rows, err := f.db.Query(context.Background(), `SELECT id::text,entry_type,COALESCE(reversal_of::text,''),delta_snapshot->'gift'->>'available'
-FROM point_ledger_entries WHERE brand_id=$1 AND reference_type='reward_order' AND reference_id=$2 ORDER BY version`, f.brand, orderID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	var out []rewardLedgerRow
-	for rows.Next() {
-		var row rewardLedgerRow
-		var amount string
-		if err := rows.Scan(&row.id, &row.entryType, &row.reversalOf, &amount); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := fmt.Sscan(amount, &row.amount); err != nil {
-			t.Fatal(err)
-		}
-		out = append(out, row)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
-func TestRewardPendingNeedsExplicitRetryAndOnlyGiftAvailableCounts(t *testing.T) {
-	f := newRewardFixture(t)
-	for i, source := range []string{"recharge", "winning", "commission"} {
-		if source == "commission" {
-			// Commission credit goes through the standard points store; this also
-			// verifies the migration-created commission buckets are usable.
-			rewardCredit(t, f, source, 500, fmt.Sprintf("source-%d", i))
-		} else {
-			rewardCredit(t, f, source, 500, fmt.Sprintf("source-%d", i))
-		}
-	}
-	rewardCredit(t, f, "gift", 30, "gift-funds")
-	rewardMove(t, f, "gift", "available", "manual_frozen", 30)
-	order := rewardGrant(t, f, 100)
-	// Freeze the newly granted amount too, leaving no gift.available funds to
-	// reverse while preserving unrelated recharge/winning/commission balances.
-	rewardMove(t, f, "gift", "available", "manual_frozen", 100)
-	pending, err := rewardRevoke(t, f, order, f.actor, "revoke while gift funds are frozen")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertRewardOrder(t, pending, "revocation_pending", 2)
-	code := rewardField(t, pending, "LastErrorCode")
-	if code.Kind() == reflect.Ptr {
-		if code.IsNil() || code.Elem().String() != "REWARD_AVAILABLE_INSUFFICIENT" {
-			t.Fatalf("pending error code=%v", code)
-		}
-	} else if code.String() != "REWARD_AVAILABLE_INSUFFICIENT" {
-		t.Fatalf("pending error code=%v", code)
-	}
-	unchanged := rewardBalance(t, f)
-	if unchanged[2][0] != 0 || unchanged[2][1] != 130 || unchanged[0][0] != 500 || unchanged[1][0] != 500 || unchanged[3][0] != 500 {
-		t.Fatalf("insufficient gift must not move any source: %v", unchanged)
-	}
-	if rows := rewardLedgerRows(t, f, rewardID(t, order)); len(rows) != 1 {
-		t.Fatalf("pending revoke must keep grant without partial reversal: %+v", rows)
-	}
-	// Later credits to other sources cannot satisfy a gift-source reversal.
-	for _, source := range []string{"recharge", "winning", "commission"} {
-		rewardCredit(t, f, source, 200, "still-insufficient-"+source)
-	}
-	var current Order
-	tx := rewardTx(t, f.db)
-	current, err = f.service.OrderTx(context.Background(), tx, f.brand, rewardID(t, order))
-	_ = tx.Rollback(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertRewardOrder(t, current, "revocation_pending", 2)
-	tx = rewardTx(t, f.db)
-	_, err = f.service.RetryRevocationTx(context.Background(), tx, f.brand, rewardID(t, order), f.actor, ActionInput{Version: 2, Reason: "still insufficient"}, rewardMeta(f.admin))
-	if err != nil {
-		t.Fatal(err)
-	}
-	rewardCommit(t, tx)
-	var afterRetry Order
-	tx = rewardTx(t, f.db)
-	afterRetry, err = f.service.OrderTx(context.Background(), tx, f.brand, rewardID(t, order))
-	_ = tx.Rollback(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertRewardOrder(t, afterRetry, "revocation_pending", 3)
-	if rows := rewardLedgerRows(t, f, rewardID(t, order)); len(rows) != 1 {
-		t.Fatalf("unsuccessful retry moved ledger: %+v", rows)
-	}
-
-	rewardMove(t, f, "gift", "manual_frozen", "available", 100)
-	// Releasing gift funds alone still cannot initiate a retry.
-	tx = rewardTx(t, f.db)
-	stillPending, err := f.service.OrderTx(context.Background(), tx, f.brand, rewardID(t, order))
-	_ = tx.Rollback(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertRewardOrder(t, stillPending, "revocation_pending", 3)
-	tx = rewardTx(t, f.db)
-	completed, err := f.service.RetryRevocationTx(context.Background(), tx, f.brand, rewardID(t, order), f.actor, ActionInput{Version: 3, Reason: "explicit retry after gift release"}, rewardMeta(f.admin))
-	if err != nil {
-		t.Fatal(err)
-	}
-	rewardCommit(t, tx)
-	assertRewardOrder(t, completed, "revoked", 4)
-	if rows := rewardLedgerRows(t, f, rewardID(t, order)); len(rows) != 2 || rows[1].reversalOf != rows[0].id || rows[1].amount != -rows[0].amount {
-		t.Fatalf("retry must append exactly one full reversal, preserving grant: %+v", rows)
-	}
-	var actionCount int
-	if err := f.db.QueryRow(context.Background(), `SELECT count(*) FROM reward_order_actions WHERE brand_id=$1 AND order_id=$2`, f.brand, rewardID(t, order)).Scan(&actionCount); err != nil || actionCount != 4 {
-		t.Fatalf("grant, revoke and two explicit retry actions must remain audited: count=%d err=%v", actionCount, err)
-	}
-}
-
 func TestRewardConcurrentRevokeCreatesAtMostOneReversal(t *testing.T) {
 	f := newRewardFixture(t)
 	order := rewardGrant(t, f, 77)
@@ -600,4 +441,35 @@ func TestRewardOrdinarySQLCannotBypassImmutableAuditAndReversalGuard(t *testing.
 	if err == nil {
 		t.Fatal("points store accepted a partial reward reversal")
 	}
+}
+
+func rewardLedgerRows(t *testing.T, f rewardFixture, orderID string) []rewardLedgerRow {
+	t.Helper()
+	rows, err := f.db.Query(context.Background(), `SELECT id::text,entry_type,COALESCE(reversal_of::text,''),delta_snapshot->'gift'->>'available'
+FROM point_ledger_entries WHERE brand_id=$1 AND reference_type='reward_order' AND reference_id=$2 ORDER BY version`, f.brand, orderID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var out []rewardLedgerRow
+	for rows.Next() {
+		var row rewardLedgerRow
+		var amount string
+		if err := rows.Scan(&row.id, &row.entryType, &row.reversalOf, &amount); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fmt.Sscan(amount, &row.amount); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+type rewardLedgerRow struct {
+	id, entryType, reversalOf string
+	amount                    int64
 }

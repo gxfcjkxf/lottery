@@ -22,7 +22,7 @@ func TestMemberSummaryHTTPIdentityAndEmpty(t *testing.T) {
 	mustStatus(t, f.call("GET", "/api/v1/b/harbor/betting-summary", "", f.userToken, "", nil), 401)
 }
 
-func TestMemberSummaryAllEnginesExactNetAndBrandScope(t *testing.T) {
+func TestMemberSummaryConfiguredExactNetAndBrandScope(t *testing.T) {
 	f := pointsFixture(t)
 	ctx := context.Background()
 	tx, err := f.pool.Begin(ctx)
@@ -35,13 +35,10 @@ func TestMemberSummaryAllEnginesExactNetAndBrandScope(t *testing.T) {
 	statements := []string{
 		`CREATE TEMP TABLE platform_settings(id boolean,timezone text) ON COMMIT DROP`,
 		`INSERT INTO platform_settings VALUES(true,'Pacific/Kiritimati')`,
-		`CREATE TEMP TABLE bet_orders(brand_id text,brand_member_id text,total_points bigint,prize_points bigint,status text,settled_at timestamptz) ON COMMIT DROP`,
-		`CREATE TEMP TABLE platform_mark_six_orders(brand_id text,member_id text,total_points bigint,prize_points bigint,refund_points bigint,status text,settled_at timestamptz) ON COMMIT DROP`,
-		`CREATE TEMP TABLE platform_canada_orders(brand_id text,member_id text,total_points bigint,prize_points bigint,refund_points bigint,lost_points bigint,profile text,status text,settled_at timestamptz) ON COMMIT DROP`,
 		`CREATE TEMP TABLE configured_orders(brand_id text,member_id text,total_points bigint,status text,snapshot jsonb,result jsonb,settled_at timestamptz) ON COMMIT DROP`,
-		`INSERT INTO bet_orders VALUES('brand','member',9007199254740993,0,'placed',NULL),('brand','member',10,25,'won',now()),('other','member',999,999,'placed',NULL),('brand','other',999,999,'placed',NULL),('brand','member',100,0,'lost',now()-interval '2 days')`,
-		`INSERT INTO platform_mark_six_orders VALUES('brand','member',20,0,0,'placed',NULL),('brand','member',100,0,100,'settled',now())`,
-		`INSERT INTO platform_canada_orders VALUES('brand','member',30,0,0,0,'canada_28','placed',NULL),('brand','member',10,0,0,0,'canada_niuniu','placed',NULL),('brand','member',20,0,0,20,'canada_28','settled',now()),('brand','member',10,0,0,30,'canada_niuniu','settled',now()),('brand','member',10,40,0,0,'canada_niuniu','settled',now())`,
+		`INSERT INTO configured_orders VALUES('brand','member',9007199254740993,'placed','{"catalog":{"funding":"debit"}}','{"prize_points":"0","refund_points":"0"}',NULL),('brand','member',10,'settled','{"catalog":{"funding":"debit"}}','{"prize_points":"25","refund_points":"0"}',now()),('other','member',999,'placed','{"catalog":{"funding":"debit"}}','{"prize_points":"999","refund_points":"0"}',NULL),('brand','other',999,'placed','{"catalog":{"funding":"debit"}}','{"prize_points":"999","refund_points":"0"}',NULL),('brand','member',100,'settled','{"catalog":{"funding":"debit"}}','{"prize_points":"0","refund_points":"0"}',now()-interval '2 days')`,
+		`INSERT INTO configured_orders VALUES('brand','member',20,'placed','{"catalog":{"funding":"debit"}}','{"prize_points":"0","refund_points":"0"}',NULL),('brand','member',100,'settled','{"catalog":{"funding":"debit"}}','{"prize_points":"0","refund_points":"100"}',now())`,
+		`INSERT INTO configured_orders VALUES('brand','member',30,'placed','{"catalog":{"funding":"debit"}}','{"prize_points":"0","refund_points":"0"}',NULL),('brand','member',10,'placed','{"catalog":{"funding":"reserve"}}','{"prize_points":"0","refund_points":"0","consumed_points":"0"}',NULL),('brand','member',20,'settled','{"catalog":{"funding":"debit"}}','{"prize_points":"0","refund_points":"0"}',now()),('brand','member',10,'settled','{"catalog":{"funding":"reserve"}}','{"prize_points":"0","refund_points":"0","consumed_points":"30"}',now()),('brand','member',10,'settled','{"catalog":{"funding":"reserve"}}','{"prize_points":"40","refund_points":"0","consumed_points":"0"}',now())`,
 	}
 	for _, sql := range statements {
 		if _, err = tx.Exec(ctx, sql); err != nil {
@@ -56,7 +53,7 @@ func TestMemberSummaryAllEnginesExactNetAndBrandScope(t *testing.T) {
 		t.Fatalf("pending=%s net=%s", pending, net)
 	}
 	// Records on either side of the configured local-day boundary, not UTC.
-	if _, err = tx.Exec(ctx, `TRUNCATE bet_orders,platform_mark_six_orders,platform_canada_orders,configured_orders; INSERT INTO bet_orders VALUES('brand','member',1,8,'won',(date_trunc('day',now() AT TIME ZONE 'Pacific/Kiritimati') AT TIME ZONE 'Pacific/Kiritimati')),('brand','member',1,100,'won',(date_trunc('day',now() AT TIME ZONE 'Pacific/Kiritimati') AT TIME ZONE 'Pacific/Kiritimati')-interval '1 second')`); err != nil {
+	if _, err = tx.Exec(ctx, `TRUNCATE configured_orders; INSERT INTO configured_orders VALUES('brand','member',1,'settled','{"catalog":{"funding":"debit"}}','{"prize_points":"8","refund_points":"0"}',(date_trunc('day',now() AT TIME ZONE 'Pacific/Kiritimati') AT TIME ZONE 'Pacific/Kiritimati')),('brand','member',1,'settled','{"catalog":{"funding":"debit"}}','{"prize_points":"100","refund_points":"0"}',(date_trunc('day',now() AT TIME ZONE 'Pacific/Kiritimati') AT TIME ZONE 'Pacific/Kiritimati')-interval '1 second')`); err != nil {
 		t.Fatal(err)
 	}
 	if err = tx.QueryRow(ctx, memberSummarySQL, "brand", "member").Scan(&pending, &net); err != nil {
@@ -66,7 +63,7 @@ func TestMemberSummaryAllEnginesExactNetAndBrandScope(t *testing.T) {
 		t.Fatalf("day boundary pending=%s net=%s", pending, net)
 	}
 	// Reserved risk release is not profit: win +50, loss -190, zero-loss release +0.
-	if _, err = tx.Exec(ctx, `TRUNCATE bet_orders,platform_mark_six_orders,platform_canada_orders;
+	if _, err = tx.Exec(ctx, `TRUNCATE configured_orders;
  INSERT INTO configured_orders VALUES
  ('brand','member',10,'settled','{"catalog":{"funding":"reserve"}}','{"prize_points":"50","refund_points":"200"}',now()),
  ('brand','member',10,'settled','{"catalog":{"funding":"reserve"}}','{"prize_points":"0","refund_points":"10","consumed_points":"190"}',now()),

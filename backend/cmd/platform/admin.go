@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // Explicit bootstrap credentials come from the environment, not argv/history.
@@ -28,8 +29,8 @@ func createAdmin(ctx context.Context, db *pgxpool.Pool) error {
 		return errors.New("invalid admin username")
 	}
 	password := os.Getenv("BOOTSTRAP_ADMIN_PASSWORD")
-	if len(password) < 6 || len(password) > 30 {
-		return errors.New("BOOTSTRAP_ADMIN_PASSWORD must contain 6-30 bytes")
+	if utf8.RuneCountInString(password) < 6 || utf8.RuneCountInString(password) > 30 {
+		return errors.New("BOOTSTRAP_ADMIN_PASSWORD must contain 6-30 characters")
 	}
 	hash, err := authcrypto.HashPassword(password)
 	if err != nil {
@@ -81,10 +82,37 @@ func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, 
 			return err
 		}
 	}
-	permissions := []string{"overview.view.brand", "user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "audit.view.brand", "brand.view.brand", "user.create.brand", "role.view.brand", "role.write.brand", "role.delete.brand", "admin.view.brand", "admin.write.brand", "auth_config.view.brand", "auth_config.write.brand", "wallet.view.brand", "wallet.freeze.brand", "wallet.adjust.brand", "recharge.view.brand", "recharge.write.brand", "point_policy.view.brand", "point_policy.write.brand", "wallet.repair.brand", "join_code.view.brand", "join_code.write.brand"}
+	// Register both administrative catalogs regardless of which entry is initialized.
+	// Role grants remain explicitly scoped; catalog registration grants no access.
+	for _, permission := range append(bootstrapPermissions(false, false), bootstrapPermissions(true, true)...) {
+		if _, err = tx.Exec(ctx, "INSERT INTO permissions(key) VALUES($1) ON CONFLICT DO NOTHING", permission); err != nil {
+			return err
+		}
+	}
+	permissions := bootstrapPermissions(super, canDeletePlatformAdmin)
+	for _, permission := range permissions {
+		if _, err = tx.Exec(ctx, "INSERT INTO role_permissions(role_id,permission_key) VALUES($1,$2) ON CONFLICT DO NOTHING", role, permission); err != nil {
+			return err
+		}
+	}
+	if brandID != "" {
+		if _, err = tx.Exec(ctx, "INSERT INTO admin_brand_scopes(account_id,brand_id) VALUES($1,$2)", admin, brandID); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.Exec(ctx, "INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)", admin, role); err != nil {
+		return err
+	}
+	if _, err = audit.Append(ctx, tx, audit.Record{BrandID: brandID, ActorType: "system", Action: "admin.bootstrap", ResourceType: "admin", ResourceID: admin, Reason: reason, RequestID: ids.New(), After: map[string]any{"super_admin": super}}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func bootstrapPermissions(super, canDeletePlatformAdmin bool) []string {
+	permissions := []string{"overview.view.brand", "user.view.brand", "user.write.brand", "user.kick.brand", "user.password_reset.brand", "audit.view.brand", "brand.view.brand", "user.create.brand", "role.view.brand", "role.write.brand", "role.delete.brand", "admin.view.brand", "admin.write.brand", "auth_config.view.brand", "auth_config.write.brand", "wallet.view.brand", "wallet.freeze.brand", "wallet.adjust.brand", "recharge.view.brand", "recharge.write.brand", "point_policy.view.brand", "point_policy.write.brand", "join_code.view.brand", "join_code.write.brand"}
 	permissions = append(permissions, "brand_operation.view.brand", "brand_operation.write.brand")
 	permissions = append(permissions, "brand_presentation.view.brand", "brand_presentation.write.brand")
-	permissions = append(permissions, "brand_domains.view.brand", "brand_domains.write.brand")
 	permissions = append(permissions, "report_betting.export.brand", "report_ledger.export.brand")
 	permissions = append(permissions, "audit.export.brand")
 	permissions = append(permissions, "report_commission.view.brand", "report_commission.export.brand")
@@ -92,12 +120,10 @@ func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, 
 	permissions = append(permissions, "report_attribution.view.brand", "report_attribution.export.brand")
 	permissions = append(permissions, "report_archive.view.brand", "report_archive.create.brand", "report_archive.download.brand")
 	permissions = append(permissions, "report_archive_policy.write.brand", "report_archive_task.retry.brand")
-	permissions = append(permissions, "notification_template.view.brand", "notification_template.write.brand")
-	permissions = append(permissions, "wallet.reconcile.brand")
 	permissions = append(permissions, "compliance_policy.view.brand", "compliance_policy.write.brand", "compliance_check.view.brand", "compliance_check.run.brand")
 	if super {
-		permissions = []string{"user.view.platform", "audit.view.platform", "brand.view.platform", "role.view.platform", "role.write.platform", "admin.view.platform", "admin.write.platform", "auth_config.view.platform", "auth_config.write.platform", "wallet.view.platform", "recharge.view.platform", "point_policy.view.platform"}
-		permissions = append(permissions, "role.delete.platform")
+		permissions = []string{"user.view.platform", "audit.view.platform", "brand.view.platform", "role.view.platform", "role.write.platform", "admin.view.platform", "admin.write.platform", "auth_config.view.platform", "auth_config.write.platform", "wallet.view.platform", "wallet.repair.platform", "wallet.reconcile.platform", "recharge.view.platform", "point_policy.view.platform"}
+		permissions = append(permissions, "role.delete.platform", "recharge_quota.write.platform")
 		permissions = append(permissions, "platform_settings.view.platform", "platform_settings.write.platform")
 		permissions = append(permissions, "brand_operation.view.platform", "brand_operation.write.platform")
 		permissions = append(permissions, "brand_presentation.view.platform", "brand_presentation.write.platform")
@@ -112,13 +138,13 @@ func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, 
 		if canDeletePlatformAdmin {
 			permissions = append(permissions, "admin.delete.platform")
 		}
-		permissions = append(permissions, "compliance_policy.view.platform", "compliance_check.view.platform")
+		permissions = append(permissions, "compliance_policy.view.platform", "compliance_policy.write.platform", "compliance_check.view.platform", "compliance_check.run.platform")
 		permissions = append(permissions, "report_betting.export.platform", "report_ledger.export.platform")
 		permissions = append(permissions, "report_commission.view.platform", "report_commission.export.platform")
 		permissions = append(permissions, "report_reward.view.platform", "report_reward.export.platform")
 		permissions = append(permissions, "report_attribution.view.platform", "report_attribution.export.platform")
 		permissions = append(permissions, "report_archive.view.platform", "report_archive.download.platform")
-		permissions = append(permissions, "notification_template.view.platform")
+		permissions = append(permissions, "notification_template.view.platform", "notification_template.write.platform")
 		permissions = append(permissions, "game.view.platform", "rule.view.platform")
 		permissions = append(permissions, "schedule.view.platform", "period.view.platform")
 		permissions = append(permissions, "draw_source.view.platform", "draw.view.platform")
@@ -146,6 +172,8 @@ func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, 
 		permissions = append(permissions, "bet.mark_abnormal.brand")
 		permissions = append(permissions, "bet.judge_cancel.brand")
 		permissions = append(permissions, "withdrawal_policy.view.brand", "withdrawal_policy.write.brand")
+		permissions = append(permissions, "withdrawal.view.brand", "withdrawal.approve.brand", "withdrawal.reject.brand", "withdrawal.cancel.brand", "withdrawal.mark_paid.brand", "withdrawal.fail.brand")
+		permissions = append(permissions, "report_withdrawal.view.brand", "report_withdrawal.export.brand")
 		permissions = append(permissions, "notification.view.brand", "notification.retry.brand")
 		permissions = append(permissions, "report_betting.view.brand", "report_ledger.view.brand")
 		permissions = append(permissions, "agent.view.brand", "agent.write.brand", "agent_policy.view.brand", "agent_policy.write.brand")
@@ -160,24 +188,5 @@ func grantBootstrapAdmin(ctx context.Context, tx pgx.Tx, admin, brandID string, 
 		permissions = append(permissions, "settlement.run.brand", "settlement.approve.brand", "settlement.retry.brand", "settlement_policy.view.brand", "settlement_policy.write.brand")
 		permissions = append(permissions, "draw.correct.brand", "draw.correction_retry.brand")
 	}
-	for _, permission := range permissions {
-		if _, err = tx.Exec(ctx, "INSERT INTO permissions(key) VALUES($1) ON CONFLICT DO NOTHING", permission); err != nil {
-			return err
-		}
-		if _, err = tx.Exec(ctx, "INSERT INTO role_permissions(role_id,permission_key) VALUES($1,$2) ON CONFLICT DO NOTHING", role, permission); err != nil {
-			return err
-		}
-	}
-	if brandID != "" {
-		if _, err = tx.Exec(ctx, "INSERT INTO admin_brand_scopes(account_id,brand_id) VALUES($1,$2)", admin, brandID); err != nil {
-			return err
-		}
-	}
-	if _, err = tx.Exec(ctx, "INSERT INTO admin_account_roles(account_id,role_id) VALUES($1,$2)", admin, role); err != nil {
-		return err
-	}
-	if _, err = audit.Append(ctx, tx, audit.Record{BrandID: brandID, ActorType: "system", Action: "admin.bootstrap", ResourceType: "admin", ResourceID: admin, Reason: reason, RequestID: ids.New(), After: map[string]any{"super_admin": super}}); err != nil {
-		return err
-	}
-	return nil
+	return permissions
 }

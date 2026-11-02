@@ -16,7 +16,7 @@ import {
   type WithdrawalQualification,
 } from "@lottery/shared";
 
-export { ApiError as WithdrawalApiError };
+;
 export function withdrawalBasePath(brandCode?: string): string {
   return brandCode ? `/api/v1/b/${encodeURIComponent(brandCode)}` : "/api/v1";
 }
@@ -34,7 +34,7 @@ export function createWithdrawalOrdersApi(options: {
 } = {}) {
   const basePath = withdrawalBasePath(options.brandCode ?? import.meta.env.VITE_BRAND_CODE ?? undefined);
   const api = createApiClient({ fetcher: options.fetcher, baseUrl: "" });
-  const request = <T>(path: string, signal?: AbortSignal) => api.request<unknown>(`${basePath}${path}`, { signal }).then((value) => {
+  const request = (path: string, signal?: AbortSignal) => api.request<unknown>(`${basePath}${path}`, { signal }).then((value) => {
     if (!isEnvelopeData(value)) throw new Error("Invalid server response");
     return value;
   });
@@ -51,9 +51,9 @@ export function createWithdrawalOrdersApi(options: {
         return data;
       });
     },
-    list(signal?: AbortSignal): Promise<WithdrawalPage> {
-      return request("/withdrawals", signal).then((data) => {
-        if (!isWithdrawalPage(data)) throw new Error("Invalid server response");
+    list(offset = 0, signal?: AbortSignal): Promise<WithdrawalPage> {
+      return request(`/withdrawals?limit=20&offset=${offset}`, signal).then((data) => {
+        if (!isWithdrawalPage(data) || data.limit !== 20 || data.offset !== offset) throw new Error("Invalid server response");
         return data;
       });
     },

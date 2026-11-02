@@ -2,7 +2,7 @@ import type { AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 import type { RewardActionBody, RewardGrantBody } from "./rewards-api";
 
-export type RewardOperation = "grant" | "revoke" | "retry";
+export type RewardOperation = "grant" | "revoke";
 export interface RewardIntentScope { accountId: string; brandId: string; operation: RewardOperation; targetId?: string }
 export interface PendingRewardIntent extends RewardIntentScope {
   readonly body: Readonly<RewardGrantBody | RewardActionBody>;
@@ -22,10 +22,10 @@ function intentKey(scope: RewardIntentScope): string {
 function validScope(scope: RewardIntentScope): boolean {
   return UUID.test(scope.accountId) && UUID.test(scope.brandId) && (scope.operation === "grant"
     ? scope.targetId === undefined
-    : (scope.operation === "revoke" || scope.operation === "retry") && typeof scope.targetId === "string" && UUID.test(scope.targetId));
+    : scope.operation === "revoke" && typeof scope.targetId === "string" && UUID.test(scope.targetId));
 }
 function validReason(reason: unknown): reason is string {
-  if (typeof reason !== "string" || reason.trim() !== reason || new TextEncoder().encode(reason).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(reason)) return false;
+  if (typeof reason !== "string" || reason.trim() !== reason || Array.from(reason).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(reason)) return false;
   for (let i = 0; i < reason.length; i++) {
     const code = reason.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff) { const next = reason.charCodeAt(++i); if (!(next >= 0xdc00 && next <= 0xdfff)) return false; }
@@ -62,7 +62,6 @@ export function rewardPermissions(account: AdminAccount, brand: string) {
     view,
     grant: Boolean(view && member && !account.super_admin && brandPermissions.has("reward.grant.brand")),
     revoke: Boolean(view && member && !account.super_admin && brandPermissions.has("reward.revoke.brand")),
-    retry: Boolean(view && member && !account.super_admin && brandPermissions.has("reward.retry.brand")),
   };
 }
 

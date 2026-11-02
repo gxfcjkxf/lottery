@@ -117,7 +117,7 @@ function sameNullableInstant(actual: unknown, expected: string | null): boolean 
     joinCodeInstantMicros(actual) === joinCodeInstantMicros(expected);
 }
 function validReason(value: unknown): value is string {
-  return typeof value === "string" && new TextEncoder().encode(value).length <= 500;
+  return typeof value === "string" && Array.from(value).length <= 500;
 }
 function validOptionalReason(value: unknown): value is string | undefined {
   return value === undefined || validReason(value);

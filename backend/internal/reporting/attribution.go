@@ -72,7 +72,7 @@ type AttributionReport struct {
 }
 
 var attributionAggregates = append(append([]aggregate{}, betAggregates...),
-	aggregate{"final_lost_stake_points", "coalesce(sum(total_points::numeric) FILTER(WHERE final AND status='lost'),0)"},
+	aggregate{"final_lost_stake_points", "coalesce(sum(effective_points::numeric) FILTER(WHERE final AND status='lost'),0)"},
 )
 
 func (s Service) Attribution(ctx context.Context, brand string, q AttributionQuery) (AttributionReport, error) {
@@ -122,27 +122,13 @@ func (s Service) attribution(ctx context.Context, runner rowQuerier, brand strin
 	// Fail the whole cohort on malformed current provenance before applying
 	// attribution filters, so bad snapshots cannot disappear from the report.
 	sql := `WITH scope AS (SELECT id,timezone FROM brands WHERE id=$1), validity AS (
- SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM games WHERE brand_id=$1 AND id=$4)) AND
+ SELECT ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_platform_games WHERE brand_id=$1 AND game_id=$4)) AND
  ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$5)) AND
  ($6::uuid IS NULL OR EXISTS(SELECT 1 FROM agent_nodes WHERE brand_id=$1 AND id=$6)) AS valid),
  cohort AS (
  SELECT o.*,g.name AS game_name,o.attribution_snapshot AS a,
- EXISTS(SELECT 1 FROM draw_corrections dc WHERE dc.brand_id=o.brand_id AND dc.period_id=o.period_id AND dc.state<>'completed') AS correction_open,
- coalesce(o.status IN ('won','lost') AND o.refund_entry_id IS NULL AND p.status='settled'
- AND j.state='completed' AND j.period_id=o.period_id AND j.game_id=o.game_id AND j.draw_result_id=p.draw_result_id
- AND c.id=o.settlement_calculation_id AND c.job_id=j.id AND c.period_id=o.period_id AND c.order_id=o.id
- AND c.won=(o.status='won') AND c.prize_points=o.prize_points AND t.state='paid'
- AND t.calculation_id=c.id AND t.payout_entry_id IS NOT DISTINCT FROM o.payout_entry_id
- AND debit.id IS NOT NULL AND debit.entry_type='bet' AND debit.reference_type='bet_order' AND debit.reference_id=o.id
- AND ((o.prize_points=0 AND o.payout_entry_id IS NULL) OR
- (o.prize_points>0 AND prize.id IS NOT NULL AND prize.entry_type='prize' AND prize.reference_type='settlement_calculation' AND prize.reference_id=c.id)),false) AS finalized
- FROM bet_orders o JOIN scope b ON b.id=o.brand_id JOIN games g ON g.brand_id=o.brand_id AND g.id=o.game_id
- JOIN periods p ON p.brand_id=o.brand_id AND p.id=o.period_id
- LEFT JOIN settlement_jobs j ON j.brand_id=o.brand_id AND j.id=p.current_settlement_job_id
- LEFT JOIN settlement_calculations c ON c.brand_id=o.brand_id AND c.id=o.settlement_calculation_id
- LEFT JOIN settlement_targets t ON t.brand_id=o.brand_id AND t.job_id=j.id AND t.order_id=o.id
- LEFT JOIN point_ledger_entries debit ON debit.brand_id=o.brand_id AND debit.id=o.debit_entry_id AND debit.member_id=o.brand_member_id AND debit.account_id=o.account_id
- LEFT JOIN point_ledger_entries prize ON prize.brand_id=o.brand_id AND prize.id=o.payout_entry_id AND prize.member_id=o.brand_member_id AND prize.account_id=o.account_id
+ false AS correction_open,o.status IN('won','lost') AS finalized
+ FROM betting_financial_facts o JOIN scope b ON b.id=o.brand_id JOIN platform_games g ON g.id=o.game_id
  WHERE o.placed_at >= $2 AND o.placed_at < $3 AND ($4::uuid IS NULL OR o.game_id=$4) AND ($5::uuid IS NULL OR o.brand_member_id=$5)),
  shapes AS (SELECT cohort.*,
  CASE WHEN jsonb_typeof(a->'agent_configs_at_bet')='array' THEN a->'agent_configs_at_bet' ELSE '[]'::jsonb END AS saved_nodes,

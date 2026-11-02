@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import { test, expect, type BrowserContext, type Page, type TestInfo } from '@playwright/test'
 import { rememberAdminSession, restoreAdminSession } from './support/admin-session'
@@ -32,7 +33,7 @@ async function login(page: Page, context: BrowserContext, info: TestInfo) {
     await page.getByLabel('Password', { exact: true }).fill(password!)
     await page.getByRole('button', { name: 'Sign in and load members', exact: true }).click()
   }
-  await page.locator('.directory-brand-bar select').selectOption(brand)
+  await selectControl(page.locator(".directory-brand-bar .select-control-trigger"), brand)
   await rememberAdminSession(context, username!, origin)
 }
 async function data(response: Awaited<ReturnType<Page['request']['get']>>, status = 200) {
@@ -156,73 +157,17 @@ test('large integer policy values and withdrawal-config drafts remain language-i
   await expect(withdrawal.locator('#withdraw-brand-min')).toBeVisible()
   await withdrawal.locator('#withdraw-brand-min').fill('17')
   await withdrawal.locator('#withdraw-brand-multiple').fill('3')
-  await withdrawal.locator('#withdraw-brand-review').selectOption('automatic')
+  await selectControl(withdrawal.locator('#withdraw-brand-review'), 'automatic')
   const before = await data(await page.request.get(`${admin}/withdrawal-policy`, { headers }))
   const writes: string[] = []
   page.on('request', request => { if (request.method() !== 'GET' && request.url().includes('/api/')) writes.push(request.url()) })
   await language(page, 'zh-CN')
   await expect(withdrawal.locator('#withdraw-brand-min')).toHaveValue('17')
   await expect(withdrawal.locator('#withdraw-brand-multiple')).toHaveValue('3')
-  await expect(withdrawal.locator('#withdraw-brand-review')).toHaveValue('automatic')
+  await expect(withdrawal.locator('#withdraw-brand-review')).toHaveAttribute('data-value', 'automatic')
   await language(page, 'en')
   expect(await data(await page.request.get(`${admin}/withdrawal-policy`, { headers }))).toEqual(before)
   expect(writes).toEqual([])
   await fits(page)
   await policy.screenshot({ path: info.outputPath('english-points-policy.png') })
-})
-
-test('unknown reconciliation creation retains the original body and key across language changes', async ({ page, context }, info) => {
-  test.setTimeout(60_000)
-  await login(page, context, info)
-  const id = await member(page)
-  const before = await fingerprint(page, id)
-  await navigate(page, info, 'reconciliation')
-  const panel = page.locator('.recon')
-  await panel.getByLabel('Reason for operation', { exact: true }).fill('中文对账原因 原文不变')
-  let count = 0
-  const attempts: { body: string | null; key: string | undefined }[] = []
-  await page.route('**/api/v1/admin/reconciliations', async route => {
-    if (route.request().method() !== 'POST') return route.continue()
-    attempts.push({ body: route.request().postData(), key: route.request().headers()['idempotency-key'] })
-    const response = await route.fetch()
-    expect(response.status()).toBe(201)
-    if (count++ === 0) await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ success: true, data: null }) })
-    else await route.fulfill({ response })
-  })
-  const submitButton = panel.getByRole('button', { name: 'Submit', exact: true })
-  await submitButton.scrollIntoViewIfNeeded()
-  const pointerSafe = await submitButton.evaluate(element => {
-    const rect = element.getBoundingClientRect()
-    const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2
-    const hit = document.elementFromPoint(x, y)
-    return hit !== null && element.contains(hit) && x >= 0 && x <= document.documentElement.clientWidth && y >= 0 && y <= (visualViewport?.height ?? innerHeight)
-  })
-  expect(pointerSafe).toBe(true)
-  await submitButton.click()
-  const confirm = page.getByRole('dialog')
-  await confirm.getByRole('checkbox').check()
-  await confirm.getByRole('button', { name: 'Submit', exact: true }).click()
-  await expect(panel.locator('.pending-panel')).toContainText('Unconfirmed writes')
-  await expect(panel.locator('.write-error')).toContainText('The write result is unknown')
-  await expect(panel.locator('.pending-panel .tag')).toHaveText('Unknown outcome / replay required')
-  await fits(page)
-  await panel.locator('.pending-panel').screenshot({ path: info.outputPath('english-unknown-intent.png') })
-  await language(page, 'zh-CN')
-  await expect(panel.locator('.pending-panel')).toContainText('尚未确定的写入')
-  await language(page, 'en')
-  await panel.getByRole('button', { name: 'Refresh', exact: true }).click()
-  await expect(panel.locator('.pending-panel')).toBeVisible()
-  expect(attempts).toHaveLength(1)
-  await panel.getByRole('button', { name: 'Confirm and replay original creation', exact: true }).click()
-  await confirm.getByRole('checkbox').check()
-  await confirm.getByRole('button', { name: 'Submit', exact: true }).click()
-  await expect(panel.locator('.receipt-panel')).toContainText('Server-confirmed request receipt')
-  expect(attempts).toHaveLength(2)
-  expect(attempts[1]).toEqual(attempts[0])
-  expect(JSON.parse(attempts[0].body!)).toEqual({ check_scope: 'wallet', reason: '中文对账原因 原文不变' })
-  await expect(panel.locator('.pending-panel')).toHaveCount(0)
-  expect(await fingerprint(page, id)).toBe(before)
-  await fits(page)
-  await panel.locator('.target-card').first().screenshot({ path: info.outputPath('english-target-result.png') })
-  await panel.screenshot({ path: info.outputPath('english-reconciliation.png') })
 })

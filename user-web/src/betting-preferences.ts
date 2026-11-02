@@ -1,6 +1,6 @@
 import {createApiClient,type ApiClientOptions} from '../../shared/src/api'
 export interface BettingPreferences { lastPoints: string }
-export const bettingPreferencesKey = (brandId: string, memberId: string) => `lottery:betting-preferences:${brandId}:${memberId}`
+const bettingPreferencesKey = (brandId: string, memberId: string) => `lottery:betting-preferences:${brandId}:${memberId}`
 
 export function validBetAmount(value: string): boolean {
   return /^[1-9]\d*$/.test(value) && BigInt(value) <= 9223372036854775807n

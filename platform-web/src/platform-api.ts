@@ -1,14 +1,20 @@
+import { readPaginationTotal } from '@lottery/shared'
 import { readApiEnvelope } from '@lottery/shared'
 
 import { notifySessionReplaced } from '@lottery/shared'
 export interface PlatformAccount { id: string; username?: string; display_name?: string; super_admin: true; platform_permissions: string[] }
-export interface PlatformBrand { id: string; code: string; name: string; status: string }
+export interface PlatformBrand { id: string; code: string; name: string; status: string; member_count: string; agent_count: string; recharge_quota_available: string | null; created_at: string }
 export interface PlatformMember { id: string; global_user_id: string; username: string; phone: string; display_name: string; notes: string; status: string; joined_at: string; brand_id: string; tags: string[]; online: boolean; display_points: string | null }
 export interface PlatformAudit { id: string; brand_id: string | null; action: string; actor_type: string; actor_id: string; actor_username: string; resource_type: string; resource_id: string; reason: string; request_id: string; created_at: string; ip_address: string; before_json: unknown; after_json: unknown }
+export interface PlatformCommissionPolicy {
+ payouts_enabled: boolean
+ version: number
+ config: { enabled: boolean; payout_mode: 'manual' | 'automatic'; calendar: null | { timezone: string; cycle: 'weekly' | 'monthly'; boundary_time: string; weekday: number | null; month_day: number | null; short_month: '' | 'last_day' | 'skip' } }
+}
 export interface PlatformSettings { version: number; display_name: string; logo_text: string; logo_url: string; timezone: string; date_format: 'YYYY-MM-DD' | 'DD/MM/YYYY' | 'MM/DD/YYYY'; time_format: 'HH:mm:ss' | 'hh:mm:ss A'; updated_at: string; audit_log_id?: string }
 export type PlatformPresentation = Pick<PlatformSettings, 'display_name' | 'logo_text' | 'logo_url'>
 export interface BrandCreateInput { code: string; name: string; default_locale: 'en' | 'zh-CN'; timezone: string; reason?: string }
-export interface BrandCreateReceipt extends PlatformBrand { status: 'paused'; default_locale: 'en' | 'zh-CN'; timezone: string; version: 1; created_at: string; audit_log_id: string }
+interface BrandCreateReceipt extends Pick<PlatformBrand, 'id' | 'code' | 'name' | 'status'> { status: 'paused'; default_locale: 'en' | 'zh-CN'; timezone: string; version: 1; created_at: string; audit_log_id: string }
 export interface FrozenBrandCreateRequest { readonly body: Readonly<BrandCreateInput>; readonly key: string }
 
 export class PlatformApiError extends Error {
@@ -34,8 +40,18 @@ function validate<T>(value: unknown, test: (value: unknown) => value is T, label
   if (!test(value)) apiError(`Invalid ${label} response`, 0, 'INVALID_RESPONSE')
   return value
 }
+function isPlatformCommissionPolicy(value: unknown): value is PlatformCommissionPolicy {
+ if (!isObj(value) || !exactKeys(value, ['version','config','payouts_enabled']) || !Number.isSafeInteger(value.version) || Number(value.version)<1 || typeof value.payouts_enabled !== 'boolean') return false
+ const c=value.config
+ if (!isObj(c) || !exactKeys(c,['enabled','calendar','payout_mode']) || typeof c.enabled !== 'boolean' || !['manual','automatic'].includes(String(c.payout_mode))) return false
+ if (c.calendar === null) return !c.enabled
+ const cal=c.calendar
+ if (!isObj(cal) || !exactKeys(cal,['timezone','cycle','boundary_time','weekday','month_day','short_month']) || !text(cal.timezone) || cal.boundary_time!=='00:00:00') return false
+ try { new Intl.DateTimeFormat('en',{timeZone: cal.timezone}) } catch { return false }
+ return cal.cycle==='weekly' ? Number.isInteger(cal.weekday) && Number(cal.weekday)>=0 && Number(cal.weekday)<=6 && cal.month_day===null && cal.short_month==='' : cal.cycle==='monthly' && cal.weekday===null && Number.isInteger(cal.month_day) && Number(cal.month_day)>=1 && Number(cal.month_day)<=31 && ['last_day','skip'].includes(String(cal.short_month))
+}
 function isBrand(v: unknown): v is PlatformBrand {
-  return isObj(v) && exactKeys(v, ['id', 'code', 'name', 'status']) && text(v.id) && text(v.code) && text(v.name) && text(v.status)
+  return isObj(v) && exactKeys(v, ['id', 'code', 'name', 'status', 'member_count', 'agent_count', 'recharge_quota_available', 'created_at']) && text(v.id) && text(v.code) && text(v.name) && text(v.status) && text(v.member_count) && /^(0|[1-9]\d*)$/.test(v.member_count) && text(v.agent_count) && /^(0|[1-9]\d*)$/.test(v.agent_count) && (v.recharge_quota_available === null || text(v.recharge_quota_available) && /^(0|[1-9]\d*)$/.test(v.recharge_quota_available) && BigInt(v.recharge_quota_available)<=9223372036854775807n) && dateTime(v.created_at)
 }
 function isMember(v: unknown): v is PlatformMember {
   return isObj(v) && exactKeys(v, ['id', 'global_user_id', 'username', 'phone', 'display_name', 'notes', 'status', 'joined_at', 'brand_id', 'tags', 'online', 'display_points']) && text(v.id) && text(v.global_user_id) && text(v.username) && text(v.phone) && text(v.display_name) && text(v.notes) && text(v.status) && dateTime(v.joined_at) && text(v.brand_id) && stringArray(v.tags) && typeof v.online === 'boolean' && (v.display_points === null || text(v.display_points) && /^(0|[1-9]\d*)$/.test(v.display_points))
@@ -56,7 +72,7 @@ function isItems<T>(test: (v: unknown) => v is T) {
 }
 
 export function createPlatformApi(fetcher: typeof fetch = fetch) {
-  async function request<T>(path: string, options: { method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'; brandId?: string; body?: unknown; key?: string; expectedStatus?: number; headers?: Record<string, string> } = {}): Promise<T> {
+  async function request<T>(path: string, options: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; brandId?: string; body?: unknown; key?: string; expectedStatus?: number; headers?: Record<string, string> } = {}): Promise<T> {
     const headers = new Headers({ Accept: 'application/json' })
     if (options.body !== undefined) headers.set('Content-Type', 'application/json')
     if (options.brandId) headers.set('X-Brand-ID', options.brandId)
@@ -93,6 +109,8 @@ export function createPlatformApi(fetcher: typeof fetch = fetch) {
       if (!stringArray(account.platform_permissions)) apiError('Invalid platform permissions response', 0, 'INVALID_RESPONSE')
       return account as unknown as PlatformAccount
     },
+    async commissionSettings() { return validate(await request<unknown>('/commission-settings'), isPlatformCommissionPolicy, 'commission settings') },
+    async updateCommissionSettings(input: PlatformCommissionPolicy, key: string) { return validate(await request<unknown>('/commission-settings', { method: 'PUT', body: { ...input, reason: '' }, key }), isPlatformCommissionPolicy, 'commission settings') },
     async platformSettings() {
       const data = await request<unknown>('/platform-settings')
       if (!isPlatformSettings(data)) apiError('Invalid platform settings response', 0, 'INVALID_RESPONSE')
@@ -124,7 +142,7 @@ export function createPlatformApi(fetcher: typeof fetch = fetch) {
       const data = await request<unknown>(`/audit?limit=${limit}&offset=${offset}`, { brandId })
       const items = validate(data, isItems(isAudit), 'audit').items
       if (items.length > limit || items.some(item => item.brand_id !== brandId)) apiError('Invalid audit response', 0, 'INVALID_RESPONSE')
-      return items
+      return {items, total_count: readPaginationTotal(data)}
     },
     async createBrand(input: BrandCreateInput, key: string) {
       const body = { code: input.code, name: input.name, default_locale: input.default_locale, timezone: input.timezone, ...(input.reason === undefined ? {} : { reason: input.reason }) }
@@ -139,9 +157,9 @@ export function createPlatformApi(fetcher: typeof fetch = fetch) {
       if (!isObj(data) || data.id !== brandId || !UUID.test(String(data.id))) apiError('Invalid brand deletion receipt', 0, 'INVALID_RESPONSE')
       return data as { id: string }
     },
-    async deleteMemberAccount(userId: string, key: string) {
-      if (!UUID.test(userId)) apiError('A valid account is required', 400, 'REQUEST_INVALID')
-      const data = await request<unknown>(`/global-users/${userId}/delete`, { method: 'POST', body: {}, key })
+    async deleteMemberAccount(userId: string, brandId: string, key: string) {
+      if (!UUID.test(userId) || !UUID.test(brandId)) apiError('A valid account and brand are required', 400, 'REQUEST_INVALID')
+      const data = await request<unknown>(`/global-users/${userId}/delete`, { method: 'POST', body: { brand_id: brandId }, key })
       if (!isObj(data) || !exactKeys(data, ['id', 'account_name', 'audit_log_id']) || data.id !== userId || !text(data.account_name) || !data.account_name || !UUID.test(String(data.audit_log_id))) apiError('Invalid account deletion receipt', 0, 'INVALID_RESPONSE')
       return data as { id: string; account_name: string; audit_log_id: string }
     },
@@ -157,5 +175,3 @@ export function freezeBrandCreateRequest(input: BrandCreateInput, key: string = 
   const body = Object.freeze({ code: input.code, name: input.name, default_locale: input.default_locale, timezone: input.timezone, ...(input.reason === undefined ? {} : { reason: input.reason }) })
   return Object.freeze({ body, key })
 }
-
-export type PlatformApi = ReturnType<typeof createPlatformApi>

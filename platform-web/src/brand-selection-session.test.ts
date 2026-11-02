@@ -1,8 +1,12 @@
+import { SelectControlTestComponent } from '../../admin-web/src/select-control-test-helper'
+import * as BrandDomainsState from '../../admin-web/src/brand-domains-state'
+import * as ArchivePolicyState from './platform-archive-policy-api'
 import { securityIntents } from './security-settings-api'
 import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createRenderer, nextTick, type Component } from 'vue'
 import * as Vue from 'vue'
+import { useOperationToast, dismissOperationToast } from '../../shared/src/operation-toast'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import { PlatformApiError } from './platform-api'
@@ -14,7 +18,7 @@ const api = {
   presentation: vi.fn(async () => ({ display_name: 'Trial', logo_text: 'T', logo_url: '' })),
   me: vi.fn(async () => ({ id: 'account-a', platform_permissions: [] })),
   platformSettings: vi.fn(async () => ({})),
-  brands: vi.fn(async () => [{ id: 'brand-a' }, { id: 'brand-b' }]),
+  brands: vi.fn(async () => ['brand-a','brand-b'].map(id=>({id,code:id,name:id,status:'active',member_count:'0',agent_count:'0',recharge_quota_available:'0',created_at:'2026-10-24T00:00:00Z'}))),
   users: vi.fn(async () => ({ items: [], limit: 50, offset: 0, total_count: '0' })), audit: vi.fn(async () => []),
   login: vi.fn(async () => {}), logout: vi.fn(async () => {}),
 }
@@ -35,16 +39,18 @@ async function mount() {
   })
   const descriptor = parse(readFileSync(new URL('./App.vue', import.meta.url), 'utf8')).descriptor
   const compiled = compileScript(descriptor, { id: 'brand-session-test' }).content
-  const modules: Record<string, unknown> = {
+  const modules: Record<string, unknown> = { "@lottery/shared/SelectControl.vue": SelectControlTestComponent, "./SelectControl.vue": SelectControlTestComponent,
     vue: Vue,
     '@lottery/shared': {
       defaultBrand: {primary: '#059669'},
       applyBrowserBranding: (name: string) => {document.title=name},
       withGlobalLoading: (fn: () => unknown) => Promise.resolve(fn()),
       platformDisplaySettings: Vue.ref({}), setPlatformDisplaySettings() {},
-      useSessionReplacement,
+      useSessionReplacement, useOperationToast,
     },
     './security-settings-api': { securityIntents },
+ '../../admin-web/src/brand-domains-state': BrandDomainsState,
+    './platform-archive-policy-api': ArchivePolicyState,
     './platform-api': { createPlatformApi: () => api, PlatformApiError },
     './use-brand-games': { useBrandGames: () => ({ games: Vue.ref([]), selectedGameId: Vue.ref(''), loading: Vue.ref(false), refresh() {} }) },
     './platform-error-message': { platformErrorMessage: String },
@@ -66,6 +72,7 @@ async function mount() {
 
 afterEach(() => {
   apps.splice(0).forEach(app => app.unmount())
+  dismissOperationToast()
   storage.clear()
   vi.clearAllMocks()
   vi.unstubAllGlobals()

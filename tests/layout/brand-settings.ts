@@ -1,12 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { gameId, origins, installLayoutApi, expectInsideViewport, expectNoPageOverflow } from './fixture'
+import { gameId, origins, installLayoutApi, expectNoPageOverflow } from './fixture'
 
 const at = '2026-10-21T00:00:00Z'
-const domainId = 'aaaaaaaa-aaaa-4aaa-8aaa-000000000002'
 
 export function registerBrandSettingsTests(reflow = false) {
   for (const locale of ['en', 'zh-CN'] as const) {
-    test(`brand settings stay compact without history and retain confirmations (${locale})`, async ({ page }, info) => {
+    test(`brand settings save presentation without domain controls (${locale})`, async ({ page }, info) => {
       const zh = locale === 'zh-CN'
       await installLayoutApi(page, locale)
       await page.route('**/api/v1/brand-assets/*.png', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==', 'base64') }))
@@ -17,27 +16,21 @@ export function registerBrandSettingsTests(reflow = false) {
         font_family: 'system', font_scale: 'standard', radius: 'round', shadow: 'subtle', default_locale: 'en',
         available_locales: ['en', 'zh-CN'], content: { en: { tagline: '', announcement: '' }, 'zh-CN': { tagline: '', announcement: '' } } }
       let presentation = { brand_id: gameId, version: 4, status: 'active', base_name: 'Aurora', config: Object.fromEntries(Object.keys(effective).map(key => [key, null])), effective, updated_at: at, audit_log_id: gameId }
-      let domains = { brand_id: gameId, version: 4, status: 'active', domains: [{ id: domainId, domain: 'play.example.com', enabled: true }], updated_at: at, audit_log_id: gameId }
       let policy = { brand_id: gameId, version: 4, config: { age_enabled: false, minimum_age: null, region_enabled: false, allowed_countries: [], identity_enabled: false, account_risk_enabled: false, betting_risk_enabled: false, exclusion_enabled: false, responsible_gambling_enabled: false }, updated_at: at, audit_log_id: gameId }
       const auth = { version: 4, captcha_enabled: false, telegram_enabled: false, telegram_client_id: '', privacy_policy_version: 'terms-1', service_terms_version: 'terms-1' }
       const attempts: { path: string; body: string | null; key: string | undefined }[] = []
-      let loseReceipt = true, failDomainsRead = true, conflictDomain = true
+      let loseReceipt = true
       const receipts = new Map<string, typeof presentation>()
-      const deletedReceipts = new Map<string, typeof domains>()
       await page.route('**/api/v1/admin/**', async route => {
         const req = route.request(), path = new URL(req.url()).pathname
         requests.push(`${req.method()} ${path}`)
         const reply = (data: unknown, status = 200) => route.fulfill({ status, json: { success: true, data } })
         if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'settings_reviewer', super_admin: false, brand_ids: [gameId], permissions: [], permissions_by_brand: { [gameId]: ['brand_presentation.view.brand', 'brand_presentation.write.brand', 'brand_domains.view.brand', 'brand_domains.write.brand', 'auth_config.view.brand', 'auth_config.write.brand', 'compliance_policy.view.brand', 'compliance_policy.write.brand', 'compliance_check.view.brand', 'compliance_check.run.brand'] }, platform_permissions: [] } })
-        if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status: 'active' }] })
+        if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z' }] })
         expect(req.headers()['x-brand-id']).toBe(gameId)
         if (req.method() === 'GET') {
           if (path.endsWith('/brand-presentation')) return reply(presentation)
           if (path.endsWith('/brand-presentation/defaults')) return reply(effective)
-          if (path.endsWith('/brand-domains')) {
-            if (failDomainsRead) { failDomainsRead = false; return route.fulfill({ status: 503, json: { success: false, error: { code: 'SERVICE_UNAVAILABLE', message: 'Synthetic read failure' } } }) }
-            return reply(domains)
-          }
           if (path.endsWith('/auth-settings')) return reply(auth)
           if (path.endsWith('/compliance-policy')) return reply(policy)
           throw Error(`Unexpected settings read: ${path}`)
@@ -55,25 +48,6 @@ export function registerBrandSettingsTests(reflow = false) {
           receipts.set(key, presentation)
           if (loseReceipt) { loseReceipt = false; return route.abort('failed') }
           return reply(presentation)
-        }
-        if (path.endsWith(`/brand-domains/${domainId}`)&&req.method()==='DELETE') {
-          expect(Object.keys(body)).toEqual(['version'])
-          if(deletedReceipts.has(key))return reply(deletedReceipts.get(key))
-          expect(body.version).toBe(domains.version)
-          domains={...domains,version:body.version+1,domains:[]}
-          deletedReceipts.set(key,domains)
-          return route.abort('failed')
-        }
-        if (path.endsWith(`/brand-domains/${domainId}`)) {
-          expect(req.method()).toBe('PATCH')
-          expect(body.version).toBe(domains.version)
-          if (conflictDomain) {
-            conflictDomain = false; failDomainsRead = true
-            domains = { ...domains, version: domains.version + 1 }
-            return route.fulfill({ status: 409, json: { success: false, error: { code: 'CONFLICT', message: 'Synthetic concurrent change' } } })
-          }
-          domains = { ...domains, version: body.version + 1, domains: [{ ...domains.domains[0], enabled: body.enabled }] }
-          return reply(domains)
         }
         if (path.endsWith('/compliance-policy')) {
           expect(req.method()).toBe('PUT')
@@ -96,14 +70,14 @@ export function registerBrandSettingsTests(reflow = false) {
       } else await page.locator('.side-nav').getByRole('button', { name: zh ? '品牌设置' : 'Brand settings', exact: true }).click()
       const tabs = page.locator('.console-tabs button')
       const dialog = page.getByRole('dialog', { name: zh ? '确认设置变更' : 'Confirm changes', exact: true })
-      const confirm = dialog.getByRole('button', { name: zh ? '提交' : 'Submit', exact: true })
+      const dismissToasts = async () => { while (await page.locator('.toast-close').count()) await page.locator('.toast-close').first().click() }
       const preset = page.viewportSize()!
       const checkLayout = async (name: string) => {
         for (const width of reflow ? [320, 359, 360, 361, 640, 699, 700, 701, 900, 1440] : [preset.width]) {
           if (reflow) await page.setViewportSize({ width, height: preset.height })
           await expectNoPageOverflow(page)
         }
-        await expect(page.locator('.brand-settings-panel .refresh-icon-control, .presentation-history, .brand-domains .history, .compliance .records, .auth-settings .audit')).toHaveCount(0)
+        await expect(page.locator('.brand-settings-panel .refresh-icon-control, .presentation-history, .compliance .records, .auth-settings .audit')).toHaveCount(0)
         await page.screenshot({ path: info.outputPath(`settings-${name}-${locale}.png`) })
       }
       await tabs.nth(1).click()
@@ -119,7 +93,7 @@ export function registerBrandSettingsTests(reflow = false) {
       expect(actions.buttons).toHaveLength(2)
       if (actions.width >= actions.buttons[0].width + actions.buttons[1].width + 8) expect(actions.buttons[0].top).toBe(actions.buttons[1].top)
 
-      await expect(tabs).toHaveCount(3)
+      await expect(tabs).toHaveCount(6)
       await expect(display.locator('.inherit-toggle')).toHaveCount(0)
       await expect(display.locator('details')).not.toHaveAttribute('open')
       await display.locator('details summary').click()
@@ -136,73 +110,21 @@ export function registerBrandSettingsTests(reflow = false) {
       await expect(display.locator('.presentation-preview')).toContainText('Aurora')
       await display.locator('input[type="text"]').first().fill('Aurora preview')
       await display.locator('button[type="submit"]').click()
-      await expectInsideViewport(dialog)
-      expect(attempts).toHaveLength(0)
-      await page.keyboard.press('Escape')
+      await expect(page.locator('.toast-error')).toBeVisible()
       await expect(dialog).toHaveCount(0)
+      await dismissToasts()
+      await display.getByRole('button', {name:zh?'重新读取':'Reload',exact:true}).click()
       await expect(display.locator('input[type="text"]').first()).toHaveValue('Aurora preview')
+      await expect(display.locator('form')).not.toHaveAttribute('data-write-locked')
       await display.locator('button[type="submit"]').click()
-      await confirm.click()
-      await expect(dialog.getByRole('button', { name: zh ? '重试此操作' : 'Retry this operation', exact: true })).toBeEnabled()
-      await page.keyboard.press('Escape')
+      await expect(page.locator('.toast-success')).toContainText(zh ? '设置已保存' : 'Settings saved')
       await expect(dialog).toHaveCount(0)
-      await display.getByRole('button', { name: zh ? '核对待处理变更' : 'Review pending change', exact: true }).click()
-      await dialog.getByRole('button', { name: zh ? '重试此操作' : 'Retry this operation', exact: true }).click()
-      await expect(dialog).toHaveCount(0)
-      await expect(display.getByRole('status')).toContainText(zh ? '设置已保存' : 'Settings saved')
       expect(attempts).toHaveLength(2)
-      expect(attempts[0]).toEqual(attempts[1])
-      await tabs.nth(2).click()
-      const domain = page.locator('.brand-domains')
-      await expect(domain.getByRole('alert')).toBeVisible()
-      await domain.getByRole('button', { name: zh ? '重新读取' : 'Reload', exact: true }).click()
-      await expect(domain.locator('.domain-row')).toHaveCount(1)
-      await checkLayout('domains')
-      await domain.locator('.domain-row').getByRole('button',{name:zh?'编辑':'Edit',exact:true}).click()
-      const editor = domain.getByRole('dialog', {name: zh ? '编辑绑定' : 'Edit binding', exact: true})
-      await expect(editor).toBeVisible()
-      await expectInsideViewport(editor)
-      await page.screenshot({path: info.outputPath(`domain-editor-${locale}.png`)})
-      await expectNoPageOverflow(page)
-      await page.keyboard.press('Escape')
-      await expect(editor).toHaveCount(0)
-      await domain.locator('.domain-row').getByRole('button',{name:zh?'编辑':'Edit',exact:true}).click()
-      await expect(editor).toBeVisible()
-      await domain.locator('.domain-form .check input').first().uncheck()
-      await domain.locator('.domain-form button[type="submit"]').click()
-      await expect(dialog).toBeVisible()
-      expect(attempts).toHaveLength(2)
-      await dialog.locator('.button-primary').click()
-      const readAgain = dialog.getByRole('button', { name: zh ? '重新读取' : 'Reload', exact: true })
-      await expect(readAgain).toBeEnabled()
-      expect(attempts).toHaveLength(3)
-      await readAgain.click()
-      await dialog.getByRole('button', { name: zh ? '重新操作' : 'Start again', exact: true }).click()
-      await expect(dialog).toHaveCount(0)
-      await domain.locator('.domain-row').getByRole('button',{name:zh?'编辑':'Edit',exact:true}).click()
-      await domain.locator('.domain-form .check input').first().uncheck()
-      await domain.locator('.domain-form button[type="submit"]').click()
-      await dialog.locator('.button-primary').click()
-      await expect(dialog).toHaveCount(0)
-      await expect(domain.locator('.domain-row .disabled-badge')).toBeVisible()
-      const deleteButton=domain.locator('.domain-row').getByRole('button',{name:zh?'删除':'Delete',exact:true})
-      await deleteButton.click()
-      await expect(dialog).toContainText('play.example.com')
-      await page.keyboard.press('Escape')
-      await expect(dialog).toHaveCount(0)
-      expect(attempts).toHaveLength(4)
-      await deleteButton.click()
-      await dialog.getByRole('button',{name:zh?'确认删除':'Confirm deletion',exact:true}).click()
-      await expect(dialog.getByRole('button',{name:zh?'重试此操作':'Retry this operation',exact:true})).toBeEnabled()
-      await page.keyboard.press('Escape')
-      await domain.getByRole('button',{name:zh?'核对待处理变更':'Review pending change',exact:true}).click()
-      await expect(dialog).toContainText('play.example.com')
-      await dialog.getByRole('button',{name:zh?'重试此操作':'Retry this operation',exact:true}).click()
-      await expect(dialog).toHaveCount(0)
-      await expect(domain.locator('.domain-row')).toHaveCount(0)
-      expect(attempts).toHaveLength(6)
-      expect(attempts[4]).toEqual(attempts[5])
-      await expect(tabs).toHaveCount(3)
+      expect(attempts[0].key).not.toBe(attempts[1].key)
+      await dismissToasts()
+      await expect(tabs).toHaveCount(6)
+      await expect(tabs.filter({hasText:zh?'域名':'Domains'})).toHaveCount(0)
+      expect(requests.some(request => request.includes('brand-domains'))).toBe(false)
       expect(requests.some(request => /auth-settings|compliance/.test(request))).toBe(false)
       expect(requests.filter(request => /history|gates|GET.*compliance-checks/.test(request))).toEqual([])
       expect(errors).toEqual([])

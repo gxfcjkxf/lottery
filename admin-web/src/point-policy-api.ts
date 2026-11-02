@@ -118,5 +118,3 @@ export function createPointPolicyApi(fetcher: typeof fetch = fetch) {
     },
   };
 }
-
-export type PointPolicyApi = ReturnType<typeof createPointPolicyApi>;

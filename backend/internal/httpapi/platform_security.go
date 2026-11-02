@@ -34,6 +34,9 @@ func authSettingsWrite(w http.ResponseWriter, r *http.Request, d Dependencies, a
 		if !managementAllowed(fresh, "auth_config", "write", brand) {
 			return adminsys.ErrDenied
 		}
+		if brand == "" {
+			return checkPlatformAdminEntry(ctx, tx, r)
+		}
 		var state string
 		if e = tx.QueryRow(ctx, `SELECT status FROM brands WHERE id=$1 FOR SHARE`, brand).Scan(&state); e != nil {
 			return e

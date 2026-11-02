@@ -157,7 +157,7 @@ func (s Service) cycleStep(ctx context.Context, tx pgx.Tx, c cycleRow, meta poin
 }
 
 func enumerateCycle(ctx context.Context, tx pgx.Tx, c cycleRow, meta points.Metadata) error {
-	rows, err := tx.Query(ctx, `SELECT id::text,placed_at FROM bet_orders WHERE brand_id=$1 AND placed_at>=$2 AND placed_at<$3 AND ($4::timestamptz IS NULL OR (placed_at,id)>($4,$5::uuid)) ORDER BY placed_at,id LIMIT $6`, c.Brand, c.From, c.To, c.CursorAt, c.CursorID, cyclePageSize+1)
+	rows, err := tx.Query(ctx, `SELECT id::text,placed_at FROM betting_financial_facts WHERE brand_id=$1 AND placed_at>=$2 AND placed_at<$3 AND ($4::timestamptz IS NULL OR (placed_at,id)>($4,$5::uuid)) ORDER BY placed_at,id LIMIT $6`, c.Brand, c.From, c.To, c.CursorAt, c.CursorID, cyclePageSize+1)
 	if err != nil {
 		return err
 	}
@@ -204,15 +204,13 @@ func enumerateCycle(ctx context.Context, tx pgx.Tx, c cycleRow, meta points.Meta
 type calculationRow struct {
 	ID, Order, Member, Account, Status, Reason string
 	Stake, Prize, Base                         points.Amount
-	Job, Calculation                           *string
-	Generation                                 *int64
 	Snapshot                                   []byte
 	Allocations                                []OrderAllocation
 	Placed                                     time.Time
 }
 
 func calculateCyclePage(ctx context.Context, tx pgx.Tx, c cycleRow, r runRow, meta points.Metadata) error {
-	rows, err := tx.Query(ctx, `SELECT t.order_id::text,t.placed_at,o.brand_member_id::text,o.account_id::text,o.status,o.total_points,o.prize_points,o.commission_rule_snapshot FROM commission_cycle_targets t JOIN bet_orders o ON o.brand_id=t.brand_id AND o.id=t.order_id WHERE t.cycle_id=$1 AND ($2::timestamptz IS NULL OR (t.placed_at,t.order_id)>($2,$3::uuid)) ORDER BY t.placed_at,t.order_id LIMIT $4`, c.ID, r.CursorAt, r.CursorOrder, cyclePageSize+1)
+	rows, err := tx.Query(ctx, `SELECT t.order_id::text,t.placed_at,o.brand_member_id::text,o.account_id::text,o.status,o.effective_points,o.prize_points,o.commission_rule_snapshot FROM commission_cycle_targets t JOIN betting_financial_facts o ON o.brand_id=t.brand_id AND o.id=t.order_id WHERE t.cycle_id=$1 AND ($2::timestamptz IS NULL OR (t.placed_at,t.order_id)>($2,$3::uuid)) ORDER BY t.placed_at,t.order_id LIMIT $4`, c.ID, r.CursorAt, r.CursorOrder, cyclePageSize+1)
 	if err != nil {
 		return err
 	}
@@ -254,9 +252,6 @@ func calculateCyclePage(ctx context.Context, tx pgx.Tx, c cycleRow, r runRow, me
 		item.Reason = res.Reason
 		if res.Fact != nil {
 			fact := res.Fact
-			item.Job = &fact.JobID
-			item.Calculation = &fact.CalculationID
-			item.Generation = &fact.Generation
 			if fact.MemberID != item.Member || fact.AccountID != item.Account || fact.Status != item.Status || fact.PrizePoints != item.Prize || fact.Basis.TurnoverPoints != item.Stake {
 				return ErrEvidence
 			}
@@ -293,7 +288,7 @@ func calculateCyclePage(ctx context.Context, tx pgx.Tx, c cycleRow, r runRow, me
 		return err
 	}
 	for _, item := range items {
-		_, err = tx.Exec(ctx, `INSERT INTO commission_calculations(id,brand_id,cycle_id,run_id,order_id,reason,status,member_id,account_id,stake_points,prize_points,base_points,job_id,calculation_id,generation,rule_snapshot,audit_log_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`, item.ID, c.Brand, c.ID, r.ID, item.Order, item.Reason, item.Status, item.Member, item.Account, item.Stake, item.Prize, item.Base, item.Job, item.Calculation, item.Generation, item.Snapshot, log)
+		_, err = tx.Exec(ctx, `INSERT INTO commission_calculations(id,brand_id,cycle_id,run_id,order_id,reason,status,member_id,account_id,stake_points,prize_points,base_points,rule_snapshot,audit_log_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, item.ID, c.Brand, c.ID, r.ID, item.Order, item.Reason, item.Status, item.Member, item.Account, item.Stake, item.Prize, item.Base, item.Snapshot, log)
 		if err != nil {
 			return err
 		}

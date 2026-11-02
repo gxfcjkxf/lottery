@@ -175,9 +175,9 @@ func registerCommissionAdjustmentRoutes(handle func(string, string, http.Handler
 			failure(w, r, 400, "REQUEST_INVALID", "派发编号不正确")
 			return
 		}
-		limit, offset, ok := commissionCyclePage(r)
+		limit, offset, filter, ok := commissionListFilter(r, "target")
 		if !ok {
-			failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
+			failure(w, r, 400, "REQUEST_INVALID", "查询参数不正确")
 			return
 		}
 		initial, ok := adminAccount(w, r, d)
@@ -185,7 +185,7 @@ func registerCommissionAdjustmentRoutes(handle func(string, string, http.Handler
 			return
 		}
 		out, err := commissionAdjustmentRead(w, r, d, initial, brand, "commission.payment_targets.list", func(tx pgx.Tx) (any, error) {
-			return s.PaymentTargetsTx(r.Context(), tx, brand, payment, limit, offset)
+			return s.PaymentTargetsTx(r.Context(), tx, brand, payment, limit, offset, filter)
 		})
 		if commissionAdjustmentReadFailure(w, r, err) {
 			return

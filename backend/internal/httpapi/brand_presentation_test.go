@@ -82,7 +82,7 @@ func TestBrandPresentationHTTPPublishesEffectiveContextAndCheckedReplay(t *testi
 	}
 	mustStatus(t, f.call("PUT", presentationPath, "presentation-publish-01", f.token, managedBrand, body), 403)
 	var ledger, orders int
-	if e := f.pool.QueryRow(context.Background(), `SELECT(SELECT count(*) FROM point_ledger_entries),(SELECT count(*) FROM bet_orders)`).Scan(&ledger, &orders); e != nil || ledger != 0 || orders != 0 {
+	if e := f.pool.QueryRow(context.Background(), `SELECT(SELECT count(*) FROM point_ledger_entries),(SELECT count(*) FROM configured_orders)`).Scan(&ledger, &orders); e != nil || ledger != 0 || orders != 0 {
 		t.Fatal(ledger, orders, e)
 	}
 }

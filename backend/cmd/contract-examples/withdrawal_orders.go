@@ -22,7 +22,7 @@ func withdrawalExamples() map[string]any {
 		DecisionReason: "awaiting review", AuditLogID: id,
 	}
 	view := withdrawal.ToOrderView(order)
-	availability := withdrawal.AvailabilityView{
+	availability := withdrawal.AvailabilityView{PointsStep: 1, SourceBalances: []points.Allocation{},
 		BrandID: id, MemberID: id, PolicyEnabled: true, EligibilityConfigured: true,
 		CanApply: true, ReasonCode: "AVAILABLE", MinPoints: 1,
 		AllowedSources: []string{"recharge", "winning", "gift"}, RealPayments: false,

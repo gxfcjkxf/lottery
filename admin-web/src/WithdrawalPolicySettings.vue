@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import SelectControl from '@lottery/shared/SelectControl.vue'
+import { vRefreshButton } from "@lottery/shared";
+import { dismissOperationToast, useOperationToast } from "@lottery/shared";
+import DetailModal from '@lottery/shared/DetailModal.vue';
 import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
 import { vWriteGuard } from "@lottery/shared";
 import { useAdminI18n as useAssociationI18n } from "./i18n";
@@ -7,13 +11,8 @@ import { AssociationName } from "@lottery/shared";
 import { useAdminI18n as usePublicErrorI18n } from "./i18n";
 const publicErrorI18n = usePublicErrorI18n();
 const publicErrorMessage = publicErrorI18n.errorMessage;
-const displayPublicError = publicErrorI18n.displayError;
 import { withGlobalLoading } from '@lottery/shared';
-import { vRefreshButton } from '@lottery/shared';
 import { vGlobalLoading } from "@lottery/shared";
-const displayDate = (value: string | null | undefined) => formatDisplayDateTime(value, displayLocale.value);
-import { formatDisplayDateTime } from "@lottery/shared";
-const displayLocale = useAdminI18n().locale;
 import { vInlineValidation } from '@lottery/shared'
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
@@ -21,7 +20,7 @@ import {
   createIdempotencyKey,
   type AdminAccount,
 } from "./admin-api";
-import { createRuleVersionsApi, type GameRecord } from "./rule-versions-api";
+import { readAllFilterOptions, FilterOptionsError, type FilterOption } from "@lottery/shared/filter-options";
 import { useAdminI18n } from "./i18n";
 import { WALLET_SOURCES } from "@lottery/shared";
 import type { LocalizedMessage } from "@lottery/shared";
@@ -33,7 +32,6 @@ import {
   type BrandWithdrawalPolicy,
   type GameWithdrawalConfig,
   type GameWithdrawalPolicy,
-  type PolicyRevision,
   type WithdrawalSource,
   type UpdateBrandWithdrawalPolicyBody,
   type UpdateGameWithdrawalPolicyBody,
@@ -48,7 +46,6 @@ import {
   setPendingPolicyWrite,
 } from "./withdrawal-policy-state";
 
-type HistoryPage = { items: PolicyRevision[]; limit: number; offset: number };
 type Lane = "brand" | "game";
 type BrandBody = UpdateBrandWithdrawalPolicyBody;
 type GameBody = UpdateGameWithdrawalPolicyBody;
@@ -62,6 +59,7 @@ type FrozenMutation = {
   fingerprint: string;
 };
 type BrandDraft = Omit<BrandWithdrawalConfig, "max_points"> & {
+  points_step: string;
   max_points_input: string;
   reason: string;
 };
@@ -84,44 +82,51 @@ const DEFAULT_BRAND_WITHDRAWAL_CONFIG: BrandWithdrawalConfig = {
 const props = defineProps<{ account: AdminAccount; brandId: string }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createWithdrawalPolicyApi();
-const gameApi = createRuleVersionsApi();
 const { t, message } = useAdminI18n();
 const rights = computed(() =>
   withdrawalPolicyPermissions(props.account, props.brandId),
 );
 const brandPolicy = ref<BrandWithdrawalPolicy | null>(null);
 const gamePolicy = ref<GameWithdrawalPolicy | null>(null);
-const games = ref<GameRecord[]>([]);
+const games = ref<FilterOption[]>([]);
 const gameId = ref("");
-const directGameId = ref("");
 const brandDraft = ref<BrandDraft>(emptyBrandDraft());
 const gameDraft = ref<GameDraft>(emptyGameDraft());
-const brandHistory = ref<HistoryPage | null>(null);
-const gameHistory = ref<HistoryPage | null>(null);
-const brandHistoryOffset = ref(0);
-const gameHistoryOffset = ref(0);
 const loadingBrand = ref(false);
 const loadingGame = ref(false);
 const loadingGames = ref(false);
-const loadingBrandHistory = ref(false);
-const loadingGameHistory = ref(false);
+const catalogFailed = ref(false);
 const saving = ref<Lane | "">("");
 const reconciling = ref(false);
 const error = ref<string | LocalizedMessage>("");
 const notice = ref<string | LocalizedMessage>("");
 const confirmation = ref<FrozenMutation | null>(null);
+const confirmationDetails = computed(() => {
+  const current = confirmation.value;
+  if (!current) return null;
+  if (current.lane === 'game') return current.body.config;
+  const body = current.body as BrandBody;
+  return {
+    enabled: body.config.enabled,
+    min_points: body.config.min_points,
+    max_points: body.config.max_points,
+    points_step: body.points_step,
+    allowed_sources: body.config.allowed_sources,
+    review_mode: body.config.review_mode,
+    turnover_multiple: body.config.turnover_multiple,
+  };
+});
 const uncertain = ref<FrozenMutation | null>(null);
 let generation = 0;
 let brandRead = 0;
 let gameRead = 0;
 let gamesRead = 0;
-let brandHistoryRead = 0;
-let gameHistoryRead = 0;
 let live = true;
 
 function emptyBrandDraft(): BrandDraft {
   return {
     ...structuredClone(DEFAULT_BRAND_WITHDRAWAL_CONFIG),
+    points_step: "1",
     max_points_input: "",
     reason: "",
   };
@@ -177,7 +182,7 @@ function sameContext(ticket: number, brandId: string, actorId: string) {
   );
 }
 function sessionExpired(cause: unknown) {
-  if (cause instanceof AdminApiError && cause.status === 401) {
+  if ((cause instanceof AdminApiError || cause instanceof FilterOptionsError) && cause.status === 401) {
     generation++;
     clearVisibleData();
     emit("session-invalid");
@@ -197,20 +202,14 @@ function clearVisibleData() {
   gamePolicy.value = null;
   games.value = [];
   gameId.value = "";
-  directGameId.value = "";
   brandDraft.value = emptyBrandDraft();
   gameDraft.value = emptyGameDraft();
-  brandHistory.value = null;
-  gameHistory.value = null;
-  brandHistoryOffset.value = 0;
-  gameHistoryOffset.value = 0;
   confirmation.value = null;
   uncertain.value = null;
   loadingBrand.value = false;
   loadingGame.value = false;
   loadingGames.value = false;
-  loadingBrandHistory.value = false;
-  loadingGameHistory.value = false;
+  catalogFailed.value = false;
   saving.value = "";
   reconciling.value = false;
   notice.value = "";
@@ -240,6 +239,7 @@ function isPositiveInt64(value: string): boolean {
 const brandInputsValid = computed(() => {
   const config = buildBrandConfig();
   return (
+    isPositiveInt64(brandDraft.value.points_step) &&
     isPositiveInt64(config.min_points) &&
     (config.max_points === null ||
       (isPositiveInt64(config.max_points) &&
@@ -258,7 +258,7 @@ const gameInputValid = computed(
     isValidTurnoverMultiple(gameDraft.value.turnover_multiple),
 );
 const reasonValid = (value: string) =>
-  new TextEncoder().encode(value.trim()).length <= 500;
+  Array.from(value.trim()).length <= 500;
 const canWrite = computed(
   () => rights.value.write && !props.account.super_admin,
 );
@@ -325,10 +325,22 @@ async function loadBrand(preserveDraft = false) {
 function applyBrandDraft(item: BrandWithdrawalPolicy) {
   brandDraft.value = {
     ...structuredClone(item.config),
+    points_step: item.points_step,
     max_points_input: item.config.max_points ?? "",
     allowed_sources: [...item.config.allowed_sources],
     reason: "",
   };
+}
+function restorePendingDraft() {
+  const pending = uncertain.value;
+  if (!pending) return;
+  if (pending.lane === "brand") {
+    const config = pending.body.config as BrandWithdrawalConfig;
+    brandDraft.value = { ...structuredClone(config), points_step: (pending.body as BrandBody).points_step, max_points_input: config.max_points ?? "", reason: pending.body.reason };
+  } else {
+    const config = pending.body.config as GameWithdrawalConfig;
+    gameDraft.value = { turnover_multiple: config.turnover_multiple ?? "", reason: pending.body.reason };
+  }
 }
 function applyGameDraft(item: GameWithdrawalPolicy) {
   gameDraft.value = {
@@ -346,9 +358,6 @@ async function loadGame(id = gameId.value, preserveDraft = false) {
   const read = ++gameRead;
   loadingGame.value = true;
   gamePolicy.value = null;
-  gameHistory.value = null;
-  gameHistoryOffset.value = 0;
-  gameHistoryRead++;
   error.value = "";
   try {
     const item = await api.getGamePolicy(brandId, normalizedId);
@@ -388,29 +397,31 @@ async function loadGame(id = gameId.value, preserveDraft = false) {
   }
 }
 async function loadGames() {
-  if (!rights.value.gameView || !props.brandId) return;
+  if (!rights.value.view || !props.brandId) return;
   const brandId = props.brandId;
   const actorId = props.account.id;
   const ticket = generation;
   const read = ++gamesRead;
   loadingGames.value = true;
+  catalogFailed.value = false;
   try {
-    const result = await gameApi.getGames(brandId);
+    const result = await readAllFilterOptions({ surface: 'admin', brandId, resource: 'withdrawal_policy', kind: 'game' });
     if (
       !sameContext(ticket, brandId, actorId) ||
       read !== gamesRead ||
-      !rights.value.gameView
+      !rights.value.view
     )
       return;
-    games.value = result.games.filter((game) => game.brand_id === brandId);
+    games.value = result;
   } catch (cause) {
     if (
       !sameContext(ticket, brandId, actorId) ||
       read !== gamesRead ||
-      !rights.value.gameView
+      !rights.value.view
     )
       return;
     games.value = [];
+    catalogFailed.value = true;
     sessionExpired(cause);
     error.value = explain(cause, message('admin.copy.c052ffbf'));
   } finally {
@@ -418,76 +429,10 @@ async function loadGames() {
       loadingGames.value = false;
   }
 }
-async function loadHistory(lane: Lane, offset: number) {
-  if (
-    !rights.value.view ||
-    !props.brandId ||
-    (lane === "game" && !gameId.value)
-  )
-    return;
-  const brandId = props.brandId;
-  const actorId = props.account.id;
-  const selectedGameId = gameId.value;
-  const ticket = generation;
-  const read = lane === "brand" ? ++brandHistoryRead : ++gameHistoryRead;
-  if (lane === "brand") loadingBrandHistory.value = true;
-  else loadingGameHistory.value = true;
-  try {
-    const page =
-      lane === "brand"
-        ? await api.getBrandHistory(brandId, 50, offset)
-        : await api.getGameHistory(brandId, selectedGameId, 50, offset);
-    if (
-      !current(ticket, brandId, actorId) ||
-      (lane === "brand"
-        ? read !== brandHistoryRead
-        : read !== gameHistoryRead) ||
-      (lane === "game" && gameId.value !== selectedGameId)
-    )
-      return;
-    if (
-      page.items.some(
-        (item) =>
-          item.brand_id !== brandId ||
-          (lane === "brand"
-            ? item.game_id !== ""
-            : item.game_id !== selectedGameId),
-      )
-    )
-      throw new LocalizedPolicyError(message('admin.copy.b5e0ce9c'));
-    if (lane === "brand") {
-      brandHistory.value = page;
-      brandHistoryOffset.value = offset;
-    } else {
-      gameHistory.value = page;
-      gameHistoryOffset.value = offset;
-    }
-  } catch (cause) {
-    if (
-      !current(ticket, brandId, actorId) ||
-      (lane === "brand"
-        ? read !== brandHistoryRead
-        : read !== gameHistoryRead) ||
-      (lane === "game" && gameId.value !== selectedGameId)
-    )
-      return;
-    sessionExpired(cause);
-    error.value = explain(cause, message('admin.copy.126ed15f'));
-  } finally {
-    if (current(ticket, brandId, actorId)) {
-      if (lane === "brand" && read === brandHistoryRead)
-        loadingBrandHistory.value = false;
-      if (lane === "game" && read === gameHistoryRead)
-        loadingGameHistory.value = false;
-    }
-  }
-}
 async function changeSelectedGame(id: string) {
   confirmation.value = null;
   gameRead++;
-  gameHistoryRead++;
   gamePolicy.value = null;
-  gameHistory.value = null;
   gameDraft.value = emptyGameDraft();
   gameId.value = id.trim();
   if (gameId.value) {
@@ -504,6 +449,7 @@ function requestBrandConfirmation() {
   if (!brandCanSave.value || !brandPolicy.value) return;
   const body = freezePolicyBody({
     version: brandPolicy.value.version,
+    points_step: brandDraft.value.points_step,
     config: buildBrandConfig(),
     reason: brandDraft.value.reason.trim(),
   }) as Readonly<BrandBody>;
@@ -529,6 +475,7 @@ function createConfirmation(
   body: Readonly<BrandBody | GameBody>,
 ) {
   const fingerprint = policyBodyFingerprint(body);
+  dismissOperationToast();
   confirmation.value = {
     actorId: props.account.id,
     lane,
@@ -612,14 +559,12 @@ async function submitMutation(mutation: FrozenMutation) {
     if (mutation.lane === "brand") {
       brandPolicy.value = item as BrandWithdrawalPolicy;
       applyBrandDraft(item as BrandWithdrawalPolicy);
-      brandHistory.value = null;
-      void loadHistory("brand", 0);
+      await loadBrand();
       if (gameId.value) void loadGame(gameId.value, true);
     } else {
       gamePolicy.value = item as GameWithdrawalPolicy;
       applyGameDraft(item as GameWithdrawalPolicy);
-      gameHistory.value = null;
-      void loadHistory("game", 0);
+      await loadGame(mutation.gameId);
     }
     notice.value = message('admin.copy.a0a25fb6');
   } catch (cause) {
@@ -694,17 +639,6 @@ async function reconcileUncertain() {
   }
   reconciling.value = false;
 }
-async function historyPrevious(lane: Lane) {
-  const offset =
-    lane === "brand" ? brandHistoryOffset.value : gameHistoryOffset.value;
-  if (offset > 0) await loadHistory(lane, Math.max(0, offset - 50));
-}
-async function historyNext(lane: Lane) {
-  const page = lane === "brand" ? brandHistory.value : gameHistory.value;
-  const offset =
-    lane === "brand" ? brandHistoryOffset.value : gameHistoryOffset.value;
-  if (page && page.items.length === 50) await loadHistory(lane, offset + 50);
-}
 function formatSources(sources: WithdrawalSource[]) {
   return sources
     .map(
@@ -718,9 +652,6 @@ function formatSources(sources: WithdrawalSource[]) {
     )
     .join(t('admin.copy.b71594e8'));
 }
-function configJson(config: unknown) {
-  return JSON.stringify(config, null, 2);
-}
 
 watch(
   () => [
@@ -728,15 +659,12 @@ watch(
     props.account,
     rights.value.view,
     rights.value.write,
-    rights.value.gameView,
   ],
   () => {
     generation++;
     brandRead++;
     gameRead++;
     gamesRead++;
-    brandHistoryRead++;
-    gameHistoryRead++;
     clearVisibleData();
     error.value = "";
     uncertain.value =
@@ -746,15 +674,15 @@ watch(
           pending.actorId === props.account.id &&
           pending.brandId === props.brandId,
       );
+    restorePendingDraft();
     if (rights.value.view) {
       void loadBrand();
       if (uncertain.value?.lane === "game" && uncertain.value.gameId) {
         gameId.value = uncertain.value.gameId;
-        directGameId.value = uncertain.value.gameId;
         void loadGame(uncertain.value.gameId, true);
       }
     }
-    if (rights.value.gameView) void loadGames();
+    if (rights.value.view) void loadGames();
   },
   { deep: true, flush: "sync" },
 );
@@ -766,6 +694,7 @@ onMounted(() => {
         pending.actorId === props.account.id &&
         pending.brandId === props.brandId,
     );
+  restorePendingDraft();
   if (rights.value.view) void loadBrand();
   if (
     rights.value.view &&
@@ -773,65 +702,28 @@ onMounted(() => {
     uncertain.value.gameId
   ) {
     gameId.value = uncertain.value.gameId;
-    directGameId.value = uncertain.value.gameId;
     void loadGame(uncertain.value.gameId, true);
   }
-  if (rights.value.gameView) void loadGames();
+  if (rights.value.view) void loadGames();
 });
 onUnmounted(() => {
   live = false;
   generation++;
 });
+
+useOperationToast(() => notice.value, value => displayMessage(value), 'success');
+useOperationToast(() => error.value, value => displayMessage(value), 'error');
 </script>
 
 <template>
-  <section class="withdrawal-policy" data-testid="withdrawal-policy-settings">
-    <header class="policy-header">
-      <div>
-        <p class="eyebrow">{{ t('admin.copy.b258cb23') }}</p>
-        <h2>{{ t('admin.copy.b5eed7bd') }}</h2>
-      </div>
-      <span class="brand-pill">{{ t('admin.copy.9c32661d') }} · <AssociationName kind="brand" :id="brandId" :locale="associationLocale" /></span>
-    </header>
+  <section class="withdrawal-policy brand-settings-panel" data-testid="withdrawal-policy-settings">
 
-    <p class="callout warning" role="note">
-      {{ t('admin.copy.eb850a76') }}
-    </p>
-    <p v-if="account.super_admin" class="callout">
-      {{ t('admin.copy.bdc5d412') }}
-    </p>
     <p v-if="!rights.view" class="callout" role="status">
       {{ t('admin.copy.bf76c8c5') }}
     </p>
 
-    <section v-if="!rights.view && rights.gameView" class="policy-card">
-      <div class="card-heading">
-        <div>
-          <h3>{{ t('admin.copy.6b42b097') }}</h3>
-        </div>
-        <button
-          class="button button-secondary"
-          type="button"
-          :disabled="loadingGames"
-          @click="withGlobalLoading(loadGames)"
-        >
-          {{ loadingGames ? t('admin.copy.27342bf3') : t('admin.copy.5d10b2de') }}
-        </button>
-      </div>
-      <p v-global-loading v-if="loadingGames" class="muted" role="status">{{ t('admin.copy.4d221807') }}</p>
-      <p v-else-if="!games.length" class="muted empty-state">{{ t('admin.copy.a493ddef') }}</p>
-      <ul v-else class="catalog-list">
-        <li v-for="game in games" :key="game.id">
-          {{ game.name }}
-        </li>
-      </ul>
-    </section>
-
     <template v-if="rights.view">
-      <div v-if="error" class="message error" role="alert">
-        <span>{{ displayMessage(error) }}</span>
-      </div>
-      <p v-if="notice" class="message success" role="status">{{ displayMessage(notice) }}</p>
+
       <div v-if="pendingInContext" class="message warning" role="alert">
         <span
           >{{ t('admin.copy.cca19357') }}</span
@@ -855,23 +747,7 @@ onUnmounted(() => {
         </button>
       </div>
       <section class="policy-card">
-        <div class="card-heading">
-          <div>
-            <h3>{{ t('admin.copy.06fe3b08') }}</h3>
-            <p v-if="brandPolicy">
-               ·
-              <AssociationName :record="brandPolicy" kind="brand" :id="brandPolicy.brand_id" :locale="associationLocale" /> {{ t('admin.copy.c6f1ca9e') }} {{ displayDate(brandPolicy.updated_at) }}
-            </p>
-          </div>
-          <button v-refresh-button="loadingBrand ? t('admin.copy.27342bf3') : t('admin.copy.655019c3')"
-            class="button button-secondary"
-            type="button"
-            :disabled="loadingBrand || !!saving || !!pendingInContext"
-            @click="withGlobalLoading(async () => { return () => loadBrand() })"
-          >
-            {{ loadingBrand ? t('admin.copy.27342bf3') : t('admin.copy.655019c3') }}
-          </button>
-        </div>
+        <button v-refresh-button="t('admin.copy.deca021e')" v-if="error && !pendingInContext" type="button" class="button button-secondary" :disabled="loadingBrand || !!saving" @click="withGlobalLoading(loadBrand)">{{ t('admin.copy.deca021e') }}</button>
         <p v-global-loading v-if="loadingBrand && !brandPolicy" class="muted" role="status">
           {{ t('admin.copy.9ad33899') }}
         </p>
@@ -879,7 +755,7 @@ onUnmounted(() => {
           {{ t('admin.copy.6a43bda0') }}
         </p>
         <template v-if="brandPolicy">
-          <dl class="saved-summary">
+          <dl v-if="!canWrite" class="saved-summary">
             <div>
               <dt>{{ t('admin.copy.a765b3ca') }}</dt>
               <dd>
@@ -893,6 +769,7 @@ onUnmounted(() => {
                 {{ brandPolicy.config.max_points ?? t('admin.copy.5302e1a7') }}
               </dd>
             </div>
+            <div><dt>{{ t('admin.withdrawal.pointsStep') }}</dt><dd>{{ brandPolicy.points_step }}</dd></div>
             <div>
               <dt>{{ t('admin.copy.4364767b') }}</dt>
               <dd>{{ formatSources(brandPolicy.config.allowed_sources) }}</dd>
@@ -912,8 +789,8 @@ onUnmounted(() => {
               <dd>{{ brandPolicy.config.turnover_multiple }}</dd>
             </div>
           </dl>
-          <form novalidate v-inline-validation class="editor-grid" @submit.prevent="withGlobalLoading(requestBrandConfirmation)">
-            <label for="withdraw-brand-enabled"
+          <form v-if="canWrite" novalidate v-inline-validation class="editor-grid ui-form" @submit.prevent="withGlobalLoading(requestBrandConfirmation)">
+            <label class="withdrawal-toggle wide" for="withdraw-brand-enabled"
               >{{ t('admin.copy.b79e77f2') }}<input
                 id="withdraw-brand-enabled"
                 v-model="brandDraft.enabled"
@@ -925,6 +802,7 @@ onUnmounted(() => {
                   reconciling
                 "
             /></label>
+            <label for="withdraw-brand-step">{{ t('admin.withdrawal.pointsStep') }}<input id="withdraw-brand-step" :aria-label="t('admin.withdrawal.pointsStep')" aria-describedby="withdraw-brand-step-hint" v-model.trim="brandDraft.points_step" inputmode="numeric" autocomplete="off" :disabled="!canWrite || !!pendingInContext || !!confirmation || reconciling" /><small id="withdraw-brand-step-hint">{{ t('admin.withdrawal.pointsStepHint') }}</small></label>
             <label for="withdraw-brand-min"
               >{{ t('admin.copy.f3a168b4') }}<input
                 id="withdraw-brand-min"
@@ -1007,19 +885,12 @@ onUnmounted(() => {
               >
             </fieldset>
             <label for="withdraw-brand-review"
-              >{{ t('admin.copy.0af1bc63') }}<select
-                id="withdraw-brand-review"
-                v-model="brandDraft.review_mode"
-                :disabled="
+              >{{ t('admin.copy.0af1bc63') }}<SelectControl id="withdraw-brand-review" v-model="brandDraft.review_mode" :disabled="
                   !canWrite ||
                   !!pendingInContext ||
                   !!confirmation ||
                   reconciling
-                "
-              >
-                <option value="manual">{{ t('admin.copy.f1e1066f') }}</option>
-                <option value="automatic">{{ t('admin.copy.19cf2be7') }}</option>
-              </select></label
+                " :label="String(t('admin.copy.0af1bc63'))" :options="[{ value: 'manual', label: (String(t('admin.copy.f1e1066f'))).trim() }, { value: 'automatic', label: (String(t('admin.copy.19cf2be7'))).trim() }]" /></label
             >
             <label for="withdraw-brand-multiple"
               >{{ t('admin.copy.c104d4d5') }}<input
@@ -1046,54 +917,33 @@ onUnmounted(() => {
             >
               {{ t('admin.copy.82d98d17') }}
             </p>
-            <p v-if="!canWrite" class="muted wide">
-              {{ t('admin.copy.29035ab8') }}
-            </p>
-            <div v-if="canWrite" class="wide action-row">
+
+            <div v-if="canWrite" class="wide action-row ui-form-actions">
               <button class="button button-primary" type="submit" :disabled="!brandCanSave">
-                {{ t('admin.copy.041b3e8e') }}
+                {{ t('admin.copy.780ef330') }}
               </button>
             </div>
           </form>
         </template>
       </section>
 
-      <section class="policy-card">
+      <section v-if="loadingGames || games.length || catalogFailed || gamePolicy" class="policy-card">
         <div class="card-heading">
           <div>
-            <h3>{{ t('admin.copy.c42e6ae8') }}</h3>
-            <p>{{ t('admin.copy.b7c3d9f6') }}</p>
+            <h3>{{ t('admin.withdrawal.customGameOverride') }}</h3>
           </div>
         </div>
         <div class="game-picker">
-          <label v-if="rights.gameView" for="withdraw-game-select"
-            >{{ t('admin.copy.68ccd146') }}<select
-              id="withdraw-game-select"
-          :aria-label="t('admin.copy.260664bf')"
-              :value="gameId"
-              :disabled="
+          <label v-if="rights.view" for="withdraw-game-select"
+            >{{ t('admin.copy.68ccd146') }}<SelectControl id="withdraw-game-select" :label="t('admin.copy.260664bf')" :model-value="gameId" :disabled="
                 loadingGames || !!saving || !!pendingInContext || !!confirmation
-              "
-              @change="withGlobalLoading(changeSelectedGame, ($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">{{ t('admin.copy.3aba80cd') }}</option>
-              <option
-                v-if="
-                  gamePolicy &&
-                  gameId &&
-                  !games.some((game) => game.id === gameId)
-                "
-                :value="gameId"
-              >
-                {{ t('admin.copy.c8c2e3f4') }} · {{ gameId }}
-              </option>
-              <option v-for="game in games" :key="game.id" :value="game.id">
-                {{ game.name }}
-              </option>
-            </select></label
+              " @change="withGlobalLoading(changeSelectedGame, $event)" :options="[{ value: '', label: (String(t('admin.copy.3aba80cd'))).trim() }, ...((gamePolicy &&
+        gameId &&
+        !games.some((game) => game.id === gameId)) ? [{ value: gameId, label: (String(t('admin.copy.c8c2e3f4'))).trim() }] : []), ...((games).map((game) => ({ value: game.id, label: (String(game.name)).trim() })))]" /></label
           >
-          <button v-refresh-button="loadingGames ? t('admin.copy.b1808de5') : t('admin.copy.f8a8e3bf')"
-            v-if="rights.gameView"
+          <button
+            v-refresh-button="loadingGames ? t('admin.copy.b1808de5') : t('admin.copy.f8a8e3bf')"
+            v-if="catalogFailed"
             class="button button-secondary"
             type="button"
             :disabled="loadingGames || !!saving"
@@ -1102,40 +952,14 @@ onUnmounted(() => {
             {{ loadingGames ? t('admin.copy.b1808de5') : t('admin.copy.f8a8e3bf') }}
           </button>
           <span
-            v-if="rights.gameView && !games.length && !loadingGames"
+            v-if="rights.view && !games.length && !loadingGames"
             class="muted"
             >{{ t('admin.copy.a493ddef') }}</span
           >
-          <span v-if="!rights.gameView" class="muted"
+          <span v-if="!rights.view" class="muted"
             >{{ t('admin.copy.e013e750') }}</span
           >
         </div>
-        <form novalidate v-inline-validation
-          class="game-id-form"
-          @submit.prevent="withGlobalLoading(changeSelectedGame, directGameId)"
-        >
-          <label for="withdraw-game-id"
-            >{{ t('admin.copy.1341137a') }}<input
-              id="withdraw-game-id"
-              v-model.trim="directGameId"
-              autocomplete="off"
-              :placeholder="t('admin.copy.6c390a48')"
-              :disabled="!!saving || !!pendingInContext || !!confirmation"
-          /></label>
-          <button
-            class="button button-secondary"
-            type="submit"
-            :disabled="
-              !directGameId.trim() ||
-              loadingGame ||
-              !!saving ||
-              !!pendingInContext ||
-              !!confirmation
-            "
-          >
-            {{ loadingGame ? t('admin.copy.27342bf3') : t('admin.copy.bc479ccf') }}
-          </button>
-        </form>
         <p v-global-loading v-if="loadingGame && !gamePolicy" class="muted" role="status">
           {{ t('admin.copy.739dd9f0') }}
         </p>
@@ -1143,7 +967,7 @@ onUnmounted(() => {
           {{ t('admin.copy.ba17d22a') }}
         </p>
         <template v-if="gamePolicy">
-          <dl class="saved-summary">
+          <dl v-if="!canWrite" class="saved-summary">
             <div>
               <dt>{{ t('admin.copy.23d2b485') }}</dt>
               <dd><AssociationName :record="gamePolicy" kind="game" :id="gamePolicy.game_id" :locale="associationLocale" /></dd>
@@ -1165,7 +989,7 @@ onUnmounted(() => {
             </div>
 
           </dl>
-          <form novalidate v-inline-validation class="editor-grid" @submit.prevent="withGlobalLoading(requestGameConfirmation)">
+          <form v-if="canWrite" novalidate v-inline-validation class="editor-grid ui-form" @submit.prevent="withGlobalLoading(requestGameConfirmation)">
             <label class="wide" for="withdraw-game-multiple"
               >{{ t('admin.copy.72ddec59') }}<input
                 id="withdraw-game-multiple"
@@ -1184,148 +1008,28 @@ onUnmounted(() => {
               {{ t('admin.copy.85dd702c') }}
             </p>
 
-            <p v-if="!canWrite" class="muted wide">
-              {{ t('admin.copy.e9ac506e') }}
-            </p>
-            <div v-if="canWrite" class="wide action-row">
+
+            <div v-if="canWrite" class="wide action-row ui-form-actions">
               <button class="button button-primary" type="submit" :disabled="!gameCanSave">
-                {{ t('admin.copy.48a1572c') }}
+                {{ t('admin.copy.780ef330') }}
               </button>
             </div>
           </form>
-          <section class="history-panel">
-            <div class="card-heading">
-              <div>
-              <h4>{{ t('admin.copy.8752bd11') }}</h4>
-              </div>
-              <button
-                class="button button-secondary"
-                type="button"
-                :disabled="loadingGameHistory"
-                @click="withGlobalLoading(loadHistory, 'game', 0)"
-              >
-                {{ loadingGameHistory ? t('admin.copy.27342bf3') : t('admin.copy.5cedae54') }}
-              </button>
-            </div>
-            <p v-global-loading
-              v-if="loadingGameHistory && !gameHistory"
-              class="muted"
-              role="status"
-            >
-              {{ t('admin.copy.b7842e6d') }}
-            </p>
-            <p
-              v-else-if="gameHistory && !gameHistory.items.length"
-              class="muted empty-state"
-            >
-              {{ t('admin.copy.0a4b249a') }}
-            </p>
-            <ol v-if="gameHistory?.items.length" class="history-list">
-              <li v-for="item in gameHistory.items" :key="item.id">
-                <h5> {{ displayDate(item.created_at) }}</h5>
-                <p>
-                  {{ t('admin.copy.76bff253') }}<AssociationName v-if="item.changed_by" :record="item" kind="admin" :id="item.changed_by" :locale="associationLocale" /><span v-else>{{ t('admin.copy.532e2e04') }}</span><span v-if="item.reason"> {{ t('admin.copy.2809a1e6') }}{{ item.reason }}</span>
-                </p>
-                <BusinessDetails :value="item.config" :locale="associationLocale" />
-              </li>
-            </ol>
-            <div v-if="gameHistory" class="history-pagination">
-              <button
-                class="button button-secondary"
-                type="button"
-                :disabled="gameHistoryOffset === 0 || loadingGameHistory"
-                @click="withGlobalLoading(historyPrevious, 'game')"
-              >
-                {{ t('admin.copy.dbe7a5d7') }}</button
-              ><span
-                >{{ t('admin.copy.4ffb01e2') }} {{ gameHistoryOffset }} · {{ t('admin.copy.62e6982d') }}
-                {{ gameHistory.limit }} {{ t('admin.copy.067fed38') }}</span
-              ><button
-                class="button button-secondary"
-                type="button"
-                :disabled="gameHistory.items.length < 50 || loadingGameHistory"
-                @click="withGlobalLoading(historyNext, 'game')"
-              >
-                {{ t('admin.copy.2e9c9e7a') }}
-              </button>
-            </div>
-          </section>
         </template>
       </section>
 
-      <section class="policy-card history-panel">
-        <div class="card-heading">
-          <div>
-            <h3>{{ t('admin.copy.b7274a55') }}</h3>
-          </div>
-          <button
-            class="button button-secondary"
-            type="button"
-            :disabled="loadingBrandHistory"
-            @click="withGlobalLoading(loadHistory, 'brand', 0)"
-          >
-            {{ loadingBrandHistory ? t('admin.copy.27342bf3') : t('admin.copy.794f6f6a') }}
-          </button>
-        </div>
-        <p v-global-loading
-          v-if="loadingBrandHistory && !brandHistory"
-          class="muted"
-          role="status"
-        >
-          {{ t('admin.copy.c2a09339') }}
-        </p>
-        <p v-else-if="brandHistory && !brandHistory.items.length" class="muted empty-state">
-          {{ t('admin.copy.0a4b249a') }}
-        </p>
-        <ol v-if="brandHistory?.items.length" class="history-list">
-          <li v-for="item in brandHistory.items" :key="item.id">
-            <h5> {{ displayDate(item.created_at) }}</h5>
-            <p>
-              {{ t('admin.copy.76bff253') }}<AssociationName v-if="item.changed_by" :record="item" kind="admin" :id="item.changed_by" :locale="associationLocale" /><span v-else>{{ t('admin.copy.532e2e04') }}</span><span v-if="item.reason"> {{ t('admin.copy.2809a1e6') }}{{ item.reason }}</span>
-            </p>
-            <BusinessDetails :value="item.config" :locale="associationLocale" />
-          </li>
-        </ol>
-        <div v-if="brandHistory" class="history-pagination">
-          <button
-            class="button button-secondary"
-            type="button"
-            :disabled="brandHistoryOffset === 0 || loadingBrandHistory"
-            @click="withGlobalLoading(historyPrevious, 'brand')"
-          >
-            {{ t('admin.copy.dbe7a5d7') }}</button
-          ><span
-            >{{ t('admin.copy.4ffb01e2') }} {{ brandHistoryOffset }} · {{ t('admin.copy.62e6982d') }}
-            {{ brandHistory.limit }} {{ t('admin.copy.067fed38') }}</span
-          ><button
-            class="button button-secondary"
-            type="button"
-            :disabled="brandHistory.items.length < 50 || loadingBrandHistory"
-            @click="withGlobalLoading(historyNext, 'brand')"
-          >
-            {{ t('admin.copy.2e9c9e7a') }}
-          </button>
-        </div>
-      </section>
     </template>
 
-    <section
-      v-if="confirmation"
-      class="confirmation-panel"
-      aria-labelledby="withdraw-confirm-title"
-    >
-      <h3 id="withdraw-confirm-title">{{ t('admin.copy.bfe5b2ed') }}</h3>
+    <DetailModal v-if="confirmation" class="brand-settings-dialog" :title="t('admin.copy.bfe5b2ed')" :close-label="t('admin.copy.1377553a')" :close-disabled="!!saving" @close="cancelConfirmation">
       <p>
         {{ t('admin.copy.1cf64566') }}
         <AssociationName v-if="confirmation.lane === 'brand'" :record="brandPolicy" kind="brand" :id="confirmation.brandId" :locale="associationLocale" />
         <AssociationName v-else :record="gamePolicy" kind="game" :id="confirmation.gameId" :locale="associationLocale" />
       </p>
       <p v-if="confirmation.body.reason">{{ t('admin.copy.2809a1e6') }}{{ confirmation.body.reason }}</p>
-      <BusinessDetails :value="confirmation.body.config" :locale="associationLocale" />
-      <div class="action-row">
-        <button class="button button-secondary" type="button" @click="cancelConfirmation">
-          {{ t('admin.copy.1377553a') }}</button
-        ><button
+      <BusinessDetails :value="confirmationDetails" :locale="associationLocale" />
+      <template #footer>
+        <button
           v-write-guard="Boolean(saving)"
           class="button button-primary"
           type="button"
@@ -1334,328 +1038,29 @@ onUnmounted(() => {
         >
           {{ saving ? t('admin.copy.46511dc0') : t('admin.finance.savePolicy') }}
         </button>
-      </div>
-    </section>
+      </template>
+    </DetailModal>
   </section>
 </template>
 
 <style scoped>
-.withdrawal-policy {
-  width: 100%;
-  min-width: 0;
-  color: #252a36;
-  overflow-wrap: anywhere;
-}
-.policy-header,
-.card-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  min-width: 0;
-}
-.policy-header {
-  margin: 4px 0 15px;
-}
-.policy-header h2 {
-  font-size: 19px;
-  margin: 3px 0 5px;
-}
-.policy-header p,
-.card-heading p,
-.muted {
-  font-size: 11px;
-  line-height: 1.55;
-  color: var(--muted);
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.eyebrow {
-  font-size: 11px;
-  letter-spacing: 1.2px;
-  color: #8991a2;
-  font-weight: 700;
-  margin: 0;
-}
-.brand-pill {
-  flex: none;
-  border-radius: 20px;
-  background: #f1f3f8;
-  padding: 7px 11px;
-  color: #626b7c;
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-.callout,
-.message {
-  border-radius: 8px;
-  background: #f4f6fc;
-  color: #626b7c;
-  padding: 10px 12px;
-  font-size: 11px;
-  line-height: 1.6;
-  margin: 12px 0;
-  overflow-wrap: anywhere;
-}
-.message {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.error {
-  background: #fff0ef;
-  color: #a3312c;
-}
-.success {
-  background: #edf8f0;
-  color: #28623b;
-}
-.warning {
-  background: #fff7e6;
-  color: #745417;
-}
-.policy-card,
-.confirmation-panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  padding: 16px;
-  min-width: 0;
-  box-shadow: 0 2px 8px #1e2a5008;
-  margin: 13px 0;
-}
-.card-heading {
-  margin-bottom: 14px;
-}
-.card-heading h3,
-.confirmation-panel h3 {
-  font-size: 14px;
-  margin: 0 0 4px;
-}
-.card-heading h4 {
-  font-size: 13px;
-  margin: 0 0 4px;
-}
-.editor-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  min-width: 0;
-}
-.editor-grid label,
-.game-id-form label,
-.game-picker label {
-  display: grid;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  min-width: 0;
-}
-.editor-grid input:not([type="checkbox"]),
-.editor-grid select,
-.editor-grid textarea,
-.game-id-form input,
-.game-picker select {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  border: 1px solid #dfe3eb;
-  border-radius: 7px;
-  background: var(--surface);
-  padding: 9px 10px;
-  color: #252a36;
-  font: inherit;
-}
-.editor-grid input:disabled,
-.editor-grid select:disabled,
-.editor-grid textarea:disabled,
-.game-id-form input:disabled {
-  background: #f6f7f9;
-  color: var(--muted);
-}
-.editor-grid input[type="checkbox"] {
-  justify-self: start;
-}
-.wide {
-  grid-column: 1/-1;
-  min-width: 0;
-}
-.source-field {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 10px;
-  min-width: 0;
-}
-.source-field legend {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 0 4px;
-}
-.source-field label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.field-error {
-  font-size: 11px;
-  color: #a3312c;
-  margin: 0;
-}
-.action-row {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.button-primary,
-.button-secondary {
-  border: 0;
-  border-radius: 7px;
-  padding: 9px 12px;
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.button-primary {
-  background: #405bd6;
-  color: var(--surface);
-}
-.button-secondary {
-  background: #eef1f7;
-  color: #455064;
-}
-.button-primary:disabled,
-.button-secondary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.saved-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0 0 14px;
-  padding: 12px;
-  background: #f8f9fc;
-  border-radius: 8px;
-}
-.saved-summary div {
-  min-width: 0;
-}
-.saved-summary dt {
-  font-size: 11px;
-  color: var(--muted);
-}
-.saved-summary dd {
-  font-size: 12px;
-  font-weight: 600;
-  margin: 3px 0 0;
-  overflow-wrap: anywhere;
-}
-.game-picker,
-.game-id-form {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  min-width: 0;
-  margin: 10px 0;
-}
-.game-picker label,
-.game-id-form label {
-  flex: 1;
-}
-.game-id-form {
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--line);
-}
-.history-panel {
-  margin-top: 15px;
-}
-.history-list {
-  padding-left: 20px;
-}
-.history-list li {
-  border-top: 1px solid var(--line);
-  padding: 10px 0;
-  overflow-wrap: anywhere;
-}
-.history-list h5 {
-  font-size: 11px;
-  margin: 0 0 4px;
-}
-.history-list p {
-  font-size: 11px;
-  margin: 0 0 8px;
-  color: #626b7c;
-}
-.history-list pre,
-.confirmation-panel pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  background: var(--canvas);
-  border-radius: 7px;
-  padding: 10px;
-  font-size: 11px;
-  max-width: 100%;
-  overflow: auto;
-}
-.history-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11px;
-  flex-wrap: wrap;
-}
-.confirmation-panel {
-  border-color: #aab6ee;
-  background: #fbfcff;
-}
-.confirmation-panel p {
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-.confirmation-panel code {
-  overflow-wrap: anywhere;
-  word-break: break-all;
-}
-.catalog-list {
-  margin: 0;
-  padding-left: 20px;
-  font-size: 11px;
-  line-height: 1.8;
-  overflow-wrap: anywhere;
-}
-@media (max-width: 620px) {
-  .policy-header {
-    flex-direction: column;
-  }
-  .editor-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .wide {
-    grid-column: auto;
-  }
-  .saved-summary {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .game-picker,
-  .game-id-form {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .message {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .brand-pill {
-    white-space: normal;
-  }
-}
+.policy-header h2 { margin: 0; font-size: 16px; }
+.policy-card { display: grid; gap: 12px; min-width: 0; }
+.card-heading h3 { margin: 0; font-size: var(--body-font-size); }
+.editor-grid, .saved-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; margin: 0; }
+.editor-grid label, .game-picker label { display: grid; gap: 6px; min-width: 0; }
+.editor-grid input:not([type="checkbox"]) { width: 100%; min-width: 0; box-sizing: border-box; }
+.editor-grid input[type="checkbox"] { justify-self: start; }
+.wide { grid-column: 1 / -1; min-width: 0; }
+.editor-grid .withdrawal-toggle { display: flex; align-items: center; gap: 8px; }
+.withdrawal-toggle input { order: -1; }
+.source-field { display: flex; flex-wrap: wrap; gap: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px; min-width: 0; margin: 0; }
+.source-field legend { padding: 0 4px; }
+.source-field label { display: flex; align-items: center; gap: 6px; }
+.field-error { color: var(--danger); margin: 0; }
+.game-picker, .message { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.game-picker label { flex: 1; }
+.saved-summary dt, .muted { color: var(--muted); }
+.saved-summary dd { margin: 4px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+@media (max-width: 620px) { .editor-grid, .saved-summary { grid-template-columns: minmax(0, 1fr); } }
 </style>

@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import type { Page } from '@playwright/test';
 import { test, expect } from './platform-fixture';
 
@@ -43,7 +44,7 @@ test('platform withdrawals retain exact sources, state history and filters witho
     await route.fulfill({ json: { success: true, data } });
   });
   await login(page);
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   const panel = page.getByTestId('platform-withdrawals');
   const pages = page.getByTestId('platform-withdrawal-pages');
   await expect(panel.locator('tbody tr')).toHaveCount(50);
@@ -66,7 +67,7 @@ test('platform withdrawals retain exact sources, state history and filters witho
   }
   await page.screenshot({ path: info.outputPath('platform-withdrawals.png'), fullPage: true });
   await panel.getByLabel('Member ID (optional)', { exact: true }).fill(member);
-  await panel.getByLabel('State', { exact: true }).selectOption('paid');
+  await selectControl(panel.getByLabel('State', { exact: true }), 'paid');
   await panel.getByRole('button', { name: 'Query withdrawals', exact: true }).click();
   await expect(panel.locator('tbody tr')).toHaveCount(50);
   expect(matched).toBe(true);
@@ -74,8 +75,8 @@ test('platform withdrawals retain exact sources, state history and filters witho
   await pages.getByRole('button', { name: 'Next page' }).click();
   await expect(panel.getByRole('alert')).toContainText('Withdrawal read unavailable');
   await expect(detail).toHaveCount(0);
-  await page.locator('.topbar-brand-picker select').selectOption('');
-  await expect(panel.getByLabel('State', { exact: true })).toHaveValue('');
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), '');
+  await expect(panel.getByLabel('State', { exact: true })).toHaveAttribute('data-value', '');
   await expect(panel.getByLabel('Member ID (optional)', { exact: true })).toHaveValue('');
   await expect(panel.getByRole('button', { name: /Approve|Reject|Cancel|Mark paid/i })).toHaveCount(0);
 });
@@ -83,7 +84,7 @@ test('platform withdrawals retain exact sources, state history and filters witho
 test('platform withdrawal page uses the real read endpoint, not brand approval routes', async ({ page }) => {
   await login(page);
   const read = page.waitForResponse(r => r.url().endsWith('/api/v1/platform/withdrawals?limit=50&offset=0'));
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   expect((await read).status()).toBe(200);
   await expect(page.getByTestId('platform-withdrawals').getByRole('alert')).toHaveCount(0);
   const response = await page.request.post(`${origin}/api/v1/platform/withdrawals/${uuid(100)}/approve`, {

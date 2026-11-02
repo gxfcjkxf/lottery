@@ -102,7 +102,7 @@ type Settings struct {
 }
 
 var usernamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,31}$`)
-var phonePattern = regexp.MustCompile(`^\+[1-9][0-9]{6,14}$`)
+var phonePattern = regexp.MustCompile(`^([0-9]{7,15}|\+[1-9][0-9]{6,14})$`)
 
 func normalizeUsername(v string) (string, error) {
 	v = strings.ToLower(strings.TrimSpace(v))
@@ -148,31 +148,48 @@ func (s *Store) verify(ctx context.Context, password, hash string) (bool, error)
 func (s *Store) Settings(ctx context.Context, brand string) (Settings, error) {
 	var raw []byte
 	var cfg Settings
-	err := s.DB.QueryRow(ctx, "SELECT auth_config FROM brands WHERE id=$1", brand).Scan(&raw)
+	var err error
+	if brand == "" {
+		err = s.DB.QueryRow(ctx, `SELECT config FROM platform_auth_settings WHERE id=true`).Scan(&raw)
+	} else {
+		err = s.DB.QueryRow(ctx, effectiveAuthSQL, brand).Scan(&raw)
+	}
 	if err == nil {
 		err = json.Unmarshal(raw, &cfg)
 	}
 	return cfg, err
 }
 func (s *Store) ReadAuthSettings(ctx context.Context, brand string) (AuthSettingsRecord, error) {
-	var raw []byte
 	var record AuthSettingsRecord
-	err := s.DB.QueryRow(ctx, "SELECT config_version,auth_config FROM brands WHERE id=$1", brand).Scan(&record.Version, &raw)
-	if err == nil {
-		var cfg Settings
-		err = json.Unmarshal(raw, &cfg)
-		record.CaptchaEnabled = cfg.CaptchaEnabled
-		record.TelegramEnabled = cfg.TelegramEnabled
-		record.TelegramClientID = cfg.TelegramClientID
-		record.PrivacyPolicyVersion = cfg.Privacy
-		record.ServiceTermsVersion = cfg.Terms
+	var raw []byte
+	if brand == "" {
+		err := s.DB.QueryRow(ctx, `SELECT version,config FROM platform_auth_settings WHERE id=true`).Scan(&record.Version, &raw)
+		if err != nil {
+			return record, err
+		}
+	} else {
+		err := s.DB.QueryRow(ctx, `SELECT b.config_version,b.auth_inherit_platform,CASE WHEN b.auth_inherit_platform THEN b.auth_config || p.config ELSE b.auth_config END FROM brands b CROSS JOIN platform_auth_settings p WHERE b.id=$1 AND p.id=true`, brand).Scan(&record.Version, &record.InheritPlatform, &raw)
+		if err != nil {
+			return record, err
+		}
 	}
+	var cfg Settings
+	err := json.Unmarshal(raw, &cfg)
+	record.CaptchaEnabled = cfg.CaptchaEnabled
+	record.TelegramEnabled = cfg.TelegramEnabled
+	record.TelegramClientID = cfg.TelegramClientID
+	record.PrivacyPolicyVersion = cfg.Privacy
+	record.ServiceTermsVersion = cfg.Terms
 	return record, err
 }
+
+// Inheritance is an explicit brand choice, resolved against the current platform default.
+const effectiveAuthSQL = `SELECT CASE WHEN b.auth_inherit_platform THEN b.auth_config || p.config ELSE b.auth_config END FROM brands b CROSS JOIN platform_auth_settings p WHERE b.id=$1 AND p.id=true`
+
 func settings(ctx context.Context, tx pgx.Tx, brand string) (Settings, error) {
 	var raw []byte
 	var cfg Settings
-	err := tx.QueryRow(ctx, "SELECT auth_config FROM brands WHERE id=$1 AND status<>'disabled' FOR SHARE", brand).Scan(&raw)
+	err := tx.QueryRow(ctx, effectiveAuthSQL+" AND b.status<>'disabled' FOR SHARE OF b,p", brand).Scan(&raw)
 	if err == nil {
 		err = json.Unmarshal(raw, &cfg)
 	}
@@ -221,7 +238,7 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 	if in.Phone != "" {
 		in.Phone, err = normalizePhone(in.Phone)
 		if err != nil {
-			return mutation.Fail(400, "PROFILE_INVALID", "手机号须使用国际 E.164 格式"), nil
+			return mutation.Fail(400, "PROFILE_INVALID", "手机号格式不正确"), nil
 		}
 	}
 	if in.Username == "" && in.Phone == "" {
@@ -239,7 +256,7 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 		return mutation.Fail(429, "AUTH_BUSY", "登录繁忙，请稍后重试"), nil
 	}
 	if err == authcrypto.ErrInvalidPassword {
-		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字节"), nil
+		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字符"), nil
 	}
 	if err != nil {
 		return mutation.Result{}, err
@@ -250,7 +267,7 @@ func (s *Store) Register(ctx context.Context, tx pgx.Tx, brand string, in Regist
 	u := User{ID: ids.New(), Username: in.Username, Phone: in.Phone, Status: "active"}
 	_, err = tx.Exec(ctx, `INSERT INTO global_users(id,username,phone,password_hash,username_set_at,phone_set_at) VALUES($1,NULLIF($2,''),NULLIF($3,''),$4,CASE WHEN $2<>'' THEN now() END,CASE WHEN $3<>'' THEN now() END)`, u.ID, u.Username, u.Phone, hash)
 	if unique(err) {
-		return mutation.Fail(409, "IDENTITY_EXISTS", "账号已存在；请登录以加入当前品牌"), nil
+		return mutation.Fail(409, "IDENTITY_EXISTS", "账号已存在，请使用其他用户名或手机号"), nil
 	}
 	if err != nil {
 		return mutation.Result{}, err

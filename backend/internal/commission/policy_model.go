@@ -127,7 +127,7 @@ func (in PolicyInput) Validate() error {
 }
 
 func validPolicyReason(reason string) bool {
-	return (reason == "" || strings.TrimSpace(reason) != "") && len([]byte(reason)) <= 500 && utf8.ValidString(reason) && !strings.ContainsRune(reason, '\x00')
+	return (reason == "" || strings.TrimSpace(reason) != "") && utf8.RuneCountInString(reason) <= 500 && utf8.ValidString(reason) && !strings.ContainsRune(reason, '\x00')
 }
 
 // closedObject rejects missing, repeated, unknown, and trailing JSON fields.

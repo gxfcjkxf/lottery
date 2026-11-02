@@ -296,9 +296,9 @@ func TestRewardsHTTPNoPermissionInheritanceAndSuperAdminMutationDenied(t *testin
 	}
 }
 
-func TestRewardsHTTPPendingRevocationAndRetryAreNormalResponses(t *testing.T) {
+func TestRewardsHTTPInsufficientRevocationIsAtomicAndNewRequestCanSucceed(t *testing.T) {
 	f := rewardFixture(t)
-	grantRewardPermission(t, f.managementHTTP, "reward.grant.brand", "reward.revoke.brand", "reward.retry.brand")
+	grantRewardPermission(t, f.managementHTTP, "reward.grant.brand", "reward.revoke.brand")
 	order := rewardCreate(t, f, "reward-pending-create-01", "20")
 	orderID := order["id"].(string)
 	store := points.Store{DB: f.pool}
@@ -319,7 +319,7 @@ func TestRewardsHTTPPendingRevocationAndRetryAreNormalResponses(t *testing.T) {
 	}
 	pending := rewardRawCall(f.managementHTTP, "POST", rewardOrdersHTTPPath+"/"+orderID+"/revoke", "reward-pending-revoke-01", f.token, managedBrand, f.root,
 		`{"version":1,"reason":"revoke exceeds remaining gift balance"}`)
-	if pending.Code != 200 || !strings.Contains(pending.Body.String(), `"state":"revocation_pending"`) {
+	if pending.Code != 422 || rewardErrorCode(t,pending)!="REWARD_AVAILABLE_INSUFFICIENT" {
 		t.Fatalf("pending revoke should be a normal 200 response: status=%d body=%s", pending.Code, pending.Body.String())
 	}
 	var credit points.Balance
@@ -337,18 +337,18 @@ func TestRewardsHTTPPendingRevocationAndRetryAreNormalResponses(t *testing.T) {
 	if err = tx.Commit(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	retried := rewardRawCall(f.managementHTTP, "POST", rewardOrdersHTTPPath+"/"+orderID+"/retry-revocation", "reward-retry-revocation-01", f.token, managedBrand, f.root,
-		`{"version":2,"reason":"retry after restoring gift balance"}`)
+	retried := rewardRawCall(f.managementHTTP, "POST", rewardOrdersHTTPPath+"/"+orderID+"/revoke", "reward-retry-revocation-01", f.token, managedBrand, f.root,
+		`{"version":1,"reason":"retry after restoring gift balance"}`)
 	if retried.Code != 200 || !strings.Contains(retried.Body.String(), `"state":"revoked"`) {
 		t.Fatalf("retry should complete reversal: status=%d body=%s", retried.Code, retried.Body.String())
 	}
 	var actionCount int
-	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM reward_order_actions WHERE order_id=$1`, orderID).Scan(&actionCount); err != nil || actionCount != 3 {
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM reward_order_actions WHERE order_id=$1`, orderID).Scan(&actionCount); err != nil || actionCount != 2 {
 		t.Fatalf("pending/retry action count=%d err=%v", actionCount, err)
 	}
 	staleReceipt := rewardRawCall(f.managementHTTP, "POST", rewardOrdersHTTPPath+"/"+orderID+"/revoke", "reward-pending-revoke-01", f.token, managedBrand, f.root,
 		`{"version":1,"reason":"revoke exceeds remaining gift balance"}`)
-	if staleReceipt.Code != 200 || !strings.Contains(staleReceipt.Body.String(), `"state":"revocation_pending"`) {
+	if staleReceipt.Code != 422 || rewardErrorCode(t,staleReceipt)!="REWARD_AVAILABLE_INSUFFICIENT" {
 		t.Fatalf("same-key replay should return original pending receipt: status=%d body=%s", staleReceipt.Code, staleReceipt.Body.String())
 	}
 	currentAttempt := rewardRawCall(f.managementHTTP, "POST", rewardOrdersHTTPPath+"/"+orderID+"/revoke", "reward-current-state-replay-01", f.token, managedBrand, f.root,

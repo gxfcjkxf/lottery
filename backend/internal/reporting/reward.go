@@ -145,7 +145,7 @@ func (s Service) reward(ctx context.Context, runner rowQuerier, brand string, q 
 	  AND l.entry_type='reward_reversal' AND l.reference_type='reward_order' AND l.reference_id=o.id
 	  AND o.state='revoked' AND o.revoke_ledger_entry_id=l.id
 	  AND l.member_id=o.member_id AND l.actor_type='admin' AND l.operation_key='reward-revoke:'||o.id::text AND l.reversal_of=o.grant_ledger_entry_id
-	  AND a.operation IN('revoke','retry') AND a.state_after='revoked' AND a.actor_id=l.actor_id
+	  AND a.operation='revoke' AND a.state_after='revoked' AND a.actor_id=l.actor_id
 	  AND a.reason=l.reason AND witness.actor_type='admin' AND witness.action='reward.order.'||a.operation AND witness.resource_type='reward_order' AND witness.resource_id=o.id AND witness.reason=a.reason
 	  AND witness.request_id=l.request_id AND witness.after_json->>'action_id'=a.id::text AND witness.after_json->>'version'=a.version::text
 	  AND witness.after_json->>'state'=a.state_after AND witness.before_json->>'version'=(a.version-1)::text AND witness.before_json->>'state'=a.state_before

@@ -19,6 +19,7 @@ type MemberRecharge struct {
 	BrandID       string     `json:"brand_id"`
 	MemberID      string     `json:"member_id"`
 	Points        string     `json:"points"`
+	Method        string     `json:"method"`
 	State         string     `json:"state"`
 	Version       string     `json:"version"`
 	CreatedAt     time.Time  `json:"created_at"`
@@ -54,7 +55,7 @@ func (s Service) ListMemberRechargesTx(ctx context.Context, tx pgx.Tx, brand, me
 	var raw []byte
 	var scope bool
 	err := tx.QueryRow(ctx, `WITH matched AS (
- SELECT id,brand_id,member_id,points::text,state,version::text,created_at,confirmed_at,ledger_entry_id::text
+ SELECT id,brand_id,member_id,points::text,method,state,version::text,created_at,confirmed_at,ledger_entry_id::text
  FROM recharge_orders WHERE brand_id=$1 AND member_id=$2 AND ($3::text='' OR state=$3)),
  page AS (SELECT * FROM matched ORDER BY created_at DESC,id DESC LIMIT $4 OFFSET $5)
  SELECT statement_timestamp(),EXISTS(SELECT 1 FROM brand_members WHERE brand_id=$1 AND id=$2),
@@ -84,8 +85,8 @@ func (s Service) ReadMemberRechargeTx(ctx context.Context, tx pgx.Tx, brand, mem
 	if tx == nil || !financeUUIDPattern.MatchString(brand) || !financeUUIDPattern.MatchString(member) || !financeUUIDPattern.MatchString(id) {
 		return out, points.ErrInvalid
 	}
-	err := tx.QueryRow(ctx, `SELECT id::text,brand_id::text,member_id::text,points::text,state,version::text,created_at,confirmed_at,ledger_entry_id::text
- FROM recharge_orders WHERE brand_id=$1 AND member_id=$2 AND id=$3`, brand, member, id).Scan(&out.ID, &out.BrandID, &out.MemberID, &out.Points, &out.State, &out.Version, &out.CreatedAt, &out.ConfirmedAt, &out.LedgerEntryID)
+	err := tx.QueryRow(ctx, `SELECT id::text,brand_id::text,member_id::text,points::text,method,state,version::text,created_at,confirmed_at,ledger_entry_id::text
+ FROM recharge_orders WHERE brand_id=$1 AND member_id=$2 AND id=$3`, brand, member, id).Scan(&out.ID, &out.BrandID, &out.MemberID, &out.Points, &out.Method, &out.State, &out.Version, &out.CreatedAt, &out.ConfirmedAt, &out.LedgerEntryID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, points.ErrNotFound
 	}
@@ -101,7 +102,7 @@ func (s Service) ReadMemberRechargeTx(ctx context.Context, tx pgx.Tx, brand, mem
 func normalizeMemberRecharge(out *MemberRecharge, brand, member string) error {
 	amount, e := strconv.ParseInt(out.Points, 10, 64)
 	version, vErr := strconv.ParseInt(out.Version, 10, 64)
-	if out.BrandID != brand || out.MemberID != member || !financeUUIDPattern.MatchString(out.ID) || e != nil || amount < 1 || strconv.FormatInt(amount, 10) != out.Points || vErr != nil || version < 1 || strconv.FormatInt(version, 10) != out.Version || !validMemberRechargeState(out.State) || out.CreatedAt.IsZero() || out.CreatedAt.Year() < 1 || out.CreatedAt.Year() > 9999 {
+	if (out.Method != "manual" && out.Method != "automatic") || out.BrandID != brand || out.MemberID != member || !financeUUIDPattern.MatchString(out.ID) || e != nil || amount < 1 || strconv.FormatInt(amount, 10) != out.Points || vErr != nil || version < 1 || strconv.FormatInt(version, 10) != out.Version || !validMemberRechargeState(out.State) || out.CreatedAt.IsZero() || out.CreatedAt.Year() < 1 || out.CreatedAt.Year() > 9999 {
 		return points.ErrCorrupt
 	}
 	if out.State == "confirmed" {

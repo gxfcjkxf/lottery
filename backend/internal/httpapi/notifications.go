@@ -100,7 +100,6 @@ func registerNotificationRoutes(mux routeRegistrar, d Dependencies) {
 	}
 }
 func registerNotificationAdminRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
-	registerNotificationTemplateRoutes(handle, d)
 	s := notification.Service{DB: d.Admins.DB}
 	handle("GET", "/notification-deliveries", func(w http.ResponseWriter, r *http.Request) {
 		a, brand, ok := pointAdminActor(w, r, d, "notification", "view", false)
@@ -113,10 +112,14 @@ func registerNotificationAdminRoutes(handle func(string, string, http.HandlerFun
 			return
 		}
 		out, e := s.Deliveries(r.Context(), brand, limit, offset)
+		var page map[string]any
+		if e == nil {
+			page, e = countedItems(r.Context(), d.Admins.DB, out, `SELECT count(*)::text FROM notification_deliveries WHERE brand_id=$1`, brand)
+		}
 		if e == nil && !adminReadAudit(w, r, d, a, brand, "notification.deliveries.view") {
 			return
 		}
-		result, err := notificationResult(map[string]any{"items": out}, e)
+		result, err := notificationResult(page, e)
 		outputMutation(w, r, result, err)
 	})
 	handle("POST", "/notification-deliveries/{id}/retry", func(w http.ResponseWriter, r *http.Request) {

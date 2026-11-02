@@ -1,5 +1,7 @@
 # API 与异步任务契约
 
+> 2026-10-28 执行范围更新：投注、结算、佣金／提现事实与经营统计均以[统一配置化链路](65-unified-configured-betting.md)及当前 OpenAPI 为准。文中的旧品牌期次、专用订单、结算任务、旧夹具与旧容量结果是历史设计或证据，不代表当前可用接口。
+
 ## 统一操作原因规则（2026-10-19）
 
 所有管理写操作统一取消人工填写“操作原因”。请求的 `reason` 审计附注字段可省略或传空字符串，前端不再提供输入，也不生成固定文案替代人工原因。旧记录及已有冻结请求中的原因按原值保留，未知结果仍以原正文、原幂等键重试。非空附注继续遵守各接口的长度、编码和格式限制。
@@ -15,7 +17,7 @@
 
 ## 运营工作台快照
 
-`GET /api/v1/admin/workbench`要求后台认证和UUID格式的`X-Brand-ID`，不接受查询参数，固定读取主库并在响应前提交审计。数据包含`brand_id,snapshot_at,timezone,day_from`以及13个区块：brand、periods、orders、today_bets、settlement、recharges、ledger、balances、reconciliation、sources、withdrawals、commissions、rewards。
+`GET /api/v1/admin/workbench`要求后台认证和UUID格式的`X-Brand-ID`，不接受查询参数，固定读取主库并在响应前提交审计。数据包含`brand_id,snapshot_at,timezone,day_from`以及12个区块：brand、periods、orders、today_bets、settlement、recharges、ledger、balances、sources、withdrawals、commissions、rewards。
 
 前10区块分别使用brand、period、bet、report_betting、settlement、recharge、report_ledger、report_ledger、wallet、draw_source的显式view权限；有权限返回`ready`及对象，无权限返回`forbidden`及null。withdrawals使用独立withdrawal.view.brand/platform权限，返回当前reviewing_count/reviewing_points/processing_count/processing_points四个非负整数字符串；未授权不查询提现表。rewards使用独立reward.view.brand/platform权限，返回全部当前订单的granted_count/pending_count/revoked_count，不是今日入账或余额；报表权限不推导该卡片授权。
 
@@ -85,7 +87,7 @@ commissions使用独立commission.view.brand/platform权限，返回19项规范�
 - 用户路径同时支持 `/api/v1/...` 和平台入口 `/api/v1/b/{brandCode}/...`。路径品牌仅在已配置的平台入口可选；普通品牌域名不能借此访问另一品牌。
 - 用户 Cookie 名为 `lottery_user_<无连字符品牌UUID>`，管理 Cookie 名为 `lottery_admin`；二者互不授予权限。用户会话 24 小时，管理会话 12 小时，无刷新端点。
 - 所有变更请求要求 `application/json`。携带任何 Cookie 的变更请求须带同 Host 的 `Origin`；无 Cookie 的非浏览器 Bearer 客户端可不带 Origin。未知 JSON 字段、超过 16 KiB、尾随对象均拒绝。
-- 注册须提供 username 或 phone 至少一项；用户端表单择一填写，API 允许同时提供两者。用户名为 3–32 个字符、首字符为字母，后续允许字母、数字和下划线，并规范为小写。手机号使用明确的 E.164 `+` 国家码。密码为 6–30 UTF-8 字节。
+- 注册须提供 username 或 phone 至少一项；用户端表单择一填写，API 允许同时提供两者。用户名为 3–32 个字符、首字符为字母，后续允许字母、数字和下划线，并规范为小写。手机号接受 7–15 位数字的本地号码，也支持 `+` 国家码的国际号码（`+` 后为 7–15 位数字且首位非零）；保留所填号码和本地号码前导零，不自动补区号或推断两种格式为同一号码。密码为 6–30 字符。
 - 注册/首次加入品牌的政策版本必须匹配 `/context` 当前值，不允许客户端省略或提交历史版本。`dev-1` 仅为开发占位版本。
 - 注册返回 201；登录返回 200，数据包括 `user`、`member`、`access_token`、`token_type`、`expires_at`。令牌仅供非浏览器客户端使用，浏览器使用响应 Cookie。
 - 已有全局账号首次在另一品牌登录时返回 409 `BRAND_JOIN_REQUIRED`；用户接受该品牌条款后重新提交新的幂等操作，创建不同成员资料但共用全局凭证。
@@ -168,7 +170,7 @@ GET `/admin/bet-orders/{id}/judgment` 需显式 bet.view.brand / bet.view.platfo
 
 无需登录的 GET `/draw-results`、GET `/draw-results/{id}`、GET `/games/{id}/periods` 均有 `/b/{brandCode}` 等价路径。品牌由已绑定 Host 或平台路径解析，不采信用户品牌头；仅 active/paused 品牌和 active/paused 彩种可读，跨品牌 UUID、禁用品牌和已替换结果 ID 返回 404。
 
-列表参数：limit 1–100（默认 50）、offset 0–1000000（默认 0）；period_no 为可选精确期号，非空白且最多 80 UTF-8 字节、不做模糊搜索或数字转换。开奖列表另支持 game_id UUID；历史列表由路径确定彩种。上述参数重复返回 400。排序为计划 draw_at 降序、sequence 降序、期次 id 降序；has_more 通过多读一行确定，没有全表计数或无限返回。
+列表参数：limit 1–100（默认 50）、offset 0–1000000（默认 0）；period_no 为可选精确期号，非空白且最多 80 字符、不做模糊搜索或数字转换。开奖列表另支持 game_id UUID；历史列表由路径确定彩种。上述参数重复返回 400。排序为计划 draw_at 降序、sequence 降序、期次 id 降序；has_more 通过多读一行确定，没有全表计数或无限返回。
 
 `PublicDrawResult = {id,game:CatalogGame,period:Period,result:{regular:number[],special:number[],digits:number[]},drawn_at,origin:"manual"|"external"}`。不适用号码组为 [] 而不是 null；零、重复和位置顺序保持原始记录。game/period 为上节的公开字段，不含品牌后台人员、来源 ID/地址/认证、抓取原文、内部 claim、结果 hash 或纠正链。origin 只区分人工/外部，不公开具体采集源。
 
@@ -211,7 +213,7 @@ GET `/withdrawal-qualification`及品牌路径不接受查询参数或正文，�
 
 期次锁冲突返回503 `WITHDRAWAL_TURNOVER_BUSY`，业务事务回滚且不缓存此临时失败，可用原键/正文重试；不能先将503包装成终态结果提交给幂等引擎。历史证据缺失/非法返回409 `WITHDRAWAL_TURNOVER_EVIDENCE_INVALID`且无占用。客户端对丢失回执、503或未知结果继续保留原意图，读取最新流水条件不能确认该写入；即使最新条件不达标，也必须能显式重放已提交的原请求。
 
-管理端GET `/admin/withdrawals`、`/{id}`、`/{id}/history`需明确withdrawal.view.brand或view.platform，X-Brand-ID必填；列表另支持member_id。POST `/{id}/{approve|reject|cancel|fail|mark-paid}`正文恰好为 `{version,reason}`，reason非空且最多500 UTF-8字节，分别要求对应withdrawal动作的品牌权限，其中mark-paid对应mark_paid。超管不能执行这些写操作。读取在主库复核会话/权限并提交审计后才返回；写入及原键重放同样复核当前授权，钱包等待后再次检查会话有效期。
+管理端GET `/admin/withdrawals`、`/{id}`、`/{id}/history`需明确withdrawal.view.brand或view.platform，X-Brand-ID必填；列表另支持member_id。POST `/{id}/{approve|reject|cancel|fail|mark-paid}`正文恰好为 `{version,reason}`，reason非空且最多500 字符，分别要求对应withdrawal动作的品牌权限，其中mark-paid对应mark_paid。超管不能执行这些写操作。读取在主库复核会话/权限并提交审计后才返回；写入及原键重放同样复核当前授权，钱包等待后再次检查会话有效期。
 
 申请201、管理操作200返回原操作快照；查询返回当前状态，两者不能混用。reviewing/v1审核通过后为processing/v2，mark-paid后为paid/v3；automatic审核可直接返回processing/v2，不自动出款。驳回、取消或失败全额反向原reserve流水，来源不变；paid只消耗提现预留并移动成功周期截止点。未知写响应、畸形回执或网络失败只允许原正文/原键显式重放，刷新查询不能确认或丢弃未知意图。
 
@@ -227,7 +229,7 @@ OrderView字段为 `id,brand_id,member_id,account_id,points,state,version,source
 
 `GameWithdrawalPolicy={brand_id,game_id,version,config:{turnover_multiple:string|null},effective:{turnover_multiple:string,source:"brand"|"game",brand_version,game_version},updated_at,audit_log_id?}`。null 继承，显式正值覆盖品牌。新写入 N 必须大于 0 且不超过 1000000，最多六位小数，禁止符号/指数/多余前导零和小数末尾零。品牌及彩种写请求拒绝 "0"；已保存的旧零值及不可变历史仍原样可读，不自动转成继承或 1，需授权管理员显式修改当前配置。OpenAPI分开描述新写配置与兼容历史读取的配置。
 
-PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提供；未知/重复字段、缺省或 null 标量拒绝。原因非空、最多 500 UTF-8 字节；响应 200、配置版本加一、审计引用。版本是对应配置版本，不是彩种业务版本。需要原 Idempotency-Key、X-Brand-ID 及同源 Cookie/Origin；同键同正文重放原回执，同键异体 409。权限/会话在等待幂等锁前后复验，撤权或变为超管不能重放旧回执；临时错误不缓存。
+PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提供；未知/重复字段、缺省或 null 标量拒绝。原因非空、最多 500 字符；响应 200、配置版本加一、审计引用。版本是对应配置版本，不是彩种业务版本。需要原 Idempotency-Key、X-Brand-ID 及同源 Cookie/Origin；同键同正文重放原回执，同键异体 409。权限/会话在等待幂等锁前后复验，撤权或变为超管不能重放旧回执；临时错误不缓存。
 
 历史 limit 1–100（默认 50）、offset 0–1000000（默认 0），返回 `{items:PolicyRevision[],limit,offset}`，范围内按 version 降序。`PolicyRevision={id,brand_id,game_id,version,config,changed_by,reason,created_at}`；品牌级 game_id=""，初始系统 changed_by=""，后续为后台账号。配置、不可变历史及审计原子提交，不变更钱包/账本/订单；GET 记录后台读取审计。
 
@@ -252,7 +254,7 @@ PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提�
 
 上述 `{id}` 是品牌成员 UUID，不是全局用户 UUID。品牌操作必须传 `X-Brand-ID`，且服务端校验角色与品牌范围。平台查看权限可不带品牌头查询所有品牌；超级管理员不能修改用户、重置密码或踢人，即使误配相应角色也拒绝。
 
-成员状态值为 `normal`、`frozen`、`disabled`、`expired`、`cancelled`（注销）。冻结仍可登录/查询；禁用、过期、注销后会话验证失败。备注最大 2000 字节，原因必填且不超过 500 字节。修改和踢人返回 `audit_log_id`。成员查询支持 `limit`（1–100，默认 50）和 `offset`（0–1000000），响应 `{items: [...]}`。审计查询另支持精确操作、人员、资源和请求ID筛选、可选成对UTC时间；limit默认100/1–200、offset0–100000，整页最多4MiB，超限422；详细字段及导出规则见[32号合同](32-audit-query-and-export.md)。成功查询和修改都有审计记录，密码/令牌不进入明文审计。
+成员状态值为 `normal`、`frozen`、`disabled`、`expired`、`cancelled`（注销）。冻结仍可登录/查询；禁用、过期、注销后会话验证失败。备注最大 2000 字符，原因必填且不超过 500 字符。修改和踢人返回 `audit_log_id`。成员查询支持 `limit`（1–100，默认 50）和 `offset`（0–1000000），响应 `{items: [...]}`。审计查询另支持精确操作、人员、资源和请求ID筛选、可选成对UTC时间；limit默认100/1–200、offset0–100000，整页最多4MiB，超限422；详细字段及导出规则见[32号合同](32-audit-query-and-export.md)。成功查询和修改都有审计记录，密码/令牌不进入明文审计。
 
 共享密码安全保护（用户已确认）：要求管理员对该用户所有已加入品牌均拥有 `user.password_reset.brand`，不满足返回 403 `CREDENTIAL_SCOPE_REQUIRED`，不改密码、不撤销会话。不能仅凭当前品牌的重置权限接管其他品牌身份。超级管理员仍不能重置用户密码。
 
@@ -281,7 +283,7 @@ PUT 完整替换 `{version,config,reason}`，nullable 字段也必须显式提�
 - 角色绑定单个品牌；角色归属和 code 在数据库层不可迁移。品牌角色不能把权限传播给同一管理员所属的其他品牌。平台角色由服务器端维护，不在品牌角色编辑器创建。
 - 品牌操作者只能授予自己在目标品牌已拥有的权限，包括分配已有角色；也不能修改旧权限超出自身的角色，或通过状态修改/重置密码接管更高权限管理员。平台对应 write 权限可管理品牌角色和普通账号，但仍不能编辑自身账号、自身所用角色、引导角色或超级管理员账号。
 - 品牌管理员只能管理单品牌目标管理账号；多品牌账号由具有平台管理权限的操作者管理。跨品牌/平台角色的目标账号不能被局部品牌权限接管。普通 API 不创建超级管理员，不修改账号品牌范围；显式服务器 CLI 引导无默认密码。
-- 管理账号密码 6–30 字节；username 匹配 `[a-z][a-z0-9_]{2,31}`，role code 匹配 `[a-z][a-z0-9_]{2,47}`，角色名最多 120 UTF-8 字节；原因 1–500 字节，账号角色编号数组最多100项。角色权限数组去重后逐项核验已注册品牌权限，不再固定限制100项，支持当前完整品牌权限目录。
+- 管理账号密码 6–30 字符；username 匹配 `[a-z][a-z0-9_]{2,31}`，role code 匹配 `[a-z][a-z0-9_]{2,47}`，角色名最多 120 字符；原因 1–500 字符，账号角色编号数组最多100项。角色权限数组去重后逐项核验已注册品牌权限，不再固定限制100项，支持当前完整品牌权限目录。
 - `/admin/me` 的 `permissions_by_brand` 与 `platform_permissions` 是授权显示的权威字段；`permissions` 是扁平并集，不能用它推导任意品牌可写。
 - 写事务在权限读写锁内重查当前角色和会话：普通业务管理写取共享锁，角色/账号权限变更取排他锁。此锁不用于用户投注，不能由此推导业务吞吐。权限变更后会话实时读取最新权限；账号角色/状态/密码变更同时撤销目标会话。
 - 已认证但无权限的请求写独立 `access.denied` 审计，不记录请求正文、密码、令牌或无权访问对象内容；业务回滚后拒绝审计仍保留。
@@ -318,35 +320,32 @@ Wallet 含 account_id、brand_id、member_id、version 与 display_points、avai
 
 显示积分=可用+人工冻结+系统冻结，不包括提现中。Entry 含 id、品牌/账户/成员 ID、version、entry_type、业务引用、operation_key、before_snapshot、delta_snapshot、after_snapshot（全部 12 桶）、source_allocation、reason、actor_type/actor_id、request_id、created_at、可选 reversal_of。delta 允许负数字符串。退款/冲正必须关联原记录、使用原分配的精确反向变动，原流水不可覆盖；同一原流水最多一笔全额补偿。
 
-充值单创建返回 201 pending，不增加余额；确认返回 confirmed、ledger_entry_id、audit_log_id。版本冲突或新操作键重复确认返回 409，不二次到账；同一幂等键原请求重放原成功结果。凭证引用可选，不提供文件上传或真实支付；备注可选，创建和确认原因都必填（1–500 UTF-8 字节）。单人可创建并确认。
+充值单创建返回 201 pending，不增加余额；确认返回 confirmed、ledger_entry_id、audit_log_id。版本冲突或新操作键重复确认返回 409，不二次到账；同一幂等键原请求重放原成功结果。凭证引用可选，不提供文件上传或真实支付；备注可选，创建和确认原因都必填（1–500 字符）。单人可创建并确认。
 
-Reconciliation 返回 consistent、account_id、member_id、version、entry_count、expected/actual（完整矩阵）、issues。关键查询走主库；对账在共享账户锁内扫描版本链，写入在账户排他锁内校验上一条 after 与当前余额。没有账本却有余额、缺失桶或不一致时停止新增记账，返回 `POINTS_RECONCILIATION_REQUIRED`，不能用人工调整绕过损坏。S3-b 提供下述明确修复流程与品牌限额；品牌批量异步检查的五个API、固定范围、不可变观察和人工重试见[批量对账交接](13-wallet-reconciliation.md)。0063增加显式check_scope=wallet_and_business及business_preview，双向核对捕获账户内已实现资金业务与账本；旧请求和结果保持wallet，不回填业务结论。全品牌即时快照、账户范围之外的孤立业务行及大范围负载仍待独立验收。
+Reconciliation 返回 consistent、account_id、member_id、version、entry_count、expected/actual（完整16分项）和 issues。查询走主库，在账户共享锁内检查账本链与余额。正常写入在账户排他锁内校验账本尾；发现余额或账本异常时明确拒绝写入，不允许人工调账绕过。不提供批量任务或在线修复。
 
 错误：400 `POINTS_INPUT_INVALID`/`POINTS_LIMIT_EXCEEDED`；404 `POINTS_RECORD_NOT_FOUND`；409 `POINTS_INSUFFICIENT`/`POINTS_OPERATION_CONFLICT`/`POINTS_RECONCILIATION_REQUIRED`。资金写入复用持久化幂等与新权限重查，业务单、桶余额、追加账本、账户版本和审计共同提交或回滚。
 
-### S3-b 品牌积分限额、充值取消与差错修复
+### S3-b 品牌积分限额与充值取消
 
 | 方法 | 路径 | 授权/请求 |
 |---|---|---|
 | GET | /admin/point-policy | `point_policy.view.brand/platform`；X-Brand-ID 必填 |
 | PUT | /admin/point-policy | `point_policy.write.brand`；version、三个完整限额字段、reason 必填 |
 | POST | /admin/recharges/{id}/cancel | `recharge.write.brand`；version、reason；仅 pending → cancelled，不产生积分 |
-| GET | /admin/wallets/{memberID}/repair-preview | `wallet.view.brand/platform`；只读完整账本重建与差错预览 |
-| POST | /admin/wallets/{memberID}/repair | `wallet.repair.brand`；version、token、reason，不接受新余额 |
-| GET | /admin/wallets/{memberID}/repairs | `wallet.view.brand/platform`；limit/offset，追加修复记录查询 |
 
 Policy 返回 brand_id、version、max_balance_points、max_recharge_points、max_adjustment_points，以及保存后的 audit_log_id。三个限额均为规范正整数字符串或显式 null（不限），默认 null；PUT 是完整替换，漏字段、未知字段和重复键拒绝，不以漏键隐式清空限制。配置仅针对本品牌，版本比较、成功审计与幂等共同提交，立即生效。
 
-- 余额上限针对每个品牌成员全部 12 个分项合计；只限制净增加的非冲正记账。降低上限不会扣已有余额或阻止扣款、状态迁移和原路退款；所有路径仍受非负和 int64 安全上限约束。
+- 余额上限针对每个品牌成员全部 16 个分项合计；只限制净增加的非冲正记账。降低上限不会扣已有余额或阻止扣款、状态迁移和原路退款；所有路径仍受非负和 int64 安全上限约束。
 - 单笔充值上限在创建和确认时都检查最新配置；确认时若配置已降低，失败后充值保持 pending、余额不变。取消仍允许。
 - 单次调整上限针对人工调整绝对金额，正负调整都检查，不替代来源余额不足校验。
-- 超限返回 409 `POINTS_POLICY_LIMIT_EXCEEDED`；版本/状态/修复预览冲突返回 409 `POINTS_OPERATION_CONFLICT`。失败不创建半笔资金记录。不同幂等键的重复取消/确认均不能再次改变状态。
+- 超限返回 409 `POINTS_POLICY_LIMIT_EXCEEDED`；版本/状态冲突返回 409 `POINTS_OPERATION_CONFLICT`。失败不创建半笔资金记录。不同幂等键的重复取消/确认均不能再次改变状态。
 
-RepairPreview 含 account_id、member_id、version（观察到的账户版本）、ledger_version、actual（实际存在的来源/状态分项，缺失不补零）、expected（原账本完整重建矩阵）、consistent、repairable、issues、token。预览验证完整版本链、请求摘要、前后快照、来源分配和冲正引用；账本无法证明完整时拒绝修复。token 绑定品牌、账户、全部观察值及原流水摘要。提交修复在账户排他锁内重新计算；余额、版本或流水变化则拒绝，要求重新预览，不允许使用过时结果。
 
-差错修复仅重建账本的余额投影及账户版本，不属于充值/派奖/调账，因此不伪造经济流水、不覆盖或删除旧流水。修复会追加不可改写的 point_balance_repairs（含完整实测前快照、重建后快照、原因、操作人、请求和时间）及审计，并与余额恢复同事务提交；缺失分项可按完整原账本补建。真实经济金额修正仍须使用追加调整/冲正流水。无差错时不可重复修复，账本自身损坏则停写并调查；后续专门离线恢复流程不得靠自填金额替代。
 
-管理页面提供品牌限额编辑、待确认充值取消、差错会员预览/明确确认和修复记录查询，权限独立。当前超级管理员资金写入的临时边界与 S3-a 相同，业务最终范围仍待确认。
+一期不提供在线余额修复或品牌批量任务，保留单会员只读账本核对。
+
+管理页面保留品牌限额编辑、待确认充值取消、会员钱包和账本查询；不提供余额修复入口。
 
 ### S4-c1 已接入：日历、期次生成与状态调度
 
@@ -373,7 +372,7 @@ GET/PUT schedule 成功的 data 均为 `{id,brand_id,game_id,revision,spec,game_
 
 同品牌、同彩种的未完成旧期阻止下一期开启；仅关闭投注、已有开奖结果、计算完成、等待审核或已批准但未完成派奖均不放行。取消期次须其退款任务 completed；自动跳过且无任何注单的未开放期次无需退款。顺序依据计划开奖时间，不以创建序号误判未来日历为上一期；已开始的未完成期次始终阻止重叠开放。内部OpenPeriod返回领域ErrState，定时Tick保持pending；用户预览与新投注最终检查使用现有409 BET_PERIOD_CLOSED，不扣积分。已成功订单的原键重放仍读取原回执，不算新投注。不同品牌或彩种独立处理。
 
-S5-a4 实际整期取消接口：GET `/admin/periods/{id}` 返回当前 Period（包括真实状态、期次 version）；GET `/admin/periods/{id}/cancellation` 返回 `{cancellation:null|Cancellation}`。均需显式 period.view.brand / period.view.platform，并记录读取审计。POST `/admin/periods/{id}/cancel` 需 period.cancel.brand，body `{version,mode,cause,reason}`，version 是期次版本；mode 为 bet_cancelled / judged_cancelled，cause 为 operator_cancel / no_result / invalid_result。合法组合和状态见领域模型；单人操作，原因非空且不超过 500 UTF-8 字节。有待退款目标返回 202 processing，无目标返回 200 completed。
+S5-a4 实际整期取消接口：GET `/admin/periods/{id}` 返回当前 Period（包括真实状态、期次 version）；GET `/admin/periods/{id}/cancellation` 返回 `{cancellation:null|Cancellation}`。均需显式 period.view.brand / period.view.platform，并记录读取审计。POST `/admin/periods/{id}/cancel` 需 period.cancel.brand，body `{version,mode,cause,reason}`，version 是期次版本；mode 为 bet_cancelled / judged_cancelled，cause 为 operator_cancel / no_result / invalid_result。合法组合和状态见领域模型；单人操作，原因非空且不超过 500 字符。有待退款目标返回 202 processing，无目标返回 200 completed。
 
 Cancellation 包含 id/brand_id/game_id/period_id/period_version、mode/cause、state/version、reason/created_by/created_at/completed_at/last_error_code，以及 total_count/pending_count/refunded_count/already_refunded_count/failed_count。摘要的 version 是独立任务版本。期次关闭和目标集合同事务落库，清除开奖采集租约，保留已有开奖结果与尝试历史；之后不得投注或提交新结果。每个目标退款、注单状态、账本、审计及事件单独原子提交；全部目标完成后任务才 completed。中断可恢复，业务或交易失败暂停为 failed，不自动重试失败任务。POST `/admin/periods/{id}/cancellation/retry` 需 period.cancel_retry.brand，body `{version,reason}` 使用任务版本，返回 202；仅失败任务可人工恢复，不撤销之前成功退款。读写权独立，超管只读。
 
@@ -390,7 +389,7 @@ Cancellation 包含 id/brand_id/game_id/period_id/period_version、mode/cause、
 | GET | `/admin/periods/{id}/draw` | draw.view.brand 或 .platform；limit/offset |
 | POST | `/admin/periods/{id}/manual-draw` | draw.manual_create.brand；`{version,period_no,result,drawn_at,reason}` |
 
-Sources GET/PUT data 为 `{id,brand_id,game_id,revision,game_version,created_at,sources}`；尚无配置返回 404。version 是当前彩种版本，不是 revision。sources 可为空，最多 16 项 api/dom；来源 ID 为 UUID，类型和归属创建后不可变。优先级 1–10000 且唯一，禁用项也校验。name 最多 120 UTF-8 字节；endpoint 最多 2048 字节，限 HTTPS、公共 DNS 名、默认/443 端口，禁 IP/内网保留域/userinfo/query/fragment。DOM selector 非空且最多 500 字节，API selector 必须为空。credential_ref 是非敏感引用，最长 120 ASCII 字符，匹配 `^[a-zA-Z][a-zA-Z0-9_.:/-]{0,119}$`，不是实际凭据。校验不访问网络或 DNS；未来真实适配器须另验证 DNS、重定向及目的 IP。
+Sources GET/PUT data 为 `{id,brand_id,game_id,revision,game_version,created_at,sources}`；尚无配置返回 404。version 是当前彩种版本，不是 revision。sources 可为空，最多 16 项 api/dom；来源 ID 为 UUID，类型和归属创建后不可变。优先级 1–10000 且唯一，禁用项也校验。name 最多 120 字符；endpoint 最多 2048 字符，限 HTTPS、公共 DNS 名、默认/443 端口，禁 IP/内网保留域/userinfo/query/fragment。DOM selector 非空且最多 500 字符，API selector 必须为空。credential_ref 是非敏感引用，最长 120 ASCII 字符，匹配 `^[a-zA-Z][a-zA-Z0-9_.:/-]{0,119}$`，不是实际凭据。校验不访问网络或 DNS；未来真实适配器须另验证 DNS、重定向及目的 IP。
 
 人工 version 是期次业务版本；result 为匹配彩种的 regular/special/digits 数组，drawn_at 接受 RFC3339。只允许 waiting_draw，或已有外部结果但尚未结算的 drawn；禁止覆盖人工结果、settling/settled。校验期次号、数量、范围、重复约束和与上一期相同的结果；上一期按 draw_at 而非创建序号查找。时间不得早于本期计划 draw_at 或晚于当前主库时间。成功 201 并转 drawn/version+1，结果、当前指针、审计和幂等响应同事务；覆盖外部结果保留旧行及 corrected_from_id。不结算、不派奖、不改积分。
 
@@ -482,7 +481,7 @@ worker 当前调用 API/DOM 无网络 stub，只产生 no_data 尝试证据，�
 
 写请求要求 `application/json`、`Idempotency-Key`，正文上限 16 KiB；携带 Cookie 的请求必须带与 Host 同源的 Origin（CSRF 校验）。未知字段、畸形/尾随 JSON 拒绝；Definition 各层闭合且拒绝重复字段。模型不适用的空字段可省略，不要求发送所有空选号/开奖组。完整计算 DSL 见 [03-rule-engine.md §8](03-rule-engine.md#8-s4-a-可执行-dsl-v1-实际实现)，工作流与激活边界见该文档 §9。
 
-所有写入都有非空 reason，最多 500 UTF-8 字节；彩种/玩法 code 匹配 `^[a-z][a-z0-9_]{0,47}$`，name 非空且最多 120 UTF-8 字节。timezone 必须是服务端可加载的时区；model 为合法三类 Model。创建或修改规则的 Definition 必须合法且完整 Model 与所属彩种一致；effect_mode 只能为 `immediate` 或 `next_period`。列表支持 limit（1–100，默认 50）及 offset（0–1000000），分别返回 `{games,limit,offset}`、`{plays,limit,offset}`、`{versions,limit,offset}`。
+所有写入都有非空 reason，最多 500 字符；彩种/玩法 code 匹配 `^[a-z][a-z0-9_]{0,47}$`，name 非空且最多 120 字符。timezone 必须是服务端可加载的时区；model 为合法三类 Model。创建或修改规则的 Definition 必须合法且完整 Model 与所属彩种一致；effect_mode 只能为 `immediate` 或 `next_period`。列表支持 limit（1–100，默认 50）及 offset（0–1000000），分别返回 `{games,limit,offset}`、`{plays,limit,offset}`、`{versions,limit,offset}`。
 
 成功使用标准 `{success,data,request_id}`：创建彩种、玩法、草稿及 clone 返回 201，其余成功返回 200。Game 含 id、brand_id、code、name、model、timezone、status、version、started_sequence；Play 含 id、brand_id、game_id、code、name、status、active_version_id、version。规则 Version 含 id、brand_id、game_id、play_id、version_no、version、definition、definition_hash、status、effect_mode、created_by、reviewed_by、review_comment、created_at、updated_at，以及可选 effective_at、effective_period_id、effective_sequence、source_version_id、validation、audit_log_id。
 
@@ -508,7 +507,7 @@ validate 不从正文接受新 Definition，只执行目标草稿当前已保存
 }
 ~~~
 
-cases 必须有 1–32 项；name 非空、去空白后唯一、最多 120 UTF-8 字节。selection/draw 必须符合模型及玩法模式，multiplier 为规范正整数字符串。三个 expected 字段都必填；预期积分是规范非负整数字符串，中奖状态为 JSON boolean。整个用例集共享最多 200000 个解释节点的预算。
+cases 必须有 1–32 项；name 非空、去空白后唯一、最多 120 字符。selection/draw 必须符合模型及玩法模式，multiplier 为规范正整数字符串。三个 expected 字段都必填；预期积分是规范非负整数字符串，中奖状态为 JSON boolean。整个用例集共享最多 200000 个解释节点的预算。
 
 验证返回 Version，`data.validation` 保存完整 `ValidationReport`：passed、definition_hash、cases、warnings、findings。每例包含 name、完整原始 input（selection、draw、multiplier 和三个预期值）、expected_bet_points、actual_bet_points、expected_prize_points、actual_prize_points、expected_won、actual_won、matched、simulation；每项 finding 含 code、message、blocking。simulation 含规范选号、计算输出、完整奖级及条件 Trace；raw/capped 字段沿用上节精确 RatString 格式，可为 `n/d`，不是整数金额。案例预期不符仍返回 200 并保存 `passed=false`；非法请求、计算溢出或超预算才是错误响应。
 
@@ -558,25 +557,11 @@ S4-d 管理端六个快捷模板与通用可视化编辑器并存；通用模式
 
 所有管理端动作必须做权限检查并写审计日志；返回结果应包含 audit_log_id 或可追踪 request ID。
 
-## 4.1 S5-c1 已实现的真实注单核算预览
+## 4.1 即时结算试算
 
-| 方法 | 管理路径 | 当前行为 |
-|---|---|---|
-| GET | /bet-orders/{id}/settlement-context | 当前订单/期次版本、状态、旧规则 hash、当前开奖结果及 hash，可预览标志 |
-| POST | /bet-orders/{id}/settlement-previews | `{version,period_version,draw_result_id,reason}`，创建不可变证据，成功 201；必须显式闭合字段、可信 Origin 和幂等键 |
-| GET | /bet-orders/{id}/settlement-previews?limit=20&offset=0 | 本品牌注单历史，items/limit/offset/has_more |
-| GET | /settlement-previews/{id} | 历史概要和实时派生 current |
-| GET | /settlement-previews/{id}/lines?limit=20&offset=0 | 逐注选号/命中奖级/排他选择/精确金额/条件 trace 分页，附 total |
+`GET /api/v1/admin/bet-orders/{id}/settlement-preview` 要求本品牌 settlement.view；总后台提供对应只读查询。返回当前注单／开奖上下文、outcome、error_code、calculation 和完整 lines，前端本地分页。不接收原因、版本正文或幂等键，不保存预览，不创建历史查询或写入确认流程。
 
-所有路径均位于 `/api/v1/admin` 并要求 X-Brand-ID。读取独立 `settlement.view.brand/platform` 权限，品牌执行 `settlement.preview.brand`；超管禁止创建，即使误授写权限。POST 在幂等锁前后验证会话和权限，退出、撤权不能复用缓存。用户客户端和前端不能指定规则、金额、开奖结果正文或操作者；只引用已经锁定的结果 ID。
-
-当前仅 drawn 期次可创建预览。当前注单/期次版本或结果 ID 不符返回 409；同键异体 409。明确金融状态为 `applied:false`，不修改注单或期次、不写账本、不通知中奖。outcome 为 won/lost 时附 `calculation:{won,combination_count,multiplier,bet_points,prize_points,raw_prize_points,capped_prize_points}`；积分 int64 字符串，中间金额为非负规范有理数字符串。abnormal/excluded 的 calculation=null，保留 error_code，不能拿部分计算结果派奖。
-
-核心重新验证原定义 hash、PrepareBet 的规范选号与全部复式/金额、充值→中奖→赠送分配以及原 debit 的账户/会员/引用/12 桶 before/delta/after。已有人工异常和已取消订单直接 excluded，不重新运行普通中奖计算。存储错误/超时整事务回滚返回 503；只在运营再次明确发请求时重试，无后台自动预览任务。
-
-GET 保留历史证据，current 是该计算的注单/期次版本与当前指针仍相同，不是已结算或可支付保证。幂等成功缓存中的 current 可能是历史值，客户端拿到直接匹配回执后必须重新 GET 当前记录；GET 失败显示“已保存但读取失败”，不能把已收到有效回执降为未知。丢失回执才保留精确 body/context/key；读到同样历史不能解除未知意图。
-
-正式整期结算、派奖、结算任务失败重试与已结算结果回溯已通过专用合同接入；这些不是本预览接口的隐式后续动作。
+计算使用注单购买时规则快照与当前开奖结果，保留规则摘要、扣款来源和业务账本见证核验；异常和取消注单排除。试算不改变注单、期次或积分，不触发派奖。实际结算与资金流水继续留档。
 
 ## 4.2 S6-b/S6-c 已实现的站内通知
 
@@ -601,7 +586,7 @@ GET 保留历史证据，current 是该计算的注单/期次版本与当前指�
 
 管理投递列表数据 `{items:[{event_id,brand_id,status,attempt_count,last_error,next_attempt_at,sent_at}]}`；status 为 pending/sent/failed，sent_at 仅 sent 非空。重试回执仍为首次 pending、次数不变，保留 last_error；累计次数和只读最新状态可以已推进，不能把缓存回执当作已投递。S6-c 后台铃铛和“通知投递”菜单接入查询、分页及失败项原因/二次确认/同键恢复；未知意图按账号＋品牌保存在页内内存，刷新列表/切换页面不解除，退出或会话失效清除，不写浏览器持久存储。
 
-S7-l 新增后台GET `/notification-templates`、GET `/notification-templates/{key}/history`及PUT `/notification-templates/{key}`，独立查看/品牌修改权限、乐观锁、不可变历史、审计和原键重放。消费者落库时复制当前模板，不覆盖已有消息；完整字段、错误与生效时点见 [通知模板合同](12-notification-templates.md)。0040接入新提现状态事件，依据不可变状态历史而非当前状态验证；原键重放不重复入队，通知写入失败使同事务资金处理回滚。0070接入本期投注会员去重受众及正式公布/更正通知；外部渠道仍未接入，不把内部paid事件当作银行或虚拟币转账证据。
+S7-l 新增后台GET `/notification-templates`、GET `/notification-templates/{key}/history`及PUT `/notification-templates/{key}`，显式平台查看/修改权限、乐观锁、不可变历史、审计和原键重放。消费者落库时复制当前模板，不覆盖已有消息；完整字段、错误与生效时点见 [通知模板合同](12-notification-templates.md)。0040接入新提现状态事件，依据不可变状态历史而非当前状态验证；原键重放不重复入队，通知写入失败使同事务资金处理回滚。0070接入本期投注会员去重受众及正式公布/更正通知；外部渠道仍未接入，不把内部paid事件当作银行或虚拟币转账证据。
 
 ### 提现申请报表与完整导出
 
@@ -628,7 +613,7 @@ Totals含order_count/requested_points，以及reviewing、processing、paid、re
 
 投注 totals 字段：`order_count,stake_points,placed_count,won_count,lost_count,abnormal_count,cancelled_count,refund_points,settled_stake_points,unfinalized_stake_points,abnormal_stake_points,current_prize_points,correction_open_count`。时间按原注单 placed_at（不是结算时间）；取消包括投注取消/判定取消，退款取有原refund引用的全额投注。最终投注/奖金仅计 period已结算、当前job已完成且注单计算属于此代次、没有未完成更正的won/lost；更正中旧已付不冒充最终结果。未完成投注包含placed及非最终won/lost，不含取消/异常。金额分区：总投注=已最终结算投注+未完成投注+异常投注+已退回投注。correction_open_count是涉及未完成更正的注单数，不是期次数。更正可更新旧时间区间的实时统计，不等于不可变日/月结凭证；这里不是提现/代理有效流水资格算法。
 
-账本 totals 字段：`entry_count,net_points,recharge_points,prize_credit_points,prize_reversal_points,refund_points`。时间按实际ledger.created_at，net为全部来源状态的delta之和（新16桶、旧完整12桶）；冻结/解冻状态转移净值0，prize/prize_reversal正负分别保留，不能累计历史paid代次替代净变动。另返回 `balances:{account_count,available_points,frozen_points,withdrawal_points,total_points}`，是同语句快照的当前品牌/会员桶汇总，不受from/to限制，也不是全链对账“一致”证明。完整单会员对账仍使用钱包reconciliation接口。
+账本 totals 字段：`entry_count,net_points,recharge_points,prize_credit_points,prize_reversal_points,refund_points`。时间按实际ledger.created_at，net为全部来源状态的delta之和（完整16分项）；冻结/解冻状态转移净值0，prize/prize_reversal正负分别保留，不能累计历史paid代次替代净变动。另返回 `balances:{account_count,available_points,frozen_points,withdrawal_points,total_points}`，是同语句快照的当前品牌/会员桶汇总，不受from/to限制，也不是全链对账“一致”证明。完整单会员对账仍使用钱包reconciliation接口。
 
 客户端校验品牌、回显筛选、精确整数及金额/状态分区；日期按精确纳秒时间值比较，允许等价UTC/时区或尾零格式，拒绝真实边界变化。服务端按PostgreSQL微秒网格将两个边界向上取整，保持原半开区间语义；不让驱动截断纳秒改变结果。旧结果在新筛选请求发起时清除，失败/401/跨品牌切换不能保留旧数据冒充新范围。草稿不改变已显示范围，只读刷新使用已提交条件。
 
@@ -644,7 +629,7 @@ S7-k 接入 GET `/api/v1/admin/reports/betting/export` 与 `/api/v1/admin/report
 
 `POST /api/v1/admin/brands` 要求当前有效管理会话、精确 `brand.create.platform` 权限及 `Idempotency-Key`；禁止非空 `X-Brand-ID` 和任何查询参数。不因 `super_admin` 标记或品牌角色中的同名权限而放行。该接口不是用户、资金或规则写权限的替代品。
 
-正文必须恰好包含 `{code,name,default_locale,timezone,reason}` 五个字符串，拒绝重复、未知、缺失或null字段。code为小写字母开头的1–48位小写字母/数字/下划线；name非空、UTF-8≤120字节；reason非空、≤500字节；名称和原因拒绝首尾空白及控制字符。语言仅en/zh-CN，timezone须为有效命名时区、非Local、≤80字节且无首尾空白/控制字符。服务端随二进制提供时区数据，不依赖主机安装。
+正文必须恰好包含 `{code,name,default_locale,timezone,reason}` 五个字符串，拒绝重复、未知、缺失或null字段。code为小写字母开头的1–48位小写字母/数字/下划线；name非空、UTF-8≤120字符；reason非空、≤500字符；名称和原因拒绝首尾空白及控制字符。语言仅en/zh-CN，timezone须为有效命名时区、非Local、≤80字符且无首尾空白/控制字符。服务端随二进制提供时区数据，不依赖主机安装。
 
 201返回 `{id,code,name,status:"paused",default_locale,timezone,version:1,created_at,audit_log_id}`。品牌、七项初始配置、不可变创建证据、审计与加密幂等回执同事务提交；不自动建立管理员范围、会员、域名、游戏或积分。结算mode=null，代理配置disabled、合规检查全关闭。编号已被其他请求占用返回409 `BRAND_CODE_CONFLICT`，同键异体409 `IDEMPOTENCY_CONFLICT`；模型解析错误400 `REQUEST_INVALID`，服务语义错误400 `BRAND_CREATE_INPUT_INVALID`，无权限403 `PERMISSION_DENIED`。
 
@@ -735,7 +720,7 @@ API当前不写积分、不生成佣金/奖励记录，不修改加入归属或�
 | GET | /compliance-checks | `{brand_id,operation:null或筛选值,items:Decision[],limit,offset,total_count}` |
 | GET | /compliance-gates | `{brand_id,operation:null或registration/betting,items:GateRecord[],limit,offset,total_count}`；真实业务准入拒绝，使用compliance_check.view.brand/platform |
 
-config必须包含九键：原age_enabled、minimum_age、region_enabled、allowed_countries、identity_enabled，以及account_risk_enabled、betting_risk_enabled、exclusion_enabled、responsible_gambling_enabled。七个开关均为必填boolean，默认false；年龄默认null，名单默认[]。年龄开启时minimum_age必填18..120整数，地区开启时名单非空，最多250个严格升序唯一两位大写ASCII代码；它们不是法律或市场授权结论。拒绝未知/缺失/重复/错误null和类型字段，不兼容旧五键请求。原因非空UTF-8≤500字节，无首尾空白/控制字符，政策版本独立于品牌共享版本。七组范围和业务边界见[45号合同](45-risk-stub-checks.md)。
+config必须包含九键：原age_enabled、minimum_age、region_enabled、allowed_countries、identity_enabled，以及account_risk_enabled、betting_risk_enabled、exclusion_enabled、responsible_gambling_enabled。七个开关均为必填boolean，默认false；年龄默认null，名单默认[]。年龄开启时minimum_age必填18..120整数，地区开启时名单非空，最多250个严格升序唯一两位大写ASCII代码；它们不是法律或市场授权结论。拒绝未知/缺失/重复/错误null和类型字段，不兼容旧五键请求。原因非空UTF-8≤500字符，无首尾空白/控制字符，政策版本独立于品牌共享版本。七组范围和业务边界见[45号合同](45-risk-stub-checks.md)。
 
 Decision字段 `{id,brand_id,policy_version,config,operation,decision,checks,adapter_mode:"stub",created_by,reason,audit_log_id,created_at}`。operation为registration/betting/withdrawal，仅检查场景标签，不启动相关业务。checks严格按age/region/identity/account_risk/betting_risk/exclusion/responsible_gambling排序，各含check/enabled/decision/reason_code；关闭allow/CHECK_DISABLED，开启review/ADAPTER_NOT_CONFIGURED，整体全关闭才allow。deny/freeze为接口扩展枚举，当前不会生成这两个结果或执行冻结；allow不代表用户验证完成，review不创建审核队列。
 
@@ -788,7 +773,7 @@ GateRecord含 `{id,brand_id,policy_version,config,operation,action,decision:"rev
 
 ## 4.2 S5-c2 正式期次结算与整数积分派奖
 
-均在 `/api/v1/admin`，要求真实后台会话、X-Brand-ID；读 `settlement.view.brand/platform`，模式读 `settlement_policy.view.brand/platform`。写分别要求 `settlement.run.brand`、`settlement.approve.brand`、`settlement.retry.brand`、`settlement_policy.write.brand`，超管禁止全部写。所有写带可信 Origin、幂等键、必填 reason（UTF-8 ≤500 字节），事务/幂等锁前后重新验证权限与会话，未知/重复字段拒绝。
+均在 `/api/v1/admin`，要求真实后台会话、X-Brand-ID；读 `settlement.view.brand/platform`，模式读 `settlement_policy.view.brand/platform`。写分别要求 `settlement.run.brand`、`settlement.approve.brand`、`settlement.retry.brand`、`settlement_policy.write.brand`，超管禁止全部写。所有写带可信 Origin、幂等键、必填 reason（UTF-8 ≤500 字符），事务/幂等锁前后重新验证权限与会话，未知/重复字段拒绝。
 
 | 方法 | 路径 | 合同 |
 |---|---|---|
@@ -812,7 +797,7 @@ Target 包含 `order_id,member_id,state,version,calculation_id,order_version,ord
 
 ## 4.3 S5-c3 结果更正、冲正及重新结算
 
-路径在 `/api/v1/admin`，读 `draw.view.brand/platform`，写 `draw.correct.brand` / `draw.correction_retry.brand`；有原结算代次时另需 `settlement.run.brand`。两项权限在幂等锁前后重新验证，包括缓存回执；超管只读。写带可信 Origin、幂等键、必填 UTF-8≤500字节原因，拒绝重复/未知/缺失字段。result 必须显式含 regular/special/digits 三个整数数组，非适用组为 []。
+路径在 `/api/v1/admin`，读 `draw.view.brand/platform`，写 `draw.correct.brand` / `draw.correction_retry.brand`；有原结算代次时另需 `settlement.run.brand`。两项权限在幂等锁前后重新验证，包括缓存回执；超管只读。写带可信 Origin、幂等键、必填 UTF-8≤500字符原因，拒绝重复/未知/缺失字段。result 必须显式含 regular/special/digits 三个整数数组，非适用组为 []。
 
 | 方法 | 路径 | 合同 |
 |---|---|---|
@@ -837,7 +822,7 @@ POST 回执保存首次结果，SDK 不在写方法内重新取上下文/改写�
 
 ## 佣金金融政策当前接口
 
-0047注册GET/PUT `/api/v1/admin/commission-policy`及GET `/api/v1/admin/commission-policy/history`。读取要求commission_policy.view.brand/platform，写入要求commission_policy.write.brand且超级管理员不能写；初始化管理员包含对应范围的显式授权。版本、config、reason完整替换，幂等回执前重验实际会话和权限，审计/修订/政策一起提交。启用须显式日历并匹配已启用代理政策周期；历史NULL不补造授权。封闭字段、错误、分页和私有投注快照详见[金融政策合同](16-commission-policy-snapshot.md)及生成OpenAPI。这里不是设计中的commission-rules或派发接口。
+佣金策略由平台统一配置：GET/PUT `/api/v1/platform/commission-settings` 使用 `platform_settings.view.platform` / `platform_settings.write.platform`，不带品牌头。平台保存按版本与幂等键校验，在同一事务同步现有品牌佣金策略及派生代理周期，新品牌自动继承；时区必须与平台设置一致，周期边界固定为 `00:00:00`，平台时区变更同步生效。投注历史快照不变。GET `/api/v1/admin/commission-policy` 保留品牌范围读取，PUT 固定拒绝 403。派发运行开关 `payouts_enabled` 与佣金策略一起由平台保存，同一事务同步全部品牌并保留派发审计；新品牌自动继承。品牌派发开关 PUT 固定拒绝 403，未开启派发时保存仍以 Toast 提醒；详见生成 OpenAPI。
 
 0048注册GET/POST `/api/v1/admin/commission-cycles`、GET `/{id}`、GET `/{id}/earnings`、POST `/{id}/retry`、GET `/{id}/runs`和GET `/{id}/runs/{runID}/calculations`。读取要求commission.view.brand/platform；登记/重试分别要求commission.run.brand/commission.retry.brand及品牌查看权，平台超级管理员不能写。写入须原始正文/幂等键匹配并重新授权；ready只是核算结果，须结合evidence_current阅读，不能当成批准或积分入账。完整字段、分页、封闭窗口、历史代次及失败规则见[周期核算合同](17-commission-cycles.md)。派发使用独立0050路由，不复用周期执行权限。
 
@@ -845,7 +830,7 @@ POST 回执保存首次结果，SDK 不在写方法内重新取上下文/改写�
 
 0050注册GET/PUT `/api/v1/admin/commission-payment-policy`、GET `/commission-payments`、GET `/{id}`、POST `/{id}/approve`及POST `/{id}/retry`。读取使用commission.view品牌或平台；策略写入、批准及重试分别要求品牌commission_payment_policy.write、commission_payment.approve、commission_payment.retry加查看权。品牌派发开关默认false；全人工等待单人审核，全自动在开关启用后由系统处理。0054使混合模式整周期等待人工审核，保留mixed身份，不拆分自动部分；旧MODE_UNRESOLVED记录在无批准、无目标且证据有效时只能显式approve。每目标正额实际写入佣金available和完整账本，零额仅审计。已有正额入账的更正仍blocked，不能以approve或retry绕过。原键返回原回执，当前状态另读；具体字段、状态、锁及待补偿边界见[派发合同](17-commission-cycles.md)和OpenAPI。
 
-0055注册后台`/reward-orders`六项接口：GET/POST集合、GET单条、GET动作分页、POST撤销及POST人工继续。奖励权限独立，X-Reward-Actor-ID固定操作者；人工发放201、撤销或继续200，余额不足亦为持久化revocation_pending成功回执，不由客户端自动重试。原grant及回执保留，只有gift.available可反向全额；原键重放重新授权并返回原状态，当前状态另读。无用户奖励提交、自动奖励或支付接口，具体数据与待完成页面/通知/报表见[奖励交接合同](20-manual-reward-orders.md)及OpenAPI。
+一期精简后，结算仅提供即时试算；批量对账、在线余额修复和奖励待追缴已移除。人工奖励余额不足时明确失败且不改变资金记录，见[当前精简范围](64-betting-points-simplification.md)。
 
 0051追加GET `/api/v1/admin/commission-payments/{id}/targets`及GET/POST `/api/v1/admin/commission-payment-targets/{id}/adjustments`，写入为独立commission_adjustment.write品牌权限、version/points/reason闭合正文、确认账号及幂等键；成功201。只接受当前已paid且证据有效的目标，精确差额记入佣金available，原派发总额不修改。0052仅为实际完成的入账/修正生成不可变通知，完整状态、字段和错误见[人工修正合同](18-commission-adjustments.md)。
 
@@ -907,3 +892,58 @@ GET `/api/v1/admin/reports/commission-analysis`及`.csv`读取保存整周期的
 代理端会员范围统一使用 `scope=direct|line`，默认为直属会员；整条代理线包含当前代理及其所有下级发展的会员。会员列表、搜索和汇总使用同一范围，详情和注单也校验范围及品牌。积分按会员独立汇总，注单按实际订单独立汇总，禁止累加各层代理汇总。汇总覆盖完整查询结果，与分页无关；列表显示归属代理。
 
 品牌代理规则分别配置占成比例上限和佣金比例上限。创建、编辑、代理线切换模式及投注快照校验均按代理线有效模式选择上限，不能使用品牌默认模式代替节点实际模式；下级仍不得超过上级。旧单上限字段不再接受。
+
+### 品牌共享额度与人工充值（一期）
+
+额度管理支持增加和收回。`POST /api/v1/platform/recharge-quota/reclaims` 接收正整数 `points` 字符串，要求 `recharge_quota.write.platform` 权限及幂等键；只可收回剩余未使用的额度，已充值给会员的积分不变。收回与会员充值共用同一个原子条件扣减，超额返回 `409 RECHARGE_QUOTA_RECLAIM_EXCEEDED`，不产生扣减或流水。增加和收回均记录积分、变动前后余额、操作人和时间；收回流水类型为 `reclaim`，原键重试不重复收回。
+
+平台 `GET /api/v1/platform/brands` 返回 `member_count`、`agent_count`、`recharge_quota_available` 和 `created_at`。会员及独立代理按品牌统计全部现存记录（包括停用状态），不跨品牌或因联表重复计数；计数和额度使用精确十进制字符串。未获 `recharge.view.platform` 时额度返回 `null`，界面明确提示需要查看权限。品牌后台原 `/brands` 仍返回基础目录字段。总后台列表查询和重新进入时重读汇总；额度操作和后续余额读取也会同步列表。
+
+- 总后台在“品牌列表 → 行操作菜单 → 额度”直接打开该品牌额度管理；通过 `POST /api/v1/platform/recharge-quota/grants` 授权新增额度（`points` 为正整数积分字符串）。两端“充值记录”合并展示充值单和会员查询，查询表单操作区提供“查看额度明细”按钮，页内不展示品牌可用额度，按需打开共享居中只读弹窗；额度增加、收回留在总后台品牌额度管理。需要 `recharge_quota.write.platform` 精确权限；品牌账号不能授权。
+- 品牌后台在“会员管理 → 行操作菜单 → 充值”打开当前会员的人工充值弹窗。`POST /api/v1/admin/recharges/manual` 使用 `member_id`、`points` 与可选的 `remark`、`proof_reference`、`reason`，一次事务完成创建、确认、扣额度、积分入账、通知与审计。需要该品牌的 `recharge.write.brand` 权限，平台账号不可操作会员积分。
+- 所有管理员共享同一个品牌额度池，不分配到管理员个人。并发确认通过额度行的原子条件更新防止超扣；不足返回 `409 RECHARGE_QUOTA_INSUFFICIENT`，整笔业务回滚。取消待确认单不扣额度，已入账单不能再次确认。已有待确认单仍可经原确认接口处理，同样受额度限制。
+- 授权和充值必须携带 `Idempotency-Key`。结果未知时保留原请求及原键重试，不更换积分、会员或操作账号；成功回放不会重复授权、扣额度或入账。
+- 品牌和平台可凭各自 `recharge.view` 权限读取 `GET /recharge-quota` 和 `GET /recharge-quota/entries?limit=…&offset=…`。流水记录授权/人工充值、积分、变动前后可用额度、操作人、时间和关联充值单，并禁止更新或删除；充值单继续保存创建人、确认人和会员积分流水，用户端投影不暴露管理员或内部附注。
+- 充值记录新增 `method=manual|automatic`，三端按目录翻译展示“人工充值/自动充值”。一期人工接口不接受调用方指定方式；自动方式仅保留数据表达，未接入支付渠道或自动充值入口。
+- 原有充值记录明确标为人工充值，保留原金额、状态、操作人和积分流水。上线此功能时品牌未获授权的可用额度为 0，历史充值不追溯扣减额度。
+
+## 官方攪珠日期（总后台）
+
+`GET /api/v1/platform/platform-games/official-calendar` 需要 `platform_game.view.platform` 精确权限并审计读取，不接受查询参数。返回 `{dates:[{date,is_snowball}],status,last_success_at,last_attempt_at,next_attempt_at}`；时间未记录时为 `null`。日期按香港当天筛选并升序排列，保留官方金多宝标记，不生成期号或具体开奖时间。`status` 为 `pending|synced|failed|overdue`，已有成功记录且超过计划时间五分钟才标为延迟；采集失败保留已保存日期。品牌入口不提供此接口。总后台“开奖”页展示日历及同步信息，“重新读取”只访问本地只读接口。详细同步规则见 [62号文档](62-hkjc-official-calendar.md)。
+
+
+`POST /api/v1/platform/platform-games/official-calendar/sync` 需要 `platform_game.write.platform`、`Idempotency-Key` 和空对象 `{}`。立即使用官方来源采集，不改动期号或具体开奖时间。与 worker 互斥，正在同步返回 `409 HKJC_CALENDAR_BUSY`。已完成采集以 HTTP 200 返回 `{status:"synced"|"failed",months:number}`，失败保留旧日历；结果、审计及幂等回执原子提交，同键重放不重复采集，回放前仍校验权限。网络/5xx 不确定结果保留原请求键恢复。
+
+投注记录的筛选目录合并当前导航可用彩种与会员历史注单彩种。默认选择顶部导航当前彩种；顶部切换彩种时保持 `/orders` 路由并重置该彩种的分页，记录下拉选择当前可用彩种时同步导航选择。“全部彩种”仍可主动查询，已下架但有历史记录的彩种继续可选；无投注记录也显示可用目录。
+
+### 用户端直属推荐列表
+
+`GET /api/v1/me/referrals`（亦支持 `/api/v1/b/{brandCode}/me/referrals`）按当前会话和品牌返回直接通过本人推荐码加入的会员，使用入会时保存的 `referrer_member_id` 归属，不含间接推荐或代理下级。支持 `limit`（默认 20，1–100）、`offset`（默认 0），拒绝额外筛选参数。返回 `brand_id`、`member_id`、`items`、`limit`、`offset`、字符串 `total_count`；每项仅含会员 `id`、展示名称 `display_name`、`joined_at`，按加入时间和会员编号倒序分页，不返回电话及全局账号资料。响应禁止缓存。
+
+
+### 人工积分调整与共享品牌额度
+
+充值、中奖、赠送、佣金四类人工正向积分调整均按增加积分等额消耗品牌共享额度，与人工充值共用同一额度行和事务锁；余额入账、额度扣减、两侧流水和审计在同一事务中完成。额度不足返回 `409 RECHARGE_QUOTA_INSUFFICIENT`，会员余额及品牌额度均不变。原幂等键重试不重复加分或扣额度。负向调整不返还品牌额度，冻结、解冻只改变会员积分状态，不消耗额度；自动派彩和正常佣金结算仍按各自业务记账。
+
+额度流水新增 `manual_adjustment`，流水 ID 与对应积分账本流水 ID 相同，充值单关联为空，保留积分、前后额度和操作人。积分调整表单的可选备注通过现有 `reason` 字段提交，最多 500 字符，保存在积分账本和审计中。
+
+### 分页总条数
+
+列表分页返回 `total_count`（规范的非负十进制字符串），报表沿用 `total_groups`。总数覆盖与本页相同的授权、品牌、会员及筛选范围，不受 offset 或游标限制；空页仍返回该查询的总数。账本、充值、角色／管理账号、审计、通知投递、配置化注单、开奖结果和会员注单接口均提供总数。客户端不以已加载条数或下一页标记估算总数，缺失或无效总数按无效响应处理。
+
+
+### 固定管理入口与代理账号
+
+总后台、品牌后台、代理端使用固定入口，均须在服务器受信任入口表 `platform_domains` 启用；用户端才按 `brand_domains` 解析品牌。固定品牌后台和代理端在登录前读取平台验证码配置，验证码不绑定某个品牌，与品牌验证码互不通用。品牌后台登录后仍按账号授权范围选择品牌。
+
+代理用户名全平台唯一，`POST /api/v1/agent/login` 根据账号确定品牌，固定入口会话 Cookie 不依赖品牌查询参数。后续操作从服务端会话取得品牌，不能通过客户端品牌头跨品牌访问。`GET /api/v1/agent/auth/config` 和 `/auth/challenge` 用于登录验证；`GET /api/v1/agent/me` 增加 `brand_code` 和可空的 `user_origin`。代理端登录后按 `brand_code` 读取品牌展示；注册链接使用所属品牌启用的用户域名，按字典序选择，无域名时明确不可用。
+
+
+总后台注单彩种筛选使用 `GET /api/v1/platform/filter-options?resource=bet&kind=game&limit=100&offset=0`，要求 `X-Brand-ID` 和 `bet.view.platform`；品牌端等价目录要求 `bet.view.brand`。返回该品牌配置化注单实际引用的彩种，不使用已移除的 `/games` 自建彩种接口。彩种与开奖管理直接使用 `/api/v1/platform/platform-games`，无需品牌上下文。
+
+
+### 品牌后台基础目录与普通账号首页
+
+`GET /api/v1/admin/brands` 用于登录后发现账号明确分配的品牌范围，直接按 `admin_brand_scopes` 返回基础目录，不额外要求 `brand.view.brand`。没有品牌范围时返回空目录；移除范围后立即停止返回对应品牌。这不授予任何业务读取或写入能力，总后台品牌目录仍按原平台权限校验。
+
+固定通用品牌管理入口的首页允许 `X-Brand-ID` 指向账号已授权的品牌，并继续要求对应的 `overview.view.brand`；显式绑定品牌的管理入口仍不能读取其他品牌首页。事务内会话及权限复核保持不变。无首页权限时可识别账号所属品牌，但首页返回403，会员及资金权限不会随品牌识别放开。

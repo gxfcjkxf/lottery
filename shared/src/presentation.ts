@@ -24,7 +24,7 @@ const ALLOWED_ASSET_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.ic
 
 /** Mirror internal/brandskin.ValidAssetURI; hostname validation is syntax-only and never resolves or fetches. */
 export function safeBrandAssetUrl(value: unknown): string | null {
-  if (typeof value !== 'string' || value.length === 0 || new TextEncoder().encode(value).length > 512 || value.trim() !== value || /[\\%\r\n\t]/.test(value) || /[\p{White_Space}\p{Cc}]/u.test(value) || value.includes('..')) return null
+  if (typeof value !== 'string' || value.length === 0 || Array.from(value).length > 512 || value.trim() !== value || /[\\%\r\n\t]/.test(value) || /[\p{White_Space}\p{Cc}]/u.test(value) || value.includes('..')) return null
   if (value.startsWith('https://')) {
     try {
       const parsed = new URL(value)

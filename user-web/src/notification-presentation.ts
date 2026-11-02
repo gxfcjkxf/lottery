@@ -24,7 +24,7 @@ export type NotificationPresentation = {
 const supportedEvents: readonly NotificationEventType[] = [
   'draw.result.published', 'draw.result.corrected', 'member.joined', 'recharge.confirmed',
   'bet.order.placed', 'bet.order.cancelled', 'bet.order.judged_cancelled', 'bet.order.abnormal', 'bet.order.won', 'bet.order.prize_reversed',
-  'reward.order.granted', 'reward.order.revocation_pending', 'reward.order.revoked',
+  'reward.order.granted', 'reward.order.revoked',
   'commission.paid', 'commission.adjusted', 'commission.corrected',
   'withdrawal.order.reviewing', 'withdrawal.order.processing', 'withdrawal.order.paid', 'withdrawal.order.rejected', 'withdrawal.order.failed', 'withdrawal.order.cancelled',
 ];
@@ -102,7 +102,6 @@ export function renderNotification(
         const key = item.event_type === "bet.order.won" ? "user.notification.betWonNote"
           : item.event_type === "bet.order.prize_reversed" ? "user.notification.betReversedNote"
           : item.event_type === "reward.order.granted" ? "user.notification.rewardGrantedNote"
-          : item.event_type === "reward.order.revocation_pending" ? "user.notification.rewardPendingNote"
           : item.event_type === "reward.order.revoked" ? "user.notification.rewardRevokedNote"
           : item.event_type === "commission.paid" ? "user.notification.commissionPaidNote"
           : item.event_type === "commission.adjusted" ? "user.notification.commissionAdjustedNote"

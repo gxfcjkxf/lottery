@@ -148,8 +148,8 @@ describe('configured draft preview', () => {
 
   it('provides the same complete editor catalog for both locales', () => {
     const i18n = createCatalogI18n(configuredRuleCatalog, 'en')
-    expect(i18n.t('editorTitle')).toBe('Configurable rules and publication')
+    expect(i18n.t('editorTitle')).toBe('Play rules')
     i18n.setLocale('zh-CN')
-    expect(i18n.t('editorTitle')).toBe('配置式规则与发布')
+    expect(i18n.t('editorTitle')).toBe('玩法规则')
   })
 })

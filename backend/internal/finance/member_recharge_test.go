@@ -90,10 +90,10 @@ func TestMemberRechargeProjectionExactPrivateAndReadOnly(t *testing.T) {
 		if e = json.Unmarshal(raw, &shape); e != nil {
 			t.Fatal(e)
 		}
-		if len(shape) != 9 {
+		if len(shape) != 10 {
 			t.Fatalf("private fields in DTO %s", raw)
 		}
-		for _, key := range []string{"id", "brand_id", "member_id", "points", "state", "version", "created_at", "confirmed_at", "ledger_entry_id"} {
+		for _, key := range []string{"method", "id", "brand_id", "member_id", "points", "state", "version", "created_at", "confirmed_at", "ledger_entry_id"} {
 			if _, ok := shape[key]; !ok {
 				t.Fatalf("missing field %s", key)
 			}
@@ -205,7 +205,7 @@ func TestMemberRechargeStableOrderingAndForeignRecordIsolation(t *testing.T) {
 
 func TestMemberRechargeNormalizationFailsClosed(t *testing.T) {
 	created := time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
-	valid := MemberRecharge{ID: ids.New(), BrandID: financeBrandA, MemberID: ids.New(), Points: "1", State: "pending", Version: "1", CreatedAt: created}
+	valid := MemberRecharge{Method: "manual", ID: ids.New(), BrandID: financeBrandA, MemberID: ids.New(), Points: "1", State: "pending", Version: "1", CreatedAt: created}
 	for name, mutate := range map[string]func(*MemberRecharge){
 		"amount syntax":             func(v *MemberRecharge) { v.Points = "01" },
 		"amount overflow":           func(v *MemberRecharge) { v.Points = "9223372036854775808" },

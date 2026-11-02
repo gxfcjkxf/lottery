@@ -16,7 +16,6 @@ const events = [
   "bet.order.won",
   "bet.order.prize_reversed",
   "reward.order.granted",
-  "reward.order.revocation_pending",
   "reward.order.revoked",
   "commission.paid",
   "commission.adjusted",
@@ -193,7 +192,6 @@ describe("notification presentation", () => {
 
   it.each([
     ["reward.order.granted", "points were credited to your gift available balance", "积分曾记入赠送可用积分"],
-    ["reward.order.revocation_pending", "No points moved in this attempt", "本次没有积分变动"],
     ["reward.order.revoked", "was reversed from your gift available balance", "曾从赠送可用积分撤销"],
   ] as const)("keeps the fixed reward-state note for edited %s content", (event, enPhrase, zhPhrase) => {
     const renderedEn = renderNotification(item(event), "en");
@@ -204,13 +202,10 @@ describe("notification presentation", () => {
     expect(renderedZh.protectedNote).toContain(zhPhrase);
     expect(renderedEn.protectedNote).toContain("900,719,925,474,099,312,345");
     expect(renderedZh.protectedNote).toContain("900,719,925,474,099,312,345");
-    if (event === "reward.order.revocation_pending") {
-      expect(renderedEn.protectedNote).toContain("does not retry, unfreeze or deduct automatically");
-      expect(renderedZh.protectedNote).toContain("不会自动重试、解冻或扣除");
-    }
+
   });
 
-  it.each(["reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked"] as const)(
+  it.each(["reward.order.granted", "reward.order.revoked"] as const)(
     "requires a frozen reward snapshot for %s", (event) => {
       expect(() => renderNotification({ ...item(event), content: null as never }, "en")).toThrow(/immutable content snapshot/);
     },

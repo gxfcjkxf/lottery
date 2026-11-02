@@ -33,10 +33,10 @@ describe('platform access API', () => {
     const denied = createPlatformAccessApi(async () => new Response(JSON.stringify({ success: false, error: { code: 'PERMISSION_DENIED', message: 'Current permission denied' } }), { status: 403 }))
     await expect(denied.createPlatformAccount(create, key)).rejects.toMatchObject({ status: 403, code: 'PERMISSION_DENIED', message: 'Current permission denied' })
   })
-  it('uses UTF-8 byte limits for passwords in both account families', async () => {
+  it('uses Unicode character limits for passwords in both account families', async () => {
     const createdBrand = { ...account, version: 1, audit_log_id: auditId }
     const createdPlatform = { ...platformAccount, version: 1, audit_log_id: auditId }
-    for (const password of ['密'.repeat(6), '密'.repeat(10), 'a'.repeat(6), 'a'.repeat(30)]) {
+    for (const password of ['密'.repeat(6), '密'.repeat(30), '😀'.repeat(30), 'a'.repeat(6), 'a'.repeat(30)]) {
       const fetcher = vi.fn<typeof fetch>()
         .mockResolvedValueOnce(reply(createdBrand, 201))
         .mockResolvedValueOnce(reply(createdPlatform, 201))
@@ -52,7 +52,7 @@ describe('platform access API', () => {
       expect(fetcher).toHaveBeenCalledTimes(4)
       for (const [, init] of fetcher.mock.calls) expect(JSON.parse(String(init?.body)).password).toBe(password)
     }
-    for (const password of ['密'.repeat(1), '密'.repeat(11), 'a'.repeat(5), 'a'.repeat(31)]) {
+    for (const password of ['密'.repeat(5), '密'.repeat(31), '😀'.repeat(31), 'a'.repeat(5), 'a'.repeat(31)]) {
       const fetcher = vi.fn<typeof fetch>()
       const api = createPlatformAccessApi(fetcher)
       const create = { username: 'new_ops', password, role_ids: [roleId], reason: 'Create owned account' }
@@ -78,10 +78,10 @@ describe('platform access API', () => {
     await expect(createPlatformAccessApi(fetcher).updatePlatformAccount(accountId, { version: 2, status: 'disabled', role_ids: [roleId], reason: 'Disable test operator' }, key)).resolves.toEqual(disabled);
   });
   it('reads accounts and roles with the selected brand, paging, and same-origin credentials', async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(reply({ items: [account] })).mockResolvedValueOnce(reply({ items: [role] }))
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(reply({ items: [account]  ,total_count: '1'})).mockResolvedValueOnce(reply({ items: [role]  ,total_count: '1'}))
     const api = createPlatformAccessApi(fetcher)
-    await expect(api.accounts(brand)).resolves.toEqual([account])
-    await expect(api.roles(brand, 51, 100)).resolves.toEqual([role])
+    await expect(api.accounts(brand)).resolves.toMatchObject({items:[account]})
+    await expect(api.roles(brand, 51, 100)).resolves.toMatchObject({items:[role]})
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       `/api/v1/platform/accounts?limit=51&offset=0`,
       `/api/v1/platform/roles?limit=51&offset=100`,
@@ -94,44 +94,44 @@ describe('platform access API', () => {
 
   it('preserves multi-role ID/code pairing and platform keys in provided role grants', async () => {
     const multi = { ...account, role_ids: [roleId, accountId], role_codes: ['ops', 'platform_admin'] }
-    const api = createPlatformAccessApi(async () => reply({ items: [multi] }))
-    await expect(api.accounts(brand)).resolves.toEqual([multi])
-    await expect(createPlatformAccessApi(async () => reply({ items: [role] })).roles(brand)).resolves.toEqual([role])
+    const api = createPlatformAccessApi(async () => reply({ items: [multi]  ,total_count: '1'}))
+    await expect(api.accounts(brand)).resolves.toMatchObject({items:[multi]})
+    await expect(createPlatformAccessApi(async () => reply({ items: [role]  ,total_count: '1'})).roles(brand)).resolves.toMatchObject({items:[role]})
   })
 
   it('reads permissions without a query and treats the catalog as server data', async () => {
-    const fetcher = vi.fn<typeof fetch>(async () => reply({ items: ['user.view.brand', 'report.view.brand'] }))
+    const fetcher = vi.fn<typeof fetch>(async () => reply({ items: ['user.view.brand', 'report.view.brand']  ,total_count: '2'}))
     await expect(createPlatformAccessApi(fetcher).permissions(brand)).resolves.toEqual(['user.view.brand', 'report.view.brand'])
     expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/platform/permissions')
   })
 
   it('rejects invalid brands, page bounds, cross-brand records, and mismatched role pairs before or after fetch', async () => {
-    const fetcher = vi.fn(async () => reply({ items: [role] }))
+    const fetcher = vi.fn(async () => reply({ items: [role]  ,total_count: '1'}))
     const api = createPlatformAccessApi(fetcher)
     await expect(api.roles('not-a-uuid')).rejects.toMatchObject({ code: 'BRAND_REQUIRED' })
     await expect(api.accounts(brand, 0)).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
     await expect(api.accounts(brand, 51, 1_000_001)).rejects.toMatchObject({ code: 'REQUEST_INVALID' })
     await expect(api.roles(brand2)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(createPlatformAccessApi(async () => reply({ items: [{ ...account, brand_ids: [brand2] }] })).accounts(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(createPlatformAccessApi(async () => reply({ items: [{ ...account, role_codes: [] }] })).accounts(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformAccessApi(async () => reply({ items: [{ ...account, brand_ids: [brand2] }]  ,total_count: '1'})).accounts(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformAccessApi(async () => reply({ items: [{ ...account, role_codes: [] }]  ,total_count: '1'})).accounts(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
   it('rejects malformed records and propagates HTTP 403 details', async () => {
-    await expect(createPlatformAccessApi(async () => reply({ items: [{ ...role, version: Number.MAX_SAFE_INTEGER + 1 }] })).roles(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(createPlatformAccessApi(async () => reply({ items: ['user.view.brand', ''] })).permissions(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformAccessApi(async () => reply({ items: [{ ...role, version: Number.MAX_SAFE_INTEGER + 1 }]  ,total_count: '1'})).roles(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformAccessApi(async () => reply({ items: ['user.view.brand', '']  ,total_count: '2'})).permissions(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
     const forbidden = async () => new Response(JSON.stringify({ success: false, error: { code: 'PERMISSION_DENIED', message: 'Forbidden' } }), { status: 403 })
     await expect(createPlatformAccessApi(forbidden).accounts(brand)).rejects.toMatchObject({ status: 403, code: 'PERMISSION_DENIED', message: 'Forbidden' } satisfies Partial<PlatformAccessApiError>)
     await expect(createPlatformAccessApi(async () => new Response('not json', { status: 200 })).roles(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(createPlatformAccessApi(async () => reply({ items: [role] }, 201)).roles(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(createPlatformAccessApi(async () => reply({ items: ['audit.view.platform'] })).permissions(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformAccessApi(async () => reply({ items: [role]  ,total_count: '1'}, 201)).roles(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformAccessApi(async () => reply({ items: ['audit.view.platform']  ,total_count: '1'})).permissions(brand)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
 
   it('reads global accounts and roles without a brand header and validates their global scope', async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(reply({ items: [platformAccount] })).mockResolvedValueOnce(reply({ items: [platformRole] }))
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(reply({ items: [platformAccount]  ,total_count: '1'})).mockResolvedValueOnce(reply({ items: [platformRole]  ,total_count: '1'}))
     const api = createPlatformAccessApi(fetcher)
-    await expect(api.platformAccounts()).resolves.toEqual([platformAccount])
-    await expect(api.platformRoles(20, 40)).resolves.toEqual([platformRole])
+    await expect(api.platformAccounts()).resolves.toMatchObject({items:[platformAccount]})
+    await expect(api.platformRoles(20, 40)).resolves.toMatchObject({items:[platformRole]})
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       '/api/v1/platform/platform-accounts?limit=51&offset=0',
       '/api/v1/platform/platform-roles?limit=20&offset=40',
@@ -140,8 +140,8 @@ describe('platform access API', () => {
       expect(init).toMatchObject({ method: 'GET', credentials: 'same-origin' })
       expect(new Headers(init?.headers).has('X-Brand-ID')).toBe(false)
     }
-    await expect(createPlatformAccessApi(async () => reply({ items: [{ ...platformAccount, brand_ids: [brand] }] })).platformAccounts()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(createPlatformAccessApi(async () => reply({ items: [{ ...platformRole, permissions: ['user.view.brand'] }] })).platformRoles()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformAccessApi(async () => reply({ items: [{ ...platformAccount, brand_ids: [brand] }]  ,total_count: '1'})).platformAccounts()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(createPlatformAccessApi(async () => reply({ items: [{ ...platformRole, permissions: ['user.view.brand'] }]  ,total_count: '1'})).platformRoles()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
 
   it('writes brand accounts and roles with JSON, explicit brand scope, and the supplied key', async () => {

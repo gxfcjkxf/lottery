@@ -22,7 +22,7 @@ export const schemas = {
   CommissionPolicyConfig: {
     ...obj({ enabled: { type: 'boolean' }, calendar: nullable(ref('CommissionCalendar')), payout_mode: { type: 'string', enum: ['manual', 'automatic'] } }),
     allOf: [{ if: { properties: { enabled: { const: true } }, required: ['enabled'] }, then: { properties: { calendar: ref('CommissionCalendar') } } }],
-    description: 'Initial policy is disabled/null calendar/manual. The financial calendar is the single source for the weekly/monthly cycle. Automatic is a saved choice, not an implemented payout worker.',
+    description: 'Initial policy is disabled/null calendar/manual. The financial calendar is the single source for the weekly/monthly cycle. Automatic payouts remain subject to the separate payout run switch. Platform settings own this policy; brands inherit it.',
   },
   CommissionPolicy: obj({ brand_id: ref('UUID'), version, config: ref('CommissionPolicyConfig'), created_at: ref('DateTime'), updated_at: ref('DateTime'), revision_id: ref('UUID'), audit_log_id: ref('UUID') }, ['brand_id', 'version', 'config', 'created_at', 'updated_at', 'revision_id']),
   CommissionPolicyInput: obj({ version, config: ref('CommissionPolicyConfig'), reason: ref('Reason') }, ["version", "config"]),
@@ -34,8 +34,7 @@ const admin = (method, path, operationId, summary, data, extra = {}) => ({
 });
 export const operations = [
   admin('GET', '/commission-policy', 'getCommissionPolicy', 'Read brand financial commission policy', ref('CommissionPolicy'), { description: 'Audited read for selected brand. Super-admin requires platform view grant and cannot write. This policy does not create or pay a commission batch.' }),
-  admin('PUT', '/commission-policy', 'updateCommissionPolicy', 'Replace financial commission policy', ref('CommissionPolicy'), {
-    requestBody: ref('CommissionPolicyInput'), idempotency: true,
-    description: 'Complete replacement with an optimistic concurrency version. Unknown, duplicate, null and missing required fields are rejected. Rechecks actual session and brand write permission before cached receipt replay; changed body with same key conflicts. Only the current policy is replaced; no policy revision or change-history audit is written. Saving a calendar atomically synchronizes the derived agency snapshot cycle and advances its version when the cycle changes. Changes affect only new bet snapshots; every new bet records its current policy. No batch generation or payout is performed.',
+  admin('PUT', '/commission-policy', 'updateCommissionPolicy', 'Brand commission writes are forbidden', ref('CommissionPolicy'), {
+    requestBody: ref('CommissionPolicyInput'), permissions: [], description: 'Always returns 403. Commission policy is managed through platform commission settings.',
   }),
 ];

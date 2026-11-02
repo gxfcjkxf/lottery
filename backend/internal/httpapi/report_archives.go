@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
@@ -19,6 +21,39 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func reportArchivePage(r *http.Request) (limit, offset int, kind string, ok bool) {
+	limit, offset = 20, 0
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return 0, 0, "", false
+	}
+	for key, values := range query {
+		if len(values) != 1 || values[0] == "" {
+			return 0, 0, "", false
+		}
+		switch key {
+		case "kind":
+			kind = values[0]
+			if kind != reportarchive.Daily && kind != reportarchive.Monthly {
+				return 0, 0, "", false
+			}
+		case "limit", "offset":
+			n, e := strconv.Atoi(values[0])
+			if e != nil || strconv.Itoa(n) != values[0] {
+				return 0, 0, "", false
+			}
+			if key == "limit" {
+				limit = n
+			} else {
+				offset = n
+			}
+		default:
+			return 0, 0, "", false
+		}
+	}
+	return limit, offset, kind, limit >= 1 && limit <= 100 && offset >= 0 && offset <= 1000000
+}
 
 const reportArchivesPath = "/report-archives"
 
@@ -32,7 +67,7 @@ func (in *archiveHTTPInput) UnmarshalJSON(raw []byte) error {
 		return reportarchive.ErrInvalid
 	}
 	var next reportarchive.Input
-	if json.Unmarshal(fields["kind"], &next.Kind) != nil || json.Unmarshal(fields["period_key"], &next.PeriodKey) != nil || json.Unmarshal(fields["expected_revision"], &next.ExpectedRevision) != nil || (fields["reason"] != nil && json.Unmarshal(fields["reason"], &next.Reason) != nil) || next.ExpectedRevision < 0 || next.ExpectedRevision >= 9007199254740991 || len(next.Reason) > 500 || strings.TrimSpace(next.Reason) != next.Reason {
+	if json.Unmarshal(fields["kind"], &next.Kind) != nil || json.Unmarshal(fields["period_key"], &next.PeriodKey) != nil || json.Unmarshal(fields["expected_revision"], &next.ExpectedRevision) != nil || (fields["reason"] != nil && json.Unmarshal(fields["reason"], &next.Reason) != nil) || next.ExpectedRevision < 0 || next.ExpectedRevision >= 9007199254740991 || utf8.RuneCountInString(next.Reason) > 500 || strings.TrimSpace(next.Reason) != next.Reason {
 		return reportarchive.ErrInvalid
 	}
 	for _, c := range next.Reason {
@@ -197,8 +232,9 @@ func registerReportArchiveRoutes(handle func(string, string, http.HandlerFunc), 
 			}
 			id := r.PathValue("id")
 			limit, offset := 20, 0
+			kind := ""
 			if path == reportArchivesPath {
-				limit, offset, _, ok = reconciliationPage(r, false)
+				limit, offset, kind, ok = reportArchivePage(r)
 			} else {
 				ok = cycleCanonicalID(id) && r.URL.RawQuery == ""
 			}
@@ -216,7 +252,7 @@ func registerReportArchiveRoutes(handle func(string, string, http.HandlerFunc), 
 			}
 			out, err := archiveHTTPRead(r, d, initial, brand, id, action, func(tx pgx.Tx) (any, error) {
 				if id == "" {
-					return s.ListTx(r.Context(), tx, brand, limit, offset)
+					return s.ListTx(r.Context(), tx, brand, limit, offset, kind)
 				}
 				record, e := s.ReadTx(r.Context(), tx, brand, id)
 				if e != nil || action != "download" {

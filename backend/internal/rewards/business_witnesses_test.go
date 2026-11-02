@@ -36,9 +36,9 @@ func TestFinanceBusinessWitnessesIncludeRealGrantAndRevocation(t *testing.T) {
 		t.Fatalf("got %d reward financial witnesses, want grant and full revocation", got)
 	}
 	rows.Close()
-	var consistent bool
-	if err = f.db.QueryRow(context.Background(), `SELECT (point_business_preview($1,$2)->>'consistent')::boolean`, f.brand, f.account).Scan(&consistent); err != nil || !consistent {
-		t.Fatalf("full kernel rejected actual reward grant/revocation: consistent=%v err=%v", consistent, err)
+	ledger, err := f.points.Reconcile(context.Background(), f.brand, f.member)
+	if err != nil || !ledger.Consistent {
+		t.Fatal("reward ledger reconciliation", ledger, err)
 	}
 }
 

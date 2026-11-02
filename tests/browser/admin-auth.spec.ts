@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect } from "@playwright/test";
 
 test("admin directory writes a real brand member and kick revokes its session", async ({
@@ -39,9 +40,8 @@ test("admin directory writes a real brand member and kick revokes its session", 
     await page.locator(".mobile-nav button").nth(1).click();
   else
     await page.locator(".side-nav").getByRole("button", { name: /用户和成员/ }).click();
-  await page
-    .getByLabel("选择真实后台品牌", { exact: true })
-    .selectOption("0199a000-0000-7000-8000-000000000001");
+  await selectControl(page
+    .getByLabel("选择真实后台品牌", { exact: true }), "0199a000-0000-7000-8000-000000000001");
   const row = page
     .locator(".member-directory-table tbody tr")
     .filter({ hasText: name });
@@ -53,7 +53,7 @@ test("admin directory writes a real brand member and kick revokes its session", 
   const dialog = page
     .getByRole("dialog")
     .filter({ has: page.getByRole("heading", { name: "编辑成员状态和备注" }) });
-  await dialog.getByRole("combobox").selectOption("frozen");
+  await selectControl(dialog.getByRole("combobox"), "frozen");
   await dialog.getByLabel("备注", { exact: true }).fill("browser verification");
   await dialog.getByLabel(/操作原因/).fill("browser freeze verification");
   await dialog.getByRole("button", { name: "保存", exact: true }).click();

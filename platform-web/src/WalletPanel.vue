@@ -1,32 +1,32 @@
 <script setup lang="ts">
+import ManagementList from "@lottery/shared/ManagementList.vue"
+import { auditReasonLabel, readPaginationTotal } from '@lottery/shared'
+const ledgerTotal = ref('0')
+
+import TablePagination from "@lottery/shared/TablePagination.vue"
+import { useOperationToast } from "@lottery/shared";
 import ManagementTable from "@lottery/shared/ManagementTable.vue"
 import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
-import { AssociationName } from '@lottery/shared';
 import { usePlatformI18n as usePublicErrorI18n } from "./i18n";
 const publicErrorI18n = usePublicErrorI18n();
 const publicErrorMessage = publicErrorI18n.errorMessage;
 const displayPublicError = publicErrorI18n.displayError;
 import { withGlobalLoading } from '@lottery/shared';
-import SiteIcon from "@lottery/shared/SiteIcon";
 import { vRefreshButton } from '@lottery/shared';
-import { vInlineValidation } from '@lottery/shared'
 import { usePlatformI18n } from "./i18n"
 const ui = usePlatformI18n().t
 import DetailModal from "@lottery/shared/DetailModal.vue"
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { WALLET_SOURCES, WALLET_STATES } from '@lottery/shared'
 import { PlatformApiError } from './platform-api'
 import { createPlatformWalletApi, type Wallet, type LedgerEntry } from './wallet-api'
-import RechargesPanel from './RechargesPanel.vue'
 import type { PlatformDisplaySettings } from './platform-format'
 import { formatPlatformDateTime } from './platform-format'
-import ReportsPanel from './ReportsPanel.vue'
-import { lookupPlatformMember } from './member-lookup'
 
-const props = defineProps<{ brandId: string; memberId: string; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings; view: 'wallet' | 'recharges' | 'reports' }>()
-const emit = defineEmits<{ failure: [cause: unknown] }>()
+const props = defineProps<{ brandId: string; memberId: string; memberName: string; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings; view: 'wallet' | 'ledger' }>()
+const emit = defineEmits<{ failure: [cause: unknown]; close: [] }>()
 const api = createPlatformWalletApi()
-const inputMember = ref('')
+function closeMember() { clear(); emit('close') }
 const activeMember = ref('')
 const wallet = ref<Wallet | null>(null)
 const entries = ref<LedgerEntry[]>([])
@@ -43,26 +43,29 @@ const copy = computed(() => props.locale === 'en' ? {
 })
 function clear() {
   generation++
-  wallet.value = null; entries.value = []; selected.value = null
+  wallet.value = null; [entries.value,ledgerTotal.value]=[[],'0']; selected.value = null
   offset.value = 0; more.value = false; activeMember.value = ''; loading.value = false; error.value = ''
 }
-const financeMember = computed(() => activeMember.value || props.memberId)
 function report(cause: unknown) {
   if (cause instanceof PlatformApiError && (cause.status === 401 || cause.code === 'PLATFORM_ADMIN_REQUIRED')) emit('failure', cause)
   else error.value = cause instanceof Error ? publicErrorMessage(cause) : publicErrorMessage(cause)
 }
-async function load() {
+async function load(memberId: string) {
   clear()
   const request = generation
   const brandId = props.brandId
-  const username = inputMember.value.trim()
-  let memberId = ''
+  activeMember.value = memberId
   loading.value = true
   try {
-    memberId = (await lookupPlatformMember(brandId, username)).id
-    const [current, rows] = await Promise.all([api.wallet(brandId, memberId), api.ledger(brandId, memberId, 51, 0)])
-    if (request !== generation || brandId !== props.brandId) return
-    wallet.value = current; entries.value = rows.slice(0, 50); more.value = rows.length > 50; activeMember.value = memberId
+    if (props.view === 'wallet') {
+      const current = await api.wallet(brandId, memberId)
+      if (request !== generation || brandId !== props.brandId) return
+      wallet.value = current
+    } else {
+      const rows = await api.ledger(brandId, memberId, 51, 0)
+      if (request !== generation || brandId !== props.brandId) return
+      [entries.value, ledgerTotal.value] = [rows.items.slice(0, 50), readPaginationTotal(rows)]; more.value = rows.items.length > 50
+    }
   } catch (cause) {
     if (request === generation) report(cause)
   } finally { if (request === generation) loading.value = false }
@@ -71,63 +74,66 @@ async function page(nextOffset: number) {
   const request = ++generation
   const brandId = props.brandId
   const memberId = activeMember.value
-  entries.value = []; selected.value = null; more.value = false; error.value = ''; loading.value = true
+  selected.value = null; error.value = ''; loading.value = true
   try {
     const rows = await api.ledger(brandId, memberId, 51, nextOffset)
     if (request !== generation || brandId !== props.brandId) return
-    entries.value = rows.slice(0, 50); more.value = rows.length > 50; offset.value = nextOffset
+    [entries.value, ledgerTotal.value] = [rows.items.slice(0, 50), readPaginationTotal(rows)]; more.value = rows.items.length > 50; offset.value = nextOffset
   } catch (cause) { if (request === generation) report(cause) }
   finally { if (request === generation) loading.value = false }
 }
-watch(() => [props.brandId, props.memberId], () => {
-  clear(); inputMember.value = ''
-}, { immediate: true, flush: 'sync' })
+watch(() => [props.brandId, props.memberId, props.view], () => {
+  clear()
+  if (props.brandId && props.memberId) void withGlobalLoading(load, props.memberId)
+}, { immediate: true })
+onBeforeUnmount(() => { generation++ })
+
+useOperationToast(error, value => displayPublicError(value), 'error');
 </script>
 
 <template>
-    <RechargesPanel v-if="view === 'recharges'" :brand-id="brandId" :member-id="financeMember" :locale="locale" :display-settings="displaySettings" @failure="emit('failure', $event)" />
-  <ReportsPanel v-else-if="view === 'reports'" :brand-id="brandId" :member-id="financeMember" :locale="locale" :display-settings="displaySettings" @failure="emit('failure', $event)" />
-  <template v-else>
   <div data-testid="platform-wallet">
-    <form novalidate v-inline-validation class="panel wallet-query" @submit.prevent="withGlobalLoading(load)">
-      <label class="query-field">
-        <div class="input-with-icon">
-          <span class="input-icon"> <SiteIcon name="user" /> </span>
-          <input v-model="inputMember" required :disabled="loading || !brandId" autocomplete="off" :aria-label="copy.member" :placeholder="copy.memberPlaceholder" />
-        </div>
-      </label>
-      <button class="button button-primary" :disabled="loading || !brandId">{{ copy.load }}</button>
-    </form>
-    <p v-if="error" class="message error" role="alert">{{ displayPublicError(error) }}</p>
-    <template v-if="wallet">
-      <section class="panel" data-testid="platform-wallet-balances">
-        <div class="panel-heading"><h2><AssociationName :record="wallet" kind="member" :id="activeMember" :locale="locale" /></h2></div>
+    <DetailModal :title="`${view === 'wallet' ? ui('common.memberPoints') : ui('members.ledger')} · ${memberName}`" :close-label="copy.close" @close="closeMember">
+      <button v-refresh-button="copy.refresh" v-if="error" type="button" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load, activeMember)">{{copy.refresh}}</button>
+    <template v-if="view === 'wallet' && wallet">
+      <section class="detail-section" data-testid="platform-wallet-balances">
+        <div class="panel-heading"><h2>{{ ui('common.points') }}</h2><button v-refresh-button="copy.refresh" type="button" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load, activeMember)">{{ copy.refresh }}</button></div>
         <dl class="confirm-list reward-fields">
           <div><dt>{{ copy.display }}</dt><dd>{{ wallet.display_points }}</dd></div>
           <div><dt>{{ copy.available }}</dt><dd>{{ wallet.available_points }}</dd></div>
           <div><dt>{{ copy.frozen }}</dt><dd>{{ wallet.frozen_points }}</dd></div>
           <div><dt>{{ copy.withdrawal }}</dt><dd>{{ wallet.withdrawal_points }}</dd></div>
         </dl>
-        <div class="table-wrap"><table><thead><tr><th>{{ copy.source }}</th><th v-for="state in WALLET_STATES" :key="state">{{ copy[state] }}</th></tr></thead><tbody>
-          <tr v-for="source in WALLET_SOURCES" :key="source"><td>{{ copy[source] }}</td><td v-for="state in WALLET_STATES" :key="state">{{ wallet.by_source[source][state] }}</td></tr>
+        <div class="table-wrap"><table class="console-table console-responsive-table wallet-source-table"><thead><tr><th>{{ copy.source }}</th><th v-for="state in WALLET_STATES" :key="state">{{ copy[state] }}</th></tr></thead><tbody>
+          <tr v-for="source in WALLET_SOURCES" :key="source"><td :data-label="String(copy.source)">{{ copy[source] }}</td><td :data-label="String(copy[state])" v-for="state in WALLET_STATES" :key="state">{{ wallet.by_source[source][state] }}</td></tr>
         </tbody></table></div>
       </section>
-      <section class="panel reward-detail" data-testid="platform-wallet-ledger">
-        <div class="panel-heading"><h2>{{ copy.ledger }}</h2></div>
+    </template>
+    <template v-if="view === 'ledger'">
+      <ManagementList embedded class="detail-section" data-testid="platform-wallet-ledger">
+        <template #heading><h2>{{ copy.ledger }}</h2></template><template #actions><div class="console-page-actions"><button v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load, activeMember)">{{ copy.refresh }}</button></div></template>
         <ManagementTable :entries="entries" :columns="[{key:'entry',label:copy.entry},{key:'type',label:copy.type},{key:'reason',label:copy.reason},{key:'date',label:copy.date}]" :empty="!entries.length" :empty-label="copy.empty">
-          <template #entry="{entry}"><button class="text-button" @click="selected=entry">{{entry.id}}</button></template><template #type="{entry}">{{entry.entry_type}}</template><template #reason="{entry}">{{entry.reason}}</template><template #date="{entry}">{{formatPlatformDateTime(entry.created_at, props.displaySettings, props.locale)}}</template>
+          <template #entry="{entry}"><button class="text-button" @click="selected=entry">{{copy.detail}}</button></template><template #type="{entry}"><BusinessDetails :value="entry.entry_type" :locale="locale" /></template><template #reason="{entry}">{{auditReasonLabel(entry.reason, locale)}}</template><template #date="{entry}">{{formatPlatformDateTime(entry.created_at, props.displaySettings, props.locale)}}</template>
         </ManagementTable>
-        <div class="wallet-pagination" data-testid="platform-wallet-pages"><button class="button button-secondary" :disabled="loading || offset === 0" @click="withGlobalLoading(page, offset - 50)">{{ copy.previous }}</button><span>{{ Math.floor(offset / 50) + 1 }}</span><button class="button button-secondary" :disabled="loading || !more" @click="withGlobalLoading(page, offset + 50)">{{ copy.next }}</button><button v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(load)">{{ copy.refresh }}</button></div>
-      </section>
+
+      <template #pagination><TablePagination :show-empty="!loading && !error" class="wallet-pagination" data-testid="platform-wallet-pages" :total="ledgerTotal" :page="Math.floor(offset / 50 + 1)" :count="entries.length" :locale="locale" :page-size="50" :previous-disabled="loading || offset === 0" :next-disabled="loading || !more" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => page((target - 1) * 50)" /></template></ManagementList>
       <DetailModal v-if="selected" :title="copy.detail" :close-label="copy.close" @close="selected = null">
 <section v-if="selected" class="detail-section" data-testid="platform-wallet-entry">
-        <div class="detail-summary"><p class="mono">{{ selected.id }}</p><p>{{ selected.reason }}</p></div>
-        <div class="table-wrap"><table><thead><tr><th>{{ copy.source }}</th><th><BusinessDetails :value="copy.state" :locale="props.locale" /></th><th>{{ copy.before }}</th><th>{{ copy.delta }}</th><th>{{ copy.after }}</th></tr></thead><tbody>
-          <template v-for="source in WALLET_SOURCES" :key="source"><tr v-for="state in WALLET_STATES" :key="state"><td>{{ copy[source] }}</td><td>{{ copy[state] }}</td><td>{{ selected.before_snapshot[source][state] }}</td><td>{{ selected.delta_snapshot[source][state] }}</td><td>{{ selected.after_snapshot[source][state] }}</td></tr></template>
+        <div class="detail-summary"><p>{{ auditReasonLabel(selected.reason, locale) }}</p></div>
+        <div class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ copy.source }}</th><th><BusinessDetails :value="copy.state" :locale="props.locale" /></th><th>{{ copy.before }}</th><th>{{ copy.delta }}</th><th>{{ copy.after }}</th></tr></thead><tbody>
+          <template v-for="source in WALLET_SOURCES" :key="source"><tr v-for="state in WALLET_STATES" :key="state"><td :data-label="String(copy.source)">{{ copy[source] }}</td><td :data-label="copy.state">{{ copy[state] }}</td><td :data-label="String(copy.before)">{{ selected.before_snapshot[source][state] }}</td><td :data-label="String(copy.delta)">{{ selected.delta_snapshot[source][state] }}</td><td :data-label="String(copy.after)">{{ selected.after_snapshot[source][state] }}</td></tr></template>
         </tbody></table></div>
       </section>
 </DetailModal>
     </template>
+    </DetailModal>
   </div>
-  </template>
 </template>
+
+<style scoped>
+.wallet-source-table { table-layout: fixed; white-space: normal; }
+.wallet-source-table th, .wallet-source-table td { overflow-wrap: anywhere; white-space: normal; }
+@media (max-width: 700px) {
+  .wallet-source-table th, .wallet-source-table td { padding: 6px 4px; }
+}
+</style>

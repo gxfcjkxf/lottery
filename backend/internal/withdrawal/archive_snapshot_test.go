@@ -25,7 +25,7 @@ func TestArchiveSnapshotWithdrawalsMatchesPaidAndRejectedOrders(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = policyService.UpdateBrand(ctx, tx, orderTestBrand, f.admin,
-		BrandInput{Version: policy.Version, Config: policyConfig, Reason: "authorize four-source archive fixture"},
+		BrandInput{PointsStep: 1, Version: policy.Version, Config: policyConfig, Reason: "authorize four-source archive fixture"},
 		points.Metadata{ActorType: "admin", ActorID: f.adminID, RequestID: ids.New()}); err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)

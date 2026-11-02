@@ -7,4 +7,5 @@ import '@lottery/shared/form-validation.css'
 import '@lottery/shared/key-value.css'
 import '@lottery/shared/login-entry.css'
 import '@lottery/shared/controls.css'
+import '@lottery/shared/refresh-button.css'
 createApp(App).mount('#app')

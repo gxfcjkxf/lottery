@@ -34,18 +34,34 @@ test('preview APIs retain management scopes, a bounded explicit draft and no sal
   assert.equal(doc.paths['/api/v1/platform-games/rule-preview'],undefined);
 });
 
-test('dedicated sales are absent while historical queries remain authenticated',()=>{
+test('dedicated sales and historical adapters are absent; configured history is authenticated',()=>{
  for(const family of ['mark-six','canada']){
   for(const prefix of ['/api/v1','/api/v1/b/{brandCode}']){
    assert.equal(doc.paths[`${prefix}/${family}/games`],undefined);
    assert.equal(doc.paths[`${prefix}/${family}/games/{id}`],undefined);
    assert.equal(doc.paths[`${prefix}/${family}/preview`],undefined);
-   assert.equal(doc.paths[`${prefix}/${family}/orders`].post,undefined);
-   assert.ok(doc.paths[`${prefix}/${family}/orders`].get.security.length);
+   assert.equal(doc.paths[`${prefix}/${family}/orders`],undefined);
   }
   assert.equal(doc.paths[`/api/v1/platform/platform-games/{id}/${family}/rules`],undefined);
   assert.equal(doc.paths[`/api/v1/admin/platform-games/{id}/${family}/sales`],undefined);
-  assert.ok(doc.paths[`/api/v1/admin/platform-games/{id}/${family}/orders`].get.security.length);
+  assert.equal(doc.paths[`/api/v1/admin/platform-games/{id}/${family}/orders`],undefined);
  }
  assert.ok(doc.paths['/api/v1/configured/orders'].get.security.length);
+});
+
+
+test('brand platform games expose scoped configured sales alongside connection and stake limits',()=>{
+ const writes=Object.entries(doc.paths).flatMap(([path,item])=>path.startsWith('/api/v1/admin/platform-games') ? Object.keys(item).filter(method=>!['get','parameters'].includes(method)).map(method=>`${method.toUpperCase()} ${path}`):[]).sort();
+ assert.deepEqual(writes,[
+  'POST /api/v1/admin/platform-games/rule-preview',
+  'POST /api/v1/admin/platform-games/{id}/availability',
+  'POST /api/v1/admin/platform-games/{id}/bet-limits',
+  'POST /api/v1/admin/platform-games/{id}/configured/sales',
+  'POST /api/v1/admin/platform-games/{id}/connect',
+ ]);
+ const sale=doc.paths['/api/v1/admin/platform-games/{id}/configured/sales'].post;
+ assert.deepEqual(sale['x-permissions'],['platform_game.sell.brand']);
+ assert.ok(sale.parameters.some(p=>p.name==='Idempotency-Key'));
+ assert.equal(doc.paths['/api/v1/platform/platform-games/{id}/configured/sales'].post,undefined);
+ assert.equal(doc.paths['/api/v1/admin/platform-games/{id}/automation'].post,undefined);
 });

@@ -150,13 +150,7 @@ func (s Service) GrantTx(ctx context.Context, tx pgx.Tx, brand string, actor acc
 }
 
 func (s Service) RevokeTx(ctx context.Context, tx pgx.Tx, brand, id string, actor access.Account, in ActionInput, meta points.Metadata) (Order, error) {
-	return s.revoke(ctx, tx, brand, id, actor, in, meta, "revoke")
-}
-func (s Service) RetryRevocationTx(ctx context.Context, tx pgx.Tx, brand, id string, actor access.Account, in ActionInput, meta points.Metadata) (Order, error) {
-	return s.revoke(ctx, tx, brand, id, actor, in, meta, "retry")
-}
-
-func (s Service) revoke(ctx context.Context, tx pgx.Tx, brand, id string, actor access.Account, in ActionInput, meta points.Metadata, operation string) (Order, error) {
+	const operation = "revoke"
 	if !validID(id) || in.Validate() != nil {
 		return Order{}, ErrInvalid
 	}
@@ -170,7 +164,7 @@ func (s Service) revoke(ctx context.Context, tx pgx.Tx, brand, id string, actor 
 	if o.Version != in.Version || o.Version >= MaxVersion {
 		return Order{}, ErrVersion
 	}
-	if operation == "revoke" && o.State != "granted" || operation == "retry" && o.State != "revocation_pending" {
+	if o.State != "granted" {
 		return Order{}, ErrState
 	}
 	store := points.Store{DB: s.DB}
@@ -179,11 +173,8 @@ func (s Service) revoke(ctx context.Context, tx pgx.Tx, brand, id string, actor 
 		return Order{}, err
 	}
 	state := "revoked"
-	var code *string
 	if wallet.GiftPoints < o.Points {
-		state = "revocation_pending"
-		v := "REWARD_AVAILABLE_INSUFFICIENT"
-		code = &v
+		return Order{}, points.ErrInsufficient
 	}
 	actionID := ids.New()
 	log, err := actionAudit(ctx, tx, brand, id, actionID, operation, state, o.Version+1, &o, in.Reason, actor, meta, nil)
@@ -193,23 +184,19 @@ func (s Service) revoke(ctx context.Context, tx pgx.Tx, brand, id string, actor 
 	if err = insertAction(ctx, tx, brand, id, actionID, operation, state, o.Version+1, &o.State, actor.ID, in.Reason, log); err != nil {
 		return Order{}, err
 	}
-	var ledger *string
-	if state == "revoked" {
-		var delta points.Balance
-		delta[2][0] = -o.Points
-		entry, err := store.Post(ctx, tx, points.Change{BrandID: brand, MemberID: o.MemberID, EntryType: "reward_reversal", ReferenceType: "reward_order", ReferenceID: id,
-			OperationKey: "reward-revoke:" + id, Reason: in.Reason, ActorType: "admin", ActorID: actor.ID, RequestID: meta.RequestID, IP: meta.IP,
-			Delta: delta, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: o.Points}}, ReversalOf: o.GrantLedgerEntryID})
-		if err != nil {
-			return Order{}, dbError(err)
-		}
-		ledger = &entry.ID
-		if _, err = tx.Exec(ctx, `UPDATE reward_order_actions SET ledger_entry_id=$2 WHERE id=$1`, actionID, entry.ID); err != nil {
-			return Order{}, dbError(err)
-		}
+	var delta points.Balance
+	delta[2][0] = -o.Points
+	entry, err := store.Post(ctx, tx, points.Change{BrandID: brand, MemberID: o.MemberID, EntryType: "reward_reversal", ReferenceType: "reward_order", ReferenceID: id,
+		OperationKey: "reward-revoke:" + id, Reason: in.Reason, ActorType: "admin", ActorID: actor.ID, RequestID: meta.RequestID, IP: meta.IP,
+		Delta: delta, Allocation: []points.Allocation{{Source: "gift", State: "available", Points: o.Points}}, ReversalOf: o.GrantLedgerEntryID})
+	if err != nil {
+		return Order{}, dbError(err)
 	}
-	if _, err = tx.Exec(ctx, `UPDATE reward_orders SET state=$3,version=version+1,last_audit_log_id=$4,last_error_code=$5,revoke_ledger_entry_id=$6,revoked_at=CASE WHEN $3='revoked' THEN clock_timestamp() ELSE NULL END WHERE brand_id=$1 AND id=$2`,
-		brand, id, state, log, code, ledger); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE reward_order_actions SET ledger_entry_id=$2 WHERE id=$1`, actionID, entry.ID); err != nil {
+		return Order{}, dbError(err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE reward_orders SET state=$3,version=version+1,last_audit_log_id=$4,revoke_ledger_entry_id=$5,revoked_at=clock_timestamp() WHERE brand_id=$1 AND id=$2`,
+		brand, id, state, log, entry.ID); err != nil {
 		return Order{}, dbError(err)
 	}
 	return s.OrderTx(ctx, tx, brand, id)

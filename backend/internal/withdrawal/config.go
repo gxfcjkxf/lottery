@@ -34,9 +34,10 @@ type GameConfig struct {
 	TurnoverMultiple *string `json:"turnover_multiple"`
 }
 type BrandInput struct {
-	Version int64       `json:"version"`
-	Config  BrandConfig `json:"config"`
-	Reason  string      `json:"reason"`
+	PointsStep points.Amount `json:"points_step"`
+	Version    int64         `json:"version"`
+	Config     BrandConfig   `json:"config"`
+	Reason     string        `json:"reason"`
 }
 type GameInput struct {
 	Version int64      `json:"version"`
@@ -162,11 +163,14 @@ func (c *GameConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (in *BrandInput) UnmarshalJSON(data []byte) error {
-	v, e := fields(data, "version", "config", "reason")
+	v, e := fields(data, "version", "config", "reason", "points_step")
 	if e != nil {
 		return e
 	}
 	var out BrandInput
+	if decodeField(v["points_step"], &out.PointsStep, false) != nil || out.PointsStep <= 0 {
+		return ErrInvalid
+	}
 	if decodeField(v["version"], &out.Version, false) != nil || decodeField(v["config"], &out.Config, false) != nil || (v["reason"] != nil && decodeField(v["reason"], &out.Reason, false) != nil) || ValidateBrandConfig(out.Config) != nil {
 		return ErrInvalid
 	}

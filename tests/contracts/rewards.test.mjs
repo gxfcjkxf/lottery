@@ -10,18 +10,18 @@ ajv.addSchema({ $id: 'urn:lottery:reward', components: { schemas: { ...doc.compo
 const validate = name => ajv.compile({ $ref: `urn:lottery:reward#/components/schemas/${name}` });
 const id = '11111111-1111-4111-8111-111111111111', time = '2026-10-08T00:00:00Z';
 const granted = { id, brand_id: id, member_id: id, points: '9223372036854775807', state: 'granted', version: 1, grant_ledger_entry_id: id, revoke_ledger_entry_id: null,
-  creation_audit_log_id: id, last_audit_log_id: id, last_error_code: null, created_by: id, reason: 'explicit grant', point_policy_version: '1', created_at: time, updated_at: time, revoked_at: null };
-test('reward contract exposes exactly six scoped operations and three actor-bound writes', () => {
+  creation_audit_log_id: id, last_audit_log_id: id, created_by: id, reason: 'explicit grant', point_policy_version: '1', created_at: time, updated_at: time, revoked_at: null };
+test('reward contract exposes five scoped operations and two actor-bound writes', () => {
   assert.deepEqual(operations.map(o => `${o.method} ${o.path}`).sort(), [
     'GET /api/v1/admin/reward-orders', 'POST /api/v1/admin/reward-orders', 'GET /api/v1/admin/reward-orders/{id}',
-    'GET /api/v1/admin/reward-orders/{id}/actions', 'POST /api/v1/admin/reward-orders/{id}/revoke', 'POST /api/v1/admin/reward-orders/{id}/retry-revocation',
+    'GET /api/v1/admin/reward-orders/{id}/actions', 'POST /api/v1/admin/reward-orders/{id}/revoke',
   ].sort());
   for (const op of operations) {
     assert.equal(op.auth, 'admin'); assert.equal(op.brandHeader, true);
     if (op.method === 'POST') {
       assert.equal(op.idempotency, true); assert.deepEqual(op.parameters.map(p => [p.name, p.in, p.required]), [['X-Reward-Actor-ID', 'header', true]]);
-      assert.match(op.permissions[0], /^reward\.(grant|revoke|retry)\.brand$/);
-      assert.match(op.description, /shortage returns a durable successful/);
+      assert.match(op.permissions[0], /^reward\.(grant|revoke)\.brand$/);
+      assert.match(op.description, /shortage returns 422/);
     }
   }
   assert.equal(operations.find(o => o.operationId === 'grantManualReward').successStatus, 201);
@@ -34,14 +34,12 @@ test('reward schemas are closed and preserve int64 point strings with no wallet 
   assert.ok(!Object.keys(schemas.RewardOrder.properties).some(k => /account_id|bucket|snapshot/.test(k)));
   assert.equal(validate('RewardOrder')({ ...granted, hidden: 'field' }), false);
 });
-test('reward progress and action nullability distinguish pending from completed reversal', () => {
-  const order = validate('RewardOrder'), action = validate('RewardOrderAction');
-  const pending = { ...granted, state: 'revocation_pending', version: 2, last_error_code: 'REWARD_AVAILABLE_INSUFFICIENT' };
-  const revoked = { ...granted, state: 'revoked', version: 3, revoke_ledger_entry_id: id, revoked_at: time };
-  assert.equal(order(pending), true); assert.equal(order(revoked), true);
-  for (const bad of [{ ...pending, last_error_code: null }, { ...pending, revoke_ledger_entry_id: id }, { ...revoked, revoke_ledger_entry_id: null }, { ...revoked, revoked_at: null }, { ...granted, version: 2 }]) assert.equal(order(bad), false);
-  const row = { id, brand_id: id, order_id: id, version: 2, operation: 'revoke', state_before: 'granted', state_after: 'revocation_pending', actor_id: id, reason: 'shortage', audit_log_id: id, ledger_entry_id: null, created_at: time };
-  assert.equal(action(row), true); assert.equal(action({ ...row, operation: 'retry', state_before: 'revocation_pending' }), true);
-  assert.equal(action({ ...row, state_after: 'revoked', ledger_entry_id: id }), true);
-  for (const bad of [{ ...row, ledger_entry_id: id }, { ...row, state_after: 'revoked' }, { ...row, operation: 'retry' }, { ...row, version: 1 }]) assert.equal(action(bad), false);
+test('rewards accept only granted or fully reversed state with actual ledger evidence', () => {
+ const order=validate('RewardOrder'),action=validate('RewardOrderAction');
+ const revoked={...granted,state:'revoked',version:2,revoke_ledger_entry_id:id,revoked_at:time};
+ assert.equal(order(revoked),true);
+ assert.equal(order({...granted,state:'revocation_pending'}),false);
+ assert.equal(order({...revoked,revoke_ledger_entry_id:null}),false);
+ const row={id,brand_id:id,order_id:id,version:2,operation:'revoke',state_before:'granted',state_after:'revoked',actor_id:id,reason:'',audit_log_id:id,ledger_entry_id:id,created_at:time};
+ assert.equal(action(row),true);assert.equal(action({...row,ledger_entry_id:null}),false);assert.equal(action({...row,operation:'retry'}),false);
 });

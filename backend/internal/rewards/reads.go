@@ -7,12 +7,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const orderSelect = `SELECT id::text,brand_id::text,member_id::text,points,state,version,grant_ledger_entry_id::text,revoke_ledger_entry_id::text,creation_audit_log_id::text,last_audit_log_id::text,last_error_code,created_by::text,reason,point_policy_version::text,created_at,updated_at,revoked_at FROM reward_orders`
+const orderSelect = `SELECT id::text,brand_id::text,member_id::text,points,state,version,grant_ledger_entry_id::text,revoke_ledger_entry_id::text,creation_audit_log_id::text,last_audit_log_id::text,created_by::text,reason,point_policy_version::text,created_at,updated_at,revoked_at FROM reward_orders`
 
 func scanOrder(row pgx.Row) (Order, error) {
 	var o Order
 	err := row.Scan(&o.ID, &o.BrandID, &o.MemberID, &o.Points, &o.State, &o.Version, &o.GrantLedgerEntryID, &o.RevokeLedgerEntryID,
-		&o.CreationAuditLogID, &o.LastAuditLogID, &o.LastErrorCode, &o.CreatedBy, &o.Reason, &o.PointPolicyVersion, &o.CreatedAt, &o.UpdatedAt, &o.RevokedAt)
+		&o.CreationAuditLogID, &o.LastAuditLogID, &o.CreatedBy, &o.Reason, &o.PointPolicyVersion, &o.CreatedAt, &o.UpdatedAt, &o.RevokedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return o, ErrNotFound
 	}

@@ -42,6 +42,10 @@ func TestCaptureArchiveUsesOneReadOnlyAggregateSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err = financeService.GrantRechargeQuota(ctx, tx, testBrand, 19, meta); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
 	rechargeOrder, err := financeService.CreateRecharge(ctx, tx, testBrand, memberID, 19, "archive fixture proof", "private note", "archive fixture", meta)
 	if err != nil {
 		_ = tx.Rollback(ctx)

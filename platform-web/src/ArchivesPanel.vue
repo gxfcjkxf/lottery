@@ -1,14 +1,16 @@
 <script setup lang="ts">
+import ManagementList from "@lottery/shared/ManagementList.vue"
+import TablePagination from "@lottery/shared/TablePagination.vue"
+import { useOperationToast } from "@lottery/shared";
 import { usePlatformI18n as usePublicErrorI18n } from "./i18n";
 const publicErrorI18n = usePublicErrorI18n();
 const publicErrorMessage = publicErrorI18n.errorMessage;
 const displayPublicError = publicErrorI18n.displayError;
 import { withGlobalLoading } from '@lottery/shared';
 import { vRefreshButton } from '@lottery/shared';
-const displayDate = (value: string | null | undefined) => formatDisplayDateTime(value, props.locale);
-import { formatDisplayDateTime } from "@lottery/shared";
 import { usePlatformI18n } from "./i18n"
 const ui = usePlatformI18n().t
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import ArchiveReport from "@lottery/shared/ArchiveReport.vue"
 import { archiveReportCatalog } from '@lottery/shared'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
@@ -25,6 +27,9 @@ const page = ref<ArchivePage | null>(null)
 const detail = ref<ArchiveRecord | null>(null)
 const selectedId = ref('')
 const offset = ref(0)
+const kind = ref<'daily'|'monthly'>('daily')
+const archiveCopy=computed(()=>archiveReportCatalog[props.locale])
+function chooseKind(value:'daily'|'monthly'){if(kind.value===value)return;kind.value=value;backToList();void withGlobalLoading(load,0)}
 const loading = ref(false)
 const downloading = ref(false)
 const error = ref<string | import("@lottery/shared").LocalizedMessage>("")
@@ -42,7 +47,6 @@ const groups = [
   { key: 'reward_orders', fields: REPORT_FIELDS.reward_orders },
 ] as const
 const reportLabels = computed(() => ({ ...Object.fromEntries(groups.map(group => [group.key, groupLabel(group.key)])), wallet: copy.value.balances }))
-const backLabel = computed(() => archiveReportCatalog[props.locale].back)
 const reportTime = (value: string) => formatPlatformDateTime(value, props.displaySettings, props.locale)
 function backToList() { generation++; detail.value = null; selectedId.value = ''; loading.value = false; downloading.value = false; error.value = ''; receipt.value = '' }
 const copy = computed(() => props.locale === 'en' ? {
@@ -81,17 +85,15 @@ function reportFailure(cause: unknown) {
 async function load(nextOffset = 0) {
   const request = ++generation
   const brand = props.brandId
-  page.value = null
   detail.value = null
   selectedId.value = ''
-  offset.value = nextOffset
   error.value = ''
   receipt.value = ''
   downloading.value = false
   if (!brand) { loading.value = false; return }
   loading.value = true
   try {
-    const result = await api.list(brand, pageSize, nextOffset)
+    const result = await api.list(brand, pageSize, nextOffset, kind.value)
     if (request !== generation || brand !== props.brandId) return
     page.value = result
     offset.value = result.offset
@@ -167,25 +169,34 @@ onBeforeUnmount(() => {
   generation++
   for (const url of [...objectUrls]) releaseObjectUrl(url)
 })
+useOperationToast(receipt, value => value, 'success');
+
+useOperationToast(error, value => displayPublicError(value), 'error');
 </script>
 
 <template>
   <div data-testid="platform-archives">
-    <p v-if="error" class="message error" role="alert">{{ displayPublicError(error) }}</p>
-    <p v-if="receipt" class="message success" role="status" data-testid="platform-archive-download-receipt">{{ receipt }}</p>
-    <section v-if="!selectedId" class="panel reward-detail" data-testid="platform-archive-list">
-      <div class="table-wrap"><table><thead><tr><th>{{ copy.window }}</th><th>{{ displayDate(copy.snapshotAt) }}</th></tr></thead><tbody>
-        <tr v-for="record in page?.items ?? []" :key="record.id"><td><button class="row-action" :disabled="loading" :title="copy.title" @click="withGlobalLoading(read, record)">{{ record.window.kind === 'daily' ? copy.daily : copy.monthly }} · {{ record.window.period_key }}</button></td><td>{{ formatPlatformDateTime(record.snapshot_at, props.displaySettings, props.locale) }}</td></tr>
-        <tr v-if="page && !page.items.length"><td colspan="2" class="empty-state">{{ copy.empty }}</td></tr>
+
+
+    <ManagementList class="reward-detail" data-testid="platform-archive-list">
+      <template #tabs><div class="archive-tabs" role="tablist" :aria-label="archiveCopy.records"><button v-for="tab in (['daily','monthly'] as const)" :key="tab" role="tab" class="button" :class="kind===tab?'button-primary':'button-secondary'" :aria-selected="kind===tab" @click="chooseKind(tab)">{{ tab==='daily'?archiveCopy.dailyArchives:archiveCopy.monthlyArchives }}</button></div></template><template #actions><button v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading || !brandId" @click="withGlobalLoading(load, 0)">{{ copy.refresh }}</button></template>
+      <div class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ archiveCopy.period }}</th><th>{{ archiveCopy.archiveType }}</th><th>{{ archiveCopy.status }}</th><th>{{ archiveCopy.archivedAt }}</th></tr></thead><tbody>
+        <tr v-for="record in page?.items ?? []" :key="record.id"><td :data-label="String(archiveCopy.period)"><button class="text-button row-action" :disabled="loading" :title="copy.title" @click="withGlobalLoading(read, record)">{{ record.window.period_key }}</button></td><td :data-label="String(archiveCopy.archiveType)">{{ record.window.kind==='daily'?archiveCopy.dailyArchives:archiveCopy.monthlyArchives }}</td><td :data-label="String(archiveCopy.status)"><span class="status-pill completed">{{ archiveCopy.archived }}</span></td><td :data-label="String(archiveCopy.archivedAt)">{{ formatPlatformDateTime(record.snapshot_at, props.displaySettings, props.locale) }}</td></tr>
+        <tr v-if="page && !page.items.length"><td colspan="4" class="empty-state">{{ copy.empty }}</td></tr>
       </tbody></table></div>
-      <div class="wallet-pagination" data-testid="platform-archive-pages"><span>{{ copy.total }}: {{ page?.total_count ?? '0' }}</span><button class="button button-secondary" :disabled="loading || offset === 0 || !brandId" @click="withGlobalLoading(load, Math.max(0, offset - pageSize))">{{ copy.previous }}</button><span>{{ Math.floor(offset / pageSize) + 1 }}</span><button class="button button-secondary" :disabled="loading || !hasNextPage" @click="withGlobalLoading(load, offset + pageSize)">{{ copy.next }}</button><button v-refresh-button="copy.refresh" class="button button-secondary" :disabled="loading || !brandId" @click="withGlobalLoading(load, 0)">{{ copy.refresh }}</button></div>
-    </section>
-    <section v-if="selectedId" class="panel" data-testid="platform-archive-detail">
+
+    <template #pagination><TablePagination :show-empty="Boolean(page)" class="wallet-pagination" data-testid="platform-archive-pages" :total="page?.total_count ?? '0'" :page="Math.floor(offset / pageSize + 1)" :count="page?.items.length ?? 0" :locale="locale" :page-size="pageSize" :previous-disabled="loading || offset === 0 || !brandId" :next-disabled="loading || !hasNextPage" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => load((target - 1) * pageSize)" /></template></ManagementList>
+    <DetailModal v-if="selectedId" :title="detail ? detail.window.period_key : copy.detail" :close-label="copy.close" @close="backToList">
+
+    <section class="panel" data-testid="platform-archive-detail">
       <ArchiveReport v-if="detail" :record="detail" :locale="locale" :metric-label="metricLabel" :group-labels="reportLabels" :format-time="reportTime">
-        <template #actions><button class="button button-secondary" @click="backToList">{{ backLabel }}</button><button class="button button-primary" :disabled="loading || downloading" @click="withGlobalLoading(download)">{{ downloading ? copy.downloading : copy.download }}</button></template>
+        <template #actions><button class="button button-primary" :disabled="loading || downloading" @click="withGlobalLoading(download)">{{ downloading ? copy.downloading : copy.download }}</button></template>
       </ArchiveReport>
-      <div v-else class="panel-heading"><button class="button button-secondary" @click="backToList">{{ backLabel }}</button></div>
     </section>
-    <p v-if="!selectedId && page && !loading" class="message empty-state">{{ copy.emptyDetail }}</p>
+    </DetailModal>
   </div>
 </template>
+
+<style scoped>
+.archive-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0}
+</style>

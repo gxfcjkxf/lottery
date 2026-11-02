@@ -7,11 +7,11 @@ const BASE = "/api/v1/admin/commission-policy";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 
-export type CommissionCycle = "weekly" | "monthly";
-export type CommissionShortMonth = "" | "last_day" | "skip";
-export type CommissionPayoutMode = "manual" | "automatic";
+type CommissionCycle = "weekly" | "monthly";
+type CommissionShortMonth = "" | "last_day" | "skip";
+type CommissionPayoutMode = "manual" | "automatic";
 
-export interface CommissionCalendar {
+interface CommissionCalendar {
   timezone: string;
   cycle: CommissionCycle;
   boundary_time: string;
@@ -50,10 +50,7 @@ export function commissionPolicyPermissions(
   const view = Boolean(brand) && brandPermissions.has("commission_policy.view.brand");
   return {
     view,
-    write:
-      Boolean(brand) &&
-      !account.super_admin && account.brand_ids.includes(brand) &&
-      brandPermissions.has("commission_policy.write.brand"),
+    write: false,
   };
 }
 
@@ -65,7 +62,7 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): b
   return Object.keys(value).every((key) => keys.includes(key));
 }
 
-export function isCanonicalUuid(value: unknown): value is string {
+function isCanonicalUuid(value: unknown): value is string {
   return typeof value === "string" && UUID.test(value);
 }
 
@@ -146,7 +143,7 @@ function validateBrand(brand: string): void {
 
 function validateBody(body: UpdateCommissionPolicyBody): void {
   if (!isRecord(body) || !hasOnlyKeys(body, ["version", "config", "reason"]) || !isVersion(body.version) || body.version >= Number.MAX_SAFE_INTEGER || !isValidCommissionPolicyConfig(body.config) ||
-    typeof body.reason !== "string"  || new TextEncoder().encode(body.reason).length > 500 || body.reason.includes("\0")) {
+    typeof body.reason !== "string"  || Array.from(body.reason).length > 500 || body.reason.includes("\0")) {
     invalidInput("佣金策略输入无效。");
   }
 }

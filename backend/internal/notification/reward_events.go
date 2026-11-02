@@ -81,8 +81,6 @@ func validateRewardEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate 
 	switch kind {
 	case "reward.order.granted":
 		state = "granted"
-	case "reward.order.revocation_pending":
-		state = "revocation_pending"
 	case "reward.order.revoked":
 		state = "revoked"
 	default:
@@ -128,12 +126,8 @@ func validateRewardEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate 
        'commission',jsonb_build_object('available','0','manual_frozen','0','system_frozen','0','withdrawal','0'))
      AND l.source_allocation=jsonb_build_array(jsonb_build_object('source','gift','state','available','points',o.points::text)))
     OR
-    (a.state_after='revocation_pending' AND a.operation IN('revoke','retry') AND a.version>=2
-     AND a.ledger_entry_id IS NULL
-     AND ((a.operation='revoke' AND a.state_before='granted') OR (a.operation='retry' AND a.state_before='revocation_pending')))
-    OR
-    (a.state_after='revoked' AND a.operation IN('revoke','retry') AND a.version>=2
-     AND ((a.operation='revoke' AND a.state_before='granted') OR (a.operation='retry' AND a.state_before='revocation_pending'))
+    (a.state_after='revoked' AND a.operation='revoke' AND a.version>=2
+     AND a.state_before='granted'
      AND a.ledger_entry_id=o.revoke_ledger_entry_id AND o.revoke_ledger_entry_id IS NOT NULL
      AND l.member_id=o.member_id AND l.entry_type='reward_reversal' AND l.reference_type='reward_order'
      AND l.reference_id=o.id AND l.operation_key='reward-revoke:'||o.id::text

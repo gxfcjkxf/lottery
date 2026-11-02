@@ -39,9 +39,10 @@ type Config struct {
 }
 
 type Input struct {
-	Version int64  `json:"version"`
-	Config  Config `json:"config"`
-	Reason  string `json:"reason"`
+	InheritPlatform bool   `json:"inherit_platform"`
+	Version         int64  `json:"version"`
+	Config          Config `json:"config"`
+	Reason          string `json:"reason"`
 }
 
 type CheckInput struct {
@@ -82,7 +83,7 @@ func ValidConfig(c Config) bool {
 }
 
 func ValidReason(reason string) bool {
-	if !utf8.ValidString(reason) || len(reason) > 500 || strings.TrimSpace(reason) != reason {
+	if !utf8.ValidString(reason) || utf8.RuneCountInString(reason) > 500 || strings.TrimSpace(reason) != reason {
 		return false
 	}
 	for _, r := range reason {
@@ -150,7 +151,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 }
 
 func (in *Input) UnmarshalJSON(data []byte) error {
-	if in == nil || closedJSON(data, []string{"version", "config", "reason"}, nil) != nil {
+	if in == nil || closedJSON(data, []string{"version", "config", "reason", "inherit_platform"}, nil) != nil {
 		return ErrInvalid
 	}
 	type plain Input
@@ -212,7 +213,7 @@ func closedJSON(data []byte, keys []string, nullable map[string]bool) error {
 		return ErrInvalid
 	}
 	for _, key := range keys {
-		if key != "reason" && !seen[key] {
+		if key != "reason" && key != "inherit_platform" && !seen[key] {
 			return ErrInvalid
 		}
 	}

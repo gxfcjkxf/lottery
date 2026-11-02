@@ -89,6 +89,20 @@ func (s Service) DiscoverAutomatic(ctx context.Context, maxTasks int) (int, erro
 		var next string
 		if err == nil {
 			windows, next, err = DueArchiveWindows(kind, key, zone, asOf, maxTasks-created)
+			if err == nil {
+				for i, window := range windows {
+					var due time.Time
+					err = tx.QueryRow(ctx, `SELECT report_archive_scheduled_due($1,$2,p.timezone,CASE WHEN $1='daily' THEN p.daily_execution_time ELSE p.monthly_execution_time END,CASE WHEN $1='daily' THEN p.daily_period_offset ELSE p.monthly_period_offset END,p.monthly_execution_day) FROM report_archive_policy_revisions p WHERE brand_id=$3 AND version=$4`, kind, window.PeriodKey, brand, pv).Scan(&due)
+					if err != nil {
+						break
+					}
+					if due.After(asOf) {
+						next = window.PeriodKey
+						windows = windows[:i]
+						break
+					}
+				}
+			}
 		}
 		batch := 0
 		if err == nil {

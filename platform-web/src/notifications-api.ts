@@ -1,3 +1,4 @@
+import { readPaginationTotal } from '@lottery/shared'
 import { resolveNotificationContent } from '@lottery/shared'
 import { readPlatformEnvelope } from './platform-api'
 
@@ -11,13 +12,13 @@ const TEMPLATE_KEYS = [
   'bet.order.abnormal', 'bet.order.cancelled', 'bet.order.judged_cancelled', 'bet.order.placed',
   'bet.order.prize_reversed', 'bet.order.won', 'commission.adjusted', 'commission.corrected',
   'commission.paid', 'draw.result.corrected', 'draw.result.published', 'member.joined',
-  'recharge.confirmed', 'reward.order.granted', 'reward.order.revocation_pending', 'reward.order.revoked',
+  'recharge.confirmed', 'reward.order.granted', 'reward.order.revoked',
   'withdrawal.order.cancelled', 'withdrawal.order.failed', 'withdrawal.order.paid',
   'withdrawal.order.processing', 'withdrawal.order.rejected', 'withdrawal.order.reviewing',
 ] as const
 
 export type NotificationTemplateKey = typeof TEMPLATE_KEYS[number]
-export type DeliveryStatus = 'pending' | 'retry' | 'sent' | 'failed'
+type DeliveryStatus = 'pending' | 'retry' | 'sent' | 'failed'
 export interface Delivery {
   event_id: string
   brand_id: string
@@ -27,26 +28,14 @@ export interface Delivery {
   next_attempt_at: string
   sent_at: string | null
 }
-export interface TemplateCopy { title: string; body: string }
+interface TemplateCopy { title: string; body: string }
 export interface TemplateContent { en: TemplateCopy; 'zh-CN': TemplateCopy }
 export interface Template {
-  brand_id: string
   key: NotificationTemplateKey
   version: number
   content: TemplateContent
   updated_at: string
   audit_log_id: string | null
-}
-export interface TemplateRevision {
-  id: string
-  brand_id: string
-  key: NotificationTemplateKey
-  version: number
-  content: TemplateContent
-  changed_by: string | null
-  reason: string
-  audit_log_id: string | null
-  created_at: string
 }
 
 const record = (v: unknown): v is Record<string, unknown> => Boolean(v && typeof v === 'object' && !Array.isArray(v))
@@ -75,16 +64,10 @@ function validContent(v: unknown): v is TemplateContent {
   })
 }
 function validKey(v: unknown): v is NotificationTemplateKey { return typeof v === 'string' && (TEMPLATE_KEYS as readonly string[]).includes(v) }
-function validTemplate(v: unknown, brand: string): v is Template {
-  return record(v) && exactKeys(v, ['brand_id', 'key', 'version', 'content', 'updated_at', 'audit_log_id']) &&
-    v.brand_id === brand && validKey(v.key) && validVersion(v.version) && validContent(v.content) && dateTime(v.updated_at) &&
+function validTemplate(v: unknown): v is Template {
+  return record(v) && exactKeys(v, ['key', 'version', 'content', 'updated_at', 'audit_log_id']) &&
+    validKey(v.key) && validVersion(v.version) && validContent(v.content) && dateTime(v.updated_at) &&
     (v.audit_log_id === null || validUuid(v.audit_log_id))
-}
-function validRevision(v: unknown, brand: string, key: NotificationTemplateKey): v is TemplateRevision {
-  return record(v) && exactKeys(v, ['id', 'brand_id', 'key', 'version', 'content', 'changed_by', 'reason', 'audit_log_id', 'created_at']) &&
-    validUuid(v.id) && v.brand_id === brand && v.key === key && validVersion(v.version) && validContent(v.content) &&
-    (v.changed_by === null || validUuid(v.changed_by)) && typeof v.reason === 'string' &&
-    (v.audit_log_id === null || validUuid(v.audit_log_id)) && dateTime(v.created_at)
 }
 function validDelivery(v: unknown, brand: string): v is Delivery {
   return record(v) && exactKeys(v, ['event_id', 'brand_id', 'status', 'attempt_count', 'last_error', 'next_attempt_at', 'sent_at']) &&
@@ -102,11 +85,13 @@ function requiredBrand(brand: string) {
 }
 
 export function createPlatformNotificationsApi(fetcher: typeof fetch = fetch) {
-  async function request(path: string, brand: string): Promise<unknown> {
-    const headers = new Headers({ Accept: 'application/json', 'X-Brand-ID': brand })
+  async function request(path: string, brand = '', body?: TemplateUpdate, key?: string): Promise<unknown> {
+    const headers = new Headers({ Accept: 'application/json' })
+    if (brand) headers.set('X-Brand-ID', brand)
+    if (body) { headers.set('Content-Type', 'application/json'); headers.set('Idempotency-Key', key!) }
     let response: Response
     try {
-      response = await fetcher(`${BASE}${path}`, { method: 'GET', credentials: 'same-origin', headers })
+      response = await fetcher(`${BASE}${path}`, { method: body ? 'PUT' : 'GET', credentials: 'same-origin', headers, ...(body ? { body: JSON.stringify(body) } : {}) })
     } catch (cause) {
       throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true)
     }
@@ -121,29 +106,51 @@ export function createPlatformNotificationsApi(fetcher: typeof fetch = fetch) {
       ? { ...data, items: data.items.map(resolveRecord) } : resolveRecord(data)
   }
   return {
-    async deliveries(brandId: string, limit = 51, offset = 0): Promise<Delivery[]> {
+    async deliveries(brandId: string, limit = 51, offset = 0): Promise<{items: Delivery[]; total_count: string}> {
       requiredBrand(brandId); pageArgs(limit, offset)
       const value = await request(`/notification-deliveries?limit=${limit}&offset=${offset}`, brandId)
-      if (!record(value) || !exactKeys(value, ['items']) || !Array.isArray(value.items) || value.items.length > limit || !value.items.every(item => validDelivery(item, brandId))) invalid('notification deliveries')
-      return (value as { items: Delivery[] }).items
+      if (!record(value) || !exactKeys(value, ['items','total_count']) || !Array.isArray(value.items) || value.items.length > limit || !value.items.every(item => validDelivery(item, brandId))) invalid('notification deliveries')
+      return {items: (value as { items: Delivery[] }).items, total_count: readPaginationTotal(value)}
     },
-    async templates(brandId: string): Promise<Template[]> {
-      requiredBrand(brandId)
-      const value = await request('/notification-templates', brandId)
+    async update(key: NotificationTemplateKey, body: TemplateUpdate, idempotencyKey: string): Promise<Template> {
+      if (!validKey(key) || !validTemplateContent(body.content, key) || !validVersion(body.version) || body.version >= Number.MAX_SAFE_INTEGER || typeof body.reason !== 'string' || Array.from(body.reason).length > 500) throw new PlatformApiError('Invalid template input', 400, 'INVALID_INPUT')
+      const value = await request(`/notification-templates/${encodeURIComponent(key)}`, '', body, idempotencyKey)
+      if (!validTemplate(value) || value.key !== key || value.version !== body.version + 1 || JSON.stringify(value.content) !== JSON.stringify(body.content)) invalid('notification template update')
+      return value as Template
+    },
+    async templates(): Promise<Template[]> {
+      const value = await request('/notification-templates')
       if (!record(value) || !exactKeys(value, ['items']) || !Array.isArray(value.items) || value.items.length > TEMPLATE_KEYS.length ||
-        !value.items.every(item => validTemplate(item, brandId)) || new Set(value.items.map(item => (item as Template).key)).size !== value.items.length) invalid('notification templates')
+        !value.items.every(item => validTemplate(item)) || new Set(value.items.map(item => (item as Template).key)).size !== value.items.length) invalid('notification templates')
       return (value as { items: Template[] }).items
     },
-    async history(brandId: string, key: string, limit = 51, offset = 0): Promise<TemplateRevision[]> {
-      requiredBrand(brandId); pageArgs(limit, offset)
-      if (!validKey(key)) throw new PlatformApiError('Invalid notification template key', 400, 'INVALID_INPUT')
-      const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
-      const value = await request(`/notification-templates/${encodeURIComponent(key)}/history?${query}`, brandId)
-      if (!record(value) || !exactKeys(value, ['items']) || !Array.isArray(value.items) || value.items.length > limit || !value.items.every(item => validRevision(item, brandId, key))) invalid('notification template history')
-      return (value as { items: TemplateRevision[] }).items
-    },
+
   }
 }
 
-export const notificationTemplateKeys = TEMPLATE_KEYS
-export type PlatformNotificationsApi = ReturnType<typeof createPlatformNotificationsApi>
+
+export interface TemplateUpdate { version: number; content: TemplateContent; reason: string }
+function characters(value: string): number { return Array.from(value).length; }
+function safeText(value: unknown, maxCharacters: number, title: boolean): value is string {
+  return typeof value === "string" && value.trim() === value && value.trim().length > 0 && characters(value) <= maxCharacters &&
+    !/[<>\uD800-\uDFFF]/u.test(value) && !/(?:https?:|javascript:|data:|www\.)/i.test(value) &&
+    !(title ? /[\u0000-\u001f\u007f-\u009f]/ : /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/).test(value);
+}
+function placeholdersValid(text: string, key: NotificationTemplateKey, body: boolean): boolean {
+  const tokens = text.match(/\{[^{}]*\}/g) ?? [];
+  const residue = text.replace(/\{[^{}]*\}/g, "");
+  if (/[{}]/.test(residue) || tokens.some((token) => !new Set(['points', 'resource_id']).has(token.slice(1, -1)))) return false;
+  const hasPoints = tokens.some((token) => token === "{points}");
+  const hasResourceId = tokens.some((token) => token === "{resource_id}");
+  if (key.startsWith("draw.result.")) return !hasPoints && (!body || hasResourceId);
+  return key === "member.joined" ? !hasPoints : !body || hasPoints;
+}
+export function validTemplateContent(value: unknown, key: NotificationTemplateKey): value is TemplateContent {
+  if (!validKey(key) || !record(value) || !exactKeys(value, (['en', 'zh-CN'] as const))) return false;
+  for (const locale of (['en', 'zh-CN'] as const)) {
+    const entry = value[locale];
+    if (!record(entry) || !exactKeys(entry, ["title", "body"]) || !safeText(entry.title, 120, true) ||
+      !safeText(entry.body, 1200, false) || !placeholdersValid(entry.title, key, false) || !placeholdersValid(entry.body, key, true)) return false;
+  }
+  return true;
+}

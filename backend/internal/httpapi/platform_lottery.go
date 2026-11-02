@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
+	"github.com/gxfcjkxf/lottery/backend/internal/hkjccalendar"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/gxfcjkxf/lottery/backend/internal/platformlottery"
@@ -20,6 +21,10 @@ func platformLotteryWriteRoute(method, path string) bool {
 }
 func platformLotteryResult(status int, out any, err error) (mutation.Result, error) {
 	switch {
+	case errors.Is(err, platformlottery.ErrDrawCalendar):
+		return mutation.Fail(409, "DRAW_CALENDAR_UNAVAILABLE", "Official draw calendar or reference period is missing"), nil
+	case errors.Is(err, platformlottery.ErrPeriodInUse):
+		return mutation.Fail(409, "PLATFORM_PERIOD_IN_USE", "Opening time cannot change after orders, closing, or publication"), nil
 	case errors.Is(err, platformlottery.ErrGameInUse):
 		return mutation.Fail(409, "PLATFORM_GAME_IN_USE", "The game has unpublished periods or unsettled orders"), nil
 	case errors.Is(err, platformlottery.ErrDenied):
@@ -35,7 +40,7 @@ func platformLotteryResult(status int, out any, err error) (mutation.Result, err
 	case errors.Is(err, platformlottery.ErrConflict):
 		return mutation.Fail(409, "PLATFORM_GAME_CONFLICT", "Already connected, duplicate record, or draw is not ready"), nil
 	case errors.Is(err, platformlottery.ErrModelLocked):
-		return mutation.Fail(409, "PLATFORM_GAME_MODEL_LOCKED", "A game with plays or periods cannot change its number model"), nil
+		return mutation.Fail(409, "PLATFORM_GAME_MODEL_LOCKED", "A game with published rules or periods cannot change its number model"), nil
 	case errors.Is(err, platformlottery.ErrAttributesMissing):
 		return mutation.Fail(409, "MARK_SIX_ATTRIBUTES_MISSING", "Publish annual number attributes before creating periods or accepting bets"), nil
 	case errors.Is(err, platformlottery.ErrVersionConflict):
@@ -96,8 +101,7 @@ func platformLotteryWrite(w http.ResponseWriter, r *http.Request, d Dependencies
 func registerPlatformLotteryRoutes(register func(string, string, http.HandlerFunc), d Dependencies, platform bool) {
 	registerConfiguredAdminRoutes(register, d, platform)
 	registerConfiguredPreviewRoutes(register, d)
-	registerMarkSixAdminRoutes(register, d, platform)
-	registerCanadaAdminRoutes(register, d, platform)
+	registerNumberAttributes(register, d, platform)
 	registerPlatformAutomationRoutes(register, d, platform)
 	registerPlatformLifecycleRoutes(register, d, platform)
 	handle := func(method, path string, handler http.HandlerFunc) {
@@ -107,6 +111,46 @@ func registerPlatformLotteryRoutes(register func(string, string, http.HandlerFun
 		register(method, path, handler)
 	}
 	s := platformlottery.Service{DB: d.Admins.DB}
+	if platform {
+		registerOfficialCalendarSync(register, d)
+		register("GET", "/platform-games/official-calendar", func(w http.ResponseWriter, r *http.Request) {
+			a, b, ok := platformLotteryActor(w, r, d, "view")
+			if !ok {
+				return
+			}
+			if r.URL.RawQuery != "" {
+				failure(w, r, 400, "REQUEST_INVALID", "Query parameters are not supported")
+				return
+			}
+			out, e := (hkjccalendar.Service{DB: d.Admins.DB}).Overview(r.Context())
+			if e == nil && !adminReadAudit(w, r, d, a, b, "platform_game.calendar.view") {
+				return
+			}
+			result, e := platformLotteryResult(200, out, e)
+			outputMutation(w, r, result, e)
+		})
+		register("GET", "/platform-games/{id}/draw-overview", func(w http.ResponseWriter, r *http.Request) {
+			a, b, ok := platformLotteryActor(w, r, d, "view")
+			if !ok {
+				return
+			}
+			id, ok := ruleID(w, r, "id")
+			if !ok {
+				return
+			}
+			limit, offset, ok := pageParams(r)
+			if !ok {
+				failure(w, r, 400, "REQUEST_INVALID", "Invalid pagination")
+				return
+			}
+			out, e := s.DrawOverview(r.Context(), id, r.URL.Query().Get("year"), limit, offset)
+			if e == nil && !adminReadAudit(w, r, d, a, b, "platform_game.draws.view") {
+				return
+			}
+			result, e := platformLotteryResult(200, out, e)
+			outputMutation(w, r, result, e)
+		})
+	}
 	handle("GET", "/platform-games", func(w http.ResponseWriter, r *http.Request) {
 		a, b, ok := platformLotteryActor(w, r, d, "view")
 		if !ok {
@@ -118,10 +162,15 @@ func registerPlatformLotteryRoutes(register func(string, string, http.HandlerFun
 			return
 		}
 		out, e := s.Games(r.Context(), b, limit, offset)
+		var total string
+		if e == nil {
+			e = d.Admins.DB.QueryRow(r.Context(), `SELECT count(*)::text FROM platform_games WHERE status<>'deleted'`).Scan(&total)
+		}
+
 		if e == nil && !adminReadAudit(w, r, d, a, b, "platform_game.view") {
 			return
 		}
-		result, e := platformLotteryResult(200, map[string]any{"games": out, "limit": limit, "offset": offset}, e)
+		result, e := platformLotteryResult(200, map[string]any{"games": out, "limit": limit, "offset": offset, "total_count": total}, e)
 		outputMutation(w, r, result, e)
 	})
 	handle("GET", "/platform-games/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -217,24 +266,6 @@ func registerPlatformLotteryRoutes(register func(string, string, http.HandlerFun
 			return platformLotteryResult(201, out, e)
 		})
 	})
-	handle("POST", "/platform-games/{id}/plays", func(w http.ResponseWriter, r *http.Request) {
-		a, b, ok := platformLotteryActor(w, r, d, "write")
-		if !ok {
-			return
-		}
-		id, ok := ruleID(w, r, "id")
-		if !ok {
-			return
-		}
-		var in platformlottery.PlayInput
-		if !decodeBody(w, r, &in) {
-			return
-		}
-		platformLotteryWrite(w, r, d, a, b, "write", "platform.game.play.create", in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
-			out, e := s.CreatePlay(ctx, tx, fresh, id, in, pointMeta(r, fresh))
-			return platformLotteryResult(201, out, e)
-		})
-	})
 	handle("POST", "/platform-games/{id}/periods", func(w http.ResponseWriter, r *http.Request) {
 		a, b, ok := platformLotteryActor(w, r, d, "write")
 		if !ok {
@@ -253,6 +284,25 @@ func registerPlatformLotteryRoutes(register func(string, string, http.HandlerFun
 			return platformLotteryResult(201, out, e)
 		})
 	})
+	handle("POST", "/platform-games/periods/{id}/opening", func(w http.ResponseWriter, r *http.Request) {
+		a, b, ok := platformLotteryActor(w, r, d, "write")
+		if !ok {
+			return
+		}
+		id, ok := ruleID(w, r, "id")
+		if !ok {
+			return
+		}
+		var in platformlottery.PeriodOpeningInput
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		platformLotteryWrite(w, r, d, a, b, "write", "platform.game.period.opening", in, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+			out, e := s.UpdatePeriodOpening(ctx, tx, fresh, id, in, pointMeta(r, fresh))
+			return platformLotteryResult(200, out, e)
+		})
+	})
+
 	handle("POST", "/platform-games/periods/{id}/result", func(w http.ResponseWriter, r *http.Request) {
 		a, b, ok := platformLotteryActor(w, r, d, "write")
 		if !ok {

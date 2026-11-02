@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gxfcjkxf/lottery/backend/internal/betting"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 )
 
@@ -143,12 +142,5 @@ func TestConfiguredPreviewRoutesRequireManagementEntry(t *testing.T) {
 		if strings.Contains(route.Path, "rule-preview") && !strings.HasPrefix(route.Path, "/api/v1/admin/") && !strings.HasPrefix(route.Path, "/api/v1/platform/") {
 			t.Fatal("public preview compute route", route)
 		}
-	}
-}
-
-func TestConfiguredCutoverErrorIsExplicit(t *testing.T) {
-	out, err := betError(nil, betting.ErrLegacyPeriod)
-	if err != nil || out.Status != 409 || out.Error == nil || out.Error.Code != "BET_LEGACY_PERIOD" {
-		t.Fatal(out, err)
 	}
 }

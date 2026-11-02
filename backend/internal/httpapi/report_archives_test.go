@@ -316,3 +316,33 @@ func TestReportArchiveHTTPIntegrityFailureWithholdsBytesAndNewReceipts(t *testin
 		t.Fatal("corrupt predecessor cached a new receipt", count, err)
 	}
 }
+
+func TestReportArchiveHTTPKindFilterHasIndependentTotalsAndPagination(t *testing.T) {
+	f := pointsFixture(t).managementHTTP
+	grantCorrectionHTTP(t, f, "report_archive.view.brand", "report_archive.create.brand")
+	for _, body := range []string{`{"kind":"daily","period_key":"2020-01-01","expected_revision":0}`, `{"kind":"daily","period_key":"2020-01-01","expected_revision":1}`, `{"kind":"monthly","period_key":"2020-01","expected_revision":0}`} {
+		mustStatus(t, archiveCall(f, "POST", archiveHTTPPath, ids.New(), f.token, managedBrand, body), 201)
+	}
+	for _, c := range []struct {
+		query, kind, total string
+		count              int
+	}{
+		{"?kind=daily&limit=1&offset=0", "daily", "2", 1}, {"?kind=daily&limit=1&offset=1", "daily", "2", 1}, {"?kind=monthly&limit=1&offset=0", "monthly", "1", 1}, {"?kind=monthly&limit=1&offset=1", "monthly", "1", 0},
+	} {
+		r := archiveCall(f, "GET", archiveHTTPPath+c.query, "", f.token, managedBrand, "")
+		mustStatus(t, r, 200)
+		var page reportarchive.Page
+		managedData(t, r, &page)
+		if page.TotalCount != c.total || len(page.Items) != c.count {
+			t.Fatal(c, page)
+		}
+		for _, record := range page.Items {
+			if record.Window.Kind != c.kind {
+				t.Fatal("mixed archive kinds", page)
+			}
+		}
+	}
+	for _, query := range []string{"?kind=", "?kind=weekly", "?kind=daily&kind=monthly"} {
+		mustStatus(t, archiveCall(f, "GET", archiveHTTPPath+query, "", f.token, managedBrand, ""), 400)
+	}
+}

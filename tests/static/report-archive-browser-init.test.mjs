@@ -61,10 +61,13 @@ test('archive browser CI owns separate desktop/mobile databases and runs the rea
   assert.match(job, /stats\.expected > 0/);
   assert.doesNotMatch(job, /POSTGRES_PASSWORD:|browserfixture|continue-on-error|--with-deps|--retries=([1-9]\d*)/);
   assert.match(generalBrowserJob, /pnpm test:e2e --project=\$\{\{ matrix\.project \}\} --grep-invert='real report archives recover a lost committed receipt and keep old versions immutable\|real automatic archive tasks recover the original retry receipt after worker completion\|real archive policy activation recovers the original receipt after a later configuration change\|real attribution reports preserve saved agent scope and export unique order totals\|real Harbor draw notices publish and correct immutable facts on desktop and mobile\|genuine brand audit filters and validated full CSV preserve finances on both layouts' --shard=\$\{\{ matrix\.shard \}\}\/2 --workers=1 --retries=0/);
-  assert.ok(browserSpec.includes(String.raw`const allowedBrowserOrigin = /^http:\/\/localhost:(?:5174|15292)$/;`));
-  assert.ok(browserSpec.includes(String.raw`const allowedAPIOrigin = /^http:\/\/127\.0\.0\.1:(?:8080|15291)$/;`));
-  assert.match(browserSpec, /page\.locator\("\.archives"\)/);
-  assert.match(browserSpec, /selectLanguage\(page, "en"\)/);
+  assert.match(browserSpec, /REPORT_ARCHIVE_FIXTURE_CONFIRM\)\.toBe\('owned_synthetic_database'\)/);
+  assert.match(browserSpec, /TEST_ARCHIVE_PLATFORM_ORIGIN/);
+  assert.match(browserSpec, /getByTestId\('platform-archive-list'\)/);
+  assert.match(browserSpec, /createHash\('sha256'\)/);
+  assert.match(browserSpec, /toEqual\(first\)/);
+  assert.match(browserSpec, /expect\(writes\)\.toBe\(0\)/);
+  assert.match(browserSpec, /selectLanguage\(page,'en'\)/);
 });
 
 test('initializer accepts only the exact empty owned loopback database and known PostgreSQL user', () => {

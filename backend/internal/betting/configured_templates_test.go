@@ -159,7 +159,7 @@ func TestConfiguredTemplatesLiveFundingAndHistoricalQuery(t *testing.T) {
 				t.Fatal("settled funding", wallet, err)
 			}
 			var consistent bool
-			if err = c.f.db.QueryRow(ctx, `SELECT (point_business_preview($1,$2)->>'consistent')::boolean`, c.f.brand, wallet.AccountID).Scan(&consistent); err != nil || !consistent {
+			if err = c.f.db.QueryRow(ctx, `SELECT coalesce(bool_and(source_valid),false) FROM point_configured_business_witnesses($1,$2)`, c.f.brand, wallet.AccountID).Scan(&consistent); err != nil || !consistent {
 				t.Fatal("reconciliation", err)
 			}
 			bettingTx(t, c.f.db, func(tx pgx.Tx) error {
@@ -319,5 +319,64 @@ func TestConfiguredReserveConcurrentAdmissionsDoNotOverdraw(t *testing.T) {
 	wallet, err := (points.Store{DB: c.f.db}).Read(context.Background(), c.f.brand, c.f.member)
 	if err != nil || accepted != 1 || rejected != 1 || wallet.AvailablePoints != 100 || wallet.SystemFrozenPoints != 200 {
 		t.Fatal("reserve overdraw", accepted, rejected, wallet, err)
+	}
+}
+
+func TestConfiguredLatestImportedDrawUsesSavedRuleAttributes(t *testing.T) {
+	engine, request := templateEngine(t, "mark_six", "number_01")
+	draw := rules.Draw{Regular: []int{1, 2, 3, 4, 5, 6}, Special: []int{7}}
+	c := configuredFixtureFrom(t, engine.Snapshot(), []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{request}, Draw: draw, Bet: 10}})
+	ctx := context.Background()
+	// The draw predates setup; the actual import/publication happens after saving
+	// rules. No removed rule-approval audit event is created.
+	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
+		p, err := c.s.CreatePeriod(ctx, tx, c.a, c.g.ID, platformlottery.PeriodInput{PeriodNo: "2026300", BetStartAt: time.Now().Add(-48 * time.Hour), BetEndAt: time.Now().Add(-25 * time.Hour), DrawAt: time.Now().Add(-24 * time.Hour)}, points.Metadata{})
+		if err != nil {
+			return err
+		}
+		_, err = c.s.Publish(ctx, tx, c.a, p.ID, draw, "imported result", points.Metadata{})
+		return err
+	})
+	latest, err := c.f.service.LatestConfiguredDraw(ctx, c.f.brand, c.g.ID)
+	if err != nil || latest == nil {
+		t.Fatal(latest, err)
+	}
+	for _, number := range []string{"01", "07"} {
+		a := latest.Attributes[number]
+		if a.Wave == "" || a.Zodiac == "" || a.Element == "" {
+			t.Fatal("saved rule attributes missing", number, a)
+		}
+	}
+	// A later save must not relabel an already published result.
+	var next rules.ConfiguredSnapshot
+	if err := json.Unmarshal(engine.Snapshot(), &next); err != nil {
+		t.Fatal(err)
+	}
+	for label, numbers := range next.Bindings.Attributes["zodiac"] {
+		filtered := []int{}
+		for _, n := range numbers {
+			if n != 1 {
+				filtered = append(filtered, n)
+			}
+		}
+		next.Bindings.Attributes["zodiac"][label] = filtered
+	}
+	for label, numbers := range next.Bindings.Attributes["zodiac"] {
+		if label != latest.Attributes["01"].Zodiac {
+			next.Bindings.Attributes["zodiac"][label] = append(numbers, 1)
+			break
+		}
+	}
+	nextRaw, err := json.Marshal(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
+		_, err := c.s.SaveConfiguredRules(ctx, tx, c.a, c.g.ID, platformlottery.ConfiguredRulesInput{ID: c.v.ID, Revision: c.v.Revision, Snapshot: nextRaw}, points.Metadata{})
+		return err
+	})
+	archive, err := c.f.service.DrawArchive(ctx, c.f.brand, c.g.ID, "configured", time.Now().Format("2006"), 0)
+	if err != nil || len(archive.Items) != 1 || archive.Items[0].Attributes["01"] != latest.Attributes["01"] {
+		t.Fatal("latest and archive disagree", archive, err)
 	}
 }

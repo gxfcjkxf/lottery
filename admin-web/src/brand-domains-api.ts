@@ -1,16 +1,16 @@
 import { readAdminEnvelope } from './admin-api'
 
 import { AdminApiError, type AdminAccount } from "./admin-api";
-import { brandPermissionSet } from "./brand-permissions";
 
-const BASE = "/api/v1/admin/brand-domains";
+
+const BASE = "/api/v1/platform/brand-domains";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export interface BrandDomain { id: string; domain: string; enabled: boolean }
 export interface BrandDomainsRecord { brand_id: string; version: number; status: "active" | "paused" | "disabled"; domains: BrandDomain[]; updated_at: string; audit_log_id?: string }
-export interface BrandDomainsReceipt extends BrandDomainsRecord { audit_log_id: string }
-export interface BrandDomainsHistoryItem { id: string; brand_id: string; version: number; changed_by: string; reason: string; audit_log_id: string; created_at: string; before_domains: BrandDomain[]; domains: BrandDomain[] }
-export interface BrandDomainsHistoryPage { items: BrandDomainsHistoryItem[]; limit: number; offset: number }
+interface BrandDomainsReceipt extends BrandDomainsRecord { audit_log_id: string }
+interface BrandDomainsHistoryItem { id: string; brand_id: string; version: number; changed_by: string; reason: string; audit_log_id: string; created_at: string; before_domains: BrandDomain[]; domains: BrandDomain[] }
+interface BrandDomainsHistoryPage { items: BrandDomainsHistoryItem[]; limit: number; offset: number }
 export interface BrandDomainPostBody { version: number; domain: string; enabled: boolean; reason: string }
 export interface BrandDomainPatchBody { version: number; enabled: boolean; reason: string }
 export interface BrandDomainDeleteBody { version: number }
@@ -23,12 +23,9 @@ export interface BrandDomainsApi {
 }
 
 export function brandDomainsPermissions(account: AdminAccount, brandId: string): { view: boolean; write: boolean } {
-  const scoped = brandPermissionSet(account, brandId);
-  const member = UUID_RE.test(account.id) && UUID_RE.test(brandId) && (account.brand_ids ?? []).includes(brandId);
-  return {
-    view: member && scoped.has("brand_domains.view.brand"),
-    write: member && scoped.has("brand_domains.write.brand"),
-  };
+  const valid = UUID_RE.test(account.id) && UUID_RE.test(brandId) && account.super_admin;
+  return { view: valid && account.platform_permissions?.includes("brand_domains.view.platform") === true,
+    write: valid && account.platform_permissions?.includes("brand_domains.write.platform") === true };
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> { return Boolean(v && typeof v === "object" && !Array.isArray(v)); }
@@ -55,7 +52,7 @@ export function isCanonicalBrandDomain(host: string): boolean {
 }
 function domain(value: unknown): value is BrandDomain {
   return isRecord(value) && exact(value, ["id", "domain", "enabled"]) && uuid(value.id) &&
-    typeof value.domain === "string" && value.domain.length > 0 && new TextEncoder().encode(value.domain).length <= 253 &&
+    typeof value.domain === "string" && value.domain.length > 0 && Array.from(value.domain).length <= 253 &&
     !/[\u0000-\u001f\u007f]/.test(value.domain) && typeof value.enabled === "boolean";
 }
 function domainList(v: unknown): v is BrandDomain[] {
@@ -85,7 +82,7 @@ export function createBrandDomainsApi(fetchImpl: typeof fetch = fetch): BrandDom
   function validWrite(body: BrandDomainPostBody | BrandDomainPatchBody, key: string, creating: boolean): boolean {
     return isRecord(body) && exact(body, creating ? ["version", "domain", "enabled", "reason"] : ["version", "enabled", "reason"]) &&
       version(body.version) && typeof body.enabled === "boolean" &&
-      typeof body.reason === "string" && new TextEncoder().encode(body.reason).length <= 500 && /^[A-Za-z0-9_:.-]{8,128}$/.test(key);
+      typeof body.reason === "string" && Array.from(body.reason).length <= 500 && /^[A-Za-z0-9_:.-]{8,128}$/.test(key);
   }
   function validateReceipt(value: unknown, brandId: string, body: BrandDomainPostBody | BrandDomainPatchBody, targetId?: string): BrandDomainsReceipt {
     if (!record(value, brandId) || !exact(value as unknown as Record<string, unknown>, ["brand_id", "version", "status", "domains", "updated_at", "audit_log_id"]) || value.version !== body.version + 1 || !uuid(value.audit_log_id)) invalidResponse(true);
@@ -104,7 +101,7 @@ export function createBrandDomainsApi(fetchImpl: typeof fetch = fetch): BrandDom
     async history(brandId, limit = 20, offset = 0) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) invalidInput();
       const { data } = await request(`${BASE}/history?limit=${limit}&offset=${offset}`, brandId);
-      const validItem = (v: unknown): v is BrandDomainsHistoryItem => isRecord(v) && exact(v, ["id", "brand_id", "version", "changed_by", "reason", "audit_log_id", "created_at", "before_domains", "domains"]) && uuid(v.id) && v.brand_id === brandId && version(v.version) && uuid(v.changed_by) && typeof v.reason === "string" && new TextEncoder().encode(v.reason).length <= 500 && uuid(v.audit_log_id) && timestamp(v.created_at) && domainList(v.before_domains) && domainList(v.domains);
+      const validItem = (v: unknown): v is BrandDomainsHistoryItem => isRecord(v) && exact(v, ["id", "brand_id", "version", "changed_by", "reason", "audit_log_id", "created_at", "before_domains", "domains"]) && uuid(v.id) && v.brand_id === brandId && version(v.version) && uuid(v.changed_by) && typeof v.reason === "string" && Array.from(v.reason).length <= 500 && uuid(v.audit_log_id) && timestamp(v.created_at) && domainList(v.before_domains) && domainList(v.domains);
       if (!isRecord(data) || !exact(data, ["items", "limit", "offset"]) || data.limit !== limit || data.offset !== offset || !Array.isArray(data.items) || data.items.length > limit || !data.items.every(validItem)) invalidResponse(false);
       return data as unknown as BrandDomainsHistoryPage;
     },

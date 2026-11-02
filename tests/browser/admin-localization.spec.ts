@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import { test, expect, type BrowserContext, type Page, type TestInfo } from '@playwright/test'
 import { rememberAdminSession, restoreAdminSession } from './support/admin-session'
@@ -17,7 +18,7 @@ async function signedIn(page: Page, context: BrowserContext, info: TestInfo) {
     await page.getByRole('button', { name: 'Sign in and load members', exact: true }).click()
   }
   await navigate(page, info, 'Users and members')
-  await page.locator('.directory-brand-bar select').selectOption(brandId)
+  await selectControl(page.locator(".directory-brand-bar .select-control-trigger"), brandId)
   await page.locator('.console-page-actions').getByRole('button', { name: 'Create brand member', exact: true }).click()
   await expect(page.locator('.provision')).toBeVisible()
   await rememberAdminSession(context, username!, origin)
@@ -104,9 +105,6 @@ test('real authenticated member and permission drafts survive language changes w
   await fits(page)
   await page.screenshot({ path: info.outputPath('admin-english-access.png'), fullPage: true })
   await navigate(page, info, 'Brands.*domains')
-  const authSettings = page.locator('.auth-settings')
-  await expect(authSettings.getByRole('heading', { name: 'Authentication settings' })).toBeVisible()
-  await authSettings.getByRole('checkbox', { name: /Enable CAPTCHA/ }).check()
   const presentation = page.locator('.brand-presentation')
   await presentation.getByLabel('Display name inherit default', { exact: true }).uncheck()
   await presentation.getByLabel('Display name', { exact: true }).fill('中文品牌未提交')
@@ -114,7 +112,6 @@ test('real authenticated member and permission drafts survive language changes w
   await expect(presentation.getByLabel('English tagline', { exact: true })).toHaveCount(1)
   await expect(presentation.getByLabel('Chinese tagline', { exact: true })).toHaveCount(1)
   await switchLanguage(page, 'zh-CN')
-  await expect(authSettings.getByRole('checkbox', { name: /启用验证码/ })).toBeChecked()
   await expect(presentation.getByLabel('展示名称', { exact: true })).toHaveValue('中文品牌未提交')
   await expect(presentation.getByLabel('英文标语', { exact: true })).toHaveCount(1)
   await expect(presentation.getByLabel('中文标语', { exact: true })).toHaveCount(1)
@@ -170,23 +167,23 @@ test('published selected-brand languages control fallback without borrowing the 
   const initial = await read(brandId)
   await page.evaluate(() => localStorage.removeItem('lottery.admin.locale'))
   await page.reload()
-  await page.locator('.directory-brand-bar select').selectOption(brandId)
+  await selectControl(page.locator(".directory-brand-bar .select-control-trigger"), brandId)
   await expect(page.locator('[data-testid="admin-language"]')).toHaveAttribute('data-locale', initial.default_locale)
   const preference = initial.available_locales.includes('zh-CN') ? 'zh-CN' : initial.default_locale
   await switchLanguage(page, preference as 'en' | 'zh-CN')
-  const options = await page.locator('.directory-brand-bar select option').evaluateAll(elements => elements.map(element => (element as HTMLOptionElement).value).filter(Boolean))
+  const options = await page.locator(".directory-brand-bar .select-control-trigger option").evaluateAll(elements => elements.map(element => (element as HTMLOptionElement).value).filter(Boolean))
   const writes: string[] = []
   page.on('request', request => { if (request.method() !== 'GET' && request.url().includes('/api/')) writes.push(request.url()) })
   for (const id of options) {
     const published = await read(id)
-    await page.locator('.directory-brand-bar select').selectOption(id)
+    await selectControl(page.locator(".directory-brand-bar .select-control-trigger"), id)
     await expect(page.locator('[data-testid="admin-language"]')).toHaveAttribute('data-locale', published.available_locales.includes(preference) ? preference : published.default_locale)
     await page.locator('[data-testid="admin-language"] .locale-picker__trigger').click()
     await expect(page.locator('[data-testid="admin-language"] .locale-picker__option')).toHaveCount(published.available_locales.length)
     expect((await page.locator('[data-testid="admin-language"] .locale-picker__option').evaluateAll(elements => elements.map(element => element.getAttribute('data-code')))).sort()).toEqual([...published.available_locales].sort())
     await page.keyboard.press('Escape')
   }
-  await page.locator('.directory-brand-bar select').selectOption(brandId)
+  await selectControl(page.locator(".directory-brand-bar .select-control-trigger"), brandId)
   await expect(page.locator('[data-testid="admin-language"]')).toHaveAttribute('data-locale', preference)
   expect(writes).toEqual([])
 })

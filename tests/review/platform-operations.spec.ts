@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -55,7 +56,7 @@ test('platform reads genuine archive bytes and notification history without writ
     const actor = (await me.json()).data.account.id;
     const created = await operator.post(`${brandOrigin}/api/v1/admin/report-archives`, {
       headers: { Origin: brandOrigin, ...scoped, 'Idempotency-Key': crypto.randomUUID(), 'X-Report-Archive-Actor-ID': actor },
-      data: { kind: 'daily', period_key: key, expected_revision: revision, reason: 'Owned read-only platform browser verification' },
+      data: { kind: 'daily', period_key: key, expected_revision: revision, reason: '' },
     });
     expect(created.status(), await created.text()).toBe(201);
     archive = (await created.json()).data;
@@ -80,8 +81,8 @@ test('platform reads genuine archive bytes and notification history without writ
   await page.goto(origin);
   await page.getByRole('button', { name: 'Audit and operations', exact: true }).click();
   const tabs = page.getByTestId('platform-operations-tabs');
-  await tabs.getByRole('button', { name: 'Report archives', exact: true }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await tabs.getByRole('button', { name: 'Archive records', exact: true }).click();
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   await page.getByTestId('platform-archive-list').getByRole('button', { name: archive.id, exact: true }).click();
   const detail = page.getByTestId('platform-archive-detail');
   await expect(detail).toContainText(archive.payload_sha256);
@@ -121,7 +122,7 @@ test('platform reads genuine archive bytes and notification history without writ
   expect((await (await page.request.get(`${origin}/api/v1/platform/notification-templates`, { headers: scoped })).json()).data).toEqual(templates);
   expect((await (await page.request.get(historyURL, { headers: scoped })).json()).data).toEqual(history);
   expect(await readWallet()).toEqual(walletBefore);
-  await page.locator('.topbar-brand-picker select').selectOption('');
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), '');
   await expect(page.getByTestId('platform-template-detail')).toHaveCount(0);
   await expect(page.getByTestId('platform-template-list').locator('tbody tr')).toHaveCount(1);
 });
@@ -137,7 +138,7 @@ test('notification paging clears failed and changed-brand data', async ({ page }
   await page.goto(origin);
   await page.getByRole('button', { name: 'Audit and operations', exact: true }).click();
   await page.getByTestId('platform-operations-tabs').getByRole('button', { name: 'Notifications', exact: true }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   const panel = page.getByTestId('platform-notifications');
   await expect(page.getByTestId('platform-delivery-list').locator('tbody tr')).toHaveCount(50);
   await page.getByTestId('platform-delivery-pages').getByRole('button', { name: 'Next', exact: true }).click();
@@ -147,7 +148,7 @@ test('notification paging clears failed and changed-brand data', async ({ page }
   await panel.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(panel.getByRole('alert')).toContainText('Delivery unavailable');
   await expect(panel).not.toContainText(rows[50].event_id);
-  await page.locator('.topbar-brand-picker select').selectOption('');
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), '');
   await expect(panel.getByRole('alert')).toHaveCount(0);
   await expect(panel).not.toContainText(rows[0].event_id);
 });

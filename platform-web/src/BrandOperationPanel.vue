@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import SelectControl from '@lottery/shared/SelectControl.vue'
+import { useOperationToast } from "@lottery/shared";
+import DetailModal from "@lottery/shared/DetailModal.vue"
 import { vWriteGuard } from "@lottery/shared";
 import { withGlobalLoading } from '@lottery/shared';
-import SiteIcon from "@lottery/shared/SiteIcon";
 import { usePlatformI18n } from "./i18n"
 const ui = usePlatformI18n().t
 import { computed, ref } from 'vue'
@@ -107,26 +109,22 @@ async function submit() {
 }
 
 defineExpose({ openForBrand })
+
+useOperationToast(error, value => value, 'error');
 </script>
 
 <template>
-  <div v-if="open" class="modal-scrim">
-    <section class="modal-card brand-operation-modal" role="dialog" aria-modal="true" :aria-label="copy.title">
-      <div class="modal-heading"><h2>{{ copy.title }}</h2><button class="icon-button" type="button" :disabled="saving" :aria-label="copy.cancel" @click="open = false"><SiteIcon name="close" /></button></div>
+  <DetailModal v-if="open" class="confirmation-dialog brand-operation-modal" :title="copy.title" :close-label="ui('platform.copy.27b2fd29')" :close-disabled="saving" @close="!saving && (open = false)">
       <template v-if="record">
         <dl class="confirm-list">
           <div><dt>{{ copy.brand }}</dt><dd>{{ record.name }}</dd></div>
           <div><dt>{{ pending ? copy.requestSnapshot : copy.currentStatus }}</dt><dd>{{ statusText(record.status) }}</dd></div>
           <div v-if="record.pause_starts_at && record.pause_ends_at"><dt>{{ ui('brandOperation.currentWindow') }}</dt><dd>{{ dateText(record.pause_starts_at) }} → {{ dateText(record.pause_ends_at) }}</dd></div>
         </dl>
-        <form v-write-guard="saving" novalidate v-inline-validation v-if="!pending" id="brand-operation-form" class="brand-form brand-operation-form" @submit.prevent="withGlobalLoading(submit)">
+        <form v-write-guard="saving" novalidate v-inline-validation v-if="!pending" id="brand-operation-form" class="brand-form brand-operation-form ui-form" @submit.prevent="withGlobalLoading(submit)">
           <div class="brand-operation-options">
-          <label>{{ copy.action }}<select v-model="target" :disabled="saving">
-            <option v-if="record.status !== 'active' || record.pause_starts_at" value="active">{{ copy.active }}</option>
-            <option v-if="record.status !== 'disabled'" value="paused">{{ copy.paused }}</option>
-            <option v-if="record.status !== 'disabled'" value="disabled">{{ ui('brandOperation.stopped') }}</option>
-          </select></label>
-          <label v-if="target === 'paused'">{{ ui('brandOperation.pauseMode') }}<select v-model="timed" :disabled="saving"><option :value="false">{{ ui('brandOperation.manual') }}</option><option :value="true">{{ ui('brandOperation.timed') }}</option></select></label>
+          <label>{{ copy.action }}<SelectControl v-model="target" :disabled="saving" :label="String(copy.action)" :options="[...((record.status !== 'active' || record.pause_starts_at) ? [{ value: 'active', label: (String(copy.active)).trim() }] : []), ...((record.status !== 'disabled') ? [{ value: 'paused', label: (String(copy.paused)).trim() }] : []), ...((record.status !== 'disabled') ? [{ value: 'disabled', label: (String(ui('brandOperation.stopped'))).trim() }] : [])]" /></label>
+          <label v-if="target === 'paused'">{{ ui('brandOperation.pauseMode') }}<SelectControl v-model="timed" :disabled="saving" :label="String(ui('brandOperation.pauseMode'))" :options="[{ value: false, label: (String(ui('brandOperation.manual'))).trim() }, { value: true, label: (String(ui('brandOperation.timed'))).trim() }]" /></label>
           </div>
           <template v-if="target === 'paused' && timed">
             <p class="brand-operation-hint">{{ ui('brandOperation.scheduleHint') }}</p>
@@ -144,30 +142,27 @@ defineExpose({ openForBrand })
         </dl>
         <p v-if="pending && unknownPending" class="message" role="status">{{ copy.unknown }}</p>
       </template>
-      <p v-if="error" class="message error" role="alert">{{ error }}</p>
-      <div class="form-actions">
-        <button class="button button-secondary" type="button" :disabled="saving" @click="open = false">{{ copy.cancel }}</button>
+
+      <div class="form-actions ui-form-actions">
+
         <button v-write-guard="saving" v-if="record" class="button button-primary" type="button" :disabled="saving || loading || !canSubmit" @click="withGlobalLoading(submit)">{{ saving ? copy.saving : pending ? copy.retry : copy.confirm }}</button>
       </div>
-    </section>
-  </div>
+  </DetailModal>
 </template>
 
 <style scoped>
-.brand-operation-modal { width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; min-width: 0; padding: 20px; }
 .brand-operation-form { display: grid; gap: 12px; margin: 16px 0; }
 .brand-operation-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .brand-operation-form label { display: grid; gap: 8px; min-width: 0; font-size: 14px; }
-.brand-operation-form select, .brand-operation-form textarea { width: 100%; min-width: 0; min-height: 44px; font-size: 14px; box-sizing: border-box; }
+.brand-operation-form textarea { width: 100%; min-width: 0; min-height: 44px; font-size: 14px; box-sizing: border-box; }
 .brand-operation-form textarea { display: block; min-height: 112px; resize: vertical; padding-bottom: 30px; }
 .brand-operation-reason { display: block; position: relative; min-width: 0; }
-.reason-count { position: absolute; right: 16px; bottom: 8px; color: var(--muted); font-size: 12px; line-height: 1.5; pointer-events: none; }
+.reason-count { position: absolute; right: 16px; bottom: 8px; color: var(--muted); font-size: var(--body-font-size); line-height: 1.5; pointer-events: none; }
 .reason-over-limit { color: var(--danger); }
-.brand-operation-hint, .confirm-list small { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.brand-operation-hint, .confirm-list small { margin: 0; color: var(--muted); font-size: var(--body-font-size); line-height: 1.6; }
 .confirm-list { margin: 12px 0; }
 .confirm-list small { display: block; font-weight: 400; }
 .confirm-list dd { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .form-actions { flex-wrap: wrap; }
-@media (max-width: 620px) { .brand-operation-modal { max-height: calc(100dvh - 32px); } }
 @media (max-width: 480px) { .brand-operation-options { grid-template-columns: minmax(0, 1fr); } }
 </style>

@@ -129,9 +129,9 @@ test('setup command allows five minutes for browser downloads and rejects unboun
   assert.match(source, /timeoutMs = 300_000/);
 });
 
-test('fifteen browser CI preparation steps use the bounded Chromium command', () => {
+test('current browser CI preparation steps use the bounded Chromium command', () => {
   const blocks = [...workflow.matchAll(/^      - name: Prepare and verify Chromium\n        timeout-minutes: (\d+)\n        run: (.+)$/gm)];
-  assert.equal(blocks.length, 15);
+  assert.equal(blocks.length, 9);
   for (const [, timeout, command] of blocks) {
     assert.equal(timeout, '7');
     assert.equal(command, 'node scripts/prepare-ci-browser.mjs');
@@ -143,12 +143,8 @@ test('fifteen browser CI preparation steps use the bounded Chromium command', ()
 });
 
 test('browser CI keeps independent database and viewport or shard splits', () => {
-  const commission = /^  commission-cycles-browser:\n([\s\S]*?)(?=^  [a-z][a-z-]*:\n|(?![\s\S]))/m.exec(workflow)?.[1];
   const browser = /^  browser:\n([\s\S]*?)(?=^  [a-z][a-z-]*:\n|(?![\s\S]))/m.exec(workflow)?.[1];
-  assert.ok(commission);
   assert.ok(browser);
-  assert.match(commission, /viewport: \[desktop, mobile, tablet768, laptop1024\]/);
-  assert.match(commission, /POSTGRES_DB: lottery_commission_ui_\$\{\{ matrix\.viewport \}\}_s16/);
   assert.match(browser, /project: \[desktop, mobile\]/);
   assert.match(browser, /shard: \[1, 2\]/);
 });

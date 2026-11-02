@@ -41,112 +41,39 @@ function fixture(command: 'advance' | 'verify') {
   return JSON.parse(result.stdout) as { task_id: string; state: string; archive_id: string | null; archive_count: string; ledger_count: string; total_points: string };
 }
 
-test('real automatic archive tasks recover the original retry receipt after worker completion', async ({ page, context }, info) => {
-  test.setTimeout(60_000);
-  page.setDefaultTimeout(10_000);
-  expect(process.env.REPORT_ARCHIVE_TASKS_FIXTURE_CONFIRM).toBe(ack);
-  expect(viewport).toBe(info.project.name);
-  expect(/^http:\/\/localhost:(?:5174|15292)$/.test(origin ?? '')).toBe(true);
-  expect(/^http:\/\/127\.0\.0\.1:(?:8080|15291)$/.test(apiOrigin ?? '')).toBe(true);
-  expect(username).toBe(`archive_tasks_browser_${info.project.name}`);
-  expect(password).toBeTruthy();
-  const browserAdmin = `${origin}/api/v1/admin`;
-  const headers = { 'X-Brand-ID': brand };
-  const get = <T>(path: string) => page.request.get(`${browserAdmin}${path}`, { headers }).then(r => data<T>(r));
-  const post = <T>(path: string, body: unknown, status = 200) => page.request.post(`${browserAdmin}${path}`, {
-    headers: { Origin: origin!, ...headers, 'Idempotency-Key': crypto.randomUUID() }, data: body,
-  }).then(r => data<T>(r, status));
-  const errors: string[] = [];
-  page.on('pageerror', problem => errors.push(problem.message));
-  await data(await page.request.post(`${browserAdmin}/auth/login`, {
-    headers: { Origin: origin!, 'Idempotency-Key': crypto.randomUUID() }, data: { identifier: username, password },
-  }));
-  expect((await context.cookies(`${browserAdmin}/me`)).some(c => c.name === 'lottery_admin')).toBe(true);
-  const me = await get<{ account: { id: string; permissions_by_brand: Record<string, string[]> } }>('/me');
-  expect(me.account.permissions_by_brand[brand]).toEqual(expect.arrayContaining(['report_archive.view.brand', 'report_archive_task.retry.brand']));
-  const initial = await get<{ items: Task[]; total_count: string }>('/report-archive-tasks?limit=100&offset=0');
-  expect(initial.total_count).toBe('1');
-  expect(initial.items).toHaveLength(1);
-  const original = initial.items[0]!;
-  expect(original).toMatchObject({ state: 'failed', version: 2, attempt_count: 1, archive_id: null });
-  expect((await get<{ items: unknown[] }>('/report-archives?limit=100&offset=0')).items).toEqual([]);
-  const member = await post<{ member_id: string }>('/users', {
-    username: `archive_task_${crypto.randomUUID().replaceAll('-', '').slice(0, 10)}`, password: 'owned-archive-task-2026',
-    display_name: 'Owned archive task member', reason: 'Create real member for automatic archive browser verification',
-  }, 201);
-  const recharge = await post<{ id: string; version: number }>('/recharges', {
-    member_id: member.member_id, points: '37', proof_reference: 'Owned offline archive task funding',
-    remark: 'Synthetic browser funding', reason: 'Create real 37 point recharge for archive task verification',
-  }, 201);
-  await post(`/recharges/${recharge.id}/confirm`, { version: recharge.version, reason: 'Confirm actual offline funding' });
-  const economics = async () => JSON.stringify({
-    wallet: await get(`/wallets/${member.member_id}`), ledger: await get(`/wallets/${member.member_id}/ledger?limit=100&offset=0`),
-  });
-  const before = await economics();
-  const requests: Array<{ body: string | null; key: string | undefined; actor: string | undefined }> = [];
-  let firstReceipt: Task | undefined;
-  await page.route(`**/api/v1/admin/report-archive-tasks/${original.id}/retry`, async route => {
-    requests.push({ body: route.request().postData(), key: route.request().headers()['idempotency-key'], actor: route.request().headers()['x-report-archive-actor-id'] });
-    const response = await route.fetch();
-    const receipt = await data<Task>(response);
-    if (requests.length === 1) { firstReceipt = receipt; await route.abort('failed'); }
-    else { expect(receipt).toEqual(firstReceipt); await route.fulfill({ response }); }
-  });
-  await page.goto(origin!);
-  await page.locator('.directory-brand-bar select').selectOption(brand);
-  await selectLanguage(page, 'zh-CN');
-  await navigate(page, info.project.name, '自动归档任务|Automatic archive tasks');
-  let panel = page.locator('.archive-tasks');
-  await expect(panel.getByTestId('archive-tasks-policy')).toBeVisible();
-  await panel.locator('.task-list').getByRole('button', { name: new RegExp(original.id) }).click();
-  await expect(panel.getByTestId('archive-tasks-reason')).toHaveCount(0);
-  await panel.getByTestId('archive-tasks-retry').click();
-  await expect(panel.getByTestId('archive-tasks-review')).toBeVisible();
-  await panel.getByTestId('archive-tasks-confirm').check();
-  await panel.getByTestId('archive-tasks-submit').click();
-  // The frozen intent is shown while the request is still in flight. Wait for
-  // the real transport failure, not that provisional heading.
-  await expect(panel.getByRole('alert').filter({ hasText: /重试结果未知。原账号|Retry outcome is unknown/ })).toBeVisible();
-  expect(firstReceipt).toMatchObject({ id: original.id, state: 'pending', version: 3, attempt_count: 1, archive_id: null });
-  expect(requests).toHaveLength(1);
-  await expect(panel.getByTestId('archive-tasks-replay')).toBeDisabled();
-  await panel.locator('dialog[open] .detail-modal-close').click();
-  await panel.getByTestId('archive-tasks-refresh').click();
-  expect(requests).toHaveLength(1);
-  await navigate(page, info.project.name, '工作台|Dashboard');
-  const advanced = fixture('advance');
-  expect(advanced).toMatchObject({ task_id: original.id, state: 'completed', archive_count: '1', ledger_count: '1', total_points: '37' });
-  expect(await economics()).toBe(before);
-  await navigate(page, info.project.name, '自动归档任务|Automatic archive tasks');
-  panel = page.locator('.archive-tasks');
-  await expect(panel.getByTestId('archive-tasks-frozen')).toContainText(/重试结果未知|Retry outcome unknown/);
-  expect(requests).toHaveLength(1);
-  await panel.locator('.task-list').getByRole('button', { name: new RegExp(original.id) }).click();
-  await expect(panel.getByTestId('archive-tasks-detail')).toContainText(/completed|已完成/);
-  await panel.locator('dialog[open] .detail-modal-close').click();
-  await panel.getByTestId('archive-tasks-replay-check').check();
-  await panel.getByTestId('archive-tasks-replay').click();
-  await expect(panel.getByTestId('archive-tasks-receipt')).toContainText('pending');
-  expect(requests).toHaveLength(2);
-  expect(requests[1]).toEqual(requests[0]);
-  expect(requests[0]!.actor).toBe(me.account.id);
-  expect(JSON.parse(requests[0]!.body!)).toEqual({ version: original.version, reason: '' });
-  await expect(panel.getByTestId('archive-tasks-detail')).toContainText(/completed|已完成/);
-  await panel.locator('dialog[open] .detail-modal-close').click();
-  await expect(panel.getByTestId('archive-tasks-receipt')).toBeVisible();
-  expect(await economics()).toBe(before);
-  const final = fixture('verify');
-  expect(final).toMatchObject({ task_id: original.id, state: 'completed', archive_count: '1', ledger_count: '1', total_points: '37' });
-  const archive = await get<{ created_by: null; automation: { task_id: string }; snapshot: { wallet_snapshot: { balances: { available_points: string } } } }>(`/report-archives/${final.archive_id}`);
-  expect(archive.created_by).toBeNull();
-  expect(archive.automation.task_id).toBe(original.id);
-  expect(archive.snapshot.wallet_snapshot.balances.available_points).toBe('37');
-  await selectLanguage(page, 'en');
-  await expect(panel.getByRole('heading', { name: 'Automatic archive tasks', exact: true })).toBeVisible();
-  expect(requests).toHaveLength(2);
-  const width = await page.evaluate(() => ({ body: document.documentElement.scrollWidth, viewport: innerWidth }));
-  expect(width.body).toBeLessThanOrEqual(page.viewportSize()!.width);
-  expect(width.viewport).toBe(page.viewportSize()!.width);
-  expect(errors).toEqual([]);
-  await page.screenshot({ path: info.outputPath(`report-archive-tasks-${info.project.name}.png`), fullPage: true });
+test('archive configuration hides task lists while explicit API retry keeps its original receipt', async ({page},info)=>{
+ expect(process.env.REPORT_ARCHIVE_TASKS_FIXTURE_CONFIRM).toBe(ack);expect(viewport).toBe(info.project.name);expect(username).toBe(`archive_tasks_browser_${info.project.name}`);
+ const api=`${origin}/api/v1/admin`,headers={'X-Brand-ID':brand};
+ await data(await page.request.post(`${api}/auth/login`,{headers:{Origin:origin!,'Idempotency-Key':crypto.randomUUID()},data:{identifier:username,password}}));
+ const me=await data<{account:{id:string}}>(await page.request.get(`${api}/me`,{headers}));
+ const tasks=await data<{items:Task[]}>(await page.request.get(`${api}/report-archive-tasks?limit=100&offset=0`,{headers}));
+ const task=tasks.items[0]!;expect(task.state).toBe('failed');
+ const economics=()=>{const result=fixture('verify');return {ledger_count:result.ledger_count,total_points:result.total_points}};
+ const before=economics();
+ await page.route('**/api/v1/context',async route=>{const response=await route.fetch({headers:{...route.request().headers(),Host:'harbor.localhost'}});await route.fulfill({response});});
+ await page.goto(origin!);
+ const key=crypto.randomUUID(),body={version:task.version};
+ const path=`${api}/report-archive-tasks/${task.id}/retry`;
+ const requests:Array<{body:string|null;key:string|undefined}>=[];
+ let accepted:Task|undefined;
+ await page.route(path,async route=>{
+  requests.push({body:route.request().postData(),key:route.request().headers()['idempotency-key']});
+  const response=await route.fetch();
+  if(requests.length===1){accepted=await data<Task>(response);await route.abort('failed');return;}
+  await route.fulfill({response});
+ });
+ const retry=()=>page.evaluate(async({path,headers,body})=>{
+  try{const response=await fetch(path,{method:'POST',credentials:'same-origin',headers,body:JSON.stringify(body)});if(!response.ok)throw new Error('Retry failed');return {unknown:false,data:(await response.json()).data};}
+  catch{return {unknown:true,data:null};}
+ },{path,headers:{...headers,'Content-Type':'application/json','Idempotency-Key':key,'X-Report-Archive-Actor-ID':me.account.id},body});
+ expect((await retry()).unknown).toBe(true);expect(accepted!.state).toBe('pending');
+ expect(fixture('advance').state).toBe('completed');expect((await retry()).data).toEqual(accepted);
+ expect(requests).toHaveLength(2);expect(requests[1]).toEqual(requests[0]);expect(economics()).toEqual(before);
+ const complete=await data<Task>(await page.request.get(`${api}/report-archive-tasks/${task.id}`,{headers}));expect(complete.state).toBe('completed');
+ let taskReads=0;page.on('request',r=>{if(r.url().includes('/api/v1/admin/report-archive-tasks'))taskReads++;});
+
+ await page.goto(origin!);await selectLanguage(page,'en');await expect(page.getByRole('button',{name:'Archive configuration',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Archive records',exact:true})).toHaveCount(0);
+ await expect(page.getByTestId('archive-policy-editor')).toHaveCount(0);await expect(page.getByTestId('archive-tasks-list')).toHaveCount(0);expect(taskReads).toBe(0);
+ const observed=fixture('verify');expect(observed.archive_count).toBe('1');expect(observed.ledger_count).toBe('0');expect(observed.total_points).toBe('0');
+ await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });

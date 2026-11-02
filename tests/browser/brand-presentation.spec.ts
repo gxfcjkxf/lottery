@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher';
 import { test, expect, type APIRequestContext, type BrowserContext, type Locator } from "@playwright/test";
 import { restoreAdminSession } from "./support/admin-session";
@@ -94,7 +95,7 @@ async function restorePresentation(page: import("@playwright/test").Page, origin
 
 async function openBrandSettings(page: import("@playwright/test").Page, projectName: string) {
   await page.goto(adminOrigin);
-  await page.getByLabel("选择真实后台品牌", { exact: true }).selectOption(harbor);
+  await selectControl(page.getByLabel("选择真实后台品牌", { exact: true }), harbor);
   if (projectName === "mobile") {
     await page.locator(".mobile-nav button").nth(4).click();
     await page.locator(".mobile-more-menu").getByRole("button", { name: /品牌和域名/ }).click();
@@ -223,9 +224,9 @@ test("Harbor presentation survives a lost acknowledgment, renders safely, and re
     await panel.getByLabel("标志文字", { exact: true }).fill(updated.logo_text!);
     await panel.getByLabel("主色", { exact: true }).fill(updated.primary_color!);
     await panel.getByLabel("辅助色", { exact: true }).fill(updated.accent_color!);
-    await panel.getByLabel("默认语言", { exact: true }).selectOption("zh-CN");
-    await panel.getByLabel("字体预设", { exact: true }).selectOption("serif");
-    await panel.getByLabel("圆角预设", { exact: true }).selectOption("round");
+    await selectControl(panel.getByLabel("默认语言", { exact: true }), "zh-CN");
+    await selectControl(panel.getByLabel("字体预设", { exact: true }), "serif");
+    await selectControl(panel.getByLabel("圆角预设", { exact: true }), "round");
     await panel.getByLabel("启用English", { exact: true }).check();
     await panel.getByLabel("启用简体中文", { exact: true }).check();
     await panel.getByLabel("英文标语", { exact: true }).fill(updated.content!.en.tagline!);

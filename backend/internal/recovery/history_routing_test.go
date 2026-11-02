@@ -464,7 +464,6 @@ func runHistoryHTTPDrill(t *testing.T, primary *pgxpool.Pool, replicas []*pgxpoo
 	permissions := []string{
 		"audit.view.brand",
 		"brand_presentation.view.brand",
-		"brand_domains.view.brand",
 		"brand_operation.view.brand",
 		"compliance_policy.view.brand",
 		"notification_template.view.brand",
@@ -508,7 +507,6 @@ func runHistoryHTTPDrill(t *testing.T, primary *pgxpool.Pool, replicas []*pgxpoo
 	paths := []string{
 		"/api/v1/admin/audit",
 		"/api/v1/admin/brand-presentation/history",
-		"/api/v1/admin/brand-domains/history",
 		"/api/v1/admin/brand-operation/history",
 		"/api/v1/admin/compliance-policy/history",
 		"/api/v1/admin/notification-templates/member.joined/history",

@@ -3,14 +3,14 @@ import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-const roots = ['user-web/src', 'admin-web/src', 'platform-web/src', 'shared/src'];
+const roots = ['user-web/src', 'agent-web/src', 'admin-web/src', 'platform-web/src', 'shared/src'];
 function files(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = resolve(directory, entry.name);
     return entry.isDirectory() ? files(path) : [path];
   });
 }
-test('all three surfaces explicitly disable native form bubbles and keep inline validation', () => {
+test('all four surfaces explicitly disable native form bubbles and keep inline validation', () => {
   let count = 0;
   for (const file of roots.flatMap(files).filter(file => file.endsWith('.vue'))) {
     const source = readFileSync(file, 'utf8');
@@ -33,4 +33,17 @@ test('production code never invokes browser validity popups or uses browser-lang
   for (const file of roots.flatMap(files).filter(file => /\.(vue|ts)$/.test(file) && !file.endsWith('.test.ts'))) {
     assert.doesNotMatch(readFileSync(file, 'utf8'), /\.(?:reportValidity|checkValidity)\s*\(|\.validationMessage\b/, file);
   }
+});
+
+test('pattern constraints explain the accepted format instead of exposing a regex or a generic error', () => {
+  let count = 0;
+  for (const file of roots.flatMap(files).filter(file => file.endsWith('.vue'))) {
+    const source = readFileSync(file, 'utf8');
+    for (const [input] of source.matchAll(/<input\b(?:[^>"']|"[^"]*"|'[^']*')*>/g)) {
+      if (!/\bpattern=/.test(input)) continue;
+      count++;
+      assert.match(input, /\bdata-validation-format=/, file);
+    }
+  }
+  assert.ok(count > 0, 'the audit must cover real business input constraints');
 });

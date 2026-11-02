@@ -2,7 +2,6 @@ package identity
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/subtle"
 	"fmt"
 	"github.com/gxfcjkxf/lottery/backend/internal/authcrypto"
@@ -10,13 +9,13 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/jackc/pgx/v5"
 	"regexp"
-	"strings"
+	"strconv"
 	"time"
 )
 
 type Challenge struct {
 	ID        string    `json:"id"`
-	SVG       string    `json:"svg,omitempty"`
+	Puzzle    *Puzzle   `json:"puzzle,omitempty"`
 	Nonce     string    `json:"nonce,omitempty"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
@@ -27,16 +26,11 @@ func (s *Store) Challenge(ctx context.Context, e *mutation.Engine, brand, kind s
 	result.ID = ids.New()
 	result.ExpiresAt = time.Now().UTC().Add(5 * time.Minute)
 	if kind == "captcha" {
-		alphabet := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-		seed := make([]byte, 6)
-		if _, err := rand.Read(seed); err != nil {
+		var err error
+		result.Puzzle, proof, err = newPuzzle()
+		if err != nil {
 			return result, err
 		}
-		for i := range seed {
-			seed[i] = alphabet[int(seed[i])%len(alphabet)]
-		}
-		proof = string(seed)
-		result.SVG = fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><rect width="220" height="70" rx="8" fill="#eef1f4"/><path d="M5 20L215 52M20 65L180 8M0 40L220 25" stroke="#9ab5b0"/><text x="16" y="47" font-family="monospace" font-weight="bold" font-size="32" letter-spacing="5" fill="#243c47">%s</text></svg>`, proof)
 	} else if kind == "telegram" {
 		token, err := authcrypto.NewSessionToken()
 		if err != nil {
@@ -55,7 +49,7 @@ func (s *Store) Challenge(ctx context.Context, e *mutation.Engine, brand, kind s
 	if _, err = tx.Exec(ctx, "DELETE FROM auth_challenges WHERE expires_at<now()"); err != nil {
 		return result, err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO auth_challenges(id,brand_id,kind,proof_hash,expires_at) VALUES($1,$2,$3,$4,$5)`, result.ID, brand, kind, e.Fingerprint(result.ID+":"+proof), result.ExpiresAt); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO auth_challenges(id,brand_id,kind,proof_hash,expires_at) VALUES($1,NULLIF($2,'')::uuid,$3,$4,$5)`, result.ID, brand, kind, e.Fingerprint(result.ID+":"+proof), result.ExpiresAt); err != nil {
 		return result, err
 	}
 	return result, tx.Commit(ctx)
@@ -67,16 +61,26 @@ func (s *Store) Consume(ctx context.Context, e *mutation.Engine, brand, kind, id
 	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(id) || len(answer) > 128 {
 		return false, nil
 	}
-	if kind == "captcha" {
-		answer = strings.ToUpper(strings.TrimSpace(answer))
-	}
+
 	var proof string
-	err := s.DB.QueryRow(ctx, `UPDATE auth_challenges SET used_at=now() WHERE id=$1 AND brand_id=$2 AND kind=$3 AND used_at IS NULL AND expires_at>now() RETURNING proof_hash`, id, brand, kind).Scan(&proof)
+	err := s.DB.QueryRow(ctx, `UPDATE auth_challenges SET used_at=now() WHERE id=$1 AND brand_id IS NOT DISTINCT FROM NULLIF($2,'')::uuid AND kind=$3 AND used_at IS NULL AND expires_at>now() RETURNING proof_hash`, id, brand, kind).Scan(&proof)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return false, nil
 		}
 		return false, err
+	}
+	if kind == "captcha" {
+		x, err := strconv.Atoi(answer)
+		if err != nil || x < 0 || x > 300 {
+			return false, nil
+		}
+		valid := 0
+		// Four source-image pixels of tolerance for mouse and touch alignment.
+		for offset := -4; offset <= 4; offset++ {
+			valid |= subtle.ConstantTimeCompare([]byte(proof), []byte(e.Fingerprint(id+":"+strconv.Itoa(x+offset))))
+		}
+		return valid == 1, nil
 	}
 	return subtle.ConstantTimeCompare([]byte(proof), []byte(e.Fingerprint(id+":"+answer))) == 1, nil
 }

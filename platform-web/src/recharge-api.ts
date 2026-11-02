@@ -1,3 +1,4 @@
+import { readPaginationTotal } from '@lottery/shared'
 import { readPlatformEnvelope } from './platform-api'
 
 import { PlatformApiError } from './platform-api'
@@ -7,6 +8,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const INT64_MAX = 9223372036854775807n
 
 export interface Recharge {
+  method: 'manual' | 'automatic'
   id: string
   brand_id: string
   member_id: string
@@ -38,9 +40,9 @@ const exactKeys = (v: Obj, required: string[], optional: string[]) => {
 
 function isRecharge(v: unknown): v is Recharge {
   if (!isObj(v)) return false
-  const required = ['id', 'brand_id', 'member_id', 'member_username', 'account_id', 'points', 'state', 'proof_reference', 'remark', 'created_by', 'created_by_name', 'confirmed_by_name', 'version', 'created_at']
+  const required = ['method', 'id', 'brand_id', 'member_id', 'member_username', 'account_id', 'points', 'state', 'proof_reference', 'remark', 'created_by', 'created_by_name', 'confirmed_by_name', 'version', 'created_at']
   const optional = ['confirmed_by', 'confirmed_at', 'ledger_entry_id', 'audit_log_id']
-  if (!exactKeys(v, required, optional) || !isUUID(v.id) || !isUUID(v.brand_id) || !isUUID(v.member_id) || !isUUID(v.account_id) ||
+  if (!['manual','automatic'].includes(String(v.method)) || !exactKeys(v, required, optional) || !isUUID(v.id) || !isUUID(v.brand_id) || !isUUID(v.member_id) || !isUUID(v.account_id) ||
     typeof v.member_username !== 'string' || typeof v.points !== 'string' || !/^[1-9]\d*$/.test(v.points) || BigInt(v.points) > INT64_MAX ||
     !['pending', 'confirmed', 'cancelled'].includes(String(v.state)) || typeof v.proof_reference !== 'string' || typeof v.remark !== 'string' || !isUUID(v.created_by) || typeof v.created_by_name !== 'string' || typeof v.confirmed_by_name !== 'string' ||
     typeof v.version !== 'number' || !Number.isSafeInteger(v.version) || v.version < 1 || !isDateTime(v.created_at)) return false
@@ -52,7 +54,7 @@ function isRecharge(v: unknown): v is Recharge {
 
 export function createPlatformRechargeApi(fetcher: typeof fetch = fetch) {
   return {
-    async list(brandId: string, memberId = '', limit = 51, offset = 0): Promise<Recharge[]> {
+    async list(brandId: string, memberId = '', limit = 51, offset = 0): Promise<{items: Recharge[]; total_count: string}> {
       if (!brandId) throw new PlatformApiError('A brand must be selected before loading recharges', 400, 'BRAND_REQUIRED')
       if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) {
         throw new PlatformApiError('Invalid recharge pagination', 400, 'REQUEST_INVALID')
@@ -67,11 +69,11 @@ export function createPlatformRechargeApi(fetcher: typeof fetch = fetch) {
       }
       const envelope = await readPlatformEnvelope<unknown>(response);
       const data = envelope.data
-      if (!isObj(data) || !exactKeys(data, ['items'], []) || !Array.isArray(data.items) || data.items.length > limit || !data.items.every(isRecharge) ||
+      if (!isObj(data) || !exactKeys(data, ['items','total_count'], []) || !Array.isArray(data.items) || data.items.length > limit || !data.items.every(isRecharge) ||
         data.items.some(item => item.brand_id !== brandId || (memberId !== '' && item.member_id !== memberId))) {
         throw new PlatformApiError('Invalid recharge response', 0, 'INVALID_RESPONSE')
       }
-      return data.items
+      return {items: data.items, total_count: readPaginationTotal(data)}
     },
   }
 }

@@ -73,7 +73,7 @@ func ValidateCases(ctx context.Context, d Definition, cases []ValidationCase) (V
 	names := make(map[string]bool, len(cases))
 	for _, c := range cases {
 		name := strings.TrimSpace(c.Name)
-		if name == "" || len(c.Name) > 120 || !utf8.ValidString(c.Name) || names[name] ||
+		if name == "" || utf8.RuneCountInString(c.Name) > 120 || !utf8.ValidString(c.Name) || names[name] ||
 			c.ExpectedBetPoints == nil || c.ExpectedPrizePoints == nil || c.ExpectedWon == nil ||
 			*c.ExpectedBetPoints < 0 || *c.ExpectedPrizePoints < 0 {
 			return report, ErrInvalid

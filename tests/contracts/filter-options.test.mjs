@@ -33,7 +33,7 @@ test('both registered filter-options entries are generated with distinct identit
 test('documented query is bounded and distinguishes target resource from option kind', () => {
   for (const operation of operations) {
     const parameters = Object.fromEntries(operation.parameters.map(parameter => [parameter.name, parameter]));
-    assert.deepEqual(Object.keys(parameters).sort(), ['kind', 'limit', 'offset', 'resource']);
+    assert.deepEqual(Object.keys(parameters).sort(), ['kind', 'limit', 'offset', 'resource', 'search']);
     assert.equal(parameters.resource.required, true);
     assert.equal(parameters.kind.required, true);
     assert.ok(parameters.resource.schema.enum.includes('report_reward_orders'));

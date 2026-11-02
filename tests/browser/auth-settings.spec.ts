@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect } from "@playwright/test";
 
 // Only desktop writes this shared Harbor fixture. Mobile verifies the same live
@@ -22,9 +23,8 @@ test("Harbor authentication editor loads real settings; desktop enables captcha"
     .getByRole("button", { name: "登录并加载真实成员", exact: true })
     .click();
   const brandId = "0199a000-0000-7000-8000-000000000002";
-  await page
-    .getByLabel("选择真实后台品牌", { exact: true })
-    .selectOption(brandId);
+  await selectControl(page
+    .getByLabel("选择真实后台品牌", { exact: true }), brandId);
   if (info.project.name === "mobile") {
     await page.locator(".mobile-nav button").last().click();
     await page

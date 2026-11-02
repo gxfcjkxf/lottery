@@ -1,10 +1,10 @@
 import {expect,test} from '@playwright/test'
 import {readFileSync} from 'node:fs'
 import {resolve} from 'node:path'
-const origin='http://127.0.0.1:15273'
+const origin=`http://127.0.0.1:${process.env.LOTTERY_LAYOUT_PORT_BASE??15273}`
 const gameID='aaaaaaaa-aaaa-4aaa-8aaa-000000000001'
 for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','admin'] as const){
- test(`game readiness, rename and saved rules ${surface} ${locale}`,async({page},info)=>{
+ test(`game status, action menu and saved rules ${surface} ${locale}`,async({page},info)=>{
   const zh=locale==='zh-CN',errors:string[]=[],writes:unknown[]=[]
   page.on('pageerror',e=>{errors.push(e.message);console.error(e.message)})
   const snapshot=JSON.parse(readFileSync('backend/internal/rules/config/examples/lucky_group_preview.json','utf8'))
@@ -20,7 +20,7 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
     expect(surface).toBe('platform');expect(path).toBe(`/api/v1/platform/platform-games/${gameID}/name`)
     const body=req.postDataJSON();expect(body).toEqual({name:'Renamed game',expected_version:1});expect(req.headers()['idempotency-key']).toBeTruthy();writes.push(body);game.name=body.name;game.version++;return ok(game)
    }
-   if(path.endsWith('/configured/versions'))return ok({items:[version]})
+   if(path.endsWith('/configured/rules'))return ok(version)
    if(path.endsWith('/configured/sales'))return ok({version:1,rule_id:version.id,enabled:true,prices:snapshot.prices,min_points:'1',max_points:'100',max_period_points:'10000',max_user_period_points:'5000'})
    if(path.endsWith('/configured/orders'))return ok({items:[]})
    if(path.endsWith('/'+gameID))return ok({game,rule_protocol:'configured',plays:[],periods:[],mark_six_configured:false})
@@ -28,20 +28,41 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','ad
   })
   await page.route('**/__game-readiness',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import C from'/@fs/${resolve('shared/src/PlatformLottery.vue')}';import'/@fs/${resolve('shared/src/styles.css')}';import'/@fs/${resolve(surface+'-web/src/style.css')}';import'/@fs/${resolve('shared/src/controls.css')}';createApp(C,${JSON.stringify({surface,brandId:surface==='admin'?'0199a000-0000-7000-8000-000000000001':'',locale,canManage:surface==='platform',canConnect:true,canSell:true,displaySettings:{timezone:'UTC',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss'}})}).mount('#app')</script></html>`}))
   await page.goto(origin+'/__game-readiness')
-  const table=page.locator('.platform-lottery-catalog-table')
-  await expect(table.getByText(zh?'未发布规则':'Rules not published',{exact:true})).toBeVisible()
-  await expect(table.getByText(zh?'未配置销售':'Sales not configured',{exact:true})).toHaveCount(2)
+  const table=page.locator(surface==='admin'?'.brand-lottery-grid':'.platform-lottery-catalog-table')
+  await expect(table.locator('.status-chip')).toHaveText(Array(3).fill(surface==='platform' ? (zh?'已上架':'Listed') : (zh?'启用':'Enabled')))
+  await expect(table.locator('.platform-lottery-readiness')).toHaveCount(0)
+  await expect(table.getByText(zh?'未配置投注':'Betting not configured',{exact:true})).toHaveCount(0)
   if(surface==='platform'){
-   await table.getByRole('button',{name:zh?'修改彩种名称':'Rename game',exact:true}).first().click()
+   await expect(page.getByRole('menuitem')).toHaveCount(0)
+   await table.getByRole('button',{name:zh?'操作':'Actions',exact:true}).first().click()
+   const menu=page.getByRole('menu')
+   await expect(menu.getByRole('menuitem')).toHaveText(zh?['编辑','下架','删除']:['Edit','Take offline','Delete'])
+   await expect(menu.getByRole('menuitem',{name:zh?'删除':'Delete',exact:true})).toBeDisabled()
+   const box=await menu.boundingBox(),viewport=page.viewportSize()!
+   expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(viewport.width)
+   expect(box!.y).toBeGreaterThanOrEqual(0);expect(box!.y+box!.height).toBeLessThanOrEqual(viewport.height)
+   await page.screenshot({path:info.outputPath(`menu-${locale}.png`),fullPage:true})
+   await page.keyboard.press('Escape');await expect(menu).toHaveCount(0)
+   await table.getByRole('button',{name:zh?'操作':'Actions',exact:true}).first().click()
+   await page.getByRole('menuitem',{name:zh?'编辑':'Edit',exact:true}).click()
    await page.getByLabel(zh?'名称':'Name',{exact:true}).fill('Renamed game')
    await page.getByRole('button',{name:zh?'保存':'Save',exact:true}).click()
    await expect(table.getByText('Renamed game',{exact:true})).toBeVisible();expect(writes).toHaveLength(1)
-  }else await expect(table.getByRole('button',{name:zh?'修改彩种名称':'Rename game',exact:true})).toHaveCount(0)
+  }else {
+   await expect(table.locator('.brand-lottery-card')).toHaveCount(3)
+   await expect(table.getByRole('button')).toHaveText(Array(3).fill(zh?'停用':'Disable'))
+   await expect(page.locator('.lottery-detail-page')).toHaveCount(0)
+   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)
+   await page.screenshot({path:info.outputPath(`${surface}-${locale}.png`),fullPage:true})
+   expect(errors).toEqual([])
+   return
+  }
   await table.getByRole('button',{name:zh?'玩法规则':'Play rules',exact:true}).first().click()
   const workbench=page.getByTestId('configured-workbench')
-  await expect(workbench).toHaveAttribute('open','')
-  await expect(workbench.getByRole('combobox',{name:zh?'玩法':'Play',exact:true})).toBeVisible()
-  await expect(page.getByRole('combobox',{name:zh?'已保存版本':'Saved version',exact:true})).toHaveValue(version.id)
+  await expect(workbench).toBeVisible()
+  await expect(workbench.getByRole('table')).toBeVisible()
+  await expect(workbench.getByLabel(zh?'搜索玩法':'Search plays',{exact:true})).toBeVisible()
+  await expect(page.getByRole('combobox',{name:zh?'已保存版本':'Saved version',exact:true})).toHaveCount(0)
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)
   await page.screenshot({path:info.outputPath(`${surface}-${locale}.png`),fullPage:true});expect(errors).toEqual([])
  })

@@ -56,13 +56,18 @@ export function createCatalogI18n(catalog: TranslationCatalog, initial: LocaleCo
       parameters && Object.prototype.hasOwnProperty.call(parameters, name) ? String(parameters[name]) : placeholder)
   }
   const errorText = (cause: unknown): string => publicApiErrorText(cause, locale.value)
+  const message = (key: string, parameters?: MessageParameters): LocalizedMessage => {
+    const zh = catalog['zh-CN'][key], en = catalog.en[key]
+    if (zh === undefined || en === undefined) throw new Error(`Missing translation key: ${key}`)
+    return localizedMessage(zh, en, parameters)
+  }
   const errorMessage = (cause: unknown, operation: 'read' | 'write' = 'write'): LocalizedMessage => {
     let key = publicApiErrorKey(cause)
     if (operation === 'read' && (key === 'unknown' || key === 'network')) key = 'readFailed'
     return localizedMessage(publicApiErrorCatalog['zh-CN'][key], publicApiErrorCatalog.en[key])
   }
   const displayError = (value: string | LocalizedMessage): string => translateMessage(locale.value, value)
-  return { locale: readonly(locale), setLocale, t, errorText, errorMessage, displayError }
+  return { locale: readonly(locale), setLocale, t, message, errorText, errorMessage, displayError }
 }
 
 export function createI18nKey<T extends object>(name: string): InjectionKey<T> {

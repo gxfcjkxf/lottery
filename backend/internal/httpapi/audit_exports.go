@@ -77,7 +77,7 @@ func parseAuditQuery(r *http.Request, export bool) (auditQuery, error) {
 	}
 	for key, dst := range map[string]*string{"action": &q.Action, "resource_type": &q.ResourceType, "request_id": &q.RequestID} {
 		*dst = v.Get(key)
-		if len(*dst) > 128 || strings.TrimSpace(*dst) != *dst {
+		if utf8.RuneCountInString(*dst) > 128 || strings.TrimSpace(*dst) != *dst {
 			return q, adminsys.ErrInvalid
 		}
 		for _, char := range *dst {
@@ -266,8 +266,11 @@ func registerAuditRoutes(handle func(string, string, http.HandlerFunc), d Depend
 			return
 		}
 		out, e := auditedHistoryRecord(w, r, d, a, func(fresh access.Account) bool { return auditAllowed(fresh, brand, false) }, audit.Record{BrandID: brand, Action: "audit.view", ResourceType: "audit", After: q}, func(tx pgx.Tx) (any, error) {
-			items, _, e := auditItems(r, tx, brand, q, false)
-			return map[string]any{"items": items}, e
+			items, snapshot, e := auditItems(r, tx, brand, q, false)
+			if e != nil {
+				return nil, e
+			}
+			return countedItems(r.Context(), tx, items, `SELECT count(*)::text FROM audit_logs WHERE ($1='' OR brand_id=NULLIF($1,'')::uuid) AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3) AND ($4='' OR action=$4) AND ($5='' OR actor_id=NULLIF($5,'')::uuid) AND ($6='' OR resource_type=$6) AND ($7='' OR resource_id=NULLIF($7,'')::uuid) AND ($8='' OR request_id=$8) AND created_at <= $9`, brand, q.From, q.To, q.Action, q.ActorID, q.ResourceType, q.ResourceID, q.RequestID, snapshot)
 		})
 		if historyFailure(w, r, e) {
 			return

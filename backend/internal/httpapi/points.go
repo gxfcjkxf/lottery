@@ -19,6 +19,8 @@ func pointResult(data any, err error) (mutation.Result, error) {
 	switch {
 	case err == nil:
 		return mutation.OK(200, data), nil
+	case errors.Is(err, finance.ErrRechargeQuota):
+		return mutation.Fail(409, "RECHARGE_QUOTA_INSUFFICIENT", "品牌可用充值额度不足，请联系平台授权额度"), nil
 	case errors.Is(err, points.ErrInvalid):
 		return mutation.Fail(400, "POINTS_INPUT_INVALID", "积分或操作资料不正确"), nil
 	case errors.Is(err, points.ErrOverflow):
@@ -94,7 +96,11 @@ func registerPointRoutes(mux routeRegistrar, d Dependencies) {
 					return
 				}
 				items, err := s.List(ctx, b.ID, v.View.Member.ID, limit, offset)
-				pointOutput(w, r, map[string]any{"items": items}, err)
+				var data map[string]any
+				if err == nil {
+					data, err = countedItems(ctx, d.Admins.DB, items, `SELECT count(*)::text FROM point_ledger_entries WHERE brand_id=$1 AND member_id=$2`, b.ID, v.View.Member.ID)
+				}
+				pointOutput(w, r, data, err)
 			})
 		}
 	}
@@ -111,6 +117,7 @@ func pointAdminActor(w http.ResponseWriter, r *http.Request, d Dependencies, res
 	return a, brand, true
 }
 func registerPointAdminRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
+	registerRechargeQuotaRoutes(handle, d)
 	registerWithdrawalOrderAdminRoutes(handle, d)
 	registerWorkbenchRoutes(handle, d)
 	registerReportAdminRoutes(handle, d)
@@ -145,7 +152,9 @@ func registerPointAdminRoutes(handle func(string, string, http.HandlerFunc), d D
 					}
 					var items []points.Entry
 					items, err = s.List(r.Context(), brand, member, limit, offset)
-					data = map[string]any{"items": items}
+					if err == nil {
+						data, err = countedItems(r.Context(), d.Admins.DB, items, `SELECT count(*)::text FROM point_ledger_entries WHERE brand_id=$1 AND member_id=$2`, brand, member)
+					}
 				}
 			}
 			if err == nil && !adminReadAudit(w, r, d, a, brand, "wallet.view") {
@@ -170,10 +179,14 @@ func registerPointAdminRoutes(handle func(string, string, http.HandlerFunc), d D
 			return
 		}
 		items, err := f.ListRecharges(r.Context(), brand, member, limit, offset)
+		var data map[string]any
+		if err == nil {
+			data, err = countedItems(r.Context(), d.Admins.DB, items, `SELECT count(*)::text FROM recharge_orders WHERE brand_id=$1 AND ($2='' OR member_id=NULLIF($2,'')::uuid)`, brand, member)
+		}
 		if err == nil && !adminReadAudit(w, r, d, a, brand, "recharge.view") {
 			return
 		}
-		pointOutput(w, r, map[string]any{"items": items}, err)
+		pointOutput(w, r, data, err)
 	})
 	handle("POST", "/recharges", func(w http.ResponseWriter, r *http.Request) {
 		a, brand, ok := pointAdminActor(w, r, d, "recharge", "write", true)
@@ -195,6 +208,36 @@ func registerPointAdminRoutes(handle func(string, string, http.HandlerFunc), d D
 				return mutation.Fail(403, "PERMISSION_DENIED", "超级管理员不可操作用户积分"), nil
 			}
 			record, err := f.CreateRecharge(ctx, tx, brand, in.MemberID, in.Points, in.Proof, in.Remark, in.Reason, pointMeta(r, fresh))
+			result, e := pointResult(record, err)
+			if err == nil {
+				result.Status = 201
+			}
+			return result, e
+		})
+	})
+	handle("POST", "/recharges/manual", func(w http.ResponseWriter, r *http.Request) {
+		a, brand, ok := pointAdminActor(w, r, d, "recharge", "write", true)
+		if !ok {
+			return
+		}
+		var in struct {
+			MemberID string        `json:"member_id"`
+			Points   points.Amount `json:"points"`
+			Proof    string        `json:"proof_reference"`
+			Remark   string        `json:"remark"`
+			Reason   string        `json:"reason"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		managementWrite(w, r, d, a, brand, "recharge", "write", "admin.recharge.manual", in.MemberID, in, false, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
+			if fresh.SuperAdmin {
+				return mutation.Fail(403, "PERMISSION_DENIED", "超级管理员不可操作用户积分"), nil
+			}
+			record, err := f.CreateRecharge(ctx, tx, brand, in.MemberID, in.Points, in.Proof, in.Remark, in.Reason, pointMeta(r, fresh))
+			if err == nil {
+				record, err = f.ConfirmRecharge(ctx, tx, brand, record.ID, record.Version, in.Reason, pointMeta(r, fresh))
+			}
 			result, e := pointResult(record, err)
 			if err == nil {
 				result.Status = 201
@@ -348,7 +391,13 @@ func registerPointAdminRoutes(handle func(string, string, http.HandlerFunc), d D
 						return pointResult(nil, e)
 					}
 				}
-				entry, err := s.Post(ctx, tx, points.Change{BrandID: brand, MemberID: member, EntryType: kind, ReferenceType: "manual", ReferenceID: member, OperationKey: key, Reason: reason, ActorType: m.ActorType, ActorID: m.ActorID, RequestID: m.RequestID, IP: m.IP, Delta: delta, Allocation: allocation, ReversalOf: reversal})
+				change := points.Change{BrandID: brand, MemberID: member, EntryType: kind, ReferenceType: "manual", ReferenceID: member, OperationKey: key, Reason: reason, ActorType: m.ActorType, ActorID: m.ActorID, RequestID: m.RequestID, IP: m.IP, Delta: delta, Allocation: allocation, ReversalOf: reversal}
+				var entry points.Entry
+				if kind == "adjust" {
+					entry, err = f.PostManualAdjustment(ctx, tx, change)
+				} else {
+					entry, err = s.Post(ctx, tx, change)
+				}
 				return pointResult(entry, err)
 			})
 		})

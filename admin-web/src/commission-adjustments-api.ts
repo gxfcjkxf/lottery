@@ -1,3 +1,4 @@
+import { commissionListParams, type CommissionListQuery } from './commission-list-query'
 import { readAdminEnvelope } from './admin-api'
 
 import { AdminApiError, type AdminAccount } from "./admin-api";
@@ -17,6 +18,11 @@ export interface CommissionAdjustmentTarget {
   original_points: string; state: "pending" | "paid"; ledger_entry_id: string | null; paid_at: string | null;
   adjustment_version: number | null; adjusted_points: string | null; last_adjustment_id: string | null;
 }
+export interface CommissionPaymentBeneficiary {
+ id:string;brand_id:string;payment_id:string;agent_id:string;member_id:string;target_id:string|null;
+ original_points:string;adjusted_points:string|null;state:'pending'|'paid';paid_at:string|null;
+}
+export interface CommissionPaymentBeneficiaryPage {brand_id:string;payment_id:string;items:CommissionPaymentBeneficiary[];total_count:string;limit:number;offset:number}
 export interface CommissionAdjustment {
   id: string; brand_id: string; target_id: string; payment_id: string; version: number;
   points_before: string; points_after: string; delta_points: string; ledger_entry_id: string; audit_log_id: string;
@@ -34,7 +40,7 @@ function sint(v: unknown): v is string { return typeof v === "string" && SINT.te
 function safeVersion(v: unknown): v is number { return Number.isSafeInteger(v) && Number(v) >= 1; }
 function date(v: unknown): v is string { return typeof v === "string" && DATE.test(v) && Number.isFinite(Date.parse(v)); }
 export function validCommissionAdjustmentReason(v: unknown): v is string {
-  if (typeof v !== "string" || v.trim() !== v || new TextEncoder().encode(v).length > 500 || v.includes("\u0000")) return false;
+  if (typeof v !== "string" || v.trim() !== v || Array.from(v).length > 500 || v.includes("\u0000")) return false;
   for (let i = 0; i < v.length; i++) { const c = v.charCodeAt(i); if (c >= 0xd800 && c <= 0xdbff) { const n = v.charCodeAt(++i); if (!(n >= 0xdc00 && n <= 0xdfff)) return false; } else if (c >= 0xdc00 && c <= 0xdfff) return false; }
   return true;
 }
@@ -83,9 +89,21 @@ export function createCommissionAdjustmentsApi(fetcher: typeof fetch = fetch) {
   }
   function pageBounds(limit: number, offset: number) { if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) invalid(); }
   return {
-    async listTargets(brand: string, paymentId: string, limit = 20, offset = 0): Promise<CommissionAdjustmentTargetPage> {
+    async listBeneficiaries(brand:string,paymentId:string,limit=20,offset=0,filter:Readonly<Pick<CommissionListQuery,'agent_id'|'state'>>={}):Promise<CommissionPaymentBeneficiaryPage> {
+      if(!uuid(brand)||!uuid(paymentId))invalid();pageBounds(limit,offset);
+      const query=commissionListParams(limit,offset,filter,'target');
+      const data=await request(brand,`${PAYMENTS}/${encodeURIComponent(paymentId)}/beneficiaries?${query}`);
+      if(!validPage(data,brand,'payment_id',paymentId,limit,offset,(row):row is CommissionPaymentBeneficiary=>
+        obj(row)&&keys(row,['id','brand_id','payment_id','agent_id','member_id','target_id','original_points','adjusted_points','state','paid_at'])&&
+        uuid(row.id)&&row.brand_id===brand&&row.payment_id===paymentId&&uuid(row.agent_id)&&uuid(row.member_id)&&uint(row.original_points)&&
+        (row.target_id===null||uuid(row.target_id))&&(row.adjusted_points===null||uint(row.adjusted_points))&&
+        (row.state==='pending'||row.state==='paid')&&(row.paid_at===null||date(row.paid_at))&&
+        (row.state!=='paid'||row.target_id!==null)&& (row.target_id!==null||(row.paid_at===null&&row.adjusted_points===null))
+      ))malformed();return data as CommissionPaymentBeneficiaryPage;
+    },
+    async listTargets(brand: string, paymentId: string, limit = 20, offset = 0, filter: Readonly<Pick<CommissionListQuery, "agent_id" | "state">> = {}): Promise<CommissionAdjustmentTargetPage> {
       if (!uuid(brand) || !uuid(paymentId)) invalid(); pageBounds(limit, offset);
-      const query = new URLSearchParams({limit:String(limit),offset:String(offset)}); const data = await request(brand, `${PAYMENTS}/${encodeURIComponent(paymentId)}/targets?${query}`);
+      const query = commissionListParams(limit,offset,filter,"target"); const data = await request(brand, `${PAYMENTS}/${encodeURIComponent(paymentId)}/targets?${query}`);
       if (!validPage(data, brand, "payment_id", paymentId, limit, offset, (x): x is CommissionAdjustmentTarget => target(x, brand, paymentId))) malformed(); return data as CommissionAdjustmentTargetPage;
     },
     async listAdjustments(brand: string, targetId: string, limit = 20, offset = 0): Promise<CommissionAdjustmentHistoryPage> {

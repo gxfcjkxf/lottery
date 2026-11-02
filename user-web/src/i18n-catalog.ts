@@ -2,6 +2,8 @@ import type { TranslationCatalog } from '@lottery/shared'
 
 export const userExtraCatalog = {
   en: {
+    'user.lists.search': 'Search',
+    'user.lists.clear': 'Clear',
     'auth.navigationRetry': 'Retry',
     'auth.sessionReplaced': 'A new sign-in has ended this session. Please sign in again.',
     'markSix.title': 'Mark Six',
@@ -36,7 +38,7 @@ export const userExtraCatalog = {
     "user.copy.724bebe9": "Random selection",
     "user.copy.8a197e0a": "Reload",
     "user.copy.9326acb2": "Notifications could not be loaded. Try again.",
-    "user.copy.a9882e2b": "The request result is unknown. Retry the same action; this page will not assume it succeeded.",
+    "user.copy.a9882e2b": "The action could not be completed. Refresh or try again.",
     "user.copy.b6aff54e": "Your account changed. Reload notifications.",
     "user.copy.b811f4e5": "Notification unavailable",
     "user.copy.ba71505e": "Mark this page read",
@@ -50,6 +52,8 @@ export const userExtraCatalog = {
     "user.copy.f7216c0c": "Choose one or more candidates for each position",
   },
   'zh-CN': {
+    'user.lists.search': '查询',
+    'user.lists.clear': '清空',
     'auth.navigationRetry': '重试',
     'auth.sessionReplaced': '账号有新的登录，当前会话已失效，请重新登录。',
     'markSix.title': '六合彩',
@@ -84,7 +88,7 @@ export const userExtraCatalog = {
     "user.copy.724bebe9": "随机选号",
     "user.copy.8a197e0a": "重新加载",
     "user.copy.9326acb2": "暂时无法加载通知，请重试。",
-    "user.copy.a9882e2b": "请求结果暂时无法确认。可重试同一操作；页面不会自行推断操作已成功。",
+    "user.copy.a9882e2b": "暂时无法完成操作，请刷新或重试。",
     "user.copy.b6aff54e": "账号已切换，请重新加载通知。",
     "user.copy.b811f4e5": "通知内容暂不可用",
     "user.copy.ba71505e": "本页标为已读",
@@ -98,4 +102,3 @@ export const userExtraCatalog = {
     "user.copy.f7216c0c": "每个位置可选一个或多个数字",
   },
 } satisfies TranslationCatalog
-

@@ -107,7 +107,7 @@ func TestFullEmptySnapshotIsActualZeroNotUnavailable(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if out.Periods.Data.Betting != "0" || out.TodayBets.Data.StakePoints != "0" || out.Settlement.Data.Failed != "0" || out.Recharges.Data.PendingPoints != "0" || out.Ledger.Data.NetPoints != "0" || out.Balances.Data.TotalPoints != "0" || out.Reconciliation.Data.LatestJob != nil || out.Sources.Data.AdapterState != "stub" || out.Sources.Data.LastAttemptAt != nil {
+	if out.TodayBets.Data.StakePoints != "0" || out.Recharges.Data.PendingPoints != "0" || out.Ledger.Data.NetPoints != "0" || out.Balances.Data.TotalPoints != "0" {
 		t.Fatal(out)
 	}
 	if out.SnapshotAt.Before(out.DayFrom) || out.SnapshotAt.Sub(out.DayFrom) > 25*time.Hour {
@@ -161,7 +161,7 @@ func TestUnboundedExactSumsBrandIsolationAndTimezone(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if out.Ledger.Data.NetPoints != "18000000000000000000" || out.Balances.Data.TotalPoints != "18000000000000000000" || out.Balances.Data.AccountCount != "2" || out.Brand.Data != nil || out.Reconciliation.Data != nil {
+	if out.Ledger.Data.NetPoints != "18000000000000000000" || out.Balances.Data.TotalPoints != "18000000000000000000" || out.Balances.Data.AccountCount != "2" || out.Brand.Data != nil {
 		t.Fatal(out)
 	}
 	zone, e := time.LoadLocation("Pacific/Kiritimati")

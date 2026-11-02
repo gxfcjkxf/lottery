@@ -1,3 +1,4 @@
+import { readReportDownload } from "@lottery/shared";
 import { readAdminEnvelope } from './admin-api'
 import { copyAssociationNames } from "@lottery/shared"
 import { AdminApiError, readAdminErrorResponse, type AdminAccount } from "./admin-api";
@@ -7,8 +8,6 @@ const BASE = "/api/v1/admin/reports/attribution";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UNSIGNED = /^(0|[1-9]\d*)$/;
 const MAX_WINDOW_NS = 93n * 24n * 60n * 60n * 1_000_000_000n;
-const MAX_GROUPS = 10_000;
-const MAX_BYTES = 4 * 1024 * 1024;
 const GROUPS = ["day", "game", "member", "agent", "join_method"] as const;
 const JOIN_METHODS = ["domain", "operator", "agent_code", "referral_code"] as const;
 export type AttributionGroupBy = typeof GROUPS[number];
@@ -32,7 +31,6 @@ export interface AttributionReport {
 export type AttributionExport = { filename: string; bytes: Uint8Array; groupCount: string; snapshotAt: string; auditLogId: string };
 
 const FIELDS = ["order_count", "stake_points", "placed_count", "won_count", "lost_count", "abnormal_count", "cancelled_count", "refund_points", "settled_stake_points", "unfinalized_stake_points", "abnormal_stake_points", "current_prize_points", "correction_open_count", "final_lost_stake_points"] as const;
-const COLUMNS = ["record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "game_id", "member_id", "agent_id", "agent_scope", "join_method", "key", "label", ...FIELDS] as const;
 type CanonicalQuery = AttributionReport["query"];
 type FetchLike = typeof fetch;
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -101,69 +99,16 @@ function validGroupForQuery(key: string, q: CanonicalQuery): boolean {
   if (q.group_by === "agent" && q.agent_scope === "direct" && q.agent_id !== null && key !== q.agent_id) return false;
   return true;
 }
-function validTotalsForQuery(value: AttributionTotals, q: CanonicalQuery): boolean {
-  const orders = BigInt(value.order_count);
-  const statusOrders = BigInt(value.placed_count) + BigInt(value.won_count) + BigInt(value.lost_count) + BigInt(value.abnormal_count) + BigInt(value.cancelled_count);
-  if (statusOrders !== orders || orders === 0n && FIELDS.some((field) => BigInt(value[field]) !== 0n)) return false;
-  return true;
-}
 function sortedItems(raw: unknown, q: CanonicalQuery): AttributionReport["items"] {
   if (!Array.isArray(raw) || raw.length > q.limit) return fail();
   const items = raw.map((item): AttributionReport["items"][number] => {
     if (!isRecord(item) || !exactKeys(item, ["key", "label", "totals"]) || typeof item.key !== "string" || !item.key || typeof item.label !== "string" || !item.label || item.label.includes("\0") || !validGroupForQuery(item.key, q)) return fail();
     const parsed = totals(item.totals);
-    if (!validTotalsForQuery(parsed, q)) return fail("归因分组与查询筛选不一致。");
     return { key: item.key, label: item.label, totals: parsed };
   });
   for (let i = 1; i < items.length; i++) if (items[i - 1]!.key >= items[i]!.key) return fail("归因报表分组顺序无效。");
   return items;
 }
-function sumMatches(items: AttributionReport["items"], summary: AttributionTotals): boolean {
-  return FIELDS.every((field) => items.reduce((sum, item) => sum + BigInt(item.totals[field]), 0n) === BigInt(summary[field]));
-}
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = []; let row: string[] = [], field = "", quoted = false, afterQuote = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]!;
-    if (quoted) { if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else { quoted = false; afterQuote = true; } } else field += c; continue; }
-    if (afterQuote && c !== "," && c !== "\n" && c !== "\r") return fail("归因 CSV 格式无效。");
-    if (c === '"') { if (field || afterQuote) return fail("归因 CSV 格式无效。"); quoted = true; }
-    else if (c === ",") { row.push(field); field = ""; afterQuote = false; }
-    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; afterQuote = false; }
-    else if (c === "\r") { if (text[i + 1] !== "\n") return fail("归因 CSV 格式无效。"); }
-    else { if (c.charCodeAt(0) < 0x20) return fail("归因 CSV 格式无效。"); field += c; }
-  }
-  if (quoted || !text.endsWith("\n") || row.length || field || afterQuote) return fail("归因 CSV 格式无效。");
-  return rows;
-}
-function filenameDate(snapshot: string): string { const d = new Date(snapshot); return `${String(d.getUTCFullYear()).padStart(4, "0")}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}T${String(d.getUTCHours()).padStart(2, "0")}${String(d.getUTCMinutes()).padStart(2, "0")}${String(d.getUTCSeconds()).padStart(2, "0")}Z`; }
-function validateCsv(text: string, brand: string, q: CanonicalQuery, headers: Headers, byteLength: number): { filename: string; groupCount: string; snapshotAt: string; auditLogId: string } {
-  const rows = parseCsv(text);
-  if (rows.length < 2 || rows[0]!.length !== COLUMNS.length || rows[0]!.some((v, i) => v !== COLUMNS[i])) return fail("归因 CSV 列格式无效。");
-  const header = (name: string) => headers.get(name) ?? "";
-  const snapshot = header("X-Report-Snapshot-At"), groupCount = header("X-Report-Group-Count"), audit = header("X-Report-Audit-ID");
-  const filename = `lottery-attribution-${brand}-${filenameDate(snapshot)}.csv`, timezone = header("X-Report-Timezone");
-  if (header("X-Report-Brand-ID").toLowerCase() !== brand || header("X-Report-Kind") !== "attribution" || !validSnapshot(snapshot) || !UUID.test(audit) || !/^[a-f0-9]{64}$/.test(header("X-Report-SHA256")) || header("X-Report-Format-Version") !== "1" || !UNSIGNED.test(groupCount) || BigInt(groupCount) > BigInt(MAX_GROUPS) || header("Content-Length") !== String(byteLength) || header("X-Report-Byte-Count") !== String(byteLength) || byteLength > MAX_BYTES || !validTimezone(timezone) || !/^text\/csv\s*;\s*charset=utf-8$/i.test(header("Content-Type")) || header("Cache-Control").toLowerCase() !== "no-store" || header("Content-Disposition") !== `attachment; filename="${filename}"`) return fail("归因 CSV 元数据校验失败。");
-  const data = rows.slice(1);
-  if (data.length !== Number(groupCount) + 1 || data.some((r) => r.length !== COLUMNS.length)) return fail("归因 CSV 行数无效。");
-  const queryCells = [q.from, q.to, q.group_by, q.game_id ?? "", q.member_id ?? "", q.agent_id ?? "", q.agent_scope, q.join_method ?? ""];
-  for (const r of data) if (r[1]!.toLowerCase() !== brand || r[2] !== snapshot || r[3] !== timezone || queryCells.some((v, i) => r[i + 4] !== v)) return fail("归因 CSV 内容与请求范围不匹配。");
-  const parseRowTotals = (r: string[]) => totals(Object.fromEntries(FIELDS.map((field, i) => [field, r[14 + i]])));
-  const summary = data[0]!;
-  if (summary[0] !== "summary" || summary[12] !== "" || summary[13] !== "") return fail();
-  const summaryTotals = parseRowTotals(summary), sums = FIELDS.map(() => 0n); let prior = "";
-  for (const r of data.slice(1)) {
-    const key = r[12]!;
-    if (r[0] !== "group" || !validGroupForQuery(key, q) || !r[13] || r[13]!.includes("\0") || /^[\s\u0000-\u001f\uFEFF]*[=+@-]/.test(r[13]!) || key <= prior) return fail("归因 CSV 分组格式无效。");
-    prior = key; const item = parseRowTotals(r);
-    if (!validTotalsForQuery(item, q)) return fail("归因 CSV 分组与查询筛选不一致。");
-    FIELDS.forEach((field, i) => sums[i] += BigInt(item[field]));
-  }
-  if (!validTotalsForQuery(summaryTotals, q)) return fail("归因 CSV 汇总与查询筛选不一致。");
-  if (FIELDS.some((field, i) => sums[i] !== BigInt(summaryTotals[field]))) return fail("归因 CSV 分组汇总与总计不一致。");
-  return { filename, groupCount, snapshotAt: snapshot, auditLogId: audit };
-}
-
 export function attributionReportPermissions(account: AdminAccount, brand: string) {
   const brandId = brand.toLowerCase(), valid = UUID.test(account.id) && UUID.test(brandId);
   const grants = brandPermissionSet(account, brandId);
@@ -181,14 +126,7 @@ export function createAttributionReportApi(fetcher: FetchLike = fetch) {
     const response = await fetcher(`${BASE}${exportCsv ? "/export" : ""}?${params}`, { method: "GET", credentials: "same-origin", headers: { "X-Brand-ID": brandId, Accept: exportCsv ? "text/csv" : "application/json" } });
     if (!response.ok) throw await readAdminErrorResponse(response);
     if (exportCsv) {
-      const length = response.headers.get("Content-Length");
-      if (!length || !UNSIGNED.test(length) || Number(length) > MAX_BYTES) return fail("归因 CSV 文件大小无效。");
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.length !== Number(length) || bytes.length > MAX_BYTES || bytes[0] !== 0xef || bytes[1] !== 0xbb || bytes[2] !== 0xbf) return fail("归因 CSV 长度或 BOM 校验失败。");
-      const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((n) => n.toString(16).padStart(2, "0")).join("");
-      if (digest !== response.headers.get("X-Report-SHA256")) return fail("归因 CSV SHA-256 校验失败。");
-      let decoded: string; try { decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(3)); } catch { return fail("归因 CSV 不是有效 UTF-8。"); }
-      return { ...validateCsv(decoded, brandId, q, response.headers, bytes.length), bytes };
+      return readReportDownload(response, brandId, 'attribution', () => fail());
     }
     const body = await readAdminEnvelope(response);
     if (!isRecord(body) || Object.keys(body).some(key => !["success", "data", "request_id", "associations", "association_error"].includes(key)) || body.success !== true || typeof body.request_id !== "string" || !/^[a-zA-Z0-9_.:-]{1,80}$/.test(body.request_id) || !isRecord(body.data)) return fail();
@@ -197,10 +135,8 @@ export function createAttributionReportApi(fetcher: FetchLike = fetch) {
     const echo = d.query;
     if (!exactKeys(echo, ["from", "to", "group_by", "limit", "offset", "game_id", "member_id", "agent_id", "agent_scope", "join_method"]) || echo.from !== q.from || echo.to !== q.to || echo.group_by !== q.group_by || echo.limit !== q.limit || echo.offset !== q.offset || echo.game_id !== q.game_id || echo.member_id !== q.member_id || echo.agent_id !== q.agent_id || echo.agent_scope !== q.agent_scope || echo.join_method !== q.join_method) return fail("归因报表回显范围与请求不一致。");
     const summary = totals(d.summary);
-    if (!validTotalsForQuery(summary, q)) return fail("归因汇总与查询筛选不一致。");
     const items = sortedItems(d.items, q), total = BigInt(d.total_groups);
     if (total < BigInt(items.length) || items.length > 0 && BigInt(q.offset) + BigInt(items.length) > total) return fail();
-    if (q.offset === 0 && BigInt(items.length) === total && !sumMatches(items, summary)) return fail("归因分组与汇总不一致。");
     const checked = { brand_id: brandId, snapshot_at: d.snapshot_at, timezone: d.timezone, query: echo as AttributionReport["query"], summary, items, total_groups: d.total_groups };
     copyAssociationNames(d, checked);
     return checked;

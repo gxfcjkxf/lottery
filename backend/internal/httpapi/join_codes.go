@@ -272,6 +272,29 @@ func registerJoinCodeUser(mux routeRegistrar, d Dependencies) {
 			result, e := joinCodeResult(out, err)
 			outputMutation(w, r, result, e)
 		})
+		mux.HandleFunc("GET "+prefix+"/me/referrals", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store")
+			if d.Identity == nil || readDB == nil {
+				failure(w, r, 503, "JOIN_CODE_UNAVAILABLE", "推荐服务尚未配置")
+				return
+			}
+			brand, ok := resolveBrand(w, r, d)
+			if !ok {
+				return
+			}
+			session, ok := currentBetSession(w, r, d, brand.ID)
+			if !ok {
+				return
+			}
+			limit, offset, _, ok := joinCodePage(r)
+			if !ok {
+				failure(w, r, 400, "JOIN_CODE_INPUT_INVALID", "分页参数不正确")
+				return
+			}
+			out, err := s.SelfReferrals(r.Context(), brand.ID, session.View.Member.ID, limit, offset)
+			result, e := joinCodeResult(out, err)
+			outputMutation(w, r, result, e)
+		})
 		mux.HandleFunc("GET "+prefix+"/me/attribution", func(w http.ResponseWriter, r *http.Request) {
 			if d.Identity == nil || readDB == nil {
 				failure(w, r, 503, "JOIN_CODE_UNAVAILABLE", "归属服务尚未配置")

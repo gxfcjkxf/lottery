@@ -28,6 +28,6 @@ func publishAutomaticResult(ctx context.Context, tx pgx.Tx, id, actor string, ca
 	if changed.RowsAffected() != 1 {
 		return ErrConflict
 	}
-	_, err = audit.Append(ctx, tx, audit.Record{ActorType: "system", Action: action, ResourceType: "platform_game_period", ResourceID: id, Reason: reason, After: candidate})
+	_, err = audit.Append(ctx, tx, audit.Record{ActorType: "system", Action: action, ResourceType: "platform_game_period", ResourceID: id, Reason: reason, Before: map[string]any{"period_no": candidate.PeriodNo, "result": nil}, After: candidate})
 	return err
 }

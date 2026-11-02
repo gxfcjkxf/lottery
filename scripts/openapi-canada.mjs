@@ -14,8 +14,4 @@ export const schemas={
 };
 const page=[{name:'offset',in:'query',schema:int},{name:'limit',in:'query',schema:{type:'integer',minimum:1,maximum:100}}];
 const op=(method,path,operationId,summary,data,extra={})=>({method,path,operationId,summary,data,tag:'canada',auth:'user',...extra});
-export const operations=[
- op('GET','/api/v1/canada/orders','canadaAllMyOrders','Read all of this member’s Canada tickets',obj({items:arr(ref('CanadaOrder'))}),{parameters:page}),
- op('GET','/api/v1/canada/games/{id}/orders','canadaMyOrders','Read this member’s Canada tickets',obj({items:arr(ref('CanadaOrder'))}),{parameters:page}),
- op('GET','/api/v1/admin/platform-games/{id}/canada/orders','canadaBrandOrders','Read this brand’s Canada tickets',obj({items:arr(ref('CanadaOrder'))}),{auth:'admin',brandHeader:true,permissions:['platform_game.view.brand'],parameters:page}),
-];
+export const operations=[];

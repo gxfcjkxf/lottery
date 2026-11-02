@@ -1,3 +1,6 @@
+import {ManagementListTestComponent,MemberActionsMenuTestComponent,clickHostButton} from "../../admin-web/src/management-list-test-helper"
+import * as PaginationCatalog from '../../shared/src/pagination-catalog'
+import { SelectControlTestComponent } from '../../admin-web/src/select-control-test-helper'
 import { BusinessDetailsTestComponent as BusinessDetails } from "../../admin-web/src/business-details-test-helper";
 import SiteIcon from "../../shared/src/SiteIcon";
 import { h as temporalTestH } from "vue";
@@ -11,18 +14,21 @@ import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import * as Localization from '../../shared/src/localization'
 import * as FormValidation from '../../shared/src/form-validation'
+import * as DrawScheduleCatalog from '../../shared/src/draw-schedule'
+import * as DrawOverviewCatalog from '../../shared/src/draw-overview-catalog'
 import * as LotteryApi from '../../shared/src/platform-lottery'
 import * as LotteryTime from '../../shared/src/lottery-time'
 import * as DateTime from '../../shared/src/date-time'
-import * as PlayForm from '../../shared/src/platform-play-form'
 import type { RuleModel } from '../../shared/src/rules'
 
 function component(file = 'PlatformLottery.vue'): Component {
   const descriptor = parse(readFileSync(new URL(`../../shared/src/${file}`, import.meta.url), 'utf8')).descriptor
   const js = ts.transpileModule(compileScript(descriptor, { id: 'unified-catalog-test', inlineTemplate: true }).content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText
-  const modules: Record<string, unknown> = { "./SiteIcon": { default: SiteIcon }, "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "./global-loading": DisplayShared, "./display-settings": DisplayShared,  "@lottery/shared": DisplayShared,  './form-validation': FormValidation, vue: VueRuntime, './localization': Localization, './platform-lottery': LotteryApi, './lottery-time': LotteryTime, './date-time': DateTime, './platform-play-form': PlayForm, './AutomationSettings.vue': {default:{render:()=>null}}, './PlatformPlayRuleForm.vue': { default: { render: () => null } }, './NumberModelEditor.vue': { default: file === 'PlatformLottery.vue' ? component('NumberModelEditor.vue') : null }, './PlatformDateInput.vue': { default: file === 'PlatformLottery.vue' ? component('PlatformDateInput.vue') : null }, './PlatformTimeInput.vue': { default: file === 'PlatformLottery.vue' ? component('PlatformTimeInput.vue') : null } }
-  const body = js.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+['"]([^'"]+)['"];?\s*$/gm, (_m, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ': ')}} = __modules[${JSON.stringify(specifier)}];`)
-    .replace(/^import ConfiguredRuleWorkbench from .*$/m, 'const ConfiguredRuleWorkbench = { render: () => null };').replace(/^import SiteIcon from .*$/m, 'const SiteIcon = __modules["./SiteIcon"].default;').replace(/^import DetailModal from .*$/m, 'const DetailModal = __modal;').replace(/^import NumberModelEditor from .*$/m, 'const NumberModelEditor = __modules["./NumberModelEditor.vue"].default;').replace(/^import PlatformDateInput from .*$/m, 'const PlatformDateInput = __modules["./PlatformDateInput.vue"].default;').replace(/^import PlatformTimeInput from .*$/m, 'const PlatformTimeInput = __modules["./PlatformTimeInput.vue"].default;').replace(/^import AutomationSettings from .*$/m, 'const AutomationSettings = __modules["./AutomationSettings.vue"].default;').replace(/^import PlatformPlayRuleForm from .*$/m, 'const PlatformPlayRuleForm = __modules["./PlatformPlayRuleForm.vue"].default;').replace(/^import BusinessDetails from .*$/m, 'const BusinessDetails = __businessDetails;').replace(/export\s+default\s+/, 'return ')
+  const modules: Record<string, unknown> = { './ManagementList.vue':{default:ManagementListTestComponent},'./MemberActionsMenu.vue':{default:MemberActionsMenuTestComponent}, './TablePagination.vue': {default:file === 'PlatformLottery.vue' ? component('TablePagination.vue') : null}, "@lottery/shared/SelectControl.vue": SelectControlTestComponent, "./SelectControl.vue": SelectControlTestComponent, "./SiteIcon": { default: SiteIcon }, "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "./global-loading": DisplayShared, "./display-settings": DisplayShared,  "@lottery/shared": {...DisplayShared,vInlineValidation:{},vRefreshButton:{},vGlobalLoading:{}},  './draw-schedule':DrawScheduleCatalog, './draw-overview-catalog': DrawOverviewCatalog, './form-validation': {...FormValidation,vInlineValidation:{}}, vue: VueRuntime, './pagination': DisplayShared, './localization': Localization, './pagination-catalog': PaginationCatalog, './platform-lottery': LotteryApi, './lottery-time': LotteryTime, './date-time': DateTime, './AutomationSettings.vue': {default:{render:()=>null}}, './NumberModelEditor.vue': { default: file === 'PlatformLottery.vue' ? component('NumberModelEditor.vue') : null }, './PlatformDateInput.vue': { default: file === 'PlatformLottery.vue' ? component('PlatformDateInput.vue') : null }, './PlatformTimeInput.vue': { default: file === 'PlatformLottery.vue' ? component('PlatformTimeInput.vue') : null } }
+  const body = js.replace(/^import TablePagination from .*$/m, 'const TablePagination = __modules["./TablePagination.vue"].default;').replace(/^import SelectControl from .*$/m, 'const SelectControl = __modules["./SelectControl.vue"];').replace(/^import\s+\{([\s\S]*?)\}\s+from\s+['"]([^'"]+)['"];?\s*$/gm, (_m, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ': ')}} = __modules[${JSON.stringify(specifier)}];`)
+    .replace(/^import DrawScheduleSettings from .*$/m, 'const DrawScheduleSettings = { render: () => null };')
+    .replace(/^import PeriodOpeningDialog from .*$/m, 'const PeriodOpeningDialog = { render: () => null };')
+    .replace(/^import MemberActionsMenu from .*$/m, 'const MemberActionsMenu = { props: ["id", "label"], render() { return this.$slots.default?.() } };').replace(/^import ConfiguredPublishing from .*$/m, 'const ConfiguredPublishing = { render: () => null };').replace(/^import ConfiguredRuleWorkbench from .*$/m, 'const ConfiguredRuleWorkbench = { render: () => null };').replace(/^import SiteIcon from .*$/m, 'const SiteIcon = __modules["./SiteIcon"].default;').replace(/^import DetailModal from .*$/m, 'const DetailModal = __modal;').replace(/^import NumberModelEditor from .*$/m, 'const NumberModelEditor = __modules["./NumberModelEditor.vue"].default;').replace(/^import PlatformDateInput from .*$/m, 'const PlatformDateInput = __modules["./PlatformDateInput.vue"].default;').replace(/^import PlatformTimeInput from .*$/m, 'const PlatformTimeInput = __modules["./PlatformTimeInput.vue"].default;').replace(/^import PlatformDrawOverview from .*$/m, 'const PlatformDrawOverview = { render: () => null };').replace(/^import AutomationSettings from .*$/m, 'const AutomationSettings = __modules["./AutomationSettings.vue"].default;').replace(/^import BusinessDetails from .*$/m, 'const BusinessDetails = __businessDetails;').replace(/^import ManagementList from .*$/m, 'const ManagementList = __modules["./ManagementList.vue"].default;').replace(/^import MemberActionsMenu from .*$/m, 'const MemberActionsMenu = __modules["./MemberActionsMenu.vue"].default;').replace(/^import PeriodOpeningDialog from .*$/m, 'const PeriodOpeningDialog = { render: () => null };').replace(/export\s+default\s+/, 'return ')
   return new Function('__modules', '__modal', '__businessDetails', body)(modules, { render: () => null }, BusinessDetails) as Component
 }
 
@@ -45,13 +51,13 @@ const renderer = createRenderer<Node, Node>({
 })
 const text = (n: Node): string => n.text + n.children.map(text).join('')
 const all = (n: Node, tag: string): Node[] => [...(n.tag === tag ? [n] : []), ...n.children.flatMap(child => all(child, tag))]
-const click = (root: Node, label: string) => { (all(root, 'button').find(n => text(n) === label)!.props.onClick as () => void)() }
+const click = (root: Node, label: string) => { (all(root, 'button').find(n => (text(n) === label || n.props["aria-label"] === label))!.props.onClick as () => void)() }
 async function flush() { for (let i = 0; i < 40; i++) await Promise.resolve(); await nextTick() }
 function mount(count: number, offlineIndex = -1) {
   const platform = Array.from({ length: count }, (_, i) => ({ id: `platform-${i}`, name: `Platform ${i}`, code: `p_${i}`, timezone: 'UTC', connected: false, status: i === offlineIndex ? 'offline' : 'active', deletable: false, brand_enabled: false, brand_version: 0, version: 1, model: { model: 'DIGITS_0_9', length: 3 } }))
   const fetcher = vi.fn<typeof fetch>(async input => {
     const offset = Number(new URL(String(input), 'http://local').searchParams.get('offset'))
-    return new Response(JSON.stringify({ success: true, data: { games: platform.slice(offset, offset + 50), limit: 50, offset } }))
+    return new Response(JSON.stringify({ success: true, data: { games: platform.slice(offset, offset + 50), limit: 50, offset  ,total_count: String((platform.slice(offset, offset + 50)).length)} }))
   })
   vi.stubGlobal('fetch', fetcher)
   const scope = ref({ catalogBrandId: '', brandName: '', brandGames: [] as Array<{ id: string; name: string; code: string; timezone: string }> })
@@ -68,7 +74,7 @@ describe('unified platform game catalog', () => {
     const selected = ref('game-a')
     const fetcher = vi.fn<typeof fetch>(async input => {
       const id = String(input).includes('/game-a?') ? 'game-a' : 'game-b'
-      return new Response(JSON.stringify({ success: true, data: { game: { id, name: id }, periods: [], plays: [] } }))
+      return new Response(JSON.stringify({ success: true, data: { game: { id, name: id }, periods: [], plays: []  ,total_count: '0'} }))
     })
     vi.stubGlobal('fetch', fetcher)
     const History = component()
@@ -84,18 +90,21 @@ describe('unified platform game catalog', () => {
   it('shows offline games only through the status filter and prevents deleting used games', async () => {
     const m = mount(2, 1); await flush()
     expect(text(m.root)).toContain('Platform 0'); expect(text(m.root)).not.toContain('Platform 1')
-    expect(all(m.root, 'button').find(n => text(n) === '删除彩种')!.props.disabled).toBe(true)
-    const filter = all(m.root, 'select')[0]!
-    ;(filter.props.onChange as (event: unknown) => void)({target:{value:'offline'}}); await flush()
+    expect(all(m.root, 'button').find(n => text(n) === '删除')!.props.disabled).toBe(true)
+    const filter = all(m.root, 'select-control')[0]!
+    ;(filter.props.onChange as (event: unknown) => void)('offline'); await flush();clickHostButton(all(m.root,'button').find(n=>text(n)==='查询'));await flush()
     expect(text(m.root)).not.toContain('Platform 0'); expect(text(m.root)).toContain('Platform 1')
     expect(all(m.root, 'button').some(n => text(n) === '重新上架')).toBe(true)
     m.app.unmount()
   })
-  it('keeps refresh with the pagination, not the create action', async () => {
-    const m = mount(1); await flush()
-    const refresh = all(m.root, 'button').find(n => text(n) === '刷新')!
-    expect(refresh.parent!.props.class).toContain('wallet-pagination')
-    expect(all(m.root, 'th').some(n => text(n) === '时区')).toBe(false)
+  it('keeps create in the list toolbar and queries in the filter form', async () => {
+    const m=mount(1);await flush()
+    const create=all(m.root,'button').find(n=>text(n)==='创建彩种')!
+    expect(create.parent!.props.class).toContain('console-page-actions')
+    expect(create.parent!.parent!.props.class).toContain('console-page-heading')
+    expect(all(m.root,'button').filter(n=>text(n)==='刷新')).toHaveLength(0)
+    expect(all(m.root,'button').filter(n=>text(n)==='查询')).toHaveLength(1)
+    expect(all(m.root,'th').some(n=>text(n)==='时区')).toBe(false)
     m.app.unmount()
   })
   it('defaults to platform games, merges only the selected brand and dispatches each brand entry', async () => {
@@ -120,14 +129,14 @@ describe('unified platform game catalog', () => {
   })
   it('paginates one merged collection and resets its page when changing brand', async () => {
     const m = mount(50); await flush()
-    expect(m.fetcher).toHaveBeenCalledTimes(2)
+    expect(m.fetcher).toHaveBeenCalledTimes(1)
     m.scope.value = { catalogBrandId: 'brand-a', brandName: 'Aurora', brandGames: [{ id: 'a', name: 'Brand A', code: 'a', timezone: 'UTC' }] }
     await flush(); expect(all(m.root, 'tr')).toHaveLength(51)
     click(m.root, '下一页'); await flush()
     expect(text(m.root)).toContain('Brand A'); expect(text(m.root)).not.toContain('Platform 0')
     m.scope.value = { catalogBrandId: '', brandName: '', brandGames: [] }
     await flush(); expect(text(m.root)).toContain('Platform 0')
-    expect(all(m.root, 'button').find(n => text(n) === '下一页')!.props.disabled).toBe(true)
+    expect(all(m.root, 'button').find(n => n.props['aria-label'] === '下一页')!.props.disabled).toBe(true)
     m.app.unmount()
   })
 })
@@ -139,7 +148,7 @@ describe('visual number model editor', () => {
     const app = renderer.createApp({ setup: () => () => h(Editor, { modelValue: draft.value, locale: 'zh-CN', 'onUpdate:modelValue': (model: RuleModel) => { draft.value = model } }) })
     app.mount(root); await flush()
     expect(text(root)).toContain('位数'); expect(text(root)).not.toContain('普通号码数量')
-    const change = (type: string) => (all(root, 'select')[0].props.onChange as (event: unknown) => void)({ target: { value: type } })
+    const change = (type: string) => (all(root, 'select-control')[0].props.onChange as (event: unknown) => void)(type)
     change('X_PLUS_Y'); await flush()
     expect(text(root)).not.toContain('位数'); expect(text(root)).toContain('普通号码池'); expect(text(root)).toContain('特别号码池')
     change('M_SELECT_N'); await flush()

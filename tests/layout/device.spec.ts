@@ -1,4 +1,10 @@
+import { registerOddsCatalogTests } from './odds-catalog'
+registerOddsCatalogTests()
+import { registerStateReviewTests } from './state-review'
+registerStateReviewTests()
 import { registerConfiguredSelectionTests } from './configured-selection'
+import { registerFormValidationTests } from './form-validation'
+registerFormValidationTests()
 registerConfiguredSelectionTests()
 import { registerPlatformBrandNavigationTests } from './platform-brand-navigation'
 import { registerPlatformOverviewTests } from './platform-overview'
@@ -15,7 +21,7 @@ import {registerConfiguredSaleTests} from './workspace'
 registerConfiguredSaleTests()
 import { registerWorkspaceTests } from './workspace'
 registerWorkspaceTests()
-import { origins, gameId, installLayoutApi, installOrdersLayoutApi, installWalletLayoutApi, expectNoPageOverflow, expectInsideViewport, expectRefreshControls, expectCompactDisplayRows } from './fixture'
+import { origins, gameId, installLayoutApi, installOrdersLayoutApi, installWalletLayoutApi, expectNoPageOverflow, expectInsideViewport, expectRefreshControls, expectCompactDisplayRows, expectPlayTabLabelsFit } from './fixture'
 
 for (const locale of ['en', 'zh-CN'] as const) {
   test(`login forms and betting layout use the device viewport (${locale})`, async ({ page }, info) => {
@@ -66,13 +72,16 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await installOrdersLayoutApi(page)
     await page.goto(`${origins.user}/configured/${gameId}`)
     await expect(page.locator('.configured-options button')).toHaveCount(49)
+    await expectPlayTabLabelsFit(page)
     await expect(page.locator('.configured-live .game-results-link')).toHaveCount(0)
     await expectNoPageOverflow(page)
     await page.screenshot({path:info.outputPath(`configured-betting-${locale}.png`),fullPage:true})
     await page.goto(`${origins.user}/help`)
     const help = page.locator('.help-page')
     await expect(help.locator('details')).toHaveCount(6)
-    await expect(help.locator('.page-heading,.help-intro,a[href^="mailto:"]')).toHaveCount(0)
+    await expect(page.locator('.workspace-page-title')).toHaveText(locale==='en'?'Help centre':'帮助中心')
+    await expect(page.locator('.workspace-page-title')).toBeVisible()
+    await expect(help.locator('.help-intro,a[href^="mailto:"]')).toHaveCount(0)
     for (const item of await help.locator('details').all()) {
       if (await item.getAttribute('open') === null) await item.locator('summary').click()
       await expect(item.locator('p')).toBeVisible()
@@ -84,26 +93,19 @@ for (const locale of ['en', 'zh-CN'] as const) {
     await page.screenshot({ path: info.outputPath(`help-${locale}.png`), fullPage: true })
     await page.goto(`${origins.user}/orders`)
     const layouts: unknown[] = []
-    const gameFilter = page.locator('.history-filters select')
-    await expect(gameFilter.locator('option')).toHaveCount(4)
+    const gameFilter = page.locator('.workspace-game-trigger')
+    await expect(page.locator('.history-filters select')).toHaveCount(0)
     for (const index of [0, 1, 2, 3]) {
-      if (index > 0) {
-        const game = await gameFilter.locator('option').nth(index).getAttribute('value')
-        await Promise.all([
-          page.waitForResponse(response => {
-            const url = new URL(response.url())
-            return url.pathname === '/api/v1/betting-history' && url.searchParams.get('game_id') === game
-          }),
-          gameFilter.selectOption({ index }),
-        ])
-        await expect(gameFilter).toBeEnabled()
-      }
+      await gameFilter.click()
+      const choices = page.locator('.workspace-game-picker button')
+      await expect(choices).toHaveCount(4)
+      await choices.nth(index).click()
       const empty = page.locator('.order-history-empty')
-      await expect(empty).toHaveText(locale === 'en' ? 'No tickets yet' : '暂无注单')
+      await expect(empty).toHaveText(locale === 'en' ? 'No bet orders match the current game and filters.' : '当前彩种和筛选条件下暂无投注记录。')
       const refresh = page.locator('#user-page-refresh > button')
       await expect(refresh).toHaveClass('button button-secondary')
       await expect(refresh).toBeEnabled()
-      await page.locator('.workspace-topbar > button.icon-button').click();
+      await page.locator('.workspace-trailing > button.icon-button').click();
       await refresh.click()
       await expect(empty).toBeVisible()
       await expect(refresh).toBeEnabled()
@@ -155,8 +157,9 @@ for (const locale of ['en', 'zh-CN'] as const) {
       if (path === '/results') {
         await expect(page.locator('.draw-results .empty-state')).toBeVisible()
         await expect(page.locator('.dr-disclaimer')).toHaveCount(0)
-        await expect(page.locator('.draw-archive select')).toHaveCount(1)
-        await expect(page.locator('.draw-archive input,.draw-archive [role=tablist]')).toHaveCount(0)
+        await expect(page.locator('.draw-archive .archive-filter .select-control-trigger')).toHaveCount(1)
+        await expect(page.locator('.draw-archive [role=tablist]')).toHaveCount(0)
+        expect(await page.locator('.draw-archive input[type=text],.draw-archive input[type=search]').evaluateAll(inputs => inputs.filter(input => !input.closest('.select-control')).length)).toBe(0)
         await expect(empty).toHaveCSS('justify-content', 'center')
       } else await expect(empty).toHaveCSS('justify-content', 'center')
       await expect(page.locator('[role="alert"]')).toHaveCount(0)
@@ -220,23 +223,24 @@ for (const locale of ['en', 'zh-CN'] as const) {
     // A freeze moves points between states: the net total is zero, while available points decrease.
     await expect(wallet.locator('.entry-change strong')).toHaveText('−10');
     const details = wallet.locator('.ledger-details');
-    await expect(details).not.toHaveAttribute('open');
-    await expect(wallet.locator('.snapshot-grid')).toBeHidden();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(wallet.locator('.ledger-result')).toBeHidden();
     await expect(wallet.locator('.entry-reason')).toBeHidden();
     await expectRefreshControls(page);
     await expectNoPageOverflow(page);
     await page.screenshot({ path: info.outputPath(`wallet-ledger-${locale}.png`) });
-    await details.locator('summary').click();
-    await expect(details).toHaveAttribute('open', '');
-    await expect(wallet.locator('.snapshot-grid')).toBeVisible();
+    await details.click();
+    const ledgerDialog = page.getByRole('dialog', {name: locale === 'en' ? 'Details' : '明细'});
+    await expect(ledgerDialog).toBeVisible();
+    await expectInsideViewport(ledgerDialog);
+    await expect(wallet.locator('.snapshot-grid')).toHaveCount(0);
     await expect(wallet.locator('.entry-reason')).toBeVisible();
-    await expect(wallet.locator('.snapshot-bucket')).toHaveCount(16);
-    const firstRow = await wallet.locator('.snapshot-grid > span').allTextContents();
-    expect(firstRow.slice(0, 6)).toEqual(['130', '−10', '120', '10', '10', '20']);
+    await expect(wallet.locator('.ledger-result dd')).toHaveText('120');
     await expectNoPageOverflow(page);
     await page.screenshot({ path: info.outputPath(`wallet-details-${locale}.png`) });
-    await details.locator('summary').click();
-    await expect(wallet.locator('.snapshot-grid')).toBeHidden();
+    await page.keyboard.press('Escape');
+    await expect(ledgerDialog).toHaveCount(0);
+    await expect(details).toBeFocused();
   });
 
 }
@@ -292,3 +296,6 @@ import { registerAgentPortalTests } from './agent-portal'
 registerAgentPortalTests(false)
 import { registerSharedAccountMenuTests } from './agent-portal'
 registerSharedAccountMenuTests()
+
+import { registerMemberBatchDeleteTests } from './member-batch-delete'
+registerMemberBatchDeleteTests(false)

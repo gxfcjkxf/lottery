@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { origins, gameId, expectNoPageOverflow } from './fixture'
@@ -22,7 +23,7 @@ export function registerAssociationNameTests() {
     if(path==='/api/v1/display-settings')return reply(display)
     if(path==='/api/v1/platform/me')return reply({account:{id:gameId,username:'admin',super_admin:true,platform_permissions:['admin.view.platform','admin.write.platform','role.view.platform']}})
     if(path==='/api/v1/platform/platform-settings')return reply({...display,display_name:'Layout',logo_text:'L',logo_url:'',version:1,updated_at:'2026-10-18T00:00:00Z'})
-    if(path==='/api/v1/platform/brands')return reply({items:[{id:gameId,name:'Aurora',code:'aurora',status:'active'}]})
+    if(path==='/api/v1/platform/brands')return reply({items:[{id:gameId,name:'Aurora',code:'aurora',status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z'}]})
     if(path==='/api/v1/platform/roles'){
      expect(req.method()).toBe('GET');expect(req.headers()['x-brand-id']).toBe(gameId)
      return reply({items:[{id:role,brand_id:gameId,name:'Bootstrap administrator',code:`bootstrap_${role}`,status:'active',version:1,is_bootstrap:true,permissions:bootstrapPermissions}]})
@@ -43,7 +44,7 @@ export function registerAssociationNameTests() {
    if(await menu.isVisible())await menu.click()
    if (await page.locator('button[aria-controls="platform-brand-tabs"]').getAttribute('aria-expanded') === 'false') await page.locator('button[aria-controls="platform-brand-tabs"]').click()
    await page.getByRole('button',{name:zh?'后台账号':'Back-office accounts',exact:true}).filter({visible:true}).click()
-   await page.locator('.topbar-brand-picker select').selectOption(gameId)
+   await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), gameId)
    await page.getByRole('tab',{name:zh?'角色':'Roles',exact:true}).click()
    await page.getByTestId('platform-access-list').getByRole('button',{name:zh?'系统管理员':'System administrator',exact:true}).click()
    const details=page.getByRole('dialog')
@@ -58,7 +59,11 @@ export function registerAssociationNameTests() {
    await newAccount.click()
    const form=page.getByRole('dialog',{name:zh?'新建账号':'New account',exact:true})
    await expect(form).toBeVisible()
-   await form.getByRole('button',{name:zh?'取消':'Cancel',exact:true}).click()
+   await expect(form).toContainText(zh?'密码（6–30 字符）':'Password (6–30 characters)')
+   await expect(form).not.toContainText(/100.*(?:角色|roles)/)
+   await expectNoPageOverflow(page)
+   await page.screenshot({path:info.outputPath('account-character-limit.png')})
+   await form.locator('.detail-modal-close').click()
    await expect(form).toHaveCount(0);await newAccount.click();await expect(form).toBeVisible()
    await form.locator('input[autocomplete="off"]').fill('dialog_test')
    await form.locator('input[type="password"]').fill('fixture-password-2026')
@@ -74,7 +79,7 @@ export function registerAssociationNameTests() {
    expect(writes).toHaveLength(1);expect(errors).toEqual([])
    await expectNoPageOverflow(page)
   })
-  test(`account roles show names without role-browsing permission (${locale})`, async ({ page }) => {
+  test(`account roles show names without role-browsing permission (${locale})`, async ({ page }, info) => {
    await page.context().addCookies([{ name:'lottery-locale',value:locale,url:origins.platform }])
    const role = 'bbbbbbbb-bbbb-4bbb-8bbb-000000000001'
    const internalCode = `bootstrap_${role}`
@@ -98,10 +103,12 @@ export function registerAssociationNameTests() {
    if(await mobileMenu.isVisible())await mobileMenu.click()
    await page.getByRole('button',{name:locale==='en'?'Admin accounts':'管理账号',exact:true}).filter({visible:true}).click()
    const list=page.getByTestId('platform-access-list')
+   await expect(list.locator('table')).toHaveClass(/console-table console-responsive-table.*account-directory-table/)
    await expect(list).toContainText(locale==='en'?'System administrator':'系统管理员')
    await expect(list.getByRole('columnheader',{name:locale==='en'?'Super admin':'超级管理员',exact:true})).toHaveCount(0)
    await expect(list).not.toContainText(internalCode)
    await expect(list).not.toContainText(role)
+   await page.screenshot({ path: info.outputPath(`management-accounts-${locale}.png`), fullPage: true })
    await list.getByRole('button',{name:/named_admin/}).click()
    const detail=page.getByTestId('platform-access-detail')
    await expect(detail).toContainText(locale==='en'?'System administrator':'系统管理员')

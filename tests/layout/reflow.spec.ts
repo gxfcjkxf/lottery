@@ -1,4 +1,10 @@
+import { registerOddsCatalogTests } from './odds-catalog'
+registerOddsCatalogTests()
+import { registerStateReviewTests } from './state-review'
+registerStateReviewTests()
 import { registerConfiguredSelectionTests } from './configured-selection'
+import { registerFormValidationTests } from './form-validation'
+registerFormValidationTests()
 registerConfiguredSelectionTests()
 import { registerPlatformBrandNavigationTests } from './platform-brand-navigation'
 import { registerPlatformOverviewTests } from './platform-overview'
@@ -13,7 +19,7 @@ import { registerAssociationNameTests } from './association-names'
 registerAssociationNameTests()
 import { registerPublicErrorTests } from './public-errors'
 registerPublicErrorTests()
-import { origins, gameId, installLayoutApi, installOrdersLayoutApi, expectNoPageOverflow, expectInsideViewport, expectRefreshControls, expectCompactDisplayRows } from './fixture'
+import { origins, gameId, installLayoutApi, installOrdersLayoutApi, expectNoPageOverflow, expectInsideViewport, expectRefreshControls, expectCompactDisplayRows, expectPlayTabLabelsFit } from './fixture'
 
 // Extra widths are layout boundaries, not claims about particular phone models.
 const widths = [...new Set([
@@ -53,6 +59,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
           if (/\/(orders|wallet|notifications|results)$/.test(url)) await expectRefreshControls(page)
           if (url.includes('/configured/')) {
             await expect(page.locator('.configured-selection')).toBeVisible()
+            await expectPlayTabLabelsFit(page)
           }
         })
       }
@@ -139,3 +146,6 @@ import { registerAgentPortalTests } from './agent-portal'
 registerAgentPortalTests(true)
 import { registerSharedAccountMenuTests } from './agent-portal'
 registerSharedAccountMenuTests()
+
+import { registerMemberBatchDeleteTests } from './member-batch-delete'
+registerMemberBatchDeleteTests(true)

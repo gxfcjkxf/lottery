@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import { test, expect } from './platform-fixture';
 
@@ -37,11 +38,11 @@ test('platform ledger reports preserve signed totals, paginate and clear failed 
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Member points' }).click();
   await page.getByTestId('platform-wallet-tabs').getByRole('button', { name: 'Financial reports', exact: true }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   const panel = page.getByTestId('platform-reports');
-  await panel.getByLabel('Report type', { exact: true }).selectOption('ledger');
-  await panel.getByLabel('From (UTC)', { exact: true }).fill('2026-08-01T00:00');
-  await panel.getByLabel('To (UTC)', { exact: true }).fill('2026-10-11T00:00');
+  await selectControl(panel.getByLabel('Report type', { exact: true }), 'ledger');
+  await panel.getByLabel('From', { exact: true }).fill('2026-08-01T00:00');
+  await panel.getByLabel('To', { exact: true }).fill('2026-10-11T00:00');
   await panel.getByRole('button', { name: 'Run report', exact: true }).click();
   await expect(page.getByTestId('platform-reports-list').locator('tbody tr')).toHaveCount(50);
   await expect(page.getByTestId('platform-reports-summary')).toContainText((-BigInt(amount) * 51n).toString());
@@ -57,7 +58,7 @@ test('platform ledger reports preserve signed totals, paginate and clear failed 
   await expect(page.getByTestId('platform-reports-balances')).toHaveCount(0);
   await selectLanguage(page, 'zh-CN');
   await expect(panel.getByRole('heading', { name: '财务报表', exact: true })).toBeVisible();
-  await page.locator('.topbar-brand-picker select').selectOption('');
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), '');
   await expect(panel).toHaveCount(0);
 });
 
@@ -100,15 +101,15 @@ test('platform reads all six genuine report endpoints and actual recharge postin
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Member points' }).click();
   await page.getByTestId('platform-wallet-tabs').getByRole('button', { name: 'Financial reports', exact: true }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   const panel = page.getByTestId('platform-reports');
   const today = new Date();
   const tomorrow = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1));
-  await panel.getByLabel('From (UTC)', { exact: true }).fill(`${today.toISOString().slice(0, 10)}T00:00`);
-  await panel.getByLabel('To (UTC)', { exact: true }).fill(`${tomorrow.toISOString().slice(0, 10)}T00:00`);
+  await panel.getByLabel('From', { exact: true }).fill(`${today.toISOString().slice(0, 10)}T00:00`);
+  await panel.getByLabel('To', { exact: true }).fill(`${tomorrow.toISOString().slice(0, 10)}T00:00`);
   await panel.getByLabel('Member ID (optional)', { exact: true }).fill(member);
   for (const kind of kinds) {
-    await panel.getByLabel('Report type', { exact: true }).selectOption(kind);
+    await selectControl(panel.getByLabel('Report type', { exact: true }), kind);
     await expect(page.getByTestId('platform-reports-summary')).toHaveCount(0);
     const segment = kind === 'reward_orders' ? 'reward-orders' : kind;
     const loaded = page.waitForResponse(r => new URL(r.url()).pathname === `/api/v1/platform/reports/${segment}`);

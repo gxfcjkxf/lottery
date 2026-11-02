@@ -107,12 +107,18 @@ func registerPlatformAccountRoutes(handle func(string, string, http.HandlerFunc)
 			} else {
 				items, err = d.Admins.ListPlatformRoles(r.Context(), actor, limit, offset)
 			}
+			data := map[string]any{"items": items}
+			if err == nil && kind == "platform-accounts" {
+				data, err = countedItems(r.Context(), d.Admins.DB, items, `SELECT count(*)::text FROM admin_accounts a WHERE a.is_super_admin AND a.status <> 'deleted' AND NOT EXISTS(SELECT 1 FROM admin_brand_scopes s WHERE s.account_id=a.id)`)
+			} else if err == nil {
+				data, err = countedItems(r.Context(), d.Admins.DB, items, `SELECT count(*)::text FROM roles WHERE brand_id IS NULL`)
+			}
 			if err != nil {
 				managementFailure(w, r, d, actor, "", resource+".view.platform", err)
 				return
 			}
 			if adminReadAudit(w, r, d, actor, "", resource+".view.platform") {
-				respond(w, r, 200, map[string]any{"items": items})
+				respond(w, r, 200, data)
 			}
 		})
 	}

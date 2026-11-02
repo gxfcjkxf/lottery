@@ -12,8 +12,8 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','pl
    const ok=(data:any,status=200)=>route.fulfill({status,json:{success:true,data}})
    if(req.method()==='GET'){
     if(path.endsWith('permissions'))return ok({items:permissions})
-    if(path.endsWith('roles'))return ok({items:roles})
-    if(path.endsWith('accounts'))return ok({items:[]})
+    if(path.endsWith('roles'))return ok({items:roles,total_count:String(roles.length)})
+    if(path.endsWith('accounts'))return ok({items:[],total_count:'0'})
    }
    if(req.method()==='POST'&&path.endsWith('roles')){
     const body=req.postDataJSON();writes.push(body)
@@ -24,9 +24,12 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','pl
    }
    throw Error('Unexpected request '+req.method()+' '+path)
   })
-  const props=admin?{brandId:id,account:{id,username:'operator',status:'active',super_admin:false,brand_ids:[id],permissions,permissions_by_brand:{[id]:permissions}}}:{brandId:scope==='brand'?id:'',locale,scope,accountId:id,grants:['admin.write.platform','role.write.platform'],initialTab:'roles'}
+  const props=admin?{section:'roles',brandId:id,account:{id,username:'operator',status:'active',super_admin:false,brand_ids:[id],permissions,permissions_by_brand:{[id]:permissions}}}:{brandId:scope==='brand'?id:'',locale,scope,accountId:id,grants:['admin.write.platform','role.write.platform'],initialTab:'roles'}
   const app=admin?'admin-web':'platform-web',factory=admin?'createAdminI18n':'createPlatformI18n',key=admin?'adminI18nKey':'platformI18nKey'
-  await page.route('**/__role-permissions',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import Component from'/@fs${resolve(app+'/src/'+(admin?'AccessManagement.vue':'AccessPanel.vue'))}';import{${factory},${key}}from'/@fs${resolve(app+'/src/i18n.ts')}';import'/@fs${resolve('shared/src/styles.css')}';import'/@fs${resolve(app+'/src/style.css')}';import'/@fs${resolve('shared/src/controls.css')}';const i18n=${factory}();i18n.setLocale('${locale}');createApp(Component,${JSON.stringify(props)}).provide(${key},i18n).mount('#app')</script></html>`}))
+  const componentPath='/@fs'+resolve(app+'/src/'+(admin?'AccessManagement.vue':'AccessPanel.vue'))
+  const componentSource=await(await page.request.get(origin+componentPath)).text()
+  const i18nPath=componentSource.match(/from "([^"\n]*\/i18n\.ts[^"\n]*)"/)![1]
+  await page.route('**/__role-permissions',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app" class="management-console"></div><script type="module">import{createApp}from'/node_modules/.vite/deps/vue.js';import Component from'${componentPath}';import{${factory},${key}}from'${i18nPath}';import'/@fs${resolve('shared/src/styles.css')}';import'/@fs${resolve(app+'/src/style.css')}';import'/@fs${resolve('shared/src/controls.css')}';import'/@fs${resolve('shared/src/management.css')}';const i18n=${factory}();i18n.setLocale('${locale}');createApp(Component,${JSON.stringify(props)}).provide(${key},i18n).mount('#app')</script></html>`}))
   await page.goto(origin+'/__role-permissions')
   await page.getByRole('button',{name:admin ? (zh?'新建角色':'Create role') : (zh?'新建角色':'New role'),exact:true}).click()
   await expect(page.getByRole('dialog')).toBeVisible()
@@ -48,6 +51,16 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','pl
   const form=admin?page.locator('.access-page .form').first():page.getByRole('dialog')
   await form.getByLabel(admin?(zh?'显示名称':'Display name'):(zh?'名称':'Name'),{exact:!admin}).fill('Grouped operator')
   await form.getByLabel(admin?(zh?'角色代码':'Role code'):(zh?'代码':'Code'),{exact:!admin}).fill('grouped_operator')
+  if(admin){
+   const dialog=page.getByRole('dialog'),save=dialog.locator('.detail-modal-footer button')
+   await expect(save).toHaveAttribute('form','brand-role-editor')
+   await expect(save).toBeInViewport()
+   await expect(dialog.locator('.panel')).toHaveCount(0)
+   const labels=dialog.locator('.role-identity > label')
+   const boxes=await labels.evaluateAll(els=>els.map(el=>el.getBoundingClientRect().top))
+   if(page.viewportSize()!.width>620)expect(Math.abs(boxes[0]-boxes[1])).toBeLessThan(2)
+   else expect(boxes[1]).toBeGreaterThan(boxes[0])
+  }
   if(!admin){
    const labels=page.locator('.role-identity > label');await expect(labels).toHaveCount(3)
    const boxes=await labels.evaluateAll(els=>els.map(e=>({top:e.getBoundingClientRect().top,text:e.textContent})))
@@ -56,7 +69,7 @@ for(const locale of ['en','zh-CN'] as const)for(const surface of ['platform','pl
   }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)
   await page.screenshot({path:info.outputPath(`grouped-${surface}-${locale}.png`)})
-  await form.getByRole('button',{name:admin?(zh?'创建角色':'Create role'):(zh?'保存':'Save'),exact:true}).click()
+  await page.getByRole('dialog').getByRole('button',{name:admin?(zh?'创建角色':'Create role'):(zh?'保存':'Save'),exact:true}).click()
   await expect.poll(()=>writes.length).toBe(1)
   expect(writes[0].permissions.slice().sort()).toEqual(permissions.slice(0,4).sort())
   expect(errors).toEqual([])

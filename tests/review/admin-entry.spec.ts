@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect } from '@playwright/test';
 import { reviewPlatformUsername } from './platform-account';
 
@@ -23,7 +24,7 @@ test('brand staff login is the only public entry and platform accounts are rejec
   await page.getByRole('button', { name: '登录并加载真实成员', exact: true }).click();
   await expect(page.locator('.app-shell')).toBeVisible();
   await expect(page.locator('.breadcrumbs .prototype-badge')).toHaveText('品牌后台');
-  await page.getByLabel('选择真实后台品牌', { exact: true }).selectOption(aurora);
+  await selectControl(page.getByLabel('选择真实后台品牌', { exact: true }), aurora);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('brand-authenticated.png'), fullPage: true });
 });
@@ -53,7 +54,7 @@ test('independent platform entry has no public menu, restores its own cookie and
   await expect(page.locator('.app-frame')).toBeVisible();
   if (await page.locator('button[aria-controls="platform-brand-tabs"]').getAttribute('aria-expanded') === 'false') await page.locator('button[aria-controls="platform-brand-tabs"]').click()
   await page.locator('.nav-subitem').filter({ hasText: 'Member list' }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(aurora);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), aurora);
   await expect(page.locator('.loading-line')).toHaveCount(0);
   await expect(page.locator('.panel')).toContainText('Read-only membership details');
   expect((await page.request.get(`${platformOrigin}/api/v1/platform/users?limit=100&offset=0`, { headers: { 'X-Brand-ID': aurora } })).status()).toBe(200);

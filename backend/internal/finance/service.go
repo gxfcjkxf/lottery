@@ -37,6 +37,7 @@ type Recharge struct {
 	MemberUsername  string     `json:"member_username"`
 	AccountID       string     `json:"account_id"`
 	Points          string     `json:"points"`
+	Method          string     `json:"method"`
 	State           string     `json:"state"`
 	ProofReference  string     `json:"proof_reference"`
 	Remark          string     `json:"remark"`
@@ -72,7 +73,7 @@ func (s Service) CreateRecharge(ctx context.Context, tx pgx.Tx, brand, member st
 	if err != nil {
 		return Recharge{}, err
 	}
-	record := Recharge{ID: ids.New(), BrandID: brand, MemberID: member, AccountID: accountID, Points: strconv.FormatInt(int64(amount), 10), State: "pending", ProofReference: proof, Remark: remark, CreatedBy: meta.ActorID, Version: 1}
+	record := Recharge{ID: ids.New(), BrandID: brand, MemberID: member, AccountID: accountID, Points: strconv.FormatInt(int64(amount), 10), Method: "manual", State: "pending", ProofReference: proof, Remark: remark, CreatedBy: meta.ActorID, Version: 1}
 	err = tx.QueryRow(ctx, `INSERT INTO recharge_orders(id,brand_id,member_id,account_id,points,state,proof_reference,remark,created_by,version)
 		VALUES($1,$2,$3,$4,$5,'pending',$6,$7,$8,1) RETURNING created_at`, record.ID, brand, member, accountID, int64(amount), proof, remark, meta.ActorID).Scan(&record.CreatedAt)
 	if isUnique(err) {
@@ -90,7 +91,7 @@ func (s Service) ConfirmRecharge(ctx context.Context, tx pgx.Tx, brand, id strin
 	if err != nil || tx == nil || !financeUUIDPattern.MatchString(brand) || !financeUUIDPattern.MatchString(id) || version < 1 {
 		return Recharge{}, points.ErrInvalid
 	}
-	record, err := scanRecharge(tx.QueryRow(ctx, `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
+	record, err := scanRecharge(tx.QueryRow(ctx, `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.method,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
 		COALESCE(r.confirmed_by::text,''),COALESCE(qa.username,''),r.version,r.created_at,r.confirmed_at,COALESCE(r.ledger_entry_id::text,'')
 		FROM recharge_orders r
 		LEFT JOIN brand_members bm ON bm.brand_id=r.brand_id AND bm.id=r.member_id
@@ -119,6 +120,12 @@ func (s Service) ConfirmRecharge(ctx context.Context, tx pgx.Tx, brand, id strin
 		return Recharge{}, err
 	}
 	if err = policy.CheckRecharge(amount); err != nil {
+		return Recharge{}, err
+	}
+	if record.Method != "manual" {
+		return Recharge{}, points.ErrInvalid
+	}
+	if err = s.consumeRechargeQuota(ctx, tx, brand, record.ID, amount, meta); err != nil {
 		return Recharge{}, err
 	}
 	before := rechargeSnapshot(record)
@@ -165,7 +172,7 @@ func (s Service) CancelRecharge(ctx context.Context, tx pgx.Tx, brand, id string
 	if err != nil || tx == nil || !financeUUIDPattern.MatchString(brand) || !financeUUIDPattern.MatchString(id) || version < 1 {
 		return Recharge{}, points.ErrInvalid
 	}
-	record, err := scanRecharge(tx.QueryRow(ctx, `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
+	record, err := scanRecharge(tx.QueryRow(ctx, `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.method,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
 		COALESCE(r.confirmed_by::text,''),COALESCE(qa.username,''),r.version,r.created_at,r.confirmed_at,COALESCE(r.ledger_entry_id::text,'')
 		FROM recharge_orders r
 		LEFT JOIN brand_members bm ON bm.brand_id=r.brand_id AND bm.id=r.member_id
@@ -217,7 +224,7 @@ func (s Service) ListRecharges(ctx context.Context, brand, member string, limit,
 			return nil, points.ErrNotFound
 		}
 	}
-	query := `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
+	query := `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.method,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
 		COALESCE(r.confirmed_by::text,''),COALESCE(qa.username,''),r.version,r.created_at,r.confirmed_at,COALESCE(r.ledger_entry_id::text,'')
 		FROM recharge_orders r
 		LEFT JOIN brand_members bm ON bm.brand_id=r.brand_id AND bm.id=r.member_id
@@ -227,7 +234,7 @@ func (s Service) ListRecharges(ctx context.Context, brand, member string, limit,
 		WHERE r.brand_id=$1 ORDER BY r.created_at DESC,r.id DESC LIMIT $2 OFFSET $3`
 	args := []any{brand, limit, offset}
 	if member != "" {
-		query = `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
+		query = `SELECT r.id::text,r.brand_id::text,r.member_id::text,COALESCE(gu.username,''),r.account_id::text,r.points,r.method,r.state,r.proof_reference,r.remark,r.created_by::text,COALESCE(ca.username,''),
 			COALESCE(r.confirmed_by::text,''),COALESCE(qa.username,''),r.version,r.created_at,r.confirmed_at,COALESCE(r.ledger_entry_id::text,'')
 			FROM recharge_orders r
 			LEFT JOIN brand_members bm ON bm.brand_id=r.brand_id AND bm.id=r.member_id
@@ -258,7 +265,7 @@ type rechargeScanner interface{ Scan(...any) error }
 func scanRecharge(row rechargeScanner) (Recharge, error) {
 	var record Recharge
 	var amount int64
-	err := row.Scan(&record.ID, &record.BrandID, &record.MemberID, &record.MemberUsername, &record.AccountID, &amount, &record.State,
+	err := row.Scan(&record.ID, &record.BrandID, &record.MemberID, &record.MemberUsername, &record.AccountID, &amount, &record.Method, &record.State,
 		&record.ProofReference, &record.Remark, &record.CreatedBy, &record.CreatedByName, &record.ConfirmedBy, &record.ConfirmedByName, &record.Version,
 		&record.CreatedAt, &record.ConfirmedAt, &record.LedgerEntryID)
 	record.Points = strconv.FormatInt(amount, 10)
@@ -267,7 +274,7 @@ func scanRecharge(row rechargeScanner) (Recharge, error) {
 
 func rechargeSnapshot(record Recharge) map[string]any {
 	return map[string]any{"id": record.ID, "brand_id": record.BrandID, "member_id": record.MemberID, "account_id": record.AccountID,
-		"points": record.Points, "state": record.State, "proof_reference": record.ProofReference, "remark": record.Remark,
+		"method": record.Method, "points": record.Points, "state": record.State, "proof_reference": record.ProofReference, "remark": record.Remark,
 		"created_by": record.CreatedBy, "confirmed_by": record.ConfirmedBy, "version": record.Version,
 		"created_at": record.CreatedAt, "confirmed_at": record.ConfirmedAt, "ledger_entry_id": record.LedgerEntryID}
 }
@@ -277,13 +284,15 @@ func validReason(value string) (string, error) {
 		return "", points.ErrInvalid
 	}
 	value = strings.TrimSpace(value)
-	if len(value) > 500 {
+	if utf8.RuneCountInString(value) > 500 {
 		return "", points.ErrInvalid
 	}
 	return value, nil
 }
 
-func validText(value string, max int) bool { return utf8.ValidString(value) && len(value) <= max }
+func validText(value string, max int) bool {
+	return utf8.ValidString(value) && utf8.RuneCountInString(value) <= max
+}
 
 func parseAmount(value string) (points.Amount, error) {
 	var amount int64

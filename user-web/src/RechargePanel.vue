@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import TablePagination from "@lottery/shared/TablePagination.vue"
+import SelectControl from '@lottery/shared/SelectControl.vue'
+import { useOperationToast } from "@lottery/shared";
 import { useUserI18n as usePublicErrorI18n } from "./i18n";
 const publicErrorI18n = usePublicErrorI18n();
 const publicErrorMessage = publicErrorI18n.errorMessage;
@@ -25,6 +28,7 @@ const scopeKey = computed(() => props.member ? `${props.brandCode ?? ""}:${props
 const page = ref<Awaited<ReturnType<ReturnType<typeof createRechargeApi>["list"]>> | null>(null);
 const items = computed(() => page.value?.items ?? []);
 const selectedState = ref<RechargeState | "">("");
+const appliedState = ref<RechargeState | "">("");
 const offset = ref(0);
 const loading = ref(false);
 const errorKey = ref<"unavailable" | "mismatch" | "invalid" | "">("");
@@ -39,7 +43,7 @@ let disposed = false;
 
 const ui = useUserI18n().t;
 const labels = computed(() => ({
-  title: ui('user.recharge.title'), intro: ui('user.recharge.intro'), refresh: ui('user.recharge.refresh'), loading: ui('user.recharge.loading'), signIn: ui('user.recharge.signIn'), signInAction: ui('user.recharge.signInAction'), empty: ui('user.recharge.empty'), status: ui('user.recharge.status'), all: ui('user.recharge.all'), pending: ui('user.recharge.pending'), confirmed: ui('user.recharge.confirmed'), cancelled: ui('user.recharge.cancelled'), created: ui('user.recharge.created'), confirmedAt: ui('user.recharge.confirmedAt'), points: ui('user.recharge.points'), pointsUnit: ui('user.recharge.pointsUnit'), details: ui('user.recharge.details'), close: ui('user.recharge.close'), previous: ui('user.recharge.previous'), next: ui('user.recharge.next'), page: ui('user.recharge.page'), total: ui('user.recharge.total'), recordId: ui('user.recharge.recordId'), version: ui('user.recharge.version'), ledgerEntry: ui('user.recharge.ledgerEntry'), snapshot: ui('user.recharge.snapshot'), utc: ui('user.recharge.utc'), walletGuide: ui('user.recharge.walletGuide'), manual: ui('user.recharge.manual'), unavailable: ui('user.recharge.unavailable'), mismatch: ui('user.recharge.mismatch'), invalid: ui('user.recharge.invalid'),
+  title: ui('user.recharge.title'), intro: ui('user.recharge.intro'), refresh: ui('user.recharge.refresh'), loading: ui('user.recharge.loading'), signIn: ui('user.recharge.signIn'), signInAction: ui('user.recharge.signInAction'), empty: ui('user.recharge.empty'), status: ui('user.recharge.status'), all: ui('user.recharge.all'), pending: ui('user.recharge.pending'), confirmed: ui('user.recharge.confirmed'), cancelled: ui('user.recharge.cancelled'), created: ui('user.recharge.created'), confirmedAt: ui('user.recharge.confirmedAt'), points: ui('user.recharge.points'), pointsUnit: ui('user.recharge.pointsUnit'), details: ui('user.recharge.details'), close: ui('user.recharge.close'), previous: ui('user.recharge.previous'), next: ui('user.recharge.next'), page: ui('user.recharge.page'), total: ui('user.recharge.total'), recordId: ui('user.recharge.recordId'), version: ui('user.recharge.version'), ledgerEntry: ui('user.recharge.ledgerEntry'), snapshot: ui('user.recharge.snapshot'), walletGuide: ui('user.recharge.walletGuide'), manual: ui('user.recharge.manual'), unavailable: ui('user.recharge.unavailable'), mismatch: ui('user.recharge.mismatch'), invalid: ui('user.recharge.invalid'),
   pendingState: ui('user.recharge.pending'), confirmedState: ui('user.recharge.confirmed'), cancelledState: ui('user.recharge.cancelled'),
 }));
 const error = computed(() => errorKey.value ? labels.value[errorKey.value] : errorText.value);
@@ -65,13 +69,12 @@ function clearVisible() {
   detailGeneration++;
 }
 
-async function load(resetOffset = false) {
+async function load(requestedOffset = offset.value, requestedState = appliedState.value) {
   const requestGeneration = ++generation;
   listController?.abort();
   listController = new AbortController();
   const requestScope = scopeKey.value;
   const member = props.member ? { id: props.member.id, brand_id: props.member.brand_id } : null;
-  if (resetOffset) offset.value = 0;
   detailController?.abort();
   detailGeneration++;
   detail.value = null;
@@ -85,13 +88,14 @@ async function load(resetOffset = false) {
   }
   loading.value = true;
   try {
-    const result = await api.value.list({ brand_id: member.brand_id, member_id: member.id }, { limit: 20, offset: offset.value, state: selectedState.value || null }, listController.signal);
+    const result = await api.value.list({ brand_id: member.brand_id, member_id: member.id }, { limit: 20, offset: requestedOffset, state: requestedState || null }, listController.signal);
     if (disposed || requestGeneration !== generation || requestScope !== scopeKey.value) return;
-    page.value = result;
+    page.value = result; offset.value = requestedOffset; appliedState.value = requestedState;
   } catch (cause) {
     if (disposed || requestGeneration !== generation || requestScope !== scopeKey.value || (cause instanceof DOMException && cause.name === "AbortError")) return;
-    page.value = null;
     if (isUnauthorized(cause) || isScopeMismatch(cause)) {
+      clearVisible();
+      page.value = null;
       emit("auth-expired");
       errorKey.value = "mismatch";
     } else if (isInvalidResponse(cause)) errorKey.value = "invalid";
@@ -129,6 +133,7 @@ async function openDetail(item: MemberRecharge) {
     if (disposed || requestGeneration !== detailGeneration || requestScope !== scopeKey.value || (cause instanceof DOMException && cause.name === "AbortError")) return;
     if (isUnauthorized(cause) || isScopeMismatch(cause)) {
       clearVisible();
+      page.value = null;
       emit("auth-expired");
       errorKey.value = "mismatch";
     } else if (isInvalidResponse(cause)) errorKey.value = "invalid";
@@ -140,26 +145,16 @@ async function openDetail(item: MemberRecharge) {
   }
 }
 
-async function nextPage() {
-  if (!page.value || BigInt(offset.value + page.value.items.length) >= BigInt(page.value.total_count) || offset.value >= 1_000_000) return;
-  offset.value += 20;
-  await load();
-}
-async function previousPage() {
-  if (offset.value <= 0) return;
-  offset.value = Math.max(0, offset.value - 20);
-  await load();
-}
 
 watch(scopeKey, () => {
   generation++;
   clearVisible();
   loading.value = false;
-  void load(true);
+  selectedState.value = appliedState.value = "";
+  void load(0);
 }, { immediate: true });
-watch(selectedState, () => {
-  if (scopeKey.value) void load(true);
-});
+async function search() { await load(0, selectedState.value); }
+async function clearFilters() { selectedState.value = ''; await load(0, ''); }
 onUnmounted(() => {
   disposed = true;
   generation++;
@@ -167,65 +162,54 @@ onUnmounted(() => {
   listController?.abort();
   detailController?.abort();
 });
+
+useOperationToast(error, value => displayPublicError(value), 'error');
 </script>
 
 <template>
   <section class="page-section narrow-page recharge-page">
-    <div class="page-heading">
-      <div><div class="eyebrow">{{ ui('user.ui.points') }}</div><h1>{{ labels.title }}</h1></div>
-      <Teleport defer to="#user-page-refresh"><button v-refresh-button="loading ? labels.loading : labels.refresh" class="button button-secondary" :disabled="loading || !member" @click="withGlobalLoading(load)">{{ loading ? labels.loading : labels.refresh }}</button></Teleport>
-    </div>
+    <Teleport defer to="#user-page-refresh"><button type="button" v-refresh-button="loading ? labels.loading : labels.refresh" class="button button-secondary" :disabled="loading || !member" @click="withGlobalLoading(load)">{{ loading ? labels.loading : labels.refresh }}</button></Teleport>
     <p class="muted" role="note">{{ labels.manual }}</p>
-    <div v-if="!member" class="detail-panel" role="status"><p>{{ labels.signIn }}</p><button class="button button-secondary" @click="emit('sign-in')">{{ labels.signInAction }}</button><slot name="sign-in" /></div>
-    <template v-else>
-      <label class="field-label recharge-filter">{{ labels.status }}
-        <select :value="selectedState" :disabled="loading" @change="selectedState = ($event.target as HTMLSelectElement).value as RechargeState | ''">
-          <option value="">{{ labels.all }}</option><option value="pending">{{ labels.pending }}</option><option value="confirmed">{{ labels.confirmed }}</option><option value="cancelled">{{ labels.cancelled }}</option>
-        </select>
-      </label>
+    <div v-if="!member" class="detail-panel" role="status"><p>{{ labels.signIn }}</p><button type="button" class="button button-secondary" @click="emit('sign-in')">{{ labels.signInAction }}</button><slot name="sign-in" /></div>
+    <div v-else class="user-record-list" :aria-busy="loading">
+      <form class="ui-filter-bar" @submit.prevent="withGlobalLoading(search)"><label class="field-label recharge-filter">{{ labels.status }}
+        <SelectControl :model-value="selectedState" :disabled="loading" @change="selectedState = $event as RechargeState | ''" :label="String(labels.status)" :options="[{ value: '', label: (String(labels.all)).trim() }, { value: 'pending', label: (String(labels.pending)).trim() }, { value: 'confirmed', label: (String(labels.confirmed)).trim() }, { value: 'cancelled', label: (String(labels.cancelled)).trim() }]" />
+      </label><button type="submit" class="button button-primary" :disabled="loading">{{ ui('user.lists.search') }}</button><button v-if="selectedState || appliedState" type="button" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(clearFilters)">{{ ui('user.lists.clear') }}</button></form>
       <p v-global-loading v-if="loading" class="detail-panel" role="status">{{ labels.loading }}</p>
-      <p v-if="error" class="auth-error" role="alert">{{ displayPublicError(error) }}</p>
+
       <template v-if="page">
-        <div class="detail-panel recharge-list">
-          <p class="muted recharge-total">{{ labels.total }} · {{ formatted(page.total_count) }}</p>
+        <div class="recharge-list">
           <p class="muted recharge-snapshot">{{ labels.snapshot }} · {{ date(page.snapshot_at) }}</p>
           <p v-if="!items.length" class="muted empty-state" role="status">{{ labels.empty }}</p>
           <article v-for="item in items" :key="item.id" class="recharge-record">
             <div><strong>{{ formatted(item.points) }} {{ labels.pointsUnit }}</strong><span class="status-chip">{{ statusName(item.state) }}</span></div>
-            <small>{{ labels.recordId }} · {{ item.id }}</small>
+            <small>{{ ui(item.method === "manual" ? "user.recharge.methodManual" : "user.recharge.methodAutomatic") }}</small>
             <small>{{ labels.created }} · {{ date(item.created_at) }}</small>
-            <button class="text-button" @click="withGlobalLoading(openDetail, item)">{{ labels.details }}</button>
+            <button type="button" class="text-button" tabindex="0" aria-haspopup="dialog" @click="withGlobalLoading(openDetail, item)">{{ labels.details }}</button>
           </article>
-          <nav class="recharge-pagination" :aria-label="labels.page">
-            <button class="button button-secondary" :disabled="loading || offset === 0" @click="withGlobalLoading(previousPage)">{{ labels.previous }}</button>
-            <span>{{ labels.page }} {{ Math.floor(offset / 20) + 1 }}</span>
-            <button class="button button-secondary" :disabled="loading || BigInt(offset + items.length) >= BigInt(page.total_count) || offset >= 1_000_000" @click="withGlobalLoading(nextPage)">{{ labels.next }}</button>
-          </nav>
+          <TablePagination show-empty class="recharge-pagination" :aria-label="labels.page" :total="page?.total_count ?? '0'" :page="Math.floor(offset / 20 + 1)" :count="items.length" :locale="publicErrorI18n.locale.value" :page-size="20" :reachable-page="50_001" :previous-disabled="loading || offset === 0" :next-disabled="loading || BigInt(offset + items.length) >= BigInt(page.total_count) || offset >= 1_000_000" :previous-label="labels.previous" :next-label="labels.next" :go-to="(target: number) => load((target - 1) * 20)" />
         </div>
         <div v-global-loading v-if="detailLoading" class="detail-panel" role="status">{{ labels.loading }}</div>
         <DetailModal v-if="!!detail" :title="labels.details" :close-label="labels.close" @close="detail = null">
-<section v-if="detail" class="detail-panel recharge-detail" aria-live="polite">
-          <div class="recharge-detail-heading"><h2>{{ labels.details }}</h2><button class="text-button" @click="detail = null">{{ labels.close }}</button></div>
-          <dl><div><dt>{{ labels.recordId }}</dt><dd>{{ detail.id }}</dd></div><div><dt>{{ labels.points }}</dt><dd>{{ formatted(detail.points) }} {{ labels.pointsUnit }}</dd></div><div><dt>{{ labels.status }}</dt><dd>{{ statusName(detail.state) }}</dd></div><div><dt>{{ labels.created }}</dt><dd>{{ date(detail.created_at) }}</dd></div><div v-if="detail.confirmed_at"><dt>{{ labels.confirmedAt }}</dt><dd>{{ date(detail.confirmed_at) }}</dd></div><div v-if="detail.ledger_entry_id"><dt>{{ labels.ledgerEntry }}</dt><dd>{{ detail.ledger_entry_id }}</dd></div></dl>
+<section v-if="detail" class="recharge-detail" aria-live="polite">
+          <dl><div><dt>{{ ui("user.recharge.method") }}</dt><dd>{{ ui(detail.method === "manual" ? "user.recharge.methodManual" : "user.recharge.methodAutomatic") }}</dd></div><div><dt>{{ labels.points }}</dt><dd>{{ formatted(detail.points) }} {{ labels.pointsUnit }}</dd></div><div><dt>{{ labels.status }}</dt><dd>{{ statusName(detail.state) }}</dd></div><div><dt>{{ labels.created }}</dt><dd>{{ date(detail.created_at) }}</dd></div><div v-if="detail.confirmed_at"><dt>{{ labels.confirmedAt }}</dt><dd>{{ date(detail.confirmed_at) }}</dd></div></dl>
         </section>
 </DetailModal>
       </template>
-    </template>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.recharge-filter { max-width: 260px; margin: 18px 0; }
-.recharge-filter select { width: 100%; min-height: 42px; padding: 0 12px; border: 1px solid #e3e9e2; border-radius: 9px; background: var(--surface); color: #35483b; font: inherit; }
-.recharge-page .text-button { min-height: 44px; padding: 8px 0; border: 0; background: transparent; color: var(--brand-primary); font: inherit; font-size: 14px; font-weight: 650; text-align: left; cursor: pointer; justify-self: start; }
-.recharge-page .text-button:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 3px; border-radius: 4px; }
+.recharge-filter { max-width: 260px; margin: 0; }
+
+
 .recharge-total { margin-top: 0; }
-.recharge-record { display: grid; gap: 7px; padding: 15px 0; border-top: 1px solid #e9ede8; }
+.recharge-record { display: grid; gap: 7px; padding: 15px 0; border-top: 1px solid var(--line); }
 .recharge-record > div { display: flex; align-items: center; gap: 10px; }
-.recharge-record small { color: #69766e; }
-.recharge-pagination, .recharge-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.recharge-record small { color: var(--muted); }.recharge-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
 .recharge-detail dl { display: grid; gap: 12px; }
 .recharge-detail dl > div { display: flex; justify-content: space-between; gap: 16px; }
-.recharge-detail dt { color: #69766e; }
+.recharge-detail dt { color: var(--muted); }
 .recharge-detail dd { margin: 0; text-align: right; }
 </style>

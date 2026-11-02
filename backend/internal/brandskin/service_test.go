@@ -85,7 +85,7 @@ func TestPresentationPersistsAuditedSnapshotsWithoutFinancialChanges(t *testing.
 		}
 	}
 	var funds int
-	if e = s.DB.QueryRow(ctx, `SELECT (SELECT count(*) FROM point_ledger_entries)+(SELECT count(*) FROM bet_orders)`).Scan(&funds); e != nil || funds != 0 {
+	if e = s.DB.QueryRow(ctx, `SELECT (SELECT count(*) FROM point_ledger_entries)+(SELECT count(*) FROM configured_orders)`).Scan(&funds); e != nil || funds != 0 {
 		t.Fatal(funds, e)
 	}
 }

@@ -1,5 +1,7 @@
 # 日月报表不可变快照与版本服务
 
+> 当前“归档记录”页面只提供日归档/月归档页签、独立分页和点击查看详情；创建及追加版本表单已从页面移除，人工接口继续保留。GET 列表新增可选 kind=daily/monthly，在服务器端先筛选再统计总数和分页。下文人工创建页面流程为历史交接记录，以本段当前页面约定为准。
+
 品牌日/月归档采用已确认的快照与追加版本方式：财务按实际入账时间统计，后续更正不覆盖旧档，重新观察时生成新版本，默认不自动删除。归档不是停止记账的财务封账，也不证明所有注单已经最终完成或外部支付到账。
 
 0064、0065实现统计与持久服务，0066注册独立权限，并接入四条正式管理接口、幂等原回执和原字节下载。后台“日月归档”已提供PC/移动双语查询、人工创建/追加、原回执恢复和验证后下载。0067接入默认关闭的[自动核心与worker](27-automatic-report-archive-core.md)，[配置只读和任务查询/重试](28-report-archive-task-management.md)已接入双端页面；[正式配置PUT](29-report-archive-activation.md)已按首次当天/月口径接入，无公开历史回补接口，双端配置编辑与显式原键恢复已接入。
@@ -12,7 +14,7 @@
 
 只有to已经过去的日/月能保存归档。新版本复用原记录的timezone、from和to，不随品牌后来修改时区或重新解释日历而改变原范围。同品牌、kind和period_key组成一个版本系列，revision从1连续增加，previous_id指向上一版；不存在覆盖、删除或重置版本的正常操作。
 
-expected_revision为调用方确认的原最新版本；第一版为0。过期版本拒绝，不自动替运营人员选择新版本；同一系列并发提交只有一个成功，忙锁或版本冲突需重新读取。非空原因须有效UTF-8、已去首尾空白、最多500字节且不含NUL、CR、LF。
+expected_revision为调用方确认的原最新版本；第一版为0。过期版本拒绝，不自动替运营人员选择新版本；同一系列并发提交只有一个成功，忙锁或版本冲突需重新读取。非空原因须有效UTF-8、已去首尾空白、最多500字符且不含NUL、CR、LF。
 
 ## 单一统计快照
 
@@ -20,15 +22,7 @@ reporting.Service.CaptureArchive和CaptureArchiveTimezone在调用方主库事�
 
 ArchiveSnapshot的封闭字段为brand_id、format_version、snapshot_at、timezone、from、to、betting、ledger、wallet_snapshot、withdrawals、commissions、rewards、reward_orders，格式版本固定1。统计区块复用现有报表的字段和时间口径，不输出会员身份、支付证明、私有配置或操作原因。
 
-| 区块 | 时间与事实口径 |
-|---|---|
-| betting | 原投注时间范围内，在snapshot_at观察到的当前最终代次；未结算、异常、取消及未完成更正分开统计 |
-| ledger | 实际ledger.created_at内的全部积分变动，保留历史派奖及反向，状态间转移净额为0 |
-| wallet_snapshot | at_snapshot及balances；当前账户/可用/冻结/提现预留/总积分观察，不是to时刻的历史余额 |
-| withdrawals | 申请created_at范围内、在snapshot_at观察到的状态分布，不冒充实际外部付款 |
-| commissions | 实际入账时间的原派发、人工修正及非零结果更正，旧run变更不抹除已发生记录 |
-| rewards | 实际奖励发放/反向入账时间与不可变动作审计，撤销不删除原发放 |
-| reward_orders | 创建时间范围内，在snapshot_at观察到的granted、revocation_pending、revoked状态 |
+一期精简后，结算仅提供即时试算；批量对账、在线余额修复和奖励待追缴已移除。人工奖励余额不足时明确失败且不改变资金记录，见[当前精简范围](64-betting-points-simplification.md)。
 
 所有计数和积分聚合为精确十进制字符串，可以超过int64；净额可以为负。各区块独立聚合，不把人工修正、多次更正或奖励动作连接到原信用记录后重复累计。没有相应事实时才返回规范0，不用假流水填充测试或业务记录。
 

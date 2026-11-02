@@ -10,7 +10,7 @@
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--danger) 6%, var(--surface));
   color: var(--danger);
-  font-size: 13px;
+  font-size: var(--body-font-size);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }

@@ -4,8 +4,11 @@ import (
 	"context"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/gxfcjkxf/lottery/backend/internal/access"
+	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 )
 
@@ -243,5 +246,143 @@ func TestBootstrapReportArchiveRightsAreExplicitAndScoped(t *testing.T) {
 		if !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("%s report archive grants=%v want=%v", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestBootstrapRechargeQuotaGrantIsPlatformOnly(t *testing.T) {
+	db := testdb.New(t)
+	ctx := context.Background()
+	before := os.Args
+	t.Cleanup(func() { os.Args = before })
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "quota-bootstrap-test-2026")
+	for _, tc := range []struct {
+		name  string
+		args  []string
+		grant bool
+	}{
+		{"quota_platform_one", []string{"--super"}, true},
+		{"quota_platform_two", []string{"--super"}, true},
+		{"quota_brand_one", []string{"--brand", "aurora"}, false},
+	} {
+		os.Args = append([]string{"platform", "create-admin", "--username", tc.name}, tc.args...)
+		if err := createAdmin(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+		var id string
+		if err := db.QueryRow(ctx, `SELECT id::text FROM admin_accounts WHERE username=$1`, tc.name).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		account, err := (adminsys.Store{DB: db}).Account(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := access.Authorize(account, "recharge_quota", "write", access.ScopePlatform, ""); got != tc.grant {
+			t.Fatalf("%s quota write=%v want=%v", tc.name, got, tc.grant)
+		}
+		if tc.grant && !access.Authorize(account, "recharge", "view", access.ScopePlatform, "") {
+			t.Fatalf("%s cannot read recharge quota", tc.name)
+		}
+	}
+}
+
+func TestPlatformBootstrapRegistersBrandBasePermissionCatalog(t *testing.T) {
+	db := testdb.NewUnseeded(t)
+	ctx := context.Background()
+	before := os.Args
+	t.Cleanup(func() { os.Args = before })
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "brand-catalog-test-2026")
+	os.Args = []string{"platform", "create-admin", "--username", "catalog_owner", "--super"}
+	if err := createAdmin(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range append(bootstrapPermissions(false, false), bootstrapPermissions(true, true)...) {
+		var exists bool
+		if err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM permissions WHERE key=$1)`, key).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if !exists {
+			t.Fatalf("platform-only bootstrap omitted brand catalog key %s", key)
+		}
+	}
+	var brandGrants int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id WHERE r.brand_id IS NULL AND split_part(rp.permission_key,'.',3)='brand'`).Scan(&brandGrants); err != nil {
+		t.Fatal(err)
+	}
+	if brandGrants != 0 {
+		t.Fatalf("platform bootstrap received %d brand grants", brandGrants)
+	}
+}
+
+// Compare the complete installed catalog with both initialization policies, so
+// additions to migrations cannot silently disappear from initial administrators.
+func TestBootstrapCatalogAndScopedGrantCoverage(t *testing.T) {
+	db := testdb.New(t)
+	ctx := context.Background()
+	before := os.Args
+	t.Cleanup(func() { os.Args = before })
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "catalog-coverage-2026")
+	for _, tc := range []struct {
+		username string
+		args     []string
+		scope    string
+	}{
+		{"admin", []string{"--super"}, "platform"},
+		{"catalog_brand", []string{"--brand", "aurora"}, "brand"},
+	} {
+		os.Args = append([]string{"platform", "create-admin", "--username", tc.username}, tc.args...)
+		if err := createAdmin(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+		rows, err := db.Query(ctx, `SELECT p.key FROM permissions p WHERE split_part(p.key,'.',3)=$2 AND p.key NOT IN ('brand_domains.view.brand','brand_domains.write.brand') AND NOT EXISTS(SELECT 1 FROM role_permissions rp JOIN admin_account_roles ar ON ar.role_id=rp.role_id JOIN admin_accounts a ON a.id=ar.account_id WHERE a.username=$1 AND rp.permission_key=p.key) ORDER BY p.key`, tc.username, tc.scope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for rows.Next() {
+			var key string
+			if err := rows.Scan(&key); err != nil {
+				t.Fatal(err)
+			}
+			t.Errorf("%s bootstrap omitted catalog permission %s", tc.scope, key)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		rows.Close()
+		var misplaced int
+		if err := db.QueryRow(ctx, `SELECT count(*) FROM role_permissions rp JOIN admin_account_roles ar ON ar.role_id=rp.role_id JOIN admin_accounts a ON a.id=ar.account_id WHERE a.username=$1 AND split_part(rp.permission_key,'.',3)<>$2`, tc.username, tc.scope).Scan(&misplaced); err != nil {
+			t.Fatal(err)
+		}
+		if misplaced != 0 {
+			t.Fatalf("%s bootstrap has %d cross-scope permissions", tc.scope, misplaced)
+		}
+	}
+}
+
+func TestBootstrapFinancialAndComplianceGrants(t *testing.T) {
+	brand := make(map[string]bool)
+	for _, key := range bootstrapPermissions(false, false) {
+		brand[key] = true
+	}
+	for _, key := range []string{"withdrawal.view.brand", "withdrawal.approve.brand", "withdrawal.reject.brand", "withdrawal.cancel.brand", "withdrawal.mark_paid.brand", "withdrawal.fail.brand", "report_withdrawal.view.brand", "report_withdrawal.export.brand"} {
+		if !brand[key] {
+			t.Errorf("brand bootstrap missing %s", key)
+		}
+	}
+	platform := make(map[string]bool)
+	for _, key := range bootstrapPermissions(true, false) {
+		platform[key] = true
+	}
+	for _, key := range []string{"compliance_policy.write.platform", "compliance_check.run.platform", "recharge_quota.write.platform"} {
+		if !platform[key] {
+			t.Errorf("platform bootstrap missing %s", key)
+		}
+	}
+	for key := range platform {
+		if strings.HasPrefix(key, "withdrawal.") && key != "withdrawal.view.platform" {
+			t.Errorf("platform received brand financial operation %s", key)
+		}
+	}
+	if platform["admin.delete.platform"] {
+		t.Fatal("ordinary platform initialization granted owner deletion permission")
 	}
 }

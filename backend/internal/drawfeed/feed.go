@@ -21,10 +21,10 @@ var (
 )
 
 const (
-	maxPeriodBytes = 80
-	maxSourceCount = 16
-	maxSourceID    = 80
-	maxRawRefBytes = 2048
+	maxPeriodCharacters = 80
+	maxSourceCount      = 16
+	maxSourceID         = 80
+	maxRawRefCharacters = 2048
 )
 
 type Request struct {
@@ -111,7 +111,7 @@ func ValidateCandidate(request Request, candidate Candidate) error {
 	if !validPeriod(request.PeriodNo) || !validPeriod(candidate.PeriodNo) || candidate.PeriodNo != request.PeriodNo {
 		return ErrInvalid
 	}
-	if len(candidate.RawReference) > maxRawRefBytes || !utf8.ValidString(candidate.RawReference) {
+	if utf8.RuneCountInString(candidate.RawReference) > maxRawRefCharacters || !utf8.ValidString(candidate.RawReference) {
 		return ErrInvalid
 	}
 	if candidate.DrawnAt.IsZero() {
@@ -255,11 +255,11 @@ func classifyError(err error) (status, code string, mapped error) {
 }
 
 func validPeriod(value string) bool {
-	return value != "" && strings.TrimSpace(value) != "" && len(value) <= maxPeriodBytes && utf8.ValidString(value)
+	return value != "" && strings.TrimSpace(value) != "" && utf8.RuneCountInString(value) <= maxPeriodCharacters && utf8.ValidString(value)
 }
 
 func validIdentifier(value string) bool {
-	return value != "" && strings.TrimSpace(value) != "" && len(value) <= maxSourceID && utf8.ValidString(value)
+	return value != "" && strings.TrimSpace(value) != "" && utf8.RuneCountInString(value) <= maxSourceID && utf8.ValidString(value)
 }
 
 func sameDraw(model rules.Model, previous, current rules.Draw) bool {

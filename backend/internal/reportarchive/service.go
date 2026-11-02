@@ -129,15 +129,15 @@ func (s Service) ReadTx(ctx context.Context, tx pgx.Tx, brand, id string) (Recor
 	err = json.Unmarshal(raw, &out)
 	return out, err
 }
-func (s Service) ListTx(ctx context.Context, tx pgx.Tx, brand string, limit, offset int) (Page, error) {
+func (s Service) ListTx(ctx context.Context, tx pgx.Tx, brand string, limit, offset int, kind string) (Page, error) {
 	out := Page{BrandID: brand, Items: []Record{}, Limit: limit, Offset: offset}
-	if tx == nil || !archiveUUID.MatchString(brand) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
+	if kind != "" && kind != Daily && kind != Monthly || tx == nil || !archiveUUID.MatchString(brand) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
 		return out, ErrInvalid
 	}
 	var raw []byte
 	var intact bool
-	err := tx.QueryRow(ctx, `WITH page AS (SELECT * FROM report_archives WHERE brand_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3)
- SELECT (SELECT count(*)::text FROM report_archives WHERE brand_id=$1),coalesce((SELECT jsonb_agg(`+archiveJSON+` ORDER BY r.created_at DESC,r.id DESC) FROM page r),'[]'::jsonb),coalesce((SELECT bool_and(payload_sha256=encode(sha256(convert_to(payload::text,'UTF8')),'hex')) FROM page),true)`, brand, limit, offset).Scan(&out.TotalCount, &raw, &intact)
+	err := tx.QueryRow(ctx, `WITH page AS (SELECT * FROM report_archives WHERE brand_id=$1 AND ($4='' OR kind=$4) ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3)
+ SELECT (SELECT count(*)::text FROM report_archives WHERE brand_id=$1 AND ($4='' OR kind=$4)),coalesce((SELECT jsonb_agg(`+archiveJSON+` ORDER BY r.created_at DESC,r.id DESC) FROM page r),'[]'::jsonb),coalesce((SELECT bool_and(payload_sha256=encode(sha256(convert_to(payload::text,'UTF8')),'hex')) FROM page),true)`, brand, limit, offset, kind).Scan(&out.TotalCount, &raw, &intact)
 	if err != nil {
 		return out, err
 	}

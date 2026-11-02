@@ -14,6 +14,10 @@ import (
 	"strings"
 )
 
+func platformBrandDomainWriteRoute(method, path string) bool {
+	return method == "POST" && path == "/brand-domains" || (method == "PATCH" || method == "DELETE") && path == "/brand-domains/{domainID}"
+}
+
 func domainActor(w http.ResponseWriter, r *http.Request, d Dependencies, action string) (access.Account, string, bool) {
 	a, ok := adminAccount(w, r, d)
 	if !ok {

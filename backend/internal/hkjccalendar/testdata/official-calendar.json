@@ -1,0 +1,175 @@
+{
+  "data": {
+    "item": {
+      "years": [
+        {
+          "year": "2026",
+          "months": [
+            {
+              "month": {
+                "value": "01"
+              },
+              "dates": {
+                "date": [
+                  {
+                    "value": "06"
+                  },
+                  {
+                    "value": "08"
+                  },
+                  {
+                    "value": "10"
+                  },
+                  {
+                    "value": "13"
+                  },
+                  {
+                    "value": "15"
+                  },
+                  {
+                    "value": "17"
+                  },
+                  {
+                    "value": "20"
+                  },
+                  {
+                    "value": "22"
+                  },
+                  {
+                    "value": "24"
+                  },
+                  {
+                    "value": "27"
+                  },
+                  {
+                    "value": "29"
+                  },
+                  {
+                    "value": "31"
+                  }
+                ]
+              },
+              "snowballs": {
+                "date": [
+                  {
+                    "value": "03"
+                  }
+                ]
+              },
+              "presales": {
+                "date": []
+              }
+            },
+            {
+              "month": {
+                "value": "10"
+              },
+              "dates": {
+                "date": [
+                  {
+                    "value": "03"
+                  },
+                  {
+                    "value": "06"
+                  },
+                  {
+                    "value": "08"
+                  },
+                  {
+                    "value": "10"
+                  },
+                  {
+                    "value": "13"
+                  },
+                  {
+                    "value": "15"
+                  },
+                  {
+                    "value": "17"
+                  },
+                  {
+                    "value": "20"
+                  },
+                  {
+                    "value": "22"
+                  },
+                  {
+                    "value": "24"
+                  },
+                  {
+                    "value": "27"
+                  },
+                  {
+                    "value": "31"
+                  }
+                ]
+              },
+              "snowballs": {
+                "date": [
+                  {
+                    "value": "31"
+                  }
+                ]
+              },
+              "presales": {
+                "date": []
+              }
+            },
+            {
+              "month": {
+                "value": "11"
+              },
+              "dates": {
+                "date": [
+                  {
+                    "value": "03"
+                  },
+                  {
+                    "value": "05"
+                  },
+                  {
+                    "value": "07"
+                  },
+                  {
+                    "value": "10"
+                  },
+                  {
+                    "value": "12"
+                  },
+                  {
+                    "value": "15"
+                  },
+                  {
+                    "value": "17"
+                  },
+                  {
+                    "value": "19"
+                  },
+                  {
+                    "value": "24"
+                  },
+                  {
+                    "value": "26"
+                  },
+                  {
+                    "value": "28"
+                  }
+                ]
+              },
+              "snowballs": {
+                "date": [
+                  {
+                    "value": "24"
+                  }
+                ]
+              },
+              "presales": {
+                "date": []
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

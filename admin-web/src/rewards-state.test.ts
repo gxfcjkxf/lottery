@@ -14,7 +14,7 @@ const order = "44444444-4444-4444-8444-444444444444";
 const member = "55555555-5555-4555-8555-555555555555";
 const otherActor = "66666666-6666-4666-8666-666666666666";
 const key = "reward-intent-key-01";
-const scope: RewardIntentScope = { accountId: actor, brandId: brand, operation: "retry", targetId: order };
+const scope: RewardIntentScope = { accountId: actor, brandId: brand, operation: "revoke", targetId: order };
 
 afterEach(() => clearAllRewardIntents());
 
@@ -33,23 +33,6 @@ describe("reward intent state", () => {
     }
   });
 
-  it("copies Proxy input into an immutable flat JSON body containing only the approved fields", () => {
-    const source = { version: 3, reason: "Original reason" };
-    const proxied = new Proxy(source, { get: (target, property, receiver) => Reflect.get(target, property, receiver) });
-    const body = freezeRewardBody("retry", proxied);
-    source.version = 9;
-    source.reason = "Changed after freezing";
-    expect(body).toEqual({ version: 3, reason: "Original reason" });
-    expect(Object.isFrozen(body)).toBe(true);
-    expect(body).toEqual({ version: 3, reason: "Original reason" });
-    expect(createRewardIntent(scope, { version: 3, reason: "Unknown field", extra: true } as never, key)?.body).toEqual({ version: 3, reason: "Unknown field" });
-    expect(createRewardIntent(scope, { version: 1, reason: "No functions", run() {} } as never, key)?.body).toEqual({ version: 1, reason: "No functions" });
-    const cyclic: Record<string, unknown> = { version: 1, reason: "Cycle" };
-    cyclic.self = cyclic;
-    expect(createRewardIntent(scope, cyclic as never, key)?.body).toEqual({ version: 1, reason: "Cycle" });
-    expect(createRewardIntent(scope, { version: 1, reason: "BigInt", amount: 1n } as never, key)?.body).toEqual({ version: 1, reason: "BigInt" });
-  });
-
   it("isolates intent by complete account, brand, operation and optional target scope", () => {
     const intent = createRewardIntent(scope, { version: 4, reason: "Retry approved order" }, key);
     expect(intent).not.toBeNull();
@@ -58,7 +41,7 @@ describe("reward intent state", () => {
     expect(listPendingRewardIntents(actor, brand)).toEqual([intent]);
     expect(getPendingRewardIntent({ ...scope, brandId: otherBrand })).toBeNull();
     expect(getPendingRewardIntent({ ...scope, accountId: otherActor })).toBeNull();
-    expect(getPendingRewardIntent({ ...scope, operation: "revoke" })).toBeNull();
+    expect(getPendingRewardIntent({ ...scope, operation: "grant", targetId: undefined })).toBeNull();
     expect(getPendingRewardIntent({ ...scope, targetId: member })).toBeNull();
     expect(listPendingRewardIntents(actor, otherBrand)).toEqual([]);
   });
@@ -74,20 +57,20 @@ describe("reward intent state", () => {
     for (const invalidKey of ["short", "invalid/key", "", "x".repeat(129)]) {
       expect(createRewardIntent(scope, { version: 1, reason: "Retry" }, invalidKey)).toBeNull();
     }
-    for (const invalidReason of [ " padded ", "line\nbreak", "\ud800", "界".repeat(167)]) {
+    for (const invalidReason of [ " padded ", "line\nbreak", "\ud800", "界".repeat(501)]) {
       expect(createRewardIntent(scope, { version: 1, reason: invalidReason }, key)).toBeNull();
     }
   });
 
   it("uses only brand-scoped reward permissions and never grants mutations to super admins", () => {
     const all = { id: actor, super_admin: false, brand_ids: [brand], permissions: [], platform_permissions: [], permissions_by_brand: { [brand]: ["reward.view.brand", "reward.grant.brand", "reward.revoke.brand", "reward.retry.brand"] } };
-    expect(rewardPermissions(all, brand)).toEqual({ view: true, grant: true, revoke: true, retry: true });
+    expect(rewardPermissions(all, brand)).toEqual({ view: true, grant: true, revoke: true });
     expect(rewardPermissions({ ...all, permissions_by_brand: { [brand]: ["reward.grant.brand"] }, permissions: ["reward.view.platform", "reward.revoke.brand"], platform_permissions: [] }, brand))
-      .toEqual({ view: false, grant: false, revoke: false, retry: false });
+      .toEqual({ view: false, grant: false, revoke: false });
     expect(rewardPermissions({ ...all, super_admin: true, platform_permissions: ["reward.view.platform"], permissions_by_brand: { [brand]: ["reward.view.brand", "reward.grant.brand"] } }, brand))
-      .toEqual({ view: false, grant: false, revoke: false, retry: false });
+      .toEqual({ view: false, grant: false, revoke: false });
     expect(rewardPermissions({ ...all, brand_ids: [], permissions_by_brand: { [brand]: ["reward.view.brand", "reward.grant.brand"] } }, brand))
-      .toEqual({ view: false, grant: false, revoke: false, retry: false });
+      .toEqual({ view: false, grant: false, revoke: false });
   });
 
   it("prevents stale expected keys from clearing a replacement request", () => {

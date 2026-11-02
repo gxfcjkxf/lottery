@@ -13,7 +13,7 @@ const pending = new Map<string, PendingBrandOperationWrite>();
 let sessionGeneration = 0;
 let requestGeneration = 0;
 
-export function brandOperationScopeKey(accountId: string, brandId: string): string {
+function brandOperationScopeKey(accountId: string, brandId: string): string {
   return JSON.stringify([accountId, brandId]);
 }
 

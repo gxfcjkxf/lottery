@@ -1,3 +1,4 @@
+import { readPaginationTotal } from '@lottery/shared'
 import { readPlatformEnvelope } from './platform-api'
 
 import { PlatformApiError } from './platform-api'
@@ -88,7 +89,7 @@ function validKey(key: string) {
   if (!IDEMPOTENCY_KEY.test(key)) throw new PlatformAccessApiError('A valid idempotency key is required', 400, 'REQUEST_INVALID')
 }
 function validReason(reason: string) {
-  if (typeof reason !== 'string' || new TextEncoder().encode(reason).length > 500) {
+  if (typeof reason !== 'string' || Array.from(reason).length > 500) {
     throw new PlatformAccessApiError('A valid reason is required', 400, 'REQUEST_INVALID')
   }
 }
@@ -107,11 +108,11 @@ function validRoleIds(roleIds: string[]) {
 }
 function validPassword(password: string) {
   if (typeof password !== 'string') {
-    throw new PlatformAccessApiError('Password must be between 6 and 30 UTF-8 bytes', 400, 'REQUEST_INVALID')
+    throw new PlatformAccessApiError('Password must be between 6 and 30 characters', 400, 'REQUEST_INVALID')
   }
-  const bytes = new TextEncoder().encode(password).length
-  if (bytes < 6 || bytes > 30) {
-    throw new PlatformAccessApiError('Password must be between 6 and 30 UTF-8 bytes', 400, 'REQUEST_INVALID')
+  const characters = Array.from(password).length
+  if (characters < 6 || characters > 30) {
+    throw new PlatformAccessApiError('Password must be between 6 and 30 characters', 400, 'REQUEST_INVALID')
   }
 }
 
@@ -159,17 +160,17 @@ export function createPlatformAccessApi(fetcher: typeof fetch = fetch) {
     return data as unknown as RoleRecord
   }
   return {
-    async accounts(brand: string, limit = 51, offset = 0): Promise<AdminRecord[]> {
+    async accounts(brand: string, limit = 51, offset = 0): Promise<{items: AdminRecord[]; total_count: string}> {
       validBrand(brand); validPage(limit, offset)
       const data = await request(`/accounts?limit=${limit}&offset=${offset}`, { brand })
       if (!isObj(data) || !Array.isArray(data.items) || !data.items.every(item => isAdmin(item, brand)) || data.items.length > limit) invalid()
-      return data.items
+      return {items: data.items, total_count: readPaginationTotal(data)}
     },
-    async roles(brand: string, limit = 51, offset = 0): Promise<RoleRecord[]> {
+    async roles(brand: string, limit = 51, offset = 0): Promise<{items: RoleRecord[]; total_count: string}> {
       validBrand(brand); validPage(limit, offset)
       const data = await request(`/roles?limit=${limit}&offset=${offset}`, { brand })
       if (!isObj(data) || !Array.isArray(data.items) || !data.items.every(item => isRole(item, brand)) || data.items.length > limit) invalid()
-      return data.items
+      return {items: data.items, total_count: readPaginationTotal(data)}
     },
     async permissions(brand: string): Promise<string[]> {
       validBrand(brand)
@@ -177,17 +178,17 @@ export function createPlatformAccessApi(fetcher: typeof fetch = fetch) {
       if (!isObj(data) || !Array.isArray(data.items) || !data.items.every(value => isText(value) && MACHINE_KEY.test(value) && value.endsWith('.brand'))) invalid()
       return data.items
     },
-    async platformAccounts(limit = 51, offset = 0): Promise<AdminRecord[]> {
+    async platformAccounts(limit = 51, offset = 0): Promise<{items: AdminRecord[]; total_count: string}> {
       validPage(limit, offset)
       const data = await request(`/platform-accounts?limit=${limit}&offset=${offset}`)
       if (!isObj(data) || !Array.isArray(data.items) || !data.items.every(isPlatformAdmin) || data.items.length > limit) invalid()
-      return data.items
+      return {items: data.items, total_count: readPaginationTotal(data)}
     },
-    async platformRoles(limit = 51, offset = 0): Promise<RoleRecord[]> {
+    async platformRoles(limit = 51, offset = 0): Promise<{items: RoleRecord[]; total_count: string}> {
       validPage(limit, offset)
       const data = await request(`/platform-roles?limit=${limit}&offset=${offset}`)
       if (!isObj(data) || !Array.isArray(data.items) || !data.items.every(isPlatformRole) || data.items.length > limit) invalid()
-      return data.items
+      return {items: data.items, total_count: readPaginationTotal(data)}
     },
     async platformPermissions(): Promise<string[]> {
       const data = await request('/platform-permissions')

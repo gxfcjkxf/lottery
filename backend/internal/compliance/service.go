@@ -18,11 +18,12 @@ import (
 
 type Service struct{ DB *pgxpool.Pool }
 type Policy struct {
-	BrandID    string    `json:"brand_id"`
-	Version    int64     `json:"version"`
-	Config     Config    `json:"config"`
-	UpdatedAt  time.Time `json:"updated_at"`
-	AuditLogID string    `json:"audit_log_id,omitempty"`
+	InheritPlatform bool      `json:"inherit_platform"`
+	BrandID         string    `json:"brand_id"`
+	Version         int64     `json:"version"`
+	Config          Config    `json:"config"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	AuditLogID      string    `json:"audit_log_id,omitempty"`
 }
 type Revision struct {
 	ID         string    `json:"id"`
@@ -79,11 +80,11 @@ func Allowed(a access.Account, brand, resource, action string) bool {
 	return a.SuperAdmin && access.Authorize(a, resource, action, access.ScopePlatform, "")
 }
 
-const policySQL = `SELECT p.brand_id::text,p.version,p.config,p.updated_at,coalesce((SELECT audit_log_id::text FROM compliance_policy_revisions WHERE brand_id=p.brand_id AND version=p.version),'') FROM brand_compliance_policies p WHERE p.brand_id=$1`
+const policySQL = `SELECT p.brand_id::text,p.version,p.config,p.updated_at,coalesce((SELECT audit_log_id::text FROM compliance_policy_revisions WHERE brand_id=p.brand_id AND version=p.version),''),p.inherit_platform FROM brand_compliance_policies p WHERE p.brand_id=$1`
 
 func scanPolicy(row pgx.Row) (v Policy, e error) {
 	var raw []byte
-	e = row.Scan(&v.BrandID, &v.Version, &raw, &v.UpdatedAt, &v.AuditLogID)
+	e = row.Scan(&v.BrandID, &v.Version, &raw, &v.UpdatedAt, &v.AuditLogID, &v.InheritPlatform)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return v, ErrNotFound
 	}
@@ -95,6 +96,9 @@ func scanPolicy(row pgx.Row) (v Policy, e error) {
 	return v, e
 }
 func (s Service) Read(ctx context.Context, brand string) (Policy, error) {
+	if brand == "" {
+		return s.ReadPlatform(ctx)
+	}
 	if s.DB == nil || !uuid.MatchString(brand) {
 		return Policy{}, ErrInvalid
 	}
@@ -118,6 +122,9 @@ func validMeta(a access.Account, m points.Metadata) bool {
 	return uuid.MatchString(a.ID) && m.ActorType == "admin" && m.ActorID == a.ID && m.RequestID != ""
 }
 func (s Service) Update(ctx context.Context, tx pgx.Tx, brand string, a access.Account, in Input, meta points.Metadata) (Policy, error) {
+	return s.update(ctx, tx, brand, a, in, meta, false)
+}
+func (s Service) update(ctx context.Context, tx pgx.Tx, brand string, a access.Account, in Input, meta points.Metadata, fromPlatform bool) (Policy, error) {
 	var out Policy
 	if tx == nil || !uuid.MatchString(brand) || in.Version < 1 || !ValidReason(in.Reason) || !ValidConfig(in.Config) || !validMeta(a, meta) {
 		return out, ErrInvalid
@@ -125,8 +132,19 @@ func (s Service) Update(ctx context.Context, tx pgx.Tx, brand string, a access.A
 	if !Allowed(a, brand, "compliance_policy", "write") {
 		return out, ErrDenied
 	}
-	if e := lockBrand(ctx, tx, brand); e != nil {
+	var defaults []byte
+	if e := tx.QueryRow(ctx, `SELECT config FROM platform_compliance_settings WHERE id=true FOR SHARE`).Scan(&defaults); e != nil {
 		return out, e
+	}
+	if in.InheritPlatform {
+		if e := json.Unmarshal(defaults, &in.Config); e != nil {
+			return out, e
+		}
+	}
+	if !fromPlatform {
+		if e := lockBrand(ctx, tx, brand); e != nil {
+			return out, e
+		}
 	}
 	before, e := scanPolicy(tx.QueryRow(ctx, policySQL+" FOR UPDATE OF p", brand))
 	if e != nil {
@@ -139,7 +157,7 @@ func (s Service) Update(ctx context.Context, tx pgx.Tx, brand string, a access.A
 	if e != nil {
 		return out, e
 	}
-	out, e = scanPolicy(tx.QueryRow(ctx, `UPDATE brand_compliance_policies SET version=version+1,config=$2 WHERE brand_id=$1 RETURNING brand_id::text,version,config,updated_at,''`, brand, raw))
+	out, e = scanPolicy(tx.QueryRow(ctx, `UPDATE brand_compliance_policies SET version=version+1,config=$2,inherit_platform=$3 WHERE brand_id=$1 RETURNING brand_id::text,version,config,updated_at,'',inherit_platform`, brand, raw, in.InheritPlatform))
 	if e != nil {
 		return out, e
 	}

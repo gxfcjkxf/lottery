@@ -183,7 +183,7 @@ func (in *Input) UnmarshalJSON(data []byte) error {
 }
 
 func validText(s string, max int, oneLine bool) bool {
-	if !utf8.ValidString(s) || len(s) > max {
+	if !utf8.ValidString(s) || utf8.RuneCountInString(s) > max {
 		return false
 	}
 	if oneLine {
@@ -204,7 +204,7 @@ func enum(v string, options ...string) bool {
 	return false
 }
 func ValidAssetURI(value string) bool {
-	if value == "" || len(value) > 512 || strings.TrimSpace(value) != value || strings.ContainsAny(value, "\\%\r\n\t") || strings.Contains(value, "..") {
+	if value == "" || utf8.RuneCountInString(value) > 512 || strings.TrimSpace(value) != value || strings.ContainsAny(value, "\\%\r\n\t") || strings.Contains(value, "..") {
 		return false
 	}
 	for _, r := range value {

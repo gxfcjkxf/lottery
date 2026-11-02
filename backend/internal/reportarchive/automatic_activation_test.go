@@ -10,92 +10,13 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 )
 
-func TestActivationStartPeriodsUsesBrandCivilDateAndRetainsSavedStarts(t *testing.T) {
-	tests := []struct {
-		name      string
-		zone      string
-		at        time.Time
-		before    AutomaticPolicy
-		in        AutomaticActivationInput
-		wantDaily *string
-		wantMonth *string
-	}{
-		{
-			name:      "Kiritimati crosses into next UTC day and month",
-			zone:      "Pacific/Kiritimati",
-			at:        time.Date(2024, 1, 31, 12, 30, 0, 0, time.UTC),
-			in:        AutomaticActivationInput{DailyEnabled: true, MonthlyEnabled: true},
-			wantDaily: strptr("2024-02-01"), wantMonth: strptr("2024-02"),
-		},
-		{
-			name:      "Los Angeles remains on prior UTC date and month",
-			zone:      "America/Los_Angeles",
-			at:        time.Date(2024, 2, 1, 1, 30, 0, 0, time.UTC),
-			in:        AutomaticActivationInput{DailyEnabled: true, MonthlyEnabled: true},
-			wantDaily: strptr("2024-01-31"), wantMonth: strptr("2024-01"),
-		},
-		{
-			name:      "turning off keeps saved first starts",
-			zone:      "UTC",
-			at:        time.Date(2024, 5, 12, 8, 0, 0, 0, time.UTC),
-			before:    AutomaticPolicy{DailyStartPeriod: strptr("2024-02-01"), MonthlyStartPeriod: strptr("2024-01")},
-			in:        AutomaticActivationInput{},
-			wantDaily: strptr("2024-02-01"), wantMonth: strptr("2024-01"),
-		},
-		{
-			name:      "reenabling keeps saved first starts",
-			zone:      "UTC",
-			at:        time.Date(2024, 5, 12, 8, 0, 0, 0, time.UTC),
-			before:    AutomaticPolicy{DailyStartPeriod: strptr("2024-02-01"), MonthlyStartPeriod: strptr("2024-01")},
-			in:        AutomaticActivationInput{DailyEnabled: true, MonthlyEnabled: true},
-			wantDaily: strptr("2024-02-01"), wantMonth: strptr("2024-01"),
-		},
-		{
-			name: "never enabled kinds stay null",
-			zone: "UTC",
-			at:   time.Date(2024, 5, 12, 8, 0, 0, 0, time.UTC),
-			in:   AutomaticActivationInput{},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			daily, monthly, err := activationStartPeriods(tt.before, tt.in, tt.zone, tt.at)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !sameStringPtr(daily, tt.wantDaily) || !sameStringPtr(monthly, tt.wantMonth) {
-				t.Fatalf("activationStartPeriods() = (%v, %v), want (%v, %v)", daily, monthly, tt.wantDaily, tt.wantMonth)
-			}
-		})
-	}
-}
-
-func TestActivationStartPeriodsRejectsBadCalendarInputs(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		zone string
-		at   time.Time
-	}{
-		{name: "invalid zone", zone: "Mars/Olympus", at: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
-		{name: "local alias", zone: "Local", at: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
-		{name: "zero time", zone: "UTC"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := activationStartPeriods(AutomaticPolicy{}, AutomaticActivationInput{DailyEnabled: true}, tt.zone, tt.at)
-			if err == nil {
-				t.Fatal("activationStartPeriods() accepted invalid calendar input")
-			}
-		})
-	}
-}
-
 func TestUpdateAutomaticActivationTxKeepsStartsAndDoesNotImmediatelyDiscoverCurrentPeriods(t *testing.T) {
 	t.Parallel()
 	s, a := archiveFixture(t)
 	a = automaticActor(a)
 	ctx := context.Background()
 	var zone string
-	if err := s.DB.QueryRow(ctx, `SELECT timezone FROM brands WHERE id=$1`, testBrand).Scan(&zone); err != nil {
+	if err := s.DB.QueryRow(ctx, `SELECT timezone FROM platform_settings WHERE id=true AND $1::uuid IS NOT NULL`, testBrand).Scan(&zone); err != nil {
 		t.Fatal(err)
 	}
 	dbNow := time.Now()
@@ -122,18 +43,18 @@ func TestUpdateAutomaticActivationTxKeepsStartsAndDoesNotImmediatelyDiscoverCurr
 		}
 		return out
 	}
-	first := update(AutomaticActivationInput{Version: 1, DailyEnabled: true, MonthlyEnabled: true, Reason: ""})
+	first := update(AutomaticActivationInput{AutomaticSchedule: AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1}, Version: 1, DailyEnabled: true, MonthlyEnabled: true, Reason: ""})
 	if first.Version != 2 || first.DailyStartPeriod == nil || *first.DailyStartPeriod != wantDaily || first.MonthlyStartPeriod == nil || *first.MonthlyStartPeriod != wantMonthly {
 		t.Fatalf("first activation = %+v, want version 2 and current brand-local day/month", first)
 	}
 	if n, err := s.DiscoverAutomatic(ctx, 20); err != nil || n != 0 {
 		t.Fatalf("current incomplete periods must not create immediate tasks: count=%d err=%v", n, err)
 	}
-	off := update(AutomaticActivationInput{Version: 2, Reason: "temporarily disable automatic archives"})
+	off := update(AutomaticActivationInput{AutomaticSchedule: AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1}, Version: 2, Reason: "temporarily disable automatic archives"})
 	if off.Version != 3 || off.DailyEnabled || off.MonthlyEnabled || !sameStringPtr(off.DailyStartPeriod, first.DailyStartPeriod) || !sameStringPtr(off.MonthlyStartPeriod, first.MonthlyStartPeriod) {
 		t.Fatalf("disable did not retain first starts: %+v", off)
 	}
-	on := update(AutomaticActivationInput{Version: 3, DailyEnabled: true, MonthlyEnabled: true, Reason: "resume automatic archives"})
+	on := update(AutomaticActivationInput{AutomaticSchedule: AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1}, Version: 3, DailyEnabled: true, MonthlyEnabled: true, Reason: "resume automatic archives"})
 	if on.Version != 4 || !sameStringPtr(on.DailyStartPeriod, first.DailyStartPeriod) || !sameStringPtr(on.MonthlyStartPeriod, first.MonthlyStartPeriod) {
 		t.Fatalf("reenable moved first starts: first=%+v resumed=%+v", first, on)
 	}
@@ -159,7 +80,7 @@ func TestUpdateAutomaticActivationTxRejectsStaleVersionWithoutPartialWrites(t *t
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	_, err = s.UpdateAutomaticActivationTx(ctx, tx, testBrand, a, AutomaticActivationInput{
+	_, err = s.UpdateAutomaticActivationTx(ctx, tx, testBrand, a, AutomaticActivationInput{AutomaticSchedule: AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1},
 		Version: 2, DailyEnabled: true, Reason: "stale activation must not write",
 	}, points.Metadata{ActorType: "admin", ActorID: a.ID, RequestID: ids.New()})
 	if !errors.Is(err, ErrVersion) {
@@ -177,8 +98,6 @@ func TestUpdateAutomaticActivationTxRejectsStaleVersionWithoutPartialWrites(t *t
 		t.Fatalf("stale update partially wrote policy/cursor: version=%d cursors=%d", version, cursors)
 	}
 }
-
-func strptr(v string) *string { return &v }
 
 func sameStringPtr(a, b *string) bool {
 	if a == nil || b == nil {

@@ -1,4 +1,5 @@
 import { expect, type Page, type Locator } from '@playwright/test'
+import { expectFilterSpacing } from './filter-spacing'
 import {readFileSync} from 'node:fs'
 import {configuredDemo} from '../../shared/src/configured-rules'
 const configuredSnapshot=configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json','utf8')))
@@ -62,9 +63,10 @@ export async function installLayoutApi(page: Page, locale: 'en' | 'zh-CN') {
     const path = new URL(route.request().url()).pathname
     const respond = (data: unknown) => route.fulfill({ json: { success: true, data } })
     if (path === '/api/v1/platform/presentation') return respond({ display_name: 'Layout trial', logo_text: 'L', logo_url: '' })
+    if (['/api/v1/admin/auth/config', '/api/v1/agent/auth/config'].includes(path)) return respond({captcha_enabled:false})
     if (path === '/api/v1/display-settings') return respond({ timezone: 'Asia/Singapore', date_format: 'YYYY-MM-DD', time_format: 'HH:mm:ss' })
-    if (path === '/api/v1/configured/games') return respond({games:[{id:gameId,name:'Mark Six'}]})
-    if (path === '/api/v1/games') return respond({items:[]})
+    if (path === '/api/v1/configured/games') return respond({games:[{id:gameId,name:'Mark Six'}], total_count: '1'})
+    if (path === '/api/v1/games') return respond({items:[], total_count: '0'})
     if (path === '/api/v1/me/betting-preferences') return respond({brand_id:gameId,member_id:gameId,quick_amounts:[]})
     if (path === '/api/v1/betting-summary') return respond({brand_id:gameId,member_id:gameId,unsettled_points:'120',today_net_points:'-30'})
     if (path === '/api/v1/context') return respond({
@@ -73,13 +75,67 @@ export async function installLayoutApi(page: Page, locale: 'en' | 'zh-CN') {
       features: { pwa: false, real_payments: false }, terms: { privacy_policy_version: 'layout-1', service_terms_version: 'layout-1' },
     })
     if (['/api/v1/agent/me', '/api/v1/me', '/api/v1/admin/me', '/api/v1/platform/me'].includes(path)) return route.fulfill({ status: 401, json: { success: false, error: { code: 'UNAUTHORIZED', message: 'Sign in required' } } })
-    if (path === `/api/v1/platform-games/${gameId}`) {const now=Date.now();return respond({game:{id:gameId,name:'Mark Six'},plays:[],rule_protocol:'configured',periods:[{id:gameId,game_id:gameId,period_no:'2026111',bet_start_at:new Date(now-3600000).toISOString(),bet_end_at:new Date(now+3600000).toISOString(),draw_at:new Date(now+3660000).toISOString(),result:null,published_at:null}]})}
-    if (path === `/api/v1/configured/games/${gameId}`) {const now=Date.now();return respond({game:{id:gameId,name:'Mark Six',status:'active',brand_enabled:true},snapshot:configuredSnapshot,rule_id:gameId,snapshot_hash:'layout-explicit-hash',sales:{version:1,enabled:true},period:{id:gameId,period_no:'2026111',bet_start_at:new Date(now-3600000).toISOString(),bet_end_at:new Date(now+3600000).toISOString(),draw_at:new Date(now+3660000).toISOString()}})}
+    if (path === `/api/v1/platform-games/${gameId}`) {const now=Date.now();return respond({game:{id:gameId,name:'Mark Six'},plays:[],rule_protocol:'configured',periods:[{id:gameId,game_id:gameId,period_no:'2026111',bet_start_at:new Date(now-3600000).toISOString(),bet_end_at:new Date(now+3600000).toISOString(),draw_at:new Date(now+3660000).toISOString(),result:null,published_at:null}], total_count: '1'})}
+    if (path === `/api/v1/configured/games/${gameId}`) {const now=Date.now();return respond({game:{id:gameId,name:'Mark Six',status:'active',brand_enabled:true},snapshot:configuredSnapshot,rule_id:gameId,snapshot_hash:'layout-explicit-hash',previous_draw:null,sales:{version:1,enabled:true},period:{id:gameId,period_no:'2026111',bet_start_at:new Date(now-3600000).toISOString(),bet_end_at:new Date(now+3600000).toISOString(),draw_at:new Date(now+3660000).toISOString()}})}
     throw new Error(`Unconfigured layout request: ${route.request().url()}`)
   })
 }
 
+export async function expectModalControls(page: Page) {
+  const issues = await page.locator('dialog.detail-modal[open]').evaluateAll(dialogs => {
+    const issues: string[] = []
+    const visible = (el: Element) => { const box=el.getBoundingClientRect(); return box.width>0 && box.height>0 }
+    for (const dialog of dialogs.filter(visible)) {
+      const title=dialog.getAttribute('aria-label')
+      const own=(selector:string)=>[...dialog.querySelectorAll(selector)].filter(el=>el.closest('dialog')===dialog && visible(el))
+      if(own('.detail-modal-heading .detail-modal-close').length!==1)issues.push(`${title}: missing or duplicate header close`)
+      for(const button of own('.detail-modal-content button,.detail-modal-footer button')) {
+        if(/^(关闭|取消|Close|Cancel)$/i.test(button.textContent?.trim()??''))issues.push(`${title}: duplicate dismiss button`)
+      }
+      for(const button of own('.ui-form > .button')) {
+        const form=button.parentElement!,style=getComputedStyle(form)
+        const right=form.getBoundingClientRect().right-parseFloat(style.paddingRight)-parseFloat(style.borderRightWidth)
+        if(Math.abs(right-button.getBoundingClientRect().right)>2)issues.push(`${title}: form submit not right aligned`)
+      }
+      for(const row of own('.ui-form-actions,.detail-modal-footer')) {
+        if(row.closest('.ui-filter-bar'))continue
+        const buttons=[...row.children].filter(el=>el.matches('button,.button') && visible(el))
+        if(!buttons.length)continue
+        const style=getComputedStyle(row),right=row.getBoundingClientRect().right-parseFloat(style.paddingRight)
+        const lastRight=Math.max(...buttons.map(el=>el.getBoundingClientRect().right))
+        if(style.justifyContent!=='flex-end'||Math.abs(right-lastRight)>2)issues.push(`${title}: actions not right aligned (${row.className})`)
+        if(buttons.some(el=>getComputedStyle(el).flexGrow!=='0'))issues.push(`${title}: actions stretch (${row.className})`)
+      }
+    }
+    return issues
+  })
+  expect(issues).toEqual([])
+}
+
+export async function expectPageActionControls(page: Page) {
+  const issues = await page.locator('.ui-form-actions, .ui-form > .button').evaluateAll(elements => {
+    const issues: string[] = []
+    for (const element of elements) {
+      if (element.closest('dialog, .ui-filter-bar, .login-entry, .auth-form')) continue
+      const box = element.getBoundingClientRect()
+      if (!box.width || !box.height) continue
+      const row = element.matches('.button') ? element.parentElement! : element
+      const style = getComputedStyle(row), bounds = row.getBoundingClientRect()
+      const right = bounds.right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth)
+      const buttons = element.matches('.button') ? [element] : [...row.children].filter(child => child.matches('button, .button'))
+      const boxes = buttons.map(button => button.getBoundingClientRect()).filter(box => box.width && box.height)
+      for (const top of new Set(boxes.map(box => Math.round(box.top)))) {
+        const edge = Math.max(...boxes.filter(box => Math.round(box.top) === top).map(box => box.right))
+        if (Math.abs(right - edge) > 2) issues.push(`${row.className}: page actions not right aligned`)
+      }
+    }
+    return issues
+  })
+  expect(issues).toEqual([])
+}
+
 export async function expectNoPageOverflow(page: Page) {
+  await expectFilterSpacing(page)
   await expect.poll(() => page.evaluate(() => innerWidth)).toBe(page.viewportSize()!.width)
   await page.locator('.locale-picker__trigger').evaluateAll(async buttons => {
     await Promise.all(buttons.flatMap(button => button.getAnimations().map(animation => animation.finished)))
@@ -97,20 +153,22 @@ export async function expectNoPageOverflow(page: Page) {
       // CSS dimensions stay constant while an accordion chevron rotates.
       const style = getComputedStyle(icon), width = parseFloat(style.width), height = parseFloat(style.height);
       const stroke = style.strokeWidth;
-      const size = icon.closest('.login-entry') ? 20 : icon.closest('.management-console,.platform-login') ? 16 : 20;
+      const size = icon.closest('.detail-modal-close') ? 16 : icon.closest('.login-entry') ? 20 : icon.closest('.management-console,.platform-login') ? 16 : 20;
       return width !== size || height !== size || stroke !== '1.75px'
         ? [{ icon: icon.getAttribute('class'), width, height, stroke }] : [];
     }),
     languages: [...document.querySelectorAll('.locale-picker__trigger')].flatMap(button => {
       const bounds = button.getBoundingClientRect();
       if (!bounds.width && !bounds.height) return [];
-      const size = !button.closest('.login-entry') && button.closest('.management-console,.platform-login') && matchMedia('(min-width: 901px) and (pointer: fine)').matches ? 36 : 44;
+      const size = matchMedia('(min-width: 901px) and (pointer: fine)').matches ? 32 : 44;
       return [{ width: bounds.width, height: bounds.height, radius: getComputedStyle(button).borderRadius, size }];
     }),
   }))
   expect(dimensions.viewport, JSON.stringify(dimensions)).toBe(page.viewportSize()!.width)
   expect(dimensions.document, JSON.stringify(dimensions)).toBeLessThanOrEqual(dimensions.viewport + 1)
   expect(dimensions.icons).toEqual([])
+  await expectModalControls(page)
+  await expectPageActionControls(page)
   for (const language of dimensions.languages) {
     // Transformed drawer bounds can contain subpixel floating-point noise.
     expect(language.width).toBeCloseTo(language.size, 4)
@@ -130,7 +188,7 @@ export async function installOrdersLayoutApi(page: Page) {
       user: { id: gameId, username: 'layout-member', status: 'active' },
       member: { id: gameId, brand_id: gameId, status: 'normal', display_name: 'Layout member', joined_at: '2026-10-17T00:00:00Z' },
     });
-    if (['/api/v1/games', '/api/v1/wallet/ledger', '/api/v1/bet-orders', '/api/v1/mark-six/orders', '/api/v1/canada/orders', '/api/v1/configured/orders', `/api/v1/configured/games/${gameId}/orders`, `/api/v1/mark-six/games/${gameId}/orders`].includes(path)) return respond({ items: [] });
+    if (['/api/v1/wallet/ledger', '/api/v1/configured/orders', `/api/v1/configured/games/${gameId}/orders`].includes(path)) return respond({ items: [] , total_count: '0'});
     if (path === '/api/v1/betting-history') {
       const query = new URL(route.request().url()).searchParams;
       return respond({
@@ -141,17 +199,17 @@ export async function installOrdersLayoutApi(page: Page) {
           { id: 'aaaaaaaa-aaaa-4aaa-8aaa-000000000003', name: 'Layout Racing' },
         ],
         items: [], limit: 20, next_cursor: null,
-      });
+       total_count: '0'});
     }
-    if (path === '/api/v1/draw-archive') return respond({game_id:new URL(route.request().url()).searchParams.get('game_id'),game_name:'Mark Six',mark_six:true,timezone:'Asia/Singapore',daily:false,choices:['2026','2025'],selected:new URL(route.request().url()).searchParams.get('selected') || '2026',items:[],has_more:false});
-    if (path === '/api/v1/platform-games') return respond({ games: [], limit: 50, offset: 0 });
+    if (path === '/api/v1/draw-archive') return respond({game_id:new URL(route.request().url()).searchParams.get('game_id'),game_name:'Mark Six',mark_six:true,timezone:'Asia/Singapore',daily:false,choices:['2026','2025'],selected:new URL(route.request().url()).searchParams.get('selected') || '2026',items:[],has_more:false, total_count: '0'});
+    if (path === '/api/v1/platform-games') return respond({ games: [], limit: 50, offset: 0 , total_count: '0'});
     if (path === '/api/v1/draw-results') {
       const query = new URL(route.request().url()).searchParams;
-      return respond({ items: [], brand_status: 'active', has_more: false, limit: Number(query.get('limit')), offset: Number(query.get('offset')), server_time: new Date().toISOString() });
+      return respond({ items: [], brand_status: 'active', has_more: false, limit: Number(query.get('limit')), offset: Number(query.get('offset')), server_time: new Date().toISOString() , total_count: '0'});
     }
     if (path === '/api/v1/notifications') {
       const query = new URL(route.request().url()).searchParams;
-      return respond({ brand_id: gameId, member_id: gameId, items: [], unread_count: '0', limit: Number(query.get('limit')), offset: Number(query.get('offset')) });
+      return respond({ brand_id: gameId, member_id: gameId, items: [], unread_count: '0', limit: Number(query.get('limit')), offset: Number(query.get('offset')) , total_count: '0'});
     }
     if (path === '/api/v1/wallet') return respond({
       account_id: gameId, brand_id: gameId, member_id: gameId, version: 1,
@@ -174,17 +232,26 @@ export async function expectInsideViewport(locator: Locator) {
   expect(bounds.bottom).toBeLessThanOrEqual(bounds.height + 1)
 }
 
+// A constrained vertical flex list must scroll instead of shrinking wrapped labels.
+export async function expectPlayTabLabelsFit(page: Page) {
+  const clipped = await page.locator('.configured-play-tabs button, .play-tabs button, .standard-play-groups button').evaluateAll(buttons => buttons
+    .filter(button => button.getBoundingClientRect().width > 0)
+    .filter(button => button.scrollHeight > button.clientHeight + 1)
+    .map(button => ({ label: button.textContent, height: button.clientHeight, contentHeight: button.scrollHeight })))
+  expect(clipped).toEqual([])
+}
+
 export async function expectRefreshControls(page: Page) {
   const menu=page.locator('.workspace-menu-layer');
   const open=await menu.count()>0 && !await menu.isVisible();
-  if(open)await page.locator('.workspace-topbar > button.icon-button').click();
+  if(open)await page.locator('.workspace-trailing > button.icon-button').click();
   const buttons = page.locator('[data-refresh-button]').filter({ visible: true });
   expect(await buttons.count()).toBeGreaterThan(0);
   for (const button of await buttons.all()) {
     const management = await button.evaluate(el => !!el.closest('.management-console'));
     const compact = management && await page.evaluate(() => matchMedia('(min-width: 901px) and (pointer: fine)').matches);
-    await expect(button).toHaveCSS('width', compact ? '36px' : '44px');
-    await expect(button).toHaveCSS('height', compact ? '36px' : '44px');
+    await expect(button).toHaveCSS('width', compact ? '32px' : '44px');
+    await expect(button).toHaveCSS('height', compact ? '32px' : '44px');
     await expect(button).toHaveCSS('border-radius', '10px');
     await expect(button).toHaveCSS('margin', '0px');
     await expect(button).toHaveCSS('text-indent', '-9999px');
@@ -228,14 +295,16 @@ export async function installWalletLayoutApi(page: Page) {
     entry_type: 'freeze', reference_type: 'manual', reference_id: gameId,
     before_snapshot: before, delta_snapshot: delta, after_snapshot: after,
     reason: 'Layout fixture: manual freeze', version: 2, created_at: '2026-10-17T00:00:00Z',
-  }] } } }));
+  }] , total_count: '1'} } }));
 }
 
 // Measure the rendered chrome and page rhythm, including styles from scoped pages.
 export async function expectCompactPageLayout(page: Page) {
   const metrics = await page.evaluate(() => {
-    const visible = (element: Element) => element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0
+    const visible = (element: Element) => element.getBoundingClientRect().width > 1 && element.getBoundingClientRect().height > 1
     return {
+      desktop: matchMedia('(min-width:901px) and (pointer:fine)').matches,
+      navigation: [...document.querySelectorAll('.management-console .side-nav :is(.nav-item,.nav-subitem)')].filter(visible).map(element=>{const css=getComputedStyle(element);return {top:parseFloat(css.paddingTop),bottom:parseFloat(css.paddingBottom)}}),
       headers: [...document.querySelectorAll('.management-console .topbar')].filter(visible).map(element => {
         const style = getComputedStyle(element)
         return { top: parseFloat(style.paddingTop), bottom: parseFloat(style.paddingBottom) }
@@ -247,6 +316,7 @@ export async function expectCompactPageLayout(page: Page) {
       content: [...document.querySelectorAll('.management-console .main-column > .content, .management-console .main-shell > .page-content, .workspace-frame .main-column > .content')].filter(visible).map(element => parseFloat(getComputedStyle(element).paddingTop)),
     }
   })
+  if(metrics.desktop)for(const row of metrics.navigation){expect(row.top).toBeLessThanOrEqual(4);expect(row.bottom).toBeLessThanOrEqual(4)}
   for (const header of metrics.headers) { expect(header.top).toBeLessThanOrEqual(4); expect(header.bottom).toBeLessThanOrEqual(4) }
   for (const heading of metrics.headings) { expect(heading.top).toBe(0); expect(heading.bottom).toBeLessThanOrEqual(12) }
   for (const top of metrics.content) expect(top).toBeLessThanOrEqual(12)

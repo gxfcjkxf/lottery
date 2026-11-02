@@ -14,7 +14,7 @@ const order: WithdrawalOrder = {
   release_entry_id: null, paid_entry_id: null, cycle_from_at: null, cycle_from_version: '0', reserve_version: '1', created_at: at, updated_at: at,
   reviewed_at: null, completed_at: null, decision_reason: '', audit_log_id: auditId,
 }
-const page: WithdrawalPage = { brand_id: brand, items: [order], limit: 20, offset: 0, has_more: false }
+const page: WithdrawalPage = { brand_id: brand, items: [order], limit: 20, offset: 0, has_more: false, total_count: '1' }
 const history: WithdrawalHistory = { brand_id: brand, order_id: orderId, items: [{ id: '77777777-7777-4777-8777-777777777777', version: 1, from_state: '', to_state: 'reviewing', reason: '', actor_type: 'user', created_at: at, audit_log_id: auditId }] }
 const ok = (data: unknown) => new Response(JSON.stringify({ success: true, data }), { status: 200 })
 

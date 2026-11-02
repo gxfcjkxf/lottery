@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import { test, expect, type APIResponse, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
@@ -41,11 +42,11 @@ test('real reward reports separate immutable postings from current order cohorts
   const economic = async () => JSON.stringify({ wallet: await get(`/wallets/${memberID}`), ledger: await ledger(), orders: await get('/reward-orders?limit=100&offset=0') });
   const before = await economic(), writes: string[] = [];
   page.on('request', r => { if (r.url().startsWith(admin) && r.method() !== 'GET') writes.push(r.url()); });
-  await page.goto(origin); await page.getByLabel(/选择真实后台品牌|Select live admin brand/, { exact: true }).selectOption(brand);
+  await page.goto(origin); await selectControl(page.getByLabel(/选择真实后台品牌|Select live admin brand/, { exact: true }), brand);
   await navigate(page, info.project.name, '报表和对账|Reports'); const panel = page.locator('.reward-reports');
-  await expect(panel.getByRole('heading', { name: '奖励报表', exact: true })).toBeVisible();
+  await expect(panel).toHaveAttribute('aria-label', '奖励报表');
   await panel.getByLabel('会员 UUID（可选）', { exact: true }).fill(memberID);
-  await panel.getByTestId('reward-report-group').selectOption('order');
+  await selectControl(panel.getByTestId('reward-report-group'), 'order');
   const read = async (path: string) => { const response = page.waitForResponse(r => r.request().method() === 'GET' && r.url().startsWith(`${admin}/reports/${path}?`)); await panel.getByTestId('reward-report-query').click(); return data<Report>(await response); };
   const posting = await read('rewards');
   expect(posting.summary).toEqual({ entry_count: '4', grant_entry_count: '3', grant_points: '60', reversal_entry_count: '1', reversal_points: '20', net_points: '40' }); expect(posting.total_groups).toBe('3');
@@ -66,7 +67,7 @@ test('real reward reports separate immutable postings from current order cohorts
   }
   await exportFile('rewards', 'rewards', '3', 'entry_count,grant_entry_count,grant_points,reversal_entry_count,reversal_points,net_points');
   await panel.getByTestId('reward-report-mode-orders').click(); await expect(panel.getByTestId('reward-report-summary')).toHaveCount(0);
-  await panel.getByLabel('会员 UUID（可选）', { exact: true }).fill(memberID); await panel.getByTestId('reward-report-group').selectOption('state');
+  await panel.getByLabel('会员 UUID（可选）', { exact: true }).fill(memberID); await selectControl(panel.getByTestId('reward-report-group'), 'state');
   const orders = await read('reward-orders');
   expect(orders.summary).toEqual({ order_count: '3', original_points: '60', granted_count: '1', granted_points: '10', pending_count: '1', pending_points: '30', revoked_count: '1', revoked_points: '20' });
   expect(orders.items.map(item => item.key)).toEqual(['granted', 'revocation_pending', 'revoked']);
@@ -77,7 +78,7 @@ test('real reward reports separate immutable postings from current order cohorts
   const negative = await get<Report>(`/reports/rewards?${narrow}`); expect(negative.summary.net_points).toBe('-20'); expect(negative.summary.grant_points).toBe('0');
   const negativeCSV = await page.request.get(`${admin}/reports/rewards.csv?${narrow}`, { headers: { 'X-Brand-ID': brand } }); expect(negativeCSV.status()).toBe(200); expect(await negativeCSV.text()).toContain(",'\u002d20");
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true); await panel.screenshot({ path: info.outputPath('reward-reports.png') });
-  await selectLanguage(page, 'en'); await expect(panel.getByRole('heading', { name: 'Reward reports', exact: true })).toBeVisible();
+  await selectLanguage(page, 'en'); await expect(panel).toHaveAttribute('aria-label', 'Reward reports');
   const snapshot = await get<{ rewards: { status: string; data: { granted_count: string; pending_count: string; revoked_count: string } } }>('/workbench');
   await navigate(page, info.project.name, '工作台|Dashboard'); const card = page.locator('.workbench .card').filter({ has: page.getByRole('heading', { name: 'Reward orders (current state)', exact: true }) });
   expect(snapshot.rewards.status).toBe('ready'); await expect(card.locator('dd')).toHaveText(Object.values(snapshot.rewards.data));

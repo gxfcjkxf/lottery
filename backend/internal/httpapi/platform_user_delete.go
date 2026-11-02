@@ -19,7 +19,9 @@ func registerPlatformUserDelete(handle func(string, string, http.HandlerFunc), d
 			return
 		}
 		id := r.PathValue("id")
-		var body struct{}
+		var body struct {
+			BrandID string `json:"brand_id"`
+		}
 		if !uuidPattern.MatchString(id) {
 			failure(w, r, 400, "REQUEST_INVALID", "Invalid account ID")
 			return
@@ -27,8 +29,12 @@ func registerPlatformUserDelete(handle func(string, string, http.HandlerFunc), d
 		if !decodeBody(w, r, &body) {
 			return
 		}
+		if !uuidPattern.MatchString(body.BrandID) {
+			failure(w, r, 400, "REQUEST_INVALID", "A valid brand ID is required")
+			return
+		}
 		var fresh access.Account
-		result, err := d.Mutations.ExecuteChecked(r.Context(), "", actor.ID, "platform.user.delete", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(id), func(ctx context.Context, tx pgx.Tx) error {
+		result, err := d.Mutations.ExecuteChecked(r.Context(), "", actor.ID, "platform.user.delete", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(id+":"+body.BrandID), func(ctx context.Context, tx pgx.Tx) error {
 			var err error
 			fresh, err = freshAdmin(ctx, tx, r, d, actor, true)
 			if err != nil {
@@ -39,7 +45,7 @@ func registerPlatformUserDelete(handle func(string, string, http.HandlerFunc), d
 			}
 			return nil
 		}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-			deleted, err := d.Admins.DeleteGlobalUser(ctx, tx, fresh, id, requestID(r), meta(r).IP)
+			deleted, err := d.Admins.DeleteGlobalUser(ctx, tx, fresh, body.BrandID, id, requestID(r), meta(r).IP)
 			if err != nil {
 				return adminResult("", err)
 			}
@@ -50,6 +56,6 @@ func registerPlatformUserDelete(handle func(string, string, http.HandlerFunc), d
 		} else if errors.Is(err, adminsys.ErrDenied) {
 			result, err = mutation.Fail(403, "PERMISSION_DENIED", "Account deletion permission required"), nil
 		}
-		finishAdminMutation(w, r, d, actor, "", "user.delete.platform", result, err)
+		finishAdminMutation(w, r, d, actor, body.BrandID, "user.delete.platform", result, err)
 	})
 }

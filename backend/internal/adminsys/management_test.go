@@ -519,3 +519,27 @@ func TestPlatformManagementAndBootstrapProtection(t *testing.T) {
 		t.Fatal("platform operator did not receive registered brand permissions")
 	}
 }
+
+func TestRoleUnicodeCharacterLimits(t *testing.T) {
+	name, reason := strings.Repeat("😀", 120), strings.Repeat("文", 500)
+	if !validRoleFields(name, "active") || validRoleFields(name+"😀", "active") {
+		t.Fatal("role character bounds differ")
+	}
+	if got, err := cleanReason(reason); err != nil || got != reason {
+		t.Fatal("500-character reason rejected", err)
+	}
+	if _, err := cleanReason(reason + "文"); !errors.Is(err, ErrInvalid) {
+		t.Fatal("501-character reason accepted")
+	}
+	f := managementFixtureFor(t, managementGrants()...)
+	tx := beginManagementTx(t, f.pool)
+	role, err := f.store.WriteRole(context.Background(), tx, f.actor, managementBrandA, "", RoleInput{Code: "unicode_role", Name: name, Status: "active", Permissions: []string{"user.view.brand"}, Reason: reason}, identity.Metadata{RequestID: "unicode-role-create"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitManagement(t, tx)
+	var saved string
+	if err = f.pool.QueryRow(context.Background(), `SELECT name FROM roles WHERE id=$1`, role.ID).Scan(&saved); err != nil || saved != name {
+		t.Fatal("120-character role did not persist", err)
+	}
+}

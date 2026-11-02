@@ -22,6 +22,7 @@ const ledgerEntry = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const timestamp = "2026-10-08T01:02:03Z";
 
 const recharge = (state, confirmedAt = null, ledgerEntryId = null) => ({
+  method: "manual",
   id: rechargeId,
   brand_id: brand,
   member_id: member,
@@ -87,7 +88,7 @@ test("list query contract is strict, member-scoped, and has exact defaults", () 
 
 test("DTOs are closed, exact, and exclude private recharge and ledger data", () => {
   assert.deepEqual(Object.keys(schemas.MemberRecharge.properties), [
-    "id", "brand_id", "member_id", "points", "state", "version", "created_at", "confirmed_at", "ledger_entry_id",
+    "method", "id", "brand_id", "member_id", "points", "state", "version", "created_at", "confirmed_at", "ledger_entry_id",
   ]);
   assert.deepEqual(Object.keys(schemas.MemberRechargePage.properties), [
     "brand_id", "member_id", "snapshot_at", "state", "items", "limit", "offset", "total_count",

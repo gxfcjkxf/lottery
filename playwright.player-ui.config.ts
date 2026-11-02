@@ -1,0 +1,4 @@
+import {defineConfig} from '@playwright/test'
+import layout from './playwright.layout.config'
+const flows=['player-pages.spec.ts','referral-tabs.spec.ts','user-withdrawal.spec.ts','user-page-titles.spec.ts','unified-feedback.spec.ts','dropdown-interactions.spec.ts','notification-bet.spec.ts']
+export default defineConfig({...layout,outputDir:'test-results/player-ui',reporter:[['list'],['json',{outputFile:'test-results/player-ui/results.json'}]],projects:layout.projects!.map(project=>({...project,testMatch:flows.map(file=>file==='player-pages.spec.ts'&&project.name!.endsWith('reflow')?'player-pages-reflow.spec.ts':file)}))})

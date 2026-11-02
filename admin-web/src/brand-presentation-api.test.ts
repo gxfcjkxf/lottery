@@ -114,7 +114,7 @@ describe("brand presentation API", () => {
     expect(validBrandPresentationConfig(config)).toBe(true);
     expect(validBrandPresentationConfig({ ...config, display_name: "   " })).toBe(false);
     expect(validBrandPresentationConfig({ ...config, display_name: "x".repeat(81) })).toBe(false);
-    expect(validBrandPresentationConfig({ ...config, logo_text: "标志".repeat(11) })).toBe(false);
+    expect(validBrandPresentationConfig({ ...config, logo_text: "标志".repeat(17) })).toBe(false);
     expect(validBrandPresentationConfig({ ...config, available_locales: [] })).toBe(false);
     expect(validBrandPresentationConfig({ ...config, available_locales: ["zh-CN"], default_locale: null })).toBe(false);
     expect(validBrandPresentationConfig({ ...config, content: { ...config.content!, en: { tagline: "x".repeat(161), announcement: null } } })).toBe(false);

@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import {expect,type Page,type BrowserContext,type TestInfo,type APIResponse,type Response} from '@playwright/test'
 import {createHash} from 'node:crypto'
@@ -24,9 +25,9 @@ export async function checkWithdrawalObservability(page:Page, context:BrowserCon
   if(info.project.name==='mobile') {await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:/Reports.*reconciliation/}).click()}
   else await page.locator('.side-nav').getByRole('button',{name:/Reports.*reconciliation/}).click()
   const reportPanel=page.locator('.withdrawal-report')
-  await expect(reportPanel.getByRole('heading',{name:'Withdrawal report',exact:true})).toBeVisible()
+  await expect(reportPanel).toHaveAttribute('aria-label', 'Withdrawal report')
   await reportPanel.getByLabel('Member UUID',{exact:true}).fill(order.member_id)
-  await reportPanel.getByLabel('Group by',{exact:true}).selectOption('state')
+  await selectControl(reportPanel.getByLabel('Group by',{exact:true}), 'state')
   const until=new Date(Date.now()+300_000),pad=(n:number)=>String(n).padStart(2,'0')
   await reportPanel.getByLabel('To',{exact:true}).fill(`${until.getFullYear()}-${pad(until.getMonth()+1)}-${pad(until.getDate())}T${pad(until.getHours())}:${pad(until.getMinutes())}:${pad(until.getSeconds())}`.replace(/:00$/,''))
   const reportResponse=page.waitForResponse(r=>r.url().includes('/api/v1/admin/reports/withdrawal?'))
@@ -49,7 +50,7 @@ export async function checkWithdrawalObservability(page:Page, context:BrowserCon
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(exported.headers()['x-report-sha256'])
   expect(bytes.toString()).toContain(info.project.name==='mobile'?'paid':'failed')
   await selectLanguage(page, 'zh-CN')
-  await expect(reportPanel.getByRole('heading',{name:'提现报表',exact:true})).toBeVisible()
+  await expect(reportPanel).toHaveAttribute('aria-label', '提现报表')
   await expect(reportPanel.locator('.metrics')).toBeVisible()
   await selectLanguage(page, 'en')
   await reportPanel.screenshot({path:info.outputPath('withdrawal-report.png')})

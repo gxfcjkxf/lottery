@@ -15,7 +15,7 @@ describe("commission adjustments API",()=>{
     expect(commissionAdjustmentPermissions({...account,permissions_by_brand:{[brand]:["commission_adjustment.write.brand"]}},brand)).toEqual({view:false,write:false});
   });
   it("uses exact paths, actor and brand headers, immutable body and exact acknowledgement",async()=>{
-    const fetcher=vi.fn<typeof fetch>(async(input,init)=>{const url=String(input);if(url.includes("/targets?") )return ok({brand_id:brand,payment_id:payment,items:[paidTarget()],total_count:"1",limit:20,offset:0});if(url.endsWith("/adjustments?limit=20&offset=0"))return ok({brand_id:brand,target_id:targetId,items:[adjustment()],total_count:"1",limit:20,offset:0});return ok(adjustment({version:2,points_after:"0",delta_points:"-9007199254740993",points_before:"9007199254740993"}),201);});
+    const fetcher=vi.fn<typeof fetch>(async(input)=>{const url=String(input);if(url.includes("/targets?") )return ok({brand_id:brand,payment_id:payment,items:[paidTarget()],total_count:"1",limit:20,offset:0});if(url.endsWith("/adjustments?limit=20&offset=0"))return ok({brand_id:brand,target_id:targetId,items:[adjustment()],total_count:"1",limit:20,offset:0});return ok(adjustment({version:2,points_after:"0",delta_points:"-9007199254740993",points_before:"9007199254740993"}),201);});
     const api=createCommissionAdjustmentsApi(fetcher);await expect(api.listTargets(brand,payment)).resolves.toMatchObject({items:[{original_points:"9007199254740993"}]});await expect(api.listAdjustments(brand,targetId)).resolves.toMatchObject({items:[{delta_points:"-5"}]});
     const body=Object.freeze({version:1,points:"0",reason:"Reviewed ✅"});await api.createAdjustment(brand,targetId,payment,body,actor,"adjustment-key-01");
     const [url,init]=fetcher.mock.calls[2];expect(String(url)).toBe(`/api/v1/admin/commission-payment-targets/${targetId}/adjustments`);expect(JSON.parse(String(init?.body))).toEqual(body);expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);expect(new Headers(init?.headers).get("X-Commission-Payment-Actor-ID")).toBe(actor);expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("adjustment-key-01");
@@ -48,3 +48,15 @@ describe("commission adjustments API",()=>{
     await expect(createCommissionAdjustmentsApi(async()=>ok(historyPage)).listAdjustments("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".toUpperCase(),targetId)).rejects.toMatchObject({status:0,code:"INVALID_INPUT"});
   });
 });
+
+describe('planned payout beneficiaries',()=>{
+ it('reads saved earnings before execution without inventing a target',async()=>{
+  const brand='11111111-1111-4111-8111-111111111111',payment='22222222-2222-4222-8222-222222222222',agent='33333333-3333-4333-8333-333333333333';
+  const row={id:agent,brand_id:brand,payment_id:payment,agent_id:agent,member_id:agent,target_id:null,original_points:'9007199254740993',adjusted_points:null,state:'pending',paid_at:null};
+  const calls:string[]=[];
+  const api=createCommissionAdjustmentsApi(async(input)=>{calls.push(String(input));return new Response(JSON.stringify({success:true,data:{brand_id:brand,payment_id:payment,items:[row],total_count:'1',limit:20,offset:0}}))});
+  const result=await api.listBeneficiaries(brand,payment,20,0,{agent_id:agent,state:'pending'});
+  expect(result.items[0].target_id).toBeNull();expect(result.items[0].original_points).toBe('9007199254740993');expect(calls[0]).toContain('/beneficiaries?');expect(calls[0]).toContain('agent_id='+agent);
+  row.state='paid';await expect(api.listBeneficiaries(brand,payment)).rejects.toMatchObject({code:'INVALID_RESPONSE'});
+ })
+})

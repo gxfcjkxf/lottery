@@ -99,6 +99,18 @@ describe("agent permissions", () => {
 });
 
 describe("agents admin API", () => {
+  it.each(['密码'.repeat(3), '密'.repeat(30), '😀'.repeat(30), 'a'.repeat(30)])('accepts passwords by their Unicode character length (%s)', async password => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok(agentNode({ version: 1, audit_log_id: actor }), 201));
+    await createAgentsApi(fetcher).createNode(brand, { policy_version: 8, username: 'new_agent', password, parent_id: null, parent_version: null, config: nodeConfig }, 'byte-length-key');
+    expect(JSON.parse(String(fetcher.mock.calls[0]![1]!.body)).password).toBe(password);
+    expect(new Headers(fetcher.mock.calls[0]![1]!.headers).get('Idempotency-Key')).toBe('byte-length-key');
+  });
+  it.each(['密'.repeat(5), '密'.repeat(31), '😀'.repeat(31)])('rejects passwords outside the character limits before sending (%s)', async password => {
+    const fetcher = vi.fn<typeof fetch>();
+    await expect(createAgentsApi(fetcher).createNode(brand, { policy_version: 8, username: 'new_agent', password, parent_id: null, parent_version: null, config: nodeConfig }, 'byte-length-key')).rejects.toMatchObject({code:'AGENT_INPUT_INVALID'});
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it.each([undefined, ""])("submits policy, creation and updates without a manual reason (%s)", async reason => {
     const note = reason === undefined ? {} : { reason };
     const bodies = [

@@ -47,7 +47,8 @@ func configuredPreview(ctx context.Context, in configuredPreviewInput) (any, err
 
 func registerConfiguredPreviewRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
 	handle("GET", "/platform-games/rule-preview/template", func(w http.ResponseWriter, r *http.Request) {
-		if _, _, ok := platformLotteryActor(w, r, d, "view"); !ok {
+		_, _, ok := platformLotteryActor(w, r, d, "view")
+		if !ok {
 			return
 		}
 		if len(r.URL.Query()) != 1 || len(r.URL.Query()["template"]) != 1 {
@@ -63,7 +64,8 @@ func registerConfiguredPreviewRoutes(handle func(string, string, http.HandlerFun
 		outputMutation(w, r, out, err)
 	})
 	handle("POST", "/platform-games/rule-preview", func(w http.ResponseWriter, r *http.Request) {
-		if _, _, ok := platformLotteryActor(w, r, d, "view"); !ok {
+		_, _, ok := platformLotteryActor(w, r, d, "view")
+		if !ok {
 			return
 		}
 		var in configuredPreviewInput

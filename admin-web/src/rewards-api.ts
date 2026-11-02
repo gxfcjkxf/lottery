@@ -9,8 +9,8 @@ const DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d
 const MAX_INT64 = 9_223_372_036_854_775_807n;
 const MAX_SAFE_VERSION = Number.MAX_SAFE_INTEGER;
 
-export type RewardState = "granted" | "revocation_pending" | "revoked";
-export type RewardOperation = "grant" | "revoke" | "retry";
+type RewardState = "granted" | "revoked";
+export type RewardOperation = "grant" | "revoke";
 
 export interface RewardOrder {
   id: string;
@@ -23,7 +23,6 @@ export interface RewardOrder {
   revoke_ledger_entry_id: string | null;
   creation_audit_log_id: string;
   last_audit_log_id: string;
-  last_error_code: string | null;
   created_by: string;
   reason: string;
   point_policy_version: string;
@@ -75,7 +74,7 @@ export interface RewardActionBody {
   reason: string;
 }
 
-export class RewardsApiError extends AdminApiError {
+class RewardsApiError extends AdminApiError {
   constructor(message: string, status: number, code?: string) {
     super(message, status, code);
     this.name = "RewardsApiError";
@@ -86,7 +85,7 @@ type ObjectValue = Record<string, unknown>;
 
 const ORDER_KEYS = [
   "id", "brand_id", "member_id", "points", "state", "version", "grant_ledger_entry_id", "revoke_ledger_entry_id",
-  "creation_audit_log_id", "last_audit_log_id", "last_error_code", "created_by", "reason", "point_policy_version",
+  "creation_audit_log_id", "last_audit_log_id", "created_by", "reason", "point_policy_version",
   "created_at", "updated_at", "revoked_at",
 ] as const;
 const ACTION_KEYS = [
@@ -95,7 +94,7 @@ const ACTION_KEYS = [
 ] as const;
 const ORDER_PAGE_KEYS = ["brand_id", "items", "total_count", "limit", "offset"] as const;
 const ACTION_PAGE_KEYS = ["brand_id", "order_id", "items", "total_count", "limit", "offset"] as const;
-const REWARD_STATES: readonly string[] = ["granted", "revocation_pending", "revoked"];
+const REWARD_STATES: readonly string[] = ["granted", "revoked"];
 
 function isObject(value: unknown): value is ObjectValue {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -165,7 +164,7 @@ function isReason(value: unknown): value is string {
       return false;
     }
   }
-  return new TextEncoder().encode(value).length <= 500;
+  return Array.from(value).length <= 500;
 }
 
 function validOrder(value: unknown, brand: string): value is RewardOrder {
@@ -176,19 +175,14 @@ function validOrder(value: unknown, brand: string): value is RewardOrder {
     !isUuid(value.created_by) || !isReason(value.reason) || !isUnsigned(value.point_policy_version, true) ||
     !isDateTime(value.created_at) || !isDateTime(value.updated_at) || instantNanoseconds(value.updated_at) < instantNanoseconds(value.created_at)) return false;
   if (!(value.revoke_ledger_entry_id === null || isUuid(value.revoke_ledger_entry_id)) ||
-    !(value.last_error_code === null || typeof value.last_error_code === "string") ||
     !(value.revoked_at === null || isDateTime(value.revoked_at))) return false;
 
   switch (value.state) {
     case "granted":
-      return value.version === 1 && value.revoke_ledger_entry_id === null && value.revoked_at === null && value.last_error_code === null;
-    case "revocation_pending":
-      return value.version >= 2 && value.revoke_ledger_entry_id === null && value.revoked_at === null &&
-        value.last_error_code === "REWARD_AVAILABLE_INSUFFICIENT";
+      return value.version === 1 && value.revoke_ledger_entry_id === null && value.revoked_at === null;
     case "revoked":
       return value.version >= 2 && isUuid(value.revoke_ledger_entry_id) && value.revoked_at !== null &&
-        instantNanoseconds(value.revoked_at) >= instantNanoseconds(value.created_at) && instantNanoseconds(value.revoked_at) <= instantNanoseconds(value.updated_at) &&
-        value.last_error_code === null;
+        instantNanoseconds(value.revoked_at) >= instantNanoseconds(value.created_at) && instantNanoseconds(value.revoked_at) <= instantNanoseconds(value.updated_at);
     default:
       return false;
   }
@@ -197,7 +191,7 @@ function validOrder(value: unknown, brand: string): value is RewardOrder {
 function validAction(value: unknown, brand: string, orderID: string): value is RewardAction {
   if (!isObject(value) || !hasExactKeys(value, ACTION_KEYS) || value.brand_id !== brand || value.order_id !== orderID ||
     !isUuid(value.id) || !isUuid(value.brand_id) || !isUuid(value.order_id) || !isSafeVersion(value.version) ||
-    !["grant", "revoke", "retry"].includes(String(value.operation)) ||
+    !["grant", "revoke"].includes(String(value.operation)) ||
     !(value.state_before === null || REWARD_STATES.includes(String(value.state_before))) ||
     !REWARD_STATES.includes(String(value.state_after)) || !isUuid(value.actor_id) || !isReason(value.reason) ||
     !isUuid(value.audit_log_id) || !(value.ledger_entry_id === null || isUuid(value.ledger_entry_id)) || !isDateTime(value.created_at)) return false;
@@ -205,12 +199,7 @@ function validAction(value: unknown, brand: string, orderID: string): value is R
   if (value.operation === "grant") {
     return value.version === 1 && value.state_before === null && value.state_after === "granted" && isUuid(value.ledger_entry_id);
   }
-  if (value.operation === "revoke") {
-    return value.version > 1 && value.state_before === "granted" &&
-      (value.state_after === "revocation_pending" ? value.ledger_entry_id === null : value.state_after === "revoked" && isUuid(value.ledger_entry_id));
-  }
-  return value.version > 1 && value.state_before === "revocation_pending" &&
-    (value.state_after === "revocation_pending" ? value.ledger_entry_id === null : value.state_after === "revoked" && isUuid(value.ledger_entry_id));
+  return value.operation === "revoke" && value.version > 1 && value.state_before === "granted" && value.state_after === "revoked" && isUuid(value.ledger_entry_id);
 }
 
 function validOrderPage(value: unknown, brand: string, limit: number, offset: number): value is RewardOrderPage {
@@ -379,12 +368,9 @@ export function createRewardsApi(fetcher: typeof fetch = fetch, actorID = "") {
       return writeAction("revoke", brand, id, body, key);
     },
 
-    async retryRevocation(brand: string, id: string, body: Readonly<RewardActionBody>, key: string): Promise<RewardOrder> {
-      return writeAction("retry-revocation", brand, id, body, key);
-    },
   };
 
-  async function writeAction(pathAction: "revoke" | "retry-revocation", brand: string, id: string, body: Readonly<RewardActionBody>, key: string): Promise<RewardOrder> {
+  async function writeAction(pathAction: "revoke", brand: string, id: string, body: Readonly<RewardActionBody>, key: string): Promise<RewardOrder> {
     validateBrand(brand);
     if (!isUuid(id)) invalidInput();
     const snapshot = snapshotBody(body, (value): value is RewardActionBody => {
@@ -394,7 +380,7 @@ export function createRewardsApi(fetcher: typeof fetch = fetch, actorID = "") {
     validateKey(key);
     const data = await request(brand, `${ORDERS}/${encodeURIComponent(id)}/${pathAction}`, "POST", 200,
       (value): value is RewardOrder => validOrder(value, brand) && value.id === id && value.version === snapshot.version + 1 &&
-        (value.state === "revocation_pending" || value.state === "revoked"),
+        value.state === "revoked",
       snapshot, key);
     return data;
   }

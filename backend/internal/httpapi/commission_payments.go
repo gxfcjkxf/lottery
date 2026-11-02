@@ -152,34 +152,7 @@ func registerCommissionPaymentRoutes(handle func(string, string, http.HandlerFun
 	})
 
 	handle("PUT", commissionPaymentPolicyPath, func(w http.ResponseWriter, r *http.Request) {
-		brand, ok := commissionCycleBrand(w, r)
-		if !ok {
-			return
-		}
-		if r.URL.RawQuery != "" {
-			failure(w, r, 400, "REQUEST_INVALID", "此写接口不接受查询参数")
-			return
-		}
-		var in commission.PaymentPolicyInput
-		raw, ok := decodeCommissionCycleBody(w, r, &in)
-		if !ok {
-			return
-		}
-		initial, ok := adminAccount(w, r, d)
-		if !ok {
-			return
-		}
-		var fresh access.Account
-		result, err := d.Mutations.ExecuteChecked(r.Context(), brand, initial.ID, "admin.commission_payment_policy.update", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(brand+":"+string(raw)), func(ctx context.Context, tx pgx.Tx) error {
-			return commissionPaymentWriteCheck(ctx, tx, r, d, initial, brand, "policy_write", &fresh)
-		}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-			policy, err := s.UpdatePaymentPolicyTx(ctx, tx, brand, fresh, in, pointMeta(r, fresh))
-			if err != nil {
-				return mutation.Result{}, err
-			}
-			return commissionPaymentResult(policy, nil)
-		})
-		commissionPaymentWriteFailure(w, r, d, initial, brand, "commission_payment_policy.write", result, err)
+		failure(w, r, 403, "PERMISSION_DENIED", "佣金派发由平台统一管理")
 	})
 
 	handle("GET", commissionPaymentCollection, func(w http.ResponseWriter, r *http.Request) {
@@ -187,9 +160,9 @@ func registerCommissionPaymentRoutes(handle func(string, string, http.HandlerFun
 		if !ok {
 			return
 		}
-		limit, offset, ok := commissionCyclePage(r)
+		limit, offset, filter, ok := commissionListFilter(r, "payment")
 		if !ok {
-			failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
+			failure(w, r, 400, "REQUEST_INVALID", "查询参数不正确")
 			return
 		}
 		initial, ok := adminAccount(w, r, d)
@@ -197,7 +170,7 @@ func registerCommissionPaymentRoutes(handle func(string, string, http.HandlerFun
 			return
 		}
 		out, err := commissionCycleRead(w, r, d, initial, brand, "view", "commission.payment.list", func(tx pgx.Tx) (any, error) {
-			return s.PaymentsTx(r.Context(), tx, brand, limit, offset)
+			return s.PaymentsTx(r.Context(), tx, brand, limit, offset, filter)
 		})
 		if commissionPaymentReadFailure(w, r, err) {
 			return
@@ -223,6 +196,54 @@ func registerCommissionPaymentRoutes(handle func(string, string, http.HandlerFun
 		out, err := commissionCycleRead(w, r, d, initial, brand, "view", "commission.payment.read", func(tx pgx.Tx) (any, error) {
 			return s.PaymentTx(r.Context(), tx, brand, id)
 		})
+		if commissionPaymentReadFailure(w, r, err) {
+			return
+		}
+		result, err := commissionPaymentResult(out, err)
+		outputMutation(w, r, result, err)
+	})
+
+	handle("GET", commissionPaymentCollection+"/{id}/beneficiaries", func(w http.ResponseWriter, r *http.Request) {
+		brand, ok := commissionCycleBrand(w, r)
+		if !ok {
+			return
+		}
+		id := r.PathValue("id")
+		limit, offset, filter, ok := commissionListFilter(r, "target")
+		if !ok || !cycleCanonicalID(id) {
+			failure(w, r, 400, "REQUEST_INVALID", "查询参数不正确")
+			return
+		}
+		initial, ok := adminAccount(w, r, d)
+		if !ok {
+			return
+		}
+		out, err := commissionCycleRead(w, r, d, initial, brand, "view", "commission.payment.beneficiaries", func(tx pgx.Tx) (any, error) {
+			return s.PaymentBeneficiariesTx(r.Context(), tx, brand, id, limit, offset, filter)
+		}, map[string]any{"payment_id": id, "limit": limit, "offset": offset, "agent_id": filter.AgentID, "state": filter.State})
+		if commissionPaymentReadFailure(w, r, err) {
+			return
+		}
+		result, err := commissionPaymentResult(out, err)
+		outputMutation(w, r, result, err)
+	})
+
+	handle("GET", commissionPaymentCollection+"/{id}/history", func(w http.ResponseWriter, r *http.Request) {
+		brand, ok := commissionCycleBrand(w, r)
+		if !ok {
+			return
+		}
+		id := r.PathValue("id")
+		limit, offset, ok := commissionCyclePage(r)
+		if !ok || !cycleCanonicalID(id) || r.URL.ForceQuery || r.ContentLength != 0 || len(r.TransferEncoding) > 0 {
+			failure(w, r, 400, "REQUEST_INVALID", "查询参数不正确")
+			return
+		}
+		initial, ok := adminAccount(w, r, d)
+		if !ok {
+			return
+		}
+		out, err := commissionCycleRead(w, r, d, initial, brand, "view", "commission.payment.history", func(tx pgx.Tx) (any, error) { return s.PaymentHistoryTx(r.Context(), tx, brand, id, limit, offset) }, map[string]any{"payment_id": id, "limit": limit, "offset": offset})
 		if commissionPaymentReadFailure(w, r, err) {
 			return
 		}

@@ -1,0 +1,3 @@
+import base from './playwright.layout.config'
+import {defineConfig} from '@playwright/test'
+export default defineConfig({...base,timeout:120000,outputDir:'test-results/commission-followup',reporter:[['list']],projects:base.projects!.filter(p=>['android-pixel7','android-pixel7-landscape','ios-iphone13','ios-iphone13-landscape','chromium-reflow'].includes(p.name!)).map(p=>({...p,testMatch:['commission-followup.spec.ts','commission-adjustment-layout.spec.ts']})),webServer:[{command:`pnpm --filter @lottery/admin-web exec vite --host 127.0.0.1 --port ${Number(process.env.LOTTERY_LAYOUT_PORT_BASE??15273)+1} --strictPort`,url:`http://127.0.0.1:${Number(process.env.LOTTERY_LAYOUT_PORT_BASE??15273)+1}`,reuseExistingServer:false}]})

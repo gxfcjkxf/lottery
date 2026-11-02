@@ -89,9 +89,6 @@ func TestIndependentAgentsLineScope(t *testing.T) {
 	}
 	defer tx.Rollback(ctx)
 	statements := []string{
-		`CREATE TEMP TABLE bet_orders(brand_id uuid,brand_member_id uuid,total_points bigint,prize_points bigint,status text,settled_at timestamptz) ON COMMIT DROP`,
-		`CREATE TEMP TABLE platform_mark_six_orders(brand_id uuid,member_id uuid,total_points bigint,prize_points bigint,refund_points bigint,status text,settled_at timestamptz) ON COMMIT DROP`,
-		`CREATE TEMP TABLE platform_canada_orders(brand_id uuid,member_id uuid,total_points bigint,prize_points bigint,refund_points bigint,lost_points bigint,profile text,status text,settled_at timestamptz) ON COMMIT DROP`,
 		`CREATE TEMP TABLE configured_orders(brand_id uuid,member_id uuid,total_points bigint,status text,snapshot jsonb,result jsonb,settled_at timestamptz) ON COMMIT DROP`,
 	}
 	for _, q := range statements {
@@ -105,13 +102,13 @@ func TestIndependentAgentsLineScope(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	exec(`INSERT INTO bet_orders VALUES($1,$2,9007199254740993,0,'placed',NULL),($1,$2,10,25,'won',now())`, managedBrand, root.member)
-	exec(`INSERT INTO platform_mark_six_orders VALUES($1,$2,100,0,100,'settled',now())`, managedBrand, child.member)
-	exec(`INSERT INTO platform_canada_orders VALUES($1,$2,10,0,0,30,'canada_niuniu','settled',now())`, managedBrand, grand.member)
+	exec(`INSERT INTO configured_orders VALUES($1,$2,9007199254740993,'placed','{"catalog":{"funding":"debit"}}','{"prize_points":"0","refund_points":"0"}',NULL),($1,$2,10,'settled','{"catalog":{"funding":"debit"}}','{"prize_points":"25","refund_points":"0"}',now())`, managedBrand, root.member)
+	exec(`INSERT INTO configured_orders VALUES($1,$2,100,'settled','{"catalog":{"funding":"debit"}}','{"prize_points":"0","refund_points":"100"}',now())`, managedBrand, child.member)
+	exec(`INSERT INTO configured_orders VALUES($1,$2,10,'settled','{"catalog":{"funding":"reserve"}}','{"prize_points":"0","refund_points":"0","consumed_points":"30"}',now())`, managedBrand, grand.member)
 	exec(`INSERT INTO configured_orders VALUES($1,$2,10,'settled','{"catalog":{"funding":"reserve"}}','{"prize_points":"50","consumed_points":"0","refund_points":"200"}',now())`, managedBrand, grand.member)
-	exec(`INSERT INTO bet_orders VALUES($1,$2,999,1999,'won',now())`, managedBrand, outsider.member)
+	exec(`INSERT INTO configured_orders VALUES($1,$2,999,'settled','{"catalog":{"funding":"debit"}}','{"prize_points":"1999","refund_points":"0"}',now())`, managedBrand, outsider.member)
 	// Same member ID in a different brand must never enter this brand's totals.
-	exec(`INSERT INTO bet_orders VALUES($1,$2,999,1999,'won',now())`, "22222222-2222-4222-8222-222222222222", grand.member)
+	exec(`INSERT INTO configured_orders VALUES($1,$2,999,'settled','{"catalog":{"funding":"debit"}}','{"prize_points":"1999","refund_points":"0"}',now())`, "22222222-2222-4222-8222-222222222222", grand.member)
 	// Multiple point buckets and multiple orders must not multiply the wallet.
 	exec(`CREATE TEMP TABLE point_accounts(brand_id uuid,id uuid,brand_member_id uuid) ON COMMIT DROP`)
 	exec(`CREATE TEMP TABLE point_buckets(brand_id uuid,account_id uuid,points bigint,state text) ON COMMIT DROP`)

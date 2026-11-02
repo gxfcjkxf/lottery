@@ -36,7 +36,6 @@ var expectedTemplateKeys = []string{
 	"member.joined",
 	"recharge.confirmed",
 	"reward.order.granted",
-	"reward.order.revocation_pending",
 	"reward.order.revoked",
 	"withdrawal.order.cancelled",
 	"withdrawal.order.failed",
@@ -208,7 +207,7 @@ func templateFixture(t *testing.T) (Service, access.Account) {
 	if _, err := db.Exec(ctx, `INSERT INTO admin_accounts(id,username,password_hash) VALUES($1,$2,'test-only')`, admin, "template_"+admin); err != nil {
 		t.Fatal(err)
 	}
-	a := access.Account{ID: admin, Type: access.AccountAdmin, BrandIDs: []string{templateBrand}, Roles: []access.Role{{BrandID: templateBrand, Permissions: []access.Permission{{Resource: "notification_template", Action: "write", Scope: access.ScopeBrand}}}}}
+	a := access.Account{ID: admin, Type: access.AccountAdmin, SuperAdmin: true, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "notification_template", Action: "write", Scope: access.ScopePlatform}}}}}
 	return Service{DB: db}, a
 }
 
@@ -216,14 +215,14 @@ func templateMeta(a access.Account) points.Metadata {
 	return points.Metadata{ActorType: "admin", ActorID: a.ID, RequestID: ids.New()}
 }
 
-func updateTemplate(t *testing.T, s Service, a access.Account, brand, key string, version int64, content Content) (Template, error) {
+func updateTemplate(t *testing.T, s Service, a access.Account, key string, version int64, content Content) (Template, error) {
 	t.Helper()
 	ctx := context.Background()
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := s.UpdateTemplate(ctx, tx, brand, key, a, UpdateInput{Version: version, Content: content, Reason: " template test update "}, templateMeta(a))
+	out, err := s.UpdateTemplate(ctx, tx, key, a, UpdateInput{Version: version, Content: content, Reason: " template test update "}, templateMeta(a))
 	if err != nil {
 		_ = tx.Rollback(ctx)
 		return out, err
@@ -234,18 +233,18 @@ func updateTemplate(t *testing.T, s Service, a access.Account, brand, key string
 	return out, nil
 }
 
-func TestTemplatesDefaultsHistoryAndBrandIsolation(t *testing.T) {
+func TestPlatformTemplatesDefaultsAndHistory(t *testing.T) {
 	s, _ := templateFixture(t)
 	ctx := context.Background()
-	items, err := s.Templates(ctx, templateBrand)
+	items, err := s.Templates(ctx)
 	if err != nil || len(items) != len(expectedTemplateKeys) {
 		t.Fatalf("Templates() len=%d err=%v", len(items), err)
 	}
 	for i, item := range items {
-		if item.Key != expectedTemplateKeys[i] || item.BrandID != templateBrand || item.Version != 1 || item.AuditLogID != nil {
+		if item.Key != expectedTemplateKeys[i] || item.Version != 1 || item.AuditLogID != nil {
 			t.Fatalf("unexpected initial template: %+v", item)
 		}
-		history, e := s.TemplateHistory(ctx, templateBrand, item.Key, 100, 0)
+		history, e := s.TemplateHistory(ctx, item.Key, 100, 0)
 		if e != nil || len(history) != 1 || history[0].Version != 1 || history[0].ChangedBy != nil || history[0].AuditLogID != nil {
 			t.Fatalf("initial history for %s: %+v %v", item.Key, history, e)
 		}
@@ -271,17 +270,17 @@ func TestTemplatesDefaultsHistoryAndBrandIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	locked, err := s.TemplateTx(ctx, tx, templateBrand, "member.joined", true)
+	locked, err := s.TemplateTx(ctx, tx, "member.joined", true)
 	if err != nil || locked.Version != 1 {
 		_ = tx.Rollback(ctx)
 		t.Fatalf("TemplateTx(lock=true)=%+v err=%v", locked, err)
 	}
-	txItems, err := s.TemplatesTx(ctx, tx, templateBrand)
+	txItems, err := s.TemplatesTx(ctx, tx)
 	if err != nil || len(txItems) != len(expectedTemplateKeys) {
 		_ = tx.Rollback(ctx)
 		t.Fatalf("TemplatesTx() len=%d err=%v", len(txItems), err)
 	}
-	txHistory, err := s.TemplateHistoryTx(ctx, tx, templateBrand, "member.joined", 10, 0)
+	txHistory, err := s.TemplateHistoryTx(ctx, tx, "member.joined", 10, 0)
 	if err != nil || len(txHistory) != 1 || txHistory[0].Version != 1 {
 		_ = tx.Rollback(ctx)
 		t.Fatalf("TemplateHistoryTx()=%+v err=%v", txHistory, err)
@@ -289,12 +288,10 @@ func TestTemplatesDefaultsHistoryAndBrandIsolation(t *testing.T) {
 	if err = tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Template(ctx, templateOtherBrand, "member.joined"); err != nil {
+	if _, err = s.Template(ctx, "member.joined"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Template(ctx, "0199a000-0000-7000-8000-000000000099", "member.joined"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("missing brand error=%v", err)
-	}
+
 }
 
 func TestTemplateUpdateAuditHistoryAndNoFundsWrites(t *testing.T) {
@@ -307,11 +304,11 @@ func TestTemplateUpdateAuditHistoryAndNoFundsWrites(t *testing.T) {
 	content := validTemplateContent("recharge.confirmed")
 	content.En = Copy{Title: "New recharge title", Body: "New points: {points}."}
 	content.ZhCN = Copy{Title: "新充值标题", Body: "新积分：{points}。"}
-	updated, err := updateTemplate(t, s, a, templateBrand, "recharge.confirmed", 1, content)
+	updated, err := updateTemplate(t, s, a, "recharge.confirmed", 1, content)
 	if err != nil || updated.Version != 2 || updated.AuditLogID == nil || *updated.AuditLogID == "" {
 		t.Fatalf("UpdateTemplate()=%+v err=%v", updated, err)
 	}
-	history, err := s.TemplateHistory(ctx, templateBrand, "recharge.confirmed", 100, 0)
+	history, err := s.TemplateHistory(ctx, "recharge.confirmed", 100, 0)
 	if err != nil || len(history) != 2 || history[0].Version != 2 || history[0].ChangedBy == nil || *history[0].ChangedBy != a.ID || history[0].AuditLogID == nil || *history[0].AuditLogID != *updated.AuditLogID {
 		t.Fatalf("history=%+v err=%v", history, err)
 	}
@@ -319,34 +316,34 @@ func TestTemplateUpdateAuditHistoryAndNoFundsWrites(t *testing.T) {
 	if err = s.DB.QueryRow(ctx, `SELECT count(*) FROM point_ledger_entries`).Scan(&fundsAfter); err != nil || fundsAfter != fundsBefore {
 		t.Fatalf("template update changed funds ledger: before=%d after=%d err=%v", fundsBefore, fundsAfter, err)
 	}
-	foreign, err := s.Template(ctx, templateOtherBrand, "recharge.confirmed")
-	if err != nil || foreign.Version != 1 || reflect.DeepEqual(foreign.Content, updated.Content) {
-		t.Fatalf("brand isolation failed: %+v %v", foreign, err)
+	foreign, err := s.Template(ctx, "recharge.confirmed")
+	if err != nil || foreign.Version != 2 || !reflect.DeepEqual(foreign.Content, updated.Content) {
+		t.Fatalf("global template read differs: %+v %v", foreign, err)
 	}
-	if _, err = s.TemplateHistory(ctx, templateOtherBrand, "recharge.confirmed", 100, 0); err != nil {
+	if _, err = s.TemplateHistory(ctx, "recharge.confirmed", 100, 0); err != nil {
 		t.Fatal(err)
 	}
 	var auditAction string
 	if err = s.DB.QueryRow(ctx, `SELECT action FROM audit_logs WHERE id=$1`, *updated.AuditLogID).Scan(&auditAction); err != nil || auditAction != "notification.template.update" {
 		t.Fatalf("audit action=%q err=%v", auditAction, err)
 	}
-	if _, err = s.DB.Exec(ctx, `UPDATE notification_template_revisions SET reason='rewritten evidence' WHERE brand_id=$1 AND template_key=$2 AND version=2`, templateBrand, "recharge.confirmed"); err == nil {
+	if _, err = s.DB.Exec(ctx, `UPDATE platform_notification_template_revisions SET reason='rewritten evidence' WHERE template_key=$1 AND version=2`, "recharge.confirmed"); err == nil {
 		t.Fatal("revision evidence was mutable")
 	}
-	if _, err = s.DB.Exec(ctx, `DELETE FROM notification_template_revisions WHERE brand_id=$1 AND template_key=$2 AND version=2`, templateBrand, "recharge.confirmed"); err == nil {
+	if _, err = s.DB.Exec(ctx, `DELETE FROM platform_notification_template_revisions WHERE template_key=$1 AND version=2`, "recharge.confirmed"); err == nil {
 		t.Fatal("revision evidence was deletable")
 	}
-	if _, err = s.DB.Exec(ctx, `DELETE FROM notification_templates WHERE brand_id=$1 AND template_key=$2`, templateBrand, "recharge.confirmed"); err == nil {
+	if _, err = s.DB.Exec(ctx, `DELETE FROM platform_notification_templates WHERE template_key=$1`, "recharge.confirmed"); err == nil {
 		t.Fatal("current template was deletable")
 	}
-	if _, err = updateTemplate(t, s, a, templateBrand, "recharge.confirmed", 1, content); !errors.Is(err, ErrTemplateVersion) {
+	if _, err = updateTemplate(t, s, a, "recharge.confirmed", 1, content); !errors.Is(err, ErrTemplateVersion) {
 		t.Fatalf("stale template version error=%v", err)
 	}
 	if _, err = s.DB.Exec(ctx, `UPDATE brands SET status='disabled' WHERE id=$1`, templateBrand); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = updateTemplate(t, s, a, templateBrand, "recharge.confirmed", 2, content); !errors.Is(err, ErrState) {
-		t.Fatalf("disabled brand update error=%v", err)
+	if _, err = updateTemplate(t, s, a, "recharge.confirmed", 2, content); err != nil {
+		t.Fatalf("global update unexpectedly depends on brand status=%v", err)
 	}
 }
 
@@ -360,14 +357,14 @@ func TestTemplateUpdateAuditFailureRollsBackOnCallerRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.UpdateTemplate(ctx, tx, templateBrand, "member.joined", a, UpdateInput{Version: 1, Content: validTemplateContent("member.joined"), Reason: "audit fails"}, templateMeta(a))
+	_, err = s.UpdateTemplate(ctx, tx, "member.joined", a, UpdateInput{Version: 1, Content: validTemplateContent("member.joined"), Reason: "audit fails"}, templateMeta(a))
 	if err == nil {
 		t.Fatal("audit failure ignored")
 	}
 	if rollbackErr := tx.Rollback(ctx); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
 		t.Fatal(rollbackErr)
 	}
-	current, err := s.Template(ctx, templateBrand, "member.joined")
+	current, err := s.Template(ctx, "member.joined")
 	if err != nil || current.Version != 1 {
 		t.Fatalf("failed update persisted: %+v %v", current, err)
 	}
@@ -391,7 +388,7 @@ func TestConcurrentTemplateUpdatesPermitExactlyOneVersion(t *testing.T) {
 				results <- err
 				return
 			}
-			_, err = s.UpdateTemplate(ctx, tx, templateBrand, "member.joined", a, UpdateInput{Version: 1, Content: content, Reason: "concurrent template update"}, templateMeta(a))
+			_, err = s.UpdateTemplate(ctx, tx, "member.joined", a, UpdateInput{Version: 1, Content: content, Reason: "concurrent template update"}, templateMeta(a))
 			if err == nil {
 				err = tx.Commit(ctx)
 			} else {
@@ -413,32 +410,24 @@ func TestConcurrentTemplateUpdatesPermitExactlyOneVersion(t *testing.T) {
 			t.Fatalf("unexpected concurrent update error: %v", err)
 		}
 	}
-	current, err := s.Template(ctx, templateBrand, "member.joined")
+	current, err := s.Template(ctx, "member.joined")
 	if err != nil || success != 1 || conflict != 1 || current.Version != 2 {
 		t.Fatalf("success=%d conflict=%d current=%+v err=%v", success, conflict, current, err)
 	}
 }
 
 func TestAllowedTemplateRequiresExactGrantAndScope(t *testing.T) {
-	brandActor := access.Account{Type: access.AccountAdmin, BrandIDs: []string{templateBrand}, Roles: []access.Role{{BrandID: templateBrand, Permissions: []access.Permission{{Resource: "notification_template", Action: "write", Scope: access.ScopeBrand}, {Resource: "notification_template", Action: "view", Scope: access.ScopeBrand}}}}}
-	if !AllowedTemplate(brandActor, templateBrand, "write") || !AllowedTemplate(brandActor, templateBrand, "view") {
-		t.Fatal("exact brand permissions rejected")
+	brand := access.Account{Type: access.AccountAdmin, BrandIDs: []string{templateBrand}, Roles: []access.Role{{BrandID: templateBrand, Permissions: []access.Permission{{Resource: "notification_template", Action: "write", Scope: access.ScopeBrand}, {Resource: "notification_template", Action: "view", Scope: access.ScopeBrand}}}}}
+	if AllowedTemplate(brand, "write") || AllowedTemplate(brand, "view") {
+		t.Fatal("brand permission authorized global configuration")
 	}
-	if AllowedTemplate(brandActor, templateOtherBrand, "view") {
-		t.Fatal("brand grant crossed tenant boundary")
+	platform := access.Account{Type: access.AccountAdmin, SuperAdmin: true, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "notification_template", Action: "view", Scope: access.ScopePlatform}}}}}
+	if !AllowedTemplate(platform, "view") || AllowedTemplate(platform, "write") {
+		t.Fatal("explicit platform grants not respected")
 	}
-	super := brandActor
-	super.SuperAdmin = true
-	if AllowedTemplate(super, templateBrand, "write") {
-		t.Fatal("super administrator may not write templates")
-	}
-	flat := access.Account{Type: access.AccountAdmin, BrandIDs: []string{templateBrand}}
-	if AllowedTemplate(flat, templateBrand, "view") || AllowedTemplate(flat, templateBrand, "write") {
-		t.Fatal("flat brand membership implicitly granted access")
-	}
-	platform := access.Account{Type: access.AccountAdmin, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "notification_template", Action: "view", Scope: access.ScopePlatform}}}}}
-	if !AllowedTemplate(platform, templateBrand, "view") || AllowedTemplate(platform, templateBrand, "write") {
-		t.Fatal("platform grant scope is incorrect")
+	platform.Roles[0].Permissions = append(platform.Roles[0].Permissions, access.Permission{Resource: "notification_template", Action: "write", Scope: access.ScopePlatform})
+	if !AllowedTemplate(platform, "write") {
+		t.Fatal("explicit platform writer denied")
 	}
 }
 
@@ -459,5 +448,43 @@ func TestSystemTemplateReferencesAreIdentityOnly(t *testing.T) {
 		if ValidateContent("member.joined", bad) == nil {
 			t.Fatalf("accepted invalid reference: %+v", bad)
 		}
+	}
+}
+
+func TestTemplateUnicodeCharacterLimitsPersist(t *testing.T) {
+	s, actor := templateFixture(t)
+	ctx := context.Background()
+	content := validTemplateContent("recharge.confirmed")
+	content.En = Copy{Title: strings.Repeat("😀", 120), Body: strings.Repeat("😀", 1192) + "{points}"}
+	content.ZhCN = Copy{Title: strings.Repeat("文", 120), Body: strings.Repeat("文", 1192) + "{points}"}
+	reason := strings.Repeat("😀", 500)
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	updated, err := s.UpdateTemplate(ctx, tx, "recharge.confirmed", actor, UpdateInput{Version: 1, Content: content, Reason: reason}, templateMeta(actor))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := s.Template(ctx, "recharge.confirmed")
+	if err != nil || !reflect.DeepEqual(saved.Content, content) {
+		t.Fatalf("Unicode template did not persist: %v", err)
+	}
+	var savedReason string
+	if err = s.DB.QueryRow(ctx, `SELECT reason FROM platform_notification_template_revisions WHERE template_key='recharge.confirmed' AND version=$1`, updated.Version).Scan(&savedReason); err != nil || savedReason != reason {
+		t.Fatalf("Unicode reason did not persist: %v", err)
+	}
+	content.En.Title += "😀"
+	if ValidateContent("recharge.confirmed", content) == nil {
+		t.Fatal("121-character title accepted")
+	}
+	content.En.Title = strings.Repeat("😀", 120)
+	content.En.Body += "😀"
+	if ValidateContent("recharge.confirmed", content) == nil {
+		t.Fatal("1201-character body accepted")
 	}
 }

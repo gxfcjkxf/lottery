@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
@@ -16,56 +15,49 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func templateActor(w http.ResponseWriter, r *http.Request, d Dependencies, action string) (access.Account, string, bool) {
+func templateActor(w http.ResponseWriter, r *http.Request, d Dependencies, action string) (access.Account, bool) {
 	a, ok := adminAccount(w, r, d)
 	if !ok {
-		return a, "", false
+		return a, false
 	}
-	brand := strings.ToLower(r.Header.Get("X-Brand-ID"))
-	if !uuidPattern.MatchString(brand) {
-		failure(w, r, 400, "REQUEST_INVALID", "必须选择有效品牌")
-		return a, brand, false
+	if !platformAdminEntry(r) || !notification.AllowedTemplate(a, action) {
+		rejectAdmin(w, r, d, a, "", "notification_template."+action)
+		return a, false
 	}
-	if !notification.AllowedTemplate(a, brand, action) {
-		rejectAdmin(w, r, d, a, brand, "notification_template."+action)
-		return a, brand, false
-	}
-	return a, brand, true
+	return a, true
 }
 func templateResult(v any, e error) (mutation.Result, error) {
 	switch {
 	case errors.Is(e, notification.ErrInvalid):
 		return mutation.Fail(400, "NOTIFICATION_TEMPLATE_INPUT_INVALID", "通知模板格式或占位符不正确"), nil
 	case errors.Is(e, notification.ErrNotFound):
-		return mutation.Fail(404, "NOTIFICATION_TEMPLATE_NOT_FOUND", "当前品牌模板不存在"), nil
+		return mutation.Fail(404, "NOTIFICATION_TEMPLATE_NOT_FOUND", "平台通知模板不存在"), nil
 	case errors.Is(e, notification.ErrDenied):
 		return mutation.Fail(403, "PERMISSION_DENIED", "无通知模板权限"), nil
 	case errors.Is(e, notification.ErrTemplateVersion):
 		return mutation.Fail(409, "NOTIFICATION_TEMPLATE_VERSION_CONFLICT", "模板版本已变化，请重新读取核对"), nil
-	case errors.Is(e, notification.ErrState):
-		return mutation.Fail(409, "NOTIFICATION_TEMPLATE_STATE_CONFLICT", "停用品牌模板仅可读取"), nil
 	case e != nil:
 		return mutation.Result{}, e
 	default:
 		return mutation.OK(200, v), nil
 	}
 }
-func templateFresh(ctx context.Context, tx pgx.Tx, r *http.Request, d Dependencies, a access.Account, brand, action string) (access.Account, error) {
-	fresh, e := freshAdmin(ctx, tx, r, d, a, false)
+func templateFresh(ctx context.Context, tx pgx.Tx, r *http.Request, d Dependencies, a access.Account, action string) (access.Account, error) {
+	fresh, e := freshAdmin(ctx, tx, r, d, a, true)
 	if errors.Is(e, identity.ErrSession) || errors.Is(e, adminsys.ErrDenied) {
 		return fresh, identity.ErrSession
 	}
 	if e != nil {
 		return fresh, e
 	}
-	if !notification.AllowedTemplate(fresh, brand, action) {
+	if !notification.AllowedTemplate(fresh, action) {
 		return fresh, notification.ErrDenied
 	}
 	return fresh, nil
 }
-func templateRead(w http.ResponseWriter, r *http.Request, d Dependencies, a access.Account, brand, action string, query map[string]any, run func(pgx.Tx) (any, error)) {
+func templateRead(w http.ResponseWriter, r *http.Request, d Dependencies, a access.Account, action string, query map[string]any, run func(pgx.Tx) (any, error)) {
 	if action == "notification.template.history" {
-		out, e := auditedHistoryRecord(w, r, d, a, func(fresh access.Account) bool { return notification.AllowedTemplate(fresh, brand, "view") }, audit.Record{BrandID: brand, Action: action, ResourceType: "notification_template", ResourceID: brand, After: query}, run)
+		out, e := auditedHistoryRecord(w, r, d, a, func(fresh access.Account) bool { return notification.AllowedTemplate(fresh, "view") }, audit.Record{Action: action, ResourceType: "notification_template", After: query}, run)
 		if historyFailure(w, r, e) {
 			return
 		}
@@ -79,16 +71,16 @@ func templateRead(w http.ResponseWriter, r *http.Request, d Dependencies, a acce
 		return
 	}
 	defer tx.Rollback(r.Context())
-	_, e = templateFresh(r.Context(), tx, r, d, a, brand, "view")
+	_, e = templateFresh(r.Context(), tx, r, d, a, "view")
 	var out any
 	if e == nil {
 		out, e = run(tx)
 	}
 	if e == nil {
-		_, e = templateFresh(r.Context(), tx, r, d, a, brand, "view")
+		_, e = templateFresh(r.Context(), tx, r, d, a, "view")
 	}
 	if e == nil {
-		_, e = audit.Append(r.Context(), tx, audit.Record{BrandID: brand, ActorType: "admin", ActorID: a.ID, Action: action, ResourceType: "notification_template", ResourceID: brand, RequestID: requestID(r), IP: meta(r).IP, After: query})
+		_, e = audit.Append(r.Context(), tx, audit.Record{ActorType: "admin", ActorID: a.ID, Action: action, ResourceType: "notification_template", RequestID: requestID(r), IP: meta(r).IP, After: query})
 	}
 	if e == nil {
 		e = tx.Commit(r.Context())
@@ -103,7 +95,7 @@ func templateRead(w http.ResponseWriter, r *http.Request, d Dependencies, a acce
 func registerNotificationTemplateRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
 	s := notification.Service{DB: d.Admins.DB}
 	handle("GET", "/notification-templates", func(w http.ResponseWriter, r *http.Request) {
-		a, brand, ok := templateActor(w, r, d, "view")
+		a, ok := templateActor(w, r, d, "view")
 		if !ok {
 			return
 		}
@@ -111,13 +103,13 @@ func registerNotificationTemplateRoutes(handle func(string, string, http.Handler
 			failure(w, r, 400, "REQUEST_INVALID", "模板列表不接受查询参数")
 			return
 		}
-		templateRead(w, r, d, a, brand, "notification.template.list", nil, func(tx pgx.Tx) (any, error) {
-			items, e := s.TemplatesTx(r.Context(), tx, brand)
+		templateRead(w, r, d, a, "notification.template.list", nil, func(tx pgx.Tx) (any, error) {
+			items, e := s.TemplatesTx(r.Context(), tx)
 			return map[string]any{"items": items}, e
 		})
 	})
 	handle("GET", "/notification-templates/{key}/history", func(w http.ResponseWriter, r *http.Request) {
-		a, brand, ok := templateActor(w, r, d, "view")
+		a, ok := templateActor(w, r, d, "view")
 		if !ok {
 			return
 		}
@@ -127,13 +119,13 @@ func registerNotificationTemplateRoutes(handle func(string, string, http.Handler
 			failure(w, r, 400, "NOTIFICATION_TEMPLATE_INPUT_INVALID", "模板标识或分页参数不正确")
 			return
 		}
-		templateRead(w, r, d, a, brand, "notification.template.history", map[string]any{"key": key, "limit": limit, "offset": offset}, func(tx pgx.Tx) (any, error) {
-			items, e := s.TemplateHistoryTx(r.Context(), tx, brand, key, limit, offset)
+		templateRead(w, r, d, a, "notification.template.history", map[string]any{"key": key, "limit": limit, "offset": offset}, func(tx pgx.Tx) (any, error) {
+			items, e := s.TemplateHistoryTx(r.Context(), tx, key, limit, offset)
 			return map[string]any{"items": items}, e
 		})
 	})
 	handle("PUT", "/notification-templates/{key}", func(w http.ResponseWriter, r *http.Request) {
-		a, brand, ok := templateActor(w, r, d, "write")
+		a, ok := templateActor(w, r, d, "write")
 		if !ok {
 			return
 		}
@@ -157,33 +149,22 @@ func registerNotificationTemplateRoutes(handle func(string, string, http.Handler
 			return
 		}
 		var fresh access.Account
-		result, e := d.Mutations.ExecuteChecked(r.Context(), brand, a.ID, "notification.template.update", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(brand+":"+key+":"+string(raw)), func(ctx context.Context, tx pgx.Tx) error {
+		result, e := d.Mutations.ExecuteChecked(r.Context(), "", a.ID, "notification.template.update", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(key+":"+string(raw)), func(ctx context.Context, tx pgx.Tx) error {
 			var e error
-			fresh, e = templateFresh(ctx, tx, r, d, a, brand, "write")
+			fresh, e = templateFresh(ctx, tx, r, d, a, "write")
 			if e != nil {
 				return e
-			}
-			var state string
-			e = tx.QueryRow(ctx, `SELECT status FROM brands WHERE id=$1 FOR SHARE`, brand).Scan(&state)
-			if errors.Is(e, pgx.ErrNoRows) {
-				return notification.ErrNotFound
-			}
-			if e != nil {
-				return e
-			}
-			if state == "disabled" {
-				return notification.ErrState
 			}
 			return nil
 		}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-			v, e := s.UpdateTemplate(ctx, tx, brand, key, fresh, in, pointMeta(r, fresh))
+			v, e := s.UpdateTemplate(ctx, tx, key, fresh, in, pointMeta(r, fresh))
 			return templateResult(v, e)
 		})
 		if errors.Is(e, identity.ErrSession) {
 			result, e = mutation.Fail(401, "AUTH_SESSION_REVOKED", "管理会话已变化，请重新登录"), nil
-		} else if errors.Is(e, notification.ErrDenied) || errors.Is(e, notification.ErrState) || errors.Is(e, notification.ErrNotFound) {
+		} else if errors.Is(e, notification.ErrDenied) || errors.Is(e, notification.ErrNotFound) {
 			result, e = templateResult(nil, e)
 		}
-		finishAdminMutation(w, r, d, a, brand, "notification.template.update", result, e)
+		finishAdminMutation(w, r, d, a, "", "notification.template.update", result, e)
 	})
 }

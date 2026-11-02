@@ -26,8 +26,7 @@ func EvaluateOrder(snapshot BetSnapshot, fact OrderFact) ([]OrderAllocation, err
 		return nil, err
 	}
 
-	derived, err := Bases(fact.Status, fact.Basis.TurnoverPoints, fact.PrizePoints)
-	if err != nil || derived != fact.Basis {
+	if (fact.Status != "won" && fact.Status != "lost") || fact.Basis.TurnoverPoints < 0 || fact.Basis.LossPoints < 0 || fact.PrizePoints < 0 {
 		return nil, ErrEvidence
 	}
 

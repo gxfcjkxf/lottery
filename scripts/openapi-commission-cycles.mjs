@@ -1,3 +1,4 @@
+import { commissionListParameters } from './commission-list-parameters.mjs';
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
 const obj = (properties, required = Object.keys(properties)) => ({ type: 'object', properties, required, additionalProperties: false });
 const nullable = schema => ({ anyOf: [schema, { type: 'null' }] });
@@ -31,7 +32,7 @@ export const schemas = {
   CommissionAllocationPage: obj({ brand_id: ref('UUID'), cycle_id: ref('UUID'), run_id: ref('UUID'), agent_id: nullable(ref('UUID')), order_id: nullable(ref('UUID')), ...pageFields('CommissionAllocation') }),
   CommissionRun: obj({ id: ref('UUID'), brand_id: ref('UUID'), cycle_id: ref('UUID'), generation: ref('PositiveInt64String'), evidence_epoch: ref('NonnegativeInt64String'), state: { type: 'string', enum: ['calculating', 'summarizing', 'ready', 'abandoned'] }, calculated_count: count, earning_count: count, total_points: count, created_at: ref('DateTime') }),
   CommissionRunPage: obj({ brand_id: ref('UUID'), cycle_id: ref('UUID'), ...pageFields('CommissionRun') }),
-  CommissionCalculation: obj({ id: ref('UUID'), brand_id: ref('UUID'), cycle_id: ref('UUID'), run_id: ref('UUID'), order_id: ref('UUID'), member_id: ref('UUID'), reason: { type: 'string', enum: ['eligible', 'policy_disabled', 'unattributed', 'other_cycle', 'cancelled', 'abnormal'] }, status: { type: 'string', enum: ['won', 'lost', 'abnormal', 'bet_cancelled', 'judged_cancelled'] }, stake_points: ref('PositiveInt64String'), prize_points: ref('NonnegativeInt64String'), base_points: ref('NonnegativeInt64String'), job_id: nullable(ref('UUID')), calculation_id: nullable(ref('UUID')), generation: nullable(ref('PositiveInt64String')), audit_log_id: ref('UUID'), created_at: ref('DateTime') }),
+  CommissionCalculation: obj({ id: ref('UUID'), brand_id: ref('UUID'), cycle_id: ref('UUID'), run_id: ref('UUID'), order_id: ref('UUID'), member_id: ref('UUID'), reason: { type: 'string', enum: ['eligible', 'policy_disabled', 'unattributed', 'other_cycle', 'cancelled', 'abnormal'] }, status: { type: 'string', enum: ['won', 'lost', 'abnormal', 'bet_cancelled', 'judged_cancelled'] }, stake_points: ref('NonnegativeInt64String'), prize_points: ref('NonnegativeInt64String'), base_points: ref('NonnegativeInt64String'), audit_log_id: ref('UUID'), created_at: ref('DateTime') }),
   CommissionCalculationPage: obj({ brand_id: ref('UUID'), cycle_id: ref('UUID'), run_id: ref('UUID'), ...pageFields('CommissionCalculation') }),
 };
 schemas.CommissionCycle.required = schemas.CommissionCycle.required.filter(name => name !== 'creation_actor_type');
@@ -45,7 +46,7 @@ const admin = (method, suffix, operationId, summary, data, extra = {}) => ({
   description: 'Primary-only, audited, current-session brand/platform view. Unknown, duplicate or empty query parameters are rejected. Private financial snapshots, agent paths, wallet account IDs and worker cursors are omitted.', ...extra,
 });
 export const operations = [
-  admin('GET', '', 'listCommissionCycles', 'List actual commission cycle calculations', ref('CommissionCyclePage'), { parameters: page }),
+  admin('GET', '', 'listCommissionCycles', 'List actual commission cycle calculations', ref('CommissionCyclePage'), { parameters: [...page,...commissionListParameters('cycle')] }),
   admin('POST', '', 'createCommissionCycle', 'Create a closed-window commission cycle', ref('CommissionCycle'), { permissions: ['commission.run.brand'], requestBody: ref('CommissionCycleCreate'), idempotency: true, successStatus: 201,
     description: 'Requires commission view plus exact commission.run.brand and denies super-admin writes. Resolves the enabled immutable financial policy of a real anchor bet, not current policy; UTC window must already have closed. A short financial-policy admission barrier freezes the manifest; backdated inserts into a registered window are rejected. A new key cannot create a second cycle for the same brand/from/to. Worker pages wait for all orders to become final, persist exact differential allocations, sum per agent and round half-up once. Cached receipt rechecks authorization and returns the original enumerating receipt, not later worker state; same key with changed validated raw body conflicts. No wallet credit or payout is performed.',
   }),

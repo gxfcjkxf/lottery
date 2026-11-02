@@ -36,7 +36,7 @@ const run: CommissionRun = {
 const calculation: CommissionCalculation = {
   id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", brand_id: brand, cycle_id: cycleId, run_id: runId, order_id: orderId,
   member_id: memberId, reason: "eligible", status: "won", stake_points: "1", prize_points: "0", base_points: "1",
-  job_id: null, calculation_id: null, generation: null, audit_log_id: auditId, created_at: date,
+  audit_log_id: auditId, created_at: date,
 };
 const discovery: CommissionDiscovery = {
   id: discoveryId, brand_id: brand, state: "pending", version: 1, cycle_id: null, window_from: null, window_to: null,

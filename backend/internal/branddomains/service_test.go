@@ -24,7 +24,7 @@ func fixture(t *testing.T) (Service, access.Account) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	return Service{DB: p}, access.Account{ID: id, Type: access.AccountAdmin, BrandIDs: []string{brand}, Roles: []access.Role{{BrandID: brand, Permissions: []access.Permission{{Resource: "brand_domains", Action: "write", Scope: access.ScopeBrand}}}}}
+	return Service{DB: p}, access.Account{ID: id, Type: access.AccountAdmin, SuperAdmin: true, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "brand_domains", Action: "write", Scope: access.ScopePlatform}}}}}
 }
 
 func TestDomainGlobalReservationAndConcurrentVersion(t *testing.T) {
@@ -220,7 +220,7 @@ func TestDomainChangesResolveAndPreserveAuditedSnapshots(t *testing.T) {
 		}
 	}
 	var ledger, orders int
-	_ = s.DB.QueryRow(ctx, `SELECT (SELECT count(*) FROM point_ledger_entries),(SELECT count(*) FROM bet_orders)`).Scan(&ledger, &orders)
+	_ = s.DB.QueryRow(ctx, `SELECT (SELECT count(*) FROM point_ledger_entries),(SELECT count(*) FROM configured_orders)`).Scan(&ledger, &orders)
 	if ledger != 0 || orders != 0 {
 		t.Fatal("financial mutation", ledger, orders)
 	}
@@ -399,5 +399,15 @@ func TestDomainDeleteReleasesOwnershipAndPreservesHistory(t *testing.T) {
 	}
 	if _, e = remove(a, brand, removed.Version); !errors.Is(e, ErrNotFound) {
 		t.Fatal(e)
+	}
+}
+
+func TestBrandStaffCannotManageDomainsWithLegacyGrant(t *testing.T) {
+	_, a := fixture(t)
+	a.SuperAdmin = false
+	a.BrandIDs = []string{brand}
+	a.Roles = []access.Role{{BrandID: brand, Permissions: []access.Permission{{Resource: "brand_domains", Action: "write", Scope: access.ScopeBrand}}}}
+	if Allowed(a, brand, "write") || Allowed(a, brand, "view") {
+		t.Fatal("brand domain grants must not authorize domain management")
 	}
 }

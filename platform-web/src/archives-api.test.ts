@@ -44,6 +44,19 @@ async function fileResponse(body: string, rev = 1, headers: Record<string, strin
 }
 
 describe('platform archives API', () => {
+  it('accepts configured push refunds without treating them as cancelled orders',async()=>{
+    const b={...zeroes(REPORT_FIELDS.betting),order_count:'1',stake_points:'10',lost_count:'1',settled_stake_points:'10',refund_points:'10'} as ArchiveSnapshot['betting'];
+    const f=vi.fn<typeof fetch>().mockResolvedValue(envelope(page([record({snapshot:snapshot({betting:b})})])));
+    await expect(createPlatformArchivesApi(f).list(brand)).resolves.toMatchObject({items:[{snapshot:{betting:b}}]});
+  });
+
+  it('filters archive kind server-side and rejects a mixed-kind response',async()=>{
+    const f=vi.fn<typeof fetch>().mockImplementation(async()=>envelope(page()));
+    await expect(createPlatformArchivesApi(f).list(brand,50,0,'daily')).resolves.toMatchObject({total_count:'1'});
+    expect(String(f.mock.calls[0]![0])).toContain('kind=daily');
+    await expect(createPlatformArchivesApi(f).list(brand,50,0,'monthly')).rejects.toMatchObject({code:'INVALID_RESPONSE'});
+  });
+
   it('lists and reads current manual and automatic records with brand and paging checks', async () => {
     const manual = record({ reason: '' })
     const automatic = record({ id: '66666666-6666-4666-8666-666666666666', created_by: null, automation: { task_id: task, policy_version: 2 } })

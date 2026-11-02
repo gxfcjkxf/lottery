@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/audit"
@@ -60,6 +61,7 @@ type Item struct {
 	ReadAt          *time.Time `json:"read_at"`
 }
 type Page struct {
+	TotalCount  string `json:"total_count"`
 	BrandID     string `json:"brand_id"`
 	MemberID    string `json:"member_id"`
 	Items       []Item `json:"items"`
@@ -86,10 +88,11 @@ func list(ctx context.Context, q rowQuery, brand, member string, limit, offset i
 	var raw []byte
 	// Count and page are one statement, hence one READ COMMITTED snapshot.
 	err := q.QueryRow(ctx, `SELECT
+ (SELECT count(*)::text FROM notifications WHERE brand_id=$1 AND member_id=$2),
  (SELECT count(*)::text FROM notifications WHERE brand_id=$1 AND member_id=$2 AND read_at IS NULL),
  COALESCE((SELECT jsonb_agg(to_jsonb(n) ORDER BY created_at DESC,id DESC) FROM
  (SELECT id::text,brand_id::text,member_id::text,event_type,template_key,template_version,content,payload,created_at,read_at
- FROM notifications WHERE brand_id=$1 AND member_id=$2 ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4) n),'[]'::jsonb)`, brand, member, limit, offset).Scan(&out.UnreadCount, &raw)
+ FROM notifications WHERE brand_id=$1 AND member_id=$2 ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4) n),'[]'::jsonb)`, brand, member, limit, offset).Scan(&out.TotalCount, &out.UnreadCount, &raw)
 	if err == nil {
 		err = json.Unmarshal(raw, &out.Items)
 	}
@@ -199,7 +202,7 @@ func (s Service) processOne(ctx context.Context) (bool, error) {
 	if err == nil {
 		// Copy the currently committed template under a shared row lock. An
 		// operator edit cannot change materialized messages or race this copy.
-		template, e := s.TemplateTx(ctx, tx, brand, kind, true)
+		template, e := s.TemplateTx(ctx, tx, kind, true)
 		err = e
 		if err == nil {
 			err = ValidateContent(kind, template.Content)
@@ -308,17 +311,12 @@ func validateEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate string
 	if kind == "commission.paid" || kind == "commission.adjusted" || kind == "commission.corrected" {
 		return validateCommissionEvent(ctx, tx, brand, kind, aggregate, raw)
 	}
+	if kind == "bet.order.placed" || kind == "bet.order.won" {
+		return validateConfiguredBetEvent(ctx, tx, brand, kind, aggregate, raw)
+	}
 	switch kind {
 	case "member.joined", "recharge.confirmed":
 		if !exactEventJSONKeys(raw, "member_id", "resource_id", "points") {
-			return "", Payload{}, ErrInvalid
-		}
-	case "bet.order.won", "bet.order.prize_reversed":
-		if !exactEventJSONKeys(raw, "member_id", "order_id", "period_id", "points", "calculation_id", "payout_entry_id", "job_id", "correction_id", "original_payout_entry_id") {
-			return "", Payload{}, ErrInvalid
-		}
-	case "bet.order.placed", "bet.order.cancelled", "bet.order.judged_cancelled", "bet.order.abnormal":
-		if !exactEventJSONKeys(raw, "order_id", "member_id", "period_id", "version", "status", "points") {
 			return "", Payload{}, ErrInvalid
 		}
 	default:
@@ -367,64 +365,7 @@ func validateEvent(ctx context.Context, tx pgx.Tx, brand, kind, aggregate string
 		if !ok {
 			return "", p, ErrInvalid
 		}
-	case "bet.order.won", "bet.order.prize_reversed":
-		if in.OrderID != aggregate || !positive(in.Points) || !uuid.MatchString(in.CalculationID) || !uuid.MatchString(in.PayoutEntryID) || !uuid.MatchString(in.JobID) || !uuid.MatchString(in.PeriodID) {
-			return "", p, ErrInvalid
-		}
-		var ok bool
-		var err error
-		if kind == "bet.order.won" {
-			if in.CorrectionID != "" || in.OriginalPayoutEntryID != "" {
-				return "", p, ErrInvalid
-			}
-			err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM settlement_calculations c
- JOIN bet_orders o ON o.id=c.order_id AND o.brand_id=c.brand_id
- JOIN settlement_targets t ON t.job_id=c.job_id AND t.order_id=c.order_id AND t.calculation_id=c.id AND t.state='paid'
- JOIN point_ledger_entries l ON l.id=t.payout_entry_id AND l.brand_id=c.brand_id AND l.member_id=o.brand_member_id
- WHERE c.brand_id=$1 AND c.order_id=$2 AND o.brand_member_id=$3 AND c.prize_points=$4::text::bigint AND c.won
- AND c.id=$5 AND l.id=$6 AND c.job_id=$7 AND c.period_id=$8
- AND l.entry_type='prize' AND l.reference_type='settlement_calculation' AND l.reference_id=c.id AND l.reversal_of IS NULL
- AND l.delta_snapshot->'winning'->>'available'=$4::text)`, brand, aggregate, in.MemberID, *in.Points, in.CalculationID, in.PayoutEntryID, in.JobID, in.PeriodID).Scan(&ok)
-		} else {
-			if !uuid.MatchString(in.CorrectionID) || !uuid.MatchString(in.OriginalPayoutEntryID) {
-				return "", p, ErrInvalid
-			}
-			err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM draw_correction_targets t
- JOIN draw_corrections d ON d.id=t.correction_id AND d.brand_id=t.brand_id
- JOIN bet_orders o ON o.id=t.order_id AND o.brand_id=t.brand_id
- JOIN point_ledger_entries l ON l.id=t.reversal_entry_id AND l.brand_id=t.brand_id AND l.member_id=o.brand_member_id
- JOIN point_ledger_entries original ON original.id=t.old_payout_entry_id AND original.brand_id=t.brand_id AND original.member_id=o.brand_member_id
- WHERE t.brand_id=$1 AND t.order_id=$2 AND o.brand_member_id=$3 AND t.old_prize_points=$4::text::bigint AND t.state='reversed'
- AND t.old_calculation_id=$5 AND l.id=$6 AND d.previous_job_id=$7 AND d.period_id=$8 AND d.id=$9 AND original.id=$10
- AND l.entry_type='prize_reversal' AND l.reference_type='draw_correction' AND l.reference_id=d.id AND l.reversal_of=original.id
- AND original.entry_type='prize' AND original.reference_type='settlement_calculation' AND original.reference_id=t.old_calculation_id
- AND original.delta_snapshot->'winning'->>'available'=$4::text
- AND l.delta_snapshot->'winning'->>'available'=('-'||$4::text))`, brand, aggregate, in.MemberID, *in.Points, in.CalculationID, in.PayoutEntryID, in.JobID, in.PeriodID, in.CorrectionID, in.OriginalPayoutEntryID).Scan(&ok)
-		}
-		if err != nil {
-			return "", p, err
-		}
-		if !ok {
-			return "", p, ErrInvalid
-		}
-	case "bet.order.placed", "bet.order.cancelled", "bet.order.judged_cancelled", "bet.order.abnormal":
-		status := strings.TrimPrefix(kind, "bet.order.")
-		if kind == "bet.order.cancelled" {
-			status = "bet_cancelled"
-		}
-		if in.OrderID != aggregate || !positive(in.Points) || in.Status != status || in.Version < 1 || !uuid.MatchString(in.PeriodID) {
-			return "", p, ErrInvalid
-		}
-		var ok bool
-		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM bet_orders WHERE brand_id=$1 AND id=$2 AND brand_member_id=$3 AND total_points=$4::bigint AND period_id=$5 AND version>=$6)`, brand, aggregate, in.MemberID, *in.Points, in.PeriodID, in.Version).Scan(&ok)
-		if err != nil {
-			return "", p, err
-		}
-		if !ok {
-			return "", p, ErrInvalid
-		}
-	default:
-		return "", p, ErrInvalid
+
 	}
 	return in.MemberID, p, nil
 }
@@ -469,7 +410,7 @@ func (s Service) Deliveries(ctx context.Context, brand string, limit, offset int
 	return out, rows.Err()
 }
 func (s Service) Retry(ctx context.Context, tx pgx.Tx, brand string, a access.Account, id string, attempts int, reason string, meta points.Metadata) (Delivery, error) {
-	if tx == nil || !uuid.MatchString(brand) || !uuid.MatchString(id) || attempts < 1 || len(reason) > 500 {
+	if tx == nil || !uuid.MatchString(brand) || !uuid.MatchString(id) || attempts < 1 || utf8.RuneCountInString(reason) > 500 {
 		return Delivery{}, ErrInvalid
 	}
 	if a.SuperAdmin || !access.Authorize(a, "notification", "retry", access.ScopeBrand, brand) {

@@ -1,10 +1,78 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { configuredDemo } from '../../shared/src/configured-rules'
-import { origins, gameId, installLayoutApi, installOrdersLayoutApi, expectNoPageOverflow } from './fixture'
+import { origins, gameId, installLayoutApi, installOrdersLayoutApi, installWalletLayoutApi, expectNoPageOverflow } from './fixture'
 
 export function registerConfiguredSelectionTests() {
 for (const locale of ['en', 'zh-CN'] as const) {
+ test(`decimal option odds stay whole inside number buttons (${locale})`, async ({page}, info) => {
+  await installLayoutApi(page, locale); await installWalletLayoutApi(page)
+  const snapshot = configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json', 'utf8')))
+  for (const prices of Object.values(snapshot.prices.plates)) for (const key of Object.keys(prices)) prices[key] = '48.99'
+  await page.route(`**/api/v1/configured/games/${gameId}`, route => {
+   expect(route.request().method()).toBe('GET')
+   const now = Date.now()
+   return route.fulfill({json:{success:true,data:{game:{id:gameId,name:'Mark Six',status:'active',brand_enabled:true},snapshot,rule_id:gameId,snapshot_hash:'odds-layout',sales:{version:1,enabled:true},previous_draw:null,period:{id:gameId,period_no:'2026115',bet_start_at:new Date(now-3600000).toISOString(),bet_end_at:new Date(now+3600000).toISOString(),draw_at:new Date(now+3660000).toISOString()}}}})
+  })
+  await page.route('**/api/v1/configured/preview', route => {
+   expect(route.request().method()).toBe('POST')
+   const body = route.request().postDataJSON(), request = body.requests[0]
+   return route.fulfill({json:{success:true,data:{...body,actor_context:'review-fixture',definition_hash:'review-fixture',game_id:gameId,lines:request.options.map((option:string)=>({play_id:request.play_id,options:[option],plate:request.plate,stake:'10',prices:{hit:'48.99'}})),bet_points:String(request.options.length * 10)}}})
+  })
+  await page.goto(origins.user)
+  const prices = page.locator('.configured-option-price')
+  await expect(prices.first()).toHaveText('48.99')
+  const widths = info.project.name.endsWith('reflow') ? [320,360,390,620,701,999,1000,1440] : [page.viewportSize()!.width]
+  for (const width of widths) {
+   if (info.project.name.endsWith('reflow')) await page.setViewportSize({width,height:800})
+   const measurements = await prices.evaluateAll(nodes => nodes.map(node => {
+    const range = document.createRange(); range.selectNodeContents(node)
+    const text = range.getBoundingClientRect(), button = node.closest('button')!.getBoundingClientRect()
+    return {lines:range.getClientRects().length,left:text.left,right:text.right,buttonLeft:button.left,buttonRight:button.right}
+   }))
+   for (const value of measurements) {
+    expect(value.lines, `odds line count at ${width}px`).toBe(1)
+    expect(value.left).toBeGreaterThanOrEqual(value.buttonLeft)
+    expect(value.right).toBeLessThanOrEqual(value.buttonRight)
+   }
+   await expectNoPageOverflow(page)
+  }
+  await page.screenshot({path:info.outputPath(`decimal-odds-${locale}.png`),fullPage:true})
+  for (let index = 0; index < 4; index++) await page.locator('.configured-options button').nth(index).click()
+  await page.locator('.configured-points-control input').fill('10')
+  await page.locator('.configured-dock-actions .button-primary').click()
+  const dialog = page.getByRole('dialog'), table = dialog.locator('.bet-review-table')
+  await expect(table.locator('tbody tr')).toHaveCount(4)
+  const totals = dialog.locator('.configured-review-totals'), actions = dialog.locator('.configured-review-actions')
+  await expect(totals).toContainText(locale === 'en' ? 'Entries: 4' : '注数: 4')
+  await expect(totals).toContainText(locale === 'en' ? 'Total stake: 40' : '总投注积分: 40')
+  await expect(dialog.locator('.detail-modal-content .configured-review-totals')).toHaveCount(0)
+  const totalBox = (await totals.boundingBox())!, actionBox = (await actions.boundingBox())!
+  if (totalBox.y + totalBox.height <= actionBox.y) expect(totalBox.y + totalBox.height).toBeLessThanOrEqual(actionBox.y)
+  else expect(totalBox.x + totalBox.width).toBeLessThanOrEqual(actionBox.x)
+
+  await expect(table.locator('thead th')).toHaveText(locale === 'en' ? ['Bet details','Odds','Stake points'] : ['投注内容','赔率','投注积分'])
+  for (const row of await table.locator('tbody tr').all()) {
+   await expect(row.locator('td').nth(2)).toHaveText('10')
+   await expect(row.locator('td').nth(1)).toHaveText('48.99')
+   await expect(row.locator('td').first()).not.toContainText('48.99')
+  }
+  await expectNoPageOverflow(page)
+  expect(await table.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true)
+  const compact = await table.evaluate(node => {const parent=node.parentElement!,style=getComputedStyle(parent);return {width:node.getBoundingClientRect().width,available:parent.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)}})
+  expect(compact.width).toBeCloseTo(compact.available,0)
+  for (const row of await table.locator('tbody tr').all()) {
+   for (const cell of [row.locator('td').nth(2), row.locator('.bet-review-price-value')]) {
+    await expect(cell).toHaveCSS('white-space','nowrap')
+    expect(await cell.evaluate(node => {const range=document.createRange();range.selectNodeContents(node);return range.getClientRects().length})).toBe(1)
+   }
+   await expect(row.locator('td').nth(1)).toHaveCSS('text-align','right')
+   await expect(row.locator('td').nth(2)).toHaveCSS('text-align','right')
+  }
+  await page.screenshot({path:info.outputPath(`bet-review-${locale}.png`)})
+
+ })
+
  test(`empty quick stake chip shows blinking insertion caret (${locale})`,async({page},info)=>{
   await installLayoutApi(page,locale);await installOrdersLayoutApi(page)
   let values:string[]=[]
@@ -20,10 +88,12 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await expect.poll(async()=>(await marker()).opacity).toBe('1')
   await input.screenshot({path:info.outputPath(`empty-chip-caret-${locale}.png`),animations:'disabled',caret:'initial'})
   await input.fill('50')
-  await expect.poll(()=>values).toEqual(['50'])
+  expect(values).toEqual([])
   await expect(input).toBeFocused()
   expect((await marker()).content).not.toBe('""')
   expect(await input.evaluate(element=>getComputedStyle(element).caretColor)).not.toBe('rgba(0, 0, 0, 0)')
+  await page.getByTestId('betting-preferences').getByRole('button',{name:locale==='en'?'Save':'保存',exact:true}).click()
+  await expect.poll(()=>values).toEqual(['50'])
  })
  test(`quick stake chip focus and six digit sizes (${locale})`,async({page},info)=>{
   await installLayoutApi(page,locale);await installOrdersLayoutApi(page)
@@ -41,13 +111,13 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await expect(inputs.last()).toHaveCSS('cursor','text')
   expect(await inputs.last().evaluate(input=>getComputedStyle(input).caretColor)).not.toBe('rgba(0, 0, 0, 0)')
   await inputs.last().fill('999998')
-  await expect.poll(()=>values.at(-1)).toBe('999998')
   expect(await inputs.last().evaluate(input=>(input as HTMLInputElement).selectionStart)).toBe(6)
   await inputs.last().fill('1000000')
   await expect(inputs.last()).toHaveValue('999998')
   await expect(settings.getByRole('status')).toContainText('999999')
   await expect(settings.getByRole('alert')).toHaveCount(0)
-  expect(values.at(-1)).toBe('999998')
+  await settings.getByRole('button',{name:locale==='en'?'Save':'保存',exact:true}).click()
+  await expect.poll(()=>values.at(-1)).toBe('999998')
   async function fits(locator:ReturnType<typeof page.locator>){
    for(const core of await locator.all()){
     expect(await core.evaluate(element=>{const style=getComputedStyle(element),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d')!;ctx.font=`${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;const value=element instanceof HTMLInputElement?element.value:element.textContent!;return ctx.measureText(value).width<=element.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)})).toBe(true)
@@ -92,6 +162,15 @@ for (const locale of ['en', 'zh-CN'] as const) {
    const points=page.locator('.configured-stakes--dock input[type="number"]'),popup=page.locator('.configured-quick-amounts')
    for(const width of widths){
     if(info.project.name.endsWith('reflow'))await page.setViewportSize({width,height:720})
+    await points.blur()
+    await expect(popup).toHaveCount(0)
+    await page.locator('.configured-points-control > span').click()
+    await expect(popup).toHaveCount(0)
+    await points.focus()
+    await expect(popup).toHaveCount(0)
+    const metrics=await points.evaluate(input=>{const s=getComputedStyle(input),probe=document.createElement('span');probe.style.font=s.font;probe.style.width='6ch';probe.style.display='inline-block';document.body.append(probe);const expected=probe.getBoundingClientRect().width;probe.remove();return {content:input.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight),expected}})
+    expect(Math.abs(metrics.content-metrics.expected)).toBeLessThan(2)
+    expect(await page.locator('.configured-stake-entry').evaluate(entry=>entry.lastElementChild!.classList.contains('configured-selected-count'))).toBe(true)
     await points.click();await expect(popup.getByRole('button')).toHaveCount(count)
     await expect(popup).toBeInViewport({ratio:1})
     await expect.poll(async()=>{
@@ -116,16 +195,22 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await expect.poll(()=>chipInputs.evaluateAll(inputs=>inputs.map(input=>(input as HTMLInputElement).value))).toEqual(['','','','',''])
   for(const [index,amount] of ['5','10','20','50','100'].entries()){
    await chipInputs.nth(index).fill(amount)
-   await expect.poll(()=>savedAmounts[index]).toBe(amount)
   }
+  const save=settings.getByRole('button',{name:locale==='en'?'Save':'保存',exact:true})
+  expect(savedAmounts).toEqual([])
+  await save.click()
+  await expect.poll(()=>savedAmounts).toEqual(['5','10','20','50','100'])
   await expect(settings.getByRole('button',{name:locale==='en'?'Add':'添加',exact:true})).toHaveCount(0)
   await settings.locator('.quick-amount-chip').nth(1).getByRole('button').click()
+  await save.click()
   await expect.poll(()=>savedAmounts.length).toBe(4)
   await chipInputs.first().fill('7')
+  await save.click()
   await expect.poll(()=>savedAmounts[0]).toBe('7')
   await chipInputs.last().fill('200')
+  await save.click()
   await expect.poll(()=>savedAmounts.at(-1)).toBe('200')
-  await expect(settings.getByRole('button',{name:locale==='en'?'Save':'保存',exact:true})).toHaveCount(0)
+  await expect(save).toBeDisabled()
   if(info.project.name.endsWith('reflow')){
    for(const width of [320,768,1000,1440]){await page.setViewportSize({width,height:720});await expectNoPageOverflow(page)}
   }
@@ -176,6 +261,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
   expect(await settings.locator('.quick-amount-chip input').evaluateAll(inputs=>inputs.map(input=>(input as HTMLInputElement).value))).toEqual(['7','20','50','100','200'])
   await settings.locator('.quick-amount-chip input').first().fill('8')
   await settings.locator('.quick-amount-chip input').first().blur()
+  expect(savedAmounts[0]).toBe('7')
+  await save.click()
   await expect.poll(()=>savedAmounts[0]).toBe('8')
   await page.goto(`${origins.user}/configured/${gameId}`);await expect(points).toHaveValue('75')
   await points.click();await expect(shortcuts.getByRole('button').first()).toHaveText('8')
@@ -225,7 +312,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await expect(strip.locator('.configured-result-ball').nth(2)).toHaveClass(/lottery-wave-green/)
   await expect(strip.locator('.configured-result-ball.special')).toHaveText('07')
   await expect(strip.locator('.period-number')).toHaveText(locale === 'en' ? '2026111' : '2026111期')
-  await expect(strip.locator('.period-times time').first()).toHaveAttribute('datetime', currentPeriod.bet_end_at)
+  await expect(strip.locator('.period-times time').first()).toHaveAttribute('datetime', currentPeriod.bet_start_at)
+  await expect(strip.locator('.period-times time').nth(1)).toHaveAttribute('datetime', currentPeriod.bet_end_at)
   await expect(strip.locator('.period-times time').last()).toHaveAttribute('datetime', currentPeriod.draw_at)
   const history = page.locator('.configured-live .game-results-link')
   await expect(history).toHaveCount(0)
@@ -255,7 +343,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await dock.getByRole('button',{name:locale==='en'?'Clear':'清空',exact:true}).click()
   await dock.locator('input[type="number"]').fill('10')
   const first = selection.locator('.configured-options button').first()
-  await expect(first.locator('span')).toHaveCount(1)
+  await expect(first.locator('.configured-option-price')).toHaveCount(1)
   await expect(first.locator('.configured-option-price')).toHaveCSS('color', 'rgb(185, 28, 28)')
   await first.evaluate(element => element.scrollIntoView({block:'start'}))
   await first.click()
@@ -270,8 +358,8 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await expect(total).toHaveText('50')
   await expect(betButton).toBeDisabled()
   await expect(betButton).toHaveCSS('background-color','rgb(226, 232, 240)')
-  await expect(selection.locator('.configured-funds-toast')).toContainText(locale==='en'?'Insufficient available points':'可用积分不足')
-  await expect(selection.locator('.configured-funds-toast')).toBeInViewport({ratio:1})
+  await expect(page.locator('.operation-toast-stack .toast-error')).toContainText(locale==='en'?'Insufficient available points':'可用积分不足')
+  await expect(page.locator('.operation-toast-stack .toast-error')).toBeInViewport({ratio:1})
   await expectNoPageOverflow(page)
   await page.screenshot({path:info.outputPath(`insufficient-${locale}.png`)})
   const clear = dock.getByRole('button', {name: locale === 'en' ? 'Clear' : '清空', exact: true})
@@ -279,7 +367,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await expect(selection.locator('.configured-options button[aria-pressed="true"]')).toHaveCount(0)
   await expect(total).toHaveText('0')
   await expect(betButton).toBeEnabled()
-  await expect(selection.locator('.configured-funds-toast')).toHaveCount(0)
+  await expect(page.locator('.operation-toast-stack .toast-error')).toHaveCount(0)
   await expect(points).toHaveValue('25')
   await expect(clear).toBeDisabled()
   await first.evaluate(element => element.scrollIntoView({block:'start'}))
@@ -289,16 +377,16 @@ for (const locale of ['en', 'zh-CN'] as const) {
   await second.click()
   await expect(total).toHaveText('25')
   await expect(betButton).toBeEnabled()
-  await expect(selection.locator('.configured-funds-toast')).toHaveCount(0)
+  await expect(page.locator('.operation-toast-stack .toast-error')).toHaveCount(0)
   for(const identity of [{brand_id:'bbbbbbbb-bbbb-4bbb-8bbb-000000000001'}, {member_id:'bbbbbbbb-bbbb-4bbb-8bbb-000000000001'}]) {
    await page.evaluate(value=>window.dispatchEvent(new CustomEvent('lottery:wallet-snapshot',{detail:value})),{...walletSnapshot('1000',5),...identity})
    await expect(dock.locator('.configured-available strong')).toHaveText('40')
   }
   await page.evaluate(value=>window.dispatchEvent(new CustomEvent('lottery:wallet-snapshot',{detail:value})),walletSnapshot('20',2))
-  await expect(selection.locator('.configured-funds-toast')).toBeVisible()
+  await expect(page.locator('.operation-toast-stack .toast-error')).toBeVisible()
   await expect(betButton).toBeDisabled()
   await page.evaluate(value=>window.dispatchEvent(new CustomEvent('lottery:wallet-snapshot',{detail:value})),walletSnapshot('60',3))
-  await expect(selection.locator('.configured-funds-toast')).toHaveCount(0)
+  await expect(page.locator('.operation-toast-stack .toast-error')).toHaveCount(0)
   await page.evaluate(value=>window.dispatchEvent(new CustomEvent('lottery:wallet-snapshot',{detail:value})),walletSnapshot('20',2))
   await expect(dock.locator('.configured-available strong')).toHaveText('60')
   await expect(betButton).toBeEnabled()

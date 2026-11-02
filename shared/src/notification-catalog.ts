@@ -35,16 +35,6 @@ export const notificationCatalog = {
       "body": "历史记录：{points} 积分曾记入赠送可用积分。此记录表示过去的发放，不代表当前钱包余额或外部付款。请查看当前钱包；此记录会保留。"
     }
   },
-  "reward.order.revocation_pending": {
-    "en": {
-      "title": "Reward revocation pending recorded",
-      "body": "Historical record: a full reward reversal of {points} points was requested and recorded as awaiting operator handling. No points moved in this attempt. It does not retry, unfreeze or deduct automatically; check the current wallet."
-    },
-    "zh-CN": {
-      "title": "奖励撤销待处理记录",
-      "body": "历史记录：曾申请全额撤销 {points} 积分奖励，并记录为待运营处理。本次没有积分变动，不会自动重试、解冻或扣除；请查看当前钱包。"
-    }
-  },
   "reward.order.revoked": {
     "en": {
       "title": "Reward reversal recorded",

@@ -1,3 +1,4 @@
+import { readPaginationTotal } from '@lottery/shared'
 import { resolveNotificationContent } from '@lottery/shared'
 import { readApiEnvelope } from '@lottery/shared'
 
@@ -13,7 +14,6 @@ export type NotificationEventType =
   | "bet.order.won"
   | "bet.order.prize_reversed"
   | "reward.order.granted"
-  | "reward.order.revocation_pending"
   | "reward.order.revoked"
   | "commission.paid"
   | "commission.adjusted"
@@ -45,7 +45,7 @@ export interface NotificationItem {
   read_at: string | null;
 }
 
-export interface NotificationPayload { resource_id: string; points: string | null }
+interface NotificationPayload { resource_id: string; points: string | null }
 export interface DrawNotificationPayload {
   resource_id: string;
   points: null;
@@ -60,6 +60,7 @@ export interface DrawNotificationPayload {
 }
 
 export interface NotificationPage {
+ total_count: string;
   brand_id: string;
   member_id: string;
   items: NotificationItem[];
@@ -109,7 +110,6 @@ const EVENT_TYPES = new Set<NotificationEventType>([
   "bet.order.won",
   "bet.order.prize_reversed",
   "reward.order.granted",
-  "reward.order.revocation_pending",
   "reward.order.revoked",
   "commission.paid",
   "commission.adjusted",
@@ -210,13 +210,12 @@ function safeTemplateText(
   value: unknown,
   label: string,
   maxLength: number,
-  byteLength: boolean,
   allowLineBreaks: boolean,
 ): string {
   if (typeof value !== "string" || value.trim() !== value || value.length === 0) {
     return malformed(`${label} must be a nonempty trimmed string`);
   }
-  const length = byteLength ? new TextEncoder().encode(value).length : [...value].length;
+  const length = Array.from(value).length;
   if (length > maxLength) return malformed(`${label} is too long`);
   if (/[<>\uD800-\uDFFF]|https?:|javascript:|data:|www\./iu.test(value)) {
     return malformed(`${label} contains disallowed markup or a URL`);
@@ -244,8 +243,8 @@ function parseTemplateContent(value: unknown, eventType: NotificationEventType):
   for (const locale of ["en", "zh-CN"] as const) {
     const localized = object(content[locale], `notification.content.${locale}`);
     exactKeys(localized, ["title", "body"], `notification.content.${locale}`);
-    const title = safeTemplateText(localized.title, `notification.content.${locale}.title`, 120, true, false);
-    const body = safeTemplateText(localized.body, `notification.content.${locale}.body`, 1200, true, true);
+    const title = safeTemplateText(localized.title, `notification.content.${locale}.title`, 120, false);
+    const body = safeTemplateText(localized.body, `notification.content.${locale}.body`, 1200, true);
     if (DRAW_EVENT_TYPES.has(eventType)) {
       if (title.includes("{points}") || body.includes("{points}")) {
         return malformed(`${eventType} content cannot use {points}`);
@@ -279,8 +278,8 @@ function parseDrawPayload(value: Record<string, unknown>, eventType: Notificatio
   exactKeys(draw, ["game_id", "period_id", "period_no", "result", "drawn_at", "previous_draw_id"], "notification.payload.draw");
   const gameId = uuid(draw.game_id, "notification.payload.draw.game_id");
   const periodId = uuid(draw.period_id, "notification.payload.draw.period_id");
-  if (typeof draw.period_no !== "string" || draw.period_no.trim().length === 0 || new TextEncoder().encode(draw.period_no).length > 80) {
-    return malformed("notification.payload.draw.period_no must be a nonempty string of at most 80 UTF-8 bytes");
+  if (typeof draw.period_no !== "string" || draw.period_no.trim().length === 0 || Array.from(draw.period_no).length > 80) {
+    return malformed("notification.payload.draw.period_no must be a nonempty string of at most 80 characters");
   }
   const result = object(draw.result, "notification.payload.draw.result");
   exactKeys(result, ["regular", "special", "digits"], "notification.payload.draw.result");
@@ -421,6 +420,7 @@ function parsePage(
     return malformed("offset must match the requested offset");
   }
   return {
+    total_count: readPaginationTotal(value),
     brand_id: brandId,
     member_id: memberId,
     items,
@@ -577,5 +577,3 @@ export function createNotificationApi(
     },
   };
 }
-
-export type NotificationApi = ReturnType<typeof createNotificationApi>;

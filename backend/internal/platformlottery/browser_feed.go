@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 var ErrBrowserUnavailable = errors.New("draw browser runtime is not configured")
@@ -70,7 +71,7 @@ func (b FeedBrowser) Validate() error {
 	}
 	validURL := func(v string) bool {
 		u, e := url.Parse(v)
-		return e == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil && u.Fragment == "" && len(v) <= 2048
+		return e == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil && u.Fragment == "" && utf8.RuneCountInString(v) <= 2048
 	}
 	if b.EntryURL != "" && !validURL(b.EntryURL) {
 		return ErrInvalid
@@ -83,7 +84,7 @@ func (b FeedBrowser) Validate() error {
 	}
 	seen := map[string]bool{}
 	for _, q := range b.JSONRequests {
-		if q.ID == "" || len(q.ID) > 40 || strings.ContainsAny(q.ID, " /\t\n") || seen[q.ID] || !validURL(q.URL) || (q.Method != "GET" && q.Method != "POST") || len(q.Body) > 4096 || q.Method == "GET" && q.Body != "" {
+		if q.ID == "" || utf8.RuneCountInString(q.ID) > 40 || strings.ContainsAny(q.ID, " /\t\n") || seen[q.ID] || !validURL(q.URL) || (q.Method != "GET" && q.Method != "POST") || utf8.RuneCountInString(q.Body) > 4096 || q.Method == "GET" && q.Body != "" {
 			return ErrInvalid
 		}
 		seen[q.ID] = true

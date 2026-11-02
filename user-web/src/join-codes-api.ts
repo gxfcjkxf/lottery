@@ -1,6 +1,6 @@
 import { readApiEnvelope } from '@lottery/shared'
 
-export type JoinCodeKind = "agent" | "referral";
+type JoinCodeKind = "agent" | "referral";
 
 export interface JoinCode {
   id: string;
@@ -27,6 +27,9 @@ export interface JoinCodePage {
   offset: number;
   total_count: string;
 }
+
+export interface ReferredMember { id: string; display_name: string; joined_at: string }
+export interface ReferralPage extends Omit<JoinCodePage, 'items'> { items: ReferredMember[] }
 
 export interface MemberAttribution {
   brand_id: string;
@@ -301,6 +304,24 @@ export function createJoinCodesApi(
       const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
       return parsePage(await request(`/me/join-codes?${query}`), context, limit, offset);
     },
+    async referrals(context: JoinCodeContext, limit = 20, offset = 0): Promise<ReferralPage> {
+      validateContext(context);
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) {
+        throw new JoinCodesApiError("Invalid pagination", 0, "invalid_parameter");
+      }
+      const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      const data = object(await request(`/me/referrals?${query}`), "referral page");
+      exactKeys(data, "referral page", ["brand_id", "member_id", "items", "limit", "offset", "total_count"]);
+      if (data.brand_id !== context.brand_id || data.member_id !== context.member_id || data.limit !== limit || data.offset !== offset || !Array.isArray(data.items) || data.items.length > limit || typeof data.total_count !== 'string' || !CANONICAL_COUNT.test(data.total_count) || BigInt(data.total_count) > BigInt(MAX_INT64)) return malformed("invalid referral page scope or pagination");
+      const items = data.items.map(value => {
+        const item = object(value, "referred member");
+        exactKeys(item, "referred member", ["id", "display_name", "joined_at"]);
+        if (typeof item.display_name !== 'string') return malformed("invalid member name");
+        return { id: uuid(item.id, "member.id"), display_name: item.display_name, joined_at: dateTime(item.joined_at, "member.joined_at") };
+      });
+      if (new Set(items.map(item => item.id)).size !== items.length || (items.length > 0 && BigInt(data.total_count) < BigInt(offset + items.length))) return malformed("invalid referral page items");
+      return { ...context, items, limit, offset, total_count: data.total_count };
+    },
     async attribution(context: JoinCodeContext): Promise<MemberAttribution> {
       validateContext(context);
       return parseAttribution(await request("/me/attribution"), context);
@@ -313,5 +334,3 @@ function validateContext(context: JoinCodeContext): void {
     throw new JoinCodesApiError("brand_id and member_id must be UUIDs", 0, "invalid_parameter");
   }
 }
-
-export type JoinCodesApi = ReturnType<typeof createJoinCodesApi>;

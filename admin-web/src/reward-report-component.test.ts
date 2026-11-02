@@ -1,3 +1,5 @@
+import {ManagementListTestComponent,MemberActionsMenuTestComponent,clickHostButton} from "./management-list-test-helper"
+import { SelectControlTestComponent } from './select-control-test-helper'
 import { h as temporalTestH } from "vue";
 import * as DisplayShared from "@lottery/shared";
 DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
@@ -17,10 +19,9 @@ const brand = "11111111-1111-4111-8111-111111111111", actor = "22222222-2222-422
 const huge = "9223372036854775808123456789012345678901234567890";
 const account: AdminAccount = { id: actor, super_admin: false, brand_ids: [brand], permissions: ["reward.view.brand"], permissions_by_brand: { [brand]: ["report_reward.view.brand", "report_reward.export.brand"] } };
 const posting = { entry_count: "3", grant_entry_count: "2", grant_points: huge, reversal_entry_count: "1", reversal_points: `${BigInt(huge) + 7n}`, net_points: "-7" };
-const orderTotals = { order_count: "3", original_points: `${BigInt(huge) + 100n}`, granted_count: "1", granted_points: huge, pending_count: "1", pending_points: "50", revoked_count: "1", revoked_points: "50" };
-const grantedOnly = { order_count: "1", original_points: huge, granted_count: "1", granted_points: huge, pending_count: "0", pending_points: "0", revoked_count: "0", revoked_points: "0" };
-const pendingOnly = { order_count: "1", original_points: "50", granted_count: "0", granted_points: "0", pending_count: "1", pending_points: "50", revoked_count: "0", revoked_points: "0" };
-const revokedOnly = { order_count: "1", original_points: "50", granted_count: "0", granted_points: "0", pending_count: "0", pending_points: "0", revoked_count: "1", revoked_points: "50" };
+const orderTotals = { order_count: "2", original_points: `${BigInt(huge) + 50n}`, granted_count: "1", granted_points: huge, revoked_count: "1", revoked_points: "50" };
+const grantedOnly = { order_count: "1", original_points: huge, granted_count: "1", granted_points: huge, revoked_count: "0", revoked_points: "0" };
+const revokedOnly = { order_count: "1", original_points: "50", granted_count: "0", granted_points: "0", revoked_count: "1", revoked_points: "50" };
 type Node = { tag: string; props: Record<string, unknown>; children: Node[]; text: string; parent?: Node; value?: string; addEventListener: (...args: unknown[]) => void; removeEventListener: (...args: unknown[]) => void; getRootNode: () => Node; options: Node[] };
 function element(tag: string): Node { return { tag, props: {}, children: [], text: "", value: "", addEventListener() {}, removeEventListener() {}, getRootNode() { return this; }, get options() { return this.children.filter((c) => c.tag === "option"); } }; }
 const renderer = createRenderer<Node, Node>({
@@ -33,7 +34,7 @@ const renderer = createRenderer<Node, Node>({
 function component(): Component {
   const source = readFileSync(new URL("./RewardReports.vue", import.meta.url), "utf8"), descriptor = parse(source, { filename: "RewardReports.vue" }).descriptor;
   const javascript = ts.transpileModule(compileScript(descriptor, { id: "reward-report-test", inlineTemplate: true }).content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = { "@lottery/shared/FilterAssociationSelect.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("select", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) },  "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": DisplayShared,  vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./reward-report-api": RewardReportApi, "./member-lookup": { lookupAdminMember: async () => { throw new Error("Member lookup failed"); } } };
+  const modules: Record<string, unknown> = {"@lottery/shared/ManagementList.vue":ManagementListTestComponent,"@lottery/shared/MemberActionsMenu.vue":MemberActionsMenuTestComponent, "@lottery/shared/SelectControl.vue": SelectControlTestComponent, "./SelectControl.vue": SelectControlTestComponent, "@lottery/shared/FilterAssociationSearch.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared/FilterAssociationSelect.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("select-control", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) },  "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": {...DisplayShared, vInlineValidation: {}},  vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n, "./reward-report-api": RewardReportApi, "./member-lookup": { lookupAdminMember: async () => { throw new Error("Member lookup failed"); } } };
   const body = javascript.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
   return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
@@ -43,7 +44,7 @@ function report(url: URL) {
   const day = `${parts.find((p) => p.type === "year")!.value}-${parts.find((p) => p.type === "month")!.value}-${parts.find((p) => p.type === "day")!.value}`;
   const key = group === "state" ? "granted" : group === "member" ? member : group === "order" ? order : day;
   const items = kind === "reward_orders" && group === "state"
-    ? [{ key: "granted", label: "granted", totals: grantedOnly }, { key: "revocation_pending", label: "revocation_pending", totals: pendingOnly }, { key: "revoked", label: "revoked", totals: revokedOnly }]
+    ? [{ key: "granted", label: "granted", totals: grantedOnly }, { key: "revoked", label: "revoked", totals: revokedOnly }]
     : [{ key, label: key, totals: kind === "rewards" ? posting : orderTotals }];
   const summary = kind === "rewards" ? posting : orderTotals;
   return { success: true, request_id: "reward-report-req-1", data: { brand_id: brand, snapshot_at: "2026-10-08T00:00:00Z", timezone: "Asia/Singapore", query: { from: q.get("from"), to: q.get("to"), group_by: group, limit: Number(q.get("limit")), offset: Number(q.get("offset")), member_id: q.get("member_id"), order_id: q.get("order_id") }, summary, items, total_groups: String(items.length) } };
@@ -51,7 +52,7 @@ function report(url: URL) {
 function text(node: Node): string { return node.text + node.children.map(text).join(""); }
 function find(node: Node, predicate: (n: Node) => boolean): Node | null { if (predicate(node)) return node; for (const child of node.children) { const match = find(child, predicate); if (match) return match; } return null; }
 function testId(root: Node, id: string) { return find(root, (node) => node.props["data-testid"] === id); }
-function click(node: Node | null) { expect(node).not.toBeNull(); (node!.props.onClick as (() => void) | undefined)?.(); }
+function click(node:Node|null){clickHostButton(node)}
 function setModel(node: Node | null, value: unknown) { expect(node).not.toBeNull(); (node!.props["onUpdate:modelValue"] as ((v: unknown) => void) | undefined)?.(value); }
 async function flush() { for (let i = 0; i < 16; i++) await Promise.resolve(); await nextTick(); }
 function mount(initial = account) {
@@ -67,10 +68,9 @@ describe("RewardReports real Vue component", () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     const fetcher = vi.fn<typeof fetch>(async (input, init) => { const url = new URL(String(input), "http://local"); calls.push({ url: url.toString(), init }); return url.pathname.endsWith(".csv") ? new Response("unavailable", { status: 503 }) : new Response(JSON.stringify(report(url)), { status: 200 }); });
     vi.stubGlobal("fetch", fetcher); vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
-    const mounted = mount();
+    const mounted = mount(); await flush();
     expect(testId(mounted.root, "reward-report-query")?.props.disabled).toBe(false);
     expect(testId(mounted.root, "reward-report-mode-postings")).not.toBeNull();
-    click(testId(mounted.root, "reward-report-query")); await flush();
     expect(new URL(calls[0]!.url).pathname).toBe("/api/v1/admin/reports/rewards");
     const postingSummary = text(testId(mounted.root, "reward-report-summary")!);
     for (const label of ["入账条目", "发放条目", "发放积分", "撤销条目", "撤销积分", "净积分变化"]) expect(postingSummary).toContain(label);
@@ -87,15 +87,15 @@ describe("RewardReports real Vue component", () => {
     const groupSelect = testId(mounted.root, "reward-report-group");
     expect(groupSelect?.options.map((option) => option.value)).toEqual(["day", "member", "state"]);
     const orders = text(mounted.root);
-    expect(orders).toContain("按订单创建时间筛选 cohort");
+    expect(orders).not.toContain("按订单创建时间筛选，并展示当前状态。");
     setModel(groupSelect, "state"); await flush(); click(testId(mounted.root, "reward-report-query")); await flush();
     expect(new URL(calls[2]!.url).pathname).toBe("/api/v1/admin/reports/reward-orders");
     expect(new URL(calls[2]!.url).searchParams.get("group_by")).toBe("state");
     const orderSummary = text(testId(mounted.root, "reward-report-summary")!);
-    for (const label of ["订单数", "原始积分", "已发放订单", "已发放积分", "待处理订单", "待处理积分", "已撤销订单", "已撤销积分"]) expect(orderSummary).toContain(label);
+    for (const label of ["订单数", "原始积分", "已发放订单", "已发放积分", "已撤销订单", "已撤销积分"]) expect(orderSummary).toContain(label);
     expect(orderSummary).toContain(huge.replace(/\B(?=(\d{3})+(?!\d))/g, ","));
     expect(text(mounted.root)).not.toContain("revocation_pending");
-    expect(text(mounted.root)).toContain("撤销待处理");
+    expect(text(mounted.root)).not.toContain("撤销待处理");
     click(testId(mounted.root, "reward-report-mode-postings")); await flush();
     expect(testId(mounted.root, "reward-report-summary")).toBeNull();
     expect(testId(mounted.root, "reward-report-group")?.options.map((option) => option.value)).toEqual(["day", "member", "order"]);
@@ -114,9 +114,8 @@ describe("RewardReports real Vue component", () => {
     });
     vi.stubGlobal("fetch", fetcher); vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
     const reportOnly = { ...account, permissions: [], permissions_by_brand: { [brand]: ["report_reward.view.brand"] } };
-    const mounted = mount(reportOnly);
-    expect(testId(mounted.root, "reward-report-query")?.props.disabled).toBe(false);
-    click(testId(mounted.root, "reward-report-query")); await flush();
+    const mounted = mount(reportOnly); await flush();
+    expect(testId(mounted.root, "reward-report-query")?.props.disabled).toBe(true);
     const staleReadSignal = calls[0]!.init?.signal as AbortSignal;
     click(testId(mounted.root, "reward-report-mode-orders")); await flush();
     expect(staleReadSignal.aborted).toBe(true);
@@ -150,7 +149,7 @@ describe("RewardReports real Vue component", () => {
     const wait = new Promise<Response>((done) => { resolve = done; }), calls: { url: URL; init?: RequestInit }[] = [];
     const fetcher = vi.fn<typeof fetch>(async (input, init) => { const url = new URL(String(input), "http://local"); calls.push({ url, init }); return wait; });
     vi.stubGlobal("fetch", fetcher); vi.stubGlobal("Document", class {}); vi.stubGlobal("ShadowRoot", class {});
-    const mounted = mount(); click(testId(mounted.root, "reward-report-query")); await flush();
+    const mounted = mount(); await flush();
     const signal = calls[0]!.init?.signal as AbortSignal;
     mounted.scope.value = { account: { ...account, id: actor2, brand_ids: [otherBrand], permissions_by_brand: { [otherBrand]: ["report_reward.view.brand"] } }, brandId: otherBrand }; await flush();
     expect(signal.aborted).toBe(true);

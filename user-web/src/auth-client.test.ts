@@ -4,7 +4,7 @@ import {
   discardAccessToken,
   isTelegramClientIdConfigured,
   normalizeIdentifier,
-  passwordByteLength,
+  passwordCharacterLength,
   requestTelegramIdToken,
 } from "./auth";
 
@@ -153,13 +153,13 @@ describe("auth client", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
-  it("loads branded challenge SVG and reports captcha settings from context.auth", async () => {
+  it("loads branded puzzle challenge and reports captcha settings from context.auth", async () => {
     const payloads = [
       {
         success: true,
         data: {
           id: "challenge-1",
-          svg: "<svg/>",
+          puzzle: { image: "data:image/jpeg;base64,test", piece: "data:image/png;base64,test", width: 300, height: 160, piece_width: 46, piece_height: 46, y: 50 },
           expires_at: "2026-10-07T00:00:00Z",
         },
       },
@@ -211,20 +211,23 @@ describe("auth client", () => {
     ]);
   });
 
-  it("normalizes phone identifiers and counts password bytes", () => {
+  it("normalizes phone identifiers and counts password characters", () => {
     expect(normalizeIdentifier("  +65 (8123) 4567 ")).toEqual({
       phone: "+6581234567",
       identifier: "+6581234567",
     });
     expect(normalizeIdentifier("  8123 4567  ")).toEqual({
-      username: "8123 4567",
-      identifier: "8123 4567",
+      phone: "81234567",
+      identifier: "81234567",
     });
+    expect(normalizeIdentifier("0917-123-4567")).toEqual({phone:"09171234567",identifier:"09171234567"});
+    expect(normalizeIdentifier("13455676549")).toEqual({phone:"13455676549",identifier:"13455676549"});
+    expect(normalizeIdentifier("+8613455676549")).toEqual({phone:"+8613455676549",identifier:"+8613455676549"});
     expect(normalizeIdentifier("  Lucky_Lee  ")).toEqual({
       username: "lucky_lee",
       identifier: "lucky_lee",
     });
-    expect(passwordByteLength("é")).toBe(2);
+    expect(passwordCharacterLength("é")).toBe(1);
   });
 
   it("forwards one normalized explicit join code on register, confirmed login, and Telegram", async () => {

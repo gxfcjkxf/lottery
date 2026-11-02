@@ -137,7 +137,7 @@ func ValidDomain(host string) bool {
 	return true
 }
 func Allowed(a access.Account, brand, action string) bool {
-	return uuidPattern.MatchString(brand) && (action == "view" || action == "write") && (access.Authorize(a, "brand_domains", action, access.ScopeBrand, brand) || access.Authorize(a, "brand_domains", action, access.ScopePlatform, ""))
+	return a.SuperAdmin && uuidPattern.MatchString(brand) && (action == "view" || action == "write") && access.Authorize(a, "brand_domains", action, access.ScopePlatform, "")
 }
 
 type Service struct{ DB *pgxpool.Pool }
@@ -167,7 +167,7 @@ func (s Service) Read(ctx context.Context, brand string) (Record, error) {
 	return read(s.DB.QueryRow(ctx, recordSQL, brand))
 }
 func (s Service) Change(ctx context.Context, tx pgx.Tx, brand string, a access.Account, target string, in Input, meta points.Metadata) (Record, error) {
-	if tx == nil || !uuidPattern.MatchString(brand) || in.Version < 1 || !utf8.ValidString(in.Reason) || len(in.Reason) > 500 {
+	if tx == nil || !uuidPattern.MatchString(brand) || in.Version < 1 || !utf8.ValidString(in.Reason) || utf8.RuneCountInString(in.Reason) > 500 {
 		return Record{}, ErrInvalid
 	}
 	if target == "" && !ValidDomain(in.Domain) || target != "" && (!uuidPattern.MatchString(target) || in.Domain != "") {

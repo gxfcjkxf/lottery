@@ -1,37 +1,5 @@
-import {test} from 'node:test';
-import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-
-test('commission UI CI isolates viewports and advances real owned workflows without retries',()=>{
-  const workflow=readFileSync(new URL('../../.github/workflows/ci.yaml',import.meta.url),'utf8');
-  const start=workflow.indexOf('  commission-cycles-browser:');
-  const end=workflow.indexOf('  commission-corrections-browser:',start);
-  assert.ok(start>=0&&end>start);
-  const job=workflow.slice(start,end);
-  assert.match(job,/strategy:\n      fail-fast: false\n      matrix:\n        viewport: \[desktop, mobile, tablet768, laptop1024\]/);
-  assert.equal((job.match(/config: playwright.commission-responsive.config.ts/g)??[]).length,2);
-  assert.equal((job.match(/--config=\$\{\{ matrix.config \}\}/g)??[]).length,5);
-  assert.match(job,/POSTGRES_DB: lottery_commission_ui_\$\{\{ matrix\.viewport \}\}_s16/);
-  assert.match(job,/COMMISSION_FIXTURE_CONFIRM: owned_synthetic_database/);
-  assert.match(job,/go test -count=1 -tags browserfixture \.\/cmd\/commission-fixture/);
-  assert.match(job,/\.\/bin\/commission-fixture init/);
-  assert.match(job,/commission-cycles\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0/);
-  assert.match(job,/commission-payments\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0/);
-  assert.match(job,/commission-adjustments\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0/);
-  assert.match(job,/commission-reports\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0/);
-  assert.match(job,/commission-analysis\.spec\.ts --project=\$\{\{ matrix\.viewport \}\} --workers=1 --retries=0 --config=\$\{\{ matrix.config \}\} --reporter=list,json/);
-  assert.ok(job.indexOf('test tests/browser/commission-cycles.spec.ts') < job.indexOf('test tests/browser/commission-payments.spec.ts'));
-  assert.ok(job.indexOf('test tests/browser/commission-payments.spec.ts') < job.indexOf('test tests/browser/commission-adjustments.spec.ts'));
-  assert.ok(job.indexOf('test tests/browser/commission-adjustments.spec.ts') < job.indexOf('test tests/browser/commission-reports.spec.ts'));
-  assert.ok(job.indexOf('test tests/browser/commission-reports.spec.ts') < job.indexOf('test tests/browser/commission-analysis.spec.ts'));
-  assert.match(job,/PLAYWRIGHT_JSON_OUTPUT_NAME: \.local\/commission-analysis-report\.json/);
-  assert.match(job,/stats\.skipped !== 0 \|\| !\(stats\.expected > 0\)/);
-  assert.match(job,/path: \|\n            test-results\/\n            \.local\/commission-analysis-report\.json/);
-  assert.doesNotMatch(job,/\.\/bin\/platform worker\s*>/);
-  const fixture=readFileSync(new URL('../../backend/cmd/commission-fixture/main.go',import.meta.url),'utf8');
-  assert.match(fixture,/\/\/go:build browserfixture/);
-  assert.match(fixture,/economic_fingerprint/);
-  assert.match(fixture,/commission_business_fingerprint/);
-  assert.match(fixture,/ActOnSettlement/);
-  assert.doesNotMatch(fixture,/UPDATE periods SET status|INSERT INTO commission_earnings|INSERT INTO settlement_calculations/);
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFileSync,existsSync} from 'node:fs';
+test('CI covers configured commission money without old engine fixtures',()=>{
+ const workflow=readFileSync('.github/workflows/ci.yaml','utf8');assert.match(workflow,/go test -race.*internal\/betting -run '\^TestCommission'/);assert.doesNotMatch(workflow,/cmd\/commission-fixture|COMMISSION_FIXTURE_BIN/);
+ const cases=readFileSync('backend/internal/betting/configured_finance_test.go','utf8');assert.match(cases,/TestCommissionConfiguredAttributedLossPaysOnce/);assert.match(cases,/ProcessPayments/);assert.match(cases,/credits != "1"/);assert.equal(existsSync('backend/cmd/commission-fixture/main.go'),false);
 });

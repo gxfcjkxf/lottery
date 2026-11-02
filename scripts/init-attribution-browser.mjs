@@ -35,8 +35,8 @@ function ownedAuthKey(value) {
 }
 
 function adminPassword(value) {
-  if (typeof value !== 'string' || value.includes('\u0000') || Buffer.byteLength(value, 'utf8') < 6 || Buffer.byteLength(value, 'utf8') > 30) {
-    throw new Error('TEST_ATTRIBUTION_ADMIN_PASSWORD must contain 6-30 bytes');
+  if (typeof value !== 'string' || value.includes('\u0000') || Array.from(value).length < 6 || Array.from(value).length > 30) {
+    throw new Error('TEST_ATTRIBUTION_ADMIN_PASSWORD must contain 6-30 characters');
   }
   return value;
 }

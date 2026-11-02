@@ -436,7 +436,7 @@ func BeginWork(ctx context.Context, component string) (context.Context, func(int
 
 func canonicalComponent(component string) string {
 	switch component {
-	case "calendar", "period_tick", "draw_collection", "period_refund", "settlement", "draw_correction", "notification", "reconciliation", "archive_discovery", "archive_processing", "commission_cycle", "commission_discovery", "commission_payment", "commission_correction_plan", "commission_correction_execution":
+	case "calendar", "hkjc_calendar", "period_tick", "draw_collection", "period_refund", "settlement", "draw_correction", "notification", "reconciliation", "archive_discovery", "archive_processing", "commission_cycle", "commission_discovery", "commission_payment", "commission_correction_plan", "commission_correction_execution":
 		return component
 	default:
 		return "other"

@@ -19,16 +19,13 @@ const unavailable = () => ({ status: "forbidden", data: null });
 const snapshot = () => ({
   brand_id: id, snapshot_at: "2026-10-06T12:30:00Z", timezone: "Asia/Singapore", day_from: "2026-10-05T16:00:00Z",
   brand: ready({ name: "Example", code: "example", state: "active" }),
-  periods: ready({ pending: "0", betting: "1", closed: "0", waiting_draw: "0", drawn: "0", settling: "0", refund_pending: "0", refund_failed: "0" }),
   orders: ready({ placed: "0", abnormal: "0" }),
   today_bets: ready({ order_count: "99999999999999999999", stake_points: "99999999999999999999", cancelled_count: "0", abnormal_count: "0" }),
-  settlement: ready({ processing: "0", awaiting_approval: "0", paying: "0", failed: "0" }),
+
   recharges: ready({ pending_count: "0", pending_points: "0" }),
   ledger: ready({ entry_count: "1", net_points: "-99999999999999999999", recharge_points: "0", prize_credit_points: "0", prize_reversal_points: "0", refund_points: "0" }),
   balances: ready({ account_count: "0", available_points: "0", frozen_points: "0", withdrawal_points: "0", total_points: "0" }),
-  reconciliation: ready({ latest_job: null }),
-  sources: ready({ adapter_state: "stub", configured_games: "0", enabled_api_sources: "0", enabled_dom_sources: "0", attempts_today: "0", failed_today: "0", no_data_today: "0", last_attempt_at: null }),
-  withdrawals: ready({ reviewing_count: "2", reviewing_points: "500", processing_count: "1", processing_points: "900719925474099312345" }), commissions: unavailable(), rewards: ready({ granted_count: "1", pending_count: "2", revoked_count: "3" }),
+  withdrawals: ready({ reviewing_count: "2", reviewing_points: "500", processing_count: "1", processing_points: "900719925474099312345" }), commissions: unavailable(), rewards: ready({ granted_count: "1", revoked_count: "3" }),
 });
 
 test("workbench operation is authenticated, brand selected, and has no query or routing controls", () => {
@@ -62,8 +59,6 @@ test("authoritative workbench snapshot schema enforces ready data, unavailable n
   assert.ok(!check({ ...value, orders: { status: "ready", data: { placed: "01", abnormal: "0" } } }));
   assert.ok(!check({ ...value, ledger: { ...value.ledger, data: { ...value.ledger.data, net_points: "-0" } } }));
   assert.ok(!check({ ...value, ledger: { ...value.ledger, data: { ...value.ledger.data, unexpected: "x" } } }));
-  assert.ok(!check({ ...value, reconciliation: ready({ latest_job: { id, state: "unknown", created_at: "2026-10-06T10:30:00Z", completed_at: null, target_count: "1", checked_count: "0", repairable_count: "0", corrupt_count: "0", failed_count: "0" } }) }));
-  assert.ok(!check({ ...value, sources: ready({ ...value.sources.data, adapter_state: "connected" }) }));
   assert.ok(check({ ...value, withdrawals: { status: "forbidden", data: null } }));
   for (const amount of ["01", "-1", "1e3"]) {
     assert.ok(!check({ ...value, withdrawals: ready({ ...value.withdrawals.data, processing_points: amount }) }));

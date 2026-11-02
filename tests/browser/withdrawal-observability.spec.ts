@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import {test,expect} from '@playwright/test'
 import {checkWithdrawalObservability,responseData} from './withdrawal-observability'
@@ -32,7 +33,7 @@ test('completed withdrawal projection export and historical inbox agree without 
   await page.getByRole('button',{name:'Sign in and load members',exact:true}).click()
   if(info.project.name==='mobile')await page.locator('.mobile-nav button').nth(1).click()
   else await page.locator('.side-nav').getByRole('button',{name:/Users and members/}).click()
-  await page.locator('.directory-brand-bar select').selectOption(brand)
+  await selectControl(page.locator(".directory-brand-bar .select-control-trigger"), brand)
   await checkWithdrawalObservability(page,context,info,orders.items[0],{userOrigin,adminOrigin},errors,'0')
   expect(await responseData(await page.request.get(`${userOrigin}/api/v1/wallet`))).toEqual(wallet)
 })

@@ -17,7 +17,7 @@ var rewardCSVFields = []string{
 
 var rewardOrdersCSVFields = []string{
 	"record_type", "brand_id", "snapshot_at", "timezone", "from", "to", "group_by", "member_id", "order_id", "key", "label",
-	"order_count", "original_points", "granted_count", "granted_points", "pending_count", "pending_points", "revoked_count", "revoked_points",
+	"order_count", "original_points", "granted_count", "granted_points", "revoked_count", "revoked_points",
 }
 
 func rewardCSVValues(v RewardTotals) []string {
@@ -25,7 +25,7 @@ func rewardCSVValues(v RewardTotals) []string {
 }
 
 func rewardOrdersCSVValues(v RewardOrderTotals) []string {
-	return []string{v.OrderCount, v.OriginalPoints, v.GrantedCount, v.GrantedPoints, v.PendingCount, v.PendingPoints, v.RevokedCount, v.RevokedPoints}
+	return []string{v.OrderCount, v.OriginalPoints, v.GrantedCount, v.GrantedPoints, v.RevokedCount, v.RevokedPoints}
 }
 
 func validRewardTotals(v RewardTotals) bool {
@@ -56,7 +56,7 @@ func validRewardOrderTotals(v RewardOrderTotals) bool {
 	original, _ := new(big.Int).SetString(v.OriginalPoints, 10)
 	counts := []*big.Int{}
 	points := []*big.Int{}
-	for _, pair := range [][2]string{{v.GrantedCount, v.GrantedPoints}, {v.PendingCount, v.PendingPoints}, {v.RevokedCount, v.RevokedPoints}} {
+	for _, pair := range [][2]string{{v.GrantedCount, v.GrantedPoints}, {v.RevokedCount, v.RevokedPoints}} {
 		c, _ := new(big.Int).SetString(pair[0], 10)
 		p, _ := new(big.Int).SetString(pair[1], 10)
 		counts, points = append(counts, c), append(points, p)
@@ -64,8 +64,8 @@ func validRewardOrderTotals(v RewardOrderTotals) bool {
 			return false
 		}
 	}
-	stateCount := new(big.Int).Add(new(big.Int).Add(counts[0], counts[1]), counts[2])
-	statePoints := new(big.Int).Add(new(big.Int).Add(points[0], points[1]), points[2])
+	stateCount := new(big.Int).Add(counts[0], counts[1])
+	statePoints := new(big.Int).Add(points[0], points[1])
 	return stateCount.Cmp(count) == 0 && statePoints.Cmp(original) == 0 && (count.Sign() == 0) == (original.Sign() == 0) && count.Cmp(original) <= 0
 }
 
@@ -84,7 +84,7 @@ func validRewardGroup(q RewardQuery, key, label, timezone string, states bool) b
 		return key >= first && key <= last
 	}
 	if states && q.GroupBy == "state" {
-		return key == "granted" || key == "revocation_pending" || key == "revoked"
+		return key == "granted" || key == "revoked"
 	}
 	if !uuid.MatchString(key) || key != strings.ToLower(key) {
 		return false
@@ -109,11 +109,9 @@ func validRewardOrderGroup(q RewardQuery, key string, totals RewardOrderTotals) 
 	}
 	switch key {
 	case "granted":
-		return totals.GrantedCount != "0" && totals.PendingCount == "0" && totals.RevokedCount == "0"
-	case "revocation_pending":
-		return totals.PendingCount != "0" && totals.GrantedCount == "0" && totals.RevokedCount == "0"
+		return totals.GrantedCount != "0" && totals.RevokedCount == "0"
 	case "revoked":
-		return totals.RevokedCount != "0" && totals.GrantedCount == "0" && totals.PendingCount == "0"
+		return totals.RevokedCount != "0" && totals.GrantedCount == "0"
 	default:
 		return false
 	}

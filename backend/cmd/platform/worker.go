@@ -6,13 +6,11 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/betting"
 	"github.com/gxfcjkxf/lottery/backend/internal/brandops"
 	"github.com/gxfcjkxf/lottery/backend/internal/commission"
-	"github.com/gxfcjkxf/lottery/backend/internal/drawfeed"
+	"github.com/gxfcjkxf/lottery/backend/internal/hkjccalendar"
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
 	"github.com/gxfcjkxf/lottery/backend/internal/observability"
 	"github.com/gxfcjkxf/lottery/backend/internal/platformlottery"
-	"github.com/gxfcjkxf/lottery/backend/internal/reconciliation"
 	"github.com/gxfcjkxf/lottery/backend/internal/reportarchive"
-	"github.com/gxfcjkxf/lottery/backend/internal/rulebook"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"time"
@@ -33,7 +31,13 @@ func observedWork(ctx context.Context, component string, work func(context.Conte
 }
 
 func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger) error {
-	store := rulebook.Store{DB: db}
+	calendarCtx, stopCalendar := context.WithCancel(ctx)
+	calendarDone := make(chan struct{})
+	go func() {
+		defer close(calendarDone)
+		runHKJCCalendarWorker(calendarCtx, hkjccalendar.Service{DB: db, Source: hkjccalendar.NewSource()}, logger)
+	}()
+	defer func() { stopCalendar(); <-calendarDone }()
 	sources, e := platformlottery.LoadAutomationSources()
 	if e != nil {
 		return e
@@ -45,42 +49,14 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 		runSharedAutomation(autoCtx, platformlottery.Service{DB: db}, sources, logger)
 	}()
 	defer func() { stopAuto(); <-autoDone }()
-	// Draw I/O has its own bounded loop; slow future adapters must not delay the
-	// one-second period clock. Exactly one collector loop lives per worker.
-	drawCtx, stopDraw := context.WithCancel(ctx)
-	drawDone := make(chan struct{})
-	go func() { defer close(drawDone); runDrawWorker(drawCtx, store, logger) }()
-	defer func() { stopDraw(); <-drawDone }()
-	refundCtx, stopRefund := context.WithCancel(ctx)
-	refundDone := make(chan struct{})
-	go func() { defer close(refundDone); runCancellationWorker(refundCtx, betting.Service{DB: db}, logger) }()
-	defer func() { stopRefund(); <-refundDone }()
 	settleCtx, stopSettle := context.WithCancel(ctx)
 	settleDone := make(chan struct{})
 	go func() { defer close(settleDone); runSettlementWorker(settleCtx, betting.Service{DB: db}, logger) }()
 	defer func() { stopSettle(); <-settleDone }()
-	markSixCtx, stopMarkSix := context.WithCancel(ctx)
-	markSixDone := make(chan struct{})
-	go func() { defer close(markSixDone); runMarkSixWorker(markSixCtx, betting.Service{DB: db}, logger) }()
-	defer func() { stopMarkSix(); <-markSixDone }()
-	correctionCtx, stopCorrection := context.WithCancel(ctx)
-	correctionDone := make(chan struct{})
-	go func() {
-		defer close(correctionDone)
-		runCorrectionWorker(correctionCtx, betting.Service{DB: db}, logger)
-	}()
-	defer func() { stopCorrection(); <-correctionDone }()
 	inboxCtx, stopInbox := context.WithCancel(ctx)
 	inboxDone := make(chan struct{})
 	go func() { defer close(inboxDone); runNotificationWorker(inboxCtx, notification.Service{DB: db}, logger) }()
 	defer func() { stopInbox(); <-inboxDone }()
-	reconcileCtx, stopReconcile := context.WithCancel(ctx)
-	reconcileDone := make(chan struct{})
-	go func() {
-		defer close(reconcileDone)
-		runReconciliationWorker(reconcileCtx, reconciliation.Service{DB: db}, logger)
-	}()
-	defer func() { stopReconcile(); <-reconcileDone }()
 	archiveCtx, stopArchive := context.WithCancel(ctx)
 	archiveDone := make(chan struct{})
 	go func() {
@@ -116,37 +92,27 @@ func runPeriodWorker(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger)
 		}
 	}()
 	defer func() { stopPause(); <-pauseDone }()
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-	fill := time.NewTicker(time.Minute)
-	defer fill.Stop()
-	fillCalendar := func() {
-		run, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		n, e := observedWork(run, "calendar", store.FillCalendar)
-		if e != nil && ctx.Err() == nil {
-			logger.Error("calendar reservation failed", "error", e, "committed_created", n)
-		} else if n > 0 {
-			logger.Info("calendar periods reserved", "created", n)
-		}
-	}
-	fillCalendar()
-	logger.Info("period worker started", "tick_seconds", 1, "calendar_seconds", 60)
+	logger.Info("configured betting worker started")
+	<-ctx.Done()
+	return nil
+}
+
+func runHKJCCalendarWorker(ctx context.Context, service hkjccalendar.Service, logger *slog.Logger) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
 	for {
+		run, cancel := context.WithTimeout(ctx, 40*time.Second)
+		n, err := observedWork(run, "hkjc_calendar", service.SyncDue)
+		cancel()
+		if err != nil && ctx.Err() == nil {
+			logger.Error("official HKJC calendar sync failed", "error", err)
+		} else if n > 0 {
+			logger.Info("official HKJC calendar synced", "months", n)
+		}
 		select {
 		case <-ctx.Done():
-			return nil
-		case <-fill.C:
-			fillCalendar()
-		case <-tick.C:
-			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, e := observedWork(run, "period_tick", store.Tick)
-			cancel()
-			if e != nil && ctx.Err() == nil {
-				logger.Error("period transition failed", "error", e, "committed_transitions", n)
-			} else if n > 0 {
-				logger.Info("period transitions committed", "count", n)
-			}
+			return
+		case <-ticker.C:
 		}
 	}
 }
@@ -292,41 +258,6 @@ func runCommissionDiscoveryWorker(ctx context.Context, service commission.Servic
 	}
 }
 
-func runReconciliationWorker(ctx context.Context, service reconciliation.Service, logger *slog.Logger) {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, e := observedWork(run, "reconciliation", func(ctx context.Context) (int, error) { return service.Process(ctx, 20) })
-			cancel()
-			if e != nil && ctx.Err() == nil {
-				logger.Error("wallet reconciliation processing failed", "committed_steps", n)
-			}
-		}
-	}
-}
-
-func runCorrectionWorker(ctx context.Context, service betting.Service, logger *slog.Logger) {
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-tick.C:
-			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, e := observedWork(run, "draw_correction", func(ctx context.Context) (int, error) { return service.ProcessCorrections(ctx, 20) })
-			cancel()
-			if e != nil && ctx.Err() == nil {
-				logger.Error("draw correction processing failed", "error", e, "committed_steps", n)
-			}
-		}
-	}
-}
 func runSettlementWorker(ctx context.Context, service betting.Service, logger *slog.Logger) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
@@ -336,11 +267,7 @@ func runSettlementWorker(ctx context.Context, service betting.Service, logger *s
 			return
 		case <-tick.C:
 			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, e := observedWork(run, "settlement", func(ctx context.Context) (int, error) {
-				legacyCount, legacyErr := service.ProcessSettlements(ctx, 20)
-				configuredCount, configuredErr := service.ProcessConfiguredSettlements(ctx, 20)
-				return legacyCount + configuredCount, errors.Join(legacyErr, configuredErr)
-			})
+			n, e := observedWork(run, "settlement", func(ctx context.Context) (int, error) { return service.ProcessConfiguredSettlements(ctx, 20) })
 			cancel()
 			if e != nil && ctx.Err() == nil {
 				logger.Error("settlement processing failed", "error", e, "committed_steps", n)
@@ -365,69 +292,6 @@ func runNotificationWorker(ctx context.Context, service notification.Service, lo
 			cancel()
 			if err != nil && ctx.Err() == nil {
 				logger.Error("in-app notification processing failed", "error", err, "committed_events", n)
-			}
-		}
-	}
-}
-
-func runCancellationWorker(ctx context.Context, service betting.Service, logger *slog.Logger) {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, err := observedWork(run, "period_refund", func(ctx context.Context) (int, error) { return service.ProcessCancellations(ctx, 20) })
-			cancel()
-			if err != nil && ctx.Err() == nil {
-				logger.Error("period refunds failed", "error", err, "committed_targets", n)
-			} else if n > 0 {
-				logger.Info("period refunds committed", "targets", n)
-			}
-		}
-	}
-}
-
-func runDrawWorker(ctx context.Context, store rulebook.Store, logger *slog.Logger) {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	resolver := drawfeed.DefaultResolver(5 * time.Second)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			n, err := observedWork(run, "draw_collection", func(ctx context.Context) (int, error) { return store.CollectDraws(ctx, resolver) })
-			cancel()
-			if err != nil && ctx.Err() == nil {
-				logger.Error("draw collection failed", "error", err, "committed_results", n)
-			} else if n > 0 {
-				logger.Info("draw results locked", "count", n)
-			}
-		}
-	}
-}
-
-func runMarkSixWorker(ctx context.Context, service betting.Service, logger *slog.Logger) {
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-tick.C:
-			run, cancel := context.WithTimeout(ctx, 10*time.Second)
-			_, canadaErr := service.ProcessCanadaSettlements(run, 20)
-			if canadaErr != nil {
-				logger.Error("Canada settlement failed", "error", canadaErr)
-			}
-			n, e := observedWork(run, "mark_six_settlement", func(ctx context.Context) (int, error) { return service.ProcessMarkSixSettlements(ctx, 20) })
-			cancel()
-			if e != nil && ctx.Err() == nil {
-				logger.Error("Mark Six settlement failed", "error", e, "committed_orders", n)
 			}
 		}
 	}

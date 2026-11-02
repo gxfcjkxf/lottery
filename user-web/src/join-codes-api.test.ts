@@ -139,3 +139,16 @@ describe("user join codes API", () => {
   });
 
 });
+
+describe('direct referrals API', () => {
+  const referralPage = () => ({ ...context, items: [{id:codeId,display_name:'Invited member',joined_at:'2026-10-25T04:00:00Z'}],limit:20,offset:0,total_count:'1' });
+  it('reads the authenticated scope and referral identity without private account data',async()=>{
+    const fetcher=vi.fn<typeof fetch>().mockResolvedValue(ok(referralPage()));
+    await expect(createJoinCodesApi({brandCode:'aurora',fetch:fetcher}).referrals(context)).resolves.toEqual(referralPage());
+    expect(fetcher).toHaveBeenCalledWith('/api/v1/b/aurora/me/referrals?limit=20&offset=0',expect.objectContaining({method:'GET',credentials:'include'}));
+  });
+  it.each([{brand_id:agentId},{member_id:agentId},{total_count:'0'},{items:[{id:codeId,display_name:'Name',joined_at:'bad'}]},{items:[{id:codeId,display_name:'Name',joined_at:'2026-10-25T04:00:00Z',phone:'private'}]}])('rejects wrong scope and malformed data %j',async patch=>{
+    const fetcher=vi.fn<typeof fetch>().mockResolvedValue(ok({...referralPage(),...patch}));
+    await expect(createJoinCodesApi({fetch:fetcher}).referrals(context)).rejects.toThrow(JoinCodesApiError);
+  });
+});

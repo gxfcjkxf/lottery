@@ -103,7 +103,7 @@ func TestOperatorCreatePendingConsentFlowAndGlobalUniqueness(t *testing.T) {
 	if err = p.QueryRow(ctx, "SELECT count(*) FROM sessions WHERE user_id=$1", response.UserID).Scan(&sessionCount); err != nil || sessionCount != 0 {
 		t.Fatalf("operator create session count=%d err=%v", sessionCount, err)
 	}
-	if _, err = p.Exec(ctx, "UPDATE brands SET auth_config=auth_config||'{\"telegram_enabled\":true,\"telegram_client_id\":\"12345\"}'::jsonb WHERE id=$1", operatorTestBrand); err != nil {
+	if _, err = p.Exec(ctx, "UPDATE brands SET auth_inherit_platform=false,auth_config=auth_config||'{\"telegram_enabled\":true,\"telegram_client_id\":\"12345\"}'::jsonb WHERE id=$1", operatorTestBrand); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = p.Exec(ctx, "UPDATE global_users SET telegram_user_id='987654321' WHERE id=$1", response.UserID); err != nil {

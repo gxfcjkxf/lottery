@@ -183,11 +183,11 @@ func (s Service) AllocationsTx(ctx context.Context, tx pgx.Tx, brand, cycle, run
  'created_at',c.created_at,'snapshot',c.rule_snapshot,'placed_at',o.placed_at,'reason',c.reason,
  'snapshot_matches',c.rule_snapshot=o.commission_rule_snapshot) data
  FROM page a JOIN commission_calculations c ON c.brand_id=a.brand_id AND c.cycle_id=a.cycle_id AND c.run_id=a.run_id AND c.id=a.calculation_id AND c.order_id=a.order_id
- JOIN bet_orders o ON o.brand_id=a.brand_id AND o.id=a.order_id
+ JOIN betting_financial_facts o ON o.brand_id=a.brand_id AND o.id=a.order_id
 )
 SELECT EXISTS(SELECT 1 FROM scope)
  AND ($4::uuid IS NULL OR EXISTS(SELECT 1 FROM agent_nodes WHERE brand_id=$1 AND id=$4))
- AND ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM bet_orders WHERE brand_id=$1 AND id=$5)),
+ AND ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM betting_financial_facts WHERE brand_id=$1 AND id=$5)),
  (SELECT count(*)::text FROM facts),(SELECT count(*) FROM page),coalesce((SELECT jsonb_agg(data ORDER BY order_id,agent_id) FROM contents),'[]'::jsonb)`, brand, cycle, run, q.AgentID, q.OrderID, q.Limit, q.Offset).Scan(&valid, &out.TotalCount, &pageCount, &raw)
 	if err != nil {
 		return out, err

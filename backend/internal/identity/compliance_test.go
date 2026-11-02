@@ -153,7 +153,7 @@ func TestComplianceTelegramNewIdentityAndCrossBrandJoin(t *testing.T) {
 	}
 	admin := operatorTestAdmin(t, ctx, p)
 	meta := Metadata{RequestID: "telegram-compliance", Domain: "localhost"}
-	if _, e = p.Exec(ctx, `UPDATE brands SET auth_config=auth_config||'{"telegram_enabled":true,"telegram_client_id":"12345"}'::jsonb`); e != nil {
+	if _, e = p.Exec(ctx, `UPDATE brands SET auth_inherit_platform=false,auth_config=auth_config||'{"telegram_enabled":true,"telegram_client_id":"12345"}'::jsonb`); e != nil {
 		t.Fatal(e)
 	}
 	run := func(brand, key string) mutation.Result {

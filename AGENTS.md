@@ -14,4 +14,37 @@
 
 8. 本地 DEV 环境有后端代码更新时，必须重新编译并重启对应的本地开发服务，确认新代码和接口已生效；这是开发交付的必要步骤，无需再次征求确认。重启沿用当前服务的数据库、端口和运行配置。本地联调和浏览器验证不得登录开发者正在使用的账号（包括共享试用账号 `admin`），避免触发单账号会话替换，须使用独立测试账号和会话。迁移、认证行为及写入型验证仍优先使用独立测试数据库及端口。
 
+   日常 DEV 的 API/worker 统一通过 `pnpm dev:backend start|restart|status|check|stop --env-file <原配置文件>` 管理，当前本机配置为 `.local/review.env`。禁止另写临时启动脚本或手工摘取环境变量重启；必须完成入口内置的来源白名单校验、API 就绪与实际来源读取核验。独立测试环境的自有服务不受该 DEV 启停入口约束。
+
 9. 自动化测试数据不得写入正常使用的品牌或共享开发数据库。写入型浏览器回归必须使用明确命名的独立测试数据库；需要创建业务对象的自检还须创建专属临时品牌，并在 finally 中清理。不得仅靠测试对象名称前缀区分或在前端隐藏污染数据。
+
+10. 页面文案保持简洁，默认只保留必要的标题、字段标签、操作入口和状态反馈。未经用户明确要求，不主动添加描述性段落、副标题、功能介绍、操作教程、规则解释或技术实现说明，也不通过提示图标、悬浮提示、折叠说明等形式变相添加。业务规则优先通过清晰的字段、控件约束和校验表达；详细解释放在文档中。只有直接影响当前操作、需要用户立即知晓的必要提示才在对应场景显示，文案须简短具体，不常驻堆叠。视觉自审不得以“信息完整”或“增强层次”为由增加说明文案。
+
+11. 平台、品牌、代理列表页必须执行 `docs/48-ui-architecture-and-design-system.md` §3.8：共用列表容器，统一工具栏、筛选、批量区、表格和分页的顺序及层级；按能力表和真实权限提供全选与批量动作，不得只统一样式而保留独立结构。新增及整改页面须通过该节验收清单。
+
+## 页面视觉质量与自审
+
+以下要求适用于本次任务涉及的前端页面。以 Awwwards、Webby Awards、FWA 获奖作品的视觉完成度为参考，具体设计仍须符合本项目的业务用途与统一设计系统。
+
+本节遵循以上开发约束及 `docs/48-ui-architecture-and-design-system.md`，不覆盖一期交付、KISS、i18n、可读性、紧凑布局、设计令牌、既有动效限制与响应式验收要求。原创性应体现在既有设计体系内的布局和细节质量，不另立风格；留白服务于信息层级，不擅自扩大页面间距；动效和微交互按实际操作需要实现，不为满足检查项添加装饰性动画。无需动效的页面可注明不适用及原因。
+
+::OBJECTIVE{site_design|pri:WITHIN_PROJECT_CONSTRAINTS}
+  target: 在项目统一设计系统及本次任务范围内，追求奖项级视觉完成度
+  ACCEPT: 所有适用CHECK维度均完成审阅，无已识别且属于本次范围的可见问题，并满足既有功能与响应式验收要求
+  BENCHMARK: Awwwards | Webby Awards | FWA获奖作品
+
+::CHECK{typography|standard:award_tier}
+::CHECK{whitespace|standard:award_tier}
+::CHECK{visual_hierarchy|standard:award_tier}
+::CHECK{color|standard:award_tier}
+::CHECK{motion|standard:award_tier}
+::CHECK{micro_interaction|standard:award_tier}
+::CHECK{responsive|standard:award_tier}
+::CHECK{originality|standard:award_tier}
+
+::LOOP{self_review|trigger:on_completion}
+  [READ] 根据CHECK列表审阅本次涉及页面的实际渲染与交互
+  [COMPARE] 参考BENCHMARK作品审视各维度的完成度，不照搬不适合本项目的设计
+  [IF] 发现本次范围内的具体问题 => [PATCH] 然后重新检查受影响维度
+  [IF] 仅剩主观偏好或超出本次范围的改造 => 记录限制并结束审阅，不扩展任务或无限打磨
+  [IF] 无已识别的范围内问题 => [Ω]

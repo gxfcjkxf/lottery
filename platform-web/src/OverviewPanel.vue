@@ -6,7 +6,7 @@ import { usePlatformI18n } from './i18n'
 import type { PlatformDisplaySettings } from './platform-format'
 
 defineProps<{ canView: boolean; locale: 'en' | 'zh-CN'; displaySettings: PlatformDisplaySettings }>()
-const emit = defineEmits<{ failure: [cause: unknown]; brands: [] }>()
+const emit = defineEmits<{ failure: [cause: unknown]; brands: []; openWithdrawals: [] }>()
 const { t, errorMessage, displayError } = usePlatformI18n()
 const api = createOverviewApi()
 function failure(cause: unknown) {
@@ -16,5 +16,5 @@ function failure(cause: unknown) {
 <template>
   <ManagementOverview scope="platform" :can-view="canView" :locale="locale" :display-settings="displaySettings"
     :read="api.read" :t="t" :error-message="cause => errorMessage(cause, 'read')" :display-error="displayError"
-    @failure="failure" @open="emit('brands')" />
+    @failure="failure" @open="emit('brands')" @open-withdrawals="emit('openWithdrawals')" />
 </template>

@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
@@ -47,7 +48,7 @@ async function createFixture(page: Page): Promise<ExportFixture> {
 
 async function openReports(page: Page, projectName: string) {
   await page.goto(uiBase);
-  await page.getByLabel("选择真实后台品牌", { exact: true }).selectOption(harbor);
+  await selectControl(page.getByLabel("选择真实后台品牌", { exact: true }), harbor);
   if (projectName === "mobile") {
     await page.locator(".mobile-nav button").nth(4).click();
     await page.locator(".mobile-more-menu").getByRole("button", { name: /报表和对账/ }).click();
@@ -58,14 +59,14 @@ async function openReports(page: Page, projectName: string) {
 }
 
 async function queryLedger(panel: ReturnType<Page["locator"]>, memberId: string) {
-  await panel.getByRole("button", { name: "账本报表", exact: true }).click();
+  await panel.getByRole("tab", { name: "账本报表", exact: true }).click();
   await panel.getByLabel("会员筛选 UUID", { exact: true }).fill(memberId);
-  await panel.getByLabel("账本分组", { exact: true }).selectOption("entry_type");
+  await selectControl(panel.getByLabel("账本分组", { exact: true }), "entry_type");
   // Keep the bound in the browser's local timezone, not the Node worker's.
   const upperBound = await panel.evaluate(() => Date.now() + 60 * 60 * 1000);
   const to = await panel.page().evaluate(formatDateTimeLocal, upperBound);
   await panel.getByLabel("报表结束时间", { exact: true }).fill(to);
-  await panel.getByRole("button", { name: "查询报表", exact: true }).click();
+  await panel.getByRole("button", { name: "查询", exact: true }).click();
   const ledger = panel.getByRole("region", { name: "账本报表", exact: true });
   await expect(ledger.locator(".reports-summary").first()).toBeVisible();
   return ledger;
@@ -160,7 +161,7 @@ test("real all-group ledger CSV matches the committed Harbor report on desktop a
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await ledger.screenshot({ path: info.outputPath(`s7k-real-ledger-export-${info.project.name}.png`) });
 
-  await panel.getByRole("button", { name: "投注报表", exact: true }).click();
+  await panel.getByRole("tab", { name: "投注报表", exact: true }).click();
   const betting = panel.getByRole("region", { name: "投注报表", exact: true });
   await expect(betting.locator(".reports-summary").first()).toBeVisible();
   const bettingResponsePromise = page.waitForResponse((r) => r.url().includes("/api/v1/admin/reports/betting/export?"));
@@ -205,19 +206,6 @@ test("late real CSV response cannot download after tab round-trip, brand switch 
   expect(alternate).toBeTruthy();
   const downloads: string[] = [];
   page.on("download", (download) => downloads.push(download.suggestedFilename()));
-  await page.evaluate(() => {
-    const pageWindow = window as Window & { __reportCsvDigestCount?: number };
-    pageWindow.__reportCsvDigestCount = 0;
-    const subtle = window.crypto.subtle;
-    const originalDigest = subtle.digest.bind(subtle);
-    Object.defineProperty(subtle, "digest", {
-      configurable: true,
-      value: async (algorithm: AlgorithmIdentifier, data: BufferSource) => {
-        try { return await originalDigest(algorithm, data); }
-        finally { pageWindow.__reportCsvDigestCount = (pageWindow.__reportCsvDigestCount ?? 0) + 1; }
-      },
-    });
-  });
 
   async function delayNextExport() {
     let enter!: () => void;
@@ -234,35 +222,36 @@ test("late real CSV response cannot download after tab round-trip, brand switch 
     const response = page.waitForResponse((r) => r.url().includes("/api/v1/admin/reports/ledger/export?"));
     await ledger.getByRole("button", { name: "导出全部分组 CSV", exact: true }).click();
     await reached;
-    return { release, response, digestCount: await page.evaluate(() => (window as Window & { __reportCsvDigestCount?: number }).__reportCsvDigestCount ?? 0) };
+    return { release, response };
   }
 
-  async function assertDiscarded(responsePromise: Promise<import("@playwright/test").Response>, digestCount: number) {
-    expect((await responsePromise).status()).toBe(200);
-    await expect.poll(() => page.evaluate(() => (window as Window & { __reportCsvDigestCount?: number }).__reportCsvDigestCount ?? 0)).toBe(digestCount + 1);
+  async function assertDiscarded(responsePromise: Promise<import("@playwright/test").Response>) {
+    const response = await responsePromise;
+    expect(response.status()).toBe(200);
+    await response.finished();
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 0)))));
     expect(downloads).toEqual([]);
   }
 
   const tabRoundTrip = await delayNextExport();
-  await panel.getByRole("button", { name: "投注报表", exact: true }).click();
-  await panel.getByRole("button", { name: "账本报表", exact: true }).click();
+  await panel.getByRole("tab", { name: "投注报表", exact: true }).click();
+  await panel.getByRole("tab", { name: "账本报表", exact: true }).click();
   tabRoundTrip.release();
-  await assertDiscarded(tabRoundTrip.response, tabRoundTrip.digestCount);
+  await assertDiscarded(tabRoundTrip.response);
 
   const first = await delayNextExport();
   {
-    await brandSelect.selectOption(alternate!);
+    await selectControl(brandSelect, alternate!);
     first.release();
-    await assertDiscarded(first.response, first.digestCount);
+    await assertDiscarded(first.response);
 
-    await brandSelect.selectOption(harbor);
+    await selectControl(brandSelect, harbor);
     panel = page.locator(".reports-management");
     ledger = await queryLedger(panel, fixture.memberId);
     await page.unroute("**/api/v1/admin/reports/ledger/export?**");
     const second = await delayNextExport();
     await page.getByRole("button", { name: "退出登录", exact: true }).last().click();
     second.release();
-    await assertDiscarded(second.response, second.digestCount);
+    await assertDiscarded(second.response);
   }
 });

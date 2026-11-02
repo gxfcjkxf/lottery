@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import { test, expect } from './platform-fixture';
 
@@ -48,7 +49,7 @@ test('platform commission pages preserve exact totals and clear failed details',
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Agents and commission' }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   const panel = page.getByTestId('platform-commission');
   const tabs = page.getByTestId('platform-commission-tabs');
   await tabs.getByRole('tab', { name: 'Cycles', exact: true }).click();
@@ -81,7 +82,7 @@ test('platform commission pages preserve exact totals and clear failed details',
   await expect(detail).toHaveCount(0);
   await selectLanguage(page, 'zh-CN');
   await expect(tabs.getByRole('tab', { name: '派发', exact: true })).toBeVisible();
-  await page.locator('.topbar-brand-picker select').selectOption('');
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), '');
   await expect(panel).toHaveCount(0);
 });
 
@@ -135,7 +136,7 @@ test('platform reads a real agent and commission collections without financial o
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Agents and commission' }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   const panel = page.getByTestId('platform-commission');
   await panel.getByRole('button', { name: agent.id, exact: true }).click();
   await expect(page.getByTestId('platform-commission-details')).toContainText(member);
@@ -156,6 +157,6 @@ test('platform reads a real agent and commission collections without financial o
   expect(after).toEqual(before);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('platform-commission-real.png'), fullPage: true });
-  await page.locator('.topbar-brand-picker select').selectOption('');
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), '');
   await expect(panel).toHaveCount(0);
 });

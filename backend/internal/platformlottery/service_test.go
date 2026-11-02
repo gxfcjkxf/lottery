@@ -2,6 +2,7 @@ package platformlottery
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/ids"
@@ -9,6 +10,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/gxfcjkxf/lottery/backend/internal/testdb"
 	"github.com/jackc/pgx/v5"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -26,7 +28,7 @@ func TestPlatformAuthorityDoesNotInheritBrandGrants(t *testing.T) {
 	}
 }
 
-func TestPlatformModelWithPlaysCannotBeOverwritten(t *testing.T) {
+func TestPlatformModelWithPublishedRulesCannotBeOverwritten(t *testing.T) {
 	db := testdb.New(t)
 	ctx := context.Background()
 	s := Service{DB: db}
@@ -39,11 +41,12 @@ func TestPlatformModelWithPlaysCannotBeOverwritten(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer tx.Rollback(ctx)
-	g, e := s.Create(ctx, tx, a, GameInput{Code: "model_guard", Name: "Model guard", Model: rules.Model{Type: "DIGITS_0_9", Length: 3, Ordered: true}, Timezone: "UTC", Reason: "test"}, points.Metadata{})
+	demoRaw, model := configuredModelFixture(t)
+	g, e := s.Create(ctx, tx, a, GameInput{Code: "model_guard", Name: "Model guard", Model: model, Timezone: "UTC", Reason: "test"}, points.Metadata{})
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = tx.Exec(ctx, `INSERT INTO platform_game_plays(id,game_id,code,name,definition,definition_hash,created_by) VALUES($1,$2,'existing_play','Existing play','{}','test',$3)`, ids.New(), g.ID, a.ID); e != nil {
+	if _, e = s.SaveConfiguredRules(ctx, tx, a, g.ID, ConfiguredRulesInput{Snapshot: demoRaw}, points.Metadata{}); e != nil {
 		t.Fatal(e)
 	}
 	_, e = s.UpdateModel(ctx, tx, a, g.ID, ModelInput{Model: rules.Model{Type: "DIGITS_0_9", Length: 4, Ordered: true}, ExpectedVersion: 1, Reason: "edit"}, points.Metadata{})
@@ -54,7 +57,7 @@ func TestPlatformModelWithPlaysCannotBeOverwritten(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if after.Version != 1 || after.Model.Length != 3 {
+	if after.Version != 1 || !reflect.DeepEqual(after.Model, g.Model) {
 		t.Fatal("used model changed")
 	}
 }
@@ -85,11 +88,12 @@ func TestTwoBrandsReadTheSamePeriodAndResult(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	raw, model := configuredModelFixture(t)
 	var g Game
 	var p Period
 	transact(func(tx pgx.Tx) error {
 		var e error
-		g, e = s.Create(ctx, tx, a, GameInput{Code: "shared_digits", Name: "Shared digits", Model: rules.Model{Type: "DIGITS_0_9", Length: 3, AllowRepeat: true, Ordered: true}, Timezone: "UTC"}, points.Metadata{})
+		g, e = s.Create(ctx, tx, a, GameInput{Code: "shared_digits", Name: "Shared digits", Model: model, Timezone: "UTC"}, points.Metadata{})
 		return e
 	})
 	if _, e := s.Detail(ctx, brands[0], g.ID, 50, 0); !errors.Is(e, ErrNotFound) {
@@ -101,6 +105,10 @@ func TestTwoBrandsReadTheSamePeriodAndResult(t *testing.T) {
 			return e
 		})
 	}
+	transact(func(tx pgx.Tx) error {
+		_, err := s.SaveConfiguredRules(ctx, tx, a, g.ID, ConfiguredRulesInput{Snapshot: raw}, points.Metadata{})
+		return err
+	})
 	now := time.Now().UTC()
 	transact(func(tx pgx.Tx) error {
 		var e error
@@ -109,7 +117,7 @@ func TestTwoBrandsReadTheSamePeriodAndResult(t *testing.T) {
 	})
 	transact(func(tx pgx.Tx) error {
 		var e error
-		p, e = s.Publish(ctx, tx, a, p.ID, rules.Draw{Digits: []int{1, 2, 3}}, "shared result", points.Metadata{})
+		p, e = s.Publish(ctx, tx, a, p.ID, rules.Draw{Regular: []int{1, 2, 3, 4, 5, 6}, Special: []int{7}}, "shared result", points.Metadata{})
 		return e
 	})
 	one, e := s.Detail(ctx, brands[0], g.ID, 50, 0)
@@ -140,4 +148,17 @@ func TestTwoBrandsReadTheSamePeriodAndResult(t *testing.T) {
 	if _, e = tx.Exec(ctx, `UPDATE platform_game_periods SET result='{"digits":[9,9,9]}' WHERE id=$1`, p.ID); e == nil {
 		t.Fatal("database allowed published result rewrite")
 	}
+}
+
+func configuredModelFixture(t *testing.T) ([]byte, rules.Model) {
+	t.Helper()
+	raw, e := os.ReadFile("../rules/config/examples/lucky_group_preview.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	var snapshot rules.ConfiguredSnapshot
+	if e = json.Unmarshal(raw, &snapshot); e != nil {
+		t.Fatal(e)
+	}
+	return raw, snapshot.Catalog.Model
 }

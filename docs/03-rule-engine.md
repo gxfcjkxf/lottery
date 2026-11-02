@@ -1,5 +1,7 @@
 # 玩法规则引擎规格
 
+> 2026-10-28：投注与结算已统一为[配置化链路](65-unified-configured-betting.md)。本文件涉及旧品牌游戏、独立六合彩／加拿大投注、旧结算任务及其页面／接口的内容仅为历史记录；当前接口以已实现 OpenAPI 为准。
+
 ## 1. 设计目标
 
 - 常规玩法由运营人员通过配置完成，不把每个玩法写成独立业务代码。
@@ -223,7 +225,7 @@
 
 ### 验证报告与审核隔离
 
-验证针对已保存的 Definition，接受 1–32 个用例。每例有非空、去空白后唯一的 name（最多 120 UTF-8 字节）、selection、draw、正整数 multiplier，以及必填的 expected_bet_points、expected_prize_points、expected_won。预期积分是规范非负整数字符串；不要求发送模型不适用的空选号/开奖字段。整个用例集共享最多 200000 个解释节点的执行预算。
+验证针对已保存的 Definition，接受 1–32 个用例。每例有非空、去空白后唯一的 name（最多 120 字符）、selection、draw、正整数 multiplier，以及必填的 expected_bet_points、expected_prize_points、expected_won。预期积分是规范非负整数字符串；不要求发送模型不适用的空选号/开奖字段。整个用例集共享最多 200000 个解释节点的执行预算。
 
 报告包含 `passed`、`definition_hash`、`cases`、`warnings`、`findings`。hash 是确定性序列化的类型化 Definition 的 SHA-256（不是任意原始 JSON 的字节摘要）。每个 case 保存完整原始 `input`（含 selection、draw、multiplier 和全部预期值）、预期/实际 bet/prize/won、`matched` 与完整 `simulation` 输出及各条件 Trace；积分精确比较，不转浮点。案例结果不符时验证请求仍成功保存报告，但 `passed=false`；非法输入或超执行预算则请求失败。
 

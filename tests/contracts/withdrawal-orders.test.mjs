@@ -18,6 +18,7 @@ test("withdrawal DTOs are closed and expose only the agreed fields",()=>{
   assert.deepEqual(Object.keys(schemas.WithdrawalHistory.properties),["brand_id","order_id","items"]);
   assert.deepEqual(Object.keys(schemas.WithdrawalTransition.properties),["id","version","from_state","to_state","reason","actor_type","created_at","audit_log_id"]);
   assert.deepEqual(Object.keys(schemas.WithdrawalAvailability.properties),[
+    "points_step","available_points","source_balances",
     "brand_id","member_id","policy_enabled","eligibility_configured","can_apply","reason_code",
     "min_points","max_points","allowed_sources","real_payments","actor_context",
   ]);

@@ -1,0 +1,33 @@
+import {expect,test} from '@playwright/test'
+import {readFileSync} from 'node:fs'
+const fixture=JSON.parse(readFileSync(process.env.BRAND_SCOPE_FIXTURE_FILE!,'utf8'))
+for(const locale of ['zh-CN','en'] as const)test(`ordinary brand reader login and authorized home ${locale}`,async({page},info)=>{
+ const zh=locale==='zh-CN',errors:string[]=[]
+ page.on('pageerror',e=>errors.push(e.message))
+ await page.context().addCookies([{name:'lottery-locale',value:locale,url:info.project.use.baseURL!}])
+ await page.goto('/')
+ await expect(page.locator('.login-entry__card')).toBeVisible()
+ await page.getByLabel(zh?'账号':'Account',{exact:true}).fill('managed_root')
+ await page.getByLabel(zh?'密码':'Password',{exact:true}).fill('root-test-password-2026')
+ const overview=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/admin/overview')
+ await page.getByRole('button',{name:zh?'登录':'Sign in',exact:true}).click()
+ const response=await overview;expect(response.status()).toBe(200)
+ expect((await response.json()).data.brand_id).toBe(fixture.brand)
+ await expect(page.getByTestId('brand-overview').locator('.overview-stats')).toBeVisible()
+ await expect(page.locator('.console-brand-scope')).toHaveCount(0)
+ const own=await page.request.get('/api/v1/admin/me');expect(own.status()).toBe(200)
+ const account=(await own.json()).data.account
+ expect(account.super_admin).toBe(false);expect(account.brand_ids).toEqual([fixture.brand])
+ expect(account.permissions_by_brand[fixture.brand]).toEqual(['overview.view.brand'])
+ const brands=await page.request.get('/api/v1/admin/brands');expect(brands.status()).toBe(200)
+ expect((await brands.json()).data.items.map((row:{id:string})=>row.id)).toEqual([fixture.brand])
+ const foreign=await page.request.get('/api/v1/admin/overview',{headers:{'X-Brand-ID':fixture.foreign_brand}});expect(foreign.status()).toBe(403)
+ const users=await page.request.get('/api/v1/admin/users',{headers:{'X-Brand-ID':fixture.brand}});expect(users.status()).toBe(403)
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)
+ await page.screenshot({path:info.outputPath('ordinary-brand-home.png'),fullPage:true})
+ await page.reload();await expect(page.getByTestId('brand-overview').locator('.overview-stats')).toBeVisible()
+ await page.locator('.account-trigger').click()
+ await page.getByRole('menuitem',{name:zh?'退出登录':'Sign out',exact:true}).click()
+ await expect(page.locator('.login-entry__card')).toBeVisible()
+ expect(errors).toEqual([])
+})

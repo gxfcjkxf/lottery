@@ -71,21 +71,20 @@ func mustJSON(t *testing.T, value any) []byte {
 func TestRewardOrdersCSVCompleteGroupsAndIntegrity(t *testing.T) {
 	q := rewardCSVFixture().Query
 	q.GroupBy = "state"
-	totals := RewardOrderTotals{OrderCount: "3", OriginalPoints: "60", GrantedCount: "1", GrantedPoints: "10", PendingCount: "1", PendingPoints: "20", RevokedCount: "1", RevokedPoints: "30"}
+	totals := RewardOrderTotals{OrderCount: "2", OriginalPoints: "40", GrantedCount: "1", GrantedPoints: "10", RevokedCount: "1", RevokedPoints: "30"}
 	r := RewardOrderReport{BrandID: rewardReportTestBrand, SnapshotAt: time.Now().UTC(), Timezone: "Asia/Singapore", Query: q, Summary: totals, Items: []Group[RewardOrderTotals]{
-		{Key: "granted", Label: "granted", Totals: RewardOrderTotals{OrderCount: "1", OriginalPoints: "10", GrantedCount: "1", GrantedPoints: "10", PendingCount: "0", PendingPoints: "0", RevokedCount: "0", RevokedPoints: "0"}},
-		{Key: "revocation_pending", Label: "revocation_pending", Totals: RewardOrderTotals{OrderCount: "1", OriginalPoints: "20", GrantedCount: "0", GrantedPoints: "0", PendingCount: "1", PendingPoints: "20", RevokedCount: "0", RevokedPoints: "0"}},
-		{Key: "revoked", Label: "revoked", Totals: RewardOrderTotals{OrderCount: "1", OriginalPoints: "30", GrantedCount: "0", GrantedPoints: "0", PendingCount: "0", PendingPoints: "0", RevokedCount: "1", RevokedPoints: "30"}},
-	}, TotalGroups: "3"}
+		{Key: "granted", Label: "granted", Totals: RewardOrderTotals{OrderCount: "1", OriginalPoints: "10", GrantedCount: "1", GrantedPoints: "10", RevokedCount: "0", RevokedPoints: "0"}},
+		{Key: "revoked", Label: "revoked", Totals: RewardOrderTotals{OrderCount: "1", OriginalPoints: "30", GrantedCount: "0", GrantedPoints: "0", RevokedCount: "1", RevokedPoints: "30"}},
+	}, TotalGroups: "2"}
 	body, err := RewardOrdersCSV(r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(body), "\xef\xbb\xbf"))).ReadAll()
-	if err != nil || len(rows) != 5 || strings.Join(rows[0], ",") != strings.Join(rewardOrdersCSVFields, ",") || rows[4][9] != "revoked" {
+	if err != nil || len(rows) != 4 || strings.Join(rows[0], ",") != strings.Join(rewardOrdersCSVFields, ",") || rows[3][9] != "revoked" {
 		t.Fatalf("order export lost final group: rows=%v err=%v", rows, err)
 	}
-	r.Items = r.Items[:2]
+	r.Items = r.Items[:1]
 	if _, err = RewardOrdersCSV(r); err != ErrInvalid {
 		t.Fatalf("truncated report accepted: %v", err)
 	}
@@ -151,8 +150,8 @@ func TestRewardCSVExactGroupLimitAndFinalRow(t *testing.T) {
 
 	q := r.Query
 	q.GroupBy = "member"
-	orderSummary := RewardOrderTotals{OrderCount: fmt.Sprint(count), OriginalPoints: fmt.Sprint(count), GrantedCount: fmt.Sprint(count), GrantedPoints: fmt.Sprint(count), PendingCount: "0", PendingPoints: "0", RevokedCount: "0", RevokedPoints: "0"}
-	orderOne := RewardOrderTotals{OrderCount: "1", OriginalPoints: "1", GrantedCount: "1", GrantedPoints: "1", PendingCount: "0", PendingPoints: "0", RevokedCount: "0", RevokedPoints: "0"}
+	orderSummary := RewardOrderTotals{OrderCount: fmt.Sprint(count), OriginalPoints: fmt.Sprint(count), GrantedCount: fmt.Sprint(count), GrantedPoints: fmt.Sprint(count), RevokedCount: "0", RevokedPoints: "0"}
+	orderOne := RewardOrderTotals{OrderCount: "1", OriginalPoints: "1", GrantedCount: "1", GrantedPoints: "1", RevokedCount: "0", RevokedPoints: "0"}
 	or := RewardOrderReport{BrandID: r.BrandID, SnapshotAt: r.SnapshotAt, Timezone: r.Timezone, Query: q, Summary: orderSummary, Items: make([]Group[RewardOrderTotals], count), TotalGroups: fmt.Sprint(count)}
 	for i := range or.Items {
 		key := fmt.Sprintf("00000000-0000-0000-0000-%012x", i+1)
@@ -225,7 +224,7 @@ func TestRewardCSVRejectsNoncanonicalOrIncompleteEnvelopes(t *testing.T) {
 func TestRewardOrdersCSVRejectsStateAndArithmeticMismatch(t *testing.T) {
 	q := rewardCSVFixture().Query
 	q.GroupBy = "state"
-	oneGranted := RewardOrderTotals{OrderCount: "1", OriginalPoints: "5", GrantedCount: "1", GrantedPoints: "5", PendingCount: "0", PendingPoints: "0", RevokedCount: "0", RevokedPoints: "0"}
+	oneGranted := RewardOrderTotals{OrderCount: "1", OriginalPoints: "5", GrantedCount: "1", GrantedPoints: "5", RevokedCount: "0", RevokedPoints: "0"}
 	r := RewardOrderReport{BrandID: rewardReportTestBrand, SnapshotAt: time.Now().UTC(), Timezone: "Asia/Singapore", Query: q, Summary: oneGranted,
 		Items: []Group[RewardOrderTotals]{{Key: "revoked", Label: "revoked", Totals: oneGranted}}, TotalGroups: "1"}
 	if _, err := RewardOrdersCSV(r); err != ErrInvalid {
@@ -237,7 +236,7 @@ func TestRewardOrdersCSVRejectsStateAndArithmeticMismatch(t *testing.T) {
 		t.Fatalf("inconsistent original points accepted: %v", err)
 	}
 	const huge = "9007199254740993"
-	r.Summary = RewardOrderTotals{OrderCount: huge, OriginalPoints: huge, GrantedCount: huge, GrantedPoints: huge, PendingCount: "0", PendingPoints: "0", RevokedCount: "0", RevokedPoints: "0"}
+	r.Summary = RewardOrderTotals{OrderCount: huge, OriginalPoints: huge, GrantedCount: huge, GrantedPoints: huge, RevokedCount: "0", RevokedPoints: "0"}
 	r.Items = []Group[RewardOrderTotals]{{Key: "granted", Label: "granted", Totals: r.Summary}}
 	if _, err := RewardOrdersCSV(r); err != nil {
 		t.Fatalf("exact order count above JS safe integer rejected: %v", err)
@@ -265,7 +264,7 @@ func TestRewardCSVDayKeysRespectTimezoneWindowAndEmptyEnvelope(t *testing.T) {
 		t.Fatalf("empty summary envelope rejected: bytes=%d err=%v", len(body), err)
 	}
 	or := RewardOrderReport{BrandID: r.BrandID, SnapshotAt: r.SnapshotAt, Timezone: r.Timezone, Query: r.Query,
-		Summary: RewardOrderTotals{OrderCount: "0", OriginalPoints: "0", GrantedCount: "0", GrantedPoints: "0", PendingCount: "0", PendingPoints: "0", RevokedCount: "0", RevokedPoints: "0"}, Items: []Group[RewardOrderTotals]{}, TotalGroups: "0"}
+		Summary: RewardOrderTotals{OrderCount: "0", OriginalPoints: "0", GrantedCount: "0", GrantedPoints: "0", RevokedCount: "0", RevokedPoints: "0"}, Items: []Group[RewardOrderTotals]{}, TotalGroups: "0"}
 	if body, err := RewardOrdersCSV(or); err != nil || len(body) == 0 {
 		t.Fatalf("empty order summary envelope rejected: bytes=%d err=%v", len(body), err)
 	}

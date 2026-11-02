@@ -6,10 +6,6 @@ const localeCode = computed(() => props.locale)
 const i18n = createCatalogI18n(configuredRuleCatalog, props.locale)
 watch(localeCode, value => i18n.setLocale(value))
 const t = i18n.t
-import { orderTicketCatalog } from './order-ticket-catalog'
-const labels=createCatalogI18n(orderTicketCatalog,props.locale)
-watch(localeCode,value=>labels.setLocale(value))
-const ui=labels.t
 interface HistoryLine { id: string; text: string }
 interface HistoryItem { id: string; title: string; summary: string; lines: HistoryLine[]; result: string }
 function ticketLabel(order: ConfiguredLiveOrder, line: ConfiguredQuotedLine): string {
@@ -52,7 +48,6 @@ const historyItems = computed<HistoryItem[]>(() => {
     <p>{{ item.summary }}</p>
     <p v-for="line in item.lines" :key="line.id">{{ line.text }}</p>
     <p v-if="item.result">{{ item.result }}</p>
-    <details><summary>{{ ui('details') }}</summary><small>{{ item.id }}</small></details>
   </article>
 </template>
 <style scoped>

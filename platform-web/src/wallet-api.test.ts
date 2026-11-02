@@ -35,10 +35,10 @@ function response(data: unknown, status = 200) {
 
 describe('platform wallet read API', () => {
   it('uses the exact platform GET routes, selected brand header, and same-origin credentials', async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(response(wallet)).mockResolvedValueOnce(response({ items: [entry] }))
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(response(wallet)).mockResolvedValueOnce(response({ items: [entry]  ,total_count: '1'}))
     const api = createPlatformWalletApi(fetcher)
     expect((await api.wallet(brandId, memberId)).display_points).toBe(amount)
-    expect((await api.ledger(brandId, memberId, 25, 10))[0]?.id).toBe(entryId)
+    expect((await api.ledger(brandId, memberId, 25, 10)).items[0]?.id).toBe(entryId)
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       `/api/v1/platform/wallets/${memberId}`,
       `/api/v1/platform/wallets/${memberId}/ledger?limit=25&offset=10`,
@@ -51,9 +51,9 @@ describe('platform wallet read API', () => {
   })
 
   it('preserves precise balances and snapshots as decimal strings', async () => {
-    const api = createPlatformWalletApi(vi.fn<typeof fetch>().mockResolvedValueOnce(response(wallet)).mockResolvedValueOnce(response({ items: [entry] })))
+    const api = createPlatformWalletApi(vi.fn<typeof fetch>().mockResolvedValueOnce(response(wallet)).mockResolvedValueOnce(response({ items: [entry]  ,total_count: '1'})))
     expect((await api.wallet(brandId, memberId)).display_points).toBe('9007199254740993')
-    expect((await api.ledger(brandId, memberId))[0]?.after_snapshot.recharge.available).toBe('9007199254740993')
+    expect((await api.ledger(brandId, memberId)).items[0]?.after_snapshot.recharge.available).toBe('9007199254740993')
   })
 
   it('rejects malformed and non-current wallet and ledger DTOs', async () => {
@@ -62,7 +62,7 @@ describe('platform wallet read API', () => {
       const api = createPlatformWalletApi(vi.fn<typeof fetch>().mockResolvedValue(response(bad)))
       await expect(api.wallet(brandId, memberId)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
     }
-    const api = createPlatformWalletApi(vi.fn<typeof fetch>().mockResolvedValue(response({ items: [{ ...entry, after_snapshot: { ...entry.after_snapshot, extra: {} } }] })))
+    const api = createPlatformWalletApi(vi.fn<typeof fetch>().mockResolvedValue(response({ items: [{ ...entry, after_snapshot: { ...entry.after_snapshot, extra: {} } }]  ,total_count: '1'})))
     await expect(api.ledger(brandId, memberId)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
 
@@ -79,7 +79,7 @@ describe('platform wallet read API', () => {
     await expect(wrongWallet.wallet(brandId, memberId)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
     const wrongMemberWallet = createPlatformWalletApi(vi.fn<typeof fetch>().mockResolvedValue(response({ ...wallet, member_id: otherMember })))
     await expect(wrongMemberWallet.wallet(brandId, memberId)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const wrongEntry = createPlatformWalletApi(vi.fn<typeof fetch>().mockResolvedValue(response({ items: [{ ...entry, member_id: otherMember }] })))
+    const wrongEntry = createPlatformWalletApi(vi.fn<typeof fetch>().mockResolvedValue(response({ items: [{ ...entry, member_id: otherMember }]  ,total_count: '1'})))
     await expect(wrongEntry.ledger(brandId, memberId)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
 

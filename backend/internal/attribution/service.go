@@ -254,3 +254,23 @@ func parsePublicAttribution(raw []byte, out *PublicAttribution) error {
 	out.JoinMethod, out.JoinedAt, out.CodeID, out.SourceCode = snapshot.JoinMethod, snapshot.JoinedAt, snapshot.CodeID, snapshot.Code
 	return nil
 }
+
+// SelfReferrals lists only direct referrals recorded when joining this brand.
+func (s Service) SelfReferrals(ctx context.Context, brand, member string, limit, offset int) (ReferralPage, error) {
+	out := ReferralPage{BrandID: brand, MemberID: member, Items: []ReferredMember{}, Limit: limit, Offset: offset}
+	if !idsValid(brand, member) || !paging(limit, offset) {
+		return out, ErrInvalid
+	}
+	var raw []byte
+	err := s.DB.QueryRow(ctx, `WITH selected AS (
+ SELECT m.id, COALESCE(NULLIF(m.display_name,''),u.username,'') AS display_name,m.joined_at
+ FROM brand_members m JOIN global_users u ON u.id=m.global_user_id
+ WHERE m.brand_id=$1 AND m.join_method='referral_code'
+ AND m.attribution_snapshot->>'referrer_member_id'=$2::text
+ ), page AS (SELECT * FROM selected ORDER BY joined_at DESC,id DESC LIMIT $3 OFFSET $4)
+ SELECT (SELECT count(*)::text FROM selected),COALESCE((SELECT jsonb_agg(to_jsonb(page) ORDER BY joined_at DESC,id DESC) FROM page),'[]'::jsonb)`, brand, member, limit, offset).Scan(&out.TotalCount, &raw)
+	if err == nil {
+		err = json.Unmarshal(raw, &out.Items)
+	}
+	return out, err
+}

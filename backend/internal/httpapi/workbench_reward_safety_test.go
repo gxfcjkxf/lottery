@@ -27,7 +27,7 @@ func TestWorkbenchRewardSectionUsesIndependentRewardViewPermissionAndRealOrders(
 	mustStatus(t, response, 200)
 	managedData(t, response, &snapshot)
 	rewards := snapshot.Rewards.Data
-	if snapshot.Rewards.Status != "ready" || rewards == nil || rewards.GrantedCount != "1" || rewards.PendingCount != "1" || rewards.RevokedCount != "1" {
+	if snapshot.Rewards.Status != "ready" || rewards == nil || rewards.GrantedCount != "2" || rewards.RevokedCount != "1" {
 		t.Fatalf("independent reward.view did not expose real granted/pending/revoked counts: %+v", snapshot.Rewards)
 	}
 	if strings.Contains(response.Body.String(), f.memberID) || strings.Contains(response.Body.String(), f.grantedID) || strings.Contains(response.Body.String(), f.revokedID) || strings.Contains(response.Body.String(), f.pendingID) {

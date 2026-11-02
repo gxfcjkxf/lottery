@@ -25,6 +25,8 @@
     "./PermissionPicker.vue": "./src/PermissionPicker.vue",
     "./ConfiguredSelection.vue": "./src/ConfiguredSelection.vue",
     "./ConfiguredRuleWorkbench.vue": "./src/ConfiguredRuleWorkbench.vue",
+    "./filter-options": "./src/filter-options.ts",
+    "./FilterAssociationSearch.vue": "./src/FilterAssociationSearch.vue",
     "./FilterAssociationSelect.vue": "./src/FilterAssociationSelect.vue",
     "./PlatformTemporalInput.vue": "./src/PlatformTemporalInput.vue",
     "./DisplaySettingsGate.vue": "./src/DisplaySettingsGate.vue",
@@ -45,6 +47,7 @@
     "./LoginEntry.vue": "./src/LoginEntry.vue",
     "./LoginCredentials.vue": "./src/LoginCredentials.vue",
     "./LanguageSwitcher.vue": "./src/LanguageSwitcher.vue",
+    "./OperationToastHost.vue": "./src/OperationToastHost.vue",
     "./Toast.vue": "./src/Toast.vue",
     "./DetailModal.vue": "./src/DetailModal.vue",
     "./MemberActionsMenu.vue": "./src/MemberActionsMenu.vue",
@@ -55,6 +58,7 @@
     "./MarkSixBall.vue": "./src/MarkSixBall.vue",
     "./CanadaOrders.vue": "./src/CanadaOrders.vue",
     "./CanadaLine.vue": "./src/CanadaLine.vue",
+    "./SelectControl.vue": "./src/SelectControl.vue",
     "./TimeZoneSelect.vue": "./src/TimeZoneSelect.vue",
     "./AccountMenu.vue": "./src/AccountMenu.vue",
     "./BrandLockup.vue": "./src/BrandLockup.vue",
@@ -76,6 +80,13 @@
     "./MemberDetailsFields.vue": "./src/MemberDetailsFields.vue",
     "./AgentRatioField.vue": "./src/AgentRatioField.vue",
     "./WriteFormActions.vue": "./src/WriteFormActions.vue",
-    "./RegistrationLink.vue": "./src/RegistrationLink.vue"
+    "./RegistrationLink.vue": "./src/RegistrationLink.vue",
+    "./RechargeQuotaPanel.vue": "./src/RechargeQuotaPanel.vue",
+    "./ArchiveScheduleForm.vue": "./src/ArchiveScheduleForm.vue",
+    "./ConfiguredOrdersPanel.vue": "./src/ConfiguredOrdersPanel.vue",
+    "./LoginCaptcha.vue": "./src/LoginCaptcha.vue",
+    "./PuzzleCaptcha.vue": "./src/PuzzleCaptcha.vue",
+    "./ManagementList.vue": "./src/ManagementList.vue",
+    "./BatchDelete.vue": "./src/BatchDelete.vue"
   }
 }

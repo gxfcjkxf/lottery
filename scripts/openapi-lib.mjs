@@ -6,7 +6,7 @@ export const commonSchemas = {
   NonnegativeInt64String: { type: "string", pattern: "^(0|[1-9][0-9]*)$", description: "Exact decimal integer string in 0..9223372036854775807." },
   PositiveInt64String: { type: "string", pattern: "^[1-9][0-9]*$", description: "Exact decimal integer string in 1..9223372036854775807." },
   PositiveInteger: { type: "integer", minimum: 1, format: "int64", description: "Positive JSON integer; server enforces int64 bounds. Numeric versions are not financial amounts." },
-  Reason: { type: "string", maxLength: 500, description: "Optional audit note; empty is accepted. Limit is 500 UTF-8 bytes, not characters. Leading/trailing spaces are normalized by the applicable handler." },
+  Reason: { type: "string", maxLength: 500, description: "Optional audit note; empty is accepted. Limit is 500 characters. Leading/trailing spaces are normalized by the applicable handler." },
   EmptyObject: { type: "object", additionalProperties: false },
   ArbitraryJSON: { description: "Opaque JSON explicitly accepted/emitted by the relevant domain. This does not imply arbitrary financial writes or configurable rules outside the handler's validation." },
   ErrorResponse: { type: "object", required: ["success", "error", "request_id"], additionalProperties: false,

@@ -57,7 +57,7 @@ test("actual Go DTO serialization and rule-engine outputs satisfy contracts",()=
   assert.equal(Object.hasOwn(examples,"AdminWorkbenchLegacy"),false);
   assert.equal(Object.hasOwn(examples,"AdminAuditRecordLegacy"),false);
   assert.equal(examples.AdminWorkbench.rewards.status,"ready");
-  assert.deepEqual(examples.AdminWorkbench.rewards.data,{granted_count:"1",pending_count:"2",revoked_count:"3"});
+  assert.deepEqual(examples.AdminWorkbench.rewards.data,{granted_count:"1",revoked_count:"3"});
   assert.equal(examples.LotterySimulationResult.bet_points,"8");
   assert.equal(examples.LotterySimulationResult.prize_points,"70");
   assert.equal(examples.WithdrawalAvailabilityExample.real_payments,false);
@@ -138,4 +138,15 @@ test("compliance admission records cannot claim anonymous users or disabled-chec
   assert.ok(check({...row,actor_type:"admin",actor_id:id,action:"operator_join"}));
   assert.ok(check({...row,actor_type:"user",actor_id:id,member_id:id,operation:"betting",action:"bet_place"}));
   assert.ok(!check({...row,actor_type:"user",actor_id:id,operation:"betting",action:"bet_place"}));
+});
+
+test('draw archive preserves unknown historical dates while validating recorded timestamps',()=>{
+  const item={period_no:'2026001',result:{regular:[1,2],special:[3],digits:[]},regular_order:[2,1],drawn_at:null,draw_date:null,attributes:{}};
+  const archive={mark_six:true,game_id:'11111111-1111-4111-8111-111111111111',game_name:'Mark Six',timezone:'Asia/Hong_Kong',daily:false,choices:['2026'],selected:'2026',items:[item],has_more:false};
+  const check=validate('LotteryPlayerDrawArchive');
+  assert.ok(check(archive),JSON.stringify(check.errors));
+  assert.ok(check({...archive,items:[{...item,drawn_at:'2026-10-25T12:30:00Z',draw_date:'2026-10-25'}]}),JSON.stringify(check.errors));
+  for(const drawn_at of [0,'not-a-timestamp'])assert.equal(check({...archive,items:[{...item,drawn_at}]}),false);
+  const missing={...item};delete missing.drawn_at;
+  assert.equal(check({...archive,items:[missing]}),false);
 });

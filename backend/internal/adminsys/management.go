@@ -75,7 +75,7 @@ func (s Store) ListRoles(ctx context.Context, actor access.Account, brand string
 		return nil, ErrDenied
 	}
 	rows, err := s.DB.Query(ctx, `SELECT r.id::text,r.brand_id::text,r.code,r.name,r.status,r.version,r.is_bootstrap,
-		COALESCE(array_agg(rp.permission_key ORDER BY rp.permission_key) FILTER(WHERE rp.permission_key IS NOT NULL),'{}'::text[])
+		COALESCE(array_agg(rp.permission_key ORDER BY rp.permission_key) FILTER(WHERE rp.permission_key IS NOT NULL AND rp.permission_key NOT IN ('brand_domains.view.brand','brand_domains.write.brand')),'{}'::text[])
 		FROM roles r LEFT JOIN role_permissions rp ON rp.role_id=r.id
 		WHERE r.brand_id=$1 GROUP BY r.id ORDER BY r.code,r.id LIMIT $2 OFFSET $3`, brand, limit, offset)
 	if err != nil {
@@ -107,7 +107,7 @@ func (s Store) ListAdmins(ctx context.Context, actor access.Account, brand strin
 		COALESCE(array_agg(r.code ORDER BY r.code,r.id) FILTER(WHERE r.id IS NOT NULL AND r.brand_id=$1),'{}'::text[])
 		FROM admin_accounts a JOIN admin_brand_scopes target ON target.account_id=a.id AND target.brand_id=$1
 		LEFT JOIN admin_account_roles ar ON ar.account_id=a.id LEFT JOIN roles r ON r.id=ar.role_id
-		WHERE $2::boolean OR (NOT a.is_super_admin AND (SELECT count(*) FROM admin_brand_scopes s WHERE s.account_id=a.id)=1)
+		WHERE a.status <> 'deleted' AND ($2::boolean OR (NOT a.is_super_admin AND (SELECT count(*) FROM admin_brand_scopes s WHERE s.account_id=a.id)=1))
 		GROUP BY a.id ORDER BY a.username,a.id LIMIT $3 OFFSET $4`, brand, platform, limit, offset)
 	if err != nil {
 		return nil, err
@@ -131,7 +131,7 @@ func (s Store) ListPermissions(ctx context.Context, actor access.Account, brand 
 	if !ManagementAllowed(actor, "role", "view", brand) {
 		return nil, ErrDenied
 	}
-	rows, err := s.DB.Query(ctx, `SELECT key FROM permissions WHERE split_part(key,'.',3)='brand' ORDER BY key`)
+	rows, err := s.DB.Query(ctx, `SELECT key FROM permissions WHERE split_part(key,'.',3)='brand' AND split_part(key,'.',1)<>'brand_domains' ORDER BY key`)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +396,7 @@ func (s Store) UpdateAdmin(ctx context.Context, tx pgx.Tx, actor access.Account,
 		return AdminRecord{}, err
 	}
 	var record AdminRecord
-	err = tx.QueryRow(ctx, `SELECT id::text,username,status,version,is_super_admin FROM admin_accounts WHERE id=$1 FOR UPDATE`, id).
+	err = tx.QueryRow(ctx, `SELECT id::text,username,status,version,is_super_admin FROM admin_accounts WHERE id=$1 AND status <> 'deleted' FOR UPDATE`, id).
 		Scan(&record.ID, &record.Username, &record.Status, &record.Version, &record.SuperAdmin)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return AdminRecord{}, ErrNotFound
@@ -469,7 +469,7 @@ func (s Store) DeleteAdmin(ctx context.Context, tx pgx.Tx, actor access.Account,
 		return "", ErrDenied
 	}
 	var record AdminRecord
-	if err := tx.QueryRow(ctx, `SELECT id::text,username,status,version,is_super_admin FROM admin_accounts WHERE id=$1 FOR UPDATE`, id).
+	if err := tx.QueryRow(ctx, `SELECT id::text,username,status,version,is_super_admin FROM admin_accounts WHERE id=$1 AND status <> 'deleted' FOR UPDATE`, id).
 		Scan(&record.ID, &record.Username, &record.Status, &record.Version, &record.SuperAdmin); errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNotFound
 	} else if err != nil {
@@ -505,7 +505,7 @@ func (s Store) DeleteAdmin(ctx context.Context, tx pgx.Tx, actor access.Account,
 	if _, err = tx.Exec(ctx, `DELETE FROM admin_brand_scopes WHERE account_id=$1`, id); err != nil {
 		return "", err
 	}
-	command, err := tx.Exec(ctx, `DELETE FROM admin_accounts WHERE id=$1 AND version=$2`, id, version)
+	command, err := tx.Exec(ctx, `UPDATE admin_accounts SET status='deleted',password_hash='',version=version+1 WHERE id=$1 AND version=$2`, id, version)
 	if err != nil {
 		return "", err
 	}
@@ -529,7 +529,7 @@ func (s Store) ResetAdminPassword(ctx context.Context, tx pgx.Tx, actor access.A
 	var username, status string
 	var super bool
 	var current int64
-	err = tx.QueryRow(ctx, `SELECT username,status,is_super_admin,version FROM admin_accounts WHERE id=$1 FOR UPDATE`, id).Scan(&username, &status, &super, &current)
+	err = tx.QueryRow(ctx, `SELECT username,status,is_super_admin,version FROM admin_accounts WHERE id=$1 AND status <> 'deleted' FOR UPDATE`, id).Scan(&username, &status, &super, &current)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -576,7 +576,7 @@ func (s Store) ResetAdminPassword(ctx context.Context, tx pgx.Tx, actor access.A
 func validPage(limit, offset int) bool { return limit >= 1 && limit <= 100 && offset >= 0 }
 
 func validRoleFields(name, status string) bool {
-	return utf8.ValidString(name) && len(name) >= 1 && len(name) <= 120 && strings.TrimSpace(name) == name && (status == "active" || status == "disabled")
+	return utf8.ValidString(name) && utf8.RuneCountInString(name) >= 1 && utf8.RuneCountInString(name) <= 120 && strings.TrimSpace(name) == name && (status == "active" || status == "disabled")
 }
 
 func validAdminStatus(status string) bool { return status == "active" || status == "disabled" }
@@ -586,7 +586,7 @@ func cleanReason(reason string) (string, error) {
 		return "", ErrInvalid
 	}
 	reason = strings.TrimSpace(reason)
-	if len(reason) > 500 {
+	if utf8.RuneCountInString(reason) > 500 {
 		return "", ErrInvalid
 	}
 	return reason, nil
@@ -596,7 +596,7 @@ func cleanPermissions(values []string) ([]string, error) {
 	set := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		parts := strings.Split(value, ".")
-		if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] != "brand" {
+		if len(parts) != 3 || parts[0] == "" || parts[0] == "brand_domains" || parts[1] == "" || parts[2] != "brand" {
 			return nil, ErrInvalid
 		}
 		set[value] = struct{}{}
@@ -659,7 +659,7 @@ func actorHasPermissions(actor access.Account, keys []string, brand string) bool
 func validUUID(value string) bool { return uuidPattern.MatchString(value) }
 
 func loadRolePermissions(ctx context.Context, tx pgx.Tx, roleID string) ([]string, error) {
-	rows, err := tx.Query(ctx, `SELECT permission_key FROM role_permissions WHERE role_id=$1 ORDER BY permission_key`, roleID)
+	rows, err := tx.Query(ctx, `SELECT permission_key FROM role_permissions WHERE role_id=$1 AND permission_key NOT IN ('brand_domains.view.brand','brand_domains.write.brand') ORDER BY permission_key`, roleID)
 	if err != nil {
 		return nil, err
 	}
@@ -680,7 +680,7 @@ func validateRoleDelegation(ctx context.Context, tx pgx.Tx, actor access.Account
 		return nil
 	}
 	rows, err := tx.Query(ctx, `SELECT r.id::text,COALESCE(r.brand_id::text,''),
-		COALESCE(array_agg(rp.permission_key ORDER BY rp.permission_key) FILTER(WHERE rp.permission_key IS NOT NULL),'{}'::text[])
+		COALESCE(array_agg(rp.permission_key ORDER BY rp.permission_key) FILTER(WHERE rp.permission_key IS NOT NULL AND rp.permission_key NOT IN ('brand_domains.view.brand','brand_domains.write.brand')),'{}'::text[])
 		FROM roles r LEFT JOIN role_permissions rp ON rp.role_id=r.id WHERE r.id=ANY($1::uuid[]) GROUP BY r.id ORDER BY r.id`, roleIDs)
 	if err != nil {
 		return err
@@ -715,7 +715,7 @@ type assignedRole struct {
 
 func loadAccountRoles(ctx context.Context, tx pgx.Tx, accountID string) ([]assignedRole, error) {
 	rows, err := tx.Query(ctx, `SELECT r.id::text,COALESCE(r.brand_id::text,''),
-		COALESCE(array_agg(rp.permission_key ORDER BY rp.permission_key) FILTER(WHERE rp.permission_key IS NOT NULL),'{}'::text[])
+		COALESCE(array_agg(rp.permission_key ORDER BY rp.permission_key) FILTER(WHERE rp.permission_key IS NOT NULL AND rp.permission_key NOT IN ('brand_domains.view.brand','brand_domains.write.brand')),'{}'::text[])
 		FROM admin_account_roles ar JOIN roles r ON r.id=ar.role_id LEFT JOIN role_permissions rp ON rp.role_id=r.id
 		WHERE ar.account_id=$1 GROUP BY r.id ORDER BY r.id`, accountID)
 	if err != nil {

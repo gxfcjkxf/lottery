@@ -7,7 +7,7 @@ const BASE = "/api/v1/admin/brand-operation";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const STATUSES = ["active", "paused", "disabled"] as const;
 
-export type BrandOperationStatus = "active" | "paused" | "disabled";
+type BrandOperationStatus = "active" | "paused" | "disabled";
 export type BrandOperationTargetStatus = Exclude<BrandOperationStatus, "disabled">;
 
 export interface BrandOperation {
@@ -21,7 +21,7 @@ export interface BrandOperation {
   audit_log_id?: string;
 }
 
-export interface BrandOperationReceipt extends BrandOperation {
+interface BrandOperationReceipt extends BrandOperation {
   audit_log_id: string;
 }
 
@@ -39,7 +39,7 @@ export interface BrandOperationHistoryItem {
   created_at: string;
 }
 
-export interface BrandOperationHistoryPage {
+interface BrandOperationHistoryPage {
   items: BrandOperationHistoryItem[];
   limit: number;
   offset: number;

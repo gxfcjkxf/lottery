@@ -26,7 +26,4 @@ const page=[{name:'offset',in:'query',schema:int},{name:'limit',in:'query',schem
 const op=(method,path,operationId,summary,data,extra={})=>({method,path,operationId,summary,data,tag:'mark-six',auth:'user',...extra});
 export const operations=[
  op('POST','/api/v1/platform/platform-games/{id}/mark-six/attributes','markSixPublishAttributes','Publish immutable number attributes with an explicit validity window',ref('MarkSixAttributes'),{auth:'admin',permissions:['platform_game.write.platform'],requestBody:obj({...attributeInput,reason:ref('Reason')}, Object.keys(attributeInput)),idempotency:true}),
- op('GET','/api/v1/mark-six/orders','markSixAllMyOrders','Read all of this member’s Mark Six tickets',obj({items:arr(ref('MarkSixOrder'))}),{parameters:page}),
- op('GET','/api/v1/mark-six/games/{id}/orders','markSixMyOrders','Read this member’s Mark Six tickets',obj({items:arr(ref('MarkSixOrder'))}),{parameters:page}),
- op('GET','/api/v1/admin/platform-games/{id}/mark-six/orders','markSixBrandOrders','Read this brand’s Mark Six tickets',obj({items:arr(ref('MarkSixOrder'))}),{auth:'admin',brandHeader:true,permissions:['platform_game.view.brand'],parameters:page}),
 ];

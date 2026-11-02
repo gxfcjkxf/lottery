@@ -27,7 +27,8 @@ test('policy browser verifies genuine lost ACK, later config, original replay an
   assert.match(spec, /route\.abort\('failed'\)/);
   assert.match(spec, /writes\[1\]\)\.toEqual\(writes\[0\]\)/);
   assert.match(spec, /expect\(await economics\(\)\)\.toEqual\(before\)/);
-  assert.match(spec, /version: 3, daily_enabled: false, monthly_enabled: false/);
-  assert.match(spec, /getByTestId\('archive-policy-replay-check'\)\.check\(\)/);
+  assert.match(spec, /version:original!\.version,daily_enabled:false,monthly_enabled:false/);
+  assert.match(spec, /getByRole\('button',\{name:'Retry original request',exact:true\}\)\.click\(\)/);
+  assert.match(spec, /getByTestId\('archive-policy-monthly'\)\)\.not\.toBeChecked\(\)/);
   assert.doesNotMatch(spec, /test\.skip|force:\s*true/);
 });

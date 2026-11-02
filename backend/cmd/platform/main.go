@@ -11,6 +11,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/gxfcjkxf/lottery/backend/internal/observability"
 	"github.com/gxfcjkxf/lottery/backend/internal/opsmetrics"
+	"github.com/gxfcjkxf/lottery/backend/internal/platformlottery"
 	"github.com/gxfcjkxf/lottery/backend/internal/telegramauth"
 	"github.com/gxfcjkxf/lottery/backend/internal/tenant"
 	"github.com/gxfcjkxf/lottery/backend/internal/withdrawal"
@@ -68,9 +69,10 @@ func run(logger *slog.Logger) error {
 	case "check":
 		return database.CheckMigrations(ctx, pools.Primary)
 	case "worker":
+	case "check-draw-sources":
 	case "serve":
 	default:
-		return errors.New("usage: platform serve|worker|migrate|check|seed|create-admin|generate-auth-key <file>|generate-metrics-token <file>")
+		return errors.New("usage: platform serve|worker|migrate|check|check-draw-sources|seed|create-admin|generate-auth-key <file>|generate-metrics-token <file>")
 	}
 	// Refuse anything other than the current schema before accepting requests or
 	// starting business workers. This check never upgrades or repairs metadata.
@@ -79,6 +81,18 @@ func run(logger *slog.Logger) error {
 	checkCancel()
 	if err != nil {
 		return errors.New("database schema unavailable or incompatible; initialize the current schema explicitly")
+	}
+	if command == "worker" || command == "check-draw-sources" {
+		sources, e := platformlottery.LoadAutomationSources()
+		if e != nil {
+			return e
+		}
+		if e = (platformlottery.Service{DB: pools.Primary}).CheckDrawSources(ctx, sources, command == "check-draw-sources"); e != nil {
+			return e
+		}
+		if command == "check-draw-sources" {
+			return nil
+		}
 	}
 	// Finish API dependency validation before any operational listener can
 	// advertise readiness. Workers intentionally do not need the API auth key.
@@ -161,7 +175,7 @@ func run(logger *slog.Logger) error {
 			return err
 		}
 	}
-	server := &http.Server{Addr: c.HTTPAddr, Handler: httpapi.New(httpapi.Dependencies{Brands: tenant.Store{DB: pools.Primary}, Ready: ready, Logger: logger, Identity: users, Mutations: engine, Admins: adminsys.Store{DB: pools.Primary}, WithdrawalEligibility: withdrawal.TurnoverChecker{}, SecureCookies: c.Environment == "production", Telegram: telegramauth.Verifier{Keys: telegramauth.NewRemoteKeys()}, TrustedProxies: c.TrustedProxies, HistoryReads: database.NewHistoryRouter(pools.Replicas), Telemetry: telemetry}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 16}
+	server := &http.Server{Addr: c.HTTPAddr, Handler: httpapi.New(httpapi.Dependencies{Brands: tenant.Store{DB: pools.Primary}, Ready: ready, Logger: logger, Identity: users, Mutations: engine, Admins: adminsys.Store{DB: pools.Primary}, WithdrawalEligibility: withdrawal.TurnoverChecker{}, SecureCookies: c.Environment == "production", Telegram: telegramauth.Verifier{Keys: telegramauth.NewRemoteKeys()}, TrustedProxies: c.TrustedProxies, HistoryReads: database.NewHistoryRouter(pools.Replicas), Telemetry: telemetry}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 45 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 16}
 	stopped := make(chan struct{})
 	go func() {
 		select {

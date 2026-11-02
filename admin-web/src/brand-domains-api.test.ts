@@ -15,13 +15,10 @@ describe("brand domain validation and permissions", () => {
     for (const host of ["shop.example.com", "xn--bcher-kva.example", `${"a".repeat(63)}.example.com`]) expect(isCanonicalBrandDomain(host)).toBe(true);
     for (const host of ["localhost", "x.localhost", "x.local", "x.internal", "192.0.2.1", "127.1", "2001:db8::1", "*.example.com", "https://example.com", "UPPER.example", "example.com.", "a..example.com", "-a.example.com", "a-.example.com", "a.123", "a.0x7f", `${"a".repeat(64)}.example.com`, `${"a".repeat(250)}.com`]) expect(isCanonicalBrandDomain(host)).toBe(false);
   });
-  it("requires explicit scoped grants and has no super-admin shortcut", () => {
-    expect(brandDomainsPermissions(account({ permissions_by_brand: { [brand]: ["brand_domains.view.brand", "brand_domains.write.brand"] } }), brand)).toEqual({ view: true, write: true });
-    expect(brandDomainsPermissions(account({ super_admin: true, permissions_by_brand: { [brand]: ["brand_domains.view.brand", "brand_domains.write.brand"] } }), brand)).toEqual({ view: false, write: false });
-    expect(brandDomainsPermissions(account({ brand_ids: [], permissions: ["brand_domains.write.brand"] }), brand).write).toBe(false);
-    expect(brandDomainsPermissions(account({ platform_permissions: ["brand_domains.view.platform"] }), brand).view).toBe(false);
-    expect(brandDomainsPermissions(account({ permissions: ["brand_domains.view.platform"] }), brand).view).toBe(false);
-    expect(brandDomainsPermissions(account({ permissions: ["brand_domains.view.brand", "brand_domains.write.brand"] }), brand)).toEqual({ view: false, write: false });
+  it("requires an explicit platform grant and rejects brand staff grants", () => {
+    expect(brandDomainsPermissions(account({super_admin:true,platform_permissions:['brand_domains.view.platform','brand_domains.write.platform']}),brand)).toEqual({view:true,write:true});
+    expect(brandDomainsPermissions(account({super_admin:true}),brand)).toEqual({view:false,write:false});
+    expect(brandDomainsPermissions(account({permissions_by_brand:{[brand]:['brand_domains.view.brand','brand_domains.write.brand']}}),brand)).toEqual({view:false,write:false});
   });
 });
 
@@ -30,7 +27,7 @@ describe("brand domains API", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(record()));
     await expect(createBrandDomainsApi(fetcher).get(brand)).resolves.toEqual(record());
     const [url, init] = fetcher.mock.calls[0];
-    expect(url).toBe("/api/v1/admin/brand-domains"); expect(init?.credentials).toBe("same-origin");
+    expect(url).toBe("/api/v1/platform/brand-domains"); expect(init?.credentials).toBe("same-origin");
     expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
     expect(new Headers(init?.headers).has("X-Admin-Brand-ID")).toBe(false);
   });
@@ -40,7 +37,7 @@ describe("brand domains API", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ ...record({ version: 9, domains: [created], audit_log_id: audit }) }, 201));
     await expect(createBrandDomainsApi(fetcher).post(brand, body, "domain-key-0001")).resolves.toEqual({ ...record({ version: 9, domains: [created], audit_log_id: audit }) });
     const [url, init] = fetcher.mock.calls[0];
-    expect(url).toBe("/api/v1/admin/brand-domains"); expect(init?.method).toBe("POST");
+    expect(url).toBe("/api/v1/platform/brand-domains"); expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toEqual(body);
     expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("domain-key-0001");
   });
@@ -49,7 +46,7 @@ describe("brand domains API", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ ...record({ version: 9, domains: [{ ...domain1, enabled: false }], audit_log_id: audit }) }));
     await createBrandDomainsApi(fetcher).patch(brand, actor, body, "domain-key-0002");
     const [url, init] = fetcher.mock.calls[0];
-    expect(url).toBe(`/api/v1/admin/brand-domains/${actor}`); expect(init?.method).toBe("PATCH");
+    expect(url).toBe(`/api/v1/platform/brand-domains/${actor}`); expect(init?.method).toBe("PATCH");
     expect(JSON.parse(String(init?.body))).toEqual(body);
     expect(JSON.parse(String(init?.body))).not.toHaveProperty("domain");
   });
@@ -66,7 +63,7 @@ describe("brand domains API", () => {
     const item = { id: other, brand_id: brand, version: 8, changed_by: actor, reason: "Launch", audit_log_id: audit, created_at: at, before_domains: [], domains: [domain1] };
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ items: [item], limit: 20, offset: 40 }));
     await expect(createBrandDomainsApi(fetcher).history(brand, 20, 40)).resolves.toEqual({ items: [item], limit: 20, offset: 40 });
-    expect(fetcher.mock.calls[0][0]).toBe("/api/v1/admin/brand-domains/history?limit=20&offset=40");
+    expect(fetcher.mock.calls[0][0]).toBe("/api/v1/platform/brand-domains/history?limit=20&offset=40");
     await expect(createBrandDomainsApi(vi.fn<typeof fetch>().mockResolvedValue(response({ items: [{ ...item, brand_id: other }], limit: 20, offset: 0 }))).history(brand)).rejects.toMatchObject({ status: 502 });
   });
   it("preserves server conflicts and treats network failures as unknown", async () => {
@@ -100,4 +97,22 @@ it('deletes with a version-only request and verifies the binding is absent from 
  await expect(createBrandDomainsApi(fetcher).remove(brand,actor,{version:before.version},'delete-stable-key')).resolves.toEqual(receipt);
  expect(fetcher.mock.calls[0][1]?.method).toBe('DELETE');expect(JSON.parse(fetcher.mock.calls[0][1]?.body as string)).toEqual({version:before.version});
  await expect(createBrandDomainsApi(vi.fn<typeof fetch>().mockResolvedValue(response({...receipt,domains:before.domains}))).remove(brand,actor,{version:before.version},'delete-stable-key')).rejects.toMatchObject({status:0});
+});
+
+describe('platform domain management', () => {
+  it('uses only exact platform grants', () => {
+    const platform = account({ super_admin: true, brand_ids: [], platform_permissions: ['brand_domains.view.platform', 'brand_domains.write.platform'] });
+    expect(brandDomainsPermissions(platform, brand)).toEqual({view:true,write:true});
+    expect(brandDomainsPermissions({...platform,platform_permissions:['brand_domains.view.platform']}, brand)).toEqual({view:true,write:false});
+    expect(brandDomainsPermissions({...platform,super_admin:false}, brand)).toEqual({view:false,write:false});
+  });
+  it('sends platform writes with exact brand scope and idempotency key', async () => {
+    const body = {version:8,domain:'shop.example.com',enabled:true,reason:''};
+    const fetcher=vi.fn<typeof fetch>().mockResolvedValue(response(record({version:9,domains:[{id:other,domain:body.domain,enabled:true}],audit_log_id:audit}),201));
+    await createBrandDomainsApi(fetcher).post(brand,body,'platform-domain-0001');
+    const [url,init]=fetcher.mock.calls[0];
+    expect(url).toBe('/api/v1/platform/brand-domains');
+    expect(new Headers(init?.headers).get('X-Brand-ID')).toBe(brand);
+    expect(new Headers(init?.headers).get('Idempotency-Key')).toBe('platform-domain-0001');
+  });
 });

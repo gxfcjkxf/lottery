@@ -1,49 +1,12 @@
-const ref = name => ({ $ref: `#/components/schemas/${name}` });
-const uuid = ref("UUID");
-const obj = (properties, required = Object.keys(properties)) => ({
-  type: "object",
-  required,
-  additionalProperties: false,
-  properties,
-});
-
-const reason = {
-  type: "string",
-  maxLength: 500,
-  pattern: "^(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]*$",
-  description: "Optional; empty string is allowed. Otherwise trimmed valid UTF-8, at most 500 UTF-8 bytes; C0/C1 controls are rejected by the handler.",
+import {archiveScheduleProperties} from './report-archive-schedule-schema.mjs';
+const ref=name=>({$ref:`#/components/schemas/${name}`});
+const obj=(properties,required=Object.keys(properties))=>({type:'object',properties,required,additionalProperties:false});
+const run=kind=>({anyOf:[obj({execute_at:ref('DateTime'),period_key:{type:'string',pattern:kind==='daily'?'^[0-9]{4}-[0-9]{2}-[0-9]{2}$':'^[0-9]{4}-[0-9]{2}$'}}),{type:'null'}]});
+export const schemas={
+ ReportArchivePolicyUpdateInput:obj({...archiveScheduleProperties,version:{type:'integer',minimum:1,maximum:9007199254740990},daily_enabled:{type:'boolean'},monthly_enabled:{type:'boolean'},reason:{type:'string',maxLength:500,pattern:'^(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]*$'}},[...Object.keys(archiveScheduleProperties),'version','daily_enabled','monthly_enabled']),
+ PlatformReportArchivePolicy:obj({...archiveScheduleProperties,version:{type:'integer',minimum:1,maximum:9007199254740991},daily_enabled:{type:'boolean'},monthly_enabled:{type:'boolean'},timezone:{type:'string',minLength:1},next_runs:obj({daily:run('daily'),monthly:run('monthly')}),updated_at:ref('DateTime')}),
 };
-
-export const schemas = {
-  ReportArchivePolicyUpdateInput: obj({
-    version: { type: "integer", minimum: 1, maximum: 9007199254740990 },
-    daily_enabled: { type: "boolean" },
-    monthly_enabled: { type: "boolean" },
-    reason,
-  }, ["version", "daily_enabled", "monthly_enabled"]),
-};
-
-export const operations = [
-  {
-    method: "PUT",
-    path: "/api/v1/admin/report-archive-policy",
-    operationId: "updateReportArchiveAutomaticPolicy",
-    summary: "Update automatic report archive policy",
-    tag: "report archive policy",
-    auth: "admin",
-    brandHeader: true,
-    permissions: ["report_archive.view.brand", "report_archive_policy.write.brand"],
-    idempotency: true,
-    successStatus: 200,
-    parameters: [{
-      name: "X-Report-Archive-Actor-ID",
-      in: "header",
-      required: true,
-      schema: uuid,
-      description: "Must equal the authenticated current administrator ID.",
-    }],
-    requestBody: ref("ReportArchivePolicyUpdateInput"),
-    data: ref("ReportArchivePolicy"),
-    description: "Requires current brand membership, report_archive.view.brand, report_archive_policy.write.brand, and a non-super-admin account. The 200 AutomaticPolicy acknowledgement must be scoped to X-Brand-ID, carry version+1 and the requested enablement flags, and include the original server-derived first-enable period when enabled: the current brand-local day for daily archiving or current brand-local month for monthly archiving, using the database clock. The first archive is captured only after that period ends; first activation does not backfill earlier periods. Disabling or reenabling retains any existing starts; clients cannot submit starts or timezone. Unknown write outcomes must be retried with the exact same body and idempotency key; the server does not automatically replay the operation.",
-  },
+export const operations=[
+ {method:'GET',path:'/api/v1/platform/report-archive-policy',operationId:'readPlatformReportArchivePolicy',summary:'Read the global archive schedule',tag:'platform-settings',auth:'admin',permissions:['platform_settings.view.platform'],data:ref('PlatformReportArchivePolicy'),description:'One platform configuration independent of selected brand. Rejects X-Brand-ID and query parameters. Brand administration has no archive configuration endpoint.'},
+ {method:'PUT',path:'/api/v1/platform/report-archive-policy',operationId:'updatePlatformReportArchivePolicy',summary:'Save one archive schedule for all brands',tag:'platform-settings',auth:'admin',permissions:['platform_settings.write.platform'],idempotency:true,requestBody:ref('ReportArchivePolicyUpdateInput'),data:ref('PlatformReportArchivePolicy'),parameters:[{name:'X-Report-Archive-Actor-ID',in:'header',required:true,schema:ref('UUID')}],description:'Updates the versioned global row, audit and derived execution snapshots for every brand atomically. New brands inherit the global schedule. Platform timezone and database clock determine the next future execution and target period. Existing archives and tasks keep their saved brand, policy and time range. Unknown outcomes require the same body and idempotency key; no automatic replay.'},
 ];

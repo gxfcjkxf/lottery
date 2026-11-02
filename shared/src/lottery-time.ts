@@ -15,3 +15,10 @@ export function lotteryLocalTimeToISO(value: string, timezone: string): string {
   if (!numbers(instant).every((part, index) => part === target[index])) throw new Error('Invalid lottery local time')
   return new Date(instant).toISOString()
 }
+
+/** Canonical wall-clock fields for an existing instant in the platform zone. */
+export function lotteryISOToLocalTime(value: string, timezone: string): string {
+ const formatter = new Intl.DateTimeFormat('en', { timeZone: timezone, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23' })
+ const p=Object.fromEntries(formatter.formatToParts(new Date(value)).map(part=>[part.type,part.value]))
+ return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`
+}

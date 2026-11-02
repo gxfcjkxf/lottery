@@ -23,7 +23,7 @@ const notificationKeys=[
   "bet.order.judged_cancelled","bet.order.abnormal","bet.order.won","bet.order.prize_reversed",
   "withdrawal.order.reviewing","withdrawal.order.processing","withdrawal.order.paid",
   "withdrawal.order.rejected","withdrawal.order.failed","withdrawal.order.cancelled",
-  "reward.order.granted","reward.order.revocation_pending","reward.order.revoked",
+  "reward.order.granted","reward.order.revoked",
   "commission.paid","commission.adjusted","commission.corrected",
   "draw.result.published","draw.result.corrected",
 ];
@@ -41,9 +41,9 @@ test("all notification template components compile and routes match the implemen
   for(const name of [...names,"LotteryNotification"])validate(name);
 
   const expected=[
-    ["GET","/api/v1/admin/notification-templates","adminListNotificationTemplates"],
-    ["GET","/api/v1/admin/notification-templates/{key}/history","adminListNotificationTemplateHistory"],
-    ["PUT","/api/v1/admin/notification-templates/{key}","adminUpdateNotificationTemplate"],
+    ["GET","/api/v1/platform/notification-templates","platformListNotificationTemplates"],
+    ["GET","/api/v1/platform/notification-templates/{key}/history","platformListNotificationTemplateHistory"],
+    ["PUT","/api/v1/platform/notification-templates/{key}","platformUpdateNotificationTemplate"],
   ];
   for(const [method,path,operationId] of expected){
     const operation=operations.find(item=>item.method===method&&item.path===path);
@@ -56,14 +56,14 @@ test("all notification template components compile and routes match the implemen
       assert.deepEqual(keyParameter.schema.enum,schemas.LotteryNotificationTemplate.properties.key.enum);
     }
   }
-  const write=operations.find(item=>item.operationId==="adminUpdateNotificationTemplate");
-  assert.deepEqual(write.permissions,["notification_template.write.brand"]);
+  const write=operations.find(item=>item.operationId==="platformUpdateNotificationTemplate");
+  assert.deepEqual(write.permissions,["notification_template.write.platform"]);
   assert.equal(write.idempotency,true);
   assert.equal(write.requestBody.$ref,"#/components/schemas/LotteryNotificationTemplateUpdateInput");
   assert.deepEqual(schemas.LotteryNotificationTemplate.properties.key.enum,[...notificationKeys].sort());
 });
 
-test("the shared i18n catalog defines all twenty-two bilingual system notifications",()=>{
+test("the shared i18n catalog defines all twenty-one bilingual system notifications",()=>{
   assert.deepEqual(Object.keys(defaults).sort(),[...notificationKeys].sort());
   const originalDefaults={
     "member.joined":{en:{title:"Welcome",body:"Your membership is ready. Welcome aboard."},"zh-CN":{title:"欢迎",body:"您的会员账号已准备就绪，欢迎加入。"}},
@@ -126,8 +126,8 @@ test("system templates contain only i18n identities and the migration converts s
   assert.ok(!check({...references["member.joined"],en:defaults["member.joined"].en}));
 });
 
-test("shared i18n catalog contains three reward defaults with the required historical meaning",()=>{
-  const rewardKeys=["reward.order.granted","reward.order.revocation_pending","reward.order.revoked"];
+test("shared i18n catalog contains two reward defaults with the required historical meaning",()=>{
+  const rewardKeys=["reward.order.granted","reward.order.revoked"];
   const check=validate("LotteryNotificationTemplateContent");
   for(const [label,source] of [["shared i18n catalog",defaults]]){
     assert.deepEqual(Object.keys(source).filter(key=>key.startsWith("reward.order.")).sort(),rewardKeys,label);
@@ -149,20 +149,14 @@ test("shared i18n catalog contains three reward defaults with the required histo
     assert.match(source["reward.order.granted"]["zh-CN"].body,/记入/);
     assert.match(source["reward.order.revoked"].en.body,/full original reward.*reversed/i);
     assert.match(source["reward.order.revoked"]["zh-CN"].body,/原奖励全额.*撤销/);
-    const {en,"zh-CN":zh}=source["reward.order.revocation_pending"];
-    assert.match(en.body,/full.*reversal.*requested.*awaiting operator/i);
-    assert.match(en.body,/no points (?:have )?moved/i);
-    assert.match(en.body,/(?:does not|no)[^.]*retry[^.]*unfreeze[^.]*(?:deduct|debit)[^.]*automatically/i);
-    assert.match(zh.body,/历史记录.*申请全额.*待运营处理/);
-    assert.match(zh.body,/没有积分变动/);
-    assert.match(zh.body,/不会自动重试、解冻或扣除/);
+
   }
 });
 
 test("template and revision schemas enforce closed structures and initial-version audit nullability",()=>{
   const template=validate("LotteryNotificationTemplate");
   const revision=validate("LotteryNotificationTemplateRevision");
-  const base={brand_id:id,key:"member.joined",version:1,content:content("Welcome","Your membership is ready."),updated_at:"2026-10-07T00:00:00Z",audit_log_id:null};
+  const base={key:"member.joined",version:1,content:content("Welcome","Your membership is ready."),updated_at:"2026-10-07T00:00:00Z",audit_log_id:null};
   assert.ok(template(base),JSON.stringify(template.errors));
   assert.ok(!template({...base,key:"unknown"}));
   assert.ok(!template({...base,unexpected:true}));
@@ -170,7 +164,7 @@ test("template and revision schemas enforce closed structures and initial-versio
   assert.ok(template({...base,version:2,audit_log_id:id}));
   assert.ok(!template({...base,version:2,audit_log_id:null}));
 
-  const first={id,brand_id:id,key:"member.joined",version:1,content:base.content,changed_by:null,reason:"Initial in-app notification template",audit_log_id:null,created_at:"2026-10-07T00:00:00Z"};
+  const first={id,key:"member.joined",version:1,content:base.content,changed_by:null,reason:"Initial in-app notification template",audit_log_id:null,created_at:"2026-10-07T00:00:00Z"};
   assert.ok(revision(first),JSON.stringify(revision.errors));
   assert.ok(!revision({...first,changed_by:id}));
   assert.ok(revision({...first,version:2,changed_by:id,audit_log_id:id}));
@@ -312,6 +306,6 @@ test("template copy schemas reject unknown placeholders and private fields",()=>
   const joined={en:{title:"Welcome",body:"Membership ready."},"zh-CN":{title:"欢迎",body:"会员已就绪。"}};
   assert.ok(check(joined),JSON.stringify(check.errors));
   assert.match(schemas.LotteryNotificationCustomContent.description,/nineteen event templates require \{points\} in each language body/);
-  assert.match(schemas.LotteryNotificationTemplateCopy.properties.title.description,/120 UTF-8 bytes/);
-  assert.match(schemas.LotteryNotificationTemplateCopy.properties.body.description,/1200 UTF-8 bytes/);
+  assert.match(schemas.LotteryNotificationTemplateCopy.properties.title.description,/120 characters/);
+  assert.match(schemas.LotteryNotificationTemplateCopy.properties.body.description,/1200 characters/);
 });

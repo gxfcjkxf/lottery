@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import { auditReasonLabel, readPaginationTotal } from '@lottery/shared'
+const ledgerTotal = ref('0')
+
+import TablePagination from "@lottery/shared/TablePagination.vue"
 import { useUserI18n as usePublicErrorI18n } from "./i18n";
 const publicErrorI18n = usePublicErrorI18n();
 const publicErrorMessage = publicErrorI18n.errorMessage;
 const displayPublicError = publicErrorI18n.displayError;
+import DetailModal from "@lottery/shared/DetailModal.vue";
 import { withGlobalLoading } from '@lottery/shared';
-import SiteIcon from "@lottery/shared/SiteIcon";
 import { vRefreshButton } from '@lottery/shared';
 import { vGlobalLoading } from "@lottery/shared";
 import { formatDisplayDateTime } from "@lottery/shared";
@@ -13,6 +17,7 @@ import { useUserI18n } from './i18n';
 import { RouterLink } from 'vue-router';
 import {
   createWalletApi,
+  WALLET_SNAPSHOT_EVENT,
   formatIntegerAmount,
   WalletApiError,
   type LedgerEntry,
@@ -26,9 +31,8 @@ const props = withDefaults(
   { locale: "en", view: 'overview' },
 );
 const ui = useUserI18n().t;
-const title = computed(() => ui(props.view === 'overview' ? 'user.wallet.title' : props.view === 'buckets' ? 'user.wallet.buckets' : 'user.wallet.ledger'));
 const copy = computed(() => ({
-  title: ui('user.wallet.title'), refresh: ui('user.wallet.refresh'), loading: ui('user.wallet.loading'), reading: ui('user.wallet.reading'), unauthenticated: ui('user.wallet.unauthenticated'), recheck: ui('user.wallet.recheck'), retry: ui('user.wallet.retry'), balance: ui('user.wallet.balance'), points: ui('user.wallet.points'), frozen: ui('user.wallet.frozen'), withdrawal: ui('user.wallet.withdrawal'), buckets: ui('user.wallet.buckets'), ledger: ui('user.wallet.ledger'), empty: ui('user.wallet.empty'), bucket: ui('user.wallet.bucket'), before: ui('user.wallet.before'), delta: ui('user.wallet.delta'), after: ui('user.wallet.after'), page: (number: number) => ui('user.wallet.page', { number }), previous: ui('user.wallet.previous'), next: ui('user.wallet.next'), sources: { recharge: ui('user.wallet.source.recharge'), winning: ui('user.wallet.source.winning'), gift: ui('user.wallet.source.gift'), commission: ui('user.wallet.source.commission') }, states: { available: ui('user.wallet.state.available'), manual_frozen: ui('user.wallet.state.manualFrozen'), system_frozen: ui('user.wallet.state.systemFrozen'), withdrawal: ui('user.wallet.state.withdrawal') }, networkError: ui('user.wallet.networkError'), brandMismatch: ui('user.wallet.brandMismatch'),
+  title: ui('user.wallet.title'), refresh: ui('user.wallet.refresh'), loading: ui('user.wallet.loading'), reading: ui('user.wallet.reading'), unauthenticated: ui('user.wallet.unauthenticated'), recheck: ui('user.wallet.recheck'), retry: ui('user.wallet.retry'), balance: ui('user.wallet.balance'), points: ui('user.wallet.points'), frozen: ui('user.wallet.frozen'), withdrawal: ui('user.wallet.withdrawal'), buckets: ui('user.wallet.buckets'), ledger: ui('user.wallet.ledger'), empty: ui('user.wallet.empty'), page: (number: number) => ui('user.wallet.page', { number }), previous: ui('user.wallet.previous'), next: ui('user.wallet.next'), sources: { recharge: ui('user.wallet.source.recharge'), winning: ui('user.wallet.source.winning'), gift: ui('user.wallet.source.gift'), commission: ui('user.wallet.source.commission') }, states: { available: ui('user.wallet.state.available'), manual_frozen: ui('user.wallet.state.manualFrozen'), system_frozen: ui('user.wallet.state.systemFrozen'), withdrawal: ui('user.wallet.state.withdrawal') }, networkError: ui('user.wallet.networkError'), brandMismatch: ui('user.wallet.brandMismatch'),
 }));
 function ledgerLabel(entry:LedgerEntry,reason=false):string{
  if(entry.reference_type==="canada_order"){
@@ -39,7 +43,7 @@ function ledgerLabel(entry:LedgerEntry,reason=false):string{
  switch(entry.entry_type){case "bet":return ui(reason?'user.wallet.canada.betReason':'user.wallet.canada.bet');case "prize":return ui(reason?'user.wallet.canada.prizeReason':'user.wallet.canada.prize');case "refund":return ui(reason?'user.wallet.canada.refundReason':'user.wallet.canada.refund');default:throw new Error('Unsupported Canada ledger entry')}
  }
  if(entry.reference_type!=="mark_six_order") {
-   if (reason) return entry.reason;
+   if (reason) return auditReasonLabel(entry.reason, publicErrorI18n.locale.value);
    return ui(`user.wallet.entry.${entry.entry_type}`);
  }
  switch(entry.entry_type){
@@ -53,6 +57,9 @@ function availableChange(entry: LedgerEntry): string {
   const change = sources.reduce((sum, source) => sum + BigInt(entry.delta_snapshot[source].available), 0n);
   return `${change > 0n ? '+' : ''}${formatIntegerAmount(change.toString())}`;
 }
+function availableAfter(entry: LedgerEntry): string {
+  return formatIntegerAmount(sources.reduce((total, source) => total + BigInt(entry.after_snapshot[source].available), 0n).toString());
+}
 const PAGE_SIZE = 50;
 const sources: WalletSource[] = ["recharge", "winning", "gift", "commission"];
 const states: WalletState[] = [
@@ -63,13 +70,13 @@ const states: WalletState[] = [
 ];
 const wallet = ref<Wallet | null>(null);
 const entries = ref<LedgerEntry[]>([]);
+const detailEntry = ref<LedgerEntry | null>(null);
 const state = ref<"loading" | "ready" | "unauthenticated" | "error">("loading");
 const error = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const offset = ref(0);
 const loading = ref(false);
 const api = computed(() => createWalletApi({ brandCode: props.brandCode }));
 let loadGeneration = 0;
-let polling = false;
 const bucketRows = computed(() =>
   wallet.value
     ? sources.map((source) => ({
@@ -79,25 +86,23 @@ const bucketRows = computed(() =>
     : [],
 );
 
-async function load(silent = false) {
+async function load(requestedOffset = offset.value) {
   const requestedBrandCode = props.brandCode;
   const generation = ++loadGeneration;
   const isCurrent = () =>
     generation === loadGeneration && props.brandCode === requestedBrandCode;
-  if (silent) polling = true;
-  else {
-    loading.value = true;
-    state.value = "loading";
-    error.value = "";
-  }
+  detailEntry.value = null;
+  loading.value = true;
+  if (!wallet.value) state.value = "loading";
+  error.value = "";
   try {
     const [currentWallet, ledger] = await Promise.all([
       api.value.wallet(),
-      props.view === 'ledger' ? api.value.ledger(PAGE_SIZE, offset.value) : Promise.resolve({ items: [] }),
+      props.view === 'ledger' ? api.value.ledger(PAGE_SIZE, requestedOffset) : Promise.resolve(null),
     ]);
     if (!isCurrent()) return;
     if (
-      ledger.items.some(
+      ledger?.items.some(
         (entry) =>
           entry.brand_id !== currentWallet.brand_id ||
           entry.member_id !== currentWallet.member_id,
@@ -109,62 +114,60 @@ async function load(silent = false) {
         "brand_mismatch",
       );
     }
-    wallet.value = currentWallet;
-    entries.value = ledger.items;
-    state.value = "ready";
+    if (!wallet.value || wallet.value.version <= currentWallet.version) wallet.value = currentWallet;
+    if (ledger) { [entries.value, ledgerTotal.value] = [ledger.items, readPaginationTotal(ledger)]; }
+    offset.value = requestedOffset; state.value = "ready";
   } catch (cause) {
     if (!isCurrent()) return;
-    wallet.value = null;
-    entries.value = [];
     if (cause instanceof WalletApiError && cause.status === 401) {
+      wallet.value = null; [entries.value, ledgerTotal.value] = [[], '0'];
       state.value = "unauthenticated";
       error.value = copy.value.unauthenticated;
     } else {
-      state.value = "error";
+      if (cause instanceof WalletApiError && cause.code === "brand_mismatch") {wallet.value=null;entries.value=[];ledgerTotal.value='0'}
+      state.value = wallet.value ? "ready" : "error";
       error.value =
         cause instanceof WalletApiError &&
         cause.status === 0 &&
         cause.code !== "brand_mismatch"
           ? copy.value.networkError
           : cause instanceof Error
-            ? publicErrorMessage(cause)
+            ? publicErrorMessage(cause, 'read')
             : copy.value.networkError;
     }
   } finally {
-    if (silent) polling = false;
-    else if (isCurrent()) loading.value = false;
+    if (isCurrent()) loading.value = false;
   }
 }
 
-const poll=setInterval(()=>{if(!loading.value&&!polling&&state.value==="ready")void load(true)},5000);
-onUnmounted(()=>{clearInterval(poll);loadGeneration++});
-onMounted(() => void load());
+function walletUpdated(event: Event) {
+  const next = (event as CustomEvent<Wallet>).detail;
+  const current = wallet.value;
+  if (current && next.brand_id === current.brand_id && next.member_id === current.member_id && next.version >= current.version) wallet.value = next;
+}
+onMounted(() => { window.addEventListener(WALLET_SNAPSHOT_EVENT, walletUpdated); void load(); });
+onUnmounted(() => { window.removeEventListener(WALLET_SNAPSHOT_EVENT, walletUpdated); loadGeneration++; });
 watch(
-  () => props.brandCode,
+  () => [props.brandCode, props.view],
   () => {
     loadGeneration++;
     wallet.value = null;
-    entries.value = [];
+    [entries.value,ledgerTotal.value]=[[],'0'];
     offset.value = 0;
     void load();
   },
 );
-async function changePage(direction: -1 | 1) {
-  offset.value = Math.max(0, offset.value + direction * PAGE_SIZE);
-  await load();
+async function changePage(direction: number) {
+  await load(Math.max(0, offset.value + direction * PAGE_SIZE));
 }
 </script>
 
 <template>
   <section class="wallet-summary">
-    <header class="wallet-head page-heading">
-      <div class="wallet-heading-copy">
-        <h1>{{ title }}</h1>
-      </div>
+
       <Teleport defer to="#user-page-refresh"><button v-if="!wallet || props.view !== 'overview'" v-refresh-button="loading ? copy.loading : copy.refresh" class="refresh" type="button" :disabled="loading" @click="withGlobalLoading(load)">
         {{ loading ? copy.loading : copy.refresh }}
       </button></Teleport>
-    </header>
 
     <div v-global-loading v-if="state === 'loading' && !wallet" class="state-card" role="status">
       {{ copy.reading }}
@@ -175,21 +178,22 @@ async function changePage(direction: -1 | 1) {
       role="status"
     >
       {{ displayPublicError(error) }}
-      <button type="button" class="text-action" @click="withGlobalLoading(load)">
+      <button type="button" class="text-button" @click="withGlobalLoading(load)">
         {{ copy.recheck }}
       </button>
     </div>
     <div
-      v-else-if="state === 'error'"
+      v-else-if="state === 'error' && !wallet"
       class="state-card state-error"
       role="alert"
     >
       <span>{{ displayPublicError(error) }}</span>
-      <button type="button" class="text-action" @click="withGlobalLoading(load)">
+      <button type="button" class="text-button" @click="withGlobalLoading(load)">
         {{ copy.retry }}
       </button>
     </div>
     <template v-else-if="wallet">
+      <p v-if="error" class="state-error" role="alert">{{ displayPublicError(error) }}</p>
       <div v-if="props.view === 'overview'" class="totals">
         <article class="total-card total-primary">
           <div class="balance-card-head">
@@ -237,7 +241,7 @@ async function changePage(direction: -1 | 1) {
         </div>
       </section>
 
-      <section v-if="props.view === 'ledger'" class="panel ledger-panel">
+      <section v-if="props.view === 'ledger'" class="panel ledger-panel user-record-list" :aria-busy="loading">
         <p v-if="!entries.length" class="empty empty-state">{{ copy.empty }}</p>
         <article v-for="entry in entries" :key="entry.id" class="ledger-entry">
           <div class="entry-head">
@@ -252,67 +256,27 @@ async function changePage(direction: -1 | 1) {
               <strong :class="{ 'change-negative': availableChange(entry).startsWith('−'), 'change-positive': availableChange(entry).startsWith('+') }">{{ availableChange(entry) }}</strong>
             </div>
           </div>
-          <details class="ledger-details">
-            <summary>{{ ui('user.wallet.viewDetails') }}<SiteIcon name="down" /></summary>
-          <p class="entry-reason">{{ ledgerLabel(entry,true) }}</p>
-          <p v-if="entry.reference_type==='mark_six_order'||entry.reference_type==='canada_order'" class="entry-reference">{{ ui('user.wallet.orderReference') }} · {{ entry.reference_id }}</p>
-            <div class="snapshot-grid">
-            <div class="snapshot-label">{{ copy.bucket }}</div>
-            <div class="snapshot-label">{{ copy.before }}</div>
-            <div class="snapshot-label">{{ copy.delta }}</div>
-            <div class="snapshot-label">{{ copy.after }}</div>
-            <template v-for="source in sources" :key="`${entry.id}-${source}`"
-              ><template
-                v-for="bucketState in states"
-                :key="`${entry.id}-${source}-${bucketState}`"
-                ><b class="snapshot-bucket"
-                  >{{ copy.sources[source] }} ·
-                  {{ copy.states[bucketState] }}</b
-                ><span>{{
-                  formatIntegerAmount(
-                    entry.before_snapshot[source][bucketState],
-                  )
-                }}</span
-                ><span>{{
-                  formatIntegerAmount(entry.delta_snapshot[source][bucketState])
-                }}</span
-                ><span>{{
-                  formatIntegerAmount(entry.after_snapshot[source][bucketState])
-                }}</span></template
-              ></template
-            >
-          </div>
-          </details>
+          <button type="button" class="text-button ledger-details" tabindex="0" aria-haspopup="dialog" @click="detailEntry = entry">{{ ui('user.wallet.viewDetails') }}</button>
         </article>
-        <footer class="pager">
-          <span>{{ copy.page(offset / PAGE_SIZE + 1) }}</span>
-          <div>
-            <button
-              type="button"
-              :disabled="offset === 0 || loading"
-              @click="withGlobalLoading(changePage, -1)"
-            >
-              {{ copy.previous }}</button
-            ><button
-              type="button"
-              :disabled="entries.length < PAGE_SIZE || loading"
-              @click="withGlobalLoading(changePage, 1)"
-            >
-              {{ copy.next }}
-            </button>
+        <DetailModal v-if="detailEntry" :title="ui('user.wallet.viewDetails')" :close-label="ui('user.notifications.close')" @close="detailEntry = null">
+          <div class="ledger-detail-body">
+            <p class="entry-reason">{{ ledgerLabel(detailEntry,true) }}</p>
+            <p v-if="['mark_six_order','canada_order','configured_order'].includes(detailEntry.reference_type)" class="entry-reference">{{ ui('user.wallet.orderReference') }} · {{ detailEntry.reference_id }}</p>
+            <dl class="ledger-result"><div><dt>{{ ui('user.wallet.availableAfter') }}</dt><dd>{{ availableAfter(detailEntry) }}</dd></div></dl>
           </div>
-        </footer>
+        </DetailModal>
+        <TablePagination show-empty class="pager" :total="ledgerTotal" :page="Math.floor(offset / PAGE_SIZE + 1)" :count="entries.length" :locale="publicErrorI18n.locale.value" :page-size="PAGE_SIZE" :previous-disabled="offset === 0 || loading" :next-disabled="BigInt(offset + entries.length) >= BigInt(ledgerTotal) || loading" :previous-label="copy.previous" :next-label="copy.next" :go-to="(target: number) => changePage(target - (Math.floor(offset / PAGE_SIZE + 1)))" />
       </section>
     </template>
   </section>
 </template>
 
 <style scoped>
-.wallet-summary { width: 100%; max-width: 1100px; margin: 0 auto; min-width: 0; color: var(--ink); }
+.wallet-summary { width: 100%; margin: 0 auto; min-width: 0; color: var(--ink); }
 .wallet-head { display: flex; flex-direction: row; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 12px; }
 .wallet-head h1 { font-size: 24px; margin: 0; }
 .totals { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(0, 1fr)); gap: 12px; }
-.wallet-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.wallet-links { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 12px; margin-top: 16px; }
 .wallet-links a { min-width: 0; min-height: 44px; text-align: center; overflow-wrap: anywhere; }
 .total-card, .panel, .state-card { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow-sm); }
 .total-card { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
@@ -321,16 +285,16 @@ async function changePage(direction: -1 | 1) {
 .balance-amount, .metric-amount { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; min-width: 0; font-variant-numeric: tabular-nums; }
 .balance-amount strong { font-size: 36px; line-height: 1.2; overflow-wrap: anywhere; min-width: 0; }
 .metric-amount strong { font-size: 28px; line-height: 1.2; overflow-wrap: anywhere; min-width: 0; }
-.balance-amount > span, .metric-amount > span { font-size: 12px; }
+.balance-amount > span, .metric-amount > span { font-size: var(--body-font-size); }
 .metric-amount > span { color: var(--muted); }
 .total-primary { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); border-color: transparent; color: var(--surface); gap: 10px; }
 .balance-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; font-size: 14px; font-weight: 600; }
 .balance-card-head { flex-wrap: wrap; }
 .balance-card-head .balance-amount { flex: 1 1 8ch; justify-content: flex-end; }
 .key-value-value.metric-amount { justify-content: flex-end; }
-.wallet-available { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; width: 100%; margin-top: 4px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--surface) 25%, transparent); font-size: 13px; }
+.wallet-available { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; width: 100%; margin-top: 4px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--surface) 25%, transparent); font-size: var(--body-font-size); }
 .wallet-available b { min-width: 0; font-size: 20px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.wallet-available small { font-size: 12px; font-weight: 400; }
+.wallet-available small { font-size: var(--body-font-size); font-weight: 400; }
 .panel { margin-top: 20px; }
 .bucket-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .bucket-source { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
@@ -338,37 +302,23 @@ async function changePage(direction: -1 | 1) {
 .source-head h3 { margin: 0; font-size: 15px; }
 .bucket-source dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 0; }
 .bucket-source dl > div { min-width: 0; }
-.bucket-source dt { font-size: 12px; color: var(--muted); }
+.bucket-source dt { font-size: var(--body-font-size); color: var(--muted); }
 .bucket-source dd { margin: 0; font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .bucket-available dd { color: var(--primary-dark); }
 .ledger-entry { padding: 18px 0; border-top: 1px solid var(--line); min-width: 0; }
 .entry-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .entry-head > div { min-width: 0; display: grid; gap: 5px; overflow-wrap: anywhere; }
 .entry-head b { font-size: 14px; }
-.entry-head small { color: var(--muted); font-size: 12px; }
+.entry-head small { color: var(--muted); font-size: var(--body-font-size); }
 .entry-change { text-align: right; font-variant-numeric: tabular-nums; }
-.entry-change > span { color: var(--muted); font-size: 11px; }
+.entry-change > span { color: var(--muted); font-size: var(--body-font-size); }
 .entry-change strong { font-size: 18px; }
 .change-negative { color: var(--danger); }
 .change-positive { color: var(--primary-dark); }
-.entry-reason { margin: 12px 0; font-size: 13px; line-height: 1.6; color: var(--ink-secondary); overflow-wrap: anywhere; }
-.entry-reference { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.ledger-details summary { display: flex; align-items: center; gap: 8px; min-height: 44px; width: fit-content; font-size: 13px; color: var(--primary-dark); cursor: pointer; list-style: none; }
-.ledger-details summary::-webkit-details-marker { display: none; }
-.ledger-details[open] summary .site-icon { transform: rotate(180deg); }
-.ledger-details summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: var(--radius-sm); }
-.snapshot-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); gap: 0 10px; align-items: stretch; font-size: 12px; font-variant-numeric: tabular-nums; }
-.snapshot-grid > * { display: flex; align-items: center; min-width: 0; overflow-wrap: anywhere; padding: 8px 0; border-bottom: 1px solid var(--line-subtle); }
-.snapshot-label { color: var(--muted); font-weight: 600; }
-.snapshot-bucket { font-weight: 400; color: var(--ink-secondary); }
-.snapshot-grid > span, .snapshot-label:not(:first-child) { justify-content: flex-end; text-align: right; }
-.pager { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding-top: 16px; color: var(--muted); font-size: 12px; }
-.pager > div { display: flex; gap: 8px; }
-.pager button { min-height: 44px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); padding: 8px 12px; color: var(--ink-secondary); font-size: 13px; }
-.pager button:disabled { opacity: 0.48; cursor: not-allowed; }
+.entry-reason { margin: 12px 0; font-size: var(--body-font-size); line-height: 1.6; color: var(--ink-secondary); overflow-wrap: anywhere; }
+.entry-reference { font-size: var(--body-font-size); color: var(--muted); overflow-wrap: anywhere; }
 .state-card { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; line-height: 1.6; }
 .state-error { color: var(--danger); }
-.text-action { min-height: 44px; border: 0; background: transparent; color: var(--primary-dark); font-size: 14px; text-decoration: underline; }
 @media (max-width: 700px) {
   .totals { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .total-primary { grid-column: 1 / -1; }
@@ -376,7 +326,6 @@ async function changePage(direction: -1 | 1) {
   .metric-amount strong { font-size: 24px; }
   .bucket-grid { grid-template-columns: minmax(0, 1fr); }
   .panel { margin-top: 16px; }
-  .snapshot-grid { gap: 0 6px; }
 }
 @media (max-width: 620px) {
   .wallet-heading-copy { display: none; }
@@ -384,4 +333,11 @@ async function changePage(direction: -1 | 1) {
   .wallet-head:has(button) { margin-bottom: 12px; }
   .balance-amount strong { font-size: 32px; }
 }
+@media (min-width: 901px) and (pointer: fine) {
+  .ledger-entry { padding-block: 8px; }
+  .entry-head { gap: 12px; }
+  .entry-reason { margin-block: 6px; }
+  .wallet-links a { min-height: var(--control-height); padding-block: 4px; }
+}
+.ledger-detail-body{display:grid;gap:12px;min-width:0}.ledger-detail-body p{margin:0}.ledger-result{margin:8px 0 0}.ledger-result>div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px}.ledger-result dt{color:var(--muted)}.ledger-result dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 </style>

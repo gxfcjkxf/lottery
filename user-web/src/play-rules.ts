@@ -3,7 +3,7 @@ import type { RuleCondition, RuleDefinition } from '../../shared/src/rules'
 import { playRulesCatalog } from './play-rules-catalog'
 
 type Node = Record<string, any>
-export interface PlayerRule { text: string; detail?: string }
+interface PlayerRule { text: string; detail?: string }
 export interface PlayerRules { instructions: string[]; prizes: PlayerRule[]; options: PlayerRule[] }
 export function describePlayRules(locale: 'en' | 'zh-CN', input: { snapshot: ConfiguredSnapshot; play: ConfiguredPlay; plate: string } | { definition: RuleDefinition }): PlayerRules {
   const { t } = createCatalogI18n(playRulesCatalog, locale)

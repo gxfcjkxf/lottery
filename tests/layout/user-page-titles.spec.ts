@@ -1,0 +1,134 @@
+import { test, expect } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { configuredDemo } from '../../shared/src/configured-rules'
+import { installLayoutApi, installOrdersLayoutApi, origins, gameId, expectNoPageOverflow } from './fixture'
+
+for (const locale of ['en', 'zh-CN'] as const) {
+  test(`one header title, one game picker and readable bet table (${locale})`, async ({ page }, info) => {
+    await installLayoutApi(page, locale)
+    await installOrdersLayoutApi(page)
+    const snapshot = configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json', 'utf8')))
+    const play = snapshot.catalog.plays[0]!, option = snapshot.catalog.domains[play.selection.domain]!.options[0]!
+    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-000000000009'
+    await page.route('**/api/v1/betting-history?*', route => {
+      expect(route.request().method()).toBe('GET')
+      return route.fulfill({ json: { success: true, data: {
+        brand_id: gameId, member_id: gameId, game_id: new URL(route.request().url()).searchParams.get('game_id') ?? '',
+        games: [{ id: gameId, name: 'Mark Six' }], limit: 20, next_cursor: null,
+        items: [{ kind: 'configured', id, game_id: gameId, game_name: 'Mark Six', period_no: '2026115', placed_at: '2026-10-27T03:20:52Z', order: {
+          id, game_id: gameId, period_no: '2026115', status: 'placed', snapshot,
+          quote: { bet_points: '40', lines: [{ play_id: play.id, options: [option.id], plate: 'A', stake: '40', prices: { [option.id]: '48.99' } }] }, result: null,
+        } }],
+      } } })
+    })
+    const errors: string[] = []
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(`${origins.user}/orders`)
+    const preset = page.viewportSize()!
+    for (const width of info.project.name.includes('reflow') ? [320, 700, 701, 999, 1000, 1001, 1440] : [preset.width]) {
+      if (info.project.name.includes('reflow')) await page.setViewportSize({ width, height: 800 })
+      const title = page.locator('.workspace-page-title')
+      await expect(title).toHaveText(locale === 'en' ? 'Betting history' : '投注记录')
+      await expect(page.locator('h1')).toHaveCount(1)
+      const back = await page.locator('.workspace-leading button').boundingBox(), heading = await title.boundingBox()
+      expect(heading!.x).toBeGreaterThanOrEqual(back!.x + back!.width)
+      await expect(page.locator('.workspace-game-trigger')).toHaveCount(1)
+      await expect(page.locator('main select, main details, main h1')).toHaveCount(0)
+      await expect(page.locator('main')).not.toContainText('Mark Six')
+      await expect(page.locator('main')).not.toContainText(id)
+      await expect(page.locator('.history-table tbody')).toContainText('2026115')
+      await expect(page.locator('.history-table tbody')).toContainText('48.99')
+      await expect(page.locator('.history-table td').nth(4)).toHaveText('—')
+      await expect(page.locator('.history-content')).not.toContainText('48.99')
+      await expect(page.locator('.history-odds')).toHaveText('48.99')
+      await expect(page.locator('.history-status')).toHaveCSS('border-width', '0px')
+      await expect(page.locator('.history-status')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+      if (width > 700) {
+        await expect(page.locator('.history-table')).toHaveCSS('table-layout', 'auto')
+        const time = page.locator('.history-table time')
+        await expect(time).toHaveCSS('white-space', 'nowrap')
+        expect(await time.evaluate(node => { const range = document.createRange(); range.selectNodeContents(node); return range.getClientRects().length })).toBe(1)
+      }
+      if (width >= 1000) {
+        const layout = await page.locator('.history-table').evaluate(table => {
+          const content = document.querySelector('main.content')!, style = getComputedStyle(content)
+          const row = table.querySelector('tbody tr')!
+          const centers = [...row.querySelectorAll('td')].map(cell => {
+            const range = document.createRange(); range.selectNodeContents(cell)
+            const rect = range.getBoundingClientRect(); return rect.y + rect.height / 2
+          })
+          return { width: table.getBoundingClientRect().width, available: content.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight), centers }
+        })
+        expect(layout.width).toBeCloseTo(layout.available, 0)
+        expect(Math.max(...layout.centers) - Math.min(...layout.centers)).toBeLessThan(2)
+      }
+      await expectNoPageOverflow(page)
+    }
+    await page.screenshot({ path: info.outputPath(`bet-table-${locale}.png`), fullPage: true })
+    await page.locator('.workspace-game-trigger').click()
+    await page.locator('.workspace-game-picker button').filter({ hasText: locale === 'en' ? 'All games' : '全部彩种' }).click()
+    await expect(page.locator('.history-game')).toHaveText('Mark Six')
+    await page.locator('.workspace-game-trigger').click()
+    await page.locator('.workspace-game-picker button').filter({ hasText: 'Mark Six' }).click()
+    await expect(page.locator('.history-game')).toHaveCount(0)
+    await expect(page).toHaveURL(/\/orders$/)
+    for (const [path, title] of [['/help', locale === 'en' ? 'Help centre' : '帮助中心'], ['/account', locale === 'en' ? 'Me' : '个人'], ['/results', locale === 'en' ? 'Results' : '开奖结果']]) {
+      await page.goto(`${origins.user}${path}`)
+      await expect(page.locator('.workspace-page-title')).toHaveText(title)
+      await expect(page.locator('h1')).toHaveCount(1)
+      await expectNoPageOverflow(page)
+    }
+    expect(errors).toEqual([])
+  })
+}
+
+for (const locale of ['en', 'zh-CN'] as const) {
+  test(`bet content stays unchanged after settlement and extra amounts use columns (${locale})`, async ({ page }, info) => {
+    await installLayoutApi(page, locale)
+    await installOrdersLayoutApi(page)
+    const snapshot = configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/mark_six_v2.json', 'utf8')))
+    const play = snapshot.catalog.plays[0]!, option = snapshot.catalog.domains[play.selection.domain]!.options[0]!
+    let settled = false, extraAmounts = false
+    await page.route('**/api/v1/betting-history?*', route => {
+      expect(route.request().method()).toBe('GET')
+      const outcomes = extraAmounts ? ['lost', 'won', 'push', 'lost'] : ['lost']
+      return route.fulfill({ json: { success: true, data: {
+        brand_id: gameId, member_id: gameId, game_id: gameId,
+        games: [{ id: gameId, name: 'Mark Six' }], limit: 20, next_cursor: null,
+        items: outcomes.map((outcome, index) => ({ kind: 'configured', id: `ticket-${index}`, game_id: gameId, game_name: 'Mark Six', period_no: '2026115', placed_at: '2026-10-27T03:20:52Z', order: {
+          id: `ticket-${index}`, game_id: gameId, period_no: '2026115', status: settled ? 'settled' : 'placed',
+          snapshot: index === 3 ? { ...snapshot, catalog: { ...snapshot.catalog, funding: 'reserve' } } : snapshot,
+          quote: { bet_points: '40', ...(index === 3 ? { reserved_points: '120' } : {}), lines: [{ play_id: play.id, options: [option.id], plate: 'A', stake: '40', prices: { [option.id]: '48.99' } }] },
+          result: settled ? { prize_points: outcome === 'won' ? '1960' : '0', refund_points: outcome === 'push' ? '40' : index === 3 ? '80' : '0', ...(index === 3 ? { consumed_points: '40' } : {}), lines: [{ outcome, prize_points: outcome === 'won' ? '1960' : '0' }] } : null,
+        } })),
+      } } })
+    })
+    await page.goto(`${origins.user}/orders`)
+    await expect(page.locator('.history-content')).not.toBeEmpty()
+    const content = await page.locator('.history-content').innerText()
+    settled = true
+    await page.reload()
+    await expect(page.locator('.history-content')).toHaveText(content)
+    await expect(page.locator('.history-table th')).toHaveCount(7)
+    await expect(page.locator('.history-table td').nth(4)).toHaveText('—')
+    await expect(page.locator('.history-table')).not.toContainText(locale === 'en' ? 'Refund points' : '退本积分')
+    extraAmounts = true
+    await page.reload()
+    await expect(page.locator('.history-table tbody tr')).toHaveCount(4)
+    const refundLabel = locale === 'en' ? 'Tie refund points' : '和局退款积分'
+    await expect(page.locator('.history-table th').filter({ hasText: refundLabel })).toHaveCount(1)
+    for (const [index, prize, refund] of [[0, '—', '—'], [1, '1960', '—'], [2, '—', '40'], [3, '—', '—']] as const) {
+      const row = page.locator('.history-table tbody tr').nth(index)
+      await expect(row.locator('.history-content')).toHaveText(content)
+      await expect(row.locator('td').nth(4)).toHaveText(prize)
+      await expect(row.locator(`td[data-label="${refundLabel}"]`)).toHaveText(refund)
+    }
+    const preset = page.viewportSize()!
+    for (const width of info.project.name.includes('reflow') ? [320, 700, 701, 999, 1000, 1001, 1440] : [preset.width]) {
+      if (info.project.name.includes('reflow')) await page.setViewportSize({ width, height: 800 })
+      if (width <= 700) await expect(page.locator('.history-amount-empty').first()).toBeHidden()
+      await expectNoPageOverflow(page)
+    }
+    await page.screenshot({ path: info.outputPath(`bet-settlement-${locale}.png`), fullPage: true })
+  })
+}

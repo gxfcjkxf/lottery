@@ -14,10 +14,13 @@ const commissionTargetReadJSON = `jsonb_build_object(
  'ledger_entry_id',t.ledger_entry_id::text,'paid_at',t.paid_at,
  'adjustment_version',h.version,'adjusted_points',h.points::text,'last_adjustment_id',h.last_adjustment_id::text)`
 
-func (s Service) PaymentTargetsTx(ctx context.Context, tx pgx.Tx, brand, payment string, limit, offset int) (TargetPage, error) {
+func (s Service) PaymentTargetsTx(ctx context.Context, tx pgx.Tx, brand, payment string, limit, offset int, filter ListFilter) (TargetPage, error) {
 	out := TargetPage{BrandID: brand, PaymentID: payment, Items: []Target{}, Limit: limit, Offset: offset}
-	if tx == nil || !validAdjustmentPage(brand, limit, offset) || !cycleCanonicalUUID.MatchString(payment) {
+	if tx == nil || !validAdjustmentPage(brand, limit, offset) || !cycleCanonicalUUID.MatchString(payment) || filter.Validate("target") != nil {
 		return out, ErrInvalid
+	}
+	if err := filter.validateScope(ctx, tx, brand); err != nil {
+		return out, err
 	}
 	var exists bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM commission_payments WHERE brand_id=$1 AND id=$2)`, brand, payment).Scan(&exists); err != nil {
@@ -27,14 +30,17 @@ func (s Service) PaymentTargetsTx(ctx context.Context, tx pgx.Tx, brand, payment
 		return out, ErrNotFound
 	}
 	var raw []byte
-	err := tx.QueryRow(ctx, `WITH page AS (
- SELECT t.* FROM commission_payment_targets t WHERE t.brand_id=$1 AND t.payment_id=$2 ORDER BY t.id LIMIT $3 OFFSET $4
+	err := tx.QueryRow(ctx, `WITH filtered AS (
+ SELECT t.* FROM commission_payment_targets t WHERE t.brand_id=$1 AND t.payment_id=$2
+ AND ($5='' OR t.agent_id::text=$5) AND ($6='' OR t.state=$6)
+), page AS (
+ SELECT * FROM filtered ORDER BY id LIMIT $3 OFFSET $4
 ), contents AS (
  SELECT `+commissionTargetReadJSON+` data,t.id FROM page t
  LEFT JOIN commission_adjustment_heads h ON h.target_id=t.id AND h.brand_id=t.brand_id
 )
-SELECT (SELECT count(*)::text FROM commission_payment_targets WHERE brand_id=$1 AND payment_id=$2),
- coalesce((SELECT jsonb_agg(data ORDER BY id) FROM contents),'[]'::jsonb)`, brand, payment, limit, offset).Scan(&out.TotalCount, &raw)
+SELECT (SELECT count(*)::text FROM filtered),
+ coalesce((SELECT jsonb_agg(data ORDER BY id) FROM contents),'[]'::jsonb)`, brand, payment, limit, offset, filter.AgentID, filter.State).Scan(&out.TotalCount, &raw)
 	if err != nil {
 		return out, paymentDBError(err)
 	}

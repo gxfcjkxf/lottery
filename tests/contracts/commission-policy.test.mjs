@@ -7,10 +7,13 @@ const doc = JSON.parse(readFileSync(new URL('../../docs/openapi.json', import.me
 test('commission policy routes expose exact permission scopes and frozen-write contract', () => {
   const op = doc.paths['/api/v1/admin/commission-policy'];
   assert.deepEqual(op.get['x-permissions'], ['commission_policy.view.brand', 'commission_policy.view.platform']);
-  assert.deepEqual(op.put['x-permissions'], ['commission_policy.write.brand']);
-  assert.ok(op.put.parameters.some(p => p.name === 'Idempotency-Key' && p.required));
-  assert.match(op.put.description, /before cached receipt replay/);
-  assert.match(op.put.description, /every new bet records its current policy/);
+  assert.deepEqual(op.put['x-permissions'], []);
+  assert.match(op.put.description, /403/);
+  const platform = doc.paths['/api/v1/platform/commission-settings'];
+  assert.deepEqual(platform.put['x-permissions'], ['platform_settings.write.platform']);
+  assert.ok(platform.put.parameters.some(p => p.name === 'Idempotency-Key' && p.required));
+  assert.match(platform.put.description, /before cached receipt replay/);
+  assert.match(platform.put.description, /every new bet records its current policy/);
   const policyPaths = Object.entries(doc.paths).filter(([p]) => /^\/api\/v1\/admin\/commission-policy(?:\/|$)/.test(p));
   assert.ok(!policyPaths.some(([p]) => /(?:payout|approve)/.test(p)));
   assert.ok(!policyPaths.some(([, path]) => Object.values(path).some(operation => (operation['x-permissions'] ?? []).some(permission => permission.startsWith('commission_payment')))));

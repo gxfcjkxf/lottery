@@ -12,7 +12,6 @@ import { operations, schemas } from "../../scripts/openapi-report-archive-tasks.
 const backend = new URL("../../backend/", import.meta.url);
 const go = process.env.LOTTERY_GO_BIN ?? "go";
 const routes = [
-  "GET /api/v1/admin/report-archive-policy",
   "GET /api/v1/admin/report-archive-tasks",
   "GET /api/v1/admin/report-archive-tasks/{id}",
   "POST /api/v1/admin/report-archive-tasks/{id}/retry",
@@ -48,7 +47,7 @@ test("task fragment documents only the four admin contracts with explicit brand 
   assert.deepEqual(list.parameters.filter(p => p.in === "query").map(p => [p.name, p.schema.default, p.schema.minimum, p.schema.maximum]), [
     ["limit", 20, 1, 100], ["offset", 0, 0, 1000000],
   ]);
-  assert.match(operations[0].description, /Read only/);
+  assert.match(operations[0].description, /X-Brand-ID/);
   assert.match(retry.description, /does not claim the archive has completed/);
 });
 
@@ -97,7 +96,7 @@ func main() {
   audit := "33333333-3333-4333-8333-333333333333"
   now := time.Date(2026, 10, 7, 8, 9, 10, 123456789, time.UTC)
   start := "2026-10-06"
-  policy := reportarchive.AutomaticPolicy{BrandID:brand,Version:1,DailyEnabled:false,MonthlyEnabled:false,DailyStartPeriod:nil,MonthlyStartPeriod:nil,Timezone:"Asia/Singapore",AuditLogID:nil,UpdatedAt:now}
+  policy := reportarchive.AutomaticPolicy{AutomaticSchedule:reportarchive.AutomaticSchedule{DailyExecutionTime:"00:00",DailyPeriodOffset:1,MonthlyExecutionDay:1,MonthlyExecutionTime:"00:00",MonthlyPeriodOffset:1},NextRuns:&reportarchive.AutomaticNextRuns{},BrandID:brand,Version:1,DailyEnabled:false,MonthlyEnabled:false,DailyStartPeriod:nil,MonthlyStartPeriod:nil,Timezone:"Asia/Singapore",AuditLogID:nil,UpdatedAt:now}
   task := reportarchive.AutomaticTask{ID:taskID,BrandID:brand,PolicyVersion:2,Window:reportarchive.Window{Kind:"daily",PeriodKey:start,Timezone:"Asia/Singapore",From:time.Date(2026,10,5,16,0,0,0,time.UTC),To:time.Date(2026,10,6,16,0,0,0,time.UTC)},State:"pending",Version:1,AttemptCount:0,ArchiveID:nil,LastErrorCode:nil,CreationAuditLogID:audit,LastAuditLogID:audit,CreatedAt:now,UpdatedAt:now}
   page := reportarchive.AutomaticTaskPage{BrandID:brand,Items:[]reportarchive.AutomaticTask{task},TotalCount:"1",Limit:20,Offset:0}
   out := map[string]any{"policy":policy,"task":task,"page":page}

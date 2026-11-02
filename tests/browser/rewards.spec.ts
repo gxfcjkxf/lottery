@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import {test,expect,type APIResponse,type Page} from '@playwright/test';
 import {rememberAdminSession} from './support/admin-session';
@@ -43,7 +44,7 @@ test('real manual rewards recover original receipts without duplicate money and 
   const wallet=()=>get<Wallet>(`/wallets/${memberID}`);
   const ledger=()=>get<{items:Entry[]}>(`/wallets/${memberID}/ledger?limit=100&offset=0`);
   const economic=async()=>JSON.stringify({wallet:await wallet(),ledger:await ledger()});
-  await page.goto(origin);await page.getByLabel(/选择真实后台品牌|Select live admin brand/,{exact:true}).selectOption(brand);
+  await page.goto(origin);await selectControl(page.getByLabel(/选择真实后台品牌|Select live admin brand/,{exact:true}), brand);
   await navigate(page,info.project.name,'人工奖励|Manual rewards');let panel=page.locator('.rewards-management');
   await expect(panel.getByRole('heading',{name:'人工奖励管理',exact:true})).toBeVisible();
   const fillGrant=async(amount:string,reason:string)=>{
@@ -82,29 +83,15 @@ test('real manual rewards recover original receipts without duplicate money and 
   const beforePending=await economic();const beforePendingLedger=await ledger();
   await panel.getByTestId('rewards-action-reason').fill('Request full reversal without consuming held gift or other sources');
   await panel.getByTestId('rewards-revoke').click();await confirm(page);
-  await expect(panel.locator('.rw-detail')).toContainText('撤销待处理 · v2');
-  await expect(panel.getByTestId('rewards-receipt')).toContainText('撤销待处理 · v2');
+  await expect(panel.getByTestId('rewards-retry')).toHaveCount(0);
   expect(await economic()).toBe(beforePending);expect(await ledger()).toEqual(beforePendingLedger);
-  await post(`/wallets/${memberID}/unfreeze`,{entry_id:frozen.id,reason:'Explicit owned operator releases original full hold'});
-  expect((await wallet()).by_source.gift.available).toBe('40');
-  const afterUnfreeze=await economic();await panel.getByTestId('rewards-detail-refresh').click();
-  await expect(panel.locator('.rw-detail')).toContainText('撤销待处理 · v2');expect(await economic()).toBe(afterUnfreeze);
-  const retryWrites:Write[]=[];
-  await page.route(`**/api/v1/admin/reward-orders/${second.id}/retry-revocation`,async route=>{
-    retryWrites.push({body:route.request().postData(),key:route.request().headers()['idempotency-key'],actor:route.request().headers()['x-reward-actor-id']});
-    const response=await route.fetch();const result=await data<Order>(response);expect(result.state).toBe('revoked');expect(result.version).toBe(3);
-    if(retryWrites.length===1)await route.abort('failed');else{expect(retryWrites[1]).toEqual(retryWrites[0]);await route.fulfill({response});}
-  });
-  await panel.getByTestId('rewards-action-reason').fill('Explicitly continue pending full reversal after operator released original hold');
-  await panel.getByTestId('rewards-retry').click();await confirm(page);
-  await expect(panel.getByRole('button',{name:'使用原请求重试',exact:true})).toBeVisible();const finalEconomic=await economic();
-  await panel.getByTestId('rewards-detail-refresh').click();await expect(panel.locator('.rw-detail')).toContainText('已撤销 · v3');
-  await navigate(page,info.project.name,'工作台|Dashboard');await navigate(page,info.project.name,'人工奖励|Manual rewards');panel=page.locator('.rewards-management');
-  await panel.getByRole('button',{name:'使用原请求重试',exact:true}).click();await confirm(page);
-  await expect(panel.getByTestId('rewards-receipt')).toContainText('已撤销 · v3');await expect(panel.locator('.rw-detail')).toContainText('已撤销 · v3');
-  expect(retryWrites).toHaveLength(2);expect(await economic()).toBe(finalEconomic);
+  expect((await get<Order>(`/reward-orders/${second.id}`)).state).toBe('granted');
+  await post(`/wallets/${memberID}/unfreeze`,{entry_id:frozen.id,reason:'Explicit operator releases original hold'});
+  await panel.getByTestId('rewards-detail-refresh').click();
+  await panel.getByTestId('rewards-revoke').click();await confirm(page);
+  await expect(panel.getByTestId('rewards-receipt')).toContainText('已撤销 · v2');
   const actions=await get<{items:Array<{version:number;ledger_entry_id:string|null}>}>(`/reward-orders/${second.id}/actions?limit=20&offset=0`);
-  expect(actions.items.map(action=>action.version).sort()).toEqual([1,2,3]);expect(actions.items.find(action=>action.version===2)?.ledger_entry_id).toBeNull();
+  expect(actions.items.map(action=>action.version).sort()).toEqual([1,2]);
   const rewardEntries=(await ledger()).items.filter(entry=>entry.reference_id===second.id);
   expect(rewardEntries).toHaveLength(2);expect(rewardEntries.find(entry=>entry.entry_type==='reward_reversal')?.reversal_of).toBe(second.grant_ledger_entry_id);
   const balances=(await wallet()).by_source;
@@ -115,20 +102,20 @@ test('real manual rewards recover original receipts without duplicate money and 
   await panel.screenshot({path:info.outputPath('manual-rewards-panel.png')});
   const writes:string[]=[];page.on('request',request=>{if(request.url().includes('/reward-orders')&&request.method()!=='GET')writes.push(request.url());});
   await selectLanguage(page, 'en');await expect(panel.getByRole('heading',{name:'Manual rewards',exact:true})).toBeVisible();
-  await expect(panel.getByTestId('rewards-receipt')).toContainText('Revoked · v3');expect(writes).toEqual([]);
+  await expect(panel.getByTestId('rewards-receipt')).toContainText('Revoked · v2');expect(writes).toEqual([]);
   const loggedOut=page.waitForResponse(response=>response.request().method()==='POST'&&response.url()===`${admin}/auth/logout`);
   await page.getByRole('button',{name:'Sign out',exact:true}).first().click();await data(await loggedOut);
   await data(await page.request.post(`${platform}/auth/login`,{headers:{Origin:platformOrigin,'Idempotency-Key':crypto.randomUUID()},data:{identifier:'reward_s22_reader',password:process.env.TEST_REWARD_SUPER_PASSWORD}}));
   await page.goto(platformOrigin);
   await page.locator('.nav-item').filter({hasText:'Manual rewards'}).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   panel=page.getByTestId('platform-rewards');
   await expect(panel.getByRole('heading',{name:'Manual rewards',exact:true})).toBeVisible();
   await expect(panel.getByTestId('rewards-receipt')).toHaveCount(0);
   await expect(panel.getByTestId('rewards-grant-review')).toHaveCount(0);
   await expect(panel.getByRole('button',{name:/Grant|Revoke|Retry/i})).toHaveCount(0);
   await panel.getByRole('button',{name:second.id,exact:true}).click();
-  await expect(panel.getByTestId('platform-reward-detail')).toContainText('Revoked · v3');
+  await expect(panel.getByTestId('platform-reward-detail')).toContainText('Revoked · v2');
   const platformWallet=await data<Wallet>(await page.request.get(`${platform}/wallets/${memberID}`,{headers:{'X-Brand-ID':brand}}));
   const platformLedger=await data<{items:Entry[]}>(await page.request.get(`${platform}/wallets/${memberID}/ledger?limit=100&offset=0`,{headers:{'X-Brand-ID':brand}}));
   expect(JSON.stringify({wallet:platformWallet,ledger:platformLedger})).toBe(finalEconomic);expect(writes).toEqual([]);expect(errors).toEqual([]);

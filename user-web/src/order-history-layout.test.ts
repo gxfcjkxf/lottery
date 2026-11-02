@@ -23,7 +23,7 @@ describe('one user order history layout', () => {
       const html = await render(locale);
       expect(html).toContain('class="button button-secondary"');
       expect(html).toContain(locale === 'en' ? 'Refresh' : '刷新');
-      expect(html).toContain(locale === 'en' ? 'No tickets yet' : '暂无注单');
+      expect(html).toContain(locale === 'en' ? 'No bet orders match the current game and filters.' : '当前彩种和筛选条件下暂无投注记录。');
       expect(html).toContain('order-history-empty');
       expect(html).not.toContain('order-content');
       // Empty later pages must still offer navigation back to earlier tickets.

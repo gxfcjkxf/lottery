@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import {test,expect} from "@playwright/test";
 import {restoreAdminSession} from "./support/admin-session";
 import {formatDateTimeLocal} from "./support/datetime-local";
@@ -19,7 +20,7 @@ test("real ledger report separates transfer flows from current balances and clea
   await post(`/wallets/${member.member_id}/freeze`,{points:"5",reason:"report transfer fixture"});
   const before=await page.request.get(`${base}/wallets/${member.member_id}`,{headers});const beforeWallet=(await before.json()).data;
   const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
-  await page.goto("http://localhost:5174");await page.getByLabel("选择真实后台品牌",{exact:true}).selectOption(brand);
+  await page.goto("http://localhost:5174");await selectControl(page.getByLabel("选择真实后台品牌",{exact:true}), brand);
   if(info.project.name==="mobile") {await page.locator(".mobile-nav button").nth(4).click();await page.locator(".mobile-more-menu").getByRole("button",{name:/报表和对账/}).click()}
   else await page.locator(".side-nav").getByRole("button",{name:/报表和对账/}).click();
   const panel=page.locator(".reports-management");
@@ -30,21 +31,21 @@ test("real ledger report separates transfer flows from current balances and clea
   const bound=await page.evaluate(formatDateTimeLocal,upperBound);
   await panel.getByLabel("报表结束时间",{exact:true}).fill(bound);
   await expect(panel.getByLabel("报表结束时间",{exact:true})).toHaveValue(bound);
-  await panel.getByRole("button",{name:"账本报表",exact:true}).click();
-  await panel.getByLabel("账本分组",{exact:true}).selectOption("entry_type");
+  await panel.getByRole("tab",{name:"账本报表",exact:true}).click();
+  await selectControl(panel.getByLabel("账本分组",{exact:true}), "entry_type");
   const [reportResponse]=await Promise.all([
     page.waitForResponse(r=>r.url().includes("/api/v1/admin/reports/ledger?")&&new URL(r.url()).searchParams.get("member_id")===member.member_id&&r.status()===200),
-    panel.getByRole("button",{name:"查询报表",exact:true}).click(),
+    panel.getByRole("button",{name:"查询",exact:true}).click(),
   ]);
   expect(Date.parse((await reportResponse.json()).data.query.to)).toBe(upperBound);
-  const ledger=panel.locator(".reports-panel").filter({has:page.getByRole("heading",{name:"账本报表",exact:true})});
+  const ledger=panel.locator("#ledger-results");
   const metric=(label:string)=>ledger.locator(".reports-summary>div").filter({has:page.locator("span").filter({hasText:new RegExp(`^${label}$`)})}).locator("strong");
   await expect(metric("账本笔数")).toHaveText("2");await expect(metric("净变动")).toHaveText("25");await expect(metric("充值入账")).toHaveText("25");
   await expect(ledger.locator(".reports-balance")).toContainText("20");await expect(ledger.locator(".reports-balance")).toContainText("5");
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await ledger.screenshot({path:info.outputPath("s6-d-real-ledger-report.png")});
   await panel.getByLabel("会员筛选 UUID",{exact:true}).fill("0199a000-0000-7000-8000-000000000001");
-  await panel.getByRole("button",{name:"查询报表",exact:true}).click();
+  await panel.getByRole("button",{name:"查询",exact:true}).click();
   await expect(ledger.getByRole("alert")).toContainText("未找到");await expect(ledger.locator(".reports-summary")).toHaveCount(0);
   const after=await page.request.get(`${base}/wallets/${member.member_id}`,{headers});expect((await after.json()).data).toEqual(beforeWallet);
   expect(errors).toEqual([]);

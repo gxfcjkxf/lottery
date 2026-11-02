@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect } from "@playwright/test";
 import { restoreAdminSession } from "./support/admin-session";
 
@@ -125,7 +126,7 @@ test("Harbor operation pause survives a dropped acknowledgment, records once, an
     await page.getByRole("heading", { name: "品牌和域名", exact: true }).waitFor();
     const panel = page.locator(".brand-operation");
     await expect(panel.getByRole("heading", { name: "品牌运行状态", exact: true })).toBeVisible();
-    await panel.getByLabel("目标状态", { exact: true }).selectOption("paused");
+    await selectControl(panel.getByLabel("目标状态", { exact: true }), "paused");
     await expect(panel.getByRole("textbox")).toHaveCount(0);
     await panel.getByRole("button", { name: "核对状态变更", exact: true }).click();
     await panel.getByRole("button", { name: "提交", exact: true }).click();
@@ -201,7 +202,7 @@ test("Harbor operation pause survives a dropped acknowledgment, records once, an
     expect(await envelope<Record<string, unknown>>(wallet, "GET Harbor wallet while paused")).toBeTruthy();
 
     const pausedOperation = await operation();
-    await panel.getByLabel("目标状态", { exact: true }).selectOption("active");
+    await selectControl(panel.getByLabel("目标状态", { exact: true }), "active");
     await panel.getByRole("button", { name: "核对状态变更", exact: true }).click();
     const resumeResponse = page.waitForResponse((response) => {
       const request = response.request();

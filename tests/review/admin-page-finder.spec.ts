@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import { test, expect } from './platform-fixture';
 import { rememberAdminSession, restoreAdminSession } from '../browser/support/admin-session';
@@ -40,7 +41,7 @@ test('page finder navigates without filtering members and mobile keeps its exist
   const memberId = (await (await page.request.get('http://127.0.0.1:5183/api/v1/me')).json()).data.member.id;
   await page.goto('http://127.0.0.1:5184');
   await expect(page.locator('.app-shell')).toBeVisible();
-  await page.getByLabel('选择真实后台品牌', { exact: true }).selectOption('0199a000-0000-7000-8000-000000000001');
+  await selectControl(page.getByLabel('选择真实后台品牌', { exact: true }), '0199a000-0000-7000-8000-000000000001');
   const finder = page.getByLabel('查找管理页面', { exact: true });
   if (page.viewportSize()!.width < 700) {
     await expect(finder).toBeHidden();

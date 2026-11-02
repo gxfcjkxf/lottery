@@ -8,7 +8,7 @@ import { brandPermissionSet } from './brand-permissions'
 import { createBrandOverviewApi } from './overview-api'
 
 const props = defineProps<{ account: AdminAccount; brandId: string }>()
-const emit = defineEmits<{ 'session-invalid': [] }>()
+const emit = defineEmits<{ 'session-invalid': []; 'open-withdrawals': [] }>()
 const { t, locale, errorMessage, display } = useAdminI18n()
 const api = createBrandOverviewApi()
 const canView = computed(() => brandPermissionSet(props.account, props.brandId).has('overview.view.brand'))
@@ -23,5 +23,5 @@ function failure(cause: unknown) {
   <ManagementOverview :key="account.id + ':' + brandId + ':' + canView" scope="brand" :can-view="canView"
     :locale="locale" :display-settings="settings" :read="read" :t="translate"
     :error-message="cause => errorMessage(cause, 'read')" :display-error="display"
-    @failure="failure" />
+    @failure="failure" @open-withdrawals="emit('open-withdrawals')" />
 </template>

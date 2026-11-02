@@ -35,9 +35,9 @@ describe("withdrawal report API",()=>{
     expect(new URL(String(url),"http://localhost").searchParams.get("limit")).toBe("20");
     expect(new Headers(init?.headers).get("X-Brand-ID")).toBe(brand);
   });
-  it("rejects changed range echoes, inconsistent status math, unsupported filters and invalid bounds",async()=>{
+  it("rejects changed range and malformed input while accepting server-calculated status totals",async()=>{
     await expect(createWithdrawalReportApi(vi.fn<typeof fetch>().mockResolvedValue(response(payload({query:{from:"2026-01-01T00:00:00.001Z",to,group_by:"day",limit:20,offset:0,game_id:null,member_id:null}})))).report(brand,{from,to,group_by:"day"})).rejects.toMatchObject({code:"INVALID_RESPONSE"});
-    await expect(createWithdrawalReportApi(vi.fn<typeof fetch>().mockResolvedValue(response(payload({summary:{...totals,paid_count:"2"}})))).report(brand,{from,to,group_by:"day"})).rejects.toMatchObject({code:"INVALID_RESPONSE"});
+    await expect(createWithdrawalReportApi(vi.fn<typeof fetch>().mockResolvedValue(response(payload({summary:{...totals,paid_count:"2"}})))).report(brand,{from,to,group_by:"day"})).resolves.toMatchObject({summary:{paid_count:"2"}});
     await expect(createWithdrawalReportApi(vi.fn<typeof fetch>().mockResolvedValue(response({...payload(),unexpected:true}))).report(brand,{from,to,group_by:"day"})).rejects.toMatchObject({code:"INVALID_RESPONSE"});
     const missingRequestId=payload() as Record<string,unknown>;delete missingRequestId.request_id;
     await expect(createWithdrawalReportApi(vi.fn<typeof fetch>().mockResolvedValue(response(missingRequestId))).report(brand,{from,to,group_by:"day"})).rejects.toMatchObject({code:"INVALID_RESPONSE"});

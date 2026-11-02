@@ -112,7 +112,7 @@ func ValidateActionInput(in ActionInput) error {
 		return ErrInvalid
 	}
 	reason := strings.TrimSpace(in.Reason)
-	if len(reason) > 500 {
+	if utf8.RuneCountInString(reason) > 500 {
 		return ErrInvalid
 	}
 	return nil

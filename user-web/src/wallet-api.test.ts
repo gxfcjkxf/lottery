@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createWalletApi,
   formatIntegerAmount,
-  WalletApiError,
   walletBasePath,
 } from "./wallet-api";
 
@@ -43,7 +42,7 @@ describe("user wallet API", () => {
   it("uses unprefixed wallet paths when no brand code is configured", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockImplementation(async (input) => ok(String(input).includes("/wallet/ledger?") ? { items: [] } : wallet));
+      .mockImplementation(async (input) => ok(String(input).includes("/wallet/ledger?") ? { items: [], total_count: "0" } : wallet));
     const api = createWalletApi({ brandCode: "", fetcher });
     await api.wallet();
     await api.ledger(50, 100);

@@ -18,7 +18,7 @@ const description = computed(() => {
 })
 </script>
 <template>
-  <div class="play-rules-entry"><button type="button" class="text-link" @click="open = true">{{ t('title') }}</button></div>
+  <div class="play-rules-entry"><button type="button" class="text-link text-button" tabindex="0" aria-haspopup="dialog" @click="open = true">{{ t('title') }}</button></div>
   <DetailModal v-if="open" class="player-rules-dialog" :title="`${t('title')} · ${name}`" :close-label="t('close')" @close="open = false">
     <p v-if="!description" class="message error" role="alert">{{ t('unavailable') }}</p>
     <template v-else>
@@ -29,5 +29,5 @@ const description = computed(() => {
   </DetailModal>
 </template>
 <style scoped>
-.play-rules-entry{display:flex;justify-content:flex-end;margin:4px 0}.play-rules-entry button{appearance:none;border:0;background:transparent;color:var(--primary);font:inherit;font-size:13px;font-weight:600;min-height:44px;padding:8px 0;cursor:pointer}.player-rules-dialog h3{font-size:15px;margin:0 0 10px}.player-rules-dialog section+section{margin-top:20px}.player-rules-dialog p{font-size:14px;line-height:1.7;margin:6px 0;overflow-wrap:anywhere}.player-rule-prize+.player-rule-prize{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}.player-rule-detail{white-space:pre-line;color:var(--ink-secondary)}.player-rules-dialog summary{min-height:44px;cursor:pointer;font-size:14px;line-height:1.6;padding:12px 0}.player-rules-dialog dl>div{display:grid;grid-template-columns:minmax(64px,1fr) minmax(0,3fr);gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:13px;line-height:1.6}.player-rules-dialog dd{margin:0;overflow-wrap:anywhere}
+.play-rules-entry{display:flex;justify-content:flex-end;margin:4px 0}.player-rules-dialog h3{font-size:15px;margin:0 0 10px}.player-rules-dialog section+section{margin-top:20px}.player-rules-dialog p{font-size:14px;line-height:1.7;margin:6px 0;overflow-wrap:anywhere}.player-rule-prize+.player-rule-prize{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}.player-rule-detail{white-space:pre-line;color:var(--ink-secondary)}.player-rules-dialog summary{min-height:44px;cursor:pointer;font-size:14px;line-height:1.6;padding:12px 0}.player-rules-dialog dl>div{display:grid;grid-template-columns:minmax(64px,1fr) minmax(0,3fr);gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:var(--body-font-size);line-height:1.6}.player-rules-dialog dd{margin:0;overflow-wrap:anywhere}
 </style>

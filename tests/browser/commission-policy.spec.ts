@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import {test,expect,type APIResponse} from '@playwright/test';
 import {rememberAdminSession,restoreAdminSession} from './support/admin-session';
@@ -36,9 +37,10 @@ test('real commission financial policy retains the original unknown receipt with
       await call('/agent-policy','PUT',{version:agency.version,config:{...agency.config,enabled:true,cycle:'weekly'},reason:'owned browser commission policy test prerequisite'});changedAgency=true;
     }
     await page.goto(origin);
-    await page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}).selectOption(brand);
-    if(info.project.name==='mobile'){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:/代理设置|Agent settings/}).click();}
-    else await page.locator('.side-nav').getByRole('button',{name:/代理设置|Agent settings/}).click();
+    await selectControl(page.getByLabel(/选择真实后台品牌|Select an administrative brand/,{exact:true}), brand);
+    if(info.project.name==='mobile'){await page.locator('.mobile-nav button').nth(4).click();await page.locator('.mobile-more-menu').getByRole('button',{name:/品牌设置|Brand settings/}).click();}
+    else await page.locator('.side-nav').getByRole('button',{name:/品牌设置|Brand settings/}).click();
+    await page.locator('.console-tabs').getByRole('button',{name:/代理设置|Agent settings/,exact:true}).click();
     const panel=page.locator('.commission-policy-panel');
     await expect(panel.getByRole('heading',{name:'佣金结算',exact:true})).toBeVisible();
     await expect(panel.locator('.commission-policy-notice')).toContainText('独立后台');
@@ -47,10 +49,10 @@ test('real commission financial policy retains the original unknown receipt with
     await panel.getByLabel('启用佣金策略',{exact:true}).check();
     await panel.getByRole('button',{name:'配置日历',exact:true}).click();
     await panel.getByLabel('时区（IANA）',{exact:true}).fill('UTC');
-    await panel.getByRole('combobox',{name:'周期',exact:true}).selectOption('weekly');
+    await selectControl(panel.getByRole('combobox',{name:'周期',exact:true}), 'weekly');
     await panel.getByLabel('周期边界时间',{exact:true}).fill('18:30:00');
-    await panel.getByRole('combobox',{name:'周边界日',exact:true}).selectOption('1');
-    await panel.getByRole('combobox',{name:'派发模式',exact:true}).selectOption('automatic');
+    await selectControl(panel.getByRole('combobox',{name:'周边界日',exact:true}), '1');
+    await selectControl(panel.getByRole('combobox',{name:'派发模式',exact:true}), 'automatic');
     await page.route('**/api/v1/admin/commission-policy',async route=>{
       if(route.request().method()!=='PUT'){await route.continue();return;}
       writes.push({body:route.request().postData(),key:route.request().headers()['idempotency-key']});

@@ -78,6 +78,9 @@ func managedFixture(t *testing.T) managementHTTP {
 }
 func (f managementHTTP) call(method, path, key, token, brand string, body any) *httptest.ResponseRecorder {
 	encoded, _ := json.Marshal(body)
+	if body == nil {
+		encoded = nil
+	}
 	r := httptest.NewRequest(method, "http://localhost"+path, bytes.NewReader(encoded))
 	r.RemoteAddr = "192.0.2.55:12345"
 	r.Header.Set("Content-Type", "application/json")

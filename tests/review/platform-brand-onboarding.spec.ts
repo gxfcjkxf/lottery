@@ -19,7 +19,8 @@ test('new brand receives its first administrator with the complete registered br
   expect(createdResponse.status()).toBe(201);
   const brandId = (await createdResponse.json()).data.id;
   await expect(dialog).toHaveCount(0);
-  await page.getByTestId('platform-brand-list').locator('tr').filter({ hasText: brandCode }).getByRole('button', { name: 'View accounts →', exact: true }).click();
+  await page.getByTestId('platform-brand-list').locator('tr').filter({ hasText: brandCode }).getByRole('button', { name: /Actions for/ }).click();
+  await page.getByRole('menuitem', { name: 'Accounts', exact: true }).click();
   const panel = page.getByTestId('platform-access');
   await panel.getByRole('tab', { name: 'Roles', exact: true }).click();
   await panel.getByRole('button', { name: 'New role', exact: true }).click();

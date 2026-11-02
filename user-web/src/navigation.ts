@@ -11,11 +11,9 @@ export function showsPageBack(path: string): boolean {
 export function parentUserPage(path: string): string {
   if (['/invites', '/help', '/notifications'].includes(path)) return '/account';
   if (['/wallet/buckets', '/wallet/ledger', '/recharge', '/withdraw'].includes(path)) return '/wallet';
-  if (/^\/orders\/[^/]+$/.test(path)) return '/orders';
   if (['/privacy', '/terms'].includes(path)) return '/register';
-  if (/^\/games\/[^/]+\/bet$/.test(path)) return path.slice(0, -4);
-  if (['/games', '/results', '/bet/confirm'].includes(path)
-    || /^\/(games|mark-six|canada|configured)\/[^/]+$/.test(path)) return '/';
+  if (['/results'].includes(path)
+    || /^\/(configured)\/[^/]+$/.test(path)) return '/';
   throw new Error(`No parent navigation defined for ${path}`);
 }
 

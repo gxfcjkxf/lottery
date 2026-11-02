@@ -1,6 +1,6 @@
 import type { CommissionCreateBody, CommissionRetryBody } from "./commission-cycles-api";
 
-export type CommissionCycleWriteOperation = "create" | "retry_cycle" | "retry_discovery";
+type CommissionCycleWriteOperation = "create" | "retry_cycle" | "retry_discovery";
 export interface CommissionWriteScope {
   accountId: string; brandId: string; operation: CommissionCycleWriteOperation; targetId?: string;
 }
@@ -21,7 +21,7 @@ function validScope(scope: CommissionWriteScope): boolean {
     ? scope.targetId === undefined : ["retry_cycle", "retry_discovery"].includes(scope.operation) && typeof scope.targetId === "string" && uuid.test(scope.targetId));
 }
 function validReason(value: unknown): value is string {
-  if (typeof value !== "string" || value.trim() !== value || new TextEncoder().encode(value).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
+  if (typeof value !== "string" || value.trim() !== value || Array.from(value).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff) {

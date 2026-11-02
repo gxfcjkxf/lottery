@@ -125,7 +125,7 @@ func (Source) PolicySnapshotTx(ctx context.Context, tx pgx.Tx, brand, order stri
 	var member string
 	var placed time.Time
 	var raw, attribution []byte
-	err := tx.QueryRow(ctx, `SELECT brand_member_id::text,placed_at,commission_rule_snapshot,attribution_snapshot FROM bet_orders WHERE brand_id=$1 AND id=$2`, brand, order).Scan(&member, &placed, &raw, &attribution)
+	err := tx.QueryRow(ctx, `SELECT brand_member_id::text,placed_at,commission_rule_snapshot,attribution_snapshot FROM betting_financial_facts WHERE brand_id=$1 AND id=$2`, brand, order).Scan(&member, &placed, &raw, &attribution)
 	if err == pgx.ErrNoRows {
 		return BetSnapshot{}, ErrNotFound
 	}

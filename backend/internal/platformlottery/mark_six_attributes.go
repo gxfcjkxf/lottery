@@ -108,29 +108,7 @@ func (s Service) WriteMarkSixAttributes(ctx context.Context, tx pgx.Tx, a access
 	if e != nil {
 		return out, e
 	}
-	return out, record(ctx, tx, a, "", "platform_game.mark_six.attributes", game, in.Reason, meta, out)
-}
-
-func ReadPeriodMarkSixAttributes(ctx context.Context, q interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}, period string) (*MarkSixAttributes, error) {
-	var a MarkSixAttributes
-	var raw, zodiac, elements []byte
-	e := q.QueryRow(ctx, `SELECT a.id::text,a.year,a.version,a.effective_at,a.expires_at,a.zodiac,a.elements,a.waves FROM platform_mark_six_period_attributes p JOIN platform_mark_six_attributes a ON a.id=p.attribute_id WHERE p.period_id=$1`, period).Scan(&a.ID, &a.Year, &a.Version, &a.EffectiveAt, &a.ExpiresAt, &zodiac, &elements, &raw)
-	if errors.Is(e, pgx.ErrNoRows) {
-		return nil, ErrAttributesMissing
-	}
-	if e != nil {
-		return nil, e
-	}
-	e = json.Unmarshal(raw, &a.Waves)
-	if e == nil {
-		e = json.Unmarshal(zodiac, &a.Zodiac)
-	}
-	if e == nil {
-		e = json.Unmarshal(elements, &a.Elements)
-	}
-	return &a, e
+	return out, record(ctx, tx, a, "", "platform_game.mark_six.attributes", game, in.Reason, meta, old, out)
 }
 
 func validateAttributeMap(values map[string]string, allowed []string) error {
@@ -151,27 +129,4 @@ func validateAttributeMap(values map[string]string, allowed []string) error {
 		}
 	}
 	return nil
-}
-func ReadEffectiveMarkSixAttributes(ctx context.Context, q queryer, game string, draw time.Time) (*MarkSixAttributes, error) {
-	var id string
-	e := q.QueryRow(ctx, `SELECT id::text FROM platform_mark_six_attributes WHERE game_id=$1 AND effective_at<=$2 AND expires_at>$2 ORDER BY effective_at DESC,version DESC LIMIT 1`, game, draw).Scan(&id)
-	if errors.Is(e, pgx.ErrNoRows) {
-		return nil, ErrAttributesMissing
-	}
-	if e != nil {
-		return nil, e
-	}
-	var a MarkSixAttributes
-	var raw, zodiac, elements []byte
-	e = q.QueryRow(ctx, `SELECT id::text,year,version,effective_at,expires_at,zodiac,elements,waves FROM platform_mark_six_attributes WHERE id=$1`, id).Scan(&a.ID, &a.Year, &a.Version, &a.EffectiveAt, &a.ExpiresAt, &zodiac, &elements, &raw)
-	if e != nil {
-		return nil, e
-	}
-	if e = json.Unmarshal(raw, &a.Waves); e == nil {
-		e = json.Unmarshal(zodiac, &a.Zodiac)
-	}
-	if e == nil {
-		e = json.Unmarshal(elements, &a.Elements)
-	}
-	return &a, e
 }

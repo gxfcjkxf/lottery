@@ -52,7 +52,7 @@ watch(() => props.routeKey, () => void refresh());
 onMounted(() => {
   window.addEventListener(WALLET_SNAPSHOT_EVENT, snapshot);
   window.addEventListener('focus', refresh);
-  timer = setInterval(refresh, 30000);
+  timer = setInterval(() => { if (document.visibilityState === 'visible') void refresh(); }, 30000);
 });
 onUnmounted(() => {
   emit('pointsChange', null);

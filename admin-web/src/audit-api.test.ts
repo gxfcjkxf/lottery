@@ -33,7 +33,7 @@ function exportResponse(overrides: Record<string, string> = {}, body = bytes, le
 
 describe("audit API", () => {
   it("sends an explicit brand, defaults paging, and serializes accepted filters", async () => {
-    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [{ id: recordId, brand_id: brand, action: "view", actor_type: "admin", actor_id: actor, actor_username: "admin", resource_type: "user", resource_id: "user-7", reason: "", request_id: "r1", created_at: "2026-10-01T01:00:00Z", ip_address: "", before_json: null, after_json: null }] } }), { status: 200 }));
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [{ id: recordId, brand_id: brand, action: "view", actor_type: "admin", actor_id: actor, actor_username: "admin", resource_type: "user", resource_id: "user-7", reason: "", request_id: "r1", created_at: "2026-10-01T01:00:00Z", ip_address: "", before_json: null, after_json: null }]  ,total_count: '1'} }), { status: 200 }));
     const api = createAuditApi(fetcher);
       const result = await api.list(brand, { from, to, action: "view", actor_id: actor, resource_type: "user", resource_id: actor, request_id: "r1" });
     expect(result.items).toHaveLength(1);
@@ -50,7 +50,7 @@ describe("audit API", () => {
   });
 
   it("permits an unbounded-time read only when both dates are omitted", async () => {
-    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [] } }), { status: 200 }));
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: []  ,total_count: '0'} }), { status: 200 }));
     await createAuditApi(fetcher).list(brand, {});
     const parsed = new URL(String(fetcher.mock.calls[0]![0]), "http://localhost");
     expect(parsed.searchParams.has("from")).toBe(false);
@@ -62,7 +62,7 @@ describe("audit API", () => {
     ["empty filter", { action: "" }],
     ["bad actor UUID", { actor_id: "not-a-uuid" }],
     ["unknown query", { unexpected: "x" }],
-    ["text filter exceeds 128 UTF-8 bytes", { action: "é".repeat(65) }],
+    ["text filter exceeds 128 Unicode characters", { action: "é".repeat(129) }],
     ["unicode control in text filter", { request_id: "request\u0085id" }],
     ["empty pagination", { from, to, limit: 0 }],
     ["overlarge offset", { from, to, offset: 100001 }],
@@ -74,17 +74,17 @@ describe("audit API", () => {
   });
 
   it("rejects records returned for a different brand", async () => {
-    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [{ id: recordId, brand_id: otherBrand, action: "view", actor_type: "admin", actor_id: actor, actor_username: "admin", resource_type: "user", resource_id: "x", reason: "", request_id: "r", created_at: "2026-10-01T01:00:00Z", ip_address: "", before_json: null, after_json: null }] } }), { status: 200 }));
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [{ id: recordId, brand_id: otherBrand, action: "view", actor_type: "admin", actor_id: actor, actor_username: "admin", resource_type: "user", resource_id: "x", reason: "", request_id: "r", created_at: "2026-10-01T01:00:00Z", ip_address: "", before_json: null, after_json: null }]  ,total_count: '1'} }), { status: 200 }));
     await expect(createAuditApi(fetcher).list(brand, {})).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
   it("requires brand_id while accepting null for platform audit records", async () => {
     const item = { id: recordId, action: "view", actor_type: "admin", actor_id: actor, actor_username: "admin", resource_type: "user", resource_id: "x", reason: "", request_id: "r", created_at: "2026-10-01T01:00:00Z", ip_address: "", before_json: null, after_json: null };
-    const missingBrand = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [item] } }), { status: 200 }));
+    const missingBrand = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [item]  ,total_count: '1'} }), { status: 200 }));
     await expect(createAuditApi(missingBrand).list(brand, {})).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
 
-    const platformRecord = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [{ ...item, brand_id: null }] } }), { status: 200 }));
-    await expect(createAuditApi(platformRecord).list(brand, {})).resolves.toEqual({ items: [{ ...item, brand_id: null }] });
+    const platformRecord = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ success: true, data: { items: [{ ...item, brand_id: null }]  ,total_count: '1'} }), { status: 200 }));
+    await expect(createAuditApi(platformRecord).list(brand, {})).resolves.toEqual({ items: [{ ...item, brand_id: null }]  ,total_count: '1'});
   });
 
   it("validates full CSV, digest, metadata, row count, and brand before resolving", async () => {

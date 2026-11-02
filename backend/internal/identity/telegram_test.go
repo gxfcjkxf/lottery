@@ -17,7 +17,7 @@ func TestTelegramGlobalIdentityAndImmutableBinding(t *testing.T) {
 	ctx := context.Background()
 	brand := "0199a000-0000-7000-8000-000000000001"
 	other := "0199a000-0000-7000-8000-000000000002"
-	if _, err := p.Exec(ctx, `UPDATE brands SET auth_config=auth_config||'{"telegram_enabled":true,"telegram_client_id":"12345"}'::jsonb`); err != nil {
+	if _, err := p.Exec(ctx, `UPDATE brands SET auth_inherit_platform=false,auth_config=auth_config||'{"telegram_enabled":true,"telegram_client_id":"12345"}'::jsonb`); err != nil {
 		t.Fatal(err)
 	}
 	input := TelegramInput{Privacy: "dev-1", Terms: "dev-1"}

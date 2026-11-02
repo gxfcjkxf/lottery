@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const adminCookie = "lottery_admin"
@@ -153,7 +154,7 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 		prefix = "/api/v1/platform"
 	}
 	handle := func(method, path string, fn http.HandlerFunc) {
-		if platform && method != "GET" && path != "/auth/login" && path != "/auth/logout" && path != "/me/password" && !(method == "POST" && path == "/brands") && !(method == "DELETE" && path == "/brands/{id}") && !(method == "PATCH" && path == "/brand-operation") && !(method == "PATCH" && path == "/platform-settings") && !(method == "POST" && path == "/global-users/{id}/delete") && !platformSecurityWriteRoute(method, path) && !platformAccountWriteRoute(method, path) && !platformLotteryWriteRoute(method, path) {
+		if platform && method != "GET" && path != "/auth/login" && path != "/auth/logout" && path != "/me/password" && !(method == "POST" && path == "/brands") && !(method == "DELETE" && path == "/brands/{id}") && !(method == "PATCH" && path == "/brands/{id}/game-settings") && !(method == "PATCH" && path == "/brand-operation") && !(method == "PATCH" && path == "/platform-settings") && !(method == "PUT" && (path == "/commission-settings" || path == "/report-archive-policy" || path == "/notification-templates/{key}")) && !(method == "POST" && (path == "/recharge-quota/grants" || path == "/recharge-quota/reclaims")) && !(method == "POST" && path == "/global-users/{id}/delete") && !platformBrandDomainWriteRoute(method, path) && !platformSecurityWriteRoute(method, path) && !platformAccountWriteRoute(method, path) && !platformLotteryWriteRoute(method, path) {
 			return
 		}
 		mux.HandleFunc(method+" "+prefix+path, func(w http.ResponseWriter, r *http.Request) {
@@ -165,24 +166,53 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 			if _, ok := resolveAdminEntry(w, r, d); !ok {
 				return
 			}
-			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+			timeout := 10 * time.Second
+			if platform && method == "POST" && path == "/platform-games/official-calendar/sync" {
+				timeout = 40 * time.Second
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), timeout)
 			defer cancel()
 			fn(w, r.WithContext(ctx))
 		})
 	}
 	registerAssociationLookup(handle, d)
 	registerFilterOptions(handle, d)
-	registerRuleSimulationRoutes(handle, d)
-	registerRuleBookRoutes(handle, d)
+	if !platform {
+		registerBetLimitRoutes(handle, d)
+	}
 	registerPlatformLotteryRoutes(handle, d, platform)
 	registerBrandOperationRoutes(handle, d)
 	registerBrandPresentationRoutes(handle, d)
 	registerBrandLogoUpload(handle, d)
-	registerBrandDomainRoutes(handle, d)
+	if platform {
+		registerBrandDomainRoutes(handle, d)
+	}
 	registerBrandCreationRoutes(handle, d)
+	if platform {
+		registerNotificationTemplateRoutes(handle, d)
+	}
 	registerComplianceRoutes(handle, d)
-	registerPeriodRoutes(handle, d)
-	RegisterDrawRoutes(handle, d)
+	if !platform {
+		handle("GET", "/auth/challenge", func(w http.ResponseWriter, r *http.Request) {
+			b, ok := resolveAdminEntry(w, r, d)
+			if !ok {
+				return
+			}
+			loginChallenge(w, r, d, b.ID)
+		})
+		handle("GET", "/auth/config", func(w http.ResponseWriter, r *http.Request) {
+			b, ok := resolveAdminEntry(w, r, d)
+			if !ok {
+				return
+			}
+			cfg, err := d.Identity.Settings(r.Context(), b.ID)
+			if err != nil {
+				failure(w, r, 503, "SERVICE_UNAVAILABLE", "SERVICE_UNAVAILABLE")
+				return
+			}
+			respond(w, r, 200, map[string]bool{"captcha_enabled": cfg.CaptchaEnabled})
+		})
+	}
 	handle("POST", "/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		b, ok := resolveAdminEntry(w, r, d)
 		if !ok {
@@ -200,6 +230,14 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 			}
 			if !allowed {
 				return mutation.Fail(429, "AUTH_RATE_LIMITED", "尝试次数过多"), nil
+			}
+			if !platform {
+				if result, err := checkLoginCaptcha(ctx, d, b.ID, in.CaptchaID, in.CaptchaAnswer); result != nil || err != nil {
+					if result != nil {
+						return *result, err
+					}
+					return mutation.Result{}, err
+				}
 			}
 			return d.Identity.AdminLogin(ctx, tx, b.ID, in, meta(r), platform)
 		}
@@ -299,23 +337,58 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 			return
 		}
 		platform := access.Authorize(a, "brand", "view", access.ScopePlatform, "")
-		rows, err := d.Admins.DB.Query(r.Context(), `SELECT id::text,code,name,status FROM brands WHERE $1 OR id IN(SELECT brand_id FROM admin_brand_scopes WHERE account_id=$2) ORDER BY code`, platform, a.ID)
+		query := `SELECT id::text,code,name,status,allow_custom_games,EXISTS(SELECT 1 FROM games g WHERE g.brand_id=brands.id) FROM brands WHERE $1 OR id IN(SELECT brand_id FROM admin_brand_scopes WHERE account_id=$2) ORDER BY code`
+		args := []any{platform, a.ID}
+		enriched := platformAdminEntry(r)
+		if enriched {
+			query = `SELECT b.id::text,b.code,b.name,b.status,
+           (SELECT count(*)::text FROM brand_members m WHERE m.brand_id=b.id),
+           (SELECT count(*)::text FROM agent_nodes n WHERE n.brand_id=b.id),
+           CASE WHEN $3 THEN coalesce(q.available,0)::text ELSE NULL END,b.created_at
+           FROM brands b LEFT JOIN brand_recharge_quotas q ON q.brand_id=b.id
+           WHERE $1 OR b.id IN(SELECT brand_id FROM admin_brand_scopes WHERE account_id=$2) ORDER BY b.code`
+			args = append(args, access.Authorize(a, "recharge", "view", access.ScopePlatform, ""))
+		}
+		rows, err := d.Admins.DB.Query(r.Context(), query, args...)
 		if err != nil {
 			failure(w, r, 503, "SERVICE_UNAVAILABLE", "暂无法查询品牌")
 			return
 		}
 		defer rows.Close()
-		items := []map[string]string{}
+		items := []map[string]any{}
 		for rows.Next() {
 			var id, code, name, status string
-			if rows.Scan(&id, &code, &name, &status) != nil {
+			var members, agents string
+			var quota *string
+			var created time.Time
+			var allowCustomGames, hasCustomGames bool
+			columns := []any{&id, &code, &name, &status}
+			if !enriched {
+				columns = append(columns, &allowCustomGames, &hasCustomGames)
+			}
+			if enriched {
+				columns = append(columns, &members, &agents, &quota, &created)
+			}
+			if rows.Scan(columns...) != nil {
 				failure(w, r, 503, "SERVICE_UNAVAILABLE", "查询失败")
 				return
 			}
-			if !platform && !access.Authorize(a, "brand", "view", access.ScopeBrand, id) {
+			// Brand staff discover their assigned scope without an extra business grant.
+			if enriched && !platform && !access.Authorize(a, "brand", "view", access.ScopeBrand, id) {
 				continue
 			}
-			items = append(items, map[string]string{"id": id, "code": code, "name": name, "status": status})
+			item := map[string]any{"id": id, "code": code, "name": name, "status": status}
+			if !enriched {
+				item["allow_custom_games"] = allowCustomGames
+				item["has_custom_games"] = hasCustomGames
+			}
+			if enriched {
+				item["member_count"] = members
+				item["agent_count"] = agents
+				item["recharge_quota_available"] = quota
+				item["created_at"] = created.UTC()
+			}
+			items = append(items, item)
 		}
 		if rows.Err() != nil {
 			failure(w, r, 503, "SERVICE_UNAVAILABLE", "查询失败")
@@ -397,7 +470,7 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 			if !decodeBody(w, r, &in) {
 				return
 			}
-			if operation != "delete" && (len(in.Notes) > 2000 || len(in.Reason) > 500) {
+			if operation != "delete" && (utf8.RuneCountInString(in.Notes) > 2000 || utf8.RuneCountInString(in.Reason) > 500) {
 				failure(w, r, 400, "REQUEST_INVALID", "备注不超过 2000 字符，审计附注不超过 500 字符")
 				return
 			}
@@ -428,7 +501,7 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 					var hash string
 					hash, err = d.Identity.PasswordHash(ctx, in.Password)
 					if err != nil {
-						return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字节"), nil
+						return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字符"), nil
 					}
 					auditID, err = d.Admins.ResetPassword(ctx, tx, fresh, brand, id, hash, in.Reason, requestID(r), meta(r).IP)
 				case "delete":
@@ -447,10 +520,10 @@ func registerAdministrationRoutes(mux routeRegistrar, d Dependencies, platform b
 		registerPlatformAccountRoutes(handle, d)
 		registerPlatformUserDelete(handle, d)
 		registerPlatformSettingsRoutes(handle, d)
+		registerPlatformArchivePolicyRoutes(handle, d)
 	}
 	if !platform {
 		registerBrandOverview(handle, d)
 	}
 	registerPointAdminRoutes(handle, d)
-	registerBetAdminRoutes(handle, d)
 }

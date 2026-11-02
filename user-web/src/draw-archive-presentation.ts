@@ -20,3 +20,18 @@ export function totalFacts(result: ArchiveResult, attributes: Record<string,Arch
   const maximum=Math.max(...Object.values(scores)),winners=Object.keys(scores).filter(key=>scores[key]===maximum)
   return {total,parity:total%2?'odd':'even',size:total>=175?'big':'small',wave:complete?(winners.length===1?winners[0]!:'push'):null}
 }
+
+export type ArchiveSort = 'drawn' | 'size'
+export function displayedArchiveNumbers(result: ArchiveResult, regularOrder: number[] | null, sort: ArchiveSort) {
+  if (sort === 'drawn' && regularOrder === null) return null
+  const regular = sort === 'drawn' ? regularOrder! : [...result.regular].sort((a,b)=>a-b)
+  return archiveNumbers({...result,regular})
+}
+export function numberFacts(number: number) {
+  const sum=Math.floor(number/10)+number%10
+  return {size:number>=25?'big':'small',parity:number%2?'odd':'even',sumParity:sum%2?'odd':'even'}
+}
+export function zodiacFamily(zodiac: string): 'domestic' | 'wild' | null {
+  if (!zodiac) return null
+  return ['goat','horse','ox','pig','dog','rooster'].includes(zodiac)?'domestic':'wild'
+}

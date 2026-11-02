@@ -46,27 +46,26 @@ func historyFixture(t *testing.T) (managementHTTP, Dependencies) {
 }
 func grantHistoryReads(t *testing.T, f managementHTTP) {
 	t.Helper()
-	for _, resource := range []string{"notification_template", "compliance_policy", "brand_operation", "brand_domains", "brand_presentation"} {
+	for _, resource := range []string{"compliance_policy", "brand_operation", "brand_presentation"} {
 		grantReportPermission(t, f, resource+".view.brand")
 	}
 }
 func historyPaths() []string {
 	return []string{
 		"/api/v1/admin/audit",
-		"/api/v1/admin/notification-templates/member.joined/history",
+		"/api/v1/platform/notification-templates/member.joined/history",
 		"/api/v1/admin/compliance-policy/history",
 		"/api/v1/admin/brand-operation/history",
 		"/api/v1/admin/brand-presentation/history",
-		"/api/v1/admin/brand-domains/history",
 	}
 }
 func TestHistoryHTTPRejectsInvalidConfiguredReplicaWithoutFallback(t *testing.T) {
 	f, _ := historyFixture(t)
 	grantHistoryReads(t, f)
 	operator := securityOperator(t, f)
-	grantPlatformPermission(t, operator, "compliance_policy.view.platform")
+	grantPlatformPermission(t, operator, "compliance_policy.view.platform", "notification_template.view.platform")
 	read := func(path string) *httptest.ResponseRecorder {
-		if strings.Contains(path, "/compliance-policy") {
+		if strings.Contains(path, "/compliance-policy") || strings.Contains(path, "/notification-templates") {
 			return operator.call("GET", strings.Replace(path, "/admin/", "/platform/", 1), "", operator.token, managedBrand, nil)
 		}
 		return f.call("GET", path, "", f.token, managedBrand, nil)
@@ -79,7 +78,7 @@ func TestHistoryHTTPRejectsInvalidConfiguredReplicaWithoutFallback(t *testing.T)
 			t.Fatal(path, r.Header())
 		}
 	}
-	for _, path := range []string{"/api/v1/admin/notification-templates", "/api/v1/admin/compliance-policy", "/api/v1/admin/brand-operation", "/api/v1/admin/brand-presentation", "/api/v1/admin/brand-domains", "/api/v1/admin/me"} {
+	for _, path := range []string{"/api/v1/platform/notification-templates", "/api/v1/admin/compliance-policy", "/api/v1/admin/brand-operation", "/api/v1/admin/brand-presentation", "/api/v1/admin/me"} {
 		r := read(path)
 		mustStatus(t, r, 200)
 		if r.Header().Get("X-Read-Source") != "" {
@@ -91,9 +90,9 @@ func TestHistoryHTTPAuditFailureDoesNotReleasePayload(t *testing.T) {
 	f, _ := historyFixture(t)
 	grantHistoryReads(t, f)
 	operator := securityOperator(t, f)
-	grantPlatformPermission(t, operator, "compliance_policy.view.platform")
+	grantPlatformPermission(t, operator, "compliance_policy.view.platform", "notification_template.view.platform")
 	read := func(path string) *httptest.ResponseRecorder {
-		if strings.Contains(path, "/compliance-policy") {
+		if strings.Contains(path, "/compliance-policy") || strings.Contains(path, "/notification-templates") {
 			return operator.call("GET", strings.Replace(path, "/admin/", "/platform/", 1), "", operator.token, managedBrand, nil)
 		}
 		return f.call("GET", path, "", f.token, managedBrand, nil)
@@ -136,12 +135,12 @@ func TestHistoryHTTPPrimaryAuthorizationWinsOverReadNode(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	mustStatus(t, f.call("GET", "/api/v1/admin/notification-templates/member.joined/history", "", f.token, managedBrand, nil), 401)
+	mustStatus(t, f.call("GET", "/api/v1/admin/brand-operation/history", "", f.token, managedBrand, nil), 401)
 }
 func TestHistoryUnknownClientReadHintCannotEnableRouting(t *testing.T) {
 	f, _ := historyFixture(t)
 	grantHistoryReads(t, f)
-	r := httptest.NewRequest("GET", "http://localhost/api/v1/admin/notification-templates", nil)
+	r := httptest.NewRequest("GET", "http://localhost/api/v1/admin/brand-operation", nil)
 	r.Header.Set("Authorization", "Bearer "+f.token)
 	r.Header.Set("X-Brand-ID", managedBrand)
 	r.Header.Set("X-Read-Source", "replica")

@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import { test, expect } from './platform-fixture';
 
@@ -23,7 +24,7 @@ test('brand directory filters genuine brands without changing records', async ({
   await expect(page.getByText('No brands match these filters.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
   await expect(rows).toHaveCount(brands.length);
-  await page.getByRole('combobox', { name: 'Brand status', exact: true }).selectOption('active');
+  await selectControl(page.getByRole('combobox', { name: 'Brand status', exact: true }), 'active');
   await expect(rows).toHaveCount(brands.filter(brand => brand.status === 'active').length);
   await selectLanguage(page, 'zh-CN');
   await expect(page.getByRole('combobox', { name: '品牌状态', exact: true })).toHaveValue('active');

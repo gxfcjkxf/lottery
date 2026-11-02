@@ -53,7 +53,7 @@ func configureWithdrawalHTTP(t *testing.T, f pointsHTTPFixture) {
 	for _, key := range []string{"withdrawal_policy.write.brand", "withdrawal.view.brand", "withdrawal.approve.brand", "withdrawal.reject.brand", "withdrawal.cancel.brand", "withdrawal.fail.brand", "withdrawal.mark_paid.brand"} {
 		grantReportPermission(t, f.managementHTTP, key)
 	}
-	r := f.call("PUT", "/api/v1/admin/withdrawal-policy", "withdraw-http-policy", f.token, managedBrand, map[string]any{"version": 1, "config": map[string]any{"enabled": true, "min_points": "1", "max_points": nil, "allowed_sources": []string{"recharge", "winning", "gift"}, "review_mode": "manual", "turnover_multiple": "1"}, "reason": "isolated HTTP fixture"})
+	r := f.call("PUT", "/api/v1/admin/withdrawal-policy", "withdraw-http-policy", f.token, managedBrand, map[string]any{"points_step": "1", "version": 1, "config": map[string]any{"enabled": true, "min_points": "1", "max_points": nil, "allowed_sources": []string{"recharge", "winning", "gift"}, "review_mode": "manual", "turnover_multiple": "1"}, "reason": "isolated HTTP fixture"})
 	mustStatus(t, r, 200)
 	order := pointRecharge(t, f, "150", "HTTP withdrawal fixture funding", "withdraw-http-recharge")
 	mustStatus(t, f.call("POST", "/api/v1/admin/recharges/"+order.ID+"/confirm", "withdraw-http-fund-confirm", f.token, managedBrand, map[string]any{"version": order.Version, "reason": "isolated synthetic deposit"}), 200)

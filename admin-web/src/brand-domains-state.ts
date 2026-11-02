@@ -23,7 +23,7 @@ const pending = new Map<string, PendingBrandDomainsWrite>();
 const drafts = new Map<string, BrandDomainsDraft>();
 let sessionGeneration = 0;
 let requestGeneration = 0;
-export function brandDomainsScopeKey(accountId: string, brandId: string): string { return JSON.stringify([accountId, brandId]); }
+function brandDomainsScopeKey(accountId: string, brandId: string): string { return JSON.stringify([accountId, brandId]); }
 function scopeKey(scope: BrandDomainsScope): string { return brandDomainsScopeKey(scope.accountId, scope.brandId); }
 function validScope(value: BrandDomainsScope): boolean { return UUID_RE.test(value.accountId) && UUID_RE.test(value.brandId); }
 function validIntent(value: unknown, scope: BrandDomainsScope): value is PendingBrandDomainsWrite {
@@ -32,7 +32,7 @@ function validIntent(value: unknown, scope: BrandDomainsScope): value is Pending
   return Boolean(b && typeof b === "object" && !Array.isArray(b)) && v.accountId === scope.accountId && v.brandId === scope.brandId && validScope(scope) &&
     (v.operation === "add" || v.operation === "edit" || v.operation === "delete") && (v.operation === "add" ? v.domainId === undefined && typeof b?.domain === "string" : UUID_RE.test(String(v.domainId))) &&
     /^[A-Za-z0-9_:.-]{8,128}$/.test(String(v.key)) && ["review", "unknown", "conflict"].includes(String(v.phase)) && Number.isSafeInteger(b?.version) && Number(b?.version) >= 1 &&
-    (v.operation === 'delete' ? typeof v.domainName === 'string' && v.domainName.length>0 && Object.keys(b!).length===1 : typeof b?.enabled === "boolean" && typeof b?.reason === "string" && new TextEncoder().encode(b.reason).length <= 500);
+    (v.operation === 'delete' ? typeof v.domainName === 'string' && v.domainName.length>0 && Object.keys(b!).length===1 : typeof b?.enabled === "boolean" && typeof b?.reason === "string" && Array.from(b.reason).length <= 500);
 }
 function freezeIntent(value: PendingBrandDomainsWrite): PendingBrandDomainsWrite {
   const body = Object.freeze({ ...value.body });

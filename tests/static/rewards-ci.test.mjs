@@ -61,10 +61,8 @@ test('reward browser CI runs the exact spec once per project and rejects zero te
   assert.match(job, /stats\.expected > 0/);
   assert.doesNotMatch(job, /--pass-with-no-tests|--retries=([1-9]\d*)|cat .*auth\.key|\.local\/\*|echo .*AUTH_KEY/);
   assert.match(job, /name: reward-browser-\$\{\{ matrix\.viewport \}\}-failure-traces/);
-  const start = workflow.indexOf('  commission-cycles-browser:');
-  const end = workflow.indexOf('  withdrawal-browser:', start);
-  assert.ok(start > workflow.indexOf('  reward-browser:') && end > start);
-  assert.doesNotMatch(workflow.slice(start, end), /reward-browser:|prepare-reward-browser\.mjs|rewards\.spec\.ts/);
+  assert.doesNotMatch(workflow,/^  commission-cycles-browser:/m);
+  assert.ok(workflow.indexOf('  withdrawal-browser:') > workflow.indexOf('  reward-browser:'));
 });
 
 test('initializer accepts only the exact owned database, viewport, loopback, port and single SSL parameter', () => {

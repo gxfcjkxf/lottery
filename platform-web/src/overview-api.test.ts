@@ -7,7 +7,7 @@ function fixture() {
     snapshot_at: '2026-10-20T06:30:00Z', timezone: 'Asia/Singapore', today: '2026-10-20',
     total_members: '123', online_members: '3', unsettled_points: '9007199254740993',
     available_points: '99', frozen_points: '12', withdrawal_points: '0', withdrawal_count: '0',
-    abnormal_count: '0', failed_settlement_count: '0', cancellation_count: '0', yesterday_same_time_stake: '60',
+    yesterday_same_time_stake: '60',
     days: Array.from({ length: 7 }, (_, i) => ({ day: `2026-10-${14 + i}`, stake_points: '100', net_points: '-30', order_count: '2', bettor_count: '1', refund_points: '0', new_members: '1' })),
     brands: [{ brand_id: '0199a000-0000-7000-8000-000000000001', brand_name: 'Aurora', stake_points: '100', net_points: '-30' }],
   }

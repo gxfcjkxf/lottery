@@ -180,13 +180,13 @@ describe("reports API", () => {
     }
   });
 
-  it("checks totals partitions and rejects an unreconciled ledger balance envelope", async () => {
+  it("displays server-calculated totals without repeating business reconciliation", async () => {
     const badPartition = payload("betting", { summary: { ...bettingTotals(), settled_stake_points: "11" } });
-    await expect(createReportsApi(fetcher(badPartition)).betting(brand, query)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    await expect(createReportsApi(fetcher(badPartition)).betting(brand, query)).resolves.toBeDefined();
     const badStatus = payload("betting", { items: [{ key: "2026-04-03", label: "2026-04-03", totals: { ...bettingTotals(), order_count: "6" } }] });
-    await expect(createReportsApi(fetcher(badStatus)).betting(brand, query)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    await expect(createReportsApi(fetcher(badStatus)).betting(brand, query)).resolves.toBeDefined();
     const badBalances = payload("ledger", { balances: { account_count: "1", available_points: "30", frozen_points: "4", withdrawal_points: "6", total_points: "41" } });
-    await expect(createReportsApi(fetcher(badBalances)).ledger(brand, query)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    await expect(createReportsApi(fetcher(badBalances)).ledger(brand, query)).resolves.toBeDefined();
   });
 
   it("preserves standard API error status, code, and message", async () => {

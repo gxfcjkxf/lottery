@@ -1,5 +1,7 @@
 # 已实现接口与契约检查
 
+> 2026-10-28：投注与结算已统一为[配置化链路](65-unified-configured-betting.md)。本文件涉及旧品牌游戏、独立六合彩／加拿大投注、旧结算任务及其页面／接口的内容仅为历史记录；当前接口以已实现 OpenAPI 为准。
+
 第三方开发人员或 AI 接入现有服务时，使用 [openapi.json](openapi.json) 获取实际注册的接口、请求参数、响应模型和认证要求。[04-api-contract.md](04-api-contract.md) 保留完整业务设计，包含尚未实现的功能；不能据设计稿假定接口已经可调用。
 
 ## 当前范围
@@ -34,11 +36,11 @@ PUT 必须提供当前共享版本、全部 16 个配置键和操作原因。可
 
 提现可查询独立授权的当前状态报表并完整导出CSV，工作台提供真实审核中/提现中计数；六种提现状态事件通过既有站内收件箱读取。报表按申请created_at筛选，不是实际出款时间或不可变结账；通知记录不可变历史状态，不代表当前余额或外部支付。字段、范围、文件校验与权限见[API合同](04-api-contract.md)，模板和历史说明见[通知合同](12-notification-templates.md)。查询报表或通知不授权提交提现，申请仍须通过当前配置、资格、余额及并发检查。
 
-钱包批量对账使用GET/POST `/api/v1/admin/reconciliations`、GET `/{id}`和`/{id}/targets`、POST `/{id}/retry`。查看接受明确品牌或平台wallet.view权限，创建/重试还需当前品牌wallet.reconcile授权且超管只读；所有查询使用主库并提交审计后返回。结果只诊断，观察快照不授权自动修复；原创建/重试回执与当前状态分开，详细生命周期、字段和资源上限见[对账交接](13-wallet-reconciliation.md)。
+一期精简后，结算仅提供即时试算；批量对账、在线余额修复和奖励待追缴已移除。人工奖励余额不足时明确失败且不改变资金记录，见[当前精简范围](64-betting-points-simplification.md)。
 
 六个不可变历史GET可采用物理从库，授权和查询审计仍以主库为准。成功响应中的`X-Read-Source`、`X-Read-Reason`及条件性的`X-Read-Replica`仅用于诊断，不是客户端选择器；原JSON结构、权限、品牌范围和分页不变。完整名单、WAL屏障、连接方式及回退说明见[复制与读路由手册](10-replication-and-recovery.md)。资金、投注、会话、当前配置及其他查询不进入该白名单。
 
-站内模板配置使用GET `/api/v1/admin/notification-templates`、GET `/{key}/history`和PUT `/{key}`，需要独立模板权限；版本是每品牌每事件的安全整数，不是品牌配置版本。用户消息content为生成时的双语源文案，只有旧v1允许null；模板更新不改旧通知，也不改变业务积分。服务端及用户端拒绝未知占位符和私密变量，详见 [模板合同](12-notification-templates.md)。
+站内模板配置使用GET `/api/v1/platform/notification-templates`、GET `/{key}/history`和PUT `/{key}`，需要独立模板权限；版本是平台每事件的安全整数，不是品牌配置版本。用户消息content为生成时的双语源文案，只有旧v1允许null；模板更新不改旧通知，也不改变业务积分。服务端及用户端拒绝未知占位符和私密变量，详见 [模板合同](12-notification-templates.md)。
 
 合规配置GET/PUT `/api/v1/admin/compliance-policy`、历史GET `/compliance-policy/history`、显式检查POST/GET `/compliance-checks`及真实业务拒绝GET `/compliance-gates` 已注册。政策五键全量替换，版本独立；任一检查开启但未接真实适配器时，新注册/首次入品牌/运营新增及投注预览/提交被409 COMPLIANCE_REVIEW_REQUIRED拒绝，不建身份/扣分/建单。拒绝证据与加密负回执同事务，原键重放不重复证据。提现状态机亦拒绝启用而未接入的合规检查。显式管理模拟不是实际业务检查；默认关闭仅跳过，不证明验证完成。真实验证、复核与合规资金冻结未实现，边界见 [安全说明](07-security-risk-compliance.md)。
 
@@ -48,7 +50,7 @@ PUT 必须提供当前共享版本、全部 16 个配置键和操作原因。可
 
 变更操作按照 `x-idempotent-operation` 和请求头定义发送幂等键。结果未知时，使用原键和完全相同的请求正文重试，不创建新意图。Cookie 请求还必须携带匹配 Host 的 Origin。成功回执代表原操作结果，不一定代表当前资源状态，应独立查询确认。
 
-积分和财务合计使用十进制字符串。钱包与单笔积分由服务端限制在 int64 范围，积分变动允许负数，正常余额不允许负数；报表合计可能超过 int64。不得转换为 JavaScript Number。Schema 的字符串模式检查规范格式，数值上限、UTF-8 字节长度、重复 JSON 字段、规则语义和业务状态仍由 Go 校验。
+积分和财务合计使用十进制字符串。钱包与单笔积分由服务端限制在 int64 范围，积分变动允许负数，正常余额不允许负数；报表合计可能超过 int64。不得转换为 JavaScript Number。Schema 的字符串模式检查规范格式，数值上限、UTF-8 字符长度、重复 JSON 字段、规则语义和业务状态仍由 Go 校验。
 
 两个报表的GET `/api/v1/admin/reports/{betting|ledger}/export`成功返回CSV原始字节，不套JSON信封；错误仍为JSON。view和export分别接受当前品牌或显式平台授权，必须同时满足，不发送分页参数。客户端应校验完整字节摘要和筛选回显，再按文本导入积分列；10,000分组/4 MiB上限、固定列和审计语义见 [导出合同](11-report-csv-exports.md)。不把导出当作不可变财务结账。
 

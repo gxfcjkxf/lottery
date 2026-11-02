@@ -90,6 +90,7 @@ func (s Service) SaveDrawSource(ctx context.Context, tx pgx.Tx, a access.Account
 		return DrawSource{}, err
 	}
 	var out DrawSource
+	var before any
 	if in.ID == "" {
 		if in.Revision != 0 {
 			return out, ErrVersionConflict
@@ -99,6 +100,11 @@ func (s Service) SaveDrawSource(ctx context.Context, tx pgx.Tx, a access.Account
 			return out, ErrConflict
 		}
 	} else {
+		previous, err := scanDrawSource(tx.QueryRow(ctx, `SELECT id::text,name,revision,plan FROM platform_draw_sources WHERE game_id=$1 AND id=$2 FOR UPDATE`, game, in.ID))
+		if err != nil {
+			return out, err
+		}
+		before = previous
 		out, err = scanDrawSource(tx.QueryRow(ctx, `UPDATE platform_draw_sources SET name=$3,plan=$4,revision=revision+1,updated_at=clock_timestamp() WHERE game_id=$1 AND id=$2 AND revision=$5 RETURNING id::text,name,revision,plan`, game, in.ID, in.Name, raw, in.Revision))
 		if errors.Is(err, ErrNotFound) {
 			return out, ErrVersionConflict
@@ -111,7 +117,7 @@ func (s Service) SaveDrawSource(ctx context.Context, tx pgx.Tx, a access.Account
 		}
 		return out, err
 	}
-	return out, record(ctx, tx, a, "", "platform_game.draw_source.save", out.ID, "", meta, out)
+	return out, record(ctx, tx, a, "", "platform_game.draw_source.save", out.ID, "", meta, before, out)
 }
 func (s Service) ActivateDrawSource(ctx context.Context, tx pgx.Tx, a access.Account, game, id string, in DrawSourceActivation, meta points.Metadata) (AutomationPlan, error) {
 	if !Allowed(a, "", "write") {

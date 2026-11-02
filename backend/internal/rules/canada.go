@@ -11,12 +11,6 @@ import (
 
 var CanadaProfiles = []string{"canada_28", "canada_996", "canada_vip", "canada_42", "canada_web", "canada_50", "canada_baccarat", "canada_niuniu"}
 
-func ValidateCanadaModel(m Model) error {
-	if m.Type != "DIGITS_0_9" || m.Length != 3 || !m.AllowRepeat || !m.Ordered {
-		return ErrInvalid
-	}
-	return ValidateModel(m)
-}
 func CanadaOptions(profile string) []string {
 	if !slices.Contains(CanadaProfiles, profile) {
 		return nil

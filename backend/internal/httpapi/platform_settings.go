@@ -8,6 +8,7 @@ import (
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
+	"github.com/gxfcjkxf/lottery/backend/internal/commission"
 	"github.com/gxfcjkxf/lottery/backend/internal/identity"
 	"github.com/gxfcjkxf/lottery/backend/internal/mutation"
 	"github.com/gxfcjkxf/lottery/backend/internal/platformsettings"
@@ -29,6 +30,52 @@ func platformSettingsResult(out platformsettings.Settings, err error) (mutation.
 
 func registerPlatformSettingsRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
 	s := platformsettings.Service{DB: d.Admins.DB}
+	cs := commission.Service{DB: d.Admins.DB}
+	handle("GET", "/commission-settings", func(w http.ResponseWriter, r *http.Request) {
+		a, ok := platformAccountActor(w, r, d, "platform_settings", "view")
+		if !ok {
+			return
+		}
+		out, err := cs.PlatformPolicy(r.Context())
+		if err == nil && !adminReadAudit(w, r, d, a, "", "commission_policy.view.platform") {
+			return
+		}
+		result, e := commissionPolicyResult(out, err)
+		outputMutation(w, r, result, e)
+	})
+	handle("PUT", "/commission-settings", func(w http.ResponseWriter, r *http.Request) {
+		a, ok := platformAccountActor(w, r, d, "platform_settings", "write")
+		if !ok {
+			return
+		}
+		var in commission.PlatformPolicyInput
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		raw, _ := json.Marshal(in)
+		var fresh access.Account
+		result, err := d.Mutations.ExecuteChecked(r.Context(), "", a.ID, "platform.commission_policy.update", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(string(raw)), func(ctx context.Context, tx pgx.Tx) error {
+			var e error
+			fresh, e = freshAdmin(ctx, tx, r, d, a, true)
+			if e != nil {
+				return e
+			}
+			if !platformsettings.Allowed(fresh, "write") {
+				return commission.ErrDenied
+			}
+			return nil
+		}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
+			out, e := cs.UpdatePlatformPolicy(ctx, tx, fresh, in, pointMeta(r, fresh))
+			return commissionPolicyResult(out, e)
+		})
+		if errors.Is(err, commission.ErrDenied) {
+			result, err = mutation.Fail(403, "PERMISSION_DENIED", "无平台设置权限"), nil
+		}
+		if errors.Is(err, identity.ErrSession) {
+			result, err = mutation.Fail(401, "AUTH_SESSION_REVOKED", "管理会话已变化，请重新登录"), nil
+		}
+		finishAdminMutation(w, r, d, a, "", "commission_policy.write.platform", result, err)
+	})
 	handle("GET", "/platform-settings", func(w http.ResponseWriter, r *http.Request) {
 		a, ok := platformAccountActor(w, r, d, "platform_settings", "view")
 		if !ok {

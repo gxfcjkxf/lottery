@@ -36,7 +36,7 @@ function server(failReload = false) {
     if (init?.method === 'POST') { current = order('processing'); return ok(current); }
     reads++;
     if (failReload && reads > 1) return new Response(JSON.stringify({success: false, error: {code: 'UNAVAILABLE', message: 'List unavailable'}}), {status: 503});
-    return ok({brand_id: brand, items: [current], limit: 100, offset: 0, has_more: false});
+    return ok({brand_id: brand, items: [current], limit: 100, offset: 0, has_more: false ,total_count: '1'});
   });
   vi.stubGlobal('fetch', fetcher); return fetcher;
 }

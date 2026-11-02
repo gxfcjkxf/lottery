@@ -12,7 +12,7 @@ import (
 
 func templateHTTPList(t *testing.T, f managementHTTP) []notification.Template {
 	t.Helper()
-	r := f.call("GET", "/api/v1/admin/notification-templates", "", f.token, managedBrand, nil)
+	r := f.call("GET", "/api/v1/platform/notification-templates", "", f.token, managedBrand, nil)
 	mustStatus(t, r, 200)
 	var v struct {
 		Items []notification.Template `json:"items"`
@@ -38,24 +38,25 @@ func authoredNotificationCopy(key string) notification.Content {
 	return notification.Content{En: notification.Copy{Title: "Notice", Body: body}, ZhCN: notification.Copy{Title: "通知", Body: body}}
 }
 func TestNotificationTemplateHTTPCheckedReplayValidationAndAudit(t *testing.T) {
-	f := managedFixture(t)
+	brandOperator := managedFixture(t)
+	f := securityOperator(t, brandOperator)
 	ctx := context.Background()
-	base := "/api/v1/admin/notification-templates"
+	base := "/api/v1/platform/notification-templates"
 	path := base + "/recharge.confirmed"
 	mustStatus(t, f.call("GET", base, "", f.token, managedBrand, nil), 403)
-	grantReportPermission(t, f, "notification_template.view.brand")
+	grantPlatformPermission(t, f, "notification_template.view.platform")
 	rows := templateHTTPList(t, f)
-	if len(rows) != 22 {
+	if len(rows) != 21 {
 		t.Fatal(len(rows))
 	}
 	keys := map[string]bool{}
 	for _, row := range rows {
-		if keys[row.Key] || row.BrandID != managedBrand {
+		if keys[row.Key] {
 			t.Fatal("duplicate or foreign template", row.Key)
 		}
 		keys[row.Key] = true
 	}
-	for _, key := range []string{"reward.order.granted", "reward.order.revocation_pending", "reward.order.revoked", "commission.corrected"} {
+	for _, key := range []string{"reward.order.granted", "reward.order.revoked", "commission.corrected"} {
 		if !keys[key] {
 			t.Fatal("missing real reward template", key)
 		}
@@ -67,7 +68,7 @@ func TestNotificationTemplateHTTPCheckedReplayValidationAndAudit(t *testing.T) {
 	in := notification.UpdateInput{Version: current.Version, Content: authoredNotificationCopy(current.Key), Reason: "update notification wording"}
 	in.Content.En.Body = "Recorded {points} points; reference {resource_id}."
 	mustStatus(t, f.call("PUT", path, "template-accepted-001", f.token, managedBrand, in), 403)
-	grantReportPermission(t, f, "notification_template.write.brand")
+	grantPlatformPermission(t, f, "notification_template.write.platform")
 	before := f.call("PUT", path, "template-accepted-001", f.token, managedBrand, in)
 	mustStatus(t, before, 200)
 	var accepted notification.Template
@@ -99,29 +100,24 @@ func TestNotificationTemplateHTTPCheckedReplayValidationAndAudit(t *testing.T) {
 	mustStatus(t, f.call("GET", base+"/recharge.confirmed/history?limit=20&offset=0", "", f.token, managedBrand, nil), 200)
 	mustStatus(t, f.call("GET", base+"/unknown/history", "", f.token, managedBrand, nil), 400)
 	mustStatus(t, f.call("GET", base+"/recharge.confirmed/history?limit=1&limit=2", "", f.token, managedBrand, nil), 400)
-	mustStatus(t, f.call("GET", base, "", f.token, pointsBrandB, nil), 403)
-	if _, e := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id IN(SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key='notification_template.write.brand'`, f.root); e != nil {
+	mustStatus(t, f.call("GET", base, "", f.token, pointsBrandB, nil), 200)
+	if _, e := f.pool.Exec(ctx, `DELETE FROM role_permissions WHERE role_id IN(SELECT role_id FROM admin_account_roles WHERE account_id=$1) AND permission_key='notification_template.write.platform'`, f.root); e != nil {
 		t.Fatal(e)
 	}
 	mustStatus(t, f.call("PUT", path, "template-accepted-001", f.token, managedBrand, in), 403)
-	grantReportPermission(t, f, "notification_template.write.brand")
-	if _, e := f.pool.Exec(ctx, `UPDATE admin_accounts SET is_super_admin=true WHERE id=$1`, f.root); e != nil {
-		t.Fatal(e)
-	}
-	mustStatus(t, f.call("PUT", path, "template-accepted-001", f.token, managedBrand, in), 403)
-	grantReportPermission(t, f, "notification_template.view.platform")
-	platformToken := platformAdminToken(t, f)
-	f.token = platformToken
-	platformBase := strings.Replace(base, "/api/v1/admin", "/api/v1/platform", 1)
-	mustStatus(t, f.call("GET", base, "", f.token, pointsBrandB, nil), 403)
-	mustStatus(t, f.call("GET", platformBase, "", platformToken, pointsBrandB, nil), 200)
+	grantPlatformPermission(t, f, "notification_template.write.platform")
+	mustStatus(t, f.call("PUT", path, "template-accepted-001", f.token, "", in), 200)
+	mustStatus(t, brandOperator.call("GET", "/api/v1/admin/notification-templates", "", brandOperator.token, managedBrand, nil), 404)
+	mustStatus(t, brandOperator.call("PUT", "/api/v1/admin/notification-templates/member.joined", "brand-denied-template", brandOperator.token, managedBrand, in), 404)
+
 }
 func TestNotificationTemplateHTTPAuditFailureAndDisabledReplay(t *testing.T) {
-	f := managedFixture(t)
+	brandOperator := managedFixture(t)
+	f := securityOperator(t, brandOperator)
 	ctx := context.Background()
-	base := "/api/v1/admin/notification-templates"
-	grantReportPermission(t, f, "notification_template.view.brand")
-	grantReportPermission(t, f, "notification_template.write.brand")
+	base := "/api/v1/platform/notification-templates"
+	grantPlatformPermission(t, f, "notification_template.view.platform")
+	grantPlatformPermission(t, f, "notification_template.write.platform")
 	cur := templateHTTPRecord(t, f, "member.joined")
 	in := notification.UpdateInput{Version: 1, Content: authoredNotificationCopy(cur.Key), Reason: "test template audit"}
 	in.Content.En.Body = "A new welcome for {resource_id}."
@@ -135,7 +131,7 @@ func TestNotificationTemplateHTTPAuditFailureAndDisabledReplay(t *testing.T) {
 	}
 	mustStatus(t, f.call("PUT", base+"/member.joined", "template-audit-fail", f.token, managedBrand, in), 503)
 	var version, revisions int
-	if e := f.pool.QueryRow(ctx, `SELECT version,(SELECT count(*) FROM notification_template_revisions WHERE brand_id=$1 AND template_key='member.joined') FROM notification_templates WHERE brand_id=$1 AND template_key='member.joined'`, managedBrand).Scan(&version, &revisions); e != nil || version != 1 || revisions != 1 {
+	if e := f.pool.QueryRow(ctx, `SELECT version,(SELECT count(*) FROM platform_notification_template_revisions WHERE template_key='member.joined') FROM platform_notification_templates WHERE template_key='member.joined'`).Scan(&version, &revisions); e != nil || version != 1 || revisions != 1 {
 		t.Fatal(version, revisions, e)
 	}
 	if _, e := f.pool.Exec(ctx, `DROP TRIGGER reject_template_http_audit ON audit_logs`); e != nil {
@@ -145,15 +141,15 @@ func TestNotificationTemplateHTTPAuditFailureAndDisabledReplay(t *testing.T) {
 	if _, e := f.pool.Exec(ctx, `UPDATE brands SET status='disabled' WHERE id=$1`, managedBrand); e != nil {
 		t.Fatal(e)
 	}
-	mustStatus(t, f.call("PUT", base+"/member.joined", "template-audit-fail", f.token, managedBrand, in), 409)
+	mustStatus(t, f.call("PUT", base+"/member.joined", "template-audit-fail", f.token, managedBrand, in), 200)
 	mustStatus(t, f.call("GET", base, "", f.token, managedBrand, nil), 200)
 }
 func TestNotificationTemplateHTTPRealRegistrationGetsImmutableCurrentCopy(t *testing.T) {
 	f := pointsFixture(t)
 	ctx := context.Background()
 	service := notification.Service{DB: f.pool}
-	grantReportPermission(t, f.managementHTTP, "notification_template.view.brand")
-	grantReportPermission(t, f.managementHTTP, "notification_template.write.brand")
+	operator := securityOperator(t, f.managementHTTP)
+	grantPlatformPermission(t, operator, "notification_template.view.platform", "notification_template.write.platform")
 	if _, e := service.Process(ctx, 20); e != nil {
 		t.Fatal(e)
 	}
@@ -162,14 +158,14 @@ func TestNotificationTemplateHTTPRealRegistrationGetsImmutableCurrentCopy(t *tes
 		t.Fatal(first, e)
 	}
 	beforeWallet := pointWallet(t, f)
-	old := templateHTTPRecord(t, f.managementHTTP, "member.joined")
+	old := templateHTTPRecord(t, operator, "member.joined")
 	content := authoredNotificationCopy(old.Key)
 	content.En.Title = "Brand welcome"
 	content.En.Body = "Hello member {resource_id}."
 	content.ZhCN.Title = "品牌欢迎"
 	content.ZhCN.Body = "欢迎会员 {resource_id}。"
 	in := notification.UpdateInput{Version: 1, Content: content, Reason: "publish bilingual welcome"}
-	r := f.call("PUT", "/api/v1/admin/notification-templates/member.joined", "template-welcome-002", f.token, managedBrand, in)
+	r := operator.call("PUT", "/api/v1/platform/notification-templates/member.joined", "template-welcome-002", operator.token, managedBrand, in)
 	mustStatus(t, r, 200)
 	var updated notification.Template
 	managedData(t, r, &updated)
@@ -186,7 +182,7 @@ func TestNotificationTemplateHTTPRealRegistrationGetsImmutableCurrentCopy(t *tes
 	}
 	in.Version = 2
 	in.Content.En.Title = "Later welcome"
-	mustStatus(t, f.call("PUT", "/api/v1/admin/notification-templates/member.joined", "template-welcome-003", f.token, managedBrand, in), 200)
+	mustStatus(t, operator.call("PUT", "/api/v1/platform/notification-templates/member.joined", "template-welcome-003", operator.token, managedBrand, in), 200)
 	preserved, e := service.List(ctx, managedBrand, auth.Member.ID, 20, 0)
 	if e != nil || !reflect.DeepEqual(preserved.Items, newer.Items) {
 		t.Fatal("historical snapshot rewritten", preserved, e)

@@ -9,7 +9,7 @@ func TestAutomaticSlotsKeepAnchorAndLeadingZeros(t *testing.T) {
 	anchor := time.Date(2026, 10, 16, 2, 0, 0, 0, time.UTC)
 	first := "000999"
 	interval := 120
-	p := AutomationPlan{SourceType: "mapped", Mapping: &FeedMapping{Format: "json", Schedule: "interval", TimeFormat: "rfc3339", Period: FeedField{Path: "/period_no"}, DrawTime: FeedField{Path: "/drawn_at"}, Regular: &FeedNumbers{FeedField: FeedField{Path: "/result/regular"}, Count: 6}, Special: &FeedNumbers{FeedField: FeedField{Path: "/result/special"}, Count: 1}}, AnchorDrawAt: &anchor, AnchorPeriodNo: &first, IntervalSeconds: &interval, CloseBeforeSeconds: 15}
+	p := AutomationPlan{SourceType: "mapped", Mapping: &FeedMapping{Format: "json", Schedule: "interval", TimeFormat: "rfc3339", Period: FeedField{Path: "/period_no"}, DrawTime: FeedField{Path: "/drawn_at"}, Regular: &FeedNumbers{FeedField: FeedField{Path: "/result/regular"}, Count: 6}, Special: &FeedNumbers{FeedField: FeedField{Path: "/result/special"}, Count: 1}}, AnchorDrawAt: &anchor, AnchorPeriodNo: &first, IntervalSeconds: &interval, OpenBeforeSeconds: &interval, CloseBeforeSeconds: 15}
 	slot, e := automationSlot(p, anchor.Add(3*time.Minute), 0)
 	if e != nil || slot.PeriodNo != "001001" || !slot.DrawAt.Equal(anchor.Add(4*time.Minute)) || !slot.BetEndAt.Equal(anchor.Add(225*time.Second)) || !slot.BetStartAt.Equal(anchor.Add(2*time.Minute)) {
 		t.Fatalf("bad anchored slot %+v %v", slot, e)
@@ -18,16 +18,22 @@ func TestAutomaticSlotsKeepAnchorAndLeadingZeros(t *testing.T) {
 	if e != nil || next.PeriodNo != "001002" || !next.BetStartAt.Equal(slot.DrawAt) {
 		t.Fatalf("cycle gap %+v %v", next, e)
 	}
+	opening := 60
+	p.OpenBeforeSeconds = &opening
+	shortened, e := automationSlot(p, anchor.Add(3*time.Minute), 0)
+	if e != nil || !shortened.BetStartAt.Equal(shortened.DrawAt.Add(-time.Minute)) {
+		t.Fatal("configured opening ignored", shortened, e)
+	}
 }
 func TestAutomaticPlanRejectsInvalidSourceAndClose(t *testing.T) {
 	anchor := time.Now()
 	first := "20260001"
 	interval := 120
-	p := AutomationPlan{SourceType: "mapped", Mapping: &FeedMapping{Format: "json", Schedule: "interval", TimeFormat: "rfc3339", Period: FeedField{Path: "/period_no"}, DrawTime: FeedField{Path: "/drawn_at"}, Regular: &FeedNumbers{FeedField: FeedField{Path: "/result/regular"}, Count: 6}, Special: &FeedNumbers{FeedField: FeedField{Path: "/result/special"}, Count: 1}}, AnchorDrawAt: &anchor, AnchorPeriodNo: &first, IntervalSeconds: &interval, CloseBeforeSeconds: 15, SourceURL: "https://draw.vendor.com/result"}
+	p := AutomationPlan{SourceType: "mapped", Mapping: &FeedMapping{Format: "json", Schedule: "interval", TimeFormat: "rfc3339", Period: FeedField{Path: "/period_no"}, DrawTime: FeedField{Path: "/drawn_at"}, Regular: &FeedNumbers{FeedField: FeedField{Path: "/result/regular"}, Count: 6}, Special: &FeedNumbers{FeedField: FeedField{Path: "/result/special"}, Count: 1}}, AnchorDrawAt: &anchor, AnchorPeriodNo: &first, IntervalSeconds: &interval, OpenBeforeSeconds: &interval, CloseBeforeSeconds: 15, SourceURL: "https://draw.vendor.com/result"}
 	if ValidateAutomation(p) != nil {
 		t.Fatal("valid plan rejected")
 	}
-	for _, mutate := range []func(*AutomationPlan){func(p *AutomationPlan) { p.CloseBeforeSeconds = 120 }, func(p *AutomationPlan) { p.SourceURL = "https://secret@draw.vendor.com" }, func(p *AutomationPlan) { v := "day-001"; p.AnchorPeriodNo = &v }, func(p *AutomationPlan) { p.CredentialRef = "AUTH_KEY" }} {
+	for _, mutate := range []func(*AutomationPlan){func(p *AutomationPlan) { p.OpenBeforeSeconds = nil }, func(p *AutomationPlan) { v := 15; p.OpenBeforeSeconds = &v }, func(p *AutomationPlan) { v := 121; p.OpenBeforeSeconds = &v }, func(p *AutomationPlan) { p.CloseBeforeSeconds = 120 }, func(p *AutomationPlan) { p.SourceURL = "https://secret@draw.vendor.com" }, func(p *AutomationPlan) { v := "day-001"; p.AnchorPeriodNo = &v }, func(p *AutomationPlan) { p.CredentialRef = "AUTH_KEY" }} {
 		invalid := p
 		mutate(&invalid)
 		if ValidateAutomation(invalid) == nil {

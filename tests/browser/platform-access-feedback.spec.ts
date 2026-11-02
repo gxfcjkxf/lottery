@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect } from '@playwright/test';
 
 const origin = 'http://127.0.0.1:5175';
@@ -40,7 +41,7 @@ for (const locale of ['en', 'zh-CN'] as const) {
     }
     if (await page.locator('button[aria-controls="platform-brand-tabs"]').getAttribute('aria-expanded') === 'false') await page.locator('button[aria-controls="platform-brand-tabs"]').click()
     await page.locator('.nav-subitem').filter({ hasText: zh ? '后台账号' : 'Back-office accounts' }).click();
-    await expect(page.locator('.brand-picker select')).toHaveValue(brand);
+    await expect(page.locator(".brand-picker .select-control-trigger")).toHaveAttribute('data-value', brand);
     const create = page.getByRole('button', { name: zh ? '新建账号' : 'New account', exact: true });
     await expect(page.getByTestId('platform-access-list')).toContainText(zh ? '暂无账号' : 'No accounts found');
     await expect(create).toBeEnabled();
@@ -51,20 +52,20 @@ for (const locale of ['en', 'zh-CN'] as const) {
     expect(roleBrands).toEqual([brand]);
     await page.screenshot({ path: info.outputPath('new-brand-account.png'), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-    await dialog.getByRole('button', { name: zh ? '取消' : 'Cancel', exact: true }).click();
+    await dialog.locator('.detail-modal-close').click();
 
     rolesFail = true;
     await create.click();
     await expect(page.locator('.toast-error')).toContainText(zh ? '权限' : 'permission', { ignoreCase: true });
     await page.locator('.toast-error').getByRole('button').click();
-    await dialog.getByRole('button', { name: zh ? '取消' : 'Cancel', exact: true }).click();
+    await dialog.locator('.detail-modal-close').click();
     rolesFail = false; emptyRoles = true;
     await create.click();
     await expect(page.locator('.toast-error')).toContainText(zh ? '请先到角色页新建或启用角色' : 'Create or enable a role');
     await page.locator('.toast-error').getByRole('button').click();
-    await dialog.getByRole('button', { name: zh ? '取消' : 'Cancel', exact: true }).click();
+    await dialog.locator('.detail-modal-close').click();
 
-    await page.locator('.brand-picker select').selectOption('');
+    await selectControl(page.locator(".brand-picker .select-control-trigger"), '');
     await expect(page.getByTestId('platform-access')).toHaveCount(0);
     await expect(create).toHaveCount(0);
     expect(errors).toEqual([]);

@@ -1,4 +1,18 @@
 <script setup lang="ts">
+import MemberActionsMenu from "@lottery/shared/MemberActionsMenu.vue"
+import ManagementList from "@lottery/shared/ManagementList.vue"
+import TablePagination from "@lottery/shared/TablePagination.vue"
+const agentDraftSearchPending = ref(false);
+const accountSearchReset = ref(0);
+import FilterAssociationSearch from "@lottery/shared/FilterAssociationSearch.vue";
+import {vInlineValidation} from "@lottery/shared";
+import './commission-management.css';
+import ManagementTable from '@lottery/shared/ManagementTable.vue';
+import FilterAssociationSelect from '@lottery/shared/FilterAssociationSelect.vue';
+import PlatformTemporalInput from '@lottery/shared/PlatformTemporalInput.vue';
+import {vGlobalLoading} from '@lottery/shared';
+import {commissionDateRange,type CommissionListQuery} from './commission-list-query';
+import { useOperationToast } from "@lottery/shared";
 import { vWriteGuard } from "@lottery/shared";
 import { useAdminI18n as useAssociationI18n } from "./i18n";
 const associationLocale = useAssociationI18n().locale;
@@ -19,7 +33,7 @@ import { createCommissionPaymentsApi } from "./commissionPayments-api";
 import {
   commissionCorrectionPermissions, createCommissionCorrectionsApi,
   type CommissionCorrectionActionBody, type CommissionCorrectionPolicy, type CommissionCorrectionPolicyBody, type CorrectionPlan, type CorrectionPlanTarget,
-  type CorrectionExecution, type CorrectionExecutionTarget,
+  type CorrectionExecution, type CorrectionExecutionTarget, type CorrectionCase, type CorrectionCasePage,
 } from "./commission-corrections-api";
 import {
   classifyCommissionCorrectionWriteFailure, clearAllCommissionCorrectionIntents,
@@ -31,50 +45,88 @@ import {
   type CommissionCorrectionOperation, type PendingCommissionCorrectionIntent,
 } from "./commission-corrections-state";
 
-const props = defineProps<{ account: AdminAccount; brandId: string; brandStatus?: string }>();
-const emit = defineEmits<{ (event: "session-invalid"): void }>();
+const props = defineProps<{ account: AdminAccount; brandId: string; brandStatus?: string; cycleId?: string }>();
+const emit = defineEmits<{ (event: "session-invalid"): void; (event: "writing-change", value: boolean): void }>();
 const { t, locale } = useAdminI18n();
 const operationLabel = (operation: CommissionCorrectionOperation) => t({ policy: 'admin.copy.3a0deb6f', plan_retry: 'admin.copy.18acbe2a', approve: 'admin.copy.028518f0', continue: 'admin.copy.cdb10f42', execute_retry: 'admin.copy.50dae2bb' }[operation] as Parameters<typeof t>[0]);
 const api = computed(() => createCommissionCorrectionsApi(fetch, props.account.id));
 const paymentsApi = computed(() => createCommissionPaymentsApi(fetch, props.account.id));
 const PAGE_SIZE = 20, TARGET_PAGE_SIZE = 100;
+const casePage=ref<CorrectionCasePage|null>(null),caseOffset=ref(0),caseLoading=ref(false);
+const queue=ref('pending'),fromDraft=ref(''),toDraft=ref(''),cycleDraft=ref(''),agentDraft=ref('');
+const caseFilter=ref<CommissionListQuery>({state:'pending'}), searched=ref(true),showPolicy=ref(false),detailOpen=ref(false);
+const detailTab=ref<'calculationChange'|'planDetails'|'execution'>('calculationChange');
+let caseTicket=0,caseOpenTicket=0;
+const caseColumns=computed(()=>[{key:'cycle',label:t('admin.commission.ui.cycle')},{key:'state',label:t('admin.commission.ui.state')},
+ {key:'before',label:t('admin.commission.ui.originalPoints'),cellClass:'numeric'}, {key:'after',label:t('admin.commission.ui.newPoints'),cellClass:'numeric'},
+ {key:'credit',label:t('admin.commission.ui.creditPoints'),cellClass:'numeric'},{key:'debit',label:t('admin.commission.ui.debitPoints'),cellClass:'numeric'},
+ {key:'updated',label:t('admin.commission.ui.updated')},{key:'actions',label:t('admin.commission.ui.actions')}]);
+const planColumns=computed(()=>[{key:'agent',label:t('admin.commission.ui.agent')},{key:'before',label:t('admin.commission.ui.originalPoints')},{key:'after',label:t('admin.commission.ui.newPoints')},{key:'delta',label:t('admin.commission.ui.deltaPoints')}]);
+const executionColumns=computed(()=>[...planColumns.value,{key:'state',label:t('admin.commission.ui.state')}]);
+function caseState(row:CorrectionCase){return row.plan.state==='stale'?planState(row.plan.state):row.execution_state?executionState(row.execution_state):row.plan.state==='ready'?t('admin.commission.ui.readyWaiting'):planState(row.plan.state)}
+function hasCompletePlan(row:CorrectionCase){return row.plan.state==='ready'||row.execution_id!==null}
+async function loadCases(offset=caseOffset.value,preserve=false){
+ if(!rights.value.view)return;if(!preserve)invalidateConflictReview();invalidateActionReview();
+ const ticket=++caseTicket,captured=scopeStamp.value,session=commissionCorrectionSessionGeneration();caseLoading.value=true;delete errors.value.cases;
+ try{const result=await api.value.listCases(props.brandId,PAGE_SIZE,offset,caseFilter.value);if(!alive||ticket!==caseTicket||captured!==scopeStamp.value||session!==commissionCorrectionSessionGeneration()||!rights.value.view)return;casePage.value=result;caseOffset.value=offset}
+ catch(cause){if(alive&&ticket===caseTicket&&captured===scopeStamp.value&&session===commissionCorrectionSessionGeneration())reportReadError('cases',cause,captured,session)}
+ finally{if(ticket===caseTicket)caseLoading.value=false}
+}
+async function applyCaseFilters(){
+  if (agentDraftSearchPending.value) return;
+ try{caseFilter.value={...commissionDateRange(fromDraft.value,toDraft.value),...(queue.value?{state:queue.value}:{}),...((props.cycleId || cycleDraft.value)?{cycle_id:props.cycleId || cycleDraft.value}:{}),...(agentDraft.value?{agent_id:agentDraft.value}:{})};searched.value=true;closeCase();await loadCases(0)}
+ catch{errors.value={...errors.value,cases:t('admin.commission.ui.dateError')}}
+}
+async function chooseQueue(value:string){queue.value=value;await applyCaseFilters()}
+async function resetCases(){agentDraftSearchPending.value=false;accountSearchReset.value++;fromDraft.value=toDraft.value=cycleDraft.value=agentDraft.value='';queue.value=props.cycleId?'':'pending';await applyCaseFilters()}
+function dirtyCases(){caseTicket++;casePage.value=null;caseLoading.value=false;searched.value=false}
+function closeCase(){caseOpenTicket++;detailTicket++;targetsTicket++;detailOpen.value=false;selectedPlanId.value=selectedExecutionId.value='';plan.value=null;execution.value=null;planTargets.value=[];executionTargets.value=[];loadingTargets.value=false;invalidateActionReview()}
+async function openCase(row:CorrectionCase){
+ const ticket=++caseOpenTicket,captured=scopeStamp.value,session=commissionCorrectionSessionGeneration();
+ detailOpen.value=true;detailTab.value='calculationChange';selectedExecutionId.value='';execution.value=null;executionTargets.value=[];
+ await selectPlan(row.id);
+ if(!alive||ticket!==caseOpenTicket||captured!==scopeStamp.value||session!==commissionCorrectionSessionGeneration()||!plan.value||plan.value.id!==row.id)return;
+ if(row.execution_id)await selectExecution(row.execution_id);
+}
+
 const rights = computed(() => commissionCorrectionPermissions(props.account, props.brandId));
 const scopeStamp = computed(() => JSON.stringify([props.account.id, props.account.super_admin, props.account.brand_ids,
-  props.account.permissions, props.account.permissions_by_brand, props.account.platform_permissions, props.brandId, props.brandStatus, rights.value]));
+  props.account.permissions, props.account.permissions_by_brand, props.account.platform_permissions, props.brandId, props.brandStatus, rights.value, props.cycleId]));
 const policy = ref<CommissionCorrectionPolicy | null>(null), planPage = ref<Awaited<ReturnType<ReturnType<typeof createCommissionCorrectionsApi>["listPlans"]>> | null>(null);
 const executionPage = ref<Awaited<ReturnType<ReturnType<typeof createCommissionCorrectionsApi>["listExecutions"]>> | null>(null);
 const plan = ref<CorrectionPlan | null>(null), execution = ref<CorrectionExecution | null>(null);
-const originalPaymentRun = ref<string | null>(null);
+const paymentGate = ref<boolean | null>(null);
 const planTargets = ref<CorrectionPlanTarget[]>([]), executionTargets = ref<CorrectionExecutionTarget[]>([]);
 const planTargetsTotal = ref("0"), executionTargetsTotal = ref("0"), planTargetsOffset = ref(0), executionTargetsOffset = ref(0);
+const failedPlanOffset = ref<number | null>(null), failedExecutionOffset = ref<number | null>(null);
 const selectedPlanId = ref(""), selectedExecutionId = ref("");
 const receipt = ref<{ operation: CommissionCorrectionOperation; value: unknown } | null>(null);
-const loading = ref(false), loadingPolicy = ref(false), loadingPlans = ref(false), loadingExecutions = ref(false), loadingTargets = ref(false), writing = ref(false);
+const loading = ref(false), loadingPolicy = ref(false), loadingPaymentGate = ref(false), loadingPlans = ref(false), loadingExecutions = ref(false), loadingTargets = ref(false), writing = ref(false);
 const errors = ref<Record<string, string | import("@lottery/shared").LocalizedMessage>>({}), writeError = ref<string | import("@lottery/shared").LocalizedMessage>("");
 const notice = ref<"confirmed" | "discarded" | "">("");
-const noticeText = computed(() => notice.value === "confirmed"
+const correctionNoticeText = (value: "confirmed" | "discarded" | "") => value === "confirmed"
   ? t('admin.copy.064adf92')
-  : notice.value === "discarded"
-    ? t('admin.copy.da960a7d') : "");
+  : value === "discarded"
+    ? t('admin.copy.da960a7d') : "";
 const reason = ref(""), policyEnabled = ref(false), confirmed = ref(false), dialog = ref<PendingCommissionCorrectionIntent | null>(null);
 const unknownIntent = ref<PendingCommissionCorrectionIntent | null>(null), conflictIntent = ref<PendingCommissionCorrectionIntent | null>(null);
 const conflict = ref(false), conflictReloading = ref(false), conflictRefreshed = ref(false), discardReviewed = ref(false);
 const planOffset = ref(0), executionOffset = ref(0);
-let alive = true, policyTicket = 0, plansTicket = 0, executionsTicket = 0, detailTicket = 0, targetsTicket = 0, writeTicket = 0, conflictTicket = 0;
+let alive = true, policyTicket = 0, paymentGateTicket = 0, plansTicket = 0, executionsTicket = 0, detailTicket = 0, targetsTicket = 0, writeTicket = 0, conflictTicket = 0;
 
-const busyRead = computed(() => loading.value || loadingPolicy.value || loadingPlans.value || loadingExecutions.value || loadingTargets.value);
-const planTotal = computed(() => planPage.value?.total_count ?? "0"), executionTotal = computed(() => executionPage.value?.total_count ?? "0");
+const busyRead = computed(() => loading.value || loadingPolicy.value || loadingPaymentGate.value || loadingPlans.value || loadingExecutions.value || loadingTargets.value || caseLoading.value);
 const canWrite = computed(() => rights.value.view && props.brandStatus !== "disabled" && !props.account.super_admin && !writing.value && !unknownIntent.value && !conflict.value);
 const canPolicy = computed(() => canWrite.value && !busyRead.value && !loadingTargets.value && !errors.value.policy && rights.value.policyWrite && policy.value && policy.value.version < Number.MAX_SAFE_INTEGER && validReason(reason.value));
-const canPlanRetry = computed(() => canWrite.value && !busyRead.value && !loadingTargets.value && !errors.value.plan && !errors.value.plans && rights.value.planRetry && plan.value?.state === "failed" && plan.value.version < Number.MAX_SAFE_INTEGER && validReason(reason.value));
-const canApprove = computed(() => canWrite.value && !busyRead.value && !loadingTargets.value && !errors.value.execution && !errors.value.executions && rights.value.approve && execution.value?.state === "awaiting_approval" && ["manual", "mixed"].includes(execution.value.payout_mode) && execution.value.version < Number.MAX_SAFE_INTEGER && validReason(reason.value));
-const canContinue = computed(() => canWrite.value && !busyRead.value && !loadingTargets.value && !errors.value.execution && !errors.value.executions && rights.value.continue && execution.value?.state === "paused" && Boolean(execution.value.approval_actor_type) && Boolean(execution.value.approval_audit_log_id) && execution.value.cycle_hold_active === true && execution.value.version < Number.MAX_SAFE_INTEGER && validReason(reason.value));
-const canRetry = computed(() => canWrite.value && !busyRead.value && !loadingTargets.value && !errors.value.execution && !errors.value.executions && rights.value.retry && execution.value?.state === "failed" && execution.value.version < Number.MAX_SAFE_INTEGER && validReason(reason.value));
+const canPlanRetry = computed(() => canWrite.value && !busyRead.value && !loadingTargets.value && !errors.value.plan && !errors.value.plans && !errors.value.planTargets && rights.value.planRetry && paymentGate.value === true && !errors.value.paymentGate && plan.value?.state === "failed" && plan.value.version < Number.MAX_SAFE_INTEGER && validReason(reason.value));
+const executionMatchesPlan = computed(() => Boolean(plan.value && execution.value && plan.value.state==='ready' && execution.value.plan_id===plan.value.id && execution.value.plan_version===plan.value.version && execution.value.evidence_epoch===plan.value.evidence_epoch));
+const canApprove = computed(() => executionMatchesPlan.value && policy.value?.enabled === true && paymentGate.value === true && !errors.value.policy && !errors.value.paymentGate && canWrite.value && !busyRead.value && !loadingTargets.value && !errors.value.execution && !errors.value.executions && !errors.value.planTargets && !errors.value.executionTargets && rights.value.approve && execution.value?.state === "awaiting_approval" && ["manual", "mixed"].includes(execution.value.payout_mode) && execution.value.version < Number.MAX_SAFE_INTEGER && validReason(reason.value));
+const canContinue = computed(() => executionMatchesPlan.value && policy.value?.enabled === true && paymentGate.value === true && !errors.value.policy && !errors.value.paymentGate && canWrite.value && !busyRead.value && !loadingTargets.value && !errors.value.execution && !errors.value.executions && !errors.value.planTargets && !errors.value.executionTargets && rights.value.continue && execution.value?.state === "paused" && Boolean(execution.value.approval_actor_type) && Boolean(execution.value.approval_audit_log_id) && execution.value.cycle_hold_active === true && execution.value.version < Number.MAX_SAFE_INTEGER && validReason(reason.value));
+const canRetry = computed(() => executionMatchesPlan.value && policy.value?.enabled === true && paymentGate.value === true && !errors.value.policy && !errors.value.paymentGate && canWrite.value && !busyRead.value && !loadingTargets.value && !errors.value.execution && !errors.value.executions && !errors.value.planTargets && !errors.value.executionTargets && rights.value.retry && execution.value?.state === "failed" && execution.value.version < Number.MAX_SAFE_INTEGER && validReason(reason.value));
 const canResolveUnknown = computed(() => Boolean(unknownIntent.value && rights.value.view && props.brandStatus !== "disabled" &&
   (unknownIntent.value.operation === "policy" ? rights.value.policyWrite : unknownIntent.value.operation === "plan_retry" ? rights.value.planRetry : unknownIntent.value.operation === "approve" ? rights.value.approve : unknownIntent.value.operation === "continue" ? rights.value.continue : rights.value.retry)));
 
 function validReason(value: string): boolean {
-  if (value.trim() !== value || new TextEncoder().encode(value).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
+  if (value.trim() !== value || Array.from(value).length > 500 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return false;
   for (let i = 0; i < value.length; i++) { const code = value.charCodeAt(i); if (code >= 0xd800 && code <= 0xdbff) { const next = value.charCodeAt(++i); if (!(next >= 0xdc00 && next <= 0xdfff)) return false; } else if (code >= 0xdc00 && code <= 0xdfff) return false; }
   return true;
 }
@@ -84,26 +136,28 @@ function current(ticket: number, lane: string, captured: string, session: number
 }
 function currentWrite(ticket: number, captured: string, session: number): boolean { return alive && ticket === writeTicket && captured === scopeStamp.value && session === commissionCorrectionSessionGeneration(); }
 function clearVisible() {
+  caseTicket++;caseOpenTicket++;casePage.value=null;caseOffset.value=0;caseLoading.value=false;detailOpen.value=false;showPolicy.value=false;
   policy.value = null; planPage.value = null; executionPage.value = null; plan.value = null; execution.value = null;
-  planTargets.value = []; executionTargets.value = []; planTargetsTotal.value = executionTargetsTotal.value = "0"; planTargetsOffset.value = executionTargetsOffset.value = 0; selectedPlanId.value = ""; selectedExecutionId.value = ""; originalPaymentRun.value = null;
+  planTargets.value = []; executionTargets.value = []; planTargetsTotal.value = executionTargetsTotal.value = "0"; planTargetsOffset.value = executionTargetsOffset.value = 0; failedPlanOffset.value = failedExecutionOffset.value = null; selectedPlanId.value = ""; selectedExecutionId.value = ""; paymentGate.value = null;
   receipt.value = null; reason.value = ""; dialog.value = null; confirmed.value = false;
   unknownIntent.value = null; conflictIntent.value = null; conflict.value = false; conflictRefreshed.value = false; discardReviewed.value = false;
-  errors.value = {}; writeError.value = ""; notice.value = ""; loading.value = loadingPolicy.value = loadingPlans.value = loadingExecutions.value = loadingTargets.value = writing.value = false;
+  errors.value = {}; writeError.value = ""; notice.value = ""; loading.value = loadingPolicy.value = loadingPaymentGate.value = loadingPlans.value = loadingExecutions.value = loadingTargets.value = writing.value = false;
 }
 function resetScope(_next?: string, previous?: string) {
   if (previous) { try { const old = JSON.parse(previous) as unknown[]; hideCommissionCorrectionIntentsForScope(String(old[0]), String(old[6])); } catch { /* Old scope cannot reveal an intent. */ } }
-  policyTicket++; plansTicket++; executionsTicket++; detailTicket++; targetsTicket++; writeTicket++; conflictTicket++;
+  policyTicket++; paymentGateTicket++; plansTicket++; executionsTicket++; detailTicket++; targetsTicket++; writeTicket++; conflictTicket++;
   clearVisible();
   const pending = listPendingCommissionCorrectionIntents(props.account.id, props.brandId);
   const conflictPending = pending.find(isCommissionCorrectionIntentConflict);
   conflictIntent.value = conflictPending ?? null; conflict.value = Boolean(conflictPending);
   unknownIntent.value = conflictPending ? null : pending[0] ?? null;
   if (unknownIntent.value) writeError.value = t('admin.copy.edf12fc2');
+  fromDraft.value=toDraft.value=cycleDraft.value=agentDraft.value='';queue.value=props.cycleId?'':'pending';caseFilter.value=props.cycleId?{cycle_id:props.cycleId}:{state:'pending'};searched.value=true;
   if (rights.value.view) void reloadAll();
 }
 function sessionExpired(cause: unknown, captured: string, session: number): boolean {
   if (cause instanceof AdminApiError && cause.status === 401 && alive && captured === scopeStamp.value && session === commissionCorrectionSessionGeneration()) {
-    policyTicket++; plansTicket++; executionsTicket++; detailTicket++; targetsTicket++; writeTicket++; clearAllCommissionCorrectionIntents(); clearVisible(); emit("session-invalid"); return true;
+    policyTicket++; paymentGateTicket++; plansTicket++; executionsTicket++; detailTicket++; targetsTicket++; writeTicket++; clearAllCommissionCorrectionIntents(); clearVisible(); emit("session-invalid"); return true;
   }
   return false;
 }
@@ -116,6 +170,17 @@ async function loadPolicy(preserve = false) {
   try { const value = await api.value.getPolicy(props.brandId); if (!current(ticket, "policy", captured, session)) return; policy.value = value; policyEnabled.value = value.enabled; delete errors.value.policy; }
   catch (cause) { if (current(ticket, "policy", captured, session)) reportReadError("policy", cause, captured, session); }
   finally { if (ticket === policyTicket) loadingPolicy.value = false; }
+}
+async function loadPaymentGate() {
+  if (!rights.value.view) return;
+  const ticket = ++paymentGateTicket, captured = scopeStamp.value, session = commissionCorrectionSessionGeneration();
+  loadingPaymentGate.value = true; paymentGate.value = null;
+  try {
+    const value = await paymentsApi.value.getPolicy(props.brandId);
+    if (alive && ticket === paymentGateTicket && captured === scopeStamp.value && session === commissionCorrectionSessionGeneration() && rights.value.view) { paymentGate.value = value.enabled; delete errors.value.paymentGate; }
+  } catch (cause) {
+    if (alive && ticket === paymentGateTicket && captured === scopeStamp.value && session === commissionCorrectionSessionGeneration() && rights.value.view) reportReadError('paymentGate', cause, captured, session);
+  } finally { if (ticket === paymentGateTicket) loadingPaymentGate.value = false; }
 }
 async function loadPlans(offset = planOffset.value, preserve = false) {
   if (!rights.value.view) return; if (!preserve) invalidateConflictReview(); invalidateActionReview();
@@ -137,24 +202,26 @@ async function loadExecutions(offset = executionOffset.value, preserve = false) 
 }
 async function selectPlan(id: string, preserve = false) {
   if (!rights.value.view) return; if (!preserve) invalidateConflictReview(); invalidateActionReview();
-  selectedPlanId.value = id; plan.value = null; originalPaymentRun.value = null; planTargets.value = []; planTargetsTotal.value = "0"; planTargetsOffset.value = 0; const ticket = ++detailTicket, targetTicket = ++targetsTicket;
+  delete errors.value.planTargets;
+  selectedPlanId.value = id; plan.value = null; planTargets.value = []; planTargetsTotal.value = "0"; planTargetsOffset.value = 0; failedPlanOffset.value = null; const ticket = ++detailTicket, targetTicket = ++targetsTicket;
   const captured = scopeStamp.value, session = commissionCorrectionSessionGeneration(); loadingTargets.value = true;
   try {
     const [fresh, targetPage] = await Promise.all([api.value.readPlan(props.brandId, id), api.value.listPlanTargets(props.brandId, id, TARGET_PAGE_SIZE, 0)]);
     if (!current(ticket, "detail", captured, session) || targetTicket !== targetsTicket || id !== selectedPlanId.value) return;
+    if (props.cycleId && fresh.cycle_id !== props.cycleId) throw new AdminApiError("Unexpected commission cycle", 502, "INVALID_RESPONSE");
     plan.value = fresh; planTargets.value = targetPage.items; planTargetsTotal.value = targetPage.total_count; delete errors.value.plan;
-    try { const originalPayment = await paymentsApi.value.read(props.brandId, fresh.payment_id); if (current(ticket, "detail", captured, session) && id === selectedPlanId.value) originalPaymentRun.value = originalPayment.run_id; }
-    catch (cause) { if (current(ticket, "detail", captured, session) && id === selectedPlanId.value) errors.value = { ...errors.value, originalPayment: message(cause) }; }
   } catch (cause) { if (current(ticket, "detail", captured, session) && targetTicket === targetsTicket) reportReadError("plan", cause, captured, session); }
   finally { if (alive && targetTicket === targetsTicket && captured === scopeStamp.value) loadingTargets.value = false; }
 }
 async function selectExecution(id: string, preserve = false) {
   if (!rights.value.view) return; if (!preserve) invalidateConflictReview(); invalidateActionReview();
-  selectedExecutionId.value = id; execution.value = null; executionTargets.value = []; executionTargetsTotal.value = "0"; executionTargetsOffset.value = 0; const ticket = ++detailTicket, targetTicket = ++targetsTicket;
+  delete errors.value.executionTargets;
+  selectedExecutionId.value = id; execution.value = null; executionTargets.value = []; executionTargetsTotal.value = "0"; executionTargetsOffset.value = 0; failedExecutionOffset.value = null; const ticket = ++detailTicket, targetTicket = ++targetsTicket;
   const captured = scopeStamp.value, session = commissionCorrectionSessionGeneration(); loadingTargets.value = true;
   try {
     const [fresh, targetPage] = await Promise.all([api.value.readExecution(props.brandId, id), api.value.listExecutionTargets(props.brandId, id, TARGET_PAGE_SIZE, 0)]);
     if (!current(ticket, "detail", captured, session) || targetTicket !== targetsTicket || id !== selectedExecutionId.value) return;
+    if (props.cycleId && fresh.cycle_id !== props.cycleId) throw new AdminApiError("Unexpected commission cycle", 502, "INVALID_RESPONSE");
     execution.value = fresh; executionTargets.value = targetPage.items; executionTargetsTotal.value = targetPage.total_count; delete errors.value.execution;
   } catch (cause) { if (current(ticket, "detail", captured, session) && targetTicket === targetsTicket) reportReadError("execution", cause, captured, session); }
   finally { if (alive && targetTicket === targetsTicket && captured === scopeStamp.value) loadingTargets.value = false; }
@@ -162,20 +229,20 @@ async function selectExecution(id: string, preserve = false) {
 async function loadPlanTargetPage(offset: number) {
   if (!plan.value || !rights.value.view) return; invalidateConflictReview(); invalidateActionReview();
   const id = plan.value.id, ticket = ++targetsTicket, captured = scopeStamp.value, session = commissionCorrectionSessionGeneration(); loadingTargets.value = true;
-  try { const page = await api.value.listPlanTargets(props.brandId, id, TARGET_PAGE_SIZE, offset); if (!current(ticket, "targets", captured, session) || selectedPlanId.value !== id) return; planTargets.value = page.items; planTargetsTotal.value = page.total_count; planTargetsOffset.value = offset; delete errors.value.planTargets; }
-  catch (cause) { if (current(ticket, "targets", captured, session)) reportReadError("planTargets", cause, captured, session); }
+  try { const page = await api.value.listPlanTargets(props.brandId, id, TARGET_PAGE_SIZE, offset); if (!current(ticket, "targets", captured, session) || selectedPlanId.value !== id) return; planTargets.value = page.items; planTargetsTotal.value = page.total_count; planTargetsOffset.value = offset; failedPlanOffset.value = null; delete errors.value.planTargets; }
+  catch (cause) { if (current(ticket, "targets", captured, session)) { failedPlanOffset.value = offset; reportReadError("planTargets", cause, captured, session); } }
   finally { if (alive && ticket === targetsTicket && captured === scopeStamp.value) loadingTargets.value = false; }
 }
 async function loadExecutionTargetPage(offset: number) {
   if (!execution.value || !rights.value.view) return; invalidateConflictReview(); invalidateActionReview();
   const id = execution.value.id, ticket = ++targetsTicket, captured = scopeStamp.value, session = commissionCorrectionSessionGeneration(); loadingTargets.value = true;
-  try { const page = await api.value.listExecutionTargets(props.brandId, id, TARGET_PAGE_SIZE, offset); if (!current(ticket, "targets", captured, session) || selectedExecutionId.value !== id) return; executionTargets.value = page.items; executionTargetsTotal.value = page.total_count; executionTargetsOffset.value = offset; delete errors.value.executionTargets; }
-  catch (cause) { if (current(ticket, "targets", captured, session)) reportReadError("executionTargets", cause, captured, session); }
+  try { const page = await api.value.listExecutionTargets(props.brandId, id, TARGET_PAGE_SIZE, offset); if (!current(ticket, "targets", captured, session) || selectedExecutionId.value !== id) return; executionTargets.value = page.items; executionTargetsTotal.value = page.total_count; executionTargetsOffset.value = offset; failedExecutionOffset.value = null; delete errors.value.executionTargets; }
+  catch (cause) { if (current(ticket, "targets", captured, session)) { failedExecutionOffset.value = offset; reportReadError("executionTargets", cause, captured, session); } }
   finally { if (alive && ticket === targetsTicket && captured === scopeStamp.value) loadingTargets.value = false; }
 }
 async function reloadAll(preserve = false) {
   if (!rights.value.view) return; loading.value = true;
-  await Promise.all([loadPolicy(preserve), loadPlans(0, preserve), loadExecutions(0, preserve)]);
+  await Promise.all([loadPolicy(preserve), loadPaymentGate(), loadCases(caseOffset.value, preserve)]);
   if (selectedPlanId.value) await selectPlan(selectedPlanId.value, preserve);
   if (selectedExecutionId.value) await selectExecution(selectedExecutionId.value, preserve);
   loading.value = false;
@@ -200,10 +267,22 @@ function openReview(operation: CommissionCorrectionOperation) {
   const intent = buildIntent(operation); if (!intent) return;
   dialog.value = intent; confirmed.value = false; writeError.value = "";
 }
-function retryUnknown() { if (!unknownIntent.value || !canResolveUnknown.value) return; dialog.value = unknownIntent.value; confirmed.value = false; }
+async function retryUnknown() {
+  const intent = unknownIntent.value;
+  if (!intent || !canResolveUnknown.value) return;
+  if (props.cycleId && intent.operation !== "policy") {
+    if (intent.operation === "plan_retry") await selectPlan(intent.targetId!, true);
+    else await selectExecution(intent.targetId!, true);
+    const target = intent.operation === "plan_retry" ? plan.value : execution.value;
+    if (unknownIntent.value !== intent || !target || target.id !== intent.targetId || target.cycle_id !== props.cycleId) return;
+  }
+  dialog.value = intent; confirmed.value = false;
+}
 function validIntentScope(intent: PendingCommissionCorrectionIntent): boolean { return intent.actorId === props.account.id && intent.brandId === props.brandId && (intent.operation === "policy" ? intent.targetId === undefined : Boolean(intent.targetId)); }
 async function submit(intent: PendingCommissionCorrectionIntent) {
   const recovery = Boolean(unknownIntent.value && unknownIntent.value.key === intent.key);
+  const cycleTarget = intent.operation === "plan_retry" ? plan.value : execution.value;
+  if (props.cycleId && intent.operation !== "policy" && (!cycleTarget || cycleTarget.id !== intent.targetId || cycleTarget.cycle_id !== props.cycleId)) return;
   if (writing.value || busyRead.value || loadingTargets.value || !confirmed.value || !rights.value.view || props.brandStatus === "disabled" || !validIntentScope(intent)) return;
   if (!recovery && (unknownIntent.value || conflict.value)) return;
   if ((intent.operation === "policy" && !rights.value.policyWrite) || (intent.operation === "plan_retry" && !rights.value.planRetry) || (intent.operation === "approve" && !rights.value.approve) || (intent.operation === "continue" && !rights.value.continue) || (intent.operation === "execute_retry" && !rights.value.retry)) return;
@@ -234,7 +313,7 @@ async function submit(intent: PendingCommissionCorrectionIntent) {
       const sameOriginalSession = session === commissionCorrectionSessionGeneration() && props.account.id === intent.actorId;
       if (sameOriginalSession) {
         clearAllCommissionCorrectionIntents();
-        policyTicket++; plansTicket++; executionsTicket++; detailTicket++; targetsTicket++; writeTicket++; clearVisible(); emit("session-invalid");
+        policyTicket++; paymentGateTicket++; plansTicket++; executionsTicket++; detailTicket++; targetsTicket++; writeTicket++; clearVisible(); emit("session-invalid");
       }
       return;
     }
@@ -264,11 +343,11 @@ async function refreshConflict() {
   const planToRefresh = selectedPlanId.value || (intent.operation === "plan_retry" ? intent.targetId ?? "" : "");
   const executionToRefresh = selectedExecutionId.value || (intent.operation !== "policy" && intent.operation !== "plan_retry" ? intent.targetId ?? "" : "");
   conflictReloading.value = true; errors.value = {};
-  const results = await Promise.allSettled([loadPolicy(true), loadPlans(planOffset.value, true), loadExecutions(executionOffset.value, true)]);
+  const results = await Promise.allSettled([loadPolicy(true), loadPaymentGate(), loadPlans(planOffset.value, true), loadExecutions(executionOffset.value, true)]);
   if (planToRefresh) await selectPlan(planToRefresh, true);
   if (executionToRefresh) await selectExecution(executionToRefresh, true);
   const planRequired = Boolean(planToRefresh), executionRequired = Boolean(executionToRefresh);
-  if (alive && ticket === conflictTicket && captured === scopeStamp.value && rights.value.view && results.every((result) => result.status === "fulfilled") && Object.keys(errors.value).length === 0 && (!planRequired || plan.value?.id === planToRefresh) && (!executionRequired || execution.value?.id === executionToRefresh) && Boolean(policy.value && planPage.value && executionPage.value)) {
+  if (alive && ticket === conflictTicket && captured === scopeStamp.value && rights.value.view && results.every((result) => result.status === "fulfilled") && Object.keys(errors.value).length === 0 && (!planRequired || plan.value?.id === planToRefresh) && (!executionRequired || execution.value?.id === executionToRefresh) && Boolean(policy.value && paymentGate.value !== null && planPage.value && executionPage.value)) {
     conflictRefreshed.value = true; discardReviewed.value = false;
     writeError.value = t('admin.copy.e58d7d85');
   }
@@ -283,67 +362,74 @@ function discardConflict() {
 function formatDate(value: string): string{ return formatDisplayDateTime(value, displayLocale.value); }
  function planState(state: string): string { const names: Record<string, string> = { planning:'admin.copy.30fa9fae',ready:'admin.copy.6b41f253',blocked:'admin.copy.4565cb00',failed:'admin.copy.1feabec0',stale:'admin.copy.38135e1a' }; return names[state] ? t(adminKey(names[state]!)) : state; }
  function executionState(state: string): string { const names: Record<string, string> = { awaiting_approval:'admin.copy.564c9922',applying:'admin.copy.4eb76ff3',completed:'admin.copy.293e79cc',paused:'admin.copy.40ecc18f',failed:'admin.copy.1feabec0',stale:'admin.copy.38135e1a' }; return names[state] ? t(adminKey(names[state]!)) : state; }
- function modeLabel(mode: string): string { const names: Record<string, string> = { manual:'admin.copy.6644f5f6',automatic:'admin.copy.4b7603bc',mixed:'admin.copy.2e8f9df9',none:'admin.copy.c2b41b33' }; return names[mode] ? t(adminKey(names[mode]!)) : mode; }
 function receiptText(): string { return receipt.value ? operationLabel(receipt.value.operation) : ""; }
 
+watch([fromDraft,toDraft,cycleDraft,agentDraft],dirtyCases,{flush:'sync'});
+watch(writing, value => emit("writing-change", value), { flush: "sync" });
 watch(scopeStamp, resetScope, { immediate: true });
-onUnmounted(() => { alive = false; policyTicket++; plansTicket++; executionsTicket++; detailTicket++; targetsTicket++; writeTicket++; conflictTicket++; });
+onUnmounted(() => { alive = false; caseTicket++;caseOpenTicket++; policyTicket++; paymentGateTicket++; plansTicket++; executionsTicket++; detailTicket++; targetsTicket++; writeTicket++; conflictTicket++; });
+
+useOperationToast(() => writeError.value, value => displayPublicError(value), 'error');
+useOperationToast(() => notice.value, value => correctionNoticeText(value), 'success');
+useOperationToast(() => errors.value.policy, value => displayPublicError(value), 'error');
+useOperationToast(() => errors.value.paymentGate, value => displayPublicError(value), 'error');
+useOperationToast(() => errors.value.planTargets, value => displayPublicError(value), 'error');
+useOperationToast(() => errors.value.executionTargets, value => displayPublicError(value), 'error');
+useOperationToast(() => errors.value.cases, value => displayPublicError(value), 'error');
+useOperationToast(() => errors.value.plans, value => displayPublicError(value), 'error');
+useOperationToast(() => errors.value.executions, value => displayPublicError(value), 'error');
 </script>
 
 <template>
-  <article class="panel correction-admin">
-    <header class="cc-heading"><div><h1>{{ t('admin.copy.f8cf27de') }}</h1></div><button v-refresh-button="t('admin.copy.56b8a362')" class="button" type="button" data-testid="cc-refresh" :disabled="busyRead || !rights.view" @click="withGlobalLoading(reloadAll)">{{ t('admin.copy.56b8a362') }}</button></header>
-    <div class="cc-callout">{{ t('admin.copy.abf96c9b') }}</div>
-    <p v-if="!rights.view" class="cc-muted">{{ t('admin.copy.cdaf5831') }}</p>
-    <template v-else>
-      <div v-if="writeError" class="cc-error" role="alert">{{ displayPublicError(writeError) }}</div><div v-if="notice" class="cc-success" role="status">{{ noticeText }}</div>
-      <section class="cc-card" data-testid="cc-policy"><div><h2>{{ t('admin.copy.02ee068b') }}</h2></div>
-        <label class="cc-toggle"><input data-testid="cc-policy-toggle" type="checkbox" v-model="policyEnabled" :disabled="!rights.policyWrite || props.account.super_admin || props.brandStatus === 'disabled' || !policy || busyRead || writing || Boolean(unknownIntent) || conflict" />{{ policy?.enabled ? t('admin.copy.e1cc5fdc') : t('admin.copy.f81cb486') }}</label>
+ <article class="commission-workspace correction-admin">
+  <header v-if="!detailOpen" class="console-page-heading commission-heading"><h1 v-if="!cycleId" class="console-page-title">{{ t('admin.commission.ui.corrections') }}</h1></header>
+  <p v-if="!rights.view" class="empty-state">{{ t('admin.copy.cdaf5831') }}</p>
+  <template v-else>
+   <p v-if="brandStatus==='disabled'" class="commission-warning">{{ t('admin.commission.ui.disabled') }}</p>
+   <template v-if="!detailOpen">
+    <ManagementList><template #tabs><nav class="commission-tabs" role="tablist"><button v-for="tab in [{value:'pending',label:'correctionPending'},{value:'processing',label:'correctionProcessing'},{value:'history',label:'correctionHistory'},{value:'',label:'all'}]" :key="tab.value" role="tab" class="button" :aria-selected="queue===tab.value" :disabled="caseLoading" @click="withGlobalLoading(chooseQueue,tab.value)">{{ t(adminKey('admin.commission.ui.'+tab.label)) }}</button></nav></template><template #actions><button v-if="rights.view" class="button" @click="showPolicy=true">{{ t('admin.commission.ui.settings') }}</button></template><template #filters><form v-inline-validation novalidate class="commission-toolbar ui-filter-bar" @submit.prevent="withGlobalLoading(applyCaseFilters)"><label><PlatformTemporalInput :label="t('admin.commission.ui.from')" :placeholder="t('admin.commission.ui.from')" v-model="fromDraft" type="date" :locale="locale" /></label><label><PlatformTemporalInput :label="t('admin.commission.ui.to')" :placeholder="t('admin.commission.ui.to')" v-model="toDraft" type="date" :locale="locale" /></label><label v-if="!cycleId"><FilterAssociationSelect v-model="cycleDraft" :brand-id="brandId" surface="admin" resource="commission" kind="cycle" :label="t('admin.commission.ui.cycle')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" /></label><label><FilterAssociationSearch v-model="agentDraft" v-model:pending="agentDraftSearchPending" :reset-key="accountSearchReset" :brand-id="brandId" surface="admin" resource="commission" kind="agent" :label="t('admin.commission.ui.agent')" :locale="locale" :scope-key="scopeStamp" :enabled="rights.view" /></label><div class="commission-actions ui-form-actions"><button class="button button-primary" type="submit" :disabled="agentDraftSearchPending || caseLoading">{{ t('admin.commission.ui.query') }}</button><button class="button" type="button" @click="withGlobalLoading(resetCases)">{{ t('admin.commission.ui.reset') }}</button></div></form></template>
+    <p v-if="!searched" class="commission-note">{{ t('admin.commission.ui.filtersChanged') }}</p>
+    <p v-if="errors.cases" class="commission-warning" role="alert">{{ displayPublicError(errors.cases) }} <button :disabled="agentDraftSearchPending" v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(applyCaseFilters)">{{ t('admin.commission.ui.retryRead') }}</button></p>
+    <p v-if="caseLoading" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
+    <ManagementTable :entries="casePage?.items??[]" :columns="caseColumns" :empty="!!casePage && !casePage.items.length" :empty-label="t('admin.commission.ui.empty')">
+     <template #cycle="{entry}"><button class="text-button commission-link" :data-case-id="entry.id" @click="withGlobalLoading(openCase,entry)"><AssociationName :record="entry.plan" kind="cycle" :id="entry.plan.cycle_id" :locale="locale" /></button></template>
+     <template #state="{entry}"><span class="commission-status" :class="entry.plan.state==='stale'?entry.plan.state:entry.execution_state??entry.plan.state">{{ caseState(entry) }}</span></template>
+     <template #before="{entry}">{{ hasCompletePlan(entry)?entry.plan.before_points:t('admin.commission.ui.incomplete') }}</template><template #after="{entry}">{{ hasCompletePlan(entry)?entry.plan.calculated_points:t('admin.commission.ui.incomplete') }}</template><template #credit="{entry}">{{ hasCompletePlan(entry)?entry.plan.credit_points:'—' }}</template><template #debit="{entry}">{{ hasCompletePlan(entry)?entry.plan.debit_points:'—' }}</template>
+     <template #updated="{entry}">{{ formatDate(entry.plan.updated_at) }}</template><template #actions="{entry}"><MemberActionsMenu :id="'CommissionCorrectionsManagement-'+entry.id" :label="t('admin.copy.d21fcbef')"><button type="button" role="menuitem" class="button" @click="withGlobalLoading(openCase,entry)">{{ t('admin.commission.ui.view') }}</button></MemberActionsMenu></template>
+    </ManagementTable>
+    <template #pagination><TablePagination :show-empty="Boolean(casePage)" v-if="casePage" class="commission-pager" :total="casePage.total_count" :page="Math.floor(casePage.offset / PAGE_SIZE + 1)" :count="casePage.items.length" :locale="locale" :page-size="PAGE_SIZE" :previous-disabled="caseLoading||caseOffset===0" :next-disabled="caseLoading||BigInt(caseOffset+PAGE_SIZE)>=BigInt(casePage.total_count)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadCases((target - 1) * PAGE_SIZE)" /></template></ManagementList>
+   </template>
+   <section v-else class="commission-detail">
+    <header class="console-page-heading commission-heading"><div class="commission-actions"><button class="button" @click="closeCase">{{ t('admin.commission.ui.back') }}</button><h1 v-if="!cycleId" class="console-page-title">{{ t('admin.commission.ui.corrections') }}</h1></div></header>
+    <p v-if="loadingTargets" v-global-loading>{{ t('admin.copy.ab7239f3') }}</p>
+    <p v-if="errors.plan || errors.execution" class="commission-warning" role="alert">{{ displayPublicError(errors.plan ?? errors.execution) }}</p>
+    <template v-if="plan">
+     <div class="commission-heading"><b><AssociationName :record="plan" kind="cycle" :id="plan.cycle_id" :locale="locale" /></b><span class="commission-status" :class="plan.state==='stale'?plan.state:execution?.state??plan.state">{{ plan.state==='stale'?planState(plan.state):execution?executionState(execution.state):plan.state==='ready'?t('admin.commission.ui.readyWaiting'):planState(plan.state) }}</span></div>
+     <p v-if="plan.state==='failed'" class="commission-warning">{{ t('admin.commission.ui.planFailed') }} {{ plan.last_error_code?displayPublicError(publicErrorMessage({code:plan.last_error_code})):'' }}</p>
+     <p v-if="execution?.state==='paused'" class="commission-warning">{{ t('admin.commission.ui.executionPaused') }}</p><p v-if="execution?.state==='failed'" class="commission-warning">{{ t('admin.commission.ui.executionFailed') }} {{ execution.last_error_code?displayPublicError(publicErrorMessage({code:execution.last_error_code})):'' }}</p><p v-if="plan.state==='stale'||execution?.state==='stale'" class="commission-warning">{{ t('admin.commission.ui.correctionStale') }}</p>
+     <p v-if="paymentGate === false" class="commission-warning">{{ t('admin.commission.ui.policyOff') }}</p>
+     <p v-if="policy && !policy.enabled" class="commission-warning">{{ t('admin.copy.f81cb486') }}</p>
+     <p v-if="errors.policy || errors.paymentGate" class="commission-warning" role="alert">{{ displayPublicError(errors.policy ?? errors.paymentGate) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(reloadAll)">{{ t('admin.commission.ui.retryRead') }}</button></p>
+     <div class="commission-actions ui-form-actions"><button v-if="plan.state==='failed' && rights.planRetry" class="button button-primary" data-testid="cc-plan-retry" :disabled="!canPlanRetry" @click="openReview('plan_retry')">{{ t('admin.copy.18acbe2a') }}</button><button v-if="execution?.state==='awaiting_approval' && rights.approve" class="button button-primary" data-testid="cc-approve" :disabled="!canApprove" @click="openReview('approve')">{{ t('admin.copy.028518f0') }}</button><button v-if="execution?.state==='paused' && rights.continue" class="button button-primary" data-testid="cc-continue" :disabled="!canContinue" @click="openReview('continue')">{{ t('admin.copy.cdb10f42') }}</button><button v-if="execution?.state==='failed' && rights.retry" class="button button-primary" data-testid="cc-execute-retry" :disabled="!canRetry" @click="openReview('execute_retry')">{{ t('admin.copy.50dae2bb') }}</button></div>
+     <nav class="commission-tabs" role="tablist"><button v-for="tab in (['calculationChange','planDetails','execution'] as const)" :key="tab" class="button" role="tab" :aria-selected="detailTab===tab" @click="detailTab=tab">{{ t(adminKey('admin.commission.ui.'+tab)) }}</button></nav>
+     <section v-if="detailTab==='calculationChange'" class="commission-detail" data-testid="cc-plan-detail">
+      <dl class="commission-metrics"><div><dt>{{ t('admin.commission.ui.originalPoints') }}</dt><dd>{{ plan.state==='ready'||execution?plan.before_points:t('admin.commission.ui.incomplete') }}</dd></div><div><dt>{{ t('admin.commission.ui.newPoints') }}</dt><dd>{{ plan.state==='ready'||execution?plan.calculated_points:t('admin.commission.ui.incomplete') }}</dd></div><div><dt>{{ t('admin.commission.ui.creditPoints') }}</dt><dd>{{ plan.state==='ready'||execution?plan.credit_points:'—' }}</dd></div><div><dt>{{ t('admin.commission.ui.debitPoints') }}</dt><dd>{{ plan.state==='ready'||execution?plan.debit_points:'—' }}</dd></div></dl>
+      <p class="commission-note">{{ t('admin.commission.ui.amountDifference') }} {{ t('admin.copy.abf96c9b') }}</p><p v-if="!execution" class="commission-note">{{ t('admin.commission.ui.noExecution') }}</p>
+      <dl v-else class="commission-facts"><dt>{{ t('admin.commission.ui.progress') }}</dt><dd>{{ execution.applied_count }} / {{ execution.target_count }}</dd><dt>{{ t('admin.commission.ui.appliedPoints') }}</dt><dd>{{ execution.applied_credit_points }} / {{ execution.applied_debit_points }}</dd></dl>
+     </section>
+     <ManagementList embedded v-if="detailTab==='planDetails'" class="commission-detail"><p v-if="errors.planTargets" class="commission-warning" role="alert">{{ displayPublicError(errors.planTargets) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadPlanTargetPage,failedPlanOffset ?? planTargetsOffset)">{{ t('admin.commission.ui.retryRead') }}</button></p><ManagementTable :entries="planTargets" :columns="planColumns" :empty="!loadingTargets&&!planTargets.length" :empty-label="t('admin.commission.ui.empty')"><template #agent="{entry}"><AssociationName :record="entry" kind="agent" :id="entry.agent_id" :locale="locale" /></template><template #before="{entry}">{{ entry.points_before }}</template><template #after="{entry}">{{ entry.points_after }}</template><template #delta="{entry}">{{ entry.delta_points }}</template></ManagementTable><template #pagination><TablePagination :show-empty="Boolean(plan)" class="commission-pager" :total="planTargetsTotal" :page="Math.floor(planTargetsOffset / TARGET_PAGE_SIZE + 1)" :count="planTargets.length" :locale="locale" :page-size="TARGET_PAGE_SIZE" :previous-disabled="loadingTargets||planTargetsOffset===0" :next-disabled="loadingTargets||BigInt(planTargetsOffset+TARGET_PAGE_SIZE)>=BigInt(planTargetsTotal)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadPlanTargetPage((target - 1) * TARGET_PAGE_SIZE)" /></template></ManagementList>
+     <ManagementList embedded v-if="detailTab==='execution'" class="commission-detail" data-testid="cc-execution-detail"><p v-if="!execution" class="commission-note">{{ t('admin.commission.ui.noExecution') }}</p><template v-else><p v-if="errors.executionTargets" class="commission-warning" role="alert">{{ displayPublicError(errors.executionTargets) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadExecutionTargetPage,failedExecutionOffset ?? executionTargetsOffset)">{{ t('admin.commission.ui.retryRead') }}</button></p><dl class="commission-metrics"><div><dt>{{ t('admin.commission.ui.progress') }}</dt><dd>{{ execution.applied_count }} / {{ execution.target_count }}</dd></div><div><dt>{{ t('admin.commission.ui.creditPoints') }}</dt><dd>{{ execution.applied_credit_points }} / {{ execution.credit_points }}</dd></div><div><dt>{{ t('admin.commission.ui.debitPoints') }}</dt><dd>{{ execution.applied_debit_points }} / {{ execution.debit_points }}</dd></div></dl><ManagementTable :entries="executionTargets" :columns="executionColumns" :empty="!loadingTargets&&!executionTargets.length" :empty-label="t('admin.commission.ui.empty')"><template #agent="{entry}"><AssociationName :record="entry" kind="agent" :id="entry.agent_id" :locale="locale" /></template><template #before="{entry}">{{ entry.points_before }}</template><template #after="{entry}">{{ entry.points_after }}</template><template #delta="{entry}">{{ entry.delta_points }}</template><template #state="{entry}">{{ entry.state==='applied' && entry.delta_points==='0'?t('admin.copy.a1cb3520'):entry.state==='applied'?t('admin.commission.targetApplied'):t('admin.commission.targetPending') }}</template></ManagementTable></template><template #pagination><TablePagination :show-empty="Boolean(execution)" class="commission-pager" :total="executionTargetsTotal" :page="Math.floor(executionTargetsOffset / TARGET_PAGE_SIZE + 1)" :count="executionTargets.length" :locale="locale" :page-size="TARGET_PAGE_SIZE" :previous-disabled="loadingTargets||executionTargetsOffset===0" :next-disabled="loadingTargets||BigInt(executionTargetsOffset+TARGET_PAGE_SIZE)>=BigInt(executionTargetsTotal)" :previous-label="t('admin.copy.dbe7a5d7')" :next-label="t('admin.copy.2e9c9e7a')" :go-to="(target: number) => loadExecutionTargetPage((target - 1) * TARGET_PAGE_SIZE)" /></template></ManagementList>
 
-        <button class="button" data-testid="cc-policy-review" type="button" :disabled="!canPolicy" @click="openReview('policy')">{{ t('admin.copy.3a0deb6f') }}</button>
-        <small v-if="props.brandStatus === 'paused'" class="cc-muted">{{ t('admin.copy.8144c980') }}</small>
-      </section>
-
-      <section class="cc-section"><div class="cc-section-heading"><div><h2>{{ t('admin.copy.fac20e49') }}</h2><p>{{ t('admin.copy.a79f8665') }} · {{ planTotal }}</p></div><div class="cc-actions"><button v-refresh-button="t('admin.copy.ffd7684e')" class="button" type="button" :disabled="busyRead" @click="withGlobalLoading(loadPlans, planOffset)">{{ t('admin.copy.ffd7684e') }}</button></div></div>
-        <div v-if="errors.plans" class="cc-error" role="alert">{{ displayPublicError(errors.plans) }}</div>
-        <div class="cc-table-wrap"><table><thead><tr><th>{{ t('admin.copy.2931716c') }}</th><th>{{ t('admin.copy.e6dee72a') }}</th><th>{{ t('admin.copy.cbe1a7b4') }}</th><th>{{ t('admin.copy.f30f55ed') }}</th><th>{{ t('admin.copy.64cb4a2c') }}</th><th>{{ t('admin.copy.28f2247b') }}</th></tr></thead><tbody>
-          <tr v-for="row in planPage?.items ?? []" :key="row.id" :class="{selected:selectedPlanId===row.id}"><td><button class="cc-link" type="button" @click="withGlobalLoading(selectPlan, row.id)">{{ row.id }}</button><small>{{ t('admin.copy.030e0beb') }} <AssociationName :record="row" kind="cycle" :id="row.cycle_id" :locale="associationLocale" /> {{ t('admin.copy.9d344757') }} {{ row.run_id }}</small></td><td><span class="cc-status">{{ planState(row.state) }}</span><small>{{ modeLabel(row.payout_mode) }}</small></td><td><small>{{ row.payment_id }}</small></td><td>{{ row.before_points }} / {{ row.calculated_points }} / {{ row.credit_points ?? "—" }} / {{ row.debit_points ?? "—" }} / {{ row.net_points ?? "—" }}</td><td>{{ row.planned_count }} / {{ row.target_count }}</td><td>{{ row.last_error_code ? displayPublicError(publicErrorMessage({ code: row.last_error_code })) : "—" }}</td></tr>
-          <tr v-if="!planPage?.items.length"><td colspan="6" class="cc-muted empty-state">{{ t('admin.copy.c57345d3') }}</td></tr>
-        </tbody></table></div><div class="cc-pagination"><button class="button" type="button" :disabled="planOffset===0 || busyRead" @click="withGlobalLoading(loadPlans, Math.max(0,planOffset-PAGE_SIZE))">{{ t('admin.copy.dbe7a5d7') }}</button><span>{{ planPage?.items.length ? planOffset + 1 : 0 }}–{{ planOffset + (planPage?.items.length ?? 0) }} / {{ planTotal }}</span><button class="button" type="button" :disabled="!planPage || BigInt(planOffset+PAGE_SIZE)>=BigInt(planTotal) || busyRead" @click="withGlobalLoading(loadPlans, planOffset+PAGE_SIZE)">{{ t('admin.copy.2e9c9e7a') }}</button></div>
-        <DetailModal v-if="!!plan" :title="t('admin.copy.01db40da')" :close-label="t('admin.copy.2bb2cb1d')" :open="!dialog" @close="plan = null; selectedPlanId = ''">
-<div v-if="plan" class="cc-card cc-detail" data-testid="cc-plan-detail"><div><h3>{{ t('admin.copy.89016b32') }} · {{ plan.id }}</h3><span class="cc-status">{{ planState(plan.state) }}</span></div><dl class="cc-facts"><dt>{{ t('admin.copy.3f938f0d') }}</dt><dd>{{ plan.payment_id }} · {{ originalPaymentRun ?? errors.originalPayment ?? t('admin.copy.27342bf3') }}</dd><dt>{{ t('admin.copy.ad5f2d15') }}</dt><dd>{{ plan.before_points }} / {{ plan.calculated_points }}</dd><dt>{{ t('admin.copy.4d58a26a') }}</dt><dd>{{ plan.credit_points ?? "—" }} / {{ plan.debit_points ?? "—" }} / {{ plan.net_points ?? "—" }}</dd><dt>{{ t('admin.copy.0e2843d8') }}</dt><dd>{{ plan.last_error_code ? displayPublicError(publicErrorMessage({ code: plan.last_error_code })) : "—" }}</dd></dl>
-          <h4>{{ t('admin.copy.2ce503d6') }}</h4><div class="cc-table-wrap"><table><thead><tr><th>{{ t('admin.ui.agentMember') }}</th><th>{{ t('admin.copy.82b6cfd2') }}</th><th>{{ t('admin.copy.ee390b58') }}</th><th>{{ t('admin.copy.a69f2089') }}</th></tr></thead><tbody><tr v-for="target in planTargets" :key="target.id"><td><AssociationName :record="target" kind="agent" :id="target.agent_id" :locale="associationLocale" /><small><AssociationName :record="target" kind="member" :id="target.member_id" :locale="associationLocale" /></small></td><td>{{ target.points_before }} → {{ target.points_after }} / {{ target.delta_points }}<small v-if="target.delta_points==='0'">{{ t('admin.copy.7d577b92') }}</small></td><td>{{ target.original_target_id ?? "—" }}</td><td>{{ target.previous_correction_target_id ?? "—" }}</td></tr><tr v-if="!planTargets.length"><td colspan="4" class="cc-muted empty-state">{{ t('admin.copy.cf8e4243') }}</td></tr></tbody></table></div>
-          <div class="cc-pagination"><button class="button" type="button" :disabled="planTargetsOffset===0 || loadingTargets" @click="withGlobalLoading(loadPlanTargetPage, Math.max(0,planTargetsOffset-TARGET_PAGE_SIZE))">{{ t('admin.copy.d2c000b4') }}</button><span>{{ planTargets.length ? planTargetsOffset + 1 : 0 }}–{{ planTargetsOffset + planTargets.length }} / {{ planTargetsTotal }}</span><button class="button" type="button" :disabled="!planTargets.length || BigInt(planTargetsOffset+TARGET_PAGE_SIZE)>=BigInt(planTargetsTotal) || loadingTargets" @click="withGlobalLoading(loadPlanTargetPage, planTargetsOffset+TARGET_PAGE_SIZE)">{{ t('admin.copy.2d1da8f1') }}</button></div>
-          <button class="button" data-testid="cc-plan-retry" type="button" :disabled="!canPlanRetry" @click="openReview('plan_retry')">{{ t('admin.copy.18acbe2a') }}</button>
-        </div>
-</DetailModal>
-      </section>
-
-      <section class="cc-section"><div class="cc-section-heading"><div><h2>{{ t('admin.copy.4ef2ee2e') }}</h2><p>{{ t('admin.copy.6a6d8948') }} · {{ executionTotal }}</p></div><button v-refresh-button="t('admin.copy.78035961')" class="button" type="button" :disabled="busyRead" @click="withGlobalLoading(loadExecutions, executionOffset)">{{ t('admin.copy.78035961') }}</button></div>
-        <div v-if="errors.executions" class="cc-error" role="alert">{{ displayPublicError(errors.executions) }}</div>
-        <div class="cc-table-wrap"><table><thead><tr><th>{{ t('admin.copy.ecc139f1') }}</th><th>{{ t('admin.copy.cbcba430') }}</th><th>{{ t('admin.copy.f17936f2') }}</th><th>{{ t('admin.copy.4079135c') }}</th><th>{{ t('admin.copy.16f272ca') }}</th><th>{{ t('admin.copy.3a65b310') }}</th></tr></thead><tbody>
-          <tr v-for="row in executionPage?.items ?? []" :key="row.id" :class="{selected:selectedExecutionId===row.id}"><td><button class="cc-link" type="button" @click="withGlobalLoading(selectExecution, row.id)">{{ row.id }}</button><small>{{ t('admin.copy.030e0beb') }} <AssociationName :record="row" kind="cycle" :id="row.cycle_id" :locale="associationLocale" /> · plan {{ row.plan_id }} · run {{ row.run_id }}</small></td><td><span class="cc-status">{{ executionState(row.state) }}</span><small>{{ modeLabel(row.payout_mode) }} </small></td><td>{{ row.credit_points }} / {{ row.debit_points }} / {{ row.net_points }}</td><td>{{ row.applied_count }} / {{ row.target_count }}</td><td>{{ row.applied_credit_points }} / {{ row.applied_debit_points }}</td><td><span v-if="row.cycle_hold_active" class="cc-hold">{{ t('admin.copy.06630857') }}</span><span v-else>—</span><small>{{ row.last_error_code ? displayPublicError(publicErrorMessage({ code: row.last_error_code })) : "—" }}</small></td></tr><tr v-if="!executionPage?.items.length"><td colspan="6" class="cc-muted empty-state">{{ t('admin.copy.c2e38121') }}</td></tr>
-        </tbody></table></div><div class="cc-pagination"><button class="button" type="button" :disabled="executionOffset===0 || busyRead" @click="withGlobalLoading(loadExecutions, Math.max(0,executionOffset-PAGE_SIZE))">{{ t('admin.copy.dbe7a5d7') }}</button><span>{{ executionPage?.items.length ? executionOffset + 1 : 0 }}–{{ executionOffset + (executionPage?.items.length ?? 0) }} / {{ executionTotal }}</span><button class="button" type="button" :disabled="!executionPage || BigInt(executionOffset+PAGE_SIZE)>=BigInt(executionTotal) || busyRead" @click="withGlobalLoading(loadExecutions, executionOffset+PAGE_SIZE)">{{ t('admin.copy.2e9c9e7a') }}</button></div>
-        <DetailModal v-if="!!execution" :title="t('admin.copy.01db40da')" :close-label="t('admin.copy.2bb2cb1d')" :open="!dialog" @close="execution = null; selectedExecutionId = ''">
-<div v-if="execution" class="cc-card cc-detail" data-testid="cc-execution-detail"><div><h3>{{ t('admin.copy.a94b1595') }} · {{ execution.id }}</h3><span class="cc-status">{{ executionState(execution.state) }}</span></div><dl class="cc-facts"><dt>{{ t('admin.copy.02b926ce') }}</dt><dd>{{ execution.credit_points }} / {{ execution.debit_points }} / {{ execution.net_points }}</dd><dt>{{ t('admin.copy.7e784a27') }}</dt><dd>{{ execution.target_count }} / {{ execution.applied_count }}</dd><dt>{{ t('admin.copy.29e743e2') }}</dt><dd>{{ execution.applied_credit_points }} / {{ execution.applied_debit_points }}</dd><dt>{{ t('admin.copy.a7e6daf6') }}</dt><dd>{{ execution.cycle_hold_active ? t('admin.copy.da09988d') : t('admin.copy.bae5218f') }}<span v-if="execution.paused_plan_target_id"> {{ execution.paused_plan_target_id }}</span></dd></dl>
-          <h4>{{ t('admin.copy.0c186621') }}</h4><div class="cc-table-wrap"><table><thead><tr><th>{{ t('admin.ui.agentMember') }}</th><th>{{ t('admin.copy.82b6cfd2') }}</th><th>{{ t('admin.copy.86d53071') }}</th><th>{{ t('admin.copy.3cee6980') }}</th></tr></thead><tbody><tr v-for="target in executionTargets" :key="target.id"><td><AssociationName :record="target" kind="agent" :id="target.agent_id" :locale="associationLocale" /><small><AssociationName :record="target" kind="member" :id="target.member_id" :locale="associationLocale" /></small></td><td>{{ target.points_before }} → {{ target.points_after }} / {{ target.delta_points }}</td><td>{{ target.state === 'applied' ? t('admin.commission.targetApplied') : t('admin.commission.targetPending') }}<small v-if="target.delta_points==='0'">{{ t('admin.copy.a1cb3520') }}</small></td><td>{{ target.ledger_entry_id ?? "—" }}</td></tr><tr v-if="!executionTargets.length"><td colspan="4" class="cc-muted empty-state">{{ t('admin.copy.2b4a1bed') }}</td></tr></tbody></table></div>
-          <div class="cc-pagination"><button class="button" type="button" :disabled="executionTargetsOffset===0 || loadingTargets" @click="withGlobalLoading(loadExecutionTargetPage, Math.max(0,executionTargetsOffset-TARGET_PAGE_SIZE))">{{ t('admin.copy.d2c000b4') }}</button><span>{{ executionTargets.length ? executionTargetsOffset + 1 : 0 }}–{{ executionTargetsOffset + executionTargets.length }} / {{ executionTargetsTotal }}</span><button class="button" type="button" :disabled="!executionTargets.length || BigInt(executionTargetsOffset+TARGET_PAGE_SIZE)>=BigInt(executionTargetsTotal) || loadingTargets" @click="withGlobalLoading(loadExecutionTargetPage, executionTargetsOffset+TARGET_PAGE_SIZE)">{{ t('admin.copy.2d1da8f1') }}</button></div>
-          <div class="cc-actions"><button class="button" data-testid="cc-approve" type="button" :disabled="!canApprove" @click="openReview('approve')">{{ t('admin.copy.028518f0') }}</button><button class="button" data-testid="cc-continue" type="button" :disabled="!canContinue" @click="openReview('continue')">{{ t('admin.copy.cdb10f42') }}</button><button class="button" data-testid="cc-execute-retry" type="button" :disabled="!canRetry" @click="openReview('execute_retry')">{{ t('admin.copy.50dae2bb') }}</button></div>
-        </div>
-</DetailModal>
-      </section>
-      <div v-if="unknownIntent" class="cc-error" data-testid="cc-unknown"><span>{{ t('admin.copy.48cb0926') }} · {{ operationLabel(unknownIntent.operation) }} · </span><button v-write-guard="writing" class="button" type="button" :disabled="writing || !canResolveUnknown" @click="retryUnknown">{{ t('admin.copy.3ef3c644') }}</button></div>
+    </template>
+   </section>
+   <DetailModal v-if="showPolicy" :open="!dialog" :title="t('admin.commission.ui.settings')" :close-label="t('association.close')" @close="showPolicy=false"><div class="commission-detail" data-testid="cc-policy"><p v-if="errors.policy" class="commission-warning" role="alert">{{ displayPublicError(errors.policy) }} <button v-refresh-button="t('admin.commission.ui.retryRead')" class="button" @click="withGlobalLoading(loadPolicy)">{{ t('admin.commission.ui.retryRead') }}</button></p><label v-if="policy"><input data-testid="cc-policy-toggle" type="checkbox" v-model="policyEnabled" :disabled="!rights.policyWrite || account.super_admin || brandStatus==='disabled' || !policy || busyRead || writing || Boolean(unknownIntent) || conflict" /> {{ policy?.enabled?t('admin.copy.e1cc5fdc'):t('admin.copy.f81cb486') }}</label><div class="ui-form-actions"><button class="button button-primary" data-testid="cc-policy-review" :disabled="!canPolicy" @click="openReview('policy')">{{ t('admin.copy.3a0deb6f') }}</button></div></div></DetailModal>
+      <div v-if="unknownIntent" class="cc-error" data-testid="cc-unknown"><span>{{ t('admin.copy.48cb0926') }} · {{ operationLabel(unknownIntent.operation) }} · </span><button v-write-guard="writing" class="button" type="button" :disabled="writing || !canResolveUnknown" @click="withGlobalLoading(retryUnknown)">{{ t('admin.copy.3ef3c644') }}</button></div>
       <div v-if="conflict" class="cc-review-card" data-testid="cc-conflict"><p>{{ t('admin.copy.af8f1d76') }}</p><button v-refresh-button="t('admin.copy.9fd90523')" class="button" type="button" :disabled="conflictReloading" @click="withGlobalLoading(refreshConflict)">{{ t('admin.copy.9fd90523') }}</button><label class="cc-confirm"><input type="checkbox" :disabled="!conflictRefreshed || conflictReloading" :checked="discardReviewed" @change="discardReviewed=($event.target as HTMLInputElement).checked" />{{ t('admin.copy.8d9b3d75') }}</label><button class="button" type="button" :disabled="!conflictRefreshed || !discardReviewed || conflictReloading" @click="discardConflict">{{ t('admin.copy.5079f563') }}</button></div>
       <section v-if="receipt" class="cc-receipt" data-testid="cc-receipt"><strong>{{ t('admin.copy.ff2e9c8f') }}</strong><code>{{ receiptText() }}</code><p>{{ t('admin.copy.6fa8b32f') }}</p><div v-if="Object.keys(errors).length" role="alert" class="cc-error">{{ Object.values(errors).map(displayPublicError).join(" · ") }}</div></section>
-      <section v-if="dialog" class="cc-review-card" data-testid="cc-review"><h2>{{ t('admin.copy.1803550d') }} · {{ operationLabel(dialog.operation) }}</h2><dl class="cc-facts"><dt>{{ t('admin.copy.e5cf0427') }}</dt><dd><AssociationName kind="brand" :id="dialog.brandId" :locale="associationLocale" /> {{ operationLabel(dialog.operation) }} / {{ dialog.targetId ?? "—" }}</dd><dt v-if="dialog.body.reason">{{ t('admin.copy.5ec7c8ba') }}</dt><dd v-if="dialog.body.reason">{{ dialog.body.reason }}</dd></dl><label class="cc-confirm"><input data-testid="cc-confirm-check" type="checkbox" :checked="confirmed" :disabled="busyRead" @change="confirmed=($event.target as HTMLInputElement).checked" />{{ t('admin.copy.41a04f7e') }}</label><div class="cc-actions"><button v-write-guard="writing" class="button button-primary" data-testid="cc-submit" type="button" :disabled="writing || busyRead || !confirmed" @click="withGlobalLoading(submit, dialog)">{{ writing ? t('admin.copy.46511dc0') : unknownIntent ? t('admin.copy.59c708d8') : t('admin.copy.3135aeca') }}</button><button class="button" type="button" :disabled="writing" @click="dialog=null;confirmed=false">{{ t('admin.copy.e2f391e7') }}</button></div></section>
-    </template>
-  </article>
+      <DetailModal v-if="dialog" class="cc-review-card" :title="t('admin.copy.1803550d')" :close-label="t('association.close')" :close-disabled="writing" @close="if (!writing) {dialog=null;confirmed=false}" data-testid="cc-review"><h2>{{ operationLabel(dialog.operation) }}</h2><dl class="cc-facts"><dt>{{ t('admin.copy.e5cf0427') }}</dt><dd><AssociationName :record="plan ?? policy" kind="brand" :id="dialog.brandId" :locale="associationLocale" /> {{ operationLabel(dialog.operation) }}</dd><template v-if="dialog.targetId && ((dialog.operation==='plan_retry' && plan?.id===dialog.targetId && plan.version===dialog.body.version) || (dialog.operation!=='plan_retry' && execution?.id===dialog.targetId && execution.version===dialog.body.version))"><dt>{{ t('admin.commission.ui.cycle') }}</dt><dd><AssociationName :record="plan ?? execution" kind="cycle" :id="plan?.cycle_id ?? execution?.cycle_id ?? ''" :locale="locale" /></dd><dt>{{ t('admin.commission.ui.creditPoints') }}</dt><dd>{{ execution?.credit_points ?? plan?.credit_points ?? '—' }}</dd><dt>{{ t('admin.commission.ui.debitPoints') }}</dt><dd>{{ execution?.debit_points ?? plan?.debit_points ?? '—' }}</dd></template><dt v-if="dialog.body.reason">{{ t('admin.copy.5ec7c8ba') }}</dt><dd v-if="dialog.body.reason">{{ dialog.body.reason }}</dd></dl><label class="cc-confirm"><input data-testid="cc-confirm-check" type="checkbox" :checked="confirmed" :disabled="busyRead" @change="confirmed=($event.target as HTMLInputElement).checked" />{{ t('admin.copy.41a04f7e') }}</label><div class="cc-actions ui-form-actions"><button v-write-guard="writing" class="button button-primary" data-testid="cc-submit" type="button" :disabled="writing || busyRead || !confirmed" @click="withGlobalLoading(submit, dialog)">{{ writing ? t('admin.copy.46511dc0') : unknownIntent ? t('admin.copy.59c708d8') : t('admin.copy.3135aeca') }}</button></div></DetailModal>
+  </template>
+ </article>
 </template>
-
 <style scoped>
-/* Global admin table metadata uses nowrap. Reset it for stacked mobile rows:
-   overflow widens the mobile visual viewport and offsets physical hit targets. */
-.cc-table-wrap td small{white-space:normal;min-width:0}.cc-detail h3,.cc-review-card h2{overflow-wrap:anywhere}
-.correction-admin{display:grid;gap:18px;min-width:0}.cc-heading,.cc-section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.cc-heading h1,.cc-section h2,.cc-card h2,.cc-detail h3{margin:0}.cc-heading p,.cc-section-heading p,.cc-card p{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:1.55}.cc-kicker{font-size:11px!important;letter-spacing:.14em;color:var(--accent)!important;font-weight:800}.cc-callout,.cc-error,.cc-success,.cc-muted,.cc-receipt,.cc-review-card{padding:12px 14px;border-radius:10px;line-height:1.55}.cc-callout{border:1px solid var(--warning);background:color-mix(in srgb,var(--warning) 8%,transparent)}.cc-error{color:var(--danger);background:color-mix(in srgb,var(--danger) 8%,transparent);overflow-wrap:anywhere}.cc-success{color:var(--success);background:color-mix(in srgb,var(--success) 8%,transparent)}.cc-muted{color:var(--muted)}.cc-card,.cc-review-card{display:grid;gap:14px;padding:18px;border:1px solid var(--border,var(--line));border-radius:14px;background:var(--surface);min-width:0}.cc-section{display:grid;gap:12px;min-width:0}.cc-toggle,.cc-confirm{display:flex;align-items:center;gap:10px;font-weight:700}.cc-toggle input,.cc-confirm input{width:18px;height:18px;accent-color:var(--accent);flex:none}.cc-reason{display:grid;gap:6px;font-weight:650}.cc-reason textarea{resize:vertical;min-height:60px;padding:10px;border:1px solid var(--border,#cbd5e1);border-radius:8px;font:inherit}.cc-actions,.cc-pagination{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.cc-pagination{justify-content:space-between}.cc-table-wrap{width:100%;overflow:auto;border:1px solid var(--border,var(--line));border-radius:12px}.cc-table-wrap table{width:100%;border-collapse:collapse;min-width:850px}.cc-table-wrap th,.cc-table-wrap td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,var(--line));vertical-align:top}.cc-table-wrap th{font-size:11px;color:var(--muted);background:var(--surface-muted,var(--canvas))}.cc-table-wrap tr:last-child td{border-bottom:0}.cc-table-wrap tr.selected{background:color-mix(in srgb,var(--accent) 7%,transparent)}.cc-table-wrap td small,.cc-facts dd small,.cc-review-card dd small{display:block;margin-top:4px;color:var(--muted);overflow-wrap:anywhere}.cc-link{padding:0;border:0;background:transparent;color:var(--accent);font:inherit;text-align:left;overflow-wrap:anywhere;cursor:pointer}.cc-status,.cc-hold{display:inline-flex;padding:4px 8px;border-radius:999px;background:#eef2f7;font-size:12px;font-weight:700}.cc-hold{color:#9a3412;background:#fff7ed}.cc-facts{display:grid;grid-template-columns:minmax(170px,.35fr) minmax(0,1fr);gap:8px 14px;margin:0}.cc-facts dt{color:var(--muted)}.cc-facts dd{margin:0;overflow-wrap:anywhere}.cc-detail h4{margin:4px 0}.cc-receipt{display:grid;gap:8px;border:1px solid var(--success);background:color-mix(in srgb,var(--success) 7%,transparent);min-width:0}.cc-receipt code,.cc-review-card code{overflow-wrap:anywhere;white-space:pre-wrap}.cc-review-card{max-width:780px;width:100%;margin-inline:auto;box-shadow:0 20px 60px #0f172a30}.cc-review-card h2,.cc-review-card p{margin:0}.cc-review-card p{color:var(--muted)}
-@media(max-width:700px){.cc-heading,.cc-section-heading{align-items:stretch;flex-direction:column}.cc-heading>.button,.cc-section-heading>.button{align-self:flex-start}.cc-card,.cc-review-card{padding:14px}.cc-facts{grid-template-columns:1fr;gap:4px}.cc-facts dd{margin-bottom:8px}.cc-actions>.button{flex:1 1 100%}.cc-pagination{align-items:flex-start;flex-direction:column}.cc-table-wrap{overflow:visible;border:0}.cc-table-wrap table,.cc-table-wrap tbody,.cc-table-wrap tr,.cc-table-wrap td{display:block;width:100%;min-width:0}.cc-table-wrap thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}.cc-table-wrap tbody{display:grid;gap:10px}.cc-table-wrap tbody tr{border:1px solid var(--border,var(--line));border-radius:10px;padding:8px;background:var(--surface)}.cc-table-wrap td{border:0;padding:6px 4px;white-space:normal;overflow-wrap:anywhere}.cc-table-wrap td+td{border-top:1px dashed var(--border,var(--line))}.cc-error{display:grid;gap:10px}}
+.cc-review-card dl {display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px}.cc-review-card dd {margin:0;overflow-wrap:anywhere}.cc-confirm {display:flex;align-items:center;gap:8px;min-height:44px}.cc-actions {display:flex;gap:8px;flex-wrap:wrap}.cc-error,.cc-receipt {padding:12px;border:1px solid var(--line);border-radius:10px;overflow-wrap:anywhere}.cc-receipt {border-color:var(--success)}
 </style>

@@ -71,6 +71,19 @@ type SelfPage struct {
 	Offset     int    `json:"offset"`
 	TotalCount string `json:"total_count"`
 }
+type ReferredMember struct {
+	ID          string    `json:"id"`
+	DisplayName string    `json:"display_name"`
+	JoinedAt    time.Time `json:"joined_at"`
+}
+type ReferralPage struct {
+	BrandID    string           `json:"brand_id"`
+	MemberID   string           `json:"member_id"`
+	Items      []ReferredMember `json:"items"`
+	Limit      int              `json:"limit"`
+	Offset     int              `json:"offset"`
+	TotalCount string           `json:"total_count"`
+}
 type Revision struct {
 	ID         string     `json:"id"`
 	BrandID    string     `json:"brand_id"`
@@ -137,7 +150,7 @@ func validWindow(start, end *time.Time) bool {
 	return start == nil || end == nil || start.Before(*end)
 }
 func validReason(s string) bool {
-	return s == "" || (utf8.ValidString(s) && strings.TrimSpace(s) != "" && len([]byte(s)) <= 500)
+	return s == "" || (utf8.ValidString(s) && strings.TrimSpace(s) != "" && utf8.RuneCountInString(s) <= 500)
 }
 func closed(b []byte, keys ...string) error {
 	d := json.NewDecoder(bytes.NewReader(b))

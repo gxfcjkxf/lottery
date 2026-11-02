@@ -86,7 +86,7 @@ func failedAutomaticArchiveTask(t *testing.T, f managementHTTP) reportarchive.Au
 	}
 	localNow := time.Now().In(mustArchiveLocation(t, zone))
 	start := localNow.AddDate(0, 0, -1).Format("2006-01-02")
-	_, err = (reportarchive.Service{DB: f.pool}).UpdateAutomaticPolicyTx(ctx, tx, managedBrand, actor, reportarchive.AutomaticPolicyInput{
+	_, err = (reportarchive.Service{DB: f.pool}).UpdateAutomaticPolicyTx(ctx, tx, managedBrand, actor, reportarchive.AutomaticPolicyInput{AutomaticSchedule: reportarchive.AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1},
 		Version: 1, DailyEnabled: true, DailyStartPeriod: &start, Reason: "explicit HTTP task fixture start",
 	}, points.Metadata{ActorType: "admin", ActorID: actor.ID, RequestID: ids.New(), IP: "198.51.100.41"})
 	if err != nil {
@@ -143,13 +143,6 @@ func TestReportArchiveTaskHTTPDefaultPolicyAndEmptyQueue(t *testing.T) {
 	t.Parallel()
 	f := managedFixture(t)
 	grantArchiveTaskPermissions(t, f, "report_archive.view.brand")
-	policy := archiveTaskRequest(f, "GET", archivePolicyPath, "", f.token, managedBrand, "", "")
-	mustStatus(t, policy, 200)
-	var got reportarchive.AutomaticPolicy
-	managedData(t, policy, &got)
-	if got.DailyEnabled || got.MonthlyEnabled || got.Version != 1 || got.DailyStartPeriod != nil || got.MonthlyStartPeriod != nil {
-		t.Fatalf("automatic archive policy must start disabled and empty: %+v", got)
-	}
 	page := archiveTaskRequest(f, "GET", archiveTaskPath, "", f.token, managedBrand, "", "")
 	mustStatus(t, page, 200)
 	var tasks reportarchive.AutomaticTaskPage
@@ -157,7 +150,7 @@ func TestReportArchiveTaskHTTPDefaultPolicyAndEmptyQueue(t *testing.T) {
 	if tasks.Limit != 20 || tasks.Offset != 0 || tasks.TotalCount != "0" || len(tasks.Items) != 0 {
 		t.Fatalf("unexpected empty task page: %+v", tasks)
 	}
-	for _, action := range []string{"report_archive.policy.read", "report_archive.task.list"} {
+	for _, action := range []string{"report_archive.task.list"} {
 		var count int
 		if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM audit_logs WHERE action=$1 AND resource_type='query'`, action).Scan(&count); err != nil || count != 1 {
 			t.Fatalf("read audit %s count=%d err=%v", action, count, err)
@@ -182,11 +175,7 @@ func TestReportArchiveTaskHTTPStrictInputsAuthorizationAndReadScopes(t *testing.
 			t.Errorf("invalid body #%d returned %q: %s", i, code, r.Body.String())
 		}
 	}
-	invalidPolicy := archiveTaskRequest(f, "PUT", archivePolicyPath, "archive-task-policy-write-invalid", f.token, managedBrand, f.root, `{}`)
-	mustStatus(t, invalidPolicy, 400)
-	if archiveTaskCode(t, invalidPolicy) != "REQUEST_INVALID" {
-		t.Fatalf("incomplete policy write was not rejected: %s", invalidPolicy.Body.String())
-	}
+	mustStatus(t, archiveTaskRequest(f, "PUT", archivePolicyPath, "archive-brand-policy-removed", f.token, managedBrand, f.root, `{}`), 404)
 	for _, q := range []string{"?", "?limit=020", "?limit=+20", "?limit=0", "?offset=-1", "?offset=1000001", "?limit=20&limit=20", "?unknown=1", "?%"} {
 		r := archiveTaskRequest(f, "GET", archiveTaskPath+q, "", f.token, managedBrand, "", "")
 		mustStatus(t, r, 400)
@@ -226,14 +215,11 @@ func TestReportArchiveTaskHTTPReadPaginationAndRetryReceiptLifecycle(t *testing.
 	platformToken := platformAdminToken(t, f)
 	f.token = platformToken
 	platformTaskPath := strings.Replace(archiveTaskPath, "/api/v1/admin", "/api/v1/platform", 1)
-	platformPolicyPath := strings.Replace(archivePolicyPath, "/api/v1/admin", "/api/v1/platform", 1)
 	foreign := archiveTaskRequest(f, "GET", platformTaskPath+"/"+task.ID, "", platformToken, pointsBrandB, "", "")
 	mustStatus(t, foreign, 404)
 	if archiveTaskCode(t, foreign) != "REPORT_ARCHIVE_NOT_FOUND" {
 		t.Fatalf("cross-brand task read leaked or used wrong error: %s", foreign.Body.String())
 	}
-	policy := archiveTaskRequest(f, "GET", platformPolicyPath, "", platformToken, managedBrand, "", "")
-	mustStatus(t, policy, 200)
 	page := archiveTaskRequest(f, "GET", platformTaskPath+"?limit=1&offset=0", "", platformToken, managedBrand, "", "")
 	mustStatus(t, page, 200)
 	var got reportarchive.AutomaticTaskPage

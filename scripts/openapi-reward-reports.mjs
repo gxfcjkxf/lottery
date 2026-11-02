@@ -7,14 +7,14 @@ const nullable = schema => ({ anyOf: [schema, { type: "null" }] });
 const grouping = kind => ({ type: "string", enum: kind === "rewards" ? ["day", "member", "order"] : ["day", "member", "state"] });
 const query = kind => obj({ from: date, to: date, group_by: grouping(kind), limit: { type: "integer", minimum: 1, maximum: 100 }, offset: { type: "integer", minimum: 0, maximum: 1000000 }, member_id: nullable(uuid), order_id: nullable(uuid) });
 const postingFields = ["entry_count", "grant_entry_count", "grant_points", "reversal_entry_count", "reversal_points", "net_points"];
-const orderFields = ["order_count", "original_points", "granted_count", "granted_points", "pending_count", "pending_points", "revoked_count", "revoked_points"];
+const orderFields = ["order_count", "original_points", "granted_count", "granted_points", "revoked_count", "revoked_points"];
 const totals = fields => obj(Object.fromEntries(fields.map(field => [field, field === "net_points" ? sint : uint])));
 const group = name => obj({ key: { type: "string" }, label: { type: "string" }, totals: ref(name) });
 const report = (queryName, totalsName, groupName) => obj({ brand_id: uuid, snapshot_at: date, timezone: { type: "string" }, query: ref(queryName), summary: ref(totalsName), items: { type: "array", items: ref(groupName), maxItems: 100 }, total_groups: uint });
 export const schemas = {
   RewardReportQuery: query("rewards"), RewardOrderReportQuery: query("reward_orders"),
   RewardReportTotals: { ...totals(postingFields), description: "Actual immutable gift-source reward grant and full reversal postings by ledger posting time. entry_count=grant_entry_count+reversal_entry_count; net_points=grant_points-reversal_points. Reversal-only windows may have negative net_points. Pending attempts do not post." },
-  RewardOrderReportTotals: { ...totals(orderFields), description: "Orders created in the selected time cohort, classified by CURRENT state at snapshot time, once per order. Counts and original amounts partition into granted, revocation_pending and revoked. Pending points are original order amounts, NOT reserved or deducted points; revoked points are NOT reversal postings in this time window." },
+  RewardOrderReportTotals: { ...totals(orderFields), description: "Orders created in the selected time cohort, classified by CURRENT state at snapshot time, once per order. Counts and original amounts partition into granted and revoked; revoked points are NOT reversal postings in this time window." },
   RewardReportGroup: group("RewardReportTotals"), RewardOrderReportGroup: group("RewardOrderReportTotals"),
   RewardReport: report("RewardReportQuery", "RewardReportTotals", "RewardReportGroup"),
   RewardOrderReport: report("RewardOrderReportQuery", "RewardOrderReportTotals", "RewardOrderReportGroup"),

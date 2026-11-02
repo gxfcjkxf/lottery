@@ -17,6 +17,18 @@ function response(data: unknown, status = 200) {
 }
 
 describe("admin HTTP client", () => {
+  it("deletes a membership with the selected brand and a stable request key", async () => {
+    const audit = '00000000-0000-4000-8000-000000000001';
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ audit_log_id: audit }));
+    await expect(createAdminApi(fetcher).deleteMember('brand-a', 'member-a', 'delete-key')).resolves.toEqual({ audit_log_id: audit });
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(url).toBe('/api/v1/admin/users/member-a/delete');
+    expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('X-Brand-ID')).toBe('brand-a');
+    expect(new Headers(init?.headers).get('Idempotency-Key')).toBe('delete-key');
+    expect(JSON.parse(String(init?.body))).toEqual({});
+    await expect(createAdminApi(async () => response({})).deleteMember('brand-a', 'member-a', 'delete-key')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
   it("creates unique idempotency keys with crypto.randomUUID", () => {
     const getRandomValues = vi.fn();
     const randomUUID = vi

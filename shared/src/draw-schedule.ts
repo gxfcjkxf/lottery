@@ -1,0 +1,7 @@
+export interface DrawSchedule {
+ version:number;enabled:boolean;mode:'daily'|'hkjc';draw_time:string;open_before_hours:number;close_before_seconds:number;collect_after_seconds:number
+}
+export const drawScheduleCatalog={
+ en:{title:'Time settings',enabled:'Generate periods automatically',mode:'Draw dates',daily:'Every day',hkjc:'HKJC draw calendar',drawTime:'Draw time',openBefore:'Open before draw (hours)',closeBefore:'Close before draw (seconds)',collectAfter:'Start collection after draw (seconds)',save:'Save settings',retry:'Retry original request',saved:'Time settings saved',loadFailure:'Unable to load the time settings.',saveFailure:'Unable to save. Check the times and reload if the version has changed.',calendarMissing:'The official calendar or reference period is missing. Sync the HKJC calendar before saving.',pending:'Response unknown. Retry the original request before editing.',reload:'Reload',notConfigured:'Configure and save the game schedule before using a result-only source.'},
+ 'zh-CN':{title:'时间设置',enabled:'自动生成期次',mode:'开奖日期',daily:'每天开奖',hkjc:'香港搅珠日历',drawTime:'开奖时间',openBefore:'开奖前开盘（小时）',closeBefore:'开奖前封盘（秒）',collectAfter:'开奖后开始采集（秒）',save:'保存设置',retry:'重试原请求',saved:'时间设置已保存',loadFailure:'无法读取时间设置。',saveFailure:'保存失败，请检查时间设置；版本变更时请重新读取。',calendarMissing:'缺少官方搅珠日历或参考期次，请先同步香港搅珠日历。',pending:'响应未知，请先重试原请求再修改。',reload:'重新读取',notConfigured:'请先保存彩种时间设置，再使用仅采集结果的数据源。'}
+} as const

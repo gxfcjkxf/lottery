@@ -1,5 +1,7 @@
 # 自动归档任务管理交接
 
+> 当前页面为“归档配置”，只展示配置；任务列表、任务详情与重试不再出现在该页面。下文管理接口继续保留。定时字段、起点与平台时区规则以 [29 号文档](29-report-archive-activation.md) 为准。
+
 自动归档的业务口径沿用[27号核心合同](27-automatic-report-archive-core.md)。本页合同覆盖当前配置只读、任务查询和失败人工重试；配置写入另见[29号启用合同](29-report-archive-activation.md)，不提供公开历史回补。首次启用已确认从品牌时区当天/当月开始，周期结束后首版；日/月初始关闭，不因部署代码自动开启。
 
 ## 正式接口
@@ -27,7 +29,7 @@ pending初始版本1/尝试0；每次执行终结时版本及尝试各加1，fai
 
 读取完成并提交查询审计后才响应，动作分别为 `report_archive.policy.read`、`report_archive.task.list`、`report_archive.task.read`。锁等待及审计等待后复核会话；过期会话或撤权不能获得数据或旧成功回执。重试审计记录原/后任务、实际管理员、IP、请求编号及原因，与状态和幂等回执同事务提交。
 
-重试正文必填 `version`，可选 `reason`；版本为1至MAX_SAFE_INTEGER−1。原因可省略或为空字符串，非空时须已去首尾空白、最多500 UTF-8字节、无控制字符。不接受未知/重复键或缺失版本；SDK拒绝非字符串原因。头还须包含 `Idempotency-Key` 和确认时的 `X-Report-Archive-Actor-ID`，后者须匹配当前管理员。幂等命名空间为 `admin.report_archive.task.retry`，正文指纹包含品牌和任务ID。
+重试正文必填 `version`，可选 `reason`；版本为1至MAX_SAFE_INTEGER−1。原因可省略或为空字符串，非空时须已去首尾空白、最多500 字符、无控制字符。不接受未知/重复键或缺失版本；SDK拒绝非字符串原因。头还须包含 `Idempotency-Key` 和确认时的 `X-Report-Archive-Actor-ID`，后者须匹配当前管理员。幂等命名空间为 `admin.report_archive.task.retry`，正文指纹包含品牌和任务ID。
 
 新重试只能针对匹配版本的failed，且当前对应开关允许。成功200只确认原任务已恢复pending，不表示worker已完成归档。之后即使任务已经completed，原键重放仍返回原pending回执；当前状态须独立GET。关闭开关后不允许新重试，但有效会话和授权仍可确认此前已提交的原回执。
 

@@ -7,6 +7,7 @@
     "node": ">=24"
   },
   "scripts": {
+    "dev:backend": "python3 scripts/dev-backend.py",
     "dev:user": "pnpm --filter @lottery/user-web dev",
     "dev:admin": "pnpm --filter @lottery/admin-web dev",
     "dev:platform": "pnpm --filter @lottery/platform-web dev",
@@ -32,10 +33,13 @@
     "test:e2e": "playwright test",
     "test:webkit": "playwright test --config playwright.webkit.config.ts",
     "test:layout": "playwright test --config playwright.layout.config.ts",
+    "test:player-ui": "playwright test --config playwright.player-ui.config.ts",
+    "test:console-ui": "playwright test --config playwright.console-ui.config.ts",
     "test:agent": "node scripts/test-agent-portal.mjs",
+    "test:brand-scope": "node scripts/test-brand-scope.mjs",
     "test:responsive": "playwright test --config playwright.responsive.config.ts",
-    "test:commission-responsive": "node scripts/run-commission-responsive.mjs",
     "test:pwa": "pnpm build && playwright test --config playwright.pwa.config.ts",
+    "test:deployment": "playwright test --config playwright.deployment.config.ts",
     "test:draw-browser": "node --test tests/draw-browser/*.test.mjs && node scripts/test-draw-browser.mjs",
     "dev:agent": "pnpm --filter @lottery/agent-web dev"
   },

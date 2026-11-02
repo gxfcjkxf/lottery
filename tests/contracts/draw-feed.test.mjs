@@ -20,7 +20,7 @@ test('mapped sources describe JSON and DOM fields without lottery-specific names
  assert.equal(valid({...m,format:'browser',browser:{...browser,json_requests:[{...browser.json_requests[0],method:'DELETE'}]}}),false);
  assert.equal(valid({...m,regular:{...m.regular,count:0}}),false);
  assert.equal(valid({...m,format:'json',period:{path:'/rows/0/issue',attribute:''}}),true);
- const plan=check('AutomationPlan');assert.equal(plan({source_type:'mapped',version:0,enabled:false,anchor_draw_at:null,anchor_period_no:null,interval_seconds:null,close_before_seconds:0,source_url:'https://draw.example/results?lang=en',credential_ref:'',mapping:m}),true,JSON.stringify(plan.errors));
+ const plan=check('AutomationPlan');assert.equal(plan({source_type:'mapped',version:0,enabled:false,anchor_draw_at:null,anchor_period_no:null,interval_seconds:null,open_before_seconds:null,close_before_seconds:0,source_url:'https://draw.example/results?lang=en',credential_ref:'',mapping:m}),true,JSON.stringify(plan.errors));
 });
 test('source preview is platform scoped, read-only and has no idempotent publication contract',()=>{
  const path='/api/v1/platform/platform-games/{id}/draw-source-preview',op=doc.paths[path].post;
@@ -34,15 +34,18 @@ test('source preview is platform scoped, read-only and has no idempotent publica
 });
 test('new source writes require mappings while historical plans remain readable',()=>{
  const read=check('AutomationPlan'),write=check('DrawSourcePlanInput');
- const old={source_type:'interval_json',version:1,enabled:true,anchor_draw_at:'2026-10-20T04:00:00Z',anchor_period_no:'000001',interval_seconds:120,close_before_seconds:10,source_url:'https://draw.example/feed',credential_ref:''};
+ const old={source_type:'interval_json',version:1,enabled:true,anchor_draw_at:'2026-10-20T04:00:00Z',anchor_period_no:'000001',interval_seconds:120,open_before_seconds:120,close_before_seconds:10,source_url:'https://draw.example/feed',credential_ref:''};
  assert.equal(read(old),true,JSON.stringify(read.errors));
  assert.equal(write(old),false);
- const hk={...old,source_type:'hk_marksix_6hch',anchor_draw_at:null,anchor_period_no:null,interval_seconds:null};
+ const hk={...old,source_type:'hk_marksix_6hch',anchor_draw_at:null,anchor_period_no:null,interval_seconds:null,open_before_seconds:null};
  assert.equal(read(hk),true,JSON.stringify(read.errors));
  assert.equal(write(hk),false);
  const mapping={format:'json',schedule:'interval',time_format:'rfc3339',time_layout:'',timezone:'',period:{path:'/period',attribute:''},draw_time:{path:'/time',attribute:''},regular:null,special:null,digits:{path:'/digits',attribute:'',separator:'',offset:0,count:3},next_period:null,next_draw_time:null,complete:null,period_query:'',game_query:''};
  assert.equal(write({...old,source_type:'mapped',mapping}),true,JSON.stringify(write.errors));
  assert.equal(write({...old,source_type:'mapped'}),false);
+ const missingOpening={...old,source_type:'mapped',mapping};delete missingOpening.open_before_seconds;
+ assert.equal(write(missingOpening),false);
+ assert.equal(write({...missingOpening,open_before_seconds:null}),false);
  const scheduled={...old,source_type:'mapped',anchor_draw_at:null,anchor_period_no:null,interval_seconds:null,mapping:{...mapping,schedule:'source',next_period:{path:'/next',attribute:''},next_draw_time:{path:'/next_time',attribute:''}}};
  assert.equal(write(scheduled),true,JSON.stringify(write.errors));
  assert.equal(write({...scheduled,interval_seconds:120}),false);

@@ -7,9 +7,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
-func configuredID(s string) bool { return s != "" && len(s) <= 120 && strings.TrimSpace(s) == s }
+func configuredID(s string) bool {
+	return s != "" && utf8.RuneCountInString(s) <= 120 && strings.TrimSpace(s) == s
+}
 func configuredLabel(l ConfiguredLabel) bool {
 	return configuredID(l.English) && configuredID(l.Chinese)
 }

@@ -33,10 +33,10 @@ func TestHashAndVerifyPassword(t *testing.T) {
 	}
 }
 
-func TestPasswordByteBounds(t *testing.T) {
+func TestPasswordCharacterBounds(t *testing.T) {
 	for _, password := range []string{"12345", strings.Repeat("x", 31)} {
 		if _, err := HashPassword(password); err != ErrInvalidPassword {
-			t.Errorf("HashPassword(%d bytes) err=%v, want ErrInvalidPassword", len(password), err)
+			t.Errorf("HashPassword(%d characters) err=%v, want ErrInvalidPassword", len(password), err)
 		}
 	}
 	if _, err := HashPassword("123456"); err != nil {
@@ -95,5 +95,22 @@ func TestVerifyRejectsMalformedAndOverBudgetHashes(t *testing.T) {
 				t.Fatalf("malformed or unbounded hash result: ok=%v err=%v", ok, err)
 			}
 		})
+	}
+}
+
+func TestUnicodePasswordCharacterBounds(t *testing.T) {
+	for _, password := range []string{strings.Repeat("密", 5), strings.Repeat("😀", 31), string([]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff})} {
+		if _, err := HashPassword(password); err != ErrInvalidPassword {
+			t.Fatalf("invalid password accepted: %v", err)
+		}
+	}
+	for _, password := range []string{strings.Repeat("密", 6), strings.Repeat("密", 30), strings.Repeat("😀", 30)} {
+		hash, err := HashPassword(password)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := VerifyPassword(password, hash); !ok || err != nil {
+			t.Fatalf("Unicode password verification failed: %v", err)
+		}
 	}
 }

@@ -14,7 +14,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 )
 
-func TestGlobalUserDeletionAcrossBrandsPreservesLedger(t *testing.T) {
+func TestGlobalUserDeletionInSelectedBrandPreservesLedger(t *testing.T) {
 	p := isolated(t)
 	ctx := context.Background()
 	f := fixture{brandA: "0199a000-0000-7000-8000-000000000001", brandB: "0199a000-0000-7000-8000-000000000002", admin: ids.New(), super: ids.New(), user: ids.New(), memberA: ids.New(), memberB: ids.New()}
@@ -81,7 +81,7 @@ func TestGlobalUserDeletionAcrossBrandsPreservesLedger(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = s.DeleteGlobalUser(ctx, tx, denied, f.user, "denied", "")
+		_, err = s.DeleteGlobalUser(ctx, tx, denied, f.brandA, f.user, "denied", "")
 		_ = tx.Rollback(ctx)
 		if !errors.Is(err, ErrDenied) {
 			t.Fatalf("permission widened: %v", err)
@@ -92,7 +92,7 @@ func TestGlobalUserDeletionAcrossBrandsPreservesLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.DeleteGlobalUser(ctx, tx, actor, f.user, "rollback", ""); err != nil {
+	if _, err = s.DeleteGlobalUser(ctx, tx, actor, f.brandA, f.user, "rollback", ""); err != nil {
 		t.Fatal(err)
 	}
 	_ = tx.Rollback(ctx)
@@ -108,7 +108,7 @@ func TestGlobalUserDeletionAcrossBrandsPreservesLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deleted, err := s.DeleteGlobalUser(ctx, tx, actor, f.user, "delete-global", "")
+	deleted, err := s.DeleteGlobalUser(ctx, tx, actor, f.brandA, f.user, "delete-global", "")
 	if err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)
@@ -124,11 +124,11 @@ func TestGlobalUserDeletionAcrossBrandsPreservesLedger(t *testing.T) {
 	if err = p.QueryRow(ctx, `SELECT status,password_hash IS NULL,(SELECT count(*) FROM brand_members WHERE global_user_id=$1 AND status='cancelled'),(SELECT count(*) FROM sessions WHERE user_id=$1 AND revoked_at IS NULL),(SELECT count(*) FROM audit_logs WHERE action='user.delete.platform' AND resource_id=$1) FROM global_users WHERE id=$1`, f.user).Scan(&status, &credentialsCleared, &cancelled, &activeSessions, &audits); err != nil {
 		t.Fatal(err)
 	}
-	if status != "deleted" || !credentialsCleared || cancelled != 2 || activeSessions != 0 || audits != 1 {
+	if status != "active" || credentialsCleared || cancelled != 1 || activeSessions != 1 || audits != 1 {
 		t.Fatal(status, credentialsCleared, cancelled, activeSessions, audits)
 	}
-	if _, err = identityStore.Authenticate(ctx, f.brandB, token); !errors.Is(err, identity.ErrSession) {
-		t.Fatal("deleted identity session remains usable", err)
+	if _, err = identityStore.Authenticate(ctx, f.brandB, token); err != nil {
+		t.Fatal("other brand session was revoked", err)
 	}
 	var unaffected bool
 	if err = p.QueryRow(ctx, `SELECT u.status='active' AND u.password_hash='unrelated-hash' AND m.status='normal' FROM global_users u JOIN brand_members m ON m.global_user_id=u.id WHERE u.id=$1`, otherUser).Scan(&unaffected); err != nil || !unaffected {
@@ -146,9 +146,109 @@ func TestGlobalUserDeletionAcrossBrandsPreservesLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.DeleteGlobalUser(ctx, tx, actor, f.user, "delete-again", "")
+	_, err = s.DeleteGlobalUser(ctx, tx, actor, f.brandA, f.user, "delete-again", "")
 	_ = tx.Rollback(ctx)
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
+	}
+}
+
+func TestMemberDeletionRetiresOnlyLastBrand(t *testing.T) {
+	p := isolated(t)
+	f := seedFixture(t, p)
+	ctx := context.Background()
+	store := Store{DB: p}
+	actor := access.Account{ID: f.admin, Type: access.AccountAdmin, BrandIDs: []string{f.brandA, f.brandB}, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "user", Action: "delete", Scope: access.ScopePlatform}}}}}
+	brandActor := access.Account{ID: f.admin, Type: access.AccountAdmin, BrandIDs: []string{f.brandA}, Roles: []access.Role{{BrandID: f.brandA, Permissions: []access.Permission{{Resource: "user", Action: "delete", Scope: access.ScopeBrand}}}}}
+	tx, err := p.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.DeleteMember(ctx, tx, brandActor, f.brandB, f.memberB, "cross-brand", "")
+	_ = tx.Rollback(ctx)
+	if !errors.Is(err, ErrDenied) {
+		t.Fatal("brand deletion crossed its scope", err)
+	}
+	for i, target := range []struct{ brand, member string }{{f.brandA, f.memberA}, {f.brandB, f.memberB}} {
+		tx, err := p.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = store.DeleteMember(ctx, tx, actor, target.brand, target.member, "delete-last", ""); err != nil {
+			_ = tx.Rollback(ctx)
+			t.Fatal(err)
+		}
+		if err = tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		var status string
+		var cleared bool
+		if err = p.QueryRow(ctx, `SELECT status,password_hash IS NULL FROM global_users WHERE id=$1`, f.user).Scan(&status, &cleared); err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 && (status != "active" || cleared) {
+			t.Fatal("other brand identity changed", status, cleared)
+		}
+		if i == 1 && (status != "deleted" || !cleared) {
+			t.Fatal("last brand did not retire identity", status, cleared)
+		}
+	}
+}
+
+func TestConcurrentBrandDeletionsRetireIdentity(t *testing.T) {
+	p := isolated(t)
+	f := seedFixture(t, p)
+	ctx := context.Background()
+	store := Store{DB: p}
+	actor := access.Account{ID: f.super, Type: access.AccountAdmin, SuperAdmin: true, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "user", Action: "delete", Scope: access.ScopePlatform}}}}}
+	errs := make(chan error, 2)
+	for _, brand := range []string{f.brandA, f.brandB} {
+		go func(brand string) {
+			tx, err := p.Begin(ctx)
+			if err != nil {
+				errs <- err
+				return
+			}
+			defer tx.Rollback(ctx)
+			if _, err = store.DeleteGlobalUser(ctx, tx, actor, brand, f.user, "concurrent-delete", ""); err == nil {
+				err = tx.Commit(ctx)
+			}
+			errs <- err
+		}(brand)
+	}
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	var retired bool
+	if err := p.QueryRow(ctx, `SELECT status='deleted' AND password_hash IS NULL AND NOT EXISTS(SELECT 1 FROM brand_members WHERE global_user_id=$1 AND status<>'cancelled') FROM global_users WHERE id=$1`, f.user).Scan(&retired); err != nil || !retired {
+		t.Fatal("concurrent deletions left a login identity", err)
+	}
+}
+
+func TestBrandDeletionPreservesSuspendedMembership(t *testing.T) {
+	p := isolated(t)
+	f := seedFixture(t, p)
+	ctx := context.Background()
+	if _, err := p.Exec(ctx, `UPDATE brand_members SET status='disabled' WHERE id=$1`, f.memberB); err != nil {
+		t.Fatal(err)
+	}
+	store := Store{DB: p}
+	actor := access.Account{ID: f.super, Type: access.AccountAdmin, SuperAdmin: true, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "user", Action: "delete", Scope: access.ScopePlatform}}}}}
+	tx, err := p.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err = store.DeleteGlobalUser(ctx, tx, actor, f.brandA, f.user, "delete-brand", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var retained bool
+	if err = p.QueryRow(ctx, `SELECT u.status='active' AND u.password_hash='initial-secret-hash' AND m.status='disabled' FROM global_users u JOIN brand_members m ON m.global_user_id=u.id WHERE m.id=$1`, f.memberB).Scan(&retained); err != nil || !retained {
+		t.Fatal("suspended membership lost identity", err)
 	}
 }

@@ -11,10 +11,6 @@
     "i18n_key": "reward.order.granted",
     "i18n_version": 1
   },
-  "reward.order.revocation_pending": {
-    "i18n_key": "reward.order.revocation_pending",
-    "i18n_version": 1
-  },
   "reward.order.revoked": {
     "i18n_key": "reward.order.revoked",
     "i18n_version": 1

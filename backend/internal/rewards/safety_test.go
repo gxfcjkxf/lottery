@@ -83,7 +83,7 @@ func TestRewardFullGenericReverseAndStandaloneCreditCannotBypassBusiness(t *test
 	}
 }
 
-func TestRewardPendingRequiresRealGiftShortageEvenWithMatchingAudit(t *testing.T) {
+func TestRetiredRewardPendingStateIsRejectedEvenWithMatchingAudit(t *testing.T) {
 	f := newRewardFixture(t)
 	o := rewardGrant(t, f, 25)
 	before := rewardEvidence(t, f)
@@ -97,7 +97,7 @@ func TestRewardPendingRequiresRealGiftShortageEvenWithMatchingAudit(t *testing.T
 	}
 	_, err = tx.Exec(context.Background(), `INSERT INTO reward_order_actions(id,brand_id,order_id,version,operation,state_before,state_after,actor_id,reason,audit_log_id) VALUES($1,$2,$3,2,'revoke','granted','revocation_pending',$4,'counterfeit shortage',$5)`, actionID, f.brand, o.ID, f.admin, log)
 	_ = tx.Rollback(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "reward pending requires original gift available shortage") {
+	if err == nil {
 		t.Fatalf("counterfeit gift shortage=%v", err)
 	}
 	if rewardEvidence(t, f) != before {

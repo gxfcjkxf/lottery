@@ -1,16 +1,18 @@
 # Lottery 平台
 
-多品牌彩票运营平台，尚未发布。用户端、品牌后台与总后台是三个独立 Vue 项目；Go 后端的 API 和 worker 分别运行。第一期仅处理内部整数积分，不接银行、虚拟资产钱包或链上转账，不上架应用市场。
+> 当前投注与结算统一走[配置化链路](docs/65-unified-configured-betting.md)。
 
-开发遵循 [AGENTS.md](AGENTS.md)：不写旧版本兼容或 fallback，保持 KISS。业务账本、结果更正、审计和不可变归档版本必须保留，它们不是版本兼容。全仓删除项与保留依赖已记录在[清理收尾清单](docs/59-configurable-mark-six-rule-design.md#1516-全仓清理收尾与明确保留项2026-10-20)。
+多品牌彩票运营平台，尚未发布。用户端、代理端、品牌后台与总后台是四个独立 Vue 项目；Go 后端的 API 和 worker 分别运行。第一期仅处理内部整数积分，不接银行、虚拟资产钱包或链上转账，不上架应用市场。
+
+开发遵循 [AGENTS.md](AGENTS.md)：不写旧版本兼容或 fallback，保持 KISS。保留业务账本、审计、资金幂等和品牌隔离。投注与结算的当前实现以[65号交接](docs/65-unified-configured-betting.md)为准，早期旧引擎记录仅用于追溯。
 
 ## 当前业务与交接
 
-当前包含全局身份及品牌会员、角色权限、四来源账本、人工充值、投注/取消、玩法审核、期次、人工开奖、结算/更正、内部提现、代理佣金、人工奖励、站内通知、报表及对账。共享彩种已支持可配置 JSON、HTML 和执行 JavaScript 的 DOM 开奖来源；普通品牌彩种 API/DOM 来源及身份检查仍有一期伪适配器，不能视为真实验证。
+当前包含全局身份及品牌会员、角色权限、四来源账本、人工充值、配置化投注与结算、共享期次及自动开奖、内部提现、代理佣金、人工奖励、站内通知和报表。共享彩种支持可配置 JSON、HTML 和执行 JavaScript 的 DOM 开奖来源。
 
-积分按充值→中奖→佣金→赠送扣除，取消原路退款。同品牌同彩种上期已结算或取消全部退款后才能开放下期，错过窗口直接跳过。提现按占用前全部可用充值＋赠送余额与投注时 N 快照判断，成功后按申请提交时间切换流水周期。首页、钱包和订单使用真实接口，没有本地假订单或示例余额。
+所有模型统一由 `ConfiguredEngine` 报价、下单与结算，只写入 `configured_orders`；用户使用 `/configured/:gameId`，后台统一查询配置化订单。旧品牌自建投注、独立六合彩／加拿大投注及结算任务执行链路已移除，不转换旧试用注单。共享开奖结果发布后不可改写。配置化订单冻结购买时的规则、价格、销售版本及资金分配；更新规则不影响已购买订单。品牌在“彩种管理 → 销售配置”明确保存价格、投注开关及限额后才能销售；首次保存使用版本0，不自动启用。规则发布后才能开期；自动与手动期次共用窗口，品牌不另设自动开奖开关。自动开奖仅执行当前映射来源。现有开发库来源已明确重新配置，实际来源范围及闭环验证见[开发库来源记录](docs/65-unified-configured-betting.md#开发库自动来源映射配置与闭环验证2026-10-28)，其中加拿大来源仍为本地模拟数据。
 
-配置式规则经编辑、验证、审核和发布后，由品牌明确保存销售价格、开关及限额；不再提供旧规则/赔率转换导入或首次发布时自动搬运旧销售配置。六合彩和加拿大彩的新投注统一使用 `/configured/:gameId` 与配置式 API；专用目录、报价、下单及旧规则/销售写入已移除。旧注单查询、原快照结算和资金记录继续保留。已有彩种需明确发布配置式规则并由品牌保存销售配置，不自动迁移旧销售。平台自动开奖通过“保存命名来源修订 → 明确启用”发布，旧平台 POST automation 直接发布入口已删除。新来源仅接受 `mapped` 字段映射；旧 `interval_json`、`hk_marksix_6hch` 不能保存或重新启用。已存旧版本继续执行原日程、采集及未结单收尾，不转换历史结果与资金，详见[旧开奖清理边界](docs/59-configurable-mark-six-rule-design.md#1515-旧开奖入口收敛与统一发布2026-10-20)。
+借记投注按充值→中奖→佣金→赠送扣除；风险预留投注冻结最大亏损，结算只消费实际亏损，退款或释放按原来源归还。账户锁、期次限额锁和固定操作键保护并发扣款与重复派彩。提现按占用前可用充值＋赠送余额与投注时流水倍数快照判断，成功后切换流水周期。佣金、汇总及报表均读取配置化订单的真实财务事实。
 
 以 [交接索引](docs/README.md)、[业务规格](docs/01-product-spec.md) 和 [验收及未决事项](docs/08-acceptance-and-open-items.md) 为依据。[实施记录](docs/implementation-progress.md)保存阶段证据，早期增量升级或未接入说明不能作为当前安装步骤。
 
@@ -24,6 +26,22 @@
 | 并发和运维 | [容量基线](docs/43-current-capacity-baselines.md)、[复制恢复](docs/10-replication-and-recovery.md)、[可观测性](docs/33-operational-observability.md)、[发布手册](docs/34-release-and-operations.md) |
 
 开发证据不等于整套最新CI、生产容量、真机或客户人工审核通过。合规市场、商业号码/赔率、生产时区/模式、Telegram真实应用、域名/TLS与灾备目标另行确认，不索取或提交客户保密牌照材料。
+
+### 早期界面精简记录（以64／65号当前交接为准）
+
+以下为阶段记录；其中维护工具、旧注单查询及旧结算流程的后续移除见[64号](docs/64-betting-points-simplification.md)和[65号](docs/65-unified-configured-betting.md)。
+
+#### 一期界面精简（2026-10-27）
+
+业务报表仅保留投注、账本、提现、奖励及佣金入账五个页签，代理与加入来源筛选并入投注报表。周期核对不再提供独立页面。总后台余额修复、批量对账移到有权限账号的“维护工具”；品牌端已无入口的维护、归档、投递记录页面及其专用客户端移除，服务端接口、账本、审计和归档数据保留。独立资金/运营政策只读页合并到原有设置入口，通知模板仅编辑当前内容，不自动读取修订历史。实时 CSV 由服务端负责构造和业务完整性校验，前端只检查下载响应、类型、品牌范围和大小；不可变归档下载验证不变。测试按改动风险选择，资金幂等、余额与品牌隔离的必要回归仍保留。
+
+#### 第二批界面精简（2026-10-27）
+
+品牌展示和平台通知模板直接保存，失败保留草稿；结果未确认或版本冲突时先读取最新配置，再由用户保存，不保存跨页面待恢复意图。资金、认证、域名及安全政策的保护不随之删除。实时 JSON 报表由服务端计算业务汇总，浏览器保留格式、精度、品牌、查询范围与分页校验，不重复验算金额和分组等式；归档文件校验不变。用户常用投注积分改为手动保存。品牌安全政策保留开关与业务拒绝行为，移除无真实服务的手动伪检查工具。规则管理仅保留现有配置工作台，移除独立模板模拟器；运营工作台佣金区只展示待审批、暂停和失败事项。平台归档配置与通知投递记录从账户菜单的维护工具进入；归档查询与通知模板仍保留日常入口。代理端从会员进入注单，移除重复菜单。会员推荐及自定义玩法业务范围未调整。
+
+#### 第三批界面精简（2026-10-28）
+
+用户钱包及账本移除独立五秒轮询，钱包通过已验证的同会员钱包快照更新，账本仅在进入、翻页和主动刷新时读取；顶部积分保留可见页面的低频更新，概览统计复用钱包更新事件。代理佣金翻页只读取记录，进入或主动刷新时分别读取余额和记录，其中一项失败不清除另一项。总后台提现、奖励详情先读取订单，操作记录按需读取并独立重试，切换品牌、关闭详情或卸载后忽略旧请求。品牌后台代理、域名及合规页面直接存储 i18n 消息，不再通过原文反查翻译键。用户流水详情保留业务原因、变化积分、历史操作后可用积分及已知关联注单，完整四来源/四状态快照仍由接口及后台保留。批量删除会员、推荐体系和自定义玩法不在本批调整范围。
 
 ## 空库安装
 
@@ -46,20 +64,28 @@ cd backend
 go run ./cmd/platform generate-auth-key .local/auth.key
 go run ./cmd/platform migrate
 go run ./cmd/platform seed
-go run ./cmd/platform serve
+cd ..
 ```
 
 seed提供Aurora/Harbor虚构品牌及localhost/harbor.localhost域名，在production拒绝运行。`APP_ENV=development`时还创建总管理员`admin / admin123`；test不创建默认管理员。重复seed不重置已有同名账号的密码、状态或权限。AUTH_KEY_FILE相对backend工作目录解析；密钥0600且不入Git，多实例共享，不能丢失或直接替换。
 
-另一个终端从仓库根目录加载相同环境，启动独立worker：
+日常本地开发统一从仓库根目录使用以下入口管理 API 和 worker，禁止重启时手工摘取部分环境变量。配置文件路径必须显式指定；已有开发环境使用其原配置文件（当前本机为 `.local/review.env`），保留数据库、端口与认证密钥。
 
 ```sh
-set -a
-source .env
-set +a
-cd backend
-go run ./cmd/platform worker
+pnpm dev:backend start --env-file .env
+pnpm dev:backend restart --env-file .env
+pnpm dev:backend status --env-file .env
+pnpm dev:backend check --env-file .env
+pnpm dev:backend stop --env-file .env
 ```
+
+入口完整加载同一配置文件，先编译新程序、检查迁移和实际读取来源，通过后才停止旧服务；启动后检查 API 就绪并再次实际读取来源，失败明确退出并停止本次新服务，不报告启动成功。`check` 只编译并读取核验，不发布开奖结果或执行结算。来源读取成功仅代表地址、映射和响应可用，不能代替缺期补采。按期查询的源须已有到开奖时间的期次才能核验。
+
+首次将既有本地进程交给统一入口时，使用 `restart --env-file <原配置文件> --adopt-pids <原PID文件>`；入口核对进程身份及数据库、认证密钥、端口、环境一致后接管。之后 PID 和日志统一位于 `.local/dev-backend/`，不再使用各任务目录的启动脚本。
+
+直接执行 `platform worker` 同样在启动前校验已启用来源及仍承担未开奖期次的映射来源版本。缺失白名单、源域名未授权、映射无效或密钥未配置均拒绝启动；没有采集来源的空安装允许白名单为空。部署继续通过 systemd 的同一个 `EnvironmentFile` 加载配置。`platform check-draw-sources` 提供独立的只读来源核验命令。
+
+采集失败保留现有状态分类：请求或配置失败为 `source_error`，密钥缺失为 `credential_missing`，响应或期号/时间/号码异常为 `invalid_result`。结构化日志额外记录 `source_denied`、`network_error`、`http_status_<状态码>`、`response_invalid` 等具体原因；不记录密钥或响应正文。
 
 分别在三个终端从仓库根目录运行 `pnpm dev:user`、`pnpm dev:admin`、`pnpm dev:platform`。用户端localhost:5173、品牌后台localhost:5174、总后台localhost:5175；API localhost:8080，存活/就绪分别为 /health/live、/health/ready。
 
@@ -84,11 +110,11 @@ go run ./cmd/platform create-admin --username platform_reader --super
 
 浏览器使用HttpOnly、SameSite=Strict Cookie，不存访问令牌。生产必须HTTPS与Secure Cookie；用户品牌来自实际Host或 /api/v1/b/{brandCode}，不信任伪造品牌头或转发Host。写请求须JSON、Idempotency-Key及匹配Host的Origin。认证连接池至少4连接，限流每IP30次、每账号10次/5分钟，不是投注吞吐限制；不关闭限流或伪造IP让测试通过。
 
-提现初始关闭、派奖模式未配置，须明确设置；佣金派发/更正开关默认关闭。保存政策不等于开启派发，页面提示不等于资金已入账。
+提现初始关闭，须明确设置；佣金派发/更正开关默认关闭。保存政策不等于开启派发，页面提示不等于资金已入账。
 
 ## 检查与测试
 
-采用核心业务TDD、UI迭代与契约/浏览器回归。先配置独立测试PostgreSQL的TEST_DATABASE_URL，不能指向生产；测试建立并清理自有随机schema，不清空整个数据库。缺失配置时数据库测试会SKIP，不能宣称验收通过。
+采用核心业务TDD、UI迭代与契约/浏览器回归。先配置明确命名的独立测试 PostgreSQL 的 TEST_DATABASE_URL，不得指向共享开发库或生产；测试建立并清理自有随机schema，不清空整个数据库。缺失配置时数据库测试会SKIP，不能宣称验收通过。
 
 ```sh
 go -C backend vet ./...
@@ -99,6 +125,8 @@ pnpm build
 pnpm api:check
 pnpm test:contracts
 ```
+
+全量 Go 回归的独立 PostgreSQL 测试实例须与 CI 一致配置 `max_locks_per_transaction=256`，为并行创建和清理完整基线 schema 提供锁容量。该实例仅用于测试，不复用正在联调的共享开发实例。
 
 本地全量Go脚本要求已设置 `TEST_DATABASE_URL`，完整运行 `./...`，开启race且禁用测试结果缓存；包间串行、包内最多4项并行，避免迁移锁与真实Argon2计算争用。每包20分钟与现有数据库CI一致，包含整包累计的迁移、准备及真实期次等待；不修改业务请求时限，也不筛掉慢测试。回归须对应固定源码；同一工作区有并行编辑时，从包含未提交改动的独立快照运行相同命令，并保存源码校验值。浏览器开奖、报表容量边界等显式构建标签仍按对应专项命令验收。
 
@@ -132,15 +160,12 @@ pnpm test:e2e --project=mobile --shard=2/2 --workers=1 --retries=0
 
 `pnpm test:pwa`验证生产构建元数据、图标和公开哈希缓存，不连接API/数据库，不缓存HTML、私有API或写请求，不排队重放投注/提现，不等于真机安装或完整离线验收。
 
-三模型复式/倍投受控压测的原始报告及复跑命令见[容量交接](docs/43-current-capacity-baselines.md)；`pnpm test:capacity-mixed-models REPORT.json`独立核对15000笔请求、各模型实际组合/倍数/金额及账本不变量，不将本机结果视为生产或主从验收。
 
 设置独立WebKit可执行路径和受保护测试凭据后，`pnpm test:webkit`运行真实账号、后台权限及风控双视口功能专项；服务工作线程明确禁用，不将其当作Safari/iPhone真机或PWA验证。安装、环境及范围见[WebKit交接](docs/46-webkit-functional-verification.md)。
 
 `pnpm test:responsive`在768px/1024px复用真实注册与完整投注浏览器流程，要求独立合成库的正式API/worker、不同的Harbor创建/审核账号，以及明确的Chromium路径；环境变量同投注测试（TEST_HARBOR_ADMIN_USERNAME/PASSWORD、TEST_RULE_REVIEWER_USERNAME/PASSWORD、PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH）。串行、零重试，不复用已占用的5173/5174/5175前端服务。它不覆盖这两种尺寸的完整提现/佣金或真机安装。
 
-四尺寸提现专项使用`pnpm exec playwright test --config playwright.qualification.config.ts`。先在新的UTF8合成库按基线migrate/seed，并运行带browserfixture标签的qualification-fixture：它只允许APP_ENV=test、明确确认、含密码的本机lottery_test连接及lottery_withdrawal_qualification_s9数据库，要求身份和钱包为空。夹具创建四个独立用户，通过真实充值、投注和派奖准备资格。启动正式API/worker，设置TEST_QUAL_ADMIN_PASSWORD、TEST_QUAL_USER_PASSWORD及PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH后串行验证360/768/1024/1440px。不能在已使用的夹具库重复运行或清空原数据来重试；此流程不接入外部支付。
 
-佣金中间尺寸使用`pnpm test:commission-responsive tablet768`或`laptop1024`。各自先初始化新的UTF8合成库lottery_commission_ui_tablet768_s16或lottery_commission_ui_laptop1024_s16，设置APP_ENV=test、含密码的本机lottery_test DATABASE_URL、COMMISSION_FIXTURE_CONFIRM=owned_synthetic_database、COMMISSION_FIXTURE_ADMIN_PASSWORD及COMMISSION_FIXTURE_USER_PASSWORD；带browserfixture标签构建的commission-fixture执行init已包含当前基线与seed。启动正式API，不启动常驻worker：测试显式推进真实任务。设置COMMISSION_FIXTURE_BIN为夹具绝对路径、TEST_COMMISSION_ADMIN_PASSWORD及PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH；顺序入口依次执行周期、派发、修正、报表、分析，任一步失败就停止。不要直接运行整份配置的字母排序测试或重用已完成的有状态夹具。
 
 ## 工程结构
 
@@ -171,3 +196,8 @@ docs                     实现规格、交接与验收
 代理管理的个人信息提供用户端注册链接、复制链接和二维码 PNG 保存，二维码也支持手机长按保存。它与用户端推荐链接共用展示组件和地址生成方法，代理使用 `agent_code`，推荐使用 `referral_code`。代理管理的 `VITE_USER_APP_ORIGIN` 必须指向所属品牌的用户端站点；开发配置 `agent-web/.env.development` 明确使用 `http://127.0.0.1:5183`。构建部署时显式设置该变量（参见 `agent-web/.env.example`），不根据代理端域名或端口猜测用户端地址。地址未配置或无效时显示不可生成提示，不提供错误链接。
 
 代理端真实浏览器回归使用 `TEST_DATABASE_URL=postgres://.../lottery_agent_portal_test_local pnpm test:agent`，数据库名称必须含 `_test_` 且由本次测试独占。入口依次为每个设备创建独立 schema/API，运行中英文创建会员、下级代理、范围查询及修改密码后重新登录，结束或失败时由 Go 测试清理 schema。每个设备保留真实认证限流，不共用累计认证额度、不伪造 IP；测试账号均在自有临时品牌中。
+
+
+2026-10-27 投注与积分一期精简：结算预览改即时只读试算；移除批量对账／在线修复和奖励待追缴，保留资金幂等、来源分配、品牌隔离及审计。见[当前范围](docs/64-betting-points-simplification.md)。
+
+旧通用／专用投注的容量与提现／佣金浏览器夹具已随旧执行器退役。当前真实资金回归使用独立测试数据库运行 `go test -p 1 -parallel 4 ./internal/betting`，覆盖统一配置链路；不把旧容量数字用于当前版本。

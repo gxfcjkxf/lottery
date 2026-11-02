@@ -8,6 +8,7 @@ const utcDateTime = {
 };
 
 const recharge = obj({
+  method: {type:"string",enum:["manual","automatic"]},
   id: ref("UUID"),
   brand_id: ref("UUID"),
   member_id: ref("UUID"),

@@ -34,6 +34,7 @@ const page = (overrides: Record<string, unknown> = {}) => ({
   unread_count: "9223372036854775807",
   limit: 20,
   offset: 0,
+  total_count: "1",
   ...overrides,
 });
 const receipt = (overrides: Record<string, unknown> = {}) => ({
@@ -50,7 +51,7 @@ const ok = (data: unknown) =>
 describe("user notification API", () => {
   it("resolves stored system i18n references while preserving notification identity and event facts", async () => {
     const stored = { ...joined, content: { i18n_key: "member.joined", i18n_version: 1 } };
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok(page({ items: [stored] })));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok(page({ items: [stored]  ,total_count: '1'})));
     const result = await createNotificationApi({ fetch: fetcher }).list();
     expect(result.items[0]).toEqual(joined);
     expect(stored.content).toEqual({ i18n_key: "member.joined", i18n_version: 1 });
@@ -93,10 +94,10 @@ describe("user notification API", () => {
       ...published, id: "cd333333-3333-4333-8333-333333333333", event_type: "draw.result.corrected", template_key: "draw.result.corrected",
       payload: { ...published.payload, draw: { ...published.payload.draw, previous_draw_id: "55555555-5555-4555-8555-555555555555", result: { regular: [], special: [], digits: [0, 1, 0] } } },
     };
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(ok(page({ items: [published, corrected] })));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(ok(page({ items: [published, corrected]  ,total_count: '2'})));
     await expect(createNotificationApi({ fetch: fetcher }).list()).resolves.toMatchObject({
       items: [{ payload: published.payload, content: drawSnapshot }, { payload: corrected.payload }],
-    });
+     total_count: '2'});
   });
 
   it("rejects malformed draw payload shapes, versions, snapshots, and results", async () => {
@@ -119,7 +120,7 @@ describe("user notification API", () => {
       { ...base, payload: { ...base.payload, points: "0" } },
       { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, model: "M_SELECT_N" } } },
       { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, period_no: " ".repeat(2) } } },
-      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, period_no: "界".repeat(27) } } },
+      { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, period_no: "界".repeat(81) } } },
       { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, result: { regular: [], special: [], digits: [] } } } },
       { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, result: { regular: [1.5], special: [], digits: [] } } } },
       { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, result: { regular: [1_000_001], special: [], digits: [] } } } },
@@ -134,7 +135,7 @@ describe("user notification API", () => {
       { ...corrected, payload: { ...corrected.payload, draw: { ...corrected.payload.draw, previous_draw_id: resourceId } } },
       { ...base, payload: { ...base.payload, draw: { ...base.payload.draw, previous_draw_id: memberId } } },
     );
-    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => ok(page({ items: [invalid.shift()] })));
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => ok(page({ items: [invalid.shift()]  ,total_count: "1"})));
     const api = createNotificationApi({ fetch: fetcher });
     const invalidCount = invalid.length;
     for (let i = 0; i < invalidCount; i++) await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
@@ -143,7 +144,7 @@ describe("user notification API", () => {
   it.each([undefined, null])("rejects notifications missing content at template version 1 (%s)", async (content) => {
     const row = { ...joined, content };
     const api = createNotificationApi({
-      fetch: vi.fn<typeof fetch>().mockResolvedValue(ok(page({ items: [row] }))),
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(ok(page({ items: [row]  ,total_count: '1'}))),
     });
     await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
   });
@@ -151,7 +152,7 @@ describe("user notification API", () => {
   it("uses unprefixed paths, requested pagination and no payload-provided links or HTML", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(ok(page({ items: [], unread_count: "0", limit: 5, offset: 30 })));
+      .mockResolvedValue(ok(page({ items: [], unread_count: "0", limit: 5, offset: 30  ,total_count: '0'})));
     const api = createNotificationApi({ brandCode: "", fetch: fetcher });
     await expect(api.list(5, 30)).resolves.toMatchObject({ limit: 5, offset: 30 });
     expect(fetcher.mock.calls[0][0]).toBe("/api/v1/notifications?limit=5&offset=30");
@@ -171,13 +172,13 @@ describe("user notification API", () => {
     };
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(ok(page({ items: [validOther] })))
-      .mockResolvedValueOnce(ok(page({ items: [{ ...joined, template_key: "other" }] })))
-      .mockResolvedValueOnce(ok(page({ items: [{ ...joined, payload: { resource_id: resourceId, points: null } }] })))
-      .mockResolvedValueOnce(ok(page({ items: [{ ...joined, created_at: "2026-02-30T12:00:00Z" }] })))
-      .mockResolvedValueOnce(ok(page({ items: [{ ...joined, member_id: resourceId }] })))
+      .mockResolvedValueOnce(ok(page({ items: [validOther]  ,total_count: '1'})))
+      .mockResolvedValueOnce(ok(page({ items: [{ ...joined, template_key: "other" }]  ,total_count: '1'})))
+      .mockResolvedValueOnce(ok(page({ items: [{ ...joined, payload: { resource_id: resourceId, points: null } }]  ,total_count: '1'})))
+      .mockResolvedValueOnce(ok(page({ items: [{ ...joined, created_at: "2026-02-30T12:00:00Z" }]  ,total_count: '1'})))
+      .mockResolvedValueOnce(ok(page({ items: [{ ...joined, member_id: resourceId }]  ,total_count: '1'})))
       .mockResolvedValueOnce(ok(page({ unread_count: "01" })))
-      .mockResolvedValueOnce(ok(page({ items: [joined, joined] })));
+      .mockResolvedValueOnce(ok(page({ items: [joined, joined]  ,total_count: '2'})));
     const api = createNotificationApi({ fetch: fetcher });
 
     const parsed = await api.list();
@@ -221,8 +222,8 @@ describe("user notification API", () => {
       { ...won, payload: { ...won.payload, points: "9223372036854775808" } },
     ];
     const fetcher = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(ok(page({ items: [won, reversed] })))
-      .mockImplementation(async () => ok(page({ items: [invalidItems.shift()] })));
+      .mockResolvedValueOnce(ok(page({ items: [won, reversed]  ,total_count: '2'})))
+      .mockImplementation(async () => ok(page({ items: [invalidItems.shift()]  ,total_count: '1'})));
     const api = createNotificationApi({ fetch: fetcher });
 
     const parsed = await api.list();
@@ -236,7 +237,7 @@ describe("user notification API", () => {
   });
 
   it("accepts all reward states with a template version 1 snapshot and rejects malformed points or private payload fields", async () => {
-    const states = ["granted", "revocation_pending", "revoked"] as const;
+    const states = ["granted", "revoked"] as const;
     const rows = states.map((state, index) => ({
       ...joined,
       id: `00000000-0000-4000-8000-00000000001${index}`,
@@ -262,8 +263,8 @@ describe("user notification API", () => {
       })),
     ];
     const fetcher = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(ok(page({ items: rows })))
-      .mockImplementation(async () => ok(page({ items: [invalid.shift()] })));
+      .mockResolvedValueOnce(ok(page({ items: rows  ,total_count: String((rows).length)})))
+      .mockImplementation(async () => ok(page({ items: [invalid.shift()]  ,total_count: "1"})));
     const api = createNotificationApi({ fetch: fetcher });
     await expect(api.list()).resolves.toMatchObject({
       items: states.map((state) => ({
@@ -272,7 +273,12 @@ describe("user notification API", () => {
         template_version: 1,
         payload: { resource_id: resourceId, points: "9223372036854775807" },
       })),
-    });
+     total_count: String((states.map((state) => ({
+        event_type: `reward.order.${state}`,
+        template_key: `reward.order.${state}`,
+        template_version: 1,
+        payload: { resource_id: resourceId, points: "9223372036854775807" },
+      }))).length)});
     for (let index = 0; index < invalid.length; index++) {
       await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
     }
@@ -292,10 +298,10 @@ describe("user notification API", () => {
     };
     const invalid = ["0", "-0", "+1", "01", "-01", "9223372036854775808", "-9223372036854775809"];
     const fetcher = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(ok(page({ items: [adjusted] })))
-      .mockImplementation(async () => ok(page({ items: [{ ...adjusted, payload: { ...adjusted.payload, points: invalid.shift() } }] })));
+      .mockResolvedValueOnce(ok(page({ items: [adjusted]  ,total_count: '1'})))
+      .mockImplementation(async () => ok(page({ items: [{ ...adjusted, payload: { ...adjusted.payload, points: invalid.shift() } }]  ,total_count: '1'})));
     const api = createNotificationApi({ fetch: fetcher });
-    await expect(api.list()).resolves.toMatchObject({ items: [{ payload: { points: "-9223372036854775808" } }] });
+    await expect(api.list()).resolves.toMatchObject({ items: [{ payload: { points: "-9223372036854775808" } }]  ,total_count: '1'});
     for (let index = 0; index < 7; index++) {
       await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
     }
@@ -316,13 +322,13 @@ describe("user notification API", () => {
     const privateFields = ["member_id", "ledger_entry_id", "target_id", "audit_log_id", "version"];
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async (_input, _init) => {
       const field = privateFields.shift();
-      return ok(page({ items: [{ ...corrected, payload: field ? { ...corrected.payload, [field]: resourceId } : corrected.payload }] }));
+      return ok(page({ items: [{ ...corrected, payload: field ? { ...corrected.payload, [field]: resourceId } : corrected.payload }]  ,total_count: '1'}));
     });
     const api = createNotificationApi({ fetch: fetcher });
     for (let index = 0; index < 5; index++) {
       await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
     }
-    await expect(api.list()).resolves.toMatchObject({ items: [{ payload: { resource_id: resourceId, points: "-1" } }] });
+    await expect(api.list()).resolves.toMatchObject({ items: [{ payload: { resource_id: resourceId, points: "-1" } }]  ,total_count: '1'});
   });
 
   it("rejects commission notifications missing content regardless of template version", async () => {
@@ -330,7 +336,7 @@ describe("user notification API", () => {
       ...joined, event_type: event, template_key: event, template_version: 1, content,
       payload: { resource_id: resourceId, points: event === "commission.paid" ? "1" : "-1" },
     })));
-    const fetcher = vi.fn<typeof fetch>(async () => ok(page({ items: [variants.shift()] })));
+    const fetcher = vi.fn<typeof fetch>(async () => ok(page({ items: [variants.shift()]  ,total_count: "1"})));
     const api = createNotificationApi({ fetch: fetcher });
     for (let i = 0; i < 6; i++) await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
   });
@@ -360,8 +366,8 @@ describe("user notification API", () => {
       { ...events[0], event_type: "withdrawal.order.unknown", template_key: "withdrawal.order.unknown" },
     ];
     const fetcher = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(ok(page({ items: events })))
-      .mockImplementation(async () => ok(page({ items: [invalid.shift()] })));
+      .mockResolvedValueOnce(ok(page({ items: events  ,total_count: String((events).length)})))
+      .mockImplementation(async () => ok(page({ items: [invalid.shift()]  ,total_count: "1"})));
     const api = createNotificationApi({ fetch: fetcher });
 
     await expect(api.list()).resolves.toMatchObject({
@@ -370,7 +376,11 @@ describe("user notification API", () => {
         template_key: `withdrawal.order.${state}`,
         payload: { resource_id: resourceId, points: "9223372036854775807" },
       })),
-    });
+     total_count: String((states.map((state) => ({
+        event_type: `withdrawal.order.${state}`,
+        template_key: `withdrawal.order.${state}`,
+        payload: { resource_id: resourceId, points: "9223372036854775807" },
+      }))).length)});
     for (let index = 0; index < 8; index++) {
       await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
     }
@@ -389,16 +399,16 @@ describe("user notification API", () => {
       payload: { resource_id: resourceId, points: "9223372036854775807" },
     };
     const fetcher = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(ok(page({ items: [{ ...custom, template_version: 2 }] })))
-      .mockResolvedValueOnce(ok(page({ items: [custom] })));
+      .mockResolvedValueOnce(ok(page({ items: [{ ...custom, template_version: 2 }]  ,total_count: '1'})))
+      .mockResolvedValueOnce(ok(page({ items: [custom]  ,total_count: '1'})));
     const api = createNotificationApi({ fetch: fetcher });
 
     await expect(api.list()).resolves.toMatchObject({
       items: [{ template_version: 2, content: custom.content }],
-    });
+     total_count: '1'});
     await expect(api.list()).resolves.toMatchObject({
       items: [{ template_version: 9007199254740991, content: custom.content }],
-    });
+     total_count: '1'});
   });
 
   it("fails closed on missing snapshots for new versions and malformed snapshot content", async () => {
@@ -435,7 +445,7 @@ describe("user notification API", () => {
     const invalidCount = invalidItems.length;
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => {
       const invalid = invalidItems.shift();
-      return ok(page({ items: [invalid] }));
+      return ok(page({ items: [invalid]  ,total_count: '1'}));
     });
     const api = createNotificationApi({ fetch: fetcher });
     for (let index = 0; index < invalidCount; index++) {
@@ -443,7 +453,7 @@ describe("user notification API", () => {
     }
   });
 
-  it("accepts canonical snapshot length limits, while rejecting excess UTF-8 bytes and joined points", async () => {
+  it("accepts canonical snapshot length limits, while rejecting excess Unicode characters and joined points", async () => {
     const base = {
       ...joined,
       event_type: "recharge.confirmed",
@@ -465,12 +475,12 @@ describe("user notification API", () => {
       },
     };
     const fetcher = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(ok(page({ items: [{ ...base, content }] })))
-      .mockResolvedValueOnce(ok(page({ items: [{ ...base, content: { ...content, en: { ...content.en, body: `${"x".repeat(1193)}{points}` } } }] })))
-      .mockResolvedValueOnce(ok(page({ items: [{ ...base, content: { ...content, en: { ...content.en, title: "界".repeat(41) } } }] })))
-      .mockResolvedValueOnce(ok(page({ items: [{ ...joinedWithContent, content: { ...joinedWithContent.content, en: { title: "Welcome {points}", body: "Welcome aboard." } } }] })));
+      .mockResolvedValueOnce(ok(page({ items: [{ ...base, content }]  ,total_count: '1'})))
+      .mockResolvedValueOnce(ok(page({ items: [{ ...base, content: { ...content, en: { ...content.en, body: `${"x".repeat(1193)}{points}` } } }]  ,total_count: '1'})))
+      .mockResolvedValueOnce(ok(page({ items: [{ ...base, content: { ...content, en: { ...content.en, title: "界".repeat(121) } } }]  ,total_count: '1'})))
+      .mockResolvedValueOnce(ok(page({ items: [{ ...joinedWithContent, content: { ...joinedWithContent.content, en: { title: "Welcome {points}", body: "Welcome aboard." } } }]  ,total_count: '1'})));
     const api = createNotificationApi({ fetch: fetcher });
-    await expect(api.list()).resolves.toMatchObject({ items: [{ content }] });
+    await expect(api.list()).resolves.toMatchObject({ items: [{ content }]  ,total_count: '1'});
     await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
     await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
     await expect(api.list()).rejects.toMatchObject({ status: 502, code: "invalid_response" });
@@ -479,7 +489,7 @@ describe("user notification API", () => {
   it("enforces backend page bounds, page size and minimum unread count", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(ok(page({ items: [joined, { ...joined, id: resourceId }], limit: 1 })))
+      .mockResolvedValueOnce(ok(page({ items: [joined, { ...joined, id: resourceId }], limit: 1  ,total_count: '2'})))
       .mockResolvedValueOnce(ok(page({ unread_count: "0" })));
     const api = createNotificationApi({ fetch: fetcher });
     await expect(api.list(1)).rejects.toMatchObject({ status: 502, code: "invalid_response" });

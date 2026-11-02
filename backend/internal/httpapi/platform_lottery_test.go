@@ -34,11 +34,23 @@ func TestPlatformLotteryHTTPPermissionsReplayAndSharedRead(t *testing.T) {
 	mustStatus(t, login, 200)
 	var auth identity.AdminAuthentication
 	managedData(t, login, &auth)
-	body := map[string]any{"code": "platform_shared", "name": "Platform shared", "timezone": "UTC", "model": rules.Model{Type: "DIGITS_0_9", Length: 3, AllowRepeat: true, Ordered: true}, "reason": "Create shared game"}
+	calendarPath := "/api/v1/platform/platform-games/official-calendar"
+	mustStatus(t, f.call("GET", calendarPath, "", auth.AccessToken, "", nil), 200)
+	mustStatus(t, f.call("GET", calendarPath+"?year=2026", "", auth.AccessToken, "", nil), 400)
+	mustStatus(t, f.call("GET", calendarPath, "", "", "", nil), 401)
+	mustStatus(t, f.call("GET", calendarPath, "", f.token, "", nil), 403)
+	mustStatus(t, f.call("GET", strings.Replace(calendarPath, "/platform/", "/admin/", 1), "", f.token, managedBrand, nil), 400)
+	body := map[string]any{"code": "platform_shared", "name": "Platform shared", "timezone": "UTC", "model": rules.Model{Type: "DIGITS_0_9", Length: 3, Ordered: true}, "reason": "Create shared game"}
 	created := f.call("POST", "/api/v1/platform/platform-games", "platform-game-create", auth.AccessToken, "", body)
 	mustStatus(t, created, 201)
 	var game platformlottery.Game
 	managedData(t, created, &game)
+	overviewPath := "/api/v1/platform/platform-games/" + game.ID + "/draw-overview"
+	mustStatus(t, f.call("GET", overviewPath, "", auth.AccessToken, "", nil), 200)
+	mustStatus(t, f.call("GET", overviewPath+"?year=bad", "", auth.AccessToken, "", nil), 400)
+	mustStatus(t, f.call("GET", overviewPath, "", f.token, "", nil), 403)
+	mustStatus(t, f.call("GET", strings.Replace(overviewPath, "/platform/", "/admin/", 1), "", f.token, managedBrand, nil), 404)
+
 	replay := f.call("POST", "/api/v1/platform/platform-games", "platform-game-create", auth.AccessToken, "", body)
 	mustStatus(t, replay, 201)
 	var same platformlottery.Game
@@ -62,12 +74,12 @@ func TestPlatformLotteryHTTPPermissionsReplayAndSharedRead(t *testing.T) {
 	mustStatus(t, f.call("POST", path, "delete-unused", auth.AccessToken, "", deleted), 200)
 	mustStatus(t, f.call("POST", path, "delete-unused", auth.AccessToken, "", deleted), 200)
 	mustStatus(t, f.call("GET", "/api/v1/platform/platform-games/"+extra.ID, "", auth.AccessToken, "", nil), 200) // Historical detail remains readable after soft deletion.
-	modelBody := platformlottery.ModelInput{Model: rules.Model{Type: "DIGITS_0_9", Length: 3, Ordered: true}, ExpectedVersion: 1, Reason: "Visual model edit"}
+	modelBody := platformlottery.ModelInput{Model: rules.Model{Type: "DIGITS_0_9", Length: 3, AllowRepeat: true, Ordered: true}, ExpectedVersion: 1, Reason: "Visual model edit"}
 	updated := f.call("POST", "/api/v1/platform/platform-games/"+game.ID+"/model", "platform-model-update", auth.AccessToken, "", modelBody)
 	mustStatus(t, updated, 200)
 	var modelGame platformlottery.Game
 	managedData(t, updated, &modelGame)
-	if modelGame.Version != 2 || modelGame.Model.AllowRepeat {
+	if modelGame.Version != 2 || !modelGame.Model.AllowRepeat {
 		t.Fatal("model update did not persist")
 	}
 	mustStatus(t, f.call("POST", "/api/v1/platform/platform-games/"+game.ID+"/model", "platform-model-update", auth.AccessToken, "", modelBody), 200)
@@ -92,7 +104,45 @@ func TestPlatformLotteryHTTPPermissionsReplayAndSharedRead(t *testing.T) {
 
 	mustStatus(t, f.call("POST", "/api/v1/admin/platform-games", "brand-cannot-create", f.token, managedBrand, body), 404)
 	mustStatus(t, f.call("POST", "/api/v1/platform/platform-games", "brand-wrong-surface", f.token, "", body), 403)
+	catalog, err := rules.ConfiguredTemplateCatalog("canada_28")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prices := map[string]string{}
+	for _, play := range catalog.Plays {
+		for _, outcome := range play.Decisions.Outcomes {
+			if outcome.PriceKey != "" {
+				prices[outcome.PriceKey] = "2"
+			}
+		}
+	}
+	engine, err := rules.NewConfiguredEngine(catalog, rules.ConfiguredBindings{Version: "http-test", Attributes: map[string]map[string][]int{}}, rules.ConfiguredPrices{Version: "http-test", Plates: map[string]map[string]string{"A": prices}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, f.call("POST", "/api/v1/platform/platform-games/"+game.ID+"/configured/rules", "platform-save-rules", auth.AccessToken, "", platformlottery.ConfiguredRulesInput{Snapshot: engine.Snapshot()}), 200)
 	now := time.Now().UTC()
+	futureBody := platformlottery.PeriodInput{PeriodNo: "opening-edit", BetStartAt: now.Add(time.Hour), BetEndAt: now.Add(3 * time.Hour), DrawAt: now.Add(4 * time.Hour)}
+	futureResponse := f.call("POST", "/api/v1/platform/platform-games/"+game.ID+"/periods", "opening-period-create", auth.AccessToken, "", futureBody)
+	mustStatus(t, futureResponse, 201)
+	var future platformlottery.Period
+	managedData(t, futureResponse, &future)
+	openingPath := "/api/v1/platform/platform-games/periods/" + future.ID + "/opening"
+	openingBody := platformlottery.PeriodOpeningInput{BetStartAt: now.Add(2 * time.Hour), ExpectedBetStartAt: future.BetStartAt}
+	mustStatus(t, f.call("POST", openingPath, "brand-opening-denied", f.token, "", openingBody), 403)
+	mustStatus(t, f.call("POST", strings.Replace(openingPath, "/platform/", "/admin/", 1), "brand-opening-no-route", f.token, managedBrand, openingBody), 404)
+	updatedOpening := f.call("POST", openingPath, "opening-change", auth.AccessToken, "", openingBody)
+	mustStatus(t, updatedOpening, 200)
+	var changedOpening platformlottery.Period
+	managedData(t, updatedOpening, &changedOpening)
+	if !changedOpening.BetStartAt.Equal(openingBody.BetStartAt) {
+		t.Fatal("opening date/time not saved")
+	}
+	mustStatus(t, f.call("POST", openingPath, "opening-change", auth.AccessToken, "", openingBody), 200)
+	mustStatus(t, f.call("POST", openingPath, "opening-stale", auth.AccessToken, "", openingBody), 409)
+	openingBody.ExpectedBetStartAt = changedOpening.BetStartAt
+	openingBody.BetStartAt = future.BetEndAt
+	mustStatus(t, f.call("POST", openingPath, "opening-invalid", auth.AccessToken, "", openingBody), 400)
 	periodBody := platformlottery.PeriodInput{PeriodNo: "shared-001", BetStartAt: now.Add(-3 * time.Hour), BetEndAt: now.Add(-2 * time.Hour), DrawAt: now.Add(-time.Hour), Reason: "Create shared period"}
 	createdPeriod := f.call("POST", "/api/v1/platform/platform-games/"+game.ID+"/periods", "platform-create-period", auth.AccessToken, "", periodBody)
 	mustStatus(t, createdPeriod, 201)
@@ -105,6 +155,20 @@ func TestPlatformLotteryHTTPPermissionsReplayAndSharedRead(t *testing.T) {
 	mustStatus(t, locked, 409)
 	if !strings.Contains(locked.Body.String(), "PLATFORM_GAME_MODEL_LOCKED") {
 		t.Fatal("missing explicit used-model rejection")
+	}
+	// The shared client requires exact pagination totals on lists and detail reads.
+	for _, surface := range []struct{ prefix, token, brand string }{
+		{"/api/v1/platform", auth.AccessToken, ""},
+		{"/api/v1/admin", f.token, managedBrand},
+		{"/api/v1/b/aurora", "", ""},
+	} {
+		for _, offset := range []string{"0", "99"} {
+			var detail platformlottery.Detail
+			managedData(t, f.call("GET", surface.prefix+"/platform-games/"+game.ID+"?limit=1&offset="+offset, "", surface.token, surface.brand, nil), &detail)
+			if detail.TotalCount != "2" || len(detail.Periods) > 1 {
+				t.Fatalf("%s offset=%s: total=%q periods=%d", surface.prefix, offset, detail.TotalCount, len(detail.Periods))
+			}
+		}
 	}
 	read := f.call("GET", "/api/v1/admin/platform-games/"+game.ID, "", f.token, managedBrand, nil)
 	mustStatus(t, read, 200)
@@ -138,6 +202,12 @@ func TestPlatformGameRenamePermissionsVersionAndReplay(t *testing.T) {
 	mustStatus(t, created, 201)
 	var game platformlottery.Game
 	managedData(t, created, &game)
+	overviewPath := "/api/v1/platform/platform-games/" + game.ID + "/draw-overview"
+	mustStatus(t, f.call("GET", overviewPath, "", auth.AccessToken, "", nil), 200)
+	mustStatus(t, f.call("GET", overviewPath+"?year=bad", "", auth.AccessToken, "", nil), 400)
+	mustStatus(t, f.call("GET", overviewPath, "", f.token, "", nil), 403)
+	mustStatus(t, f.call("GET", strings.Replace(overviewPath, "/platform/", "/admin/", 1), "", f.token, managedBrand, nil), 404)
+
 	path := "/api/v1/platform/platform-games/" + game.ID + "/name"
 	in := platformlottery.NameInput{Name: "Renamed", ExpectedVersion: 1}
 	renamed := f.call("POST", path, "rename-once", auth.AccessToken, "", in)
@@ -158,5 +228,30 @@ func TestPlatformGameRenamePermissionsVersionAndReplay(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("rename audit replayed: %d", count)
+	}
+}
+
+func TestBrandPlatformGameMutationRoutesOnlyExposeConnectionAndSales(t *testing.T) {
+	allowed := map[string]bool{
+		"/api/v1/admin/platform-games/{id}/connect":      true,
+		"/api/v1/admin/platform-games/{id}/availability": true,
+		// Brands configure sales only for their own connected games.
+		"/api/v1/admin/platform-games/{id}/configured/sales": true,
+		// The limits page updates the same configured sales record.
+		"/api/v1/admin/platform-games/{id}/bet-limits": true,
+		// This endpoint evaluates an unsaved rule draft; it does not mutate a game.
+		"/api/v1/admin/platform-games/rule-preview": true,
+	}
+	for _, route := range RegisteredRoutes() {
+		if route.Method == "GET" || !strings.HasPrefix(route.Path, "/api/v1/admin/platform-games") {
+			continue
+		}
+		if route.Method != "POST" || !allowed[route.Path] {
+			t.Fatalf("brand can mutate platform game configuration: %+v", route)
+		}
+		delete(allowed, route.Path)
+	}
+	if len(allowed) != 0 {
+		t.Fatalf("missing supported brand game routes: %v", allowed)
 	}
 }

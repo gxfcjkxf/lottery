@@ -270,141 +270,6 @@ jobs:
             test-results/
             .local/audit-exports-browser-report.json
             audit-exports-api.log
-  draw-notifications-browser:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        viewport: [desktop, mobile]
-    services:
-      postgres:
-        image: postgres:17.5-alpine
-        env:
-          POSTGRES_DB: lottery_attribution_browser_${{ matrix.viewport }}
-          POSTGRES_USER: lottery_test
-          POSTGRES_HOST_AUTH_METHOD: trust
-          POSTGRES_INITDB_ARGS: "-c max_locks_per_transaction=256"
-        ports: ["127.0.0.1:5432:5432"]
-        options: --health-cmd "pg_isready -U lottery_test -d lottery_attribution_browser_${{ matrix.viewport }}" --health-interval 5s --health-timeout 3s --health-retries 20
-    env:
-      APP_ENV: test
-      DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_attribution_browser_${{ matrix.viewport }}?sslmode=disable
-      HTTP_ADDR: 127.0.0.1:8080
-      AUTH_KEY_FILE: .local/auth.key
-      PLATFORM_BIN: ${{ github.workspace }}/.local/draw-notification-platform
-      POSTGRES_PSQL_BIN: /usr/bin/psql
-      REPORT_ATTRIBUTION_VIEWPORT: ${{ matrix.viewport }}
-      REPORT_ATTRIBUTION_FIXTURE_CONFIRM: owned_synthetic_database
-      TEST_DRAW_NOTICE_ADMIN_ORIGIN: http://localhost:5174
-      TEST_DRAW_NOTICE_USER_ORIGIN: http://localhost:5173
-      TEST_ATTRIBUTION_ADMIN_USERNAME: attribution_browser_${{ matrix.viewport }}
-      TEST_ATTRIBUTION_ADMIN_PASSWORD: attribution-owned-2026
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - uses: pnpm/action-setup@v4
-      - run: pnpm install --frozen-lockfile
-      - name: Prepare and verify Chromium
-        timeout-minutes: 7
-        run: node scripts/prepare-ci-browser.mjs
-      - name: Initialize owned draw notice database with normal CLI and start API and worker
-        run: |
-          mkdir -p .local
-          go -C backend build -o ../.local/draw-notification-platform ./cmd/platform
-          .local/draw-notification-platform generate-auth-key .local/auth.key
-          node scripts/init-attribution-browser.mjs
-          .local/draw-notification-platform serve > draw-notifications-api.log 2>&1 &
-          .local/draw-notification-platform worker > draw-notifications-worker.log 2>&1 &
-          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
-      - name: Run genuine published and corrected notices without skips
-        run: |
-          pnpm exec playwright test --config=playwright.draw-notifications.config.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
-          node --input-type=module -e 'import { readFileSync } from "node:fs"; const { stats } = JSON.parse(readFileSync(".local/draw-notifications-browser-report.json", "utf8")); if (stats.skipped !== 0 || stats.unexpected !== 0 || stats.flaky !== 0 || stats.expected !== 1) throw new Error("Draw notice CI requires exactly one passed test and zero skips or retries");'
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: draw-notifications-${{ matrix.viewport }}-failure-traces
-          path: |
-            test-results/
-            .local/draw-notifications-browser-report.json
-            draw-notifications-api.log
-            draw-notifications-worker.log
-  attribution-reports-browser:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        viewport: [desktop, mobile]
-    services:
-      postgres:
-        image: postgres:17.5-alpine
-        env:
-          POSTGRES_DB: lottery_attribution_browser_${{ matrix.viewport }}
-          POSTGRES_USER: lottery_test
-          POSTGRES_HOST_AUTH_METHOD: trust
-          POSTGRES_INITDB_ARGS: "-c max_locks_per_transaction=256"
-        ports: ["127.0.0.1:5432:5432"]
-        options: --health-cmd "pg_isready -U lottery_test -d lottery_attribution_browser_${{ matrix.viewport }}" --health-interval 5s --health-timeout 3s --health-retries 20
-    env:
-      APP_ENV: test
-      DATABASE_URL: postgres://lottery_test@127.0.0.1:5432/lottery_attribution_browser_${{ matrix.viewport }}?sslmode=disable
-      HTTP_ADDR: 127.0.0.1:8080
-      AUTH_KEY_FILE: .local/auth.key
-      PLATFORM_BIN: ${{ github.workspace }}/.local/attribution-platform
-      POSTGRES_PSQL_BIN: /usr/bin/psql
-      REPORT_ATTRIBUTION_VIEWPORT: ${{ matrix.viewport }}
-      REPORT_ATTRIBUTION_FIXTURE_CONFIRM: owned_synthetic_database
-      TEST_ATTRIBUTION_ORIGIN: http://localhost:5174
-      TEST_ATTRIBUTION_API_ORIGIN: http://127.0.0.1:8080
-      TEST_ATTRIBUTION_ADMIN_USERNAME: attribution_browser_${{ matrix.viewport }}
-      TEST_ATTRIBUTION_ADMIN_PASSWORD: attribution-owned-2026
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - uses: pnpm/action-setup@v4
-      - run: pnpm install --frozen-lockfile
-      - name: Prepare and verify Chromium
-        timeout-minutes: 7
-        run: node scripts/prepare-ci-browser.mjs
-      - name: Initialize owned attribution database with normal CLI and start API
-        run: |
-          mkdir -p .local
-          go -C backend build -o ../.local/attribution-platform ./cmd/platform
-          .local/attribution-platform generate-auth-key .local/auth.key
-          node scripts/init-attribution-browser.mjs
-          .local/attribution-platform serve > attribution-reports-api.log 2>&1 &
-          .local/attribution-platform worker > attribution-reports-worker.log 2>&1 &
-          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
-      - name: Run real saved attribution and complete CSV without skips
-        run: |
-          pnpm exec playwright test --config=playwright.attribution-reports.config.ts --project=${{ matrix.viewport }} --workers=1 --retries=0
-          node --input-type=module -e 'import { readFileSync } from "node:fs"; const { stats } = JSON.parse(readFileSync(".local/attribution-reports-browser-report.json", "utf8")); if (stats.skipped !== 0 || stats.unexpected !== 0 || stats.flaky !== 0 || stats.expected !== 1) throw new Error("Attribution report CI requires exactly one passed test and zero skips or retries");'
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: attribution-reports-${{ matrix.viewport }}-failure-traces
-          path: |
-            test-results/
-            .local/attribution-reports-browser-report.json
-            attribution-reports-api.log
-            attribution-reports-worker.log
-            .local/attribution-reports-*.png
   report-archive-policy-browser:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -436,6 +301,12 @@ jobs:
       TEST_ARCHIVE_POLICY_API_ORIGIN: http://127.0.0.1:8080
       TEST_ARCHIVE_POLICY_ADMIN_USERNAME: archive_policy_browser_${{ matrix.viewport }}
       TEST_ARCHIVE_POLICY_ADMIN_PASSWORD: archive-policy-owned-2026
+      TEST_GLOBAL_ARCHIVE_ORIGIN: http://127.0.0.1:5175
+      TEST_BRAND_ARCHIVE_ORIGIN: http://localhost:5174
+      TEST_GLOBAL_ARCHIVE_USERNAME: archive_global_${{ matrix.viewport }}
+      TEST_BRAND_ARCHIVE_USERNAME: archive_policy_browser_${{ matrix.viewport }}
+      TEST_GLOBAL_ARCHIVE_PASSWORD: archive-policy-owned-2026
+      GLOBAL_ARCHIVE_FIXTURE_CONFIRM: owned_synthetic_database
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -456,6 +327,7 @@ jobs:
           go -C backend build -o ../.local/archive-policy-platform ./cmd/platform
           .local/archive-policy-platform generate-auth-key .local/auth.key
           node scripts/init-report-archive-policy-browser.mjs
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_GLOBAL_ARCHIVE_PASSWORD" .local/archive-policy-platform create-admin --username "$TEST_GLOBAL_ARCHIVE_USERNAME" --super
           .local/archive-policy-platform serve > report-archive-policy-api.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
       - name: Run real policy activation receipt recovery without skips
@@ -570,6 +442,8 @@ jobs:
       TEST_ARCHIVE_API_ORIGIN: http://127.0.0.1:8080
       TEST_ARCHIVE_ADMIN_USERNAME: archive_browser_${{ matrix.viewport }}
       TEST_ARCHIVE_ADMIN_PASSWORD: archive-browser-owned-2026
+      TEST_ARCHIVE_PLATFORM_ORIGIN: http://127.0.0.1:5175
+      TEST_ARCHIVE_PLATFORM_ADMIN_USERNAME: archive_platform_${{ matrix.viewport }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -590,6 +464,7 @@ jobs:
           go -C backend build -o ../.local/archive-platform ./cmd/platform
           .local/archive-platform generate-auth-key .local/auth.key
           node scripts/init-report-archive-browser.mjs
+          BOOTSTRAP_ADMIN_PASSWORD="$TEST_ARCHIVE_ADMIN_PASSWORD" .local/archive-platform create-admin --username "$TEST_ARCHIVE_PLATFORM_ADMIN_USERNAME" --super
           .local/archive-platform serve > report-archives-api.log 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
       - name: Run real report archive browser workflow without skipped tests
@@ -689,153 +564,6 @@ jobs:
             .local/reward-inbox-report.json
             .local/reward-reports-report.json
             reward-inbox-worker.log
-  commission-cycles-browser:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        viewport: [desktop, mobile, tablet768, laptop1024]
-        include:
-          - viewport: desktop
-            config: playwright.config.ts
-          - viewport: mobile
-            config: playwright.config.ts
-          - viewport: tablet768
-            config: playwright.commission-responsive.config.ts
-          - viewport: laptop1024
-            config: playwright.commission-responsive.config.ts
-    services:
-      postgres:
-        image: postgres:17.5-alpine
-        env:
-          POSTGRES_DB: lottery_commission_ui_${{ matrix.viewport }}_s16
-          POSTGRES_USER: lottery_test
-          POSTGRES_PASSWORD: local_test_password
-        ports: ["5432:5432"]
-        options: --health-cmd "pg_isready -U lottery_test" --health-interval 5s --health-timeout 3s --health-retries 20
-    env:
-      APP_ENV: test
-      DATABASE_URL: postgres://lottery_test:local_test_password@localhost:5432/lottery_commission_ui_${{ matrix.viewport }}_s16?sslmode=disable
-      TEST_DATABASE_URL: postgres://lottery_test:local_test_password@localhost:5432/lottery_commission_ui_${{ matrix.viewport }}_s16?sslmode=disable
-      HTTP_ADDR: 127.0.0.1:8080
-      AUTH_KEY_FILE: .local/auth.key
-      COMMISSION_FIXTURE_CONFIRM: owned_synthetic_database
-      COMMISSION_FIXTURE_ADMIN_PASSWORD: commission-ui-admin-pw-2026
-      COMMISSION_FIXTURE_USER_PASSWORD: commission-ui-user-pw-2026
-      COMMISSION_FIXTURE_BIN: backend/bin/commission-fixture
-      TEST_COMMISSION_ADMIN_PASSWORD: commission-ui-admin-pw-2026
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - uses: pnpm/action-setup@v4
-      - run: pnpm install --frozen-lockfile
-      - name: Prepare and verify Chromium
-        timeout-minutes: 7
-        run: node scripts/prepare-ci-browser.mjs
-      - name: Pin Chromium for explicit commission configurations
-        run: node --input-type=module -e 'import { chromium } from "@playwright/test"; import { appendFileSync } from "node:fs"; appendFileSync(process.env.GITHUB_ENV, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${chromium.executablePath()}\n`);'
-      - name: Create owned real commission workflows and start API
-        working-directory: backend
-        run: |
-          go test -count=1 -tags browserfixture ./cmd/commission-fixture
-          go build -tags browserfixture -o bin/commission-fixture ./cmd/commission-fixture
-          go build -o bin/platform ./cmd/platform
-          ./bin/platform generate-auth-key .local/auth.key
-          ./bin/commission-fixture init
-          ./bin/platform serve > ../commission-cycles-api.log 2>&1 &
-          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
-      # The test advances real workers explicitly between lost/replayed
-      # receipts. No always-running worker races the unregistered anchor.
-      - run: pnpm exec playwright test tests/browser/commission-cycles.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --config=${{ matrix.config }}
-      - run: pnpm exec playwright test tests/browser/commission-payments.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --config=${{ matrix.config }}
-      - run: pnpm exec playwright test tests/browser/commission-adjustments.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --config=${{ matrix.config }}
-      - run: pnpm exec playwright test tests/browser/commission-reports.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --config=${{ matrix.config }}
-      - name: Verify commission analysis passes without skips
-        env:
-          PLAYWRIGHT_JSON_OUTPUT_NAME: .local/commission-analysis-report.json
-        run: |
-          pnpm exec playwright test tests/browser/commission-analysis.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --config=${{ matrix.config }} --reporter=list,json
-          node --input-type=module -e 'import { readFileSync } from "node:fs"; const { stats } = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME, "utf8")); if (stats.skipped !== 0 || !(stats.expected > 0)) throw new Error("Commission analysis CI requires passed tests and zero skipped tests");'
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: commission-cycles-${{ matrix.viewport }}-failure-traces
-          path: |
-            test-results/
-            .local/commission-analysis-report.json
-  commission-corrections-browser:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        viewport: [desktop, mobile]
-    services:
-      postgres:
-        image: postgres:17.5-alpine
-        env:
-          POSTGRES_DB: lottery_commission_correction_${{ matrix.viewport }}_s27
-          POSTGRES_USER: lottery_test
-          POSTGRES_PASSWORD: local_test_password
-          POSTGRES_INITDB_ARGS: "-c max_locks_per_transaction=256"
-        ports: ["5432:5432"]
-        options: --health-cmd "pg_isready -U lottery_test" --health-interval 5s --health-timeout 3s --health-retries 20
-    env:
-      APP_ENV: test
-      DATABASE_URL: postgres://lottery_test:local_test_password@localhost:5432/lottery_commission_correction_${{ matrix.viewport }}_s27?sslmode=disable
-      HTTP_ADDR: 127.0.0.1:8080
-      AUTH_KEY_FILE: .local/auth.key
-      COMMISSION_FIXTURE_CONFIRM: owned_synthetic_database
-      COMMISSION_FIXTURE_ADMIN_PASSWORD: commission-ui-admin-pw-2026
-      COMMISSION_FIXTURE_USER_PASSWORD: commission-ui-user-pw-2026
-      COMMISSION_FIXTURE_BIN: backend/bin/commission-fixture
-      TEST_COMMISSION_ADMIN_PASSWORD: commission-ui-admin-pw-2026
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - uses: pnpm/action-setup@v4
-      - run: pnpm install --frozen-lockfile
-      - name: Prepare and verify Chromium
-        timeout-minutes: 7
-        run: node scripts/prepare-ci-browser.mjs
-      - name: Create isolated original commission workflows and start API
-        working-directory: backend
-        run: |
-          go build -tags browserfixture -o bin/commission-fixture ./cmd/commission-fixture
-          go build -o bin/platform ./cmd/platform
-          ./bin/platform generate-auth-key .local/auth.key
-          ./bin/commission-fixture init
-          ./bin/platform serve > ../commission-corrections-api.log 2>&1 &
-          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
-      - name: Verify real correction approval and held-cycle continuation
-        env:
-          PLAYWRIGHT_JSON_OUTPUT_NAME: .local/commission-corrections-report.json
-        run: |
-          pnpm exec playwright test tests/browser/commission-corrections.spec.ts --project=${{ matrix.viewport }} --workers=1 --retries=0 --reporter=list,json
-          node --input-type=module -e 'import { readFileSync } from "node:fs"; const { stats } = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME, "utf8")); if (stats.skipped !== 0 || !(stats.expected > 0)) throw new Error("Commission correction CI requires passed tests and zero skipped tests");'
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: commission-corrections-${{ matrix.viewport }}-failure-traces
-          path: |
-            test-results/
-            .local/commission-corrections-report.json
-            commission-corrections-api.log
   withdrawal-browser:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -894,130 +622,6 @@ jobs:
         if: failure()
         with:
           name: withdrawal-browser-failure-traces
-          path: test-results/
-  qualification-browser:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:17.5-alpine
-        env:
-          POSTGRES_DB: lottery_withdrawal_qualification_s9
-          POSTGRES_USER: lottery_test
-          POSTGRES_PASSWORD: local_test_password
-        ports: ["5432:5432"]
-        options: --health-cmd "pg_isready -U lottery_test -d lottery_withdrawal_qualification_s9" --health-interval 5s --health-timeout 3s --health-retries 20
-    env:
-      APP_ENV: test
-      DATABASE_URL: postgres://lottery_test:local_test_password@localhost:5432/lottery_withdrawal_qualification_s9?sslmode=disable
-      HTTP_ADDR: 127.0.0.1:8080
-      AUTH_KEY_FILE: .local/auth.key
-      WITHDRAWAL_QUAL_FIXTURE_CONFIRM: owned_synthetic_database
-      WITHDRAWAL_QUAL_FIXTURE_ADMIN_PASSWORD: ci-qualification-admin-pw-2026
-      WITHDRAWAL_QUAL_FIXTURE_USER_PASSWORD: ci-qualification-user-pw-2026
-      TEST_QUAL_ADMIN_USERNAME: qual_admin
-      TEST_QUAL_ADMIN_PASSWORD: ci-qualification-admin-pw-2026
-      TEST_QUAL_USER_PASSWORD: ci-qualification-user-pw-2026
-      TEST_QUAL_USER_ORIGIN: http://localhost:5173
-      TEST_QUAL_ADMIN_ORIGIN: http://localhost:5174
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - uses: pnpm/action-setup@v4
-      - run: pnpm install --frozen-lockfile
-      - name: Prepare and verify Chromium
-        timeout-minutes: 7
-        run: node scripts/prepare-ci-browser.mjs
-      - name: Migrate isolated database and create real qualification fixture
-        working-directory: backend
-        run: |
-          go test -tags browserfixture ./cmd/qualification-fixture
-          go build -o bin/platform ./cmd/platform
-          ./bin/platform migrate
-          ./bin/platform seed
-          ./bin/platform generate-auth-key .local/auth.key
-          go run -tags browserfixture ./cmd/qualification-fixture
-          ./bin/platform serve > ../qualification-api.log 2>&1 &
-          ./bin/platform worker > ../qualification-worker.log 2>&1 &
-          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
-      - name: Pin Chromium for the four-viewport qualification suite
-        run: node --input-type=module -e 'import { chromium } from "@playwright/test"; import { appendFileSync } from "node:fs"; appendFileSync(process.env.GITHUB_ENV, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${chromium.executablePath()}\n`);'
-      - run: pnpm exec playwright test --config playwright.qualification.config.ts
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: qualification-browser-failure-traces
-          path: test-results/
-  reconciliation-browser:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        project: [desktop, mobile]
-    services:
-      postgres:
-        image: postgres:17.5-alpine
-        env:
-          POSTGRES_DB: lottery_reconciliation_browser
-          POSTGRES_USER: lottery_test
-          POSTGRES_PASSWORD: local_test_password
-        ports: ["5432:5432"]
-        options: --health-cmd "pg_isready -U lottery_test -d lottery_reconciliation_browser" --health-interval 5s --health-timeout 3s --health-retries 20
-    env:
-      APP_ENV: test
-      DATABASE_URL: postgres://lottery_test:local_test_password@localhost:5432/lottery_reconciliation_browser?sslmode=disable
-      HTTP_ADDR: 127.0.0.1:8080
-      AUTH_KEY_FILE: .local/auth.key
-      RECONCILIATION_FIXTURE_CONFIRM: owned_synthetic_database
-      TEST_RECONCILIATION_ADMIN_USERNAME: ci_reconciliation_operator
-      TEST_RECONCILIATION_ADMIN_PASSWORD: ci-isolated-test-pw-2026
-      BOOTSTRAP_ADMIN_PASSWORD: ci-isolated-test-pw-2026
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - uses: pnpm/action-setup@v4
-      - run: pnpm install --frozen-lockfile
-      - name: Prepare and verify Chromium
-        timeout-minutes: 7
-        run: node scripts/prepare-ci-browser.mjs
-      - name: Start dedicated reconciliation fixture and API
-        working-directory: backend
-        run: |
-          go test -tags browserfixture ./cmd/reconciliation-fixture
-          go build -o bin/platform ./cmd/platform
-          ./bin/platform migrate
-          ./bin/platform seed
-          ./bin/platform generate-auth-key .local/auth.key
-          ./bin/platform create-admin --username ci_reconciliation_operator --brand harbor
-          go run -tags browserfixture ./cmd/reconciliation-fixture
-          go run -tags browserfixture ./cmd/reconciliation-fixture verify > ../reconciliation-fingerprint-before.txt
-          ./bin/platform serve > ../reconciliation-api.log 2>&1 &
-          ./bin/platform worker > ../reconciliation-worker.log 2>&1 &
-          curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8080/health/ready
-      - run: pnpm exec playwright test tests/browser/reconciliation.spec.ts tests/browser/business-inventory.spec.ts --project=${{ matrix.project }} --workers=1 --retries=0
-      - name: Verify complete owned financial history after readonly checks
-        working-directory: backend
-        run: |
-          go run -tags browserfixture ./cmd/reconciliation-fixture verify > ../reconciliation-fingerprint-after.txt
-          cmp ../reconciliation-fingerprint-before.txt ../reconciliation-fingerprint-after.txt
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: reconciliation-browser-failure-${{ matrix.project }}
           path: test-results/
   api-contract:
     runs-on: ubuntu-latest

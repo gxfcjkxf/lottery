@@ -51,8 +51,8 @@ describe('brand presentation', () => {
     expect(safeBrandAssetUrl('/brand-assets/tenant/logo.webp')).toBe('/brand-assets/tenant/logo.webp')
   })
 
-  it('limits asset URIs by UTF-8 byte length', () => {
-    expect(safeBrandAssetUrl(`/icons/${'é'.repeat(253)}.png`)).toBeNull()
+  it('limits asset URIs by Unicode character length', () => {
+    expect(safeBrandAssetUrl(`/icons/${'é'.repeat(503)}.png`)).toBeNull()
   })
 })
 

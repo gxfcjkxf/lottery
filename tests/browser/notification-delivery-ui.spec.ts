@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test,expect } from "@playwright/test";
 import { restoreAdminSession } from "./support/admin-session";
 
@@ -26,7 +27,7 @@ test("notification retry UI retains unknown intent across remount (mocked delive
   });
   const errors:string[]=[];page.on("pageerror",error=>errors.push(error.message));
   await page.goto("http://localhost:5174");
-  await page.getByLabel("选择真实后台品牌",{exact:true}).selectOption(brand);
+  await selectControl(page.getByLabel("选择真实后台品牌",{exact:true}), brand);
   await page.getByRole("button",{name:"通知",exact:true}).click();
   const panel=page.locator(".notification-deliveries");
   await expect(panel.locator(".status-failed")).toBeVisible();

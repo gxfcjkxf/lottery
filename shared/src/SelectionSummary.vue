@@ -60,7 +60,7 @@ watch(()=>props.locale,value=>i18n.setLocale(value==='zh'?'zh-CN':value))
   overflow-wrap: anywhere;
 }
 .selection-summary strong {
-  font-size: 0.86rem;
+  font-size: var(--body-font-size);
 }
 .selection-summary span {
   font-variant-numeric: tabular-nums;

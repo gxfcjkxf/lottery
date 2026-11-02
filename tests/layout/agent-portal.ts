@@ -23,10 +23,8 @@ export function registerAgentPortalTests(reflow=false){
   const root={id:gameId,agent_account_id:gameId,brand_id:gameId,depth:1,config:{can_create_children:true,mode:'loss',ratio:'0.2',status:'active'},effective_mode:'loss',policy_version:1,version:1}
   const member={id:memberId,username:'member_a',display_name:'Member A',phone:'',status:'active',joined_at:at,available_points:'100',agent_username:'agent_a',is_direct:true}
   const snapshot=configuredDemo(JSON.parse(readFileSync('backend/internal/rules/config/canada_niuniu.json','utf8')))
-  const standard={kind:'standard',id:gameId,game_name:'Game A',period_no:'123',placed_at:at,order:{id:gameId,status:'won',multiplier:'1',settled_at:at,payout_entry_id:gameId,total_points:'10',prize_points:'20',selection_normalized:{digits:[[1],[2],[3]],attributes:{color:['red']},features:{sum:['big']}}}}
-  const configured={kind:'configured',id:'configured-history',game_name:'Configured game',period_no:'124',placed_at:at,order:{id:'configured-history',game_name:'Configured game',period_no:'124',status:'settled',snapshot,quote:{bet_points:'10',reserved_points:'200',lines:[{play_id:'aa',options:['aa'],plate:'A',stake:'10',prices:{aa:'2'}}]},result:{prize_points:'0',refund_points:'10',consumed_points:'190',lines:[{outcome:'lost',prize_points:'0'}]}}}
-  const ticket={period_no:'125',status:'placed',total_points:'10',prize_points:'0',refund_points:'0',effective_points:'0',reserved_points:'0',lost_points:'0',items:[],attributes:{}}
-  const betItems=[standard,configured,{kind:'mark-six',id:'mark-history',game_name:'Mark game',period_no:'125',placed_at:at,order:{...ticket,id:'mark-history',plate:'A'}},{kind:'canada',id:'canada-history',game_name:'Canada game',period_no:'125',placed_at:at,order:{...ticket,id:'canada-history',profile:'canada_niuniu'}}]
+  const configured={kind:'configured',id:'configured-history',game_name:'Game A',period_no:'124',placed_at:at,order:{id:'configured-history',game_name:'Game A',period_no:'124',status:'settled',snapshot,quote:{bet_points:'10',reserved_points:'200',lines:[{play_id:'aa',options:['aa'],plate:'A',stake:'10',prices:{aa:'2'}}]},result:{prize_points:'0',refund_points:'10',consumed_points:'190',lines:[{outcome:'lost',prize_points:'0'}]}}}
+  const betItems=Array.from({length:20},(_,index)=>({...configured,id:`configured-history-${index}`,order:{...configured.order,id:`configured-history-${index}`}}))
   let lose=true,release=()=>{throw Error('No request pending')}
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
   await page.route('**/api/v1/agent/**',async route=>{
@@ -37,13 +35,14 @@ export function registerAgentPortalTests(reflow=false){
     if(lose){lose=false;return route.abort('failed')}
     await new Promise<void>(resolve=>{release=resolve});return reply({audit_log_id:gameId})
    }
+   if(path.endsWith('/auth/config'))return reply({captcha_enabled:false})
    reads.push(path)
-   if(path.endsWith('/me'))return reply({account:{agent_account_id:gameId,username:'agent_a'},agent:root,code:'A1B2C3D4E5F607182930ABCD'})
+   if(path.endsWith('/me'))return reply({account:{agent_account_id:gameId,username:'agent_a'},agent:root,code:'A1B2C3D4E5F607182930ABCD',user_origin:origins.user})
    if(path.endsWith('/wallet'))return reply({commission_points:'5',available_points:'5'})
    if(path.endsWith('/commission'))return reply({items:[{id:gameId,created_at:at,entry_type:'commission',points:'7'},{id:memberId,created_at:at,entry_type:'commission_correction',points:'-2'}],total_count:'2',limit:20,offset:0,credited_points:'7',debited_points:'2'})
    if(path.endsWith('/children'))return reply({items:[],total_count:'0',limit:20,offset:0})
    if(path.endsWith('/summary'))return reply({member,wallet:{available_points:'100'},net_points:'10',unsettled_points:'0'})
-   if(path.endsWith('/bets'))return reply(url.searchParams.get('cursor')==='page-2'?{items:[{...standard,id:'second-page',game_name:'Second page'}],next_cursor:null}:{items:betItems,next_cursor:'page-2'})
+   if(path.endsWith('/bets'))return reply(url.searchParams.get('cursor')==='page-2'?{items:[{...configured,id:'second-page',game_name:'Second page'}],next_cursor:null, total_count: '21'}:{items:betItems,next_cursor:'page-2', total_count: '21'})
    if(path.endsWith('/members'))return reply({items:[member],total_count:'1',limit:20,offset:0,summary:{member_count:'1',available_points:'100',bet_count:'1',stake_points:'10',unsettled_points:'0',net_points:'10'}})
    throw Error('Unexpected agent endpoint '+path)
   })
@@ -53,16 +52,16 @@ export function registerAgentPortalTests(reflow=false){
   await expect(page.locator('link[rel=icon]')).toHaveCount(1);await expect(page.locator('link[data-brand-favicon]')).toHaveAttribute('href','/icons/agent-brand.png')
   const preset=page.viewportSize()!
   const navigate=async(id:string)=>{const nav=page.locator(preset.width<=700?'.mobile-nav':'.side-nav');await nav.locator(`a[href="#/${id}"]`).click();await expect(page).toHaveURL(new RegExp('#/'+id+'$'))}
-  const labels=zh?['会员管理','下级代理','会员注单','佣金']:['Member management','Subagents','Member bets','Commission']
+  const labels=zh?['会员管理','下级代理','佣金']:['Member management','Subagents','Commission']
   const visibleNav=page.locator(preset.width<=700?'.mobile-nav':'.side-nav')
   for(const label of labels)await expect(visibleNav.getByRole('link',{name:label,exact:true})).toBeVisible()
   if(preset.width>700)await expect(page.locator('.sidebar')).toBeVisible();else await expect(page.locator('.sidebar')).toBeHidden()
   await expect(page.locator('.member-directory')).toContainText('member_a');await expect(page.locator('.member-directory table.console-table')).toHaveCount(1);expect(reads.some(p=>p.endsWith('/commission')||p.endsWith('/wallet')||p.endsWith('/children')||p.endsWith('/bets'))).toBe(false)
   await page.screenshot({path:info.outputPath(`agent-members-${locale}.png`)})
   await navigate('children');await expect(page.locator('.children-directory')).toBeVisible();await expect(page.locator('.children-directory td.empty-state')).toHaveAttribute('colspan','3');await expect(page.locator('.children-directory td.empty-state')).toHaveCSS('display','table-cell');await expect(page.locator('.member-directory')).toHaveCount(0)
-  await navigate('bets');await page.getByRole('button',{name:zh?'查看注单':'View bets',exact:true}).click();await expect(page).toHaveURL(new RegExp('member='+memberId));await expect(page.locator('.member-bets')).toContainText('Game A');await expect(page.locator('.member-bets .standard-ticket')).toContainText(zh?'已中奖':'Won');await expect(page.locator('.member-bets [data-testid=order-prize]')).toContainText(zh?'已入账':'Applied');await expect(page.locator('.member-bets [data-testid=selection-summary]')).toContainText(zh?'位置 1':'Position 1');await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`agent-bets-${locale}.png`)});await expect(page.locator('.children-directory')).toHaveCount(0)
-  await expect(page.locator('.member-bets .history-record')).toHaveCount(4);await expect(page.locator('.member-bets .configured-order-card')).toContainText(zh?'风险冻结积分: 200':'Reserved risk points: 200');await expect(page.locator('.member-bets .mark-six-orders')).toHaveCount(1);await expect(page.locator('.member-bets .canada-orders')).toHaveCount(1)
-  const betsPanel=page.locator('.member-bets');await betsPanel.getByRole('button',{name:zh?'下一页':'Next',exact:true}).click();await expect(betsPanel).toContainText('Second page');await expect(betsPanel.locator('.history-record')).toHaveCount(1);await expect(betsPanel.getByRole('button',{name:zh?'下一页':'Next',exact:true})).toBeDisabled();await betsPanel.getByRole('button',{name:zh?'上一页':'Previous',exact:true}).click();await expect(betsPanel.locator('.history-record')).toHaveCount(4)
+  await expect(visibleNav.locator('a[href="#/bets"]')).toHaveCount(0);await navigate('members');await page.getByRole('button',{name:zh?'查看注单':'View bets',exact:true}).click();await expect(page).toHaveURL(new RegExp('member='+memberId));await expect(page.locator('.member-bets')).toContainText('Game A');await expect(page.locator('.member-bets .configured-order-card').first()).toContainText(zh?'已结算':'Settled');await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`agent-bets-${locale}.png`)});await expect(page.locator('.children-directory')).toHaveCount(0)
+  await expect(page.locator('.member-bets .history-record')).toHaveCount(20);await expect(page.locator('.member-bets .configured-order-card').first()).toContainText(zh?'风险冻结积分: 200':'Reserved risk points: 200')
+  const betsPanel=page.locator('.member-bets');await betsPanel.getByRole('button',{name:zh?'下一页':'Next',exact:true}).click();await expect(betsPanel).toContainText('Second page');await expect(betsPanel.locator('.history-record')).toHaveCount(1);await expect(betsPanel.getByRole('button',{name:zh?'下一页':'Next',exact:true})).toBeDisabled();await betsPanel.getByRole('button',{name:zh?'上一页':'Previous',exact:true}).click();await expect(betsPanel.locator('.history-record')).toHaveCount(20)
   for(const width of reflow?[320,359,700,701,900,1440]:[preset.width]){if(reflow)await page.setViewportSize({width,height:preset.height});await expectNoPageOverflow(page)}if(reflow)await page.setViewportSize(preset)
   await page.reload();await expect(page.locator('.member-bets')).toContainText('member_a')
   await navigate('commission');await expect(page.locator('.commission-page thead')).toContainText(zh?'入账时间':'Posted at');await expect(page.locator('.commission-page')).toContainText('+7');await expect(page.locator('.commission-page')).toContainText('-2');await expect(page.locator('.member-bets')).toHaveCount(0)
@@ -74,29 +73,30 @@ export function registerAgentPortalTests(reflow=false){
   const profile=page.getByRole('dialog',{name:zh?'个人信息':'Profile',exact:true});await expect(profile).toContainText('agent_a');await expectInsideViewport(profile)
   const registrationUrl=`${origins.user}/register?agent_code=A1B2C3D4E5F607182930ABCD`
   await expect(profile.locator('.registration-link code')).toHaveText(registrationUrl)
-  await profile.getByRole('button',{name:zh?'复制链接':'Copy link',exact:true}).click();await expect(profile.getByRole('status')).toHaveText(zh?'链接已复制':'Link copied');expect(await page.evaluate(()=>(window as any).__copiedLinks)).toEqual([registrationUrl])
+  await profile.getByRole('button',{name:zh?'复制链接':'Copy link',exact:true}).click();await expect(profile.getByRole('status').locator('.toast-message')).toHaveText(zh?'链接已复制':'Link copied');expect(await page.evaluate(()=>(window as any).__copiedLinks)).toEqual([registrationUrl])
   const qrImage=profile.getByRole('img',{name:zh?'注册链接二维码':'Registration link QR code',exact:true});await expect(qrImage).toBeVisible()
   const png=PNG.sync.read(Buffer.from((await qrImage.getAttribute('src'))!.split(',')[1]!, 'base64'));expect(png.width).toBe(768);expect(png.height).toBe(768);expect(jsQR(new Uint8ClampedArray(png.data),png.width,png.height)?.data).toBe(registrationUrl)
   const saveQr=profile.getByRole('link',{name:zh?'保存二维码':'Save QR code',exact:true}),hint=profile.locator('.registration-qr-hint')
-  await expect(profile.locator('.registration-link-address button svg')).toBeVisible();await expect(profile.locator('.registration-link-address button')).toHaveText('');const copyBox=await profile.locator('.registration-link-address button').boundingBox();expect(copyBox!.width).toBeGreaterThanOrEqual(44);expect(copyBox!.height).toBeGreaterThanOrEqual(44)
+  await expect(profile.locator('.registration-link-address button svg')).toBeVisible();await expect(profile.locator('.registration-link-address button')).toHaveText('');const copyBox=await profile.locator('.registration-link-address button').boundingBox();const copySize=await page.evaluate(()=>matchMedia('(min-width:901px) and (pointer:fine)').matches?32:44);expect(copyBox!.width).toBe(copySize);expect(copyBox!.height).toBe(copySize)
   if(await page.evaluate(()=>matchMedia('(max-width:700px), (pointer:coarse)').matches)){
-   await expect(saveQr).toBeHidden();await expect(hint).toHaveText(zh?'长按二维码保存图片':'Press and hold the QR code to save the image.');await expect(hint).toBeVisible()
+   await expect(saveQr).toBeHidden();await expect(hint).toHaveCount(0)
   }else{
    await expect(hint).toBeHidden();const downloadReady=page.waitForEvent('download');await saveQr.click();const download=await downloadReady;expect(download.suggestedFilename()).toBe('registration-qr.png');const saved=PNG.sync.read(readFileSync((await download.path())!));expect(jsQR(new Uint8ClampedArray(saved.data),saved.width,saved.height)?.data).toBe(registrationUrl)
   }
   for(const width of reflow?[320,359,700,701,900,1440]:[preset.width]){if(reflow)await page.setViewportSize({width,height:preset.height});await expectNoPageOverflow(page);await expectInsideViewport(profile);const box=await qrImage.boundingBox();expect(box!.width).toBeLessThanOrEqual(Math.min(240,width));expect(box!.width).toBeCloseTo(box!.height,1)}if(reflow)await page.setViewportSize(preset)
   await expectMobileLinkShare(page,profile,'Partner Brand',registrationUrl,zh)
   await page.screenshot({path:info.outputPath(`agent-registration-link-${locale}.png`)})
-  await page.evaluate(()=>{(window as any).__copyFailure=true});await profile.getByRole('button',{name:zh?'复制链接':'Copy link',exact:true}).click();await expect(profile.getByRole('alert')).toHaveText(zh?'复制失败，请手动复制链接。':'Unable to copy. Copy the link manually.')
+  await page.evaluate(()=>{(window as any).__copyFailure=true});await profile.getByRole('button',{name:zh?'复制链接':'Copy link',exact:true}).click();await expect(profile.getByRole('alert').locator('.toast-message')).toHaveText(zh?'复制失败，请手动复制链接。':'Unable to copy. Copy the link manually.')
   await profile.locator('.detail-modal-close').click()
   await page.locator('.account-trigger').click();await page.getByRole('menuitem',{name:zh?'修改密码':'Change password',exact:true}).click()
   const dialog=page.getByRole('dialog',{name:zh?'修改密码':'Change password',exact:true});await expectInsideViewport(dialog);await expect(dialog.locator('input[type=password]')).toHaveCount(3)
   const current=dialog.getByLabel(zh?'当前密码':'Current password',{exact:true}),next=dialog.getByLabel(zh?'新密码':'New password',{exact:true}),confirm=dialog.getByLabel(zh?'确认新密码':'Confirm new password',{exact:true})
   await current.fill('agent123');await next.fill('changed456');await confirm.fill('mismatch')
-  await dialog.getByRole('button',{name:zh?'保存密码':'Save password',exact:true}).click();await expect(dialog.getByRole('alert')).toBeVisible();expect(writes).toHaveLength(0)
+  await dialog.getByRole('button',{name:zh?'保存密码':'Save password',exact:true}).click();await expect(dialog.locator('.form-error')).toBeVisible();expect(writes).toHaveLength(0)
+  await expect(dialog.locator('form')).not.toHaveAttribute('data-write-locked','true')
   await confirm.fill('changed456');await dialog.getByRole('button',{name:zh?'保存密码':'Save password',exact:true}).click();await expect.poll(()=>writes.length).toBe(1)
   await expect(current).toBeDisabled();await expect(next).toBeDisabled()
-  const retry=dialog.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true});await retry.click();await expect.poll(()=>writes.length).toBe(2)
+  const retry=dialog.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true});await expect(dialog.locator('form')).not.toHaveAttribute('data-write-locked','true');await retry.click();await expect.poll(()=>writes.length).toBe(2)
   try{
    await dialog.locator('form').evaluate((form:HTMLFormElement)=>form.requestSubmit());expect(writes).toHaveLength(2)
    await expect(retry).toBeDisabled();expect(writes[0]).toEqual(writes[1]);expect(JSON.parse(writes[0].body!)).toEqual({current_password:'agent123',new_password:'changed456'})
@@ -112,7 +112,7 @@ export function registerSharedAccountMenuTests(){
   await page.route('**/api/v1/admin/**',async route=>{
    expect(route.request().method()).toBe('GET');const path=new URL(route.request().url()).pathname,reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
    if(path.endsWith('/me'))return reply({account:{id:gameId,username:'shared_operator',super_admin:false,brand_ids:[gameId],permissions:[],platform_permissions:[],permissions_by_brand:{[gameId]:['user.view.brand']}}})
-   if(path.endsWith('/brands'))return reply({items:[{id:gameId,name:'Aurora',code:'aurora',status:'active'}]})
+   if(path.endsWith('/brands'))return reply({items:[{id:gameId,name:'Aurora',code:'aurora',status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z'}], total_count: '1'})
    if(path.endsWith('/users'))return reply({items:[],total_count:'0',limit:100,offset:0})
    if(path.endsWith('/brand-presentation'))return reply({brand_id:gameId,version:1,status:'active',base_name:'Aurora',config:{},effective:{display_name:'Aurora',logo_text:'A',logo_url:null,favicon_url:null,primary_color:'#059669',accent_color:'#f59e0b',success_color:'#10b981',warning_color:'#f59e0b',danger_color:'#ef4444',font_family:'system',font_scale:'standard',radius:'round',shadow:'subtle',default_locale:'en',available_locales:['en','zh-CN'],content:{en:{tagline:'',announcement:''},'zh-CN':{tagline:'',announcement:''}}}})
    throw Error('Unexpected shared account read '+path)
@@ -122,12 +122,12 @@ export function registerSharedAccountMenuTests(){
    if(path.endsWith('/presentation'))return reply({display_name:'Platform',logo_text:'P',logo_url:''})
    if(path.endsWith('/me'))return reply({account:{id:gameId,username:'shared_platform',super_admin:true,platform_permissions:[]}})
    if(path.endsWith('/platform-settings'))return reply({version:1,display_name:'Platform',logo_text:'P',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',updated_at:'2026-10-21T00:00:00Z'})
-   if(path.endsWith('/brands'))return reply({items:[]})
+   if(path.endsWith('/brands'))return reply({items:[], total_count: '0'})
    throw Error('Unexpected shared platform read '+path)
   })
   await page.route('**/api/v1/agent/**',async route=>{
    expect(route.request().method()).toBe('GET');const path=new URL(route.request().url()).pathname,reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
-   if(path.endsWith('/me'))return reply({account:{agent_account_id:gameId,username:'shared_agent'},agent:{id:gameId,depth:1,config:{can_create_children:false}},code:'A1B2C3D4E5F607182930ABCD'})
+   if(path.endsWith('/me'))return reply({account:{agent_account_id:gameId,username:'shared_agent'},agent:{id:gameId,depth:1,config:{can_create_children:false}},code:'A1B2C3D4E5F607182930ABCD',user_origin:origins.user})
    if(path.endsWith('/members'))return reply({items:[],total_count:'0',limit:20,offset:0,summary:{member_count:'0',available_points:'0',bet_count:'0',stake_points:'0',unsettled_points:'0',net_points:'0'}})
    throw Error('Unexpected shared agent read '+path)
   })
@@ -144,7 +144,7 @@ export function registerSharedAccountMenuTests(){
     const read=(selector:string)=>{const css=getComputedStyle(wrap.querySelector(selector)!);return Object.fromEntries(['fontSize','fontWeight','lineHeight','color','backgroundColor','paddingTop','paddingRight','paddingBottom','paddingLeft','borderBottomWidth','borderBottomColor','textTransform','letterSpacing','position','textAlign','height','whiteSpace'].map(key=>[key,css[key as keyof CSSStyleDeclaration]]))}
     const result={head:read('th'),cell:read('tbody td'),last:read('tbody td:last-child')};wrap.remove();return result
    })
-   tableStyles.push(tableStyle);expect(tableStyle).toEqual(tableStyles[0])
+   tableStyles.push(tableStyle);expect(tableStyle).toEqual(tableStyles[0]);if(await page.evaluate(()=>innerWidth>1080&&matchMedia('(pointer:fine)').matches)){expect(tableStyle.head.paddingTop).toBe('6px');expect(tableStyle.cell.paddingTop).toBe('6px')}
    await page.screenshot({path:info.outputPath(`shared-account-${url===origins.brand?'brand':url===origins.platform?'platform':'agent'}-${locale}.png`)})
   }
  })
@@ -171,21 +171,27 @@ export function registerSharedAccountMenuTests(){
   const dialog=page.getByRole('dialog');await expectInsideViewport(dialog);await expect(dialog.locator('.detail-modal-close')).toHaveCSS('border-top-width','0px')
   await dialog.getByLabel(zh?'账号':'Account',{exact:true}).fill('created_account')
   await dialog.getByLabel(zh?'密码':'Password',{exact:true}).fill('changed456')
-  if(kind==='members'){await dialog.getByLabel(zh?'昵称':'Display name',{exact:true}).fill('Created member');await dialog.getByLabel(zh?'手机号':'Phone',{exact:true}).fill('12345678')}
+  if(kind==='members'){await expect(dialog.getByLabel(zh?'昵称':'Display name',{exact:true})).toHaveCount(0);await dialog.getByLabel(zh?'手机号':'Phone',{exact:true}).fill('12345678')}
   else{await dialog.getByLabel(zh?'占成比例':'Profit share ratio',{exact:true}).fill('15.5');await dialog.locator('input[type=checkbox]').check()}
+  if(info.project.name.endsWith('-reflow')){const preset=page.viewportSize()!;await page.setViewportSize({width:320,height:800});await expectInsideViewport(dialog);await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`agent-create-${kind}-${locale}-320.png`)});await page.setViewportSize(preset)}
   await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`agent-create-${kind}-${locale}.png`)})
   await dialog.getByRole('button',{name:zh?'保存':'Save',exact:true}).click();await expect.poll(()=>writes.length).toBe(1)
-  await expect(dialog.locator('input').first()).toBeDisabled();await expect(dialog.getByRole('button',{name:zh?'取消':'Cancel',exact:true})).toBeDisabled()
+  await expect(dialog.locator('input').first()).toBeDisabled();await expect(dialog.locator('.detail-modal-close')).toBeDisabled()
   await page.keyboard.press('Escape');await expect(dialog).toBeVisible()
+  await page.locator('.toast-error .toast-close').click()
   await dialog.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true}).click();await expect.poll(()=>writes.length).toBe(2)
   try{
    expect(writes[1]).toEqual(writes[0])
    const base={username:'created_account',password:'changed456'}
-   expect(writes[0]!.body).toEqual(kind==='members'?{...base,display_name:'Created member',phone:'12345678'}:{...base,policy_version:7,parent_id:gameId,parent_version:3,config:{ratio:'0.155',mode:null,status:'active',can_create_children:true}})
+   expect(writes[0]!.body).toEqual(kind==='members'?{...base,phone:'12345678'}:{...base,policy_version:7,parent_id:gameId,parent_version:3,config:{ratio:'0.155',mode:null,status:'active',can_create_children:true}})
    await dialog.locator('form').evaluate((form:HTMLFormElement)=>{form.requestSubmit();form.requestSubmit()});expect(writes).toHaveLength(2)
    await expect(dialog.locator('input').first()).toBeDisabled()
   }finally{release()}
-  await expect(dialog).toHaveCount(0);await expect(page.getByRole('status')).toContainText(zh?'已保存':'Saved');expect(errors).toEqual([])
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('status').locator('.toast-message')).toHaveText(zh ? `${kind==='members'?'会员账号':'下级代理账号'}「created_account」已创建。` : `${kind==='members'?'Member account':'Subagent account'} “created_account” created successfully.`)
+  await page.locator('.locale-picker__trigger').click();await page.locator(`.locale-picker__option[data-code="${zh?'en':'zh-CN'}"]`).click()
+  await expect(page.getByRole('status').locator('.toast-message')).toHaveText(zh ? `${kind==='members'?'Member account':'Subagent account'} “created_account” created successfully.` : `${kind==='members'?'会员账号':'下级代理账号'}「created_account」已创建。`)
+  expect(writes).toHaveLength(2);expect(errors).toEqual([])
  })
 
  for(const locale of ['en','zh-CN'] as const)test(`agent registration link reaches user registration attribution (${locale})`,async({page},info)=>{

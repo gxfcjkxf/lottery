@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ManagementList from "@lottery/shared/ManagementList.vue"
 import BusinessDetails from '@lottery/shared/BusinessDetails.vue'
 import { usePlatformI18n as useAssociationI18n } from "./i18n";
 const associationLocale = useAssociationI18n().locale;
@@ -11,8 +12,9 @@ import { withGlobalLoading } from '@lottery/shared';
 import { vRefreshButton } from '@lottery/shared';
 import { usePlatformI18n } from "./i18n"
 const ui = usePlatformI18n().t
+import TablePagination from "@lottery/shared/TablePagination.vue"
 import DetailModal from "@lottery/shared/DetailModal.vue"
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { PlatformApiError } from './platform-api'
 import { createPlatformRewardsApi, type RewardAction, type RewardOrder } from './rewards-api'
 import { formatPlatformDateTime, type PlatformDisplaySettings } from './platform-format'
@@ -31,6 +33,8 @@ const orders = ref<RewardOrder[]>([])
 const selected = ref<RewardOrder | null>(null)
 const detail = ref<RewardOrder | null>(null)
 const history = ref<RewardAction[]>([])
+const historyOpen=ref(false),historyLoading=ref(false),historyFailed=ref(false)
+let historyGeneration=0
 const pageSize = 100
 const orderOffset = ref(0)
 const orderTotal = ref('0')
@@ -38,7 +42,6 @@ const historyOffset = ref(0)
 const historyTotal = ref('0')
 const previousLabel = computed(() => ui('platform.pagination.previous'))
 const nextLabel = computed(() => ui('platform.pagination.next'))
-const totalLabel = computed(() => ui('platform.pagination.total'))
 const hasNextOrders = computed(() => BigInt(orderOffset.value + pageSize) < BigInt(orderTotal.value))
 const hasNextHistory = computed(() => BigInt(historyOffset.value + pageSize) < BigInt(historyTotal.value))
 const loading = ref(false)
@@ -52,17 +55,10 @@ function report(cause: unknown) {
   else error.value = cause instanceof Error ? publicErrorMessage(cause) : ui('platform.error.unexpected')
 }
 async function refresh(offset = 0) {
+  closeDetail()
   const request = ++generation
   const brandId = props.brandId
   error.value = ''
-  orders.value = []
-  selected.value = null
-  detail.value = null
-  history.value = []
-  orderOffset.value = 0
-  orderTotal.value = '0'
-  historyTotal.value = '0'
-  historyOffset.value = 0
   if (!brandId) { loading.value = false; return }
   loading.value = true
   try {
@@ -79,6 +75,7 @@ async function refresh(offset = 0) {
   }
 }
 async function openOrder(order: RewardOrder) {
+  closeDetail()
   const request = ++generation
   const brandId = props.brandId
   selected.value = order
@@ -89,11 +86,9 @@ async function openOrder(order: RewardOrder) {
   error.value = ''
   loading.value = true
   try {
-    const [current, actions] = await Promise.all([api.read(brandId, order.id), api.actions(brandId, order.id)])
+    const current = await api.read(brandId, order.id)
     if (request === generation && props.brandId === brandId) {
       detail.value = current
-      history.value = actions.items
-      historyTotal.value = actions.total_count
     }
   } catch (cause) {
     if (request === generation && props.brandId === brandId) report(cause)
@@ -101,49 +96,34 @@ async function openOrder(order: RewardOrder) {
     if (request === generation) loading.value = false
   }
 }
-async function loadHistory(offset: number) {
-  if (!detail.value) return
-  const request = ++generation
-  const brandId = props.brandId
-  const orderId = detail.value.id
-  error.value = ''
-  history.value = []
-  historyTotal.value = '0'
-  loading.value = true
-  try {
-    const page = await api.actions(brandId, orderId, pageSize, offset)
-    if (request === generation && props.brandId === brandId) {
-      history.value = page.items
-      historyOffset.value = page.offset
-      historyTotal.value = page.total_count
-    }
-  } catch (cause) {
-    if (request === generation && props.brandId === brandId) report(cause)
-  } finally {
-    if (request === generation) loading.value = false
-  }
+function closeDetail(){generation++;historyGeneration++;selected.value=null;detail.value=null;history.value=[];historyOffset.value=0;historyTotal.value='0';historyOpen.value=historyLoading.value=historyFailed.value=false;loading.value=false}
+async function loadHistory(offset = 0) {
+ if(!detail.value||historyLoading.value)return
+ const request=++historyGeneration,brandId=props.brandId,orderId=detail.value.id
+ historyOpen.value=true;historyLoading.value=true;historyFailed.value=false;historyOffset.value=offset;history.value=[];error.value=''
+ try{
+  const page=await api.actions(brandId,orderId,pageSize,offset)
+  if(request===historyGeneration&&props.brandId===brandId&&detail.value?.id===orderId){history.value=page.items;historyOffset.value=page.offset;historyTotal.value=page.total_count}
+ }catch(cause){if(request===historyGeneration&&props.brandId===brandId&&detail.value?.id===orderId){historyFailed.value=true;report(cause)}}
+ finally{if(request===historyGeneration)historyLoading.value=false}
 }
-watch(() => props.brandId, () => { void withGlobalLoading(refresh) }, { immediate: true, flush: 'sync' })
+onBeforeUnmount(()=>{generation++;historyGeneration++})
+watch(() => props.brandId, () => { orders.value = []; orderTotal.value = '0'; orderOffset.value = 0; void withGlobalLoading(refresh) }, { immediate: true, flush: 'sync' })
 </script>
 
 <template>
-  <div data-testid="platform-rewards">
+  <ManagementList data-testid="platform-rewards" :busy="loading"><template #actions><button v-refresh-button="copy.refresh" class="button button-secondary" data-testid="platform-reward-refresh" :disabled="loading || !props.brandId" @click="withGlobalLoading(refresh)">{{ copy.refresh }}</button></template>
     <div v-if="error" class="message error global-message">{{ displayPublicError(error) }}</div>
-    <section class="panel">
-      <div class="table-wrap"><table><thead><tr><th>{{ copy.order }}</th><th>{{ copy.member }}</th><th>{{ copy.points }}</th><th><BusinessDetails :value="copy.state" :locale="associationLocale" /></th></tr></thead><tbody>
-        <tr v-for="order in orders" :key="order.id"><td><button class="row-action mono reward-order-link" @click="withGlobalLoading(openOrder, order)">{{ order.id }}</button><small>{{ formatPlatformDateTime(order.created_at, props.displaySettings, props.locale) }}</small></td><td class="mono"><AssociationName :record="order" kind="member" :id="order.member_id" :locale="associationLocale" /></td><td>{{ order.points }}</td><td><span :class="['status-pill', order.state]">{{ stateLabel(order.state) }}</span></td></tr>
-        <tr v-if="!orders.length"><td colspan="4" class="empty-state">{{ copy.empty }}</td></tr>
+    <section class="console-stack">
+
+      <div class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ copy.order }}</th><th>{{ copy.member }}</th><th>{{ copy.points }}</th><th><BusinessDetails :value="copy.state" :locale="associationLocale" /></th></tr></thead><tbody>
+        <tr v-for="order in orders" :key="order.id"><td :data-label="copy.order"><button class="text-button row-action mono reward-order-link" @click="withGlobalLoading(openOrder, order)">{{ order.id }}</button><small>{{ formatPlatformDateTime(order.created_at, props.displaySettings, props.locale) }}</small></td><td class="mono" :data-label="copy.member"><AssociationName :record="order" kind="member" :id="order.member_id" :locale="associationLocale" /></td><td :data-label="copy.points">{{ order.points }}</td><td :data-label="copy.state"><span :class="['status-pill', order.state]">{{ stateLabel(order.state) }}</span></td></tr>
+        <tr v-if="!loading && !error && !orders.length"><td colspan="4" class="empty-state">{{ copy.empty }}</td></tr>
       </tbody></table></div>
-      <div class="reward-list-actions" data-testid="platform-reward-pages">
-        <span>{{ totalLabel }} {{ orderTotal }}</span>
-        <button class="button button-secondary" :disabled="loading || orderOffset === 0" @click="withGlobalLoading(refresh, orderOffset - pageSize)">{{ previousLabel }}</button>
-        <span>{{ Math.floor(orderOffset / pageSize) + 1 }}</span>
-        <button class="button button-secondary" :disabled="loading || !hasNextOrders" @click="withGlobalLoading(refresh, orderOffset + pageSize)">{{ nextLabel }}</button>
-        <button v-refresh-button="copy.refresh" class="button button-secondary" data-testid="platform-reward-refresh" :disabled="loading || !props.brandId" @click="withGlobalLoading(refresh)">{{ copy.refresh }}</button>
-      </div>
+
     </section>
-    <DetailModal v-if="selected" :title="copy.detail" :close-label="copy.close" @close="selected = null">
-<section v-if="selected" class="detail-section" data-testid="platform-reward-detail">
+    <DetailModal v-if="selected" :title="copy.detail" :close-label="copy.close" @close="closeDetail">
+<ManagementList embedded v-if="selected" class="detail-section" data-testid="platform-reward-detail">
       <div class="detail-summary"><p v-if="!detail" class="mono">{{ selected.id }}</p><span v-if="detail" class="count-chip">{{ stateLabel(detail.state) }}</span></div>
       <dl v-if="detail" class="confirm-list reward-fields">
         <div><dt>{{ copy.order }}</dt><dd class="mono">{{ detail.id }}</dd></div><div><dt>{{ copy.member }}</dt><dd class="mono"><AssociationName :record="detail" kind="member" :id="detail.member_id" :locale="associationLocale" /></dd></div>
@@ -153,17 +133,16 @@ watch(() => props.brandId, () => { void withGlobalLoading(refresh) }, { immediat
         <div><dt>{{ copy.reversalLedger }}</dt><dd class="mono">{{ detail.revoke_ledger_entry_id || '—' }}</dd></div>
 
       </dl>
-      <div v-if="detail" class="table-wrap"><table><thead><tr><th>{{ copy.history }}</th><th><BusinessDetails :value="copy.state" :locale="associationLocale" /></th><th>{{ copy.actor }}</th><th>{{ copy.reason }}</th><th>{{ copy.ledger }}</th><th>{{ copy.created }}</th></tr></thead><tbody>
-        <tr v-for="action in history" :key="action.id"><td><strong>{{ operationLabel(action.operation) }}</strong><small>{{ action.id }}</small></td><td>{{ action.state_before ? `${stateLabel(action.state_before)} → ` : '' }}{{ stateLabel(action.state_after) }}</td><td class="mono"><AssociationName :record="action" kind="actor" :id="action.actor_id" :locale="associationLocale" /></td><td>{{ action.reason }}</td><td class="mono">{{ action.ledger_entry_id || '—' }}</td><td>{{ formatPlatformDateTime(action.created_at, props.displaySettings, props.locale) }}</td></tr>
-        <tr v-if="!history.length"><td colspan="6" class="empty-state">{{ copy.noHistory }}</td></tr>
+      <div v-if="detail" class="form-actions ui-form-actions"><button class="button button-secondary" type="button" :disabled="historyLoading" :aria-expanded="historyOpen" @click="withGlobalLoading(loadHistory, historyOffset)">{{ ui(historyFailed ? 'detailHistory.retry' : 'detailHistory.load') }}</button></div>
+      <div v-if="detail && historyOpen && !historyFailed" class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ copy.history }}</th><th><BusinessDetails :value="copy.state" :locale="associationLocale" /></th><th>{{ copy.actor }}</th><th>{{ copy.reason }}</th><th>{{ copy.ledger }}</th><th>{{ copy.created }}</th></tr></thead><tbody>
+        <tr v-for="action in history" :key="action.id"><td :data-label="copy.history"><strong>{{ operationLabel(action.operation) }}</strong><small>{{ action.id }}</small></td><td :data-label="copy.state">{{ action.state_before ? `${stateLabel(action.state_before)} → ` : '' }}{{ stateLabel(action.state_after) }}</td><td class="mono" :data-label="copy.actor"><AssociationName :record="action" kind="actor" :id="action.actor_id" :locale="associationLocale" /></td><td :data-label="copy.reason">{{ action.reason }}</td><td class="mono" :data-label="copy.ledger">{{ action.ledger_entry_id || '—' }}</td><td :data-label="copy.created">{{ formatPlatformDateTime(action.created_at, props.displaySettings, props.locale) }}</td></tr>
+        <tr v-if="!historyLoading && !historyFailed && !history.length"><td colspan="6" class="empty-state">{{ copy.noHistory }}</td></tr>
       </tbody></table></div>
-      <div v-if="detail" class="reward-list-actions" data-testid="platform-reward-history-pages">
-        <span>{{ totalLabel }} {{ historyTotal }}</span>
-        <button class="button button-secondary" :disabled="loading || historyOffset === 0" @click="withGlobalLoading(loadHistory, historyOffset - pageSize)">{{ previousLabel }}</button>
-        <span>{{ Math.floor(historyOffset / pageSize) + 1 }}</span>
-        <button class="button button-secondary" :disabled="loading || !hasNextHistory" @click="withGlobalLoading(loadHistory, historyOffset + pageSize)">{{ nextLabel }}</button>
-      </div>
-    </section>
+
+    <template #pagination><TablePagination :show-empty="!loading && !error" v-if="detail && historyOpen && !historyFailed" :total="historyTotal" :page="Math.floor(historyOffset / pageSize + 1)" :count="history.length" :locale="locale" data-testid="platform-reward-history-pages" :page-size="pageSize" :previous-disabled="historyLoading || historyOffset === 0" :next-disabled="historyLoading || !hasNextHistory" :previous-label="previousLabel" :next-label="nextLabel" :go-to="(target: number) => loadHistory((target - 1) * pageSize)" /></template></ManagementList>
 </DetailModal>
-  </div>
+  <template #pagination><TablePagination :show-empty="!loading && !error" :total="orderTotal" :page="Math.floor(orderOffset / pageSize + 1)" :count="orders.length" :locale="locale" data-testid="platform-reward-pages" :page-size="pageSize" :previous-disabled="loading || orderOffset === 0" :next-disabled="loading || !hasNextOrders" :previous-label="previousLabel" :next-label="nextLabel" :go-to="(target: number) => refresh((target - 1) * pageSize)" /></template></ManagementList>
 </template>
+
+<style scoped>
+</style>

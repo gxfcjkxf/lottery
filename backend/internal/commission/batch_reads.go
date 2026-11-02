@@ -45,19 +45,30 @@ func (s Service) CycleTx(ctx context.Context, tx pgx.Tx, brand, id string) (Cycl
 	return out, nil
 }
 
-func (s Service) CyclesTx(ctx context.Context, tx pgx.Tx, brand string, limit, offset int) (CycleListPage, error) {
+func (s Service) CyclesTx(ctx context.Context, tx pgx.Tx, brand string, limit, offset int, filter ListFilter) (CycleListPage, error) {
 	out := CycleListPage{BrandID: brand, Items: []Cycle{}, Limit: limit, Offset: offset}
-	if tx == nil || !validCyclePage(brand, limit, offset) {
+	if tx == nil || !validCyclePage(brand, limit, offset) || filter.Validate("cycle") != nil {
 		return out, ErrInvalid
 	}
+	if err := filter.validateScope(ctx, tx, brand); err != nil {
+		return out, err
+	}
 	var raw []byte
-	err := tx.QueryRow(ctx, `WITH page AS (
- SELECT c.* FROM commission_cycles c WHERE c.brand_id=$1 ORDER BY c.created_at DESC,c.id DESC LIMIT $2 OFFSET $3
+	err := tx.QueryRow(ctx, `WITH filtered AS (
+ SELECT c.* FROM commission_cycles c `+cycleCurrentRunJoin+` WHERE c.brand_id=$1
+ AND ($4::timestamptz IS NULL OR c.window_to >= $4) AND ($5::timestamptz IS NULL OR c.window_to < $5)
+ AND ($6='' OR ($6='ready' AND c.state='ready' AND r.state='ready' AND r.evidence_epoch=c.evidence_epoch)
+ OR ($6='stale' AND c.state='ready' AND NOT coalesce(r.state='ready' AND r.evidence_epoch=c.evidence_epoch,false))
+ OR ($6 NOT IN ('ready','stale') AND c.state=$6))
+ AND ($7='' OR c.id::text=$7)
+ AND ($8='' OR EXISTS(SELECT 1 FROM commission_earnings e WHERE e.brand_id=c.brand_id AND e.cycle_id=c.id AND e.run_id=c.current_run_id AND e.agent_id::text=$8))
+), page AS (
+ SELECT * FROM filtered ORDER BY window_to DESC,id DESC LIMIT $2 OFFSET $3
 ), contents AS (
- SELECT `+cycleReadJSON+` data,c.created_at,c.id FROM page c `+cycleCurrentRunJoin+`
+ SELECT `+cycleReadJSON+` data,c.window_to,c.id FROM page c `+cycleCurrentRunJoin+`
 )
-SELECT (SELECT count(*)::text FROM commission_cycles WHERE brand_id=$1),
- coalesce((SELECT jsonb_agg(data ORDER BY created_at DESC,id DESC) FROM contents),'[]'::jsonb)`, brand, limit, offset).Scan(&out.TotalCount, &raw)
+SELECT (SELECT count(*)::text FROM filtered),
+ coalesce((SELECT jsonb_agg(data ORDER BY window_to DESC,id DESC) FROM contents),'[]'::jsonb)`, brand, limit, offset, filter.From, filter.To, filter.State, filter.CycleID, filter.AgentID).Scan(&out.TotalCount, &raw)
 	if err != nil {
 		return out, err
 	}

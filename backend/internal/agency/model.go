@@ -36,11 +36,11 @@ func RatioMicros(s string) (int64, error) {
 	if s == "0" {
 		return 0, nil
 	}
-	return strconv.ParseInt(strings.TrimPrefix(s, "0.")+strings.Repeat("0", 6-len(s)+2), 10, 64)
+	return strconv.ParseInt(strings.TrimPrefix(s, "0.")+strings.Repeat("0", 6-utf8.RuneCountInString(s)+2), 10, 64)
 }
 func validMode(s string) bool { return s == "loss" || s == "turnover" }
 func validReason(s string) bool {
-	return s == "" || (len(strings.TrimSpace(s)) > 0 && len(s) <= 500 && utf8.ValidString(s))
+	return s == "" || (len(strings.TrimSpace(s)) > 0 && utf8.RuneCountInString(s) <= 500 && utf8.ValidString(s))
 }
 
 type PolicyConfig struct {

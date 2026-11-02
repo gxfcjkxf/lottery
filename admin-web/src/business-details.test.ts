@@ -9,6 +9,12 @@ async function render(value: unknown, locale: 'en' | 'zh-CN' = 'zh-CN') {
   return renderToString(createSSRApp({ render: () => h(BusinessDetails, { value, locale }) }))
 }
 describe('business details presentation', () => {
+  it('translates permission snapshot values in both languages', async () => {
+    const value = { permissions: ['audit.view.brand'] }
+    expect(await render(value)).toContain('审计 · 查看')
+    expect(await render(value, 'en')).toContain('Audit · View')
+    expect(await render(value)).not.toContain('audit.view.brand')
+  })
   it('shows business changes without internal request data or private fields', async () => {
     const value = { points: '9007199254740993', status: 'active', enabled: false,
       config: { min_points: '10', max_points: '100', review_mode: 'manual' },
@@ -33,6 +39,17 @@ describe('business details presentation', () => {
     expect(await render({ internal_only: 'private' })).toContain('暂无业务明细')
     expect(await render({ status: 'PRIVATE_SYSTEM_ERROR' })).toContain('请联系管理员')
   })
+  for (const locale of ['en', 'zh-CN'] as const) {
+    it(`checks reason fields for internal content after localization (${locale})`, async () => {
+      const html = await render({ before: { reason: '{"sql":"private"}' }, after: { reason: 'PRIVATE_SYSTEM_ERROR' } }, locale)
+      expect(html).not.toMatch(/PRIVATE_SYSTEM_ERROR|sql|private/)
+      expect(html).toContain(businessDetailsCatalog[locale].unknown)
+      expect(await render({ reason: 'COMPLIANCE_REVIEW_REQUIRED' }, locale)).toContain(businessDetailsCatalog[locale]['audit.reason.complianceReview'])
+      const note = '人工审核备注：允许提现。'
+      expect(await render({ reason: note }, locale)).toContain(note)
+      expect(await render({ reason: 'Keep this operator note unchanged.' }, locale)).toContain('Keep this operator note unchanged.')
+    })
+  }
   it('has matching supported language catalogs', () => {
     expect(() => createCatalogI18n(businessDetailsCatalog)).not.toThrow()
   })

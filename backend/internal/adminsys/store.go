@@ -239,7 +239,7 @@ func (s Store) ChangeMember(ctx context.Context, tx pgx.Tx, account access.Accou
 }
 
 // DeleteMember cancels a membership in the selected brand and revokes its
-// sessions. Historical transactions and the global identity remain intact.
+// sessions. The last membership also retires the login; history remains intact.
 func (s Store) DeleteMember(ctx context.Context, tx pgx.Tx, account access.Account, brandID, memberID, requestID, ip string) (string, error) {
 	if tx == nil || strings.TrimSpace(brandID) == "" || strings.TrimSpace(memberID) == "" {
 		return "", ErrInvalid
@@ -252,23 +252,20 @@ func (s Store) DeleteMember(ctx context.Context, tx pgx.Tx, account access.Accou
 	if !brandPermission && !platformPermission {
 		return "", ErrDenied
 	}
-	before, err := lockMember(ctx, tx, brandID, memberID)
-	if err != nil {
-		return "", err
-	}
-	if before.Status == "cancelled" {
+	var userID string
+	if err := tx.QueryRow(ctx, `SELECT global_user_id::text FROM brand_members WHERE brand_id=$1 AND id=$2`, brandID, memberID).Scan(&userID); errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNotFound
-	}
-	if _, err = tx.Exec(ctx, `UPDATE brand_members SET status='cancelled' WHERE brand_id=$1 AND id=$2`, brandID, memberID); err != nil {
+	} else if err != nil {
 		return "", err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE sessions SET revoked_at=now() WHERE brand_id=$1 AND member_id=$2 AND revoked_at IS NULL`, brandID, memberID); err != nil {
+	_, status, err := cancelUserBrand(ctx, tx, brandID, userID)
+	if err != nil {
 		return "", err
 	}
 	return audit.Append(ctx, tx, audit.Record{
 		BrandID: brandID, ActorType: "admin", ActorID: account.ID, Action: "user.delete",
 		ResourceType: "brand_member", ResourceID: memberID, RequestID: requestID, IP: ip,
-		Before: map[string]string{"status": before.Status}, After: map[string]string{"status": "cancelled"},
+		Before: map[string]string{"status": status}, After: map[string]string{"status": "cancelled"},
 	})
 }
 

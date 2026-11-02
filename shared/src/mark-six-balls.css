@@ -7,11 +7,23 @@
  --lottery-wave-green: #059669;
  --lottery-wave-green-light: #d1fae5;
  --lottery-ball-ink: #ffffff;
+ /* Text colors for saved draw attributes; dark shades remain readable at 11px. */
+ --lottery-wave-green-text: var(--success-text);
+ --lottery-attribute-zodiac: var(--lottery-wave-blue);
+ --lottery-element-metal: var(--warning-text);
+ --lottery-element-wood: var(--success-text);
+ --lottery-element-water: var(--lottery-wave-blue);
+ --lottery-element-fire: var(--lottery-wave-red);
+ --lottery-element-earth: #854d0e;
+ --lottery-attribute-parity: #7c3aed;
+ --lottery-attribute-sum-parity: var(--warning-text);
+ --lottery-attribute-animal: var(--warning-text);
+ --lottery-attribute-total-parity: var(--success-text);
 }
 .mark-six-ball { display:inline-grid;place-items:center;flex-shrink:0;box-sizing:border-box;width:34px;height:34px;border-radius:50%;font-size:14px;font-weight:750;color:var(--lottery-ball-ink);font-variant-numeric:tabular-nums;background:radial-gradient(circle at 32% 26%,var(--wave-light) 0%,var(--wave-color) 48%,var(--wave-color) 100%);box-shadow:inset 0 -2px 3px rgb(0 0 0 / 12%),0 2px 4px rgb(0 0 0 / 10%); }
 .mark-six-ball.red,.lottery-wave-red { --wave-color:var(--lottery-wave-red);--wave-light:var(--lottery-wave-red-light); }
 .mark-six-ball.blue,.lottery-wave-blue { --wave-color:var(--lottery-wave-blue);--wave-light:var(--lottery-wave-blue-light); }
 .mark-six-ball.green,.lottery-wave-green { --wave-color:var(--lottery-wave-green);--wave-light:var(--lottery-wave-green-light); }
 .mark-six-ball.special { outline:2px solid var(--accent);outline-offset:2px; }
-.mark-six-ball.small { width:26px;height:26px;font-size:12px; }
+.mark-six-ball.small { width:26px;height:26px;font-size:var(--body-font-size); }
 @media(max-width:620px){.mark-six-ball{width:30px;height:30px}}

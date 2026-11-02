@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref } from 'vue'
 import SiteIcon from './SiteIcon'
-const props = defineProps<{ id: string; label: string }>()
+const props = defineProps<{ id: string; label: string; disabled?: boolean }>()
 const trigger = ref<HTMLButtonElement | null>(null), menu = ref<HTMLDivElement | null>(null), open = ref(false)
 function close() { if (menu.value?.matches(':popover-open')) menu.value.hidePopover() }
 async function toggle() {
-  if (!menu.value || !trigger.value) return
+  if (props.disabled || !menu.value || !trigger.value) return
   if (menu.value.matches(':popover-open')) { close(); return }
   menu.value.showPopover()
   await nextTick()
@@ -35,13 +35,13 @@ function cleanup() { window.removeEventListener('scroll', position, true); windo
 onBeforeUnmount(() => { close(); cleanup() })
 </script>
 <template>
-  <button ref="trigger" class="icon-button member-menu-trigger" type="button" :aria-label="props.label" aria-haspopup="menu" :aria-expanded="open" :aria-controls="id" @click="toggle"><SiteIcon name="moreVertical" /></button>
+  <button ref="trigger" class="icon-button member-menu-trigger" type="button" :disabled="disabled" :aria-label="props.label" aria-haspopup="menu" :aria-expanded="open" :aria-controls="id" @click="toggle"><SiteIcon name="moreVertical" /></button>
   <div ref="menu" :id="id" popover="auto" class="member-action-menu" role="menu" :aria-label="props.label" @toggle="syncOpen" @keydown="navigate" @click="close"><slot /></div>
 </template>
 <style scoped>
 .member-action-menu { position:fixed; inset:auto; margin:0; padding:6px; width:max-content; max-width:calc(100vw - 24px); border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--surface); color:var(--ink); box-shadow:var(--shadow-lg); }
 .member-action-menu:popover-open { display:grid; gap:4px; }
-.member-action-menu :deep(button) { display:flex; align-items:center; width:100%; min-height:44px; padding:8px 12px; border:0; border-radius:var(--radius-sm); background:transparent; color:inherit; font:inherit; text-align:start; }
+.member-action-menu :deep(button) { display:flex; align-items:center; width:100%; min-height:var(--control-height); box-sizing:border-box; padding:4px 12px; border:0; border-radius:var(--radius-sm); background:transparent; color:inherit; font:inherit; line-height:22px; text-align:start; }
 .member-action-menu :deep(button.danger-text) { color:var(--danger-text); }
 .member-action-menu :deep(button:hover),.member-action-menu :deep(button:focus-visible) { background:var(--primary-light); color:var(--primary-dark); }
 </style>

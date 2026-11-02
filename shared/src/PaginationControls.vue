@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { withGlobalLoading } from './index'
 import TablePagination from './TablePagination.vue'
-defineProps<{summary:string;previousLabel:string;nextLabel:string;busy:boolean;hasPrevious:boolean;hasNext:boolean;previous:()=>Promise<void>;next:()=>Promise<void>}>()
+import type { LocaleCode } from './brand'
+defineProps<{page:number;count:number;total:string;locale:LocaleCode;pageSize:number;previousLabel:string;nextLabel:string;busy:boolean;hasPrevious:boolean;hasNext:boolean;goTo:(page:number)=>Promise<void>;showEmpty?:boolean;reachablePage?:number}>()
 </script>
-<template><TablePagination :summary="summary"><template #actions><button type="button" class="button button-secondary" :disabled="busy||!hasPrevious" @click="withGlobalLoading(previous)">{{previousLabel}}</button><button type="button" class="button button-secondary" :disabled="busy||!hasNext" @click="withGlobalLoading(next)">{{nextLabel}}</button></template></TablePagination></template>
+<template><TablePagination :show-empty="showEmpty" :page="page" :count="count" :total="total" :locale="locale" :page-size="pageSize" :previous-label="previousLabel" :next-label="nextLabel" :previous-disabled="busy||!hasPrevious" :next-disabled="busy||!hasNext" :reachable-page="reachablePage" :go-to="goTo" /></template>

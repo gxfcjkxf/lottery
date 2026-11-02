@@ -1,15 +1,33 @@
 <script setup lang="ts">
+import SelectControl from './SelectControl.vue'
+import { formValidationText } from './form-validation'
 import { computed, ref, watch } from 'vue'
 import type { RuleModel, RulePool } from './rules'
 import { createCatalogI18n } from './localization'
 import { platformLotteryCatalog } from './platform-lottery'
-const props = defineProps<{ modelValue: RuleModel; locale: 'en' | 'zh-CN'; disabled?: boolean }>()
+const props = defineProps<{ modelValue: RuleModel; locale: 'en' | 'zh-CN'; disabled?: boolean; readOnly?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [model: RuleModel] }>()
 const i18n = createCatalogI18n(platformLotteryCatalog, props.locale)
 watch(() => props.locale, locale => i18n.setLocale(locale))
 const t = i18n.t
 const drafts = ref<Record<string, string>>({})
 const pools = computed(() => props.modelValue.model === 'M_SELECT_N' ? ['regular_pool'] as const : ['regular_pool', 'special_pool'] as const)
+const modelFields = computed(() => {
+  const model = props.modelValue
+  const fields = [{ label: t('type'), value: t(model.model === 'DIGITS_0_9' ? 'modelDigits' : model.model === 'X_PLUS_Y' ? 'modelXY' : 'modelMN') }]
+  if (model.model === 'DIGITS_0_9') {
+    fields.push({ label: t('digits'), value: String(model.length) }, { label: t('repeat'), value: t(model.allow_repeat ? 'modelYes' : 'modelNo') })
+    return fields
+  }
+  fields.push({ label: t('regularCount'), value: String(model.regular_count) }, { label: t('specialCount'), value: String(model.special_count) })
+  for (const pool of pools.value) {
+    const label = t(model.model === 'M_SELECT_N' ? 'numberPool' : pool === 'regular_pool' ? 'regularPool' : 'specialPool')
+    fields.push({ label, value: model[pool].values ? model[pool].values.join(', ') : `${model[pool].min}–${model[pool].max}` })
+    if (model.model === 'X_PLUS_Y') fields.push({ label: `${label} · ${t('repeat')}`, value: t(model[pool].allow_repeat ? 'modelYes' : 'modelNo') })
+  }
+  fields.push({ label: t('ordered'), value: t(model.ordered ? 'modelYes' : 'modelNo') })
+  return fields
+})
 function update(change: (model: RuleModel) => void) {
   if (props.disabled) return
   const next = JSON.parse(JSON.stringify(props.modelValue)) as RuleModel
@@ -38,8 +56,14 @@ const listMode = (pool: RulePool) => !!pool.values?.length
 </script>
 
 <template>
-  <fieldset class="number-model-editor" :disabled="disabled">
-    <label>{{ t('type') }}<select :value="modelValue.model" @change="changeType(($event.target as HTMLSelectElement).value)"><option value="DIGITS_0_9">{{ t('modelDigits') }}</option><option value="X_PLUS_Y">{{ t('modelXY') }}</option><option value="M_SELECT_N">{{ t('modelMN') }}</option></select></label>
+  <div v-if="readOnly" class="table-wrap number-model-table-wrap">
+    <table class="console-table console-responsive-table number-model-table">
+      <thead><tr><th v-for="field in modelFields" :key="field.label" scope="col">{{ field.label }}</th></tr></thead>
+      <tbody><tr><td v-for="field in modelFields" :key="field.label" :data-label="String(field.label)">{{ field.value }}</td></tr></tbody>
+    </table>
+  </div>
+  <fieldset v-else class="number-model-editor" :disabled="disabled">
+    <label>{{ t('type') }}<SelectControl :model-value="modelValue.model" @change="changeType($event)" :label="String(t('type'))" :options="[{ value: 'DIGITS_0_9', label: (String(t('modelDigits'))).trim() }, { value: 'X_PLUS_Y', label: (String(t('modelXY'))).trim() }, { value: 'M_SELECT_N', label: (String(t('modelMN'))).trim() }]" /></label>
     <template v-if="modelValue.model === 'DIGITS_0_9'">
       <label>{{ t('digits') }}<input type="number" min="1" max="10" :value="modelValue.length" required @input="number('length', $event)" /></label>
       <label class="model-checkbox"><input type="checkbox" :checked="modelValue.allow_repeat" @change="update(model => { model.allow_repeat = ($event.target as HTMLInputElement).checked })" />{{ t('repeat') }}</label>
@@ -49,8 +73,8 @@ const listMode = (pool: RulePool) => !!pool.values?.length
       <label>{{ t('specialCount') }}<input type="number" min="0" max="100" :value="modelValue.special_count" required @input="number('special_count', $event)" /></label>
       <section v-for="pool in pools" :key="pool" class="model-pool">
         <h3>{{ modelValue.model === 'M_SELECT_N' ? t('numberPool') : pool === 'regular_pool' ? t('regularPool') : t('specialPool') }}</h3>
-        <label>{{ t('poolMode') }}<select :value="listMode(modelValue[pool]) ? 'list' : 'range'" @change="mode(pool, ($event.target as HTMLSelectElement).value)"><option value="range">{{ t('range') }}</option><option value="list">{{ t('numberList') }}</option></select></label>
-        <label v-if="listMode(modelValue[pool])">{{ t('numberList') }}<input class="model-number-list" :value="drafts[pool] ?? modelValue[pool].values!.join(', ')" pattern="[0-9]+(\s*,\s*[0-9]+)*" required @input="values(pool, $event)" /></label>
+        <label>{{ t('poolMode') }}<SelectControl :model-value="listMode(modelValue[pool]) ? 'list' : 'range'" @change="mode(pool, $event)" :label="String(t('poolMode'))" :options="[{ value: 'range', label: (String(t('range'))).trim() }, { value: 'list', label: (String(t('numberList'))).trim() }]" /></label>
+        <label v-if="listMode(modelValue[pool])">{{ t('numberList') }}<input class="model-number-list" :value="drafts[pool] ?? modelValue[pool].values!.join(', ')" pattern="[0-9]+(\s*,\s*[0-9]+)*" :data-validation-format="formValidationText('numberList')" required @input="values(pool, $event)" /></label>
         <template v-else><label>{{ t('minimum') }}<input type="number" min="0" max="1000000" :value="modelValue[pool].min ?? 0" required @input="poolNumber(pool, 'min', $event)" /></label><label>{{ t('maximum') }}<input type="number" min="0" max="1000000" :value="modelValue[pool].max ?? 0" required @input="poolNumber(pool, 'max', $event)" /></label></template>
         <label v-if="modelValue.model === 'X_PLUS_Y'" class="model-checkbox"><input type="checkbox" :checked="modelValue[pool].allow_repeat" @change="update(model => { model[pool].allow_repeat = ($event.target as HTMLInputElement).checked })" />{{ t('repeat') }}</label>
       </section>
@@ -60,11 +84,15 @@ const listMode = (pool: RulePool) => !!pool.values?.length
 </template>
 
 <style scoped>
+.number-model-table-wrap{min-width:0;margin-top:12px}
+.number-model-table{width:100%}
+.management-console table.number-model-table{white-space:normal}
+.number-model-table :is(th,td){white-space:normal;overflow-wrap:anywhere}
+
 .number-model-editor { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px 20px; min-width: 0; }
-.number-model-editor label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; font-size: 13px; min-width: 0; }
-.number-model-editor input, .number-model-editor select { min-width: 0; max-width: 100%; box-sizing: border-box; padding: 8px; font: inherit; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--ink); background: var(--surface); }
+.number-model-editor label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; font-size: var(--body-font-size); min-width: 0; }
+.number-model-editor input { min-width: 0; max-width: 100%; box-sizing: border-box; padding: 8px; font: inherit; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--ink); background: var(--surface); }
 .number-model-editor input { width: 100px; }
-.number-model-editor select { width: 100%; min-height: 40px; padding-right: 32px; justify-self: stretch; }
 .number-model-editor .model-number-list { width: 400px; }
 .number-model-editor :disabled { opacity: 1; color: var(--ink); cursor: default; }
 .number-model-editor .model-checkbox { display: flex; flex-direction: row; justify-content: flex-start; align-items: center; gap: 8px; }

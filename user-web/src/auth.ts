@@ -15,7 +15,7 @@ export function normalizeIdentifier(value: string): {
 } {
   const trimmed = value.trim();
   const phoneCandidate = trimmed.replace(/[\s().-]/g, "");
-  if (/^\+[1-9]\d{6,14}$/.test(phoneCandidate)) {
+  if (/^(?:\d{7,15}|\+[1-9]\d{6,14})$/.test(phoneCandidate)) {
     const phone = phoneCandidate;
     return { phone, identifier: phone };
   }
@@ -23,7 +23,7 @@ export function normalizeIdentifier(value: string): {
   return { username, identifier: username };
 }
 
-export interface TelegramAuthResult {
+interface TelegramAuthResult {
   id_token?: string;
   error?: string;
 }
@@ -134,8 +134,8 @@ export function requestTelegramIdToken(
   });
 }
 
-export function passwordByteLength(value: string): number {
-  return new TextEncoder().encode(value).length;
+export function passwordCharacterLength(value: string): number {
+  return Array.from(value).length;
 }
 
 export function discardAccessToken(session: AuthSession): AuthProfile {

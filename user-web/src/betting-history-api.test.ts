@@ -5,14 +5,14 @@ const game = '33333333-3333-4333-8333-333333333333', at = '2026-10-20T00:00:00Z'
 const scope = { brand_id: brand, member_id: member }
 const item = (kind: string, index: number) => ({ kind, id: String(index), game_id: game, game_name: 'Retired custom name', period_no: 'period-001', placed_at: at,
   order: { id: String(index), game_id: game, total_points: '9007199254740993', prize_points: '0', snapshot: {}, quote: { lines: [], bet_points: '9007199254740993' } } })
-const data = () => ({ ...scope, game_id: '', games: [{ id: game, name: 'Retired custom name' }], items: ['configured', 'standard', 'mark-six', 'canada'].map(item), limit: 20, next_cursor: null })
+const data = () => ({ ...scope, game_id: '', games: [{ id: game, name: 'Retired custom name' }], items: Array.from({length:4},(_,index)=>item('configured',index)), limit: 20, next_cursor: null  ,total_count: '4'})
 const ok = (value: unknown) => new Response(JSON.stringify({ success: true, data: value }))
 afterEach(() => vi.unstubAllGlobals())
 describe('one betting-history API', () => {
-  it('preserves all historical payloads and exact amounts with one brand-scoped request', async () => {
+  it('preserves configured historical payloads and exact amounts with one brand-scoped request', async () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => ok(data())); vi.stubGlobal('fetch', fetcher)
     const page = await readBettingHistory('my brand', scope)
-    expect(page.items.map(i => i.kind)).toEqual(['configured', 'standard', 'mark-six', 'canada'])
+    expect(page.items.map(i => i.kind)).toEqual(['configured', 'configured', 'configured', 'configured'])
     expect(page.items[0]!.order).toMatchObject({ quote: { bet_points: '9007199254740993' } })
     expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/b/my%20brand/betting-history?limit=20')
     expect(fetcher).toHaveBeenCalledOnce()
@@ -30,9 +30,9 @@ describe('one betting-history API', () => {
   it('rejects foreign scope, unknown sources, incomplete pages and numeric money instead of silently dropping tickets', async () => {
     for (const change of [
       { member_id: 'other' }, { brand_id: 'other' }, { game_id: game }, { limit: 50 }, { next_cursor: '' },
-      { items: [item('unsupported', 1)] }, { games: [] },
-      { items: [{ ...item('standard', 1), order: { ...item('standard', 1).order, total_points: 123 } }] },
-      { items: [item('standard', 1), item('standard', 1)] },
+      { items: [item('unsupported', 1)]  ,total_count: '1'},{ items: [item('standard', 1)]  ,total_count: '1'},{ items: [item('mark-six', 1)]  ,total_count: '1'},{ items: [item('canada', 1)]  ,total_count: '1'}, { games: []  ,total_count: '0'},
+      { items: [{ ...item('configured', 1), order: { ...item('configured', 1).order, quote: {lines:[],bet_points:123} } }]  ,total_count: '1'},
+      { items: [item('configured', 1), item('configured', 1)]  ,total_count: '2'},
     ]) {
       vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(ok({ ...data(), ...change })))
       await expect(readBettingHistory(undefined, scope)).rejects.toThrow('Invalid')

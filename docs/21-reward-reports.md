@@ -7,13 +7,13 @@
 | 报表 | 时间筛选依据 | 分组 | 汇总字段 |
 | --- | --- | --- | --- |
 | rewards | 实际 ledger.created_at | day、member、order | entry_count、grant_entry_count、grant_points、reversal_entry_count、reversal_points、net_points |
-| reward_orders | 原订单 created_at | day、member、state | order_count、original_points、granted_count、granted_points、pending_count、pending_points、revoked_count、revoked_points |
+| reward_orders | 原订单 created_at | day、member、state | order_count、original_points、granted_count、granted_points、revoked_count、revoked_points |
 
 实际入账只统计有奖励订单、不可变动作及对应人工审计见证的 reward_grant 和 reward_reversal，精确匹配赠送可用来源及完整16桶变动。冻结、解冻、普通赠送调整、待处理尝试和站内通知不计入；动作与 ledger 直接绑定，每笔只计一次。订单后来撤销不会抹掉原发放记录。净变动为发放减撤销，一个窗口只有撤销时可以为负，但不表示负余额或负奖励。
 
-订单报表每个订单只计一次。order_count 等于三种状态订单数之和，original_points 等于三种状态原额之和。pending_points 表示当前待处理订单的原奖励金额，不表示已经冻结、预留或扣除；revoked_points 也不表示这段创建时间内发生的撤销入账。改变日期区间筛选的是创建队列，不是状态变化时间。
+订单报表每个订单只计一次。order_count 等于两种状态订单数之和，original_points 等于两种状态原额之和。revoked_points 也不表示这段创建时间内发生的撤销入账。改变日期区间筛选的是创建队列，不是状态变化时间。
 
-所有计数和金额均为规范十进制整数字符串，聚合不受单笔 int64 上限约束。仅 rewards.net_points 可以带负号；不接受负零、前导零、小数、指数或 JavaScript Number。日期分组使用所选品牌 IANA 时区，键为 YYYY-MM-DD；会员和订单键使用 UUID，状态键为 granted、revocation_pending、revoked。标签与键一致，按 C 排序。
+一期精简后，结算仅提供即时试算；批量对账、在线余额修复和奖励待追缴已移除。人工奖励余额不足时明确失败且不改变资金记录，见[当前精简范围](64-betting-points-simplification.md)。
 
 ## 接口与授权
 
@@ -48,7 +48,7 @@ JSON 的 limit 默认20、最大100，offset 默认0、最大1000000。响应闭
 
 后台“报表和对账”内的“奖励报表”支持实际入账和当前订单切换，展示全部汇总字段及分组，提供会员/订单筛选、分页和完整 CSV。时间输入明确使用 UTC；品牌时区另行显示。导出绑定最近一次已提交查询，不使用未提交的输入草稿。切换类型、品牌、账号或权限，以及退出页面，会取消在途读取和导出、清除旧数据，迟到响应不得覆盖新范围或自动下载。
 
-工作台的奖励卡片只按所有订单的当前状态显示 granted_count、pending_count、revoked_count，不带日期筛选或金额，也不统计尝试次数。该卡片独立要求 reward.view.brand 或 platform，报表权限不代替它；无权返回 forbidden/null，不显示假零。确实无订单且有权时才显示三个零。管理跳转进入“人工奖励”，不直接产生资金操作。独立的佣金任务汇总已接入，见[工作台佣金合同](36-commission-workbench.md)，不把任务计数当作收益。
+工作台的奖励卡片只按所有订单的当前状态显示 granted_count、revoked_count，不带日期筛选或金额，也不统计尝试次数。该卡片独立要求 reward.view.brand 或 platform，报表权限不代替它；无权返回 forbidden/null，不显示假零。确实无订单且有权时才显示三个零。管理跳转进入“人工奖励”，不直接产生资金操作。独立的佣金任务汇总已接入，见[工作台佣金合同](36-commission-workbench.md)，不把任务计数当作收益。
 
 ## 安装与验收边界
 

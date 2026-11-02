@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
 	"github.com/gxfcjkxf/lottery/backend/internal/adminsys"
@@ -28,8 +29,8 @@ type archiveTaskRetryHTTPInput struct {
 type archivePolicyActivationHTTPInput reportarchive.AutomaticActivationInput
 
 func (in *archivePolicyActivationHTTPInput) UnmarshalJSON(raw []byte) error {
-	fields, err := reconciliationClosedObject(raw, map[string]bool{"version": true, "daily_enabled": true, "monthly_enabled": true, "reason": true})
-	if err != nil || len(fields) != 3 && len(fields) != 4 {
+	fields, err := reconciliationClosedObject(raw, map[string]bool{"version": true, "daily_enabled": true, "monthly_enabled": true, "reason": true, "daily_execution_time": true, "daily_period_offset": true, "monthly_execution_day": true, "monthly_execution_time": true, "monthly_period_offset": true})
+	if err != nil || len(fields) != 8 && len(fields) != 9 {
 		return reportarchive.ErrInvalid
 	}
 	// Reuse the exact version/reason validation of task retry. Booleans must be
@@ -47,7 +48,12 @@ func (in *archivePolicyActivationHTTPInput) UnmarshalJSON(raw []byte) error {
 	if json.Unmarshal(fields["daily_enabled"], &daily) != nil || json.Unmarshal(fields["monthly_enabled"], &monthly) != nil || daily == nil || monthly == nil {
 		return reportarchive.ErrInvalid
 	}
-	*in = archivePolicyActivationHTTPInput{Version: base.Version, DailyEnabled: *daily, MonthlyEnabled: *monthly, Reason: base.Reason}
+	var schedule reportarchive.AutomaticSchedule
+	scheduleRaw, err := json.Marshal(fields)
+	if err != nil || json.Unmarshal(scheduleRaw, &schedule) != nil || !schedule.Valid() {
+		return reportarchive.ErrInvalid
+	}
+	*in = archivePolicyActivationHTTPInput{AutomaticSchedule: schedule, Version: base.Version, DailyEnabled: *daily, MonthlyEnabled: *monthly, Reason: base.Reason}
 	return nil
 }
 
@@ -57,7 +63,7 @@ func (in *archiveTaskRetryHTTPInput) UnmarshalJSON(raw []byte) error {
 		return reportarchive.ErrInvalid
 	}
 	var next archiveTaskRetryHTTPInput
-	if json.Unmarshal(fields["version"], &next.Version) != nil || fields["reason"] != nil && json.Unmarshal(fields["reason"], &next.Reason) != nil || next.Version < 1 || next.Version >= 9007199254740991 || len(next.Reason) > 500 || strings.TrimSpace(next.Reason) != next.Reason {
+	if json.Unmarshal(fields["version"], &next.Version) != nil || fields["reason"] != nil && json.Unmarshal(fields["reason"], &next.Reason) != nil || next.Version < 1 || next.Version >= 9007199254740991 || utf8.RuneCountInString(next.Reason) > 500 || strings.TrimSpace(next.Reason) != next.Reason {
 		return reportarchive.ErrInvalid
 	}
 	for _, c := range next.Reason {
@@ -146,54 +152,8 @@ func archiveTaskHTTPRead(r *http.Request, d Dependencies, initial access.Account
 // retries themselves never enable a policy.
 func registerReportArchiveTaskRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
 	s := reportarchive.Service{DB: d.Admins.DB}
-	handle("PUT", archivePolicyRoutePath, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.RawQuery != "" || r.URL.ForceQuery {
-			failure(w, r, 400, "REQUEST_INVALID", "自动归档配置不接受查询参数")
-			return
-		}
-		brand, ok := reconciliationBrand(w, r)
-		if !ok {
-			return
-		}
-		var in archivePolicyActivationHTTPInput
-		if !decodeBody(w, r, &in) {
-			return
-		}
-		initial, ok := adminAccount(w, r, d)
-		if !ok {
-			return
-		}
-		raw, _ := json.Marshal(in)
-		var fresh access.Account
-		check := func(ctx context.Context, tx pgx.Tx) error {
-			a, err := archiveTaskHTTPAuth(ctx, tx, r, d, initial, brand, "policy")
-			if err == nil {
-				fresh = a
-			}
-			return err
-		}
-		result, err := d.Mutations.ExecuteChecked(r.Context(), brand, initial.ID, "admin.report_archive.policy.update", r.Header.Get("Idempotency-Key"), d.Mutations.Fingerprint(brand+":"+string(raw)), check, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-			out, e := s.UpdateAutomaticActivationTx(ctx, tx, brand, fresh, reportarchive.AutomaticActivationInput(in), pointMeta(r, fresh))
-			response, e := archiveHTTPResult(out, archiveHTTPDBError(e))
-			if e != nil {
-				return mutation.Result{}, e
-			}
-			if e = check(ctx, tx); e != nil {
-				return mutation.Result{}, e
-			}
-			return response, nil
-		})
-		err = archiveHTTPDBError(err)
-		if errors.Is(err, reportarchive.ErrBusy) || errors.Is(err, reportarchive.ErrIntegrity) {
-			archiveHTTPOutput(w, r, nil, err)
-			return
-		}
-		if err != nil {
-			result, err = archiveHTTPResult(nil, err)
-		}
-		finishAdminMutation(w, r, d, initial, brand, "report_archive_policy.update", result, err)
-	})
-	for _, path := range []string{archivePolicyRoutePath, archiveTasksPath, archiveTasksPath + "/{id}"} {
+
+	for _, path := range []string{archiveTasksPath, archiveTasksPath + "/{id}"} {
 		handle("GET", path, func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.ForceQuery || !reconciliationGetHasNoBody(w, r) {
 				if r.URL.ForceQuery {

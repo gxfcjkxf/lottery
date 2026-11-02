@@ -28,7 +28,7 @@ describe('rendered locale and content-field separation', () => {
     expect(html).toContain('角色权限')
     expect(html).toContain('中文运营文案')
     expect(html).toContain('Unchanged English {name}')
-    expect(html).toMatch(/<option[^>]*value="zh-CN"/)
+    expect(html).toMatch(/<div[^>]*role="option"[^>]*data-value="zh-CN"/)
     expect(JSON.stringify(config)).toBe(before)
   })
   it('keeps business content plain text rather than injecting markup during translation', async () => {

@@ -6,9 +6,9 @@ const integer = () => ({ type: 'integer', format: 'int64', minimum: 1 });
 const op = (method, path, operationId, summary, tag, auth, idempotency, data, extra = {}) => ({ method, path, operationId, summary, tag, auth, idempotency, data, ...extra });
 
 export const schemas = {
-  PlatformAccountCreateRequest: obj({ username: string({ pattern: '^[a-z][a-z0-9_]{2,31}$' }), password: string({ minLength: 6, maxLength: 30, description: '6–30 UTF-8 bytes.' }), role_ids: { ...array(ref('UUID')), minItems: 1, maxItems: 100 }, reason: ref('Reason') }, ['username', 'password', 'role_ids']),
+  PlatformAccountCreateRequest: obj({ username: string({ pattern: '^[a-z][a-z0-9_]{2,31}$' }), password: string({ minLength: 6, maxLength: 30, description: '6–30 characters.' }), role_ids: { ...array(ref('UUID')), minItems: 1, maxItems: 100 }, reason: ref('Reason') }, ['username', 'password', 'role_ids']),
   PlatformAccountUpdateRequest: obj({ version: integer(), status: string({ enum: ['active', 'disabled'] }), role_ids: { ...array(ref('UUID')), minItems: 1, maxItems: 100 }, reason: ref('Reason') }, ['version', 'status', 'role_ids']),
-  PlatformAccountPasswordResetRequest: obj({ version: integer(), password: string({ minLength: 6, maxLength: 30, description: '6–30 UTF-8 bytes.' }), reason: ref('Reason') }, ['version', 'password']),
+  PlatformAccountPasswordResetRequest: obj({ version: integer(), password: string({ minLength: 6, maxLength: 30, description: '6–30 characters.' }), reason: ref('Reason') }, ['version', 'password']),
   PlatformAccountDeleteRequest: obj({ version: integer() }, ['version']),
   PlatformRoleDeleteRequest: obj({ version: integer() }, ['version']),
   PlatformRoleCreateRequest: obj({ code: string({ pattern: '^[a-z][a-z0-9_]{2,47}$' }), name: string({ minLength: 1, maxLength: 120 }), status: string({ enum: ['active', 'disabled'], default: 'active' }), permissions: array(string({ pattern: '^[a-z_]+\\.[a-z_]+\\.platform$' })), reason: ref('Reason') }, ['code', 'name', 'permissions']),
@@ -19,7 +19,7 @@ export const schemas = {
 };
 const page = [{ name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 } }, { name: 'offset', in: 'query', schema: { type: 'integer', minimum: 0, maximum: 1000000, default: 0 } }];
 const base = '/api/v1/platform';
-const description = 'Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Requires the exact platform grant. No X-Brand-ID. This manages platform administrator accounts, not brand members or funds. Writes are versioned, audited and idempotent; session and permission are checked before cached receipts too. Self update/reset/delete is rejected. Deletion requires the separate admin.delete.platform grant. Role delegation cannot exceed the actor’s platform grants.';
+const description = 'Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Requires the exact platform grant. No X-Brand-ID. This manages platform administrator accounts, not brand members or funds. Writes are versioned, audited and idempotent; session and permission are checked before cached receipts too. Self update/reset/delete is rejected. Deletion requires the separate admin.delete.platform grant. Deleted accounts are permanently retired: credentials, sessions and grants are removed, while historical actor references and the reserved username remain. Deleted accounts cannot be listed, reactivated or reset. Role delegation cannot exceed the actor’s platform grants.';
 export const operations = [
   op('GET', `${base}/platform-accounts`, 'listPlatformAdministratorAccounts', 'List platform administrator accounts', 'administration', 'admin', false, ref('AdminAccountList'), { parameters: page, permissions: ['admin.view.platform'], description }),
   op('GET', `${base}/platform-roles`, 'listPlatformAdministratorRoles', 'List platform administrator roles', 'administration', 'admin', false, ref('PlatformAccountRoleList'), { parameters: page, permissions: ['role.view.platform'], description }),

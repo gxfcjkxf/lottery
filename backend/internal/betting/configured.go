@@ -35,8 +35,6 @@ type ConfiguredQuote struct {
 	SalesVersion int64  `json:"sales_version"`
 }
 
-var ErrLegacyPeriod = errors.New("dedicated purchases exist in this period")
-
 type ConfiguredOrder struct {
 	GameName     string                  `json:"game_name"`
 	MemberName   string                  `json:"member_name"`
@@ -93,34 +91,35 @@ func (s Service) ConfiguredCatalog(ctx context.Context, brand, game string) (any
 		return nil, e
 	}
 	var period *platformlottery.Period
-	for _, p := range detail.Periods {
-		if p.Result == nil && p.BetEndAt.After(time.Now()) {
-			candidate := p
-			if e = platformlottery.BrandPeriod(ctx, s.DB, brand, &candidate); e != nil {
-				return nil, e
-			}
-			if period == nil || candidate.BetStartAt.Before(period.BetStartAt) {
-				period = &candidate
-			}
-		}
+	var candidate platformlottery.Period
+	err := s.DB.QueryRow(ctx, `SELECT id::text,game_id::text,period_no,bet_start_at,bet_end_at,draw_at FROM platform_game_periods WHERE game_id=$1 AND result IS NULL AND bet_end_at>clock_timestamp() AND (automation_version IS NULL OR EXISTS(SELECT 1 FROM platform_automation_versions v WHERE v.game_id=platform_game_periods.game_id AND v.version=platform_game_periods.automation_version AND v.source_type='mapped')) ORDER BY bet_start_at,id LIMIT 1`, game).Scan(&candidate.ID, &candidate.GameID, &candidate.PeriodNo, &candidate.BetStartAt, &candidate.BetEndAt, &candidate.DrawAt)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	if err == nil {
+		period = &candidate
 	}
 	var snap rules.ConfiguredSnapshot
 	if e = json.Unmarshal(engine.Snapshot(), &snap); e != nil {
 		return nil, e
 	}
-	return map[string]any{"game": detail.Game, "snapshot": snap, "rule_id": v.ID, "sales": sales, "snapshot_hash": engine.SnapshotHash(), "period": period}, nil
+	previous, e := s.LatestConfiguredDraw(ctx, brand, game)
+	if e != nil {
+		return nil, e
+	}
+	var previousDraw any
+	if previous != nil {
+		previousDraw = map[string]any{"period_no": previous.PeriodNo, "result": previous.Result, "regular_order": previous.RegularOrder, "attributes": previous.Attributes}
+	}
+	return map[string]any{"game": detail.Game, "snapshot": snap, "rule_id": v.ID, "sales": sales, "snapshot_hash": engine.SnapshotHash(), "period": period, "previous_draw": previousDraw}, nil
 }
 func configuredWindow(ctx context.Context, tx pgx.Tx, brand, game, period, member string, total points.Amount, sale platformlottery.ConfiguredSales) error {
-	var open, legacy bool
-	if e := tx.QueryRow(ctx, `SELECT result IS NULL AND bet_start_at<=clock_timestamp() AND bet_end_at>clock_timestamp(), EXISTS(SELECT 1 FROM platform_mark_six_orders WHERE period_id=$1) OR EXISTS(SELECT 1 FROM platform_canada_orders WHERE period_id=$1) FROM platform_game_periods WHERE id=$1 AND game_id=$2`, period, game).Scan(&open, &legacy); e != nil {
+	var open bool
+	if e := tx.QueryRow(ctx, `SELECT result IS NULL AND bet_start_at<=clock_timestamp() AND bet_end_at>clock_timestamp() AND (automation_version IS NULL OR EXISTS(SELECT 1 FROM platform_automation_versions v WHERE v.game_id=platform_game_periods.game_id AND v.version=platform_game_periods.automation_version AND v.source_type='mapped')) FROM platform_game_periods WHERE id=$1 AND game_id=$2`, period, game).Scan(&open); e != nil {
 		return e
 	}
 	if !open {
 		return ErrClosed
-	}
-	// A period cannot mix independently scoped settlement caps and aggregates.
-	if legacy {
-		return ErrLegacyPeriod
 	}
 	var all, user string
 	e := tx.QueryRow(ctx, `SELECT coalesce(sum(total_points::numeric),0)::text,coalesce(sum(total_points::numeric) FILTER(WHERE member_id=$3),0)::text FROM configured_orders WHERE brand_id=$1 AND period_id=$2`, brand, period, member).Scan(&all, &user)
@@ -142,7 +141,7 @@ func configuredWindow(ctx context.Context, tx pgx.Tx, brand, game, period, membe
 	}
 	return nil
 }
-func (s Service) configuredQuote(ctx context.Context, tx pgx.Tx, brand string, v identity.Session, in ConfiguredInput, meta points.Metadata) (ConfiguredQuote, *rules.ConfiguredEngine, platformlottery.ConfiguredSales, error) {
+func (s Service) configuredQuote(ctx context.Context, tx pgx.Tx, brand string, v identity.Session, in ConfiguredInput, meta points.Metadata, placing bool) (ConfiguredQuote, *rules.ConfiguredEngine, platformlottery.ConfiguredSales, error) {
 	var q ConfiguredQuote
 	var sales platformlottery.ConfiguredSales
 	if !validIDs(brand, in.PeriodID, in.RuleID) {
@@ -196,7 +195,11 @@ func (s Service) configuredQuote(ctx context.Context, tx pgx.Tx, brand string, v
 		return q, nil, sales, ErrVersion
 	}
 	var period string
-	if e = tx.QueryRow(ctx, `SELECT id::text FROM platform_game_periods WHERE id=$1 FOR SHARE`, in.PeriodID).Scan(&period); e != nil {
+	lock := " FOR SHARE"
+	if placing {
+		lock = " FOR UPDATE"
+	}
+	if e = tx.QueryRow(ctx, `SELECT id::text FROM platform_game_periods WHERE id=$1`+lock, in.PeriodID).Scan(&period); e != nil {
 		return q, nil, sales, e
 	}
 	quote, e := engine.Prepare(ctx, in.Requests)
@@ -215,11 +218,11 @@ func (s Service) configuredQuote(ctx context.Context, tx pgx.Tx, brand string, v
 	return ConfiguredQuote{ConfiguredQuote: quote, GameID: game, PeriodID: period, RuleID: publication.ID, SalesVersion: sales.Version}, engine, sales, e
 }
 func (s Service) PreviewConfigured(ctx context.Context, tx pgx.Tx, brand string, v identity.Session, in ConfiguredInput, meta points.Metadata) (ConfiguredQuote, error) {
-	q, _, _, e := s.configuredQuote(ctx, tx, brand, v, in, meta)
+	q, _, _, e := s.configuredQuote(ctx, tx, brand, v, in, meta, false)
 	return q, e
 }
 func (s Service) PlaceConfigured(ctx context.Context, tx pgx.Tx, brand string, v identity.Session, in ConfiguredInput, meta points.Metadata) (ConfiguredOrder, error) {
-	q, engine, sales, e := s.configuredQuote(ctx, tx, brand, v, in, meta)
+	q, engine, sales, e := s.configuredQuote(ctx, tx, brand, v, in, meta, true)
 	if e != nil {
 		return ConfiguredOrder{}, e
 	}
@@ -268,6 +271,9 @@ func (s Service) PlaceConfigured(ctx context.Context, tx pgx.Tx, brand string, v
 	if e != nil {
 		return ConfiguredOrder{}, e
 	}
+	if e = appendConfiguredEvent(ctx, tx, brand, v.Member.ID, id, q.PeriodID, "bet.order.placed", "", q.BetPoints); e != nil {
+		return ConfiguredOrder{}, e
+	}
 	return scanConfiguredOrder(tx.QueryRow(ctx, configuredOrderSelect+` WHERE o.id=$1`, id))
 }
 
@@ -304,6 +310,18 @@ func (s Service) ConfiguredOrders(ctx context.Context, brand, member, game strin
 		out = append(out, o)
 	}
 	return out, rows.Err()
+}
+
+// Historical tickets remain readable after game or sales configuration changes.
+func (s Service) ConfiguredOrder(ctx context.Context, brand, member, id string) (ConfiguredOrder, error) {
+	if !validIDs(brand, member, id) {
+		return ConfiguredOrder{}, ErrInvalid
+	}
+	order, err := scanConfiguredOrder(s.DB.QueryRow(ctx, configuredOrderSelect+` WHERE o.brand_id=$1 AND o.member_id=$2 AND o.id=$3`, brand, member, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ConfiguredOrder{}, ErrNotFound
+	}
+	return order, err
 }
 func (s Service) ProcessConfiguredSettlements(ctx context.Context, limit int) (int, error) {
 	if limit < 1 || limit > 100 {
@@ -442,9 +460,14 @@ func (s Service) processConfiguredSettlement(ctx context.Context) (bool, error) 
 	if e != nil {
 		return false, e
 	}
-	_, e = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "system", Action: "configured.settle", ResourceType: "configured_order", ResourceID: id, Reason: "frozen configured rule settlement", RequestID: "configured:" + id, After: result})
+	_, e = audit.Append(ctx, tx, audit.Record{BrandID: brand, ActorType: "system", Action: "configured.settle", ResourceType: "configured_order", ResourceID: id, Reason: "frozen configured rule settlement", RequestID: "configured:" + id, Before: map[string]any{"status": o.Status, "bet_points": o.Quote.BetPoints}, After: map[string]any{"status": "settled", "result": result}})
 	if e != nil {
 		return false, e
+	}
+	if result.PrizePoints > 0 {
+		if e = appendConfiguredEvent(ctx, tx, brand, member, id, o.PeriodID, "bet.order.won", payoutID, result.PrizePoints); e != nil {
+			return false, e
+		}
 	}
 	return true, tx.Commit(ctx)
 }

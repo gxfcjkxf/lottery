@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { expect, test, type APIResponse, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 import { rememberAdminSession, restoreAdminSession } from "./support/admin-session";
 
@@ -33,7 +34,7 @@ async function loginAdminHarbor(page: Page, context: BrowserContext) {
   }
   await rememberAdminSession(context, username, adminOrigin);
   await page.goto(adminOrigin);
-  await page.locator(".directory-brand-bar select").selectOption(harbor);
+  await selectControl(page.locator(".directory-brand-bar .select-control-trigger"), harbor);
 }
 
 async function registerHarborMember(page: Page, context: BrowserContext) {

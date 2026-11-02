@@ -35,6 +35,10 @@ const adminReadPermissions = (permission) => [permission];
 const adminWritePermissions = (permission) => [permission];
 
 export const schemas = {
+  RechargeQuota: object({brand_id:ref("UUID"),available:ref("NonnegativeInt64String")}),
+  RechargeQuotaGrant: object({points:ref("PositiveInt64String")}),
+  RechargeQuotaEntry: object({id:ref("UUID"),brand_id:ref("UUID"),kind:str({enum:["grant","reclaim","manual_recharge"]}),points:ref("PositiveInt64String"),before_available:ref("NonnegativeInt64String"),after_available:ref("NonnegativeInt64String"),recharge_order_id:nullable(ref("UUID")),actor_name:str(),created_at:ref("DateTime")}),
+  RechargeQuotaEntries: object({items:array(ref("RechargeQuotaEntry"))}),
   FinanceBalance: object({
     recharge: object({ available: ref("NonnegativeInt64String"), manual_frozen: ref("NonnegativeInt64String"), system_frozen: ref("NonnegativeInt64String"), withdrawal: ref("NonnegativeInt64String") }),
     winning: object({ available: ref("NonnegativeInt64String"), manual_frozen: ref("NonnegativeInt64String"), system_frozen: ref("NonnegativeInt64String"), withdrawal: ref("NonnegativeInt64String") }),
@@ -61,9 +65,10 @@ export const schemas = {
   }, ["id", "brand_id", "account_id", "member_id", "entry_type", "reference_type", "reference_id", "operation_key", "reason", "actor_type", "actor_id", "request_id", "version", "before_snapshot", "delta_snapshot", "after_snapshot", "source_allocation", "created_at"]),
   FinanceWalletLedgerPage: object({ items: array(ref("FinanceEntry")) }),
   FinanceRecharge: object({
+    method: str({enum:["manual","automatic"]}),
     id: ref("UUID"), brand_id: ref("UUID"), member_id: ref("UUID"), account_id: ref("UUID"), points: ref("PositiveInt64String"), state: str({ enum: ["pending", "confirmed", "cancelled"] }), proof_reference: str(), remark: str(), created_by: ref("UUID"),
-    confirmed_by: ref("UUID"), version: int(), created_at: ref("DateTime"), confirmed_at: ref("DateTime"), ledger_entry_id: ref("UUID"), audit_log_id: ref("UUID"),
-  }, ["id", "brand_id", "member_id", "account_id", "points", "state", "proof_reference", "remark", "created_by", "version", "created_at"]),
+    member_username: str(), created_by_name: str(), confirmed_by_name: str(), confirmed_by: ref("UUID"), version: int(), created_at: ref("DateTime"), confirmed_at: ref("DateTime"), ledger_entry_id: ref("UUID"), audit_log_id: ref("UUID"),
+  }, ["method", "id", "brand_id", "member_id", "member_username", "created_by_name", "confirmed_by_name", "account_id", "points", "state", "proof_reference", "remark", "created_by", "version", "created_at"]),
   FinanceRechargeList: object({ items: array(ref("FinanceRecharge")) }),
   FinanceRechargeCreate: object({ member_id: ref("UUID"), points: ref("PositiveInt64String"), proof_reference: str({ maxLength: 500 }), remark: str({ maxLength: 2000 }), reason: ref("Reason") }, ["member_id", "points"]),
   FinanceVersionReason: object({ version: int({ minimum: 1 }), reason: ref("Reason") }, ["version"]),
@@ -75,72 +80,6 @@ export const schemas = {
   }, ["brand_id", "version", "max_balance_points", "max_recharge_points", "max_adjustment_points"]),
   FinanceAdjustmentPolicyInput: object({ version: int({ minimum: 1 }), max_balance_points: nullable(ref("PositiveInt64String")), max_recharge_points: nullable(ref("PositiveInt64String")), max_adjustment_points: nullable(ref("PositiveInt64String")), reason: ref("Reason") }, ["version", "max_balance_points", "max_recharge_points", "max_adjustment_points"]),
   FinanceReconciliation: object({ consistent: bool, account_id: ref("UUID"), member_id: ref("UUID"), version: int(), entry_count: int(), expected: ref("FinanceBalance"), actual: ref("FinanceBalance"), issues: array(str()) }),
-  FinanceRepairActual: object({
-    recharge: object({ available: ref("NonnegativeInt64String"), manual_frozen: ref("NonnegativeInt64String"), system_frozen: ref("NonnegativeInt64String"), withdrawal: ref("NonnegativeInt64String") }, [], { additionalProperties: ref("NonnegativeInt64String") }),
-    winning: object({ available: ref("NonnegativeInt64String"), manual_frozen: ref("NonnegativeInt64String"), system_frozen: ref("NonnegativeInt64String"), withdrawal: ref("NonnegativeInt64String") }, [], { additionalProperties: ref("NonnegativeInt64String") }),
-    gift: object({ available: ref("NonnegativeInt64String"), manual_frozen: ref("NonnegativeInt64String"), system_frozen: ref("NonnegativeInt64String"), withdrawal: ref("NonnegativeInt64String") }, [], { additionalProperties: ref("NonnegativeInt64String") }),
-    commission: object({ available: ref("NonnegativeInt64String"), manual_frozen: ref("NonnegativeInt64String"), system_frozen: ref("NonnegativeInt64String"), withdrawal: ref("NonnegativeInt64String") }, [], { additionalProperties: ref("NonnegativeInt64String") }),
-  }, [], { additionalProperties: false }),
-  FinanceRepairPreview: object({ account_id: ref("UUID"), member_id: ref("UUID"), version: int(), ledger_version: int(), actual: ref("FinanceRepairActual"), expected: ref("FinanceBalance"), repairable: bool, consistent: bool, issues: array(str()), token: str() }),
-  FinanceRepairRecord: object({ id: ref("UUID"), preview: ref("FinanceRepairPreview"), audit_log_id: ref("UUID") }),
-  FinanceRepairSnapshot: object({ version: int(), buckets: { anyOf: [ref("FinanceLedgerBalance"), ref("FinanceRepairActual")] } }),
-  FinanceRepairHistory: object({ id: ref("UUID"), version: int(), before_snapshot: ref("FinanceRepairSnapshot"), after_snapshot: ref("FinanceRepairSnapshot"), reason: str(), actor_id: ref("UUID"), request_id: str(), created_at: ref("DateTime") }),
-  FinanceRepairList: object({ items: array(ref("FinanceRepairHistory")) }),
-  FinanceRepairInput: object({ version: int({ minimum: 1 }), token: str(), reason: ref("Reason") }, ["version", "token"]),
-
-  FinanceReconciliationReason: str({ maxLength: 500, pattern: "^$|^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\r\\n\\x00])[\\s\\S]+$", description: "Optional audit note; empty or valid UTF-8 at most 500 bytes, already trimmed, and contains no LF, CR, or NUL. The handler rejects rather than normalizes invalid reasons." }),
-  FinanceReconciliationBusinessIssue: object({
-    code: str({ enum: ["UNSUPPORTED_LEDGER_TYPE", "MISSING_BUSINESS_RECORD", "INVALID_BUSINESS_BINDING", "MISSING_LEDGER_ENTRY", "DUPLICATE_BUSINESS_BINDING", "INVALID_MANUAL_AUDIT"] }),
-    entry_type: nullable(str({ pattern: "^[a-zA-Z0-9_.:-]{1,200}$" })),
-    ledger_entry_id: nullable(ref("UUID")),
-    resource_type: str({ enum: [...reconciliationFamilies, "ledger"] }),
-    resource_id: nullable(ref("UUID")),
-  }),
-  FinanceReconciliationBusinessCoverage: object({
-    family: str({ enum: reconciliationFamilies }),
-    ledger_entry_count: reconciliationBusinessCount,
-    business_reference_count: reconciliationBusinessCount,
-    issue_count: reconciliationBusinessCount,
-  }),
-  FinanceReconciliationBusinessPreview: object({
-    account_id: ref("UUID"), member_id: ref("UUID"), account_version: int({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
-    ledger_entry_count: reconciliationBusinessCount, business_reference_count: reconciliationBusinessCount, issue_count: reconciliationBusinessCount,
-    issues_truncated: bool, consistent: bool, fingerprint: str({ pattern: "^[0-9a-fA-F]{64}$" }),
-    issues: array(ref("FinanceReconciliationBusinessIssue"), { maxItems: 100 }),
-    coverage: array(ref("FinanceReconciliationBusinessCoverage"), {
-      minItems: 12,
-      maxItems: 12,
-      prefixItems: reconciliationFamilies.map(family => object({
-        family: { const: family }, ledger_entry_count: reconciliationBusinessCount,
-        business_reference_count: reconciliationBusinessCount, issue_count: reconciliationBusinessCount,
-      })),
-    }),
-  }),
-  FinanceReconciliationJob: object({
-    id: ref("UUID"), brand_id: ref("UUID"), state: str({ enum: ["pending", "running", "completed", "failed"] }), version: int({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
-    target_count: reconciliationCount, checked_count: reconciliationCount, consistent_count: reconciliationCount, repairable_count: reconciliationCount, corrupt_count: reconciliationCount, failed_count: reconciliationCount, pending_count: reconciliationCount,
-    created_by: ref("UUID"), reason: ref("FinanceReconciliationReason"), created_at: ref("DateTime"), started_at: nullable(ref("DateTime")), completed_at: nullable(ref("DateTime")), last_error_code: nullable(str({ const: "CHECK_FAILED" })), can_retry: bool, creation_audit_log_id: ref("UUID"),
-    check_scope: reconciliationScope,
-  }),
-  FinanceReconciliationJobPage: object({ brand_id: ref("UUID"), items: array(ref("FinanceReconciliationJob")), total_count: aggregateInteger, limit: int({ minimum: 1, maximum: 100 }), offset: int({ minimum: 0, maximum: 1000000 }) }),
-  FinanceReconciliationTarget: {
-    ...object({
-      id: ref("UUID"), brand_id: ref("UUID"), job_id: ref("UUID"), account_id: ref("UUID"), member_id: ref("UUID"), state: str({ enum: ["pending", "checked", "failed"] }), outcome: nullable(str({ enum: ["consistent", "repairable", "corrupt"] })), preview: nullable(ref("FinanceRepairPreview")), attempt_count: int({ minimum: 0 }), error_code: nullable(str({ const: "CHECK_FAILED" })), checked_at: nullable(ref("DateTime")), audit_log_id: nullable(ref("UUID")),
-      check_scope: reconciliationScope, business_preview: nullable(ref("FinanceReconciliationBusinessPreview")),
-    }),
-    allOf: [{
-      if: { type: "object", properties: { check_scope: { const: "wallet_and_business" }, state: { const: "checked" } }, required: ["check_scope", "state"] },
-      then: { properties: { business_preview: ref("FinanceReconciliationBusinessPreview") } },
-      else: { properties: { business_preview: { type: "null" } } },
-    }],
-  },
-  FinanceReconciliationTargetPage: object({ brand_id: ref("UUID"), job_id: ref("UUID"), items: array(ref("FinanceReconciliationTarget")), total_count: reconciliationCount, limit: int({ minimum: 1, maximum: 100 }), offset: int({ minimum: 0, maximum: 1000000 }), outcome: nullable(str({ enum: ["pending", "failed", "consistent", "repairable", "corrupt"] })) }),
-  FinanceReconciliationCreateInput: object({
-    reason: ref("FinanceReconciliationReason"),
-    check_scope: { ...reconciliationScope, description: "Required immutable job scope: wallet or wallet_and_business." },
-  }, ["check_scope"]),
-  FinanceReconciliationRetryInput: object({ version: int({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER - 1 }), reason: ref("FinanceReconciliationReason") }, ["version"]),
-
   FinanceWithdrawalBrandConfig: object({ enabled: bool, min_points: ref("PositiveInt64String"), max_points: nullable(ref("PositiveInt64String")), allowed_sources: array(str({ enum: ["recharge", "winning", "gift", "commission"] }), { minItems: 1, maxItems: 4, uniqueItems: true }), review_mode: str({ enum: ["manual", "automatic"] }), turnover_multiple: ref("FinanceWithdrawalPositiveMultiple") }),
   FinanceWithdrawalGameConfig: object({ turnover_multiple: nullable(ref("FinanceWithdrawalPositiveMultiple")) }),
   FinanceWithdrawalPositiveMultiple: str({ pattern: "^(?!0$)(?:1000000|(?:0|[1-9][0-9]{0,5})(?:[.][0-9]{0,5}[1-9])?)$", description: "All policy reads and writes require 0 < N <= 1000000, in canonical decimal notation with at most six fractional digits." }),
@@ -186,6 +125,8 @@ export const schemas = {
   FinanceJoinCodeCreateInput: object({ kind: str({ enum: ["agent", "referral"] }), owner_member_id: ref("UUID"), agent_id: nullable(ref("UUID")), starts_at: nullable(ref("DateTime")), expires_at: nullable(ref("DateTime")), reason: ref("Reason") }, ["kind", "owner_member_id", "agent_id", "starts_at", "expires_at"]),
   FinanceJoinCodeUpdateInput: object({ version: int({ minimum: 1 }), status: str({ enum: ["active", "disabled"] }), starts_at: nullable(ref("DateTime")), expires_at: nullable(ref("DateTime")), reason: ref("Reason") }, ["version", "status", "starts_at", "expires_at"]),
   FinanceJoinCodePage: object({ brand_id: ref("UUID"), kind: nullable(str({ enum: ["agent", "referral"] })), owner_member_id: nullable(ref("UUID")), items: array(ref("FinanceJoinCode")), limit: int(), offset: int(), total_count: str() }),
+  FinanceReferredMember: object({ id: ref("UUID"), display_name: str(), joined_at: ref("DateTime") }),
+  FinanceReferralSelfPage: object({ brand_id: ref("UUID"), member_id: ref("UUID"), items: array(ref("FinanceReferredMember")), limit: int(), offset: int(), total_count: str() }),
   FinanceJoinCodeSelfPage: object({ brand_id: ref("UUID"), member_id: ref("UUID"), items: array(ref("FinanceJoinCode")), limit: int(), offset: int(), total_count: str() }),
   FinanceJoinCodeRevision: object({ id: ref("UUID"), brand_id: ref("UUID"), code_id: ref("UUID"), version: int(), status: str({ enum: ["active", "disabled"] }), starts_at: nullable(ref("DateTime")), expires_at: nullable(ref("DateTime")), actor_id: nullable(ref("UUID")), reason: str(), audit_log_id: ref("UUID"), created_at: ref("DateTime") }),
   FinanceJoinCodeHistory: object({ brand_id: ref("UUID"), code_id: ref("UUID"), items: array(ref("FinanceJoinCodeRevision")), limit: int(), offset: int(), total_count: str() }),
@@ -200,10 +141,16 @@ const write = (method, path, operationId, summary, tag, body, data, permission, 
   ...admin(method, path, operationId, summary, tag, data, permission, extra), requestBody: ref(body), idempotency: true,
   permissions: extra.permissions ?? adminWritePermissions(permission),
 });
+const platform = (operation) => ({...operation,path:operation.path.replace("/api/v1/admin/","/api/v1/platform/")});
 const user = (method, path, operationId, summary, tag, data, extra = {}) => ({ method, path: `/api/v1${path}`, operationId, summary, tag, auth: "user", data, ...extra });
 const query = (name, schema, required = false, description) => ({ name, in: "query", required, schema, ...(description ? { description } : {}) });
 
 export const operations = [
+  admin("GET","/recharge-quota","getRechargeQuota","Read the brand shared recharge quota","finance",ref("RechargeQuota"),"recharge.view.brand"),
+  admin("GET","/recharge-quota/entries","listRechargeQuotaEntries","List quota grants and manual recharge debits","finance",ref("RechargeQuotaEntries"),"recharge.view.brand",{parameters:pageParameters}),
+  write("POST","/recharge-quota/reclaims","reclaimRechargeQuota","Reclaim remaining unused brand quota","finance","RechargeQuotaGrant",ref("RechargeQuota"),"recharge_quota.write.platform",{description:"Requires an explicit platform recharge_quota.write.platform grant. Reclaims only available unused quota, serialized with member recharges. Does not debit member points or undo previous credits. Excess returns 409 RECHARGE_QUOTA_RECLAIM_EXCEEDED without effects. Adds an immutable reclaim entry and audit atomically; original-key retries cannot reclaim twice."}),
+  write("POST","/recharge-quota/grants","grantRechargeQuota","Grant additional brand recharge quota","finance","RechargeQuotaGrant",ref("RechargeQuota"),"recharge_quota.write.platform",{description:"Requires a platform administrator with explicit recharge_quota.write.platform permission. Adds quota; all brand administrators share the available balance. Appends immutable quota history and audit atomically. Unknown results must be retried with the original body and idempotency key."}),
+  write("POST","/recharges/manual","manualRecharge","Immediately credit a member from shared brand quota","finance","FinanceRechargeCreate",ref("FinanceRecharge"),"recharge.write.brand",{successStatus:201,description:"Creates and confirms a manual recharge in one transaction: deducts shared brand quota, credits member points, writes immutable quota/points ledgers and audit. Insufficient quota rejects all effects. Only brand recharge writers may perform this operation; platform administrators cannot credit member points."}),
   user("GET", "/join-codes/validate", "validatePublicJoinCode", "Validate an invitation without exposing its owner", "agency", object({ valid: bool }), { auth: "public", parameters: [query("agent_code", str()), query("referral_code", str())], description: "Public, current-brand-only eligibility check. At least one parameter is required; agent_code takes precedence when both are supplied. Returns only valid, never source identity. No-store. Registration revalidates eligibility." }),
   user("GET", "/wallet", "getMyFinanceWallet", "Get the authenticated member's wallet", "finance", ref("FinanceWallet")),
   user("GET", "/wallet/ledger", "listMyFinanceLedger", "List the authenticated member's ledger entries", "finance", ref("FinanceWalletLedgerPage"), { parameters: pageParameters }),
@@ -212,23 +159,13 @@ export const operations = [
   admin("GET", "/wallets/{memberID}/reconciliation", "reconcileMemberWallet", "Compare materialized buckets with the immutable ledger", "finance", ref("FinanceReconciliation"), "wallet.view.brand", { description: "Read-only reconciliation. It reports mismatches and does not repair balances." }),
   admin("GET", "/recharges", "listRecharges", "List recharge records", "finance", ref("FinanceRechargeList"), "recharge.view.brand", { parameters: [...pageParameters, query("member_id", ref("UUID"))] }),
   write("POST", "/recharges", "createRecharge", "Create a pending manual recharge record", "finance", "FinanceRechargeCreate", ref("FinanceRecharge"), "recharge.write.brand", { successStatus: 201, description: "Creates a pending record; points are not credited until confirmation. A confirmed recharge is posted to the immutable points ledger. Super-admin accounts cannot perform finance writes." }),
-  write("POST", "/recharges/{id}/confirm", "confirmRecharge", "Confirm a pending recharge", "finance", "FinanceVersionReason", ref("FinanceRecharge"), "recharge.write.brand", { description: "Requires the current version; audit reason is optional. Confirmation posts the recharge points once. Super-admin accounts cannot perform finance writes." }),
+  write("POST", "/recharges/{id}/confirm", "confirmRecharge", "Confirm a pending recharge", "finance", "FinanceVersionReason", ref("FinanceRecharge"), "recharge.write.brand", { description: "Requires the current version; audit reason is optional. Confirmation deducts the brand shared quota and posts the recharge points once in the same transaction. Insufficient quota returns RECHARGE_QUOTA_INSUFFICIENT with no balance changes. Super-admin accounts cannot perform finance writes." }),
   write("POST", "/recharges/{id}/cancel", "cancelRecharge", "Cancel a pending recharge", "finance", "FinanceVersionReason", ref("FinanceRecharge"), "recharge.write.brand", { description: "Only a pending recharge at the supplied version can be cancelled; cancellation does not post points. Super-admin accounts cannot perform finance writes." }),
   write("POST", "/wallets/{memberID}/freeze", "freezeMemberPoints", "Move available points into manual frozen state", "finance", "FinanceFreeze", ref("FinanceEntry"), "wallet.freeze.brand", { description: "Allocates only available points across the three source buckets. This does not freeze system or withdrawal-state points. Super-admin accounts cannot perform finance writes." }),
   write("POST", "/wallets/{memberID}/unfreeze", "unfreezeMemberPoints", "Reverse an eligible manual freeze entry", "finance", "FinanceUnfreeze", ref("FinanceEntry"), "wallet.freeze.brand", { description: "The referenced entry must be a manual freeze; it is reversed using its original allocation. Super-admin accounts cannot perform finance writes." }),
   write("POST", "/wallets/{memberID}/adjust", "adjustMemberPoints", "Apply a signed manual point adjustment", "finance", "FinanceAdjust", ref("FinanceEntry"), "wallet.adjust.brand", { description: "Delta is a nonzero signed decimal int64 string and is applied only to the selected source's available bucket. Current point policy limits are enforced. Super-admin accounts cannot perform finance writes." }),
   admin("GET", "/point-policy", "getPointPolicy", "Get brand point adjustment caps", "finance", ref("FinanceAdjustmentPolicy"), "point_policy.view.brand"),
   write("PUT", "/point-policy", "updatePointPolicy", "Replace brand point adjustment caps", "finance", "FinanceAdjustmentPolicyInput", ref("FinanceAdjustmentPolicy"), "point_policy.write.brand", { description: "Complete replacement: all three cap fields are required; null clears a cap. Version must match. Super-admin accounts cannot perform finance writes." }),
-  admin("GET", "/wallets/{memberID}/repair-preview", "previewWalletRepair", "Preview a materialized wallet balance repair", "finance", ref("FinanceRepairPreview"), "wallet.view.brand", { description: "Computes expected balances from the immutable ledger. The returned token and versions bind a later repair to this preview." }),
-  write("POST", "/wallets/{memberID}/repair", "repairWalletBalance", "Rebuild materialized wallet buckets from an intact ledger", "finance", "FinanceRepairInput", ref("FinanceRepairRecord"), "wallet.repair.brand", { description: "Requires the current preview version and token, a nonempty reason, and an intact ledger. Rebuilds buckets; it does not create an economic credit or rewrite ledger entries. Super-admin accounts cannot perform finance writes." }),
-  admin("GET", "/wallets/{memberID}/repairs", "listWalletRepairs", "List wallet repair history", "finance", ref("FinanceRepairList"), "wallet.view.brand", { parameters: pageParameters }),
-
-  admin("GET", "/reconciliations", "listWalletReconciliations", "List durable wallet reconciliation jobs", "finance", ref("FinanceReconciliationJobPage"), "wallet.view.brand", { permissions: ["wallet.view.brand", "wallet.view.platform"], parameters: [{ name: "limit", in: "query", required: false, schema: int({ default: 20, minimum: 1, maximum: 100 }) }, { name: "offset", in: "query", required: false, schema: int({ default: 0, minimum: 0, maximum: 1000000 }) }], description: "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads use the primary database, revalidate authorization, and commit an audit record before responding. Every job reports its immutable check_scope. Counters and total_count are exact decimal strings for this job only; there are no global wallet segments." }),
-  write("POST", "/reconciliations", "createWalletReconciliation", "Create a pending wallet reconciliation job", "finance", "FinanceReconciliationCreateInput", ref("FinanceReconciliationJob"), "wallet.reconcile.brand", { permissions: ["wallet.view.brand", "wallet.view.platform", "wallet.reconcile.brand"], successStatus: 201, additionalErrorStatuses: [413], description: "Requires wallet.reconcile.brand and either wallet.view.brand or wallet.view.platform. Brand-scoped grants must match explicit brand membership; platform view does not bypass brand membership. Super-admins are read-only. Requires reason and explicit check_scope: wallet or wallet_and_business. Captures the selected account/member targets transactionally; scope and account membership are fixed at capture. The wallet_and_business worker checks point-ledger and business-record bindings in both directions. An active job returns 409; more than 100000 targets returns 413 atomically without creating a job. Reason must already be valid UTF-8, trimmed, and contain no LF, CR, or NUL. Checks are diagnostic; they do not mutate funds or automatically repair source records. Domain errors use RECONCILIATION_INPUT_INVALID, RECONCILIATION_STATE_CONFLICT, and RECONCILIATION_TOO_LARGE." }),
-  admin("GET", "/reconciliations/{id}", "getWalletReconciliation", "Get current wallet reconciliation job state", "finance", ref("FinanceReconciliationJob"), "wallet.view.brand", { permissions: ["wallet.view.brand", "wallet.view.platform"], description: "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads current state from the primary database and commits an audit record. The POST creation receipt remains frozen at pending version 1; this endpoint returns current counters, state, and immutable check_scope. A completed job means every captured target reached a terminal check, not that every check is consistent. Counts are job-local diagnostic observations, not global wallet segments." }),
-  admin("GET", "/reconciliations/{id}/targets", "listWalletReconciliationTargets", "List diagnostic observations for a wallet reconciliation job", "finance", ref("FinanceReconciliationTargetPage"), "wallet.view.brand", { permissions: ["wallet.view.brand", "wallet.view.platform"], parameters: [{ name: "limit", in: "query", required: false, schema: int({ default: 20, minimum: 1, maximum: 100 }) }, { name: "offset", in: "query", required: false, schema: int({ default: 0, minimum: 0, maximum: 1000000 }) }, query("outcome", str({ enum: ["pending", "failed", "consistent", "repairable", "corrupt"] }))], description: "Requires wallet.view.brand with selected-brand membership, or explicit wallet.view.platform independently of membership. Super-admin status alone grants no access. Reads the primary database and commits an audit record. Pagination defaults to limit 20/offset 0, maximum limit 100 and offset 1000000. outcome filters pending/failed target states or the checked observation outcome. Each target reports its immutable check_scope. wallet_and_business results include a nullable point-ledger/business-record preview with bidirectional binding checks and twelve exact family coverage counts. A full preview is present only for a checked target; wallet checks and nonterminal targets return null. Completion does not imply consistency, and observations never automatically fix a source record." }),
-  write("POST", "/reconciliations/{id}/retry", "retryWalletReconciliation", "Retry failed checks in a wallet reconciliation job", "finance", "FinanceReconciliationRetryInput", ref("FinanceReconciliationJob"), "wallet.reconcile.brand", { permissions: ["wallet.view.brand", "wallet.view.platform", "wallet.reconcile.brand"], description: "Requires wallet.reconcile.brand and either wallet.view.brand or wallet.view.platform; brand-scoped grants require explicit brand membership. Super-admins are read-only. Requires the current version; audit reason is optional. Returns the new pending version while preserving the earliest started_at (including null) and leaving completed checks untouched. Requests use checked idempotency; an idempotent replay returns its original receipt. Domain errors use RECONCILIATION_INPUT_INVALID, RECONCILIATION_NOT_FOUND, RECONCILIATION_STATE_CONFLICT, and RECONCILIATION_VERSION_CONFLICT." }),
-
   admin("GET", "/withdrawal-policy", "getBrandWithdrawalPolicy", "Get brand withdrawal policy configuration", "finance", ref("FinanceWithdrawalBrandPolicy"), "withdrawal_policy.view.brand", { description: "Policy configuration only; this API does not calculate withdrawal eligibility, create withdrawal orders, or transfer points." }),
   admin("GET", "/withdrawal-policy/history", "listBrandWithdrawalPolicyHistory", "List brand withdrawal policy revisions", "finance", ref("FinanceWithdrawalHistory"), "withdrawal_policy.view.brand", { parameters: pageParameters, description: "Policy revision history only; no withdrawal orders or eligibility data are exposed." }),
   write("PUT", "/withdrawal-policy", "updateBrandWithdrawalPolicy", "Replace brand withdrawal policy", "finance", "FinanceWithdrawalBrandInput", ref("FinanceWithdrawalBrandPolicy"), "withdrawal_policy.write.brand", { description: "Versioned full replacement of policy configuration. This module stores rules only; it does not evaluate eligibility, create orders, or transfer points. Super-admin accounts are forbidden from this write." }),
@@ -287,6 +224,7 @@ export const operations = [
   admin("GET", "/join-codes/{id}", "getJoinCode", "Get a join code", "agency", ref("FinanceJoinCode"), "join_code.view.brand"),
   write("PUT", "/join-codes/{id}", "updateJoinCode", "Update join code status and active window", "agency", "FinanceJoinCodeUpdateInput", ref("FinanceJoinCode"), "join_code.write.brand"),
   admin("GET", "/join-codes/{id}/history", "listJoinCodeHistory", "List join code revisions", "agency", ref("FinanceJoinCodeHistory"), "join_code.view.brand", { parameters: joinPageParameters }),
+  user("GET", "/me/referrals", "listMyReferrals", "List direct referrals of the authenticated member", "agency", ref("FinanceReferralSelfPage"), { parameters: joinPageParameters, description: "Current brand and authenticated member only. Ordered by joined_at descending then id descending. Only public member name and joining time are returned; no phone or global account identifiers. No-store." }),
   user("GET", "/me/join-codes", "listMyJoinCodes", "List join codes owned by the authenticated member", "agency", ref("FinanceJoinCodeSelfPage"), { parameters: joinPageParameters }),
   user("GET", "/me/attribution", "getMyAttribution", "Get the authenticated member's recorded attribution", "agency", ref("FinanceAttribution")),
 ];

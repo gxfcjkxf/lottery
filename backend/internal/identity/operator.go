@@ -30,6 +30,7 @@ type OperatorInput struct {
 }
 
 type AuthSettingsRecord struct {
+	InheritPlatform      bool   `json:"inherit_platform"`
 	Version              int64  `json:"version"`
 	CaptchaEnabled       bool   `json:"captcha_enabled"`
 	TelegramEnabled      bool   `json:"telegram_enabled"`
@@ -39,6 +40,7 @@ type AuthSettingsRecord struct {
 }
 
 type AuthSettingsInput struct {
+	InheritPlatform  bool   `json:"inherit_platform"`
 	Version          int64  `json:"version"`
 	CaptchaEnabled   bool   `json:"captcha_enabled"`
 	TelegramEnabled  bool   `json:"telegram_enabled"`
@@ -55,6 +57,7 @@ type operatorCreated struct {
 }
 
 type authSettingsUpdated struct {
+	InheritPlatform      bool   `json:"inherit_platform"`
 	Version              int64  `json:"version"`
 	CaptchaEnabled       bool   `json:"captcha_enabled"`
 	TelegramEnabled      bool   `json:"telegram_enabled"`
@@ -66,9 +69,9 @@ type authSettingsUpdated struct {
 
 var telegramClientIDPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
 
-func validTrimmedText(value string, maxBytes int, allowEmpty bool) (string, bool) {
+func validTrimmedText(value string, maxCharacters int, allowEmpty bool) (string, bool) {
 	value = strings.TrimSpace(value)
-	return value, utf8.ValidString(value) && len([]byte(value)) <= maxBytes && (allowEmpty || value != "")
+	return value, utf8.ValidString(value) && utf8.RuneCountInString(value) <= maxCharacters && (allowEmpty || value != "")
 }
 
 func validTelegramClientID(value string, enabled bool) bool {
@@ -105,16 +108,16 @@ func (s *Store) operatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 	}
 	reason, ok := validTrimmedText(in.Reason, 500, true)
 	if !ok {
-		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "操作原因最多 500 字节有效文本"), nil
+		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "操作原因最多 500 字符有效文本"), nil
 	}
 	in.Reason = reason
 	in.DisplayName, ok = validTrimmedText(in.DisplayName, 120, true)
 	if !ok {
-		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "显示名称最多 120 字节且须为有效 UTF-8"), nil
+		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "显示名称最多 120 字符且须为有效 UTF-8"), nil
 	}
 	in.Notes, ok = validTrimmedText(in.Notes, 2000, true)
 	if !ok {
-		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "备注最多 2000 字节且须为有效 UTF-8"), nil
+		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "备注最多 2000 字符且须为有效 UTF-8"), nil
 	}
 	if in.Username != "" {
 		var err error
@@ -133,8 +136,8 @@ func (s *Store) operatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 	if in.Username == "" && in.Phone == "" {
 		return mutation.Fail(400, "OPERATOR_INPUT_INVALID", "需要用户名或手机号"), nil
 	}
-	if len([]byte(in.Password)) < 6 || len([]byte(in.Password)) > 30 {
-		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字节"), nil
+	if utf8.RuneCountInString(in.Password) < 6 || utf8.RuneCountInString(in.Password) > 30 {
+		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字符"), nil
 	}
 	var status string
 	var raw []byte
@@ -153,7 +156,7 @@ func (s *Store) operatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 		return mutation.Result{}, err
 	}
 	if errors.Is(err, authcrypto.ErrInvalidPassword) {
-		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字节"), nil
+		return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字符"), nil
 	}
 	if err != nil {
 		return mutation.Result{}, err
@@ -162,7 +165,7 @@ func (s *Store) operatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 	_, err = tx.Exec(ctx, `INSERT INTO global_users(id,username,phone,password_hash,username_set_at,phone_set_at)
 		VALUES($1,NULLIF($2,''),NULLIF($3,''),$4,CASE WHEN $2<>'' THEN now() END,CASE WHEN $3<>'' THEN now() END)`, userID, in.Username, in.Phone, hash)
 	if unique(err) {
-		return mutation.Fail(409, "IDENTITY_EXISTS", "全局账号已存在"), nil
+		return mutation.Fail(409, "IDENTITY_EXISTS", "账号已存在，请使用其他用户名或手机号"), nil
 	}
 	if err != nil {
 		return mutation.Result{}, err
@@ -199,18 +202,21 @@ func (s *Store) operatorCreate(ctx context.Context, tx pgx.Tx, brand, operatorID
 func (s *Store) UpdateAuthSettings(ctx context.Context, tx pgx.Tx, brand, operatorID string, in AuthSettingsInput, meta Metadata) (mutation.Result, error) {
 	reason, ok := validTrimmedText(in.Reason, 500, true)
 	if !ok {
-		return mutation.Fail(400, "AUTH_CONFIG_INVALID", "操作原因最多 500 字节有效文本"), nil
+		return mutation.Fail(400, "AUTH_CONFIG_INVALID", "操作原因最多 500 字符有效文本"), nil
 	}
 	if in.Version <= 0 {
 		return mutation.Fail(400, "AUTH_CONFIG_INVALID", "配置版本必须大于 0"), nil
 	}
 	in.TelegramClientID = strings.TrimSpace(in.TelegramClientID)
-	if !utf8.ValidString(in.TelegramClientID) || !validTelegramClientID(in.TelegramClientID, in.TelegramEnabled) {
+	if !in.InheritPlatform && (!utf8.ValidString(in.TelegramClientID) || !validTelegramClientID(in.TelegramClientID, in.TelegramEnabled)) {
 		return mutation.Fail(400, "AUTH_CONFIG_INVALID", "Telegram 启用时需提供有效客户端 ID"), nil
+	}
+	if brand == "" {
+		return s.updatePlatformAuthSettings(ctx, tx, operatorID, in, meta)
 	}
 	var current AuthSettingsRecord
 	var raw []byte
-	err := tx.QueryRow(ctx, `SELECT config_version,auth_config FROM brands WHERE id=$1 FOR UPDATE`, brand).Scan(&current.Version, &raw)
+	err := tx.QueryRow(ctx, `SELECT config_version,auth_config,auth_inherit_platform FROM brands WHERE id=$1 FOR UPDATE`, brand).Scan(&current.Version, &raw, &current.InheritPlatform)
 	if err != nil {
 		return mutation.Result{}, err
 	}
@@ -226,15 +232,35 @@ func (s *Store) UpdateAuthSettings(ctx context.Context, tx pgx.Tx, brand, operat
 	current.TelegramClientID = cfg.TelegramClientID
 	current.PrivacyPolicyVersion = cfg.Privacy
 	current.ServiceTermsVersion = cfg.Terms
-	after := AuthSettingsRecord{
+	if in.InheritPlatform || current.InheritPlatform {
+		var defaults []byte
+		if err = tx.QueryRow(ctx, `SELECT config FROM platform_auth_settings WHERE id=true FOR SHARE`).Scan(&defaults); err != nil {
+			return mutation.Result{}, err
+		}
+		var effective Settings
+		if err = json.Unmarshal(defaults, &effective); err != nil {
+			return mutation.Result{}, err
+		}
+		if current.InheritPlatform {
+			current.CaptchaEnabled = effective.CaptchaEnabled
+			current.TelegramEnabled = effective.TelegramEnabled
+			current.TelegramClientID = effective.TelegramClientID
+		}
+		if in.InheritPlatform {
+			in.CaptchaEnabled = effective.CaptchaEnabled
+			in.TelegramEnabled = effective.TelegramEnabled
+			in.TelegramClientID = effective.TelegramClientID
+		}
+	}
+	after := AuthSettingsRecord{InheritPlatform: in.InheritPlatform,
 		Version: current.Version + 1, CaptchaEnabled: in.CaptchaEnabled,
 		TelegramEnabled: in.TelegramEnabled, TelegramClientID: in.TelegramClientID,
 		PrivacyPolicyVersion: current.PrivacyPolicyVersion, ServiceTermsVersion: current.ServiceTermsVersion,
 	}
-	if _, err = tx.Exec(ctx, `UPDATE brands SET auth_config=jsonb_set(jsonb_set(jsonb_set(auth_config,
+	if _, err = tx.Exec(ctx, `UPDATE brands SET auth_inherit_platform=$6,auth_config=jsonb_set(jsonb_set(jsonb_set(auth_config,
 		'{captcha_enabled}',to_jsonb($2::boolean),true),'{telegram_enabled}',to_jsonb($3::boolean),true),
 		'{telegram_client_id}',to_jsonb($4::text),true),config_version=config_version+1,updated_at=now()
-		WHERE id=$1 AND config_version=$5`, brand, after.CaptchaEnabled, after.TelegramEnabled, after.TelegramClientID, in.Version); err != nil {
+		WHERE id=$1 AND config_version=$5`, brand, after.CaptchaEnabled, after.TelegramEnabled, after.TelegramClientID, in.Version, in.InheritPlatform); err != nil {
 		return mutation.Result{}, err
 	}
 	auditID, err := audit.Append(ctx, tx, audit.Record{
@@ -245,7 +271,7 @@ func (s *Store) UpdateAuthSettings(ctx context.Context, tx pgx.Tx, brand, operat
 	if err != nil {
 		return mutation.Result{}, err
 	}
-	return mutation.OK(200, authSettingsUpdated{Version: after.Version, CaptchaEnabled: after.CaptchaEnabled,
+	return mutation.OK(200, authSettingsUpdated{InheritPlatform: after.InheritPlatform, Version: after.Version, CaptchaEnabled: after.CaptchaEnabled,
 		TelegramEnabled: after.TelegramEnabled, TelegramClientID: after.TelegramClientID,
 		PrivacyPolicyVersion: after.PrivacyPolicyVersion, ServiceTermsVersion: after.ServiceTermsVersion,
 		AuditLogID: auditID}), nil

@@ -140,13 +140,13 @@ func TestInputValidationCanonicalIDsAndReasons(t *testing.T) {
 			t.Errorf("accepted invalid reason %q", reason)
 		}
 	}
-	base.Reason = strings.Repeat("界", 166) // 498 UTF-8 bytes.
+	base.Reason = strings.Repeat("界", 500) // 500 characters.
 	if err := base.Validate(); err != nil {
 		t.Fatalf("valid UTF-8 reason rejected: %v", err)
 	}
-	base.Reason += "界" // 501 UTF-8 bytes.
+	base.Reason += "界" // 501 characters.
 	if base.Validate() == nil {
-		t.Fatal("accepted reason over 500 bytes")
+		t.Fatal("accepted reason over 500 characters")
 	}
 	if !errors.Is(ErrInvalid, ErrInvalid) {
 		t.Fatal("ErrInvalid sentinel unavailable")
@@ -165,7 +165,7 @@ func TestDTOJSONUsesExplicitSnakeCaseKeysAndNullPointers(t *testing.T) {
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		t.Fatal(err)
 	}
-	expected := []string{"id", "brand_id", "member_id", "points", "state", "version", "grant_ledger_entry_id", "revoke_ledger_entry_id", "creation_audit_log_id", "last_audit_log_id", "last_error_code", "created_by", "reason", "point_policy_version", "created_at", "updated_at", "revoked_at"}
+	expected := []string{"id", "brand_id", "member_id", "points", "state", "version", "grant_ledger_entry_id", "revoke_ledger_entry_id", "creation_audit_log_id", "last_audit_log_id", "created_by", "reason", "point_policy_version", "created_at", "updated_at", "revoked_at"}
 	if len(fields) != len(expected) {
 		t.Fatalf("unexpected order key count: got %d keys in %s", len(fields), raw)
 	}
@@ -177,7 +177,7 @@ func TestDTOJSONUsesExplicitSnakeCaseKeysAndNullPointers(t *testing.T) {
 	if string(fields["points"]) != `"9007199254740993"` || string(fields["version"]) != fmt.Sprint(MaxVersion) {
 		t.Fatalf("lossy numeric serialization: %s", raw)
 	}
-	if string(fields["revoke_ledger_entry_id"]) != "null" || string(fields["last_error_code"]) != "null" || string(fields["revoked_at"]) != "null" {
+	if string(fields["revoke_ledger_entry_id"]) != "null" || string(fields["revoked_at"]) != "null" {
 		t.Fatalf("nil pointers should be explicit nulls: %s", raw)
 	}
 
@@ -213,10 +213,10 @@ func TestAllowedRewardPermissionsAreExactAndScoped(t *testing.T) {
 		t.Fatal("platform view did not permit view")
 	}
 	platformViewBrandMutation := access.Account{Type: access.AccountAdmin, BrandIDs: []string{testBrand}, Roles: []access.Role{
-		{Permissions: []access.Permission{permission("view", access.ScopePlatform), permission("retry", access.ScopeBrand)}},
+		{Permissions: []access.Permission{permission("view", access.ScopePlatform), permission("revoke", access.ScopeBrand)}},
 	}}
-	if !Allowed(platformViewBrandMutation, testBrand, "retry") {
-		t.Fatal("platform view did not combine with brand-scoped retry")
+	if !Allowed(platformViewBrandMutation, testBrand, "revoke") {
+		t.Fatal("platform view did not combine with brand-scoped revoke")
 	}
 
 	for _, resource := range []string{"wallet", "commission", "recharge"} {
@@ -229,7 +229,7 @@ func TestAllowedRewardPermissionsAreExactAndScoped(t *testing.T) {
 		}
 	}
 
-	for _, mutation := range []string{"grant", "revoke", "retry"} {
+	for _, mutation := range []string{"grant", "revoke"} {
 		admin := access.Account{Type: access.AccountAdmin, BrandIDs: []string{testBrand}, Roles: []access.Role{{BrandID: testBrand, Permissions: []access.Permission{
 			permission("view", access.ScopeBrand), permission(mutation, access.ScopeBrand),
 		}}}}

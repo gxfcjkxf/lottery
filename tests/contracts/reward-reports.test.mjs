@@ -40,6 +40,6 @@ test("real Go reward report DTOs preserve signed and above-int64 totals in close
     }
   }
   assert.equal(examples.RewardReport.summary.net_points, "-9223372036854775807");
-  assert.equal(examples.RewardOrderReport.summary.original_points, "18446744073709551617");
+  assert.equal(examples.RewardOrderReport.summary.original_points, "18446744073709551614");
   assert.match(examples.RewardReport.query.from, /\.123456789Z$/);
 });

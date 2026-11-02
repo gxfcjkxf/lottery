@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import { test, expect } from './platform-fixture';
 
@@ -10,7 +11,7 @@ test('expired access query removes private platform content and returns to login
   await page.goto(origin);
   await page.getByRole('button', { name: 'Accounts and permissions', exact: true }).click();
   await page.getByTestId('platform-account-scopes').getByRole('button', { name: 'Brand staff', exact: true }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   await expect(page.locator('.login-card')).toBeVisible();
   await expect(page.locator('.app-frame')).toHaveCount(0);
   await expect(page.locator('.nav-item')).toHaveCount(0);
@@ -26,8 +27,9 @@ test('platform reads genuine scoped accounts roles and permission directory with
     before.set(path, data);
   }
   await page.goto(origin);
-  await page.locator('tr').filter({ hasText: brand }).getByRole('button', { name: 'View accounts →', exact: true }).click();
-  await expect(page.locator('.topbar-brand-picker select')).toHaveValue(brand);
+  await page.locator('tr').filter({ hasText: brand }).getByRole('button', { name: /Actions for/ }).click();
+  await page.getByRole('menuitem', { name: 'Accounts', exact: true }).click();
+  await expect(page.locator(".topbar-brand-picker .select-control-trigger")).toHaveAttribute('data-value', brand);
   await expect(page.getByRole('button', { name: 'Accounts and permissions', exact: true })).toHaveClass(/selected/);
   const panel = page.getByTestId('platform-access');
   const firstAccount = before.get('accounts?limit=51&offset=0').items[0];
@@ -59,7 +61,7 @@ test('platform reads genuine scoped accounts roles and permission directory with
     expect(response.status()).toBe(200);
     expect((await response.json()).data).toEqual(data);
   }
-  await page.locator('.topbar-brand-picker select').selectOption('');
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), '');
   await expect(page.getByTestId('platform-access-detail')).toHaveCount(0);
   await expect(page.getByTestId('platform-permission-directory')).toHaveCount(0);
 });
@@ -74,7 +76,7 @@ test('access lists paginate and clear list-snapshot details on errors and scope 
   await page.goto(origin);
   await page.getByRole('button', { name: 'Accounts and permissions', exact: true }).click();
   await page.getByTestId('platform-account-scopes').getByRole('button', { name: 'Brand staff', exact: true }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   const panel = page.getByTestId('platform-access');
   await page.getByTestId('platform-access-tabs').getByRole('tab', { name: 'Roles', exact: true }).click();
   await expect(page.getByTestId('platform-access-list').locator('tbody tr')).toHaveCount(50);
@@ -86,6 +88,6 @@ test('access lists paginate and clear list-snapshot details on errors and scope 
   await panel.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(panel.getByRole('alert')).toContainText('Roles unavailable');
   await expect(page.getByTestId('platform-access-detail')).toHaveCount(0);
-  await page.locator('.topbar-brand-picker select').selectOption('');
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), '');
   await expect(panel).not.toContainText('Role 50');
 });

@@ -1,3 +1,4 @@
+import { readPaginationTotal } from '@lottery/shared'
 import { readAdminEnvelope } from './admin-api'
 
 import { createIdempotencyKey } from "./admin-api";
@@ -8,10 +9,11 @@ const BASE = "/api/v1/admin";
 
 export type WalletSource = SharedWalletSource;
 export type WalletState = SharedWalletState;
-export type SourceBuckets = SharedSourceBuckets;
+type SourceBuckets = SharedSourceBuckets;
 export type Wallet = WalletDTO;
 
 export interface Recharge {
+  method: "manual" | "automatic";
   id: string;
   brand_id: string;
   member_id: string;
@@ -29,7 +31,7 @@ export interface Recharge {
   audit_log_id?: string;
 }
 
-export interface SourceAllocation {
+interface SourceAllocation {
   source: WalletSource;
   state: WalletState;
   points: string;
@@ -124,7 +126,7 @@ export function canWriteFinance(
   );
 }
 
-export function isUnsignedAmount(value: string): boolean {
+function isUnsignedAmount(value: string): boolean {
   return /^(0|[1-9]\d*)$/.test(value);
 }
 
@@ -221,7 +223,7 @@ export function createFinanceApi(fetcher: FetchLike = fetch) {
         throw new FinanceApiError("The server returned an invalid wallet ledger response.", 502, "INVALID_RESPONSE");
       const items = (value as { items: unknown[] }).items.map((entry) => normalizeLedgerSnapshots(entry) as LedgerEntry | null);
       if (items.some((entry) => entry === null)) throw new FinanceApiError("The server returned an invalid wallet ledger snapshot.", 502, "INVALID_RESPONSE");
-      return { items: items as LedgerEntry[] };
+      return { items: items as LedgerEntry[], total_count: readPaginationTotal(value) };
     },
     reconciliation(brandId: string, memberId: string) {
       return request<Reconciliation>(
@@ -235,7 +237,7 @@ export function createFinanceApi(fetcher: FetchLike = fetch) {
         offset: String(offset),
       });
       if (memberId) query.set("member_id", memberId);
-      return request<{ items: Recharge[] }>(
+      return request<{ items: Recharge[]; total_count: string }>(
         brandId,
         `/recharges?${query.toString()}`,
       );
@@ -256,6 +258,29 @@ export function createFinanceApi(fetcher: FetchLike = fetch) {
         body,
         idempotencyKey,
       });
+    },
+    async manualRecharge(
+      brandId: string,
+      body: {
+        member_id: string;
+        points: string;
+        proof_reference?: string;
+        remark?: string;
+        reason: string;
+      },
+      idempotencyKey: string,
+    ) {
+      let result: Recharge;
+      try { result = await request<Recharge>(brandId, "/recharges/manual", {
+        method: "POST",
+        body,
+        idempotencyKey,
+      }); } catch(cause) {
+        if(cause instanceof TypeError) throw new FinanceApiError("Manual recharge result unconfirmed",0,"NETWORK_ERROR");
+        throw cause;
+      }
+      if (result.brand_id !== brandId || result.member_id !== body.member_id || result.points !== body.points || result.method !== 'manual' || result.state !== 'confirmed' || !result.id || !result.ledger_entry_id || !result.confirmed_at) throw new FinanceApiError('Invalid manual recharge receipt',502,'INVALID_RESPONSE');
+      return result;
     },
     confirmRecharge(
       brandId: string,
@@ -323,5 +348,3 @@ export function createFinanceApi(fetcher: FetchLike = fetch) {
     },
   };
 }
-
-export type FinanceApi = ReturnType<typeof createFinanceApi>;

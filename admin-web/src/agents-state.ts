@@ -72,7 +72,7 @@ function validBody(operation: AgentWriteOperation, value: unknown): value is Age
       (ratio !== "0" && ratio !== "1" && ratio.split(".")[1].length > 6) ||
       !(conf.mode === null || conf.mode === "loss" || conf.mode === "turnover") ||
       (body.reason !== undefined && (typeof body.reason !== "string" ||
-      new TextEncoder().encode(body.reason).length > 500))) return false;
+      Array.from(body.reason).length > 500))) return false;
   if (operation === "policy") {
     return typeof conf.turnover_ratio_cap === "string" && RATIO_RE.test(conf.turnover_ratio_cap) && Number.isSafeInteger(body.version) && Number(body.version) >= 1 &&
       conf.enabled === true && Number.isSafeInteger(conf.max_depth) &&
@@ -84,7 +84,7 @@ function validBody(operation: AgentWriteOperation, value: unknown): value is Age
       typeof conf.can_create_children !== "boolean") return false;
   if (operation === "create") {
     return Number.isSafeInteger(body.policy_version) && Number(body.policy_version) >= 1 &&
-      typeof body.username === "string" && /^[a-z][a-z0-9_]{2,31}$/.test(body.username) && typeof body.password === "string" && body.password.length>=6 && body.password.length<=30 && (body.parent_id === null || validUuid(body.parent_id)) &&
+      typeof body.username === "string" && /^[a-z][a-z0-9_]{2,31}$/.test(body.username) && typeof body.password === "string" && Array.from(body.password).length>=6 && Array.from(body.password).length<=30 && (body.parent_id === null || validUuid(body.parent_id)) &&
       (body.parent_version === null || (Number.isSafeInteger(body.parent_version) && Number(body.parent_version) >= 1)) &&
       (body.parent_id === null ? body.parent_version === null : body.parent_version !== null);
   }

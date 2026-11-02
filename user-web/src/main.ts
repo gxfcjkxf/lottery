@@ -5,6 +5,7 @@ import DisplaySettingsGate from '@lottery/shared/DisplaySettingsGate.vue';
 import LoadingOverlay from "@lottery/shared/LoadingOverlay.vue";
 import { createRouter, createWebHistory } from "vue-router";
 import App from "./App.vue";
+import SiteUnavailable from "./SiteUnavailable.vue";
 import { createAuthClient } from '../../shared/src/auth';
 import { createUserSessionGuard } from './session-guard';
 import Page from "./Page.vue";
@@ -27,13 +28,8 @@ const router = createRouter({
     { path: "/account", component: Page },
     { path: "/terms", component: Page },
     { path: "/privacy", component: Page },
-    { path: "/games", component: Page },
-    { path: "/games/:gameId", component: Page },
     { path: "/configured/:gameId", component: Page },
-    { path: "/games/:gameId/bet", component: Page },
-    { path: "/bet/confirm", component: Page },
     { path: "/orders", component: Page },
-    { path: "/orders/:id", component: Page },
     { path: "/results", component: Page },
     { path: "/wallet", component: Page },
     { path: "/wallet/buckets", component: Page },
@@ -62,10 +58,10 @@ async function retryNavigation() {
 const i18n = createUserI18n();
 watch(i18n.locale, locale => { document.documentElement.lang = locale; setInlineValidationLocale(locale) }, { immediate: true });
 createApp({ setup: () => () => h(DisplaySettingsGate, { locale: i18n.locale.value }, { default: () => navigationError.value
-  ? h('main', { class: 'content' }, [h('section', { class: 'panel' }, [
+  ? (typeof navigationError.value === 'object' && 'code' in navigationError.value && navigationError.value.code === 'BRAND_NOT_FOUND' ? h(SiteUnavailable) : h('main', { class: 'content' }, [h('section', { class: 'panel' }, [
     h('p', { role: 'alert' }, i18n.errorText(navigationError.value)),
     h('button', { type: 'button', class: 'button button-primary', onClick: retryNavigation }, i18n.t('auth.navigationRetry')),
-  ])]) : h(App) }) }).component("GlobalLoadingOverlay", LoadingOverlay).provide(userI18nKey, i18n).use(router).mount("#app");
+  ])])) : h(App) }) }).component("GlobalLoadingOverlay", LoadingOverlay).provide(userI18nKey, i18n).use(router).mount("#app");
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   window.addEventListener("load", () => {

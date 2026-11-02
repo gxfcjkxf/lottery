@@ -9,22 +9,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Every historical store participates, regardless of current game availability.
+// One store and one immutable ordering for all configured game models.
 const historySQL = `WITH history AS (
- SELECT 'standard' AS kind,o.id,o.game_id,g.name AS game_name,p.period_no,o.placed_at
- FROM bet_orders o JOIN games g ON g.id=o.game_id AND g.brand_id=o.brand_id JOIN periods p ON p.id=o.period_id AND p.brand_id=o.brand_id
- WHERE o.brand_id=$1 AND o.brand_member_id=$2
- UNION ALL
- SELECT 'configured',o.id,o.game_id,g.name,p.period_no,o.placed_at
+ SELECT 'configured' AS kind,o.id,o.game_id,g.name AS game_name,p.period_no,o.placed_at
  FROM configured_orders o JOIN platform_games g ON g.id=o.game_id JOIN platform_game_periods p ON p.id=o.period_id
- WHERE o.brand_id=$1 AND o.member_id=$2
- UNION ALL
- SELECT 'mark-six',o.id,o.game_id,g.name,p.period_no,o.placed_at
- FROM platform_mark_six_orders o JOIN platform_games g ON g.id=o.game_id JOIN platform_game_periods p ON p.id=o.period_id
- WHERE o.brand_id=$1 AND o.member_id=$2
- UNION ALL
- SELECT 'canada',o.id,o.game_id,g.name,p.period_no,o.placed_at
- FROM platform_canada_orders o JOIN platform_games g ON g.id=o.game_id JOIN platform_game_periods p ON p.id=o.period_id
  WHERE o.brand_id=$1 AND o.member_id=$2
 ) `
 
@@ -42,6 +30,7 @@ type HistoryItem struct {
 	Order    any       `json:"order"`
 }
 type HistoryPage struct {
+	TotalCount string        `json:"total_count"`
 	BrandID    string        `json:"brand_id"`
 	MemberID   string        `json:"member_id"`
 	GameID     string        `json:"game_id"`
@@ -68,9 +57,7 @@ func decodeHistoryCursor(raw, brand, member, game string) (historyCursor, error)
 	if json.Unmarshal(b, &c) != nil || c.Brand != brand || c.Member != member || c.Game != game || c.At.IsZero() || !validIDs(c.ID) {
 		return c, ErrInvalid
 	}
-	switch c.Kind {
-	case "standard", "configured", "mark-six", "canada":
-	default:
+	if c.Kind != "configured" {
 		return c, ErrInvalid
 	}
 	return c, nil
@@ -81,6 +68,9 @@ func HistoryTx(ctx context.Context, tx pgx.Tx, brand, member, game, cursor strin
 	out := HistoryPage{BrandID: brand, MemberID: member, GameID: game, Games: []HistoryGame{}, Items: []HistoryItem{}, Limit: limit}
 	if !validIDs(brand, member) || game != "" && !validIDs(game) || limit < 1 || limit > 100 {
 		return out, ErrInvalid
+	}
+	if err := tx.QueryRow(ctx, historySQL+`SELECT count(*)::text FROM history WHERE ($3::text='' OR game_id=NULLIF($3,'')::uuid)`, brand, member, game).Scan(&out.TotalCount); err != nil {
+		return out, err
 	}
 	var before *time.Time
 	kind, id := "", ""
@@ -148,70 +138,28 @@ func HistoryTx(ctx context.Context, tx pgx.Tx, brand, member, game, cursor strin
 
 func historyPayloads(ctx context.Context, tx pgx.Tx, brand, member string, items []HistoryItem) error {
 	positions := map[string]int{}
-	idsByKind := map[string][]string{}
+	ids := []string{}
 	for i, item := range items {
-		positions[item.Kind+":"+item.ID] = i
-		idsByKind[item.Kind] = append(idsByKind[item.Kind], item.ID)
+		positions[item.ID] = i
+		ids = append(ids, item.ID)
 	}
-	for _, kind := range []string{"standard", "configured", "mark-six", "canada"} {
-		ids := idsByKind[kind]
-		if len(ids) == 0 {
-			continue
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := tx.Query(ctx, configuredOrderSelect+` WHERE o.brand_id=$1 AND o.member_id=$2 AND o.id=ANY($3::uuid[])`, brand, member, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		order, err := scanConfiguredOrder(rows)
+		if err != nil {
+			return err
 		}
-		var query string
-		switch kind {
-		case "standard":
-			query = `SELECT ` + orderFields + ` FROM bet_orders WHERE brand_id=$1 AND brand_member_id=$2 AND id=ANY($3::uuid[])`
-		case "configured":
-			query = configuredOrderSelect + ` WHERE o.brand_id=$1 AND o.member_id=$2 AND o.id=ANY($3::uuid[])`
-		case "mark-six":
-			query = markSixOrderSelect + ` WHERE o.brand_id=$1 AND o.member_id=$2 AND o.id=ANY($3::uuid[])`
-		case "canada":
-			query = canadaOrderSelect + ` WHERE o.brand_id=$1 AND o.member_id=$2 AND o.id=ANY($3::uuid[])`
-		}
-		rows, e := tx.Query(ctx, query, brand, member, ids)
-		if e != nil {
-			return e
-		}
-		for rows.Next() {
-			var id string
-			var order any
-			switch kind {
-			case "standard":
-				v, err := scanOrder(rows)
-				e = err
-				id = v.ID
-				if e == nil {
-					v.PeriodNo = items[positions[kind+":"+id]].PeriodNo
-				}
-				order = v
-			case "configured":
-				v, err := scanConfiguredOrder(rows)
-				e = err
-				id = v.ID
-				order = v
-			case "mark-six":
-				v, err := scanMarkSixOrder(rows)
-				e = err
-				id = v.ID
-				order = v
-			case "canada":
-				v, err := scanCanadaOrder(rows)
-				e = err
-				id = v.ID
-				order = v
-			}
-			if e != nil {
-				rows.Close()
-				return e
-			}
-			items[positions[kind+":"+id]].Order = order
-		}
-		e = rows.Err()
-		rows.Close()
-		if e != nil {
-			return e
-		}
+		items[positions[order.ID]].Order = order
+	}
+	if err = rows.Err(); err != nil {
+		return err
 	}
 	for _, item := range items {
 		if item.Order == nil {

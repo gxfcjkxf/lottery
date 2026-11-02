@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { expect, test } from '@playwright/test'
 import { origins, gameId, openPlatformBrandList, expectNoPageOverflow, expectInsideViewport } from './fixture'
 
@@ -16,7 +17,7 @@ export function registerBrandOperationLayoutTests(reflow = false) {
         if (path === '/api/v1/display-settings') return reply(settings)
         if (path === '/api/v1/platform/me') return reply({ account: { id: gameId, username: 'layout', super_admin: true, platform_permissions: ['brand_operation.view.platform', 'brand_operation.write.platform'] } })
         if (path === '/api/v1/platform/platform-settings') return reply({ ...settings, display_name: 'Layout', logo_text: 'L', logo_url: '', version: 1, updated_at: '2026-10-18T00:00:00Z' })
-        if (path === '/api/v1/platform/brands') return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status: record.status }] })
+        if (path === '/api/v1/platform/brands') return reply({ items: [{ id: gameId, name: 'Aurora', code: 'aurora', status: record.status, member_count: '12', agent_count: '3', recharge_quota_available: '1000', created_at: '2026-10-24T00:00:00Z' }] })
         if (path === '/api/v1/platform/brand-operation') {
           expect(req.headers()['x-brand-id']).toBe(gameId)
           if (req.method() === 'GET') return reply(record)
@@ -52,8 +53,11 @@ export function registerBrandOperationLayoutTests(reflow = false) {
         await page.screenshot({ path: info.outputPath(`platform-directory-${locale}.png`) })
       }
       await openPlatformBrandList(page, locale)
-      const manage = page.getByRole('button', { name: locale === 'en' ? 'Manage status' : '管理运行状态', exact: true })
-      await manage.click()
+      const manage = async () => {
+        await page.getByTestId('platform-brand-list').locator('.member-menu-trigger').first().click()
+        await page.getByRole('menuitem', { name: locale === 'en' ? 'Status' : '状态', exact: true }).click()
+      }
+      await manage()
       const dialog = page.getByRole('dialog', { name: locale === 'en' ? 'Brand operating status' : '品牌运行状态', exact: true })
       await expect(dialog).toBeVisible()
       await expect(dialog).not.toContainText('submit()')
@@ -63,20 +67,20 @@ export function registerBrandOperationLayoutTests(reflow = false) {
       const confirm = dialog.getByRole('button', { name: locale === 'en' ? 'Confirm status change' : '确认变更状态', exact: true })
       await expect(confirm).toBeEnabled()
       await expect(dialog.getByRole('textbox')).toHaveCount(0)
-      const selects = dialog.locator('.brand-operation-options select')
-      await selects.nth(1).selectOption('true')
+      const selects = dialog.locator(".brand-operation-options .select-control-trigger")
+      await selectControl(selects.nth(1), 'true')
       const controls = dialog.locator('.platform-temporal-input')
       await expect(controls).toHaveCount(2)
-      await expect(controls.first().locator('select').first()).toHaveCSS('background-repeat', 'no-repeat')
-      await expect(controls.first().locator('select').first()).toHaveCSS('background-size', '20px 20px')
+      await expect(controls.first().locator(".select-control-trigger").first()).toHaveCSS('background-repeat', 'no-repeat')
+      await expect(controls.first().locator(".select-control-trigger").first()).toHaveCSS('background-size', '20px 20px')
       // Choose dates and times through the actual shared controls.
       for (const [i, hour] of [[0, '12'], [1, '14']] as const) {
         await controls.nth(i).locator('.platform-date-input-button').click()
         const calendar = dialog.locator('.platform-calendar:popover-open')
         await calendar.locator('.platform-calendar-heading button').last().click()
         await calendar.locator('.platform-calendar-grid button').first().click()
-        await controls.nth(i).locator('.platform-time-input select').nth(0).selectOption(hour)
-        await controls.nth(i).locator('.platform-time-input select').nth(1).selectOption('00')
+        await selectControl(controls.nth(i).locator(".platform-time-input .select-control-trigger").nth(0), hour)
+        await selectControl(controls.nth(i).locator(".platform-time-input .select-control-trigger").nth(1), '00')
       }
       if (reflow) {
         for (const width of [320, 360, 412, 619, 620, 621, 768, 1024, 1440]) {
@@ -100,15 +104,15 @@ export function registerBrandOperationLayoutTests(reflow = false) {
       const scheduled = JSON.parse(attempts[0].body!)
       expect(scheduled).toMatchObject({ version: 2, status: 'paused', reason: '' })
       expect(Date.parse(scheduled.pause_ends_at) - Date.parse(scheduled.pause_starts_at)).toBe(7200000)
-      await manage.click()
+      await manage()
       await expect(dialog).toContainText(locale === 'en' ? 'Scheduled pause' : '预约暂停时间')
-      await selects.first().selectOption('disabled')
+      await selectControl(selects.first(), 'disabled')
       await confirm.click()
       await expect(dialog).toHaveCount(0)
       expect(JSON.parse(attempts.at(-1)!.body!)).toMatchObject({ status: 'disabled', reason: '' })
-      await manage.click()
+      await manage()
       await expect(dialog).toContainText(locale === 'en' ? 'Stopped' : '已停止')
-      await expect(selects.first()).toHaveValue('active')
+      await expect(selects.first()).toHaveAttribute('data-value', 'active')
       await confirm.click()
       await expect(dialog).toHaveCount(0)
       await expectNoPageOverflow(page)

@@ -33,7 +33,7 @@ func (s Store) ListPlatformAdmins(ctx context.Context, actor access.Account, lim
 		FROM admin_accounts a
 		LEFT JOIN admin_account_roles ar ON ar.account_id=a.id
 		LEFT JOIN roles r ON r.id=ar.role_id AND r.brand_id IS NULL
-		WHERE a.is_super_admin AND NOT EXISTS(SELECT 1 FROM admin_brand_scopes s WHERE s.account_id=a.id)
+		WHERE a.is_super_admin AND a.status <> 'deleted' AND NOT EXISTS(SELECT 1 FROM admin_brand_scopes s WHERE s.account_id=a.id)
 		GROUP BY a.id ORDER BY a.username,a.id LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, err
@@ -397,7 +397,7 @@ func (s Store) DeletePlatformAdmin(ctx context.Context, tx pgx.Tx, actor access.
 	if _, err = tx.Exec(ctx, `DELETE FROM admin_brand_scopes WHERE account_id=$1`, id); err != nil {
 		return "", err
 	}
-	command, err := tx.Exec(ctx, `DELETE FROM admin_accounts WHERE id=$1 AND version=$2`, id, version)
+	command, err := tx.Exec(ctx, `UPDATE admin_accounts SET status='deleted',password_hash='',version=version+1 WHERE id=$1 AND version=$2`, id, version)
 	if err != nil {
 		return "", err
 	}
@@ -461,7 +461,7 @@ func actorHasPlatformRolePermissions(actor access.Account, roles []platformRole)
 
 func lockPlatformAdmin(ctx context.Context, tx pgx.Tx, id string) (AdminRecord, []platformRole, error) {
 	var record AdminRecord
-	err := tx.QueryRow(ctx, `SELECT id::text,username,status,version,is_super_admin FROM admin_accounts WHERE id=$1 FOR UPDATE`, id).
+	err := tx.QueryRow(ctx, `SELECT id::text,username,status,version,is_super_admin FROM admin_accounts WHERE id=$1 AND status <> 'deleted' FOR UPDATE`, id).
 		Scan(&record.ID, &record.Username, &record.Status, &record.Version, &record.SuperAdmin)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return AdminRecord{}, nil, ErrNotFound

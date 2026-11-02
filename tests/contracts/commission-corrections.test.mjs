@@ -14,8 +14,9 @@ ajv.addFormat('nonnegative-int64-string', { type: 'string', validate: value => /
 ajv.addSchema({ $id: 'urn:lottery:commission-correction-contract', components: { schemas: { ...doc.components.schemas, ...schemas } } });
 const validate = name => ajv.compile({ $ref: `urn:lottery:commission-correction-contract#/components/schemas/${name}` });
 
-test('commission correction contract declares exactly the twelve canonical admin operations', () => {
+test('commission correction contract declares thirteen canonical admin operations', () => {
   assert.deepEqual(operations.map(({ method, path }) => `${method} ${path}`).sort(), [
+    'GET /api/v1/admin/commission-correction-cases',
     'GET /api/v1/admin/commission-correction-policy',
     'PUT /api/v1/admin/commission-correction-policy',
     'GET /api/v1/admin/commission-correction-plans',
@@ -73,7 +74,7 @@ test('correction schemas are closed and the exact request and numeric contracts 
   assert.deepEqual(schemas.CommissionCorrectionAction.required, ['version']);
   for (const input of [schemas.CommissionCorrectionExecutionPolicyInput, schemas.CommissionCorrectionAction]) {
     assert.equal(input.properties.version.maximum, Number.MAX_SAFE_INTEGER);
-    assert.match(input.properties.reason.description, /UTF-8 bytes/);
+    assert.match(input.properties.reason.description, /characters/);
     const check = validate(input === schemas.CommissionCorrectionAction ? 'CommissionCorrectionAction' : 'CommissionCorrectionExecutionPolicyInput');
     const maxVersion = input === schemas.CommissionCorrectionAction
       ? { version: Number.MAX_SAFE_INTEGER, reason: 'maximum safe version' }
@@ -92,7 +93,7 @@ test('correction schemas are closed and the exact request and numeric contracts 
     assert.equal(Object.hasOwn(operation, 'requestBody'), false);
     assert.match(operation.description, /Every GET rejects a body and ForceQuery/);
     const paged = operation.path === '/api/v1/admin/commission-correction-plans' || operation.path === '/api/v1/admin/commission-correction-executions' || operation.path.endsWith('/targets');
-    assert.deepEqual((operation.parameters ?? []).map(parameter => parameter.name), paged ? ['limit', 'offset'] : []);
+    assert.deepEqual((operation.parameters ?? []).map(parameter => parameter.name), operation.path.endsWith('/commission-correction-cases') ? ['limit','offset','from','to','cycle_id','agent_id','state'] : paged ? ['limit', 'offset'] : []);
   }
   assert.deepEqual(schemas.CommissionCorrectionPlan.properties.evidence_epoch, schemas.CommissionCorrectionExecution.properties.evidence_epoch);
   assert.match(schemas.CommissionCorrectionPlan.properties.evidence_epoch.description, /register the custom format nonnegative-int64-string/);
@@ -134,7 +135,7 @@ test('correction schemas are closed and the exact request and numeric contracts 
   assert.ok(!ajv.compile(schemas.CommissionCorrectionExecution.properties.approval_actor_type)('other'));
   assert.ok(!Object.keys(schemas.CommissionCorrectionPlanTarget.properties).some(name => /account|wallet|rule|bucket/i.test(name)));
   const assembled = composeDocument([{ schemas, operations }], operations.map(({ method, path }) => ({ method, path })));
-  assert.equal(documentedRoutes(assembled).length, 12);
+  assert.equal(documentedRoutes(assembled).length, 13);
   assert.ok(!Object.keys(assembled.paths).some(path => path.includes('/api/v1/b/')));
 });
 

@@ -14,13 +14,16 @@ describe('compact referral code page', () => {
       const html = await renderToString(createSSRApp(JoinCodesPanel, { locale: locale === 'en' ? 'en' : 'zh', brandName: 'Aurora' })
         .provide(userI18nKey, createUserI18n()));
       expect(html).toContain(locale === 'en' ? 'Referral codes' : '推荐码');
+      expect(html).toContain(locale === 'en' ? 'Referral list' : '推荐列表');
+      expect(html).toContain('id="referral-tab-list"');
+      expect(html).toContain('aria-selected="true"');
       expect(html).not.toContain('eyebrow');
       expect(html).not.toContain('<h2');
       expect(html).not.toContain('join-source-code');
       expect(html).not.toContain(locale === 'en' ? 'How you joined' : '您加入此品牌的方式');
     });
   }
-  it('requests only own codes and shares referral links, without reading attribution', () => {
+  it('requests own referrals and codes, without reading attribution', () => {
     const source = readFileSync(new URL('./JoinCodesPanel.vue', import.meta.url), 'utf8');
     expect(source).not.toMatch(/\.attribution\(/);
     expect(source).not.toContain('MemberAttribution');

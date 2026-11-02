@@ -1,0 +1,119 @@
+/* Business report tabs share one filter/results layout. */
+.reports-management .report-panel .report-view {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.reports-management .report-panel .report-filters,
+.reports-management .report-panel .reports-filter-grid {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+}
+.reports-management .report-panel .report-filters {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--canvas);
+}
+.reports-management .report-panel .reports-filters {
+  display: grid;
+}
+.reports-management .report-panel .report-filters label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--ink-secondary);
+  font-size: var(--body-font-size);
+}
+.reports-management .report-panel .report-results {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.reports-management .report-panel .report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+}
+.reports-management .report-panel .report-actions button {
+  width: auto;
+}
+.reports-management .report-panel :is(.report-metrics, .commission-metrics, .coverage dl) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.reports-management .report-panel :is(.report-metrics, .commission-metrics) > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.reports-management .report-panel :is(.report-metrics dd, .commission-metrics dd) {
+  margin: 0;
+  font-size: var(--body-font-size);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.reports-management .report-results :is(h4, p) { margin-block: 0; } .ar-pagination{
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+} .ar-pagination{
+  margin-right: auto;
+  color: var(--muted);
+  font-size: var(--body-font-size);
+} .ar-pagination{
+  flex: initial;
+  min-width: 0;
+  width: auto;
+}
+@media (max-width: 700px) {
+  .reports-management .report-panel .report-results { padding: 12px; } .ar-pagination{
+    flex-basis: 100%;
+    text-align: left;
+  }
+}
+
+.reports-management .report-panel .report-actions span { color: var(--muted); font-size: var(--body-font-size); }
+
+.reports-management .report-panel .report-filters > .modes { flex-basis: 100%; }
+
+.reports-management > .report-panel > .report-panel { gap: 12px; }
+
+.reports-management .report-panel .report-metrics dt { color: var(--muted); font-size: var(--body-font-size); }
+
+.reports-management .report-panel .report-metrics strong { font: inherit; }
+
+/* Metric labels need their full text width instead of the shared facts' 45% cap. */
+.reports-management .report-panel :is(.report-metrics, .commission-metrics, .coverage dl) > div {
+  grid-template-columns: max-content minmax(0, 1fr) !important;
+}
+.reports-management .report-panel :is(.report-metrics, .commission-metrics, .coverage dl) dt {
+  white-space: nowrap;
+}

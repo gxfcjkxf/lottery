@@ -38,7 +38,7 @@ type Input struct {
 }
 
 func text(v string, max int) bool {
-	if v == "" || strings.TrimSpace(v) != v || len(v) > max || !utf8.ValidString(v) {
+	if v == "" || strings.TrimSpace(v) != v || utf8.RuneCountInString(v) > max || !utf8.ValidString(v) {
 		return false
 	}
 	for _, r := range v {

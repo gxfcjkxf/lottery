@@ -303,20 +303,17 @@ func TestRewardReportsUsePostingFactsAndIndependentCurrentOrderCohort(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.RevokeTx(ctx, tx, rewardReportTestBrand, pendingOrder.ID, actor, rewards.ActionInput{Version: 1, Reason: "report fixture pending revoke"}, points.Metadata{ActorType: "admin", ActorID: adminID, RequestID: ids.New()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = tx.Commit(ctx); err != nil {
-		t.Fatal(err)
-	}
+ _,err=service.RevokeTx(ctx,tx,rewardReportTestBrand,pendingOrder.ID,actor,rewards.ActionInput{Version:1,Reason:"insufficient original gift"},points.Metadata{ActorType:"admin",ActorID:adminID,RequestID:ids.New()})
+ if !errors.Is(err,points.ErrInsufficient){t.Fatalf("expected insufficient gift, got %v",err)}
+ _=tx.Rollback(ctx)
+
 	var pendingCreated time.Time
 	if err = db.QueryRow(ctx, `SELECT created_at FROM reward_orders WHERE id=$1`, pendingOrder.ID).Scan(&pendingCreated); err != nil {
 		t.Fatal(err)
 	}
 	pendingQuery := RewardQuery{From: pendingCreated.Add(-time.Second), To: pendingCreated.Add(time.Second), GroupBy: "state", Limit: 20, OrderID: &pendingOrder.ID}
 	pendingReport, err := reporter.RewardOrders(ctx, rewardReportTestBrand, pendingQuery)
-	if err != nil || pendingReport.Summary.OrderCount != "1" || pendingReport.Summary.PendingCount != "1" || pendingReport.Summary.PendingPoints != "11" || len(pendingReport.Items) != 1 || pendingReport.Items[0].Key != "revocation_pending" {
+	if err != nil || pendingReport.Summary.OrderCount != "1" || pendingReport.Summary.GrantedCount != "1" || pendingReport.Summary.GrantedPoints != "11" || len(pendingReport.Items) != 1 || pendingReport.Items[0].Key != "granted" {
 		t.Fatalf("pending state report=%+v err=%v", pendingReport, err)
 	}
 	noCohort := cohort

@@ -16,8 +16,6 @@ type RewardOrderTotals struct {
 	OriginalPoints string `json:"original_points"`
 	GrantedCount   string `json:"granted_count"`
 	GrantedPoints  string `json:"granted_points"`
-	PendingCount   string `json:"pending_count"`
-	PendingPoints  string `json:"pending_points"`
 	RevokedCount   string `json:"revoked_count"`
 	RevokedPoints  string `json:"revoked_points"`
 }
@@ -37,8 +35,6 @@ var rewardOrderAggregates = []aggregate{
 	{"original_points", "coalesce(sum(points::numeric),0)"},
 	{"granted_count", "count(*) FILTER(WHERE state='granted')"},
 	{"granted_points", "coalesce(sum(points::numeric) FILTER(WHERE state='granted'),0)"},
-	{"pending_count", "count(*) FILTER(WHERE state='revocation_pending')"},
-	{"pending_points", "coalesce(sum(points::numeric) FILTER(WHERE state='revocation_pending'),0)"},
 	{"revoked_count", "count(*) FILTER(WHERE state='revoked')"},
 	{"revoked_points", "coalesce(sum(points::numeric) FILTER(WHERE state='revoked'),0)"},
 }

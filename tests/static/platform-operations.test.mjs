@@ -4,8 +4,8 @@ import test from 'node:test';
 
 const read = path => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
-test('platform operations clients expose only scoped read methods', () => {
-  for (const file of ['archives-api.ts', 'notifications-api.ts']) {
+test('archive queries remain scoped reads and notification templates retain explicit writes', () => {
+  for (const file of ['archives-api.ts']) {
     const source = read(`platform-web/src/${file}`);
     assert.match(source, /X-Brand-ID/);
     assert.match(source, /method: 'GET'/);
@@ -35,8 +35,11 @@ test('notification content stays plaintext and page sentinels do not invent tota
   const panel = read('platform-web/src/NotificationsPanel.vue');
   assert.doesNotMatch(panel, /v-html|total_count|totalCount/);
   assert.match(panel, /api.deliveries\(brandId, 51, offset\)/);
-  assert.match(panel, /api.history\(brandId, template.key, 51, offset\)/);
-  assert.match(panel, /rows.slice\(0, 50\)/);
-  assert.match(panel, /selected.content\['zh-CN'\]/);
+  const templates = read('platform-web/src/NotificationTemplatesPanel.vue');
+  assert.doesNotMatch(templates, /loadHistory|api\.history|v-html/);
+  assert.match(panel, /rows\.items\.slice\(0, 50\)/);
+  assert.match(panel, /readPaginationTotal\(rows\)/);
+  assert.match(panel, /deliveryMore\.value = rows\.items\.length > 50/);
+  assert.match(templates, /template-languages/);
   assert.match(panel, /onBeforeUnmount/);
 });

@@ -1,6 +1,6 @@
 import { ApiError, createApiClient, type ApiClientOptions } from "./api";
 
-export interface AuthUser {
+interface AuthUser {
   id: string;
   username?: string;
   phone?: string;
@@ -8,7 +8,7 @@ export interface AuthUser {
   status: string;
 }
 
-export interface AuthMember {
+interface AuthMember {
   id: string;
   brand_id: string;
   status: string;
@@ -29,7 +29,7 @@ export interface AuthProfile {
   member: AuthMember;
 }
 
-export interface AuthTerms {
+interface AuthTerms {
   privacy_policy_version: string;
   service_terms_version: string;
 }
@@ -57,7 +57,7 @@ export interface LoginInput {
 
 export interface AuthChallenge {
   id: string;
-  svg: string;
+  puzzle: CaptchaPuzzle;
   expires_at: string;
 }
 
@@ -186,4 +186,9 @@ export function isBrandJoinRequired(error: unknown): error is ApiError {
     error instanceof ApiError &&
     error.code?.toUpperCase() === "BRAND_JOIN_REQUIRED"
   );
+}
+
+interface CaptchaPuzzle {
+  image: string; piece: string; width: number; height: number;
+  piece_width: number; piece_height: number; y: number;
 }

@@ -183,7 +183,7 @@ func (s OrderService) Create(ctx context.Context, tx pgx.Tx, brand, member strin
 	if err != nil {
 		return empty, err
 	}
-	if !policy.Config.Enabled || in.Points < policy.Config.MinPoints || policy.Config.MaxPoints != nil && in.Points > *policy.Config.MaxPoints {
+	if in.Points%policy.PointsStep != 0 || !policy.Config.Enabled || in.Points < policy.Config.MinPoints || policy.Config.MaxPoints != nil && in.Points > *policy.Config.MaxPoints {
 		return empty, ErrIneligible
 	}
 	allowed := map[string]bool{}

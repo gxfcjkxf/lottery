@@ -26,14 +26,11 @@ test('report review accounts are created explicitly and retain ordinary authenti
   assert.doesNotMatch(spec + fixture, /auth_rate_limits|X-Forwarded-For|DELETE FROM/);
 });
 
-test('platform CSV download is gated by verification and a frozen confirmed complete-filter request', () => {
+test('platform CSV download uses a frozen confirmed query and the shared response reader', () => {
   const client = read('platform-web/src/report-export-api.ts');
   const panel = read('platform-web/src/ReportsPanel.vue');
   assert.match(client, /normalizeReportQuery\(kind/);
-  assert.match(client, /crypto\.subtle\.digest\('SHA-256'/);
-  assert.match(client, /response\.status !== 200/);
-  assert.match(client, /MAX_GROUPS = 10_000/);
-  assert.match(client, /MAX_BYTES = 4 \* 1024 \* 1024/);
+  assert.match(client, /readReportDownload/);
   assert.match(panel, /Object\.freeze\(\{ brandId: props\.brandId/);
   assert.ok(panel.indexOf('await exportApi.export') < panel.indexOf('URL.createObjectURL'));
   assert.match(panel, /request !== generation \|\| props\.brandId !== frozen\.brandId/);

@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import {test,expect,type APIRequestContext} from "@playwright/test";
 import {rememberAdminSession,restoreAdminSession} from "./support/admin-session";
 
@@ -18,14 +19,14 @@ test("real agent policy tree and direct-child configuration retain audited idemp
   expect(register.status(),await register.text()).toBe(201);const user=(await register.json()).data,member=user.member.id;
   const before=await adminCall(`/wallets/${member}`,"GET");const beforeLedger=await adminCall(`/wallets/${member}/ledger`,"GET");
   const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
-  await page.goto("http://localhost:5174");await page.getByLabel("选择真实后台品牌",{exact:true}).selectOption(brand);
+  await page.goto("http://localhost:5174");await selectControl(page.getByLabel("选择真实后台品牌",{exact:true}), brand);
   if(info.project.name==="mobile"){await page.locator(".mobile-nav button").nth(4).click();await page.locator(".mobile-more-menu").getByRole("button",{name:/代理树/}).click()}
   else await page.locator(".side-nav").getByRole("button",{name:/代理树/}).click();
   const panel=page.locator(".agent-management");await expect(panel.getByRole("heading",{name:"代理管理",exact:true})).toBeVisible();
   await panel.getByRole("button",{name:"新建代理",exact:true}).click();expect(await optionValues(panel.getByLabel("代理模式",{exact:true}))).toEqual(["","loss","turnover"]);
   await panel.getByLabel("代理管理启用",{exact:true}).check();await panel.getByLabel("代理最大层级",{exact:true}).fill("3");
   const cycle=await panel.getByLabel("佣金周期",{exact:true}).inputValue()==="weekly"?"monthly":"weekly";
-  await panel.getByLabel("品牌比例上限",{exact:true}).fill("0.1");await panel.getByLabel("品牌佣金模式",{exact:true}).selectOption("loss");await panel.getByLabel("佣金周期",{exact:true}).selectOption(cycle);
+  await panel.getByLabel("品牌比例上限",{exact:true}).fill("0.1");await selectControl(panel.getByLabel("品牌佣金模式",{exact:true}), "loss");await selectControl(panel.getByLabel("佣金周期",{exact:true}), cycle);
   await panel.getByLabel("代理政策变更原因",{exact:true}).fill("Enable isolated agent configuration without payouts");
   const policyWrites:Array<{body:string|null,key:string|undefined}>=[];
   await page.route("**/api/v1/admin/agent-policy",async route=>{if(route.request().method()!=="PUT"){await route.continue();return};policyWrites.push({body:route.request().postData(),key:route.request().headers()["idempotency-key"]});const r=await route.fetch();expect(r.status(),await r.text()).toBe(200);if(policyWrites.length===1)await route.abort("failed");else await route.fulfill({response:r})});

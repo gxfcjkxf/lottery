@@ -2,11 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("only the six implemented immutable history reads advertise routing headers", async () => {
+test("only the implemented immutable history reads advertise routing headers", async () => {
   const doc = JSON.parse(await readFile(new URL("../../docs/openapi.json", import.meta.url), "utf8"));
   const expected = new Set([
     "/api/v1/admin/audit",
-    "/api/v1/admin/notification-templates/{key}/history",
     "/api/v1/admin/compliance-policy/history",
     "/api/v1/admin/brand-operation/history",
     "/api/v1/admin/brand-presentation/history",
@@ -39,5 +38,5 @@ test("only the six implemented immutable history reads advertise routing headers
     }
   }
   assert.deepEqual(actual, expected);
-  assert.equal(routingHeaderCount, 12);
+  assert.equal(routingHeaderCount, 11);
 });

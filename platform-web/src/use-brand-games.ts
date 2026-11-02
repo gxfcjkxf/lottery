@@ -1,9 +1,9 @@
 import { onUnmounted, ref, watch, type Ref } from 'vue'
-import { createPlatformLotteryApi, type Game } from './lottery-api'
+import { readAllFilterOptions, type FilterOption } from '../../shared/src/filter-options'
 
-/** Brand-scoped game selection shared by draws and order filters. */
-export function useBrandGames(brandId: Ref<string>, scope: () => string, report: (cause: unknown) => void, api = createPlatformLotteryApi()) {
-  const games = ref<Game[]>([])
+/** Game filters use the same brand and permission as the order list. */
+export function useBrandGames(brandId: Ref<string>, scope: () => string, report: (cause: unknown) => void, read = readAllFilterOptions) {
+  const games = ref<FilterOption[]>([])
   const selectedGameId = ref('')
   const loading = ref(false)
   const revision = ref(0)
@@ -14,13 +14,8 @@ export function useBrandGames(brandId: Ref<string>, scope: () => string, report:
     if (!brand || !currentScope) return
     loading.value = true
     try {
-      const rows: Game[] = []
-      for (let offset = 0; ; offset += 100) {
-        const page = await api.games(brand, 100, offset)
-        if (request !== generation) return
-        rows.push(...page)
-        if (page.length < 100) break
-      }
+      const rows = await read({ surface:'platform',brandId:brand,resource:'bet',kind:'game' })
+      if (request !== generation) return
       games.value = rows
     } catch (cause) { if (request === generation) report(cause) }
     finally { if (request === generation) loading.value = false }

@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { expect, test } from '@playwright/test'
 import { gameId, origins, installLayoutApi, expectNoPageOverflow, expectInsideViewport } from './fixture'
 export function registerSecuritySettingsTests(reflow = false) {
@@ -5,8 +6,8 @@ export function registerSecuritySettingsTests(reflow = false) {
   const zh=locale==='zh-CN';await installLayoutApi(page,locale)
   const errors:string[]=[],reads:string[]=[],writes:{body:string|null;key:string|undefined}[]=[]
   page.on('pageerror',error=>errors.push(error.message))
-  let auth={version:3,captcha_enabled:false,telegram_enabled:false,telegram_client_id:'',privacy_policy_version:'terms-1',service_terms_version:'terms-1',audit_log_id:gameId}
-  let policy={brand_id:gameId,version:1,config:{age_enabled:false,minimum_age:null as number|null,region_enabled:false,allowed_countries:[] as string[],identity_enabled:false,account_risk_enabled:false,betting_risk_enabled:false,exclusion_enabled:false,responsible_gambling_enabled:false},updated_at:'2026-10-21T00:00:00Z',audit_log_id:gameId}
+  let auth={version:3,inherit_platform:false,captcha_enabled:false,telegram_enabled:false,telegram_client_id:'',privacy_policy_version:'terms-1',service_terms_version:'terms-1',audit_log_id:gameId}
+  let policy={inherit_platform:false,brand_id:'',version:1,config:{age_enabled:false,minimum_age:null as number|null,region_enabled:false,allowed_countries:[] as string[],identity_enabled:false,account_risk_enabled:false,betting_risk_enabled:false,exclusion_enabled:false,responsible_gambling_enabled:false},updated_at:'2026-10-21T00:00:00Z',audit_log_id:gameId}
   let lose=true,conflict=true
   const receipts=new Map<string,typeof auth>()
   await page.route('**/api/v1/platform/**',async route=>{
@@ -17,13 +18,13 @@ export function registerSecuritySettingsTests(reflow = false) {
     if(path.endsWith('/presentation'))return reply({display_name:'Platform',logo_text:'P',logo_url:''})
     if(path.endsWith('/me'))return reply({account:{id:gameId,username:'security_reviewer',super_admin:true,platform_permissions:['auth_config.view.platform','auth_config.write.platform','compliance_policy.view.platform','compliance_policy.write.platform']}})
     if(path.endsWith('/platform-settings'))return reply({version:1,display_name:'Platform',logo_text:'P',logo_url:'',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',updated_at:'2026-10-21T00:00:00Z'})
-    if(path.endsWith('/brands'))return reply({items:[{id:gameId,code:'aurora',name:'Aurora',status:'active'}]})
-    expect(req.headers()['x-brand-id']).toBe(gameId)
-    if(path.endsWith('/auth-settings'))return reply(auth)
-    if(path.endsWith('/compliance-policy'))return reply(policy)
+    if(path.endsWith('/brands'))return reply({items:[{id:gameId,code:'aurora',name:'Aurora',status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z'}]})
+    if(!path.endsWith('/auth-settings') && !path.endsWith('/compliance-policy')) expect(req.headers()['x-brand-id']).toBe(gameId)
+    if(path.endsWith('/auth-settings')){expect(req.headers()['x-brand-id']).toBeUndefined();return reply(auth)}
+    if(path.endsWith('/compliance-policy')){expect(req.headers()['x-brand-id']).toBeUndefined();return reply({...policy,brand_id:''})}
     throw Error(`Unexpected security read: ${path}`)
    }
-   expect(req.headers()['x-brand-id']).toBe(gameId)
+   expect(req.headers()['x-brand-id']).toBeUndefined()
    const key=req.headers()['idempotency-key'];expect(key).toBeTruthy();writes.push({body:req.postData(),key})
    const body=req.postDataJSON();expect(body.reason).toBe('')
    if(path.endsWith('/auth-settings')){
@@ -43,34 +44,46 @@ export function registerSecuritySettingsTests(reflow = false) {
   await expect(page.locator('.account-trigger')).toBeVisible()
   const menu=page.locator('button[aria-controls="platform-navigation"]')
   if(await menu.isVisible())await menu.click()
-  await page.locator('.sidebar').getByRole('button',{name:zh?'运营':'Operations',exact:true}).click()
-  await page.getByTestId('platform-operations-tabs').getByRole('button',{name:zh?'认证与风控':'Authentication & risk',exact:true}).click()
-  await page.locator('.topbar-brand-picker select').selectOption(gameId)
-  const panel=page.locator('.security-settings')
-  const edit = panel.getByRole('button',{name:zh?'编辑设置':'Edit settings',exact:true})
-  const editor = panel.getByRole('dialog',{name:zh?'认证设置':'Authentication',exact:true})
+  await expect(page.locator('.sidebar').getByRole('button',{name:zh?'认证与风控':'Authentication & risk',exact:true})).toHaveCount(0)
+  await page.locator('.sidebar').getByRole('button',{name:zh?'平台设置':'Platform settings',exact:true}).click()
+  const tabs = page.locator('.platform-settings-tabs')
+  await expect(tabs.getByRole('button')).toHaveCount(3)
+  await tabs.getByRole('button',{name:zh?'登录':'Login',exact:true}).click()
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), gameId)
+  const settings=page.locator('.security-settings')
+  let panel=settings.locator('[data-kind=auth]')
+  await expect(settings.locator('[data-kind=compliance]')).toBeVisible()
+  await expect(settings.locator('.console-tabs')).toHaveCount(0)
+  await expect(settings.getByText(zh?'继承平台设置':'Inherit platform settings',{exact:true})).toHaveCount(0)
+  let edit = panel.getByRole('button',{name:zh?'编辑设置':'Edit settings',exact:true})
+  const editor = panel.getByRole('dialog',{name:zh?'登录':'Login',exact:true})
   await expect(panel.locator('form')).toHaveCount(0)
   await edit.click()
   await expect(editor).toBeVisible()
-  await panel.locator('input[type=checkbox]').first().check()
+  await panel.locator('fieldset input[type=checkbox]').first().check()
   await page.keyboard.press('Escape')
   await expect(editor).toHaveCount(0)
   await edit.click()
-  await expect(panel.locator('input[type=checkbox]').first()).not.toBeChecked()
-  await panel.locator('input[type=checkbox]').first().check()
+  await expect(panel.locator('fieldset input[type=checkbox]').first()).not.toBeChecked()
+  await panel.locator('fieldset input[type=checkbox]').first().check()
   await panel.locator('button[type=submit]').click()
   const dialog=page.getByRole('dialog',{name:zh?'确认设置变更':'Confirm changes',exact:true})
   expect(writes).toHaveLength(0)
   await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0)
   await panel.locator('button[type=submit]').click();await dialog.locator('.button-primary').click()
   await expect(dialog.getByRole('button',{name:zh?'重试此操作':'Retry this operation',exact:true})).toBeEnabled()
+  await page.getByRole('button', {name:zh?'关闭提示':'Dismiss message',exact:true}).click()
   await page.keyboard.press('Escape')
+  await expect(tabs.getByRole('button',{name:zh?'基础':'General',exact:true})).toBeDisabled()
+  await expect(settings.locator('[data-kind=compliance]').getByRole('button',{name:zh?'编辑设置':'Edit settings',exact:true})).toBeDisabled()
   await panel.getByRole('button',{name:zh?'核对待处理变更':'Review pending change',exact:true}).click()
   await dialog.getByRole('button',{name:zh?'重试此操作':'Retry this operation',exact:true}).click()
   await expect(dialog).toHaveCount(0);expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1])
-  await panel.getByRole('button',{name:zh?'风控与合规':'Risk & compliance',exact:true}).click()
+  await expect(tabs.getByRole('button',{name:zh?'风控与合规':'Risk & compliance',exact:true})).toHaveCount(0)
+  panel = settings.locator('[data-kind=compliance]')
+  edit = panel.getByRole('button',{name:zh?'编辑设置':'Edit settings',exact:true})
   await edit.click()
-  await panel.locator('input[type=checkbox]').first().check()
+  await panel.locator('fieldset input[type=checkbox]').first().check()
   await expect(panel.locator('input[type=number]')).toHaveValue('18')
   const preset=page.viewportSize()!
   for(const width of reflow?[320,359,360,361,699,700,701,900,1440]:[preset.width]){
@@ -84,9 +97,9 @@ export function registerSecuritySettingsTests(reflow = false) {
   await expect(dialog.getByRole('button',{name:zh?'重新操作':'Start again',exact:true})).toBeEnabled()
   await dialog.getByRole('button',{name:zh?'重新操作':'Start again',exact:true}).click()
   await edit.click()
-  await panel.locator('input[type=checkbox]').first().check();await panel.locator('button[type=submit]').click();await dialog.locator('.button-primary').click()
-  await expect(dialog).toHaveCount(0);await expect(panel.getByRole('status')).toContainText(zh?'设置已保存':'Settings saved')
+  await panel.locator('fieldset input[type=checkbox]').first().check();await panel.locator('button[type=submit]').click();await dialog.locator('.button-primary').click()
+  await expect(dialog).toHaveCount(0);await expect(page.getByRole('status').last()).toContainText(zh?'设置已保存':'Settings saved')
   expect(reads.some(path=>/history|gates|checks/.test(path))).toBe(false);expect(errors).toEqual([])
-  await panel.screenshot({path:info.outputPath(`security-settings-${locale}.png`)})
+  await page.screenshot({path:info.outputPath(`security-settings-${locale}.png`),fullPage:true})
  })
 }

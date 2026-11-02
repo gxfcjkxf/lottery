@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import { test, expect, type Page } from '@playwright/test'
 import {checkWithdrawalObservability} from './withdrawal-observability'
@@ -39,10 +40,12 @@ test('closed user admission and exact administrative receipt recovery preserve s
   expect(originalWallet.withdrawal_points).toBe('80')
   await page.goto(`${userOrigin}/withdraw`)
   const userPanel=page.locator('.withdrawal-page')
+  await userPanel.getByRole('button',{name:'Withdraw',exact:true}).click()
   await expect(userPanel).toContainText('Turnover')
-  await expect(userPanel.getByRole('button',{name:'Submit request',exact:true})).toBeDisabled()
+  await expect(userPanel.getByRole('button',{name:'Submit',exact:true})).toBeDisabled()
   await expect(userPanel).not.toContainText('8,200')
   await expect(userPanel).not.toContainText('68%')
+  await userPanel.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click()
   await userPanel.getByRole('button',{name:'History',exact:true}).click()
   await expect(userPanel.locator('.withdrawal-history')).toContainText('Reviewing')
   const denied=await page.request.post(`${userOrigin}/api/v1/withdrawals`,{headers:{Origin:userOrigin,'Idempotency-Key':crypto.randomUUID(),'X-Withdrawal-Actor-Context':available.actor_context},data:{points:'50',source_allocation:[{source:'recharge',state:'available',points:'50'}]}})
@@ -54,7 +57,7 @@ test('closed user admission and exact administrative receipt recovery preserve s
   await page.getByLabel('Account',{exact:true}).fill(adminUsername!)
   await page.getByLabel('Password',{exact:true}).fill(adminPassword!)
   await page.getByRole('button',{name:'Sign in and load members',exact:true}).click()
-  await page.locator('.directory-brand-bar select').selectOption(brand)
+  await selectControl(page.locator(".directory-brand-bar .select-control-trigger"), brand)
   if(info.project.name==='mobile') await page.locator('.mobile-nav button').nth(3).click()
   else await page.locator('.side-nav').getByRole('button',{name:/Funds.*ledger/}).click()
   await page.locator('.console-tabs').getByRole('button',{name:'Withdrawal requests',exact:true}).click()

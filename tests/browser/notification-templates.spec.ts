@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import {test,expect,type Page,type APIRequestContext} from "@playwright/test";
 import { rememberAdminSession, restoreAdminSession } from "./support/admin-session";
 const brand="0199a000-0000-7000-8000-000000000002",admin="http://localhost:5174/api/v1/admin",origin="http://localhost:5174";
@@ -31,8 +32,9 @@ async function inbox(page:Page,token:string){
  return unwrap<{items:Message[]}>(await page.request.get(userBase+"/notifications?limit=100",{headers:{Authorization:"Bearer "+token}}));
 }
 async function navigateTemplates(page:Page,project:string){
- if(project==="mobile"){await page.locator(".mobile-nav button").nth(4).click();await page.locator(".mobile-more-menu").getByRole("button",{name:/通知模板/}).click()}
- else await page.locator(".side-nav").getByRole("button",{name:/通知模板/}).click();
+ if(project==="mobile"){await page.locator(".mobile-nav button").nth(4).click();await page.locator(".mobile-more-menu").getByRole("button",{name:/品牌设置/}).click()}
+ else await page.locator(".side-nav").getByRole("button",{name:/品牌设置/}).click();
+ await page.locator(".console-tabs").getByRole("button",{name:"通知模板",exact:true}).click();
  return page.locator(".nt-page");
 }
 test("real bilingual template publication survives lost receipt and preserves historical user messages",async({page,context},info)=>{
@@ -48,9 +50,9 @@ test("real bilingual template publication survives lost receipt and preserves hi
  await expect.poll(async()=> (await inbox(page,prior.access_token)).items.length).toBe(1);
  const oldMessage=(await inbox(page,prior.access_token)).items[0]!;
  expect(oldMessage.template_version).toBe(original.version);
- await page.goto(origin);await page.getByLabel("选择真实后台品牌",{exact:true}).selectOption(brand);
+ await page.goto(origin);await selectControl(page.getByLabel("选择真实后台品牌",{exact:true}), brand);
  let panel=await navigateTemplates(page,info.project.name);
- await panel.getByLabel("通知事件",{exact:true}).selectOption("member.joined");
+ await selectControl(panel.getByLabel("通知事件",{exact:true}), "member.joined");
  await expect(panel.locator("#nt-title-en")).toHaveValue(original.content.en.title);
  const content:Content={en:{title:"Welcome "+info.project.name,body:"Hello {resource_id}.\nWelcome to this brand."},"zh-CN":{title:"品牌欢迎 "+info.project.name,body:"欢迎会员 {resource_id}。\n这是本品牌的站内通知。"}};
  try{
@@ -78,7 +80,7 @@ test("real bilingual template publication survives lost receipt and preserves hi
   if(info.project.name==="mobile"){await page.locator(".mobile-nav button").nth(4).click();await page.locator(".mobile-more-menu").getByRole("button",{name:/报表和对账/}).click()}
   else await page.locator(".side-nav").getByRole("button",{name:/报表和对账/}).click();
   panel=await navigateTemplates(page,info.project.name);
-  await panel.getByLabel("通知事件",{exact:true}).selectOption("member.joined");
+  await selectControl(panel.getByLabel("通知事件",{exact:true}), "member.joined");
   await expect(panel.getByRole("heading",{name:"保存结果未知",exact:true})).toBeVisible();
   await panel.getByRole("button",{name:"按原请求重试",exact:true}).click();
   await expect(panel.locator(".nt-receipt")).toHaveText("已确认保存 v"+committed.version);

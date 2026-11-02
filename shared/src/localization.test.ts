@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { createCatalogI18n, localizedMessage, nativeLocaleName, supportedLocale, translateMessage } from './localization'
 
+it('keeps a completed operation notice and its account name when the language changes', () => {
+  const context = createCatalogI18n({ en: { saved: 'Account {name} saved.' }, 'zh-CN': { saved: '账号{name}已保存。' } }, 'en')
+  const parameters = { name: 'review_account' }
+  const notice = context.message('saved', parameters)
+  parameters.name = 'another_account'
+  expect(context.displayError(notice)).toBe('Account review_account saved.')
+  context.setLocale('zh-CN')
+  expect(context.displayError(notice)).toBe('账号review_account已保存。')
+  expect(() => context.message('missing')).toThrow('Missing translation key')
+})
+
 describe('plain-text bilingual messages', () => {
   it('keeps business data and unknown server errors opaque', () => {
     expect(translateMessage('en', '品牌名称')).toBe('品牌名称')

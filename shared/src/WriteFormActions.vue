@@ -1,5 +1,4 @@
 <script setup lang="ts">
-defineProps<{submitLabel:string;cancelLabel:string;busy:boolean;frozen:boolean;invalid:boolean}>()
-defineEmits<{cancel:[]}>()
+defineProps<{submitLabel:string;busy:boolean;invalid:boolean}>()
 </script>
-<template><div class="form-actions"><button type="button" class="button button-secondary" :disabled="busy||frozen" @click="$emit('cancel')">{{cancelLabel}}</button><button type="submit" class="button button-primary" :disabled="busy||invalid">{{submitLabel}}</button></div></template>
+<template><div class="form-actions ui-form-actions"><button type="submit" class="button button-primary" :disabled="busy||invalid">{{submitLabel}}</button></div></template>

@@ -16,7 +16,7 @@ import (
 func TestRewardNotificationsHTTPPreserveOriginalReceiptsAndPrivateEvidence(t *testing.T) {
 	f := rewardFixture(t)
 	ctx := context.Background()
-	grantRewardPermission(t, f.managementHTTP, "reward.grant.brand", "reward.revoke.brand", "reward.retry.brand")
+	grantRewardPermission(t, f.managementHTTP, "reward.grant.brand", "reward.revoke.brand")
 	body := `{"member_id":"` + f.memberID + `","points":"40","reason":"private reward grant justification"}`
 	original := rewardRawCall(f.managementHTTP, "POST", rewardOrdersHTTPPath, "reward-notify-grant-key", f.token, managedBrand, f.root, body)
 	mustStatus(t, original, 201)
@@ -29,20 +29,19 @@ func TestRewardNotificationsHTTPPreserveOriginalReceiptsAndPrivateEvidence(t *te
 	revokePath := rewardOrdersHTTPPath + "/" + order.ID + "/revoke"
 	revokeBody := `{"version":1,"reason":"private pending reversal reason"}`
 	pending := rewardRawCall(f.managementHTTP, "POST", revokePath, "reward-notify-revoke-key", f.token, managedBrand, f.root, revokeBody)
-	mustStatus(t, pending, 200)
-	var pendingOrder rewards.Order
-	managedData(t, pending, &pendingOrder)
-	if pendingOrder.State != "revocation_pending" || pendingOrder.Version != 2 {
-		t.Fatal(pendingOrder)
+	mustStatus(t, pending, 422)
+	if rewardErrorCode(t, pending) != "REWARD_AVAILABLE_INSUFFICIENT" {
+		t.Fatal(pending.Body.String())
 	}
+
 	mustStatus(t, f.call("POST", "/api/v1/admin/wallets/"+f.memberID+"/unfreeze", "reward-notify-unfreeze-key", f.token, managedBrand, map[string]string{"entry_id": entry.ID, "reason": "private hold release"}), 200)
-	retryBody := `{"version":2,"reason":"private operator resumes original reversal"}`
-	retryPath := rewardOrdersHTTPPath + "/" + order.ID + "/retry-revocation"
+	retryBody := `{"version":1,"reason":"private operator resumes original reversal"}`
+	retryPath := rewardOrdersHTTPPath + "/" + order.ID + "/revoke"
 	done := rewardRawCall(f.managementHTTP, "POST", retryPath, "reward-notify-retry-key", f.token, managedBrand, f.root, retryBody)
 	mustStatus(t, done, 200)
 	var current rewards.Order
 	managedData(t, done, &current)
-	if current.State != "revoked" || current.Version != 3 {
+	if current.State != "revoked" || current.Version != 2 {
 		t.Fatal(current)
 	}
 	before := pointWallet(t, f)
@@ -52,7 +51,6 @@ func TestRewardNotificationsHTTPPreserveOriginalReceiptsAndPrivateEvidence(t *te
 		receipt         rewards.Order
 	}{
 		{rewardOrdersHTTPPath, "reward-notify-grant-key", body, 201, order},
-		{revokePath, "reward-notify-revoke-key", revokeBody, 200, pendingOrder},
 		{retryPath, "reward-notify-retry-key", retryBody, 200, current},
 	} {
 		response := rewardRawCall(f.managementHTTP, "POST", call.path, call.key, f.token, managedBrand, f.root, call.body)
@@ -64,7 +62,7 @@ func TestRewardNotificationsHTTPPreserveOriginalReceiptsAndPrivateEvidence(t *te
 		}
 	}
 	var count int
-	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM outbox_events WHERE event_type LIKE 'reward.order.%'`).Scan(&count); err != nil || count != 3 {
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM outbox_events WHERE event_type LIKE 'reward.order.%'`).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("reward events=%d err=%v", count, err)
 	}
 	service := notification.Service{DB: f.pool}
@@ -87,7 +85,7 @@ func TestRewardNotificationsHTTPPreserveOriginalReceiptsAndPrivateEvidence(t *te
 			t.Fatal(item)
 		}
 	}
-	if !reflect.DeepEqual(kinds, map[string]int{"reward.order.granted": 1, "reward.order.revocation_pending": 1, "reward.order.revoked": 1}) {
+	if !reflect.DeepEqual(kinds, map[string]int{"reward.order.granted": 1, "reward.order.revoked": 1}) {
 		t.Fatal(kinds)
 	}
 	for _, secret := range []string{"private ", "audit_log_id", "ledger_entry_id", "action_id", "actor_id", "creation_xid"} {
@@ -101,7 +99,7 @@ func TestRewardNotificationsHTTPPreserveOriginalReceiptsAndPrivateEvidence(t *te
 	mustStatus(t, marked, 200)
 	var receipt notification.ReadReceipt
 	managedData(t, marked, &receipt)
-	if receipt.Changed != 3 {
+	if receipt.Changed != 2 {
 		t.Fatal(receipt)
 	}
 	replay := f.call("POST", "/api/v1/notifications/read", "reward-notify-read-key", f.userToken, managedBrand, json.RawMessage(raw))
@@ -117,7 +115,7 @@ func TestRewardNotificationsHTTPPreserveOriginalReceiptsAndPrivateEvidence(t *te
 	if pointWallet(t, f) != before {
 		t.Fatal("notification query/read/replay changed wallet")
 	}
-	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE event_type LIKE 'reward.order.%'`).Scan(&count); err != nil || count != 3 {
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE event_type LIKE 'reward.order.%'`).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("duplicate notifications=%d err=%v", count, err)
 	}
 	if receipt.BrandID != managedBrand || receipt.MemberID != f.memberID {

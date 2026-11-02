@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect, type Page } from "@playwright/test";
 const harbor = "0199a000-0000-7000-8000-000000000002";
 async function login(page: Page, mobile: boolean) {
@@ -18,9 +19,8 @@ async function login(page: Page, mobile: boolean) {
     .click();
   if (mobile) await page.locator(".mobile-nav button").nth(1).click();
   else await page.locator(".side-nav").getByRole("button", { name: /用户和成员/ }).click();
-  await page
-    .getByLabel("选择真实后台品牌", { exact: true })
-    .selectOption(harbor);
+  await selectControl(page
+    .getByLabel("选择真实后台品牌", { exact: true }), harbor);
   if (mobile) await page.locator(".mobile-nav button").nth(3).click();
   else
     await page
@@ -329,128 +329,4 @@ test("brand point policy persists; pending recharge cancellation does not credit
   await wp.screenshot({
     path: info.outputPath("withdrawal-policy-history.png"),
   });
-});
-test("repair UI submits reviewed token only and shows immutable evidence (mocked repair response)", async ({
-  page,
-}, info) => {
-  const member = "0199a999-0000-7000-8000-000000000001";
-  const buckets = {
-    recharge: {
-      available: "100",
-      manual_frozen: "0",
-      system_frozen: "0",
-      withdrawal: "0",
-    },
-    winning: {
-      available: "0",
-      manual_frozen: "0",
-      system_frozen: "0",
-      withdrawal: "0",
-    },
-    gift: {
-      available: "0",
-      manual_frozen: "0",
-      system_frozen: "0",
-      withdrawal: "0",
-    },
-  };
-  let repaired = false;
-  let submitted: unknown;
-  await page.route(
-    `**/api/v1/admin/wallets/${member}/repair-preview`,
-    async (route) =>
-      route.fulfill({
-        json: {
-          success: true,
-          data: {
-            account_id: "fixture-account",
-            member_id: member,
-            version: 1,
-            ledger_version: 1,
-            actual: {
-              ...buckets,
-              recharge: {
-                ...buckets.recharge,
-                available: repaired ? "100" : "999",
-              },
-            },
-            expected: buckets,
-            repairable: !repaired,
-            consistent: repaired,
-            issues: repaired
-              ? []
-              : ["materialized balance differs from ledger"],
-            token: repaired ? "new-token" : "reviewed-token",
-          },
-        },
-      }),
-  );
-  await page.route(`**/api/v1/admin/wallets/${member}/repairs`, async (route) =>
-    route.fulfill({
-      json: {
-        success: true,
-        data: {
-          items: repaired
-            ? [
-                {
-                  id: "mock-repair-record",
-                  version: 1,
-                  before_snapshot: { balance: "999" },
-                  after_snapshot: { balance: "100" },
-                  reason: "reviewed projection repair",
-                  actor_id: "fixture-admin",
-                  request_id: "fixture-request",
-                  created_at: "2026-10-06T00:00:00Z",
-                },
-              ]
-            : [],
-        },
-      },
-    }),
-  );
-  await page.route(
-    `**/api/v1/admin/wallets/${member}/repair`,
-    async (route) => {
-      submitted = route.request().postDataJSON();
-      expect(route.request().headers()["idempotency-key"]).toBeTruthy();
-      repaired = true;
-      await route.fulfill({
-        json: {
-          success: true,
-          data: { id: "mock-repair-record", audit_log_id: "mock-audit" },
-        },
-      });
-    },
-  );
-  await login(page, info.project.name === "mobile");
-  const panel = page.locator(".balance-repair");
-  await panel.getByLabel("差错会员 UUID", { exact: true }).fill(member);
-  await panel
-    .getByRole("button", { name: "检查差错与修复记录", exact: true })
-    .click();
-  await expect(panel).toContainText("账本完整，可以重建余额");
-  const apply = panel.getByRole("button", {
-    name: "确认按原账本修复",
-    exact: true,
-  });
-  await expect(apply).toBeDisabled();
-  await panel
-    .getByLabel("余额修复原因", { exact: true })
-    .fill("reviewed projection repair");
-  await panel.getByRole("checkbox").check();
-  await apply.click();
-  await expect(panel.getByRole("status")).toContainText("余额重建已提交");
-  await expect(panel).toContainText("账本与余额一致，无需修复");
-  expect(submitted).toEqual({
-    version: 1,
-    token: "reviewed-token",
-    reason: "reviewed projection repair",
-  });
-  await panel.locator("details summary").click();
-  await expect(panel.locator("details")).toContainText("fixture-request");
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth + 1,
-    ),
-  ).toBe(true);
 });

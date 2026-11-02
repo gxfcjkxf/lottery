@@ -36,7 +36,7 @@ describe("management API", () => {
     await expect(api.createRole("brand/a", body, "management-test-key")).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
   });
   it("uses base paths, same-origin cookies, JSON bodies and brand headers for list requests", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok({ items: [] }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok({ items: []  ,total_count: '0'}));
     const api = createManagementApi(fetcher);
     await api.roles("brand/a", 50, 100);
     expect(fetcher.mock.calls[0][0]).toBe(

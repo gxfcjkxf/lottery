@@ -10,9 +10,9 @@ const SINT = /^(0|-?[1-9][0-9]*)$/
 const HEX256 = /^[a-f0-9]{64}$/
 const MAX_REVISION = Number.MAX_SAFE_INTEGER
 
-export interface ArchiveWindow { kind: 'daily' | 'monthly'; period_key: string; timezone: string; from: string; to: string }
-export interface ArchiveBalances { account_count: string; available_points: string; frozen_points: string; withdrawal_points: string; total_points: string }
-export interface ArchiveWallet { at_snapshot: string; balances: ArchiveBalances }
+interface ArchiveWindow { kind: 'daily' | 'monthly'; period_key: string; timezone: string; from: string; to: string }
+interface ArchiveBalances { account_count: string; available_points: string; frozen_points: string; withdrawal_points: string; total_points: string }
+interface ArchiveWallet { at_snapshot: string; balances: ArchiveBalances }
 export interface ArchiveSnapshot {
   brand_id: string; format_version: 1; snapshot_at: string; timezone: string; from: string; to: string
   betting: Record<(typeof REPORT_FIELDS)['betting'][number], string>
@@ -23,7 +23,7 @@ export interface ArchiveSnapshot {
   rewards: Record<(typeof REPORT_FIELDS)['rewards'][number], string>
   reward_orders: Record<(typeof REPORT_FIELDS)['reward_orders'][number], string>
 }
-export interface ArchiveAutomationEvidence { task_id: string; policy_version: number }
+interface ArchiveAutomationEvidence { task_id: string; policy_version: number }
 interface ArchiveRecordFields {
   id: string; brand_id: string; window: ArchiveWindow; revision: number; previous_id: string | null
   snapshot_at: string; created_by: string | null; reason: string; payload_sha256: string; audit_log_id: string
@@ -57,7 +57,7 @@ function instant(v: unknown): bigint | null {
   if (typeof v !== 'string') return null
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(v)
   if (!m) return null
-  const [, ys, mos, ds, hs, mis, ss, fraction = '', zone, sign, zhs, zms] = m
+  const [, ys, mos, ds, hs, mis, ss, fraction = '', zone,, zhs, zms] = m
   const y = Number(ys), mo = Number(mos), d = Number(ds), h = Number(hs), mi = Number(mis), s = Number(ss)
   const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0)
   const daysInMonth = mo === 2 ? leap ? 29 : 28 : [4, 6, 9, 11].includes(mo) ? 30 : 31
@@ -89,9 +89,9 @@ function validSnapshot(v: unknown, brand: string): v is ArchiveSnapshot {
       !decimalObject(v.withdrawals, fields.withdrawals) || !decimalObject(v.commissions, fields.commissions, ['net_points']) || !decimalObject(v.rewards, fields.rewards, ['net_points']) || !decimalObject(v.reward_orders, fields.reward_orders)) return false
   const b = v.betting
   if (total(b, ['placed_count', 'won_count', 'lost_count', 'abnormal_count', 'cancelled_count']) !== BigInt(b.order_count as string) ||
-      total(b, ['settled_stake_points', 'unfinalized_stake_points', 'abnormal_stake_points', 'refund_points']) !== BigInt(b.stake_points as string) ||
+      total(b, ['settled_stake_points', 'unfinalized_stake_points', 'abnormal_stake_points']) !== BigInt(b.stake_points as string) ||
       BigInt(b.stake_points as string) < BigInt(b.order_count as string) || BigInt(b.correction_open_count as string) > BigInt(b.order_count as string) ||
-      (b.cancelled_count === '0') !== (b.refund_points === '0') || (b.abnormal_count === '0') !== (b.abnormal_stake_points === '0') ||
+      (b.abnormal_count === '0') !== (b.abnormal_stake_points === '0') ||
       BigInt(b.refund_points as string) < BigInt(b.cancelled_count as string) || BigInt(b.abnormal_stake_points as string) < BigInt(b.abnormal_count as string) ||
       b.current_prize_points !== '0' && b.won_count === '0' || b.settled_stake_points !== '0' && BigInt(b.won_count as string) + BigInt(b.lost_count as string) === 0n) return false
   const wallet = v.wallet_snapshot
@@ -105,9 +105,9 @@ function validSnapshot(v: unknown, brand: string): v is ArchiveSnapshot {
   const r = v.rewards
   if (BigInt(r.grant_entry_count as string) + BigInt(r.reversal_entry_count as string) !== BigInt(r.entry_count as string) || BigInt(r.net_points as string) !== BigInt(r.grant_points as string) - BigInt(r.reversal_points as string)) return false
   const ro = v.reward_orders
-  return total(ro, ['granted_count', 'pending_count', 'revoked_count']) === BigInt(ro.order_count as string) && total(ro, ['granted_points', 'pending_points', 'revoked_points']) === BigInt(ro.original_points as string)
+  return total(ro, ['granted_count', 'revoked_count']) === BigInt(ro.order_count as string) && total(ro, ['granted_points', 'revoked_points']) === BigInt(ro.original_points as string)
 }
-function validReason(v: unknown): v is string { return typeof v === 'string' && v.trim() === v && !/[\u0000\r\n]/u.test(v) && new TextEncoder().encode(v).length <= 500 }
+function validReason(v: unknown): v is string { return typeof v === 'string' && v.trim() === v && !/[\u0000\r\n]/u.test(v) && Array.from(v).length <= 500 }
 function validRecord(v: unknown, brand: string, id?: string): v is ArchiveRecord {
   if (!isObj(v) || !(exact(v, recordFields) || exact(v, automationRecordFields)) || !uuid(v.id) || id !== undefined && !sameUuid(v.id, id) || !uuid(v.brand_id) || !sameUuid(v.brand_id, brand) ||
       !Number.isSafeInteger(v.revision) || (v.revision as number) < 1 || (v.revision as number) > MAX_REVISION || !(v.previous_id === null || uuid(v.previous_id)) ||
@@ -153,12 +153,13 @@ export function createPlatformArchivesApi(fetcher: typeof fetch = fetch) {
     catch (cause) { throw new PlatformApiError(cause instanceof Error ? cause.message : 'Network request failed', 0, 'NETWORK_ERROR', true) }
   }
   return {
-    async list(brandId: string, limit = 50, offset = 0): Promise<ArchivePage> {
+    async list(brandId: string, limit = 50, offset = 0, kind?: "daily" | "monthly"): Promise<ArchivePage> {
       checkBrandId(brandId)
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) fail('INVALID_INPUT', 0)
-      const response = await get(`?${new URLSearchParams({ limit: String(limit), offset: String(offset) })}`, brandId)
+      if(kind!==undefined && kind!=="daily" && kind!=="monthly") fail("INVALID_INPUT",0)
+      const response = await get(`?${new URLSearchParams({ limit: String(limit), offset: String(offset),...(kind===undefined?{}:{kind}) })}`, brandId)
       const data = await responseData(response)
-      if (!validatePage(data, brandId, limit, offset)) fail()
+      if (!validatePage(data, brandId, limit, offset) || kind!==undefined && data.items.some(item=>item.window.kind!==kind)) fail()
       return data
     },
     async read(brandId: string, id: string): Promise<ArchiveRecord> {

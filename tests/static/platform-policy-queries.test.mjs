@@ -3,42 +3,21 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 const read = path => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
-test('platform archive and financial policy clients are scoped GET-only readers', () => {
-  for (const name of ['archive-tasks-api.ts', 'financial-policies-api.ts']) {
-    const source = read(`platform-web/src/${name}`);
-    assert.match(source, /method: 'GET'/);
-    assert.match(source, /X-Brand-ID/);
-    assert.match(source, /response.status !== 200/);
-    assert.doesNotMatch(source, /method: '(POST|PUT|PATCH|DELETE)'/);
-  }
+test('archive configuration retains its own scoped write intent', () => {
+ const config=read('platform-web/src/ArchiveTasksPanel.vue');
+ assert.match(config,/getPlatformArchiveIntent\(props.accountId\)/);
+ assert.match(config,/getPlatformArchiveIntent\(intent.actor\)!==intent/);
+ assert.match(config,/onBeforeUnmount\(\(\)=>\{alive=false;ticket\+\+/);
+ assert.match(config,/api.update\(intent.body,intent.key,intent.actor\)/);
+ assert.match(config,/await load\(\)/);
+ assert.doesNotMatch(config,/brandId|task-list|api\.retry/);
+ const api=read('platform-web/src/platform-archive-policy-api.ts');
+ assert.match(api,/report-archive-policy/);assert.match(api,/X-Report-Archive-Actor-ID/);assert.doesNotMatch(api,/X-Brand-ID/);
 });
 
-test('policy readers preserve integer strings and isolate late requests without write buttons', () => {
-  const finance = read('platform-web/src/FinancialPoliciesPanel.vue');
-  const tasks = read('platform-web/src/ArchiveTasksPanel.vue');
-  const catalog = read('platform-web/src/i18n-catalog.ts');
-  for (const panel of [finance, tasks]) {
-    assert.match(panel, /onBeforeUnmount/);
-    assert.match(panel, /flush: 'sync'/);
-    assert.doesNotMatch(panel, /v-html|parseFloat|Number\(.*points|api\.(retry|update|create)/);
-  }
-  assert.match(catalog, /a game override takes precedence/);
-  assert.match(finance, /selected.value === kind/);
-  assert.match(catalog, /separate snapshots/);
-  // Skipped tasks reuse an existing archive; check both current translations
-  // and their conditional UI binding rather than an obsolete English sentence.
-  assert.match(catalog, /"platform\.copy\.21b6cf9c": "This skipped task is linked to an existing archive\."/);
-  assert.match(catalog, /"platform\.copy\.21b6cf9c": "此跳过任务关联了已有归档。"/);
-  assert.match(tasks, /skippedNote: ui\('platform\.copy\.21b6cf9c'\)/);
-  assert.match(tasks, /<p v-if="detail\.state === 'skipped'" class="message">\{\{ copy\.skippedNote \}\}<\/p>/);
-  assert.match(tasks, /detailLoading.value = false/);
-});
-
-test('policy browser checks genuine unchanged configuration plus explicit synthetic pagination', () => {
-  const spec = read('tests/review/platform-policy-queries.spec.ts');
-  assert.match(spec, /genuine archive and financial policies/);
-  assert.match(spec, /synthetic archive task paging/);
-  assert.match(spec, /toEqual\(data\)/);
-  assert.match(spec, /\[404, 405\]/);
-  assert.doesNotMatch(spec, /auth_rate_limits|X-Forwarded-For|DELETE FROM|force: true/);
+test('policy browser preserves real configuration, tests saved schedules, and never loads archive tasks', () => {
+ const spec=read('tests/review/platform-policy-queries.spec.ts');
+ assert.match(spec,/archive configuration shows saved schedules without requesting task lists/);
+assert.match(spec,/expect\(tasks\)\.toBe\(0\)/);
+assert.doesNotMatch(spec,/auth_rate_limits|X-Forwarded-For|DELETE FROM|force: true/);
 });

@@ -9,7 +9,7 @@ const MAX_PAGE_SIZE = 100;
 const MAX_OFFSET = 1_000_000;
 
 export type AgentMode = "loss" | "turnover";
-export type AgentStatus = "active" | "disabled";
+type AgentStatus = "active" | "disabled";
 
 export interface PolicyConfig {
   enabled: boolean;
@@ -55,8 +55,8 @@ export interface AgentNode {
   audit_log_id?: string | null;
 }
 
-export interface PendingModeChange { id: string; root_id: string; mode: AgentMode; ratio: string; effective_at: string }
-export interface ModeRatioInput { agent_id: string; version: number; ratio: string }
+interface PendingModeChange { id: string; root_id: string; mode: AgentMode; ratio: string; effective_at: string }
+interface ModeRatioInput { agent_id: string; version: number; ratio: string }
 export interface ModeChangeBody { policy_version: number; mode: AgentMode; items: ModeRatioInput[] }
 export interface ModeChangeScope { brand_id: string; root_id: string; policy_version: number; items: AgentNode[] }
 export interface ModeChangeReceipt { id: string; brand_id: string; root_id: string; mode: AgentMode; effective_at: string; items: ModeRatioInput[] }
@@ -360,7 +360,7 @@ export function createAgentsApi(fetchImpl: typeof fetch = fetch) {
     list,
     node,
     async createNode(brand: string, body: CreateAgentBody, key: string): Promise<AgentNode> {
-      if (!isRecord(body) || !positiveInt(body.policy_version) || (typeof body.username !== "string" || !/^[a-z][a-z0-9_]{2,31}$/.test(body.username) || typeof body.password !== "string" || body.password.length < 6 || body.password.length > 30) ||
+      if (!isRecord(body) || !positiveInt(body.policy_version) || (typeof body.username !== "string" || !/^[a-z][a-z0-9_]{2,31}$/.test(body.username) || typeof body.password !== "string" || Array.from(body.password).length < 6 || Array.from(body.password).length > 30) ||
           !(body.parent_id === null || validUuid(body.parent_id)) ||
           !(body.parent_version === null || positiveInt(body.parent_version)) ||
           (body.parent_id === null ? body.parent_version !== null : body.parent_version === null) ||
@@ -385,11 +385,9 @@ export function createAgentsApi(fetchImpl: typeof fetch = fetch) {
 }
 
 function validReason(value: unknown): value is string {
-  return typeof value === "string" && new TextEncoder().encode(value).length <= 500;
+  return typeof value === "string" && Array.from(value).length <= 500;
 }
 
 function validOptionalReason(value: unknown): value is string | undefined {
   return value === undefined || validReason(value);
 }
-
-export type AgentsApi = ReturnType<typeof createAgentsApi>;

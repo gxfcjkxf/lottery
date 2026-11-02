@@ -14,7 +14,7 @@ import (
 
 // Upstream-announced schedules use the same mapping reader as interval feeds.
 func (s Service) SyncMappedSources(ctx context.Context, sources AutomationSources) (int, error) {
-	rows, e := s.DB.Query(ctx, `SELECT v.game_id::text,v.version FROM platform_automation_versions v JOIN platform_games g ON g.id=v.game_id LEFT JOIN platform_automation_settings h ON h.game_id=v.game_id LEFT JOIN platform_hk_source_checks c ON c.game_id=v.game_id AND c.version=v.version WHERE v.source_type='mapped' AND v.mapping->>'schedule'='source' AND ((v.enabled AND g.status='active' AND h.version=v.version) OR EXISTS(SELECT 1 FROM platform_game_periods p WHERE p.game_id=v.game_id AND p.automation_version=v.version AND p.result IS NULL AND p.draw_at<=clock_timestamp())) AND (c.checked_at IS NULL OR c.checked_at<clock_timestamp()-interval '5 seconds') ORDER BY v.game_id,v.version LIMIT 12`)
+	rows, e := s.DB.Query(ctx, `SELECT v.game_id::text,v.version FROM platform_automation_versions v JOIN platform_games g ON g.id=v.game_id LEFT JOIN platform_automation_settings h ON h.game_id=v.game_id LEFT JOIN platform_hk_source_checks c ON c.game_id=v.game_id AND c.version=v.version WHERE v.source_type='mapped' AND v.mapping->>'schedule'='source' AND NOT EXISTS(SELECT 1 FROM platform_draw_schedule_settings z WHERE z.game_id=v.game_id) AND ((v.enabled AND g.status='active' AND h.version=v.version) OR EXISTS(SELECT 1 FROM platform_game_periods p WHERE p.game_id=v.game_id AND p.automation_version=v.version AND p.result IS NULL AND p.draw_at<=clock_timestamp())) AND (c.checked_at IS NULL OR c.checked_at<clock_timestamp()-interval '5 seconds') ORDER BY v.game_id,v.version LIMIT 12`)
 	if e != nil {
 		return 0, e
 	}
@@ -119,20 +119,22 @@ func (s Service) syncMappedSource(ctx context.Context, sources AutomationSources
 					code = "schedule_conflict"
 				}
 			} else {
+				if plan.OpenBeforeSeconds == nil || *plan.OpenBeforeSeconds <= plan.CloseBeforeSeconds {
+					return 0, ErrInvalid
+				}
+				start := reading.NextDrawAt.Add(-time.Duration(*plan.OpenBeforeSeconds) * time.Second)
 				end := reading.NextDrawAt.Add(-time.Duration(plan.CloseBeforeSeconds) * time.Second)
 				if end.After(time.Now()) {
-					_, e = s.CreatePeriod(ctx, tx, systemAutomationActor(actor), game, PeriodInput{AutomationVersion: &plan.Version, PeriodNo: *reading.NextPeriodNo, BetStartAt: time.Now(), BetEndAt: end, DrawAt: *reading.NextDrawAt}, points.Metadata{ActorType: "system", ActorID: actor})
+					_, e = s.CreatePeriod(ctx, tx, systemAutomationActor(actor), game, PeriodInput{AutomationVersion: &plan.Version, PeriodNo: *reading.NextPeriodNo, BetStartAt: start, BetEndAt: end, DrawAt: *reading.NextDrawAt}, points.Metadata{ActorType: "system", ActorID: actor})
 					if e != nil {
 						return 0, e
 					}
 				}
 			}
-			if e = reserveBrandSeals(ctx, tx, game); e != nil {
-				return 0, e
-			}
 		}
-	} else if errors.Is(readErr, ErrInvalid) {
-		code = "invalid_result"
+	} else {
+		code = feedFailureCode(readErr)
+		logFeedFailure(gameCode, "", readErr)
 	}
 	attemptCode := code
 	if attemptCode == "ready" || attemptCode == "waiting_result" {
@@ -144,6 +146,10 @@ func (s Service) syncMappedSource(ctx context.Context, sources AutomationSources
 	if _, e = tx.Exec(ctx, `INSERT INTO platform_automation_attempts(period_id,last_attempt_at,code) SELECT id,clock_timestamp(),CASE WHEN id=NULLIF($4,'')::uuid THEN 'published' ELSE $3 END FROM platform_game_periods WHERE game_id=$1 AND automation_version=$2 AND draw_at<=clock_timestamp() AND (result IS NULL OR id=NULLIF($4,'')::uuid) ON CONFLICT(period_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,code=excluded.code,attempts=platform_automation_attempts.attempts+1`, game, version, attemptCode, publishedID); e != nil {
 		return 0, e
 	}
+	checkCode := code
+	if checkCode == "credential_missing" {
+		checkCode = "source_error"
+	}
 	var last []byte
 	if reading.Completed != nil && (code == "ready" || code == "waiting_result") {
 		c := reading.Completed
@@ -152,7 +158,7 @@ func (s Service) syncMappedSource(ctx context.Context, sources AutomationSources
 			return 0, e
 		}
 	}
-	if _, e = tx.Exec(ctx, `INSERT INTO platform_hk_source_checks(game_id,version,checked_at,code,next_period_no,next_draw_at,last_result) VALUES($1,$2,clock_timestamp(),$3,$4,$5,$6) ON CONFLICT(game_id,version) DO UPDATE SET checked_at=excluded.checked_at,code=excluded.code,next_period_no=excluded.next_period_no,next_draw_at=excluded.next_draw_at,last_result=excluded.last_result`, game, version, code, reading.NextPeriodNo, reading.NextDrawAt, last); e != nil {
+	if _, e = tx.Exec(ctx, `INSERT INTO platform_hk_source_checks(game_id,version,checked_at,code,next_period_no,next_draw_at,last_result) VALUES($1,$2,clock_timestamp(),$3,$4,$5,$6) ON CONFLICT(game_id,version) DO UPDATE SET checked_at=excluded.checked_at,code=excluded.code,next_period_no=excluded.next_period_no,next_draw_at=excluded.next_draw_at,last_result=excluded.last_result`, game, version, checkCode, reading.NextPeriodNo, reading.NextDrawAt, last); e != nil {
 		return 0, e
 	}
 	return count, tx.Commit(ctx)

@@ -190,7 +190,7 @@ func (s Store) UpdatePolicy(ctx context.Context, tx pgx.Tx, brand string, in Pol
 	reason := strings.TrimSpace(in.Reason)
 	if tx == nil || !uuidPattern.MatchString(brand) || in.Version <= 0 ||
 		!validPolicyCap(in.MaxBalancePoints) || !validPolicyCap(in.MaxRechargePoints) || !validPolicyCap(in.MaxAdjustmentPoints) ||
-		len([]byte(reason)) > 500 || !utf8.ValidString(reason) ||
+		utf8.RuneCountInString(reason) > 500 || !utf8.ValidString(reason) ||
 		meta.ActorType != "admin" || !validActorUUID(meta.ActorID) || meta.RequestID == "" || len([]byte(meta.RequestID)) > 80 || !utf8.ValidString(meta.RequestID) {
 		return Policy{}, ErrInvalid
 	}

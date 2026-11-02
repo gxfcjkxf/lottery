@@ -6,15 +6,11 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"unicode/utf8"
-
-	"github.com/gxfcjkxf/lottery/backend/internal/reconciliation"
 )
-
-type reconciliationCreateInput struct {
-	Reason     string `json:"reason"`
-	CheckScope string `json:"check_scope"`
-}
 
 func reconciliationGetHasNoBody(w http.ResponseWriter, r *http.Request) bool {
 	if r.Body == nil {
@@ -62,37 +58,50 @@ func reconciliationClosedObject(raw []byte, allowed map[string]bool) (map[string
 	return fields, nil
 }
 
-func (in *reconciliationCreateInput) UnmarshalJSON(raw []byte) error {
-	fields, err := reconciliationClosedObject(raw, map[string]bool{"reason": true, "check_scope": true})
-	if err != nil {
-		return err
+func reconciliationBrand(w http.ResponseWriter, r *http.Request) (string, bool) {
+	brand := strings.ToLower(r.Header.Get("X-Brand-ID"))
+	if !uuidPattern.MatchString(brand) {
+		failure(w, r, 400, "REQUEST_INVALID", "必须选择有效品牌")
+		return "", false
 	}
-	var next reconciliationCreateInput
-	if fields["reason"] != nil && json.Unmarshal(fields["reason"], &next.Reason) != nil {
-		return errors.New("invalid reconciliation reason")
-	}
-	scope, present := fields["check_scope"]
-	if !present || json.Unmarshal(scope, &next.CheckScope) != nil || !reconciliation.ValidScope(next.CheckScope) {
-		return errors.New("valid reconciliation scope is required")
-	}
-	*in = next
-	return nil
+	return brand, true
 }
 
-type reconciliationRetryInput struct {
-	Version int64  `json:"version"`
-	Reason  string `json:"reason"`
-}
-
-func (in *reconciliationRetryInput) UnmarshalJSON(raw []byte) error {
-	fields, err := reconciliationClosedObject(raw, map[string]bool{"version": true, "reason": true})
+func reconciliationPage(r *http.Request, allowOutcome bool) (limit, offset int, outcome string, ok bool) {
+	limit, offset = 20, 0
+	query, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
-		return err
+		return 0, 0, "", false
 	}
-	var next reconciliationRetryInput
-	if json.Unmarshal(fields["version"], &next.Version) != nil || next.Version < 1 || next.Version >= 9007199254740991 || (fields["reason"] != nil && json.Unmarshal(fields["reason"], &next.Reason) != nil) {
-		return errors.New("valid reconciliation version is required")
+	for key, values := range query {
+		if len(values) != 1 || len(values[0]) == 0 || key != "limit" && key != "offset" && !(allowOutcome && key == "outcome") {
+			return 0, 0, "", false
+		}
+		switch key {
+		case "limit":
+			limit, err = strconv.Atoi(values[0])
+			if err == nil && strconv.Itoa(limit) != values[0] {
+				return 0, 0, "", false
+			}
+		case "offset":
+			offset, err = strconv.Atoi(values[0])
+			if err == nil && strconv.Itoa(offset) != values[0] {
+				return 0, 0, "", false
+			}
+		case "outcome":
+			outcome = values[0]
+		}
+		if err != nil {
+			return 0, 0, "", false
+		}
 	}
-	*in = next
-	return nil
+	if limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
+		return 0, 0, "", false
+	}
+	switch outcome {
+	case "", "pending", "failed", "consistent", "repairable", "corrupt":
+	default:
+		return 0, 0, "", false
+	}
+	return limit, offset, outcome, true
 }

@@ -174,7 +174,7 @@ func prepare(ctx context.Context, db *pgxpool.Pool, adminUsername, viewport stri
 		return out, errors.New("Harbor fixture timezone unavailable")
 	}
 	period := time.Now().In(location).AddDate(0, 0, -1).Format("2006-01-02")
-	_, err = (reportarchive.Service{DB: db}).UpdateAutomaticPolicyTx(ctx, policyTx, fixtureBrand, actor, reportarchive.AutomaticPolicyInput{
+	_, err = (reportarchive.Service{DB: db}).UpdateAutomaticPolicyTx(ctx, policyTx, fixtureBrand, actor, reportarchive.AutomaticPolicyInput{AutomaticSchedule: reportarchive.AutomaticSchedule{DailyExecutionTime: "00:00", DailyPeriodOffset: 1, MonthlyExecutionDay: 1, MonthlyExecutionTime: "00:00", MonthlyPeriodOffset: 1},
 		Version: existingPolicy.Version, DailyEnabled: true, DailyStartPeriod: &period,
 		Reason: "Enable the owned browser retry fixture from the previous Harbor-local day",
 	}, points.Metadata{ActorType: "admin", ActorID: adminID, RequestID: ids.New()})

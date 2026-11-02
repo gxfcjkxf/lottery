@@ -182,18 +182,6 @@ function validateTotals<T extends object>(
 
 function validateBettingTotals(value: unknown): BettingTotals {
   const totals = validateTotals<BettingTotals>(value, BETTING_TOTAL_FIELDS);
-  const statusCount = [totals.placed_count, totals.won_count, totals.lost_count,
-    totals.abnormal_count, totals.cancelled_count].reduce((sum, current) => sum + BigInt(current), 0n);
-  if (statusCount !== BigInt(totals.order_count)) invalidResponse();
-  const partition = BigInt(totals.settled_stake_points) + BigInt(totals.unfinalized_stake_points) +
-    BigInt(totals.abnormal_stake_points) + BigInt(totals.refund_points);
-  if (partition !== BigInt(totals.stake_points)) invalidResponse();
-  if (BigInt(totals.stake_points)<BigInt(totals.order_count) || BigInt(totals.correction_open_count)>BigInt(totals.order_count) ||
-    (totals.cancelled_count==="0") !== (totals.refund_points==="0") ||
-    (totals.abnormal_count==="0") !== (totals.abnormal_stake_points==="0") ||
-    BigInt(totals.refund_points)<BigInt(totals.cancelled_count) || BigInt(totals.abnormal_stake_points)<BigInt(totals.abnormal_count) ||
-    (totals.current_prize_points!=="0" && totals.won_count==="0") ||
-    (totals.settled_stake_points!=="0" && BigInt(totals.won_count)+BigInt(totals.lost_count)===0n)) invalidResponse();
   return totals;
 }
 
@@ -244,9 +232,6 @@ function validateReport<T>(
     const balanceFields = ["account_count", "available_points", "frozen_points", "withdrawal_points", "total_points"] as const;
     if (Object.keys(rawBalances).length !== balanceFields.length ||
         balanceFields.some((field) => typeof rawBalances[field] !== "string" || !INTEGER_RE.test(rawBalances[field] as string))) invalidResponse();
-    const total = BigInt(rawBalances.total_points as string);
-    if (BigInt(rawBalances.available_points as string) + BigInt(rawBalances.frozen_points as string) +
-        BigInt(rawBalances.withdrawal_points as string) !== total) invalidResponse();
     balances = rawBalances as LedgerReport["balances"];
   } else if ("balances" in value) invalidResponse();
   const seen = new Set<string>();

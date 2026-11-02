@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5185';
@@ -48,7 +49,7 @@ test('platform rewards paginate orders and history, refresh and reset on brand c
   await page.goto(origin);
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Manual rewards' }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   const pages = page.getByTestId('platform-reward-pages');
   await expect(page.locator('.reward-order-link')).toHaveCount(100);
   await expect(pages.getByRole('button', { name: 'Previous page' })).toBeDisabled();
@@ -75,7 +76,7 @@ test('platform rewards paginate orders and history, refresh and reset on brand c
   await expect(page.locator('.reward-order-link')).toHaveCount(0);
   await page.getByTestId('platform-reward-refresh').click();
   await expect(page.locator('.reward-order-link')).toHaveCount(100);
-  await page.locator('.topbar-brand-picker select').selectOption(otherBrand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), otherBrand);
   await expect(page.locator('.reward-order-link')).toHaveCount(0);
   await expect(pages.getByRole('button', { name: 'Next page' })).toBeDisabled();
   expect(reads).toContain('/api/v1/platform/reward-orders?limit=100&offset=100');

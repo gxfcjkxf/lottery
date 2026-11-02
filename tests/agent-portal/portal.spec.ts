@@ -3,7 +3,7 @@ for(const locale of ['zh-CN','en'] as const)test(`independent agent can add memb
  const suffix=info.project.name.replaceAll('-','_')+'_'+(locale==='zh-CN'?'zh':'en')
  const zh=locale==='zh-CN',errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
  await page.context().addCookies([{name:'lottery-locale',value:locale,url:info.project.use.baseURL!}])
- await page.goto('/?brand=aurora')
+ await page.goto('/')
  const login=async(account:string,password:string)=>{
   await page.getByLabel(zh?'账号':'Account',{exact:true}).fill(account)
   await page.getByLabel(zh?'密码':'Password',{exact:true}).fill(password)
@@ -28,7 +28,7 @@ for(const locale of ['zh-CN','en'] as const)test(`independent agent can add memb
  const editor=page.getByRole('dialog')
  await editor.getByLabel(zh?'账号':'Account',{exact:true}).fill(member)
  await editor.getByLabel(zh?'密码':'Password',{exact:true}).fill('member123')
- await editor.getByLabel(zh?'昵称':'Display name',{exact:true}).fill(zh?'专属测试会员':'Test member')
+ await expect(editor.getByLabel(zh?'昵称':'Display name',{exact:true})).toHaveCount(0)
  await editor.getByRole('button',{name:zh?'保存':'Save',exact:true}).click();await expect(editor).toHaveCount(0)
  const directory=page.locator('.member-directory'),summary=directory.locator('.facts')
  const row=(account:string)=>directory.locator('tbody tr').filter({has:page.locator('td', {hasText:new RegExp('^'+account+'$')})})

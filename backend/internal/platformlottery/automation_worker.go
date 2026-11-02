@@ -8,7 +8,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"github.com/jackc/pgx/v5"
-	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,12 +27,12 @@ func LoadAutomationSources() (AutomationSources, error) {
 		return out, nil
 	}
 	if json.Unmarshal([]byte(raw), &out.Origins) != nil || out.Origins == nil {
-		return out, ErrInvalid
+		return out, errors.New("PLATFORM_DRAW_ALLOWED_ORIGINS must be a JSON array of approved origins")
 	}
 	for _, origin := range out.Origins {
 		u, e := url.Parse(origin)
 		if e != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || u.Scheme != "https" && (u.Scheme != "http" || u.Hostname() != "127.0.0.1" || os.Getenv("APP_ENV") == "production") {
-			return out, ErrInvalid
+			return out, errors.New("PLATFORM_DRAW_ALLOWED_ORIGINS contains an invalid origin")
 		}
 	}
 	return out, nil
@@ -55,7 +55,7 @@ func systemAutomationActor(id string) access.Account {
 
 // Reservations and collection have separate loops, so network delays cannot postpone sealing.
 func (s Service) GenerateAutomaticPeriods(ctx context.Context) (int, error) {
-	rows, e := s.DB.Query(ctx, `SELECT s.game_id::text FROM platform_automation_settings s JOIN platform_automation_versions v USING(game_id,version) JOIN platform_games g ON g.id=s.game_id WHERE v.enabled AND (v.source_type='interval_json' OR v.source_type='mapped' AND v.mapping->>'schedule'='interval') AND g.status='active' ORDER BY s.game_id`)
+	rows, e := s.DB.Query(ctx, `SELECT s.game_id::text FROM platform_automation_settings s JOIN platform_automation_versions v USING(game_id,version) JOIN platform_games g ON g.id=s.game_id WHERE v.enabled AND (v.source_type='mapped' AND v.mapping->>'schedule'='interval') AND g.status='active' AND NOT EXISTS(SELECT 1 FROM platform_draw_schedule_settings h WHERE h.game_id=g.id) ORDER BY s.game_id`)
 	if e != nil {
 		return 0, e
 	}
@@ -73,8 +73,7 @@ func (s Service) GenerateAutomaticPeriods(ctx context.Context) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	count := 0
-	var problems error
+	count, problems := s.GenerateScheduledPeriods(ctx)
 	for _, game := range games {
 		n, e := s.generateAutomaticGame(ctx, game)
 		if e != nil {
@@ -136,33 +135,36 @@ func (s Service) generateAutomaticGame(ctx context.Context, game string) (int, e
 		}
 		count++
 	}
-	if e = reserveBrandSeals(ctx, tx, game); e != nil {
-		return 0, e
-	}
 	return count, tx.Commit(ctx)
 }
 
 func (s Service) CollectAutomaticDraws(ctx context.Context, sources AutomationSources) (int, error) {
 	mappedCount, mappedErr := s.SyncMappedSources(ctx, sources)
-	hkCount, hkErr := s.SyncHongKongSources(ctx, sources)
-	problems := errors.Join(mappedErr, hkErr)
-	rows, e := s.DB.Query(ctx, `SELECT p.id::text FROM platform_game_periods p LEFT JOIN platform_automation_attempts a ON a.period_id=p.id JOIN platform_automation_versions v ON v.game_id=p.game_id AND v.version=p.automation_version WHERE (v.source_type='interval_json' OR v.source_type='mapped' AND v.mapping->>'schedule'='interval') AND p.automation_version IS NOT NULL AND p.result IS NULL AND p.draw_at<=clock_timestamp() AND (a.last_attempt_at IS NULL OR a.last_attempt_at<clock_timestamp()-interval '5 seconds') ORDER BY a.last_attempt_at NULLS FIRST,p.draw_at,p.id LIMIT 12`)
+	var unsupported bool
+	if err := s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM platform_automation_settings s JOIN platform_automation_versions v USING(game_id,version) WHERE v.enabled AND v.source_type<>'mapped')`).Scan(&unsupported); err != nil {
+		return mappedCount, err
+	}
+	problems := mappedErr
+	if unsupported {
+		problems = errors.Join(problems, errors.New("unsupported automatic source: save and activate a mapped source"))
+	}
+	rows, e := s.DB.Query(ctx, `SELECT p.id::text FROM platform_game_periods p LEFT JOIN platform_automation_attempts a ON a.period_id=p.id JOIN platform_automation_versions v ON v.game_id=p.game_id AND v.version=p.automation_version WHERE (v.source_type='mapped' AND (v.mapping->>'schedule' IN ('interval','game') OR EXISTS(SELECT 1 FROM platform_draw_schedule_settings h WHERE h.game_id=p.game_id))) AND p.automation_version IS NOT NULL AND p.result IS NULL AND p.draw_at+make_interval(secs=>p.collect_after_seconds)<=clock_timestamp() AND (a.last_attempt_at IS NULL OR a.last_attempt_at<clock_timestamp()-interval '5 seconds') ORDER BY a.last_attempt_at NULLS FIRST,p.draw_at,p.id LIMIT 12`)
 	if e != nil {
-		return mappedCount + hkCount, errors.Join(problems, e)
+		return mappedCount, errors.Join(problems, e)
 	}
 	ids := []string{}
 	for rows.Next() {
 		var id string
 		if e = rows.Scan(&id); e != nil {
 			rows.Close()
-			return mappedCount + hkCount, errors.Join(problems, e)
+			return mappedCount, errors.Join(problems, e)
 		}
 		ids = append(ids, id)
 	}
 	e = rows.Err()
 	rows.Close()
 	if e != nil {
-		return mappedCount + hkCount, errors.Join(problems, e)
+		return mappedCount, errors.Join(problems, e)
 	}
 	count := 0
 	for _, id := range ids {
@@ -173,7 +175,7 @@ func (s Service) CollectAutomaticDraws(ctx context.Context, sources AutomationSo
 		}
 		count += n
 	}
-	return count + hkCount + mappedCount, problems
+	return count + mappedCount, problems
 }
 func (s Service) collectAutomatic(ctx context.Context, sources AutomationSources, id string) (int, error) {
 	tx, e := s.DB.Begin(ctx)
@@ -186,7 +188,7 @@ func (s Service) collectAutomatic(ctx context.Context, sources AutomationSources
 	var gameCode, actor string
 	var now time.Time
 	var v AutomationPlan
-	e = tx.QueryRow(ctx, `SELECT p.id::text,p.game_id::text,p.period_no,p.draw_at,g.model,g.code,v.source_url,v.credential_ref,v.mapping,v.source_type,v.created_by::text,clock_timestamp() FROM platform_game_periods p JOIN platform_games g ON g.id=p.game_id JOIN platform_automation_versions v ON v.game_id=p.game_id AND v.version=p.automation_version WHERE p.id=$1 AND p.result IS NULL AND p.draw_at<=clock_timestamp() AND NOT EXISTS(SELECT 1 FROM platform_automation_attempts a WHERE a.period_id=p.id AND a.last_attempt_at>clock_timestamp()-interval '5 seconds') FOR UPDATE OF p SKIP LOCKED`, id).Scan(&p.ID, &p.GameID, &p.PeriodNo, &p.DrawAt, &raw, &gameCode, &v.SourceURL, &v.CredentialRef, &v.Mapping, &v.SourceType, &actor, &now)
+	e = tx.QueryRow(ctx, `SELECT p.id::text,p.game_id::text,p.period_no,p.draw_at,g.model,g.code,v.source_url,v.credential_ref,v.mapping,v.source_type,v.created_by::text,clock_timestamp() FROM platform_game_periods p JOIN platform_games g ON g.id=p.game_id JOIN platform_automation_versions v ON v.game_id=p.game_id AND v.version=p.automation_version WHERE p.id=$1 AND p.result IS NULL AND p.draw_at+make_interval(secs=>p.collect_after_seconds)<=clock_timestamp() AND NOT EXISTS(SELECT 1 FROM platform_automation_attempts a WHERE a.period_id=p.id AND a.last_attempt_at>clock_timestamp()-interval '5 seconds') FOR UPDATE OF p SKIP LOCKED`, id).Scan(&p.ID, &p.GameID, &p.PeriodNo, &p.DrawAt, &raw, &gameCode, &v.SourceURL, &v.CredentialRef, &v.Mapping, &v.SourceType, &actor, &now)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return 0, nil
 	}
@@ -201,53 +203,27 @@ func (s Service) collectAutomatic(ctx context.Context, sources AutomationSources
 	candidate := SourceObservedDraw{}
 	if v.SourceType == "mapped" {
 		reading, err := FetchMappedFeed(ctx, sources, v, p.PeriodNo, gameCode)
-		code = "invalid_result"
-		if err == nil {
+		if err != nil {
+			code = feedFailureCode(err)
+			logFeedFailure(gameCode, p.PeriodNo, err)
+		} else {
+			code = "invalid_result"
 			if reading.Completed == nil {
 				code = "no_data"
 			} else {
 				candidate = *reading.Completed
 				if candidate.PeriodNo == p.PeriodNo && !candidate.DrawnAt.Before(p.DrawAt) && !candidate.DrawnAt.After(time.Now().Add(10*time.Second)) && rules.ValidateDraw(model, candidate.Result) == nil {
 					code = "published"
+				} else {
+					slog.Warn("draw source result rejected", "game", gameCode, "expected_period", p.PeriodNo, "observed_period", candidate.PeriodNo, "expected_draw_at", p.DrawAt, "observed_draw_at", candidate.DrawnAt, "reason", "period_time_or_numbers_invalid")
 				}
 			}
 		}
-	} else if sources.Allows(v.SourceURL) {
-		token := ""
-		if v.CredentialRef != "" {
-			token = os.Getenv(v.CredentialRef)
-		}
-		if v.CredentialRef != "" && token == "" {
-			code = "credential_missing"
-		} else {
-			u, _ := url.Parse(v.SourceURL)
-			q := u.Query()
-			q.Set("period_no", p.PeriodNo)
-			q.Set("game_code", gameCode)
-			u.RawQuery = q.Encode()
-			req, e := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
-			if e != nil {
-				return 0, e
-			}
-			req.Header.Set("Accept", "application/json")
-			if token != "" {
-				req.Header.Set("Authorization", "Bearer "+token)
-			}
-			resp, e := sources.Client.Do(req)
-			if e == nil {
-				body, readErr := io.ReadAll(io.LimitReader(resp.Body, 65537))
-				resp.Body.Close()
-				if resp.StatusCode == 204 || resp.StatusCode == 404 {
-					code = "no_data"
-				} else if resp.StatusCode == 200 && readErr == nil {
-					code = "invalid_result"
-					if len(body) <= 65536 && json.Unmarshal(body, &candidate) == nil && candidate.PeriodNo == p.PeriodNo && !candidate.DrawnAt.Before(p.DrawAt) && !candidate.DrawnAt.After(time.Now().Add(10*time.Second)) && rules.ValidateDraw(model, candidate.Result) == nil {
-						code = "published"
-					}
-				}
-			}
-		}
+
+	} else {
+		return 0, ErrInvalid
 	}
+
 	if code == "published" {
 		if e = publishAutomaticResult(ctx, tx, id, actor, &candidate, "platform_game.automation.result", "Validated automatic source result"); e != nil {
 			return 0, e

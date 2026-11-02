@@ -67,7 +67,7 @@ describe("withdrawal order SDK DTO validation", () => {
   });
 
   it("accepts unordered policy source lists but enforces consistent admission flags and actor context", () => {
-    const value = { actor_context: "a".repeat(64), brand_id: ids.brand, member_id: ids.member, policy_enabled: true, eligibility_configured: true, can_apply: true, reason_code: "AVAILABLE", min_points: "1", max_points: null, allowed_sources: ["gift", "recharge"], real_payments: false };
+    const value = { points_step: "1", available_points: "0", source_balances: [], actor_context: "a".repeat(64), brand_id: ids.brand, member_id: ids.member, policy_enabled: true, eligibility_configured: true, can_apply: true, reason_code: "AVAILABLE", min_points: "1", max_points: null, allowed_sources: ["gift", "recharge"], real_payments: false };
     expect(isWithdrawalAvailability(value)).toBe(true);
     expect(isWithdrawalAvailability({ ...value, can_apply: false })).toBe(false);
     expect(isWithdrawalAvailability({ ...value, actor_context: undefined })).toBe(false);

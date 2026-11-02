@@ -19,7 +19,12 @@ func registerPublicPlatformLotteryRoutes(mux routeRegistrar, d Dependencies) {
 			}
 			s := platformlottery.Service{DB: d.Admins.DB}
 			out, e := s.ConnectedGames(r.Context(), b.ID, limit, offset)
-			result, e := platformLotteryResult(200, map[string]any{"games": out, "limit": limit, "offset": offset}, e)
+			var total string
+			if e == nil {
+				e = d.Admins.DB.QueryRow(r.Context(), `SELECT count(*)::text FROM platform_games g JOIN brand_platform_games b ON b.game_id=g.id WHERE b.brand_id=$1 AND b.enabled AND g.status='active'`, b.ID).Scan(&total)
+			}
+
+			result, e := platformLotteryResult(200, map[string]any{"games": out, "limit": limit, "offset": offset, "total_count": total}, e)
 			outputMutation(w, r, result, e)
 		})
 		mux.HandleFunc("GET "+prefix+"/platform-games/{id}", func(w http.ResponseWriter, r *http.Request) {

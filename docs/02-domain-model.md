@@ -185,7 +185,7 @@ periods 另含 draw_result_id、draw_claim_token/draw_claim_until 和 draw_next_
 - `definition_snapshot`、`definition_hash`、`policy_snapshot`、`brand_policy_version`、`game_policy_version` 保存每单确认时的规则/限额快照；开期引用只保留开期审计，不覆盖每单规则。
 - 号码、复式展开、积分、来源分配、快照和身份不可改写或删除；取消必须关联原借记的全额原路退款账本，递增版本。当前可执行 placed → abnormal、placed/abnormal → bet_cancelled（异常仅允许运营取消）、单注或整期任务 placed/abnormal → judged_cancelled；结算仍待后续，`settled_at` 尚未落表。
 
-`bet_order_exceptions`（0013）：id、brand_id、order_id（唯一）、order_version、marked_by、reason、created_at。人工标记只追加证据和递增注单版本，不退款、不派奖、不释放尚未退款的额度；原因非空且最多 500 UTF-8 字节。异常注单不进入普通结算或重试，不能解除异常或改写证据，但可以由具备取消权限的品牌运营全额原路退款。数据库触发器禁止单独无证据变状态或提交孤立证据；取消后原异常证据仍保留。
+`bet_order_exceptions`（0013）：id、brand_id、order_id（唯一）、order_version、marked_by、reason、created_at。人工标记只追加证据和递增注单版本，不退款、不派奖、不释放尚未退款的额度；原因非空且最多 500 字符。异常注单不进入普通结算或重试，不能解除异常或改写证据，但可以由具备取消权限的品牌运营全额原路退款。数据库触发器禁止单独无证据变状态或提交孤立证据；取消后原异常证据仍保留。
 
 `bet_order_judgments`（0015）：id、brand_id、game_id、period_id、order_id（唯一）、order_version（判定后的版本）、cause（no_result/invalid_result）、draw_result_id（当时锁定结果引用，可空）、judged_by、reason、created_at。单人品牌运营判定只影响本单，不取消整期或其他注单；no_result 要求当时没有锁定结果，invalid_result 为运营明确认定的异常（可包含未被接纳的外部候选）。处于 settling/settled 的期次不能走此退款路径。单注记录不可改写/删除，必须与该单状态、版本、原因及原借记全额退款同事务提交；普通取消与整期退款竞争时只能退一次。整期任务不需要制造逐单人工判定记录，其证据是持久化任务及目标集合。
 
@@ -233,18 +233,11 @@ S3 实际余额只存于 `point_buckets(brand_id, account_id, source, state, poi
 - `reason_code`, `operator_id`, `idempotency_key`, `created_at`
 - append-only；同一业务动作 unique 幂等键
 
-实际字段为 member_id、entry_type、reference_type/reference_id、operation_key、version、request_hash、actor_type/actor_id、request_id、reason、reversal_of、source_allocation；新before/delta/after快照为完整16桶十进制字符串JSONB，旧完整12桶历史保持。`(brand_id, account_id, version)` 唯一，补偿引用强制同品牌同账户，原流水最多一笔全额补偿。账本和余额不能分开提交。
+实际字段为 member_id、entry_type、reference_type/reference_id、operation_key、version、request_hash、actor_type/actor_id、request_id、reason、reversal_of、source_allocation；新before/delta/after快照为完整16桶十进制字符串JSONB，不支持旧12分项格式。`(brand_id, account_id, version)` 唯一，补偿引用强制同品牌同账户，原流水最多一笔全额补偿。账本和余额不能分开提交。
 
-`point_balance_repairs`（S3-b）
+### 会员积分核对
 
-- id、brand_id、account_id、member_id，复合外键与账户品牌/成员一致。
-- version 为恢复后的账本版本；before_snapshot 包含实测原账户版本和存在的分项，after_snapshot 包含原账本重建的版本及完整矩阵。
-- reason、actor_id、request_id、created_at；追加后不可修改/删除，品牌/成员/时间索引用于分页查询。
-- 只修复余额投影，不改变经济账本；完整性无法证明时禁止重建。真实积分增减仍通过追加账本实现。
-
-### 品牌钱包批量对账
-
-0038的`point_reconciliation_jobs`保存品牌、状态、版本、固定target_count、创建人员/原因/时间、首次开始/完成时间、创建审计、最近失败指针、内部creation_xid及轮转调度时间。targets保存同品牌账户/成员、状态、尝试次数及下次检查时间；只允许创建事务捕获，不晚加或重开已检查目标。results保存不可变outcome/preview/checked_at/audit_log_id，failures和retries保存追加的失败尝试及人工恢复证据。结果completed表示全部检查完成，不表示全部钱包一致，也不修改余额或经济账本。完整字段、查询和故障边界见[批量对账交接](13-wallet-reconciliation.md)。
+保留钱包与不可变流水的单会员只读核对。批量任务和余额修复专用表已从当前基线移除，见[一期精简范围](64-betting-points-simplification.md)。
 
 ### 充值与提现
 
@@ -312,7 +305,7 @@ S6-e 实表为 `brand_agent_policies`、`agent_nodes`、`agent_config_revisions`
 - `status`: pending/settled/voided/adjusted
 - 不允许最终金额小于 0；人工修正创建独立 adjustment 记录。
 
-第一期使用0055的`reward_orders`与不可变`reward_order_actions`，仅人工发放与全额撤销，不补造旧赠送来源记录或自动代理/推荐奖励。当前状态为granted/revocation_pending/revoked；只有gift.available足够才反向原grant账本，不足保留人工待处理，余额补足也不自动恢复。发放、动作、账本及钱包必须同事务，详细字段、独立权限、幂等与剩余UI边界见[人工奖励合同](20-manual-reward-orders.md)。
+一期精简后，结算仅提供即时试算；批量对账、在线余额修复和奖励待追缴已移除。人工奖励余额不足时明确失败且不改变资金记录，见[当前精简范围](64-betting-points-simplification.md)。
 
 ### 审计与通知
 
@@ -328,7 +321,7 @@ S6-e 实表为 `brand_agent_policies`、`agent_nodes`、`agent_config_revisions`
 - `notification_deliveries` 单独保存此消费者的 `event_id`, `brand_id`, `status` pending/sent/failed、`attempt_count`, `last_error`, `next_attempt_at`, `sent_at`；与 outbox 关联。不占用未来消息发布器的 `published_at`。
 - 站内落库、消费者去重确认和 sent 状态同事务；失败回滚消息后持久化安全错误码/退避时间。失败重试必须由有品牌权限的运营人员填写理由，和审计同事务。
 - S6-c 正额派奖和全额奖金冲正 outbox 引用原 calculation/job/ledger/correction，不复用下注金额；验证不可变目标/账本归属而非当前注单投影。旧消息保留、新代次独立记录，零额/失败不生成奖金消息。0025 不补造历史消息。
-- `notification_templates` 按品牌/key保存独立version、content、updated_at；`notification_template_revisions`保留操作者、原因、审计与完整双语旧内容。更新必须对应同事务修订，初始v1为系统，随后版本不可覆盖；新品牌自动初始化八份默认模板及历史，不生成业务消息。复制模板与更新用行共享/独占锁串行，见 [模板合同](12-notification-templates.md)。
+- `platform_notification_templates` 按事件 key 保存所有品牌共用的版本和双语内容；`platform_notification_template_revisions` 保存不可变修订、操作者和审计。新消息复制当前平台模板，并通过 `platform_template_revision_id` 关联修订。原品牌模板表仅保留历史，新品牌不再初始化独立模板。见 [模板合同](12-notification-templates.md)。
 - 六种提现历史状态的站内通知已接入；邮件/短信/Telegram和开奖受众通知仍为后续功能，不能把当前站内 sent 状态解释成外部发送成功。
 
 ## 3. 必备索引

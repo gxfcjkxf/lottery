@@ -72,7 +72,7 @@ func agentMemberRead(w http.ResponseWriter, r *http.Request, tx pgx.Tx, brand, a
 		return map[string]any{"member": memberInfo, "wallet": wallet, "unsettled_points": pending, "net_points": net}, nil
 	}
 }
-func agentPortalWrite(w http.ResponseWriter, r *http.Request, d Dependencies, brand string, initial identity.AgentSession, path string) {
+func agentPortalWrite(w http.ResponseWriter, r *http.Request, d Dependencies, brand, entryBrand string, initial identity.AgentSession, path string) {
 	var input any
 	switch path {
 	case "password":
@@ -113,7 +113,7 @@ func agentPortalWrite(w http.ResponseWriter, r *http.Request, d Dependencies, br
 				return e
 			}
 		}
-		fresh, e = d.Identity.AgentAuthenticateTx(ctx, tx, brand, requestToken(r, agentCookieName(brand)))
+		fresh, e = d.Identity.AgentAuthenticateTx(ctx, tx, brand, requestToken(r, agentCookieName(entryBrand)))
 		if e != nil {
 			return e
 		}
@@ -146,7 +146,7 @@ func agentPortalWrite(w http.ResponseWriter, r *http.Request, d Dependencies, br
 		return
 	}
 	if err == nil && result.Status == 200 && path == "password" {
-		issueCookie(w, r, agentCookieName(brand), "", time.Now(), d.SecureCookies)
+		issueCookie(w, r, agentCookieName(entryBrand), "", time.Now(), d.SecureCookies)
 	}
 	outputMutation(w, r, result, err)
 }

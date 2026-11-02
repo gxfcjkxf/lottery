@@ -230,6 +230,28 @@ func correctionHTTPWrite(w http.ResponseWriter, r *http.Request, d Dependencies,
 
 func registerCommissionCorrectionRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
 	s := commission.Service{DB: d.Admins.DB}
+	handle("GET", "/commission-correction-cases", func(w http.ResponseWriter, r *http.Request) {
+		if !correctionHTTPGetHasNoBody(w, r) {
+			return
+		}
+		brand, ok := rewardBrand(w, r)
+		if !ok {
+			return
+		}
+		limit, offset, filter, ok := commissionListFilter(r, "correction")
+		if !ok {
+			failure(w, r, 400, "COMMISSION_CORRECTION_INPUT_INVALID", "更正查询参数不正确")
+			return
+		}
+		actor, ok := adminAccount(w, r, d)
+		if !ok {
+			return
+		}
+		out, err := correctionHTTPRead(r.Context(), r, d, actor, brand, "commission.correction_cases.list", func(tx pgx.Tx) (any, error) {
+			return s.CorrectionCasesTx(r.Context(), tx, brand, limit, offset, filter)
+		})
+		correctionHTTPOutput(w, r, out, err)
+	})
 	// Each read uses one brand-scoped primary transaction and a committed query
 	// audit. Targets expose financial witnesses, never wallet or rule snapshots.
 	reads := []struct {

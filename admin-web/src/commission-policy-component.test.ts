@@ -1,3 +1,5 @@
+import {ManagementListTestComponent,MemberActionsMenuTestComponent} from "./management-list-test-helper"
+import { SelectControlTestComponent } from './select-control-test-helper'
 import { h as temporalTestH } from "vue";
 import * as DisplayShared from "@lottery/shared";
 DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
@@ -21,7 +23,6 @@ const brandB = "22222222-2222-4222-8222-222222222222";
 const actorA = "33333333-3333-4333-8333-333333333333";
 const actorB = "44444444-4444-4444-8444-444444444444";
 const revisionId = "55555555-5555-4555-8555-555555555555";
-const auditId = "66666666-6666-4666-8666-666666666666";
 const timestamp = "2026-10-06T00:00:00Z";
 const CommissionPolicySettings = compileClientComponent();
 const baseAccount: AdminAccount = {
@@ -78,7 +79,7 @@ function compileClientComponent() {
   const descriptor = parse(source, { filename: "CommissionPolicySettings.vue" }).descriptor;
   const compiled = compileScript(descriptor, { id: "commission-policy-component-test", inlineTemplate: true }).content;
   const javascript = ts.transpileModule(compiled, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  const modules: Record<string, unknown> = { "@lottery/shared/TimeZoneSelect.vue": { props: ["modelValue", "locale", "disabled", "required"], setup: (p: any, { emit }: any) => () => h("select", { "data-timezone-select": true, value: p.modelValue, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": { ...DisplayShared, ...FormValidation },
+  const modules: Record<string, unknown> = {"@lottery/shared/ManagementList.vue":ManagementListTestComponent,"@lottery/shared/MemberActionsMenu.vue":MemberActionsMenuTestComponent, "@lottery/shared/SelectControl.vue": SelectControlTestComponent, "./SelectControl.vue": SelectControlTestComponent, "@lottery/shared/TimeZoneSelect.vue": { props: ["modelValue", "locale", "disabled", "required"], setup: (p: any, { emit }: any) => () => h("select-control", { "data-timezone-select": true, value: p.modelValue, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": { ...DisplayShared, ...FormValidation },
     vue: VueRuntime,
     "./admin-api": AdminApi,
     "./i18n": AdminI18n,
@@ -124,120 +125,26 @@ function mount(account: AdminAccount, brandId: string) {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("CommissionPolicySettings stale-scope handling", () => {
-  it.each(["brand", "account", "permission"] as const)("drops stale asynchronous reads after %s scope changes", async (change) => {
-    const pendingRead = deferred<Response>();
-    let firstPolicyRead = true;
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>((input, init) => {
-      const url = String(input);
-      const requestedBrand = new Headers(init?.headers).get("X-Brand-ID") ?? brandA;
-      if (firstPolicyRead) { firstPolicyRead = false; return pendingRead.promise; }
-      return Promise.resolve(ok(policy(requestedBrand, requestedBrand === brandB ? 7 : 4)));
-    }));
-    const mounted = mount(baseAccount, brandA);
-    await flush();
-    if (change === "brand") mounted.scope.value = { account: baseAccount, brandId: brandB };
-    if (change === "account") mounted.scope.value = { account: { ...baseAccount, id: actorB }, brandId: brandA };
-    if (change === "permission") mounted.scope.value = { account: { ...baseAccount, permissions_by_brand: { [brandA]: [], [brandB]: [] } }, brandId: brandA };
-    await flush();
-    pendingRead.resolve(ok(policy(brandA, 99)));
-    await flush();
-    const rendered = textOf(mounted.container);
-    if (change === "brand") expect(rendered).toContain("08:07:00");
-    else if (change === "account") expect(rendered).toContain("08:04:00");
-    else expect(rendered).not.toContain("99");
-    mounted.app.unmount();
-  });
-
-  it.each(["brand", "account", "permission"] as const)("does not apply a stale write response after %s scope changes", async (change) => {
-    vi.stubGlobal("Document", class {});
-    vi.stubGlobal("ShadowRoot", class {});
-    const write = deferred<Response>();
-    const writeStarted = deferred<void>();
-    let policyReads = 0;
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>((input, init) => {
-      const url = String(input);
-      if (init?.method === "PUT") { writeStarted.resolve(); return write.promise; }
-      const requestedBrand = new Headers(init?.headers).get("X-Brand-ID") ?? brandA;
-      policyReads++;
-      return Promise.resolve(ok(policy(requestedBrand, policyReads === 1 ? 1 : requestedBrand === brandB ? 7 : 4)));
-    }));
-    const mounted = mount(baseAccount, brandA);
-    await flush();
-    await nextTick();
-    const form = findNode(mounted.container, (node) => node.tag === "form");
-    (form!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} });
-    await nextTick();
-    const confirm = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("提交"));
-    expect(confirm).not.toBeNull();
-    (confirm!.props.onClick as () => void)();
-    await writeStarted.promise;
-
-    if (change === "brand") mounted.scope.value = { account: baseAccount, brandId: brandB };
-    if (change === "account") mounted.scope.value = { account: { ...baseAccount, id: actorB }, brandId: brandA };
-    if (change === "permission") mounted.scope.value = { account: { ...baseAccount, permissions_by_brand: { [brandA]: [], [brandB]: [] } }, brandId: brandA };
-    await flush();
-    write.resolve(ok({ ...policy(brandA, 2) }));
-    await flush();
-    const rendered = textOf(mounted.container);
-    if (change === "brand") expect(rendered).toContain("08:07:00");
-    else if (change === "account") expect(rendered).toContain("08:04:00");
-    else expect(rendered).not.toContain("2");
-    mounted.app.unmount();
-  });
-
-  it("normalizes an HH:mm browser time and confirms every frozen calendar field", async () => {
-    vi.stubGlobal("Document", class {});
-    vi.stubGlobal("ShadowRoot", class {});
-    const submitted: { value?: Record<string, any> } = {};
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>((input, init) => {
-      const url = String(input);
-      if (init?.method === "PUT") {
-        const body = JSON.parse(String(init.body)) as Record<string, any>;
-        submitted.value = body;
-        return Promise.resolve(ok({ ...policy(brandA, 2), config: body.config }));
-      }
-      return Promise.resolve(ok(policy(brandA, 1)));
-    }));
-    const mounted = mount(baseAccount, brandA);
-    await flush();
-    const configure = findNode(mounted.container, (node) => node.tag === "button" && textOf(node).includes("配置周期"));
-    (configure!.props.onClick as () => void)();
-    await nextTick();
-
-    const timezone = findNode(mounted.container, (node) => node.tag === "select" && node.props["data-timezone-select"] === true);
-    (timezone!.props["onUpdate:modelValue"] as (value: string) => void)("Asia/Singapore");
-    const cycle = findNode(mounted.container, (node) => node.tag === "select" && node.children.some((child) => child.props.value === "weekly") && node.children.some((child) => child.props.value === "monthly"));
-    (cycle!.props["onUpdate:modelValue"] as (value: string) => void)("weekly");
-    await nextTick();
-    const boundary = findNode(mounted.container, (node) => node.tag === "input" && node.props.type === "time");
-    (boundary!.props["onUpdate:modelValue"] as (value: string) => void)("18:30");
-    const weekday = findNode(mounted.container, (node) => node.tag === "select" && textOf(node).includes("星期日") && textOf(node).includes("星期六"));
-    (weekday!.props["onUpdate:modelValue"] as (value: string) => void)("1");
-    const enabled = findNode(mounted.container, (node) => node.tag === "input" && node.props.type === "checkbox");
-    (enabled!.props["onUpdate:modelValue"] as (value: boolean) => void)(true);
-    await nextTick();
-
-    const form = findNode(mounted.container, (node) => node.tag === "form");
-    (form!.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} });
-    await nextTick();
-    const confirmation = findNode(mounted.container, (node) => node.tag === "section" && textOf(node).includes("确认佣金策略变更"));
-    expect(findNode(confirmation!, node => node.tag === "dt" && textOf(node) === "提交版本")).toBeNull();
-    expect(findNode(confirmation!, node => node.tag === "dt" && textOf(node) === "原因")).toBeNull();
-    expect(textOf(confirmation!)).toContain("已启用");
-    expect(textOf(confirmation!)).toContain("人工");
-    expect(textOf(confirmation!)).toContain("Asia/Singapore");
-    expect(textOf(confirmation!)).toContain("每周");
-    expect(textOf(confirmation!)).toContain("18:30:00");
-    expect(textOf(confirmation!)).toContain("星期一");
-    expect(findNode(mounted.container, node => node.tag === "textarea")).toBeNull();
-    const confirm = findNode(confirmation!, (node) => node.tag === "button" && textOf(node).includes("提交"));
-    (confirm!.props.onClick as () => void)();
-    await flush();
-    expect(submitted.value?.config.calendar.boundary_time).toBe("18:30:00");
-    expect(submitted.value?.config.calendar.weekday).toBe(1);
-    expect(textOf(mounted.container)).not.toContain("策略历史");
-    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/history"))).toBe(false);
-    mounted.app.unmount();
-  });
+describe("CommissionPolicySettings inherited settings", () => {
+ it("shows inherited values without configuration controls or updated time", async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(ok(policy(brandA, 1))));
+  const mounted = mount(baseAccount, brandA); await flush();
+  expect(textOf(mounted.container)).not.toContain('继承平台佣金设置');
+  for (const tag of ['form', 'input', 'select-control', 'button', 'time']) expect(findNode(mounted.container, n => n.tag === tag)).toBeNull();
+  mounted.app.unmount();
+ });
+ it.each(['brand', 'account', 'permission'] as const)('drops stale reads on %s change', async change => {
+  const pending = deferred<Response>(); let first = true;
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>((_input, init) => {
+   if(first) { first = false; return pending.promise }
+   const brand = new Headers(init?.headers).get('X-Brand-ID')!;
+   return Promise.resolve(ok(policy(brand, 2)));
+  }));
+  const mounted = mount(baseAccount, brandA); await flush();
+  if(change === 'brand') mounted.scope.value = {account: baseAccount, brandId: brandB};
+  if(change === 'account') mounted.scope.value = {account: {...baseAccount, id: actorB}, brandId: brandA};
+  if(change === 'permission') mounted.scope.value = {account: {...baseAccount, permissions_by_brand: {}}, brandId: brandA};
+  await flush(); pending.resolve(ok({...policy(brandA, 1), config: {...policy(brandA,1).config, payout_mode: 'automatic'}})); await flush();
+  expect(textOf(mounted.container)).not.toContain('自动'); mounted.app.unmount();
+ });
 });

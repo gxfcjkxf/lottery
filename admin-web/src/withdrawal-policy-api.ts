@@ -13,7 +13,7 @@ const DATE_TIME =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 export type WithdrawalSource = WalletSource;
-export type WithdrawalReviewMode = "manual" | "automatic";
+type WithdrawalReviewMode = "manual" | "automatic";
 
 export interface BrandWithdrawalConfig {
   enabled: boolean;
@@ -25,6 +25,7 @@ export interface BrandWithdrawalConfig {
 }
 
 export interface BrandWithdrawalPolicy {
+  points_step: string;
   brand_id: string;
   version: number;
   config: BrandWithdrawalConfig;
@@ -63,6 +64,7 @@ export interface PolicyRevision {
 }
 
 export interface UpdateBrandWithdrawalPolicyBody {
+  points_step: string;
   version: number;
   config: BrandWithdrawalConfig;
   reason: string;
@@ -194,6 +196,7 @@ function validBrandPolicy(
     isUuid(value.brand_id) &&
     isVersion(value.version) &&
     validBrandConfig(value.config) &&
+    isPositiveInt64(value.points_step) &&
     isDateTime(value.updated_at) &&
     (value.audit_log_id === undefined || isUuid(value.audit_log_id))
   );
@@ -269,7 +272,7 @@ function validRevision(
     typeof value.changed_by !== "string" ||
     typeof value.reason !== "string" ||
 
-    new TextEncoder().encode(value.reason).length > 500 ||
+    Array.from(value.reason).length > 500 ||
     !isDateTime(value.created_at)
   )
     return false;
@@ -301,8 +304,8 @@ function validateUpdateBody(
     !isVersion(body.version) ||
     typeof body.reason !== "string" ||
 
-    new TextEncoder().encode(body.reason).length > 500 ||
-    !(game ? validGameConfig(body.config) : validBrandConfig(body.config))
+    Array.from(body.reason).length > 500 ||
+    !(game ? validGameConfig(body.config) : validBrandConfig(body.config) && isPositiveInt64((body as UpdateBrandWithdrawalPolicyBody).points_step))
   )
     invalidInput("提现策略输入无效。");
 }
@@ -409,6 +412,7 @@ export function createWithdrawalPolicyApi(fetcher: typeof fetch = fetch) {
         !validBrandPolicy(value, brand) ||
         value.version !== body.version + 1 ||
         !isUuid(value.audit_log_id) ||
+        value.points_step !== body.points_step ||
         !sameBrandConfig(value.config, body.config)
       )
         invalidResponse();

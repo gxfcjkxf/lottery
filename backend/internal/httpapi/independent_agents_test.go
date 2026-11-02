@@ -10,6 +10,7 @@ import (
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -57,6 +58,17 @@ func TestIndependentAgentsCreateLoginOwnershipAndChildren(t *testing.T) {
 	mustStatus(t, f.call("GET", "/api/v1/b/harbor/agent/me", "", token, "", nil), 401)
 	mustStatus(t, f.call("GET", "/api/v1/b/aurora/me", "", token, "", nil), 401)
 	mustStatus(t, f.call("GET", "/api/v1/b/aurora/agent/members/"+existingMember+"/bets", "", token, "", nil), 404)
+	// An account registered in another brand cannot be reused by an agent.
+	foreignMember := newNormalAgentMemberInBrand(t, f, pointsBrandB, "foreign_duplicate")
+	duplicate := f.call("POST", "/api/v1/b/aurora/agent/members", "agent-duplicate-member-001", token, "", identity.OperatorInput{Username: "AGENT_TEST_FOREIGN_DUPLICATE", Password: "member123"})
+	mustStatus(t, duplicate, 409)
+	if !strings.Contains(duplicate.Body.String(), "IDENTITY_EXISTS") {
+		t.Fatal(duplicate.Body.String())
+	}
+	var memberships int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM brand_members WHERE global_user_id=(SELECT global_user_id FROM brand_members WHERE id=$1)`, foreignMember).Scan(&memberships); err != nil || memberships != 1 {
+		t.Fatal(memberships, err)
+	}
 	// Agent-created members are distinct member identities, assigned by the server to this agent.
 	memberResult := f.call("POST", "/api/v1/b/aurora/agent/members", "agent-new-member-001", token, "", identity.OperatorInput{Username: "agent_new_member", Password: "member123"})
 	mustStatus(t, memberResult, 201)
@@ -159,6 +171,14 @@ func TestIndependentAgentBrowserFixture(t *testing.T) {
 			mustStatus(t, f.call("POST", "/api/v1/b/aurora/agent/members", "desc-"+device+"-"+lang, token, "", identity.OperatorInput{Username: "desc_" + device + "_" + lang, Password: "member123"}), 201)
 		}
 	}
+	// The browser uses a fixed central agent entry without a customer-brand binding.
+	op := securityOperator(t, f)
+	grantPlatformPermission(t, op, "brand_domains.write.platform")
+	var version int64
+	if err := f.pool.QueryRow(context.Background(), `SELECT config_version FROM brands WHERE id=$1`, managedBrand).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	mustStatus(t, op.call("DELETE", "/api/v1/platform/brand-domains/0199a000-0000-7000-8000-000000000101", "fixed-browser-unbind", op.token, managedBrand, map[string]int64{"version": version}), 200)
 	server := httptest.NewServer(f.http)
 	defer server.Close()
 	file := os.Getenv("AGENT_BROWSER_FIXTURE_FILE")

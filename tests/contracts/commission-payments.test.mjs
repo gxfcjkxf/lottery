@@ -11,26 +11,28 @@ addFormats(ajv);
 ajv.addSchema({ $id: 'urn:lottery:commission-payment-contract', components: { schemas: { ...doc.components.schemas, ...schemas } } });
 const validate = name => ajv.compile({ $ref: `urn:lottery:commission-payment-contract#/components/schemas/${name}` });
 
-test('commission payment contract exposes exactly six brand-scoped operations', () => {
+test('commission payment contract exposes eight brand-scoped operations including read-only details', () => {
   assert.deepEqual(operations.map(({ method, path }) => `${method} ${path}`).sort(), [
     'GET /api/v1/admin/commission-payment-policy',
     'PUT /api/v1/admin/commission-payment-policy',
     'GET /api/v1/admin/commission-payments',
     'GET /api/v1/admin/commission-payments/{id}',
+    'GET /api/v1/admin/commission-payments/{id}/beneficiaries',
+    'GET /api/v1/admin/commission-payments/{id}/history',
     'POST /api/v1/admin/commission-payments/{id}/approve',
     'POST /api/v1/admin/commission-payments/{id}/retry',
   ].sort());
   for (const operation of operations) {
     assert.equal(operation.auth, 'admin');
     assert.equal(operation.brandHeader, true);
-    if(operation.method!=='GET'){
+    if(operation.method==='POST'){
       const actor=operation.parameters.find(p=>p.name==='X-Commission-Payment-Actor-ID');
       assert.equal(actor?.in,'header');assert.equal(actor?.required,true);
     }
   }
   assert.deepEqual(operations.find(op => op.operationId === 'approveCommissionPayment').permissions, ['commission_payment.approve.brand']);
   assert.deepEqual(operations.find(op => op.operationId === 'retryCommissionPayment').permissions, ['commission_payment.retry.brand']);
-  assert.deepEqual(operations.find(op => op.operationId === 'updateCommissionPaymentPolicy').permissions, ['commission_payment_policy.write.brand']);
+  assert.deepEqual(operations.find(op => op.operationId === 'updateCommissionPaymentPolicy').permissions, []);
 });
 
 test('commission payment schemas are closed, precise and omit target details', () => {

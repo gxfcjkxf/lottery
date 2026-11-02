@@ -12,7 +12,7 @@ const KEY = /^[A-Za-z0-9._:-]{8,128}$/;
 const pending = new Map<string, PendingCommissionAdjustmentIntent>();
 const conflicted = new Set<string>();
 let sessionGeneration = 0;
-export function commissionAdjustmentIntentKey(scope: CommissionAdjustmentIntentScope): string { return JSON.stringify([scope.accountId, scope.brandId, scope.paymentId, scope.targetId]); }
+function commissionAdjustmentIntentKey(scope: CommissionAdjustmentIntentScope): string { return JSON.stringify([scope.accountId, scope.brandId, scope.paymentId, scope.targetId]); }
 function validScope(scope: CommissionAdjustmentIntentScope) { return UUID.test(scope.accountId) && UUID.test(scope.brandId) && UUID.test(scope.paymentId) && UUID.test(scope.targetId); }
 function freeze(intent: PendingCommissionAdjustmentIntent): PendingCommissionAdjustmentIntent {
   return Object.freeze({accountId:intent.accountId,brandId:intent.brandId,paymentId:intent.paymentId,targetId:intent.targetId,actorId:intent.actorId,pointsBefore:intent.pointsBefore,

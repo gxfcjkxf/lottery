@@ -1,5 +1,11 @@
 # 六合彩玩法配置表达与通用规则结构设计
 
+> 2026-10-28 完整流程复核：当前只执行映射来源和配置化结算；旧`interval_json`、旧六合彩采集器及品牌独立自动开奖开关已移除，不再按旧日程收尾。规则只走立即保存生效，历史草稿审核流程已移除。当前操作与验证见[65号完整流程](65-unified-configured-betting.md#完整流程复核2026-10-28)。
+
+> 2026-10-28 执行范围更新：投注、结算、佣金／提现事实与经营统计均以[统一配置化链路](65-unified-configured-betting.md)及当前 OpenAPI 为准。文中的旧品牌期次、专用订单、结算任务、旧夹具与旧容量结果是历史设计或证据，不代表当前可用接口。
+
+> 2026-10-25 权限更新：平台彩种在品牌后台仅可启用／停用；下文品牌销售、规则及提前封盘配置步骤和对应写接口为历史实现，已移除品牌入口。已有保存配置与历史注单保留，当前边界以 [49号文档](49-platform-lottery.md) 为准。
+
 设计日期：2026-10-19；当前状态核对：2026-10-20。A/B/C阶段已接入通用结构、编辑器、验证审核发布、配置式销售/投注/结算及JSON/HTML/JS渲染DOM来源，见第13至15节。第1至12节为设计时盘点和阶段边界，不能当作当前待实现清单；旧组件及导入清理见第15.11节，六合彩和加拿大新销售统一见第15.13节，旧开奖清理见第15.15节。
 
 本设计将现有全部六合彩玩法表达为可复用规则组件的组合，并让同一份玩法定义驱动编辑器、用户选号、计注、报价、判奖和结算。目标是在组件能力范围内，新增玩法只需创建配置和完成验证审核，不再新增玩法枚举、前端分支、赔率字段或专用判奖函数。
@@ -21,7 +27,7 @@
 
 ## 2 现有实现与可复用能力
 
-### 2.1 代码定位
+### 2.1 方案编写时的代码定位（历史记录）
 
 | 范围 | 现有入口 | 当前作用 |
 | --- | --- | --- |
@@ -30,7 +36,6 @@
 | 通用规则验证与生命周期 | `backend/internal/rules/validation.go`、`backend/internal/rulebook/store.go` | 测试用例、定义hash、验证审核、生效及版本绑定 |
 | 通用品牌注单 | `backend/internal/betting/store.go`、`settlement_preview.go` | 已有规则快照投注及按快照计算的业务链路 |
 | 完整规则编辑器 | `admin-web/src/RuleDefinitionEditor.vue`、`RuleConditionEditor.vue`、`RuleCasesEditor.vue` | 通用可视化编辑、条件树和独立预期测试 |
-| 平台简化规则表单 | `shared/src/PlatformPlayRuleForm.vue`、`platform-play-form.ts` | 只提供号码选号及部分条件；不能替代完整编辑器 |
 | 平台共享玩法定义 | `backend/internal/platformlottery/service.go` | 已能保存通用Definition，但尚未接通共享六合彩的动态销售与结算 |
 | 固定六合彩目录 | `shared/src/mark-six.ts`、`mark-six-expanded.ts` | 22个分组、选号规格、669个赔率键、静态标签和展示分流 |
 | 专用六合彩计算 | `backend/internal/rules/mark_six.go`、`mark_six_combinations.go`、`mark_six_expanded.go` | 根据玩法编码进入固定选号、判奖、取价和派彩逻辑 |

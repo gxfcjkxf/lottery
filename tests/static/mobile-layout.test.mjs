@@ -5,7 +5,7 @@ import { devices } from '@playwright/test'
 const read = path => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
 test('mobile suites retain device viewports instead of a universal 360×800', () => {
-  for (const file of ['playwright.config.ts', 'playwright.qualification.config.ts', 'playwright.review.config.ts', 'playwright.pwa.config.ts']) {
+  for (const file of ['playwright.config.ts', 'playwright.review.config.ts', 'playwright.pwa.config.ts']) {
     const source = read(file)
     assert.match(source, /devices\[['"]Pixel 7['"]\]/)
     assert.match(source, /contextOptions:\s*\{\s*screen:\s*devices\[['"]Pixel 7['"]\]\.screen/)

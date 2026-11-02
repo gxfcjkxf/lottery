@@ -20,7 +20,7 @@ export interface RuleModel {
   ordered: boolean;
 }
 
-export interface RuleSelectionDefinition {
+interface RuleSelectionDefinition {
   mode: string;
   regular_count: number;
   special_count: number;
@@ -44,7 +44,7 @@ export interface RuleCondition {
   children?: RuleCondition[] | null;
 }
 
-export interface RuleTier {
+interface RuleTier {
   code: string;
   condition: RuleCondition;
   odds: string;

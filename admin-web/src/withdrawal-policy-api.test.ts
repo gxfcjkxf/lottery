@@ -33,6 +33,7 @@ const brandConfig: BrandWithdrawalConfig = {
   turnover_multiple: "1",
 };
 const brandPolicy: BrandWithdrawalPolicy = {
+  points_step: "1",
   brand_id: brand,
   version: 1,
   config: brandConfig,
@@ -199,7 +200,7 @@ describe("withdrawal policy API", () => {
   });
 
   it("keeps the caller's exact body and idempotency key for both writes", async () => {
-    const brandBody = { version: 1, config: brandConfig, reason: " reviewed " };
+    const brandBody = { points_step: "1", version: 1, config: brandConfig, reason: " reviewed " };
     const gameBody = {
       version: 3,
       config: { turnover_multiple: "2.5" },
@@ -362,7 +363,7 @@ describe("withdrawal policy API", () => {
     await expect(
       api.updateBrandPolicy(
         brand,
-        { version: 1, config: brandConfig, reason: "字".repeat(168) },
+        { points_step: "1", version: 1, config: brandConfig, reason: "字".repeat(501) },
         "key",
       ),
     ).rejects.toMatchObject({ status: 0, code: "INVALID_INPUT" });
@@ -454,7 +455,7 @@ describe("withdrawal policy API", () => {
     ).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
   });
   it("requires a write receipt to match the frozen configuration and next version", async () => {
-    const body = { version: 1, config: brandConfig, reason: "verified" };
+    const body = { points_step: "1", version: 1, config: brandConfig, reason: "verified" };
     for (const bad of [
       brandPolicy,
       { ...brandPolicy, version: 2, audit_log_id: undefined },
@@ -496,4 +497,13 @@ describe("withdrawal policy API", () => {
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
     expect(fetcher).not.toHaveBeenCalled();
   });
+});
+
+
+it("requires a positive withdrawal increment and verifies the saved increment", async () => {
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(ok({ ...brandPolicy, version: 2 }));
+  const api = createWithdrawalPolicyApi(fetcher);
+  await expect(api.updateBrandPolicy(brand,{points_step:"0",version:1,config:brandConfig,reason:""},"invalid-step")).rejects.toMatchObject({code:"INVALID_INPUT"});
+  expect(fetcher).not.toHaveBeenCalled();
+  await expect(api.updateBrandPolicy(brand,{points_step:"10",version:1,config:brandConfig,reason:""},"saved-step")).rejects.toMatchObject({code:"INVALID_RESPONSE"});
 });

@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import SelectControl from './SelectControl.vue'
 import { createCatalogI18n } from './localization'
 import { configuredRuleCatalog } from './configured-rule-catalog'
 import type { RuleNode } from './configured-rules'
 import { computed, ref, watch } from 'vue'
-const props = defineProps<{ modelValue: RuleNode; locale: 'en' | 'zh-CN'; field?: string }>()
+const props = defineProps<{ modelValue: RuleNode; locale: 'en' | 'zh-CN'; field?: string; expandedObjects?: boolean; columns?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: RuleNode] }>()
 const i18n = createCatalogI18n(configuredRuleCatalog, props.locale)
 watch(() => props.locale, value => i18n.setLocale(value))
@@ -30,27 +31,28 @@ function remove(index: number) { const next = [...props.modelValue as RuleNode[]
 function add() { const next = [...props.modelValue as RuleNode[]]; if (next.length) next.push(JSON.parse(JSON.stringify(next[next.length - 1]!)) as RuleNode); emit('update:modelValue', next) }
 </script>
 <template>
-  <div class="configured-node">
+  <div class="configured-node" :class="{'configured-node-columns':columns && modelValue !== null && typeof modelValue === 'object' && !Array.isArray(modelValue)}">
     <template v-if="Array.isArray(modelValue)">
       <div v-for="(item, index) in modelValue" :key="index" class="configured-node-item">
-        <ConfiguredNodeEditor :model-value="item" :locale="locale" :field="field" @update:model-value="set(index, $event)" />
+        <ConfiguredNodeEditor :model-value="item" :locale="locale" :field="field" :columns="columns" @update:model-value="set(index, $event)" />
         <button type="button" class="button button-secondary" @click="remove(index)">{{ t('remove') }}</button>
       </div>
       <button v-if="modelValue.length" type="button" class="button button-secondary" @click="add">{{ t('add') }}</button>
     </template>
     <template v-else-if="modelValue !== null && typeof modelValue === 'object'">
-      <div v-for="(value, key) in modelValue" v-show="!['schema_version', 'protocol', 'revision', 'rule_id', 'version', 'snapshot_hash', 'actor_context'].includes(String(key))" :key="key">
-        <details v-if="value !== null && typeof value === 'object'" @toggle="($event.target as HTMLDetailsElement).open ? openKeys.add(String(key)) : openKeys.delete(String(key))"><summary>{{ label(String(key)) }}</summary><ConfiguredNodeEditor v-if="openKeys.has(String(key))" :model-value="value" :locale="locale" :field="String(key)" @update:model-value="set(key, $event)" /></details>
-        <label v-else>{{ label(String(key)) }}<ConfiguredNodeEditor :model-value="value" :locale="locale" :field="String(key)" @update:model-value="set(key, $event)" /></label>
+      <div v-for="(value, key) in modelValue" :class="{'configured-node-wide': value !== null && typeof value === 'object'}" v-show="!['schema_version', 'protocol', 'revision', 'rule_id', 'version', 'snapshot_hash', 'actor_context'].includes(String(key))" :key="key">
+        <details v-if="value !== null && typeof value === 'object'" :open="expandedObjects" @toggle="($event.target as HTMLDetailsElement).open ? openKeys.add(String(key)) : openKeys.delete(String(key))"><summary>{{ label(String(key)) }}</summary><ConfiguredNodeEditor v-if="expandedObjects || openKeys.has(String(key))" :model-value="value" :locale="locale" :field="String(key)" :columns="columns" @update:model-value="set(key, $event)" /></details>
+        <label v-else>{{ label(String(key)) }}<ConfiguredNodeEditor :model-value="value" :locale="locale" :field="String(key)" :columns="columns" @update:model-value="set(key, $event)" /></label>
       </div>
     </template>
-    <select v-else-if="typeof modelValue === 'boolean'" :value="String(modelValue)" @change="emit('update:modelValue', ($event.target as HTMLSelectElement).value === 'true')"><option value="true">{{ t('true') }}</option><option value="false">{{ t('false') }}</option></select>
+    <SelectControl v-else-if="typeof modelValue === 'boolean'" :model-value="String(modelValue)" @change="emit('update:modelValue', $event === 'true')" :label="field ? label(field) : t('value')" :options="[{ value: 'true', label: (String(t('true'))).trim() }, { value: 'false', label: (String(t('false'))).trim() }]" />
     <input v-else-if="typeof modelValue === 'number'" type="number" step="1" :value="field === 'positions' ? modelValue + 1 : modelValue" @input="emit('update:modelValue', ($event.target as HTMLInputElement).valueAsNumber - (field === 'positions' ? 1 : 0))" />
-    <select v-else-if="typeof modelValue === 'string' && enumChoices" :value="modelValue" @change="emit('update:modelValue', ($event.target as HTMLSelectElement).value)"><option v-if="!enumChoices.includes(modelValue)" :value="modelValue" disabled>{{ t('undefinedChoice') }}</option><option v-for="value in enumChoices" :key="value" :value="value">{{ value ? t(value) : t('null') }}</option></select>
+    <SelectControl v-else-if="typeof modelValue === 'string' && enumChoices" :model-value="modelValue" @change="emit('update:modelValue', $event)" :label="field ? label(field) : t('value')" :options="[...((!enumChoices.includes(modelValue)) ? [{ value: modelValue, label: (String(t('undefinedChoice'))).trim(), disabled: true }] : []), ...((enumChoices).map((value) => ({ value: value, label: (String(value ? t(value) : t('null'))).trim() })))]" />
     <input v-else-if="typeof modelValue === 'string'" :value="modelValue" @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)" />
     <span v-else>{{ t('null') }}</span>
   </div>
 </template>
 <style scoped>
-.configured-node{display:grid;gap:8px;min-width:0}.configured-node input,.configured-node select{width:100%;min-width:0;min-height:44px;box-sizing:border-box}.configured-node label{display:grid;gap:4px;font-size:14px}.configured-node details{border-left:2px solid var(--line);padding-left:12px;min-width:0}.configured-node summary{cursor:pointer;min-height:44px;overflow-wrap:anywhere;font-size:14px}.configured-node-item{padding:8px;border:1px solid var(--line);border-radius:var(--radius-sm);min-width:0}
+.configured-node{display:grid;gap:8px;min-width:0}.configured-node input{width:100%;min-width:0;min-height:var(--control-height);box-sizing:border-box}.configured-node label{display:grid;gap:4px;font-size:14px}.configured-node details{border-left:2px solid var(--line);padding-left:12px;min-width:0}.configured-node summary{cursor:pointer;min-height:var(--control-height);overflow-wrap:anywhere;font-size:14px}.configured-node-item{display:grid;gap:10px;padding:8px;border:1px solid var(--line);border-radius:var(--radius-sm);min-width:0}
+.configured-node-item>.button{justify-self:end}.configured-node-columns{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.configured-node-wide{grid-column:1/-1}.configured-node-columns :deep(.configured-node){gap:10px}@media(max-width:620px){.configured-node-columns{grid-template-columns:minmax(0,1fr)}}
 </style>

@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/access"
@@ -20,7 +21,7 @@ func TestRewardWorkbenchHasIndependentViewAndDoesNotReadForbiddenOrders(t *testi
 		t.Fatalf("reward only: %+v err=%v", out.Rewards, err)
 	}
 	raw, _ := json.Marshal(out.Rewards.Data)
-	if string(raw) != `{"granted_count":"0","pending_count":"0","revoked_count":"0"}` {
+	if string(raw) != `{"granted_count":"0","revoked_count":"0"}` {
 		t.Fatalf("incorrect actual zero summary: %s", raw)
 	}
 	if out.Brand.Status != "forbidden" || out.Ledger.Status != "forbidden" {
@@ -114,13 +115,12 @@ func TestRewardWorkbenchCountsRealCurrentOrdersWithoutChangingFinancialFacts(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := service.RevokeTx(ctx, tx, brandA, pending.ID, a, rewards.ActionInput{Version: 1, Reason: "workbench pending reversal"}, meta())
-	if err != nil || p.State != "revocation_pending" {
-		t.Fatal(p, err)
+	_, err = service.RevokeTx(ctx, tx, brandA, pending.ID, a, rewards.ActionInput{Version: 1, Reason: "insufficient original gift"}, meta())
+	_ = tx.Rollback(ctx)
+	if !errors.Is(err, points.ErrInsufficient) {
+		t.Fatalf("expected insufficient gift: %v", err)
 	}
-	if err = tx.Commit(ctx); err != nil {
-		t.Fatal(err)
-	}
+
 	fingerprint := func() string {
 		var value string
 		if err := db.QueryRow(ctx, `SELECT jsonb_build_object('wallet',(SELECT jsonb_agg(to_jsonb(b) ORDER BY source,state) FROM point_buckets b),'ledger',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM point_ledger_entries l),'orders',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM reward_orders o),'actions',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM reward_order_actions a),'events',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM outbox_events e),'audit',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM audit_logs a))::text`).Scan(&value); err != nil {
@@ -134,7 +134,7 @@ func TestRewardWorkbenchCountsRealCurrentOrdersWithoutChangingFinancialFacts(t *
 		t.Fatal(out.Rewards, err)
 	}
 	raw, _ := json.Marshal(out.Rewards.Data)
-	if string(raw) != `{"granted_count":"1","pending_count":"1","revoked_count":"1"}` {
+	if string(raw) != `{"granted_count":"2","revoked_count":"1"}` {
 		t.Fatalf("incorrect current counts: %s", raw)
 	}
 	if fingerprint() != before {

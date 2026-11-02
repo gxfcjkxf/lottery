@@ -6,10 +6,10 @@ export const schemas={
  AgentCommissionPosting:obj({id:uuid,created_at:ref('DateTime'),entry_type:text,points:ref('Int64String')}),
  AgentCommissionPage:obj({items:{type:'array',items:ref('AgentCommissionPosting')},total_count:ref('NonnegativeInt64String'),limit:{type:'integer'},offset:{type:'integer'},credited_points:ref('NonnegativeInt64String'),debited_points:ref('NonnegativeInt64String')}),
  AgentMemberIdentity:obj({id:uuid,username:{type:['string','null']},display_name:text,phone:text}),
- AgentLoginInput:obj({username:{type:'string',pattern:'^[a-z][a-z0-9_]{2,31}$'},password:{type:'string',minLength:6,maxLength:30,writeOnly:true}}),
- AgentAuthentication:obj({agent_account_id:uuid,brand_id:uuid,username:text,access_token:{type:'string',const:'',description:'Browser sessions use a brand-scoped HttpOnly agent cookie.'},expires_at:ref('DateTime')}),
+ AgentLoginInput:{...obj({captcha_id:ref("UUID"),captcha_answer:{type:"string",maxLength:128},username:{type:'string',pattern:'^[a-z][a-z0-9_]{2,31}$'},password:{type:'string',minLength:6,maxLength:30,writeOnly:true}}),required:['username','password']},
+ AgentAuthentication:obj({agent_account_id:uuid,brand_id:uuid,username:text,access_token:{type:'string',const:'',description:'Browser sessions use an HttpOnly agent cookie scoped to the management entry.'},expires_at:ref('DateTime')}),
  AgentIdentity:identity,
- AgentMe:obj({account:identity,agent:ref('FinanceAgentNode'),code:{type:['string','null']}}),
+ AgentMe:obj({account:identity,agent:ref('FinanceAgentNode'),code:{type:['string','null']},user_origin:{type:['string','null'],format:'uri'},brand_code:text}),
  AgentWallet:obj({agent_account_id:uuid,account_id:uuid,available_points:ref('NonnegativeInt64String'),commission_points:ref('NonnegativeInt64String')}),
  AgentMember:obj({id:uuid,username:{type:['string','null']},phone:text,display_name:text,status:text,joined_at:ref('DateTime'),available_points:ref('NonnegativeInt64String'),agent_id:uuid,agent_username:text,is_direct:{type:'boolean'}}),
  AgentLineSummary:obj(Object.fromEntries(['member_count','available_points','bet_count','stake_points','unsettled_points','net_points'].map(k=>[k,{type:'string',pattern:k==='net_points'?'^-?[0-9]+$':'^[0-9]+$'}]))),
@@ -17,10 +17,12 @@ export const schemas={
  AgentMemberSummary:obj({member:ref('AgentMemberIdentity'),wallet:ref('FinanceWallet'),unsettled_points:ref('NonnegativeInt64String'),net_points:ref('Int64String')}),
  AgentLogout:obj({logged_out:{type:'boolean'}})
 };
-const op=(method,path,operationId,data,extra={})=>({method,path:'/api/v1/agent'+path,operationId,summary:operationId,tag:'agency',auth:'agent',data,description:'Independent brand-scoped agent credentials and sessions; member and administrator sessions are rejected. Member reads accept scope=direct (default) or line (all descendants). The list and totals share the same scope and search, independent of pagination; each member and order is counted once. Descendant details and bet history require scope=line. All levels use the same portal. Child writes require the parent development grant and retain depth, mode and ratio limits.',...extra});
+const op=(method,path,operationId,data,extra={})=>({method,path:'/api/v1/agent'+path,operationId,summary:operationId,tag:'agency',auth:'agent',data,description:'Fixed central agent entry; globally unique usernames identify the account brand. Central login uses platform CAPTCHA settings. Authenticated data remains brand-scoped; member and administrator sessions are rejected. Member reads accept scope=direct (default) or line (all descendants). The list and totals share the same scope and search, independent of pagination; each member and order is counted once. Descendant details and bet history require scope=line. All levels use the same portal. Child writes require the parent development grant and retain depth, mode and ratio limits.',...extra});
 const scope={name:'scope',in:'query',schema:{type:'string',enum:['direct','line'],default:'direct'}};
 const page=[{name:'limit',in:'query',schema:{type:'integer',minimum:1,maximum:100}},{name:'offset',in:'query',schema:{type:'integer',minimum:0}}];
 export const operations=[
+ op('GET','/auth/config','getAgentLoginConfig',obj({captcha_enabled:{type:'boolean'}}),{auth:'public'}),
+ op('GET','/auth/challenge','getAgentLoginCaptcha',ref('IdentityChallenge'),{auth:'public'}),
  op('POST','/login','agentLogin',ref('AgentAuthentication'),{auth:'public',requestBody:ref('AgentLoginInput')}),
  op('POST','/logout','agentLogout',ref('AgentLogout'),{requestBody:ref('EmptyObject')}),
  op('GET','/me','getAgentIdentity',ref('AgentMe')),

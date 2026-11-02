@@ -3,113 +3,12 @@ package rewards
 import (
 	"context"
 	"encoding/json"
-	"reflect"
-	"sync"
+
 	"testing"
 
 	"github.com/gxfcjkxf/lottery/backend/internal/notification"
 	"github.com/gxfcjkxf/lottery/backend/internal/points"
 )
-
-func TestRewardNotificationsBindHistoricActionsAndNeverMovePoints(t *testing.T) {
-	f := newRewardFixture(t)
-	ctx := context.Background()
-	order := rewardGrant(t, f, 40)
-	tx := rewardTx(t, f.db)
-	meta := rewardMeta(f.admin)
-	allocation := []points.Allocation{{Source: "gift", State: "available", Points: 40}}
-	delta, err := points.AllocationDelta(allocation, "available", "manual_frozen")
-	if err != nil {
-		t.Fatal(err)
-	}
-	hold, err := f.points.Post(ctx, tx, points.Change{BrandID: f.brand, MemberID: f.member, EntryType: "freeze", ReferenceType: "manual", OperationKey: "reward-notification-hold", Reason: "hold only original reward", ActorType: "admin", ActorID: f.admin, RequestID: meta.RequestID, Delta: delta, Allocation: allocation})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rewardCommit(t, tx)
-	pending := order
-	for _, operation := range []string{"revoke", "retry"} {
-		tx = rewardTx(t, f.db)
-		input := ActionInput{Version: pending.Version, Reason: "Explicit pending notification attempt"}
-		if operation == "revoke" {
-			pending, err = f.service.RevokeTx(ctx, tx, f.brand, order.ID, f.actor, input, rewardMeta(f.admin))
-		} else {
-			pending, err = f.service.RetryRevocationTx(ctx, tx, f.brand, order.ID, f.actor, input, rewardMeta(f.admin))
-		}
-		if err != nil || pending.State != "revocation_pending" {
-			t.Fatalf("pending=%+v err=%v", pending, err)
-		}
-		rewardCommit(t, tx)
-	}
-	tx = rewardTx(t, f.db)
-	if _, err = f.points.Reverse(ctx, tx, f.brand, f.member, hold.ID, "unfreeze", "release original hold", rewardMeta(f.admin)); err != nil {
-		t.Fatal(err)
-	}
-	rewardCommit(t, tx)
-	var events int
-	if err = f.db.QueryRow(ctx, `SELECT count(*) FROM outbox_events WHERE event_type LIKE 'reward.order.%'`).Scan(&events); err != nil || events != 3 {
-		t.Fatalf("events=%d err=%v", events, err)
-	}
-	tx = rewardTx(t, f.db)
-	revoked, err := f.service.RetryRevocationTx(ctx, tx, f.brand, order.ID, f.actor, ActionInput{Version: pending.Version, Reason: "Explicitly revoke after original hold released"}, rewardMeta(f.admin))
-	if err != nil || revoked.State != "revoked" || revoked.Version != 4 {
-		t.Fatalf("revoked=%+v err=%v", revoked, err)
-	}
-	rewardCommit(t, tx)
-	before := rewardBalance(t, f)
-	service := notification.Service{DB: f.db}
-	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if _, e := service.Process(ctx, 20); e != nil {
-				t.Error(e)
-			}
-		}()
-	}
-	wg.Wait()
-	page, err := service.List(ctx, f.brand, f.member, 20, 0)
-	if err != nil || len(page.Items) != 4 {
-		t.Fatalf("inbox=%+v err=%v", page, err)
-	}
-	kinds := map[string]int{}
-	for _, item := range page.Items {
-		kinds[item.EventType]++
-		if item.Content != (notification.Content{I18nKey: item.EventType, I18nVersion: 1}) || item.TemplateKey != item.EventType || item.TemplateVersion != 1 || item.Payload.ResourceID != order.ID || item.Payload.Points == nil || *item.Payload.Points != "40" {
-			t.Fatalf("incorrect reward snapshot: %+v", item)
-		}
-		raw, e := json.Marshal(item.Payload)
-		if e != nil {
-			t.Fatal(e)
-		}
-		var fields map[string]any
-		if json.Unmarshal(raw, &fields) != nil || len(fields) != 2 {
-			t.Fatalf("private witness in public payload: %s", raw)
-		}
-	}
-	if !reflect.DeepEqual(kinds, map[string]int{"reward.order.granted": 1, "reward.order.revocation_pending": 2, "reward.order.revoked": 1}) {
-		t.Fatal(kinds)
-	}
-	if _, err = service.Process(ctx, 20); err != nil {
-		t.Fatal(err)
-	}
-	again, err := service.List(ctx, f.brand, f.member, 20, 0)
-	if err != nil || !reflect.DeepEqual(page, again) {
-		t.Fatalf("duplicate delivery changed inbox: %v", err)
-	}
-	if rewardBalance(t, f) != before {
-		t.Fatal("notification delivery moved points")
-	}
-	foreign, err := service.List(ctx, rewardTestOtherBrand, f.member, 20, 0)
-	if err != nil || len(foreign.Items) != 0 {
-		t.Fatalf("foreign inbox=%+v err=%v", foreign, err)
-	}
-	var failed int
-	if err = f.db.QueryRow(ctx, `SELECT count(*) FROM notification_deliveries WHERE status<>'sent'`).Scan(&failed); err != nil || failed != 0 {
-		t.Fatalf("delayed historic event failed=%d err=%v", failed, err)
-	}
-}
 
 func TestRewardNotificationFailureRollsBackWholeGrant(t *testing.T) {
 	f := newRewardFixture(t)

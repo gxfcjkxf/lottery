@@ -23,7 +23,6 @@ modules.push(await import("./openapi-attribution-reports.mjs"));
 modules.push(await import("./openapi-report-archives.mjs"));
 modules.push(await import("./openapi-report-archive-tasks.mjs"));
 modules.push(await import("./openapi-report-archive-policy.mjs"));
-modules.push(await import("./openapi-business-inventory.mjs"));
 modules.push(await import("./openapi-platform-lottery.mjs"));
 modules.push(await import("./openapi-configured-preview.mjs"));
 modules.push(await import("./openapi-configured-business.mjs"));

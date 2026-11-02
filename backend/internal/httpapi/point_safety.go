@@ -11,8 +11,6 @@ import (
 )
 
 func registerPointSafetyRoutes(handle func(string, string, http.HandlerFunc), d Dependencies) {
-	registerReconciliationRoutes(handle, d)
-	registerBusinessInventoryRoutes(handle, d)
 	registerReportArchiveRoutes(handle, d)
 	registerReportArchiveTaskRoutes(handle, d)
 	registerJoinCodeAdmin(handle, d)
@@ -80,54 +78,5 @@ func registerPointSafetyRoutes(handle func(string, string, http.HandlerFunc), d 
 			out, err := f.CancelRecharge(ctx, tx, brand, id, in.Version, in.Reason, pointMeta(r, fresh))
 			return pointResult(out, err)
 		})
-	})
-	handle("GET", "/wallets/{memberID}/repair-preview", func(w http.ResponseWriter, r *http.Request) {
-		a, brand, ok := pointAdminActor(w, r, d, "wallet", "view", false)
-		if !ok {
-			return
-		}
-		out, err := s.PreviewRepair(r.Context(), brand, r.PathValue("memberID"))
-		if err == nil && !adminReadAudit(w, r, d, a, brand, "wallet.repair_preview") {
-			return
-		}
-		pointOutput(w, r, out, err)
-	})
-	handle("POST", "/wallets/{memberID}/repair", func(w http.ResponseWriter, r *http.Request) {
-		a, brand, ok := pointAdminActor(w, r, d, "wallet", "repair", true)
-		if !ok {
-			return
-		}
-		member := r.PathValue("memberID")
-		var in struct {
-			Version int64  `json:"version"`
-			Token   string `json:"token"`
-			Reason  string `json:"reason"`
-		}
-		if !decodeBody(w, r, &in) {
-			return
-		}
-		managementWrite(w, r, d, a, brand, "wallet", "repair", "admin.wallet.repair", member, in, false, func(ctx context.Context, tx pgx.Tx, fresh access.Account) (mutation.Result, error) {
-			if fresh.SuperAdmin {
-				return mutation.Fail(403, "PERMISSION_DENIED", "无资金操作权限"), nil
-			}
-			out, err := s.RepairBalance(ctx, tx, brand, member, in.Version, in.Token, in.Reason, pointMeta(r, fresh))
-			return pointResult(out, err)
-		})
-	})
-	handle("GET", "/wallets/{memberID}/repairs", func(w http.ResponseWriter, r *http.Request) {
-		a, brand, ok := pointAdminActor(w, r, d, "wallet", "view", false)
-		if !ok {
-			return
-		}
-		limit, offset, valid := pageParams(r)
-		if !valid {
-			failure(w, r, 400, "REQUEST_INVALID", "分页参数不正确")
-			return
-		}
-		out, err := s.ListRepairs(r.Context(), brand, r.PathValue("memberID"), limit, offset)
-		if err == nil && !adminReadAudit(w, r, d, a, brand, "wallet.repairs.view") {
-			return
-		}
-		pointOutput(w, r, map[string]any{"items": out}, err)
 	})
 }

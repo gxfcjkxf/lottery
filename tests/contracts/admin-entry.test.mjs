@@ -7,16 +7,10 @@ const doc = JSON.parse(readFileSync(new URL('../../docs/openapi.json', import.me
 const go = process.env.LOTTERY_GO_BIN ?? 'go';
 const operationKey = ({ method, path }) => `${method.toUpperCase()} ${path}`;
 
-test('rule review contract permits authorized self-review without removing validation or platform isolation', () => {
-  for (const decision of ['approve', 'reject']) {
-    const operation = doc.paths[`/api/v1/admin/rule-versions/{id}/${decision}`].post;
-    assert.match(operation.description, /rule\.review\.brand/);
-    assert.match(operation.description, /may review rules they created or edited/);
-    assert.match(operation.description, /validation.*warning/i);
-    assert.match(operation.description, /SUPER_ADMIN is read-only/);
-    assert.doesNotMatch(operation.description, /different authorized reviewer|creator\/editor/);
-    assert.equal(doc.paths[`/api/v1/platform/rule-versions/{id}/${decision}`], undefined);
-  }
+test('configured rules replace brand rulebook write contracts',()=>{
+ assert.ok(doc.paths['/api/v1/platform/platform-games/{id}/configured/rules'].post);
+ for(const decision of ['approve','reject'])assert.equal(doc.paths[`/api/v1/admin/rule-versions/{id}/${decision}`],undefined);
+ assert.equal(doc.paths['/api/v1/admin/rule-versions'],undefined);
 });
 
 test('platform admin entry documents only registered independent routes and its own cookie boundary', () => {
@@ -30,16 +24,24 @@ test('platform admin entry documents only registered independent routes and its 
   const platformRoutes = routes.filter(route => route.path.startsWith('/api/v1/platform/'));
   const expectedPlatformRoutes = routes
     .filter(route => route.path.startsWith('/api/v1/admin/'))
-    .filter(route => !['/api/v1/admin/platform-games/{id}/draw-source-preview','/api/v1/admin/platform-games/{id}/draw-sources','/api/v1/admin/platform-games/{id}/configured/orders','/api/v1/admin/platform-games/{id}/canada/orders','/api/v1/admin/platform-games/{id}/mark-six/orders'].includes(route.path))
+    .filter(route => !['/api/v1/admin/auth/challenge','/api/v1/admin/auth/config','/api/v1/admin/platform-games/{id}/draw-source-preview','/api/v1/admin/platform-games/{id}/draw-sources','/api/v1/admin/platform-games/{id}/configured/orders','/api/v1/admin/platform-games/{id}/canada/orders','/api/v1/admin/platform-games/{id}/mark-six/orders', '/api/v1/admin/bet-limits', '/api/v1/admin/platform-games/{id}/bet-limits'].includes(route.path))
     .filter(route => route.method === 'GET'
       || route.method === 'POST' && ['/api/v1/admin/auth/login', '/api/v1/admin/auth/logout', '/api/v1/admin/me/password', '/api/v1/admin/brands', '/api/v1/admin/accounts', '/api/v1/admin/accounts/{id}/reset-password', '/api/v1/admin/roles'].includes(route.path)
       || route.method === 'DELETE' && route.path === '/api/v1/admin/brands/{id}'
       || route.method === 'PATCH' && ['/api/v1/admin/accounts/{id}', '/api/v1/admin/roles/{id}', '/api/v1/admin/brand-operation'].includes(route.path))
     .map(route => ({ ...route, path: route.path.replace('/api/v1/admin/', '/api/v1/platform/') }));
-  for (const [method, path] of [['GET','/presentation'],['GET','/platform-games/{id}/draw-sources'], ['GET', '/platform-accounts'], ['GET', '/platform-roles'], ['GET','/platform-permissions'], ['GET','/platform-settings'], ['POST', '/platform-accounts'], ['PATCH', '/platform-accounts/{id}'], ['POST', '/platform-accounts/{id}/reset-password']]) {
+  for (const [method, path] of [['GET','/notification-templates'],['GET','/notification-templates/{key}/history'],['PUT','/notification-templates/{key}'],['GET','/commission-settings'], ['GET','/platform-games/official-calendar'], ['GET','/platform-games/{id}/draw-overview'], ['GET','/presentation'],['GET','/platform-games/{id}/draw-sources'], ['GET', '/platform-accounts'], ['GET', '/platform-roles'], ['GET','/platform-permissions'], ['GET','/platform-settings'], ['POST', '/platform-accounts'], ['PATCH', '/platform-accounts/{id}'], ['POST', '/platform-accounts/{id}/reset-password']]) {
     expectedPlatformRoutes.push({ method, path: `/api/v1/platform${path}` });
   }
+  for (const path of ['/report-archive-policy']) expectedPlatformRoutes.push({method:'GET',path:`/api/v1/platform${path}`});
   const platformExtraWrites = [
+    'PUT /api/v1/platform/commission-settings',
+    'PUT /api/v1/platform/report-archive-policy',
+    'POST /api/v1/platform/platform-games/periods/{id}/opening',
+    'POST /api/v1/platform/platform-games/{id}/draw-schedule',
+    'POST /api/v1/platform/recharge-quota/grants',
+    'POST /api/v1/platform/recharge-quota/reclaims',
+    'POST /api/v1/platform/platform-games/official-calendar/sync',
     'PATCH /api/v1/platform/auth-settings',
     'PUT /api/v1/platform/compliance-policy',
     'POST /api/v1/platform/compliance-checks',
@@ -52,8 +54,7 @@ test('platform admin entry documents only registered independent routes and its 
     'POST /api/v1/platform/global-users/{id}/delete',
     'POST /api/v1/platform/platform-games',
     'POST /api/v1/platform/platform-games/rule-preview',
-    'POST /api/v1/platform/platform-games/{id}/configured/versions',
-    'POST /api/v1/platform/platform-games/{id}/configured/versions/{versionId}',
+    'POST /api/v1/platform/platform-games/{id}/configured/rules',
     'POST /api/v1/platform/platform-games/periods/{id}/result',
     'POST /api/v1/platform/platform-games/{id}/draw-source-preview',
     'POST /api/v1/platform/platform-games/{id}/draw-sources',
@@ -63,7 +64,6 @@ test('platform admin entry documents only registered independent routes and its 
     'POST /api/v1/platform/platform-games/{id}/name',
     'POST /api/v1/platform/platform-games/{id}/lifecycle',
     'POST /api/v1/platform/platform-games/{id}/periods',
-    'POST /api/v1/platform/platform-games/{id}/plays',
     'PATCH /api/v1/platform/platform-settings',
   ];
   expectedPlatformRoutes.push(...platformExtraWrites.map(key => {const [method,path]=key.split(' ');return {method,path};}));
@@ -92,7 +92,7 @@ test('platform admin entry documents only registered independent routes and its 
   for (const route of routes.filter(route => route.path.startsWith('/api/v1/admin/'))) {
     const operation = doc.paths[route.path]?.[route.method.toLowerCase()];
     if (!operation) continue;
-    if (route.path === '/api/v1/admin/auth/login') {
+    if (['/api/v1/admin/auth/login','/api/v1/admin/auth/config','/api/v1/admin/auth/challenge'].includes(route.path)) {
       assert.deepEqual(operation.security, []);
       continue;
     }
@@ -104,6 +104,7 @@ test('platform admin entry documents only registered independent routes and its 
   const platformWrites = platformRoutes.filter(route => route.method !== 'GET').map(operationKey).sort();
   assert.deepEqual(platformWrites, [
     ...platformExtraWrites,
+    'PUT /api/v1/platform/notification-templates/{key}',
     'DELETE /api/v1/platform/brands/{id}',
     'PATCH /api/v1/platform/accounts/{id}',
     'PATCH /api/v1/platform/brand-operation',

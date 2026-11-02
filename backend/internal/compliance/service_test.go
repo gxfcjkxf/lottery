@@ -56,7 +56,7 @@ func check(t *testing.T, s Service, a access.Account, in CheckInput) (Decision, 
 func financial(t *testing.T, s Service) string {
 	t.Helper()
 	var v string
-	if e := s.DB.QueryRow(context.Background(), `SELECT md5(jsonb_build_object('accounts',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM point_accounts a),'buckets',(SELECT jsonb_agg(to_jsonb(b) ORDER BY account_id,source,state) FROM point_buckets b),'ledger',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM point_ledger_entries l),'orders',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM bet_orders o),'members',(SELECT jsonb_agg(to_jsonb(m) ORDER BY id) FROM brand_members m))::text)`).Scan(&v); e != nil {
+	if e := s.DB.QueryRow(context.Background(), `SELECT md5(jsonb_build_object('accounts',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM point_accounts a),'buckets',(SELECT jsonb_agg(to_jsonb(b) ORDER BY account_id,source,state) FROM point_buckets b),'ledger',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM point_ledger_entries l),'orders',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM configured_orders o),'members',(SELECT jsonb_agg(to_jsonb(m) ORDER BY id) FROM brand_members m))::text)`).Scan(&v); e != nil {
 		t.Fatal(e)
 	}
 	return v

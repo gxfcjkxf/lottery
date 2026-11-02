@@ -15,7 +15,7 @@ const totals = {
   withdrawals: ["order_count", "requested_points", "reviewing_count", "reviewing_points", "processing_count", "processing_points", "paid_count", "paid_points", "rejected_count", "rejected_points", "failed_count", "failed_points", "cancelled_count", "cancelled_points"],
   commissions: ["entry_count", "paid_entry_count", "paid_points", "adjustment_entry_count", "adjustment_credit_points", "adjustment_debit_points", "correction_entry_count", "correction_credit_points", "correction_debit_points", "net_points"],
   rewards: ["entry_count", "grant_entry_count", "grant_points", "reversal_entry_count", "reversal_points", "net_points"],
-  reward_orders: ["order_count", "original_points", "granted_count", "granted_points", "pending_count", "pending_points", "revoked_count", "revoked_points"],
+  reward_orders: ["order_count", "original_points", "granted_count", "granted_points", "revoked_count", "revoked_points"],
 };
 const archiveSnapshot = obj({
   brand_id: uuid,
@@ -60,7 +60,7 @@ record.description = "Manual records retain their exact 12-field JSON shape. Aut
 const strictControlFreeReason = {
   type: "string", maxLength: 500,
   pattern: "^(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]*$",
-  description: "Optional; empty string is allowed. Otherwise trimmed UTF-8, at most 500 UTF-8 bytes, with no C0/C1 control characters. The byte bound is enforced by the handler; JSON Schema maxLength counts characters.",
+  description: "Optional; empty string is allowed. Otherwise trimmed UTF-8, at most 500 characters, with no C0/C1 control characters. The handler and JSON Schema both count Unicode characters.",
 };
 const input = obj({
   kind: { type: "string", enum: ["daily", "monthly"] },
@@ -115,6 +115,7 @@ export const schemas = {
 
 const path = "/api/v1/admin/report-archives";
 const pagination = [
+  {name:"kind",in:"query",required:false,schema:{type:"string",enum:["daily","monthly"]},description:"Filter archive type before counting and pagination; omitted returns both types."},
   { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
   { name: "offset", in: "query", required: false, schema: { type: "integer", minimum: 0, maximum: 1000000, default: 0 } },
 ];

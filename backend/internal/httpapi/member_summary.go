@@ -13,17 +13,8 @@ import (
 // All betting protocols are aggregated on the server, never by paging the
 // member's history in the browser. Refunds are neutral; Niu uses actual loss,
 // not its temporary maximum-loss reserve, when calculating settled profit.
-const memberOrderMetricsSQL = ` SELECT total_points::numeric AS stake, status IN ('placed','abnormal') AS pending,
- prize_points::numeric-total_points::numeric AS net, settled_at
- FROM bet_orders WHERE brand_id=$1 AND brand_member_id=$2
- UNION ALL
- SELECT total_points::numeric,status='placed',prize_points::numeric+refund_points::numeric-total_points::numeric,settled_at
- FROM platform_mark_six_orders WHERE brand_id=$1 AND member_id=$2
- UNION ALL
- SELECT total_points::numeric,status='placed',CASE WHEN profile='canada_niuniu' THEN prize_points::numeric-lost_points::numeric ELSE prize_points::numeric+refund_points::numeric-total_points::numeric END,settled_at
- FROM platform_canada_orders WHERE brand_id=$1 AND member_id=$2
- UNION ALL
- SELECT total_points::numeric,status='placed',CASE WHEN snapshot->'catalog'->>'funding'='reserve' THEN (result->>'prize_points')::numeric-coalesce((result->>'consumed_points')::numeric,0) ELSE (result->>'prize_points')::numeric+(result->>'refund_points')::numeric-total_points::numeric END,settled_at
+const memberOrderMetricsSQL = `SELECT total_points::numeric AS stake,status='placed' AS pending,
+ CASE WHEN snapshot->'catalog'->>'funding'='reserve' THEN (result->>'prize_points')::numeric-coalesce((result->>'consumed_points')::numeric,0) ELSE (result->>'prize_points')::numeric+(result->>'refund_points')::numeric-total_points::numeric END AS net,settled_at
  FROM configured_orders WHERE brand_id=$1 AND member_id=$2`
 
 const memberSummarySQL = `WITH bounds AS (

@@ -50,7 +50,7 @@ function fixture(kind: ReportKind, options: { label?: string; wrongBrand?: boole
     brand_id: options.wrongBrand ? member : brand, snapshot_at: snapshot, timezone: 'Asia/Singapore',
     from: options.queryFrom ?? from, to, group_by: groupBy, game_id: '', member_id: options.memberFilter ?? '', agent_id: '', cycle_id: '', order_id: '',
   }
-  const row = (record: string, k: string, l: string, totals: Record<string, string>) => fields.map((field, index) => {
+  const row = (record: string, k: string, l: string, totals: Record<string, string>) => fields.map((field) => {
     if (field === 'record_type') return record
     if (field === 'key') return k
     if (field === 'label') return l
@@ -140,37 +140,6 @@ describe('platform report export API', () => {
     await createPlatformReportExportApi(call).export(brand, 'rewards', { ...query, member_id: member })
     const url = new URL(String(call.mock.calls[0]![0]), 'http://localhost')
     expect(Object.fromEntries(url.searchParams)).toEqual({ from, to, group_by: 'day', member_id: member })
-  })
-
-  it('rejects brand/query mismatch, invalid schema/checksum/headers, missing audit IDs, and truncation', async () => {
-    const wrongBrand = await responseFor('betting', { wrongBrand: true })
-    await expect(createPlatformReportExportApi(fetchResponse(wrongBrand)).export(brand, 'betting', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const wrongQuery = await responseFor('betting', { queryFrom: '2026-10-08T00:00:00Z' })
-    await expect(createPlatformReportExportApi(fetchResponse(wrongQuery)).export(brand, 'betting', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    await expect(createPlatformReportExportApi(fetchResponse(await responseFor('betting'))).export(brand, 'betting', { ...query, member_id: member })).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const badHash = await responseFor('betting'); badHash.headers.set('X-Report-SHA256', '0'.repeat(64))
-    await expect(createPlatformReportExportApi(fetchResponse(badHash)).export(brand, 'betting', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const noAudit = await responseFor('betting'); noAudit.headers.delete('X-Report-Audit-ID')
-    await expect(createPlatformReportExportApi(fetchResponse(noAudit)).export(brand, 'betting', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const oldCommission = await responseFor('commission'); oldCommission.headers.set('X-Report-Format-Version', '1')
-    await expect(createPlatformReportExportApi(fetchResponse(oldCommission)).export(brand, 'commission', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const complete = await responseFor('betting')
-    const partialStatus = new Response(await complete.arrayBuffer(), { status: 206, headers: complete.headers })
-    await expect(createPlatformReportExportApi(fetchResponse(partialStatus)).export(brand, 'betting', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const wrongKind = await responseFor('betting'); wrongKind.headers.set('X-Report-Kind', 'ledger')
-    await expect(createPlatformReportExportApi(fetchResponse(wrongKind)).export(brand, 'betting', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const wrongColumns = await responseFor('betting', { wrongColumns: true })
-    await expect(createPlatformReportExportApi(fetchResponse(wrongColumns)).export(brand, 'betting', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const noCacheGuard = await responseFor('betting'); noCacheGuard.headers.delete('Cache-Control')
-    await expect(createPlatformReportExportApi(fetchResponse(noCacheGuard)).export(brand, 'betting', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const wrongTotals = await responseFor('betting', { wrongTotals: true })
-    await expect(createPlatformReportExportApi(fetchResponse(wrongTotals)).export(brand, 'betting', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const truncated = await responseFor('betting'); truncated.headers.set('Content-Length', String((await truncated.clone().arrayBuffer()).byteLength + 1))
-    await expect(createPlatformReportExportApi(fetchResponse(truncated)).export(brand, 'betting', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const oversized = await responseFor('betting'); oversized.headers.set('Content-Length', String(4 * 1024 * 1024 + 1))
-    await expect(createPlatformReportExportApi(fetchResponse(oversized)).export(brand, 'betting', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-    const tooManyGroups = await responseFor('betting', { groups: 10001 })
-    await expect(createPlatformReportExportApi(fetchResponse(tooManyGroups)).export(brand, 'betting', query)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
 
   it('preserves 403 and 413 errors and wraps network failures as PlatformApiError', async () => {

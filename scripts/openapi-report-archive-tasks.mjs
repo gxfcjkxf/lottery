@@ -1,3 +1,4 @@
+import { archiveScheduleProperties } from './report-archive-schedule-schema.mjs';
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
 const obj = (properties, required = Object.keys(properties)) => ({ type: "object", properties, required, additionalProperties: false });
 const uuid = ref("UUID"), date = ref("DateTime"), nullable = schema => ({ anyOf: [schema, { type: "null" }] });
@@ -8,7 +9,10 @@ const windowSchema = obj({
   timezone: { type: "string", minLength: 1 }, from: date, to: date,
 });
 windowSchema.description = "Persisted frozen half-open instant range. Clients validate the canonical period key, named timezone label, real timestamp syntax, and from < to; they must not recalculate boundaries from the current timezone database.";
+const scheduledRun = kind => nullable(obj({ execute_at: date, period_key: {type:'string',pattern:kind==='daily'?'^[0-9]{4}-[0-9]{2}-[0-9]{2}$':'^[0-9]{4}-[0-9]{2}$'} }));
 const policy = obj({
+  ...archiveScheduleProperties,
+  next_runs: obj({daily:scheduledRun('daily'),monthly:scheduledRun('monthly')}),
   brand_id: uuid, version: safeVersion, daily_enabled: { type: "boolean" }, monthly_enabled: { type: "boolean" },
   daily_start_period: nullable({ type: "string", pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }),
   monthly_start_period: nullable({ type: "string", pattern: "^[0-9]{4}-[0-9]{2}$" }), timezone: { type: "string", minLength: 1 },
@@ -52,12 +56,11 @@ export const schemas = {
   ReportArchiveTaskPage: page,
   ReportArchiveTaskRetryInput: obj({
     version: { type: "integer", minimum: 1, maximum: 9007199254740990 },
-    reason: { type: "string", maxLength: 500, pattern: "^(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]*$", description: "Optional; empty string is allowed. Otherwise trimmed UTF-8, at most 500 UTF-8 bytes; C0/C1 controls are forbidden. Byte length is enforced by the handler." },
+    reason: { type: "string", maxLength: 500, pattern: "^(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]*$", description: "Optional; empty string is allowed. Otherwise trimmed UTF-8, at most 500 characters; C0/C1 controls are forbidden. Character length is enforced by the handler." },
   }, ["version"]),
 };
 
 export const operations = [
-  { method: "GET", path: "/api/v1/admin/report-archive-policy", operationId: "getReportArchiveAutomaticPolicy", summary: "Read automatic report archive policy", tag: "report archive tasks", auth: "admin", brandHeader: true, permissions: view, ...response(ref("ReportArchivePolicy")), description: `${routeDescription} Read only. Enabling or disabling uses the separately authorized PUT operation.` },
   { method: "GET", path: "/api/v1/admin/report-archive-tasks", operationId: "listReportArchiveAutomaticTasks", summary: "List automatic report archive tasks", tag: "report archive tasks", auth: "admin", brandHeader: true, permissions: view,
     parameters: [
       { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },

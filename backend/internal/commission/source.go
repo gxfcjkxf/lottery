@@ -21,9 +21,8 @@ var (
 	uuid        = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 )
 
-// Source is an internal, non-mutating reader, not an HTTP permission boundary
-// or a commission accrual/payout service. A future worker must explicitly select
-// and validate the financial policy saved with the bet before recording money.
+// Source reads immutable configured order facts inside the caller transaction.
+// The commission worker separately validates the policy saved at purchase.
 type Source struct{}
 
 // Resolution distinguishes exclusions from corrupt final evidence. A missing
@@ -33,13 +32,13 @@ type Resolution struct {
 	Fact   *OrderFact
 }
 
-// OrderFact is private settlement-generation evidence. It must not be used as
+// OrderFact is private configured settlement evidence. It must not be used as
 // a public DTO. The original attribution is retained, not rebuilt from today's
 // mutable agent tree; legacy/null commission policy is NOT a payout permission.
 type OrderFact struct {
 	BrandID, OrderID, MemberID, AccountID, GameID, PeriodID, RuleVersionID string
-	DebitEntryID, JobID, CalculationID                                     string
-	Generation, BetLedgerVersion                                           int64
+	DebitEntryID                                                           string
+	BetLedgerVersion                                                       int64
 	Status                                                                 string
 	PlacedAt, SettledAt                                                    time.Time
 	PrizePoints                                                            points.Amount
@@ -52,107 +51,74 @@ func (Source) FinalOrderTx(ctx context.Context, tx pgx.Tx, brand, order string) 
 	if tx == nil || !uuid.MatchString(brand) || !uuid.MatchString(order) {
 		return Resolution{}, ErrInvalid
 	}
-	// Keep the current result/job pointer stable until the caller ends its
-	// transaction. NOWAIT also remains safe if a future caller owns a wallet:
-	// correction/settlement use period -> wallet, never invert that wait order.
 	var period string
-	err := tx.QueryRow(ctx, `SELECT p.id::text FROM periods p JOIN bet_orders o
- ON o.brand_id=p.brand_id AND o.period_id=p.id WHERE o.brand_id=$1 AND o.id=$2
- FOR SHARE OF p NOWAIT`, brand, order).Scan(&period)
+	err := tx.QueryRow(ctx, `SELECT p.id::text FROM platform_game_periods p JOIN configured_orders o ON o.period_id=p.id WHERE o.brand_id=$1 AND o.id=$2 FOR SHARE OF p NOWAIT`, brand, order).Scan(&period)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Resolution{}, ErrNotFound
 	}
-	var pgerr *pgconn.PgError
-	if errors.As(err, &pgerr) && pgerr.Code == "55P03" {
+	var pe *pgconn.PgError
+	if errors.As(err, &pe) && pe.Code == "55P03" {
 		return Resolution{}, ErrBusy
 	}
 	if err != nil {
 		return Resolution{}, err
 	}
-
 	var fact OrderFact
-	var stake points.Amount
-	var settled *time.Time
-	var job, calculation *string
-	var generation, debitVersion *int64
 	var allocation, attribution []byte
-	var periodState string
-	var refunded, correctionOpen, witnesses bool
-	err = tx.QueryRow(ctx, `SELECT o.brand_id::text,o.id::text,o.brand_member_id::text,o.account_id::text,
- o.game_id::text,o.period_id::text,o.rule_version_id::text,o.debit_entry_id::text,
- o.status,o.total_points,o.prize_points,o.placed_at,o.settled_at,o.deduction_allocation,o.attribution_snapshot,
- p.status,o.refund_entry_id IS NOT NULL,
- EXISTS(SELECT 1 FROM draw_corrections dc WHERE dc.brand_id=o.brand_id AND dc.period_id=p.id AND dc.state<>'completed'),
- j.id::text,c.id::text,j.generation,l.version,
- coalesce(j.state='completed' AND j.completed_at IS NOT NULL AND j.period_id=p.id AND j.game_id=o.game_id
- AND j.draw_result_id=p.draw_result_id AND c.job_id=j.id AND c.period_id=p.id AND c.order_id=o.id
- AND c.order_version=o.version-1 AND c.definition_hash=o.definition_hash AND c.draw_hash=d.result_hash
- AND c.won=(o.status='won') AND c.prize_points=o.prize_points
- AND t.period_id=p.id AND t.state='paid' AND t.calculation_id=c.id
- AND t.payout_entry_id IS NOT DISTINCT FROM o.payout_entry_id
- AND l.entry_type='bet' AND l.reference_type='bet_order' AND l.reference_id=o.id
- AND ((o.prize_points=0 AND o.payout_entry_id IS NULL) OR
- (o.prize_points>0 AND pl.id IS NOT NULL AND pl.entry_type='prize' AND pl.reference_type='settlement_calculation'
- AND pl.reference_id=c.id AND pl.operation_key='settlement-payout:'||c.id::text)),false)
- FROM bet_orders o JOIN periods p ON p.brand_id=o.brand_id AND p.id=o.period_id
- LEFT JOIN settlement_jobs j ON j.brand_id=o.brand_id AND j.id=p.current_settlement_job_id
- LEFT JOIN settlement_calculations c ON c.brand_id=o.brand_id AND c.id=o.settlement_calculation_id
- LEFT JOIN settlement_targets t ON t.brand_id=o.brand_id AND t.job_id=j.id AND t.order_id=o.id
- LEFT JOIN draw_results d ON d.brand_id=o.brand_id AND d.id=p.draw_result_id AND d.period_id=p.id AND d.game_id=o.game_id
- LEFT JOIN point_ledger_entries l ON l.brand_id=o.brand_id AND l.account_id=o.account_id AND l.member_id=o.brand_member_id AND l.id=o.debit_entry_id
- LEFT JOIN point_ledger_entries pl ON pl.brand_id=o.brand_id AND pl.account_id=o.account_id AND pl.member_id=o.brand_member_id AND pl.id=o.payout_entry_id
- WHERE o.brand_id=$1 AND o.id=$2`, brand, order).Scan(
+	var settled *time.Time
+	var loss points.Amount
+	var reserved bool
+	var payout, refund, lossEntry *string
+	err = tx.QueryRow(ctx, `SELECT o.brand_id::text,o.id::text,o.brand_member_id::text,o.account_id::text,o.game_id::text,o.period_id::text,o.rule_version_id::text,o.debit_entry_id::text,
+ o.status,o.effective_points,o.prize_points,o.loss_points,o.placed_at,o.settled_at,o.deduction_allocation,o.attribution_snapshot,l.version,
+ coalesce(o.snapshot->'catalog'->>'funding'='reserve',false),o.payout_entry_id::text,o.refund_entry_id::text,o.loss_entry_id::text
+ FROM betting_financial_facts o JOIN point_ledger_entries l ON l.id=o.debit_entry_id WHERE o.brand_id=$1 AND o.id=$2`, brand, order).Scan(
 		&fact.BrandID, &fact.OrderID, &fact.MemberID, &fact.AccountID, &fact.GameID, &fact.PeriodID, &fact.RuleVersionID, &fact.DebitEntryID,
-		&fact.Status, &stake, &fact.PrizePoints, &fact.PlacedAt, &settled, &allocation, &attribution, &periodState, &refunded, &correctionOpen,
-		&job, &calculation, &generation, &debitVersion, &witnesses)
+		&fact.Status, &fact.Basis.TurnoverPoints, &fact.PrizePoints, &loss, &fact.PlacedAt, &settled, &allocation, &attribution, &fact.BetLedgerVersion, &reserved, &payout, &refund, &lossEntry)
 	if err != nil {
 		return Resolution{}, err
 	}
-	switch fact.Status {
-	case "bet_cancelled", "judged_cancelled":
-		return Resolution{Reason: "cancelled"}, nil
-	case "abnormal":
-		return Resolution{Reason: "abnormal"}, nil
-	case "placed", "won", "lost":
-	default:
-		return Resolution{}, ErrEvidence
-	}
-	if correctionOpen {
-		return Resolution{Reason: "correction_open"}, nil
-	}
-	if fact.Status == "placed" || periodState != "settled" {
+	if fact.Status == "placed" {
 		return Resolution{Reason: "not_final"}, nil
 	}
-	if !witnesses || refunded || settled == nil || job == nil || calculation == nil || generation == nil || *generation < 1 || debitVersion == nil || *debitVersion < 1 || !json.Valid(attribution) {
+	if settled == nil || fact.BetLedgerVersion < 1 || !json.Valid(attribution) || json.Unmarshal(allocation, &fact.Allocation) != nil {
 		return Resolution{}, ErrEvidence
 	}
-	fact.JobID, fact.CalculationID, fact.Generation, fact.BetLedgerVersion = *job, *calculation, *generation, *debitVersion
+	if (fact.PrizePoints > 0) != (payout != nil) {
+		return Resolution{}, ErrEvidence
+	}
 	fact.SettledAt = *settled
-	if json.Unmarshal(allocation, &fact.Allocation) != nil {
-		return Resolution{}, ErrEvidence
+	fact.Basis.LossPoints = loss
+	target := ""
+	if reserved {
+		target = "system_frozen"
 	}
-	var total big.Int
-	for _, a := range fact.Allocation {
-		total.Add(&total, big.NewInt(int64(a.Points)))
-	}
-	if total.Cmp(big.NewInt(int64(stake))) != 0 {
-		return Resolution{}, ErrEvidence
-	}
-	if err = verifyPosting(ctx, tx, fact, fact.DebitEntryID, "bet", "bet_order", fact.OrderID, fact.Allocation, "available", ""); err != nil {
+	if err = verifyPosting(ctx, tx, fact, fact.DebitEntryID, "bet", "configured_order", fact.OrderID, fact.Allocation, "available", target); err != nil {
 		return Resolution{}, err
 	}
-	if fact.PrizePoints > 0 {
-		var payout string
-		if err = tx.QueryRow(ctx, `SELECT payout_entry_id::text FROM bet_orders WHERE brand_id=$1 AND id=$2`, brand, order).Scan(&payout); err != nil {
-			return Resolution{}, err
-		}
-		if err = verifyPosting(ctx, tx, fact, payout, "prize", "settlement_calculation", fact.CalculationID, []points.Allocation{{Source: "winning", State: "available", Points: fact.PrizePoints}}, "", "available"); err != nil {
+	if payout != nil {
+		if err = verifyPosting(ctx, tx, fact, *payout, "prize", "configured_order", fact.OrderID, []points.Allocation{{Source: "winning", State: "available", Points: fact.PrizePoints}}, "", "available"); err != nil {
 			return Resolution{}, err
 		}
 	}
-	fact.Basis, err = Bases(fact.Status, stake, fact.PrizePoints)
-	if err != nil {
-		return Resolution{}, ErrEvidence
+	for _, entry := range []struct {
+		id             *string
+		kind, from, to string
+	}{{refund, "refund", target, "available"}, {lossEntry, "bet", "system_frozen", ""}} {
+		if entry.id == nil {
+			continue
+		}
+		var raw []byte
+		var alloc []points.Allocation
+		if err = tx.QueryRow(ctx, `SELECT source_allocation FROM point_ledger_entries WHERE id=$1`, *entry.id).Scan(&raw); err != nil {
+			return Resolution{}, err
+		}
+		if json.Unmarshal(raw, &alloc) != nil {
+			return Resolution{}, ErrEvidence
+		}
+		if err = verifyPosting(ctx, tx, fact, *entry.id, entry.kind, "configured_order", fact.OrderID, alloc, entry.from, entry.to); err != nil {
+			return Resolution{}, err
+		}
 	}
 	fact.AttributionSnapshot = append(json.RawMessage(nil), attribution...)
 	return Resolution{Reason: "final", Fact: &fact}, nil

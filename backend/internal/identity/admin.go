@@ -112,7 +112,7 @@ func (s *Store) AdminChangePassword(ctx context.Context, tx pgx.Tx, id, currentP
 	}
 	if err != nil {
 		if err == authcrypto.ErrInvalidPassword {
-			return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字节"), nil
+			return mutation.Fail(400, "PASSWORD_INVALID", "密码须为 6-30 字符"), nil
 		}
 		return mutation.Result{}, err
 	}

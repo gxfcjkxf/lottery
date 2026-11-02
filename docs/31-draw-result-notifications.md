@@ -1,5 +1,7 @@
 # 开奖公布和更正的历史站内通知
 
+> 2026-10-28 执行范围更新：投注、结算、佣金／提现事实与经营统计均以[统一配置化链路](65-unified-configured-betting.md)及当前 OpenAPI 为准。文中的旧品牌期次、专用订单、结算任务、旧夹具与旧容量结果是历史设计或证据，不代表当前可用接口。
+
 本模块在正式公布开奖结果时，为本期有过投注的每个品牌会员生成一条站内通知。2026-10-09已确认受众包含后来取消或判为异常的注单；同一会员投注多次仍只收到一条。开奖结果更正另记新通知，原消息保留。通知展示历史开奖结果，不判断中奖、不证明派奖、不改变积分，也不启用外部发送渠道。
 
 ## 发布时点和保存受众
@@ -26,7 +28,7 @@
 
 沿用GET用户notifications和POST标为已读接口及品牌路径别名，没有新的用户写入结果或发送通知接口。旧二十类payload仍恰好resource_id、points两字段，新开奖payload恰好为resource_id（结果UUID）、points:null、draw。
 
-draw恰好包含game_id、period_id、period_no、result、drawn_at、previous_draw_id六字段。result仍为regular、special、digits三个数组：普通和特别号码各最多10个、值域0至1000000，数字最多10位且每位0至9；全部为空或混合数字与普通/特别数组无效。首次previous_draw_id为null；更正为不同于自身的前置结果UUID。期号非空，最多80 UTF-8字节；时间保存为原UTC开奖时刻，不从今天的配置重新推算。
+draw恰好包含game_id、period_id、period_no、result、drawn_at、previous_draw_id六字段。result仍为regular、special、digits三个数组：普通和特别号码各最多10个、值域0至1000000，数字最多10位且每位0至9；全部为空或混合数字与普通/特别数组无效。首次previous_draw_id为null；更正为不同于自身的前置结果UUID。期号非空，最多80 字符；时间保存为原UTC开奖时刻，不从今天的配置重新推算。
 
 数据库要求新inboxpayload与原保存事实一致，包括时间精度；不允许借正确事件写入不同号码、积分或私有字段。会员只能查询本人本品牌消息，公开载荷不包含受众ID、审计、后台人员、内部原因或账本见证。不同事件专属OpenAPI组件为LotteryNotificationDrawPublished和LotteryNotificationDrawCorrected。
 

@@ -59,7 +59,7 @@ func TestValidateSourcesRejectsInvalidConfigurations(t *testing.T) {
 		}, want: ErrInvalid},
 		{name: "empty name", edit: editFirst(func(c *SourceConfig) { c.Name = "" }), want: ErrInvalid},
 		{name: "blank name", edit: editFirst(func(c *SourceConfig) { c.Name = " \t" }), want: ErrInvalid},
-		{name: "oversized name", edit: editFirst(func(c *SourceConfig) { c.Name = strings.Repeat("n", maxConfigNameBytes+1) }), want: ErrLimit},
+		{name: "oversized name", edit: editFirst(func(c *SourceConfig) { c.Name = strings.Repeat("n", maxConfigNameCharacters+1) }), want: ErrLimit},
 		{name: "invalid source type", edit: editFirst(func(c *SourceConfig) { c.Type = "manual" }), want: ErrInvalid},
 		{name: "zero priority", edit: editFirst(func(c *SourceConfig) { c.Priority = 0 }), want: ErrInvalid},
 		{name: "priority over limit", edit: editFirst(func(c *SourceConfig) { c.Priority = maxConfigPriority + 1 }), want: ErrLimit},
@@ -71,7 +71,7 @@ func TestValidateSourcesRejectsInvalidConfigurations(t *testing.T) {
 		}, want: ErrInvalid},
 		{name: "empty endpoint", edit: editFirst(func(c *SourceConfig) { c.Endpoint = "" }), want: ErrInvalid},
 		{name: "oversized endpoint", edit: editFirst(func(c *SourceConfig) {
-			c.Endpoint = "https://feeds.example.com/" + strings.Repeat("a", maxConfigEndpointBytes)
+			c.Endpoint = "https://feeds.example.com/" + strings.Repeat("a", maxConfigEndpointCharacters)
 		}), want: ErrLimit},
 		{name: "http endpoint", edit: editFirst(func(c *SourceConfig) { c.Endpoint = "http://feeds.example.com/draws" }), want: ErrInvalid},
 		{name: "endpoint userinfo", edit: editFirst(func(c *SourceConfig) { c.Endpoint = "https://user:pass@feeds.example.com/draws" }), want: ErrInvalid},
@@ -94,7 +94,7 @@ func TestValidateSourcesRejectsInvalidConfigurations(t *testing.T) {
 		{name: "malformed dns label", edit: editFirst(func(c *SourceConfig) { c.Endpoint = "https://-bad.example.com/draws" }), want: ErrInvalid},
 		{name: "api selector not empty", edit: editFirst(func(c *SourceConfig) { c.Selector = "#result" }), want: ErrInvalid},
 		{name: "dom selector empty", edit: editFirst(func(c *SourceConfig) { c.Type = "dom" }), want: ErrInvalid},
-		{name: "dom selector too long", edit: editFirst(func(c *SourceConfig) { c.Type = "dom"; c.Selector = strings.Repeat("x", maxConfigSelectorBytes+1) }), want: ErrLimit},
+		{name: "dom selector too long", edit: editFirst(func(c *SourceConfig) { c.Type = "dom"; c.Selector = strings.Repeat("x", maxConfigSelectorCharacters+1) }), want: ErrLimit},
 		{name: "selector nul", edit: editFirst(func(c *SourceConfig) { c.Type = "dom"; c.Selector = "#x\x00y" }), want: ErrInvalid},
 		{name: "credential reference secret punctuation", edit: editFirst(func(c *SourceConfig) { c.CredentialRef = "token=secret" }), want: ErrInvalid},
 		{name: "credential reference too long", edit: editFirst(func(c *SourceConfig) { c.CredentialRef = "a" + strings.Repeat("x", maxConfigCredentialRef) }), want: ErrLimit},

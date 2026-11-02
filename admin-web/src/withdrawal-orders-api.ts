@@ -4,7 +4,7 @@ import { isWithdrawalHistory, isWithdrawalOrder, isWithdrawalPage, type Withdraw
 import { AdminApiError, type AdminAccount } from "./admin-api";
 import { brandPermissionSet } from "./brand-permissions";
 
-export { AdminApiError as WithdrawalAdminApiError };
+;
 export const MAX_WITHDRAWAL_PAGE = 100;
 const BRAND_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

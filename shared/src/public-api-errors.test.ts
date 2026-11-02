@@ -5,6 +5,7 @@ import { publicApiErrorCatalog, publicApiErrorKey, publicApiErrorText } from './
 
 describe('public API error presentation', () => {
   it.each([
+    ['IDENTITY_EXISTS', 409, 'identityExists'],
     ['COMMISSION_PAYMENT_CORRECTION_REQUIRED', 409, 'commissionCorrection'],
     ['COMMISSION_CORRECTION_AVAILABLE_INSUFFICIENT', 409, 'commissionPoints'],
     ['ROLE_ASSIGNED', 409, 'assigned'], ['POINTS_INSUFFICIENT', 409, 'points'],

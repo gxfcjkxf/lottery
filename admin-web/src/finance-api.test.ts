@@ -52,7 +52,7 @@ describe("finance API client", () => {
   it("uses the specified routes, query fields, and request bodies", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockImplementation(async () => ok({ items: [] }));
+      .mockImplementation(async () => ok({ items: []  ,total_count: '0'}));
     const api = createFinanceApi(fetcher);
     await api.ledger("b", "m", 50, 100);
     await api.reconciliation("b", "m");
@@ -66,7 +66,7 @@ describe("finance API client", () => {
 
   it("rejects ledger snapshots missing current commission buckets", async () => {
     const legacy = Object.fromEntries(["recharge", "winning", "gift"].map((source) => [source, { available: "0", manual_frozen: "0", system_frozen: "0", withdrawal: "0" }]));
-    const api = createFinanceApi(vi.fn<typeof fetch>().mockResolvedValue(ok({ items: [{ before_snapshot: legacy, delta_snapshot: legacy, after_snapshot: legacy }] })));
+    const api = createFinanceApi(vi.fn<typeof fetch>().mockResolvedValue(ok({ items: [{ before_snapshot: legacy, delta_snapshot: legacy, after_snapshot: legacy }]  ,total_count: '1'})));
     await expect(api.ledger("brand", "member")).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
     expect(Object.keys(legacy)).toEqual(["recharge", "winning", "gift"]);
   });
@@ -277,3 +277,22 @@ describe("finance API client", () => {
     expect(canViewWallet({ ...account, platform_permissions: undefined }, "b")).toBe(false);
   });
 });
+
+it('manual recharge validates an immediate credit receipt and retains explicit request identity',async()=>{
+ const body={member_id:wallet.member_id,points:'70',remark:'',reason:''}
+ const receipt={id:'44444444-4444-4444-8444-444444444444',brand_id:wallet.brand_id,member_id:wallet.member_id,points:'70',method:'manual',state:'confirmed',ledger_entry_id:'55555555-5555-4555-8555-555555555555',confirmed_at:'2026-10-24T00:00:00Z'}
+ const fetcher=vi.fn<typeof fetch>().mockResolvedValueOnce(ok(receipt)).mockResolvedValueOnce(ok({...receipt,state:'pending'}))
+ const api=createFinanceApi(fetcher)
+ await expect(api.manualRecharge(wallet.brand_id,body,'manual-original-key')).resolves.toEqual(receipt)
+ expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/admin/recharges/manual')
+ const init=fetcher.mock.calls[0]![1]!
+ expect(new Headers(init.headers).get('Idempotency-Key')).toBe('manual-original-key')
+ expect(new Headers(init.headers).get('X-Brand-ID')).toBe(wallet.brand_id)
+ expect(JSON.parse(init.body as string)).toEqual(body)
+ await expect(api.manualRecharge(wallet.brand_id,body,'manual-original-key')).rejects.toMatchObject({code:'INVALID_RESPONSE',status:502})
+})
+
+it('manual recharge reports network failures as an unconfirmed result',async()=>{
+ const api=createFinanceApi(vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Network disconnected')))
+ await expect(api.manualRecharge(wallet.brand_id,{member_id:wallet.member_id,points:'70',reason:''},'original-key')).rejects.toMatchObject({status:0,code:'NETWORK_ERROR'})
+})

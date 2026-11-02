@@ -96,6 +96,6 @@ func TestExplicitBootstrapRejectsPasswordBelowCurrentMinimum(t *testing.T) {
 	os.Args = []string{"platform", "create-admin", "--username", "admin", "--super"}
 	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "short")
 	if err := createAdmin(context.Background(), db); err == nil {
-		t.Fatal("explicit account creation accepted a password below six bytes")
+		t.Fatal("explicit account creation accepted a password below six characters")
 	}
 }

@@ -10,7 +10,7 @@ const { parse } = require('vue/compiler-sfc');
 export function emptyStateCandidates() {
   const result = [];
   const emptyKeys = new Set();
-  for (const surface of ['user-web', 'admin-web', 'platform-web']) {
+  for (const surface of ['user-web', 'admin-web', 'platform-web', 'agent-web']) {
     const dir = new URL(`${surface}/src/`, root);
     for (const file of readdirSync(dir).filter(file => /i18n.*\.ts$/.test(file))) {
       const catalog = readFileSync(new URL(file, dir), 'utf8');
@@ -19,9 +19,9 @@ export function emptyStateCandidates() {
       }
     }
   }
-  for (const surface of ['user-web', 'admin-web', 'platform-web', 'shared']) {
+  for (const surface of ['user-web', 'admin-web', 'platform-web', 'agent-web', 'shared']) {
     const dir = new URL(`${surface}/src/`, root);
-    for (const name of readdirSync(dir).filter(name => name.endsWith('.vue'))) {
+    for (const name of readdirSync(dir, { recursive: true }).filter(name => name.endsWith('.vue'))) {
       const path = `${surface}/src/${name}`;
       const source = readFileSync(new URL(name, dir), 'utf8');
       const template = parse(source).descriptor.template;
@@ -32,7 +32,8 @@ export function emptyStateCandidates() {
           const condition = node.props.find(prop => prop.type === 7 && ['if', 'else-if'].includes(prop.name))?.exp?.content ?? '';
           const classes = node.props.find(prop => prop.type === 6 && prop.name === 'class')?.value?.content ?? '';
           const loading = parentLoading || node.props.some(prop => prop.type === 7 && prop.name === 'global-loading' && !prop.exp);
-          const inline = (name === 'BrandDomains.vue' && node.tag === 'li') || /mobile-draw-empty/.test(classes) || /noEligibility|noBrand|noView|noRun|noMore/.test(text);
+          const alert = node.props.some(prop => prop.type === 6 && prop.name === 'role' && prop.value?.content === 'alert');
+          const inline = alert || (name === 'BrandDomains.vue' && node.tag === 'li') || /mobile-draw-empty/.test(classes) || /noEligibility|noBrand|noView|noRun|noMore/.test(text);
           const collection = /!\s*[\w?.]+\.length|\.length\s*===\s*0/.test(condition);
           const emptyText = /\bempty\b|emptyLabel|\.empty[A-Z]|noHistory|noResult|noGames|noOrders|noCodes|noPlayableOptions|chooseGameHistory/.test(text)
             || [...emptyKeys].some(key => text.includes(`'${key}'`) || text.includes(`"${key}"`));

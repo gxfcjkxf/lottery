@@ -1,12 +1,11 @@
 <script setup lang="ts">
+import { vRefreshButton } from "@lottery/shared";
+import { useOperationToast } from "@lottery/shared";
 import { vWriteGuard } from "@lottery/shared";
-import { AssociationName } from "@lottery/shared";
 import { useAdminI18n as usePublicErrorI18n } from "./i18n";
 const publicErrorI18n = usePublicErrorI18n();
 const publicErrorMessage = publicErrorI18n.errorMessage;
-const displayPublicError = publicErrorI18n.displayError;
 import { withGlobalLoading } from '@lottery/shared';
-import { vRefreshButton } from '@lottery/shared';
 import { vGlobalLoading } from "@lottery/shared";
 import { vInlineValidation } from '@lottery/shared'
 import { computed, onMounted, ref, watch } from "vue";
@@ -31,7 +30,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ (event: "session-invalid"): void }>();
 const api = createPointPolicyApi();
-const { locale, t, message, display } = useAdminI18n();
+const { t, message, display } = useAdminI18n();
 const policy = ref<PointPolicy | null>(null);
 const draft = ref({
   max_balance_points: "",
@@ -105,7 +104,7 @@ async function loadPolicy() {
     policy.value = null;
     if (cause instanceof AdminApiError && cause.status === 401)
       emit("session-invalid");
-    error.value = publicErrorMessage(cause);
+    error.value = publicErrorMessage(cause, 'read');
   } finally {
     if (current(generation, brandId)) loading.value = false;
   }
@@ -169,49 +168,34 @@ watch(
     void loadPolicy();
   },
 );
+
+useOperationToast(() => error.value, value => display(value), 'error');
+useOperationToast(() => notice.value, value => display(value), 'success');
 </script>
 
 <template>
-  <section class="point-policy-settings">
+  <section class="point-policy-settings brand-settings-panel">
     <header class="policy-head">
       <div>
         <h2>{{ t('admin.copy.b127d28a') }}</h2>
       </div>
-      <span class="brand-tag">{{ t('admin.copy.9c32661d') }} · <AssociationName kind="brand" :id="brandId" :locale="locale" /></span>
     </header>
 
-    <p class="server-note">
-      {{ t('admin.copy.68d54c01') }}
-    </p>
-    <p v-if="!canView" class="callout">
+    <p v-if="!canView" class="callout" role="status">
       {{ t('admin.copy.c47f4b0a') }}
     </p>
     <template v-else>
-      <div v-if="error" class="notice error" role="alert">
-        {{ display(error) }}
-        <button v-refresh-button="t('admin.copy.deca021e')" type="button" :disabled="loading || saving" @click="withGlobalLoading(loadPolicy)">
+      <div v-if="error" class="operation-recovery-actions">
+
+        <button v-refresh-button="t('admin.copy.deca021e')" type="button" class="button button-secondary" :disabled="loading || saving" @click="withGlobalLoading(loadPolicy)">
           {{ t('admin.copy.deca021e') }}
         </button>
       </div>
-        <p v-if="notice" class="notice success" role="status">{{ display(notice) }}</p>
+
       <div v-global-loading v-if="loading && !policy" class="callout" role="status">
         {{ t('admin.copy.dc40b640') }}
       </div>
-      <section v-if="policy" class="policy-card">
-        <div class="card-head">
-          <div>
-            <h3>{{ t('admin.copy.477adee5') }}</h3>
-            <p> · <AssociationName :record="policy" kind="brand" :id="policy.brand_id" :locale="locale" /></p>
-          </div>
-          <button v-refresh-button="t('admin.copy.894e2a7d')"
-            type="button"
-            class="button button-secondary"
-            :disabled="loading || saving"
-            @click="withGlobalLoading(loadPolicy)"
-          >
-            {{ t('admin.copy.894e2a7d') }}
-          </button>
-        </div>
+      <section v-if="policy && !canWrite" class="policy-card">
         <dl class="current-limits">
           <div>
             <dt>{{ t('admin.copy.3b96f2f6') }}</dt>
@@ -229,20 +213,12 @@ watch(
 
       </section>
 
-      <p v-if="!canWrite && policy" class="callout">
-        {{ t('admin.copy.80bb8df5') }}
-      </p>
+
       <form v-write-guard="saving" novalidate v-inline-validation
         v-if="canWrite && policy"
-        class="policy-card policy-form"
+        class="policy-card policy-form ui-form"
         @submit.prevent="withGlobalLoading(savePolicy)"
       >
-        <div class="card-head">
-          <div>
-            <h3>{{ t('admin.copy.112fc68f') }}</h3>
-            <p>{{ t('admin.copy.2389d9f0') }}</p>
-          </div>
-        </div>
         <label
           >{{ t('admin.copy.48b813d8') }}
           <input
@@ -251,7 +227,6 @@ watch(
             autocomplete="off"
             :placeholder="t('admin.copy.bd97fa74')"
           />
-          <small>{{ t('admin.copy.8e3b7fe0') }}</small>
         </label>
         <label
           >{{ t('admin.copy.17cf892f') }}
@@ -284,207 +259,13 @@ watch(
 </template>
 
 <style scoped>
-.point-policy-settings {
-  width: 100%;
-  min-width: 0;
-  color: #252a36;
-}
-.policy-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 14px;
-  margin: 4px 0 16px;
-}
-.policy-head h2 {
-  font-size: 19px;
-  margin: 3px 0 5px;
-}
-.policy-head p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.55;
-}
-.eyebrow {
-  font-size: 11px !important;
-  letter-spacing: 1.2px;
-  color: #8991a2 !important;
-  font-weight: 700;
-}
-.brand-tag {
-  border-radius: 20px;
-  background: #f1f3f8;
-  padding: 7px 11px;
-  color: #626b7c;
-  font-size: 11px;
-  white-space: nowrap;
-}
-.server-note,
-.callout {
-  border-radius: 8px;
-  background: #f4f6fc;
-  color: #626b7c;
-  padding: 10px 12px;
-  font-size: 11px;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-  margin: 12px 0;
-}
-.policy-card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  padding: 16px;
-  min-width: 0;
-  box-shadow: 0 2px 8px #1e2a5008;
-  margin: 13px 0;
-}
-.card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 13px;
-}
-.card-head h3 {
-  font-size: 14px;
-  margin: 0 0 4px;
-}
-.card-head p,
-.audit-id {
-  font-size: 11px;
-  color: var(--muted);
-  line-height: 1.55;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.current-limits {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin: 0;
-}
-.current-limits div {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 11px;
-  min-width: 0;
-}
-.current-limits dt {
-  font-size: 11px;
-  color: var(--muted);
-}
-.current-limits dd {
-  font-size: 16px;
-  font-weight: 700;
-  margin: 6px 0 0;
-  overflow-wrap: anywhere;
-  font-variant-numeric: tabular-nums;
-}
-.audit-id {
-  margin-top: 12px;
-}
-.policy-form {
-  display: grid;
-  gap: 12px;
-}
-.policy-form label {
-  display: grid;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  min-width: 0;
-}
-.policy-form input,
-.policy-form textarea {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  border: 1px solid #dfe3eb;
-  border-radius: 7px;
-  background: var(--surface);
-  padding: 9px 10px;
-  color: #252a36;
-  font: inherit;
-}
-.policy-form textarea {
-  resize: vertical;
-}
-.policy-form small {
-  font-size: 11px;
-  font-weight: 400;
-  color: #8991a0;
-}
-.button-primary,
-.button-secondary {
-  border-radius: 7px;
-  padding: 9px 12px;
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.button-primary {
-  justify-self: start;
-  border: 0;
-  background: var(--primary);
-  color: var(--surface);
-}
-.button-secondary {
-  border: 1px solid #e0e3ea;
-  background: white;
-  color: #586174;
-}
-.button-primary:disabled,
-.button-secondary:disabled {
-  opacity: 0.48;
-  cursor: not-allowed;
-}
-.notice {
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 11px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-  margin: 10px 0;
-}
-.notice button {
-  border: 0;
-  background: none;
-  color: inherit;
-  text-decoration: underline;
-  margin-left: 6px;
-}
-.error,
-.field-error {
-  background: #fff0ef;
-  color: #a83d36;
-}
-.success {
-  background: #edf8f2;
-  color: #287553;
-}
-.field-error {
-  margin: 0;
-  border-radius: 7px;
-  padding: 8px;
-  font-size: 11px;
-}
-@media (max-width: 600px) {
-  .policy-head {
-    flex-direction: column;
-  }
-  .brand-tag {
-    white-space: normal;
-  }
-  .policy-card {
-    padding: 13px;
-  }
-  .current-limits {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .current-limits dd {
-    font-size: 14px;
-  }
-}
+.policy-head h2 { margin: 0; font-size: 16px; }
+.policy-form, .current-limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; min-width: 0; }
+.policy-form label { display: grid; gap: 6px; min-width: 0; }
+.policy-form input { width: 100%; min-width: 0; box-sizing: border-box; }
+.policy-form .field-error, .policy-form button { grid-column: 1 / -1; }
+.current-limits div { min-width: 0; }
+.current-limits dt { color: var(--muted); }
+.current-limits dd { margin: 4px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+@media (max-width: 620px) { .policy-form, .current-limits { grid-template-columns: minmax(0, 1fr); } }
 </style>

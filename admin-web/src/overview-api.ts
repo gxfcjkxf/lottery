@@ -6,7 +6,7 @@ const unsigned = /^(0|[1-9]\d*)$/
 const signed = /^(0|-?[1-9]\d*)$/
 const date = /^\d{4}-\d{2}-\d{2}$/
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-const counts = ['total_members', 'online_members', 'unsettled_points', 'available_points', 'frozen_points', 'withdrawal_points', 'withdrawal_count', 'abnormal_count', 'failed_settlement_count', 'cancellation_count', 'yesterday_same_time_stake'] as const
+const counts = ['total_members', 'online_members', 'unsettled_points', 'available_points', 'frozen_points', 'withdrawal_points', 'withdrawal_count', 'yesterday_same_time_stake'] as const
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value) }
 function number(value: unknown, negative = false): boolean { return typeof value === 'string' && (negative ? signed : unsigned).test(value) }
 function invalid(): never { throw new AdminApiError('Invalid overview response', 502, 'INVALID_RESPONSE') }

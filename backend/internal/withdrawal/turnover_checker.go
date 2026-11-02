@@ -29,7 +29,7 @@ type TurnoverChecker struct{}
 
 const turnoverWalletRange = `o.brand_id=$1 AND o.brand_member_id=$2 AND o.account_id=$3
  AND l.brand_id=o.brand_id AND l.account_id=o.account_id AND l.member_id=o.brand_member_id
- AND l.entry_type='bet' AND l.reference_type='bet_order' AND l.reference_id=o.id
+ AND l.entry_type='bet' AND l.reference_type='configured_order' AND l.reference_id=o.id
  AND l.version>$4 AND l.version<=$5`
 
 func (TurnoverChecker) Check(ctx context.Context, tx pgx.Tx, in EligibilityInput) (EligibilityDecision, error) {
@@ -50,8 +50,8 @@ func (TurnoverChecker) Check(ctx context.Context, tx pgx.Tx, in EligibilityInput
 	// wallet, so never WAIT for a period: NOWAIT makes contention roll back with
 	// no reservation rather than introducing an inverse-order deadlock. Locks
 	// also prevent a new correction from starting between the read and commit.
-	rows, err := tx.Query(ctx, `SELECT p.id::text FROM periods p WHERE p.brand_id=$1
- AND EXISTS(SELECT 1 FROM bet_orders o JOIN point_ledger_entries l ON l.id=o.debit_entry_id
+	rows, err := tx.Query(ctx, `SELECT p.id::text FROM platform_game_periods p WHERE true
+ AND EXISTS(SELECT 1 FROM betting_financial_facts o JOIN point_ledger_entries l ON l.id=o.debit_entry_id
  WHERE o.period_id=p.id AND `+turnoverWalletRange+` AND o.status IN ('won','lost'))
  ORDER BY p.id FOR SHARE OF p NOWAIT`, args...)
 	if err != nil {
@@ -74,23 +74,10 @@ func (TurnoverChecker) Check(ctx context.Context, tx pgx.Tx, in EligibilityInput
 	// from a successful qualification. Partial/unsettled/cancelled generations
 	// never contribute. Paid losses count too, including zero-prize settlements.
 	rows, err = tx.Query(ctx, `SELECT o.id::text,o.game_id::text,o.period_id::text,o.rule_version_id::text,
- o.total_points,l.version,o.withdrawal_rule_snapshot,
- c.id::text,j.id::text,coalesce(j.state='completed' AND j.draw_result_id=p.draw_result_id
- AND t.state='paid' AND t.calculation_id=c.id
- AND c.job_id=j.id AND c.period_id=o.period_id AND c.order_id=o.id
- AND c.definition_hash=o.definition_hash AND c.draw_hash=d.result_hash
- AND c.won=(o.status='won') AND c.prize_points=o.prize_points
- AND t.payout_entry_id IS NOT DISTINCT FROM o.payout_entry_id,false)
- FROM bet_orders o JOIN point_ledger_entries l ON l.id=o.debit_entry_id
- JOIN periods p ON p.brand_id=o.brand_id AND p.id=o.period_id
- LEFT JOIN settlement_jobs j ON j.brand_id=o.brand_id AND j.id=p.current_settlement_job_id
- LEFT JOIN settlement_calculations c ON c.brand_id=o.brand_id AND c.id=o.settlement_calculation_id
- LEFT JOIN settlement_targets t ON t.brand_id=o.brand_id AND t.job_id=j.id AND t.order_id=o.id
- LEFT JOIN draw_results d ON d.brand_id=o.brand_id AND d.id=p.draw_result_id
- WHERE `+turnoverWalletRange+` AND o.status IN ('won','lost') AND o.refund_entry_id IS NULL
- AND p.status='settled'
- AND NOT EXISTS(SELECT 1 FROM draw_corrections dc WHERE dc.brand_id=o.brand_id AND dc.period_id=p.id AND dc.state<>'completed')
- ORDER BY l.version,o.id`, args...)
+ o.effective_points,l.version,o.withdrawal_rule_snapshot,o.result::text,
+ (o.settled_at IS NOT NULL AND p.result IS NOT NULL AND lottery_business_ledger_applied(l,o.brand_id,o.account_id))
+ FROM betting_financial_facts o JOIN point_ledger_entries l ON l.id=o.debit_entry_id JOIN platform_game_periods p ON p.id=o.period_id
+ WHERE `+turnoverWalletRange+` AND o.status IN('won','lost') ORDER BY l.version,o.id`, args...)
 	if err != nil {
 		return empty, err
 	}
@@ -103,15 +90,16 @@ func (TurnoverChecker) Check(ctx context.Context, tx pgx.Tx, in EligibilityInput
 		var order, game, period, rule string
 		var amount, version int64
 		var raw []byte
-		var calculation, job *string
+		var result string
 		var valid bool
-		if err = rows.Scan(&order, &game, &period, &rule, &amount, &version, &raw, &calculation, &job, &valid); err != nil {
+		if err = rows.Scan(&order, &game, &period, &rule, &amount, &version, &raw, &result, &valid); err != nil {
 			return empty, err
 		}
 		var snapshot betTurnoverSnapshot
-		if !valid || calculation == nil || job == nil || amount <= 0 || decodeBetTurnoverSnapshot(raw, &snapshot) != nil {
+		if !valid || amount < 0 || decodeBetTurnoverSnapshot(raw, &snapshot) != nil {
 			return empty, ErrTurnoverEvidence
 		}
+		if amount == 0 { continue }
 		if err = addTurnoverCredit(credit, TurnoverContribution{ValidPoints: points.Amount(amount), Multiple: snapshot.Multiple}); err != nil {
 			return empty, ErrTurnoverEvidence
 		}
@@ -120,7 +108,7 @@ func (TurnoverChecker) Check(ctx context.Context, tx pgx.Tx, in EligibilityInput
 		// Stable, delimited immutable IDs and exact strings bind the summary to
 		// its original bet/rule/ledger and settlement generation. Neither current
 		// policy values nor mutable wallet balances enter this digest.
-		line, err := json.Marshal([]string{order, game, period, rule, strconv.FormatInt(amount, 10), strconv.FormatInt(version, 10), snapshot.Multiple, snapshot.Source, snapshot.BrandVersion, snapshot.GameVersion, snapshot.BrandRevisionID, snapshot.GameRevisionID, *calculation, *job})
+		line, err := json.Marshal([]string{order, game, period, rule, strconv.FormatInt(amount, 10), strconv.FormatInt(version, 10), snapshot.Multiple, snapshot.Source, snapshot.BrandVersion, snapshot.GameVersion, snapshot.BrandRevisionID, snapshot.GameRevisionID, result})
 		if err != nil {
 			return empty, err
 		}

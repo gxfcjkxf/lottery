@@ -11,34 +11,16 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// AutomaticActivationInput deliberately has no caller-selected start or zone.
-// Historical starts remain an internal fixture/core facility, not a public API.
+// AutomaticActivationInput specifies execution rules; the database derives the next target using platform time.
 type AutomaticActivationInput struct {
+	AutomaticSchedule
 	Version        int64  `json:"version"`
 	DailyEnabled   bool   `json:"daily_enabled"`
 	MonthlyEnabled bool   `json:"monthly_enabled"`
 	Reason         string `json:"reason"`
 }
 
-func activationStartPeriods(before AutomaticPolicy, in AutomaticActivationInput, zone string, at time.Time) (*string, *string, error) {
-	currentDaily, currentMonthly, err := ActivationPeriods(at, zone)
-	if err != nil {
-		return nil, nil, ErrInvalid
-	}
-	daily, monthly := before.DailyStartPeriod, before.MonthlyStartPeriod
-	if in.DailyEnabled && daily == nil {
-		daily = &currentDaily
-	}
-	if in.MonthlyEnabled && monthly == nil {
-		monthly = &currentMonthly
-	}
-	return daily, monthly, nil
-}
-
-// UpdateAutomaticActivationTx implements the confirmed first-activation rule:
-// each kind starts in its current brand-local period, never before it. Existing
-// saved starts and tasks survive disabling and re-enabling. The database clock
-// and locked brand timezone are authoritative; client clocks are not inputs.
+// UpdateAutomaticActivationTx starts the new schedule at its next future occurrence.
 func (s Service) UpdateAutomaticActivationTx(ctx context.Context, tx pgx.Tx, brand string, a access.Account, in AutomaticActivationInput, meta points.Metadata) (AutomaticPolicy, error) {
 	var out AutomaticPolicy
 	if tx == nil || !archiveUUID.MatchString(brand) || !archiveUUID.MatchString(a.ID) || in.Version < 1 || in.Version >= maxRevision || !validReason(in.Reason) || meta.ActorType != "admin" || meta.ActorID != a.ID || meta.RequestID == "" || len(meta.RequestID) > 80 {
@@ -48,7 +30,7 @@ func (s Service) UpdateAutomaticActivationTx(ctx context.Context, tx pgx.Tx, bra
 		return out, ErrDenied
 	}
 	var zone, status string
-	err := tx.QueryRow(ctx, `SELECT timezone,status FROM brands WHERE id=$1 FOR SHARE NOWAIT`, brand).Scan(&zone, &status)
+	err := tx.QueryRow(ctx, `SELECT p.timezone,b.status FROM brands b CROSS JOIN platform_settings p WHERE b.id=$1 AND p.id=true FOR SHARE OF b,p NOWAIT`, brand).Scan(&zone, &status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, ErrNotFound
 	}
@@ -74,12 +56,20 @@ func (s Service) UpdateAutomaticActivationTx(ctx context.Context, tx pgx.Tx, bra
 	if before.Version != in.Version {
 		return out, ErrVersion
 	}
-	daily, monthly, err := activationStartPeriods(before, in, zone, at)
+	if !in.AutomaticSchedule.Valid() {
+		return out, ErrInvalid
+	}
+	var daily, monthly *string
+	err = tx.QueryRow(ctx, `SELECT
+ CASE WHEN $2 THEN report_archive_next_target('daily',$1,$4,$5,1,$9) ELSE $10 END,
+ CASE WHEN $3 THEN report_archive_next_target('monthly',$1,$7,$8,$6,$9) ELSE $11 END`,
+		zone, in.DailyEnabled, in.MonthlyEnabled, in.DailyExecutionTime, in.DailyPeriodOffset,
+		in.MonthlyExecutionDay, in.MonthlyExecutionTime, in.MonthlyPeriodOffset, at, before.DailyStartPeriod, before.MonthlyStartPeriod).Scan(&daily, &monthly)
 	if err != nil {
 		return out, err
 	}
 	return s.UpdateAutomaticPolicyTx(ctx, tx, brand, a, AutomaticPolicyInput{
-		Version: in.Version, DailyEnabled: in.DailyEnabled, MonthlyEnabled: in.MonthlyEnabled,
+		AutomaticSchedule: in.AutomaticSchedule, Version: in.Version, DailyEnabled: in.DailyEnabled, MonthlyEnabled: in.MonthlyEnabled,
 		DailyStartPeriod: daily, MonthlyStartPeriod: monthly, Reason: in.Reason,
 	}, meta)
 }

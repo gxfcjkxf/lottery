@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect } from "@playwright/test";
 
 test("manual recharge, freeze, original-source unfreeze and adjustment reconcile with user wallet", async ({
@@ -41,9 +42,8 @@ test("manual recharge, freeze, original-source unfreeze and adjustment reconcile
     await page.locator(".mobile-nav button").nth(1).click();
   else
     await page.locator(".side-nav").getByRole("button", { name: /用户和成员/ }).click();
-  await page
-    .getByLabel("选择真实后台品牌", { exact: true })
-    .selectOption("0199a000-0000-7000-8000-000000000001");
+  await selectControl(page
+    .getByLabel("选择真实后台品牌", { exact: true }), "0199a000-0000-7000-8000-000000000001");
   if (info.project.name === "mobile")
     await page.locator(".mobile-nav button").nth(3).click();
   else
@@ -108,7 +108,7 @@ test("manual recharge, freeze, original-source unfreeze and adjustment reconcile
     .filter({
       has: page.getByRole("heading", { name: "来源积分调整", exact: true }),
     });
-  await adjust.getByRole("combobox", { name: "积分来源", exact: true }).selectOption("gift");
+  await selectControl(adjust.getByRole("combobox", { name: "积分来源", exact: true }), "gift");
   await adjust.getByLabel(/调整额/).fill("25");
   await adjust
     .getByLabel("原因", { exact: true })

@@ -6,7 +6,7 @@ import {
   ArrowLeftRight, Gift, ChartNoAxesCombined, ShieldCheck, ClipboardList, Bell,
   Mail, Scale, Settings, Menu, ChevronDown, ChevronLeft, ChevronRight,
   CircleHelp, Link, ArrowUpRight, Plus, X, Search, RefreshCw, Languages,
-  CircleUserRound, Ellipsis, EllipsisVertical, Check, Trash2, CheckCheck, Copy,
+  CircleUserRound, Ellipsis, EllipsisVertical, Check, Trash2, CheckCheck, Copy, LogOut,
 } from '@lucide/vue'
 
 const icons = {
@@ -18,7 +18,7 @@ const icons = {
   bell: Bell, mail: Mail, compliance: Scale, settings: Settings, menu: Menu,
   down: ChevronDown, back: ChevronLeft, next: ChevronRight, help: CircleHelp,
   link: Link, external: ArrowUpRight, plus: Plus, close: X, search: Search,
-  refresh: RefreshCw, language: Languages, user: CircleUserRound, more: Ellipsis, moreVertical: EllipsisVertical, check: Check, trash: Trash2, read: CheckCheck, copy: Copy,
+  refresh: RefreshCw, language: Languages, user: CircleUserRound, more: Ellipsis, moreVertical: EllipsisVertical, check: Check, trash: Trash2, read: CheckCheck, copy: Copy, logout: LogOut,
 } as const
 export type SiteIconName = keyof typeof icons
 

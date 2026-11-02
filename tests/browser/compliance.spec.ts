@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import {test,expect,type Page} from "@playwright/test";
 
@@ -14,7 +15,7 @@ test("audited compliance configuration and explicit stub check replay across nav
  const headers={"X-Brand-ID":brand.id};const original=(await page.request.get(`${api}/compliance-policy`,{headers}).then(r=>r.json())).data;
  let policyChanged=false;
  try {
- await page.goto(origin);await selectLanguage(page, "zh-CN");await page.locator(".directory-brand-bar select").selectOption(brand.id);await visit(page,mobile);
+ await page.goto(origin);await selectLanguage(page, "zh-CN");await selectControl(page.locator(".directory-brand-bar .select-control-trigger"), brand.id);await visit(page,mobile);
  const panel=page.locator(".compliance");await expect(panel.getByRole("alert").first()).toContainText("启用但适配器未配置时会拒绝新业务");
  for(const label of [/账号关联风险：/,/投注风险：/,/排除名单：/,/负责任博彩：/]) await expect(panel.getByLabel(label)).toBeVisible();
  await panel.getByLabel(/账号关联风险：/).check();const reason=`Explicit browser configuration ${crypto.randomUUID()}`;
@@ -35,7 +36,7 @@ test("audited compliance configuration and explicit stub check replay across nav
  const record=gatePage.items.find((r:{action:string;policy_version:number})=>r.action==="register"&&r.policy_version===current.version);expect(record).toMatchObject({actor_type:"anonymous",actor_id:null,member_id:null,decision:"review",adapter_mode:"stub"});
  expect(gatePage.items.filter((r:{policy_version:number})=>r.policy_version===current.version)).toHaveLength(1);
  const gatePanel=panel.locator(".card").filter({has:page.getByRole("heading",{name:"真实业务闸门拒绝记录",exact:true})});await gatePanel.getByRole("button",{name:"刷新",exact:true}).click();await expect(gatePanel).toContainText(`注册 · 注册 · 复核 · v${current.version}`);
- await panel.getByLabel("操作类型").selectOption("betting");const checkReason=`Explicit browser stub ${crypto.randomUUID()}`;await panel.getByLabel("检查原因",{exact:true}).fill(checkReason);await panel.getByRole("button",{name:"核对伪检查",exact:true}).click();
+ await selectControl(panel.getByLabel("操作类型"), "betting");const checkReason=`Explicit browser stub ${crypto.randomUUID()}`;await panel.getByLabel("检查原因",{exact:true}).fill(checkReason);await panel.getByRole("button",{name:"核对伪检查",exact:true}).click();
  let checkReceipt:{id:string;policy_version:number;decision:string;adapter_mode:string;audit_log_id:string}|undefined;let checkDropped=false;const checkBodies:string[]=[],checkKeys:string[]=[];
  await page.route("**/api/v1/admin/compliance-checks",async route=>{if(route.request().method()!=="POST"){await route.continue();return}checkBodies.push(route.request().postData()??"");checkKeys.push(route.request().headers()["idempotency-key"]??"");if(!checkDropped){checkDropped=true;const response=await route.fetch();expect(response.status()).toBe(201);checkReceipt=(await response.json()).data;await route.abort("failed");return}await route.continue()});
  await panel.getByRole("button",{name:"确认并运行 stub 检查",exact:true}).click();await expect.poll(()=>Boolean(checkReceipt)).toBe(true);await expect(panel.getByRole("button",{name:"用原键重试",exact:true})).toBeEnabled();

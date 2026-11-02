@@ -34,6 +34,8 @@ func rewardResult(out any, err error) (mutation.Result, error) {
 	switch {
 	case err == nil:
 		return mutation.OK(200, out), nil
+	case errors.Is(err, points.ErrInsufficient):
+		return mutation.Fail(422, "REWARD_AVAILABLE_INSUFFICIENT", "赠送可用积分不足，无法撤销奖励"), nil
 	case errors.Is(err, rewards.ErrInvalid):
 		return mutation.Fail(400, "REWARD_INPUT_INVALID", "奖励请求参数不正确"), nil
 	case errors.Is(err, rewards.ErrDenied):
@@ -391,14 +393,10 @@ func registerRewardRoutes(handle func(string, string, http.HandlerFunc), d Depen
 		outputMutation(w, r, result, err)
 	})
 
-	for _, action := range []string{"revoke", "retry-revocation"} {
-		action := action
-		permission := action
-		operation := action
-		if action == "retry-revocation" {
-			permission = "retry"
-			operation = "retry_revocation"
-		}
+	{
+		const action = "revoke"
+		const permission = "revoke"
+		const operation = "revoke"
 		handle("POST", rewardOrderPath+"/{id}/"+action, func(w http.ResponseWriter, r *http.Request) {
 			brand, ok := rewardBrand(w, r)
 			if !ok {
@@ -428,13 +426,7 @@ func registerRewardRoutes(handle func(string, string, http.HandlerFunc), d Depen
 				func(ctx context.Context, tx pgx.Tx) error {
 					return rewardWriteCheck(ctx, tx, r, d, initial, brand, permission, &fresh)
 				}, func(ctx context.Context, tx pgx.Tx) (mutation.Result, error) {
-					var order rewards.Order
-					var e error
-					if action == "revoke" {
-						order, e = s.RevokeTx(ctx, tx, brand, id, fresh, in, pointMeta(r, fresh))
-					} else {
-						order, e = s.RetryRevocationTx(ctx, tx, brand, id, fresh, in, pointMeta(r, fresh))
-					}
+					order, e := s.RevokeTx(ctx, tx, brand, id, fresh, in, pointMeta(r, fresh))
 					if errors.Is(e, rewards.ErrBusy) {
 						return mutation.Result{}, e
 					}

@@ -1,0 +1,6 @@
+const query = (name,schema,description) => ({name,in:'query',required:false,schema,...(description?{description}:{})});
+export const commissionListParameters = kind => [
+ ...(kind==='target'?[]:[query('from',{type:'string',format:'date-time'},'Inclusive saved cycle end timestamp. Supply together with to.'),query('to',{type:'string',format:'date-time'},'Exclusive saved cycle end timestamp. Supply together with from.'),query('cycle_id',{$ref:'#/components/schemas/UUID'})]),
+ query('agent_id',{$ref:'#/components/schemas/UUID'}),
+ query('state',{type:'string',enum:kind==='cycle'?['enumerating','waiting','calculating','summarizing','ready','failed','stale']:kind==='payment'?['awaiting_approval','paying','paid','failed','blocked','stale','needs_attention']:kind==='correction'?['pending','processing','history']:['pending','paid']},kind==='cycle'?'ready requires current ready evidence; stale selects ready cycles whose evidence is no longer current.':kind==='payment'?'needs_attention includes failed payouts and blocked payouts without a completed correction for the current calculation evidence; stale and currently corrected blocked records remain in all. It is not an outstanding balance.':undefined),
+];

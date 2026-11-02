@@ -117,7 +117,7 @@ func TestArchiveLocksSerializeOnlyWithinTheOwningSchema(t *testing.T) {
 func archiveMoney(t *testing.T, s Service) string {
 	t.Helper()
 	var v string
-	if err := s.DB.QueryRow(context.Background(), `SELECT md5(jsonb_build_object('accounts',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM point_accounts p),'buckets',(SELECT jsonb_agg(to_jsonb(p) ORDER BY account_id,source,state) FROM point_buckets p),'ledger',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM point_ledger_entries p),'recharges',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM recharge_orders p),'bets',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM bet_orders p),'outbox',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM outbox_events p))::text)`).Scan(&v); err != nil {
+	if err := s.DB.QueryRow(context.Background(), `SELECT md5(jsonb_build_object('accounts',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM point_accounts p),'buckets',(SELECT jsonb_agg(to_jsonb(p) ORDER BY account_id,source,state) FROM point_buckets p),'ledger',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM point_ledger_entries p),'recharges',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM recharge_orders p),'bets',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM configured_orders p),'outbox',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM outbox_events p))::text)`).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
 	return v
@@ -188,7 +188,7 @@ func TestArchiveVersionsFreezePastWindowAndNeverMoveMoney(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	page, err := s.ListTx(ctx, tx, testBrand, 20, 0)
+	page, err := s.ListTx(ctx, tx, testBrand, 20, 0, "")
 	if err != nil || page.TotalCount != "2" || len(page.Items) != 2 {
 		t.Fatal(page, err)
 	}
@@ -251,7 +251,7 @@ func TestArchiveCanonicalPayloadKeepsSealedBytesAndRejectsStoredDamage(t *testin
 	if _, err = s.ReadTx(ctx, tx, testBrand, r.ID); !errors.Is(err, ErrIntegrity) {
 		t.Fatal("damaged snapshot read accepted", err)
 	}
-	if _, err = s.ListTx(ctx, tx, testBrand, 20, 0); !errors.Is(err, ErrIntegrity) {
+	if _, err = s.ListTx(ctx, tx, testBrand, 20, 0, ""); !errors.Is(err, ErrIntegrity) {
 		t.Fatal("damaged page accepted", err)
 	}
 	input := pastInput()

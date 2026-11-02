@@ -15,8 +15,13 @@ export function registerBrandOverviewTests(reflow = false) {
         expect(route.request().method()).toBe('GET')
         const path = new URL(route.request().url()).pathname
         const reply = (data: unknown) => route.fulfill({ json: { success: true, data } })
-        if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'brand_viewer', super_admin: false, brand_ids: [gameId], permissions: [], permissions_by_brand: { [gameId]: ['overview.view.brand'] }, platform_permissions: [] } })
-        if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, code: 'aurora', name: 'Aurora', status: 'active' }] })
+        if (path.endsWith('/me')) return reply({ account: { id: gameId, username: 'brand_viewer', super_admin: false, brand_ids: [gameId], permissions: [], permissions_by_brand: { [gameId]: ['overview.view.brand', 'withdrawal.view.brand'] }, platform_permissions: [] } })
+        if (path.endsWith('/brands')) return reply({ items: [{ id: gameId, code: 'aurora', name: 'Aurora', status:'active',member_count:'12',agent_count:'3',recharge_quota_available:'1000',created_at:'2026-10-24T00:00:00Z' }] })
+        if (path.endsWith('/withdrawals')) {
+          expect(new URL(route.request().url()).searchParams.get('state')).toBe('reviewing')
+          expect(route.request().headers()['x-brand-id']).toBe(gameId)
+          return reply({ brand_id: gameId, items: [], limit: 100, offset: 0, has_more: false })
+        }
         if (path.endsWith('/overview')) {
           expect(route.request().headers()['x-brand-id']).toBe(gameId)
           reads++
@@ -31,7 +36,7 @@ export function registerBrandOverviewTests(reflow = false) {
       const overview = page.getByTestId('brand-overview')
       await expect(overview.locator('.overview-stats')).toBeVisible()
       await expect(page.locator('.brand-lockup small')).toHaveCount(0)
-      await expect(page.locator('.side-nav > .nav-item')).toHaveText(locale === 'en' ? ['Home', 'Brand settings', 'Member management'] : ['首页', '品牌设置', '会员管理'])
+      await expect(page.locator('.side-nav > .nav-item')).toHaveText(locale === 'en' ? ['Home', 'Brand settings', 'Member management', 'Commission management'] : ['首页', '品牌设置', '会员管理', '佣金管理'])
       await expect(page.locator('.side-nav')).not.toContainText(locale === 'en' ? 'Operations workbench' : '运营工作台')
       await expect(page.locator('.console-nav-group summary')).not.toContainText([locale === 'en' ? 'Overview' : '概览'])
       const more = page.locator('.mobile-nav > button').last()
@@ -48,6 +53,10 @@ export function registerBrandOverviewTests(reflow = false) {
       await expect(overview.locator('.overview-stat p')).toHaveCount(4)
       await expect(overview.locator('.overview-current p')).toHaveCount(3)
       await expect(overview.locator('.overview-business .status-chip')).toHaveCount(0)
+      await expect(overview).not.toContainText(locale === 'en' ? 'vs. yesterday at this time' : '较昨日同时段')
+      await expect(overview).not.toContainText(locale === 'en' ? 'vs. the previous day' : '较前日')
+      await expect(overview.locator('.overview-tasks')).toHaveCount(1)
+      await expect(overview.locator('.overview-tasks + .overview-stats')).toBeVisible()
       await expect(overview).toContainText('9,007,199,254,740,993')
       const preset = page.viewportSize()!
       const widths = reflow ? [...new Set([
@@ -94,6 +103,10 @@ export function registerBrandOverviewTests(reflow = false) {
         } else await page.locator('.sidebar .nav-item').filter({ hasText: locale === 'en' ? /^Home$/ : /^首页$/ }).click()
         await expect(overview.locator('.overview-stats')).toBeVisible()
       }
+      await overview.locator('.overview-tasks').getByRole('button', { name: locale === 'en' ? /Withdrawals to review/ : /提现待审核/ }).click()
+      await expect(overview).toHaveCount(0)
+      await expect(page.locator('.withdrawal-management')).toBeVisible()
+      await expect(page.locator('.withdrawal-management .empty-state')).toBeVisible()
       expect(errors).toEqual([])
     })
   }

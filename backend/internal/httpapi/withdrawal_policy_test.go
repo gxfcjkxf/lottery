@@ -3,6 +3,9 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"github.com/gxfcjkxf/lottery/backend/internal/ids"
+	"github.com/gxfcjkxf/lottery/backend/internal/platformlottery"
+	"github.com/gxfcjkxf/lottery/backend/internal/rules"
 	"strings"
 	"testing"
 
@@ -18,7 +21,15 @@ func grantWithdrawalPolicy(t *testing.T, f managementHTTP) {
 	}
 }
 func TestWithdrawalPolicyHTTPHistoryCheckedReplayAndNoFinancialMutation(t *testing.T) {
-	f, g := periodFixture(t)
+	f := managedFixture(t)
+	g := platformlottery.Game{ID: ids.New()}
+	model, _ := json.Marshal(rules.Model{Type: "DIGITS_0_9", Length: 3, AllowRepeat: true, Ordered: true})
+	if _, e := f.pool.Exec(context.Background(), `INSERT INTO platform_games(id,code,name,model,timezone,created_by) VALUES($1,'withdraw_policy','Withdrawal policy',$2,'UTC',$3)`, g.ID, model, f.root); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.pool.Exec(context.Background(), `INSERT INTO brand_platform_games(brand_id,game_id,connected_by) VALUES($1,$2,$3)`, managedBrand, g.ID, f.root); e != nil {
+		t.Fatal(e)
+	}
 	base := "/api/v1/admin/withdrawal-policy"
 	gameBase := "/api/v1/admin/games/" + g.ID + "/withdrawal-policy"
 	ctx := context.Background()
@@ -34,7 +45,7 @@ func TestWithdrawalPolicyHTTPHistoryCheckedReplayAndNoFinancialMutation(t *testi
 	config := current.Config
 	config.Enabled = true
 	config.TurnoverMultiple = "2.5"
-	body := withdrawal.BrandInput{Version: 1, Config: config, Reason: "configured withdrawal rules"}
+	body := withdrawal.BrandInput{PointsStep: 1, Version: 1, Config: config, Reason: "configured withdrawal rules"}
 	first := f.call("PUT", base, "withdraw-policy-first-01", f.token, managedBrand, body)
 	mustStatus(t, first, 200)
 	var updated withdrawal.BrandPolicy
@@ -102,7 +113,7 @@ func TestWithdrawalPolicyHTTPHistoryCheckedReplayAndNoFinancialMutation(t *testi
 	mustStatus(t, f.call("GET", platformBase, "", platformToken, managedBrand, nil), 200)
 	mustStatus(t, f.call("PUT", base, "withdraw-policy-first-01", f.token, managedBrand, body), 403)
 	var entries, orders, audits int
-	if e := f.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM point_ledger_entries),(SELECT count(*) FROM bet_orders),(SELECT count(*) FROM audit_logs WHERE action IN ('withdrawal_policy.brand.update','withdrawal_policy.game.update'))`).Scan(&entries, &orders, &audits); e != nil || entries != 0 || orders != 0 || audits != 2 {
+	if e := f.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM point_ledger_entries),(SELECT count(*) FROM configured_orders),(SELECT count(*) FROM audit_logs WHERE action IN ('withdrawal_policy.brand.update','withdrawal_policy.game.update'))`).Scan(&entries, &orders, &audits); e != nil || entries != 0 || orders != 0 || audits != 2 {
 		t.Fatal(entries, orders, audits, e)
 	}
 	// Enabling policy cannot replace a member session or formal qualification.

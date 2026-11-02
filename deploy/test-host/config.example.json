@@ -1,0 +1,9 @@
+{
+  "user_domains": ["cp1608.xyz", "www.cp1608.xyz"],
+  "admin_domain": "admin.cp1608.xyz",
+  "platform_domain": "manager.cp1608.xyz",
+  "agent_domain": "agent.cp1608.xyz",
+  "certificate_email": "",
+  "admin_username": "admin",
+  "draw_allowed_origins": []
+}

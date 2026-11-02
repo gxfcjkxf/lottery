@@ -1,12 +1,13 @@
+import { readPaginationTotal } from '@lottery/shared'
 import { readPlatformEnvelope } from './platform-api'
 
 import { isWalletDTO, normalizeLedgerSnapshots, type SourceBuckets, type WalletDTO, type WalletSource, type WalletState } from '@lottery/shared'
 import { PlatformApiError } from './platform-api'
 
 export type Wallet = WalletDTO
-export type { WalletSource, WalletState, SourceBuckets }
 
-export interface SourceAllocation {
+
+interface SourceAllocation {
   source: WalletSource
   state: WalletState
   points: string
@@ -84,11 +85,11 @@ export function createPlatformWalletApi(fetcher: typeof fetch = fetch) {
       if (!isWalletDTO(value) || value.brand_id !== brandId || value.member_id !== memberId) invalid('wallet')
       return value
     },
-    async ledger(brandId: string, memberId: string, limit = 50, offset = 0): Promise<LedgerEntry[]> {
+    async ledger(brandId: string, memberId: string, limit = 50, offset = 0): Promise<{items: LedgerEntry[]; total_count: string}> {
       if (!memberId) throw new PlatformApiError('A member must be selected before loading a wallet ledger', 400, 'MEMBER_REQUIRED')
       const value = await get(brandId, `/${encodeURIComponent(memberId)}/ledger?limit=${limit}&offset=${offset}`)
-      if (!isObj(value) || !exactKeys(value, ['items']) || !Array.isArray(value.items) || value.items.length > limit || !value.items.every(item => validLedgerEntry(item, brandId, memberId))) invalid('wallet ledger')
-      return value.items as LedgerEntry[]
+      if (!isObj(value) || !exactKeys(value, ['items','total_count']) || !Array.isArray(value.items) || value.items.length > limit || !value.items.every(item => validLedgerEntry(item, brandId, memberId))) invalid('wallet ledger')
+      return {items: value.items as LedgerEntry[], total_count: readPaginationTotal(value)}
     },
   }
 }

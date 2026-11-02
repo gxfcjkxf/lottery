@@ -1,3 +1,8 @@
+import {ManagementListTestComponent,MemberActionsMenuTestComponent} from "./management-list-test-helper"
+import {TablePaginationTestComponent} from './table-pagination-test-helper'
+import { SelectControlTestComponent } from './select-control-test-helper'
+import { operationToastText } from "./operation-toast-test-helper";
+import { DetailModalTestComponent } from "./detail-modal-test-helper";
 import { BusinessDetailsTestComponent as BusinessDetails } from "./business-details-test-helper";
 import * as DisplayShared from "@lottery/shared";
 DisplayShared.setPlatformDisplaySettings({ timezone: "Asia/Singapore", date_format: "YYYY-MM-DD", time_format: "HH:mm:ss" });
@@ -60,10 +65,12 @@ function compileComponent(): Component {
   const descriptor = parseVue(source, { filename: "RewardsManagement.vue" }).descriptor;
   const compiled = compileVueScript(descriptor, { id: "rewards-component-test", inlineTemplate: true }).content;
   const javascript = transpileScript(compiled);
-  const modules: Record<string, unknown> = { "@lottery/shared/BusinessDetails.vue": { default: BusinessDetails },  "@lottery/shared": DisplayShared,
+  const modules: Record<string, unknown> = {"@lottery/shared/ManagementList.vue":{default:ManagementListTestComponent},"@lottery/shared/MemberActionsMenu.vue":{default:MemberActionsMenuTestComponent}, "@lottery/shared/SelectControl.vue": SelectControlTestComponent, "./SelectControl.vue": SelectControlTestComponent, "@lottery/shared/BusinessDetails.vue": { default: BusinessDetails },  "@lottery/shared": DisplayShared,
     // Business tests use a host renderer; native dialog behavior is checked in Chrome.
-    "@lottery/shared/DetailModal.vue": { default: { inheritAttrs: false, setup: (_props: unknown, context: { slots: { default?: () => unknown } }) => () => context.slots.default?.() } },
+    "@lottery/shared/DetailModal.vue": { default: DetailModalTestComponent },
+    "@lottery/shared/TablePagination.vue": { default: TablePaginationTestComponent },
     vue: VueRuntime, "./admin-api": AdminApi, "./i18n": AdminI18n,
+    "@lottery/shared/FilterAssociationSearch.vue": { default: { props: ["modelValue", "inputTestId", "selectedName", "disabled"], setup: (p: any, {emit}: any) => () => h("input", { "data-testid": p.inputTestId, value: p.selectedName, disabled: p.disabled, "onUpdate:modelValue": (value: string) => { emit("select", {id: member, name: value}); emit("update:modelValue", member); } }) } },
     "./member-lookup": { selectAdminAssociation: async () => ({ id: member, member_id: member, brand_id: brand, username: "reward_user" }) },
     "./rewards-api": RewardsApi, "./rewards-state": RewardsState,
   };
@@ -86,7 +93,7 @@ function transpileScript(source: string): string { return ts.transpileModule(sou
 function reward(overrides: Partial<RewardOrder> = {}): RewardOrder {
   return { id: orderID, brand_id: brand, member_id: member, points: "25", state: "granted", version: 1,
     grant_ledger_entry_id: ledger, revoke_ledger_entry_id: null, creation_audit_log_id: audit,
-    last_audit_log_id: audit, last_error_code: null, created_by: actor, reason: "",
+    last_audit_log_id: audit, created_by: actor, reason: "",
     point_policy_version: "1", created_at: timestamp, updated_at: timestamp, revoked_at: null, ...overrides };
 }
 function action(overrides: Partial<RewardAction> = {}): RewardAction {
@@ -117,10 +124,12 @@ function setModel(node: HostNode | null, value: unknown) {
   for (const listener of node!.listeners.input ?? []) listener({ target: node! });
 }
 async function flush() { await new Promise(resolve => setTimeout(resolve, 0)); await nextTick(); }
-function mount(account: AdminAccount, brandId = brand, brandStatus = "active") {
+function mount(account: AdminAccount, brandId = brand, brandStatus = "active", openGrant = true) {
   const scope = ref({ account, brandId, brandStatus }), container = element("root"), emitted: string[] = [], i18n = createAdminI18n();
   const app = renderer.createApp({ setup: () => () => h(RewardsComponent, { ...scope.value, onSessionInvalid: () => emitted.push("session-invalid") }) });
   app.provide(adminI18nKey, i18n); app.mount(container);
+  const grantButton = byTestId(container, "rewards-grant-open");
+  if (openGrant && grantButton && !grantButton.props.disabled) click(grantButton);
   return { app, container, scope, emitted, i18n };
 }
 function installFetch(options: {
@@ -156,7 +165,7 @@ function installFetch(options: {
       }
       const actionBody = body as { version: number; reason: string };
       if (url.endsWith("/revoke")) {
-        current = reward({ state: "revocation_pending", version: actionBody.version + 1, last_error_code: "REWARD_AVAILABLE_INSUFFICIENT", reason: actionBody.reason });
+        current = reward({ state: "revoked", version: actionBody.version + 1, revoke_ledger_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", revoked_at: timestamp, reason: actionBody.reason });
         writeAccepted = true;
         return ok(current);
       }
@@ -171,7 +180,12 @@ function installFetch(options: {
 }
 
 function writes(server: ReturnType<typeof installFetch>) { return server.calls.filter((call) => call.init?.method === "POST"); }
-async function fillGrant(mounted: ReturnType<typeof mount>, reason: string, points = "25") {
+async function fillGrant(mounted: ReturnType<typeof mount>, points = "25") {
+  if (!byTestId(mounted.container, "rewards-grant-member")) {
+    const opener = byTestId(mounted.container, "rewards-grant-open");
+    if (opener?.props.disabled) return;
+    click(opener); await flush();
+  }
   setModel(byTestId(mounted.container, "rewards-grant-member"), "reward_user");
   setModel(byTestId(mounted.container, "rewards-grant-points"), points);
 
@@ -183,23 +197,29 @@ async function confirmReview(mounted: ReturnType<typeof mount>) {
   expect(byTestId(mounted.container, "rewards-confirm-submit")?.props.disabled).toBe(false);
   click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
 }
-async function submitGrant(mounted: ReturnType<typeof mount>, reason: string, points = "25") {
-  await fillGrant(mounted, reason, points);
+async function submitGrant(mounted: ReturnType<typeof mount>, points = "25") {
+  await fillGrant(mounted, points);
   expect(byTestId(mounted.container, "rewards-grant-review")?.props.disabled).toBe(false);
   click(byTestId(mounted.container, "rewards-grant-review")); await flush();
-  await confirmReview(mounted);
-}
-async function submitRevoke(mounted: ReturnType<typeof mount>, reason: string) {
-  click(button(mounted.container, orderID)); await flush();
-   await flush();
-  expect(byTestId(mounted.container, "rewards-revoke")?.props.disabled).toBe(false);
-  click(byTestId(mounted.container, "rewards-revoke")); await flush();
   await confirmReview(mounted);
 }
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); RewardsState.clearAllRewardIntents(); });
 
 describe("RewardsManagement", () => {
+  it("keeps the grant form in a dismissible modal and preserves its draft", async () => {
+    installFetch(); const mounted = mount(baseAccount, brand, "active", false); await flush();
+    expect(byTestId(mounted.container, "rewards-grant-member")).toBeNull();
+    click(byTestId(mounted.container, "rewards-grant-open")); await flush();
+    setModel(byTestId(mounted.container, "rewards-grant-member"), "reward_user"); await flush();
+    const grantModal = findNode(mounted.container, node => node.tag === "dialog" && node.props['aria-label'] === "人工发放")!;
+    click(findNode(grantModal, node => node.tag === "button" && node.props['aria-label'] === "关闭")); await flush();
+    expect(byTestId(mounted.container, "rewards-grant-member")).toBeNull();
+    click(byTestId(mounted.container, "rewards-grant-open")); await flush();
+    expect(byTestId(mounted.container, "rewards-grant-member")?.value).toBe("reward_user");
+    mounted.app.unmount();
+  });
+
   it("renders the required stable root class and key controls", async () => {
     installFetch(); const mounted = mount(baseAccount); await flush();
     const root = findNode(mounted.container, (node) => node.tag === "article");
@@ -222,18 +242,8 @@ describe("RewardsManagement", () => {
     }
     const readOnly = mount({ ...baseAccount, platform_permissions: [], permissions_by_brand: { [brand]: ["reward.view.brand"] }, permissions: ["reward.grant.brand"] }); await flush();
     expect(readOnly.container.children.length).toBeGreaterThan(0);
-    expect(byTestId(readOnly.container, "rewards-grant-review")?.props.disabled).toBe(true);
+    expect(byTestId(readOnly.container, "rewards-grant-open")?.props.disabled).toBe(true);
     readOnly.app.unmount();
-  });
-
-  it("allows only the explicitly granted operation for the selected brand", async () => {
-    const server = installFetch({ current: reward({ state: "revocation_pending", version: 2, last_error_code: "REWARD_AVAILABLE_INSUFFICIENT" }) });
-    const mounted = mount({ ...baseAccount, permissions_by_brand: { [brand]: ["reward.view.brand", "reward.retry.brand"] } }); await flush();
-    click(button(mounted.container, orderID)); await flush();
-    expect(byTestId(mounted.container, "rewards-retry")).not.toBeNull();
-    expect(byTestId(mounted.container, "rewards-revoke")).toBeNull();
-    expect(server.calls.filter((call) => call.init?.method === "POST")).toHaveLength(0);
-    mounted.app.unmount();
   });
 
   it("reviews a grant with member, points, reason, actor, key and frozen body before explicit confirmation", async () => {
@@ -246,7 +256,7 @@ describe("RewardsManagement", () => {
     click(byTestId(mounted.container, "rewards-grant-review")); await flush();
     expect(server.calls.filter((call) => call.init?.method === "POST")).toHaveLength(0);
 
-    expect(textOf(byTestId(mounted.container, "rewards-review")!)).toContain("reward_user");
+    expect(textOf(byTestId(mounted.container, "rewards-review")!) + operationToastText()).toContain("reward_user");
     setModel(byTestId(mounted.container, "rewards-review-confirmed"), true); await flush();
     click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
     const writes = server.calls.filter((call) => call.init?.method === "POST");
@@ -259,30 +269,6 @@ describe("RewardsManagement", () => {
     mounted.app.unmount();
   });
 
-  it("reviews revoke and retry according to current order eligibility", async () => {
-    for (const [snapshot, operation, testId, route] of [
-      [reward(), "revoke", "rewards-revoke", "/revoke"],
-      [reward({ state: "revocation_pending", version: 2, last_error_code: "REWARD_AVAILABLE_INSUFFICIENT" }), "retry", "rewards-retry", "/retry-revocation"],
-    ] as const) {
-      const server = installFetch({ current: snapshot }); const mounted = mount(baseAccount); await flush();
-      click(button(mounted.container, orderID)); await flush();
-       await flush();
-      click(byTestId(mounted.container, testId)); await flush();
-      setModel(byTestId(mounted.container, "rewards-review-confirmed"), true); await flush();
-      click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
-      const write = server.calls.find((call) => call.init?.method === "POST");
-      expect(write?.url).toContain(`/${orderID}${route}`);
-      expect(write?.body).toEqual({ version: snapshot.version, reason: "" });
-      expect(mounted.app).toBeDefined(); mounted.app.unmount();
-    }
-    for (const snapshot of [reward({ state: "revoked", version: 2, revoke_ledger_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", revoked_at: timestamp })]) {
-      const server = installFetch({ current: snapshot }); const mounted = mount(baseAccount); await flush(); click(button(mounted.container, orderID)); await flush();
-      expect(byTestId(mounted.container, "rewards-revoke")).toBeNull();
-      expect(byTestId(mounted.container, "rewards-retry")).toBeNull();
-      expect(server.calls.filter((call) => call.init?.method === "POST")).toHaveLength(0); mounted.app.unmount();
-    }
-  });
-
   it("retains an unknown grant unchanged across unmount and remount, and retries it only after renewed review", async () => {
     const requests: Array<{ url: string; init?: RequestInit; body: unknown }> = [];
     let attempt = 0;
@@ -291,11 +277,11 @@ describe("RewardsManagement", () => {
     setModel(byTestId(mounted.container, "rewards-grant-member"), "reward_user"); setModel(byTestId(mounted.container, "rewards-grant-points"), "25");  await flush();
     click(byTestId(mounted.container, "rewards-grant-review")); await flush(); setModel(byTestId(mounted.container, "rewards-review-confirmed"), true); await flush();
     click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
-    expect(textOf(mounted.container)).toContain("暂未确认操作结果"); mounted.app.unmount();
+    expect(textOf(mounted.container) + operationToastText()).toContain("暂未确认操作结果"); mounted.app.unmount();
 
     server.current = reward({ state: "granted", version: 1, reason: "" });
     mounted = mount(baseAccount); await flush();
-    expect(textOf(mounted.container)).toContain("有待确认的操作");
+    expect(textOf(mounted.container) + operationToastText()).toContain("有待确认的操作");
     const frozenBefore = RewardsState.getPendingRewardIntent({ accountId: actor, brandId: brand, operation: "grant" });
     expect(frozenBefore?.body).toEqual({ member_id: member, points: "25", reason: "" });
     click(byTestId(mounted.container, "rewards-list-refresh")); await flush();
@@ -313,25 +299,6 @@ describe("RewardsManagement", () => {
     mounted.app.unmount();
   });
 
-  it("keeps unknown intent locked even when fresh list, detail and history reads show a later pending state", async () => {
-    const server = installFetch({ onWrite: () => { throw new Error("response lost after write"); } });
-    const mounted = mount(baseAccount); await flush(); click(button(mounted.container, orderID)); await flush();
-     await flush();
-    click(byTestId(mounted.container, "rewards-revoke")); await flush(); setModel(byTestId(mounted.container, "rewards-review-confirmed"), true); await flush();
-    click(byTestId(mounted.container, "rewards-confirm-submit")); await flush();
-    const pending = RewardsState.listPendingRewardIntents(actor, brand);
-    expect(pending).toHaveLength(1);
-    server.current = reward({ state: "revocation_pending", version: 2, last_error_code: "REWARD_AVAILABLE_INSUFFICIENT" });
-    click(byTestId(mounted.container, "rewards-list-refresh")); click(byTestId(mounted.container, "rewards-history-refresh")); click(byTestId(mounted.container, "rewards-detail-refresh")); await flush();
-    expect(RewardsState.listPendingRewardIntents(actor, brand)).toEqual(pending);
-    expect(server.calls.filter((call) => call.init?.method === "POST")).toHaveLength(1);
-    expect(byTestId(mounted.container, "rewards-revoke")).toBeNull();
-    expect(byTestId(mounted.container, "rewards-retry")?.props.disabled).toBe(true);
-    await fillGrant(mounted, "Another reward requires resolution first");
-    expect(byTestId(mounted.container, "rewards-grant-review")?.props.disabled).toBe(true);
-    mounted.app.unmount();
-  });
-
   it("preserves a confirmed receipt after a failed detail GET, allows a new grant review and only retries queries", async () => {
     const committed = installFetch({ failDetailAfterWrite: true });
     const second = mount(baseAccount); await flush(); click(button(second.container, orderID)); await flush();
@@ -341,78 +308,27 @@ describe("RewardsManagement", () => {
     expect(RewardsState.listPendingRewardIntents(actor, brand)).toHaveLength(0);
     expect(committed.calls.filter((call) => call.init?.method === "POST")).toHaveLength(1);
     expect(byTestId(second.container, "rewards-receipt")).not.toBeNull();
-    expect(textOf(byTestId(second.container, "rewards-receipt")!)).toContain("撤销待处理");
+    expect(textOf(byTestId(second.container, "rewards-receipt")!) + operationToastText()).toContain("已撤销");
     expect(button(second.container, "使用原请求重试")).toBeNull();
     expect(committed.failedDetailReads).toBe(1);
-    expect(textOf(second.container)).not.toContain("暂未确认操作结果");
+    expect(textOf(second.container) + operationToastText()).not.toContain("暂未确认操作结果");
     expect(byTestId(second.container, "rewards-revoke")).toBeNull();
     expect(byTestId(second.container, "rewards-retry")).toBeNull();
     expect(byTestId(second.container, "rewards-action-reason")).toBeNull();
-    await fillGrant(second, "A separately reviewed grant after confirmed reversal");
+    await fillGrant(second);
     expect(byTestId(second.container, "rewards-grant-review")?.props.disabled).toBe(false);
     click(byTestId(second.container, "rewards-grant-review")); await flush();
     expect(byTestId(second.container, "rewards-review")).not.toBeNull();
     expect(writes(committed)).toHaveLength(1);
-    click(button(second.container, "取消")); await flush();
+    click(button(second.container, "关闭")); await flush();
     const detailReadsBefore = committed.calls.filter((call) => call.url.endsWith(`/${orderID}`) && call.init?.method === "GET").length;
     click(button(second.container, orderID)); await flush();
     expect(committed.calls.filter((call) => call.url.endsWith(`/${orderID}`) && call.init?.method === "GET")).toHaveLength(detailReadsBefore + 1);
-    expect(byTestId(second.container, "rewards-retry")).not.toBeNull();
+    expect(byTestId(second.container, "rewards-retry")).toBeNull();
     expect(writes(committed)).toHaveLength(1);
     expect(RewardsState.listPendingRewardIntents(actor, brand)).toHaveLength(0);
-    expect(textOf(byTestId(second.container, "rewards-receipt")!)).toContain("撤销待处理");
+    expect(textOf(byTestId(second.container, "rewards-receipt")!) + operationToastText()).toContain("已撤销");
     second.app.unmount();
-  });
-
-  it("retains a late HTTP 409 after unmount as a conflict requiring fresh reads and explicit discard", async () => {
-    const response = deferred<Response>();
-    const server = installFetch({ onWrite: () => response.promise });
-    let mounted = mount(baseAccount); await flush();
-    await submitRevoke(mounted, "Original revoke awaiting a deferred conflict");
-    const scope = { accountId: actor, brandId: brand, operation: "revoke" as const, targetId: orderID };
-    const original = RewardsState.getPendingRewardIntent(scope)!;
-    expect(original).not.toBeNull();
-    expect(writes(server)).toHaveLength(1);
-    mounted.app.unmount();
-
-    response.resolve(failure(409, "REWARD_VERSION_CONFLICT")); await flush();
-    expect(RewardsState.getPendingRewardIntent(scope)).toEqual(original);
-    expect(RewardsState.isRewardIntentConflict(original)).toBe(true);
-    server.current = reward({ state: "revocation_pending", version: 2, last_error_code: "REWARD_AVAILABLE_INSUFFICIENT" });
-    mounted = mount(baseAccount); await flush();
-    expect(byTestId(mounted.container, "rewards-conflict-refresh")).not.toBeNull();
-    expect(byTestId(mounted.container, "rewards-conflict-discard")?.props.disabled).toBe(true);
-    expect(byTestId(mounted.container, "rewards-discard-reviewed")?.props.disabled).toBe(true);
-    expect(button(mounted.container, "使用原请求重试")).toBeNull();
-    expect(RewardsState.getPendingRewardIntent(scope)).toEqual(original);
-    const readCounts = [
-      "/api/v1/admin/reward-orders?limit=20&offset=0",
-      `/api/v1/admin/reward-orders/${orderID}`,
-      `/api/v1/admin/reward-orders/${orderID}/actions?limit=20&offset=0`,
-    ].map((url) => ({ url, count: server.calls.filter((call) => call.url === url && call.init?.method === "GET").length }));
-    click(byTestId(mounted.container, "rewards-conflict-discard")); await flush();
-    expect(RewardsState.getPendingRewardIntent(scope)).toEqual(original);
-    click(byTestId(mounted.container, "rewards-conflict-refresh")); await flush();
-    for (const { url, count } of readCounts) {
-      expect(server.calls.filter((call) => call.url === url && call.init?.method === "GET")).toHaveLength(count + 1);
-    }
-    expect(byTestId(mounted.container, "rewards-discard-reviewed")?.props.disabled).toBe(false);
-    expect(byTestId(mounted.container, "rewards-conflict-discard")?.props.disabled).toBe(true);
-    expect(RewardsState.getPendingRewardIntent(scope)).toEqual(original);
-    expect(writes(server)).toHaveLength(1);
-    setModel(byTestId(mounted.container, "rewards-discard-reviewed"), true); await flush();
-    click(byTestId(mounted.container, "rewards-conflict-discard")); await flush();
-    expect(RewardsState.getPendingRewardIntent(scope)).toBeNull();
-    expect(RewardsState.isRewardIntentConflict(original)).toBe(false);
-     await flush();
-    click(byTestId(mounted.container, "rewards-retry")); await flush();
-    const review = byTestId(mounted.container, "rewards-review");
-    expect(review).not.toBeNull();
-    expect(review!.props).toBeDefined();
-    expect(textOf(review!)).not.toContain('"version"');
-    expect(textOf(review!)).not.toContain(original.key);
-    expect(writes(server)).toHaveLength(1);
-    mounted.app.unmount();
   });
 
   it("retains an exact late unknown grant after unmount and only replays its frozen request after renewed confirmation", async () => {
@@ -423,7 +339,7 @@ describe("RewardsManagement", () => {
       return ok(reward(body as RewardGrantBody), 201);
     } });
     let mounted = mount(baseAccount); await flush();
-    await submitGrant(mounted, "Exact deferred reward request ✅", "9223372036854775807");
+    await submitGrant(mounted, "9223372036854775807");
     const scope = { accountId: actor, brandId: brand, operation: "grant" as const };
     const original = RewardsState.getPendingRewardIntent(scope)!;
     expect(original).toMatchObject({ ...scope, body: { member_id: member, points: "9223372036854775807", reason: "" } });
@@ -438,13 +354,13 @@ describe("RewardsManagement", () => {
     mounted = mount(baseAccount); await flush();
     click(button(mounted.container, orderID)); await flush();
     expect(RewardsState.getPendingRewardIntent(scope)).toEqual(original);
-    await fillGrant(mounted, "A new grant remains locked");
-    expect(byTestId(mounted.container, "rewards-grant-review")?.props.disabled).toBe(true);
+    await fillGrant(mounted);
+    expect(byTestId(mounted.container, "rewards-grant-open")?.props.disabled).toBe(true);
     expect(writes(server)).toHaveLength(1);
     click(button(mounted.container, "使用原请求重试")); await flush();
     const review = byTestId(mounted.container, "rewards-review")!;
-    for (const value of [actor, brand, member, original.key]) expect(textOf(review)).not.toContain(value);
-    expect(textOf(review)).toContain("9223372036854775807");
+    for (const value of [actor, brand, member, original.key]) expect(textOf(review) + operationToastText()).not.toContain(value);
+    expect(textOf(review) + operationToastText()).toContain("9223372036854775807");
     expect(writes(server)).toHaveLength(1);
     await confirmReview(mounted);
     expect(writes(server)).toHaveLength(2);
@@ -455,15 +371,15 @@ describe("RewardsManagement", () => {
       expect(new Headers(replay.init?.headers).get(header)).toBe(new Headers(first.init?.headers).get(header));
     }
     expect(RewardsState.getPendingRewardIntent(scope)).toBeNull();
-    expect(textOf(byTestId(mounted.container, "rewards-receipt")!)).toContain("已发放");
-    expect(textOf(mounted.container)).toContain("已撤销");
+    expect(textOf(byTestId(mounted.container, "rewards-receipt")!) + operationToastText()).toContain("已发放");
+    expect(textOf(mounted.container) + operationToastText()).toContain("已撤销");
     mounted.app.unmount();
   });
 
   it("does not recreate a logged-out intent when its deferred POST later becomes unknown", async () => {
     const response = deferred<Response>(), server = installFetch({ onWrite: () => response.promise });
     let mounted = mount(baseAccount); await flush();
-    await submitGrant(mounted, "Logged-out grant must remain cleared");
+    await submitGrant(mounted);
     const scope = { accountId: actor, brandId: brand, operation: "grant" as const };
     expect(RewardsState.getPendingRewardIntent(scope)).not.toBeNull();
     const generation = RewardsState.rewardSessionGeneration();
@@ -476,7 +392,7 @@ describe("RewardsManagement", () => {
     mounted = mount(baseAccount); await flush();
     expect(button(mounted.container, "使用原请求重试")).toBeNull();
     expect(byTestId(mounted.container, "rewards-conflict-discard")).toBeNull();
-    await fillGrant(mounted, "A fresh session can review a fresh request");
+    await fillGrant(mounted);
     expect(byTestId(mounted.container, "rewards-grant-review")?.props.disabled).toBe(false);
     expect(writes(server)).toHaveLength(1);
     mounted.app.unmount();
@@ -487,54 +403,27 @@ describe("RewardsManagement", () => {
     const oldResponse = deferred<Response>(), currentResponse = deferred<Response>();
     const server = installFetch({ onWrite: ({ init }) => new Headers(init?.headers).get("X-Reward-Actor-ID") === actor ? oldResponse.promise : currentResponse.promise });
     const mounted = mount(baseAccount); await flush();
-    await submitGrant(mounted, "Previous account's deferred grant");
+    await submitGrant(mounted);
     const oldScope = { accountId: actor, brandId: brand, operation: "grant" as const };
     expect(RewardsState.getPendingRewardIntent(oldScope)).not.toBeNull();
     mounted.scope.value = { ...mounted.scope.value, account: { ...baseAccount, id: otherActor } }; await flush();
     expect(RewardsState.getPendingRewardIntent(oldScope)).toBeNull();
-    await submitGrant(mounted, "Current account's frozen unknown grant", "31");
+    await submitGrant(mounted, "31");
     currentResponse.reject(new Error("Current account's write outcome is unknown")); await flush();
     const currentScope = { accountId: otherActor, brandId: brand, operation: "grant" as const };
     const currentIntent = RewardsState.getPendingRewardIntent(currentScope)!;
     expect(currentIntent).not.toBeNull();
-    expect(byTestId(mounted.container, "rewards-grant-review")?.props.disabled).toBe(true);
+    expect(byTestId(mounted.container, "rewards-grant-open")?.props.disabled).toBe(true);
     oldResponse.resolve(ok(reward({ reason: "" }), 201)); await flush();
     expect(RewardsState.getPendingRewardIntent(currentScope)).toEqual(currentIntent);
     expect(RewardsState.getPendingRewardIntent(oldScope)).toBeNull();
-    expect(byTestId(mounted.container, "rewards-grant-review")?.props.disabled).toBe(true);
+    expect(byTestId(mounted.container, "rewards-grant-open")?.props.disabled).toBe(true);
     expect(byTestId(mounted.container, "rewards-receipt")).toBeNull();
     click(button(mounted.container, "使用原请求重试")); await flush();
     const review = byTestId(mounted.container, "rewards-review")!;
-    for (const value of [otherActor, currentIntent.key]) expect(textOf(review)).not.toContain(value);
+    for (const value of [otherActor, currentIntent.key]) expect(textOf(review) + operationToastText()).not.toContain(value);
     expect(writes(server)).toHaveLength(2);
     expect(new Headers(writes(server)[1].init?.headers).get("X-Reward-Actor-ID")).toBe(otherActor);
-    mounted.app.unmount();
-  });
-
-  it("does not let a stale ACK after permission loss unlock a different current unresolved intent", async () => {
-    const response = deferred<Response>(), server = installFetch({ onWrite: () => response.promise });
-    const mounted = mount(baseAccount); await flush();
-    await submitRevoke(mounted, "Revoke permission will be removed before ACK");
-    const oldScope = { accountId: actor, brandId: brand, operation: "revoke" as const, targetId: orderID };
-    const original = RewardsState.getPendingRewardIntent(oldScope)!;
-    const currentScope = { accountId: actor, brandId: brand, operation: "grant" as const };
-    const currentIntent = RewardsState.createRewardIntent(currentScope, { member_id: member, points: "37", reason: "" }, "reward-current-grant-key-001")!;
-    RewardsState.setPendingRewardIntent(currentScope, currentIntent);
-    mounted.scope.value = { ...mounted.scope.value, account: { ...baseAccount, permissions_by_brand: { [brand]: ["reward.view.brand", "reward.grant.brand"] } } }; await flush();
-    expect(RewardsState.getPendingRewardIntent(currentScope)?.key).toBe(currentIntent.key);
-    await fillGrant(mounted, "New grant must wait for the current unknown request");
-    expect(byTestId(mounted.container, "rewards-grant-review")?.props.disabled).toBe(true);
-    response.resolve(ok(reward({ state: "revocation_pending", version: 2, last_error_code: "REWARD_AVAILABLE_INSUFFICIENT" }))); await flush();
-    expect(RewardsState.getPendingRewardIntent(oldScope)).toBeNull();
-    expect(RewardsState.getPendingRewardIntent(currentScope)).toEqual(currentIntent);
-    expect(byTestId(mounted.container, "rewards-grant-review")?.props.disabled).toBe(true);
-    expect(byTestId(mounted.container, "rewards-receipt")).toBeNull();
-    click(button(mounted.container, "使用原请求重试")); await flush();
-    const review = byTestId(mounted.container, "rewards-review")!;
-    expect(textOf(review)).not.toContain(currentIntent.key);
-    expect(textOf(review)).toContain(currentIntent.body.reason);
-    expect(textOf(review)).not.toContain(original.key);
-    expect(writes(server)).toHaveLength(1);
     mounted.app.unmount();
   });
 
@@ -576,7 +465,7 @@ describe("RewardsManagement", () => {
     await flush(); slow.resolve(ok({ brand_id: brand, items: [reward({ version: 1 })], total_count: "1", limit: 20, offset: 0 })); await flush();
     expect(server.calls.filter((call) => call.init?.method === "GET")).toHaveLength(1);
     expect(byTestId(mounted.container, "rewards-revoke")).toBeNull();
-    expect(textOf(mounted.container)).not.toContain(orderID);
+    expect(textOf(mounted.container) + operationToastText()).not.toContain(orderID);
     mounted.app.unmount();
   });
 

@@ -26,6 +26,7 @@ type configuredFixture struct {
 	g     platformlottery.Game
 	p     platformlottery.Period
 	v     platformlottery.ConfiguredVersion
+	cases []platformlottery.ConfiguredCase
 	input ConfiguredInput
 }
 
@@ -46,12 +47,17 @@ func newConfiguredFixture(t *testing.T, disjoint ...bool) configuredFixture {
 	cases := []platformlottery.ConfiguredCase{{Requests: []rules.ConfiguredRequest{{PlayID: "operator_new_play", Options: []string{"lucky"}, Plate: "A", Points: 10, Multiplier: 1}}, Draw: rules.Draw{Regular: []int{1, 3, 7, 4, 5, 6}, Special: []int{2}}, Bet: 10, Prize: 25}}
 	return configuredFixtureFrom(t, raw, cases)
 }
-func configuredFixtureFrom(t *testing.T, raw []byte, cases []platformlottery.ConfiguredCase) configuredFixture {
+func configuredFixtureFrom(t *testing.T, raw []byte, cases []platformlottery.ConfiguredCase, base ...bettingFixture) configuredFixture {
 	t.Helper()
 	ctx := context.Background()
-	f := newBettingFixture(t, storeTestBrand)
+	var f bettingFixture
+	if len(base) == 1 {
+		f = base[0]
+	} else {
+		f = newBettingFixture(t, storeTestBrand)
+	}
 	s := platformlottery.Service{DB: f.db}
-	a := access.Account{ID: f.version.CreatedBy, Type: access.AccountAdmin, SuperAdmin: true, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "platform_game", Action: "write", Scope: access.ScopePlatform}}}}}
+	a := access.Account{ID: f.adminID, Type: access.AccountAdmin, SuperAdmin: true, Roles: []access.Role{{Permissions: []access.Permission{{Resource: "platform_game", Action: "write", Scope: access.ScopePlatform}}}}}
 	b := access.Account{ID: a.ID, Type: access.AccountAdmin, BrandIDs: []string{f.brand}, Roles: []access.Role{{BrandID: f.brand, Permissions: []access.Permission{{Resource: "platform_game", Action: "connect", Scope: access.ScopeBrand}, {Resource: "platform_game", Action: "sell", Scope: access.ScopeBrand}}}}}
 	engine, e := rules.RestoreConfiguredEngine(raw)
 	if e != nil {
@@ -69,16 +75,9 @@ func configuredFixtureFrom(t *testing.T, raw []byte, cases []platformlottery.Con
 
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		var e error
-		v, e = s.SaveConfiguredDraft(ctx, tx, a, g.ID, platformlottery.ConfiguredDraftInput{Snapshot: engine.Snapshot(), Cases: cases}, points.Metadata{})
+		v, e = s.SaveConfiguredRules(ctx, tx, a, g.ID, platformlottery.ConfiguredRulesInput{Snapshot: engine.Snapshot()}, points.Metadata{})
 		return e
 	})
-	for _, action := range []string{"validate", "submit", "approve", "publish"} {
-		bettingTx(t, f.db, func(tx pgx.Tx) error {
-			var e error
-			v, e = s.ActConfiguredRule(ctx, tx, a, g.ID, v.ID, platformlottery.ConfiguredAction{Revision: v.Revision, Action: action}, points.Metadata{})
-			return e
-		})
-	}
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
 		_, e := s.Connect(ctx, tx, b, f.brand, g.ID, "", points.Metadata{})
 		if e != nil {
@@ -93,7 +92,7 @@ func configuredFixtureFrom(t *testing.T, raw []byte, cases []platformlottery.Con
 		p, e = s.CreatePeriod(ctx, tx, a, g.ID, platformlottery.PeriodInput{PeriodNo: "configured-1", BetStartAt: time.Now().Add(-time.Hour), BetEndAt: time.Now().Add(3 * time.Second), DrawAt: time.Now().Add(3 * time.Second)}, points.Metadata{})
 		return e
 	})
-	return configuredFixture{f, s, a, b, g, p, v, ConfiguredInput{PeriodID: p.ID, RuleID: v.ID, SalesVersion: 1, SnapshotHash: engine.SnapshotHash(), Requests: cases[0].Requests}}
+	return configuredFixture{f, s, a, b, g, p, v, cases, ConfiguredInput{PeriodID: p.ID, RuleID: v.ID, SalesVersion: 1, SnapshotHash: engine.SnapshotHash(), Requests: cases[0].Requests}}
 }
 func configuredPlace(t *testing.T, c configuredFixture, key string, in ConfiguredInput) (mutation.Result, error) {
 	t.Helper()
@@ -147,7 +146,7 @@ func TestConfiguredLiveWorkflowFrozenSnapshotAndIsolation(t *testing.T) {
 		t.Fatal("foreign orders", e)
 	}
 	tx, _ := f.db.Begin(ctx)
-	_, e = c.s.SaveConfiguredDraft(ctx, tx, c.b, c.g.ID, platformlottery.ConfiguredDraftInput{Snapshot: c.v.Snapshot}, points.Metadata{})
+	_, e = c.s.SaveConfiguredRules(ctx, tx, c.b, c.g.ID, platformlottery.ConfiguredRulesInput{ID: c.v.ID, Revision: c.v.Revision, Snapshot: c.v.Snapshot}, points.Metadata{})
 	tx.Rollback(ctx)
 	if !errors.Is(e, platformlottery.ErrDenied) {
 		t.Fatal("brand rewrote platform rule", e)
@@ -166,21 +165,10 @@ func TestConfiguredLiveWorkflowFrozenSnapshotAndIsolation(t *testing.T) {
 	snap.Prices.Plates["A"]["lucky_price"] = "2"
 	snap.Catalog.Domains["lucky"].Options[0].Mapping.Numbers = []int{8}
 	raw, _ := json.Marshal(snap)
-	var next platformlottery.ConfiguredVersion
-	cases := append([]platformlottery.ConfiguredCase{}, c.v.Cases...)
-	cases[0].Prize = 0
 	bettingTx(t, f.db, func(tx pgx.Tx) error {
-		var e error
-		next, e = c.s.SaveConfiguredDraft(ctx, tx, c.a, c.g.ID, platformlottery.ConfiguredDraftInput{Snapshot: raw, Cases: cases}, points.Metadata{})
+		_, e := c.s.SaveConfiguredRules(ctx, tx, c.a, c.g.ID, platformlottery.ConfiguredRulesInput{ID: c.v.ID, Revision: c.v.Revision, Snapshot: raw}, points.Metadata{})
 		return e
 	})
-	for _, action := range []string{"validate", "submit", "approve", "publish"} {
-		bettingTx(t, f.db, func(tx pgx.Tx) error {
-			var e error
-			next, e = c.s.ActConfiguredRule(ctx, tx, c.a, c.g.ID, next.ID, platformlottery.ConfiguredAction{Revision: next.Revision, Action: action}, points.Metadata{})
-			return e
-		})
-	}
 	if _, e = configuredPlace(t, c, "configured-stale", c.input); !errors.Is(e, ErrVersion) {
 		t.Fatal("stale admission", e)
 	}
@@ -219,6 +207,10 @@ func TestConfiguredLiveWorkflowFrozenSnapshotAndIsolation(t *testing.T) {
 	if e != nil || len(rows) != 1 || rows[0].Result == nil || rows[0].Result.PrizePoints != 25 {
 		t.Fatal("frozen payout", rows, e)
 	}
+	var audited bool
+	if e := f.db.QueryRow(ctx, `SELECT before_json->>'status'='placed' AND after_json->>'status'='settled' AND (after_json->'result'->>'prize_points')::bigint=25 FROM audit_logs WHERE action='configured.settle' AND resource_id=$1`, placed.ID).Scan(&audited); e != nil || !audited {
+		t.Fatal("settlement audit snapshots", audited, e)
+	}
 	if n, e := f.service.ProcessConfiguredSettlements(ctx, 10); e != nil || n != 0 {
 		t.Fatal("repeated payout", n, e)
 	}
@@ -231,7 +223,7 @@ func TestConfiguredLiveWorkflowFrozenSnapshotAndIsolation(t *testing.T) {
 		t.Fatal("financial witnesses", invalid, e)
 	}
 	var consistent bool
-	if e = f.db.QueryRow(ctx, `SELECT (point_business_preview($1,$2)->>'consistent')::boolean`, f.brand, wallet.AccountID).Scan(&consistent); e != nil || !consistent {
+	if e = f.db.QueryRow(ctx, `SELECT coalesce(bool_and(source_valid),false) FROM point_configured_business_witnesses($1,$2)`, f.brand, wallet.AccountID).Scan(&consistent); e != nil || !consistent {
 		t.Fatal("configured money not reconciled", e)
 	}
 	detail, e = c.s.Detail(ctx, f.brand, c.g.ID, 50, 0)
@@ -270,56 +262,27 @@ func TestConfiguredLiveWorkflowFrozenSnapshotAndIsolation(t *testing.T) {
 	if e != nil || after.AvailablePoints != wallet.AvailablePoints || after.Version != wallet.Version {
 		t.Fatal("deletion changed funds", after, e)
 	}
-	if e = f.db.QueryRow(ctx, `SELECT (point_business_preview($1,$2)->>'consistent')::boolean`, f.brand, wallet.AccountID).Scan(&consistent); e != nil || !consistent {
+	if e = f.db.QueryRow(ctx, `SELECT coalesce(bool_and(source_valid),false) FROM point_configured_business_witnesses($1,$2)`, f.brand, wallet.AccountID).Scan(&consistent); e != nil || !consistent {
 		t.Fatal("deletion damaged reconciliation", e)
 	}
 }
 
-func TestConfiguredWorkflowValidationIsBoundToRevision(t *testing.T) {
+func TestConfiguredRuleSaveIsBoundToCurrentRevision(t *testing.T) {
 	c := newConfiguredFixture(t)
 	ctx := context.Background()
-	cases := append([]platformlottery.ConfiguredCase{}, c.v.Cases...)
-	cases[0].Prize = 26
-	var v platformlottery.ConfiguredVersion
 	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
-		var e error
-		v, e = c.s.SaveConfiguredDraft(ctx, tx, c.a, c.g.ID, platformlottery.ConfiguredDraftInput{Snapshot: c.v.Snapshot, Cases: cases}, points.Metadata{})
+		_, e := c.s.SaveConfiguredRules(ctx, tx, c.a, c.g.ID, platformlottery.ConfiguredRulesInput{ID: c.v.ID, Revision: c.v.Revision, Snapshot: c.v.Snapshot}, points.Metadata{})
 		return e
 	})
+	var audited bool
+	if e := c.f.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM audit_logs WHERE action='configured_rule.save' AND before_json->>'id'=$1 AND after_json->>'id'<>$1 AND before_json->'snapshot'=after_json->'snapshot')`, c.v.ID).Scan(&audited); e != nil || !audited {
+		t.Fatal("rule replacement audit snapshots", audited, e)
+	}
 	tx, _ := c.f.db.Begin(ctx)
-	_, e := c.s.ActConfiguredRule(ctx, tx, c.a, c.g.ID, v.ID, platformlottery.ConfiguredAction{Revision: v.Revision, Action: "validate"}, points.Metadata{})
-	tx.Rollback(ctx)
-	if !errors.Is(e, platformlottery.ErrInvalid) {
-		t.Fatal("accepted false expected result", e)
-	}
-	cases[0].Prize = 25
-	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
-		var e error
-		v, e = c.s.SaveConfiguredDraft(ctx, tx, c.a, c.g.ID, platformlottery.ConfiguredDraftInput{ID: v.ID, Revision: v.Revision, Snapshot: c.v.Snapshot, Cases: cases}, points.Metadata{})
-		return e
-	})
-	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
-		var e error
-		v, e = c.s.ActConfiguredRule(ctx, tx, c.a, c.g.ID, v.ID, platformlottery.ConfiguredAction{Revision: v.Revision, Action: "validate"}, points.Metadata{})
-		return e
-	})
-	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
-		var e error
-		v, e = c.s.SaveConfiguredDraft(ctx, tx, c.a, c.g.ID, platformlottery.ConfiguredDraftInput{ID: v.ID, Revision: v.Revision, Snapshot: c.v.Snapshot, Cases: cases}, points.Metadata{})
-		return e
-	})
-	if v.Status != "draft" || len(v.Validation) > 0 {
-		t.Fatal("save kept old evidence", v.Status)
-	}
-	tx, _ = c.f.db.Begin(ctx)
-	_, e = c.s.ActConfiguredRule(ctx, tx, c.a, c.g.ID, v.ID, platformlottery.ConfiguredAction{Revision: v.Revision, Action: "submit"}, points.Metadata{})
-	tx.Rollback(ctx)
-	if !errors.Is(e, platformlottery.ErrConflict) {
-		t.Fatal("unvalidated change submitted", e)
-	}
-	visible, e := c.s.ConfiguredVersions(ctx, c.f.brand, c.g.ID)
-	if e != nil || len(visible) != 1 || visible[0].ID != c.v.ID {
-		t.Fatal("brand read unpublished draft", visible, e)
+	defer tx.Rollback(ctx)
+	_, e := c.s.SaveConfiguredRules(ctx, tx, c.a, c.g.ID, platformlottery.ConfiguredRulesInput{ID: c.v.ID, Revision: c.v.Revision, Snapshot: c.v.Snapshot}, points.Metadata{})
+	if !errors.Is(e, platformlottery.ErrVersionConflict) {
+		t.Fatal("stale rule overwritten", e)
 	}
 }
 
@@ -402,7 +365,7 @@ func TestConfiguredDrawSourcesSelectionAndFrozenPeriods(t *testing.T) {
 	anchor := time.Now().Add(time.Hour)
 	number := "900001"
 	interval := 120
-	plan := platformlottery.AutomationPlan{SourceType: "mapped", Mapping: &platformlottery.FeedMapping{Format: "json", Schedule: "interval", TimeFormat: "rfc3339", Period: platformlottery.FeedField{Path: "/period_no"}, DrawTime: platformlottery.FeedField{Path: "/drawn_at"}, Regular: &platformlottery.FeedNumbers{FeedField: platformlottery.FeedField{Path: "/result/regular"}, Count: 6}, Special: &platformlottery.FeedNumbers{FeedField: platformlottery.FeedField{Path: "/result/special"}, Count: 1}}, Enabled: true, AnchorDrawAt: &anchor, AnchorPeriodNo: &number, IntervalSeconds: &interval, CloseBeforeSeconds: 15, SourceURL: "https://first.example/result"}
+	plan := platformlottery.AutomationPlan{SourceType: "mapped", Mapping: &platformlottery.FeedMapping{Format: "json", Schedule: "interval", TimeFormat: "rfc3339", Period: platformlottery.FeedField{Path: "/period_no"}, DrawTime: platformlottery.FeedField{Path: "/drawn_at"}, Regular: &platformlottery.FeedNumbers{FeedField: platformlottery.FeedField{Path: "/result/regular"}, Count: 6}, Special: &platformlottery.FeedNumbers{FeedField: platformlottery.FeedField{Path: "/result/special"}, Count: 1}}, Enabled: true, AnchorDrawAt: &anchor, AnchorPeriodNo: &number, IntervalSeconds: &interval, OpenBeforeSeconds: &interval, CloseBeforeSeconds: 15, SourceURL: "https://first.example/result"}
 	var first, second platformlottery.DrawSource
 	save := func(name string, p platformlottery.AutomationPlan) *platformlottery.DrawSource {
 		var out platformlottery.DrawSource
@@ -483,7 +446,7 @@ func TestConfiguredDrawSourceAndManualResults(t *testing.T) {
 	anchor := time.Now().Add(time.Hour)
 	number := "920001"
 	interval := 120
-	plan := platformlottery.AutomationPlan{SourceType: "mapped", Mapping: &platformlottery.FeedMapping{Format: "json", Schedule: "interval", TimeFormat: "rfc3339", Period: platformlottery.FeedField{Path: "/period_no"}, DrawTime: platformlottery.FeedField{Path: "/drawn_at"}, Regular: &platformlottery.FeedNumbers{FeedField: platformlottery.FeedField{Path: "/result/regular"}, Count: 6}, Special: &platformlottery.FeedNumbers{FeedField: platformlottery.FeedField{Path: "/result/special"}, Count: 1}}, Enabled: true, AnchorDrawAt: &anchor, AnchorPeriodNo: &number, IntervalSeconds: &interval, CloseBeforeSeconds: 15, SourceURL: "https://manual.example/result"}
+	plan := platformlottery.AutomationPlan{SourceType: "mapped", Mapping: &platformlottery.FeedMapping{Format: "json", Schedule: "interval", TimeFormat: "rfc3339", Period: platformlottery.FeedField{Path: "/period_no"}, DrawTime: platformlottery.FeedField{Path: "/drawn_at"}, Regular: &platformlottery.FeedNumbers{FeedField: platformlottery.FeedField{Path: "/result/regular"}, Count: 6}, Special: &platformlottery.FeedNumbers{FeedField: platformlottery.FeedField{Path: "/result/special"}, Count: 1}}, Enabled: true, AnchorDrawAt: &anchor, AnchorPeriodNo: &number, IntervalSeconds: &interval, OpenBeforeSeconds: &interval, CloseBeforeSeconds: 15, SourceURL: "https://manual.example/result"}
 	var source platformlottery.DrawSource
 	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
 		var err error
@@ -523,7 +486,7 @@ func TestConfiguredMappedJSONAndDOMCollection(t *testing.T) {
 			anchor := nextAt
 			number := "930001"
 			interval := 120
-			p := platformlottery.AutomationPlan{SourceType: "mapped", Mapping: m, Enabled: true, AnchorDrawAt: &anchor, AnchorPeriodNo: &number, IntervalSeconds: &interval, SourceURL: server.URL + "/unrelated-feed?lang=en"}
+			p := platformlottery.AutomationPlan{SourceType: "mapped", Mapping: m, Enabled: true, AnchorDrawAt: &anchor, AnchorPeriodNo: &number, IntervalSeconds: &interval, OpenBeforeSeconds: &interval, SourceURL: server.URL + "/unrelated-feed?lang=en"}
 			if format == "html" {
 				m.Schedule = "source"
 				p.AnchorDrawAt = nil
@@ -643,4 +606,216 @@ func TestConfiguredCatalogueRequiresCurrentBrandSales(t *testing.T) {
 		t.Fatal(e)
 	}
 	check(0, "unconfigured")
+}
+
+func TestConfiguredCatalogueShowsImportedPreviousDrawWithoutSaleableHistory(t *testing.T) {
+	c := newConfiguredFixture(t)
+	ctx := context.Background()
+	if _, err := c.f.db.Exec(ctx, `INSERT INTO platform_draw_history(game_id,period_no,draw_year,draw_date,result,source,regular_order,attributes) VALUES($1,'1993001',1993,'1993-01-05','{"regular":[1,2,3,4,5,6],"special":[7],"digits":[]}','hkjc','[6,5,4,3,2,1]','{"01":{"wave":"blue","zodiac":"rat","element":"water"}}')`, c.g.ID); err != nil {
+		t.Fatal(err)
+	}
+	value, err := c.f.service.ConfiguredCatalog(ctx, c.f.brand, c.g.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := value.(map[string]any)
+	previous, ok := data["previous_draw"].(map[string]any)
+	if !ok || previous["period_no"] != "1993001" {
+		t.Fatalf("imported previous result missing: %+v", data["previous_draw"])
+	}
+	if got := previous["result"].(rules.Draw); len(got.Special) != 1 || got.Special[0] != 7 {
+		t.Fatalf("wrong result: %+v", got)
+	}
+	if got := previous["attributes"].(map[string]ArchiveNumberAttribute)["01"].Wave; got != "blue" {
+		t.Fatalf("saved wave replaced by current rule: %s", got)
+	}
+	var count int
+	if err = c.f.db.QueryRow(ctx, `SELECT count(*) FROM platform_game_periods WHERE game_id=$1 AND result IS NOT NULL`, c.g.ID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("history turned into an operational period: %d %v", count, err)
+	}
+}
+
+func TestConfiguredOpeningScheduleRejectsBeforeOpenWithoutDebit(t *testing.T) {
+	c := newConfiguredFixture(t)
+	ctx := context.Background()
+	opening := 60
+	draw := time.Now().Add(2 * time.Minute).UTC().Truncate(time.Second)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"status": "pending", "next": "opening-check", "next_at": draw.Format(time.RFC3339)})
+	}))
+	defer server.Close()
+	mapping := &platformlottery.FeedMapping{Format: "json", Schedule: "source", TimeFormat: "rfc3339", Period: platformlottery.FeedField{Path: "/period"}, DrawTime: platformlottery.FeedField{Path: "/at"}, Regular: &platformlottery.FeedNumbers{FeedField: platformlottery.FeedField{Path: "/regular"}, Count: 6}, Special: &platformlottery.FeedNumbers{FeedField: platformlottery.FeedField{Path: "/special"}, Count: 1}, Complete: &platformlottery.FeedCondition{FeedField: platformlottery.FeedField{Path: "/status"}, Equals: "done"}, NextPeriod: &platformlottery.FeedField{Path: "/next"}, NextDrawTime: &platformlottery.FeedField{Path: "/next_at"}}
+	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
+		source, e := c.s.SaveDrawSource(ctx, tx, c.a, c.g.ID, platformlottery.DrawSourceInput{DrawSource: platformlottery.DrawSource{Name: "Opening schedule", Plan: platformlottery.AutomationPlan{SourceType: "mapped", Mapping: mapping, Enabled: true, OpenBeforeSeconds: &opening, CloseBeforeSeconds: 15, SourceURL: server.URL}}}, points.Metadata{})
+		if e != nil {
+			return e
+		}
+		_, e = c.s.ActivateDrawSource(ctx, tx, c.a, c.g.ID, source.ID, platformlottery.DrawSourceActivation{Revision: source.Revision}, points.Metadata{})
+		return e
+	})
+	if _, e := c.s.SyncMappedSources(ctx, platformlottery.AutomationSources{Origins: []string{server.URL}, Client: server.Client()}); e != nil {
+		t.Fatal(e)
+	}
+	var start, end, at time.Time
+	if e := c.f.db.QueryRow(ctx, `SELECT id::text,bet_start_at,bet_end_at,draw_at FROM platform_game_periods WHERE game_id=$1 AND period_no='opening-check'`, c.g.ID).Scan(&c.input.PeriodID, &start, &end, &at); e != nil {
+		t.Fatal(e)
+	}
+	if !start.Equal(draw.Add(-60*time.Second)) || !end.Equal(draw.Add(-15*time.Second)) || !at.Equal(draw) {
+		t.Fatal("configured opening/closing/draw times", start, end, at)
+	}
+	originalStart := start
+	start = start.Add(15 * time.Second)
+	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
+		changed, err := c.s.UpdatePeriodOpening(ctx, tx, c.a, c.input.PeriodID, platformlottery.PeriodOpeningInput{BetStartAt: start, ExpectedBetStartAt: originalStart}, points.Metadata{})
+		if err == nil && !changed.BetStartAt.Equal(start) {
+			t.Fatal("automatic period opening did not change")
+		}
+		return err
+	})
+	fundBettingWallet(t, c.f, 100)
+	before, e := (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
+	if e != nil {
+		t.Fatal(e)
+	}
+	tx, e := c.f.db.Begin(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = c.f.service.PreviewConfigured(ctx, tx, c.f.brand, c.f.user, c.input, points.Metadata{})
+	tx.Rollback(ctx)
+	if !errors.Is(e, ErrClosed) {
+		t.Fatal("pre-opening quote accepted", e)
+	}
+	if _, e = configuredPlace(t, c, "before-opening", c.input); !errors.Is(e, ErrClosed) {
+		t.Fatal("pre-opening order accepted", e)
+	}
+	after, e := (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
+	if e != nil || after.AvailablePoints != before.AvailablePoints || after.Version != before.Version {
+		t.Fatal("pre-opening request changed wallet", after, e)
+	}
+	var orders int
+	if e = c.f.db.QueryRow(ctx, `SELECT count(*) FROM configured_orders WHERE period_id=$1`, c.input.PeriodID).Scan(&orders); e != nil || orders != 0 {
+		t.Fatal("pre-opening order persisted", orders, e)
+	}
+}
+
+func TestConfiguredBetLimitsApplyToAdmissionWithoutDebiting(t *testing.T) {
+	c := newConfiguredFixture(t)
+	ctx := context.Background()
+	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
+		period, err := c.s.CreatePeriod(ctx, tx, c.a, c.g.ID, platformlottery.PeriodInput{PeriodNo: "limits-admission", BetStartAt: time.Now().Add(-time.Hour), BetEndAt: time.Now().Add(time.Hour), DrawAt: time.Now().Add(time.Hour)}, points.Metadata{})
+		c.input.PeriodID = period.ID
+		return err
+	})
+	c.b.Roles[0].Permissions = append(c.b.Roles[0].Permissions, access.Permission{Resource: "bet_policy", Action: "write", Scope: access.ScopeBrand})
+	before, e := c.s.BetLimits(ctx, c.f.brand, c.g.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	next := before
+	next.MaxPoints = 5
+	next.MaxPeriodPoints = 50
+	next.MaxUserPeriodPoints = 25
+	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
+		var err error
+		next, err = c.s.WriteBetLimits(ctx, tx, c.b, c.f.brand, c.g.ID, next, points.Metadata{})
+		return err
+	})
+	if next.Version != before.Version+1 {
+		t.Fatal("sales version did not advance")
+	}
+	fundBettingWallet(t, c.f, 100)
+	wallet, e := (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = configuredPlace(t, c, "limit-stale-sales", c.input); !errors.Is(e, ErrVersion) {
+		t.Fatal("old confirmation accepted after limit change", e)
+	}
+	c.input.SalesVersion = next.Version
+	if _, e = configuredPlace(t, c, "limit-over-max", c.input); !errors.Is(e, ErrLimit) {
+		t.Fatal("new maximum did not reject oversized bet", e)
+	}
+	after, e := (points.Store{DB: c.f.db}).Read(ctx, c.f.brand, c.f.member)
+	if e != nil || after.AvailablePoints != wallet.AvailablePoints || after.Version != wallet.Version {
+		t.Fatal("rejected bet debited wallet", after, e)
+	}
+	var orders int
+	if e = c.f.db.QueryRow(ctx, `SELECT count(*) FROM configured_orders WHERE brand_id=$1 AND game_id=$2`, c.f.brand, c.g.ID).Scan(&orders); e != nil || orders != 0 {
+		t.Fatal("rejected request created an order", orders, e)
+	}
+}
+
+func TestConfiguredPurchasedAndClosedOpeningCannotChange(t *testing.T) {
+	c := newConfiguredFixture(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	var period platformlottery.Period
+	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
+		var err error
+		period, err = c.s.CreatePeriod(ctx, tx, c.a, c.g.ID, platformlottery.PeriodInput{PeriodNo: "opening-purchased", BetStartAt: now.Add(-time.Hour), BetEndAt: now.Add(time.Hour), DrawAt: now.Add(2 * time.Hour)}, points.Metadata{})
+		return err
+	})
+	c.input.PeriodID = period.ID
+	fundBettingWallet(t, c.f, 100)
+	if _, err := configuredPlace(t, c, "opening-purchased", c.input); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := c.f.db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.s.UpdatePeriodOpening(ctx, tx, c.a, period.ID, platformlottery.PeriodOpeningInput{ExpectedBetStartAt: period.BetStartAt, BetStartAt: now.Add(time.Minute)}, points.Metadata{})
+	tx.Rollback(ctx)
+	if !errors.Is(err, platformlottery.ErrPeriodInUse) {
+		t.Fatal("purchased opening changed", err)
+	}
+	// Database protection also rejects a direct rewrite of purchased history.
+	tx, err = c.f.db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = tx.Exec(ctx, `UPDATE platform_game_periods SET bet_start_at=$2 WHERE id=$1`, period.ID, now.Add(time.Minute))
+	tx.Rollback(ctx)
+	if err == nil {
+		t.Fatal("database allowed purchased opening rewrite")
+	}
+	bettingTx(t, c.f.db, func(tx pgx.Tx) error {
+		var err error
+		period, err = c.s.CreatePeriod(ctx, tx, c.a, c.g.ID, platformlottery.PeriodInput{PeriodNo: "opening-closed", BetStartAt: now.Add(-3 * time.Hour), BetEndAt: now.Add(-2 * time.Hour), DrawAt: now.Add(-time.Hour)}, points.Metadata{})
+		return err
+	})
+	tx, err = c.f.db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.s.UpdatePeriodOpening(ctx, tx, c.a, period.ID, platformlottery.PeriodOpeningInput{ExpectedBetStartAt: period.BetStartAt, BetStartAt: now.Add(-4 * time.Hour)}, points.Metadata{})
+	tx.Rollback(ctx)
+	if !errors.Is(err, platformlottery.ErrPeriodInUse) {
+		t.Fatal("closed period opening changed", err)
+	}
+}
+
+func TestConfiguredRetiredAutomaticPeriodCannotAcceptFunds(t *testing.T) {
+	c := newConfiguredFixture(t)
+	f := c.f
+	ctx := context.Background()
+	fundBettingWallet(t, f, 100)
+	const version int64 = 1
+	bettingTx(t, f.db, func(tx pgx.Tx) error {
+		_, e := tx.Exec(ctx, `INSERT INTO platform_automation_versions(game_id,version,enabled,anchor_draw_at,anchor_period_no,interval_seconds,open_before_seconds,close_before_seconds,source_url,credential_ref,created_by,source_type) VALUES($1,1,true,clock_timestamp(),'100',120,120,15,'https://draw.example.test/retired','',$2,'interval_json')`, c.g.ID, c.a.ID)
+		if e != nil {
+			return e
+		}
+		p, e := c.s.CreatePeriod(ctx, tx, c.a, c.g.ID, platformlottery.PeriodInput{AutomationVersion: func() *int64 { v := version; return &v }(), PeriodNo: "retired-source", BetStartAt: time.Now().Add(-time.Minute), BetEndAt: time.Now().Add(time.Minute), DrawAt: time.Now().Add(2 * time.Minute)}, points.Metadata{})
+		c.input.PeriodID = p.ID
+		return e
+	})
+	before := walletBySource(t, f)
+	if _, e := configuredPlace(t, c, "retired-source-bet", c.input); !errors.Is(e, ErrClosed) {
+		t.Fatal("retired source admitted", e)
+	}
+	if after := walletBySource(t, f); after != before {
+		t.Fatal("retired source changed funds")
+	}
 }

@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect } from './platform-fixture';
 
 const origin = 'http://127.0.0.1:5185';
@@ -37,7 +38,7 @@ test('platform member and audit pages paginate and clear scope without write con
     if (await page.locator('button[aria-controls="platform-brand-tabs"]').getAttribute('aria-expanded') === 'false') await page.locator('button[aria-controls="platform-brand-tabs"]').click()
     await page.locator(section === 'Member list' ? '.nav-subitem' : '.nav-item').filter({ hasText: section }).click();
     if (section === 'Audit and operations') await page.getByTestId('platform-operations-tabs').getByRole('button', { name: 'Audit log', exact: true }).click();
-    await page.locator('.topbar-brand-picker select').selectOption(brand);
+    await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
     const pages = page.getByTestId(testId);
     await expect(pages.getByRole('button', { name: 'Previous page' })).toBeDisabled();
     await expect(pages.getByRole('button', { name: 'Next page' })).toBeEnabled();
@@ -52,7 +53,7 @@ test('platform member and audit pages paginate and clear scope without write con
     await expect(page.locator('.global-message')).toContainText('Page read unavailable');
     await pages.getByRole('button', { name: 'Refresh' }).click();
     await expect(pages.getByRole('button', { name: 'Next page' })).toBeEnabled();
-    await page.locator('.topbar-brand-picker select').selectOption('');
+    await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), '');
     await expect(pages).toHaveCount(0);
     await expect(page.locator('.content')).not.toContainText(marker);
   }

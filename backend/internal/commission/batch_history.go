@@ -37,22 +37,19 @@ type RunPage struct {
 // CalculationHistoryItem is a sanitized per-order calculation projection.
 // It omits the saved rule snapshot, agent path, and account identity.
 type CalculationHistoryItem struct {
-	ID            string        `json:"id"`
-	BrandID       string        `json:"brand_id"`
-	CycleID       string        `json:"cycle_id"`
-	RunID         string        `json:"run_id"`
-	OrderID       string        `json:"order_id"`
-	MemberID      string        `json:"member_id"`
-	Reason        string        `json:"reason"`
-	Status        string        `json:"status"`
-	StakePoints   points.Amount `json:"stake_points"`
-	PrizePoints   points.Amount `json:"prize_points"`
-	BasePoints    points.Amount `json:"base_points"`
-	JobID         *string       `json:"job_id"`
-	CalculationID *string       `json:"calculation_id"`
-	Generation    *string       `json:"generation"`
-	AuditLogID    string        `json:"audit_log_id"`
-	CreatedAt     time.Time     `json:"created_at"`
+	ID          string        `json:"id"`
+	BrandID     string        `json:"brand_id"`
+	CycleID     string        `json:"cycle_id"`
+	RunID       string        `json:"run_id"`
+	OrderID     string        `json:"order_id"`
+	MemberID    string        `json:"member_id"`
+	Reason      string        `json:"reason"`
+	Status      string        `json:"status"`
+	StakePoints points.Amount `json:"stake_points"`
+	PrizePoints points.Amount `json:"prize_points"`
+	BasePoints  points.Amount `json:"base_points"`
+	AuditLogID  string        `json:"audit_log_id"`
+	CreatedAt   time.Time     `json:"created_at"`
 }
 
 type CalculationPage struct {
@@ -111,7 +108,6 @@ const calculationHistoryJSON = `jsonb_build_object(
  'id',c.id::text,'brand_id',c.brand_id::text,'cycle_id',c.cycle_id::text,'run_id',c.run_id::text,
  'order_id',c.order_id::text,'member_id',c.member_id::text,'reason',c.reason,'status',c.status,
  'stake_points',c.stake_points::text,'prize_points',c.prize_points::text,'base_points',c.base_points::text,
- 'job_id',c.job_id::text,'calculation_id',c.calculation_id::text,'generation',c.generation::text,
  'audit_log_id',c.audit_log_id::text,'created_at',c.created_at)`
 
 // CalculationsTx addresses a specific run explicitly. It never substitutes the

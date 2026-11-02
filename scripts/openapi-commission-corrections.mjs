@@ -1,3 +1,4 @@
+import {commissionListParameters} from './commission-list-parameters.mjs';
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
 const obj = (properties, required = Object.keys(properties)) => ({ type: 'object', properties, required, additionalProperties: false });
 const nullable = schema => ({ anyOf: [schema, { type: 'null' }] });
@@ -6,7 +7,7 @@ const aggregate = { type: 'string', pattern: '^(0|[1-9][0-9]*)$', description: '
 const net = { type: 'string', pattern: '^(0|-?[1-9][0-9]*)$', description: 'Exact signed decimal net aggregate; database numeric totals may exceed int64.' };
 const version = { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER, description: 'Positive database int64 version. JavaScript clients must reject values above the safe integer limit rather than round them.' };
 const epoch = { type: 'string', format: 'nonnegative-int64-string', pattern: '^(0|[1-9][0-9]*)$', maxLength: 19, description: 'Canonical nonnegative decimal evidence epoch. Clients must register the custom format nonnegative-int64-string to enforce the exact 0..9223372036854775807 int64 bound; generic OpenAPI readers apply only canonical syntax and length here. Never convert to a JavaScript Number.' };
-const reason = { type: 'string', maxLength: 500, pattern: '^$|^(?=\\S)(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])(?:[\\s\\S]*\\S)?$', description: 'Valid UTF-8 audit note, empty allowed, with no leading or trailing whitespace and no Unicode control characters (Unicode category Cc); maximum 500 UTF-8 bytes.' };
+const reason = { type: 'string', maxLength: 500, pattern: '^$|^(?=\\S)(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])(?:[\\s\\S]*\\S)?$', description: 'Valid UTF-8 audit note, empty allowed, with no leading or trailing whitespace and no Unicode control characters (Unicode category Cc); maximum 500 characters.' };
 const actorHeader = { name: 'X-Commission-Correction-Actor-ID', in: 'header', required: true, schema: ref('UUID'), description: 'Administrator UUID for this reviewed financial action; must match the freshly authenticated actor, including on receipt replay.' };
 const page = [
   { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
@@ -41,6 +42,8 @@ export const schemas = {
     }),
     description: 'A ready plan is only a preview and does not approve or move funds. before_points, calculated_points, credit_points, and debit_points are exact nonnegative numeric aggregates; net_points is the only signed aggregate. Totals may exceed int64 and all totals are required from plan creation. Timestamps preserve Go RFC3339Nano precision. last_error_code is null when there is no current error.',
   },
+  CommissionCorrectionCase: obj({id:ref('UUID'),plan:ref('CommissionCorrectionPlan'),execution_id:nullable(ref('UUID')),execution_state:nullable({type:'string',enum:['awaiting_approval','applying','completed','paused','failed','stale']}),queue:{type:'string',enum:['pending','processing','history']}}),
+  CommissionCorrectionCasePage:obj({brand_id:ref('UUID'),...pageFields('CommissionCorrectionCase')}),
   CommissionCorrectionPlanTarget: {
     ...obj({
       id: ref('UUID'), brand_id: ref('UUID'), plan_id: ref('UUID'), agent_id: ref('UUID'), member_id: ref('UUID'),
@@ -85,6 +88,7 @@ export const schemas = {
 };
 
 export const operations = [
+  admin('GET','/commission-correction-cases','listCommissionCorrectionCases','List correction plans with their execution status',ref('CommissionCorrectionCasePage'),{parameters:[...page,...commissionListParameters('correction')],description:'Every GET rejects a body and ForceQuery. One row per saved plan, joined to its optional execution. Filter by saved cycle end in the half-open from/to window, cycle, saved beneficiary agent and queue. Counts cover the complete filter, not just the page. A queue is an operational state and does not authorize or establish an amount owed.'}),
   admin('GET', '/commission-correction-policy', 'getCommissionCorrectionPolicy', 'Read commission correction execution policy', ref('CommissionCorrectionExecutionPolicy')),
   admin('PUT', '/commission-correction-policy', 'updateCommissionCorrectionPolicy', 'Update commission correction execution policy', ref('CommissionCorrectionExecutionPolicy'), {
     ...action('commission_correction_policy.write.brand', 'CommissionCorrectionExecutionPolicyInput', 'The policy starts disabled; enabling is an explicit audited opt-in and does not execute a plan.'),

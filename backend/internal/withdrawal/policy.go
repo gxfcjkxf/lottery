@@ -19,11 +19,12 @@ import (
 
 type Service struct{ DB *pgxpool.Pool }
 type BrandPolicy struct {
-	BrandID    string      `json:"brand_id"`
-	Version    int64       `json:"version"`
-	Config     BrandConfig `json:"config"`
-	UpdatedAt  time.Time   `json:"updated_at"`
-	AuditLogID string      `json:"audit_log_id,omitempty"`
+	PointsStep points.Amount `json:"points_step"`
+	BrandID    string        `json:"brand_id"`
+	Version    int64         `json:"version"`
+	Config     BrandConfig   `json:"config"`
+	UpdatedAt  time.Time     `json:"updated_at"`
+	AuditLogID string        `json:"audit_log_id,omitempty"`
 }
 type EffectiveMultiple struct {
 	TurnoverMultiple string `json:"turnover_multiple"`
@@ -41,20 +42,21 @@ type GamePolicy struct {
 	AuditLogID string            `json:"audit_log_id,omitempty"`
 }
 type Revision struct {
-	ID        string          `json:"id"`
-	BrandID   string          `json:"brand_id"`
-	GameID    string          `json:"game_id"`
-	Version   int64           `json:"version"`
-	Config    json.RawMessage `json:"config"`
-	ChangedBy string          `json:"changed_by"`
-	Reason    string          `json:"reason"`
-	CreatedAt time.Time       `json:"created_at"`
+	PointsStep points.Amount   `json:"points_step"`
+	ID         string          `json:"id"`
+	BrandID    string          `json:"brand_id"`
+	GameID     string          `json:"game_id"`
+	Version    int64           `json:"version"`
+	Config     json.RawMessage `json:"config"`
+	ChangedBy  string          `json:"changed_by"`
+	Reason     string          `json:"reason"`
+	CreatedAt  time.Time       `json:"created_at"`
 }
 type row interface{ Scan(...any) error }
 
 func scanBrand(r row) (v BrandPolicy, e error) {
 	var raw []byte
-	e = r.Scan(&v.BrandID, &v.Version, &raw, &v.UpdatedAt)
+	e = r.Scan(&v.BrandID, &v.Version, &raw, &v.UpdatedAt, &v.PointsStep)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return v, ErrNotFound
 	}
@@ -83,7 +85,7 @@ func scanGame(r row) (v GamePolicy, e error) {
 	return v, nil
 }
 
-const brandFields = `brand_id::text,version,config,updated_at`
+const brandFields = `brand_id::text,version,config,updated_at,points_step`
 const gameFields = `brand_id::text,game_id::text,version,config,updated_at`
 
 func resolveMultiple(b BrandPolicy, g *GamePolicy) {
@@ -121,7 +123,7 @@ func (s Service) GamePolicy(ctx context.Context, brand, game string) (GamePolicy
 	return out, tx.Commit(ctx)
 }
 func checkWrite(tx pgx.Tx, brand string, a access.Account, version int64, reason string) error {
-	if tx == nil || !validIDs(brand, a.ID) || version < 1 || len(reason) > 500 || !utf8.ValidString(reason) {
+	if tx == nil || !validIDs(brand, a.ID) || version < 1 || utf8.RuneCountInString(reason) > 500 || !utf8.ValidString(reason) {
 		return ErrInvalid
 	}
 	if a.SuperAdmin || !access.Authorize(a, "withdrawal_policy", "write", access.ScopeBrand, brand) {
@@ -129,13 +131,13 @@ func checkWrite(tx pgx.Tx, brand string, a access.Account, version int64, reason
 	}
 	return nil
 }
-func (s Service) appendRevision(ctx context.Context, tx pgx.Tx, brand, game string, version int64, config any, reason string, a access.Account) (string, error) {
+func (s Service) appendRevision(ctx context.Context, tx pgx.Tx, brand, game string, version int64, config any, reason string, a access.Account, step points.Amount) (string, error) {
 	raw, e := json.Marshal(config)
 	if e != nil {
 		return "", e
 	}
 	id := ids.New()
-	_, e = tx.Exec(ctx, `INSERT INTO withdrawal_policy_revisions(id,brand_id,game_id,version,config,changed_by,reason) VALUES($1,$2,NULLIF($3,'')::uuid,$4,$5,$6,$7)`, id, brand, game, version, raw, a.ID, strings.TrimSpace(reason))
+	_, e = tx.Exec(ctx, `INSERT INTO withdrawal_policy_revisions(id,brand_id,game_id,version,config,changed_by,reason,points_step) VALUES($1,$2,NULLIF($3,'')::uuid,$4,$5,$6,$7,$8)`, id, brand, game, version, raw, a.ID, strings.TrimSpace(reason), step)
 	return id, e
 }
 func (s Service) UpdateBrand(ctx context.Context, tx pgx.Tx, brand string, a access.Account, in BrandInput, meta points.Metadata) (BrandPolicy, error) {
@@ -143,7 +145,7 @@ func (s Service) UpdateBrand(ctx context.Context, tx pgx.Tx, brand string, a acc
 	if e := checkWrite(tx, brand, a, in.Version, in.Reason); e != nil {
 		return out, e
 	}
-	if ValidateBrandConfig(in.Config) != nil {
+	if in.PointsStep <= 0 || ValidateBrandConfig(in.Config) != nil {
 		return out, ErrInvalid
 	}
 	before, e := scanBrand(tx.QueryRow(ctx, `SELECT `+brandFields+` FROM brand_withdrawal_policies WHERE brand_id=$1 FOR UPDATE`, brand))
@@ -153,12 +155,12 @@ func (s Service) UpdateBrand(ctx context.Context, tx pgx.Tx, brand string, a acc
 	if before.Version != in.Version || before.Version == math.MaxInt64 {
 		return out, ErrVersion
 	}
-	revision, e := s.appendRevision(ctx, tx, brand, "", before.Version+1, in.Config, in.Reason, a)
+	revision, e := s.appendRevision(ctx, tx, brand, "", before.Version+1, in.Config, in.Reason, a, in.PointsStep)
 	if e != nil {
 		return out, e
 	}
 	raw, _ := json.Marshal(in.Config)
-	out, e = scanBrand(tx.QueryRow(ctx, `UPDATE brand_withdrawal_policies SET version=version+1,config=$2 WHERE brand_id=$1 RETURNING `+brandFields, brand, raw))
+	out, e = scanBrand(tx.QueryRow(ctx, `UPDATE brand_withdrawal_policies SET version=version+1,config=$2,points_step=$3 WHERE brand_id=$1 RETURNING `+brandFields, brand, raw, in.PointsStep))
 	if e != nil {
 		return out, e
 	}
@@ -185,7 +187,7 @@ func (s Service) UpdateGame(ctx context.Context, tx pgx.Tx, brand, game string, 
 	if before.Version != in.Version || before.Version == math.MaxInt64 {
 		return out, ErrVersion
 	}
-	revision, e := s.appendRevision(ctx, tx, brand, game, before.Version+1, in.Config, in.Reason, a)
+	revision, e := s.appendRevision(ctx, tx, brand, game, before.Version+1, in.Config, in.Reason, a, 1)
 	if e != nil {
 		return out, e
 	}
@@ -212,14 +214,14 @@ func (s Service) History(ctx context.Context, brand, game string, limit, offset 
 			return out, e
 		}
 	}
-	rows, e := s.DB.Query(ctx, `SELECT id::text,brand_id::text,coalesce(game_id::text,''),version,config,coalesce(changed_by::text,''),reason,created_at FROM withdrawal_policy_revisions WHERE brand_id=$1 AND game_id IS NOT DISTINCT FROM NULLIF($2,'')::uuid ORDER BY version DESC LIMIT $3 OFFSET $4`, brand, game, limit, offset)
+	rows, e := s.DB.Query(ctx, `SELECT id::text,brand_id::text,coalesce(game_id::text,''),version,config,coalesce(changed_by::text,''),reason,created_at,points_step FROM withdrawal_policy_revisions WHERE brand_id=$1 AND game_id IS NOT DISTINCT FROM NULLIF($2,'')::uuid ORDER BY version DESC LIMIT $3 OFFSET $4`, brand, game, limit, offset)
 	if e != nil {
 		return out, e
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var v Revision
-		if e = rows.Scan(&v.ID, &v.BrandID, &v.GameID, &v.Version, &v.Config, &v.ChangedBy, &v.Reason, &v.CreatedAt); e != nil {
+		if e = rows.Scan(&v.ID, &v.BrandID, &v.GameID, &v.Version, &v.Config, &v.ChangedBy, &v.Reason, &v.CreatedAt, &v.PointsStep); e != nil {
 			return out, e
 		}
 		v.CreatedAt = v.CreatedAt.UTC()

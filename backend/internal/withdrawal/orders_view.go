@@ -52,11 +52,12 @@ func ToUserOrderView(v OrderView) OrderView {
 }
 
 type OrderPage struct {
-	BrandID string      `json:"brand_id"`
-	Items   []OrderView `json:"items"`
-	Limit   int         `json:"limit"`
-	Offset  int         `json:"offset"`
-	HasMore bool        `json:"has_more"`
+	TotalCount string      `json:"total_count"`
+	BrandID    string      `json:"brand_id"`
+	Items      []OrderView `json:"items"`
+	Limit      int         `json:"limit"`
+	Offset     int         `json:"offset"`
+	HasMore    bool        `json:"has_more"`
 }
 type TransitionView struct {
 	ID         string    `json:"id"`
@@ -74,17 +75,20 @@ type HistoryView struct {
 	Items   []TransitionView `json:"items"`
 }
 type AvailabilityView struct {
-	BrandID               string         `json:"brand_id"`
-	MemberID              string         `json:"member_id"`
-	PolicyEnabled         bool           `json:"policy_enabled"`
-	EligibilityConfigured bool           `json:"eligibility_configured"`
-	CanApply              bool           `json:"can_apply"`
-	ReasonCode            string         `json:"reason_code"`
-	MinPoints             points.Amount  `json:"min_points"`
-	MaxPoints             *points.Amount `json:"max_points"`
-	AllowedSources        []string       `json:"allowed_sources"`
-	RealPayments          bool           `json:"real_payments"`
-	ActorContext          string         `json:"actor_context"`
+	PointsStep            points.Amount       `json:"points_step"`
+	AvailablePoints       points.Amount       `json:"available_points"`
+	SourceBalances        []points.Allocation `json:"source_balances"`
+	BrandID               string              `json:"brand_id"`
+	MemberID              string              `json:"member_id"`
+	PolicyEnabled         bool                `json:"policy_enabled"`
+	EligibilityConfigured bool                `json:"eligibility_configured"`
+	CanApply              bool                `json:"can_apply"`
+	ReasonCode            string              `json:"reason_code"`
+	MinPoints             points.Amount       `json:"min_points"`
+	MaxPoints             *points.Amount      `json:"max_points"`
+	AllowedSources        []string            `json:"allowed_sources"`
+	RealPayments          bool                `json:"real_payments"`
+	ActorContext          string              `json:"actor_context"`
 }
 type CreateRequest struct {
 	Points           points.Amount       `json:"points"`
@@ -177,6 +181,9 @@ func (s OrderService) ListViewTx(ctx context.Context, tx pgx.Tx, brand, member, 
 	if !exists {
 		return out, ErrNotFound
 	}
+	if err := tx.QueryRow(ctx, `SELECT count(*)::text FROM withdrawal_orders WHERE brand_id=$1 AND ($2::text='' OR member_id=NULLIF($2,'')::uuid) AND ($3::text='' OR state=$3)`, brand, member, state).Scan(&out.TotalCount); err != nil {
+		return out, err
+	}
 	rows, err := tx.Query(ctx, `SELECT `+viewColumns+` FROM withdrawal_orders WHERE brand_id=$1 AND ($2::text='' OR member_id=NULLIF($2,'')::uuid) AND ($3::text='' OR state=$3) ORDER BY created_at DESC,id DESC LIMIT $4 OFFSET $5`, brand, member, state, limit+1, offset)
 	if err != nil {
 		return out, err
@@ -231,7 +238,7 @@ func (s OrderService) HistoryViewTx(ctx context.Context, tx pgx.Tx, brand, id, m
 	return out, rows.Err()
 }
 func (s OrderService) AvailabilityTx(ctx context.Context, tx pgx.Tx, brand, member string) (AvailabilityView, error) {
-	out := AvailabilityView{BrandID: brand, MemberID: member, AllowedSources: []string{}}
+	out := AvailabilityView{BrandID: brand, MemberID: member, AllowedSources: []string{}, SourceBalances: []points.Allocation{}}
 	if tx == nil || !validIDs(brand, member) {
 		return out, ErrInvalid
 	}
@@ -245,6 +252,22 @@ func (s OrderService) AvailabilityTx(ctx context.Context, tx pgx.Tx, brand, memb
 	}
 	out.PolicyEnabled = policy.Config.Enabled
 	out.EligibilityConfigured = s.Eligibility != nil
+	out.PointsStep = policy.PointsStep
+	wallet, walletErr := s.Points.Snapshot(ctx, tx, brand, member)
+	if walletErr != nil {
+		return out, walletErr
+	}
+	for _, source := range policy.Config.AllowedSources {
+		index, sourceErr := points.SourceIndex(source)
+		if sourceErr != nil {
+			return out, sourceErr
+		}
+		amount := wallet.BySource[index][0]
+		if amount > 0 {
+			out.SourceBalances = append(out.SourceBalances, points.Allocation{Source: source, State: "available", Points: amount})
+			out.AvailablePoints += amount
+		}
+	}
 	out.MinPoints = policy.Config.MinPoints
 	out.MaxPoints = policy.Config.MaxPoints
 	out.AllowedSources = policy.Config.AllowedSources

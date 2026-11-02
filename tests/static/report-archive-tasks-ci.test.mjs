@@ -22,5 +22,7 @@ test('automatic archive task browser CI owns separate viewports and real lost-re
   assert.match(spec, /route\.fetch\(\)/);
   assert.match(spec, /fixture\('advance'\)/);
   assert.match(spec, /requests\[1\]\)\.toEqual\(requests\[0\]\)/);
-  assert.match(spec, /expect\(await economics\(\)\)\.toBe\(before\)/);
+  assert.match(spec, /expect\(economics\(\)\)\.toEqual\(before\)/);
+  assert.match(spec, /route\.abort\('failed'\)/);
+  assert.match(spec, /expect\(\(await retry\(\)\)\.data\)\.toEqual\(accepted\)/);
 });

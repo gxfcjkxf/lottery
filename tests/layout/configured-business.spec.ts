@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import {expect,test,type Page} from '@playwright/test'
 import {readFileSync} from 'node:fs'
 import {resolve} from 'node:path'
@@ -19,42 +20,42 @@ async function mount(page:Page,component:string,props:unknown){
 }
 async function noOverflow(page:Page){expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)}
 for(const locale of ['en','zh-CN'] as const){
- test(`configured saved review and brand sales (${locale})`,async({page},info)=>{
+ test(`configured direct save and brand sales (${locale})`,async({page},info)=>{
   const zh=locale==='zh-CN',errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));let record:any=null;const calls:any[]=[]
   await page.route('**/api/**',route=>{
    const r=route.request(),path=new URL(r.url()).pathname;const ok=(data:unknown)=>route.fulfill({json:{success:true,data}})
-   if(r.method()==='GET')return ok({items:record?[record]:[]})
-   const body=r.postDataJSON();expect(r.headers()['idempotency-key']).toBeTruthy();calls.push(body)
-   if(path.endsWith('/versions')){expect(body.cases[0].prize_points).toBe('25');record={id:versionID,game_id:game,revision:1,snapshot:body.snapshot,snapshot_hash:'frozen',cases:body.cases,status:'draft',validation:null}}
-   else{expect(body.revision).toBe(record.revision);record={...record,revision:record.revision+1,status:({validate:'validated',submit:'submitted',approve:'approved',publish:'published'} as Record<string,string>)[body.action]}}
+   expect(path).toBe('/api/v1/platform/platform-games/'+game+'/configured/rules')
+   if(r.method()==='GET')return ok(record)
+   const body=r.postDataJSON();expect(r.headers()['idempotency-key']).toBeTruthy();calls.push({body,key:r.headers()['idempotency-key']})
+   expect(body).toEqual({id:'',revision:0,snapshot:sample()})
+   record={id:versionID,game_id:game,revision:1,snapshot:body.snapshot,snapshot_hash:'frozen',cases:[],status:'published',validation:null}
+   if(calls.length===1)return route.fulfill({status:503,json:{success:false,error:{code:'SERVICE_UNAVAILABLE',message:'Try again'}}})
    return ok(record)
   })
-  await mount(page,'shared/src/ConfiguredPublishing.vue',{surface:'platform',brandId:'',gameId:game,locale,snapshot:sample()})
-  await page.getByLabel(zh?'独立预期验证用例（JSON）':'Independent validation cases (JSON)',{exact:true}).fill(JSON.stringify([caseInput()]))
-  await page.getByRole('button',{name:zh?'保存草稿':'Save draft',exact:true}).click()
-  await page.getByRole('combobox',{name:zh?'已保存版本':'Saved version',exact:true}).selectOption(versionID)
-  for(const name of zh?['验证已保存草稿','提交审核','审核通过','发布已通过规则']:['Validate saved draft','Submit for review','Approve','Publish approved rules'])await page.getByRole('button',{name,exact:true}).click()
-  await expect(page.getByRole('button',{name:zh?'保存草稿':'Save draft',exact:true})).toBeDisabled()
-  expect(calls).toHaveLength(5);await noOverflow(page);await page.screenshot({path:info.outputPath(`publication-${locale}.png`),fullPage:true})
+  await mount(page,'shared/src/ConfiguredPublishing.vue',{surface:'platform',brandId:'',gameId:game,locale,snapshot:sample(),canWrite:true})
+  await page.getByRole('button',{name:zh?'保存':'Save',exact:true}).click()
+  await expect(page.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true})).toBeVisible()
+  await page.getByRole('button',{name:zh?'重试原请求':'Retry original request',exact:true}).click()
+  await expect(page.getByRole('status')).toHaveText(zh?'已保存':'Saved')
+  expect(calls).toHaveLength(2);expect(calls[1]).toEqual(calls[0])
+  await noOverflow(page);await page.screenshot({path:info.outputPath(`rules-save-${locale}.png`),fullPage:true})
   await page.unroute('**/api/**');let savedSales:any=null
   await page.route('**/api/**',route=>{
    const r=route.request(),path=new URL(r.url()).pathname;const ok=(data:unknown)=>route.fulfill({json:{success:true,data}})
    expect(r.headers()['x-brand-id']).toBe(game)
-   if(path.endsWith('/orders'))return ok({items:[]})
-   if(path.endsWith('/versions'))return ok({items:[record]})
+   if(path.endsWith('/rules'))return ok(record)
+   expect(path.endsWith('/sales')).toBe(true)
    if(r.method()==='GET'&&savedSales)return ok({...savedSales,version:1})
-   if(r.method()==='GET')return route.fulfill({status:404,json:{success:false,error:{code:'RESOURCE_NOT_FOUND',message:'No sales configured'}}})
-   const body=r.postDataJSON();if(Number(body.prices.plates.A.lucky_price)>2.5)return route.fulfill({status:400,json:{success:false,error:{code:'PLATFORM_GAME_INVALID',message:'Invalid sales prices'}}})
+   if(r.method()==='GET')return route.fulfill({status:404,json:{success:false,error:{code:'RESOURCE_NOT_FOUND',message:'Not configured'}}})
+   const body=r.postDataJSON();if(Number(body.prices.plates.A.lucky_price)>2.5)return route.fulfill({status:400,json:{success:false,error:{code:'PLATFORM_GAME_INVALID',message:'Invalid sales'}}})
    savedSales=body;return ok({...body,version:1})
   })
-  await mount(page,'shared/src/ConfiguredPublishing.vue',{surface:'admin',brandId:game,gameId:game,locale,snapshot:null})
-  await page.getByRole('combobox',{name:zh?'已保存版本':'Saved version',exact:true}).selectOption(versionID)
-  await page.getByRole('button',{name:zh?'用选中发布版本建立销售草稿':'Use selected publication as sales draft',exact:true}).click()
-  await page.getByRole('combobox',{name:zh?'启用':'Enabled',exact:true}).selectOption('true')
-  for(const text of zh?['价格表','盘口','A']:['Price table','Plates','A'])await page.locator('summary').filter({hasText:new RegExp(`^${text}$`)}).first().click()
+  await mount(page,'shared/src/ConfiguredPublishing.vue',{surface:'admin',brandId:game,gameId:game,locale,snapshot:null,canWrite:true})
+  await selectControl(page.getByRole('combobox',{name:zh?'启用':'Enabled',exact:true}), 'true')
+  for(const text of zh?['赔率表','盘口','A']:['Odds table','Plates','A'])await page.locator('summary').filter({hasText:new RegExp(`^${text}$`)}).first().click()
   const price=page.getByLabel('lucky_price',{exact:true}).first();await price.fill('3')
-  await page.getByRole('button',{name:zh?'保存品牌销售':'Save brand sales',exact:true}).click();await expect(page.getByRole('alert')).toBeVisible()
-  await price.fill('2.4');await page.getByRole('button',{name:zh?'保存品牌销售':'Save brand sales',exact:true}).click()
+  await page.getByRole('button',{name:zh?'保存':'Save',exact:true}).click();await expect(page.getByRole('alert')).toBeVisible()
+  await price.fill('2.4');await page.getByRole('button',{name:zh?'保存':'Save',exact:true}).click()
   await expect.poll(()=>savedSales?.prices.plates.A.lucky_price).toBe('2.4');expect(savedSales.rule_id).toBe(versionID);expect(savedSales.enabled).toBe(true)
   await noOverflow(page);expect(errors).toEqual([])
  })

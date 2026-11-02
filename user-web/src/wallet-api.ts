@@ -1,13 +1,14 @@
+import { readPaginationTotal } from '@lottery/shared'
 import { readApiEnvelope } from '@lottery/shared'
 
 import { isWalletDTO, normalizeLedgerSnapshots, type WalletDTO, type WalletSource, type WalletState, type SourceBuckets } from "@lottery/shared";
 
-export type { WalletSource, WalletState, SourceBuckets };
+export type { WalletSource, WalletState,  };
 
 export type Wallet = WalletDTO;
 export const WALLET_SNAPSHOT_EVENT = 'lottery:wallet-snapshot';
 
-export interface SourceAllocation {
+interface SourceAllocation {
   source: WalletSource;
   state: WalletState;
   points: string;
@@ -104,9 +105,7 @@ export function createWalletApi(
         throw new WalletApiError("The server returned an invalid wallet ledger response.", 502, "INVALID_RESPONSE");
       const items = (value as { items: unknown[] }).items.map((entry) => normalizeLedgerSnapshots(entry) as LedgerEntry | null);
       if (items.some((entry) => entry === null)) throw new WalletApiError("The server returned an invalid wallet ledger snapshot.", 502, "INVALID_RESPONSE");
-      return { items: items as LedgerEntry[] };
+      return { items: items as LedgerEntry[], total_count: readPaginationTotal(value) };
     },
   };
 }
-
-export type WalletApi = ReturnType<typeof createWalletApi>;

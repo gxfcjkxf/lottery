@@ -1,3 +1,4 @@
+import { readPaginationTotal } from '@lottery/shared'
 import { readAdminEnvelope, readAdminErrorResponse } from './admin-api'
 
 import { AdminApiError, type AdminAccount } from "./admin-api";
@@ -83,7 +84,7 @@ function normalizeQuery(input: AuditQuery, exportMode = false) {
   if (hasFrom !== hasTo || exportMode && !hasFrom) badInput("开始和结束时间必须同时提供。 / Both start and end are required together.");
   const normalized: Record<string, string | number> = {};
   if (hasFrom) {
-    if (!validUtcDateTime(input.from) || !validUtcDateTime(input.to)) badInput("开始和结束时间必须是 UTC ISO 日期。 / Start and end must be UTC ISO dates.");
+    if (!validUtcDateTime(input.from) || !validUtcDateTime(input.to)) badInput("开始和结束时间必须是有效日期。 / Start and end must be valid dates.");
     const from = epochNs(input.from!), to = epochNs(input.to!);
     if (to <= from || to - from > MAX_WINDOW_NS) badInput("日期范围必须大于零且不超过 31 天。 / Date range must be positive and no longer than 31 days.");
     normalized.from = input.from!;
@@ -92,7 +93,7 @@ function normalizeQuery(input: AuditQuery, exportMode = false) {
   for (const key of ["action", "actor_id", "resource_type", "resource_id", "request_id"] as const) {
     const value = input[key];
     if (value === undefined) continue;
-    if (typeof value !== "string" || value.length === 0 || value.trim() !== value || /\p{Cc}/u.test(value) || (["action", "resource_type", "request_id"].includes(key) && new TextEncoder().encode(value).length > 128)) badInput(`${key} 不能为空且长度或格式无效。 / ${key} must be non-empty and within its byte limit.`);
+    if (typeof value !== "string" || value.length === 0 || value.trim() !== value || /\p{Cc}/u.test(value) || (["action", "resource_type", "request_id"].includes(key) && Array.from(value).length > 128)) badInput(`${key} 不能为空且长度或格式无效。 / ${key} must be non-empty and within its character limit.`);
     if ((key === "actor_id" || key === "resource_id") && !validUuid(value)) badInput(`${key} 必须是 UUID。 / ${key} must be a UUID.`);
     normalized[key] = value;
   }
@@ -176,7 +177,7 @@ export function createAuditApi(fetchImpl: typeof fetch = fetch) {
     const response = await fetchImpl(`${BASE}?${params.toString()}`, { method: "GET", credentials: "same-origin", headers: { Accept: "application/json", "X-Brand-ID": brandId } });
     if (!response.ok) throw await readAdminErrorResponse(response);
     const raw = await readAdminEnvelope(response);
-    return { items: validateItems(raw.data, brandId, Number(query.limit)) };
+    return { items: validateItems(raw.data, brandId, Number(query.limit)), total_count: readPaginationTotal(raw.data) };
   }
   async function exportCsv(brandId: string, input: AuditFilters): Promise<AuditExport> {
     if (!validUuid(brandId)) badInput("品牌必须是 UUID。 / Brand must be a UUID.");

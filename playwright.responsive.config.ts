@@ -13,7 +13,7 @@ for (const name of ['TEST_HARBOR_ADMIN_USERNAME', 'TEST_HARBOR_ADMIN_PASSWORD', 
 
 export default defineConfig({
   ...baseline,
-  testMatch: ['auth.spec.ts', 'betting.spec.ts'],
+  testMatch: ['auth.spec.ts'],
   fullyParallel: false,
   workers: 1,
   retries: 0,

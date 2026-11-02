@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { test, expect } from "@playwright/test";
 import { restoreAdminSession } from "./support/admin-session";
 const harbor = "0199a000-0000-7000-8000-000000000002";
@@ -23,9 +24,8 @@ test("six operator templates use the real rule engine without financial mutation
     .getByRole("button", { name: "登录并加载真实成员", exact: true })
     .click();
   }
-  await page
-    .getByLabel("选择真实后台品牌", { exact: true })
-    .selectOption(harbor);
+  await selectControl(page
+    .getByLabel("选择真实后台品牌", { exact: true }), harbor);
   if (info.project.name === "mobile") {
     await page.locator(".mobile-nav button").nth(4).click();
     await page
@@ -59,34 +59,29 @@ test("six operator templates use the real rule engine without financial mutation
     return data;
   }
   await run(4, "35");
-  await simulator
-    .getByRole("combobox", { name: "玩法模板", exact: true })
-    .selectOption("digits");
+  await selectControl(simulator
+    .getByRole("combobox", { name: "玩法模板", exact: true }), "digits");
   await simulator.getByLabel(/^第 1 位候选/).fill("1");
   await simulator.getByLabel(/^第 2 位候选/).fill("2");
   await simulator.getByLabel(/^第 3 位候选/).fill("1");
   await simulator.getByLabel("三位开奖结果", { exact: true }).fill("1,2,1");
   await run(1, "35");
-  await simulator
-    .getByRole("combobox", { name: "玩法模板", exact: true })
-    .selectOption("features");
+  await selectControl(simulator
+    .getByRole("combobox", { name: "玩法模板", exact: true }), "features");
   await simulator.getByLabel(/^三同号/).fill("1");
   await simulator.getByLabel(/^首尾同号/).fill("1");
   await simulator.getByLabel(/^奇数个数/).fill("3");
   await simulator.getByLabel(/^和值/).fill("3");
   await simulator.getByLabel("三位开奖结果", { exact: true }).fill("1,1,1");
   await run(1, "35");
-  await simulator
-    .getByRole("combobox", { name: "玩法模板", exact: true })
-    .selectOption("exclude");
+  await selectControl(simulator
+    .getByRole("combobox", { name: "玩法模板", exact: true }), "exclude");
   await run(1, "35");
-  await simulator
-    .getByRole("combobox", { name: "玩法模板", exact: true })
-    .selectOption("attributes");
+  await selectControl(simulator
+    .getByRole("combobox", { name: "玩法模板", exact: true }), "attributes");
   await run(2, "35");
-  await simulator
-    .getByRole("combobox", { name: "玩法模板", exact: true })
-    .selectOption("m-select-n");
+  await selectControl(simulator
+    .getByRole("combobox", { name: "玩法模板", exact: true }), "m-select-n");
   await simulator.getByLabel("所选特别号", { exact: true }).fill("7");
   await run(1, "35");
   expect(

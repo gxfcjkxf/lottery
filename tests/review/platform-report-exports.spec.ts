@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { createHash } from 'node:crypto';
 import { test, expect } from './platform-fixture';
 
@@ -46,15 +47,15 @@ test('platform exports six genuine complete CSV reports with committed audit evi
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Member points' }).click();
   await page.getByTestId('platform-wallet-tabs').getByRole('button', { name: 'Financial reports', exact: true }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   const panel = page.getByTestId('platform-reports');
   const today = new Date();
   const tomorrow = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1));
-  await panel.getByLabel('From (UTC)', { exact: true }).fill(`${today.toISOString().slice(0, 10)}T00:00`);
-  await panel.getByLabel('To (UTC)', { exact: true }).fill(`${tomorrow.toISOString().slice(0, 10)}T00:00`);
+  await panel.getByLabel('From', { exact: true }).fill(`${today.toISOString().slice(0, 10)}T00:00`);
+  await panel.getByLabel('To', { exact: true }).fill(`${tomorrow.toISOString().slice(0, 10)}T00:00`);
   await panel.getByLabel('Member ID (optional)', { exact: true }).fill(member);
   for (const kind of kinds) {
-    await panel.getByLabel('Report type', { exact: true }).selectOption(kind);
+    await selectControl(panel.getByLabel('Report type', { exact: true }), kind);
     await panel.getByRole('button', { name: 'Run report', exact: true }).click();
     await expect(page.getByTestId('platform-reports-summary')).toBeVisible();
     await panel.getByRole('button', { name: 'Export complete CSV', exact: true }).click();
@@ -103,7 +104,7 @@ test('platform exports six genuine complete CSV reports with committed audit evi
   expect([await read(walletPath), await read(ledgerPath)]).toEqual(before);
 });
 
-test('platform refuses an altered CSV and discards a late export after changing brands', async ({ page }, info) => {
+test('platform refuses a foreign-brand CSV and discards a late export after changing brands', async ({ page }, info) => {
   const at = '2026-10-10T00:00:00Z';
   const amount = '9007199254740993';
   const metrics = ['entry_count', 'net_points', 'recharge_points', 'prize_credit_points', 'prize_reversal_points', 'refund_points'];
@@ -141,7 +142,7 @@ test('platform refuses an altered CSV and discards a late export after changing 
     ].join('\n') + '\n');
     if (hold) { entered?.(); await new Promise<void>(resolve => { release = resolve; }); }
     await route.fulfill({ body, headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Length': String(body.length), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
-      'Content-Disposition': `attachment; filename="lottery-ledger-${brand}-20261010T000000Z.csv"`, 'X-Report-Brand-ID': brand, 'X-Report-Kind': 'ledger', 'X-Report-Snapshot-At': at,
+      'Content-Disposition': `attachment; filename="lottery-ledger-${brand}-20261010T000000Z.csv"`, 'X-Report-Brand-ID': corrupt ? '22222222-2222-4222-8222-222222222222' : brand, 'X-Report-Kind': 'ledger', 'X-Report-Snapshot-At': at,
       'X-Report-Group-Count': '51', 'X-Report-SHA256': corrupt ? '0'.repeat(64) : createHash('sha256').update(body).digest('hex'),
       'X-Report-Format-Version': '1', 'X-Report-Audit-ID': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     } });
@@ -152,11 +153,11 @@ test('platform refuses an altered CSV and discards a late export after changing 
   await expect(page.locator('.app-frame')).toBeVisible();
   await page.locator('.nav-item').filter({ hasText: 'Member points' }).click();
   await page.getByTestId('platform-wallet-tabs').getByRole('button', { name: 'Financial reports', exact: true }).click();
-  await page.locator('.topbar-brand-picker select').selectOption(brand);
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), brand);
   const panel = page.getByTestId('platform-reports');
-  await panel.getByLabel('Report type', { exact: true }).selectOption('ledger');
-  await panel.getByLabel('From (UTC)', { exact: true }).fill('2026-08-01T00:00');
-  await panel.getByLabel('To (UTC)', { exact: true }).fill('2026-10-11T00:00');
+  await selectControl(panel.getByLabel('Report type', { exact: true }), 'ledger');
+  await panel.getByLabel('From', { exact: true }).fill('2026-08-01T00:00');
+  await panel.getByLabel('To', { exact: true }).fill('2026-10-11T00:00');
   await panel.getByRole('button', { name: 'Run report', exact: true }).click();
   await page.getByTestId('platform-reports-pages').getByRole('button', { name: 'Next page' }).click();
   await expect(page.getByTestId('platform-reports-list').locator('tbody tr')).toHaveCount(1);
@@ -184,7 +185,7 @@ test('platform refuses an altered CSV and discards a late export after changing 
   await dialog.getByRole('button', { name: 'Confirm and download', exact: true }).click();
   await enteredPromise;
   const finished = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/ledger/export'));
-  await page.locator('.topbar-brand-picker select').selectOption('0199a000-0000-7000-8000-000000000002');
+  await selectControl(page.locator(".topbar-brand-picker .select-control-trigger"), '0199a000-0000-7000-8000-000000000002');
   release?.();
   await finished;
   await expect(panel).toHaveCount(0);

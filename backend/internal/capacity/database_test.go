@@ -66,7 +66,7 @@ func TestSnapshotDBIsolatedPostgres(t *testing.T) {
 	if snapshot.ConnectionWaits == nil {
 		t.Fatal("connection wait-event map is nil")
 	}
-	for _, queue := range []string{"notification_deliveries", "period_cancellations", "settlement_jobs", "draw_corrections"} {
+	for _, queue := range []string{"notification_deliveries", "configured_orders"} {
 		if _, ok := snapshot.Queues[queue]; !ok {
 			t.Errorf("missing queue %q from migrated test schema", queue)
 		}

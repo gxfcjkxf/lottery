@@ -1,3 +1,4 @@
+import { selectControl } from '../select-control'
 import { selectLanguage } from '../language-switcher'
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -65,15 +66,15 @@ test('genuine brand audit filters and validated full CSV preserve finances on bo
   page.on('request', req => { if (new URL(req.url()).pathname.startsWith('/api/v1/admin/') && req.method() !== 'GET') mutations.push(`${req.method()} ${new URL(req.url()).pathname}`); });
   await page.addInitScript(() => localStorage.setItem('lottery.admin.locale', 'en'));
   await page.goto(origin!);
-  await page.getByLabel('Select live admin brand', { exact: true }).selectOption(brand);
+  await selectControl(page.getByLabel('Select live admin brand', { exact: true }), brand);
   if (info.project.name === 'mobile') {
     await page.locator('.mobile-nav').getByRole('button', { name: /More/ }).click();
     await page.locator('.mobile-more-menu').getByRole('button', { name: /Audit log/ }).click();
   } else { await page.locator('.side-nav').getByRole('button', { name: /Audit log/ }).click(); }
   const panel = page.locator('.audit-page');
   await expect(panel.getByRole('heading', { name: 'Audit log', exact: true })).toBeVisible();
-  await panel.getByLabel('From (UTC)', { exact: true }).fill(range.from.slice(0, 16));
-  await panel.getByLabel('To (UTC)', { exact: true }).fill(range.to.slice(0, 16));
+  await panel.getByLabel('From', { exact: true }).fill(range.from.slice(0, 16));
+  await panel.getByLabel('To', { exact: true }).fill(range.to.slice(0, 16));
   await panel.getByLabel('Resource UUID', { exact: true }).fill(recharge.id);
   const readPromise = page.waitForResponse(res => new URL(res.url()).pathname === '/api/v1/admin/audit');
   await panel.getByRole('button', { name: 'Query audit records', exact: true }).click();
