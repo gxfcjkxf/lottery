@@ -98,7 +98,7 @@ export const userUiCatalog = {
 'user.wallet.availableAfter':'Points after',
 'user.wallet.canada.bet':'Canada bet','user.wallet.canada.prize':'Canada winnings','user.wallet.canada.refund':'Canada stake refund','user.wallet.canada.betReason':'Confirmed Canada batch stake.','user.wallet.canada.prizeReason':'Settled using the odds and rules locked at bet placement, with the period payout cap applied.','user.wallet.canada.refundReason':'Stake returned to its original point sources.',
     'user.wallet.availableBalance': 'Available for bets',
-    'user.wallet.availableChange': 'Points change',
+    'user.wallet.availableChange': 'Change',
     'user.wallet.entryType': 'Type',
     'user.wallet.entryTime': 'Time',
     'user.wallet.viewDetails': 'Details',

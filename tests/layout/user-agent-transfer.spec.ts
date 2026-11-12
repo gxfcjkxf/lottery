@@ -15,7 +15,21 @@ for(const locale of ['zh-CN','en'] as const)test(`user ledger shows transfer, hi
  await expect(entry.locator('td').nth(2)).toHaveText('19.75')
  await expect(entry.locator('td').nth(3)).toHaveClass('ledger-time')
  await expect(entry.locator('td').nth(2)).toHaveCSS('display',page.viewportSize()!.width>700?'table-cell':'flex')
- await expect(page.locator('.ledger-table th')).toHaveText(zh?['类型','积分变动','变后积分','时间']:['Type','Points change','Points after','Time'])
+ await expect(page.locator('.ledger-table th')).toHaveText(zh?['类型','积分变动','变后积分','时间']:['Type','Change','Points after','Time'])
+ async function checkMobileAmounts(){
+  if(page.viewportSize()!.width>700)return
+  const cells=entry.locator('.ledger-amount'),first=await cells.nth(0).boundingBox(),second=await cells.nth(1).boundingBox()
+  const row=await entry.boundingBox()
+  expect(second!.x+second!.width).toBeLessThanOrEqual(row!.x+row!.width)
+  expect(Math.abs(first!.y-second!.y)).toBeLessThanOrEqual(1)
+  for(const cell of await cells.all()){
+   await expect(cell).toHaveCSS('white-space','nowrap')
+   expect(await cell.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true)
+   const labelHeight=await cell.evaluate(el=>parseFloat(getComputedStyle(el,'::before').lineHeight))
+   expect((await cell.boundingBox())!.height).toBeLessThanOrEqual(labelHeight+1)
+  }
+ }
+ await checkMobileAmounts()
  await expect(entry.getByRole('button')).toHaveCount(0)
  await expect(page.getByRole('dialog')).toHaveCount(0)
  if(info.project.name.endsWith('reflow')){
@@ -23,6 +37,7 @@ for(const locale of ['zh-CN','en'] as const)test(`user ledger shows transfer, hi
   for(const width of [320,700,701,1440]){
    await page.setViewportSize({width,height:viewport.height})
    await expectNoPageOverflow(page)
+   await checkMobileAmounts()
    await expect(entry.locator('td').nth(2)).toHaveCSS('display',width>700?'table-cell':'flex')
    if(width>700)await expect(page.locator('.ledger-table thead')).toBeVisible()
    else await expect(page.locator('.ledger-table thead')).toBeHidden()
