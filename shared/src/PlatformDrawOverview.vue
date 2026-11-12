@@ -6,6 +6,7 @@ import ManagementList from "./ManagementList.vue"
 import TablePagination from './TablePagination.vue'
 import SelectControl from './SelectControl.vue'
 import { ref, watch, onUnmounted } from 'vue'
+import { vInlineValidation } from './form-validation'
 import { withGlobalLoading, vGlobalLoading } from './global-loading'
 import { vRefreshButton } from './refresh-button'
 import { createCatalogI18n } from './localization'
@@ -52,7 +53,7 @@ onUnmounted(() => { alive = false; generation++; clearInterval(poll) })
  <p v-if="failed" class="message error" role="alert">{{ t(data ? 'failure' : 'initialFailure') }} <button class="button button-secondary" :disabled="busy" v-refresh-button="t('refresh')" @click="withGlobalLoading(load)">{{ t('refresh') }}</button></p>
  <p v-if="busy && !data" v-global-loading role="status">{{ t('loading') }}</p>
  <ManagementList v-if="data" :busy="busy">
- <template #filters><div class="ui-filter-bar"><slot name="filters" /><SelectControl :model-value="year" :disabled="busy" @change="withGlobalLoading(load, $event, 0)" :label="String(t('year'))" :options="data.years.map(choice => ({ value: choice, label: String(choice) }))" /></div></template>
+ <template #filters><form class="ui-filter-bar" novalidate v-inline-validation @submit.prevent><slot name="filters" /><SelectControl :model-value="year" :disabled="busy" @change="withGlobalLoading(load, $event, 0)" :label="String(t('year'))" :options="data.years.map(choice => ({ value: choice, label: String(choice) }))" /></form></template>
  <template #actions><button v-if="canManage" class="button button-primary" @click="emit('manual')">{{ t('manualAdd') }}</button></template>
  <ManagementTable :entries="data.items.map(item => ({...item,id:item.period_no}))" :columns="[{key:'period',label:t('period')},{key:'result',label:t('result'),cellClass:'draw-result-cell'},{key:'date',label:t('date')},{key:'source',label:t('source')}]" :empty="!data.items.length" :empty-label="t('empty')">
  <template #period="{entry}"><strong>{{ entry.period_no }}</strong></template>

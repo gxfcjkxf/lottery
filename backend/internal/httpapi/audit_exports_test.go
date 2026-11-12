@@ -280,3 +280,50 @@ func TestAuditExportACLWaitObservesRevocation(t *testing.T) {
 		t.Fatal("request remained blocked")
 	}
 }
+
+func TestAuditActorAndOperationFilters(t *testing.T) {
+	f := managedFixture(t)
+	ctx := context.Background()
+	insertAuditExportFact(t, f, managedBrand, "user.unregistered", "unrecognized operation fact")
+	actions := map[string]string{"view": "user.view", "query": "user.list", "edit": "user.freeze", "create": "user.operator_create", "delete": "user.delete.maintenance"}
+	for _, action := range actions {
+		insertAuditExportFact(t, f, managedBrand, action, "filter fact")
+	}
+	insertAuditExportFact(t, f, "0199a000-0000-7000-8000-000000000002", "user.delete.maintenance", "foreign filter fact")
+	for category, action := range actions {
+		path := "/api/v1/admin/audit?resource_type=member&actor=AGED_ro&action_type=" + category
+		response := f.call("GET", path, "", f.token, managedBrand, nil)
+		mustStatus(t, response, 200)
+		var body struct {
+			Data struct {
+				Items []AdminAuditRecord `json:"items"`
+				Total string             `json:"total_count"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body.Data.Items) != 1 || body.Data.Total != "1" || body.Data.Items[0].Action != action {
+			t.Fatalf("%s: %s", category, response.Body.String())
+		}
+	}
+	for _, query := range []string{"?action_type=unknown", "?actor=%0A", "?actor=a&actor=b"} {
+		mustStatus(t, f.call("GET", "/api/v1/admin/audit"+query, "", f.token, managedBrand, nil), 400)
+	}
+	// Name matching is a literal substring, rather than a LIKE pattern.
+	response := f.call("GET", "/api/v1/admin/audit?actor=%25", "", f.token, managedBrand, nil)
+	mustStatus(t, response, 200)
+	var empty struct {
+		Data struct {
+			Total string `json:"total_count"`
+		} `json:"data"`
+	}
+	json.Unmarshal(response.Body.Bytes(), &empty)
+	if empty.Data.Total != "0" {
+		t.Fatal(response.Body.String())
+	}
+	var count int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE reason='filter fact'`).Scan(&count); err != nil || count != 5 {
+		t.Fatalf("read changed records: %d %v", count, err)
+	}
+}

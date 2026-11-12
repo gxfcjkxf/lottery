@@ -25,6 +25,7 @@
     "vitest": "^3.0.0"
   },
   "exports": {
+    "./AuditFilters.vue": "./src/AuditFilters.vue",
     "./ManagementOverview.vue": "./src/ManagementOverview.vue",
     "./PermissionPicker.vue": "./src/PermissionPicker.vue",
     "./ConfiguredSelection.vue": "./src/ConfiguredSelection.vue",

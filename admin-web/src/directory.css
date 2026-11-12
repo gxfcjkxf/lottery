@@ -85,7 +85,7 @@
   color: var(--ink-secondary);
 }
 .directory-toolbar small {
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 .member-directory-table {
   min-width: 1000px;
@@ -200,7 +200,7 @@
 .directory-brand-bar small {
   margin-left: auto;
   color: var(--muted);
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 @media (max-width: 700px) {
   .directory-brand-bar {

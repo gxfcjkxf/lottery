@@ -6,7 +6,8 @@ import { newAnnouncement, type Announcement } from '../../shared/src/announcemen
 const id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const item=(title='Platform notice',brand:string|null=null):Announcement=>({id,brand_id:brand,version:1,generation:1,status:'published',state:'active',published_at:'2026-11-11T00:00:00Z',updated_at:'2026-11-11T00:00:00Z',eligible:true,config:{...newAnnouncement().config,content:{en:{title,html:'<h2>Service update</h2><p>English <strong>announcement</strong></p><ul><li>First item</li><li>Second item</li></ul>',button:'View announcements',url:'/announcements'},'zh-CN':{title:'平台公告',html:'<h2>服务更新</h2><p>中文<strong>公告</strong></p><ul><li>第一项</li><li>第二项</li></ul>',button:'查看公告',url:'/announcements'}}}})
 async function cancelImagePicker(page:Page,locale:'en'|'zh-CN') {
- const zh=locale==='zh-CN'
+ const zh=locale==='zh-CN',preset=page.viewportSize()!
+ if(preset.width>=1000)await page.setViewportSize({width:1000,height:800})
  await page.getByTestId('announcements-management').getByRole('button',{name:zh?'新增公告':'New announcement',exact:true}).click()
  const draft=page.getByRole('dialog',{name:zh?'新增公告':'New announcement',exact:true})
  await draft.getByLabel(zh?'标题':'Title',{exact:true}).fill('Unsaved announcement')
@@ -19,9 +20,15 @@ async function cancelImagePicker(page:Page,locale:'en'|'zh-CN') {
  await expect(draft).toBeVisible()
  await expect(draft.getByLabel(zh?'标题':'Title',{exact:true})).toHaveValue('Unsaved announcement')
  await expect(draft.locator('textarea')).toHaveValue('<p>Keep this draft</p>')
+ if(preset.width>=1000){
+  expect(await draft.locator('.detail-modal-content').evaluate(el=>el.scrollHeight-el.clientHeight)).toBeLessThanOrEqual(1)
+  await draft.locator('.detail-modal-content').evaluate(el=>el.scrollTop=0)
+  await page.screenshot({path:test.info().outputPath(`new-announcement-${locale}-1000.png`)})
+ }
  // Escape on the announcement itself still closes it normally.
  await page.keyboard.press('Escape')
  await expect(draft).toHaveCount(0)
+ if(preset.width>=1000)await page.setViewportSize(preset)
 }
 for(const locale of ['en','zh-CN'] as const){
  const zh=locale==='zh-CN'
@@ -76,7 +83,7 @@ for(const locale of ['en','zh-CN'] as const){
   await dialog.getByRole('button',{name:'English',exact:true}).click()
   await dialog.getByLabel(zh?'标题':'Title',{exact:true}).fill('Updated announcement')
   await dialog.getByRole('button',{name:zh?'预览':'Preview',exact:true}).click();const preview=page.getByRole('dialog',{name:'Updated announcement',exact:true});await expect(preview).toBeVisible();await expectNoPageOverflow(page);await preview.getByRole('button',{name:zh?'关闭':'Close',exact:true}).click()
-  const preset=page.viewportSize()!;for(const width of info.project.name.includes('reflow')?[320,640,700,1000,1440]:[preset.width]){if(info.project.name.includes('reflow'))await page.setViewportSize({width,height:800});await expectNoPageOverflow(page);await page.screenshot({path:info.outputPath(`editor-${locale}-${width}.png`),fullPage:true})}
+  const preset=page.viewportSize()!;for(const width of info.project.name.includes('reflow')?[320,640,700,1000,1440]:[preset.width]){if(info.project.name.includes('reflow'))await page.setViewportSize({width,height:800});await expectNoPageOverflow(page);await dialog.locator('.detail-modal-content').evaluate(el=>el.scrollTop=0);await page.screenshot({path:info.outputPath(`editor-${locale}-${width}.png`),fullPage:true})}
   await dialog.getByRole('button',{name:zh?'保存并发布':'Save and publish',exact:true}).click()
   await expect(dialog.getByRole('button',{name:zh?'重试保存':'Retry save',exact:true})).toBeEnabled();await expect(dialog.getByLabel(zh?'标题':'Title',{exact:true})).toBeDisabled()
   await dialog.getByRole('button',{name:zh?'重试保存':'Retry save',exact:true}).click();await expect(dialog).toHaveCount(0);expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1]);expect(JSON.parse(writes[0].body!).config).not.toHaveProperty('timezone')
@@ -88,7 +95,7 @@ test('platform targets and preview follow the shared console structure',async({p
  const record=item()
  await page.route('**/api/v1/platform/**',route=>{const path=new URL(route.request().url()).pathname;const reply=(data:unknown)=>route.fulfill({json:{success:true,data}})
   if(path.endsWith('/me'))return reply({account:{id:gameId,username:'announcement_platform_reviewer',super_admin:true,brand_ids:[],permissions:[],permissions_by_brand:{},platform_permissions:['announcement.view.platform','announcement.write.platform','announcement.publish.platform']}})
-  if(path.endsWith('/platform-settings'))return reply({timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',display_name:'Platform',logo_text:'P',logo_url:'',version:1,updated_at:'2026-11-11T00:00:00Z'})
+  if(path.endsWith('/platform-settings'))return reply({theme:'jade',timezone:'Asia/Singapore',date_format:'YYYY-MM-DD',time_format:'HH:mm:ss',display_name:'Platform',logo_text:'P',logo_url:'',version:1,updated_at:'2026-11-11T00:00:00Z'})
   if(path==='/api/v1/platform/brands')return reply({items:[],total_count:'0'})
   if(path==='/api/v1/platform/announcements')return reply({items:[record]})
   if(path==='/api/v1/platform/announcements/brands')return reply({items:[{id:gameId,name:'Aurora'}]})

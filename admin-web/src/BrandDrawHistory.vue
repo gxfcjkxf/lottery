@@ -4,6 +4,7 @@ import PlatformDrawOverview from '../../shared/src/PlatformDrawOverview.vue'
 import SelectControl from '@lottery/shared/SelectControl.vue'
 import ManagementList from '@lottery/shared/ManagementList.vue'
 import { createPlatformLotteryClient, PlatformLotteryError, type PlatformGame } from '../../shared/src/platform-lottery'
+import { withGlobalLoading, vRefreshButton, vGlobalLoading } from '@lottery/shared'
 import { createCatalogI18n } from '@lottery/shared'
 import { drawOverviewCatalog } from '../../shared/src/draw-overview-catalog'
 const props = defineProps<{ brandId: string; locale: 'en' | 'zh-CN' }>()
@@ -41,7 +42,8 @@ onUnmounted(() => { alive = false; generation++ })
   <template #filters><SelectControl v-model="gameId" :label="t('game')" :options="games.map(game => ({value: game.id, label: game.name}))" /></template>
  </PlatformDrawOverview>
  <ManagementList v-else :busy="busy">
-  <p v-if="failed" class="message error" role="alert">{{ t('initialFailure') }} <button class="button button-secondary" @click="load">{{ t('refresh') }}</button></p>
-  <p v-else class="directory-state" role="status">{{ t(busy ? 'loading' : 'noGames') }}</p>
+  <p v-if="failed" class="message error" role="alert">{{ t('initialFailure') }} <button class="button button-secondary" v-refresh-button="t('refresh')" :disabled="busy" @click="withGlobalLoading(load)">{{ t('refresh') }}</button></p>
+  <p v-else-if="busy" v-global-loading role="status">{{ t('loading') }}</p>
+  <p v-else class="empty-state" role="status">{{ t('noGames') }}</p>
  </ManagementList>
 </template>

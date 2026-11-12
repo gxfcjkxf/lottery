@@ -49,6 +49,12 @@ function compileComponent(): Component {
   const content = compileScript(descriptor, { id: "audit-management-component-test", inlineTemplate: true }).content;
   const js = ts.transpileModule(content, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
   const modules: Record<string, unknown> = {"@lottery/shared/ManagementList.vue":ManagementListTestComponent,"@lottery/shared/MemberActionsMenu.vue":MemberActionsMenuTestComponent, "@lottery/shared/TablePagination.vue": TablePaginationTestComponent, "@lottery/shared/DetailModal.vue":DetailModalTestComponent,  "@lottery/shared/SelectControl.vue": SelectControlTestComponent, "./SelectControl.vue": SelectControlTestComponent, "@lottery/shared/BusinessDetails.vue": BusinessDetails, "@lottery/shared/FilterAssociationSelect.vue": { props: ["modelValue", "label"], setup: (p: any, { emit }: any) => () => temporalTestH("select-control", { value: p.modelValue, "aria-label": p.label, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) },  "@lottery/shared/PlatformTemporalInput.vue": { props: ["modelValue", "type", "required", "disabled"], setup: (p: any, { emit }: any) => () => temporalTestH("input", { type: p.type, value: p.modelValue, required: p.required, disabled: p.disabled, "onUpdate:modelValue": (v: string) => emit("update:modelValue", v) }) }, "@lottery/shared": { ...DisplayShared, ...FormValidation, vInlineValidation: {} }, vue: VueRuntime, "./admin-api": AdminApi, "./audit-api": AuditApi, "./i18n": AdminI18n };
+  const childModules = { ...modules, './ClearableInput.vue': { props: ['modelValue'], setup: (p: any, { emit }: any) => () => h('input', { value: p.modelValue, 'onUpdate:modelValue': (v: string) => emit('update:modelValue', v) }) }, './SelectControl.vue': SelectControlTestComponent, './PlatformTemporalInput.vue': modules['@lottery/shared/PlatformTemporalInput.vue'], './localization': DisplayShared, './filter-dates': DisplayShared, './global-loading': DisplayShared, './form-validation': { vInlineValidation: {} } };
+  const childSource = readFileSync(new URL('../../shared/src/AuditFilters.vue', import.meta.url), 'utf8');
+  const childScript = compileScript(parse(childSource, {filename:'AuditFilters.vue'}).descriptor, {id:'audit-filters-test',inlineTemplate:true}).content;
+  const childJS = ts.transpileModule(childScript, {compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+  const childBody = childJS.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ': ')}}=__modules[${JSON.stringify(specifier)}];`).replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, 'return ');
+  modules['@lottery/shared/AuditFilters.vue'] = new Function('__modules', childBody)(childModules);
   modules['@lottery/shared/FilterAssociationSearch.vue'] = modules['@lottery/shared/FilterAssociationSelect.vue']; const body = js.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?\s*$/gm, (_match, bindings: string, specifier: string) => `const {${bindings.replace(/\s+as\s+/g, ": ")}}=__modules[${JSON.stringify(specifier)}];`).replace(/export\s+default\s+/, "return ");
   return new Function("__modules", body.replace(/^import\s+(\w+)\s+from\s+["']([^"']+)["'];?\s*$/gm, (_m, binding: string, specifier: string) => `const ${binding}=__modules[${JSON.stringify(specifier)}];`))(modules) as Component;
 }
@@ -125,19 +131,19 @@ describe("audit management UI", () => {
     const view = mount(); await flush();
     expect(apiStub.list).toHaveBeenCalledTimes(1);
     view.i18n.setLocale("en"); await flush();
-    expect(text(view.root) + operationToastText()).toContain("Query audit records");
+    expect(text(view.root) + operationToastText()).toContain("Search");
     view.scope.value = { account, brandId: otherBrand }; await flush();
     resolve({ items: [{ ...row, brand_id: otherBrand }]  ,total_count: '1'}); await flush();
     expect(text(view.root) + operationToastText()).not.toContain("会员 · 编辑");
-    expect(text(view.root) + operationToastText()).toContain("Query audit records");
+    expect(text(view.root) + operationToastText()).toContain("Search");
   });
 
   it("shows English and Chinese controls and does not retry a failed read", async () => {
     apiStub.list = vi.fn<(...args: any[]) => Promise<{ items: RecordRow[]; total_count: string }>>(async () => { throw new Error("network unavailable"); });
     const view = mount(); await flush();
-    expect(text(view.root) + operationToastText()).toContain("查询审计记录");
+    expect(text(view.root) + operationToastText()).toContain("查询");
     view.i18n.setLocale("en"); await flush();
-    expect(text(view.root) + operationToastText()).toContain("Query audit records");
+    expect(text(view.root) + operationToastText()).toContain("Search");
     view.i18n.setLocale("zh-CN"); await flush();
     apiStub.list.mockClear(); fillDateRange(view.root); submit(view.root); await flush();
     expect(apiStub.list).toHaveBeenCalledTimes(1);
@@ -163,7 +169,7 @@ describe("audit management UI", () => {
       const dates = all(view.root).filter(node => node.tag === "input" && node.props.type === "date");
       setInput(dates[0]!, "2025-02-29"); setInput(dates[1]!, "2025-03-01"); submit(view.root); await flush();
       expect(apiStub.list).not.toHaveBeenCalled();
-      expect(text(view.root) + operationToastText()).toContain("Choose a valid start and end within 31 days.");
+      expect(text(view.root) + operationToastText()).toContain("Select both dates within a range of 31 days.");
       setInput(dates[0]!, "2024-02-29"); setInput(dates[1]!, "2024-03-01"); submit(view.root); await flush();
       expect(apiStub.list).toHaveBeenCalledTimes(1);
       expect(apiStub.list.mock.calls[0]![1]).toMatchObject({ from: "2024-02-29T00:00:00.000Z", to: "2024-03-02T00:00:00.000Z" });

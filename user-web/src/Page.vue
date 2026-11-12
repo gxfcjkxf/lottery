@@ -809,17 +809,12 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
                 {{ displayPublicError(authError) }}
               </p>
               <button
-                v-if="!authConfigurationLoaded"
+                v-if="!authConfigurationLoaded && !authConfigurationLoading"
                 type="button"
                 class="button button-secondary full-button"
-                :disabled="authConfigurationLoading"
                 @click="withGlobalLoading(loadAuthFeatures)"
               >
-                {{
-                  authConfigurationLoading
-                    ? ui("common.loadingSettings")
-                    : ui("common.retrySignInSettings")
-                }}
+                {{ ui("common.retrySignInSettings") }}
               </button>
               <div class="auth-actions" :class="{ 'auth-login-actions': route.path === '/login' }">
               <button
@@ -1078,7 +1073,7 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
 <section v-else-if="route.path === '/help'" class="page-section help-page" :aria-label="pageTitle">
 
           <div class="faq-list">
-            <details v-for="([question, answer], index) in helpFaqs" :key="question" :open="index === 0">
+            <details v-for="[question, answer] in helpFaqs" :key="question" name="help-faq">
               <summary>{{ ui(question) }}<SiteIcon name="down" /></summary>
               <p>{{ ui(answer) }}</p>
             </details>
@@ -1104,7 +1099,7 @@ useOperationToast(profileError, value => displayPublicError(value), 'error');
     </div>
   </div>
   </template>
-  <Announcements v-if="contextLoaded && !profileLoading" :brand-code="walletBrandCode" :brand-id="authProfile?.member.brand_id ?? brandContextId" :member-id="authProfile?.member.id" :locale="localeCode" :path="route.path" :list="route.path === '/announcements'" @auth-expired="authProfile=null" />
+  <Announcements v-if="!isAuth && contextLoaded && !profileLoading" :brand-code="walletBrandCode" :brand-id="authProfile?.member.brand_id ?? brandContextId" :member-id="authProfile?.member.id" :locale="localeCode" :path="route.path" :list="route.path === '/announcements'" @auth-expired="authProfile=null" />
 </template>
 
 <style scoped>

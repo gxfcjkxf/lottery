@@ -304,6 +304,8 @@ async function retryBrandScope() {
 }
 onMounted(() => { void restoreAdminSession(); });
 const groups = computed(() => [...new Set(visibleNav.value.map((item) => item.group).filter(group => group !== null))]);
+const expandedNavGroup = ref<string | null>(null);
+watch(page, target => { expandedNavGroup.value = nav.find(item => item.name === target)?.group ?? null; }, { immediate: true });
 const canViewJoinCodes = computed(() => {
   if (!account.value || !selectedBrandId.value) return false;
   return brandPermissionSet(account.value, selectedBrandId.value).has("join_code.view.brand");
@@ -710,8 +712,8 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
         <button v-for="item in visibleNav.filter(entry => entry.group === null)" :key="item.name" class="nav-item" :aria-label="navLabel(item.name)" :title="navLabel(item.name)" :class="{ active: page === item.name }" @click="go(item.name)">
           <span class="nav-icon"><SiteIcon :name="item.icon" /></span><span>{{ navLabel(item.name) }}</span>
         </button>
-        <details v-for="group in groups" :key="group" class="console-nav-group" open>
-          <summary>{{ navLabel(group) }}<SiteIcon name="down" /></summary>
+        <details v-for="group in groups" :key="group" class="console-nav-group" :open="expandedNavGroup === group">
+          <summary @click.prevent="expandedNavGroup = expandedNavGroup === group ? null : group">{{ navLabel(group) }}<SiteIcon name="down" /></summary>
           <button
             v-for="item in visibleNav.filter((entry) => entry.group === group)"
             :key="item.name"
@@ -1080,8 +1082,8 @@ useOperationToast(() => passwordError.value, value => display(value), 'error');
         <section class="console-mobile-group">
           <button v-for="item in visibleNav.filter(entry => entry.group === null)" :key="item.name" type="button" :class="{ active: page === item.name }" :aria-current="page === item.name ? 'page' : undefined" @click="go(item.name)"><SiteIcon :name="item.icon" /><span>{{ navLabel(item.name) }}</span><SiteIcon name="next" /></button>
         </section>
-        <details v-for="group in groups" :key="group" class="console-nav-group console-mobile-group" open>
-          <summary>{{ navLabel(group) }}<SiteIcon name="down" /></summary>
+        <details v-for="group in groups" :key="group" class="console-nav-group console-mobile-group" :open="expandedNavGroup === group">
+          <summary @click.prevent="expandedNavGroup = expandedNavGroup === group ? null : group">{{ navLabel(group) }}<SiteIcon name="down" /></summary>
           <button v-for="item in visibleNav.filter(entry => entry.group === group)" :key="item.name" type="button" :class="{ active: page === item.name }" :aria-current="page === item.name ? 'page' : undefined" @click="go(item.name)"><SiteIcon :name="item.icon" /><span>{{ navLabel(item.name) }}</span><SiteIcon name="next" /></button>
         </details>
       </nav>

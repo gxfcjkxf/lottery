@@ -28,9 +28,22 @@ const auditExportBytes = 4 * 1024 * 1024
 
 var errAuditExportLarge = errors.New("audit export exceeds bound")
 
+// Keep operation groups aligned with shared/src/permission-labels.ts.
+const auditActionTypeSQL = `CASE
+ WHEN action ~ '\.(list|select|enumerate)(\.(platform|brand|maintenance))?$' THEN 'query'
+ WHEN action ~ '\.(view|read|history|me|defaults|actions|targets|earnings|runs|calculations|run_allocations|run_calculations|preview|download|export|check|validate|simulate)(\.(platform|brand|maintenance))?$' THEN 'view'
+ WHEN action ~ '\.(create|operator_create|manual_create|create_user|automatic|generate|place|submit|register)(\.(platform|brand|maintenance))?$' THEN 'create'
+ WHEN action ~ '\.delete(\.(platform|brand|maintenance))?$' THEN 'delete'
+ WHEN action ~ '\.(adjust|agent_transfer_credit|agent_transfer_debit|apply|approve|approved|attributes|availability|bet|calculate|calculation_page|cancel|cancel_pending|cancel_retry|cancelled|commission|commission_adjustment|commission_correction|complete|config|confirm|connect|consume|continue|correct|correction_retry|credit|currency_exchange_credit|currency_exchange_debit|debit|denied|earnings_page|enqueue|exchange|execute_retry|fail|failed|failure|finish|freeze|grant|grant_retry|invalidate|judge_cancel|kick|lifecycle|login|logout|manifest_page|manual|manual_adjustment|manual_recharge|mark_abnormal|mark_paid|opening|page|paid|paid_external|password_change|password_reset|pause|paused|payment_pending|pending|post|prize|processing|profile_fill|publish|rate_limit|ready|recharge|reclaim|reconcile|refund|reject|rejected|release|repair|reserve|result|resume|retry|retry_plan|reversal|review|reviewing|revoke|reward_grant|reward_reversal|run|sales|save|sell|settle|settled|start|start_run|submitted|sync|target|telegram_bind|transfer|update|upload|withdrawal_paid|withdrawal_release|withdrawal_reserve|write)(\.(platform|brand|maintenance))?$' THEN 'edit'
+ ELSE '' END`
+
+const auditActorNameSQL = `coalesce((SELECT username FROM admin_accounts WHERE id=actor_id), (SELECT username FROM global_users WHERE id=actor_id), '')`
+
 type auditQuery struct {
 	From         *time.Time `json:"from,omitempty"`
 	To           *time.Time `json:"to,omitempty"`
+	Actor        string     `json:"actor,omitempty"`
+	ActionType   string     `json:"action_type,omitempty"`
 	Action       string     `json:"action,omitempty"`
 	ActorID      string     `json:"actor_id,omitempty"`
 	ResourceType string     `json:"resource_type,omitempty"`
@@ -51,7 +64,7 @@ func parseAuditQuery(r *http.Request, export bool) (auditQuery, error) {
 			return q, adminsys.ErrInvalid
 		}
 		switch key {
-		case "from", "to", "action", "actor_id", "resource_type", "resource_id", "request_id":
+		case "actor", "action_type", "from", "to", "action", "actor_id", "resource_type", "resource_id", "request_id":
 		case "limit", "offset":
 			if export {
 				return q, adminsys.ErrInvalid
@@ -75,7 +88,7 @@ func parseAuditQuery(r *http.Request, export bool) (auditQuery, error) {
 			return q, adminsys.ErrInvalid
 		}
 	}
-	for key, dst := range map[string]*string{"action": &q.Action, "resource_type": &q.ResourceType, "request_id": &q.RequestID} {
+	for key, dst := range map[string]*string{"actor": &q.Actor, "action": &q.Action, "resource_type": &q.ResourceType, "request_id": &q.RequestID} {
 		*dst = v.Get(key)
 		if utf8.RuneCountInString(*dst) > 128 || strings.TrimSpace(*dst) != *dst {
 			return q, adminsys.ErrInvalid
@@ -85,6 +98,12 @@ func parseAuditQuery(r *http.Request, export bool) (auditQuery, error) {
 				return q, adminsys.ErrInvalid
 			}
 		}
+	}
+	q.ActionType = v.Get("action_type")
+	switch q.ActionType {
+	case "", "view", "query", "edit", "create", "delete":
+	default:
+		return q, adminsys.ErrInvalid
 	}
 	if v.Has("limit") {
 		q.Limit, e = strconv.Atoi(v.Get("limit"))
@@ -135,7 +154,7 @@ type auditItem = AdminAuditRecord
 // export body. Oversized records fail the whole request, never get truncated.
 func auditItems(r *http.Request, tx pgx.Tx, brand string, q auditQuery, export bool) ([]auditItem, time.Time, error) {
 	rows, e := tx.Query(r.Context(), `WITH bounds AS (SELECT statement_timestamp() AS at)
- SELECT b.at,a.id::text,a.brand_id::text,a.action,a.actor_type,coalesce(a.actor_id::text,''),coalesce(actor.username,''),a.resource_type,coalesce(a.resource_id::text,''),a.reason,a.request_id,a.created_at,coalesce(a.ip_address,''),
+ SELECT b.at,a.id::text,a.brand_id::text,a.action,a.actor_type,coalesce(a.actor_id::text,''),coalesce(actor.username,member.username,''),a.resource_type,coalesce(a.resource_id::text,''),a.reason,a.request_id,a.created_at,coalesce(a.ip_address,''),
  CASE WHEN octet_length(coalesce(a.before_json,'null'::jsonb)::text)<=$11 THEN coalesce(a.before_json,'null'::jsonb) ELSE NULL END,
  CASE WHEN octet_length(coalesce(a.after_json,'null'::jsonb)::text)<=$11 THEN coalesce(a.after_json,'null'::jsonb) ELSE NULL END
  FROM bounds b LEFT JOIN LATERAL (
@@ -143,8 +162,9 @@ func auditItems(r *http.Request, tx pgx.Tx, brand string, q auditQuery, export b
  AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)
  AND created_at <= b.at AND ($4='' OR action=$4) AND ($5='' OR actor_id=NULLIF($5,'')::uuid)
  AND ($6='' OR resource_type=$6) AND ($7='' OR resource_id=NULLIF($7,'')::uuid) AND ($8='' OR request_id=$8)
+ AND ($12='' OR strpos(lower(`+auditActorNameSQL+`),lower($12))>0) AND ($13='' OR (`+auditActionTypeSQL+`)=$13)
  ORDER BY created_at DESC,id DESC LIMIT $9 OFFSET $10
-	 ) a ON TRUE LEFT JOIN admin_accounts actor ON actor.id=a.actor_id ORDER BY a.created_at DESC,a.id DESC`, brand, q.From, q.To, q.Action, q.ActorID, q.ResourceType, q.ResourceID, q.RequestID, q.Limit, q.Offset, auditExportBytes)
+	 ) a ON TRUE LEFT JOIN admin_accounts actor ON actor.id=a.actor_id LEFT JOIN global_users member ON member.id=a.actor_id ORDER BY a.created_at DESC,a.id DESC`, brand, q.From, q.To, q.Action, q.ActorID, q.ResourceType, q.ResourceID, q.RequestID, q.Limit, q.Offset, auditExportBytes, q.Actor, q.ActionType)
 	if e != nil {
 		return nil, time.Time{}, e
 	}
@@ -270,7 +290,7 @@ func registerAuditRoutes(handle func(string, string, http.HandlerFunc), d Depend
 			if e != nil {
 				return nil, e
 			}
-			return countedItems(r.Context(), tx, items, `SELECT count(*)::text FROM audit_logs WHERE ($1='' OR brand_id=NULLIF($1,'')::uuid) AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3) AND ($4='' OR action=$4) AND ($5='' OR actor_id=NULLIF($5,'')::uuid) AND ($6='' OR resource_type=$6) AND ($7='' OR resource_id=NULLIF($7,'')::uuid) AND ($8='' OR request_id=$8) AND created_at <= $9`, brand, q.From, q.To, q.Action, q.ActorID, q.ResourceType, q.ResourceID, q.RequestID, snapshot)
+			return countedItems(r.Context(), tx, items, `SELECT count(*)::text FROM audit_logs WHERE ($1='' OR brand_id=NULLIF($1,'')::uuid) AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3) AND ($4='' OR action=$4) AND ($5='' OR actor_id=NULLIF($5,'')::uuid) AND ($6='' OR resource_type=$6) AND ($7='' OR resource_id=NULLIF($7,'')::uuid) AND ($8='' OR request_id=$8) AND created_at <= $9 AND ($10='' OR strpos(lower(`+auditActorNameSQL+`),lower($10))>0) AND ($11='' OR (`+auditActionTypeSQL+`)=$11)`, brand, q.From, q.To, q.Action, q.ActorID, q.ResourceType, q.ResourceID, q.RequestID, snapshot, q.Actor, q.ActionType)
 		})
 		if historyFailure(w, r, e) {
 			return

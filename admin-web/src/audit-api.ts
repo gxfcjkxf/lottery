@@ -12,8 +12,10 @@ const MAX_EXPORT_BYTES = 4 * 1024 * 1024;
 const CSV_COLUMNS = ["id", "brand_id", "action", "actor_type", "actor_id", "resource_type", "resource_id", "reason", "request_id", "created_at", "ip_address", "before_json", "after_json"] as const;
 
 export interface AuditFilters {
-  from: string;
-  to: string;
+  from?: string;
+  to?: string;
+  actor?: string;
+  action_type?: string;
   action?: string;
   actor_id?: string;
   resource_type?: string;
@@ -78,7 +80,7 @@ function epochNs(value: string): bigint {
 }
 function normalizeQuery(input: AuditQuery, exportMode = false) {
   if (!isRecord(input)) badInput("审计查询无效。 / Invalid audit query.");
-  const allowed = new Set(["from", "to", "action", "actor_id", "resource_type", "resource_id", "request_id", ...(exportMode ? [] : ["limit", "offset"])]);
+  const allowed = new Set(["from", "to", "action", "actor_id", "resource_type", "resource_id", "request_id", "actor", "action_type", ...(exportMode ? [] : ["limit", "offset"])]);
   if (Object.keys(input).some((key) => !allowed.has(key))) badInput("审计查询包含不支持的参数。 / Unsupported audit query parameter.");
   const hasFrom = input.from !== undefined, hasTo = input.to !== undefined;
   if (hasFrom !== hasTo || exportMode && !hasFrom) badInput("开始和结束时间必须同时提供。 / Both start and end are required together.");
@@ -90,11 +92,12 @@ function normalizeQuery(input: AuditQuery, exportMode = false) {
     normalized.from = input.from!;
     normalized.to = input.to!;
   }
-  for (const key of ["action", "actor_id", "resource_type", "resource_id", "request_id"] as const) {
+  for (const key of ["action", "actor_id", "resource_type", "resource_id", "request_id", "actor", "action_type"] as const) {
     const value = input[key];
     if (value === undefined) continue;
-    if (typeof value !== "string" || value.length === 0 || value.trim() !== value || /\p{Cc}/u.test(value) || (["action", "resource_type", "request_id"].includes(key) && Array.from(value).length > 128)) badInput(`${key} 不能为空且长度或格式无效。 / ${key} must be non-empty and within its character limit.`);
+    if (typeof value !== "string" || value.length === 0 || value.trim() !== value || /\p{Cc}/u.test(value) || (["action", "resource_type", "request_id", "actor"].includes(key) && Array.from(value).length > 128)) badInput(`${key} 不能为空且长度或格式无效。 / ${key} must be non-empty and within its character limit.`);
     if ((key === "actor_id" || key === "resource_id") && !validUuid(value)) badInput(`${key} 必须是 UUID。 / ${key} must be a UUID.`);
+    if (key === "action_type" && !['view', 'query', 'edit', 'create', 'delete'].includes(value)) badInput('审计操作类型无效。 / Invalid audit operation type.');
     normalized[key] = value;
   }
   if (!exportMode) {

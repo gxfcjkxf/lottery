@@ -19229,7 +19229,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. Filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; each record includes a required nullable brand_id, which is null for platform records, and a required actor_username, empty when the actor is not an administrator or cannot be resolved. Clients should use actor_username for administrator display and actor_type text for other actors; retain actor_id only as the technical UUID. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. actor matches a case-insensitive literal username substring; action_type groups operations as create, view, query, edit or delete. Other filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; each record includes a required nullable brand_id, which is null for platform records, and a required actor_username, empty when the administrator or member username cannot be resolved. Clients should use actor_username for administrator display and actor_type text for other actors; retain actor_id only as the technical UUID. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -19273,6 +19273,31 @@
             "schema": {
               "type": "string",
               "minLength": 1
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "description": "Case-insensitive literal substring of the operator username."
+          },
+          {
+            "name": "action_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "create",
+                "view",
+                "query",
+                "edit",
+                "delete"
+              ]
             }
           },
           {
@@ -19690,7 +19715,7 @@
         "tags": [
           "administration"
         ],
-        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Only platform-scoped grants are considered. Platform business reads remain permission checked. Account and role management are registered explicitly; brand member edits, approvals and financial mutations remain unregistered. Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. Filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; each record includes a required nullable brand_id, which is null for platform records, and a required actor_username, empty when the actor is not an administrator or cannot be resolved. Clients should use actor_username for administrator display and actor_type text for other actors; retain actor_id only as the technical UUID. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
+        "description": "Independent platform entry: only super administrator accounts are accepted; brand staff accounts are rejected. Only platform-scoped grants are considered. Platform business reads remain permission checked. Account and role management are registered explicitly; brand member edits, approvals and financial mutations remain unregistered. Requires audit.view.brand for the selected brand or audit.view.platform. An authorized platform viewer may omit X-Brand-ID to query across brands; when supplied it is a UUID. actor matches a case-insensitive literal username substring; action_type groups operations as create, view, query, edit or delete. Other filters are exact matches. from and to must be supplied together as RFC3339Nano UTC values ending in literal Z (numeric offsets are rejected), satisfy from < to, and span at most 31 days; the time window is half-open [from,to). limit defaults to 100 (1..200) and offset defaults to 0 (0..100000). Unknown, duplicate, or empty query values are rejected with 400. Results are ordered by created_at descending then id descending. If the selected records exceed the 4 MiB aggregate JSON cap, return 422 AUDIT_QUERY_TOO_LARGE as JSON and omit items; no partial list is returned. The successful response remains {items: AdminAuditRecord[]}; each record includes a required nullable brand_id, which is null for platform records, and a required actor_username, empty when the administrator or member username cannot be resolved. Clients should use actor_username for administrator display and actor_type text for other actors; retain actor_id only as the technical UUID. before_json and after_json are arbitrary JSON values, including null. The read audit is committed before response data is released. This immutable-history endpoint may read a physical standby only after its replay reaches the request's primary WAL fence. Authorization and audit always use primary. When replicas are configured, an unhealthy, lagging or failed selected replica returns an error; it does not fall back to primary or another replica. Without configured replicas, reads use primary. The result is not a current financial or configuration projection.",
         "security": [
           {
             "adminBearer": []
@@ -19734,6 +19759,31 @@
             "schema": {
               "type": "string",
               "minLength": 1
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "description": "Case-insensitive literal substring of the operator username."
+          },
+          {
+            "name": "action_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "create",
+                "view",
+                "query",
+                "edit",
+                "delete"
+              ]
             }
           },
           {
@@ -20189,6 +20239,31 @@
             }
           },
           {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "description": "Case-insensitive literal substring of the operator username."
+          },
+          {
+            "name": "action_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "create",
+                "view",
+                "query",
+                "edit",
+                "delete"
+              ]
+            }
+          },
+          {
             "name": "actor_id",
             "in": "query",
             "required": false,
@@ -20641,6 +20716,31 @@
             "schema": {
               "type": "string",
               "minLength": 1
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "description": "Case-insensitive literal substring of the operator username."
+          },
+          {
+            "name": "action_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "create",
+                "view",
+                "query",
+                "edit",
+                "delete"
+              ]
             }
           },
           {
@@ -128263,7 +128363,7 @@
     "/api/v1/admin/bet-distribution/games": {
       "get": {
         "operationId": "brandBetDistributionGames",
-        "summary": "List connected Mark Six games for bet distribution",
+        "summary": "List connected games supporting bet distribution",
         "tags": [
           "configured-rules"
         ],
@@ -128599,11 +128699,11 @@
     "/api/v1/admin/bet-distribution": {
       "get": {
         "operationId": "brandBetDistribution",
-        "summary": "Read special-number stake distribution and brand profit projection",
+        "summary": "Read outcome stake distribution and brand profit projection",
         "tags": [
           "configured-rules"
         ],
-        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Brand-scoped read of all orders in one period, independent of list pagination. Only plays decided exclusively by the special number are included. Each line stake is evenly split over its winning numbers using purchased period bindings. Returns and pushes are calculated from the full original stake and current brand odds. Profit equals included period stakes minus projected prizes and refunds. Exact split fractions are aggregated before display rounding to two decimal places. Empty period_no selects the most recently opened period, or the earliest future period if none has opened. Historical period lookup is exact. Does not move funds or modify purchase snapshots.",
+        "description": "Brand staff entry (administrator, operations, finance or customer support according to configured roles); platform accounts are rejected and platform-scoped grants cannot widen brand access. Brand-scoped read of all orders in one period, independent of list pagination. Mark Six includes plays decided exclusively by the special number. Three-digit Canada games project every ordered draw from 000 through 999 and include every play, with member-scoped period aggregates and prize caps. number_digits specifies the number display width; Canada outcomes have empty wave and zodiac attributes. Each line stake is evenly split over its winning numbers using purchased period bindings. Returns and pushes are calculated from the full original stake and current brand odds. Profit equals included period stakes minus projected prizes and refunds. Exact split fractions are aggregated before display rounding to two decimal places. Empty period_no selects the most recently opened period, or the earliest future period if none has opened. Historical period lookup is exact. Does not move funds or modify purchase snapshots.",
         "security": [
           {
             "adminBearer": []
@@ -205059,6 +205159,13 @@
       "BetDistribution": {
         "type": "object",
         "properties": {
+          "number_digits": {
+            "type": "integer",
+            "enum": [
+              2,
+              3
+            ]
+          },
           "game_id": {
             "$ref": "#/components/schemas/UUID"
           },
@@ -205077,11 +205184,12 @@
               "properties": {
                 "number": {
                   "type": "integer",
-                  "minimum": 1,
-                  "maximum": 49
+                  "minimum": 0,
+                  "maximum": 999
                 },
                 "wave": {
                   "enum": [
+                    "",
                     "red",
                     "blue",
                     "green"
@@ -205089,6 +205197,7 @@
                 },
                 "zodiac": {
                   "enum": [
+                    "",
                     "rat",
                     "ox",
                     "tiger",
@@ -205126,6 +205235,7 @@
           }
         },
         "required": [
+          "number_digits",
           "game_id",
           "period_no",
           "total_stake",

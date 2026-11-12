@@ -4,7 +4,7 @@
 
 ## 权限和品牌范围
 
-GET `/api/v1/admin/audit`需要audit.view.brand或audit.view.platform。品牌权限只能查询所属品牌；平台查看权限可省略品牌头跨品牌查询。响应仍为`{items:[]}`，旧字段保留，新增brand_id为UUID或null；每条记录返回`actor_username`，管理员记录为操作账号，系统或非管理员操作为空字符串。
+GET `/api/v1/admin/audit`需要audit.view.brand或audit.view.platform。品牌权限只能查询所属品牌；平台查看权限可省略品牌头跨品牌查询。响应仍为`{items:[]}`，旧字段保留，新增brand_id为UUID或null；每条记录返回`actor_username`，管理员及会员记录返回可解析的账号名，无法解析时为空字符串。
 
 GET `/api/v1/admin/audit/export`同时需要对应品牌的查看权和独立audit.export.brand或audit.export.platform。即使拥有平台权限也必须传明确X-Brand-ID，不提供全部品牌一键导出。超级管理员身份不替代权限；拒绝访问沿用access.denied审计。
 
@@ -12,7 +12,7 @@ GET `/api/v1/admin/audit/export`同时需要对应品牌的查看权和独立aud
 
 ## 筛选和界限
 
-共享筛选为from、to、action、actor_id、resource_type、resource_id、request_id。时间须为以Z结尾的RFC3339 UTC格式，开始含、结束不含；两者同时提供、开始早于结束、跨度最多31天。查询可不提供时间，导出必须提供。文本精确匹配，最多128 字符，无首尾空白或控制字符；人员和资源ID必须是UUID。未知、重复和空值参数拒绝。
+共享筛选为from、to、action、actor_id、resource_type、resource_id、request_id，另支持actor账号名不区分大小写的字面子串查询，以及action_type操作分类。品牌后台与总后台共用查询栏：操作人输入、类型选择、起止日期、查询与清空。日期精度为天，按UTC解释并包含结束当天；留空不限制时间。类型统一为创建、查看、查询、编辑、删除，操作列显示“模块 · 动作”。历史user.delete.maintenance显示“会员 · 删除”，原始审计标识与原因不改写。时间须为以Z结尾的RFC3339 UTC格式，开始含、结束不含；两者同时提供、开始早于结束、跨度最多31天。查询可不提供时间，导出必须提供。其余文本精确匹配，最多128 字符，无首尾空白或控制字符；人员和资源ID必须是UUID。未知、重复和空值参数拒绝。
 
 查询limit默认100、范围1至200，offset默认0、范围0至100000；按created_at DESC、id DESC排序。查询自身新审计不在本次结果内。逐页查询不是冻结快照；并发新增记录可能移动后续页偏移。后台每页100条，继续读取须明确翻页。完整导出不接受分页、不拼接多页。
 

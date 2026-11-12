@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import AuditFiltersForm from "@lottery/shared/AuditFilters.vue"
+const auditFilters = ref<Record<string, string>>({})
+function applyAuditFilters(next: Record<string, string>) { auditFilters.value = next; return loadAudit(selectedBrand.value, 0) }
 import ThemeSwitcher from "@lottery/shared/ThemeSwitcher.vue"
 import AnnouncementsManagement from "@lottery/shared/AnnouncementsManagement.vue";
 import CashConsole from "@lottery/shared/CashConsole.vue"
@@ -165,12 +168,22 @@ const settingsTab = ref<'general' | 'auth' | 'commission' | 'currency'>('general
 const showBrandPicker = computed(() => section.value === 'settings' ? settingsTab.value === 'auth' : section.value === 'audit' && ['archive-tasks', 'notifications', 'announcements', 'maintenance'].includes(auditView.value) ? false : section.value === 'access' ? accessScope.value === 'brand' : !['home', 'brands', 'settings', 'games', 'draws'].includes(section.value))
 const { games: brandGames, selectedGameId, loading: gamesLoading } = useBrandGames(selectedBrand, () => section.value === 'bets' ? section.value : '', handleFailure)
 const auditView = ref<'audit' | 'archives' | 'archive-tasks' | 'notifications' | 'announcements' | 'deliveries' | 'maintenance'>('audit')
-const brandsExpanded = ref(false)
+const expandedNavigation = ref<'brands' | 'operations' | 'wallets' | 'commission' | null>(null)
+function navigationExpanded(group: NonNullable<typeof expandedNavigation.value>) {
+  return computed({
+    get: () => expandedNavigation.value === group,
+    set: (open: boolean) => {
+      if (open) expandedNavigation.value = group
+      else if (expandedNavigation.value === group) expandedNavigation.value = null
+    },
+  })
+}
+const brandsExpanded = navigationExpanded('brands')
 const brandSectionActive = computed(() => section.value === 'brands' || section.value === 'users' || (section.value === 'access' && accessScope.value === 'brand'))
-const operationsExpanded = ref(false)
+const operationsExpanded = navigationExpanded('operations')
 const walletView = ref<'recharges' | 'quota' | 'reports'>('recharges')
-const walletsExpanded = ref(false)
-const commissionExpanded = ref(false)
+const walletsExpanded = navigationExpanded('wallets')
+const commissionExpanded = navigationExpanded('commission')
 const accessTab = ref<'accounts'>('accounts')
 const commissionTab = ref<'agents' | 'cycles' | 'payments'>('agents')
 const memberFinance = ref<{ member: PlatformMember; view: 'wallet' | 'ledger' } | null>(null)
@@ -342,9 +355,7 @@ async function chooseSection(next: typeof section.value, withdrawalState: '' | '
   if (next !== section.value) resetMemberFilters()
   if (next === 'audit' && section.value !== 'audit') auditView.value = 'audit'
   memberFinance.value = null
-  if (next !== 'audit') operationsExpanded.value = false
-  if (next !== 'wallets') walletsExpanded.value = false
-  if (next !== 'commission') commissionExpanded.value = false
+  expandedNavigation.value = ['brands', 'users'].includes(next) || (next === 'access' && accessScope.value === 'brand') ? 'brands' : next === 'audit' ? 'operations' : next === 'wallets' ? 'wallets' : next === 'commission' ? 'commission' : null
   section.value = next; error.value = ''; notice.value = ''
   if(next === 'brands') await refreshBrandSummaries()
   memberOffset.value = 0; auditOffset.value = 0; memberTotal.value = '0'; moreAudit.value = false
@@ -438,7 +449,7 @@ async function loadAudit(brandId: string, offset = 0) {
   const generation = ++auditRequestGeneration
   loading.value = true; error.value = ''
   try {
-    const result = await api.audit(brandId, auditPageSize.value, offset)
+    const result = await api.audit(brandId, auditPageSize.value, offset, auditFilters.value)
     if (generation === auditRequestGeneration && selectedBrand.value === brandId && section.value === 'audit' && auditView.value === 'audit') {
       [auditRows.value, auditTotal.value] = [result.items, readPaginationTotal(result)]
       auditOffset.value = offset
@@ -593,13 +604,13 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
     <aside id="platform-navigation" class="sidebar" @click="closeMobileNavigation">
       <div class="logo-row"><img v-if="platformSettings?.logo_url" class="brand-logo-image" :src="platformSettings.logo_url" alt="" /><div v-else class="brand-mark small">{{ platformSettings?.logo_text }}</div><div><strong>{{ platformSettings?.display_name }}</strong></div></div>
       <button type="button" :class="['nav-item', { selected: section === 'home' }]" @click="withGlobalLoading(chooseSection, 'home')"><span><SiteIcon name="home" /></span>{{ t('overview.home') }}</button>
-      <button type="button" :class="['nav-item', { selected: brandSectionActive }]" :aria-expanded="brandsExpanded" aria-controls="platform-brand-tabs" @click="!accountWriteLocked && (brandsExpanded = !brandsExpanded)"><span><SiteIcon name="brands" /></span>{{ t('common.brands') }}</button>
+      <button type="button" :class="['nav-item', { selected: brandSectionActive }]" :aria-expanded="brandsExpanded" aria-controls="platform-brand-tabs" @click="!accountWriteLocked && (brandsExpanded = !brandsExpanded)"><span><SiteIcon name="brands" /></span>{{ t('common.brands') }}<SiteIcon class="console-nav-chevron" name="down" /></button>
       <div v-if="brandsExpanded" id="platform-brand-tabs" class="nav-submenu" data-testid="platform-brand-tabs" role="group" :aria-label="t('common.brands')">
         <button type="button" class="nav-subitem" :class="{ selected: section === 'brands' }" @click="withGlobalLoading(chooseSection, 'brands')">{{ lang.brands }}</button>
         <button type="button" class="nav-subitem" :class="{ selected: section === 'access' && accessScope === 'brand' }" @click="withGlobalLoading(chooseBrandAccounts)">{{ lang.brandAccounts }}</button>
         <button type="button" class="nav-subitem" :class="{ selected: section === 'users' }" @click="withGlobalLoading(chooseSection, 'users')">{{ lang.users }}</button>
       </div>
-      <button type="button" :class="['nav-item', { selected: section === 'audit' }]" :aria-expanded="operationsExpanded" @click="withGlobalLoading(toggleOperations)"><span><SiteIcon name="more" /></span>{{ operationsLabel }}</button>
+      <button type="button" :class="['nav-item', { selected: section === 'audit' }]" :aria-expanded="operationsExpanded" @click="withGlobalLoading(toggleOperations)"><span><SiteIcon name="more" /></span>{{ operationsLabel }}<SiteIcon class="console-nav-chevron" name="down" /></button>
       <div v-if="operationsExpanded" class="nav-submenu" data-testid="platform-operations-tabs" role="group" :aria-label="operationsLabel">
         <button class="nav-subitem" :class="{ selected: auditView === 'audit' }" type="button" @click="withGlobalLoading(chooseAuditView, 'audit')">{{ lang.audit }}</button>
         <button class="nav-subitem" :class="{ selected: auditView === 'archives' }" type="button" @click="withGlobalLoading(chooseAuditView, 'archives')">{{ t('common.reportArchives') }}</button>
@@ -607,7 +618,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
         <button class="nav-subitem" :class="{ selected: auditView === 'notifications' }" type="button" @click="withGlobalLoading(chooseAuditView, 'notifications')">{{ t('maintenance.notificationTemplates') }}</button>
       </div>
       <button :class="['nav-item', { selected: section === 'rewards' }]" @click="withGlobalLoading(chooseSection, 'rewards')"><span><SiteIcon name="gift" /></span>{{ lang.rewards }}</button>
-      <button type="button" :class="['nav-item', { selected: section === 'wallets' }]" :aria-expanded="walletsExpanded" @click="withGlobalLoading(toggleWallets)"><span><SiteIcon name="wallet" /></span>{{ walletLabel }}</button>
+      <button type="button" :class="['nav-item', { selected: section === 'wallets' }]" :aria-expanded="walletsExpanded" @click="withGlobalLoading(toggleWallets)"><span><SiteIcon name="wallet" /></span>{{ walletLabel }}<SiteIcon class="console-nav-chevron" name="down" /></button>
       <div v-if="walletsExpanded" class="nav-submenu" data-testid="platform-wallet-tabs" role="group" :aria-label="walletLabel">
         <button class="nav-subitem" :class="{ selected: walletView === 'recharges' }" type="button" @click="withGlobalLoading(chooseWalletView, 'recharges')">{{ t('platform.copy.20be6d4c') }}</button>
         <button v-if="canViewRechargeQuota" class="nav-subitem" :class="{ selected: walletView === 'quota' }" type="button" @click="withGlobalLoading(chooseWalletView, 'quota')">{{ t('platform.quota.management') }}</button>
@@ -617,7 +628,7 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
       <button :class="['nav-item', { selected: section === 'games' }]" @click="withGlobalLoading(chooseSection, 'games')"><span><SiteIcon name="rules" /></span>{{ gamesLabel }}</button>
       <button :class="['nav-item', { selected: section === 'draws' }]" @click="withGlobalLoading(chooseSection, 'draws')"><span><SiteIcon name="calendar" /></span>{{ drawsLabel }}</button>
       <button :class="['nav-item', { selected: section === 'withdrawals' }]" @click="withGlobalLoading(chooseSection, 'withdrawals')"><span><SiteIcon name="external" /></span>{{ withdrawalLabel }}</button>
-      <button type="button" :class="['nav-item', { selected: section === 'commission' }]" :aria-expanded="commissionExpanded" @click="withGlobalLoading(toggleCommission)"><span><SiteIcon name="trend" /></span>{{ commissionLabel }}</button>
+      <button type="button" :class="['nav-item', { selected: section === 'commission' }]" :aria-expanded="commissionExpanded" @click="withGlobalLoading(toggleCommission)"><span><SiteIcon name="trend" /></span>{{ commissionLabel }}<SiteIcon class="console-nav-chevron" name="down" /></button>
       <div v-if="commissionExpanded" class="nav-submenu" data-testid="platform-commission-secondary-nav" role="group" :aria-label="commissionLabel">
         <button class="nav-subitem" :class="{ selected: section === 'commission' && commissionTab === 'agents' }" type="button" @click="withGlobalLoading(chooseCommission, 'agents')">{{ agentsLabel }}</button>
         <button class="nav-subitem" :class="{ selected: section === 'commission' && commissionTab === 'cycles' }" type="button" @click="withGlobalLoading(chooseCommission, 'cycles')">{{ t('platform.copy.39ac5c23') }}</button>
@@ -692,7 +703,8 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
         </template>
         <template v-else-if="section === 'users'">
           <div class="console-page-heading page-heading compact-heading"><h1 class="console-page-title">{{ lang.users }}</h1></div>
-          <ManagementList v-if="selectedBrand" :busy="loading"><template #filters>
+          <ManagementList v-if="selectedBrand" :busy="loading">
+          <template #filters>
             <DirectorySearch :locale="locale"  v-model="memberSearch" :label="t('members.search')" :query-label="t('members.query')" :busy="loading" :search="searchMembers"><SelectControl v-model="memberOnlineFilter" :label="t('members.onlineStatus')" :options="[{ value: '', label: (String(t('members.allOnline'))).trim() }, { value: 'true', label: (String(t('members.online'))).trim() }, { value: 'false', label: (String(t('members.offline'))).trim() }]" /></DirectorySearch></template>
             <BatchDelete subject="accounts" :entry-label="member => member.username || member.phone" :scope-key="String(memberOffset) + JSON.stringify(memberSearch)" :key="account.id + ':' + selectedBrand" :entries="members" :enabled="canDeleteMember" :locale="locale" :loading="loading" :delete-entry="(member, key) => api.deleteMemberAccount(member.global_user_id, member.brand_id, key)" :error-text="cause => displayPublicError(platformErrorMessage(cause, locale))" :is-unknown="cause => !(cause instanceof PlatformApiError) || cause.network || cause.status >= 500 || cause.code === 'INVALID_RESPONSE'" @deleted="batchMemberDeleted" @finished="withGlobalLoading(refreshBatchMembers)" v-slot="{ selected, toggle, selectLabel, locked }">
             <ManagementTable :entries="members" :columns="memberColumns" :empty="!loading && !error && !members.length" :empty-label="t('members.empty')" table-class="platform-member-table">
@@ -724,7 +736,8 @@ useOperationToast(deleteMemberError, value => displayPublicError(value), 'error'
           <NotificationsPanel v-else-if="auditView === 'notifications' || (auditView === 'deliveries' && selectedBrand)" :key="account.id + ':' + auditView" :view="auditView === 'deliveries' ? 'deliveries' : 'templates'" :account-id="account.id" :can-manage="account.platform_permissions.includes('notification_template.write.platform')" :brand-id="selectedBrand" :locale="locale" :display-settings="displaySettings" @failure="handleFailure" />
           <template v-else-if="auditView === 'audit'">
           <ManagementList v-if="selectedBrand" :busy="loading">
-          <template v-if="error" #actions><button v-refresh-button="t('common.refresh')" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(loadAudit, selectedBrand)">{{ t('common.refresh') }}</button></template><div class="table-wrap"><table class="console-table"><thead><tr><th>{{ lang.action }}</th><th>{{ lang.actor }}</th><th>{{ lang.resource }}</th><th>{{ lang.reason }}</th><th>{{ lang.date }}</th></tr></thead><tbody><tr v-for="row in auditRows" :key="row.id"><td :data-label="String(lang.action)"><span class="action-label">{{ businessActionLabel(row.action, locale) }}</span></td><td :data-label="String(lang.actor)">{{ auditActorLabel(row) }}</td><td :data-label="String(lang.resource)">{{ businessResourceLabel(row.resource_type, locale, row.action) }}</td><td :data-label="String(lang.reason)" class="reason-cell" :title="auditReasonLabel(row.reason, locale)">{{ auditReasonLabel(row.reason, locale) }}</td><td :data-label="String(lang.date)">{{ formatPlatformDateTime(row.created_at, displaySettings, locale) }}</td></tr><tr v-if="!loading && !error && !auditRows.length"><td colspan="5" class="empty-state">{{ t('state.emptyAudit') }}</td></tr></tbody></table></div>
+          <template #filters><AuditFiltersForm :locale="locale" :busy="loading" @apply="applyAuditFilters" /></template>
+          <template v-if="error" #actions><button v-refresh-button="t('common.refresh')" class="button button-secondary" :disabled="loading" @click="withGlobalLoading(loadAudit, selectedBrand)">{{ t('common.refresh') }}</button></template><div class="table-wrap"><table class="console-table console-responsive-table"><thead><tr><th>{{ lang.action }}</th><th>{{ lang.actor }}</th><th>{{ lang.resource }}</th><th>{{ t('platform.copy.f3f300a4') }}</th><th>{{ lang.date }}</th></tr></thead><tbody><tr v-for="row in auditRows" :key="row.id"><td :data-label="String(lang.action)"><span class="action-label">{{ businessActionLabel(row.action, locale) }}</span></td><td :data-label="String(lang.actor)">{{ auditActorLabel(row) }}</td><td :data-label="String(lang.resource)">{{ businessResourceLabel(row.resource_type, locale, row.action) }}</td><td :data-label="t('platform.copy.f3f300a4')" class="reason-cell" :title="auditReasonLabel(row.reason, locale)">{{ auditReasonLabel(row.reason, locale) }}</td><td :data-label="String(lang.date)">{{ formatPlatformDateTime(row.created_at, displaySettings, locale) }}</td></tr><tr v-if="!loading && !error && !auditRows.length"><td colspan="5" class="empty-state">{{ t('state.emptyAudit') }}</td></tr></tbody></table></div>
 
           <template #pagination><TablePagination data-testid="platform-audit-pages" :total="auditTotal" :page="Math.floor(auditOffset / auditPageSize + 1)" :count="auditRows.length" :locale="locale" :page-size="auditPageSize" :previous-disabled="loading || auditOffset === 0" :next-disabled="loading || !moreAudit" :previous-label="previousPage" :next-label="nextPage" :go-to="(target: number) => loadAudit(selectedBrand, (target - 1) * auditPageSize)" :change-page-size="async (size: number) => { auditPageSize = size; await loadAudit(selectedBrand, 0) }" :busy="loading" /></template></ManagementList>
           </template>

@@ -26,9 +26,13 @@ describe('audit business presentation', () => {
         expect(businessResourceLabel('query', locale, action)).not.toMatch(/未识别|Unrecognized|其他业务|Other business/)
       }
     }
-    expect(businessActionLabel('finance.recharge.confirm', 'zh-CN')).toBe('充值 · 确认')
+    expect(businessActionLabel('finance.recharge.confirm', 'zh-CN')).toBe('充值 · 编辑')
     expect(businessActionLabel('platform.role.create', 'en')).toBe('Platform roles · Create')
     expect(businessResourceLabel('query', 'zh-CN', 'role.view')).toBe('角色')
+    expect(businessActionLabel('user.delete.maintenance', 'zh-CN')).toBe('会员 · 删除')
+    expect(businessActionLabel('user.list', 'zh-CN')).toBe('会员 · 查询')
+    expect(businessActionLabel('user.view', 'zh-CN')).toBe('会员 · 查看')
+    expect(businessActionLabel('user.freeze', 'en')).toBe('Members · Edit')
     expect(businessActionLabel('unregistered.action', 'en')).toContain('Unrecognized')
   })
   it('only offers details that BusinessDetails can actually display', () => {
@@ -53,6 +57,7 @@ it('localizes archive-generated reasons in both supported languages', () => {
   const cases = [
     ['Owned read-only platform browser verification', '平台只读浏览器验证', 'Platform read-only browser verification'],
     ['automatic report archive capture', '自动生成归档报表', 'Automatic report archive capture'],
+    ['User requested removal of historical unnamed Telegram account', '用户请求删除历史未命名 Telegram 账号', 'User requested removal of historical unnamed Telegram account'],
     ['discover elapsed report period', '检测到已结束的报表周期', 'Detected an elapsed report period'],
   ] as const
   for (const [reason, zh, en] of cases) {

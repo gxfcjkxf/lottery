@@ -139,9 +139,9 @@ export function createPlatformApi(fetcher: typeof fetch = fetch) {
       if (!isObj(data) || data.limit !== limit || data.offset !== offset || !text(data.total_count) || !/^(0|[1-9]\d*)$/.test(data.total_count)) apiError('Invalid member pagination response', 0, 'INVALID_RESPONSE')
       return { items, limit, offset, total_count: data.total_count }
     },
-    async audit(brandId: string, limit = 100, offset = 0) {
+    async audit(brandId: string, limit = 100, offset = 0, filters: Record<string, string> = {}) {
       if (!brandId) apiError('A brand must be selected before loading audit records', 400, 'BRAND_REQUIRED')
-      const data = await request<unknown>(`/audit?limit=${limit}&offset=${offset}`, { brandId })
+      const data = await request<unknown>(`/audit?${new URLSearchParams({ ...filters, limit: String(limit), offset: String(offset) })}`, { brandId })
       const items = validate(data, isItems(isAudit), 'audit').items
       if (items.length > limit || items.some(item => item.brand_id !== brandId)) apiError('Invalid audit response', 0, 'INVALID_RESPONSE')
       return {items, total_count: readPaginationTotal(data)}

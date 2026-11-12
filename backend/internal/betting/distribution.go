@@ -22,13 +22,14 @@ type DistributionNumber struct {
 	Profit string `json:"profit"`
 }
 type BetDistribution struct {
-	GameID     string               `json:"game_id"`
-	PeriodNo   string               `json:"period_no"`
-	TotalStake string               `json:"total_stake"`
-	Numbers    []DistributionNumber `json:"numbers"`
+	NumberDigits int                  `json:"number_digits"`
+	GameID       string               `json:"game_id"`
+	PeriodNo     string               `json:"period_no"`
+	TotalStake   string               `json:"total_stake"`
+	Numbers      []DistributionNumber `json:"numbers"`
 }
 
-const distributionModel = `(g.model->>'model')='X_PLUS_Y' AND (g.model->>'regular_count')::int=6 AND (g.model->>'special_count')::int=1 AND (g.model->'special_pool'->>'min')::int=1 AND (g.model->'special_pool'->>'max')::int=49`
+const distributionModel = `(((g.model->>'model')='X_PLUS_Y' AND (g.model->>'regular_count')::int=6 AND (g.model->>'special_count')::int=1 AND (g.model->'special_pool'->>'min')::int=1 AND (g.model->'special_pool'->>'max')::int=49) OR ((g.model->>'model')='DIGITS_0_9' AND (g.model->>'length')::int=3 AND (g.model->>'allow_repeat')::boolean AND (g.model->>'ordered')::boolean))`
 
 func (s Service) DistributionGames(ctx context.Context, brand string) ([]ConfiguredGameSummary, error) {
 	rows, err := s.DB.Query(ctx, `SELECT g.id::text,g.name FROM platform_games g JOIN brand_platform_games b ON b.game_id=g.id WHERE b.brand_id=$1 AND g.status<>'deleted' AND `+distributionModel+` ORDER BY g.name,g.id`, brand)
@@ -48,7 +49,7 @@ func (s Service) DistributionGames(ctx context.Context, brand string) ([]Configu
 }
 
 func (s Service) BetDistribution(ctx context.Context, brand, game, periodNo string) (BetDistribution, error) {
-	out := BetDistribution{GameID: game, Numbers: []DistributionNumber{}}
+	out := BetDistribution{NumberDigits: 2, GameID: game, Numbers: []DistributionNumber{}}
 	if !validIDs(brand, game) {
 		return out, ErrInvalid
 	}
@@ -77,6 +78,17 @@ func (s Service) BetDistribution(ctx context.Context, brand, game, periodNo stri
 	sales, err := platformlottery.ReadConfiguredSales(ctx, tx, brand, game, false)
 	if err != nil {
 		return out, err
+	}
+	var digitGame bool
+	if err = tx.QueryRow(ctx, `SELECT (model->>'model')='DIGITS_0_9' FROM platform_games WHERE id=$1`, game).Scan(&digitGame); err != nil {
+		return out, err
+	}
+	if digitGame {
+		out.NumberDigits = 3
+		if err = canadaDistribution(ctx, tx, brand, game, period, sales.Prices, &out); err != nil {
+			return out, err
+		}
+		return out, tx.Commit(ctx)
 	}
 	rows, err := tx.Query(ctx, `SELECT snapshot,quote FROM configured_orders WHERE brand_id=$1 AND game_id=$2 AND period_id=$3 AND status IN ('placed','settled') ORDER BY id`, brand, game, period)
 	if err != nil {

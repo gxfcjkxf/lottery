@@ -171,11 +171,15 @@ export function businessResourceLabel(resource: string, locale: 'en' | 'zh-CN', 
 }
 export function businessActionLabel(action: string, locale: 'en' | 'zh-CN'): string {
   const parts = action.split('.')
-  if (parts.at(-1) === 'platform' || parts.at(-1) === 'brand') parts.pop()
+  if (parts.at(-1) === 'platform' || parts.at(-1) === 'brand' || parts.at(-1) === 'maintenance') parts.pop()
   const operation = parts.pop() ?? ''
   const labels = auditOperations[operation]
   const name = businessResourceLabel(parts.join('.'), locale)
   // Unknown identifiers remain explicitly unrecognized instead of disguising them as another operation.
-  const verb = labels ? labels[locale === 'zh-CN' ? 0 : 1] : (locale === 'zh-CN' ? '未识别的操作' : 'Unrecognized operation')
+  const category = ['list', 'select', 'enumerate'].includes(operation) ? ['查询', 'Query']
+    : ['view', 'read', 'history', 'me', 'defaults', 'actions', 'targets', 'earnings', 'runs', 'calculations', 'run_allocations', 'run_calculations', 'preview', 'download', 'export', 'check', 'validate', 'simulate'].includes(operation) ? ['查看', 'View']
+    : ['create', 'operator_create', 'manual_create', 'create_user', 'automatic', 'generate', 'place', 'submit', 'register'].includes(operation) ? ['创建', 'Create']
+    : operation === 'delete' ? ['删除', 'Delete'] : ['编辑', 'Edit']
+  const verb = labels ? category[locale === 'zh-CN' ? 0 : 1] : (locale === 'zh-CN' ? '未识别的操作' : 'Unrecognized operation')
   return `${name} · ${verb}`
 }

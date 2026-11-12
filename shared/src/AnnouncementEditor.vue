@@ -22,7 +22,7 @@ async function uploadFile(event:Event){const target=event.target as HTMLInputEle
    <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden :disabled="disabled || uploading" @change="event=>withGlobalLoading(uploadFile,event)">
   </div>
   <div v-if="linkOpen" class="editor-link"><input v-model="url" type="url" :aria-label="t('url')" :placeholder="t('url')" :disabled="disabled"><button type="button" class="button button-secondary" :disabled="disabled || !url" @click="insert(`<a href=&quot;${escape(url)}&quot;>`, '</a>');linkOpen=false;url=''">{{t('link')}}</button></div>
-  <textarea ref="input" :value="modelValue" :aria-label="t('body')" rows="9" maxlength="60000" :disabled="disabled || uploading" spellcheck="false" @input="emit('update:modelValue',($event.target as HTMLTextAreaElement).value)" />
+  <textarea ref="input" :value="modelValue" :aria-label="t('body')" rows="6" maxlength="60000" :disabled="disabled || uploading" spellcheck="false" @input="emit('update:modelValue',($event.target as HTMLTextAreaElement).value)" />
  </div>
 </template>
 <style scoped>

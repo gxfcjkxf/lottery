@@ -20,6 +20,7 @@ export function isAuditRead(action: string, resource: string): boolean {
 }
 
 const generatedReasonKeys = {
+  "User requested removal of historical unnamed Telegram account": "audit.reason.historicalUnnamedTelegramRemoval",
   "withdrawal application": "audit.reason.withdrawalApplication",
   "automatic review by saved policy": "audit.reason.automaticReview",
   "administrative permission denied": "audit.reason.permissionDenied",

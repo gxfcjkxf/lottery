@@ -33,7 +33,7 @@ html, body { background: var(--canvas); color: var(--ink); }
   font-family: var(--font-family);
 }
 .app-frame .digit-summary span {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--font-mono);
 }
 
 /* ==========================================================================
@@ -1243,7 +1243,7 @@ html, body { background: var(--canvas); color: var(--ink); }
 }
 
 .digit-summary span {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
 }
 

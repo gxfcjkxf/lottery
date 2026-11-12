@@ -248,16 +248,17 @@ button[data-write-locked], form[data-write-locked] button[type=submit], form[dat
   line-height: 22px !important;
 }
 
+/* Opt in short fields; long/complex editors retain their existing structure. */
+#app .ui-form label.ui-field-row { grid-template-columns: fit-content(38%) minmax(0, 1fr); align-items: center; gap: 4px 8px; }
+#app .ui-form label.ui-field-row > :is(input, .select-control, .platform-temporal-input) { width: 100%; min-width: 0; }
+#app .ui-form label.ui-field-row > :is(small, .field-error) { grid-column: 2; }
+
 /* Mobile rhythm reduces empty space without shrinking type or touch targets. */
 @media (max-width: 900px), (pointer: coarse) {
   #app .ui-filter-bar { row-gap: 4px; margin-bottom: 8px; }
   #app .ui-filter-bar > label { row-gap: 4px; }
   #app .ui-form, #app .ui-form > fieldset { row-gap: 8px; }
   #app .ui-form label:has(> :is(input:not([type="checkbox"], [type="radio"]), textarea, .select-control, .association-filter, .platform-temporal-input)) { row-gap: 4px; }
-  /* Opt in short fields; long/complex editors retain their existing structure. */
-  #app .ui-form label.ui-field-row { grid-template-columns: fit-content(38%) minmax(0, 1fr); align-items: center; gap: 4px 8px; }
-  #app .ui-form label.ui-field-row > :is(input, .select-control) { width: 100%; min-width: 0; }
-  #app .ui-form label.ui-field-row > :is(small, .field-error) { grid-column: 2; }
   #app .ui-form-actions { row-gap: 4px; margin-top: 8px; }
   #app :is(.app-shell, .app-frame) :is(.panel-heading, .panel-header, .form-actions, .filter-actions) { row-gap: 4px; }
   #app :is(.app-shell, .app-frame) .panel:not(.management-list):not(.user-record-list) { padding-block: 8px; }

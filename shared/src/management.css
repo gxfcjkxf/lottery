@@ -585,6 +585,12 @@
 .agent-transfer fieldset{border:0;padding:0;margin:0;display:grid;gap:8px;min-width:0}
 .management-console .mobile-nav>button{border:0;background:transparent;font:inherit}
 
+.management-console .nav-item > .console-nav-chevron { margin-left: auto; flex-shrink: 0; }
+.management-console .nav-item[aria-expanded="false"] > .console-nav-chevron { transform: rotate(-90deg); }
+.management-console .console-nav-group > summary { min-height: 44px; }
+.management-console .console-nav-group > summary:hover { background: var(--console-sidebar-hover); }
+.management-console .console-nav-group > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: var(--radius-sm); }
+
 /* Block spacing belongs to the parent; tab margins must not double it. */
 #app .management-console .reports-management { gap: var(--console-block-gap); }
 #app .management-console :is(.console-stack, .reports-management) > .console-tabs { margin-block: 0; }
